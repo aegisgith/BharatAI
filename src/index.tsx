@@ -2269,26 +2269,27 @@ function mainPageHTML(): string {
           <button class="nav-btn tab-active flex flex-col md:flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-medium transition-all" data-tab="dashboard" onclick="switchTab('dashboard')">
             <i class="fas fa-th-large text-lg md:text-base"></i><span>Home</span>
           </button>
-          <button class="nav-btn flex flex-col md:flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-medium text-gray-400 hover:text-white transition-all" data-tab="schedule" onclick="switchTab('schedule')">
+          <!-- Nav items hidden until MIN_REGISTRATIONS reached (controlled by JS) -->
+          <button class="nav-btn nav-gated hidden flex-col md:flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-medium text-gray-400 hover:text-white transition-all" data-tab="schedule" onclick="switchTab('schedule')">
             <i class="fas fa-calendar-alt text-lg md:text-base"></i><span>Schedule</span>
           </button>
-          <button class="nav-btn flex flex-col md:flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-medium text-gray-400 hover:text-white transition-all" data-tab="networking" onclick="switchTab('networking')">
+          <button class="nav-btn nav-gated hidden flex-col md:flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-medium text-gray-400 hover:text-white transition-all" data-tab="networking" onclick="switchTab('networking')">
             <i class="fas fa-users text-lg md:text-base"></i><span>Network</span>
           </button>
-          <button class="nav-btn flex flex-col md:flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-medium text-gray-400 hover:text-white transition-all" data-tab="exhibition" onclick="switchTab('exhibition')">
+          <button class="nav-btn nav-gated hidden flex-col md:flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-medium text-gray-400 hover:text-white transition-all" data-tab="exhibition" onclick="switchTab('exhibition')">
             <i class="fas fa-store text-lg md:text-base"></i><span>Expo</span>
           </button>
-          <button class="nav-btn flex flex-col md:flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-medium text-gray-400 hover:text-white transition-all" data-tab="workshops" onclick="switchTab('workshops')">
+          <button class="nav-btn nav-gated hidden flex-col md:flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-medium text-gray-400 hover:text-white transition-all" data-tab="workshops" onclick="switchTab('workshops')">
             <i class="fas fa-laptop-code text-lg md:text-base"></i><span>Workshops</span>
           </button>
           <!-- Awards tabs hidden - no awards for this event -->
-          <button class="nav-btn hidden md:flex flex-col md:flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-medium text-gray-400 hover:text-white transition-all" data-tab="startup-pitch" onclick="switchTab('startup-pitch')">
+          <button class="nav-btn nav-gated hidden flex-col md:flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-medium text-gray-400 hover:text-white transition-all" data-tab="startup-pitch" onclick="switchTab('startup-pitch')">
             <i class="fas fa-rocket text-lg md:text-base"></i><span>Startup Pitch</span>
           </button>
-          <button class="nav-btn hidden md:flex flex-col md:flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-medium text-gray-400 hover:text-white transition-all" data-tab="innovation" onclick="switchTab('innovation')">
+          <button class="nav-btn nav-gated hidden flex-col md:flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-medium text-gray-400 hover:text-white transition-all" data-tab="innovation" onclick="switchTab('innovation')">
             <i class="fas fa-lightbulb text-lg md:text-base"></i><span>Innovation Talks</span>
           </button>
-          <button class="nav-btn flex flex-col md:flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-medium text-gray-400 hover:text-white transition-all relative" data-tab="inbox" onclick="switchTab('inbox')">
+          <button class="nav-btn nav-gated hidden flex-col md:flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-medium text-gray-400 hover:text-white transition-all relative" data-tab="inbox" onclick="switchTab('inbox')">
             <i class="fas fa-envelope text-lg md:text-base"></i><span>Inbox</span>
             <span id="unread-badge" class="hidden absolute -top-1 right-0 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center badge-pulse">0</span>
           </button>
@@ -2335,20 +2336,20 @@ function mainPageHTML(): string {
               <h1 class="text-xl md:text-3xl font-black leading-tight" id="event-title">Bharat AI Innovation 2026</h1>
             </div>
             <p class="text-gray-400 text-sm md:text-base max-w-2xl mb-6" id="event-desc"></p>
-            <div class="flex flex-wrap gap-4 text-sm text-gray-300">
+            <div class="flex flex-wrap gap-4 text-sm text-gray-300 hidden" id="hero-venue-dates">
               <span><i class="fas fa-map-marker-alt text-primary-400 mr-1"></i><span id="event-venue"></span></span>
               <span><i class="fas fa-calendar text-primary-400 mr-1"></i><span id="event-dates"></span></span>
             </div>
           </div>
         </div>
 
-        <!-- Stats -->
-        <div class="max-w-7xl mx-auto px-4 -mt-6 relative z-10">
+        <!-- Stats (hidden until MIN_REGISTRATIONS) -->
+        <div class="max-w-7xl mx-auto px-4 -mt-6 relative z-10 hidden" id="stats-section">
           <div class="grid grid-cols-3 md:grid-cols-6 gap-3" id="stats-grid"></div>
         </div>
 
-        <!-- Venue Card -->
-        <div class="max-w-7xl mx-auto px-4 mt-6">
+        <!-- Venue Card (hidden until MIN_REGISTRATIONS) -->
+        <div class="max-w-7xl mx-auto px-4 mt-6 hidden" id="venue-section">
           <div class="glass rounded-2xl p-5 border border-primary-500/15 card-hover">
             <div class="flex items-start gap-4">
               <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-primary-500/20 to-blue-500/20 flex items-center justify-center shrink-0">
@@ -4069,6 +4070,8 @@ function mainPageHTML(): string {
       }
     }
 
+    const MIN_REGISTRATIONS = 100; // Threshold to show full app features
+
     // ==================== DASHBOARD ====================
     async function loadDashboard() {
       try {
@@ -4083,6 +4086,27 @@ function mainPageHTML(): string {
         document.getElementById('event-desc').textContent = event.description;
         document.getElementById('event-venue').textContent = event.venue;
         document.getElementById('event-dates').textContent = \`\${event.start_date} to \${event.end_date}\`;
+
+        // Gate features behind minimum registration count
+        const totalAttendees = stats.attendees || 0;
+        const featuresUnlocked = totalAttendees >= MIN_REGISTRATIONS;
+
+        // Show/hide nav items
+        document.querySelectorAll('.nav-gated').forEach(el => {
+          if (featuresUnlocked) {
+            el.classList.remove('hidden');
+            el.classList.add('flex');
+          } else {
+            el.classList.add('hidden');
+            el.classList.remove('flex');
+          }
+        });
+
+        // Show/hide stats, venue, hero venue/dates
+        ['stats-section', 'venue-section', 'hero-venue-dates'].forEach(id => {
+          const el = document.getElementById(id);
+          if (el) el.classList.toggle('hidden', !featuresUnlocked);
+        });
 
         const statsData = [
           { icon: 'fa-users', label: 'Attendees', value: stats.attendees, color: 'primary' },
