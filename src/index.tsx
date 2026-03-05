@@ -2349,45 +2349,129 @@ function mainPageHTML(): string {
           <div class="glass rounded-2xl p-6 md:p-8 glow-accent">
             <div class="text-center mb-6">
               <h2 class="text-2xl font-bold mb-2"><i class="fas fa-ticket-alt text-amber-400 mr-2"></i>Choose Your Pass</h2>
-              <p class="text-gray-400 text-sm">Select the pass that best suits your experience at Bharat AI Innovation 2026</p>
+              <p class="text-gray-400 text-sm">Select the registration package that best fits your goals at Bharat AI Innovation 2026</p>
             </div>
-            <div class="overflow-x-auto">
-              <table class="w-full text-sm">
-                <thead>
-                  <tr class="border-b border-white/10">
-                    <th class="text-left py-3 px-3 text-gray-400 font-medium">Details</th>
-                    <th class="py-3 px-3 text-center">
-                      <div class="text-green-400 font-bold text-base">Visitor Pass</div>
-                      <div class="text-green-300 text-xs font-semibold mt-1">FREE</div>
-                    </th>
-                    <th class="py-3 px-3 text-center">
-                      <div class="text-primary-400 font-bold text-base">Delegate Pass</div>
-                      <div class="text-primary-300 text-xs font-semibold mt-1">₹5,000</div>
-                    </th>
-                    <th class="py-3 px-3 text-center">
-                      <div class="text-amber-400 font-bold text-base">VIP Pass</div>
-                      <div class="text-amber-300 text-xs font-semibold mt-1">₹14,999</div>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-white/5">
-                  <tr><td class="py-2.5 px-3 text-gray-300">Event Duration</td><td class="py-2.5 px-3 text-center text-gray-300">Both Days</td><td class="py-2.5 px-3 text-center text-gray-300">Both Days</td><td class="py-2.5 px-3 text-center text-gray-300">Both Days</td></tr>
-                  <tr><td class="py-2.5 px-3 text-gray-300">Exhibition Access</td><td class="py-2.5 px-3 text-center text-green-400">✔</td><td class="py-2.5 px-3 text-center text-green-400">✔</td><td class="py-2.5 px-3 text-center text-green-400">✔</td></tr>
-                  <tr><td class="py-2.5 px-3 text-gray-300">Keynote Sessions</td><td class="py-2.5 px-3 text-center text-green-400">✔</td><td class="py-2.5 px-3 text-center text-green-400">✔</td><td class="py-2.5 px-3 text-center text-green-400">✔</td></tr>
-                  <tr><td class="py-2.5 px-3 text-gray-300">Conference Track Sessions</td><td class="py-2.5 px-3 text-center text-red-400">⛔</td><td class="py-2.5 px-3 text-center text-green-400">✔</td><td class="py-2.5 px-3 text-center text-green-400">✔</td></tr>
-                  <tr><td class="py-2.5 px-3 text-gray-300">AI Workshops (Hands-on)</td><td class="py-2.5 px-3 text-center text-red-400">⛔</td><td class="py-2.5 px-3 text-center text-green-400">✔</td><td class="py-2.5 px-3 text-center text-green-400">✔</td></tr>
-                  <tr><td class="py-2.5 px-3 text-gray-300">Gala Dinner & Networking</td><td class="py-2.5 px-3 text-center text-red-400">⛔</td><td class="py-2.5 px-3 text-center text-red-400">⛔</td><td class="py-2.5 px-3 text-center text-green-400">✔</td></tr>
-                  <tr><td class="py-2.5 px-3 text-gray-300">VIP Lounge & Priority Seating</td><td class="py-2.5 px-3 text-center text-red-400">⛔</td><td class="py-2.5 px-3 text-center text-red-400">⛔</td><td class="py-2.5 px-3 text-center text-green-400">✔</td></tr>
-                  <tr><td class="py-2.5 px-3 text-gray-300">Food & Beverages</td><td class="py-2.5 px-3 text-center text-red-400">⛔</td><td class="py-2.5 px-3 text-center text-primary-300 text-xs">Morning Tea, Lunch</td><td class="py-2.5 px-3 text-center text-amber-300 text-xs">Tea, Lunch, High Tea</td></tr>
-                </tbody>
-              </table>
+
+            <!-- Pass Cards Grid -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+              <!-- Delegate Pass -->
+              <div class="relative glass rounded-2xl p-5 border border-primary-500/30 hover:border-primary-400/50 transition-all group">
+                <div class="absolute -top-2.5 right-3 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-gradient-to-r from-amber-500 to-orange-500 text-white">MOST POPULAR</div>
+                <div class="text-2xl mb-2">🎟️</div>
+                <h3 class="font-bold text-base text-primary-300">Delegate Pass</h3>
+                <div class="text-xl font-black text-white mt-1">₹4,999<span class="text-xs font-normal text-gray-400">/person</span></div>
+                <div class="text-[10px] font-semibold text-green-400 mt-0.5">Early Bird — Save 40%</div>
+                <ul class="mt-3 space-y-1.5 text-xs text-gray-300">
+                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Full 2-day conference access</li>
+                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Exhibition floor pass</li>
+                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Awards ceremony access</li>
+                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Networking events</li>
+                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Digital recordings</li>
+                </ul>
+              </div>
+
+              <!-- VIP Pass -->
+              <div class="glass rounded-2xl p-5 border border-amber-500/30 hover:border-amber-400/50 transition-all group">
+                <div class="text-2xl mb-2">⭐</div>
+                <h3 class="font-bold text-base text-amber-300">VIP Pass</h3>
+                <div class="text-xl font-black text-white mt-1">₹14,999<span class="text-xs font-normal text-gray-400">/person</span></div>
+                <div class="text-[10px] font-semibold text-green-400 mt-0.5">Early Bird — Save 35%</div>
+                <ul class="mt-3 space-y-1.5 text-xs text-gray-300">
+                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Everything in Delegate</li>
+                  <li><i class="fas fa-check text-amber-400 mr-1.5 text-[10px]"></i>VIP lounge access</li>
+                  <li><i class="fas fa-check text-amber-400 mr-1.5 text-[10px]"></i>Speaker meet & greet</li>
+                  <li><i class="fas fa-check text-amber-400 mr-1.5 text-[10px]"></i>Priority front-row seating</li>
+                  <li><i class="fas fa-check text-amber-400 mr-1.5 text-[10px]"></i>Exclusive VIP dinner</li>
+                </ul>
+              </div>
+
+              <!-- Startup Pass -->
+              <div class="glass rounded-2xl p-5 border border-emerald-500/30 hover:border-emerald-400/50 transition-all group">
+                <div class="text-2xl mb-2">🚀</div>
+                <h3 class="font-bold text-base text-emerald-300">Startup Pass</h3>
+                <div class="text-xl font-black text-white mt-1">₹2,999<span class="text-xs font-normal text-gray-400">/person</span></div>
+                <div class="text-[10px] font-semibold text-emerald-400 mt-0.5">For early-stage startups</div>
+                <ul class="mt-3 space-y-1.5 text-xs text-gray-300">
+                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Conference access (Day 2)</li>
+                  <li><i class="fas fa-check text-emerald-400 mr-1.5 text-[10px]"></i>Startup Showcase pitch slot</li>
+                  <li><i class="fas fa-check text-emerald-400 mr-1.5 text-[10px]"></i>Investor meeting slots</li>
+                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Exhibition pass</li>
+                </ul>
+              </div>
+
+              <!-- Academic Pass -->
+              <div class="glass rounded-2xl p-5 border border-violet-500/30 hover:border-violet-400/50 transition-all group">
+                <div class="text-2xl mb-2">🎓</div>
+                <h3 class="font-bold text-base text-violet-300">Academic Pass</h3>
+                <div class="text-xl font-black text-white mt-1">₹999<span class="text-xs font-normal text-gray-400">/person</span></div>
+                <div class="text-[10px] font-semibold text-violet-400 mt-0.5">Students & researchers</div>
+                <ul class="mt-3 space-y-1.5 text-xs text-gray-300">
+                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Full conference access</li>
+                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Exhibition floor pass</li>
+                  <li><i class="fas fa-check text-violet-400 mr-1.5 text-[10px]"></i>Hackathon participation</li>
+                  <li><i class="fas fa-check text-violet-400 mr-1.5 text-[10px]"></i>Student networking zone</li>
+                </ul>
+              </div>
             </div>
-            <div class="flex flex-col sm:flex-row items-center justify-center gap-3 mt-6">
-              <a href="https://bharataiinnovation.com/" target="_blank" class="px-6 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 transition-all text-sm" id="register-visitor-btn">
-                <i class="fas fa-ticket-alt mr-2"></i>Register Free Visitor Pass
+
+            <!-- Bringing a Team Banner -->
+            <div class="glass rounded-xl p-4 border border-orange-500/20 mb-6">
+              <div class="flex items-center gap-3">
+                <span class="text-2xl">👥</span>
+                <div class="flex-1">
+                  <p class="text-sm font-semibold text-orange-300">Bringing a team? Save up to 30%!</p>
+                  <p class="text-xs text-gray-400 mt-0.5">Check Delegation Packages for group discounts on 5+ registrations</p>
+                </div>
+                <a href="https://bharataiinnovation.com/register#delegation-section" target="_blank" class="px-4 py-2 rounded-lg text-xs font-semibold bg-orange-500/20 text-orange-300 hover:bg-orange-500/30 transition border border-orange-500/30">
+                  <i class="fas fa-users mr-1"></i>View Packages
+                </a>
+              </div>
+            </div>
+
+            <!-- Full Comparison Table (Collapsible) -->
+            <details class="mb-6">
+              <summary class="cursor-pointer text-sm font-semibold text-primary-300 hover:text-primary-200 transition flex items-center gap-2">
+                <i class="fas fa-table text-xs"></i>View Full Pass Comparison Table
+                <i class="fas fa-chevron-down text-[10px]"></i>
+              </summary>
+              <div class="overflow-x-auto mt-4">
+                <table class="w-full text-sm">
+                  <thead>
+                    <tr class="border-b border-white/10">
+                      <th class="text-left py-3 px-2 text-gray-400 font-medium text-xs">Feature</th>
+                      <th class="py-3 px-2 text-center text-green-400 font-bold text-xs">Visitor<br><span class="font-normal text-green-300">FREE</span></th>
+                      <th class="py-3 px-2 text-center text-primary-400 font-bold text-xs">Delegate<br><span class="font-normal text-primary-300">₹4,999</span></th>
+                      <th class="py-3 px-2 text-center text-amber-400 font-bold text-xs">VIP<br><span class="font-normal text-amber-300">₹14,999</span></th>
+                      <th class="py-3 px-2 text-center text-emerald-400 font-bold text-xs">Startup<br><span class="font-normal text-emerald-300">₹2,999</span></th>
+                      <th class="py-3 px-2 text-center text-violet-400 font-bold text-xs">Academic<br><span class="font-normal text-violet-300">₹999</span></th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-white/5 text-xs">
+                    <tr><td class="py-2 px-2 text-gray-300">Exhibition Access</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
+                    <tr><td class="py-2 px-2 text-gray-300">Conference Sessions</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-amber-300">Day 2</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
+                    <tr><td class="py-2 px-2 text-gray-300">Networking Lounge</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
+                    <tr><td class="py-2 px-2 text-gray-300">Lunch & Refreshments</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
+                    <tr><td class="py-2 px-2 text-gray-300">Awards Ceremony</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td></tr>
+                    <tr><td class="py-2 px-2 text-gray-300">AI Workshops (Hands-on)</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
+                    <tr><td class="py-2 px-2 text-gray-300">VIP Lounge & Priority Seating</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td></tr>
+                    <tr><td class="py-2 px-2 text-gray-300">Speaker Meet & Greet</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td></tr>
+                    <tr><td class="py-2 px-2 text-gray-300">Exclusive VIP Dinner</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td></tr>
+                    <tr><td class="py-2 px-2 text-gray-300">Startup Showcase Pitch</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-red-400">⛔</td></tr>
+                    <tr><td class="py-2 px-2 text-gray-300">Investor Meeting Slots</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-red-400">⛔</td></tr>
+                    <tr><td class="py-2 px-2 text-gray-300">Hackathon Participation</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
+                    <tr><td class="py-2 px-2 text-gray-300">Digital Recordings</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </details>
+
+            <!-- CTA Buttons -->
+            <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
+              <a href="https://bharataiinnovation.com/register" target="_blank" class="px-6 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-primary-600 to-blue-600 hover:from-primary-500 hover:to-blue-500 transition-all text-sm shadow-lg shadow-primary-500/20" id="register-visitor-btn">
+                <i class="fas fa-ticket-alt mr-2"></i>Register Now
               </a>
-              <a href="https://bharataiinnovation.com/" target="_blank" class="px-6 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 transition-all text-sm">
-                <i class="fas fa-arrow-up mr-2"></i>Upgrade to Delegate / VIP
+              <a href="https://bharataiinnovation.com/register#delegation-section" target="_blank" class="px-6 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 transition-all text-sm">
+                <i class="fas fa-users mr-2"></i>Group / Delegation Packages
               </a>
             </div>
           </div>
@@ -2439,8 +2523,11 @@ function mainPageHTML(): string {
               <option value="Exhibitor">Exhibitors</option>
               <option value="Investor">Investors</option>
               <option value="Jury">Jury</option>
-              <option value="Delegate Pass">Delegates</option>
-              <option value="VIP">VIPs</option>
+              <option value="Delegate Pass">Delegate Pass</option>
+              <option value="VIP Pass">VIP Pass</option>
+              <option value="Startup Pass">Startup Pass</option>
+              <option value="Academic Pass">Academic Pass</option>
+              <option value="Visitor Pass">Visitor Pass</option>
               <option value="Finalist">Finalists</option>
             </select>
           </div>
@@ -7597,7 +7684,7 @@ function adminPageHTML(): string {
                 </select></div>
               <div><label class="text-xs text-gray-400 mb-1 block">Badge</label>
                 <select id="ea-badge" class="w-full px-3 py-2 rounded-lg text-sm">
-                  \${['Organiser','VIP Guest','Exhibitor','Delegate','Exhibition Speaker','Jury','Visitor Pass','Media','Support Staff','Investor','Felicitation Delegate','VIP Pass'].map(b=>'<option value="'+b+'" '+(a.badge_type===b?'selected':'')+'>'+b+'</option>').join('')}
+                  \${['Delegate Pass','VIP Pass','Startup Pass','Academic Pass','Visitor Pass','Organiser','VIP Guest','Exhibitor','Delegate','Exhibition Speaker','Jury','Media','Support Staff','Investor','Felicitation Delegate'].map(b=>'<option value="'+b+'" '+(a.badge_type===b?'selected':'')+'>'+b+'</option>').join('')}
                 </select></div>
               <div><label class="text-xs text-gray-400 mb-1 block">Lunch</label>
                 <select id="ea-lunch" class="w-full px-3 py-2 rounded-lg text-sm">
