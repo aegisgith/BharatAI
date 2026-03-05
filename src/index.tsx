@@ -2194,6 +2194,9 @@ function mainPageHTML(): string {
           <button class="nav-btn flex flex-col md:flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-medium text-gray-400 hover:text-white transition-all" data-tab="exhibition" onclick="switchTab('exhibition')">
             <i class="fas fa-store text-lg md:text-base"></i><span>Expo</span>
           </button>
+          <button class="nav-btn flex flex-col md:flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-medium text-gray-400 hover:text-white transition-all" data-tab="workshops" onclick="switchTab('workshops')">
+            <i class="fas fa-laptop-code text-lg md:text-base"></i><span>Workshops</span>
+          </button>
           <!-- Awards tabs hidden - no awards for this event -->
           <button class="nav-btn hidden md:flex flex-col md:flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-medium text-gray-400 hover:text-white transition-all" data-tab="startup-pitch" onclick="switchTab('startup-pitch')">
             <i class="fas fa-rocket text-lg md:text-base"></i><span>Startup Pitch</span>
@@ -2973,6 +2976,335 @@ function mainPageHTML(): string {
         </div>
       </div>
 
+      <!-- Workshops Tab -->
+      <div id="tab-workshops" class="tab-content hidden">
+        <div class="max-w-7xl mx-auto px-4 py-6">
+          <!-- Hero -->
+          <div class="text-center mb-8">
+            <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-teal-500/20 to-cyan-500/20 border border-teal-500/30 mb-4">
+              <i class="fas fa-laptop-code text-teal-400"></i>
+              <span class="text-sm font-semibold text-teal-300">Hands-On Training</span>
+            </div>
+            <h2 class="text-2xl md:text-3xl font-black mb-2">AI Training <span class="gradient-text">Workshops</span></h2>
+            <p class="text-gray-400 text-sm md:text-base max-w-2xl mx-auto">Intensive hands-on workshops led by industry experts. Code alongside practitioners, work on real projects, and earn completion certificates.</p>
+          </div>
+
+          <!-- Workshop Highlights -->
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
+            <div class="glass rounded-xl p-4 text-center border border-teal-500/10">
+              <div class="text-2xl mb-1">💻</div>
+              <div class="text-xs font-semibold text-teal-300">Hands-On Practice</div>
+              <div class="text-[10px] text-gray-500 mt-0.5">Code with real datasets & tools</div>
+            </div>
+            <div class="glass rounded-xl p-4 text-center border border-cyan-500/10">
+              <div class="text-2xl mb-1">👨‍🏫</div>
+              <div class="text-xs font-semibold text-cyan-300">Industry Experts</div>
+              <div class="text-[10px] text-gray-500 mt-0.5">Learn from AI practitioners</div>
+            </div>
+            <div class="glass rounded-xl p-4 text-center border border-blue-500/10">
+              <div class="text-2xl mb-1">📊</div>
+              <div class="text-xs font-semibold text-blue-300">Real Projects</div>
+              <div class="text-[10px] text-gray-500 mt-0.5">Actual use cases & solutions</div>
+            </div>
+            <div class="glass rounded-xl p-4 text-center border border-violet-500/10">
+              <div class="text-2xl mb-1">🎓</div>
+              <div class="text-xs font-semibold text-violet-300">Certificate</div>
+              <div class="text-[10px] text-gray-500 mt-0.5">Earn completion certificates</div>
+            </div>
+          </div>
+
+          <!-- Workshop Cards -->
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8" id="workshop-cards">
+            <!-- Generative AI & LLMs -->
+            <div class="glass rounded-2xl p-6 border border-teal-500/20 hover:border-teal-400/40 transition-all group relative overflow-hidden">
+              <div class="absolute top-3 right-3 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-gradient-to-r from-amber-500 to-orange-500 text-white">Popular</div>
+              <div class="flex items-center gap-3 mb-4">
+                <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-teal-500/20 to-emerald-500/20 flex items-center justify-center shrink-0">
+                  <i class="fas fa-brain text-xl text-teal-400"></i>
+                </div>
+                <div>
+                  <h3 class="font-bold text-base text-white group-hover:text-teal-300 transition">Generative AI & LLMs</h3>
+                  <p class="text-[11px] text-gray-500">Master Large Language Models & GenAI applications</p>
+                </div>
+              </div>
+              <div class="mb-4">
+                <div class="text-xs font-semibold text-gray-400 mb-2">Topics Covered</div>
+                <div class="flex flex-wrap gap-1.5">
+                  <span class="px-2 py-0.5 rounded-full text-[10px] bg-teal-500/10 text-teal-300 border border-teal-500/20">LLM Architecture</span>
+                  <span class="px-2 py-0.5 rounded-full text-[10px] bg-teal-500/10 text-teal-300 border border-teal-500/20">Prompt Engineering</span>
+                  <span class="px-2 py-0.5 rounded-full text-[10px] bg-teal-500/10 text-teal-300 border border-teal-500/20">RAG</span>
+                  <span class="px-2 py-0.5 rounded-full text-[10px] bg-teal-500/10 text-teal-300 border border-teal-500/20">Fine-tuning</span>
+                </div>
+              </div>
+              <a href="https://bharataiinnovation.com/register" target="_blank" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-teal-600 hover:bg-teal-500 text-white transition-all shadow-lg shadow-teal-900/30">
+                <i class="fas fa-ticket-alt"></i>Register Now
+              </a>
+            </div>
+
+            <!-- Agentic AI Development -->
+            <div class="glass rounded-2xl p-6 border border-cyan-500/20 hover:border-cyan-400/40 transition-all group relative overflow-hidden">
+              <div class="absolute top-3 right-3 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-gradient-to-r from-cyan-500 to-blue-500 text-white">New</div>
+              <div class="flex items-center gap-3 mb-4">
+                <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-cyan-500/20 to-blue-500/20 flex items-center justify-center shrink-0">
+                  <i class="fas fa-robot text-xl text-cyan-400"></i>
+                </div>
+                <div>
+                  <h3 class="font-bold text-base text-white group-hover:text-cyan-300 transition">Agentic AI Development</h3>
+                  <p class="text-[11px] text-gray-500">Build autonomous AI agents that reason, plan & act</p>
+                </div>
+              </div>
+              <div class="mb-4">
+                <div class="text-xs font-semibold text-gray-400 mb-2">Topics Covered</div>
+                <div class="flex flex-wrap gap-1.5">
+                  <span class="px-2 py-0.5 rounded-full text-[10px] bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">Agent Architecture</span>
+                  <span class="px-2 py-0.5 rounded-full text-[10px] bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">Tool Integration</span>
+                  <span class="px-2 py-0.5 rounded-full text-[10px] bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">Multi-Agent Systems</span>
+                  <span class="px-2 py-0.5 rounded-full text-[10px] bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">Orchestration</span>
+                </div>
+              </div>
+              <a href="https://bharataiinnovation.com/register" target="_blank" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-cyan-600 hover:bg-cyan-500 text-white transition-all shadow-lg shadow-cyan-900/30">
+                <i class="fas fa-ticket-alt"></i>Register Now
+              </a>
+            </div>
+
+            <!-- VibeCoding & AI-Assisted Development -->
+            <div class="glass rounded-2xl p-6 border border-purple-500/20 hover:border-purple-400/40 transition-all group relative overflow-hidden">
+              <div class="absolute top-3 right-3 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-gradient-to-r from-purple-500 to-pink-500 text-white">Trending</div>
+              <div class="flex items-center gap-3 mb-4">
+                <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500/20 to-pink-500/20 flex items-center justify-center shrink-0">
+                  <i class="fas fa-code text-xl text-purple-400"></i>
+                </div>
+                <div>
+                  <h3 class="font-bold text-base text-white group-hover:text-purple-300 transition">VibeCoding & AI-Assisted Dev</h3>
+                  <p class="text-[11px] text-gray-500">Prompt-driven development & rapid prototyping</p>
+                </div>
+              </div>
+              <div class="mb-4">
+                <div class="text-xs font-semibold text-gray-400 mb-2">Topics Covered</div>
+                <div class="flex flex-wrap gap-1.5">
+                  <span class="px-2 py-0.5 rounded-full text-[10px] bg-purple-500/10 text-purple-300 border border-purple-500/20">GitHub Copilot & Cursor AI</span>
+                  <span class="px-2 py-0.5 rounded-full text-[10px] bg-purple-500/10 text-purple-300 border border-purple-500/20">Prompt for Code</span>
+                  <span class="px-2 py-0.5 rounded-full text-[10px] bg-purple-500/10 text-purple-300 border border-purple-500/20">Rapid Prototyping</span>
+                  <span class="px-2 py-0.5 rounded-full text-[10px] bg-purple-500/10 text-purple-300 border border-purple-500/20">AI Code Review</span>
+                </div>
+              </div>
+              <a href="https://bharataiinnovation.com/register" target="_blank" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-purple-600 hover:bg-purple-500 text-white transition-all shadow-lg shadow-purple-900/30">
+                <i class="fas fa-ticket-alt"></i>Register Now
+              </a>
+            </div>
+
+            <!-- AI Product Development -->
+            <div class="glass rounded-2xl p-6 border border-orange-500/20 hover:border-orange-400/40 transition-all group relative overflow-hidden">
+              <div class="absolute top-3 right-3 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-gradient-to-r from-orange-500 to-red-500 text-white">Essential</div>
+              <div class="flex items-center gap-3 mb-4">
+                <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-orange-500/20 to-red-500/20 flex items-center justify-center shrink-0">
+                  <i class="fas fa-box-open text-xl text-orange-400"></i>
+                </div>
+                <div>
+                  <h3 class="font-bold text-base text-white group-hover:text-orange-300 transition">AI Product Development</h3>
+                  <p class="text-[11px] text-gray-500">End-to-end journey from ideation to deployment</p>
+                </div>
+              </div>
+              <div class="mb-4">
+                <div class="text-xs font-semibold text-gray-400 mb-2">Topics Covered</div>
+                <div class="flex flex-wrap gap-1.5">
+                  <span class="px-2 py-0.5 rounded-full text-[10px] bg-orange-500/10 text-orange-300 border border-orange-500/20">AI Product Strategy</span>
+                  <span class="px-2 py-0.5 rounded-full text-[10px] bg-orange-500/10 text-orange-300 border border-orange-500/20">MVP Development</span>
+                  <span class="px-2 py-0.5 rounded-full text-[10px] bg-orange-500/10 text-orange-300 border border-orange-500/20">Model Integration</span>
+                  <span class="px-2 py-0.5 rounded-full text-[10px] bg-orange-500/10 text-orange-300 border border-orange-500/20">Deployment & Monitoring</span>
+                </div>
+              </div>
+              <a href="https://bharataiinnovation.com/register" target="_blank" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-orange-600 hover:bg-orange-500 text-white transition-all shadow-lg shadow-orange-900/30">
+                <i class="fas fa-ticket-alt"></i>Register Now
+              </a>
+            </div>
+
+            <!-- Recommender System Development -->
+            <div class="glass rounded-2xl p-6 border border-emerald-500/20 hover:border-emerald-400/40 transition-all group relative overflow-hidden">
+              <div class="absolute top-3 right-3 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-gradient-to-r from-emerald-500 to-green-500 text-white">Popular</div>
+              <div class="flex items-center gap-3 mb-4">
+                <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500/20 to-green-500/20 flex items-center justify-center shrink-0">
+                  <i class="fas fa-magic text-xl text-emerald-400"></i>
+                </div>
+                <div>
+                  <h3 class="font-bold text-base text-white group-hover:text-emerald-300 transition">Recommender Systems</h3>
+                  <p class="text-[11px] text-gray-500">Build intelligent recommendation engines</p>
+                </div>
+              </div>
+              <div class="mb-4">
+                <div class="text-xs font-semibold text-gray-400 mb-2">Topics Covered</div>
+                <div class="flex flex-wrap gap-1.5">
+                  <span class="px-2 py-0.5 rounded-full text-[10px] bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">Collaborative Filtering</span>
+                  <span class="px-2 py-0.5 rounded-full text-[10px] bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">Content-Based</span>
+                  <span class="px-2 py-0.5 rounded-full text-[10px] bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">Matrix Factorization</span>
+                  <span class="px-2 py-0.5 rounded-full text-[10px] bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">Real-time Systems</span>
+                </div>
+              </div>
+              <a href="https://bharataiinnovation.com/register" target="_blank" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-all shadow-lg shadow-emerald-900/30">
+                <i class="fas fa-ticket-alt"></i>Register Now
+              </a>
+            </div>
+
+            <!-- AI Chatbot Development -->
+            <div class="glass rounded-2xl p-6 border border-blue-500/20 hover:border-blue-400/40 transition-all group relative overflow-hidden">
+              <div class="absolute top-3 right-3 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-gradient-to-r from-blue-500 to-indigo-500 text-white">Hands-On</div>
+              <div class="flex items-center gap-3 mb-4">
+                <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500/20 to-indigo-500/20 flex items-center justify-center shrink-0">
+                  <i class="fas fa-comments text-xl text-blue-400"></i>
+                </div>
+                <div>
+                  <h3 class="font-bold text-base text-white group-hover:text-blue-300 transition">AI Chatbot Development</h3>
+                  <p class="text-[11px] text-gray-500">Create intelligent conversational AI systems</p>
+                </div>
+              </div>
+              <div class="mb-4">
+                <div class="text-xs font-semibold text-gray-400 mb-2">Topics Covered</div>
+                <div class="flex flex-wrap gap-1.5">
+                  <span class="px-2 py-0.5 rounded-full text-[10px] bg-blue-500/10 text-blue-300 border border-blue-500/20">Conversational AI</span>
+                  <span class="px-2 py-0.5 rounded-full text-[10px] bg-blue-500/10 text-blue-300 border border-blue-500/20">Intent Recognition</span>
+                  <span class="px-2 py-0.5 rounded-full text-[10px] bg-blue-500/10 text-blue-300 border border-blue-500/20">Context Management</span>
+                  <span class="px-2 py-0.5 rounded-full text-[10px] bg-blue-500/10 text-blue-300 border border-blue-500/20">Platform Integration</span>
+                </div>
+              </div>
+              <a href="https://bharataiinnovation.com/register" target="_blank" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white transition-all shadow-lg shadow-blue-900/30">
+                <i class="fas fa-ticket-alt"></i>Register Now
+              </a>
+            </div>
+
+            <!-- LLM Model Fine-Tuning -->
+            <div class="glass rounded-2xl p-6 border border-rose-500/20 hover:border-rose-400/40 transition-all group relative overflow-hidden">
+              <div class="absolute top-3 right-3 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-gradient-to-r from-rose-500 to-pink-500 text-white">Advanced</div>
+              <div class="flex items-center gap-3 mb-4">
+                <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-rose-500/20 to-pink-500/20 flex items-center justify-center shrink-0">
+                  <i class="fas fa-sliders-h text-xl text-rose-400"></i>
+                </div>
+                <div>
+                  <h3 class="font-bold text-base text-white group-hover:text-rose-300 transition">LLM Fine-Tuning</h3>
+                  <p class="text-[11px] text-gray-500">Customize large language models for specific use cases</p>
+                </div>
+              </div>
+              <div class="mb-4">
+                <div class="text-xs font-semibold text-gray-400 mb-2">Topics Covered</div>
+                <div class="flex flex-wrap gap-1.5">
+                  <span class="px-2 py-0.5 rounded-full text-[10px] bg-rose-500/10 text-rose-300 border border-rose-500/20">Transfer Learning</span>
+                  <span class="px-2 py-0.5 rounded-full text-[10px] bg-rose-500/10 text-rose-300 border border-rose-500/20">PEFT / LoRA / QLoRA</span>
+                  <span class="px-2 py-0.5 rounded-full text-[10px] bg-rose-500/10 text-rose-300 border border-rose-500/20">Evaluation</span>
+                  <span class="px-2 py-0.5 rounded-full text-[10px] bg-rose-500/10 text-rose-300 border border-rose-500/20">Deployment</span>
+                </div>
+              </div>
+              <a href="https://bharataiinnovation.com/register" target="_blank" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white transition-all shadow-lg shadow-rose-900/30">
+                <i class="fas fa-ticket-alt"></i>Register Now
+              </a>
+            </div>
+
+            <!-- Computer Vision & Image AI -->
+            <div class="glass rounded-2xl p-6 border border-sky-500/20 hover:border-sky-400/40 transition-all group relative overflow-hidden">
+              <div class="absolute top-3 right-3 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-gradient-to-r from-sky-500 to-blue-500 text-white">Practical</div>
+              <div class="flex items-center gap-3 mb-4">
+                <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-sky-500/20 to-blue-500/20 flex items-center justify-center shrink-0">
+                  <i class="fas fa-eye text-xl text-sky-400"></i>
+                </div>
+                <div>
+                  <h3 class="font-bold text-base text-white group-hover:text-sky-300 transition">Computer Vision & Image AI</h3>
+                  <p class="text-[11px] text-gray-500">Image recognition, object detection & visual AI</p>
+                </div>
+              </div>
+              <div class="mb-4">
+                <div class="text-xs font-semibold text-gray-400 mb-2">Topics Covered</div>
+                <div class="flex flex-wrap gap-1.5">
+                  <span class="px-2 py-0.5 rounded-full text-[10px] bg-sky-500/10 text-sky-300 border border-sky-500/20">CNN & Transfer Learning</span>
+                  <span class="px-2 py-0.5 rounded-full text-[10px] bg-sky-500/10 text-sky-300 border border-sky-500/20">YOLO / R-CNN</span>
+                  <span class="px-2 py-0.5 rounded-full text-[10px] bg-sky-500/10 text-sky-300 border border-sky-500/20">Image Segmentation</span>
+                  <span class="px-2 py-0.5 rounded-full text-[10px] bg-sky-500/10 text-sky-300 border border-sky-500/20">Edge Deployment</span>
+                </div>
+              </div>
+              <a href="https://bharataiinnovation.com/register" target="_blank" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-sky-600 hover:bg-sky-500 text-white transition-all shadow-lg shadow-sky-900/30">
+                <i class="fas fa-ticket-alt"></i>Register Now
+              </a>
+            </div>
+          </div>
+
+          <!-- Who Should Attend -->
+          <div class="glass rounded-2xl p-6 md:p-8 border border-white/5 mb-8">
+            <h3 class="text-lg font-bold mb-4 text-center"><i class="fas fa-user-check text-teal-400 mr-2"></i>Who Should Attend?</h3>
+            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+              <div class="text-center p-3">
+                <div class="text-2xl mb-1">💻</div>
+                <div class="text-xs font-semibold text-gray-300">Developers</div>
+                <div class="text-[10px] text-gray-500">Add AI to your toolkit</div>
+              </div>
+              <div class="text-center p-3">
+                <div class="text-2xl mb-1">📊</div>
+                <div class="text-xs font-semibold text-gray-300">Data Scientists</div>
+                <div class="text-[10px] text-gray-500">Latest ML & AI techniques</div>
+              </div>
+              <div class="text-center p-3">
+                <div class="text-2xl mb-1">🎓</div>
+                <div class="text-xs font-semibold text-gray-300">Students</div>
+                <div class="text-[10px] text-gray-500">Hands-on with cutting-edge tools</div>
+              </div>
+              <div class="text-center p-3">
+                <div class="text-2xl mb-1">👔</div>
+                <div class="text-xs font-semibold text-gray-300">Product Managers</div>
+                <div class="text-[10px] text-gray-500">Understand AI capabilities</div>
+              </div>
+              <div class="text-center p-3">
+                <div class="text-2xl mb-1">🚀</div>
+                <div class="text-xs font-semibold text-gray-300">Entrepreneurs</div>
+                <div class="text-[10px] text-gray-500">Build & validate AI products</div>
+              </div>
+              <div class="text-center p-3">
+                <div class="text-2xl mb-1">🏢</div>
+                <div class="text-xs font-semibold text-gray-300">Enterprise Teams</div>
+                <div class="text-[10px] text-gray-500">Upskill in AI technologies</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Prerequisites -->
+          <div class="glass rounded-2xl p-6 border border-white/5 mb-8">
+            <h3 class="text-lg font-bold mb-4 text-center"><i class="fas fa-clipboard-check text-amber-400 mr-2"></i>Prerequisites</h3>
+            <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+              <div class="flex items-center gap-2 text-xs text-gray-300"><i class="fas fa-laptop text-teal-400"></i>Laptop with 8GB+ RAM</div>
+              <div class="flex items-center gap-2 text-xs text-gray-300"><i class="fab fa-python text-teal-400"></i>Basic Python knowledge</div>
+              <div class="flex items-center gap-2 text-xs text-gray-300"><i class="fas fa-wifi text-teal-400"></i>Stable internet connection</div>
+              <div class="flex items-center gap-2 text-xs text-gray-300"><i class="fab fa-github text-teal-400"></i>GitHub / Google Cloud account</div>
+              <div class="flex items-center gap-2 text-xs text-gray-300"><i class="fas fa-download text-teal-400"></i>Pre-installed software</div>
+              <div class="flex items-center gap-2 text-xs text-gray-300"><i class="fas fa-fire text-teal-400"></i>Enthusiasm to learn!</div>
+            </div>
+          </div>
+
+          <!-- Expert Instructors -->
+          <div class="glass rounded-2xl p-6 md:p-8 border border-teal-500/20 mb-8 glow-accent">
+            <div class="text-center">
+              <h3 class="text-lg font-bold mb-2"><i class="fas fa-chalkboard-teacher text-teal-400 mr-2"></i>Learn from Industry Experts</h3>
+              <p class="text-xs text-gray-400 mb-4 max-w-xl mx-auto">Our workshops are led by experienced AI practitioners building real-world systems at leading companies, startups, and research institutions.</p>
+              <div class="flex flex-wrap justify-center gap-2">
+                <span class="px-3 py-1 rounded-full text-[11px] font-medium bg-teal-500/10 text-teal-300 border border-teal-500/20">🏢 FAANG Engineers</span>
+                <span class="px-3 py-1 rounded-full text-[11px] font-medium bg-blue-500/10 text-blue-300 border border-blue-500/20">🎓 PhD Researchers</span>
+                <span class="px-3 py-1 rounded-full text-[11px] font-medium bg-purple-500/10 text-purple-300 border border-purple-500/20">🚀 Startup Founders</span>
+                <span class="px-3 py-1 rounded-full text-[11px] font-medium bg-amber-500/10 text-amber-300 border border-amber-500/20">📚 Published Authors</span>
+                <span class="px-3 py-1 rounded-full text-[11px] font-medium bg-rose-500/10 text-rose-300 border border-rose-500/20">💼 Industry Veterans</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- CTA -->
+          <div class="text-center">
+            <h3 class="text-xl font-bold mb-2">Ready to Master AI Technologies?</h3>
+            <p class="text-gray-400 text-sm mb-4">Special conference rates for workshop attendees. Includes materials, certificate & lifetime access to recordings.</p>
+            <div class="flex flex-col sm:flex-row justify-center gap-3">
+              <a href="https://bharataiinnovation.com/register" target="_blank" class="px-6 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 transition-all text-sm shadow-lg shadow-teal-500/20">
+                <i class="fas fa-ticket-alt mr-2"></i>Register for Workshops
+              </a>
+              <a href="https://bharataiinnovation.com/training-workshop" target="_blank" class="px-6 py-3 rounded-xl font-semibold text-white glass hover:bg-white/10 transition-all text-sm border border-white/10">
+                <i class="fas fa-external-link-alt mr-2"></i>View Full Details
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Inbox Tab -->
       <div id="tab-inbox" class="tab-content hidden">
         <div class="max-w-7xl mx-auto px-4 py-6">
@@ -3647,6 +3979,7 @@ function mainPageHTML(): string {
         case 'agba-jury': loadAgbaJurySchedule(); break;
         case 'startup-pitch': loadStartupPitch(); break;
         case 'innovation': loadInnovationShowcase(); break;
+        case 'workshops': break; // Static content, no dynamic loading needed
         case 'inbox': loadInbox(); break;
         case 'myprofile': loadMyProfile(); break;
       }
