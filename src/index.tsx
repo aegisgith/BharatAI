@@ -2497,7 +2497,7 @@ ${sharedNavHTML('register')}
           </div>
         </div>
         <div class="text-center p-3 rounded-xl bg-green-500/10 border border-green-500/20 mb-5">
-          <span class="text-green-400 text-xs font-semibold"><i class="fas fa-check-circle mr-1"></i>Exhibition access, keynotes, networking & AI demos — all free</span>
+          <span class="text-green-400 text-xs font-semibold"><i class="fas fa-check-circle mr-1"></i>Exhibition floor access & product demos — all free</span>
         </div>
 
         <form id="reg-form" onsubmit="submitRegistration(event)" class="space-y-4">
@@ -2565,10 +2565,8 @@ ${sharedNavHTML('register')}
         <h3 class="font-bold text-lg text-green-300 mb-3"><i class="fas fa-ticket-alt mr-2"></i>Visitor Pass — FREE</h3>
         <ul class="space-y-2 text-sm text-gray-300">
           <li><i class="fas fa-check text-green-400 mr-2"></i>Exhibition floor access</li>
-          <li><i class="fas fa-check text-green-400 mr-2"></i>Keynote sessions</li>
-          <li><i class="fas fa-check text-green-400 mr-2"></i>Networking lounge</li>
-          <li><i class="fas fa-check text-green-400 mr-2"></i>AI live demos</li>
-          <li><i class="fas fa-check text-green-400 mr-2"></i>Networking app access</li>
+          <li><i class="fas fa-check text-green-400 mr-2"></i>Product & startup demos</li>
+          <li><i class="fas fa-check text-green-400 mr-2"></i>Exhibition day activities</li>
         </ul>
       </div>
 
@@ -3146,9 +3144,8 @@ function mainPageHTML(): string {
                 <div class="text-[10px] font-semibold text-green-400 mt-0.5">Open to all</div>
                 <ul class="mt-3 space-y-1.5 text-xs text-gray-300">
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Exhibition floor access</li>
-                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Keynote sessions</li>
-                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Networking lounge</li>
-                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>AI live demos</li>
+                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Product & startup demos</li>
+                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Exhibition day activities</li>
                 </ul>
               </div>
             </div>
@@ -3188,7 +3185,7 @@ function mainPageHTML(): string {
                   <tbody class="divide-y divide-white/5 text-xs">
                     <tr><td class="py-2 px-2 text-gray-300">Exhibition Access</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
                     <tr><td class="py-2 px-2 text-gray-300">Conference Sessions</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
-                    <tr><td class="py-2 px-2 text-gray-300">Networking Lounge</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
+                    <tr><td class="py-2 px-2 text-gray-300">Networking Lounge</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
                     <tr><td class="py-2 px-2 text-gray-300">Lunch & Refreshments</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
                     <tr><td class="py-2 px-2 text-gray-300">AI Workshops (Hands-on)</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-red-400">⛔</td></tr>
                     <tr><td class="py-2 px-2 text-gray-300">VIP Lounge & Priority Seating</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td></tr>
@@ -3227,7 +3224,7 @@ function mainPageHTML(): string {
               </div>
               <div>
                 <h2 class="text-xl font-bold text-green-300">Get Your Free Visitor Pass</h2>
-                <p class="text-xs text-gray-400">Register in 30 seconds — access exhibition, keynotes, networking & AI demos</p>
+                <p class="text-xs text-gray-400">Register in 30 seconds — access the exhibition floor and explore AI innovations</p>
               </div>
             </div>
             <form id="quick-visitor-form" onsubmit="submitQuickVisitorReg(event)" class="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -3248,10 +3245,9 @@ function mainPageHTML(): string {
               <p class="text-sm text-gray-300 mt-1" id="qv-success-msg"></p>
             </div>
             <div class="mt-4 pt-4 border-t border-white/5 flex flex-wrap gap-4 items-center justify-center text-xs text-gray-500">
-              <span><i class="fas fa-store text-green-500 mr-1"></i>Exhibition Access</span>
-              <span><i class="fas fa-microphone text-green-500 mr-1"></i>Keynote Sessions</span>
-              <span><i class="fas fa-users text-green-500 mr-1"></i>Networking Lounge</span>
-              <span><i class="fas fa-robot text-green-500 mr-1"></i>AI Live Demos</span>
+              <span><i class="fas fa-store text-green-500 mr-1"></i>Exhibition Floor Access</span>
+              <span><i class="fas fa-laptop text-green-500 mr-1"></i>Product & Startup Demos</span>
+              <span><i class="fas fa-building text-green-500 mr-1"></i>Exhibition Day Activities</span>
               <span><i class="fas fa-calendar text-green-500 mr-1"></i>2-3 June 2026</span>
               <span><i class="fas fa-map-marker-alt text-green-500 mr-1"></i>WTC Mumbai</span>
             </div>
