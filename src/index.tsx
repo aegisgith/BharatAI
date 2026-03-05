@@ -2107,6 +2107,570 @@ app.delete('/api/admin/inquiries/:id', async (c) => {
   return c.json({ success: true })
 })
 
+// ==================== CONTACT PAGE ====================
+
+app.get('/contact', (c) => {
+  return c.html(contactPageHTML())
+})
+
+// ==================== REGISTER PAGE (Free Visitor Pass) ====================
+
+app.get('/register', (c) => {
+  return c.html(registerPageHTML())
+})
+
+function sharedHeadHTML(title: string): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${title} — Bharat AI Innovation 2026</title>
+  <meta name="description" content="${title} for Bharat AI Innovation 2026 - India's Largest AI Conference & Exhibition, 2-3 June 2026, WTC Mumbai">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: { 50:'#f0f4ff',100:'#dbe4ff',200:'#bac8ff',300:'#91a7ff',400:'#748ffc',500:'#5c7cfa',600:'#4c6ef5',700:'#4263eb',800:'#3b5bdb',900:'#364fc7' },
+            accent: { 50:'#fff3e0',100:'#ffe0b2',200:'#ffcc80',300:'#ffb74d',400:'#ffa726',500:'#ff9800',600:'#fb8c00',700:'#f57c00',800:'#ef6c00',900:'#e65100' },
+            dark: { 800:'#1a1a2e',900:'#0f0f23' }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+    * { font-family: 'Inter', sans-serif; }
+    body { background: #0f0f23; color: #e2e8f0; }
+    .glass { background: rgba(255,255,255,0.05); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.08); }
+    .gradient-text { background: linear-gradient(135deg, #748ffc, #ff9800); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .card-hover { transition: all 0.3s ease; }
+    .card-hover:hover { transform: translateY(-4px); box-shadow: 0 12px 40px rgba(92,124,250,0.2); }
+    .modal-overlay { background: rgba(0,0,0,0.7); backdrop-filter: blur(5px); }
+    input, textarea, select { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); color: #e2e8f0; }
+    input:focus, textarea:focus, select:focus { outline: none; border-color: #4c6ef5; box-shadow: 0 0 0 3px rgba(76,110,245,0.2); }
+    select option { background: #1a1a2e; color: #e2e8f0; }
+    select { -webkit-appearance: none; -moz-appearance: none; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%239ca3af' d='M6 8L1 3h10z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 32px; }
+    .toast { position: fixed; top: 20px; right: 20px; z-index: 100; padding: 12px 20px; border-radius: 12px; font-size: 14px; font-weight: 500; animation: slideIn 0.3s ease; }
+    @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+  </style>
+</head>`
+}
+
+function sharedNavHTML(activePage: string): string {
+  return `<nav class="glass border-b border-white/10 sticky top-0 z-30">
+  <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+    <a href="/" class="flex items-center gap-3 hover:opacity-90 transition">
+      <img src="https://bharatai.blob.core.windows.net/aidata/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="w-10 h-10 rounded-lg object-contain">
+      <div>
+        <h1 class="font-bold text-sm">Bharat AI Innovation 2026</h1>
+        <p class="text-[10px] text-gray-400">India's Largest AI Conference & Exhibition</p>
+      </div>
+    </a>
+    <div class="flex items-center gap-2">
+      <a href="/" class="px-3 py-2 rounded-lg text-xs font-semibold ${activePage === 'home' ? 'bg-primary-500/20 text-primary-300' : 'text-gray-400 hover:text-white hover:bg-white/5'} transition">
+        <i class="fas fa-home mr-1"></i>Home
+      </a>
+      <a href="/register" class="px-3 py-2 rounded-lg text-xs font-semibold ${activePage === 'register' ? 'bg-green-500/20 text-green-300' : 'text-gray-400 hover:text-white hover:bg-white/5'} transition">
+        <i class="fas fa-ticket-alt mr-1"></i>Register
+      </a>
+      <a href="/contact" class="px-3 py-2 rounded-lg text-xs font-semibold ${activePage === 'contact' ? 'bg-primary-500/20 text-primary-300' : 'text-gray-400 hover:text-white hover:bg-white/5'} transition">
+        <i class="fas fa-envelope mr-1"></i>Contact
+      </a>
+      <a href="https://bharataiinnovation.com" target="_blank" class="px-3 py-2 rounded-lg text-xs font-semibold text-gray-400 hover:text-white hover:bg-white/5 transition hidden sm:inline-flex">
+        <i class="fas fa-external-link-alt mr-1"></i>Main Site
+      </a>
+    </div>
+  </div>
+</nav>`
+}
+
+function sharedFooterHTML(): string {
+  return `<footer class="glass border-t border-white/10 mt-12">
+  <div class="max-w-7xl mx-auto px-4 py-8">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+      <div>
+        <div class="flex items-center gap-3 mb-3">
+          <img src="https://bharatai.blob.core.windows.net/aidata/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="w-10 h-10 rounded-lg object-contain">
+          <div>
+            <h3 class="font-bold text-sm">Bharat AI Innovation 2026</h3>
+            <p class="text-[10px] text-gray-400">16th Edition</p>
+          </div>
+        </div>
+        <p class="text-xs text-gray-400">India's Largest AI Conference & Exhibition bringing together innovators, researchers, startups, and industry leaders.</p>
+      </div>
+      <div>
+        <h4 class="font-semibold text-sm mb-3">Event Details</h4>
+        <ul class="space-y-2 text-xs text-gray-400">
+          <li><i class="fas fa-calendar mr-2 text-primary-400"></i>2-3 June 2026</li>
+          <li><i class="fas fa-map-marker-alt mr-2 text-primary-400"></i>World Trade Center, Mumbai</li>
+          <li><i class="fas fa-building mr-2 text-primary-400"></i>Centre 1 Building, Cuffe Parade, 400005</li>
+          <li><a href="https://maps.google.com/?q=World+Trade+Centre+Mumbai+Cuffe+Parade" target="_blank" class="text-primary-400 hover:underline"><i class="fas fa-directions mr-1"></i>Get Directions</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4 class="font-semibold text-sm mb-3">Quick Links</h4>
+        <ul class="space-y-2 text-xs">
+          <li><a href="/" class="text-gray-400 hover:text-white transition"><i class="fas fa-home mr-2"></i>Networking App</a></li>
+          <li><a href="/register" class="text-gray-400 hover:text-white transition"><i class="fas fa-ticket-alt mr-2"></i>Register</a></li>
+          <li><a href="/contact" class="text-gray-400 hover:text-white transition"><i class="fas fa-envelope mr-2"></i>Contact Us</a></li>
+          <li><a href="https://bharataiinnovation.com" target="_blank" class="text-gray-400 hover:text-white transition"><i class="fas fa-globe mr-2"></i>bharataiinnovation.com</a></li>
+          <li><a href="https://bharataiinnovation.com/exhibition" target="_blank" class="text-gray-400 hover:text-white transition"><i class="fas fa-store mr-2"></i>Exhibition</a></li>
+          <li><a href="https://bharataiinnovation.com/training-workshop" target="_blank" class="text-gray-400 hover:text-white transition"><i class="fas fa-laptop-code mr-2"></i>Workshops</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="border-t border-white/10 pt-4 text-center text-xs text-gray-500">
+      &copy; 2026 Bharat AI Innovation. All rights reserved.
+    </div>
+  </div>
+</footer>`
+}
+
+function sharedToastJS(): string {
+  return `
+  function showToast(msg, type) {
+    const t = document.createElement('div');
+    t.className = 'toast ' + (type === 'error' ? 'bg-red-500/90 text-white' : type === 'success' ? 'bg-green-500/90 text-white' : 'bg-primary-500/90 text-white');
+    t.innerHTML = '<i class="fas ' + (type === 'error' ? 'fa-exclamation-circle' : type === 'success' ? 'fa-check-circle' : 'fa-info-circle') + ' mr-2"></i>' + msg;
+    document.body.appendChild(t);
+    setTimeout(() => { t.style.opacity = '0'; t.style.transition = 'opacity 0.3s'; setTimeout(() => t.remove(), 300); }, 4000);
+  }`
+}
+
+function contactPageHTML(): string {
+  return `${sharedHeadHTML('Contact Us')}
+<body class="min-h-screen">
+${sharedNavHTML('contact')}
+
+<main class="max-w-7xl mx-auto px-4 py-8">
+  <!-- Hero -->
+  <div class="text-center mb-8">
+    <h1 class="text-3xl md:text-4xl font-bold mb-3"><i class="fas fa-headset text-primary-400 mr-3"></i>Contact Us</h1>
+    <p class="text-gray-400 max-w-2xl mx-auto">Have questions about Bharat AI Innovation 2026? We're here to help. Choose your inquiry type below and we'll respond within 24 hours.</p>
+  </div>
+
+  <!-- Inquiry Type Cards -->
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+    <div class="glass rounded-2xl p-6 card-hover cursor-pointer border border-primary-500/20 hover:border-primary-400/40" onclick="selectType('general')">
+      <div class="w-12 h-12 rounded-xl bg-primary-500/20 flex items-center justify-center mb-3"><i class="fas fa-question-circle text-xl text-primary-400"></i></div>
+      <h3 class="font-bold text-base text-primary-300">General Inquiry</h3>
+      <p class="text-xs text-gray-400 mt-1">Event details, schedule, venue, registration questions</p>
+    </div>
+    <div class="glass rounded-2xl p-6 card-hover cursor-pointer border border-amber-500/20 hover:border-amber-400/40" onclick="selectType('exhibition')">
+      <div class="w-12 h-12 rounded-xl bg-amber-500/20 flex items-center justify-center mb-3"><i class="fas fa-store text-xl text-amber-400"></i></div>
+      <h3 class="font-bold text-base text-amber-300">Exhibition / Booth</h3>
+      <p class="text-xs text-gray-400 mt-1">Booth packages, availability, pricing, floor plan</p>
+    </div>
+    <div class="glass rounded-2xl p-6 card-hover cursor-pointer border border-orange-500/20 hover:border-orange-400/40" onclick="selectType('sponsorship')">
+      <div class="w-12 h-12 rounded-xl bg-orange-500/20 flex items-center justify-center mb-3"><i class="fas fa-handshake text-xl text-orange-400"></i></div>
+      <h3 class="font-bold text-base text-orange-300">Sponsorship</h3>
+      <p class="text-xs text-gray-400 mt-1">Brand visibility, partnership, sponsorship packages</p>
+    </div>
+    <div class="glass rounded-2xl p-6 card-hover cursor-pointer border border-purple-500/20 hover:border-purple-400/40" onclick="selectType('speaking')">
+      <div class="w-12 h-12 rounded-xl bg-purple-500/20 flex items-center justify-center mb-3"><i class="fas fa-microphone-alt text-xl text-purple-400"></i></div>
+      <h3 class="font-bold text-base text-purple-300">Speaking Opportunity</h3>
+      <p class="text-xs text-gray-400 mt-1">Submit your talk, workshop, or panel proposal</p>
+    </div>
+    <div class="glass rounded-2xl p-6 card-hover cursor-pointer border border-rose-500/20 hover:border-rose-400/40" onclick="selectType('media')">
+      <div class="w-12 h-12 rounded-xl bg-rose-500/20 flex items-center justify-center mb-3"><i class="fas fa-newspaper text-xl text-rose-400"></i></div>
+      <h3 class="font-bold text-base text-rose-300">Media / Press</h3>
+      <p class="text-xs text-gray-400 mt-1">Press accreditation, interviews, media coverage</p>
+    </div>
+    <div class="glass rounded-2xl p-6 card-hover cursor-pointer border border-green-500/20 hover:border-green-400/40" onclick="selectType('group_registration')">
+      <div class="w-12 h-12 rounded-xl bg-green-500/20 flex items-center justify-center mb-3"><i class="fas fa-users text-xl text-green-400"></i></div>
+      <h3 class="font-bold text-base text-green-300">Group Registration</h3>
+      <p class="text-xs text-gray-400 mt-1">Delegation discounts for 5+ people, corporate bookings</p>
+    </div>
+  </div>
+
+  <!-- Contact Form -->
+  <div class="max-w-2xl mx-auto">
+    <div class="glass rounded-2xl p-6 md:p-8" id="contact-form-card">
+      <div class="flex items-center gap-3 mb-6">
+        <div class="w-10 h-10 rounded-xl bg-primary-500/20 flex items-center justify-center shrink-0" id="cf-icon-box">
+          <i class="fas fa-envelope text-lg text-primary-400" id="cf-icon"></i>
+        </div>
+        <div>
+          <h2 class="font-bold text-lg" id="cf-title">Send us a message</h2>
+          <p class="text-xs text-gray-400" id="cf-subtitle">Select an inquiry type above or fill the form directly</p>
+        </div>
+      </div>
+
+      <form id="contact-form" onsubmit="submitContactForm(event)" class="space-y-4">
+        <input type="hidden" id="cf-type" value="general">
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="text-xs text-gray-400 mb-1 block">Full Name *</label>
+            <input type="text" id="cf-name" required class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Your name">
+          </div>
+          <div>
+            <label class="text-xs text-gray-400 mb-1 block">Email Address *</label>
+            <input type="email" id="cf-email" required class="w-full px-4 py-3 rounded-xl text-sm" placeholder="your@email.com">
+          </div>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="text-xs text-gray-400 mb-1 block">Phone</label>
+            <input type="tel" id="cf-phone" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="+91 XXXXX XXXXX">
+          </div>
+          <div>
+            <label class="text-xs text-gray-400 mb-1 block">Organization</label>
+            <input type="text" id="cf-org" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Company / Institute">
+          </div>
+        </div>
+        <div>
+          <label class="text-xs text-gray-400 mb-1 block">Subject</label>
+          <input type="text" id="cf-subject" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Brief subject line">
+        </div>
+
+        <!-- Dynamic Extra Fields -->
+        <div id="cf-extra"></div>
+
+        <div>
+          <label class="text-xs text-gray-400 mb-1 block">Message *</label>
+          <textarea id="cf-message" rows="4" required class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Describe your inquiry in detail..."></textarea>
+        </div>
+        <button type="submit" id="cf-submit" class="w-full py-3.5 rounded-xl font-semibold text-white bg-gradient-to-r from-primary-600 to-blue-600 hover:from-primary-500 hover:to-blue-500 transition-all text-sm shadow-lg shadow-primary-500/20">
+          <i class="fas fa-paper-plane mr-2"></i>Submit Inquiry
+        </button>
+      </form>
+
+      <div id="cf-success" class="hidden text-center py-8">
+        <div class="w-20 h-20 rounded-full bg-green-500/20 flex items-center justify-center mx-auto mb-4">
+          <i class="fas fa-check text-3xl text-green-400"></i>
+        </div>
+        <h3 class="font-bold text-xl text-green-300">Inquiry Submitted!</h3>
+        <p class="text-sm text-gray-400 mt-2 max-w-md mx-auto">Thank you for reaching out. Our team will review your inquiry and respond within 24 hours.</p>
+        <div class="flex gap-3 justify-center mt-6">
+          <button onclick="resetContactForm()" class="px-6 py-2.5 rounded-xl text-sm font-semibold glass hover:bg-white/10 transition"><i class="fas fa-plus mr-2"></i>Send Another</button>
+          <a href="/" class="px-6 py-2.5 rounded-xl text-sm font-semibold bg-primary-500/20 text-primary-300 hover:bg-primary-500/30 transition"><i class="fas fa-home mr-2"></i>Go to App</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Quick Info Bar -->
+  <div class="max-w-2xl mx-auto mt-6">
+    <div class="glass rounded-xl p-4 flex flex-wrap items-center justify-center gap-4 text-xs text-gray-400">
+      <span><i class="fas fa-envelope text-primary-400 mr-1.5"></i>info@bharataiinnovation.com</span>
+      <span><i class="fas fa-globe text-primary-400 mr-1.5"></i><a href="https://bharataiinnovation.com" target="_blank" class="hover:text-white transition">bharataiinnovation.com</a></span>
+      <span><i class="fas fa-map-marker-alt text-primary-400 mr-1.5"></i>WTC Mumbai, Cuffe Parade</span>
+      <span><i class="fas fa-calendar text-primary-400 mr-1.5"></i>2-3 June 2026</span>
+    </div>
+  </div>
+</main>
+
+${sharedFooterHTML()}
+
+<script>
+${sharedToastJS()}
+
+const TYPE_CONFIG = {
+  general: { icon: 'fa-question-circle', color: 'primary', title: 'General Inquiry', subtitle: 'Ask us anything about the event' },
+  exhibition: { icon: 'fa-store', color: 'amber', title: 'Exhibition Inquiry', subtitle: 'Booth packages, availability & pricing' },
+  sponsorship: { icon: 'fa-handshake', color: 'orange', title: 'Sponsorship Inquiry', subtitle: 'Brand visibility & partnership opportunities' },
+  speaking: { icon: 'fa-microphone-alt', color: 'purple', title: 'Speaking Opportunity', subtitle: 'Submit your talk or workshop proposal' },
+  media: { icon: 'fa-newspaper', color: 'rose', title: 'Media / Press Inquiry', subtitle: 'Accreditation, interviews & coverage' },
+  group_registration: { icon: 'fa-users', color: 'green', title: 'Group Registration', subtitle: 'Delegation discounts for 5+ people' },
+};
+
+function selectType(type) {
+  const cfg = TYPE_CONFIG[type] || TYPE_CONFIG.general;
+  document.getElementById('cf-type').value = type;
+  document.getElementById('cf-icon').className = 'fas ' + cfg.icon + ' text-lg text-' + cfg.color + '-400';
+  document.getElementById('cf-icon-box').className = 'w-10 h-10 rounded-xl bg-' + cfg.color + '-500/20 flex items-center justify-center shrink-0';
+  document.getElementById('cf-title').textContent = cfg.title;
+  document.getElementById('cf-subtitle').textContent = cfg.subtitle;
+
+  // Extra fields
+  let extra = '';
+  if (type === 'exhibition') {
+    extra = '<div><label class="text-xs text-gray-400 mb-1 block">Preferred Booth Package</label><select id="cf-booth" class="w-full px-4 py-3 rounded-xl text-sm"><option value="">Select package</option><option value="Platinum - ₹5,00,000">Platinum — ₹5,00,000</option><option value="Gold - ₹3,00,000">Gold — ₹3,00,000</option><option value="Silver - ₹1,50,000">Silver — ₹1,50,000</option><option value="Startup - ₹75,000">Startup — ₹75,000</option><option value="Undecided">Not sure yet</option></select></div>';
+  } else if (type === 'speaking') {
+    extra = '<div><label class="text-xs text-gray-400 mb-1 block">Proposed Topic</label><input type="text" id="cf-topic" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Your talk/workshop topic"></div>';
+  } else if (type === 'group_registration') {
+    extra = '<div class="grid grid-cols-2 gap-4"><div><label class="text-xs text-gray-400 mb-1 block">Group Size</label><input type="number" id="cf-groupsize" min="2" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Number of people"></div><div><label class="text-xs text-gray-400 mb-1 block">Preferred Pass Type</label><select id="cf-passtype" class="w-full px-4 py-3 rounded-xl text-sm"><option value="">Select pass</option><option value="Delegate">Delegate (₹4,999)</option><option value="VIP">VIP (₹14,999)</option><option value="Academic">Academic (₹999)</option><option value="Visitor">Visitor (Free)</option><option value="Mixed">Mixed</option></select></div></div>';
+  } else if (type === 'sponsorship') {
+    extra = '<div><label class="text-xs text-gray-400 mb-1 block">Budget Range</label><select id="cf-budget" class="w-full px-4 py-3 rounded-xl text-sm"><option value="">Select range</option><option value="Under ₹1 Lakh">Under ₹1 Lakh</option><option value="₹1-3 Lakhs">₹1-3 Lakhs</option><option value="₹3-5 Lakhs">₹3-5 Lakhs</option><option value="₹5-10 Lakhs">₹5-10 Lakhs</option><option value="₹10+ Lakhs">₹10+ Lakhs</option></select></div>';
+  }
+  document.getElementById('cf-extra').innerHTML = extra;
+
+  // Scroll to form
+  document.getElementById('contact-form-card').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+async function submitContactForm(e) {
+  e.preventDefault();
+  const btn = document.getElementById('cf-submit');
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Submitting...';
+  btn.disabled = true;
+
+  const metadata = {};
+  const booth = document.getElementById('cf-booth'); if (booth) metadata.booth_tier = booth.value;
+  const topic = document.getElementById('cf-topic'); if (topic) metadata.topic = topic.value;
+  const gs = document.getElementById('cf-groupsize'); if (gs) metadata.group_size = gs.value;
+  const pt = document.getElementById('cf-passtype'); if (pt) metadata.pass_type = pt.value;
+  const bgt = document.getElementById('cf-budget'); if (bgt) metadata.budget = bgt.value;
+
+  try {
+    const resp = await fetch('/api/inquiries', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        inquiry_type: document.getElementById('cf-type').value,
+        name: document.getElementById('cf-name').value.trim(),
+        email: document.getElementById('cf-email').value.trim(),
+        phone: document.getElementById('cf-phone').value.trim(),
+        organization: document.getElementById('cf-org').value.trim(),
+        subject: document.getElementById('cf-subject').value.trim(),
+        message: document.getElementById('cf-message').value.trim(),
+        metadata
+      })
+    });
+    const data = await resp.json();
+    if (!resp.ok) { showToast(data.error || 'Failed to submit', 'error'); btn.innerHTML = '<i class="fas fa-paper-plane mr-2"></i>Submit Inquiry'; btn.disabled = false; return; }
+
+    document.getElementById('contact-form').classList.add('hidden');
+    document.getElementById('cf-success').classList.remove('hidden');
+    showToast('Inquiry submitted successfully!', 'success');
+  } catch(err) {
+    showToast('Network error. Please try again.', 'error');
+    btn.innerHTML = '<i class="fas fa-paper-plane mr-2"></i>Submit Inquiry';
+    btn.disabled = false;
+  }
+}
+
+function resetContactForm() {
+  document.getElementById('contact-form').reset();
+  document.getElementById('contact-form').classList.remove('hidden');
+  document.getElementById('cf-success').classList.add('hidden');
+  document.getElementById('cf-extra').innerHTML = '';
+  document.getElementById('cf-type').value = 'general';
+  document.getElementById('cf-icon').className = 'fas fa-envelope text-lg text-primary-400';
+  document.getElementById('cf-icon-box').className = 'w-10 h-10 rounded-xl bg-primary-500/20 flex items-center justify-center shrink-0';
+  document.getElementById('cf-title').textContent = 'Send us a message';
+  document.getElementById('cf-subtitle').textContent = 'Select an inquiry type above or fill the form directly';
+  document.getElementById('cf-submit').innerHTML = '<i class="fas fa-paper-plane mr-2"></i>Submit Inquiry';
+  document.getElementById('cf-submit').disabled = false;
+}
+
+// Auto-select type from URL hash
+const hash = window.location.hash.replace('#', '');
+if (hash && TYPE_CONFIG[hash]) selectType(hash);
+</script>
+</body>
+</html>`
+}
+
+function registerPageHTML(): string {
+  return `${sharedHeadHTML('Register')}
+<body class="min-h-screen">
+${sharedNavHTML('register')}
+
+<main class="max-w-7xl mx-auto px-4 py-8">
+  <!-- Hero -->
+  <div class="text-center mb-8">
+    <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold bg-green-500/20 text-green-300 border border-green-500/30 mb-4">
+      <i class="fas fa-ticket-alt"></i>FREE REGISTRATION OPEN
+    </div>
+    <h1 class="text-3xl md:text-4xl font-bold mb-3">Register for Bharat AI Innovation 2026</h1>
+    <p class="text-gray-400 max-w-2xl mx-auto">Join India's largest AI conference at World Trade Center, Mumbai on 2-3 June 2026. Get your free Visitor Pass or upgrade to a premium pass.</p>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 max-w-5xl mx-auto">
+    <!-- Registration Form -->
+    <div>
+      <div class="glass rounded-2xl p-6 md:p-8 border border-green-500/20">
+        <div class="flex items-center gap-3 mb-2">
+          <div class="w-10 h-10 rounded-xl bg-green-500/20 flex items-center justify-center shrink-0">
+            <i class="fas fa-id-badge text-lg text-green-400"></i>
+          </div>
+          <div>
+            <h2 class="font-bold text-lg text-green-300">Get Your Free Visitor Pass</h2>
+            <p class="text-xs text-gray-400">Register in 30 seconds</p>
+          </div>
+        </div>
+        <div class="text-center p-3 rounded-xl bg-green-500/10 border border-green-500/20 mb-5">
+          <span class="text-green-400 text-xs font-semibold"><i class="fas fa-check-circle mr-1"></i>Exhibition access, keynotes, networking & AI demos — all free</span>
+        </div>
+
+        <form id="reg-form" onsubmit="submitRegistration(event)" class="space-y-4">
+          <div>
+            <label class="text-xs text-gray-400 mb-1 block">Full Name *</label>
+            <input type="text" id="rf-name" required class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Your full name">
+          </div>
+          <div>
+            <label class="text-xs text-gray-400 mb-1 block">Email Address *</label>
+            <input type="email" id="rf-email" required class="w-full px-4 py-3 rounded-xl text-sm" placeholder="your@email.com">
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="text-xs text-gray-400 mb-1 block">Mobile Number</label>
+              <input type="tel" id="rf-phone" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="+91 XXXXX XXXXX">
+            </div>
+            <div>
+              <label class="text-xs text-gray-400 mb-1 block">Organization</label>
+              <input type="text" id="rf-company" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Company / Institute">
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="text-xs text-gray-400 mb-1 block">Job Title</label>
+              <input type="text" id="rf-title" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Your role">
+            </div>
+            <div>
+              <label class="text-xs text-gray-400 mb-1 block">LinkedIn</label>
+              <input type="url" id="rf-linkedin" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="linkedin.com/in/...">
+            </div>
+          </div>
+          <div>
+            <label class="text-xs text-gray-400 mb-1 block">Interests</label>
+            <input type="text" id="rf-interests" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="AI, ML, NLP, Computer Vision (comma-separated)">
+          </div>
+          <button type="submit" id="rf-submit" class="w-full py-3.5 rounded-xl font-semibold text-white bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 transition-all text-sm shadow-lg shadow-green-500/20">
+            <i class="fas fa-check-circle mr-2"></i>Register — It's Free!
+          </button>
+          <p class="text-center text-[10px] text-gray-500">By registering, you agree to receive event updates via email</p>
+        </form>
+
+        <div id="reg-success" class="hidden text-center py-6">
+          <div class="w-20 h-20 rounded-full bg-green-500/20 flex items-center justify-center mx-auto mb-4">
+            <i class="fas fa-check text-3xl text-green-400"></i>
+          </div>
+          <h3 class="font-bold text-xl text-green-300" id="rs-name"></h3>
+          <p class="text-sm text-gray-300 mt-1" id="rs-ref"></p>
+          <p class="text-xs text-gray-400 mt-2">Your Visitor Pass is confirmed. You can now access the networking app.</p>
+          <div class="flex gap-3 justify-center mt-5">
+            <a href="/" id="rs-app-link" class="px-6 py-2.5 rounded-xl text-sm font-semibold bg-primary-500/20 text-primary-300 hover:bg-primary-500/30 transition"><i class="fas fa-rocket mr-2"></i>Open Networking App</a>
+          </div>
+        </div>
+
+        <!-- Already registered? -->
+        <div class="mt-4 pt-4 border-t border-white/10 text-center">
+          <p class="text-xs text-gray-500">Already registered? <a href="/" class="text-primary-400 hover:underline font-semibold">Sign in on the networking app</a></p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pass Info Sidebar -->
+    <div class="space-y-4">
+      <!-- Visitor Pass Details -->
+      <div class="glass rounded-2xl p-6 border border-green-500/20">
+        <h3 class="font-bold text-lg text-green-300 mb-3"><i class="fas fa-ticket-alt mr-2"></i>Visitor Pass — FREE</h3>
+        <ul class="space-y-2 text-sm text-gray-300">
+          <li><i class="fas fa-check text-green-400 mr-2"></i>Exhibition floor access</li>
+          <li><i class="fas fa-check text-green-400 mr-2"></i>Keynote sessions</li>
+          <li><i class="fas fa-check text-green-400 mr-2"></i>Networking lounge</li>
+          <li><i class="fas fa-check text-green-400 mr-2"></i>AI live demos</li>
+          <li><i class="fas fa-check text-green-400 mr-2"></i>Networking app access</li>
+        </ul>
+      </div>
+
+      <!-- Upgrade Options -->
+      <div class="glass rounded-2xl p-6 border border-amber-500/20">
+        <h3 class="font-bold text-base text-amber-300 mb-3"><i class="fas fa-arrow-up mr-2"></i>Want Full Conference Access?</h3>
+        <p class="text-xs text-gray-400 mb-4">Upgrade to a paid pass for complete conference sessions, workshops, meals, and exclusive perks.</p>
+        <div class="space-y-3">
+          <div class="flex items-center justify-between p-3 rounded-xl bg-white/5">
+            <div>
+              <span class="text-sm font-semibold">🎟️ Delegate Pass</span>
+              <p class="text-[10px] text-gray-400">Full 2-day conference + exhibition + networking</p>
+            </div>
+            <span class="text-sm font-bold text-primary-300">₹4,999</span>
+          </div>
+          <div class="flex items-center justify-between p-3 rounded-xl bg-white/5">
+            <div>
+              <span class="text-sm font-semibold">⭐ VIP Pass</span>
+              <p class="text-[10px] text-gray-400">Everything + VIP lounge + speaker dinner</p>
+            </div>
+            <span class="text-sm font-bold text-amber-300">₹14,999</span>
+          </div>
+          <div class="flex items-center justify-between p-3 rounded-xl bg-white/5">
+            <div>
+              <span class="text-sm font-semibold">🎓 Academic Pass</span>
+              <p class="text-[10px] text-gray-400">Conference + hackathon + student zone</p>
+            </div>
+            <span class="text-sm font-bold text-violet-300">₹999</span>
+          </div>
+        </div>
+        <a href="https://bharataiinnovation.com/register" target="_blank" class="mt-4 block w-full text-center py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 transition-all text-sm">
+          <i class="fas fa-external-link-alt mr-2"></i>Get Paid Pass
+        </a>
+      </div>
+
+      <!-- Group Discount -->
+      <div class="glass rounded-2xl p-6 border border-orange-500/20">
+        <h3 class="font-bold text-base text-orange-300 mb-2"><i class="fas fa-users mr-2"></i>Group Registration</h3>
+        <p class="text-xs text-gray-400 mb-3">Bringing a team of 5+? Save up to 30% with delegation packages.</p>
+        <div class="flex gap-2">
+          <a href="https://bharataiinnovation.com/register#delegation-section" target="_blank" class="px-4 py-2 rounded-lg text-xs font-semibold bg-orange-500/20 text-orange-300 hover:bg-orange-500/30 transition border border-orange-500/30">View Packages</a>
+          <a href="/contact#group_registration" class="px-4 py-2 rounded-lg text-xs font-semibold glass text-gray-300 hover:bg-white/10 transition">Send Inquiry</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+${sharedFooterHTML()}
+
+<script>
+${sharedToastJS()}
+
+async function submitRegistration(e) {
+  e.preventDefault();
+  const btn = document.getElementById('rf-submit');
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Registering...';
+  btn.disabled = true;
+
+  try {
+    const resp = await fetch('/api/events/1/attendees/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: document.getElementById('rf-name').value.trim(),
+        email: document.getElementById('rf-email').value.trim(),
+        mobile: document.getElementById('rf-phone').value.trim(),
+        company: document.getElementById('rf-company').value.trim(),
+        job_title: document.getElementById('rf-title').value.trim(),
+        linkedin_url: document.getElementById('rf-linkedin').value.trim(),
+        interests: document.getElementById('rf-interests').value.trim(),
+        bio: ''
+      })
+    });
+    const data = await resp.json();
+
+    if (data.error) {
+      showToast(data.error, 'error');
+      btn.innerHTML = '<i class="fas fa-check-circle mr-2"></i>Register — It\\'s Free!';
+      btn.disabled = false;
+      return;
+    }
+
+    // Success
+    document.getElementById('reg-form').classList.add('hidden');
+    document.getElementById('reg-success').classList.remove('hidden');
+    const refId = 'BHAI-2026-' + String(data.id).padStart(5, '0');
+    document.getElementById('rs-name').textContent = 'Welcome, ' + data.name + '!';
+    document.getElementById('rs-ref').textContent = 'Reference: ' + refId + ' · ' + data.email;
+    document.getElementById('rs-app-link').href = '/?email=' + encodeURIComponent(data.email);
+    showToast('Registration successful!', 'success');
+  } catch(err) {
+    showToast('Network error. Please try again.', 'error');
+    btn.innerHTML = '<i class="fas fa-check-circle mr-2"></i>Register — It\\'s Free!';
+    btn.disabled = false;
+  }
+}
+</script>
+</body>
+</html>`
+}
+
 // ==================== ADMIN PAGE ====================
 
 app.get('/admin', (c) => {
