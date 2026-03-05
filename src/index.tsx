@@ -121,6 +121,93 @@ app.post('/api/events/:id/attendees/register', async (c) => {
   }
 })
 
+// ==================== EXTERNAL REGISTRATION (from bharataiinnovation.com) ====================
+
+// Maps pass types from main site to badge_type in DB
+const PASS_TYPE_MAP: Record<string, string> = {
+  'delegate': 'Delegate Pass',
+  'vip': 'VIP Pass',
+  'startup': 'Startup Pass',
+  'academic': 'Academic Pass',
+  'visitor': 'Visitor Pass',
+}
+
+app.post('/api/external/register', async (c) => {
+  const body = await c.req.json()
+  const {
+    first_name, last_name, email, phone, organization, job_title,
+    industry, company_size, city, country, source, special_requirements,
+    package: passPackage, newsletter
+  } = body
+
+  if (!first_name || !email) return c.json({ error: 'Name and email are required' }, 400)
+
+  const fullName = `${first_name.trim()} ${(last_name || '').trim()}`.trim()
+  const normalizedEmail = email.trim().toLowerCase()
+  const badgeType = PASS_TYPE_MAP[passPackage] || 'Visitor Pass'
+  const eventId = 1
+
+  try {
+    // Try to add all the extra columns — if migration hasn't run yet, the basic columns still work
+    const result = await c.env.DB.prepare(
+      `INSERT INTO attendees (
+        event_id, name, email, company, job_title, mobile, badge_type,
+        lunch_inclusion, is_online, last_login_at,
+        industry, city, country, company_size, special_requirements,
+        registration_source, pass_type
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, datetime("now"), ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(
+      eventId, fullName, normalizedEmail,
+      organization || '', job_title || '', phone || '', badgeType,
+      badgeType === 'Visitor Pass' ? 'No' : 'Yes',
+      industry || '', city || '', country || 'India',
+      company_size || '', special_requirements || '',
+      'website', passPackage || 'visitor'
+    ).run()
+
+    const attendee = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(result.meta.last_row_id).first() as any
+
+    const refId = 'BHAI-2026-' + String(attendee.id).padStart(5, '0')
+    return c.json({
+      success: true,
+      reference: refId,
+      attendee_id: attendee.id,
+      name: attendee.name,
+      email: attendee.email,
+      badge_type: attendee.badge_type,
+      networking_app_url: `https://bharatai-networking.pages.dev?email=${encodeURIComponent(attendee.email)}`
+    }, 201)
+  } catch (e: any) {
+    if (e.message?.includes('UNIQUE')) {
+      // Already registered — return existing
+      const existing = await c.env.DB.prepare(
+        'SELECT * FROM attendees WHERE event_id = ? AND email = ?'
+      ).bind(eventId, normalizedEmail).first() as any
+
+      if (existing) {
+        // Update badge_type if they're upgrading
+        if (passPackage && passPackage !== 'visitor') {
+          await c.env.DB.prepare(
+            'UPDATE attendees SET badge_type = ?, lunch_inclusion = ?, last_login_at = datetime("now") WHERE id = ?'
+          ).bind(badgeType, 'Yes', existing.id).run()
+        }
+        const refId = 'BHAI-2026-' + String(existing.id).padStart(5, '0')
+        return c.json({
+          success: true,
+          reference: refId,
+          attendee_id: existing.id,
+          name: existing.name,
+          email: existing.email,
+          badge_type: passPackage ? badgeType : existing.badge_type,
+          networking_app_url: `https://bharatai-networking.pages.dev?email=${encodeURIComponent(existing.email)}`,
+          already_registered: true
+        })
+      }
+    }
+    return c.json({ error: 'Registration failed', details: e.message }, 400)
+  }
+})
+
 // ==================== SIGN IN API ====================
 
 app.post('/api/events/:id/attendees/signin', async (c) => {
