@@ -620,6 +620,20 @@ app.get('/api/events/:id/awards', async (c) => {
   return c.json(enriched)
 })
 
+// ==================== STARTUP PITCH APIs ====================
+
+// Public: Get all active startup pitches for an event
+app.get('/api/events/:id/startup-pitches', async (c) => {
+  const eventId = c.req.param('id')
+  const { results: pitches } = await c.env.DB.prepare(
+    'SELECT * FROM startup_pitches WHERE event_id = ? AND is_active = 1 ORDER BY slot_order ASC'
+  ).bind(eventId).all()
+  const { results: investors } = await c.env.DB.prepare(
+    'SELECT * FROM startup_investors WHERE event_id = ? AND is_active = 1 ORDER BY name ASC'
+  ).bind(eventId).all()
+  return c.json({ pitches, investors })
+})
+
 // ==================== ANNOUNCEMENT APIs ====================
 
 app.get('/api/events/:id/announcements', async (c) => {
@@ -1944,6 +1958,76 @@ app.post('/api/admin/events/:id/broadcast', async (c) => {
     'INSERT INTO announcements (event_id, title, content, announcement_type, author_name, pinned) VALUES (?,?,?,?,?,1)'
   ).bind(eventId, title, content, announcement_type || 'urgent', author_name || 'Event Admin').run()
   return c.json({ id: result.meta.last_row_id, success: true }, 201)
+})
+
+// ============ ADMIN STARTUP PITCH APIs ============
+
+// Get all pitches (including inactive) for admin
+app.get('/api/admin/startup-pitches', async (c) => {
+  const eventId = c.req.query('event_id') || '1'
+  const { results: pitches } = await c.env.DB.prepare(
+    'SELECT * FROM startup_pitches WHERE event_id = ? ORDER BY slot_order ASC'
+  ).bind(eventId).all()
+  const { results: investors } = await c.env.DB.prepare(
+    'SELECT * FROM startup_investors WHERE event_id = ? ORDER BY name ASC'
+  ).bind(eventId).all()
+  return c.json({ pitches, investors })
+})
+
+// Create pitch
+app.post('/api/admin/startup-pitches', async (c) => {
+  const body = await c.req.json() as any
+  const { event_id, slot_order, time_slot, company, pitcher_name, pitcher_title, pitcher_profile } = body
+  const result = await c.env.DB.prepare(
+    'INSERT INTO startup_pitches (event_id, slot_order, time_slot, company, pitcher_name, pitcher_title, pitcher_profile) VALUES (?,?,?,?,?,?,?)'
+  ).bind(event_id || 1, slot_order || 0, time_slot, company, pitcher_name, pitcher_title || '', pitcher_profile || '').run()
+  return c.json({ id: result.meta.last_row_id, success: true }, 201)
+})
+
+// Update pitch
+app.put('/api/admin/startup-pitches/:id', async (c) => {
+  const id = c.req.param('id')
+  const body = await c.req.json() as any
+  const { slot_order, time_slot, company, pitcher_name, pitcher_title, pitcher_profile, is_active } = body
+  await c.env.DB.prepare(
+    'UPDATE startup_pitches SET slot_order=?, time_slot=?, company=?, pitcher_name=?, pitcher_title=?, pitcher_profile=?, is_active=? WHERE id=?'
+  ).bind(slot_order, time_slot, company, pitcher_name, pitcher_title || '', pitcher_profile || '', is_active ?? 1, id).run()
+  return c.json({ success: true })
+})
+
+// Delete pitch
+app.delete('/api/admin/startup-pitches/:id', async (c) => {
+  const id = c.req.param('id')
+  await c.env.DB.prepare('DELETE FROM startup_pitches WHERE id = ?').bind(id).run()
+  return c.json({ success: true })
+})
+
+// Create investor
+app.post('/api/admin/startup-investors', async (c) => {
+  const body = await c.req.json() as any
+  const { event_id, name, title, company } = body
+  const result = await c.env.DB.prepare(
+    'INSERT INTO startup_investors (event_id, name, title, company) VALUES (?,?,?,?)'
+  ).bind(event_id || 1, name, title || '', company || '').run()
+  return c.json({ id: result.meta.last_row_id, success: true }, 201)
+})
+
+// Update investor
+app.put('/api/admin/startup-investors/:id', async (c) => {
+  const id = c.req.param('id')
+  const body = await c.req.json() as any
+  const { name, title, company, is_active } = body
+  await c.env.DB.prepare(
+    'UPDATE startup_investors SET name=?, title=?, company=?, is_active=? WHERE id=?'
+  ).bind(name, title || '', company || '', is_active ?? 1, id).run()
+  return c.json({ success: true })
+})
+
+// Delete investor
+app.delete('/api/admin/startup-investors/:id', async (c) => {
+  const id = c.req.param('id')
+  await c.env.DB.prepare('DELETE FROM startup_investors WHERE id = ?').bind(id).run()
+  return c.json({ success: true })
 })
 
 // ==================== ADMIN PAGE ====================
@@ -4524,50 +4608,32 @@ function mainPageHTML(): string {
     }
 
     // ==================== BHAI STARTUP PITCH ====================
-    function loadStartupPitch() {
-      const pitchData = [
-        { time: '2:30 – 2:38 PM', company: 'Bugbusterslabs', name: 'Amalan Mariajohn', title: 'Co-Founder & CEO', profile: 'A cybersecurity expert leading a platform that connects global researchers to detect and fix digital vulnerabilities.' },
-        { time: '2:40 – 2:48 PM', company: 'Bharat Biomaterials', name: 'Priyansh Kothari', title: 'Co-Founder & Director', profile: 'An eco-entrepreneur developing "Terratan," a sustainable, plant-based leather alternative made from agricultural waste.' },
-        { time: '2:50 – 2:58 PM', company: 'Liquidmind', name: 'Naveen Athresh', title: 'Founder & CEO', profile: 'A seasoned product leader and TEDx speaker with 23+ years of experience in AI, FinTech, and omni-channel retail.' },
-        { time: '3:00 – 3:08 PM', company: 'Globe Florex', name: 'Praveen Sharma', title: 'Founder & Director', profile: 'A vertical farming and floriculture expert providing consultancy for high-tech agricultural projects across India.' },
-        { time: '3:10 – 3:18 PM', company: 'MobiPay Securiservices', name: 'Taron Mohan', title: 'Director', profile: 'An experienced leader in the telecom and digital payment sectors, previously associated with NextGen Telesolutions.' },
-        { time: '3:20 – 3:28 PM', company: 'Castler', name: 'Vineet Kumar Singh', title: 'Founder & CEO', profile: 'A digital veteran and former CBO of MobiKwik and 99acres, now building India\\'s first Escrow-as-a-Service platform.' },
-        { time: '3:30 – 3:38 PM', company: 'InteliQuant AI', name: 'Priyanka Bairathi', title: 'Founder', profile: 'A Chartered Accountant and AI specialist focused on redefining financial risk assurance through intelligence and automation.' },
-        { time: '3:40 – 3:48 PM', company: 'CognitiveCare', name: 'Suresh Attili', title: 'Co-Founder & Chief Physician Scientist', profile: 'A leading Medical Oncologist and scientist using AI and data analytics to improve healthcare outcomes and patient care.' },
-        { time: '3:50 – 3:58 PM', company: 'Sreyas Software Solutions', name: 'Vijay Rajagopalan', title: 'Founder & Inventor', profile: 'Developer of the GoldPE APM, an AI-powered machine that automates gold purity analysis and loan disbursal.' },
-        { time: '4:00 – 4:08 PM', company: 'Salphan Energy', name: 'Arup Debbarma', title: 'Director', profile: 'An emerging entrepreneur in the energy sector, leading a young team focused on innovative electrical and energy solutions.' },
-        { time: '4:10 – 4:18 PM', company: 'Cloudangles', name: 'Hemanth Chaluvadi', title: 'CEO & Founder', profile: 'A technology leader specializing in cloud transformation, AI-driven automation, and enterprise digital modernization.' },
-        { time: '4:20 – 4:28 PM', company: 'Surge Datalab', name: 'Satyamoy Chatterjee', title: 'Co-Founder & Director', profile: 'A top-tier data scientist with 20 years of experience at Citigroup and GE, specializing in applied AI and business strategy.' },
-        { time: '4:30 – 4:38 PM', company: 'Medhankura', name: 'Sri Harsha K', title: 'Director / Tech Lead', profile: 'A technical leader at Techsophy specializing in health-tech solutions and digital transformation for medical services.' },
-        { time: '4:40 – 4:48 PM', company: 'Cloudangles', name: 'Hemanth Chaluvadi', title: 'CEO & Founder', profile: 'Second session — cloud transformation, AI-driven automation, and enterprise digital modernization.' },
-        { time: '4:50 – 4:58 PM', company: 'Hyperbots', name: 'Niyati Chhaya', title: 'Co-Founder & VP - AI', profile: 'Former Adobe Research scientist and PhD holder specializing in NLP and multimodal AI for finance and accounting.' },
-      ];
+    async function loadStartupPitch() {
+      try {
+        const data = await api.get(\`/api/events/\${EVENT_ID}/startup-pitches\`);
+        const pitchData = data.pitches || [];
+        const investors = data.investors || [];
 
-      const investors = [
-        { name: 'Milan Sharma', title: 'Managing Partner', company: '35North Venturers' },
-        { name: 'Kshitij', title: 'Director', company: 'Plutus' },
-        { name: 'Sumit Dhanuka', title: 'Founding and Managing Partner', company: 'Precog Innovation Partners' },
-        { name: 'Shrutii Aggarwall', title: 'Founder', company: 'TheStartupLab' },
-        { name: 'Agam Gupta', title: 'Principal', company: 'seafund' },
-        { name: 'Anurag Ramdasan', title: 'Partner', company: '3one4 Capital' },
-        { name: 'Shikhin Garg', title: 'Chief of Operations / India Lead', company: 'Inventus Capital Partners' },
-        { name: 'Amit Singh', title: 'Co founder', company: 'Misfits Capital' },
-        { name: 'Abhishek Kakkar', title: 'VP Investments', company: 'IAN Group' },
-        { name: 'Umang Bansal', title: 'Founding Team', company: 'PedalStart' },
-        { name: 'Col Sarjeet Yadav, SM (Veteran)', title: 'Managing Partner', company: 'Blue Ashva Capital' },
-        { name: 'Sriram Sastrigal', title: 'Director', company: 'Magnivia Ventures (India)' },
-        { name: 'Pawan Raj Kumar', title: 'Partner', company: 'Zeca.vc' },
-        { name: 'Anika Raja', title: '', company: 'Zeca.vc' },
-        { name: 'Arjun Rao', title: 'General Partner', company: 'Speciale Incept Advisors LLP' },
-        { name: 'Aditya Malhotra', title: 'Investment Team', company: 'YourNest Venture Capital' },
-        { name: 'Aishwarya Malhi', title: 'Co-founder', company: 'Rebalance' },
-        { name: 'Sahil Aggarwal', title: '', company: 'Trifecta Capital' },
-        { name: 'Samir', title: 'Partner', company: 'Capinity' },
-        { name: 'Mayank Agarwal', title: '', company: '' },
-        { name: 'Karanbir Bhatia', title: 'Founder and Head of Investment Banking', company: 'yugocapital' },
-        { name: 'Abhishek Aggarwal', title: 'Founder', company: 'Grivaa Capital' },
-        { name: 'Dhruv Debnath', title: 'Head Partnerships & Alliances', company: '35North Ventures Pvt Ltd' },
-      ];
+        if (pitchData.length === 0 && investors.length === 0) {
+          const emptyHtml = \`
+            <div class="text-center py-16">
+              <img src="https://bharatai.blob.core.windows.net/aidata/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="w-16 h-16 mx-auto mb-4 rounded-xl object-contain opacity-50">
+              <h2 class="text-2xl font-bold mb-2"><i class="fas fa-rocket text-orange-400 mr-2"></i>BHAI Startup Pitch</h2>
+              <p class="text-lg font-semibold text-orange-300 mb-1">BHAI Innovation Pitch: Where Innovation Meets Investment</p>
+              <p class="text-gray-400 text-sm mb-6">Connect. Pitch. Fund. The Ultimate Startup-Investor Experience</p>
+              <div class="glass rounded-2xl p-8 max-w-md mx-auto border border-orange-500/20">
+                <i class="fas fa-calendar-plus text-4xl text-orange-400/30 mb-4 block"></i>
+                <p class="text-gray-400 text-sm font-medium">Pitch schedule will be announced soon</p>
+                <p class="text-gray-500 text-xs mt-1">Stay tuned for startup pitches & investor panels</p>
+              </div>
+            </div>
+          \`;
+          const desktop = document.getElementById('startup-pitch-content-desktop');
+          const mobile = document.getElementById('startup-pitch-content-mobile');
+          if (desktop) desktop.innerHTML = emptyHtml;
+          if (mobile) mobile.innerHTML = emptyHtml;
+          return;
+        }
 
       const html = \`
         <div class="text-center mb-8">
@@ -4575,14 +4641,15 @@ function mainPageHTML(): string {
           <h2 class="text-2xl font-bold mb-2"><i class="fas fa-rocket text-orange-400 mr-2"></i>BHAI Startup Pitch</h2>
           <p class="text-lg font-semibold text-orange-300 mb-1">BHAI Innovation Pitch: Where Innovation Meets Investment</p>
           <p class="text-gray-400 text-sm">Connect. Pitch. Fund. The Ultimate Startup-Investor Experience</p>
-          <p class="text-xs text-gray-500 mt-2"><i class="fas fa-calendar-alt mr-1"></i>2-3 June 2026 &bull; World Trade Center, Mumbai &bull; 2:30 PM – 5:00 PM</p>
+          <p class="text-xs text-gray-500 mt-2"><i class="fas fa-calendar-alt mr-1"></i>2-3 June 2026 &bull; World Trade Center, Mumbai</p>
         </div>
 
+        \${pitchData.length > 0 ? \`
         <!-- Pitch Schedule -->
         <div class="glass rounded-2xl overflow-hidden mb-8">
           <div class="bg-gradient-to-r from-orange-600/30 to-amber-600/30 px-5 py-3 flex items-center justify-between">
             <div class="flex items-center gap-3">
-              <span class="text-xl">🎤</span>
+              <span class="text-xl">\u{1F3A4}</span>
               <span class="font-bold text-lg">Pitch Schedule</span>
             </div>
             <span class="px-3 py-1 rounded-full text-xs font-semibold bg-white/10 text-orange-300">\${pitchData.length} Startups</span>
@@ -4593,27 +4660,29 @@ function mainPageHTML(): string {
                 <div class="shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-orange-500/20 to-amber-500/20 flex items-center justify-center text-orange-400 font-bold text-sm">\${i+1}</div>
                 <div class="flex-1 min-w-0">
                   <div class="flex flex-wrap items-center gap-2 mb-1">
-                    <span class="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-orange-500/20 text-orange-300 border border-orange-500/20">\${p.time}</span>
+                    <span class="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-orange-500/20 text-orange-300 border border-orange-500/20">\${p.time_slot}</span>
                     <h4 class="font-bold text-sm text-white">\${p.company}</h4>
                   </div>
                   <div class="flex items-center gap-2 mb-1.5">
-                    <img src="https://ui-avatars.com/api/?name=\${encodeURIComponent(p.name)}&size=28&background=c2410c&color=fff&bold=true&rounded=true" class="w-7 h-7 rounded-full">
-                    <span class="text-sm font-medium text-gray-200">\${p.name}</span>
-                    <span class="text-xs text-gray-500">—</span>
-                    <span class="text-xs text-orange-400/80">\${p.title}</span>
+                    <img src="https://ui-avatars.com/api/?name=\${encodeURIComponent(p.pitcher_name)}&size=28&background=c2410c&color=fff&bold=true&rounded=true" class="w-7 h-7 rounded-full">
+                    <span class="text-sm font-medium text-gray-200">\${p.pitcher_name}</span>
+                    <span class="text-xs text-gray-500">\u2014</span>
+                    <span class="text-xs text-orange-400/80">\${p.pitcher_title}</span>
                   </div>
-                  <p class="text-xs text-gray-400 leading-relaxed">\${p.profile}</p>
+                  <p class="text-xs text-gray-400 leading-relaxed">\${p.pitcher_profile}</p>
                 </div>
               </div>
             \`).join('')}
           </div>
         </div>
+        \` : ''}
 
+        \${investors.length > 0 ? \`
         <!-- Investors Panel -->
         <div class="glass rounded-2xl overflow-hidden">
           <div class="bg-gradient-to-r from-emerald-600/30 to-teal-600/30 px-5 py-3 flex items-center justify-between">
             <div class="flex items-center gap-3">
-              <span class="text-xl">💰</span>
+              <span class="text-xl">\u{1F4B0}</span>
               <span class="font-bold text-lg">Investors & Evaluators</span>
             </div>
             <span class="px-3 py-1 rounded-full text-xs font-semibold bg-white/10 text-emerald-300">\${investors.length} Investors</span>
@@ -4634,6 +4703,7 @@ function mainPageHTML(): string {
             </div>
           </div>
         </div>
+        \` : ''}
       \`;
 
       // Render into both desktop and mobile containers
@@ -4641,6 +4711,7 @@ function mainPageHTML(): string {
       const mobile = document.getElementById('startup-pitch-content-mobile');
       if (desktop) desktop.innerHTML = html;
       if (mobile) mobile.innerHTML = html;
+      } catch(e) { console.error('Startup Pitch error:', e); }
     }
 
     // Shuffle array helper (Fisher-Yates)
@@ -6447,6 +6518,9 @@ function adminPageHTML(): string {
       <button onclick="switchSection('innovation')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="innovation" title="Innovation Talks">
         <i class="fas fa-lightbulb w-5 text-center shrink-0"></i><span class="sidebar-label">Innovation Talks</span>
       </button>
+      <button onclick="switchSection('startup-pitch')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="startup-pitch" title="Startup Pitch">
+        <i class="fas fa-rocket w-5 text-center shrink-0"></i><span class="sidebar-label">Startup Pitch</span>
+      </button>
       <button onclick="switchSection('analytics')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="analytics" title="Analytics">
         <i class="fas fa-chart-bar w-5 text-center shrink-0"></i><span class="sidebar-label">Analytics</span>
       </button>
@@ -6500,6 +6574,8 @@ function adminPageHTML(): string {
       <div id="section-announcements" class="section-content hidden"></div>
       <!-- Innovation Talks Section -->
       <div id="section-innovation" class="section-content hidden"></div>
+      <!-- Startup Pitch Section -->
+      <div id="section-startup-pitch" class="section-content hidden"></div>
       <!-- Analytics Section -->
       <div id="section-analytics" class="section-content hidden"></div>
       <!-- Settings Section -->
@@ -6626,8 +6702,8 @@ function adminPageHTML(): string {
       document.querySelectorAll('.section-content').forEach(s => s.classList.add('hidden'));
       document.getElementById('section-'+sec).classList.remove('hidden');
 
-      const titles = { overview:'Overview', attendees:'Attendee Management', sessions:'Session Management', exhibitors:'Exhibitor Management', awards:'Awards Management', announcements:'Announcement Management', innovation:'Innovation Talk & Showcase', analytics:'Analytics & Reports', settings:'Settings' };
-      const subtitles = { overview:'Real-time event management dashboard', attendees:'Manage all registered attendees', sessions:'Create and manage event sessions', exhibitors:'Manage exhibition booths', awards:'Manage award categories and nominees', announcements:'Create and manage live feed announcements', innovation:'Manage innovation talk and showcase schedule', analytics:'Deep dive into event engagement metrics', settings:'Configure email, API keys and app settings' };
+      const titles = { overview:'Overview', attendees:'Attendee Management', sessions:'Session Management', exhibitors:'Exhibitor Management', awards:'Awards Management', announcements:'Announcement Management', innovation:'Innovation Talk & Showcase', 'startup-pitch':'Startup Pitch Management', analytics:'Analytics & Reports', settings:'Settings' };
+      const subtitles = { overview:'Real-time event management dashboard', attendees:'Manage all registered attendees', sessions:'Create and manage event sessions', exhibitors:'Manage exhibition booths', awards:'Manage award categories and nominees', announcements:'Create and manage live feed announcements', innovation:'Manage innovation talk and showcase schedule', 'startup-pitch':'Manage startup pitches and investor panel', analytics:'Deep dive into event engagement metrics', settings:'Configure email, API keys and app settings' };
       document.getElementById('page-title').textContent = titles[sec] || sec;
       document.getElementById('page-subtitle').textContent = subtitles[sec] || '';
 
@@ -6644,6 +6720,7 @@ function adminPageHTML(): string {
         case 'announcements': loadAdminAnnouncements(); break;
         case 'analytics': loadAnalytics(); break;
         case 'innovation': loadInnovationTalks(); break;
+        case 'startup-pitch': loadAdminStartupPitch(); break;
         case 'settings': loadSettings(); break;
       }
     }
@@ -9048,6 +9125,276 @@ function adminPageHTML(): string {
         await api.del('/api/admin/innovation-talks/'+id);
         toast('Talk deleted', 'success');
         loadInnovationTalks();
+      } catch(err) { toast('Failed to delete: ' + err.message, 'error'); }
+    }
+
+    // ============ ADMIN STARTUP PITCH ============
+    async function loadAdminStartupPitch() {
+      try {
+        const data = await api.get('/api/admin/startup-pitches?event_id=' + EID);
+        const pitches = data.pitches || [];
+        const investors = data.investors || [];
+
+        document.getElementById('section-startup-pitch').innerHTML = \`
+          <div class="space-y-6">
+            <!-- Pitches Section -->
+            <div class="glass rounded-2xl p-6">
+              <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-bold"><i class="fas fa-microphone-alt text-orange-400 mr-2"></i>Startup Pitches <span class="text-sm text-gray-500 font-normal">(\${pitches.length})</span></h3>
+                <button onclick="showAddPitchForm()" class="px-4 py-2 rounded-xl text-xs font-semibold bg-orange-600 hover:bg-orange-500 text-white transition"><i class="fas fa-plus mr-1"></i>Add Pitch</button>
+              </div>
+              <!-- Add / Edit Form (hidden by default) -->
+              <div id="pitch-form-container" class="hidden mb-4 glass rounded-xl p-4 border border-orange-500/20">
+                <h4 class="text-sm font-bold mb-3" id="pitch-form-title"><i class="fas fa-plus text-orange-400 mr-1"></i>Add New Pitch</h4>
+                <input type="hidden" id="pf-id" value="">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+                  <div>
+                    <label class="text-[10px] text-gray-400 mb-0.5 block">Slot Order</label>
+                    <input type="number" id="pf-order" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="1">
+                  </div>
+                  <div>
+                    <label class="text-[10px] text-gray-400 mb-0.5 block">Time Slot</label>
+                    <input type="text" id="pf-time" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="2:30 – 2:38 PM">
+                  </div>
+                  <div>
+                    <label class="text-[10px] text-gray-400 mb-0.5 block">Company</label>
+                    <input type="text" id="pf-company" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="Company Name">
+                  </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                  <div>
+                    <label class="text-[10px] text-gray-400 mb-0.5 block">Pitcher Name</label>
+                    <input type="text" id="pf-name" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="Full Name">
+                  </div>
+                  <div>
+                    <label class="text-[10px] text-gray-400 mb-0.5 block">Pitcher Title</label>
+                    <input type="text" id="pf-title" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="CEO & Founder">
+                  </div>
+                </div>
+                <div class="mb-3">
+                  <label class="text-[10px] text-gray-400 mb-0.5 block">Profile / Description</label>
+                  <textarea id="pf-profile" rows="2" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="Brief bio or description..."></textarea>
+                </div>
+                <div class="flex gap-2">
+                  <button onclick="savePitch()" class="px-4 py-2 rounded-lg text-xs font-semibold bg-orange-600 hover:bg-orange-500 text-white transition"><i class="fas fa-save mr-1"></i>Save</button>
+                  <button onclick="document.getElementById('pitch-form-container').classList.add('hidden')" class="px-4 py-2 rounded-lg text-xs font-medium glass hover:bg-white/10 text-gray-300 transition border border-white/10">Cancel</button>
+                </div>
+              </div>
+              <!-- Pitches Table -->
+              <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                  <thead>
+                    <tr class="border-b border-white/10 text-xs text-gray-400">
+                      <th class="py-2 px-2 text-left">#</th>
+                      <th class="py-2 px-2 text-left">Time</th>
+                      <th class="py-2 px-2 text-left">Company</th>
+                      <th class="py-2 px-2 text-left">Pitcher</th>
+                      <th class="py-2 px-2 text-left">Title</th>
+                      <th class="py-2 px-2 text-center">Active</th>
+                      <th class="py-2 px-2 text-center">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-white/5">
+                    \${pitches.map(p => \`
+                      <tr class="hover:bg-white/[0.02] \${p.is_active ? '' : 'opacity-40'}">
+                        <td class="py-2 px-2 text-gray-500">\${p.slot_order}</td>
+                        <td class="py-2 px-2"><span class="px-2 py-0.5 rounded-full text-[10px] bg-orange-500/15 text-orange-300">\${p.time_slot}</span></td>
+                        <td class="py-2 px-2 font-medium text-white">\${p.company}</td>
+                        <td class="py-2 px-2 text-gray-300">\${p.pitcher_name}</td>
+                        <td class="py-2 px-2 text-gray-400 text-xs">\${p.pitcher_title}</td>
+                        <td class="py-2 px-2 text-center">
+                          <button onclick="togglePitchActive(\${p.id}, \${p.is_active ? 0 : 1}, \${JSON.stringify(JSON.stringify(p))})" class="text-xs \${p.is_active ? 'text-green-400' : 'text-red-400'}">\${p.is_active ? '\u2705' : '\u274c'}</button>
+                        </td>
+                        <td class="py-2 px-2 text-center">
+                          <button onclick='editPitch(\${JSON.stringify(p)})' class="text-primary-400 hover:text-primary-300 mr-2" title="Edit"><i class="fas fa-edit"></i></button>
+                          <button onclick="deletePitch(\${p.id})" class="text-red-400 hover:text-red-300" title="Delete"><i class="fas fa-trash"></i></button>
+                        </td>
+                      </tr>
+                    \`).join('')}
+                    \${pitches.length === 0 ? '<tr><td colspan="7" class="py-8 text-center text-gray-500"><i class="fas fa-rocket text-2xl mb-2 block opacity-30"></i>No pitches added yet</td></tr>' : ''}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Investors Section -->
+            <div class="glass rounded-2xl p-6">
+              <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-bold"><i class="fas fa-hand-holding-usd text-emerald-400 mr-2"></i>Investors & Evaluators <span class="text-sm text-gray-500 font-normal">(\${investors.length})</span></h3>
+                <button onclick="showAddInvestorForm()" class="px-4 py-2 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition"><i class="fas fa-plus mr-1"></i>Add Investor</button>
+              </div>
+              <!-- Add / Edit Form -->
+              <div id="investor-form-container" class="hidden mb-4 glass rounded-xl p-4 border border-emerald-500/20">
+                <h4 class="text-sm font-bold mb-3" id="investor-form-title"><i class="fas fa-plus text-emerald-400 mr-1"></i>Add New Investor</h4>
+                <input type="hidden" id="if-id" value="">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+                  <div>
+                    <label class="text-[10px] text-gray-400 mb-0.5 block">Name</label>
+                    <input type="text" id="if-name" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="Full Name">
+                  </div>
+                  <div>
+                    <label class="text-[10px] text-gray-400 mb-0.5 block">Title / Role</label>
+                    <input type="text" id="if-title" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="Managing Partner">
+                  </div>
+                  <div>
+                    <label class="text-[10px] text-gray-400 mb-0.5 block">Company / Fund</label>
+                    <input type="text" id="if-company" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="Venture Capital Fund">
+                  </div>
+                </div>
+                <div class="flex gap-2">
+                  <button onclick="saveInvestor()" class="px-4 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition"><i class="fas fa-save mr-1"></i>Save</button>
+                  <button onclick="document.getElementById('investor-form-container').classList.add('hidden')" class="px-4 py-2 rounded-lg text-xs font-medium glass hover:bg-white/10 text-gray-300 transition border border-white/10">Cancel</button>
+                </div>
+              </div>
+              <!-- Investors Grid -->
+              <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                \${investors.map(inv => \`
+                  <div class="flex items-center gap-3 p-3 rounded-xl bg-white/[0.03] border border-white/5 \${inv.is_active ? '' : 'opacity-40'}">
+                    <img src="https://ui-avatars.com/api/?name=\${encodeURIComponent(inv.name)}&size=40&background=065f46&color=fff&bold=true&rounded=true" class="w-10 h-10 rounded-full shrink-0">
+                    <div class="flex-1 min-w-0">
+                      <div class="font-semibold text-sm text-white truncate">\${inv.name}</div>
+                      \${inv.title ? '<div class="text-[10px] text-emerald-400/80 truncate">'+inv.title+'</div>' : ''}
+                      \${inv.company ? '<div class="text-[10px] text-gray-500 truncate">'+inv.company+'</div>' : ''}
+                    </div>
+                    <div class="flex gap-1 shrink-0">
+                      <button onclick='editInvestor(\${JSON.stringify(inv)})' class="text-primary-400 hover:text-primary-300 text-xs p-1" title="Edit"><i class="fas fa-edit"></i></button>
+                      <button onclick="toggleInvestorActive(\${inv.id}, \${inv.is_active ? 0 : 1}, \${JSON.stringify(JSON.stringify(inv))})" class="text-xs p-1 \${inv.is_active ? 'text-green-400' : 'text-red-400'}" title="Toggle">\${inv.is_active ? '\u2705' : '\u274c'}</button>
+                      <button onclick="deleteInvestor(\${inv.id})" class="text-red-400 hover:text-red-300 text-xs p-1" title="Delete"><i class="fas fa-trash"></i></button>
+                    </div>
+                  </div>
+                \`).join('')}
+                \${investors.length === 0 ? '<div class="col-span-full text-center py-8 text-gray-500"><i class="fas fa-hand-holding-usd text-2xl mb-2 block opacity-30"></i>No investors added yet</div>' : ''}
+              </div>
+            </div>
+          </div>
+        \`;
+      } catch(err) { toast('Failed to load startup pitch data: ' + err.message, 'error'); }
+    }
+
+    // Pitch CRUD helpers
+    function showAddPitchForm() {
+      document.getElementById('pitch-form-container').classList.remove('hidden');
+      document.getElementById('pitch-form-title').innerHTML = '<i class="fas fa-plus text-orange-400 mr-1"></i>Add New Pitch';
+      document.getElementById('pf-id').value = '';
+      document.getElementById('pf-order').value = '';
+      document.getElementById('pf-time').value = '';
+      document.getElementById('pf-company').value = '';
+      document.getElementById('pf-name').value = '';
+      document.getElementById('pf-title').value = '';
+      document.getElementById('pf-profile').value = '';
+    }
+
+    function editPitch(p) {
+      document.getElementById('pitch-form-container').classList.remove('hidden');
+      document.getElementById('pitch-form-title').innerHTML = '<i class="fas fa-edit text-orange-400 mr-1"></i>Edit Pitch';
+      document.getElementById('pf-id').value = p.id;
+      document.getElementById('pf-order').value = p.slot_order;
+      document.getElementById('pf-time').value = p.time_slot;
+      document.getElementById('pf-company').value = p.company;
+      document.getElementById('pf-name').value = p.pitcher_name;
+      document.getElementById('pf-title').value = p.pitcher_title;
+      document.getElementById('pf-profile').value = p.pitcher_profile;
+    }
+
+    async function savePitch() {
+      const id = document.getElementById('pf-id').value;
+      const payload = {
+        event_id: EID,
+        slot_order: parseInt(document.getElementById('pf-order').value) || 0,
+        time_slot: document.getElementById('pf-time').value,
+        company: document.getElementById('pf-company').value,
+        pitcher_name: document.getElementById('pf-name').value,
+        pitcher_title: document.getElementById('pf-title').value,
+        pitcher_profile: document.getElementById('pf-profile').value,
+        is_active: 1,
+      };
+      if (!payload.company || !payload.pitcher_name) { toast('Company and pitcher name are required', 'error'); return; }
+      try {
+        if (id) {
+          await api.put('/api/admin/startup-pitches/' + id, payload);
+          toast('Pitch updated!', 'success');
+        } else {
+          await api.post('/api/admin/startup-pitches', payload);
+          toast('Pitch added!', 'success');
+        }
+        loadAdminStartupPitch();
+      } catch(err) { toast('Failed to save: ' + err.message, 'error'); }
+    }
+
+    async function togglePitchActive(id, newState, pJson) {
+      try {
+        const p = JSON.parse(pJson);
+        await api.put('/api/admin/startup-pitches/' + id, { ...p, is_active: newState });
+        toast(newState ? 'Pitch activated' : 'Pitch deactivated', 'success');
+        loadAdminStartupPitch();
+      } catch(err) { toast('Failed: ' + err.message, 'error'); }
+    }
+
+    async function deletePitch(id) {
+      if (!confirm('Delete this pitch entry?')) return;
+      try {
+        await api.delete('/api/admin/startup-pitches/' + id);
+        toast('Pitch deleted', 'success');
+        loadAdminStartupPitch();
+      } catch(err) { toast('Failed to delete: ' + err.message, 'error'); }
+    }
+
+    // Investor CRUD helpers
+    function showAddInvestorForm() {
+      document.getElementById('investor-form-container').classList.remove('hidden');
+      document.getElementById('investor-form-title').innerHTML = '<i class="fas fa-plus text-emerald-400 mr-1"></i>Add New Investor';
+      document.getElementById('if-id').value = '';
+      document.getElementById('if-name').value = '';
+      document.getElementById('if-title').value = '';
+      document.getElementById('if-company').value = '';
+    }
+
+    function editInvestor(inv) {
+      document.getElementById('investor-form-container').classList.remove('hidden');
+      document.getElementById('investor-form-title').innerHTML = '<i class="fas fa-edit text-emerald-400 mr-1"></i>Edit Investor';
+      document.getElementById('if-id').value = inv.id;
+      document.getElementById('if-name').value = inv.name;
+      document.getElementById('if-title').value = inv.title || '';
+      document.getElementById('if-company').value = inv.company || '';
+    }
+
+    async function saveInvestor() {
+      const id = document.getElementById('if-id').value;
+      const payload = {
+        event_id: EID,
+        name: document.getElementById('if-name').value,
+        title: document.getElementById('if-title').value,
+        company: document.getElementById('if-company').value,
+        is_active: 1,
+      };
+      if (!payload.name) { toast('Investor name is required', 'error'); return; }
+      try {
+        if (id) {
+          await api.put('/api/admin/startup-investors/' + id, payload);
+          toast('Investor updated!', 'success');
+        } else {
+          await api.post('/api/admin/startup-investors', payload);
+          toast('Investor added!', 'success');
+        }
+        loadAdminStartupPitch();
+      } catch(err) { toast('Failed to save: ' + err.message, 'error'); }
+    }
+
+    async function toggleInvestorActive(id, newState, invJson) {
+      try {
+        const inv = JSON.parse(invJson);
+        await api.put('/api/admin/startup-investors/' + id, { ...inv, is_active: newState });
+        toast(newState ? 'Investor activated' : 'Investor deactivated', 'success');
+        loadAdminStartupPitch();
+      } catch(err) { toast('Failed: ' + err.message, 'error'); }
+    }
+
+    async function deleteInvestor(id) {
+      if (!confirm('Remove this investor?')) return;
+      try {
+        await api.delete('/api/admin/startup-investors/' + id);
+        toast('Investor removed', 'success');
+        loadAdminStartupPitch();
       } catch(err) { toast('Failed to delete: ' + err.message, 'error'); }
     }
 

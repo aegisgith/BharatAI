@@ -1,0 +1,43 @@
+-- Seed startup pitch data (from existing hardcoded schedule)
+INSERT OR IGNORE INTO startup_pitches (event_id, slot_order, time_slot, company, pitcher_name, pitcher_title, pitcher_profile) VALUES
+(1, 1,  '2:30 – 2:38 PM', 'Bugbusterslabs', 'Amalan Mariajohn', 'Co-Founder & CEO', 'A cybersecurity expert leading a platform that connects global researchers to detect and fix digital vulnerabilities.'),
+(1, 2,  '2:40 – 2:48 PM', 'Bharat Biomaterials', 'Priyansh Kothari', 'Co-Founder & Director', 'An eco-entrepreneur developing "Terratan," a sustainable, plant-based leather alternative made from agricultural waste.'),
+(1, 3,  '2:50 – 2:58 PM', 'Liquidmind', 'Naveen Athresh', 'Founder & CEO', 'A seasoned product leader and TEDx speaker with 23+ years of experience in AI, FinTech, and omni-channel retail.'),
+(1, 4,  '3:00 – 3:08 PM', 'Globe Florex', 'Praveen Sharma', 'Founder & Director', 'A vertical farming and floriculture expert providing consultancy for high-tech agricultural projects across India.'),
+(1, 5,  '3:10 – 3:18 PM', 'MobiPay Securiservices', 'Taron Mohan', 'Director', 'An experienced leader in the telecom and digital payment sectors, previously associated with NextGen Telesolutions.'),
+(1, 6,  '3:20 – 3:28 PM', 'Castler', 'Vineet Kumar Singh', 'Founder & CEO', 'A digital veteran and former CBO of MobiKwik and 99acres, now building India''s first Escrow-as-a-Service platform.'),
+(1, 7,  '3:30 – 3:38 PM', 'InteliQuant AI', 'Priyanka Bairathi', 'Founder', 'A Chartered Accountant and AI specialist focused on redefining financial risk assurance through intelligence and automation.'),
+(1, 8,  '3:40 – 3:48 PM', 'CognitiveCare', 'Suresh Attili', 'Co-Founder & Chief Physician Scientist', 'A leading Medical Oncologist and scientist using AI and data analytics to improve healthcare outcomes and patient care.'),
+(1, 9,  '3:50 – 3:58 PM', 'Sreyas Software Solutions', 'Vijay Rajagopalan', 'Founder & Inventor', 'Developer of the GoldPE APM, an AI-powered machine that automates gold purity analysis and loan disbursal.'),
+(1, 10, '4:00 – 4:08 PM', 'Salphan Energy', 'Arup Debbarma', 'Director', 'An emerging entrepreneur in the energy sector, leading a young team focused on innovative electrical and energy solutions.'),
+(1, 11, '4:10 – 4:18 PM', 'Cloudangles', 'Hemanth Chaluvadi', 'CEO & Founder', 'A technology leader specializing in cloud transformation, AI-driven automation, and enterprise digital modernization.'),
+(1, 12, '4:20 – 4:28 PM', 'Surge Datalab', 'Satyamoy Chatterjee', 'Co-Founder & Director', 'A top-tier data scientist with 20 years of experience at Citigroup and GE, specializing in applied AI and business strategy.'),
+(1, 13, '4:30 – 4:38 PM', 'Medhankura', 'Sri Harsha K', 'Director / Tech Lead', 'A technical leader at Techsophy specializing in health-tech solutions and digital transformation for medical services.'),
+(1, 14, '4:40 – 4:48 PM', 'Cloudangles', 'Hemanth Chaluvadi', 'CEO & Founder', 'Second session — cloud transformation, AI-driven automation, and enterprise digital modernization.'),
+(1, 15, '4:50 – 4:58 PM', 'Hyperbots', 'Niyati Chhaya', 'Co-Founder & VP - AI', 'Former Adobe Research scientist and PhD holder specializing in NLP and multimodal AI for finance and accounting.');
+
+-- Seed startup investors data
+INSERT OR IGNORE INTO startup_investors (event_id, name, title, company) VALUES
+(1, 'Milan Sharma', 'Managing Partner', '35North Venturers'),
+(1, 'Kshitij', 'Director', 'Plutus'),
+(1, 'Sumit Dhanuka', 'Founding and Managing Partner', 'Precog Innovation Partners'),
+(1, 'Shrutii Aggarwall', 'Founder', 'TheStartupLab'),
+(1, 'Agam Gupta', 'Principal', 'seafund'),
+(1, 'Anurag Ramdasan', 'Partner', '3one4 Capital'),
+(1, 'Shikhin Garg', 'Chief of Operations / India Lead', 'Inventus Capital Partners'),
+(1, 'Amit Singh', 'Co founder', 'Misfits Capital'),
+(1, 'Abhishek Kakkar', 'VP Investments', 'IAN Group'),
+(1, 'Umang Bansal', 'Founding Team', 'PedalStart'),
+(1, 'Col Sarjeet Yadav, SM (Veteran)', 'Managing Partner', 'Blue Ashva Capital'),
+(1, 'Sriram Sastrigal', 'Director', 'Magnivia Ventures (India)'),
+(1, 'Pawan Raj Kumar', 'Partner', 'Zeca.vc'),
+(1, 'Anika Raja', '', 'Zeca.vc'),
+(1, 'Arjun Rao', 'General Partner', 'Speciale Incept Advisors LLP'),
+(1, 'Aditya Malhotra', 'Investment Team', 'YourNest Venture Capital'),
+(1, 'Aishwarya Malhi', 'Co-founder', 'Rebalance'),
+(1, 'Sahil Aggarwal', '', 'Trifecta Capital'),
+(1, 'Samir', 'Partner', 'Capinity'),
+(1, 'Mayank Agarwal', '', ''),
+(1, 'Karanbir Bhatia', 'Founder and Head of Investment Banking', 'yugocapital'),
+(1, 'Abhishek Aggarwal', 'Founder', 'Grivaa Capital'),
+(1, 'Dhruv Debnath', 'Head Partnerships & Alliances', '35North Ventures Pvt Ltd');
