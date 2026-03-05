@@ -8,7 +8,7 @@
     {
       "binding": "DB",
       "database_name": "bharatai-production",
-      "database_id": "REPLACE_AFTER_D1_CREATE"
+      "database_id": "c660e94a-ccd1-4819-a202-7814eec6404d"
     }
   ]
 }
