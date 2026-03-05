@@ -1,0 +1,13 @@
+node_modules/
+.wrangler/
+dist/
+.env
+.dev.vars
+*.backup
+*.bak
+*.tar.gz
+src/index.tsx.bak
+pids/
+logs/
+*.log
+.pm2/

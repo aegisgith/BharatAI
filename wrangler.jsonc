@@ -1,0 +1,14 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "bharatai-networking",
+  "compatibility_date": "2026-02-20",
+  "pages_build_output_dir": "./dist",
+  "compatibility_flags": ["nodejs_compat"],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "bharatai-production",
+      "database_id": "REPLACE_AFTER_D1_CREATE"
+    }
+  ]
+}
