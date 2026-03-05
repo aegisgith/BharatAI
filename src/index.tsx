@@ -1,5 +1,7 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
+import mp from './routes/marketplace'
+import { marketplacePageHTML, marketplaceListingPageHTML, marketplaceDashboardPageHTML, marketplaceAdminPageHTML, marketplaceFaqPageHTML } from './routes/marketplace-pages'
 
 type Bindings = {
   DB: D1Database
@@ -8,6 +10,24 @@ type Bindings = {
 const app = new Hono<{ Bindings: Bindings }>()
 
 app.use('/api/*', cors())
+
+// ==================== AI MARKETPLACE (integrated) ====================
+app.route('/', mp)
+
+// Marketplace page routes
+app.get('/marketplace', (c) => c.html(marketplacePageHTML()))
+app.get('/marketplace/faq', (c) => c.html(marketplaceFaqPageHTML()))
+app.get('/marketplace/dashboard', (c) => c.html(marketplaceDashboardPageHTML()))
+app.get('/marketplace/admin', (c) => c.html(marketplaceAdminPageHTML()))
+app.get('/marketplace/listing/:companySlug/:productSlug', (c) => {
+  const companySlug = c.req.param('companySlug')
+  const productSlug = c.req.param('productSlug')
+  return c.html(marketplaceListingPageHTML(companySlug, productSlug))
+})
+app.get('/marketplace/listing/:id', (c) => {
+  const id = c.req.param('id')
+  return c.html(marketplaceListingPageHTML(undefined, undefined, id))
+})
 
 // ==================== EVENT APIs ====================
 
@@ -2107,6 +2127,441 @@ app.delete('/api/admin/inquiries/:id', async (c) => {
   return c.json({ success: true })
 })
 
+// ==================== AI MARKETPLACE APIs ====================
+
+const generateSlug = (text: string) =>
+  (text || '').toLowerCase().trim().replace(/&/g,'and').replace(/[^a-z0-9\s-]/g,'').replace(/\s+/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'').slice(0,80)
+
+async function sha256(message: string): Promise<string> {
+  const msgBuffer = new TextEncoder().encode(message)
+  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer)
+  return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2,'0')).join('')
+}
+
+// Cookie helpers for marketplace auth
+function getMpSession(c: any): number | null {
+  const cookie = c.req.header('Cookie') || ''
+  const match = cookie.match(/mp_session=(\d+)/)
+  return match ? parseInt(match[1]) : null
+}
+
+// --- Auth ---
+app.post('/api/mp/auth/register', async (c) => {
+  const { company_name, email, password } = await c.req.json() as any
+  if (!company_name || !email || !password) return c.json({ error: 'All fields required' }, 400)
+  const hash = await sha256(password)
+  try {
+    await c.env.DB.prepare('INSERT INTO mp_companies (company_name, email, password_hash) VALUES (?,?,?)')
+      .bind(company_name.trim(), email.trim().toLowerCase(), hash).run()
+    return c.json({ success: true })
+  } catch (e: any) {
+    if (e.message?.includes('UNIQUE')) return c.json({ error: 'Email already registered' }, 409)
+    throw e
+  }
+})
+
+app.post('/api/mp/auth/login', async (c) => {
+  const { email, password } = await c.req.json() as any
+  if (!email || !password) return c.json({ error: 'Email and password required' }, 400)
+  const hash = await sha256(password)
+  const user = await c.env.DB.prepare('SELECT id, company_name, email, role FROM mp_companies WHERE email = ? AND password_hash = ?')
+    .bind(email.trim().toLowerCase(), hash).first()
+  if (!user) return c.json({ error: 'Invalid credentials' }, 401)
+  return new Response(JSON.stringify({ success: true, user }), {
+    headers: { 'Content-Type': 'application/json', 'Set-Cookie': `mp_session=${user.id}; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800` }
+  })
+})
+
+app.post('/api/mp/auth/logout', (c) => {
+  return new Response(JSON.stringify({ success: true }), {
+    headers: { 'Content-Type': 'application/json', 'Set-Cookie': 'mp_session=; Path=/; Max-Age=0' }
+  })
+})
+
+app.get('/api/mp/auth/me', async (c) => {
+  const userId = getMpSession(c)
+  if (!userId) return c.json({ user: null })
+  const user = await c.env.DB.prepare('SELECT id, company_name, email, role, exhibitor_id, attendee_id FROM mp_companies WHERE id = ?').bind(userId).first()
+  return c.json({ user: user || null })
+})
+
+// --- Public Listings ---
+app.get('/api/mp/listings', async (c) => {
+  const { results } = await c.env.DB.prepare(
+    `SELECT l.*, e.company_name as exhibitor_company, e.booth_number as exhibitor_booth
+     FROM mp_listings l LEFT JOIN exhibitors e ON l.exhibitor_id = e.id
+     WHERE l.status = 'approved' ORDER BY l.created_at DESC`
+  ).all()
+  return c.json({ listings: results })
+})
+
+app.get('/api/mp/listings/:id', async (c) => {
+  const id = c.req.param('id')
+  const listing = await c.env.DB.prepare(
+    `SELECT l.*, e.company_name as exhibitor_company, e.booth_number as exhibitor_booth
+     FROM mp_listings l LEFT JOIN exhibitors e ON l.exhibitor_id = e.id WHERE l.id = ?`
+  ).bind(id).first()
+  if (!listing) return c.json({ error: 'Not found' }, 404)
+  await c.env.DB.prepare('UPDATE mp_listings SET view_count = view_count + 1 WHERE id = ?').bind(id).run()
+  return c.json({ listing })
+})
+
+app.get('/api/mp/listings/by-slug/:company/:product', async (c) => {
+  const cs = c.req.param('company'), ps = c.req.param('product')
+  const listing = await c.env.DB.prepare(
+    `SELECT l.*, e.company_name as exhibitor_company, e.booth_number as exhibitor_booth
+     FROM mp_listings l LEFT JOIN exhibitors e ON l.exhibitor_id = e.id
+     WHERE l.company_slug = ? AND l.product_slug = ?`
+  ).bind(cs, ps).first()
+  if (!listing) return c.json({ error: 'Not found' }, 404)
+  await c.env.DB.prepare('UPDATE mp_listings SET view_count = view_count + 1 WHERE id = ?').bind(listing.id).run()
+  return c.json({ listing })
+})
+
+// Submit a new listing (authenticated)
+app.post('/api/mp/listings', async (c) => {
+  const userId = getMpSession(c)
+  if (!userId) return c.json({ error: 'Login required' }, 401)
+  const user = await c.env.DB.prepare('SELECT * FROM mp_companies WHERE id = ?').bind(userId).first() as any
+  if (!user) return c.json({ error: 'User not found' }, 401)
+  const body = await c.req.json() as any
+  if (!body.product_name || !body.description) return c.json({ error: 'Product name and description required' }, 400)
+  const companySlug = generateSlug(user.company_name)
+  const productSlug = generateSlug(body.product_name)
+  const result = await c.env.DB.prepare(
+    `INSERT INTO mp_listings (company_id, company_name, company_slug, product_name, product_slug, description,
+     target_customer, target_industry, target_functional_area, ai_category, ai_category_custom, tags, innovation,
+     use_cases, pricing_type, pricing_details, product_image_url, logo_url, screenshot_urls, website_url,
+     product_url, demo_url, video_url, founder_name, cto_name, contact_name, company_registration, company_phone,
+     company_address, sales_contact_name, sales_contact_email, sales_contact_phone, current_customers,
+     integration_requirements, supported_platforms, tech_stack, security_protocols, case_studies,
+     certifications_compliance, access_info, support_offering, sla_details, onboarding_process, awards_rating,
+     exhibitor_id, booth_number, status)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+  ).bind(
+    userId, user.company_name, companySlug, body.product_name, productSlug, body.description,
+    body.target_customer||'', body.target_industry||'', body.target_functional_area||'', body.ai_category||'',
+    body.ai_category_custom||'', body.tags||'', body.innovation||'', body.use_cases||'', body.pricing_type||'',
+    body.pricing_details||'', body.product_image_url||'', body.logo_url||'', body.screenshot_urls||'',
+    body.website_url||'', body.product_url||'', body.demo_url||'', body.video_url||'', body.founder_name||'',
+    body.cto_name||'', body.contact_name||'', body.company_registration||'', body.company_phone||'',
+    body.company_address||'', body.sales_contact_name||'', body.sales_contact_email||'',
+    body.sales_contact_phone||'', body.current_customers||'', body.integration_requirements||'',
+    body.supported_platforms||'', body.tech_stack||'', body.security_protocols||'', body.case_studies||'',
+    body.certifications_compliance||'', body.access_info||'', body.support_offering||'', body.sla_details||'',
+    body.onboarding_process||'', body.awards_rating||0, user.exhibitor_id||null, body.booth_number||'', 'pending'
+  ).run()
+  return c.json({ success: true, id: result.meta.last_row_id }, 201)
+})
+
+// --- Listing Reviews ---
+app.get('/api/mp/listings/:id/reviews', async (c) => {
+  const id = c.req.param('id')
+  const { results } = await c.env.DB.prepare('SELECT * FROM mp_reviews WHERE listing_id = ? ORDER BY created_at DESC').bind(id).all()
+  return c.json({ reviews: results })
+})
+
+app.post('/api/mp/listings/:id/reviews', async (c) => {
+  const userId = getMpSession(c)
+  if (!userId) return c.json({ error: 'Login required' }, 401)
+  const user = await c.env.DB.prepare('SELECT company_name FROM mp_companies WHERE id = ?').bind(userId).first() as any
+  const id = c.req.param('id')
+  const { rating, comment } = await c.req.json() as any
+  if (!rating || rating < 1 || rating > 5) return c.json({ error: 'Rating 1-5 required' }, 400)
+  await c.env.DB.prepare('INSERT INTO mp_reviews (listing_id, company_id, company_name, rating, comment) VALUES (?,?,?,?,?)')
+    .bind(id, userId, user?.company_name||'', rating, comment||'').run()
+  return c.json({ success: true })
+})
+
+// --- Listing Inquiries ---
+app.post('/api/mp/inquiries', async (c) => {
+  const body = await c.req.json() as any
+  if (!body.listing_id || !body.inquirer_name || !body.inquirer_email) return c.json({ error: 'Required fields missing' }, 400)
+  await c.env.DB.prepare(
+    'INSERT INTO mp_inquiries (listing_id, inquirer_name, inquirer_email, inquirer_company, inquirer_phone, inquirer_message) VALUES (?,?,?,?,?,?)'
+  ).bind(body.listing_id, body.inquirer_name, body.inquirer_email, body.inquirer_company||'', body.inquirer_phone||'', body.inquirer_message||'').run()
+  return c.json({ success: true })
+})
+
+// --- File Uploads ---
+app.post('/api/mp/uploads', async (c) => {
+  const userId = getMpSession(c)
+  if (!userId) return c.json({ error: 'Login required' }, 401)
+  const formData = await c.req.formData()
+  const file = formData.get('file') as File
+  if (!file) return c.json({ error: 'No file' }, 400)
+  if (file.size > 5 * 1024 * 1024) return c.json({ error: 'File too large (5MB max)' }, 400)
+  const arrayBuffer = await file.arrayBuffer()
+  const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)))
+  const dataUri = `data:${file.type};base64,${base64}`
+  const result = await c.env.DB.prepare('INSERT INTO mp_uploads (company_id, filename, content_type, size, data) VALUES (?,?,?,?,?)')
+    .bind(userId, file.name, file.type, file.size, dataUri).run()
+  return c.json({ url: `/api/mp/files/${result.meta.last_row_id}`, id: result.meta.last_row_id })
+})
+
+app.get('/api/mp/files/:id', async (c) => {
+  const id = c.req.param('id')
+  const file = await c.env.DB.prepare('SELECT data, content_type FROM mp_uploads WHERE id = ?').bind(id).first() as any
+  if (!file) return c.json({ error: 'Not found' }, 404)
+  if (file.data.startsWith('data:')) {
+    const base64 = file.data.split(',')[1]
+    const binary = atob(base64)
+    const bytes = new Uint8Array(binary.length)
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+    return new Response(bytes, { headers: { 'Content-Type': file.content_type, 'Cache-Control': 'public, max-age=31536000' } })
+  }
+  return c.json({ error: 'Invalid file' }, 500)
+})
+
+// --- Company Dashboard APIs ---
+app.get('/api/mp/dashboard/stats', async (c) => {
+  const userId = getMpSession(c)
+  if (!userId) return c.json({ error: 'Login required' }, 401)
+  const total = await c.env.DB.prepare('SELECT COUNT(*) as c FROM mp_listings WHERE company_id = ?').bind(userId).first() as any
+  const approved = await c.env.DB.prepare("SELECT COUNT(*) as c FROM mp_listings WHERE company_id = ? AND status = 'approved'").bind(userId).first() as any
+  const pending = await c.env.DB.prepare("SELECT COUNT(*) as c FROM mp_listings WHERE company_id = ? AND status = 'pending'").bind(userId).first() as any
+  const views = await c.env.DB.prepare('SELECT COALESCE(SUM(view_count),0) as c FROM mp_listings WHERE company_id = ?').bind(userId).first() as any
+  const inqs = await c.env.DB.prepare('SELECT COUNT(*) as c FROM mp_inquiries WHERE listing_id IN (SELECT id FROM mp_listings WHERE company_id = ?)').bind(userId).first() as any
+  const rating = await c.env.DB.prepare('SELECT AVG(rating) as avg FROM mp_reviews WHERE listing_id IN (SELECT id FROM mp_listings WHERE company_id = ?)').bind(userId).first() as any
+  return c.json({
+    total_listings: total.c, approved: approved.c, pending: pending.c,
+    total_views: views.c, total_inquiries: inqs.c, avg_rating: rating.avg ? Math.round(rating.avg * 10) / 10 : null
+  })
+})
+
+app.get('/api/mp/dashboard/listings', async (c) => {
+  const userId = getMpSession(c)
+  if (!userId) return c.json({ error: 'Login required' }, 401)
+  const { results } = await c.env.DB.prepare(
+    `SELECT l.*, (SELECT COUNT(*) FROM mp_inquiries WHERE listing_id = l.id) as inquiry_count,
+     (SELECT AVG(rating) FROM mp_reviews WHERE listing_id = l.id) as avg_rating
+     FROM mp_listings l WHERE l.company_id = ? ORDER BY l.created_at DESC`
+  ).bind(userId).all()
+  return c.json({ listings: results })
+})
+
+app.get('/api/mp/dashboard/listings/:id', async (c) => {
+  const userId = getMpSession(c)
+  if (!userId) return c.json({ error: 'Login required' }, 401)
+  const listing = await c.env.DB.prepare('SELECT * FROM mp_listings WHERE id = ? AND company_id = ?').bind(c.req.param('id'), userId).first()
+  if (!listing) return c.json({ error: 'Not found' }, 404)
+  return c.json({ listing })
+})
+
+app.put('/api/mp/dashboard/listings/:id', async (c) => {
+  const userId = getMpSession(c)
+  if (!userId) return c.json({ error: 'Login required' }, 401)
+  const id = c.req.param('id')
+  const body = await c.req.json() as any
+  const listing = await c.env.DB.prepare('SELECT status FROM mp_listings WHERE id = ? AND company_id = ?').bind(id, userId).first() as any
+  if (!listing) return c.json({ error: 'Not found' }, 404)
+  const newStatus = listing.status === 'approved' ? 'pending' : listing.status
+  const fields = ['product_name','description','target_customer','pricing_type','pricing_details','tags','target_industry','ai_category','website_url','product_url','sales_contact_name','sales_contact_email']
+  const updates = fields.filter(f => body[f] !== undefined).map(f => `${f} = ?`)
+  if (!updates.length) return c.json({ error: 'No fields to update' }, 400)
+  updates.push('status = ?', 'product_slug = ?', 'updated_at = CURRENT_TIMESTAMP')
+  const values = fields.filter(f => body[f] !== undefined).map(f => body[f])
+  values.push(newStatus, generateSlug(body.product_name || ''))
+  await c.env.DB.prepare(`UPDATE mp_listings SET ${updates.join(', ')} WHERE id = ? AND company_id = ?`).bind(...values, id, userId).run()
+  return c.json({ success: true, new_status: newStatus })
+})
+
+app.get('/api/mp/dashboard/inquiries', async (c) => {
+  const userId = getMpSession(c)
+  if (!userId) return c.json({ error: 'Login required' }, 401)
+  const { results } = await c.env.DB.prepare(
+    `SELECT i.*, l.product_name FROM mp_inquiries i JOIN mp_listings l ON i.listing_id = l.id WHERE l.company_id = ? ORDER BY i.created_at DESC`
+  ).bind(userId).all()
+  return c.json({ inquiries: results })
+})
+
+app.get('/api/mp/dashboard/reviews', async (c) => {
+  const userId = getMpSession(c)
+  if (!userId) return c.json({ error: 'Login required' }, 401)
+  const { results } = await c.env.DB.prepare(
+    `SELECT r.*, l.product_name FROM mp_reviews r JOIN mp_listings l ON r.listing_id = l.id WHERE l.company_id = ? ORDER BY r.created_at DESC`
+  ).bind(userId).all()
+  return c.json({ reviews: results })
+})
+
+app.get('/api/mp/dashboard/profile', async (c) => {
+  const userId = getMpSession(c)
+  if (!userId) return c.json({ error: 'Login required' }, 401)
+  const profile = await c.env.DB.prepare('SELECT id, company_name, email, role, created_at FROM mp_companies WHERE id = ?').bind(userId).first()
+  return c.json({ profile })
+})
+
+app.put('/api/mp/dashboard/profile', async (c) => {
+  const userId = getMpSession(c)
+  if (!userId) return c.json({ error: 'Login required' }, 401)
+  const { company_name } = await c.req.json() as any
+  await c.env.DB.prepare('UPDATE mp_companies SET company_name = ? WHERE id = ?').bind(company_name, userId).run()
+  return c.json({ success: true })
+})
+
+// --- Admin APIs ---
+app.get('/api/mp/admin/stats', async (c) => {
+  const userId = getMpSession(c)
+  if (!userId) return c.json({ error: 'Login required' }, 401)
+  const user = await c.env.DB.prepare('SELECT role FROM mp_companies WHERE id = ?').bind(userId).first() as any
+  if (!user || user.role !== 'admin') return c.json({ error: 'Admin only' }, 403)
+  const total = await c.env.DB.prepare('SELECT COUNT(*) as c FROM mp_listings').first() as any
+  const pending = await c.env.DB.prepare("SELECT COUNT(*) as c FROM mp_listings WHERE status = 'pending'").first() as any
+  const approved = await c.env.DB.prepare("SELECT COUNT(*) as c FROM mp_listings WHERE status = 'approved'").first() as any
+  const rejected = await c.env.DB.prepare("SELECT COUNT(*) as c FROM mp_listings WHERE status = 'rejected'").first() as any
+  const inqCount = await c.env.DB.prepare('SELECT COUNT(*) as c FROM mp_inquiries').first() as any
+  const views = await c.env.DB.prepare('SELECT COALESCE(SUM(view_count),0) as c FROM mp_listings').first() as any
+  const companies = await c.env.DB.prepare('SELECT COUNT(*) as c FROM mp_companies WHERE role != ?').bind('admin').first() as any
+  const recent = await c.env.DB.prepare('SELECT * FROM mp_listings ORDER BY created_at DESC LIMIT 10').all()
+  return c.json({
+    totalListings: total.c, pendingListings: pending.c, approvedListings: approved.c,
+    rejectedListings: rejected.c, inquiryCount: inqCount.c, totalViews: views.c,
+    totalCompanies: companies.c, recentListings: recent.results
+  })
+})
+
+app.get('/api/mp/admin/listings', async (c) => {
+  const userId = getMpSession(c)
+  if (!userId) return c.json({ error: 'Login required' }, 401)
+  const user = await c.env.DB.prepare('SELECT role FROM mp_companies WHERE id = ?').bind(userId).first() as any
+  if (!user || user.role !== 'admin') return c.json({ error: 'Admin only' }, 403)
+  const status = c.req.query('status')
+  let query = 'SELECT * FROM mp_listings'
+  if (status && status !== 'all') query += ` WHERE status = '${status}'`
+  query += ' ORDER BY created_at DESC'
+  const { results } = await c.env.DB.prepare(query).all()
+  return c.json({ listings: results })
+})
+
+app.patch('/api/mp/admin/listings/:id', async (c) => {
+  const userId = getMpSession(c)
+  if (!userId) return c.json({ error: 'Login required' }, 401)
+  const user = await c.env.DB.prepare('SELECT role FROM mp_companies WHERE id = ?').bind(userId).first() as any
+  if (!user || user.role !== 'admin') return c.json({ error: 'Admin only' }, 403)
+  const { status } = await c.req.json() as any
+  await c.env.DB.prepare('UPDATE mp_listings SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').bind(status, c.req.param('id')).run()
+  return c.json({ success: true })
+})
+
+app.post('/api/mp/admin/listings', async (c) => {
+  const userId = getMpSession(c)
+  if (!userId) return c.json({ error: 'Login required' }, 401)
+  const user = await c.env.DB.prepare('SELECT role FROM mp_companies WHERE id = ?').bind(userId).first() as any
+  if (!user || user.role !== 'admin') return c.json({ error: 'Admin only' }, 403)
+  const body = await c.req.json() as any
+  if (!body.company_name || !body.company_email || !body.product_name || !body.description) return c.json({ error: 'Required fields missing' }, 400)
+  // Ensure company exists or create it
+  let company = await c.env.DB.prepare('SELECT id FROM mp_companies WHERE email = ?').bind(body.company_email.trim().toLowerCase()).first() as any
+  if (!company) {
+    const hash = await sha256('changeme123')
+    const res = await c.env.DB.prepare('INSERT INTO mp_companies (company_name, email, password_hash) VALUES (?,?,?)')
+      .bind(body.company_name, body.company_email.trim().toLowerCase(), hash).run()
+    company = { id: res.meta.last_row_id }
+  }
+  const companySlug = generateSlug(body.company_name)
+  const productSlug = generateSlug(body.product_name)
+  const result = await c.env.DB.prepare(
+    `INSERT INTO mp_listings (company_id, company_name, company_slug, product_name, product_slug, description,
+     target_customer, target_industry, ai_category, tags, pricing_type, pricing_details, product_image_url,
+     sales_contact_name, sales_contact_email, sales_contact_phone, innovation, founder_name, website_url, product_url, demo_url, video_url,
+     current_customers, awards_rating, access_info, contact_name, supported_platforms, tech_stack, case_studies,
+     certifications_compliance, support_offering, sla_details, onboarding_process, status)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+  ).bind(
+    company.id, body.company_name, companySlug, body.product_name, productSlug, body.description,
+    body.target_customer||'', body.target_industry||'', body.ai_category||'', body.tags||'',
+    body.pricing_type||'', body.pricing_details||'', body.product_image_url||'',
+    body.sales_contact_name||'', body.sales_contact_email||'', body.sales_contact_phone||'',
+    body.innovation||'', body.founder_name||'', body.website_url||'', body.product_url||'',
+    body.demo_url||'', body.video_url||'', body.current_customers||'', body.awards_rating||0,
+    body.access_info||'', body.contact_name||'', body.supported_platforms||'', body.tech_stack||'',
+    body.case_studies||'', body.certifications_compliance||'', body.support_offering||'',
+    body.sla_details||'', body.onboarding_process||'', body.status||'approved'
+  ).run()
+  return c.json({ success: true, id: result.meta.last_row_id })
+})
+
+app.post('/api/mp/admin/bulk-listings', async (c) => {
+  const userId = getMpSession(c)
+  if (!userId) return c.json({ error: 'Login required' }, 401)
+  const user = await c.env.DB.prepare('SELECT role FROM mp_companies WHERE id = ?').bind(userId).first() as any
+  if (!user || user.role !== 'admin') return c.json({ error: 'Admin only' }, 403)
+  const { listings } = await c.req.json() as any
+  let inserted = 0
+  const errors: string[] = []
+  for (const item of listings) {
+    try {
+      let company = await c.env.DB.prepare('SELECT id FROM mp_companies WHERE email = ?').bind((item.company_email||'').trim().toLowerCase()).first() as any
+      if (!company) {
+        const hash = await sha256('changeme123')
+        const res = await c.env.DB.prepare('INSERT INTO mp_companies (company_name, email, password_hash) VALUES (?,?,?)')
+          .bind(item.company_name, (item.company_email||'').trim().toLowerCase(), hash).run()
+        company = { id: res.meta.last_row_id }
+      }
+      await c.env.DB.prepare(
+        `INSERT INTO mp_listings (company_id, company_name, company_slug, product_name, product_slug, description,
+         target_customer, target_industry, ai_category, tags, pricing_type, pricing_details, product_image_url,
+         sales_contact_name, sales_contact_email, sales_contact_phone, innovation, founder_name, website_url,
+         product_url, demo_url, video_url, current_customers, awards_rating, access_info, contact_name,
+         supported_platforms, tech_stack, case_studies, certifications_compliance, support_offering, sla_details,
+         onboarding_process, status)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+      ).bind(
+        company.id, item.company_name, generateSlug(item.company_name), item.product_name, generateSlug(item.product_name),
+        item.description, item.target_customer||'', item.target_industry||'', item.ai_category||'', item.tags||'',
+        item.pricing_type||'', item.pricing_details||'', item.product_image_url||'',
+        item.sales_contact_name||'', item.sales_contact_email||'', item.sales_contact_phone||'',
+        item.innovation||'', item.founder_name||'', item.website_url||'', item.product_url||'',
+        item.demo_url||'', item.video_url||'', item.current_customers||'', item.awards_rating||0,
+        item.access_info||'', item.contact_name||'', item.supported_platforms||'', item.tech_stack||'',
+        item.case_studies||'', item.certifications_compliance||'', item.support_offering||'',
+        item.sla_details||'', item.onboarding_process||'', item.status||'pending'
+      ).run()
+      inserted++
+    } catch (e: any) { errors.push(e.message) }
+  }
+  return c.json({ inserted, errors })
+})
+
+app.get('/api/mp/admin/inquiries', async (c) => {
+  const userId = getMpSession(c)
+  if (!userId) return c.json({ error: 'Login required' }, 401)
+  const user = await c.env.DB.prepare('SELECT role FROM mp_companies WHERE id = ?').bind(userId).first() as any
+  if (!user || user.role !== 'admin') return c.json({ error: 'Admin only' }, 403)
+  const { results } = await c.env.DB.prepare(
+    `SELECT i.*, l.product_name, l.company_name, l.sales_contact_name, l.sales_contact_email, l.sales_contact_phone
+     FROM mp_inquiries i JOIN mp_listings l ON i.listing_id = l.id ORDER BY i.created_at DESC`
+  ).all()
+  return c.json({ inquiries: results })
+})
+
+// --- Exhibitor → Marketplace Bridge ---
+// Allow an exhibitor (logged into networking app) to create a marketplace account
+app.post('/api/mp/bridge/exhibitor-register', async (c) => {
+  const body = await c.req.json() as any
+  const { attendee_id, exhibitor_id } = body
+  if (!attendee_id) return c.json({ error: 'Attendee ID required' }, 400)
+  const attendee = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(attendee_id).first() as any
+  if (!attendee) return c.json({ error: 'Attendee not found' }, 404)
+  // Check if already has marketplace account
+  let mpCompany = await c.env.DB.prepare('SELECT id FROM mp_companies WHERE email = ?').bind(attendee.email).first() as any
+  if (mpCompany) {
+    // Link exhibitor if not already
+    if (exhibitor_id) await c.env.DB.prepare('UPDATE mp_companies SET exhibitor_id = ?, attendee_id = ? WHERE id = ?').bind(exhibitor_id, attendee_id, mpCompany.id).run()
+    return new Response(JSON.stringify({ success: true, mp_company_id: mpCompany.id, existing: true }), {
+      headers: { 'Content-Type': 'application/json', 'Set-Cookie': `mp_session=${mpCompany.id}; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800` }
+    })
+  }
+  const hash = await sha256('changeme123')
+  const companyName = attendee.organization || attendee.name
+  const result = await c.env.DB.prepare(
+    'INSERT INTO mp_companies (company_name, email, password_hash, exhibitor_id, attendee_id) VALUES (?,?,?,?,?)'
+  ).bind(companyName, attendee.email, hash, exhibitor_id||null, attendee_id).run()
+  return new Response(JSON.stringify({ success: true, mp_company_id: result.meta.last_row_id, existing: false }), {
+    headers: { 'Content-Type': 'application/json', 'Set-Cookie': `mp_session=${result.meta.last_row_id}; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800` }
+  })
+})
+
 // ==================== CONTACT PAGE ====================
 
 app.get('/contact', (c) => {
@@ -2181,6 +2636,9 @@ function sharedNavHTML(activePage: string): string {
       <a href="/contact" class="px-3 py-2 rounded-lg text-xs font-semibold ${activePage === 'contact' ? 'bg-primary-500/20 text-primary-300' : 'text-gray-400 hover:text-white hover:bg-white/5'} transition">
         <i class="fas fa-envelope mr-1"></i>Contact
       </a>
+      <a href="/marketplace" class="px-3 py-2 rounded-lg text-xs font-semibold ${activePage === 'marketplace' ? 'bg-accent-500/20 text-accent-300' : 'text-gray-400 hover:text-white hover:bg-white/5'} transition">
+        <i class="fas fa-store mr-1"></i>AI Marketplace
+      </a>
       <a href="https://bharataiinnovation.com" target="_blank" class="px-3 py-2 rounded-lg text-xs font-semibold text-gray-400 hover:text-white hover:bg-white/5 transition hidden sm:inline-flex">
         <i class="fas fa-external-link-alt mr-1"></i>Main Site
       </a>
@@ -2218,6 +2676,7 @@ function sharedFooterHTML(): string {
           <li><a href="/" class="text-gray-400 hover:text-white transition"><i class="fas fa-home mr-2"></i>Networking App</a></li>
           <li><a href="/register" class="text-gray-400 hover:text-white transition"><i class="fas fa-ticket-alt mr-2"></i>Register</a></li>
           <li><a href="/contact" class="text-gray-400 hover:text-white transition"><i class="fas fa-envelope mr-2"></i>Contact Us</a></li>
+          <li><a href="/marketplace" class="text-gray-400 hover:text-white transition"><i class="fas fa-robot mr-2"></i>AI Marketplace</a></li>
           <li><a href="https://bharataiinnovation.com" target="_blank" class="text-gray-400 hover:text-white transition"><i class="fas fa-globe mr-2"></i>bharataiinnovation.com</a></li>
           <li><a href="https://bharataiinnovation.com/exhibition" target="_blank" class="text-gray-400 hover:text-white transition"><i class="fas fa-store mr-2"></i>Exhibition</a></li>
           <li><a href="https://bharataiinnovation.com/training-workshop" target="_blank" class="text-gray-400 hover:text-white transition"><i class="fas fa-laptop-code mr-2"></i>Workshops</a></li>
@@ -2669,6 +3128,19 @@ async function submitRegistration(e) {
 </html>`
 }
 
+// ==================== AI MARKETPLACE PAGES ====================
+
+app.get('/marketplace', (c) => c.html(marketplacePageHTML()))
+app.get('/marketplace/dashboard', (c) => c.html(marketplaceDashboardHTML()))
+app.get('/marketplace/admin', (c) => c.html(marketplaceAdminHTML()))
+app.get('/marketplace/faq', (c) => c.html(marketplaceFaqHTML()))
+app.get('/marketplace/listing/:companySlug/:productSlug', (c) => {
+  return c.html(marketplaceListingHTML(c.req.param('companySlug'), c.req.param('productSlug')))
+})
+app.get('/marketplace/listing/:id', (c) => {
+  return c.html(marketplaceListingHTML(null, null, c.req.param('id')))
+})
+
 // ==================== ADMIN PAGE ====================
 
 app.get('/admin', (c) => {
@@ -2930,6 +3402,9 @@ function mainPageHTML(): string {
           <button class="nav-btn nav-gated hidden flex-col md:flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-medium text-gray-400 hover:text-white transition-all" data-tab="innovation" onclick="switchTab('innovation')">
             <i class="fas fa-lightbulb text-lg md:text-base"></i><span>Innovation Talks</span>
           </button>
+          <a href="/marketplace" class="nav-btn flex flex-col md:flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-medium text-amber-400/80 hover:text-amber-300 transition-all no-underline">
+            <i class="fas fa-robot text-lg md:text-base"></i><span>AI Market</span>
+          </a>
           <button class="nav-btn nav-gated hidden flex-col md:flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-medium text-gray-400 hover:text-white transition-all relative" data-tab="inbox" onclick="switchTab('inbox')">
             <i class="fas fa-envelope text-lg md:text-base"></i><span>Inbox</span>
             <span id="unread-badge" class="hidden absolute -top-1 right-0 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center badge-pulse">0</span>
