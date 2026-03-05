@@ -1,193 +1,145 @@
-# AGBA Summit 2026 - Event Networking Webapp
+# Bharat AI Innovation 2026 - Networking App
 
 ## Project Overview
-- **Name**: AGBA Awards 2026 (17th Aegis Graham Bell Awards)
-- **Event Date**: 27 February 2026, Hotel Ashoka, New Delhi
-- **Goal**: A full-featured conference, exhibition, and award event networking webapp with admin dashboard
-- **Tech Stack**: Hono + TypeScript + Cloudflare Pages + D1 SQLite + Tailwind CSS + Chart.js
+- **Name**: Bharat AI Innovation 2026 Networking & Registration Platform
+- **Goal**: Full-stack networking app for India's largest AI conference & exhibition
+- **Event**: Bharat AI Innovation Conference & Exhibition 2026
+- **Dates**: 2-3 June 2026
+- **Venue**: World Trade Center, Mumbai, Cuffe Parade
+- **Organizer**: Aegis Knowledge Trust (also organizer of Data Science Congress & Aegis Graham Bell Awards)
 
-## Live URLs
-- **Production**: https://techconnect-summit.pages.dev
-- **Admin Dashboard**: https://techconnect-summit.pages.dev/admin
-- **Admin Password**: `admin123`
+## URLs
+- **Production**: https://bharatai-networking.pages.dev
+- **Admin Panel**: https://bharatai-networking.pages.dev/admin
+- **Main Website**: https://bharataiinnovation.com
+- **Future subdomain**: networking.bharataiinnovation.com (needs DNS CNAME setup)
 
-## Features
+## Features (Completed)
 
-### Public App (/)
+### Attendee Portal
+- Email magic-link authentication (passwordless sign-in)
+- Event dashboard with real-time stats, venue card (WTC Mumbai with Google Maps link)
+- RSVP system (Confirm / Maybe / Decline)
+- Delegate pass generation (canvas-based, downloadable PNG with QR code)
+- Arrival time setting
+- 2-day schedule viewer with Day 1 / Day 2 tabs and track filters
+- Networking module (attendee directory, connection requests, messaging)
+- Exhibition floor with exhibitor profiles
+- Award categories browser
+- Innovation talks showcase
+- Profile management with avatar upload
 
-#### Dashboard (Home)
-- Live event status with real-time stats
-- Announcement live feed with pinned/urgent notifications
-- Upcoming sessions quick view
+### Admin Panel (`/admin`)
+- Password-protected access (default: `admin123` - CHANGE FOR PRODUCTION)
+- Attendee management (CRUD, CSV bulk upload, editable inline fields)
+- Column customization (show/hide, width presets, drag-to-resize, localStorage persistence)
+- Duplicate detection with visual flagging and grouping
+- Column sorting with ascending/descending toggles
+- Email notifications via Elastic Email API v4
+- Bulk notify all attendees / Resend to non-responders
+- Post-ceremony thank-you email with progress bar
+- Innovation Talks management (22 speaker slots, Morning/Afternoon)
+- Session management, exhibitor management
+- Award categories and nominees management
+- Analytics dashboard (RSVP stats, registration trends, engagement tracking)
+- App settings (app URL, Elastic Email API key, sender email/name)
 
-#### Schedule
-- Full event agenda with 12 sessions
-- Session types: Inauguration, Exhibition, Innovation Talk, Awards Ceremony, Panel, Pitch, etc.
+### Pass Types
+| Pass | Price | Includes |
+|------|-------|----------|
+| Visitor | FREE | Exhibition access, keynotes |
+| Delegate | ₹5,000 | Full conference, all tracks, workshops, meals |
+| VIP | ₹14,999 | Everything + gala dinner, VIP lounge, priority seating |
 
-#### Networking Hub
-- Browse 70+ attendees with online/offline status
-- Search/filter by name, company, role
-- Profile cards with unique color avatars (email-hash based)
-- Connection requests, direct messaging, meeting scheduling
-
-#### Exhibition Hall
-- 3 real exhibitor booths (Castler, Quantum AI Global)
-- Visit tracking and product listings
-
-#### AGBA 2026 Awards Categories
-- **33 award categories** across multiple innovation domains
-- Each category shows icon, name, description, and nomination status
-- Categories include: Agriculture, A.I, Automobile, FinTech, Climate Change, Retail, ConsumerTech, Digital Transformation, EV, Insurance, Social Good, Waste Management, Enterprise, Health, GovTech, Manufacturing, Lifescience, HR Tech, L&D, DeepTech, Digital Infra, Defence, IoT, CyberSecurity, Immersive Experience (AR/VR/MR/Meta), Supply Chain, Telecom/5G/6G, and 6 Gen AI sub-categories
-- Nominations opening 28 Feb via bellaward.com/categories
-- Live voting system with progress bars (when nominees added)
-
-#### User Profile Features
-- Photo upload (resize to 256px, store as Base64 in D1)
-- Avatar priority: Uploaded photo > email-hash unique color initials
-- Edit profile: name, company, bio, interests, social links (LinkedIn, Twitter, Website)
-- Engagement score ring (0-100%)
-
-#### Inbox
-- Connection management (accept/decline)
-- Meeting management with status filters
-
----
-
-### Admin Dashboard (/admin)
-
-#### Overview
-- Real-time event statistics with 6 metric cards
-- Interactive charts (Attendees by Role, Top Exhibitors)
-- Recent registrations table
-- Edit event details
-
-#### Attendee Management
-- Full attendee list with search/filter
-- **Add single attendee** (modal with all fields)
-- **Bulk upload** via CSV/Excel
-- Edit attendee profiles (role, badge type, photo upload, bio, interests, social links)
-- Photo upload per attendee (admin can upload via camera icon in edit modal)
-- Send notification emails (individual or bulk via Elastic Email)
-- Delete attendees
-
-#### Session Management
-- Full CRUD for sessions (title, speaker, type, track, room, time)
-
-#### Exhibitor Management
-- Full CRUD for exhibitor booths
-- Auto-creates exhibitor records for exhibitor badge types
-
-#### Awards Management
-- CRUD 33 award categories (create, edit, delete)
-- CRUD nominees (add, edit, delete per category)
-- Toggle voting open/closed per category
-- Declare winners with crown icon
-- Reset votes per category
-
-#### Announcements
-- Full CRUD + Emergency Broadcast feature
-
-#### Analytics & Reports
-- Key metrics, charts, and Top 10 nominees leaderboard
-
-#### Settings
-- **Elastic Email Configuration**: API key, sender email (delegates@bellaward.com), sender display name
-- Key verification and test email sending
-- Setup guide with step-by-step instructions
+## Data Architecture
+- **Database**: Cloudflare D1 (SQLite) - `bharatai-production`
+- **Tables**: events, attendees, sessions, exhibitors, award_categories, nominees, connections, messages, meetings, announcements, app_settings, innovation_talks, engagement_events
+- **Storage**: All data in D1; images via external URLs
 
 ## API Endpoints
 
-### Public APIs
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/events/:id` | Event details |
-| GET | `/api/events/:id/stats` | Event statistics |
-| GET | `/api/events/:id/sessions` | Sessions |
-| GET | `/api/events/:id/attendees` | Attendees |
-| GET | `/api/attendees/:id` | Attendee profile |
-| GET | `/api/attendees/:id/dashboard` | User dashboard |
-| PUT | `/api/attendees/:id/profile` | Update profile |
-| POST | `/api/attendees/:id/avatar` | Upload avatar photo |
-| DELETE | `/api/attendees/:id/avatar` | Remove avatar photo |
-| POST | `/api/events/:id/attendees/register` | Register/sign in |
-| POST | `/api/events/:id/attendees/signin` | Sign in existing |
-| GET | `/api/attendees/:id/connections` | User connections |
-| POST | `/api/connections` | Send connection request |
-| PUT | `/api/connections/:id` | Update connection status |
-| GET | `/api/messages/:userId/:otherUserId` | Conversation |
-| POST | `/api/messages` | Send message |
-| GET | `/api/events/:id/exhibitors` | Exhibitors |
-| POST | `/api/exhibitors/:id/visit` | Record booth visit |
-| GET | `/api/events/:id/awards` | Awards with nominees |
-| POST | `/api/awards/vote` | Cast vote |
-| GET | `/api/awards/votes/:attendeeId` | User votes |
-| GET | `/api/events/:id/announcements` | Announcements |
+### Public
+- `GET /` - Attendee portal SPA
+- `GET /admin` - Admin panel
+- `GET /api/events/:id` - Event details
+- `GET /api/events/:id/sessions` - Sessions (filterable by date, track)
+- `GET /api/events/:id/sessions/tracks` - Available tracks
+- `POST /api/register` - Self-registration
+- `POST /api/auth/magic-link` - Send magic link email
+- `GET /api/auth/verify` - Verify magic link token
+- `POST /api/attendees/:id/rsvp` - Submit RSVP
 
-### Admin APIs
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| PUT | `/api/admin/events/:id` | Update event |
-| POST | `/api/admin/attendees` | Add single attendee |
-| POST | `/api/admin/attendees/bulk` | Bulk upload attendees (CSV/Excel) |
-| PUT | `/api/admin/attendees/:id` | Update attendee |
-| DELETE | `/api/admin/attendees/:id` | Delete attendee |
-| POST | `/api/admin/attendees/:id/notify` | Send notification email |
-| POST | `/api/admin/attendees/notify-all` | Notify all attendees |
-| POST | `/api/admin/sessions` | Create session |
-| PUT | `/api/admin/sessions/:id` | Update session |
-| DELETE | `/api/admin/sessions/:id` | Delete session |
-| POST | `/api/admin/exhibitors` | Create exhibitor |
-| PUT | `/api/admin/exhibitors/:id` | Update exhibitor |
-| DELETE | `/api/admin/exhibitors/:id` | Delete exhibitor |
-| POST | `/api/admin/award-categories` | Create award category |
-| PUT | `/api/admin/award-categories/:id` | Update category |
-| DELETE | `/api/admin/award-categories/:id` | Delete category |
-| POST | `/api/admin/nominees` | Add nominee |
-| PUT | `/api/admin/nominees/:id` | Update nominee |
-| DELETE | `/api/admin/nominees/:id` | Delete nominee |
-| POST | `/api/admin/awards/:categoryId/reset-votes` | Reset votes |
-| POST | `/api/admin/announcements` | Create announcement |
-| PUT | `/api/admin/announcements/:id` | Update announcement |
-| DELETE | `/api/admin/announcements/:id` | Delete announcement |
-| POST | `/api/admin/events/:id/broadcast` | Emergency broadcast |
-| GET | `/api/admin/events/:id/analytics` | Full analytics data |
-| GET | `/api/admin/settings` | Get app settings |
-| PUT | `/api/admin/settings` | Update app settings |
-| POST | `/api/admin/settings/verify-email` | Verify Elastic Email key |
-| POST | `/api/admin/settings/test-email` | Send test email |
+### Admin (password-protected)
+- `GET/POST /api/admin/events/:id/attendees` - Manage attendees
+- `POST /api/admin/attendees/bulk-upload` - CSV bulk upload
+- `POST /api/admin/attendees/:id/notify` - Send notification email
+- `POST /api/admin/attendees/notify-all` - Bulk notify
+- `POST /api/admin/attendees/resend-non-responders` - Resend to non-RSVP
+- `POST /api/admin/attendees/thankyou-list` - Get thank-you email list
+- `POST /api/admin/attendees/:id/send-thankyou` - Send thank-you email
+- `GET /api/admin/events/:id/attendees/duplicates` - Detect duplicates
+- `GET/PUT /api/admin/settings` - App settings
 
-## Data Architecture
+## Tech Stack
+- **Backend**: Hono (TypeScript) on Cloudflare Workers
+- **Frontend**: Vanilla JS + Tailwind CSS (CDN)
 - **Database**: Cloudflare D1 (SQLite)
-- **Production DB**: `techconnect-production` (ID: a73e8556-591a-4bc4-978d-8fff8ec21094)
-- **Tables**: events, sessions, attendees, connections, messages, meetings, exhibitors, booth_visits, award_categories, award_nominees, award_votes, announcements, app_settings
-- **Avatar Storage**: Base64 images stored in `avatar_url` column of attendees table
-- **13 indexed tables** with foreign key relationships
+- **Hosting**: Cloudflare Pages
+- **Email**: Elastic Email API v4
+- **Auth**: Email magic link (passwordless)
 
-## User Guide
+## Schedule (2-Day Event)
 
-### Public Users
-1. Visit https://techconnect-summit.pages.dev and register with name + email
-2. Browse event dashboard, schedule, and exhibition hall
-3. Connect with other attendees and send messages
-4. View AGBA 2026 Award Categories (nominations opening 28 Feb)
-5. Upload your photo via Edit Profile for a personalized avatar
-6. Manage connections and meetings in the Inbox
-7. View engagement score in the "Me" tab
+### Day 1 - 2 June 2026
+- 08:00-09:00 Registration & Welcome Coffee
+- 09:00-10:00 Opening Ceremony & Inaugural Keynote
+- 10:00-11:00 India's AI Superpower Journey
+- 10:00-18:00 AI Exhibition & Innovation Stage
+- 11:30-13:00 Generative AI Panel
+- 14:00-15:30 Parallel Tracks (Healthcare AI, FinTech AI, AgriTech AI, Manufacturing AI)
+- 15:30-17:00 AI Workshops & AI for Governance
+- 18:30-21:00 Gala Networking Evening
 
-### Admins
-1. Visit https://techconnect-summit.pages.dev/admin and enter password: `admin123`
-2. Overview: See real-time stats, charts, and recent registrations
-3. Add attendees individually or via bulk CSV upload
-4. Upload attendee photos via Edit modal (camera icon)
-5. Configure email settings in Settings tab (Elastic Email API key)
-6. Send notification emails to attendees (individual or bulk)
-7. Manage 33 award categories and nominees
-8. Use Emergency Broadcast for urgent communications
-9. View Analytics for deep engagement metrics
+### Day 2 - 3 June 2026
+- 09:00-10:00 Day 2 Opening Keynote
+- 10:00-11:30 AI Policy & Governance Roundtable
+- 12:00-14:00 Research Paper Presentations
+- 14:00-15:00 Lunch & Startup Pitches
+- 15:00-16:30 Parallel Tracks (AI Ethics, Education AI, Mobility AI)
+- 15:00-17:00 GenAI & Agentic AI Workshop
+- 17:00-18:30 Closing Keynote & Valedictory
+- 19:00-22:00 Bharat AI Innovation Gala Dinner
 
 ## Deployment
 - **Platform**: Cloudflare Pages
-- **Status**: Deployed
-- **Production URL**: https://techconnect-summit.pages.dev
-- **Project Name**: techconnect-summit
-- **Last Updated**: 2026-02-20
+- **Project**: `bharatai-networking`
+- **D1 Database**: `bharatai-production` (ID: c660e94a-ccd1-4819-a202-7814eec6404d)
+- **Status**: Active
+- **Last Updated**: 2026-03-05
+
+## Setup for Production
+
+### DNS Setup (for subdomain)
+Add CNAME record in Cloudflare DNS:
+```
+networking.bharataiinnovation.com -> bharatai-networking.pages.dev
+```
+
+### Change Admin Password
+In `src/index.tsx`, find `ADMIN_PASS = 'admin123'` and change to a strong password.
+
+### Configure Elastic Email
+1. Go to `/admin` > Settings tab
+2. Enter your Elastic Email API key
+3. Set sender email (verify in Elastic Email dashboard)
+4. Set sender name: "Bharat AI Innovation"
+5. Set app URL: `https://networking.bharataiinnovation.com`
+
+### Local Development
+```bash
+npm install
+npm run build
+npm run db:reset  # Reset local D1 + apply migrations + seed
+pm2 start ecosystem.config.cjs
+# Visit http://localhost:3000
+```
