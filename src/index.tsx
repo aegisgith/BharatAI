@@ -127,9 +127,10 @@ app.post('/api/events/:id/attendees/register', async (c) => {
 const PASS_TYPE_MAP: Record<string, string> = {
   'delegate': 'Delegate Pass',
   'vip': 'VIP Pass',
-  'startup': 'Startup Pass',
+  'startup': 'Visitor Pass',
   'academic': 'Academic Pass',
   'visitor': 'Visitor Pass',
+  'media': 'Media Pass',
 }
 
 app.post('/api/external/register', async (c) => {
@@ -1120,7 +1121,7 @@ app.post('/api/admin/attendees/:id/notify', async (c) => {
     <div style="background:white;border-radius:16px;padding:30px;margin-top:16px;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
       <h2 style="margin:0 0 16px;color:#1a1a2e;font-size:22px;">Dear ${attendee.name},</h2>
       <p style="color:#555;line-height:1.6;margin:0 0 16px;">
-        Your account for the <strong>Bharat AI Innovation 2026</strong> has been created. You are now registered as an official <strong>Delegate</strong> for the event. On 27 February, we gather to recognise innovators and their innovations that are creating meaningful impact in our lives, our society, our nation, and the business ecosystem.
+        Your account for the <strong>Bharat AI Innovation 2026</strong> has been created. You are now registered as an official <strong>Delegate</strong> for the event. On 2-3 June 2026, we gather to recognise innovators and their innovations that are creating meaningful impact in our lives, our society, our nation, and the business ecosystem.
       </p>
       <div style="background:#f8f9fa;border-left:4px solid #1a1a2e;border-radius:0 8px 8px 0;padding:16px 20px;margin:0 0 20px;">
         <p style="color:#1a1a2e;font-weight:bold;margin:0 0 6px;font-size:15px;">Event Details</p>
@@ -1150,7 +1151,7 @@ app.post('/api/admin/attendees/:id/notify', async (c) => {
       <div style="background:linear-gradient(135deg,#fef9e7,#fdf2d6);border:1px solid #f0d48a;border-radius:12px;padding:24px;margin:20px 0;text-align:center;">
         <h3 style="margin:0 0 6px;color:#1a1a2e;font-size:18px;">📋 Confirm Your Attendance</h3>
         <p style="color:#555;line-height:1.6;margin:0 0 18px;font-size:14px;">
-          Will you be attending the awards on <strong>2-3 June 2026</strong>?
+          Will you be attending the event on <strong>2-3 June 2026</strong>?
         </p>
         <table cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto;">
           <tr>
@@ -1342,7 +1343,7 @@ app.post('/api/admin/attendees/:id/send-thankyou', async (c) => {
             <td style="padding:8px 12px;vertical-align:top;">
               <div style="background-color:#ecfdf5;border:1px solid #86efac;border-radius:10px;padding:16px;text-align:center;">
                 <div style="font-size:28px;margin-bottom:6px;">&#127942;</div>
-                <div style="font-weight:bold;color:#166534;font-size:14px;">AI Award Winners</div>
+                <div style="font-weight:bold;color:#166534;font-size:14px;">AI Innovation Leaders</div>
                 <div style="color:#555;font-size:12px;margin-top:4px;">Outstanding innovation &amp; impact</div>
               </div>
             </td>
@@ -2050,7 +2051,7 @@ function mainPageHTML(): string {
           <i class="fas fa-times"></i>
         </button>
         <div class="text-center mb-6">
-          <img src="https://bharatai.blob.core.windows.net/aidata/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI Awards" class="w-20 h-20 mx-auto mb-3 rounded-xl object-contain">
+          <img src="https://bharatai.blob.core.windows.net/aidata/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="w-20 h-20 mx-auto mb-3 rounded-xl object-contain">
           <h2 class="text-2xl font-bold gradient-text">Bharat AI Innovation 2026</h2>
           <p class="text-gray-400 mt-1 text-sm">Sign in to access networking, inbox & your profile</p>
         </div>
@@ -2193,15 +2194,7 @@ function mainPageHTML(): string {
           <button class="nav-btn flex flex-col md:flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-medium text-gray-400 hover:text-white transition-all" data-tab="exhibition" onclick="switchTab('exhibition')">
             <i class="fas fa-store text-lg md:text-base"></i><span>Expo</span>
           </button>
-          <button class="nav-btn flex flex-col md:flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-medium text-gray-400 hover:text-white transition-all" data-tab="awards" onclick="switchTab('awards')">
-            <i class="fas fa-trophy text-lg md:text-base"></i><span>Awards</span>
-          </button>
-          <button class="nav-btn hidden md:flex flex-col md:flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-medium text-gray-400 hover:text-white transition-all" data-tab="agba-categories" onclick="switchTab('agba-categories')">
-            <i class="fas fa-list-alt text-lg md:text-base"></i><span>BHAI 2026 Award Categories</span>
-          </button>
-          <button class="nav-btn hidden md:flex flex-col md:flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-medium text-gray-400 hover:text-white transition-all" data-tab="agba-jury" onclick="switchTab('agba-jury')">
-            <i class="fas fa-gavel text-lg md:text-base"></i><span>17th Jury Schedule</span>
-          </button>
+          <!-- Awards tabs hidden - no awards for this event -->
           <button class="nav-btn hidden md:flex flex-col md:flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-medium text-gray-400 hover:text-white transition-all" data-tab="startup-pitch" onclick="switchTab('startup-pitch')">
             <i class="fas fa-rocket text-lg md:text-base"></i><span>Startup Pitch</span>
           </button>
@@ -2353,7 +2346,7 @@ function mainPageHTML(): string {
             </div>
 
             <!-- Pass Cards Grid -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
               <!-- Delegate Pass -->
               <div class="relative glass rounded-2xl p-5 border border-primary-500/30 hover:border-primary-400/50 transition-all group">
                 <div class="absolute -top-2.5 right-3 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-gradient-to-r from-amber-500 to-orange-500 text-white">MOST POPULAR</div>
@@ -2364,7 +2357,7 @@ function mainPageHTML(): string {
                 <ul class="mt-3 space-y-1.5 text-xs text-gray-300">
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Full 2-day conference access</li>
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Exhibition floor pass</li>
-                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Awards ceremony access</li>
+                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Conference materials & kit</li>
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Networking events</li>
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Digital recordings</li>
                 </ul>
@@ -2385,20 +2378,6 @@ function mainPageHTML(): string {
                 </ul>
               </div>
 
-              <!-- Startup Pass -->
-              <div class="glass rounded-2xl p-5 border border-emerald-500/30 hover:border-emerald-400/50 transition-all group">
-                <div class="text-2xl mb-2">🚀</div>
-                <h3 class="font-bold text-base text-emerald-300">Startup Pass</h3>
-                <div class="text-xl font-black text-white mt-1">₹2,999<span class="text-xs font-normal text-gray-400">/person</span></div>
-                <div class="text-[10px] font-semibold text-emerald-400 mt-0.5">For early-stage startups</div>
-                <ul class="mt-3 space-y-1.5 text-xs text-gray-300">
-                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Conference access (Day 2)</li>
-                  <li><i class="fas fa-check text-emerald-400 mr-1.5 text-[10px]"></i>Startup Showcase pitch slot</li>
-                  <li><i class="fas fa-check text-emerald-400 mr-1.5 text-[10px]"></i>Investor meeting slots</li>
-                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Exhibition pass</li>
-                </ul>
-              </div>
-
               <!-- Academic Pass -->
               <div class="glass rounded-2xl p-5 border border-violet-500/30 hover:border-violet-400/50 transition-all group">
                 <div class="text-2xl mb-2">🎓</div>
@@ -2410,6 +2389,35 @@ function mainPageHTML(): string {
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Exhibition floor pass</li>
                   <li><i class="fas fa-check text-violet-400 mr-1.5 text-[10px]"></i>Hackathon participation</li>
                   <li><i class="fas fa-check text-violet-400 mr-1.5 text-[10px]"></i>Student networking zone</li>
+                </ul>
+              </div>
+
+              <!-- Media Pass -->
+              <div class="glass rounded-2xl p-5 border border-rose-500/30 hover:border-rose-400/50 transition-all group">
+                <div class="text-2xl mb-2">📰</div>
+                <h3 class="font-bold text-base text-rose-300">Media Pass</h3>
+                <div class="text-xl font-black text-white mt-1">By Invite</div>
+                <div class="text-[10px] font-semibold text-rose-400 mt-0.5">Journalists & media partners</div>
+                <ul class="mt-3 space-y-1.5 text-xs text-gray-300">
+                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Full conference access</li>
+                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Exhibition floor pass</li>
+                  <li><i class="fas fa-check text-rose-400 mr-1.5 text-[10px]"></i>Press/media area access</li>
+                  <li><i class="fas fa-check text-rose-400 mr-1.5 text-[10px]"></i>Interview & recording rights</li>
+                  <li><i class="fas fa-check text-rose-400 mr-1.5 text-[10px]"></i>Speaker meet & greet</li>
+                </ul>
+              </div>
+
+              <!-- Visitor Pass (FREE) -->
+              <div class="glass rounded-2xl p-5 border border-green-500/30 hover:border-green-400/50 transition-all group">
+                <div class="text-2xl mb-2">🎫</div>
+                <h3 class="font-bold text-base text-green-300">Visitor Pass</h3>
+                <div class="text-xl font-black text-white mt-1">FREE</div>
+                <div class="text-[10px] font-semibold text-green-400 mt-0.5">Open to all</div>
+                <ul class="mt-3 space-y-1.5 text-xs text-gray-300">
+                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Exhibition floor access</li>
+                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Keynote sessions</li>
+                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Networking lounge</li>
+                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>AI live demos</li>
                 </ul>
               </div>
             </div>
@@ -2442,24 +2450,23 @@ function mainPageHTML(): string {
                       <th class="py-3 px-2 text-center text-green-400 font-bold text-xs">Visitor<br><span class="font-normal text-green-300">FREE</span></th>
                       <th class="py-3 px-2 text-center text-primary-400 font-bold text-xs">Delegate<br><span class="font-normal text-primary-300">₹4,999</span></th>
                       <th class="py-3 px-2 text-center text-amber-400 font-bold text-xs">VIP<br><span class="font-normal text-amber-300">₹14,999</span></th>
-                      <th class="py-3 px-2 text-center text-emerald-400 font-bold text-xs">Startup<br><span class="font-normal text-emerald-300">₹2,999</span></th>
                       <th class="py-3 px-2 text-center text-violet-400 font-bold text-xs">Academic<br><span class="font-normal text-violet-300">₹999</span></th>
+                      <th class="py-3 px-2 text-center text-rose-400 font-bold text-xs">Media<br><span class="font-normal text-rose-300">By Invite</span></th>
                     </tr>
                   </thead>
                   <tbody class="divide-y divide-white/5 text-xs">
                     <tr><td class="py-2 px-2 text-gray-300">Exhibition Access</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
-                    <tr><td class="py-2 px-2 text-gray-300">Conference Sessions</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-amber-300">Day 2</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
-                    <tr><td class="py-2 px-2 text-gray-300">Networking Lounge</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
+                    <tr><td class="py-2 px-2 text-gray-300">Conference Sessions</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
+                    <tr><td class="py-2 px-2 text-gray-300">Networking Lounge</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
                     <tr><td class="py-2 px-2 text-gray-300">Lunch & Refreshments</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
-                    <tr><td class="py-2 px-2 text-gray-300">Awards Ceremony</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td></tr>
-                    <tr><td class="py-2 px-2 text-gray-300">AI Workshops (Hands-on)</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
+                    <tr><td class="py-2 px-2 text-gray-300">AI Workshops (Hands-on)</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-red-400">⛔</td></tr>
                     <tr><td class="py-2 px-2 text-gray-300">VIP Lounge & Priority Seating</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td></tr>
-                    <tr><td class="py-2 px-2 text-gray-300">Speaker Meet & Greet</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td></tr>
+                    <tr><td class="py-2 px-2 text-gray-300">Speaker Meet & Greet</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
                     <tr><td class="py-2 px-2 text-gray-300">Exclusive VIP Dinner</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td></tr>
-                    <tr><td class="py-2 px-2 text-gray-300">Startup Showcase Pitch</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-red-400">⛔</td></tr>
-                    <tr><td class="py-2 px-2 text-gray-300">Investor Meeting Slots</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-red-400">⛔</td></tr>
-                    <tr><td class="py-2 px-2 text-gray-300">Hackathon Participation</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
-                    <tr><td class="py-2 px-2 text-gray-300">Digital Recordings</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td></tr>
+                    <tr><td class="py-2 px-2 text-gray-300">Press/Media Area Access</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
+                    <tr><td class="py-2 px-2 text-gray-300">Interview & Recording Rights</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
+                    <tr><td class="py-2 px-2 text-gray-300">Hackathon Participation</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-red-400">⛔</td></tr>
+                    <tr><td class="py-2 px-2 text-gray-300">Digital Recordings</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
                   </tbody>
                 </table>
               </div>
@@ -2486,7 +2493,7 @@ function mainPageHTML(): string {
           </div>
           <!-- Upcoming Sessions -->
           <div>
-            <h2 class="text-xl font-bold mb-4"><i class="fas fa-calendar-day text-primary-400 mr-2"></i>Event Schedule (27 Feb)</h2>
+            <h2 class="text-xl font-bold mb-4"><i class="fas fa-calendar-day text-primary-400 mr-2"></i>Event Schedule</h2>
             <div id="upcoming-sessions" class="space-y-3"></div>
           </div>
         </div>
@@ -2525,9 +2532,9 @@ function mainPageHTML(): string {
               <option value="Jury">Jury</option>
               <option value="Delegate Pass">Delegate Pass</option>
               <option value="VIP Pass">VIP Pass</option>
-              <option value="Startup Pass">Startup Pass</option>
               <option value="Academic Pass">Academic Pass</option>
               <option value="Visitor Pass">Visitor Pass</option>
+              <option value="Media Pass">Media Pass</option>
               <option value="Finalist">Finalists</option>
             </select>
           </div>
@@ -3043,8 +3050,8 @@ function mainPageHTML(): string {
                 <div id="my-booths-list" class="space-y-3"></div>
               </div>
               <div>
-                <h3 class="text-lg font-bold mb-3"><i class="fas fa-trophy text-purple-400 mr-2"></i>Award Categories</h3>
-                <div class="glass rounded-xl p-6 text-center text-gray-500"><i class="fas fa-trophy text-2xl mb-2 block opacity-30"></i><p class="text-sm">Browse Bharat AI Innovation 2026 Award Categories</p><button onclick="switchTab('awards')" class="mt-2 text-primary-400 text-xs hover:underline font-medium">View Categories &rarr;</button></div>
+                <h3 class="text-lg font-bold mb-3"><i class="fas fa-rocket text-purple-400 mr-2"></i>Startup Pitch</h3>
+                <div class="glass rounded-xl p-6 text-center text-gray-500"><i class="fas fa-rocket text-2xl mb-2 block opacity-30"></i><p class="text-sm">Watch top AI startups pitch to investors</p><button onclick="switchTab('startup-pitch')" class="mt-2 text-primary-400 text-xs hover:underline font-medium">View Pitches &rarr;</button></div>
               </div>
             </div>
           </div>
@@ -5218,11 +5225,11 @@ function mainPageHTML(): string {
               </div>
               <div class="text-xs font-medium">Explore Expo</div>
             </button>
-            <button onclick="switchTab('awards')" class="glass rounded-xl p-4 text-center card-hover quick-action-btn group">
+            <button onclick="switchTab('startup-pitch')" class="glass rounded-xl p-4 text-center card-hover quick-action-btn group">
               <div class="w-10 h-10 rounded-full bg-purple-500/20 flex items-center justify-center mx-auto mb-2 group-hover:bg-purple-500/30 transition">
-                <i class="fas fa-trophy text-purple-400"></i>
+                <i class="fas fa-rocket text-purple-400"></i>
               </div>
-              <div class="text-xs font-medium">Awards</div>
+              <div class="text-xs font-medium">Startups</div>
             </button>
           </div>
         \`;
@@ -5690,7 +5697,7 @@ function mainPageHTML(): string {
       const headingText = currentVal ? 'Update Your Arrival Time' : 'Enter Your Arrival Time at WTC Mumbai';
       const descText = currentVal 
         ? 'You can change your expected arrival time below.'
-        : 'To help us plan the event logistics, kindly share your expected arrival time at the award venue.';
+        : 'To help us plan the event logistics, kindly share your expected arrival time at the event venue.';
 
       // Create overlay
       const overlay = document.createElement('div');
@@ -6592,7 +6599,7 @@ function adminPageHTML(): string {
             </p>
             <ul class="text-xs text-gray-400 space-y-1.5 mb-4">
               <li><i class="fas fa-check text-green-400 mr-2"></i>Thank attendees for their presence &amp; support</li>
-              <li><i class="fas fa-trophy text-amber-400 mr-2"></i>Congratulate <strong>AI Award Winners</strong>, <strong>Finalists</strong>, <strong>Innovation Star</strong> certified &amp; <strong>NTH Winners</strong></li>
+              <li><i class="fas fa-star text-amber-400 mr-2"></i>Highlight <strong>Key Speakers</strong>, <strong>Innovation Leaders</strong> &amp; <strong>Startup Finalists</strong></li>
               <li><i class="fas fa-camera text-blue-400 mr-2"></i>Share the <strong>Google Drive link</strong> to event photos</li>
               <li><i class="fas fa-link text-purple-400 mr-2"></i>Encourage continued use of the networking app</li>
             </ul>
@@ -7684,7 +7691,7 @@ function adminPageHTML(): string {
                 </select></div>
               <div><label class="text-xs text-gray-400 mb-1 block">Badge</label>
                 <select id="ea-badge" class="w-full px-3 py-2 rounded-lg text-sm">
-                  \${['Delegate Pass','VIP Pass','Startup Pass','Academic Pass','Visitor Pass','Organiser','VIP Guest','Exhibitor','Delegate','Exhibition Speaker','Jury','Media','Support Staff','Investor','Felicitation Delegate'].map(b=>'<option value="'+b+'" '+(a.badge_type===b?'selected':'')+'>'+b+'</option>').join('')}
+                  \${['Delegate Pass','VIP Pass','Academic Pass','Visitor Pass','Media Pass','Organiser','VIP Guest','Exhibitor','Delegate','Exhibition Speaker','Jury','Media','Support Staff','Investor','Felicitation Delegate'].map(b=>'<option value="'+b+'" '+(a.badge_type===b?'selected':'')+'>'+b+'</option>').join('')}
                 </select></div>
               <div><label class="text-xs text-gray-400 mb-1 block">Lunch</label>
                 <select id="ea-lunch" class="w-full px-3 py-2 rounded-lg text-sm">
@@ -7972,7 +7979,7 @@ function adminPageHTML(): string {
         if (!confirm(\`Resend notification email to \${result.count} attendee(s) who haven't responded to RSVP?\`)) return;
         let sent = 0, failed = 0;
         toast(\`Resending to \${result.count} non-responders...\`);
-        const reminderSubject = 'Reminder: Confirm your attendance — BHAI Awards, 27 Feb, WTC Mumbai';
+        const reminderSubject = 'Reminder: Confirm your attendance — Bharat AI Innovation 2026, 2-3 Jun, WTC Mumbai';
         for (const a of result.attendees) {
           try {
             await api.post('/api/admin/attendees/'+a.id+'/notify', { subject: reminderSubject });
@@ -8047,28 +8054,28 @@ function adminPageHTML(): string {
               It was a memorable evening celebrating innovation, technology, and the exceptional contributions of individuals and organizations driving meaningful change across industries and society.
             </p>
             <div style="background:linear-gradient(135deg,#fef9e7,#fdf2d6);border:1px solid #f0d48a;border-radius:12px;padding:20px;margin:16px 0;">
-              <h4 style="margin:0 0 12px;text-align:center;color:#92400e;font-size:16px;">&#127942; Congratulations!</h4>
+              <h4 style="margin:0 0 12px;text-align:center;color:#92400e;font-size:16px;">&#127942; Highlights!</h4>
               <p style="color:#555;line-height:1.6;font-size:13px;margin:0 0 12px;text-align:center;">We extend our heartfelt congratulations to all the:</p>
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
                 <div style="background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.3);border-radius:8px;padding:12px;text-align:center;">
                   <div style="font-size:24px;">&#127942;</div>
-                  <div style="font-weight:bold;font-size:13px;color:#166534;">AI Award Winners</div>
+                  <div style="font-weight:bold;font-size:13px;color:#166534;">Innovation Leaders</div>
                   <div style="color:#555;font-size:11px;margin-top:3px;">Outstanding innovation & impact</div>
                 </div>
                 <div style="background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.3);border-radius:8px;padding:12px;text-align:center;">
                   <div style="font-size:24px;">&#11088;</div>
-                  <div style="font-weight:bold;font-size:13px;color:#3730a3;">Finalists</div>
+                  <div style="font-weight:bold;font-size:13px;color:#3730a3;">Startup Finalists</div>
                   <div style="color:#555;font-size:11px;margin-top:3px;">Exceptional shortlisted entries</div>
                 </div>
                 <div style="background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.3);border-radius:8px;padding:12px;text-align:center;">
                   <div style="font-size:24px;">&#128161;</div>
-                  <div style="font-weight:bold;font-size:13px;color:#92400e;">AI Innovation Star</div>
-                  <div style="color:#555;font-size:11px;margin-top:3px;">Certified innovators shaping the future</div>
+                  <div style="font-weight:bold;font-size:13px;color:#92400e;">Key Speakers</div>
+                  <div style="color:#555;font-size:11px;margin-top:3px;">Thought leaders shaping the future</div>
                 </div>
                 <div style="background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:12px;text-align:center;">
                   <div style="font-size:24px;">&#128640;</div>
-                  <div style="font-weight:bold;font-size:13px;color:#991b1b;">NTH Winners</div>
-                  <div style="color:#555;font-size:11px;margin-top:3px;">Next-gen tech heroes leading change</div>
+                  <div style="font-weight:bold;font-size:13px;color:#991b1b;">Exhibitors & Partners</div>
+                  <div style="color:#555;font-size:11px;margin-top:3px;">Showcasing next-gen AI solutions</div>
                 </div>
               </div>
               <p style="color:#555;font-size:12px;text-align:center;margin:12px 0 0;">Your achievements inspire the entire innovation ecosystem!</p>
