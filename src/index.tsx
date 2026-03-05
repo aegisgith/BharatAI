@@ -2030,6 +2030,83 @@ app.delete('/api/admin/startup-investors/:id', async (c) => {
   return c.json({ success: true })
 })
 
+// ==================== INQUIRY APIs ====================
+
+// Public: Submit an inquiry
+app.post('/api/inquiries', async (c) => {
+  const body = await c.req.json() as any
+  const { inquiry_type, name, email, phone, organization, subject, message, metadata } = body
+
+  if (!name || !email) return c.json({ error: 'Name and email are required' }, 400)
+  if (!inquiry_type) return c.json({ error: 'Inquiry type is required' }, 400)
+
+  const validTypes = ['general', 'exhibition', 'sponsorship', 'speaking', 'media', 'group_registration', 'other']
+  if (!validTypes.includes(inquiry_type)) return c.json({ error: 'Invalid inquiry type' }, 400)
+
+  const result = await c.env.DB.prepare(
+    `INSERT INTO inquiries (event_id, inquiry_type, name, email, phone, organization, subject, message, metadata)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).bind(
+    1, inquiry_type, name.trim(), email.trim().toLowerCase(),
+    phone || '', organization || '', subject || '', message || '',
+    JSON.stringify(metadata || {})
+  ).run()
+
+  return c.json({ success: true, id: result.meta.last_row_id, message: 'Inquiry submitted successfully. We will get back to you soon!' }, 201)
+})
+
+// Admin: Get all inquiries with optional filters
+app.get('/api/admin/inquiries', async (c) => {
+  const type = c.req.query('type')
+  const status = c.req.query('status')
+
+  let query = 'SELECT * FROM inquiries WHERE event_id = 1'
+  const params: any[] = []
+
+  if (type) {
+    query += ' AND inquiry_type = ?'
+    params.push(type)
+  }
+  if (status) {
+    query += ' AND status = ?'
+    params.push(status)
+  }
+  query += ' ORDER BY created_at DESC'
+
+  const { results } = await c.env.DB.prepare(query).bind(...params).all()
+
+  // Also get counts by type
+  const { results: typeCounts } = await c.env.DB.prepare(
+    'SELECT inquiry_type, COUNT(*) as count FROM inquiries WHERE event_id = 1 GROUP BY inquiry_type'
+  ).all()
+  const { results: statusCounts } = await c.env.DB.prepare(
+    'SELECT status, COUNT(*) as count FROM inquiries WHERE event_id = 1 GROUP BY status'
+  ).all()
+
+  return c.json({ inquiries: results, typeCounts, statusCounts })
+})
+
+// Admin: Update inquiry status/notes
+app.patch('/api/admin/inquiries/:id', async (c) => {
+  const id = c.req.param('id')
+  const body = await c.req.json() as any
+  const { status, admin_notes } = body
+  const updates: string[] = ['updated_at = datetime("now")']
+  const values: any[] = []
+  if (status) { updates.push('status = ?'); values.push(status) }
+  if (admin_notes !== undefined) { updates.push('admin_notes = ?'); values.push(admin_notes) }
+  values.push(id)
+  await c.env.DB.prepare(`UPDATE inquiries SET ${updates.join(', ')} WHERE id = ?`).bind(...values).run()
+  return c.json({ success: true })
+})
+
+// Admin: Delete an inquiry
+app.delete('/api/admin/inquiries/:id', async (c) => {
+  const id = c.req.param('id')
+  await c.env.DB.prepare('DELETE FROM inquiries WHERE id = ?').bind(id).run()
+  return c.json({ success: true })
+})
+
 // ==================== ADMIN PAGE ====================
 
 app.get('/admin', (c) => {
@@ -2101,6 +2178,8 @@ function mainPageHTML(): string {
     .chat-bubble-received { background: rgba(255,255,255,0.08); border-radius: 18px 18px 18px 4px; }
     .shimmer { background: linear-gradient(90deg, rgba(255,255,255,0.03) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.03) 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; }
     @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+    .animate-pulse-slow { animation: pulse-slow 2s ease-in-out infinite; }
+    @keyframes pulse-slow { 0%, 100% { opacity: 1; } 50% { opacity: 0.8; } }
     .engagement-ring { position: relative; width: 120px; height: 120px; }
     .engagement-ring svg { transform: rotate(-90deg); }
     .engagement-ring circle { fill: none; stroke-width: 8; stroke-linecap: round; }
@@ -2562,12 +2641,157 @@ function mainPageHTML(): string {
 
             <!-- CTA Buttons -->
             <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
-              <a href="https://bharataiinnovation.com/register" target="_blank" class="px-6 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-primary-600 to-blue-600 hover:from-primary-500 hover:to-blue-500 transition-all text-sm shadow-lg shadow-primary-500/20" id="register-visitor-btn">
-                <i class="fas fa-ticket-alt mr-2"></i>Register Now
+              <button onclick="openQuickVisitorReg()" class="px-6 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 transition-all text-sm shadow-lg shadow-green-500/20 animate-pulse-slow">
+                <i class="fas fa-ticket-alt mr-2"></i>Register Free — Visitor Pass
+              </button>
+              <a href="https://bharataiinnovation.com/register" target="_blank" class="px-6 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-primary-600 to-blue-600 hover:from-primary-500 hover:to-blue-500 transition-all text-sm shadow-lg shadow-primary-500/20">
+                <i class="fas fa-star mr-2"></i>Get Paid Pass (Delegate/VIP)
               </a>
               <a href="https://bharataiinnovation.com/register#delegation-section" target="_blank" class="px-6 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 transition-all text-sm">
-                <i class="fas fa-users mr-2"></i>Group / Delegation Packages
+                <i class="fas fa-users mr-2"></i>Group Packages
               </a>
+            </div>
+          </div>
+        </div>
+
+        <!-- Quick Visitor Registration Section -->
+        <div class="max-w-7xl mx-auto px-4 py-6" id="quick-visitor-reg-section">
+          <div class="glass rounded-2xl p-6 md:p-8 border border-green-500/20 glow-accent" id="quick-visitor-reg-card">
+            <div class="flex items-center gap-3 mb-4">
+              <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-green-500/20 to-emerald-500/20 flex items-center justify-center shrink-0">
+                <i class="fas fa-id-badge text-2xl text-green-400"></i>
+              </div>
+              <div>
+                <h2 class="text-xl font-bold text-green-300">Get Your Free Visitor Pass</h2>
+                <p class="text-xs text-gray-400">Register in 30 seconds — access exhibition, keynotes, networking & AI demos</p>
+              </div>
+            </div>
+            <form id="quick-visitor-form" onsubmit="submitQuickVisitorReg(event)" class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div><input type="text" id="qv-name" placeholder="Full Name *" required class="w-full px-4 py-3 rounded-xl text-sm"></div>
+              <div><input type="email" id="qv-email" placeholder="Email Address *" required class="w-full px-4 py-3 rounded-xl text-sm"></div>
+              <div><input type="tel" id="qv-phone" placeholder="Mobile Number" class="w-full px-4 py-3 rounded-xl text-sm"></div>
+              <div><input type="text" id="qv-company" placeholder="Organization / Company" class="w-full px-4 py-3 rounded-xl text-sm"></div>
+              <div class="md:col-span-2 flex flex-col sm:flex-row gap-3 items-center">
+                <button type="submit" id="qv-submit-btn" class="w-full sm:w-auto px-8 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 transition-all text-sm shadow-lg shadow-green-500/20">
+                  <i class="fas fa-check-circle mr-2"></i>Register — It's Free!
+                </button>
+                <span class="text-xs text-gray-500">By registering, you agree to receive event updates</span>
+              </div>
+            </form>
+            <div id="qv-success" class="hidden mt-4 p-4 rounded-xl bg-green-500/10 border border-green-500/20 text-center">
+              <i class="fas fa-check-circle text-green-400 text-3xl mb-2"></i>
+              <h3 class="font-bold text-green-300 text-lg" id="qv-success-name"></h3>
+              <p class="text-sm text-gray-300 mt-1" id="qv-success-msg"></p>
+            </div>
+            <div class="mt-4 pt-4 border-t border-white/5 flex flex-wrap gap-4 items-center justify-center text-xs text-gray-500">
+              <span><i class="fas fa-store text-green-500 mr-1"></i>Exhibition Access</span>
+              <span><i class="fas fa-microphone text-green-500 mr-1"></i>Keynote Sessions</span>
+              <span><i class="fas fa-users text-green-500 mr-1"></i>Networking Lounge</span>
+              <span><i class="fas fa-robot text-green-500 mr-1"></i>AI Live Demos</span>
+              <span><i class="fas fa-calendar text-green-500 mr-1"></i>2-3 June 2026</span>
+              <span><i class="fas fa-map-marker-alt text-green-500 mr-1"></i>WTC Mumbai</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Exhibition & Inquiry Section -->
+        <div class="max-w-7xl mx-auto px-4 py-4">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <!-- Exhibit With Us Card -->
+            <div class="glass rounded-2xl p-6 border border-amber-500/20 card-hover">
+              <div class="flex items-center gap-3 mb-4">
+                <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-500/20 to-orange-500/20 flex items-center justify-center shrink-0">
+                  <i class="fas fa-store text-2xl text-amber-400"></i>
+                </div>
+                <div>
+                  <h3 class="font-bold text-lg text-amber-300">Exhibit With Us</h3>
+                  <p class="text-xs text-gray-400">Showcase your AI solutions at India's largest AI expo</p>
+                </div>
+              </div>
+              <ul class="space-y-1.5 text-xs text-gray-300 mb-4">
+                <li><i class="fas fa-check text-amber-400 mr-1.5 text-[10px]"></i>4 booth packages: Platinum, Gold, Silver, Startup</li>
+                <li><i class="fas fa-check text-amber-400 mr-1.5 text-[10px]"></i>500+ decision-makers visiting exhibition floor</li>
+                <li><i class="fas fa-check text-amber-400 mr-1.5 text-[10px]"></i>Live demo area, networking lounge, branding</li>
+              </ul>
+              <div class="flex gap-2">
+                <a href="https://bharataiinnovation.com/exhibition" target="_blank" class="px-4 py-2 rounded-lg text-xs font-semibold bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition border border-amber-500/30">
+                  <i class="fas fa-external-link-alt mr-1"></i>View Booth Packages
+                </a>
+                <button onclick="openInquiryForm('exhibition')" class="px-4 py-2 rounded-lg text-xs font-semibold bg-white/5 text-gray-300 hover:bg-white/10 transition border border-white/10">
+                  <i class="fas fa-envelope mr-1"></i>Send Inquiry
+                </button>
+              </div>
+            </div>
+
+            <!-- Contact / General Inquiry Card -->
+            <div class="glass rounded-2xl p-6 border border-primary-500/20 card-hover">
+              <div class="flex items-center gap-3 mb-4">
+                <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-primary-500/20 to-blue-500/20 flex items-center justify-center shrink-0">
+                  <i class="fas fa-headset text-2xl text-primary-400"></i>
+                </div>
+                <div>
+                  <h3 class="font-bold text-lg text-primary-300">Have a Question?</h3>
+                  <p class="text-xs text-gray-400">Reach out — we're happy to help</p>
+                </div>
+              </div>
+              <div class="grid grid-cols-2 gap-2 mb-4">
+                <button onclick="openInquiryForm('general')" class="p-2.5 rounded-lg text-xs font-medium glass hover:bg-white/10 transition text-left">
+                  <i class="fas fa-question-circle text-primary-400 mr-1.5"></i>General Inquiry
+                </button>
+                <button onclick="openInquiryForm('sponsorship')" class="p-2.5 rounded-lg text-xs font-medium glass hover:bg-white/10 transition text-left">
+                  <i class="fas fa-handshake text-amber-400 mr-1.5"></i>Sponsorship
+                </button>
+                <button onclick="openInquiryForm('speaking')" class="p-2.5 rounded-lg text-xs font-medium glass hover:bg-white/10 transition text-left">
+                  <i class="fas fa-microphone-alt text-purple-400 mr-1.5"></i>Speaking Slot
+                </button>
+                <button onclick="openInquiryForm('media')" class="p-2.5 rounded-lg text-xs font-medium glass hover:bg-white/10 transition text-left">
+                  <i class="fas fa-newspaper text-rose-400 mr-1.5"></i>Media / Press
+                </button>
+                <button onclick="openInquiryForm('group_registration')" class="p-2.5 rounded-lg text-xs font-medium glass hover:bg-white/10 transition text-left">
+                  <i class="fas fa-users text-green-400 mr-1.5"></i>Group Booking
+                </button>
+                <button onclick="openInquiryForm('other')" class="p-2.5 rounded-lg text-xs font-medium glass hover:bg-white/10 transition text-left">
+                  <i class="fas fa-ellipsis-h text-gray-400 mr-1.5"></i>Other
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Inquiry Form Modal -->
+        <div id="inquiry-modal" class="fixed inset-0 z-40 modal-overlay hidden flex items-center justify-center p-4">
+          <div class="glass rounded-2xl p-6 md:p-8 w-full max-w-lg relative">
+            <button onclick="closeInquiryForm()" class="absolute top-4 right-4 text-gray-400 hover:text-white transition text-lg"><i class="fas fa-times"></i></button>
+            <div class="flex items-center gap-3 mb-5">
+              <div class="w-10 h-10 rounded-xl bg-primary-500/20 flex items-center justify-center shrink-0" id="inq-icon-box"><i class="fas fa-envelope text-lg text-primary-400" id="inq-icon"></i></div>
+              <div>
+                <h3 class="font-bold text-lg" id="inq-title">Send Inquiry</h3>
+                <p class="text-xs text-gray-400" id="inq-subtitle">We'll respond within 24 hours</p>
+              </div>
+            </div>
+            <form onsubmit="submitInquiry(event)" id="inquiry-form" class="space-y-3">
+              <input type="hidden" id="inq-type" value="general">
+              <div class="grid grid-cols-2 gap-3">
+                <input type="text" id="inq-name" placeholder="Full Name *" required class="w-full px-4 py-3 rounded-xl text-sm">
+                <input type="email" id="inq-email" placeholder="Email *" required class="w-full px-4 py-3 rounded-xl text-sm">
+              </div>
+              <div class="grid grid-cols-2 gap-3">
+                <input type="tel" id="inq-phone" placeholder="Phone" class="w-full px-4 py-3 rounded-xl text-sm">
+                <input type="text" id="inq-org" placeholder="Organization" class="w-full px-4 py-3 rounded-xl text-sm">
+              </div>
+              <input type="text" id="inq-subject" placeholder="Subject" class="w-full px-4 py-3 rounded-xl text-sm">
+              <!-- Dynamic extra fields based on type -->
+              <div id="inq-extra-fields"></div>
+              <textarea id="inq-message" placeholder="Your message / requirements..." rows="3" required class="w-full px-4 py-3 rounded-xl text-sm"></textarea>
+              <button type="submit" id="inq-submit-btn" class="w-full py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-primary-600 to-blue-600 hover:from-primary-500 hover:to-blue-500 transition-all text-sm">
+                <i class="fas fa-paper-plane mr-2"></i>Submit Inquiry
+              </button>
+            </form>
+            <div id="inq-success" class="hidden text-center py-6">
+              <i class="fas fa-check-circle text-green-400 text-4xl mb-3"></i>
+              <h3 class="font-bold text-lg text-green-300">Inquiry Submitted!</h3>
+              <p class="text-sm text-gray-400 mt-1">We'll get back to you within 24 hours.</p>
+              <button onclick="closeInquiryForm()" class="mt-4 px-6 py-2 rounded-xl text-sm font-semibold glass hover:bg-white/10 transition">Close</button>
             </div>
           </div>
         </div>
@@ -3869,6 +4093,164 @@ function mainPageHTML(): string {
           showArrivalTimePrompt();
         }
       }, 1500);
+    }
+
+    // ==================== QUICK VISITOR REGISTRATION ====================
+    function openQuickVisitorReg() {
+      const section = document.getElementById('quick-visitor-reg-card');
+      if (section) {
+        section.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        section.classList.add('ring-2', 'ring-green-400/50');
+        setTimeout(() => section.classList.remove('ring-2', 'ring-green-400/50'), 2000);
+      }
+    }
+
+    async function submitQuickVisitorReg(e) {
+      e.preventDefault();
+      const btn = document.getElementById('qv-submit-btn');
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Registering...';
+      btn.disabled = true;
+
+      const name = document.getElementById('qv-name').value.trim();
+      const email = document.getElementById('qv-email').value.trim();
+      const phone = document.getElementById('qv-phone').value.trim();
+      const company = document.getElementById('qv-company').value.trim();
+
+      try {
+        const resp = await fetch('/api/events/' + EVENT_ID + '/attendees/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, email, mobile: phone, company, job_title: '', bio: '', interests: '', linkedin_url: '' })
+        });
+        const data = await resp.json();
+
+        if (data.error) {
+          showToast(data.error, 'error');
+          btn.innerHTML = '<i class="fas fa-check-circle mr-2"></i>Register — It\\'s Free!';
+          btn.disabled = false;
+          return;
+        }
+
+        // Success!
+        document.getElementById('quick-visitor-form').classList.add('hidden');
+        const successDiv = document.getElementById('qv-success');
+        successDiv.classList.remove('hidden');
+        document.getElementById('qv-success-name').textContent = 'Welcome, ' + data.name + '!';
+        const refId = 'BHAI-2026-' + String(data.id).padStart(5, '0');
+        document.getElementById('qv-success-msg').innerHTML = 'Your Visitor Pass is confirmed. Reference: <strong>' + refId + '</strong><br>You can now sign in to access networking, inbox & more.';
+
+        // Auto-sign-in the user
+        currentUser = data;
+        localStorage.setItem('agba_user', JSON.stringify(currentUser));
+        upgradeToLoggedIn();
+        showToast('Registration successful! Welcome, ' + data.name, 'success');
+      } catch(err) {
+        showToast('Network error. Please try again.', 'error');
+        btn.innerHTML = '<i class="fas fa-check-circle mr-2"></i>Register — It\\'s Free!';
+        btn.disabled = false;
+      }
+    }
+
+    // ==================== INQUIRY SYSTEM ====================
+    const INQUIRY_CONFIG = {
+      general: { icon: 'fa-question-circle', color: 'text-primary-400', bg: 'bg-primary-500/20', title: 'General Inquiry', subtitle: 'Ask us anything about the event' },
+      exhibition: { icon: 'fa-store', color: 'text-amber-400', bg: 'bg-amber-500/20', title: 'Exhibition Inquiry', subtitle: 'Booth packages, availability & pricing' },
+      sponsorship: { icon: 'fa-handshake', color: 'text-amber-400', bg: 'bg-amber-500/20', title: 'Sponsorship Inquiry', subtitle: 'Brand visibility & partnership opportunities' },
+      speaking: { icon: 'fa-microphone-alt', color: 'text-purple-400', bg: 'bg-purple-500/20', title: 'Speaking Opportunity', subtitle: 'Submit your talk or workshop proposal' },
+      media: { icon: 'fa-newspaper', color: 'text-rose-400', bg: 'bg-rose-500/20', title: 'Media / Press Inquiry', subtitle: 'Accreditation, interviews & coverage' },
+      group_registration: { icon: 'fa-users', color: 'text-green-400', bg: 'bg-green-500/20', title: 'Group Registration Inquiry', subtitle: 'Delegation discounts for 5+ people' },
+      other: { icon: 'fa-ellipsis-h', color: 'text-gray-400', bg: 'bg-white/5', title: 'Other Inquiry', subtitle: 'We\\'ll route your message to the right team' }
+    };
+
+    function openInquiryForm(type) {
+      const cfg = INQUIRY_CONFIG[type] || INQUIRY_CONFIG.general;
+      document.getElementById('inq-type').value = type;
+      document.getElementById('inq-icon').className = 'fas ' + cfg.icon + ' text-lg ' + cfg.color;
+      document.getElementById('inq-icon-box').className = 'w-10 h-10 rounded-xl ' + cfg.bg + ' flex items-center justify-center shrink-0';
+      document.getElementById('inq-title').textContent = cfg.title;
+      document.getElementById('inq-subtitle').textContent = cfg.subtitle;
+
+      // Extra fields based on type
+      let extra = '';
+      if (type === 'exhibition') {
+        extra = '<select id="inq-booth-tier" class="w-full px-4 py-3 rounded-xl text-sm"><option value="">Preferred Booth Package</option><option value="Platinum - ₹5,00,000">Platinum — ₹5,00,000</option><option value="Gold - ₹3,00,000">Gold — ₹3,00,000</option><option value="Silver - ₹1,50,000">Silver — ₹1,50,000</option><option value="Startup - ₹75,000">Startup — ₹75,000</option><option value="Undecided">Not sure yet</option></select>';
+      } else if (type === 'speaking') {
+        extra = '<input type="text" id="inq-topic" placeholder="Proposed Talk / Workshop Topic" class="w-full px-4 py-3 rounded-xl text-sm">';
+      } else if (type === 'group_registration') {
+        extra = '<div class="grid grid-cols-2 gap-3"><input type="number" id="inq-group-size" placeholder="Group Size" min="2" class="w-full px-4 py-3 rounded-xl text-sm"><select id="inq-pass-type" class="w-full px-4 py-3 rounded-xl text-sm"><option value="">Preferred Pass</option><option value="Delegate">Delegate (₹4,999)</option><option value="VIP">VIP (₹14,999)</option><option value="Academic">Academic (₹999)</option><option value="Visitor">Visitor (Free)</option><option value="Mixed">Mixed</option></select></div>';
+      } else if (type === 'sponsorship') {
+        extra = '<select id="inq-budget" class="w-full px-4 py-3 rounded-xl text-sm"><option value="">Budget Range</option><option value="Under ₹1 Lakh">Under ₹1 Lakh</option><option value="₹1-3 Lakhs">₹1-3 Lakhs</option><option value="₹3-5 Lakhs">₹3-5 Lakhs</option><option value="₹5-10 Lakhs">₹5-10 Lakhs</option><option value="₹10+ Lakhs">₹10+ Lakhs</option></select>';
+      }
+      document.getElementById('inq-extra-fields').innerHTML = extra;
+
+      // Show form, hide success
+      document.getElementById('inquiry-form').classList.remove('hidden');
+      document.getElementById('inq-success').classList.add('hidden');
+      document.getElementById('inquiry-modal').classList.remove('hidden');
+    }
+
+    function closeInquiryForm() {
+      document.getElementById('inquiry-modal').classList.add('hidden');
+      // Reset form
+      document.getElementById('inquiry-form').reset();
+      document.getElementById('inquiry-form').classList.remove('hidden');
+      document.getElementById('inq-success').classList.add('hidden');
+      document.getElementById('inq-extra-fields').innerHTML = '';
+    }
+
+    async function submitInquiry(e) {
+      e.preventDefault();
+      const btn = document.getElementById('inq-submit-btn');
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Submitting...';
+      btn.disabled = true;
+
+      const type = document.getElementById('inq-type').value;
+      const metadata = {};
+      // Collect extra fields
+      const boothTier = document.getElementById('inq-booth-tier');
+      if (boothTier) metadata.booth_tier = boothTier.value;
+      const topic = document.getElementById('inq-topic');
+      if (topic) metadata.topic = topic.value;
+      const groupSize = document.getElementById('inq-group-size');
+      if (groupSize) metadata.group_size = groupSize.value;
+      const passType = document.getElementById('inq-pass-type');
+      if (passType) metadata.pass_type = passType.value;
+      const budget = document.getElementById('inq-budget');
+      if (budget) metadata.budget = budget.value;
+
+      try {
+        const resp = await fetch('/api/inquiries', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            inquiry_type: type,
+            name: document.getElementById('inq-name').value.trim(),
+            email: document.getElementById('inq-email').value.trim(),
+            phone: document.getElementById('inq-phone').value.trim(),
+            organization: document.getElementById('inq-org').value.trim(),
+            subject: document.getElementById('inq-subject').value.trim(),
+            message: document.getElementById('inq-message').value.trim(),
+            metadata
+          })
+        });
+        const data = await resp.json();
+
+        if (!resp.ok) {
+          showToast(data.error || 'Submission failed', 'error');
+          btn.innerHTML = '<i class="fas fa-paper-plane mr-2"></i>Submit Inquiry';
+          btn.disabled = false;
+          return;
+        }
+
+        // Show success
+        document.getElementById('inquiry-form').classList.add('hidden');
+        document.getElementById('inq-success').classList.remove('hidden');
+        showToast('Inquiry submitted! We\\'ll get back to you soon.', 'success');
+      } catch(err) {
+        showToast('Network error. Please try again.', 'error');
+        btn.innerHTML = '<i class="fas fa-paper-plane mr-2"></i>Submit Inquiry';
+        btn.disabled = false;
+      }
     }
 
     // ==================== REGISTRATION / SIGN IN ====================
@@ -6545,6 +6927,9 @@ function adminPageHTML(): string {
       <button onclick="switchSection('startup-pitch')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="startup-pitch" title="Startup Pitch">
         <i class="fas fa-rocket w-5 text-center shrink-0"></i><span class="sidebar-label">Startup Pitch</span>
       </button>
+      <button onclick="switchSection('inquiries')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="inquiries" title="Inquiries">
+        <i class="fas fa-inbox w-5 text-center shrink-0"></i><span class="sidebar-label">Inquiries</span>
+      </button>
       <button onclick="switchSection('analytics')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="analytics" title="Analytics">
         <i class="fas fa-chart-bar w-5 text-center shrink-0"></i><span class="sidebar-label">Analytics</span>
       </button>
@@ -6600,6 +6985,8 @@ function adminPageHTML(): string {
       <div id="section-innovation" class="section-content hidden"></div>
       <!-- Startup Pitch Section -->
       <div id="section-startup-pitch" class="section-content hidden"></div>
+      <!-- Inquiries Section -->
+      <div id="section-inquiries" class="section-content hidden"></div>
       <!-- Analytics Section -->
       <div id="section-analytics" class="section-content hidden"></div>
       <!-- Settings Section -->
@@ -6726,8 +7113,8 @@ function adminPageHTML(): string {
       document.querySelectorAll('.section-content').forEach(s => s.classList.add('hidden'));
       document.getElementById('section-'+sec).classList.remove('hidden');
 
-      const titles = { overview:'Overview', attendees:'Attendee Management', sessions:'Session Management', exhibitors:'Exhibitor Management', awards:'Awards Management', announcements:'Announcement Management', innovation:'Innovation Talk & Showcase', 'startup-pitch':'Startup Pitch Management', analytics:'Analytics & Reports', settings:'Settings' };
-      const subtitles = { overview:'Real-time event management dashboard', attendees:'Manage all registered attendees', sessions:'Create and manage event sessions', exhibitors:'Manage exhibition booths', awards:'Manage award categories and nominees', announcements:'Create and manage live feed announcements', innovation:'Manage innovation talk and showcase schedule', 'startup-pitch':'Manage startup pitches and investor panel', analytics:'Deep dive into event engagement metrics', settings:'Configure email, API keys and app settings' };
+      const titles = { overview:'Overview', attendees:'Attendee Management', sessions:'Session Management', exhibitors:'Exhibitor Management', awards:'Awards Management', announcements:'Announcement Management', innovation:'Innovation Talk & Showcase', 'startup-pitch':'Startup Pitch Management', inquiries:'Inquiry Management', analytics:'Analytics & Reports', settings:'Settings' };
+      const subtitles = { overview:'Real-time event management dashboard', attendees:'Manage all registered attendees', sessions:'Create and manage event sessions', exhibitors:'Manage exhibition booths', awards:'Manage award categories and nominees', announcements:'Create and manage live feed announcements', innovation:'Manage innovation talk and showcase schedule', 'startup-pitch':'Manage startup pitches and investor panel', inquiries:'View and manage all incoming inquiries', analytics:'Deep dive into event engagement metrics', settings:'Configure email, API keys and app settings' };
       document.getElementById('page-title').textContent = titles[sec] || sec;
       document.getElementById('page-subtitle').textContent = subtitles[sec] || '';
 
@@ -6745,6 +7132,7 @@ function adminPageHTML(): string {
         case 'analytics': loadAnalytics(); break;
         case 'innovation': loadInnovationTalks(); break;
         case 'startup-pitch': loadAdminStartupPitch(); break;
+        case 'inquiries': loadAdminInquiries(); break;
         case 'settings': loadSettings(); break;
       }
     }
@@ -9420,6 +9808,122 @@ function adminPageHTML(): string {
         toast('Investor removed', 'success');
         loadAdminStartupPitch();
       } catch(err) { toast('Failed to delete: ' + err.message, 'error'); }
+    }
+
+    // ============ ADMIN INQUIRIES ============
+    let inquiryFilterType = '';
+    let inquiryFilterStatus = '';
+
+    async function loadAdminInquiries() {
+      try {
+        let url = '/api/admin/inquiries?';
+        if (inquiryFilterType) url += 'type=' + inquiryFilterType + '&';
+        if (inquiryFilterStatus) url += 'status=' + inquiryFilterStatus + '&';
+        const data = await api.get(url);
+        const { inquiries, typeCounts, statusCounts } = data;
+
+        const totalNew = (statusCounts || []).find(s => s.status === 'new');
+        const totalAll = (inquiries || []).length;
+
+        const typeLabels = {
+          general: { icon: 'fa-question-circle', color: 'primary', label: 'General' },
+          exhibition: { icon: 'fa-store', color: 'amber', label: 'Exhibition' },
+          sponsorship: { icon: 'fa-handshake', color: 'orange', label: 'Sponsorship' },
+          speaking: { icon: 'fa-microphone-alt', color: 'purple', label: 'Speaking' },
+          media: { icon: 'fa-newspaper', color: 'rose', label: 'Media' },
+          group_registration: { icon: 'fa-users', color: 'green', label: 'Group Reg' },
+          other: { icon: 'fa-ellipsis-h', color: 'gray', label: 'Other' }
+        };
+
+        const statusColors = { new: 'bg-blue-500/20 text-blue-300', in_progress: 'bg-amber-500/20 text-amber-300', responded: 'bg-green-500/20 text-green-300', closed: 'bg-gray-500/20 text-gray-400' };
+
+        // Type filter pills
+        const typeFilterHtml = '<button onclick="inquiryFilterType=\\'\\';loadAdminInquiries()" class="px-3 py-1.5 rounded-lg text-xs font-medium transition ' + (!inquiryFilterType ? 'bg-primary-500/20 text-primary-300 border border-primary-500/30' : 'glass hover:bg-white/10 text-gray-400') + '">All (' + totalAll + ')</button>' +
+          (typeCounts || []).map(tc => {
+            const cfg = typeLabels[tc.inquiry_type] || typeLabels.other;
+            const active = inquiryFilterType === tc.inquiry_type;
+            return '<button onclick="inquiryFilterType=\\'' + tc.inquiry_type + '\\';loadAdminInquiries()" class="px-3 py-1.5 rounded-lg text-xs font-medium transition ' + (active ? 'bg-' + cfg.color + '-500/20 text-' + cfg.color + '-300 border border-' + cfg.color + '-500/30' : 'glass hover:bg-white/10 text-gray-400') + '"><i class="fas ' + cfg.icon + ' mr-1"></i>' + cfg.label + ' (' + tc.count + ')</button>';
+          }).join('');
+
+        // Status filter
+        const statusFilterHtml = '<select onchange="inquiryFilterStatus=this.value;loadAdminInquiries()" class="px-3 py-1.5 rounded-lg text-xs font-medium glass">' +
+          '<option value=""' + (!inquiryFilterStatus ? ' selected' : '') + '>All Status</option>' +
+          '<option value="new"' + (inquiryFilterStatus === 'new' ? ' selected' : '') + '>New</option>' +
+          '<option value="in_progress"' + (inquiryFilterStatus === 'in_progress' ? ' selected' : '') + '>In Progress</option>' +
+          '<option value="responded"' + (inquiryFilterStatus === 'responded' ? ' selected' : '') + '>Responded</option>' +
+          '<option value="closed"' + (inquiryFilterStatus === 'closed' ? ' selected' : '') + '>Closed</option></select>';
+
+        const rows = (inquiries || []).map(inq => {
+          const cfg = typeLabels[inq.inquiry_type] || typeLabels.other;
+          const sColor = statusColors[inq.status] || statusColors.new;
+          const meta = inq.metadata ? (function() { try { return JSON.parse(inq.metadata); } catch(e) { return {}; } })() : {};
+          const metaStr = Object.entries(meta).filter(([k,v]) => v).map(([k,v]) => '<span class="text-[10px] text-gray-500">' + k.replace(/_/g,' ') + ': ' + v + '</span>').join(' · ');
+
+          return '<div class="glass rounded-xl p-4 border border-white/5 hover:border-white/10 transition">' +
+            '<div class="flex items-start justify-between gap-3">' +
+              '<div class="flex-1 min-w-0">' +
+                '<div class="flex items-center gap-2 mb-1">' +
+                  '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-' + cfg.color + '-500/20 text-' + cfg.color + '-300"><i class="fas ' + cfg.icon + ' mr-1"></i>' + cfg.label + '</span>' +
+                  '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold ' + sColor + '">' + inq.status.replace('_', ' ') + '</span>' +
+                  '<span class="text-[10px] text-gray-500">#' + inq.id + '</span>' +
+                '</div>' +
+                '<h4 class="font-semibold text-sm truncate">' + (inq.subject || inq.name) + '</h4>' +
+                '<p class="text-xs text-gray-400 mt-0.5">' + inq.name + (inq.organization ? ' · ' + inq.organization : '') + '</p>' +
+                '<p class="text-xs text-gray-500 mt-0.5"><i class="fas fa-envelope mr-1"></i>' + inq.email + (inq.phone ? ' · <i class="fas fa-phone mr-1"></i>' + inq.phone : '') + '</p>' +
+                '<p class="text-xs text-gray-300 mt-2 line-clamp-2">' + (inq.message || '<em class="text-gray-500">No message</em>') + '</p>' +
+                (metaStr ? '<div class="mt-1">' + metaStr + '</div>' : '') +
+                (inq.admin_notes ? '<div class="mt-2 p-2 rounded-lg bg-amber-500/5 border border-amber-500/10 text-xs text-amber-300"><i class="fas fa-sticky-note mr-1"></i>' + inq.admin_notes + '</div>' : '') +
+              '</div>' +
+              '<div class="flex flex-col gap-1 shrink-0">' +
+                '<select onchange="updateInquiryStatus(' + inq.id + ', this.value)" class="px-2 py-1 rounded-lg text-[10px] glass">' +
+                  '<option value="new"' + (inq.status === 'new' ? ' selected' : '') + '>New</option>' +
+                  '<option value="in_progress"' + (inq.status === 'in_progress' ? ' selected' : '') + '>In Progress</option>' +
+                  '<option value="responded"' + (inq.status === 'responded' ? ' selected' : '') + '>Responded</option>' +
+                  '<option value="closed"' + (inq.status === 'closed' ? ' selected' : '') + '>Closed</option>' +
+                '</select>' +
+                '<button onclick="addInquiryNote(' + inq.id + ')" class="px-2 py-1 rounded-lg text-[10px] glass hover:bg-white/10 transition" title="Add note"><i class="fas fa-sticky-note mr-1"></i>Note</button>' +
+                '<button onclick="deleteInquiry(' + inq.id + ')" class="px-2 py-1 rounded-lg text-[10px] text-red-400 glass hover:bg-red-500/10 transition" title="Delete"><i class="fas fa-trash"></i></button>' +
+              '</div>' +
+            '</div>' +
+            '<div class="text-[10px] text-gray-600 mt-2">' + new Date(inq.created_at).toLocaleString() + '</div>' +
+          '</div>';
+        }).join('');
+
+        document.getElementById('section-inquiries').innerHTML =
+          '<div class="space-y-4">' +
+            '<div class="flex flex-wrap gap-2 items-center">' + typeFilterHtml + '<div class="ml-auto">' + statusFilterHtml + '</div></div>' +
+            (rows || '<div class="text-center py-12 text-gray-500"><i class="fas fa-inbox text-4xl mb-3"></i><p>No inquiries yet</p></div>') +
+          '</div>';
+      } catch(err) {
+        document.getElementById('section-inquiries').innerHTML = '<div class="text-center py-12 text-red-400"><i class="fas fa-exclamation-triangle text-3xl mb-3"></i><p>Failed to load inquiries: ' + err.message + '</p></div>';
+      }
+    }
+
+    async function updateInquiryStatus(id, status) {
+      try {
+        await api.patch('/api/admin/inquiries/' + id, { status });
+        toast('Status updated', 'success');
+        loadAdminInquiries();
+      } catch(err) { toast('Failed: ' + err.message, 'error'); }
+    }
+
+    async function addInquiryNote(id) {
+      const note = prompt('Add admin note for inquiry #' + id + ':');
+      if (note === null) return;
+      try {
+        await api.patch('/api/admin/inquiries/' + id, { admin_notes: note });
+        toast('Note saved', 'success');
+        loadAdminInquiries();
+      } catch(err) { toast('Failed: ' + err.message, 'error'); }
+    }
+
+    async function deleteInquiry(id) {
+      if (!confirm('Delete inquiry #' + id + '?')) return;
+      try {
+        await api.del('/api/admin/inquiries/' + id);
+        toast('Inquiry deleted', 'success');
+        loadAdminInquiries();
+      } catch(err) { toast('Failed: ' + err.message, 'error'); }
     }
 
     // ============ ANALYTICS ============
