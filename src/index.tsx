@@ -622,6 +622,172 @@ app.get('/api/image-proxy', async (c) => {
   }
 })
 
+// ==================== BOOTH TYPES & REQUESTS APIs ====================
+
+// Get all active booth types
+app.get('/api/booth-types', async (c) => {
+  const { results } = await c.env.DB.prepare(
+    'SELECT * FROM booth_types WHERE is_active = 1 ORDER BY sort_order'
+  ).all()
+  return c.json(results)
+})
+
+// Get single booth type by slug
+app.get('/api/booth-types/:slug', async (c) => {
+  const slug = c.req.param('slug')
+  const bt = await c.env.DB.prepare('SELECT * FROM booth_types WHERE slug = ?').bind(slug).first()
+  if (!bt) return c.json({ error: 'Booth type not found' }, 404)
+  return c.json(bt)
+})
+
+// Submit booth request
+app.post('/api/booth-requests', async (c) => {
+  const body = await c.req.json() as any
+  const { booth_type_id, event_id, company_name, contact_name, email, phone, website, industry,
+    company_size, company_description, quantity, preferred_zone, preferred_booth_numbers,
+    special_requirements, products_to_display, attendee_id } = body
+
+  if (!booth_type_id || !company_name || !contact_name || !email) {
+    return c.json({ error: 'booth_type_id, company_name, contact_name, and email are required' }, 400)
+  }
+
+  // Get booth type for price calc
+  const bt = await c.env.DB.prepare('SELECT * FROM booth_types WHERE id = ?').bind(booth_type_id).first() as any
+  if (!bt) return c.json({ error: 'Invalid booth type' }, 404)
+
+  const qty = Math.max(1, quantity || 1)
+  if (qty > bt.available_count) {
+    return c.json({ error: `Only ${bt.available_count} ${bt.name} booths available` }, 400)
+  }
+
+  const total_price = bt.price_inr * qty
+  const gst = Math.round(total_price * 0.18)
+  const grand_total = total_price + gst
+
+  const result = await c.env.DB.prepare(
+    `INSERT INTO booth_requests (event_id, booth_type_id, attendee_id, company_name, contact_name, email, phone, website,
+      industry, company_size, company_description, quantity, preferred_zone, preferred_booth_numbers,
+      special_requirements, products_to_display, total_price_inr, gst_amount, grand_total)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+  ).bind(
+    event_id || 1, booth_type_id, attendee_id || null, company_name, contact_name, email,
+    phone || '', website || '', industry || '', company_size || '', company_description || '',
+    qty, preferred_zone || '', preferred_booth_numbers || '', special_requirements || '',
+    products_to_display || '', total_price, gst, grand_total
+  ).run()
+
+  return c.json({
+    id: result.meta.last_row_id,
+    booth_type: bt.name,
+    quantity: qty,
+    total_price_inr: total_price,
+    gst_amount: gst,
+    grand_total: grand_total,
+    status: 'submitted',
+    payment_status: 'pending',
+    message: 'Booth request submitted successfully! Our team will review and send you an invoice.'
+  })
+})
+
+// Get booth requests for a user (by email or attendee_id)
+app.get('/api/booth-requests', async (c) => {
+  const email = c.req.query('email')
+  const attendee_id = c.req.query('attendee_id')
+
+  let query = `SELECT br.*, bt.name as booth_type_name, bt.slug as booth_type_slug,
+    bt.size_label, bt.area_sqm, bt.price_inr as unit_price, bt.color as booth_color, bt.icon as booth_icon
+    FROM booth_requests br JOIN booth_types bt ON br.booth_type_id = bt.id`
+  const params: any[] = []
+
+  if (attendee_id) {
+    query += ' WHERE br.attendee_id = ?'
+    params.push(attendee_id)
+  } else if (email) {
+    query += ' WHERE br.email = ?'
+    params.push(email)
+  } else {
+    return c.json({ error: 'email or attendee_id required' }, 400)
+  }
+  query += ' ORDER BY br.created_at DESC'
+
+  const { results } = await c.env.DB.prepare(query).bind(...params).all()
+  return c.json(results)
+})
+
+// Admin: Get all booth requests
+app.get('/api/admin/booth-requests', async (c) => {
+  const status = c.req.query('status')
+  let query = `SELECT br.*, bt.name as booth_type_name, bt.slug as booth_type_slug,
+    bt.size_label, bt.area_sqm, bt.price_inr as unit_price, bt.color as booth_color
+    FROM booth_requests br JOIN booth_types bt ON br.booth_type_id = bt.id`
+  const params: any[] = []
+  if (status) {
+    query += ' WHERE br.status = ?'
+    params.push(status)
+  }
+  query += ' ORDER BY br.created_at DESC'
+  const { results } = await c.env.DB.prepare(query).bind(...params).all()
+  return c.json(results)
+})
+
+// Admin: Update booth request status
+app.put('/api/admin/booth-requests/:id', async (c) => {
+  const id = c.req.param('id')
+  const body = await c.req.json() as any
+  const { status, payment_status, admin_notes, invoice_number, reviewed_by } = body
+
+  const updates: string[] = ['updated_at = CURRENT_TIMESTAMP']
+  const params: any[] = []
+
+  if (status) { updates.push('status = ?'); params.push(status) }
+  if (payment_status) { updates.push('payment_status = ?'); params.push(payment_status) }
+  if (admin_notes !== undefined) { updates.push('admin_notes = ?'); params.push(admin_notes) }
+  if (invoice_number) { updates.push('invoice_number = ?'); params.push(invoice_number) }
+  if (reviewed_by) { updates.push('reviewed_by = ?'); params.push(reviewed_by) }
+  if (status === 'approved' || status === 'rejected') {
+    updates.push('reviewed_at = CURRENT_TIMESTAMP')
+  }
+  if (payment_status === 'paid') {
+    updates.push('payment_date = CURRENT_TIMESTAMP')
+  }
+
+  // If approved, reduce available count
+  if (status === 'approved') {
+    const req = await c.env.DB.prepare('SELECT booth_type_id, quantity FROM booth_requests WHERE id = ?').bind(id).first() as any
+    if (req) {
+      await c.env.DB.prepare('UPDATE booth_types SET available_count = MAX(0, available_count - ?) WHERE id = ?')
+        .bind(req.quantity, req.booth_type_id).run()
+    }
+  }
+
+  params.push(id)
+  await c.env.DB.prepare(`UPDATE booth_requests SET ${updates.join(', ')} WHERE id = ?`).bind(...params).run()
+
+  const updated = await c.env.DB.prepare(
+    `SELECT br.*, bt.name as booth_type_name FROM booth_requests br JOIN booth_types bt ON br.booth_type_id = bt.id WHERE br.id = ?`
+  ).bind(id).first()
+  return c.json(updated)
+})
+
+// Admin: Booth request stats
+app.get('/api/admin/booth-stats', async (c) => {
+  const [totalRequests, statusBreakdown, typeBreakdown, revenue] = await Promise.all([
+    c.env.DB.prepare('SELECT COUNT(*) as count FROM booth_requests').first(),
+    c.env.DB.prepare("SELECT status, COUNT(*) as count FROM booth_requests GROUP BY status").all(),
+    c.env.DB.prepare(`SELECT bt.name, bt.slug, bt.total_count, bt.available_count, bt.price_inr,
+      COUNT(br.id) as requests, SUM(CASE WHEN br.status='approved' THEN br.quantity ELSE 0 END) as approved_qty
+      FROM booth_types bt LEFT JOIN booth_requests br ON bt.id = br.booth_type_id
+      WHERE bt.is_active = 1 GROUP BY bt.id ORDER BY bt.sort_order`).all(),
+    c.env.DB.prepare("SELECT SUM(grand_total) as total FROM booth_requests WHERE status IN ('approved','confirmed') AND payment_status = 'paid'").first(),
+  ])
+  return c.json({
+    total_requests: (totalRequests as any)?.count || 0,
+    by_status: (statusBreakdown as any)?.results || [],
+    by_type: (typeBreakdown as any)?.results || [],
+    total_revenue: (revenue as any)?.total || 0,
+  })
+})
+
 // ==================== AWARD APIs ====================
 
 app.get('/api/events/:id/awards', async (c) => {
@@ -3744,14 +3910,14 @@ function mainPageHTML(): string {
                 </div>
               </div>
               <ul class="space-y-1.5 text-xs text-gray-300 mb-4">
-                <li><i class="fas fa-check text-amber-400 mr-1.5 text-[10px]"></i>4 booth packages: Platinum, Gold, Silver, Startup</li>
+                <li><i class="fas fa-check text-amber-400 mr-1.5 text-[10px]"></i>7 booth packages: Startup Pod to Mega Pavilion</li>
                 <li><i class="fas fa-check text-amber-400 mr-1.5 text-[10px]"></i>500+ decision-makers visiting exhibition floor</li>
                 <li><i class="fas fa-check text-amber-400 mr-1.5 text-[10px]"></i>Live demo area, networking lounge, branding</li>
               </ul>
               <div class="flex gap-2">
-                <a href="https://bharataiinnovation.com/exhibition" target="_blank" class="px-4 py-2 rounded-lg text-xs font-semibold bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition border border-amber-500/30">
-                  <i class="fas fa-external-link-alt mr-1"></i>View Booth Packages
-                </a>
+                <button onclick="switchTab('exhibition'); setTimeout(()=>switchExhibitionSubtab('booth-catalog'),100)" class="px-4 py-2 rounded-lg text-xs font-semibold bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition border border-amber-500/30">
+                  <i class="fas fa-th-large mr-1"></i>View Booth Packages
+                </button>
                 <button onclick="openInquiryForm('exhibition')" class="px-4 py-2 rounded-lg text-xs font-semibold bg-white/5 text-gray-300 hover:bg-white/10 transition border border-white/10">
                   <i class="fas fa-envelope mr-1"></i>Send Inquiry
                 </button>
@@ -3894,7 +4060,23 @@ function mainPageHTML(): string {
       <div id="tab-exhibition" class="tab-content hidden">
         <div class="max-w-7xl mx-auto px-4 py-6">
           <h2 class="text-2xl font-bold mb-2"><i class="fas fa-store text-primary-400 mr-2"></i>Exhibition Hall</h2>
-          <p class="text-gray-400 text-sm mb-6">Explore booths, products, and connect with exhibitors</p>
+          <p class="text-gray-400 text-sm mb-4">Explore booths, book your exhibition space, and connect with exhibitors</p>
+
+          <!-- Exhibition Sub-tabs -->
+          <div class="flex gap-2 mb-6 overflow-x-auto scroll-hide pb-2">
+            <button onclick="switchExhibitionSubtab('exhibitors')" class="exh-subtab px-4 py-2.5 rounded-xl text-sm font-medium tab-active whitespace-nowrap" data-exh-tab="exhibitors">
+              <i class="fas fa-store mr-1.5"></i>Exhibitors
+            </button>
+            <button onclick="switchExhibitionSubtab('booth-catalog')" class="exh-subtab px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 whitespace-nowrap" data-exh-tab="booth-catalog">
+              <i class="fas fa-th-large mr-1.5"></i>Booth Catalog
+            </button>
+            <button onclick="switchExhibitionSubtab('my-requests')" class="exh-subtab nav-gated hidden px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 whitespace-nowrap" data-exh-tab="my-requests">
+              <i class="fas fa-file-alt mr-1.5"></i>My Requests
+            </button>
+          </div>
+
+          <!-- === SUB: Exhibitors === -->
+          <div id="exh-sub-exhibitors" class="exh-sub-content">
 
           <!-- Floor Plan Toggle -->
           <div class="mb-6">
@@ -4073,6 +4255,26 @@ function mainPageHTML(): string {
           </div>
           <!-- Exhibitor Grid -->
           <div id="exhibitor-grid" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+
+          </div><!-- end exh-sub-exhibitors -->
+
+          <!-- === SUB: Booth Catalog === -->
+          <div id="exh-sub-booth-catalog" class="exh-sub-content hidden">
+            <div id="booth-catalog-container"></div>
+          </div>
+
+          <!-- === SUB: My Requests === -->
+          <div id="exh-sub-my-requests" class="exh-sub-content hidden">
+            <div id="my-booth-requests-container"></div>
+          </div>
+
+          <!-- Booth Request Form Modal -->
+          <div id="booth-request-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4" style="background:rgba(0,0,0,0.7);backdrop-filter:blur(4px);">
+            <div class="glass rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-0 border border-white/10">
+              <div id="booth-request-form-container"></div>
+            </div>
+          </div>
+
         </div>
       </div>
 
@@ -5983,6 +6185,676 @@ function mainPageHTML(): string {
         showToast('Booth visited! Contact details shared.', 'success');
         loadExhibitors();
       } catch(e) { showToast('Failed to record visit', 'error'); }
+    }
+
+    // ==================== BOOTH CATALOG & REQUEST SYSTEM ====================
+
+    function switchExhibitionSubtab(tab) {
+      document.querySelectorAll('.exh-subtab').forEach(b => {
+        b.classList.remove('tab-active');
+        b.classList.add('text-gray-400');
+      });
+      const activeBtn = document.querySelector('.exh-subtab[data-exh-tab="'+tab+'"]');
+      if (activeBtn) { activeBtn.classList.add('tab-active'); activeBtn.classList.remove('text-gray-400'); }
+      document.querySelectorAll('.exh-sub-content').forEach(d => d.classList.add('hidden'));
+      const sub = document.getElementById('exh-sub-'+tab);
+      if (sub) sub.classList.remove('hidden');
+      if (tab === 'booth-catalog') loadBoothCatalog();
+      if (tab === 'my-requests') loadMyBoothRequests();
+      if (tab === 'exhibitors') loadExhibitors();
+    }
+
+    let boothTypesCache = [];
+
+    async function loadBoothCatalog() {
+      const container = document.getElementById('booth-catalog-container');
+      if (!container) return;
+      container.innerHTML = '<div class="text-center py-12"><i class="fas fa-spinner fa-spin text-2xl text-primary-400"></i><p class="text-sm text-gray-500 mt-2">Loading booth types...</p></div>';
+      try {
+        const types = await api.get('/api/booth-types');
+        boothTypesCache = types;
+        const totalBooths = types.reduce((s,t) => s + t.total_count, 0);
+        const totalArea = types.reduce((s,t) => s + t.total_area_sqm, 0);
+
+        container.innerHTML = \`
+          <div class="mb-8">
+            <div class="glass rounded-2xl p-6 border border-primary-500/20 mb-6">
+              <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-4">
+                <div>
+                  <h3 class="text-xl font-bold mb-1"><i class="fas fa-th-large text-primary-400 mr-2"></i>Exhibition Booth Packages</h3>
+                  <p class="text-sm text-gray-400">Choose your perfect exhibition space at Bharat AI Innovation 2026</p>
+                </div>
+                <div class="flex gap-4 text-center">
+                  <div class="glass rounded-xl px-4 py-2">
+                    <div class="text-lg font-black text-primary-400">\${totalBooths}</div>
+                    <div class="text-[10px] text-gray-500 uppercase">Total Booths</div>
+                  </div>
+                  <div class="glass rounded-xl px-4 py-2">
+                    <div class="text-lg font-black text-accent-400">\${totalArea.toLocaleString()}</div>
+                    <div class="text-[10px] text-gray-500 uppercase">sqm Area</div>
+                  </div>
+                  <div class="glass rounded-xl px-4 py-2">
+                    <div class="text-lg font-black text-green-400">7</div>
+                    <div class="text-[10px] text-gray-500 uppercase">Categories</div>
+                  </div>
+                </div>
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <span class="px-3 py-1 rounded-full text-xs bg-green-500/15 text-green-400 border border-green-500/20"><i class="fas fa-check-circle mr-1"></i>Custom branding</span>
+                <span class="px-3 py-1 rounded-full text-xs bg-blue-500/15 text-blue-400 border border-blue-500/20"><i class="fas fa-wifi mr-1"></i>High-speed internet</span>
+                <span class="px-3 py-1 rounded-full text-xs bg-purple-500/15 text-purple-400 border border-purple-500/20"><i class="fas fa-bolt mr-1"></i>Power included</span>
+                <span class="px-3 py-1 rounded-full text-xs bg-amber-500/15 text-amber-400 border border-amber-500/20"><i class="fas fa-id-badge mr-1"></i>Event badges</span>
+                <span class="px-3 py-1 rounded-full text-xs bg-pink-500/15 text-pink-400 border border-pink-500/20"><i class="fas fa-mobile-alt mr-1"></i>App listing</span>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+              \${types.map((bt, idx) => {
+                const features = JSON.parse(bt.features || '[]');
+                const availPct = Math.round((bt.available_count / bt.total_count) * 100);
+                const urgency = bt.available_count <= 3 ? 'text-red-400' : bt.available_count <= 8 ? 'text-amber-400' : 'text-green-400';
+                const isMega = bt.slug === 'mega-pavilion' || bt.slug === 'flagship-pavilion';
+                return \`
+                <div class="glass rounded-2xl overflow-hidden card-hover border border-white/5 hover:border-opacity-40 flex flex-col \${isMega ? 'md:col-span-2 xl:col-span-1' : ''}" style="border-top: 3px solid \${bt.color};">
+                  <div class="p-5 flex-1">
+                    <div class="flex items-start justify-between mb-3">
+                      <div class="flex items-center gap-3">
+                        <div class="w-12 h-12 rounded-xl flex items-center justify-center" style="background:\${bt.color}20;">
+                          <i class="fas \${bt.icon} text-xl" style="color:\${bt.color};"></i>
+                        </div>
+                        <div>
+                          <h3 class="font-bold text-base">\${bt.name}</h3>
+                          <div class="flex items-center gap-2 text-xs text-gray-500">
+                            <span><i class="fas fa-ruler-combined mr-1"></i>\${bt.size_label}m</span>
+                            <span class="text-gray-600">•</span>
+                            <span>\${bt.area_sqm} sqm / \${bt.area_sqft} sqft</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <p class="text-xs text-gray-400 mb-4 leading-relaxed">\${bt.description}</p>
+
+                    <!-- Price -->
+                    <div class="glass rounded-xl p-3 mb-4">
+                      <div class="flex items-baseline justify-between">
+                        <div>
+                          <span class="text-2xl font-black" style="color:\${bt.color};">₹\${Number(bt.price_inr).toLocaleString('en-IN')}</span>
+                          <span class="text-xs text-gray-500 ml-1">+ GST</span>
+                        </div>
+                        <div class="text-right">
+                          <span class="text-xs font-semibold \${urgency}">\${bt.available_count} left</span>
+                          <div class="w-16 h-1.5 rounded-full bg-white/10 mt-1">
+                            <div class="h-full rounded-full" style="width:\${availPct}%; background:\${bt.color};"></div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Features -->
+                    <div class="space-y-1.5 mb-4">
+                      \${features.slice(0, 5).map(f => \`
+                        <div class="flex items-start gap-2 text-xs text-gray-300">
+                          <i class="fas fa-check-circle mt-0.5" style="color:\${bt.color}; font-size:10px;"></i>
+                          <span>\${f}</span>
+                        </div>
+                      \`).join('')}
+                      \${features.length > 5 ? \`<div class="text-[10px] text-gray-500 pl-5">+\${features.length - 5} more features</div>\` : ''}
+                    </div>
+
+                    <!-- Area Info -->
+                    <div class="flex items-center gap-3 text-[10px] text-gray-500 mb-4">
+                      <span><i class="fas fa-cubes mr-1"></i>\${bt.total_count} units total</span>
+                      <span><i class="fas fa-vector-square mr-1"></i>\${bt.total_area_sqm} sqm total area</span>
+                    </div>
+                  </div>
+
+                  <!-- Action Buttons -->
+                  <div class="p-4 pt-0 flex gap-2">
+                    <button onclick="openBoothRequestForm(\${bt.id})" class="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white transition hover:opacity-90" style="background:\${bt.color};">
+                      <i class="fas fa-paper-plane mr-1.5"></i>Request Booth
+                    </button>
+                    <button onclick="viewBoothDetails(\${bt.id})" class="py-2.5 px-4 rounded-xl text-sm font-medium glass hover:bg-white/10 transition text-gray-300">
+                      <i class="fas fa-info-circle"></i>
+                    </button>
+                  </div>
+                </div>
+              \`}).join('')}
+            </div>
+
+            <!-- Comparison Table -->
+            <div class="mt-8 glass rounded-2xl p-5 overflow-x-auto">
+              <h3 class="text-lg font-bold mb-4"><i class="fas fa-table text-primary-400 mr-2"></i>Quick Comparison</h3>
+              <table class="w-full text-xs">
+                <thead>
+                  <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-2 text-gray-400 font-semibold">Type</th>
+                    <th class="text-center py-3 px-2 text-gray-400 font-semibold">Size (m)</th>
+                    <th class="text-center py-3 px-2 text-gray-400 font-semibold">Area</th>
+                    <th class="text-center py-3 px-2 text-gray-400 font-semibold">Available</th>
+                    <th class="text-right py-3 px-2 text-gray-400 font-semibold">Price (₹)</th>
+                    <th class="text-center py-3 px-2 text-gray-400 font-semibold"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  \${types.map(bt => \`
+                    <tr class="border-b border-white/5 hover:bg-white/5 transition">
+                      <td class="py-3 px-2">
+                        <div class="flex items-center gap-2">
+                          <i class="fas \${bt.icon}" style="color:\${bt.color};"></i>
+                          <span class="font-semibold text-white">\${bt.name}</span>
+                        </div>
+                      </td>
+                      <td class="text-center py-3 px-2 text-gray-300">\${bt.size_label}</td>
+                      <td class="text-center py-3 px-2 text-gray-300">\${bt.area_sqm} sqm</td>
+                      <td class="text-center py-3 px-2">
+                        <span class="font-semibold \${bt.available_count <= 3 ? 'text-red-400' : bt.available_count <= 8 ? 'text-amber-400' : 'text-green-400'}">\${bt.available_count}/\${bt.total_count}</span>
+                      </td>
+                      <td class="text-right py-3 px-2 font-bold" style="color:\${bt.color};">₹\${Number(bt.price_inr).toLocaleString('en-IN')}</td>
+                      <td class="text-center py-3 px-2">
+                        <button onclick="openBoothRequestForm(\${bt.id})" class="px-3 py-1.5 rounded-lg text-[10px] font-semibold text-white transition hover:opacity-90" style="background:\${bt.color};">
+                          Request
+                        </button>
+                      </td>
+                    </tr>
+                  \`).join('')}
+                </tbody>
+              </table>
+            </div>
+
+            <!-- CTA -->
+            <div class="mt-6 glass rounded-2xl p-6 text-center border border-amber-500/20">
+              <h3 class="text-lg font-bold mb-2"><i class="fas fa-phone-alt text-amber-400 mr-2"></i>Need a Custom Package?</h3>
+              <p class="text-sm text-gray-400 mb-4">Looking for multi-booth discounts, custom pavilion designs, or co-branded spaces? Our team is ready to help.</p>
+              <div class="flex gap-3 justify-center flex-wrap">
+                <button onclick="openInquiryForm('exhibition')" class="px-5 py-2.5 rounded-xl text-sm font-semibold bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition border border-amber-500/30">
+                  <i class="fas fa-envelope mr-1.5"></i>Send Inquiry
+                </button>
+                <a href="tel:+919876543210" class="px-5 py-2.5 rounded-xl text-sm font-semibold glass text-gray-300 hover:bg-white/10 transition border border-white/10">
+                  <i class="fas fa-phone mr-1.5"></i>Call Us
+                </a>
+              </div>
+            </div>
+          </div>
+        \`;
+      } catch(e) {
+        console.error('Booth catalog error:', e);
+        container.innerHTML = '<div class="text-center py-12 text-red-400"><i class="fas fa-exclamation-circle text-2xl mb-2 block"></i>Failed to load booth catalog</div>';
+      }
+    }
+
+    function viewBoothDetails(boothTypeId) {
+      const bt = boothTypesCache.find(b => b.id === boothTypeId);
+      if (!bt) return;
+      const features = JSON.parse(bt.features || '[]');
+      openModal(\`
+        <div class="p-6">
+          <div class="flex items-center gap-3 mb-4">
+            <div class="w-14 h-14 rounded-xl flex items-center justify-center" style="background:\${bt.color}20;">
+              <i class="fas \${bt.icon} text-2xl" style="color:\${bt.color};"></i>
+            </div>
+            <div>
+              <h3 class="text-xl font-bold">\${bt.name}</h3>
+              <p class="text-sm text-gray-400">\${bt.size_label}m — \${bt.area_sqm} sqm (\${bt.area_sqft} sqft)</p>
+            </div>
+          </div>
+          <p class="text-sm text-gray-300 mb-4 leading-relaxed">\${bt.description}</p>
+          <div class="glass rounded-xl p-4 mb-4">
+            <div class="flex items-baseline gap-2 mb-2">
+              <span class="text-3xl font-black" style="color:\${bt.color};">₹\${Number(bt.price_inr).toLocaleString('en-IN')}</span>
+              <span class="text-sm text-gray-500">+ 18% GST</span>
+            </div>
+            <div class="text-xs text-gray-500">GST: ₹\${Math.round(bt.price_inr * 0.18).toLocaleString('en-IN')} | Total: ₹\${Math.round(bt.price_inr * 1.18).toLocaleString('en-IN')}</div>
+          </div>
+          <h4 class="font-semibold text-sm mb-2">All Features Included:</h4>
+          <div class="space-y-2 mb-4">
+            \${features.map(f => \`
+              <div class="flex items-start gap-2 text-sm text-gray-300">
+                <i class="fas fa-check-circle mt-0.5" style="color:\${bt.color}; font-size:11px;"></i>
+                <span>\${f}</span>
+              </div>
+            \`).join('')}
+          </div>
+          <div class="grid grid-cols-3 gap-3 mb-4 text-center">
+            <div class="glass rounded-lg p-2">
+              <div class="text-lg font-bold text-white">\${bt.total_count}</div>
+              <div class="text-[10px] text-gray-500">Total</div>
+            </div>
+            <div class="glass rounded-lg p-2">
+              <div class="text-lg font-bold \${bt.available_count <= 3 ? 'text-red-400' : 'text-green-400'}">\${bt.available_count}</div>
+              <div class="text-[10px] text-gray-500">Available</div>
+            </div>
+            <div class="glass rounded-lg p-2">
+              <div class="text-lg font-bold text-amber-400">\${bt.total_area_sqm}</div>
+              <div class="text-[10px] text-gray-500">Total sqm</div>
+            </div>
+          </div>
+          <button onclick="closeModal(); openBoothRequestForm(\${bt.id})" class="w-full py-3 rounded-xl text-sm font-semibold text-white transition hover:opacity-90" style="background:\${bt.color};">
+            <i class="fas fa-paper-plane mr-2"></i>Request This Booth
+          </button>
+        </div>
+      \`);
+    }
+
+    function openBoothRequestForm(boothTypeId) {
+      const bt = boothTypesCache.find(b => b.id === boothTypeId);
+      if (!bt) { showToast('Booth type not found', 'error'); return; }
+      const modal = document.getElementById('booth-request-modal');
+      const container = document.getElementById('booth-request-form-container');
+      const user = currentUser || {};
+      const gst = Math.round(bt.price_inr * 0.18);
+      const total = bt.price_inr + gst;
+
+      container.innerHTML = \`
+        <div class="sticky top-0 z-10 p-5 border-b border-white/10" style="background:linear-gradient(135deg, \${bt.color}15, \${bt.color}05);">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-lg flex items-center justify-center" style="background:\${bt.color}25;">
+                <i class="fas \${bt.icon}" style="color:\${bt.color};"></i>
+              </div>
+              <div>
+                <h3 class="font-bold text-lg">Request \${bt.name}</h3>
+                <p class="text-xs text-gray-400">\${bt.size_label}m • \${bt.area_sqm} sqm • ₹\${Number(bt.price_inr).toLocaleString('en-IN')} + GST</p>
+              </div>
+            </div>
+            <button onclick="closeBoothRequestModal()" class="w-8 h-8 rounded-lg glass hover:bg-white/10 flex items-center justify-center"><i class="fas fa-times text-gray-400"></i></button>
+          </div>
+        </div>
+        <form id="booth-request-form" class="p-5 space-y-5">
+          <input type="hidden" id="br-booth-type-id" value="\${bt.id}">
+          <input type="hidden" id="br-unit-price" value="\${bt.price_inr}">
+
+          <!-- Contact Info -->
+          <div>
+            <h4 class="font-semibold text-sm mb-3 text-gray-300"><i class="fas fa-user mr-1.5 text-primary-400"></i>Contact Information</h4>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label class="text-xs text-gray-400 mb-1 block">Company Name <span class="text-red-400">*</span></label>
+                <input id="br-company" type="text" required value="\${user.company || ''}" class="w-full px-3 py-2.5 rounded-lg text-sm" placeholder="Your company name">
+              </div>
+              <div>
+                <label class="text-xs text-gray-400 mb-1 block">Contact Person <span class="text-red-400">*</span></label>
+                <input id="br-contact" type="text" required value="\${user.name || ''}" class="w-full px-3 py-2.5 rounded-lg text-sm" placeholder="Full name">
+              </div>
+              <div>
+                <label class="text-xs text-gray-400 mb-1 block">Email <span class="text-red-400">*</span></label>
+                <input id="br-email" type="email" required value="\${user.email || ''}" class="w-full px-3 py-2.5 rounded-lg text-sm" placeholder="email@company.com">
+              </div>
+              <div>
+                <label class="text-xs text-gray-400 mb-1 block">Phone</label>
+                <input id="br-phone" type="tel" value="\${user.phone || ''}" class="w-full px-3 py-2.5 rounded-lg text-sm" placeholder="+91 XXXXX XXXXX">
+              </div>
+            </div>
+          </div>
+
+          <!-- Company Details -->
+          <div>
+            <h4 class="font-semibold text-sm mb-3 text-gray-300"><i class="fas fa-building mr-1.5 text-accent-400"></i>Company Details</h4>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label class="text-xs text-gray-400 mb-1 block">Industry</label>
+                <select id="br-industry" class="w-full px-3 py-2.5 rounded-lg text-sm">
+                  <option value="">Select industry</option>
+                  <option>AI / Machine Learning</option>
+                  <option>Cloud Computing</option>
+                  <option>Cybersecurity</option>
+                  <option>Data Analytics</option>
+                  <option>EdTech</option>
+                  <option>FinTech</option>
+                  <option>HealthTech</option>
+                  <option>IoT / Hardware</option>
+                  <option>SaaS</option>
+                  <option>Robotics</option>
+                  <option>Enterprise Software</option>
+                  <option>Consulting</option>
+                  <option>Other</option>
+                </select>
+              </div>
+              <div>
+                <label class="text-xs text-gray-400 mb-1 block">Company Size</label>
+                <select id="br-company-size" class="w-full px-3 py-2.5 rounded-lg text-sm">
+                  <option value="">Select size</option>
+                  <option>1-10 employees</option>
+                  <option>11-50 employees</option>
+                  <option>51-200 employees</option>
+                  <option>201-1000 employees</option>
+                  <option>1000+ employees</option>
+                </select>
+              </div>
+              <div class="md:col-span-2">
+                <label class="text-xs text-gray-400 mb-1 block">Website</label>
+                <input id="br-website" type="url" class="w-full px-3 py-2.5 rounded-lg text-sm" placeholder="https://yourcompany.com">
+              </div>
+              <div class="md:col-span-2">
+                <label class="text-xs text-gray-400 mb-1 block">Brief Company Description</label>
+                <textarea id="br-description" rows="2" class="w-full px-3 py-2.5 rounded-lg text-sm" placeholder="What does your company do?"></textarea>
+              </div>
+            </div>
+          </div>
+
+          <!-- Booth Preferences -->
+          <div>
+            <h4 class="font-semibold text-sm mb-3 text-gray-300"><i class="fas fa-store mr-1.5" style="color:\${bt.color};"></i>Booth Preferences</h4>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label class="text-xs text-gray-400 mb-1 block">Quantity</label>
+                <div class="flex items-center gap-2">
+                  <button type="button" onclick="adjustBoothQty(-1)" class="w-8 h-8 rounded-lg glass hover:bg-white/10 flex items-center justify-center"><i class="fas fa-minus text-xs"></i></button>
+                  <input id="br-quantity" type="number" min="1" max="\${bt.available_count}" value="1" class="w-16 text-center px-2 py-2 rounded-lg text-sm" onchange="updateBoothPricing()">
+                  <button type="button" onclick="adjustBoothQty(1)" class="w-8 h-8 rounded-lg glass hover:bg-white/10 flex items-center justify-center"><i class="fas fa-plus text-xs"></i></button>
+                  <span class="text-xs text-gray-500 ml-2">Max: \${bt.available_count}</span>
+                </div>
+              </div>
+              <div>
+                <label class="text-xs text-gray-400 mb-1 block">Preferred Zone</label>
+                <select id="br-zone" class="w-full px-3 py-2.5 rounded-lg text-sm">
+                  <option value="">No preference</option>
+                  <option>Red Zone (near stage)</option>
+                  <option>Green Zone (mid-hall)</option>
+                  <option>Blue Zone (central)</option>
+                  <option>Purple Zone (premium corner)</option>
+                  <option>Near Entrance</option>
+                  <option>Near Exit</option>
+                </select>
+              </div>
+              <div class="md:col-span-2">
+                <label class="text-xs text-gray-400 mb-1 block">Products / Solutions to Display</label>
+                <textarea id="br-products" rows="2" class="w-full px-3 py-2.5 rounded-lg text-sm" placeholder="List the products or solutions you plan to showcase"></textarea>
+              </div>
+              <div class="md:col-span-2">
+                <label class="text-xs text-gray-400 mb-1 block">Special Requirements</label>
+                <textarea id="br-special" rows="2" class="w-full px-3 py-2.5 rounded-lg text-sm" placeholder="Power needs, internet, display setup, furniture, etc."></textarea>
+              </div>
+            </div>
+          </div>
+
+          <!-- Pricing Summary -->
+          <div class="glass rounded-xl p-4 border border-white/10">
+            <h4 class="font-semibold text-sm mb-3 text-gray-300"><i class="fas fa-calculator mr-1.5 text-green-400"></i>Pricing Summary</h4>
+            <div id="br-pricing-summary">
+              <div class="flex justify-between text-sm mb-1">
+                <span class="text-gray-400">\${bt.name} × <span id="br-qty-display">1</span></span>
+                <span class="text-white font-semibold" id="br-subtotal">₹\${Number(bt.price_inr).toLocaleString('en-IN')}</span>
+              </div>
+              <div class="flex justify-between text-sm mb-1">
+                <span class="text-gray-400">GST (18%)</span>
+                <span class="text-white" id="br-gst">₹\${gst.toLocaleString('en-IN')}</span>
+              </div>
+              <div class="border-t border-white/10 mt-2 pt-2 flex justify-between">
+                <span class="font-bold">Grand Total</span>
+                <span class="text-xl font-black" id="br-grand-total" style="color:\${bt.color};">₹\${total.toLocaleString('en-IN')}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Payment Note -->
+          <div class="glass rounded-xl p-4 border border-amber-500/20 bg-amber-500/5">
+            <div class="flex gap-3">
+              <i class="fas fa-info-circle text-amber-400 mt-0.5"></i>
+              <div>
+                <p class="text-sm font-semibold text-amber-300 mb-1">Pay Later — No Payment Now</p>
+                <p class="text-xs text-gray-400">Submit your request now and pay later. Our team will review your request and send a formal invoice with payment instructions within 24-48 hours. You can also pay online once the invoice is generated.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Submit -->
+          <div class="flex gap-3">
+            <button type="submit" id="br-submit-btn" class="flex-1 py-3 rounded-xl text-sm font-bold text-white transition hover:opacity-90" style="background:\${bt.color};">
+              <i class="fas fa-paper-plane mr-2"></i>Submit Booth Request
+            </button>
+            <button type="button" onclick="closeBoothRequestModal()" class="px-5 py-3 rounded-xl text-sm font-medium glass hover:bg-white/10 transition">Cancel</button>
+          </div>
+        </form>
+      \`;
+
+      modal.classList.remove('hidden');
+
+      document.getElementById('booth-request-form').onsubmit = async (e) => {
+        e.preventDefault();
+        const btn = document.getElementById('br-submit-btn');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Submitting...';
+        try {
+          const payload = {
+            booth_type_id: parseInt(document.getElementById('br-booth-type-id').value),
+            event_id: typeof EVENT_ID !== 'undefined' ? EVENT_ID : 1,
+            company_name: document.getElementById('br-company').value,
+            contact_name: document.getElementById('br-contact').value,
+            email: document.getElementById('br-email').value,
+            phone: document.getElementById('br-phone').value,
+            website: document.getElementById('br-website').value,
+            industry: document.getElementById('br-industry').value,
+            company_size: document.getElementById('br-company-size').value,
+            company_description: document.getElementById('br-description').value,
+            quantity: parseInt(document.getElementById('br-quantity').value) || 1,
+            preferred_zone: document.getElementById('br-zone').value,
+            products_to_display: document.getElementById('br-products').value,
+            special_requirements: document.getElementById('br-special').value,
+            attendee_id: currentUser ? currentUser.id : null
+          };
+          const result = await api.post('/api/booth-requests', payload);
+          closeBoothRequestModal();
+          showBoothRequestSuccess(result);
+        } catch(err) {
+          showToast(err.message || 'Failed to submit request', 'error');
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fas fa-paper-plane mr-2"></i>Submit Booth Request';
+        }
+      };
+    }
+
+    function adjustBoothQty(delta) {
+      const inp = document.getElementById('br-quantity');
+      const max = parseInt(inp.max) || 100;
+      let val = parseInt(inp.value) || 1;
+      val = Math.max(1, Math.min(max, val + delta));
+      inp.value = val;
+      updateBoothPricing();
+    }
+
+    function updateBoothPricing() {
+      const qty = parseInt(document.getElementById('br-quantity').value) || 1;
+      const unitPrice = parseInt(document.getElementById('br-unit-price').value) || 0;
+      const subtotal = unitPrice * qty;
+      const gst = Math.round(subtotal * 0.18);
+      const total = subtotal + gst;
+      const qtyDisplay = document.getElementById('br-qty-display');
+      if (qtyDisplay) qtyDisplay.textContent = qty;
+      const subtotalEl = document.getElementById('br-subtotal');
+      if (subtotalEl) subtotalEl.textContent = '₹' + subtotal.toLocaleString('en-IN');
+      const gstEl = document.getElementById('br-gst');
+      if (gstEl) gstEl.textContent = '₹' + gst.toLocaleString('en-IN');
+      const totalEl = document.getElementById('br-grand-total');
+      if (totalEl) totalEl.textContent = '₹' + total.toLocaleString('en-IN');
+    }
+
+    function closeBoothRequestModal() {
+      document.getElementById('booth-request-modal').classList.add('hidden');
+    }
+
+    function showBoothRequestSuccess(result) {
+      openModal(\`
+        <div class="p-6 text-center">
+          <div class="w-16 h-16 rounded-full bg-green-500/20 flex items-center justify-center mx-auto mb-4">
+            <i class="fas fa-check-circle text-3xl text-green-400"></i>
+          </div>
+          <h3 class="text-xl font-bold mb-2">Booth Request Submitted!</h3>
+          <p class="text-sm text-gray-400 mb-4">Your request for <strong class="text-white">\${result.booth_type}</strong> (×\${result.quantity}) has been received.</p>
+          <div class="glass rounded-xl p-4 mb-4 text-left">
+            <div class="flex justify-between text-sm mb-1">
+              <span class="text-gray-400">Request ID</span>
+              <span class="font-mono text-primary-400">#BR-\${String(result.id).padStart(4, '0')}</span>
+            </div>
+            <div class="flex justify-between text-sm mb-1">
+              <span class="text-gray-400">Booth Cost</span>
+              <span class="text-white">₹\${Number(result.total_price_inr).toLocaleString('en-IN')}</span>
+            </div>
+            <div class="flex justify-between text-sm mb-1">
+              <span class="text-gray-400">GST (18%)</span>
+              <span class="text-white">₹\${Number(result.gst_amount).toLocaleString('en-IN')}</span>
+            </div>
+            <div class="border-t border-white/10 mt-2 pt-2 flex justify-between">
+              <span class="font-bold">Grand Total</span>
+              <span class="text-lg font-black text-green-400">₹\${Number(result.grand_total).toLocaleString('en-IN')}</span>
+            </div>
+          </div>
+          <div class="glass rounded-xl p-3 mb-4 border border-amber-500/20 bg-amber-500/5 text-left">
+            <p class="text-xs text-amber-300"><i class="fas fa-clock mr-1.5"></i><strong>Next Steps:</strong> Our team will review your request and send an invoice within 24-48 hours. Payment can be completed online or via bank transfer.</p>
+          </div>
+          <div class="flex gap-3 justify-center">
+            <button onclick="closeModal(); switchExhibitionSubtab('my-requests')" class="px-5 py-2.5 rounded-xl text-sm font-semibold bg-primary-600 hover:bg-primary-500 text-white transition">
+              <i class="fas fa-file-alt mr-1.5"></i>View My Requests
+            </button>
+            <button onclick="closeModal()" class="px-5 py-2.5 rounded-xl text-sm font-medium glass hover:bg-white/10 transition">Close</button>
+          </div>
+        </div>
+      \`);
+    }
+
+    async function loadMyBoothRequests() {
+      const container = document.getElementById('my-booth-requests-container');
+      if (!container) return;
+      if (!currentUser) {
+        container.innerHTML = '<div class="text-center py-12"><i class="fas fa-lock text-2xl text-gray-600 mb-3 block"></i><p class="text-sm text-gray-500">Please sign in to view your booth requests.</p></div>';
+        return;
+      }
+      container.innerHTML = '<div class="text-center py-8"><i class="fas fa-spinner fa-spin text-primary-400 text-xl"></i></div>';
+      try {
+        const requests = await api.get('/api/booth-requests?attendee_id=' + currentUser.id);
+        if (!requests.length) {
+          container.innerHTML = \`
+            <div class="text-center py-12">
+              <div class="w-16 h-16 rounded-full bg-primary-500/10 flex items-center justify-center mx-auto mb-4">
+                <i class="fas fa-file-alt text-2xl text-primary-400"></i>
+              </div>
+              <h3 class="font-bold mb-2">No Booth Requests Yet</h3>
+              <p class="text-sm text-gray-400 mb-4">Browse our booth catalog and request your perfect exhibition space.</p>
+              <button onclick="switchExhibitionSubtab('booth-catalog')" class="px-5 py-2.5 rounded-xl text-sm font-semibold bg-primary-600 hover:bg-primary-500 text-white transition">
+                <i class="fas fa-th-large mr-1.5"></i>View Booth Catalog
+              </button>
+            </div>
+          \`;
+          return;
+        }
+
+        const statusColors = {
+          submitted: 'bg-blue-500/20 text-blue-300',
+          under_review: 'bg-amber-500/20 text-amber-300',
+          approved: 'bg-green-500/20 text-green-300',
+          rejected: 'bg-red-500/20 text-red-300',
+          confirmed: 'bg-emerald-500/20 text-emerald-300',
+          cancelled: 'bg-gray-500/20 text-gray-400'
+        };
+        const paymentColors = {
+          pending: 'bg-amber-500/20 text-amber-300',
+          invoice_sent: 'bg-blue-500/20 text-blue-300',
+          paid: 'bg-green-500/20 text-green-300',
+          cancelled: 'bg-gray-500/20 text-gray-400',
+          refunded: 'bg-purple-500/20 text-purple-300'
+        };
+
+        container.innerHTML = \`
+          <div class="mb-4 flex items-center justify-between">
+            <h3 class="font-bold"><i class="fas fa-file-alt text-primary-400 mr-2"></i>My Booth Requests (\${requests.length})</h3>
+            <button onclick="switchExhibitionSubtab('booth-catalog')" class="px-4 py-2 rounded-xl text-xs font-semibold bg-primary-600/20 text-primary-300 hover:bg-primary-600/30 transition">
+              <i class="fas fa-plus mr-1"></i>New Request
+            </button>
+          </div>
+          <div class="space-y-4">
+            \${requests.map(r => \`
+              <div class="glass rounded-2xl p-5 border border-white/5" style="border-left:3px solid \${r.booth_color || '#4c6ef5'};">
+                <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-3">
+                  <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-lg flex items-center justify-center" style="background:\${r.booth_color || '#4c6ef5'}20;">
+                      <i class="fas \${r.booth_icon || 'fa-store'}" style="color:\${r.booth_color || '#4c6ef5'};"></i>
+                    </div>
+                    <div>
+                      <h4 class="font-bold">\${r.booth_type_name}</h4>
+                      <p class="text-xs text-gray-500">\${r.size_label}m • \${r.area_sqm} sqm • Qty: \${r.quantity}</p>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <span class="px-2.5 py-1 rounded-full text-[10px] font-semibold uppercase \${statusColors[r.status] || 'bg-white/10 text-gray-400'}">\${r.status.replace('_', ' ')}</span>
+                    <span class="px-2.5 py-1 rounded-full text-[10px] font-semibold uppercase \${paymentColors[r.payment_status] || 'bg-white/10 text-gray-400'}"><i class="fas fa-credit-card mr-1"></i>\${r.payment_status.replace('_', ' ')}</span>
+                  </div>
+                </div>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs mb-3">
+                  <div>
+                    <span class="text-gray-500">Request ID</span>
+                    <div class="font-mono text-primary-400">#BR-\${String(r.id).padStart(4, '0')}</div>
+                  </div>
+                  <div>
+                    <span class="text-gray-500">Unit Price</span>
+                    <div class="font-semibold">₹\${Number(r.unit_price).toLocaleString('en-IN')}</div>
+                  </div>
+                  <div>
+                    <span class="text-gray-500">Grand Total</span>
+                    <div class="font-bold text-green-400">₹\${Number(r.grand_total).toLocaleString('en-IN')}</div>
+                  </div>
+                  <div>
+                    <span class="text-gray-500">Requested</span>
+                    <div>\${new Date(r.created_at).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' })}</div>
+                  </div>
+                </div>
+                \${r.admin_notes ? \`<div class="glass rounded-lg p-3 text-xs"><i class="fas fa-comment text-primary-400 mr-1.5"></i><span class="text-gray-400">Admin: </span>\${r.admin_notes}</div>\` : ''}
+                \${r.status === 'approved' && r.payment_status !== 'paid' ? \`
+                  <div class="mt-3 glass rounded-lg p-3 border border-green-500/20 bg-green-500/5 flex items-center justify-between">
+                    <div class="text-xs text-green-300"><i class="fas fa-check-circle mr-1.5"></i>Approved! Complete payment to confirm your booth.</div>
+                    <button onclick="showPaymentInfo(\${r.id})" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-green-600 hover:bg-green-500 text-white transition"><i class="fas fa-credit-card mr-1"></i>Pay Now</button>
+                  </div>
+                \` : ''}
+              </div>
+            \`).join('')}
+          </div>
+        \`;
+      } catch(e) {
+        console.error('Load requests error:', e);
+        container.innerHTML = '<div class="text-center py-8 text-red-400"><i class="fas fa-exclamation-circle text-xl mb-2 block"></i>Failed to load requests</div>';
+      }
+    }
+
+    function showPaymentInfo(requestId) {
+      openModal(\`
+        <div class="p-6">
+          <div class="flex items-center gap-3 mb-4">
+            <div class="w-12 h-12 rounded-full bg-green-500/20 flex items-center justify-center">
+              <i class="fas fa-credit-card text-xl text-green-400"></i>
+            </div>
+            <div>
+              <h3 class="font-bold text-lg">Complete Payment</h3>
+              <p class="text-xs text-gray-400">Request #BR-\${String(requestId).padStart(4, '0')}</p>
+            </div>
+          </div>
+          <div class="glass rounded-xl p-4 mb-4">
+            <h4 class="text-sm font-semibold mb-3">Payment Options</h4>
+            <div class="space-y-3">
+              <div class="flex items-start gap-3 p-3 rounded-lg bg-white/5 border border-white/10">
+                <i class="fas fa-university text-primary-400 mt-0.5"></i>
+                <div>
+                  <p class="text-sm font-semibold">Bank Transfer (NEFT/RTGS)</p>
+                  <p class="text-xs text-gray-400 mt-1">Invoice with bank details will be emailed to you. Transfer the amount and share the transaction reference.</p>
+                </div>
+              </div>
+              <div class="flex items-start gap-3 p-3 rounded-lg bg-white/5 border border-white/10">
+                <i class="fas fa-qrcode text-accent-400 mt-0.5"></i>
+                <div>
+                  <p class="text-sm font-semibold">UPI Payment</p>
+                  <p class="text-xs text-gray-400 mt-1">Scan the QR code from the invoice or pay directly via UPI ID provided in the invoice email.</p>
+                </div>
+              </div>
+              <div class="flex items-start gap-3 p-3 rounded-lg bg-white/5 border border-amber-500/20 bg-amber-500/5">
+                <i class="fas fa-globe text-amber-400 mt-0.5"></i>
+                <div>
+                  <p class="text-sm font-semibold text-amber-300">Online Payment (Coming Soon)</p>
+                  <p class="text-xs text-gray-400 mt-1">Secure online payment gateway will be available shortly. You'll receive a payment link via email.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+          <p class="text-xs text-gray-500 text-center mb-4">Need help? Contact us at <a href="mailto:exhibition@bharataiinnovation.com" class="text-primary-400 hover:underline">exhibition@bharataiinnovation.com</a></p>
+          <button onclick="closeModal()" class="w-full py-2.5 rounded-xl text-sm font-medium glass hover:bg-white/10 transition">Close</button>
+        </div>
+      \`);
     }
 
     // ==================== AWARDS ====================
@@ -7950,6 +8822,9 @@ function adminPageHTML(): string {
       <button onclick="switchSection('exhibitors')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="exhibitors" title="Exhibitors">
         <i class="fas fa-store w-5 text-center shrink-0"></i><span class="sidebar-label">Exhibitors</span>
       </button>
+      <button onclick="switchSection('booth-requests')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="booth-requests" title="Booth Requests">
+        <i class="fas fa-th-large w-5 text-center shrink-0"></i><span class="sidebar-label">Booth Requests</span>
+      </button>
       <button onclick="switchSection('awards')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="awards" title="Awards">
         <i class="fas fa-trophy w-5 text-center shrink-0"></i><span class="sidebar-label">Awards</span>
       </button>
@@ -8012,6 +8887,7 @@ function adminPageHTML(): string {
       <div id="section-sessions" class="section-content hidden"></div>
       <!-- Exhibitors Section -->
       <div id="section-exhibitors" class="section-content hidden"></div>
+      <div id="section-booth-requests" class="section-content hidden"></div>
       <!-- Awards Section -->
       <div id="section-awards" class="section-content hidden"></div>
       <!-- Announcements Section -->
@@ -8148,8 +9024,8 @@ function adminPageHTML(): string {
       document.querySelectorAll('.section-content').forEach(s => s.classList.add('hidden'));
       document.getElementById('section-'+sec).classList.remove('hidden');
 
-      const titles = { overview:'Overview', attendees:'Attendee Management', sessions:'Session Management', exhibitors:'Exhibitor Management', awards:'Awards Management', announcements:'Announcement Management', innovation:'Innovation Talk & Showcase', 'startup-pitch':'Startup Pitch Management', inquiries:'Inquiry Management', analytics:'Analytics & Reports', settings:'Settings' };
-      const subtitles = { overview:'Real-time event management dashboard', attendees:'Manage all registered attendees', sessions:'Create and manage event sessions', exhibitors:'Manage exhibition booths', awards:'Manage award categories and nominees', announcements:'Create and manage live feed announcements', innovation:'Manage innovation talk and showcase schedule', 'startup-pitch':'Manage startup pitches and investor panel', inquiries:'View and manage all incoming inquiries', analytics:'Deep dive into event engagement metrics', settings:'Configure email, API keys and app settings' };
+      const titles = { overview:'Overview', attendees:'Attendee Management', sessions:'Session Management', exhibitors:'Exhibitor Management', 'booth-requests':'Booth Requests', awards:'Awards Management', announcements:'Announcement Management', innovation:'Innovation Talk & Showcase', 'startup-pitch':'Startup Pitch Management', inquiries:'Inquiry Management', analytics:'Analytics & Reports', settings:'Settings' };
+      const subtitles = { overview:'Real-time event management dashboard', attendees:'Manage all registered attendees', sessions:'Create and manage event sessions', exhibitors:'Manage exhibition booths', 'booth-requests':'Review and manage booth booking requests', awards:'Manage award categories and nominees', announcements:'Create and manage live feed announcements', innovation:'Manage innovation talk and showcase schedule', 'startup-pitch':'Manage startup pitches and investor panel', inquiries:'View and manage all incoming inquiries', analytics:'Deep dive into event engagement metrics', settings:'Configure email, API keys and app settings' };
       document.getElementById('page-title').textContent = titles[sec] || sec;
       document.getElementById('page-subtitle').textContent = subtitles[sec] || '';
 
@@ -8162,6 +9038,7 @@ function adminPageHTML(): string {
         case 'attendees': loadAdminAttendees(); break;
         case 'sessions': loadAdminSessions(); break;
         case 'exhibitors': loadAdminExhibitors(); break;
+        case 'booth-requests': loadAdminBoothRequests(); break;
         case 'awards': loadAdminAwards(); break;
         case 'announcements': loadAdminAnnouncements(); break;
         case 'analytics': loadAnalytics(); break;
@@ -10215,6 +11092,158 @@ function adminPageHTML(): string {
         toast(result.message || 'Sync complete!');
         loadAdminExhibitors();
       } catch(e) { toast('Sync failed', 'error'); }
+    }
+
+    // ============ ADMIN BOOTH REQUESTS ============
+    let adminBoothRequestFilter = '';
+
+    async function loadAdminBoothRequests() {
+      const section = document.getElementById('section-booth-requests');
+      if (!section) return;
+      section.innerHTML = '<div class="text-center py-8"><i class="fas fa-spinner fa-spin text-primary-400 text-xl"></i></div>';
+      try {
+        const [requests, stats] = await Promise.all([
+          api.get('/api/admin/booth-requests' + (adminBoothRequestFilter ? '?status='+adminBoothRequestFilter : '')),
+          api.get('/api/admin/booth-stats')
+        ]);
+
+        const statusColors = {
+          submitted: 'bg-blue-500/20 text-blue-300',
+          under_review: 'bg-amber-500/20 text-amber-300',
+          approved: 'bg-green-500/20 text-green-300',
+          rejected: 'bg-red-500/20 text-red-300',
+          confirmed: 'bg-emerald-500/20 text-emerald-300',
+          cancelled: 'bg-gray-500/20 text-gray-400'
+        };
+        const payColors = {
+          pending: 'bg-amber-500/20 text-amber-300',
+          invoice_sent: 'bg-blue-500/20 text-blue-300',
+          paid: 'bg-green-500/20 text-green-300',
+          cancelled: 'bg-gray-500/20 text-gray-400',
+          refunded: 'bg-purple-500/20 text-purple-300'
+        };
+
+        section.innerHTML = \`
+          <!-- Stats Cards -->
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+            <div class="glass rounded-xl p-4 text-center">
+              <div class="text-2xl font-black text-primary-400">\${stats.total_requests}</div>
+              <div class="text-xs text-gray-500">Total Requests</div>
+            </div>
+            \${stats.by_status.map(s => \`
+              <div class="glass rounded-xl p-4 text-center cursor-pointer card-hover" onclick="adminBoothRequestFilter='\${s.status}'; loadAdminBoothRequests();">
+                <div class="text-2xl font-black">\${s.count}</div>
+                <div class="text-xs text-gray-500 capitalize">\${s.status.replace('_',' ')}</div>
+              </div>
+            \`).join('')}
+            <div class="glass rounded-xl p-4 text-center border border-green-500/20">
+              <div class="text-2xl font-black text-green-400">₹\${Number(stats.total_revenue || 0).toLocaleString('en-IN')}</div>
+              <div class="text-xs text-gray-500">Revenue (Paid)</div>
+            </div>
+          </div>
+
+          <!-- Booth Type Availability -->
+          <div class="glass rounded-xl p-4 mb-6 overflow-x-auto">
+            <h4 class="text-sm font-semibold mb-3"><i class="fas fa-cubes text-primary-400 mr-2"></i>Booth Inventory</h4>
+            <table class="w-full text-xs">
+              <thead><tr class="border-b border-white/10">
+                <th class="text-left py-2 px-2 text-gray-400">Type</th>
+                <th class="text-center py-2 px-2 text-gray-400">Total</th>
+                <th class="text-center py-2 px-2 text-gray-400">Available</th>
+                <th class="text-center py-2 px-2 text-gray-400">Requests</th>
+                <th class="text-center py-2 px-2 text-gray-400">Approved</th>
+                <th class="text-right py-2 px-2 text-gray-400">Price</th>
+              </tr></thead>
+              <tbody>
+                \${stats.by_type.map(t => \`
+                  <tr class="border-b border-white/5 hover:bg-white/5">
+                    <td class="py-2 px-2 font-semibold">\${t.name}</td>
+                    <td class="text-center py-2 px-2">\${t.total_count}</td>
+                    <td class="text-center py-2 px-2 \${t.available_count <= 3 ? 'text-red-400 font-bold' : 'text-green-400'}">\${t.available_count}</td>
+                    <td class="text-center py-2 px-2">\${t.requests}</td>
+                    <td class="text-center py-2 px-2 text-green-400">\${t.approved_qty || 0}</td>
+                    <td class="text-right py-2 px-2">₹\${Number(t.price_inr).toLocaleString('en-IN')}</td>
+                  </tr>
+                \`).join('')}
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Filter Tabs -->
+          <div class="flex gap-2 mb-4 flex-wrap">
+            <button onclick="adminBoothRequestFilter=''; loadAdminBoothRequests();" class="px-3 py-1.5 rounded-lg text-xs font-medium \${!adminBoothRequestFilter ? 'tab-active' : 'glass text-gray-400 hover:text-white'}">All</button>
+            \${['submitted','under_review','approved','confirmed','rejected','cancelled'].map(s => \`
+              <button onclick="adminBoothRequestFilter='\${s}'; loadAdminBoothRequests();" class="px-3 py-1.5 rounded-lg text-xs font-medium \${adminBoothRequestFilter===s ? 'tab-active' : 'glass text-gray-400 hover:text-white'}">\${s.replace('_',' ')}</button>
+            \`).join('')}
+          </div>
+
+          <!-- Requests List -->
+          <div class="space-y-3">
+            \${requests.length ? requests.map(r => \`
+              <div class="glass rounded-xl p-4 card-hover" style="border-left:3px solid \${r.booth_color || '#4c6ef5'};">
+                <div class="flex flex-col md:flex-row md:items-center justify-between gap-2 mb-2">
+                  <div>
+                    <span class="font-mono text-xs text-primary-400">#BR-\${String(r.id).padStart(4,'0')}</span>
+                    <span class="font-bold ml-2">\${r.company_name}</span>
+                    <span class="text-xs text-gray-500 ml-2">\${r.contact_name} &lt;\${r.email}&gt;</span>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <span class="px-2 py-1 rounded-full text-[10px] font-semibold uppercase \${statusColors[r.status] || ''}">\${r.status.replace('_',' ')}</span>
+                    <span class="px-2 py-1 rounded-full text-[10px] font-semibold uppercase \${payColors[r.payment_status] || ''}"><i class="fas fa-credit-card mr-1"></i>\${r.payment_status.replace('_',' ')}</span>
+                  </div>
+                </div>
+                <div class="grid grid-cols-2 md:grid-cols-5 gap-2 text-xs mb-3">
+                  <div><span class="text-gray-500">Booth:</span> <span class="font-semibold">\${r.booth_type_name}</span></div>
+                  <div><span class="text-gray-500">Size:</span> \${r.size_label}m</div>
+                  <div><span class="text-gray-500">Qty:</span> \${r.quantity}</div>
+                  <div><span class="text-gray-500">Total:</span> <span class="font-bold text-green-400">₹\${Number(r.grand_total).toLocaleString('en-IN')}</span></div>
+                  <div><span class="text-gray-500">Date:</span> \${new Date(r.created_at).toLocaleDateString('en-IN',{day:'numeric',month:'short'})}</div>
+                </div>
+                \${r.industry ? '<div class="text-xs text-gray-500 mb-2"><i class="fas fa-industry mr-1"></i>'+r.industry+(r.company_size ? ' &middot; '+r.company_size : '')+'</div>' : ''}
+                \${r.products_to_display ? '<div class="text-xs text-gray-500 mb-2"><i class="fas fa-box mr-1"></i>'+r.products_to_display+'</div>' : ''}
+                \${r.special_requirements ? '<div class="text-xs text-gray-500 mb-2"><i class="fas fa-star mr-1"></i>'+r.special_requirements+'</div>' : ''}
+                <div class="flex gap-2 mt-2 flex-wrap">
+                  \${r.status === 'submitted' ? '<button onclick="updateBoothRequest('+r.id+',\\\\'under_review\\\\',null)" class="px-3 py-1.5 rounded-lg text-[10px] font-semibold bg-amber-600/20 text-amber-300 hover:bg-amber-600/30"><i class="fas fa-search mr-1"></i>Review</button>' : ''}
+                  \${r.status !== 'approved' && r.status !== 'confirmed' && r.status !== 'cancelled' ? '<button onclick="updateBoothRequest('+r.id+',\\\\'approved\\\\',null)" class="px-3 py-1.5 rounded-lg text-[10px] font-semibold bg-green-600/20 text-green-300 hover:bg-green-600/30"><i class="fas fa-check mr-1"></i>Approve</button>' : ''}
+                  \${r.status !== 'rejected' && r.status !== 'cancelled' ? '<button onclick="updateBoothRequest('+r.id+',\\\\'rejected\\\\',null)" class="px-3 py-1.5 rounded-lg text-[10px] font-semibold bg-red-600/20 text-red-300 hover:bg-red-600/30"><i class="fas fa-times mr-1"></i>Reject</button>' : ''}
+                  \${r.status === 'approved' && r.payment_status !== 'paid' ? '<button onclick="updateBoothRequestPayment('+r.id+',\\\\'paid\\\\')" class="px-3 py-1.5 rounded-lg text-[10px] font-semibold bg-emerald-600/20 text-emerald-300 hover:bg-emerald-600/30"><i class="fas fa-check-double mr-1"></i>Mark Paid</button>' : ''}
+                  <button onclick="addBoothRequestNote('+r.id+')" class="px-3 py-1.5 rounded-lg text-[10px] font-semibold bg-white/5 text-gray-400 hover:bg-white/10"><i class="fas fa-comment mr-1"></i>Note</button>
+                </div>
+              </div>
+            \`).join('') : '<div class="text-center py-8 text-gray-500"><i class="fas fa-inbox text-2xl mb-2 block"></i>No booth requests found.</div>'}
+          </div>
+        \`;
+      } catch(e) {
+        console.error('Admin booth requests error:', e);
+        section.innerHTML = '<div class="text-center py-8 text-red-400">Failed to load booth requests</div>';
+      }
+    }
+
+    async function updateBoothRequest(id, status, paymentStatus) {
+      try {
+        const payload = {};
+        if (status) payload.status = status;
+        if (paymentStatus) payload.payment_status = paymentStatus;
+        payload.reviewed_by = 'admin';
+        await api.put('/api/admin/booth-requests/'+id, payload);
+        toast('Request updated!');
+        loadAdminBoothRequests();
+      } catch(e) { toast('Update failed: '+(e.message||''), 'error'); }
+    }
+
+    async function updateBoothRequestPayment(id, paymentStatus) {
+      if (!confirm('Mark this request as PAID?')) return;
+      await updateBoothRequest(id, null, paymentStatus);
+    }
+
+    function addBoothRequestNote(id) {
+      const note = prompt('Add admin note for request #BR-'+String(id).padStart(4,'0')+':');
+      if (note !== null) {
+        api.put('/api/admin/booth-requests/'+id, { admin_notes: note }).then(() => {
+          toast('Note added!');
+          loadAdminBoothRequests();
+        }).catch(e => toast('Failed to add note', 'error'));
+      }
     }
 
     // ============ AWARDS ============
