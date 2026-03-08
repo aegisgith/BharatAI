@@ -3999,6 +3999,18 @@ function mainPageHTML(): string {
           <a href="/marketplace" class="nav-btn flex flex-col md:flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-medium text-amber-400/80 hover:text-amber-300 transition-all no-underline">
             <i class="fas fa-robot text-lg md:text-base"></i><span>AI Market</span>
           </a>
+          <a href="/register" class="nav-btn hidden md:flex flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-medium text-green-400/80 hover:text-green-300 transition-all no-underline">
+            <i class="fas fa-ticket-alt text-base"></i><span>Register</span>
+          </a>
+          <a href="/contact" class="nav-btn hidden md:flex flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-medium text-gray-400 hover:text-white transition-all no-underline">
+            <i class="fas fa-envelope text-base"></i><span>Contact</span>
+          </a>
+          <a href="/inquiry" class="nav-btn hidden md:flex flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-medium text-amber-400/80 hover:text-amber-300 transition-all no-underline">
+            <i class="fas fa-store text-base"></i><span>Book Booth</span>
+          </a>
+          <a href="https://bharataiinnovation.com" target="_blank" class="nav-btn hidden md:flex flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-medium text-gray-400 hover:text-white transition-all no-underline">
+            <i class="fas fa-external-link-alt text-base"></i><span>Main Site</span>
+          </a>
           <button class="nav-btn nav-gated hidden flex-col md:flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-medium text-gray-400 hover:text-white transition-all relative" data-tab="inbox" onclick="switchTab('inbox')">
             <i class="fas fa-envelope text-lg md:text-base"></i><span>Inbox</span>
             <span id="unread-badge" class="hidden absolute -top-1 right-0 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center badge-pulse">0</span>
