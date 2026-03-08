@@ -2226,7 +2226,7 @@ app.post('/api/inquiries', async (c) => {
   if (!name || !email) return c.json({ error: 'Name and email are required' }, 400)
   if (!inquiry_type) return c.json({ error: 'Inquiry type is required' }, 400)
 
-  const validTypes = ['general', 'exhibition', 'sponsorship', 'speaking', 'media', 'group_registration', 'other']
+  const validTypes = ['general', 'exhibition', 'booth_inquiry', 'sponsorship', 'speaking', 'media', 'group_registration', 'other']
   if (!validTypes.includes(inquiry_type)) return c.json({ error: 'Invalid inquiry type' }, 400)
 
   const result = await c.env.DB.prepare(
@@ -2740,6 +2740,12 @@ app.get('/register', (c) => {
   return c.html(registerPageHTML())
 })
 
+// ==================== STANDALONE INQUIRY FORM (embeddable URL for main website) ====================
+
+app.get('/inquiry', (c) => {
+  return c.html(inquiryFormPageHTML())
+})
+
 function sharedHeadHTML(title: string): string {
   return `<!DOCTYPE html>
 <html lang="en">
@@ -2802,6 +2808,9 @@ function sharedNavHTML(activePage: string): string {
       <a href="/contact" class="px-3 py-2 rounded-lg text-xs font-semibold ${activePage === 'contact' ? 'bg-primary-500/20 text-primary-300' : 'text-gray-400 hover:text-white hover:bg-white/5'} transition">
         <i class="fas fa-envelope mr-1"></i>Contact
       </a>
+      <a href="/inquiry" class="px-3 py-2 rounded-lg text-xs font-semibold ${activePage === 'inquiry' ? 'bg-amber-500/20 text-amber-300' : 'text-gray-400 hover:text-white hover:bg-white/5'} transition">
+        <i class="fas fa-store mr-1"></i>Book Booth
+      </a>
       <a href="/marketplace" class="px-3 py-2 rounded-lg text-xs font-semibold ${activePage === 'marketplace' ? 'bg-accent-500/20 text-accent-300' : 'text-gray-400 hover:text-white hover:bg-white/5'} transition">
         <i class="fas fa-store mr-1"></i>AI Marketplace
       </a>
@@ -2842,6 +2851,7 @@ function sharedFooterHTML(): string {
           <li><a href="/" class="text-gray-400 hover:text-white transition"><i class="fas fa-home mr-2"></i>Networking App</a></li>
           <li><a href="/register" class="text-gray-400 hover:text-white transition"><i class="fas fa-ticket-alt mr-2"></i>Register</a></li>
           <li><a href="/contact" class="text-gray-400 hover:text-white transition"><i class="fas fa-envelope mr-2"></i>Contact Us</a></li>
+          <li><a href="/inquiry" class="text-gray-400 hover:text-white transition"><i class="fas fa-store mr-2"></i>Book a Booth</a></li>
           <li><a href="/marketplace" class="text-gray-400 hover:text-white transition"><i class="fas fa-robot mr-2"></i>AI Marketplace</a></li>
           <li><a href="https://bharataiinnovation.com" target="_blank" class="text-gray-400 hover:text-white transition"><i class="fas fa-globe mr-2"></i>bharataiinnovation.com</a></li>
           <li><a href="https://bharataiinnovation.com/exhibition" target="_blank" class="text-gray-400 hover:text-white transition"><i class="fas fa-store mr-2"></i>Exhibition</a></li>
@@ -3016,7 +3026,7 @@ function selectType(type) {
   // Extra fields
   let extra = '';
   if (type === 'exhibition') {
-    extra = '<div><label class="text-xs text-gray-400 mb-1 block">Preferred Booth Package</label><select id="cf-booth" class="w-full px-4 py-3 rounded-xl text-sm"><option value="">Select package</option><option value="Platinum - ₹5,00,000">Platinum — ₹5,00,000</option><option value="Gold - ₹3,00,000">Gold — ₹3,00,000</option><option value="Silver - ₹1,50,000">Silver — ₹1,50,000</option><option value="Startup - ₹75,000">Startup — ₹75,000</option><option value="Undecided">Not sure yet</option></select></div>';
+    extra = '<div><label class="text-xs text-gray-400 mb-1 block">Preferred Booth Type</label><select id="cf-booth" class="w-full px-4 py-3 rounded-xl text-sm"><option value="">Select booth type</option><option value="Startup Pod - 1.5×1.2m - ₹35,000">Startup Pod — 1.5 × 1.2 m — ₹35,000</option><option value="Explorer Booth - 2×2m - ₹84,000">Explorer Booth — 2 × 2 m — ₹84,000</option><option value="Innovator Booth - 3×2m - ₹92,400">Innovator Booth — 3 × 2 m — ₹92,400</option><option value="Accelerator Booth - 4×2m - ₹1,56,000">Accelerator Booth — 4 × 2 m — ₹1,56,000</option><option value="Enterprise Booth - 6×2m - ₹2,20,000">Enterprise Booth — 6 × 2 m — ₹2,20,000</option><option value="Flagship Pavilion - 7.5×3m - ₹6,24,000">Flagship Pavilion — 7.5 × 3 m — ₹6,24,000</option><option value="Mega Pavilion - 7.5×7.5m - ₹15,00,000">Mega Pavilion — 7.5 × 7.5 m — ₹15,00,000</option><option value="Undecided">Not sure yet / Need consultation</option></select></div><div class="grid grid-cols-2 gap-4 mt-4"><div><label class="text-xs text-gray-400 mb-1 block">Number of Booths</label><input type="number" id="cf-booth-qty" min="1" value="1" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="1"></div><div><label class="text-xs text-gray-400 mb-1 block">Preferred Zone</label><select id="cf-zone" class="w-full px-4 py-3 rounded-xl text-sm"><option value="">Any zone</option><option value="Main Hall">Main Hall</option><option value="Innovation Hub">Innovation Hub</option><option value="Startup Alley">Startup Alley</option><option value="Enterprise Zone">Enterprise Zone</option></select></div></div>';
   } else if (type === 'speaking') {
     extra = '<div><label class="text-xs text-gray-400 mb-1 block">Proposed Topic</label><input type="text" id="cf-topic" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Your talk/workshop topic"></div>';
   } else if (type === 'group_registration') {
@@ -3037,7 +3047,9 @@ async function submitContactForm(e) {
   btn.disabled = true;
 
   const metadata = {};
-  const booth = document.getElementById('cf-booth'); if (booth) metadata.booth_tier = booth.value;
+  const booth = document.getElementById('cf-booth'); if (booth) metadata.booth_type = booth.value;
+  const boothQty = document.getElementById('cf-booth-qty'); if (boothQty) metadata.booth_quantity = boothQty.value;
+  const zone = document.getElementById('cf-zone'); if (zone) metadata.preferred_zone = zone.value;
   const topic = document.getElementById('cf-topic'); if (topic) metadata.topic = topic.value;
   const gs = document.getElementById('cf-groupsize'); if (gs) metadata.group_size = gs.value;
   const pt = document.getElementById('cf-passtype'); if (pt) metadata.pass_type = pt.value;
@@ -3287,6 +3299,422 @@ async function submitRegistration(e) {
     showToast('Network error. Please try again.', 'error');
     btn.innerHTML = '<i class="fas fa-check-circle mr-2"></i>Register — It\\'s Free!';
     btn.disabled = false;
+  }
+}
+</script>
+</body>
+</html>`
+}
+
+// ==================== STANDALONE INQUIRY FORM PAGE ====================
+
+function inquiryFormPageHTML(): string {
+  return `${sharedHeadHTML('Book Your Booth — Bharat AI Innovation 2026')}
+<body class="min-h-screen">
+${sharedNavHTML('inquiry')}
+
+<main class="max-w-6xl mx-auto px-4 py-8">
+  <!-- Hero -->
+  <div class="text-center mb-8">
+    <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 mb-4">
+      <i class="fas fa-store"></i> EXHIBITION BOOKING OPEN
+    </div>
+    <h1 class="text-3xl md:text-4xl font-bold mb-3">Book Your Exhibition Booth</h1>
+    <p class="text-gray-400 max-w-2xl mx-auto">Showcase your AI products & solutions at India's largest AI expo — World Trade Center, Mumbai | 2-3 June 2026</p>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
+
+    <!-- Booth Packages Panel (Left Column) -->
+    <div class="lg:col-span-1 space-y-3">
+      <h3 class="font-bold text-base text-amber-300 mb-2"><i class="fas fa-th-large mr-2"></i>Booth Packages</h3>
+
+      <div class="booth-pkg glass rounded-xl p-4 border border-green-500/20 cursor-pointer hover:border-green-400/40 transition" onclick="selectBooth(this, 'Startup Pod - 1.5x1.2m - Rs.35,000')">
+        <div class="flex items-center justify-between">
+          <div>
+            <span class="text-sm font-bold text-green-300">&#x1F680; Startup Pod</span>
+            <p class="text-[10px] text-gray-400 mt-0.5">1.5 x 1.2 m (1.8 sqm)</p>
+          </div>
+          <span class="text-sm font-bold text-green-400">&#x20B9;35,000</span>
+        </div>
+      </div>
+
+      <div class="booth-pkg glass rounded-xl p-4 border border-blue-500/20 cursor-pointer hover:border-blue-400/40 transition" onclick="selectBooth(this, 'Explorer Booth - 2x2m - Rs.84,000')">
+        <div class="flex items-center justify-between">
+          <div>
+            <span class="text-sm font-bold text-blue-300">&#x1F50D; Explorer Booth</span>
+            <p class="text-[10px] text-gray-400 mt-0.5">2 x 2 m (4 sqm)</p>
+          </div>
+          <span class="text-sm font-bold text-blue-400">&#x20B9;84,000</span>
+        </div>
+      </div>
+
+      <div class="booth-pkg glass rounded-xl p-4 border border-primary-500/20 cursor-pointer hover:border-primary-400/40 transition" onclick="selectBooth(this, 'Innovator Booth - 3x2m - Rs.92,400')">
+        <div class="flex items-center justify-between">
+          <div>
+            <span class="text-sm font-bold text-primary-300">&#x1F4A1; Innovator Booth</span>
+            <p class="text-[10px] text-gray-400 mt-0.5">3 x 2 m (6 sqm)</p>
+          </div>
+          <span class="text-sm font-bold text-primary-400">&#x20B9;92,400</span>
+        </div>
+      </div>
+
+      <div class="booth-pkg glass rounded-xl p-4 border border-violet-500/20 cursor-pointer hover:border-violet-400/40 transition" onclick="selectBooth(this, 'Accelerator Booth - 4x2m - Rs.1,56,000')">
+        <div class="flex items-center justify-between">
+          <div>
+            <span class="text-sm font-bold text-violet-300">&#x26A1; Accelerator Booth</span>
+            <p class="text-[10px] text-gray-400 mt-0.5">4 x 2 m (8 sqm)</p>
+          </div>
+          <span class="text-sm font-bold text-violet-400">&#x20B9;1,56,000</span>
+        </div>
+      </div>
+
+      <div class="booth-pkg glass rounded-xl p-4 border border-orange-500/20 cursor-pointer hover:border-orange-400/40 transition" onclick="selectBooth(this, 'Enterprise Booth - 6x2m - Rs.2,20,000')">
+        <div class="flex items-center justify-between">
+          <div>
+            <span class="text-sm font-bold text-orange-300">&#x1F3E2; Enterprise Booth</span>
+            <p class="text-[10px] text-gray-400 mt-0.5">6 x 2 m (12 sqm)</p>
+          </div>
+          <span class="text-sm font-bold text-orange-400">&#x20B9;2,20,000</span>
+        </div>
+      </div>
+
+      <div class="booth-pkg glass rounded-xl p-4 border border-amber-500/20 cursor-pointer hover:border-amber-400/40 transition" onclick="selectBooth(this, 'Flagship Pavilion - 7.5x3m - Rs.6,24,000')">
+        <div class="flex items-center justify-between">
+          <div>
+            <span class="text-sm font-bold text-amber-300">&#x1F3DB; Flagship Pavilion</span>
+            <p class="text-[10px] text-gray-400 mt-0.5">7.5 x 3 m (22.5 sqm)</p>
+          </div>
+          <span class="text-sm font-bold text-amber-400">&#x20B9;6,24,000</span>
+        </div>
+      </div>
+
+      <div class="booth-pkg glass rounded-xl p-4 border border-rose-500/20 cursor-pointer hover:border-rose-400/40 transition" onclick="selectBooth(this, 'Mega Pavilion - 7.5x7.5m - Rs.15,00,000')">
+        <div class="flex items-center justify-between">
+          <div>
+            <span class="text-sm font-bold text-rose-300">&#x1F451; Mega Pavilion</span>
+            <p class="text-[10px] text-gray-400 mt-0.5">7.5 x 7.5 m (56.25 sqm)</p>
+          </div>
+          <span class="text-sm font-bold text-rose-400">&#x20B9;15,00,000</span>
+        </div>
+      </div>
+
+      <!-- Quick Info -->
+      <div class="glass rounded-xl p-4 mt-4 border border-white/5">
+        <h4 class="text-xs font-bold text-gray-300 mb-2"><i class="fas fa-info-circle text-primary-400 mr-1.5"></i>All Booths Include</h4>
+        <ul class="text-[10px] text-gray-400 space-y-1">
+          <li><i class="fas fa-check text-green-400 mr-1.5"></i>Basic booth structure & branding</li>
+          <li><i class="fas fa-check text-green-400 mr-1.5"></i>Electricity & Wi-Fi access</li>
+          <li><i class="fas fa-check text-green-400 mr-1.5"></i>2 exhibitor badges per booth</li>
+          <li><i class="fas fa-check text-green-400 mr-1.5"></i>Listing in event directory & app</li>
+          <li><i class="fas fa-check text-green-400 mr-1.5"></i>AI Marketplace product listing</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Inquiry Form (Right 2 Columns) -->
+    <div class="lg:col-span-2">
+      <div class="glass rounded-2xl p-6 md:p-8 border border-amber-500/20" id="inquiry-form-card">
+        <div class="flex items-center gap-3 mb-6">
+          <div class="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center shrink-0">
+            <i class="fas fa-store text-lg text-amber-400"></i>
+          </div>
+          <div>
+            <h2 class="font-bold text-lg text-amber-300">Booth Inquiry Form</h2>
+            <p class="text-xs text-gray-400">Select a booth package or fill in details below</p>
+          </div>
+        </div>
+
+        <form id="inquiry-form" onsubmit="submitBoothInquiry(event)" class="space-y-4">
+
+          <!-- Booth Selection -->
+          <div>
+            <label class="text-xs text-gray-400 mb-1 block">Booth Type *</label>
+            <select id="iq-booth-type" required class="w-full px-4 py-3 rounded-xl text-sm">
+              <option value="">Select booth type</option>
+              <option value="Startup Pod - 1.5x1.2m - Rs.35,000">Startup Pod &#x2014; 1.5 x 1.2 m &#x2014; &#x20B9;35,000</option>
+              <option value="Explorer Booth - 2x2m - Rs.84,000">Explorer Booth &#x2014; 2 x 2 m &#x2014; &#x20B9;84,000</option>
+              <option value="Innovator Booth - 3x2m - Rs.92,400">Innovator Booth &#x2014; 3 x 2 m &#x2014; &#x20B9;92,400</option>
+              <option value="Accelerator Booth - 4x2m - Rs.1,56,000">Accelerator Booth &#x2014; 4 x 2 m &#x2014; &#x20B9;1,56,000</option>
+              <option value="Enterprise Booth - 6x2m - Rs.2,20,000">Enterprise Booth &#x2014; 6 x 2 m &#x2014; &#x20B9;2,20,000</option>
+              <option value="Flagship Pavilion - 7.5x3m - Rs.6,24,000">Flagship Pavilion &#x2014; 7.5 x 3 m &#x2014; &#x20B9;6,24,000</option>
+              <option value="Mega Pavilion - 7.5x7.5m - Rs.15,00,000">Mega Pavilion &#x2014; 7.5 x 7.5 m &#x2014; &#x20B9;15,00,000</option>
+              <option value="Undecided">Not sure yet / Need consultation</option>
+            </select>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label class="text-xs text-gray-400 mb-1 block">Number of Booths</label>
+              <input type="number" id="iq-qty" min="1" value="1" class="w-full px-4 py-3 rounded-xl text-sm">
+            </div>
+            <div>
+              <label class="text-xs text-gray-400 mb-1 block">Preferred Zone</label>
+              <select id="iq-zone" class="w-full px-4 py-3 rounded-xl text-sm">
+                <option value="">Any zone</option>
+                <option value="Main Hall">Main Hall</option>
+                <option value="Innovation Hub">Innovation Hub</option>
+                <option value="Startup Alley">Startup Alley</option>
+                <option value="Enterprise Zone">Enterprise Zone</option>
+              </select>
+            </div>
+          </div>
+
+          <hr class="border-white/10">
+
+          <!-- Contact Info -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label class="text-xs text-gray-400 mb-1 block">Contact Person *</label>
+              <input type="text" id="iq-name" required class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Your full name">
+            </div>
+            <div>
+              <label class="text-xs text-gray-400 mb-1 block">Email Address *</label>
+              <input type="email" id="iq-email" required class="w-full px-4 py-3 rounded-xl text-sm" placeholder="your@email.com">
+            </div>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label class="text-xs text-gray-400 mb-1 block">Phone Number *</label>
+              <input type="tel" id="iq-phone" required class="w-full px-4 py-3 rounded-xl text-sm" placeholder="+91 XXXXX XXXXX">
+            </div>
+            <div>
+              <label class="text-xs text-gray-400 mb-1 block">Company / Organization *</label>
+              <input type="text" id="iq-company" required class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Company name">
+            </div>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label class="text-xs text-gray-400 mb-1 block">Designation</label>
+              <input type="text" id="iq-designation" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Your role / title">
+            </div>
+            <div>
+              <label class="text-xs text-gray-400 mb-1 block">Website</label>
+              <input type="url" id="iq-website" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="https://yourcompany.com">
+            </div>
+          </div>
+          <div>
+            <label class="text-xs text-gray-400 mb-1 block">Industry / Domain</label>
+            <select id="iq-industry" class="w-full px-4 py-3 rounded-xl text-sm">
+              <option value="">Select industry</option>
+              <option value="AI/ML">Artificial Intelligence / Machine Learning</option>
+              <option value="IT/Software">IT / Software</option>
+              <option value="Healthcare">Healthcare / MedTech</option>
+              <option value="FinTech">FinTech / Banking</option>
+              <option value="EdTech">EdTech / Education</option>
+              <option value="Manufacturing">Manufacturing / Industry 4.0</option>
+              <option value="Agriculture">AgriTech / Agriculture</option>
+              <option value="Defense">Defense / Aerospace</option>
+              <option value="Retail">Retail / E-commerce</option>
+              <option value="Government">Government / Public Sector</option>
+              <option value="Telecom">Telecom / IoT</option>
+              <option value="Automotive">Automotive / EV</option>
+              <option value="Energy">Energy / CleanTech</option>
+              <option value="Logistics">Logistics / Supply Chain</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="text-xs text-gray-400 mb-1 block">Products / Solutions to Showcase</label>
+            <textarea id="iq-products" rows="2" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Brief description of what you plan to exhibit..."></textarea>
+          </div>
+          <div>
+            <label class="text-xs text-gray-400 mb-1 block">Special Requirements / Questions</label>
+            <textarea id="iq-message" rows="3" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Any specific requirements, questions, or preferences..."></textarea>
+          </div>
+
+          <!-- Price Summary -->
+          <div id="iq-price-summary" class="hidden p-4 rounded-xl bg-amber-500/10 border border-amber-500/20">
+            <div class="flex items-center justify-between">
+              <div>
+                <span class="text-xs text-gray-400">Selected Booth</span>
+                <p class="text-sm font-bold text-amber-300" id="iq-summary-type"></p>
+              </div>
+              <div class="text-right">
+                <span class="text-xs text-gray-400">Estimated Total</span>
+                <p class="text-lg font-bold text-amber-400" id="iq-summary-price"></p>
+              </div>
+            </div>
+            <p class="text-[10px] text-gray-500 mt-1">* Final pricing confirmed after review. GST extra as applicable.</p>
+          </div>
+
+          <button type="submit" id="iq-submit" class="w-full py-3.5 rounded-xl font-semibold text-white bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 transition-all text-sm shadow-lg shadow-amber-500/20">
+            <i class="fas fa-paper-plane mr-2"></i>Submit Booth Inquiry
+          </button>
+          <p class="text-center text-[10px] text-gray-500">Our team will respond within 24 hours with booth availability and next steps.</p>
+        </form>
+
+        <!-- Success State -->
+        <div id="iq-success" class="hidden text-center py-8">
+          <div class="w-20 h-20 rounded-full bg-green-500/20 flex items-center justify-center mx-auto mb-4">
+            <i class="fas fa-check text-3xl text-green-400"></i>
+          </div>
+          <h3 class="font-bold text-xl text-green-300">Booth Inquiry Submitted!</h3>
+          <p class="text-sm text-gray-400 mt-2 max-w-md mx-auto">Thank you for your interest in exhibiting at Bharat AI Innovation 2026. Our exhibition team will review your request and contact you within 24 hours.</p>
+          <p class="text-xs text-gray-500 mt-2">Reference: <span id="iq-ref" class="text-primary-400 font-mono"></span></p>
+          <div class="flex gap-3 justify-center mt-6 flex-wrap">
+            <button onclick="resetInquiryForm()" class="px-6 py-2.5 rounded-xl text-sm font-semibold glass hover:bg-white/10 transition"><i class="fas fa-plus mr-2"></i>Submit Another</button>
+            <a href="/" class="px-6 py-2.5 rounded-xl text-sm font-semibold bg-primary-500/20 text-primary-300 hover:bg-primary-500/30 transition"><i class="fas fa-rocket mr-2"></i>Explore Event</a>
+            <a href="/marketplace" class="px-6 py-2.5 rounded-xl text-sm font-semibold bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition"><i class="fas fa-store mr-2"></i>AI Marketplace</a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Why Exhibit Section -->
+      <div class="glass rounded-2xl p-6 mt-6 border border-white/5">
+        <h3 class="font-bold text-base text-white mb-4"><i class="fas fa-chart-line text-primary-400 mr-2"></i>Why Exhibit at BHAI 2026?</h3>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div class="text-center">
+            <div class="text-2xl font-bold text-primary-400">10,000+</div>
+            <div class="text-[10px] text-gray-400 mt-1">Expected Visitors</div>
+          </div>
+          <div class="text-center">
+            <div class="text-2xl font-bold text-amber-400">200+</div>
+            <div class="text-[10px] text-gray-400 mt-1">Exhibitors</div>
+          </div>
+          <div class="text-center">
+            <div class="text-2xl font-bold text-green-400">50+</div>
+            <div class="text-[10px] text-gray-400 mt-1">Countries</div>
+          </div>
+          <div class="text-center">
+            <div class="text-2xl font-bold text-purple-400">2 Days</div>
+            <div class="text-[10px] text-gray-400 mt-1">Full Access</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Quick Contact Bar -->
+  <div class="max-w-6xl mx-auto mt-6">
+    <div class="glass rounded-xl p-4 flex flex-wrap items-center justify-center gap-4 text-xs text-gray-400">
+      <span><i class="fas fa-envelope text-amber-400 mr-1.5"></i>exhibition@bharataiinnovation.com</span>
+      <span><i class="fas fa-globe text-amber-400 mr-1.5"></i><a href="https://bharataiinnovation.com" target="_blank" class="hover:text-white transition">bharataiinnovation.com</a></span>
+      <span><i class="fas fa-map-marker-alt text-amber-400 mr-1.5"></i>WTC Mumbai, Cuffe Parade</span>
+      <span><i class="fas fa-calendar text-amber-400 mr-1.5"></i>2-3 June 2026</span>
+    </div>
+  </div>
+</main>
+
+${sharedFooterHTML()}
+
+<script>
+${sharedToastJS()}
+
+var BOOTH_PRICES = {
+  'Startup Pod - 1.5x1.2m - Rs.35,000': { name: 'Startup Pod (1.5 x 1.2 m)', price: 35000 },
+  'Explorer Booth - 2x2m - Rs.84,000': { name: 'Explorer Booth (2 x 2 m)', price: 84000 },
+  'Innovator Booth - 3x2m - Rs.92,400': { name: 'Innovator Booth (3 x 2 m)', price: 92400 },
+  'Accelerator Booth - 4x2m - Rs.1,56,000': { name: 'Accelerator Booth (4 x 2 m)', price: 156000 },
+  'Enterprise Booth - 6x2m - Rs.2,20,000': { name: 'Enterprise Booth (6 x 2 m)', price: 220000 },
+  'Flagship Pavilion - 7.5x3m - Rs.6,24,000': { name: 'Flagship Pavilion (7.5 x 3 m)', price: 624000 },
+  'Mega Pavilion - 7.5x7.5m - Rs.15,00,000': { name: 'Mega Pavilion (7.5 x 7.5 m)', price: 1500000 }
+};
+
+function selectBooth(el, val) {
+  document.getElementById('iq-booth-type').value = val;
+  updatePriceSummary();
+  document.getElementById('inquiry-form-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  document.querySelectorAll('.booth-pkg').forEach(function(p) { p.style.outline = 'none'; });
+  el.style.outline = '2px solid #fbbf24';
+  el.style.outlineOffset = '2px';
+}
+
+function updatePriceSummary() {
+  var sel = document.getElementById('iq-booth-type').value;
+  var qty = parseInt(document.getElementById('iq-qty').value) || 1;
+  var summary = document.getElementById('iq-price-summary');
+  var info = BOOTH_PRICES[sel];
+
+  if (info) {
+    var total = info.price * qty;
+    document.getElementById('iq-summary-type').textContent = info.name + (qty > 1 ? ' x ' + qty : '');
+    document.getElementById('iq-summary-price').textContent = '\\u20B9' + total.toLocaleString('en-IN');
+    summary.classList.remove('hidden');
+  } else {
+    summary.classList.add('hidden');
+  }
+}
+
+document.getElementById('iq-booth-type').addEventListener('change', updatePriceSummary);
+document.getElementById('iq-qty').addEventListener('input', updatePriceSummary);
+
+async function submitBoothInquiry(e) {
+  e.preventDefault();
+  var btn = document.getElementById('iq-submit');
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Submitting...';
+  btn.disabled = true;
+
+  var boothType = document.getElementById('iq-booth-type').value;
+  var qty = document.getElementById('iq-qty').value;
+  var zone = document.getElementById('iq-zone').value;
+  var info = BOOTH_PRICES[boothType];
+
+  var metadata = {
+    booth_type: boothType,
+    booth_quantity: qty,
+    preferred_zone: zone,
+    estimated_total: info ? (info.price * parseInt(qty)) : null,
+    designation: document.getElementById('iq-designation').value.trim(),
+    website: document.getElementById('iq-website').value.trim(),
+    industry: document.getElementById('iq-industry').value,
+    products_to_showcase: document.getElementById('iq-products').value.trim()
+  };
+
+  try {
+    var resp = await fetch('/api/inquiries', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        inquiry_type: 'booth_inquiry',
+        name: document.getElementById('iq-name').value.trim(),
+        email: document.getElementById('iq-email').value.trim(),
+        phone: document.getElementById('iq-phone').value.trim(),
+        organization: document.getElementById('iq-company').value.trim(),
+        subject: 'Booth Inquiry: ' + (boothType || 'General'),
+        message: document.getElementById('iq-message').value.trim(),
+        metadata: metadata
+      })
+    });
+    var data = await resp.json();
+    if (!resp.ok) {
+      showToast(data.error || 'Failed to submit', 'error');
+      btn.innerHTML = '<i class="fas fa-paper-plane mr-2"></i>Submit Booth Inquiry';
+      btn.disabled = false;
+      return;
+    }
+
+    document.getElementById('inquiry-form').classList.add('hidden');
+    document.getElementById('iq-success').classList.remove('hidden');
+    document.getElementById('iq-ref').textContent = 'BHAI-INQ-' + String(data.id).padStart(5, '0');
+    showToast('Booth inquiry submitted successfully!', 'success');
+  } catch(err) {
+    showToast('Network error. Please try again.', 'error');
+    btn.innerHTML = '<i class="fas fa-paper-plane mr-2"></i>Submit Booth Inquiry';
+    btn.disabled = false;
+  }
+}
+
+function resetInquiryForm() {
+  document.getElementById('inquiry-form').reset();
+  document.getElementById('inquiry-form').classList.remove('hidden');
+  document.getElementById('iq-success').classList.add('hidden');
+  document.getElementById('iq-price-summary').classList.add('hidden');
+  document.getElementById('iq-submit').innerHTML = '<i class="fas fa-paper-plane mr-2"></i>Submit Booth Inquiry';
+  document.getElementById('iq-submit').disabled = false;
+  document.querySelectorAll('.booth-pkg').forEach(function(p) { p.style.outline = 'none'; });
+}
+
+// Check URL params for pre-selected booth type
+var urlParams = new URLSearchParams(window.location.search);
+var preselect = urlParams.get('booth');
+if (preselect) {
+  var matchKey = Object.keys(BOOTH_PRICES).find(function(k) { return k.toLowerCase().indexOf(preselect.toLowerCase()) !== -1; });
+  if (matchKey) {
+    document.getElementById('iq-booth-type').value = matchKey;
+    updatePriceSummary();
   }
 }
 </script>
@@ -11892,6 +12320,7 @@ function adminPageHTML(): string {
         const typeLabels = {
           general: { icon: 'fa-question-circle', color: 'primary', label: 'General' },
           exhibition: { icon: 'fa-store', color: 'amber', label: 'Exhibition' },
+          booth_inquiry: { icon: 'fa-store-alt', color: 'amber', label: 'Booth Inquiry' },
           sponsorship: { icon: 'fa-handshake', color: 'orange', label: 'Sponsorship' },
           speaking: { icon: 'fa-microphone-alt', color: 'purple', label: 'Speaking' },
           media: { icon: 'fa-newspaper', color: 'rose', label: 'Media' },
