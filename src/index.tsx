@@ -6382,7 +6382,7 @@ function mainPageHTML(): string {
             <div class="flex gap-2 mt-4">
               <button onclick="viewProfile(\${a.id})" class="flex-1 py-2 rounded-lg text-xs font-medium glass hover:bg-white/10 transition"><i class="fas fa-user mr-1"></i>Profile</button>
               <button onclick="sendConnectionRequest(\${a.id})" class="flex-1 py-2 rounded-lg text-xs font-medium bg-primary-600/20 text-primary-300 hover:bg-primary-600/30 transition"><i class="fas fa-plus mr-1"></i>Connect</button>
-              <button onclick="openChat(\${a.id}, '\${a.name.replace(/'/g, "\\\\'")}', '\${(a.company || '').replace(/'/g, "\\\\'")}')" class="py-2 px-3 rounded-lg text-xs font-medium bg-accent-500/20 text-accent-300 hover:bg-accent-500/30 transition" title="Message"><i class="fas fa-comment"></i></button>
+              <button onclick="openChat(\${a.id}, '\${a.name.replace(/'/g, "&apos;")}', '\${(a.company || '').replace(/'/g, "&apos;")}')" class="py-2 px-3 rounded-lg text-xs font-medium bg-accent-500/20 text-accent-300 hover:bg-accent-500/30 transition" title="Message"><i class="fas fa-comment"></i></button>
               <button onclick="openMeetingModal(\${a.id})" class="py-2 px-3 rounded-lg text-xs font-medium bg-green-500/20 text-green-300 hover:bg-green-500/30 transition" title="Schedule Meeting"><i class="fas fa-calendar-plus"></i></button>
             </div>
           </div>
@@ -6431,7 +6431,7 @@ function mainPageHTML(): string {
           </div>
           <div class="flex gap-2">
             <button onclick="sendConnectionRequest(\${a.id}); closeProfileModal();" class="flex-1 py-2.5 rounded-xl text-sm font-medium bg-primary-600 hover:bg-primary-500 text-white transition"><i class="fas fa-user-plus mr-2"></i>Connect</button>
-            <button onclick="openChat(\${a.id}, '\${a.name.replace(/'/g, "\\\\'")}', '\${(a.company || '').replace(/'/g, "\\\\'")}'); closeProfileModal();" class="flex-1 py-2.5 rounded-xl text-sm font-medium bg-accent-500/20 text-accent-300 hover:bg-accent-500/30 transition"><i class="fas fa-comment mr-2"></i>Message</button>
+            <button onclick="openChat(\${a.id}, '\${a.name.replace(/'/g, "&apos;")}', '\${(a.company || '').replace(/'/g, "&apos;")}'); closeProfileModal();" class="flex-1 py-2.5 rounded-xl text-sm font-medium bg-accent-500/20 text-accent-300 hover:bg-accent-500/30 transition"><i class="fas fa-comment mr-2"></i>Message</button>
             <button onclick="openMeetingModal(\${a.id}); closeProfileModal();" class="py-2.5 px-4 rounded-xl text-sm font-medium glass hover:bg-white/10 transition"><i class="fas fa-calendar-plus"></i></button>
           </div>
         \`;
@@ -7668,7 +7668,7 @@ function mainPageHTML(): string {
                   <button onclick="updateConnection(\${conn.id}, 'accepted')" class="px-2 py-1 rounded text-xs bg-green-500/20 text-green-400 hover:bg-green-500/30"><i class="fas fa-check"></i></button>
                   <button onclick="updateConnection(\${conn.id}, 'declined')" class="px-2 py-1 rounded text-xs bg-red-500/20 text-red-400 hover:bg-red-500/30"><i class="fas fa-times"></i></button>
                 \` : ''}
-                \${conn.status === 'accepted' ? \`<button onclick="openChat(\${conn.other_id}, '\${conn.other_name?.replace(/'/g, "\\\\'")}', '\${(conn.other_company || '').replace(/'/g, "\\\\'")}')" class="px-2 py-1 rounded text-xs bg-primary-500/20 text-primary-300 hover:bg-primary-500/30"><i class="fas fa-comment"></i></button>\` : ''}
+                \${conn.status === 'accepted' ? \`<button onclick="openChat(\${conn.other_id}, '\${conn.other_name?.replace(/'/g, "&apos;")}', '\${(conn.other_company || '').replace(/'/g, "&apos;")}')" class="px-2 py-1 rounded text-xs bg-primary-500/20 text-primary-300 hover:bg-primary-500/30"><i class="fas fa-comment"></i></button>\` : ''}
               </div>
             </div>
           </div>
@@ -8547,8 +8547,8 @@ function mainPageHTML(): string {
               <p class="text-xs text-gray-500 truncate">\${c.other_company || ''}</p>
             </div>
             <div class="flex gap-1.5">
-              <button onclick="openChat(\${c.other_id}, '\${(c.other_name || '').replace(/'/g, "\\\\\\\\'")}', '\${(c.other_company || '').replace(/'/g, "\\\\\\\\'")}')" class="px-3 py-1.5 rounded-lg text-xs bg-primary-500/20 text-primary-300 hover:bg-primary-500/30 transition" title="Chat"><i class="fas fa-comment"></i></button>
-              <button onclick="openMeetingModal(\${c.other_id}, '\${(c.other_name || '').replace(/'/g, "\\\\\\\\'")}')" class="px-3 py-1.5 rounded-lg text-xs bg-green-500/20 text-green-300 hover:bg-green-500/30 transition" title="Schedule"><i class="fas fa-calendar-plus"></i></button>
+              <button onclick="openChat(\${c.other_id}, '\${(c.other_name || '').replace(/'/g, "\\\\&apos;")}', '\${(c.other_company || '').replace(/'/g, "\\\\&apos;")}')" class="px-3 py-1.5 rounded-lg text-xs bg-primary-500/20 text-primary-300 hover:bg-primary-500/30 transition" title="Chat"><i class="fas fa-comment"></i></button>
+              <button onclick="openMeetingModal(\${c.other_id}, '\${(c.other_name || '').replace(/'/g, "\\\\&apos;")}')" class="px-3 py-1.5 rounded-lg text-xs bg-green-500/20 text-green-300 hover:bg-green-500/30 transition" title="Schedule"><i class="fas fa-calendar-plus"></i></button>
             </div>
           </div>
         </div>
@@ -8646,8 +8646,8 @@ function mainPageHTML(): string {
                 <p class="text-xs text-gray-500">\${c.other_company || ''}\${c.other_job_title ? ' &middot; ' + c.other_job_title : ''}</p>
               </div>
               <div class="flex gap-1.5">
-                <button onclick="openChat(\${c.other_id}, '\${(c.other_name || '').replace(/'/g, "\\\\\\\\'")}', '\${(c.other_company || '').replace(/'/g, "\\\\\\\\'")}')" class="px-3 py-1.5 rounded-lg text-xs bg-primary-500/20 text-primary-300 hover:bg-primary-500/30 transition" title="Chat"><i class="fas fa-comment"></i></button>
-                <button onclick="openMeetingModal(\${c.other_id}, '\${(c.other_name || '').replace(/'/g, "\\\\\\\\'")}')" class="px-3 py-1.5 rounded-lg text-xs bg-green-500/20 text-green-300 hover:bg-green-500/30 transition" title="Schedule"><i class="fas fa-calendar-plus"></i></button>
+                <button onclick="openChat(\${c.other_id}, '\${(c.other_name || '').replace(/'/g, "\\\\&apos;")}', '\${(c.other_company || '').replace(/'/g, "\\\\&apos;")}')" class="px-3 py-1.5 rounded-lg text-xs bg-primary-500/20 text-primary-300 hover:bg-primary-500/30 transition" title="Chat"><i class="fas fa-comment"></i></button>
+                <button onclick="openMeetingModal(\${c.other_id}, '\${(c.other_name || '').replace(/'/g, "\\\\&apos;")}')" class="px-3 py-1.5 rounded-lg text-xs bg-green-500/20 text-green-300 hover:bg-green-500/30 transition" title="Schedule"><i class="fas fa-calendar-plus"></i></button>
               </div>
             </div>
           </div>
@@ -9955,7 +9955,7 @@ function adminPageHTML(): string {
                   <td class="flex gap-1">
                     <button onclick='openEditAttendee(\${JSON.stringify(a).replace(/'/g,"&#39;")})' class="px-2 py-1 rounded text-xs bg-primary-500/20 text-primary-300 hover:bg-primary-500/30" title="Full Edit"><i class="fas fa-edit"></i></button>
                     <button onclick='adminDownloadPass(\${JSON.stringify({id:a.id,name:a.name,email:a.email,company:a.company||"",job_title:a.job_title||"",badge_type:a.badge_type||"Delegate",avatar_url:a.avatar_url||""}).replace(/'/g,"&#39;")})' class="px-2 py-1 rounded text-xs bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30" title="Download Pass"><i class="fas fa-id-badge"></i></button>
-                    <button onclick="notifyAttendee(\${a.id}, '\${a.name.replace(/'/g,"\\\\'")}', '\${a.email}')" class="px-2 py-1 rounded text-xs bg-amber-500/20 text-amber-300 hover:bg-amber-500/30" title="Send notification email"><i class="fas fa-envelope"></i></button>
+                    <button onclick="notifyAttendee(\${a.id}, '\${a.name.replace(/'/g,"&apos;")}', '\${a.email}')" class="px-2 py-1 rounded text-xs bg-amber-500/20 text-amber-300 hover:bg-amber-500/30" title="Send notification email"><i class="fas fa-envelope"></i></button>
                     <button onclick="deleteAttendee(\${a.id})" class="px-2 py-1 rounded text-xs bg-red-500/20 text-red-400 hover:bg-red-500/30" title="Delete"><i class="fas fa-trash"></i></button>
                   </td>
                 </tr>\`; }).join('')}
@@ -10345,7 +10345,7 @@ function adminPageHTML(): string {
     }
 
     // ============ INLINE EDITING ============
-    function esc(s) { return (s||'').replace(/\\\\/g,'\\\\\\\\').replace(/'/g,"\\\\'").replace(/"/g,'&quot;'); }
+    function esc(s) { return (s||'').replace(/\\\\/g,'\\\\&apos;).replace(/'/g,"&apos;").replace(/"/g,'&quot;'); }
 
     let activeInlineEdit = null;
     function cancelActiveInlineEdit() {
@@ -11643,10 +11643,10 @@ function adminPageHTML(): string {
                 \${r.products_to_display ? '<div class="text-xs text-gray-500 mb-2"><i class="fas fa-box mr-1"></i>'+r.products_to_display+'</div>' : ''}
                 \${r.special_requirements ? '<div class="text-xs text-gray-500 mb-2"><i class="fas fa-star mr-1"></i>'+r.special_requirements+'</div>' : ''}
                 <div class="flex gap-2 mt-2 flex-wrap">
-                  \${r.status === 'submitted' ? '<button onclick="updateBoothRequest('+r.id+',\\\\'under_review\\\\',null)" class="px-3 py-1.5 rounded-lg text-[10px] font-semibold bg-amber-600/20 text-amber-300 hover:bg-amber-600/30"><i class="fas fa-search mr-1"></i>Review</button>' : ''}
-                  \${r.status !== 'approved' && r.status !== 'confirmed' && r.status !== 'cancelled' ? '<button onclick="updateBoothRequest('+r.id+',\\\\'approved\\\\',null)" class="px-3 py-1.5 rounded-lg text-[10px] font-semibold bg-green-600/20 text-green-300 hover:bg-green-600/30"><i class="fas fa-check mr-1"></i>Approve</button>' : ''}
-                  \${r.status !== 'rejected' && r.status !== 'cancelled' ? '<button onclick="updateBoothRequest('+r.id+',\\\\'rejected\\\\',null)" class="px-3 py-1.5 rounded-lg text-[10px] font-semibold bg-red-600/20 text-red-300 hover:bg-red-600/30"><i class="fas fa-times mr-1"></i>Reject</button>' : ''}
-                  \${r.status === 'approved' && r.payment_status !== 'paid' ? '<button onclick="updateBoothRequestPayment('+r.id+',\\\\'paid\\\\')" class="px-3 py-1.5 rounded-lg text-[10px] font-semibold bg-emerald-600/20 text-emerald-300 hover:bg-emerald-600/30"><i class="fas fa-check-double mr-1"></i>Mark Paid</button>' : ''}
+                  \${r.status === 'submitted' ? '<button onclick="updateBoothRequest('+r.id+',&apos;under_review&apos;,null)" class="px-3 py-1.5 rounded-lg text-[10px] font-semibold bg-amber-600/20 text-amber-300 hover:bg-amber-600/30"><i class="fas fa-search mr-1"></i>Review</button>' : ''}
+                  \${r.status !== 'approved' && r.status !== 'confirmed' && r.status !== 'cancelled' ? '<button onclick="updateBoothRequest('+r.id+',&apos;approved&apos;,null)" class="px-3 py-1.5 rounded-lg text-[10px] font-semibold bg-green-600/20 text-green-300 hover:bg-green-600/30"><i class="fas fa-check mr-1"></i>Approve</button>' : ''}
+                  \${r.status !== 'rejected' && r.status !== 'cancelled' ? '<button onclick="updateBoothRequest('+r.id+',&apos;rejected&apos;,null)" class="px-3 py-1.5 rounded-lg text-[10px] font-semibold bg-red-600/20 text-red-300 hover:bg-red-600/30"><i class="fas fa-times mr-1"></i>Reject</button>' : ''}
+                  \${r.status === 'approved' && r.payment_status !== 'paid' ? '<button onclick="updateBoothRequestPayment('+r.id+',&apos;paid&apos;)" class="px-3 py-1.5 rounded-lg text-[10px] font-semibold bg-emerald-600/20 text-emerald-300 hover:bg-emerald-600/30"><i class="fas fa-check-double mr-1"></i>Mark Paid</button>' : ''}
                   <button onclick="addBoothRequestNote('+r.id+')" class="px-3 py-1.5 rounded-lg text-[10px] font-semibold bg-white/5 text-gray-400 hover:bg-white/10"><i class="fas fa-comment mr-1"></i>Note</button>
                 </div>
               </div>
@@ -11725,7 +11725,7 @@ function adminPageHTML(): string {
                       </div>
                       <div class="flex gap-1">
                         <button onclick="declareWinner(\${n.id}, '\${n.name}', '\${n.description||''}', '\${n.company||''}', \${n.is_winner?0:1})" class="px-1.5 py-1 rounded text-[10px] \${n.is_winner?'bg-amber-500/20 text-amber-400':'bg-white/5 text-gray-400 hover:bg-amber-500/20 hover:text-amber-400'}" title="\${n.is_winner?'Remove winner':'Declare winner'}"><i class="fas fa-crown"></i></button>
-                        <button onclick="openEditNominee(\${n.id}, '\${n.name.replace(/'/g,"\\\\'")}', '\${(n.description||'').replace(/'/g,"\\\\'")}', '\${(n.company||'').replace(/'/g,"\\\\'")}', \${n.is_winner})" class="px-1.5 py-1 rounded text-[10px] bg-primary-500/20 text-primary-300 hover:bg-primary-500/30"><i class="fas fa-edit"></i></button>
+                        <button onclick="openEditNominee(\${n.id}, '\${n.name.replace(/'/g,"&apos;")}', '\${(n.description||'').replace(/'/g,"&apos;")}', '\${(n.company||'').replace(/'/g,"&apos;")}', \${n.is_winner})" class="px-1.5 py-1 rounded text-[10px] bg-primary-500/20 text-primary-300 hover:bg-primary-500/30"><i class="fas fa-edit"></i></button>
                         <button onclick="deleteNominee(\${n.id})" class="px-1.5 py-1 rounded text-[10px] bg-red-500/20 text-red-400 hover:bg-red-500/30"><i class="fas fa-trash"></i></button>
                       </div>
                     </div>
