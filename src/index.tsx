@@ -10345,7 +10345,7 @@ function adminPageHTML(): string {
     }
 
     // ============ INLINE EDITING ============
-    function esc(s) { return (s||'').replace(/\\\\/g,'\\\\&apos;).replace(/'/g,"&apos;").replace(/"/g,'&quot;'); }
+    function esc(s) { return (s||'').replace(/'/g,"&apos;").replace(/"/g,'&quot;'); }
 
     let activeInlineEdit = null;
     function cancelActiveInlineEdit() {
