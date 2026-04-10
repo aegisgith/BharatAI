@@ -3026,7 +3026,7 @@ function selectType(type) {
   // Extra fields
   let extra = '';
   if (type === 'exhibition') {
-    extra = '<div><label class="text-xs text-gray-400 mb-1 block">Preferred Booth Type</label><select id="cf-booth" class="w-full px-4 py-3 rounded-xl text-sm"><option value="">Select booth type</option><option value="Startup Pod - 1.5×1.2m - ₹35,000">Startup Pod — 1.5 × 1.2 m — ₹35,000</option><option value="Explorer Booth - 2×2m - ₹84,000">Explorer Booth — 2 × 2 m — ₹84,000</option><option value="Innovator Booth - 3×2m - ₹92,400">Innovator Booth — 3 × 2 m — ₹92,400</option><option value="Accelerator Booth - 4×2m - ₹1,56,000">Accelerator Booth — 4 × 2 m — ₹1,56,000</option><option value="Enterprise Booth - 6×2m - ₹2,20,000">Enterprise Booth — 6 × 2 m — ₹2,20,000</option><option value="Flagship Pavilion - 7.5×3m - ₹6,24,000">Flagship Pavilion — 7.5 × 3 m — ₹6,24,000</option><option value="Mega Pavilion - 7.5×7.5m - ₹15,00,000">Mega Pavilion — 7.5 × 7.5 m — ₹15,00,000</option><option value="Undecided">Not sure yet / Need consultation</option></select></div><div class="grid grid-cols-2 gap-4 mt-4"><div><label class="text-xs text-gray-400 mb-1 block">Number of Booths</label><input type="number" id="cf-booth-qty" min="1" value="1" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="1"></div><div><label class="text-xs text-gray-400 mb-1 block">Preferred Zone</label><select id="cf-zone" class="w-full px-4 py-3 rounded-xl text-sm"><option value="">Any zone</option><option value="Main Hall">Main Hall</option><option value="Innovation Hub">Innovation Hub</option><option value="Startup Alley">Startup Alley</option><option value="Enterprise Zone">Enterprise Zone</option></select></div></div>';
+    extra = '<div><label class="text-xs text-gray-400 mb-1 block">Preferred Booth Type</label><select id="cf-booth" class="w-full px-4 py-3 rounded-xl text-sm"><option value="">Select booth type</option><option value="Startup Pod - 1.5×1.5m - ₹38,000">Startup Pod — 1.5 × 1.5 m — ₹38,000</option><option value="Explorer Booth - 2×2m - ₹1,29,000">Explorer Booth — 2 × 2 m — ₹1,29,000</option><option value="Innovator Booth - 3×2m - ₹1,95,000">Innovator Booth — 3 × 2 m — ₹1,95,000</option><option value="Accelerator Booth - 3×3m - ₹2,91,000">Accelerator Booth — 3 × 3 m — ₹2,91,000</option><option value="Enterprise Booth - 4×2m - ₹2,58,000">Enterprise Booth — 4 × 2 m — ₹2,58,000</option><option value="Flagship Pavilion - 6×2m - ₹3,87,000">Flagship Pavilion — 6 × 2 m — ₹3,87,000</option><option value="Mega Pavilion - 7×7.7m - ₹17,40,000">Mega Pavilion — 7 × 7.7 m — ₹17,40,000</option><option value="Undecided">Not sure yet / Need consultation</option></select></div><div class="grid grid-cols-2 gap-4 mt-4"><div><label class="text-xs text-gray-400 mb-1 block">Number of Booths</label><input type="number" id="cf-booth-qty" min="1" value="1" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="1"></div><div><label class="text-xs text-gray-400 mb-1 block">Preferred Zone</label><select id="cf-zone" class="w-full px-4 py-3 rounded-xl text-sm"><option value="">Any zone</option><option value="Main Hall">Main Hall</option><option value="Innovation Hub">Innovation Hub</option><option value="Startup Alley">Startup Alley</option><option value="Enterprise Zone">Enterprise Zone</option></select></div></div>';
   } else if (type === 'speaking') {
     extra = '<div><label class="text-xs text-gray-400 mb-1 block">Proposed Topic</label><input type="text" id="cf-topic" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Your talk/workshop topic"></div>';
   } else if (type === 'group_registration') {
@@ -3474,73 +3474,73 @@ ${sharedNavHTML('inquiry')}
     <div class="lg:col-span-1 space-y-3">
       <h3 class="font-bold text-base text-amber-300 mb-2"><i class="fas fa-th-large mr-2"></i>Booth Packages</h3>
 
-      <div class="booth-pkg glass rounded-xl p-4 border border-green-500/20 cursor-pointer hover:border-green-400/40 transition" onclick="selectBooth(this, 'Startup Pod - 1.5x1.2m - Rs.35,000')">
+      <div class="booth-pkg glass rounded-xl p-4 border border-green-500/20 cursor-pointer hover:border-green-400/40 transition" onclick="selectBooth(this, 'Startup Pod - 1.5x1.5m - Rs.38,000')">
         <div class="flex items-center justify-between">
           <div>
             <span class="text-sm font-bold text-green-300">&#x1F680; Startup Pod</span>
-            <p class="text-[10px] text-gray-400 mt-0.5">1.5 x 1.2 m (1.8 sqm)</p>
+            <p class="text-[10px] text-gray-400 mt-0.5">1.5 x 1.5 m (2.25 sqm)</p>
           </div>
-          <span class="text-sm font-bold text-green-400">&#x20B9;35,000</span>
+          <span class="text-sm font-bold text-green-400">&#x20B9;38,000</span>
         </div>
       </div>
 
-      <div class="booth-pkg glass rounded-xl p-4 border border-blue-500/20 cursor-pointer hover:border-blue-400/40 transition" onclick="selectBooth(this, 'Explorer Booth - 2x2m - Rs.84,000')">
+      <div class="booth-pkg glass rounded-xl p-4 border border-blue-500/20 cursor-pointer hover:border-blue-400/40 transition" onclick="selectBooth(this, 'Explorer Booth - 2x2m - Rs.1,29,000')">
         <div class="flex items-center justify-between">
           <div>
             <span class="text-sm font-bold text-blue-300">&#x1F50D; Explorer Booth</span>
             <p class="text-[10px] text-gray-400 mt-0.5">2 x 2 m (4 sqm)</p>
           </div>
-          <span class="text-sm font-bold text-blue-400">&#x20B9;84,000</span>
+          <span class="text-sm font-bold text-blue-400">&#x20B9;1,29,000</span>
         </div>
       </div>
 
-      <div class="booth-pkg glass rounded-xl p-4 border border-primary-500/20 cursor-pointer hover:border-primary-400/40 transition" onclick="selectBooth(this, 'Innovator Booth - 3x2m - Rs.92,400')">
+      <div class="booth-pkg glass rounded-xl p-4 border border-primary-500/20 cursor-pointer hover:border-primary-400/40 transition" onclick="selectBooth(this, 'Innovator Booth - 3x2m - Rs.1,95,000')">
         <div class="flex items-center justify-between">
           <div>
             <span class="text-sm font-bold text-primary-300">&#x1F4A1; Innovator Booth</span>
             <p class="text-[10px] text-gray-400 mt-0.5">3 x 2 m (6 sqm)</p>
           </div>
-          <span class="text-sm font-bold text-primary-400">&#x20B9;92,400</span>
+          <span class="text-sm font-bold text-primary-400">&#x20B9;1,95,000</span>
         </div>
       </div>
 
-      <div class="booth-pkg glass rounded-xl p-4 border border-violet-500/20 cursor-pointer hover:border-violet-400/40 transition" onclick="selectBooth(this, 'Accelerator Booth - 4x2m - Rs.1,56,000')">
+      <div class="booth-pkg glass rounded-xl p-4 border border-violet-500/20 cursor-pointer hover:border-violet-400/40 transition" onclick="selectBooth(this, 'Accelerator Booth - 3x3m - Rs.2,91,000')">
         <div class="flex items-center justify-between">
           <div>
             <span class="text-sm font-bold text-violet-300">&#x26A1; Accelerator Booth</span>
-            <p class="text-[10px] text-gray-400 mt-0.5">4 x 2 m (8 sqm)</p>
+            <p class="text-[10px] text-gray-400 mt-0.5">3 x 3 m (9 sqm)</p>
           </div>
-          <span class="text-sm font-bold text-violet-400">&#x20B9;1,56,000</span>
+          <span class="text-sm font-bold text-violet-400">&#x20B9;2,91,000</span>
         </div>
       </div>
 
-      <div class="booth-pkg glass rounded-xl p-4 border border-orange-500/20 cursor-pointer hover:border-orange-400/40 transition" onclick="selectBooth(this, 'Enterprise Booth - 6x2m - Rs.2,20,000')">
+      <div class="booth-pkg glass rounded-xl p-4 border border-orange-500/20 cursor-pointer hover:border-orange-400/40 transition" onclick="selectBooth(this, 'Enterprise Booth - 4x2m - Rs.2,58,000')">
         <div class="flex items-center justify-between">
           <div>
             <span class="text-sm font-bold text-orange-300">&#x1F3E2; Enterprise Booth</span>
-            <p class="text-[10px] text-gray-400 mt-0.5">6 x 2 m (12 sqm)</p>
+            <p class="text-[10px] text-gray-400 mt-0.5">4 x 2 m (8 sqm)</p>
           </div>
-          <span class="text-sm font-bold text-orange-400">&#x20B9;2,20,000</span>
+          <span class="text-sm font-bold text-orange-400">&#x20B9;2,58,000</span>
         </div>
       </div>
 
-      <div class="booth-pkg glass rounded-xl p-4 border border-amber-500/20 cursor-pointer hover:border-amber-400/40 transition" onclick="selectBooth(this, 'Flagship Pavilion - 7.5x3m - Rs.6,24,000')">
+      <div class="booth-pkg glass rounded-xl p-4 border border-amber-500/20 cursor-pointer hover:border-amber-400/40 transition" onclick="selectBooth(this, 'Flagship Pavilion - 6x2m - Rs.3,87,000')">
         <div class="flex items-center justify-between">
           <div>
             <span class="text-sm font-bold text-amber-300">&#x1F3DB; Flagship Pavilion</span>
-            <p class="text-[10px] text-gray-400 mt-0.5">7.5 x 3 m (22.5 sqm)</p>
+            <p class="text-[10px] text-gray-400 mt-0.5">6 x 2 m (12 sqm)</p>
           </div>
-          <span class="text-sm font-bold text-amber-400">&#x20B9;6,24,000</span>
+          <span class="text-sm font-bold text-amber-400">&#x20B9;3,87,000</span>
         </div>
       </div>
 
-      <div class="booth-pkg glass rounded-xl p-4 border border-rose-500/20 cursor-pointer hover:border-rose-400/40 transition" onclick="selectBooth(this, 'Mega Pavilion - 7.5x7.5m - Rs.15,00,000')">
+      <div class="booth-pkg glass rounded-xl p-4 border border-rose-500/20 cursor-pointer hover:border-rose-400/40 transition" onclick="selectBooth(this, 'Mega Pavilion - 7x7.7m - Rs.17,40,000')">
         <div class="flex items-center justify-between">
           <div>
             <span class="text-sm font-bold text-rose-300">&#x1F451; Mega Pavilion</span>
-            <p class="text-[10px] text-gray-400 mt-0.5">7.5 x 7.5 m (56.25 sqm)</p>
+            <p class="text-[10px] text-gray-400 mt-0.5">7 x 7.7 m (53.90 sqm)</p>
           </div>
-          <span class="text-sm font-bold text-rose-400">&#x20B9;15,00,000</span>
+          <span class="text-sm font-bold text-rose-400">&#x20B9;17,40,000</span>
         </div>
       </div>
 
@@ -3577,13 +3577,13 @@ ${sharedNavHTML('inquiry')}
             <label class="text-xs text-gray-400 mb-1 block">Booth Type *</label>
             <select id="iq-booth-type" required class="w-full px-4 py-3 rounded-xl text-sm">
               <option value="">Select booth type</option>
-              <option value="Startup Pod - 1.5x1.2m - Rs.35,000">Startup Pod &#x2014; 1.5 x 1.2 m &#x2014; &#x20B9;35,000</option>
-              <option value="Explorer Booth - 2x2m - Rs.84,000">Explorer Booth &#x2014; 2 x 2 m &#x2014; &#x20B9;84,000</option>
-              <option value="Innovator Booth - 3x2m - Rs.92,400">Innovator Booth &#x2014; 3 x 2 m &#x2014; &#x20B9;92,400</option>
-              <option value="Accelerator Booth - 4x2m - Rs.1,56,000">Accelerator Booth &#x2014; 4 x 2 m &#x2014; &#x20B9;1,56,000</option>
-              <option value="Enterprise Booth - 6x2m - Rs.2,20,000">Enterprise Booth &#x2014; 6 x 2 m &#x2014; &#x20B9;2,20,000</option>
-              <option value="Flagship Pavilion - 7.5x3m - Rs.6,24,000">Flagship Pavilion &#x2014; 7.5 x 3 m &#x2014; &#x20B9;6,24,000</option>
-              <option value="Mega Pavilion - 7.5x7.5m - Rs.15,00,000">Mega Pavilion &#x2014; 7.5 x 7.5 m &#x2014; &#x20B9;15,00,000</option>
+              <option value="Startup Pod - 1.5x1.5m - Rs.38,000">Startup Pod &#x2014; 1.5 x 1.5 m &#x2014; &#x20B9;38,000</option>
+              <option value="Explorer Booth - 2x2m - Rs.1,29,000">Explorer Booth &#x2014; 2 x 2 m &#x2014; &#x20B9;1,29,000</option>
+              <option value="Innovator Booth - 3x2m - Rs.1,95,000">Innovator Booth &#x2014; 3 x 2 m &#x2014; &#x20B9;1,95,000</option>
+              <option value="Accelerator Booth - 3x3m - Rs.2,91,000">Accelerator Booth &#x2014; 3 x 3 m &#x2014; &#x20B9;2,91,000</option>
+              <option value="Enterprise Booth - 4x2m - Rs.2,58,000">Enterprise Booth &#x2014; 4 x 2 m &#x2014; &#x20B9;2,58,000</option>
+              <option value="Flagship Pavilion - 6x2m - Rs.3,87,000">Flagship Pavilion &#x2014; 6 x 2 m &#x2014; &#x20B9;3,87,000</option>
+              <option value="Mega Pavilion - 7x7.7m - Rs.17,40,000">Mega Pavilion &#x2014; 7 x 7.7 m &#x2014; &#x20B9;17,40,000</option>
               <option value="Undecided">Not sure yet / Need consultation</option>
             </select>
           </div>
@@ -3749,13 +3749,13 @@ ${sharedFooterHTML()}
 ${sharedToastJS()}
 
 var BOOTH_PRICES = {
-  'Startup Pod - 1.5x1.2m - Rs.35,000': { name: 'Startup Pod (1.5 x 1.2 m)', price: 35000 },
-  'Explorer Booth - 2x2m - Rs.84,000': { name: 'Explorer Booth (2 x 2 m)', price: 84000 },
-  'Innovator Booth - 3x2m - Rs.92,400': { name: 'Innovator Booth (3 x 2 m)', price: 92400 },
-  'Accelerator Booth - 4x2m - Rs.1,56,000': { name: 'Accelerator Booth (4 x 2 m)', price: 156000 },
-  'Enterprise Booth - 6x2m - Rs.2,20,000': { name: 'Enterprise Booth (6 x 2 m)', price: 220000 },
-  'Flagship Pavilion - 7.5x3m - Rs.6,24,000': { name: 'Flagship Pavilion (7.5 x 3 m)', price: 624000 },
-  'Mega Pavilion - 7.5x7.5m - Rs.15,00,000': { name: 'Mega Pavilion (7.5 x 7.5 m)', price: 1500000 }
+  'Startup Pod - 1.5x1.5m - Rs.38,000': { name: 'Startup Pod (1.5 x 1.5 m)', price: 38000 },
+  'Explorer Booth - 2x2m - Rs.1,29,000': { name: 'Explorer Booth (2 x 2 m)', price: 129000 },
+  'Innovator Booth - 3x2m - Rs.1,95,000': { name: 'Innovator Booth (3 x 2 m)', price: 195000 },
+  'Accelerator Booth - 3x3m - Rs.2,91,000': { name: 'Accelerator Booth (3 x 3 m)', price: 291000 },
+  'Enterprise Booth - 4x2m - Rs.2,58,000': { name: 'Enterprise Booth (4 x 2 m)', price: 258000 },
+  'Flagship Pavilion - 6x2m - Rs.3,87,000': { name: 'Flagship Pavilion (6 x 2 m)', price: 387000 },
+  'Mega Pavilion - 7x7.7m - Rs.17,40,000': { name: 'Mega Pavilion (7 x 7.7 m)', price: 1740000 }
 };
 
 function selectBooth(el, val) {

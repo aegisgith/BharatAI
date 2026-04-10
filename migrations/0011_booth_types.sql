@@ -76,37 +76,37 @@ CREATE INDEX IF NOT EXISTS idx_booth_types_slug ON booth_types(slug);
 
 -- Seed Booth Types
 INSERT OR IGNORE INTO booth_types (slug, name, size_label, width_m, depth_m, area_sqm, area_sqft, total_count, total_area_sqm, total_area_sqft, price_inr, available_count, description, features, color, icon, sort_order) VALUES
-('startup-pod', 'Startup Pod', '1.5 × 1.2', 1.5, 1.2, 1.8, 20, 40, 72, 800, 35000, 40,
+('startup-pod', 'Startup Pod', '1.5 × 1.5', 1.5, 1.5, 2.25, 24, 40, 90, 968, 38000, 40,
   'Compact, high-visibility pod ideal for early-stage startups to showcase their MVP or pitch deck. Perfect for solo founders and small teams.',
   '["1 table + 1 chair","Power outlet","Wi-Fi access","Badge for 1 person","Basic signage panel","Event listing"]',
   '#22c55e', 'fa-seedling', 1),
 
-('explorer-booth', 'Explorer Booth', '2 × 2', 2.0, 2.0, 4.0, 43, 35, 140, 1505, 84000, 35,
+('explorer-booth', 'Explorer Booth', '2 × 2', 2.0, 2.0, 4.0, 43, 35, 140, 1505, 129000, 35,
   'A great starter booth for growing companies ready to engage visitors with product demos and live interactions.',
   '["Branded backdrop panel","1 table + 2 chairs","Power strip (2 sockets)","Wi-Fi access","Badges for 2 persons","Shelf unit","Event app listing"]',
   '#3b82f6', 'fa-compass', 2),
 
-('innovator-booth', 'Innovator Booth', '3 × 2', 3.0, 2.0, 6.0, 65, 20, 120, 1300, 92400, 20,
+('innovator-booth', 'Innovator Booth', '3 × 2', 3.0, 2.0, 6.0, 65, 20, 120, 1300, 195000, 20,
   'Mid-size booth designed for companies with live demos, interactive screens, and hands-on product experiences.',
   '["Full branded backdrop","Counter + 3 chairs","Power strip (4 sockets)","Monitor stand","Wi-Fi + Ethernet port","Badges for 3 persons","Spotlight lighting","Event app featured listing"]',
   '#8b5cf6', 'fa-lightbulb', 3),
 
-('accelerator-booth', 'Accelerator Booth', '4 × 2', 4.0, 2.0, 8.0, 86, 15, 120, 1290, 156000, 15,
+('accelerator-booth', 'Accelerator Booth', '3 × 3', 3.0, 3.0, 9.0, 97, 15, 135, 1453, 291000, 15,
   'Premium booth for established companies wanting significant floor presence, ideal for product launches and investor meetings.',
   '["Custom wall graphics","Meeting area + 4 chairs","Power strip (6 sockets)","55\" display screen","Wi-Fi + Ethernet","Badges for 4 persons","Dedicated lighting rig","Storage cabinet","Event app premium listing","1 session speaking slot"]',
   '#f59e0b', 'fa-rocket', 4),
 
-('enterprise-booth', 'Enterprise Booth', '6 × 2', 6.0, 2.0, 12.0, 129, 10, 120, 1290, 220000, 10,
+('enterprise-booth', 'Enterprise Booth', '4 × 2', 4.0, 2.0, 8.0, 86, 10, 80, 861, 258000, 10,
   'Large-format booth for enterprise companies seeking to make a strong brand statement with dedicated meeting space.',
   '["Full custom design walls","Executive meeting lounge","Power (10 sockets + UPS backup)","2× 55\" display screens","Dedicated internet line","Badges for 6 persons","Premium lighting package","Lockable storage room","Event app headline listing","2 session speaking slots","Dedicated host/hostess"]',
   '#ef4444', 'fa-building', 5),
 
-('flagship-pavilion', 'Flagship Pavilion', '7.5 × 3', 7.5, 3.0, 22.5, 242, 8, 180, 1936, 624000, 8,
+('flagship-pavilion', 'Flagship Pavilion', '6 × 2', 6.0, 2.0, 12.0, 129, 8, 96, 1033, 387000, 8,
   'Marquee pavilion for industry leaders. A commanding presence with custom architecture, private zones, and VIP hospitality.',
   '["Fully custom pavilion design","Private meeting room","VIP lounge area","Power (15 sockets + UPS)","3× display screens (55\"+)","Dedicated fiber internet","Badges for 10 persons","Theatre-style lighting","PA system","Full storage facility","Event app title sponsor listing","3 keynote slots","Dedicated event coordinator","Catering for 20 guests/day"]',
   '#ec4899', 'fa-crown', 6),
 
-('mega-pavilion', 'Mega Pavilion', '7.5 × 7.5', 7.5, 7.5, 56.25, 605, 4, 225, 2420, 1500000, 4,
+('mega-pavilion', 'Mega Pavilion', '7 × 7.7', 7.0, 7.7, 53.90, 580, 4, 215, 2317, 1740000, 4,
   'The ultimate exhibition experience. A landmark installation for global brands with complete creative freedom, concierge services, and exclusive event integration.',
   '["Bespoke architectural pavilion","Multiple meeting rooms","VIP & press lounge","Full power infrastructure","5× display screens + LED wall","Dedicated fiber internet","Badges for 20 persons","Professional AV & lighting","Integrated PA system","Full back-office facility","Event app presenting partner","5 keynote / panel slots","Dedicated event manager","Premium catering package","Branding across venue signage","Priority placement at entrance"]',
   '#f97316', 'fa-gem', 7);
