@@ -4308,17 +4308,15 @@ function mainPageHTML(): string {
                 <div class="text-2xl mb-2">🎟️</div>
                 <h3 class="font-bold text-base text-primary-300">Delegate Pass</h3>
                 <div class="text-xl font-black text-white mt-1">₹4,999<span class="text-xs font-normal text-gray-400">/person</span></div>
-                <div class="text-[10px] font-semibold text-green-400 mt-0.5">Early Bird — Save 40%</div>
                 <ul class="mt-3 space-y-1.5 text-xs text-gray-300">
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Full 2-day conference access</li>
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Exhibition floor pass</li>
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Conference materials & kit</li>
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Networking & startup zone</li>
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Lunch & refreshments</li>
-                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>AI workshops (hands-on)</li>
-                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Digital recordings</li>
+                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>1 AI workshop (hands-on)</li>
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>AI Marketplace access</li>
-                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Certificate of participation</li>
+                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Certificate of participation <span class="text-gray-500 text-[10px]">(workshop)</span></li>
                 </ul>
               </div>
 
@@ -4327,15 +4325,15 @@ function mainPageHTML(): string {
                 <div class="text-2xl mb-2">⭐</div>
                 <h3 class="font-bold text-base text-amber-300">VIP Pass</h3>
                 <div class="text-xl font-black text-white mt-1">₹14,999<span class="text-xs font-normal text-gray-400">/person</span></div>
-                <div class="text-[10px] font-semibold text-green-400 mt-0.5">Early Bird — Save 35%</div>
                 <ul class="mt-3 space-y-1.5 text-xs text-gray-300">
+                  <li><i class="fas fa-id-badge text-amber-400 mr-1.5 text-[10px]"></i><span class="text-amber-300 font-semibold">VIP Badge</span></li>
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Everything in Delegate</li>
                   <li><i class="fas fa-check text-amber-400 mr-1.5 text-[10px]"></i>VIP lounge access</li>
                   <li><i class="fas fa-check text-amber-400 mr-1.5 text-[10px]"></i>Speaker meet & greet</li>
                   <li><i class="fas fa-check text-amber-400 mr-1.5 text-[10px]"></i>Priority front-row seating</li>
                   <li><i class="fas fa-check text-amber-400 mr-1.5 text-[10px]"></i>Exclusive VIP dinner</li>
                   <li><i class="fas fa-check text-amber-400 mr-1.5 text-[10px]"></i>AI image generation suite</li>
-                  <li><i class="fas fa-check text-amber-400 mr-1.5 text-[10px]"></i>VIP student networking zone</li>
+                  <li><i class="fas fa-check text-amber-400 mr-1.5 text-[10px]"></i>VIP networking zone</li>
                 </ul>
               </div>
 
@@ -4344,13 +4342,13 @@ function mainPageHTML(): string {
                 <div class="text-2xl mb-2">🎓</div>
                 <h3 class="font-bold text-base text-violet-300">Academic Pass</h3>
                 <div class="text-xl font-black text-white mt-1">₹999<span class="text-xs font-normal text-gray-400">/person</span></div>
-                <div class="text-[10px] font-semibold text-violet-400 mt-0.5">Students & researchers</div>
+                <div class="text-[10px] font-semibold text-violet-400 mt-0.5">Teachers, Students & researchers</div>
                 <ul class="mt-3 space-y-1.5 text-xs text-gray-300">
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Full conference access</li>
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Exhibition floor pass</li>
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Networking & startup zone</li>
                   <li><i class="fas fa-check text-violet-400 mr-1.5 text-[10px]"></i>Hackathon participation</li>
-                  <li><i class="fas fa-check text-violet-400 mr-1.5 text-[10px]"></i>Student networking zone</li>
+                  <li><i class="fas fa-check text-violet-400 mr-1.5 text-[10px]"></i>1 workshop</li>
                   <li><i class="fas fa-check text-violet-400 mr-1.5 text-[10px]"></i>AI Marketplace access</li>
                   <li><i class="fas fa-check text-violet-400 mr-1.5 text-[10px]"></i>Certificate of participation</li>
                 </ul>
@@ -4371,7 +4369,6 @@ function mainPageHTML(): string {
                   <li><i class="fas fa-check text-rose-400 mr-1.5 text-[10px]"></i>Press/media area access</li>
                   <li><i class="fas fa-check text-rose-400 mr-1.5 text-[10px]"></i>Interview & recording rights</li>
                   <li><i class="fas fa-check text-rose-400 mr-1.5 text-[10px]"></i>Speaker meet & greet</li>
-                  <li><i class="fas fa-check text-rose-400 mr-1.5 text-[10px]"></i>Digital recordings</li>
                 </ul>
               </div>
 
@@ -4383,7 +4380,6 @@ function mainPageHTML(): string {
                 <div class="text-[10px] font-semibold text-green-400 mt-0.5">Open to all</div>
                 <ul class="mt-3 space-y-1.5 text-xs text-gray-300">
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Exhibition floor access</li>
-                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Product & startup demos</li>
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Exhibition day activities</li>
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>AI Marketplace browsing</li>
                 </ul>
