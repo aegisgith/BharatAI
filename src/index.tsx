@@ -3158,17 +3158,23 @@ ${sharedNavHTML('register')}
           </div>
           <div class="grid grid-cols-2 gap-4">
             <div>
-              <label class="text-xs text-gray-400 mb-1 block">Job Title</label>
-              <input type="text" id="rf-title" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Your role">
+              <label class="text-xs text-gray-400 mb-1 block">Designation / Job Title</label>
+              <input type="text" id="rf-title" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Your designation">
             </div>
+            <div>
+              <label class="text-xs text-gray-400 mb-1 block">City</label>
+              <input type="text" id="rf-city" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Your city">
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-4">
             <div>
               <label class="text-xs text-gray-400 mb-1 block">LinkedIn</label>
               <input type="url" id="rf-linkedin" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="linkedin.com/in/...">
             </div>
-          </div>
-          <div>
-            <label class="text-xs text-gray-400 mb-1 block">Interests</label>
-            <input type="text" id="rf-interests" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="AI, ML, NLP, Computer Vision (comma-separated)">
+            <div>
+              <label class="text-xs text-gray-400 mb-1 block">Interests</label>
+              <input type="text" id="rf-interests" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="AI, ML, Computer Vision...">
+            </div>
           </div>
           <button type="submit" id="rf-submit" class="w-full py-3.5 rounded-xl font-semibold text-white bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 transition-all text-sm shadow-lg shadow-green-500/20">
             <i class="fas fa-check-circle mr-2"></i>Register — It's Free!
@@ -3234,9 +3240,9 @@ ${sharedNavHTML('register')}
             <span class="text-sm font-bold text-violet-300">₹999</span>
           </div>
         </div>
-        <a href="https://bharataiinnovation.com/register" target="_blank" class="mt-4 block w-full text-center py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 transition-all text-sm">
+        <button onclick="openRegisterPaidPassModal()" class="mt-4 block w-full text-center py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 transition-all text-sm cursor-pointer">
           <i class="fas fa-external-link-alt mr-2"></i>Get Paid Pass
-        </a>
+        </button>
       </div>
 
       <!-- Group Discount -->
@@ -3273,6 +3279,7 @@ async function submitRegistration(e) {
         mobile: document.getElementById('rf-phone').value.trim(),
         company: document.getElementById('rf-company').value.trim(),
         job_title: document.getElementById('rf-title').value.trim(),
+        city: document.getElementById('rf-city').value.trim(),
         linkedin_url: document.getElementById('rf-linkedin').value.trim(),
         interests: document.getElementById('rf-interests').value.trim(),
         bio: ''
@@ -3301,7 +3308,145 @@ async function submitRegistration(e) {
     btn.disabled = false;
   }
 }
+
+function openRegisterPaidPassModal() {
+  document.getElementById('reg-paid-pass-modal').classList.remove('hidden');
+  document.getElementById('reg-paid-pass-modal').classList.add('flex');
+  document.body.style.overflow = 'hidden';
+}
+function closeRegisterPaidPassModal() {
+  document.getElementById('reg-paid-pass-modal').classList.add('hidden');
+  document.getElementById('reg-paid-pass-modal').classList.remove('flex');
+  document.body.style.overflow = '';
+}
+async function submitRegisterPaidPassForm(e) {
+  e.preventDefault();
+  const btn = document.getElementById('rpp-submit-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Processing...';
+
+  const name     = document.getElementById('rpp-name').value.trim();
+  const email    = document.getElementById('rpp-email').value.trim();
+  const phone    = document.getElementById('rpp-phone').value.trim();
+  const company  = document.getElementById('rpp-company').value.trim();
+  const desig    = document.getElementById('rpp-designation').value.trim();
+  const city     = document.getElementById('rpp-city').value.trim();
+  const passType = document.getElementById('rpp-pass-type').value;
+
+  if (!name || !email || !passType) {
+    alert('Please select a pass type and fill in Name & Email.');
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-arrow-right mr-2"></i>Proceed to Payment';
+    return;
+  }
+
+  try {
+    await fetch('/api/events/1/attendees/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email, mobile: phone, company, job_title: desig, city, bio: '', interests: '', linkedin_url: '', badge_type: passType })
+    });
+  } catch(_) {}
+
+  const params = new URLSearchParams({ name, email, phone, organization: company, designation: desig, city, pass_type: passType });
+  window.open('https://municampus.com/event/BharatAI?' + params.toString(), '_blank');
+  closeRegisterPaidPassModal();
+  btn.disabled = false;
+  btn.innerHTML = '<i class="fas fa-arrow-right mr-2"></i>Proceed to Payment';
+}
+// Backdrop click handler set after DOM is ready
 </script>
+
+<!-- ===== PAID PASS MODAL (Register Page) ===== -->
+<div id="reg-paid-pass-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4" style="background:rgba(0,0,0,0.75);backdrop-filter:blur(6px);">
+  <div style="background:rgba(15,21,53,0.97);border:1px solid rgba(99,102,241,0.35);border-radius:18px;width:100%;max-width:520px;overflow:hidden;">
+    <div style="background:linear-gradient(135deg,#1e1b4b,#312e81);padding:20px 24px;display:flex;align-items:center;justify-content:space-between;">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div style="width:40px;height:40px;border-radius:10px;background:rgba(165,138,255,0.2);display:flex;align-items:center;justify-content:center;">
+          <i class="fas fa-star" style="color:#fbbf24;font-size:18px;"></i>
+        </div>
+        <div>
+          <div style="font-weight:700;color:white;font-size:16px;">Get Your Paid Pass</div>
+          <div style="font-size:12px;color:#a5b4fc;">Fill details &amp; proceed to secure payment</div>
+        </div>
+      </div>
+      <button onclick="closeRegisterPaidPassModal()" style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:20px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:8px;" onmouseover="this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.background='none'">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+    <div style="padding:24px;max-height:calc(90vh - 80px);overflow-y:auto;">
+      <!-- Pass Type Selector -->
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px;">
+        <label style="cursor:pointer;">
+          <input type="radio" name="rpp-pass" value="Delegate Pass" style="display:none;" onchange="document.getElementById('rpp-pass-type').value=this.value;document.querySelectorAll('[data-rpp-card]').forEach(el=>{el.style.boxShadow='none';el.style.borderColor='rgba(139,92,246,0.2)'});this.nextElementSibling.style.boxShadow='0 0 0 2px #818cf8';this.nextElementSibling.style.borderColor='#818cf8'">
+          <div data-rpp-card style="padding:12px;border-radius:12px;text-align:center;background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.2);transition:all 0.2s;">
+            <i class="fas fa-id-badge" style="color:#a78bfa;font-size:20px;display:block;margin-bottom:4px;"></i>
+            <div style="color:white;font-weight:600;font-size:12px;">Delegate</div>
+            <div style="color:#a78bfa;font-weight:700;font-size:14px;">&#8377;4,999</div>
+            <div style="color:#64748b;font-size:10px;">Full 2-day access</div>
+          </div>
+        </label>
+        <label style="cursor:pointer;">
+          <input type="radio" name="rpp-pass" value="VIP Pass" style="display:none;" onchange="document.getElementById('rpp-pass-type').value=this.value;document.querySelectorAll('[data-rpp-card]').forEach(el=>{el.style.boxShadow='none';el.style.borderColor='rgba(251,191,36,0.2)'});this.nextElementSibling.style.boxShadow='0 0 0 2px #fbbf24';this.nextElementSibling.style.borderColor='#fbbf24'">
+          <div data-rpp-card style="padding:12px;border-radius:12px;text-align:center;background:rgba(251,191,36,0.06);border:1px solid rgba(251,191,36,0.2);transition:all 0.2s;">
+            <i class="fas fa-crown" style="color:#fbbf24;font-size:20px;display:block;margin-bottom:4px;"></i>
+            <div style="color:white;font-weight:600;font-size:12px;">VIP</div>
+            <div style="color:#fbbf24;font-weight:700;font-size:14px;">&#8377;14,999</div>
+            <div style="color:#64748b;font-size:10px;">Lounge + dinner</div>
+          </div>
+        </label>
+        <label style="cursor:pointer;">
+          <input type="radio" name="rpp-pass" value="Academic Pass" style="display:none;" onchange="document.getElementById('rpp-pass-type').value=this.value;document.querySelectorAll('[data-rpp-card]').forEach(el=>{el.style.boxShadow='none';el.style.borderColor='rgba(192,132,252,0.2)'});this.nextElementSibling.style.boxShadow='0 0 0 2px #c084fc';this.nextElementSibling.style.borderColor='#c084fc'">
+          <div data-rpp-card style="padding:12px;border-radius:12px;text-align:center;background:rgba(192,132,252,0.06);border:1px solid rgba(192,132,252,0.2);transition:all 0.2s;">
+            <i class="fas fa-graduation-cap" style="color:#c084fc;font-size:20px;display:block;margin-bottom:4px;"></i>
+            <div style="color:white;font-weight:600;font-size:12px;">Academic</div>
+            <div style="color:#c084fc;font-weight:700;font-size:14px;">&#8377;999</div>
+            <div style="color:#64748b;font-size:10px;">Students</div>
+          </div>
+        </label>
+      </div>
+      <input type="hidden" id="rpp-pass-type" value="">
+
+      <form id="reg-paid-pass-form" onsubmit="submitRegisterPaidPassForm(event)" style="display:flex;flex-direction:column;gap:12px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div>
+            <label style="font-size:11px;color:#94a3b8;display:block;margin-bottom:4px;">Full Name <span style="color:#f87171;">*</span></label>
+            <input type="text" id="rpp-name" required placeholder="Your full name" style="width:100%;padding:10px 14px;border-radius:10px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:#e2e8f0;font-size:13px;outline:none;box-sizing:border-box;">
+          </div>
+          <div>
+            <label style="font-size:11px;color:#94a3b8;display:block;margin-bottom:4px;">Email <span style="color:#f87171;">*</span></label>
+            <input type="email" id="rpp-email" required placeholder="you@email.com" style="width:100%;padding:10px 14px;border-radius:10px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:#e2e8f0;font-size:13px;outline:none;box-sizing:border-box;">
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div>
+            <label style="font-size:11px;color:#94a3b8;display:block;margin-bottom:4px;">Mobile</label>
+            <input type="tel" id="rpp-phone" placeholder="+91 XXXXX XXXXX" style="width:100%;padding:10px 14px;border-radius:10px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:#e2e8f0;font-size:13px;outline:none;box-sizing:border-box;">
+          </div>
+          <div>
+            <label style="font-size:11px;color:#94a3b8;display:block;margin-bottom:4px;">Organization</label>
+            <input type="text" id="rpp-company" placeholder="Company / Institute" style="width:100%;padding:10px 14px;border-radius:10px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:#e2e8f0;font-size:13px;outline:none;box-sizing:border-box;">
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div>
+            <label style="font-size:11px;color:#94a3b8;display:block;margin-bottom:4px;">Designation</label>
+            <input type="text" id="rpp-designation" placeholder="Your designation" style="width:100%;padding:10px 14px;border-radius:10px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:#e2e8f0;font-size:13px;outline:none;box-sizing:border-box;">
+          </div>
+          <div>
+            <label style="font-size:11px;color:#94a3b8;display:block;margin-bottom:4px;">City</label>
+            <input type="text" id="rpp-city" placeholder="Your city" style="width:100%;padding:10px 14px;border-radius:10px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:#e2e8f0;font-size:13px;outline:none;box-sizing:border-box;">
+          </div>
+        </div>
+        <button type="submit" id="rpp-submit-btn" style="width:100%;padding:13px;border-radius:10px;border:none;background:linear-gradient(135deg,#f97316,#ea580c);color:white;font-weight:700;font-size:14px;cursor:pointer;margin-top:4px;">
+          <i class="fas fa-arrow-right" style="margin-right:8px;"></i>Proceed to Payment
+        </button>
+        <p style="text-align:center;font-size:10px;color:#475569;margin:0;">You will be redirected to our secure payment partner.</p>
+      </form>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>`
 }
@@ -4168,8 +4313,12 @@ function mainPageHTML(): string {
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Full 2-day conference access</li>
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Exhibition floor pass</li>
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Conference materials & kit</li>
-                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Networking events</li>
+                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Networking & startup zone</li>
+                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Lunch & refreshments</li>
+                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>AI workshops (hands-on)</li>
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Digital recordings</li>
+                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>AI Marketplace access</li>
+                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Certificate of participation</li>
                 </ul>
               </div>
 
@@ -4185,6 +4334,8 @@ function mainPageHTML(): string {
                   <li><i class="fas fa-check text-amber-400 mr-1.5 text-[10px]"></i>Speaker meet & greet</li>
                   <li><i class="fas fa-check text-amber-400 mr-1.5 text-[10px]"></i>Priority front-row seating</li>
                   <li><i class="fas fa-check text-amber-400 mr-1.5 text-[10px]"></i>Exclusive VIP dinner</li>
+                  <li><i class="fas fa-check text-amber-400 mr-1.5 text-[10px]"></i>AI image generation suite</li>
+                  <li><i class="fas fa-check text-amber-400 mr-1.5 text-[10px]"></i>VIP student networking zone</li>
                 </ul>
               </div>
 
@@ -4197,8 +4348,11 @@ function mainPageHTML(): string {
                 <ul class="mt-3 space-y-1.5 text-xs text-gray-300">
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Full conference access</li>
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Exhibition floor pass</li>
+                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Networking & startup zone</li>
                   <li><i class="fas fa-check text-violet-400 mr-1.5 text-[10px]"></i>Hackathon participation</li>
                   <li><i class="fas fa-check text-violet-400 mr-1.5 text-[10px]"></i>Student networking zone</li>
+                  <li><i class="fas fa-check text-violet-400 mr-1.5 text-[10px]"></i>AI Marketplace access</li>
+                  <li><i class="fas fa-check text-violet-400 mr-1.5 text-[10px]"></i>Certificate of participation</li>
                 </ul>
               </div>
 
@@ -4211,9 +4365,13 @@ function mainPageHTML(): string {
                 <ul class="mt-3 space-y-1.5 text-xs text-gray-300">
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Full conference access</li>
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Exhibition floor pass</li>
+                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Networking & startup zone</li>
+                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Lunch & refreshments</li>
+                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Conference materials & kit</li>
                   <li><i class="fas fa-check text-rose-400 mr-1.5 text-[10px]"></i>Press/media area access</li>
                   <li><i class="fas fa-check text-rose-400 mr-1.5 text-[10px]"></i>Interview & recording rights</li>
                   <li><i class="fas fa-check text-rose-400 mr-1.5 text-[10px]"></i>Speaker meet & greet</li>
+                  <li><i class="fas fa-check text-rose-400 mr-1.5 text-[10px]"></i>Digital recordings</li>
                 </ul>
               </div>
 
@@ -4227,6 +4385,7 @@ function mainPageHTML(): string {
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Exhibition floor access</li>
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Product & startup demos</li>
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Exhibition day activities</li>
+                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>AI Marketplace browsing</li>
                 </ul>
               </div>
             </div>
@@ -4245,13 +4404,19 @@ function mainPageHTML(): string {
               </div>
             </div>
 
-            <!-- Full Comparison Table (Collapsible) -->
-            <details class="mb-6">
-              <summary class="cursor-pointer text-sm font-semibold text-primary-300 hover:text-primary-200 transition flex items-center gap-2">
-                <i class="fas fa-table text-xs"></i>View Full Pass Comparison Table
-                <i class="fas fa-chevron-down text-[10px]"></i>
-              </summary>
-              <div class="overflow-x-auto mt-4">
+            <!-- Full Comparison Table -->
+            <div class="mb-6">
+              <div class="flex items-center gap-2 mb-3">
+                <i class="fas fa-table text-xs text-primary-300"></i>
+                <span class="text-sm font-semibold text-primary-300">Full Pass Comparison</span>
+                <span class="ml-auto flex items-center gap-3 text-[10px] text-gray-500">
+                  <span><span class="text-green-400 mr-1">✔</span>Included</span>
+                  <span><span class="text-amber-400 mr-1">✔</span>VIP only</span>
+                  <span><span class="text-rose-400 mr-1">✔</span>Media only</span>
+                  <span><span class="text-gray-500 mr-1">○</span>Not included</span>
+                </span>
+              </div>
+              <div class="overflow-x-auto mt-2">
                 <table class="w-full text-sm">
                   <thead>
                     <tr class="border-b border-white/10">
@@ -4264,31 +4429,47 @@ function mainPageHTML(): string {
                     </tr>
                   </thead>
                   <tbody class="divide-y divide-white/5 text-xs">
-                    <tr><td class="py-2 px-2 text-gray-300">Exhibition Access</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
-                    <tr><td class="py-2 px-2 text-gray-300">Conference Sessions</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
-                    <tr><td class="py-2 px-2 text-gray-300">Networking Lounge</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
-                    <tr><td class="py-2 px-2 text-gray-300">Lunch & Refreshments</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
-                    <tr><td class="py-2 px-2 text-gray-300">AI Workshops (Hands-on)</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-red-400">⛔</td></tr>
-                    <tr><td class="py-2 px-2 text-gray-300">VIP Lounge & Priority Seating</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td></tr>
-                    <tr><td class="py-2 px-2 text-gray-300">Speaker Meet & Greet</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
-                    <tr><td class="py-2 px-2 text-gray-300">Exclusive VIP Dinner</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td></tr>
-                    <tr><td class="py-2 px-2 text-gray-300">Press/Media Area Access</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
-                    <tr><td class="py-2 px-2 text-gray-300">Interview & Recording Rights</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
-                    <tr><td class="py-2 px-2 text-gray-300">Hackathon Participation</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-red-400">⛔</td></tr>
-                    <tr><td class="py-2 px-2 text-gray-300">Digital Recordings</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-red-400">⛔</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
+                    <!-- Access -->
+                    <tr class="bg-white/[0.02]"><td class="py-1.5 px-2 text-gray-500 font-semibold uppercase tracking-wider text-[10px]" colspan="6">Access</td></tr>
+                    <tr><td class="py-2 px-2 text-gray-300">Exhibition Floor Access</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
+                    <tr><td class="py-2 px-2 text-gray-300">Conference Sessions</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
+                    <tr><td class="py-2 px-2 text-gray-300">Networking & Startup Zone</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
+                    <tr><td class="py-2 px-2 text-gray-300">AI Marketplace Access</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
+                    <!-- Benefits -->
+                    <tr class="bg-white/[0.02]"><td class="py-1.5 px-2 text-gray-500 font-semibold uppercase tracking-wider text-[10px]" colspan="6">Benefits</td></tr>
+                    <tr><td class="py-2 px-2 text-gray-300">Conference Materials & Kit</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
+                    <tr><td class="py-2 px-2 text-gray-300">Lunch & Refreshments</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
+                    <tr><td class="py-2 px-2 text-gray-300">Certificate of Participation</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
+                    <tr><td class="py-2 px-2 text-gray-300">Speaker Meet & Greet</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
+                    <tr><td class="py-2 px-2 text-gray-300">Digital Recordings Access</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
+                    <!-- Learning & Activities -->
+                    <tr class="bg-white/[0.02]"><td class="py-1.5 px-2 text-gray-500 font-semibold uppercase tracking-wider text-[10px]" colspan="6">Learning & Activities</td></tr>
+                    <tr><td class="py-2 px-2 text-gray-300">AI Workshops (Hands-on)</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-gray-600">○</td></tr>
+                    <tr><td class="py-2 px-2 text-gray-300">Hackathon Participation</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-gray-600">○</td></tr>
+                    <tr><td class="py-2 px-2 text-gray-300">Student Networking Zone</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-gray-600">○</td></tr>
+                    <!-- VIP Exclusive -->
+                    <tr class="bg-white/[0.02]"><td class="py-1.5 px-2 text-gray-500 font-semibold uppercase tracking-wider text-[10px]" colspan="6">VIP Exclusive</td></tr>
+                    <tr><td class="py-2 px-2 text-gray-300">VIP Lounge & Priority Seating</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-amber-400">✔</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-gray-600">○</td></tr>
+                    <tr><td class="py-2 px-2 text-gray-300">Exclusive VIP Dinner</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-amber-400">✔</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-gray-600">○</td></tr>
+                    <tr><td class="py-2 px-2 text-gray-300">AI Image Generation Suite</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-amber-400">✔</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-gray-600">○</td></tr>
+                    <tr><td class="py-2 px-2 text-gray-300">VIP Student Networking Zone</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-amber-400">✔</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-gray-600">○</td></tr>
+                    <!-- Media Exclusive -->
+                    <tr class="bg-white/[0.02]"><td class="py-1.5 px-2 text-gray-500 font-semibold uppercase tracking-wider text-[10px]" colspan="6">Media Exclusive</td></tr>
+                    <tr><td class="py-2 px-2 text-gray-300">Press/Media Area Access</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-rose-400">✔</td></tr>
+                    <tr><td class="py-2 px-2 text-gray-300">Interview & Recording Rights</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-rose-400">✔</td></tr>
                   </tbody>
                 </table>
               </div>
-            </details>
+            </div>
 
             <!-- CTA Buttons -->
             <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
               <button onclick="openQuickVisitorReg()" class="px-6 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 transition-all text-sm shadow-lg shadow-green-500/20 animate-pulse-slow">
                 <i class="fas fa-ticket-alt mr-2"></i>Register Free — Visitor Pass
               </button>
-              <a href="https://bharataiinnovation.com/register" target="_blank" class="px-6 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-primary-600 to-blue-600 hover:from-primary-500 hover:to-blue-500 transition-all text-sm shadow-lg shadow-primary-500/20">
+              <button onclick="openPaidPassForm()" class="px-6 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-primary-600 to-blue-600 hover:from-primary-500 hover:to-blue-500 transition-all text-sm shadow-lg shadow-primary-500/20">
                 <i class="fas fa-star mr-2"></i>Get Paid Pass (Delegate/VIP)
-              </a>
+              </button>
               <a href="https://bharataiinnovation.com/register#delegation-section" target="_blank" class="px-6 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 transition-all text-sm">
                 <i class="fas fa-users mr-2"></i>Group Packages
               </a>
@@ -4313,6 +4494,8 @@ function mainPageHTML(): string {
               <div><input type="email" id="qv-email" placeholder="Email Address *" required class="w-full px-4 py-3 rounded-xl text-sm"></div>
               <div><input type="tel" id="qv-phone" placeholder="Mobile Number" class="w-full px-4 py-3 rounded-xl text-sm"></div>
               <div><input type="text" id="qv-company" placeholder="Organization / Company" class="w-full px-4 py-3 rounded-xl text-sm"></div>
+              <div><input type="text" id="qv-designation" placeholder="Designation / Job Title" class="w-full px-4 py-3 rounded-xl text-sm"></div>
+              <div><input type="text" id="qv-city" placeholder="City" class="w-full px-4 py-3 rounded-xl text-sm"></div>
               <div class="md:col-span-2 flex flex-col sm:flex-row gap-3 items-center">
                 <button type="submit" id="qv-submit-btn" class="w-full sm:w-auto px-8 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 transition-all text-sm shadow-lg shadow-green-500/20">
                   <i class="fas fa-check-circle mr-2"></i>Register — It's Free!
@@ -5792,12 +5975,14 @@ function mainPageHTML(): string {
       const email = document.getElementById('qv-email').value.trim();
       const phone = document.getElementById('qv-phone').value.trim();
       const company = document.getElementById('qv-company').value.trim();
+      const designation = document.getElementById('qv-designation').value.trim();
+      const city = document.getElementById('qv-city').value.trim();
 
       try {
         const resp = await fetch('/api/events/' + EVENT_ID + '/attendees/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, email, mobile: phone, company, job_title: '', bio: '', interests: '', linkedin_url: '' })
+          body: JSON.stringify({ name, email, mobile: phone, company, job_title: designation, city, bio: '', interests: '', linkedin_url: '' })
         });
         const data = await resp.json();
 
@@ -9104,9 +9289,172 @@ function mainPageHTML(): string {
       setTimeout(() => { toast.classList.add('translate-x-full'); setTimeout(() => toast.remove(), 300); }, 3000);
     }
 
+    // ==================== PAID PASS MODAL ====================
+    function openPaidPassForm() {
+      document.getElementById('paid-pass-modal').classList.remove('hidden');
+      document.getElementById('paid-pass-modal').classList.add('flex');
+      document.body.style.overflow = 'hidden';
+    }
+
+    function closePaidPassModal() {
+      document.getElementById('paid-pass-modal').classList.add('hidden');
+      document.getElementById('paid-pass-modal').classList.remove('flex');
+      document.body.style.overflow = '';
+    }
+
+    async function submitPaidPassForm(e) {
+      e.preventDefault();
+      const btn = document.getElementById('pp-submit-btn');
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Processing...';
+
+      const name     = document.getElementById('pp-name').value.trim();
+      const email    = document.getElementById('pp-email').value.trim();
+      const phone    = document.getElementById('pp-phone').value.trim();
+      const company  = document.getElementById('pp-company').value.trim();
+      const desig    = document.getElementById('pp-designation').value.trim();
+      const city     = document.getElementById('pp-city').value.trim();
+      const passType = document.getElementById('pp-pass-type').value;
+
+      if (!name || !email || !passType) {
+        showToast('Please fill in all required fields.', 'error');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-arrow-right mr-2"></i>Proceed to Payment';
+        return;
+      }
+
+      // Register attendee first, then redirect to payment
+      try {
+        await fetch('/api/events/' + EVENT_ID + '/attendees/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name, email, mobile: phone, company,
+            job_title: desig, city, bio: '', interests: '', linkedin_url: '',
+            badge_type: passType
+          })
+        });
+      } catch(_) { /* proceed even if registration fails */ }
+
+      // Build URL with prefilled params for municampus
+      const params = new URLSearchParams({
+        name, email, phone, organization: company,
+        designation: desig, city, pass_type: passType
+      });
+
+      showToast('Redirecting to payment gateway...', 'success');
+      setTimeout(() => {
+        window.open('https://municampus.com/event/BharatAI?' + params.toString(), '_blank');
+        closePaidPassModal();
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-arrow-right mr-2"></i>Proceed to Payment';
+      }, 800);
+    }
+
+    // Close modal on backdrop click — deferred until after DOM is fully parsed
+    document.addEventListener('DOMContentLoaded', function() {
+      const ppm = document.getElementById('paid-pass-modal');
+      if (ppm) ppm.addEventListener('click', function(e) { if (e.target === this) closePaidPassModal(); });
+      const rpm = document.getElementById('reg-paid-pass-modal');
+      if (rpm) rpm.addEventListener('click', function(e) { if (e.target === this) closeRegisterPaidPassModal(); });
+    });
+
     // Init
     init();
   </script>
+
+  <!-- ===== PAID PASS MODAL ===== -->
+  <div id="paid-pass-modal" class="fixed inset-0 z-50 modal-overlay hidden items-center justify-center p-4">
+    <div class="glass rounded-2xl w-full max-w-lg relative overflow-hidden" style="border:1px solid rgba(99,102,241,0.3);">
+      <!-- Header -->
+      <div style="background:linear-gradient(135deg,#1e1b4b,#312e81);" class="p-5 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-indigo-500/30 flex items-center justify-center">
+            <i class="fas fa-star text-yellow-300 text-lg"></i>
+          </div>
+          <div>
+            <h2 class="font-bold text-white text-lg">Get Your Paid Pass</h2>
+            <p class="text-indigo-300 text-xs">Fill in your details to proceed to payment</p>
+          </div>
+        </div>
+        <button onclick="closePaidPassModal()" class="text-gray-400 hover:text-white transition text-xl w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/10">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+      <!-- Body -->
+      <div class="p-6 overflow-y-auto" style="max-height:calc(90vh - 80px);">
+        <!-- Pass Type Selector -->
+        <div class="grid grid-cols-3 gap-2 mb-5">
+          <label class="pass-option cursor-pointer">
+            <input type="radio" name="pp-pass" value="Delegate Pass" class="hidden" onchange="document.getElementById('pp-pass-type').value=this.value;document.querySelectorAll('.pass-option').forEach(el=>el.classList.remove('ring-2','ring-indigo-400'));this.closest('.pass-option').classList.add('ring-2','ring-indigo-400')">
+            <div class="p-3 rounded-xl text-center" style="background:rgba(139,92,246,0.1);border:1px solid rgba(139,92,246,0.2);">
+              <i class="fas fa-id-badge text-violet-400 text-lg mb-1 block"></i>
+              <div class="text-white font-semibold text-xs">Delegate</div>
+              <div class="text-violet-300 font-bold text-sm">&#8377;4,999</div>
+              <div class="text-gray-500 text-[10px]">Full 2-day access</div>
+            </div>
+          </label>
+          <label class="pass-option cursor-pointer">
+            <input type="radio" name="pp-pass" value="VIP Pass" class="hidden" onchange="document.getElementById('pp-pass-type').value=this.value;document.querySelectorAll('.pass-option').forEach(el=>el.classList.remove('ring-2','ring-yellow-400'));this.closest('.pass-option').classList.add('ring-2','ring-yellow-400')">
+            <div class="p-3 rounded-xl text-center" style="background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.2);">
+              <i class="fas fa-crown text-yellow-400 text-lg mb-1 block"></i>
+              <div class="text-white font-semibold text-xs">VIP</div>
+              <div class="text-yellow-300 font-bold text-sm">&#8377;14,999</div>
+              <div class="text-gray-500 text-[10px]">VIP lounge + dinner</div>
+            </div>
+          </label>
+          <label class="pass-option cursor-pointer">
+            <input type="radio" name="pp-pass" value="Academic Pass" class="hidden" onchange="document.getElementById('pp-pass-type').value=this.value;document.querySelectorAll('.pass-option').forEach(el=>el.classList.remove('ring-2','ring-purple-400'));this.closest('.pass-option').classList.add('ring-2','ring-purple-400')">
+            <div class="p-3 rounded-xl text-center" style="background:rgba(192,132,252,0.08);border:1px solid rgba(192,132,252,0.2);">
+              <i class="fas fa-graduation-cap text-purple-400 text-lg mb-1 block"></i>
+              <div class="text-white font-semibold text-xs">Academic</div>
+              <div class="text-purple-300 font-bold text-sm">&#8377;999</div>
+              <div class="text-gray-500 text-[10px]">Students &amp; researchers</div>
+            </div>
+          </label>
+        </div>
+        <input type="hidden" id="pp-pass-type" value="">
+
+        <form id="paid-pass-form" onsubmit="submitPaidPassForm(event)" class="space-y-3">
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="text-xs text-gray-400 mb-1 block">Full Name <span class="text-red-400">*</span></label>
+              <input type="text" id="pp-name" required placeholder="Your full name" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:#e2e8f0;outline:none;">
+            </div>
+            <div>
+              <label class="text-xs text-gray-400 mb-1 block">Email Address <span class="text-red-400">*</span></label>
+              <input type="email" id="pp-email" required placeholder="you@email.com" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:#e2e8f0;outline:none;">
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="text-xs text-gray-400 mb-1 block">Mobile Number</label>
+              <input type="tel" id="pp-phone" placeholder="+91 XXXXX XXXXX" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:#e2e8f0;outline:none;">
+            </div>
+            <div>
+              <label class="text-xs text-gray-400 mb-1 block">Organization</label>
+              <input type="text" id="pp-company" placeholder="Company / Institute" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:#e2e8f0;outline:none;">
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="text-xs text-gray-400 mb-1 block">Designation</label>
+              <input type="text" id="pp-designation" placeholder="Your designation" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:#e2e8f0;outline:none;">
+            </div>
+            <div>
+              <label class="text-xs text-gray-400 mb-1 block">City</label>
+              <input type="text" id="pp-city" placeholder="Your city" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:#e2e8f0;outline:none;">
+            </div>
+          </div>
+          <button type="submit" id="pp-submit-btn" class="w-full py-3 rounded-xl font-bold text-white mt-2 transition-all" style="background:linear-gradient(135deg,#f97316,#ea580c);">
+            <i class="fas fa-arrow-right mr-2"></i>Proceed to Payment
+          </button>
+          <p class="text-center text-[10px] text-gray-500">You will be redirected to our secure payment partner to complete your registration.</p>
+        </form>
+      </div>
+    </div>
+  </div>
+
 </body>
 </html>`
 }
