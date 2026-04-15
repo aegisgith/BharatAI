@@ -4382,6 +4382,7 @@ function mainPageHTML(): string {
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>1 AI workshop (hands-on)</li>
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>AI Marketplace access</li>
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Certificate of participation <span class="text-gray-500 text-[10px]">(workshop)</span></li>
+                  <li><i class="fas fa-wifi text-primary-400 mr-1.5 text-[10px]"></i><span class="text-primary-300 font-semibold">Access to networking app</span></li>
                 </ul>
               </div>
 
@@ -4399,6 +4400,7 @@ function mainPageHTML(): string {
                   <li><i class="fas fa-check text-amber-400 mr-1.5 text-[10px]"></i>Exclusive VIP dinner</li>
                   <li><i class="fas fa-check text-amber-400 mr-1.5 text-[10px]"></i>AI image generation suite</li>
                   <li><i class="fas fa-check text-amber-400 mr-1.5 text-[10px]"></i>VIP networking zone</li>
+                  <li><i class="fas fa-wifi text-primary-400 mr-1.5 text-[10px]"></i><span class="text-primary-300 font-semibold">Access to networking app</span></li>
                 </ul>
               </div>
 
@@ -4416,6 +4418,7 @@ function mainPageHTML(): string {
                   <li><i class="fas fa-check text-violet-400 mr-1.5 text-[10px]"></i>1 workshop</li>
                   <li><i class="fas fa-check text-violet-400 mr-1.5 text-[10px]"></i>AI Marketplace access</li>
                   <li><i class="fas fa-check text-violet-400 mr-1.5 text-[10px]"></i>Certificate of participation</li>
+                  <li><i class="fas fa-wifi text-primary-400 mr-1.5 text-[10px]"></i><span class="text-primary-300 font-semibold">Access to networking app</span></li>
                 </ul>
               </div>
 
@@ -4503,6 +4506,7 @@ function mainPageHTML(): string {
                     <tr><td class="py-2 px-2 text-gray-300">Certificate of Participation</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
                     <tr><td class="py-2 px-2 text-gray-300">Speaker Meet & Greet</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
                     <tr><td class="py-2 px-2 text-gray-300">Digital Recordings Access</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
+                    <tr><td class="py-2 px-2 text-gray-300"><i class="fas fa-wifi text-primary-400 mr-1"></i>Networking App Access</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-gray-600">○</td></tr>
                     <!-- Learning & Activities -->
                     <tr class="bg-white/[0.02]"><td class="py-1.5 px-2 text-gray-500 font-semibold uppercase tracking-wider text-[10px]" colspan="6">Learning & Activities</td></tr>
                     <tr><td class="py-2 px-2 text-gray-300">AI Workshops (Hands-on)</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-gray-600">○</td></tr>
