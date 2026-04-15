@@ -4128,9 +4128,11 @@ function mainPageHTML(): string {
           <button class="nav-btn nav-gated hidden flex-col md:flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-medium text-gray-400 hover:text-white transition-all" data-tab="networking" onclick="switchTab('networking')">
             <i class="fas fa-users text-lg md:text-base"></i><span>Network</span>
           </button>
+          <!-- Expo nav hidden for now — re-enable when ready
           <button class="nav-btn nav-gated hidden flex-col md:flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-medium text-gray-400 hover:text-white transition-all" data-tab="exhibition" onclick="switchTab('exhibition')">
             <i class="fas fa-store text-lg md:text-base"></i><span>Expo</span>
           </button>
+          -->
           <button class="nav-btn nav-gated hidden flex-col md:flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-medium text-gray-400 hover:text-white transition-all" data-tab="workshops" onclick="switchTab('workshops')">
             <i class="fas fa-laptop-code text-lg md:text-base"></i><span>Workshops</span>
           </button>
