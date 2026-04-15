@@ -6343,9 +6343,15 @@ function mainPageHTML(): string {
         });
 
         // Show/hide stats, venue, hero venue/dates
+        // NOTE: stats & venue hidden for now — will be re-enabled later
+        // ['stats-section', 'venue-section', 'hero-venue-dates'].forEach(id => {
+        //   const el = document.getElementById(id);
+        //   if (el) el.classList.toggle('hidden', !featuresUnlocked);
+        // });
+        // Keep all three sections hidden regardless of registration count
         ['stats-section', 'venue-section', 'hero-venue-dates'].forEach(id => {
           const el = document.getElementById(id);
-          if (el) el.classList.toggle('hidden', !featuresUnlocked);
+          if (el) el.classList.add('hidden');
         });
 
         const statsData = [
