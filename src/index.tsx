@@ -46,6 +46,7 @@ app.get('/api/events/:id/sessions', async (c) => {
   const type = c.req.query('type')
   const track = c.req.query('track')
 
+  const room = c.req.query('room')
   let query = 'SELECT * FROM sessions WHERE event_id = ?'
   const params: any[] = [eventId]
 
@@ -61,6 +62,10 @@ app.get('/api/events/:id/sessions', async (c) => {
     query += ' AND track = ?'
     params.push(track)
   }
+  if (room) {
+    query += ' AND room = ?'
+    params.push(room)
+  }
 
   query += ' ORDER BY start_time ASC'
 
@@ -74,6 +79,14 @@ app.get('/api/events/:id/sessions/tracks', async (c) => {
     'SELECT DISTINCT track FROM sessions WHERE event_id = ? AND track IS NOT NULL ORDER BY track'
   ).bind(eventId).all()
   return c.json(results.map((r: any) => r.track))
+})
+
+app.get('/api/events/:id/sessions/rooms', async (c) => {
+  const eventId = c.req.param('id')
+  const { results } = await c.env.DB.prepare(
+    'SELECT DISTINCT room FROM sessions WHERE event_id = ? AND room IS NOT NULL ORDER BY room'
+  ).bind(eventId).all()
+  return c.json(results.map((r: any) => r.room))
 })
 
 // ==================== ATTENDEE APIs ====================
@@ -4638,14 +4651,20 @@ function mainPageHTML(): string {
       <!-- Schedule Tab -->
       <div id="tab-schedule" class="tab-content hidden">
         <div class="max-w-7xl mx-auto px-4 py-6">
-          <h2 class="text-2xl font-bold mb-2"><i class="fas fa-calendar-alt text-primary-400 mr-2"></i>Event Schedule</h2>
-          <p class="text-gray-400 text-sm mb-6">Browse sessions by day, track, or type</p>
+          <h2 class="text-2xl font-bold mb-1"><i class="fas fa-calendar-alt text-primary-400 mr-2"></i>Event Schedule</h2>
+          <p class="text-gray-400 text-sm mb-5">2-3 June 2026 · World Trade Center, Mumbai</p>
+
           <!-- Day Selector -->
-          <div class="flex gap-2 mb-4 overflow-x-auto scroll-hide pb-2" id="day-selector"></div>
+          <div class="flex gap-2 mb-4 overflow-x-auto scroll-hide pb-1" id="sched-day-selector"></div>
+
+          <!-- Hall Tabs -->
+          <div class="flex gap-2 mb-5 overflow-x-auto scroll-hide pb-1" id="sched-hall-tabs"></div>
+
           <!-- Track Filter -->
-          <div class="flex gap-2 mb-6 overflow-x-auto scroll-hide pb-2" id="track-filter"></div>
+          <div class="flex gap-2 mb-5 overflow-x-auto scroll-hide pb-1" id="sched-track-filter"></div>
+
           <!-- Sessions List -->
-          <div id="sessions-list" class="space-y-3"></div>
+          <div id="sched-sessions-list" class="space-y-3"></div>
         </div>
       </div>
 
@@ -6458,90 +6477,142 @@ function mainPageHTML(): string {
 
     // ==================== SCHEDULE ====================
     let selectedDay = '2026-06-02';
+    let selectedHall = 'Homi J. Bhabha Hall';
     let selectedTrack = '';
 
+    const HALLS = [
+      { key: 'Homi J. Bhabha Hall', short: 'Bhabha Hall', icon: '🏛️' },
+      { key: 'Kalam Theatre',       short: 'Kalam',       icon: '🎭' },
+      { key: 'Raman Theatre',       short: 'Raman',       icon: '🔬' },
+      { key: 'Aryabhata Theatre',   short: 'Aryabhata',   icon: '🚀' },
+    ];
+
+    function renderScheduleSessionCard(s) {
+      const isPanel = s.speaker_name && s.speaker_name.includes(',') && (s.session_type === 'panel' || s.speaker_name.split(',').length >= 3);
+      let speakerHtml = '';
+      if (isPanel && s.speaker_name) {
+        const panelists = s.speaker_name.split(',').map(p => p.trim()).filter(Boolean);
+        speakerHtml = \`
+          <div class="mt-3 pt-3 border-t border-white/5">
+            <div class="flex items-center gap-1.5 mb-2.5">
+              <i class="fas fa-microphone-alt text-primary-400 text-xs"></i>
+              <span class="text-xs font-semibold text-gray-300">Panelists</span>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              \${panelists.map(p => {
+                const match = p.match(/^(.+?)\\s*\\((.+?)\\)$/);
+                const pName = match ? match[1].trim() : p.trim();
+                const pInfo = match ? match[2].trim() : '';
+                const isMod = pInfo.toLowerCase() === 'moderator' || pName.toLowerCase().includes('moderator');
+                const cleanName = pName.replace(/\\s*\\(moderator\\)/i, '').trim();
+                return \`<div class="flex items-center gap-2 glass-light rounded-xl px-3 py-2 \${isMod ? 'border border-amber-500/30' : ''}">
+                  <img src="\${getAvatarUrl(null, cleanName, 40)}" alt="\${cleanName}" class="w-8 h-8 rounded-full object-cover shrink-0">
+                  <div class="min-w-0">
+                    <div class="text-xs font-semibold text-white truncate">\${cleanName}</div>
+                    \${pInfo ? \`<div class="text-[10px] text-gray-400 truncate">\${pInfo}</div>\` : ''}
+                    \${isMod && pInfo.toLowerCase() !== 'moderator' ? \`<div class="text-[10px] text-amber-400 font-semibold">Moderator</div>\` : ''}
+                  </div>
+                </div>\`;
+              }).join('')}
+            </div>
+          </div>\`;
+      } else if (s.speaker_name) {
+        speakerHtml = \`<div class="flex items-center gap-2 mt-2">
+          <img src="\${getAvatarUrl(null, s.speaker_name, 40)}" alt="\${s.speaker_name}" class="w-7 h-7 rounded-full object-cover shrink-0">
+          <span class="text-xs text-gray-300 font-medium">\${s.speaker_name}\${s.speaker_title ? ' <span class="text-gray-500 font-normal">· ' + s.speaker_title + '</span>' : ''}</span>
+        </div>\`;
+      }
+
+      // Time display — strip date part, show HH:MM am/pm
+      const startT = s.start_time ? s.start_time.replace('T',' ') : '';
+      const endT   = s.end_time   ? s.end_time.replace('T',' ')   : '';
+      const fmtT = dt => {
+        if (!dt) return '';
+        const parts = dt.trim().split(' ');
+        const t = parts[parts.length-1]; // HH:MM or HH:MM:SS
+        const [h,m] = t.split(':');
+        const hr = parseInt(h);
+        const ampm = hr >= 12 ? 'pm' : 'am';
+        const disp = hr > 12 ? hr-12 : (hr===0 ? 12 : hr);
+        return disp + ':' + m + ' ' + ampm;
+      };
+
+      const isBreak = s.session_type === 'break';
+      const cardBg  = isBreak ? 'bg-white/3 border border-white/5' : 'glass card-hover';
+
+      return \`
+      <div class="\${cardBg} rounded-xl p-4">
+        <div class="flex items-start gap-4">
+          <!-- Time column -->
+          <div class="shrink-0 w-[72px] text-center pt-0.5">
+            <div class="text-base font-bold text-primary-400 leading-tight">\${fmtT(startT)}</div>
+            <div class="text-[11px] text-gray-500 mt-0.5">\${fmtT(endT)}</div>
+          </div>
+          <!-- Content -->
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 mb-1.5 flex-wrap">
+              <span class="text-lg leading-none">\${s.speaker_avatar || '📌'}</span>
+              <span class="px-2 py-0.5 rounded-full text-[11px] font-semibold \${getSessionTypeClass(s.session_type)}">\${s.session_type}</span>
+              \${s.track ? \`<span class="px-2 py-0.5 rounded-full text-[11px] bg-white/5 text-gray-400">\${s.track}</span>\` : ''}
+            </div>
+            <h3 class="font-bold text-[15px] leading-snug mb-1 \${isBreak ? 'text-gray-400' : 'text-white'}">\${s.title}</h3>
+            \${s.description && !isBreak ? \`<p class="text-xs text-gray-400 mb-2 leading-relaxed">\${s.description}</p>\` : ''}
+            \${s.title.toLowerCase().includes('innovation talk') ? \`<button onclick="event.stopPropagation();switchTab('innovation')" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-amber-500/15 text-amber-400 hover:bg-amber-500/25 transition mb-2"><i class="fas fa-lightbulb"></i>Full Innovation Talk Schedule <i class="fas fa-arrow-right text-[10px]"></i></button>\` : ''}
+            \${s.title.toLowerCase().includes('startup pitch') ? \`<button onclick="event.stopPropagation();switchTab('startup-pitch')" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-violet-500/15 text-violet-400 hover:bg-violet-500/25 transition mb-2"><i class="fas fa-rocket"></i>View Startup Pitch Schedule <i class="fas fa-arrow-right text-[10px]"></i></button>\` : ''}
+            \${!isPanel ? speakerHtml : ''}
+            \${s.room && selectedHall === '' ? \`<div class="mt-1.5 text-[11px] text-gray-500"><i class="fas fa-map-pin mr-1 text-accent-400"></i>\${s.room}</div>\` : ''}
+            \${isPanel ? speakerHtml : ''}
+          </div>
+        </div>
+      </div>\`;
+    }
+
     async function loadSchedule() {
+      const listEl = document.getElementById('sched-sessions-list');
+      if (!listEl) return;
+      listEl.innerHTML = '<div class="text-center py-12"><i class="fas fa-spinner fa-spin text-2xl text-primary-400"></i><p class="text-gray-400 text-sm mt-2">Loading schedule...</p></div>';
+
       try {
         const [sessions, tracks] = await Promise.all([
-          api.get(\`/api/events/\${EVENT_ID}/sessions?date=\${selectedDay}\${selectedTrack ? '&track=' + encodeURIComponent(selectedTrack) : ''}\`),
+          api.get(\`/api/events/\${EVENT_ID}/sessions?date=\${selectedDay}\${selectedHall ? '&room=' + encodeURIComponent(selectedHall) : ''}\${selectedTrack ? '&track=' + encodeURIComponent(selectedTrack) : ''}\`),
           api.get(\`/api/events/\${EVENT_ID}/sessions/tracks\`),
         ]);
 
-        const days = ['2026-06-02', '2026-06-03'];
-        const dayLabels = ['Day 1 · 2 Jun 2026', 'Day 2 · 3 Jun 2026'];
-        document.getElementById('day-selector').innerHTML = days.map((d, i) => \`
-          <button onclick="selectedDay='\${d}'; loadSchedule()" class="px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all \${selectedDay === d ? 'tab-active' : 'glass text-gray-400 hover:text-white'}">\${dayLabels[i]}</button>
-        \`).join('');
+        // ── Day selector ──
+        const days = [{ val:'2026-06-02', label:'Day 1 · 2 Jun 2026' },{ val:'2026-06-03', label:'Day 2 · 3 Jun 2026' }];
+        document.getElementById('sched-day-selector').innerHTML = days.map(d => \`
+          <button onclick="selectedDay='\${d.val}'; loadSchedule()"
+            class="px-4 py-2 rounded-xl text-sm font-semibold whitespace-nowrap transition-all \${selectedDay === d.val ? 'tab-active' : 'glass text-gray-400 hover:text-white'}">
+            \${d.label}
+          </button>\`).join('');
 
-        document.getElementById('track-filter').innerHTML = \`
-          <button onclick="selectedTrack=''; loadSchedule()" class="px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all \${!selectedTrack ? 'tab-active' : 'glass text-gray-400 hover:text-white'}">All Tracks</button>
+        // ── Hall tabs ──
+        document.getElementById('sched-hall-tabs').innerHTML = HALLS.map(h => \`
+          <button onclick="selectedHall='\${h.key}'; selectedTrack=''; loadSchedule()"
+            class="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold whitespace-nowrap transition-all \${selectedHall === h.key ? 'bg-primary-500/30 text-primary-300 border border-primary-500/40' : 'glass text-gray-400 hover:text-white'}">
+            <span class="text-base leading-none">\${h.icon}</span>
+            <span class="hidden sm:inline">\${h.key}</span>
+            <span class="sm:hidden">\${h.short}</span>
+          </button>\`).join('');
+
+        // ── Track filter ──
+        document.getElementById('sched-track-filter').innerHTML = \`
+          <button onclick="selectedTrack=''; loadSchedule()"
+            class="px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all \${!selectedTrack ? 'tab-active' : 'glass text-gray-400 hover:text-white'}">
+            All Tracks
+          </button>
           \${tracks.map(t => \`
-            <button onclick="selectedTrack='\${t}'; loadSchedule()" class="px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all \${selectedTrack === t ? 'tab-active' : 'glass text-gray-400 hover:text-white'}">\${t}</button>
-          \`).join('')}
-        \`;
+            <button onclick="selectedTrack='\${t}'; loadSchedule()"
+              class="px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all \${selectedTrack === t ? 'tab-active' : 'glass text-gray-400 hover:text-white'}">
+              \${t}
+            </button>\`).join('')}\`;
 
-        document.getElementById('sessions-list').innerHTML = sessions.length ? sessions.map(s => {
-          // Check if session has multiple speakers (panel)
-          const isPanel = s.speaker_name && s.speaker_name.includes(',') && (s.session_type === 'panel' || s.speaker_name.split(',').length >= 3);
-          let speakerHtml = '';
-          if (isPanel && s.speaker_name) {
-            const panelists = s.speaker_name.split(',').map(p => p.trim()).filter(Boolean);
-            speakerHtml = \`
-              <div class="mt-3 pt-3 border-t border-white/5">
-                <div class="flex items-center gap-1.5 mb-2.5">
-                  <i class="fas fa-microphone-alt text-primary-400 text-xs"></i>
-                  <span class="text-xs font-semibold text-gray-300">Panelists</span>
-                </div>
-                <div class="flex flex-wrap gap-2">
-                  \${panelists.map(p => {
-                    // Parse "Name (Company/Role)" format
-                    const match = p.match(/^(.+?)\\s*\\((.+?)\\)$/);
-                    const pName = match ? match[1].trim() : p.trim();
-                    const pInfo = match ? match[2].trim() : '';
-                    const isModeratorTag = pInfo.toLowerCase() === 'moderator' || pName.toLowerCase().includes('moderator');
-                    const cleanName = pName.replace(/\\s*\\(moderator\\)/i, '').trim();
-                    return \`<div class="flex items-center gap-2 glass-light rounded-xl px-3 py-2 \${isModeratorTag ? 'border border-amber-500/30' : ''}">
-                      <img src="\${getAvatarUrl(null, cleanName, 40)}" alt="\${cleanName}" class="w-8 h-8 rounded-full object-cover shrink-0">
-                      <div class="min-w-0">
-                        <div class="text-xs font-semibold text-white truncate">\${cleanName}</div>
-                        \${pInfo ? \`<div class="text-[10px] text-gray-400 truncate">\${pInfo}</div>\` : ''}
-                        \${isModeratorTag && pInfo.toLowerCase() !== 'moderator' ? \`<div class="text-[10px] text-amber-400 font-semibold">Moderator</div>\` : ''}
-                      </div>
-                    </div>\`;
-                  }).join('')}
-                </div>
-              </div>\`;
-          } else if (s.speaker_name) {
-            speakerHtml = \`<span><i class="fas fa-user mr-1 text-primary-400"></i>\${s.speaker_name}\${s.speaker_title ? ' · ' + s.speaker_title : ''}</span>\`;
-          }
+        // ── Sessions list ──
+        listEl.innerHTML = sessions.length
+          ? sessions.map(renderScheduleSessionCard).join('')
+          : '<div class="text-center text-gray-500 py-12"><i class="fas fa-calendar-times text-4xl mb-3 block opacity-40"></i><p>No sessions found for this filter.</p></div>';
 
-          return \`
-          <div class="glass rounded-xl p-5 card-hover">
-            <div class="flex items-start gap-4">
-              <div class="text-center shrink-0 w-16">
-                <div class="text-lg font-bold text-primary-400">\${formatTime(s.start_time)}</div>
-                <div class="text-xs text-gray-500">\${formatTime(s.end_time)}</div>
-              </div>
-              <div class="flex-1 min-w-0">
-                <div class="flex items-center gap-2 mb-2 flex-wrap">
-                  <span class="text-xl">\${s.speaker_avatar || '📌'}</span>
-                  <span class="px-2 py-0.5 rounded-full text-xs font-medium \${getSessionTypeClass(s.session_type)}">\${s.session_type}</span>
-                  \${s.track ? \`<span class="px-2 py-0.5 rounded-full text-xs bg-white/5 text-gray-400">\${s.track}</span>\` : ''}
-                </div>
-                <h3 class="font-bold text-lg mb-1">\${s.title}</h3>
-                \${s.description ? \`<p class="text-sm text-gray-400 mb-2">\${s.description}</p>\` : ''}
-                \${s.title.toLowerCase().includes('innovation talk') ? \`<button onclick="event.stopPropagation(); switchTab('innovation')" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-amber-500/15 text-amber-400 hover:bg-amber-500/25 transition mb-2 cursor-pointer"><i class="fas fa-lightbulb"></i>View Full Innovation Talk Schedule <i class="fas fa-arrow-right text-[10px]"></i></button>\` : ''}
-                \${s.title.toLowerCase().includes('startup pitch') ? \`<button onclick="event.stopPropagation(); switchTab('startup-pitch')" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-violet-500/15 text-violet-400 hover:bg-violet-500/25 transition mb-2 cursor-pointer"><i class="fas fa-rocket"></i>View Startup Pitch Schedule <i class="fas fa-arrow-right text-[10px]"></i></button>\` : ''}
-                <div class="flex items-center gap-4 text-xs text-gray-500 flex-wrap">
-                  \${!isPanel && speakerHtml ? speakerHtml : ''}
-                  \${s.room ? \`<span><i class="fas fa-map-pin mr-1 text-accent-400"></i>\${s.room}</span>\` : ''}
-                </div>
-                \${isPanel ? speakerHtml : ''}
-              </div>
-            </div>
-          </div>
-        \`}).join('') : '<div class="text-center text-gray-500 py-12"><i class="fas fa-calendar-times text-4xl mb-3 block"></i>No sessions found for this filter.</div>';
-      } catch(e) { console.error('Schedule error:', e); }
+      } catch(e) { console.error('Schedule error:', e); listEl.innerHTML = '<div class="text-center text-gray-500 py-12">Failed to load schedule. Please try again.</div>'; }
     }
 
     // ==================== NETWORKING ====================
