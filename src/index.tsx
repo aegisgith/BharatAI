@@ -4137,9 +4137,11 @@ function mainPageHTML(): string {
             <i class="fas fa-laptop-code text-lg md:text-base"></i><span>Workshops</span>
           </button>
           <!-- Awards tabs hidden - no awards for this event -->
+          <!-- Startup Pitch nav hidden for now — re-enable when ready
           <button class="nav-btn nav-gated hidden flex-col md:flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-medium text-gray-400 hover:text-white transition-all" data-tab="startup-pitch" onclick="switchTab('startup-pitch')">
             <i class="fas fa-rocket text-lg md:text-base"></i><span>Startup Pitch</span>
           </button>
+          -->
           <button class="nav-btn nav-gated hidden flex-col md:flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-medium text-gray-400 hover:text-white transition-all" data-tab="innovation" onclick="switchTab('innovation')">
             <i class="fas fa-lightbulb text-lg md:text-base"></i><span>Innovation Talks</span>
           </button>
