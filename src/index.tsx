@@ -4079,6 +4079,54 @@ function mainPageHTML(): string {
       </div>
     </div>
 
+    <!-- Visitor Upgrade Modal -->
+    <div id="visitor-upgrade-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4" style="background:rgba(0,0,0,0.82);backdrop-filter:blur(8px);">
+      <div class="glass rounded-2xl p-8 w-full max-w-md relative text-center shadow-2xl border border-white/10">
+        <!-- Lock icon -->
+        <div class="w-20 h-20 rounded-full bg-amber-500/15 border border-amber-500/30 flex items-center justify-center mx-auto mb-5">
+          <i class="fas fa-lock text-amber-400 text-3xl"></i>
+        </div>
+        <h2 class="text-2xl font-bold mb-2">Networking is a Paid Feature</h2>
+        <p class="text-gray-400 text-sm mb-6 leading-relaxed">
+          Your <span class="text-white font-semibold">Visitor Pass</span> doesn't include access to the Networking Hub.<br>
+          Upgrade to a <span class="text-primary-300 font-semibold">Delegate</span> or <span class="text-amber-300 font-semibold">VIP Pass</span> to connect with 500+ attendees, speakers, and investors.
+        </p>
+        <!-- Pass options -->
+        <div class="grid grid-cols-2 gap-3 mb-6">
+          <div class="glass-light rounded-xl p-4 border border-primary-500/20">
+            <div class="text-2xl mb-1">🎫</div>
+            <div class="font-bold text-primary-300 text-sm">Delegate Pass</div>
+            <div class="text-xs text-gray-400 mt-0.5">₹4,999 / person</div>
+            <ul class="text-[11px] text-gray-400 mt-2 space-y-0.5 text-left">
+              <li><i class="fas fa-check text-green-400 mr-1"></i>Full networking access</li>
+              <li><i class="fas fa-check text-green-400 mr-1"></i>Connect & message all</li>
+              <li><i class="fas fa-check text-green-400 mr-1"></i>Schedule meetings</li>
+            </ul>
+          </div>
+          <div class="glass-light rounded-xl p-4 border border-amber-500/30 relative">
+            <div class="absolute -top-2.5 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500 text-black">BEST</div>
+            <div class="text-2xl mb-1">👑</div>
+            <div class="font-bold text-amber-300 text-sm">VIP Pass</div>
+            <div class="text-xs text-gray-400 mt-0.5">₹14,999 / person</div>
+            <ul class="text-[11px] text-gray-400 mt-2 space-y-0.5 text-left">
+              <li><i class="fas fa-check text-amber-400 mr-1"></i>Everything in Delegate</li>
+              <li><i class="fas fa-check text-amber-400 mr-1"></i>VIP lounge access</li>
+              <li><i class="fas fa-check text-amber-400 mr-1"></i>Speaker meet & greet</li>
+            </ul>
+          </div>
+        </div>
+        <a href="https://municampus.com/event/BharatAI" target="_blank"
+           class="block w-full py-3.5 rounded-xl font-bold text-white text-sm transition-all mb-3"
+           style="background:linear-gradient(135deg,#6366f1,#8b5cf6);">
+          <i class="fas fa-arrow-up-right-from-square mr-2"></i>Upgrade My Pass — Get Full Access
+        </a>
+        <button onclick="document.getElementById('visitor-upgrade-modal').classList.add('hidden');document.getElementById('visitor-upgrade-modal').classList.remove('flex');"
+          class="text-xs text-gray-500 hover:text-gray-300 transition">
+          Maybe later — go back
+        </button>
+      </div>
+    </div>
+
     <!-- Chat Modal -->
     <div id="chat-modal" class="fixed inset-0 z-40 modal-overlay hidden flex items-center justify-center p-4">
       <div class="glass rounded-2xl w-full max-w-lg h-[80vh] flex flex-col">
@@ -4673,7 +4721,8 @@ function mainPageHTML(): string {
         <div class="max-w-7xl mx-auto px-4 py-6">
           <h2 class="text-2xl font-bold mb-2"><i class="fas fa-users text-primary-400 mr-2"></i>Networking Hub</h2>
           <p class="text-gray-400 text-sm mb-6">Connect with fellow attendees, speakers, and exhibitors</p>
-          <!-- Search & Filter -->
+
+          <!-- Search & Filter — always visible -->
           <div class="flex flex-col md:flex-row gap-3 mb-6">
             <div class="flex-1 relative">
               <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-gray-500"></i>
@@ -4693,8 +4742,45 @@ function mainPageHTML(): string {
               <option value="Finalist">Finalists</option>
             </select>
           </div>
-          <!-- Attendee Grid -->
-          <div id="attendee-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+
+          <!-- Visitor upgrade banner (shown only for visitor pass users) -->
+          <div id="visitor-network-banner" class="hidden mb-5 rounded-2xl border border-amber-500/30 overflow-hidden" style="background:linear-gradient(135deg,rgba(245,158,11,0.08),rgba(99,102,241,0.08));">
+            <div class="flex items-center gap-4 p-4">
+              <div class="w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center shrink-0">
+                <i class="fas fa-lock text-amber-400"></i>
+              </div>
+              <div class="flex-1 min-w-0">
+                <p class="text-sm font-semibold text-white">Networking requires a paid pass</p>
+                <p class="text-xs text-gray-400 mt-0.5">Upgrade to Delegate or VIP to connect, message, and meet attendees</p>
+              </div>
+              <a href="https://municampus.com/event/BharatAI" target="_blank"
+                 class="shrink-0 px-4 py-2 rounded-xl text-xs font-bold text-white transition-all whitespace-nowrap"
+                 style="background:linear-gradient(135deg,#6366f1,#8b5cf6);">
+                Upgrade Now <i class="fas fa-arrow-right ml-1"></i>
+              </a>
+            </div>
+          </div>
+
+          <!-- Attendee Grid wrapper — blurred for visitors -->
+          <div id="attendee-grid-wrapper" class="relative">
+            <div id="attendee-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+            <!-- Visitor lock overlay — sits over the grid -->
+            <div id="visitor-grid-lock" class="hidden absolute inset-0 z-10 cursor-pointer" onclick="showNetworkUpgradeModal()" style="background:linear-gradient(to bottom,transparent 0%,rgba(13,13,35,0.6) 30%,rgba(13,13,35,0.95) 55%,rgba(13,13,35,1) 100%);">
+              <div class="absolute bottom-0 left-0 right-0 flex flex-col items-center justify-end pb-10 px-4 text-center">
+                <div class="w-16 h-16 rounded-full bg-amber-500/15 border border-amber-500/30 flex items-center justify-center mb-4">
+                  <i class="fas fa-lock text-amber-400 text-2xl"></i>
+                </div>
+                <h3 class="text-xl font-bold text-white mb-2">Unlock Full Networking Access</h3>
+                <p class="text-sm text-gray-400 mb-5 max-w-sm">Your Visitor Pass doesn't include networking. Upgrade to <span class="text-primary-300 font-semibold">Delegate</span> or <span class="text-amber-300 font-semibold">VIP</span> to connect with all attendees.</p>
+                <a href="https://municampus.com/event/BharatAI" target="_blank"
+                   onclick="event.stopPropagation()"
+                   class="px-8 py-3.5 rounded-xl font-bold text-white text-sm transition-all shadow-xl"
+                   style="background:linear-gradient(135deg,#6366f1,#8b5cf6);">
+                  <i class="fas fa-arrow-up-right-from-square mr-2"></i>Upgrade My Pass
+                </a>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -6616,16 +6702,67 @@ function mainPageHTML(): string {
     }
 
     // ==================== NETWORKING ====================
+    function isVisitorPass() {
+      return (currentUser?.badge_type || '').toLowerCase().includes('visitor');
+    }
+
+    function showNetworkUpgradeModal() {
+      const m = document.getElementById('visitor-upgrade-modal');
+      m.classList.remove('hidden');
+      m.classList.add('flex');
+    }
+
+    function applyVisitorNetworkLock() {
+      const isVisitor = isVisitorPass();
+      const banner   = document.getElementById('visitor-network-banner');
+      const lockEl   = document.getElementById('visitor-grid-lock');
+      const gridEl   = document.getElementById('attendee-grid');
+      const searchEl = document.getElementById('attendee-search');
+      const filterEl = document.getElementById('role-filter');
+
+      if (isVisitor) {
+        // Show banner
+        banner?.classList.remove('hidden');
+        // Show lock overlay
+        lockEl?.classList.remove('hidden');
+        // Blur the grid
+        if (gridEl) gridEl.style.filter = 'blur(4px)';
+        if (gridEl) gridEl.style.pointerEvents = 'none';
+        if (gridEl) gridEl.style.userSelect = 'none';
+        // Make search/filter trigger upgrade modal instead
+        const triggerUpgrade = (e) => { e.preventDefault(); e.stopPropagation(); showNetworkUpgradeModal(); };
+        if (searchEl) { searchEl.readOnly = true; searchEl.addEventListener('focus', triggerUpgrade); }
+        if (filterEl) { filterEl.disabled = true; filterEl.addEventListener('mousedown', triggerUpgrade); }
+        // Scroll listener on the networking tab
+        const netTab = document.getElementById('tab-networking');
+        if (netTab) {
+          netTab._visitorScrollHandler = () => showNetworkUpgradeModal();
+          netTab.addEventListener('scroll', netTab._visitorScrollHandler, { once: true });
+        }
+        // Listen to window scroll too (page-level)
+        window._visitorScrollHandler = () => showNetworkUpgradeModal();
+        window.addEventListener('scroll', window._visitorScrollHandler, { once: true });
+      } else {
+        // Not a visitor — make sure lock is hidden and grid unblurred
+        banner?.classList.add('hidden');
+        lockEl?.classList.add('hidden');
+        if (gridEl) { gridEl.style.filter = ''; gridEl.style.pointerEvents = ''; gridEl.style.userSelect = ''; }
+        if (searchEl) searchEl.readOnly = false;
+        if (filterEl) filterEl.disabled = false;
+      }
+    }
+
     async function loadAttendees() {
       const search = document.getElementById('attendee-search')?.value || '';
       const role = document.getElementById('role-filter')?.value || '';
 
+      // Always load a preview of attendees (so the blurred grid looks real)
       try {
         const attendees = await api.get(\`/api/events/\${EVENT_ID}/attendees?search=\${encodeURIComponent(search)}&role=\${role}\`);
         document.getElementById('attendee-grid').innerHTML = attendees.filter(a => a.id !== currentUser?.id).map(a => {
           const compLogo = getCompanyLogoUrl(a.company, a.website_url, a.linkedin_url, a.email);
           return \`
-          <div class="glass rounded-xl p-5 card-hover">
+          <div class="glass rounded-xl p-5 \${isVisitorPass() ? '' : 'card-hover'}">
             <div class="flex items-start gap-3">
               <div class="relative">
                 <img src="\${getAvatarUrl(a.email, a.name, 112, a.avatar_url)}" alt="\${a.name}" class="w-14 h-14 rounded-full object-cover">
@@ -6642,13 +6779,17 @@ function mainPageHTML(): string {
               </div>
             </div>
             <div class="flex gap-2 mt-4">
-              <button onclick="viewProfile(\${a.id})" class="flex-1 py-2 rounded-lg text-xs font-medium glass hover:bg-white/10 transition"><i class="fas fa-user mr-1"></i>Profile</button>
-              <button onclick="sendConnectionRequest(\${a.id})" class="flex-1 py-2 rounded-lg text-xs font-medium bg-primary-600/20 text-primary-300 hover:bg-primary-600/30 transition"><i class="fas fa-plus mr-1"></i>Connect</button>
-              <button onclick="openChat(\${a.id}, '\${a.name.replace(/'/g, "&apos;")}', '\${(a.company || '').replace(/'/g, "&apos;")}')" class="py-2 px-3 rounded-lg text-xs font-medium bg-accent-500/20 text-accent-300 hover:bg-accent-500/30 transition" title="Message"><i class="fas fa-comment"></i></button>
-              <button onclick="openMeetingModal(\${a.id})" class="py-2 px-3 rounded-lg text-xs font-medium bg-green-500/20 text-green-300 hover:bg-green-500/30 transition" title="Schedule Meeting"><i class="fas fa-calendar-plus"></i></button>
+              <button onclick="\${isVisitorPass() ? 'showNetworkUpgradeModal()' : 'viewProfile(' + a.id + ')'}" class="flex-1 py-2 rounded-lg text-xs font-medium glass hover:bg-white/10 transition"><i class="fas fa-user mr-1"></i>Profile</button>
+              <button onclick="\${isVisitorPass() ? 'showNetworkUpgradeModal()' : 'sendConnectionRequest(' + a.id + ')'}" class="flex-1 py-2 rounded-lg text-xs font-medium bg-primary-600/20 text-primary-300 hover:bg-primary-600/30 transition"><i class="fas fa-plus mr-1"></i>Connect</button>
+              <button onclick="\${isVisitorPass() ? 'showNetworkUpgradeModal()' : 'openChat(' + a.id + ', \\'' + a.name.replace(/'/g, '&apos;') + '\\', \\'' + (a.company || '').replace(/'/g, '&apos;') + '\\')'}" class="py-2 px-3 rounded-lg text-xs font-medium bg-accent-500/20 text-accent-300 hover:bg-accent-500/30 transition" title="Message"><i class="fas fa-comment"></i></button>
+              <button onclick="\${isVisitorPass() ? 'showNetworkUpgradeModal()' : 'openMeetingModal(' + a.id + ')'}" class="py-2 px-3 rounded-lg text-xs font-medium bg-green-500/20 text-green-300 hover:bg-green-500/30 transition" title="Schedule Meeting"><i class="fas fa-calendar-plus"></i></button>
             </div>
-          </div>
-        \`}).join('') || '<div class="text-center text-gray-500 py-12 col-span-full"><i class="fas fa-search text-4xl mb-3 block"></i>No attendees found.</div>';
+          </div>\`;
+        }).join('') || '<div class="text-center text-gray-500 py-12 col-span-full"><i class="fas fa-search text-4xl mb-3 block"></i>No attendees found.</div>';
+
+        // Apply visitor lock AFTER grid is populated
+        applyVisitorNetworkLock();
+
       } catch(e) { console.error('Attendees error:', e); }
     }
 
