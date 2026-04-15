@@ -4203,9 +4203,11 @@ function mainPageHTML(): string {
             <i class="fas fa-rocket text-lg md:text-base"></i><span>Startup Pitch</span>
           </button>
           -->
+          <!-- Innovation Talks nav hidden — re-enable when ready
           <button class="nav-btn nav-gated hidden flex-col md:flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-medium text-gray-400 hover:text-white transition-all" data-tab="innovation" onclick="switchTab('innovation')">
             <i class="fas fa-lightbulb text-lg md:text-base"></i><span>Innovation Talks</span>
           </button>
+          -->
           <a href="/marketplace" class="nav-btn flex flex-col md:flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-medium text-amber-400/80 hover:text-amber-300 transition-all no-underline">
             <i class="fas fa-robot text-lg md:text-base"></i><span>AI Market</span>
           </a>
