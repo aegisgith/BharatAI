@@ -3039,7 +3039,7 @@ function selectType(type) {
   // Extra fields
   let extra = '';
   if (type === 'exhibition') {
-    extra = '<div><label class="text-xs text-gray-400 mb-1 block">Preferred Booth Type</label><select id="cf-booth" class="w-full px-4 py-3 rounded-xl text-sm"><option value="">Select booth type</option><option value="Startup Pod - 1.5×1.5m - ₹38,000">Startup Pod — 1.5 × 1.5 m — ₹38,000</option><option value="Explorer Booth - 2×2m - ₹1,29,000">Explorer Booth — 2 × 2 m — ₹1,29,000</option><option value="Innovator Booth - 3×2m - ₹1,95,000">Innovator Booth — 3 × 2 m — ₹1,95,000</option><option value="Accelerator Booth - 3×3m - ₹2,91,000">Accelerator Booth — 3 × 3 m — ₹2,91,000</option><option value="Enterprise Booth - 4×2m - ₹2,58,000">Enterprise Booth — 4 × 2 m — ₹2,58,000</option><option value="Flagship Pavilion - 6×2m - ₹3,87,000">Flagship Pavilion — 6 × 2 m — ₹3,87,000</option><option value="Mega Pavilion - 7×7.7m - ₹17,40,000">Mega Pavilion — 7 × 7.7 m — ₹17,40,000</option><option value="Undecided">Not sure yet / Need consultation</option></select></div><div class="grid grid-cols-2 gap-4 mt-4"><div><label class="text-xs text-gray-400 mb-1 block">Number of Booths</label><input type="number" id="cf-booth-qty" min="1" value="1" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="1"></div><div><label class="text-xs text-gray-400 mb-1 block">Preferred Zone</label><select id="cf-zone" class="w-full px-4 py-3 rounded-xl text-sm"><option value="">Any zone</option><option value="Main Hall">Main Hall</option><option value="Innovation Hub">Innovation Hub</option><option value="Startup Alley">Startup Alley</option><option value="Enterprise Zone">Enterprise Zone</option></select></div></div>';
+    extra = '<div><label class="text-xs text-gray-400 mb-1 block">Preferred Booth Type</label><select id="cf-booth" class="w-full px-4 py-3 rounded-xl text-sm"><option value="">Select booth type</option><option value="Startup Pod - 1.5×1.5m - ₹38,000">Startup Pod — 1.5 × 1.5 m — ₹38,000</option><option value="Explorer Booth - 2×2m - ₹1,25,000">Explorer Booth — 2 × 2 m — ₹1,25,000</option><option value="Innovator Booth - 3×2m - ₹1,95,000">Innovator Booth — 3 × 2 m — ₹1,95,000</option><option value="Accelerator Booth - 3×3m - ₹2,91,000">Accelerator Booth — 3 × 3 m — ₹2,91,000</option><option value="Enterprise Booth - 4×2m - ₹2,58,000">Enterprise Booth — 4 × 2 m — ₹2,58,000</option><option value="Flagship Pavilion - 6×2m - ₹3,87,000">Flagship Pavilion — 6 × 2 m — ₹3,87,000</option><option value="Mega Pavilion - 7×7.7m - ₹17,40,000">Mega Pavilion — 7 × 7.7 m — ₹17,40,000</option><option value="Undecided">Not sure yet / Need consultation</option></select></div><div class="mt-4"><label class="text-xs text-gray-400 mb-1 block">Preferred Zone</label><select id="cf-zone" class="w-full px-4 py-3 rounded-xl text-sm"><option value="">Any zone</option><option value="Main Hall">Main Hall</option><option value="Innovation Hub">Innovation Hub</option><option value="Startup Alley">Startup Alley</option><option value="Enterprise Zone">Enterprise Zone</option></select></div>';
   } else if (type === 'speaking') {
     extra = '<div><label class="text-xs text-gray-400 mb-1 block">Proposed Topic</label><input type="text" id="cf-topic" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Your talk/workshop topic"></div>';
   } else if (type === 'group_registration') {
@@ -3061,7 +3061,7 @@ async function submitContactForm(e) {
 
   const metadata = {};
   const booth = document.getElementById('cf-booth'); if (booth) metadata.booth_type = booth.value;
-  const boothQty = document.getElementById('cf-booth-qty'); if (boothQty) metadata.booth_quantity = boothQty.value;
+  // booth quantity removed — single booth per inquiry
   const zone = document.getElementById('cf-zone'); if (zone) metadata.preferred_zone = zone.value;
   const topic = document.getElementById('cf-topic'); if (topic) metadata.topic = topic.value;
   const gs = document.getElementById('cf-groupsize'); if (gs) metadata.group_size = gs.value;
@@ -3497,13 +3497,13 @@ ${sharedNavHTML('inquiry')}
         </div>
       </div>
 
-      <div class="booth-pkg glass rounded-xl p-4 border border-blue-500/20 cursor-pointer hover:border-blue-400/40 transition" onclick="selectBooth(this, 'Explorer Booth - 2x2m - Rs.1,29,000')">
+      <div class="booth-pkg glass rounded-xl p-4 border border-blue-500/20 cursor-pointer hover:border-blue-400/40 transition" onclick="selectBooth(this, 'Explorer Booth - 2x2m - Rs.1,25,000')">
         <div class="flex items-center justify-between">
           <div>
             <span class="text-sm font-bold text-blue-300">&#x1F50D; Explorer Booth</span>
             <p class="text-[10px] text-gray-400 mt-0.5">2 x 2 m (4 sqm)</p>
           </div>
-          <span class="text-sm font-bold text-blue-400">&#x20B9;1,29,000</span>
+          <span class="text-sm font-bold text-blue-400">&#x20B9;1,25,000</span>
         </div>
       </div>
 
@@ -3591,7 +3591,7 @@ ${sharedNavHTML('inquiry')}
             <select id="iq-booth-type" required class="w-full px-4 py-3 rounded-xl text-sm">
               <option value="">Select booth type</option>
               <option value="Startup Pod - 1.5x1.5m - Rs.38,000">Startup Pod &#x2014; 1.5 x 1.5 m &#x2014; &#x20B9;38,000</option>
-              <option value="Explorer Booth - 2x2m - Rs.1,29,000">Explorer Booth &#x2014; 2 x 2 m &#x2014; &#x20B9;1,29,000</option>
+              <option value="Explorer Booth - 2x2m - Rs.1,25,000">Explorer Booth &#x2014; 2 x 2 m &#x2014; &#x20B9;1,25,000</option>
               <option value="Innovator Booth - 3x2m - Rs.1,95,000">Innovator Booth &#x2014; 3 x 2 m &#x2014; &#x20B9;1,95,000</option>
               <option value="Accelerator Booth - 3x3m - Rs.2,91,000">Accelerator Booth &#x2014; 3 x 3 m &#x2014; &#x20B9;2,91,000</option>
               <option value="Enterprise Booth - 4x2m - Rs.2,58,000">Enterprise Booth &#x2014; 4 x 2 m &#x2014; &#x20B9;2,58,000</option>
@@ -3603,8 +3603,7 @@ ${sharedNavHTML('inquiry')}
 
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label class="text-xs text-gray-400 mb-1 block">Number of Booths</label>
-              <input type="number" id="iq-qty" min="1" value="1" class="w-full px-4 py-3 rounded-xl text-sm">
+
             </div>
             <div>
               <label class="text-xs text-gray-400 mb-1 block">Preferred Zone</label>
@@ -3763,7 +3762,7 @@ ${sharedToastJS()}
 
 var BOOTH_PRICES = {
   'Startup Pod - 1.5x1.5m - Rs.38,000': { name: 'Startup Pod (1.5 x 1.5 m)', price: 38000 },
-  'Explorer Booth - 2x2m - Rs.1,29,000': { name: 'Explorer Booth (2 x 2 m)', price: 129000 },
+  'Explorer Booth - 2x2m - Rs.1,25,000': { name: 'Explorer Booth (2 x 2 m)', price: 125000 },
   'Innovator Booth - 3x2m - Rs.1,95,000': { name: 'Innovator Booth (3 x 2 m)', price: 195000 },
   'Accelerator Booth - 3x3m - Rs.2,91,000': { name: 'Accelerator Booth (3 x 3 m)', price: 291000 },
   'Enterprise Booth - 4x2m - Rs.2,58,000': { name: 'Enterprise Booth (4 x 2 m)', price: 258000 },
@@ -3782,14 +3781,12 @@ function selectBooth(el, val) {
 
 function updatePriceSummary() {
   var sel = document.getElementById('iq-booth-type').value;
-  var qty = parseInt(document.getElementById('iq-qty').value) || 1;
   var summary = document.getElementById('iq-price-summary');
   var info = BOOTH_PRICES[sel];
 
   if (info) {
-    var total = info.price * qty;
-    document.getElementById('iq-summary-type').textContent = info.name + (qty > 1 ? ' x ' + qty : '');
-    document.getElementById('iq-summary-price').textContent = '\\u20B9' + total.toLocaleString('en-IN');
+    document.getElementById('iq-summary-type').textContent = info.name;
+    document.getElementById('iq-summary-price').textContent = '\\u20B9' + info.price.toLocaleString('en-IN');
     summary.classList.remove('hidden');
   } else {
     summary.classList.add('hidden');
@@ -3797,7 +3794,6 @@ function updatePriceSummary() {
 }
 
 document.getElementById('iq-booth-type').addEventListener('change', updatePriceSummary);
-document.getElementById('iq-qty').addEventListener('input', updatePriceSummary);
 
 async function submitBoothInquiry(e) {
   e.preventDefault();
@@ -3806,15 +3802,14 @@ async function submitBoothInquiry(e) {
   btn.disabled = true;
 
   var boothType = document.getElementById('iq-booth-type').value;
-  var qty = document.getElementById('iq-qty').value;
   var zone = document.getElementById('iq-zone').value;
   var info = BOOTH_PRICES[boothType];
 
   var metadata = {
     booth_type: boothType,
-    booth_quantity: qty,
+    booth_quantity: 1,
     preferred_zone: zone,
-    estimated_total: info ? (info.price * parseInt(qty)) : null,
+    estimated_total: info ? info.price : null,
     designation: document.getElementById('iq-designation').value.trim(),
     website: document.getElementById('iq-website').value.trim(),
     industry: document.getElementById('iq-industry').value,
@@ -7075,10 +7070,6 @@ function mainPageHTML(): string {
                 </div>
                 <div class="flex gap-4 text-center">
                   <div class="glass rounded-xl px-4 py-2">
-                    <div class="text-lg font-black text-primary-400">\${totalBooths}</div>
-                    <div class="text-[10px] text-gray-500 uppercase">Total Booths</div>
-                  </div>
-                  <div class="glass rounded-xl px-4 py-2">
                     <div class="text-lg font-black text-accent-400">\${totalArea.toLocaleString()}</div>
                     <div class="text-[10px] text-gray-500 uppercase">sqm Area</div>
                   </div>
@@ -7125,17 +7116,9 @@ function mainPageHTML(): string {
 
                     <!-- Price -->
                     <div class="glass rounded-xl p-3 mb-4">
-                      <div class="flex items-baseline justify-between">
-                        <div>
-                          <span class="text-2xl font-black" style="color:\${bt.color};">₹\${Number(bt.price_inr).toLocaleString('en-IN')}</span>
-                          <span class="text-xs text-gray-500 ml-1">+ GST</span>
-                        </div>
-                        <div class="text-right">
-                          <span class="text-xs font-semibold \${urgency}">\${bt.available_count} left</span>
-                          <div class="w-16 h-1.5 rounded-full bg-white/10 mt-1">
-                            <div class="h-full rounded-full" style="width:\${availPct}%; background:\${bt.color};"></div>
-                          </div>
-                        </div>
+                      <div class="flex items-baseline gap-2">
+                        <span class="text-2xl font-black" style="color:\${bt.color};">₹\${Number(bt.price_inr).toLocaleString('en-IN')}</span>
+                        <span class="text-xs text-gray-500">+ GST</span>
                       </div>
                     </div>
 
@@ -7152,8 +7135,7 @@ function mainPageHTML(): string {
 
                     <!-- Area Info -->
                     <div class="flex items-center gap-3 text-[10px] text-gray-500 mb-4">
-                      <span><i class="fas fa-cubes mr-1"></i>\${bt.total_count} units total</span>
-                      <span><i class="fas fa-vector-square mr-1"></i>\${bt.total_area_sqm} sqm total area</span>
+                      <span><i class="fas fa-vector-square mr-1"></i>\${bt.area_sqm} sqm area</span>
                     </div>
                   </div>
 
@@ -7179,7 +7161,6 @@ function mainPageHTML(): string {
                     <th class="text-left py-3 px-2 text-gray-400 font-semibold">Type</th>
                     <th class="text-center py-3 px-2 text-gray-400 font-semibold">Size (m)</th>
                     <th class="text-center py-3 px-2 text-gray-400 font-semibold">Area</th>
-                    <th class="text-center py-3 px-2 text-gray-400 font-semibold">Available</th>
                     <th class="text-right py-3 px-2 text-gray-400 font-semibold">Price (₹)</th>
                     <th class="text-center py-3 px-2 text-gray-400 font-semibold"></th>
                   </tr>
@@ -7195,9 +7176,6 @@ function mainPageHTML(): string {
                       </td>
                       <td class="text-center py-3 px-2 text-gray-300">\${bt.size_label}</td>
                       <td class="text-center py-3 px-2 text-gray-300">\${bt.area_sqm} sqm</td>
-                      <td class="text-center py-3 px-2">
-                        <span class="font-semibold \${bt.available_count <= 3 ? 'text-red-400' : bt.available_count <= 8 ? 'text-amber-400' : 'text-green-400'}">\${bt.available_count}/\${bt.total_count}</span>
-                      </td>
                       <td class="text-right py-3 px-2 font-bold" style="color:\${bt.color};">₹\${Number(bt.price_inr).toLocaleString('en-IN')}</td>
                       <td class="text-center py-3 px-2">
                         <button onclick="openBoothRequestForm(\${bt.id})" class="px-3 py-1.5 rounded-lg text-[10px] font-semibold text-white transition hover:opacity-90" style="background:\${bt.color};">
@@ -7263,19 +7241,9 @@ function mainPageHTML(): string {
               </div>
             \`).join('')}
           </div>
-          <div class="grid grid-cols-3 gap-3 mb-4 text-center">
-            <div class="glass rounded-lg p-2">
-              <div class="text-lg font-bold text-white">\${bt.total_count}</div>
-              <div class="text-[10px] text-gray-500">Total</div>
-            </div>
-            <div class="glass rounded-lg p-2">
-              <div class="text-lg font-bold \${bt.available_count <= 3 ? 'text-red-400' : 'text-green-400'}">\${bt.available_count}</div>
-              <div class="text-[10px] text-gray-500">Available</div>
-            </div>
-            <div class="glass rounded-lg p-2">
-              <div class="text-lg font-bold text-amber-400">\${bt.total_area_sqm}</div>
-              <div class="text-[10px] text-gray-500">Total sqm</div>
-            </div>
+          <div class="glass rounded-lg p-2 mb-4 text-center">
+            <div class="text-lg font-bold text-amber-400">\${bt.area_sqm} sqm</div>
+            <div class="text-[10px] text-gray-500">Booth Area</div>
           </div>
           <button onclick="closeModal(); openBoothRequestForm(\${bt.id})" class="w-full py-3 rounded-xl text-sm font-semibold text-white transition hover:opacity-90" style="background:\${bt.color};">
             <i class="fas fa-paper-plane mr-2"></i>Request This Booth
@@ -7388,9 +7356,8 @@ function mainPageHTML(): string {
                 <label class="text-xs text-gray-400 mb-1 block">Quantity</label>
                 <div class="flex items-center gap-2">
                   <button type="button" onclick="adjustBoothQty(-1)" class="w-8 h-8 rounded-lg glass hover:bg-white/10 flex items-center justify-center"><i class="fas fa-minus text-xs"></i></button>
-                  <input id="br-quantity" type="number" min="1" max="\${bt.available_count}" value="1" class="w-16 text-center px-2 py-2 rounded-lg text-sm" onchange="updateBoothPricing()">
+                  <input id="br-quantity" type="number" min="1" max="10" value="1" class="w-16 text-center px-2 py-2 rounded-lg text-sm" onchange="updateBoothPricing()">
                   <button type="button" onclick="adjustBoothQty(1)" class="w-8 h-8 rounded-lg glass hover:bg-white/10 flex items-center justify-center"><i class="fas fa-plus text-xs"></i></button>
-                  <span class="text-xs text-gray-500 ml-2">Max: \${bt.available_count}</span>
                 </div>
               </div>
               <div>
