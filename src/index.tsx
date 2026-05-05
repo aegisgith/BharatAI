@@ -5,6 +5,10 @@ import { marketplacePageHTML, marketplaceListingPageHTML, marketplaceDashboardPa
 
 type Bindings = {
   DB: D1Database
+  // Bearer token for the read-only attendee export consumed by AImailPilot's
+  // contact-list sync. Set via `wrangler secret put ATTENDEE_EXPORT_SECRET`
+  // — never lives in this repo or the database.
+  ATTENDEE_EXPORT_SECRET?: string
 }
 
 const app = new Hono<{ Bindings: Bindings }>()
@@ -240,6 +244,60 @@ app.post('/api/external/register', async (c) => {
     }
     return c.json({ error: 'Registration failed', details: e.message }, 400)
   }
+})
+
+// ==================== ATTENDEE EXPORT (AImailPilot sync) ====================
+//
+// Read-only endpoint consumed by AImailPilot's bharatai-attendee-sync
+// sweeper (https://github.com/aimailpilot/aimailpilot, runs every 4h).
+// Returns attendees as a JSON array sorted by created_at ASC so the
+// downstream watermark advances monotonically.
+//
+// Auth: bearer token in Authorization header. Secret is a Cloudflare
+// Workers env var (set via `wrangler secret put ATTENDEE_EXPORT_SECRET`),
+// not in the repo or DB. Same value is pasted into AImailPilot Advanced
+// Settings as a write-only field.
+//
+// Query params:
+//   event_id (default 1)  — the conference instance
+//   since    (optional)   — ISO timestamp; only return rows with
+//                           created_at >= since (delta sync)
+//   limit    (default 5000, max 5000)
+app.get('/api/external/attendees-export', async (c) => {
+  const authHeader = c.req.header('Authorization') || ''
+  const expected = c.env.ATTENDEE_EXPORT_SECRET || ''
+  if (!expected) {
+    return c.json({ error: 'export endpoint not configured' }, 500)
+  }
+  if (authHeader !== `Bearer ${expected}`) {
+    return c.json({ error: 'unauthorized' }, 401)
+  }
+
+  const eventIdRaw = c.req.query('event_id') || '1'
+  const eventId = parseInt(eventIdRaw, 10)
+  if (!Number.isFinite(eventId) || eventId <= 0) {
+    return c.json({ error: 'invalid event_id' }, 400)
+  }
+  const since = (c.req.query('since') || '').trim()
+  const limitRaw = parseInt(c.req.query('limit') || '5000', 10)
+  const limit = Math.min(Math.max(limitRaw || 5000, 1), 5000)
+
+  let sql = `SELECT id, event_id, name, email, company, job_title, bio,
+                    avatar_url, interests, linkedin_url, twitter_url,
+                    website_url, role, badge_type, industry, city, country,
+                    company_size, pass_type, registration_source, created_at
+               FROM attendees
+              WHERE event_id = ?`
+  const args: any[] = [eventId]
+  if (since) {
+    sql += ` AND created_at >= ?`
+    args.push(since)
+  }
+  sql += ` ORDER BY created_at ASC LIMIT ?`
+  args.push(limit)
+
+  const result = await c.env.DB.prepare(sql).bind(...args).all()
+  return c.json(result.results || [])
 })
 
 // ==================== SIGN IN API ====================
