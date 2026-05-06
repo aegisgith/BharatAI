@@ -306,7 +306,7 @@ app.post('/api/events/:id/attendees/send-magic-link', async (c) => {
     <div style="background:linear-gradient(135deg,#1e1b4b,#312e81);padding:24px 32px;text-align:center;">
       <img src="https://bharatai.blob.core.windows.net/aidata/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" style="height:50px;margin-bottom:12px;">
       <h1 style="color:white;margin:0;font-size:20px;">Sign In to Bharat AI Innovation 2026</h1>
-      <p style="color:#c4b5fd;margin:6px 0 0;font-size:13px;">16th Bharat AI Innovation • 2-3 Jun 2026</p>
+      <p style="color:#c4b5fd;margin:6px 0 0;font-size:13px;">16th Bharat AI Innovation • 7-8 Oct 2026</p>
     </div>
     <div style="padding:32px;">
       <p style="color:#333;line-height:1.6;margin:0 0 16px;">Hi <strong>${attendee.name}</strong>,</p>
@@ -426,13 +426,13 @@ app.get('/rsvp-confirmed', (c) => {
       <div class="bg-white/5 rounded-xl p-4 mb-6 text-left">
         <div class="text-xs text-gray-500 uppercase tracking-wider mb-2">Event Details</div>
         <p class="text-white font-semibold text-sm">Bharat AI Innovation Conference & Exhibition 2026</p>
-        <p class="text-gray-400 text-xs mt-1"><i class="fas fa-calendar-alt mr-1"></i>2-3 June 2026 &bull; <i class="fas fa-map-marker-alt ml-1 mr-1"></i>World Trade Center, Mumbai</p>
+        <p class="text-gray-400 text-xs mt-1"><i class="fas fa-calendar-alt mr-1"></i>7-8 Oct 2026 &bull; <i class="fas fa-map-marker-alt ml-1 mr-1"></i>World Trade Center, Mumbai</p>
       </div>
       ${status === 'confirmed' ? `<div class="space-y-2 mb-4"><a href="${appUrl}?email=${encodeURIComponent(email)}&action=download-pass" class="block w-full py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 transition text-sm"><i class="fas fa-id-badge mr-2"></i>Download Delegate Pass</a></div>` : ''}
       <a href="${appUrl}?email=${encodeURIComponent(email)}" class="block w-full py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 transition text-sm"><i class="fas fa-rocket mr-2"></i>Open Networking App</a>
       <p class="text-xs text-gray-500 mt-4">You can change your RSVP anytime from the app.</p>
     </div>
-    <p class="text-xs text-gray-600 mt-6">Bharat AI Innovation 2026 &bull; World Trade Center, Mumbai &bull; 2-3 Jun 2026</p>
+    <p class="text-xs text-gray-600 mt-6">Bharat AI Innovation 2026 &bull; World Trade Center, Mumbai &bull; 7-8 Oct 2026</p>
   </div>
 </body></html>`)
 })
@@ -1328,18 +1328,18 @@ app.post('/api/admin/attendees/:id/notify', async (c) => {
     <!-- Header Banner -->
     <div style="background:linear-gradient(135deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%);border-radius:16px;padding:32px 24px;text-align:center;color:white;">
       <h1 style="margin:0 0 6px;font-size:24px;">Bharat AI Innovation Conference & Exhibition 2026</h1>
-      <p style="margin:0;opacity:0.8;font-size:14px;">2-3 June 2026 &bull; World Trade Center, Mumbai</p>
+      <p style="margin:0;opacity:0.8;font-size:14px;">7-8 Oct 2026 &bull; World Trade Center, Mumbai</p>
     </div>
     <!-- Main Content -->
     <div style="background:white;border-radius:16px;padding:30px;margin-top:16px;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
       <h2 style="margin:0 0 16px;color:#1a1a2e;font-size:22px;">Dear ${attendee.name},</h2>
       <p style="color:#555;line-height:1.6;margin:0 0 16px;">
-        Your account for the <strong>Bharat AI Innovation 2026</strong> has been created. You are now registered as an official <strong>Delegate</strong> for the event. On 2-3 June 2026, we gather to recognise innovators and their innovations that are creating meaningful impact in our lives, our society, our nation, and the business ecosystem.
+        Your account for the <strong>Bharat AI Innovation 2026</strong> has been created. You are now registered as an official <strong>Delegate</strong> for the event. On 7-8 Oct 2026, we gather to recognise innovators and their innovations that are creating meaningful impact in our lives, our society, our nation, and the business ecosystem.
       </p>
       <div style="background:#f8f9fa;border-left:4px solid #1a1a2e;border-radius:0 8px 8px 0;padding:16px 20px;margin:0 0 20px;">
         <p style="color:#1a1a2e;font-weight:bold;margin:0 0 6px;font-size:15px;">Event Details</p>
         <p style="color:#555;line-height:1.6;margin:0;font-size:14px;">
-          <strong>Date:</strong> 2-3 June 2026<br>
+          <strong>Date:</strong> 7-8 Oct 2026<br>
           <strong>Venue:</strong> World Trade Center, Mumbai
         </p>
       </div>
@@ -1364,7 +1364,7 @@ app.post('/api/admin/attendees/:id/notify', async (c) => {
       <div style="background:linear-gradient(135deg,#fef9e7,#fdf2d6);border:1px solid #f0d48a;border-radius:12px;padding:24px;margin:20px 0;text-align:center;">
         <h3 style="margin:0 0 6px;color:#1a1a2e;font-size:18px;">📋 Confirm Your Attendance</h3>
         <p style="color:#555;line-height:1.6;margin:0 0 18px;font-size:14px;">
-          Will you be attending the event on <strong>2-3 June 2026</strong>?
+          Will you be attending the event on <strong>7-8 Oct 2026</strong>?
         </p>
         <table cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto;">
           <tr>
@@ -1416,7 +1416,7 @@ app.post('/api/admin/attendees/:id/notify', async (c) => {
       </table>
     </div>
     <p style="text-align:center;color:#999;font-size:12px;margin-top:8px;">
-      Bharat AI Innovation Conference & Exhibition 2026 &bull; World Trade Center, Mumbai &bull; 2-3 Jun 2026
+      Bharat AI Innovation Conference & Exhibition 2026 &bull; World Trade Center, Mumbai &bull; 7-8 Oct 2026
     </p>
   </div>
 </body>
@@ -1473,7 +1473,7 @@ app.post('/api/admin/attendees/:id/notify', async (c) => {
     method: 'mailto',
     email: attendee.email,
     subject: 'Your Delegate Pass for Bharat AI Innovation 2026',
-    body: `Dear ${attendee.name},\n\nYour account for the Bharat AI Innovation Conference & Exhibition 2026 has been created. You are now registered as an official Delegate for India's largest AI conference.\n\nEvent Details:\nDate: 2-3 June 2026\nVenue: World Trade Center, Mumbai, Cuffe Parade\n\n🎟️ Your Delegate Pass\nDownload your Delegate Pass: ${passUrl}\nPlease keep it handy for smooth entry at the venue.\n\n⏰ Please update your expected arrival time to help us plan event logistics.\n\nOpen the networking app: ${appUrl}?email=${encodeURIComponent(attendee.email)}\n\nYour Login Details:\nEmail: ${attendee.email}\nName: ${attendee.name}\n\nWe look forward to welcoming you in Mumbai!\n\nRegards,\nTeam Bharat AI Innovation`,
+    body: `Dear ${attendee.name},\n\nYour account for the Bharat AI Innovation Conference & Exhibition 2026 has been created. You are now registered as an official Delegate for India's largest AI conference.\n\nEvent Details:\nDate: 7-8 Oct 2026\nVenue: World Trade Center, Mumbai, Cuffe Parade\n\n🎟️ Your Delegate Pass\nDownload your Delegate Pass: ${passUrl}\nPlease keep it handy for smooth entry at the venue.\n\n⏰ Please update your expected arrival time to help us plan event logistics.\n\nOpen the networking app: ${appUrl}?email=${encodeURIComponent(attendee.email)}\n\nYour Login Details:\nEmail: ${attendee.email}\nName: ${attendee.name}\n\nWe look forward to welcoming you in Mumbai!\n\nRegards,\nTeam Bharat AI Innovation`,
   })
 })
 
@@ -1533,13 +1533,13 @@ app.post('/api/admin/attendees/:id/send-thankyou', async (c) => {
     <!-- Header Banner -->
     <div style="background:linear-gradient(135deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%);border-radius:16px;padding:32px 24px;text-align:center;color:white;">
       <h1 style="margin:0 0 6px;font-size:24px;">Confirm Your Attendance!</h1>
-      <p style="margin:0;opacity:0.8;font-size:14px;">Bharat AI Innovation Conference & Exhibition 2026 &bull; 2-3 June 2026</p>
+      <p style="margin:0;opacity:0.8;font-size:14px;">Bharat AI Innovation Conference & Exhibition 2026 &bull; 7-8 Oct 2026</p>
     </div>
     <!-- Main Content -->
     <div style="background:white;border-radius:16px;padding:30px;margin-top:16px;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
       <h2 style="margin:0 0 16px;color:#1a1a2e;font-size:22px;">Dear ${attendee.name},</h2>
       <p style="color:#555;line-height:1.7;margin:0 0 16px;">
-        We are truly grateful for your presence at the <strong>Bharat AI Innovation Conference & Exhibition 2026</strong> ceremony held on <strong>2-3 June 2026</strong> at <strong>World Trade Center Mumbai, Mumbai</strong>. Your participation and support played a vital role in making this event a resounding success.
+        We are truly grateful for your presence at the <strong>Bharat AI Innovation Conference & Exhibition 2026</strong> ceremony held on <strong>7-8 Oct 2026</strong> at <strong>World Trade Center Mumbai, Mumbai</strong>. Your participation and support played a vital role in making this event a resounding success.
       </p>
       <p style="color:#555;line-height:1.7;margin:0 0 20px;">
         It was a memorable evening celebrating innovation, technology, and the exceptional contributions of individuals and organizations driving meaningful change across industries and society.
@@ -1644,7 +1644,7 @@ app.post('/api/admin/attendees/:id/send-thankyou', async (c) => {
       </table>
     </div>
     <p style="text-align:center;color:#999;font-size:12px;margin-top:8px;">
-      Bharat AI Innovation Conference & Exhibition 2026 &bull; World Trade Center Mumbai, Mumbai &bull; 2-3 Jun 2026
+      Bharat AI Innovation Conference & Exhibition 2026 &bull; World Trade Center Mumbai, Mumbai &bull; 7-8 Oct 2026
     </p>
   </div>
 </body>
@@ -2766,7 +2766,7 @@ function sharedHeadHTML(title: string): string {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${title} — Bharat AI Innovation 2026</title>
-  <meta name="description" content="${title} for Bharat AI Innovation 2026 - India's Largest AI Conference & Exhibition, 2-3 June 2026, WTC Mumbai">
+  <meta name="description" content="${title} for Bharat AI Innovation 2026 - India's Largest AI Conference & Exhibition, 7-8 Oct 2026, WTC Mumbai">
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
   <script>
@@ -2852,7 +2852,7 @@ function sharedFooterHTML(): string {
       <div>
         <h4 class="font-semibold text-sm mb-3">Event Details</h4>
         <ul class="space-y-2 text-xs text-gray-400">
-          <li><i class="fas fa-calendar mr-2 text-primary-400"></i>2-3 June 2026</li>
+          <li><i class="fas fa-calendar mr-2 text-primary-400"></i>7-8 Oct 2026</li>
           <li><i class="fas fa-map-marker-alt mr-2 text-primary-400"></i>World Trade Center, Mumbai</li>
           <li><i class="fas fa-building mr-2 text-primary-400"></i>Centre 1 Building, Cuffe Parade, 400005</li>
           <li><a href="https://maps.google.com/?q=World+Trade+Centre+Mumbai+Cuffe+Parade" target="_blank" class="text-primary-400 hover:underline"><i class="fas fa-directions mr-1"></i>Get Directions</a></li>
@@ -3009,7 +3009,7 @@ ${sharedNavHTML('contact')}
       <span><i class="fas fa-envelope text-primary-400 mr-1.5"></i>info@bharataiinnovation.com</span>
       <span><i class="fas fa-globe text-primary-400 mr-1.5"></i><a href="https://bharataiinnovation.com" target="_blank" class="hover:text-white transition">bharataiinnovation.com</a></span>
       <span><i class="fas fa-map-marker-alt text-primary-400 mr-1.5"></i>WTC Mumbai, Cuffe Parade</span>
-      <span><i class="fas fa-calendar text-primary-400 mr-1.5"></i>2-3 June 2026</span>
+      <span><i class="fas fa-calendar text-primary-400 mr-1.5"></i>7-8 Oct 2026</span>
     </div>
   </div>
 </main>
@@ -3130,7 +3130,7 @@ ${sharedNavHTML('register')}
       <i class="fas fa-ticket-alt"></i>FREE REGISTRATION OPEN
     </div>
     <h1 class="text-3xl md:text-4xl font-bold mb-3">Register for Bharat AI Innovation 2026</h1>
-    <p class="text-gray-400 max-w-2xl mx-auto">Join India's largest AI conference at World Trade Center, Mumbai on 2-3 June 2026. Get your free Visitor Pass or upgrade to a premium pass.</p>
+    <p class="text-gray-400 max-w-2xl mx-auto">Join India's largest AI conference at World Trade Center, Mumbai on 7-8 Oct 2026. Get your free Visitor Pass or upgrade to a premium pass.</p>
   </div>
 
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 max-w-5xl mx-auto">
@@ -3478,7 +3478,7 @@ ${sharedNavHTML('inquiry')}
       <i class="fas fa-store"></i> EXHIBITION BOOKING OPEN
     </div>
     <h1 class="text-3xl md:text-4xl font-bold mb-3">Book Your Exhibition Booth</h1>
-    <p class="text-gray-400 max-w-2xl mx-auto">Showcase your AI products & solutions at India's largest AI expo — World Trade Center, Mumbai | 2-3 June 2026</p>
+    <p class="text-gray-400 max-w-2xl mx-auto">Showcase your AI products & solutions at India's largest AI expo — World Trade Center, Mumbai | 7-8 Oct 2026</p>
   </div>
 
   <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
@@ -3750,7 +3750,7 @@ ${sharedNavHTML('inquiry')}
       <span><i class="fas fa-envelope text-amber-400 mr-1.5"></i>exhibition@bharataiinnovation.com</span>
       <span><i class="fas fa-globe text-amber-400 mr-1.5"></i><a href="https://bharataiinnovation.com" target="_blank" class="hover:text-white transition">bharataiinnovation.com</a></span>
       <span><i class="fas fa-map-marker-alt text-amber-400 mr-1.5"></i>WTC Mumbai, Cuffe Parade</span>
-      <span><i class="fas fa-calendar text-amber-400 mr-1.5"></i>2-3 June 2026</span>
+      <span><i class="fas fa-calendar text-amber-400 mr-1.5"></i>7-8 Oct 2026</span>
     </div>
   </div>
 </main>
@@ -4257,7 +4257,7 @@ function mainPageHTML(): string {
                 <i class="fas fa-calendar-check text-[10px] mr-1"></i>UPCOMING EVENT
               </span>
               <span class="px-3 py-1 rounded-full text-xs font-semibold bg-primary-500/20 text-primary-300 border border-primary-500/30">
-                2-3 Jun 2026
+                7-8 Oct 2026
               </span>
             </div>
             <div class="flex items-center gap-3 md:gap-4 mb-2">
@@ -4310,7 +4310,7 @@ function mainPageHTML(): string {
               </div>
               <div class="flex-1">
                 <h3 class="font-bold text-base mb-1">Confirm Your Attendance</h3>
-                <p class="text-xs text-gray-400 mb-4">Will you be attending <strong class="text-white">Bharat AI Innovation 2026</strong> on <strong class="text-white">2-3 June 2026</strong> at World Trade Center, Mumbai?</p>
+                <p class="text-xs text-gray-400 mb-4">Will you be attending <strong class="text-white">Bharat AI Innovation 2026</strong> on <strong class="text-white">7-8 Oct 2026</strong> at World Trade Center, Mumbai?</p>
                 <div class="flex flex-wrap gap-2" id="rsvp-buttons">
                   <button onclick="submitRsvp('confirmed')" class="px-5 py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white transition-all shadow-lg shadow-green-500/20"><i class="fas fa-check-circle mr-1.5"></i>Yes, I'll be there</button>
                   <button onclick="submitRsvp('maybe')" class="px-5 py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white transition-all shadow-lg shadow-amber-500/20"><i class="fas fa-question-circle mr-1.5"></i>Not sure yet</button>
@@ -4574,7 +4574,7 @@ function mainPageHTML(): string {
               <span><i class="fas fa-store text-green-500 mr-1"></i>Exhibition Floor Access</span>
               <span><i class="fas fa-laptop text-green-500 mr-1"></i>Product & Startup Demos</span>
               <span><i class="fas fa-building text-green-500 mr-1"></i>Exhibition Day Activities</span>
-              <span><i class="fas fa-calendar text-green-500 mr-1"></i>2-3 June 2026</span>
+              <span><i class="fas fa-calendar text-green-500 mr-1"></i>7-8 Oct 2026</span>
               <span><i class="fas fa-map-marker-alt text-green-500 mr-1"></i>WTC Mumbai</span>
             </div>
           </div>
@@ -4701,7 +4701,7 @@ function mainPageHTML(): string {
       <div id="tab-schedule" class="tab-content hidden">
         <div class="max-w-7xl mx-auto px-4 py-6">
           <h2 class="text-2xl font-bold mb-1"><i class="fas fa-calendar-alt text-primary-400 mr-2"></i>Event Schedule</h2>
-          <p class="text-gray-400 text-sm mb-5">2-3 June 2026 · World Trade Center, Mumbai</p>
+          <p class="text-gray-400 text-sm mb-5">7-8 Oct 2026 · World Trade Center, Mumbai</p>
 
           <!-- Day Selector -->
           <div class="flex gap-2 mb-4 overflow-x-auto scroll-hide pb-1" id="sched-day-selector"></div>
@@ -6563,7 +6563,7 @@ function mainPageHTML(): string {
     }
 
     // ==================== SCHEDULE ====================
-    let selectedDay = '2026-06-02';
+    let selectedDay = '2026-10-07';
     let selectedHall = 'Homi J. Bhabha Hall';
     let selectedTrack = '';
 
@@ -6666,7 +6666,7 @@ function mainPageHTML(): string {
         ]);
 
         // ── Day selector ──
-        const days = [{ val:'2026-06-02', label:'Day 1 · 2 Jun 2026' },{ val:'2026-06-03', label:'Day 2 · 3 Jun 2026' }];
+        const days = [{ val:'2026-10-07', label:'Day 1 · 7 Oct 2026' },{ val:'2026-10-08', label:'Day 2 · 8 Oct 2026' }];
         document.getElementById('sched-day-selector').innerHTML = days.map(d => \`
           <button onclick="selectedDay='\${d.val}'; loadSchedule()"
             class="px-4 py-2 rounded-xl text-sm font-semibold whitespace-nowrap transition-all \${selectedDay === d.val ? 'tab-active' : 'glass text-gray-400 hover:text-white'}">
@@ -7770,7 +7770,7 @@ function mainPageHTML(): string {
           <h2 class="text-2xl font-bold mb-2"><i class="fas fa-rocket text-orange-400 mr-2"></i>BHAI Startup Pitch</h2>
           <p class="text-lg font-semibold text-orange-300 mb-1">BHAI Innovation Pitch: Where Innovation Meets Investment</p>
           <p class="text-gray-400 text-sm">Connect. Pitch. Fund. The Ultimate Startup-Investor Experience</p>
-          <p class="text-xs text-gray-500 mt-2"><i class="fas fa-calendar-alt mr-1"></i>2-3 June 2026 &bull; World Trade Center, Mumbai</p>
+          <p class="text-xs text-gray-500 mt-2"><i class="fas fa-calendar-alt mr-1"></i>7-8 Oct 2026 &bull; World Trade Center, Mumbai</p>
         </div>
 
         \${pitchData.length > 0 ? \`
@@ -8304,7 +8304,7 @@ function mainPageHTML(): string {
       // Venue & Date - elegant gold
       ctx.fillStyle = '#d4af5a';
       ctx.font = '500 14px Arial, sans-serif';
-      ctx.fillText('2-3 June 2026  \u2022  World Trade Center, Mumbai', W/2, curY);
+      ctx.fillText('7-8 Oct 2026  \u2022  World Trade Center, Mumbai', W/2, curY);
       curY += 24;
 
       // Decorative divider: thin lines with centered diamond
@@ -8488,7 +8488,7 @@ function mainPageHTML(): string {
       ctx.fillStyle = 'rgba(255,255,255,0.7)';
       ctx.font = '500 13px Arial, sans-serif';
       ctx.textAlign = 'right';
-      ctx.fillText('2-3 June 2026  \u2022  World Trade Center, Mumbai', panelX + panelW - 28, row2Y);
+      ctx.fillText('7-8 Oct 2026  \u2022  World Trade Center, Mumbai', panelX + panelW - 28, row2Y);
 
       curY += panelH + 28;
 
@@ -11594,7 +11594,7 @@ function adminPageHTML(): string {
 
       // Event details
       goldLine(790, 140, 0.3);
-      ctx.fillStyle = 'rgba(200,168,85,0.9)'; ctx.font = '500 22px Arial, sans-serif'; ctx.fillText('2-3 June 2026', W / 2, 835);
+      ctx.fillStyle = 'rgba(200,168,85,0.9)'; ctx.font = '500 22px Arial, sans-serif'; ctx.fillText('7-8 Oct 2026', W / 2, 835);
       ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.font = '17px Arial, sans-serif'; ctx.fillText('WTC Mumbai, Chanakyapuri, Mumbai', W / 2, 865);
       ctx.fillText('9:00 AM \u2013 6:00 PM', W / 2, 892);
       goldLine(920, 140, 0.3);
@@ -11692,7 +11692,7 @@ function adminPageHTML(): string {
         if (!confirm(\`Resend notification email to \${result.count} attendee(s) who haven't responded to RSVP?\`)) return;
         let sent = 0, failed = 0;
         toast(\`Resending to \${result.count} non-responders...\`);
-        const reminderSubject = 'Reminder: Confirm your attendance — Bharat AI Innovation 2026, 2-3 Jun, WTC Mumbai';
+        const reminderSubject = 'Reminder: Confirm your attendance — Bharat AI Innovation 2026, 7-8 Oct, WTC Mumbai';
         for (const a of result.attendees) {
           try {
             await api.post('/api/admin/attendees/'+a.id+'/notify', { subject: reminderSubject });
@@ -11756,12 +11756,12 @@ function adminPageHTML(): string {
           </div>
           <div style="background:linear-gradient(135deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%);border-radius:16px;padding:24px 20px;text-align:center;color:white;">
             <h2 style="margin:0 0 6px;font-size:20px;">Confirm Your Attendance!</h2>
-            <p style="margin:0;opacity:0.8;font-size:13px;">Bharat AI Innovation Conference & Exhibition 2026 &bull; 2-3 June 2026</p>
+            <p style="margin:0;opacity:0.8;font-size:13px;">Bharat AI Innovation Conference & Exhibition 2026 &bull; 7-8 Oct 2026</p>
           </div>
           <div style="background:white;border-radius:16px;padding:24px;margin-top:12px;color:#333;">
             <h3 style="margin:0 0 12px;color:#1a1a2e;">Dear [Attendee Name],</h3>
             <p style="color:#555;line-height:1.6;font-size:13px;margin:0 0 12px;">
-              We are truly grateful for your presence at the <strong style="color:#1a1a2e;">Bharat AI Innovation 2026</strong> ceremony held on <strong style="color:#1a1a2e;">2-3 June 2026</strong> at <strong style="color:#1a1a2e;">World Trade Center Mumbai, Mumbai</strong>. Your participation played a vital role in making this event a resounding success.
+              We are truly grateful for your presence at the <strong style="color:#1a1a2e;">Bharat AI Innovation 2026</strong> ceremony held on <strong style="color:#1a1a2e;">7-8 Oct 2026</strong> at <strong style="color:#1a1a2e;">World Trade Center Mumbai, Mumbai</strong>. Your participation played a vital role in making this event a resounding success.
             </p>
             <p style="color:#555;line-height:1.6;font-size:13px;margin:0 0 16px;">
               It was a memorable evening celebrating innovation, technology, and the exceptional contributions of individuals and organizations driving meaningful change across industries and society.
