@@ -303,7 +303,7 @@ app.post('/api/events/:id/attendees/send-magic-link', async (c) => {
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
 <body style="margin:0;padding:0;background:#f5f5f5;font-family:Arial,sans-serif;">
   <div style="max-width:600px;margin:20px auto;background:white;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
-    <div style="background:linear-gradient(135deg,#1e1b4b,#312e81);padding:24px 32px;text-align:center;">
+    <div style="background:linear-gradient(135deg,#0b0d1a,#1a1f3a);padding:24px 32px;text-align:center;border-bottom:1px solid rgba(245,98,10,0.2);">
       <img src="https://bharatai.blob.core.windows.net/aidata/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" style="height:50px;margin-bottom:12px;">
       <h1 style="color:white;margin:0;font-size:20px;">Sign In to Bharat AI Innovation 2026</h1>
       <p style="color:#c4b5fd;margin:6px 0 0;font-size:13px;">16th Bharat AI Innovation • 20-21 Nov 2026</p>
@@ -429,7 +429,7 @@ app.get('/rsvp-confirmed', (c) => {
         <p class="text-gray-400 text-xs mt-1"><i class="fas fa-calendar-alt mr-1"></i>20-21 Nov 2026 &bull; <i class="fas fa-map-marker-alt ml-1 mr-1"></i>World Trade Center, Mumbai</p>
       </div>
       ${status === 'confirmed' ? `<div class="space-y-2 mb-4"><a href="${appUrl}?email=${encodeURIComponent(email)}&action=download-pass" class="block w-full py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 transition text-sm"><i class="fas fa-id-badge mr-2"></i>Download Delegate Pass</a></div>` : ''}
-      <a href="${appUrl}?email=${encodeURIComponent(email)}" class="block w-full py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 transition text-sm"><i class="fas fa-rocket mr-2"></i>Open Networking App</a>
+      <a href="${appUrl}?email=${encodeURIComponent(email)}" class="block w-full py-3 rounded-xl font-bold text-white transition text-sm text-center hover:opacity-90 no-underline" style="background:linear-gradient(135deg,#f5620a,#e03060);box-shadow:0 4px 20px rgba(245,98,10,0.28);"><i class="fas fa-rocket mr-2"></i>Open Networking App</a>
       <p class="text-xs text-gray-500 mt-4">You can change your RSVP anytime from the app.</p>
     </div>
     <p class="text-xs text-gray-600 mt-6">Bharat AI Innovation 2026 &bull; World Trade Center, Mumbai &bull; 20-21 Nov 2026</p>
@@ -2774,9 +2774,9 @@ function sharedHeadHTML(title: string): string {
       theme: {
         extend: {
           colors: {
-            primary: { 50:'#f0f4ff',100:'#dbe4ff',200:'#bac8ff',300:'#91a7ff',400:'#748ffc',500:'#5c7cfa',600:'#4c6ef5',700:'#4263eb',800:'#3b5bdb',900:'#364fc7' },
-            accent: { 50:'#fff3e0',100:'#ffe0b2',200:'#ffcc80',300:'#ffb74d',400:'#ffa726',500:'#ff9800',600:'#fb8c00',700:'#f57c00',800:'#ef6c00',900:'#e65100' },
-            dark: { 800:'#1a1a2e',900:'#0f0f23' }
+            primary: { 50:'#fff4ed',100:'#ffe4cc',200:'#ffca99',300:'#ffa85c',400:'#ff7c1f',500:'#f5620a',600:'#e04d06',700:'#ba3a07',800:'#94300d',900:'#7a2b0e' },
+            accent: { 50:'#fdf4ff',100:'#fbe8ff',200:'#f5d0fe',300:'#f0abfc',400:'#e879f9',500:'#d946ef',600:'#c026d3',700:'#a21caf',800:'#86198f',900:'#701a75' },
+            dark: { 700:'#1e2240',800:'#141730',900:'#0b0d1a' }
           }
         }
       }
@@ -2785,15 +2785,15 @@ function sharedHeadHTML(title: string): string {
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
     * { font-family: 'Inter', sans-serif; }
-    body { background: #0f0f23; color: #e2e8f0; }
-    .glass { background: rgba(255,255,255,0.05); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.08); }
-    .gradient-text { background: linear-gradient(135deg, #748ffc, #ff9800); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    body { background: #0b0d1a; color: #e2e8f0; }
+    .glass { background: rgba(255,255,255,0.04); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.07); }
+    .gradient-text { background: linear-gradient(120deg, #ff7c1f 0%, #f5620a 40%, #e8406c 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
     .card-hover { transition: all 0.3s ease; }
-    .card-hover:hover { transform: translateY(-4px); box-shadow: 0 12px 40px rgba(92,124,250,0.2); }
-    .modal-overlay { background: rgba(0,0,0,0.7); backdrop-filter: blur(5px); }
-    input, textarea, select { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); color: #e2e8f0; }
-    input:focus, textarea:focus, select:focus { outline: none; border-color: #4c6ef5; box-shadow: 0 0 0 3px rgba(76,110,245,0.2); }
-    select option { background: #1a1a2e; color: #e2e8f0; }
+    .card-hover:hover { transform: translateY(-3px); box-shadow: 0 12px 40px rgba(245,98,10,0.15); }
+    .modal-overlay { background: rgba(0,0,0,0.75); backdrop-filter: blur(6px); }
+    input, textarea, select { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.10); color: #e2e8f0; }
+    input:focus, textarea:focus, select:focus { outline: none; border-color: #f5620a; box-shadow: 0 0 0 3px rgba(245,98,10,0.18); }
+    select option { background: #141730; color: #e2e8f0; }
     select { -webkit-appearance: none; -moz-appearance: none; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%239ca3af' d='M6 8L1 3h10z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 32px; }
     .toast { position: fixed; top: 20px; right: 20px; z-index: 100; padding: 12px 20px; border-radius: 12px; font-size: 14px; font-weight: 500; animation: slideIn 0.3s ease; }
     @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
@@ -2802,34 +2802,40 @@ function sharedHeadHTML(title: string): string {
 }
 
 function sharedNavHTML(activePage: string): string {
-  return `<nav class="glass border-b border-white/10 sticky top-0 z-30">
-  <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
-    <a href="/" class="flex items-center gap-3 hover:opacity-90 transition">
-      <img src="https://bharatai.blob.core.windows.net/aidata/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="w-10 h-10 rounded-lg object-contain">
-      <div>
-        <h1 class="font-bold text-sm">Bharat AI Innovation 2026</h1>
-        <p class="text-[10px] text-gray-400">India's Largest AI Conference & Exhibition</p>
+  const pill = (href: string, label: string, page: string) => {
+    const active = activePage === page
+    return `<a href="${href}" class="px-3.5 py-1.5 rounded-full text-xs font-medium transition-all no-underline ${
+      active
+        ? 'bg-gradient-to-r from-primary-600 to-primary-500 text-white shadow-sm shadow-primary-500/30'
+        : 'text-gray-300 hover:text-white hover:bg-white/8'
+    }">${label}</a>`
+  }
+  return `<nav style="background:rgba(11,13,26,0.93);backdrop-filter:blur(24px);border-bottom:1px solid rgba(255,255,255,0.07);" class="sticky top-0 z-30">
+  <div class="max-w-7xl mx-auto px-4">
+    <div class="flex items-center h-14 gap-4">
+      <!-- Logo -->
+      <a href="/" class="flex items-center gap-2.5 hover:opacity-90 transition shrink-0">
+        <img src="https://bharatai.blob.core.windows.net/aidata/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI" class="w-9 h-9 rounded-lg object-contain bg-white p-0.5">
+        <div class="leading-tight hidden sm:block">
+          <div class="text-sm font-bold text-white">Bharat AI Innovation</div>
+          <div class="text-[10px] text-gray-400">India's Largest AI Conference</div>
+        </div>
+      </a>
+      <!-- Center pills -->
+      <div class="flex items-center gap-0.5 flex-1 justify-center flex-wrap">
+        ${pill('/', 'Home', 'home')}
+        ${pill('/register', 'Register', 'register')}
+        ${pill('/inquiry', 'Book Booth', 'inquiry')}
+        ${pill('/contact', 'Contact', 'contact')}
+        ${pill('/marketplace', 'AI Market', 'marketplace')}
+        <a href="https://bharataiinnovation.com" target="_blank" class="px-3.5 py-1.5 rounded-full text-xs font-medium text-gray-300 hover:text-white hover:bg-white/8 transition-all no-underline hidden md:inline-flex">Main Site</a>
       </div>
-    </a>
-    <div class="flex items-center gap-2">
-      <a href="/" class="px-3 py-2 rounded-lg text-xs font-semibold ${activePage === 'home' ? 'bg-primary-500/20 text-primary-300' : 'text-gray-400 hover:text-white hover:bg-white/5'} transition">
-        <i class="fas fa-home mr-1"></i>Home
-      </a>
-      <a href="/register" class="px-3 py-2 rounded-lg text-xs font-semibold ${activePage === 'register' ? 'bg-green-500/20 text-green-300' : 'text-gray-400 hover:text-white hover:bg-white/5'} transition">
-        <i class="fas fa-ticket-alt mr-1"></i>Register
-      </a>
-      <a href="/contact" class="px-3 py-2 rounded-lg text-xs font-semibold ${activePage === 'contact' ? 'bg-primary-500/20 text-primary-300' : 'text-gray-400 hover:text-white hover:bg-white/5'} transition">
-        <i class="fas fa-envelope mr-1"></i>Contact
-      </a>
-      <a href="/inquiry" class="px-3 py-2 rounded-lg text-xs font-semibold ${activePage === 'inquiry' ? 'bg-amber-500/20 text-amber-300' : 'text-gray-400 hover:text-white hover:bg-white/5'} transition">
-        <i class="fas fa-store mr-1"></i>Book Booth
-      </a>
-      <a href="/marketplace" class="px-3 py-2 rounded-lg text-xs font-semibold ${activePage === 'marketplace' ? 'bg-accent-500/20 text-accent-300' : 'text-gray-400 hover:text-white hover:bg-white/5'} transition">
-        <i class="fas fa-store mr-1"></i>AI Marketplace
-      </a>
-      <a href="https://bharataiinnovation.com" target="_blank" class="px-3 py-2 rounded-lg text-xs font-semibold text-gray-400 hover:text-white hover:bg-white/5 transition hidden sm:inline-flex">
-        <i class="fas fa-external-link-alt mr-1"></i>Main Site
-      </a>
+      <!-- CTA -->
+      <div class="shrink-0">
+        <a href="/register" class="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold text-white transition-all hover:opacity-90 no-underline" style="background:linear-gradient(135deg,#f5620a,#e03060);box-shadow:0 4px 15px rgba(245,98,10,0.35);">
+          Register <i class="fas fa-arrow-right text-[10px]"></i>
+        </a>
+      </div>
     </div>
   </div>
 </nav>`
@@ -2984,7 +2990,7 @@ ${sharedNavHTML('contact')}
           <label class="text-xs text-gray-400 mb-1 block">Message *</label>
           <textarea id="cf-message" rows="4" required class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Describe your inquiry in detail..."></textarea>
         </div>
-        <button type="submit" id="cf-submit" class="w-full py-3.5 rounded-xl font-semibold text-white bg-gradient-to-r from-primary-600 to-blue-600 hover:from-primary-500 hover:to-blue-500 transition-all text-sm shadow-lg shadow-primary-500/20">
+        <button type="submit" id="cf-submit" class="w-full py-3.5 rounded-xl font-bold text-white transition-all text-sm hover:opacity-90" style="background:linear-gradient(135deg,#f5620a,#e03060);box-shadow:0 4px 20px rgba(245,98,10,0.3);">
           <i class="fas fa-paper-plane mr-2"></i>Submit Inquiry
         </button>
       </form>
@@ -3914,9 +3920,9 @@ function mainPageHTML(): string {
       theme: {
         extend: {
           colors: {
-            primary: { 50:'#f0f4ff',100:'#dbe4ff',200:'#bac8ff',300:'#91a7ff',400:'#748ffc',500:'#5c7cfa',600:'#4c6ef5',700:'#4263eb',800:'#3b5bdb',900:'#364fc7' },
-            accent: { 50:'#fff3e0',100:'#ffe0b2',200:'#ffcc80',300:'#ffb74d',400:'#ffa726',500:'#ff9800',600:'#fb8c00',700:'#f57c00',800:'#ef6c00',900:'#e65100' },
-            dark: { 800:'#1a1a2e',900:'#0f0f23' }
+            primary: { 50:'#fff4ed',100:'#ffe4cc',200:'#ffca99',300:'#ffa85c',400:'#ff7c1f',500:'#f5620a',600:'#e04d06',700:'#ba3a07',800:'#94300d',900:'#7a2b0e' },
+            accent: { 50:'#fdf4ff',100:'#fbe8ff',200:'#f5d0fe',300:'#f0abfc',400:'#e879f9',500:'#d946ef',600:'#c026d3',700:'#a21caf',800:'#86198f',900:'#701a75' },
+            dark: { 700:'#1e2240',800:'#141730',900:'#0b0d1a' }
           }
         }
       }
@@ -3925,38 +3931,41 @@ function mainPageHTML(): string {
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
     * { font-family: 'Inter', sans-serif; }
-    body { background: #0f0f23; color: #e2e8f0; }
-    .glass { background: rgba(255,255,255,0.05); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.08); }
-    .glass-light { background: rgba(255,255,255,0.08); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.12); }
-    .glow { box-shadow: 0 0 30px rgba(92,124,250,0.15); }
-    .glow-accent { box-shadow: 0 0 30px rgba(255,152,0,0.2); }
-    .gradient-text { background: linear-gradient(135deg, #748ffc, #ff9800); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-    .gradient-border { border-image: linear-gradient(135deg, #4c6ef5, #ff9800) 1; }
+    body { background: #0b0d1a; color: #e2e8f0; }
+    .glass { background: rgba(255,255,255,0.04); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.07); }
+    .glass-light { background: rgba(255,255,255,0.07); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.10); }
+    .glow { box-shadow: 0 0 30px rgba(245,98,10,0.15); }
+    .glow-accent { box-shadow: 0 0 30px rgba(245,98,10,0.25); }
+    .gradient-text { background: linear-gradient(120deg, #ff7c1f 0%, #f5620a 40%, #e8406c 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .gradient-border { border-image: linear-gradient(135deg, #f5620a, #e8406c) 1; }
     .badge-pulse { animation: pulse 2s infinite; }
     @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
-    .tab-active { background: linear-gradient(135deg, #4c6ef5, #3b5bdb); color: white; }
+    .tab-active { background: linear-gradient(135deg, #f5620a, #c94040); color: white; }
     .card-hover { transition: all 0.3s ease; }
-    .card-hover:hover { transform: translateY(-4px); box-shadow: 0 12px 40px rgba(92,124,250,0.2); }
+    .card-hover:hover { transform: translateY(-3px); box-shadow: 0 12px 40px rgba(245,98,10,0.15); }
     .online-dot { width: 10px; height: 10px; border-radius: 50%; background: #22c55e; display: inline-block; animation: pulse 2s infinite; }
     .offline-dot { width: 10px; height: 10px; border-radius: 50%; background: #64748b; display: inline-block; }
     .scroll-hide { -ms-overflow-style: none; scrollbar-width: none; }
     .scroll-hide::-webkit-scrollbar { display: none; }
-    .modal-overlay { background: rgba(0,0,0,0.7); backdrop-filter: blur(5px); }
+    .modal-overlay { background: rgba(0,0,0,0.75); backdrop-filter: blur(6px); }
     .progress-bar { transition: width 0.5s ease; }
-    .booth-platinum { border-left: 4px solid #ff9800; }
-    .booth-premium { border-left: 4px solid #748ffc; }
+    .booth-platinum { border-left: 4px solid #f5620a; }
+    .booth-premium { border-left: 4px solid #e8406c; }
     .booth-standard { border-left: 4px solid #64748b; }
-    .hero-gradient { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%); }
+    .hero-gradient { background: linear-gradient(160deg, #0b0d1a 0%, #10122a 30%, #16133a 60%, #0e1128 100%); }
+    /* Animated node network background */
+    .hero-nodes { position:absolute; inset:0; overflow:hidden; pointer-events:none; }
+    .hero-nodes::before { content:''; position:absolute; inset:-50%; background: radial-gradient(ellipse at 72% 40%, rgba(245,98,10,0.10) 0%, transparent 55%), radial-gradient(ellipse at 25% 65%, rgba(59,100,200,0.08) 0%, transparent 50%), radial-gradient(ellipse at 50% 20%, rgba(180,100,220,0.06) 0%, transparent 45%); }
     .stat-card { transition: all 0.3s; }
     .stat-card:hover { transform: scale(1.05); }
-    input, textarea, select { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); color: #e2e8f0; }
-    input:focus, textarea:focus, select:focus { outline: none; border-color: #4c6ef5; box-shadow: 0 0 0 3px rgba(76,110,245,0.2); }
-    select option { background: #1a1a2e; color: #e2e8f0; padding: 8px 12px; }
-    select option:checked { background: #2d2d5e; }
-    select option:hover { background: #252550; }
+    input, textarea, select { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.10); color: #e2e8f0; }
+    input:focus, textarea:focus, select:focus { outline: none; border-color: #f5620a; box-shadow: 0 0 0 3px rgba(245,98,10,0.18); }
+    select option { background: #141730; color: #e2e8f0; padding: 8px 12px; }
+    select option:checked { background: #1e2240; }
+    select option:hover { background: #1a1f3a; }
     select { -webkit-appearance: none; -moz-appearance: none; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%239ca3af' d='M6 8L1 3h10z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 32px; }
-    .chat-bubble-sent { background: linear-gradient(135deg, #4c6ef5, #3b5bdb); border-radius: 18px 18px 4px 18px; }
-    .chat-bubble-received { background: rgba(255,255,255,0.08); border-radius: 18px 18px 18px 4px; }
+    .chat-bubble-sent { background: linear-gradient(135deg, #f5620a, #c94040); border-radius: 18px 18px 4px 18px; }
+    .chat-bubble-received { background: rgba(255,255,255,0.07); border-radius: 18px 18px 18px 4px; }
     .shimmer { background: linear-gradient(90deg, rgba(255,255,255,0.03) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.03) 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; }
     @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
     .animate-pulse-slow { animation: pulse-slow 2s ease-in-out infinite; }
@@ -3977,7 +3986,7 @@ function mainPageHTML(): string {
   <!-- App Container -->
   <div id="app">
     <!-- Loading -->
-    <div id="loading-screen" class="fixed inset-0 z-50 flex items-center justify-center" style="background:#0f0f23;">
+    <div id="loading-screen" class="fixed inset-0 z-50 flex items-center justify-center" style="background:#0b0d1a;">
       <div class="text-center">
         <div class="mb-6"><img src="https://bharatai.blob.core.windows.net/aidata/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="w-20 h-20 mx-auto rounded-xl object-contain"></div>
         <h1 class="text-3xl font-bold gradient-text mb-2">Bharat AI Innovation 2026</h1>
@@ -4016,7 +4025,7 @@ function mainPageHTML(): string {
             <label class="text-xs text-gray-400 mb-1 block">Email Address</label>
             <input type="email" id="signin-email" placeholder="Enter your registered email" required class="w-full px-4 py-3 rounded-xl text-sm">
           </div>
-          <button type="submit" class="w-full py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-primary-600 to-primary-700 hover:from-primary-500 hover:to-primary-600 transition-all">
+          <button type="submit" class="w-full py-3 rounded-xl font-bold text-white transition-all hover:opacity-90" style="background:linear-gradient(135deg,#f5620a,#e03060);box-shadow:0 4px 20px rgba(245,98,10,0.3);">
             <i class="fas fa-sign-in-alt mr-2"></i>Sign In
           </button>
           <div class="relative flex items-center my-3">
@@ -4024,7 +4033,7 @@ function mainPageHTML(): string {
             <span class="px-3 text-xs text-gray-500">or</span>
             <div class="flex-1 border-t border-white/10"></div>
           </div>
-          <button type="button" onclick="sendMagicLink()" id="magic-link-btn" class="w-full py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 transition-all text-sm">
+          <button type="button" onclick="sendMagicLink()" id="magic-link-btn" class="w-full py-3 rounded-xl font-semibold text-white transition-all text-sm hover:opacity-90" style="background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);">
             <i class="fas fa-magic mr-2"></i>Send Me a Login Link via Email
           </button>
           <div id="magic-link-success" class="hidden text-center text-sm text-green-400 mt-2 p-3 rounded-xl bg-green-500/10 border border-green-500/20">
@@ -4163,80 +4172,84 @@ function mainPageHTML(): string {
             <input type="text" id="meeting-location" placeholder="Location" class="px-4 py-3 rounded-xl text-sm">
           </div>
           <textarea id="meeting-notes" placeholder="Notes..." rows="2" class="w-full px-4 py-3 rounded-xl text-sm"></textarea>
-          <button type="submit" class="w-full py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-primary-600 to-primary-700 hover:from-primary-500 hover:to-primary-600 transition-all">
+          <button type="submit" class="w-full py-3 rounded-xl font-bold text-white transition-all hover:opacity-90" style="background:linear-gradient(135deg,#f5620a,#e03060);box-shadow:0 4px 20px rgba(245,98,10,0.28);">
             <i class="fas fa-calendar-check mr-2"></i>Send Meeting Request
           </button>
         </form>
       </div>
     </div>
 
-    <!-- Main Navigation (bottom bar for mobile feel) -->
-    <nav id="main-nav" class="hidden fixed bottom-0 left-0 right-0 z-30 glass border-t border-white/10 md:top-0 md:bottom-auto md:border-t-0 md:border-b">
+    <!-- Main Navigation -->
+    <nav id="main-nav" class="hidden fixed bottom-0 left-0 right-0 z-30 md:top-0 md:bottom-auto" style="background:rgba(11,13,26,0.92);backdrop-filter:blur(24px);border-bottom:1px solid rgba(255,255,255,0.06);">
       <div class="max-w-7xl mx-auto px-4">
-        <div class="flex items-center justify-between md:justify-start md:gap-1 py-2">
-          <button class="nav-btn tab-active flex flex-col md:flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-medium transition-all" data-tab="dashboard" onclick="switchTab('dashboard')">
-            <i class="fas fa-th-large text-lg md:text-base"></i><span>Home</span>
+        <!-- Mobile nav: icon bar at bottom -->
+        <div class="flex md:hidden items-center justify-around py-2">
+          <button class="nav-btn tab-active flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl text-[10px] font-medium transition-all" data-tab="dashboard" onclick="switchTab('dashboard')">
+            <i class="fas fa-th-large text-base"></i><span>Home</span>
           </button>
-          <!-- Nav items hidden until MIN_REGISTRATIONS reached (controlled by JS) -->
-          <button class="nav-btn nav-gated hidden flex-col md:flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-medium text-gray-400 hover:text-white transition-all" data-tab="schedule" onclick="switchTab('schedule')">
-            <i class="fas fa-calendar-alt text-lg md:text-base"></i><span>Schedule</span>
+          <button class="nav-btn nav-gated hidden flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl text-[10px] font-medium text-gray-400 hover:text-white transition-all" data-tab="schedule" onclick="switchTab('schedule')">
+            <i class="fas fa-calendar-alt text-base"></i><span>Schedule</span>
           </button>
-          <button class="nav-btn nav-gated hidden flex-col md:flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-medium text-gray-400 hover:text-white transition-all" data-tab="networking" onclick="switchTab('networking')">
-            <i class="fas fa-users text-lg md:text-base"></i><span>Network</span>
+          <button class="nav-btn nav-gated hidden flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl text-[10px] font-medium text-gray-400 hover:text-white transition-all" data-tab="networking" onclick="switchTab('networking')">
+            <i class="fas fa-users text-base"></i><span>Network</span>
           </button>
-          <!-- Expo nav hidden for now — re-enable when ready
-          <button class="nav-btn nav-gated hidden flex-col md:flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-medium text-gray-400 hover:text-white transition-all" data-tab="exhibition" onclick="switchTab('exhibition')">
-            <i class="fas fa-store text-lg md:text-base"></i><span>Expo</span>
+          <button class="nav-btn nav-gated hidden flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl text-[10px] font-medium text-gray-400 hover:text-white transition-all" data-tab="workshops" onclick="switchTab('workshops')">
+            <i class="fas fa-laptop-code text-base"></i><span>Workshops</span>
           </button>
-          -->
-          <button class="nav-btn nav-gated hidden flex-col md:flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-medium text-gray-400 hover:text-white transition-all" data-tab="workshops" onclick="switchTab('workshops')">
-            <i class="fas fa-laptop-code text-lg md:text-base"></i><span>Workshops</span>
-          </button>
-          <!-- Awards tabs hidden - no awards for this event -->
-          <!-- Startup Pitch nav hidden for now — re-enable when ready
-          <button class="nav-btn nav-gated hidden flex-col md:flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-medium text-gray-400 hover:text-white transition-all" data-tab="startup-pitch" onclick="switchTab('startup-pitch')">
-            <i class="fas fa-rocket text-lg md:text-base"></i><span>Startup Pitch</span>
-          </button>
-          -->
-          <!-- Innovation Talks nav hidden — re-enable when ready
-          <button class="nav-btn nav-gated hidden flex-col md:flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-medium text-gray-400 hover:text-white transition-all" data-tab="innovation" onclick="switchTab('innovation')">
-            <i class="fas fa-lightbulb text-lg md:text-base"></i><span>Innovation Talks</span>
-          </button>
-          -->
-          <a href="/marketplace" class="nav-btn flex flex-col md:flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-medium text-amber-400/80 hover:text-amber-300 transition-all no-underline">
-            <i class="fas fa-robot text-lg md:text-base"></i><span>AI Market</span>
+          <a href="/marketplace" class="nav-btn flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl text-[10px] font-medium text-orange-400/80 hover:text-orange-300 transition-all no-underline">
+            <i class="fas fa-robot text-base"></i><span>AI Market</span>
           </a>
-          <a href="/register" class="nav-btn hidden md:flex flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-medium text-green-400/80 hover:text-green-300 transition-all no-underline">
-            <i class="fas fa-ticket-alt text-base"></i><span>Register</span>
-          </a>
-          <a href="/contact" class="nav-btn hidden md:flex flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-medium text-gray-400 hover:text-white transition-all no-underline">
-            <i class="fas fa-envelope text-base"></i><span>Contact</span>
-          </a>
-          <a href="/inquiry" class="nav-btn hidden md:flex flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-medium text-amber-400/80 hover:text-amber-300 transition-all no-underline">
-            <i class="fas fa-store text-base"></i><span>Book Booth</span>
-          </a>
-          <a href="https://bharataiinnovation.com" target="_blank" class="nav-btn hidden md:flex flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-medium text-gray-400 hover:text-white transition-all no-underline">
-            <i class="fas fa-external-link-alt text-base"></i><span>Main Site</span>
-          </a>
-          <button class="nav-btn nav-gated hidden flex-col md:flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-medium text-gray-400 hover:text-white transition-all relative" data-tab="inbox" onclick="switchTab('inbox')">
-            <i class="fas fa-envelope text-lg md:text-base"></i><span>Inbox</span>
-            <span id="unread-badge" class="hidden absolute -top-1 right-0 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center badge-pulse">0</span>
+          <button class="nav-btn nav-gated hidden flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl text-[10px] font-medium text-gray-400 hover:text-white transition-all relative" data-tab="inbox" onclick="switchTab('inbox')">
+            <i class="fas fa-envelope text-base"></i><span>Inbox</span>
+            <span id="unread-badge-mobile" class="hidden absolute -top-1 right-0 w-4 h-4 bg-red-500 text-white text-[9px] rounded-full flex items-center justify-center badge-pulse">0</span>
           </button>
-          <!-- Me button: icon on mobile, avatar on desktop (hidden until logged in) -->
-          <button class="nav-btn hidden flex-col md:flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-medium text-gray-400 hover:text-white transition-all md:hidden" data-tab="myprofile" onclick="switchTab('myprofile')" id="nav-mobile-me">
-            <i class="fas fa-id-badge text-lg md:text-base"></i><span>Me</span>
+          <button class="nav-btn flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl text-[10px] font-semibold text-orange-400 hover:text-orange-300 transition-all" id="nav-signin-btn" onclick="showRegistration()">
+            <i class="fas fa-sign-in-alt text-base"></i><span>Sign In</span>
           </button>
-          <!-- Desktop: push items to right -->
-          <div class="hidden md:flex md:flex-1"></div>
-          <!-- Sign In button (visible when NOT logged in) -->
-          <button class="nav-btn flex flex-col md:flex-row items-center gap-1 px-3 py-2 rounded-xl text-xs md:text-sm font-semibold text-amber-400 hover:text-amber-300 transition-all" id="nav-signin-btn" onclick="showRegistration()">
-            <i class="fas fa-sign-in-alt text-lg md:text-base"></i><span>Sign In</span>
+          <button class="hidden nav-btn flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl text-[10px] font-medium text-gray-400 hover:text-white transition-all" data-tab="myprofile" onclick="switchTab('myprofile')" id="nav-mobile-me">
+            <i class="fas fa-id-badge text-base"></i><span>Me</span>
           </button>
-          <!-- Avatar button (visible when logged in) -->
-          <button class="hidden md:flex nav-btn items-center gap-2 px-2 py-1.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white transition-all" data-tab="myprofile" onclick="switchTab('myprofile')" id="nav-avatar-btn">
-            <img id="nav-avatar-img" src="https://ui-avatars.com/api/?name=U&size=36&background=4c6ef5&color=fff&bold=true&rounded=true" alt="Profile" class="w-9 h-9 rounded-full object-cover border-2 border-primary-500/50 shadow-lg shadow-primary-500/20">
-            <span id="nav-avatar-name" class="max-w-[120px] truncate">Me</span>
-          </button>
+        </div>
+
+        <!-- Desktop nav: logo + links + CTA -->
+        <div class="hidden md:flex items-center h-14 gap-6">
+          <!-- Logo -->
+          <a href="/" class="flex items-center gap-2.5 hover:opacity-90 transition shrink-0">
+            <img src="https://bharatai.blob.core.windows.net/aidata/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI" class="w-9 h-9 rounded-lg object-contain bg-white p-0.5">
+            <div class="leading-tight">
+              <div class="text-sm font-bold text-white">Bharat AI Innovation</div>
+              <div class="text-[10px] text-gray-400">India's Largest AI Conference</div>
+            </div>
+          </a>
+
+          <!-- Center nav pills -->
+          <div class="flex items-center gap-0.5 flex-1 justify-center">
+            <button class="nav-btn tab-active px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all" data-tab="dashboard" onclick="switchTab('dashboard')">Home</button>
+            <button class="nav-btn nav-gated hidden px-3.5 py-1.5 rounded-full text-xs font-medium text-gray-300 hover:text-white hover:bg-white/8 transition-all" data-tab="schedule" onclick="switchTab('schedule')">Schedule</button>
+            <button class="nav-btn nav-gated hidden px-3.5 py-1.5 rounded-full text-xs font-medium text-gray-300 hover:text-white hover:bg-white/8 transition-all" data-tab="networking" onclick="switchTab('networking')">Network</button>
+            <button class="nav-btn nav-gated hidden px-3.5 py-1.5 rounded-full text-xs font-medium text-gray-300 hover:text-white hover:bg-white/8 transition-all" data-tab="workshops" onclick="switchTab('workshops')">Workshops</button>
+            <a href="/marketplace" class="px-3.5 py-1.5 rounded-full text-xs font-medium text-gray-300 hover:text-white hover:bg-white/8 transition-all no-underline">AI Market</a>
+            <a href="/inquiry" class="px-3.5 py-1.5 rounded-full text-xs font-medium text-gray-300 hover:text-white hover:bg-white/8 transition-all no-underline">Book Booth</a>
+            <a href="/contact" class="px-3.5 py-1.5 rounded-full text-xs font-medium text-gray-300 hover:text-white hover:bg-white/8 transition-all no-underline">Contact</a>
+            <a href="https://bharataiinnovation.com" target="_blank" class="px-3.5 py-1.5 rounded-full text-xs font-medium text-gray-300 hover:text-white hover:bg-white/8 transition-all no-underline">Main Site</a>
+          </div>
+
+          <!-- Right: inbox + sign-in/avatar -->
+          <div class="flex items-center gap-2 shrink-0">
+            <button class="nav-btn nav-gated hidden items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium text-gray-300 hover:text-white hover:bg-white/8 transition-all relative" data-tab="inbox" onclick="switchTab('inbox')">
+              <i class="fas fa-envelope"></i><span>Inbox</span>
+              <span id="unread-badge" class="hidden absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[9px] rounded-full flex items-center justify-center badge-pulse">0</span>
+            </button>
+            <!-- Sign In button -->
+            <button class="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold text-white transition-all hover:opacity-90" id="nav-signin-btn" onclick="showRegistration()" style="background:linear-gradient(135deg,#f5620a,#e03060);box-shadow:0 4px 15px rgba(245,98,10,0.35);">
+              Sign In <i class="fas fa-arrow-right text-[10px]"></i>
+            </button>
+            <!-- Avatar button (visible when logged in) -->
+            <button class="hidden nav-btn items-center gap-2 px-2 py-1 rounded-full text-sm font-medium text-gray-300 hover:text-white transition-all border border-white/10" data-tab="myprofile" onclick="switchTab('myprofile')" id="nav-avatar-btn">
+              <img id="nav-avatar-img" src="https://ui-avatars.com/api/?name=U&size=36&background=f5620a&color=fff&bold=true&rounded=true" alt="Profile" class="w-8 h-8 rounded-full object-cover border-2 border-orange-500/50">
+              <span id="nav-avatar-name" class="max-w-[100px] truncate text-xs">Me</span>
+            </button>
+          </div>
         </div>
       </div>
     </nav>
@@ -4246,29 +4259,88 @@ function mainPageHTML(): string {
       <!-- Dashboard Tab -->
       <div id="tab-dashboard" class="tab-content">
         <!-- Hero -->
-        <div class="hero-gradient relative overflow-hidden">
-          <div class="absolute inset-0 opacity-20">
-            <div class="absolute top-10 left-10 w-64 h-64 bg-primary-500 rounded-full filter blur-[100px]"></div>
-            <div class="absolute bottom-10 right-10 w-48 h-48 bg-accent-500 rounded-full filter blur-[80px]"></div>
+        <div class="hero-gradient relative overflow-hidden" style="min-height:360px;">
+          <!-- Background layer: deep navy with subtle purple shift (matches reference) -->
+          <div class="absolute inset-0" style="background:radial-gradient(ellipse 80% 60% at 70% 30%, rgba(60,40,120,0.22) 0%, transparent 70%),radial-gradient(ellipse 60% 80% at 20% 80%, rgba(30,25,80,0.18) 0%, transparent 60%);"></div>
+          <!-- Ambient glows -->
+          <div class="absolute inset-0 pointer-events-none">
+            <div class="absolute -top-10 right-1/3 w-[500px] h-[500px] rounded-full filter blur-[140px]" style="background:rgba(245,98,10,0.09);"></div>
+            <div class="absolute top-10 right-0 w-64 h-64 rounded-full filter blur-[100px]" style="background:rgba(228,89,156,0.07);"></div>
+            <div class="absolute bottom-0 left-1/4 w-80 h-80 rounded-full filter blur-[120px]" style="background:rgba(59,80,200,0.07);"></div>
+            <!-- SVG wireframe globe / neural net — exact reference style -->
+            <svg class="absolute inset-0 w-full h-full" style="opacity:0.09;" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 400" preserveAspectRatio="xMidYMid slice">
+              <defs>
+                <radialGradient id="glb" cx="72%" cy="45%" r="32%">
+                  <stop offset="0%" stop-color="#e8b090" stop-opacity="1"/>
+                  <stop offset="100%" stop-color="#5080e8" stop-opacity="0.6"/>
+                </radialGradient>
+                <radialGradient id="glb2" cx="72%" cy="45%" r="32%">
+                  <stop offset="0%" stop-color="#f5620a" stop-opacity="0.5"/>
+                  <stop offset="100%" stop-color="#3b64c8" stop-opacity="0.2"/>
+                </radialGradient>
+              </defs>
+              <!-- Globe circles (latitude-like ellipses centered right) -->
+              <ellipse cx="860" cy="180" rx="260" ry="260" fill="none" stroke="url(#glb)" stroke-width="0.7"/>
+              <ellipse cx="860" cy="180" rx="210" ry="260" fill="none" stroke="url(#glb)" stroke-width="0.5"/>
+              <ellipse cx="860" cy="180" rx="120" ry="260" fill="none" stroke="url(#glb)" stroke-width="0.5"/>
+              <ellipse cx="860" cy="180" rx="40" ry="260" fill="none" stroke="url(#glb)" stroke-width="0.4"/>
+              <!-- Longitude arcs -->
+              <ellipse cx="860" cy="180" rx="260" ry="80" fill="none" stroke="url(#glb)" stroke-width="0.5"/>
+              <ellipse cx="860" cy="180" rx="260" ry="160" fill="none" stroke="url(#glb)" stroke-width="0.5"/>
+              <ellipse cx="860" cy="180" rx="260" ry="230" fill="none" stroke="url(#glb)" stroke-width="0.4"/>
+              <!-- Network connection lines (left side — neural lattice) -->
+              <line x1="50" y1="60" x2="180" y2="140" stroke="url(#glb2)" stroke-width="0.7"/>
+              <line x1="180" y1="140" x2="320" y2="90" stroke="url(#glb2)" stroke-width="0.7"/>
+              <line x1="320" y1="90" x2="480" y2="170" stroke="url(#glb2)" stroke-width="0.6"/>
+              <line x1="480" y1="170" x2="600" y2="110" stroke="url(#glb2)" stroke-width="0.6"/>
+              <line x1="180" y1="140" x2="300" y2="240" stroke="url(#glb2)" stroke-width="0.6"/>
+              <line x1="300" y1="240" x2="460" y2="300" stroke="url(#glb2)" stroke-width="0.6"/>
+              <line x1="460" y1="300" x2="580" y2="250" stroke="url(#glb2)" stroke-width="0.5"/>
+              <line x1="320" y1="90" x2="300" y2="240" stroke="url(#glb2)" stroke-width="0.5"/>
+              <line x1="100" y1="280" x2="300" y2="240" stroke="url(#glb2)" stroke-width="0.5"/>
+              <line x1="50" y1="60" x2="100" y2="280" stroke="url(#glb2)" stroke-width="0.4"/>
+              <line x1="480" y1="170" x2="460" y2="300" stroke="url(#glb2)" stroke-width="0.5"/>
+              <!-- Nodes -->
+              <circle cx="50" cy="60" r="2.5" fill="#f5620a" opacity="0.8"/>
+              <circle cx="180" cy="140" r="3" fill="#f5620a" opacity="0.9"/>
+              <circle cx="320" cy="90" r="2.5" fill="#e8406c" opacity="0.8"/>
+              <circle cx="480" cy="170" r="3" fill="#f5620a" opacity="0.9"/>
+              <circle cx="600" cy="110" r="2" fill="#e8406c" opacity="0.7"/>
+              <circle cx="300" cy="240" r="2.5" fill="#3b64c8" opacity="0.8"/>
+              <circle cx="460" cy="300" r="2" fill="#3b64c8" opacity="0.7"/>
+              <circle cx="100" cy="280" r="2" fill="#3b64c8" opacity="0.7"/>
+              <circle cx="580" cy="250" r="2" fill="#f5620a" opacity="0.7"/>
+            </svg>
           </div>
-          <div class="relative max-w-7xl mx-auto px-4 py-8 md:py-14">
-            <div class="flex items-center gap-2 mb-3">
-              <span class="px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                <i class="fas fa-calendar-check text-[10px] mr-1"></i>UPCOMING EVENT
-              </span>
-              <span class="px-3 py-1 rounded-full text-xs font-semibold bg-primary-500/20 text-primary-300 border border-primary-500/30">
-                20-21 Nov 2026
-              </span>
+
+          <!-- Hero content: centered -->
+          <div class="relative max-w-4xl mx-auto px-4 pt-10 pb-10 md:pt-16 md:pb-12 text-center">
+            <!-- Date + location pill -->
+            <div class="flex items-center justify-center gap-2 mb-5">
+              <span class="px-3 py-1 rounded-full text-[11px] font-semibold tracking-widest uppercase" style="background:rgba(245,98,10,0.12);color:#f5a070;border:1px solid rgba(245,98,10,0.25);">NOV 20–21, 2026</span>
+              <span class="text-gray-500 text-[11px] tracking-widest uppercase">World Trade Center Mumbai &nbsp;·&nbsp; India</span>
             </div>
-            <div class="flex items-center gap-3 md:gap-4 mb-2">
-              <img src="https://bharatai.blob.core.windows.net/aidata/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="w-10 h-10 md:w-14 md:h-14 rounded-xl object-contain bg-white/10 p-1 shrink-0">
-              <h1 class="text-xl md:text-3xl font-black leading-tight" id="event-title">Bharat AI Innovation 2026</h1>
+
+            <!-- Title -->
+            <h1 class="font-black leading-none tracking-tight mb-4" style="font-size:clamp(2.8rem,8vw,5.5rem);">
+              <span style="background:linear-gradient(120deg,#ff7c1f 0%,#f5620a 40%,#e8406c 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">Bharat AI</span><br>
+              <span class="text-white">Innovation</span>
+            </h1>
+
+            <!-- Subtitle -->
+            <p class="text-sm md:text-base max-w-xl mx-auto mb-8" id="event-desc" style="color:#9ea8c8;">5,000+ researchers, founders, CXOs, and policymakers at WTC Mumbai<br class="hidden md:block"> — two days defining India's AI direction for the decade ahead.</p>
+
+            <!-- CTA buttons -->
+            <div class="flex items-center justify-center gap-3 flex-wrap">
+              <button onclick="showRegistration()" class="flex items-center gap-2 px-6 py-3 rounded-full text-sm font-bold text-white transition hover:opacity-90" style="background:linear-gradient(135deg,#f5620a,#e03060);box-shadow:0 6px 20px rgba(245,98,10,0.35);">Register Free <i class="fas fa-arrow-right text-xs"></i></button>
+              <a href="https://bharataiinnovation.com" target="_blank" class="flex items-center gap-2 px-6 py-3 rounded-full text-sm font-semibold text-gray-200 transition hover:bg-white/10 no-underline" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);">Learn More</a>
             </div>
-            <p class="text-gray-400 text-sm md:text-base max-w-2xl mb-6" id="event-desc"></p>
-            <div class="flex flex-wrap gap-4 text-sm text-gray-300 hidden" id="hero-venue-dates">
-              <span><i class="fas fa-map-marker-alt text-primary-400 mr-1"></i><span id="event-venue"></span></span>
-              <span><i class="fas fa-calendar text-primary-400 mr-1"></i><span id="event-dates"></span></span>
+
+            <!-- Hidden fields for JS -->
+            <div class="hidden" id="hero-venue-dates">
+              <span id="event-venue"></span><span id="event-dates"></span>
             </div>
+            <div class="hidden" id="event-title"></div>
           </div>
         </div>
 
@@ -4529,7 +4601,7 @@ function mainPageHTML(): string {
               <button onclick="openQuickVisitorReg()" class="px-6 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 transition-all text-sm shadow-lg shadow-green-500/20 animate-pulse-slow">
                 <i class="fas fa-ticket-alt mr-2"></i>Register Free — Visitor Pass
               </button>
-              <button onclick="openPaidPassForm()" class="px-6 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-primary-600 to-blue-600 hover:from-primary-500 hover:to-blue-500 transition-all text-sm shadow-lg shadow-primary-500/20">
+              <button onclick="openPaidPassForm()" class="px-6 py-3 rounded-xl font-bold text-white transition-all text-sm hover:opacity-90" style="background:linear-gradient(135deg,#f5620a,#e03060);box-shadow:0 4px 20px rgba(245,98,10,0.28);">
                 <i class="fas fa-star mr-2"></i>Get Paid Pass (Delegate/VIP)
               </button>
               <a href="https://bharataiinnovation.com/register#delegation-section" target="_blank" class="px-6 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 transition-all text-sm">
@@ -4669,7 +4741,7 @@ function mainPageHTML(): string {
               <!-- Dynamic extra fields based on type -->
               <div id="inq-extra-fields"></div>
               <textarea id="inq-message" placeholder="Your message / requirements..." rows="3" required class="w-full px-4 py-3 rounded-xl text-sm"></textarea>
-              <button type="submit" id="inq-submit-btn" class="w-full py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-primary-600 to-blue-600 hover:from-primary-500 hover:to-blue-500 transition-all text-sm">
+              <button type="submit" id="inq-submit-btn" class="w-full py-3 rounded-xl font-bold text-white transition-all text-sm hover:opacity-90" style="background:linear-gradient(135deg,#f5620a,#e03060);box-shadow:0 4px 20px rgba(245,98,10,0.28);">
                 <i class="fas fa-paper-plane mr-2"></i>Submit Inquiry
               </button>
             </form>
@@ -5785,7 +5857,7 @@ function mainPageHTML(): string {
                 <input type="url" id="edit-website" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="https://...">
               </div>
             </div>
-            <button type="submit" class="w-full py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-primary-600 to-primary-700 hover:from-primary-500 hover:to-primary-600 transition-all">
+            <button type="submit" class="w-full py-3 rounded-xl font-bold text-white transition-all hover:opacity-90" style="background:linear-gradient(135deg,#f5620a,#e03060);box-shadow:0 4px 20px rgba(245,98,10,0.28);">
               <i class="fas fa-save mr-2"></i>Save Changes
             </button>
           </form>
@@ -8113,11 +8185,13 @@ function mainPageHTML(): string {
       try {
         const data = await api.get(\`/api/attendees/\${currentUser.id}/unread\`);
         const badge = document.getElementById('unread-badge');
+        const badgeMobile = document.getElementById('unread-badge-mobile');
         if (data.count > 0) {
-          badge.textContent = data.count;
-          badge.classList.remove('hidden');
+          if(badge){badge.textContent = data.count; badge.classList.remove('hidden');}
+          if(badgeMobile){badgeMobile.textContent = data.count; badgeMobile.classList.remove('hidden');}
         } else {
-          badge.classList.add('hidden');
+          if(badge) badge.classList.add('hidden');
+          if(badgeMobile) badgeMobile.classList.add('hidden');
         }
       } catch(e) {}
       setTimeout(checkUnread, 15000);
