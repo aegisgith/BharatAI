@@ -416,7 +416,7 @@ app.post('/api/events/:id/attendees/send-magic-link', async (c) => {
 <body style="margin:0;padding:0;background:#f5f5f5;font-family:Arial,sans-serif;">
   <div style="max-width:600px;margin:20px auto;background:white;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
     <div style="background:linear-gradient(135deg,#0b0d1a,#1a1f3a);padding:24px 32px;text-align:center;border-bottom:1px solid rgba(245,98,10,0.2);">
-      <img src="https://bharatai.blob.core.windows.net/aidata/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" style="height:50px;margin-bottom:12px;">
+      <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" style="height:50px;margin-bottom:12px;">
       <h1 style="color:white;margin:0;font-size:20px;">Sign In to Bharat AI Innovation 2026</h1>
       <p style="color:#c4b5fd;margin:6px 0 0;font-size:13px;">16th Bharat AI Innovation • 20-21 Nov 2026</p>
     </div>
@@ -529,7 +529,7 @@ app.get('/rsvp-confirmed', (c) => {
   return c.html(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>RSVP - Bharat AI Innovation 2026</title><script src="https://cdn.tailwindcss.com"></script><link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet"></head>
 <body class="min-h-screen bg-gradient-to-br from-[#0a0a1a] via-[#111132] to-[#0a0a1a] flex items-center justify-center p-4 font-sans">
   <div class="max-w-md w-full text-center">
-    <img src="https://bharatai.blob.core.windows.net/aidata/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="h-16 mx-auto mb-8 opacity-80">
+    <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="h-16 mx-auto mb-8 opacity-80">
     <div class="bg-white/5 backdrop-blur-xl border ${cfg.border} rounded-3xl p-8 shadow-2xl">
       <div class="text-6xl mb-4">${cfg.emoji}</div>
       <h1 class="text-2xl font-bold text-white mb-2">${cfg.title}</h1>
@@ -1435,7 +1435,7 @@ app.post('/api/admin/attendees/:id/notify', async (c) => {
     </div>
     <!-- BHAI Logo -->
     <div style="text-align:center;margin-bottom:12px;">
-      <img src="https://bharatai.blob.core.windows.net/aidata/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI Innovation" style="height:70px;max-width:240px;">
+      <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI Innovation" style="height:70px;max-width:240px;">
     </div>
     <!-- Header Banner -->
     <div style="background:linear-gradient(135deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%);border-radius:16px;padding:32px 24px;text-align:center;color:white;">
@@ -1640,7 +1640,7 @@ app.post('/api/admin/attendees/:id/send-thankyou', async (c) => {
     </div>
     <!-- BHAI Logo -->
     <div style="text-align:center;margin-bottom:12px;">
-      <img src="https://bharatai.blob.core.windows.net/aidata/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI Innovation" style="height:70px;max-width:240px;">
+      <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI Innovation" style="height:70px;max-width:240px;">
     </div>
     <!-- Header Banner -->
     <div style="background:linear-gradient(135deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%);border-radius:16px;padding:32px 24px;text-align:center;color:white;">
@@ -2963,7 +2963,7 @@ function sharedNavHTML(activePage: string): string {
     <div class="flex items-center h-14 gap-4">
       <!-- Logo -->
       <a href="/" class="flex items-center gap-2.5 hover:opacity-90 transition shrink-0">
-        <img src="https://bharatai.blob.core.windows.net/aidata/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI" class="w-9 h-9 rounded-lg object-contain bg-white p-0.5">
+        <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI" class="w-9 h-9 rounded-lg object-contain bg-white p-0.5">
         <div class="leading-tight hidden sm:block">
           <div class="text-sm font-bold text-white">Bharat AI Innovation</div>
           <div class="text-[10px] text-gray-400">India's Largest AI Conference</div>
@@ -2995,7 +2995,7 @@ function sharedFooterHTML(): string {
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
       <div>
         <div class="flex items-center gap-3 mb-3">
-          <img src="https://bharatai.blob.core.windows.net/aidata/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="w-10 h-10 rounded-lg object-contain">
+          <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="w-10 h-10 rounded-lg object-contain">
           <div>
             <h3 class="font-bold text-sm">Bharat AI Innovation 2026</h3>
             <p class="text-[10px] text-gray-400">16th Edition</p>
@@ -4140,7 +4140,7 @@ function mainPageHTML(): string {
     <!-- Loading -->
     <div id="loading-screen" class="fixed inset-0 z-50 flex items-center justify-center" style="background:#0b0d1a;">
       <div class="text-center">
-        <div class="mb-6"><img src="https://bharatai.blob.core.windows.net/aidata/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="w-20 h-20 mx-auto rounded-xl object-contain"></div>
+        <div class="mb-6"><img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="w-20 h-20 mx-auto rounded-xl object-contain"></div>
         <h1 class="text-3xl font-bold gradient-text mb-2">Bharat AI Innovation 2026</h1>
         <p class="text-gray-400 mb-6">Loading your experience...</p>
         <div class="w-48 h-1 bg-gray-800 rounded-full mx-auto overflow-hidden">
@@ -4156,7 +4156,7 @@ function mainPageHTML(): string {
           <i class="fas fa-times"></i>
         </button>
         <div class="text-center mb-6">
-          <img src="https://bharatai.blob.core.windows.net/aidata/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="w-20 h-20 mx-auto mb-3 rounded-xl object-contain">
+          <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="w-20 h-20 mx-auto mb-3 rounded-xl object-contain">
           <h2 class="text-2xl font-bold gradient-text">Bharat AI Innovation 2026</h2>
           <p class="text-gray-400 mt-1 text-sm">Sign in to access networking, inbox & your profile</p>
         </div>
@@ -4367,7 +4367,7 @@ function mainPageHTML(): string {
         <div class="hidden md:flex items-center h-14 gap-6">
           <!-- Logo -->
           <a href="/app" class="flex items-center gap-2.5 hover:opacity-90 transition shrink-0">
-            <img src="https://bharatai.blob.core.windows.net/aidata/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI" class="w-9 h-9 rounded-lg object-contain bg-white p-0.5">
+            <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI" class="w-9 h-9 rounded-lg object-contain bg-white p-0.5">
             <div class="leading-tight">
               <div class="text-sm font-bold text-white">Bharat AI Innovation</div>
               <div class="text-[10px] text-gray-400">India's Largest AI Conference</div>
@@ -5235,7 +5235,7 @@ function mainPageHTML(): string {
       <div id="tab-awards" class="tab-content hidden">
         <div class="max-w-7xl mx-auto px-4 py-6">
           <div class="text-center mb-8">
-            <img src="https://bharatai.blob.core.windows.net/aidata/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="w-16 h-16 mx-auto mb-3 rounded-xl object-contain">
+            <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="w-16 h-16 mx-auto mb-3 rounded-xl object-contain">
             <h2 class="text-3xl font-bold mb-2"><i class="fas fa-trophy text-accent-400 mr-2"></i>Bharat AI Innovation &amp; BHAI Innovation Certification</h2>
           </div>
 
@@ -5441,7 +5441,7 @@ function mainPageHTML(): string {
       <div id="tab-agba-categories" class="tab-content hidden">
         <div class="max-w-7xl mx-auto px-4 py-6">
           <div class="text-center mb-8">
-            <img src="https://bharatai.blob.core.windows.net/aidata/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="w-16 h-16 mx-auto mb-3 rounded-xl object-contain">
+            <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="w-16 h-16 mx-auto mb-3 rounded-xl object-contain">
             <h2 class="text-2xl font-bold mb-2"><i class="fas fa-list-alt text-accent-400 mr-2"></i>BHAI 2026 Award Categories</h2>
             <p class="text-gray-400 text-sm">Award categories for the 17th Bharat AI Innovation &amp; Innovation Certification</p>
           </div>
@@ -5453,7 +5453,7 @@ function mainPageHTML(): string {
       <div id="tab-agba-jury" class="tab-content hidden">
         <div class="max-w-7xl mx-auto px-4 py-6">
           <div class="text-center mb-8">
-            <img src="https://bharatai.blob.core.windows.net/aidata/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="w-16 h-16 mx-auto mb-3 rounded-xl object-contain">
+            <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="w-16 h-16 mx-auto mb-3 rounded-xl object-contain">
             <h2 class="text-2xl font-bold mb-2"><i class="fas fa-gavel text-violet-400 mr-2"></i>BHAI 2026 Jury Schedule</h2>
             <p class="text-gray-400 text-sm">Monthly jury evaluation across 3 parallel category tracks (Wed&#8211;Fri)</p>
           </div>
@@ -7970,7 +7970,7 @@ function mainPageHTML(): string {
         if (pitchData.length === 0 && investors.length === 0) {
           const emptyHtml = \`
             <div class="text-center py-16">
-              <img src="https://bharatai.blob.core.windows.net/aidata/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="w-16 h-16 mx-auto mb-4 rounded-xl object-contain opacity-50">
+              <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="w-16 h-16 mx-auto mb-4 rounded-xl object-contain opacity-50">
               <h2 class="text-2xl font-bold mb-2"><i class="fas fa-rocket text-orange-400 mr-2"></i>BHAI Startup Pitch</h2>
               <p class="text-lg font-semibold text-orange-300 mb-1">BHAI Innovation Pitch: Where Innovation Meets Investment</p>
               <p class="text-gray-400 text-sm mb-6">Connect. Pitch. Fund. The Ultimate Startup-Investor Experience</p>
@@ -7990,7 +7990,7 @@ function mainPageHTML(): string {
 
       const html = \`
         <div class="text-center mb-8">
-          <img src="https://bharatai.blob.core.windows.net/aidata/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="w-16 h-16 mx-auto mb-3 rounded-xl object-contain">
+          <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="w-16 h-16 mx-auto mb-3 rounded-xl object-contain">
           <h2 class="text-2xl font-bold mb-2"><i class="fas fa-rocket text-orange-400 mr-2"></i>BHAI Startup Pitch</h2>
           <p class="text-lg font-semibold text-orange-300 mb-1">BHAI Innovation Pitch: Where Innovation Meets Investment</p>
           <p class="text-gray-400 text-sm">Connect. Pitch. Fund. The Ultimate Startup-Investor Experience</p>
@@ -8410,7 +8410,7 @@ function mainPageHTML(): string {
       // ===== LOAD ALL LOGOS FIRST =====
       let meityLogo, agbaLogo, bharatLogo, aegisCollegeLogo, assessfyLogo, tcoeiLogo, swissnexLogo;
       try { meityLogo = await loadImage(px('https://bharataiinnovation.com/wp-content/uploads/2026/02/Meity-logo.png')); } catch(e) { console.log('MeitY logo failed:', e); }
-      try { agbaLogo = await loadImage(px('https://bharatai.blob.core.windows.net/aidata/Bharat%20AI%20Innovation%20Logo.png')); } catch(e) { console.log('BHAI logo failed:', e); }
+      try { agbaLogo = await loadImage(px('https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png')); } catch(e) { console.log('BHAI logo failed:', e); }
       try { bharatLogo = await loadImage(px('https://bharataiinnovation.com/wp-content/uploads/2026/02/Bharat-AI-Innovation-Expo-logo-scaled.png')); } catch(e) { console.log('Bharat AI logo failed:', e); }
       try { aegisCollegeLogo = await loadImage(px('https://bharataiinnovation.com/wp-content/uploads/2025/10/Aegis_college_new1.png')); } catch(e) { console.log('Aegis College logo failed:', e); }
       try { assessfyLogo = await loadImage(px('https://bharataiinnovation.com/wp-content/uploads/2023/12/Assessfy-black.png')); } catch(e) { console.log('Assessfy logo failed:', e); }
@@ -9985,7 +9985,7 @@ function adminPageHTML(): string {
   <div id="login-overlay" class="fixed inset-0 z-50 modal-overlay flex items-center justify-center">
     <div class="glass rounded-2xl p-8 w-full max-w-sm">
       <div class="text-center mb-6">
-        <img src="https://bharatai.blob.core.windows.net/aidata/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="w-16 h-16 mx-auto mb-4 rounded-xl object-contain">
+        <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="w-16 h-16 mx-auto mb-4 rounded-xl object-contain">
         <h2 class="text-xl font-bold">Admin Login</h2>
         <p class="text-gray-400 text-sm mt-1">Enter password to continue</p>
       </div>
@@ -10005,7 +10005,7 @@ function adminPageHTML(): string {
   <!-- Sidebar -->
   <aside id="sidebar" class="hidden w-64 min-h-screen glass border-r border-white/10 flex-col shrink-0 fixed left-0 top-0 bottom-0 z-20 overflow-y-auto scroll-hide">
     <div class="sidebar-header p-5 border-b border-white/10 flex items-center gap-3">
-      <img src="https://bharatai.blob.core.windows.net/aidata/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="w-10 h-10 rounded-lg object-contain shrink-0">
+      <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="w-10 h-10 rounded-lg object-contain shrink-0">
       <div class="sidebar-header-text flex-1 min-w-0">
         <h1 class="font-bold text-sm">BHAI</h1>
         <p class="text-[10px] text-gray-400">Admin Dashboard</p>
@@ -11781,7 +11781,7 @@ function adminPageHTML(): string {
 
       let meityLogo, agbaLogo, bharatLogo, aegisCollegeLogo, assessfyLogo, tcoeiLogo, swissnexLogo;
       try { meityLogo = await adminLoadImage(px('https://bharataiinnovation.com/wp-content/uploads/2026/02/Meity-logo.png')); } catch(e) {}
-      try { agbaLogo = await adminLoadImage(px('https://bharatai.blob.core.windows.net/aidata/Bharat%20AI%20Innovation%20Logo.png')); } catch(e) {}
+      try { agbaLogo = await adminLoadImage(px('https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png')); } catch(e) {}
       try { bharatLogo = await adminLoadImage(px('https://bharataiinnovation.com/wp-content/uploads/2026/02/Bharat-AI-Innovation-Expo-logo-scaled.png')); } catch(e) {}
       try { aegisCollegeLogo = await adminLoadImage(px('https://bharataiinnovation.com/wp-content/uploads/2025/10/Aegis_college_new1.png')); } catch(e) {}
       try { assessfyLogo = await adminLoadImage(px('https://bharataiinnovation.com/wp-content/uploads/2023/12/Assessfy-black.png')); } catch(e) {}
@@ -12028,7 +12028,7 @@ function adminPageHTML(): string {
             <img src="https://bharataiinnovation.com/wp-content/uploads/2026/02/Meity-logo.png" alt="MeitY" style="height:50px;">
           </div>
           <div style="text-align:center;margin-bottom:12px;">
-            <img src="https://bharatai.blob.core.windows.net/aidata/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" style="height:60px;">
+            <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" style="height:60px;">
           </div>
           <div style="background:linear-gradient(135deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%);border-radius:16px;padding:24px 20px;text-align:center;color:white;">
             <h2 style="margin:0 0 6px;font-size:20px;">Confirm Your Attendance!</h2>
