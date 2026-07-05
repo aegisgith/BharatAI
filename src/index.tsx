@@ -548,7 +548,7 @@ app.get('/rsvp-confirmed', (c) => {
         <p class="text-gray-400 text-xs mt-1"><i class="fas fa-calendar-alt mr-1"></i>20-21 Nov 2026 &bull; <i class="fas fa-map-marker-alt ml-1 mr-1"></i>World Trade Center, Mumbai</p>
       </div>
       ${status === 'confirmed' ? `<div class="space-y-2 mb-4"><a href="${appUrl}?email=${encodeURIComponent(email)}&action=download-pass" class="block w-full py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-primary-600 to-primary-500 hover:from-primary-500 hover:to-primary-400 transition text-sm"><i class="fas fa-id-badge mr-2"></i>Download Delegate Pass</a></div>` : ''}
-      <a href="${appUrl}?email=${encodeURIComponent(email)}" class="block w-full py-3 rounded-xl font-bold text-white transition text-sm text-center hover:opacity-90 no-underline" style="background:linear-gradient(135deg,#f5620a,#e03060);box-shadow:0 4px 20px rgba(245,98,10,0.28);"><i class="fas fa-rocket mr-2"></i>Open Networking App</a>
+      <a href="${appUrl}?email=${encodeURIComponent(email)}" class="block w-full py-3 rounded-xl font-bold text-white transition text-sm text-center hover:opacity-90 no-underline" style="background:linear-gradient(135deg,#FF6B00,#e03060);box-shadow:0 4px 20px rgba(245,98,10,0.28);"><i class="fas fa-rocket mr-2"></i>Open Networking App</a>
       <p class="text-xs text-gray-500 mt-4">You can change your RSVP anytime from the app.</p>
     </div>
     <p class="text-xs text-gray-600 mt-6">Bharat AI Innovation 2026 &bull; World Trade Center, Mumbai &bull; 20-21 Nov 2026</p>
@@ -3009,7 +3009,7 @@ function sharedNavHTML(activePage: string): string {
     <div class="flex items-center h-14 gap-4">
       <!-- Logo -->
       <a href="/" class="flex items-center gap-2.5 hover:opacity-90 transition shrink-0">
-        <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI" class="w-9 h-9 rounded-lg object-contain bg-white p-0.5">
+        <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI Innovation Logo" loading="eager" style="height:44px;width:auto;border-radius:12px;padding:6px;background:rgba(255,255,255,0.95);box-shadow:0 2px 8px rgba(0,0,0,0.08);">
         <div class="leading-tight hidden sm:block">
           <div class="text-sm font-bold text-white">Bharat AI Innovation</div>
           <div class="text-[10px] text-gray-400">India's Largest AI Conference</div>
@@ -3026,7 +3026,7 @@ function sharedNavHTML(activePage: string): string {
       </div>
       <!-- CTA -->
       <div class="shrink-0">
-        <a href="/register" class="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold text-white transition-all hover:opacity-90 no-underline" style="background:linear-gradient(135deg,#f5620a,#e03060);box-shadow:0 4px 15px rgba(245,98,10,0.35);">
+        <a href="/register" class="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold text-white transition-all hover:opacity-90 no-underline" style="background:linear-gradient(135deg,#FF6B00,#e03060);box-shadow:0 4px 15px rgba(245,98,10,0.35);">
           Register <i class="fas fa-arrow-right text-[10px]"></i>
         </a>
       </div>
@@ -3184,7 +3184,7 @@ ${sharedNavHTML('contact')}
           <label class="text-xs text-gray-400 mb-1 block">Message *</label>
           <textarea id="cf-message" rows="4" required class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Describe your inquiry in detail..."></textarea>
         </div>
-        <button type="submit" id="cf-submit" class="w-full py-3.5 rounded-xl font-bold text-white transition-all text-sm hover:opacity-90" style="background:linear-gradient(135deg,#f5620a,#e03060);box-shadow:0 4px 20px rgba(245,98,10,0.3);">
+        <button type="submit" id="cf-submit" class="w-full py-3.5 rounded-xl font-bold text-white transition-all text-sm hover:opacity-90" style="background:linear-gradient(135deg,#FF6B00,#e03060);box-shadow:0 4px 20px rgba(245,98,10,0.3);">
           <i class="fas fa-paper-plane mr-2"></i>Submit Inquiry
         </button>
       </form>
@@ -4238,7 +4238,7 @@ function mainPageHTML(): string {
             <label class="text-xs text-gray-400 mb-1 block">Email Address</label>
             <input type="email" id="signin-email" placeholder="Enter your registered email" required class="w-full px-4 py-3 rounded-xl text-sm">
           </div>
-          <button type="submit" class="w-full py-3 rounded-xl font-bold text-white transition-all hover:opacity-90" style="background:linear-gradient(135deg,#f5620a,#e03060);box-shadow:0 4px 20px rgba(245,98,10,0.3);">
+          <button type="submit" class="w-full py-3 rounded-xl font-bold text-white transition-all hover:opacity-90" style="background:linear-gradient(135deg,#FF6B00,#e03060);box-shadow:0 4px 20px rgba(245,98,10,0.3);">
             <i class="fas fa-sign-in-alt mr-2"></i>Sign In
           </button>
           <div class="relative flex items-center my-3">
@@ -4258,8 +4258,8 @@ function mainPageHTML(): string {
 
         <!-- Register Form -->
         <form id="register-form" class="space-y-4 hidden">
-          <div class="text-center mb-2 p-3 rounded-xl bg-green-500/10 border border-green-500/20">
-            <span class="text-green-400 text-xs font-semibold"><i class="fas fa-ticket-alt mr-1"></i>You will receive a FREE Visitor Pass</span>
+          <div class="text-center mb-2 p-3 rounded-xl bg-primary-500/10 border border-primary-500/20">
+            <span class="text-primary-400 text-xs font-semibold"><i class="fas fa-ticket-alt mr-1"></i>You will receive a FREE Visitor Pass</span>
           </div>
           <div><input type="text" id="reg-name" placeholder="Full Name *" required class="w-full px-4 py-3 rounded-xl text-sm"></div>
           <div><input type="email" id="reg-email" placeholder="Email Address *" required class="w-full px-4 py-3 rounded-xl text-sm"></div>
@@ -4385,7 +4385,7 @@ function mainPageHTML(): string {
             <input type="text" id="meeting-location" placeholder="Location" class="px-4 py-3 rounded-xl text-sm">
           </div>
           <textarea id="meeting-notes" placeholder="Notes..." rows="2" class="w-full px-4 py-3 rounded-xl text-sm"></textarea>
-          <button type="submit" class="w-full py-3 rounded-xl font-bold text-white transition-all hover:opacity-90" style="background:linear-gradient(135deg,#f5620a,#e03060);box-shadow:0 4px 20px rgba(245,98,10,0.28);">
+          <button type="submit" class="w-full py-3 rounded-xl font-bold text-white transition-all hover:opacity-90" style="background:linear-gradient(135deg,#FF6B00,#e03060);box-shadow:0 4px 20px rgba(245,98,10,0.28);">
             <i class="fas fa-calendar-check mr-2"></i>Send Meeting Request
           </button>
         </form>
@@ -4400,19 +4400,19 @@ function mainPageHTML(): string {
           <button class="nav-btn tab-active flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl text-[10px] font-medium transition-all" data-tab="dashboard" onclick="switchTab('dashboard')">
             <i class="fas fa-th-large text-base"></i><span>Home</span>
           </button>
-          <button class="nav-btn nav-gated hidden flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl text-[10px] font-medium text-gray-400 hover:text-white transition-all" data-tab="schedule" onclick="switchTab('schedule')">
+          <button class="nav-btn flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl text-[10px] font-medium text-gray-400 hover:text-white transition-all" data-tab="schedule" onclick="switchTab('schedule')">
             <i class="fas fa-calendar-alt text-base"></i><span>Schedule</span>
           </button>
-          <button class="nav-btn nav-gated hidden flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl text-[10px] font-medium text-gray-400 hover:text-white transition-all" data-tab="networking" onclick="switchTab('networking')">
+          <button class="nav-btn auth-gated hidden flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl text-[10px] font-medium text-gray-400 hover:text-white transition-all" data-tab="networking" onclick="switchTab('networking')">
             <i class="fas fa-users text-base"></i><span>Network</span>
           </button>
-          <button class="nav-btn nav-gated hidden flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl text-[10px] font-medium text-gray-400 hover:text-white transition-all" data-tab="workshops" onclick="switchTab('workshops')">
+          <button class="nav-btn flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl text-[10px] font-medium text-gray-400 hover:text-white transition-all" data-tab="workshops" onclick="switchTab('workshops')">
             <i class="fas fa-laptop-code text-base"></i><span>Workshops</span>
           </button>
           <a href="/marketplace" class="nav-btn flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl text-[10px] font-medium text-orange-400/80 hover:text-orange-300 transition-all no-underline">
             <i class="fas fa-robot text-base"></i><span>AI Market</span>
           </a>
-          <button class="nav-btn nav-gated hidden flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl text-[10px] font-medium text-gray-400 hover:text-white transition-all relative" data-tab="inbox" onclick="switchTab('inbox')">
+          <button class="nav-btn auth-gated hidden flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl text-[10px] font-medium text-gray-400 hover:text-white transition-all relative" data-tab="inbox" onclick="switchTab('inbox')">
             <i class="fas fa-envelope text-base"></i><span>Inbox</span>
             <span id="unread-badge-mobile" class="hidden absolute -top-1 right-0 w-4 h-4 bg-red-500 text-white text-[9px] rounded-full flex items-center justify-center badge-pulse">0</span>
           </button>
@@ -4428,7 +4428,7 @@ function mainPageHTML(): string {
         <div class="hidden md:flex items-center h-14 gap-6">
           <!-- Logo -->
           <a href="/app" class="flex items-center gap-2.5 hover:opacity-90 transition shrink-0">
-            <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI" class="w-9 h-9 rounded-lg object-contain bg-white p-0.5">
+            <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI Innovation Logo" loading="eager" style="height:44px;width:auto;border-radius:12px;padding:6px;background:rgba(255,255,255,0.95);box-shadow:0 2px 8px rgba(0,0,0,0.08);">
             <div class="leading-tight">
               <div class="text-sm font-bold text-white">Bharat AI Innovation</div>
               <div class="text-[10px] text-gray-400">India's Largest AI Conference</div>
@@ -4438,9 +4438,9 @@ function mainPageHTML(): string {
           <!-- Center nav pills -->
           <div class="flex items-center gap-0.5 flex-1 justify-center">
             <button class="nav-btn tab-active px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all" data-tab="dashboard" onclick="switchTab('dashboard')">Home</button>
-            <button class="nav-btn nav-gated hidden px-3.5 py-1.5 rounded-full text-xs font-medium text-gray-300 hover:text-white hover:bg-white/8 transition-all" data-tab="schedule" onclick="switchTab('schedule')">Schedule</button>
-            <button class="nav-btn nav-gated hidden px-3.5 py-1.5 rounded-full text-xs font-medium text-gray-300 hover:text-white hover:bg-white/8 transition-all" data-tab="networking" onclick="switchTab('networking')">Network</button>
-            <button class="nav-btn nav-gated hidden px-3.5 py-1.5 rounded-full text-xs font-medium text-gray-300 hover:text-white hover:bg-white/8 transition-all" data-tab="workshops" onclick="switchTab('workshops')">Workshops</button>
+            <button class="nav-btn px-3.5 py-1.5 rounded-full text-xs font-medium text-gray-300 hover:text-white hover:bg-white/8 transition-all" data-tab="schedule" onclick="switchTab('schedule')">Schedule</button>
+            <button class="nav-btn auth-gated hidden px-3.5 py-1.5 rounded-full text-xs font-medium text-gray-300 hover:text-white hover:bg-white/8 transition-all" data-tab="networking" onclick="switchTab('networking')">Network</button>
+            <button class="nav-btn px-3.5 py-1.5 rounded-full text-xs font-medium text-gray-300 hover:text-white hover:bg-white/8 transition-all" data-tab="workshops" onclick="switchTab('workshops')">Workshops</button>
             <a href="/marketplace" class="px-3.5 py-1.5 rounded-full text-xs font-medium text-gray-300 hover:text-white hover:bg-white/8 transition-all no-underline">AI Market</a>
             <a href="/inquiry" class="px-3.5 py-1.5 rounded-full text-xs font-medium text-gray-300 hover:text-white hover:bg-white/8 transition-all no-underline">Book Booth</a>
             <a href="/contact" class="px-3.5 py-1.5 rounded-full text-xs font-medium text-gray-300 hover:text-white hover:bg-white/8 transition-all no-underline">Contact</a>
@@ -4453,14 +4453,17 @@ function mainPageHTML(): string {
               <i class="fas fa-envelope"></i><span>Inbox</span>
               <span id="unread-badge" class="hidden absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[9px] rounded-full flex items-center justify-center badge-pulse">0</span>
             </button>
-            <!-- Sign In button -->
+            <!-- Log In / Register button (opens combined modal; defaults to Sign In tab) -->
             <button class="js-signin-btn flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold text-white transition-all hover:opacity-90" id="nav-signin-btn-desktop" onclick="showRegistration()" style="background:linear-gradient(135deg,#FF6B00,#e03060);box-shadow:0 4px 15px rgba(255,107,0,0.35);">
-              Sign In <i class="fas fa-arrow-right text-[10px]"></i>
+              <i class="fas fa-sign-in-alt text-[11px]"></i> Log In / Register
             </button>
-            <!-- Avatar button (visible when logged in) -->
+            <!-- Avatar + Log Out (visible when logged in) -->
             <button class="js-avatar-btn hidden nav-btn items-center gap-2 px-2 py-1 rounded-full text-sm font-medium text-gray-300 hover:text-white transition-all border border-white/10" data-tab="myprofile" onclick="switchTab('myprofile')" id="nav-avatar-btn">
-              <img id="nav-avatar-img" src="https://ui-avatars.com/api/?name=U&size=36&background=f5620a&color=fff&bold=true&rounded=true" alt="Profile" class="w-8 h-8 rounded-full object-cover border-2 border-orange-500/50">
+              <img id="nav-avatar-img" src="https://ui-avatars.com/api/?name=U&size=36&background=FF6B00&color=fff&bold=true&rounded=true" alt="Profile" class="w-8 h-8 rounded-full object-cover border-2 border-orange-500/50">
               <span id="nav-avatar-name" class="max-w-[100px] truncate text-xs">Me</span>
+            </button>
+            <button class="js-avatar-btn hidden nav-btn items-center gap-1.5 px-3 py-2 rounded-full text-xs font-medium text-gray-400 hover:text-white transition-all border border-white/10" onclick="logoutUser()" id="nav-logout-btn" title="Log out">
+              <i class="fas fa-sign-out-alt"></i><span class="hidden lg:inline">Log Out</span>
             </button>
           </div>
         </div>
@@ -4545,7 +4548,7 @@ function mainPageHTML(): string {
 
             <!-- CTA buttons -->
             <div class="flex items-center justify-center gap-3 flex-wrap">
-              <button onclick="showRegistration()" class="flex items-center gap-2 px-6 py-3 rounded-full text-sm font-bold text-white transition hover:opacity-90" style="background:linear-gradient(135deg,#f5620a,#e03060);box-shadow:0 6px 20px rgba(245,98,10,0.35);">Register Free <i class="fas fa-arrow-right text-xs"></i></button>
+              <button onclick="showRegistration()" class="flex items-center gap-2 px-6 py-3 rounded-full text-sm font-bold text-white transition hover:opacity-90" style="background:linear-gradient(135deg,#FF6B00,#e03060);box-shadow:0 6px 20px rgba(245,98,10,0.35);">Register Free <i class="fas fa-arrow-right text-xs"></i></button>
               <a href="https://bharataiinnovation.com" target="_blank" class="flex items-center gap-2 px-6 py-3 rounded-full text-sm font-semibold text-gray-200 transition hover:bg-white/10 no-underline" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);">Learn More</a>
             </div>
 
@@ -4814,7 +4817,7 @@ function mainPageHTML(): string {
               <button onclick="openQuickVisitorReg()" class="px-6 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-primary-600 to-primary-500 hover:from-primary-500 hover:to-primary-400 transition-all text-sm shadow-lg shadow-primary-500/25 animate-pulse-slow">
                 <i class="fas fa-ticket-alt mr-2"></i>Register Free — Visitor Pass
               </button>
-              <button onclick="openPaidPassForm()" class="px-6 py-3 rounded-xl font-bold text-white transition-all text-sm hover:opacity-90" style="background:linear-gradient(135deg,#f5620a,#e03060);box-shadow:0 4px 20px rgba(245,98,10,0.28);">
+              <button onclick="openPaidPassForm()" class="px-6 py-3 rounded-xl font-bold text-white transition-all text-sm hover:opacity-90" style="background:linear-gradient(135deg,#FF6B00,#e03060);box-shadow:0 4px 20px rgba(245,98,10,0.28);">
                 <i class="fas fa-star mr-2"></i>Get Paid Pass (Delegate/VIP)
               </button>
               <a href="https://bharataiinnovation.com/register#delegation-section" target="_blank" class="px-6 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 transition-all text-sm">
@@ -4954,7 +4957,7 @@ function mainPageHTML(): string {
               <!-- Dynamic extra fields based on type -->
               <div id="inq-extra-fields"></div>
               <textarea id="inq-message" placeholder="Your message / requirements..." rows="3" required class="w-full px-4 py-3 rounded-xl text-sm"></textarea>
-              <button type="submit" id="inq-submit-btn" class="w-full py-3 rounded-xl font-bold text-white transition-all text-sm hover:opacity-90" style="background:linear-gradient(135deg,#f5620a,#e03060);box-shadow:0 4px 20px rgba(245,98,10,0.28);">
+              <button type="submit" id="inq-submit-btn" class="w-full py-3 rounded-xl font-bold text-white transition-all text-sm hover:opacity-90" style="background:linear-gradient(135deg,#FF6B00,#e03060);box-shadow:0 4px 20px rgba(245,98,10,0.28);">
                 <i class="fas fa-paper-plane mr-2"></i>Submit Inquiry
               </button>
             </form>
@@ -6070,7 +6073,7 @@ function mainPageHTML(): string {
                 <input type="url" id="edit-website" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="https://...">
               </div>
             </div>
-            <button type="submit" class="w-full py-3 rounded-xl font-bold text-white transition-all hover:opacity-90" style="background:linear-gradient(135deg,#f5620a,#e03060);box-shadow:0 4px 20px rgba(245,98,10,0.28);">
+            <button type="submit" class="w-full py-3 rounded-xl font-bold text-white transition-all hover:opacity-90" style="background:linear-gradient(135deg,#FF6B00,#e03060);box-shadow:0 4px 20px rgba(245,98,10,0.28);">
               <i class="fas fa-save mr-2"></i>Save Changes
             </button>
           </form>
@@ -6311,15 +6314,18 @@ function mainPageHTML(): string {
     // that bug left the desktop Sign In button visible while logged in.
     function updateNavForAuth() {
       const signInBtns = document.querySelectorAll('.js-signin-btn');
-      const avatarBtn = document.getElementById('nav-avatar-btn');
+      const loggedInBtns = document.querySelectorAll('.js-avatar-btn'); // avatar + Log Out
+      const authGated = document.querySelectorAll('.auth-gated');       // Network, Inbox
       const mobileMe = document.getElementById('nav-mobile-me');
       if (currentUser) {
         signInBtns.forEach(b => b.classList.add('hidden'));
-        if (avatarBtn) { avatarBtn.classList.remove('hidden'); avatarBtn.classList.add('flex'); }
+        loggedInBtns.forEach(b => { b.classList.remove('hidden'); b.classList.add('flex'); });
+        authGated.forEach(b => { b.classList.remove('hidden'); b.classList.add('flex'); });
         if (mobileMe) { mobileMe.classList.remove('hidden'); mobileMe.classList.add('flex'); }
       } else {
         signInBtns.forEach(b => b.classList.remove('hidden'));
-        if (avatarBtn) { avatarBtn.classList.add('hidden'); avatarBtn.classList.remove('flex'); }
+        loggedInBtns.forEach(b => { b.classList.add('hidden'); b.classList.remove('flex'); });
+        authGated.forEach(b => { b.classList.add('hidden'); b.classList.remove('flex'); });
         if (mobileMe) { mobileMe.classList.add('hidden'); mobileMe.classList.remove('flex'); }
       }
     }
@@ -6725,19 +6731,13 @@ function mainPageHTML(): string {
         document.getElementById('event-venue').textContent = event.venue;
         document.getElementById('event-dates').textContent = \`\${event.start_date} to \${event.end_date}\`;
 
-        // Gate features behind minimum registration count
-        const totalAttendees = stats.attendees || 0;
-        const featuresUnlocked = totalAttendees >= MIN_REGISTRATIONS;
-
-        // Show/hide nav items
+        // Schedule & Workshops are public (great for conversion — visitors see
+        // the lineup and register). Only Network + Inbox are gated, and gated
+        // by LOGIN, not a registration-count threshold. Any remaining
+        // .nav-gated items follow the same login rule as a safety net.
         document.querySelectorAll('.nav-gated').forEach(el => {
-          if (featuresUnlocked) {
-            el.classList.remove('hidden');
-            el.classList.add('flex');
-          } else {
-            el.classList.add('hidden');
-            el.classList.remove('flex');
-          }
+          if (currentUser) { el.classList.remove('hidden'); el.classList.add('flex'); }
+          else { el.classList.add('hidden'); el.classList.remove('flex'); }
         });
 
         // Show/hide stats, venue, hero venue/dates
