@@ -7073,10 +7073,19 @@ function mainPageHTML(): string {
       } else if (badge.includes('media') || badge.includes('press')) {
         p = { label: 'Media', icon: 'fa-newspaper', tint: '#3b82f6', blurb: 'Press schedule, speaker access, press kit, and interview requests.',
           actions: [A('Press area','fa-newspaper',"openMediaCenter()"), A('Speaker directory','fa-users',"switchTab('networking')"), A('Schedule','fa-calendar-alt',"switchTab('schedule')")] };
+      } else if (badge.includes('sponsor') || badge.includes('partner')) {
+        p = { label: 'Sponsor', icon: 'fa-handshake-angle', tint: '#eab308', blurb: 'Your brand presence, booth leads, and audience reach at the event.',
+          actions: [A('Lead console','fa-user-group',"openExhibitorConsole()"), A('Brand on AI Market','fa-robot',"location.href='/marketplace'"), A('Meet attendees','fa-users',"switchTab('networking')")] };
+      } else if (badge.includes('organiser') || badge.includes('organizer') || role.includes('organizer') || badge.includes('support staff')) {
+        p = { label: 'Organizer', icon: 'fa-clipboard-list', tint: '#FF6B00', blurb: 'Run the show — the admin console has attendees, sessions, and announcements.',
+          actions: [A('Admin console','fa-gauge-high',"location.href='/admin'"), A('Live schedule','fa-calendar-alt',"switchTab('schedule')"), A('Announcements','fa-bullhorn',"location.href='/admin'")] };
       } else if (badge.includes('jury')) {
         p = { label: 'Jury', icon: 'fa-gavel', tint: '#a78bfa', blurb: 'Your judging schedule and assigned startups.',
           actions: [A('Jury schedule','fa-calendar-check',"switchTab('agba-jury')"), A('Startups','fa-rocket',"switchTab('startup-pitch')"), A('My profile','fa-user',"switchTab('myprofile')")] };
-      } else if (badge.includes('academic') || badge.includes('student')) {
+      } else if (badge.includes('student')) {
+        p = { label: 'Student', icon: 'fa-user-graduate', tint: '#14b8a6', blurb: 'Learn, get hands-on in workshops, and meet founders & researchers.',
+          actions: [A('Workshops','fa-laptop-code',"switchTab('workshops')"), A('Startup zone','fa-rocket',"switchTab('startup-pitch')"), A('Network','fa-users',"switchTab('networking')")] };
+      } else if (badge.includes('academic')) {
         p = { label: 'Academic', icon: 'fa-graduation-cap', tint: '#14b8a6', blurb: 'Workshops, the startup zone, and networking with researchers.',
           actions: [A('Workshops','fa-laptop-code',"switchTab('workshops')"), A('Network','fa-users',"switchTab('networking')"), A('Schedule','fa-calendar-alt',"switchTab('schedule')")] };
       } else {
