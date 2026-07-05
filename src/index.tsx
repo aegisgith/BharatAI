@@ -3011,18 +3011,24 @@ function sharedNavHTML(activePage: string): string {
       <a href="/" class="flex items-center hover:opacity-90 transition shrink-0">
         <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI Innovation Logo" loading="eager" style="height:44px;width:auto;border-radius:12px;padding:6px;background:rgba(255,255,255,0.95);box-shadow:0 2px 8px rgba(0,0,0,0.08);">
       </a>
-      <!-- Center pills -->
+      <!-- Center pills — same destinations as the app nav so navigation is
+           consistent on every page. In-app tabs deep-link into the SPA. -->
       <div class="flex items-center gap-0.5 flex-1 justify-center flex-wrap">
-        ${pill('/', 'Home', 'home')}
+        ${pill('/app', 'Home', 'home')}
+        ${pill('/app#schedule', 'Schedule', 'schedule')}
         ${pill('/register', 'Register', 'register')}
         ${pill('/inquiry', 'Book Booth', 'inquiry')}
-        ${pill('/contact', 'Contact', 'contact')}
         ${pill('/marketplace', 'AI Market', 'marketplace')}
-        <a href="https://bharataiinnovation.com" target="_blank" class="px-3.5 py-1.5 rounded-full text-xs font-medium text-gray-300 hover:text-white hover:bg-white/8 transition-all no-underline hidden md:inline-flex">Main Site</a>
+        ${pill('/contact', 'Contact', 'contact')}
+        <a href="https://bharataiinnovation.com" target="_blank" class="px-3.5 py-1.5 rounded-full text-xs font-medium text-gray-300 hover:text-white hover:bg-white/8 transition-all no-underline hidden lg:inline-flex">Main Site</a>
       </div>
-      <!-- CTA -->
-      <div class="shrink-0">
-        <a href="/register" class="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold text-white transition-all hover:opacity-90 no-underline" style="background:linear-gradient(135deg,#FF6B00,#e03060);box-shadow:0 4px 15px rgba(245,98,10,0.35);">
+      <!-- Auth: Log In (returning attendees) + Register — consistent with /app.
+           Both route into the app's combined auth modal via a URL hash. -->
+      <div class="shrink-0 flex items-center gap-2">
+        <a href="/app#login" class="hidden sm:flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-semibold text-gray-200 hover:text-white transition-all no-underline border border-white/15 hover:bg-white/8">
+          <i class="fas fa-sign-in-alt text-[11px]"></i> Log In
+        </a>
+        <a href="/register" class="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold text-white transition-all hover:opacity-90 no-underline" style="background:linear-gradient(135deg,#FF6B00,#e03060);box-shadow:0 4px 15px rgba(255,107,0,0.35);">
           Register <i class="fas fa-arrow-right text-[10px]"></i>
         </a>
       </div>
@@ -6269,6 +6275,21 @@ function mainPageHTML(): string {
         // Email param but not found — prefill sign-in
         if (emailParam) window.history.replaceState({}, '', window.location.pathname);
       }
+
+      // Deep-links from the shared nav on other pages: /app#login opens the
+      // sign-in modal (so returning attendees can log in from anywhere);
+      // /app#schedule etc. jump straight to that tab. Keeps nav consistent.
+      const hash = (window.location.hash || '').replace('#', '');
+      if (hash === 'login') {
+        if (!currentUser) { showRegistration(); if (typeof switchAuthMode === 'function') switchAuthMode('signin'); }
+        history.replaceState({}, '', window.location.pathname);
+      } else if (hash === 'register') {
+        if (!currentUser) { showRegistration(); if (typeof switchAuthMode === 'function') switchAuthMode('register'); }
+        history.replaceState({}, '', window.location.pathname);
+      } else if (['schedule','networking','workshops','inbox','myprofile'].includes(hash)) {
+        switchTab(hash);
+        history.replaceState({}, '', window.location.pathname);
+      }
     }
 
     // Show public app: nav + content visible, no login required
@@ -6761,7 +6782,7 @@ function mainPageHTML(): string {
           </div>
         \`).join('');
 
-        document.getElementById('announcements-feed').innerHTML = announcements.map(a => \`
+        document.getElementById('announcements-feed').innerHTML = announcements.length ? announcements.map(a => \`
           <div class="glass rounded-xl p-4 card-hover \${a.pinned ? 'glow border-l-4 border-accent-500' : ''}">
             <div class="flex items-start gap-3">
               <div class="w-10 h-10 rounded-full bg-\${a.announcement_type === 'urgent' ? 'red-500/20' : a.announcement_type === 'schedule_change' ? 'yellow-500/20' : 'primary-500/20'} flex items-center justify-center shrink-0">
@@ -6780,10 +6801,10 @@ function mainPageHTML(): string {
               </div>
             </div>
           </div>
-        \`).join('');
+        \`).join('') : \`<div class="glass rounded-xl p-8 text-center"><i class="fas fa-bullhorn text-2xl text-gray-600 mb-3"></i><p class="text-sm text-gray-400">No announcements yet</p><p class="text-xs text-gray-600 mt-1">Event updates from the organizers will appear here.</p></div>\`;
 
         const now = new Date();
-        document.getElementById('upcoming-sessions').innerHTML = sessions.slice(0, 5).map(s => \`
+        document.getElementById('upcoming-sessions').innerHTML = sessions.length ? sessions.slice(0, 5).map(s => \`
           <div class="glass rounded-xl p-4 card-hover cursor-pointer" onclick="switchTab('schedule')">
             <div class="flex items-center gap-2 mb-2">
               <span class="text-lg">\${s.speaker_avatar || '📌'}</span>
@@ -6795,7 +6816,7 @@ function mainPageHTML(): string {
               \${s.room ? \`<span class="ml-2"><i class="fas fa-map-pin mr-1"></i>\${s.room}</span>\` : ''}
             </div>
           </div>
-        \`).join('');
+        \`).join('') : \`<div class="glass rounded-xl p-8 text-center"><i class="fas fa-calendar-alt text-2xl text-gray-600 mb-3"></i><p class="text-sm text-gray-400">Schedule coming soon</p><a href="#" onclick="switchTab('schedule');return false;" class="text-xs text-primary-400 hover:underline mt-1 inline-block">View full schedule</a></div>\`;
       } catch(e) { console.error('Dashboard error:', e); }
 
       // Conditionally show/hide sections based on auth state
@@ -7006,23 +7027,12 @@ function mainPageHTML(): string {
         banner?.classList.remove('hidden');
         // Show lock overlay
         lockEl?.classList.remove('hidden');
-        // Blur the grid
-        if (gridEl) gridEl.style.filter = 'blur(4px)';
-        if (gridEl) gridEl.style.pointerEvents = 'none';
-        if (gridEl) gridEl.style.userSelect = 'none';
-        // Make search/filter trigger upgrade modal instead
-        const triggerUpgrade = (e) => { e.preventDefault(); e.stopPropagation(); showNetworkUpgradeModal(); };
-        if (searchEl) { searchEl.readOnly = true; searchEl.addEventListener('focus', triggerUpgrade); }
-        if (filterEl) { filterEl.disabled = true; filterEl.addEventListener('mousedown', triggerUpgrade); }
-        // Scroll listener on the networking tab
-        const netTab = document.getElementById('tab-networking');
-        if (netTab) {
-          netTab._visitorScrollHandler = () => showNetworkUpgradeModal();
-          netTab.addEventListener('scroll', netTab._visitorScrollHandler, { once: true });
-        }
-        // Listen to window scroll too (page-level)
-        window._visitorScrollHandler = () => showNetworkUpgradeModal();
-        window.addEventListener('scroll', window._visitorScrollHandler, { once: true });
+        // Blur the grid and disable interaction. The persistent lock overlay
+        // (visitor-grid-lock) does the selling — no scroll/focus hijack, which
+        // read as a broken pop-up. Just disable the controls quietly.
+        if (gridEl) { gridEl.style.filter = 'blur(4px)'; gridEl.style.pointerEvents = 'none'; gridEl.style.userSelect = 'none'; }
+        if (searchEl) { searchEl.readOnly = true; searchEl.disabled = true; }
+        if (filterEl) { filterEl.disabled = true; }
       } else {
         // Not a visitor — make sure lock is hidden and grid unblurred
         banner?.classList.add('hidden');
