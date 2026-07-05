@@ -3011,8 +3011,15 @@ function sharedHeadHTML(title: string, path: string = '/', desc?: string): strin
     body { background: #0b0d1a; color: #e2e8f0; }
     .glass { background: rgba(255,255,255,0.04); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.07); }
     .gradient-text { background: linear-gradient(120deg, #ff7c1f 0%, #f5620a 40%, #e8406c 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-    .card-hover { transition: all 0.3s ease; }
-    .card-hover:hover { transform: translateY(-3px); box-shadow: 0 12px 40px rgba(245,98,10,0.15); }
+    /* Specify exact properties (not 'all'); strong ease-out curve; subtle
+       press feedback so cards feel responsive to touch. */
+    .card-hover { transition: transform 0.22s cubic-bezier(0.23,1,0.32,1), box-shadow 0.22s cubic-bezier(0.23,1,0.32,1), border-color 0.22s ease; }
+    .card-hover:hover { transform: translateY(-3px); box-shadow: 0 12px 40px rgba(245,98,10,0.15); border-color: rgba(255,255,255,0.12); }
+    button.card-hover:active, .card-hover[onclick]:active { transform: scale(0.985); }
+    /* Lift low-contrast secondary text toward legibility (WCAG). The app
+       leaned on gray-500/600 for real content; nudge those lighter. */
+    .text-gray-500 { color: #8a8a99 !important; }
+    .text-gray-600 { color: #74748a !important; }
     .modal-overlay { background: rgba(0,0,0,0.75); backdrop-filter: blur(6px); }
     input, textarea, select { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.10); color: #e2e8f0; }
     input:focus, textarea:focus, select:focus { outline: none; border-color: #f5620a; box-shadow: 0 0 0 3px rgba(245,98,10,0.18); }
@@ -4194,8 +4201,15 @@ function mainPageHTML(): string {
     .badge-pulse { animation: pulse 2s infinite; }
     @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
     .tab-active { background: linear-gradient(135deg, #f5620a, #c94040); color: white; }
-    .card-hover { transition: all 0.3s ease; }
-    .card-hover:hover { transform: translateY(-3px); box-shadow: 0 12px 40px rgba(245,98,10,0.15); }
+    /* Specify exact properties (not 'all'); strong ease-out curve; subtle
+       press feedback so cards feel responsive to touch. */
+    .card-hover { transition: transform 0.22s cubic-bezier(0.23,1,0.32,1), box-shadow 0.22s cubic-bezier(0.23,1,0.32,1), border-color 0.22s ease; }
+    .card-hover:hover { transform: translateY(-3px); box-shadow: 0 12px 40px rgba(245,98,10,0.15); border-color: rgba(255,255,255,0.12); }
+    button.card-hover:active, .card-hover[onclick]:active { transform: scale(0.985); }
+    /* Lift low-contrast secondary text toward legibility (WCAG). The app
+       leaned on gray-500/600 for real content; nudge those lighter. */
+    .text-gray-500 { color: #8a8a99 !important; }
+    .text-gray-600 { color: #74748a !important; }
     .online-dot { width: 10px; height: 10px; border-radius: 50%; background: #22c55e; display: inline-block; animation: pulse 2s infinite; }
     .offline-dot { width: 10px; height: 10px; border-radius: 50%; background: #64748b; display: inline-block; }
     .scroll-hide { -ms-overflow-style: none; scrollbar-width: none; }
@@ -4221,6 +4235,8 @@ function mainPageHTML(): string {
     .chat-bubble-received { background: rgba(255,255,255,0.07); border-radius: 18px 18px 18px 4px; }
     .no-scrollbar::-webkit-scrollbar { display: none; }
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    /* Visible keyboard focus (accessibility) */
+    a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid #FF6B00; outline-offset: 2px; border-radius: 8px; }
     /* Mobile nav buttons: ≥48px touch target (was ~34px) */
     @media (max-width: 767px) { #main-nav .nav-btn { min-width: 52px; min-height: 46px; justify-content: center; } }
     @media (prefers-reduced-motion: reduce) { .shimmer, .animate-pulse-slow, .badge-pulse { animation: none !important; } }
