@@ -10,6 +10,20 @@ function mpSharedHead(title: string): string {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${title} — Bharat AI Marketplace</title>
   <meta name="description" content="${title} - Bharat AI Innovation 2026 AI Marketplace. Discover, compare, and connect with India's leading AI solutions.">
+  <link rel="canonical" href="https://bharataiinnovation.com/marketplace">
+  <meta name="theme-color" content="#0b0d1a">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Bharat AI Innovation">
+  <meta property="og:url" content="https://bharataiinnovation.com/marketplace">
+  <meta property="og:title" content="Bharat AI Marketplace — Discover India's Leading AI Solutions">
+  <meta property="og:description" content="Explore AI products and companies at Bharat AI Innovation 2026. Discover, compare, and connect with India's leading AI solutions. 20-21 Nov 2026, WTC Mumbai.">
+  <meta property="og:image" content="https://bharataiinnovation.com/images/og-card.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Bharat AI Marketplace">
+  <meta name="twitter:description" content="Discover India's leading AI solutions at Bharat AI Innovation 2026.">
+  <meta name="twitter:image" content="https://bharataiinnovation.com/images/og-card.png">
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
   <link href="/static/marketplace.css" rel="stylesheet">
@@ -18,7 +32,7 @@ function mpSharedHead(title: string): string {
       theme: {
         extend: {
           colors: {
-            primary: { 50:'#f0f4ff',100:'#dbe4ff',200:'#bac8ff',300:'#91a7ff',400:'#748ffc',500:'#5c7cfa',600:'#4c6ef5',700:'#4263eb',800:'#3b5bdb',900:'#364fc7' },
+            primary: { 50:'#fff3e9',100:'#ffe0c7',200:'#ffc194',300:'#ff9d55',400:'#ff8524',500:'#FF6B00',600:'#e05a00',700:'#b84800',800:'#933a08',900:'#79300c' },
             accent: { 50:'#fff3e0',100:'#ffe0b2',200:'#ffcc80',300:'#ffb74d',400:'#ffa726',500:'#ff9800',600:'#fb8c00',700:'#f57c00',800:'#ef6c00',900:'#e65100' }
           }
         }
@@ -83,17 +97,16 @@ export function marketplacePageHTML(): string {
   <header class="mp-header">
     <div class="mp-header-inner">
       <a href="/marketplace" class="mp-logo-link">
-        <img src="https://bharatai.blob.core.windows.net/aidata/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="mp-logo-img">
-        <div>
-          <h1 class="mp-logo-title">Bharat AI Marketplace</h1>
-          <p class="mp-logo-sub">Discover & Connect with India's Leading AI Solutions</p>
-        </div>
+        <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI Innovation Logo" loading="eager" style="height:44px;width:auto;border-radius:12px;padding:6px;background:rgba(255,255,255,0.95);box-shadow:0 2px 8px rgba(0,0,0,0.08);">
       </a>
       <nav class="mp-nav">
-        <a href="/" class="mp-nav-link"><i class="fas fa-home mr-1"></i>Event App</a>
+        <a href="/app" class="mp-nav-link"><i class="fas fa-home mr-1"></i>Home</a>
+        <a href="/app#schedule" class="mp-nav-link">Schedule</a>
+        <a href="/marketplace" class="mp-nav-link">AI Market</a>
+        <a href="/inquiry" class="mp-nav-link">Book Booth</a>
         <a href="/marketplace/faq" class="mp-nav-link">FAQ</a>
         <a id="dashboard-link" href="/marketplace/dashboard" class="mp-nav-link hidden"><i class="fas fa-chart-pie mr-1"></i>Dashboard</a>
-        <button id="login-button" class="mp-nav-btn"><i class="fas fa-sign-in-alt mr-1"></i>Login</button>
+        <button id="login-button" class="mp-nav-btn"><i class="fas fa-sign-in-alt mr-1"></i>Exhibitor Login</button>
         <button id="logout-button" class="mp-nav-btn hidden"><i class="fas fa-sign-out-alt mr-1"></i>Logout</button>
       </nav>
     </div>
@@ -359,7 +372,7 @@ export function marketplacePageHTML(): string {
   <footer class="mp-footer">
     <div class="mp-footer-inner">
       <div class="mp-footer-brand">
-        <img src="https://bharatai.blob.core.windows.net/aidata/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="mp-footer-logo">
+        <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="mp-footer-logo">
         <div>
           <h3>Bharat AI Marketplace</h3>
           <p>Part of Bharat AI Innovation 2026</p>
@@ -391,7 +404,7 @@ export function marketplaceListingPageHTML(companySlug?: string, productSlug?: s
   <header class="mp-header">
     <div class="mp-header-inner">
       <a href="/marketplace" class="mp-logo-link">
-        <img src="https://bharatai.blob.core.windows.net/aidata/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="mp-logo-img">
+        <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="mp-logo-img">
         <div>
           <h1 class="mp-logo-title">Bharat AI Marketplace</h1>
           <p class="mp-logo-sub">AI Solutions Directory</p>
@@ -481,7 +494,7 @@ export function marketplaceDashboardPageHTML(): string {
   <!-- Sidebar -->
   <aside id="dash-sidebar" class="dash-sidebar">
     <div class="dash-sidebar-header">
-      <img src="https://bharatai.blob.core.windows.net/aidata/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="dash-sidebar-logo">
+      <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="dash-sidebar-logo">
       <div>
         <h2 class="text-sm font-bold">AI Marketplace</h2>
         <p class="text-[10px] text-slate-400">Company Dashboard</p>
@@ -626,7 +639,7 @@ export function marketplaceAdminPageHTML(): string {
 
   <aside id="dash-sidebar" class="dash-sidebar">
     <div class="dash-sidebar-header">
-      <img src="https://bharatai.blob.core.windows.net/aidata/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="dash-sidebar-logo">
+      <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="dash-sidebar-logo">
       <div>
         <h2 class="text-sm font-bold">AI Marketplace</h2>
         <p class="text-[10px] text-slate-400">Super Admin</p>
@@ -722,7 +735,7 @@ export function marketplaceFaqPageHTML(): string {
   <header class="mp-header">
     <div class="mp-header-inner">
       <a href="/marketplace" class="mp-logo-link">
-        <img src="https://bharatai.blob.core.windows.net/aidata/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="mp-logo-img">
+        <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="mp-logo-img">
         <div>
           <h1 class="mp-logo-title">Bharat AI Marketplace</h1>
           <p class="mp-logo-sub">Frequently Asked Questions</p>
