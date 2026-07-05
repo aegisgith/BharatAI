@@ -5628,6 +5628,46 @@ function mainPageHTML(): string {
         </div>
       </div>
 
+      <!-- Investor deal flow -->
+      <div id="tab-investor" class="tab-content hidden">
+        <div class="max-w-7xl mx-auto px-4 py-6">
+          <div class="rounded-2xl p-5 md:p-6 mb-6" style="border:1px solid #22c55e33;background:linear-gradient(135deg,#22c55e14,transparent 60%);">
+            <div class="flex items-center gap-3">
+              <div class="w-12 h-12 rounded-xl flex items-center justify-center shrink-0" style="background:#22c55e22;"><i class="fas fa-sack-dollar text-xl" style="color:#22c55e"></i></div>
+              <div><h2 class="text-xl font-bold">Deal Flow</h2><p class="text-sm text-gray-400">Startups pitching at Bharat AI 2026. Star the ones you want to meet.</p></div>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 mb-4">
+            <button id="inv-all-btn" onclick="_invWatchOnly=false;loadInvestorDealflow()" class="px-3.5 py-1.5 rounded-full text-xs font-semibold tab-active">All startups</button>
+            <button id="inv-watch-btn" onclick="_invWatchOnly=true;loadInvestorDealflow()" class="px-3.5 py-1.5 rounded-full text-xs font-semibold glass text-gray-400"><i class="fas fa-star text-amber-400 mr-1"></i>My watchlist <span id="inv-watch-count" class="hidden ml-1 px-1.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px]">0</span></button>
+          </div>
+          <div id="inv-list" class="grid grid-cols-1 md:grid-cols-2 gap-3"></div>
+        </div>
+      </div>
+
+      <!-- Media press area -->
+      <div id="tab-media" class="tab-content hidden">
+        <div class="max-w-7xl mx-auto px-4 py-6">
+          <div class="rounded-2xl p-5 md:p-6 mb-6" style="border:1px solid #3b82f633;background:linear-gradient(135deg,#3b82f614,transparent 60%);">
+            <div class="flex items-center gap-3">
+              <div class="w-12 h-12 rounded-xl flex items-center justify-center shrink-0" style="background:#3b82f622;"><i class="fas fa-newspaper text-xl" style="color:#3b82f6"></i></div>
+              <div><h2 class="text-xl font-bold">Press &amp; Media Area</h2><p class="text-sm text-gray-400">Everything you need to cover Bharat AI Innovation 2026.</p></div>
+            </div>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
+            <button onclick="switchTab('schedule')" class="glass rounded-xl p-4 text-left card-hover"><i class="fas fa-calendar-alt text-xl text-blue-400 mb-2 block"></i><div class="font-semibold text-sm">Full schedule</div><div class="text-xs text-gray-500 mt-0.5">Sessions, keynotes & timings</div></button>
+            <button onclick="switchTab('networking')" class="glass rounded-xl p-4 text-left card-hover"><i class="fas fa-users text-xl text-blue-400 mb-2 block"></i><div class="font-semibold text-sm">Speaker directory</div><div class="text-xs text-gray-500 mt-0.5">Find & message speakers for interviews</div></button>
+            <a href="https://bharataiinnovation.com" target="_blank" class="glass rounded-xl p-4 text-left card-hover no-underline block"><i class="fas fa-download text-xl text-blue-400 mb-2 block"></i><div class="font-semibold text-sm text-white">Press kit</div><div class="text-xs text-gray-500 mt-0.5">Logos, fact sheet & photos (main site)</div></a>
+            <button onclick="switchTab('exhibition')" class="glass rounded-xl p-4 text-left card-hover"><i class="fas fa-store text-xl text-blue-400 mb-2 block"></i><div class="font-semibold text-sm">Exhibitors</div><div class="text-xs text-gray-500 mt-0.5">Companies & products to cover</div></button>
+          </div>
+          <div class="glass rounded-2xl p-5">
+            <h3 class="text-sm font-semibold mb-2"><i class="fas fa-circle-info text-blue-400 mr-1.5"></i>Media desk</h3>
+            <p class="text-sm text-gray-400">Accreditation, interview requests, and embargoed materials are handled at the on-site media desk (Level 1, near Registration). For advance requests, use Contact → Media / Press.</p>
+            <button onclick="location.href='/contact'" class="mt-3 px-4 py-2 rounded-xl text-sm font-medium bg-blue-500/20 text-blue-300 hover:bg-blue-500/30 transition"><i class="fas fa-envelope mr-1.5"></i>Contact media desk</button>
+          </div>
+        </div>
+      </div>
+
       <!-- Exhibitor lead console -->
       <div id="tab-exhibitor-console" class="tab-content hidden">
         <div class="max-w-7xl mx-auto px-4 py-6">
@@ -7000,11 +7040,11 @@ function mainPageHTML(): string {
         p = { label: badge.includes('startup') ? 'Startup' : 'Exhibitor', icon: 'fa-store', tint: '#FF6B00', blurb: 'Manage your booth, capture leads, and connect with buyers & investors.',
           actions: [A('Lead console','fa-user-group',"openExhibitorConsole()"), A('List on AI Market','fa-robot',"location.href='/marketplace'"), A('Find investors','fa-handshake',"switchTab('networking')")] };
       } else if (badge.includes('investor')) {
-        p = { label: 'Investor', icon: 'fa-sack-dollar', tint: '#22c55e', blurb: 'Discover startups pitching at the event and book meetings.',
-          actions: [A('Startup showcase','fa-rocket',"switchTab('startup-pitch')"), A('Browse founders','fa-users',"switchTab('networking')"), A('My meetings','fa-calendar',"switchTab('inbox')")] };
+        p = { label: 'Investor', icon: 'fa-sack-dollar', tint: '#22c55e', blurb: 'Discover startups pitching at the event, build a watchlist, and book meetings.',
+          actions: [A('Deal flow','fa-rocket',"openInvestorDealflow()"), A('Browse founders','fa-users',"switchTab('networking')"), A('My meetings','fa-calendar',"switchTab('inbox')")] };
       } else if (badge.includes('media') || badge.includes('press')) {
-        p = { label: 'Media', icon: 'fa-newspaper', tint: '#3b82f6', blurb: 'Press schedule, speaker access, and interview requests.',
-          actions: [A('Speaker directory','fa-users',"switchTab('networking')"), A('Schedule','fa-calendar-alt',"switchTab('schedule')"), A('Request interview','fa-comments',"switchTab('networking')")] };
+        p = { label: 'Media', icon: 'fa-newspaper', tint: '#3b82f6', blurb: 'Press schedule, speaker access, press kit, and interview requests.',
+          actions: [A('Press area','fa-newspaper',"openMediaCenter()"), A('Speaker directory','fa-users',"switchTab('networking')"), A('Schedule','fa-calendar-alt',"switchTab('schedule')")] };
       } else if (badge.includes('jury')) {
         p = { label: 'Jury', icon: 'fa-gavel', tint: '#a78bfa', blurb: 'Your judging schedule and assigned startups.',
           actions: [A('Jury schedule','fa-calendar-check',"switchTab('agba-jury')"), A('Startups','fa-rocket',"switchTab('startup-pitch')"), A('My profile','fa-user',"switchTab('myprofile')")] };
@@ -8787,6 +8827,55 @@ function mainPageHTML(): string {
             </div>
           </div>\`).join('') : '<div class="glass rounded-xl p-10 text-center"><i class="fas fa-microphone-slash text-3xl text-gray-600 mb-3 block"></i><p class="text-sm text-gray-400">No sessions linked to your name yet</p><p class="text-xs text-gray-600 mt-1">If you\\'re speaking and don\\'t see your sessions, contact the organizers to link your profile.</p></div>';
       } catch(e) { if (el) el.innerHTML = '<p class="text-sm text-gray-500 text-center py-6">Could not load your sessions.</p>'; }
+    }
+
+    // ==================== INVESTOR DEAL FLOW ====================
+    let _invWatchOnly = false;
+    function _invWatch() { try { return new Set(JSON.parse(localStorage.getItem('bhai_watchlist') || '[]')); } catch { return new Set(); } }
+    function _invWatchSave(s) { localStorage.setItem('bhai_watchlist', JSON.stringify([...s])); }
+    function toggleWatch(id, btn) {
+      const s = _invWatch(); const now = !s.has(id);
+      if (now) s.add(id); else s.delete(id); _invWatchSave(s);
+      showToast(now ? 'Added to watchlist' : 'Removed from watchlist', 'success');
+      loadInvestorDealflow();
+    }
+    function openInvestorDealflow() {
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
+      const t = document.getElementById('tab-investor'); if (t) t.classList.remove('hidden');
+      currentTab = 'investor'; loadInvestorDealflow();
+    }
+    async function loadInvestorDealflow() {
+      const el = document.getElementById('inv-list'); if (!el) return;
+      const allBtn = document.getElementById('inv-all-btn'), watchBtn = document.getElementById('inv-watch-btn');
+      if (allBtn && watchBtn) { allBtn.className = 'px-3.5 py-1.5 rounded-full text-xs font-semibold ' + (_invWatchOnly ? 'glass text-gray-400' : 'tab-active'); watchBtn.className = 'px-3.5 py-1.5 rounded-full text-xs font-semibold ' + (_invWatchOnly ? 'tab-active' : 'glass text-gray-400'); }
+      el.innerHTML = '<div class="glass rounded-xl p-4 md:col-span-2"><div class="shimmer h-16 rounded"></div></div>';
+      try {
+        const pitches = await api.get(\`/api/events/\${EVENT_ID}/startup-pitches\`);
+        const watch = _invWatch();
+        const cnt = document.getElementById('inv-watch-count'); if (cnt) { cnt.textContent = watch.size; cnt.classList.toggle('hidden', watch.size === 0); }
+        let list = pitches || [];
+        if (_invWatchOnly) list = list.filter(p => watch.has(p.id));
+        el.innerHTML = list.length ? list.map(p => {
+          const watched = watch.has(p.id);
+          return \`<div class="glass rounded-xl p-4">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0"><h3 class="font-bold text-sm">\${p.company}</h3><p class="text-xs text-gray-400 mt-0.5">\${p.pitcher_name}\${p.pitcher_title ? ' · ' + p.pitcher_title : ''}</p></div>
+              <button onclick="toggleWatch(\${p.id})" class="w-8 h-8 rounded-lg flex items-center justify-center transition shrink-0 \${watched ? 'text-amber-400 bg-amber-500/15' : 'text-gray-500 hover:text-amber-400 hover:bg-white/5'}" title="\${watched ? 'On your watchlist' : 'Add to watchlist'}"><i class="fa\${watched ? 's' : 'r'} fa-star text-sm"></i></button>
+            </div>
+            \${p.pitcher_profile ? \`<p class="text-xs text-gray-500 mt-2 line-clamp-3">\${p.pitcher_profile}</p>\` : ''}
+            <div class="flex items-center gap-3 mt-3 text-[11px] text-gray-500"><span><i class="fas fa-clock mr-1"></i>\${p.time_slot}</span></div>
+          </div>\`;
+        }).join('') : (_invWatchOnly
+          ? '<div class="glass rounded-xl p-10 text-center md:col-span-2"><i class="fas fa-star text-3xl text-gray-600 mb-3 block"></i><p class="text-sm text-gray-400">Your watchlist is empty</p><p class="text-xs text-gray-600 mt-1">Star startups to track the ones you want to meet.</p></div>'
+          : '<div class="glass rounded-xl p-10 text-center md:col-span-2"><i class="fas fa-rocket text-3xl text-gray-600 mb-3 block"></i><p class="text-sm text-gray-400">Startup line-up coming soon</p></div>');
+      } catch(e) { el.innerHTML = '<p class="text-sm text-gray-500 text-center py-6 md:col-span-2">Could not load deal flow.</p>'; }
+    }
+
+    // ==================== MEDIA PRESS AREA ====================
+    function openMediaCenter() {
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
+      const t = document.getElementById('tab-media'); if (t) t.classList.remove('hidden');
+      currentTab = 'media';
     }
 
     // ==================== EXHIBITOR LEAD CONSOLE ====================
