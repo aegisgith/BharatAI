@@ -4602,6 +4602,10 @@ function mainPageHTML(): string {
           </div>
         </div>
 
+        <!-- Role-aware welcome panel (logged-in): greets each persona and
+             surfaces the actions that matter to them. Populated by renderRoleHome(). -->
+        <div class="max-w-7xl mx-auto px-4 mt-6 hidden" id="role-home"></div>
+
         <!-- RSVP Confirmation Card -->
         <div class="max-w-7xl mx-auto px-4 mt-6 hidden" id="rsvp-card-container">
           <div class="glass rounded-2xl p-6 border border-amber-500/20" id="rsvp-card">
@@ -6844,20 +6848,78 @@ function mainPageHTML(): string {
       const rsvpCard = document.getElementById('rsvp-card-container');
       const quickActions = document.getElementById('home-quick-actions');
       const registerVisitorBtn = document.getElementById('register-visitor-btn');
+      const roleHome = document.getElementById('role-home');
       if (currentUser) {
         if (rsvpCard) rsvpCard.classList.remove('hidden');
         if (quickActions) quickActions.classList.remove('hidden');
         if (registerVisitorBtn) registerVisitorBtn.classList.add('hidden');
+        if (roleHome) { roleHome.classList.remove('hidden'); renderRoleHome(); }
       } else {
         if (rsvpCard) rsvpCard.classList.add('hidden');
         if (quickActions) quickActions.classList.add('hidden');
         if (registerVisitorBtn) registerVisitorBtn.classList.remove('hidden');
+        if (roleHome) roleHome.classList.add('hidden');
       }
 
       // Update arrival time card on homepage
       updateArrivalCard();
       // Update RSVP card on homepage
       updateRsvpCard();
+    }
+
+    // Role-aware home panel. Each persona gets a distinct greeting + the 2-3
+    // actions that matter to them, so the app stops being one dashboard for
+    // everyone. Keyed off badge_type (and role) — falls back to a sensible
+    // attendee default.
+    function renderRoleHome() {
+      const el = document.getElementById('role-home');
+      if (!el || !currentUser) return;
+      const badge = (currentUser.badge_type || '').toLowerCase();
+      const role = (currentUser.role || '').toLowerCase();
+      const first = (currentUser.name || 'there').split(' ')[0];
+
+      // persona → { label, icon, tint, blurb, actions:[{label,icon,onclick}] }
+      const A = (label, icon, onclick) => ({ label, icon, onclick });
+      let p;
+      if (badge.includes('speaker') || role.includes('speaker')) {
+        p = { label: 'Speaker', icon: 'fa-microphone-lines', tint: '#d946ef', blurb: 'Your sessions, green-room details, and audience are here.',
+          actions: [A('My sessions','fa-calendar-check',"switchTab('schedule')"), A('Edit my profile','fa-user-pen',"switchTab('myprofile')"), A('Message attendees','fa-comments',"switchTab('networking')")] };
+      } else if (badge.includes('exhibitor') || role.includes('exhibitor') || badge.includes('startup')) {
+        p = { label: badge.includes('startup') ? 'Startup' : 'Exhibitor', icon: 'fa-store', tint: '#FF6B00', blurb: 'Manage your booth, capture leads, and connect with buyers & investors.',
+          actions: [A('My booth','fa-store',"switchTab('myprofile')"), A('List on AI Market','fa-robot',"location.href='/marketplace'"), A('Find investors','fa-handshake',"switchTab('networking')")] };
+      } else if (badge.includes('investor')) {
+        p = { label: 'Investor', icon: 'fa-sack-dollar', tint: '#22c55e', blurb: 'Discover startups pitching at the event and book meetings.',
+          actions: [A('Startup showcase','fa-rocket',"switchTab('startup-pitch')"), A('Browse founders','fa-users',"switchTab('networking')"), A('My meetings','fa-calendar',"switchTab('inbox')")] };
+      } else if (badge.includes('media') || badge.includes('press')) {
+        p = { label: 'Media', icon: 'fa-newspaper', tint: '#3b82f6', blurb: 'Press schedule, speaker access, and interview requests.',
+          actions: [A('Speaker directory','fa-users',"switchTab('networking')"), A('Schedule','fa-calendar-alt',"switchTab('schedule')"), A('Request interview','fa-comments',"switchTab('networking')")] };
+      } else if (badge.includes('jury')) {
+        p = { label: 'Jury', icon: 'fa-gavel', tint: '#a78bfa', blurb: 'Your judging schedule and assigned startups.',
+          actions: [A('Jury schedule','fa-calendar-check',"switchTab('agba-jury')"), A('Startups','fa-rocket',"switchTab('startup-pitch')"), A('My profile','fa-user',"switchTab('myprofile')")] };
+      } else if (badge.includes('academic') || badge.includes('student')) {
+        p = { label: 'Academic', icon: 'fa-graduation-cap', tint: '#14b8a6', blurb: 'Workshops, the startup zone, and networking with researchers.',
+          actions: [A('Workshops','fa-laptop-code',"switchTab('workshops')"), A('Network','fa-users',"switchTab('networking')"), A('Schedule','fa-calendar-alt',"switchTab('schedule')")] };
+      } else {
+        p = { label: displayBadge(currentUser.badge_type || 'Delegate'), icon: 'fa-id-badge', tint: '#FF6B00', blurb: 'Plan your agenda, connect with attendees, and manage your pass.',
+          actions: [A('My schedule','fa-calendar-alt',"switchTab('schedule')"), A('Network','fa-users',"switchTab('networking')"), A('My pass','fa-id-badge',"generateDelegatePass()")] };
+      }
+
+      el.innerHTML = \`
+        <div class="glass rounded-2xl p-5 md:p-6" style="border:1px solid \${p.tint}33;background:linear-gradient(135deg,\${p.tint}0f,transparent 60%);">
+          <div class="flex items-center gap-4 mb-4">
+            <div class="w-12 h-12 rounded-xl flex items-center justify-center shrink-0" style="background:\${p.tint}22;"><i class="fas \${p.icon} text-xl" style="color:\${p.tint}"></i></div>
+            <div class="min-w-0">
+              <div class="flex items-center gap-2 flex-wrap"><h2 class="text-lg font-bold">Welcome back, \${first}</h2><span class="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide" style="background:\${p.tint}22;color:\${p.tint}">\${p.label}</span></div>
+              <p class="text-sm text-gray-400">\${p.blurb}</p>
+            </div>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">\${p.actions.map(a => \`
+            <button onclick="\${a.onclick}" class="flex items-center gap-3 p-3 rounded-xl text-left transition-all hover:bg-white/5 border border-white/8">
+              <i class="fas \${a.icon} text-base w-5 text-center" style="color:\${p.tint}"></i>
+              <span class="text-sm font-medium">\${a.label}</span>
+              <i class="fas fa-chevron-right text-[10px] text-gray-600 ml-auto"></i>
+            </button>\`).join('')}</div>
+        </div>\`;
     }
 
     function updateArrivalCard() {
