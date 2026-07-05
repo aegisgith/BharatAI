@@ -4112,10 +4112,19 @@ function mainPageHTML(): string {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Bharat AI Innovation 2026 — Networking App</title>
   <meta name="description" content="Join the Bharat AI Innovation 2026 networking app — connect with 5,000+ AI leaders, book meetings, browse the marketplace, and manage your pass. 20-21 Nov 2026, WTC Mumbai.">
   <link rel="canonical" href="https://bharataiinnovation.com/app">
+  <!-- PWA: installable, phone-first, offline-resilient for the live event -->
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#0b0d1a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Bharat AI">
+  <link rel="apple-touch-icon" href="/images/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="/images/icon-192.png">
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebApplication","name":"Bharat AI Innovation 2026 App","applicationCategory":"EventApplication","operatingSystem":"Web","offers":{"@type":"Offer","price":"0","priceCurrency":"INR"},"url":"https://bharataiinnovation.com/app","description":"Schedule, networking, passes and live updates for Bharat AI Innovation 2026."}</script>
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Bharat AI Innovation">
   <meta property="og:url" content="https://bharataiinnovation.com/app">
@@ -9844,6 +9853,13 @@ function mainPageHTML(): string {
 
     // Init
     init();
+
+    // Register the service worker for install + offline resilience at the venue.
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').catch(() => {});
+      });
+    }
   </script>
 
   <!-- ===== PAID PASS MODAL ===== -->
