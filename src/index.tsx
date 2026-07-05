@@ -5061,8 +5061,13 @@ function mainPageHTML(): string {
       <!-- Schedule Tab -->
       <div id="tab-schedule" class="tab-content hidden">
         <div class="max-w-7xl mx-auto px-4 py-6">
-          <h2 class="text-2xl font-bold mb-1"><i class="fas fa-calendar-alt text-primary-400 mr-2"></i>Event Schedule</h2>
-          <p class="text-gray-400 text-sm mb-5">20-21 Nov 2026 · World Trade Center, Mumbai</p>
+          <div class="flex items-start justify-between gap-3 flex-wrap mb-1">
+            <h2 class="text-2xl font-bold"><i class="fas fa-calendar-alt text-primary-400 mr-2"></i>Event Schedule</h2>
+            <button id="my-agenda-toggle" onclick="toggleMyAgendaView()" class="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-gray-300 glass hover:text-white transition">
+              <i class="fas fa-star text-amber-400"></i>My Agenda<span id="agenda-count" class="hidden px-1.5 py-0.5 rounded-full text-[10px] bg-amber-500/20 text-amber-300">0</span>
+            </button>
+          </div>
+          <p class="text-gray-400 text-sm mb-5">20-21 Nov 2026 · World Trade Center, Mumbai · <span class="text-gray-500">tap ☆ to build your personal agenda</span></p>
 
           <!-- Day Selector -->
           <div class="flex gap-2 mb-4 overflow-x-auto scroll-hide pb-1" id="sched-day-selector"></div>
@@ -7030,6 +7035,41 @@ function mainPageHTML(): string {
       { key: 'Aryabhata Theatre',   short: 'Aryabhata',   icon: '🚀' },
     ];
 
+    // ---- Personal agenda (add-to-my-schedule). Stored locally so it works
+    // offline via the PWA and needs no backend/migration. ----
+    let _agendaShowMineOnly = false;
+    function _agendaSet() { try { return new Set(JSON.parse(localStorage.getItem('bhai_agenda') || '[]')); } catch { return new Set(); } }
+    function _agendaSave(set) { localStorage.setItem('bhai_agenda', JSON.stringify([...set])); }
+    function isInAgenda(id) { return _agendaSet().has(id); }
+    function toggleAgenda(id, btn) {
+      const set = _agendaSet();
+      const nowIn = !set.has(id);
+      if (nowIn) set.add(id); else set.delete(id);
+      _agendaSave(set);
+      if (btn) {
+        btn.className = 'agenda-star ml-auto w-8 h-8 rounded-lg flex items-center justify-center transition ' + (nowIn ? 'text-amber-400 bg-amber-500/15' : 'text-gray-500 hover:text-amber-400 hover:bg-white/5');
+        btn.innerHTML = '<i class="fa' + (nowIn ? 's' : 'r') + ' fa-star text-sm"></i>';
+        btn.title = nowIn ? 'In your agenda' : 'Add to my agenda';
+      }
+      showToast(nowIn ? 'Added to your agenda' : 'Removed from your agenda', 'success');
+      updateAgendaCount();
+      if (_agendaShowMineOnly) loadSchedule();
+    }
+    function updateAgendaCount() {
+      const el = document.getElementById('agenda-count');
+      if (el) { const n = _agendaSet().size; el.textContent = n; el.classList.toggle('hidden', n === 0); }
+    }
+    function toggleMyAgendaView() {
+      _agendaShowMineOnly = !_agendaShowMineOnly;
+      const btn = document.getElementById('my-agenda-toggle');
+      if (btn) {
+        btn.classList.toggle('bg-amber-500/20', _agendaShowMineOnly);
+        btn.classList.toggle('text-amber-300', _agendaShowMineOnly);
+        btn.classList.toggle('text-gray-300', !_agendaShowMineOnly);
+      }
+      loadSchedule();
+    }
+
     function renderScheduleSessionCard(s) {
       const isPanel = s.speaker_name && s.speaker_name.includes(',') && (s.session_type === 'panel' || s.speaker_name.split(',').length >= 3);
       let speakerHtml = '';
@@ -7097,6 +7137,7 @@ function mainPageHTML(): string {
               <span class="text-lg leading-none">\${s.speaker_avatar || '📌'}</span>
               <span class="px-2 py-0.5 rounded-full text-[11px] font-semibold \${getSessionTypeClass(s.session_type)}">\${s.session_type}</span>
               \${s.track ? \`<span class="px-2 py-0.5 rounded-full text-[11px] bg-white/5 text-gray-400">\${s.track}</span>\` : ''}
+              \${!isBreak ? \`<button onclick="event.stopPropagation();toggleAgenda(\${s.id},this)" class="agenda-star ml-auto w-8 h-8 rounded-lg flex items-center justify-center transition \${isInAgenda(s.id) ? 'text-amber-400 bg-amber-500/15' : 'text-gray-500 hover:text-amber-400 hover:bg-white/5'}" title="\${isInAgenda(s.id) ? 'In your agenda' : 'Add to my agenda'}"><i class="fa\${isInAgenda(s.id) ? 's' : 'r'} fa-star text-sm"></i></button>\` : ''}
             </div>
             <h3 class="font-bold text-[15px] leading-snug mb-1 \${isBreak ? 'text-gray-400' : 'text-white'}">\${s.title}</h3>
             \${s.description && !isBreak ? \`<p class="text-xs text-gray-400 mb-2 leading-relaxed">\${s.description}</p>\` : ''}
@@ -7150,10 +7191,15 @@ function mainPageHTML(): string {
               \${t}
             </button>\`).join('')}\`;
 
-        // ── Sessions list ──
-        listEl.innerHTML = sessions.length
-          ? sessions.map(renderScheduleSessionCard).join('')
-          : '<div class="text-center text-gray-500 py-12"><i class="fas fa-calendar-times text-4xl mb-3 block opacity-40"></i><p>No sessions found for this filter.</p></div>';
+        // ── Sessions list (optionally filtered to the user's personal agenda) ──
+        updateAgendaCount();
+        let shown = sessions;
+        if (_agendaShowMineOnly) { const mine = _agendaSet(); shown = sessions.filter(s => mine.has(s.id)); }
+        listEl.innerHTML = shown.length
+          ? shown.map(renderScheduleSessionCard).join('')
+          : (_agendaShowMineOnly
+              ? '<div class="text-center text-gray-500 py-12"><i class="fas fa-star text-4xl mb-3 block opacity-40 text-amber-400"></i><p>Nothing in your agenda for this hall/day yet.</p><p class="text-xs text-gray-600 mt-1">Tap the ☆ on any session to add it.</p></div>'
+              : '<div class="text-center text-gray-500 py-12"><i class="fas fa-calendar-times text-4xl mb-3 block opacity-40"></i><p>No sessions found for this filter.</p></div>');
 
       } catch(e) { console.error('Schedule error:', e); listEl.innerHTML = '<div class="text-center text-gray-500 py-12">Failed to load schedule. Please try again.</div>'; }
     }
