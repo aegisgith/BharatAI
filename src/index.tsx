@@ -4470,6 +4470,17 @@ function mainPageHTML(): string {
             <button class="js-signin-btn flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold text-white transition-all hover:opacity-90" id="nav-signin-btn-desktop" onclick="showRegistration()" style="background:linear-gradient(135deg,#FF6B00,#e03060);box-shadow:0 4px 15px rgba(255,107,0,0.35);">
               <i class="fas fa-sign-in-alt text-[11px]"></i> Log In / Register
             </button>
+            <!-- Notification bell (visible when logged in) -->
+            <div class="js-avatar-btn hidden relative">
+              <button onclick="toggleNotifCenter(event)" class="nav-btn flex items-center justify-center w-9 h-9 rounded-full text-gray-300 hover:text-white transition-all border border-white/10" title="Notifications" id="nav-notif-btn">
+                <i class="fas fa-bell"></i>
+                <span id="notif-badge" class="hidden absolute -top-1 -right-1 min-w-4 h-4 px-1 bg-primary-500 text-white text-[9px] rounded-full flex items-center justify-center">0</span>
+              </button>
+              <div id="notif-dropdown" class="hidden absolute right-0 mt-2 w-80 max-w-[90vw] rounded-xl overflow-hidden z-50" style="background:rgba(15,17,30,0.98);backdrop-filter:blur(24px);border:1px solid rgba(255,255,255,0.1);box-shadow:0 12px 40px rgba(0,0,0,0.5);">
+                <div class="px-4 py-3 border-b border-white/8 flex items-center justify-between"><span class="text-sm font-semibold">Notifications</span><button onclick="markNotifsRead()" class="text-[11px] text-primary-400 hover:underline">Mark all read</button></div>
+                <div id="notif-list" class="max-h-96 overflow-y-auto"></div>
+              </div>
+            </div>
             <!-- Avatar + Log Out (visible when logged in) -->
             <button class="js-avatar-btn hidden nav-btn items-center gap-2 px-2 py-1 rounded-full text-sm font-medium text-gray-300 hover:text-white transition-all border border-white/10" data-tab="myprofile" onclick="switchTab('myprofile')" id="nav-avatar-btn">
               <img id="nav-avatar-img" src="https://ui-avatars.com/api/?name=U&size=36&background=FF6B00&color=fff&bold=true&rounded=true" alt="Profile" class="w-8 h-8 rounded-full object-cover border-2 border-orange-500/50">
@@ -6320,6 +6331,7 @@ function mainPageHTML(): string {
       updateNavForAuth();
       updateNavAvatar();
       checkUnread();
+      pollNotifications(true); // start the notification center
       // Refresh dashboard with user-specific content (RSVP, arrival card)
       if (currentTab === 'dashboard') loadDashboard();
       // Navigate to pending tab if any
@@ -8550,6 +8562,64 @@ function mainPageHTML(): string {
       } catch(e) {}
       setTimeout(checkUnread, 15000);
     }
+
+    // ==================== NOTIFICATION CENTER ====================
+    // Polls announcements across ALL tabs (not just dashboard load), toasts new
+    // ones so a "Keynote moved to Hall B" reaches users anywhere in the app,
+    // and keeps a bell dropdown of recent updates. Read-state persists locally.
+    let _notifCache = [];
+    function _notifSeenId() { return parseInt(localStorage.getItem('bhai_notif_seen') || '0', 10); }
+    function _notifReadId() { return parseInt(localStorage.getItem('bhai_notif_read') || '0', 10); }
+    async function pollNotifications(firstRun) {
+      try {
+        const anns = await api.get(\`/api/events/\${EVENT_ID}/announcements\`);
+        _notifCache = anns || [];
+        const maxId = _notifCache.reduce((m, a) => Math.max(m, a.id || 0), 0);
+        // Toast genuinely new announcements (not on the very first paint).
+        if (!firstRun) {
+          const seen = _notifSeenId();
+          const fresh = _notifCache.filter(a => (a.id || 0) > seen);
+          fresh.slice(0, 2).forEach(a => showToast('📢 ' + a.title, a.announcement_type === 'urgent' ? 'error' : 'info'));
+        }
+        if (maxId) localStorage.setItem('bhai_notif_seen', String(maxId));
+        renderNotifCenter();
+      } catch(e) {}
+      setTimeout(() => pollNotifications(false), 30000);
+    }
+    function renderNotifCenter() {
+      const list = document.getElementById('notif-list');
+      const badge = document.getElementById('notif-badge');
+      if (!list) return;
+      const readId = _notifReadId();
+      const unread = _notifCache.filter(a => (a.id || 0) > readId).length;
+      if (badge) { if (unread > 0) { badge.textContent = unread > 9 ? '9+' : unread; badge.classList.remove('hidden'); } else badge.classList.add('hidden'); }
+      list.innerHTML = _notifCache.length ? _notifCache.slice(0, 12).map(a => {
+        const isUnread = (a.id || 0) > readId;
+        const icon = a.announcement_type === 'urgent' ? 'fa-triangle-exclamation text-red-400' : a.announcement_type === 'schedule_change' ? 'fa-arrows-rotate text-yellow-400' : 'fa-bullhorn text-primary-400';
+        return \`<div class="px-4 py-3 border-b border-white/5 \${isUnread ? 'bg-primary-500/5' : ''}">
+          <div class="flex items-start gap-2.5"><i class="fas \${icon} mt-0.5 text-xs"></i>
+          <div class="min-w-0 flex-1"><p class="text-sm font-medium \${isUnread ? '' : 'text-gray-300'}">\${a.title}</p><p class="text-xs text-gray-500 mt-0.5 line-clamp-2">\${a.content || ''}</p><p class="text-[10px] text-gray-600 mt-1">\${new Date(a.created_at).toLocaleString()}</p></div>
+          \${isUnread ? '<span class="w-2 h-2 rounded-full bg-primary-500 shrink-0 mt-1.5"></span>' : ''}</div></div>\`;
+      }).join('') : '<div class="px-4 py-8 text-center text-sm text-gray-500"><i class="fas fa-bell-slash block text-xl mb-2"></i>No notifications yet</div>';
+    }
+    function toggleNotifCenter(e) {
+      if (e) e.stopPropagation();
+      const dd = document.getElementById('notif-dropdown');
+      if (!dd) return;
+      dd.classList.toggle('hidden');
+      if (!dd.classList.contains('hidden')) renderNotifCenter();
+    }
+    function markNotifsRead() {
+      const maxId = _notifCache.reduce((m, a) => Math.max(m, a.id || 0), 0);
+      localStorage.setItem('bhai_notif_read', String(maxId));
+      renderNotifCenter();
+    }
+    // Close dropdown on outside click.
+    document.addEventListener('click', (e) => {
+      const dd = document.getElementById('notif-dropdown');
+      const btn = document.getElementById('nav-notif-btn');
+      if (dd && !dd.classList.contains('hidden') && !dd.contains(e.target) && btn && !btn.contains(e.target)) dd.classList.add('hidden');
+    });
 
     // ==================== RSVP FUNCTIONS ====================
     async function submitRsvp(status) {
