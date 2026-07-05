@@ -4190,6 +4190,11 @@ function mainPageHTML(): string {
     select { -webkit-appearance: none; -moz-appearance: none; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%239ca3af' d='M6 8L1 3h10z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 32px; }
     .chat-bubble-sent { background: linear-gradient(135deg, #f5620a, #c94040); border-radius: 18px 18px 4px 18px; }
     .chat-bubble-received { background: rgba(255,255,255,0.07); border-radius: 18px 18px 18px 4px; }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    /* Mobile nav buttons: ≥48px touch target (was ~34px) */
+    @media (max-width: 767px) { #main-nav .nav-btn { min-width: 52px; min-height: 46px; justify-content: center; } }
+    @media (prefers-reduced-motion: reduce) { .shimmer, .animate-pulse-slow, .badge-pulse { animation: none !important; } }
     .shimmer { background: linear-gradient(90deg, rgba(255,255,255,0.03) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.03) 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; }
     @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
     .animate-pulse-slow { animation: pulse-slow 2s ease-in-out infinite; }
@@ -4404,10 +4409,11 @@ function mainPageHTML(): string {
     </div>
 
     <!-- Main Navigation -->
-    <nav id="main-nav" class="hidden fixed bottom-0 left-0 right-0 z-30 md:top-0 md:bottom-auto" style="background:rgba(11,13,26,0.92);backdrop-filter:blur(24px);border-bottom:1px solid rgba(255,255,255,0.06);">
+    <nav id="main-nav" class="hidden fixed bottom-0 left-0 right-0 z-30 md:top-0 md:bottom-auto" style="background:rgba(11,13,26,0.92);backdrop-filter:blur(24px);border-bottom:1px solid rgba(255,255,255,0.06);padding-bottom:env(safe-area-inset-bottom);">
       <div class="max-w-7xl mx-auto px-4">
-        <!-- Mobile nav: icon bar at bottom -->
-        <div class="flex md:hidden items-center justify-around py-2">
+        <!-- Mobile nav: icon bar at bottom. Scrolls horizontally if items exceed
+             the width instead of crushing; min touch target ~48px. -->
+        <div class="flex md:hidden items-center justify-around py-1.5 overflow-x-auto no-scrollbar">
           <button class="nav-btn tab-active flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl text-[10px] font-medium transition-all" data-tab="dashboard" onclick="switchTab('dashboard')">
             <i class="fas fa-th-large text-base"></i><span>Home</span>
           </button>
