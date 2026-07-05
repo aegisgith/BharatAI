@@ -11,3 +11,4 @@ pids/
 logs/
 *.log
 .pm2/
+.playwright-mcp/

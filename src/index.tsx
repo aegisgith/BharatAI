@@ -188,15 +188,22 @@ app.get('/api/attendees/:id', async (c) => {
 app.post('/api/events/:id/attendees/register', async (c) => {
   const eventId = c.req.param('id')
   const body = await c.req.json()
-  const { name, email, company, job_title, bio, interests, linkedin_url, mobile, lunch_inclusion } = body
+  const { name, email, company, job_title, bio, interests, linkedin_url, mobile, lunch_inclusion, city, badge_type } = body
 
   if (!name || !email) return c.json({ error: 'Name and email are required' }, 400)
   const normalizedEmail = email.trim().toLowerCase()
 
+  // Honor the pass the user selected. Previously this hardcoded 'Visitor Pass',
+  // so anyone who chose (and paid for) Delegate/VIP/Academic was stored as a
+  // free Visitor and then locked out of networking. Validate against a known
+  // allowlist so a bad value can't create an arbitrary pass; default to Visitor.
+  const ALLOWED_PASSES = ['Visitor Pass', 'Delegate Pass', 'VIP Pass', 'Academic Pass', 'Media Pass']
+  const passType = ALLOWED_PASSES.includes(badge_type) ? badge_type : 'Visitor Pass'
+
   try {
     const result = await c.env.DB.prepare(
-      'INSERT INTO attendees (event_id, name, email, company, job_title, bio, interests, linkedin_url, mobile, lunch_inclusion, badge_type, is_online, last_login_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, datetime("now"))'
-    ).bind(eventId, name.trim(), normalizedEmail, company || '', job_title || '', bio || '', interests || '', linkedin_url || '', mobile || '', lunch_inclusion || 'No', 'Visitor Pass').run()
+      'INSERT INTO attendees (event_id, name, email, company, job_title, bio, interests, linkedin_url, mobile, city, lunch_inclusion, badge_type, is_online, last_login_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, datetime("now"))'
+    ).bind(eventId, name.trim(), normalizedEmail, company || '', job_title || '', bio || '', interests || '', linkedin_url || '', mobile || '', city || '', lunch_inclusion || 'No', passType).run()
 
     const attendee = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(result.meta.last_row_id).first()
     return c.json(attendee, 201)
@@ -407,7 +414,7 @@ app.post('/api/events/:id/attendees/send-magic-link', async (c) => {
 
   // Build magic link URL
   const appUrlRow = await c.env.DB.prepare("SELECT value FROM app_settings WHERE key = 'app_url'").first() as any
-  const appUrl = appUrlRow?.value || 'https://networking.bharataiinnovation.com'
+  const appUrl = appUrlRow?.value || 'https://bharataiinnovation.com/app'
   const magicLink = `${appUrl}?email=${encodeURIComponent(normalizedEmail)}&action=magic-login`
 
   // Build email HTML
@@ -508,7 +515,7 @@ app.get('/api/rsvp', async (c) => {
 
   // Redirect to pretty RSVP confirmation page
   const appUrlRow = await c.env.DB.prepare("SELECT value FROM app_settings WHERE key = 'app_url'").first() as any
-  const appUrl = appUrlRow?.value || 'https://networking.bharataiinnovation.com'
+  const appUrl = appUrlRow?.value || 'https://bharataiinnovation.com/app'
   return c.redirect(`/rsvp-confirmed?status=${status}&name=${encodeURIComponent(attendee.name)}&email=${encodeURIComponent(email as string)}&app=${encodeURIComponent(appUrl)}`)
 })
 
@@ -517,7 +524,7 @@ app.get('/rsvp-confirmed', (c) => {
   const status = c.req.query('status') || 'confirmed'
   const name = c.req.query('name') || 'there'
   const email = c.req.query('email') || ''
-  const appUrl = c.req.query('app') || 'https://networking.bharataiinnovation.com'
+  const appUrl = c.req.query('app') || 'https://bharataiinnovation.com/app'
 
   const statusConfig: any = {
     confirmed: { emoji: '🎉', title: "You're Confirmed!", subtitle: "We look forward to seeing you at the event.", color: '#22c55e', bg: 'from-green-500/20 to-emerald-500/20', border: 'border-green-500/30' },
@@ -540,7 +547,7 @@ app.get('/rsvp-confirmed', (c) => {
         <p class="text-white font-semibold text-sm">Bharat AI Innovation Conference & Exhibition 2026</p>
         <p class="text-gray-400 text-xs mt-1"><i class="fas fa-calendar-alt mr-1"></i>20-21 Nov 2026 &bull; <i class="fas fa-map-marker-alt ml-1 mr-1"></i>World Trade Center, Mumbai</p>
       </div>
-      ${status === 'confirmed' ? `<div class="space-y-2 mb-4"><a href="${appUrl}?email=${encodeURIComponent(email)}&action=download-pass" class="block w-full py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 transition text-sm"><i class="fas fa-id-badge mr-2"></i>Download Delegate Pass</a></div>` : ''}
+      ${status === 'confirmed' ? `<div class="space-y-2 mb-4"><a href="${appUrl}?email=${encodeURIComponent(email)}&action=download-pass" class="block w-full py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-primary-600 to-primary-500 hover:from-primary-500 hover:to-primary-400 transition text-sm"><i class="fas fa-id-badge mr-2"></i>Download Delegate Pass</a></div>` : ''}
       <a href="${appUrl}?email=${encodeURIComponent(email)}" class="block w-full py-3 rounded-xl font-bold text-white transition text-sm text-center hover:opacity-90 no-underline" style="background:linear-gradient(135deg,#f5620a,#e03060);box-shadow:0 4px 20px rgba(245,98,10,0.28);"><i class="fas fa-rocket mr-2"></i>Open Networking App</a>
       <p class="text-xs text-gray-500 mt-4">You can change your RSVP anytime from the app.</p>
     </div>
@@ -1418,7 +1425,7 @@ app.post('/api/admin/attendees/:id/notify', async (c) => {
 
   // Use stored app_url setting, or fall back to production domain, or derive from request
   const appUrlRow = await c.env.DB.prepare("SELECT value FROM app_settings WHERE key = 'app_url'").first() as any
-  const appUrl = appUrlRow?.value || 'https://networking.bharataiinnovation.com'
+  const appUrl = appUrlRow?.value || 'https://bharataiinnovation.com/app'
 
   const passUrl = `${appUrl}?email=${encodeURIComponent(attendee.email)}&action=download-pass`
 
@@ -1624,7 +1631,7 @@ app.post('/api/admin/attendees/:id/send-thankyou', async (c) => {
   if (!attendee.email) return c.json({ error: 'Attendee has no email' }, 400)
 
   const appUrlRow = await c.env.DB.prepare("SELECT value FROM app_settings WHERE key = 'app_url'").first() as any
-  const appUrl = appUrlRow?.value || 'https://networking.bharataiinnovation.com'
+  const appUrl = appUrlRow?.value || 'https://bharataiinnovation.com/app'
   const photosUrl = 'https://drive.google.com/drive/folders/14YkEgPMjXIJ2JYNYmgxmBOH6g2TL1-FM?usp=sharing'
 
   const emailHtml = `
@@ -2907,14 +2914,53 @@ app.get('/inquiry', (c) => {
   return c.html(inquiryFormPageHTML())
 })
 
-function sharedHeadHTML(title: string): string {
+// Shared <head> for app pages (contact, register, marketplace). `path` and
+// `desc` power per-page canonical + social-share cards so links pasted into
+// WhatsApp/LinkedIn/X render a proper preview (previously these pages had NO
+// og/twitter/canonical/JSON-LD at all). og:image is a 1200x630 card.
+function sharedHeadHTML(title: string, path: string = '/', desc?: string): string {
+  const fullTitle = `${title} — Bharat AI Innovation 2026`
+  const description = desc || `${title} for Bharat AI Innovation 2026 — India's largest AI Conference & Exhibition, 20-21 Nov 2026, WTC Mumbai. Register free.`
+  const url = `https://bharataiinnovation.com${path}`
+  const ogImage = 'https://bharataiinnovation.com/images/og-card.png'
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${title} — Bharat AI Innovation 2026</title>
-  <meta name="description" content="${title} for Bharat AI Innovation 2026 - India's Largest AI Conference & Exhibition, 20-21 Nov 2026, WTC Mumbai">
+  <title>${fullTitle}</title>
+  <meta name="description" content="${description}">
+  <link rel="canonical" href="${url}">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Bharat AI Innovation">
+  <meta property="og:locale" content="en_IN">
+  <meta property="og:url" content="${url}">
+  <meta property="og:title" content="${fullTitle}">
+  <meta property="og:description" content="${description}">
+  <meta property="og:image" content="${ogImage}">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:url" content="${url}">
+  <meta name="twitter:title" content="${fullTitle}">
+  <meta name="twitter:description" content="${description}">
+  <meta name="twitter:image" content="${ogImage}">
+  <!-- Structured data -->
+  <script type="application/ld+json">${JSON.stringify({
+    "@context": "https://schema.org", "@type": "Event",
+    name: "Bharat AI Innovation 2026",
+    description: "India's largest AI Conference & Exhibition — GenAI, LLMs, enterprise AI, startups. 20-21 Nov 2026, WTC Mumbai.",
+    startDate: "2026-11-20", endDate: "2026-11-21",
+    eventStatus: "https://schema.org/EventScheduled",
+    eventAttendanceMode: "https://schema.org/OfflineEventAttendanceMode",
+    location: { "@type": "Place", name: "World Trade Center, Mumbai", address: { "@type": "PostalAddress", addressLocality: "Mumbai", addressRegion: "Maharashtra", addressCountry: "IN" } },
+    image: [ogImage],
+    organizer: { "@type": "Organization", name: "Bharat AI Innovation", url: "https://bharataiinnovation.com" },
+    offers: { "@type": "Offer", url: "https://bharataiinnovation.com/register", price: "0", priceCurrency: "INR", availability: "https://schema.org/InStock" }
+  })}</script>
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
   <script>
@@ -2922,7 +2968,7 @@ function sharedHeadHTML(title: string): string {
       theme: {
         extend: {
           colors: {
-            primary: { 50:'#fff4ed',100:'#ffe4cc',200:'#ffca99',300:'#ffa85c',400:'#ff7c1f',500:'#f5620a',600:'#e04d06',700:'#ba3a07',800:'#94300d',900:'#7a2b0e' },
+            primary: { 50:'#fff3e9',100:'#ffe0c7',200:'#ffc194',300:'#ff9d55',400:'#ff8524',500:'#FF6B00',600:'#e05a00',700:'#b84800',800:'#933a08',900:'#79300c' },
             accent: { 50:'#fdf4ff',100:'#fbe8ff',200:'#f5d0fe',300:'#f0abfc',400:'#e879f9',500:'#d946ef',600:'#c026d3',700:'#a21caf',800:'#86198f',900:'#701a75' },
             dark: { 700:'#1e2240',800:'#141730',900:'#0b0d1a' }
           }
@@ -3045,7 +3091,7 @@ function sharedToastJS(): string {
 }
 
 function contactPageHTML(): string {
-  return `${sharedHeadHTML('Contact Us')}
+  return `${sharedHeadHTML('Contact Us', '/contact', "Questions about Bharat AI Innovation 2026? Reach the team for registration, sponsorship, exhibition, and press enquiries. 20-21 Nov 2026, WTC Mumbai.")}
 <body class="min-h-screen">
 ${sharedNavHTML('contact')}
 
@@ -3273,14 +3319,14 @@ if (hash && TYPE_CONFIG[hash]) selectType(hash);
 }
 
 function registerPageHTML(): string {
-  return `${sharedHeadHTML('Register')}
+  return `${sharedHeadHTML('Register Free', '/register', "Register free for Bharat AI Innovation 2026 — India's largest AI conference. Get your Visitor Pass in 30 seconds, or upgrade to Delegate/VIP. 20-21 Nov 2026, WTC Mumbai.")}
 <body class="min-h-screen">
 ${sharedNavHTML('register')}
 
 <main class="max-w-7xl mx-auto px-4 py-8">
   <!-- Hero -->
   <div class="text-center mb-8">
-    <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold bg-green-500/20 text-green-300 border border-green-500/30 mb-4">
+    <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold bg-primary-500/20 text-primary-300 border border-primary-500/30 mb-4">
       <i class="fas fa-ticket-alt"></i>FREE REGISTRATION OPEN
     </div>
     <h1 class="text-3xl md:text-4xl font-bold mb-3">Register for Bharat AI Innovation 2026</h1>
@@ -3290,18 +3336,18 @@ ${sharedNavHTML('register')}
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 max-w-5xl mx-auto">
     <!-- Registration Form -->
     <div>
-      <div class="glass rounded-2xl p-6 md:p-8 border border-green-500/20">
+      <div class="glass rounded-2xl p-6 md:p-8 border border-primary-500/20">
         <div class="flex items-center gap-3 mb-2">
-          <div class="w-10 h-10 rounded-xl bg-green-500/20 flex items-center justify-center shrink-0">
-            <i class="fas fa-id-badge text-lg text-green-400"></i>
+          <div class="w-10 h-10 rounded-xl bg-primary-500/20 flex items-center justify-center shrink-0">
+            <i class="fas fa-id-badge text-lg text-primary-400"></i>
           </div>
           <div>
-            <h2 class="font-bold text-lg text-green-300">Get Your Free Visitor Pass</h2>
+            <h2 class="font-bold text-lg text-primary-300">Get Your Free Visitor Pass</h2>
             <p class="text-xs text-gray-400">Register in 30 seconds</p>
           </div>
         </div>
-        <div class="text-center p-3 rounded-xl bg-green-500/10 border border-green-500/20 mb-5">
-          <span class="text-green-400 text-xs font-semibold"><i class="fas fa-check-circle mr-1"></i>Exhibition floor access & product demos — all free</span>
+        <div class="text-center p-3 rounded-xl bg-primary-500/10 border border-primary-500/20 mb-5">
+          <span class="text-primary-400 text-xs font-semibold"><i class="fas fa-check-circle mr-1"></i>Exhibition floor access & product demos — all free</span>
         </div>
 
         <form id="reg-form" onsubmit="submitRegistration(event)" class="space-y-4">
@@ -3343,17 +3389,17 @@ ${sharedNavHTML('register')}
               <input type="text" id="rf-interests" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="AI, ML, Computer Vision...">
             </div>
           </div>
-          <button type="submit" id="rf-submit" class="w-full py-3.5 rounded-xl font-semibold text-white bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 transition-all text-sm shadow-lg shadow-green-500/20">
+          <button type="submit" id="rf-submit" class="w-full py-3.5 rounded-xl font-semibold text-white bg-gradient-to-r from-primary-600 to-primary-500 hover:from-primary-500 hover:to-primary-400 transition-all text-sm shadow-lg shadow-primary-500/25">
             <i class="fas fa-check-circle mr-2"></i>Register — It's Free!
           </button>
           <p class="text-center text-[10px] text-gray-500">By registering, you agree to receive event updates via email</p>
         </form>
 
         <div id="reg-success" class="hidden text-center py-6">
-          <div class="w-20 h-20 rounded-full bg-green-500/20 flex items-center justify-center mx-auto mb-4">
-            <i class="fas fa-check text-3xl text-green-400"></i>
+          <div class="w-20 h-20 rounded-full bg-primary-500/20 flex items-center justify-center mx-auto mb-4">
+            <i class="fas fa-check text-3xl text-primary-400"></i>
           </div>
-          <h3 class="font-bold text-xl text-green-300" id="rs-name"></h3>
+          <h3 class="font-bold text-xl text-primary-300" id="rs-name"></h3>
           <p class="text-sm text-gray-300 mt-1" id="rs-ref"></p>
           <p class="text-xs text-gray-400 mt-2">Your Visitor Pass is confirmed. You can now access the networking app.</p>
           <div class="flex gap-3 justify-center mt-5">
@@ -3371,12 +3417,12 @@ ${sharedNavHTML('register')}
     <!-- Pass Info Sidebar -->
     <div class="space-y-4">
       <!-- Visitor Pass Details -->
-      <div class="glass rounded-2xl p-6 border border-green-500/20">
-        <h3 class="font-bold text-lg text-green-300 mb-3"><i class="fas fa-ticket-alt mr-2"></i>Visitor Pass — FREE</h3>
+      <div class="glass rounded-2xl p-6 border border-primary-500/20">
+        <h3 class="font-bold text-lg text-primary-300 mb-3"><i class="fas fa-ticket-alt mr-2"></i>Visitor Pass — FREE</h3>
         <ul class="space-y-2 text-sm text-gray-300">
-          <li><i class="fas fa-check text-green-400 mr-2"></i>Exhibition floor access</li>
-          <li><i class="fas fa-check text-green-400 mr-2"></i>Product & startup demos</li>
-          <li><i class="fas fa-check text-green-400 mr-2"></i>Exhibition day activities</li>
+          <li><i class="fas fa-check text-primary-400 mr-2"></i>Exhibition floor access</li>
+          <li><i class="fas fa-check text-primary-400 mr-2"></i>Product & startup demos</li>
+          <li><i class="fas fa-check text-primary-400 mr-2"></i>Exhibition day activities</li>
         </ul>
       </div>
 
@@ -3449,7 +3495,8 @@ async function submitRegistration(e) {
         city: document.getElementById('rf-city').value.trim(),
         linkedin_url: document.getElementById('rf-linkedin').value.trim(),
         interests: document.getElementById('rf-interests').value.trim(),
-        bio: ''
+        bio: '',
+        badge_type: 'Visitor Pass'
       })
     });
     const data = await resp.json();
@@ -3467,7 +3514,7 @@ async function submitRegistration(e) {
     const refId = 'BHAI-2026-' + String(data.id).padStart(5, '0');
     document.getElementById('rs-name').textContent = 'Welcome, ' + data.name + '!';
     document.getElementById('rs-ref').textContent = 'Reference: ' + refId + ' · ' + data.email;
-    document.getElementById('rs-app-link').href = '/?email=' + encodeURIComponent(data.email);
+    document.getElementById('rs-app-link').href = '/app?email=' + encodeURIComponent(data.email);
     showToast('Registration successful!', 'success');
   } catch(err) {
     showToast('Network error. Please try again.', 'error');
@@ -3621,7 +3668,7 @@ async function submitRegisterPaidPassForm(e) {
 // ==================== STANDALONE INQUIRY FORM PAGE ====================
 
 function inquiryFormPageHTML(): string {
-  return `${sharedHeadHTML('Book Your Booth — Bharat AI Innovation 2026')}
+  return `${sharedHeadHTML('Book Your Booth', '/inquiry', "Exhibit at Bharat AI Innovation 2026. Book a booth to reach 5,000+ AI decision-makers at WTC Mumbai, 20-21 Nov 2026. Booths from ₹38,000.")}
 <body class="min-h-screen">
 ${sharedNavHTML('inquiry')}
 
@@ -4064,7 +4111,21 @@ function mainPageHTML(): string {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Bharat AI Innovation 2026</title>
+  <title>Bharat AI Innovation 2026 — Networking App</title>
+  <meta name="description" content="Join the Bharat AI Innovation 2026 networking app — connect with 5,000+ AI leaders, book meetings, browse the marketplace, and manage your pass. 20-21 Nov 2026, WTC Mumbai.">
+  <link rel="canonical" href="https://bharataiinnovation.com/app">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Bharat AI Innovation">
+  <meta property="og:url" content="https://bharataiinnovation.com/app">
+  <meta property="og:title" content="Bharat AI Innovation 2026 — Networking & Registration">
+  <meta property="og:description" content="Register free and connect with 5,000+ AI researchers, founders, and CXOs at India's largest AI conference. 20-21 Nov 2026, WTC Mumbai.">
+  <meta property="og:image" content="https://bharataiinnovation.com/images/og-card.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Bharat AI Innovation 2026 — Networking & Registration">
+  <meta name="twitter:description" content="Register free and connect with 5,000+ AI leaders at India's largest AI conference. 20-21 Nov 2026, WTC Mumbai.">
+  <meta name="twitter:image" content="https://bharataiinnovation.com/images/og-card.png">
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
   <script>
@@ -4072,7 +4133,7 @@ function mainPageHTML(): string {
       theme: {
         extend: {
           colors: {
-            primary: { 50:'#fff4ed',100:'#ffe4cc',200:'#ffca99',300:'#ffa85c',400:'#ff7c1f',500:'#f5620a',600:'#e04d06',700:'#ba3a07',800:'#94300d',900:'#7a2b0e' },
+            primary: { 50:'#fff3e9',100:'#ffe0c7',200:'#ffc194',300:'#ff9d55',400:'#ff8524',500:'#FF6B00',600:'#e05a00',700:'#b84800',800:'#933a08',900:'#79300c' },
             accent: { 50:'#fdf4ff',100:'#fbe8ff',200:'#f5d0fe',300:'#f0abfc',400:'#e879f9',500:'#d946ef',600:'#c026d3',700:'#a21caf',800:'#86198f',900:'#701a75' },
             dark: { 700:'#1e2240',800:'#141730',900:'#0b0d1a' }
           }
@@ -4212,7 +4273,7 @@ function mainPageHTML(): string {
           </div>
           <div><textarea id="reg-bio" placeholder="Short bio (optional)" rows="2" class="w-full px-4 py-3 rounded-xl text-sm"></textarea></div>
           <div><input type="text" id="reg-interests" placeholder="Interests (comma-separated)" class="w-full px-4 py-3 rounded-xl text-sm"></div>
-          <button type="submit" class="w-full py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 transition-all">
+          <button type="submit" class="w-full py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-primary-600 to-primary-500 hover:from-primary-500 hover:to-primary-400 transition-all">
             <i class="fas fa-user-plus mr-2"></i>Register & Get Visitor Pass
           </button>
           <div class="text-center p-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
@@ -4355,7 +4416,7 @@ function mainPageHTML(): string {
             <i class="fas fa-envelope text-base"></i><span>Inbox</span>
             <span id="unread-badge-mobile" class="hidden absolute -top-1 right-0 w-4 h-4 bg-red-500 text-white text-[9px] rounded-full flex items-center justify-center badge-pulse">0</span>
           </button>
-          <button class="nav-btn flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl text-[10px] font-semibold text-orange-400 hover:text-orange-300 transition-all" id="nav-signin-btn" onclick="showRegistration()">
+          <button class="js-signin-btn nav-btn flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl text-[10px] font-semibold text-orange-400 hover:text-orange-300 transition-all" id="nav-signin-btn" onclick="showRegistration()">
             <i class="fas fa-sign-in-alt text-base"></i><span>Sign In</span>
           </button>
           <button class="hidden nav-btn flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl text-[10px] font-medium text-gray-400 hover:text-white transition-all" data-tab="myprofile" onclick="switchTab('myprofile')" id="nav-mobile-me">
@@ -4393,11 +4454,11 @@ function mainPageHTML(): string {
               <span id="unread-badge" class="hidden absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[9px] rounded-full flex items-center justify-center badge-pulse">0</span>
             </button>
             <!-- Sign In button -->
-            <button class="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold text-white transition-all hover:opacity-90" id="nav-signin-btn" onclick="showRegistration()" style="background:linear-gradient(135deg,#f5620a,#e03060);box-shadow:0 4px 15px rgba(245,98,10,0.35);">
+            <button class="js-signin-btn flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold text-white transition-all hover:opacity-90" id="nav-signin-btn-desktop" onclick="showRegistration()" style="background:linear-gradient(135deg,#FF6B00,#e03060);box-shadow:0 4px 15px rgba(255,107,0,0.35);">
               Sign In <i class="fas fa-arrow-right text-[10px]"></i>
             </button>
             <!-- Avatar button (visible when logged in) -->
-            <button class="hidden nav-btn items-center gap-2 px-2 py-1 rounded-full text-sm font-medium text-gray-300 hover:text-white transition-all border border-white/10" data-tab="myprofile" onclick="switchTab('myprofile')" id="nav-avatar-btn">
+            <button class="js-avatar-btn hidden nav-btn items-center gap-2 px-2 py-1 rounded-full text-sm font-medium text-gray-300 hover:text-white transition-all border border-white/10" data-tab="myprofile" onclick="switchTab('myprofile')" id="nav-avatar-btn">
               <img id="nav-avatar-img" src="https://ui-avatars.com/api/?name=U&size=36&background=f5620a&color=fff&bold=true&rounded=true" alt="Profile" class="w-8 h-8 rounded-full object-cover border-2 border-orange-500/50">
               <span id="nav-avatar-name" class="max-w-[100px] truncate text-xs">Me</span>
             </button>
@@ -4750,7 +4811,7 @@ function mainPageHTML(): string {
 
             <!-- CTA Buttons -->
             <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
-              <button onclick="openQuickVisitorReg()" class="px-6 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 transition-all text-sm shadow-lg shadow-green-500/20 animate-pulse-slow">
+              <button onclick="openQuickVisitorReg()" class="px-6 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-primary-600 to-primary-500 hover:from-primary-500 hover:to-primary-400 transition-all text-sm shadow-lg shadow-primary-500/25 animate-pulse-slow">
                 <i class="fas fa-ticket-alt mr-2"></i>Register Free — Visitor Pass
               </button>
               <button onclick="openPaidPassForm()" class="px-6 py-3 rounded-xl font-bold text-white transition-all text-sm hover:opacity-90" style="background:linear-gradient(135deg,#f5620a,#e03060);box-shadow:0 4px 20px rgba(245,98,10,0.28);">
@@ -4783,7 +4844,7 @@ function mainPageHTML(): string {
               <div><input type="text" id="qv-designation" placeholder="Designation / Job Title" class="w-full px-4 py-3 rounded-xl text-sm"></div>
               <div><input type="text" id="qv-city" placeholder="City" class="w-full px-4 py-3 rounded-xl text-sm"></div>
               <div class="md:col-span-2 flex flex-col sm:flex-row gap-3 items-center">
-                <button type="submit" id="qv-submit-btn" class="w-full sm:w-auto px-8 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 transition-all text-sm shadow-lg shadow-green-500/20">
+                <button type="submit" id="qv-submit-btn" class="w-full sm:w-auto px-8 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-primary-600 to-primary-500 hover:from-primary-500 hover:to-primary-400 transition-all text-sm shadow-lg shadow-primary-500/25">
                   <i class="fas fa-check-circle mr-2"></i>Register — It's Free!
                 </button>
                 <span class="text-xs text-gray-500">By registering, you agree to receive event updates</span>
@@ -6244,18 +6305,21 @@ function mainPageHTML(): string {
       }, 1500);
     }
 
-    // Update nav bar to show Sign In button or avatar based on auth state
+    // Update nav bar to show Sign In button or avatar based on auth state.
+    // There are TWO sign-in buttons (mobile + desktop) and TWO "me"/avatar
+    // buttons; toggle ALL of them by class, not by a single (non-unique) id —
+    // that bug left the desktop Sign In button visible while logged in.
     function updateNavForAuth() {
-      const signInBtn = document.getElementById('nav-signin-btn');
+      const signInBtns = document.querySelectorAll('.js-signin-btn');
       const avatarBtn = document.getElementById('nav-avatar-btn');
       const mobileMe = document.getElementById('nav-mobile-me');
       if (currentUser) {
-        if (signInBtn) signInBtn.classList.add('hidden');
-        if (avatarBtn) avatarBtn.classList.remove('hidden');
+        signInBtns.forEach(b => b.classList.add('hidden'));
+        if (avatarBtn) { avatarBtn.classList.remove('hidden'); avatarBtn.classList.add('flex'); }
         if (mobileMe) { mobileMe.classList.remove('hidden'); mobileMe.classList.add('flex'); }
       } else {
-        if (signInBtn) signInBtn.classList.remove('hidden');
-        if (avatarBtn) avatarBtn.classList.add('hidden');
+        signInBtns.forEach(b => b.classList.remove('hidden'));
+        if (avatarBtn) { avatarBtn.classList.add('hidden'); avatarBtn.classList.remove('flex'); }
         if (mobileMe) { mobileMe.classList.add('hidden'); mobileMe.classList.remove('flex'); }
       }
     }
@@ -8954,7 +9018,7 @@ function mainPageHTML(): string {
                   </div>
                 </div>
                 <div class="flex gap-2 shrink-0 flex-wrap">
-                  <button onclick="generateDelegatePass()" class="px-4 py-2.5 rounded-xl text-sm font-medium bg-green-600 hover:bg-green-500 text-white transition quick-action-btn"><i class="fas fa-id-badge mr-2"></i>Download Pass</button>
+                  <button onclick="generateDelegatePass()" class="px-4 py-2.5 rounded-xl text-sm font-medium bg-primary-600 hover:bg-primary-500 text-white transition quick-action-btn"><i class="fas fa-id-badge mr-2"></i>Download Pass</button>
                   <button onclick="openEditProfile()" class="px-4 py-2.5 rounded-xl text-sm font-medium bg-primary-600 hover:bg-primary-500 text-white transition quick-action-btn"><i class="fas fa-user-edit mr-2"></i>Edit Profile</button>
                   <button onclick="logoutUser()" class="px-4 py-2.5 rounded-xl text-sm font-medium glass hover:bg-white/10 text-gray-400 transition quick-action-btn"><i class="fas fa-sign-out-alt mr-2"></i>Sign Out</button>
                 </div>
@@ -13355,7 +13419,7 @@ function adminPageHTML(): string {
                 <label class="block text-xs font-medium text-gray-400 mb-1.5">App URL (for email links)</label>
                 <div class="relative">
                   <i class="fas fa-link absolute left-3 top-1/2 -translate-y-1/2 text-gray-500"></i>
-                  <input type="url" id="set-app-url" value="\${settings.app_url || 'https://networking.bharataiinnovation.com'}" 
+                  <input type="url" id="set-app-url" value="\${settings.app_url || 'https://bharataiinnovation.com/app'}" 
                     placeholder="https://networking.bharataiinnovation.com" 
                     class="w-full pl-10 pr-4 py-2.5 rounded-xl text-sm">
                 </div>
@@ -13523,7 +13587,7 @@ function adminPageHTML(): string {
           elastic_email_api_key: apiKey,
           sender_email: senderEmail,
           sender_name: senderName,
-          app_url: document.getElementById('set-app-url')?.value?.trim() || 'https://networking.bharataiinnovation.com'
+          app_url: document.getElementById('set-app-url')?.value?.trim() || 'https://bharataiinnovation.com/app'
         });
       } catch(e) {
         showSettingsStatus('Failed to save settings: ' + e.message, true);
