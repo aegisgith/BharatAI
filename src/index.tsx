@@ -5067,6 +5067,34 @@ function mainPageHTML(): string {
               <div class="font-semibold text-sm">Innovation</div>
               <div class="text-xs text-gray-500 mt-0.5">Showcase & talks</div>
             </button>
+            <button onclick="openVenueMap()" class="glass rounded-2xl p-5 text-left card-hover transition group">
+              <i class="fas fa-map-location-dot text-2xl text-blue-400 mb-3 block"></i>
+              <div class="font-semibold text-sm">Venue map</div>
+              <div class="text-xs text-gray-500 mt-0.5">Halls & getting there</div>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Venue map -->
+      <div id="tab-venue" class="tab-content hidden">
+        <div class="max-w-7xl mx-auto px-4 py-6">
+          <h2 class="text-2xl font-bold mb-1"><i class="fas fa-map-location-dot text-blue-400 mr-2"></i>Venue &amp; Halls</h2>
+          <p class="text-gray-400 text-sm mb-5">World Trade Center, Cuffe Parade, Mumbai 400005</p>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <div class="glass rounded-2xl p-5">
+              <h3 class="font-semibold mb-3"><i class="fas fa-building text-primary-400 mr-1.5"></i>The four halls</h3>
+              <div class="grid grid-cols-2 gap-3" id="venue-halls"></div>
+            </div>
+            <div class="glass rounded-2xl p-5 flex flex-col">
+              <h3 class="font-semibold mb-3"><i class="fas fa-route text-primary-400 mr-1.5"></i>Getting there</h3>
+              <ul class="space-y-2 text-sm text-gray-300 flex-1">
+                <li class="flex items-start gap-2"><i class="fas fa-train text-blue-400 mt-0.5 text-xs"></i>Nearest station: Churchgate / CSMT, then a short cab ride to Cuffe Parade.</li>
+                <li class="flex items-start gap-2"><i class="fas fa-car text-blue-400 mt-0.5 text-xs"></i>Paid parking available at the WTC complex.</li>
+                <li class="flex items-start gap-2"><i class="fas fa-id-badge text-blue-400 mt-0.5 text-xs"></i>Registration & badge pickup: Centre 1 Building lobby.</li>
+              </ul>
+              <a href="https://www.google.com/maps/search/?api=1&query=World+Trade+Center+Cuffe+Parade+Mumbai" target="_blank" class="mt-4 px-4 py-2.5 rounded-xl text-sm font-semibold text-white text-center no-underline transition hover:opacity-90" style="background:linear-gradient(135deg,#FF6B00,#e05a00);"><i class="fas fa-diamond-turn-right mr-1.5"></i>Open in Google Maps</a>
+            </div>
           </div>
         </div>
       </div>
@@ -8878,6 +8906,18 @@ function mainPageHTML(): string {
       currentTab = 'media';
     }
 
+    // ==================== VENUE MAP ====================
+    function openVenueMap() {
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
+      const t = document.getElementById('tab-venue'); if (t) t.classList.remove('hidden');
+      currentTab = 'venue';
+      const wrap = document.getElementById('venue-halls');
+      if (wrap && typeof HALLS !== 'undefined') {
+        wrap.innerHTML = HALLS.map(h => \`<button onclick="switchTab('schedule');selectedHall='\${h.key}';setTimeout(loadSchedule,50)" class="rounded-xl p-3 text-left transition hover:bg-white/5 border border-white/8">
+          <div class="text-2xl mb-1">\${h.icon}</div><div class="text-xs font-semibold leading-tight">\${h.key}</div><div class="text-[10px] text-gray-500 mt-0.5">View sessions</div></button>\`).join('');
+      }
+    }
+
     // ==================== EXHIBITOR LEAD CONSOLE ====================
     let _ecLeads = [];
     function openExhibitorConsole() {
@@ -8972,6 +9012,55 @@ function mainPageHTML(): string {
     }
 
     // ==================== DELEGATE PASS GENERATOR ====================
+    // Certificate of participation — landscape canvas, same brand + logo
+    // loading approach as the pass. Downloads a PNG the attendee keeps.
+    async function generateCertificate() {
+      const user = currentUser;
+      if (!user) { showToast('Please sign in first', 'error'); return; }
+      showToast('Generating your certificate…', 'info');
+      const W = 1600, H = 1130;
+      const canvas = document.createElement('canvas'); canvas.width = W; canvas.height = H;
+      const ctx = canvas.getContext('2d');
+      const px = (u) => '/api/image-proxy?url=' + encodeURIComponent(u);
+      // Background
+      const bg = ctx.createLinearGradient(0, 0, W, H);
+      bg.addColorStop(0, '#0b0d1a'); bg.addColorStop(1, '#141730');
+      ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+      // Saffron corner glow
+      const glow = ctx.createRadialGradient(W*0.85, H*0.1, 40, W*0.85, H*0.1, 700);
+      glow.addColorStop(0, 'rgba(255,107,0,0.22)'); glow.addColorStop(1, 'rgba(255,107,0,0)');
+      ctx.fillStyle = glow; ctx.fillRect(0, 0, W, H);
+      // Double border
+      ctx.strokeStyle = 'rgba(255,107,0,0.55)'; ctx.lineWidth = 4; ctx.strokeRect(40, 40, W-80, H-80);
+      ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth = 1.5; ctx.strokeRect(58, 58, W-116, H-116);
+      // Logo
+      try { const logo = await loadImage(px('https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png'));
+        const lw = 150, lh = logo.height * (lw/logo.width); ctx.drawImage(logo, (W-lw)/2, 110, lw, lh); } catch(e) {}
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#ff9a52'; ctx.font = '600 26px Inter, Arial'; ctx.fillText('CERTIFICATE OF PARTICIPATION', W/2, 320);
+      ctx.fillStyle = '#c8c9d6'; ctx.font = '400 22px Inter, Arial'; ctx.fillText('This is proudly presented to', W/2, 400);
+      ctx.fillStyle = '#ffffff'; ctx.font = '700 68px Georgia, serif'; ctx.fillText(user.name || 'Attendee', W/2, 500);
+      // underline
+      const uw = Math.min(560, (user.name||'').length * 34 + 120);
+      const ug = ctx.createLinearGradient(W/2-uw/2, 0, W/2+uw/2, 0);
+      ug.addColorStop(0,'rgba(255,107,0,0)'); ug.addColorStop(0.5,'rgba(255,107,0,0.9)'); ug.addColorStop(1,'rgba(255,107,0,0)');
+      ctx.fillStyle = ug; ctx.fillRect(W/2-uw/2, 528, uw, 3);
+      ctx.fillStyle = '#c8c9d6'; ctx.font = '400 24px Inter, Arial';
+      ctx.fillText('for participating in', W/2, 600);
+      ctx.fillStyle = '#ffffff'; ctx.font = '700 40px Inter, Arial'; ctx.fillText('Bharat AI Innovation 2026', W/2, 660);
+      ctx.fillStyle = '#9698ac'; ctx.font = '400 22px Inter, Arial';
+      ctx.fillText("India's Largest AI Conference & Exhibition", W/2, 705);
+      ctx.fillText('20–21 November 2026 · World Trade Center, Mumbai', W/2, 745);
+      // Signature line
+      ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.fillRect(W/2-150, 900, 300, 2);
+      ctx.fillStyle = '#9698ac'; ctx.font = '400 18px Inter, Arial'; ctx.fillText('Organizing Committee · Aegis Knowledge Trust', W/2, 935);
+      ctx.fillStyle = '#6b6a63'; ctx.font = '400 15px Inter, Arial';
+      ctx.fillText('Certificate ID: BHAI-CERT-' + String(user.id).padStart(4,'0'), W/2, 1010);
+      // Download
+      const a = document.createElement('a'); a.href = canvas.toDataURL('image/png'); a.download = 'BharatAI-2026-Certificate.png'; a.click();
+      showToast('Certificate downloaded', 'success');
+    }
+
     async function generateDelegatePass(adminAttendee) {
       const user = adminAttendee || currentUser;
       const isAdminDownload = !!adminAttendee;
@@ -9533,6 +9622,7 @@ function mainPageHTML(): string {
                 </div>
                 <div class="flex gap-2 shrink-0 flex-wrap">
                   <button onclick="generateDelegatePass()" class="px-4 py-2.5 rounded-xl text-sm font-medium bg-primary-600 hover:bg-primary-500 text-white transition quick-action-btn"><i class="fas fa-id-badge mr-2"></i>Download Pass</button>
+                  <button onclick="generateCertificate()" class="px-4 py-2.5 rounded-xl text-sm font-medium glass hover:bg-white/10 text-gray-200 transition quick-action-btn"><i class="fas fa-award mr-2"></i>Certificate</button>
                   <button onclick="openEditProfile()" class="px-4 py-2.5 rounded-xl text-sm font-medium bg-primary-600 hover:bg-primary-500 text-white transition quick-action-btn"><i class="fas fa-user-edit mr-2"></i>Edit Profile</button>
                   <button onclick="logoutUser()" class="px-4 py-2.5 rounded-xl text-sm font-medium glass hover:bg-white/10 text-gray-400 transition quick-action-btn"><i class="fas fa-sign-out-alt mr-2"></i>Sign Out</button>
                 </div>
