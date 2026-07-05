@@ -4821,7 +4821,7 @@ function mainPageHTML(): string {
 
             <!-- CTA Buttons -->
             <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
-              <button onclick="openQuickVisitorReg()" class="px-6 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-primary-600 to-primary-500 hover:from-primary-500 hover:to-primary-400 transition-all text-sm shadow-lg shadow-primary-500/25 animate-pulse-slow">
+              <button onclick="openQuickVisitorReg()" class="px-6 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-primary-600 to-primary-500 hover:from-primary-500 hover:to-primary-400 transition-all text-sm shadow-lg shadow-primary-500/25">
                 <i class="fas fa-ticket-alt mr-2"></i>Register Free — Visitor Pass
               </button>
               <button onclick="openPaidPassForm()" class="px-6 py-3 rounded-xl font-bold text-white transition-all text-sm hover:opacity-90" style="background:linear-gradient(135deg,#FF6B00,#e03060);box-shadow:0 4px 20px rgba(245,98,10,0.28);">
@@ -5057,6 +5057,8 @@ function mainPageHTML(): string {
             </div>
           </div>
 
+          <!-- AI matchmaking rail: top recommended connections (populated by loadAttendees) -->
+          <div id="match-rail"></div>
           <!-- Attendee Grid wrapper — blurred for visitors -->
           <div id="attendee-grid-wrapper" class="relative">
             <div id="attendee-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
@@ -5845,17 +5847,10 @@ function mainPageHTML(): string {
           </div>
 
           <!-- Expert Instructors -->
-          <div class="glass rounded-2xl p-6 md:p-8 border border-teal-500/20 mb-8 glow-accent">
-            <div class="text-center">
-              <h3 class="text-lg font-bold mb-2"><i class="fas fa-chalkboard-teacher text-teal-400 mr-2"></i>Learn from Industry Experts</h3>
-              <p class="text-xs text-gray-400 mb-4 max-w-xl mx-auto">Our workshops are led by experienced AI practitioners building real-world systems at leading companies, startups, and research institutions.</p>
-              <div class="flex flex-wrap justify-center gap-2">
-                <span class="px-3 py-1 rounded-full text-[11px] font-medium bg-teal-500/10 text-teal-300 border border-teal-500/20">🏢 FAANG Engineers</span>
-                <span class="px-3 py-1 rounded-full text-[11px] font-medium bg-blue-500/10 text-blue-300 border border-blue-500/20">🎓 PhD Researchers</span>
-                <span class="px-3 py-1 rounded-full text-[11px] font-medium bg-purple-500/10 text-purple-300 border border-purple-500/20">🚀 Startup Founders</span>
-                <span class="px-3 py-1 rounded-full text-[11px] font-medium bg-amber-500/10 text-amber-300 border border-amber-500/20">📚 Published Authors</span>
-                <span class="px-3 py-1 rounded-full text-[11px] font-medium bg-rose-500/10 text-rose-300 border border-rose-500/20">💼 Industry Veterans</span>
-              </div>
+          <div class="glass rounded-2xl p-6 md:p-8 border border-white/10 mb-8">
+            <div class="text-center max-w-xl mx-auto">
+              <h3 class="text-lg font-bold mb-2"><i class="fas fa-chalkboard-teacher text-primary-400 mr-2"></i>Led by working AI practitioners</h3>
+              <p class="text-sm text-gray-300">Every workshop is run by engineers and researchers who build production AI systems day to day. Small groups, real datasets, and a completion certificate you keep. Instructor line-up is announced closer to the event.</p>
             </div>
           </div>
 
@@ -6702,6 +6697,17 @@ function mainPageHTML(): string {
     // ==================== TAB NAVIGATION ====================
     const PROTECTED_TABS = ['networking', 'inbox', 'myprofile'];
 
+    // Paint skeleton cards into a grid immediately, before the fetch resolves,
+    // so tabs never flash blank on slow networks. The .shimmer CSS already exists.
+    function skeletonCards(containerId, count, kind) {
+      const el = document.getElementById(containerId);
+      if (!el) return;
+      const card = kind === 'row'
+        ? '<div class="glass rounded-xl p-4 flex items-center gap-3"><div class="shimmer w-11 h-11 rounded-full shrink-0"></div><div class="flex-1 space-y-2"><div class="shimmer h-3.5 rounded w-1/3"></div><div class="shimmer h-3 rounded w-1/2"></div></div></div>'
+        : '<div class="glass rounded-2xl p-5 space-y-3"><div class="flex items-center gap-3"><div class="shimmer w-12 h-12 rounded-full"></div><div class="flex-1 space-y-2"><div class="shimmer h-3.5 rounded w-2/3"></div><div class="shimmer h-3 rounded w-1/2"></div></div></div><div class="flex gap-2"><div class="shimmer h-5 rounded-full w-14"></div><div class="shimmer h-5 rounded-full w-14"></div></div><div class="shimmer h-8 rounded-lg w-full"></div></div>';
+      el.innerHTML = Array.from({length: count}, () => card).join('');
+    }
+
     function switchTab(tab) {
       // Gate protected tabs behind login
       if (PROTECTED_TABS.includes(tab) && !currentUser) {
@@ -6723,7 +6729,7 @@ function mainPageHTML(): string {
       switch(tab) {
         case 'dashboard': loadDashboard(); break;
         case 'schedule': loadSchedule(); break;
-        case 'networking': loadAttendees(); break;
+        case 'networking': skeletonCards('attendee-grid', 6, 'card'); loadAttendees(); break;
         case 'exhibition': loadExhibitors(); break;
         case 'awards': loadAwards(); break;
         case 'agba-categories': loadAgbaCategories(); break;
@@ -7059,8 +7065,60 @@ function mainPageHTML(): string {
       // Always load a preview of attendees (so the blurred grid looks real)
       try {
         const attendees = await api.get(\`/api/events/\${EVENT_ID}/attendees?search=\${encodeURIComponent(search)}&role=\${role}\`);
-        document.getElementById('attendee-grid').innerHTML = attendees.filter(a => a.id !== currentUser?.id).map(a => {
+
+        // --- Matchmaking: rank by shared interests + complementary role, then
+        // online-first. Turns a raw alphabetical list into "who's worth meeting".
+        const myInterests = new Set((currentUser?.interests || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean));
+        const myRole = (currentUser?.badge_type || '').toLowerCase();
+        const complements = { 'startup': 'investor', 'investor': 'startup', 'exhibitor': 'delegate', 'media': 'speaker' };
+        function matchScore(a) {
+          let score = 0;
+          const theirs = (a.interests || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+          const shared = theirs.filter(i => myInterests.has(i));
+          score += shared.length * 10;
+          const theirRole = (a.badge_type || '').toLowerCase();
+          for (const [k, v] of Object.entries(complements)) { if (myRole.includes(k) && theirRole.includes(v)) score += 15; }
+          if (a.is_online) score += 3;
+          return { score, shared };
+        }
+        function matchReason(a, shared) {
+          if (shared.length) return \`\${shared.length} shared interest\${shared.length>1?'s':''}: \${shared.slice(0,2).join(', ')}\`;
+          const theirRole = (a.badge_type || '').toLowerCase();
+          for (const [k, v] of Object.entries(complements)) { if (myRole.includes(k) && theirRole.includes(v)) return \`\${displayBadge(a.badge_type)} — could be a great match\`; }
+          if (a.is_online) return 'Online now';
+          return '';
+        }
+
+        let list = attendees.filter(a => a.id !== currentUser?.id);
+        // Only rank when logged in with interests, and no active search/filter.
+        const ranking = currentUser && !search && !role;
+        if (ranking) {
+          list.forEach(a => { const m = matchScore(a); a._score = m.score; a._shared = m.shared; });
+          list.sort((x, y) => (y._score - x._score) || (y.is_online - x.is_online));
+        }
+
+        // "Recommended for you" rail — top 3 scored matches, shown above the grid.
+        const railEl = document.getElementById('match-rail');
+        if (railEl) {
+          const top = ranking ? list.filter(a => a._score >= 10).slice(0, 3) : [];
+          railEl.innerHTML = top.length ? \`
+            <div class="mb-5">
+              <div class="flex items-center gap-2 mb-3"><i class="fas fa-wand-magic-sparkles text-primary-400"></i><h3 class="text-sm font-semibold">Recommended for you</h3><span class="text-[10px] text-gray-500">based on your interests</span></div>
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-3">\${top.map(a => \`
+                <div class="rounded-xl p-4 border border-primary-500/25" style="background:linear-gradient(135deg,rgba(255,107,0,0.08),rgba(217,70,239,0.05));">
+                  <div class="flex items-center gap-3">
+                    <img src="\${getAvatarUrl(a.email, a.name, 88, a.avatar_url)}" class="w-11 h-11 rounded-full object-cover">
+                    <div class="min-w-0"><div class="font-semibold text-sm truncate">\${a.name}</div><div class="text-[11px] text-gray-400 truncate">\${a.job_title || ''}\${a.company ? ' · '+a.company : ''}</div></div>
+                  </div>
+                  <p class="text-[11px] text-primary-300 mt-2"><i class="fas fa-link mr-1"></i>\${matchReason(a, a._shared || [])}</p>
+                  <button onclick="viewProfile(\${a.id})" class="w-full mt-3 py-1.5 rounded-lg text-xs font-medium bg-primary-600/25 text-primary-200 hover:bg-primary-600/40 transition">View profile</button>
+                </div>\`).join('')}</div>
+            </div>\` : '';
+        }
+
+        document.getElementById('attendee-grid').innerHTML = list.map(a => {
           const compLogo = getCompanyLogoUrl(a.company, a.website_url, a.linkedin_url, a.email);
+          const reason = ranking ? matchReason(a, a._shared || []) : '';
           return \`
           <div class="glass rounded-xl p-5 \${isVisitorPass() ? '' : 'card-hover'}">
             <div class="flex items-start gap-3">
@@ -7076,6 +7134,7 @@ function mainPageHTML(): string {
                 </div>
                 <p class="text-xs text-gray-400 truncate">\${a.job_title || ''}\${a.job_title && a.company ? ' · ' : ''}\${a.company || ''}</p>
                 \${a.interests ? \`<div class="flex flex-wrap gap-1 mt-2">\${a.interests.split(',').slice(0,3).map(i => \`<span class="px-2 py-0.5 rounded-full text-[10px] bg-white/5 text-gray-400">\${i.trim()}</span>\`).join('')}</div>\` : ''}
+                \${reason ? \`<p class="text-[11px] text-primary-300/90 mt-2"><i class="fas fa-link mr-1 text-[9px]"></i>\${reason}</p>\` : ''}
               </div>
             </div>
             <div class="flex gap-2 mt-4">
