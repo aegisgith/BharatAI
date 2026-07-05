@@ -1104,6 +1104,22 @@ app.get('/api/attendees/:id/exhibitor', async (c) => {
   return c.json(exhibitor || null)
 })
 
+// Exhibitor lead console: everyone who visited / showed interest in this
+// attendee's booth, plus a summary. Powers the exhibitor lead-capture view.
+app.get('/api/attendees/:id/exhibitor/leads', async (c) => {
+  const id = c.req.param('id')
+  const exhibitor = await c.env.DB.prepare('SELECT id, company_name, booth_number FROM exhibitors WHERE attendee_id = ?').bind(id).first() as any
+  if (!exhibitor) return c.json({ exhibitor: null, leads: [], summary: { total: 0, interested: 0 } })
+  const { results: leads } = await c.env.DB.prepare(`
+    SELECT bv.id, bv.interested, bv.notes, bv.visited_at,
+           a.name, a.email, a.company, a.job_title, a.avatar_url, a.linkedin_url, a.badge_type
+    FROM booth_visits bv JOIN attendees a ON bv.attendee_id = a.id
+    WHERE bv.exhibitor_id = ? ORDER BY bv.visited_at DESC
+  `).bind(exhibitor.id).all()
+  const interested = (leads || []).filter((l: any) => l.interested).length
+  return c.json({ exhibitor, leads: leads || [], summary: { total: (leads || []).length, interested } })
+})
+
 // Create or update exhibitor booth for an attendee (self-service)
 app.put('/api/attendees/:id/exhibitor', async (c) => {
   const attendeeId = c.req.param('id')
@@ -5572,6 +5588,21 @@ function mainPageHTML(): string {
         </div>
       </div>
 
+      <!-- Exhibitor lead console -->
+      <div id="tab-exhibitor-console" class="tab-content hidden">
+        <div class="max-w-7xl mx-auto px-4 py-6">
+          <div class="flex items-center justify-between flex-wrap gap-3 mb-6">
+            <div>
+              <h2 class="text-2xl font-bold"><i class="fas fa-user-group text-primary-400 mr-2"></i>Lead Console</h2>
+              <p class="text-gray-400 text-sm" id="ec-booth-sub">Attendees who visited your booth</p>
+            </div>
+            <button onclick="exportLeadsCsv()" class="px-4 py-2 rounded-xl text-sm font-medium bg-primary-600/20 text-primary-300 hover:bg-primary-600/30 transition"><i class="fas fa-download mr-1.5"></i>Export CSV</button>
+          </div>
+          <div id="ec-summary" class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6"></div>
+          <div id="ec-leads" class="space-y-3"></div>
+        </div>
+      </div>
+
       <!-- BHAI 2026 Jury Schedule Tab (top-level, desktop) -->
       <div id="tab-agba-jury" class="tab-content hidden">
         <div class="max-w-7xl mx-auto px-4 py-6">
@@ -6927,7 +6958,7 @@ function mainPageHTML(): string {
           actions: [A('My sessions','fa-calendar-check',"switchTab('schedule')"), A('Edit my profile','fa-user-pen',"switchTab('myprofile')"), A('Message attendees','fa-comments',"switchTab('networking')")] };
       } else if (badge.includes('exhibitor') || role.includes('exhibitor') || badge.includes('startup')) {
         p = { label: badge.includes('startup') ? 'Startup' : 'Exhibitor', icon: 'fa-store', tint: '#FF6B00', blurb: 'Manage your booth, capture leads, and connect with buyers & investors.',
-          actions: [A('My booth','fa-store',"switchTab('myprofile')"), A('List on AI Market','fa-robot',"location.href='/marketplace'"), A('Find investors','fa-handshake',"switchTab('networking')")] };
+          actions: [A('Lead console','fa-user-group',"openExhibitorConsole()"), A('List on AI Market','fa-robot',"location.href='/marketplace'"), A('Find investors','fa-handshake',"switchTab('networking')")] };
       } else if (badge.includes('investor')) {
         p = { label: 'Investor', icon: 'fa-sack-dollar', tint: '#22c55e', blurb: 'Discover startups pitching at the event and book meetings.',
           actions: [A('Startup showcase','fa-rocket',"switchTab('startup-pitch')"), A('Browse founders','fa-users',"switchTab('networking')"), A('My meetings','fa-calendar',"switchTab('inbox')")] };
@@ -8649,6 +8680,55 @@ function mainPageHTML(): string {
       const btn = document.getElementById('nav-notif-btn');
       if (dd && !dd.classList.contains('hidden') && !dd.contains(e.target) && btn && !btn.contains(e.target)) dd.classList.add('hidden');
     });
+
+    // ==================== EXHIBITOR LEAD CONSOLE ====================
+    let _ecLeads = [];
+    function openExhibitorConsole() {
+      // Reveal + activate the console tab (it has no nav entry; entered from
+      // the exhibitor role-home action).
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
+      const t = document.getElementById('tab-exhibitor-console');
+      if (t) t.classList.remove('hidden');
+      currentTab = 'exhibitor-console';
+      loadExhibitorLeads();
+    }
+    async function loadExhibitorLeads() {
+      if (!currentUser) return;
+      const sum = document.getElementById('ec-summary');
+      const list = document.getElementById('ec-leads');
+      if (list) list.innerHTML = '<div class="glass rounded-xl p-4"><div class="shimmer h-16 rounded"></div></div>';
+      try {
+        const data = await api.get(\`/api/attendees/\${currentUser.id}/exhibitor/leads\`);
+        _ecLeads = data.leads || [];
+        document.getElementById('ec-booth-sub').textContent = data.exhibitor ? \`\${data.exhibitor.company_name}\${data.exhibitor.booth_number ? ' · Booth ' + data.exhibitor.booth_number : ''}\` : 'Set up your booth to start capturing leads';
+        if (sum) sum.innerHTML = [
+          { n: data.summary.total, l: 'Total visitors', i: 'fa-users', c: '#FF6B00' },
+          { n: data.summary.interested, l: 'Marked interested', i: 'fa-star', c: '#22c55e' },
+          { n: data.summary.total ? Math.round(data.summary.interested / data.summary.total * 100) + '%' : '—', l: 'Interest rate', i: 'fa-chart-line', c: '#d946ef' },
+        ].map(s => \`<div class="glass rounded-xl p-4"><div class="flex items-center gap-3"><i class="fas \${s.i} text-lg" style="color:\${s.c}"></i><div><div class="text-2xl font-bold" style="font-variant-numeric:tabular-nums;">\${s.n}</div><div class="text-xs text-gray-400">\${s.l}</div></div></div></div>\`).join('');
+        if (list) list.innerHTML = _ecLeads.length ? _ecLeads.map(l => \`
+          <div class="glass rounded-xl p-4 flex items-center gap-4">
+            <img src="\${getAvatarUrl(l.email, l.name, 88, l.avatar_url)}" class="w-11 h-11 rounded-full object-cover shrink-0">
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-2"><span class="font-semibold text-sm truncate">\${l.name}</span>\${l.interested ? '<span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-500/20 text-green-300">Interested</span>' : ''}</div>
+              <div class="text-xs text-gray-400 truncate">\${l.job_title || ''}\${l.job_title && l.company ? ' · ' : ''}\${l.company || ''}</div>
+              \${l.notes ? \`<div class="text-[11px] text-gray-500 mt-1 truncate">"\${l.notes}"</div>\` : ''}
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+              <a href="mailto:\${l.email}" class="w-9 h-9 rounded-lg flex items-center justify-center bg-white/5 hover:bg-white/10 text-gray-300 transition" title="Email"><i class="fas fa-envelope text-xs"></i></a>
+              \${l.linkedin_url ? \`<a href="\${l.linkedin_url}" target="_blank" class="w-9 h-9 rounded-lg flex items-center justify-center bg-white/5 hover:bg-white/10 text-gray-300 transition" title="LinkedIn"><i class="fab fa-linkedin text-xs"></i></a>\` : ''}
+            </div>
+          </div>\`).join('') : '<div class="glass rounded-xl p-10 text-center"><i class="fas fa-user-group text-3xl text-gray-600 mb-3 block"></i><p class="text-sm text-gray-400">No booth visitors yet</p><p class="text-xs text-gray-600 mt-1">Attendees who scan or visit your booth will show up here with their contact details.</p></div>';
+      } catch(e) { if (list) list.innerHTML = '<p class="text-sm text-gray-500 text-center py-6">Could not load leads.</p>'; }
+    }
+    function exportLeadsCsv() {
+      if (!_ecLeads.length) { showToast('No leads to export yet', 'info'); return; }
+      const rows = [['Name','Email','Company','Job Title','Interested','Notes','Visited']];
+      _ecLeads.forEach(l => rows.push([l.name, l.email, l.company || '', l.job_title || '', l.interested ? 'Yes' : 'No', (l.notes || '').replace(/"/g,'""'), l.visited_at || '']));
+      const csv = rows.map(r => r.map(c => \`"\${String(c).replace(/"/g,'""')}"\`).join(',')).join('\\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'booth-leads.csv'; a.click();
+    }
 
     // ==================== RSVP FUNCTIONS ====================
     async function submitRsvp(status) {
