@@ -1,7 +1,63 @@
 import { Hono } from 'hono'
 
-type Bindings = { DB: D1Database }
+type Bindings = {
+  DB: D1Database
+  // Secret used to HMAC-sign marketplace session cookies so the company id
+  // can't be forged. Set via a Cloudflare Pages secret:
+  //   npx wrangler pages secret put MP_SESSION_SECRET
+  // Falls back to ADMIN_SECRET if unset, so a single secret can cover both.
+  MP_SESSION_SECRET?: string
+  ADMIN_SECRET?: string
+}
 const mp = new Hono<{ Bindings: Bindings }>()
+
+// ── Session signing ──
+// The session cookie is `<companyId>.<hmac>` where hmac = HMAC-SHA256 of the
+// id under the server secret. A forged/edited id fails the signature check,
+// which closes the previous hole where the cookie was a bare, guessable id.
+const sessionSecret = (c: any): string =>
+  c.env.MP_SESSION_SECRET || c.env.ADMIN_SECRET || ''
+
+const hmacHex = async (secret: string, message: string): Promise<string> => {
+  const enc = new TextEncoder()
+  const key = await crypto.subtle.importKey(
+    'raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+  )
+  const sig = await crypto.subtle.sign('HMAC', key, enc.encode(message))
+  return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
+// Constant-time-ish string compare (avoids trivial early-exit timing leaks).
+const safeEqual = (a: string, b: string): boolean => {
+  if (a.length !== b.length) return false
+  let diff = 0
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i)
+  return diff === 0
+}
+
+const signSession = async (c: any, companyId: number | string): Promise<string> => {
+  const secret = sessionSecret(c)
+  const id = String(companyId)
+  const sig = await hmacHex(secret, id)
+  return `${id}.${sig}`
+}
+
+// Returns the verified company id from a signed cookie value, or null.
+const verifySession = async (c: any, value: string): Promise<number | null> => {
+  const secret = sessionSecret(c)
+  if (!secret || !value) return null
+  const dot = value.lastIndexOf('.')
+  if (dot < 1) return null // reject bare-id (legacy/forged) cookies — no signature
+  const id = value.slice(0, dot)
+  const sig = value.slice(dot + 1)
+  if (!/^\d+$/.test(id)) return null
+  const expected = await hmacHex(secret, id)
+  if (!safeEqual(sig, expected)) return null
+  return parseInt(id, 10)
+}
+
+const mpSessionCookie = (value: string, maxAge = 604800) =>
+  `mp_session=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}`
 
 // ── Helpers ──
 const generateSlug = (text: string) =>
@@ -27,9 +83,11 @@ const getCookie = (c: any, name: string) => {
 }
 
 const getCompanyFromSession = async (c: any) => {
-  const sessionId = getCookie(c, 'mp_session')
-  if (!sessionId) return null
-  const company = await c.env.DB.prepare('SELECT id, company_name, email, role, exhibitor_id, attendee_id FROM mp_companies WHERE id = ?').bind(parseInt(sessionId)).first()
+  const raw = getCookie(c, 'mp_session')
+  if (!raw) return null
+  const companyId = await verifySession(c, raw)
+  if (companyId === null) return null // unsigned/forged/tampered → not authenticated
+  const company = await c.env.DB.prepare('SELECT id, company_name, email, role, exhibitor_id, attendee_id FROM mp_companies WHERE id = ?').bind(companyId).first()
   return company || null
 }
 
@@ -64,8 +122,9 @@ mp.post('/api/mp/auth/login', async (c) => {
 
   if (!company) return c.json({ error: 'Invalid email or password' }, 401)
 
-  // Set simple cookie session
-  c.header('Set-Cookie', `mp_session=${company.id}; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800`)
+  // Set signed cookie session (see signSession — id is HMAC-signed so it
+  // can't be forged the way a bare id could).
+  c.header('Set-Cookie', mpSessionCookie(await signSession(c, company.id as number)))
   return c.json({ success: true, user: company })
 })
 
@@ -75,7 +134,7 @@ mp.get('/api/mp/auth/me', async (c) => {
 })
 
 mp.post('/api/mp/auth/logout', async (c) => {
-  c.header('Set-Cookie', 'mp_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0')
+  c.header('Set-Cookie', mpSessionCookie('', 0))
   return c.json({ success: true })
 })
 
@@ -110,7 +169,7 @@ mp.post('/api/mp/auth/exhibitor-login', async (c) => {
     }
   }
 
-  c.header('Set-Cookie', `mp_session=${(company as any).id}; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800`)
+  c.header('Set-Cookie', mpSessionCookie(await signSession(c, (company as any).id)))
   return c.json({ success: true, user: company })
 })
 

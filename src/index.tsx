@@ -14,6 +14,9 @@ type Bindings = {
   // repo or the DB. Every /api/admin/* route requires it (see middleware
   // below). This replaces the old client-side-only `admin123` check.
   ADMIN_SECRET?: string
+  // Secret used to HMAC-sign marketplace session cookies so the company id
+  // can't be forged. Falls back to ADMIN_SECRET if unset.
+  MP_SESSION_SECRET?: string
 }
 
 const app = new Hono<{ Bindings: Bindings }>()
@@ -2426,11 +2429,47 @@ async function sha256(message: string): Promise<string> {
   return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2,'0')).join('')
 }
 
-// Cookie helpers for marketplace auth
-function getMpSession(c: any): number | null {
+// Cookie helpers for marketplace auth.
+// The session cookie is `<companyId>.<hmac>` — the id is HMAC-signed with the
+// server secret so it can't be forged (previously it was a bare, guessable
+// integer). Verification and signing mirror the helpers in routes/marketplace.ts.
+function mpSecret(c: any): string {
+  return c.env.MP_SESSION_SECRET || c.env.ADMIN_SECRET || ''
+}
+async function mpHmacHex(secret: string, message: string): Promise<string> {
+  const enc = new TextEncoder()
+  const key = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+  const sig = await crypto.subtle.sign('HMAC', key, enc.encode(message))
+  return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('')
+}
+function mpSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false
+  let diff = 0
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i)
+  return diff === 0
+}
+async function signMpSession(c: any, companyId: number | string): Promise<string> {
+  const id = String(companyId)
+  return `${id}.${await mpHmacHex(mpSecret(c), id)}`
+}
+function mpCookie(value: string, maxAge = 604800): string {
+  return `mp_session=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}`
+}
+// Returns the verified company id, or null for missing/unsigned/forged cookies.
+async function getMpSession(c: any): Promise<number | null> {
   const cookie = c.req.header('Cookie') || ''
-  const match = cookie.match(/mp_session=(\d+)/)
-  return match ? parseInt(match[1]) : null
+  const match = cookie.match(/mp_session=([^;]+)/)
+  if (!match) return null
+  const value = decodeURIComponent(match[1])
+  const secret = mpSecret(c)
+  if (!secret) return null
+  const dot = value.lastIndexOf('.')
+  if (dot < 1) return null // reject bare-id (legacy/forged) cookies
+  const id = value.slice(0, dot)
+  const sig = value.slice(dot + 1)
+  if (!/^\d+$/.test(id)) return null
+  if (!mpSafeEqual(sig, await mpHmacHex(secret, id))) return null
+  return parseInt(id, 10)
 }
 
 // --- Auth ---
@@ -2456,18 +2495,18 @@ app.post('/api/mp/auth/login', async (c) => {
     .bind(email.trim().toLowerCase(), hash).first()
   if (!user) return c.json({ error: 'Invalid credentials' }, 401)
   return new Response(JSON.stringify({ success: true, user }), {
-    headers: { 'Content-Type': 'application/json', 'Set-Cookie': `mp_session=${user.id}; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800` }
+    headers: { 'Content-Type': 'application/json', 'Set-Cookie': mpCookie(await signMpSession(c, user.id as number)) }
   })
 })
 
 app.post('/api/mp/auth/logout', (c) => {
   return new Response(JSON.stringify({ success: true }), {
-    headers: { 'Content-Type': 'application/json', 'Set-Cookie': 'mp_session=; Path=/; Max-Age=0' }
+    headers: { 'Content-Type': 'application/json', 'Set-Cookie': mpCookie('', 0) }
   })
 })
 
 app.get('/api/mp/auth/me', async (c) => {
-  const userId = getMpSession(c)
+  const userId = await getMpSession(c)
   if (!userId) return c.json({ user: null })
   const user = await c.env.DB.prepare('SELECT id, company_name, email, role, exhibitor_id, attendee_id FROM mp_companies WHERE id = ?').bind(userId).first()
   return c.json({ user: user || null })
@@ -2508,7 +2547,7 @@ app.get('/api/mp/listings/by-slug/:company/:product', async (c) => {
 
 // Submit a new listing (authenticated)
 app.post('/api/mp/listings', async (c) => {
-  const userId = getMpSession(c)
+  const userId = await getMpSession(c)
   if (!userId) return c.json({ error: 'Login required' }, 401)
   const user = await c.env.DB.prepare('SELECT * FROM mp_companies WHERE id = ?').bind(userId).first() as any
   if (!user) return c.json({ error: 'User not found' }, 401)
@@ -2550,7 +2589,7 @@ app.get('/api/mp/listings/:id/reviews', async (c) => {
 })
 
 app.post('/api/mp/listings/:id/reviews', async (c) => {
-  const userId = getMpSession(c)
+  const userId = await getMpSession(c)
   if (!userId) return c.json({ error: 'Login required' }, 401)
   const user = await c.env.DB.prepare('SELECT company_name FROM mp_companies WHERE id = ?').bind(userId).first() as any
   const id = c.req.param('id')
@@ -2573,7 +2612,7 @@ app.post('/api/mp/inquiries', async (c) => {
 
 // --- File Uploads ---
 app.post('/api/mp/uploads', async (c) => {
-  const userId = getMpSession(c)
+  const userId = await getMpSession(c)
   if (!userId) return c.json({ error: 'Login required' }, 401)
   const formData = await c.req.formData()
   const file = formData.get('file') as File
@@ -2603,7 +2642,7 @@ app.get('/api/mp/files/:id', async (c) => {
 
 // --- Company Dashboard APIs ---
 app.get('/api/mp/dashboard/stats', async (c) => {
-  const userId = getMpSession(c)
+  const userId = await getMpSession(c)
   if (!userId) return c.json({ error: 'Login required' }, 401)
   const total = await c.env.DB.prepare('SELECT COUNT(*) as c FROM mp_listings WHERE company_id = ?').bind(userId).first() as any
   const approved = await c.env.DB.prepare("SELECT COUNT(*) as c FROM mp_listings WHERE company_id = ? AND status = 'approved'").bind(userId).first() as any
@@ -2618,7 +2657,7 @@ app.get('/api/mp/dashboard/stats', async (c) => {
 })
 
 app.get('/api/mp/dashboard/listings', async (c) => {
-  const userId = getMpSession(c)
+  const userId = await getMpSession(c)
   if (!userId) return c.json({ error: 'Login required' }, 401)
   const { results } = await c.env.DB.prepare(
     `SELECT l.*, (SELECT COUNT(*) FROM mp_inquiries WHERE listing_id = l.id) as inquiry_count,
@@ -2629,7 +2668,7 @@ app.get('/api/mp/dashboard/listings', async (c) => {
 })
 
 app.get('/api/mp/dashboard/listings/:id', async (c) => {
-  const userId = getMpSession(c)
+  const userId = await getMpSession(c)
   if (!userId) return c.json({ error: 'Login required' }, 401)
   const listing = await c.env.DB.prepare('SELECT * FROM mp_listings WHERE id = ? AND company_id = ?').bind(c.req.param('id'), userId).first()
   if (!listing) return c.json({ error: 'Not found' }, 404)
@@ -2637,7 +2676,7 @@ app.get('/api/mp/dashboard/listings/:id', async (c) => {
 })
 
 app.put('/api/mp/dashboard/listings/:id', async (c) => {
-  const userId = getMpSession(c)
+  const userId = await getMpSession(c)
   if (!userId) return c.json({ error: 'Login required' }, 401)
   const id = c.req.param('id')
   const body = await c.req.json() as any
@@ -2655,7 +2694,7 @@ app.put('/api/mp/dashboard/listings/:id', async (c) => {
 })
 
 app.get('/api/mp/dashboard/inquiries', async (c) => {
-  const userId = getMpSession(c)
+  const userId = await getMpSession(c)
   if (!userId) return c.json({ error: 'Login required' }, 401)
   const { results } = await c.env.DB.prepare(
     `SELECT i.*, l.product_name FROM mp_inquiries i JOIN mp_listings l ON i.listing_id = l.id WHERE l.company_id = ? ORDER BY i.created_at DESC`
@@ -2664,7 +2703,7 @@ app.get('/api/mp/dashboard/inquiries', async (c) => {
 })
 
 app.get('/api/mp/dashboard/reviews', async (c) => {
-  const userId = getMpSession(c)
+  const userId = await getMpSession(c)
   if (!userId) return c.json({ error: 'Login required' }, 401)
   const { results } = await c.env.DB.prepare(
     `SELECT r.*, l.product_name FROM mp_reviews r JOIN mp_listings l ON r.listing_id = l.id WHERE l.company_id = ? ORDER BY r.created_at DESC`
@@ -2673,14 +2712,14 @@ app.get('/api/mp/dashboard/reviews', async (c) => {
 })
 
 app.get('/api/mp/dashboard/profile', async (c) => {
-  const userId = getMpSession(c)
+  const userId = await getMpSession(c)
   if (!userId) return c.json({ error: 'Login required' }, 401)
   const profile = await c.env.DB.prepare('SELECT id, company_name, email, role, created_at FROM mp_companies WHERE id = ?').bind(userId).first()
   return c.json({ profile })
 })
 
 app.put('/api/mp/dashboard/profile', async (c) => {
-  const userId = getMpSession(c)
+  const userId = await getMpSession(c)
   if (!userId) return c.json({ error: 'Login required' }, 401)
   const { company_name } = await c.req.json() as any
   await c.env.DB.prepare('UPDATE mp_companies SET company_name = ? WHERE id = ?').bind(company_name, userId).run()
@@ -2689,7 +2728,7 @@ app.put('/api/mp/dashboard/profile', async (c) => {
 
 // --- Admin APIs ---
 app.get('/api/mp/admin/stats', async (c) => {
-  const userId = getMpSession(c)
+  const userId = await getMpSession(c)
   if (!userId) return c.json({ error: 'Login required' }, 401)
   const user = await c.env.DB.prepare('SELECT role FROM mp_companies WHERE id = ?').bind(userId).first() as any
   if (!user || user.role !== 'admin') return c.json({ error: 'Admin only' }, 403)
@@ -2709,7 +2748,7 @@ app.get('/api/mp/admin/stats', async (c) => {
 })
 
 app.get('/api/mp/admin/listings', async (c) => {
-  const userId = getMpSession(c)
+  const userId = await getMpSession(c)
   if (!userId) return c.json({ error: 'Login required' }, 401)
   const user = await c.env.DB.prepare('SELECT role FROM mp_companies WHERE id = ?').bind(userId).first() as any
   if (!user || user.role !== 'admin') return c.json({ error: 'Admin only' }, 403)
@@ -2722,7 +2761,7 @@ app.get('/api/mp/admin/listings', async (c) => {
 })
 
 app.patch('/api/mp/admin/listings/:id', async (c) => {
-  const userId = getMpSession(c)
+  const userId = await getMpSession(c)
   if (!userId) return c.json({ error: 'Login required' }, 401)
   const user = await c.env.DB.prepare('SELECT role FROM mp_companies WHERE id = ?').bind(userId).first() as any
   if (!user || user.role !== 'admin') return c.json({ error: 'Admin only' }, 403)
@@ -2732,7 +2771,7 @@ app.patch('/api/mp/admin/listings/:id', async (c) => {
 })
 
 app.post('/api/mp/admin/listings', async (c) => {
-  const userId = getMpSession(c)
+  const userId = await getMpSession(c)
   if (!userId) return c.json({ error: 'Login required' }, 401)
   const user = await c.env.DB.prepare('SELECT role FROM mp_companies WHERE id = ?').bind(userId).first() as any
   if (!user || user.role !== 'admin') return c.json({ error: 'Admin only' }, 403)
@@ -2770,7 +2809,7 @@ app.post('/api/mp/admin/listings', async (c) => {
 })
 
 app.post('/api/mp/admin/bulk-listings', async (c) => {
-  const userId = getMpSession(c)
+  const userId = await getMpSession(c)
   if (!userId) return c.json({ error: 'Login required' }, 401)
   const user = await c.env.DB.prepare('SELECT role FROM mp_companies WHERE id = ?').bind(userId).first() as any
   if (!user || user.role !== 'admin') return c.json({ error: 'Admin only' }, 403)
@@ -2812,7 +2851,7 @@ app.post('/api/mp/admin/bulk-listings', async (c) => {
 })
 
 app.get('/api/mp/admin/inquiries', async (c) => {
-  const userId = getMpSession(c)
+  const userId = await getMpSession(c)
   if (!userId) return c.json({ error: 'Login required' }, 401)
   const user = await c.env.DB.prepare('SELECT role FROM mp_companies WHERE id = ?').bind(userId).first() as any
   if (!user || user.role !== 'admin') return c.json({ error: 'Admin only' }, 403)
@@ -2837,7 +2876,7 @@ app.post('/api/mp/bridge/exhibitor-register', async (c) => {
     // Link exhibitor if not already
     if (exhibitor_id) await c.env.DB.prepare('UPDATE mp_companies SET exhibitor_id = ?, attendee_id = ? WHERE id = ?').bind(exhibitor_id, attendee_id, mpCompany.id).run()
     return new Response(JSON.stringify({ success: true, mp_company_id: mpCompany.id, existing: true }), {
-      headers: { 'Content-Type': 'application/json', 'Set-Cookie': `mp_session=${mpCompany.id}; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800` }
+      headers: { 'Content-Type': 'application/json', 'Set-Cookie': mpCookie(await signMpSession(c, mpCompany.id)) }
     })
   }
   const hash = await sha256('changeme123')
@@ -2846,7 +2885,7 @@ app.post('/api/mp/bridge/exhibitor-register', async (c) => {
     'INSERT INTO mp_companies (company_name, email, password_hash, exhibitor_id, attendee_id) VALUES (?,?,?,?,?)'
   ).bind(companyName, attendee.email, hash, exhibitor_id||null, attendee_id).run()
   return new Response(JSON.stringify({ success: true, mp_company_id: result.meta.last_row_id, existing: false }), {
-    headers: { 'Content-Type': 'application/json', 'Set-Cookie': `mp_session=${result.meta.last_row_id}; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800` }
+    headers: { 'Content-Type': 'application/json', 'Set-Cookie': mpCookie(await signMpSession(c, result.meta.last_row_id)) }
   })
 })
 
