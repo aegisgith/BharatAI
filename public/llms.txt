@@ -1,0 +1,93 @@
+# Bharat AI Innovation Conference & Exhibition 2026
+
+> India's leading AI conference and exhibition, bringing together top leaders, researchers, startups, and enterprises across artificial intelligence, generative AI, large language models, and machine learning. Held at World Trade Center Mumbai on **20–21 November 2026**.
+
+## Event facts
+
+- **Event name:** Bharat AI Innovation Conference & Exhibition 2026
+- **Dates:** 20–21 November 2026 (2 days)
+- **Venue:** World Trade Center Mumbai, Cuffe Parade, Mumbai 400005, Maharashtra, India
+- **Organizer:** Aegis Knowledge Trust
+- **Contact:** info@bharataiinnovation.com | +91 89765 80367
+- **Website:** https://bharataiinnovation.com/
+- **Registration:** https://networking.bharataiinnovation.com/register
+- **Format:** In-person (offline)
+- **Language:** English
+
+## What it is
+
+Bharat AI Innovation 2026 is a two-day conference and exhibition covering Generative AI, Large Language Models (LLMs), enterprise AI deployment, AI governance and ethics, AI startups, AI for industry verticals (BFSI, healthcare, manufacturing, retail, agriculture, government), AI talent and skills, deep learning research, and the Indian AI ecosystem. It includes 10+ conference tracks across 5 halls, a 27,238 sq.ft exhibition floor with 78 booths across 8 industry zones, a startup pitch competition, and AI/ML training workshops.
+
+## Pass types and pricing (INR)
+
+- **Visitor Pass** — FREE (exhibition access)
+- **Academic Pass** — ₹999 (students/faculty with valid ID)
+- **Delegate Pass** — ₹4,999 (full conference + exhibition)
+- **VIP Pass** — ₹14,999 (premium seating, networking dinner, lounge access)
+- **Media Pass** — By Invite
+- **Team packages:** Team 5–9, Enterprise 10–19, Corporate 20+
+
+## Exhibition booth packages
+
+All prices exclude 18% GST. 78 booths total across 8 industry zones.
+
+- **Startup Pod** (1.5×1.5 m) — ₹38,000
+- **Explorer Booth** (2×2 m) — ₹1,29,000
+- **Innovator Booth** (3×2 m) — ₹1,95,000
+- **Accelerator Booth** (3×3 m) — ₹2,91,000
+- **Enterprise Booth** (4×2 m) — ₹2,58,000
+- **Flagship Pavilion** (6×2 m) — ₹3,87,000
+- **Mega Pavilion** (7×8 m) — ₹17,40,000
+
+## Confirmed speakers
+
+- **Hon'ble Shri Chandrakant Dada Patil** — Minister of Higher & Technical Education, Government of Maharashtra
+- **Hon'ble Shri Dattatray Bharane** — Minister of Agriculture, Government of Maharashtra
+- **Shri. K.K. Singh** — Joint Secretary, Ministry of Electronics & Information Technology (MeitY), Government of India
+- **Shri Praveen Pardeshi** — CEO, MITRA / Chief Economic Advisor to CM Maharashtra
+- **Dr. Shrikant Patil** — CEO, Maharashtra State Innovation Society (MSInS)
+- **Dr. Ashish Tendulkar** — Lead AI, Google
+- **Shailesh Dhuri** — CEO, Decimal Point Analytics
+- **Rajesh Dhuddu, PhD** — Partner & Emerging Tech Leader, PwC
+- **Bhupesh Daheria** — CEO, Aegis School of Data Science & Artificial Intelligence
+- **Mukesh Jain** — Global EVP & CTO, Capgemini
+- **Manish Agarwal** — COO, Comviva
+- **Nilesh Shah** — Managing Director, Kotak Mahindra AMC
+- **Ramanarayana Parhi** — VP & CIO, Alkem Laboratories
+- **Ratan Kumar Kesh** — Executive Director & COO, Bandhan Bank
+- **Sandeep Kumar** — CIO, Go Digit Insurance
+- **Dr. Rajul Gajjar** — Vice Chancellor, Gujarat Technological University
+- **Soly Thomas** — Deputy CEO & Chief Digital Officer, Canara HSBC Life Insurance
+- **Tarun Chugh** — MD & CEO, Bajaj Life Insurance Company
+- **Jagbir Singh** — CTIO, Vodafone Idea Limited
+- **Akhil Gupta** — Founder, NoBroker.com
+- **Rajiv Kumar** — MD & Corporate Vice President, Microsoft
+- **Dheeraj Sinha** — EVP & Global Chief Information Officer, Sun Pharma
+- **Dr. Rajkumar Upadhyay** — CEO & Chairman, C-DOT Board
+- **Abhay Sharma** — Partner & Practice Leader, IBM
+
+## Pages
+
+- [Home](https://bharataiinnovation.com/index.html): Event overview, dates, speakers, registration
+- [About](https://bharataiinnovation.com/about.html): About the event and Aegis Knowledge Trust
+- [Conference](https://bharataiinnovation.com/conference.html): 10+ tracks, schedule across 5 halls, 2 days
+- [Exhibition](https://bharataiinnovation.com/exhibition.html): 78 booths, 8 industry zones, booth packages
+- [Startup Pitch](https://bharataiinnovation.com/startup-pitch.html): Startup pitch competition for AI startups
+- [Training & Workshop](https://bharataiinnovation.com/training-workshop.html): AI/ML hands-on training workshops
+- [Partner](https://bharataiinnovation.com/partner.html): Sponsorship and partnership tiers
+- [Accommodation](https://bharataiinnovation.com/accommodation.html): Premium hotels near WTC Mumbai
+- [Register](https://networking.bharataiinnovation.com/register): Conference registration
+- [Contact](https://networking.bharataiinnovation.com/contact): Contact form and event team
+
+## Key topics
+
+Generative AI, LLMs, ChatGPT, GPT-4, Claude, Gemini, RAG, AI agents, multimodal AI, foundation models, AI governance, AI ethics, responsible AI, AI policy India, AI for BFSI, AI for healthcare, AI for manufacturing, AI for agriculture, AI for retail, MLOps, AI infrastructure, GPU compute, AI startups India, AI funding, AI talent, AI skilling, deep learning, computer vision, NLP, India AI Mission, IndiaAI, sovereign AI, Bharat AI ecosystem.
+
+## Why attend
+
+- Meet senior policymakers including representatives from MeitY and IndiaAI Mission
+- Network with 5,000+ AI professionals, founders, researchers, and enterprise leaders
+- See live demos across 78 booths in 8 AI industry zones
+- Attend deep-dive technical workshops on GenAI, LLMs, MLOps, and AI deployment
+- Connect with venture capital and angel investors in the startup pitch arena
+- Establish partnerships across India's growing AI ecosystem

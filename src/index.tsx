@@ -3015,14 +3015,14 @@ function sharedFooterHTML(): string {
       <div>
         <h4 class="font-semibold text-sm mb-3">Quick Links</h4>
         <ul class="space-y-2 text-xs">
-          <li><a href="/" class="text-gray-400 hover:text-white transition"><i class="fas fa-home mr-2"></i>Networking App</a></li>
+          <li><a href="/app" class="text-gray-400 hover:text-white transition"><i class="fas fa-home mr-2"></i>Networking App</a></li>
           <li><a href="/register" class="text-gray-400 hover:text-white transition"><i class="fas fa-ticket-alt mr-2"></i>Register</a></li>
           <li><a href="/contact" class="text-gray-400 hover:text-white transition"><i class="fas fa-envelope mr-2"></i>Contact Us</a></li>
           <li><a href="/inquiry" class="text-gray-400 hover:text-white transition"><i class="fas fa-store mr-2"></i>Book a Booth</a></li>
           <li><a href="/marketplace" class="text-gray-400 hover:text-white transition"><i class="fas fa-robot mr-2"></i>AI Marketplace</a></li>
           <li><a href="https://bharataiinnovation.com" target="_blank" class="text-gray-400 hover:text-white transition"><i class="fas fa-globe mr-2"></i>bharataiinnovation.com</a></li>
-          <li><a href="https://bharataiinnovation.com/exhibition" target="_blank" class="text-gray-400 hover:text-white transition"><i class="fas fa-store mr-2"></i>Exhibition</a></li>
-          <li><a href="https://bharataiinnovation.com/training-workshop" target="_blank" class="text-gray-400 hover:text-white transition"><i class="fas fa-laptop-code mr-2"></i>Workshops</a></li>
+          <li><a href="/exhibition" class="text-gray-400 hover:text-white transition"><i class="fas fa-store mr-2"></i>Exhibition</a></li>
+          <li><a href="/training-workshop" class="text-gray-400 hover:text-white transition"><i class="fas fa-laptop-code mr-2"></i>Workshops</a></li>
         </ul>
       </div>
     </div>
@@ -3151,7 +3151,7 @@ ${sharedNavHTML('contact')}
         <p class="text-sm text-gray-400 mt-2 max-w-md mx-auto">Thank you for reaching out. Our team will review your inquiry and respond within 24 hours.</p>
         <div class="flex gap-3 justify-center mt-6">
           <button onclick="resetContactForm()" class="px-6 py-2.5 rounded-xl text-sm font-semibold glass hover:bg-white/10 transition"><i class="fas fa-plus mr-2"></i>Send Another</button>
-          <a href="/" class="px-6 py-2.5 rounded-xl text-sm font-semibold bg-primary-500/20 text-primary-300 hover:bg-primary-500/30 transition"><i class="fas fa-home mr-2"></i>Go to App</a>
+          <a href="/app" class="px-6 py-2.5 rounded-xl text-sm font-semibold bg-primary-500/20 text-primary-300 hover:bg-primary-500/30 transition"><i class="fas fa-home mr-2"></i>Go to App</a>
         </div>
       </div>
     </div>
@@ -3357,13 +3357,13 @@ ${sharedNavHTML('register')}
           <p class="text-sm text-gray-300 mt-1" id="rs-ref"></p>
           <p class="text-xs text-gray-400 mt-2">Your Visitor Pass is confirmed. You can now access the networking app.</p>
           <div class="flex gap-3 justify-center mt-5">
-            <a href="/" id="rs-app-link" class="px-6 py-2.5 rounded-xl text-sm font-semibold bg-primary-500/20 text-primary-300 hover:bg-primary-500/30 transition"><i class="fas fa-rocket mr-2"></i>Open Networking App</a>
+            <a href="/app" id="rs-app-link" class="px-6 py-2.5 rounded-xl text-sm font-semibold bg-primary-500/20 text-primary-300 hover:bg-primary-500/30 transition"><i class="fas fa-rocket mr-2"></i>Open Networking App</a>
           </div>
         </div>
 
         <!-- Already registered? -->
         <div class="mt-4 pt-4 border-t border-white/10 text-center">
-          <p class="text-xs text-gray-500">Already registered? <a href="/" class="text-primary-400 hover:underline font-semibold">Sign in on the networking app</a></p>
+          <p class="text-xs text-gray-500">Already registered? <a href="/app" class="text-primary-400 hover:underline font-semibold">Sign in on the networking app</a></p>
         </div>
       </div>
     </div>
@@ -3866,7 +3866,7 @@ ${sharedNavHTML('inquiry')}
           <p class="text-xs text-gray-500 mt-2">Reference: <span id="iq-ref" class="text-primary-400 font-mono"></span></p>
           <div class="flex gap-3 justify-center mt-6 flex-wrap">
             <button onclick="resetInquiryForm()" class="px-6 py-2.5 rounded-xl text-sm font-semibold glass hover:bg-white/10 transition"><i class="fas fa-plus mr-2"></i>Submit Another</button>
-            <a href="/" class="px-6 py-2.5 rounded-xl text-sm font-semibold bg-primary-500/20 text-primary-300 hover:bg-primary-500/30 transition"><i class="fas fa-rocket mr-2"></i>Explore Event</a>
+            <a href="/app" class="px-6 py-2.5 rounded-xl text-sm font-semibold bg-primary-500/20 text-primary-300 hover:bg-primary-500/30 transition"><i class="fas fa-rocket mr-2"></i>Explore Event</a>
             <a href="/marketplace" class="px-6 py-2.5 rounded-xl text-sm font-semibold bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition"><i class="fas fa-store mr-2"></i>AI Marketplace</a>
           </div>
         </div>
@@ -4050,7 +4050,11 @@ app.get('/admin', (c) => {
 
 // ==================== MAIN PAGE ====================
 
-app.get('/', (c) => {
+// The app's networking landing/SPA lives at /app. The root path (/) is served
+// statically as the marketing index.html (see public/index.html + the
+// _routes.json exclude in vite.config.ts), so the SEO-rich brochure is the
+// front door and the app is one click in.
+app.get('/app', (c) => {
   return c.html(mainPageHTML())
 })
 
@@ -4362,7 +4366,7 @@ function mainPageHTML(): string {
         <!-- Desktop nav: logo + links + CTA -->
         <div class="hidden md:flex items-center h-14 gap-6">
           <!-- Logo -->
-          <a href="/" class="flex items-center gap-2.5 hover:opacity-90 transition shrink-0">
+          <a href="/app" class="flex items-center gap-2.5 hover:opacity-90 transition shrink-0">
             <img src="https://bharatai.blob.core.windows.net/aidata/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI" class="w-9 h-9 rounded-lg object-contain bg-white p-0.5">
             <div class="leading-tight">
               <div class="text-sm font-bold text-white">Bharat AI Innovation</div>
@@ -5792,7 +5796,7 @@ function mainPageHTML(): string {
               <a href="https://bharataiinnovation.com/register" target="_blank" class="px-6 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 transition-all text-sm shadow-lg shadow-teal-500/20">
                 <i class="fas fa-ticket-alt mr-2"></i>Register for Workshops
               </a>
-              <a href="https://bharataiinnovation.com/training-workshop" target="_blank" class="px-6 py-3 rounded-xl font-semibold text-white glass hover:bg-white/10 transition-all text-sm border border-white/10">
+              <a href="/training-workshop" class="px-6 py-3 rounded-xl font-semibold text-white glass hover:bg-white/10 transition-all text-sm border border-white/10">
                 <i class="fas fa-external-link-alt mr-2"></i>View Full Details
               </a>
             </div>

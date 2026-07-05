@@ -1,0 +1,691 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>About — Bharat AI Innovation 2026</title>
+    <meta name="description" content="Learn about Bharat AI Innovation 2026 — our vision for Viksit Bharat 2047, mission to advance AI innovation, and India's ₹20,000 crore IndiaAI Mission R&D commitment. Organised by Aegis Knowledge Trust at WTC Mumbai, Nov 20–21 2026.">
+    <link rel="canonical" href="https://bharataiinnovation.com/about.html">
+    <meta property="og:title" content="About Bharat AI Innovation 2026 — Vision, Mission & Organizers">
+    <meta property="og:description" content="India's leading AI conference. Vision for Viksit Bharat 2047, IndiaAI Mission alignment, organised by Aegis Knowledge Trust at WTC Mumbai.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://bharataiinnovation.com/about.html">
+    <meta property="og:image" content="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="About Bharat AI Innovation 2026">
+    <meta name="twitter:description" content="Vision, mission and organizers of India's leading AI conference. WTC Mumbai, Nov 20–21 2026.">
+
+    <!-- Schema.org Structured Data -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "AboutPage",
+          "@id": "https://bharataiinnovation.com/about.html#webpage",
+          "url": "https://bharataiinnovation.com/about.html",
+          "name": "About Bharat AI Innovation 2026",
+          "description": "About page for Bharat AI Innovation 2026 — vision for Viksit Bharat 2047, mission, and organisers.",
+          "inLanguage": "en-IN",
+          "isPartOf": { "@id": "https://bharataiinnovation.com/#website" },
+          "about": { "@id": "https://bharataiinnovation.com/#organization" }
+        },
+        {
+          "@type": "WebSite",
+          "@id": "https://bharataiinnovation.com/#website",
+          "url": "https://bharataiinnovation.com/",
+          "name": "Bharat AI Innovation",
+          "inLanguage": "en-IN",
+          "publisher": { "@id": "https://bharataiinnovation.com/#organization" }
+        },
+        {
+          "@type": "Organization",
+          "@id": "https://bharataiinnovation.com/#organization",
+          "name": "Bharat AI Innovation",
+          "alternateName": "Bharat AI Innovation Conference & Exhibition 2026",
+          "url": "https://bharataiinnovation.com",
+          "logo": "https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png",
+          "email": "info@bharataiinnovation.com",
+          "telephone": "+91-89765-80367",
+          "founder": { "@type": "Organization", "name": "Aegis Knowledge Trust" },
+          "address": {
+            "@type": "PostalAddress",
+            "addressLocality": "Mumbai",
+            "addressRegion": "Maharashtra",
+            "postalCode": "400005",
+            "addressCountry": "IN"
+          },
+          "contactPoint": {
+            "@type": "ContactPoint",
+            "telephone": "+91-89765-80367",
+            "contactType": "customer service",
+            "email": "info@bharataiinnovation.com",
+            "areaServed": "IN",
+            "availableLanguage": ["English", "Hindi"]
+          }
+        },
+        {
+          "@type": "BreadcrumbList",
+          "itemListElement": [
+            { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://bharataiinnovation.com/" },
+            { "@type": "ListItem", "position": 2, "name": "About", "item": "https://bharataiinnovation.com/about.html" }
+          ]
+        }
+      ]
+    }
+    </script>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;500;600;700;800&family=Manrope:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        /* ── About Page Extra Styles ── */
+        .about-hero-stats {
+            display: grid;
+            grid-template-columns: repeat(3,1fr);
+            gap: 1.5rem;
+            margin-top: 3rem;
+        }
+        .about-hero-stat {
+            background: var(--glass-white);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--r-xl);
+            padding: 1.5rem;
+            text-align: center;
+            backdrop-filter: blur(12px);
+            transition: var(--t-med);
+        }
+        .about-hero-stat:hover { background: var(--glass-white-md); transform: translateY(-4px); }
+        .about-hero-stat-num {
+            font-family: var(--font-display);
+            font-size: 2.2rem;
+            font-weight: 900;
+            color: var(--saffron);
+            line-height: 1;
+            margin-bottom: 0.3rem;
+        }
+        .about-hero-stat-label {
+            font-size: 0.78rem;
+            color: rgba(255,255,255,0.6);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+
+        /* Vision Cards */
+        .vision-icon-card {
+            width: 56px; height: 56px;
+            background: var(--grad-saffron);
+            border-radius: var(--r-lg);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+            box-shadow: var(--shadow-saffron);
+            transition: var(--t-med);
+            flex-shrink: 0;
+        }
+        .highlight-item:hover .vision-icon-card { transform: rotate(-6deg) scale(1.06); }
+
+        /* Org Profile Card */
+        .org-profile {
+            background: var(--grad-hero);
+            border-radius: var(--r-2xl);
+            padding: 3rem;
+            position: relative;
+            overflow: hidden;
+        }
+        .org-profile::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background-image: linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px),
+                              linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px);
+            background-size: 30px 30px;
+        }
+        .org-profile-content { position: relative; z-index: 1; }
+
+        /* Timeline Enhanced */
+        .timeline-enhanced {
+            position: relative;
+            padding: 0;
+            max-width: 860px;
+            margin: 0 auto;
+        }
+        .timeline-enhanced::before {
+            content: '';
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            top: 0; bottom: 0;
+            width: 2px;
+            background: linear-gradient(180deg, var(--saffron), var(--electric), var(--emerald), var(--saffron));
+        }
+        .tl-item {
+            display: grid;
+            grid-template-columns: 1fr 60px 1fr;
+            gap: 1.5rem;
+            margin-bottom: 3rem;
+            align-items: center;
+        }
+        .tl-item:nth-child(even) .tl-content-left  { order: 3; }
+        .tl-item:nth-child(even) .tl-center         { order: 2; }
+        .tl-item:nth-child(even) .tl-content-right  { order: 1; text-align: right; }
+        .tl-item:nth-child(odd)  .tl-content-right  { opacity: 0; pointer-events: none; }
+        .tl-item:nth-child(even) .tl-content-left   { opacity: 0; pointer-events: none; }
+
+        .tl-center {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .tl-dot {
+            width: 18px; height: 18px;
+            background: var(--saffron);
+            border-radius: 50%;
+            border: 3px solid white;
+            box-shadow: 0 0 0 3px var(--saffron), 0 0 20px rgba(255,107,0,0.4);
+            flex-shrink: 0;
+        }
+        .tl-year-badge {
+            background: var(--grad-saffron);
+            color: white;
+            font-family: var(--font-display);
+            font-weight: 800;
+            font-size: 0.82rem;
+            padding: 0.25rem 0.65rem;
+            border-radius: var(--r-full);
+            box-shadow: var(--shadow-saffron);
+            white-space: nowrap;
+        }
+        .tl-card {
+            background: white;
+            border: 1px solid var(--light);
+            border-radius: var(--r-xl);
+            padding: 1.5rem;
+            transition: var(--t-med);
+        }
+        .tl-card:hover {
+            border-color: rgba(255,107,0,0.25);
+            box-shadow: var(--shadow-md);
+            transform: translateY(-3px);
+        }
+        .tl-card h4 {
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--charcoal);
+            margin-bottom: 0.35rem;
+        }
+        .tl-card p { font-size: 0.88rem; color: var(--dark-grey); margin: 0; line-height: 1.6; }
+
+        /* Stats row in About */
+        .india-stats-row {
+            display: grid;
+            grid-template-columns: repeat(4,1fr);
+            gap: 1.5rem;
+        }
+        .india-stat-card {
+            background: white;
+            border: 1px solid var(--light);
+            border-radius: var(--r-xl);
+            padding: 2rem 1.5rem;
+            text-align: center;
+            transition: var(--t-med);
+        }
+        .india-stat-card:hover {
+            border-color: rgba(255,107,0,0.2);
+            box-shadow: var(--shadow-md);
+            transform: translateY(-5px);
+        }
+        .india-stat-icon {
+            font-size: 2rem;
+            margin-bottom: 0.75rem;
+        }
+        .india-stat-num {
+            font-family: var(--font-display);
+            font-size: 2rem;
+            font-weight: 900;
+            color: var(--saffron);
+            line-height: 1;
+            margin-bottom: 0.25rem;
+        }
+        .india-stat-label {
+            font-size: 0.82rem;
+            color: var(--dark-grey);
+            font-weight: 600;
+        }
+
+        /* Competitive advantage grid */
+        .advantage-grid {
+            display: grid;
+            grid-template-columns: repeat(3,1fr);
+            gap: 1.25rem;
+        }
+        .advantage-item {
+            background: white;
+            border: 1px solid var(--light);
+            border-radius: var(--r-lg);
+            padding: 1.5rem;
+            display: flex;
+            align-items: flex-start;
+            gap: 1rem;
+            transition: var(--t-med);
+        }
+        .advantage-item:hover {
+            border-color: rgba(255,107,0,0.2);
+            box-shadow: var(--shadow-sm);
+            transform: translateX(4px);
+        }
+        .advantage-num {
+            font-family: var(--font-display);
+            font-size: 1.6rem;
+            font-weight: 900;
+            color: rgba(255,107,0,0.18);
+            line-height: 1;
+            min-width: 36px;
+        }
+        .advantage-item h4 { font-size: 0.92rem; font-weight: 700; color: var(--charcoal); margin-bottom: 0.25rem; }
+        .advantage-item p  { font-size: 0.83rem; color: var(--dark-grey); margin: 0; line-height: 1.5; }
+
+        @media (max-width: 768px) {
+            .about-hero-stats  { grid-template-columns: repeat(3,1fr); gap: 0.75rem; }
+            .india-stats-row   { grid-template-columns: repeat(2,1fr); }
+            .advantage-grid    { grid-template-columns: 1fr; }
+            .timeline-enhanced::before { left: 28px; }
+            .tl-item { grid-template-columns: 28px 1fr; grid-template-rows: auto; }
+            .tl-item:nth-child(even) .tl-content-left,
+            .tl-item:nth-child(odd)  .tl-content-right { display: none; }
+            .tl-item:nth-child(even) .tl-content-right,
+            .tl-item:nth-child(even) .tl-content-left  { opacity: 1; pointer-events: auto; }
+            .tl-item:nth-child(odd)  .tl-content-right { display: block; opacity: 1; pointer-events: auto; }
+            .tl-center { grid-column: 1; grid-row: 1; align-items: flex-start; padding-top: 0.25rem; }
+            .tl-content-left, .tl-content-right { grid-column: 2; }
+            .tl-item:nth-child(even) .tl-content-right { text-align: left; }
+        }
+    </style>
+</head>
+<body>
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+
+    <!-- NAVBAR -->
+    <nav class="navbar dark-nav" id="navbar">
+        <div class="nav-container">
+            <a href="index.html" class="nav-logo">
+                <img loading="eager" fetchpriority="high" decoding="async" src="images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI Innovation Logo" style="height:44px;width:auto;border-radius:12px;padding:6px;background:rgba(255,255,255,0.95);box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+            </a>
+            <div class="nav-menu" id="nav-menu">
+                <a href="index.html" class="nav-link">Home</a>
+                <a href="conference.html" class="nav-link">Conference</a>
+                <a href="exhibition.html" class="nav-link">Exhibition</a>
+                <a href="partner.html" class="nav-link">Partner</a>
+                <a href="training-workshop.html" class="nav-link">Workshops</a>
+                <a href="startup-pitch.html" class="nav-link">Startup Pitch</a>
+                <a href="about.html" class="nav-link active">About</a>
+                <a href="/contact" class="nav-link">Contact</a>
+                <a href="/register" class="nav-cta">Register <i class="fas fa-arrow-right"></i></a>
+            </div>
+            <div class="nav-toggle" id="nav-toggle">
+                <span class="bar"></span><span class="bar"></span><span class="bar"></span>
+            </div>
+        </div>
+    </nav>
+
+    <!-- PAGE HEADER -->
+    <section class="page-header" id="main-content">
+        <div class="page-header-orb"></div>
+        <div class="page-header-content container">
+            <span class="page-header-eyebrow"><i class="fas fa-info-circle"></i> About the Event</span>
+            <h1>About Bharat AI<br>Innovation 2026</h1>
+            <p>Pioneering India's AI Revolution for a Viksit Bharat by 2047</p>
+            <div class="about-hero-stats reveal">
+                <div class="about-hero-stat">
+                    <div class="about-hero-stat-num">5,000+</div>
+                    <div class="about-hero-stat-label">Attendees</div>
+                </div>
+                <div class="about-hero-stat">
+                    <div class="about-hero-stat-num" data-count="10" data-suffix="+">10+</div>
+                    <div class="about-hero-stat-label">Conference Tracks</div>
+                </div>
+                <div class="about-hero-stat">
+                    <div class="about-hero-stat-num" data-count="8" data-suffix="">8</div>
+                    <div class="about-hero-stat-label">Industry Zones</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- VISION SECTION -->
+    <section class="vision-section">
+        <div class="container">
+            <div class="vision-grid">
+                <div class="reveal">
+                    <h2 class="section-title" style="text-align:left;">India as a Global<br><span class="accent">AI Superpower</span></h2>
+                    <p class="vision-text">
+                        To position India as a global AI superpower by 2047, driving innovation that transforms
+                        1.4 billion lives and establishes Bharat as the world's most advanced AI ecosystem.
+                        We envision a future where Indian AI solutions solve global challenges — from healthcare
+                        and education to climate change and space exploration.
+                    </p>
+                    <dl class="about-cred-list reveal">
+                        <div class="about-cred-row">
+                            <dt>Global</dt>
+                            <dd>Indian AI solutions that earn global adoption — not just domestic relevance</dd>
+                        </div>
+                        <div class="about-cred-row">
+                            <dt>Inclusive</dt>
+                            <dd>AI benefits reaching every citizen across rural and urban India equally</dd>
+                        </div>
+                        <div class="about-cred-row">
+                            <dt>Ethical</dt>
+                            <dd>Responsible AI with explainability, fairness, and data sovereignty at its core</dd>
+                        </div>
+                    </dl>
+                </div>
+                <div class="vision-visual reveal reveal-delay-2">
+                    <div class="about-stats-grid">
+                        <div class="about-stat-item">
+                            <div class="about-stat-num">15+</div>
+                            <div class="about-stat-lbl">Events Organised</div>
+                        </div>
+                        <div class="about-stat-item">
+                            <div class="about-stat-num">200K+</div>
+                            <div class="about-stat-lbl">Professionals Reached</div>
+                        </div>
+                        <div class="about-stat-item">
+                            <div class="about-stat-num">50+</div>
+                            <div class="about-stat-lbl">Industry Partners</div>
+                        </div>
+                        <div class="about-stat-item">
+                            <div class="about-stat-num">30+</div>
+                            <div class="about-stat-lbl">Cities Represented</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- MISSION SECTION -->
+    <section class="mission-section">
+        <div class="container">
+            <div class="section-header reveal">
+                <h2 class="section-title">Accelerating India's <span class="accent">AI Transformation</span></h2>
+                <p class="section-subtitle">Through innovation, collaboration, and excellence across industry, academia, and government</p>
+            </div>
+            <div class="pillars-table reveal-stagger">
+                <div class="pillar-row">
+                    <div class="pillar-label">Innovation</div>
+                    <div class="pillar-body">
+                        <p>Foster cutting-edge AI research and development across industries, academia, and government. Support India's growing AI startup ecosystem and spotlight breakthrough research projects.</p>
+                    </div>
+                    <div class="pillar-meta"><span class="pillar-stat">15+ events</span></div>
+                </div>
+                <div class="pillar-row">
+                    <div class="pillar-label">Collaboration</div>
+                    <div class="pillar-body">
+                        <p>Connect innovators, investors, policymakers, and industry leaders to accelerate AI adoption. Build the partnerships that close the gap between policy ambition and operational reality.</p>
+                    </div>
+                    <div class="pillar-meta"><span class="pillar-stat">50+ partners</span></div>
+                </div>
+                <div class="pillar-row">
+                    <div class="pillar-label">Capability</div>
+                    <div class="pillar-body">
+                        <p>Educate and train India's workforce in applied AI — from enterprise executives to fresh graduates. Hands-on workshops, certified programmes, and practitioner-led sessions that build real skills.</p>
+                    </div>
+                    <div class="pillar-meta"><span class="pillar-stat">200K+ reached</span></div>
+                </div>
+                <div class="pillar-row">
+                    <div class="pillar-label">Recognition</div>
+                    <div class="pillar-body">
+                        <p>Celebrate and showcase outstanding achievements in AI across industry and academia. A platform that gives Indian AI the global visibility it has earned.</p>
+                    </div>
+                    <div class="pillar-meta"><span class="pillar-stat">30+ cities</span></div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- GOVERNMENT SUPPORT -->
+    <section class="government-support dark-section section-pad">
+        <div class="container">
+            <div class="section-header reveal">
+                <h2 class="section-title">Government of India <span class="accent">Support</span></h2>
+                <p class="section-subtitle">₹20,000 crore R&D commitment driving India's AI revolution</p>
+            </div>
+            <div class="support-grid">
+                <div class="support-card reveal reveal-delay-1">
+                    <div class="support-amount">₹20,000 Cr</div>
+                    <h3>R&D Investment</h3>
+                    <p>2025-26 budget allocation for AI research and development across institutions, startups, and industry</p>
+                    <ul>
+                        <li>AI research centres of excellence</li>
+                        <li>Startup funding and incubation</li>
+                        <li>Industry-academia collaboration</li>
+                        <li>Global partnership programs</li>
+                    </ul>
+                </div>
+                <div class="support-card reveal reveal-delay-2">
+                    <div class="support-amount">$8.3B</div>
+                    <h3>AWS Investment</h3>
+                    <p>Amazon Web Services' commitment to Maharashtra for cloud infrastructure and AI development</p>
+                    <ul>
+                        <li>Data centre infrastructure</li>
+                        <li>Cloud computing services</li>
+                        <li>AI/ML platform access</li>
+                        <li>Startup credits & support</li>
+                    </ul>
+                </div>
+                <div class="support-card reveal reveal-delay-3">
+                    <div class="support-amount">1.4B</div>
+                    <h3>People Impacted</h3>
+                    <p>Every Indian citizen benefiting from AI innovations in healthcare, education, governance, and economy</p>
+                    <ul>
+                        <li>Rural AI adoption programs</li>
+                        <li>Digital literacy initiatives</li>
+                        <li>Affordable AI solutions</li>
+                        <li>Inclusive growth strategies</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- AI OPPORTUNITY IN INDIA -->
+    <section class="section-pad" style="background:white;">
+        <div class="container">
+            <div class="section-header reveal">
+                <h2 class="section-title">AI Opportunity <span class="accent">in India</span></h2>
+                <p class="section-subtitle">Unlocking India's potential as the world's AI laboratory</p>
+            </div>
+            <div class="india-stats-row reveal" style="margin-bottom:3rem;">
+                <div class="india-stat-card">
+                    <div class="india-stat-num" data-count="1" data-suffix="T$">$1T</div>
+                    <div class="india-stat-label">Economic Impact by 2030</div>
+                </div>
+                <div class="india-stat-card">
+                    <div class="india-stat-num" data-count="500" data-suffix="M+">500M+</div>
+                    <div class="india-stat-label">Digital Citizens</div>
+                </div>
+                <div class="india-stat-card">
+                    <div class="india-stat-num" data-count="1000" data-suffix="+">1,000+</div>
+                    <div class="india-stat-label">AI Startups</div>
+                </div>
+                <div class="india-stat-card">
+                    <div class="india-stat-num" data-count="20" data-suffix="+">20+</div>
+                    <div class="india-stat-label">Industry Sectors</div>
+                </div>
+            </div>
+            <div class="section-header reveal" style="margin-bottom:2rem;">
+                <h3 style="font-size:1.6rem;color:var(--charcoal);">India's Competitive <span class="accent">Advantages</span></h3>
+            </div>
+            <div class="advantage-grid reveal">
+                <div class="advantage-item">
+                    <div class="advantage-num">01</div>
+                    <div>
+                        <h4>Large English-Speaking Population</h4>
+                        <p>A massive talent pool with strong English proficiency enabling global AI collaboration</p>
+                    </div>
+                </div>
+                <div class="advantage-item">
+                    <div class="advantage-num">02</div>
+                    <div>
+                        <h4>Strong IT Infrastructure</h4>
+                        <p>Decades of IT leadership providing the backbone for advanced AI development</p>
+                    </div>
+                </div>
+                <div class="advantage-item">
+                    <div class="advantage-num">03</div>
+                    <div>
+                        <h4>Government Policy Support</h4>
+                        <p>National AI strategy with ₹20,000 crore funding creating a fertile ecosystem</p>
+                    </div>
+                </div>
+                <div class="advantage-item">
+                    <div class="advantage-num">04</div>
+                    <div>
+                        <h4>Cost-Effective Talent Pool</h4>
+                        <p>World-class engineers at competitive costs making India the AI development hub</p>
+                    </div>
+                </div>
+                <div class="advantage-item">
+                    <div class="advantage-num">05</div>
+                    <div>
+                        <h4>Diverse Data for Training</h4>
+                        <p>22+ official languages and 1.4B population producing uniquely rich datasets</p>
+                    </div>
+                </div>
+                <div class="advantage-item">
+                    <div class="advantage-num">06</div>
+                    <div>
+                        <h4>Young Demographics</h4>
+                        <p>65% of India's population is under 35 — fuelling innovation and AI adoption</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ORGANISER PROFILE -->
+    <section class="section-pad" style="background:var(--off-white);">
+        <div class="container">
+            <div class="section-header reveal">
+                <h2 class="section-title">Aegis <span class="accent">Knowledge Trust</span></h2>
+            </div>
+            <div class="org-profile reveal">
+                <div class="org-profile-content">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:3rem;align-items:center;">
+                        <div>
+                            <p style="color:rgba(255,255,255,0.75);font-size:1.05rem;line-height:1.8;margin-bottom:1.5rem;">
+                                Aegis Knowledge Trust is India's leading organiser of technology conferences and awards,
+                                with a proven track record of creating respected platforms for innovation, networking,
+                                and recognition.
+                            </p>
+                            <p style="color:rgba(255,255,255,0.75);font-size:1.05rem;line-height:1.8;margin-bottom:2rem;">
+                                As the organiser of the prestigious Data Science Congress and Aegis Graham Bell Awards,
+                                Aegis brings decades of experience, credibility, and an unparalleled network to
+                                Bharat AI Innovation 2026.
+                            </p>
+                            <a href="/contact" class="btn btn-primary">Partner with Us <i class="fas fa-arrow-right"></i></a>
+                        </div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+                            <div style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);border-radius:16px;padding:1.5rem;text-align:center;">
+                                <div style="font-size:2rem;font-weight:900;color:var(--saffron);line-height:1;margin-bottom:0.35rem;">15+</div>
+                                <div style="font-size:0.78rem;color:rgba(255,255,255,0.6);font-weight:600;text-transform:uppercase;letter-spacing:0.06em;">Years of Experience</div>
+                            </div>
+                            <div style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);border-radius:16px;padding:1.5rem;text-align:center;">
+                                <div style="font-size:2rem;font-weight:900;color:var(--saffron);line-height:1;margin-bottom:0.35rem;">50+</div>
+                                <div style="font-size:0.78rem;color:rgba(255,255,255,0.6);font-weight:600;text-transform:uppercase;letter-spacing:0.06em;">Events Organised</div>
+                            </div>
+                            <div style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);border-radius:16px;padding:1.5rem;text-align:center;">
+                                <div style="font-size:2rem;font-weight:900;color:var(--saffron);line-height:1;margin-bottom:0.35rem;">200K+</div>
+                                <div style="font-size:0.78rem;color:rgba(255,255,255,0.6);font-weight:600;text-transform:uppercase;letter-spacing:0.06em;">Total Participants</div>
+                            </div>
+                            <div style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);border-radius:16px;padding:1.5rem;text-align:center;">
+                                <div style="font-size:2rem;font-weight:900;color:var(--saffron);line-height:1;margin-bottom:0.35rem;">30+</div>
+                                <div style="font-size:0.78rem;color:rgba(255,255,255,0.6);font-weight:600;text-transform:uppercase;letter-spacing:0.06em;">Countries Represented</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA -->
+    <section class="about-cta">
+        <div class="container">
+            <div class="cta-content reveal">
+                <h2>Be Part of India's <span class="accent">AI Revolution</span></h2>
+                <p>Join us in creating a Viksit Bharat through AI innovation</p>
+                <div class="cta-buttons">
+                    <a href="/register" class="btn btn-primary btn-xl">Register Now <i class="fas fa-arrow-right"></i></a>
+                    <a href="/contact" class="btn btn-ghost btn-xl">Partner with Us</a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- FOOTER -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <div class="footer-logo">
+                        <img loading="lazy" decoding="async" src="images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI Innovation Logo" style="height:40px;width:auto;border-radius:10px;padding:5px;background:rgba(255,255,255,0.95);box-shadow:0 2px 6px rgba(0,0,0,0.08);">
+                    </div>
+                    <p class="footer-description">Advancing India's Future Through AI Innovation. Join us in creating a Viksit Bharat by 2047.</p>
+                    <div class="social-links">
+                        <a href="#" class="social-link"><i class="fab fa-twitter"></i></a>
+                        <a href="#" class="social-link"><i class="fab fa-linkedin"></i></a>
+                        <a href="#" class="social-link"><i class="fab fa-facebook"></i></a>
+                        <a href="#" class="social-link"><i class="fab fa-youtube"></i></a>
+                        <a href="#" class="social-link"><i class="fab fa-instagram"></i></a>
+                    </div>
+                </div>
+                <div class="footer-section">
+                    <h4>Quick Links</h4>
+                    <ul class="footer-links">
+                        <li><a href="about.html">About Us</a></li>
+                        <li><a href="conference.html">Conference</a></li>
+                        <li><a href="exhibition.html">Exhibition</a></li>
+                        <li><a href="/register">Register & Delegation</a></li>
+                        <li><a href="startup-pitch.html">Startup Pitch</a></li>
+                        <li><a href="training-workshop.html">Workshops</a></li>
+                        <li><a href="partner.html">Partner</a></li>
+                        <li><a href="https://bellaward.com/" target="_blank" rel="noopener noreferrer">Aegis Graham Bell Awards</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h4>Event Info</h4>
+                    <ul class="footer-links">
+                        <li><a href="conference.html#schedule">Schedule</a></li>
+                        <li><a href="conference.html">Programme</a></li>
+                        <li><a href="exhibition.html">Exhibition Zones</a></li>
+                        <li><a href="accommodation.html">Hotels</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h4>Contact Us</h4>
+                    <div class="contact-info">
+                        <p><i class="fas fa-envelope"></i> info@bharataiinnovation.com</p>
+                        <p><i class="fas fa-phone"></i> +91 89765 80367</p>
+                        <p><i class="fas fa-map-marker-alt"></i> World Trade Center Mumbai, Cuffe Parade, Mumbai</p>
+                    </div>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2026 Bharat AI Innovation. All rights reserved. | Organized by Aegis Knowledge Trust</p>
+                <div class="footer-bottom-links">
+                    <a href="privacy.html">Privacy Policy</a>
+                    <a href="terms.html">Terms of Service</a>
+                    <a href="code-of-conduct.html">Code of Conduct</a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script src="js/main.js"></script>
+</body>
+</html>

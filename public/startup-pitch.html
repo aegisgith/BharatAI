@@ -1,0 +1,689 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Startup Pitch — Bharat AI Innovation 2026</title>
+    <meta name="description" content="Pitch your AI startup to top VCs, industry leaders, and strategic partners at Bharat AI Innovation 2026 Startup Pitch Competition. WTC Mumbai, Nov 20–21 2026.">
+    <link rel="canonical" href="https://bharataiinnovation.com/startup-pitch.html">
+    <meta property="og:title" content="AI Startup Pitch Competition — Bharat AI Innovation 2026">
+    <meta property="og:description" content="Pitch to top VCs and industry leaders. India's leading AI startup competition. WTC Mumbai, Nov 20–21 2026.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://bharataiinnovation.com/startup-pitch.html">
+    <meta property="og:image" content="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="AI Startup Pitch — Bharat AI Innovation 2026">
+    <meta name="twitter:description" content="Pitch your AI startup to investors and industry leaders.">
+
+    <!-- Schema.org Structured Data -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "Event",
+          "@id": "https://bharataiinnovation.com/startup-pitch.html#event",
+          "name": "AI Startup Pitch Competition — Bharat AI Innovation 2026",
+          "description": "India's leading AI startup pitch competition. Selected AI startups present to a panel of top venture capitalists, industry leaders and strategic partners at WTC Mumbai.",
+          "startDate": "2026-11-20T09:00:00+05:30",
+          "endDate": "2026-11-21T18:00:00+05:30",
+          "eventStatus": "https://schema.org/EventScheduled",
+          "eventAttendanceMode": "https://schema.org/OfflineEventAttendanceMode",
+          "location": {
+            "@type": "Place",
+            "name": "World Trade Center Mumbai",
+            "address": {
+              "@type": "PostalAddress",
+              "streetAddress": "Cuffe Parade",
+              "addressLocality": "Mumbai",
+              "addressRegion": "Maharashtra",
+              "postalCode": "400005",
+              "addressCountry": "IN"
+            }
+          },
+          "image": "https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png",
+          "organizer": { "@id": "https://bharataiinnovation.com/#organization" },
+          "keywords": "AI startup pitch India, AI startup competition Mumbai, GenAI startups, AI venture capital, AI seed funding"
+        },
+        {
+          "@type": "Organization",
+          "@id": "https://bharataiinnovation.com/#organization",
+          "name": "Bharat AI Innovation",
+          "url": "https://bharataiinnovation.com",
+          "logo": "https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png",
+          "email": "info@bharataiinnovation.com",
+          "telephone": "+91-89765-80367"
+        },
+        {
+          "@type": "BreadcrumbList",
+          "itemListElement": [
+            { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://bharataiinnovation.com/" },
+            { "@type": "ListItem", "position": 2, "name": "Startup Pitch", "item": "https://bharataiinnovation.com/startup-pitch.html" }
+          ]
+        }
+      ]
+    }
+    </script>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;500;600;700;800&family=Manrope:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        /* ── Startup Pitch Page Extra Styles ── */
+        
+        /* Hero Stats */
+        .pitch-hero-stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.5rem;
+            margin-top: 2rem;
+        }
+        .pitch-stat-card {
+            background: var(--glass-white);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--r-xl);
+            padding: 1.5rem;
+            text-align: center;
+            backdrop-filter: blur(12px);
+            transition: var(--t-med);
+        }
+        .pitch-stat-card:hover {
+            background: var(--glass-white-md);
+            transform: translateY(-4px);
+        }
+        .pitch-stat-number {
+            font-family: var(--font-display);
+            font-size: 2.5rem;
+            font-weight: 900;
+            color: var(--saffron);
+            line-height: 1;
+            margin-bottom: 0.5rem;
+        }
+        .pitch-stat-label {
+            font-size: 0.85rem;
+            color: rgba(255,255,255,0.7);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+
+        /* Why pitch — editorial list replaces emoji card grid */
+        .format-list { display: flex; flex-direction: column; list-style: none; padding: 0; margin: 0; }
+        .format-row { display: grid; grid-template-columns: 7rem 1fr; gap: 0 1.5rem; align-items: baseline; padding: 0.9rem 0; border-bottom: 1px solid var(--light); }
+        .format-row:first-child { border-top: 1px solid var(--light); }
+        .format-list dt { font-family: var(--font-display); font-size: 0.9rem; font-weight: 800; color: var(--charcoal); }
+        .format-list dd { margin: 0; font-size: 0.875rem; color: var(--dark-grey); line-height: 1.55; }
+
+        /* Why Pitch Section */
+        .why-pitch-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 2rem;
+            margin-top: 2rem;
+        }
+        .why-pitch-card {
+            background: white;
+            border: 1px solid var(--light);
+            border-radius: var(--r-xl);
+            padding: 2rem;
+            text-align: center;
+            transition: var(--t-med);
+        }
+        .why-pitch-card:hover {
+            border-color: rgba(255,107,0,0.3);
+            box-shadow: var(--shadow-md);
+            transform: translateY(-6px);
+        }
+        .why-pitch-icon {
+            width: 70px;
+            height: 70px;
+            background: var(--grad-saffron);
+            border-radius: var(--r-lg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            margin: 0 auto 1.5rem;
+            box-shadow: var(--shadow-saffron);
+        }
+        .why-pitch-card h3 {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: var(--charcoal);
+            margin-bottom: 0.75rem;
+        }
+        .why-pitch-card p {
+            font-size: 0.95rem;
+            color: var(--dark-grey);
+            line-height: 1.6;
+            margin: 0;
+        }
+
+        /* Pitch Format */
+        .pitch-format-section {
+            background: var(--grad-hero);
+            border-radius: var(--r-2xl);
+            padding: 3rem;
+            position: relative;
+            overflow: hidden;
+        }
+        .pitch-format-section::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background-image: linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px),
+                              linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px);
+            background-size: 30px 30px;
+        }
+        .pitch-format-content {
+            position: relative;
+            z-index: 1;
+        }
+        .pitch-format-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 2rem;
+            margin-top: 2rem;
+        }
+        .format-item {
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: var(--r-xl);
+            padding: 2rem;
+            backdrop-filter: blur(10px);
+        }
+        .format-item h4 {
+            color: white;
+            font-size: 1.3rem;
+            font-weight: 700;
+            margin-bottom: 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        .format-item h4 i {
+            color: var(--gold-light);
+        }
+        .format-item p {
+            color: rgba(255,255,255,0.8);
+            font-size: 0.95rem;
+            line-height: 1.6;
+            margin: 0;
+        }
+
+        /* Eligibility */
+        .eligibility-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1.5rem;
+            margin-top: 2rem;
+        }
+        .eligibility-card {
+            background: white;
+            border: 1px solid var(--light);
+            border-radius: var(--r-xl);
+            padding: 1.75rem;
+            display: flex;
+            align-items: flex-start;
+            gap: 1.25rem;
+            transition: var(--t-med);
+        }
+        .eligibility-card:hover {
+            border-color: rgba(255,107,0,0.25);
+            box-shadow: var(--shadow-sm);
+            transform: translateX(4px);
+        }
+        .eligibility-icon {
+            width: 48px;
+            height: 48px;
+            background: rgba(255,107,0,0.1);
+            border-radius: var(--r-lg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.4rem;
+            color: var(--saffron);
+            flex-shrink: 0;
+        }
+        .eligibility-card h4 {
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: var(--charcoal);
+            margin-bottom: 0.5rem;
+        }
+        .eligibility-card p {
+            font-size: 0.9rem;
+            color: var(--dark-grey);
+            margin: 0;
+            line-height: 1.6;
+        }
+
+        /* Benefits List */
+        .benefits-list {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
+            margin-top: 2rem;
+        }
+        .benefit-item {
+            background: var(--off-white);
+            border-radius: var(--r-lg);
+            padding: 1.25rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            transition: var(--t-fast);
+        }
+        .benefit-item:hover {
+            background: white;
+            box-shadow: var(--shadow-sm);
+        }
+        .benefit-item i {
+            color: var(--emerald);
+            font-size: 1.3rem;
+            flex-shrink: 0;
+        }
+        .benefit-item span {
+            font-size: 0.95rem;
+            color: var(--charcoal);
+            font-weight: 500;
+        }
+
+        /* Application Process */
+        .process-timeline {
+            position: relative;
+            padding: 2rem 0;
+            margin-top: 2rem;
+        }
+        .process-timeline::before {
+            content: '';
+            position: absolute;
+            left: 40px;
+            top: 0;
+            bottom: 0;
+            width: 3px;
+            background: linear-gradient(180deg, var(--saffron), var(--electric), var(--emerald));
+        }
+        .timeline-item {
+            position: relative;
+            padding-left: 100px;
+            margin-bottom: 3rem;
+        }
+        .timeline-item:last-child {
+            margin-bottom: 0;
+        }
+        .timeline-number {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 80px;
+            height: 80px;
+            background: var(--grad-saffron);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: var(--font-display);
+            font-size: 2rem;
+            font-weight: 900;
+            color: white;
+            box-shadow: var(--shadow-saffron);
+            z-index: 1;
+        }
+        .timeline-content {
+            background: white;
+            border: 1px solid var(--light);
+            border-radius: var(--r-xl);
+            padding: 2rem;
+            box-shadow: var(--shadow-sm);
+        }
+        .timeline-content h4 {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: var(--charcoal);
+            margin-bottom: 0.75rem;
+        }
+        .timeline-content p {
+            font-size: 0.95rem;
+            color: var(--dark-grey);
+            line-height: 1.6;
+            margin: 0;
+        }
+
+        @media (max-width: 1024px) {
+            .why-pitch-grid { grid-template-columns: repeat(2, 1fr); }
+            .pitch-format-grid { grid-template-columns: 1fr; }
+            .eligibility-grid { grid-template-columns: 1fr; }
+            .benefits-list { grid-template-columns: 1fr; }
+        }
+
+        @media (max-width: 768px) {
+            .pitch-hero-stats { grid-template-columns: 1fr; }
+            .why-pitch-grid { grid-template-columns: 1fr; }
+            .timeline-item { padding-left: 0; padding-top: 100px; }
+            .timeline-number { left: 50%; transform: translateX(-50%); }
+            .process-timeline::before { left: 50%; transform: translateX(-50%); }
+        }
+    </style>
+</head>
+<body>
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+
+    <!-- NAVBAR -->
+    <nav class="navbar dark-nav" id="navbar">
+        <div class="nav-container">
+            <a href="index.html" class="nav-logo">
+                <img loading="eager" fetchpriority="high" decoding="async" src="images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI Innovation Logo" style="height:44px;width:auto;border-radius:12px;padding:6px;background:rgba(255,255,255,0.95);box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+            </a>
+            <div class="nav-menu" id="nav-menu">
+                <a href="index.html" class="nav-link">Home</a>
+                <a href="conference.html" class="nav-link">Conference</a>
+                <a href="exhibition.html" class="nav-link">Exhibition</a>
+                <a href="partner.html" class="nav-link">Partner</a>
+                <a href="training-workshop.html" class="nav-link">Workshops</a>
+                <a href="startup-pitch.html" class="nav-link active">Startup Pitch</a>
+                <a href="about.html" class="nav-link">About</a>
+                <a href="/contact" class="nav-link">Contact</a>
+                <a href="/register" class="nav-cta">Register <i class="fas fa-arrow-right"></i></a>
+            </div>
+            <div class="nav-toggle" id="nav-toggle">
+                <span class="bar"></span><span class="bar"></span><span class="bar"></span>
+            </div>
+        </div>
+    </nav>
+
+    <!-- PAGE HEADER -->
+    <section class="page-header" id="main-content">
+        <div class="page-header-orb"></div>
+        <div class="page-header-content container">
+            <span class="page-header-eyebrow"><i class="fas fa-rocket"></i> For Startups</span>
+            <h1>Startup Pitch<br>Competition</h1>
+            <p>Present your AI innovation to investors, industry leaders, and potential partners</p>
+            <div class="pitch-hero-stats">
+                <div class="pitch-stat-card">
+                    <div class="pitch-stat-number">8 Min</div>
+                    <div class="pitch-stat-label">Pitch Time</div>
+                </div>
+                <div class="pitch-stat-card">
+                    <div class="pitch-stat-number">500+</div>
+                    <div class="pitch-stat-label">Investors & Leaders</div>
+                </div>
+                <div class="pitch-stat-card">
+                    <div class="pitch-stat-number">Direct</div>
+                    <div class="pitch-stat-label">Investor Access</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- WHY PITCH HERE -->
+    <section class="section-pad" style="background:white;">
+        <div class="container">
+            <div class="section-header reveal">
+                <h2 class="section-title">Why Pitch at <span class="accent">Bharat AI Innovation?</span></h2>
+                <p class="section-subtitle">Access India's most influential AI ecosystem in one place</p>
+            </div>
+            <dl class="format-list reveal">
+                <div class="format-row">
+                    <dt>Investors</dt>
+                    <dd>Direct access to VCs, angel investors, and corporate venture arms actively seeking AI companies to back</dd>
+                </div>
+                <div class="format-row">
+                    <dt>Visibility</dt>
+                    <dd>Showcase your solution to 500+ decision-makers, enterprise leaders, and potential customers in one room</dd>
+                </div>
+                <div class="format-row">
+                    <dt>Partnerships</dt>
+                    <dd>Connect with potential partners, mentors, and channel collaborators who can accelerate your go-to-market</dd>
+                </div>
+                <div class="format-row">
+                    <dt>Media</dt>
+                    <dd>Coverage in leading tech publications and exposure across India's startup and enterprise AI ecosystem</dd>
+                </div>
+                <div class="format-row">
+                    <dt>Feedback</dt>
+                    <dd>Structured critique from investors, founders, and domain experts who have built and scaled AI products</dd>
+                </div>
+            </dl>
+        </div>
+    </section>
+
+    <!-- PITCH FORMAT -->
+    <section class="section-pad" style="background:var(--off-white);">
+        <div class="container">
+            <div class="pitch-format-section reveal">
+                <div class="pitch-format-content">
+                    <div class="section-header" style="margin-bottom:2rem;">
+                        <h2 class="section-title" style="color:white;">Innovation Stage <span class="accent">Format</span></h2>
+                        <p class="section-subtitle" style="color:rgba(255,255,255,0.8);">Present your innovation in a structured, impactful format</p>
+                    </div>
+                    <div class="pitch-format-grid">
+                        <div class="format-item">
+                            <h4><i class="fas fa-clock"></i> 8-Minute Pitch</h4>
+                            <p>Concise, focused presentation of your AI innovation, business model, market opportunity, and traction</p>
+                        </div>
+                        <div class="format-item">
+                            <h4><i class="fas fa-comments"></i> 5-Minute Q&A</h4>
+                            <p>Interactive session with judges and audience to answer questions and clarify your vision</p>
+                        </div>
+                        <div class="format-item">
+                            <h4><i class="fas fa-users"></i> Live Audience</h4>
+                            <p>Present before policymakers, investors, industry influencers, and senior enterprise leaders</p>
+                        </div>
+                        <div class="format-item">
+                            <h4><i class="fas fa-award"></i> Judge Panel</h4>
+                            <p>Expert panel of investors, successful founders, and industry leaders evaluating pitches</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ELIGIBILITY -->
+    <section class="section-pad" style="background:white;">
+        <div class="container">
+            <div class="section-header reveal">
+                <h2 class="section-title">Eligibility <span class="accent">Criteria</span></h2>
+                <p class="section-subtitle">Is your startup ready for the Innovation Stage?</p>
+            </div>
+            <dl class="format-list reveal">
+                <div class="format-row">
+                    <dt>AI-First</dt>
+                    <dd>Building AI-powered products, services, or solutions — AI as a core component, not a feature add-on</dd>
+                </div>
+                <div class="format-row">
+                    <dt>Stage</dt>
+                    <dd>Seed to Series A — demonstrable traction, live MVP, or early product-market fit evidence</dd>
+                </div>
+                <div class="format-row">
+                    <dt>India</dt>
+                    <dd>Registered Indian entity, or significant market operations and focus within India</dd>
+                </div>
+                <div class="format-row">
+                    <dt>Differentiation</dt>
+                    <dd>Clear, specific differentiation from existing solutions — a novel approach, not a feature clone</dd>
+                </div>
+                <div class="format-row">
+                    <dt>Business model</dt>
+                    <dd>Viable path to revenue with a scalable unit economics thesis — not just a technology demo</dd>
+                </div>
+                <div class="format-row">
+                    <dt>Team</dt>
+                    <dd>Founding team with relevant domain expertise, full-time commitment, and skin in the game</dd>
+                </div>
+            </dl>
+        </div>
+    </section>
+
+    <!-- WHAT YOU GET -->
+    <section class="section-pad" style="background:var(--off-white);">
+        <div class="container">
+            <div class="section-header reveal">
+                <h2 class="section-title">What You <span class="accent">Get</span></h2>
+                <p class="section-subtitle">Beyond the pitch - comprehensive startup support</p>
+            </div>
+            <div class="benefits-list reveal">
+                <div class="benefit-item">
+                    <i class="fas fa-check-circle"></i>
+                    <span>8 minutes on Innovation Stage before 500+ audience</span>
+                </div>
+                <div class="benefit-item">
+                    <i class="fas fa-check-circle"></i>
+                    <span>Direct access to investors and VCs</span>
+                </div>
+                <div class="benefit-item">
+                    <i class="fas fa-check-circle"></i>
+                    <span>Exhibition booth space (worth INR 50,000)</span>
+                </div>
+                <div class="benefit-item">
+                    <i class="fas fa-check-circle"></i>
+                    <span>Media coverage and press releases</span>
+                </div>
+                <div class="benefit-item">
+                    <i class="fas fa-check-circle"></i>
+                    <span>Networking with industry leaders</span>
+                </div>
+                <div class="benefit-item">
+                    <i class="fas fa-check-circle"></i>
+                    <span>Pitch deck review and feedback</span>
+                </div>
+                <div class="benefit-item">
+                    <i class="fas fa-check-circle"></i>
+                    <span>Certificate and digital badge</span>
+                </div>
+                <div class="benefit-item">
+                    <i class="fas fa-check-circle"></i>
+                    <span>Access to all conference sessions</span>
+                </div>
+                <div class="benefit-item">
+                    <i class="fas fa-check-circle"></i>
+                    <span>Connection to mentors and advisors</span>
+                </div>
+                <div class="benefit-item">
+                    <i class="fas fa-check-circle"></i>
+                    <span>Post-event investor introductions</span>
+                </div>
+                <div class="benefit-item">
+                    <i class="fas fa-check-circle"></i>
+                    <span>Video recording of your pitch</span>
+                </div>
+                <div class="benefit-item">
+                    <i class="fas fa-check-circle"></i>
+                    <span>Potential partnership opportunities</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- APPLICATION PROCESS -->
+    <section class="section-pad" style="background:white;">
+        <div class="container">
+            <div class="section-header reveal">
+                <h2 class="section-title">Application <span class="accent">Process</span></h2>
+                <p class="section-subtitle">Simple 3-step process to get on the Innovation Stage</p>
+            </div>
+            <div class="process-timeline reveal">
+                <div class="timeline-item">
+                    <div class="timeline-number">1</div>
+                    <div class="timeline-content">
+                        <h4>Application</h4>
+                        <p>Complete the online application form with details about your startup, team, product, and traction. Include your pitch deck (PDF) and demo video if available.</p>
+                    </div>
+                </div>
+                <div class="timeline-item">
+                    <div class="timeline-number">2</div>
+                    <div class="timeline-content">
+                        <h4>Shortlisting</h4>
+                        <p>Our selection committee reviews all applications based on innovation, market potential, team strength, and scalability. Shortlisted startups will be notified within 10 days.</p>
+                    </div>
+                </div>
+                <div class="timeline-item">
+                    <div class="timeline-number">3</div>
+                    <div class="timeline-content">
+                        <h4>Pitch at Bharat AI Innovation Conference</h4>
+                        <p>Present your AI innovation to investors, industry leaders, and decision-makers on the Innovation Stage. Showcase your vision in 8 minutes followed by a 5-minute Q&A session.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA -->
+    <section class="cta-section">
+        <div class="container">
+            <div class="cta-content reveal">
+                <h2>Ready to Pitch Your <span class="accent">AI Innovation?</span></h2>
+                <p>Applications are now open. Don't miss this opportunity to showcase your startup to India's AI ecosystem.</p>
+                <div class="cta-buttons">
+                    <a href="/register" class="btn btn-primary btn-xl">Apply Now <i class="fas fa-arrow-right"></i></a>
+                    <a href="/contact" class="btn btn-ghost btn-xl">Learn More</a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- FOOTER -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <div class="footer-logo">
+                        <img loading="lazy" decoding="async" src="images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI Innovation Logo" style="height:40px;width:auto;border-radius:10px;padding:5px;background:rgba(255,255,255,0.95);box-shadow:0 2px 6px rgba(0,0,0,0.08);">
+                    </div>
+                    <p class="footer-description">Advancing India's Future Through AI Innovation. Join us in creating a Viksit Bharat by 2047.</p>
+                    <div class="social-links">
+                        <a href="#" class="social-link"><i class="fab fa-twitter"></i></a>
+                        <a href="#" class="social-link"><i class="fab fa-linkedin"></i></a>
+                        <a href="#" class="social-link"><i class="fab fa-facebook"></i></a>
+                        <a href="#" class="social-link"><i class="fab fa-youtube"></i></a>
+                        <a href="#" class="social-link"><i class="fab fa-instagram"></i></a>
+                    </div>
+                </div>
+                <div class="footer-section">
+                    <h4>Quick Links</h4>
+                    <ul class="footer-links">
+                        <li><a href="about.html">About Us</a></li>
+                        <li><a href="conference.html">Conference</a></li>
+                        <li><a href="exhibition.html">Exhibition</a></li>
+                        <li><a href="/register">Register & Delegation</a></li>
+                        <li><a href="startup-pitch.html">Startup Pitch</a></li>
+                        <li><a href="training-workshop.html">Workshops</a></li>
+                        <li><a href="partner.html">Partner</a></li>
+                        <li><a href="https://bellaward.com/" target="_blank" rel="noopener noreferrer">Aegis Graham Bell Awards</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h4>Event Info</h4>
+                    <ul class="footer-links">
+                        <li><a href="conference.html#schedule">Schedule</a></li>
+                        <li><a href="conference.html">Programme</a></li>
+                        <li><a href="exhibition.html">Exhibition Zones</a></li>
+                        <li><a href="accommodation.html">Hotels</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h4>Contact Us</h4>
+                    <div class="contact-info">
+                        <p><i class="fas fa-envelope"></i> info@bharataiinnovation.com</p>
+                        <p><i class="fas fa-phone"></i> +91 89765 80367</p>
+                        <p><i class="fas fa-map-marker-alt"></i> World Trade Center Mumbai, Cuffe Parade, Mumbai</p>
+                    </div>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2026 Bharat AI Innovation. All rights reserved. | Organized by Aegis Knowledge Trust</p>
+                <div class="footer-bottom-links">
+                    <a href="privacy.html">Privacy Policy</a>
+                    <a href="terms.html">Terms of Service</a>
+                    <a href="code-of-conduct.html">Code of Conduct</a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script src="js/main.js"></script>
+</body>
+</html>

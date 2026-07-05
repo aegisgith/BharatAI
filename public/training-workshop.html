@@ -1,0 +1,846 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Training Workshops — Bharat AI Innovation 2026</title>
+    <meta name="description" content="Master cutting-edge AI through expert-led workshops at Bharat AI Innovation 2026 — Generative AI, Agentic AI, VibeCoding, LLM Fine-Tuning, RAG, Prompt Engineering, and more. WTC Mumbai, Nov 20–21 2026.">
+    <link rel="canonical" href="https://bharataiinnovation.com/training-workshop.html">
+    <meta property="og:title" content="AI Training Workshops — Bharat AI Innovation 2026">
+    <meta property="og:description" content="Hands-on workshops on GenAI, Agentic AI, LLM Fine-Tuning, RAG, Prompt Engineering. WTC Mumbai, Nov 20–21 2026.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://bharataiinnovation.com/training-workshop.html">
+    <meta property="og:image" content="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="AI Workshops — Bharat AI Innovation 2026">
+    <meta name="twitter:description" content="Expert-led AI workshops: GenAI, Agentic AI, LLM Fine-Tuning, RAG.">
+
+    <!-- Schema.org Structured Data -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "EducationEvent",
+          "@id": "https://bharataiinnovation.com/training-workshop.html#event",
+          "name": "Bharat AI Innovation 2026 — Training Workshops",
+          "description": "Hands-on AI training workshops led by industry experts. Topics include Generative AI, Agentic AI, VibeCoding, LLM Fine-Tuning, RAG, Prompt Engineering, MLOps and AI for Production.",
+          "startDate": "2026-11-20T09:00:00+05:30",
+          "endDate": "2026-11-21T18:00:00+05:30",
+          "eventStatus": "https://schema.org/EventScheduled",
+          "eventAttendanceMode": "https://schema.org/OfflineEventAttendanceMode",
+          "location": {
+            "@type": "Place",
+            "name": "World Trade Center Mumbai",
+            "address": {
+              "@type": "PostalAddress",
+              "streetAddress": "Cuffe Parade",
+              "addressLocality": "Mumbai",
+              "addressRegion": "Maharashtra",
+              "postalCode": "400005",
+              "addressCountry": "IN"
+            }
+          },
+          "image": "https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png",
+          "organizer": { "@id": "https://bharataiinnovation.com/#organization" },
+          "keywords": "AI workshop India, GenAI training, LLM fine-tuning workshop, Agentic AI training, RAG workshop, prompt engineering course, MLOps training"
+        },
+        {
+          "@type": "Organization",
+          "@id": "https://bharataiinnovation.com/#organization",
+          "name": "Bharat AI Innovation",
+          "url": "https://bharataiinnovation.com",
+          "logo": "https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png",
+          "email": "info@bharataiinnovation.com",
+          "telephone": "+91-89765-80367"
+        },
+        {
+          "@type": "BreadcrumbList",
+          "itemListElement": [
+            { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://bharataiinnovation.com/" },
+            { "@type": "ListItem", "position": 2, "name": "Workshops", "item": "https://bharataiinnovation.com/training-workshop.html" }
+          ]
+        }
+      ]
+    }
+    </script>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;500;600;700;800&family=Manrope:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        /* ── Training Workshop Page Extra Styles ── */
+        
+        /* Workshop Grid */
+        .workshop-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 2rem;
+            margin-top: 2rem;
+        }
+        .workshop-card {
+            background: white;
+            border: 2px solid var(--light);
+            border-radius: var(--r-2xl);
+            padding: 2.5rem;
+            transition: var(--t-med);
+            position: relative;
+            overflow: hidden;
+        }
+        .workshop-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 6px;
+            background: var(--grad-saffron);
+        }
+        .workshop-card:hover {
+            border-color: rgba(255,107,0,0.3);
+            box-shadow: var(--shadow-lg);
+            transform: translateY(-6px);
+        }
+        .workshop-badge {
+            display: inline-block;
+            background: rgba(255,107,0,0.1);
+            color: var(--saffron);
+            font-size: 0.75rem;
+            font-weight: 700;
+            padding: 0.35rem 0.85rem;
+            border-radius: var(--r-full);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 1rem;
+        }
+        .workshop-card h3 {
+            font-family: var(--font-display);
+            font-size: 1.6rem;
+            font-weight: 800;
+            color: var(--charcoal);
+            margin-bottom: 1rem;
+        }
+        .workshop-card p {
+            font-size: 0.95rem;
+            color: var(--dark-grey);
+            line-height: 1.7;
+            margin-bottom: 1.5rem;
+        }
+        .workshop-meta {
+            display: flex;
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+        }
+        .meta-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.9rem;
+            color: var(--dark-grey);
+        }
+        .meta-item i {
+            color: var(--saffron);
+        }
+        .workshop-topics {
+            background: var(--off-white);
+            border-radius: var(--r-lg);
+            padding: 1.25rem;
+            margin-bottom: 1.5rem;
+        }
+        .workshop-topics h4 {
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: var(--charcoal);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            margin-bottom: 0.75rem;
+        }
+        .workshop-topics ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        .workshop-topics li {
+            padding: 0.5rem 0;
+            font-size: 0.9rem;
+            color: var(--dark-grey);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .workshop-topics li::before {
+            content: '✓';
+            color: var(--emerald);
+            font-weight: 700;
+        }
+
+        /* Format list — editorial replace for emoji card grid */
+        .format-list { display: flex; flex-direction: column; list-style: none; padding: 0; margin: 0; }
+        .format-row { display: grid; grid-template-columns: 7rem 1fr; gap: 0 1.5rem; align-items: baseline; padding: 0.9rem 0; border-bottom: 1px solid var(--light); }
+        .format-row:first-child { border-top: 1px solid var(--light); }
+        .format-list dt { font-family: var(--font-display); font-size: 0.9rem; font-weight: 800; color: var(--charcoal); }
+        .format-list dd { margin: 0; font-size: 0.875rem; color: var(--dark-grey); line-height: 1.55; }
+
+        /* Features Grid */
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1.5rem;
+            margin-top: 2rem;
+        }
+        .feature-card {
+            background: white;
+            border: 1px solid var(--light);
+            border-radius: var(--r-xl);
+            padding: 2rem 1.5rem;
+            text-align: center;
+            transition: var(--t-med);
+        }
+        .feature-card:hover {
+            border-color: rgba(255,107,0,0.25);
+            box-shadow: var(--shadow-md);
+            transform: translateY(-5px);
+        }
+        .feature-icon {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+        }
+        .feature-card h4 {
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--charcoal);
+            margin-bottom: 0.5rem;
+        }
+        .feature-card p {
+            font-size: 0.85rem;
+            color: var(--dark-grey);
+            margin: 0;
+            line-height: 1.5;
+        }
+
+        /* Who Should Attend */
+        .audience-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.5rem;
+            margin-top: 2rem;
+        }
+        .audience-card {
+            background: white;
+            border: 1px solid var(--light);
+            border-radius: var(--r-xl);
+            padding: 2rem;
+            text-align: center;
+            transition: var(--t-med);
+        }
+        .audience-card:hover {
+            border-color: rgba(255,107,0,0.25);
+            box-shadow: var(--shadow-md);
+            transform: translateY(-5px);
+        }
+        .audience-icon {
+            width: 64px;
+            height: 64px;
+            background: var(--grad-saffron);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.8rem;
+            margin: 0 auto 1rem;
+            box-shadow: var(--shadow-saffron);
+        }
+        .audience-card h4 {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: var(--charcoal);
+            margin-bottom: 0.5rem;
+        }
+        .audience-card p {
+            font-size: 0.9rem;
+            color: var(--dark-grey);
+            margin: 0;
+            line-height: 1.6;
+        }
+
+        /* Prerequisites Section */
+        .prerequisites-box {
+            background: var(--grad-hero);
+            border-radius: var(--r-2xl);
+            padding: 3rem;
+            position: relative;
+            overflow: hidden;
+        }
+        .prerequisites-box::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background-image: linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px),
+                              linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px);
+            background-size: 30px 30px;
+        }
+        .prerequisites-content {
+            position: relative;
+            z-index: 1;
+        }
+        .prerequisites-list {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1.25rem;
+            margin-top: 2rem;
+        }
+        .prereq-item {
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: var(--r-lg);
+            padding: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            backdrop-filter: blur(10px);
+        }
+        .prereq-item i {
+            color: var(--gold-light);
+            font-size: 1.5rem;
+            flex-shrink: 0;
+        }
+        .prereq-item span {
+            color: white;
+            font-size: 0.95rem;
+            font-weight: 500;
+        }
+
+        /* Instructor Highlight */
+        .instructor-section {
+            background: var(--off-white);
+            border-radius: var(--r-2xl);
+            padding: 3rem;
+            margin-top: 3rem;
+            text-align: center;
+        }
+        .instructor-section h3 {
+            font-family: var(--font-display);
+            font-size: 2rem;
+            font-weight: 800;
+            color: var(--charcoal);
+            margin-bottom: 1rem;
+        }
+        .instructor-section p {
+            font-size: 1.05rem;
+            color: var(--dark-grey);
+            line-height: 1.7;
+            max-width: 700px;
+            margin: 0 auto 2rem;
+        }
+        .instructor-badges {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .instructor-badge {
+            background: white;
+            border: 1px solid var(--light);
+            border-radius: var(--r-full);
+            padding: 0.75rem 1.5rem;
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--charcoal);
+            box-shadow: var(--shadow-sm);
+        }
+
+        /* Pricing Card */
+        .pricing-highlight {
+            background: linear-gradient(135deg, var(--saffron), var(--electric));
+            border-radius: var(--r-2xl);
+            padding: 3rem;
+            text-align: center;
+            color: white;
+            margin-top: 3rem;
+        }
+        .pricing-highlight h3 {
+            font-family: var(--font-display);
+            font-size: 2.5rem;
+            font-weight: 900;
+            margin-bottom: 0.5rem;
+        }
+        .pricing-highlight p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+            margin-bottom: 2rem;
+        }
+
+        @media (max-width: 1024px) {
+            .workshop-grid { grid-template-columns: 1fr; }
+            .features-grid { grid-template-columns: repeat(2, 1fr); }
+            .audience-grid { grid-template-columns: repeat(2, 1fr); }
+            .prerequisites-list { grid-template-columns: 1fr; }
+        }
+
+        @media (max-width: 768px) {
+            .features-grid { grid-template-columns: 1fr; }
+            .audience-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+
+    <!-- NAVBAR -->
+    <nav class="navbar dark-nav" id="navbar">
+        <div class="nav-container">
+            <a href="index.html" class="nav-logo">
+                <img loading="eager" fetchpriority="high" decoding="async" src="images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI Innovation Logo" style="height:44px;width:auto;border-radius:12px;padding:6px;background:rgba(255,255,255,0.95);box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+            </a>
+            <div class="nav-menu" id="nav-menu">
+                <a href="index.html" class="nav-link">Home</a>
+                <a href="conference.html" class="nav-link">Conference</a>
+                <a href="exhibition.html" class="nav-link">Exhibition</a>
+                <a href="partner.html" class="nav-link">Partner</a>
+                <a href="training-workshop.html" class="nav-link active">Workshops</a>
+                <a href="startup-pitch.html" class="nav-link">Startup Pitch</a>
+                <a href="about.html" class="nav-link">About</a>
+                <a href="/contact" class="nav-link">Contact</a>
+                <a href="/register" class="nav-cta">Register <i class="fas fa-arrow-right"></i></a>
+            </div>
+            <div class="nav-toggle" id="nav-toggle">
+                <span class="bar"></span><span class="bar"></span><span class="bar"></span>
+            </div>
+        </div>
+    </nav>
+
+    <!-- PAGE HEADER -->
+    <section class="page-header" id="main-content">
+        <div class="page-header-orb"></div>
+        <div class="page-header-content container">
+            <span class="page-header-eyebrow"><i class="fas fa-graduation-cap"></i> Hands-On Learning</span>
+            <h1>Training<br>Workshops</h1>
+            <p>Master cutting-edge AI technologies through expert-led, hands-on workshops</p>
+        </div>
+    </section>
+
+    <!-- INTRO -->
+    <section class="section-pad" style="background:white;">
+        <div class="container">
+            <div class="section-header reveal">
+                <h2 class="section-title">Expert-Led AI <span class="accent">Workshops</span></h2>
+                <p class="section-subtitle">Go beyond theory — build real AI applications with guidance from industry practitioners</p>
+            </div>
+            <dl class="format-list reveal">
+                <div class="format-row">
+                    <dt>Hands-on</dt>
+                    <dd>Code alongside experts using real datasets, live APIs, and production-grade tools — not toy examples</dd>
+                </div>
+                <div class="format-row">
+                    <dt>Practitioners</dt>
+                    <dd>Instructors who build AI at scale — not academics teaching from textbooks</dd>
+                </div>
+                <div class="format-row">
+                    <dt>Real projects</dt>
+                    <dd>Work on actual use cases and deployable solutions you can add to your professional portfolio</dd>
+                </div>
+                <div class="format-row">
+                    <dt>Certificate</dt>
+                    <dd>Earn a completion certificate from Aegis School of Data Science &amp; AI on every workshop</dd>
+                </div>
+            </dl>
+        </div>
+    </section>
+
+    <!-- WORKSHOPS -->
+    <section class="section-pad" style="background:var(--off-white);">
+        <div class="container">
+            <div class="section-header reveal">
+                <h2 class="section-title">Available <span class="accent">Workshops</span></h2>
+                <p class="section-subtitle">Choose from our comprehensive range of AI and ML workshops</p>
+            </div>
+            <div class="workshop-grid reveal">
+                <!-- Workshop 1 -->
+                <div class="workshop-card">
+                    <span class="workshop-badge">Popular</span>
+                    <h3>Generative AI & LLMs</h3>
+                    <p>Master the fundamentals and advanced techniques of working with Large Language Models and Generative AI applications.</p>
+                    <div class="workshop-meta">
+                        <div class="meta-item">
+                            <i class="fas fa-clock"></i>
+                            <span>4 Hours</span>
+                        </div>
+                        <div class="meta-item">
+                            <i class="fas fa-signal"></i>
+                            <span>Intermediate</span>
+                        </div>
+                    </div>
+                    <div class="workshop-topics">
+                        <h4>Topics Covered</h4>
+                        <ul>
+                            <li>LLM Architecture & Fundamentals</li>
+                            <li>Prompt Engineering Best Practices</li>
+                            <li>RAG (Retrieval Augmented Generation)</li>
+                            <li>Fine-tuning Pre-trained Models</li>
+                        </ul>
+                    </div>
+                    <a href="/register" class="btn btn-primary btn-block">Register Now <i class="fas fa-arrow-right"></i></a>
+                </div>
+
+                <!-- Workshop 2 -->
+                <div class="workshop-card">
+                    <span class="workshop-badge">New</span>
+                    <h3>Agentic AI Development</h3>
+                    <p>Build autonomous AI agents that can reason, plan, and take actions to accomplish complex tasks.</p>
+                    <div class="workshop-meta">
+                        <div class="meta-item">
+                            <i class="fas fa-clock"></i>
+                            <span>4 Hours</span>
+                        </div>
+                        <div class="meta-item">
+                            <i class="fas fa-signal"></i>
+                            <span>Advanced</span>
+                        </div>
+                    </div>
+                    <div class="workshop-topics">
+                        <h4>Topics Covered</h4>
+                        <ul>
+                            <li>Agent Architecture & Frameworks</li>
+                            <li>Tool Integration & Function Calling</li>
+                            <li>Multi-Agent Systems</li>
+                            <li>Deployment & Orchestration</li>
+                        </ul>
+                    </div>
+                    <a href="/register" class="btn btn-primary btn-block">Register Now <i class="fas fa-arrow-right"></i></a>
+                </div>
+
+                <!-- Workshop 3 -->
+                <div class="workshop-card">
+                    <span class="workshop-badge">Trending</span>
+                    <h3>VibeCoding & AI-Assisted Development</h3>
+                    <p>Leverage AI coding assistants and learn the art of prompt-driven development for rapid prototyping.</p>
+                    <div class="workshop-meta">
+                        <div class="meta-item">
+                            <i class="fas fa-clock"></i>
+                            <span>3 Hours</span>
+                        </div>
+                        <div class="meta-item">
+                            <i class="fas fa-signal"></i>
+                            <span>Beginner</span>
+                        </div>
+                    </div>
+                    <div class="workshop-topics">
+                        <h4>Topics Covered</h4>
+                        <ul>
+                            <li>GitHub Copilot & Cursor AI</li>
+                            <li>Prompt Engineering for Code</li>
+                            <li>Rapid Prototyping Techniques</li>
+                            <li>Code Review with AI</li>
+                        </ul>
+                    </div>
+                    <a href="/register" class="btn btn-primary btn-block">Register Now <i class="fas fa-arrow-right"></i></a>
+                </div>
+
+                <!-- Workshop 4 -->
+                <div class="workshop-card">
+                    <span class="workshop-badge">Essential</span>
+                    <h3>AI Product Development</h3>
+                    <p>End-to-end journey from ideation to deployment of AI-powered products and services.</p>
+                    <div class="workshop-meta">
+                        <div class="meta-item">
+                            <i class="fas fa-clock"></i>
+                            <span>5 Hours</span>
+                        </div>
+                        <div class="meta-item">
+                            <i class="fas fa-signal"></i>
+                            <span>Intermediate</span>
+                        </div>
+                    </div>
+                    <div class="workshop-topics">
+                        <h4>Topics Covered</h4>
+                        <ul>
+                            <li>AI Product Strategy & Planning</li>
+                            <li>MVP Development & Testing</li>
+                            <li>Model Selection & Integration</li>
+                            <li>Deployment & Monitoring</li>
+                        </ul>
+                    </div>
+                    <a href="/register" class="btn btn-primary btn-block">Register Now <i class="fas fa-arrow-right"></i></a>
+                </div>
+
+                <!-- Workshop 5 -->
+                <div class="workshop-card">
+                    <span class="workshop-badge">Popular</span>
+                    <h3>Recommender System Development</h3>
+                    <p>Build intelligent recommendation engines using collaborative filtering, content-based, and hybrid approaches.</p>
+                    <div class="workshop-meta">
+                        <div class="meta-item">
+                            <i class="fas fa-clock"></i>
+                            <span>4 Hours</span>
+                        </div>
+                        <div class="meta-item">
+                            <i class="fas fa-signal"></i>
+                            <span>Intermediate</span>
+                        </div>
+                    </div>
+                    <div class="workshop-topics">
+                        <h4>Topics Covered</h4>
+                        <ul>
+                            <li>Collaborative Filtering Algorithms</li>
+                            <li>Content-Based Recommendations</li>
+                            <li>Matrix Factorization Techniques</li>
+                            <li>Real-time Recommendation Systems</li>
+                        </ul>
+                    </div>
+                    <a href="/register" class="btn btn-primary btn-block">Register Now <i class="fas fa-arrow-right"></i></a>
+                </div>
+
+                <!-- Workshop 6 -->
+                <div class="workshop-card">
+                    <span class="workshop-badge">Hands-On</span>
+                    <h3>AI Chatbot Development</h3>
+                    <p>Create intelligent conversational AI systems using modern NLP frameworks and deployment strategies.</p>
+                    <div class="workshop-meta">
+                        <div class="meta-item">
+                            <i class="fas fa-clock"></i>
+                            <span>4 Hours</span>
+                        </div>
+                        <div class="meta-item">
+                            <i class="fas fa-signal"></i>
+                            <span>Intermediate</span>
+                        </div>
+                    </div>
+                    <div class="workshop-topics">
+                        <h4>Topics Covered</h4>
+                        <ul>
+                            <li>Conversational AI Architecture</li>
+                            <li>Intent Recognition & Entity Extraction</li>
+                            <li>Context Management</li>
+                            <li>Integration with Messaging Platforms</li>
+                        </ul>
+                    </div>
+                    <a href="/register" class="btn btn-primary btn-block">Register Now <i class="fas fa-arrow-right"></i></a>
+                </div>
+
+                <!-- Workshop 7 -->
+                <div class="workshop-card">
+                    <span class="workshop-badge">Advanced</span>
+                    <h3>LLM Model Fine-Tuning</h3>
+                    <p>Learn advanced techniques for customizing and fine-tuning large language models for specific use cases.</p>
+                    <div class="workshop-meta">
+                        <div class="meta-item">
+                            <i class="fas fa-clock"></i>
+                            <span>5 Hours</span>
+                        </div>
+                        <div class="meta-item">
+                            <i class="fas fa-signal"></i>
+                            <span>Advanced</span>
+                        </div>
+                    </div>
+                    <div class="workshop-topics">
+                        <h4>Topics Covered</h4>
+                        <ul>
+                            <li>Transfer Learning Fundamentals</li>
+                            <li>Parameter-Efficient Fine-Tuning (PEFT)</li>
+                            <li>LoRA & QLoRA Techniques</li>
+                            <li>Evaluation & Deployment Strategies</li>
+                        </ul>
+                    </div>
+                    <a href="/register" class="btn btn-primary btn-block">Register Now <i class="fas fa-arrow-right"></i></a>
+                </div>
+
+                <!-- Workshop 8 -->
+                <div class="workshop-card">
+                    <span class="workshop-badge">Practical</span>
+                    <h3>Computer Vision & Image AI</h3>
+                    <p>Build image recognition, object detection, and visual AI applications using state-of-the-art models.</p>
+                    <div class="workshop-meta">
+                        <div class="meta-item">
+                            <i class="fas fa-clock"></i>
+                            <span>4 Hours</span>
+                        </div>
+                        <div class="meta-item">
+                            <i class="fas fa-signal"></i>
+                            <span>Intermediate</span>
+                        </div>
+                    </div>
+                    <div class="workshop-topics">
+                        <h4>Topics Covered</h4>
+                        <ul>
+                            <li>CNN Architectures & Transfer Learning</li>
+                            <li>Object Detection (YOLO, R-CNN)</li>
+                            <li>Image Segmentation Techniques</li>
+                            <li>Deployment on Edge Devices</li>
+                        </ul>
+                    </div>
+                    <a href="/register" class="btn btn-primary btn-block">Register Now <i class="fas fa-arrow-right"></i></a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- WHO SHOULD ATTEND -->
+    <section class="section-pad" style="background:white;">
+        <div class="container">
+            <div class="section-header reveal">
+                <h2 class="section-title">Who Should <span class="accent">Attend?</span></h2>
+                <p class="section-subtitle">Perfect for professionals looking to upskill in AI technologies</p>
+            </div>
+            <div class="tracks-tag-grid reveal">
+                <span class="track-tag">Software Developers</span>
+                <span class="track-tag">Data Scientists</span>
+                <span class="track-tag">ML Engineers</span>
+                <span class="track-tag">Product Managers</span>
+                <span class="track-tag">Entrepreneurs</span>
+                <span class="track-tag">Enterprise Teams</span>
+                <span class="track-tag">Students &amp; Researchers</span>
+                <span class="track-tag">AI Enthusiasts</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- PREREQUISITES -->
+    <section class="section-pad" style="background:var(--off-white);">
+        <div class="container">
+            <div class="prerequisites-box reveal">
+                <div class="prerequisites-content">
+                    <div class="section-header" style="margin-bottom:2rem;">
+                        <h2 class="section-title" style="color:white;">What You'll <span class="accent">Need</span></h2>
+                        <p class="section-subtitle" style="color:rgba(255,255,255,0.8);">Basic requirements to get the most out of workshops</p>
+                    </div>
+                    <div class="prerequisites-list">
+                        <div class="prereq-item">
+                            <i class="fas fa-laptop"></i>
+                            <span>Laptop with minimum 8GB RAM</span>
+                        </div>
+                        <div class="prereq-item">
+                            <i class="fas fa-code"></i>
+                            <span>Basic Python programming knowledge</span>
+                        </div>
+                        <div class="prereq-item">
+                            <i class="fas fa-wifi"></i>
+                            <span>Stable internet connection</span>
+                        </div>
+                        <div class="prereq-item">
+                            <i class="fas fa-user-circle"></i>
+                            <span>GitHub/Google Cloud account</span>
+                        </div>
+                        <div class="prereq-item">
+                            <i class="fas fa-download"></i>
+                            <span>Pre-installed software (list provided)</span>
+                        </div>
+                        <div class="prereq-item">
+                            <i class="fas fa-brain"></i>
+                            <span>Enthusiasm to learn and experiment!</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- INSTRUCTOR HIGHLIGHT -->
+    <section class="section-pad" style="background:white;">
+        <div class="container">
+            <div class="instructor-section reveal">
+                <h3>Learn from Industry Experts</h3>
+                <p>Our workshops are led by experienced AI practitioners and researchers who are building real-world AI systems at leading tech companies, startups, and research institutions. Get insights beyond textbooks and online courses.</p>
+                <div class="instructor-badges">
+                    <span class="instructor-badge">🏢 FAANG Engineers</span>
+                    <span class="instructor-badge">🎓 PhD Researchers</span>
+                    <span class="instructor-badge">🚀 Startup Founders</span>
+                    <span class="instructor-badge">📚 Published Authors</span>
+                    <span class="instructor-badge">💼 Industry Veterans</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- PRICING -->
+    <section class="section-pad" style="background:var(--off-white);">
+        <div class="container">
+            <div class="pricing-highlight reveal">
+                <h3>Workshop Registration</h3>
+                <p>Special conference rates for workshop attendees. Each workshop includes materials, certificate, and lifetime access to recordings.</p>
+                <div style="display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;">
+                    <a href="/register" class="btn btn-primary btn-lg" style="background:white;color:var(--saffron);">Register Now <i class="fas fa-arrow-right"></i></a>
+                    <a href="/contact" class="btn btn-ghost btn-lg" style="border-color:white;color:white;">Group Booking</a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA -->
+    <section class="cta-section">
+        <div class="container">
+            <div class="cta-content reveal">
+                <h2>Ready to Master <span class="accent">AI Technologies?</span></h2>
+                <p>Join our hands-on workshops and build real AI applications with expert guidance.</p>
+                <div class="cta-buttons">
+                    <a href="/register" class="btn btn-primary btn-xl">Register for Workshops <i class="fas fa-arrow-right"></i></a>
+                    <a href="/contact" class="btn btn-ghost btn-xl">Have Questions?</a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- FOOTER -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <div class="footer-logo">
+                        <img loading="lazy" decoding="async" src="images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI Innovation Logo" style="height:40px;width:auto;border-radius:10px;padding:5px;background:rgba(255,255,255,0.95);box-shadow:0 2px 6px rgba(0,0,0,0.08);">
+                    </div>
+                    <p class="footer-description">Advancing India's Future Through AI Innovation. Join us in creating a Viksit Bharat by 2047.</p>
+                    <div class="social-links">
+                        <a href="#" class="social-link"><i class="fab fa-twitter"></i></a>
+                        <a href="#" class="social-link"><i class="fab fa-linkedin"></i></a>
+                        <a href="#" class="social-link"><i class="fab fa-facebook"></i></a>
+                        <a href="#" class="social-link"><i class="fab fa-youtube"></i></a>
+                        <a href="#" class="social-link"><i class="fab fa-instagram"></i></a>
+                    </div>
+                </div>
+                <div class="footer-section">
+                    <h4>Quick Links</h4>
+                    <ul class="footer-links">
+                        <li><a href="about.html">About Us</a></li>
+                        <li><a href="conference.html">Conference</a></li>
+                        <li><a href="exhibition.html">Exhibition</a></li>
+                        <li><a href="/register">Register & Delegation</a></li>
+                        <li><a href="startup-pitch.html">Startup Pitch</a></li>
+                        <li><a href="training-workshop.html">Workshops</a></li>
+                        <li><a href="partner.html">Partner</a></li>
+                        <li><a href="https://bellaward.com/" target="_blank" rel="noopener noreferrer">Aegis Graham Bell Awards</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h4>Event Info</h4>
+                    <ul class="footer-links">
+                        <li><a href="conference.html#schedule">Schedule</a></li>
+                        <li><a href="conference.html">Programme</a></li>
+                        <li><a href="exhibition.html">Exhibition Zones</a></li>
+                        <li><a href="accommodation.html">Hotels</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h4>Contact Us</h4>
+                    <div class="contact-info">
+                        <p><i class="fas fa-envelope"></i> info@bharataiinnovation.com</p>
+                        <p><i class="fas fa-phone"></i> +91 89765 80367</p>
+                        <p><i class="fas fa-map-marker-alt"></i> World Trade Center Mumbai, Cuffe Parade, Mumbai</p>
+                    </div>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2026 Bharat AI Innovation. All rights reserved. | Organized by Aegis Knowledge Trust</p>
+                <div class="footer-bottom-links">
+                    <a href="privacy.html">Privacy Policy</a>
+                    <a href="terms.html">Terms of Service</a>
+                    <a href="code-of-conduct.html">Code of Conduct</a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script src="js/main.js"></script>
+</body>
+</html>
