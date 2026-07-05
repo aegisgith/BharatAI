@@ -3008,12 +3008,8 @@ function sharedNavHTML(activePage: string): string {
   <div class="max-w-7xl mx-auto px-4">
     <div class="flex items-center h-14 gap-4">
       <!-- Logo -->
-      <a href="/" class="flex items-center gap-2.5 hover:opacity-90 transition shrink-0">
+      <a href="/" class="flex items-center hover:opacity-90 transition shrink-0">
         <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI Innovation Logo" loading="eager" style="height:44px;width:auto;border-radius:12px;padding:6px;background:rgba(255,255,255,0.95);box-shadow:0 2px 8px rgba(0,0,0,0.08);">
-        <div class="leading-tight hidden sm:block">
-          <div class="text-sm font-bold text-white">Bharat AI Innovation</div>
-          <div class="text-[10px] text-gray-400">India's Largest AI Conference</div>
-        </div>
       </a>
       <!-- Center pills -->
       <div class="flex items-center gap-0.5 flex-1 justify-center flex-wrap">
@@ -4427,12 +4423,8 @@ function mainPageHTML(): string {
         <!-- Desktop nav: logo + links + CTA -->
         <div class="hidden md:flex items-center h-14 gap-6">
           <!-- Logo -->
-          <a href="/app" class="flex items-center gap-2.5 hover:opacity-90 transition shrink-0">
+          <a href="/app" class="flex items-center hover:opacity-90 transition shrink-0">
             <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI Innovation Logo" loading="eager" style="height:44px;width:auto;border-radius:12px;padding:6px;background:rgba(255,255,255,0.95);box-shadow:0 2px 8px rgba(0,0,0,0.08);">
-            <div class="leading-tight">
-              <div class="text-sm font-bold text-white">Bharat AI Innovation</div>
-              <div class="text-[10px] text-gray-400">India's Largest AI Conference</div>
-            </div>
           </a>
 
           <!-- Center nav pills -->
