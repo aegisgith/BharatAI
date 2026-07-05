@@ -1104,6 +1104,19 @@ app.get('/api/attendees/:id/exhibitor', async (c) => {
   return c.json(exhibitor || null)
 })
 
+// Speaker green-room: the sessions this attendee is speaking at (matched by
+// name against the free-text speaker_name field on sessions). Powers the
+// speaker "My Sessions" view.
+app.get('/api/events/:eventId/speaker-sessions', async (c) => {
+  const eventId = c.req.param('eventId')
+  const name = (c.req.query('name') || '').trim()
+  if (!name) return c.json({ sessions: [] })
+  const { results } = await c.env.DB.prepare(
+    "SELECT * FROM sessions WHERE event_id = ? AND speaker_name LIKE ? ORDER BY start_time ASC"
+  ).bind(eventId, `%${name}%`).all()
+  return c.json({ sessions: results || [] })
+})
+
 // Exhibitor lead console: everyone who visited / showed interest in this
 // attendee's booth, plus a summary. Powers the exhibitor lead-capture view.
 app.get('/api/attendees/:id/exhibitor/leads', async (c) => {
@@ -5593,6 +5606,28 @@ function mainPageHTML(): string {
         </div>
       </div>
 
+      <!-- Speaker green-room -->
+      <div id="tab-speaker-room" class="tab-content hidden">
+        <div class="max-w-7xl mx-auto px-4 py-6">
+          <div class="rounded-2xl p-5 md:p-6 mb-6" style="border:1px solid #d946ef33;background:linear-gradient(135deg,#d946ef14,transparent 60%);">
+            <div class="flex items-center gap-3">
+              <div class="w-12 h-12 rounded-xl flex items-center justify-center shrink-0" style="background:#d946ef22;"><i class="fas fa-microphone-lines text-xl" style="color:#d946ef"></i></div>
+              <div><h2 class="text-xl font-bold">Speaker Green Room</h2><p class="text-sm text-gray-400">Your sessions, timings, and halls — all in one place.</p></div>
+            </div>
+          </div>
+          <div id="sr-sessions" class="space-y-3"></div>
+          <div class="glass rounded-2xl p-5 mt-6">
+            <h3 class="text-sm font-semibold mb-3"><i class="fas fa-circle-info text-primary-400 mr-1.5"></i>Speaker checklist</h3>
+            <ul class="space-y-2 text-sm text-gray-300">
+              <li class="flex items-start gap-2"><i class="fas fa-check text-green-400 mt-0.5 text-xs"></i>Arrive at your hall 15 minutes before your session for a mic check.</li>
+              <li class="flex items-start gap-2"><i class="fas fa-check text-green-400 mt-0.5 text-xs"></i>Share slides with the AV desk (16:9, PDF or PPTX) the day before.</li>
+              <li class="flex items-start gap-2"><i class="fas fa-check text-green-400 mt-0.5 text-xs"></i>Keep your profile & photo updated — attendees see it in the app.</li>
+              <li class="flex items-start gap-2"><i class="fas fa-check text-green-400 mt-0.5 text-xs"></i>Message the organizers via the app for any last-minute changes.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
       <!-- Exhibitor lead console -->
       <div id="tab-exhibitor-console" class="tab-content hidden">
         <div class="max-w-7xl mx-auto px-4 py-6">
@@ -6960,7 +6995,7 @@ function mainPageHTML(): string {
       let p;
       if (badge.includes('speaker') || role.includes('speaker')) {
         p = { label: 'Speaker', icon: 'fa-microphone-lines', tint: '#d946ef', blurb: 'Your sessions, green-room details, and audience are here.',
-          actions: [A('My sessions','fa-calendar-check',"switchTab('schedule')"), A('Edit my profile','fa-user-pen',"switchTab('myprofile')"), A('Message attendees','fa-comments',"switchTab('networking')")] };
+          actions: [A('My sessions','fa-calendar-check',"openSpeakerGreenRoom()"), A('Edit my profile','fa-user-pen',"switchTab('myprofile')"), A('Message attendees','fa-comments',"switchTab('networking')")] };
       } else if (badge.includes('exhibitor') || role.includes('exhibitor') || badge.includes('startup')) {
         p = { label: badge.includes('startup') ? 'Startup' : 'Exhibitor', icon: 'fa-store', tint: '#FF6B00', blurb: 'Manage your booth, capture leads, and connect with buyers & investors.',
           actions: [A('Lead console','fa-user-group',"openExhibitorConsole()"), A('List on AI Market','fa-robot',"location.href='/marketplace'"), A('Find investors','fa-handshake',"switchTab('networking')")] };
@@ -8726,6 +8761,33 @@ function mainPageHTML(): string {
       const btn = document.getElementById('nav-notif-btn');
       if (dd && !dd.classList.contains('hidden') && !dd.contains(e.target) && btn && !btn.contains(e.target)) dd.classList.add('hidden');
     });
+
+    // ==================== SPEAKER GREEN ROOM ====================
+    function openSpeakerGreenRoom() {
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
+      const t = document.getElementById('tab-speaker-room');
+      if (t) t.classList.remove('hidden');
+      currentTab = 'speaker-room';
+      loadSpeakerSessions();
+    }
+    async function loadSpeakerSessions() {
+      if (!currentUser) return;
+      const el = document.getElementById('sr-sessions');
+      if (el) el.innerHTML = '<div class="glass rounded-xl p-4"><div class="shimmer h-16 rounded"></div></div>';
+      try {
+        const data = await api.get(\`/api/events/\${EVENT_ID}/speaker-sessions?name=\${encodeURIComponent(currentUser.name)}\`);
+        const s = data.sessions || [];
+        if (el) el.innerHTML = s.length ? \`<h3 class="text-sm font-semibold text-gray-300 mb-2">Your \${s.length} session\${s.length>1?'s':''}</h3>\` + s.map(x => \`
+          <div class="glass rounded-xl p-4 flex items-start gap-4">
+            <div class="shrink-0 text-center w-16"><div class="text-base font-bold text-primary-400">\${formatTime(x.start_time)}</div><div class="text-[11px] text-gray-500">\${formatTime(x.end_time)}</div></div>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-2 mb-1"><span class="px-2 py-0.5 rounded-full text-[11px] font-semibold \${getSessionTypeClass(x.session_type)}">\${x.session_type}</span>\${x.track ? \`<span class="px-2 py-0.5 rounded-full text-[11px] bg-white/5 text-gray-400">\${x.track}</span>\` : ''}</div>
+              <h4 class="font-bold text-[15px]">\${x.title}</h4>
+              \${x.room ? \`<div class="text-xs text-gray-400 mt-1"><i class="fas fa-map-pin mr-1 text-accent-400"></i>\${x.room}</div>\` : ''}
+            </div>
+          </div>\`).join('') : '<div class="glass rounded-xl p-10 text-center"><i class="fas fa-microphone-slash text-3xl text-gray-600 mb-3 block"></i><p class="text-sm text-gray-400">No sessions linked to your name yet</p><p class="text-xs text-gray-600 mt-1">If you\\'re speaking and don\\'t see your sessions, contact the organizers to link your profile.</p></div>';
+      } catch(e) { if (el) el.innerHTML = '<p class="text-sm text-gray-500 text-center py-6">Could not load your sessions.</p>'; }
+    }
 
     // ==================== EXHIBITOR LEAD CONSOLE ====================
     let _ecLeads = [];
