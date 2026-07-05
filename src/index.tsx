@@ -8784,11 +8784,16 @@ function mainPageHTML(): string {
         const anns = await api.get(\`/api/events/\${EVENT_ID}/announcements\`);
         _notifCache = anns || [];
         const maxId = _notifCache.reduce((m, a) => Math.max(m, a.id || 0), 0);
-        // Toast genuinely new announcements (not on the very first paint).
+        // Toast genuinely new announcements (not on the very first paint), and
+        // fire an OS-level notification too if the user granted permission — so
+        // a live "Keynote moved to Hall B" reaches a phone in a pocket.
         if (!firstRun) {
           const seen = _notifSeenId();
           const fresh = _notifCache.filter(a => (a.id || 0) > seen);
-          fresh.slice(0, 2).forEach(a => showToast('📢 ' + a.title, a.announcement_type === 'urgent' ? 'error' : 'info'));
+          fresh.slice(0, 2).forEach(a => {
+            showToast('📢 ' + a.title, a.announcement_type === 'urgent' ? 'error' : 'info');
+            fireOsNotification(a.title, a.content || 'Bharat AI Innovation 2026');
+          });
         }
         if (maxId) localStorage.setItem('bhai_notif_seen', String(maxId));
         renderNotifCenter();
@@ -8802,14 +8807,17 @@ function mainPageHTML(): string {
       const readId = _notifReadId();
       const unread = _notifCache.filter(a => (a.id || 0) > readId).length;
       if (badge) { if (unread > 0) { badge.textContent = unread > 9 ? '9+' : unread; badge.classList.remove('hidden'); } else badge.classList.add('hidden'); }
-      list.innerHTML = _notifCache.length ? _notifCache.slice(0, 12).map(a => {
+      // Offer OS alerts if not yet granted.
+      const canAsk = ('Notification' in window) && Notification.permission === 'default';
+      const alertsRow = canAsk ? '<button onclick="enableAlerts()" class="w-full px-4 py-2.5 text-left text-xs text-primary-300 hover:bg-white/5 border-b border-white/5 flex items-center gap-2"><i class="fas fa-bell"></i>Turn on live alerts for this device</button>' : '';
+      list.innerHTML = alertsRow + (_notifCache.length ? _notifCache.slice(0, 12).map(a => {
         const isUnread = (a.id || 0) > readId;
         const icon = a.announcement_type === 'urgent' ? 'fa-triangle-exclamation text-red-400' : a.announcement_type === 'schedule_change' ? 'fa-arrows-rotate text-yellow-400' : 'fa-bullhorn text-primary-400';
         return \`<div class="px-4 py-3 border-b border-white/5 \${isUnread ? 'bg-primary-500/5' : ''}">
           <div class="flex items-start gap-2.5"><i class="fas \${icon} mt-0.5 text-xs"></i>
           <div class="min-w-0 flex-1"><p class="text-sm font-medium \${isUnread ? '' : 'text-gray-300'}">\${a.title}</p><p class="text-xs text-gray-500 mt-0.5 line-clamp-2">\${a.content || ''}</p><p class="text-[10px] text-gray-600 mt-1">\${new Date(a.created_at).toLocaleString()}</p></div>
           \${isUnread ? '<span class="w-2 h-2 rounded-full bg-primary-500 shrink-0 mt-1.5"></span>' : ''}</div></div>\`;
-      }).join('') : '<div class="px-4 py-8 text-center text-sm text-gray-500"><i class="fas fa-bell-slash block text-xl mb-2"></i>No notifications yet</div>';
+      }).join('') : '<div class="px-4 py-8 text-center text-sm text-gray-500"><i class="fas fa-bell-slash block text-xl mb-2"></i>No notifications yet</div>');
     }
     function toggleNotifCenter(e) {
       if (e) e.stopPropagation();
@@ -8822,6 +8830,27 @@ function mainPageHTML(): string {
       const maxId = _notifCache.reduce((m, a) => Math.max(m, a.id || 0), 0);
       localStorage.setItem('bhai_notif_read', String(maxId));
       renderNotifCenter();
+    }
+    // OS-level notifications via the Notification API + service worker. Full
+    // server Web Push (VAPID) is a backend follow-up; this already delivers
+    // OS notifications while the app is open, which covers the live-event case.
+    function fireOsNotification(title, body) {
+      try {
+        if (!('Notification' in window) || Notification.permission !== 'granted') return;
+        if (navigator.serviceWorker && navigator.serviceWorker.ready) {
+          navigator.serviceWorker.ready.then(reg => reg.showNotification(title, { body, icon: '/images/icon-192.png', badge: '/images/icon-192.png', tag: 'bhai-announcement' })).catch(() => {});
+        } else {
+          new Notification(title, { body, icon: '/images/icon-192.png' });
+        }
+      } catch(e) {}
+    }
+    function enableAlerts() {
+      if (!('Notification' in window)) { showToast('Notifications not supported on this browser', 'info'); return; }
+      Notification.requestPermission().then(perm => {
+        if (perm === 'granted') { showToast('Alerts on — you\\'ll get live event updates', 'success'); fireOsNotification('Alerts enabled', 'You\\'ll be notified of live event updates.'); }
+        else showToast('Alerts stay off — you can enable them anytime', 'info');
+        renderNotifCenter();
+      });
     }
     // Close dropdown on outside click.
     document.addEventListener('click', (e) => {

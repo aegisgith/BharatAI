@@ -3,7 +3,7 @@
 // navigations and API reads, falling back to cache; cache-first for static
 // assets. Deliberately conservative so it never serves stale app code for long.
 
-const VERSION = 'bhai-v1';
+const VERSION = 'bhai-v2';
 const SHELL = `shell-${VERSION}`;
 const DATA = `data-${VERSION}`;
 
@@ -24,6 +24,27 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((keys) =>
       Promise.all(keys.filter((k) => !k.endsWith(VERSION)).map((k) => caches.delete(k)))
     ).then(() => self.clients.claim())
+  );
+});
+
+// Web Push: show a notification when the server pushes one (VAPID backend is a
+// follow-up; this handler is ready for it). Clicking focuses/opens the app.
+self.addEventListener('push', (event) => {
+  let data = { title: 'Bharat AI Innovation 2026', body: 'New update' };
+  try { if (event.data) data = Object.assign(data, event.data.json()); } catch (e) {}
+  event.waitUntil(
+    self.registration.showNotification(data.title, {
+      body: data.body, icon: '/images/icon-192.png', badge: '/images/icon-192.png', tag: 'bhai-push',
+    })
+  );
+});
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil(
+    clients.matchAll({ type: 'window' }).then((cs) => {
+      for (const c of cs) { if (c.url.includes('/app') && 'focus' in c) return c.focus(); }
+      if (clients.openWindow) return clients.openWindow('/app');
+    })
   );
 });
 
