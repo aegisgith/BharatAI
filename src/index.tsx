@@ -9,11 +9,44 @@ type Bindings = {
   // contact-list sync. Set via `wrangler secret put ATTENDEE_EXPORT_SECRET`
   // — never lives in this repo or the database.
   ATTENDEE_EXPORT_SECRET?: string
+  // Shared secret that authenticates the admin panel. Set via
+  // `wrangler secret put ADMIN_SECRET` (or a Pages env var) — never in this
+  // repo or the DB. Every /api/admin/* route requires it (see middleware
+  // below). This replaces the old client-side-only `admin123` check.
+  ADMIN_SECRET?: string
 }
 
 const app = new Hono<{ Bindings: Bindings }>()
 
 app.use('/api/*', cors())
+
+// ==================== ADMIN AUTHENTICATION ====================
+// Server-side guard for every /api/admin/* route. The admin panel sends the
+// secret as `Authorization: Bearer <ADMIN_SECRET>` on all fetches (see the
+// `api` helper in the admin page). The one CSV-export link is a plain <a>
+// download, so it may also pass the secret as `?token=` — accepted here too.
+//
+// Fails CLOSED: if ADMIN_SECRET is not configured, all admin routes return
+// 503 rather than being world-open. Set it in Cloudflare before relying on
+// the panel: `npx wrangler pages secret put ADMIN_SECRET`.
+app.use('/api/admin/*', async (c, next) => {
+  const expected = c.env.ADMIN_SECRET || ''
+  if (!expected) {
+    return c.json({ error: 'admin access is not configured' }, 503)
+  }
+  const header = c.req.header('Authorization') || ''
+  const bearer = header.startsWith('Bearer ') ? header.slice(7) : ''
+  const token = bearer || c.req.query('token') || ''
+  if (token !== expected) {
+    return c.json({ error: 'unauthorized' }, 401)
+  }
+  await next()
+})
+
+// Lightweight endpoint the admin login form calls to verify the entered
+// password server-side. Protected by the middleware above, so a 200 means
+// the secret is correct; a 401 means it isn't. Returns no data.
+app.get('/api/admin/verify', (c) => c.json({ ok: true }))
 
 // ==================== AI MARKETPLACE (integrated) ====================
 app.route('/', mp)
@@ -95,13 +128,30 @@ app.get('/api/events/:id/sessions/rooms', async (c) => {
 
 // ==================== ATTENDEE APIs ====================
 
+// Public networking directory. By default returns only non-contact fields —
+// email and mobile are withheld so the delegate list can't be scraped for
+// PII by anonymous callers. When the admin secret is supplied (the admin
+// panel sends it as a bearer token), the full record incl. contact details
+// is returned, since the admin table needs email to send notifications.
+const ATTENDEE_PUBLIC_COLS = 'id, event_id, name, company, job_title, bio, avatar_url, interests, linkedin_url, twitter_url, website_url, role, badge_type, is_online, last_seen, industry, city, country, created_at'
+
+function isAdminRequest(c: any): boolean {
+  const expected = c.env.ADMIN_SECRET || ''
+  if (!expected) return false
+  const header = c.req.header('Authorization') || ''
+  const bearer = header.startsWith('Bearer ') ? header.slice(7) : ''
+  const token = bearer || c.req.query('token') || ''
+  return token === expected
+}
+
 app.get('/api/events/:id/attendees', async (c) => {
   const eventId = c.req.param('id')
   const search = c.req.query('search')
   const role = c.req.query('role')
   const interest = c.req.query('interest')
 
-  let query = 'SELECT * FROM attendees WHERE event_id = ?'
+  const cols = isAdminRequest(c) ? '*' : ATTENDEE_PUBLIC_COLS
+  let query = `SELECT ${cols} FROM attendees WHERE event_id = ?`
   const params: any[] = [eventId]
 
   if (search) {
@@ -126,7 +176,8 @@ app.get('/api/events/:id/attendees', async (c) => {
 
 app.get('/api/attendees/:id', async (c) => {
   const id = c.req.param('id')
-  const attendee = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(id).first()
+  const cols = isAdminRequest(c) ? '*' : ATTENDEE_PUBLIC_COLS
+  const attendee = await c.env.DB.prepare(`SELECT ${cols} FROM attendees WHERE id = ?`).bind(id).first()
   if (!attendee) return c.json({ error: 'Attendee not found' }, 404)
   return c.json(attendee)
 })
@@ -9903,7 +9954,7 @@ function adminPageHTML(): string {
         <button type="submit" class="w-full py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-primary-600 to-primary-700 hover:from-primary-500 hover:to-primary-600 transition-all">
           <i class="fas fa-sign-in-alt mr-2"></i>Enter Dashboard
         </button>
-        <p id="login-error" class="text-red-400 text-xs text-center mt-3 hidden">Invalid password. Try: admin123</p>
+        <p id="login-error" class="text-red-400 text-xs text-center mt-3 hidden">Incorrect password. Please try again.</p>
       </form>
     </div>
   </div>
@@ -10023,7 +10074,6 @@ function adminPageHTML(): string {
 
   <script>
     const EID = 1;
-    const ADMIN_PASS = 'admin123';
     let currentSection = 'overview';
     let chartInstances = {};
 
@@ -10069,23 +10119,65 @@ function adminPageHTML(): string {
       return 'https://www.gravatar.com/avatar/' + hash + '?s=' + size + '&d=' + encodeURIComponent(fallback);
     }
 
+    // The admin secret entered at login. Held in memory + sessionStorage and
+    // attached as an Authorization Bearer header to every admin API call so
+    // the server-side /api/admin/* guard accepts them.
+    function getAdminToken() { return sessionStorage.getItem('tc_admin_token') || ''; }
+    function authHeaders(extra) {
+      const h = Object.assign({}, extra || {});
+      const t = getAdminToken();
+      if (t) h['Authorization'] = 'Bearer ' + t;
+      return h;
+    }
+    // If any admin call comes back 401, the stored secret is stale/wrong —
+    // drop it and send the user back to the login screen.
+    function handleAuthFailure() {
+      sessionStorage.removeItem('tc_admin_token');
+      localStorage.removeItem('tc_admin');
+      location.reload();
+    }
+
+    // CSV export is a file download, so it can't carry an Authorization header.
+    // Pass the admin secret as ?token= instead (the server guard accepts it).
+    function exportAttendeesCsv(ev) {
+      if (ev) ev.preventDefault();
+      const t = getAdminToken();
+      if (!t) { handleAuthFailure(); return; }
+      window.location.href = '/api/admin/events/' + EID + '/attendees/export?token=' + encodeURIComponent(t);
+    }
+
     const api = {
-      get: u => fetch(u).then(r=>r.json()),
-      post: (u,d) => fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)}).then(async r => { const j = await r.json(); if (!r.ok) throw Object.assign(new Error(j.error||'Request failed'), {data:j}); return j; }),
-      put: (u,d) => fetch(u,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)}).then(async r => { const j = await r.json(); if (!r.ok) throw Object.assign(new Error(j.error||'Request failed'), {data:j}); return j; }),
-      del: u => fetch(u,{method:'DELETE'}).then(r=>r.json()),
-      patch: (u,d) => fetch(u,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)}).then(async r => { const j = await r.json(); if (!r.ok) throw Object.assign(new Error(j.error||'Request failed'), {data:j}); return j; }),
+      get: u => fetch(u,{headers:authHeaders()}).then(async r => { if (r.status===401){handleAuthFailure();throw new Error('unauthorized');} return r.json(); }),
+      post: (u,d) => fetch(u,{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify(d)}).then(async r => { if (r.status===401){handleAuthFailure();throw new Error('unauthorized');} const j = await r.json(); if (!r.ok) throw Object.assign(new Error(j.error||'Request failed'), {data:j}); return j; }),
+      put: (u,d) => fetch(u,{method:'PUT',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify(d)}).then(async r => { if (r.status===401){handleAuthFailure();throw new Error('unauthorized');} const j = await r.json(); if (!r.ok) throw Object.assign(new Error(j.error||'Request failed'), {data:j}); return j; }),
+      del: u => fetch(u,{method:'DELETE',headers:authHeaders()}).then(async r => { if (r.status===401){handleAuthFailure();throw new Error('unauthorized');} return r.json(); }),
+      patch: (u,d) => fetch(u,{method:'PATCH',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify(d)}).then(async r => { if (r.status===401){handleAuthFailure();throw new Error('unauthorized');} const j = await r.json(); if (!r.ok) throw Object.assign(new Error(j.error||'Request failed'), {data:j}); return j; }),
     };
 
     // ============ AUTH ============
-    document.getElementById('login-form').addEventListener('submit', e => {
+    // The password IS the admin secret. We verify it server-side by calling a
+    // guarded no-op endpoint with it as a bearer token: 200 = correct.
+    // Nothing is trusted client-side — the secret never ships in this code.
+    document.getElementById('login-form').addEventListener('submit', async e => {
       e.preventDefault();
+      const err = document.getElementById('login-error');
+      const btn = e.target.querySelector('button[type=submit]');
       const pw = document.getElementById('admin-password').value;
-      if (pw === ADMIN_PASS) {
-        localStorage.setItem('tc_admin', '1');
-        showDashboard();
-      } else {
-        document.getElementById('login-error').classList.remove('hidden');
+      err.classList.add('hidden');
+      if (btn) btn.disabled = true;
+      try {
+        const r = await fetch('/api/admin/verify', { headers: { 'Authorization': 'Bearer ' + pw } });
+        if (r.ok) {
+          sessionStorage.setItem('tc_admin_token', pw);
+          localStorage.setItem('tc_admin', '1');
+          showDashboard();
+        } else {
+          err.classList.remove('hidden');
+        }
+      } catch (_) {
+        err.classList.remove('hidden');
+      } finally {
+        if (btn) btn.disabled = false;
       }
     });
 
@@ -10117,11 +10209,19 @@ function adminPageHTML(): string {
     }
 
     function adminLogout() {
+      sessionStorage.removeItem('tc_admin_token');
       localStorage.removeItem('tc_admin');
       location.reload();
     }
 
-    if (localStorage.getItem('tc_admin') === '1') showDashboard();
+    // Auto-resume the session only if we still hold the secret. The token is
+    // in sessionStorage (cleared when the tab closes), so a fresh tab always
+    // re-authenticates — the login form re-verifies it server-side.
+    if (localStorage.getItem('tc_admin') === '1' && getAdminToken()) {
+      showDashboard();
+    } else {
+      localStorage.removeItem('tc_admin');
+    }
 
     // ============ NAVIGATION ============
     function switchSection(sec) {
@@ -10587,7 +10687,7 @@ function adminPageHTML(): string {
           </div>
           <div class="flex gap-2">
             <button onclick="notifyAllAttendees()" class="px-4 py-2 rounded-xl text-xs font-medium bg-amber-600 hover:bg-amber-500 text-white transition"><i class="fas fa-envelope mr-1.5"></i>Notify All</button>
-            <a href="/api/admin/events/\${EID}/attendees/export" download class="px-4 py-2 rounded-xl text-xs font-medium glass hover:bg-white/10 text-gray-300 transition cursor-pointer"><i class="fas fa-download mr-1.5"></i>Export CSV</a>
+            <a href="#" onclick="exportAttendeesCsv(event)" class="px-4 py-2 rounded-xl text-xs font-medium glass hover:bg-white/10 text-gray-300 transition cursor-pointer"><i class="fas fa-download mr-1.5"></i>Export CSV</a>
             <button onclick="openAddAttendee()" class="px-4 py-2 rounded-xl text-xs font-medium bg-primary-600 hover:bg-primary-500 text-white transition"><i class="fas fa-user-plus mr-1.5"></i>Add Attendee</button>
             <button onclick="openBulkUploadModal()" class="px-4 py-2 rounded-xl text-xs font-medium bg-green-600 hover:bg-green-500 text-white transition"><i class="fas fa-file-upload mr-1.5"></i>Bulk Upload</button>
             <button onclick="findDuplicates()" class="px-4 py-2 rounded-xl text-xs font-medium bg-purple-600 hover:bg-purple-500 text-white transition"><i class="fas fa-user-friends mr-1.5"></i>Find Duplicates</button>
@@ -11031,9 +11131,10 @@ function adminPageHTML(): string {
       try {
         const res = await fetch('/api/admin/attendees/' + id, {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
+          headers: authHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({ [field]: value })
         });
+        if (res.status === 401) { handleAuthFailure(); return false; }
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Save failed');
         return true;
