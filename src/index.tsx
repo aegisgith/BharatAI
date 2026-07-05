@@ -5011,6 +5011,35 @@ function mainPageHTML(): string {
             <div id="upcoming-sessions" class="space-y-3"></div>
           </div>
         </div>
+
+        <!-- Explore hub: surfaces the sections that don't live in the top nav
+             (Exhibition, Awards, Startup Pitch, Innovation Showcase) so they're
+             discoverable without crowding the nav bar. -->
+        <div class="max-w-7xl mx-auto px-4 pb-10">
+          <h2 class="text-xl font-bold mb-4"><i class="fas fa-compass text-primary-400 mr-2"></i>Explore the event</h2>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <button onclick="switchTab('exhibition')" class="glass rounded-2xl p-5 text-left card-hover transition group">
+              <i class="fas fa-store text-2xl text-primary-400 mb-3 block"></i>
+              <div class="font-semibold text-sm">Exhibition</div>
+              <div class="text-xs text-gray-500 mt-0.5">100+ AI exhibitors & booths</div>
+            </button>
+            <button onclick="switchTab('startup-pitch')" class="glass rounded-2xl p-5 text-left card-hover transition group">
+              <i class="fas fa-rocket text-2xl text-accent-400 mb-3 block"></i>
+              <div class="font-semibold text-sm">Startup Pitch</div>
+              <div class="text-xs text-gray-500 mt-0.5">Founders meet investors</div>
+            </button>
+            <button onclick="switchTab('awards')" class="glass rounded-2xl p-5 text-left card-hover transition group">
+              <i class="fas fa-trophy text-2xl text-amber-400 mb-3 block"></i>
+              <div class="font-semibold text-sm">Awards</div>
+              <div class="text-xs text-gray-500 mt-0.5">Bharat AI Innovation Awards</div>
+            </button>
+            <button onclick="switchTab('innovation')" class="glass rounded-2xl p-5 text-left card-hover transition group">
+              <i class="fas fa-lightbulb text-2xl text-teal-400 mb-3 block"></i>
+              <div class="font-semibold text-sm">Innovation</div>
+              <div class="text-xs text-gray-500 mt-0.5">Showcase & talks</div>
+            </button>
+          </div>
+        </div>
       </div>
 
       <!-- Schedule Tab -->
