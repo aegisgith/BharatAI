@@ -11228,7 +11228,7 @@ function adminPageHTML(): string {
             {icon:'fa-trophy',label:'Categories',value:stats.categories,color:'pink'},
           ].map(s=>\`
             <div class="glass rounded-xl p-4 card-hover text-center cursor-pointer" onclick="switchSection('\${s.label.includes('Attend')?'attendees':s.label.includes('Session')?'sessions':s.label.includes('Exhib')?'exhibitors':s.label.includes('Categ')?'awards':'overview'}')">
-              <i class="fas \${s.icon} text-lg mb-2" style="color:\${s.color==='primary'?'#748ffc':s.color==='green'?'#22c55e':s.color==='purple'?'#a78bfa':s.color==='accent'?'#ff9800':s.color==='teal'?'#14b8a6':'#f472b6'}"></i>
+              <i class="fas \${s.icon} text-lg mb-2" style="color:\${s.color==='primary'?'#FF6B00':s.color==='green'?'#059669':s.color==='purple'?'#7c3aed':s.color==='accent'?'#e05a00':s.color==='teal'?'#0d9488':'#e11d48'}"></i>
               <div class="text-2xl font-bold">\${s.value}</div>
               <div class="text-[10px] text-gray-500">\${s.label}</div>
             </div>
@@ -11492,12 +11492,12 @@ function adminPageHTML(): string {
         renderChart('chart-roles', 'doughnut', 
           analytics.attendeesByRole.map(r=>r.role),
           analytics.attendeesByRole.map(r=>r.count),
-          ['#748ffc','#ff9800','#a78bfa','#22c55e','#f472b6']
+          ['#FF6B00','#1A237E','#7c3aed','#059669','#e11d48']
         );
         renderChart('chart-exhibitors', 'bar',
           analytics.topExhibitors.map(e=>e.company_name),
           analytics.topExhibitors.map(e=>e.visitor_count),
-          ['#748ffc','#91a7ff','#bac8ff','#4c6ef5','#3b5bdb','#ff9800','#ffb74d','#ffa726']
+          ['#FF6B00','#ff8524','#ff9d55','#e05a00','#b84800','#1A237E','#3949AB','#5C6BC0']
         );
       }, 100);
     }
@@ -14134,12 +14134,12 @@ function adminPageHTML(): string {
       \`;
 
       setTimeout(() => {
-        const colors5 = ['#748ffc','#ff9800','#a78bfa','#22c55e','#f472b6','#14b8a6','#fbbf24'];
+        const colors5 = ['#FF6B00','#1A237E','#7c3aed','#059669','#e11d48','#0d9488','#B45309'];
         renderChart('chart-badges','doughnut', analytics.attendeesByBadge.map(r=>r.badge_type), analytics.attendeesByBadge.map(r=>r.count), colors5);
         renderChart('chart-session-types','doughnut', analytics.sessionsByType.map(r=>r.session_type), analytics.sessionsByType.map(r=>r.count), colors5);
         renderChart('chart-connections','doughnut', analytics.connectionsByStatus.map(r=>r.status), analytics.connectionsByStatus.map(r=>r.count), ['#22c55e','#fbbf24','#ef4444']);
         renderChart('chart-meetings','doughnut', analytics.meetingsByStatus.map(r=>r.status), analytics.meetingsByStatus.map(r=>r.count), ['#22c55e','#fbbf24','#ef4444','#64748b']);
-        renderChart('chart-exhibitor-cats','bar', analytics.exhibitorsByCategory.map(r=>r.category), analytics.exhibitorsByCategory.map(r=>r.count), ['#748ffc']);
+        renderChart('chart-exhibitor-cats','bar', analytics.exhibitorsByCategory.map(r=>r.category), analytics.exhibitorsByCategory.map(r=>r.count), ['#FF6B00']);
       }, 100);
     }
 
