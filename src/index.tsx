@@ -2990,6 +2990,8 @@ function brandThemeCSS(): string {
   .bg-white\\/15,.bg-white\\/20{background-color:var(--off-white)!important;}
   .hover\\:bg-white\\/5:hover,.hover\\:bg-white\\/8:hover,.hover\\:bg-white\\/10:hover,.hover\\:bg-white\\/20:hover{background-color:var(--light)!important;}
   .bg-dark-700{background-color:#fff!important;}.bg-dark-800{background-color:var(--off-white)!important;}.bg-dark-900{background-color:var(--light)!important;}
+  .bg-dark-700\\/50,.bg-dark-800\\/50,.bg-dark-900\\/50,.bg-dark-800\\/30,.bg-dark-900\\/30{background-color:var(--off-white)!important;}
+  .bg-white\\/\\[0\\.02\\],.bg-white\\/\\[0\\.04\\]{background-color:var(--off-white)!important;}
   .bg-gray-800,.bg-gray-900,.bg-slate-800,.bg-slate-900{background-color:var(--off-white)!important;}
   /* dark-palette gradient section backgrounds -> light lavender */
   .from-dark-900,.from-dark-800,.from-gray-900{--tw-gradient-from:#F3F4FC var(--tw-gradient-from-position)!important;--tw-gradient-stops:var(--tw-gradient-from),var(--tw-gradient-to,rgba(243,244,252,0))!important;}
@@ -3090,7 +3092,7 @@ function sharedHeadHTML(title: string, path: string = '/', desc?: string): strin
         extend: {
           colors: {
             primary: { 50:'#fff3e9',100:'#ffe0c7',200:'#ffc194',300:'#ff9d55',400:'#ff8524',500:'#FF6B00',600:'#e05a00',700:'#b84800',800:'#933a08',900:'#79300c' },
-            accent: { 50:'#fdf4ff',100:'#fbe8ff',200:'#f5d0fe',300:'#f0abfc',400:'#e879f9',500:'#d946ef',600:'#c026d3',700:'#a21caf',800:'#86198f',900:'#701a75' },
+            accent: { 50:'#fdf4ff',100:'#fbe8ff',200:'#f5d0fe',300:'#f0abfc',400:'#e879f9',500:'#7c3aed',600:'#c026d3',700:'#a21caf',800:'#86198f',900:'#701a75' },
             dark: { 700:'#1e2240',800:'#141730',900:'#0b0d1a' }
           }
         }
@@ -3112,7 +3114,7 @@ function sharedHeadHTML(title: string, path: string = '/', desc?: string): strin
        leaned on gray-500/600 for real content; nudge those lighter. */
     .text-gray-500 { color: #8a8a99 !important; }
     .text-gray-600 { color: #74748a !important; }
-    .modal-overlay { background: rgba(0,0,0,0.75); backdrop-filter: blur(6px); }
+    .modal-overlay { background: rgba(23,27,58,0.55); backdrop-filter: blur(6px); }
     input, textarea, select { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.10); color: #e2e8f0; }
     input:focus, textarea:focus, select:focus { outline: none; border-color: #f5620a; box-shadow: 0 0 0 3px rgba(245,98,10,0.18); }
     select option { background: #141730; color: #e2e8f0; }
@@ -4274,7 +4276,7 @@ function mainPageHTML(): string {
         extend: {
           colors: {
             primary: { 50:'#fff3e9',100:'#ffe0c7',200:'#ffc194',300:'#ff9d55',400:'#ff8524',500:'#FF6B00',600:'#e05a00',700:'#b84800',800:'#933a08',900:'#79300c' },
-            accent: { 50:'#fdf4ff',100:'#fbe8ff',200:'#f5d0fe',300:'#f0abfc',400:'#e879f9',500:'#d946ef',600:'#c026d3',700:'#a21caf',800:'#86198f',900:'#701a75' },
+            accent: { 50:'#fdf4ff',100:'#fbe8ff',200:'#f5d0fe',300:'#f0abfc',400:'#e879f9',500:'#7c3aed',600:'#c026d3',700:'#a21caf',800:'#86198f',900:'#701a75' },
             dark: { 700:'#1e2240',800:'#141730',900:'#0b0d1a' }
           }
         }
@@ -4307,7 +4309,7 @@ function mainPageHTML(): string {
     .offline-dot { width: 10px; height: 10px; border-radius: 50%; background: #64748b; display: inline-block; }
     .scroll-hide { -ms-overflow-style: none; scrollbar-width: none; }
     .scroll-hide::-webkit-scrollbar { display: none; }
-    .modal-overlay { background: rgba(0,0,0,0.75); backdrop-filter: blur(6px); }
+    .modal-overlay { background: rgba(23,27,58,0.55); backdrop-filter: blur(6px); }
     .progress-bar { transition: width 0.5s ease; }
     .booth-platinum { border-left: 4px solid #f5620a; }
     .booth-premium { border-left: 4px solid #e8406c; }
@@ -5747,9 +5749,9 @@ function mainPageHTML(): string {
       <!-- Speaker green-room -->
       <div id="tab-speaker-room" class="tab-content hidden">
         <div class="max-w-7xl mx-auto px-4 py-6">
-          <div class="rounded-2xl p-5 md:p-6 mb-6" style="border:1px solid #d946ef33;background:linear-gradient(135deg,#d946ef14,transparent 60%);">
+          <div class="rounded-2xl p-5 md:p-6 mb-6" style="border:1px solid #7c3aed33;background:linear-gradient(135deg,#7c3aed14,transparent 60%);">
             <div class="flex items-center gap-3">
-              <div class="w-12 h-12 rounded-xl flex items-center justify-center shrink-0" style="background:#d946ef22;"><i class="fas fa-microphone-lines text-xl" style="color:#d946ef"></i></div>
+              <div class="w-12 h-12 rounded-xl flex items-center justify-center shrink-0" style="background:#7c3aed22;"><i class="fas fa-microphone-lines text-xl" style="color:#7c3aed"></i></div>
               <div><h2 class="text-xl font-bold">Speaker Green Room</h2><p class="text-sm text-gray-400">Your sessions, timings, and halls — all in one place.</p></div>
             </div>
           </div>
@@ -7172,7 +7174,7 @@ function mainPageHTML(): string {
       const A = (label, icon, onclick) => ({ label, icon, onclick });
       let p;
       if (badge.includes('speaker') || role.includes('speaker')) {
-        p = { label: 'Speaker', icon: 'fa-microphone-lines', tint: '#d946ef', blurb: 'Your sessions, green-room details, and audience are here.',
+        p = { label: 'Speaker', icon: 'fa-microphone-lines', tint: '#7c3aed', blurb: 'Your sessions, green-room details, and audience are here.',
           actions: [A('My sessions','fa-calendar-check',"openSpeakerGreenRoom()"), A('Edit my profile','fa-user-pen',"switchTab('myprofile')"), A('Message attendees','fa-comments',"switchTab('networking')")] };
       } else if (badge.includes('exhibitor') || role.includes('exhibitor') || badge.includes('startup')) {
         p = { label: badge.includes('startup') ? 'Startup' : 'Exhibitor', icon: 'fa-store', tint: '#FF6B00', blurb: 'Manage your booth, capture leads, and connect with buyers & investors.',
@@ -9089,7 +9091,7 @@ function mainPageHTML(): string {
         if (sum) sum.innerHTML = [
           { n: data.summary.total, l: 'Total visitors', i: 'fa-users', c: '#FF6B00' },
           { n: data.summary.interested, l: 'Marked interested', i: 'fa-star', c: '#22c55e' },
-          { n: data.summary.total ? Math.round(data.summary.interested / data.summary.total * 100) + '%' : '—', l: 'Interest rate', i: 'fa-chart-line', c: '#d946ef' },
+          { n: data.summary.total ? Math.round(data.summary.interested / data.summary.total * 100) + '%' : '—', l: 'Interest rate', i: 'fa-chart-line', c: '#7c3aed' },
         ].map(s => \`<div class="glass rounded-xl p-4"><div class="flex items-center gap-3"><i class="fas \${s.i} text-lg" style="color:\${s.c}"></i><div><div class="text-2xl font-bold" style="font-variant-numeric:tabular-nums;">\${s.n}</div><div class="text-xs text-gray-400">\${s.l}</div></div></div></div>\`).join('');
         if (list) list.innerHTML = _ecLeads.length ? _ecLeads.map(l => \`
           <div class="glass rounded-xl p-4 flex items-center gap-4">
@@ -10715,7 +10717,7 @@ function adminPageHTML(): string {
       theme: {
         extend: {
           colors: {
-            primary: { 50:'#f0f4ff',100:'#dbe4ff',200:'#bac8ff',300:'#91a7ff',400:'#748ffc',500:'#5c7cfa',600:'#4c6ef5',700:'#4263eb',800:'#3b5bdb',900:'#364fc7' },
+            primary: { 50:'#fff3e9',100:'#ffe0c7',200:'#ffc194',300:'#ff9d55',400:'#ff8524',500:'#FF6B00',600:'#e05a00',700:'#b84800',800:'#933a08',900:'#79300c' },
             accent: { 50:'#fff3e0',100:'#ffe0b2',200:'#ffcc80',300:'#ffb74d',400:'#ffa726',500:'#ff9800',600:'#fb8c00',700:'#f57c00',800:'#ef6c00',900:'#e65100' },
             dark: { 700:'#1e1e36', 800:'#1a1a2e', 900:'#0f0f23' }
           }
@@ -10724,9 +10726,9 @@ function adminPageHTML(): string {
     }
   </script>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
-    * { font-family: 'Inter', sans-serif; }
-    body { background: #0f0f23; color: #e2e8f0; }
+    @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Manrope:wght@300..800&display=swap');
+    * { font-family: 'Manrope', sans-serif; }
+    body { background: #F8F9FF; color: #1E2140; }
     .glass { background: rgba(255,255,255,0.05); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.08); }
     .glass-light { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); }
     .glow { box-shadow: 0 0 30px rgba(92,124,250,0.15); }
@@ -10790,7 +10792,7 @@ function adminPageHTML(): string {
     select option:checked { background: #2d2d5e; }
     select option:hover { background: #252550; }
     select { -webkit-appearance: none; -moz-appearance: none; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%239ca3af' d='M6 8L1 3h10z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 32px; }
-    .modal-overlay { background: rgba(0,0,0,0.7); backdrop-filter: blur(5px); }
+    .modal-overlay { background: rgba(23,27,58,0.55); backdrop-filter: blur(5px); }
     .scroll-hide { scrollbar-width: none; }
     .scroll-hide::-webkit-scrollbar { display: none; }
     .badge-pulse { animation: pulse 2s infinite; }
@@ -10800,6 +10802,28 @@ function adminPageHTML(): string {
     tr:hover td { background: rgba(255,255,255,0.03); }
     td, th { padding: 10px 14px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.06); }
     .chart-container { position: relative; height: 220px; }
+    ${brandThemeCSS()}
+    /* admin-specific overrides (light + saffron) on top of brandThemeCSS */
+    .sidebar-active{background:var(--grad-saffron)!important;color:#fff!important;}
+    .sidebar-active *{color:#fff!important;}
+    .glow{box-shadow:0 0 30px rgba(255,107,0,0.15)!important;}
+    .ie-cell:hover{background:rgba(20,25,80,0.05)!important;}
+    .ie-cell:hover::after{color:rgba(255,107,0,0.6)!important;}
+    #attendee-table th.sortable:hover{color:var(--charcoal)!important;background:rgba(20,25,80,0.04)!important;}
+    .sort-icon.active{color:var(--saffron)!important;}
+    .col-resizer:hover,.col-resizer.active{background:rgba(255,107,0,0.5)!important;}
+    .col-settings-dropdown{background:#fff!important;border:1px solid var(--line)!important;box-shadow:0 16px 44px rgba(26,35,126,0.16)!important;}
+    .col-settings-dropdown label{color:var(--mid-grey)!important;}
+    .col-settings-dropdown label:hover{background:rgba(20,25,80,0.05)!important;}
+    .col-settings-dropdown input[type=checkbox]{accent-color:var(--saffron)!important;}
+    .col-preset-btn{border:1px solid var(--line)!important;background:#fff!important;color:var(--mid-grey)!important;}
+    .col-preset-btn:hover,.col-preset-btn.active{background:rgba(255,107,0,0.12)!important;border-color:rgba(255,107,0,0.4)!important;color:var(--charcoal)!important;}
+    input:focus,textarea:focus,select:focus{border-color:var(--saffron)!important;box-shadow:0 0 0 3px rgba(255,107,0,0.18)!important;}
+    select option:checked,select option:hover{background:var(--light)!important;}
+    th{background:var(--off-white)!important;}
+    tr:hover td{background:rgba(20,25,80,0.035)!important;}
+    td,th{border-bottom:1px solid var(--line)!important;}
+    .sidebar-btn::after{background:#1e2140!important;color:#fff!important;}
   </style>
 </head>
 <body class="min-h-screen flex">
@@ -11497,7 +11521,7 @@ function adminPageHTML(): string {
         options: {
           responsive: true, maintainAspectRatio: false,
           plugins: { legend: { display: type==='doughnut', position: 'right', labels: { color: '#94a3b8', font: {size:11} } } },
-          scales: type==='bar' ? { x: { ticks: { color:'#64748b', font:{size:10} }, grid: {display:false} }, y: { ticks: { color:'#64748b' }, grid: { color:'rgba(255,255,255,0.04)' } } } : {},
+          scales: type==='bar' ? { x: { ticks: { color:'#64748b', font:{size:10} }, grid: {display:false} }, y: { ticks: { color:'#64748b' }, grid: { color:'rgba(20,25,80,0.08)' } } } : {},
         }
       });
     }
