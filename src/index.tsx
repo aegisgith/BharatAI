@@ -533,8 +533,8 @@ app.get('/rsvp-confirmed', (c) => {
   }
   const cfg = statusConfig[status] || statusConfig.confirmed
 
-  return c.html(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>RSVP - Bharat AI Innovation 2026</title><script src="https://cdn.tailwindcss.com"></script><link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet"></head>
-<body class="min-h-screen bg-gradient-to-br from-[#0a0a1a] via-[#111132] to-[#0a0a1a] flex items-center justify-center p-4 font-sans">
+  return c.html(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>RSVP - Bharat AI Innovation 2026</title><script src="https://cdn.tailwindcss.com"></script><link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet"><link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Manrope:wght@300..800&display=swap" rel="stylesheet"><style>${brandThemeCSS()}</style></head>
+<body class="min-h-screen bg-gradient-to-br from-[#F8F9FF] via-[#EEF0FF] to-[#F8F9FF] flex items-center justify-center p-4 font-sans">
   <div class="max-w-md w-full text-center">
     <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="h-16 mx-auto mb-8 opacity-80">
     <div class="bg-white/5 backdrop-blur-xl border ${cfg.border} rounded-3xl p-8 shadow-2xl">
@@ -548,7 +548,7 @@ app.get('/rsvp-confirmed', (c) => {
         <p class="text-gray-400 text-xs mt-1"><i class="fas fa-calendar-alt mr-1"></i>20-21 Nov 2026 &bull; <i class="fas fa-map-marker-alt ml-1 mr-1"></i>World Trade Center, Mumbai</p>
       </div>
       ${status === 'confirmed' ? `<div class="space-y-2 mb-4"><a href="${appUrl}?email=${encodeURIComponent(email)}&action=download-pass" class="block w-full py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-primary-600 to-primary-500 hover:from-primary-500 hover:to-primary-400 transition text-sm"><i class="fas fa-id-badge mr-2"></i>Download Delegate Pass</a></div>` : ''}
-      <a href="${appUrl}?email=${encodeURIComponent(email)}" class="block w-full py-3 rounded-xl font-bold text-white transition text-sm text-center hover:opacity-90 no-underline" style="background:linear-gradient(135deg,#FF6B00,#e03060);box-shadow:0 4px 20px rgba(245,98,10,0.28);"><i class="fas fa-rocket mr-2"></i>Open Networking App</a>
+      <a href="${appUrl}?email=${encodeURIComponent(email)}" class="block w-full py-3 rounded-xl font-bold text-white transition text-sm text-center hover:opacity-90 no-underline" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);box-shadow:0 4px 20px rgba(245,98,10,0.28);"><i class="fas fa-rocket mr-2"></i>Open Networking App</a>
       <p class="text-xs text-gray-500 mt-4">You can change your RSVP anytime from the app.</p>
     </div>
     <p class="text-xs text-gray-600 mt-6">Bharat AI Innovation 2026 &bull; World Trade Center, Mumbai &bull; 20-21 Nov 2026</p>
@@ -2943,6 +2943,84 @@ app.get('/inquiry', (c) => {
   return c.html(inquiryFormPageHTML())
 })
 
+// Unifies /app with the marketing site (public/css/style.css): identical brand
+// tokens, Bricolage Grotesque + Manrope type, and the warm saffron gradient — so
+// moving between bharataiinnovation.com and /app feels like ONE product, not two.
+//
+// The app was authored in a dark utility vocabulary (text-white / text-gray-* /
+// bg-white/N / border-white/N / glass / *-dark-*), ~1,400 sites. Rather than hand-
+// flip each one (guaranteed white-on-white misses with no local preview), we remap
+// that vocabulary onto the site's LIGHT surface here, in one place, with two
+// surgical exceptions:
+//   (1) saffron-filled CTAs keep white text (they read on their orange fill)
+//   (2) .hero-gradient / .on-dark / .profile-cover bands stay dark ON PURPOSE
+//       (mirrors the marketing site's dark hero bands, e.g. conference.html)
+// NOTE: Tailwind slash-classes compile to escaped selectors (.bg-white\/5), so the
+// literal backslash is written \\/ inside this template literal.
+function brandThemeCSS(): string {
+  return `
+  /* ---- brand tokens (mirror public/css/style.css) ---- */
+  :root{--saffron:#FF6B00;--saffron-light:#FF8C38;--saffron-dark:#E05A00;--indigo:#1A237E;--indigo-mid:#283593;--electric:#2979FF;--charcoal:#1E2140;--ink:#0D0F1E;--dark-grey:#4A5280;--mid-grey:#5E6585;--white:#fff;--off-white:#F8F9FF;--light:#EEF0FF;--line:#E4E7F4;--grad-saffron:linear-gradient(135deg,#FF6B00 0%,#FF8C38 55%,#FF9A3C 100%);}
+  /* ---- type: the single biggest 'not-AI-generated' signal ---- */
+  h1,h2,h3,h4,h5,h6,.font-display,.gradient-text,.hero-title{font-family:'Bricolage Grotesque',sans-serif;letter-spacing:-0.02em;}
+  body,p,span,a,li,button,input,select,textarea,label,div,th,td{font-family:'Manrope',sans-serif;}
+  /* ---- text vocabulary -> ink on light ---- */
+  .text-white{color:var(--charcoal)!important;}
+  .text-gray-100,.text-gray-200,.text-gray-300{color:var(--dark-grey)!important;}
+  .text-gray-400{color:var(--mid-grey)!important;}
+  .text-gray-500{color:#6B7280!important;}
+  .text-gray-600{color:#565c70!important;}
+  /* ---- surfaces: glass / translucent white -> real white cards ---- */
+  .glass,.glass-light{background:#fff!important;border:1px solid var(--line)!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;box-shadow:0 6px 24px rgba(26,35,126,0.06)!important;}
+  .bg-white\\/3,.bg-white\\/5,.bg-white\\/\\[0\\.03\\],.bg-white\\/\\[0\\.05\\],.bg-white\\/8,.bg-white\\/10{background-color:#fff!important;}
+  .bg-white\\/15,.bg-white\\/20{background-color:var(--off-white)!important;}
+  .hover\\:bg-white\\/5:hover,.hover\\:bg-white\\/8:hover,.hover\\:bg-white\\/10:hover,.hover\\:bg-white\\/20:hover{background-color:var(--light)!important;}
+  .bg-dark-700{background-color:#fff!important;}.bg-dark-800{background-color:var(--off-white)!important;}.bg-dark-900{background-color:var(--light)!important;}
+  .bg-gray-800,.bg-gray-900,.bg-slate-800,.bg-slate-900{background-color:var(--off-white)!important;}
+  /* dark-palette gradient section backgrounds -> light lavender */
+  .from-dark-900,.from-dark-800,.from-gray-900{--tw-gradient-from:#F3F4FC var(--tw-gradient-from-position)!important;--tw-gradient-stops:var(--tw-gradient-from),var(--tw-gradient-to,rgba(243,244,252,0))!important;}
+  .via-dark-800,.via-dark-900{--tw-gradient-via:#EEF0FF var(--tw-gradient-via-position)!important;--tw-gradient-stops:var(--tw-gradient-from),var(--tw-gradient-via),var(--tw-gradient-to,rgba(238,240,255,0))!important;}
+  .to-dark-900,.to-dark-800,.to-dark-700,.to-gray-900{--tw-gradient-to:#EEF0FF var(--tw-gradient-to-position)!important;}
+  /* ---- borders ---- */
+  .border-white\\/5,.border-white\\/8,.border-white\\/10,.border-white\\/15,.border-white\\/20{border-color:var(--line)!important;}
+  .divide-white\\/10>*+*{border-color:var(--line)!important;}
+  /* ---- inputs ---- */
+  input,textarea,select{background:#fff!important;border:1px solid #D7DBEC!important;color:var(--charcoal)!important;}
+  input::placeholder,textarea::placeholder{color:#9aa0b8!important;}
+  select option{background:#fff!important;color:var(--charcoal)!important;}
+  /* ---- warm saffron everywhere (kill orange->pink + magenta accent) ---- */
+  .gradient-text{background:linear-gradient(115deg,#FF6B00 0%,#E05A00 55%,#FF8C38 100%)!important;-webkit-background-clip:text!important;background-clip:text!important;-webkit-text-fill-color:transparent!important;color:transparent!important;}
+  .tab-active{background:var(--grad-saffron)!important;}
+  .chat-bubble-sent{background:var(--grad-saffron)!important;}
+  .chat-bubble-received{background:var(--light)!important;color:var(--charcoal)!important;}
+  .booth-platinum{border-left-color:var(--saffron)!important;}.booth-premium{border-left-color:var(--saffron-light)!important;}
+  .from-accent-500,.from-accent-400{--tw-gradient-from:#FF8C38 var(--tw-gradient-from-position)!important;--tw-gradient-stops:var(--tw-gradient-from),var(--tw-gradient-to,rgba(255,140,56,0))!important;}
+  .to-accent-500,.to-accent-400{--tw-gradient-to:#FF8C38 var(--tw-gradient-to-position)!important;}
+  .text-accent-300,.text-accent-400,.text-accent-500{color:var(--indigo)!important;}
+  .bg-accent-500,.bg-accent-600{background-color:var(--indigo)!important;}
+  /* ---- rings / lines / shimmer that were white-on-dark ---- */
+  .engagement-ring .bg-ring{stroke:rgba(26,35,126,0.10)!important;}
+  .timeline-line{background:rgba(26,35,126,0.12)!important;}
+  .shimmer{background:linear-gradient(90deg,#eef0fa 25%,#e2e6f5 50%,#eef0fa 75%)!important;background-size:200% 100%;}
+  .card-hover:hover{box-shadow:0 14px 40px rgba(26,35,126,0.10)!important;border-color:var(--line)!important;}
+  /* ---- EXCEPTION 1: saffron-filled CTAs keep white text ---- */
+  a[style*="linear-gradient"],button[style*="linear-gradient"],
+  a[style*="linear-gradient"] *,button[style*="linear-gradient"] *,
+  .bg-gradient-to-r[class*="from-primary-"],.bg-gradient-to-br[class*="from-primary-"],.bg-gradient-to-l[class*="from-primary-"],.bg-gradient-to-tr[class*="from-primary-"],
+  .bg-gradient-to-r[class*="from-primary-"] *,.bg-gradient-to-br[class*="from-primary-"] *,
+  .bg-primary-500,.bg-primary-600,.bg-primary-700,.bg-primary-500 *,.bg-primary-600 *,.bg-primary-700 *,
+  .tab-active,.tab-active *{color:#fff!important;}
+  /* ---- EXCEPTION 2: intentional dark bands (mirror site's dark hero) ---- */
+  .hero-gradient{background:linear-gradient(150deg,#0D0F1E 0%,#141a4d 45%,#1A237E 100%)!important;color:#fff;}
+  .profile-cover{color:#fff;}
+  .on-dark,.on-dark .text-white,.hero-gradient .text-white,.profile-cover .text-white{color:#fff!important;}
+  .on-dark .text-gray-300,.hero-gradient .text-gray-300,.profile-cover .text-gray-300{color:rgba(255,255,255,0.78)!important;}
+  .on-dark .text-gray-400,.hero-gradient .text-gray-400,.profile-cover .text-gray-400{color:rgba(255,255,255,0.62)!important;}
+  .on-dark .glass,.hero-gradient .glass{background:rgba(255,255,255,0.06)!important;border-color:rgba(255,255,255,0.12)!important;-webkit-backdrop-filter:blur(16px)!important;backdrop-filter:blur(16px)!important;box-shadow:none!important;}
+  .on-dark .border-white\\/10,.hero-gradient .border-white\\/10{border-color:rgba(255,255,255,0.14)!important;}
+  `
+}
+
 // Shared <head> for app pages (contact, register, marketplace). `path` and
 // `desc` power per-page canonical + social-share cards so links pasted into
 // WhatsApp/LinkedIn/X render a proper preview (previously these pages had NO
@@ -3006,9 +3084,9 @@ function sharedHeadHTML(title: string, path: string = '/', desc?: string): strin
     }
   </script>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
-    * { font-family: 'Inter', sans-serif; }
-    body { background: #0b0d1a; color: #e2e8f0; }
+    @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Manrope:wght@300..800&display=swap');
+    * { font-family: 'Manrope', sans-serif; }
+    body { background: #F8F9FF; color: #1E2140; }
     .glass { background: rgba(255,255,255,0.04); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.07); }
     .gradient-text { background: linear-gradient(120deg, #ff7c1f 0%, #f5620a 40%, #e8406c 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
     /* Specify exact properties (not 'all'); strong ease-out curve; subtle
@@ -3027,6 +3105,7 @@ function sharedHeadHTML(title: string, path: string = '/', desc?: string): strin
     select { -webkit-appearance: none; -moz-appearance: none; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%239ca3af' d='M6 8L1 3h10z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 32px; }
     .toast { position: fixed; top: 20px; right: 20px; z-index: 100; padding: 12px 20px; border-radius: 12px; font-size: 14px; font-weight: 500; animation: slideIn 0.3s ease; }
     @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+    ${brandThemeCSS()}
   </style>
 </head>`
 }
@@ -3040,7 +3119,7 @@ function sharedNavHTML(activePage: string): string {
         : 'text-gray-300 hover:text-white hover:bg-white/8'
     }">${label}</a>`
   }
-  return `<nav style="background:rgba(11,13,26,0.93);backdrop-filter:blur(24px);border-bottom:1px solid rgba(255,255,255,0.07);" class="sticky top-0 z-30">
+  return `<nav style="background:rgba(255,255,255,0.85);backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);border-bottom:1px solid rgba(26,35,126,0.08);" class="sticky top-0 z-30">
   <div class="max-w-7xl mx-auto px-4">
     <div class="flex items-center h-14 gap-4">
       <!-- Logo -->
@@ -3064,7 +3143,7 @@ function sharedNavHTML(activePage: string): string {
         <a href="/app#login" class="hidden sm:flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-semibold text-gray-200 hover:text-white transition-all no-underline border border-white/15 hover:bg-white/8">
           <i class="fas fa-sign-in-alt text-[11px]"></i> Log In
         </a>
-        <a href="/register" class="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold text-white transition-all hover:opacity-90 no-underline" style="background:linear-gradient(135deg,#FF6B00,#e03060);box-shadow:0 4px 15px rgba(255,107,0,0.35);">
+        <a href="/register" class="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold text-white transition-all hover:opacity-90 no-underline" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);box-shadow:0 4px 15px rgba(255,107,0,0.35);">
           Register <i class="fas fa-arrow-right text-[10px]"></i>
         </a>
       </div>
@@ -3222,7 +3301,7 @@ ${sharedNavHTML('contact')}
           <label class="text-xs text-gray-400 mb-1 block">Message *</label>
           <textarea id="cf-message" rows="4" required class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Describe your inquiry in detail..."></textarea>
         </div>
-        <button type="submit" id="cf-submit" class="w-full py-3.5 rounded-xl font-bold text-white transition-all text-sm hover:opacity-90" style="background:linear-gradient(135deg,#FF6B00,#e03060);box-shadow:0 4px 20px rgba(245,98,10,0.3);">
+        <button type="submit" id="cf-submit" class="w-full py-3.5 rounded-xl font-bold text-white transition-all text-sm hover:opacity-90" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);box-shadow:0 4px 20px rgba(245,98,10,0.3);">
           <i class="fas fa-paper-plane mr-2"></i>Submit Inquiry
         </button>
       </form>
@@ -4154,9 +4233,9 @@ function mainPageHTML(): string {
   <link rel="canonical" href="https://bharataiinnovation.com/app">
   <!-- PWA: installable, phone-first, offline-resilient for the live event -->
   <link rel="manifest" href="/manifest.webmanifest">
-  <meta name="theme-color" content="#0b0d1a">
+  <meta name="theme-color" content="#F8F9FF">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Bharat AI">
   <link rel="apple-touch-icon" href="/images/apple-touch-icon.png">
   <link rel="icon" type="image/png" sizes="192x192" href="/images/icon-192.png">
@@ -4189,9 +4268,9 @@ function mainPageHTML(): string {
     }
   </script>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
-    * { font-family: 'Inter', sans-serif; }
-    body { background: #0b0d1a; color: #e2e8f0; }
+    @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Manrope:wght@300..800&display=swap');
+    * { font-family: 'Manrope', sans-serif; }
+    body { background: #F8F9FF; color: #1E2140; }
     .glass { background: rgba(255,255,255,0.04); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.07); }
     .glass-light { background: rgba(255,255,255,0.07); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.10); }
     .glow { box-shadow: 0 0 30px rgba(245,98,10,0.15); }
@@ -4254,13 +4333,14 @@ function mainPageHTML(): string {
     .profile-cover::before { content: ''; position: absolute; inset: 0; background: radial-gradient(circle at 30% 50%, rgba(76,110,245,0.15) 0%, transparent 60%), radial-gradient(circle at 70% 30%, rgba(255,152,0,0.1) 0%, transparent 50%); }
     .quick-action-btn { transition: all 0.2s ease; }
     .quick-action-btn:hover { transform: translateY(-2px); }
+    ${brandThemeCSS()}
   </style>
 </head>
 <body class="min-h-screen">
   <!-- App Container -->
   <div id="app">
     <!-- Loading -->
-    <div id="loading-screen" class="fixed inset-0 z-50 flex items-center justify-center" style="background:#0b0d1a;">
+    <div id="loading-screen" class="fixed inset-0 z-50 flex items-center justify-center" style="background:#F8F9FF;">
       <div class="text-center">
         <div class="mb-6"><img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="w-20 h-20 mx-auto rounded-xl object-contain"></div>
         <h1 class="text-3xl font-bold gradient-text mb-2">Bharat AI Innovation 2026</h1>
@@ -4299,7 +4379,7 @@ function mainPageHTML(): string {
             <label class="text-xs text-gray-400 mb-1 block">Email Address</label>
             <input type="email" id="signin-email" placeholder="Enter your registered email" required class="w-full px-4 py-3 rounded-xl text-sm">
           </div>
-          <button type="submit" class="w-full py-3 rounded-xl font-bold text-white transition-all hover:opacity-90" style="background:linear-gradient(135deg,#FF6B00,#e03060);box-shadow:0 4px 20px rgba(245,98,10,0.3);">
+          <button type="submit" class="w-full py-3 rounded-xl font-bold text-white transition-all hover:opacity-90" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);box-shadow:0 4px 20px rgba(245,98,10,0.3);">
             <i class="fas fa-sign-in-alt mr-2"></i>Sign In
           </button>
           <div class="relative flex items-center my-3">
@@ -4446,7 +4526,7 @@ function mainPageHTML(): string {
             <input type="text" id="meeting-location" placeholder="Location" class="px-4 py-3 rounded-xl text-sm">
           </div>
           <textarea id="meeting-notes" placeholder="Notes..." rows="2" class="w-full px-4 py-3 rounded-xl text-sm"></textarea>
-          <button type="submit" class="w-full py-3 rounded-xl font-bold text-white transition-all hover:opacity-90" style="background:linear-gradient(135deg,#FF6B00,#e03060);box-shadow:0 4px 20px rgba(245,98,10,0.28);">
+          <button type="submit" class="w-full py-3 rounded-xl font-bold text-white transition-all hover:opacity-90" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);box-shadow:0 4px 20px rgba(245,98,10,0.28);">
             <i class="fas fa-calendar-check mr-2"></i>Send Meeting Request
           </button>
         </form>
@@ -4454,7 +4534,7 @@ function mainPageHTML(): string {
     </div>
 
     <!-- Main Navigation -->
-    <nav id="main-nav" class="hidden fixed bottom-0 left-0 right-0 z-30 md:top-0 md:bottom-auto" style="background:rgba(11,13,26,0.92);backdrop-filter:blur(24px);border-bottom:1px solid rgba(255,255,255,0.06);padding-bottom:env(safe-area-inset-bottom);">
+    <nav id="main-nav" class="hidden fixed bottom-0 left-0 right-0 z-30 md:top-0 md:bottom-auto" style="background:rgba(255,255,255,0.9);backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);box-shadow:0 1px 0 rgba(26,35,126,0.08),0 -1px 0 rgba(26,35,126,0.06),0 6px 24px rgba(26,35,126,0.05);padding-bottom:env(safe-area-inset-bottom);">
       <div class="max-w-7xl mx-auto px-4">
         <!-- Mobile nav: icon bar at bottom. Scrolls horizontally if items exceed
              the width instead of crushing; min touch target ~48px. -->
@@ -4512,7 +4592,7 @@ function mainPageHTML(): string {
               <span id="unread-badge" class="hidden absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[9px] rounded-full flex items-center justify-center badge-pulse">0</span>
             </button>
             <!-- Log In / Register button (opens combined modal; defaults to Sign In tab) -->
-            <button class="js-signin-btn flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold text-white transition-all hover:opacity-90" id="nav-signin-btn-desktop" onclick="showRegistration()" style="background:linear-gradient(135deg,#FF6B00,#e03060);box-shadow:0 4px 15px rgba(255,107,0,0.35);">
+            <button class="js-signin-btn flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold text-white transition-all hover:opacity-90" id="nav-signin-btn-desktop" onclick="showRegistration()" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);box-shadow:0 4px 15px rgba(255,107,0,0.35);">
               <i class="fas fa-sign-in-alt text-[11px]"></i> Log In / Register
             </button>
             <!-- Notification bell (visible when logged in) -->
@@ -4521,7 +4601,7 @@ function mainPageHTML(): string {
                 <i class="fas fa-bell"></i>
                 <span id="notif-badge" class="hidden absolute -top-1 -right-1 min-w-4 h-4 px-1 bg-primary-500 text-white text-[9px] rounded-full flex items-center justify-center">0</span>
               </button>
-              <div id="notif-dropdown" class="hidden absolute right-0 mt-2 w-80 max-w-[90vw] rounded-xl overflow-hidden z-50" style="background:rgba(15,17,30,0.98);backdrop-filter:blur(24px);border:1px solid rgba(255,255,255,0.1);box-shadow:0 12px 40px rgba(0,0,0,0.5);">
+              <div id="notif-dropdown" class="hidden absolute right-0 mt-2 w-80 max-w-[90vw] rounded-xl overflow-hidden z-50" style="background:rgba(255,255,255,0.98);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border:1px solid #E4E7F4;box-shadow:0 16px 44px rgba(26,35,126,0.16);">
                 <div class="px-4 py-3 border-b border-white/8 flex items-center justify-between"><span class="text-sm font-semibold">Notifications</span><button onclick="markNotifsRead()" class="text-[11px] text-primary-400 hover:underline">Mark all read</button></div>
                 <div id="notif-list" class="max-h-96 overflow-y-auto"></div>
               </div>
@@ -4608,7 +4688,7 @@ function mainPageHTML(): string {
 
             <!-- Title -->
             <h1 class="font-black leading-none tracking-tight mb-4" style="font-size:clamp(2.8rem,8vw,5.5rem);">
-              <span style="background:linear-gradient(120deg,#ff7c1f 0%,#f5620a 40%,#e8406c 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">Bharat AI</span><br>
+              <span style="background:linear-gradient(120deg,#FF6B00 0%,#FF8C38 55%,#FFB300 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">Bharat AI</span><br>
               <span class="text-white">Innovation</span>
             </h1>
 
@@ -4617,7 +4697,7 @@ function mainPageHTML(): string {
 
             <!-- CTA buttons -->
             <div class="flex items-center justify-center gap-3 flex-wrap">
-              <button onclick="showRegistration()" class="flex items-center gap-2 px-6 py-3 rounded-full text-sm font-bold text-white transition hover:opacity-90" style="background:linear-gradient(135deg,#FF6B00,#e03060);box-shadow:0 6px 20px rgba(245,98,10,0.35);">Register Free <i class="fas fa-arrow-right text-xs"></i></button>
+              <button onclick="showRegistration()" class="flex items-center gap-2 px-6 py-3 rounded-full text-sm font-bold text-white transition hover:opacity-90" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);box-shadow:0 6px 20px rgba(245,98,10,0.35);">Register Free <i class="fas fa-arrow-right text-xs"></i></button>
               <a href="https://bharataiinnovation.com" target="_blank" class="flex items-center gap-2 px-6 py-3 rounded-full text-sm font-semibold text-gray-200 transition hover:bg-white/10 no-underline" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);">Learn More</a>
             </div>
 
@@ -4890,7 +4970,7 @@ function mainPageHTML(): string {
               <button onclick="openQuickVisitorReg()" class="px-6 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-primary-600 to-primary-500 hover:from-primary-500 hover:to-primary-400 transition-all text-sm shadow-lg shadow-primary-500/25">
                 <i class="fas fa-ticket-alt mr-2"></i>Register Free — Visitor Pass
               </button>
-              <button onclick="openPaidPassForm()" class="px-6 py-3 rounded-xl font-bold text-white transition-all text-sm hover:opacity-90" style="background:linear-gradient(135deg,#FF6B00,#e03060);box-shadow:0 4px 20px rgba(245,98,10,0.28);">
+              <button onclick="openPaidPassForm()" class="px-6 py-3 rounded-xl font-bold text-white transition-all text-sm hover:opacity-90" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);box-shadow:0 4px 20px rgba(245,98,10,0.28);">
                 <i class="fas fa-star mr-2"></i>Get Paid Pass (Delegate/VIP)
               </button>
               <a href="https://bharataiinnovation.com/register#delegation-section" target="_blank" class="px-6 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 transition-all text-sm">
@@ -5030,7 +5110,7 @@ function mainPageHTML(): string {
               <!-- Dynamic extra fields based on type -->
               <div id="inq-extra-fields"></div>
               <textarea id="inq-message" placeholder="Your message / requirements..." rows="3" required class="w-full px-4 py-3 rounded-xl text-sm"></textarea>
-              <button type="submit" id="inq-submit-btn" class="w-full py-3 rounded-xl font-bold text-white transition-all text-sm hover:opacity-90" style="background:linear-gradient(135deg,#FF6B00,#e03060);box-shadow:0 4px 20px rgba(245,98,10,0.28);">
+              <button type="submit" id="inq-submit-btn" class="w-full py-3 rounded-xl font-bold text-white transition-all text-sm hover:opacity-90" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);box-shadow:0 4px 20px rgba(245,98,10,0.28);">
                 <i class="fas fa-paper-plane mr-2"></i>Submit Inquiry
               </button>
             </form>
@@ -6280,7 +6360,7 @@ function mainPageHTML(): string {
                 <input type="url" id="edit-website" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="https://...">
               </div>
             </div>
-            <button type="submit" class="w-full py-3 rounded-xl font-bold text-white transition-all hover:opacity-90" style="background:linear-gradient(135deg,#FF6B00,#e03060);box-shadow:0 4px 20px rgba(245,98,10,0.28);">
+            <button type="submit" class="w-full py-3 rounded-xl font-bold text-white transition-all hover:opacity-90" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);box-shadow:0 4px 20px rgba(245,98,10,0.28);">
               <i class="fas fa-save mr-2"></i>Save Changes
             </button>
           </form>
