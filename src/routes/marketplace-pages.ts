@@ -11,7 +11,7 @@ function mpSharedHead(title: string): string {
   <title>${title} — Bharat AI Marketplace</title>
   <meta name="description" content="${title} - Bharat AI Innovation 2026 AI Marketplace. Discover, compare, and connect with India's leading AI solutions.">
   <link rel="canonical" href="https://bharataiinnovation.com/marketplace">
-  <meta name="theme-color" content="#0b0d1a">
+  <meta name="theme-color" content="#F8F9FF">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Bharat AI Innovation">
   <meta property="og:url" content="https://bharataiinnovation.com/marketplace">

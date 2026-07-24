@@ -2970,6 +2970,20 @@ function brandThemeCSS(): string {
   .text-gray-400{color:var(--mid-grey)!important;}
   .text-gray-500{color:#6B7280!important;}
   .text-gray-600{color:#565c70!important;}
+  /* colored labels/badges/prices were tuned for dark bg -> darken 1-2 steps for light readability */
+  .text-primary-400,.text-primary-300,.text-orange-400,.text-orange-300{color:#E05A00!important;}
+  .text-amber-400,.text-amber-300,.text-yellow-400,.text-yellow-300{color:#B45309!important;}
+  .text-green-400,.text-green-300,.text-emerald-400,.text-emerald-300,.text-lime-400{color:#059669!important;}
+  .text-teal-400,.text-cyan-400,.text-cyan-300{color:#0D9488!important;}
+  .text-blue-400,.text-blue-300,.text-sky-400,.text-sky-300{color:#2563EB!important;}
+  .text-indigo-400,.text-indigo-300{color:#4F46E5!important;}
+  .text-purple-400,.text-purple-300,.text-violet-400,.text-fuchsia-400{color:#7C3AED!important;}
+  .text-pink-400,.text-pink-300,.text-rose-400,.text-rose-300{color:#E11D48!important;}
+  .text-red-400,.text-red-300{color:#DC2626!important;}
+  /* but keep colored labels bright inside the dark hero / on-dark bands */
+  .hero-gradient .text-primary-400,.hero-gradient .text-orange-400,.on-dark .text-primary-400,.on-dark .text-orange-400{color:#ff9d55!important;}
+  .hero-gradient .text-green-400,.on-dark .text-green-400{color:#4ade80!important;}
+  .hero-gradient .text-blue-400,.on-dark .text-blue-400{color:#60a5fa!important;}
   /* ---- surfaces: glass / translucent white -> real white cards ---- */
   .glass,.glass-light{background:#fff!important;border:1px solid var(--line)!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;box-shadow:0 6px 24px rgba(26,35,126,0.06)!important;}
   .bg-white\\/3,.bg-white\\/5,.bg-white\\/\\[0\\.03\\],.bg-white\\/\\[0\\.05\\],.bg-white\\/8,.bg-white\\/10{background-color:#fff!important;}
