@@ -3725,8 +3725,8 @@ async function submitRegisterPaidPassForm(e) {
       <!-- Pass Type Selector -->
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px;">
         <label style="cursor:pointer;">
-          <input type="radio" name="rpp-pass" value="Delegate Pass" style="display:none;" onchange="document.getElementById('rpp-pass-type').value=this.value;document.querySelectorAll('[data-rpp-card]').forEach(el=>{el.style.boxShadow='none';el.style.borderColor='rgba(139,92,246,0.2)'});this.nextElementSibling.style.boxShadow='0 0 0 2px #818cf8';this.nextElementSibling.style.borderColor='#818cf8'">
-          <div data-rpp-card style="padding:12px;border-radius:12px;text-align:center;background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.2);transition:all 0.2s;">
+          <input type="radio" name="rpp-pass" value="Delegate Pass" style="display:none;" onchange="document.getElementById('rpp-pass-type').value=this.value;document.querySelectorAll('[data-rpp-card]').forEach(el=>{el.style.boxShadow='none';el.style.borderColor='rgba(255,107,0,0.2)'});this.nextElementSibling.style.boxShadow='0 0 0 2px #FF6B00';this.nextElementSibling.style.borderColor='#FF6B00'">
+          <div data-rpp-card style="padding:12px;border-radius:12px;text-align:center;background:rgba(139,92,246,0.08);border:1px solid rgba(255,107,0,0.2);transition:all 0.2s;">
             <i class="fas fa-id-badge" style="color:#a78bfa;font-size:20px;display:block;margin-bottom:4px;"></i>
             <div style="color:white;font-weight:600;font-size:12px;">Delegate</div>
             <div style="color:#a78bfa;font-weight:700;font-size:14px;">&#8377;4,999</div>
@@ -9893,7 +9893,7 @@ function mainPageHTML(): string {
               <svg width="120" height="120" viewBox="0 0 120 120">
                 <defs>
                   <linearGradient id="engGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" style="stop-color:#748ffc" />
+                    <stop offset="0%" style="stop-color:#FF6B00" />
                     <stop offset="100%" style="stop-color:#ff9800" />
                   </linearGradient>
                 </defs>
@@ -9914,7 +9914,7 @@ function mainPageHTML(): string {
 
         // ---- Stats Cards ----
         const statsData = [
-          { icon: 'fa-user-friends', label: 'Connections', value: s.connectionsAccepted, sub: s.connectionsPending > 0 ? s.connectionsPending + ' pending' : '', color: '#748ffc', onClick: "switchProfileSubtab('connections')" },
+          { icon: 'fa-user-friends', label: 'Connections', value: s.connectionsAccepted, sub: s.connectionsPending > 0 ? s.connectionsPending + ' pending' : '', color: '#3949AB', onClick: "switchProfileSubtab('connections')" },
           { icon: 'fa-comment-dots', label: 'Messages', value: s.totalMessages, sub: s.unreadMessages > 0 ? s.unreadMessages + ' unread' : '', color: '#22c55e', onClick: "switchTab('inbox')" },
           { icon: 'fa-calendar-check', label: 'Meetings', value: s.meetingsUpcoming, sub: s.meetingsPending > 0 ? s.meetingsPending + ' pending' : '', color: '#ff9800', onClick: "switchProfileSubtab('meetings')" },
           { icon: 'fa-store', label: 'Booths', value: s.boothVisits, sub: '', color: '#a78bfa', onClick: "switchTab('exhibition')" },
@@ -10193,7 +10193,7 @@ function mainPageHTML(): string {
         timeline.push({
           time: m.created_at,
           icon: 'fa-calendar-plus',
-          color: '#748ffc',
+          color: '#3949AB',
           title: \`Meeting scheduled with \${otherN}\`,
           subtitle: m.title || '',
           type: 'meeting'
@@ -10629,7 +10629,7 @@ function mainPageHTML(): string {
         <div class="grid grid-cols-3 gap-2 mb-5">
           <label class="pass-option cursor-pointer">
             <input type="radio" name="pp-pass" value="Delegate Pass" class="hidden" onchange="document.getElementById('pp-pass-type').value=this.value;document.querySelectorAll('.pass-option').forEach(el=>el.classList.remove('ring-2','ring-indigo-400'));this.closest('.pass-option').classList.add('ring-2','ring-indigo-400')">
-            <div class="p-3 rounded-xl text-center" style="background:rgba(139,92,246,0.1);border:1px solid rgba(139,92,246,0.2);">
+            <div class="p-3 rounded-xl text-center" style="background:rgba(139,92,246,0.1);border:1px solid rgba(255,107,0,0.2);">
               <i class="fas fa-id-badge text-violet-400 text-lg mb-1 block"></i>
               <div class="text-white font-semibold text-xs">Delegate</div>
               <div class="text-violet-300 font-bold text-sm">&#8377;4,999</div>
@@ -10747,7 +10747,7 @@ function adminPageHTML(): string {
     #attendee-table th.sortable { cursor: pointer; }
     #attendee-table th.sortable:hover { color: #e2e8f0; background: rgba(255,255,255,0.04); }
     .sort-icon { font-size: 9px; margin-left: 3px; opacity: 0.3; }
-    .sort-icon.active { opacity: 1; color: #818cf8; }
+    .sort-icon.active { opacity: 1; color: #FF6B00; }
     .col-resizer { position: absolute; right: -3px; top: 0; width: 7px; height: 100%; cursor: col-resize; z-index: 10; background: rgba(100,116,139,0.2); border-radius: 2px; transition: background 0.15s; }
     .col-resizer:hover, .col-resizer.active { background: rgba(76,110,245,0.6); }
     #attendee-table th:hover .col-resizer { background: rgba(100,116,139,0.4); }
