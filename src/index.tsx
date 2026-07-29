@@ -2977,7 +2977,7 @@ function brandThemeCSS(): string {
   .text-teal-400,.text-cyan-400,.text-cyan-300{color:#0D9488!important;}
   .text-blue-400,.text-blue-300,.text-sky-400,.text-sky-300{color:#2563EB!important;}
   .text-indigo-400,.text-indigo-300{color:#4F46E5!important;}
-  .text-purple-400,.text-purple-300,.text-violet-400,.text-fuchsia-400{color:#7C3AED!important;}
+  .text-purple-400,.text-purple-300,.text-violet-400,.text-violet-300,.text-fuchsia-400{color:#7C3AED!important;}
   .text-pink-400,.text-pink-300,.text-rose-400,.text-rose-300{color:#E11D48!important;}
   .text-red-400,.text-red-300{color:#DC2626!important;}
   /* but keep colored labels bright inside the dark hero / on-dark bands */
@@ -3687,6 +3687,16 @@ async function submitRegisterPaidPassForm(e) {
     return;
   }
 
+  // Open the payment tab NOW, while the user's click activation is still live.
+  // Opening it after the await below gets silently swallowed by popup blockers
+  // (iOS Safari especially), which made this button appear to do nothing.
+  const payWin = window.open('', '_blank');
+  // Snapshot NOW: blocked popups are null (or a closed stub) immediately. Checked
+  // later, "blocked" and "user closed the tab meanwhile" look identical — and the
+  // latter must NOT hijack the current page.
+  const payWinOpened = !!payWin && !payWin.closed;
+  paintPayHoldingPage(payWin);
+
   try {
     await fetch('/api/events/1/attendees/register', {
       method: 'POST',
@@ -3695,29 +3705,62 @@ async function submitRegisterPaidPassForm(e) {
     });
   } catch(_) {}
 
-  const params = new URLSearchParams({ name, email, phone, organization: company, designation: desig, city, pass_type: passType });
-  window.open('https://municampus.com/event/BharatAI?' + params.toString(), '_blank');
+  const payUrl = muniPayUrl(passType);
+  if (payWinOpened && !payWin.closed) payWin.location.replace(payUrl);
+  else if (!payWinOpened) window.location.href = payUrl;  // popup blocked -> same tab, never a dead end
+  // else: tab opened but user closed it mid-flight — treat as cancel, stay put
   closeRegisterPaidPassModal();
   btn.disabled = false;
   btn.innerHTML = '<i class="fas fa-arrow-right mr-2"></i>Proceed to Payment';
+}
+
+// mUni Campus checkout deep-link. Their page ignores personal prefill params, but
+// DOES honour ?category=<id> — their own dropdown handler builds exactly this URL,
+// and the registration page renders it into "var category = '<id>'" which is then
+// POSTed with the signup. So this skips the event-page hop AND pre-selects the pass.
+// NB: ?type= is a DIFFERENT field (their eventType, hardcoded 0) — do not use it.
+// IDs are their category dropdown's option values; id=425 = Bharat AI 2026
+// (same event as the /event/BharatAI alias).
+function muniPayUrl(passType) {
+  const CATEGORY = { 'VIP Pass': 1, 'Visitor Pass': 2, 'Delegate Pass': 3, 'Academic Pass': 4 };
+  const c = CATEGORY[passType];
+  return c
+    ? 'https://municampus.com/event/event_registration.php?id=425&category=' + c
+    : 'https://municampus.com/event/BharatAI';  // unknown pass -> event page, user picks there
+}
+
+// The tab is opened before the save completes (to keep the click activation), so
+// it would otherwise sit on about:blank for a beat. Paint a branded holding note.
+function paintPayHoldingPage(w) {
+  if (!w) return;
+  try {
+    w.document.write('<!doctype html><meta charset="utf-8"><title>Opening secure checkout\\u2026</title>'
+      + '<body style="margin:0;height:100vh;display:flex;align-items:center;justify-content:center;'
+      + 'font-family:Manrope,system-ui,-apple-system,sans-serif;background:#F8F9FF;color:#1E2140;">'
+      + '<div style="text-align:center;padding:24px;">'
+      + '<div style="font-size:18px;font-weight:700;">Opening secure checkout\\u2026</div>'
+      + '<div style="font-size:13px;color:#5E6585;margin-top:6px;">Taking you to mUni Campus, our payments partner.</div>'
+      + '</div>');
+    w.document.close();
+  } catch (_) {}
 }
 // Backdrop click handler set after DOM is ready
 </script>
 
 <!-- ===== PAID PASS MODAL (Register Page) ===== -->
-<div id="reg-paid-pass-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4" style="background:rgba(0,0,0,0.75);backdrop-filter:blur(6px);">
-  <div style="background:rgba(15,21,53,0.97);border:1px solid rgba(99,102,241,0.35);border-radius:18px;width:100%;max-width:520px;overflow:hidden;">
-    <div style="background:linear-gradient(135deg,#1e1b4b,#312e81);padding:20px 24px;display:flex;align-items:center;justify-content:space-between;">
+<div id="reg-paid-pass-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4" style="background:rgba(23,27,58,0.55);backdrop-filter:blur(6px);">
+  <div style="background:#fff;border:1px solid #E4E7F4;border-radius:18px;width:100%;max-width:520px;overflow:hidden;box-shadow:0 24px 64px rgba(26,35,126,0.22);">
+    <div style="background:linear-gradient(135deg,#FF6B00,#FF8C38);padding:20px 24px;display:flex;align-items:center;justify-content:space-between;">
       <div style="display:flex;align-items:center;gap:12px;">
-        <div style="width:40px;height:40px;border-radius:10px;background:rgba(165,138,255,0.2);display:flex;align-items:center;justify-content:center;">
-          <i class="fas fa-star" style="color:#fbbf24;font-size:18px;"></i>
+        <div style="width:40px;height:40px;border-radius:10px;background:rgba(255,255,255,0.22);display:flex;align-items:center;justify-content:center;">
+          <i class="fas fa-star" style="color:#fff;font-size:18px;"></i>
         </div>
         <div>
-          <div style="font-weight:700;color:white;font-size:16px;">Get Your Paid Pass</div>
-          <div style="font-size:12px;color:#a5b4fc;">Fill details &amp; proceed to secure payment</div>
+          <div style="font-weight:700;color:#fff;font-size:16px;">Get Your Paid Pass</div>
+          <div style="font-size:12px;color:rgba(255,255,255,0.9);">Fill details &amp; proceed to secure payment</div>
         </div>
       </div>
-      <button onclick="closeRegisterPaidPassModal()" style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:20px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:8px;" onmouseover="this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.background='none'">
+      <button onclick="closeRegisterPaidPassModal()" style="background:none;border:none;color:rgba(255,255,255,0.9);cursor:pointer;font-size:20px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:8px;" onmouseover="this.style.background='rgba(255,255,255,0.2)'" onmouseout="this.style.background='none'">
         <i class="fas fa-times"></i>
       </button>
     </div>
@@ -3727,28 +3770,28 @@ async function submitRegisterPaidPassForm(e) {
         <label style="cursor:pointer;">
           <input type="radio" name="rpp-pass" value="Delegate Pass" style="display:none;" onchange="document.getElementById('rpp-pass-type').value=this.value;document.querySelectorAll('[data-rpp-card]').forEach(el=>{el.style.boxShadow='none';el.style.borderColor='rgba(255,107,0,0.2)'});this.nextElementSibling.style.boxShadow='0 0 0 2px #FF6B00';this.nextElementSibling.style.borderColor='#FF6B00'">
           <div data-rpp-card style="padding:12px;border-radius:12px;text-align:center;background:rgba(139,92,246,0.08);border:1px solid rgba(255,107,0,0.2);transition:all 0.2s;">
-            <i class="fas fa-id-badge" style="color:#a78bfa;font-size:20px;display:block;margin-bottom:4px;"></i>
-            <div style="color:white;font-weight:600;font-size:12px;">Delegate</div>
-            <div style="color:#a78bfa;font-weight:700;font-size:14px;">&#8377;4,999</div>
-            <div style="color:#64748b;font-size:10px;">Full 2-day access</div>
+            <i class="fas fa-id-badge" style="color:#7C3AED;font-size:20px;display:block;margin-bottom:4px;"></i>
+            <div style="color:#1E2140;font-weight:600;font-size:12px;">Delegate</div>
+            <div style="color:#7C3AED;font-weight:700;font-size:14px;">&#8377;4,999</div>
+            <div style="color:#5E6585;font-size:10px;">Full 2-day access</div>
           </div>
         </label>
         <label style="cursor:pointer;">
-          <input type="radio" name="rpp-pass" value="VIP Pass" style="display:none;" onchange="document.getElementById('rpp-pass-type').value=this.value;document.querySelectorAll('[data-rpp-card]').forEach(el=>{el.style.boxShadow='none';el.style.borderColor='rgba(251,191,36,0.2)'});this.nextElementSibling.style.boxShadow='0 0 0 2px #fbbf24';this.nextElementSibling.style.borderColor='#fbbf24'">
+          <input type="radio" name="rpp-pass" value="VIP Pass" style="display:none;" onchange="document.getElementById('rpp-pass-type').value=this.value;document.querySelectorAll('[data-rpp-card]').forEach(el=>{el.style.boxShadow='none';el.style.borderColor='rgba(251,191,36,0.2)'});this.nextElementSibling.style.boxShadow='0 0 0 2px #FF6B00';this.nextElementSibling.style.borderColor='#FF6B00'">
           <div data-rpp-card style="padding:12px;border-radius:12px;text-align:center;background:rgba(251,191,36,0.06);border:1px solid rgba(251,191,36,0.2);transition:all 0.2s;">
-            <i class="fas fa-crown" style="color:#fbbf24;font-size:20px;display:block;margin-bottom:4px;"></i>
-            <div style="color:white;font-weight:600;font-size:12px;">VIP</div>
-            <div style="color:#fbbf24;font-weight:700;font-size:14px;">&#8377;14,999</div>
-            <div style="color:#64748b;font-size:10px;">Lounge + dinner</div>
+            <i class="fas fa-crown" style="color:#B45309;font-size:20px;display:block;margin-bottom:4px;"></i>
+            <div style="color:#1E2140;font-weight:600;font-size:12px;">VIP</div>
+            <div style="color:#B45309;font-weight:700;font-size:14px;">&#8377;14,999</div>
+            <div style="color:#5E6585;font-size:10px;">Lounge + dinner</div>
           </div>
         </label>
         <label style="cursor:pointer;">
-          <input type="radio" name="rpp-pass" value="Academic Pass" style="display:none;" onchange="document.getElementById('rpp-pass-type').value=this.value;document.querySelectorAll('[data-rpp-card]').forEach(el=>{el.style.boxShadow='none';el.style.borderColor='rgba(192,132,252,0.2)'});this.nextElementSibling.style.boxShadow='0 0 0 2px #c084fc';this.nextElementSibling.style.borderColor='#c084fc'">
+          <input type="radio" name="rpp-pass" value="Academic Pass" style="display:none;" onchange="document.getElementById('rpp-pass-type').value=this.value;document.querySelectorAll('[data-rpp-card]').forEach(el=>{el.style.boxShadow='none';el.style.borderColor='rgba(192,132,252,0.2)'});this.nextElementSibling.style.boxShadow='0 0 0 2px #FF6B00';this.nextElementSibling.style.borderColor='#FF6B00'">
           <div data-rpp-card style="padding:12px;border-radius:12px;text-align:center;background:rgba(192,132,252,0.06);border:1px solid rgba(192,132,252,0.2);transition:all 0.2s;">
-            <i class="fas fa-graduation-cap" style="color:#c084fc;font-size:20px;display:block;margin-bottom:4px;"></i>
-            <div style="color:white;font-weight:600;font-size:12px;">Academic</div>
-            <div style="color:#c084fc;font-weight:700;font-size:14px;">&#8377;999</div>
-            <div style="color:#64748b;font-size:10px;">Students</div>
+            <i class="fas fa-graduation-cap" style="color:#9333EA;font-size:20px;display:block;margin-bottom:4px;"></i>
+            <div style="color:#1E2140;font-weight:600;font-size:12px;">Academic</div>
+            <div style="color:#9333EA;font-weight:700;font-size:14px;">&#8377;999</div>
+            <div style="color:#5E6585;font-size:10px;">Students</div>
           </div>
         </label>
       </div>
@@ -3757,38 +3800,44 @@ async function submitRegisterPaidPassForm(e) {
       <form id="reg-paid-pass-form" onsubmit="submitRegisterPaidPassForm(event)" style="display:flex;flex-direction:column;gap:12px;">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
           <div>
-            <label style="font-size:11px;color:#94a3b8;display:block;margin-bottom:4px;">Full Name <span style="color:#f87171;">*</span></label>
-            <input type="text" id="rpp-name" required placeholder="Your full name" style="width:100%;padding:10px 14px;border-radius:10px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:#e2e8f0;font-size:13px;outline:none;box-sizing:border-box;">
+            <label style="font-size:11px;color:#5E6585;display:block;margin-bottom:4px;">Full Name <span style="color:#DC2626;">*</span></label>
+            <input type="text" id="rpp-name" required placeholder="Your full name" style="width:100%;padding:10px 14px;border-radius:10px;background:#fff;border:1px solid #D7DBEC;color:#1E2140;font-size:13px;outline:none;box-sizing:border-box;">
           </div>
           <div>
-            <label style="font-size:11px;color:#94a3b8;display:block;margin-bottom:4px;">Email <span style="color:#f87171;">*</span></label>
-            <input type="email" id="rpp-email" required placeholder="you@email.com" style="width:100%;padding:10px 14px;border-radius:10px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:#e2e8f0;font-size:13px;outline:none;box-sizing:border-box;">
+            <label style="font-size:11px;color:#5E6585;display:block;margin-bottom:4px;">Email <span style="color:#DC2626;">*</span></label>
+            <input type="email" id="rpp-email" required placeholder="you@email.com" style="width:100%;padding:10px 14px;border-radius:10px;background:#fff;border:1px solid #D7DBEC;color:#1E2140;font-size:13px;outline:none;box-sizing:border-box;">
           </div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
           <div>
-            <label style="font-size:11px;color:#94a3b8;display:block;margin-bottom:4px;">Mobile</label>
-            <input type="tel" id="rpp-phone" placeholder="+91 XXXXX XXXXX" style="width:100%;padding:10px 14px;border-radius:10px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:#e2e8f0;font-size:13px;outline:none;box-sizing:border-box;">
+            <label style="font-size:11px;color:#5E6585;display:block;margin-bottom:4px;">Mobile</label>
+            <input type="tel" id="rpp-phone" placeholder="+91 XXXXX XXXXX" style="width:100%;padding:10px 14px;border-radius:10px;background:#fff;border:1px solid #D7DBEC;color:#1E2140;font-size:13px;outline:none;box-sizing:border-box;">
           </div>
           <div>
-            <label style="font-size:11px;color:#94a3b8;display:block;margin-bottom:4px;">Organization</label>
-            <input type="text" id="rpp-company" placeholder="Company / Institute" style="width:100%;padding:10px 14px;border-radius:10px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:#e2e8f0;font-size:13px;outline:none;box-sizing:border-box;">
+            <label style="font-size:11px;color:#5E6585;display:block;margin-bottom:4px;">Organization</label>
+            <input type="text" id="rpp-company" placeholder="Company / Institute" style="width:100%;padding:10px 14px;border-radius:10px;background:#fff;border:1px solid #D7DBEC;color:#1E2140;font-size:13px;outline:none;box-sizing:border-box;">
           </div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
           <div>
-            <label style="font-size:11px;color:#94a3b8;display:block;margin-bottom:4px;">Designation</label>
-            <input type="text" id="rpp-designation" placeholder="Your designation" style="width:100%;padding:10px 14px;border-radius:10px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:#e2e8f0;font-size:13px;outline:none;box-sizing:border-box;">
+            <label style="font-size:11px;color:#5E6585;display:block;margin-bottom:4px;">Designation</label>
+            <input type="text" id="rpp-designation" placeholder="Your designation" style="width:100%;padding:10px 14px;border-radius:10px;background:#fff;border:1px solid #D7DBEC;color:#1E2140;font-size:13px;outline:none;box-sizing:border-box;">
           </div>
           <div>
-            <label style="font-size:11px;color:#94a3b8;display:block;margin-bottom:4px;">City</label>
-            <input type="text" id="rpp-city" placeholder="Your city" style="width:100%;padding:10px 14px;border-radius:10px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:#e2e8f0;font-size:13px;outline:none;box-sizing:border-box;">
+            <label style="font-size:11px;color:#5E6585;display:block;margin-bottom:4px;">City</label>
+            <input type="text" id="rpp-city" placeholder="Your city" style="width:100%;padding:10px 14px;border-radius:10px;background:#fff;border:1px solid #D7DBEC;color:#1E2140;font-size:13px;outline:none;box-sizing:border-box;">
           </div>
         </div>
-        <button type="submit" id="rpp-submit-btn" style="width:100%;padding:13px;border-radius:10px;border:none;background:linear-gradient(135deg,#f97316,#ea580c);color:white;font-weight:700;font-size:14px;cursor:pointer;margin-top:4px;">
+        <button type="submit" id="rpp-submit-btn" style="width:100%;padding:13px;border-radius:10px;border:none;background:linear-gradient(135deg,#FF6B00,#FF8C38);color:white;font-weight:700;font-size:14px;cursor:pointer;margin-top:4px;">
           <i class="fas fa-arrow-right" style="margin-right:8px;"></i>Proceed to Payment
         </button>
-        <p style="text-align:center;font-size:10px;color:#475569;margin:0;">You will be redirected to our secure payment partner.</p>
+        <!-- Set expectations: mUni can't accept our prefill, so people WILL re-enter
+             details and verify an OTP. Saying so up front stops it reading as a bug. -->
+        <div style="background:#FFF6EF;border:1px solid rgba(255,107,0,0.25);border-radius:10px;padding:10px 12px;">
+          <p style="font-size:11px;color:#1E2140;margin:0 0 4px;font-weight:700;">What happens next</p>
+          <p style="font-size:11px;color:#5E6585;margin:0;line-height:1.5;">Checkout opens on <strong>mUni Campus</strong>, our secure payments partner, with your pass pre-selected. You&rsquo;ll confirm your details there and verify a one-time OTP to complete payment.</p>
+        </div>
+        <p style="text-align:center;font-size:10px;color:#5E6585;margin:0;">Your details are already saved with us &mdash; we&rsquo;ll email your pass once payment clears.</p>
       </form>
     </div>
   </div>
@@ -4454,7 +4503,7 @@ function mainPageHTML(): string {
     </div>
 
     <!-- Visitor Upgrade Modal -->
-    <div id="visitor-upgrade-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4" style="background:rgba(0,0,0,0.82);backdrop-filter:blur(8px);">
+    <div id="visitor-upgrade-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4" style="background:rgba(23,27,58,0.55);backdrop-filter:blur(8px);">
       <div class="glass rounded-2xl p-8 w-full max-w-md relative text-center shadow-2xl border border-white/10">
         <!-- Lock icon -->
         <div class="w-20 h-20 rounded-full bg-amber-500/15 border border-amber-500/30 flex items-center justify-center mx-auto mb-5">
@@ -4489,11 +4538,11 @@ function mainPageHTML(): string {
             </ul>
           </div>
         </div>
-        <a href="https://municampus.com/event/BharatAI" target="_blank"
+        <button type="button" onclick="const m=document.getElementById('visitor-upgrade-modal');m.classList.add('hidden');m.classList.remove('flex');openPaidPassForm();"
            class="block w-full py-3.5 rounded-xl font-bold text-white text-sm transition-all mb-3"
-           style="background:linear-gradient(135deg,#6366f1,#8b5cf6);">
+           style="background:linear-gradient(135deg,#FF6B00,#FF8C38);">
           <i class="fas fa-arrow-up-right-from-square mr-2"></i>Upgrade My Pass — Get Full Access
-        </a>
+        </button>
         <button onclick="document.getElementById('visitor-upgrade-modal').classList.add('hidden');document.getElementById('visitor-upgrade-modal').classList.remove('flex');"
           class="text-xs text-gray-500 hover:text-gray-300 transition">
           Maybe later — go back
@@ -5273,11 +5322,11 @@ function mainPageHTML(): string {
                 <p class="text-sm font-semibold text-white">Networking requires a paid pass</p>
                 <p class="text-xs text-gray-400 mt-0.5">Upgrade to Delegate or VIP to connect, message, and meet attendees</p>
               </div>
-              <a href="https://municampus.com/event/BharatAI" target="_blank"
+              <button type="button" onclick="openPaidPassForm()"
                  class="shrink-0 px-4 py-2 rounded-xl text-xs font-bold text-white transition-all whitespace-nowrap"
-                 style="background:linear-gradient(135deg,#6366f1,#8b5cf6);">
+                 style="background:linear-gradient(135deg,#FF6B00,#FF8C38);">
                 Upgrade Now <i class="fas fa-arrow-right ml-1"></i>
-              </a>
+              </button>
             </div>
           </div>
 
@@ -5294,12 +5343,12 @@ function mainPageHTML(): string {
                 </div>
                 <h3 class="text-xl font-bold text-white mb-2">Unlock Full Networking Access</h3>
                 <p class="text-sm text-gray-400 mb-5 max-w-sm">Your Visitor Pass doesn't include networking. Upgrade to <span class="text-primary-300 font-semibold">Delegate</span> or <span class="text-amber-300 font-semibold">VIP</span> to connect with all attendees.</p>
-                <a href="https://municampus.com/event/BharatAI" target="_blank"
-                   onclick="event.stopPropagation()"
+                <button type="button"
+                   onclick="event.stopPropagation();openPaidPassForm()"
                    class="px-8 py-3.5 rounded-xl font-bold text-white text-sm transition-all shadow-xl"
-                   style="background:linear-gradient(135deg,#6366f1,#8b5cf6);">
+                   style="background:linear-gradient(135deg,#FF6B00,#FF8C38);">
                   <i class="fas fa-arrow-up-right-from-square mr-2"></i>Upgrade My Pass
-                </a>
+                </button>
               </div>
             </div>
           </div>
@@ -5358,18 +5407,18 @@ function mainPageHTML(): string {
                 <!-- Row 3: Cognizant (Purple 39) + gap + Capgemini (Purple 54) -->
                 <div style="grid-column: 1 / 2;"></div>
                 <div style="grid-column: 2 / 5; background:rgba(147,51,234,0.3); border:2px solid #9333ea; border-radius:8px; padding:8px; text-align:center; cursor:pointer;" onclick="highlightBooth('Cognizant')" class="booth-cell card-hover">
-                  <div style="font-weight:700; color:#c084fc;">39 · Purple</div>
+                  <div style="font-weight:700; color:#9333EA;">39 · Purple</div>
                   <div style="font-weight:800; color:white; font-size:11px;">Cognizant</div>
                 </div>
                 <div style="grid-column: 5 / 5;"></div>
                 <div style="grid-column: 5 / 8; background:rgba(147,51,234,0.3); border:2px solid #9333ea; border-radius:8px; padding:8px; text-align:center; cursor:pointer;" onclick="highlightBooth('Capgemini')" class="booth-cell card-hover">
-                  <div style="font-weight:700; color:#c084fc;">54 · Purple</div>
+                  <div style="font-weight:700; color:#9333EA;">54 · Purple</div>
                   <div style="font-weight:800; color:white; font-size:11px;">Capgemini</div>
                 </div>
 
                 <!-- Row 4: MedhAnkura (Red 38) + Velox (Blue 51) + JAAJI (Blue 53) -->
                 <div style="grid-column: 1 / 3; background:rgba(239,68,68,0.3); border:2px solid #ef4444; border-radius:8px; padding:6px; text-align:center; cursor:pointer;" onclick="highlightBooth('MedhAnkura')" class="booth-cell card-hover">
-                  <div style="font-weight:700; color:#f87171;">38 · Red</div>
+                  <div style="font-weight:700; color:#DC2626;">38 · Red</div>
                   <div style="font-weight:800; color:white;">MedhAnkura</div>
                 </div>
                 <div style="grid-column: 3 / 4; background:rgba(59,130,246,0.3); border:2px solid #3b82f6; border-radius:8px; padding:6px; text-align:center; cursor:pointer;" onclick="highlightBooth('Velox')" class="booth-cell card-hover">
@@ -5384,7 +5433,7 @@ function mainPageHTML(): string {
 
                 <!-- Row 5: OneAssist (Red 37) + Assessfy (Green 41) + Bandhure/aivi (Blue 50) + Cams Online (Blue 52) -->
                 <div style="grid-column: 1 / 3; background:rgba(239,68,68,0.3); border:2px solid #ef4444; border-radius:8px; padding:6px; text-align:center; cursor:pointer;" onclick="highlightBooth('OneAssist')" class="booth-cell card-hover">
-                  <div style="font-weight:700; color:#f87171;">37 · Red</div>
+                  <div style="font-weight:700; color:#DC2626;">37 · Red</div>
                   <div style="font-weight:800; color:white;">OneAssist</div>
                 </div>
                 <div style="grid-column: 3 / 4; background:rgba(34,197,94,0.3); border:2px solid #22c55e; border-radius:8px; padding:6px; text-align:center; cursor:pointer;" onclick="highlightBooth('Assessfy')" class="booth-cell card-hover">
@@ -5402,7 +5451,7 @@ function mainPageHTML(): string {
 
                 <!-- Row 6: Cloudangles (Red 36) + Anur Cloud (Green 42) + Extrieve (Blue 49) + GenXAI (Blue 56) -->
                 <div style="grid-column: 1 / 3; background:rgba(239,68,68,0.3); border:2px solid #ef4444; border-radius:8px; padding:6px; text-align:center; cursor:pointer;" onclick="highlightBooth('Cloudangles')" class="booth-cell card-hover">
-                  <div style="font-weight:700; color:#f87171;">36 · Red</div>
+                  <div style="font-weight:700; color:#DC2626;">36 · Red</div>
                   <div style="font-weight:800; color:white;">Cloudangles</div>
                 </div>
                 <div style="grid-column: 3 / 4; background:rgba(34,197,94,0.3); border:2px solid #22c55e; border-radius:8px; padding:6px; text-align:center; cursor:pointer;" onclick="highlightBooth('Anur Cloud')" class="booth-cell card-hover">
@@ -5424,7 +5473,7 @@ function mainPageHTML(): string {
                   <div style="font-weight:800; color:white;">Comolho</div>
                 </div>
                 <div style="grid-column: 3 / 4; background:rgba(239,68,68,0.3); border:2px solid #ef4444; border-radius:8px; padding:6px; text-align:center; cursor:pointer;" onclick="highlightBooth('Pyramed')" class="booth-cell card-hover">
-                  <div style="font-weight:700; color:#f87171;">43 · Red</div>
+                  <div style="font-weight:700; color:#DC2626;">43 · Red</div>
                   <div style="font-weight:800; color:white;">Pyramed</div>
                 </div>
                 <div style="grid-column: 4 / 5; background:rgba(59,130,246,0.3); border:2px solid #3b82f6; border-radius:8px; padding:6px; text-align:center; cursor:pointer;" onclick="highlightBooth('HCL')" class="booth-cell card-hover">
@@ -5450,7 +5499,7 @@ function mainPageHTML(): string {
                   <div style="font-weight:800; color:white;">CAMB.AI</div>
                 </div>
                 <div style="grid-column: 6 / 8; background:rgba(239,68,68,0.3); border:2px solid #ef4444; border-radius:8px; padding:6px; text-align:center; cursor:pointer;" onclick="highlightBooth('Decimal Point')" class="booth-cell card-hover">
-                  <div style="font-weight:700; color:#f87171;">57 · Red</div>
+                  <div style="font-weight:700; color:#DC2626;">57 · Red</div>
                   <div style="font-weight:800; color:white;">Decimal Point</div>
                 </div>
 
@@ -5465,7 +5514,7 @@ function mainPageHTML(): string {
                   <div style="font-weight:800; color:white;">CAMB.AI</div>
                 </div>
                 <div style="grid-column: 6 / 8; background:rgba(239,68,68,0.3); border:2px solid #ef4444; border-radius:8px; padding:6px; text-align:center; cursor:pointer;" onclick="highlightBooth('Deloitte')" class="booth-cell card-hover">
-                  <div style="font-weight:700; color:#f87171;">58 · Red</div>
+                  <div style="font-weight:700; color:#DC2626;">58 · Red</div>
                   <div style="font-weight:800; color:white;">Deloitte</div>
                 </div>
 
@@ -10558,6 +10607,17 @@ function mainPageHTML(): string {
         return;
       }
 
+      // Open the payment tab NOW, while the user's click activation is still
+      // live. Doing it after the await (worse: inside a setTimeout) is silently
+      // blocked by popup blockers — iOS Safari especially — so the button looked
+      // dead on mobile. We keep the handle and point it at the URL once saved.
+      const payWin = window.open('', '_blank');
+      // Snapshot NOW: blocked popups are null (or a closed stub) immediately. Checked
+      // later, "blocked" and "user closed the tab meanwhile" look identical — and the
+      // latter must NOT hijack the current page.
+      const payWinOpened = !!payWin && !payWin.closed;
+      paintPayHoldingPage(payWin);
+
       // Register attendee first, then redirect to payment
       try {
         await fetch('/api/events/' + EVENT_ID + '/attendees/register', {
@@ -10571,19 +10631,43 @@ function mainPageHTML(): string {
         });
       } catch(_) { /* proceed even if registration fails */ }
 
-      // Build URL with prefilled params for municampus
-      const params = new URLSearchParams({
-        name, email, phone, organization: company,
-        designation: desig, city, pass_type: passType
-      });
+      const payUrl = muniPayUrl(passType);
+      showToast('Opening secure checkout…', 'success');
+      if (payWinOpened && !payWin.closed) payWin.location.replace(payUrl);
+      else if (!payWinOpened) window.location.href = payUrl;  // popup blocked -> same tab, never a dead end
+      // else: tab opened but user closed it mid-flight — treat as cancel, stay put
+      closePaidPassModal();
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-arrow-right mr-2"></i>Proceed to Payment';
+    }
 
-      showToast('Redirecting to payment gateway...', 'success');
-      setTimeout(() => {
-        window.open('https://municampus.com/event/BharatAI?' + params.toString(), '_blank');
-        closePaidPassModal();
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-arrow-right mr-2"></i>Proceed to Payment';
-      }, 800);
+    // mUni Campus checkout deep-link — see the twin in the register page. Their page
+    // ignores personal prefill but honours ?category=<id> (it renders into
+    // "var category = '<id>'" and is POSTed with the signup), so this skips the event
+    // page and pre-selects the pass the user already picked here.
+    // NB: ?type= is a DIFFERENT field (their eventType) — do not use it.
+    function muniPayUrl(passType) {
+      const CATEGORY = { 'VIP Pass': 1, 'Visitor Pass': 2, 'Delegate Pass': 3, 'Academic Pass': 4 };
+      const c = CATEGORY[passType];
+      return c
+        ? 'https://municampus.com/event/event_registration.php?id=425&category=' + c
+        : 'https://municampus.com/event/BharatAI';
+    }
+
+    // The tab is opened before the save completes (to keep the click activation), so
+    // it would otherwise sit on about:blank for a beat. Paint a branded holding note.
+    function paintPayHoldingPage(w) {
+      if (!w) return;
+      try {
+        w.document.write('<!doctype html><meta charset="utf-8"><title>Opening secure checkout\\u2026</title>'
+          + '<body style="margin:0;height:100vh;display:flex;align-items:center;justify-content:center;'
+          + 'font-family:Manrope,system-ui,-apple-system,sans-serif;background:#F8F9FF;color:#1E2140;">'
+          + '<div style="text-align:center;padding:24px;">'
+          + '<div style="font-size:18px;font-weight:700;">Opening secure checkout\\u2026</div>'
+          + '<div style="font-size:13px;color:#5E6585;margin-top:6px;">Taking you to mUni Campus, our payments partner.</div>'
+          + '</div>');
+        w.document.close();
+      } catch (_) {}
     }
 
     // Close modal on backdrop click — deferred until after DOM is fully parsed
@@ -10607,19 +10691,19 @@ function mainPageHTML(): string {
 
   <!-- ===== PAID PASS MODAL ===== -->
   <div id="paid-pass-modal" class="fixed inset-0 z-50 modal-overlay hidden items-center justify-center p-4">
-    <div class="glass rounded-2xl w-full max-w-lg relative overflow-hidden" style="border:1px solid rgba(99,102,241,0.3);">
+    <div class="glass rounded-2xl w-full max-w-lg relative overflow-hidden" style="border:1px solid #E4E7F4;">
       <!-- Header -->
-      <div style="background:linear-gradient(135deg,#1e1b4b,#312e81);" class="p-5 flex items-center justify-between">
+      <div style="background:linear-gradient(135deg,#FF6B00,#FF8C38);" class="p-5 flex items-center justify-between">
         <div class="flex items-center gap-3">
-          <div class="w-10 h-10 rounded-xl bg-indigo-500/30 flex items-center justify-center">
-            <i class="fas fa-star text-yellow-300 text-lg"></i>
+          <div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background:rgba(255,255,255,0.22);">
+            <i class="fas fa-star text-lg" style="color:#fff;"></i>
           </div>
           <div>
-            <h2 class="font-bold text-white text-lg">Get Your Paid Pass</h2>
-            <p class="text-indigo-300 text-xs">Fill in your details to proceed to payment</p>
+            <h2 class="font-bold text-lg" style="color:#fff;">Get Your Paid Pass</h2>
+            <p class="text-xs" style="color:rgba(255,255,255,0.9);">Fill in your details to proceed to payment</p>
           </div>
         </div>
-        <button onclick="closePaidPassModal()" class="text-gray-400 hover:text-white transition text-xl w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/10">
+        <button onclick="closePaidPassModal()" class="transition text-xl w-8 h-8 flex items-center justify-center rounded-lg" style="color:rgba(255,255,255,0.9);" onmouseover="this.style.background='rgba(255,255,255,0.2)'" onmouseout="this.style.background='transparent'">
           <i class="fas fa-times"></i>
         </button>
       </div>
@@ -10628,7 +10712,7 @@ function mainPageHTML(): string {
         <!-- Pass Type Selector -->
         <div class="grid grid-cols-3 gap-2 mb-5">
           <label class="pass-option cursor-pointer">
-            <input type="radio" name="pp-pass" value="Delegate Pass" class="hidden" onchange="document.getElementById('pp-pass-type').value=this.value;document.querySelectorAll('.pass-option').forEach(el=>el.classList.remove('ring-2','ring-indigo-400'));this.closest('.pass-option').classList.add('ring-2','ring-indigo-400')">
+            <input type="radio" name="pp-pass" value="Delegate Pass" class="hidden" onchange="document.getElementById('pp-pass-type').value=this.value;document.querySelectorAll('.pass-option').forEach(el=>el.classList.remove('ring-2','ring-orange-500'));this.closest('.pass-option').classList.add('ring-2','ring-orange-500')">
             <div class="p-3 rounded-xl text-center" style="background:rgba(139,92,246,0.1);border:1px solid rgba(255,107,0,0.2);">
               <i class="fas fa-id-badge text-violet-400 text-lg mb-1 block"></i>
               <div class="text-white font-semibold text-xs">Delegate</div>
@@ -10637,7 +10721,7 @@ function mainPageHTML(): string {
             </div>
           </label>
           <label class="pass-option cursor-pointer">
-            <input type="radio" name="pp-pass" value="VIP Pass" class="hidden" onchange="document.getElementById('pp-pass-type').value=this.value;document.querySelectorAll('.pass-option').forEach(el=>el.classList.remove('ring-2','ring-yellow-400'));this.closest('.pass-option').classList.add('ring-2','ring-yellow-400')">
+            <input type="radio" name="pp-pass" value="VIP Pass" class="hidden" onchange="document.getElementById('pp-pass-type').value=this.value;document.querySelectorAll('.pass-option').forEach(el=>el.classList.remove('ring-2','ring-orange-500'));this.closest('.pass-option').classList.add('ring-2','ring-orange-500')">
             <div class="p-3 rounded-xl text-center" style="background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.2);">
               <i class="fas fa-crown text-yellow-400 text-lg mb-1 block"></i>
               <div class="text-white font-semibold text-xs">VIP</div>
@@ -10646,7 +10730,7 @@ function mainPageHTML(): string {
             </div>
           </label>
           <label class="pass-option cursor-pointer">
-            <input type="radio" name="pp-pass" value="Academic Pass" class="hidden" onchange="document.getElementById('pp-pass-type').value=this.value;document.querySelectorAll('.pass-option').forEach(el=>el.classList.remove('ring-2','ring-purple-400'));this.closest('.pass-option').classList.add('ring-2','ring-purple-400')">
+            <input type="radio" name="pp-pass" value="Academic Pass" class="hidden" onchange="document.getElementById('pp-pass-type').value=this.value;document.querySelectorAll('.pass-option').forEach(el=>el.classList.remove('ring-2','ring-orange-500'));this.closest('.pass-option').classList.add('ring-2','ring-orange-500')">
             <div class="p-3 rounded-xl text-center" style="background:rgba(192,132,252,0.08);border:1px solid rgba(192,132,252,0.2);">
               <i class="fas fa-graduation-cap text-purple-400 text-lg mb-1 block"></i>
               <div class="text-white font-semibold text-xs">Academic</div>
@@ -10661,37 +10745,43 @@ function mainPageHTML(): string {
           <div class="grid grid-cols-2 gap-3">
             <div>
               <label class="text-xs text-gray-400 mb-1 block">Full Name <span class="text-red-400">*</span></label>
-              <input type="text" id="pp-name" required placeholder="Your full name" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:#e2e8f0;outline:none;">
+              <input type="text" id="pp-name" required placeholder="Your full name" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:#fff;border:1px solid #D7DBEC;color:#1E2140;outline:none;">
             </div>
             <div>
               <label class="text-xs text-gray-400 mb-1 block">Email Address <span class="text-red-400">*</span></label>
-              <input type="email" id="pp-email" required placeholder="you@email.com" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:#e2e8f0;outline:none;">
+              <input type="email" id="pp-email" required placeholder="you@email.com" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:#fff;border:1px solid #D7DBEC;color:#1E2140;outline:none;">
             </div>
           </div>
           <div class="grid grid-cols-2 gap-3">
             <div>
               <label class="text-xs text-gray-400 mb-1 block">Mobile Number</label>
-              <input type="tel" id="pp-phone" placeholder="+91 XXXXX XXXXX" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:#e2e8f0;outline:none;">
+              <input type="tel" id="pp-phone" placeholder="+91 XXXXX XXXXX" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:#fff;border:1px solid #D7DBEC;color:#1E2140;outline:none;">
             </div>
             <div>
               <label class="text-xs text-gray-400 mb-1 block">Organization</label>
-              <input type="text" id="pp-company" placeholder="Company / Institute" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:#e2e8f0;outline:none;">
+              <input type="text" id="pp-company" placeholder="Company / Institute" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:#fff;border:1px solid #D7DBEC;color:#1E2140;outline:none;">
             </div>
           </div>
           <div class="grid grid-cols-2 gap-3">
             <div>
               <label class="text-xs text-gray-400 mb-1 block">Designation</label>
-              <input type="text" id="pp-designation" placeholder="Your designation" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:#e2e8f0;outline:none;">
+              <input type="text" id="pp-designation" placeholder="Your designation" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:#fff;border:1px solid #D7DBEC;color:#1E2140;outline:none;">
             </div>
             <div>
               <label class="text-xs text-gray-400 mb-1 block">City</label>
-              <input type="text" id="pp-city" placeholder="Your city" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:#e2e8f0;outline:none;">
+              <input type="text" id="pp-city" placeholder="Your city" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:#fff;border:1px solid #D7DBEC;color:#1E2140;outline:none;">
             </div>
           </div>
-          <button type="submit" id="pp-submit-btn" class="w-full py-3 rounded-xl font-bold text-white mt-2 transition-all" style="background:linear-gradient(135deg,#f97316,#ea580c);">
+          <button type="submit" id="pp-submit-btn" class="w-full py-3 rounded-xl font-bold text-white mt-2 transition-all" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);">
             <i class="fas fa-arrow-right mr-2"></i>Proceed to Payment
           </button>
-          <p class="text-center text-[10px] text-gray-500">You will be redirected to our secure payment partner to complete your registration.</p>
+          <!-- Set expectations: mUni can't accept our prefill, so people WILL re-enter
+               details and verify an OTP. Saying so up front stops it reading as a bug. -->
+          <div class="rounded-xl px-3 py-2.5" style="background:#FFF6EF;border:1px solid rgba(255,107,0,0.25);">
+            <p class="text-[11px] font-bold mb-1" style="color:#1E2140;">What happens next</p>
+            <p class="text-[11px] leading-relaxed" style="color:#5E6585;">Checkout opens on <strong>mUni Campus</strong>, our secure payments partner, with your pass pre-selected. You&rsquo;ll confirm your details there and verify a one-time OTP to complete payment.</p>
+          </div>
+          <p class="text-center text-[10px]" style="color:#5E6585;">Your details are already saved with us &mdash; we&rsquo;ll email your pass once payment clears.</p>
         </form>
       </div>
     </div>
