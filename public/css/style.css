@@ -3600,10 +3600,19 @@ section { position: relative; }
 .reveal-delay-4 { transition-delay: 0.4s; }
 .reveal-delay-5 { transition-delay: 0.5s; }
 
+/* Mid-desktop: 9 nav items + Register CTA no longer fit at default spacing, so
+   tighten the links before the hamburger takes over. Without this the CTA gets
+   pushed off-screen (.nav-menu is flex/nowrap, so it overflows rather than wraps). */
+@media (min-width: 1081px) and (max-width: 1320px) {
+  .nav-link { padding: 0.5rem 0.55rem; font-size: 0.83rem; }
+  .nav-cta { padding: 0.55rem 1rem; font-size: 0.8rem; margin-left: 0.25rem; }
+  .nav-menu { gap: 0.1rem; }
+}
+
 /* =====================================================
    MOBILE NAVIGATION
    ===================================================== */
-@media (max-width: 900px) {
+@media (max-width: 1080px) {
   .nav-menu {
     position: fixed;
     top: var(--nav-h);

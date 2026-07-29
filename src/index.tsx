@@ -3656,11 +3656,24 @@ async function submitRegistration(e) {
   }
 }
 
-function openRegisterPaidPassModal() {
+function openRegisterPaidPassModal(preselect) {
   document.getElementById('reg-paid-pass-modal').classList.remove('hidden');
   document.getElementById('reg-paid-pass-modal').classList.add('flex');
   document.body.style.overflow = 'hidden';
+  // Optional pre-selection, so marketing CTAs ("Get a Delegate Pass") can land the
+  // user on the right tier instead of making them pick again.
+  if (preselect) {
+    const radio = document.querySelector('input[name="rpp-pass"][value="' + preselect + '"]');
+    if (radio) { radio.checked = true; radio.dispatchEvent(new Event('change')); }
+  }
 }
+// Deep-link support: /register#delegate | #vip | #academic opens the paid modal
+// with that tier already chosen (used by the site's Networking CTA).
+document.addEventListener('DOMContentLoaded', function () {
+  const PASS_BY_HASH = { delegate: 'Delegate Pass', vip: 'VIP Pass', academic: 'Academic Pass' };
+  const want = PASS_BY_HASH[(window.location.hash || '').replace('#', '').toLowerCase()];
+  if (want) openRegisterPaidPassModal(want);
+});
 function closeRegisterPaidPassModal() {
   document.getElementById('reg-paid-pass-modal').classList.add('hidden');
   document.getElementById('reg-paid-pass-modal').classList.remove('flex');
