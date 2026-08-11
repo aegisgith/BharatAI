@@ -35,7 +35,7 @@
 
     <!-- Register Page -->
     <url>
-        <loc>https://bharataiinnovation.com/register.html</loc>
+        <loc>https://bharataiinnovation.com/register</loc>
         <lastmod>2026-05-15</lastmod>
         <changefreq>weekly</changefreq>
         <priority>0.95</priority>
@@ -83,7 +83,7 @@
 
     <!-- Contact Page -->
     <url>
-        <loc>https://bharataiinnovation.com/contact.html</loc>
+        <loc>https://bharataiinnovation.com/contact</loc>
         <lastmod>2026-05-15</lastmod>
         <changefreq>monthly</changefreq>
         <priority>0.7</priority>

@@ -3339,7 +3339,8 @@ ${sharedNavHTML('contact')}
   <!-- Quick Info Bar -->
   <div class="max-w-2xl mx-auto mt-6">
     <div class="glass rounded-xl p-4 flex flex-wrap items-center justify-center gap-4 text-xs text-gray-400">
-      <span><i class="fas fa-envelope text-primary-400 mr-1.5"></i>info@bharataiinnovation.com</span>
+      <span><i class="fas fa-envelope text-primary-400 mr-1.5"></i><a href="mailto:info@bharataiinnovation.com" class="hover:text-white transition">info@bharataiinnovation.com</a></span>
+      <span><i class="fas fa-phone text-primary-400 mr-1.5"></i><a href="tel:+918976580367" class="hover:text-white transition">+91 89765 80367</a></span>
       <span><i class="fas fa-globe text-primary-400 mr-1.5"></i><a href="https://bharataiinnovation.com" target="_blank" class="hover:text-white transition">bharataiinnovation.com</a></span>
       <span><i class="fas fa-map-marker-alt text-primary-400 mr-1.5"></i>WTC Mumbai, Cuffe Parade</span>
       <span><i class="fas fa-calendar text-primary-400 mr-1.5"></i>20-21 Nov 2026</span>
@@ -3385,6 +3386,15 @@ function selectType(type) {
   // Scroll to form
   document.getElementById('contact-form-card').scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
+
+// Deep-link support: /contact#exhibition | #speaking | #sponsorship | ... opens the
+// form with that inquiry type already chosen. The marketing site's CTAs ("Enquire
+// Now", "Request Custom Package", "Apply to Speak") land here, so they arrive on the
+// right form instead of the generic one. Unknown hashes are ignored.
+document.addEventListener('DOMContentLoaded', function () {
+  const want = (window.location.hash || '').replace('#', '').toLowerCase();
+  if (want && TYPE_CONFIG[want]) selectType(want);
+});
 
 async function submitContactForm(e) {
   e.preventDefault();
@@ -3656,10 +3666,32 @@ async function submitRegistration(e) {
   }
 }
 
+// Academic (student) buyers have no employer or job title — asking for
+// "Organization / Designation" reads as a form built for someone else. For that tier
+// the two fields collapse to a single "College Name", which is the only affiliation
+// we need to validate a student rate.
+function rppApplyPassFields(passType) {
+  const academic = passType === 'Academic Pass';
+  const label    = document.getElementById('rpp-company-label');
+  const company  = document.getElementById('rpp-company');
+  const desigFld = document.getElementById('rpp-designation-field');
+  const desigRow = document.getElementById('rpp-row-designation');
+  if (!label || !company || !desigFld || !desigRow) return;
+
+  label.textContent   = academic ? 'College Name' : 'Organization';
+  company.placeholder = academic ? 'Your college / university' : 'Company / Institute';
+  desigFld.style.display = academic ? 'none' : '';
+  // With Designation gone the row would leave a hole, so City takes the full width.
+  desigRow.style.gridTemplateColumns = academic ? '1fr' : '1fr 1fr';
+  if (academic) document.getElementById('rpp-designation').value = '';
+}
+
 function openRegisterPaidPassModal(preselect) {
   document.getElementById('reg-paid-pass-modal').classList.remove('hidden');
   document.getElementById('reg-paid-pass-modal').classList.add('flex');
   document.body.style.overflow = 'hidden';
+  // Re-open with whatever tier is still selected, so the fields match the cards.
+  rppApplyPassFields(document.getElementById('rpp-pass-type').value);
   // Optional pre-selection, so marketing CTAs ("Get a Delegate Pass") can land the
   // user on the right tier instead of making them pick again.
   if (preselect) {
@@ -3781,7 +3813,7 @@ function paintPayHoldingPage(w) {
       <!-- Pass Type Selector -->
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px;">
         <label style="cursor:pointer;">
-          <input type="radio" name="rpp-pass" value="Delegate Pass" style="display:none;" onchange="document.getElementById('rpp-pass-type').value=this.value;document.querySelectorAll('[data-rpp-card]').forEach(el=>{el.style.boxShadow='none';el.style.borderColor='rgba(255,107,0,0.2)'});this.nextElementSibling.style.boxShadow='0 0 0 2px #FF6B00';this.nextElementSibling.style.borderColor='#FF6B00'">
+          <input type="radio" name="rpp-pass" value="Delegate Pass" style="display:none;" onchange="document.getElementById('rpp-pass-type').value=this.value;document.querySelectorAll('[data-rpp-card]').forEach(el=>{el.style.boxShadow='none';el.style.borderColor='rgba(255,107,0,0.2)'});this.nextElementSibling.style.boxShadow='0 0 0 2px #FF6B00';this.nextElementSibling.style.borderColor='#FF6B00';rppApplyPassFields(this.value)">
           <div data-rpp-card style="padding:12px;border-radius:12px;text-align:center;background:rgba(139,92,246,0.08);border:1px solid rgba(255,107,0,0.2);transition:all 0.2s;">
             <i class="fas fa-id-badge" style="color:#7C3AED;font-size:20px;display:block;margin-bottom:4px;"></i>
             <div style="color:#1E2140;font-weight:600;font-size:12px;">Delegate</div>
@@ -3790,7 +3822,7 @@ function paintPayHoldingPage(w) {
           </div>
         </label>
         <label style="cursor:pointer;">
-          <input type="radio" name="rpp-pass" value="VIP Pass" style="display:none;" onchange="document.getElementById('rpp-pass-type').value=this.value;document.querySelectorAll('[data-rpp-card]').forEach(el=>{el.style.boxShadow='none';el.style.borderColor='rgba(251,191,36,0.2)'});this.nextElementSibling.style.boxShadow='0 0 0 2px #FF6B00';this.nextElementSibling.style.borderColor='#FF6B00'">
+          <input type="radio" name="rpp-pass" value="VIP Pass" style="display:none;" onchange="document.getElementById('rpp-pass-type').value=this.value;document.querySelectorAll('[data-rpp-card]').forEach(el=>{el.style.boxShadow='none';el.style.borderColor='rgba(251,191,36,0.2)'});this.nextElementSibling.style.boxShadow='0 0 0 2px #FF6B00';this.nextElementSibling.style.borderColor='#FF6B00';rppApplyPassFields(this.value)">
           <div data-rpp-card style="padding:12px;border-radius:12px;text-align:center;background:rgba(251,191,36,0.06);border:1px solid rgba(251,191,36,0.2);transition:all 0.2s;">
             <i class="fas fa-crown" style="color:#B45309;font-size:20px;display:block;margin-bottom:4px;"></i>
             <div style="color:#1E2140;font-weight:600;font-size:12px;">VIP</div>
@@ -3799,7 +3831,7 @@ function paintPayHoldingPage(w) {
           </div>
         </label>
         <label style="cursor:pointer;">
-          <input type="radio" name="rpp-pass" value="Academic Pass" style="display:none;" onchange="document.getElementById('rpp-pass-type').value=this.value;document.querySelectorAll('[data-rpp-card]').forEach(el=>{el.style.boxShadow='none';el.style.borderColor='rgba(192,132,252,0.2)'});this.nextElementSibling.style.boxShadow='0 0 0 2px #FF6B00';this.nextElementSibling.style.borderColor='#FF6B00'">
+          <input type="radio" name="rpp-pass" value="Academic Pass" style="display:none;" onchange="document.getElementById('rpp-pass-type').value=this.value;document.querySelectorAll('[data-rpp-card]').forEach(el=>{el.style.boxShadow='none';el.style.borderColor='rgba(192,132,252,0.2)'});this.nextElementSibling.style.boxShadow='0 0 0 2px #FF6B00';this.nextElementSibling.style.borderColor='#FF6B00';rppApplyPassFields(this.value)">
           <div data-rpp-card style="padding:12px;border-radius:12px;text-align:center;background:rgba(192,132,252,0.06);border:1px solid rgba(192,132,252,0.2);transition:all 0.2s;">
             <i class="fas fa-graduation-cap" style="color:#9333EA;font-size:20px;display:block;margin-bottom:4px;"></i>
             <div style="color:#1E2140;font-weight:600;font-size:12px;">Academic</div>
@@ -3827,12 +3859,12 @@ function paintPayHoldingPage(w) {
             <input type="tel" id="rpp-phone" placeholder="+91 XXXXX XXXXX" style="width:100%;padding:10px 14px;border-radius:10px;background:#fff;border:1px solid #D7DBEC;color:#1E2140;font-size:13px;outline:none;box-sizing:border-box;">
           </div>
           <div>
-            <label style="font-size:11px;color:#5E6585;display:block;margin-bottom:4px;">Organization</label>
+            <label id="rpp-company-label" style="font-size:11px;color:#5E6585;display:block;margin-bottom:4px;">Organization</label>
             <input type="text" id="rpp-company" placeholder="Company / Institute" style="width:100%;padding:10px 14px;border-radius:10px;background:#fff;border:1px solid #D7DBEC;color:#1E2140;font-size:13px;outline:none;box-sizing:border-box;">
           </div>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-          <div>
+        <div id="rpp-row-designation" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div id="rpp-designation-field">
             <label style="font-size:11px;color:#5E6585;display:block;margin-bottom:4px;">Designation</label>
             <input type="text" id="rpp-designation" placeholder="Your designation" style="width:100%;padding:10px 14px;border-radius:10px;background:#fff;border:1px solid #D7DBEC;color:#1E2140;font-size:13px;outline:none;box-sizing:border-box;">
           </div>
