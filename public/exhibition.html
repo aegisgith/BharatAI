@@ -685,8 +685,13 @@
 
         </div><!-- /.bai-floor -->
 
-        <script src="js/floor-plan-data.js"></script>
-        <script src="js/floor-plan.js"></script>
+        <!-- ?v= is a cache buster, NOT decoration. Pages serves /js/* with
+             max-age=14400, so a booth-availability change stays invisible to
+             anyone who loaded this page in the last 4 hours. The HTML itself is
+             max-age=0, so bumping this version ships new booth data instantly.
+             BUMP IT whenever floor-plan-data.js changes. -->
+        <script src="js/floor-plan-data.js?v=2026-08-11"></script>
+        <script src="js/floor-plan.js?v=2026-08-11"></script>
     </section>
 
     <!-- VALUE YOU DRIVE HOME -->
