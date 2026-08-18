@@ -51,7 +51,8 @@ All prices exclude 18% GST. 78 booths total across 8 industry zones.
 - **Rajesh Dhuddu, PhD** — Partner & Emerging Tech Leader, PwC
 - **Bhupesh Daheria** — CEO, Aegis School of Data Science & Artificial Intelligence
 - **Mukesh Jain** — Global EVP & CTO, Capgemini
-- **Manish Agarwal** — COO, Comviva
+- **Pravin Kumar** — Chief Market Information Security Officer & Data Protection Officer, National Payments Corporation of India (NPCI)
+- **Manish Agrawal** — President & Chief Operating Officer, Comviva
 - **Nilesh Shah** — Managing Director, Kotak Mahindra AMC
 - **Ramanarayana Parhi** — VP & CIO, Alkem Laboratories
 - **Ratan Kumar Kesh** — Executive Director & COO, Bandhan Bank
@@ -75,6 +76,7 @@ All prices exclude 18% GST. 78 booths total across 8 industry zones.
 - [Startup Pitch](https://bharataiinnovation.com/startup-pitch.html): Startup pitch competition for AI startups
 - [Training & Workshop](https://bharataiinnovation.com/training-workshop.html): AI/ML hands-on training workshops
 - [Partner](https://bharataiinnovation.com/partner.html): Sponsorship and partnership tiers
+- [AI Readiness Certification](https://bharataiinnovation.com/ai-readiness.html): Independent AI maturity rating and certification, an Aegis Graham Bell Awards initiative
 - [Accommodation](https://bharataiinnovation.com/accommodation.html): Premium hotels near WTC Mumbai
 - [Register](https://networking.bharataiinnovation.com/register): Conference registration
 - [Contact](https://networking.bharataiinnovation.com/contact): Contact form and event team
