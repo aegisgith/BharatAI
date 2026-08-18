@@ -3600,10 +3600,16 @@ section { position: relative; }
 .reveal-delay-4 { transition-delay: 0.4s; }
 .reveal-delay-5 { transition-delay: 0.5s; }
 
-/* Mid-desktop: 9 nav items + Register CTA no longer fit at default spacing, so
-   tighten the links before the hamburger takes over. Without this the CTA gets
-   pushed off-screen (.nav-menu is flex/nowrap, so it overflows rather than wraps). */
-@media (min-width: 1081px) and (max-width: 1320px) {
+/* Desktop nav sizing. The menu is flex/nowrap, so anything that does not fit
+   pushes the Register CTA off-screen rather than wrapping.
+   Current set is 10 links + CTA (Startup Pitch moved out of the nav; AI Readiness
+   and AGBA added). At default spacing that measures ~1190px against a 1280px
+   container — it fits on the widest screens but overflows between 1081px and
+   ~1190px. Tightened spacing measures ~1019px and is safe across the whole desktop
+   range, so it is applied to every desktop width rather than a band.
+   If you add another nav item, re-check this: the previous 9-item version was
+   already tight, and each extra link costs roughly 100px. */
+@media (min-width: 1081px) {
   .nav-link { padding: 0.5rem 0.55rem; font-size: 0.83rem; }
   .nav-cta { padding: 0.55rem 1rem; font-size: 0.8rem; margin-left: 0.25rem; }
   .nav-menu { gap: 0.1rem; }
