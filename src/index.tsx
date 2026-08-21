@@ -7575,11 +7575,50 @@ function mainPageHTML(): string {
         const myInterests = new Set((currentUser?.interests || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean));
         const myRole = (currentUser?.badge_type || '').toLowerCase();
         const complements = { 'startup': 'investor', 'investor': 'startup', 'exhibitor': 'delegate', 'media': 'speaker' };
+
+        // Seniority weighting. Shared interests alone cannot separate this crowd —
+        // nearly everyone lists "ai, ml", so every profile tied on 20 points and the
+        // rail fell back to alphabetical order, leading with students. The rail is
+        // the strongest argument for buying a Delegate pass, so it has to lead with
+        // the people a buyer wants in the room. Matched against job_title only.
+        const SENIORITY = [
+          [/\b(chief executive|ceo|managing director|founder|co-?founder|chairman|chairperson|chairwoman|president|proprietor|minister|joint secretary|principal secretary|additional secretary|secretary to government)\b/, 60],
+          // Acronyms are listed explicitly: a class like c[tio]o only matches the
+          // three-letter forms and silently drops CISO, CHRO, CDAO.
+          [/\b(cto|cio|ciso|cfo|coo|cdo|cmo|cpo|cro|cso|chro|cdao|caio|cxo)\b/, 55],
+          [/\b(chief|global head|group head)\b/, 55],
+          [/\b(evp|svp|executive vice president|senior vice president|vice president|vp)\b/, 45],
+          [/\b(partner|managing partner|country head|business head|general manager|gm|commissioner|collector)\b/, 40],
+          [/\b(vice chancellor|pro vice chancellor|dean|registrar|principal investigator)\b/, 38],
+          [/\b(director|head of|head,|head -|department head)\b/, 35],
+          [/\b(principal|senior manager|associate director|group manager)\b/, 22],
+          [/\b(manager|lead|architect|senior)\b/, 14],
+        ];
+        // Deliberately last in the room, not excluded: they still appear, just below
+        // the people who make purchasing decisions.
+        const JUNIOR = [
+          [/\b(student|scholar|intern|trainee|fresher|undergraduate|graduand|b\.?tech|b\.?e\.?|bsc|msc|mca|bca|mba candidate|phd candidate|research scholar)\b/, -45],
+          [/\b(assistant professor|associate professor|professor|lecturer|faculty|teaching assistant)\b/, -18],
+          [/\b(junior|intern|associate engineer|trainee engineer)\b/, -12],
+        ];
+        function seniorityScore(title) {
+          const t = (title || '').toLowerCase();
+          if (!t) return 0;
+          let best = 0;
+          for (const [re, pts] of SENIORITY) { if (re.test(t)) { best = Math.max(best, pts); } }
+          let penalty = 0;
+          for (const [re, pts] of JUNIOR) { if (re.test(t)) { penalty = Math.min(penalty, pts); } }
+          // A senior title wins outright — "Dean" or "Director" of a university is a
+          // buyer even though the string also matches academic patterns.
+          return best > 0 ? best : penalty;
+        }
+
         function matchScore(a) {
           let score = 0;
           const theirs = (a.interests || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
           const shared = theirs.filter(i => myInterests.has(i));
           score += shared.length * 10;
+          score += seniorityScore(a.job_title);
           const theirRole = (a.badge_type || '').toLowerCase();
           for (const [k, v] of Object.entries(complements)) { if (myRole.includes(k) && theirRole.includes(v)) score += 15; }
           if (a.is_online) score += 3;
@@ -7589,6 +7628,9 @@ function mainPageHTML(): string {
           if (shared.length) return \`\${shared.length} shared interest\${shared.length>1?'s':''}: \${shared.slice(0,2).join(', ')}\`;
           const theirRole = (a.badge_type || '').toLowerCase();
           for (const [k, v] of Object.entries(complements)) { if (myRole.includes(k) && theirRole.includes(v)) return \`\${displayBadge(a.badge_type)} — could be a great match\`; }
+          // Seniority can now put someone on the rail without a shared interest, so
+          // give that card an honest reason rather than an empty line.
+          if (seniorityScore(a.job_title) >= 40) return a.company ? \`Senior leadership · \${a.company}\` : 'Senior leadership';
           if (a.is_online) return 'Online now';
           return '';
         }
@@ -7607,7 +7649,7 @@ function mainPageHTML(): string {
           const top = ranking ? list.filter(a => a._score >= 10).slice(0, 3) : [];
           railEl.innerHTML = top.length ? \`
             <div class="mb-5">
-              <div class="flex items-center gap-2 mb-3"><i class="fas fa-wand-magic-sparkles text-primary-400"></i><h3 class="text-sm font-semibold">Recommended for you</h3><span class="text-[10px] text-gray-500">based on your interests</span></div>
+              <div class="flex items-center gap-2 mb-3"><i class="fas fa-wand-magic-sparkles text-primary-400"></i><h3 class="text-sm font-semibold">Recommended for you</h3><span class="text-[10px] text-gray-500">senior attendees matched to your interests</span></div>
               <div class="grid grid-cols-1 md:grid-cols-3 gap-3">\${top.map(a => \`
                 <div class="rounded-xl p-4 border border-primary-500/25" style="background:linear-gradient(135deg,rgba(255,107,0,0.08),rgba(217,70,239,0.05));">
                   <div class="flex items-center gap-3">
