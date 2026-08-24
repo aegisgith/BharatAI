@@ -21,7 +21,9 @@ document.addEventListener('DOMContentLoaded', () => {
     initCursorGlow();
     initTypewriter();
     initProgressBar();
-    initSpeakersCarousel();
+    // carousel.js only ships on pages that have a carousel; without this guard the
+    // ReferenceError aborts the rest of this handler on every other page.
+    if (typeof initSpeakersCarousel === 'function') initSpeakersCarousel();
     initConfSubnav();
     initSpeakerBadges();
 });
