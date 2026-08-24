@@ -138,40 +138,14 @@ mp.post('/api/mp/auth/logout', async (c) => {
   return c.json({ success: true })
 })
 
-// ── Login as exhibitor (cross-link from networking app) ──
-mp.post('/api/mp/auth/exhibitor-login', async (c) => {
-  const { attendee_id, exhibitor_id, company_name, email } = await c.req.json()
-  if (!attendee_id || !company_name) return c.json({ error: 'Missing required fields' }, 400)
-
-  // Check if already linked
-  let company = await c.env.DB.prepare(
-    'SELECT id, company_name, email, role FROM mp_companies WHERE attendee_id = ?'
-  ).bind(attendee_id).first()
-
-  if (!company) {
-    // Auto-create marketplace account from exhibitor data
-    const password_hash = await hashPassword('exhibitor_' + attendee_id)
-    const emailToUse = email || `exhibitor_${attendee_id}@bharataiinnovation.com`
-    
-    // Check if email already exists
-    const existing = await c.env.DB.prepare('SELECT id FROM mp_companies WHERE email = ?').bind(emailToUse).first()
-    if (existing) {
-      // Link existing account
-      await c.env.DB.prepare('UPDATE mp_companies SET attendee_id = ?, exhibitor_id = ? WHERE id = ?')
-        .bind(attendee_id, exhibitor_id || null, existing.id).run()
-      company = await c.env.DB.prepare('SELECT id, company_name, email, role FROM mp_companies WHERE id = ?')
-        .bind(existing.id).first()
-    } else {
-      const result = await c.env.DB.prepare(
-        'INSERT INTO mp_companies (company_name, email, password_hash, attendee_id, exhibitor_id) VALUES (?, ?, ?, ?, ?)'
-      ).bind(company_name, emailToUse, password_hash, attendee_id, exhibitor_id || null).run()
-      company = { id: result.meta.last_row_id, company_name, email: emailToUse, role: 'company' }
-    }
-  }
-
-  c.header('Set-Cookie', mpSessionCookie(await signSession(c, (company as any).id)))
-  return c.json({ success: true, user: company })
-})
+// REMOVED: POST /api/mp/auth/exhibitor-login — it minted a validly-signed
+// marketplace session from an attendee_id and email supplied in the request body,
+// with no credential of any kind. Passing an existing company's email relinked that
+// company to the caller and returned a session for it, so any account — including
+// role='admin' — could be taken over by anyone who knew its email address. It also
+// auto-created accounts with the guessable password 'exhibitor_<attendee_id>'.
+// Nothing in the app, the static JS or any page called it: the only occurrence in the
+// repository was the route definition itself. Deleted rather than patched.
 
 // ══════════════════════════════════════════
 // LISTINGS (PUBLIC)

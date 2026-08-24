@@ -3008,30 +3008,10 @@ app.get('/api/mp/admin/inquiries', async (c) => {
 
 // --- Exhibitor → Marketplace Bridge ---
 // Allow an exhibitor (logged into networking app) to create a marketplace account
-app.post('/api/mp/bridge/exhibitor-register', async (c) => {
-  const body = await c.req.json() as any
-  const { attendee_id, exhibitor_id } = body
-  if (!attendee_id) return c.json({ error: 'Attendee ID required' }, 400)
-  const attendee = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(attendee_id).first() as any
-  if (!attendee) return c.json({ error: 'Attendee not found' }, 404)
-  // Check if already has marketplace account
-  let mpCompany = await c.env.DB.prepare('SELECT id FROM mp_companies WHERE email = ?').bind(attendee.email).first() as any
-  if (mpCompany) {
-    // Link exhibitor if not already
-    if (exhibitor_id) await c.env.DB.prepare('UPDATE mp_companies SET exhibitor_id = ?, attendee_id = ? WHERE id = ?').bind(exhibitor_id, attendee_id, mpCompany.id).run()
-    return new Response(JSON.stringify({ success: true, mp_company_id: mpCompany.id, existing: true }), {
-      headers: { 'Content-Type': 'application/json', 'Set-Cookie': mpCookie(await signMpSession(c, mpCompany.id)) }
-    })
-  }
-  const hash = await sha256('changeme123')
-  const companyName = attendee.organization || attendee.name
-  const result = await c.env.DB.prepare(
-    'INSERT INTO mp_companies (company_name, email, password_hash, exhibitor_id, attendee_id) VALUES (?,?,?,?,?)'
-  ).bind(companyName, attendee.email, hash, exhibitor_id||null, attendee_id).run()
-  return new Response(JSON.stringify({ success: true, mp_company_id: result.meta.last_row_id, existing: false }), {
-    headers: { 'Content-Type': 'application/json', 'Set-Cookie': mpCookie(await signMpSession(c, result.meta.last_row_id)) }
-  })
-})
+// REMOVED: POST /api/mp/bridge/exhibitor-register — a second unauthenticated route that
+// issued a signed mp_session for any attendee_id passed in the body, letting anyone walk
+// the public id list and collect a marketplace session for every vendor. It also created
+// accounts with the fixed password 'changeme123'. Unreferenced anywhere in the repo.
 
 // ==================== CONTACT PAGE ====================
 
