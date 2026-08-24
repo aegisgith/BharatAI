@@ -147,6 +147,102 @@ function isAdminRequest(c: any): boolean {
   return token === expected
 }
 
+// ==================== ATTENDEE SESSIONS ====================
+//
+// Why this exists: every write that names a person used to take that person's id
+// straight from the URL or the request body and trust it. Since attendee ids are
+// published in the public directory, anyone could edit any profile or post a
+// message as anyone — no email, no password, no knowledge of the victim at all.
+//
+// The cookie is `<id>.<exp>.<hmac>`, signed with the server secret, so an edited
+// id fails verification. Deliberately stateless: the only binding on this project
+// is D1, and a sessions table would need a migration applied by hand against the
+// production database. A signed token needs no storage.
+//
+// Mirrors the marketplace implementation (src/routes/marketplace.ts) rather than
+// inventing a second scheme, including its ADMIN_SECRET fallback — so protection
+// is active immediately, without waiting for a new secret to be provisioned.
+// Set a dedicated one when convenient: `npx wrangler pages secret put SESSION_SECRET`.
+const attendeeSessionSecret = (c: any): string =>
+  c.env.SESSION_SECRET || c.env.ADMIN_SECRET || ''
+
+const hmacHexA = async (secret: string, message: string): Promise<string> => {
+  const enc = new TextEncoder()
+  const key = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+  const sig = await crypto.subtle.sign('HMAC', key, enc.encode(message))
+  return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
+const safeEqualA = (a: string, b: string): boolean => {
+  if (a.length !== b.length) return false
+  let diff = 0
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i)
+  return diff === 0
+}
+
+const ATTENDEE_SESSION_DAYS = 60
+
+async function signAttendeeSession(c: any, attendeeId: number | string): Promise<string> {
+  const secret = attendeeSessionSecret(c)
+  const exp = Math.floor(Date.now() / 1000) + ATTENDEE_SESSION_DAYS * 86400
+  const body = `${attendeeId}.${exp}`
+  return `${body}.${await hmacHexA(secret, body)}`
+}
+
+// Returns the verified attendee id from the cookie, or null.
+async function verifyAttendeeSession(c: any): Promise<number | null> {
+  const secret = attendeeSessionSecret(c)
+  if (!secret) return null
+  const raw = (c.req.header('Cookie') || '')
+    .split(';').map((s: string) => s.trim())
+    .find((s: string) => s.startsWith('bai_session='))
+  if (!raw) return null
+  const value = decodeURIComponent(raw.slice('bai_session='.length))
+  const parts = value.split('.')
+  if (parts.length !== 3) return null
+  const [id, exp, sig] = parts
+  if (!/^\d+$/.test(id) || !/^\d+$/.test(exp)) return null
+  if (parseInt(exp, 10) * 1000 < Date.now()) return null
+  const expected = await hmacHexA(secret, `${id}.${exp}`)
+  if (!safeEqualA(sig, expected)) return null
+  return parseInt(id, 10)
+}
+
+const attendeeSessionCookie = (value: string) =>
+  `bai_session=${value}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${ATTENDEE_SESSION_DAYS * 86400}`
+
+// Attaches a fresh session cookie to the response. Called from every route that
+// establishes who the caller is (register / signin / login), so existing users
+// pick one up on their next visit without touching the client.
+async function issueAttendeeSession(c: any, attendeeId: number | string) {
+  if (!attendeeSessionSecret(c)) return
+  c.header('Set-Cookie', attendeeSessionCookie(await signAttendeeSession(c, attendeeId)))
+}
+
+// Guard for writes that act on a specific attendee. Returns a Response to send
+// back (blocking the write), or null to proceed.
+//
+// Fails OPEN when no secret is configured, so a missing/rotated secret degrades
+// to today's behaviour instead of locking 852 people out of their own profiles.
+// GET /api/auth/status reports which mode is live.
+async function requireSelf(c: any, targetId: any): Promise<Response | null> {
+  if (!attendeeSessionSecret(c)) return null
+  if (isAdminRequest(c)) return null
+  const me = await verifyAttendeeSession(c)
+  if (!me) return c.json({ error: 'Please sign in again to continue.' }, 401)
+  if (String(me) !== String(targetId)) return c.json({ error: 'You can only change your own details.' }, 403)
+  return null
+}
+
+// Lets us confirm from outside whether enforcement is on, without exposing the
+// secret itself.
+app.get('/api/auth/status', async (c) => {
+  return c.json({
+    enforced: !!attendeeSessionSecret(c),
+    session_valid: (await verifyAttendeeSession(c)) !== null,
+  })
+})
+
 app.get('/api/events/:id/attendees', async (c) => {
   const eventId = c.req.param('id')
   const search = c.req.query('search')
@@ -206,12 +302,14 @@ app.post('/api/events/:id/attendees/register', async (c) => {
     ).bind(eventId, name.trim(), normalizedEmail, company || '', job_title || '', bio || '', interests || '', linkedin_url || '', mobile || '', city || '', lunch_inclusion || 'No', passType).run()
 
     const attendee = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(result.meta.last_row_id).first()
+    await issueAttendeeSession(c, (attendee as any).id)
     return c.json(attendee, 201)
   } catch (e: any) {
     if (e.message?.includes('UNIQUE')) {
       const existing = await c.env.DB.prepare('SELECT * FROM attendees WHERE event_id = ? AND email = ?').bind(eventId, normalizedEmail).first()
       if (existing) {
         await c.env.DB.prepare('UPDATE attendees SET is_online = 1, last_login_at = datetime("now") WHERE id = ?').bind((existing as any).id).run()
+        await issueAttendeeSession(c, (existing as any).id)
         return c.json(existing)
       }
     }
@@ -379,6 +477,7 @@ app.post('/api/events/:id/attendees/signin', async (c) => {
 
   // Mark user as online and track login time
   await c.env.DB.prepare('UPDATE attendees SET is_online = 1, last_login_at = datetime("now") WHERE id = ?').bind((attendee as any).id).run()
+  await issueAttendeeSession(c, (attendee as any).id)
 
   return c.json(attendee)
 })
@@ -393,6 +492,7 @@ app.post('/api/events/:id/attendees/login', async (c) => {
   ).bind(eventId, email.trim().toLowerCase()).first()
   if (!attendee) return c.json({ error: 'No account found with this email.' }, 404)
   await c.env.DB.prepare('UPDATE attendees SET is_online = 1, last_login_at = datetime("now") WHERE id = ?').bind((attendee as any).id).run()
+  await issueAttendeeSession(c, (attendee as any).id)
   return c.json(attendee)
 })
 
@@ -495,6 +595,7 @@ app.post('/api/attendees/:id/track-pass-download', async (c) => {
 // Update RSVP status (used by both email link and in-app)
 app.post('/api/attendees/:id/rsvp', async (c) => {
   const id = c.req.param('id')
+  const denied = await requireSelf(c, id); if (denied) return denied
   const { status } = await c.req.json()
   if (!['confirmed', 'declined', 'maybe'].includes(status)) return c.json({ error: 'Invalid status' }, 400)
   await c.env.DB.prepare('UPDATE attendees SET rsvp_status = ?, rsvp_at = datetime("now") WHERE id = ?').bind(status, id).run()
@@ -581,6 +682,7 @@ app.get('/api/attendees/:id/connections', async (c) => {
 app.post('/api/connections', async (c) => {
   const body = await c.req.json()
   const { event_id, from_attendee_id, to_attendee_id, message } = body
+  const denied = await requireSelf(c, from_attendee_id); if (denied) return denied
 
   try {
     await c.env.DB.prepare(
@@ -624,6 +726,7 @@ app.get('/api/messages/:userId/:otherUserId', async (c) => {
 app.post('/api/messages', async (c) => {
   const body = await c.req.json()
   const { event_id, sender_id, receiver_id, content } = body
+  const denied = await requireSelf(c, sender_id); if (denied) return denied
 
   const result = await c.env.DB.prepare(
     'INSERT INTO messages (event_id, sender_id, receiver_id, content) VALUES (?, ?, ?, ?)'
@@ -660,6 +763,7 @@ app.get('/api/attendees/:id/meetings', async (c) => {
 app.post('/api/meetings', async (c) => {
   const body = await c.req.json()
   const { event_id, requester_id, requestee_id, title, meeting_time, duration_minutes, location, notes } = body
+  const denied = await requireSelf(c, requester_id); if (denied) return denied
 
   const result = await c.env.DB.prepare(
     'INSERT INTO meetings (event_id, requester_id, requestee_id, title, meeting_time, duration_minutes, location, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
@@ -1053,6 +1157,7 @@ app.get('/api/attendees/:id/dashboard', async (c) => {
 // Update attendee profile
 app.put('/api/attendees/:id/profile', async (c) => {
   const id = c.req.param('id')
+  const denied = await requireSelf(c, id); if (denied) return denied
   const body = await c.req.json()
   const { name, company, job_title, bio, interests, linkedin_url, twitter_url, website_url, mobile, lunch_inclusion, arrival_time } = body
 
@@ -1070,6 +1175,7 @@ app.put('/api/attendees/:id/profile', async (c) => {
 // Upload avatar photo for attendee (self-service or admin)
 app.post('/api/attendees/:id/avatar', async (c) => {
   const id = c.req.param('id')
+  const denied = await requireSelf(c, id); if (denied) return denied
   const attendee = await c.env.DB.prepare('SELECT id FROM attendees WHERE id = ?').bind(id).first()
   if (!attendee) return c.json({ error: 'Attendee not found' }, 404)
 
@@ -1093,6 +1199,7 @@ app.post('/api/attendees/:id/avatar', async (c) => {
 // Delete avatar photo for attendee
 app.delete('/api/attendees/:id/avatar', async (c) => {
   const id = c.req.param('id')
+  const denied = await requireSelf(c, id); if (denied) return denied
   await c.env.DB.prepare('UPDATE attendees SET avatar_url = NULL WHERE id = ?').bind(id).run()
   return c.json({ success: true })
 })
@@ -1136,6 +1243,7 @@ app.get('/api/attendees/:id/exhibitor/leads', async (c) => {
 // Create or update exhibitor booth for an attendee (self-service)
 app.put('/api/attendees/:id/exhibitor', async (c) => {
   const attendeeId = c.req.param('id')
+  const denied = await requireSelf(c, attendeeId); if (denied) return denied
   const body = await c.req.json()
   const { company_name, description, booth_number, booth_size, category, website_url, contact_email, contact_phone, products } = body
 
