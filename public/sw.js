@@ -1,9 +1,12 @@
 // Bharat AI Innovation — minimal service worker for PWA install + offline
 // resilience during the event (venue WiFi is often flaky). Network-first for
-// navigations and API reads, falling back to cache; cache-first for static
-// assets. Deliberately conservative so it never serves stale app code for long.
+// navigations and API reads, falling back to cache; stale-while-revalidate for
+// static assets. Deliberately conservative so it never serves stale app code
+// for more than the one load that refreshes it.
 
-const VERSION = 'bhai-v2';
+// Bump on any deploy that must reach returning visitors immediately: activate
+// deletes every cache not ending in VERSION, so the next fetch repopulates.
+const VERSION = 'bhai-v3';
 const SHELL = `shell-${VERSION}`;
 const DATA = `data-${VERSION}`;
 
@@ -76,17 +79,24 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Static assets (images, css, js): cache-first, then network.
+  // Static assets (images, css, js): stale-while-revalidate. Serve the cached
+  // copy immediately (venue WiFi), but always refetch in the background so the
+  // next load has fresh code. Plain cache-first never re-checked the network,
+  // which pinned js/main.js and css/style.css at whatever version a visitor
+  // first saw -- deploys silently never reached returning users.
   event.respondWith(
-    caches.match(request).then((cached) =>
-      cached ||
-      fetch(request).then((res) => {
+    caches.match(request).then((cached) => {
+      const network = fetch(request).then((res) => {
         if (res.ok) {
           const copy = res.clone();
           caches.open(SHELL).then((c) => c.put(request, copy));
         }
         return res;
-      })
-    )
+      });
+      // Offline with a cached copy: swallow the rejection, we already have a
+      // response to return. Offline with none: let it propagate as the failure.
+      if (cached) { network.catch(() => {}); return cached; }
+      return network;
+    })
   );
 });
