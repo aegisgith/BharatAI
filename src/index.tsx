@@ -147,6 +147,86 @@ function isAdminRequest(c: any): boolean {
   return token === expected
 }
 
+// ==================== VERIFIED SIGN-IN ====================
+//
+// Sign-in used to be email-only: post an address, receive that account. This
+// replaces it with a token emailed to the address, proving the caller controls it.
+//
+// Rollout switch: verified sign-in activates only once the login_tokens table
+// exists (migration 0014). Until then the legacy path keeps working, so the code
+// deploy and the migration are independent and can happen in either order.
+let _loginTokensTable: boolean | null = null
+async function verifiedLoginEnabled(c: any): Promise<boolean> {
+  if (_loginTokensTable !== null) return _loginTokensTable
+  try {
+    const row = await c.env.DB.prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='login_tokens'"
+    ).first()
+    _loginTokensTable = !!row
+  } catch { _loginTokensTable = false }
+  return _loginTokensTable
+}
+
+const sha256Hex = async (v: string): Promise<string> => {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(v))
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
+const randomHex = (bytes: number): string => {
+  const a = new Uint8Array(bytes)
+  crypto.getRandomValues(a)
+  return Array.from(a).map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
+// Six digits from a CSPRNG, uniformly distributed (no modulo bias).
+const randomCode = (): string => {
+  const a = new Uint32Array(1)
+  let v: number
+  do { crypto.getRandomValues(a); v = a[0] } while (v >= 4294000000)
+  return String(v % 1000000).padStart(6, '0')
+}
+
+const LOGIN_TOKEN_MINUTES = 15
+const LOGIN_MAX_ATTEMPTS = 5
+
+// Issues a single-use token + code for an email, storing only their hashes.
+async function createLoginToken(c: any, eventId: any, email: string) {
+  const token = randomHex(32)
+  const code = randomCode()
+  // Supersede anything outstanding for this address so an old code cannot be reused.
+  await c.env.DB.prepare(
+    "UPDATE login_tokens SET used_at = datetime('now') WHERE event_id = ? AND email = ? AND used_at IS NULL"
+  ).bind(eventId, email).run()
+  await c.env.DB.prepare(
+    `INSERT INTO login_tokens (event_id, email, token_hash, code_hash, expires_at)
+     VALUES (?, ?, ?, ?, datetime('now', '+${LOGIN_TOKEN_MINUTES} minutes'))`
+  ).bind(eventId, email, await sha256Hex(token), await sha256Hex(code)).run()
+  return { token, code }
+}
+
+// Redeems a token or code. Returns the email on success, or a reason string.
+async function redeemLoginToken(c: any, eventId: any, email: string, token?: string, code?: string):
+    Promise<{ ok: true } | { ok: false; reason: string }> {
+  const row = await c.env.DB.prepare(
+    `SELECT id, token_hash, code_hash, attempts FROM login_tokens
+     WHERE event_id = ? AND email = ? AND used_at IS NULL AND expires_at > datetime('now')
+     ORDER BY id DESC LIMIT 1`
+  ).bind(eventId, email).first() as any
+  if (!row) return { ok: false, reason: 'That link or code has expired. Please request a new one.' }
+  if (row.attempts >= LOGIN_MAX_ATTEMPTS) {
+    await c.env.DB.prepare("UPDATE login_tokens SET used_at = datetime('now') WHERE id = ?").bind(row.id).run()
+    return { ok: false, reason: 'Too many attempts. Please request a new code.' }
+  }
+  const supplied = token ? await sha256Hex(token) : code ? await sha256Hex(code) : ''
+  const expected = token ? row.token_hash : row.code_hash
+  if (!supplied || !safeEqualA(supplied, expected)) {
+    await c.env.DB.prepare('UPDATE login_tokens SET attempts = attempts + 1 WHERE id = ?').bind(row.id).run()
+    return { ok: false, reason: 'That code is not correct.' }
+  }
+  await c.env.DB.prepare("UPDATE login_tokens SET used_at = datetime('now') WHERE id = ?").bind(row.id).run()
+  return { ok: true }
+}
+
 // ==================== ATTENDEE SESSIONS ====================
 //
 // Why this exists: every write that names a person used to take that person's id
@@ -308,6 +388,15 @@ app.post('/api/events/:id/attendees/register', async (c) => {
     if (e.message?.includes('UNIQUE')) {
       const existing = await c.env.DB.prepare('SELECT * FROM attendees WHERE event_id = ? AND email = ?').bind(eventId, normalizedEmail).first()
       if (existing) {
+        // Registering with an address that already exists must NOT hand back that
+        // account — that made /register a second email-only login. A caller holding
+        // a valid session for this account (the app re-registers on load to mark
+        // itself online) is refreshed as before; anyone else is sent to verification.
+        const me = await verifyAttendeeSession(c)
+        const isOwner = me !== null && String(me) === String((existing as any).id)
+        if (!isOwner && await verifiedLoginEnabled(c)) {
+          return c.json({ error: 'verification_required', message: 'That email is already registered. Please sign in with the link or code we email you.' }, 403)
+        }
         await c.env.DB.prepare('UPDATE attendees SET is_online = 1, last_login_at = datetime("now") WHERE id = ?').bind((existing as any).id).run()
         await issueAttendeeSession(c, (existing as any).id)
         return c.json(existing)
@@ -469,6 +558,12 @@ app.post('/api/events/:id/attendees/signin', async (c) => {
 
   if (!email) return c.json({ error: 'Email is required' }, 400)
 
+  // Once migration 0014 is applied, an email address stops being a credential.
+  // The client is told to switch to the emailed link/code flow.
+  if (await verifiedLoginEnabled(c)) {
+    return c.json({ error: 'verification_required', message: 'Please use the sign-in link or code we email you.' }, 403)
+  }
+
   const attendee = await c.env.DB.prepare(
     'SELECT * FROM attendees WHERE event_id = ? AND email = ?'
   ).bind(eventId, email.trim().toLowerCase()).first()
@@ -487,8 +582,17 @@ app.post('/api/events/:id/attendees/signin', async (c) => {
 // Login endpoint (alias for signin — used by auto-login from email links)
 app.post('/api/events/:id/attendees/login', async (c) => {
   const eventId = c.req.param('id')
-  const { email } = await c.req.json()
+  const { email, token, code } = await c.req.json()
   if (!email) return c.json({ error: 'Email is required' }, 400)
+
+  // Verified path: a link token or a 6-digit code must accompany the address.
+  if (await verifiedLoginEnabled(c)) {
+    if (!token && !code) {
+      return c.json({ error: 'verification_required', message: 'Please use the sign-in link or code we email you.' }, 403)
+    }
+    const redeemed = await redeemLoginToken(c, eventId, String(email).trim().toLowerCase(), token, code)
+    if (!redeemed.ok) return c.json({ error: redeemed.reason }, 401)
+  }
   const attendee = await c.env.DB.prepare(
     'SELECT * FROM attendees WHERE event_id = ? AND email = ?'
   ).bind(eventId, email.trim().toLowerCase()).first()
@@ -511,13 +615,24 @@ app.post('/api/events/:id/attendees/send-magic-link', async (c) => {
   ).bind(eventId, normalizedEmail).first() as any
 
   if (!attendee) {
-    return c.json({ error: 'No account found with this email. Please register first or check your email address.' }, 404)
+    // Neutral response: replying 404 here confirmed which addresses are registered,
+    // letting anyone test a list of emails against the delegate database.
+    return c.json({ success: true, message: 'If that email is registered, a sign-in link and code are on their way.' })
   }
 
   // Build magic link URL
   const appUrlRow = await c.env.DB.prepare("SELECT value FROM app_settings WHERE key = 'app_url'").first() as any
   const appUrl = appUrlRow?.value || 'https://bharataiinnovation.com/app'
-  const magicLink = `${appUrl}?email=${encodeURIComponent(normalizedEmail)}&action=magic-login`
+  // Was `?email=<address>&action=magic-login` — no token at all, so anyone could
+  // construct the "magic link" for any address without receiving the mail. It now
+  // carries a single-use token that expires in 15 minutes.
+  let loginCode = ''
+  let magicLink = `${appUrl}?email=${encodeURIComponent(normalizedEmail)}&action=magic-login`
+  if (await verifiedLoginEnabled(c)) {
+    const issued = await createLoginToken(c, eventId, normalizedEmail)
+    loginCode = issued.code
+    magicLink = `${appUrl}?email=${encodeURIComponent(normalizedEmail)}&action=magic-login&token=${issued.token}`
+  }
 
   // Build email HTML
   const emailHtml = `<!DOCTYPE html>
@@ -533,6 +648,7 @@ app.post('/api/events/:id/attendees/send-magic-link', async (c) => {
       <p style="color:#333;line-height:1.6;margin:0 0 16px;">Hi <strong>${attendee.name}</strong>,</p>
       <p style="color:#555;line-height:1.6;margin:0 0 24px;">Click the button below to sign in to the Bharat AI Innovation 2026. This link will log you in automatically — no password needed.</p>
       <div style="text-align:center;margin:24px 0;">
+        ${loginCode ? `<p style="color:#444;font-size:14px;margin:0 0 18px;">Or enter this code in the app:<br><span style="display:inline-block;margin-top:8px;font-family:monospace;font-size:28px;letter-spacing:6px;font-weight:bold;color:#1E2140;">${loginCode}</span><br><span style="font-size:12px;color:#888;">Expires in 15 minutes. Never share it &mdash; we will not ask you for it.</span></p>` : ''}
         <a href="${magicLink}" style="display:inline-block;padding:14px 32px;background:linear-gradient(135deg,#6366f1,#4f46e5);color:white;text-decoration:none;border-radius:10px;font-weight:bold;font-size:15px;">
           🔑 Sign In Now
         </a>
@@ -4635,6 +4751,13 @@ function mainPageHTML(): string {
             <label class="text-xs text-gray-400 mb-1 block">Email Address</label>
             <input type="email" id="signin-email" placeholder="Enter your registered email" required class="w-full px-4 py-3 rounded-xl text-sm">
           </div>
+          <!-- Revealed after the code is emailed. An address alone no longer signs
+               anyone in, so this second step is what proves the mailbox is theirs. -->
+          <div id="signin-code-field" class="hidden">
+            <label class="text-xs text-gray-400 mb-1 block">6-digit code from your email</label>
+            <input type="text" id="signin-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000" class="w-full px-4 py-3 rounded-xl text-sm" style="letter-spacing:0.4em;font-family:monospace;">
+            <p class="text-[11px] text-gray-500 mt-1">Expires in 15 minutes. Clicking the link in the email works too.</p>
+          </div>
           <button type="submit" class="w-full py-3 rounded-xl font-bold text-white transition-all hover:opacity-90" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);box-shadow:0 4px 20px rgba(245,98,10,0.3);">
             <i class="fas fa-sign-in-alt mr-2"></i>Sign In
           </button>
@@ -6804,7 +6927,9 @@ function mainPageHTML(): string {
           const resp = await fetch(\`/api/events/\${EVENT_ID}/attendees/login\`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: emailParam })
+            // The emailed link now carries a single-use token; without it the
+            // server refuses, because an address alone is no longer a credential.
+            body: JSON.stringify({ email: emailParam, token: urlParams.get('token') || undefined })
           });
           if (resp.ok) {
             const data = await resp.json();
@@ -7115,10 +7240,68 @@ function mainPageHTML(): string {
 
       try {
         const email = document.getElementById('signin-email').value.trim();
-        const resp = await fetch(\`/api/events/\${EVENT_ID}/attendees/signin\`, {
+        // Step 0 — ask the server whether an address alone is still accepted.
+        // Before migration 0014 it is (legacy), after it is not. Probing keeps this
+        // client correct in both modes, so the code deploy and the migration do not
+        // have to be coordinated.
+        if (!window._signinCodeSent) {
+          const legacy = await fetch(\`/api/events/\${EVENT_ID}/attendees/signin\`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email })
+          });
+          if (legacy.ok) {
+            const legacyData = await legacy.json();
+            currentUser = legacyData;
+            localStorage.setItem('agba_user', JSON.stringify(currentUser));
+            showToast(\`Welcome back, \${currentUser.name}!\`, 'success');
+            document.getElementById('registration-modal').classList.add('hidden');
+            upgradeToLoggedIn();
+            if (pendingAction === 'download-pass') setTimeout(() => generateDelegatePass(), 1500);
+            return;
+          }
+        }
+
+        // Step 1 — ask for a sign-in code. The server emails a link and a 6-digit
+        // code; an email address on its own no longer signs anyone in.
+        if (!window._signinCodeSent) {
+          const ask = await fetch(\`/api/events/\${EVENT_ID}/attendees/send-magic-link\`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email })
+          });
+          const askData = await ask.json().catch(() => ({}));
+          if (!ask.ok) {
+            errorEl.textContent = askData.error || 'Could not send the sign-in email. Please try again.';
+            errorEl.classList.remove('hidden');
+            btn.innerHTML = '<i class="fas fa-sign-in-alt mr-2"></i>Sign In';
+            btn.disabled = false;
+            return;
+          }
+          window._signinCodeSent = true;
+          const codeField = document.getElementById('signin-code-field');
+          if (codeField) codeField.classList.remove('hidden');
+          errorEl.textContent = 'Check your inbox — we sent a sign-in link and a 6-digit code. Enter the code below.';
+          errorEl.classList.remove('hidden');
+          btn.innerHTML = '<i class="fas fa-check mr-2"></i>Verify code';
+          btn.disabled = false;
+          return;
+        }
+
+        // Step 2 — verify the code the user typed.
+        const codeEl = document.getElementById('signin-code');
+        const code = codeEl ? codeEl.value.trim() : '';
+        if (!/^\d{6}$/.test(code)) {
+          errorEl.textContent = 'Enter the 6-digit code from the email.';
+          errorEl.classList.remove('hidden');
+          btn.innerHTML = '<i class="fas fa-check mr-2"></i>Verify code';
+          btn.disabled = false;
+          return;
+        }
+        const resp = await fetch(\`/api/events/\${EVENT_ID}/attendees/login\`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email })
+          body: JSON.stringify({ email, code })
         });
         const data = await resp.json();
 
