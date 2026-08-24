@@ -57,7 +57,7 @@ const verifySession = async (c: any, value: string): Promise<number | null> => {
 }
 
 const mpSessionCookie = (value: string, maxAge = 604800) =>
-  `mp_session=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}`
+  `mp_session=${value}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}`
 
 // ── Helpers ──
 const generateSlug = (text: string) =>
@@ -152,7 +152,11 @@ mp.post('/api/mp/auth/logout', async (c) => {
 // ══════════════════════════════════════════
 
 mp.get('/api/mp/listings', async (c) => {
-  const status = c.req.query('status') || 'approved'
+  // Hardcoded: this is the PUBLIC catalogue. The status used to come from the query
+  // string, so ?status=pending / ?status=rejected dumped every unreviewed listing
+  // with its private contact and registration details to anonymous callers.
+  // Moderators read the queue through the admin routes, which check role='admin'.
+  const status = 'approved'
   const listings = await c.env.DB.prepare(
     'SELECT l.*, e.company_name as exhibitor_company, e.booth_number as exhibitor_booth FROM mp_listings l LEFT JOIN exhibitors e ON l.exhibitor_id = e.id WHERE l.status = ? ORDER BY l.created_at DESC'
   ).bind(status).all()
@@ -297,6 +301,14 @@ mp.get('/api/mp/uploads/:id', async (c) => {
   const upload = await c.env.DB.prepare('SELECT data, content_type FROM mp_uploads WHERE id = ?').bind(parseInt(id)).first()
   if (!upload) return c.json({ error: 'File not found' }, 404)
 
+  // The stored content_type is attacker-chosen at upload time. Replaying it let a
+  // vendor upload HTML and have it served as text/html from this origin — same-origin
+  // script against every marketplace session. Only image types are echoed back;
+  // anything else is forced to a non-renderable type and marked for download.
+  const SAFE_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif']
+  const declared = String((upload as any).content_type || '').toLowerCase().split(';')[0].trim()
+  const safeType = SAFE_IMAGE_TYPES.includes(declared) ? declared : 'application/octet-stream'
+
   const dataUrl = upload.data as string
   if (dataUrl.startsWith('data:')) {
     const base64Data = dataUrl.split(',')[1]
@@ -306,7 +318,12 @@ mp.get('/api/mp/uploads/:id', async (c) => {
       bytes[i] = binaryString.charCodeAt(i)
     }
     return new Response(bytes, {
-      headers: { 'Content-Type': (upload.content_type as string) || 'application/octet-stream', 'Cache-Control': 'public, max-age=86400' }
+      headers: {
+        'Content-Type': safeType,
+        'Cache-Control': 'public, max-age=86400',
+        'X-Content-Type-Options': 'nosniff',
+        ...(safeType === 'application/octet-stream' ? { 'Content-Disposition': 'attachment' } : {}),
+      }
     })
   }
   return c.json({ error: 'Invalid file data' }, 500)
@@ -441,7 +458,10 @@ mp.get('/api/mp/dashboard/profile', async (c) => {
   const company = await getCompanyFromSession(c)
   if (!company) return c.json({ error: 'Login required' }, 401)
 
-  const profile = await c.env.DB.prepare('SELECT * FROM mp_companies WHERE id = ?').bind(company.id).first()
+  // Explicit column list: SELECT * returned password_hash to the browser.
+  const profile = await c.env.DB.prepare(
+    'SELECT id, company_name, email, role, attendee_id, exhibitor_id, website, description, logo_url, contact_name, contact_phone, created_at FROM mp_companies WHERE id = ?'
+  ).bind(company.id).first()
   return c.json({ profile })
 })
 

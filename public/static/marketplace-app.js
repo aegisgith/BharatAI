@@ -1,3 +1,11 @@
+// Escapes text before it goes into innerHTML. Inquiry and listing fields are
+// attacker-controlled — the inquiry form needs no login at all — and were being
+// interpolated raw, so a payload in a name or message ran as script in the
+// vendor dashboard and the admin queue.
+const esc = (v) => String(v == null ? '' : v)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
 // Bharat AI Marketplace — Main App JS
 const state = { user: null, listings: [] }
 const toast = document.getElementById('toast')
@@ -50,7 +58,7 @@ const showToast = (msg, isError = false) => {
 }
 const getInitials = (name = '') => name.split(' ').filter(Boolean).slice(0,2).map(p => p[0]).join('').toUpperCase()
 const toSlug = (text) => (text||'').toLowerCase().trim().replace(/&/g,'and').replace(/[^a-z0-9\s-]/g,'').replace(/\s+/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'').slice(0,80)
-const listingUrl = (l) => { const cs = l.company_slug || toSlug(l.company_name), ps = l.product_slug || toSlug(l.product_name); return (cs && ps) ? `/marketplace/listing/${cs}/${ps}` : `/marketplace/listing/${l.id}` }
+const listingUrl = (l) => { const cs = l.company_slug || toSlug(l.company_name), ps = l.product_slug || toSlug(l.product_name); return (cs && ps) ? `/marketplace/listing/${cs}/${ps}` : `/marketplace/listing/${esc(l.id)}` }
 const toTagList = (v) => (v||'').split(',').map(i => i.trim()).filter(Boolean)
 const formatFileSize = (b) => { if (b < 1024) return b + ' B'; if (b < 1048576) return (b/1024).toFixed(1) + ' KB'; return (b/1048576).toFixed(1) + ' MB' }
 
@@ -209,11 +217,11 @@ const loadAdminListings = async () => {
     if (!d.listings.length) { adminListingsContainer.innerHTML = '<p class="text-slate-400">No pending submissions.</p>'; return }
     d.listings.forEach(l => {
       const w = document.createElement('div'); w.className = 'border border-slate-800 rounded-lg p-4 space-y-2 mb-3'
-      w.innerHTML = `<p class="font-semibold">${l.product_name} <span class="text-sm text-slate-400">by ${l.company_name}</span></p><p class="text-sm text-slate-300">${l.description}</p>`
+      w.innerHTML = `<p class="font-semibold">${esc(l.product_name)} <span class="text-sm text-slate-400">by ${esc(l.company_name)}</span></p><p class="text-sm text-slate-300">${esc(l.description)}</p>`
       const approve = document.createElement('button'); approve.textContent = 'Approve'; approve.className = 'px-3 py-2 bg-emerald-500 text-slate-900 rounded-lg text-sm font-semibold mr-2'
       const reject = document.createElement('button'); reject.textContent = 'Reject'; reject.className = 'px-3 py-2 border border-rose-500 text-rose-400 rounded-lg text-sm font-semibold'
-      approve.addEventListener('click', async () => { await api(`/api/mp/admin/listings/${l.id}`, { method:'PATCH', body:JSON.stringify({status:'approved'}) }); showToast('Approved'); loadAdminListings(); loadListings() })
-      reject.addEventListener('click', async () => { await api(`/api/mp/admin/listings/${l.id}`, { method:'PATCH', body:JSON.stringify({status:'rejected'}) }); showToast('Rejected'); loadAdminListings() })
+      approve.addEventListener('click', async () => { await api(`/api/mp/admin/listings/${esc(l.id)}`, { method:'PATCH', body:JSON.stringify({status:'approved'}) }); showToast('Approved'); loadAdminListings(); loadListings() })
+      reject.addEventListener('click', async () => { await api(`/api/mp/admin/listings/${esc(l.id)}`, { method:'PATCH', body:JSON.stringify({status:'rejected'}) }); showToast('Rejected'); loadAdminListings() })
       const br = document.createElement('div'); br.className = 'flex gap-3 mt-2'; br.appendChild(approve); br.appendChild(reject); w.appendChild(br)
       adminListingsContainer.appendChild(w)
     })
@@ -307,7 +315,7 @@ const renderScreenshotThumbs = () => {
 if (screenshotsInput) {
   screenshotsLabel.addEventListener('click', () => screenshotsInput.click())
   screenshotsInput.addEventListener('change', () => {
-    Array.from(screenshotsInput.files).forEach(f => { if (selectedScreenshots.length >= 3) { showToast('Max 3 screenshots', true); return }; if (f.size > 5*1024*1024) { showToast(`${f.name} too large`, true); return }; selectedScreenshots.push(f) })
+    Array.from(screenshotsInput.files).forEach(f => { if (selectedScreenshots.length >= 3) { showToast('Max 3 screenshots', true); return }; if (f.size > 5*1024*1024) { showToast(`${esc(f.name)} too large`, true); return }; selectedScreenshots.push(f) })
     screenshotsInput.value = ''; renderScreenshotThumbs()
   })
 }

@@ -382,12 +382,14 @@ app.post('/api/external/register', async (c) => {
       ).bind(eventId, normalizedEmail).first() as any
 
       if (existing) {
-        // Update badge_type if they're upgrading
-        if (passPackage && passPackage !== 'visitor') {
-          await c.env.DB.prepare(
-            'UPDATE attendees SET badge_type = ?, lunch_inclusion = ?, last_login_at = datetime("now") WHERE id = ?'
-          ).bind(badgeType, 'Yes', existing.id).run()
-        }
+        // NO LONGER upgrades badge_type. This endpoint is unauthenticated, so the
+        // old UPDATE let anyone raise any attendee's pass tier — their own or a
+        // stranger's — to VIP by posting that person's email with package=vip.
+        // Entitlements are only changed by an admin (PATCH /api/admin/attendees/:id)
+        // once payment is confirmed. Re-registering still just marks them online.
+        await c.env.DB.prepare(
+          'UPDATE attendees SET last_login_at = datetime("now") WHERE id = ?'
+        ).bind(existing.id).run()
         const refId = 'BHAI-2026-' + String(existing.id).padStart(5, '0')
         return c.json({
           success: true,
@@ -395,7 +397,7 @@ app.post('/api/external/register', async (c) => {
           attendee_id: existing.id,
           name: existing.name,
           email: existing.email,
-          badge_type: passPackage ? badgeType : existing.badge_type,
+          badge_type: existing.badge_type,
           networking_app_url: `https://bharatai-networking.pages.dev?email=${encodeURIComponent(existing.email)}`,
           already_registered: true
         })
@@ -586,6 +588,7 @@ app.post('/api/events/:id/attendees/send-magic-link', async (c) => {
 // Track delegate pass download
 app.post('/api/attendees/:id/track-pass-download', async (c) => {
   const id = c.req.param('id')
+  const denied = await requireSelf(c, id); if (denied) return denied
   await c.env.DB.prepare('UPDATE attendees SET pass_downloaded_at = datetime("now") WHERE id = ? AND pass_downloaded_at IS NULL').bind(id).run()
   return c.json({ success: true })
 })
@@ -603,6 +606,9 @@ app.post('/api/attendees/:id/rsvp', async (c) => {
 })
 
 // RSVP via email token (GET — one click from email)
+// NOTE: this one-click RSVP link is emailed to the attendee. It still identifies
+// the person by email alone, which is weak, but it no longer echoes their name back
+// to the caller — that turned it into a lookup oracle for any address.
 app.get('/api/rsvp', async (c) => {
   const email = c.req.query('email')
   const status = c.req.query('status')
@@ -617,7 +623,10 @@ app.get('/api/rsvp', async (c) => {
   // Redirect to pretty RSVP confirmation page
   const appUrlRow = await c.env.DB.prepare("SELECT value FROM app_settings WHERE key = 'app_url'").first() as any
   const appUrl = appUrlRow?.value || 'https://bharataiinnovation.com/app'
-  return c.redirect(`/rsvp-confirmed?status=${status}&name=${encodeURIComponent(attendee.name)}&email=${encodeURIComponent(email as string)}&app=${encodeURIComponent(appUrl)}`)
+  // Name and email deliberately omitted from the redirect: echoing them back
+  // turned this into an oracle that confirmed whether an address was registered
+  // and revealed the person behind it, to anyone who guessed the address.
+  return c.redirect(`/rsvp-confirmed?status=${status}&app=${encodeURIComponent(appUrl)}`)
 })
 
 // RSVP confirmation landing page
@@ -661,6 +670,7 @@ app.get('/rsvp-confirmed', (c) => {
 
 app.get('/api/attendees/:id/connections', async (c) => {
   const attendeeId = c.req.param('id')
+  const denied = await requireSelf(c, attendeeId); if (denied) return denied
   const { results } = await c.env.DB.prepare(`
     SELECT c.*, 
       CASE WHEN c.from_attendee_id = ? THEN a2.name ELSE a1.name END as other_name,
@@ -698,6 +708,17 @@ app.post('/api/connections', async (c) => {
 app.put('/api/connections/:id', async (c) => {
   const id = c.req.param('id')
   const { status } = await c.req.json()
+  // The param is the connection id, not an attendee id, so requireSelf(c, id) would
+  // be meaningless here — load the row and authorise against its participants.
+  if (!isAdminRequest(c) && attendeeSessionSecret(c)) {
+    const me = await verifyAttendeeSession(c)
+    if (!me) return c.json({ error: 'Please sign in again to continue.' }, 401)
+    const row = await c.env.DB.prepare('SELECT from_attendee_id, to_attendee_id FROM connections WHERE id = ?').bind(id).first() as any
+    if (!row) return c.json({ error: 'Connection not found' }, 404)
+    if (me !== row.from_attendee_id && me !== row.to_attendee_id) {
+      return c.json({ error: 'You can only change your own connections.' }, 403)
+    }
+  }
   await c.env.DB.prepare('UPDATE connections SET status = ? WHERE id = ?').bind(status, id).run()
   return c.json({ success: true })
 })
@@ -707,6 +728,17 @@ app.put('/api/connections/:id', async (c) => {
 app.get('/api/messages/:userId/:otherUserId', async (c) => {
   const userId = c.req.param('userId')
   const otherUserId = c.req.param('otherUserId')
+  // Either participant may read the thread; nobody else. This route also marks
+  // messages read, so an unauthenticated read used to clear the victim's badge.
+  if (!isAdminRequest(c)) {
+    const me = await verifyAttendeeSession(c)
+    if (attendeeSessionSecret(c)) {
+      if (!me) return c.json({ error: 'Please sign in again to continue.' }, 401)
+      if (String(me) !== String(userId) && String(me) !== String(otherUserId)) {
+        return c.json({ error: 'You can only read your own conversations.' }, 403)
+      }
+    }
+  }
   const { results } = await c.env.DB.prepare(`
     SELECT m.*, a.name as sender_name 
     FROM messages m
@@ -737,6 +769,7 @@ app.post('/api/messages', async (c) => {
 
 app.get('/api/attendees/:id/unread', async (c) => {
   const id = c.req.param('id')
+  const denied = await requireSelf(c, id); if (denied) return denied
   const result = await c.env.DB.prepare(
     'SELECT COUNT(*) as count FROM messages WHERE receiver_id = ? AND is_read = 0'
   ).bind(id).first()
@@ -747,6 +780,7 @@ app.get('/api/attendees/:id/unread', async (c) => {
 
 app.get('/api/attendees/:id/meetings', async (c) => {
   const attendeeId = c.req.param('id')
+  const denied = await requireSelf(c, attendeeId); if (denied) return denied
   const { results } = await c.env.DB.prepare(`
     SELECT m.*, 
       a1.name as requester_name, a1.company as requester_company,
@@ -775,6 +809,16 @@ app.post('/api/meetings', async (c) => {
 app.put('/api/meetings/:id', async (c) => {
   const id = c.req.param('id')
   const { status } = await c.req.json()
+  // Same shape as connections: the param identifies the meeting, not the caller.
+  if (!isAdminRequest(c) && attendeeSessionSecret(c)) {
+    const me = await verifyAttendeeSession(c)
+    if (!me) return c.json({ error: 'Please sign in again to continue.' }, 401)
+    const row = await c.env.DB.prepare('SELECT requester_id, requestee_id FROM meetings WHERE id = ?').bind(id).first() as any
+    if (!row) return c.json({ error: 'Meeting not found' }, 404)
+    if (me !== row.requester_id && me !== row.requestee_id) {
+      return c.json({ error: 'You can only change your own meetings.' }, 403)
+    }
+  }
   await c.env.DB.prepare('UPDATE meetings SET status = ? WHERE id = ?').bind(status, id).run()
   return c.json({ success: true })
 })
@@ -815,6 +859,7 @@ app.get('/api/exhibitors/:id', async (c) => {
 app.post('/api/exhibitors/:id/visit', async (c) => {
   const exhibitorId = c.req.param('id')
   const { attendee_id, event_id, interested, notes } = await c.req.json()
+  const denied = await requireSelf(c, attendee_id); if (denied) return denied
 
   await c.env.DB.prepare(
     'INSERT INTO booth_visits (exhibitor_id, attendee_id, event_id, interested, notes) VALUES (?, ?, ?, ?, ?)'
@@ -929,6 +974,15 @@ app.post('/api/booth-requests', async (c) => {
 app.get('/api/booth-requests', async (c) => {
   const email = c.req.query('email')
   const attendee_id = c.req.query('attendee_id')
+  // Booth applications carry contact details, quoted pricing and internal notes.
+  // Previously any caller could read them all, or look them up by someone's email.
+  if (!isAdminRequest(c) && attendeeSessionSecret(c)) {
+    const me = await verifyAttendeeSession(c)
+    if (!me) return c.json({ error: 'Please sign in again to continue.' }, 401)
+    if (!attendee_id || String(me) !== String(attendee_id)) {
+      return c.json({ error: 'You can only view your own booth requests.' }, 403)
+    }
+  }
 
   let query = `SELECT br.*, bt.name as booth_type_name, bt.slug as booth_type_slug,
     bt.size_label, bt.area_sqm, bt.price_inr as unit_price, bt.color as booth_color, bt.icon as booth_icon
@@ -1070,7 +1124,10 @@ app.get('/api/events/:id/announcements', async (c) => {
 
 app.get('/api/attendees/:id/dashboard', async (c) => {
   const id = c.req.param('id')
-  const attendee = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(id).first()
+  const denied = await requireSelf(c, id); if (denied) return denied
+  // Was SELECT * — returned email, mobile and every other column, bypassing the
+  // ATTENDEE_PUBLIC_COLS allowlist that protects the directory.
+  const attendee = await c.env.DB.prepare(`SELECT ${isAdminRequest(c) ? '*' : ATTENDEE_PUBLIC_COLS + ', email, mobile, badge_type, rsvp_status, pass_downloaded_at'} FROM attendees WHERE id = ?`).bind(id).first()
   if (!attendee) return c.json({ error: 'Attendee not found' }, 404)
 
   const connectionsAccepted = await c.env.DB.prepare(
@@ -1228,6 +1285,7 @@ app.get('/api/events/:eventId/speaker-sessions', async (c) => {
 // attendee's booth, plus a summary. Powers the exhibitor lead-capture view.
 app.get('/api/attendees/:id/exhibitor/leads', async (c) => {
   const id = c.req.param('id')
+  const denied = await requireSelf(c, id); if (denied) return denied
   const exhibitor = await c.env.DB.prepare('SELECT id, company_name, booth_number FROM exhibitors WHERE attendee_id = ?').bind(id).first() as any
   if (!exhibitor) return c.json({ exhibitor: null, leads: [], summary: { total: 0, interested: 0 } })
   const { results: leads } = await c.env.DB.prepare(`
