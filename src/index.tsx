@@ -186,6 +186,8 @@ const randomCode = (): string => {
   return String(v % 1000000).padStart(6, '0')
 }
 
+// Sent whether or not the address is registered — see send-magic-link.
+const NEUTRAL_SIGNIN_REPLY = 'If that email is registered, a sign-in link and code are on their way.'
 const LOGIN_TOKEN_MINUTES = 15
 const LOGIN_MAX_ATTEMPTS = 5
 
@@ -616,8 +618,10 @@ app.post('/api/events/:id/attendees/send-magic-link', async (c) => {
 
   if (!attendee) {
     // Neutral response: replying 404 here confirmed which addresses are registered,
-    // letting anyone test a list of emails against the delegate database.
-    return c.json({ success: true, message: 'If that email is registered, a sign-in link and code are on their way.' })
+    // letting anyone test a list of emails against the delegate database. The
+    // wording MUST stay byte-identical to the success case below, or the two
+    // replies distinguish a registered address just as plainly as a 404 did.
+    return c.json({ success: true, message: NEUTRAL_SIGNIN_REPLY })
   }
 
   // Build magic link URL
@@ -695,7 +699,7 @@ app.post('/api/events/:id/attendees/send-magic-link', async (c) => {
     if (!res.ok) {
       return c.json({ error: result.Error || 'Failed to send magic link email' }, 500)
     }
-    return c.json({ success: true, message: 'Magic link sent! Check your email inbox.' })
+    return c.json({ success: true, message: NEUTRAL_SIGNIN_REPLY })
   } catch (e: any) {
     return c.json({ error: 'Failed to send email: ' + e.message }, 500)
   }
