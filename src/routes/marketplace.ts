@@ -69,11 +69,64 @@ const generateSlug = (text: string) =>
     .replace(/^-|-$/g, '')
     .slice(0, 80)
 
+// Passwords were a single unsalted SHA-256 round. That is reversible for anything
+// in a wordlist and, being unsalted, identical passwords produced identical hashes
+// — one cracked hash exposed every account sharing that password.
+//
+// Now PBKDF2-SHA256 with a per-account random salt. The iteration count is stored
+// inside the hash, so it can be raised later without invalidating existing rows.
+// NOTE ON WORKERS CPU: key derivation is deliberately expensive. 100k iterations
+// costs roughly 40-90ms of CPU. That is fine on Workers Paid; if marketplace login
+// ever starts failing with "Exceeded CPU limit" on the free tier, lower this
+// constant — the stored format keeps older hashes verifiable either way.
+const PBKDF2_ITERATIONS = 100000
+
+const b64 = (buf: ArrayBuffer | Uint8Array): string => {
+  const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf)
+  let bin = ''
+  for (const b of bytes) bin += String.fromCharCode(b)
+  return btoa(bin)
+}
+const unb64 = (s: string): Uint8Array => Uint8Array.from(atob(s), ch => ch.charCodeAt(0))
+
+const deriveKey = async (password: string, salt: Uint8Array, iterations: number): Promise<Uint8Array> => {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits'])
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt, iterations, hash: 'SHA-256' }, key, 256)
+  return new Uint8Array(bits)
+}
+
+// Constant-time compare — a length-or-content shortcut leaks the hash byte by byte.
+const bytesEqual = (a: Uint8Array, b: Uint8Array): boolean => {
+  if (a.length !== b.length) return false
+  let diff = 0
+  for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i]
+  return diff === 0
+}
+
 const hashPassword = async (password: string) => {
-  const encoder = new TextEncoder()
-  const data = encoder.encode(password)
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data)
-  return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('')
+  const salt = crypto.getRandomValues(new Uint8Array(16))
+  const hash = await deriveKey(password, salt, PBKDF2_ITERATIONS)
+  return `pbkdf2$${PBKDF2_ITERATIONS}$${b64(salt)}$${b64(hash)}`
+}
+
+// The old scheme, kept only so existing accounts can still sign in once.
+const legacySha256Hex = async (password: string) => {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(password))
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
+type PwResult = 'ok' | 'legacy' | 'bad'
+const verifyPassword = async (password: string, stored: string): Promise<PwResult> => {
+  if (!stored) return 'bad'
+  if (stored.startsWith('pbkdf2$')) {
+    const [, iterStr, saltB64, hashB64] = stored.split('$')
+    const iterations = parseInt(iterStr, 10)
+    if (!iterations || !saltB64 || !hashB64) return 'bad'
+    const derived = await deriveKey(password, unb64(saltB64), iterations)
+    return bytesEqual(derived, unb64(hashB64)) ? 'ok' : 'bad'
+  }
+  // Legacy unsalted SHA-256. Correct here means "let them in, then upgrade".
+  return safeEqual(await legacySha256Hex(password), stored) ? 'legacy' : 'bad'
 }
 
 const getCookie = (c: any, name: string) => {
@@ -115,12 +168,24 @@ mp.post('/api/mp/auth/login', async (c) => {
   const { email, password } = await c.req.json()
   if (!email || !password) return c.json({ error: 'Email and password required' }, 400)
 
-  const password_hash = await hashPassword(password)
+  // Matching in SQL is no longer possible: every account has its own salt, so the
+  // row must be fetched first and the password verified in code.
   const company = await c.env.DB.prepare(
-    'SELECT id, company_name, email, role FROM mp_companies WHERE email = ? AND password_hash = ?'
-  ).bind(email, password_hash).first()
+    'SELECT id, company_name, email, role, password_hash FROM mp_companies WHERE email = ?'
+  ).bind(email).first() as any
 
   if (!company) return c.json({ error: 'Invalid email or password' }, 401)
+
+  const verdict = await verifyPassword(password, company.password_hash || '')
+  if (verdict === 'bad') return c.json({ error: 'Invalid email or password' }, 401)
+
+  // Rehash-on-login: the only moment the plaintext is available, so upgrade the
+  // stored hash from the legacy scheme now and never look at it again.
+  if (verdict === 'legacy') {
+    await c.env.DB.prepare('UPDATE mp_companies SET password_hash = ? WHERE id = ?')
+      .bind(await hashPassword(password), company.id).run()
+  }
+  delete company.password_hash
 
   // Set signed cookie session (see signSession — id is HMAC-signed so it
   // can't be forged the way a bare id could).
