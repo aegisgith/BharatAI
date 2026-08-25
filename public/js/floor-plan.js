@@ -160,7 +160,7 @@
   function mailtoHref(label,name,company,email,msg){
     const subject=encodeURIComponent(`Booth Enquiry — ${label} — Bharat AI Innovation 2026`);
     const body=encodeURIComponent(`Name: ${name}\nCompany: ${company}\nEmail: ${email}\nBooth: ${qs('#fpFBooth').value}\nMessage: ${msg}`);
-    return `mailto:info@bharataiinnovation.com?subject=${subject}&body=${body}`;
+    return `mailto:register@bharataiinnovation.com?subject=${subject}&body=${body}`;
   }
   function showFormError(html){
     let box=qs('#fpFError');
