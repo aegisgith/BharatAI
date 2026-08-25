@@ -11640,8 +11640,37 @@ function adminPageHTML(): string {
       document.getElementById('page-title').textContent = titles[sec] || sec;
       document.getElementById('page-subtitle').textContent = subtitles[sec] || '';
 
+      // Reflect the section in the URL so /admin#settings is linkable and
+      // survives a reload. replaceState, not a hash assignment, so this does not
+      // re-enter via the hashchange handler below.
+      try { history.replaceState(null, '', '#' + sec); } catch (_) {}
+
+      // The sidebar scrolls (overflow-y-auto) but hides its scrollbar
+      // (scroll-hide), so a section below the fold — Settings is last of twelve —
+      // looks like it does not exist. Bring the active one into view.
+      const activeBtn = document.querySelector('[data-section="' + sec + '"]');
+      if (activeBtn && activeBtn.scrollIntoView) {
+        try { activeBtn.scrollIntoView({ block: 'nearest' }); } catch (_) {}
+      }
+
       refreshCurrentSection();
     }
+
+    // Deep links: /admin#settings works on load and on back/forward. Without this
+    // the hash was decorative — the section only ever changed via a sidebar click,
+    // which is unreachable when the item is scrolled out of sight.
+    function sectionFromHash() {
+      const want = (location.hash || '').replace('#', '');
+      return document.querySelector('[data-section="' + want + '"]') ? want : null;
+    }
+    window.addEventListener('hashchange', () => {
+      const sec = sectionFromHash();
+      if (sec && sec !== currentSection) switchSection(sec);
+    });
+    window.addEventListener('DOMContentLoaded', () => {
+      const sec = sectionFromHash();
+      if (sec && sec !== 'overview') setTimeout(() => switchSection(sec), 0);
+    });
 
     function refreshCurrentSection() {
       switch(currentSection) {
