@@ -674,7 +674,7 @@ app.post('/api/events/:id/attendees/send-magic-link', async (c) => {
     return c.json({ error: 'Email service not configured.' }, 500)
   }
 
-  const fromEmail = senderRow?.value || 'delegates@bharataiinnovation.com'
+  const fromEmail = senderRow?.value || 'register@bharataiinnovation.com'
   const fromName = senderNameRow?.value || 'Bharat AI Innovation Conference & Exhibition 2026'
 
   try {
@@ -1862,7 +1862,7 @@ app.post('/api/admin/attendees/:id/notify', async (c) => {
   const senderNameRow = await c.env.DB.prepare("SELECT value FROM app_settings WHERE key = 'sender_name'").first() as any
 
   if (apiKeyRow?.value) {
-    const fromEmail = senderRow?.value || 'delegates@bharataiinnovation.com'
+    const fromEmail = senderRow?.value || 'register@bharataiinnovation.com'
     const fromName = senderNameRow?.value || 'Bharat AI Innovation Conference & Exhibition 2026'
     try {
       const payload = {
@@ -2090,7 +2090,7 @@ app.post('/api/admin/attendees/:id/send-thankyou', async (c) => {
   const senderNameRow = await c.env.DB.prepare("SELECT value FROM app_settings WHERE key = 'sender_name'").first() as any
 
   if (apiKeyRow?.value) {
-    const fromEmail = senderRow?.value || 'delegates@bharataiinnovation.com'
+    const fromEmail = senderRow?.value || 'register@bharataiinnovation.com'
     const fromName = senderNameRow?.value || 'Bharat AI Innovation Conference & Exhibition 2026'
     try {
       const payload = {
@@ -2295,7 +2295,7 @@ app.post('/api/admin/settings/test-email', async (c) => {
 
   const senderRow = await c.env.DB.prepare("SELECT value FROM app_settings WHERE key = 'sender_email'").first() as any
   const senderNameRow = await c.env.DB.prepare("SELECT value FROM app_settings WHERE key = 'sender_name'").first() as any
-  const fromEmail = senderRow?.value || 'delegates@bharataiinnovation.com'
+  const fromEmail = senderRow?.value || 'register@bharataiinnovation.com'
   const fromName = senderNameRow?.value || 'Bharat AI Innovation Conference & Exhibition 2026'
 
   try {
@@ -2370,7 +2370,7 @@ app.post('/api/admin/settings/verify-key', async (c) => {
         // Key has send permission but returned validation error (expected since From is not verified)
         return c.json({
           success: true,
-          message: 'API key has email sending permissions! Make sure your sender email (delegates@bharataiinnovation.com) is verified in Elastic Email.',
+          message: 'API key has email sending permissions! Make sure your sender email (register@bharataiinnovation.com) is verified in Elastic Email.',
           warning: 'Key has limited permissions - cannot list API keys, but CAN send emails.'
         })
       }
@@ -14721,8 +14721,8 @@ function adminPageHTML(): string {
                   <label class="block text-xs font-medium text-gray-400 mb-1.5">Sender Email Address <span class="text-red-400">*</span></label>
                   <div class="relative">
                     <i class="fas fa-at absolute left-3 top-1/2 -translate-y-1/2 text-gray-500"></i>
-                    <input type="email" id="set-sender-email" value="\${settings.sender_email || 'delegates@bharataiinnovation.com'}" 
-                      placeholder="delegates@bharataiinnovation.com" 
+                    <input type="email" id="set-sender-email" value="\${settings.sender_email || 'register@bharataiinnovation.com'}" 
+                      placeholder="register@bharataiinnovation.com" 
                       class="w-full pl-10 pr-4 py-2.5 rounded-xl text-sm">
                   </div>
                 </div>
@@ -14802,7 +14802,7 @@ function adminPageHTML(): string {
               </div>
               <div class="flex gap-3 items-start">
                 <span class="w-7 h-7 rounded-full bg-primary-500/20 text-primary-400 flex items-center justify-center text-xs font-bold shrink-0">3</span>
-                <p>Verify your sender email (<strong>delegates@bharataiinnovation.com</strong>) in <strong>Settings &rarr; Email Verification</strong>. You must click the verification link sent to that email.</p>
+                <p>Verify your sender email (<strong>register@bharataiinnovation.com</strong>) in <strong>Settings &rarr; Email Verification</strong>. You must click the verification link sent to that email.</p>
               </div>
               <div class="flex gap-3 items-start">
                 <span class="w-7 h-7 rounded-full bg-primary-500/20 text-primary-400 flex items-center justify-center text-xs font-bold shrink-0">4</span>
@@ -14821,7 +14821,7 @@ function adminPageHTML(): string {
       // Populate status panel (avoid triple-nested backticks)
       const statusPanel = document.getElementById('email-status-panel');
       if (settings.elastic_email_api_key) {
-        statusPanel.innerHTML = '<div class="flex items-center gap-3 p-3 rounded-xl bg-green-500/10 border border-green-500/20"><i class="fas fa-check-circle text-green-400 text-lg"></i><div><p class="text-sm font-medium text-green-300">Elastic Email API Configured</p><p class="text-xs text-gray-400">Emails will be sent automatically via Elastic Email from <strong>' + (settings.sender_email || 'delegates@bharataiinnovation.com') + '</strong></p></div></div>';
+        statusPanel.innerHTML = '<div class="flex items-center gap-3 p-3 rounded-xl bg-green-500/10 border border-green-500/20"><i class="fas fa-check-circle text-green-400 text-lg"></i><div><p class="text-sm font-medium text-green-300">Elastic Email API Configured</p><p class="text-xs text-gray-400">Emails will be sent automatically via Elastic Email from <strong>' + (settings.sender_email || 'register@bharataiinnovation.com') + '</strong></p></div></div>';
       } else {
         statusPanel.innerHTML = '<div class="flex items-center gap-3 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20"><i class="fas fa-exclamation-triangle text-amber-400 text-lg"></i><div><p class="text-sm font-medium text-amber-300">No Email Service Configured</p><p class="text-xs text-gray-400">Clicking "Notify" will open your default email client (mailto) with a pre-filled email. Configure Elastic Email above for automatic sending.</p></div></div>';
       }
