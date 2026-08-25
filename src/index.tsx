@@ -136,7 +136,12 @@ app.get('/api/events/:id/sessions/rooms', async (c) => {
 // PII by anonymous callers. When the admin secret is supplied (the admin
 // panel sends it as a bearer token), the full record incl. contact details
 // is returned, since the admin table needs email to send notifications.
-const ATTENDEE_PUBLIC_COLS = 'id, event_id, name, company, job_title, bio, avatar_url, interests, linkedin_url, twitter_url, website_url, role, badge_type, is_online, last_seen, industry, city, country, created_at'
+// is_online was set to 1 at sign-in and never cleared, so all 934 attendees showed
+// as online permanently and the presence dot meant nothing. Derive it instead from
+// the last sign-in. Nothing writes last_seen, so last_login_at is the only real
+// signal available; true presence would need a heartbeat from the client.
+const ONLINE_WINDOW_MINUTES = 15
+const ATTENDEE_PUBLIC_COLS = `id, event_id, name, company, job_title, bio, avatar_url, interests, linkedin_url, twitter_url, website_url, role, badge_type, CASE WHEN last_login_at > datetime('now', '-${ONLINE_WINDOW_MINUTES} minutes') THEN 1 ELSE 0 END AS is_online, last_seen, industry, city, country, created_at`
 
 function isAdminRequest(c: any): boolean {
   const expected = c.env.ADMIN_SECRET || ''
@@ -173,6 +178,52 @@ async function paymentStatusEnabled(c: any): Promise<boolean> {
     _paymentStatusCol = (results || []).some((r: any) => r.name === 'payment_status')
   } catch { _paymentStatusCol = false }
   return _paymentStatusCol
+}
+
+// Enquiries were written to the database and nobody was told. 239 had accumulated
+// unactioned — including sponsorship and group-registration leads — because the only
+// way to see one was to remember to open the admin panel.
+//
+// Sent via waitUntil so the person submitting never waits for the mail, and a mail
+// failure cannot fail their submission: the enquiry row is already committed by the
+// time this runs, so the lead is safe either way.
+async function notifyTeamOfInquiry(c: any, row: { id: any; inquiry_type: string; name: string; email: string; phone?: string; organization?: string; subject?: string; message?: string }) {
+  const g = async (k: string) => ((await c.env.DB.prepare('SELECT value FROM app_settings WHERE key = ?').bind(k).first()) as any)?.value
+  const apiKey = await g('elastic_email_api_key')
+  if (!apiKey) return
+  const to = (await g('inquiry_notify_email')) || 'info@bharataiinnovation.com'
+  const fromEmail = senderEmailOrDefault(await g('sender_email'))
+  const fromName = (await g('sender_name')) || 'Bharat AI Innovation'
+  const esc = (v: any) => String(v ?? '').replace(/[&<>]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch] as string))
+  const line = (k: string, v: any) => v ? `<tr><td style="padding:6px 12px;color:#666;font-size:13px;">${k}</td><td style="padding:6px 12px;font-size:13px;"><strong>${esc(v)}</strong></td></tr>` : ''
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#f5f5f5;font-family:Arial,sans-serif;">
+    <div style="max-width:600px;margin:20px auto;background:#fff;border-radius:12px;overflow:hidden;">
+      ${emailBrandHeader('New ' + esc(row.inquiry_type).replace(/_/g, ' ') + ' enquiry', 'Reply within one business day')}
+      <div style="padding:24px;">
+        <table style="width:100%;border-collapse:collapse;">
+          ${line('Name', row.name)}${line('Email', row.email)}${line('Phone', row.phone)}
+          ${line('Organisation', row.organization)}${line('Subject', row.subject)}
+        </table>
+        ${row.message ? `<div style="margin-top:16px;padding:14px;background:#f8f9fa;border-left:3px solid #FF9933;border-radius:0 8px 8px 0;font-size:14px;line-height:1.6;color:#333;white-space:pre-wrap;">${esc(row.message)}</div>` : ''}
+        <p style="margin:20px 0 0;font-size:12px;color:#888;">Enquiry #${esc(row.id)} &middot; reply directly to this email to reach them.</p>
+      </div>
+    </div></body></html>`
+  try {
+    await fetch('https://api.elasticemail.com/v4/emails/transactional', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-ElasticEmail-ApiKey': apiKey },
+      body: JSON.stringify({
+        Recipients: { To: [to] },
+        Content: {
+          Body: [{ ContentType: 'HTML', Charset: 'utf-8', Content: html }],
+          From: `${fromName} <${fromEmail}>`,
+          ReplyTo: row.email,
+          Subject: `New ${row.inquiry_type.replace(/_/g, ' ')} enquiry — ${row.name}`,
+        },
+        Options: { TrackClicks: false, TrackOpens: false },
+      }),
+    })
+  } catch { /* the enquiry is already saved; a failed notification must not surface */ }
 }
 
 function emailBrandHeader(title: string, subtitle: string): string {
@@ -233,11 +284,29 @@ const randomCode = (): string => {
 
 // Sent whether or not the address is registered — see send-magic-link.
 const NEUTRAL_SIGNIN_REPLY = 'If that email is registered, a sign-in link and code are on their way.'
+const LOGIN_RATE_WINDOW_MIN = 15
+const LOGIN_RATE_MAX = 4
 const LOGIN_TOKEN_MINUTES = 15
 const LOGIN_MAX_ATTEMPTS = 5
 
 // Issues a single-use token + code for an email, storing only their hashes.
+// Returns null when the address has asked too often; the caller still replies
+// neutrally so this cannot be used to probe which addresses exist.
+async function loginTokenRateLimited(c: any, eventId: any, email: string): Promise<boolean> {
+  const row = await c.env.DB.prepare(
+    `SELECT COUNT(*) AS n FROM login_tokens
+      WHERE event_id = ? AND email = ? AND created_at > datetime('now', '-${LOGIN_RATE_WINDOW_MIN} minutes')`
+  ).bind(eventId, email).first() as any
+  return (row?.n || 0) >= LOGIN_RATE_MAX
+}
+
 async function createLoginToken(c: any, eventId: any, email: string) {
+  // Nothing else prunes this table and every sign-in adds a row. Clearing spent and
+  // expired rows here keeps it from growing without bound, with no cron needed.
+  await c.env.DB.prepare(
+    "DELETE FROM login_tokens WHERE expires_at < datetime('now', '-1 day') OR (used_at IS NOT NULL AND used_at < datetime('now', '-1 day'))"
+  ).run()
+
   const token = randomHex(32)
   const code = randomCode()
   // Supersede anything outstanding for this address so an old code cannot be reused.
@@ -687,6 +756,11 @@ app.post('/api/events/:id/attendees/send-magic-link', async (c) => {
   let loginCode = ''
   let magicLink = `${appUrl}?email=${encodeURIComponent(normalizedEmail)}&action=magic-login`
   if (await verifiedLoginEnabled(c)) {
+    // Same neutral reply as an unknown address — refusing loudly would confirm the
+    // address exists, and would also tell an abuser their flooding is working.
+    if (await loginTokenRateLimited(c, eventId, normalizedEmail)) {
+      return c.json({ success: true, message: NEUTRAL_SIGNIN_REPLY })
+    }
     const issued = await createLoginToken(c, eventId, normalizedEmail)
     loginCode = issued.code
     magicLink = `${appUrl}?email=${encodeURIComponent(normalizedEmail)}&action=magic-login&token=${issued.token}`
@@ -2722,6 +2796,14 @@ app.post('/api/inquiries', async (c) => {
     phone || '', organization || '', subject || '', message || '',
     JSON.stringify(metadata || {})
   ).run()
+
+  // Hono's c.executionCtx THROWS when there is no ExecutionContext rather than being
+  // undefined, so optional chaining does not protect against it — reading it in any
+  // context without one turned a saved enquiry into a 500 for the submitter.
+  const notify = notifyTeamOfInquiry(c, { id: result.meta.last_row_id, inquiry_type, name, email, phone, organization, subject, message })
+  let scheduled = false
+  try { c.executionCtx.waitUntil(notify); scheduled = true } catch { /* no ctx — fall through */ }
+  if (!scheduled) await notify
 
   return c.json({ success: true, id: result.meta.last_row_id, message: 'Inquiry submitted successfully. We will get back to you soon!' }, 201)
 })
