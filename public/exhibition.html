@@ -694,8 +694,8 @@
              anyone who loaded this page in the last 4 hours. The HTML itself is
              max-age=0, so bumping this version ships new booth data instantly.
              BUMP IT whenever floor-plan-data.js changes. -->
-        <script src="js/floor-plan-data.js?v=2026-08-18"></script>
-        <script src="js/floor-plan.js?v=2026-08-18"></script>
+        <script src="js/floor-plan-data.js?v=2026-08-25"></script>
+        <script src="js/floor-plan.js?v=2026-08-25"></script>
     </section>
 
     <!-- VALUE YOU DRIVE HOME -->
@@ -753,7 +753,7 @@
                     <div class="package-type">Starter</div>
                     <div class="package-name">Startup Pod</div>
                     <div class="package-size">1.5 × 1.5 m (2.25 sqm / 24 sqft)</div>
-                    <div class="package-count">16 pods available</div>
+                    <div class="package-count" data-pkg="pod">16 pods available</div>
                     <div class="package-price">₹38,000 <span>+ GST</span></div>
                     <ul class="package-features">
                         <li>Compact 2.25 sqm dedicated pod</li>
@@ -772,7 +772,7 @@
                     <div class="package-type">Explorer</div>
                     <div class="package-name">Explorer Booth</div>
                     <div class="package-size">2 × 2 m (4 sqm / 43 sqft)</div>
-                    <div class="package-count">8 booths available</div>
+                    <div class="package-count" data-pkg="explorer">8 booths available</div>
                     <div class="package-price">₹1,29,000 <span>+ GST</span></div>
                     <ul class="package-features">
                         <li>4 sqm shell scheme booth</li>
@@ -791,7 +791,7 @@
                     <div class="package-type">Innovator</div>
                     <div class="package-name">Innovator Booth</div>
                     <div class="package-size">3 × 2 m (6 sqm / 65 sqft)</div>
-                    <div class="package-count">6 booths available</div>
+                    <div class="package-count" data-pkg="innovator">6 booths available</div>
                     <div class="package-price">₹1,95,000 <span>+ GST</span></div>
                     <ul class="package-features">
                         <li>6 sqm shell scheme booth</li>
@@ -812,7 +812,7 @@
                     <div class="package-type">Accelerator</div>
                     <div class="package-name">Accelerator Booth</div>
                     <div class="package-size">3 × 3 m (9 sqm / 97 sqft)</div>
-                    <div class="package-count">10 booths available</div>
+                    <div class="package-count" data-pkg="standard">10 booths available</div>
                     <div class="package-price">₹2,91,000 <span>+ GST</span></div>
                     <ul class="package-features">
                         <li>9 sqm shell scheme booth</li>
@@ -833,7 +833,7 @@
                     <div class="package-type">Enterprise</div>
                     <div class="package-name">Enterprise Booth</div>
                     <div class="package-size">4 × 2 m (8 sqm / 86 sqft)</div>
-                    <div class="package-count package-count--scarce"><span class="scarcity-dot"></span>Only 2 of 2 remaining</div>
+                    <div class="package-count package-count--scarce" data-pkg="accelerator"><span class="scarcity-dot"></span>Only 2 of 2 remaining</div>
                     <div class="package-price">₹2,58,000 <span>+ GST</span></div>
                     <ul class="package-features">
                         <li>8 sqm custom-built booth</li>
@@ -852,7 +852,7 @@
                     <div class="package-type">Flagship</div>
                     <div class="package-name">Flagship Pavilion</div>
                     <div class="package-size">6 × 2 m (12 sqm / 129 sqft)</div>
-                    <div class="package-count package-count--scarce"><span class="scarcity-dot"></span>Only 2 of 2 remaining</div>
+                    <div class="package-count package-count--scarce" data-pkg="enterprise"><span class="scarcity-dot"></span>Only 2 of 2 remaining</div>
                     <div class="package-price">₹3,87,000 <span>+ GST</span></div>
                     <ul class="package-features">
                         <li>12 sqm custom-built pavilion</li>
@@ -874,7 +874,7 @@
                     <div class="package-type" style="color:var(--indigo);">Mega</div>
                     <div class="package-name">Mega Pavilion</div>
                     <div class="package-size">7 × 7.7 m (53.90 sqm / 580 sqft)</div>
-                    <div class="package-count package-count--scarce"><span class="scarcity-dot"></span>Only 2 available — 1 enquiry in progress</div>
+                    <div class="package-count package-count--scarce" data-pkg="mega"><span class="scarcity-dot"></span>Only 2 available — 1 enquiry in progress</div>
                     <div class="package-price" style="color:var(--indigo);">₹17,40,000 <span>+ GST</span></div>
                     <ul class="package-features">
                         <li>53.90 sqm mega custom pavilion</li>

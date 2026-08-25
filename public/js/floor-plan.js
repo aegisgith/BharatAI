@@ -225,6 +225,29 @@
   /* ---------- counter ---------- */
   (function(){ const tot=BOOTHS.length, av=BOOTHS.filter(b=>!b.booked).length; qs('#fpAvailNum').textContent=av; qs('#fpTotNum').textContent='/'+tot; })();
 
+  /* ---------- package card availability ----------
+     The package cards used to carry hand-written counts that drifted from the map:
+     Innovator advertised 6 while the plan showed 10, Accelerator 10 against 17, and
+     Enterprise claimed "2 of 2" when only 1 was free. A visitor could click through
+     to a booth the card said was available and find it reserved. Both now read from
+     the same BOOTHS array as the map and the counter above, so they cannot diverge. */
+  // The <script> tag sits above the package cards in exhibition.html, so at execution
+  // time those elements have not been parsed yet. Wait for the document.
+  function syncPackageCounts(){
+    const c=counts();
+    document.querySelectorAll('.package-count[data-pkg]').forEach(el=>{
+      const t=el.getAttribute('data-pkg'); if(!c[t]) return;
+      const av=c[t].av, tot=c[t].tot;
+      const unit=t==='pod' ? (av===1?'pod':'pods') : (av===1?'booth':'booths');
+      const dot='<span class="scarcity-dot"></span>';
+      if(av===0){ el.classList.add('package-count--scarce'); el.innerHTML=dot+'Fully booked'; }
+      else if(av<=2){ el.classList.add('package-count--scarce'); el.innerHTML=dot+'Only '+av+' of '+tot+' remaining'; }
+      else { el.classList.remove('package-count--scarce'); el.textContent=av+' '+unit+' available'; }
+    });
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', syncPackageCounts);
+  else syncPackageCounts();
+
   /* ---------- init ---------- */
   buildChips();
   function start(){ fit(); requestAnimationFrame(fit); }
