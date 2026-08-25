@@ -159,6 +159,22 @@ function senderEmailOrDefault(v?: string | null): string {
   return val
 }
 
+// A self-declared paid tier confers nothing until payment is confirmed. The tier
+// itself must still be recorded at registration, because the paid flow sets it
+// before redirecting to mUni Campus and nothing sets it afterwards.
+// Activates only once migration 0015 has added the column, so this deploy is safe
+// on its own.
+const PAID_TIERS = ['Delegate Pass', 'VIP Pass', 'Academic Pass']
+let _paymentStatusCol: boolean | null = null
+async function paymentStatusEnabled(c: any): Promise<boolean> {
+  if (_paymentStatusCol !== null) return _paymentStatusCol
+  try {
+    const { results } = await c.env.DB.prepare("PRAGMA table_info(attendees)").all()
+    _paymentStatusCol = (results || []).some((r: any) => r.name === 'payment_status')
+  } catch { _paymentStatusCol = false }
+  return _paymentStatusCol
+}
+
 function emailBrandHeader(title: string, subtitle: string): string {
   const SAFFRON = '#FF9933', WHITE = '#FFFFFF', GREEN = '#138808'
   return `
@@ -407,10 +423,19 @@ app.post('/api/events/:id/attendees/register', async (c) => {
   const ALLOWED_PASSES = ['Visitor Pass', 'Delegate Pass', 'VIP Pass', 'Academic Pass', 'Media Pass']
   const passType = ALLOWED_PASSES.includes(badge_type) ? badge_type : 'Visitor Pass'
 
+  // A paid tier chosen at registration is recorded but marked unpaid; payment is
+  // confirmed out of band on mUni Campus, so it cannot be trusted from the client.
+  const needsPayment = PAID_TIERS.includes(passType)
+  const withPaymentCol = await paymentStatusEnabled(c)
+
   try {
-    const result = await c.env.DB.prepare(
-      'INSERT INTO attendees (event_id, name, email, company, job_title, bio, interests, linkedin_url, mobile, city, lunch_inclusion, badge_type, is_online, last_login_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, datetime("now"))'
-    ).bind(eventId, name.trim(), normalizedEmail, company || '', job_title || '', bio || '', interests || '', linkedin_url || '', mobile || '', city || '', lunch_inclusion || 'No', passType).run()
+    const result = withPaymentCol
+      ? await c.env.DB.prepare(
+          'INSERT INTO attendees (event_id, name, email, company, job_title, bio, interests, linkedin_url, mobile, city, lunch_inclusion, badge_type, payment_status, is_online, last_login_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, datetime("now"))'
+        ).bind(eventId, name.trim(), normalizedEmail, company || '', job_title || '', bio || '', interests || '', linkedin_url || '', mobile || '', city || '', lunch_inclusion || 'No', passType, needsPayment ? 'pending' : 'paid').run()
+      : await c.env.DB.prepare(
+          'INSERT INTO attendees (event_id, name, email, company, job_title, bio, interests, linkedin_url, mobile, city, lunch_inclusion, badge_type, is_online, last_login_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, datetime("now"))'
+        ).bind(eventId, name.trim(), normalizedEmail, company || '', job_title || '', bio || '', interests || '', linkedin_url || '', mobile || '', city || '', lunch_inclusion || 'No', passType).run()
 
     const attendee = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(result.meta.last_row_id).first()
     await issueAttendeeSession(c, (attendee as any).id)

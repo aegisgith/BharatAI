@@ -12,7 +12,8 @@ CREATE TABLE IF NOT EXISTS mp_companies (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
--- Insert default admin account (password: admin123 — SHA-256 hash)
+-- Insert default admin account. The seed password that was documented here is
+-- rotated in production; do not reintroduce a plaintext credential in a migration.
 INSERT OR IGNORE INTO mp_companies (id, company_name, email, password_hash, role)
 VALUES (1, 'Bharat AI Admin', 'admin@bharataiinnovation.com', '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', 'admin');
 

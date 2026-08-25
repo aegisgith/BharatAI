@@ -30,7 +30,7 @@
 - Profile management with avatar upload
 
 ### Admin Panel (`/admin`)
-- Password-protected access (default: `admin123` - CHANGE FOR PRODUCTION)
+- Password-protected access. The seeded default has been rotated; the current secret lives in Cloudflare Pages env vars, never in this repo.
 - Attendee management (CRUD, CSV bulk upload, editable inline fields)
 - Column customization (show/hide, width presets, drag-to-resize, localStorage persistence)
 - Duplicate detection with visual flagging and grouping
@@ -126,7 +126,7 @@ networking.bharataiinnovation.com -> bharatai-networking.pages.dev
 ```
 
 ### Change Admin Password
-In `src/index.tsx`, find `ADMIN_PASS = 'admin123'` and change to a strong password.
+Admin access is gated by the `ADMIN_SECRET` environment variable in Cloudflare Pages. Never commit a password here.
 
 ### Configure Elastic Email
 1. Go to `/admin` > Settings tab
