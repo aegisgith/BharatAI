@@ -147,6 +147,35 @@ function isAdminRequest(c: any): boolean {
   return token === expected
 }
 
+// app_settings.sender_email still holds delegates@bharataiinnovation.com, an address
+// that has no mailbox — Elastic Email accepts it because the DOMAIN is verified, so
+// mail sends but every reply bounces. Treat that specific dead value as unset until
+// the row is corrected in admin Settings.
+const DEAD_SENDER = 'delegates@bharataiinnovation.com'
+const DEFAULT_SENDER = 'register@bharataiinnovation.com'
+function senderEmailOrDefault(v?: string | null): string {
+  const val = (v || '').trim().toLowerCase()
+  if (!val || val === DEAD_SENDER) return DEFAULT_SENDER
+  return val
+}
+
+function emailBrandHeader(title: string, subtitle: string): string {
+  const SAFFRON = '#FF9933', WHITE = '#FFFFFF', GREEN = '#138808'
+  return `
+    <div style="background-color:#0f2557;background:linear-gradient(135deg,#0b1b3f 0%,#12306e 55%,#1a4fa0 100%);padding:30px 24px;text-align:center;">
+      <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI Innovation" style="height:58px;width:auto;background:#ffffff;border-radius:12px;padding:8px 12px;display:inline-block;">
+      <div style="margin:16px 0 0;font-size:27px;line-height:1.2;font-weight:bold;font-family:Arial,Helvetica,sans-serif;letter-spacing:0.3px;">
+        <span style="color:${SAFFRON};">Bharat</span> <span style="color:${WHITE};">AI</span> <span style="color:${GREEN};">Innovation</span>
+      </div>
+      <div style="margin:8px 0 0;font-size:20px;line-height:1.35;font-weight:bold;font-family:'Nirmala UI','Noto Sans Devanagari',Arial,sans-serif;">
+        <span style="color:${SAFFRON};">&#2349;&#2366;&#2352;&#2340;</span> <span style="color:${WHITE};">&#2319;&#2310;&#2312;</span> <span style="color:${GREEN};">&#2311;&#2344;&#2379;&#2357;&#2375;&#2358;&#2344;</span>
+      </div>
+      <div style="margin:14px auto 0;width:120px;height:3px;background:linear-gradient(90deg,${SAFFRON} 0 33.33%,${WHITE} 33.33% 66.66%,${GREEN} 66.66% 100%);border-radius:2px;"></div>
+      ${title ? `<h1 style="color:#ffffff;margin:16px 0 0;font-size:19px;font-weight:bold;font-family:Arial,Helvetica,sans-serif;">${title}</h1>` : ''}
+      ${subtitle ? `<p style="color:rgba(255,255,255,0.82);margin:6px 0 0;font-size:13px;font-family:Arial,Helvetica,sans-serif;">${subtitle}</p>` : ''}
+    </div>`
+}
+
 // ==================== VERIFIED SIGN-IN ====================
 //
 // Sign-in used to be email-only: post an address, receive that account. This
@@ -643,11 +672,7 @@ app.post('/api/events/:id/attendees/send-magic-link', async (c) => {
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
 <body style="margin:0;padding:0;background:#f5f5f5;font-family:Arial,sans-serif;">
   <div style="max-width:600px;margin:20px auto;background:white;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
-    <div style="background:linear-gradient(135deg,#0b0d1a,#1a1f3a);padding:24px 32px;text-align:center;border-bottom:1px solid rgba(245,98,10,0.2);">
-      <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" style="height:50px;margin-bottom:12px;">
-      <h1 style="color:white;margin:0;font-size:20px;">Sign In to Bharat AI Innovation 2026</h1>
-      <p style="color:#c4b5fd;margin:6px 0 0;font-size:13px;">16th Bharat AI Innovation • 20-21 Nov 2026</p>
-    </div>
+    ${emailBrandHeader('Sign In to Bharat AI Innovation 2026', '16th Edition &bull; 20&ndash;21 Nov 2026 &bull; WTC Mumbai')}
     <div style="padding:32px;">
       <p style="color:#333;line-height:1.6;margin:0 0 16px;">Hi <strong>${attendee.name}</strong>,</p>
       <p style="color:#555;line-height:1.6;margin:0 0 24px;">Click the button below to sign in to the Bharat AI Innovation 2026. This link will log you in automatically — no password needed.</p>
@@ -674,7 +699,7 @@ app.post('/api/events/:id/attendees/send-magic-link', async (c) => {
     return c.json({ error: 'Email service not configured.' }, 500)
   }
 
-  const fromEmail = senderRow?.value || 'register@bharataiinnovation.com'
+  const fromEmail = senderEmailOrDefault(senderRow?.value)
   const fromName = senderNameRow?.value || 'Bharat AI Innovation Conference & Exhibition 2026'
 
   try {
@@ -1755,14 +1780,8 @@ app.post('/api/admin/attendees/:id/notify', async (c) => {
       <p style="margin:0 0 6px;color:#888;font-size:11px;text-transform:uppercase;letter-spacing:1px;">Supported by</p>
       <img src="https://bharataiinnovation.com/wp-content/uploads/2026/02/Meity-logo.png" alt="Ministry of Electronics and Information Technology" style="height:60px;max-width:280px;">
     </div>
-    <!-- BHAI Logo -->
-    <div style="text-align:center;margin-bottom:12px;">
-      <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI Innovation" style="height:70px;max-width:240px;">
-    </div>
-    <!-- Header Banner -->
-    <div style="background:linear-gradient(135deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%);border-radius:16px;padding:32px 24px;text-align:center;color:white;">
-      <h1 style="margin:0 0 6px;font-size:24px;">Bharat AI Innovation Conference & Exhibition 2026</h1>
-      <p style="margin:0;opacity:0.8;font-size:14px;">20-21 Nov 2026 &bull; World Trade Center, Mumbai</p>
+    <div style="border-radius:16px;overflow:hidden;">
+      ${emailBrandHeader('Conference &amp; Exhibition 2026', '20&ndash;21 Nov 2026 &bull; World Trade Center, Mumbai')}
     </div>
     <!-- Main Content -->
     <div style="background:white;border-radius:16px;padding:30px;margin-top:16px;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
@@ -1862,7 +1881,7 @@ app.post('/api/admin/attendees/:id/notify', async (c) => {
   const senderNameRow = await c.env.DB.prepare("SELECT value FROM app_settings WHERE key = 'sender_name'").first() as any
 
   if (apiKeyRow?.value) {
-    const fromEmail = senderRow?.value || 'register@bharataiinnovation.com'
+    const fromEmail = senderEmailOrDefault(senderRow?.value)
     const fromName = senderNameRow?.value || 'Bharat AI Innovation Conference & Exhibition 2026'
     try {
       const payload = {
@@ -1960,14 +1979,8 @@ app.post('/api/admin/attendees/:id/send-thankyou', async (c) => {
       <p style="margin:0 0 6px;color:#888;font-size:11px;text-transform:uppercase;letter-spacing:1px;">Supported by</p>
       <img src="https://bharataiinnovation.com/wp-content/uploads/2026/02/Meity-logo.png" alt="Ministry of Electronics and Information Technology" style="height:60px;max-width:280px;">
     </div>
-    <!-- BHAI Logo -->
-    <div style="text-align:center;margin-bottom:12px;">
-      <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI Innovation" style="height:70px;max-width:240px;">
-    </div>
-    <!-- Header Banner -->
-    <div style="background:linear-gradient(135deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%);border-radius:16px;padding:32px 24px;text-align:center;color:white;">
-      <h1 style="margin:0 0 6px;font-size:24px;">Confirm Your Attendance!</h1>
-      <p style="margin:0;opacity:0.8;font-size:14px;">Bharat AI Innovation Conference & Exhibition 2026 &bull; 20-21 Nov 2026</p>
+    <div style="border-radius:16px;overflow:hidden;">
+      ${emailBrandHeader('Confirm Your Attendance!', 'Conference &amp; Exhibition 2026 &bull; 20&ndash;21 Nov 2026')}
     </div>
     <!-- Main Content -->
     <div style="background:white;border-radius:16px;padding:30px;margin-top:16px;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
@@ -2090,7 +2103,7 @@ app.post('/api/admin/attendees/:id/send-thankyou', async (c) => {
   const senderNameRow = await c.env.DB.prepare("SELECT value FROM app_settings WHERE key = 'sender_name'").first() as any
 
   if (apiKeyRow?.value) {
-    const fromEmail = senderRow?.value || 'register@bharataiinnovation.com'
+    const fromEmail = senderEmailOrDefault(senderRow?.value)
     const fromName = senderNameRow?.value || 'Bharat AI Innovation Conference & Exhibition 2026'
     try {
       const payload = {
@@ -2295,7 +2308,7 @@ app.post('/api/admin/settings/test-email', async (c) => {
 
   const senderRow = await c.env.DB.prepare("SELECT value FROM app_settings WHERE key = 'sender_email'").first() as any
   const senderNameRow = await c.env.DB.prepare("SELECT value FROM app_settings WHERE key = 'sender_name'").first() as any
-  const fromEmail = senderRow?.value || 'register@bharataiinnovation.com'
+  const fromEmail = senderEmailOrDefault(senderRow?.value)
   const fromName = senderNameRow?.value || 'Bharat AI Innovation Conference & Exhibition 2026'
 
   try {
