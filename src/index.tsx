@@ -4797,7 +4797,7 @@ function mainPageHTML(): string {
                anyone in, so this second step is what proves the mailbox is theirs. -->
           <div id="signin-code-field" class="hidden">
             <label class="text-xs text-gray-400 mb-1 block">6-digit code from your email</label>
-            <input type="text" id="signin-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000" class="w-full px-4 py-3 rounded-xl text-sm" style="letter-spacing:0.4em;font-family:monospace;">
+            <input type="text" id="signin-code" inputmode="numeric" autocomplete="one-time-code" maxlength="12" placeholder="000000" class="w-full px-4 py-3 rounded-xl text-sm" style="letter-spacing:0.4em;font-family:monospace;">
             <p class="text-[11px] text-gray-500 mt-1">Expires in 15 minutes. Clicking the link in the email works too.</p>
           </div>
           <button type="submit" class="w-full py-3 rounded-xl font-bold text-white transition-all hover:opacity-90" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);box-shadow:0 4px 20px rgba(245,98,10,0.3);">
@@ -7332,8 +7332,14 @@ function mainPageHTML(): string {
 
         // Step 2 — verify the code the user typed.
         const codeEl = document.getElementById('signin-code');
-        const code = codeEl ? codeEl.value.trim() : '';
-        if (!/^\d{6}$/.test(code)) {
+        // Strip everything that is not a digit rather than pattern-matching: a
+        // character class written inside this template literal loses its backslash
+        // on the way to the browser (\d became d, so /^d{6}$/ only ever matched the
+        // literal string "dddddd" and no real code could pass). [^0-9] has no escape
+        // to lose, and it also absorbs spaces or invisible characters picked up when
+        // the code is copied out of the email.
+        const code = codeEl ? codeEl.value.replace(/[^0-9]/g, '') : '';
+        if (code.length !== 6) {
           errorEl.textContent = 'Enter the 6-digit code from the email.';
           errorEl.classList.remove('hidden');
           btn.innerHTML = '<i class="fas fa-check mr-2"></i>Verify code';
