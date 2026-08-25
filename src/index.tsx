@@ -191,7 +191,7 @@ async function notifyTeamOfInquiry(c: any, row: { id: any; inquiry_type: string;
   const g = async (k: string) => ((await c.env.DB.prepare('SELECT value FROM app_settings WHERE key = ?').bind(k).first()) as any)?.value
   const apiKey = await g('elastic_email_api_key')
   if (!apiKey) return
-  const to = (await g('inquiry_notify_email')) || 'register@bharataiinnovation.com'
+  const to = (await g('inquiry_notify_email')) || 'info@bharataiinnovation.com'
   const fromEmail = senderEmailOrDefault(await g('sender_email'))
   const fromName = (await g('sender_name')) || 'Bharat AI Innovation'
   const esc = (v: any) => String(v ?? '').replace(/[&<>]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch] as string))
@@ -3725,7 +3725,7 @@ ${sharedNavHTML('contact')}
   <!-- Quick Info Bar -->
   <div class="max-w-2xl mx-auto mt-6">
     <div class="glass rounded-xl p-4 flex flex-wrap items-center justify-center gap-4 text-xs text-gray-400">
-      <span><i class="fas fa-envelope text-primary-400 mr-1.5"></i><a href="mailto:register@bharataiinnovation.com" class="hover:text-white transition">register@bharataiinnovation.com</a></span>
+      <span><i class="fas fa-envelope text-primary-400 mr-1.5"></i><a href="mailto:info@bharataiinnovation.com" class="hover:text-white transition">info@bharataiinnovation.com</a></span>
       <span><i class="fas fa-phone text-primary-400 mr-1.5"></i><a href="tel:+918976580367" class="hover:text-white transition">+91 89765 80367</a></span>
       <span><i class="fas fa-globe text-primary-400 mr-1.5"></i><a href="https://bharataiinnovation.com" target="_blank" class="hover:text-white transition">bharataiinnovation.com</a></span>
       <span><i class="fas fa-map-marker-alt text-primary-400 mr-1.5"></i>WTC Mumbai, Cuffe Parade</span>
