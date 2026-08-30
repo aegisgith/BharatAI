@@ -4465,7 +4465,9 @@ ${sharedNavHTML('register')}
                   <li><i class="fas fa-check text-green-400 mr-1.5"></i>Workshops and lunch</li>
                   <li><i class="fas fa-check text-green-400 mr-1.5"></i>Full networking hub and meetings</li>
                 </ul>
-                <a href="/register#delegate" class="mt-3 block text-center px-4 py-2 rounded-lg text-xs font-semibold bg-primary-500/20 text-primary-200 hover:bg-primary-500/30 transition">Upgrade to Delegate</a>
+                <!-- -300, not -200: the light theme remaps the -300 shades to dark ink
+                     and leaves -200 pale, so -200 was near-invisible on this page. -->
+                <a href="/register#delegate" class="mt-3 block text-center px-4 py-2 rounded-lg text-xs font-semibold bg-primary-500/20 text-primary-300 hover:bg-primary-500/30 transition">Upgrade to Delegate</a>
               </div>
               <div class="rounded-xl p-4 border border-amber-500/30 bg-amber-500/5 relative">
                 <div class="absolute -top-2.5 right-4 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500 text-black">ALL ACCESS</div>
@@ -4478,7 +4480,7 @@ ${sharedNavHTML('register')}
                   <li><i class="fas fa-check text-amber-400 mr-1.5"></i>VIP lounge and priority seating</li>
                   <li><i class="fas fa-check text-amber-400 mr-1.5"></i>Speaker meet &amp; greet, VIP dinner</li>
                 </ul>
-                <a href="/register#vip" class="mt-3 block text-center px-4 py-2 rounded-lg text-xs font-semibold bg-amber-500/20 text-amber-200 hover:bg-amber-500/30 transition">Upgrade to VIP</a>
+                <a href="/register#vip" class="mt-3 block text-center px-4 py-2 rounded-lg text-xs font-semibold bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition">Upgrade to VIP</a>
               </div>
             </div>
             <p class="text-[11px] text-gray-500 text-center mt-3">Use the same email address. We move your existing registration to the new tier once payment is confirmed &mdash; your reference number does not change.</p>
