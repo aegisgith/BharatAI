@@ -12198,14 +12198,41 @@ function adminPageHTML(): string {
     let lastAttendees = null;
     let lastDupData = null;
 
-    async function loadAdminAttendees(scrollToId) {
+    // Reg Date rendered "-" for every row because it read a.registration_date, which
+    // is not a column on attendees — the table has created_at. Formatted here rather
+    // than shown raw, and no longer inline-editable: created_at records when the row
+    // was written and is not something to type over.
+    function fmtRegDate(v) {
+      if (!v) return '<span class="text-gray-600">-</span>';
+      const d = new Date(String(v).replace(' ', 'T') + (String(v).includes('Z') ? '' : 'Z'));
+      if (isNaN(d)) return '<span class="text-gray-600">-</span>';
+      return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' });
+    }
+
+    // Paging. 1000+ rows were rendered into the DOM in one go, which is what makes
+    // this page slow to open. Search still runs over the WHOLE dataset and paginates
+    // the matches, so a name on page 9 is still findable from page 1.
+    let attPage = 1, attPageSize = 100, attQuery = '';
+    function attFiltered(list) {
+      if (!attQuery) return list;
+      const q = attQuery.toLowerCase();
+      return list.filter(a => [a.name, a.email, a.company, a.job_title, a.mobile, a.city, a.badge_type]
+        .map(v => String(v || '').toLowerCase()).join(' ').includes(q));
+    }
+    function gotoAttPage(n) { attPage = n; loadAdminAttendees(null, true); }
+    function setAttPageSize(v) { attPageSize = v === 'all' ? Infinity : parseInt(v, 10); attPage = 1; loadAdminAttendees(null, true); }
+    function searchAttendees(v) { attQuery = v; attPage = 1; loadAdminAttendees(null, true); }
+
+    async function loadAdminAttendees(scrollToId, keepData) {
       // Preserve scroll position before reload
       const scrollContainer = document.querySelector('#section-attendees .overflow-y-auto');
       const prevScrollTop = scrollContainer ? scrollContainer.scrollTop : 0;
-      const [attendees, dupData] = await Promise.all([
-        api.get('/api/events/'+EID+'/attendees'),
-        api.get('/api/admin/events/'+EID+'/attendees/duplicates').catch(()=>({groups:[]}))
-      ]);
+      const [attendees, dupData] = (keepData && lastAttendees)
+        ? [lastAttendees, lastDupData || { groups: [] }]
+        : await Promise.all([
+            api.get('/api/events/'+EID+'/attendees'),
+            api.get('/api/admin/events/'+EID+'/attendees/duplicates').catch(()=>({groups:[]}))
+          ]);
       lastAttendees = attendees;
       lastDupData = dupData;
       // Build duplicate ID map: id -> { groupIndex, color }
@@ -12229,12 +12256,27 @@ function adminPageHTML(): string {
           return a.id - b.id;
         });
       }
+      // Filter first so paging reflects the search, then clamp the page.
+      const attMatches = attFiltered(attendees);
+      const attTotalPages = Math.max(1, Math.ceil(attMatches.length / attPageSize));
+      if (attPage > attTotalPages) attPage = attTotalPages;
+      const attStart = attPageSize === Infinity ? 0 : (attPage - 1) * attPageSize;
+      const attEnd = attPageSize === Infinity ? attMatches.length : attStart + attPageSize;
+      // If we were asked to scroll to a row, move to the page holding it.
+      if (scrollToId) {
+        const pos = attMatches.findIndex(a => String(a.id) === String(scrollToId));
+        if (pos >= 0 && attPageSize !== Infinity) attPage = Math.floor(pos / attPageSize) + 1;
+      }
+      const attPageRows = attMatches.slice(
+        attPageSize === Infinity ? 0 : (attPage - 1) * attPageSize,
+        attPageSize === Infinity ? attMatches.length : (attPage - 1) * attPageSize + attPageSize);
+
       document.getElementById('section-attendees').innerHTML = \`
         <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
           <div class="flex gap-2 items-center">
             <div class="relative">
               <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-xs"></i>
-              <input type="text" id="admin-att-search" placeholder="Search attendees..." class="pl-9 pr-4 py-2 rounded-lg text-xs w-64" oninput="filterAdminAttendees()">
+              <input type="text" id="admin-att-search" placeholder="Search attendees..." class="pl-9 pr-4 py-2 rounded-lg text-xs w-64" value="${esc(attQuery)}" oninput="searchAttendees(this.value)">
             </div>
             <span class="text-xs text-gray-400">\${attendees.length} total</span>
             \${Object.keys(dupMap).length > 0 ? '<span class="text-xs text-red-400 ml-1"><i class="fas fa-exclamation-triangle mr-0.5"></i>' + (dupData.totalGroups||0) + ' dup groups (' + Object.keys(dupMap).length + ' entries)</span>' : ''}
@@ -12258,7 +12300,7 @@ function adminPageHTML(): string {
                 <th style="width:50px" class="sortable" onclick="sortAttendees('id')">ID\${sortIcon('id')}</th><th style="width:40px"></th><th style="width:130px" class="sortable" onclick="sortAttendees('name')">Name\${sortIcon('name')}<span class="col-resizer" data-col="2"></span></th><th style="width:180px" class="sortable" onclick="sortAttendees('email')">Email\${sortIcon('email')}<span class="col-resizer" data-col="3"></span></th><th style="width:100px" class="sortable" onclick="sortAttendees('mobile')">Mobile\${sortIcon('mobile')}<span class="col-resizer" data-col="4"></span></th><th style="width:130px" class="sortable" onclick="sortAttendees('company')">Company\${sortIcon('company')}<span class="col-resizer" data-col="5"></span></th><th style="width:110px" class="sortable" onclick="sortAttendees('job_title')">Title\${sortIcon('job_title')}<span class="col-resizer" data-col="6"></span></th><th style="width:80px" class="sortable" onclick="sortAttendees('city')">City\${sortIcon('city')}<span class="col-resizer" data-col="7"></span></th><th style="width:70px" class="sortable" onclick="sortAttendees('country')">Country\${sortIcon('country')}<span class="col-resizer" data-col="8"></span></th><th style="width:40px">In</th><th style="width:110px" class="sortable" onclick="sortAttendees('role')">Role\${sortIcon('role')}<span class="col-resizer" data-col="10"></span></th><th style="width:90px" class="sortable" onclick="sortAttendees('badge_type')">Badge\${sortIcon('badge_type')}<span class="col-resizer" data-col="11"></span></th><th style="width:60px" class="sortable" onclick="sortAttendees('rsvp_status')">RSVP\${sortIcon('rsvp_status')}</th><th style="width:45px" class="sortable" onclick="sortAttendees('lunch_inclusion')">Lunch\${sortIcon('lunch_inclusion')}</th><th style="width:60px" class="sortable" onclick="sortAttendees('arrival_time')">Arrival\${sortIcon('arrival_time')}</th><th style="width:80px" class="sortable" onclick="sortAttendees('registration_date')">Reg Date\${sortIcon('registration_date')}</th><th style="width:70px" class="sortable" onclick="sortAttendees('payment_amount')">Payment\${sortIcon('payment_amount')}</th><th style="width:45px">Notif</th><th style="width:80px">Engage</th><th style="width:140px">Actions</th>
               </tr></thead>
               <tbody>
-                \${attendees.map((a,idx)=>{ const dup = dupMap[a.id]; const prevDup = idx > 0 ? dupMap[attendees[idx-1].id] : null; const groupChanged = (dup && prevDup && dup.group !== prevDup.group) || (prevDup && !dup); const separator = groupChanged ? '<tr class="dup-sep"><td colspan="20" style="height:2px;padding:0;background:rgba(255,255,255,0.06);"></td></tr>' : ''; return separator + \`<tr class="att-row \${dup ? 'dup-row' : ''}" id="att-row-\${a.id}" data-search="\${(a.name+a.email+a.company+a.job_title+(a.mobile||'')).toLowerCase()}" \${dup ? 'style="border-left: 3px solid '+dup.color+';" title="⚠ Suspected Duplicate (Group '+dup.group+', '+dup.count+' entries)"' : ''}>
+                \${attPageRows.map((a,idx)=>{ const dup = dupMap[a.id]; const prevDup = idx > 0 ? dupMap[attPageRows[idx-1].id] : null; const groupChanged = (dup && prevDup && dup.group !== prevDup.group) || (prevDup && !dup); const separator = groupChanged ? '<tr class="dup-sep"><td colspan="20" style="height:2px;padding:0;background:rgba(255,255,255,0.06);"></td></tr>' : ''; return separator + \`<tr class="att-row \${dup ? 'dup-row' : ''}" id="att-row-\${a.id}" data-search="\${(a.name+a.email+a.company+a.job_title+(a.mobile||'')).toLowerCase()}" \${dup ? 'style="border-left: 3px solid '+dup.color+';" title="⚠ Suspected Duplicate (Group '+dup.group+', '+dup.count+' entries)"' : ''}>
                   <td class="text-gray-500">#\${a.id}\${dup ? '<span class="dup-badge" style="background:'+dup.color+'22;color:'+dup.color+'">⚠ G'+dup.group+'</span>' : ''}</td>
                   <td><img src="\${getAvatarUrl(a.email, a.name, 64, a.avatar_url)}" alt="" class="w-8 h-8 rounded-full object-cover"></td>
                   <td class="font-medium ie-cell" onclick="inlineEdit(this, \${a.id}, 'name', '\${esc(a.name)}')">\${a.name}</td>
@@ -12274,7 +12316,7 @@ function adminPageHTML(): string {
                   <td class="ie-cell" onclick="inlineSelect(this, \${a.id}, 'rsvp_status', '\${a.rsvp_status||''}', ['','confirmed','maybe','declined'])"><span class="px-2 py-0.5 rounded-full text-[10px] font-medium cursor-pointer hover:ring-1 hover:ring-primary-400/50 \${a.rsvp_status === 'confirmed' ? 'bg-green-500/20 text-green-400' : a.rsvp_status === 'declined' ? 'bg-red-500/20 text-red-400' : a.rsvp_status === 'maybe' ? 'bg-amber-500/20 text-amber-400' : 'bg-gray-500/10 text-gray-500'}">\${a.rsvp_status ? (a.rsvp_status === 'confirmed' ? '✓ Yes' : a.rsvp_status === 'declined' ? '✗ No' : '? Maybe') : '—'}</span></td>
                   <td class="ie-cell" onclick="inlineSelect(this, \${a.id}, 'lunch_inclusion', '\${a.lunch_inclusion||'Yes'}', ['Yes','No'])"><span class="px-1.5 py-0.5 rounded text-[10px] font-medium cursor-pointer hover:ring-1 hover:ring-primary-400/50 \${(a.lunch_inclusion||'Yes')==='Yes' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}">\${a.lunch_inclusion||'Yes'}</span></td>
                   <td class="text-xs ie-cell" onclick="inlineSelect(this, \${a.id}, 'arrival_time', '\${a.arrival_time||''}', ['','09:00','09:30','10:00','10:30','11:00','11:30','12:00','12:30','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30'])">\${a.arrival_time ? '<span class="px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 cursor-pointer hover:ring-1 hover:ring-blue-400/50">'+ (parseInt(a.arrival_time) > 12 ? (parseInt(a.arrival_time)-12)+':'+a.arrival_time.split(':')[1]+' PM' : a.arrival_time+' AM') +'</span>' : '<span class="text-gray-600 cursor-pointer hover:text-gray-400">-</span>'}</td>
-                  <td class="text-xs text-gray-400 ie-cell" onclick="inlineEdit(this, \${a.id}, 'registration_date', '\${esc(a.registration_date||'')}')">\${a.registration_date||'<span class=&quot;text-gray-600&quot;>-</span>'}</td>
+                  <td class="text-xs text-gray-400" title="\${esc(a.registration_date||a.created_at||'')}">\${fmtRegDate(a.registration_date||a.created_at)}</td>
                   <td class="text-xs ie-cell" onclick="inlineEdit(this, \${a.id}, 'payment_amount', '\${esc(a.payment_amount||'')}')">\${a.payment_amount ? '<span class="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">₹'+a.payment_amount+'</span>' : '<span class=&quot;text-gray-600&quot;>-</span>'}</td>
                   <td class="text-xs" id="notified-\${a.id}">\${a.notified_at ? '<span class="text-green-400" title="'+a.notified_at+'"><i class="fas fa-check-circle"></i></span>' : '<span class="text-gray-600"><i class="fas fa-times-circle"></i></span>'}</td>
                   <td class="text-xs"><div class="flex gap-1.5 items-center" title="Login | Pass | Post-Email Login"><span class="\${a.last_login_at ? 'text-blue-400' : 'text-gray-600'}" title="\${a.last_login_at ? 'Logged in: '+a.last_login_at : 'Not logged in'}"><i class="fas fa-sign-in-alt"></i></span><span class="\${a.pass_downloaded_at ? 'text-emerald-400' : 'text-gray-600'}" title="\${a.pass_downloaded_at ? 'Pass downloaded: '+a.pass_downloaded_at : 'Pass not downloaded'}"><i class="fas fa-id-badge"></i></span><span class="\${a.notified_at && a.last_login_at && a.last_login_at >= a.notified_at ? 'text-violet-400' : 'text-gray-600'}" title="\${a.notified_at && a.last_login_at && a.last_login_at >= a.notified_at ? 'Opened after email' : 'Not opened after email'}"><i class="fas fa-envelope-open"></i></span></div></td>
@@ -12287,6 +12329,26 @@ function adminPageHTML(): string {
                 </tr>\`; }).join('')}
               </tbody>
             </table>
+          </div>
+          <!-- Pager. Rendering 1000+ rows at once is what made this page slow to open. -->
+          <div class="flex items-center justify-between gap-3 flex-wrap px-4 py-3 border-t border-white/10 text-xs text-gray-400">
+            <div>
+              Showing <strong class="text-gray-200">${attMatches.length ? (attStart + 1) : 0}&ndash;${Math.min(attEnd, attMatches.length)}</strong>
+              of <strong class="text-gray-200">${attMatches.length}</strong>${attQuery ? ' matching' : ''}
+              ${attQuery ? '<span class="text-gray-500"> (of ' + attendees.length + ' total)</span>' : ''}
+            </div>
+            <div class="flex items-center gap-2">
+              <label class="text-gray-500">Rows</label>
+              <select onchange="setAttPageSize(this.value)" class="px-2 py-1 rounded-lg text-xs bg-white/5 border border-white/10">
+                ${[50,100,250,500].map(n => '<option value="'+n+'"'+(attPageSize===n?' selected':'')+'>'+n+'</option>').join('')}
+                <option value="all"${attPageSize===Infinity?' selected':''}>All</option>
+              </select>
+              <button onclick="gotoAttPage(1)" ${attPage<=1?'disabled':''} class="px-2 py-1 rounded-lg bg-white/5 border border-white/10 disabled:opacity-30" title="First"><i class="fas fa-angles-left"></i></button>
+              <button onclick="gotoAttPage(${attPage-1})" ${attPage<=1?'disabled':''} class="px-2 py-1 rounded-lg bg-white/5 border border-white/10 disabled:opacity-30"><i class="fas fa-chevron-left"></i></button>
+              <span class="px-2">Page <strong class="text-gray-200">${attPage}</strong> of ${attTotalPages}</span>
+              <button onclick="gotoAttPage(${attPage+1})" ${attPage>=attTotalPages?'disabled':''} class="px-2 py-1 rounded-lg bg-white/5 border border-white/10 disabled:opacity-30"><i class="fas fa-chevron-right"></i></button>
+              <button onclick="gotoAttPage(${attTotalPages})" ${attPage>=attTotalPages?'disabled':''} class="px-2 py-1 rounded-lg bg-white/5 border border-white/10 disabled:opacity-30" title="Last"><i class="fas fa-angles-right"></i></button>
+            </div>
           </div>
         </div>
       \`;
