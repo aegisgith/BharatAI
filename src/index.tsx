@@ -3486,7 +3486,7 @@ function sharedHeadHTML(title: string, path: string = '/', desc?: string): strin
     }
   </script>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Manrope:wght@300..800&family=Montserrat:wght@600;700;800&family=Playfair+Display:wght@600;700&family=Mukta:wght@500;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Manrope:wght@300..800&display=swap');
     * { font-family: 'Manrope', sans-serif; }
     body { background: #F8F9FF; color: #1E2140; }
     .glass { background: rgba(255,255,255,0.04); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.07); }
@@ -4764,7 +4764,7 @@ function mainPageHTML(): string {
     }
   </script>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Manrope:wght@300..800&family=Montserrat:wght@600;700;800&family=Playfair+Display:wght@600;700&family=Mukta:wght@500;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Manrope:wght@300..800&display=swap');
     * { font-family: 'Manrope', sans-serif; }
     body { background: #F8F9FF; color: #1E2140; }
     .glass { background: rgba(255,255,255,0.04); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.07); }
@@ -9806,253 +9806,433 @@ function mainPageHTML(): string {
       showToast('Certificate downloaded', 'success');
     }
 
-    // ===== EVENT PASSES ==================================================
-    // Five tiers from the Claude Design export (Bharat AI Passes.dc.html).
-    // Drawn on canvas rather than rendered as HTML so the download stays a PNG:
-    // a delegate at the registration desk may have no signal, and an image in the
-    // camera roll works where a web page does not.
-    var PASS_TIERS = {
-      visitor:  { label: 'VISITOR PASS',  hi: '',                  c1: '#2B8CFF', c2: '#1f6fd6', edge: 'rgba(43,140,255,0.50)',  inner: 'rgba(43,140,255,0.28)', top: '#0b1c3d' },
-      speaker:  { label: 'SPEAKER PASS',  hi: 'वक्ता पास',          c1: '#FF7A00', c2: '#e06400', edge: 'rgba(255,122,0,0.50)',   inner: 'rgba(255,122,0,0.28)',  top: '#2a1608' },
-      delegate: { label: 'DELEGATE PASS', hi: 'प्रतिनिधि पास',      c1: '#00996C', c2: '#007352', edge: 'rgba(0,153,108,0.50)',   inner: 'rgba(0,153,108,0.28)',  top: '#052419' },
-      academic: { label: 'ACADEMIC PASS', hi: 'शैक्षणिक पास',       c1: '#7C5CFF', c2: '#5b3fd6', edge: 'rgba(124,92,255,0.50)',  inner: 'rgba(124,92,255,0.28)', top: '#170f33' },
-      vip:      { label: 'V I P',         hi: 'विशिष्ट अतिथि पास',  c1: '#E9C356', c2: '#c79a2a', edge: '#D4A21A',               inner: 'rgba(233,195,86,0.60)', top: '#3a2c0a', gold: true }
-    };
-
-    // The pass must state the tier the holder actually has. The previous version
-    // hardcoded "DELEGATE PASS", so all 1,038 Visitor Pass holders were issued a
-    // badge claiming a tier they had not bought.
-    function passTierFor(u) {
-      var b = String((u && u.badge_type) || '').toLowerCase();
-      var r = String((u && u.role) || '').toLowerCase();
-      if (b.indexOf('vip') >= 0) return 'vip';
-      if (b.indexOf('delegate') >= 0) return 'delegate';
-      if (b.indexOf('academic') >= 0) return 'academic';
-      if (b.indexOf('speaker') >= 0 || r.indexOf('speaker') >= 0) return 'speaker';
-      return 'visitor';
-    }
-
-    // Canvas draws with whatever font is resolved at fillText time, so the faces
-    // must be loaded before the first stroke or it silently falls back.
-    async function ensurePassFonts() {
-      if (!document.fonts || !document.fonts.load) return;
-      var faces = ['800 44px Montserrat', '700 32px Montserrat', '700 68px "Playfair Display"',
-                   '600 30px Mukta', '600 28px Inter', '400 26px Inter'];
-      try { await Promise.all(faces.map(function (f) { return document.fonts.load(f, 'Bharat भारत'); })); } catch (e) {}
-      try { await document.fonts.ready; } catch (e) {}
-    }
-
-    async function generateEventPass(adminAttendee) {
-      var user = adminAttendee || currentUser;
+    async function generateDelegatePass(adminAttendee) {
+      const user = adminAttendee || currentUser;
+      const isAdminDownload = !!adminAttendee;
       if (!user) { showToast('Please sign in first', 'error'); return; }
-      var T = PASS_TIERS[passTierFor(user)];
-      showToast('Generating your pass...', 'info');
-      await ensurePassFonts();
+      showToast('Generating Delegate Pass...', 'info');
 
-      var S = 2, CW = 440, W = CW * S;
-      var canvas = document.createElement('canvas');
-      canvas.width = W; canvas.height = 1500 * S;
-      var ctx = canvas.getContext('2d');
-      var proxy = function (u) { return '/api/image-proxy?url=' + encodeURIComponent(u); };
+      const W = 1000, H = 1500;
+      const canvas = document.createElement('canvas');
+      canvas.width = W; canvas.height = H;
+      const ctx = canvas.getContext('2d');
+      const px = (u) => '/api/image-proxy?url=' + encodeURIComponent(u);
+      const passId = 'BHAI-2026-' + String(user.id).padStart(4, '0');
 
-      // Cross-origin images taint the canvas and make toDataURL throw, so the QR
-      // goes through the same-origin proxy the logos already use.
-      var passId = 'BHAI-2026-' + String(user.id).padStart(4, '0');
-      var qrTarget = 'https://networking.bharataiinnovation.com?email=' + encodeURIComponent(user.email || '');
-      var logo = null, aegis = null, agba = null, assessfy = null, qr = null;
-      try { logo = await loadImage('/images/Bharat%20AI%20Innovation%20Logo.png'); } catch (e) {}
-      try { aegis = await loadImage('/images/passes/aegis.png'); } catch (e) {}
-      try { agba = await loadImage('/images/passes/agba.png'); } catch (e) {}
-      try { assessfy = await loadImage('/images/passes/assessfy.jpg'); } catch (e) {}
-      try { qr = await loadImage(proxy('https://api.qrserver.com/v1/create-qr-code/?size=340x340&margin=0&data=' + encodeURIComponent(qrTarget))); } catch (e) {}
+      // ===== LOAD ALL LOGOS FIRST =====
+      let meityLogo, agbaLogo, bharatLogo, aegisCollegeLogo, assessfyLogo, tcoeiLogo, swissnexLogo;
+      try { meityLogo = await loadImage(px('https://bharataiinnovation.com/wp-content/uploads/2026/02/Meity-logo.png')); } catch(e) { console.log('MeitY logo failed:', e); }
+      try { agbaLogo = await loadImage(px('https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png')); } catch(e) { console.log('BHAI logo failed:', e); }
+      try { bharatLogo = await loadImage(px('https://bharataiinnovation.com/wp-content/uploads/2026/02/Bharat-AI-Innovation-Expo-logo-scaled.png')); } catch(e) { console.log('Bharat AI logo failed:', e); }
+      try { aegisCollegeLogo = await loadImage(px('https://bharataiinnovation.com/wp-content/uploads/2025/10/Aegis_college_new1.png')); } catch(e) { console.log('Aegis College logo failed:', e); }
+      try { assessfyLogo = await loadImage(px('https://bharataiinnovation.com/wp-content/uploads/2023/12/Assessfy-black.png')); } catch(e) { console.log('Assessfy logo failed:', e); }
+      try { tcoeiLogo = await loadImage(px('https://bharataiinnovation.com/wp-content/uploads/2019/06/tcoei.png')); } catch(e) { console.log('TCOEI logo failed:', e); }
+      try { swissnexLogo = await loadImage(px('https://bharataiinnovation.com/wp-content/uploads/2025/10/Swissnex-red-logo_76ea13ce5cec9e3d897b76c6abe4779f-400x120.png')); } catch(e) { console.log('Swissnex logo failed:', e); }
 
-      var mid = W / 2;
-      var f = function (weight, size, family) { ctx.font = weight + ' ' + (size * S) + 'px ' + family; };
-      var MONT = '"Montserrat", Arial, sans-serif';
-      var PLAY = '"Playfair Display", Georgia, serif';
-      var MUKTA = '"Mukta", "Nirmala UI", "Noto Sans Devanagari", Arial, sans-serif';
-      var INTER = '"Inter", Arial, sans-serif';
-      var centre = function (txt, y, colour) { ctx.fillStyle = colour; ctx.textAlign = 'center'; ctx.fillText(txt, mid, y); };
-
-      // Three words, three colours, centred as one group.
-      function tricolour(words, y) {
-        var widths = words.map(function (w) { return ctx.measureText(w.t).width; });
-        var gap = ctx.measureText(' ').width;
-        var total = widths.reduce(function (a, b) { return a + b; }, 0) + gap * (words.length - 1);
-        var x = mid - total / 2;
-        ctx.textAlign = 'left';
-        for (var i = 0; i < words.length; i++) {
-          ctx.fillStyle = words[i].c;
-          ctx.fillText(words[i].t, x, y);
-          x += widths[i] + gap;
-        }
-        ctx.textAlign = 'center';
+      // ===== HELPER: Draw faded gold line =====
+      function goldLine(y, xPad, alpha) {
+        const g = ctx.createLinearGradient(xPad, 0, W - xPad, 0);
+        g.addColorStop(0, 'rgba(200,168,85,0)');
+        g.addColorStop(0.3, 'rgba(200,168,85,' + alpha + ')');
+        g.addColorStop(0.5, 'rgba(219,185,96,' + (alpha + 0.15) + ')');
+        g.addColorStop(0.7, 'rgba(200,168,85,' + alpha + ')');
+        g.addColorStop(1, 'rgba(200,168,85,0)');
+        ctx.fillStyle = g;
+        ctx.fillRect(xPad, y, W - xPad * 2, 1);
       }
 
-      function divider(y, strong) {
-        var g = ctx.createLinearGradient(px(30), 0, W - px(30), 0);
-        var a = strong ? 0.5 : 0.3;
-        g.addColorStop(0, 'rgba(212,162,26,0)');
-        g.addColorStop(0.5, 'rgba(212,162,26,' + a + ')');
-        g.addColorStop(1, 'rgba(212,162,26,0)');
-        ctx.fillStyle = g; ctx.fillRect(px(30), y, W - px(60), Math.max(1, S));
-      }
-      function px(v) { return v * S; }
-      function drawImageFit(img, cx, cy, maxW, maxH) {
-        if (!img) return 0;
-        var r = Math.min(maxW / img.width, maxH / img.height);
-        var w = img.width * r, h = img.height * r;
-        ctx.drawImage(img, cx - w / 2, cy, w, h);
-        return h;
-      }
+      // ===== BACKGROUND: Rich deep navy with subtle texture =====
+      const bgGrad = ctx.createLinearGradient(0, 0, 0, H);
+      bgGrad.addColorStop(0, '#060a1e');
+      bgGrad.addColorStop(0.15, '#0b1030');
+      bgGrad.addColorStop(0.5, '#0e1438');
+      bgGrad.addColorStop(0.85, '#0b1030');
+      bgGrad.addColorStop(1, '#060a1e');
+      ctx.fillStyle = bgGrad;
+      ctx.fillRect(0, 0, W, H);
 
-      // ---- card background ----
-      var bg = ctx.createLinearGradient(0, 0, 0, canvas.height);
-      if (T.gold) { bg.addColorStop(0, '#3a2c0a'); bg.addColorStop(0.4, '#1c1405'); bg.addColorStop(1, '#0b0803'); }
-      else { bg.addColorStop(0, T.top); bg.addColorStop(0.55, '#0a0e2a'); bg.addColorStop(1, '#080b22'); }
-      ctx.fillStyle = bg; ctx.fillRect(0, 0, W, canvas.height);
+      // Soft warm radial glow behind avatar area
+      const warmGlow = ctx.createRadialGradient(W/2, H * 0.42, 40, W/2, H * 0.42, 420);
+      warmGlow.addColorStop(0, 'rgba(200,168,85,0.06)');
+      warmGlow.addColorStop(0.5, 'rgba(200,168,85,0.02)');
+      warmGlow.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = warmGlow;
+      ctx.fillRect(0, 0, W, H);
 
-      var y = px(30);
+      // Very subtle top light
+      const topGlow = ctx.createRadialGradient(W/2, -100, 50, W/2, 200, 500);
+      topGlow.addColorStop(0, 'rgba(100,130,220,0.04)');
+      topGlow.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = topGlow;
+      ctx.fillRect(0, 0, W, H);
 
-      // ---- VIP ribbon ----
-      if (T.gold) {
-        var rw = px(230), rh = px(30), rx = mid - rw / 2;
-        var rg = ctx.createLinearGradient(rx, 0, rx + rw, 0);
-        rg.addColorStop(0, '#c79a2a'); rg.addColorStop(0.5, '#f3d97a'); rg.addColorStop(1, '#c79a2a');
-        ctx.fillStyle = rg; roundRect(ctx, rx, y, rw, rh, rh / 2); ctx.fill();
-        f('800', 10, MONT); ctx.fillStyle = '#1a1206';
-        ctx.textAlign = 'center'; ctx.fillText('\u2726 PREMIUM ALL-ACCESS \u2726', mid, y + rh * 0.68);
-        y += rh + px(18);
-      }
+      // ===== ELEGANT BORDER FRAME =====
+      // Outer fine gold border
+      ctx.strokeStyle = 'rgba(200,168,85,0.65)';
+      ctx.lineWidth = 1.5;
+      roundRect(ctx, 28, 28, W - 56, H - 56, 18); ctx.stroke();
+      // Inner fine border
+      ctx.strokeStyle = 'rgba(200,168,85,0.2)';
+      ctx.lineWidth = 0.5;
+      roundRect(ctx, 38, 38, W - 76, H - 76, 14); ctx.stroke();
 
-      // ---- logo on white ----
-      if (logo) {
-        var lw = px(120), lh = lw * (logo.height / logo.width);
-        ctx.fillStyle = '#ffffff';
-        roundRect(ctx, mid - lw / 2 - px(12), y, lw + px(24), lh + px(16), px(8)); ctx.fill();
-        ctx.drawImage(logo, mid - lw / 2, y + px(8), lw, lh);
-        y += lh + px(16);
-      }
+      // Elegant corner ornaments (refined L-shapes with serif ends)
+      ctx.strokeStyle = 'rgba(200,168,85,0.7)';
+      ctx.lineWidth = 1.8;
+      const cLen = 40, cOff = 42;
+      // Top-left
+      ctx.beginPath(); ctx.moveTo(cOff, cOff + cLen); ctx.lineTo(cOff, cOff); ctx.lineTo(cOff + cLen, cOff); ctx.stroke();
+      // Top-right
+      ctx.beginPath(); ctx.moveTo(W - cOff - cLen, cOff); ctx.lineTo(W - cOff, cOff); ctx.lineTo(W - cOff, cOff + cLen); ctx.stroke();
+      // Bottom-left
+      ctx.beginPath(); ctx.moveTo(cOff, H - cOff - cLen); ctx.lineTo(cOff, H - cOff); ctx.lineTo(cOff + cLen, H - cOff); ctx.stroke();
+      // Bottom-right
+      ctx.beginPath(); ctx.moveTo(W - cOff - cLen, H - cOff); ctx.lineTo(W - cOff, H - cOff); ctx.lineTo(W - cOff, H - cOff - cLen); ctx.stroke();
+      // Small diamond at each corner
+      [[cOff, cOff], [W - cOff, cOff], [cOff, H - cOff], [W - cOff, H - cOff]].forEach(([cx, cy]) => {
+        ctx.save(); ctx.translate(cx, cy); ctx.rotate(Math.PI/4);
+        ctx.fillStyle = 'rgba(200,168,85,0.5)';
+        ctx.fillRect(-3, -3, 6, 6);
+        ctx.restore();
+      });
 
-      // ---- wordmarks ----
-      y += px(36);
-      f('800', 22, MONT);
-      tricolour([{ t: 'Bharat', c: '#FF7A00' }, { t: 'AI', c: '#ffffff' }, { t: 'Innovation', c: '#00996C' }], y);
-      y += px(21);
-      f('600', 15, MUKTA);
-      tricolour([{ t: 'भारत', c: '#FF7A00' }, { t: 'एआई', c: T.gold ? '#efe6c9' : '#e8edf5' }, { t: 'इनोवेशन', c: T.gold ? '#5fbf8f' : '#00b57f' }], y);
-      y += px(20);
-      f('400', 13, INTER);
-      centre('Conference & Exhibition 2026', y, T.gold ? '#9a8a5a' : '#8892b0');
+      // ===== TOP ACCENT BAR =====
+      goldLine(62, 120, 0.5);
 
-      y += px(24); divider(y, T.gold); y += px(24);
+      // ===== HEADER: "Supported by" + MeitY Logo =====
+      let curY = 85;
+      ctx.fillStyle = 'rgba(200,168,85,0.55)';
+      ctx.font = '500 10px Arial, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('S U P P O R T E D   B Y', W/2, curY);
+      curY += 14;
 
-      // ---- avatar ----
-      var R = px(T.gold ? 64 : 60);
-      var cy = y + R;
-      var ag = ctx.createRadialGradient(mid - R * 0.3, cy - R * 0.35, R * 0.1, mid, cy, R);
-      ag.addColorStop(0, T.gold ? '#fbeeb0' : T.c1); ag.addColorStop(1, T.gold ? '#b8871f' : T.c2);
-      ctx.beginPath(); ctx.arc(mid, cy, R, 0, Math.PI * 2); ctx.fillStyle = ag; ctx.fill();
-      ctx.lineWidth = px(T.gold ? 4 : 3); ctx.strokeStyle = T.gold ? '#f3d97a' : T.edge; ctx.stroke();
-      f('700', T.gold ? 54 : 56, PLAY);
-      ctx.fillStyle = T.gold ? '#7a5510' : '#ffffff'; ctx.textAlign = 'center';
-      ctx.fillText(T.gold ? '\u265B' : String(user.name || '?').trim().charAt(0).toUpperCase(), mid, cy + px(T.gold ? 19 : 20));
-      y = cy + R + px(20);
-
-      // ---- name / designation / organisation ----
-      f('700', 34, PLAY);
-      var name = String(user.name || 'Attendee');
-      while (ctx.measureText(name).width > W - px(60) && name.length > 4) { name = name.slice(0, -2); }
-      centre(name === String(user.name || '') ? name : name + '\u2026', y + px(26), T.gold ? '#f3d97a' : '#ffffff');
-      y += px(38);
-      if (user.job_title) { f('400', 14, INTER); centre(String(user.job_title), y + px(12), T.gold ? '#c8b98a' : '#c3ccdd'); y += px(20); }
-      if (user.company) { f('400', 14, INTER); centre(String(user.company).toUpperCase(), y + px(12), T.gold ? '#9a8a5a' : '#8892b0'); y += px(20); }
-
-      y += px(24); divider(y, T.gold); y += px(24);
-
-      // ---- tier pill ----
-      f('800', T.gold ? 18 : 16, MONT);
-      var pw = ctx.measureText(T.label).width + px(T.gold ? 88 : 68);
-      var ph = px(T.hi ? 52 : 46);
-      var pxx = mid - pw / 2;
-      var pg = ctx.createLinearGradient(0, y, 0, y + ph);
-      if (T.gold) { pg.addColorStop(0, '#fbeeb0'); pg.addColorStop(0.45, '#E9C356'); pg.addColorStop(1, '#c79a2a'); }
-      else { pg.addColorStop(0, T.c1); pg.addColorStop(1, T.c2); }
-      ctx.fillStyle = pg; roundRect(ctx, pxx, y, pw, ph, ph / 2); ctx.fill();
-      if (T.gold) { ctx.lineWidth = S; ctx.strokeStyle = '#f3d97a'; ctx.stroke(); }
-      ctx.fillStyle = T.gold ? '#5a3f08' : '#ffffff'; ctx.textAlign = 'center';
-      if (T.hi) {
-        ctx.fillText(T.label, mid, y + px(23));
-        f('500', 12, MUKTA);
-        ctx.fillStyle = T.gold ? '#5a3f08' : 'rgba(255,255,255,0.9)';
-        ctx.fillText(T.hi, mid, y + px(41));
+      if (meityLogo) {
+        const mH = 55, mW = mH * (meityLogo.width / meityLogo.height);
+        ctx.drawImage(meityLogo, W/2 - mW/2, curY, mW, mH);
+        curY += mH + 14;
       } else {
-        ctx.fillText(T.label, mid, y + ph * 0.66);
+        curY += 10;
+        ctx.fillStyle = 'rgba(255,255,255,0.6)';
+        ctx.font = '600 12px Arial, sans-serif';
+        ctx.fillText('Ministry of Electronics & Information Technology', W/2, curY);
+        curY += 24;
       }
-      y += ph + px(24); divider(y, T.gold); y += px(24);
 
-      // ---- when and where ----
-      f('700', 17, MONT); centre('20\u201321 Nov 2026', y + px(14), '#D4A21A'); y += px(24);
-      f('400', 13, INTER); centre('WTC Mumbai, Cuffe Parade, Mumbai', y + px(11), '#c3ccdd'); y += px(19);
-      f('400', 13, INTER); centre('9:00 AM \u2013 6:00 PM', y + px(11), T.gold ? '#9a8a5a' : '#8892b0'); y += px(30);
+      // Subtle separator
+      goldLine(curY, 200, 0.3);
+      curY += 18;
 
-      // ---- ticket id + QR ----
-      f('400', 13, '"Courier New", monospace');
-      ctx.letterSpacing = px(2) + 'px';
-      centre(passId, y + px(11), '#c9a94a');
-      ctx.letterSpacing = '0px';
-      y += px(26);
-      if (qr) {
-        var q = px(150), pad = px(9);
-        ctx.fillStyle = '#ffffff';
-        roundRect(ctx, mid - q / 2 - pad, y, q + pad * 2, q + pad * 2, px(6)); ctx.fill();
-        ctx.drawImage(qr, mid - q / 2, y + pad, q, q);
-        y += q + pad * 2;
+      // ===== BHAI LOGO =====
+      if (agbaLogo) {
+        const aH = 80, aW = aH * (agbaLogo.width / agbaLogo.height);
+        ctx.drawImage(agbaLogo, W/2 - aW/2, curY, aW, aH);
+        curY += aH + 14;
+      } else {
+        curY += 16;
       }
-      f('400', 12, INTER); centre('Scan to access networking app', y + px(20), T.gold ? '#7a6a3a' : '#5a6a8a');
-      y += px(34);
 
-      // ---- partners ----
-      divider(y, T.gold); y += px(22);
-      var stripH = px(50);
-      ctx.fillStyle = '#ffffff'; roundRect(ctx, px(30), y, W - px(60), stripH, px(8)); ctx.fill();
-      var logos = [{ i: aegis, h: 30 }, { i: agba, h: 26 }, { i: assessfy, h: 22 }].filter(function (o) { return o.i; });
-      if (logos.length) {
-        var gapL = px(14), widths = logos.map(function (o) { return o.i.width * (px(o.h) / o.i.height); });
-        var totalL = widths.reduce(function (a, b) { return a + b; }, 0) + gapL * (logos.length - 1);
-        var lx = mid - totalL / 2;
-        for (var k = 0; k < logos.length; k++) {
-          var hh = px(logos[k].h);
-          ctx.drawImage(logos[k].i, lx, y + (stripH - hh) / 2, widths[k], hh);
-          lx += widths[k] + gapL;
+      // ===== EVENT TITLE =====
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 30px Georgia, "Times New Roman", serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('16th Bharat AI Innovation', W/2, curY);
+      curY += 30;
+
+      // Venue & Date - elegant gold
+      ctx.fillStyle = '#d4af5a';
+      ctx.font = '500 14px Arial, sans-serif';
+      ctx.fillText('20-21 Nov 2026  \u2022  World Trade Center, Mumbai', W/2, curY);
+      curY += 24;
+
+      // Decorative divider: thin lines with centered diamond
+      const divW = 300;
+      goldLine(curY, W/2 - divW/2, 0.4);
+      // Center diamond
+      ctx.save(); ctx.translate(W/2, curY);
+      ctx.rotate(Math.PI/4);
+      ctx.fillStyle = '#d4af5a';
+      ctx.fillRect(-4.5, -4.5, 9, 9);
+      ctx.restore();
+      // Gap in middle
+      ctx.fillStyle = '#0e1438';
+      ctx.save(); ctx.translate(W/2, curY);
+      ctx.rotate(Math.PI/4);
+      ctx.clearRect(-7, -7, 14, 14);
+      ctx.fillRect(-7, -7, 14, 14);
+      ctx.restore();
+      ctx.save(); ctx.translate(W/2, curY);
+      ctx.rotate(Math.PI/4);
+      ctx.fillStyle = '#d4af5a';
+      ctx.fillRect(-4, -4, 8, 8);
+      ctx.restore();
+      curY += 26;
+
+      // ===== DELEGATE PASS BADGE =====
+      const badgeW = 340, badgeH = 48;
+      const badgeX = W/2 - badgeW/2;
+      // Elegant pill badge
+      const badgeBg = ctx.createLinearGradient(badgeX, curY, badgeX + badgeW, curY + badgeH);
+      badgeBg.addColorStop(0, 'rgba(200,168,85,0.12)');
+      badgeBg.addColorStop(0.5, 'rgba(200,168,85,0.18)');
+      badgeBg.addColorStop(1, 'rgba(200,168,85,0.12)');
+      ctx.fillStyle = badgeBg;
+      roundRect(ctx, badgeX, curY, badgeW, badgeH, 24); ctx.fill();
+      // Gold border
+      ctx.strokeStyle = 'rgba(200,168,85,0.5)';
+      ctx.lineWidth = 1;
+      roundRect(ctx, badgeX, curY, badgeW, badgeH, 24); ctx.stroke();
+      // Badge text
+      ctx.fillStyle = '#e8c86a';
+      ctx.font = '700 18px Arial, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('\u2022  DELEGATE PASS  \u2022', W/2, curY + 32);
+      curY += badgeH + 36;
+
+      // ===== AVATAR WITH ELEGANT RING =====
+      const avatarCY = curY + 80;
+      const avatarR = 80;
+
+      // Soft glow behind avatar
+      ctx.shadowColor = 'rgba(200,168,85,0.25)';
+      ctx.shadowBlur = 30;
+      ctx.beginPath(); ctx.arc(W/2, avatarCY, avatarR + 8, 0, Math.PI * 2);
+      const ringGrad = ctx.createLinearGradient(W/2 - avatarR, avatarCY - avatarR, W/2 + avatarR, avatarCY + avatarR);
+      ringGrad.addColorStop(0, '#b8952e');
+      ringGrad.addColorStop(0.3, '#e0c464');
+      ringGrad.addColorStop(0.7, '#c8a040');
+      ringGrad.addColorStop(1, '#d4b050');
+      ctx.fillStyle = ringGrad;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      // Dark gap ring
+      ctx.beginPath(); ctx.arc(W/2, avatarCY, avatarR + 3, 0, Math.PI * 2);
+      ctx.fillStyle = '#0b1030';
+      ctx.fill();
+
+      // Inner gold ring (thin)
+      ctx.beginPath(); ctx.arc(W/2, avatarCY, avatarR + 1, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(200,168,85,0.3)';
+      ctx.lineWidth = 0.5;
+      ctx.stroke();
+
+      // Avatar image
+      try {
+        const avatarUrl = getAvatarUrl(user.email, user.name, 300, user.avatar_url);
+        const img = await loadImage(avatarUrl);
+        ctx.save();
+        ctx.beginPath(); ctx.arc(W/2, avatarCY, avatarR, 0, Math.PI * 2); ctx.clip();
+        ctx.drawImage(img, W/2 - avatarR, avatarCY - avatarR, avatarR * 2, avatarR * 2);
+        ctx.restore();
+      } catch(e) {
+        ctx.beginPath(); ctx.arc(W/2, avatarCY, avatarR, 0, Math.PI * 2);
+        const initBg = ctx.createLinearGradient(W/2 - avatarR, avatarCY - avatarR, W/2 + avatarR, avatarCY + avatarR);
+        initBg.addColorStop(0, '#141a4a');
+        initBg.addColorStop(1, '#1e2568');
+        ctx.fillStyle = initBg; ctx.fill();
+        ctx.fillStyle = '#e8c86a';
+        ctx.font = 'bold 52px Georgia, serif';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(user.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2), W/2, avatarCY);
+      }
+      curY = avatarCY + avatarR + 30;
+
+      // ===== NAME =====
+      ctx.textBaseline = 'alphabetic';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#ffffff';
+      // Handle long names — shrink font if needed instead of truncating
+      let nameFontSize = 36;
+      const nameText = user.name;
+      ctx.font = 'bold ' + nameFontSize + 'px Georgia, "Times New Roman", serif';
+      while (ctx.measureText(nameText).width > W - 140 && nameFontSize > 22) {
+        nameFontSize -= 2;
+        ctx.font = 'bold ' + nameFontSize + 'px Georgia, "Times New Roman", serif';
+      }
+      ctx.fillText(nameText, W/2, curY);
+      curY += 6;
+
+      // Job Title
+      if (user.job_title) {
+        curY += 26;
+        ctx.fillStyle = '#d4af5a';
+        let jtSize = 16;
+        const jt = user.job_title;
+        ctx.font = '500 ' + jtSize + 'px Arial, sans-serif';
+        while (ctx.measureText(jt).width > W - 160 && jtSize > 11) {
+          jtSize -= 1;
+          ctx.font = '500 ' + jtSize + 'px Arial, sans-serif';
+        }
+        ctx.fillText(jt, W/2, curY);
+      }
+      // Company
+      if (user.company) {
+        curY += 24;
+        ctx.fillStyle = 'rgba(255,255,255,0.5)';
+        let coSize = 14;
+        const co = user.company;
+        ctx.font = coSize + 'px Arial, sans-serif';
+        while (ctx.measureText(co).width > W - 140 && coSize > 10) {
+          coSize -= 1;
+          ctx.font = coSize + 'px Arial, sans-serif';
+        }
+        ctx.fillText(co, W/2, curY);
+      }
+      curY += 35;
+
+      // ===== INFO PANEL (elegant frosted glass) =====
+      const panelW = 520, panelH = 120, panelX = W/2 - panelW/2;
+      // Panel background
+      ctx.fillStyle = 'rgba(255,255,255,0.04)';
+      roundRect(ctx, panelX, curY, panelW, panelH, 14); ctx.fill();
+      ctx.strokeStyle = 'rgba(200,168,85,0.2)';
+      ctx.lineWidth = 0.8;
+      roundRect(ctx, panelX, curY, panelW, panelH, 14); ctx.stroke();
+
+      // Row 1: Badge Type | Pass ID
+      const row1Y = curY + 38;
+      ctx.fillStyle = 'rgba(200,168,85,0.5)';
+      ctx.font = '600 10px Arial, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText('BADGE TYPE', panelX + 28, row1Y - 8);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 16px Arial, sans-serif';
+      ctx.fillText(displayBadge(user.badge_type || 'Delegate'), panelX + 28, row1Y + 14);
+
+      ctx.fillStyle = 'rgba(200,168,85,0.5)';
+      ctx.font = '600 10px Arial, sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText('PASS ID', panelX + panelW - 28, row1Y - 8);
+      ctx.fillStyle = '#e8c86a';
+      ctx.font = 'bold 16px monospace';
+      ctx.fillText(passId, panelX + panelW - 28, row1Y + 14);
+
+      // Vertical divider
+      ctx.strokeStyle = 'rgba(200,168,85,0.15)';
+      ctx.lineWidth = 0.5;
+      ctx.beginPath(); ctx.moveTo(W/2, curY + 16); ctx.lineTo(W/2, curY + 64); ctx.stroke();
+
+      // Horizontal divider
+      ctx.strokeStyle = 'rgba(200,168,85,0.1)';
+      ctx.beginPath(); ctx.moveTo(panelX + 28, row1Y + 30); ctx.lineTo(panelX + panelW - 28, row1Y + 30); ctx.stroke();
+
+      // Row 2: Event info
+      const row2Y = row1Y + 52;
+      ctx.fillStyle = 'rgba(200,168,85,0.5)';
+      ctx.font = '600 10px Arial, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText('EVENT', panelX + 28, row2Y);
+      ctx.fillStyle = 'rgba(255,255,255,0.7)';
+      ctx.font = '500 13px Arial, sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText('20-21 Nov 2026  \u2022  World Trade Center, Mumbai', panelX + panelW - 28, row2Y);
+
+      curY += panelH + 28;
+
+      // ===== QR CODE =====
+      const qrSize = 130;
+      const qrX = W/2 - qrSize/2, qrTopY = curY;
+      // QR container
+      ctx.fillStyle = 'rgba(255,255,255,0.93)';
+      roundRect(ctx, qrX - 10, qrTopY - 10, qrSize + 20, qrSize + 20, 10); ctx.fill();
+      ctx.strokeStyle = 'rgba(200,168,85,0.3)';
+      ctx.lineWidth = 0.8;
+      roundRect(ctx, qrX - 10, qrTopY - 10, qrSize + 20, qrSize + 20, 10); ctx.stroke();
+
+      // QR grid
+      const cellSize = Math.floor(qrSize / 10);
+      for (let r = 0; r < 10; r++) {
+        for (let col = 0; col < 10; col++) {
+          const hash = (user.id * (r + 1) * (col + 3) + r * col * 7 + col + r * 13) % 5;
+          if (hash > 1) {
+            ctx.fillStyle = hash > 3 ? '#0a0e27' : hash > 2 ? '#1a1f55' : '#2a2f75';
+            roundRect(ctx, qrX + col * cellSize + 1, qrTopY + r * cellSize + 1, cellSize - 2, cellSize - 2, 2);
+            ctx.fill();
+          }
         }
       }
-      y += stripH + px(16);
-      f('400', 11, INTER);
-      centre('bharataiinnovation.com \u2022 networking.bharataiinnovation.com', y + px(9), '#4a577a');
-      y += px(30);
+      // QR corner anchors
+      [[qrX + 2, qrTopY + 2], [qrX + qrSize - 30, qrTopY + 2], [qrX + 2, qrTopY + qrSize - 30]].forEach(([ax, ay]) => {
+        ctx.fillStyle = '#0a0e27';
+        roundRect(ctx, ax, ay, 28, 28, 4); ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        roundRect(ctx, ax + 4, ay + 4, 20, 20, 2); ctx.fill();
+        ctx.fillStyle = '#0a0e27';
+        roundRect(ctx, ax + 8, ay + 8, 12, 12, 2); ctx.fill();
+      });
 
-      // ---- borders, then crop to the height actually used ----
-      var H = Math.ceil(y);
-      ctx.lineWidth = px(T.gold ? 2 : 1); ctx.strokeStyle = T.edge;
-      roundRect(ctx, px(7), px(7), W - px(14), H - px(14), px(20)); ctx.stroke();
-      ctx.lineWidth = S; ctx.strokeStyle = T.inner;
-      roundRect(ctx, px(16), px(16), W - px(32), H - px(32), px(14)); ctx.stroke();
+      // Pass ID below QR
+      curY = qrTopY + qrSize + 22;
+      ctx.fillStyle = 'rgba(200,168,85,0.4)';
+      ctx.font = '600 11px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(passId, W/2, curY);
+      curY += 26;
 
-      var out = document.createElement('canvas');
-      out.width = W; out.height = H;
-      out.getContext('2d').drawImage(canvas, 0, 0, W, H, 0, 0, W, H);
+      // ===== DASHED TEAR LINE =====
+      ctx.strokeStyle = 'rgba(200,168,85,0.25)';
+      ctx.lineWidth = 0.8;
+      ctx.setLineDash([5, 5]);
+      ctx.beginPath(); ctx.moveTo(65, curY); ctx.lineTo(W - 65, curY); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(200,168,85,0.35)';
+      ctx.font = '13px Arial, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText('\u2702', 48, curY + 5);
+      curY += 24;
 
-      var link = document.createElement('a');
-      link.download = 'BHAI-2026-' + T.label.replace(/ /g, '') + '-' + String(user.name || 'attendee').replace(/[^A-Za-z0-9]+/g, '-') + '.png';
-      link.href = out.toDataURL('image/png');
+      // ===== BOTTOM LOGOS SECTION (partner logos only) =====
+      // "In Association With" label
+      ctx.fillStyle = 'rgba(200,168,85,0.45)';
+      ctx.font = '500 9px Arial, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('I N   A S S O C I A T I O N   W I T H', W/2, curY);
+      curY += 16;
+
+      // Draw all 5 partner logos in a row — larger, with white pill backgrounds for visibility
+      const partnerLogos = [bharatLogo, aegisCollegeLogo, assessfyLogo, tcoeiLogo, swissnexLogo].filter(Boolean);
+      if (partnerLogos.length > 0) {
+        const lH = 42;
+        const gap = 16;
+        const padX = 10, padY = 6;
+        const widths = partnerLogos.map(l => lH * (l.width / l.height));
+        const totalLogoW = widths.reduce((a, b) => a + b, 0) + (padX * 2 + gap) * (partnerLogos.length - 1) + padX * 2;
+        let lx = W/2 - totalLogoW/2;
+        partnerLogos.forEach((logo, i) => {
+          const w = widths[i];
+          // White pill background for each logo
+          ctx.fillStyle = 'rgba(255,255,255,0.92)';
+          roundRect(ctx, lx, curY - padY, w + padX * 2, lH + padY * 2, 8); ctx.fill();
+          ctx.drawImage(logo, lx + padX, curY, w, lH);
+          lx += w + padX * 2 + gap;
+        });
+        curY += lH + padY * 2 + 16;
+      } else {
+        ctx.fillStyle = 'rgba(255,255,255,0.35)';
+        ctx.font = '11px Arial, sans-serif';
+        ctx.fillText('Bharat AI  \u2022  Aegis School  \u2022  Assessfy  \u2022  TCOEI  \u2022  Swissnex', W/2, curY + 8);
+        curY += 28;
+      }
+
+      // ===== WEBSITE FOOTER =====
+      ctx.fillStyle = 'rgba(255,255,255,0.3)';
+      ctx.font = '11px Arial, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('bharataiinnovation.com  \u2022  networking.bharataiinnovation.com', W/2, H - 50);
+
+      // Bottom accent bar
+      goldLine(H - 38, 140, 0.4);
+
+      // ===== DOWNLOAD =====
+      const link = document.createElement('a');
+      link.download = 'BHAI-2026-Delegate-Pass-' + user.name.replace(/\\s+/g, '-') + '.png';
+      link.href = canvas.toDataURL('image/png');
       link.click();
-      showToast('Pass downloaded', 'success');
-      if (!adminAttendee && user.id) { try { await api.post('/api/attendees/' + user.id + '/track-pass-download', {}); } catch (e) {} }
+      showToast('Delegate Pass downloaded!', 'success');
+      // Track download
+      if (!isAdminDownload) { try { await fetch(\`/api/attendees/\${user.id}/track-pass-download\`, { method: 'POST' }); } catch(e) {} }
     }
-
-    // Kept as the entry point: nine call sites reference this name.
-    async function generateDelegatePass(adminAttendee) { return generateEventPass(adminAttendee); }
 
     function loadImage(src) {
       return new Promise((resolve, reject) => {
@@ -11182,7 +11362,7 @@ function adminPageHTML(): string {
     }
   </script>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Manrope:wght@300..800&family=Montserrat:wght@600;700;800&family=Playfair+Display:wght@600;700&family=Mukta:wght@500;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Manrope:wght@300..800&display=swap');
     * { font-family: 'Manrope', sans-serif; }
     body { background: #F8F9FF; color: #1E2140; }
     .glass { background: rgba(255,255,255,0.05); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.08); }
