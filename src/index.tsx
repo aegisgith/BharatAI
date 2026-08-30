@@ -227,6 +227,63 @@ async function notifyTeamOfInquiry(c: any, row: { id: any; inquiry_type: string;
   } catch { /* the enquiry is already saved; a failed notification must not surface */ }
 }
 
+// Registration sent nothing at all: a person signed up and heard silence — no
+// confirmation, no way back in, and no idea their pass needs a photo. This is the
+// first contact they get, so it carries the three things they need next.
+//
+// waitUntil, so a slow or failing mail never delays or fails the registration
+// itself — the row is already committed before this runs.
+async function sendRegistrationEmail(c: any, attendee: any) {
+  const g = async (k: string) => ((await c.env.DB.prepare('SELECT value FROM app_settings WHERE key = ?').bind(k).first()) as any)?.value
+  const apiKey = await g('elastic_email_api_key')
+  if (!apiKey || !attendee?.email) return
+  const fromEmail = senderEmailOrDefault(await g('sender_email'))
+  const fromName = (await g('sender_name')) || 'Bharat AI Innovation'
+  const appUrl = (await g('app_url')) || 'https://bharataiinnovation.com/app'
+  const esc = (v: any) => String(v ?? '').replace(/[&<>]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch] as string))
+  const pending = String(attendee.payment_status || '').toLowerCase() === 'pending'
+  const step = (n: string, title: string, body: string) =>
+    `<tr><td width="34" valign="top" style="padding:0 0 16px;"><div style="width:26px;height:26px;border-radius:50%;background:#FF6B00;color:#fff;font-weight:bold;font-size:13px;line-height:26px;text-align:center;">${n}</div></td>` +
+    `<td valign="top" style="padding:0 0 16px;"><p style="margin:0 0 3px;font-size:14px;font-weight:bold;color:#1E2140;">${title}</p><p style="margin:0;font-size:13px;line-height:1.6;color:#555;">${body}</p></td></tr>`
+
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#f5f5f5;font-family:Arial,sans-serif;">
+    <div style="max-width:600px;margin:20px auto;background:#fff;border-radius:12px;overflow:hidden;">
+      ${emailBrandHeader('You are registered', '20&ndash;21 Nov 2026 &bull; WTC Mumbai')}
+      <div style="padding:30px;">
+        <p style="margin:0 0 6px;font-size:15px;color:#333;">Hi <strong>${esc(attendee.name)}</strong>,</p>
+        <p style="margin:0 0 20px;font-size:14px;line-height:1.7;color:#555;">Your registration is confirmed. You are booked as a <strong>${esc(attendee.badge_type || 'Visitor Pass')}</strong> holder.</p>
+        <table style="width:100%;border-collapse:collapse;">
+          ${step('1', 'Add your photo', 'A photo is required on your pass. You will be asked for one the first time you download it.')}
+          ${step('2', 'Complete your profile', 'Your job title and organisation appear on your pass and in the networking directory.')}
+          ${step('3', 'Download your pass', pending ? 'Your pass becomes available once payment is confirmed.' : 'Then download your pass and keep it on your phone for the badge desk.')}
+        </table>
+        <div style="text-align:center;margin:26px 0 6px;">
+          <a href="${appUrl}" style="display:inline-block;padding:13px 32px;background:linear-gradient(135deg,#FF6B00,#FF8C38);color:#fff;text-decoration:none;border-radius:10px;font-weight:bold;font-size:14px;">Open the app</a>
+        </div>
+        <p style="margin:14px 0 0;font-size:12px;color:#888;text-align:center;">Sign in with this email address &mdash; we will send you a one-time code, no password needed.</p>
+        <div style="margin-top:22px;padding:14px;background:#FFF6EF;border:1px solid rgba(255,107,0,0.25);border-radius:10px;">
+          <p style="margin:0;font-size:12.5px;line-height:1.6;color:#1E2140;"><strong>On the day:</strong> bring a government photo ID matching the name on your pass. We check it at the badge desk &mdash; we never ask you to upload or send an identity document.</p>
+        </div>
+      </div>
+    </div></body></html>`
+
+  try {
+    await fetch('https://api.elasticemail.com/v4/emails/transactional', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-ElasticEmail-ApiKey': apiKey },
+      body: JSON.stringify({
+        Recipients: { To: [attendee.email] },
+        Content: {
+          Body: [{ ContentType: 'HTML', Charset: 'utf-8', Content: html }],
+          From: `${fromName} <${fromEmail}>`,
+          Subject: 'You are registered - Bharat AI Innovation 2026'
+        },
+        Options: { TrackClicks: false, TrackOpens: false }
+      })
+    })
+  } catch { /* registration already succeeded; a failed email must not surface */ }
+}
+
 function emailBrandHeader(title: string, subtitle: string): string {
   const SAFFRON = '#FF9933', WHITE = '#FFFFFF', GREEN = '#138808'
   return `
@@ -509,6 +566,14 @@ app.post('/api/events/:id/attendees/register', async (c) => {
 
     const attendee = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(result.meta.last_row_id).first()
     await issueAttendeeSession(c, (attendee as any).id)
+
+    // c.executionCtx throws when absent rather than being undefined, so this is
+    // guarded rather than optional-chained.
+    const welcome = sendRegistrationEmail(c, attendee)
+    let scheduled = false
+    try { c.executionCtx.waitUntil(welcome); scheduled = true } catch { /* no ctx */ }
+    if (!scheduled) await welcome
+
     return c.json(attendee, 201)
   } catch (e: any) {
     if (e.message?.includes('UNIQUE')) {
@@ -9898,6 +9963,15 @@ function mainPageHTML(): string {
         showToast('Your ' + T.label + ' will be issued once payment is confirmed.', 'error');
         return;
       }
+      // A photo is required: the badge desk checks the pass against a government
+      // photo ID, and a pass carrying the holder's face is what makes that check
+      // quick. Admin downloads bypass this so the desk can still issue for someone
+      // who cannot upload on the spot.
+      if (!adminAttendee && !user.avatar_url) {
+        var got = await askForPassPhoto();
+        if (got !== 'done') return;
+      }
+
       showToast('Generating your pass...', 'info');
       await ensurePassFonts();
 
@@ -9911,7 +9985,8 @@ function mainPageHTML(): string {
       // goes through the same-origin proxy the logos already use.
       var passId = 'BHAI-2026-' + String(user.id).padStart(4, '0');
       var qrTarget = 'https://networking.bharataiinnovation.com?email=' + encodeURIComponent(user.email || '');
-      var logo = null, aegis = null, agba = null, assessfy = null, qr = null;
+      var logo = null, aegis = null, agba = null, assessfy = null, qr = null, photo = null;
+      if (user.avatar_url) { try { photo = await loadImage(user.avatar_url); } catch (e) {} }
       try { logo = await loadImage('/images/Bharat%20AI%20Innovation%20Logo.png'); } catch (e) {}
       try { aegis = await loadImage('/images/passes/aegis.png'); } catch (e) {}
       try { agba = await loadImage('/images/passes/agba.png'); } catch (e) {}
@@ -10008,7 +10083,17 @@ function mainPageHTML(): string {
       ctx.lineWidth = px(T.gold ? 4 : 3); ctx.strokeStyle = T.gold ? '#f3d97a' : T.edge; ctx.stroke();
       f('700', T.gold ? 54 : 56, PLAY);
       ctx.fillStyle = T.gold ? '#7a5510' : '#ffffff'; ctx.textAlign = 'center';
-      ctx.fillText(T.gold ? '\u265B' : String(user.name || '?').trim().charAt(0).toUpperCase(), mid, cy + px(T.gold ? 19 : 20));
+      if (photo) {
+        // Cover-fit inside the circle so a non-square photo is cropped, not squashed.
+        ctx.save();
+        ctx.beginPath(); ctx.arc(mid, cy, R - px(2), 0, Math.PI * 2); ctx.clip();
+        var sc = Math.max((R * 2) / photo.width, (R * 2) / photo.height);
+        var pwd = photo.width * sc, phd = photo.height * sc;
+        ctx.drawImage(photo, mid - pwd / 2, cy - phd / 2, pwd, phd);
+        ctx.restore();
+      } else {
+        ctx.fillText(T.gold ? '\u265B' : String(user.name || '?').trim().charAt(0).toUpperCase(), mid, cy + px(T.gold ? 19 : 20));
+      }
       y = cy + R + px(20);
 
       // ---- name / designation / organisation ----
@@ -10107,6 +10192,50 @@ function mainPageHTML(): string {
       link.click();
       showToast('Pass downloaded', 'success');
       if (!adminAttendee && user.id) { try { await api.post('/api/attendees/' + user.id + '/track-pass-download', {}); } catch (e) {} }
+    }
+
+    // Photo is mandatory for a self-service download, so this resolves only on a
+    // successful upload. Dismissing it aborts the download rather than proceeding
+    // without one.
+    function askForPassPhoto() {
+      return new Promise(function (resolve) {
+        var wrap = document.createElement('div');
+        wrap.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(4,6,20,0.80);display:flex;align-items:center;justify-content:center;padding:20px;';
+        wrap.innerHTML =
+          '<div style="max-width:380px;width:100%;background:#0f1428;border:1px solid rgba(255,255,255,0.12);border-radius:18px;padding:26px;text-align:center;color:#e8edf5;font-family:Inter,Arial,sans-serif;position:relative;">' +
+            '<button id="pass-photo-close" aria-label="Close" style="position:absolute;top:12px;right:14px;background:none;border:none;color:#6c7893;font-size:20px;cursor:pointer;line-height:1;">&times;</button>' +
+            '<div style="width:52px;height:52px;margin:0 auto 14px;border-radius:50%;background:rgba(255,107,0,0.16);display:flex;align-items:center;justify-content:center;"><i class="fas fa-camera" style="color:#FF8C38;font-size:20px;"></i></div>' +
+            '<h3 style="margin:0 0 8px;font-size:17px;font-weight:700;">A photo is required on your pass</h3>' +
+            '<p style="margin:0 0 18px;font-size:13px;line-height:1.6;color:#98a3bd;">Your pass is checked against a government photo ID at the badge desk. Adding your photo makes that check quick and stops passes being shared.</p>' +
+            '<input type="file" accept="image/*" id="pass-photo-input" style="display:none;">' +
+            '<button id="pass-photo-pick" style="width:100%;padding:11px;border:none;border-radius:11px;background:linear-gradient(135deg,#FF6B00,#FF8C38);color:#fff;font-weight:700;font-size:14px;cursor:pointer;">Choose a photo</button>' +
+            '<p id="pass-photo-status" style="margin:12px 0 0;font-size:12px;color:#98a3bd;min-height:16px;"></p>' +
+          '</div>';
+        document.body.appendChild(wrap);
+        var close = function (r) { if (wrap.parentNode) wrap.parentNode.removeChild(wrap); resolve(r); };
+        wrap.addEventListener('click', function (e) { if (e.target === wrap) close('cancel'); });
+        wrap.querySelector('#pass-photo-close').onclick = function () { close('cancel'); };
+        var input = wrap.querySelector('#pass-photo-input');
+        var status = wrap.querySelector('#pass-photo-status');
+        wrap.querySelector('#pass-photo-pick').onclick = function () { input.click(); };
+        input.onchange = async function () {
+          if (!input.files || !input.files[0]) return;
+          if (input.files[0].size > 5 * 1024 * 1024) { status.textContent = 'That image is over 5MB. Please choose a smaller one.'; return; }
+          status.textContent = 'Uploading...';
+          try {
+            var dataUrl = await resizeImage(input.files[0], 400, 0.85);
+            var res = await api.post('/api/attendees/' + user.id + '/avatar', { image: dataUrl });
+            if (res && res.success) {
+              user.avatar_url = res.avatar_url || dataUrl;
+              if (currentUser && currentUser.id === user.id) {
+                currentUser.avatar_url = user.avatar_url;
+                try { localStorage.setItem('agba_user', JSON.stringify(currentUser)); } catch (e) {}
+              }
+              close('done');
+            } else { status.textContent = 'Upload failed. Please try another image.'; }
+          } catch (e) { status.textContent = 'Upload failed. Please try another image.'; }
+        };
+      });
     }
 
     // Kept as the entry point: nine call sites reference this name.
@@ -10851,7 +10980,10 @@ function mainPageHTML(): string {
         // Upload immediately
         const result = await api.post('/api/attendees/' + currentUser.id + '/avatar', { image: dataUrl });
         if (result.success) {
-          currentUser.avatar_url = dataUrl;
+          // Photos live in R2 now and the server returns a /api/uploads/... URL.
+          // Keeping the base64 here would put the whole image back into localStorage
+          // and leave the client disagreeing with the row about where the photo is.
+          currentUser.avatar_url = result.avatar_url || dataUrl;
           localStorage.setItem('tc_user', JSON.stringify(currentUser));
           document.getElementById('remove-avatar-btn').classList.remove('hidden');
           toast('Photo uploaded!');
