@@ -12096,7 +12096,7 @@ function adminPageHTML(): string {
           <div class="flex gap-2 items-center">
             <div class="relative">
               <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-xs"></i>
-              <input type="text" id="admin-att-search" placeholder="Search attendees..." class="pl-9 pr-4 py-2 rounded-lg text-xs w-64" value="${esc(attQuery)}" oninput="searchAttendees(this.value)">
+              <input type="text" id="admin-att-search" placeholder="Search attendees..." class="pl-9 pr-4 py-2 rounded-lg text-xs w-64" value="\${esc(attQuery)}" oninput="searchAttendees(this.value)">
             </div>
             <span class="text-xs text-gray-400">\${attendees.length} total</span>
             \${Object.keys(dupMap).length > 0 ? '<span class="text-xs text-red-400 ml-1"><i class="fas fa-exclamation-triangle mr-0.5"></i>' + (dupData.totalGroups||0) + ' dup groups (' + Object.keys(dupMap).length + ' entries)</span>' : ''}
@@ -12153,21 +12153,21 @@ function adminPageHTML(): string {
           <!-- Pager. Rendering 1000+ rows at once is what made this page slow to open. -->
           <div class="flex items-center justify-between gap-3 flex-wrap px-4 py-3 border-t border-white/10 text-xs text-gray-400">
             <div>
-              Showing <strong class="text-gray-200">${attMatches.length ? (attStart + 1) : 0}&ndash;${Math.min(attEnd, attMatches.length)}</strong>
-              of <strong class="text-gray-200">${attMatches.length}</strong>${attQuery ? ' matching' : ''}
-              ${attQuery ? '<span class="text-gray-500"> (of ' + attendees.length + ' total)</span>' : ''}
+              Showing <strong class="text-gray-200">\${attMatches.length ? (attStart + 1) : 0}&ndash;\${Math.min(attEnd, attMatches.length)}</strong>
+              of <strong class="text-gray-200">\${attMatches.length}</strong>\${attQuery ? ' matching' : ''}
+              \${attQuery ? '<span class="text-gray-500"> (of ' + attendees.length + ' total)</span>' : ''}
             </div>
             <div class="flex items-center gap-2">
               <label class="text-gray-500">Rows</label>
               <select onchange="setAttPageSize(this.value)" class="px-2 py-1 rounded-lg text-xs bg-white/5 border border-white/10">
-                ${[50,100,250,500].map(n => '<option value="'+n+'"'+(attPageSize===n?' selected':'')+'>'+n+'</option>').join('')}
-                <option value="all"${attPageSize===Infinity?' selected':''}>All</option>
+                \${[50,100,250,500].map(n => '<option value="'+n+'"'+(attPageSize===n?' selected':'')+'>'+n+'</option>').join('')}
+                <option value="all"\${attPageSize===Infinity?' selected':''}>All</option>
               </select>
-              <button onclick="gotoAttPage(1)" ${attPage<=1?'disabled':''} class="px-2 py-1 rounded-lg bg-white/5 border border-white/10 disabled:opacity-30" title="First"><i class="fas fa-angles-left"></i></button>
-              <button onclick="gotoAttPage(${attPage-1})" ${attPage<=1?'disabled':''} class="px-2 py-1 rounded-lg bg-white/5 border border-white/10 disabled:opacity-30"><i class="fas fa-chevron-left"></i></button>
-              <span class="px-2">Page <strong class="text-gray-200">${attPage}</strong> of ${attTotalPages}</span>
-              <button onclick="gotoAttPage(${attPage+1})" ${attPage>=attTotalPages?'disabled':''} class="px-2 py-1 rounded-lg bg-white/5 border border-white/10 disabled:opacity-30"><i class="fas fa-chevron-right"></i></button>
-              <button onclick="gotoAttPage(${attTotalPages})" ${attPage>=attTotalPages?'disabled':''} class="px-2 py-1 rounded-lg bg-white/5 border border-white/10 disabled:opacity-30" title="Last"><i class="fas fa-angles-right"></i></button>
+              <button onclick="gotoAttPage(1)" \${attPage<=1?'disabled':''} class="px-2 py-1 rounded-lg bg-white/5 border border-white/10 disabled:opacity-30" title="First"><i class="fas fa-angles-left"></i></button>
+              <button onclick="gotoAttPage(\${attPage-1})" \${attPage<=1?'disabled':''} class="px-2 py-1 rounded-lg bg-white/5 border border-white/10 disabled:opacity-30"><i class="fas fa-chevron-left"></i></button>
+              <span class="px-2">Page <strong class="text-gray-200">\${attPage}</strong> of \${attTotalPages}</span>
+              <button onclick="gotoAttPage(\${attPage+1})" \${attPage>=attTotalPages?'disabled':''} class="px-2 py-1 rounded-lg bg-white/5 border border-white/10 disabled:opacity-30"><i class="fas fa-chevron-right"></i></button>
+              <button onclick="gotoAttPage(\${attTotalPages})" \${attPage>=attTotalPages?'disabled':''} class="px-2 py-1 rounded-lg bg-white/5 border border-white/10 disabled:opacity-30" title="Last"><i class="fas fa-angles-right"></i></button>
             </div>
           </div>
         </div>
