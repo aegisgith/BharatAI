@@ -301,6 +301,374 @@ function emailBrandHeader(title: string, subtitle: string): string {
     </div>`
 }
 
+// ==================== BADGE-DESK STAFF ====================
+//
+// Verification used to be gated on ADMIN_SECRET, which would have meant giving the
+// whole admin panel to everyone working the desk, and recording every entry as
+// "desk". Individual accounts scope the desk to scan-and-check-in, and make each
+// check-in attributable to a person.
+const STAFF_SESSION_DAYS = 3
+
+async function pbkdf2Hash(password: string, saltB64?: string): Promise<string> {
+  const enc = new TextEncoder()
+  const salt = saltB64
+    ? Uint8Array.from(atob(saltB64), ch => ch.charCodeAt(0))
+    : crypto.getRandomValues(new Uint8Array(16))
+  const key = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveBits'])
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' }, key, 256)
+  const b64 = (u: Uint8Array) => btoa(String.fromCharCode(...u))
+  return 'pbkdf2$100000$' + b64(salt) + '$' + b64(new Uint8Array(bits))
+}
+
+async function pbkdf2Verify(password: string, stored: string): Promise<boolean> {
+  const parts = String(stored || '').split('$')
+  if (parts.length !== 4 || parts[0] !== 'pbkdf2') return false
+  const again = await pbkdf2Hash(password, parts[2])
+  return safeEqualA(again, stored)
+}
+
+const staffCookie = (v: string, maxAge: number) =>
+  'bhai_staff=' + encodeURIComponent(v) + '; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=' + maxAge
+
+async function issueStaffSession(c: any, id: number) {
+  const secret = passTokenSecret(c)
+  const exp = Math.floor(Date.now() / 1000) + STAFF_SESSION_DAYS * 86400
+  const body = id + '.' + exp
+  c.header('Set-Cookie', staffCookie(body + '.' + await hmacHexA(secret, 'staff:' + body), STAFF_SESSION_DAYS * 86400))
+}
+
+async function verifyStaffSession(c: any): Promise<any | null> {
+  const secret = passTokenSecret(c)
+  if (!secret) return null
+  const raw = (c.req.header('Cookie') || '').split(';').map((x: string) => x.trim())
+    .find((x: string) => x.startsWith('bhai_staff='))
+  if (!raw) return null
+  const parts = decodeURIComponent(raw.slice('bhai_staff='.length)).split('.')
+  if (parts.length !== 3) return null
+  const [id, exp, sig] = parts
+  if (!safeEqualA(sig, await hmacHexA(secret, 'staff:' + id + '.' + exp))) return null
+  if (parseInt(exp, 10) * 1000 < Date.now()) return null
+  const row = await c.env.DB.prepare('SELECT id, name, username, active FROM staff WHERE id = ?').bind(id).first() as any
+  return row && row.active ? row : null
+}
+
+app.post('/api/staff/login', async (c) => {
+  const { username, password } = await c.req.json().catch(() => ({})) as any
+  if (!username || !password) return c.json({ error: 'Username and password required' }, 400)
+  const row = await c.env.DB.prepare('SELECT id, name, password_hash, active FROM staff WHERE username = ?')
+    .bind(String(username).trim().toLowerCase()).first() as any
+  // Same message either way, so the form cannot be used to discover usernames.
+  if (!row || !row.active || !(await pbkdf2Verify(String(password), row.password_hash))) {
+    return c.json({ error: 'Incorrect username or password' }, 401)
+  }
+  await c.env.DB.prepare("UPDATE staff SET last_login_at = datetime('now') WHERE id = ?").bind(row.id).run()
+  await issueStaffSession(c, row.id)
+  return c.json({ success: true, name: row.name })
+})
+
+app.post('/api/staff/logout', async (c) => {
+  c.header('Set-Cookie', staffCookie('', 0))
+  return c.json({ success: true })
+})
+
+// Admin-only: create desk accounts.
+app.post('/api/admin/staff', async (c) => {
+  if (!isAdminRequest(c)) return c.json({ error: 'Admin only' }, 401)
+  const { name, username, password } = await c.req.json().catch(() => ({})) as any
+  if (!name || !username || !password) return c.json({ error: 'name, username and password required' }, 400)
+  if (String(password).length < 8) return c.json({ error: 'Password must be at least 8 characters' }, 400)
+  try {
+    const r = await c.env.DB.prepare('INSERT INTO staff (name, username, password_hash) VALUES (?, ?, ?)')
+      .bind(String(name).trim(), String(username).trim().toLowerCase(), await pbkdf2Hash(String(password))).run()
+    return c.json({ success: true, id: r.meta.last_row_id }, 201)
+  } catch (e: any) {
+    if (String(e.message || '').includes('UNIQUE')) return c.json({ error: 'That username is taken' }, 409)
+    return c.json({ error: 'Could not create staff account' }, 400)
+  }
+})
+
+// Deactivate rather than delete: check-in rows name the person who admitted each
+// attendee, and that record should survive the account being switched off.
+app.patch('/api/admin/staff/:id', async (c) => {
+  if (!isAdminRequest(c)) return c.json({ error: 'Admin only' }, 401)
+  const id = parseInt(c.req.param('id'), 10)
+  const { active, password } = await c.req.json().catch(() => ({})) as any
+  if (password !== undefined) {
+    if (String(password).length < 8) return c.json({ error: 'Password must be at least 8 characters' }, 400)
+    await c.env.DB.prepare('UPDATE staff SET password_hash = ? WHERE id = ?')
+      .bind(await pbkdf2Hash(String(password)), id).run()
+  }
+  if (active !== undefined) {
+    await c.env.DB.prepare('UPDATE staff SET active = ? WHERE id = ?').bind(active ? 1 : 0, id).run()
+  }
+  return c.json({ success: true })
+})
+
+app.get('/api/admin/checkin-stats', async (c) => {
+  if (!isAdminRequest(c)) return c.json({ error: 'Admin only' }, 401)
+  const cols = await c.env.DB.prepare('PRAGMA table_info(attendees)').all() as any
+  if (!(cols.results || []).some((r: any) => r.name === 'checked_in_at')) {
+    return c.json({ ready: false, total: 0, checkedIn: 0, byTier: [], recent: [] })
+  }
+  const totals = await c.env.DB.prepare(
+    'SELECT COUNT(*) AS total, SUM(CASE WHEN checked_in_at IS NOT NULL THEN 1 ELSE 0 END) AS checked_in FROM attendees').first() as any
+  const byTier = await c.env.DB.prepare(
+    `SELECT COALESCE(badge_type, 'Visitor Pass') AS badge_type, COUNT(*) AS total,
+            SUM(CASE WHEN checked_in_at IS NOT NULL THEN 1 ELSE 0 END) AS checked_in
+     FROM attendees GROUP BY 1 ORDER BY 2 DESC`).all() as any
+  const recent = await c.env.DB.prepare(
+    'SELECT name, badge_type, checked_in_at, checked_in_by FROM attendees WHERE checked_in_at IS NOT NULL ORDER BY checked_in_at DESC LIMIT 15').all() as any
+  return c.json({
+    ready: true,
+    total: totals?.total || 0,
+    checkedIn: totals?.checked_in || 0,
+    byTier: byTier.results || [],
+    recent: recent.results || [],
+  })
+})
+
+app.get('/api/admin/staff', async (c) => {
+  if (!isAdminRequest(c)) return c.json({ error: 'Admin only' }, 401)
+  const { results } = await c.env.DB.prepare(
+    'SELECT id, name, username, active, last_login_at, created_at FROM staff ORDER BY id').all()
+  return c.json(results)
+})
+
+app.get('/staff', async (c) => {
+  // Only ever bounce back to our own paths — an open redirect here would let a
+  // phishing link wear the bharataiinnovation.com sign-in page.
+  const raw = c.req.query('next') || ''
+  const next = /^\/[A-Za-z0-9\/._~%-]*$/.test(raw) ? raw : '/staff/scan'
+  const me = await verifyStaffSession(c)
+  if (me) return c.redirect(next)
+  return c.html(staffLoginHTML(next))
+})
+
+app.get('/staff/scan', async (c) => {
+  const me = await verifyStaffSession(c)
+  if (!me) return c.redirect('/staff')
+  return c.html(staffScanHTML(me))
+})
+
+function staffShell(title: string, inner: string, script: string): string {
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>${title} - Bharat AI Innovation 2026</title><style>
+ *{box-sizing:border-box}
+ body{margin:0;background:#0a0e1f;color:#e8edf5;font-family:system-ui,-apple-system,Segoe UI,Arial,sans-serif;}
+ .wrap{max-width:460px;margin:0 auto;padding:20px;}
+ h1{font-size:20px;margin:0 0 4px;} .muted{color:#98a3bd;font-size:13px;margin:0 0 18px;line-height:1.5;}
+ input{width:100%;padding:14px;margin-top:10px;border-radius:11px;border:1px solid rgba(255,255,255,.15);background:#111731;color:#fff;font-size:16px;}
+ button{width:100%;margin-top:12px;padding:15px;border:none;border-radius:12px;background:#FF6B00;color:#fff;font-size:16px;font-weight:700;}
+ .err{margin-top:10px;color:#ff8f80;font-size:13px;min-height:16px;}
+ video{width:100%;border-radius:14px;background:#000;margin-top:12px;}
+ .bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;}
+ .bar a{color:#98a3bd;font-size:13px;text-decoration:none;}
+ .hint{margin-top:14px;padding:13px;border-radius:11px;background:#111731;border:1px solid rgba(255,255,255,.1);font-size:12.5px;line-height:1.6;color:#98a3bd;}
+</style></head><body><div class="wrap">${inner}</div><script>${script}</script></body></html>`
+}
+
+function staffLoginHTML(next: string): string {
+  return staffShell('Badge desk', `
+    <h1>Badge desk sign in</h1>
+    <p class="muted">For Bharat AI Innovation staff verifying passes at the door.</p>
+    <input id="u" placeholder="Username" autocapitalize="none" autocomplete="username">
+    <input id="p" type="password" placeholder="Password" autocomplete="current-password">
+    <button onclick="go()">Sign in</button>
+    <p class="err" id="e"></p>`,
+  `var NEXT=${JSON.stringify(next)};
+   async function go(){
+     var e=document.getElementById('e'); e.textContent='';
+     var r=await fetch('/api/staff/login',{method:'POST',headers:{'Content-Type':'application/json'},
+       body:JSON.stringify({username:document.getElementById('u').value,password:document.getElementById('p').value})});
+     var j=await r.json().catch(function(){return{}});
+     if(r.ok) location.href=NEXT; else e.textContent=j.error||'Sign in failed';
+   }
+   document.getElementById('p').addEventListener('keydown',function(ev){ if(ev.key==='Enter') go(); });`)
+}
+
+function staffScanHTML(me: any): string {
+  return staffShell('Scan passes', `
+    <div class="bar"><h1>Scan a pass</h1><a href="#" onclick="out()">Sign out</a></div>
+    <p class="muted">Signed in as ${String(me.name).replace(/[<>&]/g, '')}. Point the camera at the QR on the attendee's pass.</p>
+    <video id="v" playsinline muted></video>
+    <p class="err" id="e"></p>
+    <div class="hint"><strong>No camera?</strong> Your phone's own camera app also works &mdash; point it at the QR and tap the link it offers. You will land on the same verification screen.</div>`,
+  `var v=document.getElementById('v'), e=document.getElementById('e'), stopped=false;
+   async function out(){ await fetch('/api/staff/logout',{method:'POST'}); location.href='/staff'; }
+   async function start(){
+     if(!('BarcodeDetector' in window)){
+       e.textContent='This browser cannot scan in-page. Use your phone camera app on the QR instead.'; return;
+     }
+     try{
+       var stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+       v.srcObject=stream; await v.play();
+     }catch(err){ e.textContent='Camera unavailable. Use your phone camera app on the QR instead.'; return; }
+     var det=new BarcodeDetector({formats:['qr_code']});
+     (async function loop(){
+       if(stopped) return;
+       try{
+         var codes=await det.detect(v);
+         if(codes && codes.length){
+           var url=codes[0].rawValue||'';
+           if(url.indexOf('/verify/')>=0){ stopped=true; location.href=url; return; }
+         }
+       }catch(err){}
+       setTimeout(loop,250);
+     })();
+   }
+   start();`)
+}
+
+// ==================== PASS VERIFICATION ====================
+//
+// The QR on a pass carries a signed token, not an email address. Signing means a
+// pass cannot be forged by guessing an id, and carrying no personal data means a
+// stranger who photographs someone's pass learns nothing from the code itself.
+const passTokenSecret = (c: any): string => c.env.PASS_SECRET || c.env.SESSION_SECRET || c.env.ADMIN_SECRET || ''
+
+async function signPassToken(c: any, attendeeId: number | string): Promise<string> {
+  const secret = passTokenSecret(c)
+  if (!secret) return String(attendeeId)
+  return String(attendeeId) + '.' + (await hmacHexA(secret, 'pass:' + attendeeId)).slice(0, 24)
+}
+
+async function verifyPassToken(c: any, token: string): Promise<number | null> {
+  const secret = passTokenSecret(c)
+  if (!secret || !token) return null
+  const dot = token.lastIndexOf('.')
+  if (dot < 1) return null
+  const id = token.slice(0, dot), sig = token.slice(dot + 1)
+  const expected = (await hmacHexA(secret, 'pass:' + id)).slice(0, 24)
+  if (!safeEqualA(sig, expected)) return null
+  const n = parseInt(id, 10)
+  return Number.isFinite(n) ? n : null
+}
+
+// The token for the signed-in attendee, so the app can build its own QR.
+app.get('/api/my-pass-token', async (c) => {
+  // Admin may mint for any attendee, so the desk can issue a pass on someone's
+  // behalf; everyone else only ever gets their own.
+  const forId = c.req.query('id')
+  if (forId && isAdminRequest(c)) return c.json({ token: await signPassToken(c, forId) })
+  const me = await verifyAttendeeSession(c)
+  if (me === null) return c.json({ error: 'Sign in required' }, 401)
+  return c.json({ token: await signPassToken(c, me) })
+})
+
+// Staff scan target. Public URL, but personal details are shown only to a caller
+// holding the staff code — otherwise a stranger scanning a pass on a lanyard would
+// see the holder's photo, employer and tier.
+app.get('/verify/:token', async (c) => {
+  const token = c.req.param('token')
+  const id = await verifyPassToken(c, token)
+  const staff = (await verifyStaffSession(c)) || (isAdminRequest(c) ? { name: 'admin' } : null)
+
+  if (id === null) {
+    return c.html(verifyPageHTML({ state: 'invalid', staff, token }))
+  }
+  const a = await c.env.DB.prepare(
+    'SELECT id, name, company, job_title, badge_type, payment_status, avatar_url, checked_in_at, checked_in_by FROM attendees WHERE id = ?'
+  ).bind(id).first() as any
+  if (!a) return c.html(verifyPageHTML({ state: 'invalid', staff, token }))
+  return c.html(verifyPageHTML({ state: 'valid', staff, token, attendee: a }))
+})
+
+app.post('/api/verify/:token/checkin', async (c) => {
+  const who = (await verifyStaffSession(c)) || (isAdminRequest(c) ? { name: 'admin' } : null)
+  if (!who) return c.json({ error: 'Staff sign-in required' }, 401)
+  const id = await verifyPassToken(c, c.req.param('token'))
+  if (id === null) return c.json({ error: 'Invalid pass' }, 400)
+  const body = await c.req.json().catch(() => ({})) as any
+  const a = await c.env.DB.prepare('SELECT id, name, checked_in_at FROM attendees WHERE id = ?').bind(id).first() as any
+  if (!a) return c.json({ error: 'Not found' }, 404)
+  if (a.checked_in_at) return c.json({ success: false, already: true, at: a.checked_in_at, name: a.name })
+  // Attributable: who admitted this person, not just that someone did.
+  await c.env.DB.prepare("UPDATE attendees SET checked_in_at = datetime('now'), checked_in_by = ? WHERE id = ?")
+    .bind(String(who.name || 'desk').slice(0, 40), id).run()
+  return c.json({ success: true, name: a.name })
+})
+
+function verifyPageHTML(o: any): string {
+  const a = o.attendee || {}
+  const esc = (v: any) => String(v ?? '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch] as string))
+  const TIER: any = {
+    'VIP Pass': ['#E9C356', '#5a3f08'], 'Delegate Pass': ['#00996C', '#ffffff'],
+    'Academic Pass': ['#7C5CFF', '#ffffff'], 'Visitor Pass': ['#2B8CFF', '#ffffff']
+  }
+  const tier = TIER[a.badge_type] || ['#2B8CFF', '#ffffff']
+  const unpaid = String(a.payment_status || '').toLowerCase() === 'pending'
+  const ok = o.state === 'valid' && !unpaid
+  const banner = o.state !== 'valid' ? ['#b3261e', 'NOT VALID', 'This code is not a Bharat AI Innovation pass.']
+    : unpaid ? ['#b26a00', 'PAYMENT PENDING', 'This tier has not been paid for. Do not admit without checking.']
+    : ['#0f7b47', 'VALID PASS', 'Check the photo and name against a government photo ID.']
+
+  const body = !o.staff
+    ? `<div class="card"><p class="muted">Badge desk staff only.</p>
+         <p class="muted" style="margin-top:6px;">Sign in with your desk account to see the holder's details and check them in. You stay signed in for three days, so you only do this once.</p>
+         <button onclick="signIn()">Staff sign in</button></div>`
+    : `<div class="card">
+         ${a.avatar_url ? `<img class="photo" src="${esc(a.avatar_url)}" alt="">` : `<div class="photo initial">${esc(String(a.name || '?').charAt(0).toUpperCase())}</div>`}
+         <h2>${esc(a.name)}</h2>
+         ${a.job_title ? `<p class="muted">${esc(a.job_title)}</p>` : ''}
+         ${a.company ? `<p class="muted">${esc(a.company)}</p>` : ''}
+         <div class="tier" style="background:${tier[0]};color:${tier[1]};">${esc(a.badge_type || 'Visitor Pass')}</div>
+         ${a.checked_in_at
+            ? `<div class="warn">Already checked in at ${esc(a.checked_in_at)} UTC${a.checked_in_by ? ' by ' + esc(a.checked_in_by) : ''}</div>`
+            : `<button id="ci" onclick="checkIn()">Check in</button>`}
+         <p id="msg" class="muted"></p>
+       </div>`
+
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pass verification - Bharat AI Innovation 2026</title>
+<style>
+ body{margin:0;background:#0a0e1f;color:#e8edf5;font-family:system-ui,-apple-system,Segoe UI,Arial,sans-serif;}
+ .wrap{max-width:460px;margin:0 auto;padding:18px;}
+ .banner{border-radius:16px;padding:22px 18px;text-align:center;background:${banner[0]};}
+ .banner h1{margin:0;font-size:26px;letter-spacing:1px;}
+ .banner p{margin:8px 0 0;font-size:13px;opacity:.92;line-height:1.5;}
+ .card{margin-top:14px;background:#111731;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:20px;text-align:center;}
+ .photo{width:130px;height:130px;border-radius:50%;object-fit:cover;display:block;margin:0 auto 12px;border:3px solid rgba(255,255,255,.18);}
+ .initial{background:#243056;font-size:54px;line-height:130px;}
+ h2{margin:0 0 4px;font-size:23px;}
+ .muted{margin:2px 0;color:#98a3bd;font-size:14px;}
+ .tier{display:inline-block;margin:14px 0 4px;padding:9px 22px;border-radius:999px;font-weight:700;font-size:14px;}
+ button{margin-top:14px;width:100%;padding:15px;border:none;border-radius:12px;background:#FF6B00;color:#fff;font-size:16px;font-weight:700;}
+ input{margin-top:10px;width:100%;padding:13px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0a0e1f;color:#fff;font-size:15px;box-sizing:border-box;}
+ .warn{margin-top:14px;padding:12px;border-radius:10px;background:rgba(178,106,0,.18);border:1px solid rgba(178,106,0,.5);font-size:13px;line-height:1.5;}
+ .foot{margin-top:16px;text-align:center;font-size:12px;color:#5a6a8a;}
+</style></head><body><div class="wrap">
+ <div class="banner"><h1>${banner[1]}</h1><p>${banner[2]}</p></div>
+ ${body}
+ <p class="foot">Bharat AI Innovation 2026 &bull; badge desk verification</p>
+</div>
+<script>
+ var TOKEN = ${JSON.stringify(o.token || '')};
+ function signIn(){ location.href = '/staff?next=' + encodeURIComponent(location.pathname); }
+ async function checkIn(){
+   var b = document.getElementById('ci'), m = document.getElementById('msg');
+   b.disabled = true; b.textContent = 'Checking in...';
+   try {
+     // The staff session cookie travels with this same-origin request; nothing
+     // secret is held in the page, so a screenshot of it gives nothing away.
+     var r = await fetch('/api/verify/' + encodeURIComponent(TOKEN) + '/checkin', { method:'POST' });
+     var j = await r.json();
+     if (j.success) { b.textContent = 'Checked in \u2713'; b.style.background = '#0f7b47'; next(); }
+     else if (j.already) { b.style.display='none'; m.textContent = 'Already checked in at ' + j.at + ' UTC'; next(); }
+     else if (r.status === 401) { b.disabled=false; b.textContent='Check in'; m.textContent='Your session expired.'; signIn(); }
+     else { b.disabled=false; b.textContent='Check in'; m.textContent = j.error || 'Could not check in'; }
+   } catch(e){ b.disabled=false; b.textContent='Check in'; m.textContent='Network error'; }
+ }
+ // The desk works in a queue: finishing one person should offer the next scan.
+ function next(){
+   if (document.getElementById('nx')) return;
+   var a = document.createElement('button');
+   a.id = 'nx'; a.textContent = 'Scan next pass'; a.style.background = '#243056';
+   a.onclick = function(){ location.href = '/staff/scan'; };
+   document.getElementById('msg').parentNode.appendChild(a);
+ }
+</script></body></html>`
+}
+
 // ==================== VERIFIED SIGN-IN ====================
 //
 // Sign-in used to be email-only: post an address, receive that account. This
@@ -1194,8 +1562,11 @@ app.get('/api/events/:id/exhibitors/categories', async (c) => {
 app.get('/api/image-proxy', async (c) => {
   const url = c.req.query('url')
   if (!url) return c.text('Missing url param', 400)
-  // Only allow bharataiinnovation.com images
-  if (!url.startsWith('https://bharataiinnovation.com/')) return c.text('Domain not allowed', 403)
+  // Narrow allowlist. The QR service is here because loading it directly onto the
+  // pass canvas would work, but proxying keeps the fetch same-origin (no tainted
+  // canvas, no CORS surprise) and lets Cloudflare cache the code.
+  const PROXY_ALLOWED = ['https://bharataiinnovation.com/', 'https://api.qrserver.com/']
+  if (!PROXY_ALLOWED.some(prefix => url.startsWith(prefix))) return c.text('Domain not allowed', 403)
   try {
     const resp = await fetch(url)
     if (!resp.ok) return c.text('Upstream error', resp.status)
@@ -9984,7 +10355,17 @@ function mainPageHTML(): string {
       // Cross-origin images taint the canvas and make toDataURL throw, so the QR
       // goes through the same-origin proxy the logos already use.
       var passId = 'BHAI-2026-' + String(user.id).padStart(4, '0');
-      var qrTarget = 'https://networking.bharataiinnovation.com?email=' + encodeURIComponent(user.email || '');
+      // Was networking.bharataiinnovation.com?email=<address> — a subdomain that 301s
+      // to the homepage, and a code that handed the holder's email to anyone who
+      // photographed the pass. It now points at the signed verification page.
+      var passToken = '';
+      try {
+        var tk = await api.get('/api/my-pass-token' + (adminAttendee ? ('?id=' + user.id) : ''));
+        passToken = (tk && tk.token) || '';
+      } catch (e) {}
+      var qrTarget = passToken
+        ? 'https://bharataiinnovation.com/verify/' + encodeURIComponent(passToken)
+        : 'https://bharataiinnovation.com/app';
       var logo = null, aegis = null, agba = null, assessfy = null, qr = null, photo = null;
       if (user.avatar_url) { try { photo = await loadImage(user.avatar_url); } catch (e) {} }
       try { logo = await loadImage('/images/Bharat%20AI%20Innovation%20Logo.png'); } catch (e) {}
@@ -10146,7 +10527,7 @@ function mainPageHTML(): string {
         ctx.drawImage(qr, mid - q / 2, y + pad, q, q);
         y += q + pad * 2;
       }
-      f('400', 12, INTER); centre('Scan to access networking app', y + px(20), T.gold ? '#7a6a3a' : '#5a6a8a');
+      f('400', 12, INTER); centre('Scan at the badge desk to verify & check in', y + px(20), T.gold ? '#7a6a3a' : '#5a6a8a');
       y += px(30);
       // Terms clause 2 requires photo ID matching the registration name at the badge
       // desk. Printing it here is what makes identity checks work without the event
@@ -11538,6 +11919,9 @@ function adminPageHTML(): string {
       <button onclick="switchSection('inquiries')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="inquiries" title="Inquiries">
         <i class="fas fa-inbox w-5 text-center shrink-0"></i><span class="sidebar-label">Inquiries</span>
       </button>
+      <button onclick="switchSection('badge-desk')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="badge-desk" title="Badge Desk">
+        <i class="fas fa-qrcode w-5 text-center shrink-0"></i><span class="sidebar-label">Badge Desk</span>
+      </button>
       <button onclick="switchSection('analytics')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="analytics" title="Analytics">
         <i class="fas fa-chart-bar w-5 text-center shrink-0"></i><span class="sidebar-label">Analytics</span>
       </button>
@@ -11596,6 +11980,8 @@ function adminPageHTML(): string {
       <div id="section-startup-pitch" class="section-content hidden"></div>
       <!-- Inquiries Section -->
       <div id="section-inquiries" class="section-content hidden"></div>
+      <!-- Badge Desk Section -->
+      <div id="section-badge-desk" class="section-content hidden"></div>
       <!-- Analytics Section -->
       <div id="section-analytics" class="section-content hidden"></div>
       <!-- Settings Section -->
@@ -11771,8 +12157,8 @@ function adminPageHTML(): string {
       document.querySelectorAll('.section-content').forEach(s => s.classList.add('hidden'));
       document.getElementById('section-'+sec).classList.remove('hidden');
 
-      const titles = { overview:'Overview', attendees:'Attendee Management', sessions:'Session Management', exhibitors:'Exhibitor Management', 'booth-requests':'Booth Requests', awards:'Awards Management', announcements:'Announcement Management', innovation:'Innovation Talk & Showcase', 'startup-pitch':'Startup Pitch Management', inquiries:'Inquiry Management', analytics:'Analytics & Reports', settings:'Settings' };
-      const subtitles = { overview:'Real-time event management dashboard', attendees:'Manage all registered attendees', sessions:'Create and manage event sessions', exhibitors:'Manage exhibition booths', 'booth-requests':'Review and manage booth booking requests', awards:'Manage award categories and nominees', announcements:'Create and manage live feed announcements', innovation:'Manage innovation talk and showcase schedule', 'startup-pitch':'Manage startup pitches and investor panel', inquiries:'View and manage all incoming inquiries', analytics:'Deep dive into event engagement metrics', settings:'Configure email, API keys and app settings' };
+      const titles = { overview:'Overview', attendees:'Attendee Management', sessions:'Session Management', exhibitors:'Exhibitor Management', 'booth-requests':'Booth Requests', awards:'Awards Management', announcements:'Announcement Management', innovation:'Innovation Talk & Showcase', 'startup-pitch':'Startup Pitch Management', inquiries:'Inquiry Management', 'badge-desk':'Badge Desk', analytics:'Analytics & Reports', settings:'Settings' };
+      const subtitles = { overview:'Real-time event management dashboard', attendees:'Manage all registered attendees', sessions:'Create and manage event sessions', exhibitors:'Manage exhibition booths', 'booth-requests':'Review and manage booth booking requests', awards:'Manage award categories and nominees', announcements:'Create and manage live feed announcements', innovation:'Manage innovation talk and showcase schedule', 'startup-pitch':'Manage startup pitches and investor panel', inquiries:'View and manage all incoming inquiries', 'badge-desk':'Event-day check-in and the staff accounts that scan passes', analytics:'Deep dive into event engagement metrics', settings:'Configure email, API keys and app settings' };
       document.getElementById('page-title').textContent = titles[sec] || sec;
       document.getElementById('page-subtitle').textContent = subtitles[sec] || '';
 
@@ -11821,8 +12207,136 @@ function adminPageHTML(): string {
         case 'innovation': loadInnovationTalks(); break;
         case 'startup-pitch': loadAdminStartupPitch(); break;
         case 'inquiries': loadAdminInquiries(); break;
+        case 'badge-desk': loadBadgeDesk(); break;
         case 'settings': loadSettings(); break;
       }
+    }
+
+    // ============ BADGE DESK ============
+    // The admin esc() above only escapes quotes; names and employers go into element
+    // bodies here, so angle brackets have to go too.
+    function deskEsc(v) {
+      return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    async function loadBadgeDesk() {
+      var el = document.getElementById('section-badge-desk');
+      try {
+        var stats = await api.get('/api/admin/checkin-stats');
+        var team = await api.get('/api/admin/staff');
+
+        var pct = stats.total ? Math.round((stats.checkedIn / stats.total) * 100) : 0;
+        var cards =
+          '<div class="grid grid-cols-2 md:grid-cols-4 gap-3">' +
+            statCard('Checked in', stats.checkedIn, 'fa-door-open', 'green') +
+            statCard('Registered', stats.total, 'fa-users', 'primary') +
+            statCard('Turnout', pct + '%', 'fa-percent', 'amber') +
+            statCard('Desk accounts', (team || []).filter(function (s) { return s.active; }).length, 'fa-id-badge', 'purple') +
+          '</div>';
+
+        var tiers = (stats.byTier || []).map(function (t) {
+          var p = t.total ? Math.round((t.checked_in / t.total) * 100) : 0;
+          return '<div class="flex items-center gap-3 text-sm py-1.5">' +
+            '<div class="w-40 shrink-0 text-gray-300">' + deskEsc(t.badge_type) + '</div>' +
+            '<div class="flex-1 h-2 rounded-full bg-white/10 overflow-hidden"><div class="h-full bg-primary-500" style="width:' + p + '%"></div></div>' +
+            '<div class="w-24 text-right text-gray-400 text-xs">' + t.checked_in + ' / ' + t.total + '</div></div>';
+        }).join('');
+
+        var recent = (stats.recent || []).length
+          ? (stats.recent || []).map(function (r) {
+              return '<div class="flex items-center justify-between gap-3 text-sm py-1.5 border-b border-white/5">' +
+                '<div class="min-w-0"><div class="truncate text-gray-200">' + deskEsc(r.name) + '</div>' +
+                '<div class="text-[11px] text-gray-500">' + deskEsc(r.badge_type || '') + (r.checked_in_by ? ' &middot; by ' + deskEsc(r.checked_in_by) : '') + '</div></div>' +
+                '<div class="text-[11px] text-gray-400 shrink-0">' + fmtRegDate(r.checked_in_at) + '</div></div>';
+            }).join('')
+          : '<p class="text-gray-500 text-sm py-3">Nobody has been checked in yet.</p>';
+
+        var rows = (team || []).map(function (s) {
+          return '<div class="flex items-center gap-3 py-2.5 border-b border-white/5">' +
+            '<div class="flex-1 min-w-0"><div class="text-sm text-gray-200 truncate">' + deskEsc(s.name) +
+              (s.active ? '' : ' <span class="text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-300">disabled</span>') + '</div>' +
+              '<div class="text-[11px] text-gray-500">' + deskEsc(s.username) +
+              (s.last_login_at ? ' &middot; last signed in ' + fmtRegDate(s.last_login_at) : ' &middot; never signed in') + '</div></div>' +
+            '<button onclick="resetStaffPassword(' + s.id + ')" class="px-2.5 py-1.5 rounded-lg text-[11px] glass hover:bg-white/10 text-gray-300">Reset password</button>' +
+            '<button onclick="toggleStaff(' + s.id + ',' + (s.active ? 0 : 1) + ')" class="px-2.5 py-1.5 rounded-lg text-[11px] ' +
+              (s.active ? 'bg-red-500/15 text-red-300 hover:bg-red-500/25' : 'bg-green-500/15 text-green-300 hover:bg-green-500/25') + '">' +
+              (s.active ? 'Disable' : 'Enable') + '</button></div>';
+        }).join('') || '<p class="text-gray-500 text-sm py-3">No desk accounts yet.</p>';
+
+        el.innerHTML =
+          '<div class="space-y-4">' + cards +
+            '<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">' +
+              '<div class="glass rounded-xl p-5 border border-white/5">' +
+                '<h3 class="text-sm font-semibold text-white mb-3">Check-in by pass type</h3>' + (tiers || '<p class="text-gray-500 text-sm">No registrations yet.</p>') +
+                '<h3 class="text-sm font-semibold text-white mt-6 mb-1">Latest arrivals</h3>' +
+                '<div class="max-h-80 overflow-y-auto pr-1">' + recent + '</div>' +
+              '</div>' +
+              '<div class="glass rounded-xl p-5 border border-white/5">' +
+                '<h3 class="text-sm font-semibold text-white mb-1">Desk accounts</h3>' +
+                '<p class="text-[11px] text-gray-500 mb-3">Each person on the door gets their own sign-in at ' +
+                  '<a href="/staff" target="_blank" class="text-primary-400 hover:underline">bharataiinnovation.com/staff</a>. ' +
+                  'They can scan and check in &mdash; nothing else. Every entry records who admitted it.</p>' +
+                '<div class="max-h-72 overflow-y-auto pr-1">' + rows + '</div>' +
+                '<div class="mt-4 pt-4 border-t border-white/10 space-y-2">' +
+                  '<input id="ns-name" placeholder="Full name" class="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm">' +
+                  '<input id="ns-user" placeholder="Username (no spaces)" autocapitalize="none" class="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm">' +
+                  '<div class="flex gap-2">' +
+                    '<input id="ns-pass" placeholder="Password (min 8)" class="flex-1 px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm">' +
+                    '<button onclick="document.getElementById(\'ns-pass\').value=makeDeskPassword()" class="px-3 py-2 rounded-lg text-xs glass hover:bg-white/10 text-gray-300">Suggest</button>' +
+                  '</div>' +
+                  '<button onclick="createStaff()" class="w-full px-4 py-2.5 rounded-lg bg-primary-500 hover:bg-primary-600 text-white text-sm font-semibold">Add desk account</button>' +
+                  '<p id="ns-msg" class="text-[11px] text-gray-400 min-h-4"></p>' +
+                '</div>' +
+              '</div>' +
+            '</div>' +
+          '</div>';
+      } catch (err) {
+        el.innerHTML = '<div class="text-center py-12 text-red-400"><i class="fas fa-exclamation-triangle text-3xl mb-3"></i><p>Failed to load badge desk: ' + err.message + '</p></div>';
+      }
+    }
+
+    function statCard(label, value, icon, color) {
+      return '<div class="glass rounded-xl p-4 border border-white/5">' +
+        '<div class="flex items-center justify-between"><span class="text-[11px] uppercase tracking-wide text-gray-500">' + label + '</span>' +
+        '<i class="fas ' + icon + ' text-' + color + '-400"></i></div>' +
+        '<div class="text-2xl font-bold text-white mt-1">' + value + '</div></div>';
+    }
+
+    // Readable but random â€” desk staff type these on a phone keyboard.
+    function makeDeskPassword() {
+      var words = ['tiger','lotus','ganga','delta','orbit','mango','pearl','coral','amber','ivory','solar','nimbus'];
+      var r = crypto.getRandomValues(new Uint32Array(3));
+      return words[r[0] % words.length] + '-' + words[r[1] % words.length] + '-' + (100 + (r[2] % 900));
+    }
+
+    async function createStaff() {
+      var msg = document.getElementById('ns-msg');
+      var name = document.getElementById('ns-name').value.trim();
+      var username = document.getElementById('ns-user').value.trim();
+      var password = document.getElementById('ns-pass').value;
+      if (!name || !username || password.length < 8) { msg.textContent = 'Name, username and a password of at least 8 characters are required.'; return; }
+      try {
+        await api.post('/api/admin/staff', { name: name, username: username, password: password });
+        // Shown once, here, because the server only ever stores the hash.
+        alert('Account created.\n\nUsername: ' + username.toLowerCase() + '\nPassword: ' + password + '\n\nWrite this down now â€” it cannot be shown again. They sign in at bharataiinnovation.com/staff');
+        document.getElementById('ns-name').value = '';
+        document.getElementById('ns-user').value = '';
+        document.getElementById('ns-pass').value = '';
+        loadBadgeDesk();
+      } catch (e) { msg.textContent = e.message || 'Could not create the account.'; }
+    }
+
+    async function toggleStaff(id, active) {
+      try { await api.patch('/api/admin/staff/' + id, { active: active }); loadBadgeDesk(); }
+      catch (e) { alert(e.message || 'Could not update the account.'); }
+    }
+
+    async function resetStaffPassword(id) {
+      var pw = prompt('New password for this desk account (at least 8 characters):', makeDeskPassword());
+      if (!pw) return;
+      if (pw.length < 8) { alert('Password must be at least 8 characters.'); return; }
+      try { await api.patch('/api/admin/staff/' + id, { password: pw }); alert('Password changed to:\n\n' + pw + '\n\nWrite it down â€” it cannot be shown again.'); }
+      catch (e) { alert(e.message || 'Could not change the password.'); }
     }
 
     // ============ BADGE CLASS HELPER ============
