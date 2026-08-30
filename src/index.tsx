@@ -632,7 +632,14 @@ function verifyPageHTML(o: any): string {
     : unpaid ? ['#b26a00', 'PAYMENT PENDING', 'This tier has not been paid for. Do not admit without checking.']
     : ['#0f7b47', 'VALID PASS', 'Check the photo and name against a government photo ID.']
 
-  const body = !o.staff
+  // An unrecognised code has no holder, so it must not render a card with an empty
+  // name, a default "Visitor Pass" pill and a live Check in button — that reads at a
+  // glance like a pass the desk can admit, under a banner saying it is not one.
+  const body = o.state !== 'valid'
+    ? `<div class="card"><p class="muted">There is nothing to check in.</p>
+         <p class="muted" style="margin-top:6px;">Ask for the pass again, or look the person up by name in the admin panel.</p>
+         ${o.staff ? `<button onclick="location.href='/staff/scan'">Scan another pass</button>` : ''}</div>`
+    : !o.staff
     ? `<div class="card"><p class="muted">Badge desk staff only.</p>
          <p class="muted" style="margin-top:6px;">Sign in with your desk account to see the holder's details and check them in. You stay signed in for three days, so you only do this once.</p>
          <button onclick="signIn()">Staff sign in</button></div>`
