@@ -376,16 +376,62 @@ async function verifyStaffSession(c: any): Promise<any | null> {
   return row && row.active ? row : null
 }
 
+// Repeated failures get slower, they do not get locked out. Desk usernames are
+// guessable, so a lockout would let anyone shut the door team out mid-event by
+// failing on purpose; a delay costs an attacker everything and costs someone who
+// mistyped a password about a second.
+const STAFF_THROTTLE_AFTER = 3
+const STAFF_THROTTLE_STEP_MS = 700
+const STAFF_THROTTLE_MAX_MS = 4000
+const STAFF_THROTTLE_WINDOW_MIN = 15
+let _staffThrottleCols: boolean | null = null
+
+async function staffThrottleEnabled(c: any): Promise<boolean> {
+  if (_staffThrottleCols !== null) return _staffThrottleCols
+  try {
+    const { results } = await c.env.DB.prepare('PRAGMA table_info(staff)').all() as any
+    _staffThrottleCols = (results || []).some((r: any) => r.name === 'failed_attempts')
+  } catch { _staffThrottleCols = false }
+  return _staffThrottleCols
+}
+
 app.post('/api/staff/login', async (c) => {
   const { username, password } = await c.req.json().catch(() => ({})) as any
   if (!username || !password) return c.json({ error: 'Username and password required' }, 400)
-  const row = await c.env.DB.prepare('SELECT id, name, password_hash, active FROM staff WHERE username = ?')
+  const throttled = await staffThrottleEnabled(c)
+  const cols = throttled
+    ? 'id, name, password_hash, active, failed_attempts, last_failed_at'
+    : 'id, name, password_hash, active'
+  const row = await c.env.DB.prepare('SELECT ' + cols + ' FROM staff WHERE username = ?')
     .bind(String(username).trim().toLowerCase()).first() as any
+
+  if (throttled && row && row.last_failed_at) {
+    const since = Date.now() - new Date(String(row.last_failed_at).replace(' ', 'T') + 'Z').getTime()
+    if (since < STAFF_THROTTLE_WINDOW_MIN * 60000) {
+      const over = Math.max(0, (row.failed_attempts || 0) - STAFF_THROTTLE_AFTER + 1)
+      const wait = Math.min(STAFF_THROTTLE_MAX_MS, over * STAFF_THROTTLE_STEP_MS)
+      if (wait > 0) await new Promise(r => setTimeout(r, wait))
+    }
+  }
+
   // Same message either way, so the form cannot be used to discover usernames.
   if (!row || !row.active || !(await pbkdf2Verify(String(password), row.password_hash))) {
+    if (throttled && row) {
+      // Failures older than the window start the count again, so an honest typo
+      // last week does not slow anyone down today.
+      const stale = !row.last_failed_at ||
+        Date.now() - new Date(String(row.last_failed_at).replace(' ', 'T') + 'Z').getTime() > STAFF_THROTTLE_WINDOW_MIN * 60000
+      await c.env.DB.prepare(
+        "UPDATE staff SET failed_attempts = ?, last_failed_at = datetime('now') WHERE id = ?"
+      ).bind(stale ? 1 : (row.failed_attempts || 0) + 1, row.id).run()
+    }
     return c.json({ error: 'Incorrect username or password' }, 401)
   }
-  await c.env.DB.prepare("UPDATE staff SET last_login_at = datetime('now') WHERE id = ?").bind(row.id).run()
+  await c.env.DB.prepare(
+    throttled
+      ? "UPDATE staff SET last_login_at = datetime('now'), failed_attempts = 0, last_failed_at = NULL WHERE id = ?"
+      : "UPDATE staff SET last_login_at = datetime('now') WHERE id = ?"
+  ).bind(row.id).run()
   await issueStaffSession(c, row.id)
   return c.json({ success: true, name: row.name })
 })
@@ -464,6 +510,51 @@ app.get('/api/admin/staff', async (c) => {
   return c.json(results)
 })
 
+// The likeliest failure at a door is not a forged pass, it is a flat phone battery.
+// Without a way to find someone by name the desk has nowhere to go, so this is the
+// same verification screen reached by search instead of by camera.
+app.get('/api/staff/lookup', async (c) => {
+  const me = await verifyStaffSession(c)
+  if (!me) return c.json({ error: 'Staff sign-in required' }, 401)
+  const q = String(c.req.query('q') || '').trim()
+  // One letter would sweep most of the directory into a phone. One digit cannot:
+  // it only ever matches a single id, so the early low-numbered ids stay findable.
+  if (q.length < 2 && !/^\d$/.test(q)) return c.json({ results: [] })
+
+  // A reference number is the id in disguise (BHAI-2026-01065), so it also matches on
+  // id - otherwise the number printed on every pass and email would be unsearchable.
+  // Only the last group counts: stripping every non-digit would fold the 2026 in and
+  // look up attendee 202601065.
+  const ref = q.match(/BHAI[\s-]*\d{4}[\s-]*0*(\d{1,7})\b/i)
+  const bare = /^\d{1,7}$/.test(q) ? q : ''
+  const idMatch = ref ? parseInt(ref[1], 10) : bare ? parseInt(bare, 10) : -1
+  const like = '%' + q.replace(/[\\%_]/g, m => '\\' + m).toLowerCase() + '%'
+
+  const { results } = await c.env.DB.prepare(
+    `SELECT id, name, company, job_title, badge_type, payment_status, checked_in_at, checked_in_by
+       FROM attendees
+      WHERE id = ?
+         OR lower(name) LIKE ? ESCAPE '\\'
+         OR lower(email) LIKE ? ESCAPE '\\'
+         OR lower(COALESCE(company, '')) LIKE ? ESCAPE '\\'
+         OR REPLACE(COALESCE(mobile, ''), ' ', '') LIKE ? ESCAPE '\\'
+      ORDER BY CASE WHEN id = ? THEN 0 ELSE 1 END, name
+      LIMIT 10`
+  ).bind(idMatch, like, like, like, like, idMatch).all() as any
+
+  // Emails and phone numbers are searchable but never returned: the desk needs to
+  // find the right person, not to read the directory off a phone.
+  return c.json({
+    results: await Promise.all((results || []).map(async (r: any) => ({
+      name: r.name, company: r.company, job_title: r.job_title, badge_type: r.badge_type,
+      payment_status: r.payment_status, checked_in_at: r.checked_in_at, checked_in_by: r.checked_in_by,
+      checked_in_ist: istStamp(r.checked_in_at),
+      ref: 'BHAI-2026-' + String(r.id).padStart(5, '0'),
+      token: await signPassToken(c, r.id),
+    })))
+  })
+})
+
 app.get('/staff', async (c) => {
   // Only ever bounce back to our own paths — an open redirect here would let a
   // phishing link wear the bharataiinnovation.com sign-in page.
@@ -494,6 +585,12 @@ function staffShell(title: string, inner: string, script: string): string {
  .bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;}
  .bar a{color:#98a3bd;font-size:13px;text-decoration:none;}
  .hint{margin-top:14px;padding:13px;border-radius:11px;background:#111731;border:1px solid rgba(255,255,255,.1);font-size:12.5px;line-height:1.6;color:#98a3bd;}
+ .find{margin-top:16px;padding:14px;border-radius:12px;background:#111731;border:1px solid rgba(255,255,255,.1);}
+ .find label{display:block;font-size:12.5px;font-weight:600;color:#c7d0e4;}
+ .find input{margin-top:8px;}
+ .hit{display:block;width:100%;text-align:left;margin-top:8px;padding:11px 13px;border-radius:10px;background:#0a0e1f;border:1px solid rgba(255,255,255,.1);color:#e8edf5;text-decoration:none;}
+ .hit b{display:block;font-size:14px;} .hit span{font-size:11.5px;color:#98a3bd;}
+ .hit em{font-style:normal;color:#ffb27a;}
 </style></head><body><div class="wrap">${inner}</div><script>${script}</script></body></html>`
 }
 
@@ -522,6 +619,11 @@ function staffScanHTML(me: any): string {
     <p class="muted">Signed in as ${String(me.name).replace(/[<>&]/g, '')}. Point the camera at the QR on the attendee's pass.</p>
     <video id="v" playsinline muted></video>
     <p class="err" id="e"></p>
+    <div class="find">
+      <label for="q">No pass to scan?</label>
+      <input id="q" placeholder="Name, email, company, mobile or BHAI number" autocapitalize="words" autocomplete="off">
+      <div id="res"></div>
+    </div>
     <div class="hint"><strong>No camera?</strong> Your phone's own camera app also works &mdash; point it at the QR and tap the link it offers. You will land on the same verification screen.</div>`,
   `var v=document.getElementById('v'), e=document.getElementById('e'), stopped=false;
    async function out(){ await fetch('/api/staff/logout',{method:'POST'}); location.href='/staff'; }
@@ -546,7 +648,26 @@ function staffScanHTML(me: any): string {
        setTimeout(loop,250);
      })();
    }
-   start();`)
+   start();
+
+   // Debounced: the desk types with one thumb while holding a queue back.
+   var qEl=document.getElementById('q'), resEl=document.getElementById('res'), timer=null;
+   qEl.addEventListener('input',function(){ clearTimeout(timer); timer=setTimeout(find,300); });
+   async function find(){
+     var q=qEl.value.trim();
+     if(q.length<2){ resEl.innerHTML=''; return; }
+     var r=await fetch('/api/staff/lookup?q='+encodeURIComponent(q));
+     if(r.status===401){ location.href='/staff'; return; }
+     var j=await r.json().catch(function(){return{results:[]}});
+     if(!j.results.length){ resEl.innerHTML='<p class="err">Nobody found. Try a surname, or the number on their confirmation email.</p>'; return; }
+     resEl.innerHTML=j.results.map(function(a){
+       var esc=function(v){ return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); };
+       var sub=[a.job_title,a.company].filter(Boolean).map(esc).join(', ');
+       var state=a.checked_in_at? '<em>Already in &middot; '+esc(a.checked_in_ist)+'</em>' : esc(a.badge_type||'');
+       return '<a class="hit" href="/verify/'+encodeURIComponent(a.token)+'"><b>'+esc(a.name)+'</b>'+
+              '<span>'+(sub?sub+' &middot; ':'')+esc(a.ref)+'</span><span>'+state+'</span></a>';
+     }).join('');
+   }`)
 }
 
 // ==================== PASS VERIFICATION ====================
@@ -600,7 +721,9 @@ app.get('/verify/:token', async (c) => {
     'SELECT id, name, company, job_title, badge_type, payment_status, avatar_url, checked_in_at, checked_in_by FROM attendees WHERE id = ?'
   ).bind(id).first() as any
   if (!a) return c.html(verifyPageHTML({ state: 'invalid', staff, token }))
-  return c.html(verifyPageHTML({ state: 'valid', staff, token, attendee: a }))
+  const undoable = !!a.checked_in_at &&
+    Date.now() - new Date(String(a.checked_in_at).replace(' ', 'T') + 'Z').getTime() < CHECKIN_UNDO_MINUTES * 60000
+  return c.html(verifyPageHTML({ state: 'valid', staff, token, attendee: a, undoable }))
 })
 
 app.post('/api/verify/:token/checkin', async (c) => {
@@ -643,6 +766,27 @@ function istStamp(v: any): string {
          ', ' + h + ':' + mm + ' ' + (h24 < 12 ? 'am' : 'pm') + ' IST'
 }
 
+// Someone will tap Check in on the wrong pass. Until now the only remedy was an
+// admin editing the database. The window is short on purpose: this is for a misfire
+// noticed immediately, not a way to quietly re-admit somebody an hour later.
+const CHECKIN_UNDO_MINUTES = 15
+
+app.post('/api/verify/:token/undo', async (c) => {
+  const who = (await verifyStaffSession(c)) || (isAdminRequest(c) ? { name: 'admin' } : null)
+  if (!who) return c.json({ error: 'Staff sign-in required' }, 401)
+  const id = await verifyPassToken(c, c.req.param('token'))
+  if (id === null) return c.json({ error: 'Invalid pass' }, 400)
+  const a = await c.env.DB.prepare('SELECT id, checked_in_at FROM attendees WHERE id = ?').bind(id).first() as any
+  if (!a) return c.json({ error: 'Not found' }, 404)
+  if (!a.checked_in_at) return c.json({ success: true, already: false })
+  const age = Date.now() - new Date(String(a.checked_in_at).replace(' ', 'T') + 'Z').getTime()
+  if (age > CHECKIN_UNDO_MINUTES * 60000) {
+    return c.json({ error: 'Too long ago to undo here. Ask the admin desk to reset it.' }, 409)
+  }
+  await c.env.DB.prepare('UPDATE attendees SET checked_in_at = NULL, checked_in_by = NULL WHERE id = ?').bind(id).run()
+  return c.json({ success: true })
+})
+
 function verifyPageHTML(o: any): string {
   const a = o.attendee || {}
   const esc = (v: any) => String(v ?? '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch] as string))
@@ -675,7 +819,8 @@ function verifyPageHTML(o: any): string {
          ${a.company ? `<p class="muted">${esc(a.company)}</p>` : ''}
          <div class="tier" style="background:${tier[0]};color:${tier[1]};">${esc(a.badge_type || 'Visitor Pass')}</div>
          ${a.checked_in_at
-            ? `<div class="warn">Already checked in ${esc(istStamp(a.checked_in_at))}${a.checked_in_by ? ' by ' + esc(a.checked_in_by) : ''}</div>`
+            ? `<div class="warn">Already checked in ${esc(istStamp(a.checked_in_at))}${a.checked_in_by ? ' by ' + esc(a.checked_in_by) : ''}</div>
+               ${o.undoable ? `<button id="undo" onclick="undo()" style="background:#243056;">Undo this check-in</button>` : ''}`
             : `<button id="ci" onclick="checkIn()">Check in</button>`}
          <p id="msg" class="muted"></p>
        </div>`
@@ -719,6 +864,14 @@ function verifyPageHTML(o: any): string {
      else if (r.status === 401) { b.disabled=false; b.textContent='Check in'; m.textContent='Your session expired.'; signIn(); }
      else { b.disabled=false; b.textContent='Check in'; m.textContent = j.error || 'Could not check in'; }
    } catch(e){ b.disabled=false; b.textContent='Check in'; m.textContent='Network error'; }
+ }
+ async function undo(){
+   var b = document.getElementById('undo'), m = document.getElementById('msg');
+   b.disabled = true; b.textContent = 'Undoing...';
+   var r = await fetch('/api/verify/' + encodeURIComponent(TOKEN) + '/undo', { method:'POST' });
+   var j = await r.json().catch(function(){ return {}; });
+   if (r.ok) location.reload();
+   else { b.disabled = false; b.textContent = 'Undo this check-in'; m.textContent = j.error || 'Could not undo'; }
  }
  // The desk works in a queue: finishing one person should offer the next scan.
  function next(){
@@ -12486,11 +12639,20 @@ function adminPageHTML(): string {
       document.getElementById('ns-pass').value = makeDeskPassword();
     }
 
-    // Readable but random — desk staff type these on a phone keyboard.
+    // Readable but random — desk staff type these on a phone keyboard. The list is
+    // long deliberately: two words from twelve is about 130,000 guesses, which a
+    // script gets through in an afternoon. Two from sixty-four is 3.7 million, for
+    // exactly the same amount of typing.
+    var DESK_WORDS = ['tiger','lotus','ganga','delta','orbit','mango','pearl','coral','amber','ivory',
+      'solar','nimbus','peacock','saffron','monsoon','banyan','jasmine','marigold','sandal','cardamom',
+      'harbour','lantern','compass','meridian','granite','sapphire','cobalt','maroon','indigo','copper',
+      'falcon','heron','otter','panther','gazelle','ibex','walnut','cypress','juniper','cedar',
+      'basalt','quartz','opal','topaz','zircon','onyx','summit','canyon','lagoon','estuary',
+      'monolith','pagoda','citadel','bastion','trellis','veranda','portico','cupola','minaret','obelisk',
+      'kestrel','meadow','thicket','bramble'];
     function makeDeskPassword() {
-      var words = ['tiger','lotus','ganga','delta','orbit','mango','pearl','coral','amber','ivory','solar','nimbus'];
       var r = crypto.getRandomValues(new Uint32Array(3));
-      return words[r[0] % words.length] + '-' + words[r[1] % words.length] + '-' + (100 + (r[2] % 900));
+      return DESK_WORDS[r[0] % DESK_WORDS.length] + '-' + DESK_WORDS[r[1] % DESK_WORDS.length] + '-' + (100 + (r[2] % 900));
     }
 
     async function createStaff() {
