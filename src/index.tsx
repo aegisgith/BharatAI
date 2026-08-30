@@ -4,6 +4,7 @@ import mp from './routes/marketplace'
 import { marketplacePageHTML, marketplaceListingPageHTML, marketplaceDashboardPageHTML, marketplaceAdminPageHTML, marketplaceFaqPageHTML } from './routes/marketplace-pages'
 
 type Bindings = {
+  UPLOADS?: R2Bucket
   DB: D1Database
   // Bearer token for the read-only attendee export consumed by AImailPilot's
   // contact-list sync. Set via `wrangler secret put ATTENDEE_EXPORT_SECRET`
@@ -1483,25 +1484,65 @@ app.post('/api/attendees/:id/avatar', async (c) => {
   const { image } = await c.req.json()
   if (!image) return c.json({ error: 'No image data provided' }, 400)
 
-  // Validate it's a data URL (base64 image)
-  if (!image.startsWith('data:image/')) {
-    return c.json({ error: 'Invalid image format. Must be a data:image URL.' }, 400)
+  const m = /^data:(image\/(?:png|jpe?g|webp|gif));base64,(.+)$/.exec(String(image))
+  if (!m) return c.json({ error: 'Invalid image format. Must be a base64 data:image URL.' }, 400)
+  if (image.length > 700000) {
+    return c.json({ error: 'Image too large. Please use a smaller image (max ~500KB).' }, 400)
   }
 
-  // Check size (max ~500KB base64 string)
-  if (image.length > 500000) {
-    return c.json({ error: 'Image too large. Please use a smaller image (max 500KB).' }, 400)
+  // Photos go to R2, and the row keeps only a URL.
+  //
+  // They used to be written into attendees.avatar_url as the base64 data URL itself.
+  // avatar_url is in ATTENDEE_PUBLIC_COLS, so every photo was inlined into the
+  // networking directory response on every load — that endpoint is already 428KB for
+  // ~1,000 attendees, and at 500KB a photo it would have become hundreds of MB. The
+  // whole database is 1.7MB today; this is what would have grown it past 500MB.
+  if (c.env.UPLOADS) {
+    const bytes = Uint8Array.from(atob(m[2]), ch => ch.charCodeAt(0))
+    const ext = m[1].split('/')[1].replace('jpeg', 'jpg')
+    const key = 'avatars/' + id + '-' + Date.now() + '.' + ext
+    await c.env.UPLOADS.put(key, bytes, { httpMetadata: { contentType: m[1], cacheControl: 'public, max-age=31536000' } })
+    const url = '/api/uploads/' + key
+    // Remove the object the row pointed at, so replacing a photo does not orphan one.
+    const prev = await c.env.DB.prepare('SELECT avatar_url FROM attendees WHERE id = ?').bind(id).first() as any
+    await c.env.DB.prepare('UPDATE attendees SET avatar_url = ? WHERE id = ?').bind(url, id).run()
+    if (prev?.avatar_url && String(prev.avatar_url).startsWith('/api/uploads/')) {
+      try { await c.env.UPLOADS.delete(String(prev.avatar_url).slice('/api/uploads/'.length)) } catch {}
+    }
+    return c.json({ success: true, avatar_url: url })
   }
 
+  // No bucket bound (local or a preview build): fall back to the old behaviour so
+  // uploads still work rather than failing outright.
   await c.env.DB.prepare('UPDATE attendees SET avatar_url = ? WHERE id = ?').bind(image, id).run()
   return c.json({ success: true, avatar_url: image })
+})
+
+// Serves anything written to the bucket. Public by design: these are profile photos
+// already shown in the attendee directory, and the key carries a timestamp so it is
+// not guessable from an attendee id alone.
+app.get('/api/uploads/*', async (c) => {
+  if (!c.env.UPLOADS) return c.json({ error: 'Uploads not configured' }, 404)
+  const key = c.req.path.replace('/api/uploads/', '')
+  if (!key || key.includes('..')) return c.json({ error: 'Not found' }, 404)
+  const obj = await c.env.UPLOADS.get(key)
+  if (!obj) return c.json({ error: 'Not found' }, 404)
+  const h = new Headers()
+  obj.writeHttpMetadata(h)
+  h.set('etag', obj.httpEtag)
+  h.set('cache-control', 'public, max-age=31536000, immutable')
+  return new Response(obj.body, { headers: h })
 })
 
 // Delete avatar photo for attendee
 app.delete('/api/attendees/:id/avatar', async (c) => {
   const id = c.req.param('id')
   const denied = await requireSelf(c, id); if (denied) return denied
+  const prev = await c.env.DB.prepare('SELECT avatar_url FROM attendees WHERE id = ?').bind(id).first() as any
   await c.env.DB.prepare('UPDATE attendees SET avatar_url = NULL WHERE id = ?').bind(id).run()
+  if (c.env.UPLOADS && prev?.avatar_url && String(prev.avatar_url).startsWith('/api/uploads/')) {
+    try { await c.env.UPLOADS.delete(String(prev.avatar_url).slice('/api/uploads/'.length)) } catch {}
+  }
   return c.json({ success: true })
 })
 
@@ -9845,7 +9886,18 @@ function mainPageHTML(): string {
     async function generateEventPass(adminAttendee) {
       var user = adminAttendee || currentUser;
       if (!user) { showToast('Please sign in first', 'error'); return; }
-      var T = PASS_TIERS[passTierFor(user)];
+      var tierKey = passTierFor(user);
+      var T = PASS_TIERS[tierKey];
+
+      // A paid tier is recorded at registration but confirmed out of band on mUni
+      // Campus, so the pass must not print until payment lands. Without this the
+      // ticket someone self-declared is indistinguishable from one they paid for.
+      // Admin downloads bypass this so the desk can still issue a pass manually.
+      var awaitingPayment = String(user.payment_status || '').toLowerCase() === 'pending';
+      if (awaitingPayment && ['delegate', 'academic', 'vip'].indexOf(tierKey) >= 0 && !adminAttendee) {
+        showToast('Your ' + T.label + ' will be issued once payment is confirmed.', 'error');
+        return;
+      }
       showToast('Generating your pass...', 'info');
       await ensurePassFonts();
 
@@ -10010,7 +10062,13 @@ function mainPageHTML(): string {
         y += q + pad * 2;
       }
       f('400', 12, INTER); centre('Scan to access networking app', y + px(20), T.gold ? '#7a6a3a' : '#5a6a8a');
-      y += px(34);
+      y += px(30);
+      // Terms clause 2 requires photo ID matching the registration name at the badge
+      // desk. Printing it here is what makes identity checks work without the event
+      // ever collecting or storing an identity document.
+      f('600', 11, INTER);
+      centre('Carry a government photo ID matching this name', y + px(14), T.gold ? '#9a8a5a' : '#7b88a6');
+      y += px(28);
 
       // ---- partners ----
       divider(y, T.gold); y += px(22);

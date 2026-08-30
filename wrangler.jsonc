@@ -4,6 +4,12 @@
   "compatibility_date": "2026-02-20",
   "pages_build_output_dir": "./dist",
   "compatibility_flags": ["nodejs_compat"],
+  "r2_buckets": [
+    {
+      "binding": "UPLOADS",
+      "bucket_name": "bharatai-uploads"
+    }
+  ],
   "d1_databases": [
     {
       "binding": "DB",
