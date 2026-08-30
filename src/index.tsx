@@ -611,12 +611,37 @@ app.post('/api/verify/:token/checkin', async (c) => {
   const body = await c.req.json().catch(() => ({})) as any
   const a = await c.env.DB.prepare('SELECT id, name, checked_in_at FROM attendees WHERE id = ?').bind(id).first() as any
   if (!a) return c.json({ error: 'Not found' }, 404)
-  if (a.checked_in_at) return c.json({ success: false, already: true, at: a.checked_in_at, name: a.name })
+  // at stays UTC for anything programmatic; at_ist is what a human should be shown.
+  if (a.checked_in_at) return c.json({ success: false, already: true, at: a.checked_in_at, at_ist: istStamp(a.checked_in_at), name: a.name })
   // Attributable: who admitted this person, not just that someone did.
   await c.env.DB.prepare("UPDATE attendees SET checked_in_at = datetime('now'), checked_in_by = ? WHERE id = ?")
     .bind(String(who.name || 'desk').slice(0, 40), id).run()
   return c.json({ success: true, name: a.name })
 })
+
+// SQLite datetime('now') stores UTC, which is right: one clock, no ambiguity. But
+// everyone reading these timestamps is in Mumbai, where a 9:30am arrival printed as
+// UTC reads 04:00 - a number that looks like a bug at the desk. IST is a fixed
+// +05:30 with no daylight saving, so shifting the instant is exact and needs no
+// timezone database inside the worker.
+const IST_OFFSET_MINUTES = 330
+const IST_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+function istStamp(v: any): string {
+  if (!v) return ''
+  const raw = String(v).replace(' ', 'T')
+  // SQLite hands back a bare "2026-11-20 09:14:02" with no zone marker, which
+  // Date() would otherwise read as local time and shift twice.
+  const iso = /Z$|[+-]\d\d:?\d\d$/.test(raw) ? raw : raw + 'Z'
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return String(v)
+  const t = new Date(d.getTime() + IST_OFFSET_MINUTES * 60000)
+  const h24 = t.getUTCHours()
+  const h = h24 % 12 || 12
+  const mm = String(t.getUTCMinutes()).padStart(2, '0')
+  return t.getUTCDate() + ' ' + IST_MONTHS[t.getUTCMonth()] + ' ' + t.getUTCFullYear() +
+         ', ' + h + ':' + mm + ' ' + (h24 < 12 ? 'am' : 'pm') + ' IST'
+}
 
 function verifyPageHTML(o: any): string {
   const a = o.attendee || {}
@@ -650,7 +675,7 @@ function verifyPageHTML(o: any): string {
          ${a.company ? `<p class="muted">${esc(a.company)}</p>` : ''}
          <div class="tier" style="background:${tier[0]};color:${tier[1]};">${esc(a.badge_type || 'Visitor Pass')}</div>
          ${a.checked_in_at
-            ? `<div class="warn">Already checked in at ${esc(a.checked_in_at)} UTC${a.checked_in_by ? ' by ' + esc(a.checked_in_by) : ''}</div>`
+            ? `<div class="warn">Already checked in ${esc(istStamp(a.checked_in_at))}${a.checked_in_by ? ' by ' + esc(a.checked_in_by) : ''}</div>`
             : `<button id="ci" onclick="checkIn()">Check in</button>`}
          <p id="msg" class="muted"></p>
        </div>`
@@ -690,7 +715,7 @@ function verifyPageHTML(o: any): string {
      var r = await fetch('/api/verify/' + encodeURIComponent(TOKEN) + '/checkin', { method:'POST' });
      var j = await r.json();
      if (j.success) { b.textContent = 'Checked in \u2713'; b.style.background = '#0f7b47'; next(); }
-     else if (j.already) { b.style.display='none'; m.textContent = 'Already checked in at ' + j.at + ' UTC'; next(); }
+     else if (j.already) { b.style.display='none'; m.textContent = 'Already checked in ' + (j.at_ist || j.at); next(); }
      else if (r.status === 401) { b.disabled=false; b.textContent='Check in'; m.textContent='Your session expired.'; signIn(); }
      else { b.disabled=false; b.textContent='Check in'; m.textContent = j.error || 'Could not check in'; }
    } catch(e){ b.disabled=false; b.textContent='Check in'; m.textContent='Network error'; }
@@ -12355,6 +12380,21 @@ function adminPageHTML(): string {
       return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
 
+    // Twin of istStamp() on the server. Pinned to IST rather than the viewer's own
+    // clock, so the arrival times read the same whether the panel is open in Mumbai
+    // or anywhere else.
+    function fmtIst(v) {
+      if (!v) return '-';
+      var raw = String(v).replace(' ', 'T');
+      var d = new Date(/Z$|[+-]\\d\\d:?\\d\\d$/.test(raw) ? raw : raw + 'Z');
+      if (isNaN(d.getTime())) return '-';
+      var t = new Date(d.getTime() + 330 * 60000);
+      var M = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      var h24 = t.getUTCHours(), h = h24 % 12 || 12;
+      return t.getUTCDate() + ' ' + M[t.getUTCMonth()] + ', ' + h + ':' +
+             String(t.getUTCMinutes()).padStart(2, '0') + ' ' + (h24 < 12 ? 'am' : 'pm');
+    }
+
     async function loadBadgeDesk() {
       var el = document.getElementById('section-badge-desk');
       try {
@@ -12383,7 +12423,7 @@ function adminPageHTML(): string {
               return '<div class="flex items-center justify-between gap-3 text-sm py-1.5 border-b border-white/5">' +
                 '<div class="min-w-0"><div class="truncate text-gray-200">' + deskEsc(r.name) + '</div>' +
                 '<div class="text-[11px] text-gray-500">' + deskEsc(r.badge_type || '') + (r.checked_in_by ? ' &middot; by ' + deskEsc(r.checked_in_by) : '') + '</div></div>' +
-                '<div class="text-[11px] text-gray-400 shrink-0">' + fmtRegDate(r.checked_in_at) + '</div></div>';
+                '<div class="text-[11px] text-gray-400 shrink-0">' + fmtIst(r.checked_in_at) + '</div></div>';
             }).join('')
           : '<p class="text-gray-500 text-sm py-3">Nobody has been checked in yet.</p>';
 
@@ -12392,7 +12432,7 @@ function adminPageHTML(): string {
             '<div class="flex-1 min-w-0"><div class="text-sm text-gray-200 truncate">' + deskEsc(s.name) +
               (s.active ? '' : ' <span class="text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-300">disabled</span>') + '</div>' +
               '<div class="text-[11px] text-gray-500">' + deskEsc(s.username) +
-              (s.last_login_at ? ' &middot; last signed in ' + fmtRegDate(s.last_login_at) : ' &middot; never signed in') + '</div></div>' +
+              (s.last_login_at ? ' &middot; last signed in ' + fmtIst(s.last_login_at) : ' &middot; never signed in') + '</div></div>' +
             '<button onclick="renameStaff(' + s.id + ')" class="px-2.5 py-1.5 rounded-lg text-[11px] glass hover:bg-white/10 text-gray-300">Rename</button>' +
             '<button onclick="resetStaffPassword(' + s.id + ')" class="px-2.5 py-1.5 rounded-lg text-[11px] glass hover:bg-white/10 text-gray-300">Reset password</button>' +
             '<button onclick="toggleStaff(' + s.id + ',' + (s.active ? 0 : 1) + ')" class="px-2.5 py-1.5 rounded-lg text-[11px] ' +
@@ -12405,7 +12445,7 @@ function adminPageHTML(): string {
             '<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">' +
               '<div class="glass rounded-xl p-5 border border-white/5">' +
                 '<h3 class="text-sm font-semibold text-white mb-3">Check-in by pass type</h3>' + (tiers || '<p class="text-gray-500 text-sm">No registrations yet.</p>') +
-                '<h3 class="text-sm font-semibold text-white mt-6 mb-1">Latest arrivals</h3>' +
+                '<h3 class="text-sm font-semibold text-white mt-6 mb-1">Latest arrivals <span class="text-[10px] font-normal text-gray-500">(IST)</span></h3>' +
                 '<div class="max-h-80 overflow-y-auto pr-1">' + recent + '</div>' +
               '</div>' +
               '<div class="glass rounded-xl p-5 border border-white/5">' +
