@@ -589,7 +589,7 @@ function staffShell(title: string, inner: string, script: string): string {
  .find label{display:block;font-size:12.5px;font-weight:600;color:#c7d0e4;}
  .find input{margin-top:8px;}
  .hit{display:block;width:100%;text-align:left;margin-top:8px;padding:11px 13px;border-radius:10px;background:#0a0e1f;border:1px solid rgba(255,255,255,.1);color:#e8edf5;text-decoration:none;}
- .hit b{display:block;font-size:14px;} .hit span{font-size:11.5px;color:#98a3bd;}
+ .hit b{display:block;font-size:14px;} .hit span{display:block;font-size:11.5px;color:#98a3bd;margin-top:2px;}
  .hit em{font-style:normal;color:#ffb27a;}
 </style></head><body><div class="wrap">${inner}</div><script>${script}</script></body></html>`
 }
