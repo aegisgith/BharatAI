@@ -246,6 +246,29 @@ async function sendRegistrationEmail(c: any, attendee: any) {
     `<tr><td width="34" valign="top" style="padding:0 0 16px;"><div style="width:26px;height:26px;border-radius:50%;background:#FF6B00;color:#fff;font-weight:bold;font-size:13px;line-height:26px;text-align:center;">${n}</div></td>` +
     `<td valign="top" style="padding:0 0 16px;"><p style="margin:0 0 3px;font-size:14px;font-weight:bold;color:#1E2140;">${title}</p><p style="margin:0;font-size:13px;line-height:1.6;color:#555;">${body}</p></td></tr>`
 
+  // The free Visitor Pass is the floor, not the conference. Say what the paid tiers
+  // add rather than what the free one lacks — and only to the people it applies to.
+  const tier = (color: string, label: string, price: string, lines: string[], href: string) =>
+    `<td width="50%" valign="top" style="padding:0 6px;">
+       <div style="border:1px solid ${color}33;background:${color}0d;border-radius:10px;padding:14px;">
+         <p style="margin:0 0 2px;font-size:14px;font-weight:bold;color:${color};">${label}</p>
+         <p style="margin:0 0 10px;font-size:12px;color:#777;">${price}</p>
+         ${lines.map(l => `<p style="margin:0 0 5px;font-size:12px;line-height:1.5;color:#555;">&#10003; ${l}</p>`).join('')}
+         <a href="${href}" style="display:block;margin-top:10px;padding:9px 0;text-align:center;background:${color};color:#fff;text-decoration:none;border-radius:8px;font-size:12px;font-weight:bold;">Upgrade to ${label.split(' ')[0]}</a>
+       </div>
+     </td>`
+
+  const upsell = String(attendee.badge_type || 'Visitor Pass') === 'Visitor Pass' ? `
+        <div style="margin-top:26px;padding-top:22px;border-top:1px solid #eee;">
+          <p style="margin:0 0 4px;font-size:15px;font-weight:bold;color:#1E2140;text-align:center;">Coming for the conference too?</p>
+          <p style="margin:0 0 16px;font-size:13px;line-height:1.6;color:#666;text-align:center;">Your Visitor Pass covers the exhibition floor and select keynotes. These two add the rest of the programme.</p>
+          <table style="width:100%;border-collapse:separate;border-spacing:0;"><tr>
+            ${tier('#0f7b47', 'Delegate Pass', '&#8377;4,999 + GST', ['All conference sessions, both days', 'Workshops and lunch', 'Full networking hub and meetings'], 'https://bharataiinnovation.com/register#delegate')}
+            ${tier('#A67C00', 'VIP Pass', '&#8377;14,999 + GST', ['Everything in Delegate', 'VIP lounge and priority seating', 'Speaker meet &amp; greet, VIP dinner'], 'https://bharataiinnovation.com/register#vip')}
+          </tr></table>
+          <p style="margin:14px 0 0;font-size:11.5px;color:#999;text-align:center;">Use this same email address. We move your registration to the new tier once payment is confirmed &mdash; your reference number does not change.</p>
+        </div>` : ''
+
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#f5f5f5;font-family:Arial,sans-serif;">
     <div style="max-width:600px;margin:20px auto;background:#fff;border-radius:12px;overflow:hidden;">
       ${emailBrandHeader('You are registered', '20&ndash;21 Nov 2026 &bull; WTC Mumbai')}
@@ -264,6 +287,7 @@ async function sendRegistrationEmail(c: any, attendee: any) {
         <div style="margin-top:22px;padding:14px;background:#FFF6EF;border:1px solid rgba(255,107,0,0.25);border-radius:10px;">
           <p style="margin:0;font-size:12.5px;line-height:1.6;color:#1E2140;"><strong>On the day:</strong> bring a government photo ID matching the name on your pass. We check it at the badge desk &mdash; we never ask you to upload or send an identity document.</p>
         </div>
+        ${upsell}
       </div>
     </div></body></html>`
 
@@ -392,7 +416,13 @@ app.post('/api/admin/staff', async (c) => {
 app.patch('/api/admin/staff/:id', async (c) => {
   if (!isAdminRequest(c)) return c.json({ error: 'Admin only' }, 401)
   const id = parseInt(c.req.param('id'), 10)
-  const { active, password } = await c.req.json().catch(() => ({})) as any
+  const { active, password, name } = await c.req.json().catch(() => ({})) as any
+  // The name is what check_in rows record, so it has to be editable — the seeded
+  // accounts ship as "Badge Desk 3" until someone is actually assigned to them.
+  if (name !== undefined) {
+    if (!String(name).trim()) return c.json({ error: 'Name cannot be empty' }, 400)
+    await c.env.DB.prepare('UPDATE staff SET name = ? WHERE id = ?').bind(String(name).trim().slice(0, 40), id).run()
+  }
   if (password !== undefined) {
     if (String(password).length < 8) return c.json({ error: 'Password must be at least 8 characters' }, 400)
     await c.env.DB.prepare('UPDATE staff SET password_hash = ? WHERE id = ?')
@@ -3262,7 +3292,7 @@ app.post('/api/inquiries', async (c) => {
   if (!name || !email) return c.json({ error: 'Name and email are required' }, 400)
   if (!inquiry_type) return c.json({ error: 'Inquiry type is required' }, 400)
 
-  const validTypes = ['general', 'exhibition', 'booth_inquiry', 'sponsorship', 'speaking', 'media', 'group_registration', 'other']
+  const validTypes = ['general', 'exhibition', 'booth_inquiry', 'sponsorship', 'speaking', 'media', 'group_registration', 'pass_upgrade', 'other']
   if (!validTypes.includes(inquiry_type)) return c.json({ error: 'Invalid inquiry type' }, 400)
 
   const result = await c.env.DB.prepare(
@@ -4411,6 +4441,41 @@ ${sharedNavHTML('register')}
           <div class="flex gap-3 justify-center mt-5">
             <a href="/app" id="rs-app-link" class="px-6 py-2.5 rounded-xl text-sm font-semibold bg-primary-500/20 text-primary-300 hover:bg-primary-500/30 transition"><i class="fas fa-rocket mr-2"></i>Open Networking App</a>
           </div>
+          <!-- The Visitor Pass is free and covers the floor. This is the one moment
+               someone is holding their plans in mind, so it is where the two paid
+               tiers are worth showing — as what they add, not as what is withheld. -->
+          <div class="mt-6 pt-5 border-t border-white/10 text-left">
+            <p class="text-sm font-semibold text-white text-center mb-1">Coming for the conference too?</p>
+            <p class="text-xs text-gray-400 text-center mb-4">Your Visitor Pass covers the exhibition floor and select keynotes. These add the rest.</p>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div class="rounded-xl p-4 border border-primary-500/25 bg-primary-500/5">
+                <div class="flex items-baseline justify-between">
+                  <span class="font-bold text-primary-300 text-sm">Delegate Pass</span>
+                  <span class="text-xs text-gray-400">&#8377;4,999</span>
+                </div>
+                <ul class="text-[11px] text-gray-400 mt-2 space-y-1">
+                  <li><i class="fas fa-check text-green-400 mr-1.5"></i>All conference sessions, both days</li>
+                  <li><i class="fas fa-check text-green-400 mr-1.5"></i>Workshops and lunch</li>
+                  <li><i class="fas fa-check text-green-400 mr-1.5"></i>Full networking hub and meetings</li>
+                </ul>
+                <a href="/register#delegate" class="mt-3 block text-center px-4 py-2 rounded-lg text-xs font-semibold bg-primary-500/20 text-primary-200 hover:bg-primary-500/30 transition">Upgrade to Delegate</a>
+              </div>
+              <div class="rounded-xl p-4 border border-amber-500/30 bg-amber-500/5 relative">
+                <div class="absolute -top-2.5 right-4 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500 text-black">ALL ACCESS</div>
+                <div class="flex items-baseline justify-between">
+                  <span class="font-bold text-amber-300 text-sm">VIP Pass</span>
+                  <span class="text-xs text-gray-400">&#8377;14,999</span>
+                </div>
+                <ul class="text-[11px] text-gray-400 mt-2 space-y-1">
+                  <li><i class="fas fa-check text-amber-400 mr-1.5"></i>Everything in Delegate</li>
+                  <li><i class="fas fa-check text-amber-400 mr-1.5"></i>VIP lounge and priority seating</li>
+                  <li><i class="fas fa-check text-amber-400 mr-1.5"></i>Speaker meet &amp; greet, VIP dinner</li>
+                </ul>
+                <a href="/register#vip" class="mt-3 block text-center px-4 py-2 rounded-lg text-xs font-semibold bg-amber-500/20 text-amber-200 hover:bg-amber-500/30 transition">Upgrade to VIP</a>
+              </div>
+            </div>
+            <p class="text-[11px] text-gray-500 text-center mt-3">Use the same email address. We move your existing registration to the new tier once payment is confirmed &mdash; your reference number does not change.</p>
+          </div>
         </div>
 
         <!-- Already registered? -->
@@ -5424,8 +5489,8 @@ function mainPageHTML(): string {
         <div class="w-20 h-20 rounded-full bg-amber-500/15 border border-amber-500/30 flex items-center justify-center mx-auto mb-5">
           <i class="fas fa-lock text-amber-400 text-3xl"></i>
         </div>
-        <h2 class="text-2xl font-bold mb-2">Networking is a Paid Feature</h2>
-        <p class="text-gray-400 text-sm mb-6 leading-relaxed">
+        <h2 class="text-2xl font-bold mb-2" id="upgrade-modal-title">Networking is a Paid Feature</h2>
+        <p class="text-gray-400 text-sm mb-6 leading-relaxed" id="upgrade-modal-copy">
           Your <span class="text-white font-semibold">Visitor Pass</span> doesn't include access to the Networking Hub.<br>
           Upgrade to a <span class="text-primary-300 font-semibold">Delegate</span> or <span class="text-amber-300 font-semibold">VIP Pass</span> to connect with 500+ attendees, speakers, and investors.
         </p>
@@ -5757,6 +5822,19 @@ function mainPageHTML(): string {
                   <p class="text-xs text-gray-400">Get your official pass for entry at WTC Mumbai</p>
                 </div>
                 <i class="fas fa-download text-green-400 text-lg"></i>
+              </div>
+            </div>
+            <!-- Upgrade Card: Visitor Pass holders only -->
+            <div class="glass rounded-2xl p-5 border border-amber-500/25 card-hover cursor-pointer hidden" onclick="showUpgradeModal('welcome')" id="home-upgrade-card">
+              <div class="flex items-center gap-4">
+                <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-amber-500/20 to-orange-500/20 flex items-center justify-center shrink-0">
+                  <i class="fas fa-arrow-up-right-from-square text-2xl text-amber-400"></i>
+                </div>
+                <div class="flex-1">
+                  <h3 class="font-bold text-base mb-0.5">Upgrade your pass</h3>
+                  <p class="text-xs text-gray-400">Delegate &#8377;4,999 or VIP &#8377;14,999 &mdash; all sessions, workshops, lunch and networking</p>
+                </div>
+                <i class="fas fa-chevron-right text-amber-400 text-lg"></i>
               </div>
             </div>
             <!-- Arrival Time Card -->
@@ -7691,6 +7769,7 @@ function mainPageHTML(): string {
         localStorage.setItem('agba_user', JSON.stringify(currentUser));
         upgradeToLoggedIn();
         showToast('Registration successful! Welcome, ' + data.name, 'success');
+        maybeOfferUpgrade();
       } catch(err) {
         showToast('Network error. Please try again.', 'error');
         btn.innerHTML = '<i class="fas fa-check-circle mr-2"></i>Register — It\\'s Free!';
@@ -8171,6 +8250,8 @@ function mainPageHTML(): string {
       const quickActions = document.getElementById('home-quick-actions');
       const registerVisitorBtn = document.getElementById('register-visitor-btn');
       const roleHome = document.getElementById('role-home');
+      const upgradeCard = document.getElementById('home-upgrade-card');
+      if (upgradeCard) upgradeCard.classList.toggle('hidden', !(currentUser && isVisitorPass()));
       if (currentUser) {
         if (rsvpCard) rsvpCard.classList.remove('hidden');
         if (quickActions) quickActions.classList.remove('hidden');
@@ -8463,10 +8544,36 @@ function mainPageHTML(): string {
       return (currentUser?.badge_type || '').toLowerCase().includes('visitor');
     }
 
-    function showNetworkUpgradeModal() {
+    function showNetworkUpgradeModal() { showUpgradeModal('networking'); }
+
+    // The same two cards sell in two different moments: hitting the networking
+    // lock, and the minute a Visitor Pass is registered. The copy has to change —
+    // "Networking is a Paid Feature" reads as a punishment to someone who just
+    // signed up and has not been refused anything yet.
+    function showUpgradeModal(reason) {
       const m = document.getElementById('visitor-upgrade-modal');
+      if (!m) return;
+      const title = document.getElementById('upgrade-modal-title');
+      const copy = document.getElementById('upgrade-modal-copy');
+      if (reason === 'welcome' && title && copy) {
+        title.textContent = 'Want the full two days?';
+        copy.innerHTML = 'Your <span class="text-white font-semibold">Visitor Pass</span> covers the exhibition floor and select keynotes.<br>' +
+          'A <span class="text-primary-300 font-semibold">Delegate</span> or <span class="text-amber-300 font-semibold">VIP Pass</span> adds every conference session, the workshops, lunch and the networking hub.';
+      }
       m.classList.remove('hidden');
       m.classList.add('flex');
+    }
+
+    // Shown once. A visitor who has said no does not want to be asked on every
+    // load; the networking lock still offers the upgrade when they reach for it.
+    function maybeOfferUpgrade() {
+      try {
+        if (!currentUser || !isVisitorPass()) return;
+        var key = 'bhai_upsell_' + currentUser.id;
+        if (localStorage.getItem(key)) return;
+        localStorage.setItem(key, '1');
+        setTimeout(function () { showUpgradeModal('welcome'); }, 2500);
+      } catch (e) {}
     }
 
     function applyVisitorNetworkLock() {
@@ -11568,6 +11675,26 @@ function mainPageHTML(): string {
         });
       } catch(_) { /* proceed even if registration fails */ }
 
+      // Payment lands on mUni Campus, outside this database, and a repeat
+      // registration on an existing email deliberately does NOT change the badge.
+      // Without this the team would see a payment with no way to tell which
+      // Visitor it belongs to. Logging the intent is what makes the upgrade
+      // reconcilable — and it must not block checkout if it fails.
+      try {
+        await fetch('/api/inquiries', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            inquiry_type: 'pass_upgrade', name: name, email: email, phone: phone,
+            organization: company,
+            subject: passType + ' requested' + (currentUser ? ' (upgrade from ' + (currentUser.badge_type || 'Visitor Pass') + ')' : ''),
+            message: name + ' has been sent to checkout for a ' + passType + '.' +
+                     (currentUser ? ' They are already registered as attendee #' + currentUser.id + '. Change their badge type in Attendee Management once payment is confirmed.'
+                                  : ' No existing registration was found for this email.'),
+            metadata: { pass_type: passType, city: city, designation: desig, attendee_id: currentUser ? currentUser.id : null }
+          })
+        });
+      } catch(_) { /* checkout must open regardless */ }
+
       const payUrl = muniPayUrl(passType);
       showToast('Opening secure checkout…', 'success');
       if (payWinOpened && !payWin.closed) payWin.location.replace(payUrl);
@@ -12257,6 +12384,7 @@ function adminPageHTML(): string {
               (s.active ? '' : ' <span class="text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-300">disabled</span>') + '</div>' +
               '<div class="text-[11px] text-gray-500">' + deskEsc(s.username) +
               (s.last_login_at ? ' &middot; last signed in ' + fmtRegDate(s.last_login_at) : ' &middot; never signed in') + '</div></div>' +
+            '<button onclick="renameStaff(' + s.id + ')" class="px-2.5 py-1.5 rounded-lg text-[11px] glass hover:bg-white/10 text-gray-300">Rename</button>' +
             '<button onclick="resetStaffPassword(' + s.id + ')" class="px-2.5 py-1.5 rounded-lg text-[11px] glass hover:bg-white/10 text-gray-300">Reset password</button>' +
             '<button onclick="toggleStaff(' + s.id + ',' + (s.active ? 0 : 1) + ')" class="px-2.5 py-1.5 rounded-lg text-[11px] ' +
               (s.active ? 'bg-red-500/15 text-red-300 hover:bg-red-500/25' : 'bg-green-500/15 text-green-300 hover:bg-green-500/25') + '">' +
@@ -12329,6 +12457,13 @@ function adminPageHTML(): string {
     async function toggleStaff(id, active) {
       try { await api.patch('/api/admin/staff/' + id, { active: active }); loadBadgeDesk(); }
       catch (e) { alert(e.message || 'Could not update the account.'); }
+    }
+
+    async function renameStaff(id) {
+      var name = prompt('Who is on this account? Their name is what every check-in they do will be recorded against.');
+      if (!name || !name.trim()) return;
+      try { await api.patch('/api/admin/staff/' + id, { name: name.trim() }); loadBadgeDesk(); }
+      catch (e) { alert(e.message || 'Could not rename the account.'); }
     }
 
     async function resetStaffPassword(id) {
@@ -15250,6 +15385,7 @@ function adminPageHTML(): string {
           speaking: { icon: 'fa-microphone-alt', color: 'purple', label: 'Speaking' },
           media: { icon: 'fa-newspaper', color: 'rose', label: 'Media' },
           group_registration: { icon: 'fa-users', color: 'green', label: 'Group Reg' },
+          pass_upgrade: { icon: 'fa-arrow-up-right-from-square', color: 'amber', label: 'Pass Upgrade' },
           other: { icon: 'fa-ellipsis-h', color: 'gray', label: 'Other' }
         };
 
