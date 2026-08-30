@@ -12419,7 +12419,7 @@ function adminPageHTML(): string {
                   '<input id="ns-user" placeholder="Username (no spaces)" autocapitalize="none" class="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm">' +
                   '<div class="flex gap-2">' +
                     '<input id="ns-pass" placeholder="Password (min 8)" class="flex-1 px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm">' +
-                    '<button onclick="document.getElementById(\'ns-pass\').value=makeDeskPassword()" class="px-3 py-2 rounded-lg text-xs glass hover:bg-white/10 text-gray-300">Suggest</button>' +
+                    '<button onclick="suggestDeskPassword()" class="px-3 py-2 rounded-lg text-xs glass hover:bg-white/10 text-gray-300">Suggest</button>' +
                   '</div>' +
                   '<button onclick="createStaff()" class="w-full px-4 py-2.5 rounded-lg bg-primary-500 hover:bg-primary-600 text-white text-sm font-semibold">Add desk account</button>' +
                   '<p id="ns-msg" class="text-[11px] text-gray-400 min-h-4"></p>' +
@@ -12439,7 +12439,14 @@ function adminPageHTML(): string {
         '<div class="text-2xl font-bold text-white mt-1">' + value + '</div></div>';
     }
 
-    // Readable but random â€” desk staff type these on a phone keyboard.
+    // A named handler rather than an inline onclick: this whole block lives inside
+    // a server-side template literal, so a quoted element id inside an onclick
+    // attribute loses its escaping on the way out and breaks the admin script.
+    function suggestDeskPassword() {
+      document.getElementById('ns-pass').value = makeDeskPassword();
+    }
+
+    // Readable but random — desk staff type these on a phone keyboard.
     function makeDeskPassword() {
       var words = ['tiger','lotus','ganga','delta','orbit','mango','pearl','coral','amber','ivory','solar','nimbus'];
       var r = crypto.getRandomValues(new Uint32Array(3));
@@ -12455,7 +12462,10 @@ function adminPageHTML(): string {
       try {
         await api.post('/api/admin/staff', { name: name, username: username, password: password });
         // Shown once, here, because the server only ever stores the hash.
-        alert('Account created.\n\nUsername: ' + username.toLowerCase() + '\nPassword: ' + password + '\n\nWrite this down now â€” it cannot be shown again. They sign in at bharataiinnovation.com/staff');
+        // The newline escapes below are doubled because this string is inside a
+        // server-side template literal, which would otherwise turn each one into a
+        // real newline and leave the quoted string unterminated.
+        alert('Account created.\\n\\nUsername: ' + username.toLowerCase() + '\\nPassword: ' + password + '\\n\\nWrite this down now — it cannot be shown again. They sign in at bharataiinnovation.com/staff');
         document.getElementById('ns-name').value = '';
         document.getElementById('ns-user').value = '';
         document.getElementById('ns-pass').value = '';
@@ -12479,7 +12489,7 @@ function adminPageHTML(): string {
       var pw = prompt('New password for this desk account (at least 8 characters):', makeDeskPassword());
       if (!pw) return;
       if (pw.length < 8) { alert('Password must be at least 8 characters.'); return; }
-      try { await api.patch('/api/admin/staff/' + id, { password: pw }); alert('Password changed to:\n\n' + pw + '\n\nWrite it down â€” it cannot be shown again.'); }
+      try { await api.patch('/api/admin/staff/' + id, { password: pw }); alert('Password changed to:\\n\\n' + pw + '\\n\\nWrite it down — it cannot be shown again.'); }
       catch (e) { alert(e.message || 'Could not change the password.'); }
     }
 
