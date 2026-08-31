@@ -64,12 +64,6 @@
         .air-hero-grid .page-header-eyebrow { margin-left: 0; }
         .air-hero-copy h1 { text-align: left; }
         .air-hero-copy > p { text-align: left; margin-left: 0; }
-        .air-hero-price {
-            display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.6rem;
-            margin: 1.25rem 0 0; font-size: 0.9rem; color: rgba(255,255,255,0.75);
-        }
-        .air-hero-price strong { font-family: var(--font-display); font-size: 1.25rem; color: #fff; }
-        .air-hero-price a { color: var(--gold-light); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
         .air-trust {
             display: flex; align-items: flex-start; gap: 0.6rem; margin-top: 1rem;
             font-size: 0.85rem; color: rgba(255,255,255,0.78); line-height: 1.5;
@@ -330,7 +324,7 @@
             .air-hero-grid { text-align: center; }
             .air-hero-copy h1, .air-hero-copy > p { text-align: center; }
             .air-hero-copy > p { margin-left: auto; margin-right: auto; }
-            .air-hero-price, .air-trust { justify-content: center; text-align: left; }
+            .air-trust { justify-content: center; text-align: left; }
             .air-gauge-row { flex-direction: column; }
             .air-ladder { width: 100%; }
             .air-dl > div, .air-risk > div { grid-template-columns: 1fr; gap: 0.35rem 0; }
@@ -433,13 +427,7 @@
                         <a href="#pillars" class="btn btn-ghost btn-lg">See what we measure</a>
                     </div>
 
-                    <p class="air-hero-price">
-                        <strong>From &#8377;25,000</strong>
-                        <span>&middot; fee by annual turnover &middot; the Readiness Rating stays free</span>
-                        <a href="https://assessfy.com/innovation_pricing?product=ai_readiness" target="_blank" rel="noopener noreferrer">See the fee ladder</a>
-                    </p>
-
-                    <div class="air-trust">
+                    <div class="air-trust" style="margin-top:1.75rem;">
                         <i class="fas fa-circle-check" style="color:var(--emerald);"></i>
                         <span><b>Evidence-gated &amp; non-compensatory</b> &middot; DPDP Act &middot; EU AI Act &middot; NIST AI RMF &middot; ISO/IEC 42001</span>
                     </div>
