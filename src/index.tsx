@@ -325,6 +325,74 @@ function emailBrandHeader(title: string, subtitle: string): string {
     </div>`
 }
 
+// ==================== AUDIENCE PROFILE ====================
+//
+// "Attendees by role" was a single orange circle: every row is role=attendee, so the
+// chart said nothing. What a sponsor actually asks is who is in the room - how
+// senior, from which sectors, from which companies.
+//
+// Seniority is derived from the free-text job title rather than collected, because
+// nobody picks their own band honestly and 956 titles already exist. The order of
+// these rules matters: "managing director" is C-suite, not a director, and
+// "assistant professor" is academic before it is anything else.
+const SENIORITY_BANDS: Array<{ label: string; test: RegExp }> = [
+  { label: 'Students', test: /\b(student|scholar|intern|trainee|graduand)\b/ },
+  { label: 'Academia', test: /\b(professor|prof\.?|lecturer|dean|principal|faculty|hod|researcher at|academic)\b/ },
+  // (?<!vice ) matters: without it "Vice president" matches `president` and is filed
+  // as C-suite, which quietly inflates the number every sponsor deck leans on.
+  { label: 'Founders & C-suite', test: /\b(founder|co-?founder|owner|proprietor|promoter|chairman|chairperson|chairwoman|partner|ceo|cto|cio|coo|cfo|cmo|cdo|cso|chro|cxo|md|managing director|chief)\b|(?<!vice\s)\bpresident\b/ },
+  { label: 'VP & Director', test: /\b(vp|avp|evp|svp|vice president|director|head)\b/ },
+  { label: 'Managers & Leads', test: /\b(manager|mgr|lead|supervisor|principal)\b/ },
+  { label: 'Specialists', test: /\b(engineer|developer|programmer|scientist|analyst|architect|consultant|designer|specialist|associate|executive|officer|administrator|advocate|doctor|dr\.?|journalist|editor|correspondent|reporter|writer)\b/ },
+]
+
+function seniorityOf(title: any): string {
+  const t = String(title || '').toLowerCase().replace(/[._/|]/g, ' ').trim()
+  if (!t) return 'Not given'
+  for (const band of SENIORITY_BANDS) if (band.test.test(t)) return band.label
+  return 'Other'
+}
+
+app.get('/api/admin/analytics/audience', async (c) => {
+  const { results } = await c.env.DB.prepare(
+    'SELECT job_title, industry, company, badge_type, city FROM attendees WHERE event_id = 1'
+  ).all() as any
+  const rows = results || []
+
+  const tally = (pick: (r: any) => string) => {
+    const m = new Map<string, number>()
+    for (const r of rows) { const k = pick(r); m.set(k, (m.get(k) || 0) + 1) }
+    return [...m.entries()].map(([label, count]) => ({ label, count })).sort((a, b) => b.count - a.count)
+  }
+
+  // Band order is fixed rather than by size, so the shape of the audience reads the
+  // same way every time somebody opens it.
+  const order = [...SENIORITY_BANDS.map(b => b.label), 'Other', 'Not given']
+  const seniorityCounts = tally(r => seniorityOf(r.job_title))
+  const seniority = order.map(label => ({ label, count: seniorityCounts.find(x => x.label === label)?.count || 0 }))
+                         .filter(x => x.count > 0)
+
+  const norm = (v: any) => String(v || '').trim()
+  const industries = tally(r => norm(r.industry) || 'Not collected').filter(x => x.label !== 'Not collected')
+  const companies = tally(r => norm(r.company)).filter(x => x.label).slice(0, 12)
+  const cities = tally(r => norm(r.city)).filter(x => x.label).slice(0, 10)
+
+  return c.json({
+    total: rows.length,
+    seniority,
+    industries,
+    companies,
+    cities,
+    // Coverage is reported alongside the numbers: a sponsor deck built on a field
+    // that is 40% blank should say so rather than quietly under-count.
+    coverage: {
+      job_title: rows.filter((r: any) => norm(r.job_title)).length,
+      industry: rows.filter((r: any) => norm(r.industry)).length,
+      company: rows.filter((r: any) => norm(r.company)).length,
+    },
+  })
+})
+
 // ==================== TAX INVOICES ====================
 //
 // CCAvenue issues a payment receipt, not a GST invoice, so a buyer expensing a
@@ -1493,6 +1561,7 @@ app.post('/api/events/:id/attendees/register', async (c) => {
   // so anyone who chose (and paid for) Delegate/VIP/Academic was stored as a
   // free Visitor and then locked out of networking. Validate against a known
   // allowlist so a bad value can't create an arbitrary pass; default to Visitor.
+  const industryValue = INDUSTRIES.includes(String(body.industry || '')) ? String(body.industry) : ''
   const ALLOWED_PASSES = ['Visitor Pass', 'Delegate Pass', 'VIP Pass', 'Academic Pass', 'Media Pass']
   const passType = ALLOWED_PASSES.includes(badge_type) ? badge_type : 'Visitor Pass'
 
@@ -1507,11 +1576,11 @@ app.post('/api/events/:id/attendees/register', async (c) => {
           // registration_date is written here rather than left to a default: the column
           // was added later, so it has none, and every row that skipped it sorted to
           // the bottom of a newest-first list - exactly the rows you most want to see.
-          'INSERT INTO attendees (event_id, name, email, company, job_title, bio, interests, linkedin_url, mobile, city, lunch_inclusion, badge_type, payment_status, registration_date, is_online, last_login_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime("now"), 1, datetime("now"))'
-        ).bind(eventId, name.trim(), normalizedEmail, company || '', job_title || '', bio || '', interests || '', linkedin_url || '', mobile || '', city || '', lunch_inclusion || 'No', passType, needsPayment ? 'pending' : 'paid').run()
+          'INSERT INTO attendees (event_id, name, email, company, job_title, bio, interests, linkedin_url, mobile, city, industry, lunch_inclusion, badge_type, payment_status, registration_date, is_online, last_login_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime("now"), 1, datetime("now"))'
+        ).bind(eventId, name.trim(), normalizedEmail, company || '', job_title || '', bio || '', interests || '', linkedin_url || '', mobile || '', city || '', industryValue, lunch_inclusion || 'No', passType, needsPayment ? 'pending' : 'paid').run()
       : await c.env.DB.prepare(
-          'INSERT INTO attendees (event_id, name, email, company, job_title, bio, interests, linkedin_url, mobile, city, lunch_inclusion, badge_type, registration_date, is_online, last_login_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime("now"), 1, datetime("now"))'
-        ).bind(eventId, name.trim(), normalizedEmail, company || '', job_title || '', bio || '', interests || '', linkedin_url || '', mobile || '', city || '', lunch_inclusion || 'No', passType).run()
+          'INSERT INTO attendees (event_id, name, email, company, job_title, bio, interests, linkedin_url, mobile, city, industry, lunch_inclusion, badge_type, registration_date, is_online, last_login_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime("now"), 1, datetime("now"))'
+        ).bind(eventId, name.trim(), normalizedEmail, company || '', job_title || '', bio || '', interests || '', linkedin_url || '', mobile || '', city || '', industryValue, lunch_inclusion || 'No', passType).run()
 
     const attendee = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(result.meta.last_row_id).first()
     await issueAttendeeSession(c, (attendee as any).id)
@@ -1549,6 +1618,33 @@ app.post('/api/events/:id/attendees/register', async (c) => {
 // A student has no employer and no job title, so the Academic tier collapses both
 // into a single College Name - asking that tier for a designation is asking a
 // question with no answer.
+// A fixed list, not free text. Sponsors are shown a breakdown by sector, and free
+// text turns that into forty spellings of "IT" that no chart can add up.
+const INDUSTRIES = [
+  'Banking & Financial Services',
+  'Insurance',
+  'IT Services & Consulting',
+  'Software & SaaS',
+  'Telecom',
+  'Manufacturing',
+  'Automotive',
+  'Pharma & Life Sciences',
+  'Healthcare & Hospitals',
+  'Retail & E-commerce',
+  'Logistics & Supply Chain',
+  'Energy & Utilities',
+  'Media & Entertainment',
+  'Education & Academia',
+  'Government & Public Sector',
+  'Consulting & Professional Services',
+  'Startup / Early stage',
+  'Venture Capital & Investment',
+  'Agriculture & Agritech',
+  'Real Estate & Construction',
+  'Aerospace & Defence',
+  'Other',
+]
+
 function missingRegistrationFields(b: any): string[] {
   const has = (v: any) => String(v ?? '').trim().length > 0
   const academic = String(b.badge_type || '') === 'Academic Pass'
@@ -1557,6 +1653,7 @@ function missingRegistrationFields(b: any): string[] {
   if (!has(b.company)) missing.push(academic ? 'college name' : 'organisation')
   if (!academic && !has(b.job_title)) missing.push('designation')
   if (!has(b.city)) missing.push('city')
+  if (!has(b.industry)) missing.push('industry')
   return missing
 }
 
@@ -4983,6 +5080,34 @@ ${sharedNavHTML('register')}
               <input type="text" id="rf-city" required class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Your city">
             </div>
           </div>
+          <div>
+            <label class="text-xs text-gray-400 mb-1 block">Industry *</label>
+            <select id="rf-industry" required class="w-full px-4 py-3 rounded-xl text-sm">
+              <option value="">Select industry</option>
+              <option>Banking & Financial Services</option>
+              <option>Insurance</option>
+              <option>IT Services & Consulting</option>
+              <option>Software & SaaS</option>
+              <option>Telecom</option>
+              <option>Manufacturing</option>
+              <option>Automotive</option>
+              <option>Pharma & Life Sciences</option>
+              <option>Healthcare & Hospitals</option>
+              <option>Retail & E-commerce</option>
+              <option>Logistics & Supply Chain</option>
+              <option>Energy & Utilities</option>
+              <option>Media & Entertainment</option>
+              <option>Education & Academia</option>
+              <option>Government & Public Sector</option>
+              <option>Consulting & Professional Services</option>
+              <option>Startup / Early stage</option>
+              <option>Venture Capital & Investment</option>
+              <option>Agriculture & Agritech</option>
+              <option>Real Estate & Construction</option>
+              <option>Aerospace & Defence</option>
+              <option>Other</option>
+            </select>
+          </div>
           <div class="grid grid-cols-2 gap-4">
             <div>
               <label class="text-xs text-gray-400 mb-1 block">LinkedIn</label>
@@ -5134,6 +5259,7 @@ async function submitRegistration(e) {
         company: document.getElementById('rf-company').value.trim(),
         job_title: document.getElementById('rf-title').value.trim(),
         city: document.getElementById('rf-city').value.trim(),
+        industry: document.getElementById('rf-industry').value,
         linkedin_url: document.getElementById('rf-linkedin').value.trim(),
         interests: document.getElementById('rf-interests').value.trim(),
         bio: '',
@@ -5224,6 +5350,7 @@ async function submitRegisterPaidPassForm(e) {
   const company  = document.getElementById('rpp-company').value.trim();
   const desig    = document.getElementById('rpp-designation').value.trim();
   const city     = document.getElementById('rpp-city').value.trim();
+  const industry = document.getElementById('rpp-industry').value;
   const passType = document.getElementById('rpp-pass-type').value;
 
   // Checked before the payment tab opens: sending someone to checkout and only then
@@ -5237,6 +5364,7 @@ async function submitRegisterPaidPassForm(e) {
   if (!company) gaps.push(academic ? 'college name' : 'organisation');
   if (!academic && !desig) gaps.push('designation');
   if (!city) gaps.push('city');
+  if (!industry) gaps.push('industry');
   if (gaps.length) {
     alert('Please fill in: ' + gaps.join(', ') + '.');
     btn.disabled = false;
@@ -5258,7 +5386,7 @@ async function submitRegisterPaidPassForm(e) {
     await fetch('/api/events/1/attendees/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, email, mobile: phone, company, job_title: desig, city, bio: '', interests: '', linkedin_url: '', badge_type: passType })
+      body: JSON.stringify({ name, email, mobile: phone, company, job_title: desig, city, industry, bio: '', interests: '', linkedin_url: '', badge_type: passType })
     });
   } catch(_) {}
 
@@ -5374,6 +5502,34 @@ function paintPayHoldingPage(w) {
             <label id="rpp-company-label" style="font-size:11px;color:#5E6585;display:block;margin-bottom:4px;">Organization *</label>
             <input type="text" id="rpp-company" required placeholder="Company / Institute" style="width:100%;padding:10px 14px;border-radius:10px;background:#fff;border:1px solid #D7DBEC;color:#1E2140;font-size:13px;outline:none;box-sizing:border-box;">
           </div>
+        </div>
+        <div>
+          <label style="font-size:11px;color:#5E6585;display:block;margin-bottom:4px;">Industry *</label>
+          <select id="rpp-industry" required style="width:100%;padding:10px 14px;border-radius:10px;background:#fff;border:1px solid #D7DBEC;color:#1E2140;font-size:13px;outline:none;box-sizing:border-box;">
+            <option value="">Select industry</option>
+            <option>Banking & Financial Services</option>
+            <option>Insurance</option>
+            <option>IT Services & Consulting</option>
+            <option>Software & SaaS</option>
+            <option>Telecom</option>
+            <option>Manufacturing</option>
+            <option>Automotive</option>
+            <option>Pharma & Life Sciences</option>
+            <option>Healthcare & Hospitals</option>
+            <option>Retail & E-commerce</option>
+            <option>Logistics & Supply Chain</option>
+            <option>Energy & Utilities</option>
+            <option>Media & Entertainment</option>
+            <option>Education & Academia</option>
+            <option>Government & Public Sector</option>
+            <option>Consulting & Professional Services</option>
+            <option>Startup / Early stage</option>
+            <option>Venture Capital & Investment</option>
+            <option>Agriculture & Agritech</option>
+            <option>Real Estate & Construction</option>
+            <option>Aerospace & Defence</option>
+            <option>Other</option>
+          </select>
         </div>
         <div id="rpp-row-designation" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
           <div id="rpp-designation-field">
@@ -6041,6 +6197,31 @@ function mainPageHTML(): string {
             <input type="tel" id="reg-mobile" placeholder="Mobile Number *" required class="px-4 py-3 rounded-xl text-sm">
             <input type="text" id="reg-city" placeholder="City *" required class="px-4 py-3 rounded-xl text-sm">
           </div>
+          <div><select id="reg-industry" required class="w-full px-4 py-3 rounded-xl text-sm">
+            <option value="">Select industry *</option>
+            <option>Banking & Financial Services</option>
+            <option>Insurance</option>
+            <option>IT Services & Consulting</option>
+            <option>Software & SaaS</option>
+            <option>Telecom</option>
+            <option>Manufacturing</option>
+            <option>Automotive</option>
+            <option>Pharma & Life Sciences</option>
+            <option>Healthcare & Hospitals</option>
+            <option>Retail & E-commerce</option>
+            <option>Logistics & Supply Chain</option>
+            <option>Energy & Utilities</option>
+            <option>Media & Entertainment</option>
+            <option>Education & Academia</option>
+            <option>Government & Public Sector</option>
+            <option>Consulting & Professional Services</option>
+            <option>Startup / Early stage</option>
+            <option>Venture Capital & Investment</option>
+            <option>Agriculture & Agritech</option>
+            <option>Real Estate & Construction</option>
+            <option>Aerospace & Defence</option>
+            <option>Other</option>
+          </select></div>
           <div><input type="url" id="reg-linkedin" placeholder="LinkedIn URL" class="w-full px-4 py-3 rounded-xl text-sm"></div>
           <div><textarea id="reg-bio" placeholder="Short bio (optional)" rows="2" class="w-full px-4 py-3 rounded-xl text-sm"></textarea></div>
           <div><input type="text" id="reg-interests" placeholder="Interests (comma-separated)" class="w-full px-4 py-3 rounded-xl text-sm"></div>
@@ -6642,6 +6823,31 @@ function mainPageHTML(): string {
               <div><input type="text" id="qv-company" placeholder="Organization / Company *" required class="w-full px-4 py-3 rounded-xl text-sm"></div>
               <div><input type="text" id="qv-designation" placeholder="Designation / Job Title *" required class="w-full px-4 py-3 rounded-xl text-sm"></div>
               <div><input type="text" id="qv-city" placeholder="City *" required class="w-full px-4 py-3 rounded-xl text-sm"></div>
+              <div><select id="qv-industry" required class="w-full px-4 py-3 rounded-xl text-sm">
+                <option value="">Select industry *</option>
+                <option>Banking & Financial Services</option>
+                <option>Insurance</option>
+                <option>IT Services & Consulting</option>
+                <option>Software & SaaS</option>
+                <option>Telecom</option>
+                <option>Manufacturing</option>
+                <option>Automotive</option>
+                <option>Pharma & Life Sciences</option>
+                <option>Healthcare & Hospitals</option>
+                <option>Retail & E-commerce</option>
+                <option>Logistics & Supply Chain</option>
+                <option>Energy & Utilities</option>
+                <option>Media & Entertainment</option>
+                <option>Education & Academia</option>
+                <option>Government & Public Sector</option>
+                <option>Consulting & Professional Services</option>
+                <option>Startup / Early stage</option>
+                <option>Venture Capital & Investment</option>
+                <option>Agriculture & Agritech</option>
+                <option>Real Estate & Construction</option>
+                <option>Aerospace & Defence</option>
+                <option>Other</option>
+              </select></div>
               <div class="md:col-span-2 flex flex-col sm:flex-row gap-3 items-center">
                 <button type="submit" id="qv-submit-btn" class="w-full sm:w-auto px-8 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-primary-600 to-primary-500 hover:from-primary-500 hover:to-primary-400 transition-all text-sm shadow-lg shadow-primary-500/25">
                   <i class="fas fa-check-circle mr-2"></i>Register — It's Free!
@@ -8325,12 +8531,13 @@ function mainPageHTML(): string {
       const company = document.getElementById('qv-company').value.trim();
       const designation = document.getElementById('qv-designation').value.trim();
       const city = document.getElementById('qv-city').value.trim();
+      const industry = document.getElementById('qv-industry').value;
 
       try {
         const resp = await fetch('/api/events/' + EVENT_ID + '/attendees/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, email, mobile: phone, company, job_title: designation, city, bio: '', interests: '', linkedin_url: '' })
+          body: JSON.stringify({ name, email, mobile: phone, company, job_title: designation, city, industry, bio: '', interests: '', linkedin_url: '' })
         });
         const data = await resp.json();
 
@@ -8665,6 +8872,7 @@ function mainPageHTML(): string {
           interests: document.getElementById('reg-interests').value,
           mobile: document.getElementById('reg-mobile').value,
           city: document.getElementById('reg-city').value,
+          industry: document.getElementById('reg-industry').value,
           linkedin_url: document.getElementById('reg-linkedin').value,
         });
 
@@ -12228,6 +12436,7 @@ function mainPageHTML(): string {
       const company  = document.getElementById('pp-company').value.trim();
       const desig    = document.getElementById('pp-designation').value.trim();
       const city     = document.getElementById('pp-city').value.trim();
+      const industry = document.getElementById('pp-industry').value;
       const passType = document.getElementById('pp-pass-type').value;
 
       // Checked before the payment tab opens: sending someone to checkout and only
@@ -12241,6 +12450,7 @@ function mainPageHTML(): string {
       if (!company) gaps.push(academic ? 'college name' : 'organisation');
       if (!academic && !desig) gaps.push('designation');
       if (!city) gaps.push('city');
+      if (!industry) gaps.push('industry');
       if (gaps.length) {
         showToast('Please fill in: ' + gaps.join(', ') + '.', 'error');
         btn.disabled = false;
@@ -12266,7 +12476,7 @@ function mainPageHTML(): string {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             name, email, mobile: phone, company,
-            job_title: desig, city, bio: '', interests: '', linkedin_url: '',
+            job_title: desig, city, industry, bio: '', interests: '', linkedin_url: '',
             badge_type: passType
           })
         });
@@ -12432,6 +12642,34 @@ function mainPageHTML(): string {
               <label class="text-xs text-gray-400 mb-1 block">City *</label>
               <input type="text" id="pp-city" required placeholder="Your city" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:#fff;border:1px solid #D7DBEC;color:#1E2140;outline:none;">
             </div>
+          </div>
+          <div>
+            <label class="text-xs text-gray-400 mb-1 block">Industry *</label>
+            <select id="pp-industry" required class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:#fff;border:1px solid #D7DBEC;color:#1E2140;outline:none;">
+              <option value="">Select industry *</option>
+              <option>Banking & Financial Services</option>
+              <option>Insurance</option>
+              <option>IT Services & Consulting</option>
+              <option>Software & SaaS</option>
+              <option>Telecom</option>
+              <option>Manufacturing</option>
+              <option>Automotive</option>
+              <option>Pharma & Life Sciences</option>
+              <option>Healthcare & Hospitals</option>
+              <option>Retail & E-commerce</option>
+              <option>Logistics & Supply Chain</option>
+              <option>Energy & Utilities</option>
+              <option>Media & Entertainment</option>
+              <option>Education & Academia</option>
+              <option>Government & Public Sector</option>
+              <option>Consulting & Professional Services</option>
+              <option>Startup / Early stage</option>
+              <option>Venture Capital & Investment</option>
+              <option>Agriculture & Agritech</option>
+              <option>Real Estate & Construction</option>
+              <option>Aerospace & Defence</option>
+              <option>Other</option>
+            </select>
           </div>
           <button type="submit" id="pp-submit-btn" class="w-full py-3 rounded-xl font-bold text-white mt-2 transition-all" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);">
             <i class="fas fa-arrow-right mr-2"></i>Proceed to Payment
@@ -12942,6 +13180,59 @@ function adminPageHTML(): string {
       }
     }
 
+    // ============ AUDIENCE PROFILE ============
+    // What a sponsor asks is who is in the room, so the overview answers that rather
+    // than drawing a single-segment donut of role=attendee.
+    async function loadAudience() {
+      var PALETTE = ['#FF6B00','#1A237E','#7c3aed','#059669','#e11d48','#0891b2','#b45309','#4b5563'];
+      try {
+        var a = await api.get('/api/admin/analytics/audience');
+
+        var pct = function (n) { return a.total ? Math.round((n / a.total) * 100) : 0; };
+        var cov = document.getElementById('seniority-coverage');
+        if (cov) cov.textContent = 'from ' + a.coverage.job_title + ' of ' + a.total + ' job titles';
+
+        renderChart('chart-seniority', 'doughnut',
+          a.seniority.map(function (x) { return x.label + ' (' + pct(x.count) + '%)'; }),
+          a.seniority.map(function (x) { return x.count; }), PALETTE);
+
+        var icov = document.getElementById('industry-coverage');
+        if (a.industries.length) {
+          if (icov) icov.textContent = 'from ' + a.coverage.industry + ' of ' + a.total + ' answers';
+          renderChart('chart-industry', 'doughnut',
+            a.industries.map(function (x) { return x.label; }),
+            a.industries.map(function (x) { return x.count; }), PALETTE);
+        } else {
+          // An empty chart would read as "no industries", which is not the same as
+          // "we never asked". Say which it is.
+          if (icov) icov.textContent = '';
+          var wrap = document.getElementById('industry-wrap');
+          if (wrap) wrap.innerHTML =
+            '<div class="h-full flex flex-col items-center justify-center text-center px-6 py-10">' +
+              '<i class="fas fa-industry text-3xl text-gray-600 mb-3"></i>' +
+              '<p class="text-sm text-gray-400">Industry was never asked for, so there is nothing to chart yet.</p>' +
+              '<p class="text-[11px] text-gray-500 mt-2">It is on the registration form now, so this fills in as people sign up. ' +
+              'To chart the ' + a.total + ' already registered, set it on their rows in Attendees.</p>' +
+            '</div>';
+        }
+
+        var bars = function (list, el) {
+          var top = list[0] ? list[0].count : 1;
+          document.getElementById(el).innerHTML = list.length ? list.map(function (x) {
+            return '<div class="flex items-center gap-3 py-1.5">' +
+              '<div class="w-40 shrink-0 truncate text-gray-300 text-[13px]" title="' + deskEsc(x.label) + '">' + deskEsc(x.label) + '</div>' +
+              '<div class="flex-1 h-2 rounded-full bg-white/10 overflow-hidden"><div class="h-full bg-primary-500" style="width:' + Math.round((x.count / top) * 100) + '%"></div></div>' +
+              '<div class="w-10 text-right text-gray-400 text-xs">' + x.count + '</div></div>';
+          }).join('') : '<p class="text-gray-500 text-sm py-3">Nothing recorded yet.</p>';
+        };
+        bars(a.companies, 'top-orgs');
+        bars(a.cities, 'top-cities');
+      } catch (e) {
+        var el = document.getElementById('top-orgs');
+        if (el) el.innerHTML = '<p class="text-red-400 text-sm">Could not load the audience profile: ' + e.message + '</p>';
+      }
+    }
+
     // ============ PAYMENTS & INVOICES ============
     var _pendingPayments = [];
 
@@ -13327,12 +13618,30 @@ function adminPageHTML(): string {
 
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
           <div class="glass rounded-xl p-5">
-            <h3 class="font-semibold mb-3 text-sm"><i class="fas fa-chart-bar text-primary-400 mr-2"></i>Attendees by Role</h3>
-            <div class="chart-container"><canvas id="chart-roles"></canvas></div>
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="font-semibold text-sm"><i class="fas fa-user-tie text-primary-400 mr-2"></i>Who is coming, by seniority</h3>
+              <span class="text-[10px] text-gray-500" id="seniority-coverage"></span>
+            </div>
+            <div class="chart-container"><canvas id="chart-seniority"></canvas></div>
           </div>
           <div class="glass rounded-xl p-5">
-            <h3 class="font-semibold mb-3 text-sm"><i class="fas fa-store text-accent-400 mr-2"></i>Top Exhibitors by Visitors</h3>
-            <div class="chart-container"><canvas id="chart-exhibitors"></canvas></div>
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="font-semibold text-sm"><i class="fas fa-industry text-accent-400 mr-2"></i>By industry</h3>
+              <span class="text-[10px] text-gray-500" id="industry-coverage"></span>
+            </div>
+            <div class="chart-container" id="industry-wrap"><canvas id="chart-industry"></canvas></div>
+          </div>
+        </div>
+
+        <!-- Which organisations are sending people: the question every sponsor asks -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+          <div class="glass rounded-xl p-5">
+            <h3 class="font-semibold mb-3 text-sm"><i class="fas fa-building text-primary-400 mr-2"></i>Top organisations</h3>
+            <div id="top-orgs" class="text-sm"></div>
+          </div>
+          <div class="glass rounded-xl p-5">
+            <h3 class="font-semibold mb-3 text-sm"><i class="fas fa-location-dot text-accent-400 mr-2"></i>Top cities</h3>
+            <div id="top-cities" class="text-sm"></div>
           </div>
         </div>
 
@@ -13579,16 +13888,7 @@ function adminPageHTML(): string {
 
       // Render charts
       setTimeout(() => {
-        renderChart('chart-roles', 'doughnut', 
-          analytics.attendeesByRole.map(r=>r.role),
-          analytics.attendeesByRole.map(r=>r.count),
-          ['#FF6B00','#1A237E','#7c3aed','#059669','#e11d48']
-        );
-        renderChart('chart-exhibitors', 'bar',
-          analytics.topExhibitors.map(e=>e.company_name),
-          analytics.topExhibitors.map(e=>e.visitor_count),
-          ['#FF6B00','#ff8524','#ff9d55','#e05a00','#b84800','#1A237E','#3949AB','#5C6BC0']
-        );
+        loadAudience();
       }, 100);
     }
 
