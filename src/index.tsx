@@ -325,6 +325,349 @@ function emailBrandHeader(title: string, subtitle: string): string {
     </div>`
 }
 
+// ==================== TAX INVOICES ====================
+//
+// CCAvenue issues a payment receipt, not a GST invoice, so a buyer expensing a
+// Delegate or VIP pass has nothing their finance team will accept. Every request was
+// being answered by hand.
+//
+// Amounts are paise throughout. The admin enters the total that was actually
+// charged and the taxable value is derived from it, never the other way round: an
+// invoice whose total disagrees with the card statement is worse than no invoice.
+
+const INVOICE_SETTING_KEYS = [
+  'inv_legal_name', 'inv_address', 'inv_gstin', 'inv_pan', 'inv_state', 'inv_state_code',
+  'inv_sac', 'inv_prefix', 'inv_signatory', 'inv_contact_email', 'inv_contact_phone',
+] as const
+
+async function invoiceSettings(c: any): Promise<Record<string, string>> {
+  const { results } = await c.env.DB.prepare('SELECT key, value FROM app_settings').all() as any
+  const out: Record<string, string> = {}
+  for (const r of results || []) out[r.key] = r.value
+  return out
+}
+
+const rupees = (paise: number): string =>
+  (paise / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+// Indian finance teams expect the amount in words on the invoice itself.
+function rupeesInWords(paise: number): string {
+  const ONES = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten',
+    'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen']
+  const TENS = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety']
+  const two = (n: number): string =>
+    n < 20 ? ONES[n] : TENS[Math.floor(n / 10)] + (n % 10 ? ' ' + ONES[n % 10] : '')
+  const three = (n: number): string =>
+    (n >= 100 ? ONES[Math.floor(n / 100)] + ' Hundred' + (n % 100 ? ' ' + two(n % 100) : '') : two(n))
+  const indian = (n: number): string => {
+    if (n === 0) return 'Zero'
+    const parts: string[] = []
+    const crore = Math.floor(n / 10000000); n %= 10000000
+    const lakh = Math.floor(n / 100000); n %= 100000
+    const thousand = Math.floor(n / 1000); n %= 1000
+    if (crore) parts.push(two(crore) + ' Crore')
+    if (lakh) parts.push(two(lakh) + ' Lakh')
+    if (thousand) parts.push(two(thousand) + ' Thousand')
+    if (n) parts.push(three(n))
+    return parts.join(' ')
+  }
+  const whole = Math.floor(paise / 100), pp = paise % 100
+  return 'Rupees ' + indian(whole) + (pp ? ' and ' + two(pp) + ' Paise' : '') + ' Only'
+}
+
+// Financial year in the Indian convention: April to March.
+function financialYear(d: Date): string {
+  const y = d.getUTCFullYear(), m = d.getUTCMonth() + 1
+  const start = m >= 4 ? y : y - 1
+  return String(start % 100).padStart(2, '0') + '-' + String((start + 1) % 100).padStart(2, '0')
+}
+
+const invoiceTokenFor = async (c: any, id: number | string, no: string): Promise<string> =>
+  String(id) + '.' + (await hmacHexA(passTokenSecret(c), 'invoice:' + id + ':' + no)).slice(0, 24)
+
+async function invoiceFromToken(c: any, token: string): Promise<any | null> {
+  const dot = String(token || '').lastIndexOf('.')
+  if (dot < 1) return null
+  const id = token.slice(0, dot)
+  const row = await c.env.DB.prepare('SELECT * FROM invoices WHERE id = ?').bind(id).first() as any
+  if (!row) return null
+  const expected = await invoiceTokenFor(c, row.id, row.invoice_no)
+  return safeEqualA(token, expected) ? row : null
+}
+
+app.post('/api/admin/invoices', async (c) => {
+  const b = await c.req.json().catch(() => ({})) as any
+  const set = await invoiceSettings(c)
+  if (!set.inv_legal_name || !set.inv_gstin) {
+    return c.json({ error: 'Add your legal name and GSTIN under Settings first - an invoice without them is not a tax invoice.' }, 400)
+  }
+  if (!b.buyer_name || !b.buyer_email) return c.json({ error: 'Buyer name and email are required' }, 400)
+
+  // An invoice asserts that money was received. Nothing flows back from mUni Campus
+  // or CCAvenue to this database, so the only evidence we can hold is the gateway's
+  // own reference, copied in by whoever checked the payment report. Requiring it
+  // means no invoice can exist that cannot be traced back to a transaction.
+  if (!String(b.order_ref || '').trim() && !String(b.payment_ref || '').trim()) {
+    return c.json({ error: 'Add the mUni order number or the CCAvenue reference. An invoice must point at a payment that can be checked.' }, 400)
+  }
+
+  // The charged total is the anchor. Deriving it from a taxable value would let
+  // rounding drift a paisa away from what the card was actually debited.
+  const total = Math.round(Number(b.total_amount) * 100)
+  if (!Number.isFinite(total) || total <= 0) return c.json({ error: 'Enter the amount that was charged' }, 400)
+  const rate = Number.isFinite(Number(b.gst_rate)) ? Number(b.gst_rate) : 18
+  const taxable = Math.round(total / (1 + rate / 100))
+  const tax = total - taxable
+
+  // Place of supply for admission to an event is where the event is held, so this is
+  // an intra-state supply in Maharashtra whatever state the buyer sits in. Kept
+  // overridable, because that call belongs to the organisation's accountant.
+  const pos = String(b.place_of_supply || set.inv_state || 'Maharashtra')
+  const intra = !b.force_igst && pos.trim().toLowerCase() === String(set.inv_state || 'Maharashtra').trim().toLowerCase()
+  const cgst = intra ? Math.floor(tax / 2) : 0
+  const sgst = intra ? tax - cgst : 0
+  const igst = intra ? 0 : tax
+
+  const seq = ((await c.env.DB.prepare('SELECT COALESCE(MAX(id), 0) AS n FROM invoices').first() as any)?.n || 0) + 1
+  const invoiceNo = (set.inv_prefix || 'BHAI') + '/' + financialYear(new Date()) + '/' + String(seq).padStart(4, '0')
+
+  const r = await c.env.DB.prepare(
+    `INSERT INTO invoices (invoice_no, attendee_id, buyer_name, buyer_email, buyer_company, buyer_gstin,
+       buyer_address, buyer_phone, item_desc, order_ref, payment_ref, paid_at, gst_rate,
+       taxable_paise, cgst_paise, sgst_paise, igst_paise, total_paise, place_of_supply)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).bind(
+    invoiceNo, b.attendee_id || null, String(b.buyer_name).trim(), String(b.buyer_email).trim().toLowerCase(),
+    b.buyer_company || '', b.buyer_gstin || '', b.buyer_address || '', b.buyer_phone || '',
+    b.item_desc || 'Delegate Pass - Bharat AI Innovation Conference & Exhibition 2026',
+    b.order_ref || '', b.payment_ref || '', b.paid_at || null, rate,
+    taxable, cgst, sgst, igst, total, pos
+  ).run()
+
+  const id = r.meta.last_row_id
+
+  // Issuing an invoice IS the confirmation that payment landed, so it settles the
+  // registration too. Without this the buyer holds an invoice for a pass the app
+  // still refuses to print, and someone has to remember to flip the flag by hand.
+  if (await paymentStatusEnabled(c)) {
+    const target = b.attendee_id
+      ? await c.env.DB.prepare('SELECT id FROM attendees WHERE id = ?').bind(b.attendee_id).first()
+      : await c.env.DB.prepare('SELECT id FROM attendees WHERE event_id = 1 AND email = ?')
+          .bind(String(b.buyer_email).trim().toLowerCase()).first()
+    if (target) {
+      await c.env.DB.prepare("UPDATE attendees SET payment_status = 'paid' WHERE id = ?").bind((target as any).id).run()
+      await c.env.DB.prepare('UPDATE invoices SET attendee_id = ? WHERE id = ?').bind((target as any).id, id).run()
+    }
+  }
+
+  const token = await invoiceTokenFor(c, id, invoiceNo)
+  if (b.send_email !== false) {
+    const row = await c.env.DB.prepare('SELECT * FROM invoices WHERE id = ?').bind(id).first()
+    await sendInvoiceEmail(c, row, token, set)
+    await c.env.DB.prepare("UPDATE invoices SET emailed_at = datetime('now') WHERE id = ?").bind(id).run()
+  }
+  return c.json({ success: true, id, invoice_no: invoiceNo, url: '/invoice/' + token }, 201)
+})
+
+// Everyone on a paid tier whose payment has never been confirmed. Nothing flows
+// back from mUni Campus, so without this list a Delegate who paid on the 27th sits
+// unnoticed with a pass the app refuses to print.
+app.get('/api/admin/payments-pending', async (c) => {
+  if (!(await paymentStatusEnabled(c))) return c.json({ ready: false, results: [] })
+  const marks = PAID_TIERS.map(() => '?').join(', ')
+  const { results } = await c.env.DB.prepare(
+    `SELECT a.id, a.name, a.email, a.company, a.mobile, a.badge_type, a.created_at,
+            (SELECT COUNT(*) FROM invoices i WHERE i.attendee_id = a.id) AS invoices
+       FROM attendees a
+      WHERE a.badge_type IN (${marks})
+        AND lower(COALESCE(a.payment_status, 'pending')) = 'pending'
+      ORDER BY a.created_at DESC
+      LIMIT 300`
+  ).bind(...PAID_TIERS).all() as any
+  const LIST = { 'Delegate Pass': 4999, 'VIP Pass': 14999, 'Academic Pass': 999 } as Record<string, number>
+  return c.json({
+    ready: true,
+    results: (results || []).map((r: any) => ({
+      ...r,
+      // What they should have been charged, so the number in the payment report can
+      // be checked rather than retyped from memory.
+      expected: Math.round((LIST[r.badge_type] || 0) * 1.18 * 100) / 100,
+    })),
+  })
+})
+
+app.get('/api/admin/invoices', async (c) => {
+  const { results } = await c.env.DB.prepare(
+    'SELECT id, invoice_no, buyer_name, buyer_email, buyer_company, total_paise, emailed_at, created_at FROM invoices ORDER BY id DESC LIMIT 200'
+  ).all() as any
+  return c.json(await Promise.all((results || []).map(async (r: any) => ({
+    ...r, total: rupees(r.total_paise), url: '/invoice/' + await invoiceTokenFor(c, r.id, r.invoice_no),
+  }))))
+})
+
+app.post('/api/admin/invoices/:id/email', async (c) => {
+  const row = await c.env.DB.prepare('SELECT * FROM invoices WHERE id = ?').bind(c.req.param('id')).first() as any
+  if (!row) return c.json({ error: 'Not found' }, 404)
+  const set = await invoiceSettings(c)
+  await sendInvoiceEmail(c, row, await invoiceTokenFor(c, row.id, row.invoice_no), set)
+  await c.env.DB.prepare("UPDATE invoices SET emailed_at = datetime('now') WHERE id = ?").bind(row.id).run()
+  return c.json({ success: true })
+})
+
+// The link in the email. Unguessable rather than logged-in, because the buyer's
+// finance team needs to open it and they have no account here.
+app.get('/invoice/:token', async (c) => {
+  const row = await invoiceFromToken(c, c.req.param('token'))
+  if (!row) return c.html('<p style="font-family:system-ui;padding:40px;text-align:center;">That invoice link is not valid.</p>', 404)
+  return c.html(invoiceHTML(row, await invoiceSettings(c)))
+})
+
+function invoiceHTML(v: any, set: Record<string, string>): string {
+  const esc = (x: any) => String(x ?? '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch] as string))
+  const money = (n: number) => '&#8377;' + rupees(n)
+  const row = (label: string, value: string, bold = false) =>
+    `<tr><td style="padding:7px 0;color:#555;">${label}</td><td style="padding:7px 0;text-align:right;${bold ? 'font-weight:700;' : ''}">${value}</td></tr>`
+  const date = v.paid_at ? istStamp(v.paid_at) : istStamp(v.created_at)
+
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Invoice ${esc(v.invoice_no)} - Bharat AI Innovation 2026</title><style>
+ body{margin:0;background:#f2f4f8;color:#1c2033;font-family:system-ui,-apple-system,Segoe UI,Arial,sans-serif;font-size:14px;}
+ .sheet{max-width:820px;margin:24px auto;background:#fff;padding:40px;box-shadow:0 2px 18px rgba(0,0,0,.08);}
+ h1{margin:0 0 2px;font-size:20px;letter-spacing:.5px;}
+ .muted{color:#666;font-size:12.5px;line-height:1.65;}
+ .head{display:flex;justify-content:space-between;gap:24px;border-bottom:2px solid #1c2033;padding-bottom:18px;}
+ .cols{display:flex;gap:24px;margin-top:24px;}
+ .cols>div{flex:1;}
+ .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:#888;margin-bottom:5px;}
+ table{width:100%;border-collapse:collapse;}
+ .items{margin-top:26px;}
+ .items th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:#666;border-bottom:1px solid #ddd;padding:9px 0;}
+ .items td{padding:12px 0;border-bottom:1px solid #eee;}
+ .totals{margin-left:auto;max-width:320px;margin-top:6px;}
+ .grand{border-top:2px solid #1c2033;font-size:16px;}
+ .foot{margin-top:34px;border-top:1px solid #eee;padding-top:16px;}
+ .print{max-width:820px;margin:0 auto 0;text-align:right;}
+ .print button{padding:10px 20px;border:none;border-radius:8px;background:#FF6B00;color:#fff;font-weight:600;cursor:pointer;}
+ @media print{ body{background:#fff;} .sheet{box-shadow:none;margin:0;padding:0;} .print{display:none;} }
+</style></head><body>
+<div class="print"><button onclick="window.print()">Save as PDF / Print</button></div>
+<div class="sheet">
+  <div class="head">
+    <div>
+      <h1>${esc(set.inv_legal_name || 'Aegis Knowledge Trust')}</h1>
+      <p class="muted">${esc(set.inv_address || '')}<br>
+        ${set.inv_gstin ? 'GSTIN: <strong>' + esc(set.inv_gstin) + '</strong><br>' : ''}
+        ${set.inv_pan ? 'PAN: ' + esc(set.inv_pan) + '<br>' : ''}
+        ${set.inv_contact_email ? esc(set.inv_contact_email) : ''}${set.inv_contact_phone ? ' &middot; ' + esc(set.inv_contact_phone) : ''}
+      </p>
+    </div>
+    <div style="text-align:right;">
+      <div style="font-size:19px;font-weight:700;letter-spacing:1px;">TAX INVOICE</div>
+      <p class="muted" style="margin-top:6px;">
+        <strong>${esc(v.invoice_no)}</strong><br>${esc(date)}
+      </p>
+    </div>
+  </div>
+
+  <div class="cols">
+    <div>
+      <div class="lbl">Billed to</div>
+      <div style="font-weight:600;">${esc(v.buyer_name)}</div>
+      <p class="muted">
+        ${v.buyer_company ? esc(v.buyer_company) + '<br>' : ''}
+        ${v.buyer_address ? esc(v.buyer_address).replace(/\n/g, '<br>') + '<br>' : ''}
+        ${esc(v.buyer_email)}${v.buyer_phone ? '<br>' + esc(v.buyer_phone) : ''}
+        ${v.buyer_gstin ? '<br>GSTIN: <strong>' + esc(v.buyer_gstin) + '</strong>' : ''}
+      </p>
+    </div>
+    <div>
+      <div class="lbl">Payment</div>
+      <p class="muted">
+        ${v.order_ref ? 'Order: ' + esc(v.order_ref) + '<br>' : ''}
+        ${v.payment_ref ? 'Reference: ' + esc(v.payment_ref) + '<br>' : ''}
+        Place of supply: ${esc(v.place_of_supply || '')}<br>
+        Status: <strong style="color:#0f7b47;">PAID</strong>
+      </p>
+    </div>
+  </div>
+
+  <table class="items">
+    <thead><tr><th>Description</th><th style="text-align:center;">SAC</th><th style="text-align:right;">Amount</th></tr></thead>
+    <tbody><tr>
+      <td>${esc(v.item_desc)}<div class="muted">20&ndash;21 November 2026 &middot; WTC Mumbai</div></td>
+      <td style="text-align:center;">${esc(set.inv_sac || '998596')}</td>
+      <td style="text-align:right;">${money(v.taxable_paise)}</td>
+    </tr></tbody>
+  </table>
+
+  <table class="totals">
+    ${row('Taxable value', money(v.taxable_paise))}
+    ${v.igst_paise ? row('IGST @ ' + v.gst_rate + '%', money(v.igst_paise))
+      : row('CGST @ ' + (v.gst_rate / 2) + '%', money(v.cgst_paise)) + row('SGST @ ' + (v.gst_rate / 2) + '%', money(v.sgst_paise))}
+    <tr class="grand"><td style="padding:12px 0;font-weight:700;">Total</td><td style="padding:12px 0;text-align:right;font-weight:700;">${money(v.total_paise)}</td></tr>
+  </table>
+  <p class="muted" style="text-align:right;margin-top:4px;">${esc(rupeesInWords(v.total_paise))}</p>
+
+  <div class="foot">
+    <p class="muted">This is a computer-generated invoice for a payment already received; no signature is required.
+      ${set.inv_signatory ? 'Authorised signatory: ' + esc(set.inv_signatory) + '.' : ''}
+      Your registration for Bharat AI Innovation Conference &amp; Exhibition 2026 is confirmed &mdash; bring a government photo ID matching this name to the badge desk.</p>
+  </div>
+</div></body></html>`
+}
+
+async function sendInvoiceEmail(c: any, v: any, token: string, set: Record<string, string>) {
+  const g = async (k: string) => ((await c.env.DB.prepare('SELECT value FROM app_settings WHERE key = ?').bind(k).first()) as any)?.value
+  const apiKey = await g('elastic_email_api_key')
+  if (!apiKey || !v?.buyer_email) return
+  const fromEmail = senderEmailOrDefault(await g('sender_email'))
+  const fromName = (await g('sender_name')) || 'Bharat AI Innovation'
+  const esc = (x: any) => String(x ?? '').replace(/[&<>]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch] as string))
+  const url = 'https://bharataiinnovation.com/invoice/' + token
+
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#f5f5f5;font-family:Arial,sans-serif;">
+    <div style="max-width:600px;margin:20px auto;background:#fff;border-radius:12px;overflow:hidden;">
+      ${emailBrandHeader('Your invoice and confirmation', '20&ndash;21 Nov 2026 &bull; WTC Mumbai')}
+      <div style="padding:30px;">
+        <p style="margin:0 0 6px;font-size:15px;color:#333;">Dear <strong>${esc(v.buyer_name)}</strong>,</p>
+        <p style="margin:0 0 20px;font-size:14px;line-height:1.7;color:#555;">Your registration is confirmed and your tax invoice is below &mdash; everything your finance team needs for reimbursement.</p>
+        <table style="width:100%;border-collapse:collapse;font-size:13.5px;">
+          <tr><td style="padding:7px 0;color:#666;">Invoice number</td><td style="padding:7px 0;text-align:right;"><strong>${esc(v.invoice_no)}</strong></td></tr>
+          <tr><td style="padding:7px 0;color:#666;">Pass</td><td style="padding:7px 0;text-align:right;">${esc(v.item_desc)}</td></tr>
+          ${v.order_ref ? `<tr><td style="padding:7px 0;color:#666;">Order</td><td style="padding:7px 0;text-align:right;">${esc(v.order_ref)}</td></tr>` : ''}
+          ${v.payment_ref ? `<tr><td style="padding:7px 0;color:#666;">Payment reference</td><td style="padding:7px 0;text-align:right;">${esc(v.payment_ref)}</td></tr>` : ''}
+          <tr><td style="padding:7px 0;color:#666;">Taxable value</td><td style="padding:7px 0;text-align:right;">&#8377;${rupees(v.taxable_paise)}</td></tr>
+          <tr><td style="padding:7px 0;color:#666;">GST @ ${v.gst_rate}%</td><td style="padding:7px 0;text-align:right;">&#8377;${rupees(v.cgst_paise + v.sgst_paise + v.igst_paise)}</td></tr>
+          <tr><td style="padding:12px 0;border-top:2px solid #1c2033;font-weight:bold;">Total paid</td><td style="padding:12px 0;border-top:2px solid #1c2033;text-align:right;font-weight:bold;">&#8377;${rupees(v.total_paise)}</td></tr>
+        </table>
+        <div style="text-align:center;margin:26px 0 6px;">
+          <a href="${url}" style="display:inline-block;padding:13px 32px;background:linear-gradient(135deg,#FF6B00,#FF8C38);color:#fff;text-decoration:none;border-radius:10px;font-weight:bold;font-size:14px;">View and download the invoice</a>
+        </div>
+        <p style="margin:14px 0 0;font-size:12px;color:#888;text-align:center;">Open the link and choose Save as PDF to attach it to an expense claim.</p>
+        <div style="margin-top:22px;padding:14px;background:#FFF6EF;border:1px solid rgba(255,107,0,0.25);border-radius:10px;">
+          <p style="margin:0;font-size:12.5px;line-height:1.6;color:#1E2140;"><strong>On the day:</strong> bring a government photo ID matching the name on your pass. We check it at the badge desk.</p>
+        </div>
+      </div>
+    </div></body></html>`
+
+  try {
+    await fetch('https://api.elasticemail.com/v4/emails/transactional', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-ElasticEmail-ApiKey': apiKey },
+      body: JSON.stringify({
+        Recipients: { To: [v.buyer_email] },
+        Content: {
+          Body: [{ ContentType: 'HTML', Charset: 'utf-8', Content: html }],
+          From: `${fromName} <${fromEmail}>`,
+          ReplyTo: fromEmail,
+          Subject: 'Invoice ' + v.invoice_no + ' and registration confirmation - Bharat AI Innovation 2026',
+        },
+        Options: { TrackClicks: false, TrackOpens: false },
+      }),
+    })
+  } catch { /* the invoice exists either way; a failed send must not lose it */ }
+}
+
 // ==================== BADGE-DESK STAFF ====================
 //
 // Verification used to be gated on ADMIN_SECRET, which would have meant giving the
@@ -12297,6 +12640,9 @@ function adminPageHTML(): string {
       <button onclick="switchSection('inquiries')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="inquiries" title="Inquiries">
         <i class="fas fa-inbox w-5 text-center shrink-0"></i><span class="sidebar-label">Inquiries</span>
       </button>
+      <button onclick="switchSection('payments')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="payments" title="Payments & Invoices">
+        <i class="fas fa-file-invoice-dollar w-5 text-center shrink-0"></i><span class="sidebar-label">Payments</span>
+      </button>
       <button onclick="switchSection('badge-desk')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="badge-desk" title="Badge Desk">
         <i class="fas fa-qrcode w-5 text-center shrink-0"></i><span class="sidebar-label">Badge Desk</span>
       </button>
@@ -12358,6 +12704,8 @@ function adminPageHTML(): string {
       <div id="section-startup-pitch" class="section-content hidden"></div>
       <!-- Inquiries Section -->
       <div id="section-inquiries" class="section-content hidden"></div>
+      <!-- Payments & Invoices Section -->
+      <div id="section-payments" class="section-content hidden"></div>
       <!-- Badge Desk Section -->
       <div id="section-badge-desk" class="section-content hidden"></div>
       <!-- Analytics Section -->
@@ -12535,8 +12883,8 @@ function adminPageHTML(): string {
       document.querySelectorAll('.section-content').forEach(s => s.classList.add('hidden'));
       document.getElementById('section-'+sec).classList.remove('hidden');
 
-      const titles = { overview:'Overview', attendees:'Attendee Management', sessions:'Session Management', exhibitors:'Exhibitor Management', 'booth-requests':'Booth Requests', awards:'Awards Management', announcements:'Announcement Management', innovation:'Innovation Talk & Showcase', 'startup-pitch':'Startup Pitch Management', inquiries:'Inquiry Management', 'badge-desk':'Badge Desk', analytics:'Analytics & Reports', settings:'Settings' };
-      const subtitles = { overview:'Real-time event management dashboard', attendees:'Manage all registered attendees', sessions:'Create and manage event sessions', exhibitors:'Manage exhibition booths', 'booth-requests':'Review and manage booth booking requests', awards:'Manage award categories and nominees', announcements:'Create and manage live feed announcements', innovation:'Manage innovation talk and showcase schedule', 'startup-pitch':'Manage startup pitches and investor panel', inquiries:'View and manage all incoming inquiries', 'badge-desk':'Event-day check-in and the staff accounts that scan passes', analytics:'Deep dive into event engagement metrics', settings:'Configure email, API keys and app settings' };
+      const titles = { overview:'Overview', attendees:'Attendee Management', sessions:'Session Management', exhibitors:'Exhibitor Management', 'booth-requests':'Booth Requests', awards:'Awards Management', announcements:'Announcement Management', innovation:'Innovation Talk & Showcase', 'startup-pitch':'Startup Pitch Management', inquiries:'Inquiry Management', payments:'Payments & Invoices', 'badge-desk':'Badge Desk', analytics:'Analytics & Reports', settings:'Settings' };
+      const subtitles = { overview:'Real-time event management dashboard', attendees:'Manage all registered attendees', sessions:'Create and manage event sessions', exhibitors:'Manage exhibition booths', 'booth-requests':'Review and manage booth booking requests', awards:'Manage award categories and nominees', announcements:'Create and manage live feed announcements', innovation:'Manage innovation talk and showcase schedule', 'startup-pitch':'Manage startup pitches and investor panel', inquiries:'View and manage all incoming inquiries', payments:'Confirm payments taken on mUni Campus and issue GST invoices', 'badge-desk':'Event-day check-in and the staff accounts that scan passes', analytics:'Deep dive into event engagement metrics', settings:'Configure email, API keys and app settings' };
       document.getElementById('page-title').textContent = titles[sec] || sec;
       document.getElementById('page-subtitle').textContent = subtitles[sec] || '';
 
@@ -12585,9 +12933,139 @@ function adminPageHTML(): string {
         case 'innovation': loadInnovationTalks(); break;
         case 'startup-pitch': loadAdminStartupPitch(); break;
         case 'inquiries': loadAdminInquiries(); break;
+        case 'payments': loadPayments(); break;
         case 'badge-desk': loadBadgeDesk(); break;
         case 'settings': loadSettings(); break;
       }
+    }
+
+    // ============ PAYMENTS & INVOICES ============
+    var _pendingPayments = [];
+
+    async function loadPayments() {
+      var el = document.getElementById('section-payments');
+      try {
+        var pending = await api.get('/api/admin/payments-pending');
+        var invoices = await api.get('/api/admin/invoices');
+        _pendingPayments = pending.results || [];
+
+        var rows = _pendingPayments.map(function (a, i) {
+          return '<div class="flex flex-wrap items-center gap-3 py-3 border-b border-white/5">' +
+            '<div class="flex-1 min-w-[180px]"><div class="text-sm text-gray-200">' + deskEsc(a.name) + '</div>' +
+              '<div class="text-[11px] text-gray-500">' + deskEsc(a.email) + (a.company ? ' &middot; ' + deskEsc(a.company) : '') + '</div></div>' +
+            '<span class="px-2 py-0.5 rounded-full text-[10px] bg-amber-500/15 text-amber-300">' + deskEsc(a.badge_type) + '</span>' +
+            '<span class="text-[11px] text-gray-400">expected &#8377;' + a.expected.toLocaleString('en-IN') + '</span>' +
+            (a.invoices ? '<span class="text-[10px] text-green-400">invoiced</span>' : '') +
+            '<button onclick="openInvoiceFor(' + i + ')" class="px-3 py-1.5 rounded-lg text-[11px] bg-primary-500/20 text-primary-300 hover:bg-primary-500/30">Confirm payment &amp; invoice</button>' +
+            '</div>';
+        }).join('') || '<p class="text-gray-500 text-sm py-4">Nobody is waiting on a payment.</p>';
+
+        var issued = (invoices || []).map(function (v) {
+          return '<div class="flex items-center gap-3 py-2.5 border-b border-white/5">' +
+            '<div class="flex-1 min-w-0"><div class="text-sm text-gray-200 truncate">' + deskEsc(v.invoice_no) + ' &middot; ' + deskEsc(v.buyer_name) + '</div>' +
+              '<div class="text-[11px] text-gray-500">' + deskEsc(v.buyer_email) + ' &middot; &#8377;' + deskEsc(v.total) +
+              (v.emailed_at ? ' &middot; emailed' : ' &middot; <span class="text-amber-400">not emailed</span>') + '</div></div>' +
+            '<a href="' + deskEsc(v.url) + '" target="_blank" class="px-2.5 py-1.5 rounded-lg text-[11px] glass hover:bg-white/10 text-gray-300">Open</a>' +
+            '<button onclick="resendInvoice(' + v.id + ')" class="px-2.5 py-1.5 rounded-lg text-[11px] glass hover:bg-white/10 text-gray-300">Resend</button>' +
+            '</div>';
+        }).join('') || '<p class="text-gray-500 text-sm py-4">No invoices issued yet.</p>';
+
+        el.innerHTML =
+          '<div class="space-y-4">' +
+            '<div class="glass rounded-xl p-4 border border-amber-500/20 text-[12px] text-gray-300 leading-relaxed">' +
+              '<i class="fas fa-circle-info text-amber-400 mr-1.5"></i>' +
+              'Payments are taken on mUni Campus through CCAvenue and nothing is sent back to this site, so a paid Delegate stays marked pending until someone confirms it here. ' +
+              'Check the order in the CCAvenue or mUni report, then confirm it below &mdash; that issues the GST invoice, emails it, and unlocks their pass in one step.' +
+            '</div>' +
+            '<div class="glass rounded-xl p-5 border border-white/5">' +
+              '<h3 class="text-sm font-semibold text-white mb-1">Waiting on payment confirmation</h3>' +
+              '<p class="text-[11px] text-gray-500 mb-3">Everyone who chose a paid pass and has not been confirmed.</p>' +
+              '<div class="max-h-96 overflow-y-auto pr-1">' + rows + '</div>' +
+            '</div>' +
+            '<div class="glass rounded-xl p-5 border border-white/5">' +
+              '<div class="flex items-center justify-between mb-3">' +
+                '<h3 class="text-sm font-semibold text-white">Invoices issued</h3>' +
+                '<button onclick="openInvoiceFor(-1)" class="px-3 py-1.5 rounded-lg text-[11px] bg-primary-500/20 text-primary-300 hover:bg-primary-500/30">New invoice</button>' +
+              '</div>' +
+              '<div class="max-h-96 overflow-y-auto pr-1">' + issued + '</div>' +
+            '</div>' +
+          '</div>';
+      } catch (err) {
+        el.innerHTML = '<div class="text-center py-12 text-red-400"><i class="fas fa-exclamation-triangle text-3xl mb-3"></i><p>Failed to load payments: ' + err.message + '</p></div>';
+      }
+    }
+
+    function openInvoiceFor(idx) {
+      var a = idx >= 0 ? _pendingPayments[idx] : null;
+      var f = function (id, label, value, ph) {
+        return '<div><label class="block text-[11px] text-gray-400 mb-1">' + label + '</label>' +
+          '<input id="' + id + '" value="' + deskEsc(value || '') + '" placeholder="' + (ph || '') + '" class="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm"></div>';
+      };
+      var wrap = document.createElement('div');
+      wrap.id = 'inv-modal';
+      wrap.className = 'fixed inset-0 z-50 flex items-center justify-center p-4';
+      wrap.style.background = 'rgba(4,6,20,0.8)';
+      wrap.innerHTML =
+        '<div class="glass rounded-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto border border-white/10">' +
+          '<h3 class="font-bold text-lg mb-1">Confirm payment &amp; issue invoice</h3>' +
+          '<p class="text-[11px] text-gray-500 mb-4">Copy the order and reference from the CCAvenue or mUni report. The invoice cannot be issued without one &mdash; it has to point at a payment somebody can check.</p>' +
+          '<div class="grid grid-cols-2 gap-3">' +
+            f('iv-name', 'Buyer name', a ? a.name : '') +
+            f('iv-email', 'Email', a ? a.email : '') +
+            f('iv-company', 'Organisation', a ? a.company : '') +
+            f('iv-phone', 'Mobile', a ? a.mobile : '') +
+            f('iv-gstin', 'Buyer GSTIN (for their input credit)', '', 'optional') +
+            f('iv-amount', 'Amount charged (INR)', a ? a.expected : '', '5898.82') +
+            f('iv-order', 'mUni order number', '', '34364_1787816667') +
+            f('iv-payref', 'CCAvenue reference', '', '114772182155') +
+            f('iv-paid', 'Paid on', '', 'YYYY-MM-DD HH:MM') +
+          '</div>' +
+          '<div class="mt-3">' + f('iv-address', 'Billing address', '', 'optional, for their finance team') + '</div>' +
+          '<div class="mt-3">' + f('iv-item', 'Description', a ? (a.badge_type + ' - Bharat AI Innovation Conference & Exhibition 2026') : 'Delegate Pass - Bharat AI Innovation Conference & Exhibition 2026') + '</div>' +
+          '<input type="hidden" id="iv-attendee" value="' + (a ? a.id : '') + '">' +
+          '<p id="iv-msg" class="text-[11px] text-amber-300 mt-3 min-h-4"></p>' +
+          '<div class="flex gap-2 mt-2">' +
+            '<button onclick="closeInvoiceModal()" class="flex-1 px-4 py-2.5 rounded-lg glass hover:bg-white/10 text-sm">Cancel</button>' +
+            '<button id="iv-go" onclick="submitInvoice()" class="flex-1 px-4 py-2.5 rounded-lg bg-primary-500 hover:bg-primary-600 text-white text-sm font-semibold">Issue &amp; email invoice</button>' +
+          '</div>' +
+        '</div>';
+      document.body.appendChild(wrap);
+    }
+
+    function closeInvoiceModal() {
+      var m = document.getElementById('inv-modal');
+      if (m) m.remove();
+    }
+
+    async function submitInvoice() {
+      var val = function (id) { return (document.getElementById(id).value || '').trim(); };
+      var msg = document.getElementById('iv-msg');
+      var btn = document.getElementById('iv-go');
+      msg.textContent = '';
+      btn.disabled = true;
+      btn.textContent = 'Issuing...';
+      try {
+        var res = await api.post('/api/admin/invoices', {
+          attendee_id: val('iv-attendee') ? Number(val('iv-attendee')) : null,
+          buyer_name: val('iv-name'), buyer_email: val('iv-email'), buyer_company: val('iv-company'),
+          buyer_phone: val('iv-phone'), buyer_gstin: val('iv-gstin'), buyer_address: val('iv-address'),
+          item_desc: val('iv-item'), order_ref: val('iv-order'), payment_ref: val('iv-payref'),
+          paid_at: val('iv-paid'), total_amount: Number(val('iv-amount')),
+        });
+        closeInvoiceModal();
+        toast('Invoice ' + res.invoice_no + ' issued and emailed', 'success');
+        window.open(res.url, '_blank');
+        loadPayments();
+      } catch (e) {
+        msg.textContent = e.message || 'Could not issue the invoice.';
+        btn.disabled = false;
+        btn.textContent = 'Issue & email invoice';
+      }
+    }
+
+    async function resendInvoice(id) {
+      try { await api.post('/api/admin/invoices/' + id + '/email', {}); toast('Invoice emailed again', 'success'); loadPayments(); }
+      catch (e) { alert(e.message || 'Could not send it.'); }
     }
 
     // ============ BADGE DESK ============
