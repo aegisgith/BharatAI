@@ -37,21 +37,23 @@
            sits BEFORE the mark and reads "An initiative of": the logo itself
            carries the name, so repeating it beside the mark would be redundant. */
         .agba-lockup {
-            display: inline-flex; align-items: center; gap: 0.9rem;
-            padding: 0.6rem 1.1rem; border-radius: var(--r-lg);
+            display: inline-flex; align-items: center; gap: 0.8rem;
+            padding: 0.5rem 0.9rem; border-radius: var(--r-lg);
             background: rgba(255,255,255,0.96); box-shadow: 0 4px 18px rgba(0,0,0,0.18);
         }
+        /* One line, always. Left to wrap it breaks as "AN / INITIATIVE / OF",
+           which reads as three ragged fragments rather than a label. */
         .agba-lockup .lbl {
-            font-family: var(--font-display); font-size: 0.7rem; font-weight: 800;
-            letter-spacing: 0.11em; text-transform: uppercase; color: var(--mid-grey);
-            line-height: 1.3; text-align: right; max-width: 5.5rem;
+            font-family: var(--font-display); font-size: 0.66rem; font-weight: 800;
+            letter-spacing: 0.1em; text-transform: uppercase; color: var(--mid-grey);
+            white-space: nowrap; line-height: 1;
         }
-        .agba-lockup .sep { width: 1px; align-self: stretch; background: var(--light); }
-        .agba-lockup img { height: 46px; width: auto; display: block; }
+        .agba-lockup .sep { width: 1px; align-self: stretch; background: var(--light); flex: none; }
+        .agba-lockup img { height: 42px; width: auto; display: block; }
         @media (max-width: 480px) {
-            .agba-lockup { gap: 0.65rem; padding: 0.5rem 0.85rem; }
-            .agba-lockup img { height: 36px; }
-            .agba-lockup .lbl { font-size: 0.62rem; max-width: 4.5rem; }
+            .agba-lockup { gap: 0.6rem; padding: 0.45rem 0.75rem; }
+            .agba-lockup img { height: 34px; }
+            .agba-lockup .lbl { font-size: 0.58rem; letter-spacing: 0.08em; }
         }
 
         /* ── Hero layout: copy left, sample-result card right ── */
