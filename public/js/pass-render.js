@@ -187,7 +187,13 @@
     var cy = y + R;
     var ag = ctx.createRadialGradient(mid - R * 0.3, cy - R * 0.35, R * 0.1, mid, cy, R);
     ag.addColorStop(0, T.gold ? '#fbeeb0' : T.c1); ag.addColorStop(1, T.gold ? '#b8871f' : T.c2);
+    // The design gives the avatar a soft coloured glow (box-shadow 0 8px 26px in the
+    // tier's own tint). Canvas has no box-shadow, so it is drawn as a shadow on the
+    // fill and cleared immediately - anything drawn after would inherit it.
+    ctx.save();
+    ctx.shadowColor = T.inner; ctx.shadowBlur = px(26); ctx.shadowOffsetY = px(8);
     ctx.beginPath(); ctx.arc(mid, cy, R, 0, Math.PI * 2); ctx.fillStyle = ag; ctx.fill();
+    ctx.restore();
     ctx.lineWidth = px(T.gold ? 4 : 3); ctx.strokeStyle = T.gold ? '#f3d97a' : T.edge; ctx.stroke();
     f('700', T.gold ? 54 : 56, PLAY);
     ctx.fillStyle = T.gold ? '#7a5510' : '#ffffff'; ctx.textAlign = 'center';
