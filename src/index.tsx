@@ -6032,6 +6032,9 @@ function mainPageHTML(): string {
   <meta name="twitter:image" content="https://bharataiinnovation.com/images/og-card.png">
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
+  <!-- Shared with the admin panel, so a pass issued at the desk is the same
+       document the holder downloaded. -->
+  <script src="/js/pass-render.js"></script>
   <script>
     tailwind.config = {
       theme: {
@@ -11185,46 +11188,16 @@ function mainPageHTML(): string {
     }
 
     // ===== EVENT PASSES ==================================================
-    // Five tiers from the Claude Design export (Bharat AI Passes.dc.html).
-    // Drawn on canvas rather than rendered as HTML so the download stays a PNG:
-    // a delegate at the registration desk may have no signal, and an image in the
-    // camera roll works where a web page does not.
-    var PASS_TIERS = {
-      visitor:  { label: 'VISITOR PASS',  hi: '',                  c1: '#2B8CFF', c2: '#1f6fd6', edge: 'rgba(43,140,255,0.50)',  inner: 'rgba(43,140,255,0.28)', top: '#0b1c3d' },
-      speaker:  { label: 'SPEAKER PASS',  hi: 'वक्ता पास',          c1: '#FF7A00', c2: '#e06400', edge: 'rgba(255,122,0,0.50)',   inner: 'rgba(255,122,0,0.28)',  top: '#2a1608' },
-      delegate: { label: 'DELEGATE PASS', hi: 'प्रतिनिधि पास',      c1: '#00996C', c2: '#007352', edge: 'rgba(0,153,108,0.50)',   inner: 'rgba(0,153,108,0.28)',  top: '#052419' },
-      academic: { label: 'ACADEMIC PASS', hi: 'शैक्षणिक पास',       c1: '#7C5CFF', c2: '#5b3fd6', edge: 'rgba(124,92,255,0.50)',  inner: 'rgba(124,92,255,0.28)', top: '#170f33' },
-      vip:      { label: 'V I P',         hi: 'विशिष्ट अतिथि पास',  c1: '#E9C356', c2: '#c79a2a', edge: '#D4A21A',               inner: 'rgba(233,195,86,0.60)', top: '#3a2c0a', gold: true }
-    };
-
-    // The pass must state the tier the holder actually has. The previous version
-    // hardcoded "DELEGATE PASS", so all 1,038 Visitor Pass holders were issued a
-    // badge claiming a tier they had not bought.
-    function passTierFor(u) {
-      var b = String((u && u.badge_type) || '').toLowerCase();
-      var r = String((u && u.role) || '').toLowerCase();
-      if (b.indexOf('vip') >= 0) return 'vip';
-      if (b.indexOf('delegate') >= 0) return 'delegate';
-      if (b.indexOf('academic') >= 0) return 'academic';
-      if (b.indexOf('speaker') >= 0 || r.indexOf('speaker') >= 0) return 'speaker';
-      return 'visitor';
-    }
-
-    // Canvas draws with whatever font is resolved at fillText time, so the faces
-    // must be loaded before the first stroke or it silently falls back.
-    async function ensurePassFonts() {
-      if (!document.fonts || !document.fonts.load) return;
-      var faces = ['800 44px Montserrat', '700 32px Montserrat', '700 68px "Playfair Display"',
-                   '600 30px Mukta', '600 28px Inter', '400 26px Inter'];
-      try { await Promise.all(faces.map(function (f) { return document.fonts.load(f, 'Bharat भारत'); })); } catch (e) {}
-      try { await document.fonts.ready; } catch (e) {}
-    }
-
+    // The drawing lives in /js/pass-render.js, loaded by this page and by the admin
+    // panel. It used to be duplicated, and the two copies drifted: a pass issued at
+    // the desk carried a different design and a broken QR from the one the same
+    // person had already downloaded. What stays here is the policy around it - who
+    // may print, what must be true first - which is not the same in both places.
     async function generateEventPass(adminAttendee) {
       var user = adminAttendee || currentUser;
       if (!user) { showToast('Please sign in first', 'error'); return; }
-      var tierKey = passTierFor(user);
-      var T = PASS_TIERS[tierKey];
+      var tierKey = BhaiPass.tierFor(user);
+      var T = BhaiPass.TIERS[tierKey];
 
       // A paid tier is recorded at registration but confirmed out of band on mUni
       // Campus, so the pass must not print until payment lands. Without this the
@@ -11245,233 +11218,17 @@ function mainPageHTML(): string {
       }
 
       showToast('Generating your pass...', 'info');
-      await ensurePassFonts();
 
-      var S = 2, CW = 440, W = CW * S;
-      var canvas = document.createElement('canvas');
-      canvas.width = W; canvas.height = 1500 * S;
-      var ctx = canvas.getContext('2d');
-      var proxy = function (u) { return '/api/image-proxy?url=' + encodeURIComponent(u); };
-
-      // Cross-origin images taint the canvas and make toDataURL throw, so the QR
-      // goes through the same-origin proxy the logos already use.
-      var passId = 'BHAI-2026-' + String(user.id).padStart(4, '0');
-      // Was networking.bharataiinnovation.com?email=<address> — a subdomain that 301s
-      // to the homepage, and a code that handed the holder's email to anyone who
-      // photographed the pass. It now points at the signed verification page.
+      // The QR carries a signed token rather than an email address, so it has to be
+      // fetched before drawing. Without one the code falls back to the app and
+      // verifies nothing, so a failure here is worth surfacing.
       var passToken = '';
       try {
         var tk = await api.get('/api/my-pass-token' + (adminAttendee ? ('?id=' + user.id) : ''));
         passToken = (tk && tk.token) || '';
       } catch (e) {}
-      var qrTarget = passToken
-        ? 'https://bharataiinnovation.com/verify/' + encodeURIComponent(passToken)
-        : 'https://bharataiinnovation.com/app';
-      var logo = null, aegis = null, agba = null, assessfy = null, qr = null, photo = null;
-      if (user.avatar_url) { try { photo = await loadImage(user.avatar_url); } catch (e) {} }
-      try { logo = await loadImage('/images/Bharat%20AI%20Innovation%20Logo.png'); } catch (e) {}
-      try { aegis = await loadImage('/images/passes/aegis.png'); } catch (e) {}
-      try { agba = await loadImage('/images/passes/agba.png'); } catch (e) {}
-      try { assessfy = await loadImage('/images/passes/assessfy.jpg'); } catch (e) {}
-      try { qr = await loadImage(proxy('https://api.qrserver.com/v1/create-qr-code/?size=340x340&margin=0&data=' + encodeURIComponent(qrTarget))); } catch (e) {}
 
-      var mid = W / 2;
-      var f = function (weight, size, family) { ctx.font = weight + ' ' + (size * S) + 'px ' + family; };
-      var MONT = '"Montserrat", Arial, sans-serif';
-      var PLAY = '"Playfair Display", Georgia, serif';
-      var MUKTA = '"Mukta", "Nirmala UI", "Noto Sans Devanagari", Arial, sans-serif';
-      var INTER = '"Inter", Arial, sans-serif';
-      var centre = function (txt, y, colour) { ctx.fillStyle = colour; ctx.textAlign = 'center'; ctx.fillText(txt, mid, y); };
-
-      // Three words, three colours, centred as one group.
-      function tricolour(words, y) {
-        var widths = words.map(function (w) { return ctx.measureText(w.t).width; });
-        var gap = ctx.measureText(' ').width;
-        var total = widths.reduce(function (a, b) { return a + b; }, 0) + gap * (words.length - 1);
-        var x = mid - total / 2;
-        ctx.textAlign = 'left';
-        for (var i = 0; i < words.length; i++) {
-          ctx.fillStyle = words[i].c;
-          ctx.fillText(words[i].t, x, y);
-          x += widths[i] + gap;
-        }
-        ctx.textAlign = 'center';
-      }
-
-      function divider(y, strong) {
-        var g = ctx.createLinearGradient(px(30), 0, W - px(30), 0);
-        var a = strong ? 0.5 : 0.3;
-        g.addColorStop(0, 'rgba(212,162,26,0)');
-        g.addColorStop(0.5, 'rgba(212,162,26,' + a + ')');
-        g.addColorStop(1, 'rgba(212,162,26,0)');
-        ctx.fillStyle = g; ctx.fillRect(px(30), y, W - px(60), Math.max(1, S));
-      }
-      function px(v) { return v * S; }
-      function drawImageFit(img, cx, cy, maxW, maxH) {
-        if (!img) return 0;
-        var r = Math.min(maxW / img.width, maxH / img.height);
-        var w = img.width * r, h = img.height * r;
-        ctx.drawImage(img, cx - w / 2, cy, w, h);
-        return h;
-      }
-
-      // ---- card background ----
-      var bg = ctx.createLinearGradient(0, 0, 0, canvas.height);
-      if (T.gold) { bg.addColorStop(0, '#3a2c0a'); bg.addColorStop(0.4, '#1c1405'); bg.addColorStop(1, '#0b0803'); }
-      else { bg.addColorStop(0, T.top); bg.addColorStop(0.55, '#0a0e2a'); bg.addColorStop(1, '#080b22'); }
-      ctx.fillStyle = bg; ctx.fillRect(0, 0, W, canvas.height);
-
-      var y = px(30);
-
-      // ---- VIP ribbon ----
-      if (T.gold) {
-        var rw = px(230), rh = px(30), rx = mid - rw / 2;
-        var rg = ctx.createLinearGradient(rx, 0, rx + rw, 0);
-        rg.addColorStop(0, '#c79a2a'); rg.addColorStop(0.5, '#f3d97a'); rg.addColorStop(1, '#c79a2a');
-        ctx.fillStyle = rg; roundRect(ctx, rx, y, rw, rh, rh / 2); ctx.fill();
-        f('800', 10, MONT); ctx.fillStyle = '#1a1206';
-        ctx.textAlign = 'center'; ctx.fillText('\u2726 PREMIUM ALL-ACCESS \u2726', mid, y + rh * 0.68);
-        y += rh + px(18);
-      }
-
-      // ---- logo on white ----
-      if (logo) {
-        var lw = px(120), lh = lw * (logo.height / logo.width);
-        ctx.fillStyle = '#ffffff';
-        roundRect(ctx, mid - lw / 2 - px(12), y, lw + px(24), lh + px(16), px(8)); ctx.fill();
-        ctx.drawImage(logo, mid - lw / 2, y + px(8), lw, lh);
-        y += lh + px(16);
-      }
-
-      // ---- wordmarks ----
-      y += px(36);
-      f('800', 22, MONT);
-      tricolour([{ t: 'Bharat', c: '#FF7A00' }, { t: 'AI', c: '#ffffff' }, { t: 'Innovation', c: '#00996C' }], y);
-      y += px(21);
-      f('600', 15, MUKTA);
-      tricolour([{ t: 'भारत', c: '#FF7A00' }, { t: 'एआई', c: T.gold ? '#efe6c9' : '#e8edf5' }, { t: 'इनोवेशन', c: T.gold ? '#5fbf8f' : '#00b57f' }], y);
-      y += px(20);
-      f('400', 13, INTER);
-      centre('Conference & Exhibition 2026', y, T.gold ? '#9a8a5a' : '#8892b0');
-
-      y += px(24); divider(y, T.gold); y += px(24);
-
-      // ---- avatar ----
-      var R = px(T.gold ? 64 : 60);
-      var cy = y + R;
-      var ag = ctx.createRadialGradient(mid - R * 0.3, cy - R * 0.35, R * 0.1, mid, cy, R);
-      ag.addColorStop(0, T.gold ? '#fbeeb0' : T.c1); ag.addColorStop(1, T.gold ? '#b8871f' : T.c2);
-      ctx.beginPath(); ctx.arc(mid, cy, R, 0, Math.PI * 2); ctx.fillStyle = ag; ctx.fill();
-      ctx.lineWidth = px(T.gold ? 4 : 3); ctx.strokeStyle = T.gold ? '#f3d97a' : T.edge; ctx.stroke();
-      f('700', T.gold ? 54 : 56, PLAY);
-      ctx.fillStyle = T.gold ? '#7a5510' : '#ffffff'; ctx.textAlign = 'center';
-      if (photo) {
-        // Cover-fit inside the circle so a non-square photo is cropped, not squashed.
-        ctx.save();
-        ctx.beginPath(); ctx.arc(mid, cy, R - px(2), 0, Math.PI * 2); ctx.clip();
-        var sc = Math.max((R * 2) / photo.width, (R * 2) / photo.height);
-        var pwd = photo.width * sc, phd = photo.height * sc;
-        ctx.drawImage(photo, mid - pwd / 2, cy - phd / 2, pwd, phd);
-        ctx.restore();
-      } else {
-        ctx.fillText(T.gold ? '\u265B' : String(user.name || '?').trim().charAt(0).toUpperCase(), mid, cy + px(T.gold ? 19 : 20));
-      }
-      y = cy + R + px(20);
-
-      // ---- name / designation / organisation ----
-      f('700', 34, PLAY);
-      var name = String(user.name || 'Attendee');
-      while (ctx.measureText(name).width > W - px(60) && name.length > 4) { name = name.slice(0, -2); }
-      centre(name === String(user.name || '') ? name : name + '\u2026', y + px(26), T.gold ? '#f3d97a' : '#ffffff');
-      y += px(38);
-      if (user.job_title) { f('400', 14, INTER); centre(String(user.job_title), y + px(12), T.gold ? '#c8b98a' : '#c3ccdd'); y += px(20); }
-      if (user.company) { f('400', 14, INTER); centre(String(user.company).toUpperCase(), y + px(12), T.gold ? '#9a8a5a' : '#8892b0'); y += px(20); }
-
-      y += px(24); divider(y, T.gold); y += px(24);
-
-      // ---- tier pill ----
-      f('800', T.gold ? 18 : 16, MONT);
-      var pw = ctx.measureText(T.label).width + px(T.gold ? 88 : 68);
-      var ph = px(T.hi ? 52 : 46);
-      var pxx = mid - pw / 2;
-      var pg = ctx.createLinearGradient(0, y, 0, y + ph);
-      if (T.gold) { pg.addColorStop(0, '#fbeeb0'); pg.addColorStop(0.45, '#E9C356'); pg.addColorStop(1, '#c79a2a'); }
-      else { pg.addColorStop(0, T.c1); pg.addColorStop(1, T.c2); }
-      ctx.fillStyle = pg; roundRect(ctx, pxx, y, pw, ph, ph / 2); ctx.fill();
-      if (T.gold) { ctx.lineWidth = S; ctx.strokeStyle = '#f3d97a'; ctx.stroke(); }
-      ctx.fillStyle = T.gold ? '#5a3f08' : '#ffffff'; ctx.textAlign = 'center';
-      if (T.hi) {
-        ctx.fillText(T.label, mid, y + px(23));
-        f('500', 12, MUKTA);
-        ctx.fillStyle = T.gold ? '#5a3f08' : 'rgba(255,255,255,0.9)';
-        ctx.fillText(T.hi, mid, y + px(41));
-      } else {
-        ctx.fillText(T.label, mid, y + ph * 0.66);
-      }
-      y += ph + px(24); divider(y, T.gold); y += px(24);
-
-      // ---- when and where ----
-      f('700', 17, MONT); centre('20\u201321 Nov 2026', y + px(14), '#D4A21A'); y += px(24);
-      f('400', 13, INTER); centre('WTC Mumbai, Cuffe Parade, Mumbai', y + px(11), '#c3ccdd'); y += px(19);
-      f('400', 13, INTER); centre('9:00 AM \u2013 6:00 PM', y + px(11), T.gold ? '#9a8a5a' : '#8892b0'); y += px(30);
-
-      // ---- ticket id + QR ----
-      f('400', 13, '"Courier New", monospace');
-      ctx.letterSpacing = px(2) + 'px';
-      centre(passId, y + px(11), '#c9a94a');
-      ctx.letterSpacing = '0px';
-      y += px(26);
-      if (qr) {
-        var q = px(150), pad = px(9);
-        ctx.fillStyle = '#ffffff';
-        roundRect(ctx, mid - q / 2 - pad, y, q + pad * 2, q + pad * 2, px(6)); ctx.fill();
-        ctx.drawImage(qr, mid - q / 2, y + pad, q, q);
-        y += q + pad * 2;
-      }
-      f('400', 12, INTER); centre('Scan at the badge desk to verify & check in', y + px(20), T.gold ? '#7a6a3a' : '#5a6a8a');
-      y += px(30);
-      // Terms clause 2 requires photo ID matching the registration name at the badge
-      // desk. Printing it here is what makes identity checks work without the event
-      // ever collecting or storing an identity document.
-      f('600', 11, INTER);
-      centre('Carry a government photo ID matching this name', y + px(14), T.gold ? '#9a8a5a' : '#7b88a6');
-      y += px(28);
-
-      // ---- partners ----
-      divider(y, T.gold); y += px(22);
-      var stripH = px(50);
-      ctx.fillStyle = '#ffffff'; roundRect(ctx, px(30), y, W - px(60), stripH, px(8)); ctx.fill();
-      var logos = [{ i: aegis, h: 30 }, { i: agba, h: 26 }, { i: assessfy, h: 22 }].filter(function (o) { return o.i; });
-      if (logos.length) {
-        var gapL = px(14), widths = logos.map(function (o) { return o.i.width * (px(o.h) / o.i.height); });
-        var totalL = widths.reduce(function (a, b) { return a + b; }, 0) + gapL * (logos.length - 1);
-        var lx = mid - totalL / 2;
-        for (var k = 0; k < logos.length; k++) {
-          var hh = px(logos[k].h);
-          ctx.drawImage(logos[k].i, lx, y + (stripH - hh) / 2, widths[k], hh);
-          lx += widths[k] + gapL;
-        }
-      }
-      y += stripH + px(16);
-      f('400', 11, INTER);
-      centre('bharataiinnovation.com \u2022 networking.bharataiinnovation.com', y + px(9), '#4a577a');
-      y += px(30);
-
-      // ---- borders, then crop to the height actually used ----
-      var H = Math.ceil(y);
-      ctx.lineWidth = px(T.gold ? 2 : 1); ctx.strokeStyle = T.edge;
-      roundRect(ctx, px(7), px(7), W - px(14), H - px(14), px(20)); ctx.stroke();
-      ctx.lineWidth = S; ctx.strokeStyle = T.inner;
-      roundRect(ctx, px(16), px(16), W - px(32), H - px(32), px(14)); ctx.stroke();
-
-      var out = document.createElement('canvas');
-      out.width = W; out.height = H;
-      out.getContext('2d').drawImage(canvas, 0, 0, W, H, 0, 0, W, H);
-
-      var link = document.createElement('a');
-      link.download = 'BHAI-2026-' + T.label.replace(/ /g, '') + '-' + String(user.name || 'attendee').replace(/[^A-Za-z0-9]+/g, '-') + '.png';
-      link.href = out.toDataURL('image/png');
-      link.click();
+      await BhaiPass.download(user, { token: passToken });
       showToast('Pass downloaded', 'success');
       if (!adminAttendee && user.id) { try { await api.post('/api/attendees/' + user.id + '/track-pass-download', {}); } catch (e) {} }
     }
@@ -12701,6 +12458,9 @@ function adminPageHTML(): string {
   <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <!-- Shared with the app, so a pass issued at the desk is the same document the
+       holder downloaded. -->
+  <script src="/js/pass-render.js"></script>
   <script>
     tailwind.config = {
       theme: {
@@ -15073,151 +14833,27 @@ function adminPageHTML(): string {
       toast('Attendee deleted!'); loadAdminAttendees();
     }
 
-    // Admin: Download delegate pass for any attendee (does NOT mark pass_downloaded_at)
-    function adminLoadImage(src) {
-      return new Promise((resolve, reject) => {
-        const img = new Image(); img.crossOrigin = 'anonymous';
-        img.onload = () => resolve(img); img.onerror = reject; img.src = src;
-      });
-    }
+    // Admin: download any attendee's pass. Drawn by /js/pass-render.js, the same
+    // file the app uses. This used to be a second implementation that had fallen
+    // years behind: it printed "16th Bharat AI Innovation - Celebrating Innovation
+    // that Impacts", which is the awards wording rather than this event's, and its
+    // QR still pointed at a subdomain that 301s to the homepage. A pass handed over
+    // at the desk therefore looked nothing like the one the holder already had.
     async function adminDownloadPass(user) {
       toast('Generating pass for ' + user.name + '...', 'info');
-      const W = 1000, H = 1500;
-      const canvas = document.createElement('canvas'); canvas.width = W; canvas.height = H;
-      const ctx = canvas.getContext('2d');
-      const px = (u) => '/api/image-proxy?url=' + encodeURIComponent(u);
-      const passId = 'BHAI-2026-' + String(user.id).padStart(4, '0');
-
-      let meityLogo, agbaLogo, bharatLogo, aegisCollegeLogo, assessfyLogo, tcoeiLogo, swissnexLogo;
-      try { meityLogo = await adminLoadImage(px('https://bharataiinnovation.com/wp-content/uploads/2026/02/Meity-logo.png')); } catch(e) {}
-      try { agbaLogo = await adminLoadImage(px('https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png')); } catch(e) {}
-      try { bharatLogo = await adminLoadImage(px('https://bharataiinnovation.com/wp-content/uploads/2026/02/Bharat-AI-Innovation-Expo-logo-scaled.png')); } catch(e) {}
-      try { aegisCollegeLogo = await adminLoadImage(px('https://bharataiinnovation.com/wp-content/uploads/2025/10/Aegis_college_new1.png')); } catch(e) {}
-      try { assessfyLogo = await adminLoadImage(px('https://bharataiinnovation.com/wp-content/uploads/2023/12/Assessfy-black.png')); } catch(e) {}
-      try { tcoeiLogo = await adminLoadImage(px('https://bharataiinnovation.com/wp-content/uploads/2019/06/tcoei.png')); } catch(e) {}
-      try { swissnexLogo = await adminLoadImage(px('https://bharataiinnovation.com/wp-content/uploads/2025/10/Swissnex-red-logo_76ea13ce5cec9e3d897b76c6abe4779f-400x120.png')); } catch(e) {}
-
-      function goldLine(y, xPad, alpha) {
-        const g = ctx.createLinearGradient(xPad, 0, W - xPad, 0);
-        g.addColorStop(0, 'rgba(200,168,85,0)'); g.addColorStop(0.3, 'rgba(200,168,85,' + alpha + ')');
-        g.addColorStop(0.5, 'rgba(219,185,96,' + (alpha + 0.15) + ')');
-        g.addColorStop(0.7, 'rgba(200,168,85,' + alpha + ')'); g.addColorStop(1, 'rgba(200,168,85,0)');
-        ctx.fillStyle = g; ctx.fillRect(xPad, y, W - xPad * 2, 1);
-      }
-      function roundRect(ctx, x, y, w, h, r) {
-        ctx.beginPath(); ctx.moveTo(x + r, y); ctx.lineTo(x + w - r, y);
-        ctx.quadraticCurveTo(x + w, y, x + w, y + r); ctx.lineTo(x + w, y + h - r);
-        ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h); ctx.lineTo(x + r, y + h);
-        ctx.quadraticCurveTo(x, y + h, x, y + h - r); ctx.lineTo(x, y + r);
-        ctx.quadraticCurveTo(x, y, x + r, y); ctx.closePath();
-      }
-      function getAvatarUrl(email, name, size, avatarUrl) {
-        if (avatarUrl) return avatarUrl;
-        return 'https://ui-avatars.com/api/?name=' + encodeURIComponent(name||'?') + '&size=' + (size||128) + '&background=4c6ef5&color=fff&bold=true';
-      }
-
-      // Background
-      const bgGrad = ctx.createLinearGradient(0, 0, 0, H);
-      bgGrad.addColorStop(0, '#060a1e'); bgGrad.addColorStop(0.15, '#0b1030');
-      bgGrad.addColorStop(0.5, '#0e1438'); bgGrad.addColorStop(0.85, '#0b1030'); bgGrad.addColorStop(1, '#060a1e');
-      ctx.fillStyle = bgGrad; ctx.fillRect(0, 0, W, H);
-      const warmGlow = ctx.createRadialGradient(W/2, H * 0.42, 40, W/2, H * 0.42, 420);
-      warmGlow.addColorStop(0, 'rgba(200,168,85,0.06)'); warmGlow.addColorStop(0.5, 'rgba(200,168,85,0.02)'); warmGlow.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = warmGlow; ctx.fillRect(0, 0, W, H);
-      // Gold borders
-      ctx.strokeStyle = 'rgba(200,168,85,0.35)'; ctx.lineWidth = 2;
-      roundRect(ctx, 30, 30, W - 60, H - 60, 16); ctx.stroke();
-      ctx.strokeStyle = 'rgba(200,168,85,0.15)'; ctx.lineWidth = 1;
-      roundRect(ctx, 38, 38, W - 76, H - 76, 12); ctx.stroke();
-
-      // Supported by + MeitY
-      ctx.fillStyle = 'rgba(180,180,180,0.5)'; ctx.font = '500 11px Arial, sans-serif'; ctx.textAlign = 'center';
-      ctx.fillText('Supported by', W / 2, 80);
-      if (meityLogo) { const mh = 50; const mw = mh * (meityLogo.width / meityLogo.height); ctx.drawImage(meityLogo, (W - mw) / 2, 88, mw, mh); }
-      goldLine(155, 100, 0.3);
-
-      // BHAI logo
-      if (agbaLogo) { const lh = 55; const lw = lh * (agbaLogo.width / agbaLogo.height); ctx.drawImage(agbaLogo, (W - lw) / 2, 168, lw, lh); }
-      ctx.fillStyle = '#c8a855'; ctx.font = 'bold 28px Georgia, serif'; ctx.fillText('16th Bharat AI Innovation', W / 2, 260);
-      ctx.fillStyle = 'rgba(200,168,85,0.7)'; ctx.font = '16px Arial, sans-serif'; ctx.fillText('Celebrating Innovation that Impacts', W / 2, 288);
-      goldLine(310, 140, 0.4);
-
-      // Avatar
-      const avatarSize = 180, avatarX = (W - avatarSize) / 2, avatarY = 340;
       try {
-        const avatarImg = await adminLoadImage(getAvatarUrl(user.email, user.name, 256, user.avatar_url));
-        ctx.save();
-        roundRect(ctx, avatarX, avatarY, avatarSize, avatarSize, avatarSize / 2); ctx.clip();
-        ctx.drawImage(avatarImg, avatarX, avatarY, avatarSize, avatarSize); ctx.restore();
-      } catch(e) {
-        ctx.save(); roundRect(ctx, avatarX, avatarY, avatarSize, avatarSize, avatarSize / 2); ctx.clip();
-        ctx.fillStyle = '#4c6ef5'; ctx.fill(); ctx.fillStyle = '#fff'; ctx.font = 'bold 72px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText((user.name || '?')[0].toUpperCase(), W / 2, avatarY + avatarSize / 2); ctx.restore();
+        // Admin may mint a token for anyone, so the QR verifies at the desk exactly
+        // as the attendee's own copy does.
+        var token = '';
+        try {
+          var tk = await api.get('/api/my-pass-token?id=' + user.id);
+          token = (tk && tk.token) || '';
+        } catch (e) {}
+        await BhaiPass.download(user, { token: token });
+        toast('Pass downloaded for ' + user.name, 'success');
+      } catch (e) {
+        toast('Could not generate the pass: ' + (e.message || e), 'error');
       }
-      ctx.strokeStyle = 'rgba(200,168,85,0.5)'; ctx.lineWidth = 3;
-      roundRect(ctx, avatarX - 2, avatarY - 2, avatarSize + 4, avatarSize + 4, (avatarSize + 4) / 2); ctx.stroke();
-
-      // Name
-      ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center';
-      const nameSize = user.name.length > 24 ? 32 : user.name.length > 18 ? 36 : 42;
-      ctx.font = 'bold ' + nameSize + 'px Georgia, serif'; ctx.fillText(user.name, W / 2, 575);
-      // Title & Company
-      if (user.job_title) { ctx.fillStyle = 'rgba(200,168,85,0.9)'; ctx.font = '500 20px Arial, sans-serif'; ctx.fillText(user.job_title, W / 2, 615); }
-      if (user.company) { ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.font = '18px Arial, sans-serif'; ctx.fillText(user.company, W / 2, user.job_title ? 648 : 615); }
-      goldLine(680, 140, 0.4);
-
-      // Badge
-      const badge = user.badge_type || 'Delegate';
-      const badgeColors = { 'Organiser': ['#c8a855','#a08530'], 'VIP Guest': ['#8b5cf6','#7c3aed'], 'VIP Pass': ['#8b5cf6','#7c3aed'], 'Exhibitor': ['#f97316','#ea580c'], 'Speaker': ['#06b6d4','#0891b2'], 'Jury': ['#ec4899','#db2777'], 'Investor': ['#10b981','#059669'], 'Media': ['#6366f1','#4f46e5'] };
-      const [bc1, bc2] = badgeColors[badge] || ['#4c6ef5','#3b5bdb'];
-      const badgeWidth = Math.max(ctx.measureText(badge.toUpperCase()).width + 80, 240);
-      const bx = (W - badgeWidth) / 2, by = 710;
-      const badgeGrad = ctx.createLinearGradient(bx, by, bx + badgeWidth, by + 48);
-      badgeGrad.addColorStop(0, bc1); badgeGrad.addColorStop(1, bc2);
-      roundRect(ctx, bx, by, badgeWidth, 48, 24); ctx.fillStyle = badgeGrad; ctx.fill();
-      ctx.fillStyle = '#fff'; ctx.font = 'bold 18px Arial, sans-serif'; ctx.textAlign = 'center'; ctx.fillText(badge.toUpperCase(), W / 2, 741);
-
-      // Event details
-      goldLine(790, 140, 0.3);
-      ctx.fillStyle = 'rgba(200,168,85,0.9)'; ctx.font = '500 22px Arial, sans-serif'; ctx.fillText('20-21 Nov 2026', W / 2, 835);
-      ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.font = '17px Arial, sans-serif'; ctx.fillText('WTC Mumbai, Chanakyapuri, Mumbai', W / 2, 865);
-      ctx.fillText('9:00 AM \u2013 6:00 PM', W / 2, 892);
-      goldLine(920, 140, 0.3);
-
-      // Pass ID
-      ctx.fillStyle = 'rgba(200,168,85,0.6)'; ctx.font = '500 15px monospace'; ctx.fillText(passId, W / 2, 955);
-
-      // QR placeholder
-      const qrSize = 140, qrX = (W - qrSize) / 2, qrY = 980;
-      roundRect(ctx, qrX, qrY, qrSize, qrSize, 8); ctx.fillStyle = '#ffffff'; ctx.fill();
-      try {
-        const qrImg = await adminLoadImage('https://api.qrserver.com/v1/create-qr-code/?size=256x256&data=' + encodeURIComponent('https://networking.bharataiinnovation.com?email=' + user.email));
-        ctx.drawImage(qrImg, qrX + 4, qrY + 4, qrSize - 8, qrSize - 8);
-      } catch(e) { ctx.fillStyle = '#333'; ctx.font = '12px Arial'; ctx.fillText('QR Code', W / 2, qrY + qrSize / 2); }
-      ctx.fillStyle = 'rgba(200,168,85,0.5)'; ctx.font = '12px Arial, sans-serif'; ctx.fillText('Scan to access networking app', W / 2, qrY + qrSize + 20);
-
-      // Partner logos
-      goldLine(1170, 100, 0.25);
-      const logoY = 1190, logoH = 35;
-      const logos = [bharatLogo, aegisCollegeLogo, assessfyLogo, tcoeiLogo, swissnexLogo].filter(Boolean);
-      if (logos.length > 0) {
-        const totalW = logos.reduce((s, l) => s + (logoH * (l.width / l.height)) + 30, -30);
-        let lx = (W - totalW) / 2;
-        logos.forEach(l => { const lw = logoH * (l.width / l.height); ctx.globalAlpha = 0.7; ctx.drawImage(l, lx, logoY, lw, logoH); ctx.globalAlpha = 1; lx += lw + 30; });
-      }
-
-      // Footer
-      goldLine(1250, 140, 0.25);
-      ctx.fillStyle = 'rgba(180,180,180,0.4)'; ctx.font = '11px Arial, sans-serif'; ctx.textAlign = 'center';
-      ctx.fillText('bharataiinnovation.com  \u2022  networking.bharataiinnovation.com', W / 2, H - 50);
-      goldLine(H - 38, 140, 0.4);
-
-      // Download (no tracking)
-      const link = document.createElement('a');
-      link.download = 'BHAI-2026-Pass-' + user.name.replace(/\\s+/g, '-') + '.png';
-      link.href = canvas.toDataURL('image/png');
-      link.click();
-      toast('Pass downloaded for ' + user.name, 'success');
     }
 
     async function notifyAttendee(id, name, email) {
