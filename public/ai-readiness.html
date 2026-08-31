@@ -1,22 +1,19 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Readiness Certification — Bharat AI Innovation 2026</title>
-    <meta name="description" content="AGBA AI Readiness Certification — an independent, evidence-gated AI maturity rating mapped to ISO/IEC 42001, NIST AI RMF, the EU AI Act and India's DPDP Act. Certified organisations are felicitated at Bharat AI Innovation 2026, WTC Mumbai.">
-    <link rel="canonical" href="https://bharataiinnovation.com/ai-readiness.html">
+    <title>AI Readiness Certification — how AI-ready is your organisation? | Bharat AI Innovation 2026</title>
+    <meta name="description" content="An independent AI-maturity rating that places your organisation on the global maturity curve, and maps you to ISO/IEC 42001, the NIST AI RMF, the EU AI Act and India's DPDP Act. Get your maturity level, your pillar-by-pillar gap map, and a board-grade roadmap to move up a tier.">
+    <link rel="canonical" href="https://bharataiinnovation.com/ai-readiness">
     <meta property="og:title" content="AI Readiness Certification — an Aegis Graham Bell Awards initiative">
-    <meta property="og:description" content="How AI-ready is your organisation, really? An independent maturity rating with a board-grade roadmap. Certified organisations are felicitated at Bharat AI Innovation 2026.">
+    <meta property="og:description" content="Independent AI-maturity rating placed on the global maturity curve, mapped to ISO/IEC 42001, NIST AI RMF, the EU AI Act &amp; India's DPDP Act. Certified organisations are felicitated at Bharat AI Innovation 2026.">
     <meta property="og:type" content="website">
-    <meta property="og:url" content="https://bharataiinnovation.com/ai-readiness.html">
+    <meta property="og:url" content="https://bharataiinnovation.com/ai-readiness">
     <meta property="og:image" content="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png">
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="AI Readiness Certification — Bharat AI Innovation 2026">
+    <meta name="twitter:title" content="AGBA AI Readiness Certification">
     <meta name="twitter:description" content="An independent, evidence-gated AI maturity rating. 6 pillars, 25 metrics, assessor-verified.">
-
-    <!-- Schema.org Structured Data -->
-    
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -26,301 +23,320 @@
 
     <!-- Favicon -->
     <link rel="icon" type="image/png" href="images/Bharat%20AI%20Innovation%20Logo.png">
+
     <style>
-        /* ── Startup Pitch Page Extra Styles ── */
-        
-        /* Hero Stats */
-        .pitch-hero-stats {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 1.5rem;
-            margin-top: 2rem;
+        /* ══ AI Readiness page components ══════════════════════════════════════
+           Everything here is built from the site's own tokens (--saffron,
+           --indigo, --charcoal, --font-display). No new palette is introduced:
+           the source material for this page was teal, this site is saffron and
+           indigo, and the design system wins. */
+
+        /* ── AGBA lockup ──────────────────────────────────────────────────────
+           The mark is dark ink on transparent, so on the dark hero it needs a
+           light plate — same treatment the navbar logo already gets. The label
+           sits BEFORE the mark and reads "An initiative of": the logo itself
+           carries the name, so repeating it beside the mark would be redundant. */
+        .agba-lockup {
+            display: inline-flex; align-items: center; gap: 0.9rem;
+            padding: 0.6rem 1.1rem; border-radius: var(--r-lg);
+            background: rgba(255,255,255,0.96); box-shadow: 0 4px 18px rgba(0,0,0,0.18);
         }
-        .pitch-stat-card {
-            background: var(--glass-white);
-            border: 1px solid var(--glass-border);
-            border-radius: var(--r-xl);
-            padding: 1.5rem;
-            text-align: center;
-            backdrop-filter: blur(12px);
-            transition: var(--t-med);
+        .agba-lockup .lbl {
+            font-family: var(--font-display); font-size: 0.7rem; font-weight: 800;
+            letter-spacing: 0.11em; text-transform: uppercase; color: var(--mid-grey);
+            line-height: 1.3; text-align: right; max-width: 5.5rem;
         }
-        .pitch-stat-card:hover {
-            background: var(--glass-white-md);
-            transform: translateY(-4px);
-        }
-        .pitch-stat-number {
-            font-family: var(--font-display);
-            font-size: 2.5rem;
-            font-weight: 900;
-            color: var(--saffron);
-            line-height: 1;
-            margin-bottom: 0.5rem;
-        }
-        .pitch-stat-label {
-            font-size: 0.85rem;
-            color: rgba(255,255,255,0.7);
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.06em;
+        .agba-lockup .sep { width: 1px; align-self: stretch; background: var(--light); }
+        .agba-lockup img { height: 46px; width: auto; display: block; }
+        @media (max-width: 480px) {
+            .agba-lockup { gap: 0.65rem; padding: 0.5rem 0.85rem; }
+            .agba-lockup img { height: 36px; }
+            .agba-lockup .lbl { font-size: 0.62rem; max-width: 4.5rem; }
         }
 
-        /* Why pitch — editorial list replaces emoji card grid */
-        .format-list { display: flex; flex-direction: column; list-style: none; padding: 0; margin: 0; }
-        .format-row { display: grid; grid-template-columns: 7rem 1fr; gap: 0 1.5rem; align-items: baseline; padding: 0.9rem 0; border-bottom: 1px solid var(--light); }
-        .format-row:first-child { border-top: 1px solid var(--light); }
-        .format-list dt { font-family: var(--font-display); font-size: 0.9rem; font-weight: 800; color: var(--charcoal); }
-        .format-list dd { margin: 0; font-size: 0.875rem; color: var(--dark-grey); line-height: 1.55; }
+        /* ── Hero layout: copy left, sample-result card right ── */
+        .air-hero-grid {
+            display: grid; grid-template-columns: 1.05fr 0.95fr;
+            gap: 3rem; align-items: center; text-align: left;
+        }
+        .air-hero-grid .page-header-eyebrow { margin-left: 0; }
+        .air-hero-copy h1 { text-align: left; }
+        .air-hero-copy > p { text-align: left; margin-left: 0; }
+        .air-hero-price {
+            display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.6rem;
+            margin: 1.25rem 0 0; font-size: 0.9rem; color: rgba(255,255,255,0.75);
+        }
+        .air-hero-price strong { font-family: var(--font-display); font-size: 1.25rem; color: #fff; }
+        .air-hero-price a { color: var(--gold-light); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+        .air-trust {
+            display: flex; align-items: flex-start; gap: 0.6rem; margin-top: 1rem;
+            font-size: 0.85rem; color: rgba(255,255,255,0.78); line-height: 1.5;
+        }
+        .air-trust i { margin-top: 0.2rem; }
+        .air-trust b { color: #fff; font-weight: 700; }
+        .air-trust a { color: var(--gold-light); font-weight: 700; }
 
-        /* Why Pitch Section */
-        .why-pitch-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 2rem;
-            margin-top: 2rem;
+        /* Sample result card */
+        .air-scorecard {
+            background: var(--glass-white-md); border: 1px solid var(--glass-border);
+            border-radius: var(--r-2xl); padding: 1.75rem; backdrop-filter: blur(14px);
+            box-shadow: var(--shadow-lg);
         }
-        .why-pitch-card {
-            background: white;
-            border: 1px solid var(--light);
-            border-radius: var(--r-xl);
-            padding: 2rem;
-            text-align: center;
-            transition: var(--t-med);
+        .air-sc-top { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-bottom: 1.25rem; }
+        .air-sc-eyebrow { font-size: 0.68rem; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: var(--gold-light); }
+        .air-sc-pill {
+            font-size: 0.68rem; font-weight: 700; color: #fff; background: rgba(255,255,255,0.14);
+            border: 1px solid var(--glass-border); border-radius: var(--r-full); padding: 0.25rem 0.7rem;
         }
-        .why-pitch-card:hover {
-            border-color: rgba(255,107,0,0.3);
-            box-shadow: var(--shadow-md);
-            transform: translateY(-6px);
+        .air-gauge-row { display: flex; align-items: center; gap: 1.5rem; }
+        .air-gauge { position: relative; width: 132px; height: 132px; flex: none; }
+        .air-gauge svg { transform: rotate(-90deg); }
+        .air-gauge .g-txt { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+        .air-gauge .g-num { font-family: var(--font-display); font-size: 2rem; font-weight: 800; color: #fff; line-height: 1; }
+        .air-gauge .g-lvl { font-size: 0.6rem; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase; color: var(--saffron-light); margin-top: 0.25rem; }
+        .air-gauge .g-of { font-size: 0.6rem; color: rgba(255,255,255,0.55); margin-top: 0.15rem; }
+        .air-ladder { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.4rem; }
+        .air-rung { display: flex; align-items: center; gap: 0.6rem; font-size: 0.76rem; color: rgba(255,255,255,0.5); }
+        .air-rung .dot { width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,0.25); flex: none; }
+        .air-rung.on { color: rgba(255,255,255,0.85); font-weight: 600; }
+        .air-rung.on .dot { background: var(--saffron); }
+        .air-rung.cur { color: #fff; font-weight: 800; }
+        .air-rung.cur .dot { background: var(--saffron); box-shadow: 0 0 0 4px var(--saffron-glow); }
+        .air-sc-metrics {
+            display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem;
+            margin-top: 1.25rem; padding-top: 1.25rem; border-top: 1px solid var(--glass-border);
         }
-        .why-pitch-icon {
-            width: 70px;
-            height: 70px;
-            background: var(--grad-saffron);
-            border-radius: var(--r-lg);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 2rem;
-            margin: 0 auto 1.5rem;
-            box-shadow: var(--shadow-saffron);
-        }
-        .why-pitch-card h3 {
-            font-size: 1.2rem;
-            font-weight: 700;
-            color: var(--charcoal);
-            margin-bottom: 0.75rem;
-        }
-        .why-pitch-card p {
-            font-size: 0.95rem;
-            color: var(--dark-grey);
-            line-height: 1.6;
-            margin: 0;
-        }
+        .air-sc-metrics .m-l { font-size: 0.62rem; letter-spacing: 0.06em; text-transform: uppercase; color: rgba(255,255,255,0.5); font-weight: 700; }
+        .air-sc-metrics .m-v { font-family: var(--font-display); font-size: 1.1rem; font-weight: 800; color: #fff; line-height: 1.2; }
+        .air-sc-metrics .m-s { font-size: 0.66rem; color: rgba(255,255,255,0.55); }
+        .air-sc-foot { display: flex; align-items: center; gap: 0.55rem; margin-top: 1rem; font-size: 0.68rem; color: rgba(255,255,255,0.6); }
+        .air-sc-foot img { height: 16px; width: auto; background: rgba(255,255,255,0.95); border-radius: 3px; padding: 2px; }
 
-        /* Pitch Format */
-        .pitch-format-section {
-            background: var(--grad-hero);
-            border-radius: var(--r-2xl);
-            padding: 3rem;
-            position: relative;
-            overflow: hidden;
+        /* Hero stat strip */
+        .air-hero-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-top: 3rem; }
+        .air-hero-stats > div {
+            background: var(--glass-white); border: 1px solid var(--glass-border);
+            border-radius: var(--r-xl); padding: 1.25rem; text-align: center; backdrop-filter: blur(10px);
         }
-        .pitch-format-section::before {
-            content: '';
-            position: absolute;
-            inset: 0;
-            background-image: linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px),
-                              linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px);
-            background-size: 30px 30px;
-        }
-        .pitch-format-content {
-            position: relative;
-            z-index: 1;
-        }
-        .pitch-format-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 2rem;
-            margin-top: 2rem;
-        }
-        .format-item {
-            background: rgba(255,255,255,0.1);
-            border: 1px solid rgba(255,255,255,0.2);
-            border-radius: var(--r-xl);
-            padding: 2rem;
-            backdrop-filter: blur(10px);
-        }
-        .format-item h4 {
-            color: white;
-            font-size: 1.3rem;
-            font-weight: 700;
-            margin-bottom: 0.75rem;
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-        }
-        .format-item h4 i {
-            color: var(--gold-light);
-        }
-        .format-item p {
-            color: rgba(255,255,255,0.8);
-            font-size: 0.95rem;
-            line-height: 1.6;
-            margin: 0;
+        .air-hero-stats .v { font-family: var(--font-display); font-size: 1.9rem; font-weight: 800; color: var(--saffron-light); line-height: 1; }
+        .air-hero-stats .l { font-size: 0.76rem; color: rgba(255,255,255,0.72); margin-top: 0.4rem; line-height: 1.4; }
+
+        /* ── Numbered question cards ── */
+        .air-qnum {
+            width: 40px; height: 40px; border-radius: 50%; background: var(--grad-saffron);
+            display: flex; align-items: center; justify-content: center;
+            font-family: var(--font-display); font-weight: 800; font-size: 1.05rem; color: #fff;
+            margin-bottom: 1rem; box-shadow: var(--shadow-saffron);
         }
 
-        /* Eligibility */
-        .eligibility-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 1.5rem;
-            margin-top: 2rem;
+        /* ── Definition list (the value / what makes it defensible) ── */
+        .air-dl { margin: 0; }
+        .air-dl > div {
+            display: grid; grid-template-columns: 15rem 1fr; gap: 0 2rem;
+            padding: 1.15rem 0; border-bottom: 1px solid var(--light);
         }
-        .eligibility-card {
-            background: white;
-            border: 1px solid var(--light);
-            border-radius: var(--r-xl);
-            padding: 1.75rem;
-            display: flex;
-            align-items: flex-start;
-            gap: 1.25rem;
-            transition: var(--t-med);
+        .air-dl > div:first-child { border-top: 1px solid var(--light); }
+        .air-dl dt, .air-dl .dt {
+            font-family: var(--font-display); font-size: 1rem; font-weight: 800; color: var(--charcoal); margin: 0;
         }
-        .eligibility-card:hover {
-            border-color: rgba(255,107,0,0.25);
-            box-shadow: var(--shadow-sm);
-            transform: translateX(4px);
+        .air-dl dd, .air-dl .dd { margin: 0; font-size: 0.92rem; color: var(--dark-grey); line-height: 1.65; }
+
+        /* ── The adoption-vs-outcome gap ── */
+        .air-gap { display: grid; grid-template-columns: 1fr auto 1fr; gap: 1.75rem; align-items: stretch; }
+        .air-gap-side { background: #fff; border: 1px solid var(--light); border-radius: var(--r-xl); padding: 1.75rem; }
+        .air-gap-side.out { border-color: rgba(255,107,0,0.35); background: linear-gradient(180deg, #FFF8F3, #fff); }
+        .air-gap-side b { display: block; font-family: var(--font-display); font-size: 3rem; font-weight: 800; line-height: 1; color: var(--indigo); }
+        .air-gap-side.out b { color: var(--saffron); }
+        .air-gap-side .gl { display: block; font-size: 1rem; font-weight: 700; color: var(--charcoal); margin-top: 0.75rem; line-height: 1.4; }
+        .air-gap-side .gd { display: block; font-size: 0.88rem; color: var(--dark-grey); margin-top: 0.5rem; line-height: 1.6; }
+        .air-gap-side .gs { display: block; font-size: 0.72rem; font-weight: 700; color: var(--mid-grey); margin-top: 0.9rem; }
+        .air-gap-mid { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.6rem; min-width: 6.5rem; }
+        .air-gap-mid span { font-size: 0.7rem; font-weight: 800; letter-spacing: 0.09em; text-transform: uppercase; color: var(--saffron); text-align: center; }
+        .air-gap-mid i { display: block; width: 1px; flex: 1; background: linear-gradient(180deg, transparent, var(--light), transparent); }
+
+        /* ── Callout note ── */
+        .air-note {
+            background: var(--off-white); border: 1px solid var(--light); border-left: 3px solid var(--saffron);
+            border-radius: var(--r-lg); padding: 1.35rem 1.6rem; font-size: 0.92rem;
+            color: var(--dark-grey); line-height: 1.7;
         }
-        .eligibility-icon {
-            width: 48px;
-            height: 48px;
-            background: rgba(255,107,0,0.1);
-            border-radius: var(--r-lg);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.4rem;
-            color: var(--saffron);
-            flex-shrink: 0;
+        .air-note strong { color: var(--charcoal); }
+        .air-note .src { display: inline-block; font-size: 0.72rem; font-weight: 700; color: var(--mid-grey); margin-left: 0.4rem; }
+
+        /* ── Risk / countdown rows ── */
+        .air-risk > div {
+            display: grid; grid-template-columns: 10rem 1fr; gap: 0 1.75rem;
+            padding: 1.35rem 0; border-bottom: 1px solid var(--light); align-items: start;
         }
-        .eligibility-card h4 {
-            font-size: 1.05rem;
-            font-weight: 700;
-            color: var(--charcoal);
-            margin-bottom: 0.5rem;
+        .air-risk > div:first-child { border-top: 1px solid var(--light); }
+        .air-risk .when {
+            font-size: 0.72rem; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase;
+            color: var(--saffron); padding-top: 0.2rem;
         }
-        .eligibility-card p {
-            font-size: 0.9rem;
-            color: var(--dark-grey);
-            margin: 0;
-            line-height: 1.6;
+        .air-risk .when.hard { color: #C62828; }
+        .air-risk h3 { font-family: var(--font-display); font-size: 1.08rem; margin: 0 0 0.35rem; color: var(--charcoal); }
+        .air-risk p { margin: 0; font-size: 0.92rem; color: var(--dark-grey); line-height: 1.6; }
+
+        /* ── Standards chips ── */
+        .air-chips { display: flex; gap: 0.55rem; flex-wrap: wrap; margin-top: 1.5rem; justify-content: center; }
+        .air-chips span {
+            font-size: 0.76rem; font-weight: 700; color: var(--indigo); background: var(--off-white);
+            border: 1px solid var(--light); border-radius: var(--r-full); padding: 0.4rem 0.9rem;
         }
 
-        /* Benefits List */
-        .benefits-list {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 1rem;
-            margin-top: 2rem;
+        /* ── Issuer block ── */
+        .air-issuer {
+            display: grid; grid-template-columns: auto 1fr; gap: 2.5rem; align-items: center;
+            background: #fff; border: 1px solid var(--light); border-radius: var(--r-2xl);
+            padding: 2rem 2.25rem; box-shadow: var(--shadow-sm);
         }
-        .benefit-item {
-            background: var(--off-white);
-            border-radius: var(--r-lg);
-            padding: 1.25rem;
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            transition: var(--t-fast);
-        }
-        .benefit-item:hover {
-            background: white;
-            box-shadow: var(--shadow-sm);
-        }
-        .benefit-item i {
-            color: var(--emerald);
-            font-size: 1.3rem;
-            flex-shrink: 0;
-        }
-        .benefit-item span {
-            font-size: 0.95rem;
-            color: var(--charcoal);
-            font-weight: 500;
-        }
+        .air-issuer-logo img { height: 62px; width: auto; }
+        .air-issuer-facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2rem; }
+        .air-issuer-facts b { display: block; font-family: var(--font-display); font-size: 1rem; color: var(--charcoal); margin-bottom: 0.4rem; }
+        .air-issuer-facts p { margin: 0; font-size: 0.86rem; color: var(--dark-grey); line-height: 1.6; }
 
-        /* Application Process */
-        .process-timeline {
-            position: relative;
-            padding: 2rem 0;
-            margin-top: 2rem;
+        /* ── Felicitation event strip + figure ── */
+        .air-felic-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2.5rem; align-items: center; }
+        .air-felic-grid p { font-size: 0.98rem; color: var(--dark-grey); line-height: 1.75; margin: 0 0 1rem; }
+        .air-felic-grid p strong { color: var(--charcoal); }
+        .air-evt { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; margin: 0 0 1.5rem; }
+        .air-evt div { background: #fff; border: 1px solid var(--light); border-radius: var(--r-lg); padding: 0.85rem 1rem; }
+        .air-evt b { display: block; font-family: var(--font-display); font-size: 0.95rem; color: var(--saffron); line-height: 1.2; }
+        .air-evt span { display: block; font-size: 0.72rem; color: var(--dark-grey); margin-top: 0.2rem; }
+        .air-felic-note {
+            background: #FFF8F3; border: 1px solid rgba(255,107,0,0.3); color: #A34B00;
+            border-radius: var(--r-lg); padding: 1rem 1.25rem; font-size: 0.9rem; font-weight: 700; line-height: 1.6;
         }
-        .process-timeline::before {
-            content: '';
-            position: absolute;
-            left: 40px;
-            top: 0;
-            bottom: 0;
-            width: 3px;
-            background: linear-gradient(180deg, var(--saffron), var(--electric), var(--emerald));
-        }
-        .timeline-item {
-            position: relative;
-            padding-left: 100px;
-            margin-bottom: 3rem;
-        }
-        .timeline-item:last-child {
-            margin-bottom: 0;
-        }
-        .timeline-number {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 80px;
-            height: 80px;
-            background: var(--grad-saffron);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-family: var(--font-display);
-            font-size: 2rem;
-            font-weight: 900;
-            color: white;
-            box-shadow: var(--shadow-saffron);
-            z-index: 1;
-        }
-        .timeline-content {
-            background: white;
-            border: 1px solid var(--light);
-            border-radius: var(--r-xl);
-            padding: 2rem;
-            box-shadow: var(--shadow-sm);
-        }
-        .timeline-content h4 {
-            font-size: 1.3rem;
-            font-weight: 700;
-            color: var(--charcoal);
-            margin-bottom: 0.75rem;
-        }
-        .timeline-content p {
-            font-size: 0.95rem;
-            color: var(--dark-grey);
-            line-height: 1.6;
-            margin: 0;
-        }
+        .air-fig { margin: 0; border-radius: var(--r-xl); overflow: hidden; border: 1px solid var(--light); box-shadow: var(--shadow-md); background: #fff; }
+        .air-fig img { width: 100%; height: auto; display: block; }
+        .air-fig figcaption { font-size: 0.8rem; color: var(--dark-grey); padding: 0.85rem 1.1rem; border-top: 1px solid var(--light); }
 
+        /* ── Cross-sell cards ── */
+        .air-xsell { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+        .air-xcard {
+            display: block; background: #fff; border: 1px solid var(--light); border-radius: var(--r-xl);
+            padding: 1.75rem; text-decoration: none; transition: var(--t-med);
+        }
+        .air-xcard:hover { border-color: rgba(255,107,0,0.35); box-shadow: var(--shadow-md); transform: translateY(-4px); }
+        .air-xcard .xtag { font-size: 0.7rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--saffron); }
+        .air-xcard h3 { font-family: var(--font-display); font-size: 1.15rem; margin: 0.6rem 0 0.5rem; color: var(--charcoal); }
+        .air-xcard p { font-size: 0.9rem; color: var(--dark-grey); line-height: 1.65; margin: 0 0 1rem; }
+        .air-xcard .xgo { display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.88rem; font-weight: 700; color: var(--saffron); }
+        .air-xcard:hover .xgo i { transform: translateX(4px); }
+        .air-xcard .xgo i { transition: var(--t-fast); }
+
+        /* ── Specimen certificate ─────────────────────────────────────────────
+           Fixed A4-landscape artwork. Scaled with `zoom` rather than transform so
+           the section height follows the artwork; browsers without zoom fall back
+           to scrolling inside .air-cert-scale instead of breaking the layout. */
+        .air-cert-scale { overflow-x: auto; display: flex; justify-content: center; padding-bottom: 0.5rem; }
+        .air-cert {
+            --ac: var(--saffron); --ac-deep: var(--indigo); --ink: #1E2140; --bgc: #F5F6FB;
+            --n300: #D8DAE8; --n600: #7A7F9E; --n700: #5A5F80;
+            position: relative; flex: none; width: 1123px; height: 794px;
+            background: var(--bgc); color: var(--ink); font-family: var(--font-display);
+            box-shadow: var(--shadow-lg);
+        }
+        .air-cert-frame { position: absolute; inset: 16px; display: flex; border: 2px solid var(--ink); }
+        .air-cert-spine {
+            width: 360px; background: var(--ink); color: #fff; padding: 38px 34px;
+            display: flex; flex-direction: column; align-items: center; text-align: center;
+        }
+        .air-cert-kicker { font-size: 11px; font-weight: 700; letter-spacing: 0.34em; text-transform: uppercase; color: rgba(255,255,255,0.7); }
+        .air-cert-seal { margin-top: 26px; display: block; }
+        .air-cert-rule { height: 2px; width: 100%; background: rgba(255,255,255,0.35); margin: 30px 0 22px; }
+        .air-cert-vlabel { font-size: 9px; font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase; color: rgba(255,255,255,0.6); }
+        .air-cert-vurl { font-size: 13px; font-weight: 700; margin-top: 4px; line-height: 1.35; }
+        .air-cert-vcode { font-size: 10px; color: rgba(255,255,255,0.6); margin-top: 4px; letter-spacing: 0.04em; }
+        .air-cert-face { flex: 1; background: var(--bgc); padding: 40px 48px 34px; display: flex; flex-direction: column; }
+        .air-cert-logos { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+        .air-cert-logos img { width: auto; object-fit: contain; }
+        .air-cert-l1 { height: 48px; }
+        .air-cert-l2 { height: 56px; }
+        .air-cert-hr2 { height: 2px; background: var(--ink); margin: 16px 0 0; }
+        .air-cert-hr2.mt { margin-top: 20px; }
+        .air-cert-hr1 { height: 2px; background: rgba(30,33,64,0.35); margin: 22px 0; }
+        .air-cert-eyebrow { font-size: 11px; font-weight: 700; letter-spacing: 0.28em; text-transform: uppercase; color: var(--ac-deep); }
+        .air-cert-h1 { font-size: 46px; font-weight: 800; line-height: 1; letter-spacing: -0.01em; margin: 10px 0 0; color: var(--ink); }
+        .air-cert-lead { font-size: 14px; color: var(--n700); }
+        .air-cert-org { font-size: 36px; font-weight: 800; line-height: 1.02; margin-top: 6px; }
+        .air-cert-orgmeta { font-size: 13px; font-weight: 600; color: var(--n700); margin-top: 10px; }
+        .air-cert-grid { display: grid; grid-template-columns: 150px 1fr; flex: 1; }
+        .air-cert-score { background: var(--ac); color: #fff; padding: 18px; display: flex; flex-direction: column; justify-content: center; }
+        .air-cert-slabel { font-size: 9px; font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase; opacity: 0.9; }
+        .air-cert-sval { font-size: 56px; font-weight: 800; line-height: 0.9; margin-top: 6px; }
+        .air-cert-sout { font-size: 11px; font-weight: 700; margin-top: 4px; }
+        .air-cert-attrs { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--n300); border-left: 1px solid var(--n300); }
+        .air-cert-cell { border-right: 1px solid var(--n300); border-bottom: 1px solid var(--n300); padding: 11px 16px; }
+        .air-cert-clabel { font-size: 9px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--n600); }
+        .air-cert-cval { font-size: 17px; font-weight: 800; margin-top: 3px; }
+        .air-cert-cnote { font-size: 10px; color: var(--n600); margin-top: 2px; }
+        .air-cert-sign { display: flex; align-items: flex-end; justify-content: space-between; margin-top: 14px; }
+        .air-cert-sigline { width: 200px; border-top: 1.5px solid var(--ink); padding-top: 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--n700); }
+        .air-cert-assur { font-size: 10px; font-weight: 600; letter-spacing: 0.06em; color: var(--n600); text-align: right; }
+        /* Sits beside real certification copy, so it must never read as issued. */
+        .air-cert-specimen {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-24deg);
+            font-size: 132px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase;
+            color: rgba(255,107,0,0.14); pointer-events: none; white-space: nowrap;
+        }
+        .air-cert-fig figcaption {
+            margin: 1rem auto 0; font-size: 0.82rem; color: var(--dark-grey);
+            text-align: center; max-width: 760px; line-height: 1.65;
+        }
+        .air-cert-fig figcaption a { color: var(--saffron); font-weight: 700; }
+        @media (max-width: 1200px) { .air-cert { zoom: 0.82; } }
+        @media (max-width: 1000px) { .air-cert { zoom: 0.66; } }
+        @media (max-width: 820px)  { .air-cert { zoom: 0.54; } }
+        @media (max-width: 640px)  { .air-cert { zoom: 0.42; } }
+        @media (max-width: 480px)  { .air-cert { zoom: 0.32; } }
+
+        /* ── FAQ ── */
+        .air-faq { max-width: 900px; margin: 0 auto; }
+        .air-faq details {
+            background: #fff; border: 1px solid var(--light); border-radius: var(--r-lg);
+            margin-bottom: 0.75rem; padding: 0 1.25rem; transition: var(--t-fast);
+        }
+        .air-faq details[open] { border-color: rgba(255,107,0,0.35); box-shadow: var(--shadow-sm); }
+        .air-faq summary {
+            cursor: pointer; list-style: none; padding: 1.1rem 0;
+            font-family: var(--font-display); font-weight: 700; font-size: 1rem; color: var(--charcoal);
+            display: flex; justify-content: space-between; align-items: center; gap: 1rem;
+        }
+        .air-faq summary::-webkit-details-marker { display: none; }
+        .air-faq summary::after { content: '+'; font-size: 1.5rem; font-weight: 400; color: var(--saffron); flex: none; line-height: 1; }
+        .air-faq details[open] summary::after { content: '\2212'; }
+        .air-faq p { margin: 0 0 1.1rem; font-size: 0.92rem; line-height: 1.7; color: var(--dark-grey); }
+        .air-faq p strong { color: var(--charcoal); }
+        .air-faq a { color: var(--saffron); font-weight: 700; }
+
+        /* ── Responsive ── */
         @media (max-width: 1024px) {
-            .why-pitch-grid { grid-template-columns: repeat(2, 1fr); }
-            .pitch-format-grid { grid-template-columns: 1fr; }
-            .eligibility-grid { grid-template-columns: 1fr; }
-            .benefits-list { grid-template-columns: 1fr; }
+            .air-hero-grid { grid-template-columns: 1fr; gap: 2.5rem; }
+            .air-hero-stats { grid-template-columns: repeat(2, 1fr); }
+            .air-felic-grid { grid-template-columns: 1fr; gap: 2rem; }
+            .air-xsell { grid-template-columns: 1fr; }
+            .air-issuer { grid-template-columns: 1fr; gap: 1.75rem; }
+            .air-issuer-facts { grid-template-columns: 1fr; gap: 1.25rem; }
         }
-
+        @media (max-width: 860px) {
+            .air-gap { grid-template-columns: 1fr; gap: 1rem; }
+            .air-gap-mid { flex-direction: row; min-width: 0; padding: 0.25rem 0; }
+            .air-gap-mid i { width: auto; height: 1px; flex: 1; background: linear-gradient(90deg, transparent, var(--light), transparent); }
+        }
         @media (max-width: 768px) {
-            .pitch-hero-stats { grid-template-columns: 1fr; }
-            .why-pitch-grid { grid-template-columns: 1fr; }
-            .timeline-item { padding-left: 0; padding-top: 100px; }
-            .timeline-number { left: 50%; transform: translateX(-50%); }
-            .process-timeline::before { left: 50%; transform: translateX(-50%); }
+            .air-hero-grid { text-align: center; }
+            .air-hero-copy h1, .air-hero-copy > p { text-align: center; }
+            .air-hero-copy > p { margin-left: auto; margin-right: auto; }
+            .air-hero-price, .air-trust { justify-content: center; text-align: left; }
+            .air-gauge-row { flex-direction: column; }
+            .air-ladder { width: 100%; }
+            .air-dl > div, .air-risk > div { grid-template-columns: 1fr; gap: 0.35rem 0; }
+            .air-evt { grid-template-columns: 1fr; }
+        }
+        @media (max-width: 560px) {
+            .air-hero-stats { grid-template-columns: 1fr; }
+            .air-sc-metrics { grid-template-columns: 1fr; gap: 0.85rem; }
         }
     </style>
 
@@ -330,33 +346,40 @@
       "@context": "https://schema.org",
       "@graph": [
         {
+          "@type": "Organization",
+          "@id": "https://bharataiinnovation.com/#agba",
+          "name": "Aegis Graham Bell Awards",
+          "url": "https://bellaward.com",
+          "logo": "https://bharataiinnovation.com/images/agba-logo.png"
+        },
+        {
           "@type": "WebPage",
-          "@id": "https://bharataiinnovation.com/ai-readiness.html#webpage",
-          "url": "https://bharataiinnovation.com/ai-readiness.html",
-          "name": "AI Readiness Certification \u2014 Bharat AI Innovation 2026",
-          "description": "An independent, evidence-gated AI maturity rating mapped to ISO/IEC 42001, the NIST AI RMF, the EU AI Act and India's DPDP Act.",
+          "@id": "https://bharataiinnovation.com/ai-readiness#webpage",
+          "url": "https://bharataiinnovation.com/ai-readiness",
+          "name": "AGBA AI Readiness Certification",
+          "description": "An independent AI-maturity rating that places your organisation on the global maturity curve, and maps you to ISO/IEC 42001, the NIST AI RMF, the EU AI Act and India's DPDP Act.",
           "inLanguage": "en-IN",
           "isPartOf": { "@type": "WebSite", "name": "Bharat AI Innovation", "url": "https://bharataiinnovation.com/" }
         },
         {
           "@type": "Service",
           "name": "AGBA AI Readiness Certification",
-          "serviceType": "AI maturity assessment and certification",
-          "provider": { "@type": "Organization", "name": "Aegis Graham Bell Awards", "url": "https://bellaward.com" },
+          "serviceType": "Enterprise AI maturity and readiness rating",
+          "provider": { "@id": "https://bharataiinnovation.com/#agba" },
           "areaServed": "IN",
-          "url": "https://bharataiinnovation.com/ai-readiness.html"
+          "url": "https://bharataiinnovation.com/ai-readiness",
+          "description": "Get your maturity level, your pillar-by-pillar gap map, and a board-grade roadmap to move up a tier."
         },
         {
           "@type": "BreadcrumbList",
           "itemListElement": [
             { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://bharataiinnovation.com/" },
-            { "@type": "ListItem", "position": 2, "name": "AI Readiness Certification", "item": "https://bharataiinnovation.com/ai-readiness.html" }
+            { "@type": "ListItem", "position": 2, "name": "AI Readiness Certification", "item": "https://bharataiinnovation.com/ai-readiness" }
           ]
         }
       ]
     }
     </script>
-
 </head>
 <body>
     <a href="#main-content" class="skip-link">Skip to main content</a>
@@ -393,32 +416,155 @@
     <section class="page-header" id="main-content">
         <div class="page-header-orb"></div>
         <div class="page-header-content container">
-            <span class="page-header-eyebrow"><i class="fas fa-award"></i> An Aegis Graham Bell Awards initiative</span>
-            <h1>How AI-ready is your organisation, <span class="accent">really?</span></h1>
-            <p>An independent, evidence-gated AI maturity rating &mdash; benchmarked against the field and mapped to ISO/IEC 42001, the NIST AI RMF, the EU AI Act and India&rsquo;s DPDP Act. You get a maturity level, your sector percentile, and a board-grade roadmap to move up a tier.</p>
-            <div style="display:flex;flex-wrap:wrap;gap:1rem;justify-content:center;margin-top:2rem;">
-                <a href="https://assessfy.com/ai_readiness" target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-lg">Apply for Certification <i class="fas fa-arrow-right"></i></a>
-                <a href="#pillars" class="btn btn-ghost btn-lg">See what we measure</a>
+            <div class="air-hero-grid">
+                <div class="air-hero-copy">
+                    <div class="agba-lockup" style="margin-bottom:1.5rem;">
+                        <span class="lbl">An initiative of</span>
+                        <span class="sep"></span>
+                        <img src="images/agba-logo.png" alt="Aegis Graham Bell Awards" width="208" height="83">
+                    </div>
+                    <h1>How AI-ready is your organisation, <span class="accent">really?</span></h1>
+                    <p>An independent <strong>AI-maturity rating</strong> that places you on the <strong>global maturity curve</strong>, and maps you to <strong>ISO/IEC 42001</strong>, the <strong>NIST AI RMF</strong>, the <strong>EU AI Act</strong> and India&rsquo;s <strong>DPDP Act</strong>. Get your maturity level, your <strong>pillar-by-pillar gap map</strong>, and a <strong>board-grade roadmap</strong> to move up a tier.</p>
+
+                    <div style="display:flex;flex-wrap:wrap;gap:1rem;margin-top:2rem;">
+                        <a href="https://assessfy.com/innovation_register?product=ai_readiness" target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-lg">Get AI Readiness Certified <i class="fas fa-arrow-right"></i></a>
+                        <a href="#pillars" class="btn btn-ghost btn-lg">See what we measure</a>
+                    </div>
+
+                    <p class="air-hero-price">
+                        <strong>From &#8377;25,000</strong>
+                        <span>&middot; fee by annual turnover &middot; the Readiness Rating stays free</span>
+                        <a href="https://assessfy.com/innovation_pricing?product=ai_readiness" target="_blank" rel="noopener noreferrer">See the fee ladder</a>
+                    </p>
+
+                    <div class="air-trust">
+                        <i class="fas fa-circle-check" style="color:var(--emerald);"></i>
+                        <span><b>Evidence-gated &amp; non-compensatory</b> &middot; DPDP Act &middot; EU AI Act &middot; NIST AI RMF &middot; ISO/IEC 42001</span>
+                    </div>
+                    <div class="air-trust">
+                        <i class="fas fa-award" style="color:var(--gold-light);"></i>
+                        <span><b>Certified organisations are felicitated on stage</b> &middot; <a href="#recognition">Bharat AI Innovation</a>, 20&ndash;21 Nov 2026, WTC Mumbai</span>
+                    </div>
+                </div>
+
+                <!-- Sample result card -->
+                <div class="air-scorecard" role="img" aria-label="Sample AGBA AI Readiness Certification result: score 65.6 out of 100, maturity Level 3 Scaling.">
+                    <div class="air-sc-top">
+                        <span class="air-sc-eyebrow">Sample result</span>
+                        <span class="air-sc-pill">Readiness Rating</span>
+                    </div>
+                    <div class="air-gauge-row">
+                        <div class="air-gauge">
+                            <svg width="132" height="132" viewBox="0 0 132 132" aria-hidden="true">
+                                <circle cx="66" cy="66" r="58" fill="none" stroke="rgba(255,255,255,0.16)" stroke-width="12"></circle>
+                                <circle cx="66" cy="66" r="58" fill="none" stroke="url(#airGauge)" stroke-width="12" stroke-linecap="round" stroke-dasharray="364.4" stroke-dashoffset="125.4"></circle>
+                                <defs>
+                                    <linearGradient id="airGauge" x1="0" y1="0" x2="1" y2="1">
+                                        <stop offset="0" stop-color="#FF9A3C"></stop>
+                                        <stop offset="1" stop-color="#FF6B00"></stop>
+                                    </linearGradient>
+                                </defs>
+                            </svg>
+                            <div class="g-txt">
+                                <div class="g-num">65.6</div>
+                                <div class="g-lvl">Level 3 &middot; Scaling</div>
+                                <div class="g-of">score / 100</div>
+                            </div>
+                        </div>
+                        <div class="air-ladder">
+                            <div class="air-rung on"><span class="dot"></span>Level 0 &mdash; Nascent</div>
+                            <div class="air-rung on"><span class="dot"></span>Level 1 &mdash; Exploring</div>
+                            <div class="air-rung on"><span class="dot"></span>Level 2 &mdash; Operational</div>
+                            <div class="air-rung cur"><span class="dot"></span>Level 3 &mdash; Scaling</div>
+                            <div class="air-rung"><span class="dot"></span>Level 4 &mdash; Transformational</div>
+                        </div>
+                    </div>
+                    <div class="air-sc-metrics">
+                        <div><div class="m-l">Delivery</div><div class="m-v">58<span style="font-size:0.7rem;">th</span></div><div class="m-s">in Technology</div></div>
+                        <div><div class="m-l">To next tier</div><div class="m-v">14.4</div><div class="m-s">points</div></div>
+                        <div><div class="m-l">Weakest link</div><div class="m-v" style="font-size:0.88rem;">GenAI &amp; Agentic</div><div class="m-s">lowest pillar</div></div>
+                    </div>
+                    <div class="air-sc-foot">
+                        <img src="images/agba-logo.png" alt="Aegis Graham Bell Awards">
+                        Independent &middot; evidence-gated &middot; non-compensatory
+                    </div>
+                </div>
             </div>
-            <div style="display:flex;flex-wrap:wrap;gap:0.75rem;justify-content:center;margin-top:2rem;">
-                <span style="display:inline-flex;align-items:center;gap:0.45rem;padding:0.5rem 1rem;border-radius:999px;background:rgba(255,255,255,0.10);border:1px solid rgba(255,255,255,0.22);color:#fff;font-size:0.85rem;font-weight:600;"><i class="fas fa-layer-group"></i> 6 pillars</span>
-                <span style="display:inline-flex;align-items:center;gap:0.45rem;padding:0.5rem 1rem;border-radius:999px;background:rgba(255,255,255,0.10);border:1px solid rgba(255,255,255,0.22);color:#fff;font-size:0.85rem;font-weight:600;"><i class="fas fa-clipboard-check"></i> 25 evidence-backed metrics</span>
-                <span style="display:inline-flex;align-items:center;gap:0.45rem;padding:0.5rem 1rem;border-radius:999px;background:rgba(255,255,255,0.10);border:1px solid rgba(255,255,255,0.22);color:#fff;font-size:0.85rem;font-weight:600;"><i class="fas fa-user-shield"></i> Assessor-verified</span>
-                <span style="display:inline-flex;align-items:center;gap:0.45rem;padding:0.5rem 1rem;border-radius:999px;background:rgba(255,255,255,0.10);border:1px solid rgba(255,255,255,0.22);color:#fff;font-size:0.85rem;font-weight:600;"><i class="fas fa-id-badge"></i> Public credential registry</span>
+
+            <div class="air-hero-stats">
+                <div><div class="v">6</div><div class="l">Pillars &middot; strategy to GenAI</div></div>
+                <div><div class="v">25</div><div class="l">Evidence-backed metrics</div></div>
+                <div><div class="v">5</div><div class="l">Maturity levels &middot; Nascent &rarr; Transformational</div></div>
+                <div><div class="v">0&ndash;100</div><div class="l">Score, tier &amp; pillar-by-pillar gap map</div></div>
             </div>
-            <p style="margin-top:1.75rem;font-size:0.9rem;opacity:0.85;">Certified organisations are felicitated on stage at Bharat AI Innovation &middot; 20&ndash;21 Nov 2026 &middot; WTC Mumbai</p>
+        </div>
+    </section>
+
+    <!-- ===== THREE QUESTIONS ===== -->
+    <section class="section-pad-sm">
+        <div class="container">
+            <div class="section-header reveal">
+                <span class="section-eyebrow"><i class="fas fa-circle-question"></i> What we kept hearing</span>
+                <h2 class="section-title">Three questions <span class="accent">we kept hearing</span></h2>
+                <p class="section-subtitle">From hundreds of conversations with AI solution providers and AI solution buyers.</p>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1.5rem;">
+                <div class="feature-card reveal reveal-delay-1" style="text-align:left;">
+                    <div class="air-qnum">1</div>
+                    <h3>Why should I trust you?</h3>
+                    <p>Whether you build, sell, deploy or use AI, capability claims are no longer enough. Customers, partners, boards and stakeholders want evidence. AGBA AI Readiness Certification is an <strong>independent, evidence-backed assessment</strong> of your organisation or SBU.</p>
+                </div>
+                <div class="feature-card reveal reveal-delay-2" style="text-align:left;">
+                    <div class="air-qnum">2</div>
+                    <h3>Where am I in this AI game?</h3>
+                    <p>How mature is your organisation, really? AGBA assesses <strong>6 pillars and 25 evidence-backed metrics</strong> &mdash; Strategy &amp; Leadership, Data &amp; Infrastructure, Talent &amp; Adoption, Governance &amp; Responsible AI, AI Adoption &amp; Business Value, and GenAI, Agentic AI &amp; Security &mdash; giving you a clear view of your AI maturity and your critical gaps.</p>
+                </div>
+                <div class="feature-card reveal reveal-delay-3" style="text-align:left;">
+                    <div class="air-qnum">3</div>
+                    <h3>What do I need to do next?</h3>
+                    <p>An assessment should not end with a score. AGBA identifies the areas that need attention and provides a <strong>prioritised roadmap</strong>, so leadership can focus on what matters most.</p>
+                </div>
+            </div>
+
+            <div class="reveal" style="margin-top:2.5rem;">
+                <h3 style="font-family:var(--font-display);font-size:0.8rem;font-weight:800;letter-spacing:0.09em;text-transform:uppercase;color:var(--saffron);margin-bottom:1rem;">The value</h3>
+                <dl class="air-dl">
+                    <div><dt>For AI buyers</dt><dd>Know whether you are ready to scale AI and turn investment into business value.</dd></div>
+                    <div><dt>For AI solution providers</dt><dd>Demonstrate that customers can trust you to build, deploy and govern AI.</dd></div>
+                    <div><dt>For the board</dt><dd>An independent view of AI maturity, risks and priorities.</dd></div>
+                    <div><dt>For customers and partners</dt><dd>Credible, verifiable evidence of your AI readiness.</dd></div>
+                </dl>
+                <p style="margin-top:1.25rem;font-size:0.88rem;color:var(--dark-grey);line-height:1.7;">Mapped to <strong style="color:var(--charcoal);">ISO/IEC&nbsp;42001</strong>, the <strong style="color:var(--charcoal);">NIST AI&nbsp;RMF</strong>, the <strong style="color:var(--charcoal);">EU AI Act</strong> and India&rsquo;s <strong style="color:var(--charcoal);">DPDP</strong> framework. Organisations achieving <strong style="color:var(--charcoal);">Level&nbsp;3 &mdash; Scaling</strong> or above can qualify for AGBA AI Readiness Certification, subject to evidence verification.</p>
+            </div>
         </div>
     </section>
 
     <!-- ===== THE NEED ===== -->
-    <section class="section-pad-sm" style="background:var(--off-white);">
+    <section class="section-pad-sm" id="why" style="background:var(--off-white);scroll-margin-top:96px;">
         <div class="container">
             <div class="section-header reveal">
                 <span class="section-eyebrow"><i class="fas fa-triangle-exclamation"></i> The need</span>
                 <h2 class="section-title">Everyone is doing AI. Almost nobody can <span class="accent">prove they are ready.</span></h2>
-                <p class="section-subtitle">Adoption raced ahead of governance, and the gap shows up in wasted capital &mdash; not in model quality.</p>
+                <p class="section-subtitle">Adoption raced ahead of outcomes. The gap now shows up in wasted capital, not in model quality.</p>
             </div>
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1.5rem;">
+
+            <div class="air-gap reveal">
+                <div class="air-gap-side">
+                    <b>88%</b>
+                    <span class="gl">of organisations now use AI in at least one business function</span>
+                    <span class="gd">Generative AI reached 53% population adoption in three years &mdash; faster than the PC or the internet.</span>
+                    <span class="gs">Stanford HAI &middot; 2026 AI Index Report</span>
+                </div>
+                <div class="air-gap-mid"><i></i><span>and yet</span><i></i></div>
+                <div class="air-gap-side out">
+                    <b>95%</b>
+                    <span class="gl">see no measurable P&amp;L impact from generative AI</span>
+                    <span class="gd">Only 5% of integrated pilots extract real value, against $30&ndash;40bn of enterprise GenAI spend.</span>
+                    <span class="gs">MIT Media Lab &middot; Project NANDA, The GenAI Divide (2025)</span>
+                </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1.5rem;margin-top:2rem;">
                 <div class="feature-card reveal reveal-delay-1" style="text-align:left;">
                     <div style="font-family:var(--font-display);font-size:2.6rem;font-weight:800;color:var(--saffron);line-height:1;">42%</div>
                     <p style="margin:0.6rem 0 0.4rem;font-size:0.92rem;">of companies scrapped at least one AI initiative in 2025 &mdash; up from 17% the year before.</p>
@@ -440,57 +586,130 @@
                     <p style="margin:0;font-size:0.75rem;color:var(--dark-grey);">Cisco AI Readiness Index</p>
                 </div>
             </div>
-            <p class="reveal" style="margin-top:2rem;text-align:center;font-size:0.95rem;color:var(--dark-grey);max-width:900px;margin-left:auto;margin-right:auto;">
-                The common thread is not technology. 73% of failed AI projects had no agreed definition of success before they began &mdash; and projects that set quantified success measures upfront succeed 54% of the time versus 12% without. What is missing is measurement, not models. <span style="font-size:0.8rem;">(Gartner)</span>
-            </p>
+
+            <div class="air-note reveal" style="margin-top:2rem;">
+                <strong>The common thread is not technology.</strong> 73% of failed AI projects had no agreed definition of success before they began. Projects that set quantified success measures upfront succeed <strong>54%</strong> of the time versus <strong>12%</strong> without. What is missing is measurement, not models. Stanford&rsquo;s 2026 Index puts <strong>inaccuracy</strong> as the number-one cited AI risk at <strong>74%</strong> &mdash; up 14 points in a single year and ahead of cybersecurity &mdash; which is exactly what the Data and Model-risk pillars measure.
+                <span class="src">Gartner</span>
+            </div>
+
+            <p class="reveal" style="margin:2.5rem 0 1.25rem;text-align:center;font-size:1rem;color:var(--dark-grey);">And the top of the field is thin. Independent studies put only a narrow elite at the frontier:</p>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:1.5rem;">
+                <div class="feature-card reveal reveal-delay-1" style="text-align:left;">
+                    <div style="font-family:var(--font-display);font-size:2.2rem;font-weight:800;color:var(--indigo);line-height:1;">~5%</div>
+                    <p style="margin:0.6rem 0 0;font-size:0.92rem;">are <strong>&ldquo;future-built&rdquo;</strong>, capturing 5&times; revenue and 3&times; cost gains from AI <span style="color:var(--mid-grey);">(BCG 2025)</span></p>
+                </div>
+                <div class="feature-card reveal reveal-delay-2" style="text-align:left;">
+                    <div style="font-family:var(--font-display);font-size:2.2rem;font-weight:800;color:var(--indigo);line-height:1;">~6%</div>
+                    <p style="margin:0.6rem 0 0;font-size:0.92rem;">are <strong>AI high-performers</strong> with &ge;5% EBIT from AI <span style="color:var(--mid-grey);">(McKinsey 2025)</span></p>
+                </div>
+                <div class="feature-card reveal reveal-delay-3" style="text-align:left;">
+                    <div style="font-family:var(--font-display);font-size:2.2rem;font-weight:800;color:var(--indigo);line-height:1;">~12%</div>
+                    <p style="margin:0.6rem 0 0;font-size:0.92rem;">are <strong>&ldquo;AI Achievers&rdquo;</strong> combining strategy, data and people <span style="color:var(--mid-grey);">(Accenture)</span></p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== COST OF NOT BEING READY ===== -->
+    <section class="section-pad-sm">
+        <div class="container">
+            <div class="section-header reveal">
+                <span class="section-eyebrow"><i class="fas fa-hourglass-half"></i> The cost</span>
+                <h2 class="section-title">The cost of <span class="accent">not being AI-ready</span></h2>
+                <p class="section-subtitle">It stopped being a technical problem. It is now a commercial one.</p>
+            </div>
+            <div class="air-risk reveal">
+                <div>
+                    <div class="when">Happening now</div>
+                    <div>
+                        <h3>Deals you never hear about</h3>
+                        <p>Enterprise RFPs increasingly ask suppliers to evidence AI governance. Nobody sends a rejection letter saying &ldquo;no AI assurance&rdquo;, so the loss stays invisible until you are already off the list.</p>
+                    </div>
+                </div>
+                <div>
+                    <div class="when hard">By Aug 2026</div>
+                    <div>
+                        <h3>EU AI Act high-risk duties bind</h3>
+                        <p>If you build or deploy a high-risk system touching the EU, the obligations are live. Readiness work takes longer than the runway that is left.</p>
+                    </div>
+                </div>
+                <div>
+                    <div class="when hard">By May 2027</div>
+                    <div>
+                        <h3>India&rsquo;s DPDP Rules reach full compliance</h3>
+                        <p>Significant Data Fiduciaries owe an annual data-protection impact assessment and algorithmic due diligence covering AI use.</p>
+                    </div>
+                </div>
+                <div>
+                    <div class="when">Every board meeting</div>
+                    <div>
+                        <h3>Directors signing off on risk they cannot see</h3>
+                        <p>Boards are asked to accept AI exposure on management&rsquo;s word. An independent rating is something they can put in the minutes.</p>
+                    </div>
+                </div>
+            </div>
         </div>
     </section>
 
     <!-- ===== SIX PILLARS ===== -->
-    <section class="section-pad-sm" id="pillars" style="scroll-margin-top:96px;">
+    <section class="section-pad-sm" id="pillars" style="background:var(--off-white);scroll-margin-top:96px;">
         <div class="container">
             <div class="section-header reveal">
                 <span class="section-eyebrow"><i class="fas fa-layer-group"></i> What we measure</span>
-                <h2 class="section-title">Six pillars, <span class="accent">25 evidence-backed metrics</span></h2>
-                <p class="section-subtitle">Every metric carries a written evidence requirement and behaviourally anchored scoring guidance &mdash; so two assessors reach the same answer.</p>
+                <h2 class="section-title">The six <span class="accent">AI-readiness pillars</span></h2>
+                <p class="section-subtitle">From strategy and data to talent, governance, value and the GenAI/agentic frontier &mdash; each pillar mapped to India&rsquo;s DPDP Act &amp; IT Rules, the EU AI Act, NIST AI RMF and ISO/IEC 42001. Geometric, non-compensatory scoring with critical-control gates means a weak pillar cannot be masked by a strong one.</p>
             </div>
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:1.5rem;">
                 <div class="feature-card reveal reveal-delay-1" style="text-align:left;">
                     <div class="feature-card-icon"><i class="fas fa-compass"></i></div>
-                    <h3>R1 &middot; Strategy &amp; Leadership</h3>
+                    <div style="font-size:0.7rem;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:var(--saffron);margin-bottom:0.35rem;">R1 &middot; Capacity</div>
+                    <h3>Strategy &amp; Leadership</h3>
                     <p>AI vision, board-level sponsorship, sustained funding and a prioritised roadmap.</p>
                 </div>
                 <div class="feature-card reveal reveal-delay-2" style="text-align:left;">
                     <div class="feature-card-icon"><i class="fas fa-database"></i></div>
-                    <h3>R2 &middot; Data &amp; Infrastructure</h3>
+                    <div style="font-size:0.7rem;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:var(--saffron);margin-bottom:0.35rem;">R2 &middot; Capacity</div>
+                    <h3>Data &amp; Infrastructure</h3>
                     <p>Data quality and governance, ML platform, and MLOps maturity.</p>
                 </div>
                 <div class="feature-card reveal reveal-delay-3" style="text-align:left;">
                     <div class="feature-card-icon"><i class="fas fa-users"></i></div>
-                    <h3>R3 &middot; Talent, Culture &amp; Adoption</h3>
-                    <p>AI literacy, specialist skills, change readiness and workforce adoption.</p>
+                    <div style="font-size:0.7rem;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:var(--saffron);margin-bottom:0.35rem;">R3 &middot; Capacity</div>
+                    <h3>Talent, Culture &amp; Adoption</h3>
+                    <p>AI literacy, specialist skills, change readiness and workforce adoption &mdash; BCG puts ~70% of AI value in people and process.</p>
                 </div>
                 <div class="feature-card reveal reveal-delay-1" style="text-align:left;">
                     <div class="feature-card-icon"><i class="fas fa-scale-balanced"></i></div>
-                    <h3>R4 &middot; Governance &amp; Responsible AI</h3>
+                    <div style="font-size:0.7rem;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:var(--saffron);margin-bottom:0.35rem;">R4 &middot; Capacity</div>
+                    <h3>Governance, Responsible &amp; Trustworthy AI</h3>
                     <p>AI policy, the trustworthy-AI dimensions &mdash; fairness, transparency, privacy, accountability, human oversight &mdash; NIST AI RMF risk management and ISO 42001 alignment.</p>
                 </div>
                 <div class="feature-card reveal reveal-delay-2" style="text-align:left;">
                     <div class="feature-card-icon"><i class="fas fa-chart-line"></i></div>
-                    <h3>R5 &middot; Adoption &amp; Value</h3>
-                    <p>Use cases in production, measured ROI and EBIT impact, scaling and workflow integration.</p>
+                    <div style="font-size:0.7rem;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:var(--gold);margin-bottom:0.35rem;">R5 &middot; Performance</div>
+                    <h3>Adoption &amp; Value</h3>
+                    <p>Use cases in production, measured ROI and EBIT impact, scaling and workflow integration. Scope note: this scores AI used in <strong>your own</strong> operations only. AI you build, sell or run for clients is scored under R2 (platform, MLOps) and R6 (guardrails, security), not here.</p>
                 </div>
                 <div class="feature-card reveal reveal-delay-3" style="text-align:left;">
                     <div class="feature-card-icon"><i class="fas fa-robot"></i></div>
-                    <h3>R6 &middot; GenAI, Agentic AI &amp; Security</h3>
-                    <p>Generative-AI guardrails, agentic-AI oversight, model risk management, AI security and robustness, and third-party or foundation-model risk.</p>
+                    <div style="font-size:0.7rem;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:var(--saffron);margin-bottom:0.35rem;">R6 &middot; Capacity</div>
+                    <h3>GenAI, Agentic AI &amp; AI Security</h3>
+                    <p>Readiness for the 2025&ndash;26 frontier: generative-AI guardrails, agentic-AI oversight, model risk management, AI security and robustness, and third-party or foundation-model risk (McKinsey agentic era &middot; NIST Measure &amp; Manage &middot; Gartner AI TRiSM).</p>
                 </div>
+            </div>
+            <div class="air-chips reveal">
+                <span>DPDP Act 2023 &amp; Rules 2025</span>
+                <span>IT Act / IT Rules 2021 (2025)</span>
+                <span>ISO/IEC 42001</span>
+                <span>NIST AI RMF 1.0</span>
+                <span>EU AI Act</span>
+                <span>BCG &middot; McKinsey &middot; Accenture maturity</span>
             </div>
         </div>
     </section>
 
     <!-- ===== MATURITY LADDER ===== -->
-    <section class="section-pad-sm" style="background:var(--off-white);">
+    <section class="section-pad-sm">
         <div class="container">
             <div class="section-header reveal">
                 <span class="section-eyebrow"><i class="fas fa-stairs"></i> The maturity ladder</span>
@@ -524,63 +743,86 @@
                     <p style="margin:0;font-size:0.8rem;color:var(--dark-grey);">80+</p>
                 </div>
             </div>
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1.5rem;margin-top:2.5rem;">
+        </div>
+    </section>
+
+    <!-- ===== HOW IT WORKS ===== -->
+    <section class="section-pad-sm" style="background:var(--off-white);">
+        <div class="container">
+            <div class="section-header reveal">
+                <span class="section-eyebrow"><i class="fas fa-list-check"></i> How it works</span>
+                <h2 class="section-title">From application to a <span class="accent">board-ready roadmap</span></h2>
+                <p class="section-subtitle">Independent, standards-mapped, and expert-verified at Verified tier.</p>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:1.25rem;">
                 <div class="feature-card reveal reveal-delay-1" style="text-align:left;">
-                    <h3 style="font-size:1.1rem;">Non-compensatory</h3>
-                    <p>Geometric scoring. Heavy spend on infrastructure cannot mask weak governance &mdash; a weak pillar drags the whole score.</p>
+                    <div style="font-family:var(--font-display);font-size:1.6rem;font-weight:800;color:var(--saffron);">01</div>
+                    <h3 style="font-size:1.05rem;">Apply</h3>
+                    <p style="font-size:0.9rem;">Register your organisation and choose your assurance tier.</p>
                 </div>
                 <div class="feature-card reveal reveal-delay-2" style="text-align:left;">
-                    <h3 style="font-size:1.1rem;">Critical-control gates</h3>
-                    <p>Fail a gate on AI security or agentic oversight and no certification is issued, whatever the total score.</p>
+                    <div style="font-family:var(--font-display);font-size:1.6rem;font-weight:800;color:var(--saffron);">02</div>
+                    <h3 style="font-size:1.05rem;">Submit</h3>
+                    <p style="font-size:0.9rem;">Answer the maturity workbook and attach evidence across the pillars.</p>
                 </div>
                 <div class="feature-card reveal reveal-delay-3" style="text-align:left;">
-                    <h3 style="font-size:1.1rem;">Evidence-gated</h3>
-                    <p>Claims must be backed by documents an assessor samples. A questionnaire alone is not a certification.</p>
+                    <div style="font-family:var(--font-display);font-size:1.6rem;font-weight:800;color:var(--saffron);">03</div>
+                    <h3 style="font-size:1.05rem;">Assess</h3>
+                    <p style="font-size:0.9rem;">Your score is computed the moment you submit. Choose <strong>Verified</strong> and an AGBA assessor verifies a risk-based sample of your evidence before it is certified.</p>
+                </div>
+                <div class="feature-card reveal reveal-delay-4" style="text-align:left;">
+                    <div style="font-family:var(--font-display);font-size:1.6rem;font-weight:800;color:var(--saffron);">04</div>
+                    <h3 style="font-size:1.05rem;">Score</h3>
+                    <p style="font-size:0.9rem;">Your maturity level, capability-vs-delivery split and standards gap-map are computed.</p>
+                </div>
+                <div class="feature-card reveal reveal-delay-5" style="text-align:left;">
+                    <div style="font-family:var(--font-display);font-size:1.6rem;font-weight:800;color:var(--saffron);">05</div>
+                    <h3 style="font-size:1.05rem;">Roadmap</h3>
+                    <p style="font-size:0.9rem;">A board-grade report sets the moves to climb a tier.</p>
                 </div>
             </div>
         </div>
     </section>
 
-    <!-- ===== HOW IT WORKS ===== -->
+    <!-- ===== THE REPORT ===== -->
     <section class="section-pad-sm">
         <div class="container">
             <div class="section-header reveal">
-                <span class="section-eyebrow"><i class="fas fa-list-check"></i> How it works</span>
-                <h2 class="section-title">From application to a <span class="accent">board-ready roadmap</span></h2>
-                <p class="section-subtitle">Steps 1&ndash;3 are self-serve. Assessor involvement begins at verification &mdash; because verification, not the questionnaire, is what a credential is worth.</p>
+                <span class="section-eyebrow"><i class="fas fa-file-lines"></i> The deliverable</span>
+                <h2 class="section-title">The report your board <span class="accent">will actually use</span></h2>
+                <p class="section-subtitle">Not a dashboard. A strategy document. Role-specific recommendation packs for every leader, grounded in your own scores.</p>
             </div>
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:1.25rem;">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1.25rem;">
                 <div class="feature-card reveal reveal-delay-1" style="text-align:left;">
-                    <div style="font-family:var(--font-display);font-size:1.6rem;font-weight:800;color:var(--saffron);">01</div>
-                    <h3 style="font-size:1.05rem;">Register</h3>
-                    <p style="font-size:0.9rem;">Your organisation, or a named business unit.</p>
+                    <h3 style="font-size:1.05rem;">Chairman &amp; Board</h3>
+                    <p style="font-size:0.9rem;">Oversight, AI capital allocation, and the maturity gap to close.</p>
                 </div>
                 <div class="feature-card reveal reveal-delay-2" style="text-align:left;">
-                    <div style="font-family:var(--font-display);font-size:1.6rem;font-weight:800;color:var(--saffron);">02</div>
-                    <h3 style="font-size:1.05rem;">Assess</h3>
-                    <p style="font-size:0.9rem;">Complete the workbook and attach evidence across the pillars.</p>
+                    <h3 style="font-size:1.05rem;">CEO / MD</h3>
+                    <p style="font-size:0.9rem;">Strategy alignment, the bets to place, the one move that shifts a tier.</p>
                 </div>
                 <div class="feature-card reveal reveal-delay-3" style="text-align:left;">
-                    <div style="font-family:var(--font-display);font-size:1.6rem;font-weight:800;color:var(--saffron);">03</div>
-                    <h3 style="font-size:1.05rem;">Score</h3>
-                    <p style="font-size:0.9rem;">Level, benchmark position and gap map computed on submission.</p>
+                    <h3 style="font-size:1.05rem;">CIO / CTO</h3>
+                    <p style="font-size:0.9rem;">Data and platform foundation, MLOps, and the GenAI/agentic frontier.</p>
                 </div>
                 <div class="feature-card reveal reveal-delay-4" style="text-align:left;">
-                    <div style="font-family:var(--font-display);font-size:1.6rem;font-weight:800;color:var(--saffron);">04</div>
-                    <h3 style="font-size:1.05rem;">Verify</h3>
-                    <p style="font-size:0.9rem;">An AGBA assessor samples your evidence.</p>
+                    <h3 style="font-size:1.05rem;">Chief Data / AI Officer</h3>
+                    <p style="font-size:0.9rem;">Use-case portfolio, scaling, measured value, governance.</p>
                 </div>
                 <div class="feature-card reveal reveal-delay-5" style="text-align:left;">
-                    <div style="font-family:var(--font-display);font-size:1.6rem;font-weight:800;color:var(--saffron);">05</div>
-                    <h3 style="font-size:1.05rem;">Certify</h3>
-                    <p style="font-size:0.9rem;">Badge issued, registry listed, board report delivered.</p>
+                    <h3 style="font-size:1.05rem;">CHRO</h3>
+                    <p style="font-size:0.9rem;">AI literacy, specialist talent, change and adoption readiness.</p>
+                </div>
+                <div class="feature-card reveal reveal-delay-1" style="text-align:left;">
+                    <h3 style="font-size:1.05rem;">CISO / DPO</h3>
+                    <p style="font-size:0.9rem;">Responsible AI, AI security, DPDP and data-protection readiness.</p>
                 </div>
             </div>
         </div>
     </section>
 
     <!-- ===== ASSURANCE TIERS ===== -->
-    <section class="section-pad-sm" style="background:var(--off-white);" id="tiers" style="scroll-margin-top:96px;">
+    <section class="section-pad-sm" id="tiers" style="background:var(--off-white);scroll-margin-top:96px;">
         <div class="container">
             <div class="section-header reveal">
                 <span class="section-eyebrow"><i class="fas fa-shield-halved"></i> Assurance tiers</span>
@@ -590,7 +832,7 @@
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1.75rem;">
                 <div class="feature-card reveal reveal-delay-1" style="text-align:left;">
                     <h3>Readiness Rating</h3>
-                    <p style="margin:0.35rem 0 1rem;font-size:0.8rem;color:var(--dark-grey);">Self-declared &middot; not a certification</p>
+                    <p style="margin:0.35rem 0 1rem;font-size:0.8rem;color:var(--dark-grey);">Self-declared &middot; free &middot; not a certification</p>
                     <ul style="list-style:none;padding:0;margin:0;font-size:0.9rem;line-height:2;">
                         <li><i class="fas fa-check" style="color:var(--saffron);margin-right:0.5rem;"></i>Full scored report</li>
                         <li><i class="fas fa-check" style="color:var(--saffron);margin-right:0.5rem;"></i>Sector benchmark</li>
@@ -600,7 +842,7 @@
                 </div>
                 <div class="feature-card reveal reveal-delay-2" style="text-align:left;border-color:var(--saffron);">
                     <h3>Verified Certification</h3>
-                    <p style="margin:0.35rem 0 1rem;font-size:0.8rem;color:var(--dark-grey);">Limited assurance &middot; certified</p>
+                    <p style="margin:0.35rem 0 1rem;font-size:0.8rem;color:var(--dark-grey);">Limited assurance &middot; from &#8377;25,000</p>
                     <ul style="list-style:none;padding:0;margin:0;font-size:0.9rem;line-height:2;">
                         <li><i class="fas fa-check" style="color:var(--saffron);margin-right:0.5rem;"></i>Everything in Rating</li>
                         <li><i class="fas fa-check" style="color:var(--saffron);margin-right:0.5rem;"></i>Assessor verifies an evidence sample</li>
@@ -619,33 +861,41 @@
                     </ul>
                 </div>
             </div>
-            <p class="reveal" style="margin-top:1.75rem;text-align:center;font-size:0.82rem;color:var(--dark-grey);">Scoped per organisation or per business unit. Volume and enterprise arrangements available &mdash; talk to the team.</p>
+            <p class="reveal" style="margin-top:1.75rem;text-align:center;font-size:0.82rem;color:var(--dark-grey);">Fee scales with annual turnover, so a startup and a &#8377;1,000&nbsp;crore group do not pay the same. Scoped per organisation or per business unit. <a href="https://assessfy.com/innovation_pricing?product=ai_readiness" target="_blank" rel="noopener noreferrer" style="color:var(--saffron);font-weight:700;">See the fee ladder</a></p>
             <div class="reveal" style="text-align:center;margin-top:2rem;">
-                <a href="https://assessfy.com/ai_readiness" target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-lg">Apply for Certification <i class="fas fa-arrow-right"></i></a>
+                <a href="https://assessfy.com/innovation_register?product=ai_readiness" target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-lg">Get AI Readiness Certified <i class="fas fa-arrow-right"></i></a>
             </div>
         </div>
     </section>
 
-    <!-- ===== CREDIBILITY + STANDARDS ===== -->
+    <!-- ===== WHY IT IS DEFENSIBLE ===== -->
     <section class="section-pad-sm">
         <div class="container">
             <div class="section-header reveal">
                 <span class="section-eyebrow"><i class="fas fa-certificate"></i> Why it is credible</span>
-                <h2 class="section-title">Independence is <span class="accent">the product</span></h2>
+                <h2 class="section-title">What makes the rating <span class="accent">defensible</span></h2>
                 <p class="section-subtitle">A maturity rating only has value if the market trusts it and it reflects the standards you will actually be assessed against.</p>
             </div>
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1.5rem;">
-                <div class="feature-card reveal reveal-delay-1" style="text-align:left;">
-                    <h3 style="font-size:1.1rem;">We do not sell the fix</h3>
-                    <p>AGBA assesses; it does not sell you the remediation it then grades. That is what keeps the rating defensible.</p>
+            <div class="air-dl reveal">
+                <div>
+                    <p class="dt">Mapped to the standards you will be assessed against</p>
+                    <p class="dd">Every pillar maps to India&rsquo;s DPDP Act and IT Rules, ISO/IEC 42001, the NIST AI RMF and the EU AI Act &mdash; so the rating doubles as a gap map toward certification and compliance.</p>
                 </div>
-                <div class="feature-card reveal reveal-delay-2" style="text-align:left;">
-                    <h3 style="font-size:1.1rem;">Evidence, not opinion</h3>
-                    <p>Every claim above a threshold must be evidenced, and an assessor samples it. Self-declared ratings are labelled as such &mdash; everywhere.</p>
+                <div>
+                    <p class="dt">A scored position, not a vanity number</p>
+                    <p class="dd">Your score is built from 25 evidence-backed metrics across six pillars, weighted and non-compensatory, so you see exactly which pillars carry your rating and how far each one sits from the next tier.</p>
                 </div>
-                <div class="feature-card reveal reveal-delay-3" style="text-align:left;">
-                    <h3 style="font-size:1.1rem;">Publicly checkable</h3>
-                    <p>Every certificate carries a number anyone can verify, with its scope and expiry. A rating that cannot be checked is marketing.</p>
+                <div>
+                    <p class="dt">Non-compensatory, with critical-control gates</p>
+                    <p class="dd">Geometric scoring means heavy spend on infrastructure cannot mask weak governance. Fail a gate on AI security or agentic oversight and no certification is issued, whatever the total score.</p>
+                </div>
+                <div>
+                    <p class="dt">We assess, and we do not sell the fix</p>
+                    <p class="dd">AGBA does not sell the remediation it then grades. That separation is what keeps the rating defensible to a board, a customer or an acquirer.</p>
+                </div>
+                <div>
+                    <p class="dt">Publicly checkable</p>
+                    <p class="dd">Every certificate carries a number anyone can verify, with its scope and expiry. A rating that cannot be checked is marketing.</p>
                 </div>
             </div>
 
@@ -671,23 +921,72 @@
                 </div>
             </div>
 
-            <div class="reveal" style="margin-top:2.5rem;background:var(--off-white);border:1px solid var(--light);border-radius:var(--r-xl);padding:1.5rem 1.75rem;">
-                <p style="margin:0;font-size:0.86rem;color:var(--dark-grey);line-height:1.7;">
-                    <strong style="color:var(--charcoal);">What this is not.</strong> An AGBA rating is a conformity-<em>readiness</em> assessment. It is not a legal conformity assessment under the EU AI Act, nor an accredited ISO/IEC 42001 certification &mdash; those are granted only by the competent authority and an accredited certification body respectively. We map you to them, and we tell you what you would fail today.
-                </p>
+            <div class="air-note reveal" style="margin-top:2.5rem;">
+                <strong>What this is not.</strong> An AGBA rating is a conformity-<em>readiness</em> assessment. It is not a legal conformity assessment under the EU AI Act, nor an accredited ISO/IEC 42001 certification &mdash; those are granted only by the competent authority and an accredited certification body respectively. We map you to them, and we tell you what you would fail today.
             </div>
         </div>
     </section>
 
-    <!-- ===== RECOGNITION ===== -->
+    <!-- ===== WHO IS ISSUING THIS ===== -->
     <section class="section-pad-sm" style="background:var(--off-white);">
+        <div class="container">
+            <div class="section-header reveal">
+                <span class="section-eyebrow"><i class="fas fa-building-columns"></i> The issuer</span>
+                <h2 class="section-title">Who is <span class="accent">issuing this</span></h2>
+                <p class="section-subtitle">A credential is worth exactly what its issuer is worth.</p>
+            </div>
+            <div class="air-issuer reveal">
+                <div class="air-issuer-logo">
+                    <img src="images/agba-logo.png" alt="Aegis Graham Bell Awards" width="208" height="83" loading="lazy">
+                </div>
+                <div class="air-issuer-facts">
+                    <div>
+                        <b>16 editions since 2010</b>
+                        <p>Initiated by the Aegis School of Data Science, Cyber Security &amp; Telecom as a tribute to Alexander Graham Bell.</p>
+                    </div>
+                    <div>
+                        <b>Supported by MeitY</b>
+                        <p>The largest innovation award in India supported by the Ministry of Electronics &amp; Information Technology, with Skill India and the National Informatics Centre.</p>
+                    </div>
+                    <div>
+                        <b>Judged by an independent jury</b>
+                        <p>Winners are chosen by a jury with no stake in the outcome. The same discipline governs the AI Readiness rating.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="air-note reveal" style="margin-top:2rem;">
+                India is writing the rules right now. <strong>MeitY and UNESCO</strong> ran the <strong>AI Readiness Assessment Methodology (RAM)</strong> across India from May 2024: five stakeholder consultations under the IndiaAI Mission, with NITI Aayog in the policy direction. UNESCO RAM assesses <em>countries</em>. We assess <em>organisations</em>, in the same language your regulator already uses.
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== RECOGNITION / FELICITATION ===== -->
+    <section class="section-pad-sm" id="recognition" style="scroll-margin-top:96px;">
         <div class="container">
             <div class="section-header reveal">
                 <span class="section-eyebrow"><i class="fas fa-star"></i> Recognition</span>
                 <h2 class="section-title">Certified organisations are <span class="accent">felicitated on stage</span></h2>
-                <p class="section-subtitle">A credential earns more when it is conferred in public. Every AI Readiness Certification holder is felicitated at Bharat AI Innovation &mdash; not emailed a PDF.</p>
+                <p class="section-subtitle">A credential earns more when it is conferred in public. Every AI Readiness Certification holder is felicitated at Bharat AI Innovation, India&rsquo;s AI conference and exhibition.</p>
             </div>
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1.5rem;">
+
+            <div class="air-felic-grid reveal">
+                <div>
+                    <div class="air-evt">
+                        <div><b>20&ndash;21 Nov 2026</b><span>Two-day conference</span></div>
+                        <div><b>WTC Mumbai</b><span>World Trade Centre</span></div>
+                        <div><b>Conference &amp; exhibition</b><span>Delegates, exhibitors, press</span></div>
+                    </div>
+                    <p>Your certification is <strong>handed over on stage</strong> in front of peers, press and policymakers &mdash; not emailed as a PDF. Recognition at a national AI forum travels further than a badge on a website, and it happens where your buyers, partners and government stakeholders already gather.</p>
+                    <p>The Aegis Graham Bell Awards have felicitated India&rsquo;s innovators for <strong>16 editions</strong>, supported by the Ministry of Electronics &amp; Information Technology. AI Readiness Certification joins that stage.</p>
+                    <div class="air-felic-note">Certify before the cycle closes to be felicitated at Bharat AI Innovation, 20&ndash;21 November 2026, WTC Mumbai.</div>
+                </div>
+                <figure class="air-fig">
+                    <img src="images/agba-felicitation.jpg" alt="Winners felicitated on stage at the Aegis Graham Bell Awards" width="1280" height="616" loading="lazy">
+                    <figcaption>Winners felicitated at the 16th Annual Aegis Graham Bell Awards, supported by MeitY, Government of India.</figcaption>
+                </figure>
+            </div>
+
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1.5rem;margin-top:2.5rem;">
                 <div class="feature-card reveal reveal-delay-1" style="text-align:left;">
                     <h3 style="font-size:1.1rem;">A moment, not a PDF</h3>
                     <p>Certification handed over in front of peers, press and policymakers.</p>
@@ -701,12 +1000,11 @@
                     <p>The cohort felicitated in November is decided by who is certified before it.</p>
                 </div>
             </div>
-            <p class="reveal" style="text-align:center;margin-top:2rem;font-size:0.95rem;">Certify before the cycle closes to be felicitated at Bharat AI Innovation, 20&ndash;21 November 2026, WTC Mumbai.</p>
         </div>
     </section>
 
     <!-- ===== WHO IT IS FOR ===== -->
-    <section class="section-pad-sm">
+    <section class="section-pad-sm" style="background:var(--off-white);">
         <div class="container">
             <div class="section-header reveal">
                 <span class="section-eyebrow"><i class="fas fa-sitemap"></i> Who it is for</span>
@@ -734,23 +1032,181 @@
         </div>
     </section>
 
+    <!-- ===== COMPANION ASSESSMENTS ===== -->
+    <section class="section-pad-sm">
+        <div class="container">
+            <div class="section-header reveal">
+                <span class="section-eyebrow"><i class="fas fa-diagram-project"></i> The wider frame</span>
+                <h2 class="section-title">Part of the <span class="accent">AGBA Certification &amp; Index</span></h2>
+                <p class="section-subtitle">Readiness tells you <strong>how AI-ready you are</strong>. Two companion assessments complete the picture &mdash; the risk and governance conformity posture of each live AI system, and where your company ranks on innovation. Same evidence-gated, independently-reviewed AGBA rigour.</p>
+            </div>
+            <div class="air-xsell reveal">
+                <a class="air-xcard" href="https://assessfy.com/ai_risk_governance" target="_blank" rel="noopener noreferrer">
+                    <div class="xtag">Companion certification</div>
+                    <h3>Bharat AI Risk &amp; Governance</h3>
+                    <p>A per-AI-system conformity-readiness rating mapped to India&rsquo;s DPDP Act, the MeitY India AI Governance Guidelines (2025), the EU AI Act, NIST AI RMF and ISO/IEC 42001 &mdash; the controls that stand between your systems and the regulators.</p>
+                    <span class="xgo">Assess an AI system <i class="fas fa-arrow-right"></i></span>
+                </a>
+                <a class="air-xcard" href="https://assessfy.com/innovation_index" target="_blank" rel="noopener noreferrer">
+                    <div class="xtag">Companion index</div>
+                    <h3>AGBA India Innovation Index</h3>
+                    <p>An independent company-level innovation rating across strategy, capability, portfolio, culture and impact &mdash; with your sector and national rank and a board-grade report. The wider frame around your AI readiness.</p>
+                    <span class="xgo">See the Innovation Index <i class="fas fa-arrow-right"></i></span>
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== THE CREDENTIAL ===== -->
+    <section class="section-pad-sm" id="certificate" style="background:var(--off-white);scroll-margin-top:96px;">
+        <div class="container">
+            <div class="section-header reveal">
+                <span class="section-eyebrow"><i class="fas fa-id-badge"></i> The credential</span>
+                <h2 class="section-title">What you <span class="accent">actually receive</span></h2>
+                <p class="section-subtitle">The credential issued on certification &mdash; verifiable, dated, and tied to an assessed maturity level.</p>
+            </div>
+
+            <figure class="air-cert-fig reveal" style="margin:0;">
+                <div class="air-cert-scale">
+                    <div class="air-cert">
+                        <div class="air-cert-frame">
+                            <aside class="air-cert-spine">
+                                <div class="air-cert-kicker">Verified Credential</div>
+                                <svg viewBox="0 0 260 260" width="238" height="238" class="air-cert-seal" aria-hidden="true">
+                                    <defs>
+                                        <path id="acRingTop" d="M130,130 m-104,0 a104,104 0 1,1 208,0 a104,104 0 1,1 -208,0" fill="none"></path>
+                                        <path id="acRingBot" d="M130,130 m104,0 a104,104 0 1,1 -208,0 a104,104 0 1,1 208,0" fill="none"></path>
+                                    </defs>
+                                    <circle cx="130" cy="130" r="120" fill="none" stroke="#fff" stroke-width="2"></circle>
+                                    <circle cx="130" cy="130" r="104" fill="none" stroke="#FF6B00" stroke-width="1.5"></circle>
+                                    <circle cx="130" cy="130" r="86" fill="none" stroke="rgba(255,255,255,.28)" stroke-width="1"></circle>
+                                    <text fill="#fff" font-family="Bricolage Grotesque,sans-serif" font-size="11" font-weight="700" letter-spacing="2">
+                                        <textPath href="#acRingTop" startOffset="50%" text-anchor="middle">AI READINESS &amp; STRATEGY ASSESSMENT</textPath>
+                                    </text>
+                                    <text fill="#FF9A3C" font-family="Bricolage Grotesque,sans-serif" font-size="11" font-weight="700" letter-spacing="2">
+                                        <textPath href="#acRingBot" startOffset="50%" text-anchor="middle">BHARAT AI INNOVATION 2026</textPath>
+                                    </text>
+                                    <circle cx="130" cy="130" r="70" fill="#FF6B00"></circle>
+                                    <text x="130" y="112" fill="#fff" font-family="Bricolage Grotesque,sans-serif" font-size="12" font-weight="700" letter-spacing="4" text-anchor="middle">CERTIFIED</text>
+                                    <text x="130" y="146" fill="#fff" font-family="Bricolage Grotesque,sans-serif" font-size="34" font-weight="800" letter-spacing="1" text-anchor="middle">LVL 3</text>
+                                    <text x="130" y="168" fill="#fff" font-family="Bricolage Grotesque,sans-serif" font-size="12" font-weight="700" letter-spacing="4" text-anchor="middle">SCALING</text>
+                                    <line x1="86" y1="126" x2="102" y2="126" stroke="#fff" stroke-width="1.5"></line>
+                                    <line x1="158" y1="126" x2="174" y2="126" stroke="#fff" stroke-width="1.5"></line>
+                                </svg>
+                                <div class="air-cert-rule"></div>
+                                <div>
+                                    <div class="air-cert-vlabel">Verify at</div>
+                                    <div class="air-cert-vurl">assessfy.com/<br>innovation_verify</div>
+                                    <div class="air-cert-vcode">AIR-XXXXXXXXXXXX</div>
+                                </div>
+                            </aside>
+
+                            <div class="air-cert-face">
+                                <div class="air-cert-logos">
+                                    <img src="images/agba-logo.png" alt="Aegis Graham Bell Awards" class="air-cert-l1">
+                                    <img src="images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI Innovation" class="air-cert-l2">
+                                </div>
+                                <div class="air-cert-hr2"></div>
+
+                                <div style="margin-top:24px;">
+                                    <div class="air-cert-eyebrow">AGBA AI Readiness &amp; Strategy Assessment</div>
+                                    <h3 class="air-cert-h1">AI Readiness Certification</h3>
+                                </div>
+
+                                <div style="margin-top:26px;">
+                                    <div class="air-cert-lead">This is to record that</div>
+                                    <div class="air-cert-org">Meridian Financial Services Ltd</div>
+                                    <div class="air-cert-orgmeta">BFSI business unit &nbsp;&middot;&nbsp; Large &nbsp;&middot;&nbsp; Assessment cycle 2026</div>
+                                </div>
+
+                                <div class="air-cert-hr1"></div>
+
+                                <div class="air-cert-grid">
+                                    <div class="air-cert-score">
+                                        <div class="air-cert-slabel">Readiness Index</div>
+                                        <div class="air-cert-sval">72.4</div>
+                                        <div class="air-cert-sout">out of 100</div>
+                                    </div>
+                                    <div class="air-cert-attrs">
+                                        <div class="air-cert-cell"><div class="air-cert-clabel">Maturity level</div><div class="air-cert-cval">Level 3 &middot; Scaling</div></div>
+                                        <div class="air-cert-cell"><div class="air-cert-clabel">Assurance</div><div class="air-cert-cval">Limited</div><div class="air-cert-cnote">Evidence verified by AGBA</div></div>
+                                        <div class="air-cert-cell"><div class="air-cert-clabel">Issued &middot; Valid till</div><div class="air-cert-cval">Aug 2026 &ndash; Aug 2027</div></div>
+                                        <div class="air-cert-cell"><div class="air-cert-clabel">Felicitated at</div><div class="air-cert-cval">Bharat AI Innovation 2026</div></div>
+                                    </div>
+                                </div>
+
+                                <div class="air-cert-hr2 mt"></div>
+                                <div class="air-cert-sign">
+                                    <div class="air-cert-sigline">Chair, AGBA Innovation</div>
+                                    <div class="air-cert-assur">Assurance: Limited &middot; Valid 12 months</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="air-cert-specimen" aria-hidden="true">Specimen</div>
+                    </div>
+                </div>
+                <figcaption>Specimen certificate. Company, index and dates are illustrative &mdash; a real credential is issued only after an assessor verifies the supporting evidence, and can be checked at <a href="https://assessfy.com/innovation_verify" target="_blank" rel="noopener noreferrer">assessfy.com/innovation_verify</a>.</figcaption>
+            </figure>
+        </div>
+    </section>
+
+    <!-- ===== FAQ ===== -->
+    <section class="section-pad-sm" id="faq" style="scroll-margin-top:96px;">
+        <div class="container">
+            <div class="section-header reveal">
+                <span class="section-eyebrow"><i class="fas fa-comments"></i> FAQ</span>
+                <h2 class="section-title">Questions buyers <span class="accent">actually ask</span></h2>
+                <p class="section-subtitle">If something here is unclear, it is a fault in how we explain it &mdash; tell us.</p>
+            </div>
+            <div class="air-faq reveal">
+                <details>
+                    <summary>What does it cost?</summary>
+                    <p>The <strong>Readiness Rating is free</strong> at every size &mdash; a full scored report, your maturity level and a standards gap-map, with no card required. <strong>Verified Certification starts at &#8377;25,000</strong> and scales with annual turnover, so a startup and a &#8377;1,000&nbsp;crore group do not pay the same. <a href="https://assessfy.com/innovation_pricing?product=ai_readiness" target="_blank" rel="noopener noreferrer">See the fee ladder</a></p>
+                </details>
+                <details>
+                    <summary>How long is the certification valid?</summary>
+                    <p><strong>12 months</strong> from the date of issue. After that the credential shows as expired on its public verification page and drops out of the public registry &mdash; AI readiness moves too fast for an open-ended claim to mean anything.</p>
+                </details>
+                <details>
+                    <summary>What is the difference between the free rating and the certification?</summary>
+                    <p>The rating is <strong>self-declared</strong>: you answer, the engine scores, you get the report. The certification adds <strong>independent verification</strong> &mdash; an assessor reviews a sample of your evidence before anything is issued &mdash; plus a verifiable badge and a listing in the public registry. Only the certification is a credential you can show a client.</p>
+                </details>
+                <details>
+                    <summary>What do you actually measure?</summary>
+                    <p>25 metrics across 6 pillars, mapped to <strong>ISO/IEC&nbsp;42001</strong>, the <strong>NIST AI&nbsp;RMF</strong>, the <strong>EU AI Act</strong> and India&rsquo;s <strong>DPDP Act</strong>. <a href="#pillars">See the pillars</a> or read the <a href="https://assessfy.com/innovation_methodology?product=ai_readiness" target="_blank" rel="noopener noreferrer">full published methodology</a> &mdash; every weight and formula is on that page.</p>
+                </details>
+                <details>
+                    <summary>Can we just rate ourselves highly and pass?</summary>
+                    <p>No. Scoring is <strong>non-compensatory</strong> &mdash; a weak critical control caps your result no matter how strong everything else is &mdash; and a certification additionally requires that an assessor has verified evidence. A high self-rating with nothing behind it produces a rating, not a certification.</p>
+                </details>
+                <details>
+                    <summary>Who sees the result?</summary>
+                    <p>You do. Nothing is published unless you earn a certification and it is issued; only then does the credential appear on its verification page and in the public registry. The free rating is private to you.</p>
+                </details>
+                <details>
+                    <summary>What happens after we are certified?</summary>
+                    <p>You get the verifiable credential and badge, a listing in the public registry, and certified organisations are <a href="#recognition">felicitated on stage at Bharat AI Innovation</a>.</p>
+                </details>
+            </div>
+        </div>
+    </section>
+
     <!-- ===== FINAL CTA ===== -->
     <section class="registration-cta">
         <div class="registration-cta-orb cta-orb-1"></div>
         <div class="registration-cta-orb cta-orb-2"></div>
         <div class="container">
             <div class="cta-content reveal">
-                <h2>How AI-ready are you &mdash; <span class="accent">and can you prove it?</span></h2>
-                <p>Get an independent maturity rating benchmarked against the world&rsquo;s best, with the roadmap to move up a tier &mdash; and a credential an outsider can check.</p>
+                <h2>Find out exactly how AI-ready you are &mdash; <span class="accent">and how to climb.</span></h2>
+                <p>Get an independent, evidence-backed maturity rating, with the roadmap to move up a tier &mdash; and a credential an outsider can check.</p>
                 <div class="cta-buttons">
-                    <a href="https://assessfy.com/ai_readiness" target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-xl">Apply for Certification <i class="fas fa-arrow-right"></i></a>
+                    <a href="https://assessfy.com/innovation_register?product=ai_readiness" target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-xl">Start your AI Readiness Certification <i class="fas fa-arrow-right"></i></a>
                     <a href="/contact#general" class="btn btn-ghost btn-xl">Talk to the team</a>
                 </div>
-                <div class="early-bird">Start with the Readiness Rating &mdash; it tells you where you stand before you commit to anything.</div>
+                <div class="early-bird">Start with the Readiness Rating &mdash; it is free, and it tells you where you stand before you commit to anything.</div>
             </div>
         </div>
     </section>
-
 
     <footer class="footer">
         <div class="container">
@@ -807,6 +1263,7 @@
                     <a href="code-of-conduct.html">Code of Conduct</a>
                 </div>
             </div>
+            <p style="text-align:center;font-size:0.75rem;color:var(--mid-grey);margin-top:1.5rem;line-height:1.7;max-width:900px;margin-left:auto;margin-right:auto;">AGBA AI Readiness Certification &middot; An Aegis Graham Bell Awards initiative &middot; Method referenced to BCG, McKinsey and Accenture AI-maturity research and mapped to India&rsquo;s DPDP Act 2023 &amp; Rules 2025, the IT Act / IT Rules, the EU AI Act, NIST AI RMF 1.0 and ISO/IEC 42001. An independent maturity rating, not an accredited certification of conformity.</p>
         </div>
     </footer>
 
