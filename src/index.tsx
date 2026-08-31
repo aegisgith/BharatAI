@@ -1504,10 +1504,13 @@ app.post('/api/events/:id/attendees/register', async (c) => {
   try {
     const result = withPaymentCol
       ? await c.env.DB.prepare(
-          'INSERT INTO attendees (event_id, name, email, company, job_title, bio, interests, linkedin_url, mobile, city, lunch_inclusion, badge_type, payment_status, is_online, last_login_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, datetime("now"))'
+          // registration_date is written here rather than left to a default: the column
+          // was added later, so it has none, and every row that skipped it sorted to
+          // the bottom of a newest-first list - exactly the rows you most want to see.
+          'INSERT INTO attendees (event_id, name, email, company, job_title, bio, interests, linkedin_url, mobile, city, lunch_inclusion, badge_type, payment_status, registration_date, is_online, last_login_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime("now"), 1, datetime("now"))'
         ).bind(eventId, name.trim(), normalizedEmail, company || '', job_title || '', bio || '', interests || '', linkedin_url || '', mobile || '', city || '', lunch_inclusion || 'No', passType, needsPayment ? 'pending' : 'paid').run()
       : await c.env.DB.prepare(
-          'INSERT INTO attendees (event_id, name, email, company, job_title, bio, interests, linkedin_url, mobile, city, lunch_inclusion, badge_type, is_online, last_login_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, datetime("now"))'
+          'INSERT INTO attendees (event_id, name, email, company, job_title, bio, interests, linkedin_url, mobile, city, lunch_inclusion, badge_type, registration_date, is_online, last_login_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime("now"), 1, datetime("now"))'
         ).bind(eventId, name.trim(), normalizedEmail, company || '', job_title || '', bio || '', interests || '', linkedin_url || '', mobile || '', city || '', lunch_inclusion || 'No', passType).run()
 
     const attendee = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(result.meta.last_row_id).first()
@@ -13615,8 +13618,10 @@ function adminPageHTML(): string {
 
     // ============ ATTENDEES ============
     let bulkUploadData = [];
-    let attSortCol = null;
-    let attSortDir = 'asc'; // 'asc' or 'desc'
+    // Newest registration first. The list is opened to see who just signed up, not
+    // to read it from the beginning; oldest-first buried today's arrivals on page 11.
+    let attSortCol = 'registration_date';
+    let attSortDir = 'desc'; // 'asc' or 'desc'
     let lastAttendees = null;
     let lastDupData = null;
 
@@ -14493,6 +14498,13 @@ function adminPageHTML(): string {
       const m = dir === 'asc' ? 1 : -1;
       arr.sort((a, b) => {
         let va = a[col], vb = b[col];
+        // registration_date was added to the table late, so older rows can carry
+        // nothing in it. created_at is always set, and falling back to it keeps a
+        // blank from sorting as "earliest" and hiding a recent signup at the end.
+        if (col === 'registration_date') {
+          va = a.registration_date || a.created_at || '';
+          vb = b.registration_date || b.created_at || '';
+        }
         if (col === 'id') return (va - vb) * m;
         if (col === 'payment_amount') {
           const na = parseFloat((va||'').replace(/[^0-9.]/g,'')) || 0;
@@ -14518,8 +14530,9 @@ function adminPageHTML(): string {
     }
 
     function resetAttSort() {
-      attSortCol = null;
-      attSortDir = 'asc';
+      attSortCol = 'registration_date';
+      attSortDir = 'desc';
+      attPage = 1;
       loadAdminAttendees();
     }
 
