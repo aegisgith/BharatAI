@@ -1124,7 +1124,27 @@ app.post('/api/events/:id/attendees/register', async (c) => {
   const { name, email, company, job_title, bio, interests, linkedin_url, mobile, lunch_inclusion, city, badge_type } = body
 
   if (!name || !email) return c.json({ error: 'Name and email are required' }, 400)
+
   const normalizedEmail = email.trim().toLowerCase()
+
+  // Mobile, organisation, designation and city are required, not optional extras.
+  // Most existing rows carry dashes in those columns, which makes the attendee list
+  // unusable for calling people, printing a badge, or knowing who is in the room.
+  // The forms mark them too; this is the check that holds, because a form can be
+  // bypassed.
+  //
+  // Only when a record is being CREATED. A returning app re-posts this endpoint on
+  // load to mark itself online, carrying just the few fields it kept in
+  // localStorage — demanding the full set there would 400 that refresh and sign
+  // every returning user out.
+  const known = await c.env.DB.prepare('SELECT id FROM attendees WHERE event_id = ? AND email = ?')
+    .bind(eventId, normalizedEmail).first()
+  if (!known) {
+    const missing = missingRegistrationFields(body)
+    if (missing.length) {
+      return c.json({ error: 'Please add your ' + humanList(missing) + '.', missing }, 400)
+    }
+  }
 
   // Honor the pass the user selected. Previously this hardcoded 'Visitor Pass',
   // so anyone who chose (and paid for) Delegate/VIP/Academic was stored as a
@@ -1179,6 +1199,23 @@ app.post('/api/events/:id/attendees/register', async (c) => {
     return c.json({ error: 'Registration failed' }, 400)
   }
 })
+
+// A student has no employer and no job title, so the Academic tier collapses both
+// into a single College Name - asking that tier for a designation is asking a
+// question with no answer.
+function missingRegistrationFields(b: any): string[] {
+  const has = (v: any) => String(v ?? '').trim().length > 0
+  const academic = String(b.badge_type || '') === 'Academic Pass'
+  const missing: string[] = []
+  if (!has(b.mobile)) missing.push('mobile number')
+  if (!has(b.company)) missing.push(academic ? 'college name' : 'organisation')
+  if (!academic && !has(b.job_title)) missing.push('designation')
+  if (!has(b.city)) missing.push('city')
+  return missing
+}
+
+const humanList = (xs: string[]): string =>
+  xs.length < 2 ? (xs[0] || '') : xs.slice(0, -1).join(', ') + ' and ' + xs[xs.length - 1]
 
 // ==================== EXTERNAL REGISTRATION (from bharataiinnovation.com) ====================
 
@@ -4582,22 +4619,22 @@ ${sharedNavHTML('register')}
           </div>
           <div class="grid grid-cols-2 gap-4">
             <div>
-              <label class="text-xs text-gray-400 mb-1 block">Mobile Number</label>
-              <input type="tel" id="rf-phone" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="+91 XXXXX XXXXX">
+              <label class="text-xs text-gray-400 mb-1 block">Mobile Number *</label>
+              <input type="tel" id="rf-phone" required class="w-full px-4 py-3 rounded-xl text-sm" placeholder="+91 XXXXX XXXXX">
             </div>
             <div>
-              <label class="text-xs text-gray-400 mb-1 block">Organization</label>
-              <input type="text" id="rf-company" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Company / Institute">
+              <label class="text-xs text-gray-400 mb-1 block">Organization *</label>
+              <input type="text" id="rf-company" required class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Company / Institute">
             </div>
           </div>
           <div class="grid grid-cols-2 gap-4">
             <div>
-              <label class="text-xs text-gray-400 mb-1 block">Designation / Job Title</label>
-              <input type="text" id="rf-title" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Your designation">
+              <label class="text-xs text-gray-400 mb-1 block">Designation / Job Title *</label>
+              <input type="text" id="rf-title" required class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Your designation">
             </div>
             <div>
-              <label class="text-xs text-gray-400 mb-1 block">City</label>
-              <input type="text" id="rf-city" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Your city">
+              <label class="text-xs text-gray-400 mb-1 block">City *</label>
+              <input type="text" id="rf-city" required class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Your city">
             </div>
           </div>
           <div class="grid grid-cols-2 gap-4">
@@ -4793,7 +4830,10 @@ function rppApplyPassFields(passType) {
   const desigRow = document.getElementById('rpp-row-designation');
   if (!label || !company || !desigFld || !desigRow) return;
 
-  label.textContent   = academic ? 'College Name' : 'Organization';
+  label.textContent   = academic ? 'College Name *' : 'Organization *';
+  // A hidden required field blocks submit with a validation bubble nobody can see,
+  // so the requirement is lifted at the same moment the field disappears.
+  document.getElementById('rpp-designation').required = !academic;
   company.placeholder = academic ? 'Your college / university' : 'Company / Institute';
   desigFld.style.display = academic ? 'none' : '';
   // With Designation gone the row would leave a hole, so City takes the full width.
@@ -4840,8 +4880,19 @@ async function submitRegisterPaidPassForm(e) {
   const city     = document.getElementById('rpp-city').value.trim();
   const passType = document.getElementById('rpp-pass-type').value;
 
-  if (!name || !email || !passType) {
-    alert('Please select a pass type and fill in Name & Email.');
+  // Checked before the payment tab opens: sending someone to checkout and only then
+  // telling them a field is missing loses the payment and the details together.
+  const academic = passType === 'Academic Pass';
+  const gaps = [];
+  if (!passType) gaps.push('pass type');
+  if (!name) gaps.push('name');
+  if (!email) gaps.push('email');
+  if (!phone) gaps.push('mobile');
+  if (!company) gaps.push(academic ? 'college name' : 'organisation');
+  if (!academic && !desig) gaps.push('designation');
+  if (!city) gaps.push('city');
+  if (gaps.length) {
+    alert('Please fill in: ' + gaps.join(', ') + '.');
     btn.disabled = false;
     btn.innerHTML = '<i class="fas fa-arrow-right mr-2"></i>Proceed to Payment';
     return;
@@ -4970,22 +5021,22 @@ function paintPayHoldingPage(w) {
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
           <div>
-            <label style="font-size:11px;color:#5E6585;display:block;margin-bottom:4px;">Mobile</label>
-            <input type="tel" id="rpp-phone" placeholder="+91 XXXXX XXXXX" style="width:100%;padding:10px 14px;border-radius:10px;background:#fff;border:1px solid #D7DBEC;color:#1E2140;font-size:13px;outline:none;box-sizing:border-box;">
+            <label style="font-size:11px;color:#5E6585;display:block;margin-bottom:4px;">Mobile *</label>
+            <input type="tel" id="rpp-phone" required placeholder="+91 XXXXX XXXXX" style="width:100%;padding:10px 14px;border-radius:10px;background:#fff;border:1px solid #D7DBEC;color:#1E2140;font-size:13px;outline:none;box-sizing:border-box;">
           </div>
           <div>
-            <label id="rpp-company-label" style="font-size:11px;color:#5E6585;display:block;margin-bottom:4px;">Organization</label>
-            <input type="text" id="rpp-company" placeholder="Company / Institute" style="width:100%;padding:10px 14px;border-radius:10px;background:#fff;border:1px solid #D7DBEC;color:#1E2140;font-size:13px;outline:none;box-sizing:border-box;">
+            <label id="rpp-company-label" style="font-size:11px;color:#5E6585;display:block;margin-bottom:4px;">Organization *</label>
+            <input type="text" id="rpp-company" required placeholder="Company / Institute" style="width:100%;padding:10px 14px;border-radius:10px;background:#fff;border:1px solid #D7DBEC;color:#1E2140;font-size:13px;outline:none;box-sizing:border-box;">
           </div>
         </div>
         <div id="rpp-row-designation" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
           <div id="rpp-designation-field">
-            <label style="font-size:11px;color:#5E6585;display:block;margin-bottom:4px;">Designation</label>
-            <input type="text" id="rpp-designation" placeholder="Your designation" style="width:100%;padding:10px 14px;border-radius:10px;background:#fff;border:1px solid #D7DBEC;color:#1E2140;font-size:13px;outline:none;box-sizing:border-box;">
+            <label style="font-size:11px;color:#5E6585;display:block;margin-bottom:4px;">Designation *</label>
+            <input type="text" id="rpp-designation" required placeholder="Your designation" style="width:100%;padding:10px 14px;border-radius:10px;background:#fff;border:1px solid #D7DBEC;color:#1E2140;font-size:13px;outline:none;box-sizing:border-box;">
           </div>
           <div>
-            <label style="font-size:11px;color:#5E6585;display:block;margin-bottom:4px;">City</label>
-            <input type="text" id="rpp-city" placeholder="Your city" style="width:100%;padding:10px 14px;border-radius:10px;background:#fff;border:1px solid #D7DBEC;color:#1E2140;font-size:13px;outline:none;box-sizing:border-box;">
+            <label style="font-size:11px;color:#5E6585;display:block;margin-bottom:4px;">City *</label>
+            <input type="text" id="rpp-city" required placeholder="Your city" style="width:100%;padding:10px 14px;border-radius:10px;background:#fff;border:1px solid #D7DBEC;color:#1E2140;font-size:13px;outline:none;box-sizing:border-box;">
           </div>
         </div>
         <button type="submit" id="rpp-submit-btn" style="width:100%;padding:13px;border-radius:10px;border:none;background:linear-gradient(135deg,#FF6B00,#FF8C38);color:white;font-weight:700;font-size:14px;cursor:pointer;margin-top:4px;">
@@ -5637,13 +5688,14 @@ function mainPageHTML(): string {
           <div><input type="text" id="reg-name" placeholder="Full Name *" required class="w-full px-4 py-3 rounded-xl text-sm"></div>
           <div><input type="email" id="reg-email" placeholder="Email Address *" required class="w-full px-4 py-3 rounded-xl text-sm"></div>
           <div class="grid grid-cols-2 gap-3">
-            <input type="text" id="reg-company" placeholder="Company" class="px-4 py-3 rounded-xl text-sm">
-            <input type="text" id="reg-title" placeholder="Job Title" class="px-4 py-3 rounded-xl text-sm">
+            <input type="text" id="reg-company" placeholder="Company *" required class="px-4 py-3 rounded-xl text-sm">
+            <input type="text" id="reg-title" placeholder="Job Title *" required class="px-4 py-3 rounded-xl text-sm">
           </div>
           <div class="grid grid-cols-2 gap-3">
-            <input type="tel" id="reg-mobile" placeholder="Mobile Number" class="px-4 py-3 rounded-xl text-sm">
-            <input type="url" id="reg-linkedin" placeholder="LinkedIn URL" class="px-4 py-3 rounded-xl text-sm">
+            <input type="tel" id="reg-mobile" placeholder="Mobile Number *" required class="px-4 py-3 rounded-xl text-sm">
+            <input type="text" id="reg-city" placeholder="City *" required class="px-4 py-3 rounded-xl text-sm">
           </div>
+          <div><input type="url" id="reg-linkedin" placeholder="LinkedIn URL" class="w-full px-4 py-3 rounded-xl text-sm"></div>
           <div><textarea id="reg-bio" placeholder="Short bio (optional)" rows="2" class="w-full px-4 py-3 rounded-xl text-sm"></textarea></div>
           <div><input type="text" id="reg-interests" placeholder="Interests (comma-separated)" class="w-full px-4 py-3 rounded-xl text-sm"></div>
           <button type="submit" class="w-full py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-primary-600 to-primary-500 hover:from-primary-500 hover:to-primary-400 transition-all">
@@ -6240,10 +6292,10 @@ function mainPageHTML(): string {
             <form id="quick-visitor-form" onsubmit="submitQuickVisitorReg(event)" class="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div><input type="text" id="qv-name" placeholder="Full Name *" required class="w-full px-4 py-3 rounded-xl text-sm"></div>
               <div><input type="email" id="qv-email" placeholder="Email Address *" required class="w-full px-4 py-3 rounded-xl text-sm"></div>
-              <div><input type="tel" id="qv-phone" placeholder="Mobile Number" class="w-full px-4 py-3 rounded-xl text-sm"></div>
-              <div><input type="text" id="qv-company" placeholder="Organization / Company" class="w-full px-4 py-3 rounded-xl text-sm"></div>
-              <div><input type="text" id="qv-designation" placeholder="Designation / Job Title" class="w-full px-4 py-3 rounded-xl text-sm"></div>
-              <div><input type="text" id="qv-city" placeholder="City" class="w-full px-4 py-3 rounded-xl text-sm"></div>
+              <div><input type="tel" id="qv-phone" placeholder="Mobile Number *" required class="w-full px-4 py-3 rounded-xl text-sm"></div>
+              <div><input type="text" id="qv-company" placeholder="Organization / Company *" required class="w-full px-4 py-3 rounded-xl text-sm"></div>
+              <div><input type="text" id="qv-designation" placeholder="Designation / Job Title *" required class="w-full px-4 py-3 rounded-xl text-sm"></div>
+              <div><input type="text" id="qv-city" placeholder="City *" required class="w-full px-4 py-3 rounded-xl text-sm"></div>
               <div class="md:col-span-2 flex flex-col sm:flex-row gap-3 items-center">
                 <button type="submit" id="qv-submit-btn" class="w-full sm:w-auto px-8 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-primary-600 to-primary-500 hover:from-primary-500 hover:to-primary-400 transition-all text-sm shadow-lg shadow-primary-500/25">
                   <i class="fas fa-check-circle mr-2"></i>Register — It's Free!
@@ -8266,6 +8318,7 @@ function mainPageHTML(): string {
           bio: document.getElementById('reg-bio').value,
           interests: document.getElementById('reg-interests').value,
           mobile: document.getElementById('reg-mobile').value,
+          city: document.getElementById('reg-city').value,
           linkedin_url: document.getElementById('reg-linkedin').value,
         });
 
@@ -11831,8 +11884,19 @@ function mainPageHTML(): string {
       const city     = document.getElementById('pp-city').value.trim();
       const passType = document.getElementById('pp-pass-type').value;
 
-      if (!name || !email || !passType) {
-        showToast('Please fill in all required fields.', 'error');
+      // Checked before the payment tab opens: sending someone to checkout and only
+      // then telling them a field is missing loses the payment and the details.
+      var academic = passType === 'Academic Pass';
+      var gaps = [];
+      if (!passType) gaps.push('pass type');
+      if (!name) gaps.push('name');
+      if (!email) gaps.push('email');
+      if (!phone) gaps.push('mobile');
+      if (!company) gaps.push(academic ? 'college name' : 'organisation');
+      if (!academic && !desig) gaps.push('designation');
+      if (!city) gaps.push('city');
+      if (gaps.length) {
+        showToast('Please fill in: ' + gaps.join(', ') + '.', 'error');
         btn.disabled = false;
         btn.innerHTML = '<i class="fas fa-arrow-right mr-2"></i>Proceed to Payment';
         return;
@@ -12005,22 +12069,22 @@ function mainPageHTML(): string {
           </div>
           <div class="grid grid-cols-2 gap-3">
             <div>
-              <label class="text-xs text-gray-400 mb-1 block">Mobile Number</label>
-              <input type="tel" id="pp-phone" placeholder="+91 XXXXX XXXXX" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:#fff;border:1px solid #D7DBEC;color:#1E2140;outline:none;">
+              <label class="text-xs text-gray-400 mb-1 block">Mobile Number *</label>
+              <input type="tel" id="pp-phone" required placeholder="+91 XXXXX XXXXX" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:#fff;border:1px solid #D7DBEC;color:#1E2140;outline:none;">
             </div>
             <div>
-              <label class="text-xs text-gray-400 mb-1 block">Organization</label>
-              <input type="text" id="pp-company" placeholder="Company / Institute" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:#fff;border:1px solid #D7DBEC;color:#1E2140;outline:none;">
+              <label class="text-xs text-gray-400 mb-1 block">Organization *</label>
+              <input type="text" id="pp-company" required placeholder="Company / Institute" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:#fff;border:1px solid #D7DBEC;color:#1E2140;outline:none;">
             </div>
           </div>
           <div class="grid grid-cols-2 gap-3">
             <div>
-              <label class="text-xs text-gray-400 mb-1 block">Designation</label>
-              <input type="text" id="pp-designation" placeholder="Your designation" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:#fff;border:1px solid #D7DBEC;color:#1E2140;outline:none;">
+              <label class="text-xs text-gray-400 mb-1 block">Designation *</label>
+              <input type="text" id="pp-designation" required placeholder="Your designation" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:#fff;border:1px solid #D7DBEC;color:#1E2140;outline:none;">
             </div>
             <div>
-              <label class="text-xs text-gray-400 mb-1 block">City</label>
-              <input type="text" id="pp-city" placeholder="Your city" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:#fff;border:1px solid #D7DBEC;color:#1E2140;outline:none;">
+              <label class="text-xs text-gray-400 mb-1 block">City *</label>
+              <input type="text" id="pp-city" required placeholder="Your city" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:#fff;border:1px solid #D7DBEC;color:#1E2140;outline:none;">
             </div>
           </div>
           <button type="submit" id="pp-submit-btn" class="w-full py-3 rounded-xl font-bold text-white mt-2 transition-all" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);">
