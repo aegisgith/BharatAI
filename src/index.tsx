@@ -258,40 +258,58 @@ async function sendRegistrationEmail(c: any, attendee: any) {
        </div>
      </td>`
 
-  const upsell = String(attendee.badge_type || 'Visitor Pass') === 'Visitor Pass' ? `
-        <div style="margin-top:26px;padding-top:22px;border-top:1px solid #eee;">
-          <p style="margin:0 0 4px;font-size:15px;font-weight:bold;color:#1E2140;text-align:center;">Coming for the conference too?</p>
-          <p style="margin:0 0 16px;font-size:13px;line-height:1.6;color:#666;text-align:center;">Your Visitor Pass covers the exhibition floor and select keynotes. These two add the rest of the programme.</p>
-          <table style="width:100%;border-collapse:separate;border-spacing:0;"><tr>
-            ${tier('#0f7b47', 'Delegate Pass', '&#8377;4,999 + GST', ['All conference sessions, both days', 'Workshops and lunch', 'Networking app: see who is attending, message them, and book meeting slots'], 'https://bharataiinnovation.com/register#delegate')}
-            ${tier('#A67C00', 'VIP Pass', '&#8377;14,999 + GST', ['Everything in Delegate', 'VIP lounge and priority seating', 'Speaker meet &amp; greet, VIP dinner'], 'https://bharataiinnovation.com/register#vip')}
-          </tr></table>
-          <p style="margin:14px 0 0;font-size:11.5px;color:#999;text-align:center;">Use this same email address. We move your registration to the new tier once payment is confirmed &mdash; your reference number does not change.</p>
-        </div>` : ''
-
-  // The networking app is the main thing a Delegate has paid for, and the
-  // confirmation never mentioned it - so the people most likely to use it were the
-  // least likely to hear about it. Shown to every tier that is not a Visitor Pass,
-  // which is exactly the set the networking hub is unlocked for.
+  // The networking app is the main thing a Delegate buys, and the confirmation used
+  // to mention it to nobody. It is now described to both sides of the line: to those
+  // who have it, so they open it early and the hub is not empty on day one; and to
+  // Visitors, because "upgrade for full networking access" persuades nobody, while
+  // being able to book a slot with a specific person before arriving does.
   const net = (label: string, body: string) =>
     `<tr><td width="26" valign="top" style="padding:0 0 12px;color:#0f7b47;font-size:14px;">&#10003;</td>` +
     `<td valign="top" style="padding:0 0 12px;"><p style="margin:0 0 2px;font-size:13.5px;font-weight:bold;color:#1E2140;">${label}</p>` +
     `<p style="margin:0;font-size:12.5px;line-height:1.6;color:#666;">${body}</p></td></tr>`
 
-  const networking = String(attendee.badge_type || 'Visitor Pass') !== 'Visitor Pass' ? `
-        <div style="margin-top:26px;padding-top:22px;border-top:1px solid #eee;">
-          <p style="margin:0 0 4px;font-size:15px;font-weight:bold;color:#1E2140;text-align:center;">Your pass includes the networking app</p>
-          <p style="margin:0 0 16px;font-size:13px;line-height:1.6;color:#666;text-align:center;">Most of the value of two days is who you meet. Start before you arrive &mdash; the people worth meeting fill their diaries early.</p>
-          <table style="width:100%;border-collapse:collapse;">
+  const netRows = `
             ${net('See who is attending', 'Browse delegates, speakers and investors by what they work on, and connect.')}
             ${net('Message them directly', 'A private conversation, no email address exchanged.')}
             ${net('Book a meeting slot', 'Propose a time, a length and a place. They accept or decline in the app, so you arrive with a diary rather than a hope.')}
-            ${net('Build your agenda', 'Star the sessions you want across both days and carry the plan on your phone.')}
-          </table>
+            ${net('Build your agenda', 'Star the sessions you want across both days and carry the plan on your phone.')}`
+
+  const boardrooms = `<p style="margin:14px 0 0;font-size:11.5px;line-height:1.6;color:#999;text-align:center;">Need somewhere private for a longer conversation? WTC boardrooms can be hired by the hour &mdash; rates are on the <a href="https://bharataiinnovation.com/#networking" style="color:#0f7b47;">networking page</a>.</p>`
+
+  const isVisitor = String(attendee.badge_type || 'Visitor Pass') === 'Visitor Pass'
+
+  // Who is already in the room, in real numbers. A Visitor deciding whether to pay
+  // wants to know who they would be meeting, and the honest answer is more
+  // persuasive than any adjective - so it is counted at send time rather than
+  // written down and left to go stale.
+  const roomLine = isVisitor ? await audienceTeaser(c) : ''
+
+  const networking = !isVisitor ? `
+        <div style="margin-top:26px;padding-top:22px;border-top:1px solid #eee;">
+          <p style="margin:0 0 4px;font-size:15px;font-weight:bold;color:#1E2140;text-align:center;">Your pass includes the networking app</p>
+          <p style="margin:0 0 16px;font-size:13px;line-height:1.6;color:#666;text-align:center;">Most of the value of two days is who you meet. Start before you arrive &mdash; the people worth meeting fill their diaries early.</p>
+          <table style="width:100%;border-collapse:collapse;">${netRows}</table>
           <div style="text-align:center;margin:18px 0 0;">
             <a href="${appUrl}" style="display:inline-block;padding:11px 26px;background:#0f7b47;color:#fff;text-decoration:none;border-radius:9px;font-weight:bold;font-size:13px;">Open the networking app</a>
           </div>
-          <p style="margin:14px 0 0;font-size:11.5px;line-height:1.6;color:#999;text-align:center;">Need somewhere private for a longer conversation? WTC boardrooms can be hired by the hour &mdash; rates are on the <a href="https://bharataiinnovation.com/#networking" style="color:#0f7b47;">networking page</a>.</p>
+          ${boardrooms}
+        </div>` : ''
+
+  // Value first, price second. The tier cards used to come straight after a single
+  // line, which asked someone to spend 4,999 before telling them what for.
+  const upsell = isVisitor ? `
+        <div style="margin-top:26px;padding-top:22px;border-top:1px solid #eee;">
+          <p style="margin:0 0 4px;font-size:15px;font-weight:bold;color:#1E2140;text-align:center;">Coming for the conference too?</p>
+          <p style="margin:0 0 14px;font-size:13px;line-height:1.6;color:#666;text-align:center;">Your Visitor Pass covers the exhibition floor and select keynotes. A Delegate or VIP pass adds every conference session, the workshops, lunch &mdash; and the networking app, which is where most of the value of two days actually is.</p>
+          ${roomLine}
+          <p style="margin:0 0 12px;font-size:13px;line-height:1.6;color:#666;text-align:center;">Here is what the app does, and why starting before you arrive matters &mdash; the people worth meeting fill their diaries early.</p>
+          <table style="width:100%;border-collapse:collapse;">${netRows}</table>
+          <table style="width:100%;border-collapse:separate;border-spacing:0;margin-top:18px;"><tr>
+            ${tier('#0f7b47', 'Delegate Pass', '&#8377;4,999 + GST', ['All conference sessions, both days', 'Workshops and lunch', 'Full networking app, as above'], 'https://bharataiinnovation.com/register#delegate')}
+            ${tier('#A67C00', 'VIP Pass', '&#8377;14,999 + GST', ['Everything in Delegate', 'VIP lounge and priority seating', 'Speaker meet &amp; greet, VIP dinner'], 'https://bharataiinnovation.com/register#vip')}
+          </tr></table>
+          ${boardrooms}
+          <p style="margin:12px 0 0;font-size:11.5px;color:#999;text-align:center;">Use this same email address. We move your registration to the new tier once payment is confirmed &mdash; your reference number does not change.</p>
         </div>` : ''
 
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#f5f5f5;font-family:Arial,sans-serif;">
@@ -332,6 +350,35 @@ async function sendRegistrationEmail(c: any, attendee: any) {
       })
     })
   } catch { /* registration already succeeded; a failed email must not surface */ }
+}
+
+// Counted from the table at send time, cached briefly because a confirmation email
+// should not run an aggregate over every attendee on every registration. Returns
+// nothing at all rather than a small number: "12 people are registered" argues
+// against buying a ticket.
+let _teaser: { at: number; html: string } | null = null
+const TEASER_TTL_MS = 10 * 60 * 1000
+
+async function audienceTeaser(c: any): Promise<string> {
+  if (_teaser && Date.now() - _teaser.at < TEASER_TTL_MS) return _teaser.html
+  let html = ''
+  try {
+    const { results } = await c.env.DB.prepare(
+      'SELECT job_title FROM attendees WHERE event_id = 1'
+    ).all() as any
+    const rows = results || []
+    const count = (label: string) => rows.filter((r: any) => seniorityOf(r.job_title) === label).length
+    const senior = count('Founders & C-suite')
+    const vp = count('VP & Director')
+    const round = (n: number) => n >= 100 ? Math.floor(n / 50) * 50 + '+' : String(n)
+    if (rows.length >= 200 && senior + vp >= 50) {
+      html = `<p style="margin:0 0 14px;padding:11px 14px;background:#F4F8F6;border-radius:9px;font-size:12.5px;line-height:1.65;color:#1E2140;text-align:center;">` +
+        `<strong>${round(rows.length)}</strong> people are already registered &mdash; among them <strong>${round(senior)}</strong> founders and C-suite ` +
+        `and <strong>${round(vp)}</strong> VPs and directors. The networking app is how you reach them.</p>`
+    }
+  } catch { /* a teaser is not worth failing a confirmation email over */ }
+  _teaser = { at: Date.now(), html }
+  return html
 }
 
 function emailBrandHeader(title: string, subtitle: string): string {
