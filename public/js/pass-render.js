@@ -217,7 +217,9 @@
     centre(name === String(user.name || '') ? name : name + '…', y + px(26), T.gold ? '#f3d97a' : '#ffffff');
     y += px(38);
     if (user.job_title) { f('400', 14, INTER); centre(String(user.job_title), y + px(12), T.gold ? '#c8b98a' : '#c3ccdd'); y += px(20); }
-    if (user.company) { f('400', 14, INTER); centre(String(user.company).toUpperCase(), y + px(12), T.gold ? '#9a8a5a' : '#8892b0'); y += px(20); }
+    // Not uppercased: the design prints the organisation as written, and forcing caps
+    // mangles the ones that carry their own casing (IIT, mUni, NETSCOUT).
+    if (user.company) { f('400', 14, INTER); centre(String(user.company), y + px(12), T.gold ? '#9a8a5a' : '#8892b0'); y += px(20); }
 
     y += px(24); divider(y, T.gold); y += px(24);
 
