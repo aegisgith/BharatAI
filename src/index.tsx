@@ -181,6 +181,44 @@ async function paymentStatusEnabled(c: any): Promise<boolean> {
   return _paymentStatusCol
 }
 
+// Columns the admin panel may write on an attendee. Shared by the full edit (PUT),
+// the inline cell edit (PATCH) and Add Attendee (POST) so the three cannot drift.
+const ADMIN_ATTENDEE_FIELDS = [
+  'name', 'email', 'mobile', 'company', 'job_title', 'role', 'badge_type',
+  'rsvp_status', 'lunch_inclusion', 'arrival_time', 'linkedin_url', 'twitter_url',
+  'website_url', 'bio', 'interests', 'city', 'country', 'industry',
+  'registration_date', 'payment_amount',
+]
+
+// payment_amount is written by the admin table's inline Payment cell and read back
+// by the CSV export, but no migration ever added the column. Every statement that
+// bound it therefore failed outright with "no such column" - which is why saving the
+// Edit Attendee dialog, and Add Attendee, have never worked, and why an admin could
+// not repair a blank designation or city by hand. Rather than bind a column that may
+// not exist, the write set is intersected with what the table actually has: the
+// field starts working by itself the day a migration adds it.
+let _attendeeCols: Set<string> | null = null
+async function attendeeColumns(c: any): Promise<Set<string>> {
+  if (_attendeeCols) return _attendeeCols
+  try {
+    const { results } = await c.env.DB.prepare('PRAGMA table_info(attendees)').all()
+    const found = new Set((results || []).map((r: any) => String(r.name)))
+    if (found.size) { _attendeeCols = found; return found }
+  } catch { /* fall through to the conservative set below */ }
+  // PRAGMA unavailable: assume everything except the column known to be missing,
+  // rather than caching a guess that would outlive the real schema.
+  return new Set(ADMIN_ATTENDEE_FIELDS.filter(f => f !== 'payment_amount'))
+}
+
+// industry is an allowlist, not free text: the sponsor-facing sector breakdown
+// aggregates on exact string match, so one hand-typed "IT" splits the chart. Anything
+// off the list is stored as empty rather than as a value no chart will ever count.
+function sanitizeAttendeeField(field: string, value: any): any {
+  const v = value ?? ''
+  if (field === 'industry') return INDUSTRIES.includes(String(v)) ? String(v) : ''
+  return v
+}
+
 // Enquiries were written to the database and nobody was told. 239 had accumulated
 // unactioned — including sponsorship and group-registration leads — because the only
 // way to see one was to remember to open the admin panel.
@@ -2054,6 +2092,13 @@ app.post('/api/external/register', async (c) => {
   const badgeType = PASS_TYPE_MAP[passPackage] || 'Visitor Pass'
   const eventId = 1
 
+  // Deliberately NOT running missingRegistrationFields() here, unlike the in-app
+  // register endpoint. Something outside this repo posts to this route and we cannot
+  // see what it sends, so rejecting an incomplete body would break that caller
+  // silently. It has produced one row in six months, so it is not what is filling the
+  // list with blanks - but it is the one remaining way in without a required-field
+  // check, and closing it is a one-line change once the caller is identified.
+
   try {
     // Try to add all the extra columns — if migration hasn't run yet, the basic columns still work
     const result = await c.env.DB.prepare(
@@ -2972,13 +3017,24 @@ app.put('/api/attendees/:id/profile', async (c) => {
   const id = c.req.param('id')
   const denied = await requireSelf(c, id); if (denied) return denied
   const body = await c.req.json()
-  const { name, company, job_title, bio, interests, linkedin_url, twitter_url, website_url, mobile, lunch_inclusion, arrival_time } = body
+  const { name, company, job_title, bio, interests, linkedin_url, twitter_url, website_url, mobile, lunch_inclusion, arrival_time, city, industry } = body
+
+  // city and industry are required at registration but were missing from this
+  // statement, so the ~1,000 people who registered before that rule existed had no
+  // way to supply them: the Edit Profile dialog could not send what the endpoint
+  // would not accept. Both are only written when the caller sends them, so a client
+  // that omits them cannot blank a value that is already there.
+  const extra: string[] = []
+  const extraVals: any[] = []
+  if (city !== undefined) { extra.push('city = ?'); extraVals.push(String(city || '').trim()) }
+  if (industry !== undefined && INDUSTRIES.includes(String(industry))) { extra.push('industry = ?'); extraVals.push(String(industry)) }
 
   await c.env.DB.prepare(
-    'UPDATE attendees SET name=?, company=?, job_title=?, bio=?, interests=?, linkedin_url=?, twitter_url=?, website_url=?, mobile=?, lunch_inclusion=?, arrival_time=? WHERE id=?'
+    'UPDATE attendees SET name=?, company=?, job_title=?, bio=?, interests=?, linkedin_url=?, twitter_url=?, website_url=?, mobile=?, lunch_inclusion=?, arrival_time=?' +
+    (extra.length ? ', ' + extra.join(', ') : '') + ' WHERE id=?'
   ).bind(
     name, company || '', job_title || '', bio || '', interests || '',
-    linkedin_url || '', twitter_url || '', website_url || '', mobile || '', lunch_inclusion || 'Yes', arrival_time || '', id
+    linkedin_url || '', twitter_url || '', website_url || '', mobile || '', lunch_inclusion || 'Yes', arrival_time || '', ...extraVals, id
   ).run()
 
   const updated = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(id).first()
@@ -3189,9 +3245,24 @@ app.delete('/api/admin/sessions/:id', async (c) => {
 app.put('/api/admin/attendees/:id', async (c) => {
   const id = c.req.param('id')
   const b = await c.req.json()
-  await c.env.DB.prepare(
-    'UPDATE attendees SET name=?, email=?, company=?, job_title=?, bio=?, interests=?, role=?, badge_type=?, mobile=?, linkedin_url=?, lunch_inclusion=?, twitter_url=?, website_url=?, arrival_time=?, city=?, country=?, registration_date=?, payment_amount=? WHERE id=?'
-  ).bind(b.name, b.email, b.company||'', b.job_title||'', b.bio||'', b.interests||'', b.role, b.badge_type, b.mobile||'', b.linkedin_url||'', b.lunch_inclusion||'Yes', b.twitter_url||'', b.website_url||'', b.arrival_time||'', b.city||'', b.country||'', b.registration_date||'', b.payment_amount||'', id).run()
+
+  // Only the keys the caller actually sent are written. The old statement set every
+  // column unconditionally, so saving the Edit Attendee dialog - which posts no city,
+  // country or registration_date - blanked all three on an attendee who had them.
+  // Sending a key with an empty value still clears that one field, so an admin can
+  // deliberately empty a cell as before.
+  const cols = await attendeeColumns(c)
+  const updates: string[] = []
+  const values: any[] = []
+  for (const f of ADMIN_ATTENDEE_FIELDS) {
+    if (!(f in b) || !cols.has(f)) continue
+    updates.push(`${f} = ?`)
+    values.push(sanitizeAttendeeField(f, b[f]))
+  }
+  if (updates.length) {
+    values.push(id)
+    await c.env.DB.prepare(`UPDATE attendees SET ${updates.join(', ')} WHERE id = ?`).bind(...values).run()
+  }
 
   // Auto-create exhibitor entry if badge is exhibitor-related
   const exhibitorBadges = ['exhibitor', 'exhibitor booth', 'exhibition speaker']
@@ -3214,13 +3285,16 @@ app.put('/api/admin/attendees/:id', async (c) => {
 app.patch('/api/admin/attendees/:id', async (c) => {
   const id = c.req.param('id')
   const body = await c.req.json()
-  const allowedFields = ['name', 'email', 'mobile', 'company', 'job_title', 'role', 'badge_type', 'rsvp_status', 'lunch_inclusion', 'arrival_time', 'linkedin_url', 'bio', 'interests', 'twitter_url', 'website_url', 'city', 'country', 'registration_date', 'payment_amount']
+  // Same list as the full edit, minus any column this database does not have -
+  // otherwise an inline edit of the Payment cell 500s instead of saving.
+  const cols = await attendeeColumns(c)
+  const allowedFields = ADMIN_ATTENDEE_FIELDS.filter(f => cols.has(f))
   const updates: string[] = []
   const values: any[] = []
   for (const [key, val] of Object.entries(body)) {
     if (allowedFields.includes(key)) {
       updates.push(`${key} = ?`)
-      values.push(val ?? '')
+      values.push(sanitizeAttendeeField(key, val))
     }
   }
   if (updates.length === 0) return c.json({ error: 'No valid fields to update' }, 400)
@@ -3253,14 +3327,36 @@ app.delete('/api/admin/attendees/:id', async (c) => {
 // Admin: Add single attendee
 app.post('/api/admin/attendees', async (c) => {
   const body = await c.req.json()
-  const { event_id, name, email, company, job_title, bio, interests, linkedin_url, twitter_url, website_url, mobile, lunch_inclusion, role, badge_type, arrival_time, city, country, registration_date, payment_amount } = body
+  const { event_id, name, email, company, badge_type } = body
   if (!name || !email) return c.json({ error: 'Name and email are required' }, 400)
   const normalizedEmail = email.trim().toLowerCase()
 
+  // Built from the same field list as the edit paths and intersected with the real
+  // schema, so a column the migrations never added cannot fail the whole insert -
+  // which is what made Add Attendee reject every submission.
+  const cols = await attendeeColumns(c)
+  const nowStamp = new Date().toISOString().slice(0, 19).replace('T', ' ')
+  const fallbacks: Record<string, any> = {
+    lunch_inclusion: 'Yes', role: 'attendee', badge_type: 'Delegate', country: 'India',
+    // A row with no registration_date sorts to the bottom of a newest-first list -
+    // exactly the row an admin just added and wants to see.
+    registration_date: nowStamp,
+  }
+  const names: string[] = ['event_id', 'name', 'email']
+  const vals: any[] = [event_id, name.trim(), normalizedEmail]
+  for (const f of ADMIN_ATTENDEE_FIELDS) {
+    if (f === 'name' || f === 'email' || !cols.has(f)) continue
+    const v = body[f]
+    names.push(f)
+    vals.push(v === undefined || v === null || v === '' ? (fallbacks[f] ?? '') : sanitizeAttendeeField(f, v))
+  }
+  names.push('is_online')
+  vals.push(0)
+
   try {
     const result = await c.env.DB.prepare(
-      'INSERT INTO attendees (event_id, name, email, company, job_title, bio, interests, linkedin_url, twitter_url, website_url, mobile, lunch_inclusion, role, badge_type, arrival_time, city, country, registration_date, payment_amount, is_online) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0)'
-    ).bind(event_id, name.trim(), normalizedEmail, company || '', job_title || '', bio || '', interests || '', linkedin_url || '', twitter_url || '', website_url || '', mobile || '', lunch_inclusion || 'Yes', role || 'attendee', badge_type || 'Delegate', arrival_time || '', city || '', country || '', registration_date || '', payment_amount || '').run()
+      `INSERT INTO attendees (${names.join(', ')}) VALUES (${names.map(() => '?').join(', ')})`
+    ).bind(...vals).run()
 
     const attendee = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(result.meta.last_row_id).first()
 
@@ -3301,8 +3397,11 @@ app.post('/api/admin/attendees/bulk', async (c) => {
     }
     const email = a.email.trim().toLowerCase()
     try {
+      // city, country and industry are parsed out of the CSV by the uploader but were
+      // never in this statement, so every bulk-imported attendee landed with those
+      // three blank no matter what the spreadsheet said.
       await c.env.DB.prepare(
-        'INSERT INTO attendees (event_id, name, email, company, job_title, bio, interests, linkedin_url, mobile, lunch_inclusion, role, badge_type, is_online) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)'
+        'INSERT INTO attendees (event_id, name, email, company, job_title, bio, interests, linkedin_url, mobile, lunch_inclusion, role, badge_type, city, country, industry, registration_date, is_online) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)'
       ).bind(
         event_id,
         a.name.trim(),
@@ -3315,7 +3414,11 @@ app.post('/api/admin/attendees/bulk', async (c) => {
         a.mobile?.trim() || '',
         a.lunch_inclusion?.trim() || 'Yes',
         a.role?.trim() || 'attendee',
-        a.badge_type?.trim() || 'Delegate'
+        a.badge_type?.trim() || 'Delegate',
+        a.city?.trim() || '',
+        a.country?.trim() || 'India',
+        INDUSTRIES.includes(String(a.industry || '').trim()) ? String(a.industry).trim() : '',
+        a.registration_date?.trim() || new Date().toISOString().slice(0, 19).replace('T', ' ')
       ).run()
       results.imported++
     } catch (e: any) {
@@ -6961,6 +7064,29 @@ function mainPageHTML(): string {
              surfaces the actions that matter to them. Populated by renderRoleHome(). -->
         <div class="max-w-7xl mx-auto px-4 mt-6 hidden" id="role-home"></div>
 
+        <!-- Complete-your-profile card. Rendered by updateProfileCompletionCard(),
+             hidden the moment there is nothing left to ask for. The photo and the
+             city/industry/designation fields were never requested anywhere after
+             registration, which is why ~1,000 records are missing them and only 10
+             attendees have a photo. -->
+        <div class="max-w-7xl mx-auto px-4 mt-6 hidden" id="profile-complete-card">
+          <div class="glass rounded-2xl p-6 border border-primary-500/25">
+            <div class="flex items-start gap-4">
+              <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-primary-500/20 to-orange-500/20 flex items-center justify-center shrink-0">
+                <i class="fas fa-id-card text-2xl text-primary-400"></i>
+              </div>
+              <div class="flex-1">
+                <h3 class="font-bold text-base mb-1">Finish your profile</h3>
+                <p class="text-xs text-gray-400 mb-4">Still to add: <span id="pc-missing" class="text-white font-medium"></span>. Your photo and designation print on your pass, and the badge desk checks the pass against a government photo ID that matches it.</p>
+                <div class="flex flex-wrap gap-2">
+                  <button type="button" id="pc-photo-btn" onclick="addProfilePhotoFromCard()" class="px-5 py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-primary-600 to-primary-500 hover:from-primary-500 hover:to-primary-400 text-white transition-all shadow-lg shadow-primary-500/20"><i class="fas fa-camera mr-1.5"></i>Add your photo</button>
+                  <button type="button" id="pc-details-btn" onclick="openEditProfile()" class="px-5 py-2.5 rounded-xl text-sm font-semibold bg-white/10 hover:bg-white/15 text-gray-300 transition-all border border-white/10"><i class="fas fa-user-edit mr-1.5"></i>Add the missing details</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- RSVP Confirmation Card -->
         <div class="max-w-7xl mx-auto px-4 mt-6 hidden" id="rsvp-card-container">
           <div class="glass rounded-2xl p-6 border border-amber-500/20" id="rsvp-card">
@@ -8551,12 +8677,29 @@ function mainPageHTML(): string {
             </div>
             <div class="grid grid-cols-2 gap-3">
               <div>
-                <label class="text-xs text-gray-400 mb-1 block">Company</label>
+                <label id="edit-company-label" class="text-xs text-gray-400 mb-1 block">Organisation *</label>
                 <input type="text" id="edit-company" class="w-full px-4 py-3 rounded-xl text-sm">
               </div>
-              <div>
-                <label class="text-xs text-gray-400 mb-1 block">Job Title</label>
+              <div id="edit-jobtitle-field">
+                <label class="text-xs text-gray-400 mb-1 block">Designation *</label>
                 <input type="text" id="edit-jobtitle" class="w-full px-4 py-3 rounded-xl text-sm">
+              </div>
+            </div>
+            <!-- City and Industry are required at registration, but for the ~1,000
+                 people who signed up before that rule there was nowhere to enter
+                 them: neither field existed on this form. They print on the badge
+                 and drive the sector breakdown sponsors are shown. -->
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="text-xs text-gray-400 mb-1 block">City *</label>
+                <input type="text" id="edit-city" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="e.g. Mumbai">
+              </div>
+              <div>
+                <label class="text-xs text-gray-400 mb-1 block">Industry *</label>
+                <select id="edit-industry" class="w-full px-4 py-3 rounded-xl text-sm">
+                  <option value="">Select industry</option>
+                  ${INDUSTRIES.map(i => `<option>${i}</option>`).join('')}
+                </select>
               </div>
             </div>
             <div>
@@ -8664,8 +8807,18 @@ function mainPageHTML(): string {
     function md5(s){function L(k,d){return(k<<d)|(k>>>(32-d))}function K(G,k){var I,d,F,H,x;F=(G&2147483648);H=(k&2147483648);I=(G&1073741824);d=(k&1073741824);x=(G&1073741823)+(k&1073741823);if(I&d)return(x^2147483648^F^H);if(I|d){if(x&1073741824)return(x^3221225472^F^H);else return(x^1073741824^F^H)}else return(x^F^H)}function r(d,F,k){return(d&F)|((~d)&k)}function q(d,F,k){return(d&k)|(F&(~k))}function p(d,F,k){return(d^F^k)}function n(d,F,k){return(F^(d|(~k)))}function u(G,F,aa,Z,k,H,I){G=K(G,K(K(r(F,aa,Z),k),I));return K(L(G,H),F)}function f(G,F,aa,Z,k,H,I){G=K(G,K(K(q(F,aa,Z),k),I));return K(L(G,H),F)}function D(G,F,aa,Z,k,H,I){G=K(G,K(K(p(F,aa,Z),k),I));return K(L(G,H),F)}function t(G,F,aa,Z,k,H,I){G=K(G,K(K(n(F,aa,Z),k),I));return K(L(G,H),F)}function e(G){var Z;var F=G.length;var x=F+8;var k=(x-(x%64))/64;var I=(k+1)*16;var aa=Array(I-1);var d=0;var H=0;while(H<F){Z=(H-(H%4))/4;d=(H%4)*8;aa[Z]=(aa[Z]|(G.charCodeAt(H)<<d));H++}Z=(H-(H%4))/4;d=(H%4)*8;aa[Z]=aa[Z]|(128<<d);aa[I-2]=F<<3;aa[I-1]=F>>>29;return aa}function B(x){var k="",F="",G,d;for(d=0;d<=3;d++){G=(x>>>(d*8))&255;F="0"+G.toString(16);k=k+F.substr(F.length-2,2)}return k}var C=Array();var P,h,E,v,g,Y,X,W,V;var S=7,Q=12,N=17,M=22;var A=5,z=9,y=14,w=20;var o=4,m=11,l=16,j=23;var U=6,T=10,R=15,O=21;s=unescape(encodeURIComponent(s));C=e(s);Y=1732584193;X=4023233417;W=2562383102;V=271733878;for(P=0;P<C.length;P+=16){h=Y;E=X;v=W;g=V;Y=u(Y,X,W,V,C[P+0],S,3614090360);V=u(V,Y,X,W,C[P+1],Q,3905402710);W=u(W,V,Y,X,C[P+2],N,606105819);X=u(X,W,V,Y,C[P+3],M,3250441966);Y=u(Y,X,W,V,C[P+4],S,4118548399);V=u(V,Y,X,W,C[P+5],Q,1200080426);W=u(W,V,Y,X,C[P+6],N,2821735955);X=u(X,W,V,Y,C[P+7],M,4249261313);Y=u(Y,X,W,V,C[P+8],S,1770035416);V=u(V,Y,X,W,C[P+9],Q,2336552879);W=u(W,V,Y,X,C[P+10],N,4294925233);X=u(X,W,V,Y,C[P+11],M,2304563134);Y=u(Y,X,W,V,C[P+12],S,1804603682);V=u(V,Y,X,W,C[P+13],Q,4254626195);W=u(W,V,Y,X,C[P+14],N,2792965006);X=u(X,W,V,Y,C[P+15],M,1236535329);Y=f(Y,X,W,V,C[P+1],A,4129170786);V=f(V,Y,X,W,C[P+6],z,3225465664);W=f(W,V,Y,X,C[P+11],y,643717713);X=f(X,W,V,Y,C[P+0],w,3921069994);Y=f(Y,X,W,V,C[P+5],A,3593408605);V=f(V,Y,X,W,C[P+10],z,38016083);W=f(W,V,Y,X,C[P+15],y,3634488961);X=f(X,W,V,Y,C[P+4],w,3889429448);Y=f(Y,X,W,V,C[P+9],A,568446438);V=f(V,Y,X,W,C[P+14],z,3275163606);W=f(W,V,Y,X,C[P+3],y,4107603335);X=f(X,W,V,Y,C[P+8],w,1163531501);Y=f(Y,X,W,V,C[P+13],A,2850285829);V=f(V,Y,X,W,C[P+2],z,4243563512);W=f(W,V,Y,X,C[P+7],y,1735328473);X=f(X,W,V,Y,C[P+12],w,2368359562);Y=D(Y,X,W,V,C[P+5],o,4294588738);V=D(V,Y,X,W,C[P+8],m,2272392833);W=D(W,V,Y,X,C[P+11],l,1839030562);X=D(X,W,V,Y,C[P+14],j,4259657740);Y=D(Y,X,W,V,C[P+1],o,2763975236);V=D(V,Y,X,W,C[P+4],m,1272893353);W=D(W,V,Y,X,C[P+7],l,4139469664);X=D(X,W,V,Y,C[P+10],j,3200236656);Y=D(Y,X,W,V,C[P+13],o,681279174);V=D(V,Y,X,W,C[P+0],m,3936430074);W=D(W,V,Y,X,C[P+3],l,3572445317);X=D(X,W,V,Y,C[P+6],j,76029189);Y=D(Y,X,W,V,C[P+9],o,3654602809);V=D(V,Y,X,W,C[P+12],m,3873151461);W=D(W,V,Y,X,C[P+15],l,530742520);X=D(X,W,V,Y,C[P+2],j,3299628645);Y=t(Y,X,W,V,C[P+0],U,4096336452);V=t(V,Y,X,W,C[P+7],T,1126891415);W=t(W,V,Y,X,C[P+14],R,2878612391);X=t(X,W,V,Y,C[P+5],O,4237533241);Y=t(Y,X,W,V,C[P+12],U,1700485571);V=t(V,Y,X,W,C[P+3],T,2399980690);W=t(W,V,Y,X,C[P+10],R,4293915773);X=t(X,W,V,Y,C[P+1],O,2240044497);Y=t(Y,X,W,V,C[P+8],U,1873313359);V=t(V,Y,X,W,C[P+15],T,4264355552);W=t(W,V,Y,X,C[P+6],R,2734768916);X=t(X,W,V,Y,C[P+13],O,1309151649);Y=t(Y,X,W,V,C[P+4],U,4149444226);V=t(V,Y,X,W,C[P+11],T,3174756917);W=t(W,V,Y,X,C[P+2],R,718787259);X=t(X,W,V,Y,C[P+9],O,3951481745);Y=K(Y,h);X=K(X,E);W=K(W,v);V=K(V,g)}return(B(Y)+B(X)+B(W)+B(V)).toLowerCase()}
 
     // Get avatar URL: Gravatar with UI Avatars fallback
+    // True for a photo the attendee actually uploaded, whatever form it is stored in.
+    // Photos moved from an inline base64 column to R2 (a "/api/uploads/..." URL), and
+    // the check below still only recognised base64 - so every photo uploaded since
+    // then was ignored and the holder was shown a Gravatar initial instead. Uploading
+    // looked like it had failed, in the app and in the admin list alike.
+    function hasUploadedPhoto(u) {
+      u = String(u || '');
+      return u.indexOf('data:image/') === 0 || u.indexOf('/api/uploads/') === 0 || /^https?:\\/\\//.test(u);
+    }
+
     function getAvatarUrl(email, name, size, avatarUrl) {
-      if (avatarUrl && avatarUrl.startsWith('data:image/')) return avatarUrl;
+      if (hasUploadedPhoto(avatarUrl)) return avatarUrl;
       size = size || 80;
       // Generate unique background color from email/name hash
       const seed = (email || name || 'unknown').trim().toLowerCase();
@@ -9454,16 +9607,19 @@ function mainPageHTML(): string {
       const roleHome = document.getElementById('role-home');
       const upgradeCard = document.getElementById('home-upgrade-card');
       if (upgradeCard) upgradeCard.classList.toggle('hidden', !(currentUser && isVisitorPass()));
+      const profileCard = document.getElementById('profile-complete-card');
       if (currentUser) {
         if (rsvpCard) rsvpCard.classList.remove('hidden');
         if (quickActions) quickActions.classList.remove('hidden');
         if (registerVisitorBtn) registerVisitorBtn.classList.add('hidden');
         if (roleHome) { roleHome.classList.remove('hidden'); renderRoleHome(); }
+        updateProfileCompletionCard();
       } else {
         if (rsvpCard) rsvpCard.classList.add('hidden');
         if (quickActions) quickActions.classList.add('hidden');
         if (registerVisitorBtn) registerVisitorBtn.classList.remove('hidden');
         if (roleHome) roleHome.classList.add('hidden');
+        if (profileCard) profileCard.classList.add('hidden');
       }
 
       // Update arrival time card on homepage
@@ -11505,7 +11661,7 @@ function mainPageHTML(): string {
         await api.post('/api/attendees/' + currentUser.id + '/rsvp', { status });
         currentUser.rsvp_status = status;
         currentUser.rsvp_at = new Date().toISOString();
-        localStorage.setItem('tc_user', JSON.stringify(currentUser));
+        localStorage.setItem('agba_user', JSON.stringify(currentUser));
         updateRsvpCard();
         const msgs = { confirmed: "You're confirmed! See you at WTC Mumbai 🎉", declined: "We'll miss you! You can change your mind anytime.", maybe: "Noted as maybe. Let us know when you decide!" };
         showToast(msgs[status] || 'RSVP updated!', status === 'confirmed' ? 'success' : 'info');
@@ -11617,8 +11773,8 @@ function mainPageHTML(): string {
       // photo ID, and a pass carrying the holder's face is what makes that check
       // quick. Admin downloads bypass this so the desk can still issue for someone
       // who cannot upload on the spot.
-      if (!adminAttendee && !user.avatar_url) {
-        var got = await askForPassPhoto();
+      if (!adminAttendee && !hasUploadedPhoto(user.avatar_url)) {
+        var got = await askForPassPhoto(user);
         if (got !== 'done') return;
       }
 
@@ -11641,7 +11797,13 @@ function mainPageHTML(): string {
     // Photo is mandatory for a self-service download, so this resolves only on a
     // successful upload. Dismissing it aborts the download rather than proceeding
     // without one.
-    function askForPassPhoto() {
+    // Takes the attendee explicitly. It used to read a free variable named "user",
+    // which lives in generateEventPass and is not in scope here - so the upload threw
+    // a ReferenceError that the catch below reported as "Upload failed. Please try
+    // another image." Every attempt to add a photo at the pass gate failed that way.
+    function askForPassPhoto(user) {
+      user = user || currentUser;
+      if (!user || !user.id) return Promise.resolve('cancel');
       return new Promise(function (resolve) {
         var wrap = document.createElement('div');
         wrap.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(4,6,20,0.80);display:flex;align-items:center;justify-content:center;padding:20px;';
@@ -12387,12 +12549,78 @@ function mainPageHTML(): string {
       if (el) el.remove();
     }
 
+    // What is still missing from this attendee's record, named the way a person would
+    // say it. Mirrors missingRegistrationFields() on the server, including the
+    // Academic exemption: a student has no employer and no designation to give.
+    function profileGaps(u) {
+      u = u || currentUser || {};
+      const has = (v) => String(v == null ? '' : v).trim().length > 0;
+      const academic = String(u.badge_type || '') === 'Academic Pass';
+      const gaps = [];
+      if (!hasUploadedPhoto(u.avatar_url)) gaps.push('photo');
+      if (!has(u.company)) gaps.push(academic ? 'college name' : 'organisation');
+      if (!academic && !has(u.job_title)) gaps.push('designation');
+      if (!has(u.city)) gaps.push('city');
+      if (!has(u.industry)) gaps.push('industry');
+      if (!has(u.mobile)) gaps.push('mobile number');
+      return gaps;
+    }
+
+    // The subset the Edit Profile dialog is responsible for - the photo has its own
+    // picker and must not block a save.
+    function missingProfileFields() {
+      const u = Object.assign({}, currentUser, {
+        company: document.getElementById('edit-company').value,
+        job_title: document.getElementById('edit-jobtitle').value,
+        city: document.getElementById('edit-city').value,
+        industry: document.getElementById('edit-industry').value,
+        mobile: document.getElementById('edit-mobile').value,
+        avatar_url: 'data:image/skip',
+      });
+      return profileGaps(u);
+    }
+
+    // Nothing ever asked for these details after registration. The photo was only
+    // requested at pass download - a November action almost nobody has taken yet -
+    // and city and industry were requested nowhere at all. This card is the ask:
+    // it names what is missing and opens the right control for it.
+    function updateProfileCompletionCard() {
+      const card = document.getElementById('profile-complete-card');
+      if (!card) return;
+      if (!currentUser) { card.classList.add('hidden'); return; }
+      const gaps = profileGaps(currentUser);
+      if (!gaps.length) { card.classList.add('hidden'); return; }
+      const list = gaps.length < 2 ? gaps[0] : gaps.slice(0, -1).join(', ') + ' and ' + gaps[gaps.length - 1];
+      const needsPhoto = gaps.indexOf('photo') >= 0;
+      const needsDetails = gaps.length > (needsPhoto ? 1 : 0);
+      card.querySelector('#pc-missing').textContent = list;
+      card.querySelector('#pc-photo-btn').classList.toggle('hidden', !needsPhoto);
+      card.querySelector('#pc-details-btn').classList.toggle('hidden', !needsDetails);
+      card.classList.remove('hidden');
+    }
+
+    // Opens the same picker the pass download uses, then refreshes the card so the
+    // photo it just accepted stops being asked for.
+    async function addProfilePhotoFromCard() {
+      if (!currentUser) return;
+      await askForPassPhoto();
+      updateProfileCompletionCard();
+      updateNavAvatar();
+    }
+
     // Edit Profile
     function openEditProfile() {
       if (!currentUser) return;
       document.getElementById('edit-name').value = currentUser.name || '';
       document.getElementById('edit-company').value = currentUser.company || '';
       document.getElementById('edit-jobtitle').value = currentUser.job_title || '';
+      document.getElementById('edit-city').value = currentUser.city || '';
+      document.getElementById('edit-industry').value = currentUser.industry || '';
+      // A student has no employer and no job title, so the Academic tier collapses
+      // both into a College Name - the same rule the registration form uses.
+      var acad = String(currentUser.badge_type || '') === 'Academic Pass';
+      document.getElementById('edit-jobtitle-field').style.display = acad ? 'none' : '';
+      document.getElementById('edit-company-label').textContent = acad ? 'College Name *' : 'Organisation *';
       document.getElementById('edit-bio').value = currentUser.bio || '';
       document.getElementById('edit-interests').value = currentUser.interests || '';
       document.getElementById('edit-linkedin').value = currentUser.linkedin_url || '';
@@ -12403,7 +12631,7 @@ function mainPageHTML(): string {
       document.getElementById('edit-website').value = currentUser.website_url || '';
       // Avatar preview
       document.getElementById('edit-avatar-preview').src = getAvatarUrl(currentUser.email, currentUser.name, 128, currentUser.avatar_url);
-      document.getElementById('remove-avatar-btn').classList.toggle('hidden', !currentUser.avatar_url || !currentUser.avatar_url.startsWith('data:image/'));
+      document.getElementById('remove-avatar-btn').classList.toggle('hidden', !hasUploadedPhoto(currentUser.avatar_url));
       document.getElementById('edit-profile-modal').classList.remove('hidden');
     }
 
@@ -12428,8 +12656,11 @@ function mainPageHTML(): string {
           // Keeping the base64 here would put the whole image back into localStorage
           // and leave the client disagreeing with the row about where the photo is.
           currentUser.avatar_url = result.avatar_url || dataUrl;
-          localStorage.setItem('tc_user', JSON.stringify(currentUser));
+          localStorage.setItem('agba_user', JSON.stringify(currentUser));
           document.getElementById('remove-avatar-btn').classList.remove('hidden');
+          document.getElementById('edit-avatar-preview').src = currentUser.avatar_url;
+          updateNavAvatar();
+          updateProfileCompletionCard();
           toast('Photo uploaded!');
         }
       } catch(e) {
@@ -12443,7 +12674,7 @@ function mainPageHTML(): string {
       try {
         await fetch('/api/attendees/' + currentUser.id + '/avatar', { method: 'DELETE' }).then(r => r.json());
         currentUser.avatar_url = null;
-        localStorage.setItem('tc_user', JSON.stringify(currentUser));
+        localStorage.setItem('agba_user', JSON.stringify(currentUser));
         document.getElementById('edit-avatar-preview').src = getAvatarUrl(currentUser.email, currentUser.name, 128);
         document.getElementById('remove-avatar-btn').classList.add('hidden');
         toast('Photo removed');
@@ -12525,6 +12756,16 @@ function mainPageHTML(): string {
       e.preventDefault();
       if (!currentUser) return;
       const btn = e.target.querySelector('button[type=submit]');
+
+      // The same required set the registration form applies, checked here too so a
+      // profile cannot be saved back into the incomplete state we are trying to
+      // clear. Missing fields are named rather than just flagged.
+      const gaps = missingProfileFields();
+      if (gaps.length) {
+        showToast('Please add your ' + gaps.join(', ') + '.', 'error');
+        return;
+      }
+
       btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Saving...';
       btn.disabled = true;
 
@@ -12533,6 +12774,8 @@ function mainPageHTML(): string {
           name: document.getElementById('edit-name').value,
           company: document.getElementById('edit-company').value,
           job_title: document.getElementById('edit-jobtitle').value,
+          city: document.getElementById('edit-city').value,
+          industry: document.getElementById('edit-industry').value,
           bio: document.getElementById('edit-bio').value,
           interests: document.getElementById('edit-interests').value,
           linkedin_url: document.getElementById('edit-linkedin').value,
@@ -12547,6 +12790,7 @@ function mainPageHTML(): string {
         closeEditProfile();
         showToast('Profile updated!', 'success');
         loadMyProfile();
+        updateProfileCompletionCard();
       } catch(err) {
         showToast('Failed to update profile', 'error');
       } finally {
@@ -13159,8 +13403,18 @@ function adminPageHTML(): string {
     // ==================== AVATAR HELPERS ====================
     function md5(s){function L(k,d){return(k<<d)|(k>>>(32-d))}function K(G,k){var I,d,F,H,x;F=(G&2147483648);H=(k&2147483648);I=(G&1073741824);d=(k&1073741824);x=(G&1073741823)+(k&1073741823);if(I&d)return(x^2147483648^F^H);if(I|d){if(x&1073741824)return(x^3221225472^F^H);else return(x^1073741824^F^H)}else return(x^F^H)}function r(d,F,k){return(d&F)|((~d)&k)}function q(d,F,k){return(d&k)|(F&(~k))}function p(d,F,k){return(d^F^k)}function n(d,F,k){return(F^(d|(~k)))}function u(G,F,aa,Z,k,H,I){G=K(G,K(K(r(F,aa,Z),k),I));return K(L(G,H),F)}function f(G,F,aa,Z,k,H,I){G=K(G,K(K(q(F,aa,Z),k),I));return K(L(G,H),F)}function D(G,F,aa,Z,k,H,I){G=K(G,K(K(p(F,aa,Z),k),I));return K(L(G,H),F)}function t(G,F,aa,Z,k,H,I){G=K(G,K(K(n(F,aa,Z),k),I));return K(L(G,H),F)}function e(G){var Z;var F=G.length;var x=F+8;var k=(x-(x%64))/64;var I=(k+1)*16;var aa=Array(I-1);var d=0;var H=0;while(H<F){Z=(H-(H%4))/4;d=(H%4)*8;aa[Z]=(aa[Z]|(G.charCodeAt(H)<<d));H++}Z=(H-(H%4))/4;d=(H%4)*8;aa[Z]=aa[Z]|(128<<d);aa[I-2]=F<<3;aa[I-1]=F>>>29;return aa}function B(x){var k="",F="",G,d;for(d=0;d<=3;d++){G=(x>>>(d*8))&255;F="0"+G.toString(16);k=k+F.substr(F.length-2,2)}return k}var C=Array();var P,h,E,v,g,Y,X,W,V;var S=7,Q=12,N=17,M=22;var A=5,z=9,y=14,w=20;var o=4,m=11,l=16,j=23;var U=6,T=10,R=15,O=21;s=unescape(encodeURIComponent(s));C=e(s);Y=1732584193;X=4023233417;W=2562383102;V=271733878;for(P=0;P<C.length;P+=16){h=Y;E=X;v=W;g=V;Y=u(Y,X,W,V,C[P+0],S,3614090360);V=u(V,Y,X,W,C[P+1],Q,3905402710);W=u(W,V,Y,X,C[P+2],N,606105819);X=u(X,W,V,Y,C[P+3],M,3250441966);Y=u(Y,X,W,V,C[P+4],S,4118548399);V=u(V,Y,X,W,C[P+5],Q,1200080426);W=u(W,V,Y,X,C[P+6],N,2821735955);X=u(X,W,V,Y,C[P+7],M,4249261313);Y=u(Y,X,W,V,C[P+8],S,1770035416);V=u(V,Y,X,W,C[P+9],Q,2336552879);W=u(W,V,Y,X,C[P+10],N,4294925233);X=u(X,W,V,Y,C[P+11],M,2304563134);Y=u(Y,X,W,V,C[P+12],S,1804603682);V=u(V,Y,X,W,C[P+13],Q,4254626195);W=u(W,V,Y,X,C[P+14],N,2792965006);X=u(X,W,V,Y,C[P+15],M,1236535329);Y=f(Y,X,W,V,C[P+1],A,4129170786);V=f(V,Y,X,W,C[P+6],z,3225465664);W=f(W,V,Y,X,C[P+11],y,643717713);X=f(X,W,V,Y,C[P+0],w,3921069994);Y=f(Y,X,W,V,C[P+5],A,3593408605);V=f(V,Y,X,W,C[P+10],z,38016083);W=f(W,V,Y,X,C[P+15],y,3634488961);X=f(X,W,V,Y,C[P+4],w,3889429448);Y=f(Y,X,W,V,C[P+9],A,568446438);V=f(V,Y,X,W,C[P+14],z,3275163606);W=f(W,V,Y,X,C[P+3],y,4107603335);X=f(X,W,V,Y,C[P+8],w,1163531501);Y=f(Y,X,W,V,C[P+13],A,2850285829);V=f(V,Y,X,W,C[P+2],z,4243563512);W=f(W,V,Y,X,C[P+7],y,1735328473);X=f(X,W,V,Y,C[P+12],w,2368359562);Y=D(Y,X,W,V,C[P+5],o,4294588738);V=D(V,Y,X,W,C[P+8],m,2272392833);W=D(W,V,Y,X,C[P+11],l,1839030562);X=D(X,W,V,Y,C[P+14],j,4259657740);Y=D(Y,X,W,V,C[P+1],o,2763975236);V=D(V,Y,X,W,C[P+4],m,1272893353);W=D(W,V,Y,X,C[P+7],l,4139469664);X=D(X,W,V,Y,C[P+10],j,3200236656);Y=D(Y,X,W,V,C[P+13],o,681279174);V=D(V,Y,X,W,C[P+0],m,3936430074);W=D(W,V,Y,X,C[P+3],l,3572445317);X=D(X,W,V,Y,C[P+6],j,76029189);Y=D(Y,X,W,V,C[P+9],o,3654602809);V=D(V,Y,X,W,C[P+12],m,3873151461);W=D(W,V,Y,X,C[P+15],l,530742520);X=D(X,W,V,Y,C[P+2],j,3299628645);Y=t(Y,X,W,V,C[P+0],U,4096336452);V=t(V,Y,X,W,C[P+7],T,1126891415);W=t(W,V,Y,X,C[P+14],R,2878612391);X=t(X,W,V,Y,C[P+5],O,4237533241);Y=t(Y,X,W,V,C[P+12],U,1700485571);V=t(V,Y,X,W,C[P+3],T,2399980690);W=t(W,V,Y,X,C[P+10],R,4293915773);X=t(X,W,V,Y,C[P+1],O,2240044497);Y=t(Y,X,W,V,C[P+8],U,1873313359);V=t(V,Y,X,W,C[P+15],T,4264355552);W=t(W,V,Y,X,C[P+6],R,2734768916);X=t(X,W,V,Y,C[P+13],O,1309151649);Y=t(Y,X,W,V,C[P+4],U,4149444226);V=t(V,Y,X,W,C[P+11],T,3174756917);W=t(W,V,Y,X,C[P+2],R,718787259);X=t(X,W,V,Y,C[P+9],O,3951481745);Y=K(Y,h);X=K(X,E);W=K(W,v);V=K(V,g)}return(B(Y)+B(X)+B(W)+B(V)).toLowerCase()}
 
+    // True for a photo the attendee actually uploaded, whatever form it is stored in.
+    // Photos moved from an inline base64 column to R2 (a "/api/uploads/..." URL), and
+    // the check below still only recognised base64 - so every photo uploaded since
+    // then was ignored and the holder was shown a Gravatar initial instead. Uploading
+    // looked like it had failed, in the app and in the admin list alike.
+    function hasUploadedPhoto(u) {
+      u = String(u || '');
+      return u.indexOf('data:image/') === 0 || u.indexOf('/api/uploads/') === 0 || /^https?:\\/\\//.test(u);
+    }
+
     function getAvatarUrl(email, name, size, avatarUrl) {
-      if (avatarUrl && avatarUrl.startsWith('data:image/')) return avatarUrl;
+      if (hasUploadedPhoto(avatarUrl)) return avatarUrl;
       size = size || 80;
       const seed = (email || name || 'unknown').trim().toLowerCase();
       const colors = ['6366f1','8b5cf6','ec4899','f43f5e','f97316','eab308','22c55e','14b8a6','06b6d4','3b82f6','a855f7','e11d48','0ea5e9','10b981','f59e0b','84cc16'];
@@ -14476,6 +14730,9 @@ function adminPageHTML(): string {
         'badge_type': ['badge_type','badge','badgetype','badge_category'],
         'city': ['city','location','town'],
         'country': ['country','nation','country_name'],
+        // Only an exact match against the 22-sector list is stored; anything else is
+        // dropped rather than fragmenting the sector breakdown sponsors are shown.
+        'industry': ['industry','sector','vertical','domain'],
         'registration_date': ['registration_date','registrationdate','reg_date','registered','registration'],
         'payment_amount': ['payment_amount','paymentamount','payment','amount','fee','price'],
       };
@@ -15131,7 +15388,7 @@ function adminPageHTML(): string {
                 <p class="text-xs font-medium">Profile Photo</p>
                 <p class="text-[10px] text-gray-500">Click camera to upload. Auto-resized to 256px.</p>
               </div>
-              <button type="button" id="ea-remove-avatar" class="text-xs text-red-400 hover:text-red-300 \${a.avatar_url && a.avatar_url.startsWith('data:image/') ? '' : 'hidden'}" data-attendee-id="\${a.id}">
+              <button type="button" id="ea-remove-avatar" class="text-xs text-red-400 hover:text-red-300 \${hasUploadedPhoto(a.avatar_url) ? '' : 'hidden'}" data-attendee-id="\${a.id}">
                 <i class="fas fa-trash-alt"></i>
               </button>
             </div>
@@ -15146,6 +15403,20 @@ function adminPageHTML(): string {
             <div class="grid grid-cols-2 gap-3">
               <div><label class="text-xs text-gray-400 mb-1 block">Mobile</label><input id="ea-mobile" value="\${a.mobile||''}" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="+91 98765 43210"></div>
               <div><label class="text-xs text-gray-400 mb-1 block">LinkedIn URL</label><input id="ea-linkedin" value="\${a.linkedin_url||''}" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="https://linkedin.com/in/..."></div>
+            </div>
+            <!-- City, Country and Industry had no inputs here, so the save posted
+                 none of them while the UPDATE set all three - which blanked whatever
+                 the attendee had entered. They are editable here now, and the
+                 endpoint only writes the keys it is sent. -->
+            <div class="grid grid-cols-3 gap-3">
+              <div><label class="text-xs text-gray-400 mb-1 block">City</label><input id="ea-city" value="\${esc(a.city||'')}" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="e.g. Mumbai"></div>
+              <div><label class="text-xs text-gray-400 mb-1 block">Country</label><input id="ea-country" value="\${esc(a.country||'')}" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="India"></div>
+              <div><label class="text-xs text-gray-400 mb-1 block">Industry</label>
+                <select id="ea-industry" class="w-full px-3 py-2 rounded-lg text-sm">
+                  <option value="">-- Not set --</option>
+                  ${INDUSTRIES.map(i => `<option>${i}</option>`).join('')}
+                </select>
+              </div>
             </div>
             <div class="grid grid-cols-3 gap-3">
               <div><label class="text-xs text-gray-400 mb-1 block">Role</label>
@@ -15184,9 +15455,14 @@ function adminPageHTML(): string {
         </form>
       \`;
       document.getElementById('modal-container').classList.remove('hidden');
+      // The option list is rendered server-side, so the current value is selected here.
+      document.getElementById('ea-industry').value = a.industry || '';
       document.getElementById('edit-att-form').onsubmit = async e => {
         e.preventDefault();
         await api.put('/api/admin/attendees/'+a.id, {
+          city: document.getElementById('ea-city').value,
+          country: document.getElementById('ea-country').value,
+          industry: document.getElementById('ea-industry').value,
           name: document.getElementById('ea-name').value,
           email: document.getElementById('ea-email').value,
           company: document.getElementById('ea-company').value,
