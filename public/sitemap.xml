@@ -73,6 +73,28 @@
         </image:image>
     </url>
 
+    <!-- Campus Series — individual panel pages -->
+    <url>
+        <loc>https://bharataiinnovation.com/campus-djsanghvi.html</loc>
+        <lastmod>2026-09-02</lastmod>
+        <changefreq>weekly</changefreq>
+        <priority>0.8</priority>
+        <image:image>
+            <image:loc>https://bharataiinnovation.com/images/campus-djsanghvi-21sep.jpg</image:loc>
+            <image:title>AI and Employability — DJ Sanghvi College of Engineering, Mumbai, 21 September 2026</image:title>
+        </image:image>
+    </url>
+    <url>
+        <loc>https://bharataiinnovation.com/campus-jnu.html</loc>
+        <lastmod>2026-09-02</lastmod>
+        <changefreq>weekly</changefreq>
+        <priority>0.8</priority>
+        <image:image>
+            <image:loc>https://bharataiinnovation.com/images/campus-jnu-30sep.jpg</image:loc>
+            <image:title>AI and Employability — Jawaharlal Nehru University, New Delhi, 30 September 2026</image:title>
+        </image:image>
+    </url>
+
     <!-- Startup Pitch Page -->
     <url>
         <loc>https://bharataiinnovation.com/startup-pitch.html</loc>

@@ -1,0 +1,276 @@
+/* ===================================================================
+   Campus Series — individual panel pages
+   Shared by campus-djsanghvi.html and campus-jnu.html.
+   Built on the tokens in style.css; defines nothing that file owns.
+   =================================================================== */
+
+/* ---------- Hero ---------- */
+.cp-hero {
+  position: relative;
+  padding: calc(var(--nav-h) + 4.5rem) 0 4.5rem;
+  background: var(--grad-hero);
+  overflow: hidden;
+}
+.cp-hero::after {
+  content: '';
+  position: absolute;
+  top: -200px; right: -160px;
+  width: 560px; height: 560px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,107,0,0.16) 0%, transparent 70%);
+  pointer-events: none;
+}
+.cp-hero-inner {
+  position: relative; z-index: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3.5rem;
+  align-items: center;
+}
+
+.cp-back {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  color: rgba(255,255,255,0.55);
+  font-size: 0.85rem; font-weight: 600;
+  text-decoration: none;
+  margin-bottom: 1.5rem;
+  transition: color 0.2s ease;
+}
+.cp-back:hover { color: var(--saffron); }
+
+.cp-eyebrow {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  background: rgba(255,107,0,0.15);
+  border: 1px solid rgba(255,107,0,0.3);
+  border-radius: 100px;
+  padding: 0.4rem 1rem;
+  font-size: 0.73rem; font-weight: 700; color: #FF9A40;
+  text-transform: uppercase; letter-spacing: 0.09em;
+  margin-bottom: 1.25rem;
+}
+/* Same pill on a light background */
+.cp-eyebrow--light {
+  background: rgba(255,107,0,0.1);
+  border-color: rgba(255,107,0,0.25);
+  color: var(--saffron-dark);
+}
+
+.cp-title {
+  font-family: var(--font-display);
+  font-size: clamp(2.1rem, 4.4vw, 3.2rem);
+  font-weight: 800; line-height: 1.12; color: #fff;
+  margin-bottom: 0.6rem;
+}
+.cp-title .accent { color: var(--saffron); }
+.cp-sub {
+  font-size: 1.05rem; line-height: 1.6;
+  color: rgba(255,255,255,0.62);
+  margin-bottom: 2rem; max-width: 44ch;
+}
+
+.cp-facts {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 1.1rem 1.5rem;
+  padding: 1.5rem 0;
+  border-top: 1px solid rgba(255,255,255,0.12);
+  border-bottom: 1px solid rgba(255,255,255,0.12);
+  margin-bottom: 2rem;
+}
+.cp-facts > div { display: flex; align-items: flex-start; gap: 0.75rem; }
+.cp-facts i { color: var(--saffron); margin-top: 0.3rem; width: 16px; text-align: center; flex-shrink: 0; }
+.cp-facts strong {
+  display: block; color: #fff; font-size: 0.92rem;
+  font-weight: 700; line-height: 1.35; margin-bottom: 0.15rem;
+}
+.cp-facts span { display: block; color: rgba(255,255,255,0.5); font-size: 0.8rem; }
+
+.cp-actions { display: flex; gap: 1rem; flex-wrap: wrap; }
+
+.cp-poster { margin: 0; }
+.cp-poster img {
+  width: 100%; height: auto; display: block;
+  border-radius: 18px;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.4);
+  border: 1px solid rgba(255,255,255,0.1);
+}
+
+/* ---------- Section shells ---------- */
+.cp-section { padding: 5.5rem 0; }
+.cp-section--white { background: #fff; }
+.cp-section--tint { background: var(--off-white); }
+
+/* ---------- What this panel covers ---------- */
+.cp-points {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.25rem;
+}
+.cp-point {
+  display: flex; align-items: flex-start; gap: 1.1rem;
+  background: var(--off-white);
+  border: 1px solid var(--light);
+  border-radius: 16px;
+  padding: 1.5rem 1.6rem;
+}
+.cp-point span {
+  font-family: var(--font-display);
+  font-size: 1.05rem; font-weight: 800;
+  color: var(--saffron);
+  flex-shrink: 0; line-height: 1.5;
+}
+.cp-point p {
+  margin: 0; font-size: 0.94rem; line-height: 1.65;
+  color: var(--dark-grey);
+}
+
+/* ---------- Panellists ---------- */
+.cp-spk-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 2rem;
+}
+.cp-spk { text-align: center; }
+.cp-spk-photo {
+  width: 160px; height: 160px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  object-fit: cover;
+  margin: 0 auto 1.1rem;
+  display: block;
+  border: 3px solid #fff;
+  box-shadow: var(--shadow-md);
+}
+.cp-spk h3 {
+  font-family: var(--font-display);
+  font-size: 1.05rem; font-weight: 800;
+  color: var(--charcoal); margin: 0 0 0.3rem;
+}
+.cp-spk-role { font-size: 0.82rem; color: var(--saffron); font-weight: 600; margin: 0 0 0.2rem; }
+.cp-spk-org { font-size: 0.8rem; color: var(--mid-grey); margin: 0; line-height: 1.5; }
+
+/* Placeholder shown until the first panellist is confirmed. Spans the whole
+   grid so it reads as a state, not as one empty card among others. */
+.cp-spk-pending {
+  grid-column: 1 / -1;
+  text-align: center;
+  border: 2px dashed rgba(255,107,0,0.28);
+  border-radius: 22px;
+  padding: 3rem 2.5rem;
+  background: linear-gradient(135deg, rgba(255,107,0,0.04), rgba(43,140,255,0.04));
+}
+.cp-spk-pending-icon {
+  width: 56px; height: 56px; border-radius: 16px;
+  background: var(--grad-saffron);
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 1.25rem;
+  box-shadow: 0 8px 22px rgba(255,107,0,0.3);
+}
+.cp-spk-pending-icon i { color: #fff; font-size: 1.35rem; }
+.cp-spk-pending h3 {
+  font-family: var(--font-display); font-size: 1.35rem; font-weight: 800;
+  color: var(--charcoal); margin: 0 0 0.6rem;
+}
+.cp-spk-pending p {
+  color: var(--dark-grey); max-width: 56ch;
+  margin: 0 auto 1.5rem; line-height: 1.7;
+}
+
+/* ---------- Host institution ---------- */
+.cp-host {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 3rem; align-items: center;
+  background: var(--off-white);
+  border: 1px solid var(--light);
+  border-radius: 24px;
+  padding: 3rem;
+}
+.cp-host h2 {
+  font-family: var(--font-display);
+  font-size: clamp(1.5rem, 2.6vw, 2rem);
+  font-weight: 800; color: var(--charcoal);
+  line-height: 1.25; margin-bottom: 1rem;
+}
+.cp-host p { color: var(--dark-grey); line-height: 1.75; margin-bottom: 1.5rem; }
+.cp-host-actions { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+
+.cp-partners {
+  display: flex; flex-direction: column; gap: 1.5rem;
+  padding-left: 3rem;
+  border-left: 1px solid var(--light);
+}
+.cp-partners span {
+  display: block; font-size: 0.7rem; font-weight: 700;
+  color: var(--mid-grey); text-transform: uppercase;
+  letter-spacing: 0.09em; margin-bottom: 0.4rem;
+}
+.cp-partners strong {
+  font-family: var(--font-display); font-size: 1.05rem;
+  font-weight: 800; color: var(--charcoal);
+}
+
+/* ---------- Related panels ---------- */
+.cp-related { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
+.cp-related-card {
+  display: flex; flex-direction: column;
+  background: #fff;
+  border: 1px solid var(--light);
+  border-radius: 20px;
+  overflow: hidden;
+  text-decoration: none;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+.cp-related-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-lg); }
+.cp-related-card img {
+  width: 100%; height: auto; display: block;
+  background: var(--off-white);
+}
+.cp-related-card > div { padding: 1.75rem 1.9rem; }
+.cp-related-host {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  font-size: 0.74rem; font-weight: 700; color: var(--saffron);
+  text-transform: uppercase; letter-spacing: 0.07em;
+  margin-bottom: 0.6rem;
+}
+.cp-related-card h3 {
+  font-family: var(--font-display); font-size: 1.25rem; font-weight: 800;
+  color: var(--charcoal); margin: 0 0 0.5rem; line-height: 1.3;
+}
+.cp-related-card p { font-size: 0.9rem; color: var(--dark-grey); margin: 0 0 1rem; line-height: 1.6; }
+.cp-related-cta {
+  display: inline-flex; align-items: center; gap: 0.45rem;
+  font-size: 0.88rem; font-weight: 700; color: var(--indigo);
+}
+.cp-related-card--all {
+  justify-content: center;
+  background: linear-gradient(135deg, rgba(255,107,0,0.05), rgba(43,140,255,0.05));
+  border-style: dashed;
+  border-color: rgba(255,107,0,0.28);
+  box-shadow: none;
+}
+
+/* ---------- Closing CTA ---------- */
+.cp-closing { padding: 5rem 0; background: var(--grad-hero); text-align: center; }
+.cp-closing h2 {
+  font-family: var(--font-display);
+  font-size: clamp(1.7rem, 3.2vw, 2.4rem);
+  font-weight: 800; color: #fff; margin-bottom: 1rem;
+}
+.cp-closing p {
+  color: rgba(255,255,255,0.65); font-size: 1.02rem; line-height: 1.75;
+  max-width: 56ch; margin: 0 auto 2rem;
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width: 900px) {
+  .cp-hero { padding: calc(var(--nav-h) + 3rem) 0 3.5rem; }
+  .cp-hero-inner { grid-template-columns: 1fr; gap: 2.5rem; }
+  .cp-facts { grid-template-columns: 1fr; }
+  .cp-host { grid-template-columns: 1fr; gap: 2rem; padding: 2rem 1.75rem; }
+  .cp-partners {
+    flex-direction: row; flex-wrap: wrap; gap: 1.5rem 2.5rem;
+    padding-left: 0; padding-top: 2rem;
+    border-left: none; border-top: 1px solid var(--light);
+  }
+  .cp-related { grid-template-columns: 1fr; }
+  .cp-section { padding: 4rem 0; }
+}
