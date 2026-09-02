@@ -1875,10 +1875,29 @@ app.get('/api/attendees/:id', async (c) => {
   return c.json(attendee)
 })
 
+// Where a registration came from. Until now neither registration endpoint wrote the
+// column: /api/events/:id/attendees/register omitted it entirely, so rows fell back
+// to the 0007 default 'networking_app', and /api/external/register bound the literal
+// 'website'. Either way a registration driven by a campus panel was indistinguishable
+// from one off the home page, so there was no way to tell a host institution or a
+// sponsor what their panel actually produced.
+//
+// Both endpoints are unauthenticated, so the value is shape-checked rather than
+// trusted: lowercase, bounded length, and only the characters our own tags use.
+// Anything else returns null and the caller falls back to its previous default, so a
+// junk or injected value can never reach a report. Campus tags are written as
+// 'campus:<panel-slug>' — campus:djsanghvi-21sep, campus:jnu-30sep — and the export
+// sweeper keys off that prefix.
+const REGISTRATION_SOURCE_RE = /^[a-z0-9][a-z0-9:_-]{0,39}$/
+function sanitizeRegistrationSource(value: unknown): string | null {
+  const raw = String(value ?? '').trim().toLowerCase()
+  return REGISTRATION_SOURCE_RE.test(raw) ? raw : null
+}
+
 app.post('/api/events/:id/attendees/register', async (c) => {
   const eventId = c.req.param('id')
   const body = await c.req.json()
-  const { name, email, company, job_title, bio, interests, linkedin_url, mobile, lunch_inclusion, city, badge_type } = body
+  const { name, email, company, job_title, bio, interests, linkedin_url, mobile, lunch_inclusion, city, badge_type, registration_source } = body
 
   if (!name || !email) return c.json({ error: 'Name and email are required' }, 400)
 
@@ -1911,6 +1930,8 @@ app.post('/api/events/:id/attendees/register', async (c) => {
   const ALLOWED_PASSES = ['Visitor Pass', 'Delegate Pass', 'VIP Pass', 'Academic Pass', 'Media Pass']
   const passType = ALLOWED_PASSES.includes(badge_type) ? badge_type : 'Visitor Pass'
 
+  const sourceValue = sanitizeRegistrationSource(registration_source)
+
   // A paid tier chosen at registration is recorded but marked unpaid; payment is
   // confirmed out of band on mUni Campus, so it cannot be trusted from the client.
   const needsPayment = PAID_TIERS.includes(passType)
@@ -1922,11 +1943,11 @@ app.post('/api/events/:id/attendees/register', async (c) => {
           // registration_date is written here rather than left to a default: the column
           // was added later, so it has none, and every row that skipped it sorted to
           // the bottom of a newest-first list - exactly the rows you most want to see.
-          'INSERT INTO attendees (event_id, name, email, company, job_title, bio, interests, linkedin_url, mobile, city, industry, lunch_inclusion, badge_type, payment_status, registration_date, is_online, last_login_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime("now"), 1, datetime("now"))'
-        ).bind(eventId, name.trim(), normalizedEmail, company || '', job_title || '', bio || '', interests || '', linkedin_url || '', mobile || '', city || '', industryValue, lunch_inclusion || 'No', passType, needsPayment ? 'pending' : 'paid').run()
+          'INSERT INTO attendees (event_id, name, email, company, job_title, bio, interests, linkedin_url, mobile, city, industry, lunch_inclusion, badge_type, payment_status, registration_source, registration_date, is_online, last_login_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime("now"), 1, datetime("now"))'
+        ).bind(eventId, name.trim(), normalizedEmail, company || '', job_title || '', bio || '', interests || '', linkedin_url || '', mobile || '', city || '', industryValue, lunch_inclusion || 'No', passType, needsPayment ? 'pending' : 'paid', sourceValue || 'networking_app').run()
       : await c.env.DB.prepare(
-          'INSERT INTO attendees (event_id, name, email, company, job_title, bio, interests, linkedin_url, mobile, city, industry, lunch_inclusion, badge_type, registration_date, is_online, last_login_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime("now"), 1, datetime("now"))'
-        ).bind(eventId, name.trim(), normalizedEmail, company || '', job_title || '', bio || '', interests || '', linkedin_url || '', mobile || '', city || '', industryValue, lunch_inclusion || 'No', passType).run()
+          'INSERT INTO attendees (event_id, name, email, company, job_title, bio, interests, linkedin_url, mobile, city, industry, lunch_inclusion, badge_type, registration_source, registration_date, is_online, last_login_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime("now"), 1, datetime("now"))'
+        ).bind(eventId, name.trim(), normalizedEmail, company || '', job_title || '', bio || '', interests || '', linkedin_url || '', mobile || '', city || '', industryValue, lunch_inclusion || 'No', passType, sourceValue || 'networking_app').run()
 
     const attendee = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(result.meta.last_row_id).first()
     await issueAttendeeSession(c, (attendee as any).id)
@@ -2048,7 +2069,7 @@ app.post('/api/external/register', async (c) => {
       badgeType === 'Visitor Pass' ? 'No' : 'Yes',
       industry || '', city || '', country || 'India',
       company_size || '', special_requirements || '',
-      'website', passPackage || 'visitor'
+      sanitizeRegistrationSource(source) || 'website', passPackage || 'visitor'
     ).run()
 
     const attendee = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(result.meta.last_row_id).first() as any
@@ -2143,6 +2164,19 @@ app.get('/api/external/attendees-export', async (c) => {
     sql += ` AND created_at >= ?`
     args.push(since)
   }
+
+  // The sweeper feeds a sequence that sells Delegate and VIP passes. Campus-panel
+  // registrations are students who came to a free session on their own campus, so
+  // dropping them into that sequence is both the wrong message and a way to make
+  // the paid-conversion rate look worse than it is. Excluded by default;
+  // ?include_campus=1 opts back in once a student-appropriate sequence exists.
+  //
+  // No row carries a campus: tag yet — the writes that create them ship alongside
+  // this — so today the clause matches everything and the sweeper sees no change.
+  if (c.req.query('include_campus') !== '1') {
+    sql += ` AND (registration_source IS NULL OR registration_source NOT LIKE 'campus:%')`
+  }
+
   sql += ` ORDER BY created_at ASC LIMIT ?`
   args.push(limit)
 
@@ -5588,6 +5622,30 @@ ${sharedFooterHTML()}
 <script>
 ${sharedToastJS()}
 
+// Campus panels drive traffic here with ?utm_source=campus&utm_campaign=<panel>.
+// Captured on load rather than at submit because the tag is lost the moment the
+// visitor follows any in-page link, and stored per-tab so two panels open at once
+// cannot attribute to each other. Server-side shape check is the authority; this
+// only decides what gets offered.
+function captureRegistrationSource() {
+  try {
+    const q = new URLSearchParams(location.search);
+    const explicit = (q.get('source') || '').trim();
+    const utmSource = (q.get('utm_source') || '').trim();
+    const utmCampaign = (q.get('utm_campaign') || '').trim();
+    let tag = '';
+    if (explicit) tag = explicit;
+    else if (utmSource === 'campus' && utmCampaign) tag = 'campus:' + utmCampaign;
+    else if (utmSource) tag = utmSource;
+    tag = tag.toLowerCase();
+    if (tag && /^[a-z0-9][a-z0-9:_-]{0,39}$/.test(tag)) sessionStorage.setItem('bhai_reg_source', tag);
+  } catch (err) { /* private mode: fall through to the server default */ }
+}
+function registrationSource() {
+  try { return sessionStorage.getItem('bhai_reg_source') || ''; } catch (err) { return ''; }
+}
+captureRegistrationSource();
+
 async function submitRegistration(e) {
   e.preventDefault();
   const btn = document.getElementById('rf-submit');
@@ -5609,7 +5667,8 @@ async function submitRegistration(e) {
         linkedin_url: document.getElementById('rf-linkedin').value.trim(),
         interests: document.getElementById('rf-interests').value.trim(),
         bio: '',
-        badge_type: 'Visitor Pass'
+        badge_type: 'Visitor Pass',
+        registration_source: registrationSource()
       })
     });
     const data = await resp.json();
