@@ -1,0 +1,1139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Past Speakers — Data Science Congress | Bharat AI Innovation 2026</title>
+    <meta name="description" content="Ministers, chief data scientists, founders and researchers who have spoken at the Data Science Congress, hosted by Aegis School of Data Science — the forerunner to Bharat AI Innovation 2026 at WTC Mumbai.">
+    <link rel="canonical" href="https://bharataiinnovation.com/past-speakers.html">
+    <meta property="og:title" content="Past Speakers — Data Science Congress | Bharat AI Innovation">
+    <meta property="og:description" content="86+ leaders who have shaped India&#39;s data science and AI conversation — from Union Ministers and the RBI&#39;s Chief Data Officer to chief data scientists at Jio, Flipkart, VISA, NVIDIA and IBM.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://bharataiinnovation.com/past-speakers.html">
+    <meta property="og:image" content="https://bharataiinnovation.com/images/og-card.png">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Past Speakers — Data Science Congress">
+    <meta name="twitter:description" content="Leaders who have shaped India&#39;s data science and AI conversation over the years.">
+    <meta name="twitter:image" content="https://bharataiinnovation.com/images/og-card.png">
+
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "CollectionPage",
+      "name": "Past Speakers — Data Science Congress",
+      "url": "https://bharataiinnovation.com/past-speakers.html",
+      "description": "Speakers who have addressed the Data Science Congress, organized by Aegis School of Data Science, the forerunner to Bharat AI Innovation 2026.",
+      "isPartOf": { "@type": "WebSite", "url": "https://bharataiinnovation.com/" },
+      "breadcrumb": {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://bharataiinnovation.com/" },
+          { "@type": "ListItem", "position": 2, "name": "Past Speakers", "item": "https://bharataiinnovation.com/past-speakers.html" }
+        ]
+      }
+    }
+    </script>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;500;600;700;800&family=Manrope:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="icon" type="image/png" href="images/Bharat%20AI%20Innovation%20Logo.png">
+
+    <style>
+    /* ===== PAST SPEAKERS — page-scoped ===== */
+    .ps-hero {
+        position: relative;
+        padding: calc(var(--nav-h) + 4.5rem) 0 4rem;
+        background: var(--grad-hero);
+        overflow: hidden;
+    }
+    .ps-hero::after {
+        content: '';
+        position: absolute;
+        top: -180px; right: -140px;
+        width: 520px; height: 520px;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(255,107,0,0.16) 0%, transparent 70%);
+        pointer-events: none;
+    }
+    .ps-hero .container { position: relative; z-index: 1; }
+    .ps-eyebrow {
+        display: inline-flex; align-items: center; gap: 0.5rem;
+        background: rgba(255,107,0,0.15);
+        border: 1px solid rgba(255,107,0,0.3);
+        border-radius: 100px;
+        padding: 0.4rem 1rem;
+        font-size: 0.75rem; font-weight: 700; color: #FF9A40;
+        text-transform: uppercase; letter-spacing: 0.09em;
+        margin-bottom: 1.5rem;
+    }
+    .ps-hero-title {
+        font-family: var(--font-display);
+        font-size: clamp(2.2rem, 5vw, 3.5rem);
+        font-weight: 800; line-height: 1.1; color: #fff;
+        margin-bottom: 1.25rem; max-width: 20ch;
+    }
+    .ps-hero-title .accent { color: var(--saffron); }
+    .ps-hero-desc {
+        color: rgba(255,255,255,0.66);
+        font-size: 1.05rem; line-height: 1.8;
+        max-width: 68ch; margin-bottom: 2rem;
+    }
+    .ps-hero-stats { display: flex; flex-wrap: wrap; gap: 2.5rem; }
+    .ps-stat-num {
+        font-family: var(--font-display);
+        font-size: 2rem; font-weight: 800; color: #fff; line-height: 1;
+    }
+    .ps-stat-lbl {
+        font-size: 0.78rem; color: rgba(255,255,255,0.5);
+        text-transform: uppercase; letter-spacing: 0.08em;
+        font-weight: 600; margin-top: 0.4rem;
+    }
+
+    /* Sticky filter bar */
+    .ps-filters {
+        position: sticky; top: var(--nav-h); z-index: 40;
+        background: rgba(255,255,255,0.92);
+        backdrop-filter: saturate(180%) blur(14px);
+        -webkit-backdrop-filter: saturate(180%) blur(14px);
+        border-bottom: 1px solid var(--light);
+    }
+    .ps-filters-inner {
+        display: flex; align-items: center; gap: 1rem;
+        padding: 1rem 0; flex-wrap: wrap;
+    }
+    .ps-search {
+        position: relative; flex: 0 0 300px; max-width: 100%;
+    }
+    .ps-search i {
+        position: absolute; left: 0.9rem; top: 50%; transform: translateY(-50%);
+        color: var(--mid-grey); font-size: 0.85rem; pointer-events: none;
+    }
+    .ps-search input {
+        width: 100%; padding: 0.65rem 0.9rem 0.65rem 2.4rem;
+        border: 1px solid var(--light); border-radius: var(--r-full);
+        font-family: inherit; font-size: 0.9rem; color: var(--charcoal);
+        background: #fff; transition: border-color var(--t-fast), box-shadow var(--t-fast);
+    }
+    .ps-search input:focus {
+        outline: none; border-color: rgba(255,107,0,0.5);
+        box-shadow: 0 0 0 3px rgba(255,107,0,0.12);
+    }
+    .ps-chips { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+    .ps-chip {
+        font-family: inherit; font-size: 0.8rem; font-weight: 600;
+        color: var(--dark-grey); background: #fff;
+        border: 1px solid var(--light); border-radius: var(--r-full);
+        padding: 0.5rem 1rem; cursor: pointer;
+        transition: color var(--t-fast), background var(--t-fast), border-color var(--t-fast);
+    }
+    .ps-chip:hover { border-color: rgba(255,107,0,0.35); color: var(--saffron); }
+    .ps-chip.active {
+        background: var(--saffron); border-color: var(--saffron); color: #fff;
+    }
+    .ps-count { margin-left: auto; font-size: 0.82rem; color: var(--mid-grey); font-weight: 600; }
+
+    /* Grid */
+    .ps-section { padding: 3.5rem 0 5rem; background: var(--off-white); }
+    .ps-category { margin-top: 3.5rem; }
+    .ps-category:first-child { margin-top: 0; }
+    .ps-cat-head { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.35rem; }
+    .ps-cat-head h3 { margin: 0; }
+    .ps-cat-count {
+        font-size: 0.72rem; font-weight: 700; color: var(--saffron);
+        background: rgba(255,107,0,0.08); border: 1px solid rgba(255,107,0,0.18);
+        border-radius: var(--r-full); padding: 0.15rem 0.6rem;
+    }
+    .ps-cat-blurb { font-size: 0.92rem; color: var(--dark-grey); margin: 0; max-width: 70ch; }
+    .ps-grid { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); text-align: center; }
+    .ps-card { padding: 1rem 1rem 1.25rem; gap: 0.5rem; }
+    .ps-card .speaker-photo { aspect-ratio: 3 / 4; }
+    .ps-card h4 { margin: 0.35rem 0 0; font-size: 0.95rem; line-height: 1.35; }
+    .ps-card .ps-role { font-size: 0.8rem; line-height: 1.5; color: var(--dark-grey); }
+    .ps-card .ps-org {
+        font-size: 0.78rem; font-weight: 700; color: var(--saffron-dark);
+        margin-top: auto;
+    }
+    /* `hidden` must beat the flex/grid display rules on .speaker-card */
+    .ps-card[hidden], .ps-category[hidden] { display: none !important; }
+    .sr-only {
+        position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+        overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+    }
+    .ps-empty {
+        display: none; text-align: center; padding: 4rem 0;
+        color: var(--mid-grey); font-size: 0.95rem;
+    }
+    .ps-empty.show { display: block; }
+    .ps-note {
+        margin-top: 3.5rem; padding: 1.5rem 1.75rem;
+        background: #fff; border: 1px solid var(--light);
+        border-left: 3px solid var(--saffron);
+        border-radius: var(--r-md);
+        font-size: 0.9rem; color: var(--dark-grey); line-height: 1.75;
+    }
+
+    @media (max-width: 700px) {
+        .ps-hero { padding: calc(var(--nav-h) + 3rem) 0 3rem; }
+        .ps-hero-stats { gap: 1.75rem; }
+        .ps-search { flex: 1 1 100%; }
+        .ps-count { margin-left: 0; }
+        .ps-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 1.25rem 0.9rem; }
+    }
+    </style>
+</head>
+<body>
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+
+    <!-- NAVBAR -->
+    <nav class="navbar dark-nav" id="navbar">
+        <div class="nav-container">
+            <a href="index.html" class="nav-logo">
+                <img loading="eager" fetchpriority="high" decoding="async" src="images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI Innovation Logo" style="height:44px;width:auto;border-radius:12px;padding:6px;background:rgba(255,255,255,0.95);box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+            </a>
+            <div class="nav-menu" id="nav-menu">
+                <a href="index.html" class="nav-link">Home</a>
+                <a href="conference.html" class="nav-link">Conference</a>
+                <a href="exhibition.html" class="nav-link">Exhibition</a>
+                <a href="/#networking" class="nav-link">Networking</a>
+                <a href="partner.html" class="nav-link">Partner</a>
+                <a href="training-workshop.html" class="nav-link">Workshops</a>
+                <a href="ai-readiness.html" class="nav-link">AI Readiness</a>
+                <a href="about.html" class="nav-link">About</a>
+                <a href="https://bellaward.com" target="_blank" rel="noopener noreferrer" class="nav-link">AGBA</a>
+                <a href="campus-series.html" class="nav-link">Campus Series</a>
+                <a href="/contact" class="nav-link">Contact</a>
+                <a href="/register" class="nav-cta">Register <i class="fas fa-arrow-right"></i></a>
+            </div>
+            <div class="nav-toggle" id="nav-toggle">
+                <span class="bar"></span><span class="bar"></span><span class="bar"></span>
+            </div>
+        </div>
+    </nav>
+
+    <!-- ===== HERO ===== -->
+    <section class="ps-hero" id="main-content">
+        <div class="container">
+            <div class="ps-eyebrow"><i class="fas fa-microphone-lines"></i> Past Speakers</div>
+            <h1 class="ps-hero-title">The stage before this one — <span class="accent">Data Science Congress</span></h1>
+            <p class="ps-hero-desc">
+                Bharat AI Innovation grows out of the Data Science Congress, the conference Aegis School of
+                Data Science has run since 2015. Union Ministers opened it, the Reserve Bank&#39;s Chief Data
+                Officer spoke at it, and the chief data scientists of Jio, Flipkart, VISA, NVIDIA, IBM and
+                Fractal argued their fields out on its stage. These are the people who came before.
+            </p>
+            <div class="ps-hero-stats">
+                <div>
+                    <div class="ps-stat-num">86+</div>
+                    <div class="ps-stat-lbl">Speakers Featured</div>
+                </div>
+                <div>
+                    <div class="ps-stat-num">10+</div>
+                    <div class="ps-stat-lbl">Editions Since 2015</div>
+                </div>
+                <div>
+                    <div class="ps-stat-num">5</div>
+                    <div class="ps-stat-lbl">Leadership Tracks</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== FILTER BAR ===== -->
+    <div class="ps-filters">
+        <div class="container">
+            <div class="ps-filters-inner">
+                <div class="ps-search">
+                    <i class="fas fa-search" aria-hidden="true"></i>
+                    <label class="sr-only" for="ps-search-input">Search past speakers</label>
+                    <input type="search" id="ps-search-input" placeholder="Search by name, role or company" autocomplete="off">
+                </div>
+                <div class="ps-chips" role="group" aria-label="Filter speakers by category">
+                    <button type="button" class="ps-chip active" data-filter="all">All</button>
+                    <button type="button" class="ps-chip" data-filter="gov">Government &amp; Public Leadership</button>
+                    <button type="button" class="ps-chip" data-filter="pioneer">Global Pioneers, Research &amp; Academia</button>
+                    <button type="button" class="ps-chip" data-filter="founder">Founders &amp; CEOs</button>
+                    <button type="button" class="ps-chip" data-filter="industry">Data Science &amp; Analytics Leaders</button>
+                    <button type="button" class="ps-chip" data-filter="ecosystem">Media, Talent &amp; Ecosystem</button>
+                </div>
+                <span class="ps-count" id="ps-count">86 speakers</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== SPEAKERS ===== -->
+    <section class="ps-section">
+        <div class="container">
+            <div class="speaker-category ps-category reveal" data-category="gov">
+                <div class="ps-cat-head">
+                    <h3>Government &amp; Public Leadership</h3>
+                    <span class="ps-cat-count">10</span>
+                </div>
+                <p class="ps-cat-blurb">Ministers, senior civil servants and policy leaders who opened and framed the Congress.</p>
+                <div class="speakers-grid ps-grid">
+                    <article class="speaker-card ps-card" data-search="hon’ble minister shri sanjay dhotre then union minister of state for human resource development, communications, electronics &amp; information technology government of india">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/speaker-sanjay-dhotre.jpg" alt="Hon’ble Minister Shri Sanjay Dhotre — then Union Minister of State for Human Resource Development, Communications, Electronics &amp; Information Technology, Government of India" class="speaker-photo">
+                        </div>
+                        <h4>Hon’ble Minister Shri Sanjay Dhotre</h4>
+                        <p class="ps-role">then Union Minister of State for Human Resource Development, Communications, Electronics &amp; Information Technology</p>
+                        <p class="ps-org">Government of India</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="hon’ble minister shri vijay goel then minister of state for statistics &amp; programme implementation government of india">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/vijay-goel.jpg" alt="Hon’ble Minister Shri Vijay Goel — then Minister of State for Statistics &amp; Programme Implementation, Government of India" class="speaker-photo">
+                        </div>
+                        <h4>Hon’ble Minister Shri Vijay Goel</h4>
+                        <p class="ps-role">then Minister of State for Statistics &amp; Programme Implementation</p>
+                        <p class="ps-org">Government of India</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="hon’ble minister shri y. s. chowdary then minister of state for science &amp; technology and earth sciences government of india">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/ys-chowdary.jpg" alt="Hon’ble Minister Shri Y. S. Chowdary — then Minister of State for Science &amp; Technology and Earth Sciences, Government of India" class="speaker-photo">
+                        </div>
+                        <h4>Hon’ble Minister Shri Y. S. Chowdary</h4>
+                        <p class="ps-role">then Minister of State for Science &amp; Technology and Earth Sciences</p>
+                        <p class="ps-org">Government of India</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="retired justice b. n. srikrishna chief architect of india’s first data protection bill supreme court of india">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/speaker-bn-srikrishna.jpg" alt="Retired Justice B. N. Srikrishna — Chief Architect of India’s First Data Protection Bill, Supreme Court of India" class="speaker-photo">
+                        </div>
+                        <h4>Retired Justice B. N. Srikrishna</h4>
+                        <p class="ps-role">Chief Architect of India’s First Data Protection Bill</p>
+                        <p class="ps-org">Supreme Court of India</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="j. a. chowdary special chief secretary &amp; it advisor to the chief minister government of andhra pradesh">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/j-a-chowdary.jpg" alt="J. A. Chowdary — Special Chief Secretary &amp; IT Advisor to the Chief Minister, Government of Andhra Pradesh" class="speaker-photo">
+                        </div>
+                        <h4>J. A. Chowdary</h4>
+                        <p class="ps-role">Special Chief Secretary &amp; IT Advisor to the Chief Minister</p>
+                        <p class="ps-org">Government of Andhra Pradesh</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="s. m. sahai joint secretary, national security council secretariat (nscs) government of india">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/sm-sahai.jpg" alt="S. M. Sahai — Joint Secretary, National Security Council Secretariat (NSCS), Government of India" class="speaker-photo">
+                        </div>
+                        <h4>S. M. Sahai</h4>
+                        <p class="ps-role">Joint Secretary, National Security Council Secretariat (NSCS)</p>
+                        <p class="ps-org">Government of India</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="dr. avik sarkar head — data analytics cell niti aayog, government of india">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/avik-sarkar.jpg" alt="Dr. Avik Sarkar — Head — Data Analytics Cell, NITI Aayog, Government of India" class="speaker-photo">
+                        </div>
+                        <h4>Dr. Avik Sarkar</h4>
+                        <p class="ps-role">Head — Data Analytics Cell</p>
+                        <p class="ps-org">NITI Aayog, Government of India</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="sushila augustine director — data management &amp; dissemination (chief data officer) reserve bank of india">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/sushila-augustine.jpg" alt="Sushila Augustine — Director — Data Management &amp; Dissemination (Chief Data Officer), Reserve Bank of India" class="speaker-photo">
+                        </div>
+                        <h4>Sushila Augustine</h4>
+                        <p class="ps-role">Director — Data Management &amp; Dissemination (Chief Data Officer)</p>
+                        <p class="ps-org">Reserve Bank of India</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="praveen chakravarthy chairman — data analytics department indian national congress">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/praveen-chakravarthy.jpg" alt="Praveen Chakravarthy — Chairman — Data Analytics Department, Indian National Congress" class="speaker-photo">
+                        </div>
+                        <h4>Praveen Chakravarthy</h4>
+                        <p class="ps-role">Chairman — Data Analytics Department</p>
+                        <p class="ps-org">Indian National Congress</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="dr. tutan ahmed consultant united nations development programme">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/tutan-ahmed.jpg" alt="Dr. Tutan Ahmed — Consultant, United Nations Development Programme" class="speaker-photo">
+                        </div>
+                        <h4>Dr. Tutan Ahmed</h4>
+                        <p class="ps-role">Consultant</p>
+                        <p class="ps-org">United Nations Development Programme</p>
+                    </article>
+                </div>
+            </div>
+
+            <div class="speaker-category ps-category reveal" data-category="pioneer">
+                <div class="ps-cat-head">
+                    <h3>Global Pioneers, Research &amp; Academia</h3>
+                    <span class="ps-cat-count">10</span>
+                </div>
+                <p class="ps-cat-blurb">The researchers and academics who built the field and taught it.</p>
+                <div class="speakers-grid ps-grid">
+                    <article class="speaker-card ps-card" data-search="dr. usama fayyad world’s first chief data officer yahoo! · open insights">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/usama-fayyad.jpg" alt="Dr. Usama Fayyad — World’s First Chief Data Officer, Yahoo! · Open Insights" class="speaker-photo">
+                        </div>
+                        <h4>Dr. Usama Fayyad</h4>
+                        <p class="ps-role">World’s First Chief Data Officer</p>
+                        <p class="ps-org">Yahoo! · Open Insights</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="dr. sougata mukherjea chief technologist &amp; head — telecom &amp; mobile research ibm india research lab">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/sougata-mukherjea.jpg" alt="Dr. Sougata Mukherjea — Chief Technologist &amp; Head — Telecom &amp; Mobile Research, IBM India Research Lab" class="speaker-photo">
+                        </div>
+                        <h4>Dr. Sougata Mukherjea</h4>
+                        <p class="ps-role">Chief Technologist &amp; Head — Telecom &amp; Mobile Research</p>
+                        <p class="ps-org">IBM India Research Lab</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="dr. manish gupta principal applied scientist microsoft">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/manish-gupta-microsoft.jpg" alt="Dr. Manish Gupta — Principal Applied Scientist, Microsoft" class="speaker-photo">
+                        </div>
+                        <h4>Dr. Manish Gupta</h4>
+                        <p class="ps-role">Principal Applied Scientist</p>
+                        <p class="ps-org">Microsoft</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="dr. vikram vij svp — voice intelligence samsung research">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/vikram-vij.jpg" alt="Dr. Vikram Vij — SVP — Voice Intelligence, Samsung Research" class="speaker-photo">
+                        </div>
+                        <h4>Dr. Vikram Vij</h4>
+                        <p class="ps-role">SVP — Voice Intelligence</p>
+                        <p class="ps-org">Samsung Research</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="dr. tetiana kodliuk data scientist v.i.tech">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/tetiana-kodliuk.jpg" alt="Dr. Tetiana Kodliuk — Data Scientist, V.I.Tech" class="speaker-photo">
+                        </div>
+                        <h4>Dr. Tetiana Kodliuk</h4>
+                        <p class="ps-role">Data Scientist</p>
+                        <p class="ps-org">V.I.Tech</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="dr. praphul chandra principal data scientist hewlett packard enterprise">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/praphul-chandra.jpg" alt="Dr. Praphul Chandra — Principal Data Scientist, Hewlett Packard Enterprise" class="speaker-photo">
+                        </div>
+                        <h4>Dr. Praphul Chandra</h4>
+                        <p class="ps-role">Principal Data Scientist</p>
+                        <p class="ps-org">Hewlett Packard Enterprise</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="dr. venu gopal jarugumalli sr. principal data scientist ca technologies">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/venu-gopal-jarugumalli.jpg" alt="Dr. Venu Gopal Jarugumalli — Sr. Principal Data Scientist, CA Technologies" class="speaker-photo">
+                        </div>
+                        <h4>Dr. Venu Gopal Jarugumalli</h4>
+                        <p class="ps-role">Sr. Principal Data Scientist</p>
+                        <p class="ps-org">CA Technologies</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="dr. kingshuk banerjee director — cognitive computing ibm">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/kingshuk-banerjee.jpg" alt="Dr. Kingshuk Banerjee — Director — Cognitive Computing, IBM" class="speaker-photo">
+                        </div>
+                        <h4>Dr. Kingshuk Banerjee</h4>
+                        <p class="ps-role">Director — Cognitive Computing</p>
+                        <p class="ps-org">IBM</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="dr. vinay kulkarni director, aegis school of data science &amp; adjunct professor iit bombay">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/vinay-kulkarni.jpg" alt="Dr. Vinay Kulkarni — Director, Aegis School of Data Science &amp; Adjunct Professor, IIT Bombay" class="speaker-photo">
+                        </div>
+                        <h4>Dr. Vinay Kulkarni</h4>
+                        <p class="ps-role">Director, Aegis School of Data Science &amp; Adjunct Professor</p>
+                        <p class="ps-org">IIT Bombay</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="dr. abhijit gangopadhyay dean aegis school of data science">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/abhijit-gangopadhyay.jpg" alt="Dr. Abhijit Gangopadhyay — Dean, Aegis School of Data Science" class="speaker-photo">
+                        </div>
+                        <h4>Dr. Abhijit Gangopadhyay</h4>
+                        <p class="ps-role">Dean</p>
+                        <p class="ps-org">Aegis School of Data Science</p>
+                    </article>
+                </div>
+            </div>
+
+            <div class="speaker-category ps-category reveal" data-category="founder">
+                <div class="ps-cat-head">
+                    <h3>Founders &amp; CEOs</h3>
+                    <span class="ps-cat-count">17</span>
+                </div>
+                <p class="ps-cat-blurb">Entrepreneurs building India’s data and AI product companies.</p>
+                <div class="speakers-grid ps-grid">
+                    <article class="speaker-card ps-card" data-search="dr. geetha manjunath co-founder &amp; ceo niramai health analytix">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/geetha-manjunath.jpg" alt="Dr. Geetha Manjunath — Co-founder &amp; CEO, NIRAMAI Health Analytix" class="speaker-photo">
+                        </div>
+                        <h4>Dr. Geetha Manjunath</h4>
+                        <p class="ps-role">Co-founder &amp; CEO</p>
+                        <p class="ps-org">NIRAMAI Health Analytix</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="nidhi mathur co-founder &amp; coo niramai">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/nidhi-mathur.jpg" alt="Nidhi Mathur — Co-founder &amp; COO, Niramai" class="speaker-photo">
+                        </div>
+                        <h4>Nidhi Mathur</h4>
+                        <p class="ps-role">Co-founder &amp; COO</p>
+                        <p class="ps-org">Niramai</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="umesh sachdev co-founder &amp; ceo uniphore">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/umesh-sachdev.jpg" alt="Umesh Sachdev — Co-founder &amp; CEO, Uniphore" class="speaker-photo">
+                        </div>
+                        <h4>Umesh Sachdev</h4>
+                        <p class="ps-role">Co-founder &amp; CEO</p>
+                        <p class="ps-org">Uniphore</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="nishith rastogi founder &amp; ceo locus">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/nishith-rastogi.jpg" alt="Nishith Rastogi — Founder &amp; CEO, Locus" class="speaker-photo">
+                        </div>
+                        <h4>Nishith Rastogi</h4>
+                        <p class="ps-role">Founder &amp; CEO</p>
+                        <p class="ps-org">Locus</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="kunal jain founder analytics vidhya">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/kunal-jain.jpg" alt="Kunal Jain — Founder, Analytics Vidhya" class="speaker-photo">
+                        </div>
+                        <h4>Kunal Jain</h4>
+                        <p class="ps-role">Founder</p>
+                        <p class="ps-org">Analytics Vidhya</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="dr. vijay gabale co-founder &amp; cto huew">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/vijay-gabale.jpg" alt="Dr. Vijay Gabale — Co-founder &amp; CTO, Huew" class="speaker-photo">
+                        </div>
+                        <h4>Dr. Vijay Gabale</h4>
+                        <p class="ps-role">Co-founder &amp; CTO</p>
+                        <p class="ps-org">Huew</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="pradeep gulipalli co-founder tiger analytics">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/pradeep-gulipalli.jpg" alt="Pradeep Gulipalli — Co-founder, Tiger Analytics" class="speaker-photo">
+                        </div>
+                        <h4>Pradeep Gulipalli</h4>
+                        <p class="ps-role">Co-founder</p>
+                        <p class="ps-org">Tiger Analytics</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="dr. sarabjot singh co-founder &amp; chief data scientist tatras data">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/sarabjot-singh.jpg" alt="Dr. Sarabjot Singh — Co-founder &amp; Chief Data Scientist, Tatras Data" class="speaker-photo">
+                        </div>
+                        <h4>Dr. Sarabjot Singh</h4>
+                        <p class="ps-role">Co-founder &amp; Chief Data Scientist</p>
+                        <p class="ps-org">Tatras Data</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="kamal kishore das co-founder &amp; coo pentation analytics">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/kamal-kishore-das.jpg" alt="Kamal Kishore Das — Co-founder &amp; COO, Pentation Analytics" class="speaker-photo">
+                        </div>
+                        <h4>Kamal Kishore Das</h4>
+                        <p class="ps-role">Co-founder &amp; COO</p>
+                        <p class="ps-org">Pentation Analytics</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="neerav parekh founder &amp; ceo vphrase">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/neerav-parekh.jpg" alt="Neerav Parekh — Founder &amp; CEO, vPhrase" class="speaker-photo">
+                        </div>
+                        <h4>Neerav Parekh</h4>
+                        <p class="ps-role">Founder &amp; CEO</p>
+                        <p class="ps-org">vPhrase</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="neelima vobugari founder tarah ai">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/neelima-vobugari.jpg" alt="Neelima Vobugari — Founder, Tarah AI" class="speaker-photo">
+                        </div>
+                        <h4>Neelima Vobugari</h4>
+                        <p class="ps-role">Founder</p>
+                        <p class="ps-org">Tarah AI</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="dr. sumit d. chowdhury founder &amp; ceo gaia smart cities">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/sumit-chowdhury.jpg" alt="Dr. Sumit D. Chowdhury — Founder &amp; CEO, Gaia Smart Cities" class="speaker-photo">
+                        </div>
+                        <h4>Dr. Sumit D. Chowdhury</h4>
+                        <p class="ps-role">Founder &amp; CEO</p>
+                        <p class="ps-org">Gaia Smart Cities</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="satyakam mohanty ceo lymbyc">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/satyakam-mohanty.jpg" alt="Satyakam Mohanty — CEO, Lymbyc" class="speaker-photo">
+                        </div>
+                        <h4>Satyakam Mohanty</h4>
+                        <p class="ps-role">CEO</p>
+                        <p class="ps-org">Lymbyc</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="rajan sethuraman ceo latentview analytics">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/rajan-sethuraman.jpg" alt="Rajan Sethuraman — CEO, LatentView Analytics" class="speaker-photo">
+                        </div>
+                        <h4>Rajan Sethuraman</h4>
+                        <p class="ps-role">CEO</p>
+                        <p class="ps-org">LatentView Analytics</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="jürgen hase ceo unlimit by reliance">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/jurgen-hase.jpg" alt="Jürgen Hase — CEO, Unlimit by Reliance" class="speaker-photo">
+                        </div>
+                        <h4>Jürgen Hase</h4>
+                        <p class="ps-role">CEO</p>
+                        <p class="ps-org">Unlimit by Reliance</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="milan desai cto ezdatamunch">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/milan-desai.jpg" alt="Milan Desai — CTO, EzDataMunch" class="speaker-photo">
+                        </div>
+                        <h4>Milan Desai</h4>
+                        <p class="ps-role">CTO</p>
+                        <p class="ps-org">EzDataMunch</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="bhupesh daheria ceo aegis school of data science">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/bhupesh-daheria.jpg" alt="Bhupesh Daheria — CEO, Aegis School of Data Science" class="speaker-photo">
+                        </div>
+                        <h4>Bhupesh Daheria</h4>
+                        <p class="ps-role">CEO</p>
+                        <p class="ps-org">Aegis School of Data Science</p>
+                    </article>
+                </div>
+            </div>
+
+            <div class="speaker-category ps-category reveal" data-category="industry">
+                <div class="ps-cat-head">
+                    <h3>Data Science &amp; Analytics Leaders</h3>
+                    <span class="ps-cat-count">41</span>
+                </div>
+                <p class="ps-cat-blurb">Chief data scientists and analytics heads from India’s largest enterprises.</p>
+                <div class="speakers-grid ps-grid">
+                    <article class="speaker-card ps-card" data-search="vishal dhupar managing director nvidia south asia">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/vishal-dhupar.jpg" alt="Vishal Dhupar — Managing Director, NVIDIA South Asia" class="speaker-photo">
+                        </div>
+                        <h4>Vishal Dhupar</h4>
+                        <p class="ps-role">Managing Director</p>
+                        <p class="ps-org">NVIDIA South Asia</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="dr. shailesh kumar chief data scientist jio">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/shailesh-kumar.jpg" alt="Dr. Shailesh Kumar — Chief Data Scientist, Jio" class="speaker-photo">
+                        </div>
+                        <h4>Dr. Shailesh Kumar</h4>
+                        <p class="ps-role">Chief Data Scientist</p>
+                        <p class="ps-org">Jio</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="dr. santanu bhattacharya chief data scientist airtel x labs">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/santanu-bhattacharya.jpg" alt="Dr. Santanu Bhattacharya — Chief Data Scientist, Airtel X Labs" class="speaker-photo">
+                        </div>
+                        <h4>Dr. Santanu Bhattacharya</h4>
+                        <p class="ps-role">Chief Data Scientist</p>
+                        <p class="ps-org">Airtel X Labs</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="dr. satnam singh chief data scientist acalvio technologies">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/satnam-singh.jpg" alt="Dr. Satnam Singh — Chief Data Scientist, Acalvio Technologies" class="speaker-photo">
+                        </div>
+                        <h4>Dr. Satnam Singh</h4>
+                        <p class="ps-role">Chief Data Scientist</p>
+                        <p class="ps-org">Acalvio Technologies</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="dr. ravi vijayaraghavan vice president &amp; head — analytics flipkart">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/ravi-vijayaraghavan.jpg" alt="Dr. Ravi Vijayaraghavan — Vice President &amp; Head — Analytics, Flipkart" class="speaker-photo">
+                        </div>
+                        <h4>Dr. Ravi Vijayaraghavan</h4>
+                        <p class="ps-role">Vice President &amp; Head — Analytics</p>
+                        <p class="ps-org">Flipkart</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="dr. madhu gopinathan vice president — data science makemytrip">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/madhu-gopinathan.jpg" alt="Dr. Madhu Gopinathan — Vice President — Data Science, MakeMyTrip" class="speaker-photo">
+                        </div>
+                        <h4>Dr. Madhu Gopinathan</h4>
+                        <p class="ps-role">Vice President — Data Science</p>
+                        <p class="ps-org">MakeMyTrip</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="dr. manish gupta director — machine learning &amp; data science american express">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/manish-gupta-amex.jpg" alt="Dr. Manish Gupta — Director — Machine Learning &amp; Data Science, American Express" class="speaker-photo">
+                        </div>
+                        <h4>Dr. Manish Gupta</h4>
+                        <p class="ps-role">Director — Machine Learning &amp; Data Science</p>
+                        <p class="ps-org">American Express</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="dr. nishant chandra sr. director — data products visa">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/nishant-chandra.jpg" alt="Dr. Nishant Chandra — Sr. Director — Data Products, VISA" class="speaker-photo">
+                        </div>
+                        <h4>Dr. Nishant Chandra</h4>
+                        <p class="ps-role">Sr. Director — Data Products</p>
+                        <p class="ps-org">VISA</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="dimple sadhwani data science leader walmart labs">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/dimple-sadhwani.jpg" alt="Dimple Sadhwani — Data Science Leader, Walmart Labs" class="speaker-photo">
+                        </div>
+                        <h4>Dimple Sadhwani</h4>
+                        <p class="ps-role">Data Science Leader</p>
+                        <p class="ps-org">Walmart Labs</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="bhanu ramgopal vp — engineering &amp; analytics myntra">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/bhanu-ramgopal.jpg" alt="Bhanu Ramgopal — VP — Engineering &amp; Analytics, Myntra" class="speaker-photo">
+                        </div>
+                        <h4>Bhanu Ramgopal</h4>
+                        <p class="ps-role">VP — Engineering &amp; Analytics</p>
+                        <p class="ps-org">Myntra</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="dr. soudip roy chowdhury director of data science — fractal products fractal analytics">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/soudip-roy-chowdhury.jpg" alt="Dr. Soudip Roy Chowdhury — Director of Data Science — Fractal Products, Fractal Analytics" class="speaker-photo">
+                        </div>
+                        <h4>Dr. Soudip Roy Chowdhury</h4>
+                        <p class="ps-role">Director of Data Science — Fractal Products</p>
+                        <p class="ps-org">Fractal Analytics</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="sameer dhanrajani chief strategy officer fractal analytics">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/sameer-dhanrajani.jpg" alt="Sameer Dhanrajani — Chief Strategy Officer, Fractal Analytics" class="speaker-photo">
+                        </div>
+                        <h4>Sameer Dhanrajani</h4>
+                        <p class="ps-role">Chief Strategy Officer</p>
+                        <p class="ps-org">Fractal Analytics</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="dr. satya gautam vadlamudi vp — data science &amp; ai creditvidya">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/satya-gautam-vadlamudi.jpg" alt="Dr. Satya Gautam Vadlamudi — VP — Data Science &amp; AI, CreditVidya" class="speaker-photo">
+                        </div>
+                        <h4>Dr. Satya Gautam Vadlamudi</h4>
+                        <p class="ps-role">VP — Data Science &amp; AI</p>
+                        <p class="ps-org">CreditVidya</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="mukesh jain cto — insights, ai &amp; data capgemini india">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/mukesh-jain-capgemini.jpg" alt="Mukesh Jain — CTO — Insights, AI &amp; Data, Capgemini India" class="speaker-photo">
+                        </div>
+                        <h4>Mukesh Jain</h4>
+                        <p class="ps-role">CTO — Insights, AI &amp; Data</p>
+                        <p class="ps-org">Capgemini India</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="madhumita ghosh practice leader — cognitive, big data &amp; advanced analytics ibm india">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/madhumita-ghosh.jpg" alt="Madhumita Ghosh — Practice Leader — Cognitive, Big Data &amp; Advanced Analytics, IBM India" class="speaker-photo">
+                        </div>
+                        <h4>Madhumita Ghosh</h4>
+                        <p class="ps-role">Practice Leader — Cognitive, Big Data &amp; Advanced Analytics</p>
+                        <p class="ps-org">IBM India</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="paul pallath head — data science vodafone idea">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/paul-pallath.jpg" alt="Paul Pallath — Head — Data Science, Vodafone Idea" class="speaker-photo">
+                        </div>
+                        <h4>Paul Pallath</h4>
+                        <p class="ps-role">Head — Data Science</p>
+                        <p class="ps-org">Vodafone Idea</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="shailendra kumar chief evangelist sap">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/shailendra-kumar.jpg" alt="Shailendra Kumar — Chief Evangelist, SAP" class="speaker-photo">
+                        </div>
+                        <h4>Shailendra Kumar</h4>
+                        <p class="ps-role">Chief Evangelist</p>
+                        <p class="ps-org">SAP</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="deepak ghodke country head tableau">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/deepak-ghodke.jpg" alt="Deepak Ghodke — Country Head, Tableau" class="speaker-photo">
+                        </div>
+                        <h4>Deepak Ghodke</h4>
+                        <p class="ps-role">Country Head</p>
+                        <p class="ps-org">Tableau</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="atul batra cto manthan">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/atul-batra.jpg" alt="Atul Batra — CTO, Manthan" class="speaker-photo">
+                        </div>
+                        <h4>Atul Batra</h4>
+                        <p class="ps-role">CTO</p>
+                        <p class="ps-org">Manthan</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="raju wadalkar cto — telecom tech mahindra">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/raju-wadalkar.jpg" alt="Raju Wadalkar — CTO — Telecom, Tech Mahindra" class="speaker-photo">
+                        </div>
+                        <h4>Raju Wadalkar</h4>
+                        <p class="ps-role">CTO — Telecom</p>
+                        <p class="ps-org">Tech Mahindra</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="amit dubey author, national security expert &amp; deputy cto tech mahindra">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/amit-dubey.jpg" alt="Amit Dubey — Author, National Security Expert &amp; Deputy CTO, Tech Mahindra" class="speaker-photo">
+                        </div>
+                        <h4>Amit Dubey</h4>
+                        <p class="ps-role">Author, National Security Expert &amp; Deputy CTO</p>
+                        <p class="ps-org">Tech Mahindra</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="prateek kapadia cto flytxt">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/prateek-kapadia.jpg" alt="Prateek Kapadia — CTO, Flytxt" class="speaker-photo">
+                        </div>
+                        <h4>Prateek Kapadia</h4>
+                        <p class="ps-role">CTO</p>
+                        <p class="ps-org">Flytxt</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="piyush chowhan vp &amp; cio arvind lifestyle brands">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/piyush-chowhan.jpg" alt="Piyush Chowhan — VP &amp; CIO, Arvind Lifestyle Brands" class="speaker-photo">
+                        </div>
+                        <h4>Piyush Chowhan</h4>
+                        <p class="ps-role">VP &amp; CIO</p>
+                        <p class="ps-org">Arvind Lifestyle Brands</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="paritosh anand svp — it reliance industries">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/paritosh-anand.jpg" alt="Paritosh Anand — SVP — IT, Reliance Industries" class="speaker-photo">
+                        </div>
+                        <h4>Paritosh Anand</h4>
+                        <p class="ps-role">SVP — IT</p>
+                        <p class="ps-org">Reliance Industries</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="parag vishnoi managing director deloitte india">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/parag-vishnoi.jpg" alt="Parag Vishnoi — Managing Director, Deloitte India" class="speaker-photo">
+                        </div>
+                        <h4>Parag Vishnoi</h4>
+                        <p class="ps-role">Managing Director</p>
+                        <p class="ps-org">Deloitte India</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="balkrishna singhania managing director &amp; co-head — india analytics pwc">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/balkrishna-singhania.jpg" alt="Balkrishna Singhania — Managing Director &amp; Co-Head — India Analytics, PwC" class="speaker-photo">
+                        </div>
+                        <h4>Balkrishna Singhania</h4>
+                        <p class="ps-role">Managing Director &amp; Co-Head — India Analytics</p>
+                        <p class="ps-org">PwC</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="moumita sarker vice president — client delivery cartesian consulting">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/moumita-sarker.jpg" alt="Moumita Sarker — Vice President — Client Delivery, Cartesian Consulting" class="speaker-photo">
+                        </div>
+                        <h4>Moumita Sarker</h4>
+                        <p class="ps-role">Vice President — Client Delivery</p>
+                        <p class="ps-org">Cartesian Consulting</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="sameer ratolikar chief information security officer hdfc bank">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/sameer-ratolikar.jpg" alt="Sameer Ratolikar — Chief Information Security Officer, HDFC Bank" class="speaker-photo">
+                        </div>
+                        <h4>Sameer Ratolikar</h4>
+                        <p class="ps-role">Chief Information Security Officer</p>
+                        <p class="ps-org">HDFC Bank</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="sayan sen head — data labs hdfc life">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/sayan-sen.jpg" alt="Sayan Sen — Head — Data Labs, HDFC Life" class="speaker-photo">
+                        </div>
+                        <h4>Sayan Sen</h4>
+                        <p class="ps-role">Head — Data Labs</p>
+                        <p class="ps-org">HDFC Life</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="anand k. sundaram group executive vp — credit info &amp; analytics yes bank">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/anand-k-sundaram.jpg" alt="Anand K. Sundaram — Group Executive VP — Credit Info &amp; Analytics, Yes Bank" class="speaker-photo">
+                        </div>
+                        <h4>Anand K. Sundaram</h4>
+                        <p class="ps-role">Group Executive VP — Credit Info &amp; Analytics</p>
+                        <p class="ps-org">Yes Bank</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="shivani venkatesh head — client insights rbl bank">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/shivani-venkatesh.jpg" alt="Shivani Venkatesh — Head — Client Insights, RBL Bank" class="speaker-photo">
+                        </div>
+                        <h4>Shivani Venkatesh</h4>
+                        <p class="ps-role">Head — Client Insights</p>
+                        <p class="ps-org">RBL Bank</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="gunjan gupta svp &amp; head — analytics bajaj allianz life">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/gunjan-gupta.jpg" alt="Gunjan Gupta — SVP &amp; Head — Analytics, Bajaj Allianz Life" class="speaker-photo">
+                        </div>
+                        <h4>Gunjan Gupta</h4>
+                        <p class="ps-role">SVP &amp; Head — Analytics</p>
+                        <p class="ps-org">Bajaj Allianz Life</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="anthony devassy chief data officer sbi general insurance">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/anthony-devassy.jpg" alt="Anthony Devassy — Chief Data Officer, SBI General Insurance" class="speaker-photo">
+                        </div>
+                        <h4>Anthony Devassy</h4>
+                        <p class="ps-role">Chief Data Officer</p>
+                        <p class="ps-org">SBI General Insurance</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="saurabh awasthi head of analytics manipalcigna health insurance">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/saurabh-awasthi.jpg" alt="Saurabh Awasthi — Head of Analytics, ManipalCigna Health Insurance" class="speaker-photo">
+                        </div>
+                        <h4>Saurabh Awasthi</h4>
+                        <p class="ps-role">Head of Analytics</p>
+                        <p class="ps-org">ManipalCigna Health Insurance</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="kaushik das evp — big data &amp; data science star india">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/kaushik-das.jpg" alt="Kaushik Das — EVP — Big Data &amp; Data Science, Star India" class="speaker-photo">
+                        </div>
+                        <h4>Kaushik Das</h4>
+                        <p class="ps-role">EVP — Big Data &amp; Data Science</p>
+                        <p class="ps-org">Star India</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="ujjyaini mitra head — analytics viacom18">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/ujjyaini-mitra.jpg" alt="Ujjyaini Mitra — Head — Analytics, Viacom18" class="speaker-photo">
+                        </div>
+                        <h4>Ujjyaini Mitra</h4>
+                        <p class="ps-role">Head — Analytics</p>
+                        <p class="ps-org">Viacom18</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="sudeepta chaudhuri head — bi &amp; advanced analytics idea cellular">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/sudeepta-chaudhuri.jpg" alt="Sudeepta Chaudhuri — Head — BI &amp; Advanced Analytics, Idea Cellular" class="speaker-photo">
+                        </div>
+                        <h4>Sudeepta Chaudhuri</h4>
+                        <p class="ps-role">Head — BI &amp; Advanced Analytics</p>
+                        <p class="ps-org">Idea Cellular</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="vanitha d’silva head — data science oxigen services">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/vanitha-dsilva.jpg" alt="Vanitha D’Silva — Head — Data Science, Oxigen Services" class="speaker-photo">
+                        </div>
+                        <h4>Vanitha D’Silva</h4>
+                        <p class="ps-role">Head — Data Science</p>
+                        <p class="ps-org">Oxigen Services</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="vaidyanathan r. iyer business unit executive ibm security">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/vaidyanathan-r-iyer.jpg" alt="Vaidyanathan R. Iyer — Business Unit Executive, IBM Security" class="speaker-photo">
+                        </div>
+                        <h4>Vaidyanathan R. Iyer</h4>
+                        <p class="ps-role">Business Unit Executive</p>
+                        <p class="ps-org">IBM Security</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="navin mehra regional sales director fortinet">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/navin-mehra.jpg" alt="Navin Mehra — Regional Sales Director, Fortinet" class="speaker-photo">
+                        </div>
+                        <h4>Navin Mehra</h4>
+                        <p class="ps-role">Regional Sales Director</p>
+                        <p class="ps-org">Fortinet</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="nikola sucevic telecom analytics specialist smartfren · jio">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/nikola-sucevic.jpg" alt="Nikola Sucevic — Telecom Analytics Specialist, Smartfren · Jio" class="speaker-photo">
+                        </div>
+                        <h4>Nikola Sucevic</h4>
+                        <p class="ps-role">Telecom Analytics Specialist</p>
+                        <p class="ps-org">Smartfren · Jio</p>
+                    </article>
+                </div>
+            </div>
+
+            <div class="speaker-category ps-category reveal" data-category="ecosystem">
+                <div class="ps-cat-head">
+                    <h3>Media, Talent &amp; Ecosystem</h3>
+                    <span class="ps-cat-count">8</span>
+                </div>
+                <p class="ps-cat-blurb">Editors, people leaders and educators shaping the conversation around the technology.</p>
+                <div class="speakers-grid ps-grid">
+                    <article class="speaker-card ps-card" data-search="deepali gupta senior assistant editor the economic times">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/deepali-gupta.jpg" alt="Deepali Gupta — Senior Assistant Editor, The Economic Times" class="speaker-photo">
+                        </div>
+                        <h4>Deepali Gupta</h4>
+                        <p class="ps-role">Senior Assistant Editor</p>
+                        <p class="ps-org">The Economic Times</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="madhavan narayanan senior editor, writer &amp; columnist formerly hindustan times">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/madhavan-narayanan.jpg" alt="Madhavan Narayanan — Senior Editor, Writer &amp; Columnist, formerly Hindustan Times" class="speaker-photo">
+                        </div>
+                        <h4>Madhavan Narayanan</h4>
+                        <p class="ps-role">Senior Editor, Writer &amp; Columnist</p>
+                        <p class="ps-org">formerly Hindustan Times</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="raj aradhyula chief people officer fractal analytics">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/raj-aradhyula.jpg" alt="Raj Aradhyula — Chief People Officer, Fractal Analytics" class="speaker-photo">
+                        </div>
+                        <h4>Raj Aradhyula</h4>
+                        <p class="ps-role">Chief People Officer</p>
+                        <p class="ps-org">Fractal Analytics</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="anand khot hr leader ibm">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/anand-khot.jpg" alt="Anand Khot — HR Leader, IBM" class="speaker-photo">
+                        </div>
+                        <h4>Anand Khot</h4>
+                        <p class="ps-role">HR Leader</p>
+                        <p class="ps-org">IBM</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="nasir shaikh head — hr atos">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/nasir-shaikh.jpg" alt="Nasir Shaikh — Head — HR, Atos" class="speaker-photo">
+                        </div>
+                        <h4>Nasir Shaikh</h4>
+                        <p class="ps-role">Head — HR</p>
+                        <p class="ps-org">Atos</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="riaz mulla head — leadership learning tech mahindra">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/riaz-mulla.jpg" alt="Riaz Mulla — Head — Leadership Learning, Tech Mahindra" class="speaker-photo">
+                        </div>
+                        <h4>Riaz Mulla</h4>
+                        <p class="ps-role">Head — Leadership Learning</p>
+                        <p class="ps-org">Tech Mahindra</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="p. dasgupta program manager — career education, india &amp; south asia ibm">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/p-dasgupta.jpg" alt="P. Dasgupta — Program Manager — Career Education, India &amp; South Asia, IBM" class="speaker-photo">
+                        </div>
+                        <h4>P. Dasgupta</h4>
+                        <p class="ps-role">Program Manager — Career Education, India &amp; South Asia</p>
+                        <p class="ps-org">IBM</p>
+                    </article>
+                    <article class="speaker-card ps-card" data-search="kallol kanungo director muniversity">
+                        <div class="speaker-photo-wrap">
+                            <img loading="lazy" decoding="async" width="360" height="440" src="images/past-speakers/kallol-kanungo.jpg" alt="Kallol Kanungo — Director, mUniversity" class="speaker-photo">
+                        </div>
+                        <h4>Kallol Kanungo</h4>
+                        <p class="ps-role">Director</p>
+                        <p class="ps-org">mUniversity</p>
+                    </article>
+                </div>
+            </div>
+
+            <p class="ps-empty" id="ps-empty">No speakers match that search. Try a company or a job title.</p>
+
+            <div class="ps-note">
+                <strong>Also on the Data Science Congress stage over the years:</strong> Dr. Vint Cerf (Father of the
+                Internet), Dr. Juergen Schmidhuber (Father of Modern AI), Dr. Ruchir Puri (Chief Scientist, IBM
+                Research), Rajat Monga (Co-creator, Google TensorFlow), Prof. Toby Walsh, Dr. Azalia Mirhoseini,
+                Dr. Dina Zielinski, Sella Nevo (Google Flood Forecasting), Dr. Gabor Melli (Sony PlayStation),
+                Dr. Rushi Bhatt (LinkedIn), Dr. Amit Kumar Pandey (Hanson Robotics), Jim Keravala (OffWorld AI),
+                Rama Akkiraju, Dr. Rohini Srivathsa (Microsoft India) and Prof. Anil D. Sahasrabudhe (Chairman, NAAC).
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== CLOSING CTA ===== -->
+    <section style="padding:5.5rem 0;background:var(--grad-hero);text-align:center;">
+        <div class="container">
+            <h2 style="font-family:var(--font-display);font-size:clamp(1.8rem,3.5vw,2.6rem);font-weight:800;color:#fff;margin-bottom:1rem;">The 2026 line-up is being built now.</h2>
+            <p style="color:rgba(255,255,255,0.65);font-size:1.05rem;line-height:1.75;max-width:56ch;margin:0 auto 2rem;">
+                Bharat AI Innovation 2026 brings 5,000+ researchers, founders, CXOs and policymakers to the
+                World Trade Center Mumbai on 20&ndash;21 November. Visitor passes are free.
+            </p>
+            <div style="display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;">
+                <a href="/register?utm_source=past-speakers&amp;utm_medium=closing-cta" class="btn btn-primary btn-lg">Register Free <i class="fas fa-arrow-right"></i></a>
+                <a href="/#speakers" class="btn btn-ghost btn-lg">See 2026 Speakers</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- FOOTER -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <div class="footer-logo">
+                        <img loading="lazy" decoding="async" src="images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI Innovation Logo" style="height:40px;width:auto;border-radius:10px;padding:5px;background:rgba(255,255,255,0.95);box-shadow:0 2px 6px rgba(0,0,0,0.08);">
+                    </div>
+                    <p class="footer-description">Advancing India's Future Through AI Innovation. Join us in creating a Viksit Bharat by 2047.</p>
+                    <div class="social-links">
+                        <a href="https://www.linkedin.com/showcase/bharat-ai-innovation" class="social-link" target="_blank" rel="noopener noreferrer" aria-label="Bharat AI Innovation on LinkedIn"><i class="fab fa-linkedin"></i></a>
+                        <a href="https://www.facebook.com/BharatAIInnovation/" class="social-link" target="_blank" rel="noopener noreferrer" aria-label="Bharat AI Innovation on Facebook"><i class="fab fa-facebook"></i></a>
+                        <a href="https://www.instagram.com/BharatAIInnovation.ai/" class="social-link" target="_blank" rel="noopener noreferrer" aria-label="Bharat AI Innovation on Instagram"><i class="fab fa-instagram"></i></a>
+                    </div>
+                </div>
+                <div class="footer-section">
+                    <h4>Quick Links</h4>
+                    <ul class="footer-links">
+                        <li><a href="about.html">About Us</a></li>
+                        <li><a href="conference.html">Conference</a></li>
+                        <li><a href="exhibition.html">Exhibition</a></li>
+                        <li><a href="campus-series.html">Campus Series</a></li>
+                        <li><a href="past-speakers.html">Past Speakers</a></li>
+                        <li><a href="/register">Register &amp; Delegation</a></li>
+                        <li><a href="startup-pitch.html">Startup Pitch</a></li>
+                        <li><a href="training-workshop.html">Workshops</a></li>
+                        <li><a href="partner.html">Partner</a></li>
+                        <li><a href="https://bellaward.com/" target="_blank" rel="noopener noreferrer">Aegis Graham Bell Awards</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h4>Event Info</h4>
+                    <ul class="footer-links">
+                        <li><a href="conference.html#schedule">Schedule</a></li>
+                        <li><a href="conference.html">Programme</a></li>
+                        <li><a href="exhibition.html">Exhibition Zones</a></li>
+                        <li><a href="accommodation.html">Hotels</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h4>Contact Us</h4>
+                    <div class="contact-info">
+                        <p><i class="fas fa-envelope"></i> info@bharataiinnovation.com</p>
+                        <p><i class="fas fa-phone"></i> +91 89765 80367</p>
+                        <p><i class="fas fa-map-marker-alt"></i> World Trade Center Mumbai, Cuffe Parade, Mumbai</p>
+                    </div>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2026 Bharat AI Innovation. All rights reserved. | Organized by Aegis Knowledge Trust</p>
+                <div class="footer-bottom-links">
+                    <a href="privacy.html">Privacy Policy</a>
+                    <a href="terms.html">Terms of Service</a>
+                    <a href="refund.html">Refund &amp; Cancellation</a>
+                    <a href="shipping.html">Shipping &amp; Delivery</a>
+                    <a href="code-of-conduct.html">Code of Conduct</a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script src="js/main.js"></script>
+    <script>
+    (function () {
+        var input = document.getElementById('ps-search-input');
+        var chips = Array.prototype.slice.call(document.querySelectorAll('.ps-chip'));
+        var categories = Array.prototype.slice.call(document.querySelectorAll('.ps-category'));
+        var cards = Array.prototype.slice.call(document.querySelectorAll('.ps-card'));
+        var countEl = document.getElementById('ps-count');
+        var emptyEl = document.getElementById('ps-empty');
+        var activeFilter = 'all';
+
+        function apply() {
+            var q = input.value.trim().toLowerCase();
+            var shown = 0;
+            categories.forEach(function (cat) {
+                var catMatch = activeFilter === 'all' || cat.dataset.category === activeFilter;
+                var visibleInCat = 0;
+                Array.prototype.forEach.call(cat.querySelectorAll('.ps-card'), function (card) {
+                    var match = catMatch && (!q || card.dataset.search.indexOf(q) !== -1);
+                    card.hidden = !match;
+                    if (match) { visibleInCat++; }
+                });
+                cat.hidden = visibleInCat === 0;
+                shown += visibleInCat;
+            });
+            countEl.textContent = shown + (shown === 1 ? ' speaker' : ' speakers');
+            emptyEl.classList.toggle('show', shown === 0);
+        }
+
+        chips.forEach(function (chip) {
+            chip.addEventListener('click', function () {
+                chips.forEach(function (c) { c.classList.remove('active'); });
+                chip.classList.add('active');
+                activeFilter = chip.dataset.filter;
+                apply();
+            });
+        });
+
+        input.addEventListener('input', apply);
+        apply();
+    })();
+    </script>
+</body>
+</html>

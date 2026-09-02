@@ -57,6 +57,14 @@
         <priority>0.85</priority>
     </url>
 
+    <!-- Past Speakers — Data Science Congress archive -->
+    <url>
+        <loc>https://bharataiinnovation.com/past-speakers.html</loc>
+        <lastmod>2026-09-02</lastmod>
+        <changefreq>monthly</changefreq>
+        <priority>0.7</priority>
+    </url>
+
     <!-- Campus Series — pre-event panel discussions -->
     <url>
         <loc>https://bharataiinnovation.com/campus-series.html</loc>
