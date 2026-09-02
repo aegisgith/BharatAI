@@ -476,9 +476,23 @@ app.get('/api/admin/analytics/audience', async (c) => {
 // charged and the taxable value is derived from it, never the other way round: an
 // invoice whose total disagrees with the card statement is worse than no invoice.
 
+// GSTIN state codes, so a buyer's GSTIN alone settles the place of supply.
+const GST_STATES: Record<string, string> = {
+  '01': 'Jammu & Kashmir', '02': 'Himachal Pradesh', '03': 'Punjab', '04': 'Chandigarh',
+  '05': 'Uttarakhand', '06': 'Haryana', '07': 'Delhi', '08': 'Rajasthan', '09': 'Uttar Pradesh',
+  '10': 'Bihar', '11': 'Sikkim', '12': 'Arunachal Pradesh', '13': 'Nagaland', '14': 'Manipur',
+  '15': 'Mizoram', '16': 'Tripura', '17': 'Meghalaya', '18': 'Assam', '19': 'West Bengal',
+  '20': 'Jharkhand', '21': 'Odisha', '22': 'Chhattisgarh', '23': 'Madhya Pradesh', '24': 'Gujarat',
+  '26': 'Dadra & Nagar Haveli and Daman & Diu', '27': 'Maharashtra', '29': 'Karnataka',
+  '30': 'Goa', '31': 'Lakshadweep', '32': 'Kerala', '33': 'Tamil Nadu', '34': 'Puducherry',
+  '35': 'Andaman & Nicobar Islands', '36': 'Telangana', '37': 'Andhra Pradesh', '38': 'Ladakh',
+  '97': 'Other Territory',
+}
+
 const INVOICE_SETTING_KEYS = [
   'inv_legal_name', 'inv_address', 'inv_gstin', 'inv_pan', 'inv_state', 'inv_state_code',
   'inv_sac', 'inv_prefix', 'inv_signatory', 'inv_contact_email', 'inv_contact_phone',
+  'inv_next_number', 'inv_brand_line', 'inv_bank', 'inv_footer_note',
 ] as const
 
 async function invoiceSettings(c: any): Promise<Record<string, string>> {
@@ -560,17 +574,32 @@ app.post('/api/admin/invoices', async (c) => {
   const taxable = Math.round(total / (1 + rate / 100))
   const tax = total - taxable
 
-  // Place of supply for admission to an event is where the event is held, so this is
-  // an intra-state supply in Maharashtra whatever state the buyer sits in. Kept
-  // overridable, because that call belongs to the organisation's accountant.
-  const pos = String(b.place_of_supply || set.inv_state || 'Maharashtra')
-  const intra = !b.force_igst && pos.trim().toLowerCase() === String(set.inv_state || 'Maharashtra').trim().toLowerCase()
+  // Place of supply follows the buyer, not the venue. There is a real reading of
+  // section 12(6) that would put it at the event and make every sale CGST+SGST
+  // Maharashtra, but the accountant issuing these has treated a registered business
+  // buyer under 12(5) - recipient's state, so IGST for anyone outside Maharashtra -
+  // and the invoices already sent out are drawn that way. Matching the books that
+  // exist matters more than a defensible alternative.
+  //
+  // The buyer's GSTIN is the most reliable signal of their state: the first two
+  // digits are the state code, so 29AAICS0944E1ZB is Karnataka and 27... is ours.
+  const sellerCode = String(set.inv_state_code || '27').trim()
+  const buyerCode = String(b.buyer_gstin || '').trim().slice(0, 2)
+  const pos = String(b.place_of_supply || '').trim() ||
+    (buyerCode && GST_STATES[buyerCode]) || String(set.inv_state || 'Maharashtra')
+  const intra = b.force_igst ? false
+    : buyerCode ? buyerCode === sellerCode
+    : pos.trim().toLowerCase() === String(set.inv_state || 'Maharashtra').trim().toLowerCase()
   const cgst = intra ? Math.floor(tax / 2) : 0
   const sgst = intra ? tax - cgst : 0
   const igst = intra ? 0 : tax
 
-  const seq = ((await c.env.DB.prepare('SELECT COALESCE(MAX(id), 0) AS n FROM invoices').first() as any)?.n || 0) + 1
-  const invoiceNo = (set.inv_prefix || 'BHAI') + '/' + financialYear(new Date()) + '/' + String(seq).padStart(4, '0')
+  // The series is already at AKT/26-27/117 in the accountant's books. Starting again
+  // at 1 would issue a second invoice bearing a number that already exists, so the
+  // next number is a setting and the counter carries on from wherever they are.
+  const issued = ((await c.env.DB.prepare('SELECT COUNT(*) AS n FROM invoices').first() as any)?.n || 0)
+  const seq = parseInt(String(set.inv_next_number || '1'), 10) + issued
+  const invoiceNo = (set.inv_prefix || 'AKT') + '/' + financialYear(new Date()) + '/' + seq
 
   const r = await c.env.DB.prepare(
     `INSERT INTO invoices (invoice_no, attendee_id, buyer_name, buyer_email, buyer_company, buyer_gstin,
@@ -665,95 +694,125 @@ app.get('/invoice/:token', async (c) => {
 
 function invoiceHTML(v: any, set: Record<string, string>): string {
   const esc = (x: any) => String(x ?? '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch] as string))
-  const money = (n: number) => '&#8377;' + rupees(n)
-  const row = (label: string, value: string, bold = false) =>
-    `<tr><td style="padding:7px 0;color:#555;">${label}</td><td style="padding:7px 0;text-align:right;${bold ? 'font-weight:700;' : ''}">${value}</td></tr>`
-  const date = v.paid_at ? istStamp(v.paid_at) : istStamp(v.created_at)
+  const nl = (x: any) => esc(x).replace(/\r?\n/g, '<br>')
+  const money = (n: number) => n ? rupees(n) : '-'
+  const half = v.gst_rate / 2
+
+  // dd-MMM-yy, the format the accountant's own invoices carry.
+  const shortDate = (raw: any) => {
+    if (!raw) return '-'
+    const d = new Date(String(raw).replace(' ', 'T') + (/Z$/.test(String(raw)) ? '' : 'Z'))
+    if (isNaN(d.getTime())) return esc(raw)
+    const t = new Date(d.getTime() + IST_OFFSET_MINUTES * 60000)
+    return t.getUTCDate().toString().padStart(2, '0') + '-' + IST_MONTHS[t.getUTCMonth()] + '-' + String(t.getUTCFullYear()).slice(2)
+  }
+
+  // The company name already sits in the row above; repeating it here just pushes
+  // the address down and makes the block look duplicated.
+  const billing = nl(v.buyer_address || '')
+  const cell = 'border:1px solid #000;padding:6px 8px;vertical-align:top;'
+  const head = cell + 'font-weight:bold;text-align:center;background:#fff;'
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Invoice ${esc(v.invoice_no)} - Bharat AI Innovation 2026</title><style>
- body{margin:0;background:#f2f4f8;color:#1c2033;font-family:system-ui,-apple-system,Segoe UI,Arial,sans-serif;font-size:14px;}
- .sheet{max-width:820px;margin:24px auto;background:#fff;padding:40px;box-shadow:0 2px 18px rgba(0,0,0,.08);}
- h1{margin:0 0 2px;font-size:20px;letter-spacing:.5px;}
- .muted{color:#666;font-size:12.5px;line-height:1.65;}
- .head{display:flex;justify-content:space-between;gap:24px;border-bottom:2px solid #1c2033;padding-bottom:18px;}
- .cols{display:flex;gap:24px;margin-top:24px;}
- .cols>div{flex:1;}
- .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:#888;margin-bottom:5px;}
+ body{margin:0;background:#f2f4f8;color:#000;font-family:Calibri,Carlito,"Segoe UI",Arial,sans-serif;font-size:13px;}
+ .sheet{max-width:820px;margin:20px auto;background:#fff;padding:26px;border:1px solid #000;}
  table{width:100%;border-collapse:collapse;}
- .items{margin-top:26px;}
- .items th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:#666;border-bottom:1px solid #ddd;padding:9px 0;}
- .items td{padding:12px 0;border-bottom:1px solid #eee;}
- .totals{margin-left:auto;max-width:320px;margin-top:6px;}
- .grand{border-top:2px solid #1c2033;font-size:16px;}
- .foot{margin-top:34px;border-top:1px solid #eee;padding-top:16px;}
- .print{max-width:820px;margin:0 auto 0;text-align:right;}
- .print button{padding:10px 20px;border:none;border-radius:8px;background:#FF6B00;color:#fff;font-weight:600;cursor:pointer;}
- @media print{ body{background:#fff;} .sheet{box-shadow:none;margin:0;padding:0;} .print{display:none;} }
+ .title{text-align:center;font-size:17px;font-weight:bold;letter-spacing:.5px;padding-bottom:14px;}
+ .brand{font-weight:bold;line-height:1.5;}
+ .logo{height:52px;width:auto;}
+ .right{text-align:right;} .centre{text-align:center;}
+ .print{max-width:820px;margin:0 auto;text-align:right;}
+ .print button{padding:10px 20px;border:none;border-radius:8px;background:#FF6B00;color:#fff;font-weight:600;cursor:pointer;font-size:13px;}
+ @media print{ body{background:#fff;} .sheet{margin:0;border:1px solid #000;} .print{display:none;} }
 </style></head><body>
 <div class="print"><button onclick="window.print()">Save as PDF / Print</button></div>
 <div class="sheet">
-  <div class="head">
-    <div>
-      <h1>${esc(set.inv_legal_name || 'Aegis Knowledge Trust')}</h1>
-      <p class="muted">${esc(set.inv_address || '')}<br>
-        ${set.inv_gstin ? 'GSTIN: <strong>' + esc(set.inv_gstin) + '</strong><br>' : ''}
-        ${set.inv_pan ? 'PAN: ' + esc(set.inv_pan) + '<br>' : ''}
-        ${set.inv_contact_email ? esc(set.inv_contact_email) : ''}${set.inv_contact_phone ? ' &middot; ' + esc(set.inv_contact_phone) : ''}
-      </p>
-    </div>
-    <div style="text-align:right;">
-      <div style="font-size:19px;font-weight:700;letter-spacing:1px;">TAX INVOICE</div>
-      <p class="muted" style="margin-top:6px;">
-        <strong>${esc(v.invoice_no)}</strong><br>${esc(date)}
-      </p>
-    </div>
-  </div>
+  <div class="title">TAX INVOICE</div>
 
-  <div class="cols">
-    <div>
-      <div class="lbl">Billed to</div>
-      <div style="font-weight:600;">${esc(v.buyer_name)}</div>
-      <p class="muted">
-        ${v.buyer_company ? esc(v.buyer_company) + '<br>' : ''}
-        ${v.buyer_address ? esc(v.buyer_address).replace(/\n/g, '<br>') + '<br>' : ''}
-        ${esc(v.buyer_email)}${v.buyer_phone ? '<br>' + esc(v.buyer_phone) : ''}
-        ${v.buyer_gstin ? '<br>GSTIN: <strong>' + esc(v.buyer_gstin) + '</strong>' : ''}
-      </p>
-    </div>
-    <div>
-      <div class="lbl">Payment</div>
-      <p class="muted">
-        ${v.order_ref ? 'Order: ' + esc(v.order_ref) + '<br>' : ''}
-        ${v.payment_ref ? 'Reference: ' + esc(v.payment_ref) + '<br>' : ''}
-        Place of supply: ${esc(v.place_of_supply || '')}<br>
-        Status: <strong style="color:#0f7b47;">PAID</strong>
-      </p>
-    </div>
-  </div>
+  <table style="margin-bottom:10px;"><tr>
+    <td style="vertical-align:top;width:60%;" class="brand">
+      ${set.inv_brand_line ? esc(set.inv_brand_line) + '<br>' : ''}${esc(set.inv_legal_name || 'Aegis Knowledge Trust')}<br>
+      <span style="font-weight:bold;">${nl(set.inv_address || '')}</span>
+    </td>
+    <td style="vertical-align:top;text-align:right;">
+      <img class="logo" src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI Innovation">
+    </td>
+  </tr></table>
 
-  <table class="items">
-    <thead><tr><th>Description</th><th style="text-align:center;">SAC</th><th style="text-align:right;">Amount</th></tr></thead>
-    <tbody><tr>
-      <td>${esc(v.item_desc)}<div class="muted">20&ndash;21 November 2026 &middot; WTC Mumbai</div></td>
-      <td style="text-align:center;">${esc(set.inv_sac || '998596')}</td>
-      <td style="text-align:right;">${money(v.taxable_paise)}</td>
-    </tr></tbody>
+  <table>
+    <tr>
+      <td style="${head}width:8%;">To,</td>
+      <td style="${head}width:30%;">Billing Address</td>
+      <td style="${head}width:30%;">Shipping Address</td>
+      <td style="${head}width:16%;">Invoice No.</td>
+      <td style="${cell}width:16%;text-align:center;">${esc(v.invoice_no)}</td>
+    </tr>
+    <tr>
+      <td colspan="1" style="${cell}"></td>
+      <td style="${cell}">${esc(v.buyer_company || v.buyer_name)}</td>
+      <td style="${cell}">${esc(v.buyer_company || v.buyer_name)}</td>
+      <td style="${head}">Date</td>
+      <td style="${cell}text-align:center;">${shortDate(v.paid_at || v.created_at)}</td>
+    </tr>
+    <tr>
+      <td style="${cell}"></td>
+      <td style="${cell}">${billing}</td>
+      <td style="${cell}">${billing}</td>
+      <td style="${head}">Due Date</td>
+      <td style="${cell}text-align:center;">-</td>
+    </tr>
+    <tr>
+      <td colspan="3" style="${cell}text-align:center;font-weight:bold;">GST No: - ${esc(v.buyer_gstin || 'Unregistered')}</td>
+      <td colspan="2" style="${cell}"></td>
+    </tr>
   </table>
 
-  <table class="totals">
-    ${row('Taxable value', money(v.taxable_paise))}
-    ${v.igst_paise ? row('IGST @ ' + v.gst_rate + '%', money(v.igst_paise))
-      : row('CGST @ ' + (v.gst_rate / 2) + '%', money(v.cgst_paise)) + row('SGST @ ' + (v.gst_rate / 2) + '%', money(v.sgst_paise))}
-    <tr class="grand"><td style="padding:12px 0;font-weight:700;">Total</td><td style="padding:12px 0;text-align:right;font-weight:700;">${money(v.total_paise)}</td></tr>
+  <table style="margin-top:-1px;">
+    <tr>
+      <td style="${head}width:8%;">Sr. No.</td>
+      <td style="${head}width:60%;">Description of Service</td>
+      <td style="${head}width:16%;">SAC Code</td>
+      <td style="${head}width:16%;">Amount (INR)</td>
+    </tr>
+    <tr>
+      <td style="${cell}text-align:center;height:110px;">1</td>
+      <td style="${cell}">${esc(v.item_desc)},<br><br>&nbsp;&nbsp;&nbsp;&nbsp;${esc(v.buyer_name)}
+        ${v.order_ref || v.payment_ref ? `<br><br><span style="font-size:11px;color:#555;">${[v.order_ref ? 'Order ' + esc(v.order_ref) : '', v.payment_ref ? esc(v.payment_ref) : ''].filter(Boolean).join(' &middot; ')}</span>` : ''}
+      </td>
+      <td style="${cell}text-align:center;">${esc(set.inv_sac || '998596')}</td>
+      <td style="${cell}text-align:right;">${rupees(v.taxable_paise)}</td>
+    </tr>
+    <tr>
+      <td rowspan="4" colspan="2" style="${cell}">
+        <p style="margin:6px 0 18px;font-weight:bold;">Place of Supply: ${esc(v.place_of_supply || '')}</p>
+        <p style="margin:0;"><strong>PAN No.:</strong>&nbsp;&nbsp;&nbsp;&nbsp;${esc(set.inv_pan || '')}</p>
+        <p style="margin:2px 0 0;"><strong>GST. No.:</strong>&nbsp;&nbsp;${esc(set.inv_gstin || '')}</p>
+      </td>
+      <td style="${head}text-align:left;">Total</td>
+      <td style="${cell}text-align:right;font-weight:bold;">${rupees(v.taxable_paise)}</td>
+    </tr>
+    <tr><td style="${head}text-align:left;">Add: CGST @ ${half}%</td><td style="${cell}text-align:right;">${money(v.cgst_paise)}</td></tr>
+    <tr><td style="${head}text-align:left;">Add: SGST @ ${half}%</td><td style="${cell}text-align:right;">${money(v.sgst_paise)}</td></tr>
+    <tr><td style="${head}text-align:left;">Add: IGST @ ${v.gst_rate}%</td><td style="${cell}text-align:right;">${money(v.igst_paise)}</td></tr>
+    <tr>
+      <td colspan="2" style="${cell}font-weight:bold;">In Words: ${esc(rupeesInWords(v.total_paise).replace(/^Rupees /, ''))}</td>
+      <td style="${head}text-align:left;">Grand Total</td>
+      <td style="${cell}text-align:right;font-weight:bold;">${rupees(v.total_paise)}</td>
+    </tr>
   </table>
-  <p class="muted" style="text-align:right;margin-top:4px;">${esc(rupeesInWords(v.total_paise))}</p>
 
-  <div class="foot">
-    <p class="muted">This is a computer-generated invoice for a payment already received; no signature is required.
-      ${set.inv_signatory ? 'Authorised signatory: ' + esc(set.inv_signatory) + '.' : ''}
-      Your registration for Bharat AI Innovation Conference &amp; Exhibition 2026 is confirmed &mdash; bring a government photo ID matching this name to the badge desk.</p>
+  <div style="margin-top:18px;">
+    <p style="margin:0 0 46px;font-weight:bold;">For ${esc(set.inv_legal_name || 'Aegis Knowledge Trust')}</p>
+    <p style="margin:0;font-weight:bold;">${esc(set.inv_signatory || 'Authorized Signatory')}</p>
   </div>
+
+  ${set.inv_bank ? `<div style="margin-top:18px;">
+    <p style="margin:0 0 4px;font-weight:bold;">Online Transfer Details :-</p>
+    <p style="margin:0;line-height:1.6;">${nl(set.inv_bank)}</p>
+  </div>` : ''}
+
+  ${set.inv_footer_note ? `<p style="margin:22px 0 0;text-align:center;font-weight:bold;font-size:12px;">${esc(set.inv_footer_note)}</p>` : ''}
 </div></body></html>`
 }
 
