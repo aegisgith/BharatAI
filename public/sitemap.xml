@@ -57,6 +57,18 @@
         <priority>0.85</priority>
     </url>
 
+    <!-- Campus Series — pre-event panel discussions -->
+    <url>
+        <loc>https://bharataiinnovation.com/campus-series.html</loc>
+        <lastmod>2026-09-02</lastmod>
+        <changefreq>weekly</changefreq>
+        <priority>0.85</priority>
+        <image:image>
+            <image:loc>https://bharataiinnovation.com/images/campus-djsanghvi-21sep.jpg</image:loc>
+            <image:title>Bharat AI Innovation Campus Series — Pre-Event Panel Discussions</image:title>
+        </image:image>
+    </url>
+
     <!-- Startup Pitch Page -->
     <url>
         <loc>https://bharataiinnovation.com/startup-pitch.html</loc>
