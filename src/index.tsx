@@ -550,8 +550,11 @@ async function invoiceFromToken(c: any, token: string): Promise<any | null> {
   return safeEqualA(token, expected) ? row : null
 }
 
-app.post('/api/admin/invoices', async (c) => {
-  const b = await c.req.json().catch(() => ({})) as any
+app.post('/api/admin/invoices', async (c) => createInvoice(c, await c.req.json().catch(() => ({}))))
+
+// Named rather than inline, so the finance routes run exactly the same code. A
+// second copy of invoice arithmetic is the last thing this needs.
+async function createInvoice(c: any, b: any) {
   const set = await invoiceSettings(c)
   if (!set.inv_legal_name || !set.inv_gstin) {
     return c.json({ error: 'Add your legal name and GSTIN under Settings first - an invoice without them is not a tax invoice.' }, 400)
@@ -637,12 +640,14 @@ app.post('/api/admin/invoices', async (c) => {
     await c.env.DB.prepare("UPDATE invoices SET emailed_at = datetime('now') WHERE id = ?").bind(id).run()
   }
   return c.json({ success: true, id, invoice_no: invoiceNo, url: '/invoice/' + token }, 201)
-})
+}
 
 // Everyone on a paid tier whose payment has never been confirmed. Nothing flows
 // back from mUni Campus, so without this list a Delegate who paid on the 27th sits
 // unnoticed with a pass the app refuses to print.
-app.get('/api/admin/payments-pending', async (c) => {
+app.get('/api/admin/payments-pending', async (c) => pendingPaymentsJSON(c))
+
+async function pendingPaymentsJSON(c: any) {
   if (!(await paymentStatusEnabled(c))) return c.json({ ready: false, results: [] })
   const marks = PAID_TIERS.map(() => '?').join(', ')
   const { results } = await c.env.DB.prepare(
@@ -664,25 +669,29 @@ app.get('/api/admin/payments-pending', async (c) => {
       expected: Math.round((LIST[r.badge_type] || 0) * 1.18 * 100) / 100,
     })),
   })
-})
+}
 
-app.get('/api/admin/invoices', async (c) => {
+app.get('/api/admin/invoices', async (c) => invoiceListJSON(c))
+
+async function invoiceListJSON(c: any) {
   const { results } = await c.env.DB.prepare(
     'SELECT id, invoice_no, buyer_name, buyer_email, buyer_company, total_paise, emailed_at, created_at FROM invoices ORDER BY id DESC LIMIT 200'
   ).all() as any
   return c.json(await Promise.all((results || []).map(async (r: any) => ({
     ...r, total: rupees(r.total_paise), url: '/invoice/' + await invoiceTokenFor(c, r.id, r.invoice_no),
   }))))
-})
+}
 
-app.post('/api/admin/invoices/:id/email', async (c) => {
-  const row = await c.env.DB.prepare('SELECT * FROM invoices WHERE id = ?').bind(c.req.param('id')).first() as any
+app.post('/api/admin/invoices/:id/email', async (c) => emailInvoice(c, c.req.param('id')))
+
+async function emailInvoice(c: any, invoiceId: any) {
+  const row = await c.env.DB.prepare('SELECT * FROM invoices WHERE id = ?').bind(invoiceId).first() as any
   if (!row) return c.json({ error: 'Not found' }, 404)
   const set = await invoiceSettings(c)
   await sendInvoiceEmail(c, row, await invoiceTokenFor(c, row.id, row.invoice_no), set)
   await c.env.DB.prepare("UPDATE invoices SET emailed_at = datetime('now') WHERE id = ?").bind(row.id).run()
   return c.json({ success: true })
-})
+}
 
 // The link in the email. Unguessable rather than logged-in, because the buyer's
 // finance team needs to open it and they have no account here.
@@ -915,8 +924,42 @@ async function verifyStaffSession(c: any): Promise<any | null> {
   const [id, exp, sig] = parts
   if (!safeEqualA(sig, await hmacHexA(secret, 'staff:' + id + '.' + exp))) return null
   if (parseInt(exp, 10) * 1000 < Date.now()) return null
-  const row = await c.env.DB.prepare('SELECT id, name, username, active FROM staff WHERE id = ?').bind(id).first() as any
-  return row && row.active ? row : null
+  // role decides what this session may reach. Selected defensively: the column was
+  // added later, so a worker running against a database without it must still let
+  // the badge desk in rather than failing everyone closed.
+  const cols = (await staffRolesEnabled(c)) ? 'id, name, username, active, role' : 'id, name, username, active'
+  const row = await c.env.DB.prepare('SELECT ' + cols + ' FROM staff WHERE id = ?').bind(id).first() as any
+  if (!row || !row.active) return null
+  return { ...row, role: row.role || 'desk' }
+}
+
+let _staffRoleCol: boolean | null = null
+async function staffRolesEnabled(c: any): Promise<boolean> {
+  if (_staffRoleCol !== null) return _staffRoleCol
+  try {
+    const { results } = await c.env.DB.prepare('PRAGMA table_info(staff)').all() as any
+    _staffRoleCol = (results || []).some((r: any) => r.name === 'role')
+  } catch { _staffRoleCol = false }
+  return _staffRoleCol
+}
+
+// Finance may raise invoices and see who still owes money. It may not scan anyone
+// in, and the desk may not raise an invoice. Admin is both, because admin is
+// already everything.
+async function financeSession(c: any): Promise<any | null> {
+  const me = await verifyStaffSession(c)
+  return me && me.role === 'finance' ? me : null
+}
+const invoiceActor = async (c: any): Promise<any | null> =>
+  (await financeSession(c)) || (isAdminRequest(c) ? { name: 'admin', role: 'admin' } : null)
+
+// Admitting someone is the desk's job. Finance holds a valid staff session, so
+// without this it could mark attendance too - and attendance is a record of who was
+// in the building, not a convenience.
+async function deskActor(c: any): Promise<any | null> {
+  const me = await verifyStaffSession(c)
+  if (me && me.role !== 'finance') return me
+  return isAdminRequest(c) ? { name: 'admin', role: 'admin' } : null
 }
 
 // Repeated failures get slower, they do not get locked out. Desk usernames are
@@ -987,12 +1030,17 @@ app.post('/api/staff/logout', async (c) => {
 // Admin-only: create desk accounts.
 app.post('/api/admin/staff', async (c) => {
   if (!isAdminRequest(c)) return c.json({ error: 'Admin only' }, 401)
-  const { name, username, password } = await c.req.json().catch(() => ({})) as any
+  const { name, username, password, role, email } = await c.req.json().catch(() => ({})) as any
   if (!name || !username || !password) return c.json({ error: 'name, username and password required' }, 400)
   if (String(password).length < 8) return c.json({ error: 'Password must be at least 8 characters' }, 400)
+  const roleValue = role === 'finance' ? 'finance' : 'desk'
+  const withRole = await staffRolesEnabled(c)
   try {
-    const r = await c.env.DB.prepare('INSERT INTO staff (name, username, password_hash) VALUES (?, ?, ?)')
-      .bind(String(name).trim(), String(username).trim().toLowerCase(), await pbkdf2Hash(String(password))).run()
+    const r = withRole
+      ? await c.env.DB.prepare('INSERT INTO staff (name, username, password_hash, role, email) VALUES (?, ?, ?, ?, ?)')
+          .bind(String(name).trim(), String(username).trim().toLowerCase(), await pbkdf2Hash(String(password)), roleValue, String(email || '').trim().toLowerCase()).run()
+      : await c.env.DB.prepare('INSERT INTO staff (name, username, password_hash) VALUES (?, ?, ?)')
+          .bind(String(name).trim(), String(username).trim().toLowerCase(), await pbkdf2Hash(String(password))).run()
     return c.json({ success: true, id: r.meta.last_row_id }, 201)
   } catch (e: any) {
     if (String(e.message || '').includes('UNIQUE')) return c.json({ error: 'That username is taken' }, 409)
@@ -1098,12 +1146,45 @@ app.get('/api/staff/lookup', async (c) => {
   })
 })
 
+// The same three operations the admin panel exposes, reachable by a finance login
+// as well as by ADMIN_SECRET. Separate paths rather than loosening /api/admin/*,
+// because that middleware guarding everything under one prefix is worth keeping
+// absolute - a role check buried inside one handler there is easy to lose.
+app.get('/api/finance/payments-pending', async (c) => {
+  if (!(await invoiceActor(c))) return c.json({ error: 'Finance sign-in required' }, 401)
+  return pendingPaymentsJSON(c)
+})
+
+app.get('/api/finance/invoices', async (c) => {
+  if (!(await invoiceActor(c))) return c.json({ error: 'Finance sign-in required' }, 401)
+  return invoiceListJSON(c)
+})
+
+app.post('/api/finance/invoices', async (c) => {
+  const who = await invoiceActor(c)
+  if (!who) return c.json({ error: 'Finance sign-in required' }, 401)
+  return createInvoice(c, await c.req.json().catch(() => ({})))
+})
+
+app.post('/api/finance/invoices/:id/email', async (c) => {
+  if (!(await invoiceActor(c))) return c.json({ error: 'Finance sign-in required' }, 401)
+  return emailInvoice(c, c.req.param('id'))
+})
+
+app.get('/finance', async (c) => {
+  const me = await verifyStaffSession(c)
+  if (!me) return c.redirect('/staff?next=%2Ffinance')
+  if (me.role !== 'finance') return c.redirect('/staff/scan')
+  return c.html(financeHTML(me))
+})
+
 app.get('/staff', async (c) => {
   // Only ever bounce back to our own paths — an open redirect here would let a
   // phishing link wear the bharataiinnovation.com sign-in page.
   const raw = c.req.query('next') || ''
-  const next = /^\/[A-Za-z0-9\/._~%-]*$/.test(raw) ? raw : '/staff/scan'
   const me = await verifyStaffSession(c)
+  const home = me && me.role === 'finance' ? '/finance' : '/staff/scan'
+  const next = /^\/[A-Za-z0-9\/._~%-]*$/.test(raw) ? raw : home
   if (me) return c.redirect(next)
   return c.html(staffLoginHTML(next))
 })
@@ -1111,8 +1192,141 @@ app.get('/staff', async (c) => {
 app.get('/staff/scan', async (c) => {
   const me = await verifyStaffSession(c)
   if (!me) return c.redirect('/staff')
+  // Finance has no business at the door; send them where their account works.
+  if (me.role === 'finance') return c.redirect('/finance')
   return c.html(staffScanHTML(me))
 })
+
+// The accounts team's whole workspace. Deliberately not the admin panel: this page
+// can raise an invoice and see who still owes money, and reaches nothing else - no
+// attendee directory, no settings, no ability to admit anyone at the door.
+function financeHTML(me: any): string {
+  const esc = (v: any) => String(v ?? '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch] as string))
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Invoicing - Bharat AI Innovation 2026</title><style>
+ *{box-sizing:border-box}
+ body{margin:0;background:#f2f4f8;color:#1c2033;font-family:system-ui,-apple-system,Segoe UI,Arial,sans-serif;font-size:14px;}
+ .top{background:#0f2557;color:#fff;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;}
+ .top h1{margin:0;font-size:16px;font-weight:700;} .top a{color:#bcd0f5;font-size:12.5px;text-decoration:none;}
+ .wrap{max-width:1000px;margin:20px auto;padding:0 16px;}
+ .card{background:#fff;border:1px solid #dfe3ec;border-radius:12px;padding:18px;margin-bottom:16px;}
+ .card h2{margin:0 0 3px;font-size:15px;} .muted{color:#6a7288;font-size:12.5px;margin:0 0 14px;line-height:1.6;}
+ .row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #eef0f5;flex-wrap:wrap;}
+ .row:last-child{border-bottom:none;}
+ .grow{flex:1;min-width:190px;} .nm{font-weight:600;} .sub{font-size:12px;color:#6a7288;}
+ .pill{font-size:11px;padding:3px 9px;border-radius:99px;background:#fff3e2;color:#a35a00;}
+ button,.btn{padding:8px 14px;border:none;border-radius:9px;background:#0f7b47;color:#fff;font-size:12.5px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-block;}
+ .ghost{background:#eef0f5;color:#39405a;}
+ input{width:100%;padding:9px 11px;border:1px solid #d3d8e4;border-radius:9px;font-size:13.5px;margin-top:4px;}
+ label{font-size:11.5px;color:#6a7288;font-weight:600;}
+ .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+ .modal{position:fixed;inset:0;background:rgba(10,14,32,.6);display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow:auto;z-index:50;}
+ .modal>div{background:#fff;border-radius:14px;padding:22px;max-width:560px;width:100%;}
+ .err{color:#b3261e;font-size:12.5px;min-height:16px;margin:8px 0 0;}
+ @media(max-width:620px){.grid{grid-template-columns:1fr;}}
+</style></head><body>
+<div class="top">
+  <h1>Invoicing &mdash; Bharat AI Innovation 2026</h1>
+  <div>${esc(me.name)} &middot; <a href="#" onclick="out()">Sign out</a></div>
+</div>
+<div class="wrap">
+  <div class="card">
+    <h2>Waiting on payment confirmation</h2>
+    <p class="muted">Everyone who chose a paid pass and has not been confirmed. Payments are taken on mUni Campus through CCAvenue and nothing comes back to this site, so check the order in the gateway report first. Confirming here raises the GST invoice, emails it, and unlocks their pass in one step.</p>
+    <div id="pending">Loading&hellip;</div>
+  </div>
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <h2>Invoices issued</h2>
+      <button onclick="openForm(-1)">New invoice</button>
+    </div>
+    <div id="issued" style="margin-top:12px;">Loading&hellip;</div>
+  </div>
+</div>
+<script>
+ var pending = [];
+ var esc = function (v) { return String(v == null ? '' : v).replace(/[&<>"]/g, function (c) { return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]; }); };
+ async function out(){ await fetch('/api/staff/logout', { method:'POST' }); location.href = '/staff'; }
+
+ async function load(){
+   var p = await (await fetch('/api/finance/payments-pending')).json();
+   var inv = await (await fetch('/api/finance/invoices')).json();
+   pending = p.results || [];
+   document.getElementById('pending').innerHTML = pending.length ? pending.map(function (a, i) {
+     return '<div class="row"><div class="grow"><div class="nm">' + esc(a.name) + '</div>' +
+       '<div class="sub">' + esc(a.email) + (a.company ? ' &middot; ' + esc(a.company) : '') + '</div></div>' +
+       '<span class="pill">' + esc(a.badge_type) + '</span>' +
+       '<span class="sub">expected &#8377;' + a.expected.toLocaleString('en-IN') + '</span>' +
+       '<button onclick="openForm(' + i + ')">Confirm &amp; invoice</button></div>';
+   }).join('') : '<p class="muted" style="margin:0;">Nobody is waiting on a payment.</p>';
+
+   document.getElementById('issued').innerHTML = (inv || []).length ? inv.map(function (v) {
+     return '<div class="row"><div class="grow"><div class="nm">' + esc(v.invoice_no) + ' &middot; ' + esc(v.buyer_name) + '</div>' +
+       '<div class="sub">' + esc(v.buyer_email) + ' &middot; &#8377;' + esc(v.total) +
+       (v.emailed_at ? ' &middot; emailed' : ' &middot; not emailed') + '</div></div>' +
+       '<a class="btn ghost" href="' + esc(v.url) + '" target="_blank">Open</a>' +
+       '<button class="ghost" onclick="resend(' + v.id + ')">Resend</button></div>';
+   }).join('') : '<p class="muted" style="margin:0;">No invoices issued yet.</p>';
+ }
+
+ function field(id, label, value, ph){
+   return '<div><label>' + label + '</label><input id="' + id + '" value="' + esc(value || '') + '" placeholder="' + (ph || '') + '"></div>';
+ }
+
+ function openForm(i){
+   var a = i >= 0 ? pending[i] : null;
+   var d = document.createElement('div');
+   d.className = 'modal'; d.id = 'modal';
+   d.innerHTML = '<div><h2 style="margin:0 0 3px;font-size:16px;">Confirm payment &amp; issue invoice</h2>' +
+     '<p class="muted">Copy the order and reference from the CCAvenue or mUni report. An invoice cannot be raised without one &mdash; it has to point at a payment somebody can check.</p>' +
+     '<div class="grid">' +
+       field('f-name', 'Buyer name', a ? a.name : '') +
+       field('f-email', 'Email', a ? a.email : '') +
+       field('f-company', 'Registered company name', a ? a.company : '') +
+       field('f-gstin', 'Buyer GSTIN', '', '29AAICS0944E1ZB') +
+       field('f-phone', 'Mobile', a ? a.mobile : '') +
+       field('f-amount', 'Amount charged (INR)', a ? a.expected : '', '5898.82') +
+       field('f-order', 'mUni order number', '', '34364_1787816667') +
+       field('f-payref', 'CCAvenue reference', '', 'CCAvenue 114772182155') +
+       field('f-paid', 'Paid on', '', 'YYYY-MM-DD HH:MM') +
+       field('f-pos', 'Place of supply', '', 'taken from the GSTIN if left blank') +
+     '</div>' +
+     '<div style="margin-top:12px;">' + field('f-address', 'Billing address', '', 'as it should print on the invoice') + '</div>' +
+     '<div style="margin-top:12px;">' + field('f-item', 'Description', a ? (a.badge_type + ' @ Bharat AI Innovation 2026') : 'Delegate Pass @ Bharat AI Innovation 2026') + '</div>' +
+     '<input type="hidden" id="f-att" value="' + (a ? a.id : '') + '">' +
+     '<p class="err" id="f-msg"></p>' +
+     '<div style="display:flex;gap:10px;margin-top:6px;">' +
+       '<button class="ghost" style="flex:1;" onclick="closeForm()">Cancel</button>' +
+       '<button id="f-go" style="flex:1;" onclick="submitForm()">Issue &amp; email invoice</button>' +
+     '</div></div>';
+   document.body.appendChild(d);
+ }
+ function closeForm(){ var m = document.getElementById('modal'); if (m) m.remove(); }
+
+ async function submitForm(){
+   var val = function (id) { return (document.getElementById(id).value || '').trim(); };
+   var msg = document.getElementById('f-msg'), btn = document.getElementById('f-go');
+   msg.textContent = ''; btn.disabled = true; btn.textContent = 'Issuing...';
+   var r = await fetch('/api/finance/invoices', { method:'POST', headers:{'Content-Type':'application/json'},
+     body: JSON.stringify({
+       attendee_id: val('f-att') ? Number(val('f-att')) : null,
+       buyer_name: val('f-name'), buyer_email: val('f-email'), buyer_company: val('f-company'),
+       buyer_gstin: val('f-gstin'), buyer_phone: val('f-phone'), buyer_address: val('f-address'),
+       item_desc: val('f-item'), order_ref: val('f-order'), payment_ref: val('f-payref'),
+       paid_at: val('f-paid'), place_of_supply: val('f-pos'), total_amount: Number(val('f-amount'))
+     }) });
+   var j = await r.json().catch(function(){ return {}; });
+   if (r.ok) { closeForm(); window.open(j.url, '_blank'); load(); }
+   else { msg.textContent = j.error || 'Could not issue the invoice.'; btn.disabled = false; btn.textContent = 'Issue & email invoice'; }
+ }
+
+ async function resend(id){
+   var r = await fetch('/api/finance/invoices/' + id + '/email', { method:'POST' });
+   if (r.ok) { load(); } else { alert('Could not send it again.'); }
+ }
+ load();
+</script></body></html>`
+}
 
 function staffShell(title: string, inner: string, script: string): string {
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -1270,8 +1484,8 @@ app.get('/verify/:token', async (c) => {
 })
 
 app.post('/api/verify/:token/checkin', async (c) => {
-  const who = (await verifyStaffSession(c)) || (isAdminRequest(c) ? { name: 'admin' } : null)
-  if (!who) return c.json({ error: 'Staff sign-in required' }, 401)
+  const who = await deskActor(c)
+  if (!who) return c.json({ error: 'Badge desk sign-in required' }, 401)
   const id = await verifyPassToken(c, c.req.param('token'))
   if (id === null) return c.json({ error: 'Invalid pass' }, 400)
   const body = await c.req.json().catch(() => ({})) as any
@@ -1315,8 +1529,8 @@ function istStamp(v: any): string {
 const CHECKIN_UNDO_MINUTES = 15
 
 app.post('/api/verify/:token/undo', async (c) => {
-  const who = (await verifyStaffSession(c)) || (isAdminRequest(c) ? { name: 'admin' } : null)
-  if (!who) return c.json({ error: 'Staff sign-in required' }, 401)
+  const who = await deskActor(c)
+  if (!who) return c.json({ error: 'Badge desk sign-in required' }, 401)
   const id = await verifyPassToken(c, c.req.param('token'))
   if (id === null) return c.json({ error: 'Invalid pass' }, 400)
   const a = await c.env.DB.prepare('SELECT id, checked_in_at FROM attendees WHERE id = ?').bind(id).first() as any
