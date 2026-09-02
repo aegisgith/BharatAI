@@ -275,6 +275,84 @@
   box-shadow: none;
 }
 
+/* ---------- Register to attend this panel ---------- */
+.cp-reg {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: 3rem;
+  align-items: start;
+  background: #fff;
+  border: 1px solid var(--light);
+  border-radius: 24px;
+  padding: 3rem;
+  box-shadow: var(--shadow-sm);
+  scroll-margin-top: calc(var(--nav-h) + 24px);
+}
+.cp-reg h2 {
+  font-family: var(--font-display);
+  font-size: clamp(1.6rem, 2.8vw, 2.1rem);
+  font-weight: 800; color: var(--charcoal);
+  line-height: 1.2; margin-bottom: 0.9rem;
+}
+.cp-reg h2 .accent { color: var(--saffron); }
+.cp-reg-lede { color: var(--dark-grey); line-height: 1.75; margin-bottom: 1.5rem; }
+.cp-reg-points { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.7rem; }
+.cp-reg-points li {
+  display: flex; align-items: flex-start; gap: 0.65rem;
+  font-size: 0.9rem; color: var(--dark-grey); line-height: 1.6;
+}
+.cp-reg-points i { color: var(--saffron); margin-top: 0.25rem; flex-shrink: 0; }
+
+.cp-form { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem 1.1rem; }
+.cp-field { display: flex; flex-direction: column; gap: 0.4rem; }
+.cp-field--wide { grid-column: 1 / -1; }
+.cp-field label {
+  font-size: 0.78rem; font-weight: 700; color: var(--charcoal);
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+.cp-field input {
+  font-family: var(--font-body);
+  font-size: 0.95rem; color: var(--charcoal);
+  padding: 0.8rem 0.95rem;
+  border: 1px solid var(--light);
+  border-radius: 10px;
+  background: var(--off-white);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  width: 100%;
+}
+.cp-field input:focus {
+  outline: none;
+  border-color: var(--saffron);
+  box-shadow: 0 0 0 3px rgba(255,107,0,0.14);
+  background: #fff;
+}
+.cp-field input:disabled { opacity: 0.6; cursor: not-allowed; }
+.cp-form-note { grid-column: 1 / -1; font-size: 0.8rem; color: var(--mid-grey); line-height: 1.6; margin: 0; }
+.cp-form-msg {
+  grid-column: 1 / -1;
+  font-size: 0.9rem; line-height: 1.6;
+  padding: 0.85rem 1rem; border-radius: 10px;
+  margin: 0;
+}
+.cp-form-msg--err { background: rgba(220,38,38,0.07); color: #b91c1c; border: 1px solid rgba(220,38,38,0.2); }
+.cp-form-msg--ok  { background: rgba(0,137,123,0.08); color: #00695f; border: 1px solid rgba(0,137,123,0.25); }
+
+/* Confirmation replaces the form in place. */
+.cp-reg-done { text-align: center; padding: 1rem 0; }
+.cp-reg-done-icon {
+  width: 60px; height: 60px; border-radius: 50%;
+  background: var(--grad-saffron);
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 1.25rem;
+  box-shadow: 0 8px 22px rgba(255,107,0,0.3);
+}
+.cp-reg-done-icon i { color: #fff; font-size: 1.5rem; }
+.cp-reg-done h3 {
+  font-family: var(--font-display); font-size: 1.4rem; font-weight: 800;
+  color: var(--charcoal); margin: 0 0 0.6rem;
+}
+.cp-reg-done p { color: var(--dark-grey); line-height: 1.7; margin: 0 auto 1.25rem; max-width: 46ch; }
+
 /* ---------- Closing CTA ---------- */
 .cp-closing { padding: 5rem 0; background: var(--grad-hero); text-align: center; }
 .cp-closing h2 {
@@ -295,6 +373,8 @@
   .cp-host { grid-template-columns: 1fr; gap: 2rem; padding: 2rem 1.75rem; }
   .cp-hostcta { padding: 2.5rem 1.75rem; }
   .cp-hostcta-inner { grid-template-columns: 1fr; gap: 2rem; }
+  .cp-reg { grid-template-columns: 1fr; gap: 2rem; padding: 2rem 1.5rem; }
+  .cp-form { grid-template-columns: 1fr; }
   .cp-related { grid-template-columns: 1fr; }
   .cp-section { padding: 4rem 0; }
 }

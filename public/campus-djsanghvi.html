@@ -153,7 +153,7 @@
                 </div>
 
                 <div class="cp-actions">
-                    <a href="/register?utm_source=campus&amp;utm_medium=panel-page&amp;utm_campaign=djsanghvi-21sep" class="btn btn-primary btn-lg">Register for Nov 20–21 <i class="fas fa-arrow-right"></i></a>
+                    <a href="#register" class="btn btn-primary btn-lg">Register to Attend This Panel <i class="fas fa-arrow-right"></i></a>
                     <a href="/contact" class="btn btn-ghost btn-lg">Ask a Question</a>
                 </div>
             </div>
@@ -163,6 +163,68 @@
                      src="images/campus-djsanghvi-21sep.jpg"
                      alt="AI and Employability panel discussion at Dwarkadas J. Sanghvi College of Engineering, 21 September 2026">
             </figure>
+        </div>
+    </section>
+
+    <!-- ===== REGISTER TO ATTEND ===== -->
+    <section class="cp-section cp-section--white" id="register">
+        <div class="container">
+            <div class="cp-reg reveal">
+                <div>
+                    <div class="cp-eyebrow cp-eyebrow--light"><i class="fas fa-pen-to-square"></i> Attend This Panel</div>
+                    <h2>Register to attend <span class="accent">this panel</span></h2>
+                    <p class="cp-reg-lede">
+                        Free to attend. Tell us you are coming so the host knows the numbers, and we
+                        will send you the joining details before Monday, 21 September 2026.
+                    </p>
+                    <ul class="cp-reg-points">
+                        <li><i class="fas fa-check-circle"></i> No fee, and no payment details asked for</li>
+                        <li><i class="fas fa-check-circle"></i> Seating is allocated by Dwarkadas J. Sanghvi College of Engineering &mdash; registering tells them to expect you, it does not reserve a seat</li>
+                        <li><i class="fas fa-check-circle"></i> The same details get you a free Visitor Pass for the main conference at WTC Mumbai in November</li>
+                    </ul>
+                </div>
+
+                <div id="cp-reg-panel">
+                    <form class="cp-form" id="cp-reg-form" novalidate>
+                        <div class="cp-field">
+                            <label for="cpf-name">Full name</label>
+                            <input id="cpf-name" name="name" type="text" autocomplete="name" required>
+                        </div>
+                        <div class="cp-field">
+                            <label for="cpf-email">Email</label>
+                            <input id="cpf-email" name="email" type="email" autocomplete="email" required>
+                        </div>
+                        <div class="cp-field">
+                            <label for="cpf-mobile">Mobile</label>
+                            <input id="cpf-mobile" name="mobile" type="tel" autocomplete="tel" required>
+                        </div>
+                        <div class="cp-field">
+                            <label for="cpf-city">City</label>
+                            <input id="cpf-city" name="city" type="text" autocomplete="address-level2" value="Mumbai" required>
+                        </div>
+                        <div class="cp-field cp-field--wide">
+                            <label for="cpf-college">Institution</label>
+                            <input id="cpf-college" name="company" type="text" value="Dwarkadas J. Sanghvi College of Engineering" required>
+                        </div>
+                        <div class="cp-field cp-field--wide">
+                            <label for="cpf-course">Course &amp; year</label>
+                            <input id="cpf-course" name="job_title" type="text" placeholder="e.g. B.Tech Computer Engineering, Final Year" required>
+                        </div>
+
+                        <p class="cp-form-msg cp-form-msg--err" id="cp-reg-error" hidden></p>
+
+                        <div class="cp-field--wide">
+                            <button type="submit" class="btn btn-primary btn-lg" id="cp-reg-submit" style="width:100%;justify-content:center;">
+                                Register to Attend <i class="fas fa-arrow-right"></i>
+                            </button>
+                        </div>
+                        <p class="cp-form-note">
+                            We use these details to confirm your place and to send your free
+                            conference pass. See our <a href="privacy.html">privacy policy</a>.
+                        </p>
+                    </form>
+                </div>
+            </div>
         </div>
     </section>
 
@@ -217,7 +279,7 @@
                     <div class="cp-spk-pending-icon"><i class="fas fa-user-group"></i></div>
                     <h3>Panellists being announced</h3>
                     <p>The line-up for this session is being confirmed and will be published here shortly. Register for the main conference to be notified as speakers are added across the series.</p>
-                    <a href="/register?utm_source=campus&amp;utm_medium=panellists-pending&amp;utm_campaign=djsanghvi-21sep" class="btn btn-outline">Register &amp; Get Updates <i class="fas fa-arrow-right"></i></a>
+                    <a href="#register" class="btn btn-outline">Register &amp; Get Updates <i class="fas fa-arrow-right"></i></a>
                 </div>
             </div>
         </div>
@@ -237,7 +299,7 @@
                         check availability with the host.
                     </p>
                     <div class="cp-host-actions">
-                        <a href="/contact" class="btn btn-outline btn-sm">Request a Seat</a>
+                        <a href="#register" class="btn btn-outline btn-sm">Register to Attend</a>
                         <a href="#host" class="btn btn-outline btn-sm">Host a Panel at Your Campus</a>
                     </div>
                 </div>
@@ -371,6 +433,89 @@
         </div>
     </footer>
 
+    <script>
+    (function () {
+      // Panel attendance posts to the same attendees table as the main conference:
+      // one email is one person, so a student who comes to a panel and later attends
+      // in November is a single row rather than two lists to reconcile in November.
+      //
+      // badge_type is Visitor Pass, NOT Academic Pass. Academic Pass is in PAID_TIERS,
+      // so it would be stored with payment_status 'pending' and put every student on
+      // the finance team's chase list for a session that is free.
+      var PANEL_SOURCE = 'campus:djsanghvi-21sep';
+      var form = document.getElementById('cp-reg-form');
+      if (!form) return;
+      var errBox = document.getElementById('cp-reg-error');
+      var btn = document.getElementById('cp-reg-submit');
+      var panel = document.getElementById('cp-reg-panel');
+      var IDLE = 'Register to Attend <i class="fas fa-arrow-right"></i>';
+
+      function fail(msg) {
+        errBox.textContent = msg;
+        errBox.hidden = false;
+        btn.disabled = false;
+        btn.innerHTML = IDLE;
+      }
+
+      function done(heading, message) {
+        panel.innerHTML =
+          '<div class="cp-reg-done">' +
+            '<div class="cp-reg-done-icon"><i class="fas fa-check"></i></div>' +
+            '<h3></h3><p></p>' +
+            '<a class="btn btn-outline" href="campus-series.html">See the whole Campus Series <i class="fas fa-arrow-right"></i></a>' +
+          '</div>';
+        panel.querySelector('h3').textContent = heading;
+        panel.querySelector('p').textContent = message;
+      }
+
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        errBox.hidden = true;
+
+        var payload = {
+          name: form.name.value.trim(),
+          email: form.email.value.trim().toLowerCase(),
+          mobile: form.mobile.value.trim(),
+          company: form.company.value.trim(),
+          job_title: form.job_title.value.trim(),
+          city: form.city.value.trim(),
+          industry: 'Education & Academia',
+          badge_type: 'Visitor Pass',
+          bio: '',
+          interests: '',
+          linkedin_url: '',
+          registration_source: PANEL_SOURCE
+        };
+
+        if (!payload.name || !payload.email) { fail('Please add your name and email.'); return; }
+
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Registering...';
+
+        fetch('/api/events/1/attendees/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        }).then(function (resp) {
+          return resp.json().catch(function () { return {}; }).then(function (data) {
+            // Already on the list. The endpoint refuses to hand back someone else's
+            // account, which is right — but for this form that state is good news,
+            // so it reads as confirmation rather than as an error.
+            if (resp.status === 403 && data.error === 'verification_required') {
+              done('You are already registered',
+                   'That email is already on our list, so you are set for this panel. See you there.');
+              return;
+            }
+            if (!resp.ok) { fail(data.error || 'Something went wrong. Please try again.'); return; }
+            done('You are registered',
+                 'We have your details and the host has been told to expect you. Your free pass for the main conference in November is on its way to ' + payload.email + '.');
+          });
+        }).catch(function () {
+          fail('We could not reach the server. Please check your connection and try again.');
+        });
+      });
+    })();
+    </script>
     <script src="js/main.js"></script>
 </body>
 </html>
