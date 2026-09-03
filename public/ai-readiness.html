@@ -64,6 +64,12 @@
         .air-hero-grid .page-header-eyebrow { margin-left: 0; }
         .air-hero-copy h1 { text-align: left; }
         .air-hero-copy > p { text-align: left; margin-left: 0; }
+        /* Returning applicants: the source page carried a Login link in its nav
+           and footer. This site's nav is global, so a "Login" there would read as
+           a login to bharataiinnovation.com; it lives beside the CTAs instead. */
+        .air-hero-copy .air-login { margin: 1.1rem 0 0; font-size: 0.85rem; color: rgba(255,255,255,0.62); max-width: none; }
+        .air-hero-copy .air-login a { color: #fff; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+        .air-hero-copy .air-login a:hover { color: var(--gold-light); }
         .air-trust {
             display: flex; align-items: flex-start; gap: 0.6rem; margin-top: 1rem;
             font-size: 0.85rem; color: rgba(255,255,255,0.78); line-height: 1.5;
@@ -427,8 +433,9 @@
                         <a href="https://assessfy.com/innovation_register?product=ai_readiness" target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-lg">Get AI Readiness Certified <i class="fas fa-arrow-right"></i></a>
                         <a href="#pillars" class="btn btn-ghost btn-lg">See what we measure</a>
                     </div>
+                    <p class="air-login">Already applied? <a href="https://assessfy.com/index.html" target="_blank" rel="noopener noreferrer">Log in to your assessment</a></p>
 
-                    <div class="air-trust" style="margin-top:1.75rem;">
+                    <div class="air-trust" style="margin-top:1.25rem;">
                         <i class="fas fa-circle-check" style="color:var(--emerald);"></i>
                         <span><b>Evidence-gated &amp; non-compensatory</b> &middot; DPDP Act &middot; EU AI Act &middot; NIST AI RMF &middot; ISO/IEC 42001</span>
                     </div>
@@ -1194,7 +1201,7 @@
                     <a href="https://assessfy.com/innovation_register?product=ai_readiness" target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-xl">Start your AI Readiness Certification <i class="fas fa-arrow-right"></i></a>
                     <a href="/contact#general" class="btn btn-ghost btn-xl">Talk to the team</a>
                 </div>
-                <div class="early-bird">Start with the Readiness Rating &mdash; it is free, and it tells you where you stand before you commit to anything.</div>
+                <div class="early-bird">Start with the Readiness Rating &mdash; it is free, and it tells you where you stand before you commit to anything. Already applied? <a href="https://assessfy.com/index.html" target="_blank" rel="noopener noreferrer" style="color:inherit;font-weight:700;text-decoration:underline;text-underline-offset:3px;">Log in</a>.</div>
             </div>
         </div>
     </section>
