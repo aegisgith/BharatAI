@@ -5067,6 +5067,16 @@ function brandThemeCSS(): string {
   .bg-gradient-to-r[class*="from-primary-"] *,.bg-gradient-to-br[class*="from-primary-"] *,
   .bg-primary-500,.bg-primary-600,.bg-primary-700,.bg-primary-500 *,.bg-primary-600 *,.bg-primary-700 *,
   .tab-active,.tab-active *{color:#fff!important;}
+  /* ...but a saffron gradient carrying an OPACITY suffix (from-primary-500/20) is a
+     pale TINT chip, not a filled CTA. EXCEPTION 1 cannot tell the two apart via
+     [class*="from-primary-"], so it was forcing icons/initials inside tint chips to
+     white on a near-white background (~1.2:1). Same specificity, declared later, so
+     these win. Covers the chip itself and its contents. */
+  .bg-gradient-to-r[class*="from-primary-500/"],.bg-gradient-to-br[class*="from-primary-500/"],
+  .bg-gradient-to-r[class*="from-primary-400/"],.bg-gradient-to-br[class*="from-primary-400/"],
+  [class*="from-primary-500/"] .text-primary-400,[class*="from-primary-500/"] .text-primary-300,
+  [class*="from-primary-400/"] .text-primary-400,[class*="from-primary-400/"] .text-primary-300{color:#E05A00!important;}
+  [class*="from-primary-500/"] .text-white,[class*="from-primary-400/"] .text-white{color:var(--charcoal)!important;}
   /* ---- EXCEPTION 2: intentional dark bands (mirror site's dark hero) ---- */
   .hero-gradient{background:linear-gradient(150deg,#0D0F1E 0%,#141a4d 45%,#1A237E 100%)!important;color:#fff;}
   .profile-cover{color:#fff;}
