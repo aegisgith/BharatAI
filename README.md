@@ -4,13 +4,13 @@
 - **Name**: Bharat AI Innovation 2026 Networking & Registration Platform
 - **Goal**: Full-stack networking app for India's largest AI conference & exhibition
 - **Event**: Bharat AI Innovation Conference & Exhibition 2026
-- **Dates**: 2-3 June 2026
+- **Dates**: 20-21 November 2026
 - **Venue**: World Trade Center, Mumbai, Cuffe Parade
 - **Organizer**: Aegis Knowledge Trust (also organizer of Data Science Congress & Aegis Graham Bell Awards)
 
 ## URLs
-- **Production**: https://bharatai-networking.pages.dev
-- **Admin Panel**: https://bharatai-networking.pages.dev/admin
+- **Production**: https://bharataiinnovation.com
+- **Admin Panel**: https://bharataiinnovation.com/admin
 - **Main Website**: https://bharataiinnovation.com
 - **Future subdomain**: networking.bharataiinnovation.com (needs DNS CNAME setup)
 
@@ -90,7 +90,7 @@
 
 ## Schedule (2-Day Event)
 
-### Day 1 - 2 June 2026
+### Day 1 - 20 November 2026
 - 08:00-09:00 Registration & Welcome Coffee
 - 09:00-10:00 Opening Ceremony & Inaugural Keynote
 - 10:00-11:00 India's AI Superpower Journey
@@ -100,7 +100,7 @@
 - 15:30-17:00 AI Workshops & AI for Governance
 - 18:30-21:00 Gala Networking Evening
 
-### Day 2 - 3 June 2026
+### Day 2 - 21 November 2026
 - 09:00-10:00 Day 2 Opening Keynote
 - 10:00-11:30 AI Policy & Governance Roundtable
 - 12:00-14:00 Research Paper Presentations

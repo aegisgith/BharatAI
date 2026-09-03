@@ -3323,10 +3323,21 @@ app.get('/api/events/:id/stats', async (c) => {
   const exhibitorCount = await c.env.DB.prepare('SELECT COUNT(*) as count FROM exhibitors WHERE event_id = ?').bind(eventId).first()
   const connectionCount = await c.env.DB.prepare('SELECT COUNT(*) as count FROM connections WHERE event_id = ?').bind(eventId).first()
   const categoryCount = await c.env.DB.prepare('SELECT COUNT(*) as count FROM award_categories WHERE event_id = ?').bind(eventId).first()
+  // Checked in at the door. is_online is set at registration and never cleared, so
+  // it counts rows, not people in the building - the admin overview reads this.
+  // Tolerates the column being absent rather than 500-ing the whole overview.
+  let checkedInCount = 0
+  try {
+    const r = await c.env.DB.prepare(
+      'SELECT COUNT(*) as count FROM attendees WHERE event_id = ? AND checked_in_at IS NOT NULL'
+    ).bind(eventId).first() as any
+    checkedInCount = r?.count || 0
+  } catch (_) { checkedInCount = 0 }
 
   return c.json({
     attendees: (attendeeCount as any)?.count || 0,
     online: (onlineCount as any)?.count || 0,
+    checkedIn: checkedInCount,
     sessions: (sessionCount as any)?.count || 0,
     exhibitors: (exhibitorCount as any)?.count || 0,
     connections: (connectionCount as any)?.count || 0,
@@ -4498,10 +4509,18 @@ app.post('/api/admin/attendees/:id/send-profile-reminder', async (c) => {
 
 app.get('/api/events/:id/innovation-talks', async (c) => {
   const eventId = c.req.param('id')
-  const { results } = await c.env.DB.prepare(
-    'SELECT * FROM innovation_talks WHERE event_id = ? ORDER BY slot_no ASC'
-  ).bind(eventId).all()
-  return c.json(results)
+  try {
+    const { results } = await c.env.DB.prepare(
+      'SELECT * FROM innovation_talks WHERE event_id = ? ORDER BY slot_no ASC'
+    ).bind(eventId).all()
+    return c.json(results)
+  } catch (e: any) {
+    // The table went missing from production for the life of this feature and the
+    // 500 took down both the admin tab and the app's Innovation Talks tab. An
+    // empty list degrades to "nothing scheduled yet", which is recoverable.
+    if (/no such table/i.test(String(e?.message || ''))) return c.json([])
+    throw e
+  }
 })
 
 // Create a new innovation talk
@@ -13960,7 +13979,7 @@ function adminPageHTML(): string {
       </div>
       <div class="flex items-center gap-3">
         <button onclick="refreshCurrentSection()" class="px-3 py-1.5 rounded-lg text-xs font-medium glass hover:bg-white/10 transition"><i class="fas fa-sync-alt mr-1"></i>Refresh</button>
-        <span class="px-3 py-1.5 rounded-full text-xs font-medium bg-amber-500/20 text-amber-400 border border-amber-500/30"><i class="fas fa-circle text-[6px] mr-1 badge-pulse"></i>Live</span>
+        <button id="live-chip" onclick="toggleAutoRefresh()" title="Auto-refresh Overview and Badge Desk every 60s" class="px-3 py-1.5 rounded-full text-xs font-medium bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:bg-amber-500/30 transition"><i class="fas fa-circle text-[6px] mr-1 badge-pulse"></i>Live</button>
       </div>
     </header>
 
@@ -14133,6 +14152,7 @@ function adminPageHTML(): string {
         main.classList.add('sidebar-collapsed');
       }
       loadOverview();
+      startAutoRefresh();
     }
 
     function toggleSidebar() {
@@ -14211,6 +14231,55 @@ function adminPageHTML(): string {
       if (sec && sec !== 'overview') setTimeout(() => switchSection(sec), 0);
     });
 
+    // True once the event's last day is over, in the browser's own day terms.
+    // Used to keep post-event tools out of the way beforehand.
+    function eventHasEnded(ev) {
+      // Same backslash trap as safeUrl: matched on shape without a regex.
+      var end = ev && ev.end_date ? String(ev.end_date).slice(0, 10) : '';
+      if (end.length !== 10 || end.charAt(4) !== '-' || end.charAt(7) !== '-') return false;
+      if (isNaN(Date.parse(end))) return false;
+      var today = new Date();
+      var iso = today.getFullYear() + '-' +
+        String(today.getMonth() + 1).padStart(2, '0') + '-' +
+        String(today.getDate()).padStart(2, '0');
+      return iso > end;
+    }
+    // The "Live" chip used to be decoration on a page that never re-fetched.
+    // Now it reports when the data was last pulled and toggles the timer.
+    var autoRefreshOn = localStorage.getItem('tc_admin_autorefresh') !== '0';
+    var autoRefreshTimer = null;
+    var AUTO_REFRESH_SECTIONS = { overview: 1, 'badge-desk': 1 };
+    function markSectionFresh() {
+      var chip = document.getElementById('live-chip');
+      if (!chip) return;
+      var d = new Date();
+      var hhmm = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+      chip.innerHTML = autoRefreshOn
+        ? '<i class="fas fa-circle text-[6px] mr-1 badge-pulse"></i>Live &middot; ' + hhmm
+        : '<i class="fas fa-pause text-[8px] mr-1"></i>Paused &middot; ' + hhmm;
+      chip.className = autoRefreshOn
+        ? 'px-3 py-1.5 rounded-full text-xs font-medium bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:bg-amber-500/30 transition'
+        : 'px-3 py-1.5 rounded-full text-xs font-medium bg-gray-500/20 text-gray-400 border border-gray-500/30 hover:bg-gray-500/30 transition';
+    }
+    // Only the read-only sections refresh on a timer. Attendees is excluded on
+    // purpose: a reload underneath an open inline edit would discard the typing.
+    function startAutoRefresh() {
+      if (autoRefreshTimer) clearInterval(autoRefreshTimer);
+      autoRefreshTimer = setInterval(function () {
+        if (!autoRefreshOn) return;
+        if (document.hidden) return;
+        if (!AUTO_REFRESH_SECTIONS[currentSection]) return;
+        if (document.querySelector('#modal-container:not(.hidden)')) return;
+        if (document.getElementById('inv-modal')) return;
+        refreshCurrentSection();
+      }, 60000);
+    }
+    function toggleAutoRefresh() {
+      autoRefreshOn = !autoRefreshOn;
+      localStorage.setItem('tc_admin_autorefresh', autoRefreshOn ? '1' : '0');
+      markSectionFresh();
+      if (autoRefreshOn) refreshCurrentSection();
+    }
     function refreshCurrentSection() {
       switch(currentSection) {
         case 'overview': loadOverview(); break;
@@ -14294,6 +14363,10 @@ function adminPageHTML(): string {
       try {
         var pending = await api.get('/api/admin/payments-pending');
         var invoices = await api.get('/api/admin/invoices');
+        var _bad = bodyError(pending) || bodyError(invoices) ||
+          (pending && Array.isArray(pending.results) ? null : 'Pending payments came back in an unexpected shape.') ||
+          (Array.isArray(invoices) ? null : 'Invoices came back in an unexpected shape.');
+        if (_bad) { sectionError(el, 'payments', { message: _bad }, 'loadPayments()'); return; }
         _pendingPayments = pending.results || [];
 
         var rows = _pendingPayments.map(function (a, i) {
@@ -14442,6 +14515,8 @@ function adminPageHTML(): string {
       try {
         var stats = await api.get('/api/admin/checkin-stats');
         var team = await api.get('/api/admin/staff');
+        var _bad = bodyError(stats) || badList(team);
+        if (_bad) { sectionError(el, 'the badge desk', { message: _bad }, 'loadBadgeDesk()'); return; }
 
         var pct = stats.total ? Math.round((stats.checkedIn / stats.total) * 100) : 0;
         var cards =
@@ -14509,8 +14584,10 @@ function adminPageHTML(): string {
               '</div>' +
             '</div>' +
           '</div>';
+        markSectionFresh();
       } catch (err) {
-        el.innerHTML = '<div class="text-center py-12 text-red-400"><i class="fas fa-exclamation-triangle text-3xl mb-3"></i><p>Failed to load badge desk: ' + err.message + '</p></div>';
+        if (err && err.message === 'unauthorized') return;
+        sectionError(el, 'the badge desk', err, 'loadBadgeDesk()');
       }
     }
 
@@ -14628,21 +14705,68 @@ function adminPageHTML(): string {
     document.getElementById('modal-container').addEventListener('click', e => { if (e.target === e.currentTarget) closeModal(); });
 
     // ============ OVERVIEW ============
+    // Returns the server's message when a response body is an error envelope
+    // rather than the payload the caller asked for.
+    function bodyError(v) {
+      if (v && typeof v === 'object' && !Array.isArray(v) && v.error) return String(v.error);
+      return null;
+    }
+    // Guard for endpoints that must return a list.
+    function badList(v) {
+      return bodyError(v) || (Array.isArray(v) ? null : 'The server did not return a list.');
+    }
+    // Shown while a section is fetching, so the panel is never a blank rectangle.
+    function sectionLoading(el) {
+      if (!el) return;
+      el.innerHTML = '<div class="py-16 text-center text-gray-400">' +
+        '<i class="fas fa-spinner fa-spin text-2xl mb-3 text-primary-400"></i>' +
+        '<p class="text-sm">Loading\u2026</p></div>';
+    }
+    // Shown when it fails. Says which section, what went wrong, and offers a retry
+    // rather than leaving the operator staring at nothing.
+    function sectionError(el, what, err, retryFn) {
+      if (!el) return;
+      var msg = (err && (err.message || err.error)) ? String(err.message || err.error) : 'Unknown error';
+      el.innerHTML = '<div class="glass rounded-xl p-6 border border-red-500/25 text-center">' +
+        '<i class="fas fa-triangle-exclamation text-2xl text-red-400 mb-3"></i>' +
+        '<h3 class="font-semibold text-sm mb-1">Could not load ' + escH(what) + '</h3>' +
+        '<p class="text-xs text-gray-400 mb-4">' + escH(msg) + '</p>' +
+        (retryFn ? '<button onclick="' + escH(retryFn) + '" class="px-4 py-2 rounded-lg text-xs font-medium bg-primary-600 hover:bg-primary-500 text-white transition">' +
+          '<i class="fas fa-rotate-right mr-1.5"></i>Try again</button>' : '') +
+        '</div>';
+      console.error('[admin] ' + what + ':', err);
+    }
     async function loadOverview() {
-      const [stats, event, analytics, lunchStats] = await Promise.all([
-        api.get('/api/events/'+EID+'/stats'),
-        api.get('/api/events/'+EID),
-        api.get('/api/admin/events/'+EID+'/analytics'),
-        api.get('/api/admin/events/'+EID+'/lunch-stats'),
-      ]);
+      var _ovEl = document.getElementById('section-overview');
+      if (!_ovEl.innerHTML.trim()) sectionLoading(_ovEl);
+      var stats, event, analytics, lunchStats;
+      try {
+        var _r = await Promise.all([
+          api.get('/api/events/'+EID+'/stats'),
+          api.get('/api/events/'+EID),
+          api.get('/api/admin/events/'+EID+'/analytics'),
+          api.get('/api/admin/events/'+EID+'/lunch-stats'),
+        ]);
+        stats = _r[0]; event = _r[1]; analytics = _r[2]; lunchStats = _r[3];
+      } catch (err) {
+        if (err && err.message === 'unauthorized') return;
+        sectionError(_ovEl, 'the overview', err, 'loadOverview()');
+        return;
+      }
+      var _bad = bodyError(stats) || bodyError(event) || bodyError(analytics) || bodyError(lunchStats);
+      if (_bad) { sectionError(_ovEl, 'the overview', { message: _bad }, 'loadOverview()'); return; }
+      if (!analytics || !Array.isArray(analytics.recentRegistrations)) {
+        sectionError(_ovEl, 'the overview', { message: 'Analytics came back in an unexpected shape.' }, 'loadOverview()');
+        return;
+      }
 
       document.getElementById('section-overview').innerHTML = \`
         <div class="mb-6">
           <div class="glass rounded-2xl p-5 glow">
             <div class="flex items-center justify-between">
               <div>
-                <h3 class="text-xl font-bold">\${event.title}</h3>
-                <p class="text-sm text-gray-400 mt-1">\${event.venue} &middot; \${event.start_date} to \${event.end_date}</p>
+                <h3 class="text-xl font-bold">\${escH(event.title)}</h3>
+                <p class="text-sm text-gray-400 mt-1">\${escH(event.venue)} &middot; \${escH(event.start_date)} to \${escH(event.end_date)}</p>
               </div>
               <div class="flex items-center gap-2">
                 <span class="px-3 py-1 rounded-full text-xs font-semibold \${event.status==='live'?'bg-green-500/20 text-green-400 border border-green-500/30':'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'}">\${event.status.toUpperCase()}</span>
@@ -14655,13 +14779,13 @@ function adminPageHTML(): string {
         <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
           \${[
             {icon:'fa-users',label:'Total Attendees',value:stats.attendees,color:'primary'},
-            {icon:'fa-circle',label:'Online Now',value:stats.online,color:'green'},
+            {icon:'fa-door-open',label:'Checked In',value:(typeof stats.checkedIn === 'number' ? stats.checkedIn : 0),color:'green'},
             {icon:'fa-microphone',label:'Sessions',value:stats.sessions,color:'purple'},
             {icon:'fa-store',label:'Exhibitors',value:stats.exhibitors,color:'accent'},
             {icon:'fa-handshake',label:'Connections',value:stats.connections,color:'teal'},
             {icon:'fa-trophy',label:'Categories',value:stats.categories,color:'pink'},
           ].map(s=>\`
-            <div class="glass rounded-xl p-4 card-hover text-center cursor-pointer" onclick="switchSection('\${s.label.includes('Attend')?'attendees':s.label.includes('Session')?'sessions':s.label.includes('Exhib')?'exhibitors':s.label.includes('Categ')?'awards':'overview'}')">
+            <div class="glass rounded-xl p-4 card-hover text-center cursor-pointer" onclick="switchSection('\${s.label.includes('Attend')?'attendees':s.label.includes('Checked')?'badge-desk':s.label.includes('Session')?'sessions':s.label.includes('Exhib')?'exhibitors':s.label.includes('Categ')?'awards':'overview'}')">
               <i class="fas \${s.icon} text-lg mb-2" style="color:\${s.color==='primary'?'#FF6B00':s.color==='green'?'#059669':s.color==='purple'?'#7c3aed':s.color==='accent'?'#e05a00':s.color==='teal'?'#0d9488':'#e11d48'}"></i>
               <div class="text-2xl font-bold">\${s.value}</div>
               <div class="text-[10px] text-gray-500">\${s.label}</div>
@@ -14714,12 +14838,12 @@ function adminPageHTML(): string {
           <div class="glass rounded-xl p-5">
             <div class="flex items-center justify-between mb-4">
               <h3 class="font-semibold text-sm"><i class="fas fa-utensils text-amber-400 mr-2"></i>Lunch Pack Calculator</h3>
-              <span class="text-[10px] text-gray-500">Lunch: 1:00 - 2:00 PM</span>
+              <span class="text-[10px] text-gray-500">Per event day &middot; lunch 1:00 - 2:00 PM</span>
             </div>
             <div class="grid grid-cols-3 gap-3 mb-4">
               <div class="text-center p-3 rounded-xl bg-amber-500/10 border border-amber-500/20">
                 <div class="text-2xl font-black text-amber-400">\${lunchStats.estimatedLunchPacks}</div>
-                <div class="text-[10px] text-gray-400 uppercase tracking-wider mt-1">Est. Lunch Packs</div>
+                <div class="text-[10px] text-gray-400 uppercase tracking-wider mt-1">Est. Packs / Day</div>
               </div>
               <div class="text-center p-3 rounded-xl bg-green-500/10 border border-green-500/20">
                 <div class="text-2xl font-black text-green-400">\${lunchStats.arrivingBeforeLunch}</div>
@@ -14885,11 +15009,11 @@ function adminPageHTML(): string {
           </div>
         </div>
 
-        <!-- Post-Ceremony Thank You Email -->
-        <div class="glass rounded-xl p-5 mb-6 border border-amber-500/20">
+        <!-- Post-Ceremony Thank You Email. Only after the event has ended: it was
+             sitting above Recent Registrations months ahead of the date. -->
+        <div class="glass rounded-xl p-5 mb-6 border border-amber-500/20" \${eventHasEnded(event) ? '' : 'hidden'}>
           <div class="flex items-center justify-between mb-4">
             <h3 class="font-semibold text-sm"><i class="fas fa-heart text-pink-400 mr-2"></i>Post-Ceremony Thank You Email</h3>
-            <span class="px-2 py-0.5 rounded-full text-[10px] bg-pink-500/20 text-pink-300 border border-pink-500/30">NEW</span>
           </div>
           <div style="background:linear-gradient(135deg,rgba(236,72,153,0.08),rgba(168,85,247,0.08));border:1px solid rgba(236,72,153,0.2);border-radius:12px;padding:20px;margin-bottom:16px;">
             <p class="text-sm text-gray-300 leading-relaxed mb-3">
@@ -14937,11 +15061,11 @@ function adminPageHTML(): string {
               <tbody>
                 \${analytics.recentRegistrations.map(a=>\`<tr>
                   <td><img src="\${getAvatarUrl(a.email, a.name, 48, a.avatar_url)}" alt="" class="w-6 h-6 rounded-full object-cover"></td>
-                  <td class="font-medium">\${a.name}</td>
-                  <td class="text-gray-400">\${a.email}</td>
-                  <td>\${a.company||'-'}</td>
-                  <td><span class="px-2 py-0.5 rounded-full text-[10px] bg-primary-500/20 text-primary-300">\${a.role}</span></td>
-                  <td><span class="px-2 py-0.5 rounded-full text-[10px] \${getBadgeClass(a.badge_type)}">\${a.badge_type}</span></td>
+                  <td class="font-medium">\${escH(a.name)}</td>
+                  <td class="text-gray-400">\${escH(a.email)}</td>
+                  <td>\${escH(a.company)||'-'}</td>
+                  <td><span class="px-2 py-0.5 rounded-full text-[10px] bg-primary-500/20 text-primary-300">\${escH(a.role)}</span></td>
+                  <td><span class="px-2 py-0.5 rounded-full text-[10px] \${getBadgeClass(a.badge_type)}">\${escH(a.badge_type)}</span></td>
                   <td class="text-gray-500 text-xs">\${new Date(a.created_at).toLocaleString()}</td>
                 </tr>\`).join('')}
               </tbody>
@@ -14950,6 +15074,7 @@ function adminPageHTML(): string {
         </div>
       \`;
 
+      markSectionFresh();
       // Render charts
       setTimeout(() => {
         loadAudience();
@@ -15018,12 +15143,28 @@ function adminPageHTML(): string {
       // Preserve scroll position before reload
       const scrollContainer = document.querySelector('#section-attendees .overflow-y-auto');
       const prevScrollTop = scrollContainer ? scrollContainer.scrollTop : 0;
-      const [attendees, dupData] = (keepData && lastAttendees)
-        ? [lastAttendees, lastDupData || { groups: [] }]
-        : await Promise.all([
+      var _attEl = document.getElementById('section-attendees');
+      if (_attEl && !_attEl.innerHTML.trim()) sectionLoading(_attEl);
+      var attendees, dupData;
+      try {
+        if (keepData && lastAttendees) {
+          attendees = lastAttendees; dupData = lastDupData || { groups: [] };
+        } else {
+          var _r = await Promise.all([
             api.get('/api/events/'+EID+'/attendees'),
             api.get('/api/admin/events/'+EID+'/attendees/duplicates').catch(()=>({groups:[]}))
           ]);
+          attendees = _r[0]; dupData = _r[1];
+        }
+      } catch (err) {
+        if (err && err.message === 'unauthorized') return;
+        sectionError(_attEl, 'attendees', err, 'loadAdminAttendees()');
+        return;
+      }
+      var _bad = badList(attendees);
+      if (_bad) { sectionError(_attEl, 'attendees', { message: _bad }, 'loadAdminAttendees()'); return; }
+      if (!dupData || typeof dupData !== 'object') dupData = { groups: [] };
+      if (!Array.isArray(dupData.groups)) dupData.groups = [];
       lastAttendees = attendees;
       lastDupData = dupData;
       // Build duplicate ID map: id -> { groupIndex, color }
@@ -15092,30 +15233,30 @@ function adminPageHTML(): string {
                 <th style="width:50px" class="sortable" onclick="sortAttendees('id')">ID\${sortIcon('id')}</th><th style="width:40px"></th><th style="width:130px" class="sortable" onclick="sortAttendees('name')">Name\${sortIcon('name')}<span class="col-resizer" data-col="2"></span></th><th style="width:180px" class="sortable" onclick="sortAttendees('email')">Email\${sortIcon('email')}<span class="col-resizer" data-col="3"></span></th><th style="width:100px" class="sortable" onclick="sortAttendees('mobile')">Mobile\${sortIcon('mobile')}<span class="col-resizer" data-col="4"></span></th><th style="width:130px" class="sortable" onclick="sortAttendees('company')">Company\${sortIcon('company')}<span class="col-resizer" data-col="5"></span></th><th style="width:110px" class="sortable" onclick="sortAttendees('job_title')">Title\${sortIcon('job_title')}<span class="col-resizer" data-col="6"></span></th><th style="width:80px" class="sortable" onclick="sortAttendees('city')">City\${sortIcon('city')}<span class="col-resizer" data-col="7"></span></th><th style="width:70px" class="sortable" onclick="sortAttendees('country')">Country\${sortIcon('country')}<span class="col-resizer" data-col="8"></span></th><th style="width:40px">In</th><th style="width:110px" class="sortable" onclick="sortAttendees('role')">Role\${sortIcon('role')}<span class="col-resizer" data-col="10"></span></th><th style="width:90px" class="sortable" onclick="sortAttendees('badge_type')">Badge\${sortIcon('badge_type')}<span class="col-resizer" data-col="11"></span></th><th style="width:60px" class="sortable" onclick="sortAttendees('rsvp_status')">RSVP\${sortIcon('rsvp_status')}</th><th style="width:45px" class="sortable" onclick="sortAttendees('lunch_inclusion')">Lunch\${sortIcon('lunch_inclusion')}</th><th style="width:60px" class="sortable" onclick="sortAttendees('arrival_time')">Arrival\${sortIcon('arrival_time')}</th><th style="width:80px" class="sortable" onclick="sortAttendees('registration_date')">Reg Date\${sortIcon('registration_date')}</th><th style="width:70px" class="sortable" onclick="sortAttendees('payment_amount')">Payment\${sortIcon('payment_amount')}</th><th style="width:45px">Notif</th><th style="width:80px">Engage</th><th style="width:140px">Actions</th>
               </tr></thead>
               <tbody>
-                \${attPageRows.map((a,idx)=>{ const dup = dupMap[a.id]; const prevDup = idx > 0 ? dupMap[attPageRows[idx-1].id] : null; const groupChanged = (dup && prevDup && dup.group !== prevDup.group) || (prevDup && !dup); const separator = groupChanged ? '<tr class="dup-sep"><td colspan="20" style="height:2px;padding:0;background:rgba(255,255,255,0.06);"></td></tr>' : ''; return separator + \`<tr class="att-row \${dup ? 'dup-row' : ''}" id="att-row-\${a.id}" data-search="\${(a.name+a.email+a.company+a.job_title+(a.mobile||'')).toLowerCase()}" \${dup ? 'style="border-left: 3px solid '+dup.color+';" title="⚠ Suspected Duplicate (Group '+dup.group+', '+dup.count+' entries)"' : ''}>
+                \${attPageRows.map((a,idx)=>{ const dup = dupMap[a.id]; const prevDup = idx > 0 ? dupMap[attPageRows[idx-1].id] : null; const groupChanged = (dup && prevDup && dup.group !== prevDup.group) || (prevDup && !dup); const separator = groupChanged ? '<tr class="dup-sep"><td colspan="20" style="height:2px;padding:0;background:rgba(255,255,255,0.06);"></td></tr>' : ''; return separator + \`<tr class="att-row \${dup ? 'dup-row' : ''}" id="att-row-\${a.id}" data-search="\${escH((a.name+a.email+a.company+a.job_title+(a.mobile||'')).toLowerCase())}" \${dup ? 'style="border-left: 3px solid '+dup.color+';" title="⚠ Suspected Duplicate (Group '+dup.group+', '+dup.count+' entries)"' : ''}>
                   <td class="text-gray-500">#\${a.id}\${dup ? '<span class="dup-badge" style="background:'+dup.color+'22;color:'+dup.color+'">⚠ G'+dup.group+'</span>' : ''}</td>
                   <td><img src="\${getAvatarUrl(a.email, a.name, 64, a.avatar_url)}" alt="" class="w-8 h-8 rounded-full object-cover"></td>
-                  <td class="font-medium ie-cell" onclick="inlineEdit(this, \${a.id}, 'name', '\${esc(a.name)}')">\${a.name}</td>
-                  <td class="text-gray-400 text-xs ie-cell" onclick="inlineEdit(this, \${a.id}, 'email', '\${esc(a.email)}')">\${a.email}</td>
-                  <td class="text-xs text-gray-400 ie-cell" onclick="inlineEdit(this, \${a.id}, 'mobile', '\${esc(a.mobile||'')}')">\${a.mobile||'<span class=&quot;text-gray-600&quot;>-</span>'}</td>
-                  <td class="ie-cell" onclick="inlineEdit(this, \${a.id}, 'company', '\${esc(a.company||'')}')">\${a.company||'<span class=&quot;text-gray-600&quot;>-</span>'}</td>
-                  <td class="text-xs text-gray-400 ie-cell" onclick="inlineEdit(this, \${a.id}, 'job_title', '\${esc(a.job_title||'')}')">\${a.job_title||'<span class=&quot;text-gray-600&quot;>-</span>'}</td>
-                  <td class="text-xs text-gray-400 ie-cell" onclick="inlineEdit(this, \${a.id}, 'city', '\${esc(a.city||'')}')">\${a.city||'<span class=&quot;text-gray-600&quot;>-</span>'}</td>
-                  <td class="text-xs text-gray-400 ie-cell" onclick="inlineEdit(this, \${a.id}, 'country', '\${esc(a.country||'')}')">\${a.country||'<span class=&quot;text-gray-600&quot;>-</span>'}</td>
-                  <td class="text-xs">\${a.linkedin_url ? '<a href="'+a.linkedin_url+'" target="_blank" class="text-blue-400 hover:text-blue-300"><i class="fab fa-linkedin"></i></a>' : '<span class="text-gray-600">-</span>'}</td>
-                  <td class="ie-cell" onclick="inlineMultiSelect(this, \${a.id}, 'role', '\${esc(a.role||'attendee')}')"><div class="flex flex-wrap gap-0.5">\${(a.role||'attendee').split(',').map(r=>'<span class=&quot;px-1.5 py-0.5 rounded text-[9px] bg-primary-500/20 text-primary-300 whitespace-nowrap cursor-pointer&quot;>'+r.trim()+'</span>').join('')}</div></td>
-                  <td class="ie-cell" onclick="inlineSelect(this, \${a.id}, 'badge_type', '\${esc(a.badge_type)}', ['Organiser','VIP Guest','Exhibitor','Delegate','Exhibition Speaker','Jury','Visitor Pass','Media','Support Staff','Investor','Felicitation Delegate','VIP Pass','Speaker','Startup Pitcher'])"><span class="px-2 py-0.5 rounded-full text-[10px] cursor-pointer hover:ring-1 hover:ring-primary-400/50 \${getBadgeClass(a.badge_type)}">\${a.badge_type}</span></td>
+                  <td class="font-medium ie-cell" onclick="inlineEdit(this, \${a.id}, 'name', '\${esc(a.name)}')">\${escH(a.name)}</td>
+                  <td class="text-gray-400 text-xs ie-cell" onclick="inlineEdit(this, \${a.id}, 'email', '\${esc(a.email)}')">\${escH(a.email)}</td>
+                  <td class="text-xs text-gray-400 ie-cell" onclick="inlineEdit(this, \${a.id}, 'mobile', '\${esc(a.mobile||'')}')">\${a.mobile ? escH(a.mobile) : '<span class=&quot;text-gray-600&quot;>-</span>'}</td>
+                  <td class="ie-cell" onclick="inlineEdit(this, \${a.id}, 'company', '\${esc(a.company||'')}')">\${a.company ? escH(a.company) : '<span class=&quot;text-gray-600&quot;>-</span>'}</td>
+                  <td class="text-xs text-gray-400 ie-cell" onclick="inlineEdit(this, \${a.id}, 'job_title', '\${esc(a.job_title||'')}')">\${a.job_title ? escH(a.job_title) : '<span class=&quot;text-gray-600&quot;>-</span>'}</td>
+                  <td class="text-xs text-gray-400 ie-cell" onclick="inlineEdit(this, \${a.id}, 'city', '\${esc(a.city||'')}')">\${a.city ? escH(a.city) : '<span class=&quot;text-gray-600&quot;>-</span>'}</td>
+                  <td class="text-xs text-gray-400 ie-cell" onclick="inlineEdit(this, \${a.id}, 'country', '\${esc(a.country||'')}')">\${a.country ? escH(a.country) : '<span class=&quot;text-gray-600&quot;>-</span>'}</td>
+                  <td class="text-xs">\${safeUrl(a.linkedin_url) ? '<a href="'+safeUrl(a.linkedin_url)+'" target="_blank" class="text-blue-400 hover:text-blue-300"><i class="fab fa-linkedin"></i></a>' : '<span class="text-gray-600">-</span>'}</td>
+                  <td class="ie-cell" onclick="inlineMultiSelect(this, \${a.id}, 'role', '\${esc(a.role||'attendee')}')"><div class="flex flex-wrap gap-0.5">\${(a.role||'attendee').split(',').map(r=>'<span class=&quot;px-1.5 py-0.5 rounded text-[9px] bg-primary-500/20 text-primary-300 whitespace-nowrap cursor-pointer&quot;>'+escH(r.trim())+'</span>').join('')}</div></td>
+                  <td class="ie-cell" onclick="inlineSelect(this, \${a.id}, 'badge_type', '\${esc(a.badge_type)}', ['Organiser','VIP Guest','Exhibitor','Delegate','Exhibition Speaker','Jury','Visitor Pass','Media','Support Staff','Investor','Felicitation Delegate','VIP Pass','Speaker','Startup Pitcher'])"><span class="px-2 py-0.5 rounded-full text-[10px] cursor-pointer hover:ring-1 hover:ring-primary-400/50 \${getBadgeClass(a.badge_type)}">\${escH(a.badge_type)}</span></td>
                   <td class="ie-cell" onclick="inlineSelect(this, \${a.id}, 'rsvp_status', '\${a.rsvp_status||''}', ['','confirmed','maybe','declined'])"><span class="px-2 py-0.5 rounded-full text-[10px] font-medium cursor-pointer hover:ring-1 hover:ring-primary-400/50 \${a.rsvp_status === 'confirmed' ? 'bg-green-500/20 text-green-400' : a.rsvp_status === 'declined' ? 'bg-red-500/20 text-red-400' : a.rsvp_status === 'maybe' ? 'bg-amber-500/20 text-amber-400' : 'bg-gray-500/10 text-gray-500'}">\${a.rsvp_status ? (a.rsvp_status === 'confirmed' ? '✓ Yes' : a.rsvp_status === 'declined' ? '✗ No' : '? Maybe') : '—'}</span></td>
                   <td class="ie-cell" onclick="inlineSelect(this, \${a.id}, 'lunch_inclusion', '\${a.lunch_inclusion||'Yes'}', ['Yes','No'])"><span class="px-1.5 py-0.5 rounded text-[10px] font-medium cursor-pointer hover:ring-1 hover:ring-primary-400/50 \${(a.lunch_inclusion||'Yes')==='Yes' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}">\${a.lunch_inclusion||'Yes'}</span></td>
                   <td class="text-xs ie-cell" onclick="inlineSelect(this, \${a.id}, 'arrival_time', '\${a.arrival_time||''}', ['','09:00','09:30','10:00','10:30','11:00','11:30','12:00','12:30','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30'])">\${a.arrival_time ? '<span class="px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 cursor-pointer hover:ring-1 hover:ring-blue-400/50">'+ (parseInt(a.arrival_time) > 12 ? (parseInt(a.arrival_time)-12)+':'+a.arrival_time.split(':')[1]+' PM' : a.arrival_time+' AM') +'</span>' : '<span class="text-gray-600 cursor-pointer hover:text-gray-400">-</span>'}</td>
                   <td class="text-xs text-gray-400" title="\${esc(a.registration_date||a.created_at||'')}">\${fmtRegDate(a.registration_date||a.created_at)}</td>
-                  <td class="text-xs ie-cell" onclick="inlineEdit(this, \${a.id}, 'payment_amount', '\${esc(a.payment_amount||'')}')">\${a.payment_amount ? '<span class="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">₹'+a.payment_amount+'</span>' : '<span class=&quot;text-gray-600&quot;>-</span>'}</td>
+                  <td class="text-xs ie-cell" onclick="inlineEdit(this, \${a.id}, 'payment_amount', '\${esc(a.payment_amount||'')}')">\${a.payment_amount ? '<span class="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">₹'+escH(a.payment_amount)+'</span>' : '<span class=&quot;text-gray-600&quot;>-</span>'}</td>
                   <td class="text-xs" id="notified-\${a.id}">\${a.notified_at ? '<span class="text-green-400" title="'+a.notified_at+'"><i class="fas fa-check-circle"></i></span>' : '<span class="text-gray-600"><i class="fas fa-times-circle"></i></span>'}</td>
                   <td class="text-xs"><div class="flex gap-1.5 items-center" title="Login | Pass | Post-Email Login"><span class="\${a.last_login_at ? 'text-blue-400' : 'text-gray-600'}" title="\${a.last_login_at ? 'Logged in: '+a.last_login_at : 'Not logged in'}"><i class="fas fa-sign-in-alt"></i></span><span class="\${a.pass_downloaded_at ? 'text-emerald-400' : 'text-gray-600'}" title="\${a.pass_downloaded_at ? 'Pass downloaded: '+a.pass_downloaded_at : 'Pass not downloaded'}"><i class="fas fa-id-badge"></i></span><span class="\${a.notified_at && a.last_login_at && a.last_login_at >= a.notified_at ? 'text-violet-400' : 'text-gray-600'}" title="\${a.notified_at && a.last_login_at && a.last_login_at >= a.notified_at ? 'Opened after email' : 'Not opened after email'}"><i class="fas fa-envelope-open"></i></span></div></td>
                   <td class="flex gap-1">
                     <button onclick='openEditAttendee(\${JSON.stringify(a).replace(/'/g,"&#39;")})' class="px-2 py-1 rounded text-xs bg-primary-500/20 text-primary-300 hover:bg-primary-500/30" title="Full Edit"><i class="fas fa-edit"></i></button>
                     <button onclick='adminDownloadPass(\${JSON.stringify({id:a.id,name:a.name,email:a.email,company:a.company||"",job_title:a.job_title||"",badge_type:a.badge_type||"Delegate",avatar_url:a.avatar_url||""}).replace(/'/g,"&#39;")})' class="px-2 py-1 rounded text-xs bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30" title="Download Pass"><i class="fas fa-id-badge"></i></button>
-                    <button onclick="notifyAttendee(\${a.id}, '\${a.name.replace(/'/g,"&apos;")}', '\${a.email}')" class="px-2 py-1 rounded text-xs bg-amber-500/20 text-amber-300 hover:bg-amber-500/30" title="Send notification email"><i class="fas fa-envelope"></i></button>
+                    <button onclick="notifyAttendeeById(\${a.id})" class="px-2 py-1 rounded text-xs bg-amber-500/20 text-amber-300 hover:bg-amber-500/30" title="Send notification email"><i class="fas fa-envelope"></i></button>
                     <button onclick="deleteAttendee(\${a.id})" class="px-2 py-1 rounded text-xs bg-red-500/20 text-red-400 hover:bg-red-500/30" title="Delete"><i class="fas fa-trash"></i></button>
                   </td>
                 </tr>\`; }).join('')}
@@ -15529,6 +15670,26 @@ function adminPageHTML(): string {
 
     // ============ INLINE EDITING ============
     function esc(s) { return (s||'').replace(/'/g,"&apos;").replace(/"/g,'&quot;'); }
+    // esc() only escapes quotes, which is enough inside a quoted attribute but not
+    // in element text: every one of these tables is built with innerHTML, and an
+    // attendee picks their own name and employer at registration. A name of
+    // <img src=x onerror=...> ran with the admin secret sitting in sessionStorage.
+    function escH(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+    // Attendees supply their own LinkedIn/website URLs, and escaping does nothing
+    // about javascript: - only an allowed scheme does.
+    function safeUrl(u) {
+      // No regex literal here on purpose: this whole script is inside a server-side
+      // template literal, which eats a backslash before the browser ever sees it.
+      // An escaped scheme test shipped as a bare regex followed by a line comment,
+      // so the function returned a truthy regex for every input, valid or not.
+      var v = String(u == null ? '' : u).trim();
+      var lower = v.toLowerCase();
+      return (lower.indexOf('http://') === 0 || lower.indexOf('https://') === 0) ? escH(v) : '';
+    }
 
     let activeInlineEdit = null;
     function cancelActiveInlineEdit() {
@@ -16183,6 +16344,14 @@ function adminPageHTML(): string {
       }
     }
 
+    // Pass the row id, not the name and email. Those were interpolated straight
+    // into the onclick attribute, so an attendee called O'Brien produced a broken
+    // JS string literal and a button that silently did nothing when clicked.
+    function notifyAttendeeById(id) {
+      var a = (lastAttendees || []).find(function (x) { return String(x.id) === String(id); });
+      if (!a) { toast('Could not find that attendee - refresh and try again.', 'error'); return; }
+      return notifyAttendee(a.id, a.name, a.email);
+    }
     async function notifyAttendee(id, name, email) {
       if (!confirm(\`Send notification email to \${name} (\${email})?\`)) return;
       try {
@@ -16628,7 +16797,17 @@ function adminPageHTML(): string {
 
     // ============ SESSIONS ============
     async function loadAdminSessions() {
-      const sessions = await api.get('/api/events/'+EID+'/sessions');
+      var _el = document.getElementById('section-sessions');
+      if (_el && !_el.innerHTML.trim()) sectionLoading(_el);
+      var sessions;
+      try { sessions = await api.get('/api/events/'+EID+'/sessions'); }
+      catch (err) {
+        if (err && err.message === 'unauthorized') return;
+        sectionError(_el, 'sessions', err, 'loadAdminSessions()');
+        return;
+      }
+      var _bad = badList(sessions);
+      if (_bad) { sectionError(_el, 'sessions', { message: _bad }, 'loadAdminSessions()'); return; }
       document.getElementById('section-sessions').innerHTML = \`
         <div class="flex items-center justify-between mb-4">
           <span class="text-xs text-gray-400">\${sessions.length} sessions</span>
@@ -16643,11 +16822,11 @@ function adminPageHTML(): string {
               <tbody>
                 \${sessions.map(s=>\`<tr>
                   <td class="text-xs text-gray-400 whitespace-nowrap">\${s.start_time?.slice(5,16)||''}<br>\${s.end_time?.slice(11,16)||''}</td>
-                  <td class="font-medium">\${s.title}</td>
-                  <td class="text-xs">\${s.speaker_name||'-'}</td>
-                  <td><span class="px-2 py-0.5 rounded-full text-[10px] bg-primary-500/20 text-primary-300">\${s.session_type}</span></td>
-                  <td class="text-xs text-gray-400">\${s.track||'-'}</td>
-                  <td class="text-xs">\${s.room||'-'}</td>
+                  <td class="font-medium">\${escH(s.title)}</td>
+                  <td class="text-xs">\${escH(s.speaker_name)||'-'}</td>
+                  <td><span class="px-2 py-0.5 rounded-full text-[10px] bg-primary-500/20 text-primary-300">\${escH(s.session_type)}</span></td>
+                  <td class="text-xs text-gray-400">\${escH(s.track)||'-'}</td>
+                  <td class="text-xs">\${escH(s.room)||'-'}</td>
                   <td class="flex gap-1">
                     <button onclick='openEditSession(\${JSON.stringify(s).replace(/'/g,"&#39;")})' class="px-2 py-1 rounded text-xs bg-primary-500/20 text-primary-300 hover:bg-primary-500/30"><i class="fas fa-edit"></i></button>
                     <button onclick="deleteSession(\${s.id})" class="px-2 py-1 rounded text-xs bg-red-500/20 text-red-400 hover:bg-red-500/30"><i class="fas fa-trash"></i></button>
@@ -16715,7 +16894,17 @@ function adminPageHTML(): string {
 
     // ============ EXHIBITORS ============
     async function loadAdminExhibitors() {
-      const exhibitors = await api.get('/api/events/'+EID+'/exhibitors');
+      var _el = document.getElementById('section-exhibitors');
+      if (_el && !_el.innerHTML.trim()) sectionLoading(_el);
+      var exhibitors;
+      try { exhibitors = await api.get('/api/events/'+EID+'/exhibitors'); }
+      catch (err) {
+        if (err && err.message === 'unauthorized') return;
+        sectionError(_el, 'exhibitors', err, 'loadAdminExhibitors()');
+        return;
+      }
+      var _bad = badList(exhibitors);
+      if (_bad) { sectionError(_el, 'exhibitors', { message: _bad }, 'loadAdminExhibitors()'); return; }
       document.getElementById('section-exhibitors').innerHTML = \`
         <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
           <span class="text-xs text-gray-400">\${exhibitors.length} exhibitors</span>
@@ -16729,11 +16918,11 @@ function adminPageHTML(): string {
             <div class="glass rounded-xl p-4 card-hover \${ex.booth_size==='platinum'?'border-l-4 border-amber-500':ex.booth_size==='premium'?'border-l-4 border-primary-500':'border-l-4 border-gray-600'}">
               <div class="flex items-start justify-between mb-2">
                 <div>
-                  <h4 class="font-bold">\${ex.company_name}</h4>
+                  <h4 class="font-bold">\${escH(ex.company_name)}</h4>
                   <div class="flex items-center gap-2 text-xs text-gray-400 flex-wrap">
-                    \${ex.booth_number ? '<span>Booth '+ex.booth_number+'</span>' : '<span class="text-amber-400">No booth #</span>'}
-                    <span class="px-1.5 py-0.5 rounded text-[10px] bg-white/5">\${ex.booth_size}</span>
-                    \${ex.category ? '<span>'+ex.category+'</span>' : ''}
+                    \${ex.booth_number ? '<span>Booth '+escH(ex.booth_number)+'</span>' : '<span class="text-amber-400">No booth #</span>'}
+                    <span class="px-1.5 py-0.5 rounded text-[10px] bg-white/5">\${escH(ex.booth_size)}</span>
+                    \${ex.category ? '<span>'+escH(ex.category)+'</span>' : ''}
                     \${ex.attendee_id ? '<span class="px-1.5 py-0.5 rounded text-[10px] bg-blue-500/20 text-blue-300"><i class="fas fa-user-check mr-0.5"></i>Linked #'+ex.attendee_id+'</span>' : ''}
                   </div>
                 </div>
@@ -16742,7 +16931,7 @@ function adminPageHTML(): string {
                   <span class="text-[10px] text-gray-500 block">visitors</span>
                 </div>
               </div>
-              <p class="text-xs text-gray-400 mb-3 line-clamp-2">\${ex.description||'<span class="italic">No description yet</span>'}</p>
+              <p class="text-xs text-gray-400 mb-3 line-clamp-2">\${ex.description ? escH(ex.description) : '<span class="italic">No description yet</span>'}</p>
               <div class="flex gap-1">
                 <button onclick='openEditExhibitor(\${JSON.stringify(ex).replace(/'/g,"&#39;")})' class="px-3 py-1.5 rounded-lg text-xs bg-primary-500/20 text-primary-300 hover:bg-primary-500/30"><i class="fas fa-edit mr-1"></i>Edit</button>
                 <button onclick="deleteExhibitor(\${ex.id})" class="px-3 py-1.5 rounded-lg text-xs bg-red-500/20 text-red-400 hover:bg-red-500/30"><i class="fas fa-trash mr-1"></i>Delete</button>
@@ -16812,6 +17001,9 @@ function adminPageHTML(): string {
           api.get('/api/admin/booth-requests' + (adminBoothRequestFilter ? '?status='+adminBoothRequestFilter : '')),
           api.get('/api/admin/booth-stats')
         ]);
+        var _bad = badList(requests) || bodyError(stats) ||
+          (stats && Array.isArray(stats.by_status) && Array.isArray(stats.by_type) ? null : 'Booth stats came back in an unexpected shape.');
+        if (_bad) { sectionError(section, 'booth requests', { message: _bad }, 'loadAdminBoothRequests()'); return; }
 
         const statusColors = {
           submitted: 'bg-blue-500/20 text-blue-300',
@@ -16863,7 +17055,7 @@ function adminPageHTML(): string {
               <tbody>
                 \${stats.by_type.map(t => \`
                   <tr class="border-b border-white/5 hover:bg-white/5">
-                    <td class="py-2 px-2 font-semibold">\${t.name}</td>
+                    <td class="py-2 px-2 font-semibold">\${escH(t.name)}</td>
                     <td class="text-center py-2 px-2">\${t.total_count}</td>
                     <td class="text-center py-2 px-2 \${t.available_count <= 3 ? 'text-red-400 font-bold' : 'text-green-400'}">\${t.available_count}</td>
                     <td class="text-center py-2 px-2">\${t.requests}</td>
@@ -16890,8 +17082,8 @@ function adminPageHTML(): string {
                 <div class="flex flex-col md:flex-row md:items-center justify-between gap-2 mb-2">
                   <div>
                     <span class="font-mono text-xs text-primary-400">#BR-\${String(r.id).padStart(4,'0')}</span>
-                    <span class="font-bold ml-2">\${r.company_name}</span>
-                    <span class="text-xs text-gray-500 ml-2">\${r.contact_name} &lt;\${r.email}&gt;</span>
+                    <span class="font-bold ml-2">\${escH(r.company_name)}</span>
+                    <span class="text-xs text-gray-500 ml-2">\${escH(r.contact_name)} &lt;\${escH(r.email)}&gt;</span>
                   </div>
                   <div class="flex items-center gap-2">
                     <span class="px-2 py-1 rounded-full text-[10px] font-semibold uppercase \${statusColors[r.status] || ''}">\${r.status.replace('_',' ')}</span>
@@ -16899,15 +17091,15 @@ function adminPageHTML(): string {
                   </div>
                 </div>
                 <div class="grid grid-cols-2 md:grid-cols-5 gap-2 text-xs mb-3">
-                  <div><span class="text-gray-500">Booth:</span> <span class="font-semibold">\${r.booth_type_name}</span></div>
-                  <div><span class="text-gray-500">Size:</span> \${r.size_label}m</div>
+                  <div><span class="text-gray-500">Booth:</span> <span class="font-semibold">\${escH(r.booth_type_name)}</span></div>
+                  <div><span class="text-gray-500">Size:</span> \${escH(r.size_label)}m</div>
                   <div><span class="text-gray-500">Qty:</span> \${r.quantity}</div>
                   <div><span class="text-gray-500">Total:</span> <span class="font-bold text-green-400">₹\${Number(r.grand_total).toLocaleString('en-IN')}</span></div>
                   <div><span class="text-gray-500">Date:</span> \${new Date(r.created_at).toLocaleDateString('en-IN',{day:'numeric',month:'short'})}</div>
                 </div>
-                \${r.industry ? '<div class="text-xs text-gray-500 mb-2"><i class="fas fa-industry mr-1"></i>'+r.industry+(r.company_size ? ' &middot; '+r.company_size : '')+'</div>' : ''}
-                \${r.products_to_display ? '<div class="text-xs text-gray-500 mb-2"><i class="fas fa-box mr-1"></i>'+r.products_to_display+'</div>' : ''}
-                \${r.special_requirements ? '<div class="text-xs text-gray-500 mb-2"><i class="fas fa-star mr-1"></i>'+r.special_requirements+'</div>' : ''}
+                \${r.industry ? '<div class="text-xs text-gray-500 mb-2"><i class="fas fa-industry mr-1"></i>'+escH(r.industry)+(r.company_size ? ' &middot; '+escH(r.company_size) : '')+'</div>' : ''}
+                \${r.products_to_display ? '<div class="text-xs text-gray-500 mb-2"><i class="fas fa-box mr-1"></i>'+escH(r.products_to_display)+'</div>' : ''}
+                \${r.special_requirements ? '<div class="text-xs text-gray-500 mb-2"><i class="fas fa-star mr-1"></i>'+escH(r.special_requirements)+'</div>' : ''}
                 <div class="flex gap-2 mt-2 flex-wrap">
                   \${r.status === 'submitted' ? '<button onclick="updateBoothRequest('+r.id+',&apos;under_review&apos;,null)" class="px-3 py-1.5 rounded-lg text-[10px] font-semibold bg-amber-600/20 text-amber-300 hover:bg-amber-600/30"><i class="fas fa-search mr-1"></i>Review</button>' : ''}
                   \${r.status !== 'approved' && r.status !== 'confirmed' && r.status !== 'cancelled' ? '<button onclick="updateBoothRequest('+r.id+',&apos;approved&apos;,null)" class="px-3 py-1.5 rounded-lg text-[10px] font-semibold bg-green-600/20 text-green-300 hover:bg-green-600/30"><i class="fas fa-check mr-1"></i>Approve</button>' : ''}
@@ -16953,8 +17145,46 @@ function adminPageHTML(): string {
     }
 
     // ============ AWARDS ============
+    // Category and nominee names went straight into the onclick attributes below.
+    // A double quote in a name broke out of the attribute and injected markup; an
+    // apostrophe broke the JS string and left a button that did nothing. Both are
+    // gone now that the buttons carry an id and look the record up here.
+    let lastAwards = null;
+    function findCategory(id) {
+      return (lastAwards || []).find(function (c) { return String(c.id) === String(id); });
+    }
+    function findNominee(id) {
+      var all = [];
+      (lastAwards || []).forEach(function (c) { (c.nominees || []).forEach(function (x) { all.push(x); }); });
+      return all.find(function (x) { return String(x.id) === String(id); });
+    }
+    function openEditCategoryById(id) {
+      var c = findCategory(id);
+      if (!c) { toast('Could not find that category - refresh and try again.', 'error'); return; }
+      return openEditCategory(c.id, c.name, c.description || '', c.icon || '');
+    }
+    function declareWinnerById(id, isWinner) {
+      var x = findNominee(id);
+      if (!x) { toast('Could not find that nominee - refresh and try again.', 'error'); return; }
+      return declareWinner(x.id, x.name, x.description || '', x.company || '', isWinner);
+    }
+    function openEditNomineeById(id) {
+      var x = findNominee(id);
+      if (!x) { toast('Could not find that nominee - refresh and try again.', 'error'); return; }
+      return openEditNominee(x.id, x.name, x.description || '', x.company || '', x.is_winner);
+    }
     async function loadAdminAwards() {
-      const awards = await api.get('/api/events/'+EID+'/awards');
+      var _el = document.getElementById('section-awards');
+      if (_el && !_el.innerHTML.trim()) sectionLoading(_el);
+      var awards;
+      try { awards = await api.get('/api/events/'+EID+'/awards'); lastAwards = awards; }
+      catch (err) {
+        if (err && err.message === 'unauthorized') return;
+        sectionError(_el, 'award categories', err, 'loadAdminAwards()');
+        return;
+      }
+      var _bad = badList(awards);
+      if (_bad) { sectionError(_el, 'award categories', { message: _bad }, 'loadAdminAwards()'); return; }
       document.getElementById('section-awards').innerHTML = \`
         <div class="flex items-center justify-between mb-4">
           <span class="text-xs text-gray-400">\${awards.length} categories</span>
@@ -16968,13 +17198,13 @@ function adminPageHTML(): string {
                   <div class="flex items-center gap-3">
                     <span class="text-2xl">\${cat.icon||'🏆'}</span>
                     <div>
-                      <h3 class="font-bold">\${cat.name}</h3>
-                      <p class="text-xs text-gray-400">\${cat.description||''}</p>
+                      <h3 class="font-bold">\${escH(cat.name)}</h3>
+                      <p class="text-xs text-gray-400">\${escH(cat.description)}</p>
                     </div>
                   </div>
                   <div class="flex items-center gap-2">
                     <span class="px-2 py-0.5 rounded-full text-[10px] bg-primary-500/20 text-primary-300">\${cat.nominees.length} nominees</span>
-                    <button onclick="openEditCategory(\${cat.id}, '\${cat.name}', '\${cat.description||''}', '\${cat.icon||''}')" class="px-2 py-1 rounded text-xs bg-primary-500/20 text-primary-300 hover:bg-primary-500/30"><i class="fas fa-edit"></i></button>
+                    <button onclick="openEditCategoryById(\${cat.id})" class="px-2 py-1 rounded text-xs bg-primary-500/20 text-primary-300 hover:bg-primary-500/30"><i class="fas fa-edit"></i></button>
                     <button onclick="deleteCategory(\${cat.id})" class="px-2 py-1 rounded text-xs bg-red-500/20 text-red-400 hover:bg-red-500/30"><i class="fas fa-trash"></i></button>
                   </div>
                 </div>
@@ -16984,14 +17214,14 @@ function adminPageHTML(): string {
                       <span class="w-6 text-center text-xs font-bold text-gray-400">#\${i+1}</span>
                       <div class="flex-1">
                         <div class="flex items-center gap-2">
-                          <span class="font-medium text-sm">\${n.name}</span>
+                          <span class="font-medium text-sm">\${escH(n.name)}</span>
                           \${n.is_winner?'<i class="fas fa-crown text-amber-400 text-xs"></i>':''}
-                          <span class="text-xs text-gray-500">\${n.company||''}</span>
+                          <span class="text-xs text-gray-500">\${escH(n.company)}</span>
                         </div>
                       </div>
                       <div class="flex gap-1">
-                        <button onclick="declareWinner(\${n.id}, '\${n.name}', '\${n.description||''}', '\${n.company||''}', \${n.is_winner?0:1})" class="px-1.5 py-1 rounded text-[10px] \${n.is_winner?'bg-amber-500/20 text-amber-400':'bg-white/5 text-gray-400 hover:bg-amber-500/20 hover:text-amber-400'}" title="\${n.is_winner?'Remove winner':'Declare winner'}"><i class="fas fa-crown"></i></button>
-                        <button onclick="openEditNominee(\${n.id}, '\${n.name.replace(/'/g,"&apos;")}', '\${(n.description||'').replace(/'/g,"&apos;")}', '\${(n.company||'').replace(/'/g,"&apos;")}', \${n.is_winner})" class="px-1.5 py-1 rounded text-[10px] bg-primary-500/20 text-primary-300 hover:bg-primary-500/30"><i class="fas fa-edit"></i></button>
+                        <button onclick="declareWinnerById(\${n.id}, \${n.is_winner?0:1})" class="px-1.5 py-1 rounded text-[10px] \${n.is_winner?'bg-amber-500/20 text-amber-400':'bg-white/5 text-gray-400 hover:bg-amber-500/20 hover:text-amber-400'}" title="\${n.is_winner?'Remove winner':'Declare winner'}"><i class="fas fa-crown"></i></button>
+                        <button onclick="openEditNomineeById(\${n.id})" class="px-1.5 py-1 rounded text-[10px] bg-primary-500/20 text-primary-300 hover:bg-primary-500/30"><i class="fas fa-edit"></i></button>
                         <button onclick="deleteNominee(\${n.id})" class="px-1.5 py-1 rounded text-[10px] bg-red-500/20 text-red-400 hover:bg-red-500/30"><i class="fas fa-trash"></i></button>
                       </div>
                     </div>
@@ -17056,7 +17286,17 @@ function adminPageHTML(): string {
 
     // ============ ANNOUNCEMENTS ============
     async function loadAdminAnnouncements() {
-      const anns = await api.get('/api/events/'+EID+'/announcements');
+      var _el = document.getElementById('section-announcements');
+      if (_el && !_el.innerHTML.trim()) sectionLoading(_el);
+      var anns;
+      try { anns = await api.get('/api/events/'+EID+'/announcements'); }
+      catch (err) {
+        if (err && err.message === 'unauthorized') return;
+        sectionError(_el, 'announcements', err, 'loadAdminAnnouncements()');
+        return;
+      }
+      var _bad = badList(anns);
+      if (_bad) { sectionError(_el, 'announcements', { message: _bad }, 'loadAdminAnnouncements()'); return; }
       document.getElementById('section-announcements').innerHTML = \`
         <div class="flex items-center justify-between mb-4">
           <span class="text-xs text-gray-400">\${anns.length} announcements</span>
@@ -17075,12 +17315,12 @@ function adminPageHTML(): string {
                   </div>
                   <div>
                     <div class="flex items-center gap-2">
-                      <h4 class="font-semibold text-sm">\${a.title}</h4>
+                      <h4 class="font-semibold text-sm">\${escH(a.title)}</h4>
                       \${a.pinned?'<i class="fas fa-thumbtack text-amber-400 text-xs"></i>':''}
-                      <span class="px-1.5 py-0.5 rounded text-[10px] bg-white/5 text-gray-400">\${a.announcement_type}</span>
+                      <span class="px-1.5 py-0.5 rounded text-[10px] bg-white/5 text-gray-400">\${escH(a.announcement_type)}</span>
                     </div>
-                    <p class="text-xs text-gray-400 mt-1">\${a.content}</p>
-                    <p class="text-[10px] text-gray-500 mt-1">by \${a.author_name} &middot; \${new Date(a.created_at).toLocaleString()}</p>
+                    <p class="text-xs text-gray-400 mt-1">\${escH(a.content)}</p>
+                    <p class="text-[10px] text-gray-500 mt-1">by \${escH(a.author_name)} &middot; \${new Date(a.created_at).toLocaleString()}</p>
                   </div>
                 </div>
                 <div class="flex gap-1 shrink-0 ml-2">
@@ -17175,7 +17415,17 @@ function adminPageHTML(): string {
 
     // ============ INNOVATION TALKS ============
     async function loadInnovationTalks() {
-      const talks = await api.get('/api/events/'+EID+'/innovation-talks');
+      var _el = document.getElementById('section-innovation');
+      if (_el && !_el.innerHTML.trim()) sectionLoading(_el);
+      var talks;
+      try { talks = await api.get('/api/events/'+EID+'/innovation-talks'); }
+      catch (err) {
+        if (err && err.message === 'unauthorized') return;
+        sectionError(_el, 'innovation talks', err, 'loadInnovationTalks()');
+        return;
+      }
+      var _bad = badList(talks);
+      if (_bad) { sectionError(_el, 'innovation talks', { message: _bad }, 'loadInnovationTalks()'); return; }
       const morning = talks.filter(t => t.session_type === 'Morning');
       const afternoon = talks.filter(t => t.session_type === 'Afternoon');
 
@@ -17184,10 +17434,10 @@ function adminPageHTML(): string {
         const sc = statusColors[t.status] || statusColors.confirmed;
         return '<tr class="hover:bg-white/[0.03] transition" id="italk-row-'+t.id+'">'
           + '<td class="px-3 py-2.5 text-center text-gray-500 text-xs font-mono">'+t.slot_no+'</td>'
-          + '<td class="px-3 py-2.5 text-xs text-gray-300"><span class="px-2 py-0.5 rounded bg-white/5">'+esc(t.time_slot)+'</span></td>'
-          + '<td class="px-3 py-2.5 font-medium text-sm">'+esc(t.speaker_name)+'</td>'
-          + '<td class="px-3 py-2.5 text-xs text-gray-400">'+esc(t.company)+'</td>'
-          + '<td class="px-3 py-2.5 text-xs text-gray-400">'+esc(t.topic||'')+'</td>'
+          + '<td class="px-3 py-2.5 text-xs text-gray-300"><span class="px-2 py-0.5 rounded bg-white/5">'+escH(t.time_slot)+'</span></td>'
+          + '<td class="px-3 py-2.5 font-medium text-sm">'+escH(t.speaker_name)+'</td>'
+          + '<td class="px-3 py-2.5 text-xs text-gray-400">'+escH(t.company)+'</td>'
+          + '<td class="px-3 py-2.5 text-xs text-gray-400">'+escH(t.topic||'')+'</td>'
           + '<td class="px-3 py-2.5 text-center"><span class="px-2 py-0.5 rounded-full text-[10px] font-medium '+sc+'">'+t.status+'</span></td>'
           + '<td class="px-3 py-2.5 text-center">'
           + '<div class="flex gap-1 justify-center">'
@@ -17314,6 +17564,8 @@ function adminPageHTML(): string {
     async function loadAdminStartupPitch() {
       try {
         const data = await api.get('/api/admin/startup-pitches?event_id=' + EID);
+        var _bad = bodyError(data) || (data && Array.isArray(data.pitches) ? null : 'Startup pitches came back in an unexpected shape.');
+        if (_bad) { sectionError(document.getElementById('section-startup-pitch'), 'startup pitches', { message: _bad }, 'loadAdminStartupPitch()'); return; }
         const pitches = data.pitches || [];
         const investors = data.investors || [];
 
@@ -17380,10 +17632,10 @@ function adminPageHTML(): string {
                     \${pitches.map(p => \`
                       <tr class="hover:bg-white/[0.02] \${p.is_active ? '' : 'opacity-40'}">
                         <td class="py-2 px-2 text-gray-500">\${p.slot_order}</td>
-                        <td class="py-2 px-2"><span class="px-2 py-0.5 rounded-full text-[10px] bg-orange-500/15 text-orange-300">\${p.time_slot}</span></td>
-                        <td class="py-2 px-2 font-medium text-white">\${p.company}</td>
-                        <td class="py-2 px-2 text-gray-300">\${p.pitcher_name}</td>
-                        <td class="py-2 px-2 text-gray-400 text-xs">\${p.pitcher_title}</td>
+                        <td class="py-2 px-2"><span class="px-2 py-0.5 rounded-full text-[10px] bg-orange-500/15 text-orange-300">\${escH(p.time_slot)}</span></td>
+                        <td class="py-2 px-2 font-medium text-white">\${escH(p.company)}</td>
+                        <td class="py-2 px-2 text-gray-300">\${escH(p.pitcher_name)}</td>
+                        <td class="py-2 px-2 text-gray-400 text-xs">\${escH(p.pitcher_title)}</td>
                         <td class="py-2 px-2 text-center">
                           <button onclick="togglePitchActive(\${p.id}, \${p.is_active ? 0 : 1}, \${JSON.stringify(JSON.stringify(p))})" class="text-xs \${p.is_active ? 'text-green-400' : 'text-red-400'}">\${p.is_active ? '\u2705' : '\u274c'}</button>
                         </td>
@@ -17434,9 +17686,9 @@ function adminPageHTML(): string {
                   <div class="flex items-center gap-3 p-3 rounded-xl bg-white/[0.03] border border-white/5 \${inv.is_active ? '' : 'opacity-40'}">
                     <img src="https://ui-avatars.com/api/?name=\${encodeURIComponent(inv.name)}&size=40&background=065f46&color=fff&bold=true&rounded=true" class="w-10 h-10 rounded-full shrink-0">
                     <div class="flex-1 min-w-0">
-                      <div class="font-semibold text-sm text-white truncate">\${inv.name}</div>
-                      \${inv.title ? '<div class="text-[10px] text-emerald-400/80 truncate">'+inv.title+'</div>' : ''}
-                      \${inv.company ? '<div class="text-[10px] text-gray-500 truncate">'+inv.company+'</div>' : ''}
+                      <div class="font-semibold text-sm text-white truncate">\${escH(inv.name)}</div>
+                      \${inv.title ? '<div class="text-[10px] text-emerald-400/80 truncate">'+escH(inv.title)+'</div>' : ''}
+                      \${inv.company ? '<div class="text-[10px] text-gray-500 truncate">'+escH(inv.company)+'</div>' : ''}
                     </div>
                     <div class="flex gap-1 shrink-0">
                       <button onclick='editInvestor(\${JSON.stringify(inv)})' class="text-primary-400 hover:text-primary-300 text-xs p-1" title="Edit"><i class="fas fa-edit"></i></button>
@@ -17590,6 +17842,8 @@ function adminPageHTML(): string {
         if (inquiryFilterType) url += 'type=' + inquiryFilterType + '&';
         if (inquiryFilterStatus) url += 'status=' + inquiryFilterStatus + '&';
         const data = await api.get(url);
+        var _bad = bodyError(data) || (data && Array.isArray(data.inquiries) ? null : 'Inquiries came back in an unexpected shape.');
+        if (_bad) { sectionError(document.getElementById('section-inquiries'), 'inquiries', { message: _bad }, 'loadAdminInquiries()'); return; }
         const { inquiries, typeCounts, statusCounts } = data;
 
         const totalNew = (statusCounts || []).find(s => s.status === 'new');
@@ -17629,7 +17883,7 @@ function adminPageHTML(): string {
           const cfg = typeLabels[inq.inquiry_type] || typeLabels.other;
           const sColor = statusColors[inq.status] || statusColors.new;
           const meta = inq.metadata ? (function() { try { return JSON.parse(inq.metadata); } catch(e) { return {}; } })() : {};
-          const metaStr = Object.entries(meta).filter(([k,v]) => v).map(([k,v]) => '<span class="text-[10px] text-gray-500">' + k.replace(/_/g,' ') + ': ' + v + '</span>').join(' · ');
+          const metaStr = Object.entries(meta).filter(([k,v]) => v).map(([k,v]) => '<span class="text-[10px] text-gray-500">' + escH(k.replace(/_/g,' ')) + ': ' + escH(v) + '</span>').join(' · ');
 
           return '<div class="glass rounded-xl p-4 border border-white/5 hover:border-white/10 transition">' +
             '<div class="flex items-start justify-between gap-3">' +
@@ -17639,12 +17893,12 @@ function adminPageHTML(): string {
                   '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold ' + sColor + '">' + inq.status.replace('_', ' ') + '</span>' +
                   '<span class="text-[10px] text-gray-500">#' + inq.id + '</span>' +
                 '</div>' +
-                '<h4 class="font-semibold text-sm truncate">' + (inq.subject || inq.name) + '</h4>' +
-                '<p class="text-xs text-gray-400 mt-0.5">' + inq.name + (inq.organization ? ' · ' + inq.organization : '') + '</p>' +
-                '<p class="text-xs text-gray-500 mt-0.5"><i class="fas fa-envelope mr-1"></i>' + inq.email + (inq.phone ? ' · <i class="fas fa-phone mr-1"></i>' + inq.phone : '') + '</p>' +
-                '<p class="text-xs text-gray-300 mt-2 line-clamp-2">' + (inq.message || '<em class="text-gray-500">No message</em>') + '</p>' +
+                '<h4 class="font-semibold text-sm truncate">' + escH(inq.subject || inq.name) + '</h4>' +
+                '<p class="text-xs text-gray-400 mt-0.5">' + escH(inq.name) + (inq.organization ? ' · ' + escH(inq.organization) : '') + '</p>' +
+                '<p class="text-xs text-gray-500 mt-0.5"><i class="fas fa-envelope mr-1"></i>' + escH(inq.email) + (inq.phone ? ' · <i class="fas fa-phone mr-1"></i>' + escH(inq.phone) : '') + '</p>' +
+                '<p class="text-xs text-gray-300 mt-2 line-clamp-2">' + (inq.message ? escH(inq.message) : '<em class="text-gray-500">No message</em>') + '</p>' +
                 (metaStr ? '<div class="mt-1">' + metaStr + '</div>' : '') +
-                (inq.admin_notes ? '<div class="mt-2 p-2 rounded-lg bg-amber-500/5 border border-amber-500/10 text-xs text-amber-300"><i class="fas fa-sticky-note mr-1"></i>' + inq.admin_notes + '</div>' : '') +
+                (inq.admin_notes ? '<div class="mt-2 p-2 rounded-lg bg-amber-500/5 border border-amber-500/10 text-xs text-amber-300"><i class="fas fa-sticky-note mr-1"></i>' + escH(inq.admin_notes) + '</div>' : '') +
               '</div>' +
               '<div class="flex flex-col gap-1 shrink-0">' +
                 '<select onchange="updateInquiryStatus(' + inq.id + ', this.value)" class="px-2 py-1 rounded-lg text-[10px] glass">' +
@@ -17700,10 +17954,26 @@ function adminPageHTML(): string {
 
     // ============ ANALYTICS ============
     async function loadAnalytics() {
-      const [analytics, stats] = await Promise.all([
-        api.get('/api/admin/events/'+EID+'/analytics'),
-        api.get('/api/events/'+EID+'/stats'),
-      ]);
+      var _el = document.getElementById('section-analytics');
+      if (_el && !_el.innerHTML.trim()) sectionLoading(_el);
+      var analytics, stats;
+      try {
+        var _r = await Promise.all([
+          api.get('/api/admin/events/'+EID+'/analytics'),
+          api.get('/api/events/'+EID+'/stats'),
+        ]);
+        analytics = _r[0]; stats = _r[1];
+      } catch (err) {
+        if (err && err.message === 'unauthorized') return;
+        sectionError(_el, 'analytics', err, 'loadAnalytics()');
+        return;
+      }
+      var _bad = bodyError(analytics) || bodyError(stats);
+      if (_bad) { sectionError(_el, 'analytics', { message: _bad }, 'loadAnalytics()'); return; }
+      if (!analytics || !Array.isArray(analytics.topNominees)) {
+        sectionError(_el, 'analytics', { message: 'Analytics came back in an unexpected shape.' }, 'loadAnalytics()');
+        return;
+      }
 
       document.getElementById('section-analytics').innerHTML = \`
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
@@ -17750,7 +18020,17 @@ function adminPageHTML(): string {
 
     // ============ SETTINGS ============
     async function loadSettings() {
-      const settings = await api.get('/api/admin/settings');
+      var _el = document.getElementById('section-settings');
+      if (_el && !_el.innerHTML.trim()) sectionLoading(_el);
+      var settings;
+      try { settings = await api.get('/api/admin/settings'); }
+      catch (err) {
+        if (err && err.message === 'unauthorized') return;
+        sectionError(_el, 'settings', err, 'loadSettings()');
+        return;
+      }
+      var _bad = bodyError(settings);
+      if (_bad) { sectionError(_el, 'settings', { message: _bad }, 'loadSettings()'); return; }
       const el = document.getElementById('section-settings');
       el.innerHTML = \`
         <div class="max-w-3xl mx-auto space-y-6">
