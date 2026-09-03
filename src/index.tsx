@@ -546,6 +546,26 @@ function campusPanelFor(source: unknown): CampusPanel | undefined {
   return s.startsWith('campus:') ? CAMPUS_PANELS[s.slice('campus:'.length)] : undefined
 }
 
+// How a registration source reads on the overview. A campus registration is
+// named after the college that hosted the panel, because "campus:jnu-30sep"
+// answers nobody's question about where the audience came from.
+function sourceLabel(source: unknown): string {
+  const raw = String(source ?? '').trim()
+  if (!raw) return 'Not recorded'
+  const panel = campusPanelFor(raw)
+  if (panel) return `Campus panel - ${panel.hostShort}`
+  if (raw.startsWith('campus:')) return 'Campus panel - ' + raw.slice('campus:'.length)
+  const known: Record<string, string> = {
+    networking_app: 'Networking app',
+    website: 'Website',
+    external: 'External / partner',
+    admin: 'Added by the team',
+    bulk_upload: 'Bulk upload',
+    ai_readiness: 'AI readiness assessment',
+  }
+  return known[raw] || raw
+}
+
 // SQL fragment that keeps campus-panel registrants out of conference-wide sends.
 // They came to a free session on their own campus; the delegate upsell, the RSVP
 // chase and the thank-you-for-attending are all addressed to somebody else.
@@ -702,8 +722,9 @@ function seniorityOf(title: any): string {
 }
 
 app.get('/api/admin/analytics/audience', async (c) => {
+  try {
   const { results } = await c.env.DB.prepare(
-    'SELECT job_title, industry, company, badge_type, city FROM attendees WHERE event_id = 1'
+    'SELECT job_title, industry, company, badge_type, city, registration_source FROM attendees WHERE event_id = 1'
   ).all() as any
   const rows = results || []
 
@@ -743,6 +764,13 @@ app.get('/api/admin/analytics/audience', async (c) => {
       company: rows.filter((r: any) => norm(r.company)).length,
     },
   })
+  } catch (e: any) {
+    // A thrown error here reaches the browser as plain text, and the panel's
+    // JSON.parse then reports something that reads like a parsing problem rather
+    // than a server one. Answer with JSON so the message is the real cause.
+    console.error('audience profile failed:', e?.message)
+    return c.json({ error: 'Could not build the audience profile: ' + (e?.message || 'unknown error') }, 500)
+  }
 })
 
 // ==================== TAX INVOICES ====================
@@ -7793,18 +7821,11 @@ if (preselect) {
 </html>`
 }
 
-// ==================== AI MARKETPLACE PAGES ====================
-
-app.get('/marketplace', (c) => c.html(marketplacePageHTML()))
-app.get('/marketplace/dashboard', (c) => c.html(marketplaceDashboardHTML()))
-app.get('/marketplace/admin', (c) => c.html(marketplaceAdminHTML()))
-app.get('/marketplace/faq', (c) => c.html(marketplaceFaqHTML()))
-app.get('/marketplace/listing/:companySlug/:productSlug', (c) => {
-  return c.html(marketplaceListingHTML(c.req.param('companySlug'), c.req.param('productSlug')))
-})
-app.get('/marketplace/listing/:id', (c) => {
-  return c.html(marketplaceListingHTML(null, null, c.req.param('id')))
-})
+// The marketplace page routes are registered near the top of this file, next to
+// the rest of the page routes. A second copy used to sit here calling
+// marketplaceAdminHTML / marketplaceDashboardHTML / marketplaceFaqHTML /
+// marketplaceListingHTML - four names that do not exist anywhere. It never ran,
+// because Hono takes the first matching route, so the mistake stayed invisible.
 
 // ==================== ADMIN PAGE ====================
 
