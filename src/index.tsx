@@ -33,6 +33,58 @@ app.use('/api/*', cors())
 // Fails CLOSED: if ADMIN_SECRET is not configured, all admin routes return
 // 503 rather than being world-open. Set it in Cloudflare before relying on
 // the panel: `npx wrangler pages secret put ADMIN_SECRET`.
+// ==================== ADMIN AUDIT ====================
+// The panel is opened with one shared password, so the operator name is what the
+// panel says it is - self-declared, and labelled that way in the UI. The IP and
+// user agent are not, and a destructive action is traceable with all three.
+// Never throws: an audit write must not be able to fail the action it records.
+async function audit(c: any, action: string, entity?: string, entityId?: any, detail?: any) {
+  try {
+    const actor = (c.req.header('X-Admin-Actor') || '').slice(0, 80) || 'unnamed operator'
+    const kind = c.req.header('X-Admin-Actor-Kind') || 'admin'
+    await c.env.DB.prepare(
+      'INSERT INTO admin_audit (actor, actor_kind, action, entity, entity_id, detail, ip, user_agent) VALUES (?,?,?,?,?,?,?,?)'
+    ).bind(
+      actor, kind, action, entity || null,
+      entityId == null ? null : String(entityId),
+      detail == null ? null : (typeof detail === 'string' ? detail : JSON.stringify(detail)).slice(0, 2000),
+      c.req.header('CF-Connecting-IP') || null,
+      (c.req.header('User-Agent') || '').slice(0, 200) || null
+    ).run()
+  } catch (_) { /* the table may predate migration 0027; never break the caller */ }
+}
+
+// One place that knows how to send a transactional email, so new admin features
+// do not each re-implement the Elastic Email call and its settings lookup.
+async function sendAdminEmail(c: any, to: string, subject: string, html: string):
+    Promise<{ ok: true } | { ok: false; error: string }> {
+  const g = async (k: string) => ((await c.env.DB.prepare('SELECT value FROM app_settings WHERE key = ?').bind(k).first()) as any)?.value
+  const key = await g('elastic_email_api_key')
+  if (!key) return { ok: false, error: 'Email service is not configured (no API key in Settings).' }
+  const fromEmail = senderEmailOrDefault(await g('sender_email'))
+  const fromName = (await g('sender_name')) || 'Bharat AI Innovation Conference & Exhibition 2026'
+  try {
+    const res = await fetch('https://api.elasticemail.com/v4/emails/transactional', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-ElasticEmail-ApiKey': key },
+      body: JSON.stringify({
+        Recipients: { To: [to] },
+        Content: {
+          Body: [{ ContentType: 'HTML', Content: html, Charset: 'utf-8' }],
+          From: `${fromName} <${fromEmail}>`,
+          Subject: subject,
+        },
+        Options: { TrackClicks: false, TrackOpens: false },
+      }),
+    })
+    const body = await res.json().catch(() => ({})) as any
+    if (!res.ok) return { ok: false, error: body?.Error || ('Email service returned HTTP ' + res.status) }
+    return { ok: true }
+  } catch (e: any) {
+    return { ok: false, error: e?.message || 'Could not reach the email service.' }
+  }
+}
+
 app.use('/api/admin/*', async (c, next) => {
   const expected = c.env.ADMIN_SECRET || ''
   if (!expected) {
@@ -51,6 +103,26 @@ app.use('/api/admin/*', async (c, next) => {
 // password server-side. Protected by the middleware above, so a 200 means
 // the secret is correct; a 401 means it isn't. Returns no data.
 app.get('/api/admin/verify', (c) => c.json({ ok: true }))
+
+// Who did what, newest first. Optionally narrowed to one record.
+app.get('/api/admin/audit', async (c) => {
+  const entity = c.req.query('entity') || ''
+  const entityId = c.req.query('entity_id') || ''
+  const limit = Math.min(500, Math.max(1, parseInt(c.req.query('limit') || '100', 10) || 100))
+  try {
+    let q = 'SELECT * FROM admin_audit'
+    const p: any[] = []
+    if (entity) { q += ' WHERE entity = ?'; p.push(entity); if (entityId) { q += ' AND entity_id = ?'; p.push(entityId) } }
+    q += ' ORDER BY id DESC LIMIT ?'
+    p.push(limit)
+    const { results } = await c.env.DB.prepare(q).bind(...p).all()
+    return c.json({ entries: results })
+  } catch (e: any) {
+    // Before migration 0027 the table is absent; say so rather than 500.
+    if (/no such table/i.test(String(e?.message || ''))) return c.json({ entries: [], unavailable: true })
+    throw e
+  }
+})
 
 // ==================== AI MARKETPLACE (integrated) ====================
 app.route('/', mp)
@@ -2986,8 +3058,93 @@ app.put('/api/admin/booth-requests/:id', async (c) => {
 
   const updated = await c.env.DB.prepare(
     `SELECT br.*, bt.name as booth_type_name FROM booth_requests br JOIN booth_types bt ON br.booth_type_id = bt.id WHERE br.id = ?`
-  ).bind(id).first()
-  return c.json(updated)
+  ).bind(id).first() as any
+
+  // An approved request becomes a real exhibitor, once. Matched on the request id
+  // held in the exhibitor's description marker so a second approval cannot create
+  // a duplicate stand.
+  let exhibitorCreated = false
+  if (status === 'approved' && updated) {
+    try {
+      const marker = `[BR-${String(id).padStart(4, '0')}]`
+      const existing = await c.env.DB.prepare(
+        "SELECT id FROM exhibitors WHERE description LIKE ? OR (company_name = ? AND contact_email = ?)"
+      ).bind('%' + marker + '%', updated.company_name, updated.email).first()
+      if (!existing) {
+        await c.env.DB.prepare(
+          `INSERT INTO exhibitors (event_id, company_name, description, category, booth_size, contact_email, contact_phone, website_url)
+           VALUES (?,?,?,?,?,?,?,?)`
+        ).bind(
+          updated.event_id || 1,
+          updated.company_name || 'TBD',
+          `${marker} ${updated.products_to_display || ''}`.trim(),
+          updated.industry || '',
+          (updated.booth_type_name || 'standard').toLowerCase().includes('premium') ? 'premium' : 'standard',
+          updated.email || '',
+          updated.phone || updated.contact_phone || '',
+          updated.website || ''
+        ).run()
+        exhibitorCreated = true
+      }
+    } catch (e: any) {
+      // A schema difference must not undo an approval the operator just made.
+      console.error('booth approval -> exhibitor failed:', e?.message)
+    }
+  }
+
+  // Tell the company. Best-effort: a mail failure is reported, not fatal, because
+  // the approval itself is already committed.
+  let emailed: string | null = null
+  if (status === 'approved' && updated?.email && body.notify !== false) {
+    const esc = (v: any) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    const html = `<!DOCTYPE html><html><body style="margin:0;background:#f6f7fb;padding:24px;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1e2140">
+  <div style="max-width:600px;margin:0 auto;background:#fff;border-radius:14px;padding:28px;border:1px solid #e7e9f5">
+    <h2 style="margin:0 0 12px;font-size:20px">Your stand is confirmed</h2>
+    <p style="font-size:15px;line-height:1.6">Dear ${esc(updated.contact_name) || 'Sir/Madam'},</p>
+    <p style="font-size:15px;line-height:1.6">We are glad to confirm <strong>${esc(updated.company_name)}</strong> as an exhibitor at
+      Bharat AI Innovation Conference &amp; Exhibition 2026.</p>
+    <table style="font-size:14px;border-collapse:collapse;margin:16px 0">
+      <tr><td style="padding:4px 12px 4px 0;color:#666">Reference</td><td><strong>BR-${String(id).padStart(4, '0')}</strong></td></tr>
+      <tr><td style="padding:4px 12px 4px 0;color:#666">Stand</td><td>${esc(updated.booth_type_name)} &middot; ${esc(updated.size_label)}m &times; ${esc(updated.quantity)}</td></tr>
+      <tr><td style="padding:4px 12px 4px 0;color:#666">Total</td><td>&#8377;${esc(updated.grand_total)}</td></tr>
+    </table>
+    <p style="font-size:15px;line-height:1.6">Our exhibition team will follow up with your stand number, the build-up schedule and the
+      exhibitor manual. If payment is still outstanding, the invoice follows separately.</p>
+    <p style="margin:22px 0 0;font-size:14px;color:#555">Warm regards,<br>Team Bharat AI Innovation<br>
+      <span style="color:#888">20-21 November 2026 &middot; World Trade Center, Mumbai</span></p>
+  </div></body></html>`
+    const sent = await sendAdminEmail(c, updated.email, 'Your stand at Bharat AI Innovation 2026 is confirmed', html)
+    emailed = sent.ok ? 'sent' : ('failed: ' + sent.error)
+  }
+
+  await audit(c, 'booth-request.update', 'booth_request', id, { status, payment_status, exhibitorCreated, emailed })
+  return c.json({ ...(updated as any), exhibitor_created: exhibitorCreated, emailed })
+})
+
+// Backfill for requests approved before the link above existed: creates the
+// missing exhibitor for every already-approved request.
+app.post('/api/admin/booth-requests/backfill-exhibitors', async (c) => {
+  const { results } = await c.env.DB.prepare(
+    `SELECT br.*, bt.name AS booth_type_name FROM booth_requests br
+     JOIN booth_types bt ON br.booth_type_id = bt.id
+     WHERE br.status IN ('approved','confirmed')`
+  ).all()
+  let created = 0
+  for (const r of (results as any[]) || []) {
+    const marker = `[BR-${String(r.id).padStart(4, '0')}]`
+    const existing = await c.env.DB.prepare(
+      "SELECT id FROM exhibitors WHERE description LIKE ? OR (company_name = ? AND contact_email = ?)"
+    ).bind('%' + marker + '%', r.company_name, r.email).first()
+    if (existing) continue
+    await c.env.DB.prepare(
+      `INSERT INTO exhibitors (event_id, company_name, description, category, booth_size, contact_email, contact_phone, website_url)
+       VALUES (?,?,?,?,?,?,?,?)`
+    ).bind(r.event_id || 1, r.company_name || 'TBD', `${marker} ${r.products_to_display || ''}`.trim(),
+      r.industry || '', 'standard', r.email || '', r.phone || '', r.website || '').run()
+    created++
+  }
+  await audit(c, 'booth-request.backfill-exhibitors', 'exhibitor', null, { created })
+  return c.json({ success: true, created })
 })
 
 // Admin: Booth request stats
@@ -3519,6 +3676,74 @@ app.post('/api/admin/attendees', async (c) => {
 })
 
 // Admin: Bulk upload attendees (receives parsed JSON array from frontend)
+// Apply one field change to many attendees at once. Whitelisted through the same
+// ADMIN_ATTENDEE_FIELDS and sanitiser the single-row handlers use, and intersected
+// with the live schema so a missing column cannot fail the statement silently.
+app.post('/api/admin/attendees/bulk-update', async (c) => {
+  const body = await c.req.json().catch(() => ({})) as any
+  const ids: any[] = Array.isArray(body.ids) ? body.ids.slice(0, 2000) : []
+  const changes = body.changes && typeof body.changes === 'object' ? body.changes : {}
+  if (!ids.length) return c.json({ error: 'No attendees selected.' }, 400)
+  const cols = await attendeeColumns(c)
+  const sets: string[] = []
+  const vals: any[] = []
+  for (const f of ADMIN_ATTENDEE_FIELDS) {
+    if (!(f in changes) || !cols.has(f)) continue
+    sets.push(`${f} = ?`)
+    vals.push(sanitizeAttendeeField(f, changes[f]))
+  }
+  if (!sets.length) return c.json({ error: 'Nothing to change.' }, 400)
+  const numericIds = ids.map((v) => parseInt(String(v), 10)).filter((n) => Number.isFinite(n))
+  if (!numericIds.length) return c.json({ error: 'No valid attendee ids.' }, 400)
+  const placeholders = numericIds.map(() => '?').join(',')
+  await c.env.DB.prepare(`UPDATE attendees SET ${sets.join(', ')} WHERE id IN (${placeholders})`)
+    .bind(...vals, ...numericIds).run()
+  await audit(c, 'attendees.bulk-update', 'attendee', numericIds.join(','), { count: numericIds.length, changes })
+  return c.json({ success: true, updated: numericIds.length })
+})
+
+// Delete many. Kept separate from the update path so it cannot be reached by a
+// stray field name, and audited with the emails so the rows can be identified
+// afterwards from the log alone.
+app.post('/api/admin/attendees/bulk-delete', async (c) => {
+  const body = await c.req.json().catch(() => ({})) as any
+  const ids: any[] = Array.isArray(body.ids) ? body.ids.slice(0, 500) : []
+  const numericIds = ids.map((v) => parseInt(String(v), 10)).filter((n) => Number.isFinite(n))
+  if (!numericIds.length) return c.json({ error: 'No attendees selected.' }, 400)
+  const placeholders = numericIds.map(() => '?').join(',')
+  const { results: doomed } = await c.env.DB.prepare(
+    `SELECT id, name, email FROM attendees WHERE id IN (${placeholders})`).bind(...numericIds).all()
+  await c.env.DB.prepare(`DELETE FROM attendees WHERE id IN (${placeholders})`).bind(...numericIds).run()
+  await audit(c, 'attendees.bulk-delete', 'attendee', numericIds.join(','), { deleted: doomed })
+  return c.json({ success: true, deleted: numericIds.length })
+})
+
+// One attendee's whole story: registered, notified, signed in, paid, checked in.
+// The tab could only ever show a row; answering "what happened with this person"
+// meant reading five columns and guessing.
+app.get('/api/admin/attendees/:id/timeline', async (c) => {
+  const id = c.req.param('id')
+  const a = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(id).first() as any
+  if (!a) return c.json({ error: 'Attendee not found' }, 404)
+  const ev: { at: string; label: string; kind: string }[] = []
+  const add = (at: any, label: string, kind: string) => { if (at) ev.push({ at: String(at), label, kind }) }
+  add(a.registration_date || a.created_at, 'Registered' + (a.registration_source ? ' via ' + a.registration_source : ''), 'register')
+  add(a.notified_at, 'Sent the account-ready email', 'email')
+  add(a.profile_reminder_sent_at, 'Sent a profile reminder', 'email')
+  add(a.rsvp_at, 'RSVP: ' + (a.rsvp_status || 'responded'), 'rsvp')
+  add(a.last_login_at, 'Signed in to the app', 'login')
+  add(a.pass_downloaded_at, 'Downloaded their pass', 'pass')
+  add(a.checked_in_at, 'Checked in at the desk' + (a.checked_in_by ? ' by ' + a.checked_in_by : ''), 'checkin')
+  ev.sort((x, y) => String(x.at).localeCompare(String(y.at)))
+  let invoices: any[] = []
+  try {
+    const r = await c.env.DB.prepare(
+      'SELECT id, invoice_no, total, emailed_at, paid_at FROM invoices WHERE attendee_id = ? ORDER BY id DESC').bind(id).all()
+    invoices = (r.results as any[]) || []
+  } catch (_) { invoices = [] }
+  return c.json({ attendee: a, timeline: ev, invoices })
+})
+
 app.post('/api/admin/attendees/bulk', async (c) => {
   const { event_id, attendees } = await c.req.json()
   if (!Array.isArray(attendees) || attendees.length === 0) {
@@ -4933,6 +5158,34 @@ app.delete('/api/admin/announcements/:id', async (c) => {
   return c.json({ success: true })
 })
 
+// Two sessions in one room at one time, and the same speaker in two places at
+// once. Both were possible to save and invisible afterwards.
+app.get('/api/admin/events/:id/session-conflicts', async (c) => {
+  const eventId = c.req.param('id')
+  const { results } = await c.env.DB.prepare(
+    'SELECT id, title, room, speaker_name, start_time, end_time FROM sessions WHERE event_id = ? ORDER BY start_time'
+  ).bind(eventId).all()
+  const list = ((results as any[]) || []).filter((r) => r.start_time && r.end_time)
+  const overlaps = (a: any, b: any) => a.start_time < b.end_time && b.start_time < a.end_time
+  const room: any[] = []
+  const speaker: any[] = []
+  for (let i = 0; i < list.length; i++) {
+    for (let j = i + 1; j < list.length; j++) {
+      const a = list[i], b = list[j]
+      if (!overlaps(a, b)) continue
+      if (a.room && b.room && a.room === b.room) {
+        room.push({ room: a.room, a: { id: a.id, title: a.title, start_time: a.start_time }, b: { id: b.id, title: b.title, start_time: b.start_time } })
+      }
+      const sa = String(a.speaker_name || '').trim().toLowerCase()
+      const sb = String(b.speaker_name || '').trim().toLowerCase()
+      if (sa && sa === sb) {
+        speaker.push({ speaker: a.speaker_name, a: { id: a.id, title: a.title, start_time: a.start_time }, b: { id: b.id, title: b.title, start_time: b.start_time } })
+      }
+    }
+  }
+  return c.json({ roomConflicts: room, speakerConflicts: speaker, checked: list.length })
+})
+
 // Admin: Advanced analytics
 app.get('/api/admin/events/:id/analytics', async (c) => {
   const eventId = c.req.param('id')
@@ -4966,14 +5219,99 @@ app.get('/api/admin/events/:id/analytics', async (c) => {
   })
 })
 
+// Registrations per day, where they came from, and how far each pass tier gets
+// down the funnel. Everything here is one pass over attendees.
+app.get('/api/admin/events/:id/growth', async (c) => {
+  const eventId = c.req.param('id')
+  const dateExpr = "substr(COALESCE(registration_date, created_at), 1, 10)"
+  const daily = await c.env.DB.prepare(
+    `SELECT ${dateExpr} AS day, COUNT(*) AS count FROM attendees
+      WHERE event_id = ? AND COALESCE(registration_date, created_at) IS NOT NULL
+      GROUP BY day ORDER BY day`
+  ).bind(eventId).all()
+  const bySource = await c.env.DB.prepare(
+    `SELECT COALESCE(NULLIF(registration_source,''), 'unknown') AS source, COUNT(*) AS count
+       FROM attendees WHERE event_id = ? GROUP BY source ORDER BY count DESC`
+  ).bind(eventId).all()
+  const byCity = await c.env.DB.prepare(
+    `SELECT COALESCE(NULLIF(city,''), 'unknown') AS city, COUNT(*) AS count
+       FROM attendees WHERE event_id = ? GROUP BY city ORDER BY count DESC LIMIT 12`
+  ).bind(eventId).all()
+  // The funnel every organiser asks about: of the people holding each pass, how
+  // many were told, signed in, took their pass, and turned up.
+  const funnel = await c.env.DB.prepare(
+    `SELECT COALESCE(NULLIF(badge_type,''),'Unspecified') AS badge_type,
+            COUNT(*) AS registered,
+            SUM(CASE WHEN notified_at IS NOT NULL THEN 1 ELSE 0 END) AS notified,
+            SUM(CASE WHEN last_login_at IS NOT NULL THEN 1 ELSE 0 END) AS signed_in,
+            SUM(CASE WHEN pass_downloaded_at IS NOT NULL THEN 1 ELSE 0 END) AS pass_taken,
+            SUM(CASE WHEN checked_in_at IS NOT NULL THEN 1 ELSE 0 END) AS checked_in
+       FROM attendees WHERE event_id = ? GROUP BY badge_type ORDER BY registered DESC`
+  ).bind(eventId).all()
+  const profile = await c.env.DB.prepare(
+    `SELECT COUNT(*) AS total,
+            SUM(CASE WHEN company IS NULL OR company = '' THEN 1 ELSE 0 END) AS no_company,
+            SUM(CASE WHEN job_title IS NULL OR job_title = '' THEN 1 ELSE 0 END) AS no_title,
+            SUM(CASE WHEN city IS NULL OR city = '' THEN 1 ELSE 0 END) AS no_city,
+            SUM(CASE WHEN mobile IS NULL OR mobile = '' THEN 1 ELSE 0 END) AS no_mobile,
+            SUM(CASE WHEN avatar_url IS NULL OR avatar_url = '' THEN 1 ELSE 0 END) AS no_photo
+       FROM attendees WHERE event_id = ?`
+  ).bind(eventId).first()
+  return c.json({
+    daily: daily.results || [],
+    bySource: bySource.results || [],
+    byCity: byCity.results || [],
+    funnel: funnel.results || [],
+    profile: profile || {},
+  })
+})
+
 // Admin: Bulk operations
 app.post('/api/admin/events/:id/broadcast', async (c) => {
   const eventId = c.req.param('id')
-  const { title, content, announcement_type, author_name } = await c.req.json()
+  const { title, content, announcement_type, author_name, email_it, audience } = await c.req.json()
   const result = await c.env.DB.prepare(
     'INSERT INTO announcements (event_id, title, content, announcement_type, author_name, pinned) VALUES (?,?,?,?,?,1)'
   ).bind(eventId, title, content, announcement_type || 'urgent', author_name || 'Event Admin').run()
-  return c.json({ id: result.meta.last_row_id, success: true }, 201)
+  await audit(c, 'announcement.broadcast', 'announcement', result.meta.last_row_id, { title, email_it: !!email_it, audience })
+  // Posting a pinned notice only reaches people already in the app. When the
+  // operator asks for it, return the recipient list so the panel can send too.
+  let recipients: any[] = []
+  if (email_it) {
+    const who = audience === 'checked_in'
+      ? 'AND checked_in_at IS NOT NULL'
+      : audience === 'confirmed' ? "AND rsvp_status = 'confirmed'" : ''
+    const r = await c.env.DB.prepare(
+      `SELECT id, name, email FROM attendees WHERE event_id = ? AND email IS NOT NULL AND email != '' ${who} ORDER BY id`
+    ).bind(eventId).all()
+    recipients = (r.results as any[]) || []
+  }
+  return c.json({ id: result.meta.last_row_id, success: true, recipients, count: recipients.length }, 201)
+})
+
+// Send one announcement to one attendee. The panel walks the recipient list it
+// got back from the broadcast, so a long send reports progress and one bad
+// address cannot stop the rest.
+app.post('/api/admin/announcements/:id/email/:attendeeId', async (c) => {
+  const annId = c.req.param('id')
+  const attId = c.req.param('attendeeId')
+  const ann = await c.env.DB.prepare('SELECT * FROM announcements WHERE id = ?').bind(annId).first() as any
+  if (!ann) return c.json({ error: 'Announcement not found' }, 404)
+  const att = await c.env.DB.prepare('SELECT id, name, email FROM attendees WHERE id = ?').bind(attId).first() as any
+  if (!att?.email) return c.json({ error: 'Attendee has no email' }, 404)
+  const esc = (v: any) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const urgent = String(ann.announcement_type || '') === 'urgent'
+  const html = `<!DOCTYPE html><html><body style="margin:0;background:#f6f7fb;padding:24px;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1e2140">
+  <div style="max-width:600px;margin:0 auto;background:#fff;border-radius:14px;padding:28px;border:1px solid ${urgent ? '#f3c2c2' : '#e7e9f5'}">
+    ${urgent ? '<div style="display:inline-block;background:#fdecec;color:#b42318;font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;margin-bottom:12px">IMPORTANT</div>' : ''}
+    <h2 style="margin:0 0 12px;font-size:20px">${esc(ann.title)}</h2>
+    <p style="font-size:15px;line-height:1.65;white-space:pre-wrap">${esc(ann.content)}</p>
+    <p style="margin:22px 0 0;font-size:14px;color:#555">Team Bharat AI Innovation<br>
+      <span style="color:#888">20-21 November 2026 &middot; World Trade Center, Mumbai</span></p>
+  </div></body></html>`
+  const sent = await sendAdminEmail(c, att.email, (urgent ? '[Important] ' : '') + String(ann.title || 'Update'), html)
+  if (!sent.ok) return c.json({ error: sent.error }, 502)
+  return c.json({ success: true })
 })
 
 // ============ ADMIN STARTUP PITCH APIs ============
@@ -5114,13 +5452,68 @@ app.get('/api/admin/inquiries', async (c) => {
 app.patch('/api/admin/inquiries/:id', async (c) => {
   const id = c.req.param('id')
   const body = await c.req.json() as any
-  const { status, admin_notes } = body
+  const { status, admin_notes, assigned_to } = body
   const updates: string[] = ['updated_at = datetime("now")']
   const values: any[] = []
   if (status) { updates.push('status = ?'); values.push(status) }
   if (admin_notes !== undefined) { updates.push('admin_notes = ?'); values.push(admin_notes) }
+  // assigned_to and responded_at arrive with migration 0027, so only touch them
+  // when the column is really there.
+  let inqCols = new Set<string>()
+  try {
+    const r = await c.env.DB.prepare('PRAGMA table_info(inquiries)').all() as any
+    inqCols = new Set(((r.results || []) as any[]).map((x) => x.name))
+  } catch (_) { /* leave empty; the extra fields are simply skipped */ }
+  if (assigned_to !== undefined && inqCols.has('assigned_to')) {
+    updates.push('assigned_to = ?'); values.push(String(assigned_to || '').slice(0, 80) || null)
+  }
+  if (status === 'responded' && inqCols.has('responded_at')) {
+    updates.push('responded_at = COALESCE(responded_at, datetime("now"))')
+  }
   values.push(id)
   await c.env.DB.prepare(`UPDATE inquiries SET ${updates.join(', ')} WHERE id = ?`).bind(...values).run()
+  await audit(c, 'inquiry.update', 'inquiry', id, { status, assigned_to, notes: admin_notes ? 'set' : undefined })
+  return c.json({ success: true })
+})
+
+// Reply to an inquiry from the panel. 274 of these had arrived and the only way
+// to answer one was to copy the address into a mail client, which is why so many
+// still read "new".
+app.post('/api/admin/inquiries/:id/reply', async (c) => {
+  const id = c.req.param('id')
+  const body = await c.req.json().catch(() => ({})) as any
+  const message = String(body.message || '').trim()
+  const subject = String(body.subject || '').trim() || 'Re: your enquiry - Bharat AI Innovation 2026'
+  if (!message) return c.json({ error: 'The reply is empty.' }, 400)
+  const inq = await c.env.DB.prepare('SELECT * FROM inquiries WHERE id = ?').bind(id).first() as any
+  if (!inq) return c.json({ error: 'Inquiry not found' }, 404)
+  const esc = (v: any) => String(v == null ? '' : v)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const html = `<!DOCTYPE html><html><body style="margin:0;background:#f6f7fb;padding:24px;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1e2140">
+  <div style="max-width:600px;margin:0 auto;background:#fff;border-radius:14px;padding:28px;border:1px solid #e7e9f5">
+    <p style="margin:0 0 14px;font-size:15px">Dear ${esc(inq.name) || 'Sir/Madam'},</p>
+    <div style="font-size:15px;line-height:1.65;white-space:pre-wrap">${esc(message)}</div>
+    <p style="margin:22px 0 0;font-size:14px;color:#555">Warm regards,<br>Team Bharat AI Innovation<br>
+      <span style="color:#888">Bharat AI Innovation Conference &amp; Exhibition 2026 &middot; 20-21 November 2026 &middot; World Trade Center, Mumbai</span></p>
+  </div></body></html>`
+  const sent = await sendAdminEmail(c, inq.email, subject, html)
+  if (!sent.ok) {
+    await audit(c, 'inquiry.reply-failed', 'inquiry', id, { error: sent.error })
+    return c.json({ error: sent.error }, 502)
+  }
+  const note = `[replied ${new Date().toISOString().slice(0, 16).replace('T', ' ')}] ${message}`
+  const merged = inq.admin_notes ? (inq.admin_notes + '\n' + note) : note
+  let hasResponded = false
+  try {
+    const r = await c.env.DB.prepare('PRAGMA table_info(inquiries)').all() as any
+    hasResponded = ((r.results || []) as any[]).some((x) => x.name === 'responded_at')
+  } catch (_) { hasResponded = false }
+  await c.env.DB.prepare(
+    hasResponded
+      ? 'UPDATE inquiries SET status = ?, admin_notes = ?, responded_at = COALESCE(responded_at, datetime("now")), updated_at = datetime("now") WHERE id = ?'
+      : 'UPDATE inquiries SET status = ?, admin_notes = ?, updated_at = datetime("now") WHERE id = ?'
+  ).bind('responded', merged, id).run()
+  await audit(c, 'inquiry.reply', 'inquiry', id, { to: inq.email, subject })
   return c.json({ success: true })
 })
 
@@ -13872,6 +14265,53 @@ function adminPageHTML(): string {
     tr:hover td{background:rgba(20,25,80,0.035)!important;}
     td,th{border-bottom:1px solid var(--line)!important;}
     .sidebar-btn::after{background:#1e2140!important;color:#fff!important;}
+
+    /* ---- Phone and small tablet ----------------------------------------
+       Below 1024px the sidebar becomes an overlay drawer instead of a column
+       that pushes the content off the screen, and the wide tables scroll
+       inside their own card rather than the page. */
+    #sidebar-scrim { display:none; }
+    /* A flex item grows to its widest descendant unless told otherwise, which is
+       what let a wide table drag the sticky header and the page sideways. */
+    #main-content { min-width: 0; max-width: 100%; }
+    body { overflow-x: hidden; }
+    @media (max-width: 1023px) {
+      #sidebar {
+        transform: translateX(-100%);
+        transition: transform 0.28s cubic-bezier(0.4,0,0.2,1);
+        width: 17rem !important;
+        box-shadow: 0 20px 60px rgba(20,25,80,0.22);
+        z-index: 60;
+      }
+      #sidebar.mobile-open { transform: translateX(0); }
+      /* The desktop collapse must not shrink the drawer to an icon rail. */
+      #sidebar.collapsed { width: 17rem !important; }
+      #sidebar.collapsed .sidebar-label,
+      #sidebar.collapsed .sidebar-header-text,
+      #sidebar.collapsed .sidebar-footer-text { opacity:1; width:auto; }
+      #sidebar.collapsed .sidebar-btn { justify-content:flex-start; padding-left:1rem; padding-right:1rem; }
+      #sidebar.collapsed .sidebar-btn::after { content:none; }
+      #main-content, #main-content.sidebar-collapsed { margin-left: 0 !important; }
+      #sidebar-scrim {
+        display: block; position: fixed; inset: 0; z-index: 55;
+        background: rgba(20,25,80,0.45); backdrop-filter: blur(2px);
+        opacity: 0; pointer-events: none; transition: opacity 0.25s ease;
+      }
+      #sidebar-scrim.show { opacity: 1; pointer-events: auto; }
+      /* Breathing room back: 24px of padding on a 360px screen leaves nothing. */
+      #main-content > .p-6 { padding: 0.85rem !important; }
+      #main-content > header { padding-left: 0.85rem !important; padding-right: 0.85rem !important; }
+      /* Stat grids that were 6-up become 2-up rather than six unreadable slivers. */
+      #section-overview .lg\:grid-cols-6 { grid-template-columns: repeat(2, minmax(0,1fr)) !important; }
+      /* Tables keep their real width and scroll horizontally in the card. */
+      #attendee-table { min-width: 900px; }
+      .modal-overlay > #modal-box { max-height: 94vh; }
+    }
+    @media (max-width: 640px) {
+      #main-content > header h2 { font-size: 1rem; }
+      #main-content > header p { display: none; }
+      .att-toolbar-btn span.lbl { display: none; }
+    }
   </style>
 </head>
 <body class="min-h-screen flex">
@@ -13897,6 +14337,8 @@ function adminPageHTML(): string {
     </div>
   </div>
 
+  <!-- Tapping outside the drawer closes it on a phone -->
+  <div id="sidebar-scrim" onclick="closeMobileSidebar()"></div>
   <!-- Sidebar -->
   <aside id="sidebar" class="hidden w-64 min-h-screen glass border-r border-white/10 flex-col shrink-0 fixed left-0 top-0 bottom-0 z-20 overflow-y-auto scroll-hide">
     <div class="sidebar-header p-5 border-b border-white/10 flex items-center gap-3">
@@ -13965,7 +14407,7 @@ function adminPageHTML(): string {
   </aside>
 
   <!-- Main Content -->
-  <main id="main-content" class="hidden flex-1 ml-64">
+  <main id="main-content" class="hidden flex-1 ml-64" style="min-width:0">
     <!-- Top Bar -->
     <header class="sticky top-0 z-10 glass border-b border-white/10 px-6 py-3 flex items-center justify-between">
       <div class="flex items-center gap-3">
@@ -14021,6 +14463,10 @@ function adminPageHTML(): string {
   </div>
 
   <script>
+    // A backslash escape written in this file collapses before the browser sees it
+    // (the whole admin script is one server-side template literal), so a newline
+    // inside a JS string has to be built rather than typed.
+    var NL = String.fromCharCode(10);
     const EID = 1;
     let currentSection = 'overview';
     let chartInstances = {};
@@ -14081,10 +14527,26 @@ function adminPageHTML(): string {
     // attached as an Authorization Bearer header to every admin API call so
     // the server-side /api/admin/* guard accepts them.
     function getAdminToken() { return sessionStorage.getItem('tc_admin_token') || ''; }
+    // The panel is opened with one shared password, so there is no authenticated
+    // identity to attribute a change to. The operator names themselves once and
+    // it rides along on every write; the audit log labels it as self-declared and
+    // records the IP alongside, which is not.
+    function getOperator() { return localStorage.getItem('tc_admin_operator') || ''; }
+    function setOperator() {
+      var cur = getOperator();
+      var who = prompt('Your name, for the audit log.' + NL + NL +
+        'Everyone shares one admin password, so this is how a change gets attributed. It is recorded with your IP address.', cur || '');
+      if (who === null) return;
+      localStorage.setItem('tc_admin_operator', who.trim().slice(0, 80));
+      toast(who.trim() ? ('Recording changes as ' + who.trim()) : 'Operator name cleared');
+      if (currentSection === 'settings') loadSettings();
+    }
     function authHeaders(extra) {
       const h = Object.assign({}, extra || {});
       const t = getAdminToken();
       if (t) h['Authorization'] = 'Bearer ' + t;
+      var op = getOperator();
+      if (op) h['X-Admin-Actor'] = op;
       return h;
     }
     // If any admin call comes back 401, the stored secret is stale/wrong —
@@ -14147,7 +14609,7 @@ function adminPageHTML(): string {
       sidebar.classList.add('flex');
       main.classList.remove('hidden');
       // Restore sidebar collapsed state
-      if (localStorage.getItem('tc_sidebar_collapsed') === '1') {
+      if (localStorage.getItem('tc_sidebar_collapsed') === '1' && !isMobileLayout()) {
         sidebar.classList.add('collapsed');
         main.classList.add('sidebar-collapsed');
       }
@@ -14155,9 +14617,27 @@ function adminPageHTML(): string {
       startAutoRefresh();
     }
 
+    // Below 1024px the sidebar is an overlay, so the same button has to open and
+    // close a drawer rather than collapse a column.
+    function isMobileLayout() { return window.matchMedia('(max-width: 1023px)').matches; }
+    function openMobileSidebar() {
+      document.getElementById('sidebar').classList.add('mobile-open');
+      var sc = document.getElementById('sidebar-scrim');
+      if (sc) sc.classList.add('show');
+    }
+    function closeMobileSidebar() {
+      document.getElementById('sidebar').classList.remove('mobile-open');
+      var sc = document.getElementById('sidebar-scrim');
+      if (sc) sc.classList.remove('show');
+    }
     function toggleSidebar() {
       const sidebar = document.getElementById('sidebar');
       const main = document.getElementById('main-content');
+      if (isMobileLayout()) {
+        if (sidebar.classList.contains('mobile-open')) closeMobileSidebar();
+        else openMobileSidebar();
+        return;
+      }
       const isCollapsed = sidebar.classList.toggle('collapsed');
       if (isCollapsed) {
         main.classList.add('sidebar-collapsed');
@@ -14211,7 +14691,8 @@ function adminPageHTML(): string {
       if (activeBtn && activeBtn.scrollIntoView) {
         try { activeBtn.scrollIntoView({ block: 'nearest' }); } catch (_) {}
       }
-
+      // On a phone the drawer covers the content it just navigated to.
+      if (isMobileLayout()) closeMobileSidebar();
       refreshCurrentSection();
     }
 
@@ -14339,7 +14820,7 @@ function adminPageHTML(): string {
           var top = list[0] ? list[0].count : 1;
           document.getElementById(el).innerHTML = list.length ? list.map(function (x) {
             return '<div class="flex items-center gap-3 py-1.5">' +
-              '<div class="w-40 shrink-0 truncate text-gray-300 text-[13px]" title="' + deskEsc(x.label) + '">' + deskEsc(x.label) + '</div>' +
+              '<div class="w-40 shrink-0 truncate text-gray-300 text-[13px]" title="' + escH(x.label) + '">' + escH(x.label) + '</div>' +
               '<div class="flex-1 h-2 rounded-full bg-white/10 overflow-hidden"><div class="h-full bg-primary-500" style="width:' + Math.round((x.count / top) * 100) + '%"></div></div>' +
               '<div class="w-10 text-right text-gray-400 text-xs">' + x.count + '</div></div>';
           }).join('') : '<p class="text-gray-500 text-sm py-3">Nothing recorded yet.</p>';
@@ -14491,9 +14972,12 @@ function adminPageHTML(): string {
     // ============ BADGE DESK ============
     // The admin esc() above only escapes quotes; names and employers go into element
     // bodies here, so angle brackets have to go too.
-    function deskEsc(v) {
-      return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    }
+    // Now just escH. This escaped & < > but not quotes, and it was used inside a
+    // title="..." attribute in the audience bars on the overview - where the label
+    // is an attendee-supplied company or city - so a double quote closed the
+    // attribute and the rest became live markup. Escaping quotes as well is
+    // correct in element text too, so there is no reason to keep two helpers.
+    function deskEsc(v) { return escH(v); }
 
     // Twin of istStamp() on the server. Pinned to IST rather than the viewer's own
     // clock, so the arrival times read the same whether the panel is open in Mumbai
@@ -15129,10 +15613,70 @@ function adminPageHTML(): string {
     // this page slow to open. Search still runs over the WHOLE dataset and paginates
     // the matches, so a name on page 9 is still findable from page 1.
     let attPage = 1, attPageSize = 100, attQuery = '';
+    // The tab could only free-text search. Working a list of 1,171 means asking
+    // "which Delegates have not paid" or "who has not RSVP'd", so each of these
+    // is a real column filter, and they compose.
+    let attFilters = { badge: '', rsvp: '', payment: '', checkin: '', source: '', profile: '' };
+    let attSelected = new Set();
+    function setAttFilter(k, v) { attFilters[k] = v; attPage = 1; loadAdminAttendees(null, true); }
+    function clearAttFilters() {
+      attFilters = { badge: '', rsvp: '', payment: '', checkin: '', source: '', profile: '' };
+      attQuery = ''; attPage = 1; loadAdminAttendees(null, true);
+    }
+    function attActiveFilterCount() {
+      return Object.keys(attFilters).filter(function (k) { return attFilters[k]; }).length;
+    }
+    // A row is "incomplete" on the same fields the profile-reminder campaign chases.
+    function attIncomplete(a) {
+      return !a.company || !a.job_title || !a.city || !a.avatar_url;
+    }
+    function attMatchesFilters(a) {
+      var f = attFilters;
+      if (f.badge && String(a.badge_type || '') !== f.badge) return false;
+      if (f.rsvp === 'none' ? !!a.rsvp_status : (f.rsvp && String(a.rsvp_status || '') !== f.rsvp)) return false;
+      if (f.payment && String(a.payment_status || '') !== f.payment) return false;
+      if (f.checkin === 'in' && !a.checked_in_at) return false;
+      if (f.checkin === 'out' && a.checked_in_at) return false;
+      if (f.source) {
+        var src = String(a.registration_source || '');
+        if (f.source === 'campus') { if (src.indexOf('campus:') !== 0) return false; }
+        else if (src !== f.source) return false;
+      }
+      if (f.profile === 'incomplete' && !attIncomplete(a)) return false;
+      if (f.profile === 'complete' && attIncomplete(a)) return false;
+      return true;
+    }
+    // Selection lives across pages, so a filter plus "select all" can act on a
+    // whole segment rather than the hundred rows on screen.
+    function attToggleRow(id, on) {
+      if (on) attSelected.add(String(id)); else attSelected.delete(String(id));
+      attRefreshBulkBar();
+    }
+    function attToggleAllVisible(on) {
+      (window.__attVisibleIds || []).forEach(function (id) {
+        if (on) attSelected.add(String(id)); else attSelected.delete(String(id));
+      });
+      loadAdminAttendees(null, true);
+    }
+    function attSelectAllMatching() {
+      (window.__attMatchingIds || []).forEach(function (id) { attSelected.add(String(id)); });
+      loadAdminAttendees(null, true);
+    }
+    function attClearSelection() { attSelected = new Set(); loadAdminAttendees(null, true); }
+    function attRefreshBulkBar() {
+      var bar = document.getElementById('att-bulk-bar');
+      var n = attSelected.size;
+      if (!bar) return;
+      bar.hidden = n === 0;
+      var lbl = document.getElementById('att-bulk-count');
+      if (lbl) lbl.textContent = n + (n === 1 ? ' selected' : ' selected');
+    }
+    function attSelectedIds() { return Array.from(attSelected); }
     function attFiltered(list) {
-      if (!attQuery) return list;
+      var out = list.filter(attMatchesFilters);
+      if (!attQuery) return out;
       const q = attQuery.toLowerCase();
-      return list.filter(a => [a.name, a.email, a.company, a.job_title, a.mobile, a.city, a.badge_type]
+      return out.filter(a => [a.name, a.email, a.company, a.job_title, a.mobile, a.city, a.badge_type]
         .map(v => String(v || '').toLowerCase()).join(' ').includes(q));
     }
     function gotoAttPage(n) { attPage = n; loadAdminAttendees(null, true); }
@@ -15202,19 +15746,32 @@ function adminPageHTML(): string {
       const attPageRows = attMatches.slice(
         attPageSize === Infinity ? 0 : (attPage - 1) * attPageSize,
         attPageSize === Infinity ? attMatches.length : (attPage - 1) * attPageSize + attPageSize);
+      // Select-all needs both sets: what is on screen, and everything the current
+      // filter matches across all pages.
+      window.__attVisibleIds = attPageRows.map(function (a) { return String(a.id); });
+      window.__attMatchingIds = attMatches.map(function (a) { return String(a.id); });
+      var attAllVisibleSelected = attPageRows.length > 0 &&
+        attPageRows.every(function (a) { return attSelected.has(String(a.id)); });
+      // Values for the filter dropdowns, taken from the data rather than hardcoded.
+      var attBadges = Array.from(new Set(attendees.map(function (a) { return a.badge_type || ''; })
+        .filter(Boolean))).sort();
+      var attSources = Array.from(new Set(attendees.map(function (a) {
+        var v = String(a.registration_source || '');
+        return v.indexOf('campus:') === 0 ? 'campus' : v;
+      }).filter(Boolean))).sort();
 
       document.getElementById('section-attendees').innerHTML = \`
         <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
-          <div class="flex gap-2 items-center">
+          <div class="flex gap-2 items-center flex-wrap">
             <div class="relative">
               <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-xs"></i>
-              <input type="text" id="admin-att-search" placeholder="Search attendees..." class="pl-9 pr-4 py-2 rounded-lg text-xs w-64" value="\${esc(attQuery)}" oninput="searchAttendees(this.value)">
+              <input type="text" id="admin-att-search" placeholder="Search attendees..." class="pl-9 pr-4 py-2 rounded-lg text-xs w-64 max-w-full" value="\${esc(attQuery)}" oninput="searchAttendees(this.value)">
             </div>
             <span class="text-xs text-gray-400">\${attendees.length} total</span>
             \${Object.keys(dupMap).length > 0 ? '<span class="text-xs text-red-400 ml-1"><i class="fas fa-exclamation-triangle mr-0.5"></i>' + (dupData.totalGroups||0) + ' dup groups (' + Object.keys(dupMap).length + ' entries)</span>' : ''}
             \${attSortCol ? '<span class="text-xs text-indigo-400 ml-2"><i class="fas fa-sort-amount-'+(attSortDir==='asc'?'up':'down')+' mr-0.5"></i>Sorted by '+attSortCol.replace('_',' ')+'</span><button onclick="resetAttSort()" class="text-[10px] text-gray-500 hover:text-white ml-1" title="Reset sort"><i class="fas fa-times-circle"></i></button>' : ''}
           </div>
-          <div class="flex gap-2">
+          <div class="flex gap-2 flex-wrap">
             <button onclick="notifyAllAttendees()" class="px-4 py-2 rounded-xl text-xs font-medium bg-amber-600 hover:bg-amber-500 text-white transition"><i class="fas fa-envelope mr-1.5"></i>Notify All</button>
             <button onclick="openProfileReminderCampaign()" class="px-4 py-2 rounded-xl text-xs font-medium bg-orange-600 hover:bg-orange-500 text-white transition" title="Ask attendees with a blank photo, designation, city or industry to complete their profile"><i class="fas fa-id-card mr-1.5"></i>Chase Profiles</button>
             <a href="#" onclick="exportAttendeesCsv(event)" class="px-4 py-2 rounded-xl text-xs font-medium glass hover:bg-white/10 text-gray-300 transition cursor-pointer"><i class="fas fa-download mr-1.5"></i>Export CSV</a>
@@ -15226,17 +15783,66 @@ function adminPageHTML(): string {
             </div>
           </div>
         </div>
+
+        <!-- Segment filters. These compose, so "Delegate + unpaid + not checked in"
+             is one question rather than an export and a spreadsheet. -->
+        <div class="glass rounded-xl p-3 mb-3 flex flex-wrap items-center gap-2">
+          <span class="text-[10px] uppercase tracking-wider text-gray-500 mr-1"><i class="fas fa-filter mr-1"></i>Filter</span>
+          <select onchange="setAttFilter('badge', this.value)" class="px-2 py-1.5 rounded-lg text-xs" title="Pass type">
+            <option value="">Any pass</option>
+            \${attBadges.map(function (b) { return '<option value="' + escH(b) + '"' + (attFilters.badge === b ? ' selected' : '') + '>' + escH(b) + '</option>'; }).join('')}
+          </select>
+          <select onchange="setAttFilter('rsvp', this.value)" class="px-2 py-1.5 rounded-lg text-xs" title="RSVP">
+            <option value="">Any RSVP</option>
+            \${[['confirmed','Confirmed'],['maybe','Maybe'],['declined','Declined'],['none','No response']].map(function (o) { return '<option value="' + o[0] + '"' + (attFilters.rsvp === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('')}
+          </select>
+          <select onchange="setAttFilter('payment', this.value)" class="px-2 py-1.5 rounded-lg text-xs" title="Payment">
+            <option value="">Any payment</option>
+            \${[['paid','Paid'],['pending','Pending'],['free','Free']].map(function (o) { return '<option value="' + o[0] + '"' + (attFilters.payment === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('')}
+          </select>
+          <select onchange="setAttFilter('checkin', this.value)" class="px-2 py-1.5 rounded-lg text-xs" title="Check-in">
+            <option value="">Anyone</option>
+            <option value="in"\${attFilters.checkin === 'in' ? ' selected' : ''}>Checked in</option>
+            <option value="out"\${attFilters.checkin === 'out' ? ' selected' : ''}>Not checked in</option>
+          </select>
+          <select onchange="setAttFilter('source', this.value)" class="px-2 py-1.5 rounded-lg text-xs" title="Where they registered">
+            <option value="">Any source</option>
+            \${attSources.map(function (b) { return '<option value="' + escH(b) + '"' + (attFilters.source === b ? ' selected' : '') + '>' + escH(b) + '</option>'; }).join('')}
+          </select>
+          <select onchange="setAttFilter('profile', this.value)" class="px-2 py-1.5 rounded-lg text-xs" title="Profile completeness">
+            <option value="">Any profile</option>
+            <option value="incomplete"\${attFilters.profile === 'incomplete' ? ' selected' : ''}>Incomplete</option>
+            <option value="complete"\${attFilters.profile === 'complete' ? ' selected' : ''}>Complete</option>
+          </select>
+          \${attActiveFilterCount() ? '<button onclick="clearAttFilters()" class="px-2.5 py-1.5 rounded-lg text-xs bg-red-500/15 text-red-300 hover:bg-red-500/25"><i class="fas fa-xmark mr-1"></i>Clear ' + attActiveFilterCount() + ' filter' + (attActiveFilterCount() === 1 ? '' : 's') + '</button>' : ''}
+          <span class="ml-auto text-xs text-gray-400"><strong class="text-gray-200">\${attMatches.length}</strong> match\${attMatches.length === 1 ? '' : 'es'}</span>
+        </div>
+
+        <!-- Acting on a segment. Hidden until something is selected. -->
+        <div id="att-bulk-bar" class="glass rounded-xl p-3 mb-3 flex flex-wrap items-center gap-2 border border-primary-500/30" \${attSelected.size ? '' : 'hidden'}>
+          <span class="text-xs font-semibold text-primary-300"><i class="fas fa-check-double mr-1.5"></i><span id="att-bulk-count">\${attSelected.size} selected</span></span>
+          \${attMatches.length > attPageRows.length ? '<button onclick="attSelectAllMatching()" class="px-2.5 py-1.5 rounded-lg text-xs glass hover:bg-white/10">Select all ' + attMatches.length + ' matching</button>' : ''}
+          <button onclick="attClearSelection()" class="px-2.5 py-1.5 rounded-lg text-xs glass hover:bg-white/10">Clear</button>
+          <span class="w-px h-5 bg-white/10 mx-1"></span>
+          <button onclick="bulkSetField('badge_type')" class="px-2.5 py-1.5 rounded-lg text-xs bg-primary-500/20 text-primary-200 hover:bg-primary-500/30"><i class="fas fa-id-badge mr-1"></i>Set pass</button>
+          <button onclick="bulkSetField('lunch_inclusion')" class="px-2.5 py-1.5 rounded-lg text-xs bg-amber-500/20 text-amber-200 hover:bg-amber-500/30"><i class="fas fa-utensils mr-1"></i>Set lunch</button>
+          <button onclick="bulkSetField('rsvp_status')" class="px-2.5 py-1.5 rounded-lg text-xs bg-emerald-500/20 text-emerald-200 hover:bg-emerald-500/30"><i class="fas fa-clipboard-check mr-1"></i>Set RSVP</button>
+          <button onclick="bulkNotify()" class="px-2.5 py-1.5 rounded-lg text-xs bg-blue-500/20 text-blue-200 hover:bg-blue-500/30"><i class="fas fa-envelope mr-1"></i>Notify</button>
+          <button onclick="bulkExportSelected()" class="px-2.5 py-1.5 rounded-lg text-xs glass hover:bg-white/10"><i class="fas fa-download mr-1"></i>Export</button>
+          <button onclick="bulkDelete()" class="px-2.5 py-1.5 rounded-lg text-xs bg-red-500/20 text-red-300 hover:bg-red-500/30"><i class="fas fa-trash mr-1"></i>Delete</button>
+        </div>
         <div class="glass rounded-xl overflow-hidden">
           <div class="overflow-x-auto max-h-[70vh] overflow-y-auto scroll-hide">
             <table class="w-full text-sm" id="attendee-table">
               <thead><tr class="text-gray-400 text-xs uppercase">
-                <th style="width:50px" class="sortable" onclick="sortAttendees('id')">ID\${sortIcon('id')}</th><th style="width:40px"></th><th style="width:130px" class="sortable" onclick="sortAttendees('name')">Name\${sortIcon('name')}<span class="col-resizer" data-col="2"></span></th><th style="width:180px" class="sortable" onclick="sortAttendees('email')">Email\${sortIcon('email')}<span class="col-resizer" data-col="3"></span></th><th style="width:100px" class="sortable" onclick="sortAttendees('mobile')">Mobile\${sortIcon('mobile')}<span class="col-resizer" data-col="4"></span></th><th style="width:130px" class="sortable" onclick="sortAttendees('company')">Company\${sortIcon('company')}<span class="col-resizer" data-col="5"></span></th><th style="width:110px" class="sortable" onclick="sortAttendees('job_title')">Title\${sortIcon('job_title')}<span class="col-resizer" data-col="6"></span></th><th style="width:80px" class="sortable" onclick="sortAttendees('city')">City\${sortIcon('city')}<span class="col-resizer" data-col="7"></span></th><th style="width:70px" class="sortable" onclick="sortAttendees('country')">Country\${sortIcon('country')}<span class="col-resizer" data-col="8"></span></th><th style="width:40px">In</th><th style="width:110px" class="sortable" onclick="sortAttendees('role')">Role\${sortIcon('role')}<span class="col-resizer" data-col="10"></span></th><th style="width:90px" class="sortable" onclick="sortAttendees('badge_type')">Badge\${sortIcon('badge_type')}<span class="col-resizer" data-col="11"></span></th><th style="width:60px" class="sortable" onclick="sortAttendees('rsvp_status')">RSVP\${sortIcon('rsvp_status')}</th><th style="width:45px" class="sortable" onclick="sortAttendees('lunch_inclusion')">Lunch\${sortIcon('lunch_inclusion')}</th><th style="width:60px" class="sortable" onclick="sortAttendees('arrival_time')">Arrival\${sortIcon('arrival_time')}</th><th style="width:80px" class="sortable" onclick="sortAttendees('registration_date')">Reg Date\${sortIcon('registration_date')}</th><th style="width:70px" class="sortable" onclick="sortAttendees('payment_amount')">Payment\${sortIcon('payment_amount')}</th><th style="width:45px">Notif</th><th style="width:80px">Engage</th><th style="width:140px">Actions</th>
+                <th style="width:34px" class="att-check-col"><input type="checkbox" \${attAllVisibleSelected ? 'checked' : ''} onchange="attToggleAllVisible(this.checked)" title="Select the rows on this page" style="accent-color:#FF6B00;width:14px;height:14px;cursor:pointer"></th><th style="width:50px" class="sortable" onclick="sortAttendees('id')">ID\${sortIcon('id')}</th><th style="width:40px"></th><th style="width:130px" class="sortable" onclick="sortAttendees('name')">Name\${sortIcon('name')}<span class="col-resizer" data-col="2"></span></th><th style="width:180px" class="sortable" onclick="sortAttendees('email')">Email\${sortIcon('email')}<span class="col-resizer" data-col="3"></span></th><th style="width:100px" class="sortable" onclick="sortAttendees('mobile')">Mobile\${sortIcon('mobile')}<span class="col-resizer" data-col="4"></span></th><th style="width:130px" class="sortable" onclick="sortAttendees('company')">Company\${sortIcon('company')}<span class="col-resizer" data-col="5"></span></th><th style="width:110px" class="sortable" onclick="sortAttendees('job_title')">Title\${sortIcon('job_title')}<span class="col-resizer" data-col="6"></span></th><th style="width:80px" class="sortable" onclick="sortAttendees('city')">City\${sortIcon('city')}<span class="col-resizer" data-col="7"></span></th><th style="width:70px" class="sortable" onclick="sortAttendees('country')">Country\${sortIcon('country')}<span class="col-resizer" data-col="8"></span></th><th style="width:40px">In</th><th style="width:110px" class="sortable" onclick="sortAttendees('role')">Role\${sortIcon('role')}<span class="col-resizer" data-col="10"></span></th><th style="width:90px" class="sortable" onclick="sortAttendees('badge_type')">Badge\${sortIcon('badge_type')}<span class="col-resizer" data-col="11"></span></th><th style="width:60px" class="sortable" onclick="sortAttendees('rsvp_status')">RSVP\${sortIcon('rsvp_status')}</th><th style="width:45px" class="sortable" onclick="sortAttendees('lunch_inclusion')">Lunch\${sortIcon('lunch_inclusion')}</th><th style="width:60px" class="sortable" onclick="sortAttendees('arrival_time')">Arrival\${sortIcon('arrival_time')}</th><th style="width:80px" class="sortable" onclick="sortAttendees('registration_date')">Reg Date\${sortIcon('registration_date')}</th><th style="width:70px" class="sortable" onclick="sortAttendees('payment_amount')">Payment\${sortIcon('payment_amount')}</th><th style="width:45px">Notif</th><th style="width:80px">Engage</th><th style="width:140px">Actions</th>
               </tr></thead>
               <tbody>
-                \${attPageRows.map((a,idx)=>{ const dup = dupMap[a.id]; const prevDup = idx > 0 ? dupMap[attPageRows[idx-1].id] : null; const groupChanged = (dup && prevDup && dup.group !== prevDup.group) || (prevDup && !dup); const separator = groupChanged ? '<tr class="dup-sep"><td colspan="20" style="height:2px;padding:0;background:rgba(255,255,255,0.06);"></td></tr>' : ''; return separator + \`<tr class="att-row \${dup ? 'dup-row' : ''}" id="att-row-\${a.id}" data-search="\${escH((a.name+a.email+a.company+a.job_title+(a.mobile||'')).toLowerCase())}" \${dup ? 'style="border-left: 3px solid '+dup.color+';" title="⚠ Suspected Duplicate (Group '+dup.group+', '+dup.count+' entries)"' : ''}>
+                \${attPageRows.map((a,idx)=>{ const dup = dupMap[a.id]; const prevDup = idx > 0 ? dupMap[attPageRows[idx-1].id] : null; const groupChanged = (dup && prevDup && dup.group !== prevDup.group) || (prevDup && !dup); const separator = groupChanged ? '<tr class="dup-sep"><td colspan="21" style="height:2px;padding:0;background:rgba(255,255,255,0.06);"></td></tr>' : ''; return separator + \`<tr class="att-row \${dup ? 'dup-row' : ''}" id="att-row-\${a.id}" data-search="\${escH((a.name+a.email+a.company+a.job_title+(a.mobile||'')).toLowerCase())}" \${dup ? 'style="border-left: 3px solid '+dup.color+';" title="⚠ Suspected Duplicate (Group '+dup.group+', '+dup.count+' entries)"' : ''}>
+                  <td class="att-check-col"><input type="checkbox" \${attSelected.has(String(a.id)) ? 'checked' : ''} onchange="attToggleRow(\${a.id}, this.checked)" style="accent-color:#FF6B00;width:14px;height:14px;cursor:pointer"></td>
                   <td class="text-gray-500">#\${a.id}\${dup ? '<span class="dup-badge" style="background:'+dup.color+'22;color:'+dup.color+'">⚠ G'+dup.group+'</span>' : ''}</td>
                   <td><img src="\${getAvatarUrl(a.email, a.name, 64, a.avatar_url)}" alt="" class="w-8 h-8 rounded-full object-cover"></td>
-                  <td class="font-medium ie-cell" onclick="inlineEdit(this, \${a.id}, 'name', '\${esc(a.name)}')">\${escH(a.name)}</td>
+                  <td class="font-medium"><button onclick="openAttendeeDrawer(\${a.id})" class="text-left hover:text-primary-400 transition truncate w-full" title="Open this person's full record">\${escH(a.name)}</button></td>
                   <td class="text-gray-400 text-xs ie-cell" onclick="inlineEdit(this, \${a.id}, 'email', '\${esc(a.email)}')">\${escH(a.email)}</td>
                   <td class="text-xs text-gray-400 ie-cell" onclick="inlineEdit(this, \${a.id}, 'mobile', '\${esc(a.mobile||'')}')">\${a.mobile ? escH(a.mobile) : '<span class=&quot;text-gray-600&quot;>-</span>'}</td>
                   <td class="ie-cell" onclick="inlineEdit(this, \${a.id}, 'company', '\${esc(a.company||'')}')">\${a.company ? escH(a.company) : '<span class=&quot;text-gray-600&quot;>-</span>'}</td>
@@ -15300,6 +15906,190 @@ function adminPageHTML(): string {
       });
     }
 
+    var SQ = String.fromCharCode(39); // a single quote, for the same reason
+    // ============ BULK ACTIONS ON A SELECTION ============
+    // Everything here goes through one server call for the whole set rather than
+    // a request per row, so a 500-person change is one statement and one audit
+    // entry instead of 500 of each.
+    var BULK_FIELD_OPTIONS = {
+      badge_type: ['Organiser','VIP Guest','Exhibitor','Delegate','Exhibition Speaker','Jury','Visitor Pass','Media','Support Staff','Investor','Felicitation Delegate','VIP Pass','Speaker','Startup Pitcher'],
+      lunch_inclusion: ['Yes','No'],
+      rsvp_status: ['confirmed','maybe','declined',''],
+    };
+    var BULK_FIELD_LABELS = { badge_type: 'pass type', lunch_inclusion: 'lunch', rsvp_status: 'RSVP' };
+    function bulkSetField(field) {
+      var ids = attSelectedIds();
+      if (!ids.length) { toast('Nothing selected.', 'error'); return; }
+      var opts = BULK_FIELD_OPTIONS[field] || [];
+      var label = BULK_FIELD_LABELS[field] || field;
+      openModal(
+        '<h3 class="text-lg font-bold mb-1">Set ' + escH(label) + ' for ' + ids.length + ' attendee' + (ids.length === 1 ? '' : 's') + '</h3>' +
+        '<p class="text-xs text-gray-400 mb-4">This writes the same value to every selected row and is recorded in the audit log.</p>' +
+        '<select id="bulk-val" class="w-full px-3 py-2.5 rounded-lg text-sm mb-4">' +
+          opts.map(function (o) { return '<option value="' + escH(o) + '">' + escH(o || '(clear)') + '</option>'; }).join('') +
+        '</select>' +
+        '<div class="flex gap-2">' +
+          '<button onclick="closeModal()" class="flex-1 py-2.5 rounded-xl text-sm glass hover:bg-white/10">Cancel</button>' +
+          '<button onclick="bulkSetFieldGo(' + SQ + field + SQ + ')" class="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-primary-600 hover:bg-primary-500 text-white">Apply</button>' +
+        '</div>');
+    }
+    async function bulkSetFieldGo(field) {
+      var ids = attSelectedIds();
+      var el = document.getElementById('bulk-val');
+      if (!el) return;
+      var changes = {}; changes[field] = el.value;
+      closeModal();
+      try {
+        var r = await api.post('/api/admin/attendees/bulk-update', { ids: ids, changes: changes });
+        if (r && r.error) throw new Error(r.error);
+        toast('Updated ' + (r.updated || ids.length) + ' attendee(s).');
+        attSelected = new Set();
+        lastAttendees = null;
+        loadAdminAttendees();
+      } catch (e) { toast('Bulk update failed: ' + (e.message || ''), 'error'); }
+    }
+    async function bulkDelete() {
+      var ids = attSelectedIds();
+      if (!ids.length) { toast('Nothing selected.', 'error'); return; }
+      if (!confirm('Delete ' + ids.length + ' attendee' + (ids.length === 1 ? '' : 's') + '?' + NL + NL + 'This cannot be undone. The names and addresses are written to the audit log so the rows can be identified afterwards.')) return;
+      try {
+        var r = await api.post('/api/admin/attendees/bulk-delete', { ids: ids });
+        if (r && r.error) throw new Error(r.error);
+        toast('Deleted ' + (r.deleted || ids.length) + ' attendee(s).');
+        attSelected = new Set();
+        lastAttendees = null;
+        loadAdminAttendees();
+      } catch (e) { toast('Bulk delete failed: ' + (e.message || ''), 'error'); }
+    }
+    // Notify still walks the list one at a time, because each send is its own
+    // email; the progress is shown so a closed tab is an obvious loss, not a
+    // silent one.
+    async function bulkNotify() {
+      var ids = attSelectedIds();
+      if (!ids.length) { toast('Nothing selected.', 'error'); return; }
+      if (!confirm('Send the account-ready email to ' + ids.length + ' attendee' + (ids.length === 1 ? '' : 's') + '?' + NL + NL + 'Keep this tab open until it finishes.')) return;
+      var sent = 0, failed = 0;
+      toast('Sending to ' + ids.length + ' attendee(s)...');
+      for (var i = 0; i < ids.length; i++) {
+        try {
+          var r = await api.post('/api/admin/attendees/' + ids[i] + '/notify', {});
+          if (r && r.error) failed++; else sent++;
+        } catch (e) { failed++; }
+      }
+      toast('Done. Sent ' + sent + ', failed ' + failed + '.', sent ? 'success' : 'error');
+      lastAttendees = null;
+      loadAdminAttendees();
+    }
+    // Export exactly what is selected, from data already in the browser, so it
+    // does not depend on the token-in-URL download path.
+    function bulkExportSelected() {
+      var ids = new Set(attSelectedIds());
+      var rows = (lastAttendees || []).filter(function (a) { return ids.has(String(a.id)); });
+      if (!rows.length) { toast('Nothing selected.', 'error'); return; }
+      exportRowsAsCsv(rows, 'bharatai-selected-' + rows.length + '.csv');
+    }
+    // Shared by the selection export and the analytics exports.
+    function exportRowsAsCsv(rows, filename) {
+      var cols = ['id','name','email','mobile','company','job_title','city','country','role','badge_type',
+                  'rsvp_status','lunch_inclusion','arrival_time','payment_status','payment_amount',
+                  'registration_source','registration_date','created_at','notified_at','last_login_at',
+                  'pass_downloaded_at','checked_in_at'];
+      var q = function (v) {
+        var t = v == null ? '' : String(v);
+        return t.indexOf(',') >= 0 || t.indexOf('"') >= 0 || t.indexOf(NL) >= 0 || t.indexOf(String.fromCharCode(13)) >= 0
+          ? '"' + t.replace(/"/g, '""') + '"' : t;
+      };
+      var csv = cols.join(',') + NL + rows.map(function (r) {
+        return cols.map(function (c) { return q(r[c]); }).join(',');
+      }).join(NL);
+      // A BOM so Excel on Windows reads the names correctly.
+      var blob = new Blob([String.fromCharCode(65279) + csv], { type: 'text/csv;charset=utf-8;' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+      toast('Exported ' + rows.length + ' row(s).');
+    }
+
+    // ============ ONE ATTENDEE, WHOLE STORY ============
+    // The row showed five timestamp columns and left the reader to assemble the
+    // sequence. This puts it in order and adds what the row could not: the
+    // invoices raised and every audited change to the record.
+    async function openAttendeeDrawer(id) {
+      openModal('<div class="py-10 text-center text-gray-400"><i class="fas fa-spinner fa-spin text-xl"></i></div>');
+      var data, log = { entries: [] };
+      try {
+        data = await api.get('/api/admin/attendees/' + id + '/timeline');
+        if (data && data.error) throw new Error(data.error);
+      } catch (e) {
+        openModal('<div class="p-2"><h3 class="font-bold mb-2">Could not open that record</h3>' +
+          '<p class="text-xs text-gray-400 mb-4">' + escH(e.message || '') + '</p>' +
+          '<button onclick="closeModal()" class="px-4 py-2 rounded-lg text-sm glass">Close</button></div>');
+        return;
+      }
+      try { log = await api.get('/api/admin/audit?entity=attendee&entity_id=' + encodeURIComponent(id) + '&limit=25'); } catch (_) {}
+      var a = data.attendee || {};
+      var ICON = { register:'fa-user-plus', email:'fa-envelope', rsvp:'fa-clipboard-check',
+                   login:'fa-right-to-bracket', pass:'fa-id-badge', checkin:'fa-door-open' };
+      var steps = (data.timeline || []).map(function (t) {
+        return '<div class="flex gap-3 items-start py-2 border-b border-white/5 last:border-0">' +
+          '<div class="w-7 h-7 rounded-lg bg-primary-500/15 text-primary-300 flex items-center justify-center shrink-0">' +
+            '<i class="fas ' + (ICON[t.kind] || 'fa-circle') + ' text-[11px]"></i></div>' +
+          '<div class="min-w-0 flex-1"><div class="text-sm text-gray-200">' + escH(t.label) + '</div>' +
+          '<div class="text-[11px] text-gray-500">' + fmtIst(t.at) + '</div></div></div>';
+      }).join('') || '<p class="text-xs text-gray-500 py-3">Nothing recorded beyond registration.</p>';
+      var invoices = (data.invoices || []).map(function (v) {
+        return '<div class="flex items-center justify-between text-xs py-1.5 border-b border-white/5 last:border-0">' +
+          '<span class="text-gray-300">' + escH(v.invoice_no) + '</span>' +
+          '<span class="text-gray-400">\u20b9' + escH(v.total) + (v.emailed_at ? ' \u00b7 emailed' : '') + '</span></div>';
+      }).join('') || '<p class="text-xs text-gray-500 py-2">No invoice raised.</p>';
+      var changes = (log.entries || []).map(function (e) {
+        return '<div class="text-[11px] py-1.5 border-b border-white/5 last:border-0">' +
+          '<span class="text-gray-300">' + escH(e.action) + '</span> \u00b7 ' +
+          '<span class="text-gray-500">' + escH(e.actor) + '</span> \u00b7 ' +
+          '<span class="text-gray-600">' + fmtIst(e.created_at) + '</span></div>';
+      }).join('') || '<p class="text-xs text-gray-500 py-2">No recorded changes.</p>';
+      var field = function (label, v) {
+        return '<div><div class="text-[10px] uppercase tracking-wider text-gray-500">' + escH(label) + '</div>' +
+          '<div class="text-sm text-gray-200 truncate" title="' + escH(v || '') + '">' + (v ? escH(v) : '<span class="text-gray-600">not set</span>') + '</div></div>';
+      };
+      openModal(
+        '<div class="flex items-start gap-4 mb-4">' +
+          '<img src="' + getAvatarUrl(a.email, a.name, 96, a.avatar_url) + '" alt="" class="w-14 h-14 rounded-xl object-cover shrink-0">' +
+          '<div class="min-w-0 flex-1"><h3 class="text-lg font-bold truncate">' + escH(a.name) + '</h3>' +
+            '<p class="text-xs text-gray-400 truncate">' + escH(a.email) + '</p>' +
+            '<div class="flex flex-wrap gap-1.5 mt-1.5">' +
+              '<span class="px-2 py-0.5 rounded-full text-[10px] ' + getBadgeClass(a.badge_type) + '">' + escH(a.badge_type) + '</span>' +
+              '<span class="px-2 py-0.5 rounded-full text-[10px] bg-white/5 text-gray-400">#' + escH(a.id) + '</span>' +
+              (a.checked_in_at ? '<span class="px-2 py-0.5 rounded-full text-[10px] bg-green-500/20 text-green-300">checked in</span>' : '') +
+              (a.payment_status ? '<span class="px-2 py-0.5 rounded-full text-[10px] bg-white/5 text-gray-400">' + escH(a.payment_status) + '</span>' : '') +
+            '</div></div>' +
+          '<button onclick="closeModal()" class="w-8 h-8 rounded-lg glass hover:bg-white/10 text-gray-400 shrink-0"><i class="fas fa-xmark"></i></button>' +
+        '</div>' +
+        '<div class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4 pb-4 border-b border-white/10">' +
+          field('Organisation', a.company) + field('Designation', a.job_title) + field('Mobile', a.mobile) +
+          field('City', a.city) + field('Industry', a.industry) + field('Source', a.registration_source) +
+        '</div>' +
+        '<div class="grid grid-cols-1 md:grid-cols-2 gap-5">' +
+          '<div><h4 class="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">Journey</h4>' + steps + '</div>' +
+          '<div>' +
+            '<h4 class="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">Invoices</h4>' + invoices +
+            '<h4 class="text-xs font-semibold uppercase tracking-wider text-gray-400 mt-4 mb-2">Recorded changes</h4>' + changes +
+          '</div>' +
+        '</div>' +
+        '<div class="flex flex-wrap gap-2 mt-5 pt-4 border-t border-white/10">' +
+          '<button onclick="closeModal();openEditAttendeeById(' + Number(a.id) + ')" class="px-3 py-2 rounded-lg text-xs bg-primary-500/20 text-primary-200 hover:bg-primary-500/30"><i class="fas fa-pen mr-1"></i>Edit record</button>' +
+          '<button onclick="notifyAttendeeById(' + Number(a.id) + ')" class="px-3 py-2 rounded-lg text-xs bg-amber-500/20 text-amber-200 hover:bg-amber-500/30"><i class="fas fa-envelope mr-1"></i>Send notification</button>' +
+          '<button onclick="closeModal()" class="px-3 py-2 rounded-lg text-xs glass hover:bg-white/10 ml-auto">Close</button>' +
+        '</div>');
+    }
+    // The name cell now opens the drawer, so the full edit form is reached by id.
+    function openEditAttendeeById(id) {
+      var a = (lastAttendees || []).find(function (x) { return String(x.id) === String(id); });
+      if (!a) { toast('Could not find that attendee - refresh and try again.', 'error'); return; }
+      return openEditAttendee(a);
+    }
     // ---- Bulk Upload Modal ----
     function openBulkUploadModal() {
       bulkUploadData = [];
@@ -15911,6 +16701,12 @@ function adminPageHTML(): string {
       restoreHiddenCols();
     }
 
+    // The checkbox column is structural, not data - never let a preset hide it.
+    function keepCheckColVisible() {
+      document.querySelectorAll('#attendee-table .att-check-col').forEach(function (el) {
+        el.classList.remove('att-col-hidden');
+      });
+    }
     function restoreHiddenCols() {
       try {
         const hidden = JSON.parse(localStorage.getItem('att_hidden_cols') || '[]');
@@ -16200,16 +16996,16 @@ function adminPageHTML(): string {
               </button>
             </div>
             <div class="grid grid-cols-2 gap-3">
-              <div><label class="text-xs text-gray-400 mb-1 block">Name *</label><input id="ea-name" value="\${a.name}" class="w-full px-3 py-2 rounded-lg text-sm" required></div>
-              <div><label class="text-xs text-gray-400 mb-1 block">Email *</label><input id="ea-email" value="\${a.email}" class="w-full px-3 py-2 rounded-lg text-sm" required></div>
+              <div><label class="text-xs text-gray-400 mb-1 block">Name *</label><input id="ea-name" value="\${escH(a.name)}" class="w-full px-3 py-2 rounded-lg text-sm" required></div>
+              <div><label class="text-xs text-gray-400 mb-1 block">Email *</label><input id="ea-email" value="\${escH(a.email)}" class="w-full px-3 py-2 rounded-lg text-sm" required></div>
             </div>
             <div class="grid grid-cols-2 gap-3">
-              <div><label class="text-xs text-gray-400 mb-1 block">Company</label><input id="ea-company" value="\${a.company||''}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
-              <div><label class="text-xs text-gray-400 mb-1 block">Job Title</label><input id="ea-title" value="\${a.job_title||''}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
+              <div><label class="text-xs text-gray-400 mb-1 block">Company</label><input id="ea-company" value="\${escH(a.company)}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
+              <div><label class="text-xs text-gray-400 mb-1 block">Job Title</label><input id="ea-title" value="\${escH(a.job_title)}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
             </div>
             <div class="grid grid-cols-2 gap-3">
-              <div><label class="text-xs text-gray-400 mb-1 block">Mobile</label><input id="ea-mobile" value="\${a.mobile||''}" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="+91 98765 43210"></div>
-              <div><label class="text-xs text-gray-400 mb-1 block">LinkedIn URL</label><input id="ea-linkedin" value="\${a.linkedin_url||''}" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="https://linkedin.com/in/..."></div>
+              <div><label class="text-xs text-gray-400 mb-1 block">Mobile</label><input id="ea-mobile" value="\${escH(a.mobile)}" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="+91 98765 43210"></div>
+              <div><label class="text-xs text-gray-400 mb-1 block">LinkedIn URL</label><input id="ea-linkedin" value="\${escH(a.linkedin_url)}" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="https://linkedin.com/in/..."></div>
             </div>
             <!-- City, Country and Industry had no inputs here, so the save posted
                  none of them while the UPDATE set all three - which blanked whatever
@@ -16248,11 +17044,11 @@ function adminPageHTML(): string {
               <div><label class="text-xs text-gray-400 mb-1 block">Notified</label>
                 <div class="px-3 py-2 rounded-lg text-sm glass \${a.notified_at ? 'text-green-400' : 'text-gray-500'}">\${a.notified_at ? '<i class="fas fa-check-circle mr-1"></i>'+new Date(a.notified_at).toLocaleDateString() : '<i class="fas fa-times-circle mr-1"></i>Not yet'}</div></div>
             </div>
-            <div><label class="text-xs text-gray-400 mb-1 block">Bio</label><textarea id="ea-bio" rows="2" class="w-full px-3 py-2 rounded-lg text-sm">\${a.bio||''}</textarea></div>
-            <div><label class="text-xs text-gray-400 mb-1 block">Interests (comma-separated)</label><input id="ea-interests" value="\${a.interests||''}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
+            <div><label class="text-xs text-gray-400 mb-1 block">Bio</label><textarea id="ea-bio" rows="2" class="w-full px-3 py-2 rounded-lg text-sm">\${escH(a.bio)}</textarea></div>
+            <div><label class="text-xs text-gray-400 mb-1 block">Interests (comma-separated)</label><input id="ea-interests" value="\${escH(a.interests)}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
             <div class="grid grid-cols-2 gap-3">
-              <div><label class="text-xs text-gray-400 mb-1 block">Twitter URL</label><input id="ea-twitter" value="\${a.twitter_url||''}" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="https://twitter.com/..."></div>
-              <div><label class="text-xs text-gray-400 mb-1 block">Website URL</label><input id="ea-website" value="\${a.website_url||''}" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="https://..."></div>
+              <div><label class="text-xs text-gray-400 mb-1 block">Twitter URL</label><input id="ea-twitter" value="\${escH(a.twitter_url)}" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="https://twitter.com/..."></div>
+              <div><label class="text-xs text-gray-400 mb-1 block">Website URL</label><input id="ea-website" value="\${escH(a.website_url)}" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="https://..."></div>
             </div>
           </div>
           <div class="p-6 pt-3 border-t border-white/10 shrink-0 flex gap-2">
@@ -16808,7 +17604,9 @@ function adminPageHTML(): string {
       }
       var _bad = badList(sessions);
       if (_bad) { sectionError(_el, 'sessions', { message: _bad }, 'loadAdminSessions()'); return; }
+      setTimeout(loadSessionConflicts, 0);
       document.getElementById('section-sessions').innerHTML = \`
+        <div id="session-conflicts" class="mb-3"></div>
         <div class="flex items-center justify-between mb-4">
           <span class="text-xs text-gray-400">\${sessions.length} sessions</span>
           <button onclick="openCreateSession()" class="px-4 py-2 rounded-xl text-xs font-medium bg-primary-600 hover:bg-primary-500 text-white transition"><i class="fas fa-plus mr-1"></i>Add Session</button>
@@ -16839,27 +17637,56 @@ function adminPageHTML(): string {
       \`;
     }
 
+    // Nothing stopped two sessions being put in one room at one time, or the same
+    // speaker being booked twice at once, and nothing showed it afterwards.
+    async function loadSessionConflicts() {
+      var el = document.getElementById('session-conflicts');
+      if (!el) return;
+      var d;
+      try { d = await api.get('/api/admin/events/'+EID+'/session-conflicts'); }
+      catch (_) { return; }
+      if (!d || d.error) return;
+      var room = d.roomConflicts || [], spk = d.speakerConflicts || [];
+      if (!room.length && !spk.length) {
+        el.innerHTML = '<div class="glass rounded-xl p-3 text-xs text-emerald-300 border border-emerald-500/20">' +
+          '<i class="fas fa-circle-check mr-1.5"></i>No room or speaker clashes across ' + (d.checked || 0) + ' timed sessions.</div>';
+        return;
+      }
+      var item = function (kind, c) {
+        return '<div class="text-[11px] text-gray-300 py-1">' +
+          '<span class="text-amber-300 font-semibold">' + escH(kind === 'room' ? c.room : c.speaker) + '</span> \u00b7 ' +
+          escH(c.a.title) + ' <span class="text-gray-500">vs</span> ' + escH(c.b.title) +
+          ' <span class="text-gray-500">(' + escH(c.a.start_time) + ')</span></div>';
+      };
+      el.innerHTML = '<div class="glass rounded-xl p-3 border border-amber-500/25">' +
+        '<div class="text-xs font-semibold text-amber-300 mb-1"><i class="fas fa-triangle-exclamation mr-1.5"></i>' +
+          (room.length + spk.length) + ' scheduling clash' + ((room.length + spk.length) === 1 ? '' : 'es') + '</div>' +
+        room.slice(0, 8).map(function (c) { return item('room', c); }).join('') +
+        spk.slice(0, 8).map(function (c) { return item('speaker', c); }).join('') +
+        ((room.length + spk.length) > 16 ? '<div class="text-[10px] text-gray-500 mt-1">...and more</div>' : '') +
+      '</div>';
+    }
     function sessionFormHTML(s={}) {
       return \`
         <div class="space-y-3">
-          <div><label class="text-xs text-gray-400 mb-1 block">Title *</label><input id="sf-title" value="\${s.title||''}" required class="w-full px-3 py-2 rounded-lg text-sm"></div>
-          <div><label class="text-xs text-gray-400 mb-1 block">Description</label><textarea id="sf-desc" rows="2" class="w-full px-3 py-2 rounded-lg text-sm">\${s.description||''}</textarea></div>
+          <div><label class="text-xs text-gray-400 mb-1 block">Title *</label><input id="sf-title" value="\${escH(s.title)}" required class="w-full px-3 py-2 rounded-lg text-sm"></div>
+          <div><label class="text-xs text-gray-400 mb-1 block">Description</label><textarea id="sf-desc" rows="2" class="w-full px-3 py-2 rounded-lg text-sm">\${escH(s.description)}</textarea></div>
           <div class="grid grid-cols-2 gap-3">
-            <div><label class="text-xs text-gray-400 mb-1 block">Speaker Name</label><input id="sf-speaker" value="\${s.speaker_name||''}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
-            <div><label class="text-xs text-gray-400 mb-1 block">Speaker Title</label><input id="sf-speaker-title" value="\${s.speaker_title||''}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
+            <div><label class="text-xs text-gray-400 mb-1 block">Speaker Name</label><input id="sf-speaker" value="\${escH(s.speaker_name)}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
+            <div><label class="text-xs text-gray-400 mb-1 block">Speaker Title</label><input id="sf-speaker-title" value="\${escH(s.speaker_title)}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
           </div>
           <div class="grid grid-cols-3 gap-3">
             <div><label class="text-xs text-gray-400 mb-1 block">Type *</label>
               <select id="sf-type" class="w-full px-3 py-2 rounded-lg text-sm">
                 \${['keynote','talk','panel','workshop','ceremony','exhibition','networking','break'].map(t=>'<option '+(s.session_type===t?'selected':'')+'>'+t+'</option>').join('')}
               </select></div>
-            <div><label class="text-xs text-gray-400 mb-1 block">Track</label><input id="sf-track" value="\${s.track||''}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
-            <div><label class="text-xs text-gray-400 mb-1 block">Room</label><input id="sf-room" value="\${s.room||''}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
+            <div><label class="text-xs text-gray-400 mb-1 block">Track</label><input id="sf-track" value="\${escH(s.track)}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
+            <div><label class="text-xs text-gray-400 mb-1 block">Room</label><input id="sf-room" value="\${escH(s.room)}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
           </div>
           <div class="grid grid-cols-3 gap-3">
             <div><label class="text-xs text-gray-400 mb-1 block">Start Time *</label><input type="datetime-local" id="sf-start" value="\${(s.start_time||'').replace(' ','T')}" required class="w-full px-3 py-2 rounded-lg text-sm"></div>
             <div><label class="text-xs text-gray-400 mb-1 block">End Time *</label><input type="datetime-local" id="sf-end" value="\${(s.end_time||'').replace(' ','T')}" required class="w-full px-3 py-2 rounded-lg text-sm"></div>
-            <div><label class="text-xs text-gray-400 mb-1 block">Emoji</label><input id="sf-avatar" value="\${s.speaker_avatar||''}" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="e.g. 🎤"></div>
+            <div><label class="text-xs text-gray-400 mb-1 block">Emoji</label><input id="sf-avatar" value="\${escH(s.speaker_avatar)}" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="e.g. 🎤"></div>
           </div>
         </div>
       \`;
@@ -16945,23 +17772,23 @@ function adminPageHTML(): string {
     function exhibitorFormHTML(e={}) {
       return \`<div class="space-y-3">
         <div class="grid grid-cols-2 gap-3">
-          <div><label class="text-xs text-gray-400 mb-1 block">Company *</label><input id="ef-name" value="\${e.company_name||''}" required class="w-full px-3 py-2 rounded-lg text-sm"></div>
-          <div><label class="text-xs text-gray-400 mb-1 block">Category</label><input id="ef-cat" value="\${e.category||''}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
+          <div><label class="text-xs text-gray-400 mb-1 block">Company *</label><input id="ef-name" value="\${escH(e.company_name)}" required class="w-full px-3 py-2 rounded-lg text-sm"></div>
+          <div><label class="text-xs text-gray-400 mb-1 block">Category</label><input id="ef-cat" value="\${escH(e.category)}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
         </div>
-        <div><label class="text-xs text-gray-400 mb-1 block">Description</label><textarea id="ef-desc" rows="2" class="w-full px-3 py-2 rounded-lg text-sm">\${e.description||''}</textarea></div>
+        <div><label class="text-xs text-gray-400 mb-1 block">Description</label><textarea id="ef-desc" rows="2" class="w-full px-3 py-2 rounded-lg text-sm">\${escH(e.description)}</textarea></div>
         <div class="grid grid-cols-3 gap-3">
-          <div><label class="text-xs text-gray-400 mb-1 block">Booth #</label><input id="ef-booth" value="\${e.booth_number||''}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
+          <div><label class="text-xs text-gray-400 mb-1 block">Booth #</label><input id="ef-booth" value="\${escH(e.booth_number)}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
           <div><label class="text-xs text-gray-400 mb-1 block">Size</label>
             <select id="ef-size" class="w-full px-3 py-2 rounded-lg text-sm">
               \${['standard','premium','platinum'].map(s=>'<option '+(e.booth_size===s?'selected':'')+'>'+s+'</option>').join('')}
             </select></div>
-          <div><label class="text-xs text-gray-400 mb-1 block">Website</label><input id="ef-web" value="\${e.website_url||''}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
+          <div><label class="text-xs text-gray-400 mb-1 block">Website</label><input id="ef-web" value="\${escH(e.website_url)}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
         </div>
         <div class="grid grid-cols-2 gap-3">
-          <div><label class="text-xs text-gray-400 mb-1 block">Email</label><input id="ef-email" value="\${e.contact_email||''}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
-          <div><label class="text-xs text-gray-400 mb-1 block">Phone</label><input id="ef-phone" value="\${e.contact_phone||''}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
+          <div><label class="text-xs text-gray-400 mb-1 block">Email</label><input id="ef-email" value="\${escH(e.contact_email)}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
+          <div><label class="text-xs text-gray-400 mb-1 block">Phone</label><input id="ef-phone" value="\${escH(e.contact_phone)}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
         </div>
-        <div><label class="text-xs text-gray-400 mb-1 block">Products (comma-separated)</label><input id="ef-products" value="\${e.products||''}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
+        <div><label class="text-xs text-gray-400 mb-1 block">Products (comma-separated)</label><input id="ef-products" value="\${escH(e.products)}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
       </div>\`;
     }
 
@@ -17067,6 +17894,12 @@ function adminPageHTML(): string {
             </table>
           </div>
 
+          <div class="flex flex-wrap items-center gap-2 mb-4">
+            <button onclick="backfillExhibitorsFromBooths()" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-green-600/20 text-green-300 hover:bg-green-600/30 border border-green-500/30">
+              <i class="fas fa-arrow-right-arrow-left mr-1.5"></i>Create exhibitors for approved requests
+            </button>
+            <span class="text-[11px] text-gray-500">Approving a request now does this automatically and emails the company.</span>
+          </div>
           <!-- Filter Tabs -->
           <div class="flex gap-2 mb-4 flex-wrap">
             <button onclick="adminBoothRequestFilter=''; loadAdminBoothRequests();" class="px-3 py-1.5 rounded-lg text-xs font-medium \${!adminBoothRequestFilter ? 'tab-active' : 'glass text-gray-400 hover:text-white'}">All</button>
@@ -17122,11 +17955,34 @@ function adminPageHTML(): string {
         const payload = {};
         if (status) payload.status = status;
         if (paymentStatus) payload.payment_status = paymentStatus;
-        payload.reviewed_by = 'admin';
-        await api.put('/api/admin/booth-requests/'+id, payload);
-        toast('Request updated!');
+        // Was the literal string 'admin' on every review. Now it is whoever the
+        // operator says they are - the same name the audit log records.
+        payload.reviewed_by = getOperator() || 'admin';
+        var r = await api.put('/api/admin/booth-requests/'+id, payload);
+        if (r && r.error) throw new Error(r.error);
+        // Approval now also creates the exhibitor and tells the company, so say
+        // which of those actually happened rather than a bare "updated".
+        var extra = [];
+        if (r && r.exhibitor_created) extra.push('exhibitor created');
+        var mailFailed = r && typeof r.emailed === 'string' && r.emailed.indexOf('failed') === 0;
+        if (r && r.emailed === 'sent') extra.push('company emailed');
+        else if (mailFailed) extra.push('email failed');
+        toast('Request updated' + (extra.length ? ' \u00b7 ' + extra.join(', ') : '') + '.',
+          mailFailed ? 'error' : 'success');
         loadAdminBoothRequests();
       } catch(e) { toast('Update failed: '+(e.message||''), 'error'); }
+    }
+    // For requests approved before approval created an exhibitor: the Exhibitors
+    // tab read zero while 41 booth inquiries sat in the list.
+    async function backfillExhibitorsFromBooths() {
+      if (!confirm('Create the missing exhibitor record for every already-approved booth request?' + NL + NL +
+        'Existing exhibitors are left alone. Nothing is emailed.')) return;
+      try {
+        var r = await api.post('/api/admin/booth-requests/backfill-exhibitors', {});
+        if (r && r.error) throw new Error(r.error);
+        toast(r.created ? ('Created ' + r.created + ' exhibitor record(s).') : 'Every approved request already has one.');
+        loadAdminBoothRequests();
+      } catch (e) { toast('Backfill failed: ' + (e.message || ''), 'error'); }
     }
 
     async function updateBoothRequestPayment(id, paymentStatus) {
@@ -17336,8 +18192,8 @@ function adminPageHTML(): string {
 
     function announcementFormHTML(a={}) {
       return \`<div class="space-y-3">
-        <div><label class="text-xs text-gray-400 mb-1 block">Title *</label><input id="af-title" value="\${a.title||''}" required class="w-full px-3 py-2 rounded-lg text-sm"></div>
-        <div><label class="text-xs text-gray-400 mb-1 block">Content *</label><textarea id="af-content" rows="3" required class="w-full px-3 py-2 rounded-lg text-sm">\${a.content||''}</textarea></div>
+        <div><label class="text-xs text-gray-400 mb-1 block">Title *</label><input id="af-title" value="\${escH(a.title)}" required class="w-full px-3 py-2 rounded-lg text-sm"></div>
+        <div><label class="text-xs text-gray-400 mb-1 block">Content *</label><textarea id="af-content" rows="3" required class="w-full px-3 py-2 rounded-lg text-sm">\${escH(a.content)}</textarea></div>
         <div class="grid grid-cols-3 gap-3">
           <div><label class="text-xs text-gray-400 mb-1 block">Type</label>
             <select id="af-type" class="w-full px-3 py-2 rounded-lg text-sm">
@@ -17365,15 +18221,82 @@ function adminPageHTML(): string {
 
     function openBroadcast() {
       openModal(\`<h3 class="text-lg font-bold mb-4"><i class="fas fa-broadcast-tower text-red-400 mr-2"></i>Emergency Broadcast</h3>
-        <p class="text-xs text-gray-400 mb-4">This will create a pinned urgent announcement visible to all attendees.</p>
+        <p class="text-xs text-gray-400 mb-3">Pins an urgent announcement in the app. On its own that only reaches people who already have the app open, so you can also email it.</p>
+        <div class="glass rounded-xl p-3 mb-4 space-y-2">
+          <label class="flex items-center gap-2 text-xs cursor-pointer">
+            <input type="checkbox" id="bc-email" style="accent-color:#FF6B00;width:14px;height:14px">
+            <span class="text-gray-300">Also email it</span>
+          </label>
+          <select id="bc-audience" class="w-full px-3 py-2 rounded-lg text-xs">
+            <option value="all">Everyone with an email address</option>
+            <option value="confirmed">Only those who confirmed their RSVP</option>
+            <option value="checked_in">Only those checked in at the venue</option>
+          </select>
+          <p class="text-[11px] text-gray-500">Emails are sent one at a time from this tab. Keep it open until the count finishes.</p>
+        </div>
         <form id="bc-form" class="space-y-3">
           <div><label class="text-xs text-gray-400 mb-1 block">Title *</label><input id="bc-title" required class="w-full px-3 py-2 rounded-lg text-sm" placeholder="e.g. Schedule Change"></div>
           <div><label class="text-xs text-gray-400 mb-1 block">Message *</label><textarea id="bc-content" rows="3" required class="w-full px-3 py-2 rounded-lg text-sm" placeholder="Enter your broadcast message..."></textarea></div>
           <div class="flex gap-2 pt-2"><button type="submit" class="flex-1 py-2.5 rounded-xl text-sm font-medium bg-red-600 hover:bg-red-500 text-white"><i class="fas fa-broadcast-tower mr-1"></i>Send Broadcast</button><button type="button" onclick="closeModal()" class="px-4 py-2.5 rounded-xl text-sm font-medium glass hover:bg-white/10">Cancel</button></div>
         </form>\`);
-      document.getElementById('bc-form').onsubmit = async e => { e.preventDefault(); await api.post('/api/admin/events/'+EID+'/broadcast', { title:document.getElementById('bc-title').value, content:document.getElementById('bc-content').value }); closeModal(); toast('Broadcast sent!'); loadAdminAnnouncements(); };
+      document.getElementById('bc-form').onsubmit = async e => { e.preventDefault(); await runBroadcast(); };
     }
 
+    // Posts the pinned notice, then walks the recipient list the server returned,
+    // reporting progress. Pinning alone reached only people already in the app.
+    async function runBroadcast() {
+      var title = (document.getElementById('bc-title') || {}).value || '';
+      var content = (document.getElementById('bc-content') || {}).value || '';
+      var emailIt = !!(document.getElementById('bc-email') || {}).checked;
+      var audience = (document.getElementById('bc-audience') || {}).value || 'all';
+      if (!title.trim() || !content.trim()) { toast('Title and message are both required.', 'error'); return; }
+      var r;
+      try {
+        r = await api.post('/api/admin/events/'+EID+'/broadcast',
+          { title: title, content: content, email_it: emailIt, audience: audience });
+        if (r && r.error) throw new Error(r.error);
+      } catch (e) { toast('Broadcast failed: ' + (e.message || ''), 'error'); return; }
+      if (!emailIt) {
+        closeModal();
+        toast('Pinned in the app. Nobody was emailed.');
+        loadAdminAnnouncements();
+        return;
+      }
+      var list = (r && r.recipients) || [];
+      if (!list.length) {
+        closeModal();
+        toast('Pinned, but nobody matched that audience.', 'error');
+        loadAdminAnnouncements();
+        return;
+      }
+      if (!confirm('Pinned in the app. Now email it to ' + list.length + ' attendee' + (list.length === 1 ? '' : 's') + '?' + NL + NL +
+        'Keep this tab open until it finishes.')) {
+        closeModal();
+        loadAdminAnnouncements();
+        return;
+      }
+      var box = document.getElementById('modal-box');
+      if (box) {
+        box.innerHTML = '<div class="p-6"><h3 class="font-bold mb-2">Sending the broadcast</h3>' +
+          '<div class="w-full bg-white/5 rounded-full h-3 mb-2"><div id="bc-bar" class="h-full rounded-full bg-gradient-to-r from-primary-500 to-amber-400" style="width:0%"></div></div>' +
+          '<p id="bc-status" class="text-xs text-gray-400">Starting...</p></div>';
+      }
+      var sent = 0, failed = 0;
+      for (var i = 0; i < list.length; i++) {
+        try {
+          var res = await api.post('/api/admin/announcements/' + r.id + '/email/' + list[i].id, {});
+          if (res && res.error) failed++; else sent++;
+        } catch (e) { failed++; }
+        var done = sent + failed;
+        var bar = document.getElementById('bc-bar');
+        var st = document.getElementById('bc-status');
+        if (bar) bar.style.width = Math.round(done / list.length * 100) + '%';
+        if (st) st.textContent = done + ' of ' + list.length + ' \u00b7 ' + sent + ' sent, ' + failed + ' failed';
+      }
+      closeModal();
+      toast('Broadcast emailed. ' + sent + ' sent, ' + failed + ' failed.', sent ? 'success' : 'error');
+      loadAdminAnnouncements();
+    }
     async function deleteAnnouncement(id) { if (!confirm('Delete this announcement?')) return; await api.del('/api/admin/announcements/'+id); toast('Announcement deleted!'); loadAdminAnnouncements(); }
 
     // ============ EDIT EVENT ============
@@ -17381,10 +18304,10 @@ function adminPageHTML(): string {
       const ev = await api.get('/api/events/'+EID);
       openModal(\`<h3 class="text-lg font-bold mb-4"><i class="fas fa-edit text-primary-400 mr-2"></i>Edit Event</h3>
         <form id="ev-form" class="space-y-3">
-          <div><label class="text-xs text-gray-400 mb-1 block">Title</label><input id="ev-title" value="\${ev.title}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
-          <div><label class="text-xs text-gray-400 mb-1 block">Description</label><textarea id="ev-desc" rows="3" class="w-full px-3 py-2 rounded-lg text-sm">\${ev.description||''}</textarea></div>
+          <div><label class="text-xs text-gray-400 mb-1 block">Title</label><input id="ev-title" value="\${escH(ev.title)}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
+          <div><label class="text-xs text-gray-400 mb-1 block">Description</label><textarea id="ev-desc" rows="3" class="w-full px-3 py-2 rounded-lg text-sm">\${escH(ev.description)}</textarea></div>
           <div class="grid grid-cols-2 gap-3">
-            <div><label class="text-xs text-gray-400 mb-1 block">Venue</label><input id="ev-venue" value="\${ev.venue||''}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
+            <div><label class="text-xs text-gray-400 mb-1 block">Venue</label><input id="ev-venue" value="\${escH(ev.venue)}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
             <div><label class="text-xs text-gray-400 mb-1 block">Status</label>
               <select id="ev-status" class="w-full px-3 py-2 rounded-lg text-sm">
                 \${['upcoming','live','completed'].map(s=>'<option '+(ev.status===s?'selected':'')+'>'+s+'</option>').join('')}
@@ -17395,8 +18318,8 @@ function adminPageHTML(): string {
               <select id="ev-type" class="w-full px-3 py-2 rounded-lg text-sm">
                 \${['conference','exhibition','awards','hybrid'].map(t=>'<option '+(ev.event_type===t?'selected':'')+'>'+t+'</option>').join('')}
               </select></div>
-            <div><label class="text-xs text-gray-400 mb-1 block">Start Date</label><input type="date" id="ev-start" value="\${ev.start_date}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
-            <div><label class="text-xs text-gray-400 mb-1 block">End Date</label><input type="date" id="ev-end" value="\${ev.end_date}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
+            <div><label class="text-xs text-gray-400 mb-1 block">Start Date</label><input type="date" id="ev-start" value="\${escH(ev.start_date)}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
+            <div><label class="text-xs text-gray-400 mb-1 block">End Date</label><input type="date" id="ev-end" value="\${escH(ev.end_date)}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
           </div>
           <div><label class="text-xs text-gray-400 mb-1 block">Max Attendees</label><input type="number" id="ev-max" value="\${ev.max_attendees||500}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
           <div class="flex gap-2 pt-2"><button type="submit" class="flex-1 py-2.5 rounded-xl text-sm font-medium bg-primary-600 hover:bg-primary-500 text-white"><i class="fas fa-save mr-1"></i>Save</button><button type="button" onclick="closeModal()" class="px-4 py-2.5 rounded-xl text-sm font-medium glass hover:bg-white/10">Cancel</button></div>
@@ -17561,13 +18484,40 @@ function adminPageHTML(): string {
     }
 
     // ============ ADMIN STARTUP PITCH ============
+    // Cached so the row buttons can find their record by id instead of carrying
+    // it inside an HTML attribute.
+    let lastPitches = null, lastInvestors = null;
+    function findPitch(id) { return (lastPitches || []).find(function (x) { return String(x.id) === String(id); }); }
+    function findInvestor(id) { return (lastInvestors || []).find(function (x) { return String(x.id) === String(id); }); }
+    function editPitchById(id) {
+      var p = findPitch(id);
+      if (!p) { toast('Could not find that pitch - refresh and try again.', 'error'); return; }
+      return editPitch(p);
+    }
+    function editInvestorById(id) {
+      var inv = findInvestor(id);
+      if (!inv) { toast('Could not find that investor - refresh and try again.', 'error'); return; }
+      return editInvestor(inv);
+    }
+    async function togglePitchActiveById(id, newState) {
+      var p = findPitch(id);
+      if (!p) { toast('Could not find that pitch - refresh and try again.', 'error'); return; }
+      return togglePitchActive(id, newState, JSON.stringify(p));
+    }
+    async function toggleInvestorActiveById(id, newState) {
+      var inv = findInvestor(id);
+      if (!inv) { toast('Could not find that investor - refresh and try again.', 'error'); return; }
+      return toggleInvestorActive(id, newState, JSON.stringify(inv));
+    }
     async function loadAdminStartupPitch() {
       try {
         const data = await api.get('/api/admin/startup-pitches?event_id=' + EID);
         var _bad = bodyError(data) || (data && Array.isArray(data.pitches) ? null : 'Startup pitches came back in an unexpected shape.');
         if (_bad) { sectionError(document.getElementById('section-startup-pitch'), 'startup pitches', { message: _bad }, 'loadAdminStartupPitch()'); return; }
         const pitches = data.pitches || [];
+        lastPitches = pitches;
         const investors = data.investors || [];
+        lastInvestors = investors;
 
         document.getElementById('section-startup-pitch').innerHTML = \`
           <div class="space-y-6">
@@ -17637,10 +18587,10 @@ function adminPageHTML(): string {
                         <td class="py-2 px-2 text-gray-300">\${escH(p.pitcher_name)}</td>
                         <td class="py-2 px-2 text-gray-400 text-xs">\${escH(p.pitcher_title)}</td>
                         <td class="py-2 px-2 text-center">
-                          <button onclick="togglePitchActive(\${p.id}, \${p.is_active ? 0 : 1}, \${JSON.stringify(JSON.stringify(p))})" class="text-xs \${p.is_active ? 'text-green-400' : 'text-red-400'}">\${p.is_active ? '\u2705' : '\u274c'}</button>
+                          <button onclick="togglePitchActiveById(\${p.id}, \${p.is_active ? 0 : 1})" class="text-xs \${p.is_active ? 'text-green-400' : 'text-red-400'}">\${p.is_active ? '\u2705' : '\u274c'}</button>
                         </td>
                         <td class="py-2 px-2 text-center">
-                          <button onclick='editPitch(\${JSON.stringify(p)})' class="text-primary-400 hover:text-primary-300 mr-2" title="Edit"><i class="fas fa-edit"></i></button>
+                          <button onclick="editPitchById(\${p.id})" class="text-primary-400 hover:text-primary-300 mr-2" title="Edit"><i class="fas fa-edit"></i></button>
                           <button onclick="deletePitch(\${p.id})" class="text-red-400 hover:text-red-300" title="Delete"><i class="fas fa-trash"></i></button>
                         </td>
                       </tr>
@@ -17691,8 +18641,8 @@ function adminPageHTML(): string {
                       \${inv.company ? '<div class="text-[10px] text-gray-500 truncate">'+escH(inv.company)+'</div>' : ''}
                     </div>
                     <div class="flex gap-1 shrink-0">
-                      <button onclick='editInvestor(\${JSON.stringify(inv)})' class="text-primary-400 hover:text-primary-300 text-xs p-1" title="Edit"><i class="fas fa-edit"></i></button>
-                      <button onclick="toggleInvestorActive(\${inv.id}, \${inv.is_active ? 0 : 1}, \${JSON.stringify(JSON.stringify(inv))})" class="text-xs p-1 \${inv.is_active ? 'text-green-400' : 'text-red-400'}" title="Toggle">\${inv.is_active ? '\u2705' : '\u274c'}</button>
+                      <button onclick="editInvestorById(\${inv.id})" class="text-primary-400 hover:text-primary-300 text-xs p-1" title="Edit"><i class="fas fa-edit"></i></button>
+                      <button onclick="toggleInvestorActiveById(\${inv.id}, \${inv.is_active ? 0 : 1})" class="text-xs p-1 \${inv.is_active ? 'text-green-400' : 'text-red-400'}" title="Toggle">\${inv.is_active ? '\u2705' : '\u274c'}</button>
                       <button onclick="deleteInvestor(\${inv.id})" class="text-red-400 hover:text-red-300 text-xs p-1" title="Delete"><i class="fas fa-trash"></i></button>
                     </div>
                   </div>
@@ -17836,6 +18786,7 @@ function adminPageHTML(): string {
     let inquiryFilterType = '';
     let inquiryFilterStatus = '';
 
+    let lastInquiries = null;
     async function loadAdminInquiries() {
       try {
         let url = '/api/admin/inquiries?';
@@ -17845,6 +18796,7 @@ function adminPageHTML(): string {
         var _bad = bodyError(data) || (data && Array.isArray(data.inquiries) ? null : 'Inquiries came back in an unexpected shape.');
         if (_bad) { sectionError(document.getElementById('section-inquiries'), 'inquiries', { message: _bad }, 'loadAdminInquiries()'); return; }
         const { inquiries, typeCounts, statusCounts } = data;
+        lastInquiries = inquiries || [];
 
         const totalNew = (statusCounts || []).find(s => s.status === 'new');
         const totalAll = (inquiries || []).length;
@@ -17892,6 +18844,8 @@ function adminPageHTML(): string {
                   '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-' + cfg.color + '-500/20 text-' + cfg.color + '-300"><i class="fas ' + cfg.icon + ' mr-1"></i>' + cfg.label + '</span>' +
                   '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold ' + sColor + '">' + inq.status.replace('_', ' ') + '</span>' +
                   '<span class="text-[10px] text-gray-500">#' + inq.id + '</span>' +
+                  ageBadge(inq.created_at) +
+                  (inq.assigned_to ? '<span class="px-2 py-0.5 rounded-full text-[10px] bg-indigo-500/20 text-indigo-300"><i class="fas fa-user-check mr-1"></i>' + escH(inq.assigned_to) + '</span>' : '') +
                 '</div>' +
                 '<h4 class="font-semibold text-sm truncate">' + escH(inq.subject || inq.name) + '</h4>' +
                 '<p class="text-xs text-gray-400 mt-0.5">' + escH(inq.name) + (inq.organization ? ' · ' + escH(inq.organization) : '') + '</p>' +
@@ -17907,6 +18861,8 @@ function adminPageHTML(): string {
                   '<option value="responded"' + (inq.status === 'responded' ? ' selected' : '') + '>Responded</option>' +
                   '<option value="closed"' + (inq.status === 'closed' ? ' selected' : '') + '>Closed</option>' +
                 '</select>' +
+                '<button onclick="openInquiryReply(' + inq.id + ')" class="px-2 py-1 rounded-lg text-[10px] bg-primary-500/20 text-primary-200 hover:bg-primary-500/30 transition" title="Reply by email"><i class="fas fa-reply mr-1"></i>Reply</button>' +
+                '<button onclick="assignInquiry(' + inq.id + ')" class="px-2 py-1 rounded-lg text-[10px] glass hover:bg-white/10 transition" title="Assign an owner"><i class="fas fa-user-plus"></i></button>' +
                 '<button onclick="addInquiryNote(' + inq.id + ')" class="px-2 py-1 rounded-lg text-[10px] glass hover:bg-white/10 transition" title="Add note"><i class="fas fa-sticky-note mr-1"></i>Note</button>' +
                 '<button onclick="deleteInquiry(' + inq.id + ')" class="px-2 py-1 rounded-lg text-[10px] text-red-400 glass hover:bg-red-500/10 transition" title="Delete"><i class="fas fa-trash"></i></button>' +
               '</div>' +
@@ -17925,6 +18881,68 @@ function adminPageHTML(): string {
       }
     }
 
+    // How long this has been sitting. 274 inquiries with 123 still marked new is
+    // not a volume problem, it is the absence of any sense of a clock.
+    function ageBadge(createdAt) {
+      if (!createdAt) return '';
+      var then = new Date(String(createdAt).replace(' ', 'T'));
+      if (isNaN(then.getTime())) return '';
+      var days = Math.floor((Date.now() - then.getTime()) / 86400000);
+      var cls = days >= 7 ? 'bg-red-500/20 text-red-300'
+              : days >= 3 ? 'bg-amber-500/20 text-amber-300'
+              : 'bg-white/5 text-gray-400';
+      var txt = days <= 0 ? 'today' : days === 1 ? '1 day' : days + ' days';
+      return '<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold ' + cls + '" title="Waiting since ' +
+        escH(createdAt) + '"><i class="fas fa-clock mr-1"></i>' + txt + '</span>';
+    }
+    // Reply by email from the list. Until now the only way to answer was to copy
+    // the address into a mail client, which is why so many stayed at "new".
+    function openInquiryReply(id) {
+      var inq = (lastInquiries || []).find(function (x) { return String(x.id) === String(id); });
+      if (!inq) { toast('Could not find that inquiry - refresh and try again.', 'error'); return; }
+      openModal(
+        '<h3 class="text-lg font-bold mb-1">Reply to ' + escH(inq.name) + '</h3>' +
+        '<p class="text-xs text-gray-400 mb-1">' + escH(inq.email) + (inq.organization ? ' \u00b7 ' + escH(inq.organization) : '') + '</p>' +
+        '<div class="glass rounded-lg p-3 my-3 text-xs text-gray-400 max-h-28 overflow-y-auto">' +
+          '<span class="text-gray-500">They asked:</span><br>' + (inq.message ? escH(inq.message) : '<em>No message</em>') + '</div>' +
+        '<label class="block text-[11px] text-gray-400 mb-1">Subject</label>' +
+        '<input id="inq-reply-subject" class="w-full px-3 py-2 rounded-lg text-sm mb-3" value="Re: your enquiry - Bharat AI Innovation 2026">' +
+        '<label class="block text-[11px] text-gray-400 mb-1">Your reply</label>' +
+        '<textarea id="inq-reply-body" rows="7" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="Type the reply that will be emailed to them..."></textarea>' +
+        '<p id="inq-reply-msg" class="text-[11px] text-amber-300 mt-2 min-h-4"></p>' +
+        '<div class="flex gap-2 mt-2">' +
+          '<button onclick="closeModal()" class="flex-1 py-2.5 rounded-xl text-sm glass hover:bg-white/10">Cancel</button>' +
+          '<button id="inq-reply-go" onclick="sendInquiryReply(' + Number(id) + ')" class="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-primary-600 hover:bg-primary-500 text-white">Send reply</button>' +
+        '</div>');
+    }
+    async function sendInquiryReply(id) {
+      var body = (document.getElementById('inq-reply-body') || {}).value || '';
+      var subject = (document.getElementById('inq-reply-subject') || {}).value || '';
+      var msg = document.getElementById('inq-reply-msg');
+      var btn = document.getElementById('inq-reply-go');
+      if (!body.trim()) { if (msg) msg.textContent = 'The reply is empty.'; return; }
+      if (btn) { btn.disabled = true; btn.textContent = 'Sending...'; }
+      try {
+        var r = await api.post('/api/admin/inquiries/' + id + '/reply', { message: body, subject: subject });
+        if (r && r.error) throw new Error(r.error);
+        closeModal();
+        toast('Reply sent and the inquiry marked responded.');
+        loadAdminInquiries();
+      } catch (e) {
+        if (msg) msg.textContent = e.message || 'Could not send the reply.';
+        if (btn) { btn.disabled = false; btn.textContent = 'Send reply'; }
+      }
+    }
+    async function assignInquiry(id) {
+      var who = prompt('Assign inquiry #' + id + ' to (name or initials):', '');
+      if (who === null) return;
+      try {
+        var r = await api.patch('/api/admin/inquiries/' + id, { assigned_to: who });
+        if (r && r.error) throw new Error(r.error);
+        toast(who ? ('Assigned to ' + who) : 'Owner cleared');
+        loadAdminInquiries();
+      } catch (e) { toast('Failed: ' + (e.message || ''), 'error'); }
+    }
     async function updateInquiryStatus(id, status) {
       try {
         await api.patch('/api/admin/inquiries/' + id, { status });
@@ -17953,6 +18971,45 @@ function adminPageHTML(): string {
     }
 
     // ============ ANALYTICS ============
+    let lastGrowth = null;
+    // A tiny inline bar row - used for sources and completeness, where a chart
+    // would be more furniture than information.
+    function barRow(label, count, total, colour) {
+      var pct = total > 0 ? Math.round((count / total) * 100) : 0;
+      return '<div class="flex items-center gap-3 py-1.5 text-xs">' +
+        '<div class="w-40 shrink-0 truncate text-gray-300" title="' + escH(label) + '">' + escH(label) + '</div>' +
+        '<div class="flex-1 h-2 rounded-full bg-white/10 overflow-hidden">' +
+          '<div class="h-full rounded-full" style="width:' + Math.max(pct, count > 0 ? 2 : 0) + '%;background:' + colour + '"></div></div>' +
+        '<div class="w-20 text-right text-gray-400">' + count + ' &middot; ' + pct + '%</div></div>';
+    }
+    function exportAnalyticsCsv() {
+      var g = lastGrowth;
+      if (!g) { toast('Growth data is not loaded.', 'error'); return; }
+      var NL2 = String.fromCharCode(10);
+      var rows = [['section','label','value']];
+      (g.daily || []).forEach(function (d) { rows.push(['registrations_per_day', d.day, d.count]); });
+      (g.bySource || []).forEach(function (d) { rows.push(['registrations_by_source', d.source, d.count]); });
+      (g.byCity || []).forEach(function (d) { rows.push(['registrations_by_city', d.city, d.count]); });
+      (g.funnel || []).forEach(function (f) {
+        rows.push(['funnel_' + f.badge_type, 'registered', f.registered]);
+        rows.push(['funnel_' + f.badge_type, 'notified', f.notified]);
+        rows.push(['funnel_' + f.badge_type, 'signed_in', f.signed_in]);
+        rows.push(['funnel_' + f.badge_type, 'pass_taken', f.pass_taken]);
+        rows.push(['funnel_' + f.badge_type, 'checked_in', f.checked_in]);
+      });
+      var q = function (v) {
+        var t = v == null ? '' : String(v);
+        return (t.indexOf(',') >= 0 || t.indexOf('\u0022') >= 0) ? '\u0022' + t.replace(/\u0022/g, '\u0022\u0022') + '\u0022' : t;
+      };
+      var csv = rows.map(function (r) { return r.map(q).join(','); }).join(NL2);
+      var blob = new Blob([String.fromCharCode(65279) + csv], { type: 'text/csv;charset=utf-8;' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url; a.download = 'bharatai-analytics.csv';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+      toast('Analytics exported.');
+    }
     async function loadAnalytics() {
       var _el = document.getElementById('section-analytics');
       if (_el && !_el.innerHTML.trim()) sectionLoading(_el);
@@ -17974,6 +19031,14 @@ function adminPageHTML(): string {
         sectionError(_el, 'analytics', { message: 'Analytics came back in an unexpected shape.' }, 'loadAnalytics()');
         return;
       }
+      // Growth, sources and the funnel come from their own endpoint. A failure
+      // here degrades those panels rather than the whole tab.
+      var growth = null;
+      try {
+        var g = await api.get('/api/admin/events/'+EID+'/growth');
+        if (!bodyError(g)) growth = g;
+      } catch (_) { growth = null; }
+      lastGrowth = growth;
 
       document.getElementById('section-analytics').innerHTML = \`
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
@@ -17982,6 +19047,63 @@ function adminPageHTML(): string {
           <div class="glass rounded-xl p-4 text-center"><div class="text-2xl font-bold text-accent-400">\${analytics.boothVisitCount}</div><div class="text-xs text-gray-500">Booth Visits</div></div>
           <div class="glass rounded-xl p-4 text-center"><div class="text-2xl font-bold text-purple-400">\${stats.categories}</div><div class="text-xs text-gray-500">Award Categories</div></div>
         </div>
+        \${growth ? \`
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="font-semibold text-sm"><i class="fas fa-arrow-trend-up text-primary-400 mr-2"></i>How registration is going</h3>
+          <button onclick="exportAnalyticsCsv()" class="px-3 py-1.5 rounded-lg text-xs font-medium glass hover:bg-white/10"><i class="fas fa-download mr-1.5"></i>Export CSV</button>
+        </div>
+        <div class="glass rounded-xl p-5 mb-6">
+          <div class="flex items-baseline justify-between mb-2">
+            <span class="text-xs text-gray-400">Registrations per day</span>
+            <span class="text-[10px] text-gray-500">\${(growth.daily || []).length} day\${(growth.daily || []).length === 1 ? '' : 's'} with sign-ups</span>
+          </div>
+          <div class="chart-container"><canvas id="chart-growth"></canvas></div>
+        </div>
+        <!-- The funnel: of the people holding each pass, how many were told, signed
+             in, took the pass, and turned up. This is the question the doughnuts
+             below could never answer. -->
+        <div class="glass rounded-xl p-5 mb-6 overflow-x-auto">
+          <h3 class="font-semibold text-sm mb-3"><i class="fas fa-filter-circle-dollar text-emerald-400 mr-2"></i>Pass funnel</h3>
+          <table class="w-full text-xs" style="min-width:560px">
+            <thead><tr class="text-gray-500 uppercase text-[10px]">
+              <th class="text-left py-2">Pass</th><th class="text-right py-2">Registered</th>
+              <th class="text-right py-2">Notified</th><th class="text-right py-2">Signed in</th>
+              <th class="text-right py-2">Pass taken</th><th class="text-right py-2">Checked in</th>
+            </tr></thead>
+            <tbody>
+              \${(growth.funnel || []).map(function (f) {
+                var pc = function (n) { return f.registered > 0 ? Math.round((n / f.registered) * 100) : 0; };
+                var cell = function (n) { return '<td class="text-right py-1.5">' + n + ' <span class="text-gray-600">' + pc(n) + '%</span></td>'; };
+                return '<tr class="border-t border-white/5"><td class="py-1.5 font-medium">' + escH(f.badge_type) + '</td>' +
+                  '<td class="text-right py-1.5 font-semibold">' + f.registered + '</td>' +
+                  cell(f.notified) + cell(f.signed_in) + cell(f.pass_taken) + cell(f.checked_in) + '</tr>';
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+          <div class="glass rounded-xl p-5">
+            <h3 class="font-semibold text-sm mb-3"><i class="fas fa-diagram-project text-primary-400 mr-2"></i>Where registrations came from</h3>
+            \${(growth.bySource || []).length
+              ? (growth.bySource || []).map(function (d) { return barRow(d.source, d.count, stats.attendees, '#FF6B00'); }).join('')
+              : '<p class="text-xs text-gray-500">No source recorded yet.</p>'}
+          </div>
+          <div class="glass rounded-xl p-5">
+            <h3 class="font-semibold text-sm mb-3"><i class="fas fa-user-pen text-amber-400 mr-2"></i>Profile completeness</h3>
+            \${(function () {
+              var p = growth.profile || {}; var t = p.total || 0;
+              if (!t) return '<p class="text-xs text-gray-500">No attendees yet.</p>';
+              return [['Has an organisation', t - (p.no_company || 0)],
+                      ['Has a designation', t - (p.no_title || 0)],
+                      ['Has a city', t - (p.no_city || 0)],
+                      ['Has a mobile', t - (p.no_mobile || 0)],
+                      ['Has a photo', t - (p.no_photo || 0)]]
+                .map(function (r) { return barRow(r[0], r[1], t, '#1A237E'); }).join('');
+            })()}
+          </div>
+        </div>
+        \` : '<div class="glass rounded-xl p-4 mb-6 text-xs text-amber-300"><i class="fas fa-circle-info mr-1.5"></i>Growth, funnel and source breakdowns could not be loaded. The panels below still work.</div>'}
+
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
           <div class="glass rounded-xl p-5"><h3 class="font-semibold text-sm mb-3"><i class="fas fa-id-badge text-accent-400 mr-2"></i>Attendees by Badge</h3><div class="chart-container"><canvas id="chart-badges"></canvas></div></div>
           <div class="glass rounded-xl p-5"><h3 class="font-semibold text-sm mb-3"><i class="fas fa-calendar text-primary-400 mr-2"></i>Sessions by Type</h3><div class="chart-container"><canvas id="chart-session-types"></canvas></div></div>
@@ -17996,7 +19118,7 @@ function adminPageHTML(): string {
             <div class="space-y-2">\${analytics.topNominees.map((n,i) => \`
               <div class="flex items-center gap-3 p-2 rounded-lg glass-light">
                 <span class="w-6 text-center text-xs font-bold \${i<3?'text-amber-400':'text-gray-500'}">#\${i+1}</span>
-                <div class="flex-1"><span class="text-sm font-medium">\${n.name}</span><span class="text-xs text-gray-500 ml-2">\${n.category_name}</span></div>
+                <div class="flex-1"><span class="text-sm font-medium">\${escH(n.name)}</span><span class="text-xs text-gray-500 ml-2">\${escH(n.category_name)}</span></div>
                 \${n.is_winner ? '<i class="fas fa-crown text-amber-400 text-xs"></i>' : ''}
               </div>
             \`).join('')}</div>
@@ -18015,6 +19137,11 @@ function adminPageHTML(): string {
         renderChart('chart-connections','doughnut', analytics.connectionsByStatus.map(r=>r.status), analytics.connectionsByStatus.map(r=>r.count), ['#22c55e','#fbbf24','#ef4444']);
         renderChart('chart-meetings','doughnut', analytics.meetingsByStatus.map(r=>r.status), analytics.meetingsByStatus.map(r=>r.count), ['#22c55e','#fbbf24','#ef4444','#64748b']);
         renderChart('chart-exhibitor-cats','bar', analytics.exhibitorsByCategory.map(r=>r.category), analytics.exhibitorsByCategory.map(r=>r.count), ['#FF6B00']);
+        if (growth && (growth.daily || []).length) {
+          renderChart('chart-growth', 'bar',
+            growth.daily.map(function (d) { return d.day; }),
+            growth.daily.map(function (d) { return d.count; }), ['#FF6B00']);
+        }
       }, 100);
     }
 
@@ -18123,6 +19250,28 @@ function adminPageHTML(): string {
             <div id="email-status-panel" class="space-y-3"></div>
           </div>
 
+          <!-- Who changed what -->
+          <div class="glass rounded-2xl p-6">
+            <div class="flex items-center gap-3 mb-4">
+              <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-slate-500 to-slate-700 flex items-center justify-center">
+                <i class="fas fa-clipboard-list text-white"></i>
+              </div>
+              <div class="flex-1">
+                <h3 class="font-bold text-lg">Audit log</h3>
+                <p class="text-xs text-gray-400">Every change made through this panel, newest first</p>
+              </div>
+              <button onclick="loadAuditLog()" class="px-3 py-1.5 rounded-lg text-xs glass hover:bg-white/10"><i class="fas fa-rotate-right mr-1"></i>Refresh</button>
+            </div>
+            <div class="flex flex-wrap items-center gap-2 mb-3 p-3 rounded-xl bg-amber-500/5 border border-amber-500/15">
+              <i class="fas fa-user-pen text-amber-400 text-xs"></i>
+              <span class="text-xs text-gray-300">Recording your changes as
+                <strong class="text-amber-300">\${escH(getOperator()) || 'unnamed operator'}</strong></span>
+              <button onclick="setOperator()" class="px-2.5 py-1 rounded-lg text-[11px] glass hover:bg-white/10">Change</button>
+              <span class="text-[11px] text-gray-500 w-full">One shared password means this name is self-declared. Your IP address is recorded alongside it and is not.</span>
+            </div>
+            <div id="audit-log-body" class="max-h-96 overflow-y-auto"></div>
+          </div>
+
           <!-- How It Works -->
           <div class="glass rounded-2xl p-6">
             <div class="flex items-center gap-3 mb-4">
@@ -18172,6 +19321,8 @@ function adminPageHTML(): string {
         statusPanel.innerHTML = '<div class="flex items-center gap-3 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20"><i class="fas fa-exclamation-triangle text-amber-400 text-lg"></i><div><p class="text-sm font-medium text-amber-300">No Email Service Configured</p><p class="text-xs text-gray-400">Clicking "Notify" will open your default email client (mailto) with a pre-filled email. Configure Elastic Email above for automatic sending.</p></div></div>';
       }
 
+      loadAuditLog();
+
       // Attach form handler
       document.getElementById('settings-email-form').addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -18197,6 +19348,46 @@ function adminPageHTML(): string {
       });
     }
 
+    async function loadAuditLog() {
+      var el = document.getElementById('audit-log-body');
+      if (!el) return;
+      el.innerHTML = '<p class="text-xs text-gray-500 py-3"><i class="fas fa-spinner fa-spin mr-1.5"></i>Loading...</p>';
+      var data;
+      try { data = await api.get('/api/admin/audit?limit=150'); }
+      catch (e) {
+        if (e && e.message === 'unauthorized') return;
+        el.innerHTML = '<p class="text-xs text-red-400 py-3">Could not load the audit log: ' + escH(e.message || '') + '</p>';
+        return;
+      }
+      if (data && data.unavailable) {
+        el.innerHTML = '<p class="text-xs text-amber-300 py-3"><i class="fas fa-circle-info mr-1.5"></i>' +
+          'The audit table is not in the database yet. Apply migration 0027 to start recording changes.</p>';
+        return;
+      }
+      var rows = (data && data.entries) || [];
+      if (!rows.length) {
+        el.innerHTML = '<p class="text-xs text-gray-500 py-3">Nothing recorded yet. Changes made from here on will appear.</p>';
+        return;
+      }
+      var TONE = {
+        'attendees.bulk-delete': 'text-red-300',
+        'attendee.delete': 'text-red-300',
+        'inquiry.reply': 'text-emerald-300',
+        'announcement.broadcast': 'text-amber-300',
+      };
+      el.innerHTML = rows.map(function (e) {
+        var tone = TONE[e.action] || 'text-gray-200';
+        return '<div class="py-2 border-b border-white/5 last:border-0">' +
+          '<div class="flex items-baseline justify-between gap-3 flex-wrap">' +
+            '<span class="text-xs font-medium ' + tone + '">' + escH(e.action) + '</span>' +
+            '<span class="text-[10px] text-gray-500">' + fmtIst(e.created_at) + '</span></div>' +
+          '<div class="text-[11px] text-gray-500 mt-0.5">' +
+            escH(e.actor) + (e.entity ? ' \u00b7 ' + escH(e.entity) + (e.entity_id ? ' #' + escH(String(e.entity_id).slice(0, 60)) : '') : '') +
+            (e.ip ? ' \u00b7 ' + escH(e.ip) : '') + '</div>' +
+          (e.detail ? '<div class="text-[10px] text-gray-600 mt-0.5 truncate" title="' + escH(e.detail) + '">' + escH(String(e.detail).slice(0, 160)) + '</div>' : '') +
+        '</div>';
+      }).join('');
+    }
     function toggleApiKeyVisibility() {
       const inp = document.getElementById('set-elastic-key');
       const icon = document.getElementById('key-eye-icon');
