@@ -390,6 +390,123 @@ async function sendRegistrationEmail(c: any, attendee: any) {
   } catch { /* registration already succeeded; a failed email must not surface */ }
 }
 
+// ==================== CAMPUS SERIES — PANEL CONFIRMATION ====================
+//
+// A registration tagged campus:<slug> came from a "Register to Attend This Panel"
+// form on a campus page. The page promises the joining details by email; until now
+// what arrived was the November conference welcome — WTC boardroom rates and all —
+// which is the wrong email for someone who just said they are coming to a panel on
+// their own campus in three weeks.
+//
+// Keyed by the slug in the tag. An unknown slug falls back to the ordinary welcome,
+// so a tag written before its panel is listed here is never silently swallowed.
+type CampusPanel = {
+  title: string; host: string; hostShort: string
+  dateLabel: string; timeLabel: string; venue: string
+  pageUrl: string
+}
+const CAMPUS_PANELS: Record<string, CampusPanel> = {
+  'djsanghvi-21sep': {
+    title: 'AI and Employability — Opportunities, Challenges and the Future of Work',
+    host: 'Dwarkadas J. Sanghvi College of Engineering', hostShort: 'DJ Sanghvi',
+    dateLabel: 'Monday, 21 September 2026', timeLabel: '11:00 AM – 12:30 PM IST',
+    venue: 'On campus, Vile Parle (West), Mumbai',
+    pageUrl: 'https://bharataiinnovation.com/campus-djsanghvi',
+  },
+  'jnu-30sep': {
+    title: 'AI and Employability — Opportunities, Challenges and the Future of Work',
+    host: 'Jawaharlal Nehru University', hostShort: 'JNU',
+    dateLabel: 'Wednesday, 30 September 2026', timeLabel: '3:00 PM – 4:30 PM IST',
+    venue: 'On campus, New Delhi',
+    pageUrl: 'https://bharataiinnovation.com/campus-jnu',
+  },
+}
+function campusPanelFor(source: unknown): CampusPanel | undefined {
+  const s = String(source ?? '')
+  return s.startsWith('campus:') ? CAMPUS_PANELS[s.slice('campus:'.length)] : undefined
+}
+
+// SQL fragment that keeps campus-panel registrants out of conference-wide sends.
+// They came to a free session on their own campus; the delegate upsell, the RSVP
+// chase and the thank-you-for-attending are all addressed to somebody else.
+const NOT_CAMPUS_SQL = "(registration_source IS NULL OR registration_source NOT LIKE 'campus:%')"
+
+async function sendPanelConfirmationEmail(c: any, attendee: any, panel: CampusPanel) {
+  const g = async (k: string) => ((await c.env.DB.prepare('SELECT value FROM app_settings WHERE key = ?').bind(k).first()) as any)?.value
+  const apiKey = await g('elastic_email_api_key')
+  if (!apiKey || !attendee?.email) return
+  const fromEmail = senderEmailOrDefault(await g('sender_email'))
+  const fromName = (await g('sender_name')) || 'Bharat AI Innovation'
+  const appUrl = (await g('app_url')) || 'https://bharataiinnovation.com/app'
+  const esc = (v: any) => String(v ?? '').replace(/[&<>]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch] as string))
+  const firstName = esc(String(attendee.name || '').trim().split(/\s+/)[0] || 'there')
+
+  const row = (label: string, value: string) =>
+    `<tr><td valign="top" style="padding:0 14px 10px 0;font-size:12px;color:#888;white-space:nowrap;">${label}</td>` +
+    `<td valign="top" style="padding:0 0 10px;font-size:14px;color:#1E2140;font-weight:bold;">${value}</td></tr>`
+
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#f5f5f5;font-family:Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;padding:28px 12px;"><tr><td align="center">
+    <table width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#fff;border-radius:14px;overflow:hidden;">
+      <tr><td style="background:#0D0F1E;padding:22px 28px;">
+        <p style="margin:0;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:#FF9A40;font-weight:bold;">Bharat AI Innovation &middot; Campus Series</p>
+        <p style="margin:6px 0 0;font-size:20px;color:#fff;font-weight:bold;">You are registered, ${firstName}.</p>
+      </td></tr>
+      <tr><td style="padding:26px 28px 8px;">
+        <p style="margin:0 0 18px;font-size:14px;line-height:1.65;color:#444;">
+          Your place at the pre-event panel discussion at <strong>${esc(panel.host)}</strong> is confirmed.
+          Here are the details you need.
+        </p>
+        <table cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+          ${row('Panel', esc(panel.title))}
+          ${row('Date', esc(panel.dateLabel))}
+          ${row('Time', esc(panel.timeLabel))}
+          ${row('Venue', esc(panel.venue))}
+          ${row('Entry', 'Free')}
+        </table>
+      </td></tr>
+      <tr><td style="padding:8px 28px 22px;">
+        <div style="background:#FFF7F0;border:1px solid #FFD9BC;border-radius:10px;padding:14px 16px;">
+          <p style="margin:0 0 6px;font-size:13px;font-weight:bold;color:#1E2140;">On the day</p>
+          <p style="margin:0;font-size:13px;line-height:1.65;color:#555;">
+            Please arrive 15 minutes early. Seating is allocated by ${esc(panel.hostShort)}, so this confirmation
+            tells them to expect you rather than reserving a numbered seat &mdash; if you can no longer make it,
+            reply to this email and we will free the place.
+          </p>
+        </div>
+      </td></tr>
+      <tr><td style="padding:0 28px 26px;border-top:1px solid #eee;">
+        <p style="margin:20px 0 6px;font-size:14px;font-weight:bold;color:#1E2140;">You also hold a free Visitor Pass for the main conference</p>
+        <p style="margin:0 0 14px;font-size:13px;line-height:1.65;color:#555;">
+          Bharat AI Innovation 2026 is at the World Trade Center Mumbai on 20&ndash;21 November. The details you
+          just gave us are your registration &mdash; nothing more to fill in. Your pass and the schedule are in the app.
+        </p>
+        <a href="${appUrl}" style="display:inline-block;padding:10px 22px;background:#FF6B00;color:#fff;text-decoration:none;border-radius:8px;font-size:13px;font-weight:bold;">Open the app</a>
+        <a href="${panel.pageUrl}" style="display:inline-block;margin-left:10px;padding:10px 22px;border:1px solid #ccc;color:#1E2140;text-decoration:none;border-radius:8px;font-size:13px;font-weight:bold;">Panel page</a>
+      </td></tr>
+      <tr><td style="background:#fafafa;padding:14px 28px;font-size:11px;color:#999;line-height:1.6;">
+        Bharat AI Innovation &middot; Organised by Aegis Knowledge Trust &middot; info@bharataiinnovation.com
+      </td></tr>
+    </table>
+  </td></tr></table></body></html>`
+
+  try {
+    await fetch('https://api.elasticemail.com/v4/emails/transactional', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-ElasticEmail-ApiKey': apiKey },
+      body: JSON.stringify({
+        Recipients: { To: [attendee.email] },
+        Content: {
+          Body: [{ ContentType: 'HTML', Charset: 'utf-8', Content: html }],
+          From: `${fromName} <${fromEmail}>`,
+          Subject: `You are registered: AI and Employability at ${panel.hostShort}, ${panel.dateLabel.replace(/^[A-Za-z]+, /, '')}`
+        },
+        Options: { TrackClicks: false, TrackOpens: false }
+      })
+    })
+  } catch { /* registration already succeeded; a failed email must not surface */ }
+}
+
 // Counted from the table at send time, cached briefly because a confirmation email
 // should not run an aggregate over every attendee on every registration. Returns
 // nothing at all rather than a small number: "12 people are registered" argues
@@ -487,6 +604,8 @@ app.get('/api/admin/analytics/audience', async (c) => {
   const industries = tally(r => norm(r.industry) || 'Not collected').filter(x => x.label !== 'Not collected')
   const companies = tally(r => norm(r.company)).filter(x => x.label).slice(0, 12)
   const cities = tally(r => norm(r.city)).filter(x => x.label).slice(0, 10)
+  const sources = tally(r => sourceLabel(r.registration_source))
+  const campusTotal = rows.filter((r: any) => String(r.registration_source || '').startsWith('campus:')).length
 
   return c.json({
     total: rows.length,
@@ -494,6 +613,8 @@ app.get('/api/admin/analytics/audience', async (c) => {
     industries,
     companies,
     cities,
+    sources,
+    campus_total: campusTotal,
     // Coverage is reported alongside the numbers: a sponsor deck built on a field
     // that is 40% blank should say so rather than quietly under-count.
     coverage: {
@@ -1994,9 +2115,14 @@ app.post('/api/events/:id/attendees/register', async (c) => {
     const attendee = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(result.meta.last_row_id).first()
     await issueAttendeeSession(c, (attendee as any).id)
 
+    // A campus-panel registrant gets the panel's joining details; everyone else gets
+    // the conference welcome exactly as before. An unknown campus slug also falls
+    // back to the welcome rather than sending nothing.
+    //
     // c.executionCtx throws when absent rather than being undefined, so this is
     // guarded rather than optional-chained.
-    const welcome = sendRegistrationEmail(c, attendee)
+    const panel = campusPanelFor((attendee as any).registration_source)
+    const welcome = panel ? sendPanelConfirmationEmail(c, attendee, panel) : sendRegistrationEmail(c, attendee)
     let scheduled = false
     try { c.executionCtx.waitUntil(welcome); scheduled = true } catch { /* no ctx */ }
     if (!scheduled) await welcome
@@ -3697,7 +3823,7 @@ app.post('/api/admin/attendees/:id/notify', async (c) => {
 app.post('/api/admin/attendees/notify-all', async (c) => {
   const { event_id } = await c.req.json()
   const { results: unnotified } = await c.env.DB.prepare(
-    'SELECT id, name, email FROM attendees WHERE event_id = ? AND notified_at IS NULL AND email IS NOT NULL AND email != ""'
+    `SELECT id, name, email FROM attendees WHERE event_id = ? AND notified_at IS NULL AND email IS NOT NULL AND email != "" AND ${NOT_CAMPUS_SQL}`
   ).bind(event_id).all()
   return c.json({ attendees: unnotified, count: unnotified.length })
 })
@@ -3706,7 +3832,7 @@ app.post('/api/admin/attendees/notify-all', async (c) => {
 app.post('/api/admin/attendees/resend-non-responders', async (c) => {
   const { event_id } = await c.req.json()
   const { results: nonResponders } = await c.env.DB.prepare(
-    'SELECT id, name, email FROM attendees WHERE event_id = ? AND notified_at IS NOT NULL AND (rsvp_status IS NULL) AND email IS NOT NULL AND email != ""'
+    `SELECT id, name, email FROM attendees WHERE event_id = ? AND notified_at IS NOT NULL AND (rsvp_status IS NULL) AND email IS NOT NULL AND email != "" AND ${NOT_CAMPUS_SQL}`
   ).bind(event_id).all()
   return c.json({ attendees: nonResponders, count: nonResponders.length })
 })
@@ -3715,7 +3841,7 @@ app.post('/api/admin/attendees/resend-non-responders', async (c) => {
 app.post('/api/admin/attendees/thankyou-list', async (c) => {
   const { event_id } = await c.req.json()
   const { results: attendees } = await c.env.DB.prepare(
-    'SELECT id, name, email FROM attendees WHERE event_id = ? AND email IS NOT NULL AND email != ""'
+    `SELECT id, name, email FROM attendees WHERE event_id = ? AND email IS NOT NULL AND email != "" AND ${NOT_CAMPUS_SQL}`
   ).bind(event_id).all()
   return c.json({ attendees, count: attendees.length })
 })
@@ -3974,10 +4100,11 @@ function sendWindowState(now: Date = new Date()) {
 // Campus-panel registrants are excluded. Someone who signed up for a September panel
 // on a college campus has not asked for a November conference pass, and "your pass
 // still needs a photo" would be the first they heard of one. Same predicate the other
-// campaigns use for the same reason, written out here so this can ship on its own.
+// campaigns use, via NOT_CAMPUS_SQL, so every campaign agrees by construction on who a
+// campus registrant is.
 const NEEDS_REMINDER_SQL = `
   event_id = ? AND email IS NOT NULL AND email != '' AND profile_reminder_sent_at IS NULL
-  AND (registration_source IS NULL OR registration_source NOT LIKE 'campus:%')
+  AND ${NOT_CAMPUS_SQL}
   AND ( COALESCE(TRIM(avatar_url),'') = ''
      OR COALESCE(TRIM(city),'') = ''
      OR COALESCE(TRIM(industry),'') = ''
@@ -14150,6 +14277,9 @@ function adminPageHTML(): string {
         };
         bars(a.companies, 'top-orgs');
         bars(a.cities, 'top-cities');
+        bars(a.sources || [], 'top-sources');
+        var ssum = document.getElementById('source-summary');
+        if (ssum) ssum.textContent = (a.campus_total || 0) + ' of ' + a.total + ' via campus panels';
       } catch (e) {
         var el = document.getElementById('top-orgs');
         if (el) el.innerHTML = '<p class="text-red-400 text-sm">Could not load the audience profile: ' + e.message + '</p>';
@@ -14565,6 +14695,17 @@ function adminPageHTML(): string {
           <div class="glass rounded-xl p-5">
             <h3 class="font-semibold mb-3 text-sm"><i class="fas fa-location-dot text-accent-400 mr-2"></i>Top cities</h3>
             <div id="top-cities" class="text-sm"></div>
+          </div>
+        </div>
+
+        <!-- Where registrations came from: the per-panel count a host or a sponsor asks for -->
+        <div class="grid grid-cols-1 gap-6 mb-6">
+          <div class="glass rounded-xl p-5">
+            <div class="flex items-baseline justify-between mb-3">
+              <h3 class="font-semibold text-sm"><i class="fas fa-graduation-cap text-primary-400 mr-2"></i>Registration source</h3>
+              <span class="text-[10px] text-gray-500" id="source-summary"></span>
+            </div>
+            <div id="top-sources" class="text-sm"></div>
           </div>
         </div>
 
