@@ -40,8 +40,9 @@ app.use('/api/*', cors())
 // Never throws: an audit write must not be able to fail the action it records.
 async function audit(c: any, action: string, entity?: string, entityId?: any, detail?: any) {
   try {
-    const actor = (c.req.header('X-Admin-Actor') || '').slice(0, 80) || 'unnamed operator'
-    const kind = c.req.header('X-Admin-Actor-Kind') || 'admin'
+    const who = adminActor(c)
+    const actor = who.actor
+    const kind = who.kind
     await c.env.DB.prepare(
       'INSERT INTO admin_audit (actor, actor_kind, action, entity, entity_id, detail, ip, user_agent) VALUES (?,?,?,?,?,?,?,?)'
     ).bind(
@@ -85,16 +86,31 @@ async function sendAdminEmail(c: any, to: string, subject: string, html: string)
   }
 }
 
+// Resolve a staff session once per request. verifyStaffSession returns null
+// immediately when there is no cookie, so an ordinary visitor costs no query.
+app.use('*', async (c, next) => {
+  try {
+    const me = await verifyStaffSession(c)
+    if (me && me.role === 'admin') staffAdminByRequest.set(c.req.raw, me)
+  } catch { /* never let session resolution break the request */ }
+  await next()
+})
+
 app.use('/api/admin/*', async (c, next) => {
-  const expected = c.env.ADMIN_SECRET || ''
-  if (!expected) {
-    return c.json({ error: 'admin access is not configured' }, 503)
-  }
-  const header = c.req.header('Authorization') || ''
-  const bearer = header.startsWith('Bearer ') ? header.slice(7) : ''
-  const token = bearer || c.req.query('token') || ''
-  if (token !== expected) {
-    return c.json({ error: 'unauthorized' }, 401)
+  // A named admin account is enough on its own, so the panel still works if
+  // ADMIN_SECRET is ever unset. Otherwise the shared secret must match.
+  const viaAccount = (() => { try { return !!staffAdminByRequest.get(c.req.raw) } catch { return false } })()
+  if (!viaAccount) {
+    const expected = c.env.ADMIN_SECRET || ''
+    if (!expected) {
+      return c.json({ error: 'admin access is not configured' }, 503)
+    }
+    const header = c.req.header('Authorization') || ''
+    const bearer = header.startsWith('Bearer ') ? header.slice(7) : ''
+    const token = bearer || c.req.query('token') || ''
+    if (token !== expected) {
+      return c.json({ error: 'unauthorized' }, 401)
+    }
   }
   await next()
 })
@@ -103,6 +119,21 @@ app.use('/api/admin/*', async (c, next) => {
 // password server-side. Protected by the middleware above, so a 200 means
 // the secret is correct; a 401 means it isn't. Returns no data.
 app.get('/api/admin/verify', (c) => c.json({ ok: true }))
+
+// Lets the panel say who it thinks you are, and whether that is an authenticated
+// account or just the shared password plus a typed-in name.
+app.get('/api/admin/whoami', (c) => {
+  let account: any = null
+  try { account = staffAdminByRequest.get(c.req.raw) || null } catch { account = null }
+  const who = adminActor(c)
+  return c.json({
+    actor: who.actor,
+    kind: who.kind,
+    authenticated: !!account,
+    username: account ? account.username : null,
+    name: account ? account.name : null,
+  })
+})
 
 // Who did what, newest first. Optionally narrowed to one record.
 app.get('/api/admin/audit', async (c) => {
@@ -216,13 +247,30 @@ app.get('/api/events/:id/sessions/rooms', async (c) => {
 const ONLINE_WINDOW_MINUTES = 15
 const ATTENDEE_PUBLIC_COLS = `id, event_id, name, company, job_title, bio, avatar_url, interests, linkedin_url, twitter_url, website_url, role, badge_type, CASE WHEN last_login_at > datetime('now', '-${ONLINE_WINDOW_MINUTES} minutes') THEN 1 ELSE 0 END AS is_online, last_seen, industry, city, country, created_at`
 
+// Resolved once per request by the middleware below. A WeakMap rather than
+// c.set() so the existing synchronous call sites need no changes.
+const staffAdminByRequest = new WeakMap<Request, any>()
+
 function isAdminRequest(c: any): boolean {
   const expected = c.env.ADMIN_SECRET || ''
   if (!expected) return false
   const header = c.req.header('Authorization') || ''
   const bearer = header.startsWith('Bearer ') ? header.slice(7) : ''
   const token = bearer || c.req.query('token') || ''
-  return token === expected
+  if (expected && token === expected) return true
+  // A signed staff session whose role is 'admin' is equally an admin request.
+  try { return !!staffAdminByRequest.get(c.req.raw) } catch { return false }
+}
+
+// Who is acting, for the audit log. A named account is authenticated and says so;
+// the shared password can only offer the name the operator typed into the panel.
+function adminActor(c: any): { actor: string; kind: string } {
+  try {
+    const me = staffAdminByRequest.get(c.req.raw)
+    if (me) return { actor: me.name || me.username, kind: 'account' }
+  } catch { /* fall through to the self-declared name */ }
+  const claimed = (c.req.header('X-Admin-Actor') || '').slice(0, 80)
+  return { actor: claimed || 'unnamed operator', kind: 'shared-password' }
 }
 
 // app_settings.sender_email still holds delegates@bharataiinnovation.com, an address
@@ -1264,7 +1312,7 @@ app.post('/api/admin/staff', async (c) => {
   const { name, username, password, role, email } = await c.req.json().catch(() => ({})) as any
   if (!name || !username || !password) return c.json({ error: 'name, username and password required' }, 400)
   if (String(password).length < 8) return c.json({ error: 'Password must be at least 8 characters' }, 400)
-  const roleValue = role === 'finance' ? 'finance' : 'desk'
+  const roleValue = role === 'finance' ? 'finance' : role === 'admin' ? 'admin' : 'desk'
   const withRole = await staffRolesEnabled(c)
   try {
     const r = withRole
@@ -5184,6 +5232,253 @@ app.get('/api/admin/events/:id/session-conflicts', async (c) => {
     }
   }
   return c.json({ roomConflicts: room, speakerConflicts: speaker, checked: list.length })
+})
+
+
+// ==================== BULK EMAIL CAMPAIGNS ====================
+// Every bulk send used to be a for-loop in the operator's browser tab. Closing
+// the tab stopped it with no record of where it had reached, and starting again
+// re-sent to everyone already contacted.
+//
+// The state lives in the database now. A campaign is a list of recipient rows,
+// each with its own status, plus a counter. The browser still drives the pump -
+// Cloudflare Pages has no cron trigger, so nothing here can wake itself up - but
+// closing the tab now only pauses the run. Any tab can resume it, and because a
+// recipient row moves from pending to sent inside the same request that sends
+// the mail, a resume cannot send to the same person twice.
+
+// Sends one message by dispatching to the endpoint that already knows how to
+// build it, rather than duplicating a hundred and seventy lines of email HTML in
+// a second place where the two could drift apart. The caller's credentials are
+// forwarded so the subrequest passes the same admin guard.
+async function campaignSendOne(c: any, kind: string, refId: any, r: any):
+    Promise<{ ok: boolean; error?: string }> {
+  const path = kind === 'thankyou' ? `/api/admin/attendees/${r.attendee_id}/send-thankyou`
+    : kind === 'announcement' ? `/api/admin/announcements/${refId}/email/${r.attendee_id}`
+    : `/api/admin/attendees/${r.attendee_id}/notify`
+  try {
+    const url = new URL(c.req.url)
+    url.pathname = path
+    url.search = ''
+    const res = await app.fetch(new Request(url.toString(), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: c.req.header('Authorization') || '',
+        Cookie: c.req.header('Cookie') || '',
+      },
+      body: '{}',
+    }), c.env, (c as any).executionCtx)
+    const body = await res.json().catch(() => ({})) as any
+    if (!res.ok || body?.error) return { ok: false, error: String(body?.error || 'HTTP ' + res.status).slice(0, 300) }
+    // The notify endpoint falls back to returning mailto data when email is not
+    // configured. That is a success for a human clicking one button and a
+    // failure for a campaign: nothing was actually sent.
+    if (body?.method === 'mailto') return { ok: false, error: 'Email is not configured, so nothing was sent.' }
+    return { ok: true }
+  } catch (e: any) {
+    return { ok: false, error: String(e?.message || 'send failed').slice(0, 300) }
+  }
+}
+
+// Build the recipient list for a campaign. Everyone here has an address; the
+// audience decides who among them is in scope.
+async function campaignAudienceRows(c: any, kind: string, audience: string): Promise<any[]> {
+  const eventId = 1
+  let where = "email IS NOT NULL AND TRIM(email) != ''"
+  if (kind === 'notify' && audience === 'un-notified') where += ' AND notified_at IS NULL'
+  else if (audience === 'non-responders') where += " AND notified_at IS NOT NULL AND (rsvp_status IS NULL OR rsvp_status = '')"
+  else if (audience === 'confirmed') where += " AND rsvp_status = 'confirmed'"
+  else if (audience === 'checked_in') where += ' AND checked_in_at IS NOT NULL'
+  const { results } = await c.env.DB.prepare(
+    `SELECT id, name, email FROM attendees WHERE event_id = ? AND ${where} ORDER BY id`
+  ).bind(eventId).all()
+  return (results as any[]) || []
+}
+
+// Start a campaign. Returns it with its recipient count; nothing is sent yet.
+app.post('/api/admin/campaigns', async (c) => {
+  const body = await c.req.json().catch(() => ({})) as any
+  const kind = ['notify', 'thankyou', 'announcement'].includes(body.kind) ? body.kind : ''
+  if (!kind) return c.json({ error: 'Unknown campaign type.' }, 400)
+  const audience = String(body.audience || 'all')
+  const refId = body.ref_id ? parseInt(String(body.ref_id), 10) : null
+  if (kind === 'announcement' && !refId) return c.json({ error: 'An announcement campaign needs the announcement id.' }, 400)
+
+  // Explicit ids win over an audience query, so the Attendees tab can turn a
+  // filtered selection into a campaign.
+  let rows: any[]
+  if (Array.isArray(body.ids) && body.ids.length) {
+    const ids = body.ids.map((v: any) => parseInt(String(v), 10)).filter((n: number) => Number.isFinite(n)).slice(0, 5000)
+    if (!ids.length) return c.json({ error: 'No valid attendee ids.' }, 400)
+    const placeholders = ids.map(() => '?').join(',')
+    const { results } = await c.env.DB.prepare(
+      `SELECT id, name, email FROM attendees WHERE id IN (${placeholders}) AND email IS NOT NULL AND TRIM(email) != '' ORDER BY id`
+    ).bind(...ids).all()
+    rows = (results as any[]) || []
+  } else {
+    rows = await campaignAudienceRows(c, kind, audience)
+  }
+  if (!rows.length) return c.json({ error: 'Nobody matches that audience.' }, 400)
+
+  const who = adminActor(c)
+  const title = String(body.title || (kind === 'notify' ? 'Account-ready email'
+    : kind === 'thankyou' ? 'Post-event thank you' : 'Announcement')).slice(0, 160)
+  const ins = await c.env.DB.prepare(
+    'INSERT INTO campaigns (kind, title, ref_id, audience, status, total, created_by) VALUES (?,?,?,?,?,?,?)'
+  ).bind(kind, title, refId, audience, 'running', rows.length, who.actor).run()
+  const campaignId = ins.meta.last_row_id
+
+  // Batched inserts: one statement per recipient would be a thousand round trips.
+  for (let i = 0; i < rows.length; i += 50) {
+    const chunk = rows.slice(i, i + 50)
+    const values = chunk.map(() => '(?,?,?,?)').join(',')
+    const binds: any[] = []
+    chunk.forEach((r) => binds.push(campaignId, r.id, r.email, r.name || ''))
+    await c.env.DB.prepare(
+      `INSERT INTO campaign_recipients (campaign_id, attendee_id, email, name) VALUES ${values}`
+    ).bind(...binds).run()
+  }
+  await audit(c, 'campaign.start', 'campaign', campaignId, { kind, audience, total: rows.length, title })
+  return c.json({ id: campaignId, kind, title, total: rows.length, sent: 0, failed: 0, status: 'running' }, 201)
+})
+
+// Send the next few. Called repeatedly by whichever tab is driving; safe to call
+// from two tabs at once, because a recipient is claimed before it is sent.
+app.post('/api/admin/campaigns/:id/pump', async (c) => {
+  const id = c.req.param('id')
+  const body = await c.req.json().catch(() => ({})) as any
+  const batch = Math.min(25, Math.max(1, parseInt(String(body.batch || 8), 10) || 8))
+  const camp = await c.env.DB.prepare('SELECT * FROM campaigns WHERE id = ?').bind(id).first() as any
+  if (!camp) return c.json({ error: 'Campaign not found' }, 404)
+  if (camp.status === 'paused') return c.json({ paused: true, ...campaignProgress(camp) })
+
+  const { results } = await c.env.DB.prepare(
+    "SELECT * FROM campaign_recipients WHERE campaign_id = ? AND status = 'pending' ORDER BY id LIMIT ?"
+  ).bind(id, batch).all()
+  const pending = (results as any[]) || []
+
+  if (!pending.length) {
+    await c.env.DB.prepare(
+      "UPDATE campaigns SET status = 'done', finished_at = COALESCE(finished_at, datetime('now')), updated_at = datetime('now') WHERE id = ?"
+    ).bind(id).run()
+    const done = await c.env.DB.prepare('SELECT * FROM campaigns WHERE id = ?').bind(id).first() as any
+    return c.json({ finished: true, ...campaignProgress(done) })
+  }
+
+  let sent = 0, failed = 0
+  const recent: any[] = []
+  for (const r of pending) {
+    // Claim first: if this request dies mid-flight the row is not left pending
+    // for another tab to send again.
+    const claim = await c.env.DB.prepare(
+      "UPDATE campaign_recipients SET status = 'sending' WHERE id = ? AND status = 'pending'"
+    ).bind(r.id).run()
+    if (!claim.meta.changes) continue
+    const out = await campaignSendOne(c, camp.kind, camp.ref_id, r)
+    if (out.ok) {
+      sent++
+      await c.env.DB.prepare(
+        "UPDATE campaign_recipients SET status = 'sent', sent_at = datetime('now'), error = NULL WHERE id = ?"
+      ).bind(r.id).run()
+    } else {
+      failed++
+      await c.env.DB.prepare(
+        "UPDATE campaign_recipients SET status = 'failed', error = ? WHERE id = ?"
+      ).bind(out.error || 'unknown', r.id).run()
+    }
+    recent.push({ email: r.email, ok: out.ok, error: out.error || null })
+  }
+  await c.env.DB.prepare(
+    "UPDATE campaigns SET sent = sent + ?, failed = failed + ?, updated_at = datetime('now') WHERE id = ?"
+  ).bind(sent, failed, id).run()
+
+  const after = await c.env.DB.prepare('SELECT * FROM campaigns WHERE id = ?').bind(id).first() as any
+  const left = await c.env.DB.prepare(
+    "SELECT COUNT(*) AS n FROM campaign_recipients WHERE campaign_id = ? AND status IN ('pending','sending')"
+  ).bind(id).first() as any
+  if (!(left?.n || 0)) {
+    await c.env.DB.prepare(
+      "UPDATE campaigns SET status = 'done', finished_at = COALESCE(finished_at, datetime('now')) WHERE id = ?"
+    ).bind(id).run()
+    after.status = 'done'
+  }
+  return c.json({ ...campaignProgress(after), remaining: left?.n || 0, recent })
+})
+
+function campaignProgress(camp: any) {
+  return {
+    id: camp.id, kind: camp.kind, title: camp.title, status: camp.status,
+    total: camp.total, sent: camp.sent, failed: camp.failed,
+    created_by: camp.created_by, created_at: camp.created_at, finished_at: camp.finished_at,
+  }
+}
+
+// What is running, and what ran. This is the record that did not exist before:
+// a campaign interrupted by a closed tab is visible here rather than lost.
+app.get('/api/admin/campaigns', async (c) => {
+  try {
+    const { results } = await c.env.DB.prepare(
+      'SELECT * FROM campaigns ORDER BY id DESC LIMIT 25'
+    ).all()
+    return c.json({ campaigns: ((results as any[]) || []).map(campaignProgress) })
+  } catch (e: any) {
+    if (/no such table/i.test(String(e?.message || ''))) return c.json({ campaigns: [], unavailable: true })
+    throw e
+  }
+})
+
+// The addresses that failed, so they can be corrected and retried.
+app.get('/api/admin/campaigns/:id/failures', async (c) => {
+  const { results } = await c.env.DB.prepare(
+    "SELECT attendee_id, name, email, error FROM campaign_recipients WHERE campaign_id = ? AND status = 'failed' ORDER BY id LIMIT 500"
+  ).bind(c.req.param('id')).all()
+  return c.json({ failures: results || [] })
+})
+
+app.post('/api/admin/campaigns/:id/pause', async (c) => {
+  const id = c.req.param('id')
+  await c.env.DB.prepare("UPDATE campaigns SET status = 'paused', updated_at = datetime('now') WHERE id = ? AND status = 'running'").bind(id).run()
+  await audit(c, 'campaign.pause', 'campaign', id)
+  return c.json({ success: true })
+})
+
+app.post('/api/admin/campaigns/:id/resume', async (c) => {
+  const id = c.req.param('id')
+  // A row left as 'sending' belonged to a request that never came back - the tab
+  // was closed mid-send. Put those back in the queue.
+  await c.env.DB.prepare("UPDATE campaign_recipients SET status = 'pending' WHERE campaign_id = ? AND status = 'sending'").bind(id).run()
+  await c.env.DB.prepare("UPDATE campaigns SET status = 'running', finished_at = NULL, updated_at = datetime('now') WHERE id = ?").bind(id).run()
+  await audit(c, 'campaign.resume', 'campaign', id)
+  return c.json({ success: true })
+})
+
+// Queue the failures of a finished campaign again, as a fresh campaign.
+app.post('/api/admin/campaigns/:id/retry-failed', async (c) => {
+  const id = c.req.param('id')
+  const camp = await c.env.DB.prepare('SELECT * FROM campaigns WHERE id = ?').bind(id).first() as any
+  if (!camp) return c.json({ error: 'Campaign not found' }, 404)
+  const { results } = await c.env.DB.prepare(
+    "SELECT attendee_id, email, name FROM campaign_recipients WHERE campaign_id = ? AND status = 'failed' ORDER BY id"
+  ).bind(id).all()
+  const rows = (results as any[]) || []
+  if (!rows.length) return c.json({ error: 'Nothing failed on that campaign.' }, 400)
+  const who = adminActor(c)
+  const ins = await c.env.DB.prepare(
+    'INSERT INTO campaigns (kind, title, ref_id, audience, status, total, created_by) VALUES (?,?,?,?,?,?,?)'
+  ).bind(camp.kind, 'Retry: ' + (camp.title || camp.kind), camp.ref_id, 'retry', 'running', rows.length, who.actor).run()
+  const newId = ins.meta.last_row_id
+  for (let i = 0; i < rows.length; i += 50) {
+    const chunk = rows.slice(i, i + 50)
+    const values = chunk.map(() => '(?,?,?,?)').join(',')
+    const binds: any[] = []
+    chunk.forEach((r) => binds.push(newId, r.attendee_id, r.email, r.name || ''))
+    await c.env.DB.prepare(
+      `INSERT INTO campaign_recipients (campaign_id, attendee_id, email, name) VALUES ${values}`
+    ).bind(...binds).run()
+  }
+  await audit(c, 'campaign.retry-failed', 'campaign', newId, { from: id, total: rows.length })
+  return c.json({ id: newId, total: rows.length }, 201)
 })
 
 // Admin: Advanced analytics
@@ -14325,14 +14620,22 @@ function adminPageHTML(): string {
         <p class="text-gray-400 text-sm mt-1">Enter password to continue</p>
       </div>
       <form id="login-form">
+        <div class="relative mb-3">
+          <i class="fas fa-user absolute left-4 top-1/2 -translate-y-1/2 text-gray-500"></i>
+          <input type="text" id="admin-username" placeholder="Username (leave blank for the shared password)" autocapitalize="none" autocomplete="username" class="w-full pl-11 pr-4 py-3 rounded-xl text-sm" autofocus>
+        </div>
         <div class="relative mb-4">
           <i class="fas fa-lock absolute left-4 top-1/2 -translate-y-1/2 text-gray-500"></i>
-          <input type="password" id="admin-password" placeholder="Admin Password" class="w-full pl-11 pr-4 py-3 rounded-xl text-sm" autofocus>
+          <input type="password" id="admin-password" placeholder="Password" autocomplete="current-password" class="w-full pl-11 pr-4 py-3 rounded-xl text-sm">
         </div>
         <button type="submit" class="w-full py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-primary-600 to-primary-700 hover:from-primary-500 hover:to-primary-600 transition-all">
           <i class="fas fa-sign-in-alt mr-2"></i>Enter Dashboard
         </button>
         <p id="login-error" class="text-red-400 text-xs text-center mt-3 hidden">Incorrect password. Please try again.</p>
+        <p class="text-[11px] text-gray-500 text-center mt-3 leading-relaxed">
+          Sign in with your own account so your changes are recorded against your name.
+          The shared password still works: leave the username blank.
+        </p>
       </form>
     </div>
   </div>
@@ -14420,6 +14723,7 @@ function adminPageHTML(): string {
         </div>
       </div>
       <div class="flex items-center gap-3">
+        <span id="admin-identity" class="hidden sm:inline px-3 py-1.5 rounded-lg text-xs font-medium glass text-gray-300"></span>
         <button onclick="refreshCurrentSection()" class="px-3 py-1.5 rounded-lg text-xs font-medium glass hover:bg-white/10 transition"><i class="fas fa-sync-alt mr-1"></i>Refresh</button>
         <button id="live-chip" onclick="toggleAutoRefresh()" title="Auto-refresh Overview and Badge Desk every 60s" class="px-3 py-1.5 rounded-full text-xs font-medium bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:bg-amber-500/30 transition"><i class="fas fa-circle text-[6px] mr-1 badge-pulse"></i>Live</button>
       </div>
@@ -14531,7 +14835,29 @@ function adminPageHTML(): string {
     // identity to attribute a change to. The operator names themselves once and
     // it rides along on every write; the audit log labels it as self-declared and
     // records the IP alongside, which is not.
+    // Filled from /api/admin/whoami once the panel opens.
+    let adminIdentity = null;
     function getOperator() { return localStorage.getItem('tc_admin_operator') || ''; }
+    function identityLabel() {
+      if (adminIdentity && adminIdentity.authenticated) return adminIdentity.name || adminIdentity.username;
+      return getOperator() || 'unnamed operator';
+    }
+    function identityIsAuthenticated() { return !!(adminIdentity && adminIdentity.authenticated); }
+    async function loadIdentity() {
+      try {
+        var w = await api.get('/api/admin/whoami');
+        if (w && !w.error) adminIdentity = w;
+      } catch (_) { adminIdentity = null; }
+      var el = document.getElementById('admin-identity');
+      if (el) {
+        el.innerHTML = identityIsAuthenticated()
+          ? '<i class="fas fa-user-shield text-emerald-400 mr-1.5"></i>' + escH(identityLabel())
+          : '<i class="fas fa-user-pen text-amber-400 mr-1.5"></i>' + escH(identityLabel());
+        el.title = identityIsAuthenticated()
+          ? 'Signed in as a named account. Changes are recorded against this name.'
+          : 'Shared password. The name recorded against your changes is the one you typed.';
+      }
+    }
     function setOperator() {
       var cur = getOperator();
       var who = prompt('Your name, for the audit log.' + NL + NL +
@@ -14583,18 +14909,44 @@ function adminPageHTML(): string {
       const err = document.getElementById('login-error');
       const btn = e.target.querySelector('button[type=submit]');
       const pw = document.getElementById('admin-password').value;
+      const user = (document.getElementById('admin-username').value || '').trim();
       err.classList.add('hidden');
       if (btn) btn.disabled = true;
       try {
+        if (user) {
+          // A named account. The session is a signed cookie, so nothing is kept
+          // in this tab and the audit log gets an authenticated name.
+          const r = await fetch('/api/staff/login', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: user, password: pw }),
+          });
+          const body = await r.json().catch(() => ({}));
+          if (!r.ok) { err.textContent = body.error || 'Incorrect username or password.'; err.classList.remove('hidden'); return; }
+          // The account exists, but it may be a desk or finance login rather than
+          // an admin one. Ask the panel's own guard.
+          const who = await fetch('/api/admin/whoami').then(x => x.ok ? x.json() : null).catch(() => null);
+          if (!who || !who.authenticated) {
+            err.textContent = 'That account cannot open the admin panel.';
+            err.classList.remove('hidden');
+            await fetch('/api/staff/logout', { method: 'POST' }).catch(() => {});
+            return;
+          }
+          sessionStorage.removeItem('tc_admin_token');
+          localStorage.setItem('tc_admin', '1');
+          showDashboard();
+          return;
+        }
         const r = await fetch('/api/admin/verify', { headers: { 'Authorization': 'Bearer ' + pw } });
         if (r.ok) {
           sessionStorage.setItem('tc_admin_token', pw);
           localStorage.setItem('tc_admin', '1');
           showDashboard();
         } else {
+          err.textContent = 'Incorrect password. Please try again.';
           err.classList.remove('hidden');
         }
       } catch (_) {
+        err.textContent = 'Could not reach the server.';
         err.classList.remove('hidden');
       } finally {
         if (btn) btn.disabled = false;
@@ -14613,6 +14965,7 @@ function adminPageHTML(): string {
         sidebar.classList.add('collapsed');
         main.classList.add('sidebar-collapsed');
       }
+      loadIdentity();
       loadOverview();
       startAutoRefresh();
     }
@@ -14650,14 +15003,27 @@ function adminPageHTML(): string {
     function adminLogout() {
       sessionStorage.removeItem('tc_admin_token');
       localStorage.removeItem('tc_admin');
-      location.reload();
+      // Clears the staff cookie too, so signing out of a named account really
+      // signs out rather than leaving the session live for the next visitor.
+      fetch('/api/staff/logout', { method: 'POST' })
+        .catch(() => {})
+        .then(() => location.reload());
     }
 
     // Auto-resume the session only if we still hold the secret. The token is
     // in sessionStorage (cleared when the tab closes), so a fresh tab always
     // re-authenticates — the login form re-verifies it server-side.
-    if (localStorage.getItem('tc_admin') === '1' && getAdminToken()) {
-      showDashboard();
+    // Two ways to already be signed in: the shared secret held in this tab, or a
+    // staff session cookie that this tab cannot see but the server can.
+    if (localStorage.getItem('tc_admin') === '1') {
+      if (getAdminToken()) {
+        showDashboard();
+      } else {
+        fetch('/api/admin/whoami')
+          .then(r => r.ok ? r.json() : null)
+          .then(w => { if (w && w.authenticated) { adminIdentity = w; showDashboard(); } else { localStorage.removeItem('tc_admin'); } })
+          .catch(() => { localStorage.removeItem('tc_admin'); });
+      }
     } else {
       localStorage.removeItem('tc_admin');
     }
@@ -15058,6 +15424,11 @@ function adminPageHTML(): string {
                 '<div class="mt-4 pt-4 border-t border-white/10 space-y-2">' +
                   '<input id="ns-name" placeholder="Full name" class="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm">' +
                   '<input id="ns-user" placeholder="Username (no spaces)" autocapitalize="none" class="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm">' +
+                  '<select id="ns-role" class="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm">' +
+                    '<option value="desk">Badge desk - scan and check people in</option>' +
+                    '<option value="finance">Finance - raise and email invoices</option>' +
+                    '<option value="admin">Admin - the whole panel, changes recorded by name</option>' +
+                  '</select>' +
                   '<div class="flex gap-2">' +
                     '<input id="ns-pass" placeholder="Password (min 8)" class="flex-1 px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm">' +
                     '<button onclick="suggestDeskPassword()" class="px-3 py-2 rounded-lg text-xs glass hover:bg-white/10 text-gray-300">Suggest</button>' +
@@ -15110,9 +15481,13 @@ function adminPageHTML(): string {
       var name = document.getElementById('ns-name').value.trim();
       var username = document.getElementById('ns-user').value.trim();
       var password = document.getElementById('ns-pass').value;
+      // The role picker decides what the account can reach; without it every new
+      // login was a badge-desk one.
+      var roleEl = document.getElementById('ns-role');
+      var role = roleEl ? roleEl.value : 'desk';
       if (!name || !username || password.length < 8) { msg.textContent = 'Name, username and a password of at least 8 characters are required.'; return; }
       try {
-        await api.post('/api/admin/staff', { name: name, username: username, password: password });
+        await api.post('/api/admin/staff', { name: name, username: username, password: password, role: role });
         // Shown once, here, because the server only ever stores the hash.
         // The newline escapes below are doubled because this string is inside a
         // server-side template literal, which would otherwise turn each one into a
@@ -15907,6 +16282,179 @@ function adminPageHTML(): string {
     }
 
     var SQ = String.fromCharCode(39); // a single quote, for the same reason
+    // ============ BULK EMAIL CAMPAIGNS ============
+    // These used to be for-loops in this tab. Closing the tab stopped the run
+    // with no record of where it had reached, and starting again re-sent to
+    // everyone already contacted. The tab still drives the work - Pages has no
+    // cron trigger - but the queue and the progress now live on the server, so a
+    // closed tab pauses rather than loses, and a resume cannot double-send.
+    var campaignPump = { id: null, stop: false };
+
+    async function startCampaign(kind, opts) {
+      opts = opts || {};
+      var payload = { kind: kind, audience: opts.audience || 'all' };
+      if (opts.ids) payload.ids = opts.ids;
+      if (opts.ref_id) payload.ref_id = opts.ref_id;
+      if (opts.title) payload.title = opts.title;
+      var camp;
+      try {
+        camp = await api.post('/api/admin/campaigns', payload);
+        if (camp && camp.error) throw new Error(camp.error);
+      } catch (e) { toast('Could not start: ' + (e.message || ''), 'error'); return null; }
+      openCampaignMonitor(camp);
+      runCampaignPump(camp.id);
+      return camp;
+    }
+
+    // Drives one campaign until it finishes, this tab is closed, or the operator
+    // stops it. Progress comes back from the server on every tick.
+    async function runCampaignPump(id) {
+      campaignPump = { id: id, stop: false };
+      while (!campaignPump.stop && campaignPump.id === id) {
+        var r;
+        try {
+          r = await api.post('/api/admin/campaigns/' + id + '/pump', { batch: 8 });
+          if (r && r.error) throw new Error(r.error);
+        } catch (e) {
+          updateCampaignMonitor({ error: e.message || 'The send stopped.' });
+          return;
+        }
+        if (r.paused) { updateCampaignMonitor(Object.assign({ pausedNow: true }, r)); return; }
+        updateCampaignMonitor(r);
+        if (r.finished || r.status === 'done' || !r.remaining) {
+          campaignPump.id = null;
+          if (currentSection === 'attendees') { lastAttendees = null; loadAdminAttendees(); }
+          return;
+        }
+      }
+    }
+
+    function stopCampaignPump() {
+      campaignPump.stop = true;
+      var id = campaignPump.id;
+      campaignPump.id = null;
+      if (id) api.post('/api/admin/campaigns/' + id + '/pause', {}).catch(function () {});
+      closeModal();
+      toast('Paused. It can be resumed from Settings, in any tab.');
+      loadCampaignList();
+    }
+
+    function openCampaignMonitor(camp) {
+      openModal(
+        '<h3 class="text-lg font-bold mb-1">' + escH(camp.title || 'Sending') + '</h3>' +
+        '<p class="text-xs text-gray-400 mb-4">' + camp.total + ' recipient' + (camp.total === 1 ? '' : 's') +
+          '. You can close this and it will carry on while the tab is open; closing the tab pauses it, and it can be resumed later.</p>' +
+        '<div class="w-full bg-white/5 rounded-full h-3 mb-2"><div id="camp-bar" class="h-full rounded-full bg-gradient-to-r from-primary-500 to-amber-400 transition-all" style="width:0%"></div></div>' +
+        '<p id="camp-status" class="text-xs text-gray-400 min-h-4">Starting...</p>' +
+        '<p id="camp-last" class="text-[11px] text-gray-500 mt-1 min-h-4"></p>' +
+        '<div class="flex gap-2 mt-4">' +
+          '<button onclick="stopCampaignPump()" class="flex-1 py-2.5 rounded-xl text-sm glass hover:bg-white/10">Pause</button>' +
+          '<button onclick="closeModal()" class="flex-1 py-2.5 rounded-xl text-sm bg-primary-600 hover:bg-primary-500 text-white font-semibold">Run in background</button>' +
+        '</div>');
+    }
+
+    function updateCampaignMonitor(r) {
+      var bar = document.getElementById('camp-bar');
+      var st = document.getElementById('camp-status');
+      var last = document.getElementById('camp-last');
+      if (r.error) { if (st) st.innerHTML = '<span class="text-red-400">' + escH(r.error) + '</span>'; return; }
+      var done = (r.sent || 0) + (r.failed || 0);
+      var total = r.total || 1;
+      if (bar) bar.style.width = Math.round(done / total * 100) + '%';
+      if (st) {
+        st.textContent = done + ' of ' + total + ' \u00b7 ' + (r.sent || 0) + ' sent, ' + (r.failed || 0) + ' failed' +
+          (r.pausedNow ? ' \u00b7 paused' : (r.finished || r.status === 'done') ? ' \u00b7 finished' : '');
+      }
+      if (last && r.recent && r.recent.length) {
+        var l = r.recent[r.recent.length - 1];
+        last.innerHTML = l.ok
+          ? '<span class="text-gray-500">last: ' + escH(l.email) + '</span>'
+          : '<span class="text-red-400">' + escH(l.email) + ' - ' + escH(l.error || 'failed') + '</span>';
+      }
+      if ((r.finished || r.status === 'done') && !r.pausedNow) {
+        toast('Finished. ' + (r.sent || 0) + ' sent, ' + (r.failed || 0) + ' failed.', (r.failed ? 'error' : 'success'));
+        loadCampaignList();
+      }
+    }
+
+    // The list of runs, in Settings. This is the record that did not exist: a
+    // campaign a closed tab interrupted is here, resumable, rather than lost.
+    async function loadCampaignList() {
+      var el = document.getElementById('campaign-list');
+      if (!el) return;
+      var data;
+      try { data = await api.get('/api/admin/campaigns'); }
+      catch (e) {
+        if (e && e.message === 'unauthorized') return;
+        el.innerHTML = '<p class="text-xs text-red-400 py-3">Could not load campaigns: ' + escH(e.message || '') + '</p>';
+        return;
+      }
+      if (data && data.unavailable) {
+        el.innerHTML = '<p class="text-xs text-amber-300 py-3"><i class="fas fa-circle-info mr-1.5"></i>' +
+          'The campaigns table is not in the database yet. Apply migration 0028 to make bulk sends resumable.</p>';
+        return;
+      }
+      var rows = (data && data.campaigns) || [];
+      if (!rows.length) { el.innerHTML = '<p class="text-xs text-gray-500 py-3">No bulk emails have been sent from here yet.</p>'; return; }
+      el.innerHTML = rows.map(function (c) {
+        var done = (c.sent || 0) + (c.failed || 0);
+        var pct = c.total ? Math.round(done / c.total * 100) : 0;
+        var tone = c.status === 'done' ? 'text-emerald-300' : c.status === 'paused' ? 'text-amber-300' : 'text-primary-300';
+        return '<div class="py-2.5 border-b border-white/5 last:border-0">' +
+          '<div class="flex items-baseline justify-between gap-2 flex-wrap">' +
+            '<span class="text-xs font-medium text-gray-200">' + escH(c.title || c.kind) + '</span>' +
+            '<span class="text-[10px] ' + tone + ' uppercase tracking-wide">' + escH(c.status) + '</span></div>' +
+          '<div class="w-full bg-white/5 rounded-full h-1.5 my-1.5"><div class="h-full rounded-full bg-primary-500/70" style="width:' + pct + '%"></div></div>' +
+          '<div class="flex items-center justify-between gap-2 flex-wrap">' +
+            '<span class="text-[11px] text-gray-500">' + done + ' of ' + c.total + ' \u00b7 ' + (c.sent || 0) + ' sent, ' +
+              (c.failed || 0) + ' failed \u00b7 by ' + escH(c.created_by || 'unknown') + ' \u00b7 ' + fmtIst(c.created_at) + '</span>' +
+            '<span class="flex gap-1.5">' +
+              (c.status !== 'done' ? '<button onclick="resumeCampaign(' + c.id + ')" class="px-2 py-1 rounded-lg text-[10px] bg-primary-500/20 text-primary-200 hover:bg-primary-500/30">Resume</button>' : '') +
+              (c.failed ? '<button onclick="showCampaignFailures(' + c.id + ')" class="px-2 py-1 rounded-lg text-[10px] glass hover:bg-white/10">' + c.failed + ' failed</button>' : '') +
+              (c.failed ? '<button onclick="retryCampaignFailures(' + c.id + ')" class="px-2 py-1 rounded-lg text-[10px] bg-amber-500/20 text-amber-200 hover:bg-amber-500/30">Retry those</button>' : '') +
+            '</span>' +
+          '</div></div>';
+      }).join('');
+    }
+
+    async function resumeCampaign(id) {
+      try {
+        var r = await api.post('/api/admin/campaigns/' + id + '/resume', {});
+        if (r && r.error) throw new Error(r.error);
+        var list = await api.get('/api/admin/campaigns');
+        var camp = ((list && list.campaigns) || []).find(function (x) { return String(x.id) === String(id); });
+        openCampaignMonitor(camp || { title: 'Resuming', total: 0 });
+        runCampaignPump(id);
+      } catch (e) { toast('Could not resume: ' + (e.message || ''), 'error'); }
+    }
+
+    async function showCampaignFailures(id) {
+      openModal('<div class="py-8 text-center text-gray-400"><i class="fas fa-spinner fa-spin"></i></div>');
+      try {
+        var d = await api.get('/api/admin/campaigns/' + id + '/failures');
+        var rows = (d && d.failures) || [];
+        openModal('<h3 class="text-lg font-bold mb-1">Addresses that failed</h3>' +
+          '<p class="text-xs text-gray-400 mb-3">' + rows.length + ' of them. Correct the address on the attendee, then retry.</p>' +
+          '<div class="max-h-80 overflow-y-auto">' + (rows.map(function (f) {
+            return '<div class="py-1.5 border-b border-white/5 last:border-0">' +
+              '<div class="text-xs text-gray-200">' + escH(f.name || '') + ' \u00b7 ' + escH(f.email || '') + '</div>' +
+              '<div class="text-[11px] text-red-400">' + escH(f.error || '') + '</div></div>';
+          }).join('') || '<p class="text-xs text-gray-500">Nothing failed.</p>') + '</div>' +
+          '<button onclick="closeModal()" class="w-full mt-4 py-2.5 rounded-xl text-sm glass hover:bg-white/10">Close</button>');
+      } catch (e) { closeModal(); toast('Could not load failures.', 'error'); }
+    }
+
+    async function retryCampaignFailures(id) {
+      if (!confirm('Queue the failed addresses of this campaign again?')) return;
+      try {
+        var r = await api.post('/api/admin/campaigns/' + id + '/retry-failed', {});
+        if (r && r.error) throw new Error(r.error);
+        toast('Queued ' + r.total + ' address(es) again.');
+        openCampaignMonitor({ id: r.id, title: 'Retry', total: r.total });
+        runCampaignPump(r.id);
+      } catch (e) { toast('Could not retry: ' + (e.message || ''), 'error'); }
+    }
+
     // ============ BULK ACTIONS ON A SELECTION ============
     // Everything here goes through one server call for the whole set rather than
     // a request per row, so a 500-person change is one statement and one audit
@@ -15967,18 +16515,8 @@ function adminPageHTML(): string {
     async function bulkNotify() {
       var ids = attSelectedIds();
       if (!ids.length) { toast('Nothing selected.', 'error'); return; }
-      if (!confirm('Send the account-ready email to ' + ids.length + ' attendee' + (ids.length === 1 ? '' : 's') + '?' + NL + NL + 'Keep this tab open until it finishes.')) return;
-      var sent = 0, failed = 0;
-      toast('Sending to ' + ids.length + ' attendee(s)...');
-      for (var i = 0; i < ids.length; i++) {
-        try {
-          var r = await api.post('/api/admin/attendees/' + ids[i] + '/notify', {});
-          if (r && r.error) failed++; else sent++;
-        } catch (e) { failed++; }
-      }
-      toast('Done. Sent ' + sent + ', failed ' + failed + '.', sent ? 'success' : 'error');
-      lastAttendees = null;
-      loadAdminAttendees();
+      if (!confirm('Send the account-ready email to ' + ids.length + ' selected attendee' + (ids.length === 1 ? '' : 's') + '?')) return;
+      await startCampaign('notify', { ids: ids, title: 'Account-ready email to a selection' });
     }
     // Export exactly what is selected, from data already in the browser, so it
     // does not depend on the token-in-URL download path.
@@ -17175,24 +17713,8 @@ function adminPageHTML(): string {
     }
 
     async function notifyAllAttendees() {
-      try {
-        const result = await api.post('/api/admin/attendees/notify-all', { event_id: EID });
-        if (result.count === 0) {
-          toast('All attendees have already been notified!', 'success');
-          return;
-        }
-        if (!confirm(\`Send notification to \${result.count} un-notified attendee(s)?\`)) return;
-        let sent = 0, failed = 0;
-        toast(\`Sending to \${result.count} attendees...\`);
-        for (const a of result.attendees) {
-          try {
-            await api.post('/api/admin/attendees/'+a.id+'/notify', {});
-            sent++;
-          } catch(e) { failed++; }
-        }
-        toast(\`Done! Sent: \${sent}, Failed: \${failed}\`, sent > 0 ? 'success' : 'error');
-        loadAdminAttendees();
-      } catch(e) { toast('Failed to send notifications', 'error'); }
+      if (!confirm('Send the account-ready email to everyone who has not had it yet?')) return;
+      await startCampaign('notify', { audience: 'un-notified', title: 'Account-ready email' });
     }
 
     // Profile-completion campaign. Deliberately a two-step: the first screen only
@@ -17375,65 +17897,14 @@ function adminPageHTML(): string {
     let _chaseRejects = 0;
 
     async function resendNonResponders() {
-      try {
-        const result = await api.post('/api/admin/attendees/resend-non-responders', { event_id: EID });
-        if (result.count === 0) {
-          toast('All notified attendees have already responded!', 'success');
-          return;
-        }
-        if (!confirm(\`Resend notification email to \${result.count} attendee(s) who haven't responded to RSVP?\`)) return;
-        let sent = 0, failed = 0;
-        toast(\`Resending to \${result.count} non-responders...\`);
-        const reminderSubject = 'Reminder: Confirm your attendance — Bharat AI Innovation 2026, 20-21 Nov, WTC Mumbai';
-        for (const a of result.attendees) {
-          try {
-            await api.post('/api/admin/attendees/'+a.id+'/notify', { subject: reminderSubject });
-            sent++;
-          } catch(e) { failed++; }
-        }
-        toast(\`Done! Sent: \${sent}, Failed: \${failed}\`, sent > 0 ? 'success' : 'error');
-        refreshCurrentSection();
-      } catch(e) { toast('Failed to resend notifications', 'error'); }
+      if (!confirm('Email everyone who was notified but has still not answered the RSVP?')) return;
+      await startCampaign('notify', { audience: 'non-responders', title: 'RSVP reminder to non-responders' });
     }
 
     // ============ POST-CEREMONY THANK YOU EMAIL ============
     async function sendThankYouToAll() {
-      try {
-        const result = await api.post('/api/admin/attendees/thankyou-list', { event_id: EID });
-        if (result.count === 0) {
-          toast('No attendees with email addresses found!', 'error');
-          return;
-        }
-        if (!confirm(\`Send post-ceremony THANK YOU email to ALL \${result.count} attendee(s)?\\n\\nThis will send a personalised thank-you email to every attendee expressing gratitude, congratulating winners/finalists/Innovation Star/NTH winners, and sharing the event photos link.\\n\\nProceed?\`)) return;
-
-        const progress = document.getElementById('thankyou-progress');
-        const bar = document.getElementById('thankyou-bar');
-        const countEl = document.getElementById('thankyou-count');
-        const statusEl = document.getElementById('thankyou-status');
-        progress.style.display = 'block';
-
-        let sent = 0, failed = 0;
-        const total = result.count;
-        countEl.textContent = '0/' + total;
-        statusEl.textContent = 'Starting...';
-
-        for (const a of result.attendees) {
-          try {
-            statusEl.textContent = \`Sending to \${a.name} (\${a.email})...\`;
-            await api.post('/api/admin/attendees/' + a.id + '/send-thankyou', {});
-            sent++;
-          } catch(e) { failed++; }
-          const done = sent + failed;
-          const pct = Math.round(done / total * 100);
-          bar.style.width = pct + '%';
-          countEl.textContent = done + '/' + total;
-        }
-
-        statusEl.innerHTML = \`<span class="text-green-400 font-semibold">Complete!</span> Sent: <strong>\${sent}</strong>, Failed: <strong>\${failed}</strong>\`;
-        toast(\`Thank you emails sent! \${sent} delivered, \${failed} failed.\`, sent > 0 ? 'success' : 'error');
-      } catch(e) {
-        toast('Failed to send thank-you emails: ' + (e.message || 'Error'), 'error');
-      }
+      if (!confirm('Send the post-event thank-you email to every attendee with an address?')) return;
+      await startCampaign('thankyou', { audience: 'all', title: 'Post-event thank you' });
     }
 
     function previewThankYouEmail() {
@@ -18275,28 +18746,16 @@ function adminPageHTML(): string {
         loadAdminAnnouncements();
         return;
       }
-      var box = document.getElementById('modal-box');
-      if (box) {
-        box.innerHTML = '<div class="p-6"><h3 class="font-bold mb-2">Sending the broadcast</h3>' +
-          '<div class="w-full bg-white/5 rounded-full h-3 mb-2"><div id="bc-bar" class="h-full rounded-full bg-gradient-to-r from-primary-500 to-amber-400" style="width:0%"></div></div>' +
-          '<p id="bc-status" class="text-xs text-gray-400">Starting...</p></div>';
-      }
-      var sent = 0, failed = 0;
-      for (var i = 0; i < list.length; i++) {
-        try {
-          var res = await api.post('/api/admin/announcements/' + r.id + '/email/' + list[i].id, {});
-          if (res && res.error) failed++; else sent++;
-        } catch (e) { failed++; }
-        var done = sent + failed;
-        var bar = document.getElementById('bc-bar');
-        var st = document.getElementById('bc-status');
-        if (bar) bar.style.width = Math.round(done / list.length * 100) + '%';
-        if (st) st.textContent = done + ' of ' + list.length + ' \u00b7 ' + sent + ' sent, ' + failed + ' failed';
-      }
+      // The pinned announcement exists; the emailing is a campaign, so a closed
+      // tab pauses it rather than leaving half the room uninformed.
       closeModal();
-      toast('Broadcast emailed. ' + sent + ' sent, ' + failed + ' failed.', sent ? 'success' : 'error');
+      await startCampaign('announcement', {
+        ref_id: r.id, audience: audience,
+        title: 'Announcement: ' + String(title).slice(0, 80),
+      });
       loadAdminAnnouncements();
     }
+
     async function deleteAnnouncement(id) { if (!confirm('Delete this announcement?')) return; await api.del('/api/admin/announcements/'+id); toast('Announcement deleted!'); loadAdminAnnouncements(); }
 
     // ============ EDIT EVENT ============
@@ -19250,6 +19709,21 @@ function adminPageHTML(): string {
             <div id="email-status-panel" class="space-y-3"></div>
           </div>
 
+          <!-- Bulk email runs -->
+          <div class="glass rounded-2xl p-6">
+            <div class="flex items-center gap-3 mb-4">
+              <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-amber-600 flex items-center justify-center">
+                <i class="fas fa-paper-plane text-white"></i>
+              </div>
+              <div class="flex-1">
+                <h3 class="font-bold text-lg">Bulk email</h3>
+                <p class="text-xs text-gray-400">Every mass send, with its progress. A run interrupted by a closed tab can be resumed here.</p>
+              </div>
+              <button onclick="loadCampaignList()" class="px-3 py-1.5 rounded-lg text-xs glass hover:bg-white/10"><i class="fas fa-rotate-right mr-1"></i>Refresh</button>
+            </div>
+            <div id="campaign-list" class="max-h-80 overflow-y-auto"></div>
+          </div>
+
           <!-- Who changed what -->
           <div class="glass rounded-2xl p-6">
             <div class="flex items-center gap-3 mb-4">
@@ -19262,13 +19736,19 @@ function adminPageHTML(): string {
               </div>
               <button onclick="loadAuditLog()" class="px-3 py-1.5 rounded-lg text-xs glass hover:bg-white/10"><i class="fas fa-rotate-right mr-1"></i>Refresh</button>
             </div>
+            \${identityIsAuthenticated() ? \`
+            <div class="flex flex-wrap items-center gap-2 mb-3 p-3 rounded-xl bg-emerald-500/5 border border-emerald-500/15">
+              <i class="fas fa-user-shield text-emerald-400 text-xs"></i>
+              <span class="text-xs text-gray-300">Signed in as
+                <strong class="text-emerald-300">\${escH(identityLabel())}</strong>. Your changes are recorded against this account.</span>
+            </div>\` : \`
             <div class="flex flex-wrap items-center gap-2 mb-3 p-3 rounded-xl bg-amber-500/5 border border-amber-500/15">
               <i class="fas fa-user-pen text-amber-400 text-xs"></i>
               <span class="text-xs text-gray-300">Recording your changes as
                 <strong class="text-amber-300">\${escH(getOperator()) || 'unnamed operator'}</strong></span>
               <button onclick="setOperator()" class="px-2.5 py-1 rounded-lg text-[11px] glass hover:bg-white/10">Change</button>
-              <span class="text-[11px] text-gray-500 w-full">One shared password means this name is self-declared. Your IP address is recorded alongside it and is not.</span>
-            </div>
+              <span class="text-[11px] text-gray-500 w-full">You signed in with the shared password, so this name is self-declared. Your IP address is recorded alongside it and is not. Create a named account under Badge Desk to have changes attributed properly.</span>
+            </div>\`}
             <div id="audit-log-body" class="max-h-96 overflow-y-auto"></div>
           </div>
 
@@ -19322,6 +19802,7 @@ function adminPageHTML(): string {
       }
 
       loadAuditLog();
+      loadCampaignList();
 
       // Attach form handler
       document.getElementById('settings-email-form').addEventListener('submit', async (e) => {
