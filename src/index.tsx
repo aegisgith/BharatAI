@@ -3443,10 +3443,15 @@ app.post('/api/admin/attendees/bulk', async (c) => {
 app.get('/api/admin/events/:id/attendees/export', async (c) => {
   const eventId = c.req.param('id')
   const { results } = await c.env.DB.prepare(
-    'SELECT id, name, email, company, job_title, bio, interests, linkedin_url, mobile, lunch_inclusion, arrival_time, role, badge_type, is_online, notified_at, last_login_at, pass_downloaded_at, rsvp_status, rsvp_at, created_at FROM attendees WHERE event_id = ? ORDER BY id'
+    // city, country and registration_date were in the header row but never selected,
+    // so those three columns came out blank on every row. registration_source is the
+    // campus-panel attribution: the column a sponsor report is built from, and until
+    // now the only way to read it was a raw query. Appended last so anything parsing
+    // the file by position keeps working.
+    'SELECT id, name, email, company, job_title, bio, interests, linkedin_url, mobile, city, country, lunch_inclusion, arrival_time, role, badge_type, registration_date, registration_source, is_online, notified_at, last_login_at, pass_downloaded_at, rsvp_status, rsvp_at, created_at FROM attendees WHERE event_id = ? ORDER BY id'
   ).bind(eventId).all()
 
-  const headers = ['name', 'email', 'company', 'job_title', 'mobile', 'city', 'country', 'linkedin_url', 'lunch_inclusion', 'arrival_time', 'bio', 'interests', 'role', 'badge_type', 'registration_date', 'payment_amount', 'rsvp_status', 'rsvp_at', 'notified_at', 'last_login_at', 'pass_downloaded_at']
+  const headers = ['name', 'email', 'company', 'job_title', 'mobile', 'city', 'country', 'linkedin_url', 'lunch_inclusion', 'arrival_time', 'bio', 'interests', 'role', 'badge_type', 'registration_date', 'payment_amount', 'rsvp_status', 'rsvp_at', 'notified_at', 'last_login_at', 'pass_downloaded_at', 'registration_source']
   const csvRows = [headers.join(',')]
   for (const r of results as any[]) {
     const row = headers.map(h => {
@@ -3965,8 +3970,14 @@ function sendWindowState(now: Date = new Date()) {
 // The clause that defines "still needs the reminder". Kept as one string because the
 // queue count, the next-recipient pick and the progress figures must all agree; if
 // they drift the campaign either stalls or loops.
+//
+// Campus-panel registrants are excluded. Someone who signed up for a September panel
+// on a college campus has not asked for a November conference pass, and "your pass
+// still needs a photo" would be the first they heard of one. Same predicate the other
+// campaigns use for the same reason, written out here so this can ship on its own.
 const NEEDS_REMINDER_SQL = `
   event_id = ? AND email IS NOT NULL AND email != '' AND profile_reminder_sent_at IS NULL
+  AND (registration_source IS NULL OR registration_source NOT LIKE 'campus:%')
   AND ( COALESCE(TRIM(avatar_url),'') = ''
      OR COALESCE(TRIM(city),'') = ''
      OR COALESCE(TRIM(industry),'') = ''
@@ -3986,11 +3997,68 @@ const settingPut = async (c: any, k: string, v: string) => {
 
 const LAST_SEND_KEY = 'profile_reminder_last_sent_at'
 
+// Deliberately loose: it exists to catch "riddhia1134@gmail" and "name@domain." -
+// addresses that can never be delivered and that production holds several of - not
+// to adjudicate RFC 5322. Anything this passes is left for the mail provider to judge.
+const EMAIL_SYNTAX = /^[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>.]{2,}$/
+const validEmailSyntax = (e: any) => EMAIL_SYNTAX.test(String(e || '').trim())
+
+// Takes the send slot, or reports how long until it is free. One atomic UPDATE with
+// the gap in its WHERE clause, because the read-then-write it replaces let two tabs
+// both pass the check inside the same instant and both mail the same next person.
+// ISO-8601 UTC strings order lexically, so the comparison is safe as text.
+async function claimSendSlot(c: any, gapSeconds: number): Promise<{ ok: true } | { ok: false; wait: number }> {
+  const now = Date.now()
+  const nowIso = new Date(now).toISOString()
+  const cutoff = new Date(now - gapSeconds * 1000).toISOString()
+  await c.env.DB.prepare("INSERT OR IGNORE INTO app_settings (key, value) VALUES (?, '1970-01-01T00:00:00.000Z')").bind(LAST_SEND_KEY).run()
+  const r = await c.env.DB.prepare(
+    'UPDATE app_settings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE key = ? AND value <= ?'
+  ).bind(nowIso, LAST_SEND_KEY, cutoff).run()
+  if (r?.meta?.changes === 1) return { ok: true }
+  const last = await settingGet(c, LAST_SEND_KEY)
+  const since = last ? (now - Date.parse(last)) / 1000 : 0
+  return { ok: false, wait: Math.max(1, Math.ceil(gapSeconds - since)) }
+}
+
+// Takes this attendee out of the queue for good, with the reason. Used for problems
+// that no retry will fix - a malformed address, a rejected recipient - so the queue
+// moves past them instead of retrying one bad row every two minutes forever.
+async function markUndeliverable(c: any, id: any, reason: string) {
+  await c.env.DB.prepare(
+    'UPDATE attendees SET profile_reminder_sent_at = datetime("now"), profile_reminder_error = ? WHERE id = ?'
+  ).bind(String(reason).slice(0, 300), id).run()
+}
+
+type SendOutcome =
+  | { ok: true }
+  | { ok: false; kind: 'recipient'; error: string }   // this address will never work; queue moves on
+  | { ok: false; kind: 'fatal'; error: string }       // our configuration; stop the run
+  | { ok: false; kind: 'transient'; error: string }   // provider hiccup; leave queued, retry later
+
 // Does the actual send for one attendee. Shared by the queue pump and the single-send
-// endpoint so the mail, the stamp and the throttle bookkeeping cannot diverge.
-async function sendProfileReminder(c: any, attendee: any): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+// endpoint so the mail, the stamp and the failure handling cannot diverge.
+//
+// The row is claimed BEFORE the send and released again only on a transient failure.
+// Claiming after would leave a window in which a second pump could pick the same
+// person. The cost is that a crash between claim and send marks one person as mailed
+// without a mail - rare, and cheaper than the alternative of mailing someone twice.
+async function sendProfileReminder(c: any, attendee: any): Promise<SendOutcome> {
   const apiKey = await settingGet(c, 'elastic_email_api_key')
-  if (!apiKey) return { ok: false, status: 500, error: 'Email service not configured.' }
+  if (!apiKey) return { ok: false, kind: 'fatal', error: 'Email service not configured.' }
+
+  if (!validEmailSyntax(attendee.email)) {
+    await markUndeliverable(c, attendee.id, 'Malformed email address')
+    return { ok: false, kind: 'recipient', error: 'Malformed email address: ' + attendee.email }
+  }
+
+  const claim = await c.env.DB.prepare(
+    'UPDATE attendees SET profile_reminder_sent_at = datetime("now"), profile_reminder_error = NULL WHERE id = ? AND profile_reminder_sent_at IS NULL'
+  ).bind(attendee.id).run()
+  if (claim?.meta?.changes !== 1) {
+    return { ok: false, kind: 'transient', error: 'Already claimed by another sender.' }
+  }
+  const release = () => c.env.DB.prepare('UPDATE attendees SET profile_reminder_sent_at = NULL WHERE id = ?').bind(attendee.id).run()
   const appUrl = (await settingGet(c, 'app_url')) || 'https://bharataiinnovation.com/app'
   const fromEmail = senderEmailOrDefault(await settingGet(c, 'sender_email'))
   const fromName = (await settingGet(c, 'sender_name')) || 'Bharat AI Innovation'
@@ -4010,22 +4078,38 @@ async function sendProfileReminder(c: any, attendee: any): Promise<{ ok: true } 
     ? 'Your pass still needs a photo - Bharat AI Innovation 2026'
     : 'One minute to finish your Bharat AI Innovation 2026 profile'
 
-  const res = await fetch('https://api.elasticemail.com/v4/emails/transactional', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-ElasticEmail-ApiKey': apiKey },
-    body: JSON.stringify({
-      Recipients: { To: [attendee.email] },
-      Content: { Body: [{ ContentType: 'HTML', Charset: 'utf-8', Content: html }], From: `${fromName} <${fromEmail}>`, Subject: subject },
-      Options: { TrackClicks: false, TrackOpens: false },
-    }),
-  })
-  if (!res.ok) return { ok: false, status: 502, error: 'Send failed: ' + (await res.text().catch(() => String(res.status))) }
+  let res: Response
+  try {
+    res = await fetch('https://api.elasticemail.com/v4/emails/transactional', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-ElasticEmail-ApiKey': apiKey },
+      body: JSON.stringify({
+        Recipients: { To: [attendee.email] },
+        Content: { Body: [{ ContentType: 'HTML', Charset: 'utf-8', Content: html }], From: `${fromName} <${fromEmail}>`, Subject: subject },
+        Options: { TrackClicks: false, TrackOpens: false },
+      }),
+    })
+  } catch (e: any) {
+    await release()
+    return { ok: false, kind: 'transient', error: 'Could not reach the email service: ' + (e?.message || e) }
+  }
+  if (res.ok) return { ok: true }
 
-  // Stamped only after the send is accepted, so a failure leaves the person in the
-  // queue to be retried rather than silently skipped forever.
-  await c.env.DB.prepare('UPDATE attendees SET profile_reminder_sent_at = datetime("now") WHERE id = ?').bind(attendee.id).run()
-  await settingPut(c, LAST_SEND_KEY, new Date().toISOString())
-  return { ok: true }
+  const body = (await res.text().catch(() => '')).slice(0, 300)
+  // 401/403 is our key, not their address: stop the run rather than burn the queue.
+  if (res.status === 401 || res.status === 403) {
+    await release()
+    return { ok: false, kind: 'fatal', error: `Email service refused our credentials (${res.status}). ${body}` }
+  }
+  // 400/422 is the provider rejecting this recipient or this message. Recorded and
+  // skipped - a retry would get the same answer.
+  if (res.status === 400 || res.status === 422 || res.status === 404) {
+    await markUndeliverable(c, attendee.id, `Rejected by email service (${res.status}): ${body}`)
+    return { ok: false, kind: 'recipient', error: `Rejected (${res.status}): ${body}` }
+  }
+  // 429 and 5xx are theirs to fix; the person stays queued for the next tick.
+  await release()
+  return { ok: false, kind: 'transient', error: `Email service error ${res.status}: ${body}` }
 }
 
 // What this row is still missing, phrased for the person rather than the schema.
@@ -4101,14 +4185,20 @@ async function profileReminderEmailHTML(c: any, attendee: any, link: string): Pr
 app.get('/api/admin/attendees/incomplete', async (c) => {
   const eventId = c.req.query('event_id') || '1'
   const { results } = await c.env.DB.prepare(
-    `SELECT id, name, email, company, job_title, city, industry, mobile, avatar_url, badge_type, profile_reminder_sent_at
+    `SELECT id, name, email, company, job_title, city, industry, mobile, avatar_url, badge_type,
+            profile_reminder_sent_at, profile_reminder_error
        FROM attendees
       WHERE event_id = ? AND email IS NOT NULL AND email != ''
       ORDER BY id`
   ).bind(eventId).all()
 
   const attendees = (results || [])
-    .map((a: any) => ({ id: a.id, name: a.name, email: a.email, missing: attendeeProfileGaps(a), sent_at: a.profile_reminder_sent_at || null }))
+    .map((a: any) => ({
+      id: a.id, name: a.name, email: a.email, missing: attendeeProfileGaps(a),
+      sent_at: a.profile_reminder_sent_at || null, error: a.profile_reminder_error || null,
+      // Reported up front so the admin can fix the address before the run reaches it.
+      malformed: !validEmailSyntax(a.email),
+    }))
     .filter((a: any) => a.missing.length > 0)
 
   // A per-field tally, so the admin can see at a glance whether this is a photo
@@ -4117,12 +4207,14 @@ app.get('/api/admin/attendees/incomplete', async (c) => {
   for (const a of attendees) for (const m of a.missing) byField[m] = (byField[m] || 0) + 1
 
   const queued = attendees.filter((a: any) => !a.sent_at).length
-  const sent = attendees.length - queued
+  const failed = attendees.filter((a: any) => a.error).length
+  const sent = attendees.length - queued - failed
+  const malformed = attendees.filter((a: any) => !a.sent_at && a.malformed)
   const gap = await sendGapSeconds(c)
 
   return c.json({
     count: attendees.length, total: (results || []).length, byField,
-    queued, sent, gap_seconds: gap,
+    queued, sent, failed, malformed, gap_seconds: gap,
     // At one mail per gap inside a 12-hour window, the run spans days rather than
     // minutes. Saying so up front is the difference between a plan and a surprise.
     per_day: Math.floor((SEND_WINDOW_END_HOUR - SEND_WINDOW_START_HOUR) * 3600 / gap),
@@ -4142,7 +4234,10 @@ app.get('/api/admin/attendees/profile-reminder-status', async (c) => {
   const eventId = c.req.query('event_id') || '1'
   const remaining = await c.env.DB.prepare(`SELECT COUNT(*) n FROM attendees WHERE ${NEEDS_REMINDER_SQL}`).bind(eventId).first() as any
   const done = await c.env.DB.prepare(
-    'SELECT COUNT(*) n FROM attendees WHERE event_id = ? AND profile_reminder_sent_at IS NOT NULL'
+    'SELECT COUNT(*) n FROM attendees WHERE event_id = ? AND profile_reminder_sent_at IS NOT NULL AND profile_reminder_error IS NULL'
+  ).bind(eventId).first() as any
+  const failed = await c.env.DB.prepare(
+    'SELECT COUNT(*) n FROM attendees WHERE event_id = ? AND profile_reminder_error IS NOT NULL'
   ).bind(eventId).first() as any
   const gap = await sendGapSeconds(c)
   const win = sendWindowState()
@@ -4152,6 +4247,7 @@ app.get('/api/admin/attendees/profile-reminder-status', async (c) => {
   return c.json({
     remaining: remaining?.n || 0,
     sent: done?.n || 0,
+    failed: failed?.n || 0,
     gap_seconds: gap,
     per_day: Math.floor((SEND_WINDOW_END_HOUR - SEND_WINDOW_START_HOUR) * 3600 / gap),
     days_remaining: Math.ceil((remaining?.n || 0) / Math.max(1, Math.floor((SEND_WINDOW_END_HOUR - SEND_WINDOW_START_HOUR) * 3600 / gap))),
@@ -4189,28 +4285,47 @@ app.post('/api/admin/attendees/send-next-profile-reminder', async (c) => {
   }
 
   const gap = await sendGapSeconds(c)
-  const last = await settingGet(c, LAST_SEND_KEY)
-  const sinceLast = last ? (Date.now() - Date.parse(last)) / 1000 : Infinity
-  if (sinceLast < gap) {
-    return c.json({ throttled: true, wait_seconds: Math.ceil(gap - sinceLast), gap_seconds: gap, window: win })
-  }
+  const pick = () => c.env.DB.prepare(`SELECT * FROM attendees WHERE ${NEEDS_REMINDER_SQL} ORDER BY id LIMIT 1`).bind(eventId).first() as Promise<any>
+  const countLeft = async () => ((await c.env.DB.prepare(`SELECT COUNT(*) n FROM attendees WHERE ${NEEDS_REMINDER_SQL}`).bind(eventId).first()) as any)?.n || 0
 
-  const next = await c.env.DB.prepare(
-    `SELECT * FROM attendees WHERE ${NEEDS_REMINDER_SQL} ORDER BY id LIMIT 1`
-  ).bind(eventId).first() as any
-  if (!next) return c.json({ done: true, remaining: 0, window: win })
+  // Addresses that cannot be delivered to are cleared from the head of the queue here,
+  // before a send slot is spent on them: five malformed rows in a row would otherwise
+  // cost seven and a half minutes of a twelve-hour window for nothing. Bounded, so a
+  // pathological list cannot turn one request into a long loop.
+  const skipped: Array<{ id: any; email: string; reason: string }> = []
+  let next: any = null
+  for (let i = 0; i < 25; i++) {
+    const cand = await pick()
+    if (!cand) break
+    if (validEmailSyntax(cand.email)) { next = cand; break }
+    await markUndeliverable(c, cand.id, 'Malformed email address')
+    skipped.push({ id: cand.id, email: cand.email, reason: 'Malformed email address' })
+  }
+  if (!next) return c.json({ done: true, remaining: 0, skipped, window: win })
+
+  const slot = await claimSendSlot(c, gap)
+  if (!slot.ok) return c.json({ throttled: true, wait_seconds: slot.wait, gap_seconds: gap, skipped, window: win })
 
   const result = await sendProfileReminder(c, next)
-  if (!result.ok) return c.json({ error: result.error, attendee: { id: next.id, email: next.email } }, result.status as any)
+  if (!result.ok) {
+    const who = { id: next.id, name: next.name, email: next.email }
+    if (result.kind === 'recipient') {
+      // Recorded and moved past. The slot was spent, so the pump waits the gap as
+      // normal - the provider saw a request from us either way.
+      return c.json({ skipped_recipient: true, attendee: who, reason: result.error, remaining: await countLeft(), next_in_seconds: gap, skipped, window: win })
+    }
+    if (result.kind === 'fatal') return c.json({ fatal: true, error: result.error, attendee: who, skipped, window: win }, 502)
+    return c.json({ error: result.error, attendee: who, skipped, window: win }, 503)
+  }
 
-  const remaining = await c.env.DB.prepare(`SELECT COUNT(*) n FROM attendees WHERE ${NEEDS_REMINDER_SQL}`).bind(eventId).first() as any
   return c.json({
     success: true,
     sent_to: next.email,
     name: next.name,
     missing: attendeeProfileGaps(next),
-    remaining: remaining?.n || 0,
+    remaining: await countLeft(),
     next_in_seconds: gap,
+    skipped,
     window: win,
   })
 })
@@ -4242,8 +4357,15 @@ app.post('/api/admin/attendees/:id/send-profile-reminder', async (c) => {
     return c.json({ paused: true, reason: `Outside the ${win.window} sending window (it is ${win.ist_time}).`, window: win }, 409)
   }
 
+  // A one-off still takes a send slot, so a test cannot be used to double the rate.
+  const slot = await claimSendSlot(c, await sendGapSeconds(c))
+  if (!slot.ok) return c.json({ throttled: true, wait_seconds: slot.wait }, 429)
+
   const result = await sendProfileReminder(c, attendee)
-  if (!result.ok) return c.json({ error: result.error }, result.status as any)
+  if (!result.ok) {
+    const status = result.kind === 'fatal' ? 502 : result.kind === 'transient' ? 503 : 400
+    return c.json({ error: result.error, kind: result.kind }, status)
+  }
   return c.json({ success: true, sent_to: attendee.email, missing: gaps })
 })
 
@@ -15989,10 +16111,15 @@ function adminPageHTML(): string {
       mb.innerHTML = \`
         <div class="p-6 border-b border-white/10">
           <h3 class="text-lg font-bold"><i class="fas fa-id-card text-orange-400 mr-2"></i>Chase incomplete profiles</h3>
-          <p class="text-xs text-gray-400 mt-1">\${data.queued} still to mail\${data.sent ? ' · ' + data.sent + ' already sent' : ''} · \${data.total} attendees in total</p>
+          <p class="text-xs text-gray-400 mt-1">\${data.queued} still to mail\${data.sent ? ' · ' + data.sent + ' sent' : ''}\${data.failed ? ' · <span class="text-red-400">' + data.failed + ' undeliverable</span>' : ''} · \${data.total} attendees in total</p>
         </div>
         <div class="p-6 space-y-4">
           <table class="w-full"><tbody>\${rows}</tbody></table>
+          \${data.malformed && data.malformed.length ? \`
+          <div class="p-3 rounded-xl bg-amber-500/10 border border-amber-500/25">
+            <p class="text-xs text-amber-300 font-semibold mb-1"><i class="fas fa-exclamation-triangle mr-1"></i>\${data.malformed.length} address\${data.malformed.length === 1 ? '' : 'es'} can't be delivered to</p>
+            <p class="text-[11px] text-gray-400 leading-relaxed">\${data.malformed.slice(0, 8).map(m => esc(m.email)).join(', ')}\${data.malformed.length > 8 ? ' and ' + (data.malformed.length - 8) + ' more' : ''}. The run skips these automatically; correct them in the table to include them.</p>
+          </div>\` : ''}
 
           <div class="grid grid-cols-2 gap-3">
             <div>
@@ -16095,18 +16222,51 @@ function adminPageHTML(): string {
         return;
       }
 
+      // Malformed addresses cleared from the head of the queue on this tick. They cost
+      // no send slot and are listed so the admin can correct them.
+      const cleared = (r.skipped || []).length
+        ? '<br><span class="text-amber-400">Skipped ' + r.skipped.length + ' unusable address' + (r.skipped.length === 1 ? '' : 'es') + ': '
+          + r.skipped.map(s => esc(s.email)).join(', ') + '</span>'
+        : '';
+
+      if (r.fatal) {
+        // Our credentials or configuration, not a recipient. Nothing will improve by
+        // retrying, so stop and say so.
+        chaseSay('<span class="text-red-400">Stopped: ' + esc(r.error) + '</span>' + cleared);
+        stopProfileReminderCampaign();
+        return;
+      }
+
+      if (r.skipped_recipient) {
+        // The provider rejected this one person; recorded, queue moved on. But five in
+        // a row is not five bad addresses - it is our message being rejected - so stop
+        // before the whole list is burned through at one per gap.
+        _chaseRejects = (_chaseRejects || 0) + 1;
+        if (_chaseRejects >= 5) {
+          chaseSay('<span class="text-red-400">Stopped: the last 5 sends were all rejected by the email service, which points at the message rather than the addresses.</span><br>Last reason: ' + esc(r.reason) + cleared);
+          stopProfileReminderCampaign();
+          return;
+        }
+        chaseSay('<span class="text-amber-400">Could not deliver to ' + esc(r.attendee.email) + ' - recorded and skipped.</span><br>' + esc(r.reason)
+          + '<br>' + r.remaining + ' left<br><span class="text-gray-500">Next in ' + r.next_in_seconds + 's</span>' + cleared);
+        _chaseTimer = setTimeout(pumpProfileReminder, (r.next_in_seconds + 1) * 1000);
+        return;
+      }
+
       if (r.error) {
-        chaseSay('<span class="text-red-400">' + esc(r.error) + '</span><br>Retrying in 2 min.');
+        chaseSay('<span class="text-red-400">' + esc(r.error) + '</span><br>Retrying in 2 min.' + cleared);
         _chaseTimer = setTimeout(pumpProfileReminder, 120000);
         return;
       }
 
+      _chaseRejects = 0;
       const mins = Math.round(r.remaining * r.next_in_seconds / 60);
       chaseSay('Sent to <strong class="text-white">' + esc(r.name || r.sent_to) + '</strong>'
         + '<br>' + r.remaining + ' left · about ' + (mins > 90 ? Math.round(mins / 60) + ' h' : mins + ' min') + ' of sending time'
-        + '<br><span class="text-gray-500">Next in ' + r.next_in_seconds + 's</span>');
+        + '<br><span class="text-gray-500">Next in ' + r.next_in_seconds + 's</span>' + cleared);
       _chaseTimer = setTimeout(pumpProfileReminder, (r.next_in_seconds + 1) * 1000);
     }
+    let _chaseRejects = 0;
 
     async function resendNonResponders() {
       try {
