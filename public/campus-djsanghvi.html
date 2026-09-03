@@ -167,7 +167,7 @@
     </section>
 
     <!-- ===== REGISTER TO ATTEND ===== -->
-    <section class="cp-section cp-section--white" id="register">
+    <section class="cp-section cp-section--white" id="register" data-end="2026-09-21T12:30:00+05:30">
         <div class="container">
             <div class="cp-reg reveal">
                 <div>
@@ -175,7 +175,7 @@
                     <h2>Register to attend <span class="accent">this panel</span></h2>
                     <p class="cp-reg-lede">
                         Free to attend. Tell us you are coming so the host knows the numbers, and we
-                        will send you the joining details before Monday, 21 September 2026.
+                        will email you the joining details straight away.
                     </p>
                     <ul class="cp-reg-points">
                         <li><i class="fas fa-check-circle"></i> No fee, and no payment details asked for</li>
@@ -514,6 +514,31 @@
           fail('We could not reach the server. Please check your connection and try again.');
         });
       });
+    })();
+    </script>
+    <script>
+    // Once the panel has ended the form is replaced by a concluded notice and the
+    // hero CTA points at the series instead. Decided from the date on the section,
+    // not typed in, so the page cannot invite people to a panel that has happened.
+    (function () {
+      var sec = document.getElementById('register');
+      if (!sec) return;
+      var end = Date.parse(sec.getAttribute('data-end') || '');
+      if (isNaN(end) || end >= Date.now()) return;
+      var panel = document.getElementById('cp-reg-panel');
+      if (panel) panel.innerHTML =
+        '<div class="cp-reg-done">' +
+          '<div class="cp-reg-done-icon" style="background:#5E6585;box-shadow:none;"><i class="fas fa-check"></i></div>' +
+          '<h3>This panel has concluded</h3>' +
+          '<p>Thank you to everyone who came. The Campus Series continues on other campuses ahead of the main conference in November.</p>' +
+          '<a class="btn btn-outline" href="campus-series.html">See upcoming panels <i class="fas fa-arrow-right"></i></a>' +
+        '</div>';
+      var hero = document.querySelector('.cp-actions a[href="#register"]');
+      if (hero) { hero.setAttribute('href', 'campus-series.html'); hero.innerHTML = 'See Upcoming Panels <i class="fas fa-arrow-right"></i>'; }
+      var pend = document.querySelector('.cp-spk-pending a[href="#register"]');
+      if (pend) pend.remove();
+      var seat = document.querySelector('.cp-host-actions a[href="#register"]');
+      if (seat) seat.remove();
     })();
     </script>
     <script src="js/main.js"></script>

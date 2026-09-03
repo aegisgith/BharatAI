@@ -25,7 +25,7 @@
       "@graph": [
         {
           "@type": "Event",
-          "@id": "https://bharataiinnovation.com/campus-series.html#djsanghvi-21sep",
+          "@id": "https://bharataiinnovation.com/campus-djsanghvi.html#event",
           "name": "AI and Employability — Opportunities, Challenges and the Future of Work",
           "description": "Pre-event panel discussion in the Bharat AI Innovation Campus Series, hosted at Dwarkadas J. Sanghvi College of Engineering. A 90-minute panel on how AI is reshaping entry-level hiring, which skills hold their value, and what students and early-career professionals should do about it.",
           "startDate": "2026-09-21T11:00:00+05:30",
@@ -35,7 +35,7 @@
           "isAccessibleForFree": true,
           "inLanguage": "en-IN",
           "image": "https://bharataiinnovation.com/images/campus-djsanghvi-21sep.jpg",
-          "url": "https://bharataiinnovation.com/campus-series.html#djsanghvi-21sep",
+          "url": "https://bharataiinnovation.com/campus-djsanghvi.html",
           "location": {
             "@type": "Place",
             "name": "Dwarkadas J. Sanghvi College of Engineering",
@@ -51,7 +51,7 @@
           "organizer": { "@id": "https://bharataiinnovation.com/#organization" },
           "offers": {
             "@type": "Offer",
-            "url": "https://bharataiinnovation.com/campus-series.html#djsanghvi-21sep",
+            "url": "https://bharataiinnovation.com/campus-djsanghvi.html",
             "price": "0",
             "priceCurrency": "INR",
             "availability": "https://schema.org/InStock",
@@ -80,7 +80,7 @@
         },
         {
           "@type": "Event",
-          "@id": "https://bharataiinnovation.com/campus-series.html#jnu-30sep",
+          "@id": "https://bharataiinnovation.com/campus-jnu.html#event",
           "name": "AI and Employability — Opportunities, Challenges and the Future of Work",
           "description": "Pre-event panel discussion in the Bharat AI Innovation Campus Series, hosted at Jawaharlal Nehru University, New Delhi. A 90-minute panel on how AI is reshaping entry-level hiring, which skills hold their value, and what students and early-career professionals should do about it.",
           "startDate": "2026-09-30T15:00:00+05:30",
@@ -90,7 +90,7 @@
           "isAccessibleForFree": true,
           "inLanguage": "en-IN",
           "image": "https://bharataiinnovation.com/images/campus-jnu-30sep.jpg",
-          "url": "https://bharataiinnovation.com/campus-series.html#jnu-30sep",
+          "url": "https://bharataiinnovation.com/campus-jnu.html",
           "location": {
             "@type": "Place",
             "name": "Jawaharlal Nehru University",
@@ -106,7 +106,7 @@
           "organizer": { "@id": "https://bharataiinnovation.com/#organization" },
           "offers": {
             "@type": "Offer",
-            "url": "https://bharataiinnovation.com/campus-series.html#jnu-30sep",
+            "url": "https://bharataiinnovation.com/campus-jnu.html",
             "price": "0",
             "priceCurrency": "INR",
             "availability": "https://schema.org/InStock",
@@ -456,14 +456,13 @@
             <div class="cs-panels">
 
                 <!-- Dwarkadas J. Sanghvi College of Engineering — 21 Sept 2026 -->
-                <article class="cs-panel reveal" id="djsanghvi-21sep">
+                <article class="cs-panel reveal" id="djsanghvi-21sep" data-start="2026-09-21T11:00:00+05:30" data-end="2026-09-21T12:30:00+05:30">
                     <div class="cs-panel-media">
                         <img loading="lazy" decoding="async"
                              src="images/campus-djsanghvi-21sep.jpg"
                              alt="AI and Employability panel discussion at Dwarkadas J. Sanghvi College of Engineering, 21 September 2026">
                     </div>
                     <div class="cs-panel-body">
-                        <span class="cs-panel-flag"><i class="fas fa-bolt"></i> Next Panel</span>
                         <div class="cs-panel-host">
                             <i class="fas fa-university"></i> Dwarkadas J. Sanghvi College of Engineering
                         </div>
@@ -483,7 +482,7 @@
                 </article>
 
                 <!-- Jawaharlal Nehru University — 30 Sept 2026 -->
-                <article class="cs-panel reveal" id="jnu-30sep">
+                <article class="cs-panel reveal" id="jnu-30sep" data-start="2026-09-30T15:00:00+05:30" data-end="2026-09-30T16:30:00+05:30">
                     <div class="cs-panel-media">
                         <img loading="lazy" decoding="async"
                              src="images/campus-jnu-30sep.jpg"
@@ -653,6 +652,37 @@
         </div>
     </footer>
 
+    <script>
+    // Which panel is next, and which are over, is decided from the dates on the
+    // cards rather than typed in — so nothing on this page goes stale the morning
+    // after a panel. With JS off every card simply shows as it is.
+    (function () {
+      var now = Date.now();
+      var cards = Array.prototype.slice.call(document.querySelectorAll('.cs-panel[data-end]'));
+      var nextFound = false;
+      cards.forEach(function (card) {
+        var end = Date.parse(card.getAttribute('data-end'));
+        var body = card.querySelector('.cs-panel-body');
+        if (!body || isNaN(end)) return;
+        var flag = document.createElement('span');
+        flag.className = 'cs-panel-flag';
+        if (end < now) {
+          card.classList.add('cs-panel--past');
+          flag.style.background = '#5E6585';
+          flag.style.boxShadow = 'none';
+          flag.innerHTML = '<i class="fas fa-check"></i> Concluded';
+          // A concluded panel has nothing to register for; details stay reachable.
+          var reg = card.querySelector('.cs-panel-actions a[href$="#register"]');
+          if (reg) reg.remove();
+          body.insertBefore(flag, body.firstChild);
+        } else if (!nextFound) {
+          nextFound = true;
+          flag.innerHTML = '<i class="fas fa-bolt"></i> Next Panel';
+          body.insertBefore(flag, body.firstChild);
+        }
+      });
+    })();
+    </script>
     <script src="js/main.js"></script>
 </body>
 </html>
