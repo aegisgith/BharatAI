@@ -1736,7 +1736,11 @@ async function loginTokenRateLimited(c: any, eventId: any, email: string): Promi
   return (row?.n || 0) >= LOGIN_RATE_MAX
 }
 
-async function createLoginToken(c: any, eventId: any, email: string) {
+// ttlMinutes is a parameter because a campaign email is not a sign-in link. Fifteen
+// minutes is right when someone is sitting at the login screen waiting for a code;
+// it is useless for a mail sent to a thousand people who will open it that evening,
+// or on Monday. Callers that do not pass one keep the short default.
+async function createLoginToken(c: any, eventId: any, email: string, ttlMinutes: number = LOGIN_TOKEN_MINUTES) {
   // Nothing else prunes this table and every sign-in adds a row. Clearing spent and
   // expired rows here keeps it from growing without bound, with no cron needed.
   await c.env.DB.prepare(
@@ -1751,7 +1755,7 @@ async function createLoginToken(c: any, eventId: any, email: string) {
   ).bind(eventId, email).run()
   await c.env.DB.prepare(
     `INSERT INTO login_tokens (event_id, email, token_hash, code_hash, expires_at)
-     VALUES (?, ?, ?, ?, datetime('now', '+${LOGIN_TOKEN_MINUTES} minutes'))`
+     VALUES (?, ?, ?, ?, datetime('now', '+${Math.max(1, Math.round(ttlMinutes))} minutes'))`
   ).bind(eventId, email, await sha256Hex(token), await sha256Hex(code)).run()
   return { token, code }
 }
@@ -3899,6 +3903,170 @@ app.post('/api/admin/attendees/:id/send-thankyou', async (c) => {
 
 // ============ INNOVATION TALKS API ============
 // Get all innovation talks for an event
+// ==================== PROFILE COMPLETION CAMPAIGN ====================
+//
+// Roughly a thousand records are missing a designation, a city, an industry or a
+// photo, and nothing has ever asked for them. Requiring the fields at registration
+// only fixed rows created after 31 Aug; these are the ones from before, and they
+// cannot fix themselves - the badge prints what the row holds.
+//
+// Nothing here sends on its own. The list endpoint tells the admin who is affected,
+// the preview endpoint renders the mail without sending it, and the send endpoint
+// mails exactly one person, driven by the admin panel one attendee at a time - the
+// same shape as the existing notify-all flow, so the operator keeps control of the
+// pace and can stop after any recipient.
+
+// Sixty per cent of a thousand people will not open the mail on the day it lands.
+// A fifteen-minute sign-in token would strand nearly all of them at a login screen,
+// which is the same wall that stopped them completing the profile in the first place.
+const PROFILE_LINK_TTL_MINUTES = 7 * 24 * 60
+
+// What this row is still missing, phrased for the person rather than the schema.
+// Mirrors profileGaps() in the app and missingRegistrationFields() on the server, so
+// the mail, the card and the form never disagree about what is outstanding.
+function attendeeProfileGaps(a: any): string[] {
+  const has = (v: any) => String(v ?? '').trim().length > 0
+  const academic = String(a?.badge_type || '') === 'Academic Pass'
+  const gaps: string[] = []
+  if (!has(a?.avatar_url)) gaps.push('photo')
+  if (!has(a?.company)) gaps.push(academic ? 'college name' : 'organisation')
+  if (!academic && !has(a?.job_title)) gaps.push('designation')
+  if (!has(a?.city)) gaps.push('city')
+  if (!has(a?.industry)) gaps.push('industry')
+  if (!has(a?.mobile)) gaps.push('mobile number')
+  return gaps
+}
+
+// Renders the mail. Split out from the send so the admin can read the exact thing a
+// named attendee would receive before committing to a thousand of them.
+async function profileReminderEmailHTML(c: any, attendee: any, link: string): Promise<string> {
+  const esc = (v: any) => String(v ?? '').replace(/[&<>]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch] as string))
+  const gaps = attendeeProfileGaps(attendee)
+  const firstName = String(attendee.name || '').trim().split(/\s+/)[0] || 'there'
+  const needsPhoto = gaps.includes('photo')
+  const humanGaps = gaps.length < 2 ? gaps[0] : gaps.slice(0, -1).join(', ') + ' and ' + gaps[gaps.length - 1]
+
+  // Each missing item gets the reason it is being asked for. A list of empty fields
+  // is a chore; "this is what the desk checks against your face" is a reason.
+  const WHY: Record<string, string> = {
+    'photo': 'Printed on your pass. The badge desk checks it against your photo ID &mdash; with a photo on the pass that check takes seconds.',
+    'designation': 'Printed on your pass and shown in the attendee directory. It is how other delegates decide whether to approach you.',
+    'organisation': 'Printed on your pass and shown in the attendee directory.',
+    'college name': 'Printed on your pass and shown in the attendee directory.',
+    'city': 'Used to group people travelling in from the same place, and for the on-site logistics.',
+    'industry': 'Used for the sector breakdown and to suggest people worth meeting.',
+    'mobile number': 'Only used if something changes on the day &mdash; a hall move, a timing change.',
+  }
+  const row = (g: string) =>
+    `<tr><td width="26" valign="top" style="padding:0 0 14px;"><div style="width:8px;height:8px;border-radius:50%;background:#FF6B00;margin-top:6px;"></div></td>` +
+    `<td valign="top" style="padding:0 0 14px;"><p style="margin:0 0 2px;font-size:14px;font-weight:bold;color:#1E2140;text-transform:capitalize;">${esc(g)}</p>` +
+    `<p style="margin:0;font-size:12.5px;line-height:1.6;color:#666;">${WHY[g] || ''}</p></td></tr>`
+
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+  <body style="margin:0;background:#f5f5f5;font-family:Arial,Helvetica,sans-serif;">
+    <div style="max-width:600px;margin:20px auto;background:#fff;border-radius:12px;overflow:hidden;">
+      ${emailBrandHeader('Your pass is not finished', '20&ndash;21 Nov 2026 &bull; WTC Mumbai')}
+      <div style="padding:30px;">
+        <p style="margin:0 0 6px;font-size:15px;color:#333;">Hi <strong>${esc(firstName)}</strong>,</p>
+        <p style="margin:0 0 20px;font-size:14px;line-height:1.7;color:#555;">
+          You are registered for Bharat AI Innovation 2026 &mdash; that part is done. But your pass is printed from your profile, and yours is still missing ${gaps.length === 1 ? 'one thing' : gaps.length + ' things'}: <strong style="color:#1E2140;">${esc(humanGaps)}</strong>.
+        </p>
+        <table style="width:100%;border-collapse:collapse;">${gaps.map(row).join('')}</table>
+        <div style="text-align:center;margin:26px 0 6px;">
+          <a href="${link}" style="display:inline-block;padding:13px 32px;background:linear-gradient(135deg,#FF6B00,#FF8C38);color:#fff;text-decoration:none;border-radius:10px;font-weight:bold;font-size:14px;">${needsPhoto ? 'Add your photo and finish up' : 'Finish your profile'} &rarr;</a>
+        </div>
+        <p style="margin:12px 0 0;font-size:12px;color:#888;text-align:center;">Takes about a minute. The link signs you in automatically &mdash; no password, nothing to remember.</p>
+        <div style="margin-top:24px;padding:14px;background:#FFF6EF;border:1px solid rgba(255,107,0,0.25);border-radius:10px;">
+          <p style="margin:0;font-size:12.5px;line-height:1.6;color:#1E2140;"><strong>On the day:</strong> bring a government photo ID matching the name on your pass. We check it at the badge desk &mdash; we never ask you to upload or send an identity document, and we will never ask you for a payment over email.</p>
+        </div>
+        <p style="margin:22px 0 0;font-size:12px;line-height:1.6;color:#999;">
+          Already added these? Then you are set &mdash; nothing more to do, and you can ignore this. If you no longer plan to attend, just reply and tell us; we will take you off the list.
+        </p>
+      </div>
+      <div style="text-align:center;padding:16px;border-top:1px solid #eee;">
+        <p style="margin:0;font-size:12px;color:#999;">Bharat AI Innovation 2026 &bull; World Trade Center, Mumbai &bull; 20&ndash;21 Nov 2026</p>
+      </div>
+    </div>
+  </body></html>`
+}
+
+// Admin: who is still incomplete, and what each of them is missing.
+app.get('/api/admin/attendees/incomplete', async (c) => {
+  const eventId = c.req.query('event_id') || '1'
+  const { results } = await c.env.DB.prepare(
+    `SELECT id, name, email, company, job_title, city, industry, mobile, avatar_url, badge_type
+       FROM attendees
+      WHERE event_id = ? AND email IS NOT NULL AND email != ''
+      ORDER BY id`
+  ).bind(eventId).all()
+
+  const attendees = (results || [])
+    .map((a: any) => ({ id: a.id, name: a.name, email: a.email, missing: attendeeProfileGaps(a) }))
+    .filter((a: any) => a.missing.length > 0)
+
+  // A per-field tally, so the admin can see at a glance whether this is a photo
+  // problem or a city problem before deciding to mail anyone.
+  const byField: Record<string, number> = {}
+  for (const a of attendees) for (const m of a.missing) byField[m] = (byField[m] || 0) + 1
+
+  return c.json({ count: attendees.length, total: (results || []).length, byField, attendees })
+})
+
+// Admin: render the mail for one attendee WITHOUT sending it or minting a token.
+app.get('/api/admin/attendees/:id/profile-reminder-preview', async (c) => {
+  const attendee = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(c.req.param('id')).first() as any
+  if (!attendee) return c.json({ error: 'Attendee not found' }, 404)
+  const html = await profileReminderEmailHTML(c, attendee, '#preview-link-not-live')
+  return c.html(html)
+})
+
+// Admin: send the profile reminder to ONE attendee. Called per recipient by the
+// admin panel, never in a server-side loop - so a campaign can be stopped mid-way
+// and a failure is attributable to a named person.
+app.post('/api/admin/attendees/:id/send-profile-reminder', async (c) => {
+  const id = c.req.param('id')
+  const attendee = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(id).first() as any
+  if (!attendee) return c.json({ error: 'Attendee not found' }, 404)
+  if (!attendee.email) return c.json({ error: 'Attendee has no email' }, 400)
+
+  const gaps = attendeeProfileGaps(attendee)
+  if (!gaps.length) return c.json({ skipped: true, reason: 'Profile is already complete' })
+
+  const g = async (k: string) => ((await c.env.DB.prepare('SELECT value FROM app_settings WHERE key = ?').bind(k).first()) as any)?.value
+  const apiKey = await g('elastic_email_api_key')
+  if (!apiKey) return c.json({ error: 'Email service not configured.' }, 500)
+  const appUrl = (await g('app_url')) || 'https://bharataiinnovation.com/app'
+  const fromEmail = senderEmailOrDefault(await g('sender_email'))
+  const fromName = (await g('sender_name')) || 'Bharat AI Innovation'
+
+  // Lands them signed in, on the home tab, with the completion card already open on
+  // whatever they are missing. Sending them to a login screen is what this mail is
+  // trying to get past.
+  let link = `${appUrl}?email=${encodeURIComponent(attendee.email)}&action=complete-profile`
+  if (await verifiedLoginEnabled(c)) {
+    const issued = await createLoginToken(c, attendee.event_id, String(attendee.email).toLowerCase(), PROFILE_LINK_TTL_MINUTES)
+    link += `&token=${issued.token}`
+  }
+
+  const html = await profileReminderEmailHTML(c, attendee, link)
+  const subject = gaps.includes('photo')
+    ? 'Your pass still needs a photo - Bharat AI Innovation 2026'
+    : 'One minute to finish your Bharat AI Innovation 2026 profile'
+
+  const res = await fetch('https://api.elasticemail.com/v4/emails/transactional', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-ElasticEmail-ApiKey': apiKey },
+    body: JSON.stringify({
+      Recipients: { To: [attendee.email] },
+      Content: { Body: [{ ContentType: 'HTML', Charset: 'utf-8', Content: html }], From: `${fromName} <${fromEmail}>`, Subject: subject },
+      Options: { TrackClicks: false, TrackOpens: false },
+    }),
+  })
+  if (!res.ok) return c.json({ error: 'Send failed: ' + (await res.text().catch(() => res.status)) }, 502)
+
+  return c.json({ success: true, sent_to: attendee.email, missing: gaps })
+})
+
 app.get('/api/events/:id/innovation-talks', async (c) => {
   const eventId = c.req.param('id')
   const { results } = await c.env.DB.prepare(
@@ -8930,6 +9098,30 @@ function mainPageHTML(): string {
 
     // ==================== INIT ====================
     let pendingAction = null; // Store pending action (e.g. 'download-pass') for post-login
+
+    // Emailed links carry ?action=. download-pass opens the pass generator;
+    // complete-profile is the profile-reminder campaign, which lands the person on
+    // the home tab with the completion card already scrolled to and, if the only
+    // thing outstanding is a photo, the picker already open. Sending them to the app
+    // and letting them find it is what the mail is trying to get past.
+    function runPendingAction() {
+      const act = pendingAction || new URLSearchParams(window.location.search).get('action');
+      if (act === 'download-pass') { setTimeout(() => generateDelegatePass(), 1500); return; }
+      if (act !== 'complete-profile') return;
+      setTimeout(() => {
+        switchTab('home');
+        updateProfileCompletionCard();
+        const card = document.getElementById('profile-complete-card');
+        if (card && !card.classList.contains('hidden')) {
+          card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          const gaps = profileGaps(currentUser);
+          if (gaps.length === 1 && gaps[0] === 'photo') addProfilePhotoFromCard();
+          else openEditProfile();
+        } else {
+          showToast('Your profile is already complete - thank you!', 'success');
+        }
+      }, 900);
+    }
     let pendingTabAfterLogin = null; // Store tab to navigate to after login
 
     async function init() {
@@ -8956,7 +9148,7 @@ function mainPageHTML(): string {
           localStorage.setItem('agba_user', JSON.stringify(currentUser));
           if (emailParam) window.history.replaceState({}, '', window.location.pathname);
           upgradeToLoggedIn();
-          if (urlParams.get('action') === 'download-pass' || pendingAction === 'download-pass') setTimeout(() => generateDelegatePass(), 1500);
+          runPendingAction();
         } catch(e) {
           // Saved session invalid, continue as public user
           currentUser = null;
@@ -8979,7 +9171,7 @@ function mainPageHTML(): string {
             window.history.replaceState({}, '', window.location.pathname);
             showToast(\`Welcome back, \${currentUser.name}!\`, 'success');
             upgradeToLoggedIn();
-            if (pendingAction === 'download-pass') setTimeout(() => generateDelegatePass(), 1500);
+            runPendingAction();
             return;
           }
         } catch(e) {}
@@ -9300,7 +9492,7 @@ function mainPageHTML(): string {
             showToast(\`Welcome back, \${currentUser.name}!\`, 'success');
             document.getElementById('registration-modal').classList.add('hidden');
             upgradeToLoggedIn();
-            if (pendingAction === 'download-pass') setTimeout(() => generateDelegatePass(), 1500);
+            runPendingAction();
             return;
           }
         }
@@ -9368,7 +9560,7 @@ function mainPageHTML(): string {
         document.getElementById('registration-modal').classList.add('hidden');
         upgradeToLoggedIn();
         // Check for pending action after manual sign-in
-        if (pendingAction === 'download-pass') setTimeout(() => generateDelegatePass(), 1500);
+        runPendingAction();
       } catch(err) {
         errorEl.textContent = 'Network error. Please try again.';
         errorEl.classList.remove('hidden');
@@ -9461,7 +9653,7 @@ function mainPageHTML(): string {
         document.getElementById('registration-modal').classList.add('hidden');
         upgradeToLoggedIn();
         // Check for pending action after registration
-        if (pendingAction === 'download-pass') setTimeout(() => generateDelegatePass(), 1500);
+        runPendingAction();
       } catch(err) {
         errorEl.textContent = 'Registration failed. Please try again.';
         errorEl.classList.remove('hidden');
@@ -14440,6 +14632,7 @@ function adminPageHTML(): string {
           </div>
           <div class="flex gap-2">
             <button onclick="notifyAllAttendees()" class="px-4 py-2 rounded-xl text-xs font-medium bg-amber-600 hover:bg-amber-500 text-white transition"><i class="fas fa-envelope mr-1.5"></i>Notify All</button>
+            <button onclick="openProfileReminderCampaign()" class="px-4 py-2 rounded-xl text-xs font-medium bg-orange-600 hover:bg-orange-500 text-white transition" title="Ask attendees with a blank photo, designation, city or industry to complete their profile"><i class="fas fa-id-card mr-1.5"></i>Chase Profiles</button>
             <a href="#" onclick="exportAttendeesCsv(event)" class="px-4 py-2 rounded-xl text-xs font-medium glass hover:bg-white/10 text-gray-300 transition cursor-pointer"><i class="fas fa-download mr-1.5"></i>Export CSV</a>
             <button onclick="openAddAttendee()" class="px-4 py-2 rounded-xl text-xs font-medium bg-primary-600 hover:bg-primary-500 text-white transition"><i class="fas fa-user-plus mr-1.5"></i>Add Attendee</button>
             <button onclick="openBulkUploadModal()" class="px-4 py-2 rounded-xl text-xs font-medium bg-green-600 hover:bg-green-500 text-white transition"><i class="fas fa-file-upload mr-1.5"></i>Bulk Upload</button>
@@ -15592,6 +15785,76 @@ function adminPageHTML(): string {
         toast(\`Done! Sent: \${sent}, Failed: \${failed}\`, sent > 0 ? 'success' : 'error');
         loadAdminAttendees();
       } catch(e) { toast('Failed to send notifications', 'error'); }
+    }
+
+    // Profile-completion campaign. Deliberately a two-step: the first screen only
+    // reports who is incomplete and lets the admin read the exact mail one of them
+    // would get. Nothing leaves until "Send" is pressed on the second.
+    let _profileChase = { stop: false, running: false };
+
+    async function openProfileReminderCampaign() {
+      let data;
+      try { data = await api.get('/api/admin/attendees/incomplete?event_id=' + EID); }
+      catch (e) { toast('Could not load the list', 'error'); return; }
+
+      if (!data.count) { toast('Every attendee profile is complete.', 'success'); return; }
+
+      const order = ['photo', 'designation', 'organisation', 'college name', 'city', 'industry', 'mobile number'];
+      const rows = order.filter(f => data.byField[f]).map(f =>
+        '<tr><td style="padding:4px 0;" class="text-xs text-gray-400 capitalize">' + f + '</td>' +
+        '<td style="padding:4px 0;text-align:right;" class="text-xs font-semibold text-white">' + data.byField[f] + '</td></tr>'
+      ).join('');
+
+      const mb = document.getElementById('modal-box');
+      mb.innerHTML = \`
+        <div class="p-6 border-b border-white/10">
+          <h3 class="text-lg font-bold"><i class="fas fa-id-card text-orange-400 mr-2"></i>Chase incomplete profiles</h3>
+          <p class="text-xs text-gray-400 mt-1">\${data.count} of \${data.total} attendees are missing something their pass or the directory needs.</p>
+        </div>
+        <div class="p-6 space-y-4">
+          <table class="w-full"><tbody>\${rows}</tbody></table>
+          <div class="p-3 rounded-xl bg-white/5 border border-white/10">
+            <p class="text-xs text-gray-400 leading-relaxed">Each person is told only what <em>they</em> are missing, and the button signs them straight in — the link is good for 7 days. Nobody with a complete profile is mailed.</p>
+          </div>
+          <a href="/api/admin/attendees/\${data.attendees[0].id}/profile-reminder-preview" target="_blank" rel="noopener"
+             class="block text-center px-4 py-2.5 rounded-xl text-xs font-semibold glass hover:bg-white/10 text-gray-200 transition">
+            <i class="fas fa-eye mr-1.5"></i>Preview the email (as \${esc(data.attendees[0].name)} would receive it)
+          </a>
+          <div id="chase-progress" class="hidden text-xs text-gray-400 text-center"></div>
+        </div>
+        <div class="p-6 pt-0 flex gap-2">
+          <button id="chase-send" class="flex-1 py-3 rounded-xl text-sm font-semibold bg-orange-600 hover:bg-orange-500 text-white transition"><i class="fas fa-paper-plane mr-1.5"></i>Send to \${data.count}</button>
+          <button onclick="closeModal()" class="px-6 py-3 rounded-xl text-sm font-medium glass hover:bg-white/10 transition">Close</button>
+        </div>\`;
+      document.getElementById('modal-container').classList.remove('hidden');
+      document.getElementById('chase-send').onclick = () => runProfileReminderCampaign(data.attendees);
+    }
+
+    async function runProfileReminderCampaign(list) {
+      if (_profileChase.running) return;
+      if (!confirm('Send the profile reminder to ' + list.length + ' attendee(s)?\\n\\nThis sends real email. You can stop it part-way.')) return;
+
+      _profileChase = { stop: false, running: true };
+      const btn = document.getElementById('chase-send');
+      const prog = document.getElementById('chase-progress');
+      prog.classList.remove('hidden');
+      btn.innerHTML = '<i class="fas fa-stop mr-1.5"></i>Stop';
+      btn.onclick = () => { _profileChase.stop = true; };
+
+      let sent = 0, failed = 0, skipped = 0;
+      for (const a of list) {
+        if (_profileChase.stop) break;
+        try {
+          const r = await api.post('/api/admin/attendees/' + a.id + '/send-profile-reminder', {});
+          if (r && r.skipped) skipped++; else if (r && r.success) sent++; else failed++;
+        } catch (e) { failed++; }
+        prog.textContent = 'Sent ' + sent + ' of ' + list.length + (failed ? ' · ' + failed + ' failed' : '') + (skipped ? ' · ' + skipped + ' already complete' : '');
+      }
+
+      _profileChase.running = false;
+      btn.innerHTML = '<i class="fas fa-check mr-1.5"></i>Done';
+      btn.disabled = true;
+      toast('Profile reminders — sent ' + sent + ', failed ' + failed + (_profileChase.stop ? ' (stopped early)' : ''), sent > 0 ? 'success' : 'error');
     }
 
     async function resendNonResponders() {
