@@ -3921,6 +3921,113 @@ app.post('/api/admin/attendees/:id/send-thankyou', async (c) => {
 // which is the same wall that stopped them completing the profile in the first place.
 const PROFILE_LINK_TTL_MINUTES = 7 * 24 * 60
 
+// Sending hours, in IST. Nobody wants a "finish your profile" mail at 3am, and a
+// domain that normally sends a handful of registrations a day suddenly emitting
+// through the night is exactly the pattern spam filtering is built to catch.
+//
+// India has no daylight saving, so IST is UTC+5:30 year-round and the offset can be
+// arithmetic. Intl time zones are avoided deliberately: their availability varies by
+// Workers compatibility date, and a silently wrong zone here means mail at midnight.
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000
+const SEND_WINDOW_START_HOUR = 9   // 09:00 IST
+const SEND_WINDOW_END_HOUR = 21    // 21:00 IST, exclusive
+
+// Seconds between two sends. Enforced here rather than in the browser, so a reloaded
+// tab, a second admin, or two tabs at once cannot between them treble the rate.
+const SEND_GAP_SECONDS_DEFAULT = 90
+const SEND_GAP_SECONDS_MIN = 30
+
+function sendWindowState(now: Date = new Date()) {
+  const ist = new Date(now.getTime() + IST_OFFSET_MS)
+  const hour = ist.getUTCHours()
+  const open = hour >= SEND_WINDOW_START_HOUR && hour < SEND_WINDOW_END_HOUR
+
+  // When it next opens: later today if we are before 9, otherwise 9am tomorrow.
+  const nextOpenIst = new Date(ist)
+  nextOpenIst.setUTCHours(SEND_WINDOW_START_HOUR, 0, 0, 0)
+  if (hour >= SEND_WINDOW_END_HOUR) nextOpenIst.setUTCDate(nextOpenIst.getUTCDate() + 1)
+
+  // Closing time today, so the client can show how much runway is left.
+  const closesIst = new Date(ist)
+  closesIst.setUTCHours(SEND_WINDOW_END_HOUR, 0, 0, 0)
+
+  return {
+    open,
+    ist_time: ist.toISOString().slice(11, 16) + ' IST',
+    window: `${String(SEND_WINDOW_START_HOUR).padStart(2, '0')}:00-${SEND_WINDOW_END_HOUR}:00 IST`,
+    next_open_at: open ? null : new Date(nextOpenIst.getTime() - IST_OFFSET_MS).toISOString(),
+    closes_at: open ? new Date(closesIst.getTime() - IST_OFFSET_MS).toISOString() : null,
+    seconds_until_open: open ? 0 : Math.max(0, Math.round((nextOpenIst.getTime() - ist.getTime()) / 1000)),
+    seconds_until_close: open ? Math.max(0, Math.round((closesIst.getTime() - ist.getTime()) / 1000)) : 0,
+  }
+}
+
+// The clause that defines "still needs the reminder". Kept as one string because the
+// queue count, the next-recipient pick and the progress figures must all agree; if
+// they drift the campaign either stalls or loops.
+const NEEDS_REMINDER_SQL = `
+  event_id = ? AND email IS NOT NULL AND email != '' AND profile_reminder_sent_at IS NULL
+  AND ( COALESCE(TRIM(avatar_url),'') = ''
+     OR COALESCE(TRIM(city),'') = ''
+     OR COALESCE(TRIM(industry),'') = ''
+     OR COALESCE(TRIM(mobile),'') = ''
+     OR COALESCE(TRIM(company),'') = ''
+     OR (badge_type <> 'Academic Pass' AND COALESCE(TRIM(job_title),'') = '') )`
+
+const settingGet = async (c: any, k: string) =>
+  ((await c.env.DB.prepare('SELECT value FROM app_settings WHERE key = ?').bind(k).first()) as any)?.value
+
+const settingPut = async (c: any, k: string, v: string) => {
+  await c.env.DB.prepare(
+    `INSERT INTO app_settings (key, value) VALUES (?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`
+  ).bind(k, v).run()
+}
+
+const LAST_SEND_KEY = 'profile_reminder_last_sent_at'
+
+// Does the actual send for one attendee. Shared by the queue pump and the single-send
+// endpoint so the mail, the stamp and the throttle bookkeeping cannot diverge.
+async function sendProfileReminder(c: any, attendee: any): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+  const apiKey = await settingGet(c, 'elastic_email_api_key')
+  if (!apiKey) return { ok: false, status: 500, error: 'Email service not configured.' }
+  const appUrl = (await settingGet(c, 'app_url')) || 'https://bharataiinnovation.com/app'
+  const fromEmail = senderEmailOrDefault(await settingGet(c, 'sender_email'))
+  const fromName = (await settingGet(c, 'sender_name')) || 'Bharat AI Innovation'
+
+  // Lands them signed in, on the home tab, with the completion card already open on
+  // whatever they are missing. Sending them to a login screen is what this mail is
+  // trying to get past.
+  let link = `${appUrl}?email=${encodeURIComponent(attendee.email)}&action=complete-profile`
+  if (await verifiedLoginEnabled(c)) {
+    const issued = await createLoginToken(c, attendee.event_id, String(attendee.email).toLowerCase(), PROFILE_LINK_TTL_MINUTES)
+    link += `&token=${issued.token}`
+  }
+
+  const gaps = attendeeProfileGaps(attendee)
+  const html = await profileReminderEmailHTML(c, attendee, link)
+  const subject = gaps.includes('photo')
+    ? 'Your pass still needs a photo - Bharat AI Innovation 2026'
+    : 'One minute to finish your Bharat AI Innovation 2026 profile'
+
+  const res = await fetch('https://api.elasticemail.com/v4/emails/transactional', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-ElasticEmail-ApiKey': apiKey },
+    body: JSON.stringify({
+      Recipients: { To: [attendee.email] },
+      Content: { Body: [{ ContentType: 'HTML', Charset: 'utf-8', Content: html }], From: `${fromName} <${fromEmail}>`, Subject: subject },
+      Options: { TrackClicks: false, TrackOpens: false },
+    }),
+  })
+  if (!res.ok) return { ok: false, status: 502, error: 'Send failed: ' + (await res.text().catch(() => String(res.status))) }
+
+  // Stamped only after the send is accepted, so a failure leaves the person in the
+  // queue to be retried rather than silently skipped forever.
+  await c.env.DB.prepare('UPDATE attendees SET profile_reminder_sent_at = datetime("now") WHERE id = ?').bind(attendee.id).run()
+  await settingPut(c, LAST_SEND_KEY, new Date().toISOString())
+  return { ok: true }
+}
+
 // What this row is still missing, phrased for the person rather than the schema.
 // Mirrors profileGaps() in the app and missingRegistrationFields() on the server, so
 // the mail, the card and the form never disagree about what is outstanding.
@@ -3994,14 +4101,14 @@ async function profileReminderEmailHTML(c: any, attendee: any, link: string): Pr
 app.get('/api/admin/attendees/incomplete', async (c) => {
   const eventId = c.req.query('event_id') || '1'
   const { results } = await c.env.DB.prepare(
-    `SELECT id, name, email, company, job_title, city, industry, mobile, avatar_url, badge_type
+    `SELECT id, name, email, company, job_title, city, industry, mobile, avatar_url, badge_type, profile_reminder_sent_at
        FROM attendees
       WHERE event_id = ? AND email IS NOT NULL AND email != ''
       ORDER BY id`
   ).bind(eventId).all()
 
   const attendees = (results || [])
-    .map((a: any) => ({ id: a.id, name: a.name, email: a.email, missing: attendeeProfileGaps(a) }))
+    .map((a: any) => ({ id: a.id, name: a.name, email: a.email, missing: attendeeProfileGaps(a), sent_at: a.profile_reminder_sent_at || null }))
     .filter((a: any) => a.missing.length > 0)
 
   // A per-field tally, so the admin can see at a glance whether this is a photo
@@ -4009,7 +4116,103 @@ app.get('/api/admin/attendees/incomplete', async (c) => {
   const byField: Record<string, number> = {}
   for (const a of attendees) for (const m of a.missing) byField[m] = (byField[m] || 0) + 1
 
-  return c.json({ count: attendees.length, total: (results || []).length, byField, attendees })
+  const queued = attendees.filter((a: any) => !a.sent_at).length
+  const sent = attendees.length - queued
+  const gap = await sendGapSeconds(c)
+
+  return c.json({
+    count: attendees.length, total: (results || []).length, byField,
+    queued, sent, gap_seconds: gap,
+    // At one mail per gap inside a 12-hour window, the run spans days rather than
+    // minutes. Saying so up front is the difference between a plan and a surprise.
+    per_day: Math.floor((SEND_WINDOW_END_HOUR - SEND_WINDOW_START_HOUR) * 3600 / gap),
+    window: sendWindowState(),
+    attendees,
+  })
+})
+
+async function sendGapSeconds(c: any): Promise<number> {
+  const raw = parseInt(String(await settingGet(c, 'profile_reminder_gap_seconds') || ''), 10)
+  return Number.isFinite(raw) && raw >= SEND_GAP_SECONDS_MIN ? raw : SEND_GAP_SECONDS_DEFAULT
+}
+
+// Admin: campaign progress and whether it may send right now. Read-only - safe to
+// poll, and it is what the panel shows while the run is paused overnight.
+app.get('/api/admin/attendees/profile-reminder-status', async (c) => {
+  const eventId = c.req.query('event_id') || '1'
+  const remaining = await c.env.DB.prepare(`SELECT COUNT(*) n FROM attendees WHERE ${NEEDS_REMINDER_SQL}`).bind(eventId).first() as any
+  const done = await c.env.DB.prepare(
+    'SELECT COUNT(*) n FROM attendees WHERE event_id = ? AND profile_reminder_sent_at IS NOT NULL'
+  ).bind(eventId).first() as any
+  const gap = await sendGapSeconds(c)
+  const win = sendWindowState()
+  const last = await settingGet(c, LAST_SEND_KEY)
+  const sinceLast = last ? (Date.now() - Date.parse(last)) / 1000 : Infinity
+
+  return c.json({
+    remaining: remaining?.n || 0,
+    sent: done?.n || 0,
+    gap_seconds: gap,
+    per_day: Math.floor((SEND_WINDOW_END_HOUR - SEND_WINDOW_START_HOUR) * 3600 / gap),
+    days_remaining: Math.ceil((remaining?.n || 0) / Math.max(1, Math.floor((SEND_WINDOW_END_HOUR - SEND_WINDOW_START_HOUR) * 3600 / gap))),
+    last_sent_at: last || null,
+    ready_in_seconds: Math.max(0, Math.ceil(gap - sinceLast)),
+    window: win,
+  })
+})
+
+// Admin: set the pacing. Bounded below so the window and the gap cannot be
+// configured into a burst.
+app.post('/api/admin/attendees/profile-reminder-gap', async (c) => {
+  const { seconds } = await c.req.json().catch(() => ({ seconds: null }))
+  const n = parseInt(String(seconds), 10)
+  if (!Number.isFinite(n) || n < SEND_GAP_SECONDS_MIN || n > 3600) {
+    return c.json({ error: `Gap must be between ${SEND_GAP_SECONDS_MIN} and 3600 seconds.` }, 400)
+  }
+  await settingPut(c, 'profile_reminder_gap_seconds', String(n))
+  return c.json({ success: true, gap_seconds: n })
+})
+
+// Admin: send the next queued reminder, if the window is open and enough time has
+// passed. The server picks the recipient, so a reloaded tab resumes exactly where it
+// left off and nobody is mailed twice; the caller is only a clock.
+//
+// The window and the gap are enforced HERE rather than in the browser: two tabs, a
+// second admin, or an impatient reload must not between them treble the send rate.
+app.post('/api/admin/attendees/send-next-profile-reminder', async (c) => {
+  const { event_id } = await c.req.json().catch(() => ({ event_id: 1 }))
+  const eventId = event_id || 1
+
+  const win = sendWindowState()
+  if (!win.open) {
+    return c.json({ paused: true, reason: `Outside the ${win.window} sending window (it is ${win.ist_time}).`, window: win })
+  }
+
+  const gap = await sendGapSeconds(c)
+  const last = await settingGet(c, LAST_SEND_KEY)
+  const sinceLast = last ? (Date.now() - Date.parse(last)) / 1000 : Infinity
+  if (sinceLast < gap) {
+    return c.json({ throttled: true, wait_seconds: Math.ceil(gap - sinceLast), gap_seconds: gap, window: win })
+  }
+
+  const next = await c.env.DB.prepare(
+    `SELECT * FROM attendees WHERE ${NEEDS_REMINDER_SQL} ORDER BY id LIMIT 1`
+  ).bind(eventId).first() as any
+  if (!next) return c.json({ done: true, remaining: 0, window: win })
+
+  const result = await sendProfileReminder(c, next)
+  if (!result.ok) return c.json({ error: result.error, attendee: { id: next.id, email: next.email } }, result.status as any)
+
+  const remaining = await c.env.DB.prepare(`SELECT COUNT(*) n FROM attendees WHERE ${NEEDS_REMINDER_SQL}`).bind(eventId).first() as any
+  return c.json({
+    success: true,
+    sent_to: next.email,
+    name: next.name,
+    missing: attendeeProfileGaps(next),
+    remaining: remaining?.n || 0,
+    next_in_seconds: gap,
+    window: win,
+  })
 })
 
 // Admin: render the mail for one attendee WITHOUT sending it or minting a token.
@@ -4032,38 +4235,15 @@ app.post('/api/admin/attendees/:id/send-profile-reminder', async (c) => {
   const gaps = attendeeProfileGaps(attendee)
   if (!gaps.length) return c.json({ skipped: true, reason: 'Profile is already complete' })
 
-  const g = async (k: string) => ((await c.env.DB.prepare('SELECT value FROM app_settings WHERE key = ?').bind(k).first()) as any)?.value
-  const apiKey = await g('elastic_email_api_key')
-  if (!apiKey) return c.json({ error: 'Email service not configured.' }, 500)
-  const appUrl = (await g('app_url')) || 'https://bharataiinnovation.com/app'
-  const fromEmail = senderEmailOrDefault(await g('sender_email'))
-  const fromName = (await g('sender_name')) || 'Bharat AI Innovation'
-
-  // Lands them signed in, on the home tab, with the completion card already open on
-  // whatever they are missing. Sending them to a login screen is what this mail is
-  // trying to get past.
-  let link = `${appUrl}?email=${encodeURIComponent(attendee.email)}&action=complete-profile`
-  if (await verifiedLoginEnabled(c)) {
-    const issued = await createLoginToken(c, attendee.event_id, String(attendee.email).toLowerCase(), PROFILE_LINK_TTL_MINUTES)
-    link += `&token=${issued.token}`
+  // The sending window applies to a one-off too. force=1 is the deliberate override,
+  // for sending yourself a test at midnight - it still stamps and still throttles.
+  const win = sendWindowState()
+  if (!win.open && c.req.query('force') !== '1') {
+    return c.json({ paused: true, reason: `Outside the ${win.window} sending window (it is ${win.ist_time}).`, window: win }, 409)
   }
 
-  const html = await profileReminderEmailHTML(c, attendee, link)
-  const subject = gaps.includes('photo')
-    ? 'Your pass still needs a photo - Bharat AI Innovation 2026'
-    : 'One minute to finish your Bharat AI Innovation 2026 profile'
-
-  const res = await fetch('https://api.elasticemail.com/v4/emails/transactional', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-ElasticEmail-ApiKey': apiKey },
-    body: JSON.stringify({
-      Recipients: { To: [attendee.email] },
-      Content: { Body: [{ ContentType: 'HTML', Charset: 'utf-8', Content: html }], From: `${fromName} <${fromEmail}>`, Subject: subject },
-      Options: { TrackClicks: false, TrackOpens: false },
-    }),
-  })
-  if (!res.ok) return c.json({ error: 'Send failed: ' + (await res.text().catch(() => res.status)) }, 502)
-
+  const result = await sendProfileReminder(c, attendee)
+  if (!result.ok) return c.json({ error: result.error }, result.status as any)
   return c.json({ success: true, sent_to: attendee.email, missing: gaps })
 })
 
@@ -15790,7 +15970,6 @@ function adminPageHTML(): string {
     // Profile-completion campaign. Deliberately a two-step: the first screen only
     // reports who is incomplete and lets the admin read the exact mail one of them
     // would get. Nothing leaves until "Send" is pressed on the second.
-    let _profileChase = { stop: false, running: false };
 
     async function openProfileReminderCampaign() {
       let data;
@@ -15805,56 +15984,128 @@ function adminPageHTML(): string {
         '<td style="padding:4px 0;text-align:right;" class="text-xs font-semibold text-white">' + data.byField[f] + '</td></tr>'
       ).join('');
 
+      const days = Math.ceil(data.queued / Math.max(1, data.per_day));
       const mb = document.getElementById('modal-box');
       mb.innerHTML = \`
         <div class="p-6 border-b border-white/10">
           <h3 class="text-lg font-bold"><i class="fas fa-id-card text-orange-400 mr-2"></i>Chase incomplete profiles</h3>
-          <p class="text-xs text-gray-400 mt-1">\${data.count} of \${data.total} attendees are missing something their pass or the directory needs.</p>
+          <p class="text-xs text-gray-400 mt-1">\${data.queued} still to mail\${data.sent ? ' · ' + data.sent + ' already sent' : ''} · \${data.total} attendees in total</p>
         </div>
         <div class="p-6 space-y-4">
           <table class="w-full"><tbody>\${rows}</tbody></table>
-          <div class="p-3 rounded-xl bg-white/5 border border-white/10">
-            <p class="text-xs text-gray-400 leading-relaxed">Each person is told only what <em>they</em> are missing, and the button signs them straight in — the link is good for 7 days. Nobody with a complete profile is mailed.</p>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="text-xs text-gray-400 mb-1 block">Seconds between emails</label>
+              <select id="chase-gap" class="w-full px-3 py-2 rounded-lg text-sm">
+                <option value="60">60 seconds</option>
+                <option value="90">90 seconds</option>
+                <option value="120">120 seconds</option>
+              </select>
+            </div>
+            <div>
+              <label class="text-xs text-gray-400 mb-1 block">Sending window</label>
+              <div class="px-3 py-2 rounded-lg text-sm bg-white/5 border border-white/10 text-gray-300">\${data.window.window}</div>
+            </div>
           </div>
+
+          <div class="p-3 rounded-xl bg-white/5 border border-white/10">
+            <p class="text-xs text-gray-400 leading-relaxed">
+              About <strong class="text-white">\${data.per_day}/day</strong> inside the window, so roughly <strong class="text-white">\${days} day\${days === 1 ? '' : 's'}</strong> for \${data.queued}.
+              Progress is kept on the server: closing this tab pauses the run, reopening resumes it, and nobody is mailed twice.
+              Outside \${data.window.window} the server refuses to send at all.
+            </p>
+          </div>
+
           <a href="/api/admin/attendees/\${data.attendees[0].id}/profile-reminder-preview" target="_blank" rel="noopener"
              class="block text-center px-4 py-2.5 rounded-xl text-xs font-semibold glass hover:bg-white/10 text-gray-200 transition">
             <i class="fas fa-eye mr-1.5"></i>Preview the email (as \${esc(data.attendees[0].name)} would receive it)
           </a>
-          <div id="chase-progress" class="hidden text-xs text-gray-400 text-center"></div>
+          <div id="chase-progress" class="hidden text-xs text-center text-gray-400 leading-relaxed"></div>
         </div>
         <div class="p-6 pt-0 flex gap-2">
-          <button id="chase-send" class="flex-1 py-3 rounded-xl text-sm font-semibold bg-orange-600 hover:bg-orange-500 text-white transition"><i class="fas fa-paper-plane mr-1.5"></i>Send to \${data.count}</button>
-          <button onclick="closeModal()" class="px-6 py-3 rounded-xl text-sm font-medium glass hover:bg-white/10 transition">Close</button>
+          <button id="chase-send" class="flex-1 py-3 rounded-xl text-sm font-semibold bg-orange-600 hover:bg-orange-500 text-white transition"><i class="fas fa-paper-plane mr-1.5"></i>Start sending</button>
+          <button onclick="stopProfileReminderCampaign(); closeModal();" class="px-6 py-3 rounded-xl text-sm font-medium glass hover:bg-white/10 transition">Close</button>
         </div>\`;
       document.getElementById('modal-container').classList.remove('hidden');
-      document.getElementById('chase-send').onclick = () => runProfileReminderCampaign(data.attendees);
+      document.getElementById('chase-gap').value = String(data.gap_seconds);
+      document.getElementById('chase-send').onclick = startProfileReminderCampaign;
     }
 
-    async function runProfileReminderCampaign(list) {
-      if (_profileChase.running) return;
-      if (!confirm('Send the profile reminder to ' + list.length + ' attendee(s)?\\n\\nThis sends real email. You can stop it part-way.')) return;
+    // The run is a pump, not a loop: one request, then a timer. The server owns who is
+    // next, the 9am-9pm IST window and the gap between sends, so this side can be
+    // closed, reopened, or opened twice without changing the outcome.
+    let _chaseTimer = null;
 
-      _profileChase = { stop: false, running: true };
+    function stopProfileReminderCampaign() {
+      if (_chaseTimer) { clearTimeout(_chaseTimer); _chaseTimer = null; }
       const btn = document.getElementById('chase-send');
-      const prog = document.getElementById('chase-progress');
-      prog.classList.remove('hidden');
-      btn.innerHTML = '<i class="fas fa-stop mr-1.5"></i>Stop';
-      btn.onclick = () => { _profileChase.stop = true; };
+      if (btn && !btn.disabled) { btn.innerHTML = '<i class="fas fa-play mr-1.5"></i>Resume sending'; btn.onclick = startProfileReminderCampaign; }
+    }
 
-      let sent = 0, failed = 0, skipped = 0;
-      for (const a of list) {
-        if (_profileChase.stop) break;
-        try {
-          const r = await api.post('/api/admin/attendees/' + a.id + '/send-profile-reminder', {});
-          if (r && r.skipped) skipped++; else if (r && r.success) sent++; else failed++;
-        } catch (e) { failed++; }
-        prog.textContent = 'Sent ' + sent + ' of ' + list.length + (failed ? ' · ' + failed + ' failed' : '') + (skipped ? ' · ' + skipped + ' already complete' : '');
+    async function startProfileReminderCampaign() {
+      const gapSel = document.getElementById('chase-gap');
+      if (gapSel) {
+        try { await api.post('/api/admin/attendees/profile-reminder-gap', { seconds: parseInt(gapSel.value, 10) }); }
+        catch (e) { toast('Could not set the pace', 'error'); return; }
+      }
+      if (!confirm('Start sending profile reminders?\\n\\nReal email, one at a time, only between 9am and 9pm IST.\\nYou can stop at any point and resume later - nobody is mailed twice.')) return;
+
+      const btn = document.getElementById('chase-send');
+      btn.innerHTML = '<i class="fas fa-stop mr-1.5"></i>Stop';
+      btn.onclick = stopProfileReminderCampaign;
+      document.getElementById('chase-progress').classList.remove('hidden');
+      pumpProfileReminder();
+    }
+
+    function chaseSay(msg) {
+      const el = document.getElementById('chase-progress');
+      if (el) el.innerHTML = msg;
+    }
+
+    async function pumpProfileReminder() {
+      let r;
+      try { r = await api.post('/api/admin/attendees/send-next-profile-reminder', { event_id: EID }); }
+      catch (e) {
+        chaseSay('<span class="text-red-400">Network error - retrying in 60s.</span>');
+        _chaseTimer = setTimeout(pumpProfileReminder, 60000);
+        return;
       }
 
-      _profileChase.running = false;
-      btn.innerHTML = '<i class="fas fa-check mr-1.5"></i>Done';
-      btn.disabled = true;
-      toast('Profile reminders — sent ' + sent + ', failed ' + failed + (_profileChase.stop ? ' (stopped early)' : ''), sent > 0 ? 'success' : 'error');
+      if (r.done) {
+        chaseSay('<span class="text-green-400">All done - everyone in the queue has been mailed.</span>');
+        if (_chaseTimer) { clearTimeout(_chaseTimer); _chaseTimer = null; }
+        const btn = document.getElementById('chase-send');
+        if (btn) { btn.innerHTML = '<i class="fas fa-check mr-1.5"></i>Done'; btn.disabled = true; btn.onclick = null; }
+        loadAdminAttendees();
+        return;
+      }
+
+      if (r.paused) {
+        // Outside the window. Sleep until a little after it opens rather than polling.
+        const wait = Math.min(3600, (r.window && r.window.seconds_until_open) || 900) + 5;
+        chaseSay('Paused - ' + esc(r.reason) + '<br>Retrying in ' + Math.round(wait / 60) + ' min if this tab stays open.');
+        _chaseTimer = setTimeout(pumpProfileReminder, wait * 1000);
+        return;
+      }
+
+      if (r.throttled) {
+        chaseSay('Waiting ' + r.wait_seconds + 's for the next slot...');
+        _chaseTimer = setTimeout(pumpProfileReminder, (r.wait_seconds + 1) * 1000);
+        return;
+      }
+
+      if (r.error) {
+        chaseSay('<span class="text-red-400">' + esc(r.error) + '</span><br>Retrying in 2 min.');
+        _chaseTimer = setTimeout(pumpProfileReminder, 120000);
+        return;
+      }
+
+      const mins = Math.round(r.remaining * r.next_in_seconds / 60);
+      chaseSay('Sent to <strong class="text-white">' + esc(r.name || r.sent_to) + '</strong>'
+        + '<br>' + r.remaining + ' left · about ' + (mins > 90 ? Math.round(mins / 60) + ' h' : mins + ' min') + ' of sending time'
+        + '<br><span class="text-gray-500">Next in ' + r.next_in_seconds + 's</span>');
+      _chaseTimer = setTimeout(pumpProfileReminder, (r.next_in_seconds + 1) * 1000);
     }
 
     async function resendNonResponders() {
