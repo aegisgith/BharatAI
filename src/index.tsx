@@ -2603,7 +2603,7 @@ app.post('/api/events/:id/attendees/send-magic-link', async (c) => {
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
 <body style="margin:0;padding:0;background:#f5f5f5;font-family:Arial,sans-serif;">
   <div style="max-width:600px;margin:20px auto;background:white;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
-    ${emailBrandHeader('Sign In to Bharat AI Innovation 2026', '16th Edition &bull; 20&ndash;21 Nov 2026 &bull; WTC Mumbai')}
+    ${emailBrandHeader('Sign In to Bharat AI Innovation 2026', 'Conference &amp; Exhibition 2026 &bull; 20&ndash;21 Nov 2026 &bull; WTC Mumbai')}
     <div style="padding:32px;">
       <p style="color:#333;line-height:1.6;margin:0 0 16px;">Hi <strong>${attendee.name}</strong>,</p>
       <p style="color:#555;line-height:1.6;margin:0 0 24px;">Click the button below to sign in to the Bharat AI Innovation 2026. This link will log you in automatically — no password needed.</p>
@@ -3976,11 +3976,6 @@ app.post('/api/admin/attendees/:id/notify', async (c) => {
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;padding:0;background:#f4f4f5;font-family:Arial,sans-serif;">
   <div style="max-width:600px;margin:0 auto;padding:20px;">
-    <!-- Supported by MeitY -->
-    <div style="text-align:center;margin-bottom:8px;">
-      <p style="margin:0 0 6px;color:#888;font-size:11px;text-transform:uppercase;letter-spacing:1px;">Supported by</p>
-      <img src="https://bharataiinnovation.com/wp-content/uploads/2026/02/Meity-logo.png" alt="Ministry of Electronics and Information Technology" style="height:60px;max-width:280px;">
-    </div>
     <div style="border-radius:16px;overflow:hidden;">
       ${emailBrandHeader('Conference &amp; Exhibition 2026', '20&ndash;21 Nov 2026 &bull; World Trade Center, Mumbai')}
     </div>
@@ -4175,11 +4170,6 @@ app.post('/api/admin/attendees/:id/send-thankyou', async (c) => {
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;padding:0;background:#f4f4f5;font-family:Arial,sans-serif;">
   <div style="max-width:600px;margin:0 auto;padding:20px;">
-    <!-- Supported by MeitY -->
-    <div style="text-align:center;margin-bottom:8px;">
-      <p style="margin:0 0 6px;color:#888;font-size:11px;text-transform:uppercase;letter-spacing:1px;">Supported by</p>
-      <img src="https://bharataiinnovation.com/wp-content/uploads/2026/02/Meity-logo.png" alt="Ministry of Electronics and Information Technology" style="height:60px;max-width:280px;">
-    </div>
     <div style="border-radius:16px;overflow:hidden;">
       ${emailBrandHeader('Confirm Your Attendance!', 'Conference &amp; Exhibition 2026 &bull; 20&ndash;21 Nov 2026')}
     </div>
@@ -6560,7 +6550,7 @@ function sharedFooterHTML(): string {
           <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="w-10 h-10 rounded-lg object-contain">
           <div>
             <h3 class="font-bold text-sm">Bharat AI Innovation 2026</h3>
-            <p class="text-[10px] text-gray-400">16th Edition</p>
+            <p class="text-[10px] text-gray-400">Conference &amp; Exhibition 2026</p>
           </div>
         </div>
         <p class="text-xs text-gray-400">India's Largest AI Conference & Exhibition bringing together innovators, researchers, startups, and industry leaders.</p>
@@ -9241,10 +9231,10 @@ function mainPageHTML(): string {
           <!-- Sub-tabs for Awards -->
           <div class="flex justify-center gap-2 mb-8 flex-wrap">
             <button class="awards-tab px-4 py-2.5 rounded-xl text-sm font-medium tab-active" data-awards-tab="finalists" onclick="switchAwardsTab('finalists')">
-              <i class="fas fa-star mr-1.5"></i>16th Startup Finalists
+              <i class="fas fa-star mr-1.5"></i>Startup Finalists
             </button>
             <button class="awards-tab px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400" data-awards-tab="enterprise" onclick="switchAwardsTab('enterprise')">
-              <i class="fas fa-building mr-1.5"></i>16th Enterprise Finalists
+              <i class="fas fa-building mr-1.5"></i>Enterprise Finalists
             </button>
             <button class="awards-tab md:hidden px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400" data-awards-tab="categories" onclick="switchAwardsTab('categories')">
               <i class="fas fa-list-alt mr-1.5"></i>BHAI 2026 Award Categories
@@ -17931,10 +17921,6 @@ function adminPageHTML(): string {
     function previewThankYouEmail() {
       openModal(\`
         <div style="max-height:80vh;overflow-y:auto;background:#f4f4f5;border-radius:12px;padding:8px;">
-          <div style="text-align:center;margin-bottom:8px;">
-            <p style="margin:0 0 6px;color:#888;font-size:11px;text-transform:uppercase;letter-spacing:1px;">Supported by</p>
-            <img src="https://bharataiinnovation.com/wp-content/uploads/2026/02/Meity-logo.png" alt="MeitY" style="height:50px;">
-          </div>
           <div style="text-align:center;margin-bottom:12px;">
             <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" style="height:60px;">
           </div>
