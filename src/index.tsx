@@ -2220,15 +2220,22 @@ function verifyPageHTML(o: any): string {
 // modal keeps its free-text Location box, so the code deploy and the hand-run
 // migration are independent and can happen in either order — same rollout switch
 // as verifiedLoginEnabled below and paymentStatusEnabled above.
-let _roomTables: boolean | null = null
+//
+// Only a POSITIVE answer is memoised. Caching "not there yet" would pin an isolate
+// to false for its whole life, so after the migration ran the endpoint really did
+// answer ready:true on fresh isolates and ready:false on the one that had probed
+// earlier — the feature looking half-broken for as long as that isolate lived.
+// Tables never disappear, so a true answer is safe to keep forever; a false one is
+// worth one cheap sqlite_master read per request until it flips.
+let _roomTables = false
 async function roomBookingEnabled(c: any): Promise<boolean> {
-  if (_roomTables !== null) return _roomTables
+  if (_roomTables) return true
   try {
     const { results } = await c.env.DB.prepare(
       "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('meeting_rooms','room_bookings')"
     ).all()
-    _roomTables = (results || []).length === 2
-  } catch { _roomTables = false }
+    if ((results || []).length === 2) _roomTables = true
+  } catch { /* table missing or DB unavailable — stay off, re-probe next request */ }
   return _roomTables
 }
 
