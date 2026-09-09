@@ -38,9 +38,10 @@ app.use('/api/*', cors())
 // panel says it is - self-declared, and labelled that way in the UI. The IP and
 // user agent are not, and a destructive action is traceable with all three.
 // Never throws: an audit write must not be able to fail the action it records.
-async function audit(c: any, action: string, entity?: string, entityId?: any, detail?: any) {
+async function audit(c: any, action: string, entity?: string, entityId?: any, detail?: any,
+    actorOverride?: { actor: string; kind: string }) {
   try {
-    const who = adminActor(c)
+    const who = actorOverride || adminActor(c)
     const actor = who.actor
     const kind = who.kind
     await c.env.DB.prepare(
@@ -55,8 +56,12 @@ async function audit(c: any, action: string, entity?: string, entityId?: any, de
   } catch (_) { /* the table may predate migration 0027; never break the caller */ }
 }
 
-// One place that knows how to send a transactional email, so new admin features
-// do not each re-implement the Elastic Email call and its settings lookup.
+// One place that knows how to send a transactional email, so new features do not
+// each re-implement the Elastic Email call and its settings lookup. Named for the
+// admin panel it was written for; it is the generic sender and the networking
+// notifications below use it too. Never throws: returns { ok:false, error } on a
+// missing key, a non-2xx, or an unreachable service. Sets no ReplyTo on purpose --
+// a notification must never hand one attendee another attendee's address.
 async function sendAdminEmail(c: any, to: string, subject: string, html: string):
     Promise<{ ok: true } | { ok: false; error: string }> {
   const g = async (k: string) => ((await c.env.DB.prepare('SELECT value FROM app_settings WHERE key = ?').bind(k).first()) as any)?.value
@@ -691,6 +696,266 @@ function emailBrandHeader(title: string, subtitle: string): string {
       ${title ? `<h1 style="color:#ffffff;margin:16px 0 0;font-size:19px;font-weight:bold;font-family:Arial,Helvetica,sans-serif;">${title}</h1>` : ''}
       ${subtitle ? `<p style="color:rgba(255,255,255,0.82);margin:6px 0 0;font-size:13px;font-family:Arial,Helvetica,sans-serif;">${subtitle}</p>` : ''}
     </div>`
+}
+
+// ==================== NETWORKING NOTIFICATIONS ====================
+//
+// Five endpoints -- connect, accept, message, meet, respond -- wrote a row and told
+// nobody. Someone who is not sitting in the app at that second never learns that
+// anyone reached out, which is the whole product.
+//
+// Rules that hold for every mail below:
+//  - It never contains the other party's email or mobile. The directory withholds
+//    both on purpose (ATTENDEE_PUBLIC_COLS) and a notification is not a side door
+//    round that: name, company and job title only, and no ReplyTo, so a reply
+//    reaches the event team rather than revealing an address.
+//  - It never throws. The row is committed before this runs; a mail failure must not
+//    surface as a failed connection, message or meeting.
+//  - It goes out through waitUntil, so nobody waits on Elastic Email.
+//  - Every interpolated value is attendee free text and is escaped.
+//  - The actor is never mailed about their own click.
+
+const NET_APP_URL_FALLBACK = 'https://bharataiinnovation.com/app'
+
+// At most one mail per sender, per recipient, per this many minutes. Chat fires on
+// every keystroke-sized message; without this a lively thread is a mail bomb.
+const MESSAGE_EMAIL_QUIET_MINUTES = 30
+
+const escEmail = (v: any) => String(v ?? '')
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+
+// Subjects are plain text: strip anything that could wrap a line, and cap the length.
+const netPlain = (v: any, max = 80) => String(v ?? '').replace(/[\r\n\t]+/g, ' ').trim().slice(0, max)
+
+const netFirstName = (v: any) => escEmail(String(v || '').trim().split(/\s+/)[0] || 'there')
+
+// Ids arrive from JSON bodies and from D1 rows, so they can differ in type for the
+// same person. Compare as strings or a self-notify slips through.
+const netSamePerson = (a: any, b: any) => String(a ?? '') === String(b ?? '')
+
+const netSetting = async (c: any, k: string) =>
+  ((await c.env.DB.prepare('SELECT value FROM app_settings WHERE key = ?').bind(k).first()) as any)?.value
+
+async function networkingAppUrl(c: any, hash: string): Promise<string> {
+  try { return ((await netSetting(c, 'app_url')) || NET_APP_URL_FALLBACK) + hash }
+  catch { return NET_APP_URL_FALLBACK + hash }
+}
+
+// meeting_time is written by <input type="datetime-local"> and stored verbatim as a
+// wall-clock string with no zone: "2026-11-20T14:30". Workers run in UTC, so
+// new Date(that) is read as UTC and any IST rendering prints the meeting 5.5 hours
+// late. Format the string itself; never route it through Date.
+function formatMeetingTime(v: any): string {
+  const m = String(v || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/)
+  if (!m) return String(v || '').trim()
+  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+  const h24 = parseInt(m[4], 10)
+  const h12 = ((h24 + 11) % 12) + 1
+  return `${parseInt(m[3], 10)} ${MONTHS[parseInt(m[2], 10) - 1]} ${m[1]}, ${h12}:${m[5]} ${h24 < 12 ? 'am' : 'pm'} IST`
+}
+
+// One shell for all six notifications, so they read as one family and the house
+// header is not redrawn six times.
+function networkingEmailHTML(o: { title: string; greeting: string; lead: string; detail?: string; cta: string; ctaUrl: string }): string {
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#f5f5f5;font-family:Arial,sans-serif;">
+    <div style="max-width:600px;margin:20px auto;background:#fff;border-radius:12px;overflow:hidden;">
+      ${emailBrandHeader(o.title, '20&ndash;21 Nov 2026 &bull; WTC Mumbai')}
+      <div style="padding:28px;">
+        <p style="margin:0 0 6px;font-size:15px;color:#333;">Hi <strong>${o.greeting}</strong>,</p>
+        <p style="margin:0 0 18px;font-size:14px;line-height:1.7;color:#555;">${o.lead}</p>
+        ${o.detail || ''}
+        <div style="text-align:center;margin:24px 0 6px;">
+          <a href="${o.ctaUrl}" style="display:inline-block;padding:12px 30px;background:linear-gradient(135deg,#FF6B00,#FF8C38);color:#fff;text-decoration:none;border-radius:10px;font-weight:bold;font-size:14px;">${o.cta}</a>
+        </div>
+        <p style="margin:16px 0 0;font-size:11.5px;line-height:1.6;color:#999;text-align:center;">You are getting this because you are registered for Bharat AI Innovation 2026. Replies to this address reach the event team, not the other attendee &mdash; answer them in the app.</p>
+      </div>
+    </div></body></html>`
+}
+
+const netDetailBox = (rows: Array<[string, string]>) =>
+  `<table style="width:100%;border-collapse:collapse;background:#F8F9FB;border-radius:10px;">` +
+  rows.filter(r => r[1]).map(([k, v]) =>
+    `<tr><td valign="top" style="padding:8px 14px;font-size:12px;color:#888;white-space:nowrap;">${k}</td>` +
+    `<td valign="top" style="padding:8px 14px;font-size:13.5px;color:#1E2140;font-weight:bold;">${v}</td></tr>`
+  ).join('') + `</table>`
+
+const netQuote = (colour: string, text: string) =>
+  `<div style="padding:14px;background:#F8F9FB;border-left:3px solid ${colour};border-radius:0 8px 8px 0;font-size:13.5px;line-height:1.6;color:#333;">${text}</div>`
+
+// A kill switch the operator can throw from admin Settings without a deploy. No
+// migration: app_settings is a free-form key/value store and PUT /api/admin/settings
+// writes any key. Absent means on.
+async function networkingEmailsEnabled(c: any): Promise<boolean> {
+  try {
+    const v = String((await netSetting(c, 'networking_emails')) ?? '').toLowerCase()
+    return !(v === '0' || v === 'off' || v === 'false' || v === 'no')
+  } catch { return true }
+}
+
+// The single send path. Reuses sendAdminEmail -- the one place that knows the Elastic
+// Email call and the settings lookup -- and swallows every outcome.
+async function notifyNetworking(c: any, to: any, subject: string, html: string): Promise<void> {
+  try {
+    if (!EMAIL_SYNTAX.test(String(to || '').trim())) return
+    if (!(await networkingEmailsEnabled(c))) return
+    await sendAdminEmail(c, String(to).trim(), subject, html) // returns {ok:false}, never throws
+  } catch { /* the connection / message / meeting is already saved */ }
+}
+
+// Hono's c.executionCtx THROWS when there is no ExecutionContext rather than being
+// undefined, so this is guarded rather than optional-chained -- the same shape the
+// register and enquiry endpoints already use. The fallback await is safe because
+// every notify* function below swallows its own failures.
+function scheduleNotification(c: any, work: Promise<void>): Promise<void> {
+  let scheduled = false
+  try { c.executionCtx.waitUntil(work); scheduled = true } catch { /* no ctx */ }
+  return scheduled ? Promise.resolve() : work
+}
+
+// ---- 1. Connection requested -> the person being asked -------------------------
+async function notifyConnectionRequest(c: any, fromId: any, toId: any, note: string): Promise<void> {
+  try {
+    if (netSamePerson(fromId, toId)) return
+    // Both parties in one query: who to write to, and who to name.
+    const row = await c.env.DB.prepare(
+      `SELECT t.name AS to_name, t.email AS to_email,
+              f.name AS from_name, f.company AS from_company, f.job_title AS from_job_title
+         FROM attendees t JOIN attendees f ON f.id = ?
+        WHERE t.id = ?`
+    ).bind(fromId, toId).first() as any
+    if (!row?.to_email) return
+    const at = [row.from_job_title, row.from_company].filter(Boolean).map(escEmail).join(', ')
+    const trimmed = String(note || '').replace(/\s+/g, ' ').trim().slice(0, 200)
+    const html = networkingEmailHTML({
+      title: 'A new connection request',
+      greeting: netFirstName(row.to_name),
+      lead: `<strong>${escEmail(row.from_name)}</strong>${at ? ' &mdash; ' + at : ''} would like to connect with you on the networking app.`,
+      detail: trimmed ? netQuote('#FF9933', '&ldquo;' + escEmail(trimmed) + '&rdquo;') : '',
+      cta: 'Accept or decline',
+      ctaUrl: await networkingAppUrl(c, '#inbox'),
+    })
+    await notifyNetworking(c, row.to_email, `${netPlain(row.from_name)} wants to connect - Bharat AI Innovation 2026`, html)
+  } catch { /* the connection row is already saved */ }
+}
+
+// ---- 2. Connection accepted -> the person who asked ----------------------------
+async function notifyConnectionAccepted(c: any, connectionId: any): Promise<void> {
+  try {
+    const row = await c.env.DB.prepare(
+      `SELECT cn.from_attendee_id AS from_id, cn.to_attendee_id AS to_id,
+              f.name AS from_name, f.email AS from_email,
+              t.name AS to_name, t.company AS to_company, t.job_title AS to_job_title
+         FROM connections cn
+         JOIN attendees f ON f.id = cn.from_attendee_id
+         JOIN attendees t ON t.id = cn.to_attendee_id
+        WHERE cn.id = ?`
+    ).bind(connectionId).first() as any
+    if (!row?.from_email) return
+    if (netSamePerson(row.from_id, row.to_id)) return
+    const at = [row.to_job_title, row.to_company].filter(Boolean).map(escEmail).join(', ')
+    const html = networkingEmailHTML({
+      title: 'Your connection was accepted',
+      greeting: netFirstName(row.from_name),
+      lead: `<strong>${escEmail(row.to_name)}</strong>${at ? ' &mdash; ' + at : ''} accepted your connection request. You can message them now, or propose a meeting slot for the 20th or 21st &mdash; the good slots go early.`,
+      cta: 'Message them',
+      ctaUrl: await networkingAppUrl(c, '#inbox'),
+    })
+    await notifyNetworking(c, row.from_email, `${netPlain(row.to_name)} accepted your connection - Bharat AI Innovation 2026`, html)
+  } catch { /* the status change is already saved */ }
+}
+
+// ---- 3. New message -> the recipient (throttled at the call site) ---------------
+async function notifyNewMessage(c: any, row: any, content: string): Promise<void> {
+  try {
+    const full = String(content || '').replace(/\s+/g, ' ').trim()
+    const preview = full.slice(0, 140)
+    const html = networkingEmailHTML({
+      title: 'You have a new message',
+      greeting: netFirstName(row.to_name),
+      lead: `<strong>${escEmail(row.from_name)}</strong> sent you a message on the networking app.`,
+      detail: preview ? netQuote('#0f7b47', escEmail(preview) + (full.length > 140 ? '&hellip;' : '')) : '',
+      cta: 'Read and reply',
+      ctaUrl: await networkingAppUrl(c, '#inbox'),
+    })
+    await notifyNetworking(c, row.to_email, `${netPlain(row.from_name)} messaged you - Bharat AI Innovation 2026`, html)
+  } catch { /* the message row is already saved */ }
+}
+
+// ---- 4. Meeting requested -> the person being asked ----------------------------
+async function notifyMeetingRequested(c: any, meetingId: any): Promise<void> {
+  try {
+    const row = await c.env.DB.prepare(
+      `SELECT m.title, m.meeting_time, m.duration_minutes, m.location, m.notes,
+              m.requester_id AS from_id, m.requestee_id AS to_id,
+              e.name AS to_name, e.email AS to_email,
+              q.name AS from_name, q.company AS from_company, q.job_title AS from_job_title
+         FROM meetings m
+         JOIN attendees e ON e.id = m.requestee_id
+         JOIN attendees q ON q.id = m.requester_id
+        WHERE m.id = ?`
+    ).bind(meetingId).first() as any
+    if (!row?.to_email) return
+    if (netSamePerson(row.from_id, row.to_id)) return
+    const when = formatMeetingTime(row.meeting_time)
+    const at = [row.from_job_title, row.from_company].filter(Boolean).map(escEmail).join(', ')
+    const html = networkingEmailHTML({
+      title: 'A meeting request',
+      greeting: netFirstName(row.to_name),
+      lead: `<strong>${escEmail(row.from_name)}</strong>${at ? ' &mdash; ' + at : ''} has asked to meet you at the conference. Accept or decline in the app, so you both arrive knowing where you stand.`,
+      detail: netDetailBox([
+        ['What', escEmail(row.title || 'Meeting')],
+        ['When', escEmail(when)],
+        ['How long', `${Math.max(1, parseInt(row.duration_minutes, 10) || 15)} minutes`],
+        ['Where', escEmail(row.location || 'To be agreed')],
+        ['Note', escEmail(String(row.notes || '').replace(/\s+/g, ' ').trim().slice(0, 300))],
+      ]),
+      cta: 'Accept or decline',
+      ctaUrl: await networkingAppUrl(c, '#inbox'),
+    })
+    await notifyNetworking(c, row.to_email, `Meeting request from ${netPlain(row.from_name, 60)} - ${when}`, html)
+  } catch { /* the meeting row is already saved */ }
+}
+
+// ---- 5/6. Meeting accepted or declined -> the person who asked -----------------
+async function notifyMeetingResponse(c: any, meetingId: any, status: string): Promise<void> {
+  try {
+    const row = await c.env.DB.prepare(
+      `SELECT m.title, m.meeting_time, m.duration_minutes, m.location,
+              m.requester_id AS to_id, m.requestee_id AS from_id,
+              q.name AS to_name, q.email AS to_email,
+              e.name AS from_name, e.company AS from_company
+         FROM meetings m
+         JOIN attendees q ON q.id = m.requester_id
+         JOIN attendees e ON e.id = m.requestee_id
+        WHERE m.id = ?`
+    ).bind(meetingId).first() as any
+    if (!row?.to_email) return
+    if (netSamePerson(row.from_id, row.to_id)) return
+    const when = formatMeetingTime(row.meeting_time)
+    const accepted = status === 'accepted'
+    const html = networkingEmailHTML({
+      title: accepted ? 'Your meeting is confirmed' : 'Your meeting request was declined',
+      greeting: netFirstName(row.to_name),
+      lead: accepted
+        ? `<strong>${escEmail(row.from_name)}</strong>${row.from_company ? ' (' + escEmail(row.from_company) + ')' : ''} accepted your meeting request. Put it in your diary &mdash; it is in the app too.`
+        : `<strong>${escEmail(row.from_name)}</strong> could not make ${escEmail(when)}, so nothing is booked. Propose another time in the app, or message them first to find one that works.`,
+      detail: accepted ? netDetailBox([
+        ['What', escEmail(row.title || 'Meeting')],
+        ['When', escEmail(when)],
+        ['How long', `${Math.max(1, parseInt(row.duration_minutes, 10) || 15)} minutes`],
+        ['Where', escEmail(row.location || 'To be agreed')],
+      ]) : '',
+      cta: accepted ? 'View in the app' : 'Propose another time',
+      ctaUrl: await networkingAppUrl(c, '#inbox'),
+    })
+    await notifyNetworking(
+      c, row.to_email,
+      accepted
+        ? `Meeting confirmed with ${netPlain(row.from_name, 60)} - ${when}`
+        : `${netPlain(row.from_name, 60)} declined your meeting request`,
+      html
+    )
+  } catch { /* the status change is already saved */ }
 }
 
 // ==================== AUDIENCE PROFILE ====================
@@ -2370,12 +2635,28 @@ app.post('/api/external/register', async (c) => {
   const badgeType = PASS_TYPE_MAP[passPackage] || 'Visitor Pass'
   const eventId = 1
 
-  // Deliberately NOT running missingRegistrationFields() here, unlike the in-app
-  // register endpoint. Something outside this repo posts to this route and we cannot
-  // see what it sends, so rejecting an incomplete body would break that caller
-  // silently. It has produced one row in six months, so it is not what is filling the
-  // list with blanks - but it is the one remaining way in without a required-field
-  // check, and closing it is a one-line change once the caller is identified.
+  // The same required fields as the in-app form: a pass is printed from this
+  // record, so a registration without a mobile, organisation, designation, city
+  // and industry only creates work later. The photo is the exception - it is
+  // asked for at pass download, not here.
+  //
+  // This route used to skip the check because an unidentified caller posts to it.
+  // It has taken one registration in six months and nothing since 5 March, so the
+  // caller is dormant; and a rejection is now written to the audit log, so if a
+  // real integration does start failing it is visible in the panel rather than
+  // silent.
+  const missing = missingRegistrationFields({
+    mobile: phone, company: organization, job_title, city, industry, badge_type: badgeType,
+  })
+  if (missing.length) {
+    await audit(c, 'external-register.rejected', 'attendee', null,
+      { email: normalizedEmail, missing, source: sanitizeRegistrationSource(source) || 'website' },
+      { actor: 'external registration caller', kind: 'public' })
+    return c.json({
+      error: `Please provide ${humanList(missing)}.`,
+      missing,
+    }, 400)
+  }
 
   try {
     // Try to add all the extra columns — if migration hasn't run yet, the basic columns still work
@@ -2774,6 +3055,11 @@ app.post('/api/connections', async (c) => {
     await c.env.DB.prepare(
       'INSERT INTO connections (event_id, from_attendee_id, to_attendee_id, message) VALUES (?, ?, ?, ?)'
     ).bind(event_id, from_attendee_id, to_attendee_id, message || '').run()
+
+    // The row is committed; the mail goes out behind the response and cannot fail it.
+    // The UNIQUE(event_id, from, to) constraint means a repeat request throws above
+    // and returns 409, so re-tapping Connect cannot re-mail.
+    await scheduleNotification(c, notifyConnectionRequest(c, from_attendee_id, to_attendee_id, message || ''))
     return c.json({ success: true }, 201)
   } catch (e: any) {
     if (e.message?.includes('UNIQUE')) return c.json({ error: 'Connection already exists' }, 409)
@@ -2795,7 +3081,17 @@ app.put('/api/connections/:id', async (c) => {
       return c.json({ error: 'You can only change your own connections.' }, 403)
     }
   }
-  await c.env.DB.prepare('UPDATE connections SET status = ? WHERE id = ?').bind(status, id).run()
+  // Gate on a real transition: the client calls this straight from a button, and a
+  // double-tap on Accept would otherwise mail the requester twice. IS NOT (not !=)
+  // because a NULL status must still count as a move.
+  const upd = await c.env.DB.prepare(
+    'UPDATE connections SET status = ? WHERE id = ? AND status IS NOT ?'
+  ).bind(status, id, status).run()
+  // Decline stays deliberately silent -- "X declined you" helps nobody, and the app
+  // already shows the status.
+  if (upd?.meta?.changes === 1 && status === 'accepted') {
+    await scheduleNotification(c, notifyConnectionAccepted(c, id))
+  }
   return c.json({ success: true })
 })
 
@@ -2836,9 +3132,40 @@ app.post('/api/messages', async (c) => {
   const { event_id, sender_id, receiver_id, content } = body
   const denied = await requireSelf(c, sender_id); if (denied) return denied
 
+  // Read BEFORE the insert. Afterwards the message we are about to write is itself
+  // unread and would suppress its own notification. One query carries both parties
+  // and both throttle counters, so this costs a single round trip.
+  let notify: any = null
+  try {
+    notify = await c.env.DB.prepare(
+      `SELECT r.name AS to_name, r.email AS to_email, s.name AS from_name,
+              (SELECT COUNT(*) FROM messages m
+                 WHERE m.sender_id = s.id AND m.receiver_id = r.id AND m.is_read = 0) AS unread_from_sender,
+              (SELECT COUNT(*) FROM messages m
+                 WHERE m.sender_id = s.id AND m.receiver_id = r.id
+                   AND m.created_at > datetime('now', '-${MESSAGE_EMAIL_QUIET_MINUTES} minutes')) AS recent_from_sender
+         FROM attendees r JOIN attendees s ON s.id = ?
+        WHERE r.id = ?`
+    ).bind(sender_id, receiver_id).first()
+  } catch { /* a notification lookup must never block a message */ }
+
   const result = await c.env.DB.prepare(
     'INSERT INTO messages (event_id, sender_id, receiver_id, content) VALUES (?, ?, ?, ?)'
   ).bind(event_id, sender_id, receiver_id, content).run()
+
+  // Two conditions, both necessary. unread_from_sender = 0 means the recipient has
+  // no un-opened message from this person, so we are not shouting about a nudge they
+  // have already been sent. recent_from_sender = 0 caps it at one mail per quiet
+  // window, which is what stops a live back-and-forth -- where the recipient is in
+  // the app, reading and clearing is_read after every line -- becoming a mail a line.
+  // GET /api/messages/:userId/:otherUserId sets is_read = 1 when they open the
+  // thread, so reading is what re-arms the notification.
+  if (notify && notify.to_email &&
+      !netSamePerson(sender_id, receiver_id) &&
+      Number(notify.unread_from_sender) === 0 &&
+      Number(notify.recent_from_sender) === 0) {
+    await scheduleNotification(c, notifyNewMessage(c, notify, content))
+  }
 
   return c.json({ id: result.meta.last_row_id, success: true }, 201)
 })
@@ -2879,6 +3206,12 @@ app.post('/api/meetings', async (c) => {
     'INSERT INTO meetings (event_id, requester_id, requestee_id, title, meeting_time, duration_minutes, location, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
   ).bind(event_id, requester_id, requestee_id, title, meeting_time, duration_minutes || 15, location || '', notes || '').run()
 
+  // A meeting request nobody is told about is a slot that will not be honoured. The
+  // row is committed above, so the mail runs behind the response and its failure is
+  // invisible to the requester. Reload by id rather than trusting the body, so the
+  // mail shows what was actually stored -- including the duration default applied here.
+  await scheduleNotification(c, notifyMeetingRequested(c, result.meta.last_row_id))
+
   return c.json({ id: result.meta.last_row_id, success: true }, 201)
 })
 
@@ -2895,7 +3228,17 @@ app.put('/api/meetings/:id', async (c) => {
       return c.json({ error: 'You can only change your own meetings.' }, 403)
     }
   }
-  await c.env.DB.prepare('UPDATE meetings SET status = ? WHERE id = ?').bind(status, id).run()
+  // Same transition gate as connections: Accept is a button, and buttons get
+  // double-tapped. Only a status that actually moved mails anyone.
+  const upd = await c.env.DB.prepare(
+    'UPDATE meetings SET status = ? WHERE id = ? AND status IS NOT ?'
+  ).bind(status, id, status).run()
+  // Always the requester, which is right: the UI only offers accept/decline to the
+  // other side. 'cancelled' is excluded because that is the requester acting on
+  // their own meeting -- mailing them their own click is noise.
+  if (upd?.meta?.changes === 1 && (status === 'accepted' || status === 'declined')) {
+    await scheduleNotification(c, notifyMeetingResponse(c, id, status))
+  }
   return c.json({ success: true })
 })
 
