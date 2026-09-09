@@ -5270,9 +5270,10 @@ app.get('/api/admin/events/:id/session-conflicts', async (c) => {
 // a second place where the two could drift apart. The caller's credentials are
 // forwarded so the subrequest passes the same admin guard.
 async function campaignSendOne(c: any, kind: string, refId: any, r: any):
-    Promise<{ ok: boolean; error?: string }> {
+    Promise<{ ok: boolean; error?: string; defer?: number; skipped?: string }> {
   const path = kind === 'thankyou' ? `/api/admin/attendees/${r.attendee_id}/send-thankyou`
     : kind === 'announcement' ? `/api/admin/announcements/${refId}/email/${r.attendee_id}`
+    : kind === 'profile_reminder' ? `/api/admin/attendees/${r.attendee_id}/send-profile-reminder`
     : `/api/admin/attendees/${r.attendee_id}/notify`
   try {
     const url = new URL(c.req.url)
@@ -5288,6 +5289,13 @@ async function campaignSendOne(c: any, kind: string, refId: any, r: any):
       body: '{}',
     }), c.env, (c as any).executionCtx)
     const body = await res.json().catch(() => ({})) as any
+    // Paced sends answer "not yet": 429 while the gap since the last one has not
+    // elapsed, 409 outside the sending window. Neither is a failure - the
+    // recipient goes back in the queue and the caller is told how long to wait.
+    if (res.status === 429) return { ok: false, defer: Math.max(1, Number(body?.wait_seconds) || 30) }
+    if (res.status === 409 && body?.paused) return { ok: false, defer: 300 }
+    // Nothing left to ask this person for: not a send, not a failure.
+    if (body?.skipped) return { ok: false, skipped: String(body.reason || 'Nothing outstanding').slice(0, 200) }
     if (!res.ok || body?.error) return { ok: false, error: String(body?.error || 'HTTP ' + res.status).slice(0, 300) }
     // The notify endpoint falls back to returning mailto data when email is not
     // configured. That is a success for a human clicking one button and a
@@ -5303,6 +5311,16 @@ async function campaignSendOne(c: any, kind: string, refId: any, r: any):
 // audience decides who among them is in scope.
 async function campaignAudienceRows(c: any, kind: string, audience: string): Promise<any[]> {
   const eventId = 1
+  if (kind === 'profile_reminder') {
+    // Same predicate the one-at-a-time chase uses, so the campaign cannot pick
+    // somebody it would then skip. 'photo' narrows it to the missing photos,
+    // which is the gap worth chasing on its own.
+    const extra = audience === 'photo' ? " AND COALESCE(TRIM(avatar_url),'') = ''" : ''
+    const { results } = await c.env.DB.prepare(
+      `SELECT id, name, email FROM attendees WHERE ${NEEDS_REMINDER_SQL}${extra} ORDER BY id`
+    ).bind(eventId).all()
+    return (results as any[]) || []
+  }
   let where = "email IS NOT NULL AND TRIM(email) != ''"
   if (kind === 'notify' && audience === 'un-notified') where += ' AND notified_at IS NULL'
   else if (audience === 'non-responders') where += " AND notified_at IS NOT NULL AND (rsvp_status IS NULL OR rsvp_status = '')"
@@ -5317,7 +5335,7 @@ async function campaignAudienceRows(c: any, kind: string, audience: string): Pro
 // Start a campaign. Returns it with its recipient count; nothing is sent yet.
 app.post('/api/admin/campaigns', async (c) => {
   const body = await c.req.json().catch(() => ({})) as any
-  const kind = ['notify', 'thankyou', 'announcement'].includes(body.kind) ? body.kind : ''
+  const kind = ['notify', 'thankyou', 'announcement', 'profile_reminder'].includes(body.kind) ? body.kind : ''
   if (!kind) return c.json({ error: 'Unknown campaign type.' }, 400)
   const audience = String(body.audience || 'all')
   const refId = body.ref_id ? parseInt(String(body.ref_id), 10) : null
@@ -5341,7 +5359,8 @@ app.post('/api/admin/campaigns', async (c) => {
 
   const who = adminActor(c)
   const title = String(body.title || (kind === 'notify' ? 'Account-ready email'
-    : kind === 'thankyou' ? 'Post-event thank you' : 'Announcement')).slice(0, 160)
+    : kind === 'thankyou' ? 'Post-event thank you'
+    : kind === 'profile_reminder' ? 'Complete your profile' : 'Announcement')).slice(0, 160)
   const ins = await c.env.DB.prepare(
     'INSERT INTO campaigns (kind, title, ref_id, audience, status, total, created_by) VALUES (?,?,?,?,?,?,?)'
   ).bind(kind, title, refId, audience, 'running', rows.length, who.actor).run()
@@ -5384,7 +5403,8 @@ app.post('/api/admin/campaigns/:id/pump', async (c) => {
     return c.json({ finished: true, ...campaignProgress(done) })
   }
 
-  let sent = 0, failed = 0
+  let sent = 0, failed = 0, skipped = 0
+  let deferFor = 0
   const recent: any[] = []
   for (const r of pending) {
     // Claim first: if this request dies mid-flight the row is not left pending
@@ -5394,6 +5414,23 @@ app.post('/api/admin/campaigns/:id/pump', async (c) => {
     ).bind(r.id).run()
     if (!claim.meta.changes) continue
     const out = await campaignSendOne(c, camp.kind, camp.ref_id, r)
+    if (out.defer) {
+      // Not this recipient's turn yet. Put them back exactly as they were and
+      // stop the batch - pushing on would only collect more deferrals.
+      await c.env.DB.prepare(
+        "UPDATE campaign_recipients SET status = 'pending' WHERE id = ?"
+      ).bind(r.id).run()
+      deferFor = out.defer
+      break
+    }
+    if (out.skipped) {
+      skipped++
+      await c.env.DB.prepare(
+        "UPDATE campaign_recipients SET status = 'skipped', error = ? WHERE id = ?"
+      ).bind(out.skipped, r.id).run()
+      recent.push({ email: r.email, ok: false, skipped: out.skipped })
+      continue
+    }
     if (out.ok) {
       sent++
       await c.env.DB.prepare(
@@ -5421,7 +5458,16 @@ app.post('/api/admin/campaigns/:id/pump', async (c) => {
     ).bind(id).run()
     after.status = 'done'
   }
-  return c.json({ ...campaignProgress(after), remaining: left?.n || 0, recent })
+  // wait_seconds tells the driver how long to hold off. A paced campaign spends
+  // most of its life here rather than sending.
+  return c.json({
+    ...campaignProgress(after),
+    remaining: left?.n || 0,
+    skipped_now: skipped,
+    wait_seconds: deferFor || 0,
+    waiting: deferFor > 0,
+    recent,
+  })
 })
 
 function campaignProgress(camp: any) {
@@ -16159,7 +16205,8 @@ function adminPageHTML(): string {
           </div>
           <div class="flex gap-2 flex-wrap">
             <button onclick="notifyAllAttendees()" class="px-4 py-2 rounded-xl text-xs font-medium bg-amber-600 hover:bg-amber-500 text-white transition"><i class="fas fa-envelope mr-1.5"></i>Notify All</button>
-            <button onclick="openProfileReminderCampaign()" class="px-4 py-2 rounded-xl text-xs font-medium bg-orange-600 hover:bg-orange-500 text-white transition" title="Ask attendees with a blank photo, designation, city or industry to complete their profile"><i class="fas fa-id-card mr-1.5"></i>Chase Profiles</button>
+            <button onclick="startPhotoChase()" class="att-toolbar-btn px-4 py-2 rounded-xl text-xs font-medium bg-orange-600 hover:bg-orange-500 text-white transition" title="Email everyone who has no photo yet, asking for one. Paced and resumable."><i class="fas fa-camera mr-1.5"></i><span class="lbl">Ask for photos</span></button>
+            <button onclick="openProfileReminderCampaign()" class="px-4 py-2 rounded-xl text-xs font-medium bg-orange-600/60 hover:bg-orange-500 text-white transition" title="Ask attendees with a blank photo, designation, city or industry to complete their profile"><i class="fas fa-id-card mr-1.5"></i>Chase Profiles</button>
             <a href="#" onclick="exportAttendeesCsv(event)" class="px-4 py-2 rounded-xl text-xs font-medium glass hover:bg-white/10 text-gray-300 transition cursor-pointer"><i class="fas fa-download mr-1.5"></i>Export CSV</a>
             <button onclick="openAddAttendee()" class="px-4 py-2 rounded-xl text-xs font-medium bg-primary-600 hover:bg-primary-500 text-white transition"><i class="fas fa-user-plus mr-1.5"></i>Add Attendee</button>
             <button onclick="openBulkUploadModal()" class="px-4 py-2 rounded-xl text-xs font-medium bg-green-600 hover:bg-green-500 text-white transition"><i class="fas fa-file-upload mr-1.5"></i>Bulk Upload</button>
@@ -16337,6 +16384,17 @@ function adminPageHTML(): string {
           if (currentSection === 'attendees') { lastAttendees = null; loadAdminAttendees(); }
           return;
         }
+        // The server sets wait_seconds when the send is paced or the window is
+        // shut. Sleep it out rather than spinning; the run is durable, so the
+        // operator can also close the tab and resume later instead of waiting.
+        if (r.wait_seconds > 0) {
+          var waited = 0;
+          while (waited < r.wait_seconds && !campaignPump.stop && campaignPump.id === id) {
+            await new Promise(function (res) { setTimeout(res, 1000); });
+            waited++;
+            updateCampaignWait(r.wait_seconds - waited);
+          }
+        }
       }
     }
 
@@ -16357,6 +16415,7 @@ function adminPageHTML(): string {
           '. You can close this and it will carry on while the tab is open; closing the tab pauses it, and it can be resumed later.</p>' +
         '<div class="w-full bg-white/5 rounded-full h-3 mb-2"><div id="camp-bar" class="h-full rounded-full bg-gradient-to-r from-primary-500 to-amber-400 transition-all" style="width:0%"></div></div>' +
         '<p id="camp-status" class="text-xs text-gray-400 min-h-4">Starting...</p>' +
+        '<p id="camp-wait" class="text-[11px] text-amber-300 mt-1 min-h-4"></p>' +
         '<p id="camp-last" class="text-[11px] text-gray-500 mt-1 min-h-4"></p>' +
         '<div class="flex gap-2 mt-4">' +
           '<button onclick="stopCampaignPump()" class="flex-1 py-2.5 rounded-xl text-sm glass hover:bg-white/10">Pause</button>' +
@@ -16364,6 +16423,16 @@ function adminPageHTML(): string {
         '</div>');
     }
 
+    // Counts down to the next send, so a paced run does not look stalled.
+    function updateCampaignWait(secondsLeft) {
+      var el = document.getElementById('camp-wait');
+      if (!el) return;
+      if (secondsLeft <= 0) { el.textContent = ''; return; }
+      var mins = Math.floor(secondsLeft / 60);
+      el.textContent = mins > 0
+        ? 'Next send in ' + mins + ' min ' + (secondsLeft % 60) + 's - paced deliberately, and paused outside 9am-9pm IST.'
+        : 'Next send in ' + secondsLeft + 's.';
+    }
     function updateCampaignMonitor(r) {
       var bar = document.getElementById('camp-bar');
       var st = document.getElementById('camp-status');
@@ -16380,7 +16449,9 @@ function adminPageHTML(): string {
         var l = r.recent[r.recent.length - 1];
         last.innerHTML = l.ok
           ? '<span class="text-gray-500">last: ' + escH(l.email) + '</span>'
-          : '<span class="text-red-400">' + escH(l.email) + ' - ' + escH(l.error || 'failed') + '</span>';
+          : l.skipped
+            ? '<span class="text-gray-500">skipped ' + escH(l.email) + ' - ' + escH(l.skipped) + '</span>'
+            : '<span class="text-red-400">' + escH(l.email) + ' - ' + escH(l.error || 'failed') + '</span>';
       }
       if ((r.finished || r.status === 'done') && !r.pausedNow) {
         toast('Finished. ' + (r.sent || 0) + ' sent, ' + (r.failed || 0) + ' failed.', (r.failed ? 'error' : 'success'));
@@ -16559,6 +16630,18 @@ function adminPageHTML(): string {
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
       setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
       toast('Exported ' + rows.length + ' row(s).');
+    }
+
+    // Asks the people with no photo for one. The pass cannot be downloaded
+    // without a photo, so this is the message that unblocks them - and until now
+    // it had never been sent to anybody: 1,279 people, 0 asked.
+    async function startPhotoChase() {
+      var n = (lastAttendees || []).filter(function (a) { return !a.avatar_url; }).length;
+      if (!confirm('Email the attendees who have no photo, asking for one?' + NL + NL +
+        'It is paced deliberately for deliverability and only sends between 9am and 9pm IST, so a large run takes days. ' +
+        'It is resumable: closing this tab pauses it, and Settings can resume it.' +
+        (n ? (NL + NL + 'Roughly ' + n + ' of the loaded rows have no photo. The server picks the exact list.') : ''))) return;
+      await startCampaign('profile_reminder', { audience: 'photo', title: 'Photo request' });
     }
 
     // ============ ONE ATTENDEE, WHOLE STORY ============
