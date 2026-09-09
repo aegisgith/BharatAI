@@ -5343,7 +5343,7 @@ app.post('/api/admin/campaigns', async (c) => {
 
   // Explicit ids win over an audience query, so the Attendees tab can turn a
   // filtered selection into a campaign.
-  let rows: any[]
+  let rows: any[] = []
   if (Array.isArray(body.ids) && body.ids.length) {
     const ids = body.ids.map((v: any) => parseInt(String(v), 10)).filter((n: number) => Number.isFinite(n)).slice(0, 5000)
     if (!ids.length) return c.json({ error: 'No valid attendee ids.' }, 400)
@@ -5355,7 +5355,12 @@ app.post('/api/admin/campaigns', async (c) => {
   } else {
     rows = await campaignAudienceRows(c, kind, audience)
   }
-  if (!rows.length) return c.json({ error: 'Nobody matches that audience.' }, 400)
+  // Undeliverable addresses are dropped here rather than bounced later. They are
+  // reported back so they can be corrected on the attendee and picked up by a
+  // later run.
+  const malformed = rows.filter((r: any) => !validEmailSyntax(r.email))
+  rows = rows.filter((r: any) => validEmailSyntax(r.email))
+  if (!rows.length) return c.json({ error: 'Nobody matches that audience.', malformed }, 400)
 
   const who = adminActor(c)
   const title = String(body.title || (kind === 'notify' ? 'Account-ready email'
@@ -5376,8 +5381,12 @@ app.post('/api/admin/campaigns', async (c) => {
       `INSERT INTO campaign_recipients (campaign_id, attendee_id, email, name) VALUES ${values}`
     ).bind(...binds).run()
   }
-  await audit(c, 'campaign.start', 'campaign', campaignId, { kind, audience, total: rows.length, title })
-  return c.json({ id: campaignId, kind, title, total: rows.length, sent: 0, failed: 0, status: 'running' }, 201)
+  await audit(c, 'campaign.start', 'campaign', campaignId,
+    { kind, audience, total: rows.length, title, malformed: malformed.length })
+  return c.json({
+    id: campaignId, kind, title, total: rows.length, sent: 0, failed: 0, status: 'running',
+    malformed: malformed.map((r: any) => ({ id: r.id, name: r.name, email: r.email })),
+  }, 201)
 })
 
 // Send the next few. Called repeatedly by whichever tab is driving; safe to call
@@ -16257,12 +16266,12 @@ function adminPageHTML(): string {
           \${attMatches.length > attPageRows.length ? '<button onclick="attSelectAllMatching()" class="px-2.5 py-1.5 rounded-lg text-xs glass hover:bg-white/10">Select all ' + attMatches.length + ' matching</button>' : ''}
           <button onclick="attClearSelection()" class="px-2.5 py-1.5 rounded-lg text-xs glass hover:bg-white/10">Clear</button>
           <span class="w-px h-5 bg-white/10 mx-1"></span>
-          <button onclick="bulkSetField('badge_type')" class="px-2.5 py-1.5 rounded-lg text-xs bg-primary-500/20 text-primary-200 hover:bg-primary-500/30"><i class="fas fa-id-badge mr-1"></i>Set pass</button>
-          <button onclick="bulkSetField('lunch_inclusion')" class="px-2.5 py-1.5 rounded-lg text-xs bg-amber-500/20 text-amber-200 hover:bg-amber-500/30"><i class="fas fa-utensils mr-1"></i>Set lunch</button>
-          <button onclick="bulkSetField('rsvp_status')" class="px-2.5 py-1.5 rounded-lg text-xs bg-emerald-500/20 text-emerald-200 hover:bg-emerald-500/30"><i class="fas fa-clipboard-check mr-1"></i>Set RSVP</button>
-          <button onclick="bulkNotify()" class="px-2.5 py-1.5 rounded-lg text-xs bg-blue-500/20 text-blue-200 hover:bg-blue-500/30"><i class="fas fa-envelope mr-1"></i>Notify</button>
+          <button onclick="bulkSetField('badge_type')" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-primary-700 text-white on-dark hover:bg-primary-800"><i class="fas fa-id-badge mr-1"></i>Set pass</button>
+          <button onclick="bulkSetField('lunch_inclusion')" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-amber-700 text-white on-dark hover:bg-amber-800"><i class="fas fa-utensils mr-1"></i>Set lunch</button>
+          <button onclick="bulkSetField('rsvp_status')" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-emerald-700 text-white on-dark hover:bg-emerald-800"><i class="fas fa-clipboard-check mr-1"></i>Set RSVP</button>
+          <button onclick="bulkNotify()" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-blue-600 text-white on-dark hover:bg-blue-700"><i class="fas fa-envelope mr-1"></i>Notify</button>
           <button onclick="bulkExportSelected()" class="px-2.5 py-1.5 rounded-lg text-xs glass hover:bg-white/10"><i class="fas fa-download mr-1"></i>Export</button>
-          <button onclick="bulkDelete()" class="px-2.5 py-1.5 rounded-lg text-xs bg-red-500/20 text-red-300 hover:bg-red-500/30"><i class="fas fa-trash mr-1"></i>Delete</button>
+          <button onclick="bulkDelete()" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-red-600 text-white on-dark hover:bg-red-700"><i class="fas fa-trash mr-1"></i>Delete</button>
         </div>
         <div class="glass rounded-xl overflow-hidden">
           <div class="overflow-x-auto max-h-[70vh] overflow-y-auto scroll-hide">
@@ -16491,9 +16500,9 @@ function adminPageHTML(): string {
             '<span class="text-[11px] text-gray-500">' + done + ' of ' + c.total + ' \u00b7 ' + (c.sent || 0) + ' sent, ' +
               (c.failed || 0) + ' failed \u00b7 by ' + escH(c.created_by || 'unknown') + ' \u00b7 ' + fmtIst(c.created_at) + '</span>' +
             '<span class="flex gap-1.5">' +
-              (c.status !== 'done' ? '<button onclick="resumeCampaign(' + c.id + ')" class="px-2 py-1 rounded-lg text-[10px] bg-primary-500/20 text-primary-200 hover:bg-primary-500/30">Resume</button>' : '') +
-              (c.failed ? '<button onclick="showCampaignFailures(' + c.id + ')" class="px-2 py-1 rounded-lg text-[10px] glass hover:bg-white/10">' + c.failed + ' failed</button>' : '') +
-              (c.failed ? '<button onclick="retryCampaignFailures(' + c.id + ')" class="px-2 py-1 rounded-lg text-[10px] bg-amber-500/20 text-amber-200 hover:bg-amber-500/30">Retry those</button>' : '') +
+              (c.status !== 'done' ? '<button onclick="resumeCampaign(' + c.id + ')" class="px-2.5 py-1 rounded-lg text-[10px] font-semibold bg-primary-700 text-white on-dark hover:bg-primary-800">Resume</button>' : '') +
+              (c.failed ? '<button onclick="showCampaignFailures(' + c.id + ')" class="px-2.5 py-1 rounded-lg text-[10px] font-medium border border-line text-mid-grey hover:bg-black/5">' + c.failed + ' failed</button>' : '') +
+              (c.failed ? '<button onclick="retryCampaignFailures(' + c.id + ')" class="px-2.5 py-1 rounded-lg text-[10px] font-semibold bg-amber-700 text-white on-dark hover:bg-amber-800">Retry those</button>' : '') +
             '</span>' +
           '</div></div>';
       }).join('');
@@ -16711,8 +16720,8 @@ function adminPageHTML(): string {
           '</div>' +
         '</div>' +
         '<div class="flex flex-wrap gap-2 mt-5 pt-4 border-t border-white/10">' +
-          '<button onclick="closeModal();openEditAttendeeById(' + Number(a.id) + ')" class="px-3 py-2 rounded-lg text-xs bg-primary-500/20 text-primary-200 hover:bg-primary-500/30"><i class="fas fa-pen mr-1"></i>Edit record</button>' +
-          '<button onclick="notifyAttendeeById(' + Number(a.id) + ')" class="px-3 py-2 rounded-lg text-xs bg-amber-500/20 text-amber-200 hover:bg-amber-500/30"><i class="fas fa-envelope mr-1"></i>Send notification</button>' +
+          '<button onclick="closeModal();openEditAttendeeById(' + Number(a.id) + ')" class="px-3 py-2 rounded-lg text-xs font-medium bg-primary-700 text-white on-dark hover:bg-primary-800"><i class="fas fa-pen mr-1"></i>Edit record</button>' +
+          '<button onclick="notifyAttendeeById(' + Number(a.id) + ')" class="px-3 py-2 rounded-lg text-xs font-medium bg-amber-700 text-white on-dark hover:bg-amber-800"><i class="fas fa-envelope mr-1"></i>Send notification</button>' +
           '<button onclick="closeModal()" class="px-3 py-2 rounded-lg text-xs glass hover:bg-white/10 ml-auto">Close</button>' +
         '</div>');
     }
