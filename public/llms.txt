@@ -16,7 +16,7 @@
 
 ## What it is
 
-Bharat AI Innovation 2026 is a two-day conference and exhibition covering Generative AI, Large Language Models (LLMs), enterprise AI deployment, AI governance and ethics, AI startups, AI for industry verticals (BFSI, healthcare, manufacturing, retail, agriculture, government), AI talent and skills, deep learning research, and the Indian AI ecosystem. It includes 10+ conference tracks across 5 halls, a 27,238 sq.ft exhibition floor with 78 booths across 8 industry zones, a startup pitch competition, and AI/ML training workshops.
+Bharat AI Innovation 2026 is a two-day conference and exhibition covering Generative AI, Large Language Models (LLMs), enterprise AI deployment, AI governance and ethics, AI startups, AI for industry verticals (BFSI, healthcare, manufacturing, retail, agriculture, government), AI talent and skills, deep learning research, and the Indian AI ecosystem. It includes 10+ conference tracks across 5 halls, a 27,238 sq.ft exhibition floor with 93 booths across 8 industry zones, a startup pitch competition, and AI/ML training workshops.
 
 ## Pass types and pricing (INR)
 
@@ -29,7 +29,7 @@ Bharat AI Innovation 2026 is a two-day conference and exhibition covering Genera
 
 ## Exhibition booth packages
 
-All prices exclude 18% GST. 78 booths total across 8 industry zones.
+All prices exclude 18% GST. 93 booths total across 8 industry zones.
 
 - **Startup Pod** (1.5×1.5 m) — ₹38,000
 - **Explorer Booth** (2×2 m) — ₹1,29,000
@@ -72,7 +72,7 @@ All prices exclude 18% GST. 78 booths total across 8 industry zones.
 - [Home](https://bharataiinnovation.com/index.html): Event overview, dates, speakers, registration
 - [About](https://bharataiinnovation.com/about.html): About the event and Aegis Knowledge Trust
 - [Conference](https://bharataiinnovation.com/conference.html): 10+ tracks, schedule across 5 halls, 2 days
-- [Exhibition](https://bharataiinnovation.com/exhibition.html): 78 booths, 8 industry zones, booth packages
+- [Exhibition](https://bharataiinnovation.com/exhibition.html): 93 booths, 8 industry zones, booth packages
 - [Startup Pitch](https://bharataiinnovation.com/startup-pitch.html): Startup pitch competition for AI startups
 - [Training & Workshop](https://bharataiinnovation.com/training-workshop.html): AI/ML hands-on training workshops
 - [Partner](https://bharataiinnovation.com/partner.html): Sponsorship and partnership tiers
@@ -90,7 +90,7 @@ Generative AI, LLMs, ChatGPT, GPT-4, Claude, Gemini, RAG, AI agents, multimodal 
 
 - Meet senior policymakers including representatives from MeitY and IndiaAI Mission
 - Network with 5,000+ AI professionals, founders, researchers, and enterprise leaders
-- See live demos across 78 booths in 8 AI industry zones
+- See live demos across 93 booths in 8 AI industry zones
 - Attend deep-dive technical workshops on GenAI, LLMs, MLOps, and AI deployment
 - Connect with venture capital and angel investors in the startup pitch arena
 - Establish partnerships across India's growing AI ecosystem

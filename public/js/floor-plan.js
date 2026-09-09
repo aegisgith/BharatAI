@@ -11,10 +11,11 @@
     innovator:{name:'Innovator Booth',var:'--fp-innovator'},       // 3×2 m
     accelerator:{name:'Enterprise Booth',var:'--fp-accelerator'},  // 4×2 m
     standard:{name:'Accelerator Booth',var:'--fp-standard'},       // 3×3 m
+    premium:{name:'Premium Booth',var:'--fp-premium'},             // 5×2 m — new in the revised layout
     enterprise:{name:'Flagship Pavilion',var:'--fp-enterprise'},   // 6×2 m
     mega:{name:'Mega Pavilion',var:'--fp-mega'},                   // 7×8 m
   };
-  const ORDER=['mega','enterprise','standard','accelerator','innovator','explorer','pod'];
+  const ORDER=['mega','enterprise','premium','standard','accelerator','innovator','explorer','pod'];
   const colorOf=t=>`var(${TYPE_META[t].var})`;
   const inr=n=>'₹'+Number(n).toLocaleString('en-IN');
   const qs=s=>document.querySelector(s);
