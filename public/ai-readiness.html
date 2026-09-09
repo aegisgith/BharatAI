@@ -18,7 +18,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;500;600;700;800&family=Manrope:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/css/fa-subset.css?v=1">
     <link rel="stylesheet" href="css/style.css">
 
     <!-- Favicon -->
@@ -44,7 +44,7 @@
         /* One line, always. Left to wrap it breaks as "AN / INITIATIVE / OF",
            which reads as three ragged fragments rather than a label. */
         .agba-lockup .lbl {
-            font-family: var(--font-display); font-size: 0.66rem; font-weight: 800;
+            font-family: var(--font-display); font-size: 0.75rem; font-weight: 800;
             letter-spacing: 0.1em; text-transform: uppercase; color: var(--mid-grey);
             white-space: nowrap; line-height: 1;
         }
@@ -53,7 +53,7 @@
         @media (max-width: 480px) {
             .agba-lockup { gap: 0.6rem; padding: 0.45rem 0.75rem; }
             .agba-lockup img { height: 34px; }
-            .agba-lockup .lbl { font-size: 0.58rem; letter-spacing: 0.08em; }
+            .agba-lockup .lbl { font-size: 0.75rem; letter-spacing: 0.08em; }
         }
 
         /* ── Hero layout: copy left, sample-result card right ── */
@@ -85,9 +85,9 @@
             box-shadow: var(--shadow-lg);
         }
         .air-sc-top { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-bottom: 1.25rem; }
-        .air-sc-eyebrow { font-size: 0.68rem; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: var(--gold-light); }
+        .air-sc-eyebrow { font-size: 0.75rem; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: var(--gold-light); }
         .air-sc-pill {
-            font-size: 0.68rem; font-weight: 700; color: #fff; background: rgba(255,255,255,0.14);
+            font-size: 0.75rem; font-weight: 700; color: #fff; background: rgba(255,255,255,0.14);
             border: 1px solid var(--glass-border); border-radius: var(--r-full); padding: 0.25rem 0.7rem;
         }
         .air-gauge-row { display: flex; align-items: center; gap: 1.5rem; }
@@ -95,8 +95,8 @@
         .air-gauge svg { transform: rotate(-90deg); }
         .air-gauge .g-txt { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
         .air-gauge .g-num { font-family: var(--font-display); font-size: 2rem; font-weight: 800; color: #fff; line-height: 1; }
-        .air-gauge .g-lvl { font-size: 0.6rem; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase; color: var(--saffron-light); margin-top: 0.25rem; }
-        .air-gauge .g-of { font-size: 0.6rem; color: rgba(255,255,255,0.55); margin-top: 0.15rem; }
+        .air-gauge .g-lvl { font-size: 0.75rem; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase; color: var(--saffron-light); margin-top: 0.25rem; }
+        .air-gauge .g-of { font-size: 0.75rem; color: rgba(255,255,255,0.55); margin-top: 0.15rem; }
         .air-ladder { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.4rem; }
         .air-rung { display: flex; align-items: center; gap: 0.6rem; font-size: 0.76rem; color: rgba(255,255,255,0.5); }
         .air-rung .dot { width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,0.25); flex: none; }
@@ -108,10 +108,10 @@
             display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem;
             margin-top: 1.25rem; padding-top: 1.25rem; border-top: 1px solid var(--glass-border);
         }
-        .air-sc-metrics .m-l { font-size: 0.62rem; letter-spacing: 0.06em; text-transform: uppercase; color: rgba(255,255,255,0.5); font-weight: 700; }
+        .air-sc-metrics .m-l { font-size: 0.75rem; letter-spacing: 0.06em; text-transform: uppercase; color: rgba(255,255,255,0.5); font-weight: 700; }
         .air-sc-metrics .m-v { font-family: var(--font-display); font-size: 1.1rem; font-weight: 800; color: #fff; line-height: 1.2; }
-        .air-sc-metrics .m-s { font-size: 0.66rem; color: rgba(255,255,255,0.55); }
-        .air-sc-foot { display: flex; align-items: center; gap: 0.55rem; margin-top: 1rem; font-size: 0.68rem; color: rgba(255,255,255,0.6); }
+        .air-sc-metrics .m-s { font-size: 0.75rem; color: rgba(255,255,255,0.55); }
+        .air-sc-foot { display: flex; align-items: center; gap: 0.55rem; margin-top: 1rem; font-size: 0.75rem; color: rgba(255,255,255,0.6); }
         .air-sc-foot img { height: 16px; width: auto; background: rgba(255,255,255,0.95); border-radius: 3px; padding: 2px; }
 
         /* Hero stat strip */
@@ -151,9 +151,9 @@
         .air-gap-side.out b { color: var(--saffron); }
         .air-gap-side .gl { display: block; font-size: 1rem; font-weight: 700; color: var(--charcoal); margin-top: 0.75rem; line-height: 1.4; }
         .air-gap-side .gd { display: block; font-size: 0.88rem; color: var(--dark-grey); margin-top: 0.5rem; line-height: 1.6; }
-        .air-gap-side .gs { display: block; font-size: 0.72rem; font-weight: 700; color: var(--mid-grey); margin-top: 0.9rem; }
+        .air-gap-side .gs { display: block; font-size: 0.75rem; font-weight: 700; color: var(--mid-grey); margin-top: 0.9rem; }
         .air-gap-mid { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.6rem; min-width: 6.5rem; }
-        .air-gap-mid span { font-size: 0.7rem; font-weight: 800; letter-spacing: 0.09em; text-transform: uppercase; color: var(--saffron); text-align: center; }
+        .air-gap-mid span { font-size: 0.75rem; font-weight: 800; letter-spacing: 0.09em; text-transform: uppercase; color: var(--saffron); text-align: center; }
         .air-gap-mid i { display: block; width: 1px; flex: 1; background: linear-gradient(180deg, transparent, var(--light), transparent); }
 
         /* ── Callout note ── */
@@ -163,7 +163,7 @@
             color: var(--dark-grey); line-height: 1.7;
         }
         .air-note strong { color: var(--charcoal); }
-        .air-note .src { display: inline-block; font-size: 0.72rem; font-weight: 700; color: var(--mid-grey); margin-left: 0.4rem; }
+        .air-note .src { display: inline-block; font-size: 0.75rem; font-weight: 700; color: var(--mid-grey); margin-left: 0.4rem; }
 
         /* ── Risk / countdown rows ── */
         .air-risk > div {
@@ -172,7 +172,7 @@
         }
         .air-risk > div:first-child { border-top: 1px solid var(--light); }
         .air-risk .when {
-            font-size: 0.72rem; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase;
+            font-size: 0.75rem; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase;
             color: var(--saffron); padding-top: 0.2rem;
         }
         .air-risk .when.hard { color: #C62828; }
@@ -204,7 +204,7 @@
         .air-evt { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; margin: 0 0 1.5rem; }
         .air-evt div { background: #fff; border: 1px solid var(--light); border-radius: var(--r-lg); padding: 0.85rem 1rem; }
         .air-evt b { display: block; font-family: var(--font-display); font-size: 0.95rem; color: var(--saffron); line-height: 1.2; }
-        .air-evt span { display: block; font-size: 0.72rem; color: var(--dark-grey); margin-top: 0.2rem; }
+        .air-evt span { display: block; font-size: 0.75rem; color: var(--dark-grey); margin-top: 0.2rem; }
         .air-felic-note {
             background: #FFF8F3; border: 1px solid rgba(255,107,0,0.3); color: #A34B00;
             border-radius: var(--r-lg); padding: 1rem 1.25rem; font-size: 0.9rem; font-weight: 700; line-height: 1.6;
@@ -220,7 +220,7 @@
             padding: 1.75rem; text-decoration: none; transition: var(--t-med);
         }
         .air-xcard:hover { border-color: rgba(255,107,0,0.35); box-shadow: var(--shadow-md); transform: translateY(-4px); }
-        .air-xcard .xtag { font-size: 0.7rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--saffron); }
+        .air-xcard .xtag { font-size: 0.75rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--saffron); }
         .air-xcard h3 { font-family: var(--font-display); font-size: 1.15rem; margin: 0.6rem 0 0.5rem; color: var(--charcoal); }
         .air-xcard p { font-size: 0.9rem; color: var(--dark-grey); line-height: 1.65; margin: 0 0 1rem; }
         .air-xcard .xgo { display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.88rem; font-weight: 700; color: var(--saffron); }
@@ -244,6 +244,10 @@
             width: 360px; background: var(--ink); color: #fff; padding: 38px 34px;
             display: flex; flex-direction: column; align-items: center; text-align: center;
         }
+        /* The .air-cert-* type below stays under 12px on purpose. This block is a
+           facsimile of the printed certificate, so its 9-11px labels are that
+           document's fine print inside a fixed 360px grid, not body copy. Raised
+           to 12px the cells wrap and it stops reading as a certificate. */
         .air-cert-kicker { font-size: 11px; font-weight: 700; letter-spacing: 0.34em; text-transform: uppercase; color: rgba(255,255,255,0.7); }
         .air-cert-seal { margin-top: 26px; display: block; }
         .air-cert-rule { height: 2px; width: 100%; background: rgba(255,255,255,0.35); margin: 30px 0 22px; }
@@ -390,7 +394,7 @@
     <nav class="navbar dark-nav" id="navbar">
         <div class="nav-container">
             <a href="index.html" class="nav-logo">
-                <img loading="eager" fetchpriority="high" decoding="async" src="images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI Innovation Logo" style="height:44px;width:auto;border-radius:12px;padding:6px;background:rgba(255,255,255,0.95);box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+                <img width="120" height="50" loading="eager" fetchpriority="high" decoding="async" src="images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI Innovation Logo" style="height:44px;width:auto;border-radius:12px;padding:6px;background:rgba(255,255,255,0.95);box-shadow:0 2px 8px rgba(0,0,0,0.08);">
             </a>
             <div class="nav-menu" id="nav-menu">
                 <a href="index.html" class="nav-link">Home</a>
@@ -478,12 +482,12 @@
                         </div>
                     </div>
                     <div class="air-sc-metrics">
-                        <div><div class="m-l">Delivery</div><div class="m-v">58<span style="font-size:0.7rem;">th</span></div><div class="m-s">in Technology</div></div>
+                        <div><div class="m-l">Delivery</div><div class="m-v">58<span style="font-size:0.75rem;">th</span></div><div class="m-s">in Technology</div></div>
                         <div><div class="m-l">To next tier</div><div class="m-v">14.4</div><div class="m-s">points</div></div>
                         <div><div class="m-l">Weakest link</div><div class="m-v" style="font-size:0.88rem;">GenAI &amp; Agentic</div><div class="m-s">lowest pillar</div></div>
                     </div>
                     <div class="air-sc-foot">
-                        <img src="images/agba-logo.png" alt="Aegis Graham Bell Awards">
+                        <img width="208" height="83" src="images/agba-logo.png" alt="Aegis Graham Bell Awards">
                         Independent &middot; evidence-gated &middot; non-compensatory
                     </div>
                 </div>
@@ -660,37 +664,37 @@
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:1.5rem;">
                 <div class="feature-card reveal reveal-delay-1" style="text-align:left;">
                     <div class="feature-card-icon"><i class="fas fa-compass"></i></div>
-                    <div style="font-size:0.7rem;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:var(--saffron);margin-bottom:0.35rem;">R1 &middot; Capacity</div>
+                    <div style="font-size:0.75rem;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:var(--saffron);margin-bottom:0.35rem;">R1 &middot; Capacity</div>
                     <h3>Strategy &amp; Leadership</h3>
                     <p>AI vision, board-level sponsorship, sustained funding and a prioritised roadmap.</p>
                 </div>
                 <div class="feature-card reveal reveal-delay-2" style="text-align:left;">
                     <div class="feature-card-icon"><i class="fas fa-database"></i></div>
-                    <div style="font-size:0.7rem;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:var(--saffron);margin-bottom:0.35rem;">R2 &middot; Capacity</div>
+                    <div style="font-size:0.75rem;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:var(--saffron);margin-bottom:0.35rem;">R2 &middot; Capacity</div>
                     <h3>Data &amp; Infrastructure</h3>
                     <p>Data quality and governance, ML platform, and MLOps maturity.</p>
                 </div>
                 <div class="feature-card reveal reveal-delay-3" style="text-align:left;">
                     <div class="feature-card-icon"><i class="fas fa-users"></i></div>
-                    <div style="font-size:0.7rem;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:var(--saffron);margin-bottom:0.35rem;">R3 &middot; Capacity</div>
+                    <div style="font-size:0.75rem;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:var(--saffron);margin-bottom:0.35rem;">R3 &middot; Capacity</div>
                     <h3>Talent, Culture &amp; Adoption</h3>
                     <p>AI literacy, specialist skills, change readiness and workforce adoption &mdash; BCG puts ~70% of AI value in people and process.</p>
                 </div>
                 <div class="feature-card reveal reveal-delay-1" style="text-align:left;">
                     <div class="feature-card-icon"><i class="fas fa-scale-balanced"></i></div>
-                    <div style="font-size:0.7rem;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:var(--saffron);margin-bottom:0.35rem;">R4 &middot; Capacity</div>
+                    <div style="font-size:0.75rem;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:var(--saffron);margin-bottom:0.35rem;">R4 &middot; Capacity</div>
                     <h3>Governance, Responsible &amp; Trustworthy AI</h3>
                     <p>AI policy, the trustworthy-AI dimensions &mdash; fairness, transparency, privacy, accountability, human oversight &mdash; NIST AI RMF risk management and ISO 42001 alignment.</p>
                 </div>
                 <div class="feature-card reveal reveal-delay-2" style="text-align:left;">
                     <div class="feature-card-icon"><i class="fas fa-chart-line"></i></div>
-                    <div style="font-size:0.7rem;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:var(--gold);margin-bottom:0.35rem;">R5 &middot; Performance</div>
+                    <div style="font-size:0.75rem;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:var(--gold);margin-bottom:0.35rem;">R5 &middot; Performance</div>
                     <h3>Adoption &amp; Value</h3>
                     <p>Use cases in production, measured ROI and EBIT impact, scaling and workflow integration. Scope note: this scores AI used in <strong>your own</strong> operations only. AI you build, sell or run for clients is scored under R2 (platform, MLOps) and R6 (guardrails, security), not here.</p>
                 </div>
                 <div class="feature-card reveal reveal-delay-3" style="text-align:left;">
                     <div class="feature-card-icon"><i class="fas fa-robot"></i></div>
-                    <div style="font-size:0.7rem;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:var(--saffron);margin-bottom:0.35rem;">R6 &middot; Capacity</div>
+                    <div style="font-size:0.75rem;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:var(--saffron);margin-bottom:0.35rem;">R6 &middot; Capacity</div>
                     <h3>GenAI, Agentic AI &amp; AI Security</h3>
                     <p>Readiness for the 2025&ndash;26 frontier: generative-AI guardrails, agentic-AI oversight, model risk management, AI security and robustness, and third-party or foundation-model risk (McKinsey agentic era &middot; NIST Measure &amp; Manage &middot; Gartner AI TRiSM).</p>
                 </div>
@@ -716,27 +720,27 @@
             </div>
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1rem;">
                 <div class="feature-card reveal reveal-delay-1" style="text-align:center;padding:1.5rem 1rem;">
-                    <div style="font-size:0.72rem;font-weight:700;letter-spacing:0.08em;color:var(--dark-grey);">LEVEL 0</div>
+                    <div style="font-size:0.75rem;font-weight:700;letter-spacing:0.08em;color:var(--dark-grey);">LEVEL 0</div>
                     <h3 style="font-size:1.05rem;margin:0.35rem 0;">Nascent</h3>
                     <p style="margin:0;font-size:0.8rem;color:var(--dark-grey);">below 20</p>
                 </div>
                 <div class="feature-card reveal reveal-delay-2" style="text-align:center;padding:1.5rem 1rem;">
-                    <div style="font-size:0.72rem;font-weight:700;letter-spacing:0.08em;color:var(--dark-grey);">LEVEL 1</div>
+                    <div style="font-size:0.75rem;font-weight:700;letter-spacing:0.08em;color:var(--dark-grey);">LEVEL 1</div>
                     <h3 style="font-size:1.05rem;margin:0.35rem 0;">Exploring</h3>
                     <p style="margin:0;font-size:0.8rem;color:var(--dark-grey);">20&ndash;40</p>
                 </div>
                 <div class="feature-card reveal reveal-delay-3" style="text-align:center;padding:1.5rem 1rem;">
-                    <div style="font-size:0.72rem;font-weight:700;letter-spacing:0.08em;color:var(--dark-grey);">LEVEL 2</div>
+                    <div style="font-size:0.75rem;font-weight:700;letter-spacing:0.08em;color:var(--dark-grey);">LEVEL 2</div>
                     <h3 style="font-size:1.05rem;margin:0.35rem 0;">Operational</h3>
                     <p style="margin:0;font-size:0.8rem;color:var(--dark-grey);">40&ndash;60</p>
                 </div>
                 <div class="feature-card reveal reveal-delay-4" style="text-align:center;padding:1.5rem 1rem;border-color:var(--saffron);">
-                    <div style="font-size:0.72rem;font-weight:700;letter-spacing:0.08em;color:var(--saffron);">LEVEL 3 &middot; CERTIFIED</div>
+                    <div style="font-size:0.75rem;font-weight:700;letter-spacing:0.08em;color:var(--saffron);">LEVEL 3 &middot; CERTIFIED</div>
                     <h3 style="font-size:1.05rem;margin:0.35rem 0;">Scaling</h3>
                     <p style="margin:0;font-size:0.8rem;color:var(--dark-grey);">60&ndash;80</p>
                 </div>
                 <div class="feature-card reveal reveal-delay-5" style="text-align:center;padding:1.5rem 1rem;border-color:var(--saffron);">
-                    <div style="font-size:0.72rem;font-weight:700;letter-spacing:0.08em;color:var(--saffron);">LEVEL 4 &middot; CERTIFIED</div>
+                    <div style="font-size:0.75rem;font-weight:700;letter-spacing:0.08em;color:var(--saffron);">LEVEL 4 &middot; CERTIFIED</div>
                     <h3 style="font-size:1.05rem;margin:0.35rem 0;">Transformational</h3>
                     <p style="margin:0;font-size:0.8rem;color:var(--dark-grey);">80+</p>
                 </div>
@@ -1101,8 +1105,8 @@
 
                             <div class="air-cert-face">
                                 <div class="air-cert-logos">
-                                    <img src="images/agba-logo.png" alt="Aegis Graham Bell Awards" class="air-cert-l1">
-                                    <img src="images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI Innovation" class="air-cert-l2">
+                                    <img width="208" height="83" src="images/agba-logo.png" alt="Aegis Graham Bell Awards" class="air-cert-l1">
+                                    <img width="120" height="50" src="images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI Innovation" class="air-cert-l2">
                                 </div>
                                 <div class="air-cert-hr2"></div>
 
@@ -1211,7 +1215,7 @@
             <div class="footer-content">
                 <div class="footer-section">
                     <div class="footer-logo">
-                        <img loading="lazy" decoding="async" src="images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI Innovation Logo" style="height:40px;width:auto;border-radius:10px;padding:5px;background:rgba(255,255,255,0.95);box-shadow:0 2px 6px rgba(0,0,0,0.08);">
+                        <img width="120" height="50" loading="lazy" decoding="async" src="images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI Innovation Logo" style="height:40px;width:auto;border-radius:10px;padding:5px;background:rgba(255,255,255,0.95);box-shadow:0 2px 6px rgba(0,0,0,0.08);">
                     </div>
                     <p class="footer-description">Advancing India's Future Through AI Innovation. Join us in creating a Viksit Bharat by 2047.</p>
                     <div class="social-links">

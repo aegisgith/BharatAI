@@ -2213,6 +2213,41 @@ function verifyPageHTML(o: any): string {
 </script></body></html>`
 }
 
+// ==================== BOARDROOMS ====================
+//
+// Rollout switch: boardroom booking activates only once migration 0029 has created
+// its two tables. Until then every rooms route reports ready:false and the meeting
+// modal keeps its free-text Location box, so the code deploy and the hand-run
+// migration are independent and can happen in either order — same rollout switch
+// as verifiedLoginEnabled below and paymentStatusEnabled above.
+let _roomTables: boolean | null = null
+async function roomBookingEnabled(c: any): Promise<boolean> {
+  if (_roomTables !== null) return _roomTables
+  try {
+    const { results } = await c.env.DB.prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('meeting_rooms','room_bookings')"
+    ).all()
+    _roomTables = (results || []).length === 2
+  } catch { _roomTables = false }
+  return _roomTables
+}
+
+// The two event days and the bookable hours inside them. Derived from the real
+// schedule, not guessed: sessions (migration 0012, re-dated by 0013) run
+// 08:30-17:10 on 20 Nov plus an 18:30-20:30 CXO cocktail, and 08:30-17:15 on
+// 21 Nov. 09:00-18:00 therefore sits inside both days and clears the closing
+// ceremony. Kept in code, not in a table, so trimming the window is a deploy
+// rather than another --remote execute.
+const ROOM_DAYS = ['2026-11-20', '2026-11-21']
+const ROOM_SLOT_HOURS = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00']
+const ROOM_GST_PERCENT = 18
+// Hours are the booking atom, so an end is always start + 1h. Text in, text out —
+// no Date parsing, which would drag the worker's UTC into an IST venue schedule.
+const roomSlotEnd = (start: string): string => {
+  const h = parseInt(start.slice(11, 13), 10) + 1
+  return start.slice(0, 11) + String(h).padStart(2, '0') + ':00'
+}
+
 // ==================== VERIFIED SIGN-IN ====================
 //
 // Sign-in used to be email-only: post an address, receive that account. This
@@ -3000,7 +3035,7 @@ app.get('/rsvp-confirmed', (c) => {
   }
   const cfg = statusConfig[status] || statusConfig.confirmed
 
-  return c.html(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>RSVP - Bharat AI Innovation 2026</title><script src="https://cdn.tailwindcss.com"></script><link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet"><link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Manrope:wght@300..800&display=swap" rel="stylesheet"><style>${brandThemeCSS()}</style></head>
+  return c.html(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>RSVP - Bharat AI Innovation 2026</title><link rel="stylesheet" href="${FA_CSS}"><link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Manrope:wght@300..800&display=swap" rel="stylesheet"><style>${brandThemeCSS()}</style><link rel="stylesheet" href="${TW_CSS}"></head>
 <body class="min-h-screen bg-gradient-to-br from-[#F8F9FF] via-[#EEF0FF] to-[#F8F9FF] flex items-center justify-center p-4 font-sans">
   <div class="max-w-md w-full text-center">
     <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="h-16 mx-auto mb-8 opacity-80">
@@ -3035,7 +3070,7 @@ app.get('/api/attendees/:id/connections', async (c) => {
       CASE WHEN c.from_attendee_id = ? THEN a2.company ELSE a1.company END as other_company,
       CASE WHEN c.from_attendee_id = ? THEN a2.job_title ELSE a1.job_title END as other_job_title,
       CASE WHEN c.from_attendee_id = ? THEN a2.id ELSE a1.id END as other_id,
-      CASE WHEN c.from_attendee_id = ? THEN a2.is_online ELSE a1.is_online END as other_online,
+      CASE WHEN (CASE WHEN c.from_attendee_id = ? THEN a2.last_login_at ELSE a1.last_login_at END) > datetime('now', '-${ONLINE_WINDOW_MINUTES} minutes') THEN 1 ELSE 0 END as other_online,
       CASE WHEN c.from_attendee_id = ? THEN a2.avatar_url ELSE a1.avatar_url END as other_avatar
     FROM connections c
     JOIN attendees a1 ON c.from_attendee_id = a1.id
@@ -3177,6 +3212,175 @@ app.get('/api/attendees/:id/unread', async (c) => {
     'SELECT COUNT(*) as count FROM messages WHERE receiver_id = ? AND is_read = 0'
   ).bind(id).first()
   return c.json(result)
+})
+
+// ==================== BOARDROOM APIs ====================
+//
+// Every route here answers as if the rooms simply had nothing booked when
+// migration 0029 has not been applied. That is deliberate: the code reaches
+// production before the migration is hand-run, and an empty grid is recoverable
+// where a 500 is not — the innovation_talks table taught us that the expensive
+// way, taking down two tabs at once.
+
+app.get('/api/events/:id/rooms', async (c) => {
+  const eventId = c.req.param('id')
+  const shell = { rooms: [] as any[], days: ROOM_DAYS, slot_hours: ROOM_SLOT_HOURS, gst_percent: ROOM_GST_PERCENT }
+  if (!(await roomBookingEnabled(c))) return c.json({ ready: false, ...shell })
+  try {
+    const { results } = await c.env.DB.prepare(
+      'SELECT * FROM meeting_rooms WHERE event_id = ? AND is_active = 1 ORDER BY sort_order ASC'
+    ).bind(eventId).all()
+    return c.json({ ready: true, ...shell, rooms: results || [] })
+  } catch (e: any) {
+    if (/no such table/i.test(String(e?.message || ''))) return c.json({ ready: false, ...shell })
+    throw e
+  }
+})
+
+// Which hours of one room are still free on one day. Anonymous callers learn that
+// an hour is gone but never who took it — same instinct as ATTENDEE_PUBLIC_COLS.
+app.get('/api/events/:id/rooms/:roomId/availability', async (c) => {
+  const roomId = c.req.param('roomId')
+  const date = c.req.query('date') || ROOM_DAYS[0]
+  if (!ROOM_DAYS.includes(date)) {
+    return c.json({ error: 'Rooms are only bookable on 20-21 November 2026.' }, 400)
+  }
+  const shell = { room_id: Number(roomId), date, gst_percent: ROOM_GST_PERCENT }
+  if (!(await roomBookingEnabled(c))) return c.json({ ready: false, ...shell, slots: [] })
+
+  const admin = isAdminRequest(c)
+  try {
+    const { results } = await c.env.DB.prepare(
+      `SELECT id, slot_start, status, kind, attendee_id, title FROM room_bookings
+        WHERE room_id = ? AND slot_date = ? AND status IN ('held', 'confirmed')`
+    ).bind(roomId, date).all()
+    const taken: Record<string, any> = {}
+    for (const r of (results || []) as any[]) taken[r.slot_start] = r
+    const slots = ROOM_SLOT_HOURS.map(h => {
+      const start = `${date} ${h}`
+      const t = taken[start]
+      return {
+        start, end: roomSlotEnd(start),
+        available: !t,
+        status: t ? t.status : null,
+        kind: t ? t.kind : null,
+        ...(t && admin ? { booking_id: t.id, title: t.title, attendee_id: t.attendee_id } : {}),
+      }
+    })
+    return c.json({ ready: true, ...shell, slots })
+  } catch (e: any) {
+    if (/no such table/i.test(String(e?.message || ''))) return c.json({ ready: false, ...shell, slots: [] })
+    throw e
+  }
+})
+
+// A signed-in attendee reserves one to four consecutive hours. Status is always
+// 'held', never 'confirmed': at Rs 10,000-15,000 an hour plus GST the room is not
+// sold by a button, it is invoiced by the team, who then flip the hold.
+app.post('/api/room-bookings', async (c) => {
+  const b = await c.req.json() as any
+  const denied = await requireSelf(c, b.attendee_id); if (denied) return denied
+  if (!(await roomBookingEnabled(c))) return c.json({ error: 'Room booking is not available yet.' }, 503)
+
+  const slotDate = String(b.slot_date || '')
+  if (!ROOM_DAYS.includes(slotDate)) {
+    return c.json({ error: 'Rooms are only bookable on 20-21 November 2026.' }, 400)
+  }
+  const starts = Array.from(new Set((Array.isArray(b.slot_starts) ? b.slot_starts : []).map(String)))
+  if (!starts.length || starts.length > 4) {
+    return c.json({ error: 'Pick between one and four hours.' }, 400)
+  }
+  const allowed = ROOM_SLOT_HOURS.map(h => `${slotDate} ${h}`)
+  if (starts.some(s => !allowed.includes(s))) {
+    return c.json({ error: 'Rooms are bookable between 09:00 and 18:00 only.' }, 400)
+  }
+
+  try {
+    const room = await c.env.DB.prepare(
+      'SELECT id, label, wtc_name, price_inr FROM meeting_rooms WHERE id = ? AND is_active = 1'
+    ).bind(b.room_id).first() as any
+    if (!room) return c.json({ error: 'Room not found' }, 404)
+
+    // One D1 batch, so a two-hour request never half-lands: the batch is a
+    // transaction, and a collision on any hour rolls the whole reservation back.
+    // The partial unique index — not the check above — is what makes that true.
+    const groupRef = randomHex(8)
+    await c.env.DB.batch(starts.map(s => c.env.DB.prepare(
+      `INSERT INTO room_bookings (event_id, room_id, slot_date, slot_start, slot_end, group_ref, kind,
+         attendee_id, meeting_id, title, headcount, notes, contact_name, contact_email, contact_phone, price_inr, status)
+       VALUES (?, ?, ?, ?, ?, ?, 'booking', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'held')`
+    ).bind(
+      b.event_id || 1, room.id, slotDate, s, roomSlotEnd(s), groupRef,
+      b.attendee_id, b.meeting_id || null, b.title || 'Private meeting',
+      b.headcount || null, b.notes || '',
+      b.contact_name || '', b.contact_email || '', b.contact_phone || '',
+      room.price_inr
+    )))
+
+    return c.json({
+      success: true, group_ref: groupRef, status: 'held',
+      room_id: room.id, room_label: room.label, wtc_name: room.wtc_name,
+      slot_date: slotDate, hours: starts.length,
+      total_inr: room.price_inr * starts.length, gst_percent: ROOM_GST_PERCENT,
+    }, 201)
+  } catch (e: any) {
+    const msg = String(e?.message || '')
+    if (/UNIQUE constraint/i.test(msg)) {
+      return c.json({ error: 'That hour has just been taken. Pick another.' }, 409)
+    }
+    if (/no such table/i.test(msg)) return c.json({ error: 'Room booking is not available yet.' }, 503)
+    throw e
+  }
+})
+
+app.get('/api/attendees/:id/room-bookings', async (c) => {
+  const attendeeId = c.req.param('id')
+  const denied = await requireSelf(c, attendeeId); if (denied) return denied
+  if (!(await roomBookingEnabled(c))) return c.json([])
+  try {
+    const { results } = await c.env.DB.prepare(`
+      SELECT rb.*, r.label AS room_label, r.wtc_name, r.capacity, r.layout
+      FROM room_bookings rb JOIN meeting_rooms r ON rb.room_id = r.id
+      WHERE rb.attendee_id = ? AND rb.status <> 'cancelled'
+      ORDER BY rb.slot_start ASC
+    `).bind(attendeeId).all()
+    return c.json(results)
+  } catch (e: any) {
+    if (/no such table/i.test(String(e?.message || ''))) return c.json([])
+    throw e
+  }
+})
+
+app.put('/api/room-bookings/:id', async (c) => {
+  const id = c.req.param('id')
+  const { status } = await c.req.json() as any
+  // The attendee side of a booking can only ever release it. Confirming and
+  // re-pricing live on /api/admin/room-bookings/:id, behind the admin guard.
+  if (status !== 'cancelled') return c.json({ error: 'Only cancellation is allowed here.' }, 400)
+  if (!(await roomBookingEnabled(c))) return c.json({ error: 'Room booking is not available yet.' }, 503)
+
+  try {
+    // Same shape as meetings: the param identifies the booking, not the caller.
+    if (!isAdminRequest(c) && attendeeSessionSecret(c)) {
+      const me = await verifyAttendeeSession(c)
+      if (!me) return c.json({ error: 'Please sign in again to continue.' }, 401)
+      const row = await c.env.DB.prepare('SELECT attendee_id FROM room_bookings WHERE id = ?').bind(id).first() as any
+      if (!row) return c.json({ error: 'Booking not found' }, 404)
+      if (me !== row.attendee_id) return c.json({ error: 'You can only change your own bookings.' }, 403)
+    }
+    // Cancel the whole reservation, not one hour of it — a person who books
+    // 10:00-12:00 and cancels means both hours, and half a meeting helps nobody.
+    const upd = await c.env.DB.prepare(
+      `UPDATE room_bookings
+          SET status = 'cancelled', cancelled_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+        WHERE status IN ('held', 'confirmed')
+          AND ((group_ref IS NOT NULL AND group_ref = (SELECT group_ref FROM room_bookings WHERE id = ?)) OR id = ?)`
+    ).bind(id, id).run()
+    return c.json({ success: true, hours_released: upd?.meta?.changes || 0 })
+  } catch (e: any) {
+    if (/no such table/i.test(String(e?.message || ''))) return c.json({ error: 'Room booking is not available yet.' }, 503)
+    throw e
+  }
 })
 
 // ==================== MEETING APIs ====================
@@ -3426,6 +3630,163 @@ app.get('/api/booth-requests', async (c) => {
   return c.json(results)
 })
 
+// Admin: the boardroom board — four rooms across both event days, hour by hour.
+// Everything under /api/admin/* is already guarded by the middleware above, which
+// is why there is no in-handler isAdminRequest check here, same as booth-requests.
+app.get('/api/admin/rooms/grid', async (c) => {
+  const shell = { rooms: [] as any[], days: ROOM_DAYS, slot_hours: ROOM_SLOT_HOURS, gst_percent: ROOM_GST_PERCENT, cells: {} }
+  if (!(await roomBookingEnabled(c))) return c.json({ ready: false, ...shell })
+  try {
+    const { results: rooms } = await c.env.DB.prepare(
+      'SELECT * FROM meeting_rooms WHERE event_id = 1 ORDER BY sort_order ASC'
+    ).all()
+    const { results: bookings } = await c.env.DB.prepare(
+      `SELECT rb.*, a.name AS attendee_name, a.email AS attendee_email, a.company AS attendee_company
+         FROM room_bookings rb LEFT JOIN attendees a ON rb.attendee_id = a.id
+        WHERE rb.slot_date IN (?, ?) AND rb.status IN ('held', 'confirmed')
+        ORDER BY rb.slot_start ASC`
+    ).bind(ROOM_DAYS[0], ROOM_DAYS[1]).all()
+
+    // Keyed room|slot_start so the client renders in one pass instead of
+    // searching the list once per cell — 4 rooms x 2 days x 9 hours is 72 cells.
+    const cells: Record<string, any> = {}
+    const summary = { held: 0, confirmed: 0, blocked: 0, revenue_inr: 0 }
+    for (const b of (bookings || []) as any[]) {
+      cells[`${b.room_id}|${b.slot_start}`] = b
+      if (b.kind === 'block') summary.blocked++
+      else if (b.status === 'confirmed') { summary.confirmed++; summary.revenue_inr += Number(b.price_inr || 0) }
+      else summary.held++
+    }
+    return c.json({ ready: true, ...shell, rooms: rooms || [], cells, summary })
+  } catch (e: any) {
+    if (/no such table/i.test(String(e?.message || ''))) return c.json({ ready: false, ...shell })
+    throw e
+  }
+})
+
+// Admin: flat review list, same shape as booth-requests below.
+app.get('/api/admin/room-bookings', async (c) => {
+  if (!(await roomBookingEnabled(c))) return c.json([])
+  const status = c.req.query('status')
+  let query = `SELECT rb.*, r.label AS room_label, r.wtc_name, r.capacity, r.layout,
+      a.name AS attendee_name, a.email AS attendee_email, a.company AS attendee_company
+      FROM room_bookings rb
+      JOIN meeting_rooms r ON rb.room_id = r.id
+      LEFT JOIN attendees a ON rb.attendee_id = a.id`
+  const params: any[] = []
+  if (status) {
+    query += ' WHERE rb.status = ?'
+    params.push(status)
+  }
+  query += ' ORDER BY rb.created_at DESC'
+  try {
+    const { results } = await c.env.DB.prepare(query).bind(...params).all()
+    return c.json(results)
+  } catch (e: any) {
+    if (/no such table/i.test(String(e?.message || ''))) return c.json([])
+    throw e
+  }
+})
+
+// Admin: confirm / reject / cancel / re-price a reservation. Acts on the whole
+// group_ref, so confirming a 10:00-12:00 hold confirms both of its hours.
+app.put('/api/admin/room-bookings/:id', async (c) => {
+  const id = c.req.param('id')
+  const body = await c.req.json() as any
+  if (!(await roomBookingEnabled(c))) return c.json({ error: 'Room booking is not available yet.' }, 503)
+  const { status } = body
+  if (status && !['held', 'confirmed', 'cancelled', 'rejected'].includes(status)) {
+    return c.json({ error: 'Unknown status' }, 400)
+  }
+
+  const updates: string[] = ['updated_at = CURRENT_TIMESTAMP']
+  const params: any[] = []
+  if (status) { updates.push('status = ?'); params.push(status) }
+  if (body.price_inr !== undefined) { updates.push('price_inr = ?'); params.push(Number(body.price_inr) || 0) }
+  if (body.notes !== undefined) { updates.push('notes = ?'); params.push(body.notes) }
+  if (body.title !== undefined) { updates.push('title = ?'); params.push(body.title) }
+  if (body.headcount !== undefined) { updates.push('headcount = ?'); params.push(body.headcount || null) }
+  if (body.contact_name !== undefined) { updates.push('contact_name = ?'); params.push(body.contact_name) }
+  if (body.contact_email !== undefined) { updates.push('contact_email = ?'); params.push(body.contact_email) }
+  if (body.contact_phone !== undefined) { updates.push('contact_phone = ?'); params.push(body.contact_phone) }
+  if (status === 'cancelled' || status === 'rejected') updates.push('cancelled_at = CURRENT_TIMESTAMP')
+  // Who acted, for the same reason every other admin write records it.
+  updates.push('created_by = COALESCE(created_by, ?)')
+  params.push(adminActor(c).actor)
+
+  params.push(id, id)
+  try {
+    await c.env.DB.prepare(
+      `UPDATE room_bookings SET ${updates.join(', ')}
+        WHERE (group_ref IS NOT NULL AND group_ref = (SELECT group_ref FROM room_bookings WHERE id = ?)) OR id = ?`
+    ).bind(...params).run()
+    return c.json({ success: true })
+  } catch (e: any) {
+    const msg = String(e?.message || '')
+    // Reviving a cancelled hold whose hour someone else has since taken.
+    if (/UNIQUE constraint/i.test(msg)) return c.json({ error: 'That hour is now held by someone else.' }, 409)
+    if (/no such table/i.test(msg)) return c.json({ error: 'Room booking is not available yet.' }, 503)
+    throw e
+  }
+})
+
+// Admin: a walk-up booking, or a block that takes a room off the board. This is
+// what a pre-generated slot grid would have offered as "mark unavailable" — same
+// table, same unique index, no extra machinery.
+app.post('/api/admin/room-bookings', async (c) => {
+  const b = await c.req.json() as any
+  if (!(await roomBookingEnabled(c))) return c.json({ error: 'Room booking is not available yet.' }, 503)
+
+  const slotDate = String(b.slot_date || '')
+  if (!ROOM_DAYS.includes(slotDate)) return c.json({ error: 'Rooms are only bookable on 20-21 November 2026.' }, 400)
+  const starts = Array.from(new Set((Array.isArray(b.slot_starts) ? b.slot_starts : []).map(String)))
+  if (!starts.length) return c.json({ error: 'Pick at least one hour.' }, 400)
+  const allowed = ROOM_SLOT_HOURS.map(h => `${slotDate} ${h}`)
+  if (starts.some(s => !allowed.includes(s))) return c.json({ error: 'Rooms are bookable between 09:00 and 18:00 only.' }, 400)
+
+  const kind = b.kind === 'block' ? 'block' : 'booking'
+  const status = ['held', 'confirmed'].includes(b.status) ? b.status : 'confirmed'
+  try {
+    const room = await c.env.DB.prepare(
+      'SELECT id, label, price_inr FROM meeting_rooms WHERE id = ?'
+    ).bind(b.room_id).first() as any
+    if (!room) return c.json({ error: 'Room not found' }, 404)
+
+    const groupRef = randomHex(8)
+    const price = kind === 'block' ? 0 : (b.price_inr !== undefined ? Number(b.price_inr) || 0 : room.price_inr)
+    await c.env.DB.batch(starts.map(s => c.env.DB.prepare(
+      `INSERT INTO room_bookings (event_id, room_id, slot_date, slot_start, slot_end, group_ref, kind,
+         attendee_id, title, headcount, notes, contact_name, contact_email, contact_phone, price_inr, status, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(
+      b.event_id || 1, room.id, slotDate, s, roomSlotEnd(s), groupRef, kind,
+      b.attendee_id || null, b.title || (kind === 'block' ? 'Venue hold' : 'Boardroom booking'),
+      b.headcount || null, b.notes || '',
+      b.contact_name || '', b.contact_email || '', b.contact_phone || '',
+      price, status, adminActor(c).actor
+    )))
+    return c.json({ success: true, group_ref: groupRef, hours: starts.length, total_inr: price * starts.length }, 201)
+  } catch (e: any) {
+    const msg = String(e?.message || '')
+    if (/UNIQUE constraint/i.test(msg)) return c.json({ error: 'That hour is already taken.' }, 409)
+    if (/no such table/i.test(msg)) return c.json({ error: 'Room booking is not available yet.' }, 503)
+    throw e
+  }
+})
+
+// A single hour, not the group, so an over-long hold can be trimmed rather than
+// thrown away.
+app.delete('/api/admin/room-bookings/:id', async (c) => {
+  if (!(await roomBookingEnabled(c))) return c.json({ error: 'Room booking is not available yet.' }, 503)
+  try {
+    await c.env.DB.prepare('DELETE FROM room_bookings WHERE id = ?').bind(c.req.param('id')).run()
+    return c.json({ success: true })
+  } catch (e: any) {
+    if (/no such table/i.test(String(e?.message || ''))) return c.json({ error: 'Room booking is not available yet.' }, 503)
+    throw e
+  }
+})
+
 // Admin: Get all booth requests
 app.get('/api/admin/booth-requests', async (c) => {
   const status = c.req.query('status')
@@ -3632,89 +3993,81 @@ app.get('/api/events/:id/announcements', async (c) => {
 app.get('/api/attendees/:id/dashboard', async (c) => {
   const id = c.req.param('id')
   const denied = await requireSelf(c, id); if (denied) return denied
-  // Was SELECT * — returned email, mobile and every other column, bypassing the
-  // ATTENDEE_PUBLIC_COLS allowlist that protects the directory.
-  const attendee = await c.env.DB.prepare(`SELECT ${isAdminRequest(c) ? '*' : ATTENDEE_PUBLIC_COLS + ', email, mobile, badge_type, rsvp_status, pass_downloaded_at'} FROM attendees WHERE id = ?`).bind(id).first()
+
+  // Eleven sequential awaits: a profile, seven counts, three lists. The seven counts
+  // touch four different tables but are all scalar, so they collapse into a single
+  // SELECT of sub-selects; that row plus the profile and the three lists go out as
+  // ONE batch. Eleven round trips become one. requireSelf has already proved the
+  // caller is this attendee, so the row exists and the lists cannot leak.
+  // Ordinal `?` placeholders only (D1 does not reliably accept ?NNN), so the id is
+  // bound once per placeholder - 11 times for the counts, 7 for the connections.
+  const statsSql = `SELECT
+      (SELECT COUNT(*) FROM connections WHERE (from_attendee_id = ? OR to_attendee_id = ?) AND status = 'accepted') AS connectionsAccepted,
+      (SELECT COUNT(*) FROM connections WHERE to_attendee_id = ? AND status = 'pending') AS connectionsPending,
+      (SELECT COUNT(*) FROM messages WHERE sender_id = ? OR receiver_id = ?) AS totalMessages,
+      (SELECT COUNT(*) FROM messages WHERE receiver_id = ? AND is_read = 0) AS unreadMessages,
+      (SELECT COUNT(*) FROM meetings WHERE (requester_id = ? OR requestee_id = ?) AND status = 'accepted') AS meetingsUpcoming,
+      (SELECT COUNT(*) FROM meetings WHERE (requester_id = ? OR requestee_id = ?) AND status = 'pending') AS meetingsPending,
+      (SELECT COUNT(*) FROM booth_visits WHERE attendee_id = ?) AS boothVisits`
+
+  const batched = await c.env.DB.batch([
+    // Was SELECT * — returned email, mobile and every other column, bypassing the
+    // ATTENDEE_PUBLIC_COLS allowlist that protects the directory.
+    c.env.DB.prepare(`SELECT ${isAdminRequest(c) ? '*' : ATTENDEE_PUBLIC_COLS + ', email, mobile, badge_type, rsvp_status, pass_downloaded_at'} FROM attendees WHERE id = ?`).bind(id),
+    c.env.DB.prepare(statsSql).bind(...new Array(11).fill(id)),
+    // Recent connections with names. other_online used to read the raw is_online
+    // column, which is never cleared - every contact showed a green dot forever.
+    // Same 15-minute window as ATTENDEE_PUBLIC_COLS so the dot means one thing.
+    c.env.DB.prepare(`
+      SELECT c.*,
+        CASE WHEN c.from_attendee_id = ? THEN a2.name ELSE a1.name END as other_name,
+        CASE WHEN c.from_attendee_id = ? THEN a2.email ELSE a1.email END as other_email,
+        CASE WHEN c.from_attendee_id = ? THEN a2.company ELSE a1.company END as other_company,
+        CASE WHEN c.from_attendee_id = ? THEN a2.id ELSE a1.id END as other_id,
+        CASE WHEN (CASE WHEN c.from_attendee_id = ? THEN a2.last_login_at ELSE a1.last_login_at END) > datetime('now', '-${ONLINE_WINDOW_MINUTES} minutes') THEN 1 ELSE 0 END as other_online
+      FROM connections c
+      JOIN attendees a1 ON c.from_attendee_id = a1.id
+      JOIN attendees a2 ON c.to_attendee_id = a2.id
+      WHERE (c.from_attendee_id = ? OR c.to_attendee_id = ?) AND c.status = 'accepted'
+      ORDER BY c.created_at DESC LIMIT 6
+    `).bind(id, id, id, id, id, id, id),
+    c.env.DB.prepare(`
+      SELECT m.*,
+        a1.name as requester_name, a1.company as requester_company,
+        a2.name as requestee_name, a2.company as requestee_company
+      FROM meetings m
+      JOIN attendees a1 ON m.requester_id = a1.id
+      JOIN attendees a2 ON m.requestee_id = a2.id
+      WHERE (m.requester_id = ? OR m.requestee_id = ?) AND m.status IN ('accepted','pending')
+      ORDER BY m.meeting_time ASC LIMIT 5
+    `).bind(id, id),
+    c.env.DB.prepare(`
+      SELECT bv.*, e.company_name, e.booth_number, e.category
+      FROM booth_visits bv
+      JOIN exhibitors e ON bv.exhibitor_id = e.id
+      WHERE bv.attendee_id = ?
+      ORDER BY bv.visited_at DESC LIMIT 6
+    `).bind(id),
+  ])
+
+  const attendee = (batched[0] as any)?.results?.[0]
   if (!attendee) return c.json({ error: 'Attendee not found' }, 404)
-
-  const connectionsAccepted = await c.env.DB.prepare(
-    'SELECT COUNT(*) as count FROM connections WHERE (from_attendee_id = ? OR to_attendee_id = ?) AND status = ?'
-  ).bind(id, id, 'accepted').first()
-
-  const connectionsPending = await c.env.DB.prepare(
-    'SELECT COUNT(*) as count FROM connections WHERE to_attendee_id = ? AND status = ?'
-  ).bind(id, 'pending').first()
-
-  const totalMessages = await c.env.DB.prepare(
-    'SELECT COUNT(*) as count FROM messages WHERE sender_id = ? OR receiver_id = ?'
-  ).bind(id, id).first()
-
-  const unreadMessages = await c.env.DB.prepare(
-    'SELECT COUNT(*) as count FROM messages WHERE receiver_id = ? AND is_read = 0'
-  ).bind(id).first()
-
-  const meetingsUpcoming = await c.env.DB.prepare(
-    `SELECT COUNT(*) as count FROM meetings WHERE (requester_id = ? OR requestee_id = ?) AND status = 'accepted'`
-  ).bind(id, id).first()
-
-  const meetingsPending = await c.env.DB.prepare(
-    `SELECT COUNT(*) as count FROM meetings WHERE (requester_id = ? OR requestee_id = ?) AND status = 'pending'`
-  ).bind(id, id).first()
-
-  const boothVisits = await c.env.DB.prepare(
-    'SELECT COUNT(*) as count FROM booth_visits WHERE attendee_id = ?'
-  ).bind(id).first()
-
-  // Get recent connections with names
-  const { results: recentConnections } = await c.env.DB.prepare(`
-    SELECT c.*,
-      CASE WHEN c.from_attendee_id = ? THEN a2.name ELSE a1.name END as other_name,
-      CASE WHEN c.from_attendee_id = ? THEN a2.email ELSE a1.email END as other_email,
-      CASE WHEN c.from_attendee_id = ? THEN a2.company ELSE a1.company END as other_company,
-      CASE WHEN c.from_attendee_id = ? THEN a2.id ELSE a1.id END as other_id,
-      CASE WHEN c.from_attendee_id = ? THEN a2.is_online ELSE a1.is_online END as other_online
-    FROM connections c
-    JOIN attendees a1 ON c.from_attendee_id = a1.id
-    JOIN attendees a2 ON c.to_attendee_id = a2.id
-    WHERE (c.from_attendee_id = ? OR c.to_attendee_id = ?) AND c.status = 'accepted'
-    ORDER BY c.created_at DESC LIMIT 6
-  `).bind(id, id, id, id, id, id, id).all()
-
-  // Get upcoming meetings
-  const { results: upcomingMeetings } = await c.env.DB.prepare(`
-    SELECT m.*,
-      a1.name as requester_name, a1.company as requester_company,
-      a2.name as requestee_name, a2.company as requestee_company
-    FROM meetings m
-    JOIN attendees a1 ON m.requester_id = a1.id
-    JOIN attendees a2 ON m.requestee_id = a2.id
-    WHERE (m.requester_id = ? OR m.requestee_id = ?) AND m.status IN ('accepted','pending')
-    ORDER BY m.meeting_time ASC LIMIT 5
-  `).bind(id, id).all()
-
-  // Get visited booths with exhibitor names
-  const { results: visitedBooths } = await c.env.DB.prepare(`
-    SELECT bv.*, e.company_name, e.booth_number, e.category
-    FROM booth_visits bv
-    JOIN exhibitors e ON bv.exhibitor_id = e.id
-    WHERE bv.attendee_id = ?
-    ORDER BY bv.visited_at DESC LIMIT 6
-  `).bind(id).all()
+  const s = ((batched[1] as any)?.results?.[0]) || {}
 
   return c.json({
     profile: attendee,
     stats: {
-      connectionsAccepted: (connectionsAccepted as any)?.count || 0,
-      connectionsPending: (connectionsPending as any)?.count || 0,
-      totalMessages: (totalMessages as any)?.count || 0,
-      unreadMessages: (unreadMessages as any)?.count || 0,
-      meetingsUpcoming: (meetingsUpcoming as any)?.count || 0,
-      meetingsPending: (meetingsPending as any)?.count || 0,
-      boothVisits: (boothVisits as any)?.count || 0,
+      connectionsAccepted: s.connectionsAccepted || 0,
+      connectionsPending: s.connectionsPending || 0,
+      totalMessages: s.totalMessages || 0,
+      unreadMessages: s.unreadMessages || 0,
+      meetingsUpcoming: s.meetingsUpcoming || 0,
+      meetingsPending: s.meetingsPending || 0,
+      boothVisits: s.boothVisits || 0,
     },
-    recentConnections,
-    upcomingMeetings,
-    visitedBooths,
+    recentConnections: (batched[2] as any)?.results || [],
+    upcomingMeetings: (batched[3] as any)?.results || [],
+    visitedBooths: (batched[4] as any)?.results || [],
   })
 })
 
@@ -3893,31 +4246,45 @@ app.put('/api/attendees/:id/exhibitor', async (c) => {
 app.get('/api/events/:id/stats', async (c) => {
   const eventId = c.req.param('id')
 
-  const attendeeCount = await c.env.DB.prepare('SELECT COUNT(*) as count FROM attendees WHERE event_id = ?').bind(eventId).first()
-  const onlineCount = await c.env.DB.prepare('SELECT COUNT(*) as count FROM attendees WHERE event_id = ? AND is_online = 1').bind(eventId).first()
-  const sessionCount = await c.env.DB.prepare('SELECT COUNT(*) as count FROM sessions WHERE event_id = ?').bind(eventId).first()
-  const exhibitorCount = await c.env.DB.prepare('SELECT COUNT(*) as count FROM exhibitors WHERE event_id = ?').bind(eventId).first()
-  const connectionCount = await c.env.DB.prepare('SELECT COUNT(*) as count FROM connections WHERE event_id = ?').bind(eventId).first()
-  const categoryCount = await c.env.DB.prepare('SELECT COUNT(*) as count FROM award_categories WHERE event_id = ?').bind(eventId).first()
-  // Checked in at the door. is_online is set at registration and never cleared, so
-  // it counts rows, not people in the building - the admin overview reads this.
-  // Tolerates the column being absent rather than 500-ing the whole overview.
-  let checkedInCount = 0
-  try {
-    const r = await c.env.DB.prepare(
-      'SELECT COUNT(*) as count FROM attendees WHERE event_id = ? AND checked_in_at IS NOT NULL'
-    ).bind(eventId).first() as any
-    checkedInCount = r?.count || 0
-  } catch (_) { checkedInCount = 0 }
+  // Seven sequential awaits were seven round trips to D1 (measured 1,325ms). Six of
+  // them go in ONE batch. The checked-in count stays OUT of it deliberately:
+  // batch() is all-or-nothing, so if checked_in_at were ever missing on this
+  // database the whole overview would 500 instead of degrading to 0. It runs
+  // concurrently with the batch, keeping its own tolerance, so this is two round
+  // trips rather than seven.
+  const [rows, checkedInCount] = await Promise.all([
+    c.env.DB.batch([
+      c.env.DB.prepare('SELECT COUNT(*) as count FROM attendees WHERE event_id = ?').bind(eventId),
+      // is_online is written as 1 at registration and at every sign-in and is never
+      // set back to 0, so this stat read 1325 of 1325 for the life of the app.
+      // Derive presence from the last sign-in instead - the same window and the same
+      // reasoning as ATTENDEE_PUBLIC_COLS, so the tile and the presence dots agree.
+      c.env.DB.prepare(`SELECT COUNT(*) as count FROM attendees WHERE event_id = ? AND last_login_at > datetime('now', '-${ONLINE_WINDOW_MINUTES} minutes')`).bind(eventId),
+      c.env.DB.prepare('SELECT COUNT(*) as count FROM sessions WHERE event_id = ?').bind(eventId),
+      c.env.DB.prepare('SELECT COUNT(*) as count FROM exhibitors WHERE event_id = ?').bind(eventId),
+      c.env.DB.prepare('SELECT COUNT(*) as count FROM connections WHERE event_id = ?').bind(eventId),
+      c.env.DB.prepare('SELECT COUNT(*) as count FROM award_categories WHERE event_id = ?').bind(eventId),
+    ]),
+    (async () => {
+      try {
+        const r = await c.env.DB.prepare(
+          'SELECT COUNT(*) as count FROM attendees WHERE event_id = ? AND checked_in_at IS NOT NULL'
+        ).bind(eventId).first() as any
+        return r?.count || 0
+      } catch (_) { return 0 }
+    })(),
+  ])
+
+  const n = (i: number) => ((rows[i] as any)?.results?.[0]?.count) || 0
 
   return c.json({
-    attendees: (attendeeCount as any)?.count || 0,
-    online: (onlineCount as any)?.count || 0,
+    attendees: n(0),
+    online: n(1),
     checkedIn: checkedInCount,
-    sessions: (sessionCount as any)?.count || 0,
-    exhibitors: (exhibitorCount as any)?.count || 0,
-    connections: (connectionCount as any)?.count || 0,
-    categories: (categoryCount as any)?.count || 0,
+    sessions: n(2),
+    exhibitors: n(3),
+    connections: n(4),
+    categories: n(5),
   })
 })
 
@@ -6704,6 +7071,21 @@ app.get('/inquiry', (c) => {
   return c.html(inquiryFormPageHTML())
 })
 
+// Tailwind, compiled at build time by `npm run css` instead of downloaded and
+// run in the browser by the Play CDN. The ?v= is load-bearing: /css/* is served
+// with max-age=14400 and public/sw.js revalidates static assets in the
+// background, so a stable filename can hand a returning visitor a four-hour-old
+// stylesheet. Bump it on every change that affects the generated CSS.
+// (src/routes/marketplace-pages.ts carries the same literal — see the note there.)
+export const TW_CSS = '/css/tailwind.css?v=1'
+
+// Font Awesome, cut down to the ~250 icons we actually draw by
+// scripts/build-fa-subset.py. Self-hosted because public/sw.js deliberately
+// ignores cross-origin requests, so the CDN copy took every icon on the site
+// with it the moment the venue WiFi dropped. Same ?v= rule as above — and
+// re-run the generator after adding an icon, or it renders as a blank box.
+export const FA_CSS = '/css/fa-subset.css?v=1'
+
 // Unifies /app with the marketing site (public/css/style.css): identical brand
 // tokens, Bricolage Grotesque + Manrope type, and the warm saffron gradient — so
 // moving between bharataiinnovation.com and /app feels like ONE product, not two.
@@ -6805,6 +7187,19 @@ function brandThemeCSS(): string {
   .on-dark .text-gray-400,.hero-gradient .text-gray-400,.profile-cover .text-gray-400{color:rgba(255,255,255,0.62)!important;}
   .on-dark .glass,.hero-gradient .glass{background:rgba(255,255,255,0.06)!important;border-color:rgba(255,255,255,0.12)!important;-webkit-backdrop-filter:blur(16px)!important;backdrop-filter:blur(16px)!important;box-shadow:none!important;}
   .on-dark .border-white\\/10,.hero-gradient .border-white\\/10{border-color:rgba(255,255,255,0.14)!important;}
+  /* ---- iOS zoom guard: form controls are >=16px on phones ----
+     Mobile Safari zooms the viewport in on focus when a control's text is under
+     16px and never zooms back out, so every tap on a field left the page zoomed.
+     Every field on this app is text-sm (14px) or an inline 13px, and a bare
+     input{font-size:16px} loses to those Tailwind utilities on specificity -
+     hence !important. Scoped to <=640px so the desktop look is untouched; the
+     extra ~2px of line box is absorbed by the existing 8-12px vertical padding,
+     and the taller control is a better touch target anyway. Not fixed with
+     maximum-scale=1, which would disable pinch-zoom for everyone. */
+  @media (max-width:640px){
+    input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]),
+    select,textarea{font-size:16px!important;}
+  }
   `
 }
 
@@ -6855,21 +7250,7 @@ function sharedHeadHTML(title: string, path: string = '/', desc?: string): strin
     organizer: { "@type": "Organization", name: "Bharat AI Innovation", url: "https://bharataiinnovation.com" },
     offers: { "@type": "Offer", url: "https://bharataiinnovation.com/register", price: "0", priceCurrency: "INR", availability: "https://schema.org/InStock" }
   })}</script>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            primary: { 50:'#fff3e9',100:'#ffe0c7',200:'#ffc194',300:'#ff9d55',400:'#ff8524',500:'#FF6B00',600:'#e05a00',700:'#b84800',800:'#933a08',900:'#79300c' },
-            accent: { 50:'#fdf4ff',100:'#fbe8ff',200:'#f5d0fe',300:'#f0abfc',400:'#e879f9',500:'#7c3aed',600:'#c026d3',700:'#a21caf',800:'#86198f',900:'#701a75' },
-            dark: { 700:'#1e2240',800:'#141730',900:'#0b0d1a' }
-          }
-        }
-      }
-    }
-  </script>
+  <link rel="stylesheet" href="${FA_CSS}">
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Manrope:wght@300..800&family=Montserrat:wght@600;700;800&family=Playfair+Display:wght@600;700&family=Mukta:wght@500;600;700&display=swap');
     * { font-family: 'Manrope', sans-serif; }
@@ -6894,6 +7275,10 @@ function sharedHeadHTML(title: string, path: string = '/', desc?: string): strin
     @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
     ${brandThemeCSS()}
   </style>
+  <!-- Last in <head> on purpose: the Play CDN appended its generated <style>
+       after the inline one, so utilities have always won ties against the page
+       CSS above. Moving the link earlier would flip that cascade. -->
+  <link rel="stylesheet" href="${TW_CSS}">
 </head>`
 }
 
@@ -7059,26 +7444,26 @@ ${sharedNavHTML('contact')}
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label class="text-xs text-gray-400 mb-1 block">Full Name *</label>
-            <input type="text" id="cf-name" required class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Your name">
+            <input type="text" id="cf-name" autocomplete="name" autocapitalize="words" required class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Your name">
           </div>
           <div>
             <label class="text-xs text-gray-400 mb-1 block">Email Address *</label>
-            <input type="email" id="cf-email" required class="w-full px-4 py-3 rounded-xl text-sm" placeholder="your@email.com">
+            <input type="email" id="cf-email" autocomplete="email" inputmode="email" autocapitalize="none" spellcheck="false" required class="w-full px-4 py-3 rounded-xl text-sm" placeholder="your@email.com">
           </div>
         </div>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label class="text-xs text-gray-400 mb-1 block">Phone</label>
-            <input type="tel" id="cf-phone" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="+91 XXXXX XXXXX">
+            <input type="tel" id="cf-phone" autocomplete="tel" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="+91 XXXXX XXXXX">
           </div>
           <div>
             <label class="text-xs text-gray-400 mb-1 block">Organization</label>
-            <input type="text" id="cf-org" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Company / Institute">
+            <input type="text" id="cf-org" autocomplete="organization" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Company / Institute">
           </div>
         </div>
         <div>
           <label class="text-xs text-gray-400 mb-1 block">Subject</label>
-          <input type="text" id="cf-subject" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Brief subject line">
+          <input type="text" id="cf-subject" autocomplete="off" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Brief subject line">
         </div>
 
         <!-- Dynamic Extra Fields -->
@@ -7086,7 +7471,7 @@ ${sharedNavHTML('contact')}
 
         <div>
           <label class="text-xs text-gray-400 mb-1 block">Message *</label>
-          <textarea id="cf-message" rows="4" required class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Describe your inquiry in detail..."></textarea>
+          <textarea id="cf-message" autocomplete="off" rows="4" required class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Describe your inquiry in detail..."></textarea>
         </div>
         <button type="submit" id="cf-submit" class="w-full py-3.5 rounded-xl font-bold text-white transition-all text-sm hover:opacity-90" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);box-shadow:0 4px 20px rgba(245,98,10,0.3);">
           <i class="fas fa-paper-plane mr-2"></i>Submit Inquiry
@@ -7146,9 +7531,9 @@ function selectType(type) {
   if (type === 'exhibition') {
     extra = '<div><label class="text-xs text-gray-400 mb-1 block">Preferred Booth Type</label><select id="cf-booth" class="w-full px-4 py-3 rounded-xl text-sm"><option value="">Select booth type</option><option value="Startup Pod - 1.5×1.5m - ₹38,000">Startup Pod — 1.5 × 1.5 m — ₹38,000</option><option value="Explorer Booth - 2×2m - ₹1,25,000">Explorer Booth — 2 × 2 m — ₹1,25,000</option><option value="Innovator Booth - 3×2m - ₹1,95,000">Innovator Booth — 3 × 2 m — ₹1,95,000</option><option value="Accelerator Booth - 3×3m - ₹2,91,000">Accelerator Booth — 3 × 3 m — ₹2,91,000</option><option value="Enterprise Booth - 4×2m - ₹2,58,000">Enterprise Booth — 4 × 2 m — ₹2,58,000</option><option value="Flagship Pavilion - 6×2m - ₹3,87,000">Flagship Pavilion — 6 × 2 m — ₹3,87,000</option><option value="Mega Pavilion - 7×7.7m - ₹17,40,000">Mega Pavilion — 7 × 7.7 m — ₹17,40,000</option><option value="Undecided">Not sure yet / Need consultation</option></select></div><div class="mt-4"><label class="text-xs text-gray-400 mb-1 block">Preferred Zone</label><select id="cf-zone" class="w-full px-4 py-3 rounded-xl text-sm"><option value="">Any zone</option><option value="Main Hall">Main Hall</option><option value="Innovation Hub">Innovation Hub</option><option value="Startup Alley">Startup Alley</option><option value="Enterprise Zone">Enterprise Zone</option></select></div>';
   } else if (type === 'speaking') {
-    extra = '<div><label class="text-xs text-gray-400 mb-1 block">Proposed Topic</label><input type="text" id="cf-topic" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Your talk/workshop topic"></div>';
+    extra = '<div><label class="text-xs text-gray-400 mb-1 block">Proposed Topic</label><input type="text" id="cf-topic" autocomplete="off" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Your talk/workshop topic"></div>';
   } else if (type === 'group_registration') {
-    extra = '<div class="grid grid-cols-2 gap-4"><div><label class="text-xs text-gray-400 mb-1 block">Group Size</label><input type="number" id="cf-groupsize" min="2" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Number of people"></div><div><label class="text-xs text-gray-400 mb-1 block">Preferred Pass Type</label><select id="cf-passtype" class="w-full px-4 py-3 rounded-xl text-sm"><option value="">Select pass</option><option value="Delegate">Delegate (₹4,999)</option><option value="VIP">VIP (₹14,999)</option><option value="Academic">Academic (₹999)</option><option value="Visitor">Visitor (Free)</option><option value="Mixed">Mixed</option></select></div></div>';
+    extra = '<div class="grid grid-cols-2 gap-4"><div><label class="text-xs text-gray-400 mb-1 block">Group Size</label><input type="number" id="cf-groupsize" autocomplete="off" min="2" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Number of people"></div><div><label class="text-xs text-gray-400 mb-1 block">Preferred Pass Type</label><select id="cf-passtype" class="w-full px-4 py-3 rounded-xl text-sm"><option value="">Select pass</option><option value="Delegate">Delegate (₹4,999)</option><option value="VIP">VIP (₹14,999)</option><option value="Academic">Academic (₹999)</option><option value="Visitor">Visitor (Free)</option><option value="Mixed">Mixed</option></select></div></div>';
   } else if (type === 'sponsorship') {
     extra = '<div><label class="text-xs text-gray-400 mb-1 block">Budget Range</label><select id="cf-budget" class="w-full px-4 py-3 rounded-xl text-sm"><option value="">Select range</option><option value="Under ₹1 Lakh">Under ₹1 Lakh</option><option value="₹1-3 Lakhs">₹1-3 Lakhs</option><option value="₹3-5 Lakhs">₹3-5 Lakhs</option><option value="₹5-10 Lakhs">₹5-10 Lakhs</option><option value="₹10+ Lakhs">₹10+ Lakhs</option></select></div>';
   }
@@ -7267,30 +7652,30 @@ ${sharedNavHTML('register')}
         <form id="reg-form" onsubmit="submitRegistration(event)" class="space-y-4">
           <div>
             <label class="text-xs text-gray-400 mb-1 block">Full Name *</label>
-            <input type="text" id="rf-name" required class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Your full name">
+            <input type="text" id="rf-name" autocomplete="name" autocapitalize="words" required class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Your full name">
           </div>
           <div>
             <label class="text-xs text-gray-400 mb-1 block">Email Address *</label>
-            <input type="email" id="rf-email" required class="w-full px-4 py-3 rounded-xl text-sm" placeholder="your@email.com">
+            <input type="email" id="rf-email" autocomplete="email" inputmode="email" autocapitalize="none" spellcheck="false" required class="w-full px-4 py-3 rounded-xl text-sm" placeholder="your@email.com">
           </div>
           <div class="grid grid-cols-2 gap-4">
             <div>
               <label class="text-xs text-gray-400 mb-1 block">Mobile Number *</label>
-              <input type="tel" id="rf-phone" required class="w-full px-4 py-3 rounded-xl text-sm" placeholder="+91 XXXXX XXXXX">
+              <input type="tel" id="rf-phone" autocomplete="tel" required class="w-full px-4 py-3 rounded-xl text-sm" placeholder="+91 XXXXX XXXXX">
             </div>
             <div>
               <label class="text-xs text-gray-400 mb-1 block">Organization *</label>
-              <input type="text" id="rf-company" required class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Company / Institute">
+              <input type="text" id="rf-company" autocomplete="organization" required class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Company / Institute">
             </div>
           </div>
           <div class="grid grid-cols-2 gap-4">
             <div>
               <label class="text-xs text-gray-400 mb-1 block">Designation / Job Title *</label>
-              <input type="text" id="rf-title" required class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Your designation">
+              <input type="text" id="rf-title" autocomplete="organization-title" required class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Your designation">
             </div>
             <div>
               <label class="text-xs text-gray-400 mb-1 block">City *</label>
-              <input type="text" id="rf-city" required class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Your city">
+              <input type="text" id="rf-city" autocomplete="address-level2" required class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Your city">
             </div>
           </div>
           <div>
@@ -7324,11 +7709,11 @@ ${sharedNavHTML('register')}
           <div class="grid grid-cols-2 gap-4">
             <div>
               <label class="text-xs text-gray-400 mb-1 block">LinkedIn</label>
-              <input type="url" id="rf-linkedin" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="linkedin.com/in/...">
+              <input type="url" id="rf-linkedin" autocomplete="url" inputmode="url" autocapitalize="none" spellcheck="false" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="linkedin.com/in/...">
             </div>
             <div>
               <label class="text-xs text-gray-400 mb-1 block">Interests</label>
-              <input type="text" id="rf-interests" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="AI, ML, Computer Vision...">
+              <input type="text" id="rf-interests" autocomplete="off" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="AI, ML, Computer Vision...">
             </div>
           </div>
           <button type="submit" id="rf-submit" class="w-full py-3.5 rounded-xl font-semibold text-white bg-gradient-to-r from-primary-600 to-primary-500 hover:from-primary-500 hover:to-primary-400 transition-all text-sm shadow-lg shadow-primary-500/25">
@@ -7620,13 +8005,31 @@ async function submitRegisterPaidPassForm(e) {
   const payWinOpened = !!payWin && !payWin.closed;
   paintPayHoldingPage(payWin);
 
+  // The response used to be thrown away. A 403 verification_required, a 400 for a
+  // missing field, or a dropped connection all fell straight through to the payment
+  // tab, so someone could pay on mUni with no attendee row to reconcile it against -
+  // and mUni sends nothing back to this site, so that payment is unfindable.
+  // The tab is still opened BEFORE this await (see above) so iOS Safari keeps the
+  // click activation; on failure we close the tab we already opened.
   try {
-    await fetch('/api/events/1/attendees/register', {
+    const resp = await fetch('/api/events/1/attendees/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, email, mobile: phone, company, job_title: desig, city, industry, bio: '', interests: '', linkedin_url: '', badge_type: passType })
     });
-  } catch(_) {}
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || data.error) {
+      // verification_required is a machine string; the endpoint sends the human one
+      // in .message. Never show the raw code to someone about to pay.
+      throw new Error(data.message || (data.error && data.error !== 'verification_required' ? data.error : '') || 'We could not save your details, so checkout was not opened. Please try again.');
+    }
+  } catch (err) {
+    try { if (payWinOpened && !payWin.closed) payWin.close(); } catch (_) {}
+    showToast((err && err.message) || 'Network error. Nothing was charged. Please try again.', 'error');
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-arrow-right mr-2"></i>Proceed to Payment';
+    return;   // modal stays open, details still typed in
+  }
 
   const payUrl = muniPayUrl(passType);
   if (payWinOpened && !payWin.closed) payWin.location.replace(payUrl);
@@ -7724,21 +8127,21 @@ function paintPayHoldingPage(w) {
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
           <div>
             <label style="font-size:11px;color:#5E6585;display:block;margin-bottom:4px;">Full Name <span style="color:#DC2626;">*</span></label>
-            <input type="text" id="rpp-name" required placeholder="Your full name" style="width:100%;padding:10px 14px;border-radius:10px;background:#fff;border:1px solid #D7DBEC;color:#1E2140;font-size:13px;outline:none;box-sizing:border-box;">
+            <input type="text" id="rpp-name" autocomplete="name" autocapitalize="words" required placeholder="Your full name" style="width:100%;padding:10px 14px;border-radius:10px;background:#fff;border:1px solid #D7DBEC;color:#1E2140;font-size:13px;outline:none;box-sizing:border-box;">
           </div>
           <div>
             <label style="font-size:11px;color:#5E6585;display:block;margin-bottom:4px;">Email <span style="color:#DC2626;">*</span></label>
-            <input type="email" id="rpp-email" required placeholder="you@email.com" style="width:100%;padding:10px 14px;border-radius:10px;background:#fff;border:1px solid #D7DBEC;color:#1E2140;font-size:13px;outline:none;box-sizing:border-box;">
+            <input type="email" id="rpp-email" autocomplete="email" inputmode="email" autocapitalize="none" spellcheck="false" required placeholder="you@email.com" style="width:100%;padding:10px 14px;border-radius:10px;background:#fff;border:1px solid #D7DBEC;color:#1E2140;font-size:13px;outline:none;box-sizing:border-box;">
           </div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
           <div>
             <label style="font-size:11px;color:#5E6585;display:block;margin-bottom:4px;">Mobile *</label>
-            <input type="tel" id="rpp-phone" required placeholder="+91 XXXXX XXXXX" style="width:100%;padding:10px 14px;border-radius:10px;background:#fff;border:1px solid #D7DBEC;color:#1E2140;font-size:13px;outline:none;box-sizing:border-box;">
+            <input type="tel" id="rpp-phone" autocomplete="tel" required placeholder="+91 XXXXX XXXXX" style="width:100%;padding:10px 14px;border-radius:10px;background:#fff;border:1px solid #D7DBEC;color:#1E2140;font-size:13px;outline:none;box-sizing:border-box;">
           </div>
           <div>
             <label id="rpp-company-label" style="font-size:11px;color:#5E6585;display:block;margin-bottom:4px;">Organization *</label>
-            <input type="text" id="rpp-company" required placeholder="Company / Institute" style="width:100%;padding:10px 14px;border-radius:10px;background:#fff;border:1px solid #D7DBEC;color:#1E2140;font-size:13px;outline:none;box-sizing:border-box;">
+            <input type="text" id="rpp-company" autocomplete="organization" required placeholder="Company / Institute" style="width:100%;padding:10px 14px;border-radius:10px;background:#fff;border:1px solid #D7DBEC;color:#1E2140;font-size:13px;outline:none;box-sizing:border-box;">
           </div>
         </div>
         <div>
@@ -7772,11 +8175,11 @@ function paintPayHoldingPage(w) {
         <div id="rpp-row-designation" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
           <div id="rpp-designation-field">
             <label style="font-size:11px;color:#5E6585;display:block;margin-bottom:4px;">Designation *</label>
-            <input type="text" id="rpp-designation" required placeholder="Your designation" style="width:100%;padding:10px 14px;border-radius:10px;background:#fff;border:1px solid #D7DBEC;color:#1E2140;font-size:13px;outline:none;box-sizing:border-box;">
+            <input type="text" id="rpp-designation" autocomplete="organization-title" required placeholder="Your designation" style="width:100%;padding:10px 14px;border-radius:10px;background:#fff;border:1px solid #D7DBEC;color:#1E2140;font-size:13px;outline:none;box-sizing:border-box;">
           </div>
           <div>
             <label style="font-size:11px;color:#5E6585;display:block;margin-bottom:4px;">City *</label>
-            <input type="text" id="rpp-city" required placeholder="Your city" style="width:100%;padding:10px 14px;border-radius:10px;background:#fff;border:1px solid #D7DBEC;color:#1E2140;font-size:13px;outline:none;box-sizing:border-box;">
+            <input type="text" id="rpp-city" autocomplete="address-level2" required placeholder="Your city" style="width:100%;padding:10px 14px;border-radius:10px;background:#fff;border:1px solid #D7DBEC;color:#1E2140;font-size:13px;outline:none;box-sizing:border-box;">
           </div>
         </div>
         <button type="submit" id="rpp-submit-btn" style="width:100%;padding:13px;border-radius:10px;border:none;background:linear-gradient(135deg,#FF6B00,#FF8C38);color:white;font-weight:700;font-size:14px;cursor:pointer;margin-top:4px;">
@@ -7957,31 +8360,31 @@ ${sharedNavHTML('inquiry')}
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label class="text-xs text-gray-400 mb-1 block">Contact Person *</label>
-              <input type="text" id="iq-name" required class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Your full name">
+              <input type="text" id="iq-name" autocomplete="name" autocapitalize="words" required class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Your full name">
             </div>
             <div>
               <label class="text-xs text-gray-400 mb-1 block">Email Address *</label>
-              <input type="email" id="iq-email" required class="w-full px-4 py-3 rounded-xl text-sm" placeholder="your@email.com">
+              <input type="email" id="iq-email" autocomplete="email" inputmode="email" autocapitalize="none" spellcheck="false" required class="w-full px-4 py-3 rounded-xl text-sm" placeholder="your@email.com">
             </div>
           </div>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label class="text-xs text-gray-400 mb-1 block">Phone Number *</label>
-              <input type="tel" id="iq-phone" required class="w-full px-4 py-3 rounded-xl text-sm" placeholder="+91 XXXXX XXXXX">
+              <input type="tel" id="iq-phone" autocomplete="tel" required class="w-full px-4 py-3 rounded-xl text-sm" placeholder="+91 XXXXX XXXXX">
             </div>
             <div>
               <label class="text-xs text-gray-400 mb-1 block">Company / Organization *</label>
-              <input type="text" id="iq-company" required class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Company name">
+              <input type="text" id="iq-company" autocomplete="organization" required class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Company name">
             </div>
           </div>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label class="text-xs text-gray-400 mb-1 block">Designation</label>
-              <input type="text" id="iq-designation" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Your role / title">
+              <input type="text" id="iq-designation" autocomplete="organization-title" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Your role / title">
             </div>
             <div>
               <label class="text-xs text-gray-400 mb-1 block">Website</label>
-              <input type="url" id="iq-website" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="https://yourcompany.com">
+              <input type="url" id="iq-website" autocomplete="url" inputmode="url" autocapitalize="none" spellcheck="false" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="https://yourcompany.com">
             </div>
           </div>
           <div>
@@ -8008,11 +8411,11 @@ ${sharedNavHTML('inquiry')}
 
           <div>
             <label class="text-xs text-gray-400 mb-1 block">Products / Solutions to Showcase</label>
-            <textarea id="iq-products" rows="2" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Brief description of what you plan to exhibit..."></textarea>
+            <textarea id="iq-products" autocomplete="off" rows="2" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Brief description of what you plan to exhibit..."></textarea>
           </div>
           <div>
             <label class="text-xs text-gray-400 mb-1 block">Special Requirements / Questions</label>
-            <textarea id="iq-message" rows="3" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Any specific requirements, questions, or preferences..."></textarea>
+            <textarea id="iq-message" autocomplete="off" rows="3" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Any specific requirements, questions, or preferences..."></textarea>
           </div>
 
           <!-- Price Summary -->
@@ -8215,6 +8618,19 @@ if (preselect) {
 // marketplaceListingHTML - four names that do not exist anywhere. It never ran,
 // because Hono takes the first matching route, so the mistake stayed invisible.
 
+// Autocomplete policy for every form below (see also the same rule in
+// src/routes/marketplace-pages.ts). A personal token - name, email, tel,
+// organization, organization-title, address-level2, url - is only correct when
+// the value belongs to the person doing the typing: their own registration,
+// their own profile, their own company's booth or listing. Everything else gets
+// autocomplete="off", and on /admin that means everything: an operator there is
+// editing OTHER people's records, so autocomplete="email" on an attendee row
+// would offer the operator's own address and quietly write it into someone
+// else's file - worse than no hint at all. Search boxes, filters, CMS/content
+// text and one-off numbers are "off" for the same reason: nothing in the
+// browser's profile belongs in them. inputmode is added only where the field
+// has no type= that already picks the right keypad.
+
 // ==================== ADMIN PAGE ====================
 
 app.get('/admin', (c) => {
@@ -8261,24 +8677,10 @@ function mainPageHTML(): string {
   <meta name="twitter:title" content="Bharat AI Innovation 2026 — Networking & Registration">
   <meta name="twitter:description" content="Register free and connect with 5,000+ AI leaders at India's largest AI conference. 20-21 Nov 2026, WTC Mumbai.">
   <meta name="twitter:image" content="https://bharataiinnovation.com/images/og-card.png">
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="${FA_CSS}">
   <!-- Shared with the admin panel, so a pass issued at the desk is the same
        document the holder downloaded. -->
   <script src="/js/pass-render.js"></script>
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            primary: { 50:'#fff3e9',100:'#ffe0c7',200:'#ffc194',300:'#ff9d55',400:'#ff8524',500:'#FF6B00',600:'#e05a00',700:'#b84800',800:'#933a08',900:'#79300c' },
-            accent: { 50:'#fdf4ff',100:'#fbe8ff',200:'#f5d0fe',300:'#f0abfc',400:'#e879f9',500:'#7c3aed',600:'#c026d3',700:'#a21caf',800:'#86198f',900:'#701a75' },
-            dark: { 700:'#1e2240',800:'#141730',900:'#0b0d1a' }
-          }
-        }
-      }
-    }
-  </script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Manrope:wght@300..800&family=Montserrat:wght@600;700;800&family=Playfair+Display:wght@600;700&family=Mukta:wght@500;600;700&display=swap');
     * { font-family: 'Manrope', sans-serif; }
@@ -8347,6 +8749,10 @@ function mainPageHTML(): string {
     .quick-action-btn:hover { transform: translateY(-2px); }
     ${brandThemeCSS()}
   </style>
+  <!-- Last in <head> on purpose: the Play CDN appended its generated <style>
+       after the inline one, so utilities have always won ties against the page
+       CSS above. Moving the link earlier would flip that cascade. -->
+  <link rel="stylesheet" href="${TW_CSS}">
 </head>
 <body class="min-h-screen">
   <!-- App Container -->
@@ -8389,7 +8795,7 @@ function mainPageHTML(): string {
         <form id="signin-form" class="space-y-4">
           <div>
             <label class="text-xs text-gray-400 mb-1 block">Email Address</label>
-            <input type="email" id="signin-email" placeholder="Enter your registered email" required class="w-full px-4 py-3 rounded-xl text-sm">
+            <input type="email" id="signin-email" autocomplete="email" inputmode="email" autocapitalize="none" spellcheck="false" placeholder="Enter your registered email" required class="w-full px-4 py-3 rounded-xl text-sm">
           </div>
           <!-- Revealed after the code is emailed. An address alone no longer signs
                anyone in, so this second step is what proves the mailbox is theirs. -->
@@ -8421,15 +8827,15 @@ function mainPageHTML(): string {
           <div class="text-center mb-2 p-3 rounded-xl bg-primary-500/10 border border-primary-500/20">
             <span class="text-primary-400 text-xs font-semibold"><i class="fas fa-ticket-alt mr-1"></i>You will receive a FREE Visitor Pass</span>
           </div>
-          <div><input type="text" id="reg-name" placeholder="Full Name *" required class="w-full px-4 py-3 rounded-xl text-sm"></div>
-          <div><input type="email" id="reg-email" placeholder="Email Address *" required class="w-full px-4 py-3 rounded-xl text-sm"></div>
+          <div><input type="text" id="reg-name" autocomplete="name" autocapitalize="words" placeholder="Full Name *" required class="w-full px-4 py-3 rounded-xl text-sm"></div>
+          <div><input type="email" id="reg-email" autocomplete="email" inputmode="email" autocapitalize="none" spellcheck="false" placeholder="Email Address *" required class="w-full px-4 py-3 rounded-xl text-sm"></div>
           <div class="grid grid-cols-2 gap-3">
-            <input type="text" id="reg-company" placeholder="Company *" required class="px-4 py-3 rounded-xl text-sm">
-            <input type="text" id="reg-title" placeholder="Job Title *" required class="px-4 py-3 rounded-xl text-sm">
+            <input type="text" id="reg-company" autocomplete="organization" placeholder="Company *" required class="px-4 py-3 rounded-xl text-sm">
+            <input type="text" id="reg-title" autocomplete="organization-title" placeholder="Job Title *" required class="px-4 py-3 rounded-xl text-sm">
           </div>
           <div class="grid grid-cols-2 gap-3">
-            <input type="tel" id="reg-mobile" placeholder="Mobile Number *" required class="px-4 py-3 rounded-xl text-sm">
-            <input type="text" id="reg-city" placeholder="City *" required class="px-4 py-3 rounded-xl text-sm">
+            <input type="tel" id="reg-mobile" autocomplete="tel" placeholder="Mobile Number *" required class="px-4 py-3 rounded-xl text-sm">
+            <input type="text" id="reg-city" autocomplete="address-level2" placeholder="City *" required class="px-4 py-3 rounded-xl text-sm">
           </div>
           <div><select id="reg-industry" required class="w-full px-4 py-3 rounded-xl text-sm">
             <option value="">Select industry *</option>
@@ -8456,9 +8862,9 @@ function mainPageHTML(): string {
             <option>Aerospace & Defence</option>
             <option>Other</option>
           </select></div>
-          <div><input type="url" id="reg-linkedin" placeholder="LinkedIn URL" class="w-full px-4 py-3 rounded-xl text-sm"></div>
-          <div><textarea id="reg-bio" placeholder="Short bio (optional)" rows="2" class="w-full px-4 py-3 rounded-xl text-sm"></textarea></div>
-          <div><input type="text" id="reg-interests" placeholder="Interests (comma-separated)" class="w-full px-4 py-3 rounded-xl text-sm"></div>
+          <div><input type="url" id="reg-linkedin" autocomplete="url" inputmode="url" autocapitalize="none" spellcheck="false" placeholder="LinkedIn URL" class="w-full px-4 py-3 rounded-xl text-sm"></div>
+          <div><textarea id="reg-bio" autocomplete="off" placeholder="Short bio (optional)" rows="2" class="w-full px-4 py-3 rounded-xl text-sm"></textarea></div>
+          <div><input type="text" id="reg-interests" autocomplete="off" placeholder="Interests (comma-separated)" class="w-full px-4 py-3 rounded-xl text-sm"></div>
           <button type="submit" class="w-full py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-primary-600 to-primary-500 hover:from-primary-500 hover:to-primary-400 transition-all">
             <i class="fas fa-user-plus mr-2"></i>Register & Get Visitor Pass
           </button>
@@ -8543,7 +8949,7 @@ function mainPageHTML(): string {
         <div id="chat-messages" class="flex-1 overflow-y-auto p-4 space-y-3 scroll-hide"></div>
         <div class="p-4 border-t border-white/10">
           <form id="chat-form" class="flex gap-2">
-            <input type="text" id="chat-input" placeholder="Type a message..." class="flex-1 px-4 py-2 rounded-xl text-sm">
+            <input type="text" id="chat-input" autocomplete="off" placeholder="Type a message..." class="flex-1 px-4 py-2 rounded-xl text-sm">
             <button type="submit" class="px-4 py-2 rounded-xl bg-primary-600 hover:bg-primary-500 text-white"><i class="fas fa-paper-plane"></i></button>
           </form>
         </div>
@@ -8559,8 +8965,8 @@ function mainPageHTML(): string {
         </div>
         <form id="meeting-form" class="space-y-4">
           <input type="hidden" id="meeting-requestee-id">
-          <div><input type="text" id="meeting-title" placeholder="Meeting Title *" required class="w-full px-4 py-3 rounded-xl text-sm"></div>
-          <div><input type="datetime-local" id="meeting-time" required class="w-full px-4 py-3 rounded-xl text-sm"></div>
+          <div><input type="text" id="meeting-title" autocomplete="off" placeholder="Meeting Title *" required class="w-full px-4 py-3 rounded-xl text-sm"></div>
+          <div><input type="datetime-local" id="meeting-time" autocomplete="off" required class="w-full px-4 py-3 rounded-xl text-sm"></div>
           <div class="grid grid-cols-2 gap-3">
             <select id="meeting-duration" class="px-4 py-3 rounded-xl text-sm">
               <option value="15">15 minutes</option>
@@ -8568,9 +8974,25 @@ function mainPageHTML(): string {
               <option value="45">45 minutes</option>
               <option value="60">1 hour</option>
             </select>
-            <input type="text" id="meeting-location" placeholder="Location" class="px-4 py-3 rounded-xl text-sm">
+            <select id="meeting-room" class="hidden px-4 py-3 rounded-xl text-sm" onchange="onMeetingRoomChange()">
+              <option value="">No private room</option>
+            </select>
           </div>
-          <textarea id="meeting-notes" placeholder="Notes..." rows="2" class="w-full px-4 py-3 rounded-xl text-sm"></textarea>
+          <!-- Only free hours are ever offered: the grid is built from the
+               availability endpoint, so a taken hour cannot be picked at all. -->
+          <div id="meeting-room-slots" class="hidden">
+            <div class="flex items-center gap-2 mb-2">
+              <button type="button" class="room-day px-3 py-1.5 rounded-lg text-xs font-medium tab-active" data-rday="2026-11-20" onclick="pickRoomDay('2026-11-20')">Fri 20 Nov</button>
+              <button type="button" class="room-day px-3 py-1.5 rounded-lg text-xs font-medium text-gray-400" data-rday="2026-11-21" onclick="pickRoomDay('2026-11-21')">Sat 21 Nov</button>
+            </div>
+            <div id="meeting-room-slot-grid" class="grid grid-cols-3 gap-2"></div>
+            <p id="meeting-room-price" class="text-[11px] text-gray-500 mt-2"></p>
+          </div>
+          <!-- Stays in the DOM, and stays visible until a room is actually chosen.
+               When migration 0029 has not been applied the room select above never
+               unhides and this is the only location control, exactly as before. -->
+          <input type="text" id="meeting-location" autocomplete="off" placeholder="Location" class="w-full px-4 py-3 rounded-xl text-sm">
+          <textarea id="meeting-notes" autocomplete="off" placeholder="Notes..." rows="2" class="w-full px-4 py-3 rounded-xl text-sm"></textarea>
           <button type="submit" class="w-full py-3 rounded-xl font-bold text-white transition-all hover:opacity-90" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);box-shadow:0 4px 20px rgba(245,98,10,0.28);">
             <i class="fas fa-calendar-check mr-2"></i>Send Meeting Request
           </button>
@@ -9074,12 +9496,12 @@ function mainPageHTML(): string {
               </div>
             </div>
             <form id="quick-visitor-form" onsubmit="submitQuickVisitorReg(event)" class="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div><input type="text" id="qv-name" placeholder="Full Name *" required class="w-full px-4 py-3 rounded-xl text-sm"></div>
-              <div><input type="email" id="qv-email" placeholder="Email Address *" required class="w-full px-4 py-3 rounded-xl text-sm"></div>
-              <div><input type="tel" id="qv-phone" placeholder="Mobile Number *" required class="w-full px-4 py-3 rounded-xl text-sm"></div>
-              <div><input type="text" id="qv-company" placeholder="Organization / Company *" required class="w-full px-4 py-3 rounded-xl text-sm"></div>
-              <div><input type="text" id="qv-designation" placeholder="Designation / Job Title *" required class="w-full px-4 py-3 rounded-xl text-sm"></div>
-              <div><input type="text" id="qv-city" placeholder="City *" required class="w-full px-4 py-3 rounded-xl text-sm"></div>
+              <div><input type="text" id="qv-name" autocomplete="name" autocapitalize="words" placeholder="Full Name *" required class="w-full px-4 py-3 rounded-xl text-sm"></div>
+              <div><input type="email" id="qv-email" autocomplete="email" inputmode="email" autocapitalize="none" spellcheck="false" placeholder="Email Address *" required class="w-full px-4 py-3 rounded-xl text-sm"></div>
+              <div><input type="tel" id="qv-phone" autocomplete="tel" placeholder="Mobile Number *" required class="w-full px-4 py-3 rounded-xl text-sm"></div>
+              <div><input type="text" id="qv-company" autocomplete="organization" placeholder="Organization / Company *" required class="w-full px-4 py-3 rounded-xl text-sm"></div>
+              <div><input type="text" id="qv-designation" autocomplete="organization-title" placeholder="Designation / Job Title *" required class="w-full px-4 py-3 rounded-xl text-sm"></div>
+              <div><input type="text" id="qv-city" autocomplete="address-level2" placeholder="City *" required class="w-full px-4 py-3 rounded-xl text-sm"></div>
               <div><select id="qv-industry" required class="w-full px-4 py-3 rounded-xl text-sm">
                 <option value="">Select industry *</option>
                 <option>Banking & Financial Services</option>
@@ -9205,17 +9627,17 @@ function mainPageHTML(): string {
             <form onsubmit="submitInquiry(event)" id="inquiry-form" class="space-y-3">
               <input type="hidden" id="inq-type" value="general">
               <div class="grid grid-cols-2 gap-3">
-                <input type="text" id="inq-name" placeholder="Full Name *" required class="w-full px-4 py-3 rounded-xl text-sm">
-                <input type="email" id="inq-email" placeholder="Email *" required class="w-full px-4 py-3 rounded-xl text-sm">
+                <input type="text" id="inq-name" autocomplete="name" autocapitalize="words" placeholder="Full Name *" required class="w-full px-4 py-3 rounded-xl text-sm">
+                <input type="email" id="inq-email" autocomplete="email" inputmode="email" autocapitalize="none" spellcheck="false" placeholder="Email *" required class="w-full px-4 py-3 rounded-xl text-sm">
               </div>
               <div class="grid grid-cols-2 gap-3">
-                <input type="tel" id="inq-phone" placeholder="Phone" class="w-full px-4 py-3 rounded-xl text-sm">
-                <input type="text" id="inq-org" placeholder="Organization" class="w-full px-4 py-3 rounded-xl text-sm">
+                <input type="tel" id="inq-phone" autocomplete="tel" placeholder="Phone" class="w-full px-4 py-3 rounded-xl text-sm">
+                <input type="text" id="inq-org" autocomplete="organization" placeholder="Organization" class="w-full px-4 py-3 rounded-xl text-sm">
               </div>
-              <input type="text" id="inq-subject" placeholder="Subject" class="w-full px-4 py-3 rounded-xl text-sm">
+              <input type="text" id="inq-subject" autocomplete="off" placeholder="Subject" class="w-full px-4 py-3 rounded-xl text-sm">
               <!-- Dynamic extra fields based on type -->
               <div id="inq-extra-fields"></div>
-              <textarea id="inq-message" placeholder="Your message / requirements..." rows="3" required class="w-full px-4 py-3 rounded-xl text-sm"></textarea>
+              <textarea id="inq-message" autocomplete="off" placeholder="Your message / requirements..." rows="3" required class="w-full px-4 py-3 rounded-xl text-sm"></textarea>
               <button type="submit" id="inq-submit-btn" class="w-full py-3 rounded-xl font-bold text-white transition-all text-sm hover:opacity-90" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);box-shadow:0 4px 20px rgba(245,98,10,0.28);">
                 <i class="fas fa-paper-plane mr-2"></i>Submit Inquiry
               </button>
@@ -9336,7 +9758,7 @@ function mainPageHTML(): string {
           <div class="flex flex-col md:flex-row gap-3 mb-6">
             <div class="flex-1 relative">
               <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-gray-500"></i>
-              <input type="text" id="attendee-search" placeholder="Search by name, company, or title..." class="w-full pl-11 pr-4 py-3 rounded-xl text-sm" oninput="debounceSearch()">
+              <input type="text" id="attendee-search" autocomplete="off" placeholder="Search by name, company, or title..." class="w-full pl-11 pr-4 py-3 rounded-xl text-sm" oninput="debounceSearch()">
             </div>
             <select id="role-filter" class="px-4 py-3 rounded-xl text-sm" onchange="loadAttendees()">
               <option value="">All Roles</option>
@@ -9591,7 +10013,7 @@ function mainPageHTML(): string {
           <!-- Search -->
           <div class="relative mb-6">
             <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-gray-500"></i>
-            <input type="text" id="exhibitor-search" placeholder="Search exhibitors, products..." class="w-full pl-11 pr-4 py-3 rounded-xl text-sm" oninput="debounceExhibitorSearch()">
+            <input type="text" id="exhibitor-search" autocomplete="off" placeholder="Search exhibitors, products..." class="w-full pl-11 pr-4 py-3 rounded-xl text-sm" oninput="debounceExhibitorSearch()">
           </div>
           <!-- Exhibitor Grid -->
           <div id="exhibitor-grid" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
@@ -10347,7 +10769,7 @@ function mainPageHTML(): string {
           <!-- Connections subtab (full list) -->
           <div id="profile-subtab-connections" class="profile-subtab-content hidden">
             <div class="mb-4">
-              <input type="text" id="my-connections-search" placeholder="Search connections..." class="w-full px-4 py-3 rounded-xl text-sm" oninput="filterMyConnections(this.value)">
+              <input type="text" id="my-connections-search" autocomplete="off" placeholder="Search connections..." class="w-full px-4 py-3 rounded-xl text-sm" oninput="filterMyConnections(this.value)">
             </div>
             <div id="my-all-connections-list" class="space-y-3"></div>
           </div>
@@ -10396,16 +10818,16 @@ function mainPageHTML(): string {
             </div>
             <div>
               <label class="text-xs text-gray-400 mb-1 block">Full Name *</label>
-              <input type="text" id="edit-name" required class="w-full px-4 py-3 rounded-xl text-sm">
+              <input type="text" id="edit-name" autocomplete="name" autocapitalize="words" required class="w-full px-4 py-3 rounded-xl text-sm">
             </div>
             <div class="grid grid-cols-2 gap-3">
               <div>
                 <label id="edit-company-label" class="text-xs text-gray-400 mb-1 block">Organisation *</label>
-                <input type="text" id="edit-company" class="w-full px-4 py-3 rounded-xl text-sm">
+                <input type="text" id="edit-company" autocomplete="organization" class="w-full px-4 py-3 rounded-xl text-sm">
               </div>
               <div id="edit-jobtitle-field">
                 <label class="text-xs text-gray-400 mb-1 block">Designation *</label>
-                <input type="text" id="edit-jobtitle" class="w-full px-4 py-3 rounded-xl text-sm">
+                <input type="text" id="edit-jobtitle" autocomplete="organization-title" class="w-full px-4 py-3 rounded-xl text-sm">
               </div>
             </div>
             <!-- City and Industry are required at registration, but for the ~1,000
@@ -10415,7 +10837,7 @@ function mainPageHTML(): string {
             <div class="grid grid-cols-2 gap-3">
               <div>
                 <label class="text-xs text-gray-400 mb-1 block">City *</label>
-                <input type="text" id="edit-city" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="e.g. Mumbai">
+                <input type="text" id="edit-city" autocomplete="address-level2" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="e.g. Mumbai">
               </div>
               <div>
                 <label class="text-xs text-gray-400 mb-1 block">Industry *</label>
@@ -10427,20 +10849,20 @@ function mainPageHTML(): string {
             </div>
             <div>
               <label class="text-xs text-gray-400 mb-1 block">Bio</label>
-              <textarea id="edit-bio" rows="3" class="w-full px-4 py-3 rounded-xl text-sm"></textarea>
+              <textarea id="edit-bio" autocomplete="off" rows="3" class="w-full px-4 py-3 rounded-xl text-sm"></textarea>
             </div>
             <div>
               <label class="text-xs text-gray-400 mb-1 block">Interests (comma-separated)</label>
-              <input type="text" id="edit-interests" class="w-full px-4 py-3 rounded-xl text-sm">
+              <input type="text" id="edit-interests" autocomplete="off" class="w-full px-4 py-3 rounded-xl text-sm">
             </div>
             <div>
               <label class="text-xs text-gray-400 mb-1 block">LinkedIn URL</label>
-              <input type="url" id="edit-linkedin" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="https://linkedin.com/in/...">
+              <input type="url" id="edit-linkedin" autocomplete="url" inputmode="url" autocapitalize="none" spellcheck="false" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="https://linkedin.com/in/...">
             </div>
             <div class="grid grid-cols-2 gap-3">
               <div>
                 <label class="text-xs text-gray-400 mb-1 block">Mobile Number</label>
-                <input type="tel" id="edit-mobile" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="+91 98765 43210">
+                <input type="tel" id="edit-mobile" autocomplete="tel" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="+91 98765 43210">
               </div>
               <div>
                 <label class="text-xs text-gray-400 mb-1 block">Lunch Inclusion</label>
@@ -10476,11 +10898,11 @@ function mainPageHTML(): string {
             <div class="grid grid-cols-2 gap-3">
               <div>
                 <label class="text-xs text-gray-400 mb-1 block">Twitter URL</label>
-                <input type="url" id="edit-twitter" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="https://twitter.com/...">
+                <input type="url" id="edit-twitter" autocomplete="url" inputmode="url" autocapitalize="none" spellcheck="false" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="https://twitter.com/...">
               </div>
               <div>
                 <label class="text-xs text-gray-400 mb-1 block">Website URL</label>
-                <input type="url" id="edit-website" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="https://...">
+                <input type="url" id="edit-website" autocomplete="url" inputmode="url" autocapitalize="none" spellcheck="false" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="https://...">
               </div>
             </div>
             <button type="submit" class="w-full py-3 rounded-xl font-bold text-white transition-all hover:opacity-90" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);box-shadow:0 4px 20px rgba(245,98,10,0.28);">
@@ -10901,9 +11323,9 @@ function mainPageHTML(): string {
       if (type === 'exhibition') {
         extra = '<select id="inq-booth-tier" class="w-full px-4 py-3 rounded-xl text-sm"><option value="">Preferred Booth Package</option><option value="Platinum - ₹5,00,000">Platinum — ₹5,00,000</option><option value="Gold - ₹3,00,000">Gold — ₹3,00,000</option><option value="Silver - ₹1,50,000">Silver — ₹1,50,000</option><option value="Startup - ₹75,000">Startup — ₹75,000</option><option value="Undecided">Not sure yet</option></select>';
       } else if (type === 'speaking') {
-        extra = '<input type="text" id="inq-topic" placeholder="Proposed Talk / Workshop Topic" class="w-full px-4 py-3 rounded-xl text-sm">';
+        extra = '<input type="text" id="inq-topic" autocomplete="off" placeholder="Proposed Talk / Workshop Topic" class="w-full px-4 py-3 rounded-xl text-sm">';
       } else if (type === 'group_registration') {
-        extra = '<div class="grid grid-cols-2 gap-3"><input type="number" id="inq-group-size" placeholder="Group Size" min="2" class="w-full px-4 py-3 rounded-xl text-sm"><select id="inq-pass-type" class="w-full px-4 py-3 rounded-xl text-sm"><option value="">Preferred Pass</option><option value="Delegate">Delegate (₹4,999)</option><option value="VIP">VIP (₹14,999)</option><option value="Academic">Academic (₹999)</option><option value="Visitor">Visitor (Free)</option><option value="Mixed">Mixed</option></select></div>';
+        extra = '<div class="grid grid-cols-2 gap-3"><input type="number" id="inq-group-size" autocomplete="off" placeholder="Group Size" min="2" class="w-full px-4 py-3 rounded-xl text-sm"><select id="inq-pass-type" class="w-full px-4 py-3 rounded-xl text-sm"><option value="">Preferred Pass</option><option value="Delegate">Delegate (₹4,999)</option><option value="VIP">VIP (₹14,999)</option><option value="Academic">Academic (₹999)</option><option value="Visitor">Visitor (Free)</option><option value="Mixed">Mixed</option></select></div>';
       } else if (type === 'sponsorship') {
         extra = '<select id="inq-budget" class="w-full px-4 py-3 rounded-xl text-sm"><option value="">Budget Range</option><option value="Under ₹1 Lakh">Under ₹1 Lakh</option><option value="₹1-3 Lakhs">₹1-3 Lakhs</option><option value="₹3-5 Lakhs">₹3-5 Lakhs</option><option value="₹5-10 Lakhs">₹5-10 Lakhs</option><option value="₹10+ Lakhs">₹10+ Lakhs</option></select>';
       }
@@ -11295,7 +11717,7 @@ function mainPageHTML(): string {
 
         const statsData = [
           { icon: 'fa-users', label: 'Attendees', value: stats.attendees, color: 'primary' },
-          { icon: 'fa-circle', label: 'Online', value: stats.online, color: 'green' },
+          { icon: 'fa-circle', label: 'Online now', value: stats.online, color: 'green' },
           { icon: 'fa-microphone', label: 'Sessions', value: stats.sessions, color: 'purple' },
           { icon: 'fa-store', label: 'Exhibitors', value: stats.exhibitors, color: 'accent' },
           { icon: 'fa-handshake', label: 'Connections', value: stats.connections, color: 'teal' },
@@ -11965,9 +12387,150 @@ function mainPageHTML(): string {
     });
 
     // ==================== MEETINGS ====================
+    // A boardroom is the one scarce thing this modal can ask for: four rooms, two
+    // days, nine hours each, priced by the hour. So the picker offers free hours
+    // only — typing a room name into a text box could never tell you it was gone.
+    let roomCatalog = { ready: false, rooms: [], days: [], slot_hours: [], gst_percent: 18 };
+    let selectedRoom = null, selectedRoomDay = '2026-11-20', selectedRoomSlots = [], roomDaySlots = [];
+
+    async function loadRoomCatalog() {
+      const sel = document.getElementById('meeting-room');
+      if (!sel) return;
+      try { roomCatalog = await api.get('/api/events/' + EVENT_ID + '/rooms'); }
+      catch(e) { roomCatalog = { ready: false, rooms: [] }; }
+      // ready:false means migration 0029 has not been applied. Leave the select
+      // hidden and the free-text Location box is the whole story, as before.
+      if (!roomCatalog.ready || !(roomCatalog.rooms || []).length) { sel.classList.add('hidden'); return; }
+      sel.classList.remove('hidden');
+      sel.innerHTML = '<option value="">No private room</option>' + roomCatalog.rooms.map(r =>
+        \`<option value="\${r.id}">\${r.label} &middot; \${r.wtc_name} &middot; seats \${r.capacity}</option>\`).join('');
+    }
+
+    function roomLocationLabel() {
+      return selectedRoom ? selectedRoom.label + ' (' + selectedRoom.wtc_name + '), WTC Mumbai' : '';
+    }
+
+    function resetRoomSelection(clearSelect) {
+      selectedRoom = null; selectedRoomSlots = []; roomDaySlots = [];
+      const slots = document.getElementById('meeting-room-slots');
+      if (slots) slots.classList.add('hidden');
+      const loc = document.getElementById('meeting-location');
+      if (loc) { loc.classList.remove('hidden'); loc.removeAttribute('readonly'); }
+      const time = document.getElementById('meeting-time');
+      if (time) time.removeAttribute('readonly');
+      const price = document.getElementById('meeting-room-price');
+      if (price) price.textContent = '';
+      if (clearSelect) { const sel = document.getElementById('meeting-room'); if (sel) sel.value = ''; }
+    }
+
+    function onMeetingRoomChange() {
+      const sel = document.getElementById('meeting-room');
+      const id = parseInt(sel.value, 10);
+      if (!id) { resetRoomSelection(false); return; }
+      selectedRoom = (roomCatalog.rooms || []).find(r => r.id === id) || null;
+      selectedRoomSlots = [];
+      document.getElementById('meeting-room-slots').classList.remove('hidden');
+      pickRoomDay(selectedRoomDay);
+    }
+
+    async function pickRoomDay(day) {
+      selectedRoomDay = day;
+      selectedRoomSlots = [];
+      document.querySelectorAll('.room-day').forEach(b => {
+        const on = b.dataset.rday === day;
+        b.classList.toggle('tab-active', on);
+        b.classList.toggle('text-gray-400', !on);
+      });
+      const grid = document.getElementById('meeting-room-slot-grid');
+      if (!selectedRoom || !grid) return;
+      grid.innerHTML = '<div class="col-span-3 text-xs text-gray-500 py-2"><i class="fas fa-spinner fa-spin mr-1"></i>Checking availability...</div>';
+      try {
+        const av = await api.get('/api/events/' + EVENT_ID + '/rooms/' + selectedRoom.id + '/availability?date=' + day);
+        roomDaySlots = av.slots || [];
+      } catch(e) { roomDaySlots = []; }
+      applyRoomSelectionToForm();
+      renderRoomSlots();
+    }
+
+    function renderRoomSlots() {
+      const grid = document.getElementById('meeting-room-slot-grid');
+      if (!grid) return;
+      grid.innerHTML = roomDaySlots.length ? roomDaySlots.map(s => {
+        const picked = selectedRoomSlots.indexOf(s.start) !== -1;
+        const cls = !s.available ? 'glass opacity-40 cursor-not-allowed' : picked ? 'tab-active' : 'glass hover:bg-white/10';
+        return s.available
+          ? \`<button type="button" class="\${cls} rounded-lg px-2 py-2 text-xs" onclick="toggleRoomSlot('\${s.start}')">\${s.start.slice(11)}</button>\`
+          : \`<button type="button" class="\${cls} rounded-lg px-2 py-2 text-xs" disabled title="Already booked">\${s.start.slice(11)}</button>\`;
+      }).join('') : '<div class="col-span-3 text-xs text-gray-500 py-2">No hours available for this day.</div>';
+      updateRoomPrice();
+    }
+
+    function roomSlotsContiguous() {
+      for (let i = 1; i < selectedRoomSlots.length; i++) {
+        if (parseInt(selectedRoomSlots[i].slice(11, 13), 10) !== parseInt(selectedRoomSlots[i - 1].slice(11, 13), 10) + 1) return false;
+      }
+      return true;
+    }
+
+    function toggleRoomSlot(start) {
+      const i = selectedRoomSlots.indexOf(start);
+      if (i !== -1) selectedRoomSlots.splice(i, 1); else selectedRoomSlots.push(start);
+      selectedRoomSlots.sort();
+      // One reservation is one continuous stretch. A gap would hold a room through
+      // an hour nobody is in it, which is exactly what the team is trying to avoid.
+      if (!roomSlotsContiguous()) { selectedRoomSlots = [start]; showToast('Book consecutive hours', 'error'); }
+      if (selectedRoomSlots.length > 4) { selectedRoomSlots = selectedRoomSlots.slice(-4); showToast('Up to four hours at a time', 'error'); }
+      applyRoomSelectionToForm();
+      renderRoomSlots();
+    }
+
+    // The stated meeting time and the booked hour must not be able to disagree, so
+    // picking hours drives the time and duration fields and then locks the time.
+    function applyRoomSelectionToForm() {
+      const time = document.getElementById('meeting-time');
+      const dur = document.getElementById('meeting-duration');
+      const loc = document.getElementById('meeting-location');
+      if (!selectedRoom || !selectedRoomSlots.length) {
+        if (time) time.removeAttribute('readonly');
+        if (loc) { loc.classList.remove('hidden'); loc.removeAttribute('readonly'); }
+        return;
+      }
+      if (time) {
+        time.value = selectedRoomSlots[0].slice(0, 10) + 'T' + selectedRoomSlots[0].slice(11);
+        time.setAttribute('readonly', 'readonly');
+      }
+      if (dur) {
+        const mins = String(60 * selectedRoomSlots.length);
+        if (!Array.from(dur.options).some(o => o.value === mins)) {
+          dur.add(new Option(selectedRoomSlots.length + (selectedRoomSlots.length === 1 ? ' hour' : ' hours'), mins));
+        }
+        dur.value = mins;
+      }
+      // The location is derived from the room, so the box stops being an input.
+      if (loc) { loc.value = roomLocationLabel(); loc.classList.add('hidden'); }
+    }
+
+    function updateRoomPrice() {
+      const el = document.getElementById('meeting-room-price');
+      if (!el) return;
+      if (!selectedRoom) { el.textContent = ''; return; }
+      const gst = roomCatalog.gst_percent || 18;
+      const hours = selectedRoomSlots.length;
+      if (!hours) {
+        el.innerHTML = \`₹\${Number(selectedRoom.price_inr).toLocaleString('en-IN')} per hour + \${gst}% GST &middot; seats \${selectedRoom.capacity}\${selectedRoom.layout ? ' &middot; ' + selectedRoom.layout : ''}\`;
+        return;
+      }
+      const net = selectedRoom.price_inr * hours;
+      el.innerHTML = \`\${hours} \${hours === 1 ? 'hour' : 'hours'} &middot; ₹\${Number(net).toLocaleString('en-IN')} + \${gst}% GST = <span class="text-gray-400">₹\${Number(Math.round(net * (1 + gst / 100))).toLocaleString('en-IN')}</span> &middot; held for you until the team confirms it\`;
+    }
+
     function openMeetingModal(requesteeId) {
       document.getElementById('meeting-requestee-id').value = requesteeId;
       document.getElementById('meeting-modal').classList.remove('hidden');
+      resetRoomSelection(true);
+      // Lazily, and never blocking: a catalogue that fails to load leaves the modal
+      // exactly as it was before rooms existed.
+      loadRoomCatalog();
     }
 
     function closeMeetingModal() {
@@ -11977,8 +12540,29 @@ function mainPageHTML(): string {
     document.getElementById('meeting-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       if (!currentUser) return;
+      const btn = e.target.querySelector('button[type=submit]');
+      if (btn) btn.disabled = true;
 
       try {
+        // The room is the scarce resource, so it is taken first. If the hour has
+        // gone in the meantime we stop here with the grid refreshed, rather than
+        // leaving a meeting pointing at a room somebody else now holds.
+        if (selectedRoom && selectedRoomSlots.length) {
+          const bk = await api.post('/api/room-bookings', {
+            event_id: EVENT_ID,
+            attendee_id: currentUser.id,
+            room_id: selectedRoom.id,
+            slot_date: selectedRoomDay,
+            slot_starts: selectedRoomSlots,
+            title: document.getElementById('meeting-title').value,
+            notes: document.getElementById('meeting-notes').value,
+          });
+          if (!bk || bk.error) {
+            showToast((bk && bk.error) || 'Could not hold that room', 'error');
+            await pickRoomDay(selectedRoomDay);
+            return;
+          }
+        }
         await api.post('/api/meetings', {
           event_id: EVENT_ID,
           requester_id: currentUser.id,
@@ -11986,13 +12570,17 @@ function mainPageHTML(): string {
           title: document.getElementById('meeting-title').value,
           meeting_time: document.getElementById('meeting-time').value,
           duration_minutes: parseInt(document.getElementById('meeting-duration').value),
-          location: document.getElementById('meeting-location').value,
+          location: selectedRoom ? roomLocationLabel() : document.getElementById('meeting-location').value,
           notes: document.getElementById('meeting-notes').value,
         });
+        const held = !!(selectedRoom && selectedRoomSlots.length);
         closeMeetingModal();
-        showToast('Meeting request sent!', 'success');
+        showToast(held ? 'Meeting request sent &middot; room held' : 'Meeting request sent!', 'success');
         document.getElementById('meeting-form').reset();
+        resetRoomSelection(true);
+        if (held) loadMyProfile();
       } catch(e) { showToast('Failed to schedule meeting', 'error'); }
+      finally { if (btn) btn.disabled = false; }
     });
 
     // ==================== EXHIBITION ====================
@@ -12047,9 +12635,22 @@ function mainPageHTML(): string {
               \${ex.website_url ? \`<a href="\${ex.website_url}" target="_blank" class="py-2 px-3 rounded-lg text-xs font-medium glass hover:bg-white/10 transition"><i class="fas fa-external-link-alt"></i></a>\` : ''}
             </div>
           </div>
-        \`}).join('') || '<div class="text-center text-gray-500 py-12 col-span-full"><i class="fas fa-store-slash text-4xl mb-3 block"></i>No exhibitors found.</div>';
+        \`}).join('') || ((selectedExhibitorCategory || search)
+          ? '<div class="text-center text-gray-500 py-12 col-span-full"><i class="fas fa-search text-4xl mb-3 block opacity-40"></i><p>No exhibitors match that filter.</p><button onclick="clearExhibitorFilters()" class="mt-3 text-primary-400 text-xs hover:underline font-medium">Clear filters</button></div>'
+          : '<div class="glass rounded-2xl p-8 text-center col-span-full"><i class="fas fa-store text-4xl mb-3 block text-primary-400 opacity-60"></i><p class="font-semibold">Exhibitor list not published yet</p><p class="text-sm text-gray-500 mt-1 max-w-sm mx-auto">Booths are still being allocated. Confirmed exhibitors and their stand numbers appear here as they are signed.</p><button onclick="goBoothCatalog()" class="mt-4 px-4 py-2 rounded-xl text-sm bg-primary-600 hover:bg-primary-500 text-white transition">Book a booth</button></div>');
       } catch(e) { console.error('Exhibitors error:', e); }
     }
+
+    // Named helpers so the empty-state markup above needs no nested quotes - this
+    // whole page is one TS template literal, and escaping a quote inside an onclick
+    // inside a JS string inside it is how these get broken.
+    function clearExhibitorFilters() {
+      const s = document.getElementById('exhibitor-search');
+      if (s) s.value = '';
+      selectedExhibitorCategory = '';
+      loadExhibitors();
+    }
+    function goBoothCatalog() { switchExhibitionSubtab('booth-catalog'); }
 
     function debounceExhibitorSearch() {
       clearTimeout(searchTimeout);
@@ -12338,19 +12939,19 @@ function mainPageHTML(): string {
             <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
                 <label class="text-xs text-gray-400 mb-1 block">Company Name <span class="text-red-400">*</span></label>
-                <input id="br-company" type="text" required value="\${user.company || ''}" class="w-full px-3 py-2.5 rounded-lg text-sm" placeholder="Your company name">
+                <input id="br-company" autocomplete="organization" type="text" required value="\${user.company || ''}" class="w-full px-3 py-2.5 rounded-lg text-sm" placeholder="Your company name">
               </div>
               <div>
                 <label class="text-xs text-gray-400 mb-1 block">Contact Person <span class="text-red-400">*</span></label>
-                <input id="br-contact" type="text" required value="\${user.name || ''}" class="w-full px-3 py-2.5 rounded-lg text-sm" placeholder="Full name">
+                <input id="br-contact" autocomplete="name" autocapitalize="words" type="text" required value="\${user.name || ''}" class="w-full px-3 py-2.5 rounded-lg text-sm" placeholder="Full name">
               </div>
               <div>
                 <label class="text-xs text-gray-400 mb-1 block">Email <span class="text-red-400">*</span></label>
-                <input id="br-email" type="email" required value="\${user.email || ''}" class="w-full px-3 py-2.5 rounded-lg text-sm" placeholder="email@company.com">
+                <input id="br-email" autocomplete="email" inputmode="email" autocapitalize="none" spellcheck="false" type="email" required value="\${user.email || ''}" class="w-full px-3 py-2.5 rounded-lg text-sm" placeholder="email@company.com">
               </div>
               <div>
                 <label class="text-xs text-gray-400 mb-1 block">Phone</label>
-                <input id="br-phone" type="tel" value="\${user.phone || ''}" class="w-full px-3 py-2.5 rounded-lg text-sm" placeholder="+91 XXXXX XXXXX">
+                <input id="br-phone" autocomplete="tel" type="tel" value="\${user.phone || ''}" class="w-full px-3 py-2.5 rounded-lg text-sm" placeholder="+91 XXXXX XXXXX">
               </div>
             </div>
           </div>
@@ -12391,11 +12992,11 @@ function mainPageHTML(): string {
               </div>
               <div class="md:col-span-2">
                 <label class="text-xs text-gray-400 mb-1 block">Website</label>
-                <input id="br-website" type="url" class="w-full px-3 py-2.5 rounded-lg text-sm" placeholder="https://yourcompany.com">
+                <input id="br-website" autocomplete="url" inputmode="url" autocapitalize="none" spellcheck="false" type="url" class="w-full px-3 py-2.5 rounded-lg text-sm" placeholder="https://yourcompany.com">
               </div>
               <div class="md:col-span-2">
                 <label class="text-xs text-gray-400 mb-1 block">Brief Company Description</label>
-                <textarea id="br-description" rows="2" class="w-full px-3 py-2.5 rounded-lg text-sm" placeholder="What does your company do?"></textarea>
+                <textarea id="br-description" autocomplete="off" rows="2" class="w-full px-3 py-2.5 rounded-lg text-sm" placeholder="What does your company do?"></textarea>
               </div>
             </div>
           </div>
@@ -12408,7 +13009,7 @@ function mainPageHTML(): string {
                 <label class="text-xs text-gray-400 mb-1 block">Quantity</label>
                 <div class="flex items-center gap-2">
                   <button type="button" onclick="adjustBoothQty(-1)" class="w-8 h-8 rounded-lg glass hover:bg-white/10 flex items-center justify-center"><i class="fas fa-minus text-xs"></i></button>
-                  <input id="br-quantity" type="number" min="1" max="10" value="1" class="w-16 text-center px-2 py-2 rounded-lg text-sm" onchange="updateBoothPricing()">
+                  <input id="br-quantity" autocomplete="off" type="number" min="1" max="10" value="1" class="w-16 text-center px-2 py-2 rounded-lg text-sm" onchange="updateBoothPricing()">
                   <button type="button" onclick="adjustBoothQty(1)" class="w-8 h-8 rounded-lg glass hover:bg-white/10 flex items-center justify-center"><i class="fas fa-plus text-xs"></i></button>
                 </div>
               </div>
@@ -12426,11 +13027,11 @@ function mainPageHTML(): string {
               </div>
               <div class="md:col-span-2">
                 <label class="text-xs text-gray-400 mb-1 block">Products / Solutions to Display</label>
-                <textarea id="br-products" rows="2" class="w-full px-3 py-2.5 rounded-lg text-sm" placeholder="List the products or solutions you plan to showcase"></textarea>
+                <textarea id="br-products" autocomplete="off" rows="2" class="w-full px-3 py-2.5 rounded-lg text-sm" placeholder="List the products or solutions you plan to showcase"></textarea>
               </div>
               <div class="md:col-span-2">
                 <label class="text-xs text-gray-400 mb-1 block">Special Requirements</label>
-                <textarea id="br-special" rows="2" class="w-full px-3 py-2.5 rounded-lg text-sm" placeholder="Power needs, internet, display setup, furniture, etc."></textarea>
+                <textarea id="br-special" autocomplete="off" rows="2" class="w-full px-3 py-2.5 rounded-lg text-sm" placeholder="Power needs, internet, display setup, furniture, etc."></textarea>
               </div>
             </div>
           </div>
@@ -13005,6 +13606,20 @@ function mainPageHTML(): string {
 
       try {
         const talks = await api.get('/api/events/' + EVENT_ID + '/innovation-talks');
+        if (!Array.isArray(talks) || !talks.length) {
+          // The endpoint answers [] both when nothing is scheduled and when the table
+          // is missing (see the no-such-table guard on the route). Either way the
+          // honest thing is to say the line-up is not published, not to draw two
+          // empty session headers and "0 presentations" as though the day were blank.
+          container.innerHTML =
+            '<div class="glass rounded-2xl p-8 text-center">'
+            + '<i class="fas fa-lightbulb text-4xl mb-3 block text-amber-400 opacity-60"></i>'
+            + '<p class="font-semibold">The Innovation Talk line-up is still being confirmed</p>'
+            + '<p class="text-sm text-gray-500 mt-1 max-w-md mx-auto">Ten-minute showcase slots run through the morning and the afternoon. Speakers are published here once the schedule is locked.</p>'
+            + '<button onclick="applyToPresent()" class="mt-4 px-4 py-2 rounded-xl text-sm bg-primary-600 hover:bg-primary-500 text-white transition">Apply to present</button>'
+            + '</div>';
+          return;
+        }
         const morning = talks.filter(t => t.session_type === 'Morning');
         const afternoon = talks.filter(t => t.session_type === 'Afternoon');
 
@@ -13055,6 +13670,9 @@ function mainPageHTML(): string {
       }
     }
 
+
+    // Wrapper so the empty-state onclick above needs no nested quotes.
+    function applyToPresent() { openInquiryForm('speaking'); }
 
     // ==================== INBOX ====================
     function switchInboxTab(tab) {
@@ -13675,6 +14293,7 @@ function mainPageHTML(): string {
     let myDashboardData = null;
     let myAllConnections = [];
     let myAllMeetings = [];
+    let myRoomBookings = [];
 
     async function loadMyProfile() {
       if (!currentUser) return;
@@ -13685,12 +14304,16 @@ function mainPageHTML(): string {
         const s = data.stats;
 
         // Also fetch full connections + meetings for subtabs
-        const [connData, meetData] = await Promise.all([
+        const [connData, meetData, roomData] = await Promise.all([
           api.get(\`/api/attendees/\${currentUser.id}/connections\`),
           api.get(\`/api/attendees/\${currentUser.id}/meetings\`),
+          api.get(\`/api/attendees/\${currentUser.id}/room-bookings\`),
         ]);
         myAllConnections = connData || [];
         myAllMeetings = meetData || [];
+        // An error envelope rather than a list means rooms are not live yet; the
+        // Meetings subtab must still render, so it becomes "no rooms held".
+        myRoomBookings = Array.isArray(roomData) ? roomData : [];
 
         // ---- Profile Header with Cover ----
         document.getElementById('my-profile-header').innerHTML = \`
@@ -14061,12 +14684,77 @@ function mainPageHTML(): string {
       } catch(e) { showToast('Failed to decline', 'error'); }
     }
 
+    // ---- Held boardrooms ----
+    // One row per booked hour comes back, but a reservation is the whole group of
+    // them: without grouping, a two-hour hold reads as two separate bookings and
+    // the Release button would only let go of half of it.
+    function groupRoomBookings(rows) {
+      const byRef = {}, order = [];
+      (rows || []).forEach(b => {
+        const key = b.group_ref || ('id-' + b.id);
+        if (!byRef[key]) { byRef[key] = Object.assign({}, b, { hours: 0, ids: [] }); order.push(key); }
+        const g = byRef[key];
+        g.hours++; g.ids.push(b.id);
+        if (b.slot_start < g.slot_start) g.slot_start = b.slot_start;
+        if (b.slot_end > g.slot_end) g.slot_end = b.slot_end;
+      });
+      return order.map(k => byRef[k]);
+    }
+
+    function renderMyRoomsHtml() {
+      const groups = groupRoomBookings(myRoomBookings);
+      if (!groups.length) return '';
+      const gst = roomCatalog.gst_percent || 18;
+      return groups.map(g => {
+        const held = g.status === 'held';
+        const day = new Date(g.slot_start.replace(' ', 'T'));
+        const net = Number(g.price_inr || 0) * g.hours;
+        return \`
+          <div class="glass rounded-xl p-4 card-hover border-l-2 \${held ? 'border-yellow-500/50' : 'border-green-500/50'}">
+            <div class="flex items-start gap-3">
+              <div class="w-10 h-10 rounded-xl \${held ? 'bg-yellow-500/20' : 'bg-green-500/20'} flex items-center justify-center shrink-0">
+                <i class="fas fa-door-open \${held ? 'text-yellow-400' : 'text-green-400'}"></i>
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <h4 class="font-semibold text-sm">\${g.room_label} &middot; \${g.wtc_name}</h4>
+                  <span class="px-1.5 py-0.5 rounded text-[10px] font-medium \${held ? 'bg-yellow-500/20 text-yellow-400' : 'bg-green-500/20 text-green-400'}">\${g.status}</span>
+                </div>
+                <p class="text-xs text-gray-500 mt-1">
+                  <i class="fas fa-clock mr-1"></i>\${day.toLocaleDateString([], {weekday:'short',day:'numeric',month:'short'})}, \${g.slot_start.slice(11)}&ndash;\${g.slot_end.slice(11)}
+                  &middot; \${g.hours} \${g.hours === 1 ? 'hour' : 'hours'}
+                  &middot; seats \${g.capacity}\${g.layout ? ' &middot; ' + g.layout : ''}
+                </p>
+                <p class="text-[10px] text-gray-500 mt-1">
+                  ₹\${Number(net).toLocaleString('en-IN')} + \${gst}% GST
+                  \${held ? '&middot; the team will confirm this against payment' : '&middot; confirmed by the events team'}
+                </p>
+              </div>
+              <button onclick="cancelRoomBooking(\${g.ids[0]})" class="px-2 py-1.5 rounded-lg text-xs bg-red-500/20 text-red-400 hover:bg-red-500/30 transition shrink-0"><i class="fas fa-times mr-1"></i>Release</button>
+            </div>
+          </div>
+        \`;
+      }).join('');
+    }
+
+    async function cancelRoomBooking(bookingId) {
+      if (!confirm('Release this boardroom? Every hour of the reservation goes back on sale immediately.')) return;
+      try {
+        const r = await api.put('/api/room-bookings/' + bookingId, { status: 'cancelled' });
+        if (r && r.error) { showToast(r.error, 'error'); return; }
+        showToast('Boardroom released', 'info');
+        loadMyProfile();
+      } catch(e) { showToast('Failed to release the room', 'error'); }
+    }
+
     // ---- Full Meetings List ----
     function renderAllMeetings(meetings, filter = 'all') {
       const filtered = filter === 'all' ? meetings : meetings.filter(m => m.status === filter);
       const el = document.getElementById('my-all-meetings-list');
 
-      el.innerHTML = filtered.length ? filtered.map(m => {
+      // Rooms first: a held boardroom is the commitment that costs money, so it
+      // sits above the meetings rather than below them.
+      el.innerHTML = renderMyRoomsHtml() + (filtered.length ? filtered.map(m => {
         const isReq = m.requester_id == currentUser.id;
         const otherN = isReq ? m.requestee_name : m.requester_name;
         const otherC = isReq ? m.requestee_company : m.requester_company;
@@ -14101,7 +14789,7 @@ function mainPageHTML(): string {
             </div>
           </div>
         \`;
-      }).join('') : '<div class="glass rounded-xl p-8 text-center text-gray-500"><i class="fas fa-calendar-alt text-3xl mb-3 block opacity-30"></i><p>No ' + (filter === 'all' ? '' : filter + ' ') + 'meetings found.</p></div>';
+      }).join('') : '<div class="glass rounded-xl p-8 text-center text-gray-500"><i class="fas fa-calendar-alt text-3xl mb-3 block opacity-30"></i><p>No ' + (filter === 'all' ? '' : filter + ' ') + 'meetings found.</p></div>');
     }
 
     function filterMyMeetings(filter) {
@@ -14444,24 +15132,24 @@ function mainPageHTML(): string {
           </div>
           <div class="flex-1 overflow-y-auto p-6 space-y-3 scroll-hide">
             <div class="grid grid-cols-2 gap-3">
-              <div><label class="text-xs text-gray-400 mb-1 block">Company Name *</label><input id="mb-name" value="\${b.company_name || currentUser.company || ''}" required class="w-full px-3 py-2 rounded-lg text-sm"></div>
-              <div><label class="text-xs text-gray-400 mb-1 block">Category</label><input id="mb-cat" value="\${b.category || ''}" placeholder="e.g. AI & ML, Fintech" class="w-full px-3 py-2 rounded-lg text-sm"></div>
+              <div><label class="text-xs text-gray-400 mb-1 block">Company Name *</label><input id="mb-name" autocomplete="organization" value="\${b.company_name || currentUser.company || ''}" required class="w-full px-3 py-2 rounded-lg text-sm"></div>
+              <div><label class="text-xs text-gray-400 mb-1 block">Category</label><input id="mb-cat" autocomplete="off" value="\${b.category || ''}" placeholder="e.g. AI & ML, Fintech" class="w-full px-3 py-2 rounded-lg text-sm"></div>
             </div>
-            <div><label class="text-xs text-gray-400 mb-1 block">Description</label><textarea id="mb-desc" rows="3" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="Describe your company and what you're exhibiting...">\${b.description || ''}</textarea></div>
+            <div><label class="text-xs text-gray-400 mb-1 block">Description</label><textarea id="mb-desc" autocomplete="off" rows="3" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="Describe your company and what you're exhibiting...">\${b.description || ''}</textarea></div>
             <div class="grid grid-cols-3 gap-3">
-              <div><label class="text-xs text-gray-400 mb-1 block">Booth #</label><input id="mb-booth" value="\${b.booth_number || ''}" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="e.g. A-101"></div>
+              <div><label class="text-xs text-gray-400 mb-1 block">Booth #</label><input id="mb-booth" autocomplete="off" value="\${b.booth_number || ''}" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="e.g. A-101"></div>
               <div><label class="text-xs text-gray-400 mb-1 block">Booth Size</label>
                 <select id="mb-size" class="w-full px-3 py-2 rounded-lg text-sm">
                   \${['standard','premium','platinum'].map(s=>'<option '+(b.booth_size===s?'selected':'')+'>'+s+'</option>').join('')}
                 </select>
               </div>
-              <div><label class="text-xs text-gray-400 mb-1 block">Website</label><input id="mb-web" value="\${b.website_url || ''}" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="https://..."></div>
+              <div><label class="text-xs text-gray-400 mb-1 block">Website</label><input id="mb-web" autocomplete="url" inputmode="url" autocapitalize="none" spellcheck="false" value="\${b.website_url || ''}" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="https://..."></div>
             </div>
             <div class="grid grid-cols-2 gap-3">
-              <div><label class="text-xs text-gray-400 mb-1 block">Contact Email</label><input id="mb-email" value="\${b.contact_email || currentUser.email || ''}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
-              <div><label class="text-xs text-gray-400 mb-1 block">Contact Phone</label><input id="mb-phone" value="\${b.contact_phone || currentUser.mobile || ''}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
+              <div><label class="text-xs text-gray-400 mb-1 block">Contact Email</label><input id="mb-email" autocomplete="email" inputmode="email" autocapitalize="none" spellcheck="false" value="\${b.contact_email || currentUser.email || ''}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
+              <div><label class="text-xs text-gray-400 mb-1 block">Contact Phone</label><input id="mb-phone" autocomplete="tel" inputmode="tel" value="\${b.contact_phone || currentUser.mobile || ''}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
             </div>
-            <div><label class="text-xs text-gray-400 mb-1 block">Products / Services (comma-separated)</label><input id="mb-products" value="\${b.products || ''}" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="e.g. AI Platform, Data Analytics, Cloud Services"></div>
+            <div><label class="text-xs text-gray-400 mb-1 block">Products / Services (comma-separated)</label><input id="mb-products" autocomplete="off" value="\${b.products || ''}" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="e.g. AI Platform, Data Analytics, Cloud Services"></div>
           </div>
           <div class="p-6 pt-3 border-t border-white/10 shrink-0 flex gap-2">
             <button type="submit" class="flex-1 py-2.5 rounded-xl text-sm font-medium bg-accent-600 hover:bg-accent-500 text-white"><i class="fas fa-save mr-1"></i>\${b.id ? 'Save Changes' : 'Create Booth'}</button>
@@ -14622,9 +15310,13 @@ function mainPageHTML(): string {
       const payWinOpened = !!payWin && !payWin.closed;
       paintPayHoldingPage(payWin);
 
-      // Register attendee first, then redirect to payment
+      // The response used to be discarded - see the twin in the register page. A 403
+      // verification_required or a dropped connection sent the user to mUni anyway,
+      // and nothing comes back from mUni, so that payment could never be matched to
+      // a person. The tab is still opened BEFORE this await so iOS Safari keeps the
+      // click activation; on failure we close the tab we already opened.
       try {
-        await fetch('/api/events/' + EVENT_ID + '/attendees/register', {
+        const resp = await fetch('/api/events/' + EVENT_ID + '/attendees/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -14633,7 +15325,17 @@ function mainPageHTML(): string {
             badge_type: passType
           })
         });
-      } catch(_) { /* proceed even if registration fails */ }
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok || data.error) {
+          throw new Error(data.message || (data.error && data.error !== 'verification_required' ? data.error : '') || 'We could not save your details, so checkout was not opened. Please try again.');
+        }
+      } catch (err) {
+        try { if (payWinOpened && !payWin.closed) payWin.close(); } catch (_) {}
+        showToast((err && err.message) || 'Network error. Nothing was charged. Please try again.', 'error');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-arrow-right mr-2"></i>Proceed to Payment';
+        return;   // modal stays open, details still typed in
+      }
 
       // Payment lands on mUni Campus, outside this database, and a repeat
       // registration on an existing email deliberately does NOT change the badge.
@@ -14769,31 +15471,31 @@ function mainPageHTML(): string {
           <div class="grid grid-cols-2 gap-3">
             <div>
               <label class="text-xs text-gray-400 mb-1 block">Full Name <span class="text-red-400">*</span></label>
-              <input type="text" id="pp-name" required placeholder="Your full name" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:#fff;border:1px solid #D7DBEC;color:#1E2140;outline:none;">
+              <input type="text" id="pp-name" autocomplete="name" autocapitalize="words" required placeholder="Your full name" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:#fff;border:1px solid #D7DBEC;color:#1E2140;outline:none;">
             </div>
             <div>
               <label class="text-xs text-gray-400 mb-1 block">Email Address <span class="text-red-400">*</span></label>
-              <input type="email" id="pp-email" required placeholder="you@email.com" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:#fff;border:1px solid #D7DBEC;color:#1E2140;outline:none;">
+              <input type="email" id="pp-email" autocomplete="email" inputmode="email" autocapitalize="none" spellcheck="false" required placeholder="you@email.com" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:#fff;border:1px solid #D7DBEC;color:#1E2140;outline:none;">
             </div>
           </div>
           <div class="grid grid-cols-2 gap-3">
             <div>
               <label class="text-xs text-gray-400 mb-1 block">Mobile Number *</label>
-              <input type="tel" id="pp-phone" required placeholder="+91 XXXXX XXXXX" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:#fff;border:1px solid #D7DBEC;color:#1E2140;outline:none;">
+              <input type="tel" id="pp-phone" autocomplete="tel" required placeholder="+91 XXXXX XXXXX" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:#fff;border:1px solid #D7DBEC;color:#1E2140;outline:none;">
             </div>
             <div>
               <label class="text-xs text-gray-400 mb-1 block">Organization *</label>
-              <input type="text" id="pp-company" required placeholder="Company / Institute" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:#fff;border:1px solid #D7DBEC;color:#1E2140;outline:none;">
+              <input type="text" id="pp-company" autocomplete="organization" required placeholder="Company / Institute" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:#fff;border:1px solid #D7DBEC;color:#1E2140;outline:none;">
             </div>
           </div>
           <div class="grid grid-cols-2 gap-3">
             <div>
               <label class="text-xs text-gray-400 mb-1 block">Designation *</label>
-              <input type="text" id="pp-designation" required placeholder="Your designation" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:#fff;border:1px solid #D7DBEC;color:#1E2140;outline:none;">
+              <input type="text" id="pp-designation" autocomplete="organization-title" required placeholder="Your designation" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:#fff;border:1px solid #D7DBEC;color:#1E2140;outline:none;">
             </div>
             <div>
               <label class="text-xs text-gray-400 mb-1 block">City *</label>
-              <input type="text" id="pp-city" required placeholder="Your city" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:#fff;border:1px solid #D7DBEC;color:#1E2140;outline:none;">
+              <input type="text" id="pp-city" autocomplete="address-level2" required placeholder="Your city" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:#fff;border:1px solid #D7DBEC;color:#1E2140;outline:none;">
             </div>
           </div>
           <div>
@@ -14850,26 +15552,12 @@ function adminPageHTML(): string {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Admin Dashboard - Bharat AI Innovation 2026</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="${FA_CSS}">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <!-- Shared with the app, so a pass issued at the desk is the same document the
        holder downloaded. -->
   <script src="/js/pass-render.js"></script>
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            primary: { 50:'#fff3e9',100:'#ffe0c7',200:'#ffc194',300:'#ff9d55',400:'#ff8524',500:'#FF6B00',600:'#e05a00',700:'#b84800',800:'#933a08',900:'#79300c' },
-            accent: { 50:'#fff3e0',100:'#ffe0b2',200:'#ffcc80',300:'#ffb74d',400:'#ffa726',500:'#ff9800',600:'#fb8c00',700:'#f57c00',800:'#ef6c00',900:'#e65100' },
-            dark: { 700:'#1e1e36', 800:'#1a1a2e', 900:'#0f0f23' }
-          }
-        }
-      }
-    }
-  </script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Manrope:wght@300..800&family=Montserrat:wght@600;700;800&family=Playfair+Display:wght@600;700&family=Mukta:wght@500;600;700&display=swap');
     * { font-family: 'Manrope', sans-serif; }
@@ -15017,6 +15705,10 @@ function adminPageHTML(): string {
       .att-toolbar-btn span.lbl { display: none; }
     }
   </style>
+  <!-- Last in <head> on purpose: the Play CDN appended its generated <style>
+       after the inline one, so utilities have always won ties against the page
+       CSS above. Moving the link earlier would flip that cascade. -->
+  <link rel="stylesheet" href="${TW_CSS}">
 </head>
 <body class="min-h-screen flex">
 
@@ -15103,6 +15795,9 @@ function adminPageHTML(): string {
       <button onclick="switchSection('analytics')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="analytics" title="Analytics">
         <i class="fas fa-chart-bar w-5 text-center shrink-0"></i><span class="sidebar-label">Analytics</span>
       </button>
+      <button onclick="switchSection('rooms')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="rooms" title="Boardrooms">
+        <i class="fas fa-door-open w-5 text-center shrink-0"></i><span class="sidebar-label">Boardrooms</span>
+      </button>
       <div class="border-t border-white/10 my-2"></div>
       <button onclick="switchSection('settings')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="settings" title="Settings">
         <i class="fas fa-cog w-5 text-center shrink-0"></i><span class="sidebar-label">Settings</span>
@@ -15165,6 +15860,8 @@ function adminPageHTML(): string {
       <div id="section-badge-desk" class="section-content hidden"></div>
       <!-- Analytics Section -->
       <div id="section-analytics" class="section-content hidden"></div>
+      <!-- Boardrooms Section -->
+      <div id="section-rooms" class="section-content hidden"></div>
       <!-- Settings Section -->
       <div id="section-settings" class="section-content hidden"></div>
     </div>
@@ -15449,8 +16146,8 @@ function adminPageHTML(): string {
       document.querySelectorAll('.section-content').forEach(s => s.classList.add('hidden'));
       document.getElementById('section-'+sec).classList.remove('hidden');
 
-      const titles = { overview:'Overview', attendees:'Attendee Management', sessions:'Session Management', exhibitors:'Exhibitor Management', 'booth-requests':'Booth Requests', awards:'Awards Management', announcements:'Announcement Management', innovation:'Innovation Talk & Showcase', 'startup-pitch':'Startup Pitch Management', inquiries:'Inquiry Management', payments:'Payments & Invoices', 'badge-desk':'Badge Desk', analytics:'Analytics & Reports', settings:'Settings' };
-      const subtitles = { overview:'Real-time event management dashboard', attendees:'Manage all registered attendees', sessions:'Create and manage event sessions', exhibitors:'Manage exhibition booths', 'booth-requests':'Review and manage booth booking requests', awards:'Manage award categories and nominees', announcements:'Create and manage live feed announcements', innovation:'Manage innovation talk and showcase schedule', 'startup-pitch':'Manage startup pitches and investor panel', inquiries:'View and manage all incoming inquiries', payments:'Confirm payments taken on mUni Campus and issue GST invoices', 'badge-desk':'Event-day check-in and the staff accounts that scan passes', analytics:'Deep dive into event engagement metrics', settings:'Configure email, API keys and app settings' };
+      const titles = { overview:'Overview', attendees:'Attendee Management', sessions:'Session Management', exhibitors:'Exhibitor Management', 'booth-requests':'Booth Requests', awards:'Awards Management', announcements:'Announcement Management', innovation:'Innovation Talk & Showcase', 'startup-pitch':'Startup Pitch Management', inquiries:'Inquiry Management', payments:'Payments & Invoices', 'badge-desk':'Badge Desk', analytics:'Analytics & Reports', rooms:'Boardrooms', settings:'Settings' };
+      const subtitles = { overview:'Real-time event management dashboard', attendees:'Manage all registered attendees', sessions:'Create and manage event sessions', exhibitors:'Manage exhibition booths', 'booth-requests':'Review and manage booth booking requests', awards:'Manage award categories and nominees', announcements:'Create and manage live feed announcements', innovation:'Manage innovation talk and showcase schedule', 'startup-pitch':'Manage startup pitches and investor panel', inquiries:'View and manage all incoming inquiries', payments:'Confirm payments taken on mUni Campus and issue GST invoices', 'badge-desk':'Event-day check-in and the staff accounts that scan passes', analytics:'Deep dive into event engagement metrics', rooms:'Who has which WTC boardroom, hour by hour, across both event days', settings:'Configure email, API keys and app settings' };
       document.getElementById('page-title').textContent = titles[sec] || sec;
       document.getElementById('page-subtitle').textContent = subtitles[sec] || '';
 
@@ -15504,7 +16201,9 @@ function adminPageHTML(): string {
     // Now it reports when the data was last pulled and toggles the timer.
     var autoRefreshOn = localStorage.getItem('tc_admin_autorefresh') !== '0';
     var autoRefreshTimer = null;
-    var AUTO_REFRESH_SECTIONS = { overview: 1, 'badge-desk': 1 };
+    // On the event days the boardroom grid is a live operational board — the desk
+    // is answering "is Jasmine free at 11" from it — so it refreshes like Overview.
+    var AUTO_REFRESH_SECTIONS = { overview: 1, 'badge-desk': 1, rooms: 1 };
     function markSectionFresh() {
       var chip = document.getElementById('live-chip');
       if (!chip) return;
@@ -15550,6 +16249,7 @@ function adminPageHTML(): string {
         case 'startup-pitch': loadAdminStartupPitch(); break;
         case 'inquiries': loadAdminInquiries(); break;
         case 'payments': loadPayments(); break;
+        case 'rooms': loadAdminRooms(); break;
         case 'badge-desk': loadBadgeDesk(); break;
         case 'settings': loadSettings(); break;
       }
@@ -15675,7 +16375,7 @@ function adminPageHTML(): string {
       var a = idx >= 0 ? _pendingPayments[idx] : null;
       var f = function (id, label, value, ph) {
         return '<div><label class="block text-[11px] text-gray-400 mb-1">' + label + '</label>' +
-          '<input id="' + id + '" value="' + deskEsc(value || '') + '" placeholder="' + (ph || '') + '" class="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm"></div>';
+          '<input id="' + id + '" autocomplete="off" value="' + deskEsc(value || '') + '" placeholder="' + (ph || '') + '" class="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm"></div>';
       };
       var wrap = document.createElement('div');
       wrap.id = 'inv-modal';
@@ -15831,15 +16531,15 @@ function adminPageHTML(): string {
                   'They can scan and check in &mdash; nothing else. Every entry records who admitted it.</p>' +
                 '<div class="max-h-72 overflow-y-auto pr-1">' + rows + '</div>' +
                 '<div class="mt-4 pt-4 border-t border-white/10 space-y-2">' +
-                  '<input id="ns-name" placeholder="Full name" class="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm">' +
-                  '<input id="ns-user" placeholder="Username (no spaces)" autocapitalize="none" class="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm">' +
+                  '<input id="ns-name" autocomplete="off" placeholder="Full name" class="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm">' +
+                  '<input id="ns-user" autocomplete="off" placeholder="Username (no spaces)" autocapitalize="none" class="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm">' +
                   '<select id="ns-role" class="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm">' +
                     '<option value="desk">Badge desk - scan and check people in</option>' +
                     '<option value="finance">Finance - raise and email invoices</option>' +
                     '<option value="admin">Admin - the whole panel, changes recorded by name</option>' +
                   '</select>' +
                   '<div class="flex gap-2">' +
-                    '<input id="ns-pass" placeholder="Password (min 8)" class="flex-1 px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm">' +
+                    '<input id="ns-pass" autocomplete="off" placeholder="Password (min 8)" class="flex-1 px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm">' +
                     '<button onclick="suggestDeskPassword()" class="px-3 py-2 rounded-lg text-xs glass hover:bg-white/10 text-gray-300">Suggest</button>' +
                   '</div>' +
                   '<button onclick="createStaff()" class="w-full px-4 py-2.5 rounded-lg bg-primary-500 hover:bg-primary-600 text-white text-sm font-semibold">Add desk account</button>' +
@@ -16549,7 +17249,7 @@ function adminPageHTML(): string {
           <div class="flex gap-2 items-center flex-wrap">
             <div class="relative">
               <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-xs"></i>
-              <input type="text" id="admin-att-search" placeholder="Search attendees..." class="pl-9 pr-4 py-2 rounded-lg text-xs w-64 max-w-full" value="\${esc(attQuery)}" oninput="searchAttendees(this.value)">
+              <input type="text" id="admin-att-search" autocomplete="off" placeholder="Search attendees..." class="pl-9 pr-4 py-2 rounded-lg text-xs w-64 max-w-full" value="\${esc(attQuery)}" oninput="searchAttendees(this.value)">
             </div>
             <span class="text-xs text-gray-400">\${attendees.length} total</span>
             \${Object.keys(dupMap).length > 0 ? '<span class="text-xs text-red-400 ml-1"><i class="fas fa-exclamation-triangle mr-0.5"></i>' + (dupData.totalGroups||0) + ' dup groups (' + Object.keys(dupMap).length + ' entries)</span>' : ''}
@@ -16844,7 +17544,7 @@ function adminPageHTML(): string {
               (c.failed || 0) + ' failed \u00b7 by ' + escH(c.created_by || 'unknown') + ' \u00b7 ' + fmtIst(c.created_at) + '</span>' +
             '<span class="flex gap-1.5">' +
               (c.status !== 'done' ? '<button onclick="resumeCampaign(' + c.id + ')" class="px-2.5 py-1 rounded-lg text-[10px] font-semibold bg-primary-700 text-white on-dark hover:bg-primary-800">Resume</button>' : '') +
-              (c.failed ? '<button onclick="showCampaignFailures(' + c.id + ')" class="px-2.5 py-1 rounded-lg text-[10px] font-medium border border-line text-mid-grey hover:bg-black/5">' + c.failed + ' failed</button>' : '') +
+              (c.failed ? '<button onclick="showCampaignFailures(' + c.id + ')" class="px-2.5 py-1 rounded-lg text-[10px] font-medium border border-white/10 text-gray-400 hover:bg-black/5">' + c.failed + ' failed</button>' : '') +
               (c.failed ? '<button onclick="retryCampaignFailures(' + c.id + ')" class="px-2.5 py-1 rounded-lg text-[10px] font-semibold bg-amber-700 text-white on-dark hover:bg-amber-800">Retry those</button>' : '') +
             '</span>' +
           '</div></div>';
@@ -17867,16 +18567,16 @@ function adminPageHTML(): string {
           </div>
           <div class="p-6 py-4 overflow-y-auto flex-1 space-y-3" style="scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.15) transparent;">
             <div class="grid grid-cols-2 gap-3">
-              <div><label class="text-xs text-gray-400 mb-1 block">Name *</label><input id="na-name" class="w-full px-3 py-2 rounded-lg text-sm" required placeholder="Full name"></div>
-              <div><label class="text-xs text-gray-400 mb-1 block">Email *</label><input id="na-email" type="email" class="w-full px-3 py-2 rounded-lg text-sm" required placeholder="email@example.com"></div>
+              <div><label class="text-xs text-gray-400 mb-1 block">Name *</label><input id="na-name" autocomplete="off" class="w-full px-3 py-2 rounded-lg text-sm" required placeholder="Full name"></div>
+              <div><label class="text-xs text-gray-400 mb-1 block">Email *</label><input id="na-email" autocomplete="off" type="email" class="w-full px-3 py-2 rounded-lg text-sm" required placeholder="email@example.com"></div>
             </div>
             <div class="grid grid-cols-2 gap-3">
-              <div><label class="text-xs text-gray-400 mb-1 block">Company</label><input id="na-company" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="Company name"></div>
-              <div><label class="text-xs text-gray-400 mb-1 block">Job Title</label><input id="na-title" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="e.g. CEO, CTO"></div>
+              <div><label class="text-xs text-gray-400 mb-1 block">Company</label><input id="na-company" autocomplete="off" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="Company name"></div>
+              <div><label class="text-xs text-gray-400 mb-1 block">Job Title</label><input id="na-title" autocomplete="off" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="e.g. CEO, CTO"></div>
             </div>
             <div class="grid grid-cols-2 gap-3">
-              <div><label class="text-xs text-gray-400 mb-1 block">Mobile</label><input id="na-mobile" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="+91 98765 43210"></div>
-              <div><label class="text-xs text-gray-400 mb-1 block">LinkedIn URL</label><input id="na-linkedin" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="https://linkedin.com/in/..."></div>
+              <div><label class="text-xs text-gray-400 mb-1 block">Mobile</label><input id="na-mobile" autocomplete="off" inputmode="tel" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="+91 98765 43210"></div>
+              <div><label class="text-xs text-gray-400 mb-1 block">LinkedIn URL</label><input id="na-linkedin" autocomplete="off" inputmode="url" autocapitalize="none" spellcheck="false" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="https://linkedin.com/in/..."></div>
             </div>
             <div class="grid grid-cols-3 gap-3">
               <div><label class="text-xs text-gray-400 mb-1 block">Role</label>
@@ -17899,14 +18599,14 @@ function adminPageHTML(): string {
                   <option value="">Not set</option>
                   \${['09:00','09:30','10:00','10:30','11:00','11:30','12:00','12:30','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30'].map(t=>'<option value="'+t+'">'+t+'</option>').join('')}
                 </select></div>
-              <div><label class="text-xs text-gray-400 mb-1 block">Twitter URL</label><input id="na-twitter" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="https://twitter.com/..."></div>
+              <div><label class="text-xs text-gray-400 mb-1 block">Twitter URL</label><input id="na-twitter" autocomplete="off" inputmode="url" autocapitalize="none" spellcheck="false" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="https://twitter.com/..."></div>
             </div>
             <div class="grid grid-cols-2 gap-3">
-              <div><label class="text-xs text-gray-400 mb-1 block">Website URL</label><input id="na-website" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="https://..."></div>
+              <div><label class="text-xs text-gray-400 mb-1 block">Website URL</label><input id="na-website" autocomplete="off" inputmode="url" autocapitalize="none" spellcheck="false" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="https://..."></div>
               <div></div>
             </div>
-            <div><label class="text-xs text-gray-400 mb-1 block">Bio</label><textarea id="na-bio" rows="2" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="Short bio..."></textarea></div>
-            <div><label class="text-xs text-gray-400 mb-1 block">Interests (comma-separated)</label><input id="na-interests" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="e.g. AI, Cloud, IoT"></div>
+            <div><label class="text-xs text-gray-400 mb-1 block">Bio</label><textarea id="na-bio" autocomplete="off" rows="2" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="Short bio..."></textarea></div>
+            <div><label class="text-xs text-gray-400 mb-1 block">Interests (comma-separated)</label><input id="na-interests" autocomplete="off" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="e.g. AI, Cloud, IoT"></div>
           </div>
           <div class="p-6 pt-3 border-t border-white/10 shrink-0 flex gap-2">
             <button type="submit" id="na-submit-btn" class="flex-1 py-3 rounded-xl text-sm font-semibold bg-primary-600 hover:bg-primary-500 text-white transition"><i class="fas fa-user-plus mr-2"></i>Add Attendee</button>
@@ -17980,24 +18680,24 @@ function adminPageHTML(): string {
               </button>
             </div>
             <div class="grid grid-cols-2 gap-3">
-              <div><label class="text-xs text-gray-400 mb-1 block">Name *</label><input id="ea-name" value="\${escH(a.name)}" class="w-full px-3 py-2 rounded-lg text-sm" required></div>
-              <div><label class="text-xs text-gray-400 mb-1 block">Email *</label><input id="ea-email" value="\${escH(a.email)}" class="w-full px-3 py-2 rounded-lg text-sm" required></div>
+              <div><label class="text-xs text-gray-400 mb-1 block">Name *</label><input id="ea-name" autocomplete="off" value="\${escH(a.name)}" class="w-full px-3 py-2 rounded-lg text-sm" required></div>
+              <div><label class="text-xs text-gray-400 mb-1 block">Email *</label><input id="ea-email" autocomplete="off" inputmode="email" autocapitalize="none" spellcheck="false" value="\${escH(a.email)}" class="w-full px-3 py-2 rounded-lg text-sm" required></div>
             </div>
             <div class="grid grid-cols-2 gap-3">
-              <div><label class="text-xs text-gray-400 mb-1 block">Company</label><input id="ea-company" value="\${escH(a.company)}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
-              <div><label class="text-xs text-gray-400 mb-1 block">Job Title</label><input id="ea-title" value="\${escH(a.job_title)}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
+              <div><label class="text-xs text-gray-400 mb-1 block">Company</label><input id="ea-company" autocomplete="off" value="\${escH(a.company)}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
+              <div><label class="text-xs text-gray-400 mb-1 block">Job Title</label><input id="ea-title" autocomplete="off" value="\${escH(a.job_title)}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
             </div>
             <div class="grid grid-cols-2 gap-3">
-              <div><label class="text-xs text-gray-400 mb-1 block">Mobile</label><input id="ea-mobile" value="\${escH(a.mobile)}" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="+91 98765 43210"></div>
-              <div><label class="text-xs text-gray-400 mb-1 block">LinkedIn URL</label><input id="ea-linkedin" value="\${escH(a.linkedin_url)}" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="https://linkedin.com/in/..."></div>
+              <div><label class="text-xs text-gray-400 mb-1 block">Mobile</label><input id="ea-mobile" autocomplete="off" inputmode="tel" value="\${escH(a.mobile)}" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="+91 98765 43210"></div>
+              <div><label class="text-xs text-gray-400 mb-1 block">LinkedIn URL</label><input id="ea-linkedin" autocomplete="off" inputmode="url" autocapitalize="none" spellcheck="false" value="\${escH(a.linkedin_url)}" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="https://linkedin.com/in/..."></div>
             </div>
             <!-- City, Country and Industry had no inputs here, so the save posted
                  none of them while the UPDATE set all three - which blanked whatever
                  the attendee had entered. They are editable here now, and the
                  endpoint only writes the keys it is sent. -->
             <div class="grid grid-cols-3 gap-3">
-              <div><label class="text-xs text-gray-400 mb-1 block">City</label><input id="ea-city" value="\${esc(a.city||'')}" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="e.g. Mumbai"></div>
-              <div><label class="text-xs text-gray-400 mb-1 block">Country</label><input id="ea-country" value="\${esc(a.country||'')}" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="India"></div>
+              <div><label class="text-xs text-gray-400 mb-1 block">City</label><input id="ea-city" autocomplete="off" value="\${esc(a.city||'')}" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="e.g. Mumbai"></div>
+              <div><label class="text-xs text-gray-400 mb-1 block">Country</label><input id="ea-country" autocomplete="off" value="\${esc(a.country||'')}" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="India"></div>
               <div><label class="text-xs text-gray-400 mb-1 block">Industry</label>
                 <select id="ea-industry" class="w-full px-3 py-2 rounded-lg text-sm">
                   <option value="">-- Not set --</option>
@@ -18028,11 +18728,11 @@ function adminPageHTML(): string {
               <div><label class="text-xs text-gray-400 mb-1 block">Notified</label>
                 <div class="px-3 py-2 rounded-lg text-sm glass \${a.notified_at ? 'text-green-400' : 'text-gray-500'}">\${a.notified_at ? '<i class="fas fa-check-circle mr-1"></i>'+new Date(a.notified_at).toLocaleDateString() : '<i class="fas fa-times-circle mr-1"></i>Not yet'}</div></div>
             </div>
-            <div><label class="text-xs text-gray-400 mb-1 block">Bio</label><textarea id="ea-bio" rows="2" class="w-full px-3 py-2 rounded-lg text-sm">\${escH(a.bio)}</textarea></div>
-            <div><label class="text-xs text-gray-400 mb-1 block">Interests (comma-separated)</label><input id="ea-interests" value="\${escH(a.interests)}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
+            <div><label class="text-xs text-gray-400 mb-1 block">Bio</label><textarea id="ea-bio" autocomplete="off" rows="2" class="w-full px-3 py-2 rounded-lg text-sm">\${escH(a.bio)}</textarea></div>
+            <div><label class="text-xs text-gray-400 mb-1 block">Interests (comma-separated)</label><input id="ea-interests" autocomplete="off" value="\${escH(a.interests)}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
             <div class="grid grid-cols-2 gap-3">
-              <div><label class="text-xs text-gray-400 mb-1 block">Twitter URL</label><input id="ea-twitter" value="\${escH(a.twitter_url)}" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="https://twitter.com/..."></div>
-              <div><label class="text-xs text-gray-400 mb-1 block">Website URL</label><input id="ea-website" value="\${escH(a.website_url)}" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="https://..."></div>
+              <div><label class="text-xs text-gray-400 mb-1 block">Twitter URL</label><input id="ea-twitter" autocomplete="off" inputmode="url" autocapitalize="none" spellcheck="false" value="\${escH(a.twitter_url)}" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="https://twitter.com/..."></div>
+              <div><label class="text-xs text-gray-400 mb-1 block">Website URL</label><input id="ea-website" autocomplete="off" inputmode="url" autocapitalize="none" spellcheck="false" value="\${escH(a.website_url)}" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="https://..."></div>
             </div>
           </div>
           <div class="p-6 pt-3 border-t border-white/10 shrink-0 flex gap-2">
@@ -18582,24 +19282,24 @@ function adminPageHTML(): string {
     function sessionFormHTML(s={}) {
       return \`
         <div class="space-y-3">
-          <div><label class="text-xs text-gray-400 mb-1 block">Title *</label><input id="sf-title" value="\${escH(s.title)}" required class="w-full px-3 py-2 rounded-lg text-sm"></div>
-          <div><label class="text-xs text-gray-400 mb-1 block">Description</label><textarea id="sf-desc" rows="2" class="w-full px-3 py-2 rounded-lg text-sm">\${escH(s.description)}</textarea></div>
+          <div><label class="text-xs text-gray-400 mb-1 block">Title *</label><input id="sf-title" autocomplete="off" value="\${escH(s.title)}" required class="w-full px-3 py-2 rounded-lg text-sm"></div>
+          <div><label class="text-xs text-gray-400 mb-1 block">Description</label><textarea id="sf-desc" autocomplete="off" rows="2" class="w-full px-3 py-2 rounded-lg text-sm">\${escH(s.description)}</textarea></div>
           <div class="grid grid-cols-2 gap-3">
-            <div><label class="text-xs text-gray-400 mb-1 block">Speaker Name</label><input id="sf-speaker" value="\${escH(s.speaker_name)}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
-            <div><label class="text-xs text-gray-400 mb-1 block">Speaker Title</label><input id="sf-speaker-title" value="\${escH(s.speaker_title)}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
+            <div><label class="text-xs text-gray-400 mb-1 block">Speaker Name</label><input id="sf-speaker" autocomplete="off" value="\${escH(s.speaker_name)}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
+            <div><label class="text-xs text-gray-400 mb-1 block">Speaker Title</label><input id="sf-speaker-title" autocomplete="off" value="\${escH(s.speaker_title)}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
           </div>
           <div class="grid grid-cols-3 gap-3">
             <div><label class="text-xs text-gray-400 mb-1 block">Type *</label>
               <select id="sf-type" class="w-full px-3 py-2 rounded-lg text-sm">
                 \${['keynote','talk','panel','workshop','ceremony','exhibition','networking','break'].map(t=>'<option '+(s.session_type===t?'selected':'')+'>'+t+'</option>').join('')}
               </select></div>
-            <div><label class="text-xs text-gray-400 mb-1 block">Track</label><input id="sf-track" value="\${escH(s.track)}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
-            <div><label class="text-xs text-gray-400 mb-1 block">Room</label><input id="sf-room" value="\${escH(s.room)}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
+            <div><label class="text-xs text-gray-400 mb-1 block">Track</label><input id="sf-track" autocomplete="off" value="\${escH(s.track)}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
+            <div><label class="text-xs text-gray-400 mb-1 block">Room</label><input id="sf-room" autocomplete="off" value="\${escH(s.room)}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
           </div>
           <div class="grid grid-cols-3 gap-3">
-            <div><label class="text-xs text-gray-400 mb-1 block">Start Time *</label><input type="datetime-local" id="sf-start" value="\${(s.start_time||'').replace(' ','T')}" required class="w-full px-3 py-2 rounded-lg text-sm"></div>
-            <div><label class="text-xs text-gray-400 mb-1 block">End Time *</label><input type="datetime-local" id="sf-end" value="\${(s.end_time||'').replace(' ','T')}" required class="w-full px-3 py-2 rounded-lg text-sm"></div>
-            <div><label class="text-xs text-gray-400 mb-1 block">Emoji</label><input id="sf-avatar" value="\${escH(s.speaker_avatar)}" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="e.g. 🎤"></div>
+            <div><label class="text-xs text-gray-400 mb-1 block">Start Time *</label><input type="datetime-local" id="sf-start" autocomplete="off" value="\${(s.start_time||'').replace(' ','T')}" required class="w-full px-3 py-2 rounded-lg text-sm"></div>
+            <div><label class="text-xs text-gray-400 mb-1 block">End Time *</label><input type="datetime-local" id="sf-end" autocomplete="off" value="\${(s.end_time||'').replace(' ','T')}" required class="w-full px-3 py-2 rounded-lg text-sm"></div>
+            <div><label class="text-xs text-gray-400 mb-1 block">Emoji</label><input id="sf-avatar" autocomplete="off" value="\${escH(s.speaker_avatar)}" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="e.g. 🎤"></div>
           </div>
         </div>
       \`;
@@ -18685,23 +19385,23 @@ function adminPageHTML(): string {
     function exhibitorFormHTML(e={}) {
       return \`<div class="space-y-3">
         <div class="grid grid-cols-2 gap-3">
-          <div><label class="text-xs text-gray-400 mb-1 block">Company *</label><input id="ef-name" value="\${escH(e.company_name)}" required class="w-full px-3 py-2 rounded-lg text-sm"></div>
-          <div><label class="text-xs text-gray-400 mb-1 block">Category</label><input id="ef-cat" value="\${escH(e.category)}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
+          <div><label class="text-xs text-gray-400 mb-1 block">Company *</label><input id="ef-name" autocomplete="off" value="\${escH(e.company_name)}" required class="w-full px-3 py-2 rounded-lg text-sm"></div>
+          <div><label class="text-xs text-gray-400 mb-1 block">Category</label><input id="ef-cat" autocomplete="off" value="\${escH(e.category)}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
         </div>
-        <div><label class="text-xs text-gray-400 mb-1 block">Description</label><textarea id="ef-desc" rows="2" class="w-full px-3 py-2 rounded-lg text-sm">\${escH(e.description)}</textarea></div>
+        <div><label class="text-xs text-gray-400 mb-1 block">Description</label><textarea id="ef-desc" autocomplete="off" rows="2" class="w-full px-3 py-2 rounded-lg text-sm">\${escH(e.description)}</textarea></div>
         <div class="grid grid-cols-3 gap-3">
-          <div><label class="text-xs text-gray-400 mb-1 block">Booth #</label><input id="ef-booth" value="\${escH(e.booth_number)}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
+          <div><label class="text-xs text-gray-400 mb-1 block">Booth #</label><input id="ef-booth" autocomplete="off" value="\${escH(e.booth_number)}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
           <div><label class="text-xs text-gray-400 mb-1 block">Size</label>
             <select id="ef-size" class="w-full px-3 py-2 rounded-lg text-sm">
               \${['standard','premium','platinum'].map(s=>'<option '+(e.booth_size===s?'selected':'')+'>'+s+'</option>').join('')}
             </select></div>
-          <div><label class="text-xs text-gray-400 mb-1 block">Website</label><input id="ef-web" value="\${escH(e.website_url)}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
+          <div><label class="text-xs text-gray-400 mb-1 block">Website</label><input id="ef-web" autocomplete="off" inputmode="url" autocapitalize="none" spellcheck="false" value="\${escH(e.website_url)}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
         </div>
         <div class="grid grid-cols-2 gap-3">
-          <div><label class="text-xs text-gray-400 mb-1 block">Email</label><input id="ef-email" value="\${escH(e.contact_email)}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
-          <div><label class="text-xs text-gray-400 mb-1 block">Phone</label><input id="ef-phone" value="\${escH(e.contact_phone)}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
+          <div><label class="text-xs text-gray-400 mb-1 block">Email</label><input id="ef-email" autocomplete="off" inputmode="email" autocapitalize="none" spellcheck="false" value="\${escH(e.contact_email)}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
+          <div><label class="text-xs text-gray-400 mb-1 block">Phone</label><input id="ef-phone" autocomplete="off" inputmode="tel" value="\${escH(e.contact_phone)}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
         </div>
-        <div><label class="text-xs text-gray-400 mb-1 block">Products (comma-separated)</label><input id="ef-products" value="\${escH(e.products)}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
+        <div><label class="text-xs text-gray-400 mb-1 block">Products (comma-separated)</label><input id="ef-products" autocomplete="off" value="\${escH(e.products)}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
       </div>\`;
     }
 
@@ -18731,6 +19431,216 @@ function adminPageHTML(): string {
 
     // ============ ADMIN BOOTH REQUESTS ============
     let adminBoothRequestFilter = '';
+
+    // ============ BOARDROOMS ============
+    // Four WTC rooms, two event days, nine bookable hours each. The section is a
+    // grid rather than a list of bookings because the question the desk actually
+    // gets asked is "is Jasmine free at 11 on the 20th", and a list cannot answer
+    // that at a glance.
+    let adminRoomGrid = null;
+
+    async function loadAdminRooms() {
+      const section = document.getElementById('section-rooms');
+      if (!section) return;
+      section.innerHTML = '<div class="text-center py-8"><i class="fas fa-spinner fa-spin text-primary-400 text-xl"></i></div>';
+      try {
+        const g = await api.get('/api/admin/rooms/grid');
+        const bad = bodyError(g);
+        if (bad) { sectionError(section, 'boardrooms', { message: bad }, 'loadAdminRooms()'); return; }
+        adminRoomGrid = g;
+        // ready:false is the EXPECTED state until the migration is hand-run, so it
+        // renders as a note. Blanking or throwing here is what the innovation_talks
+        // 500 did, and it took two tabs down with it.
+        if (!g.ready) {
+          section.innerHTML = \`
+            <div class="glass rounded-xl p-6">
+              <h3 class="font-semibold mb-2"><i class="fas fa-door-open text-primary-400 mr-2"></i>Boardroom booking is not live yet</h3>
+              <p class="text-sm text-gray-400 mb-3">Migration 0029 has not been applied to production, so there is no room inventory and no hour ledger to show. Until it is run, the app's Schedule Meeting modal keeps its free-text Location box and nothing here is reachable.</p>
+              <code class="block text-xs bg-black/30 rounded-lg p-3 text-gray-300 overflow-x-auto">npx wrangler d1 execute bharatai-production --remote --file=./migrations/0029_meeting_rooms.sql</code>
+            </div>\`;
+          return;
+        }
+        section.innerHTML = adminRoomSummaryHtml(g) + g.days.map(d => adminRoomDayHtml(g, d)).join('');
+      } catch(e) { sectionError(section, 'boardrooms', e, 'loadAdminRooms()'); }
+    }
+
+    function adminRoomSummaryHtml(g) {
+      const s = g.summary || { held: 0, confirmed: 0, blocked: 0, revenue_inr: 0 };
+      return \`
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+          <div class="glass rounded-xl p-4 text-center"><div class="text-2xl font-black text-yellow-400">\${s.held}</div><div class="text-xs text-gray-500">Hours held</div></div>
+          <div class="glass rounded-xl p-4 text-center"><div class="text-2xl font-black text-green-400">\${s.confirmed}</div><div class="text-xs text-gray-500">Hours confirmed</div></div>
+          <div class="glass rounded-xl p-4 text-center"><div class="text-2xl font-black text-gray-400">\${s.blocked}</div><div class="text-xs text-gray-500">Hours blocked</div></div>
+          <div class="glass rounded-xl p-4 text-center border border-green-500/20"><div class="text-2xl font-black text-green-400">₹\${Number(s.revenue_inr || 0).toLocaleString('en-IN')}</div><div class="text-xs text-gray-500">Confirmed, ex-GST</div></div>
+        </div>
+        <p class="text-[11px] text-gray-500 mb-4">Rates are per hour and exclusive of \${g.gst_percent}% GST. A <span class="text-yellow-400">hold</span> is what somebody took in the app &mdash; confirm it once payment is agreed. Click a free hour to block it or enter a walk-up booking.</p>\`;
+    }
+
+    function adminRoomDayHtml(g, day) {
+      const label = new Date(day + 'T00:00:00').toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' });
+      return \`
+        <div class="glass rounded-xl p-4 mb-6 overflow-x-auto">
+          <h4 class="text-sm font-semibold mb-3"><i class="fas fa-calendar-day text-primary-400 mr-2"></i>\${label}</h4>
+          <table class="w-full text-xs">
+            <thead><tr class="border-b border-white/10">
+              <th class="text-left py-2 px-2 text-gray-400 font-medium">Time</th>
+              \${g.rooms.map(r => \`
+                <th class="py-2 px-2 text-center min-w-[9rem]">
+                  <div class="font-semibold">\${escH(r.label)}\${Number(r.is_active) ? '' : ' <span class="text-[10px] text-gray-500">(inactive)</span>'}</div>
+                  <div class="text-[10px] text-gray-400 font-normal">\${escH(r.wtc_name)}\${r.layout ? ' &middot; ' + escH(r.layout) : ''} &middot; seats \${r.capacity} &middot; ₹\${Number(r.price_inr).toLocaleString('en-IN')}/hr</div>
+                </th>\`).join('')}
+            </tr></thead>
+            <tbody>
+              \${g.slot_hours.map(h => \`
+                <tr class="border-b border-white/5">
+                  <td class="py-1 px-2 text-gray-400 whitespace-nowrap align-top">\${h}</td>
+                  \${g.rooms.map(r => adminRoomCellHtml(g, r, day, h)).join('')}
+                </tr>\`).join('')}
+            </tbody>
+          </table>
+        </div>\`;
+    }
+
+    function adminRoomCellHtml(g, room, day, hour) {
+      const start = day + ' ' + hour;
+      const b = g.cells[room.id + '|' + start];
+      if (!b) {
+        return \`<td class="p-1 align-top"><button onclick="openRoomBlockModal(\${room.id}, '\${start}')" class="w-full rounded-lg px-2 py-2 glass text-gray-500 hover:bg-white/10 transition" title="Block or book this hour">+</button></td>\`;
+      }
+      // Consecutive hours of one reservation share a left border and name the
+      // holder once, so a three-hour booking reads as one block, not three.
+      const idx = g.slot_hours.indexOf(hour);
+      const prev = idx > 0 ? g.cells[room.id + '|' + day + ' ' + g.slot_hours[idx - 1]] : null;
+      const cont = !!(prev && b.group_ref && prev.group_ref === b.group_ref);
+      const cls = b.kind === 'block' ? 'bg-gray-500/20 text-gray-400 border-l-2 border-gray-500/50'
+        : b.status === 'confirmed' ? 'bg-green-500/20 text-green-400 border-l-2 border-green-500/50'
+        : 'bg-yellow-500/20 text-yellow-400 border-l-2 border-yellow-500/50';
+      const who = b.kind === 'block' ? (b.title || 'Venue hold') : (b.attendee_name || b.contact_name || b.title || 'Booking');
+      const sub = b.kind === 'block' ? (b.notes || '') : (b.attendee_company || b.title || '');
+      const body = cont
+        ? '<span class="opacity-50">&#8942;</span>'
+        : \`<div class="font-medium truncate">\${escH(who)}</div>\${sub ? \`<div class="text-[10px] opacity-70 truncate">\${escH(sub)}</div>\` : ''}\`;
+      return \`<td class="p-1 align-top"><button onclick="openRoomCellModal(\${room.id}, '\${start}')" class="w-full text-left rounded-lg px-2 py-2 \${cls} hover:brightness-125 transition">\${body}</button></td>\`;
+    }
+
+    // Shares #modal-container with every other admin dialog on purpose: the
+    // auto-refresh timer skips a tick while that one is open, so a confirm dialog
+    // cannot be wiped out from under the operator.
+    function openRoomCellModal(roomId, start) {
+      const g = adminRoomGrid;
+      if (!g) return;
+      const b = g.cells[roomId + '|' + start];
+      const room = (g.rooms || []).find(r => r.id === roomId);
+      if (!b || !room) return;
+      // Every hour of this reservation, so the totals below are the reservation's
+      // and not one hour of it.
+      const hours = Object.keys(g.cells).map(k => g.cells[k])
+        .filter(x => x.room_id === roomId && (b.group_ref ? x.group_ref === b.group_ref : x.id === b.id))
+        .sort((x, y) => x.slot_start < y.slot_start ? -1 : 1);
+      const net = Number(b.price_inr || 0) * hours.length;
+      const gross = Math.round(net * (1 + (g.gst_percent || 18) / 100));
+      const isBlock = b.kind === 'block';
+      openModal(\`
+        <h3 class="text-lg font-bold mb-1">\${escH(room.label)} &middot; \${escH(room.wtc_name)}</h3>
+        <p class="text-xs text-gray-400 mb-4">\${new Date(b.slot_date + 'T00:00:00').toLocaleDateString([], {weekday:'long',day:'numeric',month:'long'})} &middot; \${hours[0].slot_start.slice(11)}&ndash;\${hours[hours.length - 1].slot_end.slice(11)} &middot; \${hours.length} \${hours.length === 1 ? 'hour' : 'hours'}</p>
+        <table class="w-full text-sm mb-4">
+          <tr><td class="py-1 pr-4 text-gray-500">Status</td><td><span class="px-2 py-0.5 rounded text-xs font-medium \${b.status === 'confirmed' ? 'bg-green-500/20 text-green-300' : 'bg-yellow-500/20 text-yellow-300'}">\${escH(b.status)}</span> \${isBlock ? '<span class="text-xs text-gray-500 ml-1">venue block, not charged</span>' : ''}</td></tr>
+          <tr><td class="py-1 pr-4 text-gray-500">Title</td><td>\${escH(b.title || '')}</td></tr>
+          \${isBlock ? '' : \`
+          <tr><td class="py-1 pr-4 text-gray-500">Booked by</td><td>\${escH(b.attendee_name || b.contact_name || 'unknown')}\${b.attendee_company ? ' &middot; ' + escH(b.attendee_company) : ''}</td></tr>
+          <tr><td class="py-1 pr-4 text-gray-500">Contact</td><td>\${escH(b.attendee_email || b.contact_email || '')}\${b.contact_phone ? ' &middot; ' + escH(b.contact_phone) : ''}</td></tr>
+          <tr><td class="py-1 pr-4 text-gray-500">Total</td><td>₹\${Number(net).toLocaleString('en-IN')} + \${g.gst_percent}% GST = <strong>₹\${Number(gross).toLocaleString('en-IN')}</strong></td></tr>\`}
+          \${b.notes ? \`<tr><td class="py-1 pr-4 text-gray-500 align-top">Notes</td><td>\${escH(b.notes)}</td></tr>\` : ''}
+          \${b.created_by ? \`<tr><td class="py-1 pr-4 text-gray-500">Last touched by</td><td>\${escH(b.created_by)}</td></tr>\` : ''}
+        </table>
+        <div class="flex flex-wrap gap-2">
+          \${b.status === 'confirmed'
+            ? \`<button onclick="setRoomBookingStatus(\${b.id}, 'held')" class="px-3 py-2 rounded-lg text-xs font-medium bg-yellow-500/20 text-yellow-300 hover:bg-yellow-500/30"><i class="fas fa-rotate-left mr-1"></i>Back to held</button>\`
+            : \`<button onclick="setRoomBookingStatus(\${b.id}, 'confirmed')" class="px-3 py-2 rounded-lg text-xs font-medium bg-green-500/20 text-green-300 hover:bg-green-500/30"><i class="fas fa-check mr-1"></i>Confirm</button>\`}
+          <button onclick="setRoomBookingStatus(\${b.id}, 'rejected')" class="px-3 py-2 rounded-lg text-xs font-medium bg-red-500/20 text-red-300 hover:bg-red-500/30"><i class="fas fa-ban mr-1"></i>Reject</button>
+          <button onclick="setRoomBookingStatus(\${b.id}, 'cancelled')" class="px-3 py-2 rounded-lg text-xs font-medium bg-white/5 text-gray-300 hover:bg-white/10"><i class="fas fa-times mr-1"></i>Cancel reservation</button>
+          <button onclick="deleteRoomHour(\${b.id})" class="px-3 py-2 rounded-lg text-xs font-medium text-red-400 hover:bg-red-500/10 ml-auto"><i class="fas fa-trash mr-1"></i>Delete this hour</button>
+        </div>
+        <p class="text-[11px] text-gray-500 mt-3">Confirm, reject and cancel act on the whole reservation. Delete removes only \${hours[0].slot_start.slice(11) === start.slice(11) ? 'this' : 'the chosen'} hour, for trimming an over-long hold.</p>\`);
+    }
+
+    async function setRoomBookingStatus(id, status) {
+      try {
+        const r = await api.put('/api/admin/room-bookings/' + id, { status });
+        if (r && r.error) { toast(r.error, 'error'); return; }
+        closeModal();
+        toast('Reservation ' + status);
+        loadAdminRooms();
+      } catch(e) { toast(e.message || 'Could not update the reservation', 'error'); }
+    }
+
+    async function deleteRoomHour(id) {
+      if (!confirm('Delete just this hour? The rest of the reservation stays as it is.')) return;
+      try {
+        await api.del('/api/admin/room-bookings/' + id);
+        closeModal();
+        toast('Hour removed');
+        loadAdminRooms();
+      } catch(e) { toast('Could not remove that hour', 'error'); }
+    }
+
+    // The free-cell dialog. This is what a pre-generated slot grid would have
+    // offered as "mark unavailable" — same table, same unique index, no extra
+    // machinery, and it doubles as the walk-up booking form.
+    function openRoomBlockModal(roomId, start) {
+      const g = adminRoomGrid;
+      if (!g) return;
+      const room = (g.rooms || []).find(r => r.id === roomId);
+      if (!room) return;
+      const day = start.slice(0, 10);
+      const free = g.slot_hours.filter(h => !g.cells[roomId + '|' + day + ' ' + h]);
+      openModal(\`
+        <h3 class="text-lg font-bold mb-1">Hold \${escH(room.label)}</h3>
+        <p class="text-xs text-gray-400 mb-4">\${new Date(day + 'T00:00:00').toLocaleDateString([], {weekday:'long',day:'numeric',month:'long'})} &middot; \${escH(room.wtc_name)} &middot; seats \${room.capacity} &middot; ₹\${Number(room.price_inr).toLocaleString('en-IN')}/hr + \${g.gst_percent}% GST</p>
+        <label class="block text-xs text-gray-400 mb-1">Hours (only free ones are listed)</label>
+        <div class="grid grid-cols-3 gap-2 mb-4">
+          \${free.map(h => \`
+            <label class="glass rounded-lg px-2 py-2 text-xs flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" class="rb-hour" value="\${day} \${h}"\${(day + ' ' + h) === start ? ' checked' : ''}>\${h}
+            </label>\`).join('') || '<span class="col-span-3 text-xs text-gray-500">Nothing free left in this room on this day.</span>'}
+        </div>
+        <div class="grid grid-cols-2 gap-3 mb-3">
+          <select id="rb-kind" class="px-3 py-2 rounded-lg text-sm bg-white/5 border border-white/10">
+            <option value="booking">Booking &mdash; charged</option>
+            <option value="block">Venue block &mdash; not charged</option>
+          </select>
+          <input id="rb-title" autocomplete="off" placeholder="Title" class="px-3 py-2 rounded-lg text-sm bg-white/5 border border-white/10">
+        </div>
+        <div class="grid grid-cols-3 gap-3 mb-3">
+          <input id="rb-contact" autocomplete="off" placeholder="Contact name" class="px-3 py-2 rounded-lg text-sm bg-white/5 border border-white/10">
+          <input id="rb-email" autocomplete="off" inputmode="email" autocapitalize="none" spellcheck="false" placeholder="Email" class="px-3 py-2 rounded-lg text-sm bg-white/5 border border-white/10">
+          <input id="rb-phone" autocomplete="off" inputmode="tel" placeholder="Phone" class="px-3 py-2 rounded-lg text-sm bg-white/5 border border-white/10">
+        </div>
+        <textarea id="rb-notes" autocomplete="off" rows="2" placeholder="Notes" class="w-full px-3 py-2 rounded-lg text-sm bg-white/5 border border-white/10 mb-4"></textarea>
+        <div class="flex gap-2">
+          <button onclick="submitRoomBlock(\${roomId}, '\${day}')" class="px-4 py-2 rounded-lg text-sm font-medium bg-primary-600 hover:bg-primary-500 text-white">Hold these hours</button>
+          <button onclick="closeModal()" class="px-4 py-2 rounded-lg text-sm font-medium glass hover:bg-white/10">Cancel</button>
+        </div>
+        <p class="text-[11px] text-gray-500 mt-3">Created here, the hours land confirmed straight away &mdash; this is the desk taking the room, not a request waiting on one.</p>\`);
+    }
+
+    async function submitRoomBlock(roomId, day) {
+      const hours = Array.from(document.querySelectorAll('.rb-hour:checked')).map(i => i.value);
+      if (!hours.length) { toast('Pick at least one hour', 'error'); return; }
+      const val = id => (document.getElementById(id) || {}).value || '';
+      try {
+        const r = await api.post('/api/admin/room-bookings', {
+          room_id: roomId, slot_date: day, slot_starts: hours,
+          kind: val('rb-kind'), title: val('rb-title'),
+          contact_name: val('rb-contact'), contact_email: val('rb-email'), contact_phone: val('rb-phone'),
+          notes: val('rb-notes'),
+        });
+        if (r && r.error) { toast(r.error, 'error'); return; }
+        closeModal();
+        toast(hours.length + (hours.length === 1 ? ' hour held' : ' hours held'));
+        loadAdminRooms();
+      } catch(e) { toast(e.message || 'Could not hold those hours', 'error'); }
+    }
 
     async function loadAdminBoothRequests() {
       const section = document.getElementById('section-booth-requests');
@@ -19007,9 +19917,9 @@ function adminPageHTML(): string {
     function openCreateCategory() {
       openModal(\`<h3 class="text-lg font-bold mb-4"><i class="fas fa-plus text-green-400 mr-2"></i>Add Category</h3>
         <form id="cat-form" class="space-y-3">
-          <div><label class="text-xs text-gray-400 mb-1 block">Name *</label><input id="cf-name" required class="w-full px-3 py-2 rounded-lg text-sm"></div>
-          <div><label class="text-xs text-gray-400 mb-1 block">Description</label><input id="cf-desc" class="w-full px-3 py-2 rounded-lg text-sm"></div>
-          <div><label class="text-xs text-gray-400 mb-1 block">Icon Emoji</label><input id="cf-icon" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="e.g. 🏆"></div>
+          <div><label class="text-xs text-gray-400 mb-1 block">Name *</label><input id="cf-name" autocomplete="off" required class="w-full px-3 py-2 rounded-lg text-sm"></div>
+          <div><label class="text-xs text-gray-400 mb-1 block">Description</label><input id="cf-desc" autocomplete="off" class="w-full px-3 py-2 rounded-lg text-sm"></div>
+          <div><label class="text-xs text-gray-400 mb-1 block">Icon Emoji</label><input id="cf-icon" autocomplete="off" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="e.g. 🏆"></div>
           <div class="flex gap-2 pt-2"><button type="submit" class="flex-1 py-2.5 rounded-xl text-sm font-medium bg-green-600 hover:bg-green-500 text-white"><i class="fas fa-plus mr-1"></i>Create</button><button type="button" onclick="closeModal()" class="px-4 py-2.5 rounded-xl text-sm font-medium glass hover:bg-white/10">Cancel</button></div>
         </form>\`);
       document.getElementById('cat-form').onsubmit = async e => { e.preventDefault(); await api.post('/api/admin/award-categories', { event_id:EID, name:document.getElementById('cf-name').value, description:document.getElementById('cf-desc').value, icon:document.getElementById('cf-icon').value }); closeModal(); toast('Category created!'); loadAdminAwards(); };
@@ -19018,9 +19928,9 @@ function adminPageHTML(): string {
     function openEditCategory(id, name, desc, icon) {
       openModal(\`<h3 class="text-lg font-bold mb-4"><i class="fas fa-edit text-primary-400 mr-2"></i>Edit Category</h3>
         <form id="cat-form" class="space-y-3">
-          <div><label class="text-xs text-gray-400 mb-1 block">Name *</label><input id="cf-name" value="\${name}" required class="w-full px-3 py-2 rounded-lg text-sm"></div>
-          <div><label class="text-xs text-gray-400 mb-1 block">Description</label><input id="cf-desc" value="\${desc}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
-          <div><label class="text-xs text-gray-400 mb-1 block">Icon Emoji</label><input id="cf-icon" value="\${icon}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
+          <div><label class="text-xs text-gray-400 mb-1 block">Name *</label><input id="cf-name" autocomplete="off" value="\${name}" required class="w-full px-3 py-2 rounded-lg text-sm"></div>
+          <div><label class="text-xs text-gray-400 mb-1 block">Description</label><input id="cf-desc" autocomplete="off" value="\${desc}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
+          <div><label class="text-xs text-gray-400 mb-1 block">Icon Emoji</label><input id="cf-icon" autocomplete="off" value="\${icon}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
           <div class="flex gap-2 pt-2"><button type="submit" class="flex-1 py-2.5 rounded-xl text-sm font-medium bg-primary-600 hover:bg-primary-500 text-white"><i class="fas fa-save mr-1"></i>Save</button><button type="button" onclick="closeModal()" class="px-4 py-2.5 rounded-xl text-sm font-medium glass hover:bg-white/10">Cancel</button></div>
         </form>\`);
       document.getElementById('cat-form').onsubmit = async e => { e.preventDefault(); await api.put('/api/admin/award-categories/'+id, { name:document.getElementById('cf-name').value, description:document.getElementById('cf-desc').value, icon:document.getElementById('cf-icon').value }); closeModal(); toast('Category updated!'); loadAdminAwards(); };
@@ -19032,9 +19942,9 @@ function adminPageHTML(): string {
     function openAddNominee(catId) {
       openModal(\`<h3 class="text-lg font-bold mb-4"><i class="fas fa-plus text-green-400 mr-2"></i>Add Nominee</h3>
         <form id="nom-form" class="space-y-3">
-          <div><label class="text-xs text-gray-400 mb-1 block">Name *</label><input id="nf-name" required class="w-full px-3 py-2 rounded-lg text-sm"></div>
-          <div><label class="text-xs text-gray-400 mb-1 block">Description</label><input id="nf-desc" class="w-full px-3 py-2 rounded-lg text-sm"></div>
-          <div><label class="text-xs text-gray-400 mb-1 block">Company</label><input id="nf-company" class="w-full px-3 py-2 rounded-lg text-sm"></div>
+          <div><label class="text-xs text-gray-400 mb-1 block">Name *</label><input id="nf-name" autocomplete="off" required class="w-full px-3 py-2 rounded-lg text-sm"></div>
+          <div><label class="text-xs text-gray-400 mb-1 block">Description</label><input id="nf-desc" autocomplete="off" class="w-full px-3 py-2 rounded-lg text-sm"></div>
+          <div><label class="text-xs text-gray-400 mb-1 block">Company</label><input id="nf-company" autocomplete="off" class="w-full px-3 py-2 rounded-lg text-sm"></div>
           <div class="flex gap-2 pt-2"><button type="submit" class="flex-1 py-2.5 rounded-xl text-sm font-medium bg-green-600 hover:bg-green-500 text-white"><i class="fas fa-plus mr-1"></i>Add</button><button type="button" onclick="closeModal()" class="px-4 py-2.5 rounded-xl text-sm font-medium glass hover:bg-white/10">Cancel</button></div>
         </form>\`);
       document.getElementById('nom-form').onsubmit = async e => { e.preventDefault(); await api.post('/api/admin/nominees', { category_id:catId, event_id:EID, name:document.getElementById('nf-name').value, description:document.getElementById('nf-desc').value, company:document.getElementById('nf-company').value }); closeModal(); toast('Nominee added!'); loadAdminAwards(); };
@@ -19043,9 +19953,9 @@ function adminPageHTML(): string {
     function openEditNominee(id, name, desc, company, isWinner) {
       openModal(\`<h3 class="text-lg font-bold mb-4"><i class="fas fa-edit text-primary-400 mr-2"></i>Edit Nominee</h3>
         <form id="nom-form" class="space-y-3">
-          <div><label class="text-xs text-gray-400 mb-1 block">Name *</label><input id="nf-name" value="\${name}" required class="w-full px-3 py-2 rounded-lg text-sm"></div>
-          <div><label class="text-xs text-gray-400 mb-1 block">Description</label><input id="nf-desc" value="\${desc}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
-          <div><label class="text-xs text-gray-400 mb-1 block">Company</label><input id="nf-company" value="\${company}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
+          <div><label class="text-xs text-gray-400 mb-1 block">Name *</label><input id="nf-name" autocomplete="off" value="\${name}" required class="w-full px-3 py-2 rounded-lg text-sm"></div>
+          <div><label class="text-xs text-gray-400 mb-1 block">Description</label><input id="nf-desc" autocomplete="off" value="\${desc}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
+          <div><label class="text-xs text-gray-400 mb-1 block">Company</label><input id="nf-company" autocomplete="off" value="\${company}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
           <div class="flex gap-2 pt-2"><button type="submit" class="flex-1 py-2.5 rounded-xl text-sm font-medium bg-primary-600 hover:bg-primary-500 text-white"><i class="fas fa-save mr-1"></i>Save</button><button type="button" onclick="closeModal()" class="px-4 py-2.5 rounded-xl text-sm font-medium glass hover:bg-white/10">Cancel</button></div>
         </form>\`);
       document.getElementById('nom-form').onsubmit = async e => { e.preventDefault(); await api.put('/api/admin/nominees/'+id, { name:document.getElementById('nf-name').value, description:document.getElementById('nf-desc').value, company:document.getElementById('nf-company').value, is_winner:isWinner }); closeModal(); toast('Nominee updated!'); loadAdminAwards(); };
@@ -19105,14 +20015,14 @@ function adminPageHTML(): string {
 
     function announcementFormHTML(a={}) {
       return \`<div class="space-y-3">
-        <div><label class="text-xs text-gray-400 mb-1 block">Title *</label><input id="af-title" value="\${escH(a.title)}" required class="w-full px-3 py-2 rounded-lg text-sm"></div>
-        <div><label class="text-xs text-gray-400 mb-1 block">Content *</label><textarea id="af-content" rows="3" required class="w-full px-3 py-2 rounded-lg text-sm">\${escH(a.content)}</textarea></div>
+        <div><label class="text-xs text-gray-400 mb-1 block">Title *</label><input id="af-title" autocomplete="off" value="\${escH(a.title)}" required class="w-full px-3 py-2 rounded-lg text-sm"></div>
+        <div><label class="text-xs text-gray-400 mb-1 block">Content *</label><textarea id="af-content" autocomplete="off" rows="3" required class="w-full px-3 py-2 rounded-lg text-sm">\${escH(a.content)}</textarea></div>
         <div class="grid grid-cols-3 gap-3">
           <div><label class="text-xs text-gray-400 mb-1 block">Type</label>
             <select id="af-type" class="w-full px-3 py-2 rounded-lg text-sm">
               \${['general','urgent','schedule_change','award_result'].map(t=>'<option '+(a.announcement_type===t?'selected':'')+'>'+t+'</option>').join('')}
             </select></div>
-          <div><label class="text-xs text-gray-400 mb-1 block">Author</label><input id="af-author" value="\${a.author_name||'Event Team'}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
+          <div><label class="text-xs text-gray-400 mb-1 block">Author</label><input id="af-author" autocomplete="off" value="\${a.author_name||'Event Team'}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
           <div class="flex items-end"><label class="flex items-center gap-2 pb-2 cursor-pointer"><input type="checkbox" id="af-pinned" \${a.pinned?'checked':''} class="rounded"><span class="text-xs text-gray-400">Pinned</span></label></div>
         </div>
       </div>\`;
@@ -19148,8 +20058,8 @@ function adminPageHTML(): string {
           <p class="text-[11px] text-gray-500">Emails are sent one at a time from this tab. Keep it open until the count finishes.</p>
         </div>
         <form id="bc-form" class="space-y-3">
-          <div><label class="text-xs text-gray-400 mb-1 block">Title *</label><input id="bc-title" required class="w-full px-3 py-2 rounded-lg text-sm" placeholder="e.g. Schedule Change"></div>
-          <div><label class="text-xs text-gray-400 mb-1 block">Message *</label><textarea id="bc-content" rows="3" required class="w-full px-3 py-2 rounded-lg text-sm" placeholder="Enter your broadcast message..."></textarea></div>
+          <div><label class="text-xs text-gray-400 mb-1 block">Title *</label><input id="bc-title" autocomplete="off" required class="w-full px-3 py-2 rounded-lg text-sm" placeholder="e.g. Schedule Change"></div>
+          <div><label class="text-xs text-gray-400 mb-1 block">Message *</label><textarea id="bc-content" autocomplete="off" rows="3" required class="w-full px-3 py-2 rounded-lg text-sm" placeholder="Enter your broadcast message..."></textarea></div>
           <div class="flex gap-2 pt-2"><button type="submit" class="flex-1 py-2.5 rounded-xl text-sm font-medium bg-red-600 hover:bg-red-500 text-white"><i class="fas fa-broadcast-tower mr-1"></i>Send Broadcast</button><button type="button" onclick="closeModal()" class="px-4 py-2.5 rounded-xl text-sm font-medium glass hover:bg-white/10">Cancel</button></div>
         </form>\`);
       document.getElementById('bc-form').onsubmit = async e => { e.preventDefault(); await runBroadcast(); };
@@ -19205,10 +20115,10 @@ function adminPageHTML(): string {
       const ev = await api.get('/api/events/'+EID);
       openModal(\`<h3 class="text-lg font-bold mb-4"><i class="fas fa-edit text-primary-400 mr-2"></i>Edit Event</h3>
         <form id="ev-form" class="space-y-3">
-          <div><label class="text-xs text-gray-400 mb-1 block">Title</label><input id="ev-title" value="\${escH(ev.title)}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
-          <div><label class="text-xs text-gray-400 mb-1 block">Description</label><textarea id="ev-desc" rows="3" class="w-full px-3 py-2 rounded-lg text-sm">\${escH(ev.description)}</textarea></div>
+          <div><label class="text-xs text-gray-400 mb-1 block">Title</label><input id="ev-title" autocomplete="off" value="\${escH(ev.title)}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
+          <div><label class="text-xs text-gray-400 mb-1 block">Description</label><textarea id="ev-desc" autocomplete="off" rows="3" class="w-full px-3 py-2 rounded-lg text-sm">\${escH(ev.description)}</textarea></div>
           <div class="grid grid-cols-2 gap-3">
-            <div><label class="text-xs text-gray-400 mb-1 block">Venue</label><input id="ev-venue" value="\${escH(ev.venue)}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
+            <div><label class="text-xs text-gray-400 mb-1 block">Venue</label><input id="ev-venue" autocomplete="off" value="\${escH(ev.venue)}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
             <div><label class="text-xs text-gray-400 mb-1 block">Status</label>
               <select id="ev-status" class="w-full px-3 py-2 rounded-lg text-sm">
                 \${['upcoming','live','completed'].map(s=>'<option '+(ev.status===s?'selected':'')+'>'+s+'</option>').join('')}
@@ -19219,10 +20129,10 @@ function adminPageHTML(): string {
               <select id="ev-type" class="w-full px-3 py-2 rounded-lg text-sm">
                 \${['conference','exhibition','awards','hybrid'].map(t=>'<option '+(ev.event_type===t?'selected':'')+'>'+t+'</option>').join('')}
               </select></div>
-            <div><label class="text-xs text-gray-400 mb-1 block">Start Date</label><input type="date" id="ev-start" value="\${escH(ev.start_date)}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
-            <div><label class="text-xs text-gray-400 mb-1 block">End Date</label><input type="date" id="ev-end" value="\${escH(ev.end_date)}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
+            <div><label class="text-xs text-gray-400 mb-1 block">Start Date</label><input type="date" id="ev-start" autocomplete="off" value="\${escH(ev.start_date)}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
+            <div><label class="text-xs text-gray-400 mb-1 block">End Date</label><input type="date" id="ev-end" autocomplete="off" value="\${escH(ev.end_date)}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
           </div>
-          <div><label class="text-xs text-gray-400 mb-1 block">Max Attendees</label><input type="number" id="ev-max" value="\${ev.max_attendees||500}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
+          <div><label class="text-xs text-gray-400 mb-1 block">Max Attendees</label><input type="number" id="ev-max" autocomplete="off" value="\${ev.max_attendees||500}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
           <div class="flex gap-2 pt-2"><button type="submit" class="flex-1 py-2.5 rounded-xl text-sm font-medium bg-primary-600 hover:bg-primary-500 text-white"><i class="fas fa-save mr-1"></i>Save</button><button type="button" onclick="closeModal()" class="px-4 py-2.5 rounded-xl text-sm font-medium glass hover:bg-white/10">Cancel</button></div>
         </form>\`);
       document.getElementById('ev-form').onsubmit = async e => {
@@ -19311,15 +20221,15 @@ function adminPageHTML(): string {
         '<div class="p-6"><h3 class="text-lg font-bold mb-4"><i class="fas fa-plus-circle text-primary-400 mr-2"></i>Add Innovation Talk</h3>'
         + '<form id="add-italk-form" class="space-y-3">'
         + '<div class="grid grid-cols-2 gap-3">'
-        + '<div><label class="text-xs text-gray-400 mb-1 block">Slot No.</label><input type="number" name="slot_no" class="w-full px-3 py-2 rounded-lg text-sm" required></div>'
+        + '<div><label class="text-xs text-gray-400 mb-1 block">Slot No.</label><input type="number" name="slot_no" autocomplete="off" class="w-full px-3 py-2 rounded-lg text-sm" required></div>'
         + '<div><label class="text-xs text-gray-400 mb-1 block">Session</label><select name="session_type" class="w-full px-3 py-2 rounded-lg text-sm"><option>Morning</option><option>Afternoon</option></select></div>'
         + '</div>'
-        + '<div><label class="text-xs text-gray-400 mb-1 block">Time Slot</label><input type="text" name="time_slot" placeholder="e.g. 10:00 – 10:10 AM" class="w-full px-3 py-2 rounded-lg text-sm" required></div>'
-        + '<div><label class="text-xs text-gray-400 mb-1 block">Speaker Name(s)</label><input type="text" name="speaker_name" class="w-full px-3 py-2 rounded-lg text-sm" required></div>'
-        + '<div><label class="text-xs text-gray-400 mb-1 block">Company</label><input type="text" name="company" class="w-full px-3 py-2 rounded-lg text-sm"></div>'
-        + '<div><label class="text-xs text-gray-400 mb-1 block">Topic / Title</label><input type="text" name="topic" class="w-full px-3 py-2 rounded-lg text-sm"></div>'
+        + '<div><label class="text-xs text-gray-400 mb-1 block">Time Slot</label><input type="text" name="time_slot" autocomplete="off" placeholder="e.g. 10:00 – 10:10 AM" class="w-full px-3 py-2 rounded-lg text-sm" required></div>'
+        + '<div><label class="text-xs text-gray-400 mb-1 block">Speaker Name(s)</label><input type="text" name="speaker_name" autocomplete="off" class="w-full px-3 py-2 rounded-lg text-sm" required></div>'
+        + '<div><label class="text-xs text-gray-400 mb-1 block">Company</label><input type="text" name="company" autocomplete="off" class="w-full px-3 py-2 rounded-lg text-sm"></div>'
+        + '<div><label class="text-xs text-gray-400 mb-1 block">Topic / Title</label><input type="text" name="topic" autocomplete="off" class="w-full px-3 py-2 rounded-lg text-sm"></div>'
         + '<div><label class="text-xs text-gray-400 mb-1 block">Status</label><select name="status" class="w-full px-3 py-2 rounded-lg text-sm"><option value="confirmed">Confirmed</option><option value="tentative">Tentative</option><option value="cancelled">Cancelled</option></select></div>'
-        + '<div><label class="text-xs text-gray-400 mb-1 block">Notes</label><textarea name="notes" rows="2" class="w-full px-3 py-2 rounded-lg text-sm"></textarea></div>'
+        + '<div><label class="text-xs text-gray-400 mb-1 block">Notes</label><textarea name="notes" autocomplete="off" rows="2" class="w-full px-3 py-2 rounded-lg text-sm"></textarea></div>'
         + '<div class="flex gap-2 pt-2"><button type="submit" class="flex-1 py-2 rounded-xl text-sm font-medium bg-primary-600 hover:bg-primary-500 text-white transition">Add Talk</button>'
         + '<button type="button" onclick="closeModal()" class="px-6 py-2 rounded-xl text-sm glass hover:bg-white/10 text-gray-300 transition">Cancel</button></div>'
         + '</form></div>';
@@ -19348,15 +20258,15 @@ function adminPageHTML(): string {
         '<div class="p-6"><h3 class="text-lg font-bold mb-4"><i class="fas fa-edit text-primary-400 mr-2"></i>Edit Innovation Talk #'+t.slot_no+'</h3>'
         + '<form id="edit-italk-form" class="space-y-3">'
         + '<div class="grid grid-cols-2 gap-3">'
-        + '<div><label class="text-xs text-gray-400 mb-1 block">Slot No.</label><input type="number" name="slot_no" value="'+t.slot_no+'" class="w-full px-3 py-2 rounded-lg text-sm" required></div>'
+        + '<div><label class="text-xs text-gray-400 mb-1 block">Slot No.</label><input type="number" name="slot_no" autocomplete="off" value="'+t.slot_no+'" class="w-full px-3 py-2 rounded-lg text-sm" required></div>'
         + '<div><label class="text-xs text-gray-400 mb-1 block">Session</label><select name="session_type" class="w-full px-3 py-2 rounded-lg text-sm"><option '+(t.session_type==='Morning'?'selected':'')+'>Morning</option><option '+(t.session_type==='Afternoon'?'selected':'')+'>Afternoon</option></select></div>'
         + '</div>'
-        + '<div><label class="text-xs text-gray-400 mb-1 block">Time Slot</label><input type="text" name="time_slot" value="'+esc(t.time_slot)+'" class="w-full px-3 py-2 rounded-lg text-sm" required></div>'
-        + '<div><label class="text-xs text-gray-400 mb-1 block">Speaker Name(s)</label><input type="text" name="speaker_name" value="'+esc(t.speaker_name)+'" class="w-full px-3 py-2 rounded-lg text-sm" required></div>'
-        + '<div><label class="text-xs text-gray-400 mb-1 block">Company</label><input type="text" name="company" value="'+esc(t.company)+'" class="w-full px-3 py-2 rounded-lg text-sm"></div>'
-        + '<div><label class="text-xs text-gray-400 mb-1 block">Topic / Title</label><input type="text" name="topic" value="'+esc(t.topic||'')+'" class="w-full px-3 py-2 rounded-lg text-sm"></div>'
+        + '<div><label class="text-xs text-gray-400 mb-1 block">Time Slot</label><input type="text" name="time_slot" autocomplete="off" value="'+esc(t.time_slot)+'" class="w-full px-3 py-2 rounded-lg text-sm" required></div>'
+        + '<div><label class="text-xs text-gray-400 mb-1 block">Speaker Name(s)</label><input type="text" name="speaker_name" autocomplete="off" value="'+esc(t.speaker_name)+'" class="w-full px-3 py-2 rounded-lg text-sm" required></div>'
+        + '<div><label class="text-xs text-gray-400 mb-1 block">Company</label><input type="text" name="company" autocomplete="off" value="'+esc(t.company)+'" class="w-full px-3 py-2 rounded-lg text-sm"></div>'
+        + '<div><label class="text-xs text-gray-400 mb-1 block">Topic / Title</label><input type="text" name="topic" autocomplete="off" value="'+esc(t.topic||'')+'" class="w-full px-3 py-2 rounded-lg text-sm"></div>'
         + '<div><label class="text-xs text-gray-400 mb-1 block">Status</label><select name="status" class="w-full px-3 py-2 rounded-lg text-sm"><option value="confirmed" '+(t.status==='confirmed'?'selected':'')+'>Confirmed</option><option value="tentative" '+(t.status==='tentative'?'selected':'')+'>Tentative</option><option value="cancelled" '+(t.status==='cancelled'?'selected':'')+'>Cancelled</option></select></div>'
-        + '<div><label class="text-xs text-gray-400 mb-1 block">Notes</label><textarea name="notes" rows="2" class="w-full px-3 py-2 rounded-lg text-sm">'+esc(t.notes||'')+'</textarea></div>'
+        + '<div><label class="text-xs text-gray-400 mb-1 block">Notes</label><textarea name="notes" autocomplete="off" rows="2" class="w-full px-3 py-2 rounded-lg text-sm">'+esc(t.notes||'')+'</textarea></div>'
         + '<div class="flex gap-2 pt-2"><button type="submit" class="flex-1 py-2 rounded-xl text-sm font-medium bg-primary-600 hover:bg-primary-500 text-white transition">Save Changes</button>'
         + '<button type="button" onclick="closeModal()" class="px-6 py-2 rounded-xl text-sm glass hover:bg-white/10 text-gray-300 transition">Cancel</button></div>'
         + '</form></div>';
@@ -19435,30 +20345,30 @@ function adminPageHTML(): string {
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
                   <div>
                     <label class="text-[10px] text-gray-400 mb-0.5 block">Slot Order</label>
-                    <input type="number" id="pf-order" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="1">
+                    <input type="number" id="pf-order" autocomplete="off" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="1">
                   </div>
                   <div>
                     <label class="text-[10px] text-gray-400 mb-0.5 block">Time Slot</label>
-                    <input type="text" id="pf-time" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="2:30 – 2:38 PM">
+                    <input type="text" id="pf-time" autocomplete="off" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="2:30 – 2:38 PM">
                   </div>
                   <div>
                     <label class="text-[10px] text-gray-400 mb-0.5 block">Company</label>
-                    <input type="text" id="pf-company" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="Company Name">
+                    <input type="text" id="pf-company" autocomplete="off" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="Company Name">
                   </div>
                 </div>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
                   <div>
                     <label class="text-[10px] text-gray-400 mb-0.5 block">Pitcher Name</label>
-                    <input type="text" id="pf-name" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="Full Name">
+                    <input type="text" id="pf-name" autocomplete="off" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="Full Name">
                   </div>
                   <div>
                     <label class="text-[10px] text-gray-400 mb-0.5 block">Pitcher Title</label>
-                    <input type="text" id="pf-title" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="CEO & Founder">
+                    <input type="text" id="pf-title" autocomplete="off" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="CEO & Founder">
                   </div>
                 </div>
                 <div class="mb-3">
                   <label class="text-[10px] text-gray-400 mb-0.5 block">Profile / Description</label>
-                  <textarea id="pf-profile" rows="2" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="Brief bio or description..."></textarea>
+                  <textarea id="pf-profile" autocomplete="off" rows="2" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="Brief bio or description..."></textarea>
                 </div>
                 <div class="flex gap-2">
                   <button onclick="savePitch()" class="px-4 py-2 rounded-lg text-xs font-semibold bg-orange-600 hover:bg-orange-500 text-white transition"><i class="fas fa-save mr-1"></i>Save</button>
@@ -19515,15 +20425,15 @@ function adminPageHTML(): string {
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
                   <div>
                     <label class="text-[10px] text-gray-400 mb-0.5 block">Name</label>
-                    <input type="text" id="if-name" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="Full Name">
+                    <input type="text" id="if-name" autocomplete="off" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="Full Name">
                   </div>
                   <div>
                     <label class="text-[10px] text-gray-400 mb-0.5 block">Title / Role</label>
-                    <input type="text" id="if-title" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="Managing Partner">
+                    <input type="text" id="if-title" autocomplete="off" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="Managing Partner">
                   </div>
                   <div>
                     <label class="text-[10px] text-gray-400 mb-0.5 block">Company / Fund</label>
-                    <input type="text" id="if-company" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="Venture Capital Fund">
+                    <input type="text" id="if-company" autocomplete="off" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="Venture Capital Fund">
                   </div>
                 </div>
                 <div class="flex gap-2">
@@ -19807,9 +20717,9 @@ function adminPageHTML(): string {
         '<div class="glass rounded-lg p-3 my-3 text-xs text-gray-400 max-h-28 overflow-y-auto">' +
           '<span class="text-gray-500">They asked:</span><br>' + (inq.message ? escH(inq.message) : '<em>No message</em>') + '</div>' +
         '<label class="block text-[11px] text-gray-400 mb-1">Subject</label>' +
-        '<input id="inq-reply-subject" class="w-full px-3 py-2 rounded-lg text-sm mb-3" value="Re: your enquiry - Bharat AI Innovation 2026">' +
+        '<input id="inq-reply-subject" autocomplete="off" class="w-full px-3 py-2 rounded-lg text-sm mb-3" value="Re: your enquiry - Bharat AI Innovation 2026">' +
         '<label class="block text-[11px] text-gray-400 mb-1">Your reply</label>' +
-        '<textarea id="inq-reply-body" rows="7" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="Type the reply that will be emailed to them..."></textarea>' +
+        '<textarea id="inq-reply-body" autocomplete="off" rows="7" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="Type the reply that will be emailed to them..."></textarea>' +
         '<p id="inq-reply-msg" class="text-[11px] text-amber-300 mt-2 min-h-4"></p>' +
         '<div class="flex gap-2 mt-2">' +
           '<button onclick="closeModal()" class="flex-1 py-2.5 rounded-xl text-sm glass hover:bg-white/10">Cancel</button>' +
@@ -20080,7 +20990,7 @@ function adminPageHTML(): string {
                 <label class="block text-xs font-medium text-gray-400 mb-1.5">Elastic Email API Key <span class="text-red-400">*</span></label>
                 <div class="relative">
                   <i class="fas fa-key absolute left-3 top-1/2 -translate-y-1/2 text-gray-500"></i>
-                  <input type="password" id="set-elastic-key" value="\${settings.elastic_email_api_key || ''}" 
+                  <input type="password" id="set-elastic-key" autocomplete="off" value="\${settings.elastic_email_api_key || ''}" 
                     placeholder="Enter your Elastic Email API key" 
                     class="w-full pl-10 pr-12 py-2.5 rounded-xl text-sm">
                   <button type="button" onclick="toggleApiKeyVisibility()" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white">
@@ -20095,7 +21005,7 @@ function adminPageHTML(): string {
                   <label class="block text-xs font-medium text-gray-400 mb-1.5">Sender Email Address <span class="text-red-400">*</span></label>
                   <div class="relative">
                     <i class="fas fa-at absolute left-3 top-1/2 -translate-y-1/2 text-gray-500"></i>
-                    <input type="email" id="set-sender-email" value="\${settings.sender_email || 'register@bharataiinnovation.com'}" 
+                    <input type="email" id="set-sender-email" autocomplete="off" value="\${settings.sender_email || 'register@bharataiinnovation.com'}" 
                       placeholder="register@bharataiinnovation.com" 
                       class="w-full pl-10 pr-4 py-2.5 rounded-xl text-sm">
                   </div>
@@ -20104,7 +21014,7 @@ function adminPageHTML(): string {
                   <label class="block text-xs font-medium text-gray-400 mb-1.5">Sender Display Name</label>
                   <div class="relative">
                     <i class="fas fa-user-tag absolute left-3 top-1/2 -translate-y-1/2 text-gray-500"></i>
-                    <input type="text" id="set-sender-name" value="\${settings.sender_name || 'Bharat AI Innovation Conference & Exhibition 2026'}" 
+                    <input type="text" id="set-sender-name" autocomplete="off" value="\${settings.sender_name || 'Bharat AI Innovation Conference & Exhibition 2026'}" 
                       placeholder="Bharat AI Innovation Conference & Exhibition 2026" 
                       class="w-full pl-10 pr-4 py-2.5 rounded-xl text-sm">
                   </div>
@@ -20115,11 +21025,15 @@ function adminPageHTML(): string {
                 <label class="block text-xs font-medium text-gray-400 mb-1.5">App URL (for email links)</label>
                 <div class="relative">
                   <i class="fas fa-link absolute left-3 top-1/2 -translate-y-1/2 text-gray-500"></i>
-                  <input type="url" id="set-app-url" value="\${settings.app_url || 'https://bharataiinnovation.com/app'}" 
+                  <input type="url" id="set-app-url" autocomplete="off" inputmode="url" autocapitalize="none" spellcheck="false" value="\${settings.app_url || 'https://bharataiinnovation.com/app'}" 
                     placeholder="https://networking.bharataiinnovation.com" 
                     class="w-full pl-10 pr-4 py-2.5 rounded-xl text-sm">
                 </div>
                 <p class="text-xs text-gray-500 mt-1">Production URL used in email links (Download Pass, Open App). Leave default if unsure.</p>
+                <label class="flex items-center gap-2 text-xs text-gray-400 mt-3 cursor-pointer">
+                  <input type="checkbox" id="set-networking-emails" \${settings.networking_emails === '0' ? '' : 'checked'}>
+                  Email attendees about connection requests, messages and meetings
+                </label>
               </div>
 
               <div class="flex flex-wrap items-center gap-3 pt-2">
@@ -20258,7 +21172,11 @@ function adminPageHTML(): string {
             elastic_email_api_key: document.getElementById('set-elastic-key').value.trim(),
             sender_email: document.getElementById('set-sender-email').value.trim(),
             sender_name: document.getElementById('set-sender-name').value.trim(),
-            app_url: document.getElementById('set-app-url').value.trim()
+            app_url: document.getElementById('set-app-url').value.trim(),
+            // Only an explicitly unticked box turns notifications off. A missing
+            // element must read as on, or saving from the other form below would
+            // silently silence every networking email.
+            networking_emails: document.getElementById('set-networking-emails')?.checked === false ? '0' : '1'
           });
           toast('Email settings saved successfully!');
           loadSettings(); // Refresh to update status panel
@@ -20369,7 +21287,10 @@ function adminPageHTML(): string {
           elastic_email_api_key: apiKey,
           sender_email: senderEmail,
           sender_name: senderName,
-          app_url: document.getElementById('set-app-url')?.value?.trim() || 'https://bharataiinnovation.com/app'
+          app_url: document.getElementById('set-app-url')?.value?.trim() || 'https://bharataiinnovation.com/app',
+          // Same key as the Save Settings form: both payloads must carry it, or
+          // saving from one screen resets what the other set.
+          networking_emails: document.getElementById('set-networking-emails')?.checked === false ? '0' : '1'
         });
       } catch(e) {
         showSettingsStatus('Failed to save settings: ' + e.message, true);

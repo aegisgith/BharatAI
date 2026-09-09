@@ -4572,3 +4572,76 @@ p { text-wrap: pretty; }
 .about-cred-list dd,
 .section-subtitle { max-width: 65ch; }
 .section-subtitle { margin-left: auto; margin-right: auto; }
+
+/* =====================================================
+   A11Y FLOOR — 44px tap targets and >=12px text at EVERY width
+   =====================================================
+   Appended on purpose: at equal specificity these win on source order alone,
+   so the rules above stay readable and the whole thing is one revertible diff.
+   The @media (max-width:768px) block already puts a 44px floor on these
+   controls, so the phone was never the problem — everything wider was.
+   .nav-link computes to 38.6px on desktop (0.5rem padding + 0.83rem text) and
+   .social-link is a hard 38px at every width. */
+
+.nav-link {
+  min-height: 44px;
+  /* Flex, not extra padding: the label has to sit on the logo's optical centre,
+     and min-height alone would leave it top-aligned in the taller box. */
+  display: flex;
+  align-items: center;
+}
+
+.social-link { width: 44px; height: 44px; }
+
+/* The nav CTA measures 39.3px at every width; .btn-sm lands on 43.9px, which
+   is a miss even though it looks like a hit. Both are inline-flex already, so
+   min-height keeps the label centred. */
+.nav-cta,
+.btn-sm,
+.conf-subnav-cta { min-height: 44px; }
+
+/* Footer link columns: 24.5px and 22.3px tall, with all the breathing room
+   living in the parent's gap instead of in the target. Moving that height into
+   the link itself makes it hittable without pushing the column much longer. */
+.footer-links { gap: 0; }
+.footer-links a { min-height: 44px; }
+.footer-bottom-links a { display: inline-flex; align-items: center; min-height: 44px; }
+/* Squeezed to 42.7px wide on a 375px screen, which is how a 44px-tall target
+   still fails. Wrapping is what stops the row compressing its own links. */
+.footer-bottom-links { flex-wrap: wrap; justify-content: center; }
+
+/* The hamburger is a 24px stack of bars in 4px of padding: 32x24, and it is the
+   only way to reach the menu on a phone. The bars keep their size, the box grows
+   around them. */
+.nav-toggle {
+  min-width: 44px;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Text under 12px is unreadable standing in a hall. Each selector below has
+   exactly one font-size declaration in this file and every one is top level,
+   so an unscoped override here cannot shrink a larger responsive variant.
+   0.75rem == 12px at the 16px rem base set by the html rule near the top. */
+.logo-sub,                 /* was 0.72rem / 11.52px */
+.hss-label,                /* was 0.68rem / 10.88px */
+.hss-face-name,            /* was 0.63rem / 10.08px */
+.hss-face-org,             /* was 0.58rem /  9.28px */
+.hero-organizer-label,     /* was 0.70rem / 11.20px */
+.hsp-label,                /* was 0.70rem / 11.20px */
+.hsp-name,                 /* was 0.70rem / 11.20px */
+.hsp-org,                  /* was 0.63rem / 10.08px */
+.hero-stat-pill-label,     /* was 0.68rem / 10.88px */
+.speaker-topic,            /* was 0.70rem / 11.20px */
+.stat .stat-label,         /* was 0.72rem / 11.52px */
+.org-strip-label {         /* was 0.68rem / 10.88px */
+  font-size: 0.75rem;
+}
+
+/* .hero-dateline MUST stay scoped. Its base rule is already 0.78rem/12.48px
+   and legible; only the <=480px override drops it to 0.68rem. Unscoped, this
+   would SHRINK the desktop dateline from 12.48px to 12px. */
+@media (max-width: 480px) {
+  .hero-dateline { font-size: 0.75rem; }
+}

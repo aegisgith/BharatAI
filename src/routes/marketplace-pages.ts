@@ -1,6 +1,15 @@
 // Marketplace HTML pages for Bharat AI Innovation 2026
 // Rebranded from AGBA AI Marketplace → Bharat AI Marketplace
 
+// Autocomplete policy (mirrors the note in src/index.tsx). A personal token is
+// only used where the value is a detail of the person filling the form in, or
+// of their own company: the login/signup pair, the primary contact, the vendor's
+// own company name and website, the inquirer's own details. The rest of the
+// vendor form is a directory record about the product and about colleagues -
+// founder, CTO, the sales desk - so those are autocomplete="off"; offering the
+// filler's own name there would be wrong data, not a shortcut. Product copy,
+// tags, tech stack and read-only fields are "off" too.
+
 // ── Shared head for marketplace pages ──
 function mpSharedHead(title: string): string {
   return `<!DOCTYPE html>
@@ -24,21 +33,13 @@ function mpSharedHead(title: string): string {
   <meta name="twitter:title" content="Bharat AI Marketplace">
   <meta name="twitter:description" content="Discover India's leading AI solutions at Bharat AI Innovation 2026.">
   <meta name="twitter:image" content="https://bharataiinnovation.com/images/og-card.png">
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
+  <!-- The two /css/ literals here are FA_CSS and TW_CSS from src/index.tsx,
+       duplicated rather than imported because index.tsx imports this module.
+       Bump each copy together. Load order is unchanged from the CDN days:
+       Font Awesome first, marketplace.css last-but-one, Tailwind last. -->
+  <link rel="stylesheet" href="/css/fa-subset.css?v=1">
   <link href="/static/marketplace.css" rel="stylesheet">
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            primary: { 50:'#fff3e9',100:'#ffe0c7',200:'#ffc194',300:'#ff9d55',400:'#ff8524',500:'#FF6B00',600:'#e05a00',700:'#b84800',800:'#933a08',900:'#79300c' },
-            accent: { 50:'#fff3e0',100:'#ffe0b2',200:'#ffcc80',300:'#ffb74d',400:'#ffa726',500:'#ff9800',600:'#fb8c00',700:'#f57c00',800:'#ef6c00',900:'#e65100' }
-          }
-        }
-      }
-    }
-  </script>
+  <link rel="stylesheet" href="/css/tailwind.css?v=1">
 </head>`
 }
 
@@ -135,17 +136,17 @@ export function marketplacePageHTML(): string {
       <div class="mp-auth-card">
         <h3><i class="fas fa-sign-in-alt mr-2"></i>Login</h3>
         <form id="login-form" class="mp-form">
-          <input name="email" type="email" placeholder="Email address" required>
-          <input name="password" type="password" placeholder="Password" required>
+          <input name="email" autocomplete="username" inputmode="email" autocapitalize="none" spellcheck="false" type="email" placeholder="Email address" required>
+          <input name="password" autocomplete="current-password" type="password" placeholder="Password" required>
           <button type="submit" class="mp-btn-primary">Login</button>
         </form>
       </div>
       <div class="mp-auth-card">
         <h3><i class="fas fa-user-plus mr-2"></i>Register</h3>
         <form id="register-form" class="mp-form">
-          <input name="company_name" placeholder="Company name" required>
-          <input name="email" type="email" placeholder="Email address" required>
-          <input name="password" type="password" placeholder="Password (min 6 chars)" required minlength="6">
+          <input name="company_name" autocomplete="organization" placeholder="Company name" required>
+          <input name="email" autocomplete="username" inputmode="email" autocapitalize="none" spellcheck="false" type="email" placeholder="Email address" required>
+          <input name="password" autocomplete="new-password" type="password" placeholder="Password (min 6 chars)" required minlength="6">
           <button type="submit" class="mp-btn-secondary">Create Account</button>
         </form>
       </div>
@@ -189,27 +190,27 @@ export function marketplacePageHTML(): string {
           <div class="form-grid">
             <div class="form-field">
               <label>Company Name</label>
-              <input id="company-name" name="company_name" readonly>
+              <input id="company-name" autocomplete="off" name="company_name" readonly>
             </div>
             <div class="form-field">
               <label>Product Name *</label>
-              <input name="product_name" required placeholder="e.g. SmartBot AI Assistant">
+              <input name="product_name" autocomplete="off" required placeholder="e.g. SmartBot AI Assistant">
             </div>
             <div class="form-field full-width">
               <label>Description *</label>
-              <textarea name="description" required rows="3" placeholder="Brief description of your AI product..."></textarea>
+              <textarea name="description" autocomplete="off" required rows="3" placeholder="Brief description of your AI product..."></textarea>
             </div>
             <div class="form-field">
               <label>Target Customer</label>
-              <input name="target_customer" placeholder="e.g. Enterprise CIOs, SMB owners">
+              <input name="target_customer" autocomplete="off" placeholder="e.g. Enterprise CIOs, SMB owners">
             </div>
             <div class="form-field">
               <label>Innovation / Differentiation</label>
-              <textarea name="innovation" rows="2" placeholder="What makes this product unique?"></textarea>
+              <textarea name="innovation" autocomplete="off" rows="2" placeholder="What makes this product unique?"></textarea>
             </div>
             <div class="form-field full-width">
               <label>Use Cases</label>
-              <textarea name="use_cases" rows="3" placeholder="One use case per line"></textarea>
+              <textarea name="use_cases" autocomplete="off" rows="3" placeholder="One use case per line"></textarea>
             </div>
           </div>
         </details>
@@ -228,11 +229,11 @@ export function marketplacePageHTML(): string {
             </div>
             <div id="ai-category-custom" class="form-field full-width hidden">
               <label>Custom AI Category</label>
-              <input name="ai_category_custom" placeholder="Describe your custom category">
+              <input name="ai_category_custom" autocomplete="off" placeholder="Describe your custom category">
             </div>
             <div class="form-field full-width">
               <label>Tags (comma-separated)</label>
-              <input name="tags" placeholder="e.g. NLP, Healthcare, Automation">
+              <input name="tags" autocomplete="off" placeholder="e.g. NLP, Healthcare, Automation">
             </div>
           </div>
         </details>
@@ -255,11 +256,11 @@ export function marketplacePageHTML(): string {
             </div>
             <div class="form-field">
               <label>Pricing Details</label>
-              <input name="pricing_details" placeholder="e.g. From $99/month">
+              <input name="pricing_details" autocomplete="off" placeholder="e.g. From $99/month">
             </div>
             <div class="form-field full-width">
               <label>Access Information</label>
-              <input name="access_info" placeholder="e.g. Self-serve signup, Request demo">
+              <input name="access_info" autocomplete="off" placeholder="e.g. Self-serve signup, Request demo">
             </div>
           </div>
         </details>
@@ -303,19 +304,19 @@ export function marketplacePageHTML(): string {
             </div>
             <div class="form-field">
               <label>Website URL</label>
-              <input name="website_url" type="url" placeholder="https://example.com">
+              <input name="website_url" autocomplete="url" inputmode="url" autocapitalize="none" spellcheck="false" type="url" placeholder="https://example.com">
             </div>
             <div class="form-field">
               <label>Product URL</label>
-              <input name="product_url" type="url" placeholder="https://example.com/product">
+              <input name="product_url" autocomplete="off" inputmode="url" autocapitalize="none" spellcheck="false" type="url" placeholder="https://example.com/product">
             </div>
             <div class="form-field">
               <label>Demo URL</label>
-              <input name="demo_url" type="url" placeholder="https://example.com/demo">
+              <input name="demo_url" autocomplete="off" inputmode="url" autocapitalize="none" spellcheck="false" type="url" placeholder="https://example.com/demo">
             </div>
             <div class="form-field">
               <label>Video URL</label>
-              <input name="video_url" type="url" placeholder="YouTube or Vimeo link">
+              <input name="video_url" autocomplete="off" inputmode="url" autocapitalize="none" spellcheck="false" type="url" placeholder="YouTube or Vimeo link">
             </div>
           </div>
         </details>
@@ -324,15 +325,15 @@ export function marketplacePageHTML(): string {
         <details class="form-section">
           <summary><i class="fas fa-address-book mr-2"></i>Contact Information</summary>
           <div class="form-grid">
-            <div class="form-field"><label>CEO / Founder</label><input name="founder_name" placeholder="Full name"></div>
-            <div class="form-field"><label>CTO / Tech Lead</label><input name="cto_name" placeholder="Full name"></div>
-            <div class="form-field"><label>Primary Contact</label><input name="contact_name" placeholder="Full name"></div>
-            <div class="form-field"><label>Company Registration / CIN</label><input name="company_registration" placeholder="Registration number"></div>
-            <div class="form-field"><label>Company Phone</label><input name="company_phone" placeholder="+91 ..."></div>
-            <div class="form-field full-width"><label>Company Address</label><input name="company_address" placeholder="Full address"></div>
-            <div class="form-field"><label>Sales Contact Name</label><input name="sales_contact_name" placeholder="Full name"></div>
-            <div class="form-field"><label>Sales Email</label><input name="sales_contact_email" type="email" placeholder="sales@example.com"></div>
-            <div class="form-field"><label>Sales Phone</label><input name="sales_contact_phone" placeholder="+91 ..."></div>
+            <div class="form-field"><label>CEO / Founder</label><input name="founder_name" autocomplete="off" placeholder="Full name"></div>
+            <div class="form-field"><label>CTO / Tech Lead</label><input name="cto_name" autocomplete="off" placeholder="Full name"></div>
+            <div class="form-field"><label>Primary Contact</label><input name="contact_name" autocomplete="name" autocapitalize="words" placeholder="Full name"></div>
+            <div class="form-field"><label>Company Registration / CIN</label><input name="company_registration" autocomplete="off" placeholder="Registration number"></div>
+            <div class="form-field"><label>Company Phone</label><input name="company_phone" autocomplete="off" inputmode="tel" placeholder="+91 ..."></div>
+            <div class="form-field full-width"><label>Company Address</label><input name="company_address" autocomplete="off" placeholder="Full address"></div>
+            <div class="form-field"><label>Sales Contact Name</label><input name="sales_contact_name" autocomplete="off" placeholder="Full name"></div>
+            <div class="form-field"><label>Sales Email</label><input name="sales_contact_email" autocomplete="off" type="email" placeholder="sales@example.com"></div>
+            <div class="form-field"><label>Sales Phone</label><input name="sales_contact_phone" autocomplete="off" inputmode="tel" placeholder="+91 ..."></div>
           </div>
         </details>
 
@@ -340,16 +341,16 @@ export function marketplacePageHTML(): string {
         <details class="form-section">
           <summary><i class="fas fa-cog mr-2"></i>Technical Details</summary>
           <div class="form-grid">
-            <div class="form-field full-width"><label>Current Customers</label><input name="current_customers" placeholder="e.g. Reliance, TCS, Infosys"></div>
-            <div class="form-field full-width"><label>Integration Requirements</label><textarea name="integration_requirements" rows="2" placeholder="API details, data formats, etc."></textarea></div>
-            <div class="form-field"><label>Supported Platforms</label><input name="supported_platforms" placeholder="Web, iOS, Android, Cloud"></div>
-            <div class="form-field"><label>Tech Stack</label><input name="tech_stack" placeholder="Python, TensorFlow, GPT-4"></div>
-            <div class="form-field full-width"><label>Security Protocols</label><textarea name="security_protocols" rows="2" placeholder="Encryption, compliance, etc."></textarea></div>
-            <div class="form-field full-width"><label>Case Studies</label><textarea name="case_studies" rows="2" placeholder="Client results and outcomes"></textarea></div>
-            <div class="form-field full-width"><label>Certifications & Compliance</label><input name="certifications_compliance" placeholder="SOC 2, GDPR, ISO 27001, etc."></div>
-            <div class="form-field full-width"><label>Support Offering</label><textarea name="support_offering" rows="2" placeholder="24/7, dedicated CSM, etc."></textarea></div>
-            <div class="form-field"><label>SLA Details</label><input name="sla_details" placeholder="99.9% uptime, 2hr response"></div>
-            <div class="form-field"><label>Onboarding Process</label><input name="onboarding_process" placeholder="Self-serve, white-glove, etc."></div>
+            <div class="form-field full-width"><label>Current Customers</label><input name="current_customers" autocomplete="off" placeholder="e.g. Reliance, TCS, Infosys"></div>
+            <div class="form-field full-width"><label>Integration Requirements</label><textarea name="integration_requirements" autocomplete="off" rows="2" placeholder="API details, data formats, etc."></textarea></div>
+            <div class="form-field"><label>Supported Platforms</label><input name="supported_platforms" autocomplete="off" placeholder="Web, iOS, Android, Cloud"></div>
+            <div class="form-field"><label>Tech Stack</label><input name="tech_stack" autocomplete="off" placeholder="Python, TensorFlow, GPT-4"></div>
+            <div class="form-field full-width"><label>Security Protocols</label><textarea name="security_protocols" autocomplete="off" rows="2" placeholder="Encryption, compliance, etc."></textarea></div>
+            <div class="form-field full-width"><label>Case Studies</label><textarea name="case_studies" autocomplete="off" rows="2" placeholder="Client results and outcomes"></textarea></div>
+            <div class="form-field full-width"><label>Certifications & Compliance</label><input name="certifications_compliance" autocomplete="off" placeholder="SOC 2, GDPR, ISO 27001, etc."></div>
+            <div class="form-field full-width"><label>Support Offering</label><textarea name="support_offering" autocomplete="off" rows="2" placeholder="24/7, dedicated CSM, etc."></textarea></div>
+            <div class="form-field"><label>SLA Details</label><input name="sla_details" autocomplete="off" placeholder="99.9% uptime, 2hr response"></div>
+            <div class="form-field"><label>Onboarding Process</label><input name="onboarding_process" autocomplete="off" placeholder="Self-serve, white-glove, etc."></div>
           </div>
         </details>
 
@@ -454,12 +455,12 @@ export function marketplaceListingPageHTML(companySlug?: string, productSlug?: s
       <h3><i class="fas fa-envelope mr-2"></i>Send an Inquiry</h3>
       <form data-detail-form class="mp-form detail-inquiry-form">
         <div class="form-grid">
-          <input name="inquirer_name" placeholder="Your name *" required>
-          <input name="inquirer_email" type="email" placeholder="Email *" required>
-          <input name="inquirer_company" placeholder="Your company">
-          <input name="inquirer_phone" placeholder="Phone number">
+          <input name="inquirer_name" autocomplete="name" autocapitalize="words" placeholder="Your name *" required>
+          <input name="inquirer_email" autocomplete="email" inputmode="email" autocapitalize="none" spellcheck="false" type="email" placeholder="Email *" required>
+          <input name="inquirer_company" autocomplete="organization" placeholder="Your company">
+          <input name="inquirer_phone" autocomplete="tel" inputmode="tel" placeholder="Phone number">
         </div>
-        <textarea name="inquirer_message" rows="3" placeholder="Your message..."></textarea>
+        <textarea name="inquirer_message" autocomplete="off" rows="3" placeholder="Your message..."></textarea>
         <button type="submit" class="mp-btn-primary"><i class="fas fa-paper-plane mr-1"></i>Send Inquiry</button>
       </form>
     </section>
@@ -582,10 +583,10 @@ export function marketplaceDashboardPageHTML(): string {
       <div class="dash-card">
         <form id="dash-profile-form" class="mp-form">
           <div class="form-grid">
-            <div class="form-field"><label>Company Name</label><input id="profile-company-name" name="company_name" required></div>
-            <div class="form-field"><label>Email</label><input id="profile-email" readonly></div>
-            <div class="form-field"><label>Role</label><input id="profile-role" readonly></div>
-            <div class="form-field"><label>Member Since</label><input id="profile-since" readonly></div>
+            <div class="form-field"><label>Company Name</label><input id="profile-company-name" autocomplete="organization" name="company_name" required></div>
+            <div class="form-field"><label>Email</label><input id="profile-email" autocomplete="off" readonly></div>
+            <div class="form-field"><label>Role</label><input id="profile-role" autocomplete="off" readonly></div>
+            <div class="form-field"><label>Member Since</label><input id="profile-since" autocomplete="off" readonly></div>
           </div>
           <button type="submit" class="mp-btn-primary mt-4"><i class="fas fa-save mr-1"></i> Update Profile</button>
         </form>
@@ -603,18 +604,18 @@ export function marketplaceDashboardPageHTML(): string {
       <form id="edit-listing-form" class="mp-form">
         <input type="hidden" id="edit-listing-id" name="id">
         <div class="form-grid">
-          <div class="form-field"><label>Product Name</label><input id="edit-product-name" name="product_name" required></div>
-          <div class="form-field full-width"><label>Description</label><textarea id="edit-description" name="description" rows="3" required></textarea></div>
-          <div class="form-field"><label>Target Customer</label><input id="edit-target-customer" name="target_customer"></div>
-          <div class="form-field"><label>Pricing Type</label><input id="edit-pricing-type" name="pricing_type"></div>
-          <div class="form-field"><label>Pricing Details</label><input id="edit-pricing-details" name="pricing_details"></div>
-          <div class="form-field"><label>Tags</label><input id="edit-tags" name="tags"></div>
-          <div class="form-field"><label>Target Industry</label><input id="edit-target-industry" name="target_industry"></div>
-          <div class="form-field"><label>AI Category</label><input id="edit-ai-category" name="ai_category"></div>
-          <div class="form-field"><label>Website URL</label><input id="edit-website-url" name="website_url"></div>
-          <div class="form-field"><label>Product URL</label><input id="edit-product-url" name="product_url"></div>
-          <div class="form-field"><label>Sales Contact</label><input id="edit-sales-name" name="sales_contact_name"></div>
-          <div class="form-field"><label>Sales Email</label><input id="edit-sales-email" name="sales_contact_email"></div>
+          <div class="form-field"><label>Product Name</label><input id="edit-product-name" autocomplete="off" name="product_name" required></div>
+          <div class="form-field full-width"><label>Description</label><textarea id="edit-description" autocomplete="off" name="description" rows="3" required></textarea></div>
+          <div class="form-field"><label>Target Customer</label><input id="edit-target-customer" autocomplete="off" name="target_customer"></div>
+          <div class="form-field"><label>Pricing Type</label><input id="edit-pricing-type" autocomplete="off" name="pricing_type"></div>
+          <div class="form-field"><label>Pricing Details</label><input id="edit-pricing-details" autocomplete="off" name="pricing_details"></div>
+          <div class="form-field"><label>Tags</label><input id="edit-tags" autocomplete="off" name="tags"></div>
+          <div class="form-field"><label>Target Industry</label><input id="edit-target-industry" autocomplete="off" name="target_industry"></div>
+          <div class="form-field"><label>AI Category</label><input id="edit-ai-category" autocomplete="off" name="ai_category"></div>
+          <div class="form-field"><label>Website URL</label><input id="edit-website-url" autocomplete="url" inputmode="url" autocapitalize="none" spellcheck="false" name="website_url"></div>
+          <div class="form-field"><label>Product URL</label><input id="edit-product-url" autocomplete="off" inputmode="url" autocapitalize="none" spellcheck="false" name="product_url"></div>
+          <div class="form-field"><label>Sales Contact</label><input id="edit-sales-name" autocomplete="off" name="sales_contact_name"></div>
+          <div class="form-field"><label>Sales Email</label><input id="edit-sales-email" autocomplete="off" inputmode="email" autocapitalize="none" spellcheck="false" name="sales_contact_email"></div>
         </div>
         <div class="mp-modal-actions">
           <button type="button" id="edit-cancel" class="mp-btn-secondary">Cancel</button>

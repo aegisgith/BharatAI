@@ -106,7 +106,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;500;600;700;800&family=Manrope:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/css/fa-subset.css?v=1">
     <link rel="stylesheet" href="css/style.css">
 
     <!-- Favicon -->
@@ -142,7 +142,7 @@
             color: var(--saffron);
             border-radius: var(--r-full);
             padding: 0.2rem 0.65rem;
-            font-size: 0.72rem;
+            font-size: 0.75rem;
             font-weight: 700;
         }
 
@@ -176,7 +176,7 @@
             transform: translateX(-50%);
             background: var(--grad-saffron);
             color: white;
-            font-size: 0.72rem;
+            font-size: 0.75rem;
             font-weight: 800;
             letter-spacing: 0.08em;
             text-transform: uppercase;
@@ -212,7 +212,7 @@
         }
         .package-count {
             display: inline-block;
-            font-size: 0.72rem;
+            font-size: 0.75rem;
             font-weight: 700;
             color: var(--saffron);
             background: rgba(255,107,0,0.08);
@@ -320,7 +320,7 @@
             cursor: default;
         }
         .hall-zone:hover { background: rgba(255,107,0,0.2); border-color: rgba(255,107,0,0.4); }
-        .hall-zone span { font-size: 0.72rem; color: rgba(255,255,255,0.75); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; display: block; }
+        .hall-zone span { font-size: 0.75rem; color: rgba(255,255,255,0.75); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; display: block; }
         .hall-zone-icon { font-size: 1.4rem; margin-bottom: 0.35rem; }
         .hall-main { grid-column: 1 / 3; background: rgba(255,107,0,0.15); border-color: rgba(255,107,0,0.3); }
 
@@ -415,16 +415,16 @@
         .fp-brand{display:flex;align-items:center;gap:10px}
         .fp-dot{width:9px;height:9px;border-radius:50%;background:var(--fp-brand);box-shadow:0 0 0 4px rgba(241,90,34,.16)}
         .fp-bt{font-weight:800;font-size:14px;letter-spacing:-.01em;line-height:1.1}
-        .fp-bs{font-size:11px;color:var(--fp-muted);margin-top:1px}
+        .fp-bs{font-size:12px;color:var(--fp-muted);margin-top:1px}
         .fp-chips{display:flex;gap:6px;flex-wrap:wrap}
-        .fp-chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--fp-muted);
-          background:var(--fp-page);border:1px solid var(--fp-line);padding:6px 11px;border-radius:999px;cursor:pointer;transition:.15s}
+        .fp-chip{display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:12px;font-weight:600;color:var(--fp-muted);
+          background:var(--fp-page);border:1px solid var(--fp-line);padding:6px 11px;min-height:44px;min-width:44px;border-radius:999px;cursor:pointer;transition:.15s}
         .fp-chip:hover{color:var(--fp-ink);border-color:rgba(20,24,55,.28)}
         .fp-sw{width:9px;height:9px;border-radius:3px;flex:none}
         .fp-chip-active{color:#fff!important;background:var(--fp-ink)!important;border-color:var(--fp-ink)!important}
-        .fp-ct{font-size:10px;opacity:.7;font-weight:700}
+        .fp-ct{font-size:12px;opacity:.7;font-weight:700}
         .fp-bar-right{display:flex;align-items:center;gap:14px;margin-left:auto}
-        .fp-toggle{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:600;color:var(--fp-muted);cursor:pointer;user-select:none}
+        .fp-toggle{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:600;color:var(--fp-muted);cursor:pointer;user-select:none;min-height:44px}
         .fp-tk{width:34px;height:20px;border-radius:999px;background:rgba(20,24,55,.16);border:1px solid var(--fp-line);position:relative;transition:.18s;display:inline-block}
         .fp-tk::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:.18s}
         .fp-toggle-on .fp-tk{background:linear-gradient(100deg,var(--fp-brand),var(--fp-brand2));border-color:transparent}
@@ -433,7 +433,7 @@
         .fp-counter{display:flex;align-items:baseline;gap:3px}
         .fp-big{font-weight:800;font-size:20px;color:var(--fp-brand);line-height:1}
         .fp-tot{font-weight:700;font-size:13px;color:var(--fp-muted)}
-        .fp-cap{font-size:10px;color:var(--fp-muted);text-transform:uppercase;letter-spacing:.1em;margin-left:3px;font-weight:600}
+        .fp-cap{font-size:12px;color:var(--fp-muted);text-transform:uppercase;letter-spacing:.1em;margin-left:3px;font-weight:600}
         /* Stage */
         .fp-stage-wrap{position:relative;flex:1;min-height:0;cursor:grab;touch-action:none;overflow:hidden;background:
           repeating-conic-gradient(#e9ebf2 0% 25%,#eef0f6 0% 50%) 0/24px 24px}
@@ -443,6 +443,12 @@
           border-radius:5px;box-shadow:0 24px 60px -30px rgba(20,24,55,.45)}
         .fp-overlay{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:auto}
         /* Hotspots */
+        /* Booth hotspots are sized by the map, not by us: floor-plan.js sets each
+           width from its fractional stage coordinate, so a Startup Pod is ~29px on
+           the 1600px stage and ~6px once fit() scales it onto a phone. Growing them
+           to 44px would overlap neighbouring booths and steal their clicks, which is
+           the WCAG 2.5.8 "Essential" exception. The equivalent path is the seven
+           package cards below, each ending in a full-width Enquire button. */
         .fp-hot{position:absolute;padding:0;margin:0;border:2px solid transparent;border-radius:4px;background:transparent;cursor:pointer;
           transition:box-shadow .12s,background .12s,border-color .12s;display:flex;align-items:flex-start;justify-content:flex-end}
         .fp-av:hover{border-color:rgba(20,24,55,.85);box-shadow:0 0 0 3px rgba(255,255,255,.6),0 6px 18px rgba(20,24,55,.3);background:rgba(255,255,255,.12);z-index:5}
@@ -462,10 +468,10 @@
         .fp-filtering{background:rgba(244,245,249,.34)}
         /* Map controls */
         .fp-mapctl{position:absolute;right:16px;bottom:16px;display:flex;flex-direction:column;gap:7px;z-index:8}
-        .fp-mbtn{width:40px;height:40px;border-radius:10px;background:var(--fp-card);border:1px solid var(--fp-line);color:var(--fp-ink);font-size:19px;display:grid;place-items:center;cursor:pointer;transition:.15s;box-shadow:0 4px 14px -6px rgba(20,24,55,.3)}
+        .fp-mbtn{width:44px;height:44px;border-radius:10px;background:var(--fp-card);border:1px solid var(--fp-line);color:var(--fp-ink);font-size:19px;display:grid;place-items:center;cursor:pointer;transition:.15s;box-shadow:0 4px 14px -6px rgba(20,24,55,.3)}
         .fp-mbtn:hover{background:var(--fp-ink);color:#fff;border-color:var(--fp-ink)}
         .fp-mbtn svg{width:16px;height:16px}
-        .fp-hint{position:absolute;left:16px;bottom:16px;z-index:8;font-size:11px;color:var(--fp-muted);display:flex;align-items:center;gap:7px;background:var(--fp-card);border:1px solid var(--fp-line);padding:7px 12px;border-radius:10px;box-shadow:0 4px 14px -8px rgba(20,24,55,.3)}
+        .fp-hint{position:absolute;left:16px;bottom:16px;z-index:8;font-size:12px;color:var(--fp-muted);display:flex;align-items:center;gap:7px;background:var(--fp-card);border:1px solid var(--fp-line);padding:7px 12px;border-radius:10px;box-shadow:0 4px 14px -8px rgba(20,24,55,.3)}
         /* Panel */
         .fp-scrim{position:absolute;inset:0;background:rgba(20,24,55,.32);backdrop-filter:blur(2px);opacity:0;pointer-events:none;transition:.25s;z-index:18}
         .fp-scrim-show{opacity:1!important;pointer-events:auto!important}
@@ -473,23 +479,23 @@
           box-shadow:-24px 0 60px -24px rgba(20,24,55,.4);transform:translateX(102%);transition:transform .32s cubic-bezier(.5,.05,.2,1);display:flex;flex-direction:column;overflow:hidden}
         .fp-panel-open{transform:translateX(0)!important}
         .fp-pn-head{position:relative;padding:22px 22px 18px;color:#fff;flex:none}
-        .fp-pn-close{position:absolute;top:16px;right:16px;width:32px;height:32px;border-radius:8px;background:rgba(0,0,0,.18);border:1px solid rgba(255,255,255,.2);color:#fff;cursor:pointer;display:grid;place-items:center;z-index:2;transition:.15s}
+        .fp-pn-close{position:absolute;top:16px;right:16px;width:44px;height:44px;border-radius:8px;background:rgba(0,0,0,.18);border:1px solid rgba(255,255,255,.2);color:#fff;cursor:pointer;display:grid;place-items:center;z-index:2;transition:.15s}
         .fp-pn-close:hover{background:rgba(0,0,0,.34)}
-        .fp-pn-type{font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;opacity:.85}
+        .fp-pn-type{font-size:12px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;opacity:.85}
         .fp-pn-code{font-weight:800;font-size:28px;line-height:1;margin-top:5px;letter-spacing:-.02em}
-        .fp-pn-tag{display:inline-flex;align-items:center;gap:5px;margin-top:12px;font-size:11.5px;font-weight:700;background:rgba(0,0,0,.18);padding:5px 11px;border-radius:999px}
+        .fp-pn-tag{display:inline-flex;align-items:center;gap:5px;margin-top:12px;font-size:12px;font-weight:700;background:rgba(0,0,0,.18);padding:5px 11px;border-radius:999px}
         .fp-pn-body{padding:20px 22px;overflow-y:auto;flex:1}
         .fp-pn-specs{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:18px}
         .fp-spec{background:var(--fp-page);border:1px solid var(--fp-line);border-radius:11px;padding:12px 13px}
-        .fp-k{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--fp-faint);font-weight:700}
+        .fp-k{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--fp-faint);font-weight:700}
         .fp-v{font-weight:700;font-size:17px;margin-top:4px;color:var(--fp-ink)}
         .fp-price{color:var(--fp-brand)!important}
         .fp-pn-blurb{color:var(--fp-muted);font-size:13px;line-height:1.55;margin-bottom:18px}
         .fp-section-t{font-weight:700;font-size:13.5px;margin-bottom:12px;display:flex;align-items:center;gap:7px;color:var(--fp-ink)}
         .fp-section-t::before{content:"";width:4px;height:14px;border-radius:2px;background:linear-gradient(var(--fp-brand),var(--fp-brand2))}
         .fp-field{margin-bottom:12px}
-        .fp-field label{display:block;font-size:11px;font-weight:600;color:var(--fp-muted);margin-bottom:5px}
-        .fp-field input,.fp-field textarea{width:100%;background:var(--fp-page);border:1px solid var(--fp-line);border-radius:9px;padding:10px 12px;color:var(--fp-ink);font-family:inherit;font-size:13px;outline:none;transition:.15s}
+        .fp-field label{display:block;font-size:12px;font-weight:600;color:var(--fp-muted);margin-bottom:5px}
+        .fp-field input,.fp-field textarea{width:100%;min-height:44px;background:var(--fp-page);border:1px solid var(--fp-line);border-radius:9px;padding:10px 12px;color:var(--fp-ink);font-family:inherit;font-size:13px;outline:none;transition:.15s}
         .fp-field input:focus,.fp-field textarea:focus{border-color:var(--fp-brand);background:#fff;box-shadow:0 0 0 3px rgba(241,90,34,.12)}
         .fp-field textarea{resize:vertical;min-height:60px}
         .fp-field input::placeholder,.fp-field textarea::placeholder{color:var(--fp-faint)}
@@ -498,7 +504,7 @@
           background:linear-gradient(100deg,var(--fp-brand),var(--fp-brand2));box-shadow:0 10px 28px -8px rgba(241,90,34,.5);transition:.16s;display:flex;align-items:center;justify-content:center;gap:7px}
         .fp-btn-submit:hover{filter:brightness(1.05);transform:translateY(-1px)}
         .fp-btn-submit svg{width:15px;height:15px}
-        .fp-pn-note{font-size:11px;color:var(--fp-faint);text-align:center;margin-top:10px;line-height:1.5}
+        .fp-pn-note{font-size:12px;color:var(--fp-faint);text-align:center;margin-top:10px;line-height:1.5}
         .fp-pn-booked{display:flex;align-items:center;gap:9px;background:var(--fp-page);border:1px solid var(--fp-line);border-radius:11px;padding:13px;color:var(--fp-muted);font-size:12.5px;font-weight:500;margin-bottom:16px;line-height:1.45}
         .fp-pn-booked svg{width:17px;height:17px;flex:none;color:var(--fp-faint)}
         .fp-pn-success{padding:36px 22px;text-align:center;display:none}
@@ -507,19 +513,23 @@
         .fp-pn-success .fp-ic svg{width:28px;height:28px}
         .fp-pn-success h3{font-weight:800;font-size:20px;margin-bottom:9px;color:var(--fp-ink)}
         .fp-pn-success p{color:var(--fp-muted);font-size:13px;line-height:1.55}
-        .fp-linkbtn{margin-top:16px;background:var(--fp-page);border:1px solid var(--fp-line);color:var(--fp-ink);border-radius:9px;padding:10px 16px;font-weight:600;font-size:12.5px;cursor:pointer}
+        .fp-linkbtn{margin-top:16px;background:var(--fp-page);border:1px solid var(--fp-line);color:var(--fp-ink);border-radius:9px;padding:10px 16px;font-weight:600;font-size:12.5px;cursor:pointer;min-height:44px}
         .fp-linkbtn:hover{background:rgba(20,24,55,.06)}
         /* Tooltip */
-        .fp-tip{position:absolute;z-index:30;pointer-events:none;background:var(--fp-ink);color:#fff;border-radius:9px;padding:8px 11px;font-size:11.5px;transform:translate(-50%,-120%);opacity:0;transition:opacity .12s;white-space:nowrap;box-shadow:0 10px 30px rgba(20,24,55,.4)}
+        .fp-tip{position:absolute;z-index:30;pointer-events:none;background:var(--fp-ink);color:#fff;border-radius:9px;padding:8px 11px;font-size:12px;transform:translate(-50%,-120%);opacity:0;transition:opacity .12s;white-space:nowrap;box-shadow:0 10px 30px rgba(20,24,55,.4)}
         .fp-tip-show{opacity:1!important}
         .fp-tt-c{font-weight:700;color:#fff}
-        .fp-tt-r{display:flex;align-items:center;gap:6px;margin-top:2px;color:rgba(255,255,255,.7);font-size:10.5px}
+        .fp-tt-r{display:flex;align-items:center;gap:6px;margin-top:2px;color:rgba(255,255,255,.7);font-size:12px}
         .fp-tt-st{font-weight:700}
         .fp-tt-st.fp-av{color:#ffb27a}.fp-tt-st.fp-bk{color:rgba(255,255,255,.55)}
         @media(max-width:760px){
           .bai-floor{height:560px}
           .fp-bs,.fp-bar-right .fp-cap{display:none}
-          .fp-chips{order:3;width:100%}
+          /* One scrolling row, not four wrapped ones: at 44px a wrapped chip block
+             ran to 194px and left the map 262px of the 560px container. */
+          .fp-chips{order:3;width:100%;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+          .fp-chips::-webkit-scrollbar{display:none}
+          .fp-chip{flex:none}
           .fp-panel{width:100%;max-width:100%;top:auto;bottom:0;height:82%;border-left:none;border-top:1px solid var(--fp-line);border-radius:18px 18px 0 0;transform:translateY(102%)}
           .fp-panel-open{transform:translateY(0)!important}
           .fp-hint{display:none}
@@ -533,7 +543,7 @@
     <nav class="navbar dark-nav" id="navbar">
         <div class="nav-container">
             <a href="index.html" class="nav-logo">
-                <img loading="eager" fetchpriority="high" decoding="async" src="images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI Innovation Logo" style="height:44px;width:auto;border-radius:12px;padding:6px;background:rgba(255,255,255,0.95);box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+                <img width="120" height="50" loading="eager" fetchpriority="high" decoding="async" src="images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI Innovation Logo" style="height:44px;width:auto;border-radius:12px;padding:6px;background:rgba(255,255,255,0.95);box-shadow:0 2px 8px rgba(0,0,0,0.08);">
             </a>
             <div class="nav-menu" id="nav-menu">
                 <a href="index.html" class="nav-link">Home</a>
@@ -903,18 +913,18 @@
                 <table style="width:100%;border-collapse:collapse;background:white;font-size:0.88rem;min-width:600px;">
                     <thead>
                         <tr style="background:linear-gradient(135deg,#0D0F1A,#1E2140);">
-                            <th style="color:rgba(255,255,255,0.6);padding:1.1rem 1.25rem;text-align:left;font-weight:600;font-size:0.72rem;letter-spacing:0.1em;text-transform:uppercase;">#</th>
-                            <th style="color:rgba(255,255,255,0.6);padding:1.1rem 1rem;text-align:left;font-weight:600;font-size:0.72rem;letter-spacing:0.1em;text-transform:uppercase;">Package</th>
-                            <th style="color:rgba(255,255,255,0.6);padding:1.1rem 1rem;text-align:center;font-weight:600;font-size:0.72rem;letter-spacing:0.1em;text-transform:uppercase;">Size</th>
-                            <th style="color:rgba(255,255,255,0.6);padding:1.1rem 1rem;text-align:center;font-weight:600;font-size:0.72rem;letter-spacing:0.1em;text-transform:uppercase;">Area</th>
-                            <th style="color:rgba(255,255,255,0.6);padding:1.1rem 1.25rem;text-align:right;font-weight:600;font-size:0.72rem;letter-spacing:0.1em;text-transform:uppercase;">Price + GST</th>
+                            <th style="color:rgba(255,255,255,0.6);padding:1.1rem 1.25rem;text-align:left;font-weight:600;font-size:0.75rem;letter-spacing:0.1em;text-transform:uppercase;">#</th>
+                            <th style="color:rgba(255,255,255,0.6);padding:1.1rem 1rem;text-align:left;font-weight:600;font-size:0.75rem;letter-spacing:0.1em;text-transform:uppercase;">Package</th>
+                            <th style="color:rgba(255,255,255,0.6);padding:1.1rem 1rem;text-align:center;font-weight:600;font-size:0.75rem;letter-spacing:0.1em;text-transform:uppercase;">Size</th>
+                            <th style="color:rgba(255,255,255,0.6);padding:1.1rem 1rem;text-align:center;font-weight:600;font-size:0.75rem;letter-spacing:0.1em;text-transform:uppercase;">Area</th>
+                            <th style="color:rgba(255,255,255,0.6);padding:1.1rem 1.25rem;text-align:right;font-weight:600;font-size:0.75rem;letter-spacing:0.1em;text-transform:uppercase;">Price + GST</th>
                         </tr>
                     </thead>
                     <tbody>
                         <tr style="border-bottom:1px solid #F1F3F9;transition:background 0.15s;" onmouseover="this.style.background='#FFF8F3'" onmouseout="this.style.background='white'">
                             <td style="padding:1.1rem 1.25rem;color:#aaa;font-size:0.78rem;font-weight:600;">01</td>
                             <td style="padding:1.1rem 1rem;">
-                                <span style="display:inline-block;background:#F0FDF4;color:#166534;font-size:0.68rem;font-weight:700;padding:0.2rem 0.55rem;border-radius:999px;margin-bottom:0.3rem;letter-spacing:0.04em;">STARTER</span><br>
+                                <span style="display:inline-block;background:#F0FDF4;color:#166534;font-size:0.75rem;font-weight:700;padding:0.2rem 0.55rem;border-radius:999px;margin-bottom:0.3rem;letter-spacing:0.04em;">STARTER</span><br>
                                 <span style="font-weight:700;color:var(--charcoal);font-size:0.95rem;">Startup Pod</span>
                             </td>
                             <td style="padding:1.1rem 1rem;text-align:center;color:var(--dark-grey);font-size:0.88rem;">1.5 × 1.5 m</td>
@@ -924,7 +934,7 @@
                         <tr style="border-bottom:1px solid #F1F3F9;background:#FAFBFC;transition:background 0.15s;" onmouseover="this.style.background='#FFF8F3'" onmouseout="this.style.background='#FAFBFC'">
                             <td style="padding:1.1rem 1.25rem;color:#aaa;font-size:0.78rem;font-weight:600;">02</td>
                             <td style="padding:1.1rem 1rem;">
-                                <span style="display:inline-block;background:#EFF6FF;color:#1d4ed8;font-size:0.68rem;font-weight:700;padding:0.2rem 0.55rem;border-radius:999px;margin-bottom:0.3rem;letter-spacing:0.04em;">EXPLORER</span><br>
+                                <span style="display:inline-block;background:#EFF6FF;color:#1d4ed8;font-size:0.75rem;font-weight:700;padding:0.2rem 0.55rem;border-radius:999px;margin-bottom:0.3rem;letter-spacing:0.04em;">EXPLORER</span><br>
                                 <span style="font-weight:700;color:var(--charcoal);font-size:0.95rem;">Explorer Booth</span>
                             </td>
                             <td style="padding:1.1rem 1rem;text-align:center;color:var(--dark-grey);font-size:0.88rem;">2 × 2 m</td>
@@ -934,7 +944,7 @@
                         <tr style="border-bottom:1px solid #F1F3F9;transition:background 0.15s;" onmouseover="this.style.background='#FFF8F3'" onmouseout="this.style.background='white'">
                             <td style="padding:1.1rem 1.25rem;color:#aaa;font-size:0.78rem;font-weight:600;">03</td>
                             <td style="padding:1.1rem 1rem;">
-                                <span style="display:inline-block;background:#F5F3FF;color:#6d28d9;font-size:0.68rem;font-weight:700;padding:0.2rem 0.55rem;border-radius:999px;margin-bottom:0.3rem;letter-spacing:0.04em;">INNOVATOR</span><br>
+                                <span style="display:inline-block;background:#F5F3FF;color:#6d28d9;font-size:0.75rem;font-weight:700;padding:0.2rem 0.55rem;border-radius:999px;margin-bottom:0.3rem;letter-spacing:0.04em;">INNOVATOR</span><br>
                                 <span style="font-weight:700;color:var(--charcoal);font-size:0.95rem;">Innovator Booth</span>
                             </td>
                             <td style="padding:1.1rem 1rem;text-align:center;color:var(--dark-grey);font-size:0.88rem;">3 × 2 m</td>
@@ -944,7 +954,7 @@
                         <tr style="border-bottom:1px solid #FFE8D6;background:linear-gradient(90deg,#FFF8F3,#FFFAF7);transition:background 0.15s;" onmouseover="this.style.background='#FFF3EA'" onmouseout="this.style.background='linear-gradient(90deg,#FFF8F3,#FFFAF7)'">
                             <td style="padding:1.1rem 1.25rem;color:#aaa;font-size:0.78rem;font-weight:600;">04</td>
                             <td style="padding:1.1rem 1rem;">
-                                <span style="display:inline-block;background:var(--saffron);color:white;font-size:0.68rem;font-weight:700;padding:0.2rem 0.55rem;border-radius:999px;margin-bottom:0.3rem;letter-spacing:0.04em;">⭐ MOST POPULAR</span><br>
+                                <span style="display:inline-block;background:var(--saffron);color:white;font-size:0.75rem;font-weight:700;padding:0.2rem 0.55rem;border-radius:999px;margin-bottom:0.3rem;letter-spacing:0.04em;">⭐ MOST POPULAR</span><br>
                                 <span style="font-weight:700;color:var(--saffron);font-size:0.95rem;">Accelerator Booth</span>
                             </td>
                             <td style="padding:1.1rem 1rem;text-align:center;color:var(--dark-grey);font-size:0.88rem;">3 × 3 m</td>
@@ -954,7 +964,7 @@
                         <tr style="border-bottom:1px solid #F1F3F9;background:#FAFBFC;transition:background 0.15s;" onmouseover="this.style.background='#FFF8F3'" onmouseout="this.style.background='#FAFBFC'">
                             <td style="padding:1.1rem 1.25rem;color:#aaa;font-size:0.78rem;font-weight:600;">05</td>
                             <td style="padding:1.1rem 1rem;">
-                                <span style="display:inline-block;background:#F0F9FF;color:#0369a1;font-size:0.68rem;font-weight:700;padding:0.2rem 0.55rem;border-radius:999px;margin-bottom:0.3rem;letter-spacing:0.04em;">ENTERPRISE</span><br>
+                                <span style="display:inline-block;background:#F0F9FF;color:#0369a1;font-size:0.75rem;font-weight:700;padding:0.2rem 0.55rem;border-radius:999px;margin-bottom:0.3rem;letter-spacing:0.04em;">ENTERPRISE</span><br>
                                 <span style="font-weight:700;color:var(--charcoal);font-size:0.95rem;">Enterprise Booth</span>
                             </td>
                             <td style="padding:1.1rem 1rem;text-align:center;color:var(--dark-grey);font-size:0.88rem;">4 × 2 m</td>
@@ -964,7 +974,7 @@
                         <tr style="border-bottom:1px solid #F1F3F9;transition:background 0.15s;" onmouseover="this.style.background='#FFF8F3'" onmouseout="this.style.background='white'">
                             <td style="padding:1.1rem 1.25rem;color:#aaa;font-size:0.78rem;font-weight:600;">06</td>
                             <td style="padding:1.1rem 1rem;">
-                                <span style="display:inline-block;background:#FEF9C3;color:#854d0e;font-size:0.68rem;font-weight:700;padding:0.2rem 0.55rem;border-radius:999px;margin-bottom:0.3rem;letter-spacing:0.04em;">FLAGSHIP</span><br>
+                                <span style="display:inline-block;background:#FEF9C3;color:#854d0e;font-size:0.75rem;font-weight:700;padding:0.2rem 0.55rem;border-radius:999px;margin-bottom:0.3rem;letter-spacing:0.04em;">FLAGSHIP</span><br>
                                 <span style="font-weight:700;color:var(--charcoal);font-size:0.95rem;">Flagship Pavilion</span>
                             </td>
                             <td style="padding:1.1rem 1rem;text-align:center;color:var(--dark-grey);font-size:0.88rem;">6 × 2 m</td>
@@ -974,7 +984,7 @@
                         <tr style="background:linear-gradient(90deg,#F5F3FF,#FAF9FF);transition:background 0.15s;" onmouseover="this.style.background='#EDEAFF'" onmouseout="this.style.background='linear-gradient(90deg,#F5F3FF,#FAF9FF)'">
                             <td style="padding:1.1rem 1.25rem;color:#aaa;font-size:0.78rem;font-weight:600;">07</td>
                             <td style="padding:1.1rem 1rem;">
-                                <span style="display:inline-block;background:linear-gradient(135deg,#4F46E5,#7C3AED);color:white;font-size:0.68rem;font-weight:700;padding:0.2rem 0.55rem;border-radius:999px;margin-bottom:0.3rem;letter-spacing:0.04em;">🏆 PREMIUM</span><br>
+                                <span style="display:inline-block;background:linear-gradient(135deg,#4F46E5,#7C3AED);color:white;font-size:0.75rem;font-weight:700;padding:0.2rem 0.55rem;border-radius:999px;margin-bottom:0.3rem;letter-spacing:0.04em;">🏆 PREMIUM</span><br>
                                 <span style="font-weight:700;color:#4F46E5;font-size:0.95rem;">Mega Pavilion</span>
                             </td>
                             <td style="padding:1.1rem 1rem;text-align:center;color:var(--dark-grey);font-size:0.88rem;">7 × 7.7 m</td>
@@ -1015,7 +1025,7 @@
             <div class="footer-content">
                 <div class="footer-section">
                     <div class="footer-logo">
-                        <img loading="lazy" decoding="async" src="images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI Innovation Logo" style="height:40px;width:auto;border-radius:10px;padding:5px;background:rgba(255,255,255,0.95);box-shadow:0 2px 6px rgba(0,0,0,0.08);">
+                        <img width="120" height="50" loading="lazy" decoding="async" src="images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI Innovation Logo" style="height:40px;width:auto;border-radius:10px;padding:5px;background:rgba(255,255,255,0.95);box-shadow:0 2px 6px rgba(0,0,0,0.08);">
                     </div>
                     <p class="footer-description">
                         Advancing India's Future Through AI Innovation. Join us in creating a Viksit Bharat by 2047.

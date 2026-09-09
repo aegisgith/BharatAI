@@ -1,0 +1,7 @@
+/* Input for `npm run css`. All three layers are required: the Play CDN emitted
+   Preflight (html{line-height}, box-sizing:border-box) on every page, so
+   dropping @tailwind base would restore UA margins on headings, paragraphs and
+   lists and shift vertical rhythm site-wide. */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
