@@ -15602,7 +15602,12 @@ function adminPageHTML(): string {
     .dup-row:hover { background: rgba(239,68,68,0.12) !important; }
     .dup-badge { display: inline-block; font-size: 8px; padding: 1px 4px; border-radius: 4px; font-weight: 600; margin-left: 4px; vertical-align: middle; }
     /* Sidebar collapse */
-    #sidebar { transition: width 0.3s cubic-bezier(0.4,0,0.2,1); overflow: hidden; }
+    /* overflow-x only. A blanket "overflow: hidden" here beats the element's own
+       .overflow-y-auto on ID specificity, so the nav could not be scrolled once it
+       outgrew the viewport - which it now does on a laptop screen, leaving Analytics,
+       Boardrooms and Settings unreachable. The horizontal clip is what the collapse
+       transition actually needs; the vertical axis must stay scrollable. */
+    #sidebar { transition: width 0.3s cubic-bezier(0.4,0,0.2,1); overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }
     #sidebar.collapsed { width: 64px; }
     #sidebar.collapsed .sidebar-label,
     #sidebar.collapsed .sidebar-header-text,
