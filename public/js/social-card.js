@@ -27,7 +27,12 @@
 
   var EVENT = {
     name: 'Bharat AI Innovation',
+    // Split because each word takes a different colour. Kept as words rather than
+    // one string so the tricolour cannot drift out of step with the wording.
+    words: ['Bharat', 'AI', 'Innovation'],
+    wordsHi: ['भारत', 'एआई', 'इनोवेशन'],
     year: '2026',
+    sub: 'Conference & Exhibition 2026',
     tagline: "India's Largest AI Conference & Exhibition",
     when: '20–21 Nov 2026',
     where: 'WTC Mumbai',
@@ -43,6 +48,11 @@
     faint: '#6B7597'
   };
 
+  // Saffron, white, green - the flag, in the order the words are read. Values are
+  // lifted verbatim from pass-render.js so the two documents cannot drift apart.
+  var TIRANGA_EN = ['#FF7A00', '#ffffff', '#00996C'];
+  var TIRANGA_HI = ['#FF7A00', '#e8edf5', '#00b57f'];
+  var MUKTA = '"Mukta", "Nirmala UI", "Noto Sans Devanagari", Arial, sans-serif';
   var MONT = '"Montserrat", Arial, sans-serif';
   var MANR = '"Manrope", Arial, sans-serif';
 
@@ -72,7 +82,7 @@
       photoR: 140, ring: 7, gapPhoto: 30,
       nameSize: 50, nameMin: 30, gapName: 13,
       roleSize: 24, gapRole: 34,
-      heroSize: 72, heroMin: 40, heroLead: 8,
+      heroSize: 70, heroMin: 40, heroLead: 14, hiSize: 42, subLead: 16, subSize: 25,
       stripH: 98, stripGap: 22, stripPad: 30,
       pillH: 62, pillSize: 25, pillGap: 22, gapAbovePill: 30,
       urlSize: 22, urlBottom: 46
@@ -85,7 +95,7 @@
       photoR: 218, ring: 9, gapPhoto: 54,
       nameSize: 68, nameMin: 36, gapName: 18,
       roleSize: 30, gapRole: 52,
-      heroSize: 96, heroMin: 46, heroLead: 12,
+      heroSize: 88, heroMin: 46, heroLead: 18, hiSize: 52, subLead: 20, subSize: 30,
       stripH: 116, stripGap: 28, stripPad: 34,
       pillH: 78, pillSize: 29, pillGap: 28, gapAbovePill: 52,
       urlSize: 25, urlBottom: 120
@@ -174,6 +184,33 @@
       x += ctx.measureText(ch).width + track;
     }
     return total;
+  }
+
+  /* Three words, three colours, centred as one group rather than three separate
+     centred strings - which is what makes it read as one title instead of a stack. */
+  function drawWords(ctx, words, colours, cx, y, spaceW) {
+    var widths = words.map(function (w) { return ctx.measureText(w).width; });
+    var total = widths.reduce(function (a, b) { return a + b; }, 0) + spaceW * (words.length - 1);
+    var x = cx - total / 2;
+    ctx.textAlign = 'left';
+    for (var i = 0; i < words.length; i++) {
+      ctx.fillStyle = colours[i % colours.length];
+      ctx.fillText(words[i], x, y);
+      x += widths[i] + spaceW;
+    }
+    return total;
+  }
+
+  // Shrinks a whole multi-word line until the group fits the width.
+  function fitWords(ctx, words, maxW, weight, size, minSize, family, spaceRatio) {
+    var s = size;
+    for (;;) {
+      ctx.font = weight + ' ' + s + 'px ' + family;
+      var sp = s * spaceRatio;
+      var w = words.reduce(function (a, t) { return a + ctx.measureText(t).width; }, 0) + sp * (words.length - 1);
+      if (w <= maxW || s <= minSize) return { size: s, space: sp };
+      s -= 1;
+    }
   }
 
   /* Centre-cropping a headshot at the true centre reliably cuts the top of the
@@ -306,10 +343,13 @@
     var m = {
       name: fitText(ctx, String((user && user.name) || 'Attendee').trim(), maxW, '700', S.nameSize, S.nameMin, MONT),
       role: roleText ? fitText(ctx, roleText, maxW, '500', S.roleSize, 18, MANR) : null,
-      hero: fitText(ctx, EVENT.name, maxW, '800', S.heroSize, S.heroMin, MONT)
+      hero: fitWords(ctx, EVENT.words, maxW, '800', S.heroSize, S.heroMin, MONT, 0.30),
+      hi: fitWords(ctx, EVENT.wordsHi, maxW, '600', S.hiSize, 24, MUKTA, 0.34),
+      sub: fitText(ctx, EVENT.sub, maxW, '400', S.subSize, 16, MANR)
     };
     m.fixed = S.ebSize + S.photoR * 2 + S.ring + m.name.size +
-              (m.role ? m.role.size : 0) + m.hero.size * 2 + S.heroLead;
+              (m.role ? m.role.size : 0) +
+              m.hero.size + S.heroLead + m.hi.size + S.subLead + m.sub.size;
     m.gaps = S.gapEb + S.gapPhoto + (m.role ? S.gapName : 0) + S.gapRole;
     return m;
   }
@@ -429,17 +469,20 @@
     }
     y += S.gapRole * k;
 
-    // ---- the event ----
+    // ---- the wordmark, exactly as the pass sets it: the name in the tricolour,
+    // the same name in Devanagari beneath it, then what the event is ----
     ctx.font = '800 ' + m.hero.size + 'px ' + MONT;
-    ctx.textAlign = 'center'; ctx.fillStyle = INK.white;
     y += m.hero.size;
-    ctx.fillText(m.hero.text, mid, y);
+    drawWords(ctx, EVENT.words, TIRANGA_EN, mid, y, m.hero.space);
 
-    y += S.heroLead + m.hero.size;
-    ctx.font = '800 ' + m.hero.size + 'px ' + MONT;
-    var yg = ctx.createLinearGradient(mid - 160, y - m.hero.size, mid + 160, y);
-    yg.addColorStop(0, '#FF6B00'); yg.addColorStop(1, '#FFB65C');
-    trackedText(ctx, EVENT.year, mid, y, Math.round(m.hero.size * 0.10), yg);
+    ctx.font = '600 ' + m.hi.size + 'px ' + MUKTA;
+    y += S.heroLead + m.hi.size;
+    drawWords(ctx, EVENT.wordsHi, TIRANGA_HI, mid, y, m.hi.space);
+
+    ctx.font = '400 ' + m.sub.size + 'px ' + MANR;
+    ctx.textAlign = 'center'; ctx.fillStyle = '#8892b0';
+    y += S.subLead + m.sub.size;
+    ctx.fillText(m.sub.text, mid, y);
 
     // ---- bottom stack ----
     ctx.save();
