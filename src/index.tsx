@@ -252,6 +252,80 @@ app.get('/api/events/:id/sessions/rooms', async (c) => {
 const ONLINE_WINDOW_MINUTES = 15
 const ATTENDEE_PUBLIC_COLS = `id, event_id, name, company, job_title, bio, avatar_url, interests, linkedin_url, twitter_url, website_url, role, badge_type, CASE WHEN last_login_at > datetime('now', '-${ONLINE_WINDOW_MINUTES} minutes') THEN 1 ELSE 0 END AS is_online, last_seen, industry, city, country, created_at`
 
+// What the ADMIN grid actually renders, plus what its row actions need: the CSV
+// export built in the browser, the pass download, notify, the segment filters and
+// every sortable column. The admin list used to be SELECT * - all 39 columns for
+// all 1,338 rows, 1.57 MiB of JSON. A Worker response cannot carry that, so the
+// Attendees tab received an error body instead and reported "JSON.parse:
+// unexpected character at line 1 column 1" while every other tab worked.
+// Nothing is lost by leaving a column out here: GET /api/attendees/:id returns the
+// whole row for one person (what the drawer and the edit form read), and the CSV
+// export stays full fidelity. bio and interests alone are most of the weight.
+const ATTENDEE_ADMIN_LIST_COLS = [
+  'id', 'name', 'email', 'mobile', 'company', 'job_title', 'city', 'country',
+  'avatar_url', 'linkedin_url', 'role', 'badge_type', 'rsvp_status',
+  'lunch_inclusion', 'arrival_time', 'payment_status', 'payment_amount',
+  'registration_source', 'registration_date', 'created_at', 'notified_at',
+  'last_login_at', 'pass_downloaded_at', 'checked_in_at',
+]
+
+// A list endpoint with no ceiling is one growth spurt away from the same outage.
+// Measured against 1,338 rows of realistic data the lean row costs ~0.4 KB in
+// production terms (~0.7 KB on deliberately fat test data), so 2,000 rows leaves
+// 50% headroom over today's 1,338 ON ROW COUNT. It does NOT put 2,000 rows inside
+// the response limit — at either width the BYTE cap below binds first and this
+// number is never reached (attgate: a 2,600-row event comes back with 1,823 rows,
+// cut by bytes). This is the cheap guess; the byte cap is the guarantee.
+// When the cap bites the response says so in X-Truncated and the grid
+// offers to fetch the rest, rather than silently showing a short list.
+// ?limit=N asks for fewer; ?limit=all opts out for a caller that wants the lot -
+// a deliberate foot-gun, which is why the UI points at the CSV export instead.
+const ATTENDEE_LIST_DEFAULT_LIMIT = 2000
+const ATTENDEE_LIST_MAX_LIMIT = 20000
+// The ceiling that actually matters, applied after serialising. A row count cannot
+// promise a byte count, and it was a byte count that broke: past roughly 1 MiB
+// (1,048,576 B) the body comes back as something that is not JSON.
+//
+// MEASURED, not hoped at. Both harnesses build the 1,338 rows this event actually
+// has and weigh the admin list the route produces from them:
+//     production-width rows  ~594 B each  ->  794,705 B   (attgate.mjs)
+//     deliberately fat rows  ~692 B each  ->  926,097 B   (att-size.mjs)
+// This comment used to say those 1,338 rows came in "well under half of it". They
+// never did. At the fat width they came in OVER the old 900,000: the cap was
+// already dropping 103 of the 1,338 and answering X-Truncated-By: bytes, so the
+// admin grid was showing 1,235 people and offering a "load the rest" the byte cap
+// cannot honour. 950,000 puts that case back inside the cap.
+//
+// The margins this leaves, stated plainly rather than rounded up:
+//     under the 1 MiB hazard   98,576 B    9.4%    (was 148,576 B / 14.2%)
+//     over 1,338 fat rows      23,903 B    2.5%    ~1,372 rows before it binds
+//     over 1,338 lean rows    155,295 B   16.3%    ~1,599 rows before it binds
+// The 2.5% is thin and it is the last of its kind: there is no room left between a
+// 1,338-row event at fat width and 1 MiB, so when this binds again the answer is
+// NOT a bigger number here — that walks into the outage this constant exists to
+// prevent. It is fewer columns in ATTENDEE_ADMIN_LIST_COLS, or the CSV export.
+// The two widest columns are avatar_url (10.5%) and linkedin_url (9.0%), and
+// dropping both would save 19.4% — but the grid draws both: the avatar cell, the
+// LinkedIn cell, the incomplete-profile filter (!a.avatar_url) and the no-photo
+// count the photo campaign runs on. Neither is free, which is why the cap moved
+// instead of the column set. Anything cut here has to be checked the same way.
+//
+// ?limit=all opts out of the ROW cap; it does not opt out of this one, because a
+// body nobody can parse is not a service to anybody.
+const ATTENDEE_LIST_MAX_BYTES = 950000
+// The opt-out lifts the default cap to the hard maximum; it does not mean
+// "unbounded". An unbounded SELECT on a large table costs the isolate a full scan
+// to build a body that still could not be delivered, so "all" honestly means "as
+// much as this endpoint will ever hand over in one response".
+function attendeeListLimit(raw?: string): number {
+  const v = (raw || '').trim().toLowerCase()
+  if (!v) return ATTENDEE_LIST_DEFAULT_LIMIT
+  if (v === 'all' || v === '0' || v === 'none') return ATTENDEE_LIST_MAX_LIMIT
+  const n = parseInt(v, 10)
+  if (!Number.isFinite(n) || n <= 0) return ATTENDEE_LIST_DEFAULT_LIMIT
+  return Math.min(n, ATTENDEE_LIST_MAX_LIMIT)
+}
+
 // Resolved once per request by the middleware below. A WeakMap rather than
 // c.set() so the existing synchronous call sites need no changes.
 const staffAdminByRequest = new WeakMap<Request, any>()
@@ -2239,6 +2313,237 @@ async function roomBookingEnabled(c: any): Promise<boolean> {
   return _roomTables
 }
 
+// The same rollout switch for the exhibition floor. Booth inventory and its
+// allocations arrive with migration 0030, and a Cloudflare deploy never runs a
+// migration, so this code is live for however long it takes somebody to run the
+// wrangler command by hand. Only the POSITIVE answer is memoised, for the reason
+// spelled out above roomBookingEnabled: caching "not there yet" pins an isolate
+// to false for its whole life and leaves the floor plan looking half-broken long
+// after the tables exist.
+let _boothTables = false
+async function boothInventoryEnabled(c: any): Promise<boolean> {
+  if (_boothTables) return true
+  try {
+    const { results } = await c.env.DB.prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('booths','booth_allocations')"
+    ).all()
+    if ((results || []).length === 2) _boothTables = true
+  } catch { /* table missing or DB unavailable — stay off, re-probe next request */ }
+  return _boothTables
+}
+
+// Booth categories largest first, which is the order the packages are pitched and
+// priced in. This lives in code rather than a column because it is a display
+// decision, not inventory: booths.name already carries the package label a code
+// belongs to ("Flagship Pavilion"), and booths.sort_order already fixes the order
+// within a category.
+const BOOTH_TYPE_ORDER = ['mega', 'enterprise', 'premium', 'accelerator', 'standard', 'innovator', 'explorer', 'pod']
+const boothTypeRank = (k: string): number => {
+  const i = BOOTH_TYPE_ORDER.indexOf(String(k || ''))
+  return i === -1 ? BOOTH_TYPE_ORDER.length : i
+}
+
+// exhibitors.booth_size is a two-value display field ('standard' | 'premium'),
+// not a measurement — the same split the booth-request approval applies when it
+// turns an approved request into an exhibitor. The three biggest footprints read
+// as premium; everything else is standard.
+const boothExhibitorSize = (typeKey: string): string =>
+  ['mega', 'enterprise', 'premium'].includes(String(typeKey || '')) ? 'premium' : 'standard'
+
+// ---------------------------------------------------------------------------
+// BOOTH MONEY. Every figure below is WHOLE RUPEES. A float rupee becomes
+// 32249.999999 on a GST invoice and the exhibitor is the one who finds out, so
+// nothing here is ever allowed to stay fractional — the same rule migration 0030
+// states over booth_allocations.
+// ---------------------------------------------------------------------------
+const BOOTH_GST_PCT = 18
+const boothGst = (net: number): number => Math.round((Number(net) || 0) * BOOTH_GST_PCT / 100)
+
+// pending | invoiced | part_paid | paid | refunded. Money only: whether the stand
+// is OCCUPIED is booth_allocations.status (held | confirmed | blocked).
+const BOOTH_PAYMENT_STATUSES = ['pending', 'invoiced', 'part_paid', 'paid', 'refunded']
+
+// The revenue target lives in app_settings (0005's key/value store), which is
+// where this app already keeps its one-off editable numbers — not in a table of
+// its own. The default is the full sellable value of the hall at list: 93 stands,
+// Rs 1,82,90,000 ex-GST. Migration 0030 seeds the same number with INSERT OR
+// IGNORE; this constant is what answers before the migration has been run.
+const BOOTH_TARGET_KEY = 'booth_revenue_target_inr'
+const BOOTH_TARGET_DEFAULT = 18290000
+
+// booth_types.slug (the 2011-era catalogue the public request form sells from)
+// against booths.type_key (the floor plan's own legacy key). They disagree on
+// purpose and the disagreement is NOT a typo: the catalogue's "Accelerator Booth"
+// is 3x3, which the plan calls 'standard', and the catalogue's "Enterprise Booth"
+// is 4x2, which the plan calls 'accelerator'. Anything that re-derives one from
+// the other makes the admin screen contradict the public plan — see the note at
+// the top of public/js/floor-plan.js. 'premium' is deliberately absent: the 5x2
+// tier arrived with the revised WTC layout and was never added to the catalogue,
+// which is exactly why the inventory table used to lose those two stands.
+const BOOTH_TYPE_SLUG: Record<string, string> = {
+  pod: 'startup-pod',
+  explorer: 'explorer-booth',
+  innovator: 'innovator-booth',
+  standard: 'accelerator-booth',
+  accelerator: 'enterprise-booth',
+  enterprise: 'flagship-pavilion',
+  mega: 'mega-pavilion',
+}
+
+// Rupees off a form field. Forgiving on the way in — "₹1,25,000", "125000.00" and
+// " 125000 " are all the same number to a salesperson — and never negative.
+//
+// A minus is NOT a stray character to be scrubbed. The strip below used to run
+// before anything looked at the sign, so "-5000" arrived as +5000: a refund typed
+// into "amount paid" was banked as money COLLECTED. Anything carrying a minus is
+// a typo, so it reads as 0 here — and every caller that can REPORT the problem to
+// whoever typed it goes through boothRupeesStrict, which names the field instead.
+function boothRupees(v: any): number {
+  if (v === undefined || v === null) return 0
+  const raw = String(v)
+  if (raw.indexOf('-') >= 0) return 0
+  const s = raw.replace(/[^0-9.]/g, '')
+  if (!s) return 0
+  const n = Math.round(Number(s))
+  return Number.isFinite(n) && n > 0 ? n : 0
+}
+
+// The same conversion for a SPREADSHEET cell, where the difference between "empty"
+// and "not a number" has to be reported rather than silently turned into 0 — a CSV
+// import that quietly reads "one lakh" as zero is worse than one that refuses.
+// Returns null for a value that is not a number at all.
+function boothRupeesStrict(v: any): number | null {
+  const raw = String(v == null ? '' : v).trim().replace(/^(₹|rs\.?|inr)\s*/i, '')
+  if (!raw) return 0
+  const cleaned = raw.replace(/,/g, '')
+  if (!/^[0-9]+(\.[0-9]+)?$/.test(cleaned)) return null
+  const n = Math.round(Number(cleaned))
+  return Number.isFinite(n) ? n : null
+}
+
+// A date out of a spreadsheet. Accepts ISO (what the date inputs send) and the
+// dd/mm/yyyy Excel hands back on an Indian locale; returns null for blank and
+// false — distinct from null — for something that is not a date.
+function boothDate(v: any): string | null | false {
+  const raw = String(v == null ? '' : v).trim()
+  if (!raw) return null
+  let m = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/)
+  if (!m) {
+    const d = raw.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/)
+    if (d) m = [d[0], d[3], d[2], d[1]] as any
+  }
+  if (!m) return false
+  const y = Number(m[1]), mo = Number(m[2]), day = Number(m[3])
+  if (mo < 1 || mo > 12 || day < 1 || day > 31) return false
+  return `${y}-${String(mo).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
+// THE INVARIANT, in one place, because the record-a-sale form and the CSV import
+// must not be able to disagree about it:
+//     amount_inr      = list_price_inr - discount_inr
+//     gst_inr         = round(amount_inr * 18 / 100)
+//     grand_total_inr = amount_inr + gst_inr
+// A typed net is never trusted — it is DERIVED here — so no route can write a row
+// where the three numbers contradict each other.
+//
+// PRIVATE. Both write paths reach it through boothSaleMoneyChecked, which has
+// already refused anything unusable, so what arrives here is clean integers and
+// derivation is all that is left to do. Call that, not this.
+function boothSaleMoney(input: any, fallbackList: number) {
+  const given = input.list_price_inr !== undefined && input.list_price_inr !== null &&
+    String(input.list_price_inr).trim() !== ''
+  const list = given ? boothRupees(input.list_price_inr) : (Number(fallbackList) || 0)
+  let discount = boothRupees(input.discount_inr)
+  // This clamp used to be the WHOLE answer to a discount above the list price:
+  // silently cap it and carry on, which returned a cheerful 201 on a Rs 0 sale —
+  // the stand given away and the operator told it saved. That judgement has moved
+  // to boothSaleMoneyChecked, which now refuses the figure by name before it can
+  // reach here. What is left is the floor that keeps this arithmetic from ever
+  // going negative if some future caller forgets the guard.
+  if (discount > list) discount = list
+  const amount = list - discount
+  const gst = boothGst(amount)
+  const grand = amount + gst
+  const invoice = String(input.invoice_number || '').trim()
+  let paid = boothRupees(input.amount_paid_inr)
+  let status = BOOTH_PAYMENT_STATUSES.includes(String(input.payment_status || ''))
+    ? String(input.payment_status) : ''
+  // Saying "paid" IS saying the whole invoice landed, so the receipts follow the
+  // word rather than the operator having to type the grand total twice.
+  if (status === 'paid') paid = grand
+  // Receipts above the invoice are a typo far more often than an overpayment, and
+  // they would make outstanding (invoiced - collected) go negative on the
+  // dashboard. Clamp, and let the operator correct the invoice if it was wrong.
+  if (paid > grand) paid = grand
+  // 'refunded' cannot be derived from the numbers, so it is the one status the
+  // operator's choice always wins on. Everything else follows the money.
+  if (status !== 'refunded' && status !== 'paid') {
+    status = (paid >= grand && grand > 0) ? 'paid'
+      : paid > 0 ? 'part_paid'
+      : invoice ? 'invoiced' : 'pending'
+  }
+  return {
+    list_price_inr: list, discount_inr: discount, amount_inr: amount,
+    gst_inr: gst, grand_total_inr: grand, amount_paid_inr: paid,
+    payment_status: status, invoice_number: invoice || null,
+  }
+}
+
+// THE GUARD on that invariant, and the only door to boothSaleMoney. The CSV
+// import and the record-a-sale form both ask this one function, so they cannot
+// answer the same figures differently. They used to, and the disagreement cost
+// real money:
+//
+//   * boothRupees dropped a leading minus, so PUT /api/admin/booths/:code/sale
+//     with amount_paid_inr "-5000" returned 201 and banked +5000 as COLLECTED,
+//     flipping the row to part_paid. Money never received inflated Collected and
+//     shrank Outstanding on the dashboard, with no warning anywhere.
+//   * a discount larger than the list price was CLAMPED, so 5,00,000 off a 38,000
+//     stand saved a Rs 0 sale and reported success.
+//
+// The importer refused both by name all along. Now one function does, for both.
+// Returns { error } — a sentence naming the field and quoting what it said, so the
+// desk can act on it — or the derived money. A figure the operator did not type is
+// never invented here: the answer to a bad number is a refusal, not a rewrite.
+function boothSaleMoneyChecked(
+  input: any, fallbackList: number
+): { error: string } | ReturnType<typeof boothSaleMoney> {
+  const cell = (v: any) => String(v === undefined || v === null ? '' : v).trim()
+
+  // Blank means "leave the price alone" — the frozen list on an edit, the stand's
+  // sticker on a new sale — which is the importer's rule for an empty cell too.
+  const listRaw = cell(input.list_price_inr)
+  const list = listRaw === '' ? Math.max(0, Math.round(Number(fallbackList) || 0)) : boothRupeesStrict(listRaw)
+  if (list === null) return { error: `list_price_inr "${listRaw}" is not a number.` }
+
+  const discountRaw = cell(input.discount_inr)
+  const discount = boothRupeesStrict(discountRaw)
+  if (discount === null) return { error: `discount_inr "${discountRaw}" is not a number.` }
+  if (discount > list) return { error: `discount_inr (${discount}) is more than list_price_inr (${list}).` }
+
+  const paidRaw = cell(input.amount_paid_inr)
+  const paid = boothRupeesStrict(paidRaw)
+  if (paid === null) return { error: `amount_paid_inr "${paidRaw}" is not a number.` }
+
+  return boothSaleMoney({
+    ...input,
+    list_price_inr: String(list), discount_inr: String(discount), amount_paid_inr: String(paid),
+  }, list)
+}
+
+// The one editable number on the sales dashboard. app_settings has existed since
+// 0005 so this read is safe, but it is wrapped anyway: a target that cannot be
+// read must fall back to the hall's full value, never break the dashboard.
+async function boothRevenueTarget(c: any): Promise<number> {
+  try {
+    const row = await c.env.DB.prepare('SELECT value FROM app_settings WHERE key = ?')
+      .bind(BOOTH_TARGET_KEY).first() as any
+    const n = Math.round(Number(row?.value))
+    if (Number.isFinite(n) && n >= 0) return n
+  } catch { /* fall through to the seeded default */ }
+  return BOOTH_TARGET_DEFAULT
+}
+
 // The two event days and the bookable hours inside them. Derived from the real
 // schedule, not guessed: sessions (migration 0012, re-dated by 0013) run
 // 08:30-17:10 on 20 Nov plus an 18:30-20:30 CXO cocktail, and 08:30-17:15 on
@@ -2461,28 +2766,90 @@ app.get('/api/events/:id/attendees', async (c) => {
   const role = c.req.query('role')
   const interest = c.req.query('interest')
 
-  const cols = isAdminRequest(c) ? '*' : ATTENDEE_PUBLIC_COLS
-  let query = `SELECT ${cols} FROM attendees WHERE event_id = ?`
+  // Named columns rather than *, and intersected with what the table actually
+  // holds, so a database still short of migration 0015/0018/0023 answers with the
+  // columns it has instead of failing the whole request on "no such column".
+  let cols = ATTENDEE_PUBLIC_COLS
+  if (isAdminRequest(c)) {
+    const have = await attendeeColumns(c)
+    const picked = ATTENDEE_ADMIN_LIST_COLS.filter(f => have.has(f))
+    cols = (picked.length ? picked : ['id', 'name', 'email']).join(', ')
+  }
+
+  // The WHERE is built once and reused by the count below, so the two can't drift.
+  let where = ' WHERE event_id = ?'
   const params: any[] = [eventId]
 
   if (search) {
-    query += ' AND (name LIKE ? OR company LIKE ? OR job_title LIKE ?)'
+    where += ' AND (name LIKE ? OR company LIKE ? OR job_title LIKE ?)'
     const s = `%${search}%`
     params.push(s, s, s)
   }
   if (role) {
-    query += ' AND role LIKE ?'
+    where += ' AND role LIKE ?'
     params.push(`%${role}%`)
   }
   if (interest) {
-    query += ' AND interests LIKE ?'
+    where += ' AND interests LIKE ?'
     params.push(`%${interest}%`)
   }
 
-  query += ' ORDER BY is_online DESC, name ASC'
+  const limit = attendeeListLimit(c.req.query('limit'))
+  const query = `SELECT ${cols} FROM attendees${where} ORDER BY is_online DESC, name ASC LIMIT ${limit}`
 
   const { results } = await c.env.DB.prepare(query).bind(...params).all()
-  return c.json(results)
+  let rows = (results || []) as any[]
+  const fetched = rows.length
+
+  // A row cap is only a guess at a size, because rows vary. THIS is the guarantee:
+  // serialise, measure, and drop rows until the body is small enough to deliver.
+  // Crossing the limit does not truncate the response, it replaces the body with
+  // something that is not JSON at all - which is the whole outage. Nothing here
+  // gets to assume a response is small enough; it gets measured.
+  const enc = new TextEncoder()
+  let body = JSON.stringify(rows)
+  let bytes = enc.encode(body).length
+  while (bytes > ATTENDEE_LIST_MAX_BYTES && rows.length > 1) {
+    // Scale by how far over we are, with a little margin so this converges in one
+    // or two passes rather than creeping down a row at a time.
+    const keep = Math.max(1, Math.floor(rows.length * (ATTENDEE_LIST_MAX_BYTES / bytes) * 0.95))
+    if (keep >= rows.length) break
+    rows = rows.slice(0, keep)
+    body = JSON.stringify(rows)
+    bytes = enc.encode(body).length
+  }
+
+  // The grid shows "N total" and offers to fetch the rest, so it needs the true
+  // count - but only when something was actually left out. In the normal case the
+  // rows in hand are the count, and the extra query is not run at all.
+  let total = rows.length
+  if (rows.length < fetched || fetched >= limit) {
+    try {
+      const row = await c.env.DB.prepare(`SELECT COUNT(*) AS n FROM attendees${where}`).bind(...params).first() as any
+      const n = Number(row && row.n)
+      if (Number.isFinite(n) && n > total) total = n
+    } catch { /* the count is a nicety; the rows already fetched are the answer */ }
+  }
+
+  // Which ceiling bit matters to the caller: a row cap can be lifted with ?limit=,
+  // a byte cap cannot - past it there is no larger response to ask for, only the
+  // CSV export. Saying which one stops the UI offering a button that cannot work.
+  const cut = total > rows.length
+  const cutBy = !cut ? '' : (rows.length < fetched ? 'bytes' : 'rows')
+
+  // The body stays exactly what it has always been - a bare array - so every
+  // existing caller is untouched. The counts ride along in headers. Built by hand
+  // rather than with c.json() only so the string measured above is the string sent.
+  return new Response(body, {
+    headers: {
+      'Content-Type': 'application/json; charset=UTF-8',
+      'X-Total-Count': String(total),
+      'X-Returned-Count': String(rows.length),
+      'X-Truncated': cut ? '1' : '0',
+      'X-Truncated-By': cutBy,
+      'Access-Control-Expose-Headers': 'X-Total-Count, X-Returned-Count, X-Truncated, X-Truncated-By',
+    },
+  })
 })
 
 app.get('/api/attendees/:id', async (c) => {
@@ -3517,7 +3884,17 @@ app.get('/api/image-proxy', async (c) => {
   // Narrow allowlist. The QR service is here because loading it directly onto the
   // pass canvas would work, but proxying keeps the fetch same-origin (no tainted
   // canvas, no CORS surprise) and lets Cloudflare cache the code.
-  const PROXY_ALLOWED = ['https://bharataiinnovation.com/', 'https://api.qrserver.com/']
+  // The favicon service is the employer logo on the shareable social card. Nothing
+  // in this app stores a company logo, so it is looked up from the delegate's own
+  // website_url (or their work email domain) at draw time. Pinned to the one exact
+  // endpoint rather than the host: s2/favicons only ever returns an icon for a
+  // domain, so widening the list this far does not turn the proxy into a general
+  // fetcher for anything else on google.com.
+  const PROXY_ALLOWED = [
+    'https://bharataiinnovation.com/',
+    'https://api.qrserver.com/',
+    'https://www.google.com/s2/favicons?',
+  ]
   if (!PROXY_ALLOWED.some(prefix => url.startsWith(prefix))) return c.text('Domain not allowed', 403)
   try {
     const resp = await fetch(url)
@@ -3533,6 +3910,69 @@ app.get('/api/image-proxy', async (c) => {
     })
   } catch(e: any) {
     return c.text('Fetch failed: ' + e.message, 500)
+  }
+})
+
+// ==================== EXHIBITION FLOOR: LIVE AVAILABILITY ====================
+//
+// The floor plan shipped as a static array in public/js/floor-plan-data.js with
+// booked:false hardcoded on all 93 stands, so marking one sold meant editing a
+// JS file and redeploying, and nothing tied it to the money already sitting in
+// booth_requests. This is the read side of the fix.
+//
+// It is deliberately READ-ONLY. At ~Rs 32,250 per sqm on a GST invoice the team
+// allocates, exactly as the boardrooms are quoted rather than self-served. What
+// the public gets from this endpoint is urgency — what has gone and what is left
+// — not a checkout and not a price list.
+//
+// Answers 200 with ready:false while migration 0030 is unapplied, never a 500,
+// for the same reason every boardroom route does.
+app.get('/api/events/:id/booths', async (c) => {
+  const eventId = c.req.param('id')
+  const zero = { total: 0, available: 0, held: 0, sold: 0, blocked: 0, sold_sqm: 0 }
+  if (!(await boothInventoryEnabled(c))) return c.json({ ready: false, booths: [], summary: zero })
+  try {
+    const { results } = await c.env.DB.prepare(
+      `SELECT b.code, b.type_key, b.name, b.dim, b.sqm, b.zone, b.fx, b.fy, b.fw, b.fh,
+              ba.status AS alloc_status, ba.company_name AS alloc_company
+         FROM booths b
+         LEFT JOIN booth_allocations ba ON ba.booth_id = b.id AND ba.event_id = b.event_id
+        WHERE b.event_id = ?
+        ORDER BY b.sort_order ASC, b.id ASC`
+    ).bind(eventId).all()
+
+    const summary = { ...zero }
+    const booths = ((results || []) as any[]).map(r => {
+      // 'confirmed' is a sale, 'held' is a negotiation, 'blocked' is the organiser
+      // taking space off the market. No allocation row at all means available.
+      const status = r.alloc_status === 'confirmed' ? 'sold'
+        : r.alloc_status === 'held' ? 'held'
+        : r.alloc_status === 'blocked' ? 'blocked'
+        : 'available'
+      summary.total++
+      const bucket = summary as any
+      bucket[status]++
+      if (status === 'sold') summary.sold_sqm += Number(r.sqm || 0)
+      return {
+        code: r.code, type_key: r.type_key, name: r.name, dim: r.dim,
+        sqm: Number(r.sqm || 0), zone: r.zone,
+        fx: r.fx, fy: r.fy, fw: r.fw, fh: r.fh,
+        status,
+        // Only a completed sale names its occupant. A held stand must not leak who
+        // is mid-negotiation — that is a competitor's shopping list, and the same
+        // instinct that keeps ATTENDEE_PUBLIC_COLS narrow.
+        company: status === 'sold' ? (r.alloc_company || null) : null,
+      }
+    })
+    // 2.25 sqm pods make this a float sum; round once at the end rather than
+    // publishing 47.250000000000004.
+    summary.sold_sqm = Math.round(summary.sold_sqm * 100) / 100
+    return c.json({ ready: true, booths, summary })
+  } catch (e: any) {
+    if (/no such table/i.test(String(e?.message || ''))) {
+      return c.json({ ready: false, booths: [], summary: zero })
+    }
+    throw e
   }
 })
 
@@ -3934,6 +4374,738 @@ app.post('/api/admin/booth-requests/backfill-exhibitors', async (c) => {
   return c.json({ success: true, created })
 })
 
+// ==================== EXHIBITION FLOOR: ALLOCATION (ADMIN) ====================
+//
+// Everything under /api/admin/* is already guarded by the middleware at the top of
+// this file, which is why there is no in-handler isAdminRequest check here — the
+// same as the boardroom routes and booth-requests above.
+//
+// THE POINT of booth_allocations is UNIQUE(event_id, booth_id). Two operators can
+// hit allocate on stand 51 in the same second and SQLite decides, not a
+// read-then-write in this handler. So the INSERT is attempted and the constraint
+// violation is translated into a 409: a check-first-then-insert would be the same
+// race with a friendlier error message and no guarantee at all.
+
+const BOOTH_ALLOC_STATUSES = ['held', 'confirmed', 'blocked']
+
+// Creates or adopts the exhibitor behind a confirmed allocation and returns its
+// id. Follows the conventions of /api/admin/booth-requests/backfill-exhibitors
+// above: a [BR-0001] marker in the description is what makes the link idempotent,
+// so a stand confirmed from a paid booth request adopts the exhibitor that request
+// already created instead of duplicating it. An allocation with no request behind
+// it gets a [BOOTH-51] marker of the same shape.
+async function linkBoothExhibitor(c: any, booth: any, alloc: any): Promise<number | null> {
+  try {
+    const marker = alloc.booth_request_id
+      ? `[BR-${String(alloc.booth_request_id).padStart(4, '0')}]`
+      : `[BOOTH-${booth.code}]`
+    const existing = await c.env.DB.prepare(
+      "SELECT id FROM exhibitors WHERE description LIKE ? OR (company_name = ? AND contact_email = ?)"
+    ).bind('%' + marker + '%', alloc.company_name, alloc.email || '').first() as any
+    if (existing) {
+      // booth_number is the field that was always missing. It is free text nobody
+      // ever filled in, which is exactly why the app's Exhibition Floor tab is
+      // empty. Stamp it from the allocation that now owns the stand. category is
+      // only filled when blank — on a request-born exhibitor it holds the
+      // industry, which is worth more than repeating the package name.
+      await c.env.DB.prepare(
+        `UPDATE exhibitors SET booth_number = ?, booth_size = ?,
+           category = COALESCE(NULLIF(category, ''), ?) WHERE id = ?`
+      ).bind(booth.code, boothExhibitorSize(booth.type_key), booth.name || '', existing.id).run()
+      return existing.id
+    }
+    const ins = await c.env.DB.prepare(
+      `INSERT INTO exhibitors (event_id, company_name, description, category, booth_number, booth_size,
+         contact_email, contact_phone)
+       VALUES (?,?,?,?,?,?,?,?)`
+    ).bind(
+      booth.event_id || 1, alloc.company_name || 'TBD', `${marker} ${alloc.notes || ''}`.trim(),
+      booth.name || '', booth.code, boothExhibitorSize(booth.type_key),
+      alloc.email || '', alloc.phone || ''
+    ).run()
+    return ins.meta.last_row_id
+  } catch (e: any) {
+    // A schema difference must not undo an allocation the operator just made — the
+    // same call the booth-request approval makes about its own exhibitor insert.
+    console.error('booth allocation -> exhibitor failed:', e?.message)
+    return null
+  }
+}
+
+// The whole floor with its allocation detail, the booth request behind each one,
+// and the paid requests still waiting for a stand.
+app.get('/api/admin/booths', async (c) => {
+  const eventId = Number(c.req.query('event_id') || 1)
+  const zero = {
+    total: 0, available: 0, held: 0, sold: 0, blocked: 0, sold_sqm: 0,
+    confirmed_value_inr: 0, held_value_inr: 0,
+    // The sales dashboard's own figures. Additive: every key above keeps the
+    // meaning it already had, so nothing reading this payload today can break.
+    total_sqm: 0, available_sqm: 0, held_sqm: 0, blocked_sqm: 0,
+    potential_inr: 0, booked_inr: 0, invoiced_inr: 0, collected_inr: 0,
+    outstanding_inr: 0, discount_inr: 0,
+  }
+  const shell = {
+    booths: [] as any[], summary: zero, requests: [] as any[], zones: [] as any[],
+    type_order: BOOTH_TYPE_ORDER, target_inr: BOOTH_TARGET_DEFAULT,
+  }
+  if (!(await boothInventoryEnabled(c))) return c.json({ ready: false, ...shell })
+  try {
+    const { results } = await c.env.DB.prepare(
+      `SELECT b.id, b.code, b.type_key, b.name, b.dim, b.sqm, b.zone, b.sort_order,
+              b.list_price_inr, b.fx, b.fy, b.fw, b.fh,
+              ba.id AS allocation_id, ba.status AS alloc_status, ba.company_name, ba.contact_name,
+              ba.email, ba.phone, ba.amount_inr, ba.notes, ba.allocated_by, ba.exhibitor_id,
+              ba.booth_request_id, ba.created_at AS allocated_at, ba.updated_at AS allocation_updated_at,
+              ba.list_price_inr AS alloc_list_price_inr, ba.discount_inr, ba.gst_inr, ba.grand_total_inr,
+              ba.invoice_number, ba.invoice_date, ba.amount_paid_inr, ba.paid_date, ba.payment_status,
+              br.company_name AS request_company, br.contact_name AS request_contact,
+              br.email AS request_email, br.phone AS request_phone,
+              br.grand_total AS request_grand_total, br.payment_status AS request_payment_status,
+              br.status AS request_status
+         FROM booths b
+         LEFT JOIN booth_allocations ba ON ba.booth_id = b.id AND ba.event_id = b.event_id
+         LEFT JOIN booth_requests br ON br.id = ba.booth_request_id
+        WHERE b.event_id = ?
+        ORDER BY b.sort_order ASC, b.id ASC`
+    ).bind(eventId).all()
+
+    const summary = { ...zero }
+    const booths = ((results || []) as any[]).map(r => {
+      const status = r.alloc_status === 'confirmed' ? 'sold'
+        : r.alloc_status === 'held' ? 'held'
+        : r.alloc_status === 'blocked' ? 'blocked'
+        : 'available'
+      summary.total++
+      const bucket = summary as any
+      bucket[status]++
+      const sqm = Number(r.sqm || 0)
+      const net = Number(r.amount_inr || 0)
+      summary.total_sqm += sqm
+      // Potential is the whole hall at sticker price, sold or not: it is the
+      // denominator the target is measured against, so it must not shrink as
+      // stands go. An allocation's own list price is frozen at the sale, which is
+      // why a sold stand still counts its booths.list_price_inr here.
+      summary.potential_inr += Number(r.list_price_inr || 0)
+      if (status === 'sold') {
+        summary.sold_sqm += sqm
+        summary.confirmed_value_inr += net
+      }
+      if (status === 'held') { summary.held_sqm += sqm; summary.held_value_inr += net }
+      if (status === 'blocked') summary.blocked_sqm += sqm
+      if (status === 'available') summary.available_sqm += sqm
+      // Money only exists on a real deal. A blocked stand is the organiser taking
+      // space off the market, never a sale, so it contributes nothing.
+      if (status === 'sold' || status === 'held') {
+        summary.booked_inr += net
+        summary.discount_inr += Number(r.discount_inr || 0)
+        // Invoiced means an invoice number was actually raised — not merely that
+        // somebody chose the word. Outstanding is only meaningful against that.
+        if (r.invoice_number) summary.invoiced_inr += Number(r.grand_total_inr || 0)
+        summary.collected_inr += Number(r.amount_paid_inr || 0)
+      }
+      return { ...r, status }
+    })
+    // 2.25 sqm pods make every one of these a float sum; round once at the end
+    // rather than publishing 47.250000000000004.
+    const round2 = (n: number) => Math.round(n * 100) / 100
+    summary.sold_sqm = round2(summary.sold_sqm)
+    summary.total_sqm = round2(summary.total_sqm)
+    summary.held_sqm = round2(summary.held_sqm)
+    summary.blocked_sqm = round2(summary.blocked_sqm)
+    summary.available_sqm = round2(summary.available_sqm)
+    summary.outstanding_inr = Math.max(0, summary.invoiced_inr - summary.collected_inr)
+    // Sorted into the category order the screen renders, so the client never has to
+    // re-sort 93 rows to draw eight headed sections.
+    booths.sort((a: any, b: any) =>
+      boothTypeRank(a.type_key) - boothTypeRank(b.type_key) ||
+      Number(a.sort_order || 0) - Number(b.sort_order || 0) ||
+      Number(a.id || 0) - Number(b.id || 0))
+
+    // The unplaced end of the funnel: a paid request with fewer stands on the floor
+    // than it bought. quantity matters — one request can be three stands, so a
+    // request leaves this list only when it is fully placed, not on its first
+    // allocation.
+    const { results: reqRows } = await c.env.DB.prepare(
+      `SELECT br.id, br.company_name, br.contact_name, br.email, br.phone, br.quantity,
+              br.grand_total, br.payment_status, br.status, br.preferred_zone, br.preferred_booth_numbers,
+              bt.name AS booth_type_name, bt.slug AS booth_type_slug,
+              (SELECT COUNT(*) FROM booth_allocations x WHERE x.booth_request_id = br.id) AS allocated_count
+         FROM booth_requests br
+         LEFT JOIN booth_types bt ON br.booth_type_id = bt.id
+        WHERE br.payment_status = 'paid' AND br.status NOT IN ('cancelled', 'rejected')
+        ORDER BY br.created_at DESC`
+    ).all()
+    const requests = ((reqRows || []) as any[])
+      .filter(r => Number(r.allocated_count || 0) < Number(r.quantity || 1))
+
+    // Zones exist only where the plan names one, so the filter is built from what is
+    // actually in the table rather than a hardcoded list that can drift out of step
+    // with it.
+    const zones = Array.from(new Set(booths.map((b: any) => b.zone).filter(Boolean))).sort()
+    return c.json({
+      ready: true, ...shell, booths, summary, requests, zones,
+      target_inr: await boothRevenueTarget(c),
+    })
+  } catch (e: any) {
+    // "no such column" as well as "no such table": a database carrying an earlier
+    // draft of 0030 — the commercial columns were added to that file in place —
+    // must read as not-live rather than 500 at an operator who cannot see why.
+    if (/no such (table|column)/i.test(String(e?.message || ''))) return c.json({ ready: false, ...shell })
+    throw e
+  }
+})
+
+// Allocate a stand. The 409 below is the feature: before this table existed two
+// paid exhibitors could both be told they had stand 51, and nobody would find out
+// until build-up morning.
+app.post('/api/admin/booths/:code/allocate', async (c) => {
+  const code = c.req.param('code')
+  const b = await c.req.json() as any
+  if (!(await boothInventoryEnabled(c))) return c.json({ error: 'Booth inventory is not available yet.' }, 503)
+
+  const status = BOOTH_ALLOC_STATUSES.includes(b.status) ? b.status : 'held'
+  // A blocked stand is the organiser taking space off the market — storage, a
+  // sponsor hold — so it has no buyer to name. Everything else must have one.
+  const company = String(b.company_name || '').trim() || (status === 'blocked' ? 'Organiser hold' : '')
+  if (!company) return c.json({ error: 'A company name is required to allocate a stand.' }, 400)
+  const eventId = Number(b.event_id || 1)
+
+  try {
+    const booth = await c.env.DB.prepare(
+      'SELECT * FROM booths WHERE event_id = ? AND code = ?'
+    ).bind(eventId, code).first() as any
+    if (!booth) return c.json({ error: `No booth ${code} on this floor plan.` }, 404)
+
+    // Dropping a paid request onto a stand is the point of booth_request_id: the
+    // operator picks the request and the contact details and the price come from
+    // it, rather than being retyped into a second copy that can disagree.
+    const requestId: number | null = b.booth_request_id ? Number(b.booth_request_id) : null
+    let request: any = null
+    if (requestId) {
+      request = await c.env.DB.prepare('SELECT * FROM booth_requests WHERE id = ?').bind(requestId).first()
+      if (!request) return c.json({ error: `Booth request ${requestId} no longer exists.` }, 404)
+    }
+
+    const alloc = {
+      booth_request_id: requestId,
+      company_name: company,
+      contact_name: b.contact_name || (request && request.contact_name) || '',
+      email: b.email || (request && request.email) || '',
+      phone: b.phone || (request && request.phone) || '',
+      notes: b.notes || '',
+    }
+    // An unstated amount falls back to the request's own per-stand price — its grand
+    // total split across the stands it bought — because that is the number the
+    // operator would otherwise be copying by hand. A blocked stand is not a sale, so
+    // it is worth zero whatever anyone types.
+    const given = b.amount_inr !== undefined && b.amount_inr !== null && b.amount_inr !== ''
+    const amount = status === 'blocked' ? 0
+      : given ? (Number(b.amount_inr) || 0)
+      : request ? Math.round(Number(request.grand_total || 0) / Math.max(1, Number(request.quantity || 1)))
+      : 0
+
+    const ins = await c.env.DB.prepare(
+      `INSERT INTO booth_allocations (event_id, booth_id, booth_request_id, company_name, contact_name,
+         email, phone, status, amount_inr, notes, allocated_by)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?)`
+    ).bind(eventId, booth.id, alloc.booth_request_id, alloc.company_name, alloc.contact_name,
+      alloc.email, alloc.phone, status, amount, alloc.notes, adminActor(c).actor).run()
+    const allocationId = ins.meta.last_row_id
+
+    // Allocating straight to confirmed is a sale, so it makes the exhibitor there
+    // and then rather than waiting for a second click.
+    let exhibitorId: number | null = null
+    if (status === 'confirmed') {
+      exhibitorId = await linkBoothExhibitor(c, booth, alloc)
+      if (exhibitorId) {
+        await c.env.DB.prepare('UPDATE booth_allocations SET exhibitor_id = ? WHERE id = ?')
+          .bind(exhibitorId, allocationId).run()
+      }
+    }
+    await audit(c, 'booth.allocate', 'booth', code, {
+      status, company, booth_request_id: requestId, amount_inr: amount, exhibitor_id: exhibitorId,
+    })
+    return c.json({ success: true, id: allocationId, code, status, amount_inr: amount, exhibitor_id: exhibitorId }, 201)
+  } catch (e: any) {
+    const msg = String(e?.message || '')
+    if (/UNIQUE constraint/i.test(msg)) {
+      // Somebody got there first — quite possibly this operator, in another tab.
+      // Name the occupant so they can tell a clash from their own double click.
+      let held = ''
+      try {
+        const row = await c.env.DB.prepare(
+          `SELECT ba.company_name, ba.status FROM booth_allocations ba
+             JOIN booths b ON b.id = ba.booth_id
+            WHERE b.event_id = ? AND b.code = ?`
+        ).bind(eventId, code).first() as any
+        if (row) {
+          const verb = row.status === 'confirmed' ? 'sold to' : row.status === 'blocked' ? 'blocked as' : 'held for'
+          held = ` It is ${verb} ${row.company_name}.`
+        }
+      } catch (_) { /* naming the occupant is a nicety; the 409 is the guarantee */ }
+      return c.json({ error: `Booth ${code} is already allocated.${held} Release it first.` }, 409)
+    }
+    if (/no such table/i.test(msg)) return c.json({ error: 'Booth inventory is not available yet.' }, 503)
+    throw e
+  }
+})
+
+// held <-> confirmed <-> blocked on the stand's existing allocation.
+app.put('/api/admin/booths/:code/status', async (c) => {
+  const code = c.req.param('code')
+  const body = await c.req.json() as any
+  if (!(await boothInventoryEnabled(c))) return c.json({ error: 'Booth inventory is not available yet.' }, 503)
+  const status = String(body.status || '')
+  if (!BOOTH_ALLOC_STATUSES.includes(status)) {
+    return c.json({ error: 'Status must be held, confirmed or blocked.' }, 400)
+  }
+  const eventId = Number(body.event_id || 1)
+  try {
+    const row = await c.env.DB.prepare(
+      `SELECT ba.*, b.code AS booth_code, b.name AS booth_name, b.type_key, b.event_id AS booth_event_id
+         FROM booth_allocations ba JOIN booths b ON b.id = ba.booth_id
+        WHERE b.event_id = ? AND b.code = ?`
+    ).bind(eventId, code).first() as any
+    if (!row) return c.json({ error: `Booth ${code} has no allocation to change.` }, 404)
+
+    // Confirming is the moment a hold becomes a stand with a real number on it,
+    // which is the same moment approving a booth request creates an exhibitor.
+    let exhibitorId: number | null = row.exhibitor_id || null
+    if (status === 'confirmed') {
+      const booth = {
+        id: row.booth_id, code: row.booth_code, name: row.booth_name,
+        type_key: row.type_key, event_id: row.booth_event_id,
+      }
+      exhibitorId = (await linkBoothExhibitor(c, booth, row)) || exhibitorId
+    }
+
+    const upd: string[] = ['status = ?', 'updated_at = CURRENT_TIMESTAMP', 'exhibitor_id = ?']
+    const params: any[] = [status, exhibitorId]
+    if (body.amount_inr !== undefined) { upd.push('amount_inr = ?'); params.push(Number(body.amount_inr) || 0) }
+    if (body.notes !== undefined) { upd.push('notes = ?'); params.push(body.notes) }
+    params.push(row.id)
+    await c.env.DB.prepare(`UPDATE booth_allocations SET ${upd.join(', ')} WHERE id = ?`).bind(...params).run()
+
+    await audit(c, 'booth.status', 'booth', code, {
+      from: row.status, to: status, company: row.company_name, exhibitor_id: exhibitorId,
+    })
+    return c.json({ success: true, code, status, exhibitor_id: exhibitorId })
+  } catch (e: any) {
+    if (/no such table/i.test(String(e?.message || ''))) return c.json({ error: 'Booth inventory is not available yet.' }, 503)
+    throw e
+  }
+})
+
+// Releasing a stand DELETES the allocation row rather than flagging it: the unique
+// constraint is on (event_id, booth_id) with no status in it, so a tombstone would
+// keep the booth off the market for ever. The history lives in admin_audit.
+app.delete('/api/admin/booths/:code/allocation', async (c) => {
+  const code = c.req.param('code')
+  if (!(await boothInventoryEnabled(c))) return c.json({ error: 'Booth inventory is not available yet.' }, 503)
+  const eventId = Number(c.req.query('event_id') || 1)
+  try {
+    const row = await c.env.DB.prepare(
+      `SELECT ba.* FROM booth_allocations ba JOIN booths b ON b.id = ba.booth_id
+        WHERE b.event_id = ? AND b.code = ?`
+    ).bind(eventId, code).first() as any
+    if (!row) return c.json({ error: `Booth ${code} is not allocated.` }, 404)
+
+    await c.env.DB.prepare('DELETE FROM booth_allocations WHERE id = ?').bind(row.id).run()
+    // The exhibitor keeps its row — the company may still be exhibiting, and the
+    // profile is theirs — but it must stop claiming a stand it no longer holds,
+    // which is precisely the free-text drift this table replaces. Guarded on the
+    // code so it cannot wipe a number some later allocation has since set.
+    if (row.exhibitor_id) {
+      try {
+        await c.env.DB.prepare('UPDATE exhibitors SET booth_number = NULL WHERE id = ? AND booth_number = ?')
+          .bind(row.exhibitor_id, code).run()
+      } catch (_) { /* the stand is released either way */ }
+    }
+    await audit(c, 'booth.release', 'booth', code, {
+      company: row.company_name, was: row.status, booth_request_id: row.booth_request_id,
+    })
+    return c.json({ success: true, code })
+  } catch (e: any) {
+    if (/no such table/i.test(String(e?.message || ''))) return c.json({ error: 'Booth inventory is not available yet.' }, 503)
+    throw e
+  }
+})
+
+// ==================== EXHIBITION FLOOR: RECORDING A SALE ====================
+//
+// THE PRIMARY WRITE PATH, and the one the older allocate route got backwards.
+// Booths sell OFFLINE — a phone call, an email, a meeting at somebody else's
+// exhibition — and the salesperson records the deal afterwards. Most exhibitors
+// never submit a portal request at all, so booth_request_id is NULL on the
+// ORDINARY path: it is an optional convenience that prefills a form, never a
+// prerequisite and never the only way in. Requiring a request here would mean a
+// walk-up sale could not be recorded without first fabricating an order the
+// customer never placed.
+//
+// PUT, not POST, because it is idempotent per stand: the same call records a new
+// sale or corrects an existing one, which is what "add the payment that landed
+// this morning" actually is. The form the operator sees is the same either way.
+//
+// Nothing typed is trusted into the arithmetic — boothSaleMoney derives net, GST
+// and grand total from list and discount, so no row can be written where
+// amount_inr != list_price_inr - discount_inr.
+app.put('/api/admin/booths/:code/sale', async (c) => {
+  const code = c.req.param('code')
+  const b = await c.req.json() as any
+  if (!(await boothInventoryEnabled(c))) return c.json({ error: 'Booth inventory is not available yet.' }, 503)
+
+  // A recorded sale defaults to CONFIRMED, unlike allocate's 'held': the operator
+  // is writing down a deal that has already closed, not opening a negotiation.
+  const status = BOOTH_ALLOC_STATUSES.includes(b.status) ? b.status : 'confirmed'
+  const company = String(b.company_name || '').trim() || (status === 'blocked' ? 'Organiser hold' : '')
+  if (!company) return c.json({ error: 'A company name is required to record a sale.' }, 400)
+  const eventId = Number(b.event_id || 1)
+
+  const invoiceDate = boothDate(b.invoice_date)
+  if (invoiceDate === false) return c.json({ error: 'The invoice date is not a date.' }, 400)
+  const paidDate = boothDate(b.paid_date)
+  if (paidDate === false) return c.json({ error: 'The payment date is not a date.' }, 400)
+
+  try {
+    const booth = await c.env.DB.prepare(
+      'SELECT * FROM booths WHERE event_id = ? AND code = ?'
+    ).bind(eventId, code).first() as any
+    if (!booth) return c.json({ error: `No booth ${code} on this floor plan.` }, 404)
+
+    // Optional, and clearly secondary. Naming a request links the sale to the
+    // order it came from; leaving it null is the normal case.
+    const requestId: number | null = b.booth_request_id ? Number(b.booth_request_id) : null
+    if (requestId) {
+      const request = await c.env.DB.prepare('SELECT id FROM booth_requests WHERE id = ?').bind(requestId).first()
+      if (!request) return c.json({ error: `Booth request ${requestId} no longer exists.` }, 404)
+    }
+
+    const existing = await c.env.DB.prepare(
+      'SELECT * FROM booth_allocations WHERE event_id = ? AND booth_id = ?'
+    ).bind(eventId, booth.id).first() as any
+
+    // An edit that leaves the price field empty must not silently reprice a signed
+    // deal, so the fallback is the allocation's own frozen list price and only
+    // then the stand's current sticker.
+    const fallbackList = Number((existing && existing.list_price_inr) || booth.list_price_inr || 0)
+    const money = status === 'blocked'
+      // An organiser block is space taken off the market, not a sale. It has no
+      // buyer, no invoice and no money, whatever was typed into the form.
+      ? {
+          list_price_inr: 0, discount_inr: 0, amount_inr: 0, gst_inr: 0, grand_total_inr: 0,
+          amount_paid_inr: 0, payment_status: 'pending', invoice_number: null as string | null,
+        }
+      // The same guard the CSV import runs, and the same function: a negative
+      // receipt, a negative discount, a discount over the list price or a figure
+      // that is not a number is refused with the field named — never quietly
+      // rewritten into something the desk did not type.
+      : boothSaleMoneyChecked(b, fallbackList)
+    if ('error' in money) return c.json({ error: money.error }, 400)
+
+    const contact = String(b.contact_name || '').trim()
+    const email = String(b.email || '').trim()
+    const phone = String(b.phone || '').trim()
+    const notes = String(b.notes || '').trim()
+    const actor = adminActor(c).actor
+
+    let allocationId: number
+    let exhibitorId: number | null = existing ? (existing.exhibitor_id || null) : null
+    const alloc = { booth_request_id: requestId, company_name: company, contact_name: contact, email, phone, notes }
+
+    if (existing) {
+      // Confirming is the moment the stand gets a real number against a real
+      // company, which is the same moment the exhibitor row has to exist.
+      if (status === 'confirmed') {
+        exhibitorId = (await linkBoothExhibitor(c, booth, { ...existing, ...alloc })) || exhibitorId
+      }
+      await c.env.DB.prepare(
+        `UPDATE booth_allocations SET booth_request_id = ?, company_name = ?, contact_name = ?, email = ?,
+           phone = ?, status = ?, amount_inr = ?, list_price_inr = ?, discount_inr = ?, gst_inr = ?,
+           grand_total_inr = ?, invoice_number = ?, invoice_date = ?, amount_paid_inr = ?, paid_date = ?,
+           payment_status = ?, notes = ?, allocated_by = ?, exhibitor_id = ?, updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`
+      ).bind(requestId, company, contact, email, phone, status, money.amount_inr, money.list_price_inr,
+        money.discount_inr, money.gst_inr, money.grand_total_inr, money.invoice_number, invoiceDate,
+        money.amount_paid_inr, paidDate, money.payment_status, notes, actor, exhibitorId, existing.id).run()
+      allocationId = existing.id
+    } else {
+      const ins = await c.env.DB.prepare(
+        `INSERT INTO booth_allocations (event_id, booth_id, booth_request_id, company_name, contact_name,
+           email, phone, status, amount_inr, list_price_inr, discount_inr, gst_inr, grand_total_inr,
+           invoice_number, invoice_date, amount_paid_inr, paid_date, payment_status, notes, allocated_by)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+      ).bind(eventId, booth.id, requestId, company, contact, email, phone, status, money.amount_inr,
+        money.list_price_inr, money.discount_inr, money.gst_inr, money.grand_total_inr,
+        money.invoice_number, invoiceDate, money.amount_paid_inr, paidDate, money.payment_status,
+        notes, actor).run()
+      allocationId = ins.meta.last_row_id as number
+      if (status === 'confirmed') {
+        exhibitorId = await linkBoothExhibitor(c, booth, alloc)
+        if (exhibitorId) {
+          await c.env.DB.prepare('UPDATE booth_allocations SET exhibitor_id = ? WHERE id = ?')
+            .bind(exhibitorId, allocationId).run()
+        }
+      }
+    }
+
+    await audit(c, existing ? 'booth.sale.update' : 'booth.sale', 'booth', code, {
+      status, company, booth_request_id: requestId, exhibitor_id: exhibitorId,
+      list_price_inr: money.list_price_inr, discount_inr: money.discount_inr,
+      amount_inr: money.amount_inr, grand_total_inr: money.grand_total_inr,
+      amount_paid_inr: money.amount_paid_inr, payment_status: money.payment_status,
+      invoice_number: money.invoice_number,
+    })
+    return c.json({
+      success: true, code, status, created: !existing, allocation_id: allocationId,
+      exhibitor_id: exhibitorId, ...money,
+    }, existing ? 200 : 201)
+  } catch (e: any) {
+    const msg = String(e?.message || '')
+    if (/UNIQUE constraint/i.test(msg)) {
+      // Two operators recording the same stand in the same second. The database
+      // decides, not a read-then-write in this handler.
+      return c.json({ error: `Booth ${code} was allocated by somebody else a moment ago. Reload and edit that sale instead.` }, 409)
+    }
+    if (/no such (table|column)/i.test(msg)) return c.json({ error: 'Booth inventory is not available yet.' }, 503)
+    throw e
+  }
+})
+
+// The one editable number on the sales dashboard. app_settings is 0005's key/value
+// store and already holds every other one-off editable figure in this app, so the
+// target goes there rather than in a table of its own — and this route exists
+// instead of letting the generic PUT /api/admin/settings take it so that a typed
+// "1.8 crore" is refused rather than stored as the string that breaks the gauge.
+app.put('/api/admin/booth-target', async (c) => {
+  const body = await c.req.json() as any
+  const raw = String(body.target_inr === undefined || body.target_inr === null ? '' : body.target_inr).trim()
+  if (!raw) return c.json({ error: 'Give the target as a whole number of rupees.' }, 400)
+  const n = boothRupeesStrict(raw)
+  if (n === null) return c.json({ error: 'The target has to be a whole number of rupees, ex-GST.' }, 400)
+  try {
+    await c.env.DB.prepare(
+      'INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, datetime("now")) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at'
+    ).bind(BOOTH_TARGET_KEY, String(n)).run()
+  } catch (e: any) {
+    if (/no such table/i.test(String(e?.message || ''))) return c.json({ error: 'Settings storage is not available yet.' }, 503)
+    throw e
+  }
+  await audit(c, 'booth.target', 'setting', BOOTH_TARGET_KEY, { target_inr: n })
+  return c.json({ success: true, target_inr: n })
+})
+
+// ==================== EXHIBITION FLOOR: CSV IMPORT ====================
+//
+// The exact header row the template download writes. Order matters: it is what
+// the operator's spreadsheet will be laid out in, and what the error messages
+// below refer to by name.
+const BOOTH_IMPORT_HEADERS = [
+  'booth_code', 'company_name', 'contact_name', 'email', 'phone', 'status',
+  'list_price_inr', 'discount_inr', 'invoice_number', 'invoice_date',
+  'amount_paid_inr', 'paid_date', 'payment_status', 'notes',
+]
+
+// A CSV reader that survives what a spreadsheet actually exports: a UTF-8 BOM,
+// CRLF line endings, quoted fields containing commas, and doubled quotes inside
+// them — the same set the attendee bulk upload handles. It goes further in one
+// respect on purpose: a quoted NOTES field can legitimately contain a newline,
+// and the attendee parser splits into lines first, which tears such a row in
+// half. Records therefore carry the 1-based line they START on, so a per-row
+// error points at the line the operator sees in their editor.
+function parseBoothCsv(text: string): { line: number; cells: string[] }[] {
+  let s = String(text || '')
+  if (s.charCodeAt(0) === 0xFEFF) s = s.slice(1)
+  const records: { line: number; cells: string[] }[] = []
+  let cell = '', row: string[] = [], inQuotes = false, line = 1, recLine = 1
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i]
+    if (inQuotes) {
+      if (ch === '"' && s[i + 1] === '"') { cell += '"'; i++ }
+      else if (ch === '"') inQuotes = false
+      else { if (ch === '\n') line++; cell += ch }
+      continue
+    }
+    if (ch === '"') inQuotes = true
+    else if (ch === ',') { row.push(cell); cell = '' }
+    else if (ch === '\r') { /* CRLF — the \n that follows ends the record */ }
+    else if (ch === '\n') {
+      row.push(cell); records.push({ line: recLine, cells: row })
+      row = []; cell = ''; line++; recLine = line
+    } else cell += ch
+  }
+  if (cell !== '' || row.length) { row.push(cell); records.push({ line: recLine, cells: row }) }
+  return records.filter(r => r.cells.some(v => String(v).trim() !== ''))
+}
+
+// Bulk-load the sales that were closed before this screen existed. ALL-OR-NOTHING
+// is the whole point: a half-applied import of 60 stands is worse than no import,
+// because nobody can tell which 23 landed. Every row is validated against the real
+// inventory first and the writes only happen if none of them failed, in one D1
+// batch so the database applies them as a unit.
+app.post('/api/admin/booths/import', async (c) => {
+  const body = await c.req.json() as any
+  if (!(await boothInventoryEnabled(c))) return c.json({ error: 'Booth inventory is not available yet.' }, 503)
+  const eventId = Number(body.event_id || 1)
+  const records = parseBoothCsv(String(body.csv || ''))
+  if (records.length < 2) {
+    return c.json({ error: 'That file has a header row and no data rows.', errors: [], imported: 0 }, 400)
+  }
+  const header = records[0].cells.map(h => String(h).trim().toLowerCase().replace(/\s+/g, '_'))
+  const rows = records.slice(1)
+  if (rows.length > 500) {
+    return c.json({ error: `That file has ${rows.length} rows; 500 is the limit.`, errors: [], imported: 0 }, 400)
+  }
+  for (const need of ['booth_code', 'company_name']) {
+    if (!header.includes(need)) {
+      return c.json({
+        error: `The header row is missing "${need}". Download the template and use its header row exactly.`,
+        errors: [], imported: 0,
+      }, 400)
+    }
+  }
+  const col = (cells: string[], name: string): string => {
+    const i = header.indexOf(name)
+    return i === -1 ? '' : String(cells[i] == null ? '' : cells[i]).trim()
+  }
+
+  try {
+    // The whole floor and its current allocations, read once. Everything the
+    // validation below needs — does the code exist, is it already taken, what does
+    // it list at — is answered from this map rather than a query per row.
+    const { results } = await c.env.DB.prepare(
+      `SELECT b.id, b.code, b.type_key, b.name, b.list_price_inr, b.event_id,
+              ba.id AS alloc_id, ba.company_name AS alloc_company, ba.status AS alloc_status
+         FROM booths b
+         LEFT JOIN booth_allocations ba ON ba.booth_id = b.id AND ba.event_id = b.event_id
+        WHERE b.event_id = ?`
+    ).bind(eventId).all()
+    const floor = new Map<string, any>()
+    for (const r of (results || []) as any[]) floor.set(String(r.code).trim().toUpperCase(), r)
+
+    const errors: { line: number; code: string; message: string }[] = []
+    const seen = new Map<string, number>()
+    const staged: any[] = []
+
+    rows.forEach(rec => {
+      const line = rec.line
+      const rawCode = col(rec.cells, 'booth_code')
+      const key = rawCode.toUpperCase()
+      const fail = (message: string) => errors.push({ line, code: rawCode, message })
+
+      if (!rawCode) { fail('booth_code is empty.'); return }
+      const booth = floor.get(key)
+      if (!booth) { fail(`There is no stand "${rawCode}" on this floor plan.`); return }
+      if (seen.has(key)) { fail(`Stand ${booth.code} appears twice in this file — already on line ${seen.get(key)}.`); return }
+      seen.set(key, line)
+      if (booth.alloc_id) {
+        const verb = booth.alloc_status === 'confirmed' ? 'sold to' : booth.alloc_status === 'blocked' ? 'blocked as' : 'held for'
+        fail(`Stand ${booth.code} is already ${verb} ${booth.alloc_company}. Release it first, or edit that sale.`)
+        return
+      }
+
+      const statusRaw = col(rec.cells, 'status').toLowerCase()
+      const status = statusRaw ? statusRaw : 'confirmed'
+      if (!BOOTH_ALLOC_STATUSES.includes(status)) {
+        fail(`status "${statusRaw}" is not held, confirmed or blocked.`); return
+      }
+      const company = col(rec.cells, 'company_name')
+      if (!company && status !== 'blocked') { fail('company_name is empty.'); return }
+
+      const payStatus = col(rec.cells, 'payment_status').toLowerCase()
+      if (payStatus && !BOOTH_PAYMENT_STATUSES.includes(payStatus)) {
+        fail(`payment_status "${payStatus}" is not one of ${BOOTH_PAYMENT_STATUSES.join(', ')}.`); return
+      }
+
+      // The money, checked by exactly the function the record-a-sale form calls,
+      // so a row this file is refused for is a row that form refuses too, in the
+      // same words. The three cells go in raw: the guard is what decides whether
+      // "-5000" or "three lakh" is a number, and it is the same decision there.
+      const money = status === 'blocked'
+        ? {
+            list_price_inr: 0, discount_inr: 0, amount_inr: 0, gst_inr: 0, grand_total_inr: 0,
+            amount_paid_inr: 0, payment_status: 'pending', invoice_number: null as string | null,
+          }
+        : boothSaleMoneyChecked({
+            list_price_inr: col(rec.cells, 'list_price_inr'),
+            discount_inr: col(rec.cells, 'discount_inr'),
+            amount_paid_inr: col(rec.cells, 'amount_paid_inr'),
+            payment_status: payStatus,
+            invoice_number: col(rec.cells, 'invoice_number'),
+          }, Number(booth.list_price_inr || 0))
+      if ('error' in money) { fail(money.error); return }
+
+      const invDate = boothDate(col(rec.cells, 'invoice_date'))
+      if (invDate === false) { fail(`invoice_date "${col(rec.cells, 'invoice_date')}" is not a date.`); return }
+      const payDate = boothDate(col(rec.cells, 'paid_date'))
+      if (payDate === false) { fail(`paid_date "${col(rec.cells, 'paid_date')}" is not a date.`); return }
+
+      staged.push({
+        booth, line, status,
+        company: company || 'Organiser hold',
+        contact: col(rec.cells, 'contact_name'),
+        email: col(rec.cells, 'email'),
+        phone: col(rec.cells, 'phone'),
+        notes: col(rec.cells, 'notes'),
+        invoice_date: invDate, paid_date: payDate, money,
+      })
+    })
+
+    if (errors.length) {
+      return c.json({
+        error: `${errors.length} of ${rows.length} rows have a problem, so nothing was imported.`,
+        errors: errors.slice(0, 100), error_count: errors.length, imported: 0,
+      }, 400)
+    }
+    if (!staged.length) return c.json({ error: 'That file has no data rows.', errors: [], imported: 0 }, 400)
+
+    const actor = adminActor(c).actor
+    await c.env.DB.batch(staged.map(s => c.env.DB.prepare(
+      `INSERT INTO booth_allocations (event_id, booth_id, company_name, contact_name, email, phone,
+         status, amount_inr, list_price_inr, discount_inr, gst_inr, grand_total_inr,
+         invoice_number, invoice_date, amount_paid_inr, paid_date, payment_status, notes, allocated_by)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+    ).bind(eventId, s.booth.id, s.company, s.contact, s.email, s.phone, s.status,
+      s.money.amount_inr, s.money.list_price_inr, s.money.discount_inr, s.money.gst_inr,
+      s.money.grand_total_inr, s.money.invoice_number, s.invoice_date, s.money.amount_paid_inr,
+      s.paid_date, s.money.payment_status, s.notes, actor)))
+
+    // The exhibitor rows a confirmed sale implies. Best effort and deliberately
+    // after the batch: the import has already succeeded and a schema difference in
+    // exhibitors must not undo 60 recorded sales.
+    let linked = 0
+    for (const s of staged) {
+      if (s.status !== 'confirmed') continue
+      try {
+        const exhibitorId = await linkBoothExhibitor(c, s.booth, {
+          company_name: s.company, contact_name: s.contact, email: s.email, phone: s.phone, notes: s.notes,
+        })
+        if (exhibitorId) {
+          await c.env.DB.prepare(
+            'UPDATE booth_allocations SET exhibitor_id = ? WHERE event_id = ? AND booth_id = ?'
+          ).bind(exhibitorId, eventId, s.booth.id).run()
+          linked++
+        }
+      } catch (_) { /* the sale is recorded either way */ }
+    }
+
+    const totalNet = staged.reduce((n, s) => n + Number(s.money.amount_inr || 0), 0)
+    await audit(c, 'booth.import', 'booth', staged.map(s => s.booth.code).join(','), {
+      imported: staged.length, exhibitors_linked: linked, net_inr: totalNet,
+    })
+    return c.json({ success: true, imported: staged.length, exhibitors_linked: linked, net_inr: totalNet, errors: [] })
+  } catch (e: any) {
+    const msg = String(e?.message || '')
+    if (/no such (table|column)/i.test(msg)) return c.json({ error: 'Booth inventory is not available yet.', errors: [], imported: 0 }, 503)
+    if (/UNIQUE constraint/i.test(msg)) {
+      // Somebody allocated one of these stands between the check above and the
+      // batch. The batch is a transaction, so nothing was written.
+      return c.json({ error: 'One of those stands was allocated while the file was being checked. Nothing was imported — reload and try again.', errors: [], imported: 0 }, 409)
+    }
+    throw e
+  }
+})
+
 // Admin: Booth request stats
 app.get('/api/admin/booth-stats', async (c) => {
   const [totalRequests, statusBreakdown, typeBreakdown, revenue] = await Promise.all([
@@ -3945,11 +5117,86 @@ app.get('/api/admin/booth-stats', async (c) => {
       WHERE bt.is_active = 1 GROUP BY bt.id ORDER BY bt.sort_order`).all(),
     c.env.DB.prepare("SELECT SUM(grand_total) as total FROM booth_requests WHERE status IN ('approved','confirmed') AND payment_status = 'paid'").first(),
   ])
+
+  // THE OVER-SELLING BUG. booth_types.total_count / available_count are numbers
+  // somebody typed into migration 0011 and no flow has updated since: 40 pods, 35
+  // Explorer, 20 Innovator, 15 Accelerator, 10 Enterprise, 8 Flagship, 4 Mega =
+  // 132 stands. The hall has 93. So this screen offered 35 Explorer Booths against
+  // 15 that exist, and dropped the two Premium stands entirely because that tier
+  // arrived with the revised layout and was never added to the catalogue.
+  //
+  // Real rows from booths are counted instead, and availability is the absence of
+  // an allocation, which is what the floor plan and the public availability
+  // endpoint already mean by it. Display names come from booths.name verbatim —
+  // 'accelerator' DISPLAYS as "Enterprise Booth" and 'standard' as "Accelerator
+  // Booth", and re-deriving either is how this screen starts contradicting the
+  // public plan. If migration 0030 has not been applied the old catalogue answer
+  // is returned unchanged, because a wrong count is still better than none.
+  const eventId = Number(c.req.query('event_id') || 1)
+  const catalogue = ((typeBreakdown as any)?.results || []) as any[]
+  let byType = catalogue
+  let inventoryReady = false
+  if (await boothInventoryEnabled(c)) {
+    try {
+      const { results: inv } = await c.env.DB.prepare(
+        `SELECT b.type_key, b.name,
+                COUNT(*) AS total_count,
+                SUM(CASE WHEN ba.id IS NULL THEN 1 ELSE 0 END) AS available_count,
+                SUM(CASE WHEN ba.status = 'confirmed' THEN 1 ELSE 0 END) AS sold_count,
+                SUM(CASE WHEN ba.status = 'held' THEN 1 ELSE 0 END) AS held_count,
+                SUM(CASE WHEN ba.status = 'blocked' THEN 1 ELSE 0 END) AS blocked_count,
+                SUM(b.sqm) AS sqm, MAX(b.list_price_inr) AS list_price_inr
+           FROM booths b
+           LEFT JOIN booth_allocations ba ON ba.booth_id = b.id AND ba.event_id = b.event_id
+          WHERE b.event_id = ?
+          GROUP BY b.type_key, b.name`
+      ).bind(eventId).all()
+      const rows = (inv || []) as any[]
+      if (rows.length) {
+        // Requests and approved quantities still belong to the catalogue — they are
+        // counted against booth_types.id — so they are joined back on by slug.
+        const bySlug: Record<string, any> = {}
+        for (const t of catalogue) bySlug[String(t.slug)] = t
+        byType = rows.map(r => {
+          const slug = BOOTH_TYPE_SLUG[String(r.type_key)] || ''
+          const cat = bySlug[slug] || null
+          return {
+            // Every key the old shape had, with the same meaning, so nothing
+            // reading this endpoint has to change.
+            name: r.name,
+            slug: slug || String(r.type_key),
+            total_count: Number(r.total_count || 0),
+            available_count: Number(r.available_count || 0),
+            // The stand's own sticker price, not the catalogue's: booths.list_price_inr
+            // is what an operator quotes off this screen, and the catalogue drifted
+            // (it still lists Explorer at 129000 against the plan's 125000).
+            price_inr: Number(r.list_price_inr || (cat && cat.price_inr) || 0),
+            requests: Number((cat && cat.requests) || 0),
+            approved_qty: Number((cat && cat.approved_qty) || 0),
+            // New, additive: what the drill-downs need.
+            type_key: String(r.type_key),
+            sold_count: Number(r.sold_count || 0),
+            held_count: Number(r.held_count || 0),
+            blocked_count: Number(r.blocked_count || 0),
+            sqm: Math.round(Number(r.sqm || 0) * 100) / 100,
+            catalogue_price_inr: Number((cat && cat.price_inr) || 0),
+          }
+        }).sort((a, b) => boothTypeRank(a.type_key) - boothTypeRank(b.type_key))
+        inventoryReady = true
+      }
+    } catch (e: any) {
+      // Never a 500 at an operator who only wanted the requests list.
+      if (!/no such (table|column)/i.test(String(e?.message || ''))) throw e
+    }
+  }
+
   return c.json({
     total_requests: (totalRequests as any)?.count || 0,
     by_status: (statusBreakdown as any)?.results || [],
-    by_type: (typeBreakdown as any)?.results || [],
+    by_type: byType,
     total_revenue: (revenue as any)?.total || 0,
+    inventory_ready: inventoryReady,
+    inventory_total: inventoryReady ? byType.reduce((n: number, t: any) => n + Number(t.total_count || 0), 0) : 0,
   })
 })
 
@@ -4597,26 +5844,55 @@ app.post('/api/admin/attendees/bulk', async (c) => {
 // Admin: Download attendees as CSV
 app.get('/api/admin/events/:id/attendees/export', async (c) => {
   const eventId = c.req.param('id')
-  const { results } = await c.env.DB.prepare(
-    // city, country and registration_date were in the header row but never selected,
-    // so those three columns came out blank on every row. registration_source is the
-    // campus-panel attribution: the column a sponsor report is built from, and until
-    // now the only way to read it was a raw query. Appended last so anything parsing
-    // the file by position keeps working.
-    'SELECT id, name, email, company, job_title, bio, interests, linkedin_url, mobile, city, country, lunch_inclusion, arrival_time, role, badge_type, registration_date, registration_source, is_online, notified_at, last_login_at, pass_downloaded_at, rsvp_status, rsvp_at, created_at FROM attendees WHERE event_id = ? ORDER BY id'
-  ).bind(eventId).all()
 
-  const headers = ['name', 'email', 'company', 'job_title', 'mobile', 'city', 'country', 'linkedin_url', 'lunch_inclusion', 'arrival_time', 'bio', 'interests', 'role', 'badge_type', 'registration_date', 'payment_amount', 'rsvp_status', 'rsvp_at', 'notified_at', 'last_login_at', 'pass_downloaded_at', 'registration_source']
-  const csvRows = [headers.join(',')]
-  for (const r of results as any[]) {
-    const row = headers.map(h => {
-      const val = (r[h] || '').toString().replace(/"/g, '""')
-      return val.includes(',') || val.includes('"') || val.includes('\\n') ? `"${val}"` : val
-    })
-    csvRows.push(row.join(','))
+  // This file is where the complete record lives - the admin grid deliberately
+  // carries only what it draws - so it exports every column worth having. The
+  // original order is preserved and later additions are appended, so anything
+  // parsing the file by position keeps working. avatar_url is left out on purpose:
+  // an uploaded photo is stored inline, and one row would be tens of KB of base64.
+  const EXPORT_COLS = [
+    'name', 'email', 'company', 'job_title', 'mobile', 'city', 'country',
+    'linkedin_url', 'lunch_inclusion', 'arrival_time', 'bio', 'interests', 'role',
+    'badge_type', 'registration_date', 'payment_amount', 'rsvp_status', 'rsvp_at',
+    'notified_at', 'last_login_at', 'pass_downloaded_at', 'social_card_downloaded_at', 'registration_source',
+    'id', 'payment_status', 'industry', 'company_size', 'special_requirements',
+    'pass_type', 'twitter_url', 'website_url', 'checked_in_at', 'checked_in_by',
+    'created_at',
+  ]
+  // payment_amount was in the header row but never in the SELECT, so that column
+  // came out blank on every row. Naming columns outright would fail the whole
+  // export with "no such column" on a database one migration behind, so the list
+  // is intersected with the table as it actually is - the same guard the admin
+  // write path uses, and each column starts exporting the day a migration adds it.
+  const have = await attendeeColumns(c)
+  const headers = EXPORT_COLS.filter(h => have.has(h))
+  if (!headers.length) return c.json({ error: 'attendees table unavailable' }, 503)
+
+  // A download that fails should say so in a way the browser can show, not hand
+  // the operator a 500 page saved as attendees_export.csv.
+  let results: any[]
+  try {
+    const r = await c.env.DB.prepare(
+      `SELECT ${headers.join(', ')} FROM attendees WHERE event_id = ? ORDER BY id`
+    ).bind(eventId).all()
+    results = (r.results || []) as any[]
+  } catch {
+    return c.json({ error: 'Could not read the attendees table.' }, 503)
   }
 
-  return new Response(csvRows.join('\\n'), {
+  const csvRows = [headers.join(',')]
+  for (const r of (results || []) as any[]) {
+    csvRows.push(headers.map(h => {
+      const val = (r[h] == null ? '' : r[h]).toString().replace(/"/g, '""')
+      return /[",\r\n]/.test(val) ? `"${val}"` : val
+    }).join(','))
+  }
+
+  // The rows used to be joined with a literal backslash-n rather than a newline,
+  // so the entire export arrived as ONE line and every spreadsheet opened it as a
+  // single record. CRLF and a BOM, so Excel on Windows reads both the row breaks
+  // and the accents in the names.
+  return new Response('\uFEFF' + csvRows.join('\r\n'), {
     headers: {
       'Content-Type': 'text/csv; charset=utf-8',
       'Content-Disposition': 'attachment; filename="attendees_export.csv"'
@@ -14173,9 +15449,15 @@ function mainPageHTML(): string {
     // which lives in generateEventPass and is not in scope here - so the upload threw
     // a ReferenceError that the catch below reported as "Upload failed. Please try
     // another image." Every attempt to add a photo at the pass gate failed that way.
-    function askForPassPhoto(user) {
+    // copy — optional {title, body} for callers that are not the pass. The social
+    // card needs the same uploader but must not claim a photo is required at the
+    // badge desk, which is the one thing this wording is for.
+    function askForPassPhoto(user, copy) {
       user = user || currentUser;
       if (!user || !user.id) return Promise.resolve('cancel');
+      copy = copy || {};
+      var askTitle = copy.title || 'A photo is required on your pass';
+      var askBody = copy.body || 'Your pass is checked against a government photo ID at the badge desk. Adding your photo makes that check quick and stops passes being shared.';
       return new Promise(function (resolve) {
         var wrap = document.createElement('div');
         wrap.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(4,6,20,0.80);display:flex;align-items:center;justify-content:center;padding:20px;';
@@ -14183,8 +15465,8 @@ function mainPageHTML(): string {
           '<div style="max-width:380px;width:100%;background:#0f1428;border:1px solid rgba(255,255,255,0.12);border-radius:18px;padding:26px;text-align:center;color:#e8edf5;font-family:Inter,Arial,sans-serif;position:relative;">' +
             '<button id="pass-photo-close" aria-label="Close" style="position:absolute;top:12px;right:14px;background:none;border:none;color:#6c7893;font-size:20px;cursor:pointer;line-height:1;">&times;</button>' +
             '<div style="width:52px;height:52px;margin:0 auto 14px;border-radius:50%;background:rgba(255,107,0,0.16);display:flex;align-items:center;justify-content:center;"><i class="fas fa-camera" style="color:#FF8C38;font-size:20px;"></i></div>' +
-            '<h3 style="margin:0 0 8px;font-size:17px;font-weight:700;">A photo is required on your pass</h3>' +
-            '<p style="margin:0 0 18px;font-size:13px;line-height:1.6;color:#98a3bd;">Your pass is checked against a government photo ID at the badge desk. Adding your photo makes that check quick and stops passes being shared.</p>' +
+            '<h3 style="margin:0 0 8px;font-size:17px;font-weight:700;">' + askTitle + '</h3>' +
+            '<p style="margin:0 0 18px;font-size:13px;line-height:1.6;color:#98a3bd;">' + askBody + '</p>' +
             '<input type="file" accept="image/*" id="pass-photo-input" style="display:none;">' +
             '<button id="pass-photo-pick" style="width:100%;padding:11px;border:none;border-radius:11px;background:linear-gradient(135deg,#FF6B00,#FF8C38);color:#fff;font-weight:700;font-size:14px;cursor:pointer;">Choose a photo</button>' +
             '<p id="pass-photo-status" style="margin:12px 0 0;font-size:12px;color:#98a3bd;min-height:16px;"></p>' +
@@ -15783,6 +17065,9 @@ function adminPageHTML(): string {
       <button onclick="switchSection('booth-requests')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="booth-requests" title="Booth Requests">
         <i class="fas fa-th-large w-5 text-center shrink-0"></i><span class="sidebar-label">Booth Requests</span>
       </button>
+      <button onclick="switchSection('floor-plan')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="floor-plan" title="Floor Plan">
+        <i class="fas fa-map w-5 text-center shrink-0"></i><span class="sidebar-label">Floor Plan</span>
+      </button>
       <button onclick="switchSection('awards')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="awards" title="Awards">
         <i class="fas fa-trophy w-5 text-center shrink-0"></i><span class="sidebar-label">Awards</span>
       </button>
@@ -15856,6 +17141,8 @@ function adminPageHTML(): string {
       <!-- Exhibitors Section -->
       <div id="section-exhibitors" class="section-content hidden"></div>
       <div id="section-booth-requests" class="section-content hidden"></div>
+      <!-- Floor Plan Section: the 93 stands and who holds each one -->
+      <div id="section-floor-plan" class="section-content hidden"></div>
       <!-- Awards Section -->
       <div id="section-awards" class="section-content hidden"></div>
       <!-- Announcements Section -->
@@ -15993,12 +17280,41 @@ function adminPageHTML(): string {
       if (op) h['X-Admin-Actor'] = op;
       return h;
     }
+    // Is the dashboard actually up, or are we still behind the login gate?
+    // showDashboard() is the only thing that hides the overlay, so this is the one
+    // honest answer - localStorage.tc_admin only records intent, and the staff
+    // cookie check that confirms it is asynchronous.
+    function adminSignedIn() {
+      var ov = document.getElementById('login-overlay');
+      return !!ov && ov.classList.contains('hidden');
+    }
     // If any admin call comes back 401, the stored secret is stale/wrong —
     // drop it and send the user back to the login screen.
+    //
+    // Reloading is only right when we were signed in and the credential went bad.
+    // Reloading while still ON the login gate is a loop: the page comes back, the
+    // deep link fires the same request, it 401s, and it reloads again - which is
+    // what /admin#attendees did to anyone who was not signed in. And two parallel
+    // 401s (this page issues its calls in a Promise.all) must not reload twice.
+    var _authFailing = false;
     function handleAuthFailure() {
       sessionStorage.removeItem('tc_admin_token');
       localStorage.removeItem('tc_admin');
+      if (!adminSignedIn()) { showLoginGate(); return; }
+      if (_authFailing) return;
+      _authFailing = true;
       location.reload();
+    }
+    // Put the gate back up without a reload, keeping the hash so the section the
+    // user asked for is waiting for them the moment they sign in.
+    function showLoginGate() {
+      var ov = document.getElementById('login-overlay');
+      if (ov) ov.classList.remove('hidden');
+      var sb = document.getElementById('sidebar');
+      var mn = document.getElementById('main-content');
+      if (sb) { sb.classList.add('hidden'); sb.classList.remove('flex'); }
+      if (mn) mn.classList.add('hidden');
+      stopAutoRefresh();
     }
 
     // CSV export is a file download, so it can't carry an Authorization header.
@@ -16010,8 +17326,37 @@ function adminPageHTML(): string {
       window.location.href = '/api/admin/events/' + EID + '/attendees/export?token=' + encodeURIComponent(t);
     }
 
+    // A non-JSON body used to surface as the browser's own "JSON.parse: unexpected
+    // character at line 1 column 1", which names neither the call nor the cause -
+    // the Attendees tab showed exactly that for weeks while every other tab worked.
+    // Say which endpoint answered, with what status, and how big the body was,
+    // because an oversized response is what this looks like from in here.
+    async function jsonOrThrow(r, u) {
+      const body = await r.text();
+      try { return JSON.parse(body); }
+      catch (e) {
+        throw new Error('The server sent a non-JSON reply for ' + u + ' (HTTP ' + r.status + ', ' +
+          body.length + ' bytes). ' + (body.length > 900000
+            ? 'That body is too large to deliver in one response - narrow the list or use Export CSV.'
+            : 'It starts: ' + body.slice(0, 80)));
+      }
+    }
     const api = {
-      get: u => fetch(u,{headers:authHeaders()}).then(async r => { if (r.status===401){handleAuthFailure();throw new Error('unauthorized');} return r.json(); }),
+      get: u => fetch(u,{headers:authHeaders()}).then(async r => { if (r.status===401){handleAuthFailure();throw new Error('unauthorized');} return jsonOrThrow(r, u); }),
+      // Same as get(), but also hands back the paging counters the list endpoints
+      // send as headers. They cannot ride in the body: it is a bare array and that
+      // shape is what every existing caller already expects.
+      getWithMeta: u => fetch(u,{headers:authHeaders()}).then(async r => {
+        if (r.status===401){handleAuthFailure();throw new Error('unauthorized');}
+        const data = await jsonOrThrow(r, u);
+        const n = parseInt(r.headers.get('X-Total-Count')||'', 10);
+        return {
+          data: data,
+          total: isNaN(n) ? (Array.isArray(data) ? data.length : 0) : n,
+          truncated: r.headers.get('X-Truncated') === '1',
+          truncatedBy: r.headers.get('X-Truncated-By') || '',
+        };
+      }),
       post: (u,d) => fetch(u,{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify(d)}).then(async r => { if (r.status===401){handleAuthFailure();throw new Error('unauthorized');} const j = await r.json(); if (!r.ok) throw Object.assign(new Error(j.error||'Request failed'), {data:j}); return j; }),
       put: (u,d) => fetch(u,{method:'PUT',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify(d)}).then(async r => { if (r.status===401){handleAuthFailure();throw new Error('unauthorized');} const j = await r.json(); if (!r.ok) throw Object.assign(new Error(j.error||'Request failed'), {data:j}); return j; }),
       del: u => fetch(u,{method:'DELETE',headers:authHeaders()}).then(async r => { if (r.status===401){handleAuthFailure();throw new Error('unauthorized');} return r.json(); }),
@@ -16086,6 +17431,17 @@ function adminPageHTML(): string {
       loadIdentity();
       loadOverview();
       startAutoRefresh();
+      // Now that there is a dashboard to show, honour the deep link that arrived
+      // before there was one - /admin#rooms opened while signed out lands on
+      // Rooms once you sign in, rather than dumping you on Overview. The hash is
+      // re-read here because sign-in can finish long after DOMContentLoaded has
+      // been and gone: the staff-cookie check is a round trip.
+      var want = pendingSection || sectionFromHash();
+      pendingSection = null;
+      // Deferred for the same reason the DOMContentLoaded handler defers: this
+      // function can run while the script below is still being evaluated, and the
+      // section loaders close over let-bindings declared further down the file.
+      if (want && want !== 'overview') setTimeout(function () { switchSection(want); }, 0);
     }
 
     // Below 1024px the sidebar is an overlay, so the same button has to open and
@@ -16147,7 +17503,15 @@ function adminPageHTML(): string {
     }
 
     // ============ NAVIGATION ============
+    // A section the user asked for before they were signed in. Held here rather
+    // than navigated to, because navigating fires that section's API calls, which
+    // 401 and bounce straight back to the gate. showDashboard() spends it.
+    var pendingSection = null;
     function switchSection(sec) {
+      // Deep links and back/forward both land here, and neither waits for auth.
+      // Behind the gate there is nothing to show and every fetch would 401, so
+      // remember the destination instead and let signing in complete the journey.
+      if (!adminSignedIn()) { pendingSection = sec; return; }
       currentSection = sec;
       document.querySelectorAll('.sidebar-btn').forEach(b => {
         b.classList.remove('sidebar-active');
@@ -16158,8 +17522,8 @@ function adminPageHTML(): string {
       document.querySelectorAll('.section-content').forEach(s => s.classList.add('hidden'));
       document.getElementById('section-'+sec).classList.remove('hidden');
 
-      const titles = { overview:'Overview', attendees:'Attendee Management', sessions:'Session Management', exhibitors:'Exhibitor Management', 'booth-requests':'Booth Requests', awards:'Awards Management', announcements:'Announcement Management', innovation:'Innovation Talk & Showcase', 'startup-pitch':'Startup Pitch Management', inquiries:'Inquiry Management', payments:'Payments & Invoices', 'badge-desk':'Badge Desk', analytics:'Analytics & Reports', rooms:'Boardrooms', settings:'Settings' };
-      const subtitles = { overview:'Real-time event management dashboard', attendees:'Manage all registered attendees', sessions:'Create and manage event sessions', exhibitors:'Manage exhibition booths', 'booth-requests':'Review and manage booth booking requests', awards:'Manage award categories and nominees', announcements:'Create and manage live feed announcements', innovation:'Manage innovation talk and showcase schedule', 'startup-pitch':'Manage startup pitches and investor panel', inquiries:'View and manage all incoming inquiries', payments:'Confirm payments taken on mUni Campus and issue GST invoices', 'badge-desk':'Event-day check-in and the staff accounts that scan passes', analytics:'Deep dive into event engagement metrics', rooms:'Who has which WTC boardroom, hour by hour, across both event days', settings:'Configure email, API keys and app settings' };
+      const titles = { overview:'Overview', attendees:'Attendee Management', sessions:'Session Management', exhibitors:'Exhibitor Management', 'booth-requests':'Booth Requests', 'floor-plan':'Floor Plan', awards:'Awards Management', announcements:'Announcement Management', innovation:'Innovation Talk & Showcase', 'startup-pitch':'Startup Pitch Management', inquiries:'Inquiry Management', payments:'Payments & Invoices', 'badge-desk':'Badge Desk', analytics:'Analytics & Reports', rooms:'Boardrooms', settings:'Settings' };
+      const subtitles = { overview:'Real-time event management dashboard', attendees:'Manage all registered attendees', sessions:'Create and manage event sessions', exhibitors:'Manage exhibition booths', 'booth-requests':'Review and manage booth booking requests', 'floor-plan':'Which of the 93 stands are sold, held and still on the market', awards:'Manage award categories and nominees', announcements:'Create and manage live feed announcements', innovation:'Manage innovation talk and showcase schedule', 'startup-pitch':'Manage startup pitches and investor panel', inquiries:'View and manage all incoming inquiries', payments:'Confirm payments taken on mUni Campus and issue GST invoices', 'badge-desk':'Event-day check-in and the staff accounts that scan passes', analytics:'Deep dive into event engagement metrics', rooms:'Who has which WTC boardroom, hour by hour, across both event days', settings:'Configure email, API keys and app settings' };
       document.getElementById('page-title').textContent = titles[sec] || sec;
       document.getElementById('page-subtitle').textContent = subtitles[sec] || '';
 
@@ -16193,7 +17557,13 @@ function adminPageHTML(): string {
     });
     window.addEventListener('DOMContentLoaded', () => {
       const sec = sectionFromHash();
-      if (sec && sec !== 'overview') setTimeout(() => switchSection(sec), 0);
+      if (!sec || sec === 'overview') return;
+      // switchSection() holds this rather than navigating when the gate is still
+      // up, and showDashboard() spends it after sign-in. Before that guard existed
+      // this line was the whole bug: on /admin#attendees while signed out it
+      // navigated anyway, the section's first call 401'd, handleAuthFailure()
+      // reloaded, and the reload ran this line again - forever.
+      setTimeout(() => switchSection(sec), 0);
     });
 
     // True once the event's last day is over, in the browser's own day terms.
@@ -16241,6 +17611,11 @@ function adminPageHTML(): string {
         refreshCurrentSection();
       }, 60000);
     }
+    // A signed-out tab that keeps polling admin endpoints every 60s is how one
+    // stale credential turns into a stream of 401s, so the gate stops the timer.
+    function stopAutoRefresh() {
+      if (autoRefreshTimer) { clearInterval(autoRefreshTimer); autoRefreshTimer = null; }
+    }
     function toggleAutoRefresh() {
       autoRefreshOn = !autoRefreshOn;
       localStorage.setItem('tc_admin_autorefresh', autoRefreshOn ? '1' : '0');
@@ -16254,6 +17629,7 @@ function adminPageHTML(): string {
         case 'sessions': loadAdminSessions(); break;
         case 'exhibitors': loadAdminExhibitors(); break;
         case 'booth-requests': loadAdminBoothRequests(); break;
+        case 'floor-plan': loadAdminFloorPlan(); break;
         case 'awards': loadAdminAwards(); break;
         case 'announcements': loadAdminAnnouncements(); break;
         case 'analytics': loadAnalytics(); break;
@@ -17093,6 +18469,13 @@ function adminPageHTML(): string {
     let attSortDir = 'desc'; // 'asc' or 'desc'
     let lastAttendees = null;
     let lastDupData = null;
+    // The list endpoint caps how many rows it will send. attTotal is what the
+    // server says exists, attTruncated whether the cap bit, and attWantAll is set
+    // only when the operator clicks through the notice asking for the whole lot.
+    let attTotal = 0;
+    let attTruncated = false;
+    let attTruncatedBy = '';
+    let attWantAll = false;
 
     // Reg Date rendered "-" for every row because it read a.registration_date, which
     // is not a column on attendees — the table has created_at. Formatted here rather
@@ -17175,6 +18558,10 @@ function adminPageHTML(): string {
       return out.filter(a => [a.name, a.email, a.company, a.job_title, a.mobile, a.city, a.badge_type]
         .map(v => String(v || '').toLowerCase()).join(' ').includes(q));
     }
+    // The cap is what stops the response growing back past what the browser can
+    // parse, so opting out of it is a deliberate act: it takes a click, and the
+    // notice next to it points at Export CSV as the route that never truncates.
+    function attLoadAll() { attWantAll = true; lastAttendees = null; loadAdminAttendees(); }
     function gotoAttPage(n) { attPage = n; loadAdminAttendees(null, true); }
     function setAttPageSize(v) { attPageSize = v === 'all' ? Infinity : parseInt(v, 10); attPage = 1; loadAdminAttendees(null, true); }
     function searchAttendees(v) { attQuery = v; attPage = 1; loadAdminAttendees(null, true); }
@@ -17191,10 +18578,14 @@ function adminPageHTML(): string {
           attendees = lastAttendees; dupData = lastDupData || { groups: [] };
         } else {
           var _r = await Promise.all([
-            api.get('/api/events/'+EID+'/attendees'),
+            api.getWithMeta('/api/events/'+EID+'/attendees' + (attWantAll ? '?limit=all' : '')),
             api.get('/api/admin/events/'+EID+'/attendees/duplicates').catch(()=>({groups:[]}))
           ]);
-          attendees = _r[0]; dupData = _r[1];
+          attendees = _r[0].data;
+          attTotal = _r[0].total;
+          attTruncated = _r[0].truncated;
+          attTruncatedBy = _r[0].truncatedBy;
+          dupData = _r[1];
         }
       } catch (err) {
         if (err && err.message === 'unauthorized') return;
@@ -17263,7 +18654,10 @@ function adminPageHTML(): string {
               <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-xs"></i>
               <input type="text" id="admin-att-search" autocomplete="off" placeholder="Search attendees..." class="pl-9 pr-4 py-2 rounded-lg text-xs w-64 max-w-full" value="\${esc(attQuery)}" oninput="searchAttendees(this.value)">
             </div>
-            <span class="text-xs text-gray-400">\${attendees.length} total</span>
+            <span class="text-xs text-gray-400">\${attTotal || attendees.length} total</span>
+            \${attTruncated ? '<span class="text-xs text-amber-300 ml-1" title="One response can only carry so much. This page is working from the first ' + attendees.length + ' rows; Export CSV always covers everyone."><i class="fas fa-scissors mr-1"></i>showing ' + attendees.length + '</span>' + (attTruncatedBy === 'rows'
+              ? '<button onclick="attLoadAll()" class="text-[10px] px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-200 hover:bg-amber-500/30 ml-1">Load all ' + attTotal + '</button>'
+              : '<button onclick="exportAttendeesCsv(event)" class="text-[10px] px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-200 hover:bg-amber-500/30 ml-1" title="A single response cannot carry all ' + attTotal + ' rows. The CSV can.">Export all ' + attTotal + '</button>') : ''}
             \${Object.keys(dupMap).length > 0 ? '<span class="text-xs text-red-400 ml-1"><i class="fas fa-exclamation-triangle mr-0.5"></i>' + (dupData.totalGroups||0) + ' dup groups (' + Object.keys(dupMap).length + ' entries)</span>' : ''}
             \${attSortCol ? '<span class="text-xs text-indigo-400 ml-2"><i class="fas fa-sort-amount-'+(attSortDir==='asc'?'up':'down')+' mr-0.5"></i>Sorted by '+attSortCol.replace('_',' ')+'</span><button onclick="resetAttSort()" class="text-[10px] text-gray-500 hover:text-white ml-1" title="Reset sort"><i class="fas fa-times-circle"></i></button>' : ''}
           </div>
@@ -17357,7 +18751,7 @@ function adminPageHTML(): string {
                   <td class="text-xs" id="notified-\${a.id}">\${a.notified_at ? '<span class="text-green-400" title="'+a.notified_at+'"><i class="fas fa-check-circle"></i></span>' : '<span class="text-gray-600"><i class="fas fa-times-circle"></i></span>'}</td>
                   <td class="text-xs"><div class="flex gap-1.5 items-center" title="Login | Pass | Post-Email Login"><span class="\${a.last_login_at ? 'text-blue-400' : 'text-gray-600'}" title="\${a.last_login_at ? 'Logged in: '+a.last_login_at : 'Not logged in'}"><i class="fas fa-sign-in-alt"></i></span><span class="\${a.pass_downloaded_at ? 'text-emerald-400' : 'text-gray-600'}" title="\${a.pass_downloaded_at ? 'Pass downloaded: '+a.pass_downloaded_at : 'Pass not downloaded'}"><i class="fas fa-id-badge"></i></span><span class="\${a.notified_at && a.last_login_at && a.last_login_at >= a.notified_at ? 'text-violet-400' : 'text-gray-600'}" title="\${a.notified_at && a.last_login_at && a.last_login_at >= a.notified_at ? 'Opened after email' : 'Not opened after email'}"><i class="fas fa-envelope-open"></i></span></div></td>
                   <td class="flex gap-1">
-                    <button onclick='openEditAttendee(\${JSON.stringify(a).replace(/'/g,"&#39;")})' class="px-2 py-1 rounded text-xs bg-primary-500/20 text-primary-300 hover:bg-primary-500/30" title="Full Edit"><i class="fas fa-edit"></i></button>
+                    <button onclick="openEditAttendeeById(\${a.id})" class="px-2 py-1 rounded text-xs bg-primary-500/20 text-primary-300 hover:bg-primary-500/30" title="Full Edit"><i class="fas fa-edit"></i></button>
                     <button onclick='adminDownloadPass(\${JSON.stringify({id:a.id,name:a.name,email:a.email,company:a.company||"",job_title:a.job_title||"",badge_type:a.badge_type||"Delegate",avatar_url:a.avatar_url||""}).replace(/'/g,"&#39;")})' class="px-2 py-1 rounded text-xs bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30" title="Download Pass"><i class="fas fa-id-badge"></i></button>
                     <button onclick="notifyAttendeeById(\${a.id})" class="px-2 py-1 rounded text-xs bg-amber-500/20 text-amber-300 hover:bg-amber-500/30" title="Send notification email"><i class="fas fa-envelope"></i></button>
                     <button onclick="deleteAttendee(\${a.id})" class="px-2 py-1 rounded text-xs bg-red-500/20 text-red-400 hover:bg-red-500/30" title="Delete"><i class="fas fa-trash"></i></button>
@@ -17781,10 +19175,20 @@ function adminPageHTML(): string {
         '</div>');
     }
     // The name cell now opens the drawer, so the full edit form is reached by id.
-    function openEditAttendeeById(id) {
-      var a = (lastAttendees || []).find(function (x) { return String(x.id) === String(id); });
-      if (!a) { toast('Could not find that attendee - refresh and try again.', 'error'); return; }
-      return openEditAttendee(a);
+    //
+    // The row object is NOT enough to edit from. The list payload is deliberately
+    // lean - no bio, interests, industry or social URLs - and this form PUTs every
+    // one of those fields back, so opening it on a row would post undefined for
+    // each and blank whatever the attendee had written. Fetch the whole record
+    // first, and refuse to open the form at all if that fetch fails, rather than
+    // offering a Save button that quietly destroys data.
+    async function openEditAttendeeById(id) {
+      var row = (lastAttendees || []).find(function (x) { return String(x.id) === String(id); });
+      var full = null;
+      try { full = await api.get('/api/attendees/' + id); }
+      catch (e) { if (e && e.message === 'unauthorized') return; }
+      if (!full || full.error) { toast('Could not load that attendee - refresh and try again.', 'error'); return; }
+      return openEditAttendee(Object.assign({}, row || {}, full));
     }
     // ---- Bulk Upload Modal ----
     function openBulkUploadModal() {
@@ -19443,6 +20847,95 @@ function adminPageHTML(): string {
 
     // ============ ADMIN BOOTH REQUESTS ============
     let adminBoothRequestFilter = '';
+    // The booth_types slug a drill-down from the inventory table narrowed to. The
+    // requests come back in one list, so this filters what is already fetched.
+    let adminBoothRequestTypeFilter = '';
+    function boothRequestDrill(slug, status) {
+      adminBoothRequestTypeFilter = slug || '';
+      adminBoothRequestFilter = status || '';
+      loadAdminBoothRequests();
+    }
+    function clearBoothRequestFilters() { adminBoothRequestTypeFilter = ''; adminBoothRequestFilter = ''; loadAdminBoothRequests(); }
+
+    // THE OVER-SELLING FIX, on screen. This table used to read booth_types.total_count
+    // and available_count — numbers typed into migration 0011 that no flow has ever
+    // updated. They add up to 132 stands; the hall has 93. It offered 35 Explorer
+    // Booths against the 15 that exist, and dropped the two Premium stands entirely
+    // because that tier arrived with the revised layout and was never added to the
+    // catalogue. The server now counts real rows from booths and says so with
+    // inventory_ready; when the migration has not been applied it hands back the old
+    // catalogue answer and this table says plainly that is what it is showing.
+    //
+    // EVERY CELL IS A DOORWAY: the category name and the stand counts open the
+    // stands behind them on the Floor Plan screen, and Requests / Approved narrow
+    // the list below to the requests behind them.
+    function adminBoothInventoryTableHtml(stats) {
+      const ready = !!(stats && stats.inventory_ready);
+      const rows = (stats && stats.by_type) || [];
+      const totals = rows.reduce((a, t) => ({
+        total: a.total + Number(t.total_count || 0),
+        available: a.available + Number(t.available_count || 0),
+        sold: a.sold + Number(t.sold_count || 0),
+        held: a.held + Number(t.held_count || 0),
+        requests: a.requests + Number(t.requests || 0),
+        approved: a.approved + Number(t.approved_qty || 0),
+      }), { total: 0, available: 0, sold: 0, held: 0, requests: 0, approved: 0 });
+      const body = rows.map(t => {
+        const key = boothArg(t.type_key || '');
+        const slug = boothArg(t.slug || '');
+        const S = st => ready && key ? "boothDrillFrom('" + key + "','" + st + "')" : '';
+        const R = st => "boothRequestDrill('" + slug + "','" + st + "')";
+        const avail = Number(t.available_count || 0);
+        const availTone = avail === 0 ? 'text-red-400 font-bold' : avail <= 3 ? 'text-amber-300 font-bold' : 'text-green-400';
+        const name = ready && key
+          ? '<button type="button" onclick="' + S('') + '" title="Show every ' + escH(t.name) + ' on the floor plan" class="text-left rounded px-1.5 py-0.5 -mx-1.5 hover:bg-primary-500/20 hover:text-primary-300 focus:outline-none focus:ring-2 focus:ring-primary-500/70 transition-colors">' + escH(t.name) + '</button>'
+          : escH(t.name);
+        return \`
+          <tr class="border-b border-white/5 hover:bg-white/5 transition-colors">
+            <td class="py-2 px-2 font-semibold">\${name}\${ready ? '<div class="text-[10px] text-gray-600 px-0.5">' + escH(t.type_key || '') + '</div>' : ''}</td>
+            <td class="text-center py-2 px-2">\${boothNum(Number(t.total_count || 0), S(''), { title: 'Show all ' + t.total_count })}</td>
+            <td class="text-center py-2 px-2">\${boothNum(avail, S('available'), { tone: availTone, title: 'Show what is left' })}</td>
+            \${ready ? \`<td class="text-center py-2 px-2">\${boothNum(Number(t.sold_count || 0), S('sold'), { tone: 'text-green-400', title: 'Show the sold stands' })}</td>
+            <td class="text-center py-2 px-2">\${boothNum(Number(t.held_count || 0), S('held'), { tone: 'text-yellow-400', title: 'Show the holds' })}</td>\` : ''}
+            <td class="text-center py-2 px-2">\${boothNum(Number(t.requests || 0), R(''), { title: 'Show the requests for this package' })}</td>
+            <td class="text-center py-2 px-2">\${boothNum(Number(t.approved_qty || 0), R('approved'), { tone: 'text-green-400', title: 'Show the approved requests' })}</td>
+            <td class="text-right py-2 px-2 tabular-nums">₹\${inrN(t.price_inr)}</td>
+          </tr>\`;
+      }).join('');
+      return \`
+        <div class="glass rounded-xl p-4 mb-6 overflow-x-auto">
+          <div class="flex flex-wrap items-baseline gap-2 mb-3">
+            <h4 class="text-sm font-semibold"><i class="fas fa-cubes text-primary-400 mr-2"></i>Booth Inventory</h4>
+            <span class="text-[11px] text-gray-500">\${ready
+              ? 'counted from the ' + totals.total + ' stands actually on the floor plan &middot; every number opens what is behind it'
+              : 'the booth_types catalogue, not the floor plan &mdash; apply migration 0030 for real stand counts'}</span>
+          </div>
+          \${ready ? '' : '<p class="text-[11px] text-amber-300 mb-3"><i class="fas fa-triangle-exclamation mr-1"></i>These are the catalogue figures (' + totals.total + ' stands). The hall has 93, and Premium is missing from this list entirely, so availability here can offer a stand that does not exist.</p>'}
+          <p class="text-[11px] text-gray-500 mb-2 sm:hidden"><i class="fas fa-arrows-left-right mr-1"></i>Swipe the table sideways for requests and price.</p>
+          <table class="w-full text-xs min-w-[38rem]">
+            <thead><tr class="border-b border-white/10">
+              <th class="text-left py-2 px-2 text-gray-400 font-medium">Type</th>
+              <th class="text-center py-2 px-2 text-gray-400 font-medium">Total</th>
+              <th class="text-center py-2 px-2 text-gray-400 font-medium">Available</th>
+              \${ready ? '<th class="text-center py-2 px-2 text-gray-400 font-medium">Sold</th><th class="text-center py-2 px-2 text-gray-400 font-medium">Held</th>' : ''}
+              <th class="text-center py-2 px-2 text-gray-400 font-medium">Requests</th>
+              <th class="text-center py-2 px-2 text-gray-400 font-medium">Approved</th>
+              <th class="text-right py-2 px-2 text-gray-400 font-medium">Price</th>
+            </tr></thead>
+            <tbody>\${body}</tbody>
+            <tfoot><tr class="border-t border-white/15 font-semibold">
+              <td class="py-2 px-2">All types</td>
+              <td class="text-center py-2 px-2 tabular-nums">\${totals.total}</td>
+              <td class="text-center py-2 px-2 tabular-nums text-green-400">\${totals.available}</td>
+              \${ready ? '<td class="text-center py-2 px-2 tabular-nums text-green-400">' + totals.sold + '</td><td class="text-center py-2 px-2 tabular-nums text-yellow-400">' + totals.held + '</td>' : ''}
+              <td class="text-center py-2 px-2 tabular-nums">\${totals.requests}</td>
+              <td class="text-center py-2 px-2 tabular-nums text-green-400">\${totals.approved}</td>
+              <td class="text-right py-2 px-2"></td>
+            </tr></tfoot>
+          </table>
+          \${ready ? '<p class="text-[11px] text-gray-500 mt-3">Names come from the floor plan itself, which is why <b>Enterprise Booth</b> is 4m x 2m and <b>Accelerator Booth</b> is 3m x 3m &mdash; the plan and the package catalogue have always disagreed, and re-deriving one from the other is how this screen starts contradicting the public site.</p>' : ''}
+        </div>\`;
+    }
 
     // ============ BOARDROOMS ============
     // Four WTC rooms, two event days, nine bookable hours each. The section is a
@@ -19654,6 +21147,1321 @@ function adminPageHTML(): string {
       } catch(e) { toast(e.message || 'Could not hold those hours', 'error'); }
     }
 
+    // ============ FLOOR PLAN ============
+    // The 93 stands and who holds each one. Closest sibling of the boardroom grid
+    // above and deliberately the same visual language, but a list rather than a
+    // grid: a stand is held for the whole show, so there is no time axis to draw.
+    // The question the sales desk actually asks is "what is left in the Startup
+    // Pavilion, and at what size", which categories and zones answer.
+    //
+    // Until now this screen did not exist because the answer lived in a hardcoded
+    // booked:false on 93 entries of public/js/floor-plan-data.js. Everything here
+    // is one GET; the two filters re-render from the cached payload rather than
+    // re-fetching, so narrowing to a category costs no round trip.
+    let adminFloor = null;
+    let adminBoothTypeFilter = '';
+    let adminBoothZoneFilter = '';
+    // available | held | sold | blocked. Set by every drill-down on this screen and
+    // on the Booth Requests inventory table, which is what makes each number there
+    // a doorway rather than a dead end.
+    let adminBoothStatusFilter = '';
+    // booked | invoiced | collected | outstanding | discounted. The money figures on
+    // the dashboard have no status to filter by, so they carry their own dimension —
+    // otherwise "outstanding" would be a number with nothing behind it.
+    let adminBoothMoneyFilter = '';
+    // sales | stands | map. One section, three views of the same fetched payload —
+    // switching costs no round trip, so a figure on the dashboard can land on the
+    // filtered stands behind it instantly.
+    let adminBoothTab = 'sales';
+    // 0 means "not chosen yet", so boothMapZoom() can pick a sensible first view per
+    // device: a Startup Pod is 2% of the plan, which is a 7px target on a phone.
+    let adminBoothMapZoom = 0;
+    // The paid booth request the operator picked off the strip, armed and waiting
+    // for a stand to drop onto. Null the rest of the time — and null is the NORMAL
+    // case: most stands are sold offline and recorded with no request at all.
+    let adminBoothPlacing = null;
+
+    // ---- money, the way the desk says it -------------------------------------
+    // No regex anywhere in these: this whole script is one server-side template
+    // literal, which eats a backslash before the browser ever sees it, so a
+    // backslash escape written here silently becomes something else.
+    const inrN = n => Number(n || 0).toLocaleString('en-IN');
+    function inrShort(n) {
+      n = Math.round(Number(n) || 0);
+      if (Math.abs(n) >= 10000000) return '₹' + (Math.round(n / 100000) / 100) + ' Cr';
+      if (Math.abs(n) >= 100000) return '₹' + (Math.round(n / 1000) / 100) + ' L';
+      return '₹' + inrN(n);
+    }
+    const pctOf = (part, whole) => (Number(whole) > 0 ? Math.round((Number(part) / Number(whole)) * 100) : 0);
+    // GST is 18% and the net is DERIVED, never typed — the same arithmetic the
+    // server refuses to take on trust, so the form can never show a total the
+    // saved row will disagree with.
+    function boothMoneyFrom(list, discount) {
+      list = Math.max(0, Math.round(Number(list) || 0));
+      discount = Math.min(list, Math.max(0, Math.round(Number(discount) || 0)));
+      const net = list - discount;
+      const gst = Math.round(net * 18 / 100);
+      return { list: list, discount: discount, net: net, gst: gst, total: net + gst };
+    }
+    // Digits only, so "₹1,25,000" and "1 25 000" both arrive as 125000.
+    // Deliberately NOT the parser the money fields use: it strips a minus along
+    // with everything else, and on the sale form that laundered a typo into money.
+    function digitsOf(v) { return String(v == null ? '' : v).replace(/[^0-9]/g, ''); }
+
+    // The server's boothRupeesStrict, in the browser. Same characters, same answer,
+    // so the desk sees the problem at the field instead of as a toast after saving.
+    // null means "not a number" — and that INCLUDES anything carrying a minus:
+    // a minus is a typo to refuse, never a character to strip.
+    function boothRupeeStrict(v) {
+      var raw = String(v == null ? '' : v).trim().replace(/^(₹|rs[.]?|inr)[ ]*/i, '').replace(/[, ]/g, '');
+      if (!raw) return 0;
+      if (!/^[0-9]+([.][0-9]+)?$/.test(raw)) return null;
+      var n = Math.round(Number(raw));
+      return isFinite(n) ? n : null;
+    }
+
+    // The three money fields on the record-a-sale form, judged by the rules the PUT
+    // .../sale route now enforces — same fields, same order — so the form can never
+    // let through a figure the server is going to refuse, and never refuses one it
+    // would accept. Returns [] when the deal is saveable. An organiser block is
+    // space taken off the market, not a sale: it has no money to check.
+    function boothSaleIssues() {
+      var el = function (id) { return document.getElementById(id); };
+      var st = el('bs-status');
+      if (st && st.value === 'blocked') return [];
+      var listEl = el('bs-list'), discEl = el('bs-discount'), paidEl = el('bs-paid');
+      if (!listEl) return [];
+      var out = [];
+      var list = boothRupeeStrict(listEl.value);
+      if (list === null) out.push({ id: 'bs-list', msg: 'The list price has to be a whole number of rupees.' });
+      var disc = boothRupeeStrict(discEl ? discEl.value : 0);
+      if (disc === null) out.push({ id: 'bs-discount', msg: 'The discount has to be a whole number of rupees. A minus is not a discount — type the amount taken off.' });
+      else if (list !== null && disc > list) out.push({ id: 'bs-discount', msg: 'A ₹' + inrN(disc) + ' discount is more than the ₹' + inrN(list) + ' list price. Lower the discount, or raise the price — this stand cannot be given away by saving it.' });
+      var paid = boothRupeeStrict(paidEl ? paidEl.value : 0);
+      if (paid === null) out.push({ id: 'bs-paid', msg: 'Money received has to be a whole number of rupees. Record a refund by lowering this figure, not by typing a minus — a minus here used to be banked as money collected.' });
+      return out;
+    }
+
+    // One inline note under one field, plus a red ring on the field itself. Called
+    // with no message to clear it, which is what every keystroke does.
+    function boothSaleFieldNote(id, msg) {
+      var f = document.getElementById(id), n = document.getElementById(id + '-err');
+      if (f) {
+        if (msg) f.classList.add('border-red-500'); else f.classList.remove('border-red-500');
+        f.setAttribute('aria-invalid', msg ? 'true' : 'false');
+      }
+      if (n) { n.textContent = msg || ''; n.hidden = !msg; }
+    }
+
+    async function loadAdminFloorPlan() {
+      const section = document.getElementById('section-floor-plan');
+      if (!section) return;
+      if (!section.innerHTML.trim()) sectionLoading(section);
+      try {
+        const g = await api.get('/api/admin/booths?event_id=' + EID);
+        const bad = bodyError(g);
+        if (bad) { sectionError(section, 'the floor plan', { message: bad }, 'loadAdminFloorPlan()'); return; }
+        adminFloor = g;
+        // ready:false is the EXPECTED state until migration 0030 is hand-run — a
+        // Cloudflare deploy never runs one — so it renders as a note, exactly as
+        // the Boardrooms screen does for 0029.
+        if (!g.ready) {
+          section.innerHTML = \`
+            <div class="glass rounded-xl p-6">
+              <h3 class="font-semibold mb-2"><i class="fas fa-map text-primary-400 mr-2"></i>Booth inventory is not live yet</h3>
+              <p class="text-sm text-gray-400 mb-3">Migration 0030 has not been applied to production, so there are no stands to allocate and no allocations to show. Until it is run the public floor plan keeps reading its static array, where every stand is hardcoded available.</p>
+              <code class="block text-xs bg-black/30 rounded-lg p-3 text-gray-300 overflow-x-auto">npx wrangler d1 execute bharatai-production --remote --file=./migrations/0030_booths.sql</code>
+            </div>\`;
+          return;
+        }
+        // A request placed from another tab must not stay armed against a stand it
+        // no longer needs.
+        if (adminBoothPlacing && !(g.requests || []).some(r => r.id === adminBoothPlacing)) adminBoothPlacing = null;
+        renderAdminFloorPlan();
+      } catch(e) { sectionError(section, 'the floor plan', e, 'loadAdminFloorPlan()'); }
+    }
+
+    function renderAdminFloorPlan() {
+      const section = document.getElementById('section-floor-plan');
+      const g = adminFloor;
+      if (!section || !g || !g.ready) return;
+      const body = adminBoothTab === 'sales' ? adminBoothDashboardHtml(g)
+        : adminBoothTab === 'map' ? adminBoothMapHtml(g)
+        : adminBoothSummaryHtml(g) + adminBoothRequestsStripHtml(g)
+          + adminBoothFiltersHtml(g) + adminBoothGroupsHtml(g);
+      section.innerHTML = adminBoothTabsHtml(g) + body;
+      if (adminBoothTab === 'map') syncBoothMapZoom();
+    }
+
+    // EVERY NUMBER ON THIS SCREEN IS A DOORWAY. A figure the operator cannot click
+    // is a dead end, so a stat is a real <button> — pointer cursor, a hover lift,
+    // and a focus ring, because the keyboard has to reach it too.
+    function boothStat(value, label, action, opts) {
+      opts = opts || {};
+      const tone = opts.tone || '';
+      const border = opts.border || 'border border-white/10';
+      const sub = opts.sub ? '<div class="text-[10px] text-gray-500 mt-1">' + opts.sub + '</div>' : '';
+      const inner = '<div class="text-2xl font-black tabular-nums ' + tone + '">' + value + '</div>' +
+        '<div class="text-xs text-gray-500 mt-0.5">' + label + '</div>' + sub;
+      if (!action) return '<div class="glass rounded-xl p-4 text-center ' + border + '">' + inner + '</div>';
+      return '<button type="button" onclick="' + action + '" title="' + escH(opts.title || ('Show the stands behind ' + label)) + '" ' +
+        'class="glass rounded-xl p-4 text-center w-full ' + border + ' cursor-pointer transition-all hover:bg-white/10 hover:border-primary-500/40 hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-primary-500/70 group">' +
+        '<div class="text-2xl font-black tabular-nums ' + tone + '">' + value + '</div>' +
+        '<div class="text-xs text-gray-500 mt-0.5 group-hover:text-gray-300">' + label +
+        ' <i class="fas fa-arrow-right-long text-[9px] opacity-0 group-hover:opacity-100 transition-opacity"></i></div>' + sub + '</button>';
+    }
+    // A number sitting inside a table cell. Same contract, less furniture.
+    function boothNum(value, action, opts) {
+      opts = opts || {};
+      const n = Number(digitsOf(value));
+      // A zero is not a doorway: there is nothing behind it to show, so it reads as
+      // plain grey text rather than offering a click that lands on an empty list.
+      const tone = n ? (opts.tone || '') : 'text-gray-600';
+      if (!action || !n) return '<span class="tabular-nums ' + tone + '">' + value + '</span>';
+      return '<button type="button" onclick="' + action + '" title="' + escH(opts.title || 'Show these') + '" ' +
+        'class="tabular-nums ' + tone + ' rounded px-1.5 py-0.5 -mx-1 cursor-pointer underline decoration-dotted decoration-white/25 underline-offset-4 hover:bg-primary-500/20 hover:decoration-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-500/70 transition-colors">' + value + '</button>';
+    }
+
+    function setBoothTab(t) { adminBoothTab = t; renderAdminFloorPlan(); }
+    // The drill-down every clickable figure lands on: narrow the stand list to
+    // exactly the rows behind that number and show them.
+    function boothDrill(status, typeKey, zone, money) {
+      adminBoothStatusFilter = status || '';
+      adminBoothTypeFilter = typeKey || '';
+      adminBoothZoneFilter = zone || '';
+      adminBoothMoneyFilter = money || '';
+      adminBoothTab = 'stands';
+      renderAdminFloorPlan();
+      const el = document.getElementById('booth-stand-list');
+      if (el && el.scrollIntoView) { try { el.scrollIntoView({ block: 'start', behavior: 'smooth' }); } catch (_) {} }
+    }
+    // The same doorway from the Booth Requests screen, where this section may not
+    // have been fetched yet — switchSection() re-enters loadAdminFloorPlan(), which
+    // renders with the filters already set.
+    function boothDrillFrom(typeKey, status) {
+      adminBoothStatusFilter = status || '';
+      adminBoothTypeFilter = typeKey || '';
+      adminBoothZoneFilter = '';
+      adminBoothMoneyFilter = '';
+      adminBoothTab = 'stands';
+      switchSection('floor-plan');
+    }
+
+    function adminBoothTabsHtml(g) {
+      const tab = (id, icon, label) =>
+        '<button type="button" onclick="setBoothTab(\\'' + id + '\\')" class="px-3 py-2 rounded-lg text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500/70 ' +
+        (adminBoothTab === id ? 'bg-primary-600 text-white' : 'glass text-gray-400 hover:text-white hover:bg-white/10') +
+        '"><i class="fas ' + icon + ' mr-1.5"></i>' + label + '</button>';
+      return \`
+        <div class="flex flex-wrap items-center gap-2 mb-4">
+          \${tab('sales', 'fa-chart-line', 'Sales')}
+          \${tab('stands', 'fa-list', 'Stands')}
+          \${tab('map', 'fa-map-location-dot', 'Map')}
+          <div class="flex gap-2 w-full sm:w-auto sm:ml-auto">
+            <button type="button" onclick="openBoothSalePicker()" class="flex-1 sm:flex-none px-3 py-2 rounded-lg text-xs font-semibold bg-green-600 hover:bg-green-500 text-white transition-colors focus:outline-none focus:ring-2 focus:ring-green-400/70"><i class="fas fa-file-signature mr-1.5"></i>Record a sale</button>
+            <button type="button" onclick="openBoothImportModal()" class="flex-1 sm:flex-none px-3 py-2 rounded-lg text-xs font-semibold glass hover:bg-white/10 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500/70"><i class="fas fa-file-csv mr-1.5"></i>Import CSV</button>
+          </div>
+        </div>\`;
+    }
+
+    function adminBoothSummaryHtml(g) {
+      const s = g.summary || {};
+      const blocked = Number(s.blocked || 0);
+      return \`
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
+          \${boothStat(Number(s.total || 0), 'Stands on the plan', "boothDrill('','')", { title: 'Show every stand' })}
+          \${boothStat(Number(s.available || 0), 'Available', "boothDrill('available','')", { tone: 'text-primary-400' })}
+          \${boothStat(Number(s.held || 0), 'Held', "boothDrill('held','')", { tone: 'text-yellow-400' })}
+          \${boothStat(Number(s.sold || 0), 'Sold', "boothDrill('sold','')", { tone: 'text-green-400' })}
+          \${boothStat(Number(s.sold_sqm || 0).toLocaleString('en-IN'), 'Sqm sold', "boothDrill('sold','')", { sub: 'of ' + Number(s.total_sqm || 0).toLocaleString('en-IN') + ' sqm' })}
+          \${boothStat(inrShort(s.confirmed_value_inr), 'Confirmed, ex-GST', "boothDrill('sold','')", { tone: 'text-green-400', border: 'border border-green-500/20', sub: '₹' + inrN(s.confirmed_value_inr) })}
+        </div>
+        <p class="text-[11px] text-gray-500 mb-4">The public floor plan reads these same rows. A <span class="text-yellow-400">hold</span> and an organiser <span class="text-gray-400">block</span> both show as taken without naming anybody; only a <span class="text-green-400">sold</span> stand publishes the exhibitor's name. Releasing deletes the allocation and puts the stand back on the market at once.\${blocked ? ' ' + blocked + (blocked === 1 ? ' stand is blocked by the organiser and counts' : ' stands are blocked by the organiser and count') + ' as neither sold nor available.' : ''}\${Number(g.summary && g.summary.held_value_inr) ? ' ₹' + inrN(g.summary.held_value_inr) + ' more is sitting in holds.' : ''}</p>\`;
+    }
+
+    // ============ SALES DASHBOARD ============
+    // Every figure below is derived from the SAME 93 rows the stand list draws and
+    // the map paints, in the browser, from one fetch. That is deliberate: a
+    // dashboard that runs its own aggregate query is a dashboard that can disagree
+    // with the list it links to, and the operator has no way to tell which is lying.
+    function boothCategoryRollup(g) {
+      const by = {};
+      (g.booths || []).forEach(b => {
+        const k = String(b.type_key || '');
+        if (!by[k]) by[k] = {
+          key: k, name: b.name, list: 0, total: 0, sold: 0, held: 0, blocked: 0, available: 0,
+          sqm: 0, sold_sqm: 0, potential: 0, booked: 0, collected: 0, discount: 0,
+        };
+        const c = by[k];
+        c.total++;
+        if (c[b.status] !== undefined) c[b.status]++;
+        c.sqm += Number(b.sqm || 0);
+        c.potential += Number(b.list_price_inr || 0);
+        c.list = Number(b.list_price_inr || 0);
+        if (b.status === 'sold') c.sold_sqm += Number(b.sqm || 0);
+        if (b.status === 'sold' || b.status === 'held') {
+          c.booked += Number(b.amount_inr || 0);
+          c.collected += Number(b.amount_paid_inr || 0);
+          c.discount += Number(b.discount_inr || 0);
+        }
+      });
+      const order = g.type_order || [];
+      const rank = k => { const i = order.indexOf(k); return i === -1 ? 99 : i; };
+      return Object.keys(by).map(k => by[k]).sort((a, b) => rank(a.key) - rank(b.key));
+    }
+
+    function adminBoothDashboardHtml(g) {
+      const s = g.summary || {};
+      const target = Number(g.target_inr || 0);
+      const confirmed = Number(s.confirmed_value_inr || 0);
+      const held = Number(s.held_value_inr || 0);
+      const booked = Number(s.booked_inr || 0);
+      const totalSqm = Number(s.total_sqm || 0);
+      const takenSqm = Math.round((Number(s.sold_sqm || 0) + Number(s.held_sqm || 0)) * 100) / 100;
+      const occupancy = pctOf(takenSqm, totalSqm);
+      const achievedPct = pctOf(confirmed, target);
+      const bookedPct = pctOf(booked, target);
+      // Semantic, not decorative: how the number reads is the whole point of a
+      // target, so it is green when it is on course, amber when it needs work and
+      // red when it does not.
+      const tone = achievedPct >= 75 ? 'text-green-400' : achievedPct >= 40 ? 'text-amber-300' : 'text-red-400';
+      const occTone = occupancy >= 75 ? 'text-green-400' : occupancy >= 40 ? 'text-amber-300' : 'text-red-400';
+      const outstanding = Number(s.outstanding_inr || 0);
+      const barConfirmed = Math.min(100, achievedPct);
+      const barHeld = Math.max(0, Math.min(100 - barConfirmed, pctOf(held, target)));
+
+      return \`
+        <h4 class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2"><i class="fas fa-vector-square mr-1.5"></i>Floor area</h4>
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+          \${boothStat(totalSqm.toLocaleString('en-IN'), 'Total sqm', "boothDrill('','')", { sub: Number(s.total || 0) + ' stands' })}
+          \${boothStat(Number(s.sold_sqm || 0).toLocaleString('en-IN'), 'Sold', "boothDrill('sold','')", { tone: 'text-green-400', sub: Number(s.sold || 0) + ' stands' })}
+          \${boothStat(Number(s.held_sqm || 0).toLocaleString('en-IN'), 'Held', "boothDrill('held','')", { tone: 'text-yellow-400', sub: Number(s.held || 0) + ' stands' })}
+          \${boothStat(Number(s.available_sqm || 0).toLocaleString('en-IN'), 'Available', "boothDrill('available','')", { tone: 'text-primary-400', sub: Number(s.available || 0) + ' stands' })}
+          \${boothStat(occupancy + '%', 'Occupancy', "boothDrill('sold','')", { tone: occTone, sub: takenSqm.toLocaleString('en-IN') + ' of ' + totalSqm.toLocaleString('en-IN') + ' sqm taken' })}
+        </div>
+
+        <h4 class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2"><i class="fas fa-indian-rupee-sign mr-1.5"></i>Revenue <span class="normal-case tracking-normal text-gray-600 font-normal">— net of discount, ex-GST unless said otherwise</span></h4>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+          \${boothStat(inrShort(s.potential_inr), 'Potential', "boothDrill('','')", { sub: 'every stand at list · ₹' + inrN(s.potential_inr) })}
+          \${boothStat(inrShort(booked), 'Booked', "boothDrill('','','','booked')", { tone: 'text-primary-400', sub: 'held + confirmed · ₹' + inrN(booked) })}
+          \${boothStat(inrShort(confirmed), 'Confirmed', "boothDrill('sold','')", { tone: 'text-green-400', border: 'border border-green-500/20', sub: 'sold stands · ₹' + inrN(confirmed) })}
+          \${boothStat(inrShort(s.invoiced_inr), 'Invoiced', "boothDrill('','','','invoiced')", { sub: 'incl. GST · ₹' + inrN(s.invoiced_inr) })}
+          \${boothStat(inrShort(s.collected_inr), 'Collected', "boothDrill('','','','collected')", { tone: 'text-green-400', sub: 'receipts banked · ₹' + inrN(s.collected_inr) })}
+          \${boothStat(inrShort(outstanding), 'Outstanding', "boothDrill('','','','outstanding')", { tone: outstanding ? 'text-red-400' : 'text-gray-400', border: outstanding ? 'border border-red-500/25' : 'border border-white/10', sub: 'invoiced not collected · ₹' + inrN(outstanding) })}
+          \${boothStat(inrShort(s.discount_inr), 'Discount given', "boothDrill('','','','discounted')", { tone: Number(s.discount_inr || 0) ? 'text-amber-300' : 'text-gray-400', sub: 'off list · ₹' + inrN(s.discount_inr) })}
+          \${boothStat(Number(s.available || 0), 'Still to sell', "boothDrill('available','')", { tone: 'text-primary-400', sub: inrShort(Number(s.potential_inr || 0) - booked) + ' of list unsold' })}
+        </div>
+
+        <div id="booth-target-box" class="glass rounded-xl p-4 mb-6 border border-white/10">\${adminBoothTargetHtml(g)}</div>
+
+        <h4 class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2"><i class="fas fa-layer-group mr-1.5"></i>By category <span class="normal-case tracking-normal text-gray-600 font-normal">— every figure opens the stands behind it</span></h4>
+        \${adminBoothCategoryTableHtml(g)}\`;
+    }
+
+    function adminBoothTargetHtml(g) {
+      const s = g.summary || {};
+      const target = Number(g.target_inr || 0);
+      const confirmed = Number(s.confirmed_value_inr || 0);
+      const held = Number(s.held_value_inr || 0);
+      const achievedPct = pctOf(confirmed, target);
+      const tone = achievedPct >= 75 ? 'text-green-400' : achievedPct >= 40 ? 'text-amber-300' : 'text-red-400';
+      const barConfirmed = Math.min(100, achievedPct);
+      const barHeld = Math.max(0, Math.min(100 - barConfirmed, pctOf(held, target)));
+      const gap = Math.max(0, target - confirmed);
+      return \`
+        <div class="flex flex-wrap items-end justify-between gap-3 mb-3">
+          <div>
+            <div class="text-xs text-gray-500 mb-0.5">Revenue target, ex-GST</div>
+            <div class="text-2xl font-black tabular-nums">₹\${inrN(target)}
+              <button type="button" onclick="boothTargetEdit()" title="Change the target" class="ml-1 align-middle text-[11px] font-medium px-2 py-1 rounded-lg glass hover:bg-white/10 text-gray-400 hover:text-white focus:outline-none focus:ring-2 focus:ring-primary-500/70"><i class="fas fa-pen mr-1"></i>Edit</button>
+            </div>
+          </div>
+          <div class="text-right">
+            <div class="text-xs text-gray-500 mb-0.5">Achieved</div>
+            <div class="text-2xl font-black tabular-nums \${tone}">\${achievedPct}% <span class="text-sm font-semibold text-gray-400">· ₹\${inrN(confirmed)}</span></div>
+          </div>
+        </div>
+        <div class="h-3 rounded-full bg-white/10 overflow-hidden flex" role="img" aria-label="\${achievedPct}% of the target confirmed">
+          <div class="h-full bg-green-500 transition-all" style="width:\${barConfirmed}%"></div>
+          <div class="h-full bg-yellow-500/60 transition-all" style="width:\${barHeld}%"></div>
+        </div>
+        <p class="text-[11px] text-gray-500 mt-2">Solid green is confirmed; the paler band is what is sitting in holds. \${gap ? '<b class="text-gray-300">₹' + inrN(gap) + '</b> still to close' : 'The target is met.'} \${held ? '&middot; ₹' + inrN(held) + ' of that is already held.' : ''} The target lives in app_settings as <code class="text-gray-400">booth_revenue_target_inr</code> and defaults to the hall at list price.</p>\`;
+    }
+
+    function boothTargetEdit() {
+      const box = document.getElementById('booth-target-box');
+      if (!box || !adminFloor) return;
+      box.innerHTML =
+        '<label class="block text-xs text-gray-400 mb-1" for="booth-target-input">Revenue target, whole rupees, ex-GST</label>' +
+        '<div class="flex flex-wrap items-center gap-2">' +
+        '<input id="booth-target-input" inputmode="numeric" autocomplete="off" value="' + Number(adminFloor.target_inr || 0) + '" class="px-3 py-2 rounded-lg text-sm bg-white/5 border border-white/10 tabular-nums w-48 focus:outline-none focus:ring-2 focus:ring-primary-500/70">' +
+        '<button type="button" onclick="boothTargetSave()" class="px-4 py-2 rounded-lg text-sm font-medium bg-primary-600 hover:bg-primary-500 text-white focus:outline-none focus:ring-2 focus:ring-primary-500/70">Save target</button>' +
+        '<button type="button" onclick="renderAdminFloorPlan()" class="px-4 py-2 rounded-lg text-sm font-medium glass hover:bg-white/10">Cancel</button>' +
+        '</div>' +
+        '<p class="text-[11px] text-gray-500 mt-2">Saved to app_settings, so it survives a deploy and every screen reads the same number.</p>';
+      const i = document.getElementById('booth-target-input');
+      if (i) { i.focus(); i.select(); i.onkeydown = e => { if (e.key === 'Enter') boothTargetSave(); if (e.key === 'Escape') renderAdminFloorPlan(); }; }
+    }
+
+    async function boothTargetSave() {
+      const el = document.getElementById('booth-target-input');
+      const v = digitsOf(el && el.value);
+      if (!v) { toast('Give the target as a whole number of rupees', 'error'); return; }
+      try {
+        const r = await api.put('/api/admin/booth-target', { target_inr: Number(v) });
+        if (r && r.error) { toast(r.error, 'error'); return; }
+        if (adminFloor) adminFloor.target_inr = Number(r.target_inr);
+        toast('Target set to ₹' + inrN(r.target_inr));
+        renderAdminFloorPlan();
+      } catch (e) { toast((e && e.message) || 'Could not save that target', 'error'); }
+    }
+
+    function adminBoothCategoryTableHtml(g) {
+      const rows = boothCategoryRollup(g);
+      if (!rows.length) return '<div class="glass rounded-xl p-8 text-center text-sm text-gray-500">No stands on the plan.</div>';
+      const body = rows.map(c => {
+        const arg = boothArg(c.key);
+        const occ = pctOf(c.sold + c.held, c.total);
+        const occTone = occ >= 75 ? 'text-green-400' : occ >= 40 ? 'text-amber-300' : 'text-gray-400';
+        const D = (st) => "boothDrill('" + st + "','" + arg + "')";
+        return \`
+          <tr class="border-b border-white/5 hover:bg-white/5 transition-colors">
+            <td class="py-2 px-2 font-semibold">
+              <button type="button" onclick="\${D('')}" title="Show every \${escH(c.name)}" class="text-left rounded px-1.5 py-0.5 -mx-1.5 hover:bg-primary-500/20 hover:text-primary-300 focus:outline-none focus:ring-2 focus:ring-primary-500/70 transition-colors">\${escH(c.name)}</button>
+              <div class="text-[10px] text-gray-600 px-0.5">\${escH(c.key)} &middot; \${inrShort(c.list)} each</div>
+            </td>
+            <td class="text-center py-2 px-2">\${boothNum(c.total, D(''), { title: 'Show all ' + c.total })}</td>
+            <td class="text-center py-2 px-2">\${boothNum(c.sold, D('sold'), { tone: 'text-green-400', title: 'Show the sold stands' })}</td>
+            <td class="text-center py-2 px-2">\${boothNum(c.held, D('held'), { tone: 'text-yellow-400', title: 'Show the held stands' })}</td>
+            <td class="text-center py-2 px-2">\${boothNum(c.available, D('available'), { tone: 'text-primary-400', title: 'Show what is left' })}</td>
+            <td class="text-right py-2 px-2 tabular-nums text-gray-400">\${(Math.round(c.sqm * 100) / 100).toLocaleString('en-IN')}</td>
+            <td class="text-right py-2 px-2">\${boothNum(inrShort(c.potential), D(''), { title: 'Every ' + c.name + ' at list' })}</td>
+            <td class="text-right py-2 px-2">\${boothNum(inrShort(c.booked), D(''), { tone: 'text-primary-300', title: 'Held and confirmed ' + c.name })}</td>
+            <td class="text-right py-2 px-2">\${boothNum(inrShort(c.collected), D('sold'), { tone: 'text-green-400', title: 'Receipts against ' + c.name })}</td>
+            <td class="text-right py-2 px-2 tabular-nums \${occTone}">\${occ}%</td>
+          </tr>\`;
+      }).join('');
+      const tot = rows.reduce((a, c) => ({
+        total: a.total + c.total, sold: a.sold + c.sold, held: a.held + c.held,
+        available: a.available + c.available, sqm: a.sqm + c.sqm,
+        potential: a.potential + c.potential, booked: a.booked + c.booked, collected: a.collected + c.collected,
+      }), { total: 0, sold: 0, held: 0, available: 0, sqm: 0, potential: 0, booked: 0, collected: 0 });
+      return \`
+        <div class="glass rounded-xl p-4 mb-4">
+          <p class="text-[11px] text-gray-500 mb-2 sm:hidden"><i class="fas fa-arrows-left-right mr-1"></i>Swipe the table sideways for the money columns.</p>
+          <div class="overflow-x-auto">
+          <table class="w-full text-xs min-w-[46rem]">
+            <thead><tr class="border-b border-white/10 text-gray-400">
+              <th class="text-left py-2 px-2 font-medium">Category</th>
+              <th class="text-center py-2 px-2 font-medium">Stands</th>
+              <th class="text-center py-2 px-2 font-medium">Sold</th>
+              <th class="text-center py-2 px-2 font-medium">Held</th>
+              <th class="text-center py-2 px-2 font-medium">Available</th>
+              <th class="text-right py-2 px-2 font-medium">Sqm</th>
+              <th class="text-right py-2 px-2 font-medium">Potential</th>
+              <th class="text-right py-2 px-2 font-medium">Booked</th>
+              <th class="text-right py-2 px-2 font-medium">Collected</th>
+              <th class="text-right py-2 px-2 font-medium">Occ.</th>
+            </tr></thead>
+            <tbody>\${body}</tbody>
+            <tfoot><tr class="border-t border-white/15 font-semibold">
+              <td class="py-2 px-2">All categories</td>
+              <td class="text-center py-2 px-2 tabular-nums">\${tot.total}</td>
+              <td class="text-center py-2 px-2 tabular-nums text-green-400">\${tot.sold}</td>
+              <td class="text-center py-2 px-2 tabular-nums text-yellow-400">\${tot.held}</td>
+              <td class="text-center py-2 px-2 tabular-nums text-primary-400">\${tot.available}</td>
+              <td class="text-right py-2 px-2 tabular-nums">\${(Math.round(tot.sqm * 100) / 100).toLocaleString('en-IN')}</td>
+              <td class="text-right py-2 px-2 tabular-nums">\${inrShort(tot.potential)}</td>
+              <td class="text-right py-2 px-2 tabular-nums text-primary-300">\${inrShort(tot.booked)}</td>
+              <td class="text-right py-2 px-2 tabular-nums text-green-400">\${inrShort(tot.collected)}</td>
+              <td class="text-right py-2 px-2 tabular-nums">\${pctOf(tot.sold + tot.held, tot.total)}%</td>
+            </tr></tfoot>
+          </table>
+          </div>
+        </div>\`;
+    }
+
+    // The unplaced end of the funnel. Money has arrived, the stand has not been
+    // chosen — the gap this whole screen exists to close.
+    function adminBoothRequestsStripHtml(g) {
+      const rs = g.requests || [];
+      if (!rs.length) return '';
+      return \`
+        <div class="glass rounded-xl p-4 mb-4 border border-primary-500/20">
+          <h4 class="text-sm font-semibold mb-1"><i class="fas fa-inbox text-primary-400 mr-2"></i>Paid, waiting for a stand \${rs.length > 1 ? '<span class="text-gray-500 font-normal">(' + rs.length + ')</span>' : ''}</h4>
+          <p class="text-[11px] text-gray-500 mb-3">Pick one, then choose its stand below &mdash; the company, the contact and the per-stand price come with it instead of being retyped.</p>
+          <div class="grid gap-2 md:grid-cols-2 lg:grid-cols-3">\${rs.map(r => adminBoothRequestCardHtml(r)).join('')}</div>
+        </div>\`;
+    }
+
+    function adminBoothRequestCardHtml(r) {
+      const want = Number(r.quantity || 1), got = Number(r.allocated_count || 0);
+      const armed = adminBoothPlacing === r.id;
+      const wants = r.preferred_booth_numbers ? ' &middot; asked for ' + escH(r.preferred_booth_numbers) : '';
+      const zone = r.preferred_zone ? ' &middot; ' + escH(r.preferred_zone) : '';
+      return \`
+        <div class="rounded-lg p-3 \${armed ? 'bg-primary-500/15 border border-primary-500/40' : 'bg-white/5 border border-white/10'}">
+          <div class="flex items-start justify-between gap-2">
+            <div class="min-w-0">
+              <div class="text-sm font-semibold truncate">\${escH(r.company_name || 'Unnamed company')}</div>
+              <div class="text-[11px] text-gray-400 truncate">\${escH(r.booth_type_name || 'Booth')}\${want > 1 ? ' &middot; ' + got + ' of ' + want + ' placed' : ''}</div>
+              <div class="text-[11px] text-gray-500 truncate">₹\${Number(r.grand_total || 0).toLocaleString('en-IN')}\${wants}\${zone}</div>
+            </div>
+            <button onclick="\${armed ? 'cancelBoothPlacement()' : 'startBoothPlacement(' + r.id + ')'}" class="shrink-0 px-2.5 py-1.5 rounded-lg text-[11px] font-medium \${armed ? 'bg-primary-600 text-white hover:bg-primary-500' : 'glass hover:bg-white/10'}">\${armed ? 'Choosing&hellip;' : 'Place'}</button>
+          </div>
+        </div>\`;
+    }
+
+    function startBoothPlacement(id) {
+      adminBoothPlacing = id;
+      renderAdminFloorPlan();
+      const r = ((adminFloor && adminFloor.requests) || []).find(x => x.id === id);
+      toast('Now pick a free stand for ' + ((r && r.company_name) || 'this request'), 'info');
+    }
+    function cancelBoothPlacement() { adminBoothPlacing = null; renderAdminFloorPlan(); }
+
+    function setBoothTypeFilter(v) { adminBoothTypeFilter = v; renderAdminFloorPlan(); }
+    function setBoothZoneFilter(v) { adminBoothZoneFilter = v; renderAdminFloorPlan(); }
+    function setBoothStatusFilter(v) { adminBoothStatusFilter = v; renderAdminFloorPlan(); }
+    function clearBoothFilters() {
+      adminBoothTypeFilter = ''; adminBoothZoneFilter = '';
+      adminBoothStatusFilter = ''; adminBoothMoneyFilter = '';
+      renderAdminFloorPlan();
+    }
+
+    // What a money figure on the dashboard actually points at. Only an allocated
+    // stand can carry money, so an available one never matches.
+    function boothMoneyMatch(b, f) {
+      if (b.status !== 'sold' && b.status !== 'held') return false;
+      if (f === 'booked') return true;
+      if (f === 'invoiced') return !!b.invoice_number;
+      if (f === 'collected') return Number(b.amount_paid_inr || 0) > 0;
+      if (f === 'outstanding') return !!b.invoice_number && Number(b.grand_total_inr || 0) > Number(b.amount_paid_inr || 0);
+      if (f === 'discounted') return Number(b.discount_inr || 0) > 0;
+      return true;
+    }
+    const BOOTH_MONEY_LABEL = {
+      booked: 'booked (held + confirmed)', invoiced: 'invoiced', collected: 'with receipts',
+      outstanding: 'invoiced but not collected', discounted: 'sold below list',
+    };
+
+    function adminFloorVisible(g) {
+      return (g.booths || []).filter(b =>
+        (!adminBoothTypeFilter || b.type_key === adminBoothTypeFilter) &&
+        (!adminBoothZoneFilter || String(b.zone || '') === adminBoothZoneFilter) &&
+        (!adminBoothStatusFilter || b.status === adminBoothStatusFilter) &&
+        (!adminBoothMoneyFilter || boothMoneyMatch(b, adminBoothMoneyFilter)));
+    }
+
+    function adminBoothFiltersHtml(g) {
+      // Categories come from the inventory itself rather than a hardcoded list, for
+      // the same reason zones do: the hall has already been redrawn once.
+      const seen = {}, types = [];
+      (g.booths || []).forEach(b => { if (!seen[b.type_key]) { seen[b.type_key] = 1; types.push(b); } });
+      const shown = adminFloorVisible(g).length;
+      const filtered = adminBoothTypeFilter || adminBoothZoneFilter || adminBoothStatusFilter || adminBoothMoneyFilter;
+      const sel = 'px-3 py-2 rounded-lg text-sm bg-white/5 border border-white/10 focus:outline-none focus:ring-2 focus:ring-primary-500/70';
+      return \`
+        <div id="booth-stand-list" class="glass rounded-xl p-3 mb-4 flex flex-wrap items-center gap-2">
+          <select onchange="setBoothTypeFilter(this.value)" class="\${sel}">
+            <option value="">All categories</option>
+            \${types.map(t => \`<option value="\${escH(t.type_key)}"\${adminBoothTypeFilter === t.type_key ? ' selected' : ''}>\${escH(t.name)}</option>\`).join('')}
+          </select>
+          <select onchange="setBoothStatusFilter(this.value)" class="\${sel}">
+            <option value="">Any status</option>
+            \${['available', 'held', 'sold', 'blocked'].map(st => \`<option value="\${st}"\${adminBoothStatusFilter === st ? ' selected' : ''}>\${st.charAt(0).toUpperCase() + st.slice(1)}</option>\`).join('')}
+          </select>
+          <select onchange="setBoothZoneFilter(this.value)" class="\${sel}">
+            <option value="">All zones</option>
+            \${(g.zones || []).map(z => \`<option value="\${escH(z)}"\${adminBoothZoneFilter === z ? ' selected' : ''}>\${escH(z)}</option>\`).join('')}
+          </select>
+          \${adminBoothMoneyFilter ? '<span class="px-3 py-1.5 rounded-full text-xs font-medium bg-primary-500/20 text-primary-300 border border-primary-500/30"><i class="fas fa-filter mr-1"></i>' + escH(BOOTH_MONEY_LABEL[adminBoothMoneyFilter] || adminBoothMoneyFilter) + '</span>' : ''}
+          \${filtered ? '<button type="button" onclick="clearBoothFilters()" class="px-3 py-2 rounded-lg text-xs font-medium glass hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-primary-500/70"><i class="fas fa-xmark mr-1"></i>Clear filters</button>' : ''}
+          \${adminBoothPlacing ? '<span class="px-3 py-1.5 rounded-full text-xs font-medium bg-primary-500/20 text-primary-300 border border-primary-500/30"><i class="fas fa-hand-pointer mr-1"></i>Request armed &middot; the next sale you record will be prefilled from it &middot; <button type="button" onclick="cancelBoothPlacement()" class="underline">cancel</button></span>' : ''}
+          <span class="text-xs text-gray-500 ml-auto tabular-nums">\${shown} of \${(g.booths || []).length} stands</span>
+        </div>\`;
+    }
+
+    function adminBoothGroupsHtml(g) {
+      const rows = adminFloorVisible(g);
+      if (!rows.length) return '<div class="glass rounded-xl p-8 text-center text-sm text-gray-500">No stand matches that filter.</div>';
+      // The server already sorted the floor into category order, so one pass builds
+      // the sections and the screen never re-sorts 93 rows.
+      const groups = [];
+      rows.forEach(b => {
+        const last = groups[groups.length - 1];
+        if (last && last.key === b.type_key) last.items.push(b);
+        else groups.push({ key: b.type_key, name: b.name, items: [b] });
+      });
+      return '<p class="text-[11px] text-gray-500 mb-2 sm:hidden"><i class="fas fa-arrows-left-right mr-1"></i>Swipe a table sideways for the deal and the actions.</p>' +
+        groups.map(gr => adminBoothGroupHtml(gr)).join('');
+    }
+
+    function adminBoothGroupHtml(gr) {
+      // The header describes the CATEGORY, not the slice currently on screen — it is
+      // counted from the whole floor. Counting the filtered rows instead made a
+      // status drill-down report "0 available" for a category with fifteen free
+      // stands, and made the number the operator had just clicked disagree with
+      // itself one line later.
+      const all = ((adminFloor && adminFloor.booths) || []).filter(b => b.type_key === gr.key);
+      const free = all.filter(b => b.status === 'available').length;
+      const sold = all.filter(b => b.status === 'sold').length;
+      const held = all.filter(b => b.status === 'held').length;
+      const sqm = all.reduce((n, b) => n + Number(b.sqm || 0), 0);
+      const showing = gr.items.length !== all.length ? gr.items.length : 0;
+      const arg = boothArg(gr.key);
+      const D = st => "boothDrill('" + st + "','" + arg + "')";
+      return \`
+        <div class="glass rounded-xl p-4 mb-4 overflow-x-auto">
+          <div class="flex flex-wrap items-baseline gap-2 mb-3">
+            <h4 class="text-sm font-semibold"><i class="fas fa-vector-square text-primary-400 mr-2"></i>\${escH(gr.name)}</h4>
+            <span class="text-[11px] text-gray-500">\${escH(gr.key)} &middot; \${boothNum(all.length, D(''), { title: 'Show every ' + gr.name })} \${all.length === 1 ? 'stand' : 'stands'} &middot; \${Math.round(sqm * 100) / 100} sqm &middot; \${boothNum(free, D('available'), { tone: 'text-primary-400', title: 'Show what is left' })} available &middot; \${boothNum(held, D('held'), { tone: 'text-yellow-400', title: 'Show the holds' })} held &middot; \${boothNum(sold, D('sold'), { tone: 'text-green-400', title: 'Show the sold stands' })} sold\${showing ? ' &middot; <span class="text-primary-400">showing ' + showing + '</span>' : ''}</span>
+          </div>
+          <table class="w-full text-xs min-w-[44rem]">
+            <thead><tr class="border-b border-white/10 text-gray-400">
+              <th class="text-left py-2 px-2 font-medium">Stand</th>
+              <th class="text-left py-2 px-2 font-medium">Size</th>
+              <th class="text-left py-2 px-2 font-medium">Zone</th>
+              <th class="text-left py-2 px-2 font-medium">Status</th>
+              <th class="text-left py-2 px-2 font-medium">Occupant</th>
+              <th class="text-right py-2 px-2 font-medium">Deal</th>
+              <th class="text-right py-2 px-2 font-medium">Actions</th>
+            </tr></thead>
+            <tbody>\${gr.items.map(b => adminBoothRowHtml(b)).join('')}</tbody>
+          </table>
+        </div>\`;
+    }
+
+    // The money side of one stand, in the width of a table cell.
+    const BOOTH_PAY_PILL = {
+      pending: 'bg-gray-500/20 text-gray-400', invoiced: 'bg-blue-500/20 text-blue-300',
+      part_paid: 'bg-amber-500/20 text-amber-300', paid: 'bg-green-500/20 text-green-300',
+      refunded: 'bg-purple-500/20 text-purple-300',
+    };
+    function boothDealCellHtml(b) {
+      if (b.status === 'available') return '<span class="text-gray-600">' + inrShort(b.list_price_inr) + '</span>';
+      if (b.status === 'blocked') return '<span class="text-gray-600">&mdash;</span>';
+      const net = Number(b.amount_inr || 0);
+      const paid = Number(b.amount_paid_inr || 0);
+      const grand = Number(b.grand_total_inr || 0);
+      const ps = String(b.payment_status || 'pending');
+      const disc = Number(b.discount_inr || 0);
+      return '<div class="tabular-nums">₹' + inrN(net) + '</div>' +
+        (disc ? '<div class="text-[10px] text-amber-300 tabular-nums">&minus;₹' + inrN(disc) + ' off list</div>' : '') +
+        '<div class="text-[10px] text-gray-500 tabular-nums mt-0.5">' +
+        '<span class="px-1.5 py-0.5 rounded ' + (BOOTH_PAY_PILL[ps] || 'bg-gray-500/20 text-gray-400') + '">' + escH(ps.replace('_', ' ')) + '</span>' +
+        (grand ? ' ₹' + inrN(paid) + ' of ₹' + inrN(grand) : '') + '</div>';
+    }
+
+    // A plan label is "51" or "MP01". Anything else could not address a row anyway,
+    // so it is stripped rather than trusted into an onclick attribute.
+    function boothArg(code) { return String(code == null ? '' : code).replace(/[^A-Za-z0-9_.-]/g, ''); }
+
+    function adminBoothRowHtml(b) {
+      const pill = b.status === 'sold' ? 'bg-green-500/20 text-green-300'
+        : b.status === 'held' ? 'bg-yellow-500/20 text-yellow-300'
+        : b.status === 'blocked' ? 'bg-gray-500/20 text-gray-400'
+        : 'bg-white/5 text-gray-400';
+      const arg = boothArg(b.code);
+      const money = Number(b.amount_inr || 0);
+      const who = b.status === 'available'
+        ? '<span class="text-gray-600">&mdash;</span>'
+        : escH(b.company_name || 'Unnamed')
+          + (b.contact_name ? ' <span class="text-gray-500">&middot; ' + escH(b.contact_name) + '</span>' : '')
+          + (money ? ' <span class="text-gray-500">&middot; ₹' + money.toLocaleString('en-IN') + '</span>' : '')
+          + (b.booth_request_id ? ' <span class="text-[10px] text-primary-400" title="From a booth request">BR-' + Number(b.booth_request_id) + '</span>' : '');
+      // RECORD A SALE IS THE PRIMARY ACTION on every free stand — one click from
+      // the list, from a category drill-down and from the map — because that is how
+      // booths actually sell: offline, then written down. No portal request is
+      // required, implied, or waited for.
+      let actions;
+      if (b.status === 'available') {
+        actions = \`
+          <button type="button" onclick="openBoothSaleModal('\${arg}')" class="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold bg-green-600 hover:bg-green-500 text-white focus:outline-none focus:ring-2 focus:ring-green-400/70"><i class="fas fa-file-signature mr-1"></i>\${adminBoothPlacing ? 'Record here' : 'Record sale'}</button>
+          <button type="button" onclick="blockBooth('\${arg}')" class="px-2.5 py-1.5 rounded-lg text-[11px] font-medium glass hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-primary-500/70" title="Take this stand off the market without selling it">Block</button>\`;
+      } else {
+        const flip = b.status === 'held'
+          ? \`<button type="button" onclick="setBoothStatus('\${arg}', 'confirmed')" class="px-2.5 py-1.5 rounded-lg text-[11px] font-medium bg-green-500/20 text-green-300 hover:bg-green-500/30 focus:outline-none focus:ring-2 focus:ring-green-400/70"><i class="fas fa-check mr-1"></i>Confirm</button>\`
+          : b.status === 'sold'
+            ? \`<button type="button" onclick="setBoothStatus('\${arg}', 'held')" class="px-2.5 py-1.5 rounded-lg text-[11px] font-medium bg-yellow-500/20 text-yellow-300 hover:bg-yellow-500/30 focus:outline-none focus:ring-2 focus:ring-primary-500/70"><i class="fas fa-rotate-left mr-1"></i>Back to held</button>\`
+            : \`<button type="button" onclick="setBoothStatus('\${arg}', 'held')" class="px-2.5 py-1.5 rounded-lg text-[11px] font-medium bg-yellow-500/20 text-yellow-300 hover:bg-yellow-500/30 focus:outline-none focus:ring-2 focus:ring-primary-500/70">Make it a hold</button>\`;
+        actions = \`
+          <button type="button" onclick="openBoothSaleModal('\${arg}')" class="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold bg-primary-600 hover:bg-primary-500 text-white focus:outline-none focus:ring-2 focus:ring-primary-500/70"><i class="fas fa-pen mr-1"></i>Edit sale</button>\` + flip + \`
+          <button type="button" onclick="openBoothDetailModal('\${arg}')" class="px-2.5 py-1.5 rounded-lg text-[11px] font-medium glass hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-primary-500/70">Detail</button>
+          <button type="button" onclick="releaseBooth('\${arg}')" class="px-2.5 py-1.5 rounded-lg text-[11px] font-medium text-red-400 hover:bg-red-500/10 focus:outline-none focus:ring-2 focus:ring-red-400/70"><i class="fas fa-arrow-rotate-left mr-1"></i>Release</button>\`;
+      }
+      return \`
+        <tr class="border-b border-white/5 hover:bg-white/5 transition-colors">
+          <td class="py-2 px-2 font-semibold whitespace-nowrap">
+            <button type="button" onclick="openBoothSaleModal('\${arg}')" title="\${b.status === 'available' ? 'Record a sale on stand ' + escH(b.code) : 'Edit the sale on stand ' + escH(b.code)}" class="rounded px-1.5 py-0.5 -mx-1.5 hover:bg-primary-500/20 hover:text-primary-300 focus:outline-none focus:ring-2 focus:ring-primary-500/70 transition-colors">\${escH(b.code)}</button>
+          </td>
+          <td class="py-2 px-2 text-gray-400 whitespace-nowrap">\${escH(b.dim || '')} <span class="text-gray-600">\${Number(b.sqm || 0)} sqm</span></td>
+          <td class="py-2 px-2 text-gray-400 whitespace-nowrap">\${b.zone ? escH(b.zone) : '<span class="text-gray-600">&mdash;</span>'}</td>
+          <td class="py-2 px-2"><span class="px-2 py-0.5 rounded text-[11px] font-medium \${pill}">\${escH(b.status)}</span></td>
+          <td class="py-2 px-2 min-w-[12rem]">\${who}</td>
+          <td class="py-2 px-2 text-right whitespace-nowrap">\${boothDealCellHtml(b)}</td>
+          <td class="py-2 px-2"><div class="flex flex-wrap gap-1.5 justify-end">\${actions}</div></td>
+        </tr>\`;
+    }
+
+    function boothByCode(code) {
+      return (((adminFloor && adminFloor.booths) || []).filter(b => String(b.code) === String(code))[0]) || null;
+    }
+
+    // Everything the allocation carries, including the request behind it — the link
+    // that did not exist while preferred_booth_numbers was free text.
+    function openBoothDetailModal(code) {
+      const b = boothByCode(code);
+      if (!b) return;
+      const arg = boothArg(b.code);
+      const money = Number(b.amount_inr || 0);
+      openModal(\`
+        <h3 class="text-lg font-bold mb-1">Stand \${escH(b.code)} &middot; \${escH(b.name)}</h3>
+        <p class="text-xs text-gray-400 mb-4">\${escH(b.dim || '')} &middot; \${Number(b.sqm || 0)} sqm\${b.zone ? ' &middot; ' + escH(b.zone) : ''} &middot; \${escH(b.type_key)}</p>
+        <table class="w-full text-sm mb-4">
+          <tr><td class="py-1 pr-4 text-gray-500">Status</td><td><span class="px-2 py-0.5 rounded text-xs font-medium \${b.status === 'sold' ? 'bg-green-500/20 text-green-300' : b.status === 'held' ? 'bg-yellow-500/20 text-yellow-300' : 'bg-gray-500/20 text-gray-400'}">\${escH(b.status)}</span>\${b.status === 'blocked' ? ' <span class="text-xs text-gray-500 ml-1">organiser hold, not a sale</span>' : ''}\${b.status === 'held' ? ' <span class="text-xs text-gray-500 ml-1">not named on the public plan</span>' : ''}</td></tr>
+          <tr><td class="py-1 pr-4 text-gray-500">Company</td><td>\${escH(b.company_name || '')}</td></tr>
+          \${b.contact_name || b.email || b.phone ? \`<tr><td class="py-1 pr-4 text-gray-500">Contact</td><td>\${escH(b.contact_name || '')}\${b.email ? ' &middot; ' + escH(b.email) : ''}\${b.phone ? ' &middot; ' + escH(b.phone) : ''}</td></tr>\` : ''}
+          <tr><td class="py-1 pr-4 text-gray-500 align-top">The deal</td><td class="tabular-nums">\${money || Number(b.grand_total_inr || 0)
+            ? '₹' + inrN(b.alloc_list_price_inr || b.list_price_inr) + ' list'
+              + (Number(b.discount_inr || 0) ? ' &minus; ₹' + inrN(b.discount_inr) + ' discount' : '')
+              + ' = <b>₹' + inrN(money) + '</b> net <span class="text-xs text-gray-500">ex-GST</span>'
+              + '<div class="text-xs text-gray-400">+ ₹' + inrN(b.gst_inr) + ' GST 18% = ₹' + inrN(b.grand_total_inr) + ' payable</div>'
+            : '<span class="text-gray-500">not recorded</span>'}</td></tr>
+          <tr><td class="py-1 pr-4 text-gray-500 align-top">Payment</td><td class="tabular-nums">
+            <span class="px-2 py-0.5 rounded text-xs font-medium \${BOOTH_PAY_PILL[String(b.payment_status || 'pending')] || 'bg-gray-500/20 text-gray-400'}">\${escH(String(b.payment_status || 'pending').split('_').join(' '))}</span>
+            \${Number(b.grand_total_inr || 0) ? ' ₹' + inrN(b.amount_paid_inr) + ' of ₹' + inrN(b.grand_total_inr) : ''}
+            \${Number(b.grand_total_inr || 0) > Number(b.amount_paid_inr || 0) ? '<span class="text-amber-300"> &middot; ₹' + inrN(Number(b.grand_total_inr || 0) - Number(b.amount_paid_inr || 0)) + ' outstanding</span>' : ''}
+            \${b.invoice_number ? '<div class="text-xs text-gray-400">Invoice ' + escH(b.invoice_number) + (b.invoice_date ? ' &middot; ' + escH(String(b.invoice_date).slice(0, 10)) : '') + '</div>' : ''}
+            \${b.paid_date ? '<div class="text-xs text-gray-400">Settled ' + escH(String(b.paid_date).slice(0, 10)) + '</div>' : ''}
+          </td></tr>
+          \${b.booth_request_id ? \`<tr><td class="py-1 pr-4 text-gray-500">Booth request</td><td>#\${Number(b.booth_request_id)}\${b.request_company ? ' &middot; ' + escH(b.request_company) : ''}\${b.request_grand_total ? ' &middot; ₹' + Number(b.request_grand_total).toLocaleString('en-IN') : ''}\${b.request_payment_status ? ' &middot; ' + escH(b.request_payment_status) : ''}</td></tr>\` : ''}
+          \${b.exhibitor_id ? \`<tr><td class="py-1 pr-4 text-gray-500">Exhibitor</td><td>#\${Number(b.exhibitor_id)} <span class="text-xs text-gray-500">listed on the app's Exhibition Floor</span></td></tr>\` : ''}
+          \${b.notes ? \`<tr><td class="py-1 pr-4 text-gray-500 align-top">Notes</td><td>\${escH(b.notes)}</td></tr>\` : ''}
+          \${b.allocated_by ? \`<tr><td class="py-1 pr-4 text-gray-500">Allocated by</td><td>\${escH(b.allocated_by)}\${b.allocated_at ? ' &middot; ' + escH(String(b.allocated_at).slice(0, 16)) : ''}</td></tr>\` : ''}
+        </table>
+        <div class="flex flex-wrap gap-2">
+          <button type="button" onclick="openBoothSaleModal('\${arg}')" class="px-3 py-2 rounded-lg text-xs font-semibold bg-primary-600 hover:bg-primary-500 text-white focus:outline-none focus:ring-2 focus:ring-primary-500/70"><i class="fas fa-pen mr-1"></i>Edit the sale</button>
+          \${b.status === 'sold'
+            ? \`<button onclick="setBoothStatus('\${arg}', 'held')" class="px-3 py-2 rounded-lg text-xs font-medium bg-yellow-500/20 text-yellow-300 hover:bg-yellow-500/30"><i class="fas fa-rotate-left mr-1"></i>Back to held</button>\`
+            : \`<button onclick="setBoothStatus('\${arg}', 'confirmed')" class="px-3 py-2 rounded-lg text-xs font-medium bg-green-500/20 text-green-300 hover:bg-green-500/30"><i class="fas fa-check mr-1"></i>Confirm the sale</button>\`}
+          \${b.status === 'blocked'
+            ? \`<button onclick="setBoothStatus('\${arg}', 'held')" class="px-3 py-2 rounded-lg text-xs font-medium bg-white/5 text-gray-300 hover:bg-white/10">Make it a hold</button>\`
+            : \`<button onclick="setBoothStatus('\${arg}', 'blocked')" class="px-3 py-2 rounded-lg text-xs font-medium bg-white/5 text-gray-300 hover:bg-white/10"><i class="fas fa-ban mr-1"></i>Block</button>\`}
+          <button onclick="releaseBooth('\${arg}')" class="px-3 py-2 rounded-lg text-xs font-medium text-red-400 hover:bg-red-500/10 ml-auto"><i class="fas fa-arrow-rotate-left mr-1"></i>Release the stand</button>
+        </div>
+        <p class="text-[11px] text-gray-500 mt-3">Confirming publishes the company on the public floor plan and creates or adopts its exhibitor row, so the stand number finally appears in the app. Releasing deletes the allocation, clears that stand number and puts \${escH(b.code)} back on the market.</p>\`);
+    }
+
+    // ============ RECORD A SALE ============
+    //
+    // THE PRIMARY ACTION on this screen, and the thing the first build of it got
+    // backwards. The team sells booths OFFLINE — a phone call, an email, a meeting
+    // at somebody else's exhibition — and the salesperson writes the deal down
+    // afterwards. Most exhibitors never submit a portal request at all. So this form
+    // asks for the company and the money and saves the allocation: no request is
+    // required, none is implied, and nothing waits for one. Linking an existing
+    // booth_request is an OPTIONAL typeahead at the bottom that prefills these same
+    // fields, and it is never in the way.
+    //
+    // The same form edits an existing sale, so "add the payment that landed this
+    // morning" and "correct the discount" are the action the operator already knows.
+
+    // Reached from the toolbar, when the operator knows a deal has closed but has
+    // not picked the stand yet.
+    function openBoothSalePicker() {
+      const g = adminFloor;
+      if (!g || !g.ready) { toast('The floor plan has not loaded yet', 'error'); return; }
+      openModal(\`
+        <h3 class="text-lg font-bold mb-1"><i class="fas fa-file-signature text-green-400 mr-2"></i>Record a sale</h3>
+        <p class="text-xs text-gray-400 mb-4">Pick the stand that was sold. No portal request is needed &mdash; type the company's details straight in.</p>
+        <input id="bsp-q" autocomplete="off" oninput="boothSalePickerFilter()" placeholder="Stand number, category or company&hellip;" class="w-full px-3 py-2.5 rounded-lg text-sm bg-white/5 border border-white/10 mb-3 focus:outline-none focus:ring-2 focus:ring-primary-500/70">
+        <div id="bsp-list" class="max-h-[22rem] overflow-y-auto pr-1">\${boothSalePickerListHtml('')}</div>
+        <p class="text-[11px] text-gray-500 mt-3">Free stands first. An allocated stand opens its existing sale so it can be corrected or a payment added.</p>\`);
+      const q = document.getElementById('bsp-q');
+      if (q && q.focus) q.focus();
+    }
+    function boothSalePickerFilter() {
+      const q = document.getElementById('bsp-q');
+      const list = document.getElementById('bsp-list');
+      if (list) list.innerHTML = boothSalePickerListHtml(q ? q.value : '');
+    }
+    function boothSalePickerListHtml(query) {
+      const g = adminFloor;
+      const q = String(query || '').trim().toLowerCase();
+      const hit = b => !q || String(b.code).toLowerCase().indexOf(q) === 0 ||
+        String(b.name || '').toLowerCase().indexOf(q) !== -1 ||
+        String(b.type_key || '').toLowerCase().indexOf(q) !== -1 ||
+        String(b.company_name || '').toLowerCase().indexOf(q) !== -1;
+      const all = (g.booths || []).filter(hit);
+      const free = all.filter(b => b.status === 'available');
+      const taken = all.filter(b => b.status !== 'available');
+      if (!all.length) return '<p class="text-sm text-gray-500 py-6 text-center">No stand matches that.</p>';
+      const item = (b, dim) => {
+        const arg = boothArg(b.code);
+        const pill = b.status === 'sold' ? 'bg-green-500/20 text-green-300'
+          : b.status === 'held' ? 'bg-yellow-500/20 text-yellow-300'
+          : b.status === 'blocked' ? 'bg-gray-500/20 text-gray-400'
+          : 'bg-primary-500/20 text-primary-300';
+        return '<button type="button" onclick="openBoothSaleModal(\\'' + arg + '\\')" class="w-full text-left px-3 py-2 rounded-lg mb-1.5 flex items-center gap-3 ' +
+          (dim ? 'bg-white/[0.02] hover:bg-white/10' : 'bg-white/5 hover:bg-primary-500/15') +
+          ' border border-white/10 hover:border-primary-500/40 cursor-pointer transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500/70">' +
+          '<span class="font-semibold tabular-nums w-14 shrink-0">' + escH(b.code) + '</span>' +
+          '<span class="min-w-0 flex-1"><span class="text-xs">' + escH(b.name) + '</span>' +
+          '<span class="block text-[10px] text-gray-500">' + escH(b.dim || '') + ' &middot; ' + Number(b.sqm || 0) + ' sqm' +
+          (b.company_name ? ' &middot; ' + escH(b.company_name) : '') + '</span></span>' +
+          '<span class="text-[10px] px-2 py-0.5 rounded shrink-0 ' + pill + '">' + escH(b.status) + '</span>' +
+          '<span class="text-xs tabular-nums text-gray-400 shrink-0">' + inrShort(b.status === 'available' ? b.list_price_inr : b.amount_inr) + '</span>' +
+          '</button>';
+      };
+      let html = '';
+      if (free.length) html += '<div class="text-[10px] uppercase tracking-wider text-gray-500 mb-1.5">Available &middot; ' + free.length + '</div>' + free.slice(0, 60).map(b => item(b, false)).join('');
+      if (taken.length) html += '<div class="text-[10px] uppercase tracking-wider text-gray-500 mt-3 mb-1.5">Already allocated &middot; edit the sale</div>' + taken.slice(0, 40).map(b => item(b, true)).join('');
+      return html;
+    }
+
+    function openBoothSaleModal(code) {
+      const b = boothByCode(code);
+      const g = adminFloor;
+      if (!b || !g) { toast('Reload the floor plan and try again', 'error'); return; }
+      const arg = boothArg(b.code);
+      const editing = b.status !== 'available';
+      // The stand's sticker is the starting price on a new sale; on an edit it is
+      // the price FROZEN at the sale, so repricing the hall cannot silently rewrite
+      // a deal that was already signed.
+      const list = editing ? Number(b.alloc_list_price_inr || b.list_price_inr || 0) : Number(b.list_price_inr || 0);
+      const discount = editing ? Number(b.discount_inr || 0) : 0;
+      const m = boothMoneyFrom(list, discount);
+      const armed = (!editing && adminBoothPlacing)
+        ? ((g.requests || []).filter(r => r.id === adminBoothPlacing)[0] || null) : null;
+      const src = armed || null;
+      const v = (x) => escH(x == null ? '' : String(x));
+      const dateVal = x => String(x == null ? '' : x).slice(0, 10);
+      const status = editing ? b.status === 'sold' ? 'confirmed' : b.status : 'confirmed';
+      const fld = 'w-full px-3 py-2 rounded-lg text-sm bg-white/5 border border-white/10 focus:outline-none focus:ring-2 focus:ring-primary-500/70';
+      const num = fld + ' tabular-nums';
+
+      openModal(\`
+        <h3 class="text-lg font-bold mb-1">\${editing ? 'Edit the sale on stand' : 'Record a sale &middot; stand'} \${escH(b.code)}</h3>
+        <p class="text-xs text-gray-400 mb-4">\${escH(b.name)} &middot; \${escH(b.dim || '')} &middot; \${Number(b.sqm || 0)} sqm\${b.zone ? ' &middot; ' + escH(b.zone) : ''} &middot; lists at ₹\${inrN(b.list_price_inr)}</p>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+          <div><label class="block text-xs text-gray-400 mb-1" for="bs-company">Company <span class="text-red-400">*</span></label>
+            <input id="bs-company" autocomplete="off" placeholder="Who bought the stand" class="\${fld}" value="\${v(editing ? b.company_name : (src && src.company_name))}"></div>
+          <div><label class="block text-xs text-gray-400 mb-1" for="bs-contact">Contact person</label>
+            <input id="bs-contact" autocomplete="off" placeholder="Who you dealt with" class="\${fld}" value="\${v(editing ? b.contact_name : (src && src.contact_name))}"></div>
+          <div><label class="block text-xs text-gray-400 mb-1" for="bs-email">Email</label>
+            <input id="bs-email" autocomplete="off" inputmode="email" autocapitalize="none" spellcheck="false" class="\${fld}" value="\${v(editing ? b.email : (src && src.email))}"></div>
+          <div><label class="block text-xs text-gray-400 mb-1" for="bs-phone">Phone</label>
+            <input id="bs-phone" autocomplete="off" inputmode="tel" class="\${fld}" value="\${v(editing ? b.phone : (src && src.phone))}"></div>
+        </div>
+
+        <label class="block text-xs text-gray-400 mb-1" for="bs-status">Stand status</label>
+        <select id="bs-status" onchange="boothSaleRecalc()" class="\${fld}">
+          <option value="confirmed"\${status === 'confirmed' ? ' selected' : ''}>Confirmed &mdash; sold</option>
+          <option value="held"\${status === 'held' ? ' selected' : ''}>Held &mdash; agreed, not closed</option>
+          <option value="blocked"\${status === 'blocked' ? ' selected' : ''}>Organiser block &mdash; not a sale</option>
+        </select>
+        <p class="text-[11px] text-gray-500 mt-1 mb-4">Only a confirmed stand names the company on the public floor plan; a hold and an organiser block both show as taken without naming anybody.</p>
+
+        <div id="bs-money" class="rounded-xl border border-white/10 bg-white/[0.03] p-3 mb-4">
+          <div class="text-xs font-semibold text-gray-300 mb-2"><i class="fas fa-indian-rupee-sign text-primary-400 mr-1.5"></i>The deal <span class="font-normal text-gray-500">&mdash; whole rupees, GST is 18%</span></div>
+          <div class="grid grid-cols-2 gap-3 mb-3">
+            <div><label class="block text-xs text-gray-400 mb-1" for="bs-list">List price, ex-GST</label>
+              <input id="bs-list" inputmode="numeric" autocomplete="off" aria-describedby="bs-list-err" oninput="boothSaleRecalc()" class="\${num}" value="\${m.list}">
+              <p id="bs-list-err" class="text-[11px] text-red-400 mt-1" hidden></p></div>
+            <div><label class="block text-xs text-gray-400 mb-1" for="bs-discount">Discount</label>
+              <input id="bs-discount" inputmode="numeric" autocomplete="off" aria-describedby="bs-discount-err" oninput="boothSaleRecalc()" class="\${num}" value="\${m.discount}">
+              <p id="bs-discount-err" class="text-[11px] text-red-400 mt-1" hidden></p></div>
+          </div>
+          <!-- DERIVED, and drawn so it cannot be mistaken for something to fill in.
+               As read-only <input>s these three looked exactly like the two fields
+               above them, which invites an operator to type a net that the server
+               will then quietly overwrite. -->
+          <div class="rounded-lg border border-white/10 px-3 py-2 mb-3" aria-live="polite">
+            <div class="flex items-baseline justify-between text-xs py-0.5"><span class="text-gray-500">Net, ex-GST</span><span id="bs-net" class="tabular-nums font-semibold">₹\${inrN(m.net)}</span></div>
+            <div class="flex items-baseline justify-between text-xs py-0.5"><span class="text-gray-500">GST 18%</span><span id="bs-gst" class="tabular-nums">₹\${inrN(m.gst)}</span></div>
+            <div class="flex items-baseline justify-between text-sm pt-1.5 mt-1 border-t border-white/10"><span class="font-semibold">Grand total</span><span id="bs-total" class="tabular-nums font-black">₹\${inrN(m.total)}</span></div>
+          </div>
+          <p id="bs-derived" class="text-[11px] text-gray-500 mb-3"></p>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+            <div><label class="block text-xs text-gray-400 mb-1" for="bs-invoice">Invoice number</label>
+              <input id="bs-invoice" autocomplete="off" placeholder="BAI/2026/0001" class="\${fld}" value="\${v(b.invoice_number)}"></div>
+            <div><label class="block text-xs text-gray-400 mb-1" for="bs-invdate">Invoice date</label>
+              <input id="bs-invdate" type="date" class="\${fld}" value="\${v(dateVal(b.invoice_date))}"></div>
+            <div><label class="block text-xs text-gray-400 mb-1" for="bs-paid">Amount paid</label>
+              <input id="bs-paid" inputmode="numeric" autocomplete="off" aria-describedby="bs-paid-err" oninput="boothSaleRecalc()" class="\${num}" value="\${Number(b.amount_paid_inr || 0)}">
+              <p id="bs-paid-err" class="text-[11px] text-red-400 mt-1" hidden></p></div>
+            <div><label class="block text-xs text-gray-400 mb-1" for="bs-paiddate">Payment date</label>
+              <input id="bs-paiddate" type="date" class="\${fld}" value="\${v(dateVal(b.paid_date))}"></div>
+          </div>
+          <label class="block text-xs text-gray-400 mb-1" for="bs-paystatus">Payment status</label>
+          <select id="bs-paystatus" onchange="boothSaleRecalc(true)" class="\${fld}">
+            \${['pending', 'invoiced', 'part_paid', 'paid', 'refunded'].map(p =>
+              '<option value="' + p + '"' + (String(b.payment_status || 'pending') === p ? ' selected' : '') + '>' + p.split('_').join(' ') + '</option>').join('')}
+          </select>
+        </div>
+
+        <label class="block text-xs text-gray-400 mb-1" for="bs-notes">Notes</label>
+        <textarea id="bs-notes" autocomplete="off" rows="2" placeholder="Where it was closed, what was promised, anything the desk needs to remember" class="\${fld} mb-4">\${v(b.notes)}</textarea>
+
+        <details class="mb-4 rounded-lg border border-white/10 bg-white/[0.02]" \${src ? 'open' : ''}>
+          <summary class="px-3 py-2 text-xs text-gray-400 cursor-pointer select-none hover:text-gray-200">Optional &middot; link an existing booth request</summary>
+          <div class="px-3 pb-3">
+            <p class="text-[11px] text-gray-500 mb-2">Only if this company did submit one on the portal. Most sales have no request behind them, and none is needed here.</p>
+            <input id="bs-request-q" list="bs-req-list" autocomplete="off" oninput="boothSalePickRequest()" placeholder="Start typing a company name&hellip;" class="\${fld}" value="\${v(src ? boothRequestLabel(src) : '')}">
+            <datalist id="bs-req-list">\${boothSaleRequestOptions()}</datalist>
+            <input type="hidden" id="bs-request-id" value="\${editing && b.booth_request_id ? Number(b.booth_request_id) : (src ? Number(src.id) : '')}">
+            <p id="bs-request-note" class="text-[11px] text-primary-300 mt-2">\${editing && b.booth_request_id ? 'Linked to request #' + Number(b.booth_request_id) + ' &middot; <button type="button" onclick="boothSaleClearRequest()" class="underline">unlink</button>' : (src ? boothRequestNote(src) : '')}</p>
+          </div>
+        </details>
+
+        <div class="flex flex-wrap gap-2">
+          <button type="button" id="bs-save" onclick="submitBoothSale('\${arg}')" class="px-4 py-2.5 rounded-lg text-sm font-semibold bg-green-600 hover:bg-green-500 text-white focus:outline-none focus:ring-2 focus:ring-green-400/70"><i class="fas fa-floppy-disk mr-1.5"></i>\${editing ? 'Save the changes' : 'Save the sale'}</button>
+          <button type="button" onclick="closeModal()" class="px-4 py-2.5 rounded-lg text-sm font-medium glass hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-primary-500/70">Cancel</button>
+          \${editing ? '<button type="button" onclick="releaseBooth(\\'' + arg + '\\')" class="px-4 py-2.5 rounded-lg text-sm font-medium text-red-400 hover:bg-red-500/10 ml-auto focus:outline-none focus:ring-2 focus:ring-red-400/70"><i class="fas fa-arrow-rotate-left mr-1.5"></i>Release the stand</button>' : ''}
+        </div>
+        <p class="text-[11px] text-gray-500 mt-3">Net, GST and the grand total are worked out from the list price and the discount &mdash; they are never taken on trust, so what is saved is always what is shown. \${editing ? 'Editing writes over the existing allocation; releasing deletes it and puts the stand back on the market.' : 'A confirmed sale publishes the company on the public floor plan and creates its exhibitor record.'}</p>\`);
+      boothSaleRecalc();
+    }
+
+    // The arithmetic, live. Identical to the server's, which is what stops the form
+    // ever showing a total the saved row will disagree with.
+    function boothSaleRecalc(fromStatus) {
+      const el = id => document.getElementById(id);
+      const list = el('bs-list'), disc = el('bs-discount'), net = el('bs-net');
+      if (!list || !net) return;
+      const blocked = el('bs-status') && el('bs-status').value === 'blocked';
+      const box = el('bs-money');
+      if (box) box.style.opacity = blocked ? '0.45' : '';
+      // Judged BEFORE any arithmetic, and while a figure is refused no arithmetic is
+      // shown at all: a total worked out from a number the server will not accept is
+      // a total that lies about what saving will do. The discount used to be rewritten
+      // to the list price on this very line — the same silent clamp the server did —
+      // which told an operator their 5,00,000 discount on a 38,000 stand was fine.
+      const issues = boothSaleIssues();
+      ['bs-list', 'bs-discount', 'bs-paid'].forEach(function (id) {
+        const hit = issues.filter(function (x) { return x.id === id; })[0];
+        boothSaleFieldNote(id, hit ? hit.msg : '');
+      });
+      const saveBtn = el('bs-save');
+      if (saveBtn) {
+        saveBtn.disabled = issues.length > 0;
+        saveBtn.classList.toggle('opacity-50', issues.length > 0);
+        saveBtn.classList.toggle('cursor-not-allowed', issues.length > 0);
+      }
+      if (issues.length) {
+        ['bs-net', 'bs-gst', 'bs-total'].forEach(function (id) { const e = el(id); if (e) e.textContent = '—'; });
+        // Not a second copy of the field's own message: this line's job is to say
+        // why the three figures above it went blank, which the field note does not.
+        const stop = el('bs-derived');
+        if (stop) stop.innerHTML = '<span class="text-red-400">Nothing is worked out from a figure that would be refused — fix the field' +
+          (issues.length > 1 ? 's' : '') + ' marked in red.</span>';
+        return;
+      }
+
+      const m = boothMoneyFrom(digitsOf(list.value), digitsOf(disc ? disc.value : 0));
+      const txt = (id, val) => { const e = el(id); if (e) e.textContent = '₹' + inrN(val); };
+      txt('bs-net', m.net); txt('bs-gst', m.gst); txt('bs-total', m.total);
+      const paidEl = el('bs-paid'), psEl = el('bs-paystatus');
+      let paid = Number(digitsOf(paidEl ? paidEl.value : 0));
+      // Choosing "paid" IS saying the whole invoice landed, so the receipts follow
+      // the word rather than being typed twice. Everything else follows the money.
+      if (fromStatus && psEl && psEl.value === 'paid') { paid = m.total; if (paidEl) paidEl.value = paid; }
+      if (paid > m.total) { paid = m.total; if (paidEl) paidEl.value = paid; }
+      if (psEl && psEl.value !== 'refunded' && !(fromStatus && psEl.value === 'paid')) {
+        const inv = el('bs-invoice') && String(el('bs-invoice').value || '').trim();
+        psEl.value = (paid >= m.total && m.total > 0) ? 'paid' : paid > 0 ? 'part_paid' : inv ? 'invoiced' : 'pending';
+      }
+      const note = el('bs-derived');
+      if (note) {
+        note.innerHTML = blocked
+          ? 'An organiser block is space taken off the market, not a sale &mdash; it will be saved with no money against it.'
+          : '₹' + inrN(m.list) + (m.discount ? ' &minus; ₹' + inrN(m.discount) + ' discount' : '') +
+            ' = <b class="text-gray-300">₹' + inrN(m.net) + '</b> net, + ₹' + inrN(m.gst) + ' GST = <b class="text-gray-300">₹' + inrN(m.total) + '</b> payable' +
+            (paid ? ' &middot; ₹' + inrN(paid) + ' received, <b class="' + (m.total - paid > 0 ? 'text-amber-300' : 'text-green-400') + '">₹' + inrN(Math.max(0, m.total - paid)) + '</b> outstanding' : '');
+      }
+    }
+
+    function boothRequestLabel(r) {
+      return String(r.company_name || 'Unnamed') + ' · ' + String(r.booth_type_name || 'booth') + ' · #' + Number(r.id);
+    }
+    function boothRequestNote(r) {
+      const per = Math.round(Number(r.grand_total || 0) / Math.max(1, Number(r.quantity || 1)));
+      return 'Prefilled from request #' + Number(r.id) + ' &middot; it quoted ₹' + inrN(r.grand_total) +
+        ' incl GST for ' + Number(r.quantity || 1) + (Number(r.quantity || 1) === 1 ? ' stand' : ' stands') +
+        ' (₹' + inrN(per) + ' each) &middot; <button type="button" onclick="boothSaleClearRequest()" class="underline">unlink</button>';
+    }
+    function boothSaleRequestOptions() {
+      const rs = (adminFloor && adminFloor.requests) || [];
+      return rs.map(r => '<option value="' + escH(boothRequestLabel(r)) + '"></option>').join('');
+    }
+    // Secondary by design: it fills the identity fields and says where they came
+    // from. It never blocks saving, and clearing it leaves what was typed alone.
+    function boothSalePickRequest() {
+      const q = document.getElementById('bs-request-q');
+      const idEl = document.getElementById('bs-request-id');
+      const note = document.getElementById('bs-request-note');
+      if (!q || !idEl) return;
+      const rs = (adminFloor && adminFloor.requests) || [];
+      const r = rs.filter(x => boothRequestLabel(x) === q.value)[0];
+      if (!r) { idEl.value = ''; if (note) note.innerHTML = ''; return; }
+      idEl.value = String(r.id);
+      const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val == null ? '' : String(val); };
+      set('bs-company', r.company_name);
+      set('bs-contact', r.contact_name);
+      set('bs-email', r.email);
+      set('bs-phone', r.phone);
+      if (note) note.innerHTML = boothRequestNote(r);
+    }
+    function boothSaleClearRequest() {
+      const q = document.getElementById('bs-request-q');
+      const idEl = document.getElementById('bs-request-id');
+      const note = document.getElementById('bs-request-note');
+      if (q) q.value = '';
+      if (idEl) idEl.value = '';
+      if (note) note.innerHTML = '';
+      adminBoothPlacing = null;
+    }
+
+    async function submitBoothSale(code) {
+      const val = id => { const el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; };
+      const status = val('bs-status') || 'confirmed';
+      const company = val('bs-company');
+      if (!company && status !== 'blocked') {
+        toast('A company name is required to record a sale', 'error');
+        const el = document.getElementById('bs-company');
+        if (el) { el.classList.add('border-red-500'); el.focus(); }
+        return;
+      }
+      // The second door on the same rule. Save is already disabled while a figure
+      // is refused, but a stale modal or a keyboard submit must not be able to post
+      // a number the server would reject — and the operator should land ON the
+      // offending field rather than read about it in a toast that hides the form.
+      const issues = boothSaleIssues();
+      if (issues.length) {
+        boothSaleRecalc();
+        const bad = document.getElementById(issues[0].id);
+        if (bad) bad.focus();
+        toast(issues[0].msg, 'error');
+        return;
+      }
+
+      const btn = document.getElementById('bs-save');
+      if (btn) { btn.disabled = true; btn.classList.add('opacity-60'); }
+      try {
+        const r = await api.put('/api/admin/booths/' + encodeURIComponent(code) + '/sale', {
+          event_id: EID,
+          booth_request_id: val('bs-request-id') ? Number(val('bs-request-id')) : null,
+          company_name: company, contact_name: val('bs-contact'),
+          email: val('bs-email'), phone: val('bs-phone'), status: status,
+          // The strict parse, not digitsOf: what the form judged is exactly what the
+          // server is asked to save, so its own guard can only ever agree with what
+          // the desk was just shown. boothSaleIssues above proved none of these is null.
+          list_price_inr: String(boothRupeeStrict(val('bs-list'))),
+          discount_inr: String(boothRupeeStrict(val('bs-discount'))),
+          invoice_number: val('bs-invoice'), invoice_date: val('bs-invdate'),
+          amount_paid_inr: String(boothRupeeStrict(val('bs-paid'))), paid_date: val('bs-paiddate'),
+          payment_status: val('bs-paystatus'), notes: val('bs-notes'),
+        });
+        if (r && r.error) { toast(r.error, 'error'); return; }
+        closeModal();
+        adminBoothPlacing = null;
+        toast('Stand ' + code + ' · ' + (r.created ? 'sale recorded' : 'sale updated') +
+          (Number(r.grand_total_inr) ? ' · ₹' + inrN(r.grand_total_inr) + ' incl GST' : ''));
+        loadAdminFloorPlan();
+      } catch (e) {
+        // A 409 is the unique constraint doing its job — somebody took the stand
+        // between opening this form and saving it. Reload so the screen agrees.
+        toast((e && e.message) || 'Could not record that sale', 'error');
+        loadAdminFloorPlan();
+      } finally {
+        if (btn) { btn.disabled = false; btn.classList.remove('opacity-60'); }
+      }
+    }
+
+    // ============ THE ADMIN FLOOR-PLAN MAP ============
+    //
+    // The same rendering model public/js/floor-plan.js uses on the public site: one
+    // box per stand, positioned from the fx/fy/fw/fh fractions measured off the
+    // drawing, laid over the plan image. Expressed here as CSS percentages instead
+    // of pixels, because the fractions ARE the percentages — which means no
+    // measurement pass, no resize handler, and no second copy of the geometry that
+    // can drift out of step with the first. Colour is status; clicking a stand opens
+    // the same record-a-sale form the list does.
+    function boothPc(v) { return (Number(v || 0) * 100).toFixed(3) + '%'; }
+    function boothMapZoom() { return adminBoothMapZoom || (isMobileLayout() ? 300 : 100); }
+    function setBoothMapZoom(z) { adminBoothMapZoom = Number(z) || 100; syncBoothMapZoom(); }
+    // The zoom bar is REBUILT rather than having classes toggled on it: .glass paints
+    // its own background, so toggling bg-primary-600 on top of it left the selected
+    // button white text on a white pill — invisible, which is the one thing a
+    // selected control must never be.
+    function boothMapZoomBarHtml() {
+      const z = boothMapZoom();
+      return '<span class="text-[11px] text-gray-500 mr-1">Zoom</span>' + [100, 175, 300].map(v =>
+        '<button type="button" onclick="setBoothMapZoom(' + v + ')" aria-pressed="' + (v === z) + '" class="px-2.5 py-1 rounded-lg text-[11px] font-medium focus:outline-none focus:ring-2 focus:ring-primary-500/70 ' +
+        (v === z ? 'bg-primary-600 text-white' : 'glass text-gray-400 hover:bg-white/10 hover:text-gray-200') + '">' + v + '%</button>').join('');
+    }
+    function syncBoothMapZoom() {
+      const st = document.getElementById('bmap-stage');
+      if (st) st.style.width = boothMapZoom() + '%';
+      const bar = document.getElementById('bmap-zoombar');
+      if (bar) bar.innerHTML = boothMapZoomBarHtml();
+    }
+    function adminBoothMapHtml(g) {
+      const rows = g.booths || [];
+      const vis = {};
+      const visible = adminFloorVisible(g);
+      visible.forEach(b => { vis[b.code] = 1; });
+      const filtering = visible.length !== rows.length;
+      const hots = rows.filter(b => b.fx != null && b.fy != null).map(b => {
+        const arg = boothArg(b.code);
+        const on = !filtering || vis[b.code];
+        // Solid enough to read as status at a glance. The plan underneath is greyed
+        // out for exactly this reason: it colours booths by TIER, and two colour
+        // systems on one drawing means neither can be trusted.
+        const cls = b.status === 'sold' ? 'bg-green-500/80 border-green-700/60 hover:bg-green-400'
+          : b.status === 'held' ? 'bg-yellow-400/85 border-yellow-600/60 hover:bg-yellow-300'
+          : b.status === 'blocked' ? 'bg-gray-500/70 border-gray-700/50 hover:bg-gray-400'
+          : 'bg-white/70 border-primary-500/60 hover:bg-primary-500/40';
+        const money = b.status === 'available' ? inrShort(b.list_price_inr) : inrShort(b.amount_inr);
+        const label = b.code + ' · ' + b.name + ' · ' + (b.dim || '') + ' · ' + b.status +
+          (b.company_name ? ' · ' + b.company_name : '') + ' · ' + money +
+          (b.status === 'available' ? ' — click to record a sale' : ' — click to edit the sale');
+        // Only where the box is big enough to hold it. A Startup Pod is 2% of the
+        // frame; a label in it would be a smudge, and the greyed plan keeps its own
+        // printed number for those.
+        const tag = (Number(b.fw) >= 0.026 && Number(b.fh) >= 0.025)
+          ? '<span class="absolute inset-0 flex items-center justify-center text-[8px] font-bold leading-none text-black/70 pointer-events-none">' + escH(b.code) + '</span>' : '';
+        return '<button type="button" onclick="openBoothSaleModal(\\'' + arg + '\\')" title="' + escH(label) + '" aria-label="' + escH(label) + '" ' +
+          'class="absolute rounded-sm border ' + cls + (on ? '' : ' opacity-20') +
+          ' cursor-pointer transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:z-10" ' +
+          'style="left:' + boothPc(b.fx) + ';top:' + boothPc(b.fy) + ';width:' + boothPc(b.fw) + ';height:' + boothPc(b.fh) + '">' + tag + '</button>';
+      }).join('');
+      const s = g.summary || {};
+      const chip = (cls, label, n, action) =>
+        '<button type="button" onclick="' + action + '" class="px-2 py-1 rounded-lg text-[11px] font-medium glass hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-primary-500/70 flex items-center gap-1.5">' +
+        '<span class="inline-block w-2.5 h-2.5 rounded-sm border ' + cls + '"></span>' + label +
+        ' <span class="tabular-nums text-gray-400">' + n + '</span></button>';
+      return \`
+        <div class="glass rounded-xl p-4 mb-4">
+          <div class="flex flex-wrap items-center gap-2 mb-3">
+            \${chip('bg-white border-primary-500/60', 'Available', Number(s.available || 0), "boothDrill('available','')")}
+            \${chip('bg-yellow-400/85 border-yellow-600/60', 'Held', Number(s.held || 0), "boothDrill('held','')")}
+            \${chip('bg-green-500/80 border-green-700/60', 'Sold', Number(s.sold || 0), "boothDrill('sold','')")}
+            \${chip('bg-gray-500/70 border-gray-700/50', 'Blocked', Number(s.blocked || 0), "boothDrill('blocked','')")}
+            <div id="bmap-zoombar" class="ml-auto flex items-center gap-1.5">\${boothMapZoomBarHtml()}</div>
+          </div>
+          \${filtering ? '<p class="text-[11px] text-primary-400 mb-2"><i class="fas fa-filter mr-1"></i>' + visible.length + ' of ' + rows.length + ' stands match the current filter; the rest are faded. <button type="button" onclick="clearBoothFilters()" class="underline">Show all</button></p>' : ''}
+          <div class="overflow-auto rounded-lg border border-white/10 bg-black/5" style="max-height:72vh">
+            <div id="bmap-stage" class="relative mx-auto" style="width:\${boothMapZoom()}%;aspect-ratio:1600/1546">
+              <img src="/images/expo-layout.webp" alt="Hall C floor plan" class="absolute inset-0 w-full h-full" style="object-fit:fill;filter:grayscale(1) contrast(0.7);opacity:0.55" onerror="this.style.display='none'">
+              \${hots}
+            </div>
+          </div>
+          <p class="text-[11px] text-gray-500 mt-3">Click any stand to record or edit its sale. The boxes are drawn from the same fx/fy/fw/fh fractions the public floor plan uses, so what is coloured here is exactly what a visitor sees greyed out there. On a phone, zoom in before tapping a Startup Pod.</p>
+        </div>\`;
+    }
+
+    // ============ CSV BULK UPLOAD ============
+    // For the sales that closed before this screen existed. The server validates
+    // every row before writing any of them, so a file with one bad line imports
+    // nothing at all — a half-applied import of 60 stands is worse than no import,
+    // because nobody can tell afterwards which 23 landed.
+    const BOOTH_CSV_HEADERS = ['booth_code', 'company_name', 'contact_name', 'email', 'phone', 'status',
+      'list_price_inr', 'discount_inr', 'invoice_number', 'invoice_date', 'amount_paid_inr', 'paid_date',
+      'payment_status', 'notes'];
+    let boothImportText = '';
+
+    function boothCsvCell(v) {
+      v = String(v == null ? '' : v);
+      return (v.indexOf(',') !== -1 || v.indexOf('"') !== -1 || v.indexOf(NL) !== -1)
+        ? '"' + v.split('"').join('""') + '"' : v;
+    }
+    function downloadBoothTemplate() {
+      const CRLF = String.fromCharCode(13, 10);
+      const BOM = String.fromCharCode(65279);
+      const sample = [
+        ['51', 'Reliance Jio Platforms', 'A Ambani', 'a@example.com', '+91 98765 43210', 'confirmed', '387000', '37000', 'BAI/2026/0001', '2026-09-01', '413000', '2026-09-08', 'paid', 'Closed at the Delhi roadshow'],
+        ['19', 'Acme Robotics, Pvt Ltd', 'P Shah', 'p@example.com', '', 'confirmed', '125000', '0', 'BAI/2026/0002', '2026-09-03', '0', '', 'invoiced', 'Invoice raised, payment due 30 Sep'],
+        ['37', 'Seed Stage Labs', '', '', '', 'held', '38000', '0', '', '', '', '', 'pending', 'Verbal hold until 30 Sep'],
+      ];
+      const csv = BOM + [BOOTH_CSV_HEADERS.join(',')]
+        .concat(sample.map(r => r.map(boothCsvCell).join(','))).join(CRLF) + CRLF;
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+      a.download = 'booth_sales_template.csv';
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+      toast('Template downloaded');
+    }
+
+    function openBoothImportModal() {
+      boothImportText = '';
+      openModal(\`
+        <h3 class="text-lg font-bold mb-1"><i class="fas fa-file-csv text-green-400 mr-2"></i>Import booth sales</h3>
+        <p class="text-xs text-gray-400 mb-4">For sales already closed offline. Every row is checked before anything is written &mdash; one bad row and nothing at all is imported.</p>
+
+        <div class="glass rounded-lg p-3 mb-4">
+          <div class="text-xs font-semibold text-gray-300 mb-2">The header row, exactly</div>
+          <code class="block text-[10px] bg-black/30 rounded p-2 text-gray-400 overflow-x-auto whitespace-pre">\${escH(BOOTH_CSV_HEADERS.join(','))}</code>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1 text-[11px] mt-2">
+            <span class="text-white font-medium">booth_code <span class="text-red-400">*</span></span><span class="text-gray-500">The plan label: 51, MP01</span>
+            <span class="text-white font-medium">company_name <span class="text-red-400">*</span></span><span class="text-gray-500">Required unless status is blocked</span>
+            <span class="text-gray-400">status</span><span class="text-gray-500">confirmed (default) / held / blocked</span>
+            <span class="text-gray-400">list_price_inr</span><span class="text-gray-500">Blank takes the stand's own price</span>
+            <span class="text-gray-400">discount_inr</span><span class="text-gray-500">Never more than the list price</span>
+            <span class="text-gray-400">payment_status</span><span class="text-gray-500">pending / invoiced / part_paid / paid / refunded</span>
+            <span class="text-gray-400">invoice_date, paid_date</span><span class="text-gray-500">2026-09-01 or 01/09/2026</span>
+          </div>
+          <p class="text-[11px] text-gray-500 mt-2">Net, GST and the grand total are worked out for you: net = list &minus; discount, GST is 18%. There is no column for them because a spreadsheet that disagrees with the arithmetic is how a wrong invoice gets raised.</p>
+          <button type="button" onclick="downloadBoothTemplate()" class="mt-3 px-3 py-1.5 rounded-lg text-[11px] font-medium glass hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-primary-500/70"><i class="fas fa-download mr-1 text-green-400"></i>Download the template</button>
+        </div>
+
+        <div id="bimp-drop" onclick="document.getElementById('bimp-file').click()"
+             ondragover="event.preventDefault(); this.classList.add('border-primary-500/50')"
+             ondragleave="this.classList.remove('border-primary-500/50')"
+             ondrop="handleBoothImportDrop(event)"
+             class="border-2 border-dashed border-white/15 rounded-xl p-6 text-center cursor-pointer hover:border-primary-500/50 hover:bg-white/[0.02] transition-all">
+          <i class="fas fa-cloud-upload-alt text-2xl text-gray-500 mb-2"></i>
+          <p class="text-sm font-medium mb-1">Drop the CSV here, or click to choose one</p>
+          <p class="text-xs text-gray-500">Up to 500 rows &middot; .csv only</p>
+        </div>
+        <input type="file" id="bimp-file" accept=".csv,text/csv" class="hidden" onchange="handleBoothImportFile(this.files[0])">
+        <div id="bimp-result" class="mt-4"></div>\`);
+    }
+
+    function handleBoothImportDrop(e) {
+      e.preventDefault();
+      e.currentTarget.classList.remove('border-primary-500/50');
+      const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if (f) handleBoothImportFile(f);
+    }
+    function handleBoothImportFile(file) {
+      if (!file) return;
+      const name = String(file.name || '');
+      if (name.toLowerCase().slice(-4) !== '.csv') { toast('That is not a .csv file', 'error'); return; }
+      if (file.size > 2 * 1024 * 1024) { toast('That file is too large; 2MB is the limit', 'error'); return; }
+      const reader = new FileReader();
+      reader.onload = ev => {
+        boothImportText = String(ev.target.result || '');
+        renderBoothImportPreview(name);
+      };
+      reader.onerror = () => toast('Could not read that file', 'error');
+      reader.readAsText(file);
+    }
+
+    function renderBoothImportPreview(name) {
+      const box = document.getElementById('bimp-result');
+      if (!box) return;
+      let rows = [];
+      // A local look at the file so the operator sees what they picked. The server
+      // is the authority on whether it can be imported.
+      try {
+        const clean = boothImportText.charCodeAt(0) === 65279 ? boothImportText.slice(1) : boothImportText;
+        rows = parseCSV(clean) || [];
+      } catch (e) { rows = []; }
+      if (!rows.length) {
+        box.innerHTML = '<div class="glass rounded-lg p-4 text-sm text-red-300"><i class="fas fa-triangle-exclamation mr-2"></i>' +
+          escH(name) + ' has a header row and no data rows.</div>';
+        return;
+      }
+      const head = rows[0];
+      const missing = ['booth_code', 'company_name'].filter(k => !(k in head));
+      const preview = rows.slice(0, 8).map((r, i) =>
+        '<tr class="border-b border-white/5"><td class="py-1 px-2 text-gray-500 tabular-nums">' + (i + 2) + '</td>' +
+        '<td class="py-1 px-2 font-semibold">' + escH(r.booth_code || '') + '</td>' +
+        '<td class="py-1 px-2">' + escH(r.company_name || '') + '</td>' +
+        '<td class="py-1 px-2 text-gray-400">' + escH(r.status || 'confirmed') + '</td>' +
+        '<td class="py-1 px-2 text-right tabular-nums text-gray-400">' + escH(r.list_price_inr || '') + '</td>' +
+        '<td class="py-1 px-2 text-right tabular-nums text-gray-400">' + escH(r.discount_inr || '') + '</td></tr>').join('');
+      box.innerHTML =
+        '<div class="flex items-center justify-between mb-2"><span class="text-xs text-primary-300 font-medium">' + escH(name) +
+        '</span><span class="text-xs text-gray-500 tabular-nums">' + rows.length + (rows.length === 1 ? ' row' : ' rows') + '</span></div>' +
+        (missing.length ? '<div class="glass rounded-lg p-3 mb-3 text-xs text-red-300"><i class="fas fa-triangle-exclamation mr-1.5"></i>The header row is missing: ' + escH(missing.join(', ')) + '</div>' : '') +
+        '<div class="glass rounded-lg overflow-hidden mb-3"><div class="overflow-x-auto"><table class="w-full text-[11px]">' +
+        '<thead><tr class="text-gray-400 border-b border-white/10"><th class="py-1.5 px-2 text-left">Line</th><th class="py-1.5 px-2 text-left">Stand</th><th class="py-1.5 px-2 text-left">Company</th><th class="py-1.5 px-2 text-left">Status</th><th class="py-1.5 px-2 text-right">List</th><th class="py-1.5 px-2 text-right">Discount</th></tr></thead>' +
+        '<tbody>' + preview + '</tbody></table></div></div>' +
+        (rows.length > 8 ? '<p class="text-[11px] text-gray-500 mb-3">Showing the first 8 of ' + rows.length + '.</p>' : '') +
+        '<div class="flex gap-2"><button type="button" id="bimp-go" onclick="runBoothImport()" class="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-green-600 hover:bg-green-500 text-white focus:outline-none focus:ring-2 focus:ring-green-400/70"><i class="fas fa-upload mr-1.5"></i>Check every row, then import</button>' +
+        '<button type="button" onclick="closeModal()" class="px-4 py-2.5 rounded-xl text-sm font-medium glass hover:bg-white/10">Cancel</button></div>';
+    }
+
+    async function runBoothImport() {
+      const box = document.getElementById('bimp-result');
+      const btn = document.getElementById('bimp-go');
+      if (!boothImportText) { toast('Choose a file first', 'error'); return; }
+      if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1.5"></i>Checking every row&hellip;'; }
+      let res = null;
+      try {
+        res = await api.post('/api/admin/booths/import', { event_id: EID, csv: boothImportText });
+      } catch (e) {
+        res = (e && e.data) ? e.data : { error: (e && e.message) || 'The import failed.' };
+      }
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-upload mr-1.5"></i>Check every row, then import'; }
+      if (res && res.success) {
+        toast(res.imported + (res.imported === 1 ? ' sale imported' : ' sales imported'));
+        closeModal();
+        loadAdminFloorPlan();
+        return;
+      }
+      if (!box) { toast((res && res.error) || 'The import failed', 'error'); return; }
+      const errs = (res && res.errors) || [];
+      box.innerHTML =
+        '<div class="glass rounded-lg p-3 mb-3 border border-red-500/30">' +
+        '<div class="text-sm font-semibold text-red-300 mb-1"><i class="fas fa-triangle-exclamation mr-1.5"></i>Nothing was imported</div>' +
+        '<p class="text-xs text-gray-400">' + escH((res && res.error) || 'The file could not be imported.') + '</p></div>' +
+        (errs.length ? '<div class="glass rounded-lg overflow-hidden mb-3"><div class="overflow-y-auto max-h-64"><table class="w-full text-[11px]">' +
+          '<thead><tr class="text-gray-400 border-b border-white/10"><th class="py-1.5 px-2 text-left">Line</th><th class="py-1.5 px-2 text-left">Stand</th><th class="py-1.5 px-2 text-left">What is wrong</th></tr></thead><tbody>' +
+          errs.map(e => '<tr class="border-b border-white/5"><td class="py-1.5 px-2 tabular-nums text-red-300">' + Number(e.line) + '</td>' +
+            '<td class="py-1.5 px-2 font-semibold">' + escH(e.code || '') + '</td>' +
+            '<td class="py-1.5 px-2 text-gray-300">' + escH(e.message) + '</td></tr>').join('') +
+          '</tbody></table></div></div>' +
+          ((res.error_count && res.error_count > errs.length) ? '<p class="text-[11px] text-gray-500 mb-3">Showing the first ' + errs.length + ' of ' + res.error_count + '.</p>' : '') : '') +
+        '<div class="flex gap-2"><button type="button" onclick="document.getElementById(\\'bimp-file\\').click()" class="flex-1 py-2.5 rounded-xl text-sm font-medium glass hover:bg-white/10"><i class="fas fa-rotate mr-1.5"></i>Choose a corrected file</button>' +
+        '<button type="button" onclick="closeModal()" class="px-4 py-2.5 rounded-xl text-sm font-medium glass hover:bg-white/10">Close</button></div>';
+    }
+
+    // An organiser block has no buyer and no price, so it does not need the form.
+    async function blockBooth(code) {
+      const why = prompt('Block stand ' + code + '. What is it for? (storage, a sponsor hold, a fire exit drawn as a stand)', 'Organiser hold');
+      if (why === null) return;
+      try {
+        const r = await api.post('/api/admin/booths/' + encodeURIComponent(code) + '/allocate', {
+          event_id: EID, company_name: 'Organiser hold', status: 'blocked', notes: why,
+        });
+        if (r && r.error) { toast(r.error, 'error'); return; }
+        toast('Stand ' + code + ' blocked');
+        loadAdminFloorPlan();
+      } catch(e) {
+        toast((e && e.message) || 'Could not block that stand', 'error');
+        loadAdminFloorPlan();
+      }
+    }
+
+    async function setBoothStatus(code, status) {
+      try {
+        const r = await api.put('/api/admin/booths/' + encodeURIComponent(code) + '/status', { status: status, event_id: EID });
+        if (r && r.error) { toast(r.error, 'error'); return; }
+        closeModal();
+        toast('Stand ' + code + ' is now ' + (status === 'confirmed' ? 'sold' : status));
+        loadAdminFloorPlan();
+      } catch(e) { toast((e && e.message) || 'Could not change that stand', 'error'); }
+    }
+
+    async function releaseBooth(code) {
+      const b = boothByCode(code);
+      const who = (b && b.company_name) ? b.company_name : 'its occupant';
+      if (!confirm('Release stand ' + code + ' from ' + who + '? It goes back on the market immediately and the allocation record is deleted — the history stays in the audit log.')) return;
+      try {
+        const r = await api.del('/api/admin/booths/' + encodeURIComponent(code) + '/allocation?event_id=' + EID);
+        if (r && r.error) { toast(r.error, 'error'); return; }
+        closeModal();
+        toast('Stand ' + code + ' released');
+        loadAdminFloorPlan();
+      } catch(e) { toast('Could not release that stand', 'error'); }
+    }
+
     async function loadAdminBoothRequests() {
       const section = document.getElementById('section-booth-requests');
       if (!section) return;
@@ -19666,6 +22474,16 @@ function adminPageHTML(): string {
         var _bad = badList(requests) || bodyError(stats) ||
           (stats && Array.isArray(stats.by_status) && Array.isArray(stats.by_type) ? null : 'Booth stats came back in an unexpected shape.');
         if (_bad) { sectionError(section, 'booth requests', { message: _bad }, 'loadAdminBoothRequests()'); return; }
+
+        // Narrowed by a click on the Requests / Approved column of the inventory
+        // table above. The whole list is already here, so the drill-down costs no
+        // second fetch and the count in the cell always matches what is listed.
+        const typeName = adminBoothRequestTypeFilter
+          ? (((stats.by_type || []).filter(t => String(t.slug) === adminBoothRequestTypeFilter)[0] || {}).name || adminBoothRequestTypeFilter)
+          : '';
+        const shownRequests = adminBoothRequestTypeFilter
+          ? requests.filter(r => String(r.booth_type_slug || '') === adminBoothRequestTypeFilter)
+          : requests;
 
         const statusColors = {
           submitted: 'bg-blue-500/20 text-blue-300',
@@ -19703,31 +22521,7 @@ function adminPageHTML(): string {
           </div>
 
           <!-- Booth Type Availability -->
-          <div class="glass rounded-xl p-4 mb-6 overflow-x-auto">
-            <h4 class="text-sm font-semibold mb-3"><i class="fas fa-cubes text-primary-400 mr-2"></i>Booth Inventory</h4>
-            <table class="w-full text-xs">
-              <thead><tr class="border-b border-white/10">
-                <th class="text-left py-2 px-2 text-gray-400">Type</th>
-                <th class="text-center py-2 px-2 text-gray-400">Total</th>
-                <th class="text-center py-2 px-2 text-gray-400">Available</th>
-                <th class="text-center py-2 px-2 text-gray-400">Requests</th>
-                <th class="text-center py-2 px-2 text-gray-400">Approved</th>
-                <th class="text-right py-2 px-2 text-gray-400">Price</th>
-              </tr></thead>
-              <tbody>
-                \${stats.by_type.map(t => \`
-                  <tr class="border-b border-white/5 hover:bg-white/5">
-                    <td class="py-2 px-2 font-semibold">\${escH(t.name)}</td>
-                    <td class="text-center py-2 px-2">\${t.total_count}</td>
-                    <td class="text-center py-2 px-2 \${t.available_count <= 3 ? 'text-red-400 font-bold' : 'text-green-400'}">\${t.available_count}</td>
-                    <td class="text-center py-2 px-2">\${t.requests}</td>
-                    <td class="text-center py-2 px-2 text-green-400">\${t.approved_qty || 0}</td>
-                    <td class="text-right py-2 px-2">₹\${Number(t.price_inr).toLocaleString('en-IN')}</td>
-                  </tr>
-                \`).join('')}
-              </tbody>
-            </table>
-          </div>
+          \${adminBoothInventoryTableHtml(stats)}
 
           <div class="flex flex-wrap items-center gap-2 mb-4">
             <button onclick="backfillExhibitorsFromBooths()" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-green-600/20 text-green-300 hover:bg-green-600/30 border border-green-500/30">
@@ -19736,16 +22530,18 @@ function adminPageHTML(): string {
             <span class="text-[11px] text-gray-500">Approving a request now does this automatically and emails the company.</span>
           </div>
           <!-- Filter Tabs -->
-          <div class="flex gap-2 mb-4 flex-wrap">
+          <div class="flex gap-2 mb-4 flex-wrap items-center">
             <button onclick="adminBoothRequestFilter=''; loadAdminBoothRequests();" class="px-3 py-1.5 rounded-lg text-xs font-medium \${!adminBoothRequestFilter ? 'tab-active' : 'glass text-gray-400 hover:text-white'}">All</button>
             \${['submitted','under_review','approved','confirmed','rejected','cancelled'].map(s => \`
               <button onclick="adminBoothRequestFilter='\${s}'; loadAdminBoothRequests();" class="px-3 py-1.5 rounded-lg text-xs font-medium \${adminBoothRequestFilter===s ? 'tab-active' : 'glass text-gray-400 hover:text-white'}">\${s.replace('_',' ')}</button>
             \`).join('')}
+            \${adminBoothRequestTypeFilter ? '<span class="px-3 py-1.5 rounded-full text-xs font-medium bg-primary-500/20 text-primary-300 border border-primary-500/30"><i class="fas fa-filter mr-1"></i>' + escH(typeName) + ' &middot; <button type="button" onclick="clearBoothRequestFilters()" class="underline">clear</button></span>' : ''}
+            <span class="text-xs text-gray-500 ml-auto tabular-nums">\${shownRequests.length} of \${requests.length} shown</span>
           </div>
 
           <!-- Requests List -->
           <div class="space-y-3">
-            \${requests.length ? requests.map(r => \`
+            \${shownRequests.length ? shownRequests.map(r => \`
               <div class="glass rounded-xl p-4 card-hover" style="border-left:3px solid \${r.booth_color || '#4c6ef5'};">
                 <div class="flex flex-col md:flex-row md:items-center justify-between gap-2 mb-2">
                   <div>

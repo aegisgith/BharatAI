@@ -20,6 +20,34 @@
   const inr=n=>'₹'+Number(n).toLocaleString('en-IN');
   const qs=s=>document.querySelector(s);
 
+  /* ---------- booth status ----------------------------------------------------
+     GEOMETRY always comes from the static window.BOOTHS array in floor-plan-data.js
+     - it is what renders before any network call and it is the fallback when the
+     API is not there. Only *status* is live: loadLive() below merges it in by code.
+     Until (and unless) that succeeds, status is derived from the static `booked`
+     flag exactly as it was before, so an older deploy renders identically. */
+  const STATUSES={available:1,held:1,sold:1,blocked:1};
+  const STATE_META={
+    available:{label:'Available',     tag:'● Available'},
+    held:     {label:'On hold',       tag:'● On hold'},
+    sold:     {label:'Sold',          tag:'● Sold'},
+    blocked:  {label:'Not available', tag:'● Not available'}
+  };
+  const ICONS={
+    sold:'<svg class="fp-lk" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>',
+    held:'<svg class="fp-lk" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><circle cx="12" cy="12" r="8"/><path d="M12 7.5V12l3 2"/></svg>',
+    blocked:'<svg class="fp-lk" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><circle cx="12" cy="12" r="8"/><path d="M8.5 12h7"/></svg>'
+  };
+  const EVENT_ID=Number(window.FP_EVENT_ID)||1;
+  let liveStatus=false;
+  // Keeps b.status, b.company and the legacy b.booked flag in lockstep.
+  function setStatus(b,st,company){
+    b.status=STATUSES[st]?st:'available';
+    b.company=(b.status==='sold'&&company)?String(company):null;
+    b.booked=b.status!=='available';
+  }
+  BOOTHS.forEach(b=>setStatus(b, b.booked?'sold':'available', null));
+
   const root=qs('#baiFloor');
   if(!root) return;
   const wrap=qs('#fpStageWrap'), stage=qs('#fpStage'), overlay=qs('#fpOverlay'), planImg=qs('#fpPlanImg');
@@ -31,15 +59,34 @@
   const allHots=[];
   function addHot(item, isPlot){
     const d=document.createElement('button');
-    d.className='fp-hot '+(isPlot?'fp-plot':(item.booked?'fp-booked':'fp-av'))+' fp-t-'+(item.type||'plot');
+    d.className='fp-hot '+(isPlot?'fp-plot':'fp-av')+' fp-t-'+(item.type||'plot');
     d.style.left=(item.fx*IW)+'px'; d.style.top=(item.fy*IH)+'px';
     d.style.width=(item.fw*IW)+'px'; d.style.height=(item.fh*IH)+'px';
     if(!isPlot) d.style.setProperty('--hc', colorOf(item.type));
     d.dataset.code=item.code; d.dataset.type=item.type||'plot'; d.dataset.plot=isPlot?'1':'';
-    if(item.booked) d.innerHTML='<svg class="fp-lk" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>';
-    overlay.appendChild(d);
     d._item=item; d._plot=isPlot;
+    if(isPlot) d.setAttribute('aria-label','Open plot '+(item.label||''));
+    else paint(d);
+    overlay.appendChild(d);
     return d;
+  }
+  /* Repaints one hotspot for its current status. Toggles classes rather than
+     rewriting className so the filter/selection classes render() owns survive.
+     Hotspot geometry is untouched - a Startup Pod stays ~6px on a phone, which is
+     the documented WCAG 2.5.8 exception noted in exhibition.html. */
+  function paint(t){
+    if(!t||t._plot) return;
+    const it=t._item, st=it.status||'available', free=st==='available';
+    t.classList.toggle('fp-av', free);
+    t.classList.toggle('fp-booked', !free);
+    t.classList.toggle('fp-sold', st==='sold');
+    t.classList.toggle('fp-held', st==='held');
+    t.classList.toggle('fp-blocked', st==='blocked');
+    t.dataset.status=st;
+    const ic=ICONS[st]||'';
+    if(t.innerHTML!==ic) t.innerHTML=ic;
+    const nm=(TYPE_META[it.type]&&TYPE_META[it.type].name)||'Booth';
+    t.setAttribute('aria-label', nm+' '+it.code+' — '+STATE_META[st].label);
   }
   BOOTHS.forEach(b=>allHots.push(addHot(b,false)));
   PLOTS.forEach(p=>allHots.push(addHot(p,true)));
@@ -72,14 +119,22 @@
     const it=t._item, r=wrap.getBoundingClientRect();
     tip.style.left=(e.clientX-r.left)+'px'; tip.style.top=(e.clientY-r.top)+'px';
     if(t._plot){ tip.innerHTML=`<div class="fp-tt-c">Plot ${it.label}</div><div class="fp-tt-r">Open plot · enquire</div>`; }
-    else { tip.innerHTML=`<div class="fp-tt-c">${TYPE_META[it.type].name} · ${it.code}</div>
-      <div class="fp-tt-r"><span>${it.dim.replace('m x ','m × ')}</span><span>·</span><span class="fp-tt-st ${it.booked?'fp-bk':'fp-av'}">${it.booked?'Reserved':inr(it.price)}</span></div>`; }
+    else {
+      const st=it.status||'available';
+      // The company name is public only on a sold booth - a held booth is a
+      // negotiation in progress and naming the other party is not ours to do.
+      const right = st==='available' ? inr(it.price)
+                  : (st==='sold' && it.company) ? esc(it.company)
+                  : STATE_META[st].label;
+      tip.innerHTML=`<div class="fp-tt-c">${TYPE_META[it.type].name} · ${it.code}</div>
+      <div class="fp-tt-r"><span>${it.dim.replace('m x ','m × ')}</span><span>·</span><span class="fp-tt-st fp-st-${st}">${right}</span></div>`;
+    }
     tip.classList.add('fp-tip-show');
   }
 
   /* ---------- filters ---------- */
   let activeTypes=new Set(), availOnly=false;
-  function counts(){ const c={}; ORDER.forEach(t=>c[t]={tot:0,av:0}); BOOTHS.forEach(b=>{c[b.type].tot++; if(!b.booked)c[b.type].av++;}); return c; }
+  function counts(){ const c={}; ORDER.forEach(t=>c[t]={tot:0,av:0}); BOOTHS.forEach(b=>{c[b.type].tot++; if(b.status==='available')c[b.type].av++;}); return c; }
   function buildChips(){
     const c=counts(), w=qs('#fpChips');
     w.innerHTML=`<button class="fp-chip fp-chip-active" data-all="1">All</button>`+
@@ -99,7 +154,7 @@
       if(t._plot){ if(filtering()) dim=true; }
       else {
         if(activeTypes.size && !activeTypes.has(it.type)){show=false;}
-        if(availOnly && it.booked){show=false;}
+        if(availOnly && it.status!=='available'){show=false;}
       }
       t.classList.toggle('fp-hide', !show);
       t.classList.toggle('fp-faded', dim);
@@ -118,7 +173,10 @@
       qs('#fpPnHead').style.background='linear-gradient(135deg,#5b6182,#7e83a0)';
       qs('#fpPnType').textContent='Open Plot';
       qs('#fpPnCode').textContent='Plot '+it.label;
-      qs('#fpPnTag').textContent='● Enquire';
+      // Reset the class too: the booth branch below stamps a per-status modifier
+      // onto this one shared pill, so a plot opened after a sold booth would
+      // otherwise inherit the "sold" styling.
+      const ptag=qs('#fpPnTag'); ptag.textContent='● Enquire'; ptag.className='fp-pn-tag';
       qs('#fpSpDim').textContent='—'; qs('#fpSpArea').textContent='—'; qs('#fpSpType').textContent='Open plot';
       qs('#fpSpPrice').textContent='On request';
       qs('#fpPnBlurb').textContent='A flexible open plot — tell us your size and build requirements and our team will scope it for you.';
@@ -131,16 +189,26 @@
       qs('#fpPnHead').style.background=`linear-gradient(135deg,${col},color-mix(in oklab,${col},#ffffff 26%))`;
       qs('#fpPnType').textContent=TYPE_META[it.type].name;
       qs('#fpPnCode').textContent=(it.type==='mega'?'Pavilion ':'Booth ')+it.code;
-      const tag=qs('#fpPnTag'); tag.textContent=it.booked?'● Reserved':'● Available';
+      const st=it.status||'available';
+      const tag=qs('#fpPnTag'); tag.textContent=STATE_META[st].tag; tag.className='fp-pn-tag fp-pn-tag-'+st;
       qs('#fpSpDim').textContent=it.dim.replace('m x ','m × ');
       qs('#fpSpArea').textContent=it.sqm+' m²';
       qs('#fpSpType').textContent=TYPE_META[it.type].name.replace(' Booth','').replace(' Pavilion','');
       qs('#fpSpPrice').textContent=inr(it.price);
       qs('#fpPnBlurb').textContent=it.blurb;
       qs('#fpFBooth').value=`${it.code} — ${TYPE_META[it.type].name} (${it.dim.replace('m x ','m × ')})`;
-      qs('#fpPnBookedNote').style.display=it.booked?'flex':'none';
-      qs('#fpFormTitle').textContent=it.booked?'Request a similar booth':'Enquire about this booth';
-      qs('#fpFSubmit').querySelector('span').textContent=it.booked?'Find me a booth':'Send booth enquiry';
+      const note=qs('#fpPnBookedNote'), noteTxt=qs('#fpPnBookedText');
+      if(note) note.style.display=st==='available'?'none':'flex';
+      if(noteTxt && st!=='available'){
+        // textContent, not innerHTML - it.company is server data, never markup.
+        noteTxt.textContent =
+          st==='held'    ? 'Booth '+it.code+' is on hold for another exhibitor while their paperwork is finalised. Leave your details and we’ll come back to you if it frees up — or suggest a comparable booth.'
+        : st==='blocked' ? 'Booth '+it.code+' is reserved by the organisers and is not on sale. Tell us your needs and we’ll suggest the closest available alternatives.'
+        : it.company     ? 'Booth '+it.code+' has been taken by '+it.company+'. Tell us your needs and we’ll suggest the closest available alternatives.'
+        :                  'Booth '+it.code+' is already sold. Tell us your needs and we’ll suggest the closest available alternatives.';
+      }
+      qs('#fpFormTitle').textContent=st==='available'?'Enquire about this booth':'Request a similar booth';
+      qs('#fpFSubmit').querySelector('span').textContent=st==='available'?'Send booth enquiry':'Find me a booth';
     }
     qs('#fpPnForm').style.display='block'; qs('#fpPnSuccess').classList.remove('fp-pn-success-show'); clearFormError(); qs('#fpPnBody').scrollTop=0;
     panel.classList.add('fp-panel-open'); panel.setAttribute('aria-hidden','false'); scrim.classList.add('fp-scrim-show');
@@ -202,7 +270,8 @@
             booth_code:current.plot?it.label:it.code,
             booth_label:qs('#fpFBooth').value,
             booth_type:current.plot?'plot':it.type,
-            already_booked:!!it.booked
+            booth_status:current.plot?'plot':(it.status||'available'),
+            already_booked:!current.plot && (it.status||'available')!=='available'
           }
         })
       });
@@ -214,7 +283,7 @@
       return;
     }
 
-    qs('#fpSuccessMsg').innerHTML=it.booked
+    qs('#fpSuccessMsg').innerHTML=(!current.plot && (it.status||'available')!=='available')
       ? `Thanks, <b>${esc(name.split(' ')[0])}</b>! Our team will suggest booths close to <b>${esc(label)}</b> within one business day.`
       : `Thanks, <b>${esc(name.split(' ')[0])}</b>! Your enquiry about <b>${esc(label)}</b> has been sent. We'll reply within one business day.`;
     qs('#fpPnForm').style.display='none'; qs('#fpPnSuccess').classList.add('fp-pn-success-show');
@@ -223,8 +292,28 @@
   };
   qs('#fpSuccessBack').onclick=closePanel;
 
-  /* ---------- counter ---------- */
-  (function(){ const tot=BOOTHS.length, av=BOOTHS.filter(b=>!b.booked).length; qs('#fpAvailNum').textContent=av; qs('#fpTotNum').textContent='/'+tot; })();
+  /* ---------- counter + legend ----------
+     The "N of 93 booths still available" line and the per-state legend counts are
+     derived from the same BOOTHS array as the map and the package cards, so they
+     cannot disagree with what is drawn - live or on the static fallback. */
+  function syncCounter(){
+    const tot=BOOTHS.length, n={available:0,held:0,sold:0,blocked:0};
+    BOOTHS.forEach(b=>{ const st=b.status||'available'; if(n[st]!=null) n[st]++; });
+    const big=qs('#fpAvailNum'); if(big) big.textContent=n.available;
+    const tt=qs('#fpTotNum');    if(tt)  tt.textContent='/'+tot;
+    document.querySelectorAll('#fpLegend .fp-lg-n[data-lg]').forEach(el=>{
+      const k=el.getAttribute('data-lg'); if(n[k]!=null) el.textContent=n[k];
+    });
+    const line=qs('#fpLegendCount');
+    if(line){
+      line.textContent='';
+      const b=document.createElement('b'); b.textContent=String(n.available);
+      line.appendChild(b);
+      line.appendChild(document.createTextNode(' of '+tot+(n.available===1?' booth':' booths')+' still available'));
+    }
+    const pill=qs('#fpLegendLive');
+    if(pill) pill.classList.toggle('fp-lg-live-on', liveStatus);
+  }
 
   /* ---------- package card availability ----------
      The package cards used to carry hand-written counts that drifted from the map:
@@ -249,9 +338,43 @@
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', syncPackageCounts);
   else syncPackageCounts();
 
+  /* ---------- live availability ----------
+     GET /api/events/:id/booths -> { ready, booths:[{code,status,company}], summary }.
+     Every failure mode lands in the same place: keep the statuses derived from the
+     static array and never touch the DOM. That covers a 404 on a deploy made before
+     the route existed, ready:false before the migration is applied, an HTML error
+     page, malformed JSON, a hung request, and being offline entirely. */
+  async function loadLive(){
+    try{
+      if(typeof fetch!=='function') return;
+      let res=null, ctl=null, timer=null;
+      try{
+        if(typeof AbortController==='function'){ ctl=new AbortController(); timer=setTimeout(function(){ try{ctl.abort();}catch(e){} },6000); }
+        res=await fetch('/api/events/'+EVENT_ID+'/booths',{headers:{'Accept':'application/json'},signal:ctl?ctl.signal:undefined});
+      } finally { if(timer) clearTimeout(timer); }
+      if(!res||!res.ok) return;                                      // 404 / 500 -> stay static
+      if(!/json/i.test(res.headers.get('content-type')||'')) return; // an HTML fallback page
+      const data=await res.json();
+      if(!data||data.ready!==true||!Array.isArray(data.booths)||!data.booths.length) return;
+
+      const by=new Map();
+      data.booths.forEach(r=>{ if(r&&r.code!=null&&STATUSES[r.status]) by.set(String(r.code),r); });
+      if(!by.size) return;
+      let hit=0;
+      BOOTHS.forEach(b=>{ const r=by.get(String(b.code)); if(r){ hit++; setStatus(b,r.status,r.company); } });
+      if(!hit) return;          // codes do not line up with this map - keep the fallback
+
+      liveStatus=true;
+      allHots.forEach(paint);
+      buildChips(); syncChips(); render(); syncCounter(); syncPackageCounts();
+    }catch(e){ /* silent by design: the static map is already on screen */ }
+  }
+
   /* ---------- init ---------- */
+  syncCounter();
   buildChips();
   function start(){ fit(); requestAnimationFrame(fit); }
   if(planImg.complete) start(); else planImg.onload=start;
   setTimeout(fit,300);
+  loadLive();
 })();

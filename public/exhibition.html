@@ -455,10 +455,17 @@
         .fp-plot:hover{border-color:var(--fp-brand);box-shadow:0 0 0 3px rgba(255,255,255,.6);background:rgba(241,90,34,.08);z-index:5}
         .fp-booked{cursor:pointer}
         .fp-booked:hover{border-color:rgba(20,24,55,.6);background:rgba(20,24,55,.16)}
+        /* Held is a live negotiation, not a sale: warm brand hatch, tighter pitch,
+           clock glyph. Blocked is organiser-reserved: a flat grey wash, no hatch,
+           so it never reads as "somebody bought this". */
+        .fp-held:hover{border-color:rgba(241,90,34,.8);background:rgba(241,90,34,.15)}
+        .fp-blocked:hover{border-color:rgba(91,97,130,.75);background:rgba(91,97,130,.2)}
         .fp-lk{width:clamp(7px,20%,13px);height:clamp(7px,20%,13px);color:#fff;margin:2px 2px 0 0;filter:drop-shadow(0 1px 1px rgba(0,0,0,.5));opacity:.85}
         .fp-sel{border-color:var(--fp-ink)!important;box-shadow:0 0 0 3px #fff,0 0 0 6px var(--fp-brand),0 8px 22px rgba(20,24,55,.4)!important;z-index:7;background:rgba(255,255,255,.1)}
         .fp-booked::before{content:"";position:absolute;inset:0;border-radius:3px;pointer-events:none;
           background:repeating-linear-gradient(45deg,transparent 0 6px,rgba(20,24,55,.34) 6px 11px)}
+        .fp-held::before{background:repeating-linear-gradient(45deg,transparent 0 4px,rgba(241,90,34,.6) 4px 8px)}
+        .fp-blocked::before{background:rgba(112,118,150,.4)}
         .fp-filtering .fp-av,.fp-filtering .fp-booked{background:rgba(255,255,255,.55)}
         .fp-lit{border-color:var(--hc)!important;background:transparent!important;box-shadow:0 0 0 3px color-mix(in oklab,var(--hc),transparent 55%);z-index:4}
         .fp-lit::after{content:"";position:absolute;inset:0;border-radius:3px;background:var(--hc);opacity:.22;pointer-events:none}
@@ -522,6 +529,36 @@
         .fp-tt-r{display:flex;align-items:center;gap:6px;margin-top:2px;color:rgba(255,255,255,.7);font-size:12px}
         .fp-tt-st{font-weight:700}
         .fp-tt-st.fp-av{color:#ffb27a}.fp-tt-st.fp-bk{color:rgba(255,255,255,.55)}
+        .fp-tt-st.fp-st-available{color:#ffb27a}
+        .fp-tt-st.fp-st-held{color:#ffc94d}
+        .fp-tt-st.fp-st-sold{color:rgba(255,255,255,.62)}
+        .fp-tt-st.fp-st-blocked{color:rgba(255,255,255,.48)}
+        /* Panel status pill */
+        .fp-pn-tag-held{background:rgba(0,0,0,.3)}
+        .fp-pn-tag-sold,.fp-pn-tag-blocked{background:rgba(0,0,0,.34)}
+        /* Legend + live availability line */
+        .fp-legend{display:flex;align-items:center;gap:5px 16px;flex-wrap:wrap;flex:none;padding:8px 16px;
+          background:var(--fp-card);border-bottom:1px solid var(--fp-line);font-size:12px;color:var(--fp-muted);z-index:9}
+        .fp-lg-states{display:flex;align-items:center;gap:5px 16px;flex-wrap:wrap;min-width:0}
+        .fp-lg-i{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+        .fp-lg-sw{width:11px;height:11px;border-radius:3px;flex:none;border:1px solid rgba(20,24,55,.24)}
+        .fp-lg-available{background:#fff;border-color:rgba(20,24,55,.4)}
+        .fp-lg-held{background:repeating-linear-gradient(45deg,#fff 0 2px,rgba(241,90,34,.85) 2px 4px)}
+        .fp-lg-sold{background:repeating-linear-gradient(45deg,#fff 0 2px,rgba(20,24,55,.6) 2px 4px)}
+        .fp-lg-blocked{background:rgba(112,118,150,.55)}
+        .fp-lg-n{font-weight:700;color:var(--fp-ink);font-variant-numeric:tabular-nums}
+        /* The count and the live pill travel together: keeping the pill out of
+           .fp-lg-states is what stops it being clipped off the end of that row
+           on a phone, where the states scroll sideways. */
+        .fp-lg-meta{display:flex;align-items:center;gap:9px;margin-left:auto;flex:none;min-width:0}
+        .fp-lg-count{font-weight:600;color:var(--fp-ink);white-space:nowrap}
+        .fp-lg-count b{color:var(--fp-brand);font-weight:800;font-size:13.5px}
+        .fp-lg-live{display:none;align-items:center;gap:5px;font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+          color:#12784a;background:rgba(18,120,74,.09);border:1px solid rgba(18,120,74,.24);padding:3px 9px;border-radius:999px}
+        .fp-lg-live-on{display:inline-flex}
+        .fp-lg-live::before{content:"";width:6px;height:6px;border-radius:50%;background:#12784a;animation:fpLivePulse 2.4s ease-in-out infinite}
+        @keyframes fpLivePulse{0%,100%{opacity:1}50%{opacity:.2}}
+        @media(prefers-reduced-motion:reduce){.fp-lg-live::before{animation:none}}
         @media(max-width:760px){
           .bai-floor{height:560px}
           .fp-bs,.fp-bar-right .fp-cap{display:none}
@@ -533,6 +570,13 @@
           .fp-panel{width:100%;max-width:100%;top:auto;bottom:0;height:82%;border-left:none;border-top:1px solid var(--fp-line);border-radius:18px 18px 0 0;transform:translateY(102%)}
           .fp-panel-open{transform:translateY(0)!important}
           .fp-hint{display:none}
+          /* Exactly two rows: the urgency line, then the states on one row that
+             scrolls sideways rather than wrapping and stealing map height. */
+          .fp-legend{flex-direction:column;align-items:flex-start;gap:3px;padding:6px 12px;font-size:11px}
+          .fp-lg-states{flex-wrap:nowrap;gap:12px;max-width:100%;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+          .fp-lg-states::-webkit-scrollbar{display:none}
+          .fp-lg-meta{margin-left:0;order:-1}
+          .fp-lg-sw{width:10px;height:10px}
         }
     </style>
 </head>
@@ -632,6 +676,23 @@
             </div>
           </div>
 
+          <!-- Legend + live availability.
+               The numbers here are the pre-JS static defaults; floor-plan.js
+               overwrites them from window.BOOTHS, then again from
+               GET /api/events/1/booths when that endpoint answers. -->
+          <div class="fp-legend" id="fpLegend">
+            <div class="fp-lg-states">
+              <span class="fp-lg-i"><span class="fp-lg-sw fp-lg-available"></span>Available<b class="fp-lg-n" data-lg="available">93</b></span>
+              <span class="fp-lg-i"><span class="fp-lg-sw fp-lg-held"></span>On hold<b class="fp-lg-n" data-lg="held">0</b></span>
+              <span class="fp-lg-i"><span class="fp-lg-sw fp-lg-sold"></span>Sold<b class="fp-lg-n" data-lg="sold">0</b></span>
+              <span class="fp-lg-i"><span class="fp-lg-sw fp-lg-blocked"></span>Reserved<b class="fp-lg-n" data-lg="blocked">0</b></span>
+            </div>
+            <div class="fp-lg-meta">
+              <span class="fp-lg-count" id="fpLegendCount"><b>93</b> of 93 booths still available</span>
+              <span class="fp-lg-live" id="fpLegendLive">Live</span>
+            </div>
+          </div>
+
           <!-- Stage -->
           <div class="fp-stage-wrap" id="fpStageWrap">
             <div class="fp-stage" id="fpStage">
@@ -673,7 +734,7 @@
 
               <div class="fp-pn-booked" id="fpPnBookedNote" style="display:none">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
-                This booth is already reserved. Tell us your needs and we'll suggest the closest available alternatives.
+                <span id="fpPnBookedText">This booth is already reserved. Tell us your needs and we'll suggest the closest available alternatives.</span>
               </div>
 
               <div id="fpPnForm">
@@ -702,12 +763,16 @@
         </div><!-- /.bai-floor -->
 
         <!-- ?v= is a cache buster, NOT decoration. Pages serves /js/* with
-             max-age=14400, so a booth-availability change stays invisible to
-             anyone who loaded this page in the last 4 hours. The HTML itself is
-             max-age=0, so bumping this version ships new booth data instantly.
-             BUMP IT whenever floor-plan-data.js changes. -->
-        <script src="js/floor-plan-data.js?v=2026-09-09"></script>
-        <script src="js/floor-plan.js?v=2026-09-09"></script>
+             max-age=14400, so an edit to either file stays invisible to anyone who
+             loaded this page in the last 4 hours. The HTML itself is max-age=0, so
+             bumping the version ships the new file instantly.
+             BUMP IT whenever you change either script.
+             Booth *availability* no longer rides on this cache: floor-plan.js reads
+             it live from GET /api/events/1/booths on every page load. The `booked`
+             flags in floor-plan-data.js are only the offline fallback for when that
+             endpoint is missing or not ready - geometry is what this file is for. -->
+        <script src="js/floor-plan-data.js?v=2026-09-10"></script>
+        <script src="js/floor-plan.js?v=2026-09-10"></script>
     </section>
 
     <!-- VALUE YOU DRIVE HOME -->
