@@ -2332,6 +2332,144 @@ async function boothInventoryEnabled(c: any): Promise<boolean> {
   return _boothTables
 }
 
+// ---------------------------------------------------------------------------
+// THE ALLOCATION LIFECYCLE COLUMNS. Migration 0030 created booth_allocations with
+// seven columns the shipped code never wrote: the option clock (hold_expires_at),
+// the soft release (released_at), the withholding (tds_deducted_inr), the credit
+// terms (balance_due_date) and the invoice counterparty (buyer_gstin,
+// buyer_legal_name, buyer_state_code). They are used from here on.
+//
+// A SECOND rollout switch is still needed, for the reason boothInventoryEnabled
+// exists at all: the tables can be present while these columns are not, because
+// 0030's commercial half was added to that file in place and a database carrying
+// an earlier draft of it has booths and booth_allocations but not released_at.
+// Every read and write below therefore asks this first and falls back to the
+// column set that was always there, rather than 500ing at an operator.
+//
+// Only the POSITIVE answer is memoised — the same call as above. Caching "not
+// there yet" would pin an isolate to the degraded query set for its whole life,
+// long after the columns existed.
+const BOOTH_LIFECYCLE_COLS = [
+  'hold_expires_at', 'released_at', 'tds_deducted_inr', 'balance_due_date',
+  'buyer_gstin', 'buyer_legal_name', 'buyer_state_code',
+]
+let _boothLifecycleCols = false
+async function boothLifecycleEnabled(c: any): Promise<boolean> {
+  if (_boothLifecycleCols) return true
+  try {
+    const { results } = await c.env.DB.prepare(
+      "SELECT name FROM pragma_table_info('booth_allocations')"
+    ).all()
+    const have = new Set(((results || []) as any[]).map(r => String(r.name)))
+    if (BOOTH_LIFECYCLE_COLS.every(n => have.has(n))) _boothLifecycleCols = true
+  } catch { /* columns or table missing — stay off, re-probe next request */ }
+  return _boothLifecycleCols
+}
+
+// THE SOFT RELEASE, as a join condition. A released allocation is a tax document's
+// counterparty kept for the audit and the credit-note trail — it is NOT an
+// occupant, so it must be invisible to every availability, revenue, count and
+// drill-down query in this file. The partial unique index
+// idx_booth_alloc_live(event_id, booth_id) WHERE released_at IS NULL is what lets a
+// released stand be sold again; this fragment is what stops the released row still
+// showing as the buyer while that happens.
+//
+// Empty string when the columns are not there yet, which is exactly the behaviour
+// this endpoint had before: nothing was ever released, so nothing was excluded.
+const boothLiveOnly = (live: boolean, alias = 'ba'): string =>
+  live ? ` AND ${alias}.released_at IS NULL` : ''
+
+// THE OPTION CLOCK. A 'held' stand is an option the sales desk gave somebody —
+// "yours until Friday" — and until now it never expired, so a stand optioned in
+// March was still off the market in September with nobody chasing it.
+//
+// There is no cron. Cloudflare deploys do not run one, and a scheduled worker is
+// not going to appear because a hold lapsed, so the lapse is computed AT READ
+// TIME: a held row past its expiry simply reads as available everywhere, and the
+// row stays put so the desk can still see who let it go. The two expressions
+// below are the same rule in the two languages this file has to say it in, and
+// they must not be allowed to disagree.
+//
+// The clock stops at the END of the expiry day, not at midnight UTC on it, so a
+// hold "until the 30th" is live all of the 30th. SQLite's date('now') is UTC and
+// the venue is IST, which means a lapse lands about 05:30 IST the following
+// morning — late rather than early, which is the safe direction: nothing is ever
+// yanked out from under a salesperson mid-conversation.
+const BOOTH_HOLD_DAYS_DEFAULT = 14
+const boothLapsedSql = (alias = 'ba'): string =>
+  `(${alias}.id IS NOT NULL AND ${alias}.status = 'held' AND ${alias}.hold_expires_at IS NOT NULL` +
+  ` AND date(${alias}.hold_expires_at) < date('now'))`
+const boothToday = (): string => new Date().toISOString().slice(0, 10)
+const boothHoldLapsed = (status: any, expiresAt: any, today: string): boolean =>
+  String(status || '') === 'held' && !!expiresAt && String(expiresAt).slice(0, 10) < today
+// Whole days from today to a date, negative once it is in the past. Text in, no
+// Date arithmetic on a stored string that may be a date or a datetime.
+const boothDaysUntil = (value: any, today: string): number | null => {
+  const d = String(value == null ? '' : value).slice(0, 10)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return null
+  return Math.round((Date.parse(d + 'T00:00:00Z') - Date.parse(today + 'T00:00:00Z')) / 86400000)
+}
+// today + n days, as the YYYY-MM-DD a date input speaks.
+const boothDatePlus = (days: number): string =>
+  new Date(Date.now() + days * 86400000).toISOString().slice(0, 10)
+
+// ---------------------------------------------------------------------------
+// GSTIN. The invoice counterparty, and the reason buyer_state_code is captured at
+// all: place of supply decides IGST against CGST+SGST, that question is with the
+// organiser's accountant, and whichever way it is answered the answer needs the
+// buyer's state. Storing the code now means the split can be implemented later
+// without going back to 93 exhibitors to ask where they are registered.
+//
+// The shape is fixed and worth checking — 15 characters, a 2-digit state code, a
+// PAN in positions 3-12 — but a bad or missing GSTIN NEVER blocks a sale. A
+// walk-up at a roadshow does not have it to hand, and refusing to record the deal
+// until they do is how a sale ends up written on paper instead. So this returns a
+// warning to show, not an error to stop on.
+//
+// State codes run 01-38 (0-numbered union territories included), plus 97 for
+// "other territory" and 99 for a centralised UIN holder.
+function boothGstinWarning(gstin: any): string | null {
+  const s = String(gstin == null ? '' : gstin).trim().toUpperCase()
+  if (!s) return null
+  if (s.length !== 15) return `GSTIN "${s}" is ${s.length} characters; a GSTIN is 15. The sale is recorded — correct it before the invoice goes out.`
+  if (!/^[0-9]{2}/.test(s)) return `GSTIN "${s}" does not start with a 2-digit state code. The sale is recorded — correct it before the invoice goes out.`
+  const state = Number(s.slice(0, 2))
+  if (!((state >= 1 && state <= 38) || state === 97 || state === 99)) {
+    return `GSTIN "${s}" starts with state code ${s.slice(0, 2)}, which is not a GST state code. The sale is recorded — correct it before the invoice goes out.`
+  }
+  if (!/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(s.slice(2, 12))) {
+    return `GSTIN "${s}" does not carry a PAN in positions 3-12. The sale is recorded — correct it before the invoice goes out.`
+  }
+  if (!/^[0-9A-Z]$/.test(s.slice(12, 13)) || !/^[0-9A-Z]$/.test(s.slice(14, 15))) {
+    return `GSTIN "${s}" has a character that cannot appear in a GSTIN. The sale is recorded — correct it before the invoice goes out.`
+  }
+  return null
+}
+// The state code the invoice needs. Typed if the operator typed one, otherwise
+// read off the GSTIN, which is where it lives anyway. Two digits or null — never
+// a guess, because a wrong place of supply is a denied input tax credit.
+// A typed state code that contradicts its own GSTIN is the one pair that must not
+// pass quietly. boothStateCode prefers the typed value, and place of supply will be
+// derived from it once the accountant rules on IGST vs CGST+SGST — so a contradiction
+// silently decides a tax question the wrong way and denies the buyer input credit.
+// This only WARNS: which field wins is the owner's call, and a walk-up desk should
+// still be able to save the sale.
+function boothStateGstinConflict(typed: any, gstin: any): string | null {
+  const t = String(typed == null ? '' : typed).trim()
+  const g = String(gstin == null ? '' : gstin).trim().toUpperCase()
+  if (!/^[0-9]{1,2}$/.test(t) || !/^[0-9]{2}/.test(g)) return null
+  const a = t.padStart(2, '0'), b = g.slice(0, 2)
+  return a === b ? null : `State code ${a} does not match the GSTIN, which begins ${b}. Check which is right before the invoice is raised.`
+}
+
+function boothStateCode(typed: any, gstin: any): string | null {
+  const t = String(typed == null ? '' : typed).trim()
+  if (/^[0-9]{1,2}$/.test(t)) return t.padStart(2, '0')
+  const g = String(gstin == null ? '' : gstin).trim().toUpperCase()
+  if (/^[0-9]{2}/.test(g)) return g.slice(0, 2)
+  return null
+}
+
 // Booth categories largest first, which is the order the packages are pitched and
 // priced in. This lives in code rather than a column because it is a display
 // decision, not inventory: booths.name already carries the package label a code
@@ -2466,25 +2604,39 @@ function boothSaleMoney(input: any, fallbackList: number) {
   const grand = amount + gst
   const invoice = String(input.invoice_number || '').trim()
   let paid = boothRupees(input.amount_paid_inr)
+  // TAX DEDUCTED AT SOURCE. An Indian B2B buyer withholds tax before paying — 2%
+  // u/s 194C on a works contract, 10% u/s 194I where the stand reads as rent — and
+  // pays it to the government against the seller's PAN. So amount_paid_inr on a
+  // FULLY SETTLED stand legitimately never equals grand_total_inr, and every test
+  // that compared those two directly reported a settled exhibitor as part_paid for
+  // ever, chased them for money they had already handed to the Income Tax
+  // Department, and understated Collected on the dashboard by the withheld amount.
+  //
+  // Settlement is therefore amount_paid_inr + tds_deducted_inr >= grand_total_inr,
+  // in this one place, so no caller can go back to the two-number version.
+  const tds = Math.min(grand, boothRupees(input.tds_deducted_inr))
+  const settled = grand - tds
   let status = BOOTH_PAYMENT_STATUSES.includes(String(input.payment_status || ''))
     ? String(input.payment_status) : ''
   // Saying "paid" IS saying the whole invoice landed, so the receipts follow the
-  // word rather than the operator having to type the grand total twice.
-  if (status === 'paid') paid = grand
+  // word rather than the operator having to type the grand total twice — less the
+  // TDS, which is the part that will never arrive as cash.
+  if (status === 'paid') paid = settled
   // Receipts above the invoice are a typo far more often than an overpayment, and
   // they would make outstanding (invoiced - collected) go negative on the
   // dashboard. Clamp, and let the operator correct the invoice if it was wrong.
-  if (paid > grand) paid = grand
+  if (paid > settled) paid = settled
   // 'refunded' cannot be derived from the numbers, so it is the one status the
   // operator's choice always wins on. Everything else follows the money.
   if (status !== 'refunded' && status !== 'paid') {
-    status = (paid >= grand && grand > 0) ? 'paid'
-      : paid > 0 ? 'part_paid'
+    status = (paid + tds >= grand && grand > 0) ? 'paid'
+      : (paid > 0 || tds > 0) ? 'part_paid'
       : invoice ? 'invoiced' : 'pending'
   }
   return {
     list_price_inr: list, discount_inr: discount, amount_inr: amount,
     gst_inr: gst, grand_total_inr: grand, amount_paid_inr: paid,
+    tds_deducted_inr: tds,
     payment_status: status, invoice_number: invoice || null,
   }
 }
@@ -2525,9 +2677,25 @@ function boothSaleMoneyChecked(
   const paid = boothRupeesStrict(paidRaw)
   if (paid === null) return { error: `amount_paid_inr "${paidRaw}" is not a number.` }
 
+  // The withholding gets the SAME door as the discount and the receipt, and for
+  // the same reason: boothRupees would strip a leading minus and bank "-8,260" as
+  // Rs 8,260 of tax the buyer never withheld, which would report an unpaid stand
+  // as settled. A minus is a typo, and the answer to a typo is to name it.
+  const tdsRaw = cell(input.tds_deducted_inr)
+  const tds = boothRupeesStrict(tdsRaw)
+  if (tds === null) return { error: `tds_deducted_inr "${tdsRaw}" is not a number.` }
+  // TDS is withheld OUT OF the invoice, so it can never exceed it. At 10% u/s 194I
+  // the real figure is a tenth of the net; anything near the grand total is a
+  // misplaced decimal, and letting it through would mark the stand fully settled.
+  const grandCheck = (list - discount) + boothGst(list - discount)
+  if (tds > grandCheck) {
+    return { error: `tds_deducted_inr (${tds}) is more than the grand total (${grandCheck}). TDS is withheld out of the invoice, not added to it.` }
+  }
+
   return boothSaleMoney({
     ...input,
-    list_price_inr: String(list), discount_inr: String(discount), amount_paid_inr: String(paid),
+    list_price_inr: String(list), discount_inr: String(discount),
+    amount_paid_inr: String(paid), tds_deducted_inr: String(tds),
   }, list)
 }
 
@@ -3954,11 +4122,17 @@ app.get('/api/events/:id/booths', async (c) => {
   const zero = { total: 0, available: 0, held: 0, sold: 0, blocked: 0, sold_sqm: 0 }
   if (!(await boothInventoryEnabled(c))) return c.json({ ready: false, booths: [], summary: zero })
   try {
+    // A released allocation is history, not an occupant, and a hold past its expiry
+    // is an option nobody took up — both must read as space on the market here, or
+    // the public plan goes on showing a stand as gone months after it came back.
+    const live = await boothLifecycleEnabled(c)
+    const today = boothToday()
     const { results } = await c.env.DB.prepare(
       `SELECT b.code, b.type_key, b.name, b.dim, b.sqm, b.zone, b.fx, b.fy, b.fw, b.fh,
               ba.status AS alloc_status, ba.company_name AS alloc_company
+              ${live ? ', ba.hold_expires_at AS alloc_hold_expires_at' : ''}
          FROM booths b
-         LEFT JOIN booth_allocations ba ON ba.booth_id = b.id AND ba.event_id = b.event_id
+         LEFT JOIN booth_allocations ba ON ba.booth_id = b.id AND ba.event_id = b.event_id${boothLiveOnly(live)}
         WHERE b.event_id = ?
         ORDER BY b.sort_order ASC, b.id ASC`
     ).bind(eventId).all()
@@ -3966,8 +4140,12 @@ app.get('/api/events/:id/booths', async (c) => {
     const summary = { ...zero }
     const booths = ((results || []) as any[]).map(r => {
       // 'confirmed' is a sale, 'held' is a negotiation, 'blocked' is the organiser
-      // taking space off the market. No allocation row at all means available.
-      const status = r.alloc_status === 'confirmed' ? 'sold'
+      // taking space off the market. No allocation row at all means available — and
+      // so does a hold whose clock ran out, because nothing else will ever put it
+      // back: there is no cron, so the lapse happens here, on the way out.
+      const lapsed = live && boothHoldLapsed(r.alloc_status, r.alloc_hold_expires_at, today)
+      const status = lapsed ? 'available'
+        : r.alloc_status === 'confirmed' ? 'sold'
         : r.alloc_status === 'held' ? 'held'
         : r.alloc_status === 'blocked' ? 'blocked'
         : 'available'
@@ -3991,7 +4169,10 @@ app.get('/api/events/:id/booths', async (c) => {
     summary.sold_sqm = Math.round(summary.sold_sqm * 100) / 100
     return c.json({ ready: true, booths, summary })
   } catch (e: any) {
-    if (/no such table/i.test(String(e?.message || ''))) {
+    // "no such column" as well as "no such table", now that the lifecycle columns
+    // are read here: a database carrying an earlier draft of 0030 must read as
+    // not-live and let the static plan keep answering, never 500 at a visitor.
+    if (/no such (table|column)/i.test(String(e?.message || ''))) {
       return c.json({ ready: false, booths: [], summary: zero })
     }
     throw e
@@ -4454,6 +4635,59 @@ async function linkBoothExhibitor(c: any, booth: any, alloc: any): Promise<numbe
   }
 }
 
+// ---------------------------------------------------------------------------
+// RETIRING AN ALLOCATION, in ONE place, because the Release button and the lapsed
+// hold cleanup must not be able to answer this differently.
+//
+//   no invoice number AND nothing received  ->  DELETE, exactly as release always
+//       did. A hold that was never invoiced has no paperwork to preserve, and a
+//       tombstone would only clutter the table.
+//   anything else                           ->  released_at. The row is the
+//       counterparty of a GST invoice: deleting it destroys the invoice number, the
+//       receipts, the agreed discount and who approved it, and a credit note has to
+//       refer to something that still exists. The partial unique index
+//       idx_booth_alloc_live ignores a released row, so the stand goes straight back
+//       on the market and can be sold again in the same breath.
+//
+// Falls back to the old unconditional DELETE when the lifecycle columns are not
+// there, which is what the deployed code did before them.
+async function boothRetireAllocation(c: any, row: any, live: boolean): Promise<'deleted' | 'released'> {
+  const paperwork = live &&
+    (!!String(row.invoice_number || '').trim() || Number(row.amount_paid_inr || 0) > 0)
+  if (!paperwork) {
+    await c.env.DB.prepare('DELETE FROM booth_allocations WHERE id = ?').bind(row.id).run()
+    return 'deleted'
+  }
+  await c.env.DB.prepare(
+    'UPDATE booth_allocations SET released_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+  ).bind(row.id).run()
+  return 'released'
+}
+
+// A lapsed hold already READS as available everywhere — but its row is still in the
+// table, and idx_booth_alloc_live will refuse the next INSERT on that stand with a
+// UNIQUE constraint the operator cannot explain, having just been shown the stand
+// as free. So the row is cleared out of the way first, by the rule above.
+// Returns what happened, or null when there was nothing to clear.
+async function boothClearLapsedHold(
+  c: any, eventId: number, boothId: number, live: boolean
+): Promise<{ action: string; company: string; expired: string } | null> {
+  if (!live) return null
+  try {
+    const row = await c.env.DB.prepare(
+      `SELECT id, status, company_name, hold_expires_at, invoice_number, amount_paid_inr, exhibitor_id
+         FROM booth_allocations
+        WHERE event_id = ? AND booth_id = ? AND released_at IS NULL`
+    ).bind(eventId, boothId).first() as any
+    if (!row || !boothHoldLapsed(row.status, row.hold_expires_at, boothToday())) return null
+    const action = await boothRetireAllocation(c, row, live)
+    return {
+      action, company: String(row.company_name || ''),
+      expired: String(row.hold_expires_at || '').slice(0, 10),
+    }
+  } catch { return null /* the INSERT's own 409 is still the guarantee */ }
+}
+
 // The whole floor with its allocation detail, the booth request behind each one,
 // and the paid requests still waiting for a stand.
 app.get('/api/admin/booths', async (c) => {
@@ -4466,6 +4700,9 @@ app.get('/api/admin/booths', async (c) => {
     total_sqm: 0, available_sqm: 0, held_sqm: 0, blocked_sqm: 0,
     potential_inr: 0, booked_inr: 0, invoiced_inr: 0, collected_inr: 0,
     outstanding_inr: 0, discount_inr: 0,
+    // The withholding, and the holds that quietly came back. Both additive: every
+    // key above keeps the meaning it had, so nothing reading this payload breaks.
+    tds_inr: 0, lapsed_holds: 0,
   }
   const shell = {
     booths: [] as any[], summary: zero, requests: [] as any[], zones: [] as any[],
@@ -4473,6 +4710,8 @@ app.get('/api/admin/booths', async (c) => {
   }
   if (!(await boothInventoryEnabled(c))) return c.json({ ready: false, ...shell })
   try {
+    const live = await boothLifecycleEnabled(c)
+    const today = boothToday()
     const { results } = await c.env.DB.prepare(
       `SELECT b.id, b.code, b.type_key, b.name, b.dim, b.sqm, b.zone, b.sort_order,
               b.list_price_inr, b.fx, b.fy, b.fw, b.fh,
@@ -4481,12 +4720,14 @@ app.get('/api/admin/booths', async (c) => {
               ba.booth_request_id, ba.created_at AS allocated_at, ba.updated_at AS allocation_updated_at,
               ba.list_price_inr AS alloc_list_price_inr, ba.discount_inr, ba.gst_inr, ba.grand_total_inr,
               ba.invoice_number, ba.invoice_date, ba.amount_paid_inr, ba.paid_date, ba.payment_status,
+              ${live ? `ba.hold_expires_at, ba.tds_deducted_inr, ba.balance_due_date,
+              ba.buyer_gstin, ba.buyer_legal_name, ba.buyer_state_code,` : ''}
               br.company_name AS request_company, br.contact_name AS request_contact,
               br.email AS request_email, br.phone AS request_phone,
               br.grand_total AS request_grand_total, br.payment_status AS request_payment_status,
               br.status AS request_status
          FROM booths b
-         LEFT JOIN booth_allocations ba ON ba.booth_id = b.id AND ba.event_id = b.event_id
+         LEFT JOIN booth_allocations ba ON ba.booth_id = b.id AND ba.event_id = b.event_id${boothLiveOnly(live)}
          LEFT JOIN booth_requests br ON br.id = ba.booth_request_id
         WHERE b.event_id = ?
         ORDER BY b.sort_order ASC, b.id ASC`
@@ -4494,10 +4735,17 @@ app.get('/api/admin/booths', async (c) => {
 
     const summary = { ...zero }
     const booths = ((results || []) as any[]).map(r => {
-      const status = r.alloc_status === 'confirmed' ? 'sold'
+      // The lapse, computed once here and then trusted by everything downstream —
+      // the tiles, the category rollup, the stand list, the map and the drill-downs
+      // all read this one `status`, which is the only reason they cannot disagree
+      // about whether an expired option is still off the market.
+      const lapsed = live && boothHoldLapsed(r.alloc_status, r.hold_expires_at, today)
+      const status = lapsed ? 'available'
+        : r.alloc_status === 'confirmed' ? 'sold'
         : r.alloc_status === 'held' ? 'held'
         : r.alloc_status === 'blocked' ? 'blocked'
         : 'available'
+      if (lapsed) summary.lapsed_holds++
       summary.total++
       const bucket = summary as any
       bucket[status]++
@@ -4525,8 +4773,15 @@ app.get('/api/admin/booths', async (c) => {
         // somebody chose the word. Outstanding is only meaningful against that.
         if (r.invoice_number) summary.invoiced_inr += Number(r.grand_total_inr || 0)
         summary.collected_inr += Number(r.amount_paid_inr || 0)
+        // Withheld by the buyer and paid to the government against the organiser's
+        // PAN. It is settled money that will never appear in the bank, so it is
+        // counted here and subtracted from Outstanding below — otherwise every
+        // fully settled B2B stand sits on the dashboard as a debt for ever.
+        summary.tds_inr += Number(r.tds_deducted_inr || 0)
       }
-      return { ...r, status }
+      // hold_lapsed is what lets the screen still name the company that let a stand
+      // go, while `status` above has already returned it to the available pool.
+      return { ...r, status, hold_lapsed: !!lapsed }
     })
     // 2.25 sqm pods make every one of these a float sum; round once at the end
     // rather than publishing 47.250000000000004.
@@ -4536,7 +4791,10 @@ app.get('/api/admin/booths', async (c) => {
     summary.held_sqm = round2(summary.held_sqm)
     summary.blocked_sqm = round2(summary.blocked_sqm)
     summary.available_sqm = round2(summary.available_sqm)
-    summary.outstanding_inr = Math.max(0, summary.invoiced_inr - summary.collected_inr)
+    // Outstanding is what is still CHASEABLE. TDS has already left the buyer, so
+    // netting it off here is what keeps Collected and Outstanding believable
+    // against a bank statement that will never show it.
+    summary.outstanding_inr = Math.max(0, summary.invoiced_inr - summary.collected_inr - summary.tds_inr)
     // Sorted into the category order the screen renders, so the client never has to
     // re-sort 93 rows to draw eight headed sections.
     booths.sort((a: any, b: any) =>
@@ -4552,7 +4810,8 @@ app.get('/api/admin/booths', async (c) => {
       `SELECT br.id, br.company_name, br.contact_name, br.email, br.phone, br.quantity,
               br.grand_total, br.payment_status, br.status, br.preferred_zone, br.preferred_booth_numbers,
               bt.name AS booth_type_name, bt.slug AS booth_type_slug,
-              (SELECT COUNT(*) FROM booth_allocations x WHERE x.booth_request_id = br.id) AS allocated_count
+              (SELECT COUNT(*) FROM booth_allocations x
+                WHERE x.booth_request_id = br.id${boothLiveOnly(live, 'x')}) AS allocated_count
          FROM booth_requests br
          LEFT JOIN booth_types bt ON br.booth_type_id = bt.id
         WHERE br.payment_status = 'paid' AND br.status NOT IN ('cancelled', 'rejected')
@@ -4627,12 +4886,29 @@ app.post('/api/admin/booths/:code/allocate', async (c) => {
       : request ? Math.round(Number(request.grand_total || 0) / Math.max(1, Number(request.quantity || 1)))
       : 0
 
+    // A hold is an OPTION, and an option without an expiry is just a stand off the
+    // market for ever. Fourteen days unless the caller says otherwise; a confirmed
+    // sale and an organiser block have no clock at all.
+    const askedExpiry = boothDate(b.hold_expires_at)
+    if (askedExpiry === false) return c.json({ error: 'The hold expiry is not a date.' }, 400)
+    const holdExpiry = status !== 'held' ? null
+      : (askedExpiry || boothDatePlus(BOOTH_HOLD_DAYS_DEFAULT))
+
+    const live = await boothLifecycleEnabled(c)
+    // The stand was reported available; if that was because a hold lapsed, its row
+    // is still there and the partial unique index is about to refuse this INSERT.
+    // Clear it FIRST — otherwise the operator gets a 409 naming an occupant the
+    // screen already told them had gone.
+    const cleared = await boothClearLapsedHold(c, eventId, booth.id, live)
+
+    const cols = ['event_id', 'booth_id', 'booth_request_id', 'company_name', 'contact_name',
+      'email', 'phone', 'status', 'amount_inr', 'notes', 'allocated_by']
+    const vals: any[] = [eventId, booth.id, alloc.booth_request_id, alloc.company_name, alloc.contact_name,
+      alloc.email, alloc.phone, status, amount, alloc.notes, adminActor(c).actor]
+    if (live) { cols.push('hold_expires_at'); vals.push(holdExpiry) }
     const ins = await c.env.DB.prepare(
-      `INSERT INTO booth_allocations (event_id, booth_id, booth_request_id, company_name, contact_name,
-         email, phone, status, amount_inr, notes, allocated_by)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?)`
-    ).bind(eventId, booth.id, alloc.booth_request_id, alloc.company_name, alloc.contact_name,
-      alloc.email, alloc.phone, status, amount, alloc.notes, adminActor(c).actor).run()
+      `INSERT INTO booth_allocations (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(',')})`
+    ).bind(...vals).run()
     const allocationId = ins.meta.last_row_id
 
     // Allocating straight to confirmed is a sale, so it makes the exhibitor there
@@ -4647,8 +4923,15 @@ app.post('/api/admin/booths/:code/allocate', async (c) => {
     }
     await audit(c, 'booth.allocate', 'booth', code, {
       status, company, booth_request_id: requestId, amount_inr: amount, exhibitor_id: exhibitorId,
+      hold_expires_at: holdExpiry,
+      // What was standing on the stand before this, so the audit says why an
+      // allocation the operator never released stopped existing.
+      cleared_lapsed_hold: cleared ? `${cleared.company} (expired ${cleared.expired}, ${cleared.action})` : null,
     })
-    return c.json({ success: true, id: allocationId, code, status, amount_inr: amount, exhibitor_id: exhibitorId }, 201)
+    return c.json({
+      success: true, id: allocationId, code, status, amount_inr: amount, exhibitor_id: exhibitorId,
+      hold_expires_at: holdExpiry, cleared_lapsed_hold: cleared,
+    }, 201)
   } catch (e: any) {
     const msg = String(e?.message || '')
     if (/UNIQUE constraint/i.test(msg)) {
@@ -4656,10 +4939,14 @@ app.post('/api/admin/booths/:code/allocate', async (c) => {
       // Name the occupant so they can tell a clash from their own double click.
       let held = ''
       try {
+        // The memo flag rather than another probe: reaching this catch means the
+        // INSERT above ran, which means boothLifecycleEnabled() has already been
+        // asked and answered on this request. Naming a RELEASED company as the
+        // occupant would be a lie the operator cannot act on.
         const row = await c.env.DB.prepare(
           `SELECT ba.company_name, ba.status FROM booth_allocations ba
              JOIN booths b ON b.id = ba.booth_id
-            WHERE b.event_id = ? AND b.code = ?`
+            WHERE b.event_id = ? AND b.code = ?${boothLiveOnly(_boothLifecycleCols)}`
         ).bind(eventId, code).first() as any
         if (row) {
           const verb = row.status === 'confirmed' ? 'sold to' : row.status === 'blocked' ? 'blocked as' : 'held for'
@@ -4684,10 +4971,11 @@ app.put('/api/admin/booths/:code/status', async (c) => {
   }
   const eventId = Number(body.event_id || 1)
   try {
+    const live = await boothLifecycleEnabled(c)
     const row = await c.env.DB.prepare(
       `SELECT ba.*, b.code AS booth_code, b.name AS booth_name, b.type_key, b.event_id AS booth_event_id
          FROM booth_allocations ba JOIN booths b ON b.id = ba.booth_id
-        WHERE b.event_id = ? AND b.code = ?`
+        WHERE b.event_id = ? AND b.code = ?${boothLiveOnly(live)}`
     ).bind(eventId, code).first() as any
     if (!row) return c.json({ error: `Booth ${code} has no allocation to change.` }, 404)
 
@@ -4706,34 +4994,64 @@ app.put('/api/admin/booths/:code/status', async (c) => {
     const params: any[] = [status, exhibitorId]
     if (body.amount_inr !== undefined) { upd.push('amount_inr = ?'); params.push(Number(body.amount_inr) || 0) }
     if (body.notes !== undefined) { upd.push('notes = ?'); params.push(body.notes) }
+    // The option clock follows the status. Flipping back to 'held' restarts it —
+    // an existing expiry is kept if it is still in the future, because "back to
+    // held" while a live option runs is a correction, not a new fortnight — and
+    // confirming or blocking clears it, because neither has a clock at all.
+    let holdExpiry: string | null = null
+    if (live) {
+      const asked = boothDate(body.hold_expires_at)
+      if (asked === false) return c.json({ error: 'The hold expiry is not a date.' }, 400)
+      if (status === 'held') {
+        const current = String(row.hold_expires_at || '').slice(0, 10)
+        holdExpiry = asked
+          || (current && current >= boothToday() ? current : boothDatePlus(BOOTH_HOLD_DAYS_DEFAULT))
+      }
+      upd.push('hold_expires_at = ?'); params.push(holdExpiry)
+    }
     params.push(row.id)
     await c.env.DB.prepare(`UPDATE booth_allocations SET ${upd.join(', ')} WHERE id = ?`).bind(...params).run()
 
     await audit(c, 'booth.status', 'booth', code, {
       from: row.status, to: status, company: row.company_name, exhibitor_id: exhibitorId,
+      hold_expires_at: holdExpiry,
     })
-    return c.json({ success: true, code, status, exhibitor_id: exhibitorId })
+    return c.json({ success: true, code, status, exhibitor_id: exhibitorId, hold_expires_at: holdExpiry })
   } catch (e: any) {
     if (/no such table/i.test(String(e?.message || ''))) return c.json({ error: 'Booth inventory is not available yet.' }, 503)
     throw e
   }
 })
 
-// Releasing a stand DELETES the allocation row rather than flagging it: the unique
-// constraint is on (event_id, booth_id) with no status in it, so a tombstone would
-// keep the booth off the market for ever. The history lives in admin_audit.
+// Releasing a stand used to DELETE the allocation row unconditionally, and the
+// comment that justified it was right about the constraint it was written against:
+// UNIQUE(event_id, booth_id) had no status in it, so a tombstone would have kept
+// the booth off the market for ever.
+//
+// 0030 replaced that with a PARTIAL unique index — idx_booth_alloc_live, over
+// (event_id, booth_id) WHERE released_at IS NULL — which changes the answer. A
+// released row is invisible to the index, so the stand is immediately re-sellable
+// with the record kept, and the DELETE is no longer the only way to free it.
+//
+// It is still the right answer for a HOLD: nothing was invoiced, nothing was
+// received, there is no paperwork to preserve. It is the wrong answer the moment an
+// invoice exists, because the row IS the tax document's counterparty — deleting it
+// destroys the invoice number, the receipts, the agreed discount and the approval
+// trail, and GST needs something for a credit note to refer back to. Which of the
+// two happens is boothRetireAllocation's decision, shared with the lapse cleanup.
 app.delete('/api/admin/booths/:code/allocation', async (c) => {
   const code = c.req.param('code')
   if (!(await boothInventoryEnabled(c))) return c.json({ error: 'Booth inventory is not available yet.' }, 503)
   const eventId = Number(c.req.query('event_id') || 1)
   try {
+    const live = await boothLifecycleEnabled(c)
     const row = await c.env.DB.prepare(
       `SELECT ba.* FROM booth_allocations ba JOIN booths b ON b.id = ba.booth_id
-        WHERE b.event_id = ? AND b.code = ?`
+        WHERE b.event_id = ? AND b.code = ?${boothLiveOnly(live)}`
     ).bind(eventId, code).first() as any
     if (!row) return c.json({ error: `Booth ${code} is not allocated.` }, 404)
 
-    await c.env.DB.prepare('DELETE FROM booth_allocations WHERE id = ?').bind(row.id).run()
+    const action = await boothRetireAllocation(c, row, live)
     // The exhibitor keeps its row — the company may still be exhibiting, and the
     // profile is theirs — but it must stop claiming a stand it no longer holds,
     // which is precisely the free-text drift this table replaces. Guarded on the
@@ -4746,8 +5064,15 @@ app.delete('/api/admin/booths/:code/allocation', async (c) => {
     }
     await audit(c, 'booth.release', 'booth', code, {
       company: row.company_name, was: row.status, booth_request_id: row.booth_request_id,
+      action, invoice_number: row.invoice_number || null, amount_paid_inr: Number(row.amount_paid_inr || 0),
     })
-    return c.json({ success: true, code })
+    return c.json({
+      success: true, code, action,
+      // The desk needs to know which of the two happened: a deleted hold is gone,
+      // a released invoice is still findable and still needs a credit note.
+      kept: action === 'released',
+      invoice_number: action === 'released' ? (row.invoice_number || null) : null,
+    })
   } catch (e: any) {
     if (/no such table/i.test(String(e?.message || ''))) return c.json({ error: 'Booth inventory is not available yet.' }, 503)
     throw e
@@ -4788,6 +5113,10 @@ app.put('/api/admin/booths/:code/sale', async (c) => {
   if (invoiceDate === false) return c.json({ error: 'The invoice date is not a date.' }, 400)
   const paidDate = boothDate(b.paid_date)
   if (paidDate === false) return c.json({ error: 'The payment date is not a date.' }, 400)
+  const askedExpiry = boothDate(b.hold_expires_at)
+  if (askedExpiry === false) return c.json({ error: 'The hold expiry is not a date.' }, 400)
+  const balanceDue = boothDate(b.balance_due_date)
+  if (balanceDue === false) return c.json({ error: 'The balance due date is not a date.' }, 400)
 
   try {
     const booth = await c.env.DB.prepare(
@@ -4803,9 +5132,28 @@ app.put('/api/admin/booths/:code/sale', async (c) => {
       if (!request) return c.json({ error: `Booth request ${requestId} no longer exists.` }, 404)
     }
 
-    const existing = await c.env.DB.prepare(
-      'SELECT * FROM booth_allocations WHERE event_id = ? AND booth_id = ?'
+    const live = await boothLifecycleEnabled(c)
+    let existing = await c.env.DB.prepare(
+      `SELECT * FROM booth_allocations WHERE event_id = ? AND booth_id = ?${boothLiveOnly(live, 'booth_allocations')}`
     ).bind(eventId, booth.id).first() as any
+
+    // A LAPSED HOLD IS NOT AN EXISTING SALE TO EDIT. The screen has already shown
+    // this stand as available, so the operator recording a deal here means a new
+    // buyer — and overwriting the lapsed row in place would silently rewrite whoever
+    // let the option go, taking any invoice raised against them with it. Retire it
+    // by the shared rule (deleted if there is no paperwork, released if there is)
+    // and write a fresh row, which the partial unique index now permits.
+    //
+    // The same company coming back for the stand they optioned is NOT that case:
+    // that is a renewal, and it keeps its row and its history.
+    let clearedLapsed: any = null
+    if (live && existing && boothHoldLapsed(existing.status, existing.hold_expires_at, boothToday())) {
+      const same = String(existing.company_name || '').trim().toLowerCase() === company.toLowerCase()
+      if (!same) {
+        clearedLapsed = await boothClearLapsedHold(c, eventId, booth.id, live)
+        existing = null
+      }
+    }
 
     // An edit that leaves the price field empty must not silently reprice a signed
     // deal, so the fallback is the allocation's own frozen list price and only
@@ -4816,7 +5164,7 @@ app.put('/api/admin/booths/:code/sale', async (c) => {
       // buyer, no invoice and no money, whatever was typed into the form.
       ? {
           list_price_inr: 0, discount_inr: 0, amount_inr: 0, gst_inr: 0, grand_total_inr: 0,
-          amount_paid_inr: 0, payment_status: 'pending', invoice_number: null as string | null,
+          amount_paid_inr: 0, tds_deducted_inr: 0, payment_status: 'pending', invoice_number: null as string | null,
         }
       // The same guard the CSV import runs, and the same function: a negative
       // receipt, a negative discount, a discount over the list price or a figure
@@ -4831,9 +5179,46 @@ app.put('/api/admin/booths/:code/sale', async (c) => {
     const notes = String(b.notes || '').trim()
     const actor = adminActor(c).actor
 
+    // THE INVOICE COUNTERPARTY. A bad or missing GSTIN is reported, never refused:
+    // a walk-up at a roadshow may not have it to hand, and a desk that cannot record
+    // the sale without it records the sale on paper instead. The state code is read
+    // off the GSTIN when it was not typed, because place of supply — IGST against
+    // CGST+SGST — is still with the organiser's accountant and whichever way that
+    // lands, it needs the buyer's state. Nothing here splits the tax.
+    const gstin = String(b.buyer_gstin || '').trim().toUpperCase() || null
+    const legalName = String(b.buyer_legal_name || '').trim() || null
+    const stateCode = boothStateCode(b.buyer_state_code, gstin)
+    const warnings: string[] = []
+    if (status !== 'blocked') {
+      const gw = boothGstinWarning(gstin)
+      if (gw) warnings.push(gw)
+      const scw = boothStateGstinConflict(b.buyer_state_code, gstin)
+      if (scw) warnings.push(scw)
+      else if (!gstin) warnings.push('No GSTIN was recorded, so this sale cannot carry input tax credit for the buyer. Add it before the invoice goes out.')
+      if (!stateCode) warnings.push('No buyer state code, so the place of supply on this invoice is undecided.')
+      if (gstin && legalName === null) warnings.push('A GSTIN was given without the registered legal name; an invoice made out to a fascia name instead of the registered entity is the one a buyer refuses.')
+    }
+
+    // The option clock, editable on the form and defaulted at a fortnight. It exists
+    // only while the stand is held: confirming or blocking clears it.
+    const holdExpiry = status !== 'held' ? null
+      : (askedExpiry
+        || (existing && String(existing.hold_expires_at || '').slice(0, 10) >= boothToday()
+          ? String(existing.hold_expires_at).slice(0, 10) : null)
+        || boothDatePlus(BOOTH_HOLD_DAYS_DEFAULT))
+
     let allocationId: number
     let exhibitorId: number | null = existing ? (existing.exhibitor_id || null) : null
     const alloc = { booth_request_id: requestId, company_name: company, contact_name: contact, email, phone, notes }
+    // The seven columns 0030 added, written only where they exist. Order is shared
+    // between the UPDATE and the INSERT below so the two cannot drift apart.
+    const lifeCols = ['hold_expires_at', 'tds_deducted_inr', 'balance_due_date',
+      'buyer_gstin', 'buyer_legal_name', 'buyer_state_code']
+    const lifeVals: any[] = [holdExpiry, (money as any).tds_deducted_inr || 0,
+      status === 'blocked' ? null : balanceDue,
+      status === 'blocked' ? null : gstin,
+      status === 'blocked' ? null : legalName,
+      status === 'blocked' ? null : stateCode]
 
     if (existing) {
       // Confirming is the moment the stand gets a real number against a real
@@ -4841,26 +5226,32 @@ app.put('/api/admin/booths/:code/sale', async (c) => {
       if (status === 'confirmed') {
         exhibitorId = (await linkBoothExhibitor(c, booth, { ...existing, ...alloc })) || exhibitorId
       }
-      await c.env.DB.prepare(
-        `UPDATE booth_allocations SET booth_request_id = ?, company_name = ?, contact_name = ?, email = ?,
-           phone = ?, status = ?, amount_inr = ?, list_price_inr = ?, discount_inr = ?, gst_inr = ?,
-           grand_total_inr = ?, invoice_number = ?, invoice_date = ?, amount_paid_inr = ?, paid_date = ?,
-           payment_status = ?, notes = ?, allocated_by = ?, exhibitor_id = ?, updated_at = CURRENT_TIMESTAMP
-         WHERE id = ?`
-      ).bind(requestId, company, contact, email, phone, status, money.amount_inr, money.list_price_inr,
+      const sets = ['booth_request_id = ?', 'company_name = ?', 'contact_name = ?', 'email = ?',
+        'phone = ?', 'status = ?', 'amount_inr = ?', 'list_price_inr = ?', 'discount_inr = ?', 'gst_inr = ?',
+        'grand_total_inr = ?', 'invoice_number = ?', 'invoice_date = ?', 'amount_paid_inr = ?', 'paid_date = ?',
+        'payment_status = ?', 'notes = ?', 'allocated_by = ?', 'exhibitor_id = ?']
+      const sv: any[] = [requestId, company, contact, email, phone, status, money.amount_inr, money.list_price_inr,
         money.discount_inr, money.gst_inr, money.grand_total_inr, money.invoice_number, invoiceDate,
-        money.amount_paid_inr, paidDate, money.payment_status, notes, actor, exhibitorId, existing.id).run()
+        money.amount_paid_inr, paidDate, money.payment_status, notes, actor, exhibitorId]
+      if (live) { lifeCols.forEach((k, i) => { sets.push(`${k} = ?`); sv.push(lifeVals[i]) }) }
+      sv.push(existing.id)
+      await c.env.DB.prepare(
+        `UPDATE booth_allocations SET ${sets.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+      ).bind(...sv).run()
       allocationId = existing.id
     } else {
-      const ins = await c.env.DB.prepare(
-        `INSERT INTO booth_allocations (event_id, booth_id, booth_request_id, company_name, contact_name,
-           email, phone, status, amount_inr, list_price_inr, discount_inr, gst_inr, grand_total_inr,
-           invoice_number, invoice_date, amount_paid_inr, paid_date, payment_status, notes, allocated_by)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
-      ).bind(eventId, booth.id, requestId, company, contact, email, phone, status, money.amount_inr,
+      const cols = ['event_id', 'booth_id', 'booth_request_id', 'company_name', 'contact_name',
+        'email', 'phone', 'status', 'amount_inr', 'list_price_inr', 'discount_inr', 'gst_inr',
+        'grand_total_inr', 'invoice_number', 'invoice_date', 'amount_paid_inr', 'paid_date',
+        'payment_status', 'notes', 'allocated_by']
+      const cv: any[] = [eventId, booth.id, requestId, company, contact, email, phone, status, money.amount_inr,
         money.list_price_inr, money.discount_inr, money.gst_inr, money.grand_total_inr,
         money.invoice_number, invoiceDate, money.amount_paid_inr, paidDate, money.payment_status,
-        notes, actor).run()
+        notes, actor]
+      if (live) { cols.push(...lifeCols); cv.push(...lifeVals) }
+      const ins = await c.env.DB.prepare(
+        `INSERT INTO booth_allocations (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(',')})`
+      ).bind(...cv).run()
       allocationId = ins.meta.last_row_id as number
       if (status === 'confirmed') {
         exhibitorId = await linkBoothExhibitor(c, booth, alloc)
@@ -4877,10 +5268,21 @@ app.put('/api/admin/booths/:code/sale', async (c) => {
       amount_inr: money.amount_inr, grand_total_inr: money.grand_total_inr,
       amount_paid_inr: money.amount_paid_inr, payment_status: money.payment_status,
       invoice_number: money.invoice_number,
+      tds_deducted_inr: (money as any).tds_deducted_inr || 0,
+      hold_expires_at: holdExpiry, balance_due_date: balanceDue,
+      buyer_gstin: gstin, buyer_state_code: stateCode,
+      cleared_lapsed_hold: clearedLapsed ? `${clearedLapsed.company} (expired ${clearedLapsed.expired}, ${clearedLapsed.action})` : null,
     })
     return c.json({
       success: true, code, status, created: !existing, allocation_id: allocationId,
       exhibitor_id: exhibitorId, ...money,
+      hold_expires_at: holdExpiry, balance_due_date: balanceDue,
+      buyer_gstin: gstin, buyer_legal_name: legalName, buyer_state_code: stateCode,
+      cleared_lapsed_hold: clearedLapsed,
+      // Warnings are advisory by construction: the sale is already saved by the time
+      // they are read. They exist so a missing GSTIN is noticed on the day of the
+      // sale rather than on the day the invoice is refused.
+      warnings,
     }, existing ? 200 : 201)
   } catch (e: any) {
     const msg = String(e?.message || '')
@@ -4925,7 +5327,9 @@ app.put('/api/admin/booth-target', async (c) => {
 const BOOTH_IMPORT_HEADERS = [
   'booth_code', 'company_name', 'contact_name', 'email', 'phone', 'status',
   'list_price_inr', 'discount_inr', 'invoice_number', 'invoice_date',
-  'amount_paid_inr', 'paid_date', 'payment_status', 'notes',
+  'amount_paid_inr', 'tds_deducted_inr', 'paid_date', 'balance_due_date',
+  'payment_status', 'buyer_gstin', 'buyer_legal_name', 'buyer_state_code',
+  'hold_expires_at', 'notes',
 ]
 
 // A CSV reader that survives what a spreadsheet actually exports: a UTF-8 BOM,
@@ -4995,17 +5399,24 @@ app.post('/api/admin/booths/import', async (c) => {
     // The whole floor and its current allocations, read once. Everything the
     // validation below needs — does the code exist, is it already taken, what does
     // it list at — is answered from this map rather than a query per row.
+    const live = await boothLifecycleEnabled(c)
+    const today = boothToday()
     const { results } = await c.env.DB.prepare(
       `SELECT b.id, b.code, b.type_key, b.name, b.list_price_inr, b.event_id,
-              ba.id AS alloc_id, ba.company_name AS alloc_company, ba.status AS alloc_status
+              ba.id AS alloc_id, ba.company_name AS alloc_company, ba.status AS alloc_status,
+              ba.invoice_number AS alloc_invoice_number, ba.amount_paid_inr AS alloc_amount_paid_inr
+              ${live ? ', ba.hold_expires_at AS alloc_hold_expires_at' : ''}
          FROM booths b
-         LEFT JOIN booth_allocations ba ON ba.booth_id = b.id AND ba.event_id = b.event_id
+         LEFT JOIN booth_allocations ba ON ba.booth_id = b.id AND ba.event_id = b.event_id${boothLiveOnly(live)}
         WHERE b.event_id = ?`
     ).bind(eventId).all()
     const floor = new Map<string, any>()
     for (const r of (results || []) as any[]) floor.set(String(r.code).trim().toUpperCase(), r)
 
     const errors: { line: number; code: string; message: string }[] = []
+    // Reported next to the import, never a reason to refuse it: a GSTIN nobody can
+    // read still belongs on a stand that was genuinely sold.
+    const warnings: { line: number; code: string; message: string }[] = []
     const seen = new Map<string, number>()
     const staged: any[] = []
 
@@ -5020,7 +5431,12 @@ app.post('/api/admin/booths/import', async (c) => {
       if (!booth) { fail(`There is no stand "${rawCode}" on this floor plan.`); return }
       if (seen.has(key)) { fail(`Stand ${booth.code} appears twice in this file — already on line ${seen.get(key)}.`); return }
       seen.set(key, line)
-      if (booth.alloc_id) {
+      // A LAPSED hold is not an occupant. The stand reads as available on every
+      // other screen, so refusing the import row here would contradict them — and
+      // the lapsed row is cleared out of the way before the batch runs so the
+      // partial unique index still holds.
+      const lapsed = live && boothHoldLapsed(booth.alloc_status, booth.alloc_hold_expires_at, today)
+      if (booth.alloc_id && !lapsed) {
         const verb = booth.alloc_status === 'confirmed' ? 'sold to' : booth.alloc_status === 'blocked' ? 'blocked as' : 'held for'
         fail(`Stand ${booth.code} is already ${verb} ${booth.alloc_company}. Release it first, or edit that sale.`)
         return
@@ -5046,12 +5462,16 @@ app.post('/api/admin/booths/import', async (c) => {
       const money = status === 'blocked'
         ? {
             list_price_inr: 0, discount_inr: 0, amount_inr: 0, gst_inr: 0, grand_total_inr: 0,
-            amount_paid_inr: 0, payment_status: 'pending', invoice_number: null as string | null,
+            amount_paid_inr: 0, tds_deducted_inr: 0, payment_status: 'pending', invoice_number: null as string | null,
           }
         : boothSaleMoneyChecked({
             list_price_inr: col(rec.cells, 'list_price_inr'),
             discount_inr: col(rec.cells, 'discount_inr'),
             amount_paid_inr: col(rec.cells, 'amount_paid_inr'),
+            // The withholding goes through the SAME guard as the discount and the
+            // receipt, which is what stops a spreadsheet accepting a figure the
+            // record-a-sale form refuses in the same words.
+            tds_deducted_inr: col(rec.cells, 'tds_deducted_inr'),
             payment_status: payStatus,
             invoice_number: col(rec.cells, 'invoice_number'),
           }, Number(booth.list_price_inr || 0))
@@ -5061,15 +5481,36 @@ app.post('/api/admin/booths/import', async (c) => {
       if (invDate === false) { fail(`invoice_date "${col(rec.cells, 'invoice_date')}" is not a date.`); return }
       const payDate = boothDate(col(rec.cells, 'paid_date'))
       if (payDate === false) { fail(`paid_date "${col(rec.cells, 'paid_date')}" is not a date.`); return }
+      const dueDate = boothDate(col(rec.cells, 'balance_due_date'))
+      if (dueDate === false) { fail(`balance_due_date "${col(rec.cells, 'balance_due_date')}" is not a date.`); return }
+      const holdDate = boothDate(col(rec.cells, 'hold_expires_at'))
+      if (holdDate === false) { fail(`hold_expires_at "${col(rec.cells, 'hold_expires_at')}" is not a date.`); return }
+
+      // A bad GSTIN is a WARNING on a row that still imports. Sixty stands closed
+      // before this screen existed will not all have a clean GSTIN in the
+      // spreadsheet, and refusing the whole file over one of them imports nothing
+      // at all — which is worse than importing the sale and flagging the number.
+      const gstin = col(rec.cells, 'buyer_gstin').toUpperCase() || null
+      const gw = status === 'blocked' ? null : boothGstinWarning(gstin)
+      if (gw) warnings.push({ line, code: rawCode, message: gw })
+      const scw = status === 'blocked' ? null : boothStateGstinConflict(col(rec.cells, 'buyer_state_code'), gstin)
+      if (scw) warnings.push({ line, code: rawCode, message: scw })
 
       staged.push({
-        booth, line, status,
+        booth, line, status, lapsed,
         company: company || 'Organiser hold',
         contact: col(rec.cells, 'contact_name'),
         email: col(rec.cells, 'email'),
         phone: col(rec.cells, 'phone'),
         notes: col(rec.cells, 'notes'),
         invoice_date: invDate, paid_date: payDate, money,
+        balance_due_date: status === 'blocked' ? null : dueDate,
+        // A hold with no clock is a stand off the market for ever, so an imported
+        // hold gets the same fortnight the form gives one.
+        hold_expires_at: status === 'held' ? (holdDate || boothDatePlus(BOOTH_HOLD_DAYS_DEFAULT)) : null,
+        buyer_gstin: status === 'blocked' ? null : gstin,
+        buyer_legal_name: status === 'blocked' ? null : (col(rec.cells, 'buyer_legal_name') || null),
+        buyer_state_code: status === 'blocked' ? null : boothStateCode(col(rec.cells, 'buyer_state_code'), gstin),
       })
     })
 
@@ -5082,15 +5523,42 @@ app.post('/api/admin/booths/import', async (c) => {
     if (!staged.length) return c.json({ error: 'That file has no data rows.', errors: [], imported: 0 }, 400)
 
     const actor = adminActor(c).actor
-    await c.env.DB.batch(staged.map(s => c.env.DB.prepare(
-      `INSERT INTO booth_allocations (event_id, booth_id, company_name, contact_name, email, phone,
-         status, amount_inr, list_price_inr, discount_inr, gst_inr, grand_total_inr,
-         invoice_number, invoice_date, amount_paid_inr, paid_date, payment_status, notes, allocated_by)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
-    ).bind(eventId, s.booth.id, s.company, s.contact, s.email, s.phone, s.status,
-      s.money.amount_inr, s.money.list_price_inr, s.money.discount_inr, s.money.gst_inr,
-      s.money.grand_total_inr, s.money.invoice_number, s.invoice_date, s.money.amount_paid_inr,
-      s.paid_date, s.money.payment_status, s.notes, actor)))
+    // The lapsed holds this file is about to write over. Cleared BEFORE the batch,
+    // in the batch's own transaction, because idx_booth_alloc_live would otherwise
+    // refuse the INSERT for a stand every other screen calls available — and a
+    // whole 60-row import would fail on somebody's forgotten March option.
+    const cols = ['event_id', 'booth_id', 'company_name', 'contact_name', 'email', 'phone',
+      'status', 'amount_inr', 'list_price_inr', 'discount_inr', 'gst_inr', 'grand_total_inr',
+      'invoice_number', 'invoice_date', 'amount_paid_inr', 'paid_date', 'payment_status',
+      'notes', 'allocated_by']
+    const lifeCols = ['tds_deducted_inr', 'balance_due_date', 'hold_expires_at',
+      'buyer_gstin', 'buyer_legal_name', 'buyer_state_code']
+    if (live) cols.push(...lifeCols)
+    const insertSql = `INSERT INTO booth_allocations (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(',')})`
+
+    const writes: any[] = []
+    for (const s of staged) {
+      if (s.lapsed) {
+        // The same rule the Release button uses: a hold with paperwork is kept as a
+        // released row, a hold without is deleted. Either way the partial unique
+        // index stops seeing it and the stand can be written below.
+        const paperwork = live && (!!String(s.booth.alloc_invoice_number || '').trim() ||
+          Number(s.booth.alloc_amount_paid_inr || 0) > 0)
+        writes.push(paperwork
+          ? c.env.DB.prepare('UPDATE booth_allocations SET released_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?').bind(s.booth.alloc_id)
+          : c.env.DB.prepare('DELETE FROM booth_allocations WHERE id = ?').bind(s.booth.alloc_id))
+      }
+      const vals: any[] = [eventId, s.booth.id, s.company, s.contact, s.email, s.phone, s.status,
+        s.money.amount_inr, s.money.list_price_inr, s.money.discount_inr, s.money.gst_inr,
+        s.money.grand_total_inr, s.money.invoice_number, s.invoice_date, s.money.amount_paid_inr,
+        s.paid_date, s.money.payment_status, s.notes, actor]
+      if (live) {
+        vals.push(s.money.tds_deducted_inr || 0, s.balance_due_date, s.hold_expires_at,
+          s.buyer_gstin, s.buyer_legal_name, s.buyer_state_code)
+      }
+      writes.push(c.env.DB.prepare(insertSql).bind(...vals))
+    }
+    await c.env.DB.batch(writes)
 
     // The exhibitor rows a confirmed sale implies. Best effort and deliberately
     // after the batch: the import has already succeeded and a schema difference in
@@ -5104,7 +5572,7 @@ app.post('/api/admin/booths/import', async (c) => {
         })
         if (exhibitorId) {
           await c.env.DB.prepare(
-            'UPDATE booth_allocations SET exhibitor_id = ? WHERE event_id = ? AND booth_id = ?'
+            `UPDATE booth_allocations SET exhibitor_id = ? WHERE event_id = ? AND booth_id = ?${boothLiveOnly(live, 'booth_allocations')}`
           ).bind(exhibitorId, eventId, s.booth.id).run()
           linked++
         }
@@ -5112,10 +5580,17 @@ app.post('/api/admin/booths/import', async (c) => {
     }
 
     const totalNet = staged.reduce((n, s) => n + Number(s.money.amount_inr || 0), 0)
+    const totalTds = staged.reduce((n, s) => n + Number(s.money.tds_deducted_inr || 0), 0)
+    const clearedLapsed = staged.filter(s => s.lapsed).length
     await audit(c, 'booth.import', 'booth', staged.map(s => s.booth.code).join(','), {
       imported: staged.length, exhibitors_linked: linked, net_inr: totalNet,
+      tds_inr: totalTds, cleared_lapsed_holds: clearedLapsed, gstin_warnings: warnings.length,
     })
-    return c.json({ success: true, imported: staged.length, exhibitors_linked: linked, net_inr: totalNet, errors: [] })
+    return c.json({
+      success: true, imported: staged.length, exhibitors_linked: linked, net_inr: totalNet,
+      tds_inr: totalTds, cleared_lapsed_holds: clearedLapsed, errors: [],
+      warnings: warnings.slice(0, 100), warning_count: warnings.length,
+    })
   } catch (e: any) {
     const msg = String(e?.message || '')
     if (/no such (table|column)/i.test(msg)) return c.json({ error: 'Booth inventory is not available yet.', errors: [], imported: 0 }, 503)
@@ -5123,6 +5598,994 @@ app.post('/api/admin/booths/import', async (c) => {
       // Somebody allocated one of these stands between the check above and the
       // batch. The batch is a transaction, so nothing was written.
       return c.json({ error: 'One of those stands was allocated while the file was being checked. Nothing was imported — reload and try again.', errors: [], imported: 0 }, 409)
+    }
+    throw e
+  }
+})
+
+// ==================== SPONSORSHIP AND BRANDING: THE SECOND INVENTORY ====================
+//
+// 0030 gave the hall a ledger, and this app a revenue dashboard whose denominator
+// is 604.3 sqm of floor. For a two-day conference the floor is routinely the
+// SMALLER half of the business: the lanyard, the delegate bag, the registration
+// arch, the back cover of the show guide, the Wi-Fi and the extra exhibitor badge
+// are quoted from a deck, agreed over email and remembered by whoever agreed them.
+// None of it reaches a screen, so the number the team reads out every morning
+// measures maybe half of what the show actually sells — and the half it leaves out
+// is the higher-margin one.
+//
+// Migration 0032 is 0030's answer applied to inventory with no geometry: a
+// catalogue row per THING (sellable_items) and an allocation row per UNIT sold
+// (item_allocations), with the same partial unique index doing the same job — the
+// single delegate lanyard cannot be promised to two sponsors.
+//
+// EVERYTHING COMMERCIAL BELOW IS THE BOOTH MODEL REUSED, NOT RE-IMPLEMENTED.
+// boothSaleMoneyChecked, boothGst, boothRupeesStrict, boothDate, boothGstinWarning,
+// boothStateCode, boothHoldLapsed, boothDatePlus, BOOTH_PAYMENT_STATUSES and
+// BOOTH_ALLOC_STATUSES are all called directly. That is the point rather than an
+// economy: two ledgers that round GST with different code are two ledgers that
+// eventually disagree about the same invoice, and ONE revenue picture is only
+// honest if both halves of it were computed by the same function. The prefix stays
+// `booth` on those calls precisely so nobody copies them into a second version.
+//
+// WHAT IS ACTUALLY DIFFERENT, AND IT IS ONE THING. A booth is one object, so
+// (event_id, booth_id) names it. A catalogue entry can be sold many times — two
+// water-bottle brands, twelve guide pages, unlimited extra badges — so the unit is
+// (event_id, item_id, unit_no), and unit_no is CHOSEN HERE and never accepted from
+// the client. The database cannot enforce the ceiling: quantity_available lives on
+// sellable_items, the index lives on item_allocations, and no SQLite constraint
+// spans the two. See itemLowestFreeUnit — it is the only implementation of that
+// rule, and both write paths go through it.
+//
+// TOLERANCE. 0032 has NOT been applied to production and a Cloudflare deploy never
+// runs a migration, so every route here ships before its tables exist and answers
+// 200 with ready:false (reads) or a clean 503 (writes) until the day it is run —
+// the boothInventoryEnabled contract, positive answer memoised only.
+
+let _itemTables = false
+async function sellableItemsEnabled(c: any): Promise<boolean> {
+  if (_itemTables) return true
+  try {
+    const { results } = await c.env.DB.prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('sellable_items','item_allocations')"
+    ).all()
+    if ((results || []).length === 2) _itemTables = true
+  } catch { /* tables missing or DB unavailable — stay off, re-probe next request */ }
+  return _itemTables
+}
+
+// The soft release, as a join condition — boothLiveOnly's twin. There is no
+// second lifecycle switch here, unlike the booths: released_at, hold_expires_at,
+// tds_deducted_inr and the invoice-counterparty columns were in 0032 from the
+// first line it was ever written, so a database that has this table has all of
+// them. A database that has neither is caught by sellableItemsEnabled above, and
+// the "no such column" catch on each route is the belt to that braces.
+const itemLiveOnly = (alias = 'ia'): string => ` AND ${alias}.released_at IS NULL`
+
+// The categories 0032 seeds, in the order the sales screen blocks them out, and
+// what to call each one on screen. In code rather than a column for the reason
+// BOOTH_TYPE_ORDER is: this is a display decision, and sellable_items.sort_order
+// already fixes the order WITHIN a category.
+const ITEM_CATEGORY_ORDER = [
+  'sponsorship', 'delegate_kit', 'venue_branding', 'digital', 'publication', 'exhibitor_service',
+]
+const ITEM_CATEGORY_LABEL: Record<string, string> = {
+  sponsorship: 'Sponsorship',
+  delegate_kit: 'Delegate kit',
+  venue_branding: 'Venue branding',
+  digital: 'Digital',
+  publication: 'Show guide and directory',
+  exhibitor_service: 'Exhibitor services',
+}
+const itemCategoryRank = (k: string): number => {
+  const i = ITEM_CATEGORY_ORDER.indexOf(String(k || ''))
+  return i === -1 ? ITEM_CATEGORY_ORDER.length : i
+}
+
+// held | confirmed | blocked, and pending | invoiced | part_paid | paid | refunded.
+// The SAME lists the stands use, referenced rather than restated: a sponsorship row
+// whose status vocabulary drifted from a booth row's would make the combined
+// revenue view add up two different things.
+const ITEM_ALLOC_STATUSES = BOOTH_ALLOC_STATUSES
+
+// THE SPONSORSHIP TARGET, and why it has no default.
+//
+// BOOTH_TARGET_DEFAULT is Rs 1,82,90,000 because that is a real hall at prices that
+// are real bar two stands. The equivalent here would be the sum of two dozen
+// figures the owner has never quoted — 0032 says so at length and deliberately
+// seeds no app_settings row — and a denominator on a dashboard is exactly the kind
+// of number that gets read out in a meeting as though somebody chose it.
+//
+// So: null means NOBODY HAS SET ONE, which is a different answer from zero and is
+// shown as such. The combined target is the stands target plus this; while this is
+// null the screen says out loud that the combined bar is measuring against a
+// denominator that excludes sponsorship entirely — which is the very complaint
+// this whole feature exists to answer, and it should not be able to hide inside it.
+const ITEM_TARGET_KEY = 'sponsorship_revenue_target_inr'
+async function itemRevenueTarget(c: any): Promise<number | null> {
+  try {
+    const row = await c.env.DB.prepare('SELECT value FROM app_settings WHERE key = ?')
+      .bind(ITEM_TARGET_KEY).first() as any
+    if (!row) return null
+    const n = Math.round(Number(row.value))
+    if (Number.isFinite(n) && n >= 0) return n
+  } catch { /* app_settings unreadable — "not set" is the honest answer */ }
+  return null
+}
+
+// ---------------------------------------------------------------------------
+// THE UNIT RULE. 0032's header states it in one sentence and warns that it is the
+// single most likely thing to be got wrong later, because the database cannot
+// check it:
+//
+//     take the LOWEST positive integer not currently live on this item;
+//     if quantity_available IS NOT NULL and that integer exceeds it, it is sold
+//     out — reject with 409, do not insert.
+//
+// Lowest-free rather than MAX+1 on purpose: releasing unit 2 of a 2-unit item has
+// to free unit 2 specifically, and MAX+1 would hand the next buyer unit 3 of an
+// item that has only two — an oversell dressed up as a tidy number.
+//
+// This is the ONLY implementation. The record-a-sale route and the CSV import both
+// call it, the import by growing the same set as it stages rows, so a file selling
+// three water bottles is refused by the same arithmetic that refuses the third one
+// typed into the form. Returns null for sold out.
+//
+// `occupied` is the set of unit numbers actually OCCUPIED — which is not the same
+// as the set of live rows. A lapsed hold reads as available everywhere else on
+// this screen exactly as a lapsed stand does, so it is not in this set; its row is
+// retired out of the index's way before the insert that reuses its number.
+function itemLowestFreeUnit(occupied: Set<number>, cap: number | null): number | null {
+  let n = 1
+  while (occupied.has(n)) n++
+  if (cap !== null && Number.isFinite(cap) && n > (cap as number)) return null
+  return n
+}
+
+// The cap as a number or null for UNLIMITED. 0032 is emphatic that COALESCE-ing
+// NULL to 0 here turns "we can print another badge" into "sold out", which is the
+// failure that looks like a working system, so the conversion happens once and in
+// one place.
+const itemCap = (v: any): number | null => {
+  if (v === null || v === undefined || String(v).trim() === '') return null
+  const n = Math.round(Number(v))
+  return Number.isFinite(n) && n > 0 ? n : null
+}
+
+// What one unit is called, singular and plural, for a sentence an operator reads.
+// unit_label is free text off the catalogue ('brand', 'page', 'slot'), and a
+// message that says "3 pages" instead of "3 units" is the difference between an
+// error somebody acts on and one they forward to somebody else.
+const itemUnitWord = (label: any, n: number): string => {
+  const s = String(label || 'unit').trim() || 'unit'
+  if (n === 1) return s
+  return /(s|x|z|ch|sh)$/i.test(s) ? s + 'es' : s + 's'
+}
+
+// Which units of one item are occupied right now, and which lapsed holds are
+// sitting in the index without occupying anything. One query, so the sale route
+// and the import agree about the same table.
+async function itemLiveUnits(c: any, eventId: number, itemId: number): Promise<{
+  occupied: Set<number>; lapsed: Map<number, any>
+}> {
+  const { results } = await c.env.DB.prepare(
+    `SELECT id, unit_no, status, company_name, hold_expires_at, invoice_number, amount_paid_inr
+       FROM item_allocations
+      WHERE event_id = ? AND item_id = ? AND released_at IS NULL`
+  ).bind(eventId, itemId).all()
+  const today = boothToday()
+  const occupied = new Set<number>()
+  const lapsed = new Map<number, any>()
+  for (const r of ((results || []) as any[])) {
+    const n = Number(r.unit_no || 0)
+    if (n < 1) continue
+    if (boothHoldLapsed(r.status, r.hold_expires_at, today)) { if (!lapsed.has(n)) lapsed.set(n, r) }
+    else occupied.add(n)
+  }
+  return { occupied, lapsed }
+}
+
+// Retiring an allocation, by boothRetireAllocation's rule and for its reasons: a
+// hold that was never invoiced has no paperwork to preserve and is DELETED; once
+// an invoice number or a receipt exists the row is a tax document's counterparty
+// and is kept, stamped released_at, so a credit note has something to refer to.
+// idx_item_alloc_live ignores a released row, so the unit goes straight back on
+// the market either way.
+async function itemRetireAllocation(c: any, row: any): Promise<'deleted' | 'released'> {
+  const paperwork = !!String(row.invoice_number || '').trim() || Number(row.amount_paid_inr || 0) > 0
+  if (!paperwork) {
+    await c.env.DB.prepare('DELETE FROM item_allocations WHERE id = ?').bind(row.id).run()
+    return 'deleted'
+  }
+  await c.env.DB.prepare(
+    'UPDATE item_allocations SET released_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+  ).bind(row.id).run()
+  return 'released'
+}
+
+// The catalogue, every live allocation on it, and the money rolled up the way the
+// booth endpoint rolls up the floor — same key names, same meanings, so the
+// combined revenue view adds like to like instead of guessing.
+app.get('/api/admin/sellable-items', async (c) => {
+  const eventId = Number(c.req.query('event_id') || 1)
+  const zero = {
+    items: 0, active_items: 0, unlimited_items: 0,
+    total_units: 0, sold_units: 0, held_units: 0, blocked_units: 0, available_units: 0,
+    potential_inr: 0, booked_inr: 0, confirmed_value_inr: 0, held_value_inr: 0,
+    invoiced_inr: 0, collected_inr: 0, outstanding_inr: 0, discount_inr: 0,
+    tds_inr: 0, lapsed_holds: 0,
+  }
+  const shell = {
+    items: [] as any[], summary: zero,
+    categories: ITEM_CATEGORY_ORDER, category_labels: ITEM_CATEGORY_LABEL,
+    target_inr: null as number | null,
+  }
+  if (!(await sellableItemsEnabled(c))) return c.json({ ready: false, ...shell })
+  try {
+    const today = boothToday()
+    const [{ results: itemRows }, { results: allocRows }] = await Promise.all([
+      c.env.DB.prepare(
+        `SELECT id, code, category, name, description, unit_label, quantity_available,
+                list_price_inr, sort_order, is_active
+           FROM sellable_items
+          WHERE event_id = ?
+          ORDER BY sort_order ASC, id ASC`
+      ).bind(eventId).all(),
+      c.env.DB.prepare(
+        `SELECT ia.* FROM item_allocations ia
+          WHERE ia.event_id = ?${itemLiveOnly('ia')}
+          ORDER BY ia.item_id ASC, ia.unit_no ASC`
+      ).bind(eventId).all(),
+    ])
+
+    const byItem = new Map<number, any[]>()
+    for (const r of ((allocRows || []) as any[])) {
+      const k = Number(r.item_id)
+      if (!byItem.has(k)) byItem.set(k, [])
+      ;(byItem.get(k) as any[]).push(r)
+    }
+
+    const summary = { ...zero }
+    const items = ((itemRows || []) as any[]).map(it => {
+      const cap = itemCap(it.quantity_available)
+      const rows = byItem.get(Number(it.id)) || []
+      const units = rows.map(r => {
+        // The lapse, decided ONCE per row here and then trusted by the tiles, the
+        // category rollup, the unit list and every drill-down — the same discipline
+        // the floor plan applies, and the only reason those cannot disagree about
+        // whether an expired option is still off the market.
+        const lapsed = boothHoldLapsed(r.status, r.hold_expires_at, today)
+        return {
+          ...r, item_code: it.code, item_name: it.name, category: it.category,
+          unit_label: it.unit_label, hold_lapsed: !!lapsed,
+          // An expired option occupies nothing. Blocked DOES occupy — an organiser
+          // hold is space off the market — it just is not a sale.
+          occupies: !lapsed,
+        }
+      })
+      const taken = units.filter(u => u.occupies)
+      const sold = taken.filter(u => u.status === 'confirmed')
+      const held = taken.filter(u => u.status === 'held')
+      const blocked = taken.filter(u => u.status === 'blocked')
+      const money = sold.concat(held)
+
+      const it_ = {
+        ...it,
+        quantity_available: cap,            // NULL stays NULL: unlimited, never 0
+        unlimited: cap === null,
+        units,
+        units_taken: taken.length, units_sold: sold.length, units_held: held.length,
+        units_blocked: blocked.length,
+        // Unlimited items have no "left": null, not a made-up ceiling and not zero.
+        units_available: cap === null ? null : Math.max(0, cap - taken.length),
+        lapsed_holds: units.filter(u => u.hold_lapsed).length,
+        // POTENTIAL on a capped item is every unit at the CATALOGUE's current
+        // sticker, sold or not — the booth endpoint's rule exactly, so the target's
+        // denominator does not shrink as units go.
+        //
+        // On an UNLIMITED item there is no such number: "every extra badge that
+        // could ever be sold" is not a quantity. Counting it as zero would make
+        // Potential smaller than Booked the moment one is sold, which reads as a
+        // broken dashboard. So an unlimited item's potential is what has actually
+        // been agreed on it, at each deal's OWN frozen list price — a floor, never
+        // a forecast, and the screen says which items are in that position.
+        potential_inr: cap === null
+          ? money.reduce((n, u) => n + Number(u.list_price_inr || 0), 0)
+          : cap * Number(it.list_price_inr || 0),
+        booked_inr: money.reduce((n, u) => n + Number(u.amount_inr || 0), 0),
+        confirmed_value_inr: sold.reduce((n, u) => n + Number(u.amount_inr || 0), 0),
+        held_value_inr: held.reduce((n, u) => n + Number(u.amount_inr || 0), 0),
+        // Invoiced means an invoice number was actually raised, not that somebody
+        // chose the word — Outstanding is only meaningful against that.
+        invoiced_inr: money.reduce((n, u) => n + (u.invoice_number ? Number(u.grand_total_inr || 0) : 0), 0),
+        collected_inr: money.reduce((n, u) => n + Number(u.amount_paid_inr || 0), 0),
+        tds_inr: money.reduce((n, u) => n + Number(u.tds_deducted_inr || 0), 0),
+        discount_inr: money.reduce((n, u) => n + Number(u.discount_inr || 0), 0),
+      }
+
+      summary.items++
+      if (Number(it.is_active) !== 0) summary.active_items++
+      if (cap === null) summary.unlimited_items++
+      else { summary.total_units += cap; summary.available_units += (it_.units_available as number) }
+      summary.sold_units += it_.units_sold
+      summary.held_units += it_.units_held
+      summary.blocked_units += it_.units_blocked
+      summary.lapsed_holds += it_.lapsed_holds
+      summary.potential_inr += it_.potential_inr
+      summary.booked_inr += it_.booked_inr
+      summary.confirmed_value_inr += it_.confirmed_value_inr
+      summary.held_value_inr += it_.held_value_inr
+      summary.invoiced_inr += it_.invoiced_inr
+      summary.collected_inr += it_.collected_inr
+      summary.tds_inr += it_.tds_inr
+      summary.discount_inr += it_.discount_inr
+      return it_
+    })
+
+    // Outstanding is what is still CHASEABLE. TDS has already left the buyer and
+    // gone to the government against the organiser's PAN, so netting it off is what
+    // keeps this figure believable against a bank statement that will never show
+    // it — and 0032 warns the withholding is MORE common here than on a stand,
+    // because sponsorship is squarely a service.
+    summary.outstanding_inr = Math.max(0, summary.invoiced_inr - summary.collected_inr - summary.tds_inr)
+
+    items.sort((a: any, b: any) =>
+      itemCategoryRank(a.category) - itemCategoryRank(b.category) ||
+      Number(a.sort_order || 0) - Number(b.sort_order || 0) ||
+      Number(a.id || 0) - Number(b.id || 0))
+
+    return c.json({ ready: true, ...shell, items, summary, target_inr: await itemRevenueTarget(c) })
+  } catch (e: any) {
+    // "no such column" as well as "no such table", for the reason the booth
+    // endpoint gives: a database carrying a half-applied 0032 must read as not-live
+    // rather than 500 at an operator who cannot see why.
+    if (/no such (table|column)/i.test(String(e?.message || ''))) return c.json({ ready: false, ...shell })
+    throw e
+  }
+})
+
+// ==================== SPONSORSHIP: RECORDING A SALE ====================
+//
+// PUT, and idempotent per UNIT, exactly as the stand route is per stand: the same
+// call records a new sale or corrects an existing one, which is what "add the
+// deposit that landed this morning" actually is. Pass allocation_id to edit a unit
+// that is already sold; leave it out and this route CHOOSES the unit.
+//
+// It chooses rather than accepts, and that is the whole safety property. 0032's
+// index guarantees no two live rows claim the same unit; it cannot guarantee the
+// unit is inside quantity_available, because that column is on the other table.
+// A client-supplied unit_no of 7 against a 2-unit item inserts perfectly happily
+// and the show has sold five water bottles it does not have.
+//
+// There is no exhibitor linking here, deliberately, and it is not an omission: a
+// brand can buy the lanyard without taking a stand, so fabricating an exhibitor
+// row for every sponsor would put companies on the Exhibition Floor tab that are
+// not exhibiting. 0032 says the same thing about the missing FK.
+app.put('/api/admin/sellable-items/:code/sale', async (c) => {
+  const code = c.req.param('code')
+  const b = await c.req.json() as any
+  if (!(await sellableItemsEnabled(c))) return c.json({ error: 'Sponsorship inventory is not available yet.' }, 503)
+
+  const status = ITEM_ALLOC_STATUSES.includes(b.status) ? b.status : 'confirmed'
+  const company = String(b.company_name || '').trim() || (status === 'blocked' ? 'Organiser hold' : '')
+  if (!company) return c.json({ error: 'A company name is required to record a sale.' }, 400)
+  const eventId = Number(b.event_id || 1)
+
+  const invoiceDate = boothDate(b.invoice_date)
+  if (invoiceDate === false) return c.json({ error: 'The invoice date is not a date.' }, 400)
+  const paidDate = boothDate(b.paid_date)
+  if (paidDate === false) return c.json({ error: 'The payment date is not a date.' }, 400)
+  const askedExpiry = boothDate(b.hold_expires_at)
+  if (askedExpiry === false) return c.json({ error: 'The hold expiry is not a date.' }, 400)
+  const balanceDue = boothDate(b.balance_due_date)
+  if (balanceDue === false) return c.json({ error: 'The balance due date is not a date.' }, 400)
+
+  try {
+    const item = await c.env.DB.prepare(
+      'SELECT * FROM sellable_items WHERE event_id = ? AND code = ?'
+    ).bind(eventId, code).first() as any
+    if (!item) return c.json({ error: `There is no catalogue item "${code}".` }, 404)
+    const cap = itemCap(item.quantity_available)
+
+    let existing: any = null
+    const allocId = Number(b.allocation_id || 0)
+    if (allocId) {
+      existing = await c.env.DB.prepare(
+        `SELECT * FROM item_allocations
+          WHERE id = ? AND event_id = ? AND item_id = ? AND released_at IS NULL`
+      ).bind(allocId, eventId, item.id).first() as any
+      if (!existing) {
+        return c.json({ error: 'That sale has already been released, or it belongs to a different item. Reload and record it again.' }, 404)
+      }
+    }
+
+    // A LAPSED HOLD IS NOT AN EXISTING SALE TO EDIT — the stand route's judgement,
+    // and it matters more here: 0032 calls the lanyard the single most oversellable
+    // line in the catalogue, and a forgotten option on it blocks the highest-margin
+    // row there is. The screen has already shown the unit as available, so a deal
+    // recorded against it means a NEW buyer, and overwriting the lapsed row in place
+    // would silently rewrite whoever let the option go, taking any invoice raised
+    // against them with it. The same company coming back is a renewal and keeps its
+    // row and its history.
+    let clearedLapsed: any = null
+    const retire = async (row: any) => {
+      const action = await itemRetireAllocation(c, row)
+      clearedLapsed = {
+        action, company: String(row.company_name || ''),
+        unit_no: Number(row.unit_no || 0),
+        expired: String(row.hold_expires_at || '').slice(0, 10),
+      }
+    }
+    if (existing && boothHoldLapsed(existing.status, existing.hold_expires_at, boothToday())) {
+      if (String(existing.company_name || '').trim().toLowerCase() !== company.toLowerCase()) {
+        await retire(existing)
+        existing = null
+      }
+    }
+
+    // THE UNIT. Chosen, never taken on trust. An edit keeps the one it has.
+    let unitNo = existing ? Number(existing.unit_no || 1) : 0
+    if (!existing) {
+      const { occupied, lapsed } = await itemLiveUnits(c, eventId, item.id)
+      const pick = itemLowestFreeUnit(occupied, cap)
+      if (pick === null) {
+        const word = itemUnitWord(item.unit_label, cap as number)
+        return c.json({
+          error: `All ${cap} ${word} of ${item.name} are taken. Release one first, or raise the quantity on the item.`,
+          sold_out: true,
+        }, 409)
+      }
+      // The lapsed row sitting on the number we just picked. It occupies nothing on
+      // any screen, but idx_item_alloc_live will still refuse the INSERT with a
+      // constraint the operator cannot explain, having just been shown the unit as
+      // free — so it is cleared out of the way by the same rule the Release button
+      // uses.
+      const stale = lapsed.get(pick)
+      if (stale) await retire(stale)
+      unitNo = pick
+    }
+
+    // An edit that leaves the price blank must not silently reprice a signed deal,
+    // so the fallback is the allocation's OWN frozen list price and only then the
+    // catalogue's current sticker. With every price in 0032 a placeholder awaiting
+    // the owner, that repricing is not hypothetical — it is scheduled.
+    const fallbackList = Number((existing && existing.list_price_inr) || item.list_price_inr || 0)
+    const money = status === 'blocked'
+      // An organiser block is inventory taken off the market, not a sale: the
+      // lanyard kept back for a ministry partner, a page reserved for the host's own
+      // ad. It has no buyer, no invoice and no money, whatever was typed.
+      ? {
+          list_price_inr: 0, discount_inr: 0, amount_inr: 0, gst_inr: 0, grand_total_inr: 0,
+          amount_paid_inr: 0, tds_deducted_inr: 0, payment_status: 'pending', invoice_number: null as string | null,
+        }
+      // THE SAME GUARD THE STAND FORM AND THE STAND IMPORT RUN, and the same
+      // function: a negative receipt, a negative discount, a discount over the list
+      // price, a TDS figure larger than the invoice or anything that is not a number
+      // is refused with the field named, in the same words, on both inventories.
+      : boothSaleMoneyChecked(b, fallbackList)
+    if ('error' in money) return c.json({ error: money.error }, 400)
+
+    const contact = String(b.contact_name || '').trim()
+    const email = String(b.email || '').trim()
+    const phone = String(b.phone || '').trim()
+    const notes = String(b.notes || '').trim()
+    const actor = adminActor(c).actor
+
+    // THE INVOICE COUNTERPARTY. company_name is the brand that gets PRINTED — on the
+    // lanyard, on the banner, in the guide — and is frequently not the registered
+    // entity a GST invoice must be made out to. Reported, never refused, for the
+    // reason the stand form gives: a desk that cannot record the sale without a
+    // GSTIN records it on paper instead. buyer_state_code is captured because place
+    // of supply decides IGST against CGST+SGST, that question is with the
+    // organiser's accountant, and 0032 notes the answer may legitimately differ
+    // between a stand and a lanyard print. Nothing here splits the tax either way.
+    const gstin = String(b.buyer_gstin || '').trim().toUpperCase() || null
+    const legalName = String(b.buyer_legal_name || '').trim() || null
+    const stateCode = boothStateCode(b.buyer_state_code, gstin)
+    const warnings: string[] = []
+    if (status !== 'blocked') {
+      const gw = boothGstinWarning(gstin)
+      if (gw) warnings.push(gw)
+      const scw = boothStateGstinConflict(b.buyer_state_code, gstin)
+      if (scw) warnings.push(scw)
+      else if (!gstin) warnings.push('No GSTIN was recorded, so this sale cannot carry input tax credit for the buyer. Add it before the invoice goes out.')
+      if (!stateCode) warnings.push('No buyer state code, so the place of supply on this invoice is undecided.')
+      if (gstin && legalName === null) warnings.push('A GSTIN was given without the registered legal name; an invoice made out to the brand instead of the registered entity is the one a buyer refuses.')
+    }
+
+    const holdExpiry = status !== 'held' ? null
+      : (askedExpiry
+        || (existing && String(existing.hold_expires_at || '').slice(0, 10) >= boothToday()
+          ? String(existing.hold_expires_at).slice(0, 10) : null)
+        || boothDatePlus(BOOTH_HOLD_DAYS_DEFAULT))
+
+    const lifeVals: any[] = [
+      holdExpiry, (money as any).tds_deducted_inr || 0,
+      status === 'blocked' ? null : balanceDue,
+      status === 'blocked' ? null : gstin,
+      status === 'blocked' ? null : legalName,
+      status === 'blocked' ? null : stateCode,
+    ]
+    const lifeCols = ['hold_expires_at', 'tds_deducted_inr', 'balance_due_date',
+      'buyer_gstin', 'buyer_legal_name', 'buyer_state_code']
+
+    let allocationId: number
+    if (existing) {
+      const sets = ['company_name = ?', 'contact_name = ?', 'email = ?', 'phone = ?', 'status = ?',
+        'amount_inr = ?', 'list_price_inr = ?', 'discount_inr = ?', 'gst_inr = ?', 'grand_total_inr = ?',
+        'invoice_number = ?', 'invoice_date = ?', 'amount_paid_inr = ?', 'paid_date = ?',
+        'payment_status = ?', 'notes = ?', 'allocated_by = ?']
+      const sv: any[] = [company, contact, email, phone, status, money.amount_inr, money.list_price_inr,
+        money.discount_inr, money.gst_inr, money.grand_total_inr, money.invoice_number, invoiceDate,
+        money.amount_paid_inr, paidDate, money.payment_status, notes, actor]
+      lifeCols.forEach((k, i) => { sets.push(`${k} = ?`); sv.push(lifeVals[i]) })
+      sv.push(existing.id)
+      await c.env.DB.prepare(
+        `UPDATE item_allocations SET ${sets.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+      ).bind(...sv).run()
+      allocationId = existing.id
+    } else {
+      const cols = ['event_id', 'item_id', 'unit_no', 'company_name', 'contact_name', 'email', 'phone',
+        'status', 'amount_inr', 'list_price_inr', 'discount_inr', 'gst_inr', 'grand_total_inr',
+        'invoice_number', 'invoice_date', 'amount_paid_inr', 'paid_date', 'payment_status',
+        'notes', 'allocated_by'].concat(lifeCols)
+      const cv: any[] = [eventId, item.id, unitNo, company, contact, email, phone, status,
+        money.amount_inr, money.list_price_inr, money.discount_inr, money.gst_inr, money.grand_total_inr,
+        money.invoice_number, invoiceDate, money.amount_paid_inr, paidDate, money.payment_status,
+        notes, actor].concat(lifeVals)
+      const ins = await c.env.DB.prepare(
+        `INSERT INTO item_allocations (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(',')})`
+      ).bind(...cv).run()
+      allocationId = ins.meta.last_row_id as number
+    }
+
+    await audit(c, existing ? 'item.sale.update' : 'item.sale', 'sellable_item', code, {
+      status, company, unit_no: unitNo, allocation_id: allocationId,
+      list_price_inr: money.list_price_inr, discount_inr: money.discount_inr,
+      amount_inr: money.amount_inr, grand_total_inr: money.grand_total_inr,
+      amount_paid_inr: money.amount_paid_inr, payment_status: money.payment_status,
+      invoice_number: money.invoice_number,
+      tds_deducted_inr: (money as any).tds_deducted_inr || 0,
+      hold_expires_at: holdExpiry, balance_due_date: balanceDue,
+      buyer_gstin: gstin, buyer_state_code: stateCode,
+      cleared_lapsed_hold: clearedLapsed
+        ? `${clearedLapsed.company} (unit ${clearedLapsed.unit_no}, expired ${clearedLapsed.expired}, ${clearedLapsed.action})` : null,
+    })
+    return c.json({
+      success: true, code, status, created: !existing, allocation_id: allocationId,
+      unit_no: unitNo, unit_label: item.unit_label, item_name: item.name,
+      quantity_available: cap, ...money,
+      hold_expires_at: holdExpiry, balance_due_date: balanceDue,
+      buyer_gstin: gstin, buyer_legal_name: legalName, buyer_state_code: stateCode,
+      cleared_lapsed_hold: clearedLapsed,
+      warnings,
+    }, existing ? 200 : 201)
+  } catch (e: any) {
+    const msg = String(e?.message || '')
+    if (/UNIQUE constraint/i.test(msg)) {
+      // Two operators computed the same lowest-free unit in the same second. That is
+      // precisely what idx_item_alloc_live is for: the database decides, the loser
+      // gets this, and there is no second sale of the only lanyard there is.
+      return c.json({ error: `Somebody took that unit of ${code} a moment ago. Reload and record it again — the next free unit will be picked.` }, 409)
+    }
+    if (/no such (table|column)/i.test(msg)) return c.json({ error: 'Sponsorship inventory is not available yet.' }, 503)
+    throw e
+  }
+})
+
+// Release one unit. Addressed by allocation id rather than by item code, because an
+// item can have twelve live sales on it and "release the show guide full page" does
+// not name one of them.
+app.delete('/api/admin/item-allocations/:id', async (c) => {
+  const id = Number(c.req.param('id') || 0)
+  if (!(await sellableItemsEnabled(c))) return c.json({ error: 'Sponsorship inventory is not available yet.' }, 503)
+  const eventId = Number(c.req.query('event_id') || 1)
+  try {
+    const row = await c.env.DB.prepare(
+      `SELECT ia.*, si.code AS item_code, si.name AS item_name, si.unit_label
+         FROM item_allocations ia JOIN sellable_items si ON si.id = ia.item_id
+        WHERE ia.id = ? AND ia.event_id = ?${itemLiveOnly('ia')}`
+    ).bind(id, eventId).first() as any
+    if (!row) return c.json({ error: 'That sale has already been released.' }, 404)
+
+    const action = await itemRetireAllocation(c, row)
+    await audit(c, 'item.release', 'sellable_item', row.item_code, {
+      company: row.company_name, was: row.status, unit_no: row.unit_no, action,
+      invoice_number: row.invoice_number || null, amount_paid_inr: Number(row.amount_paid_inr || 0),
+    })
+    return c.json({
+      success: true, id, action, code: row.item_code, item_name: row.item_name,
+      unit_no: row.unit_no,
+      // Which of the two happened matters to the desk: a deleted hold is gone, a
+      // released invoice is still findable and still needs a credit note.
+      kept: action === 'released',
+      invoice_number: action === 'released' ? (row.invoice_number || null) : null,
+    })
+  } catch (e: any) {
+    if (/no such (table|column)/i.test(String(e?.message || ''))) return c.json({ error: 'Sponsorship inventory is not available yet.' }, 503)
+    throw e
+  }
+})
+
+// ==================== SPONSORSHIP: EDITING THE CATALOGUE ====================
+//
+// 0032 argues at length that the catalogue is a TABLE and not a constant array
+// because the owner will edit it the first week it is used — every price in the
+// seed is a placeholder and the whole file is waiting on them. A price the owner
+// can change is a row, not a redeploy, and this is the route that makes that true.
+//
+// The one thing it refuses is lowering quantity_available below what is already
+// sold. That is not a validation nicety: the cap is enforced when a unit is chosen,
+// so cutting the show guide from twelve pages to four while six are sold would not
+// undo anything — it would leave units 5 and 6 live and above the ceiling, which is
+// exactly the drift 0032's header tells you to go looking for with a query.
+app.put('/api/admin/sellable-items/:code', async (c) => {
+  const code = c.req.param('code')
+  const b = await c.req.json() as any
+  if (!(await sellableItemsEnabled(c))) return c.json({ error: 'Sponsorship inventory is not available yet.' }, 503)
+  const eventId = Number(b.event_id || 1)
+  try {
+    const item = await c.env.DB.prepare(
+      'SELECT * FROM sellable_items WHERE event_id = ? AND code = ?'
+    ).bind(eventId, code).first() as any
+    if (!item) return c.json({ error: `There is no catalogue item "${code}".` }, 404)
+
+    const sets: string[] = []
+    const vals: any[] = []
+    const changed: any = {}
+
+    const has = (k: string) => Object.prototype.hasOwnProperty.call(b, k)
+
+    if (has('name')) {
+      const name = String(b.name || '').trim()
+      if (!name) return c.json({ error: 'An item needs a name — it is what the sales screen and the proposal show.' }, 400)
+      sets.push('name = ?'); vals.push(name); changed.name = name
+    }
+    if (has('description')) {
+      const d = String(b.description || '').trim() || null
+      sets.push('description = ?'); vals.push(d); changed.description = d
+    }
+    if (has('unit_label')) {
+      const u = String(b.unit_label || '').trim() || 'unit'
+      sets.push('unit_label = ?'); vals.push(u); changed.unit_label = u
+    }
+    if (has('list_price_inr')) {
+      // The strict parse, so "three lakh" and "-5000" are refused by name rather
+      // than quietly stored as 0 — a catalogue row at Rs 0 is an item that can be
+      // given away by saving a form.
+      const n = boothRupeesStrict(b.list_price_inr)
+      if (n === null) return c.json({ error: `list_price_inr "${String(b.list_price_inr)}" is not a number.` }, 400)
+      sets.push('list_price_inr = ?'); vals.push(n); changed.list_price_inr = n
+    }
+    if (has('quantity_available')) {
+      const raw = String(b.quantity_available === null || b.quantity_available === undefined ? '' : b.quantity_available).trim()
+      let cap: number | null = null
+      if (raw !== '') {
+        // Deliberately not boothRupeesStrict: this is a count, not money, and the
+        // message has to say so.
+        if (!/^[0-9]+$/.test(raw)) return c.json({ error: `quantity_available "${raw}" is not a whole number. Leave it blank for unlimited.` }, 400)
+        cap = Number(raw)
+        // 0032's own CHECK refuses 0, and for the reason it gives: zero is not a
+        // smaller number than one, it is an item that can never be sold at all and
+        // is silently missing from availability for ever.
+        if (cap < 1) return c.json({ error: 'A quantity of 0 is an item that can never be sold. Leave it blank for unlimited, or deactivate the item instead.' }, 400)
+      }
+      if (cap !== null) {
+        const { occupied } = await itemLiveUnits(c, eventId, item.id)
+        let highest = 0
+        occupied.forEach(n => { if (n > highest) highest = n })
+        if (highest > cap) {
+          const word = itemUnitWord(item.unit_label, highest)
+          return c.json({
+            error: `${highest} ${word} of ${item.name} are already taken, so the quantity cannot go below ${highest}. Release the ones above ${cap} first.`,
+          }, 409)
+        }
+      }
+      sets.push('quantity_available = ?'); vals.push(cap); changed.quantity_available = cap
+    }
+    if (has('is_active')) {
+      const active = (b.is_active === true || String(b.is_active) === '1' || String(b.is_active).toLowerCase() === 'true') ? 1 : 0
+      sets.push('is_active = ?'); vals.push(active); changed.is_active = active
+    }
+    if (has('sort_order')) {
+      const n = Math.round(Number(b.sort_order))
+      if (!Number.isFinite(n)) return c.json({ error: 'sort_order has to be a number.' }, 400)
+      sets.push('sort_order = ?'); vals.push(n); changed.sort_order = n
+    }
+
+    if (!sets.length) return c.json({ error: 'Nothing to change.' }, 400)
+    vals.push(item.id)
+    await c.env.DB.prepare(
+      `UPDATE sellable_items SET ${sets.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+    ).bind(...vals).run()
+    await audit(c, 'item.update', 'sellable_item', code, changed)
+    // Repricing the catalogue must NOT touch a deal already signed: every allocation
+    // snapshotted its own list price at the sale, and nothing above goes near them.
+    return c.json({ success: true, code, ...changed, repriced_existing_sales: false })
+  } catch (e: any) {
+    if (/no such (table|column)/i.test(String(e?.message || ''))) return c.json({ error: 'Sponsorship inventory is not available yet.' }, 503)
+    throw e
+  }
+})
+
+// The sponsorship half of the combined target. Same shape as PUT
+// /api/admin/booth-target, and here for the same reason it exists rather than
+// letting the generic settings PUT take it: a typed "1.8 crore" is refused rather
+// than stored as the string that breaks the gauge.
+//
+// An empty value CLEARS the row, which is not the same as setting it to zero: zero
+// is a target of nothing, and absent is "the owner has not set one", which is what
+// the screen has to be able to say.
+app.put('/api/admin/sponsorship-target', async (c) => {
+  const body = await c.req.json() as any
+  const raw = String(body.target_inr === undefined || body.target_inr === null ? '' : body.target_inr).trim()
+  try {
+    if (!raw) {
+      await c.env.DB.prepare('DELETE FROM app_settings WHERE key = ?').bind(ITEM_TARGET_KEY).run()
+      await audit(c, 'item.target', 'setting', ITEM_TARGET_KEY, { target_inr: null })
+      return c.json({ success: true, target_inr: null })
+    }
+    const n = boothRupeesStrict(raw)
+    if (n === null) return c.json({ error: 'The target has to be a whole number of rupees, ex-GST.' }, 400)
+    await c.env.DB.prepare(
+      'INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, datetime("now")) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at'
+    ).bind(ITEM_TARGET_KEY, String(n)).run()
+    await audit(c, 'item.target', 'setting', ITEM_TARGET_KEY, { target_inr: n })
+    return c.json({ success: true, target_inr: n })
+  } catch (e: any) {
+    if (/no such table/i.test(String(e?.message || ''))) return c.json({ error: 'Settings storage is not available yet.' }, 503)
+    throw e
+  }
+})
+
+// ==================== SPONSORSHIP: CSV IMPORT ====================
+//
+// The header row the template writes. item_code where the stand file says
+// booth_code; everything after that is the SAME twenty columns in the same order,
+// on purpose — a desk that has learned one spreadsheet has learned both, and the
+// error messages are the same sentences because they come from the same functions.
+const ITEM_IMPORT_HEADERS = [
+  'item_code', 'company_name', 'contact_name', 'email', 'phone', 'status',
+  'list_price_inr', 'discount_inr', 'invoice_number', 'invoice_date',
+  'amount_paid_inr', 'tds_deducted_inr', 'paid_date', 'balance_due_date',
+  'payment_status', 'buyer_gstin', 'buyer_legal_name', 'buyer_state_code',
+  'hold_expires_at', 'notes',
+]
+
+// Bulk-load the sponsorship that was sold before this screen existed. ALL-OR-NOTHING
+// for the reason the stand import gives: a half-applied import is worse than none,
+// because nobody can tell which rows landed.
+//
+// ONE RULE IS DIFFERENT FROM THE STAND IMPORT, and it is the same difference that
+// runs through this whole file. A stand appearing twice in a file is always an
+// error — there is one stand 51. An ITEM appearing twelve times is the ordinary
+// case: twelve advertisers, twelve pages, one catalogue row. So the duplicate check
+// is gone and the CEILING check replaces it: units are handed out in file order
+// from the same itemLowestFreeUnit the form uses, against a set that starts at
+// what is already live and grows as rows are staged. A thirteenth page in a
+// twelve-page guide is refused by name, on its own line, before anything is
+// written.
+app.post('/api/admin/sellable-items/import', async (c) => {
+  const body = await c.req.json() as any
+  if (!(await sellableItemsEnabled(c))) return c.json({ error: 'Sponsorship inventory is not available yet.', errors: [], imported: 0 }, 503)
+  const eventId = Number(body.event_id || 1)
+  // The same parser the stand import uses, quoted newlines and BOM and all — a
+  // second CSV reader is a second set of bugs about the same spreadsheet.
+  const records = parseBoothCsv(String(body.csv || ''))
+  if (records.length < 2) {
+    return c.json({ error: 'That file has a header row and no data rows.', errors: [], imported: 0 }, 400)
+  }
+  const header = records[0].cells.map(h => String(h).trim().toLowerCase().replace(/\s+/g, '_'))
+  const rows = records.slice(1)
+  if (rows.length > 500) {
+    return c.json({ error: `That file has ${rows.length} rows; 500 is the limit.`, errors: [], imported: 0 }, 400)
+  }
+  for (const need of ['item_code', 'company_name']) {
+    if (!header.includes(need)) {
+      return c.json({
+        error: `The header row is missing "${need}". Download the template and use its header row exactly.`,
+        errors: [], imported: 0,
+      }, 400)
+    }
+  }
+  const col = (cells: string[], name: string): string => {
+    const i = header.indexOf(name)
+    return i === -1 ? '' : String(cells[i] == null ? '' : cells[i]).trim()
+  }
+
+  try {
+    const today = boothToday()
+    const [{ results: itemRows }, { results: allocRows }] = await Promise.all([
+      c.env.DB.prepare(
+        'SELECT id, code, name, unit_label, quantity_available, list_price_inr, is_active FROM sellable_items WHERE event_id = ?'
+      ).bind(eventId).all(),
+      c.env.DB.prepare(
+        `SELECT id, item_id, unit_no, status, company_name, hold_expires_at, invoice_number, amount_paid_inr
+           FROM item_allocations WHERE event_id = ? AND released_at IS NULL`
+      ).bind(eventId).all(),
+    ])
+
+    const catalogue = new Map<string, any>()
+    for (const r of ((itemRows || []) as any[])) catalogue.set(String(r.code).trim().toUpperCase(), r)
+
+    // Occupancy per item, and the lapsed rows whose numbers can be reused. Read once
+    // and then grown in memory as rows are staged, so the ceiling is judged across
+    // the WHOLE file rather than row by row against a database that has not been
+    // written to yet.
+    const occupancy = new Map<number, Set<number>>()
+    const lapsedByItem = new Map<number, Map<number, any>>()
+    for (const r of ((allocRows || []) as any[])) {
+      const k = Number(r.item_id)
+      const n = Number(r.unit_no || 0)
+      if (n < 1) continue
+      if (boothHoldLapsed(r.status, r.hold_expires_at, today)) {
+        if (!lapsedByItem.has(k)) lapsedByItem.set(k, new Map())
+        const m = lapsedByItem.get(k) as Map<number, any>
+        if (!m.has(n)) m.set(n, r)
+      } else {
+        if (!occupancy.has(k)) occupancy.set(k, new Set())
+        ;(occupancy.get(k) as Set<number>).add(n)
+      }
+    }
+
+    const errors: { line: number; code: string; message: string }[] = []
+    const warnings: { line: number; code: string; message: string }[] = []
+    const staged: any[] = []
+    const retiring = new Map<number, any>()   // allocation id -> the lapsed row being cleared
+
+    rows.forEach(rec => {
+      const line = rec.line
+      const rawCode = col(rec.cells, 'item_code')
+      const key = rawCode.toUpperCase()
+      const fail = (message: string) => errors.push({ line, code: rawCode, message })
+
+      if (!rawCode) { fail('item_code is empty.'); return }
+      const item = catalogue.get(key)
+      if (!item) { fail(`There is no catalogue item "${rawCode}".`); return }
+      // A retired row is not an error and not a silent success: an item the owner
+      // struck out should not quietly come back through a spreadsheet.
+      if (Number(item.is_active) === 0) {
+        fail(`${item.name} (${item.code}) has been deactivated. Reactivate it on the Sponsorship screen first, or take this row out.`)
+        return
+      }
+
+      const statusRaw = col(rec.cells, 'status').toLowerCase()
+      const status = statusRaw ? statusRaw : 'confirmed'
+      if (!ITEM_ALLOC_STATUSES.includes(status)) {
+        fail(`status "${statusRaw}" is not held, confirmed or blocked.`); return
+      }
+      const company = col(rec.cells, 'company_name')
+      if (!company && status !== 'blocked') { fail('company_name is empty.'); return }
+
+      const payStatus = col(rec.cells, 'payment_status').toLowerCase()
+      if (payStatus && !BOOTH_PAYMENT_STATUSES.includes(payStatus)) {
+        fail(`payment_status "${payStatus}" is not one of ${BOOTH_PAYMENT_STATUSES.join(', ')}.`); return
+      }
+
+      const money = status === 'blocked'
+        ? {
+            list_price_inr: 0, discount_inr: 0, amount_inr: 0, gst_inr: 0, grand_total_inr: 0,
+            amount_paid_inr: 0, tds_deducted_inr: 0, payment_status: 'pending', invoice_number: null as string | null,
+          }
+        : boothSaleMoneyChecked({
+            list_price_inr: col(rec.cells, 'list_price_inr'),
+            discount_inr: col(rec.cells, 'discount_inr'),
+            amount_paid_inr: col(rec.cells, 'amount_paid_inr'),
+            tds_deducted_inr: col(rec.cells, 'tds_deducted_inr'),
+            payment_status: payStatus,
+            invoice_number: col(rec.cells, 'invoice_number'),
+          }, Number(item.list_price_inr || 0))
+      if ('error' in money) { fail(money.error); return }
+
+      const invDate = boothDate(col(rec.cells, 'invoice_date'))
+      if (invDate === false) { fail(`invoice_date "${col(rec.cells, 'invoice_date')}" is not a date.`); return }
+      const payDate = boothDate(col(rec.cells, 'paid_date'))
+      if (payDate === false) { fail(`paid_date "${col(rec.cells, 'paid_date')}" is not a date.`); return }
+      const dueDate = boothDate(col(rec.cells, 'balance_due_date'))
+      if (dueDate === false) { fail(`balance_due_date "${col(rec.cells, 'balance_due_date')}" is not a date.`); return }
+      const holdDate = boothDate(col(rec.cells, 'hold_expires_at'))
+      if (holdDate === false) { fail(`hold_expires_at "${col(rec.cells, 'hold_expires_at')}" is not a date.`); return }
+
+      // THE CEILING, judged across the whole file. The set grows as rows are staged,
+      // so the third water bottle in a two-brand item is refused on its own line and
+      // says how many there are — not by a UNIQUE constraint after 40 other rows have
+      // already been counted as fine.
+      const itemId = Number(item.id)
+      if (!occupancy.has(itemId)) occupancy.set(itemId, new Set())
+      const occupied = occupancy.get(itemId) as Set<number>
+      const cap = itemCap(item.quantity_available)
+      const unit = itemLowestFreeUnit(occupied, cap)
+      if (unit === null) {
+        const word = itemUnitWord(item.unit_label, cap as number)
+        fail(`${item.name} has ${cap} ${word} and they are all taken by now — this row would be one too many.`)
+        return
+      }
+      occupied.add(unit)
+      // The lapsed row sitting on the number this row is about to use. Cleared inside
+      // the batch below, before the INSERT, or idx_item_alloc_live refuses a unit
+      // every other screen calls free and the whole import dies on somebody's
+      // forgotten March option.
+      const stale = (lapsedByItem.get(itemId) || new Map()).get(unit)
+      if (stale) retiring.set(Number(stale.id), stale)
+
+      const gstin = col(rec.cells, 'buyer_gstin').toUpperCase() || null
+      const gw = status === 'blocked' ? null : boothGstinWarning(gstin)
+      if (gw) warnings.push({ line, code: rawCode, message: gw })
+      const scw = status === 'blocked' ? null : boothStateGstinConflict(col(rec.cells, 'buyer_state_code'), gstin)
+      if (scw) warnings.push({ line, code: rawCode, message: scw })
+
+      staged.push({
+        item, line, status, unit,
+        company: company || 'Organiser hold',
+        contact: col(rec.cells, 'contact_name'),
+        email: col(rec.cells, 'email'),
+        phone: col(rec.cells, 'phone'),
+        notes: col(rec.cells, 'notes'),
+        invoice_date: invDate, paid_date: payDate, money,
+        balance_due_date: status === 'blocked' ? null : dueDate,
+        hold_expires_at: status === 'held' ? (holdDate || boothDatePlus(BOOTH_HOLD_DAYS_DEFAULT)) : null,
+        buyer_gstin: status === 'blocked' ? null : gstin,
+        buyer_legal_name: status === 'blocked' ? null : (col(rec.cells, 'buyer_legal_name') || null),
+        buyer_state_code: status === 'blocked' ? null : boothStateCode(col(rec.cells, 'buyer_state_code'), gstin),
+      })
+    })
+
+    if (errors.length) {
+      return c.json({
+        error: `${errors.length} of ${rows.length} rows have a problem, so nothing was imported.`,
+        errors: errors.slice(0, 100), error_count: errors.length, imported: 0,
+      }, 400)
+    }
+    if (!staged.length) return c.json({ error: 'That file has no data rows.', errors: [], imported: 0 }, 400)
+
+    const actor = adminActor(c).actor
+    const cols = ['event_id', 'item_id', 'unit_no', 'company_name', 'contact_name', 'email', 'phone',
+      'status', 'amount_inr', 'list_price_inr', 'discount_inr', 'gst_inr', 'grand_total_inr',
+      'invoice_number', 'invoice_date', 'amount_paid_inr', 'paid_date', 'payment_status',
+      'notes', 'allocated_by', 'tds_deducted_inr', 'balance_due_date', 'hold_expires_at',
+      'buyer_gstin', 'buyer_legal_name', 'buyer_state_code']
+    const insertSql = `INSERT INTO item_allocations (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(',')})`
+
+    const writes: any[] = []
+    // Every lapsed row first, then every insert. Ordering matters inside one batch:
+    // a release and the sale that reuses its unit are the same transaction, and the
+    // index is checked per statement.
+    retiring.forEach(row => {
+      const paperwork = !!String(row.invoice_number || '').trim() || Number(row.amount_paid_inr || 0) > 0
+      writes.push(paperwork
+        ? c.env.DB.prepare('UPDATE item_allocations SET released_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?').bind(row.id)
+        : c.env.DB.prepare('DELETE FROM item_allocations WHERE id = ?').bind(row.id))
+    })
+    for (const s of staged) {
+      writes.push(c.env.DB.prepare(insertSql).bind(
+        eventId, s.item.id, s.unit, s.company, s.contact, s.email, s.phone, s.status,
+        s.money.amount_inr, s.money.list_price_inr, s.money.discount_inr, s.money.gst_inr,
+        s.money.grand_total_inr, s.money.invoice_number, s.invoice_date, s.money.amount_paid_inr,
+        s.paid_date, s.money.payment_status, s.notes, actor,
+        s.money.tds_deducted_inr || 0, s.balance_due_date, s.hold_expires_at,
+        s.buyer_gstin, s.buyer_legal_name, s.buyer_state_code
+      ))
+    }
+    await c.env.DB.batch(writes)
+
+    const totalNet = staged.reduce((n, s) => n + Number(s.money.amount_inr || 0), 0)
+    const totalTds = staged.reduce((n, s) => n + Number(s.money.tds_deducted_inr || 0), 0)
+    await audit(c, 'item.import', 'sellable_item', staged.map(s => s.item.code).join(','), {
+      imported: staged.length, net_inr: totalNet, tds_inr: totalTds,
+      cleared_lapsed_holds: retiring.size, gstin_warnings: warnings.length,
+    })
+    return c.json({
+      success: true, imported: staged.length, net_inr: totalNet, tds_inr: totalTds,
+      cleared_lapsed_holds: retiring.size, errors: [],
+      warnings: warnings.slice(0, 100), warning_count: warnings.length,
+    })
+  } catch (e: any) {
+    const msg = String(e?.message || '')
+    if (/no such (table|column)/i.test(msg)) return c.json({ error: 'Sponsorship inventory is not available yet.', errors: [], imported: 0 }, 503)
+    if (/UNIQUE constraint/i.test(msg)) {
+      // Somebody sold one of these units between the check above and the batch. The
+      // batch is a transaction, so nothing was written.
+      return c.json({ error: 'One of those units was sold while the file was being checked. Nothing was imported — reload and try again.', errors: [], imported: 0 }, 409)
     }
     throw e
   }
@@ -5160,16 +6623,26 @@ app.get('/api/admin/booth-stats', async (c) => {
   let inventoryReady = false
   if (await boothInventoryEnabled(c)) {
     try {
+      // The tier counters answer "what is left in this package", which is the
+      // question a salesperson asks with a customer on the line — so a released
+      // allocation and a hold whose option ran out both have to read as AVAILABLE
+      // here, exactly as they do on the floor plan and the sales dashboard. The
+      // lapse is a SQL expression rather than a JS pass because this query
+      // aggregates in the database; boothLapsedSql is the same rule as
+      // boothHoldLapsed, and the two are not allowed to drift.
+      const live = await boothLifecycleEnabled(c)
+      const lapsed = live ? boothLapsedSql() : '0'
       const { results: inv } = await c.env.DB.prepare(
         `SELECT b.type_key, b.name,
                 COUNT(*) AS total_count,
-                SUM(CASE WHEN ba.id IS NULL THEN 1 ELSE 0 END) AS available_count,
+                SUM(CASE WHEN ba.id IS NULL OR ${lapsed} THEN 1 ELSE 0 END) AS available_count,
                 SUM(CASE WHEN ba.status = 'confirmed' THEN 1 ELSE 0 END) AS sold_count,
-                SUM(CASE WHEN ba.status = 'held' THEN 1 ELSE 0 END) AS held_count,
+                SUM(CASE WHEN ba.status = 'held' AND NOT ${lapsed} THEN 1 ELSE 0 END) AS held_count,
                 SUM(CASE WHEN ba.status = 'blocked' THEN 1 ELSE 0 END) AS blocked_count,
+                SUM(CASE WHEN ${lapsed} THEN 1 ELSE 0 END) AS lapsed_count,
                 SUM(b.sqm) AS sqm, MAX(b.list_price_inr) AS list_price_inr
            FROM booths b
-           LEFT JOIN booth_allocations ba ON ba.booth_id = b.id AND ba.event_id = b.event_id
+           LEFT JOIN booth_allocations ba ON ba.booth_id = b.id AND ba.event_id = b.event_id${boothLiveOnly(live)}
           WHERE b.event_id = ?
           GROUP BY b.type_key, b.name`
       ).bind(eventId).all()
@@ -5200,6 +6673,10 @@ app.get('/api/admin/booth-stats', async (c) => {
             sold_count: Number(r.sold_count || 0),
             held_count: Number(r.held_count || 0),
             blocked_count: Number(r.blocked_count || 0),
+            // Counted inside available_count above; surfaced separately because a
+            // stand that came back off a lapsed option is a stand somebody should
+            // ring about, not just a number that went up.
+            lapsed_count: Number(r.lapsed_count || 0),
             sqm: Math.round(Number(r.sqm || 0) * 100) / 100,
             catalogue_price_inr: Number((cat && cat.price_inr) || 0),
           }
@@ -8859,7 +10336,7 @@ function selectType(type) {
   // Extra fields
   let extra = '';
   if (type === 'exhibition') {
-    extra = '<div><label class="text-xs text-gray-400 mb-1 block">Preferred Booth Type</label><select id="cf-booth" class="w-full px-4 py-3 rounded-xl text-sm"><option value="">Select booth type</option><option value="Startup Pod - 1.5×1.5m - ₹38,000">Startup Pod — 1.5 × 1.5 m — ₹38,000</option><option value="Explorer Booth - 2×2m - ₹1,25,000">Explorer Booth — 2 × 2 m — ₹1,25,000</option><option value="Innovator Booth - 3×2m - ₹1,95,000">Innovator Booth — 3 × 2 m — ₹1,95,000</option><option value="Accelerator Booth - 3×3m - ₹2,91,000">Accelerator Booth — 3 × 3 m — ₹2,91,000</option><option value="Enterprise Booth - 4×2m - ₹2,58,000">Enterprise Booth — 4 × 2 m — ₹2,58,000</option><option value="Flagship Pavilion - 6×2m - ₹3,87,000">Flagship Pavilion — 6 × 2 m — ₹3,87,000</option><option value="Mega Pavilion - 7×7.7m - ₹17,40,000">Mega Pavilion — 7 × 7.7 m — ₹17,40,000</option><option value="Undecided">Not sure yet / Need consultation</option></select></div><div class="mt-4"><label class="text-xs text-gray-400 mb-1 block">Preferred Zone</label><select id="cf-zone" class="w-full px-4 py-3 rounded-xl text-sm"><option value="">Any zone</option><option value="Main Hall">Main Hall</option><option value="Innovation Hub">Innovation Hub</option><option value="Startup Alley">Startup Alley</option><option value="Enterprise Zone">Enterprise Zone</option></select></div>';
+    extra = '<div><label class="text-xs text-gray-400 mb-1 block">Preferred Booth Type</label><select id="cf-booth" class="w-full px-4 py-3 rounded-xl text-sm"><option value="">Select booth type</option><option value="Startup Pod - 1.5×1.5m - ₹48,000">Startup Pod — 1.5 × 1.5 m — ₹48,000</option><option value="Explorer Booth - 2×2m - ₹1,25,000">Explorer Booth — 2 × 2 m — ₹1,25,000</option><option value="Innovator Booth - 3×2m - ₹1,95,000">Innovator Booth — 3 × 2 m — ₹1,95,000</option><option value="Accelerator Booth - 3×3m - ₹2,91,000">Accelerator Booth — 3 × 3 m — ₹2,91,000</option><option value="Enterprise Booth - 4×2m - ₹2,58,000">Enterprise Booth — 4 × 2 m — ₹2,58,000</option><option value="Flagship Pavilion - 6×2m - ₹3,87,000">Flagship Pavilion — 6 × 2 m — ₹3,87,000</option><option value="Mega Pavilion - 7×7.7m - ₹17,40,000">Mega Pavilion — 7 × 7.7 m — ₹17,40,000</option><option value="Undecided">Not sure yet / Need consultation</option></select></div><div class="mt-4"><label class="text-xs text-gray-400 mb-1 block">Preferred Zone</label><select id="cf-zone" class="w-full px-4 py-3 rounded-xl text-sm"><option value="">Any zone</option><option value="Main Hall">Main Hall</option><option value="Innovation Hub">Innovation Hub</option><option value="Startup Alley">Startup Alley</option><option value="Enterprise Zone">Enterprise Zone</option></select></div>';
   } else if (type === 'speaking') {
     extra = '<div><label class="text-xs text-gray-400 mb-1 block">Proposed Topic</label><input type="text" id="cf-topic" autocomplete="off" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Your talk/workshop topic"></div>';
   } else if (type === 'group_registration') {
@@ -9534,7 +11011,7 @@ function paintPayHoldingPage(w) {
 // ==================== STANDALONE INQUIRY FORM PAGE ====================
 
 function inquiryFormPageHTML(): string {
-  return `${sharedHeadHTML('Book Your Booth', '/inquiry', "Exhibit at Bharat AI Innovation 2026. Book a booth to reach 5,000+ AI decision-makers at WTC Mumbai, 20-21 Nov 2026. Booths from ₹38,000.")}
+  return `${sharedHeadHTML('Book Your Booth', '/inquiry', "Exhibit at Bharat AI Innovation 2026. Book a booth to reach 5,000+ AI decision-makers at WTC Mumbai, 20-21 Nov 2026. Booths from ₹48,000.")}
 <body class="min-h-screen">
 ${sharedNavHTML('inquiry')}
 
@@ -9554,13 +11031,13 @@ ${sharedNavHTML('inquiry')}
     <div class="lg:col-span-1 space-y-3">
       <h3 class="font-bold text-base text-amber-300 mb-2"><i class="fas fa-th-large mr-2"></i>Booth Packages</h3>
 
-      <div class="booth-pkg glass rounded-xl p-4 border border-green-500/20 cursor-pointer hover:border-green-400/40 transition" onclick="selectBooth(this, 'Startup Pod - 1.5x1.5m - Rs.38,000')">
+      <div class="booth-pkg glass rounded-xl p-4 border border-green-500/20 cursor-pointer hover:border-green-400/40 transition" onclick="selectBooth(this, 'Startup Pod - 1.5x1.5m - Rs.48,000')">
         <div class="flex items-center justify-between">
           <div>
             <span class="text-sm font-bold text-green-300">&#x1F680; Startup Pod</span>
             <p class="text-[10px] text-gray-400 mt-0.5">1.5 x 1.5 m (2.25 sqm)</p>
           </div>
-          <span class="text-sm font-bold text-green-400">&#x20B9;38,000</span>
+          <span class="text-sm font-bold text-green-400">&#x20B9;48,000</span>
         </div>
       </div>
 
@@ -9657,7 +11134,7 @@ ${sharedNavHTML('inquiry')}
             <label class="text-xs text-gray-400 mb-1 block">Booth Type *</label>
             <select id="iq-booth-type" required class="w-full px-4 py-3 rounded-xl text-sm">
               <option value="">Select booth type</option>
-              <option value="Startup Pod - 1.5x1.5m - Rs.38,000">Startup Pod &#x2014; 1.5 x 1.5 m &#x2014; &#x20B9;38,000</option>
+              <option value="Startup Pod - 1.5x1.5m - Rs.48,000">Startup Pod &#x2014; 1.5 x 1.5 m &#x2014; &#x20B9;48,000</option>
               <option value="Explorer Booth - 2x2m - Rs.1,25,000">Explorer Booth &#x2014; 2 x 2 m &#x2014; &#x20B9;1,25,000</option>
               <option value="Innovator Booth - 3x2m - Rs.1,95,000">Innovator Booth &#x2014; 3 x 2 m &#x2014; &#x20B9;1,95,000</option>
               <option value="Accelerator Booth - 3x3m - Rs.2,91,000">Accelerator Booth &#x2014; 3 x 3 m &#x2014; &#x20B9;2,91,000</option>
@@ -9828,7 +11305,7 @@ ${sharedFooterHTML()}
 ${sharedToastJS()}
 
 var BOOTH_PRICES = {
-  'Startup Pod - 1.5x1.5m - Rs.38,000': { name: 'Startup Pod (1.5 x 1.5 m)', price: 38000 },
+  'Startup Pod - 1.5x1.5m - Rs.48,000': { name: 'Startup Pod (1.5 x 1.5 m)', price: 48000 },
   'Explorer Booth - 2x2m - Rs.1,25,000': { name: 'Explorer Booth (2 x 2 m)', price: 125000 },
   'Innovator Booth - 3x2m - Rs.1,95,000': { name: 'Innovator Booth (3 x 2 m)', price: 195000 },
   'Accelerator Booth - 3x3m - Rs.2,91,000': { name: 'Accelerator Booth (3 x 3 m)', price: 291000 },
@@ -17320,6 +18797,11 @@ function adminPageHTML(): string {
       <button onclick="switchSection('floor-plan')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="floor-plan" title="Floor Plan">
         <i class="fas fa-map w-5 text-center shrink-0"></i><span class="sidebar-label">Floor Plan</span>
       </button>
+      <!-- Beside Floor Plan on purpose: they are the two halves of one revenue
+           picture, and the sponsorship half is frequently the larger one. -->
+      <button onclick="switchSection('sponsorship')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="sponsorship" title="Sponsorship">
+        <i class="fas fa-bullhorn w-5 text-center shrink-0"></i><span class="sidebar-label">Sponsorship</span>
+      </button>
       <button onclick="switchSection('awards')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="awards" title="Awards">
         <i class="fas fa-trophy w-5 text-center shrink-0"></i><span class="sidebar-label">Awards</span>
       </button>
@@ -17395,6 +18877,8 @@ function adminPageHTML(): string {
       <div id="section-booth-requests" class="section-content hidden"></div>
       <!-- Floor Plan Section: the 93 stands and who holds each one -->
       <div id="section-floor-plan" class="section-content hidden"></div>
+      <!-- Sponsorship Section: everything the show sells that is not floor space -->
+      <div id="section-sponsorship" class="section-content hidden"></div>
       <!-- Awards Section -->
       <div id="section-awards" class="section-content hidden"></div>
       <!-- Announcements Section -->
@@ -17774,8 +19258,8 @@ function adminPageHTML(): string {
       document.querySelectorAll('.section-content').forEach(s => s.classList.add('hidden'));
       document.getElementById('section-'+sec).classList.remove('hidden');
 
-      const titles = { overview:'Overview', attendees:'Attendee Management', sessions:'Session Management', exhibitors:'Exhibitor Management', 'booth-requests':'Booth Requests', 'floor-plan':'Floor Plan', awards:'Awards Management', announcements:'Announcement Management', innovation:'Innovation Talk & Showcase', 'startup-pitch':'Startup Pitch Management', inquiries:'Inquiry Management', payments:'Payments & Invoices', 'badge-desk':'Badge Desk', analytics:'Analytics & Reports', rooms:'Boardrooms', settings:'Settings' };
-      const subtitles = { overview:'Real-time event management dashboard', attendees:'Manage all registered attendees', sessions:'Create and manage event sessions', exhibitors:'Manage exhibition booths', 'booth-requests':'Review and manage booth booking requests', 'floor-plan':'Which of the 93 stands are sold, held and still on the market', awards:'Manage award categories and nominees', announcements:'Create and manage live feed announcements', innovation:'Manage innovation talk and showcase schedule', 'startup-pitch':'Manage startup pitches and investor panel', inquiries:'View and manage all incoming inquiries', payments:'Confirm payments taken on mUni Campus and issue GST invoices', 'badge-desk':'Event-day check-in and the staff accounts that scan passes', analytics:'Deep dive into event engagement metrics', rooms:'Who has which WTC boardroom, hour by hour, across both event days', settings:'Configure email, API keys and app settings' };
+      const titles = { overview:'Overview', attendees:'Attendee Management', sessions:'Session Management', exhibitors:'Exhibitor Management', 'booth-requests':'Booth Requests', 'floor-plan':'Floor Plan', sponsorship:'Sponsorship & Branding', awards:'Awards Management', announcements:'Announcement Management', innovation:'Innovation Talk & Showcase', 'startup-pitch':'Startup Pitch Management', inquiries:'Inquiry Management', payments:'Payments & Invoices', 'badge-desk':'Badge Desk', analytics:'Analytics & Reports', rooms:'Boardrooms', settings:'Settings' };
+      const subtitles = { overview:'Real-time event management dashboard', attendees:'Manage all registered attendees', sessions:'Create and manage event sessions', exhibitors:'Manage exhibition booths', 'booth-requests':'Review and manage booth booking requests', 'floor-plan':'Which of the 93 stands are sold, held and still on the market', sponsorship:'Everything the show sells that is not floor space — and the combined revenue picture', awards:'Manage award categories and nominees', announcements:'Create and manage live feed announcements', innovation:'Manage innovation talk and showcase schedule', 'startup-pitch':'Manage startup pitches and investor panel', inquiries:'View and manage all incoming inquiries', payments:'Confirm payments taken on mUni Campus and issue GST invoices', 'badge-desk':'Event-day check-in and the staff accounts that scan passes', analytics:'Deep dive into event engagement metrics', rooms:'Who has which WTC boardroom, hour by hour, across both event days', settings:'Configure email, API keys and app settings' };
       document.getElementById('page-title').textContent = titles[sec] || sec;
       document.getElementById('page-subtitle').textContent = subtitles[sec] || '';
 
@@ -17882,6 +19366,7 @@ function adminPageHTML(): string {
         case 'exhibitors': loadAdminExhibitors(); break;
         case 'booth-requests': loadAdminBoothRequests(); break;
         case 'floor-plan': loadAdminFloorPlan(); break;
+        case 'sponsorship': loadAdminSponsorship(); break;
         case 'awards': loadAdminAwards(); break;
         case 'announcements': loadAdminAnnouncements(); break;
         case 'analytics': loadAnalytics(); break;
@@ -21474,15 +22959,60 @@ function adminPageHTML(): string {
       return '₹' + inrN(n);
     }
     const pctOf = (part, whole) => (Number(whole) > 0 ? Math.round((Number(part) / Number(whole)) * 100) : 0);
+
+    // ---- area, said both ways ------------------------------------------------
+    // The hall is DRAWN in metres and the contract is written in metres, so sqm is
+    // the primary figure and sq ft never appears on its own — a stand sold against
+    // a square-foot number the drawing does not agree with is a stand that does not
+    // fit. But Indian venues quote per square foot, and an exhibitor comparing this
+    // hall against one they were quoted in sq ft cannot do the conversion in their
+    // head while somebody is on the phone. So: both, every time, sqm first.
+    const SQFT_PER_SQM = 10.7639;
+    // Whole square feet. A tenth of a square foot is below the resolution of
+    // anything anybody does with this number.
+    function sqftN(n) { return Math.round((Number(n) || 0) * SQFT_PER_SQM).toLocaleString('en-IN'); }
+    // sqm to at most two decimals, never padded: 604.3 stays 604.3 and 9 stays 9.
+    // NOT rounded to one decimal, because a Startup Pod is 2.25 sqm and 2.3 sqm is
+    // a stand that does not exist — the display must not invent floor area.
+    function sqmN(n) { return (Math.round((Number(n) || 0) * 100) / 100).toLocaleString('en-IN'); }
+    // "9 sqm · 97 sq ft", the pair as one phrase, for a row or a modal subtitle.
+    function sqmPair(n) { return sqmN(n) + ' sqm &middot; ' + sqftN(n) + ' sq ft'; }
+    // today + n days as the YYYY-MM-DD a date input speaks, and whole days between
+    // today and a stored date — negative once it is in the past. Both text-only: no
+    // Date arithmetic on a stored string that may be a date or a datetime.
+    function dayPlus(n) { return new Date(Date.now() + n * 86400000).toISOString().slice(0, 10); }
+    function daysUntil(v) {
+      const d = String(v == null ? '' : v).slice(0, 10);
+      if (d.length !== 10) return null;
+      const t = Date.parse(d + 'T00:00:00Z');
+      if (!isFinite(t)) return null;
+      return Math.round((t - Date.parse(dayPlus(0) + 'T00:00:00Z')) / 86400000);
+    }
+    // A rate quoted both ways, because the two questions "what is this stand" and
+    // "what does space cost here" are asked by different people. Rs 2,90,250 over
+    // 9 sqm is Rs 32,250/sqm, which is Rs 2,996/sq ft.
+    function rateBoth(inr, sqm) {
+      inr = Number(inr) || 0; sqm = Number(sqm) || 0;
+      if (!inr || !sqm) return '';
+      return '₹' + inrN(Math.round(inr / sqm)) + '/sqm &middot; ₹' + inrN(Math.round(inr / (sqm * SQFT_PER_SQM))) + '/sq ft';
+    }
+
     // GST is 18% and the net is DERIVED, never typed — the same arithmetic the
     // server refuses to take on trust, so the form can never show a total the
     // saved row will disagree with.
-    function boothMoneyFrom(list, discount) {
+    function boothMoneyFrom(list, discount, tds) {
       list = Math.max(0, Math.round(Number(list) || 0));
       discount = Math.min(list, Math.max(0, Math.round(Number(discount) || 0)));
       const net = list - discount;
       const gst = Math.round(net * 18 / 100);
-      return { list: list, discount: discount, net: net, gst: gst, total: net + gst };
+      const total = net + gst;
+      // TDS is withheld OUT OF the invoice by the buyer and paid to the government
+      // against the organiser's PAN, so DUE — the cash that will actually arrive
+      // in the bank — is the grand total less the withholding. Everything on this
+      // form that talks about receipts talks about DUE, not TOTAL, which is what
+      // stops a fully settled B2B stand reading as part paid for ever.
+      tds = Math.min(total, Math.max(0, Math.round(Number(tds) || 0)));
+      return { list: list, discount: discount, net: net, gst: gst, total: total, tds: tds, due: total - tds };
     }
     // Digits only, so "₹1,25,000" and "1 25 000" both arrive as 125000.
     // Deliberately NOT the parser the money fields use: it strips a minus along
@@ -21501,26 +23031,85 @@ function adminPageHTML(): string {
       return isFinite(n) ? n : null;
     }
 
-    // The three money fields on the record-a-sale form, judged by the rules the PUT
-    // .../sale route now enforces — same fields, same order — so the form can never
-    // let through a figure the server is going to refuse, and never refuses one it
-    // would accept. Returns [] when the deal is saveable. An organiser block is
-    // space taken off the market, not a sale: it has no money to check.
-    function boothSaleIssues() {
+    // The four money fields on a record-a-sale form, judged by the rules the PUT
+    // .../sale routes enforce — same fields, same order — so the form can never let
+    // through a figure the server is going to refuse, and never refuses one it would
+    // accept. Returns [] when the deal is saveable. An organiser block is inventory
+    // taken off the market, not a sale: it has no money to check.
+    //
+    // PREFIXED rather than hardcoded to 'bs', because there are now two things being
+    // sold with the same commercial model: a stand ('bs-list', 'bs-discount'…) and a
+    // sponsorship unit ('ss-…'). One implementation, two forms — which is the only
+    // way the two screens can be guaranteed to refuse the same figure in the same
+    // words, the same guarantee boothSaleMoneyChecked gives on the server.
+    // The 'thing' argument is what the sentence calls it, since "this stand cannot
+    // be given away" is the wrong noun on the delegate lanyard.
+    function saleMoneyIssues(p, thing) {
+      thing = thing || 'stand';
       var el = function (id) { return document.getElementById(id); };
-      var st = el('bs-status');
+      var st = el(p + '-status');
       if (st && st.value === 'blocked') return [];
-      var listEl = el('bs-list'), discEl = el('bs-discount'), paidEl = el('bs-paid');
+      var listEl = el(p + '-list'), discEl = el(p + '-discount'), paidEl = el(p + '-paid');
       if (!listEl) return [];
       var out = [];
       var list = boothRupeeStrict(listEl.value);
-      if (list === null) out.push({ id: 'bs-list', msg: 'The list price has to be a whole number of rupees.' });
+      if (list === null) out.push({ id: p + '-list', msg: 'The list price has to be a whole number of rupees.' });
       var disc = boothRupeeStrict(discEl ? discEl.value : 0);
-      if (disc === null) out.push({ id: 'bs-discount', msg: 'The discount has to be a whole number of rupees. A minus is not a discount — type the amount taken off.' });
-      else if (list !== null && disc > list) out.push({ id: 'bs-discount', msg: 'A ₹' + inrN(disc) + ' discount is more than the ₹' + inrN(list) + ' list price. Lower the discount, or raise the price — this stand cannot be given away by saving it.' });
+      if (disc === null) out.push({ id: p + '-discount', msg: 'The discount has to be a whole number of rupees. A minus is not a discount — type the amount taken off.' });
+      else if (list !== null && disc > list) out.push({ id: p + '-discount', msg: 'A ₹' + inrN(disc) + ' discount is more than the ₹' + inrN(list) + ' list price. Lower the discount, or raise the price — this ' + thing + ' cannot be given away by saving it.' });
       var paid = boothRupeeStrict(paidEl ? paidEl.value : 0);
-      if (paid === null) out.push({ id: 'bs-paid', msg: 'Money received has to be a whole number of rupees. Record a refund by lowering this figure, not by typing a minus — a minus here used to be banked as money collected.' });
+      if (paid === null) out.push({ id: p + '-paid', msg: 'Money received has to be a whole number of rupees. Record a refund by lowering this figure, not by typing a minus — a minus here used to be banked as money collected.' });
+      // The withholding, judged by the same rule and in the same words the server
+      // uses, so this form can never let through a TDS figure the PUT will refuse.
+      var tdsEl = el(p + '-tds');
+      var tds = boothRupeeStrict(tdsEl ? tdsEl.value : 0);
+      if (tds === null) out.push({ id: p + '-tds', msg: 'Tax deducted at source has to be a whole number of rupees. A minus is not a deduction — type the amount the buyer withheld.' });
+      else if (list !== null && disc !== null) {
+        var grand = boothMoneyFrom(list, disc).total;
+        if (tds > grand) out.push({ id: p + '-tds', msg: 'A ₹' + inrN(tds) + ' deduction is more than the ₹' + inrN(grand) + ' invoice. TDS is withheld out of the invoice, not added to it — 2% u/s 194C or 10% u/s 194I of the net is the usual figure.' });
+      }
       return out;
+    }
+    function boothSaleIssues() { return saleMoneyIssues('bs', 'stand'); }
+
+    // The server's boothGstinWarning, in the browser, so a mistyped GSTIN is caught
+    // at the field rather than read off a toast after the sale is already saved.
+    // Deliberately NOT part of boothSaleIssues and it never disables Save: a bad or
+    // missing GSTIN is something to fix before the invoice goes out, never a reason
+    // to refuse a deal that has already been done.
+    function gstinProblem(s) {
+      s = String(s == null ? '' : s).trim().toUpperCase();
+      if (!s) return '';
+      if (s.length !== 15) return 'A GSTIN is 15 characters; this one is ' + s.length + '.';
+      var st = Number(s.slice(0, 2));
+      if (!/^[0-9][0-9]/.test(s)) return 'A GSTIN starts with a 2-digit state code.';
+      if (!((st >= 1 && st <= 38) || st === 97 || st === 99)) return s.slice(0, 2) + ' is not a GST state code.';
+      if (!/^[A-Z][A-Z][A-Z][A-Z][A-Z][0-9][0-9][0-9][0-9][A-Z]$/.test(s.slice(2, 12))) return 'Positions 3-12 have to be a PAN.';
+      if (!/^[0-9A-Z]$/.test(s.slice(12, 13)) || !/^[0-9A-Z]$/.test(s.slice(14, 15))) return 'That contains a character a GSTIN cannot.';
+      return '';
+    }
+    // Reads the state code off the GSTIN so nobody has to look it up — but only
+    // while the operator has not typed one themselves, because a manually entered
+    // place of supply is a decision and this must not overwrite it.
+    //
+    // Prefixed for the same reason saleMoneyIssues is: the stand form and the
+    // sponsorship form ask the identical question about the identical field, and a
+    // second copy of it is a second place for the state-code rule to drift.
+    function boothGstinCheck() { return gstinCheck('bs'); }
+    function gstinCheck(p) {
+      var g = document.getElementById(p + '-gstin');
+      var st = document.getElementById(p + '-state');
+      var note = document.getElementById(p + '-gstin-note');
+      if (!g) return;
+      var raw = String(g.value || '').trim().toUpperCase();
+      if (st && !st.dataset.typed && /^[0-9][0-9]/.test(raw)) st.value = raw.slice(0, 2);
+      var bad = gstinProblem(raw);
+      g.classList.toggle('border-amber-500', !!bad);
+      g.setAttribute('aria-invalid', bad ? 'true' : 'false');
+      if (!note) return;
+      if (bad) { note.className = 'text-[11px] text-amber-300 mt-1'; note.innerHTML = '<i class="fas fa-triangle-exclamation mr-1"></i>' + escH(bad) + ' The sale will still save.'; }
+      else if (!raw) { note.className = 'text-[11px] text-gray-500 mt-1'; note.textContent = 'Unregistered or not to hand? Leave it blank — the sale still saves.'; }
+      else { note.className = 'text-[11px] text-green-400 mt-1'; note.innerHTML = '<i class="fas fa-check mr-1"></i>Well-formed &middot; place of supply ' + escH(raw.slice(0, 2)); }
     }
 
     // One inline note under one field, plus a red ring on the field itself. Called
@@ -21558,6 +23147,10 @@ function adminPageHTML(): string {
         // A request placed from another tab must not stay armed against a stand it
         // no longer needs.
         if (adminBoothPlacing && !(g.requests || []).some(r => r.id === adminBoothPlacing)) adminBoothPlacing = null;
+        // The other half of the revenue picture. Best effort and never blocking: the
+        // sponsorship tables may not exist yet, and when they do not this screen has
+        // to say so on the combined line rather than fail to draw the floor.
+        await ensureSponsLoaded();
         renderAdminFloorPlan();
       } catch(e) { sectionError(section, 'the floor plan', e, 'loadAdminFloorPlan()'); }
     }
@@ -21654,10 +23247,10 @@ function adminPageHTML(): string {
           \${boothStat(Number(s.available || 0), 'Available', "boothDrill('available','')", { tone: 'text-primary-400' })}
           \${boothStat(Number(s.held || 0), 'Held', "boothDrill('held','')", { tone: 'text-yellow-400' })}
           \${boothStat(Number(s.sold || 0), 'Sold', "boothDrill('sold','')", { tone: 'text-green-400' })}
-          \${boothStat(Number(s.sold_sqm || 0).toLocaleString('en-IN'), 'Sqm sold', "boothDrill('sold','')", { sub: 'of ' + Number(s.total_sqm || 0).toLocaleString('en-IN') + ' sqm' })}
+          \${boothStat(sqmN(s.sold_sqm), 'Sqm sold', "boothDrill('sold','')", { sub: '<span class="text-gray-400">' + sqftN(s.sold_sqm) + ' sq ft</span> &middot; of ' + sqmN(s.total_sqm) + ' sqm' })}
           \${boothStat(inrShort(s.confirmed_value_inr), 'Confirmed, ex-GST', "boothDrill('sold','')", { tone: 'text-green-400', border: 'border border-green-500/20', sub: '₹' + inrN(s.confirmed_value_inr) })}
         </div>
-        <p class="text-[11px] text-gray-500 mb-4">The public floor plan reads these same rows. A <span class="text-yellow-400">hold</span> and an organiser <span class="text-gray-400">block</span> both show as taken without naming anybody; only a <span class="text-green-400">sold</span> stand publishes the exhibitor's name. Releasing deletes the allocation and puts the stand back on the market at once.\${blocked ? ' ' + blocked + (blocked === 1 ? ' stand is blocked by the organiser and counts' : ' stands are blocked by the organiser and count') + ' as neither sold nor available.' : ''}\${Number(g.summary && g.summary.held_value_inr) ? ' ₹' + inrN(g.summary.held_value_inr) + ' more is sitting in holds.' : ''}</p>\`;
+        <p class="text-[11px] text-gray-500 mb-4">The public floor plan reads these same rows. A <span class="text-yellow-400">hold</span> and an organiser <span class="text-gray-400">block</span> both show as taken without naming anybody; only a <span class="text-green-400">sold</span> stand publishes the exhibitor's name. Releasing puts the stand back on the market at once &mdash; deleting the allocation if nothing was ever invoiced, keeping it as a released record once an invoice exists, because a credit note has to refer to something.\${Number(g.summary && g.summary.lapsed_holds) ? ' <span class="text-amber-300">' + Number(g.summary.lapsed_holds) + (Number(g.summary.lapsed_holds) === 1 ? ' hold has' : ' holds have') + ' lapsed and already count as available &mdash; see Holds expiring on the Sales tab.</span>' : ''}\${blocked ? ' ' + blocked + (blocked === 1 ? ' stand is blocked by the organiser and counts' : ' stands are blocked by the organiser and count') + ' as neither sold nor available.' : ''}\${Number(g.summary && g.summary.held_value_inr) ? ' ₹' + inrN(g.summary.held_value_inr) + ' more is sitting in holds.' : ''}</p>\`;
     }
 
     // ============ SALES DASHBOARD ============
@@ -21708,35 +23301,198 @@ function adminPageHTML(): string {
       const tone = achievedPct >= 75 ? 'text-green-400' : achievedPct >= 40 ? 'text-amber-300' : 'text-red-400';
       const occTone = occupancy >= 75 ? 'text-green-400' : occupancy >= 40 ? 'text-amber-300' : 'text-red-400';
       const outstanding = Number(s.outstanding_inr || 0);
+      const tds = Number(s.tds_inr || 0);
       const barConfirmed = Math.min(100, achievedPct);
       const barHeld = Math.max(0, Math.min(100 - barConfirmed, pctOf(held, target)));
 
       return \`
-        <h4 class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2"><i class="fas fa-vector-square mr-1.5"></i>Floor area</h4>
+        \${combinedRevenueHtml()}
+
+        <h4 class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2"><i class="fas fa-vector-square mr-1.5"></i>Floor area <span class="normal-case tracking-normal text-gray-600 font-normal">&mdash; square metres, with square feet beneath</span></h4>
         <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
-          \${boothStat(totalSqm.toLocaleString('en-IN'), 'Total sqm', "boothDrill('','')", { sub: Number(s.total || 0) + ' stands' })}
-          \${boothStat(Number(s.sold_sqm || 0).toLocaleString('en-IN'), 'Sold', "boothDrill('sold','')", { tone: 'text-green-400', sub: Number(s.sold || 0) + ' stands' })}
-          \${boothStat(Number(s.held_sqm || 0).toLocaleString('en-IN'), 'Held', "boothDrill('held','')", { tone: 'text-yellow-400', sub: Number(s.held || 0) + ' stands' })}
-          \${boothStat(Number(s.available_sqm || 0).toLocaleString('en-IN'), 'Available', "boothDrill('available','')", { tone: 'text-primary-400', sub: Number(s.available || 0) + ' stands' })}
-          \${boothStat(occupancy + '%', 'Occupancy', "boothDrill('sold','')", { tone: occTone, sub: takenSqm.toLocaleString('en-IN') + ' of ' + totalSqm.toLocaleString('en-IN') + ' sqm taken' })}
+          \${boothStat(sqmN(totalSqm), 'Total sqm', "boothDrill('','')", { sub: '<span class="text-gray-400">' + sqftN(totalSqm) + ' sq ft</span> &middot; ' + Number(s.total || 0) + ' stands' })}
+          \${boothStat(sqmN(s.sold_sqm), 'Sold', "boothDrill('sold','')", { tone: 'text-green-400', sub: '<span class="text-gray-400">' + sqftN(s.sold_sqm) + ' sq ft</span> &middot; ' + Number(s.sold || 0) + ' stands' })}
+          \${boothStat(sqmN(s.held_sqm), 'Held', "boothDrill('held','')", { tone: 'text-yellow-400', sub: '<span class="text-gray-400">' + sqftN(s.held_sqm) + ' sq ft</span> &middot; ' + Number(s.held || 0) + ' stands' })}
+          \${boothStat(sqmN(s.available_sqm), 'Available', "boothDrill('available','')", { tone: 'text-primary-400', sub: '<span class="text-gray-400">' + sqftN(s.available_sqm) + ' sq ft</span> &middot; ' + Number(s.available || 0) + ' stands' })}
+          \${boothStat(occupancy + '%', 'Occupancy', "boothDrill('sold','')", { tone: occTone, sub: sqmN(takenSqm) + ' of ' + sqmN(totalSqm) + ' sqm taken<br><span class="text-gray-400">' + sqftN(takenSqm) + ' of ' + sqftN(totalSqm) + ' sq ft</span>' })}
         </div>
 
-        <h4 class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2"><i class="fas fa-indian-rupee-sign mr-1.5"></i>Revenue <span class="normal-case tracking-normal text-gray-600 font-normal">— net of discount, ex-GST unless said otherwise</span></h4>
+        <h4 class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2"><i class="fas fa-indian-rupee-sign mr-1.5"></i>Stand revenue <span class="normal-case tracking-normal text-gray-600 font-normal">&mdash; this inventory only; the combined figure is at the top</span></h4>
         <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
           \${boothStat(inrShort(s.potential_inr), 'Potential', "boothDrill('','')", { sub: 'every stand at list · ₹' + inrN(s.potential_inr) })}
           \${boothStat(inrShort(booked), 'Booked', "boothDrill('','','','booked')", { tone: 'text-primary-400', sub: 'held + confirmed · ₹' + inrN(booked) })}
           \${boothStat(inrShort(confirmed), 'Confirmed', "boothDrill('sold','')", { tone: 'text-green-400', border: 'border border-green-500/20', sub: 'sold stands · ₹' + inrN(confirmed) })}
           \${boothStat(inrShort(s.invoiced_inr), 'Invoiced', "boothDrill('','','','invoiced')", { sub: 'incl. GST · ₹' + inrN(s.invoiced_inr) })}
           \${boothStat(inrShort(s.collected_inr), 'Collected', "boothDrill('','','','collected')", { tone: 'text-green-400', sub: 'receipts banked · ₹' + inrN(s.collected_inr) })}
-          \${boothStat(inrShort(outstanding), 'Outstanding', "boothDrill('','','','outstanding')", { tone: outstanding ? 'text-red-400' : 'text-gray-400', border: outstanding ? 'border border-red-500/25' : 'border border-white/10', sub: 'invoiced not collected · ₹' + inrN(outstanding) })}
+          \${boothStat(inrShort(tds), 'TDS withheld', "boothDrill('','','','tds')", { tone: tds ? 'text-amber-300' : 'text-gray-400', title: 'Show the stands the buyer withheld tax on', sub: 'settled, never banked · ₹' + inrN(tds) })}
+          \${boothStat(inrShort(outstanding), 'Outstanding', "boothDrill('','','','outstanding')", { tone: outstanding ? 'text-red-400' : 'text-gray-400', border: outstanding ? 'border border-red-500/25' : 'border border-white/10', sub: 'invoiced, less receipts and TDS · ₹' + inrN(outstanding) })}
           \${boothStat(inrShort(s.discount_inr), 'Discount given', "boothDrill('','','','discounted')", { tone: Number(s.discount_inr || 0) ? 'text-amber-300' : 'text-gray-400', sub: 'off list · ₹' + inrN(s.discount_inr) })}
           \${boothStat(Number(s.available || 0), 'Still to sell', "boothDrill('available','')", { tone: 'text-primary-400', sub: inrShort(Number(s.potential_inr || 0) - booked) + ' of list unsold' })}
         </div>
+        \${tds ? '<p class="text-[11px] text-gray-500 -mt-4 mb-6"><i class="fas fa-circle-info mr-1"></i>₹' + inrN(tds) + ' of the invoiced total was withheld at source by buyers and paid to the government against the organiser\\'s PAN. It is settled money that will never appear on a bank statement, so Outstanding is <b>invoiced &minus; collected &minus; TDS</b> &mdash; without that subtraction every fully settled B2B stand would sit here as a debt.</p>' : ''}
+
+        \${adminBoothAgeingHtml(g)}
+        \${adminBoothHoldsHtml(g)}
 
         <div id="booth-target-box" class="glass rounded-xl p-4 mb-6 border border-white/10">\${adminBoothTargetHtml(g)}</div>
 
         <h4 class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2"><i class="fas fa-layer-group mr-1.5"></i>By category <span class="normal-case tracking-normal text-gray-600 font-normal">— every figure opens the stands behind it</span></h4>
         \${adminBoothCategoryTableHtml(g)}\`;
+    }
+
+    // ============ WHAT IS STILL OWED, AND WHEN IT WAS DUE ============
+    //
+    // WHAT IS CHASEABLE on one stand. An invoice is the clock: with no invoice
+    // number there is nothing to chase and nothing to age. TDS has already left the
+    // buyer's hands and gone to the government, so it is settled and comes off here
+    // exactly as it does on the dashboard — otherwise every B2B stand looks like a
+    // debtor for the rest of the year.
+    function boothOwing(b) {
+      if (b.status !== 'sold' && b.status !== 'held') return 0;
+      if (!b.invoice_number) return 0;
+      return Math.max(0, Number(b.grand_total_inr || 0) - Number(b.amount_paid_inr || 0) - Number(b.tds_deducted_inr || 0));
+    }
+    // The clock is balance_due_date where the desk agreed terms and the invoice date
+    // otherwise, because an invoice with no stated terms is still an invoice that is
+    // ageing. An invoice with neither is not silently called current — it gets its
+    // own bucket, because "we do not know" is a different answer from "not yet due".
+    const BOOTH_AGE_BUCKETS = [
+      { key: 'not_due', label: 'Not yet due', tone: 'text-gray-300', ring: 'border-white/10' },
+      { key: 'd0_30', label: '0-30 days over', tone: 'text-amber-300', ring: 'border-amber-500/25' },
+      { key: 'd30_60', label: '30-60 days over', tone: 'text-orange-400', ring: 'border-orange-500/25' },
+      { key: 'd60', label: '60+ days over', tone: 'text-red-400', ring: 'border-red-500/30' },
+      { key: 'undated', label: 'No due date', tone: 'text-gray-400', ring: 'border-white/10' },
+    ];
+    function boothAgeBucket(b) {
+      if (!boothOwing(b)) return '';
+      const d = daysUntil(b.balance_due_date || b.invoice_date);
+      if (d === null) return 'undated';
+      if (d >= 0) return 'not_due';
+      const over = -d;
+      return over <= 30 ? 'd0_30' : over <= 60 ? 'd30_60' : 'd60';
+    }
+    function boothOverdueDays(b) {
+      const d = daysUntil(b.balance_due_date || b.invoice_date);
+      return d === null ? null : -d;
+    }
+
+    function adminBoothAgeingHtml(g) {
+      const invoiced = (g.booths || []).filter(b => b.invoice_number && (b.status === 'sold' || b.status === 'held'));
+      if (!invoiced.length) return '';
+      const owing = invoiced.filter(b => boothOwing(b) > 0);
+      const head = '<h4 class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2"><i class="fas fa-hourglass-half mr-1.5"></i>Ageing <span class="normal-case tracking-normal text-gray-600 font-normal">&mdash; invoiced and not yet settled</span></h4>';
+      if (!owing.length) {
+        return head + '<div class="glass rounded-xl p-4 mb-6 border border-green-500/20 text-sm text-green-300"><i class="fas fa-check mr-2"></i>Every invoice raised has been settled &mdash; counting TDS the buyers withheld.</div>';
+      }
+      const by = {};
+      BOOTH_AGE_BUCKETS.forEach(x => { by[x.key] = { n: 0, inr: 0 }; });
+      owing.forEach(b => { const k = boothAgeBucket(b); by[k].n++; by[k].inr += boothOwing(b); });
+      const cards = BOOTH_AGE_BUCKETS.filter(x => by[x.key].n).map(x =>
+        boothStat(inrShort(by[x.key].inr), x.label, "boothDrill('','','','age_" + x.key + "')", {
+          tone: x.tone, border: 'border ' + x.ring,
+          title: 'Show the ' + x.label.toLowerCase() + ' stands',
+          sub: by[x.key].n + (by[x.key].n === 1 ? ' stand' : ' stands') + ' &middot; ₹' + inrN(by[x.key].inr),
+        })).join('');
+      // The oldest first, because that is the order somebody would actually ring
+      // them in. Capped: this is a prompt to act, not a ledger.
+      const worst = owing.slice().sort((a, b) => (boothOverdueDays(b) || -99999) - (boothOverdueDays(a) || -99999)).slice(0, 8);
+      const rows = worst.map(b => {
+        const over = boothOverdueDays(b);
+        const when = over === null ? '<span class="text-gray-500">no date</span>'
+          : over > 0 ? '<span class="' + (over > 60 ? 'text-red-400' : over > 30 ? 'text-orange-400' : 'text-amber-300') + '">' + over + (over === 1 ? ' day over' : ' days over') + '</span>'
+          : '<span class="text-gray-400">due in ' + (-over) + (over === -1 ? ' day' : ' days') + '</span>';
+        return '<tr class="border-b border-white/5 hover:bg-white/5 transition-colors">' +
+          '<td class="py-2 px-2 font-semibold"><button type="button" onclick="openBoothDetailModal(\\'' + boothArg(b.code) + '\\')" class="rounded px-1.5 py-0.5 -mx-1.5 hover:bg-primary-500/20 hover:text-primary-300 focus:outline-none focus:ring-2 focus:ring-primary-500/70">' + escH(b.code) + '</button></td>' +
+          '<td class="py-2 px-2 min-w-[10rem]">' + escH(b.company_name || '') + (b.buyer_legal_name && b.buyer_legal_name !== b.company_name ? '<span class="block text-[10px] text-gray-500">' + escH(b.buyer_legal_name) + '</span>' : '') + '</td>' +
+          '<td class="py-2 px-2 text-gray-400 whitespace-nowrap">' + escH(b.invoice_number || '') + '</td>' +
+          '<td class="py-2 px-2 whitespace-nowrap">' + when + '</td>' +
+          '<td class="py-2 px-2 text-right tabular-nums font-semibold">₹' + inrN(boothOwing(b)) + '</td>' +
+          '<td class="py-2 px-2 text-right"><button type="button" onclick="openBoothSaleModal(\\'' + boothArg(b.code) + '\\')" class="px-2.5 py-1.5 rounded-lg text-[11px] font-medium glass hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-primary-500/70"><i class="fas fa-indian-rupee-sign mr-1"></i>Add a receipt</button></td></tr>';
+      }).join('');
+      return head +
+        '<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">' + cards + '</div>' +
+        '<div class="glass rounded-xl p-4 mb-6">' +
+        '<p class="text-[11px] text-gray-500 mb-2 sm:hidden"><i class="fas fa-arrows-left-right mr-1"></i>Swipe the table sideways for the age and what is owed.</p>' +
+        '<div class="overflow-x-auto"><table class="w-full text-xs min-w-[38rem]">' +
+        '<thead><tr class="border-b border-white/10 text-gray-400"><th class="text-left py-2 px-2 font-medium">Stand</th>' +
+        '<th class="text-left py-2 px-2 font-medium">Invoiced to</th><th class="text-left py-2 px-2 font-medium">Invoice</th>' +
+        '<th class="text-left py-2 px-2 font-medium">Age</th><th class="text-right py-2 px-2 font-medium">Still owed</th>' +
+        '<th class="text-right py-2 px-2 font-medium"></th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+        (owing.length > worst.length ? '<p class="text-[11px] text-gray-500 mt-2">Showing the ' + worst.length + ' oldest of ' + owing.length + '. The cards above open the rest.</p>' : '') +
+        '<p class="text-[11px] text-gray-500 mt-2">Aged against <b>Balance due by</b> where one was agreed, and the invoice date where it was not. TDS the buyer withheld counts as settled, so it is not chased here.</p></div>';
+    }
+
+    // ============ HOLDS EXPIRING THIS WEEK — THE CALL SHEET ============
+    //
+    // The reason the option clock is worth having. A held stand is a promise with a
+    // date on it; a week before that date is when somebody should be ringing. And an
+    // option that has ALREADY run out is the more urgent half: those stands are
+    // counted as available everywhere else on this screen, which means the floor
+    // plan is already offering them to the next caller while the company that was
+    // promised one still thinks it is theirs.
+    function adminBoothHoldsHtml(g) {
+      const all = g.booths || [];
+      const lapsed = all.filter(b => b.hold_lapsed);
+      const soon = all.filter(b => b.status === 'held' && daysUntil(b.hold_expires_at) !== null && daysUntil(b.hold_expires_at) <= 7)
+        .sort((a, b) => daysUntil(a.hold_expires_at) - daysUntil(b.hold_expires_at));
+      const undated = all.filter(b => b.status === 'held' && !b.hold_expires_at);
+      if (!lapsed.length && !soon.length && !undated.length) return '';
+      const line = (b, isLapsed) => {
+        const arg = boothArg(b.code);
+        const d = daysUntil(b.hold_expires_at);
+        const when = isLapsed
+          ? '<span class="text-red-400">expired ' + (d === null ? '' : (-d) + (d === -1 ? ' day' : ' days') + ' ago') + '</span>'
+          : d === null ? '<span class="text-amber-300">no expiry set</span>'
+          : d <= 0 ? '<span class="text-amber-300">lapses today</span>'
+          : '<span class="' + (d <= 3 ? 'text-amber-300' : 'text-gray-400') + '">' + d + (d === 1 ? ' day left' : ' days left') + '</span>';
+        return '<tr class="border-b border-white/5 hover:bg-white/5 transition-colors">' +
+          '<td class="py-2 px-2 font-semibold"><button type="button" onclick="openBoothDetailModal(\\'' + arg + '\\')" class="rounded px-1.5 py-0.5 -mx-1.5 hover:bg-primary-500/20 hover:text-primary-300 focus:outline-none focus:ring-2 focus:ring-primary-500/70">' + escH(b.code) + '</button>' +
+          '<span class="block text-[10px] text-gray-500">' + escH(b.name || '') + '</span></td>' +
+          '<td class="py-2 px-2 min-w-[10rem]">' + escH(b.company_name || 'Unnamed') +
+          (b.contact_name || b.email ? '<span class="block text-[10px] text-gray-500">' + escH(b.contact_name || '') + (b.email ? ' &middot; ' + escH(b.email) : '') + '</span>' : '') + '</td>' +
+          '<td class="py-2 px-2 whitespace-nowrap">' + when +
+          (b.hold_expires_at ? '<span class="block text-[10px] text-gray-500 tabular-nums">' + escH(String(b.hold_expires_at).slice(0, 10)) + '</span>' : '') + '</td>' +
+          '<td class="py-2 px-2 text-right tabular-nums">' + inrShort(b.amount_inr) + '</td>' +
+          '<td class="py-2 px-2"><div class="flex flex-wrap gap-1.5 justify-end">' +
+          (isLapsed ? '' :
+            '<button type="button" onclick="setBoothStatus(\\'' + arg + '\\', \\'confirmed\\')" class="px-2.5 py-1.5 rounded-lg text-[11px] font-medium bg-green-500/20 text-green-300 hover:bg-green-500/30 focus:outline-none focus:ring-2 focus:ring-green-400/70"><i class="fas fa-check mr-1"></i>Confirm</button>' +
+            '<button type="button" onclick="boothExtendHold(\\'' + arg + '\\')" class="px-2.5 py-1.5 rounded-lg text-[11px] font-medium glass hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-primary-500/70"><i class="fas fa-calendar-plus mr-1"></i>Extend</button>') +
+          '<button type="button" onclick="openBoothSaleModal(\\'' + arg + '\\')" class="px-2.5 py-1.5 rounded-lg text-[11px] font-medium glass hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-primary-500/70">' + (isLapsed ? 'Sell it' : 'Edit') + '</button>' +
+          (isLapsed ? '' : '<button type="button" onclick="releaseBooth(\\'' + arg + '\\')" class="px-2.5 py-1.5 rounded-lg text-[11px] font-medium text-red-400 hover:bg-red-500/10 focus:outline-none focus:ring-2 focus:ring-red-400/70">Release</button>') +
+          '</div></td></tr>';
+      };
+      const table = (title, note, items, isLapsed, ring) =>
+        !items.length ? '' :
+        '<div class="glass rounded-xl p-4 mb-3 border ' + ring + '">' +
+        '<h5 class="text-sm font-semibold mb-1">' + title + ' <span class="text-gray-500 font-normal">(' + items.length + ')</span></h5>' +
+        '<p class="text-[11px] text-gray-500 mb-3">' + note + '</p>' +
+        '<p class="text-[11px] text-gray-500 mb-2 sm:hidden"><i class="fas fa-arrows-left-right mr-1"></i>Swipe the table sideways for the value and the actions.</p>' +
+        '<div class="overflow-x-auto"><table class="w-full text-xs min-w-[34rem]"><thead><tr class="border-b border-white/10 text-gray-400">' +
+        '<th class="text-left py-2 px-2 font-medium">Stand</th><th class="text-left py-2 px-2 font-medium">Promised to</th>' +
+        '<th class="text-left py-2 px-2 font-medium">Clock</th><th class="text-right py-2 px-2 font-medium">Value</th>' +
+        '<th class="text-right py-2 px-2 font-medium">Do</th></tr></thead><tbody>' +
+        items.map(b => line(b, isLapsed)).join('') + '</tbody></table></div></div>';
+      return '<h4 class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2"><i class="fas fa-phone-volume mr-1.5"></i>Holds expiring <span class="normal-case tracking-normal text-gray-600 font-normal">&mdash; this week\\'s calls</span></h4>' +
+        table('Already lapsed', 'These options ran out. The stands are back on the market and counted as available everywhere on this screen &mdash; but nobody has told the company that was promised one. Ring, then either sell it to them again or let it go.', lapsed, true, 'border-red-500/25') +
+        table('Expiring within seven days', 'Confirm it, extend it, or release it. Doing nothing means it lapses on its own and the stand quietly returns to the pool.', soon, false, 'border-yellow-500/25') +
+        table('Held with no expiry', 'An option with no date never lapses, so these stands stay off the market until somebody remembers them. Give each one a date.', undated, false, 'border-white/10') +
+        '<div class="mb-6"></div>';
+    }
+
+    // Push a hold out by a number of days from today. The status route re-stamps the
+    // clock, so this is the same write "back to held" makes — with a date on it.
+    async function boothExtendHold(code) {
+      const raw = prompt('Extend the hold on stand ' + code + ' by how many days from today?', '14');
+      if (raw === null) return;
+      const days = Number(digitsOf(raw));
+      if (!days) { toast('Give the number of days as a whole number', 'error'); return; }
+      try {
+        const r = await api.put('/api/admin/booths/' + encodeURIComponent(code) + '/status',
+          { status: 'held', event_id: EID, hold_expires_at: dayPlus(days) });
+        if (r && r.error) { toast(r.error, 'error'); return; }
+        toast('Stand ' + code + ' held until ' + dayPlus(days));
+        loadAdminFloorPlan();
+      } catch (e) { toast((e && e.message) || 'Could not extend that hold', 'error'); }
     }
 
     function adminBoothTargetHtml(g) {
@@ -21752,13 +23508,13 @@ function adminPageHTML(): string {
       return \`
         <div class="flex flex-wrap items-end justify-between gap-3 mb-3">
           <div>
-            <div class="text-xs text-gray-500 mb-0.5">Revenue target, ex-GST</div>
+            <div class="text-xs text-gray-500 mb-0.5">Stands revenue target, ex-GST <span class="text-gray-600">&mdash; half of the combined figure above</span></div>
             <div class="text-2xl font-black tabular-nums">₹\${inrN(target)}
               <button type="button" onclick="boothTargetEdit()" title="Change the target" class="ml-1 align-middle text-[11px] font-medium px-2 py-1 rounded-lg glass hover:bg-white/10 text-gray-400 hover:text-white focus:outline-none focus:ring-2 focus:ring-primary-500/70"><i class="fas fa-pen mr-1"></i>Edit</button>
             </div>
           </div>
           <div class="text-right">
-            <div class="text-xs text-gray-500 mb-0.5">Achieved</div>
+            <div class="text-xs text-gray-500 mb-0.5">Achieved, stands only</div>
             <div class="text-2xl font-black tabular-nums \${tone}">\${achievedPct}% <span class="text-sm font-semibold text-gray-400">· ₹\${inrN(confirmed)}</span></div>
           </div>
         </div>
@@ -21810,12 +23566,13 @@ function adminPageHTML(): string {
             <td class="py-2 px-2 font-semibold">
               <button type="button" onclick="\${D('')}" title="Show every \${escH(c.name)}" class="text-left rounded px-1.5 py-0.5 -mx-1.5 hover:bg-primary-500/20 hover:text-primary-300 focus:outline-none focus:ring-2 focus:ring-primary-500/70 transition-colors">\${escH(c.name)}</button>
               <div class="text-[10px] text-gray-600 px-0.5">\${escH(c.key)} &middot; \${inrShort(c.list)} each</div>
+              <div class="text-[10px] text-gray-600 px-0.5">\${rateBoth(c.list, c.total ? c.sqm / c.total : 0)}</div>
             </td>
             <td class="text-center py-2 px-2">\${boothNum(c.total, D(''), { title: 'Show all ' + c.total })}</td>
             <td class="text-center py-2 px-2">\${boothNum(c.sold, D('sold'), { tone: 'text-green-400', title: 'Show the sold stands' })}</td>
             <td class="text-center py-2 px-2">\${boothNum(c.held, D('held'), { tone: 'text-yellow-400', title: 'Show the held stands' })}</td>
             <td class="text-center py-2 px-2">\${boothNum(c.available, D('available'), { tone: 'text-primary-400', title: 'Show what is left' })}</td>
-            <td class="text-right py-2 px-2 tabular-nums text-gray-400">\${(Math.round(c.sqm * 100) / 100).toLocaleString('en-IN')}</td>
+            <td class="text-right py-2 px-2 tabular-nums text-gray-400">\${sqmN(c.sqm)}<span class="block text-[10px] text-gray-600">\${sqftN(c.sqm)} sq ft</span></td>
             <td class="text-right py-2 px-2">\${boothNum(inrShort(c.potential), D(''), { title: 'Every ' + c.name + ' at list' })}</td>
             <td class="text-right py-2 px-2">\${boothNum(inrShort(c.booked), D(''), { tone: 'text-primary-300', title: 'Held and confirmed ' + c.name })}</td>
             <td class="text-right py-2 px-2">\${boothNum(inrShort(c.collected), D('sold'), { tone: 'text-green-400', title: 'Receipts against ' + c.name })}</td>
@@ -21838,7 +23595,7 @@ function adminPageHTML(): string {
               <th class="text-center py-2 px-2 font-medium">Sold</th>
               <th class="text-center py-2 px-2 font-medium">Held</th>
               <th class="text-center py-2 px-2 font-medium">Available</th>
-              <th class="text-right py-2 px-2 font-medium">Sqm</th>
+              <th class="text-right py-2 px-2 font-medium">Sqm<span class="block text-[10px] font-normal text-gray-600">sq ft</span></th>
               <th class="text-right py-2 px-2 font-medium">Potential</th>
               <th class="text-right py-2 px-2 font-medium">Booked</th>
               <th class="text-right py-2 px-2 font-medium">Collected</th>
@@ -21851,7 +23608,7 @@ function adminPageHTML(): string {
               <td class="text-center py-2 px-2 tabular-nums text-green-400">\${tot.sold}</td>
               <td class="text-center py-2 px-2 tabular-nums text-yellow-400">\${tot.held}</td>
               <td class="text-center py-2 px-2 tabular-nums text-primary-400">\${tot.available}</td>
-              <td class="text-right py-2 px-2 tabular-nums">\${(Math.round(tot.sqm * 100) / 100).toLocaleString('en-IN')}</td>
+              <td class="text-right py-2 px-2 tabular-nums">\${sqmN(tot.sqm)}<span class="block text-[10px] font-normal text-gray-500">\${sqftN(tot.sqm)} sq ft</span></td>
               <td class="text-right py-2 px-2 tabular-nums">\${inrShort(tot.potential)}</td>
               <td class="text-right py-2 px-2 tabular-nums text-primary-300">\${inrShort(tot.booked)}</td>
               <td class="text-right py-2 px-2 tabular-nums text-green-400">\${inrShort(tot.collected)}</td>
@@ -21917,13 +23674,21 @@ function adminPageHTML(): string {
       if (f === 'booked') return true;
       if (f === 'invoiced') return !!b.invoice_number;
       if (f === 'collected') return Number(b.amount_paid_inr || 0) > 0;
-      if (f === 'outstanding') return !!b.invoice_number && Number(b.grand_total_inr || 0) > Number(b.amount_paid_inr || 0);
+      // Outstanding counts TDS as settled, exactly as the dashboard tile it came
+      // from does — a stand whose only shortfall is withheld tax is not a debtor.
+      if (f === 'outstanding') return boothOwing(b) > 0;
       if (f === 'discounted') return Number(b.discount_inr || 0) > 0;
+      if (f === 'tds') return Number(b.tds_deducted_inr || 0) > 0;
+      if (f.indexOf('age_') === 0) return boothAgeBucket(b) === f.slice(4);
       return true;
     }
     const BOOTH_MONEY_LABEL = {
       booked: 'booked (held + confirmed)', invoiced: 'invoiced', collected: 'with receipts',
-      outstanding: 'invoiced but not collected', discounted: 'sold below list',
+      outstanding: 'invoiced but not settled', discounted: 'sold below list',
+      tds: 'with tax withheld at source',
+      age_not_due: 'invoiced, not yet due', age_d0_30: 'up to 30 days overdue',
+      age_d30_60: '30 to 60 days overdue', age_d60: 'more than 60 days overdue',
+      age_undated: 'invoiced with no due date',
     };
 
     function adminFloorVisible(g) {
@@ -21996,7 +23761,7 @@ function adminPageHTML(): string {
         <div class="glass rounded-xl p-4 mb-4 overflow-x-auto">
           <div class="flex flex-wrap items-baseline gap-2 mb-3">
             <h4 class="text-sm font-semibold"><i class="fas fa-vector-square text-primary-400 mr-2"></i>\${escH(gr.name)}</h4>
-            <span class="text-[11px] text-gray-500">\${escH(gr.key)} &middot; \${boothNum(all.length, D(''), { title: 'Show every ' + gr.name })} \${all.length === 1 ? 'stand' : 'stands'} &middot; \${Math.round(sqm * 100) / 100} sqm &middot; \${boothNum(free, D('available'), { tone: 'text-primary-400', title: 'Show what is left' })} available &middot; \${boothNum(held, D('held'), { tone: 'text-yellow-400', title: 'Show the holds' })} held &middot; \${boothNum(sold, D('sold'), { tone: 'text-green-400', title: 'Show the sold stands' })} sold\${showing ? ' &middot; <span class="text-primary-400">showing ' + showing + '</span>' : ''}</span>
+            <span class="text-[11px] text-gray-500">\${escH(gr.key)} &middot; \${boothNum(all.length, D(''), { title: 'Show every ' + gr.name })} \${all.length === 1 ? 'stand' : 'stands'} &middot; \${sqmN(sqm)} sqm (\${sqftN(sqm)} sq ft) &middot; \${boothNum(free, D('available'), { tone: 'text-primary-400', title: 'Show what is left' })} available &middot; \${boothNum(held, D('held'), { tone: 'text-yellow-400', title: 'Show the holds' })} held &middot; \${boothNum(sold, D('sold'), { tone: 'text-green-400', title: 'Show the sold stands' })} sold\${showing ? ' &middot; <span class="text-primary-400">showing ' + showing + '</span>' : ''}</span>
           </div>
           <table class="w-full text-xs min-w-[44rem]">
             <thead><tr class="border-b border-white/10 text-gray-400">
@@ -22027,11 +23792,18 @@ function adminPageHTML(): string {
       const grand = Number(b.grand_total_inr || 0);
       const ps = String(b.payment_status || 'pending');
       const disc = Number(b.discount_inr || 0);
+      const tds = Number(b.tds_deducted_inr || 0);
+      const owing = boothOwing(b);
       return '<div class="tabular-nums">₹' + inrN(net) + '</div>' +
         (disc ? '<div class="text-[10px] text-amber-300 tabular-nums">&minus;₹' + inrN(disc) + ' off list</div>' : '') +
         '<div class="text-[10px] text-gray-500 tabular-nums mt-0.5">' +
         '<span class="px-1.5 py-0.5 rounded ' + (BOOTH_PAY_PILL[ps] || 'bg-gray-500/20 text-gray-400') + '">' + escH(ps.replace('_', ' ')) + '</span>' +
-        (grand ? ' ₹' + inrN(paid) + ' of ₹' + inrN(grand) : '') + '</div>';
+        (grand ? ' ₹' + inrN(paid) + ' of ₹' + inrN(grand) : '') + '</div>' +
+        // The withholding is the reason the two figures above will not match on a
+        // settled B2B stand, so it is said on the row rather than left to be
+        // discovered in the modal.
+        (tds ? '<div class="text-[10px] text-amber-300 tabular-nums">+₹' + inrN(tds) + ' TDS withheld</div>' : '') +
+        (owing ? '<div class="text-[10px] text-red-400 tabular-nums">₹' + inrN(owing) + ' still owed</div>' : '');
     }
 
     // A plan label is "51" or "MP01". Anything else could not address a row anyway,
@@ -22045,7 +23817,22 @@ function adminPageHTML(): string {
         : 'bg-white/5 text-gray-400';
       const arg = boothArg(b.code);
       const money = Number(b.amount_inr || 0);
-      const who = b.status === 'available'
+      // The clock on a live option, said in days. A hold with no date never lapses,
+      // which is worth flagging on the row rather than only in the call sheet.
+      const holdDays = b.status === 'held' ? daysUntil(b.hold_expires_at) : null;
+      const holdNote = b.status !== 'held' ? ''
+        : holdDays === null
+          ? '<span class="block text-[10px] text-amber-300">no expiry &mdash; never lapses</span>'
+          : '<span class="block text-[10px] ' + (holdDays <= 3 ? 'text-amber-300' : 'text-gray-500') + '">' +
+            (holdDays <= 0 ? 'lapses today' : holdDays + (holdDays === 1 ? ' day left' : ' days left')) + '</span>';
+      // A LAPSED HOLD is counted as available — it is back in the pool and the plan
+      // is already offering it — but the row still knows who let it go, and hiding
+      // that would leave a stand nobody can explain sitting next to a company that
+      // is still expecting a call.
+      const who = b.hold_lapsed
+        ? '<span class="text-gray-400">' + escH(b.company_name || 'Unnamed') + '</span>' +
+          '<span class="block text-[10px] text-amber-300"><i class="fas fa-hourglass-end mr-1"></i>option expired ' + escH(String(b.hold_expires_at || '').slice(0, 10)) + ' &middot; back on the market</span>'
+        : b.status === 'available'
         ? '<span class="text-gray-600">&mdash;</span>'
         : escH(b.company_name || 'Unnamed')
           + (b.contact_name ? ' <span class="text-gray-500">&middot; ' + escH(b.contact_name) + '</span>' : '')
@@ -22076,9 +23863,9 @@ function adminPageHTML(): string {
           <td class="py-2 px-2 font-semibold whitespace-nowrap">
             <button type="button" onclick="openBoothSaleModal('\${arg}')" title="\${b.status === 'available' ? 'Record a sale on stand ' + escH(b.code) : 'Edit the sale on stand ' + escH(b.code)}" class="rounded px-1.5 py-0.5 -mx-1.5 hover:bg-primary-500/20 hover:text-primary-300 focus:outline-none focus:ring-2 focus:ring-primary-500/70 transition-colors">\${escH(b.code)}</button>
           </td>
-          <td class="py-2 px-2 text-gray-400 whitespace-nowrap">\${escH(b.dim || '')} <span class="text-gray-600">\${Number(b.sqm || 0)} sqm</span></td>
+          <td class="py-2 px-2 text-gray-400 whitespace-nowrap">\${escH(b.dim || '')} <span class="text-gray-600">\${sqmN(b.sqm)} sqm</span><span class="block text-[10px] text-gray-600">\${sqftN(b.sqm)} sq ft</span></td>
           <td class="py-2 px-2 text-gray-400 whitespace-nowrap">\${b.zone ? escH(b.zone) : '<span class="text-gray-600">&mdash;</span>'}</td>
-          <td class="py-2 px-2"><span class="px-2 py-0.5 rounded text-[11px] font-medium \${pill}">\${escH(b.status)}</span></td>
+          <td class="py-2 px-2"><span class="px-2 py-0.5 rounded text-[11px] font-medium \${pill}">\${escH(b.status)}</span>\${holdNote}</td>
           <td class="py-2 px-2 min-w-[12rem]">\${who}</td>
           <td class="py-2 px-2 text-right whitespace-nowrap">\${boothDealCellHtml(b)}</td>
           <td class="py-2 px-2"><div class="flex flex-wrap gap-1.5 justify-end">\${actions}</div></td>
@@ -22098,7 +23885,9 @@ function adminPageHTML(): string {
       const money = Number(b.amount_inr || 0);
       openModal(\`
         <h3 class="text-lg font-bold mb-1">Stand \${escH(b.code)} &middot; \${escH(b.name)}</h3>
-        <p class="text-xs text-gray-400 mb-4">\${escH(b.dim || '')} &middot; \${Number(b.sqm || 0)} sqm\${b.zone ? ' &middot; ' + escH(b.zone) : ''} &middot; \${escH(b.type_key)}</p>
+        <p class="text-xs text-gray-400 mb-1">\${escH(b.dim || '')} &middot; \${sqmPair(b.sqm)}\${b.zone ? ' &middot; ' + escH(b.zone) : ''} &middot; \${escH(b.type_key)}</p>
+        <p class="text-[11px] text-gray-500 mb-4">Lists at ₹\${inrN(b.list_price_inr)} &middot; \${rateBoth(b.list_price_inr, b.sqm)}</p>
+        \${b.hold_lapsed ? '<div class="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 mb-4 text-[11px] text-amber-200"><i class="fas fa-hourglass-end mr-1.5"></i>This option expired on ' + escH(String(b.hold_expires_at || '').slice(0, 10)) + '. The stand counts as <b>available</b> on the public plan, in the tier counters and on this dashboard &mdash; the record below is kept so somebody can ring ' + escH(b.company_name || 'them') + ' before it goes to the next caller.</div>' : ''}
         <table class="w-full text-sm mb-4">
           <tr><td class="py-1 pr-4 text-gray-500">Status</td><td><span class="px-2 py-0.5 rounded text-xs font-medium \${b.status === 'sold' ? 'bg-green-500/20 text-green-300' : b.status === 'held' ? 'bg-yellow-500/20 text-yellow-300' : 'bg-gray-500/20 text-gray-400'}">\${escH(b.status)}</span>\${b.status === 'blocked' ? ' <span class="text-xs text-gray-500 ml-1">organiser hold, not a sale</span>' : ''}\${b.status === 'held' ? ' <span class="text-xs text-gray-500 ml-1">not named on the public plan</span>' : ''}</td></tr>
           <tr><td class="py-1 pr-4 text-gray-500">Company</td><td>\${escH(b.company_name || '')}</td></tr>
@@ -22116,6 +23905,10 @@ function adminPageHTML(): string {
             \${b.invoice_number ? '<div class="text-xs text-gray-400">Invoice ' + escH(b.invoice_number) + (b.invoice_date ? ' &middot; ' + escH(String(b.invoice_date).slice(0, 10)) : '') + '</div>' : ''}
             \${b.paid_date ? '<div class="text-xs text-gray-400">Settled ' + escH(String(b.paid_date).slice(0, 10)) + '</div>' : ''}
           </td></tr>
+          \${Number(b.tds_deducted_inr || 0) ? \`<tr><td class="py-1 pr-4 text-gray-500 align-top">TDS</td><td class="tabular-nums">₹\${inrN(b.tds_deducted_inr)} <span class="text-xs text-gray-500">withheld by the buyer</span><div class="text-xs text-gray-400">Paid to the government against the organiser's PAN, so it counts as settled and never appears on a bank statement. ₹\${inrN(Math.max(0, Number(b.grand_total_inr || 0) - Number(b.tds_deducted_inr || 0)))} is what should reach the account.</div></td></tr>\` : ''}
+          \${b.balance_due_date ? \`<tr><td class="py-1 pr-4 text-gray-500">Balance due</td><td class="tabular-nums">\${escH(String(b.balance_due_date).slice(0, 10))}\${(() => { const d = daysUntil(b.balance_due_date); const owing = boothOwing(b); if (!owing || d === null) return ''; return d < 0 ? ' <span class="text-red-400">&middot; ₹' + inrN(owing) + ' is ' + (-d) + ' days overdue</span>' : ' <span class="text-gray-400">&middot; ₹' + inrN(owing) + ' due in ' + d + ' days</span>'; })()}</td></tr>\` : ''}
+          \${b.status === 'held' || b.hold_lapsed ? \`<tr><td class="py-1 pr-4 text-gray-500">Option runs to</td><td class="tabular-nums">\${b.hold_expires_at ? escH(String(b.hold_expires_at).slice(0, 10)) + (() => { const d = daysUntil(b.hold_expires_at); return d === null ? '' : d < 0 ? ' <span class="text-red-400">&middot; expired ' + (-d) + ' days ago</span>' : ' <span class="' + (d <= 3 ? 'text-amber-300' : 'text-gray-400') + '">&middot; ' + (d === 0 ? 'lapses today' : d + ' days left') + '</span>'; })() : '<span class="text-amber-300">no expiry set &mdash; this stand never returns to the pool on its own</span>'}</td></tr>\` : ''}
+          \${b.buyer_gstin || b.buyer_legal_name || b.buyer_state_code ? \`<tr><td class="py-1 pr-4 text-gray-500 align-top">Invoice to</td><td>\${b.buyer_legal_name ? escH(b.buyer_legal_name) : '<span class="text-gray-500">legal name not recorded</span>'}\${b.buyer_gstin ? '<div class="text-xs tabular-nums ' + (gstinProblem(b.buyer_gstin) ? 'text-amber-300' : 'text-gray-400') + '">GSTIN ' + escH(b.buyer_gstin) + (gstinProblem(b.buyer_gstin) ? ' &middot; ' + escH(gstinProblem(b.buyer_gstin)) : '') + '</div>' : '<div class="text-xs text-amber-300">No GSTIN &mdash; the buyer cannot claim input tax credit against this invoice.</div>'}\${b.buyer_state_code ? '<div class="text-xs text-gray-400">Place of supply &middot; state ' + escH(b.buyer_state_code) + ' <span class="text-gray-500">(IGST vs CGST+SGST is with the accountant; nothing here splits it)</span></div>' : ''}</td></tr>\` : ''}
           \${b.booth_request_id ? \`<tr><td class="py-1 pr-4 text-gray-500">Booth request</td><td>#\${Number(b.booth_request_id)}\${b.request_company ? ' &middot; ' + escH(b.request_company) : ''}\${b.request_grand_total ? ' &middot; ₹' + Number(b.request_grand_total).toLocaleString('en-IN') : ''}\${b.request_payment_status ? ' &middot; ' + escH(b.request_payment_status) : ''}</td></tr>\` : ''}
           \${b.exhibitor_id ? \`<tr><td class="py-1 pr-4 text-gray-500">Exhibitor</td><td>#\${Number(b.exhibitor_id)} <span class="text-xs text-gray-500">listed on the app's Exhibition Floor</span></td></tr>\` : ''}
           \${b.notes ? \`<tr><td class="py-1 pr-4 text-gray-500 align-top">Notes</td><td>\${escH(b.notes)}</td></tr>\` : ''}
@@ -22131,7 +23924,7 @@ function adminPageHTML(): string {
             : \`<button onclick="setBoothStatus('\${arg}', 'blocked')" class="px-3 py-2 rounded-lg text-xs font-medium bg-white/5 text-gray-300 hover:bg-white/10"><i class="fas fa-ban mr-1"></i>Block</button>\`}
           <button onclick="releaseBooth('\${arg}')" class="px-3 py-2 rounded-lg text-xs font-medium text-red-400 hover:bg-red-500/10 ml-auto"><i class="fas fa-arrow-rotate-left mr-1"></i>Release the stand</button>
         </div>
-        <p class="text-[11px] text-gray-500 mt-3">Confirming publishes the company on the public floor plan and creates or adopts its exhibitor row, so the stand number finally appears in the app. Releasing deletes the allocation, clears that stand number and puts \${escH(b.code)} back on the market.</p>\`);
+        <p class="text-[11px] text-gray-500 mt-3">Confirming publishes the company on the public floor plan and creates or adopts its exhibitor row, so the stand number finally appears in the app. Releasing clears that stand number and puts \${escH(b.code)} back on the market &mdash; deleting the allocation if nothing was invoiced against it, and keeping it as a released record if something was.</p>\`);
     }
 
     // ============ RECORD A SALE ============
@@ -22189,8 +23982,9 @@ function adminPageHTML(): string {
           ' border border-white/10 hover:border-primary-500/40 cursor-pointer transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500/70">' +
           '<span class="font-semibold tabular-nums w-14 shrink-0">' + escH(b.code) + '</span>' +
           '<span class="min-w-0 flex-1"><span class="text-xs">' + escH(b.name) + '</span>' +
-          '<span class="block text-[10px] text-gray-500">' + escH(b.dim || '') + ' &middot; ' + Number(b.sqm || 0) + ' sqm' +
-          (b.company_name ? ' &middot; ' + escH(b.company_name) : '') + '</span></span>' +
+          '<span class="block text-[10px] text-gray-500">' + escH(b.dim || '') + ' &middot; ' + sqmPair(b.sqm) +
+          (b.company_name ? ' &middot; ' + escH(b.company_name) : '') +
+          (b.hold_lapsed ? ' <span class="text-amber-300">&middot; option expired</span>' : '') + '</span></span>' +
           '<span class="text-[10px] px-2 py-0.5 rounded shrink-0 ' + pill + '">' + escH(b.status) + '</span>' +
           '<span class="text-xs tabular-nums text-gray-400 shrink-0">' + inrShort(b.status === 'available' ? b.list_price_inr : b.amount_inr) + '</span>' +
           '</button>';
@@ -22212,19 +24006,25 @@ function adminPageHTML(): string {
       // a deal that was already signed.
       const list = editing ? Number(b.alloc_list_price_inr || b.list_price_inr || 0) : Number(b.list_price_inr || 0);
       const discount = editing ? Number(b.discount_inr || 0) : 0;
-      const m = boothMoneyFrom(list, discount);
+      const m = boothMoneyFrom(list, discount, editing ? Number(b.tds_deducted_inr || 0) : 0);
       const armed = (!editing && adminBoothPlacing)
         ? ((g.requests || []).filter(r => r.id === adminBoothPlacing)[0] || null) : null;
       const src = armed || null;
       const v = (x) => escH(x == null ? '' : String(x));
       const dateVal = x => String(x == null ? '' : x).slice(0, 10);
       const status = editing ? b.status === 'sold' ? 'confirmed' : b.status : 'confirmed';
+      // A fortnight is the desk's own habit and the server's default; an existing
+      // hold keeps the date it was actually given, including one already past, so
+      // the form shows what was promised rather than quietly renewing it.
+      const holdDefault = (editing && b.hold_expires_at) ? dateVal(b.hold_expires_at) : dayPlus(14);
       const fld = 'w-full px-3 py-2 rounded-lg text-sm bg-white/5 border border-white/10 focus:outline-none focus:ring-2 focus:ring-primary-500/70';
       const num = fld + ' tabular-nums';
 
       openModal(\`
         <h3 class="text-lg font-bold mb-1">\${editing ? 'Edit the sale on stand' : 'Record a sale &middot; stand'} \${escH(b.code)}</h3>
-        <p class="text-xs text-gray-400 mb-4">\${escH(b.name)} &middot; \${escH(b.dim || '')} &middot; \${Number(b.sqm || 0)} sqm\${b.zone ? ' &middot; ' + escH(b.zone) : ''} &middot; lists at ₹\${inrN(b.list_price_inr)}</p>
+        <p class="text-xs text-gray-400 mb-1">\${escH(b.name)} &middot; \${escH(b.dim || '')} &middot; \${sqmPair(b.sqm)}\${b.zone ? ' &middot; ' + escH(b.zone) : ''} &middot; lists at ₹\${inrN(b.list_price_inr)}</p>
+        <p class="text-[11px] text-gray-500 mb-4">\${rateBoth(b.list_price_inr, b.sqm)}</p>
+        \${b.hold_lapsed ? '<div class="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 mb-4 text-[11px] text-amber-200"><i class="fas fa-hourglass-end mr-1.5"></i>The option ' + escH(b.company_name || '') + ' held on this stand expired on ' + escH(String(b.hold_expires_at || '').slice(0, 10)) + ', so it is back on the market and counted as available. Saving a sale for a different company retires that record and writes a fresh one.</div>' : ''}
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
           <div><label class="block text-xs text-gray-400 mb-1" for="bs-company">Company <span class="text-red-400">*</span></label>
@@ -22243,7 +24043,18 @@ function adminPageHTML(): string {
           <option value="held"\${status === 'held' ? ' selected' : ''}>Held &mdash; agreed, not closed</option>
           <option value="blocked"\${status === 'blocked' ? ' selected' : ''}>Organiser block &mdash; not a sale</option>
         </select>
-        <p class="text-[11px] text-gray-500 mt-1 mb-4">Only a confirmed stand names the company on the public floor plan; a hold and an organiser block both show as taken without naming anybody.</p>
+        <p class="text-[11px] text-gray-500 mt-1 mb-3">Only a confirmed stand names the company on the public floor plan; a hold and an organiser block both show as taken without naming anybody.</p>
+
+        <!-- THE OPTION CLOCK, and the reason it is on the form rather than buried in
+             a default: "yours until Friday" is a real sentence a salesperson says,
+             and the date they said is the one that should be written down. A hold
+             with no expiry is a stand off the market for ever, which is what every
+             one of these used to be. -->
+        <div id="bs-hold" class="rounded-xl border border-yellow-500/20 bg-yellow-500/[0.06] p-3 mb-4"\${status === 'held' ? '' : ' hidden'}>
+          <label class="block text-xs text-gray-300 mb-1 font-semibold" for="bs-holduntil"><i class="fas fa-hourglass-half text-yellow-400 mr-1.5"></i>Hold this stand until</label>
+          <input id="bs-holduntil" type="date" oninput="boothSaleRecalc()" class="\${fld}" value="\${v(holdDefault)}">
+          <p id="bs-hold-note" class="text-[11px] text-gray-500 mt-1.5"></p>
+        </div>
 
         <div id="bs-money" class="rounded-xl border border-white/10 bg-white/[0.03] p-3 mb-4">
           <div class="text-xs font-semibold text-gray-300 mb-2"><i class="fas fa-indian-rupee-sign text-primary-400 mr-1.5"></i>The deal <span class="font-normal text-gray-500">&mdash; whole rupees, GST is 18%</span></div>
@@ -22263,6 +24074,12 @@ function adminPageHTML(): string {
             <div class="flex items-baseline justify-between text-xs py-0.5"><span class="text-gray-500">Net, ex-GST</span><span id="bs-net" class="tabular-nums font-semibold">₹\${inrN(m.net)}</span></div>
             <div class="flex items-baseline justify-between text-xs py-0.5"><span class="text-gray-500">GST 18%</span><span id="bs-gst" class="tabular-nums">₹\${inrN(m.gst)}</span></div>
             <div class="flex items-baseline justify-between text-sm pt-1.5 mt-1 border-t border-white/10"><span class="font-semibold">Grand total</span><span id="bs-total" class="tabular-nums font-black">₹\${inrN(m.total)}</span></div>
+            <!-- Only once there IS a withholding, so an ordinary cash sale keeps the
+                 three lines it has always had. -->
+            <div id="bs-tds-row" class="pt-1.5 mt-1 border-t border-white/10"\${m.tds ? '' : ' hidden'}>
+              <div class="flex items-baseline justify-between text-xs py-0.5"><span class="text-gray-500">Less TDS withheld by the buyer</span><span id="bs-tds-shown" class="tabular-nums text-amber-300">&minus;₹\${inrN(m.tds)}</span></div>
+              <div class="flex items-baseline justify-between text-xs py-0.5"><span class="text-gray-500">Expected in the bank</span><span id="bs-due" class="tabular-nums font-semibold">₹\${inrN(m.due)}</span></div>
+            </div>
           </div>
           <p id="bs-derived" class="text-[11px] text-gray-500 mb-3"></p>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
@@ -22275,12 +24092,48 @@ function adminPageHTML(): string {
               <p id="bs-paid-err" class="text-[11px] text-red-400 mt-1" hidden></p></div>
             <div><label class="block text-xs text-gray-400 mb-1" for="bs-paiddate">Payment date</label>
               <input id="bs-paiddate" type="date" class="\${fld}" value="\${v(dateVal(b.paid_date))}"></div>
+            <!-- TDS. An Indian B2B buyer withholds tax before paying and hands it to
+                 the government against the organiser's PAN, so a fully settled stand
+                 legitimately shows less cash than the invoice. Without this field the
+                 shortfall looks like a debt and somebody chases it. -->
+            <div><label class="block text-xs text-gray-400 mb-1" for="bs-tds">TDS withheld by the buyer</label>
+              <input id="bs-tds" inputmode="numeric" autocomplete="off" aria-describedby="bs-tds-err" oninput="boothSaleRecalc()" placeholder="0" class="\${num}" value="\${Number(b.tds_deducted_inr || 0)}">
+              <p id="bs-tds-err" class="text-[11px] text-red-400 mt-1" hidden></p>
+              <p class="text-[11px] text-gray-500 mt-1">2% u/s 194C, or 10% u/s 194I. Counts towards settlement.</p></div>
+            <div><label class="block text-xs text-gray-400 mb-1" for="bs-duedate">Balance due by</label>
+              <input id="bs-duedate" type="date" oninput="boothSaleRecalc()" class="\${fld}" value="\${v(dateVal(b.balance_due_date))}">
+              <p class="text-[11px] text-gray-500 mt-1">What the ageing view chases against.</p></div>
           </div>
           <label class="block text-xs text-gray-400 mb-1" for="bs-paystatus">Payment status</label>
           <select id="bs-paystatus" onchange="boothSaleRecalc(true)" class="\${fld}">
             \${['pending', 'invoiced', 'part_paid', 'paid', 'refunded'].map(p =>
               '<option value="' + p + '"' + (String(b.payment_status || 'pending') === p ? ' selected' : '') + '>' + p.split('_').join(' ') + '</option>').join('')}
           </select>
+          <p id="bs-due-note" class="text-[11px] text-gray-500 mt-2" hidden></p>
+        </div>
+
+        <!-- THE INVOICE COUNTERPARTY. Not the fascia name: a GST invoice made out to
+             a brand instead of the registered entity is the one a buyer's accounts
+             team sends back, and the buyer loses the input tax credit while it is
+             reissued. The state code is captured because place of supply decides
+             IGST against CGST+SGST — that question is with the organiser's
+             accountant, and nothing here splits the tax either way. None of this
+             blocks a sale: a walk-up may not have the number to hand. -->
+        <div class="rounded-xl border border-white/10 bg-white/[0.03] p-3 mb-4">
+          <div class="text-xs font-semibold text-gray-300 mb-2"><i class="fas fa-file-invoice text-primary-400 mr-1.5"></i>Who the invoice is made out to <span class="font-normal text-gray-500">&mdash; never blocks a sale</span></div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div><label class="block text-xs text-gray-400 mb-1" for="bs-gstin">Buyer GSTIN</label>
+              <input id="bs-gstin" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="15" placeholder="27AABCU9603R1ZM" oninput="boothGstinCheck()" class="\${num} uppercase" value="\${v(b.buyer_gstin)}">
+              <p id="bs-gstin-note" class="text-[11px] text-gray-500 mt-1"></p></div>
+            <div><label class="block text-xs text-gray-400 mb-1" for="bs-legal">Registered legal name</label>
+              <input id="bs-legal" autocomplete="off" placeholder="The entity on the GST certificate" class="\${fld}" value="\${v(b.buyer_legal_name)}">
+              <p class="text-[11px] text-gray-500 mt-1">Not the brand on the stand.</p></div>
+          </div>
+          <div class="mt-3 sm:w-1/2 sm:pr-1.5">
+            <label class="block text-xs text-gray-400 mb-1" for="bs-state">Place of supply &middot; state code</label>
+            <input id="bs-state" inputmode="numeric" autocomplete="off" maxlength="2" placeholder="27" oninput="this.dataset.typed='1'; boothGstinCheck()" class="\${num}" value="\${v(b.buyer_state_code)}"\${b.buyer_state_code ? ' data-typed="1"' : ''}>
+            <p class="text-[11px] text-gray-500 mt-1">Filled from the GSTIN when you type one. Stored so IGST vs CGST+SGST can be applied once the accountant rules on it &mdash; nothing here splits the tax.</p>
+          </div>
         </div>
 
         <label class="block text-xs text-gray-400 mb-1" for="bs-notes">Notes</label>
@@ -22302,7 +24155,7 @@ function adminPageHTML(): string {
           <button type="button" onclick="closeModal()" class="px-4 py-2.5 rounded-lg text-sm font-medium glass hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-primary-500/70">Cancel</button>
           \${editing ? '<button type="button" onclick="releaseBooth(\\'' + arg + '\\')" class="px-4 py-2.5 rounded-lg text-sm font-medium text-red-400 hover:bg-red-500/10 ml-auto focus:outline-none focus:ring-2 focus:ring-red-400/70"><i class="fas fa-arrow-rotate-left mr-1.5"></i>Release the stand</button>' : ''}
         </div>
-        <p class="text-[11px] text-gray-500 mt-3">Net, GST and the grand total are worked out from the list price and the discount &mdash; they are never taken on trust, so what is saved is always what is shown. \${editing ? 'Editing writes over the existing allocation; releasing deletes it and puts the stand back on the market.' : 'A confirmed sale publishes the company on the public floor plan and creates its exhibitor record.'}</p>\`);
+        <p class="text-[11px] text-gray-500 mt-3">Net, GST and the grand total are worked out from the list price and the discount &mdash; they are never taken on trust, so what is saved is always what is shown. \${editing ? 'Editing writes over the existing allocation; releasing puts the stand back on the market, keeping the record once an invoice has been raised against it.' : 'A confirmed sale publishes the company on the public floor plan and creates its exhibitor record.'} A GSTIN that is missing or malformed is reported, never refused &mdash; the sale is what matters on the day.</p>\`);
       boothSaleRecalc();
     }
 
@@ -22320,8 +24173,27 @@ function adminPageHTML(): string {
       // a total that lies about what saving will do. The discount used to be rewritten
       // to the list price on this very line — the same silent clamp the server did —
       // which told an operator their 5,00,000 discount on a 38,000 stand was fine.
+      // The option clock belongs to a hold and nothing else, so the box appears and
+      // disappears with the status rather than sitting there greyed out inviting a
+      // date onto a confirmed sale.
+      const holdBox = el('bs-hold'), holdInput = el('bs-holduntil'), holdNote = el('bs-hold-note');
+      const isHeld = el('bs-status') && el('bs-status').value === 'held';
+      if (holdBox) holdBox.hidden = !isHeld;
+      if (holdNote && isHeld) {
+        const d = daysUntil(holdInput && holdInput.value);
+        holdNote.className = 'text-[11px] mt-1.5 ' + (d === null ? 'text-amber-300' : d < 0 ? 'text-red-400' : d <= 3 ? 'text-amber-300' : 'text-gray-500');
+        holdNote.innerHTML = d === null
+          ? 'Without a date this stand stays off the market until somebody remembers it. Fourteen days is the desk default.'
+          : d < 0
+            ? 'That date has already passed, so this stand counts as <b>available</b> everywhere the moment it is saved.'
+            : d === 0
+              ? 'Lapses at the end of today &mdash; after that the stand is back on the market on its own.'
+              : 'Lapses in ' + d + (d === 1 ? ' day' : ' days') + '. No cron runs: the stand simply reads as available from then on, and it shows up in <b>Holds expiring</b> on the Sales tab first.';
+      }
+      boothGstinCheck();
+
       const issues = boothSaleIssues();
-      ['bs-list', 'bs-discount', 'bs-paid'].forEach(function (id) {
+      ['bs-list', 'bs-discount', 'bs-paid', 'bs-tds'].forEach(function (id) {
         const hit = issues.filter(function (x) { return x.id === id; })[0];
         boothSaleFieldNote(id, hit ? hit.msg : '');
       });
@@ -22341,26 +24213,58 @@ function adminPageHTML(): string {
         return;
       }
 
-      const m = boothMoneyFrom(digitsOf(list.value), digitsOf(disc ? disc.value : 0));
+      const tdsEl = el('bs-tds');
+      const m = boothMoneyFrom(digitsOf(list.value), digitsOf(disc ? disc.value : 0), digitsOf(tdsEl ? tdsEl.value : 0));
       const txt = (id, val) => { const e = el(id); if (e) e.textContent = '₹' + inrN(val); };
       txt('bs-net', m.net); txt('bs-gst', m.gst); txt('bs-total', m.total);
+      // The withholding line only appears once there IS a withholding, so an
+      // ordinary cash sale keeps the three-line total it always had.
+      const tdsRow = el('bs-tds-row');
+      if (tdsRow) {
+        tdsRow.hidden = !m.tds;
+        if (m.tds) {
+          const tShown = el('bs-tds-shown');
+          if (tShown) tShown.innerHTML = '&minus;₹' + inrN(m.tds);
+          const dueEl = el('bs-due');
+          if (dueEl) dueEl.textContent = '₹' + inrN(m.due);
+        }
+      }
       const paidEl = el('bs-paid'), psEl = el('bs-paystatus');
       let paid = Number(digitsOf(paidEl ? paidEl.value : 0));
       // Choosing "paid" IS saying the whole invoice landed, so the receipts follow
-      // the word rather than being typed twice. Everything else follows the money.
-      if (fromStatus && psEl && psEl.value === 'paid') { paid = m.total; if (paidEl) paidEl.value = paid; }
-      if (paid > m.total) { paid = m.total; if (paidEl) paidEl.value = paid; }
+      // the word rather than being typed twice — less the TDS, which is the part
+      // that will never arrive as cash. Everything else follows the money.
+      if (fromStatus && psEl && psEl.value === 'paid') { paid = m.due; if (paidEl) paidEl.value = paid; }
+      if (paid > m.due) { paid = m.due; if (paidEl) paidEl.value = paid; }
       if (psEl && psEl.value !== 'refunded' && !(fromStatus && psEl.value === 'paid')) {
         const inv = el('bs-invoice') && String(el('bs-invoice').value || '').trim();
-        psEl.value = (paid >= m.total && m.total > 0) ? 'paid' : paid > 0 ? 'part_paid' : inv ? 'invoiced' : 'pending';
+        psEl.value = (paid + m.tds >= m.total && m.total > 0) ? 'paid'
+          : (paid > 0 || m.tds > 0) ? 'part_paid' : inv ? 'invoiced' : 'pending';
       }
+      const owing = Math.max(0, m.total - paid - m.tds);
       const note = el('bs-derived');
       if (note) {
         note.innerHTML = blocked
           ? 'An organiser block is space taken off the market, not a sale &mdash; it will be saved with no money against it.'
           : '₹' + inrN(m.list) + (m.discount ? ' &minus; ₹' + inrN(m.discount) + ' discount' : '') +
             ' = <b class="text-gray-300">₹' + inrN(m.net) + '</b> net, + ₹' + inrN(m.gst) + ' GST = <b class="text-gray-300">₹' + inrN(m.total) + '</b> payable' +
-            (paid ? ' &middot; ₹' + inrN(paid) + ' received, <b class="' + (m.total - paid > 0 ? 'text-amber-300' : 'text-green-400') + '">₹' + inrN(Math.max(0, m.total - paid)) + '</b> outstanding' : '');
+            (m.tds ? ' &middot; ₹' + inrN(m.tds) + ' withheld as TDS, so <b class="text-gray-300">₹' + inrN(m.due) + '</b> should reach the bank' : '') +
+            (paid ? ' &middot; ₹' + inrN(paid) + ' received, <b class="' + (owing > 0 ? 'text-amber-300' : 'text-green-400') + '">₹' + inrN(owing) + '</b> outstanding' : '');
+      }
+      // The credit terms, said in days rather than as a date the operator has to
+      // count from — a due date already in the past is the whole point of the
+      // ageing view and it should be visible while the form is open.
+      const dueNote = el('bs-due-note'), dueDateEl = el('bs-duedate');
+      if (dueNote) {
+        const dd = daysUntil(dueDateEl && dueDateEl.value);
+        if (!owing || dd === null) { dueNote.hidden = true; }
+        else {
+          dueNote.hidden = false;
+          dueNote.className = 'text-[11px] mt-2 ' + (dd < -30 ? 'text-red-400' : dd < 0 ? 'text-amber-300' : 'text-gray-500');
+          dueNote.innerHTML = dd < 0
+            ? '₹' + inrN(owing) + ' is <b>' + (-dd) + (dd === -1 ? ' day' : ' days') + ' overdue</b> against this date.'
+            : '₹' + inrN(owing) + ' falls due in ' + dd + (dd === 1 ? ' day' : ' days') + '.';
+        }
       }
     }
 
@@ -22443,13 +24347,22 @@ function adminPageHTML(): string {
           discount_inr: String(boothRupeeStrict(val('bs-discount'))),
           invoice_number: val('bs-invoice'), invoice_date: val('bs-invdate'),
           amount_paid_inr: String(boothRupeeStrict(val('bs-paid'))), paid_date: val('bs-paiddate'),
+          tds_deducted_inr: String(boothRupeeStrict(val('bs-tds'))),
+          balance_due_date: val('bs-duedate'),
+          hold_expires_at: status === 'held' ? val('bs-holduntil') : '',
+          buyer_gstin: val('bs-gstin').toUpperCase(), buyer_legal_name: val('bs-legal'),
+          buyer_state_code: val('bs-state'),
           payment_status: val('bs-paystatus'), notes: val('bs-notes'),
         });
         if (r && r.error) { toast(r.error, 'error'); return; }
         closeModal();
         adminBoothPlacing = null;
         toast('Stand ' + code + ' · ' + (r.created ? 'sale recorded' : 'sale updated') +
-          (Number(r.grand_total_inr) ? ' · ₹' + inrN(r.grand_total_inr) + ' incl GST' : ''));
+          (Number(r.grand_total_inr) ? ' · ₹' + inrN(r.grand_total_inr) + ' incl GST' : '') +
+          (Number(r.tds_deducted_inr) ? ' · ₹' + inrN(r.tds_deducted_inr) + ' TDS' : ''));
+        // The sale is already saved. These are the things to fix before the invoice
+        // goes out, said once, after the fact — never in the way of recording a deal.
+        ((r && r.warnings) || []).forEach((w, i) => setTimeout(() => toast(w, 'error'), 400 + i * 300));
         loadAdminFloorPlan();
       } catch (e) {
         // A 409 is the unique constraint doing its job — somebody took the stand
@@ -22459,6 +24372,1346 @@ function adminPageHTML(): string {
       } finally {
         if (btn) { btn.disabled = false; btn.classList.remove('opacity-60'); }
       }
+    }
+
+    // ============ SPONSORSHIP AND BRANDING ============
+    //
+    // The floor plan screen sells 604.3 sqm. This one sells everything else the show
+    // has to sell — the lanyard, the delegate bag, the arch, the guide pages, the
+    // extra badges — and for a two-day conference that is frequently the larger and
+    // always the higher-margin half. Until it existed the morning revenue number was
+    // the floor alone, which is why the combined view below is not a nicety: it is
+    // the number, and the two halves that make it are drawn side by side so nobody
+    // has to wonder which one moved.
+    //
+    // Everything here is one GET, exactly as the floor plan is. The dashboard, the
+    // category rollup and the inventory list are three views of ONE payload computed
+    // in the browser — a dashboard that runs its own aggregate query is a dashboard
+    // that can disagree with the list it links to, and the operator has no way to
+    // tell which is lying.
+    let adminSpons = null;
+    // sales | inventory. There is no map tab and there never will be: this inventory
+    // has no geometry, which is the whole reason it needed a second screen.
+    let adminSponsTab = 'sales';
+    let adminSponsCategoryFilter = '';
+    // sold | held | blocked | lapsed | available. As on the stands screen, every
+    // figure on the dashboard sets one of these so that no number is a dead end.
+    let adminSponsStatusFilter = '';
+    // booked | invoiced | collected | outstanding | discounted | tds | age_*
+    let adminSponsMoneyFilter = '';
+    let sponsImportText = '';
+
+    async function loadAdminSponsorship() {
+      const section = document.getElementById('section-sponsorship');
+      if (!section) return;
+      if (!section.innerHTML.trim()) sectionLoading(section);
+      try {
+        const g = await api.get('/api/admin/sellable-items?event_id=' + EID);
+        const bad = bodyError(g);
+        if (bad) { sectionError(section, 'the sponsorship catalogue', { message: bad }, 'loadAdminSponsorship()'); return; }
+        adminSpons = g;
+        // ready:false is the EXPECTED state until migration 0032 is hand-run — a
+        // Cloudflare deploy never runs one — so it renders as a note, exactly as the
+        // Floor Plan screen does for 0030 and Boardrooms for 0029.
+        if (!g.ready) { section.innerHTML = sponsNotLiveHtml(); return; }
+        // The other half of the revenue picture. Best effort and never blocking:
+        // this screen is still worth showing if the floor plan call fails.
+        await ensureFloorLoaded();
+        renderAdminSponsorship();
+      } catch (e) { sectionError(section, 'the sponsorship catalogue', e, 'loadAdminSponsorship()'); }
+    }
+
+    function sponsNotLiveHtml() {
+      return \`
+        <div class="glass rounded-xl p-6">
+          <h3 class="font-semibold mb-2"><i class="fas fa-bullhorn text-primary-400 mr-2"></i>Sponsorship inventory is not live yet</h3>
+          <p class="text-sm text-gray-400 mb-3">Migration 0032 has not been applied to production, so there is no catalogue to sell from and nothing to count. Until it is run, sponsorship and branding stay where they are today &mdash; in a deck, an inbox and somebody's memory &mdash; and the revenue figure on the Floor Plan screen keeps measuring the floor alone.</p>
+          <code class="block text-xs bg-black/30 rounded-lg p-3 text-gray-300 overflow-x-auto">npx wrangler d1 execute bharatai-production --remote --file=./migrations/0032_sellable_items.sql</code>
+          <p class="text-[11px] text-gray-500 mt-3">Every price in that seed is a placeholder derived from what comparable Indian shows publish. None of it has been quoted by the owner, and none of it may reach a proposal until it has. The prices are editable here once the table exists, so confirming them is a form, not a redeploy.</p>
+        </div>\`;
+    }
+
+    function renderAdminSponsorship() {
+      const section = document.getElementById('section-sponsorship');
+      const g = adminSpons;
+      if (!section || !g || !g.ready) return;
+      const body = adminSponsTab === 'sales'
+        ? sponsDashboardHtml(g)
+        : sponsFiltersHtml(g) + sponsInventoryHtml(g);
+      section.innerHTML = sponsTabsHtml(g) + body;
+    }
+
+    // ---- the two halves fetch each other, so the combined view is real ----------
+    // Each sales screen pulls the OTHER inventory as well as its own, and does it on
+    // every load rather than only when the payload is missing. That second request is
+    // the price of the headline number being true: Refresh on the Sponsorship screen
+    // has to move the stands half of the combined total too, and a screen that
+    // refreshed only half of a figure it presents as the whole business would be a
+    // more confident version of the bug this feature exists to fix.
+    //
+    // Neither may take the other down. A failure leaves the previous payload in place
+    // and, if there never was one, the combined line says which half is missing
+    // instead of the screen failing to draw.
+    async function ensureFloorLoaded() {
+      try {
+        const g = await api.get('/api/admin/booths?event_id=' + EID);
+        if (!bodyError(g)) adminFloor = g;
+      } catch (e) { /* the combined line will say the stands half is missing */ }
+    }
+    async function ensureSponsLoaded() {
+      try {
+        const g = await api.get('/api/admin/sellable-items?event_id=' + EID);
+        if (!bodyError(g)) adminSpons = g;
+      } catch (e) { /* the combined line will say the sponsorship half is missing */ }
+    }
+
+    function sponsTabsHtml(g) {
+      const tab = (id, icon, label) =>
+        '<button type="button" onclick="setSponsTab(\\'' + id + '\\')" class="px-3 py-2 rounded-lg text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500/70 ' +
+        (adminSponsTab === id ? 'bg-primary-600 text-white' : 'glass text-gray-400 hover:text-white hover:bg-white/10') +
+        '"><i class="fas ' + icon + ' mr-1.5"></i>' + label + '</button>';
+      return \`
+        <div class="flex flex-wrap items-center gap-2 mb-4">
+          \${tab('sales', 'fa-chart-line', 'Sales')}
+          \${tab('inventory', 'fa-list', 'Inventory')}
+          <div class="flex gap-2 w-full sm:w-auto sm:ml-auto">
+            <button type="button" onclick="openSponsSalePicker()" class="flex-1 sm:flex-none px-3 py-2 rounded-lg text-xs font-semibold bg-green-600 hover:bg-green-500 text-white transition-colors focus:outline-none focus:ring-2 focus:ring-green-400/70"><i class="fas fa-file-signature mr-1.5"></i>Record a sale</button>
+            <button type="button" onclick="openSponsImportModal()" class="flex-1 sm:flex-none px-3 py-2 rounded-lg text-xs font-semibold glass hover:bg-white/10 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500/70"><i class="fas fa-file-csv mr-1.5"></i>Import CSV</button>
+          </div>
+        </div>\`;
+    }
+    function setSponsTab(t) { adminSponsTab = t; renderAdminSponsorship(); }
+
+    // ---- the unit, and what is true about it --------------------------------
+    // The server has already decided occupies and hold_lapsed per row, once, so
+    // the tiles, the rollup, the list and every drill-down read the same answer and
+    // cannot disagree about whether an expired option is still off the market.
+    function sponsAllUnits(g) {
+      const out = [];
+      (g.items || []).forEach(it => (it.units || []).forEach(u => out.push(u)));
+      return out;
+    }
+    function sponsUnitMatch(u, st) {
+      if (st === 'lapsed') return !!u.hold_lapsed;
+      if (!u.occupies) return false;
+      if (st === 'sold') return u.status === 'confirmed';
+      if (st === 'held') return u.status === 'held';
+      if (st === 'blocked') return u.status === 'blocked';
+      return true;
+    }
+    // What is still CHASEABLE on one unit, by boothOwing's rule and for its reasons:
+    // an invoice is the clock, and TDS has already left the buyer's hands.
+    function sponsOwing(u) {
+      if (!u.occupies) return 0;
+      if (u.status !== 'confirmed' && u.status !== 'held') return 0;
+      if (!u.invoice_number) return 0;
+      return Math.max(0, Number(u.grand_total_inr || 0) - Number(u.amount_paid_inr || 0) - Number(u.tds_deducted_inr || 0));
+    }
+    function sponsAgeBucket(u) {
+      if (!sponsOwing(u)) return '';
+      const d = daysUntil(u.balance_due_date || u.invoice_date);
+      if (d === null) return 'undated';
+      if (d >= 0) return 'not_due';
+      const over = -d;
+      return over <= 30 ? 'd0_30' : over <= 60 ? 'd30_60' : 'd60';
+    }
+    function sponsMoneyMatch(u, f) {
+      if (!u.occupies) return false;
+      if (u.status !== 'confirmed' && u.status !== 'held') return false;
+      if (f === 'booked') return true;
+      if (f === 'invoiced') return !!u.invoice_number;
+      if (f === 'collected') return Number(u.amount_paid_inr || 0) > 0;
+      if (f === 'outstanding') return sponsOwing(u) > 0;
+      if (f === 'discounted') return Number(u.discount_inr || 0) > 0;
+      if (f === 'tds') return Number(u.tds_deducted_inr || 0) > 0;
+      if (f.indexOf('age_') === 0) return sponsAgeBucket(u) === f.slice(4);
+      return true;
+    }
+    const SPONS_MONEY_LABEL = {
+      booked: 'booked (held + confirmed)', invoiced: 'invoiced', collected: 'with receipts',
+      outstanding: 'invoiced but not settled', discounted: 'sold below list',
+      tds: 'with tax withheld at source', age_not_due: 'not yet due', age_d0_30: '0-30 days over',
+      age_d30_60: '30-60 days over', age_d60: '60+ days over', age_undated: 'no due date',
+    };
+
+    // The drill-down every clickable figure lands on. Same contract as boothDrill:
+    // narrow the inventory list to exactly the rows behind that number and show them.
+    function sponsDrill(status, category, money) {
+      adminSponsStatusFilter = status || '';
+      adminSponsCategoryFilter = category || '';
+      adminSponsMoneyFilter = money || '';
+      adminSponsTab = 'inventory';
+      if (currentSection !== 'sponsorship') { switchSection('sponsorship'); return; }
+      renderAdminSponsorship();
+      const el = document.getElementById('spons-inventory');
+      if (el && el.scrollIntoView) { try { el.scrollIntoView({ block: 'start', behavior: 'smooth' }); } catch (_) {} }
+    }
+    // The same doorway aimed at the OTHER inventory, for the combined view's stands
+    // line. boothDrill assumes it is already on the floor plan section; from here it
+    // has to navigate first, and switchSection re-enters loadAdminFloorPlan which
+    // renders with the filters already set.
+    function boothMoneyDrill(money, status) {
+      if (currentSection === 'floor-plan') { boothDrill(status || '', '', '', money || ''); return; }
+      adminBoothStatusFilter = status || '';
+      adminBoothTypeFilter = ''; adminBoothZoneFilter = '';
+      adminBoothMoneyFilter = money || '';
+      adminBoothTab = 'stands';
+      switchSection('floor-plan');
+    }
+    function clearSponsFilters() {
+      adminSponsCategoryFilter = ''; adminSponsStatusFilter = ''; adminSponsMoneyFilter = '';
+      renderAdminSponsorship();
+    }
+    function setSponsCategoryFilter(v) { adminSponsCategoryFilter = v; renderAdminSponsorship(); }
+    function setSponsStatusFilter(v) { adminSponsStatusFilter = v; renderAdminSponsorship(); }
+
+    // ============ ONE REVENUE PICTURE ============
+    //
+    // THE POINT OF THIS WHOLE FEATURE, and the reason it is rendered at the top of
+    // BOTH sales screens rather than on one of them: until now the revenue figure
+    // the team read out every morning had 604.3 sqm of floor in its denominator and
+    // nothing else, so it measured maybe half the business and gave no hint that it
+    // was doing so.
+    //
+    // Three lines, never one. Stands and Sponsorship keep their own row with their
+    // own colour and their own drill-downs; Combined is a separate, visibly heavier
+    // row underneath. Silently adding the two into a single undifferentiated total
+    // would fix the arithmetic and destroy the diagnosis — "we are behind" is not an
+    // actionable sentence unless you can see which half is behind.
+    //
+    // Every figure comes from the two payloads the two screens already drew
+    // themselves from. Nothing here re-queries, so this panel cannot disagree with
+    // the lists it links to.
+    function revZero() {
+      return { potential: 0, booked: 0, confirmed: 0, held: 0, invoiced: 0, collected: 0, outstanding: 0, tds: 0 };
+    }
+    function revOf(payload) {
+      if (!payload || !payload.ready || !payload.summary) return null;
+      const s = payload.summary;
+      return {
+        potential: Number(s.potential_inr || 0), booked: Number(s.booked_inr || 0),
+        confirmed: Number(s.confirmed_value_inr || 0), held: Number(s.held_value_inr || 0),
+        invoiced: Number(s.invoiced_inr || 0), collected: Number(s.collected_inr || 0),
+        // Outstanding is SUMMED rather than recomputed from the combined totals. Each
+        // half is already clamped at zero, and over-collection on the floor must not
+        // be allowed to cancel out a sponsor who genuinely owes money — the combined
+        // debtor book is what is chaseable on both, not the net of the two.
+        outstanding: Number(s.outstanding_inr || 0), tds: Number(s.tds_inr || 0),
+      };
+    }
+    const revAdd = (a, b) => {
+      const o = revZero();
+      Object.keys(o).forEach(k => { o[k] = Number((a && a[k]) || 0) + Number((b && b[k]) || 0); });
+      return o;
+    };
+
+    // One figure in a revenue line. Label above value on purpose: at 390px these sit
+    // three to a row and the label is what makes the column readable without a
+    // header row to scroll away from.
+    function revCell(label, value, sub, action, opts) {
+      opts = opts || {};
+      const tone = opts.tone || '';
+      const strong = opts.strong ? 'text-base md:text-lg font-black' : 'text-sm md:text-base font-bold';
+      const inner =
+        '<div class="text-[10px] uppercase tracking-wide text-gray-500 leading-tight">' + label + '</div>' +
+        '<div class="' + strong + ' tabular-nums leading-tight mt-0.5 ' + tone + '">' + value + '</div>' +
+        (sub ? '<div class="text-[10px] text-gray-600 leading-tight tabular-nums">' + sub + '</div>' : '');
+      if (!action) return '<div class="px-2 py-1.5 rounded-lg">' + inner + '</div>';
+      return '<button type="button" onclick="' + action + '" title="' + escH(opts.title || ('Show what is behind ' + label)) +
+        '" class="px-2 py-1.5 rounded-lg text-left w-full cursor-pointer transition-colors hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-primary-500/70 group">' +
+        inner + '</button>';
+    }
+
+    function revLineHtml(opts) {
+      const r = opts.rev;
+      const cells = opts.cells;
+      return \`
+        <div class="rounded-xl border \${opts.border} \${opts.bg} p-2.5">
+          <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 mb-1 px-2">
+            <span class="text-xs font-bold \${opts.tone}"><i class="fas \${opts.icon} mr-1.5"></i>\${opts.title}</span>
+            <span class="text-[10px] text-gray-500">\${opts.note}</span>
+          </div>
+          \${r ? '<div class="grid grid-cols-3 md:grid-cols-6 gap-x-1 gap-y-1">' + cells + '</div>'
+               : '<div class="px-2 py-2 text-[11px] text-amber-300">' + opts.missing + '</div>'}
+        </div>\`;
+    }
+
+    function combinedRevenueHtml() {
+      const stands = revOf(adminFloor);
+      const spons = revOf(adminSpons);
+      const combined = (stands || spons) ? revAdd(stands, spons) : null;
+      const money = (v) => inrShort(v);
+      const full = (v) => '₹' + inrN(v);
+
+      const cellSet = (r, drill, opts) => {
+        opts = opts || {};
+        const strong = !!opts.strong;
+        const c = (label, key, action, o) => revCell(label, money(r[key]), full(r[key]), action,
+          Object.assign({ strong: strong }, o || {}));
+        return c('Potential', 'potential', drill('')) +
+          c('Booked', 'booked', drill('booked'), { tone: 'text-primary-300' }) +
+          c('Confirmed', 'confirmed', drill('', 'sold'), { tone: 'text-green-400' }) +
+          c('Invoiced', 'invoiced', drill('invoiced')) +
+          c('Collected', 'collected', drill('collected'), { tone: 'text-green-400' }) +
+          c('Outstanding', 'outstanding', drill('outstanding'), { tone: r.outstanding ? 'text-red-400' : 'text-gray-500' });
+      };
+
+      const standsLine = revLineHtml({
+        rev: stands, title: 'Stands', icon: 'fa-map', tone: 'text-primary-300',
+        border: 'border-white/10', bg: 'bg-white/[0.02]',
+        note: stands ? ((adminFloor.summary.total || 0) + ' stands &middot; ' + sqmPair(adminFloor.summary.total_sqm) + ' of floor') : '',
+        missing: (adminFloor && adminFloor.ready === false)
+          ? 'Migration 0030 has not been applied, so there are no stands to count and this total is sponsorship alone. Open Floor Plan for the command.'
+          : 'The floor plan could not be read, so the stands half of this total is missing. Open Floor Plan to see why.',
+        cells: stands ? cellSet(stands, (m, st) => "boothMoneyDrill('" + (m || '') + "','" + (st || '') + "')") : '',
+      });
+      const sponsLine = revLineHtml({
+        rev: spons, title: 'Sponsorship &amp; branding', icon: 'fa-bullhorn', tone: 'text-amber-300',
+        border: 'border-white/10', bg: 'bg-white/[0.02]',
+        note: spons ? ((adminSpons.summary.items || 0) + ' items &middot; ' + (adminSpons.summary.sold_units || 0) + ' units sold, ' + (adminSpons.summary.held_units || 0) + ' held') : '',
+        missing: (adminSpons && adminSpons.ready === false)
+          ? 'Migration 0032 has not been applied, so sponsorship contributes nothing to this total yet &mdash; which is exactly the gap it exists to close. Open Sponsorship for the command.'
+          : 'The sponsorship catalogue could not be read, so that half of this total is missing.',
+        cells: spons ? cellSet(spons, (m, st) => "sponsDrill('" + (st || '') + "','','" + (m || '') + "')") : '',
+      });
+
+      // The combined row is deliberately not clickable: a single figure that spans
+      // two inventories has no one list behind it, and a doorway that lands
+      // somewhere arbitrary is worse than a number that admits it is a total.
+      const combinedLine = revLineHtml({
+        rev: combined, title: 'Combined', icon: 'fa-layer-group', tone: 'text-white',
+        border: 'border-primary-500/30', bg: 'bg-primary-500/[0.07]',
+        note: 'stands + sponsorship &middot; the whole business',
+        missing: 'Neither inventory could be read.',
+        cells: combined ? cellSet(combined, () => '', { strong: true }) : '',
+      });
+
+      return \`
+        <h4 class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2"><i class="fas fa-indian-rupee-sign mr-1.5"></i>One revenue picture <span class="normal-case tracking-normal text-gray-600 font-normal">&mdash; net of discount, ex-GST except Invoiced, Collected and Outstanding</span></h4>
+        <div class="grid gap-2 mb-3">\${standsLine}\${sponsLine}\${combinedLine}</div>
+        \${combinedTargetHtml(stands, spons, combined)}\`;
+    }
+
+    // THE TARGET, measured against the COMBINED figure — which is the change that
+    // makes the morning number honest. It is the sum of two settings: the hall's
+    // Rs 1,82,90,000 (seeded by 0030, because that is a real hall at real prices)
+    // and a sponsorship target that 0032 deliberately does NOT seed, because every
+    // price in that catalogue is a placeholder the owner has never quoted and a
+    // denominator invented by a migration is one that gets read out in a meeting as
+    // though somebody chose it.
+    //
+    // So while the sponsorship half is unset the bar says so, loudly, rather than
+    // quietly measuring a combined achievement against a stands-only denominator —
+    // which would be the same half-a-business number in a new costume.
+    function combinedTargetHtml(stands, spons, combined) {
+      const standTarget = adminFloor && adminFloor.ready ? Number(adminFloor.target_inr || 0) : 0;
+      const sponsTargetRaw = (adminSpons && adminSpons.ready) ? adminSpons.target_inr : undefined;
+      const sponsTarget = (sponsTargetRaw === null || sponsTargetRaw === undefined) ? null : Number(sponsTargetRaw);
+      const target = standTarget + (sponsTarget || 0);
+      const confirmed = combined ? combined.confirmed : 0;
+      const held = combined ? combined.held : 0;
+      const pct = pctOf(confirmed, target);
+      const tone = pct >= 75 ? 'text-green-400' : pct >= 40 ? 'text-amber-300' : 'text-red-400';
+      const barConfirmed = Math.min(100, pct);
+      const barHeld = Math.max(0, Math.min(100 - barConfirmed, pctOf(held, target)));
+      const gap = Math.max(0, target - confirmed);
+      const canEditSpons = !!(adminSpons && adminSpons.ready);
+      return \`
+        <div class="glass rounded-xl p-4 mb-6 border border-primary-500/25">
+          <div class="flex flex-wrap items-end justify-between gap-3 mb-3">
+            <div>
+              <div class="text-xs text-gray-500 mb-0.5">Combined revenue target, ex-GST</div>
+              <div class="text-2xl font-black tabular-nums">₹\${inrN(target)}</div>
+              <div class="text-[11px] text-gray-500 mt-1">
+                <span class="text-primary-300">₹\${inrN(standTarget)}</span> stands
+                + <span class="\${sponsTarget === null ? 'text-amber-300' : 'text-amber-300'}">\${sponsTarget === null ? 'nothing set' : '₹' + inrN(sponsTarget)}</span> sponsorship
+                \${canEditSpons ? '<button type="button" onclick="sponsTargetEdit()" title="Set the sponsorship target" class="ml-1 align-middle text-[11px] font-medium px-2 py-0.5 rounded-lg glass hover:bg-white/10 text-gray-400 hover:text-white focus:outline-none focus:ring-2 focus:ring-primary-500/70"><i class="fas fa-pen mr-1"></i>Edit</button>' : ''}
+              </div>
+            </div>
+            <div class="text-right">
+              <div class="text-xs text-gray-500 mb-0.5">Achieved, both inventories</div>
+              <div class="text-2xl font-black tabular-nums \${tone}">\${pct}% <span class="text-sm font-semibold text-gray-400">&middot; ₹\${inrN(confirmed)}</span></div>
+            </div>
+          </div>
+          <div class="h-3 rounded-full bg-white/10 overflow-hidden flex" role="img" aria-label="\${pct}% of the combined target confirmed">
+            <div class="h-full bg-green-500 transition-all" style="width:\${barConfirmed}%"></div>
+            <div class="h-full bg-yellow-500/60 transition-all" style="width:\${barHeld}%"></div>
+          </div>
+          <p class="text-[11px] text-gray-500 mt-2">Solid green is confirmed on both inventories; the paler band is what is sitting in holds. \${gap ? '<b class="text-gray-300">₹' + inrN(gap) + '</b> still to close' : 'The target is met.'}\${held ? ' &middot; ₹' + inrN(held) + ' of that is already held.' : ''}</p>
+          \${sponsTarget === null ? '<p class="text-[11px] text-amber-300 mt-2"><i class="fas fa-triangle-exclamation mr-1"></i>No sponsorship target has been set, so this bar is measuring what BOTH inventories have confirmed against a denominator that covers only the floor. Migration 0032 seeds no target on purpose &mdash; every price in that catalogue is a placeholder awaiting the owner, and a target summed from figures nobody has quoted is exactly the number that gets read out as though somebody chose it. Set one here the day they are confirmed.</p>' : ''}
+        </div>\`;
+    }
+
+    function sponsTargetEdit() {
+      const raw = (adminSpons && adminSpons.target_inr !== null && adminSpons.target_inr !== undefined)
+        ? Number(adminSpons.target_inr) : '';
+      openModal(\`
+        <h3 class="text-lg font-bold mb-1">Sponsorship revenue target</h3>
+        <p class="text-xs text-gray-400 mb-4">Whole rupees, ex-GST. Added to the stands target of ₹\${inrN(adminFloor && adminFloor.ready ? adminFloor.target_inr : 0)} to give the combined figure both sales screens measure against.</p>
+        <input id="spons-target-input" inputmode="numeric" autocomplete="off" value="\${raw}" placeholder="Leave blank for none" class="w-full px-3 py-2 rounded-lg text-sm bg-white/5 border border-white/10 tabular-nums focus:outline-none focus:ring-2 focus:ring-primary-500/70">
+        <p class="text-[11px] text-gray-500 mt-2 mb-4">The catalogue at its current placeholder prices would be worth <b class="text-gray-300">₹\${inrN((adminSpons && adminSpons.summary && adminSpons.summary.potential_inr) || 0)}</b> if every capped unit sold at list &mdash; a sanity check on the SHAPE of the catalogue, not a figure anyone has agreed to. Leaving this blank keeps the screen saying out loud that sponsorship is missing from the denominator, which is more useful than a number nobody chose.</p>
+        <div class="flex flex-wrap gap-2">
+          <button type="button" onclick="sponsTargetSave()" class="px-4 py-2.5 rounded-lg text-sm font-semibold bg-primary-600 hover:bg-primary-500 text-white focus:outline-none focus:ring-2 focus:ring-primary-500/70"><i class="fas fa-floppy-disk mr-1.5"></i>Save the target</button>
+          <button type="button" onclick="sponsTargetSave(true)" class="px-4 py-2.5 rounded-lg text-sm font-medium glass hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-primary-500/70">Clear it</button>
+          <button type="button" onclick="closeModal()" class="px-4 py-2.5 rounded-lg text-sm font-medium glass hover:bg-white/10">Cancel</button>
+        </div>\`);
+      const i = document.getElementById('spons-target-input');
+      if (i) { i.focus(); i.select(); i.onkeydown = e => { if (e.key === 'Enter') sponsTargetSave(); if (e.key === 'Escape') closeModal(); }; }
+    }
+    async function sponsTargetSave(clear) {
+      const el = document.getElementById('spons-target-input');
+      const v = clear ? '' : String((el && el.value) || '').trim();
+      try {
+        const r = await api.put('/api/admin/sponsorship-target', { target_inr: v });
+        if (r && r.error) { toast(r.error, 'error'); return; }
+        if (adminSpons) adminSpons.target_inr = r.target_inr;
+        closeModal();
+        toast(r.target_inr === null ? 'Sponsorship target cleared' : 'Sponsorship target set to ₹' + inrN(r.target_inr));
+        if (currentSection === 'floor-plan') renderAdminFloorPlan(); else renderAdminSponsorship();
+      } catch (e) { toast((e && e.message) || 'Could not save that target', 'error'); }
+    }
+
+    // ============ THE SPONSORSHIP SALES DASHBOARD ============
+    function sponsDashboardHtml(g) {
+      const s = g.summary || {};
+      const units = sponsAllUnits(g);
+      const soldUnits = Number(s.sold_units || 0);
+      const heldUnits = Number(s.held_units || 0);
+      const totalUnits = Number(s.total_units || 0);
+      const availUnits = Number(s.available_units || 0);
+      const takeUp = pctOf(soldUnits + heldUnits, totalUnits);
+      const takeTone = takeUp >= 75 ? 'text-green-400' : takeUp >= 40 ? 'text-amber-300' : 'text-red-400';
+      const unlimited = Number(s.unlimited_items || 0);
+      const tds = Number(s.tds_inr || 0);
+      const outstanding = Number(s.outstanding_inr || 0);
+      return \`
+        \${combinedRevenueHtml()}
+
+        <h4 class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2"><i class="fas fa-bullhorn mr-1.5"></i>Sponsorship inventory <span class="normal-case tracking-normal text-gray-600 font-normal">&mdash; units, not square metres</span></h4>
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+          \${boothStat(totalUnits, 'Units with a ceiling', "sponsDrill('','')", { title: 'Show the whole catalogue', sub: Number(s.items || 0) + ' items &middot; ' + unlimited + ' of them unlimited' })}
+          \${boothStat(soldUnits, 'Sold', "sponsDrill('sold','')", { tone: 'text-green-400', title: 'Show the units that are sold' })}
+          \${boothStat(heldUnits, 'Held', "sponsDrill('held','')", { tone: 'text-yellow-400', title: 'Show the units on option' })}
+          \${boothStat(availUnits, 'Still to sell', "sponsDrill('available','')", { tone: 'text-primary-400', title: 'Show the items with units left', sub: unlimited ? 'plus ' + unlimited + ' unlimited ' + (unlimited === 1 ? 'item' : 'items') : '' })}
+          \${boothStat(takeUp + '%', 'Take-up', "sponsDrill('sold','')", { tone: takeTone, sub: (soldUnits + heldUnits) + ' of ' + totalUnits + ' capped units taken' })}
+        </div>
+
+        <h4 class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2"><i class="fas fa-indian-rupee-sign mr-1.5"></i>Sponsorship revenue <span class="normal-case tracking-normal text-gray-600 font-normal">&mdash; this inventory only; the combined figure is above</span></h4>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+          \${boothStat(inrShort(s.potential_inr), 'Potential', "sponsDrill('','')", { sub: 'every capped unit at list · ₹' + inrN(s.potential_inr), title: 'Show the whole catalogue' })}
+          \${boothStat(inrShort(s.booked_inr), 'Booked', "sponsDrill('','','booked')", { tone: 'text-primary-400', sub: 'held + confirmed · ₹' + inrN(s.booked_inr) })}
+          \${boothStat(inrShort(s.confirmed_value_inr), 'Confirmed', "sponsDrill('sold','')", { tone: 'text-green-400', border: 'border border-green-500/20', sub: 'sold units · ₹' + inrN(s.confirmed_value_inr) })}
+          \${boothStat(inrShort(s.invoiced_inr), 'Invoiced', "sponsDrill('','','invoiced')", { sub: 'incl. GST · ₹' + inrN(s.invoiced_inr) })}
+          \${boothStat(inrShort(s.collected_inr), 'Collected', "sponsDrill('','','collected')", { tone: 'text-green-400', sub: 'receipts banked · ₹' + inrN(s.collected_inr) })}
+          \${boothStat(inrShort(tds), 'TDS withheld', "sponsDrill('','','tds')", { tone: tds ? 'text-amber-300' : 'text-gray-400', title: 'Show the sales the buyer withheld tax on', sub: 'settled, never banked · ₹' + inrN(tds) })}
+          \${boothStat(inrShort(outstanding), 'Outstanding', "sponsDrill('','','outstanding')", { tone: outstanding ? 'text-red-400' : 'text-gray-400', border: outstanding ? 'border border-red-500/25' : 'border border-white/10', sub: 'invoiced, less receipts and TDS · ₹' + inrN(outstanding) })}
+          \${boothStat(inrShort(s.discount_inr), 'Discount given', "sponsDrill('','','discounted')", { tone: Number(s.discount_inr || 0) ? 'text-amber-300' : 'text-gray-400', sub: 'off list · ₹' + inrN(s.discount_inr) })}
+        </div>
+        \${unlimited ? '<p class="text-[11px] text-gray-500 -mt-4 mb-6"><i class="fas fa-circle-info mr-1"></i>' + unlimited + ' ' + (unlimited === 1 ? 'item has' : 'items have') + ' no ceiling &mdash; the show can always print another badge &mdash; so there is no "all of it" for them to add to Potential. What they have actually been agreed for is counted instead, which keeps Potential a floor rather than a forecast.</p>' : ''}
+        \${tds ? '<p class="text-[11px] text-gray-500 -mt-4 mb-6"><i class="fas fa-circle-info mr-1"></i>₹' + inrN(tds) + ' of the invoiced total was withheld at source by buyers and paid to the government against the organiser\\'s PAN. Sponsorship is squarely a service, so this happens here more often than on a stand, not less &mdash; Outstanding is <b>invoiced &minus; collected &minus; TDS</b> for that reason.</p>' : ''}
+
+        \${sponsHoldsHtml(g, units)}
+        \${sponsAgeingHtml(g, units)}
+
+        <h4 class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2"><i class="fas fa-layer-group mr-1.5"></i>By category <span class="normal-case tracking-normal text-gray-600 font-normal">&mdash; every figure opens the items behind it</span></h4>
+        \${sponsCategoryTableHtml(g)}\`;
+    }
+
+    // Options that have lapsed or are about to. It bites harder here than on a
+    // stand: there is exactly one lanyard, and a forgotten hold on it blocks the
+    // single highest-margin line in the catalogue with nobody chasing it.
+    function sponsHoldsHtml(g, units) {
+      const lapsed = units.filter(u => u.hold_lapsed);
+      const soon = units.filter(u => u.occupies && u.status === 'held' && (() => {
+        const d = daysUntil(u.hold_expires_at);
+        return d !== null && d >= 0 && d <= 7;
+      })());
+      const noClock = units.filter(u => u.occupies && u.status === 'held' && !u.hold_expires_at);
+      if (!lapsed.length && !soon.length && !noClock.length) return '';
+      const chip = (u, tone, when) =>
+        '<button type="button" onclick="openSponsSaleModal(\\'' + escH(String(u.item_code)) + '\\',' + Number(u.id) + ')" ' +
+        'class="text-left px-3 py-2 rounded-lg border ' + tone + ' hover:bg-white/10 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500/70 w-full">' +
+        '<div class="text-xs font-semibold truncate">' + escH(u.company_name || '') + '</div>' +
+        '<div class="text-[10px] text-gray-500 truncate">' + escH(u.item_name || '') + ' &middot; ' + escH(u.unit_label || 'unit') + ' ' + Number(u.unit_no) + '</div>' +
+        '<div class="text-[10px] ' + (tone.indexOf('red') !== -1 ? 'text-red-300' : 'text-amber-300') + '">' + when + '</div>' +
+        '</button>';
+      const days = v => { const d = daysUntil(v); return d === null ? '' : d < 0 ? (-d) + (d === -1 ? ' day ago' : ' days ago') : d === 0 ? 'today' : 'in ' + d + (d === 1 ? ' day' : ' days'); };
+      return \`
+        <h4 class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2"><i class="fas fa-hourglass-half mr-1.5"></i>Options <span class="normal-case tracking-normal text-gray-600 font-normal">&mdash; nothing sweeps these; a held unit simply reads as available once its date passes</span></h4>
+        <div class="glass rounded-xl p-4 mb-6 border border-yellow-500/20">
+          \${lapsed.length ? '<div class="text-[11px] text-gray-400 mb-2">' + lapsed.length + (lapsed.length === 1 ? ' option has' : ' options have') + ' lapsed and already count as available. Recording a sale for a different company retires the old record automatically.</div><div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 mb-3">' + lapsed.map(u => chip(u, 'border-red-500/30 bg-red-500/10', 'expired ' + days(u.hold_expires_at))).join('') + '</div>' : ''}
+          \${soon.length ? '<div class="text-[11px] text-gray-400 mb-2">' + soon.length + (soon.length === 1 ? ' option lapses' : ' options lapse') + ' within a week.</div><div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 mb-3">' + soon.map(u => chip(u, 'border-amber-500/30 bg-amber-500/10', 'lapses ' + days(u.hold_expires_at))).join('') + '</div>' : ''}
+          \${noClock.length ? '<div class="text-[11px] text-amber-300"><i class="fas fa-triangle-exclamation mr-1"></i>' + noClock.length + (noClock.length === 1 ? ' option has' : ' options have') + ' no expiry at all, so ' + (noClock.length === 1 ? 'it is' : 'they are') + ' off the market until somebody remembers. Open ' + (noClock.length === 1 ? 'it' : 'them') + ' and give ' + (noClock.length === 1 ? 'it a date' : 'them dates') + '.</div><div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 mt-2">' + noClock.map(u => chip(u, 'border-amber-500/30 bg-amber-500/10', 'no expiry')).join('') + '</div>' : ''}
+        </div>\`;
+    }
+
+    function sponsAgeingHtml(g, units) {
+      const invoiced = units.filter(u => u.invoice_number && u.occupies && (u.status === 'confirmed' || u.status === 'held'));
+      if (!invoiced.length) return '';
+      const head = '<h4 class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2"><i class="fas fa-hourglass-half mr-1.5"></i>Ageing <span class="normal-case tracking-normal text-gray-600 font-normal">&mdash; invoiced and not yet settled</span></h4>';
+      const owing = invoiced.filter(u => sponsOwing(u) > 0);
+      if (!owing.length) {
+        return head + '<div class="glass rounded-xl p-4 mb-6 border border-green-500/20 text-sm text-green-300"><i class="fas fa-check mr-2"></i>Every sponsorship invoice raised has been settled &mdash; counting the TDS buyers withheld.</div>';
+      }
+      const by = {};
+      BOOTH_AGE_BUCKETS.forEach(x => { by[x.key] = { n: 0, inr: 0 }; });
+      owing.forEach(u => { const k = sponsAgeBucket(u); if (by[k]) { by[k].n++; by[k].inr += sponsOwing(u); } });
+      const cards = BOOTH_AGE_BUCKETS.filter(x => by[x.key].n).map(x =>
+        boothStat(inrShort(by[x.key].inr), x.label, "sponsDrill('','','age_" + x.key + "')",
+          { tone: x.tone, border: 'border ' + x.ring, sub: by[x.key].n + (by[x.key].n === 1 ? ' invoice' : ' invoices') + ' &middot; ₹' + inrN(by[x.key].inr),
+            title: 'Show the sponsorship invoices ' + x.label.toLowerCase() })).join('');
+      const total = owing.reduce((n, u) => n + sponsOwing(u), 0);
+      return head + '<div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-2">' + cards + '</div>' +
+        '<p class="text-[11px] text-gray-500 mb-6">₹' + inrN(total) + ' is still chaseable across ' + owing.length +
+        (owing.length === 1 ? ' invoice' : ' invoices') + ', aged against the balance due date where one was agreed and the invoice date otherwise. TDS the buyer withheld is treated as settled, so nobody is chased for money they have already handed to the Income Tax Department.</p>';
+    }
+
+    function sponsCategoryRollup(g) {
+      const by = {};
+      (g.items || []).forEach(it => {
+        const k = String(it.category || '');
+        if (!by[k]) by[k] = {
+          key: k, name: (g.category_labels && g.category_labels[k]) || k,
+          items: 0, units: 0, unlimited: 0, sold: 0, held: 0, blocked: 0, available: 0,
+          potential: 0, booked: 0, collected: 0, discount: 0,
+        };
+        const c = by[k];
+        c.items++;
+        if (it.unlimited) c.unlimited++;
+        else { c.units += Number(it.quantity_available || 0); c.available += Number(it.units_available || 0); }
+        c.sold += Number(it.units_sold || 0);
+        c.held += Number(it.units_held || 0);
+        c.blocked += Number(it.units_blocked || 0);
+        c.potential += Number(it.potential_inr || 0);
+        c.booked += Number(it.booked_inr || 0);
+        c.collected += Number(it.collected_inr || 0);
+        c.discount += Number(it.discount_inr || 0);
+      });
+      const order = g.categories || [];
+      const rank = k => { const i = order.indexOf(k); return i === -1 ? 99 : i; };
+      return Object.keys(by).map(k => by[k]).sort((a, b) => rank(a.key) - rank(b.key));
+    }
+
+    function sponsCategoryTableHtml(g) {
+      const rows = sponsCategoryRollup(g);
+      if (!rows.length) return '<div class="glass rounded-xl p-8 text-center text-sm text-gray-500">The catalogue is empty.</div>';
+      const body = rows.map(c => {
+        const take = pctOf(c.sold + c.held, c.units);
+        const takeTone = take >= 75 ? 'text-green-400' : take >= 40 ? 'text-amber-300' : 'text-gray-400';
+        const D = (st) => "sponsDrill('" + st + "','" + c.key + "')";
+        // A category made ENTIRELY of unlimited items has no capped units at all, and
+        // printing "0" beside "4 sold" reads as a broken table rather than as "there
+        // is no ceiling here". Take-up is undefined for the same reason: a percentage
+        // of an unbounded denominator is not a number, and 0% would be a lie about a
+        // line that is selling perfectly well.
+        const noCeiling = !c.units && c.unlimited;
+        const dash = '<span class="text-gray-500">no ceiling</span>';
+        return \`
+          <tr class="border-b border-white/5 hover:bg-white/5 transition-colors">
+            <td class="py-2 px-2 font-semibold">
+              <button type="button" onclick="\${D('')}" title="Show every \${escH(c.name)} item" class="text-left rounded px-1.5 py-0.5 -mx-1.5 hover:bg-primary-500/20 hover:text-primary-300 focus:outline-none focus:ring-2 focus:ring-primary-500/70 transition-colors">\${escH(c.name)}</button>
+              <div class="text-[10px] text-gray-600 px-0.5">\${c.items} \${c.items === 1 ? 'item' : 'items'}\${c.unlimited ? ' &middot; ' + c.unlimited + ' unlimited' : ''}</div>
+            </td>
+            <td class="text-center py-2 px-2">\${noCeiling ? dash : boothNum(c.units, D(''), { title: 'Show every unit in ' + c.name })}</td>
+            <td class="text-center py-2 px-2">\${boothNum(c.sold, D('sold'), { tone: 'text-green-400', title: 'Show the sold units' })}</td>
+            <td class="text-center py-2 px-2">\${boothNum(c.held, D('held'), { tone: 'text-yellow-400', title: 'Show the units on option' })}</td>
+            <td class="text-center py-2 px-2">\${noCeiling ? dash : boothNum(c.available, D('available'), { tone: 'text-primary-400', title: 'Show what is left' })}</td>
+            <td class="text-right py-2 px-2">\${boothNum(inrShort(c.potential), D(''), { title: 'Every capped unit of ' + c.name + ' at list' })}</td>
+            <td class="text-right py-2 px-2">\${boothNum(inrShort(c.booked), D(''), { tone: 'text-primary-300', title: 'Held and confirmed ' + c.name })}</td>
+            <td class="text-right py-2 px-2">\${boothNum(inrShort(c.collected), D('sold'), { tone: 'text-green-400', title: 'Receipts against ' + c.name })}</td>
+            <td class="text-right py-2 px-2 tabular-nums \${noCeiling ? 'text-gray-500' : takeTone}">\${noCeiling ? '&mdash;' : take + '%'}</td>
+          </tr>\`;
+      }).join('');
+      const tot = rows.reduce((a, c) => ({
+        units: a.units + c.units, sold: a.sold + c.sold, held: a.held + c.held,
+        available: a.available + c.available, potential: a.potential + c.potential,
+        booked: a.booked + c.booked, collected: a.collected + c.collected,
+      }), { units: 0, sold: 0, held: 0, available: 0, potential: 0, booked: 0, collected: 0 });
+      return \`
+        <div class="glass rounded-xl p-4 mb-4">
+          <p class="text-[11px] text-gray-500 mb-2 sm:hidden"><i class="fas fa-arrows-left-right mr-1"></i>Swipe the table sideways for the money columns.</p>
+          <div class="overflow-x-auto">
+          <table class="w-full text-xs min-w-[42rem]">
+            <thead><tr class="border-b border-white/10 text-gray-400">
+              <th class="text-left py-2 px-2 font-medium">Category</th>
+              <th class="text-center py-2 px-2 font-medium">Units</th>
+              <th class="text-center py-2 px-2 font-medium">Sold</th>
+              <th class="text-center py-2 px-2 font-medium">Held</th>
+              <th class="text-center py-2 px-2 font-medium">Left</th>
+              <th class="text-right py-2 px-2 font-medium">Potential</th>
+              <th class="text-right py-2 px-2 font-medium">Booked</th>
+              <th class="text-right py-2 px-2 font-medium">Collected</th>
+              <th class="text-right py-2 px-2 font-medium">Take-up</th>
+            </tr></thead>
+            <tbody>\${body}</tbody>
+            <tfoot><tr class="border-t border-white/15 font-semibold">
+              <td class="py-2 px-2">All categories</td>
+              <td class="text-center py-2 px-2 tabular-nums">\${tot.units}</td>
+              <td class="text-center py-2 px-2 tabular-nums text-green-400">\${tot.sold}</td>
+              <td class="text-center py-2 px-2 tabular-nums text-yellow-400">\${tot.held}</td>
+              <td class="text-center py-2 px-2 tabular-nums text-primary-400">\${tot.available}</td>
+              <td class="text-right py-2 px-2 tabular-nums">\${inrShort(tot.potential)}</td>
+              <td class="text-right py-2 px-2 tabular-nums text-primary-300">\${inrShort(tot.booked)}</td>
+              <td class="text-right py-2 px-2 tabular-nums text-green-400">\${inrShort(tot.collected)}</td>
+              <td class="text-right py-2 px-2 tabular-nums">\${pctOf(tot.sold + tot.held, tot.units)}%</td>
+            </tr></tfoot>
+          </table>
+          </div>
+          <p class="text-[11px] text-gray-500 mt-2">Units and Left count only items with a ceiling. Unlimited items &mdash; extra badges, co-exhibitor listings &mdash; still contribute everything they have sold to Booked and Collected.</p>
+        </div>\`;
+    }
+
+    // ============ THE INVENTORY LIST ============
+    function sponsItemMatches(it) {
+      if (adminSponsCategoryFilter && String(it.category || '') !== adminSponsCategoryFilter) return false;
+      if (adminSponsStatusFilter === 'available') return it.unlimited || Number(it.units_available || 0) > 0;
+      if (adminSponsStatusFilter) return (it.units || []).some(u => sponsUnitMatch(u, adminSponsStatusFilter));
+      if (adminSponsMoneyFilter) return (it.units || []).some(u => sponsMoneyMatch(u, adminSponsMoneyFilter));
+      return true;
+    }
+    // Within a matching item, which of its units to draw. A filter narrows the units
+    // too — showing all twelve guide pages under a "60+ days over" filter would make
+    // the number the operator clicked meaningless.
+    function sponsVisibleUnits(it) {
+      const us = it.units || [];
+      if (adminSponsStatusFilter && adminSponsStatusFilter !== 'available') return us.filter(u => sponsUnitMatch(u, adminSponsStatusFilter));
+      if (adminSponsMoneyFilter) return us.filter(u => sponsMoneyMatch(u, adminSponsMoneyFilter));
+      return us;
+    }
+
+    function sponsFiltersHtml(g) {
+      const cats = (g.categories || []).filter(k => (g.items || []).some(i => String(i.category) === k));
+      const filtered = adminSponsCategoryFilter || adminSponsStatusFilter || adminSponsMoneyFilter;
+      const sel = 'px-3 py-2 rounded-lg text-xs bg-white/5 border border-white/10 focus:outline-none focus:ring-2 focus:ring-primary-500/70';
+      return \`
+        <div class="flex flex-wrap items-center gap-2 mb-3">
+          <select onchange="setSponsCategoryFilter(this.value)" aria-label="Filter by category" class="\${sel}">
+            <option value="">All categories</option>
+            \${cats.map(k => \`<option value="\${escH(k)}"\${adminSponsCategoryFilter === k ? ' selected' : ''}>\${escH((g.category_labels && g.category_labels[k]) || k)}</option>\`).join('')}
+          </select>
+          <select onchange="setSponsStatusFilter(this.value)" aria-label="Filter by status" class="\${sel}">
+            <option value="">Any status</option>
+            \${['available', 'sold', 'held', 'blocked', 'lapsed'].map(st => \`<option value="\${st}"\${adminSponsStatusFilter === st ? ' selected' : ''}>\${st.charAt(0).toUpperCase() + st.slice(1)}</option>\`).join('')}
+          </select>
+          \${adminSponsMoneyFilter ? '<span class="px-3 py-1.5 rounded-full text-xs font-medium bg-primary-500/20 text-primary-300 border border-primary-500/30"><i class="fas fa-filter mr-1"></i>' + escH(SPONS_MONEY_LABEL[adminSponsMoneyFilter] || adminSponsMoneyFilter) + '</span>' : ''}
+          \${filtered ? '<button type="button" onclick="clearSponsFilters()" class="px-3 py-2 rounded-lg text-xs font-medium glass hover:bg-white/10 text-gray-400 hover:text-white focus:outline-none focus:ring-2 focus:ring-primary-500/70"><i class="fas fa-xmark mr-1"></i>Clear filters</button>' : ''}
+        </div>\`;
+    }
+
+    function sponsInventoryHtml(g) {
+      const items = (g.items || []).filter(sponsItemMatches);
+      if (!items.length) {
+        return '<div id="spons-inventory" class="glass rounded-xl p-8 text-center"><p class="text-sm text-gray-500 mb-3">Nothing matches those filters.</p>' +
+          '<button type="button" onclick="clearSponsFilters()" class="px-4 py-2 rounded-lg text-xs font-medium glass hover:bg-white/10">Clear the filters</button></div>';
+      }
+      const groups = [];
+      (g.categories || []).concat(['']).forEach(k => {
+        const inCat = items.filter(i => String(i.category || '') === k);
+        if (inCat.length) groups.push({ key: k, name: (g.category_labels && g.category_labels[k]) || k || 'Other', items: inCat });
+      });
+      // Anything in a category the code has never heard of still has to appear.
+      const known = groups.reduce((n, gr) => n + gr.items.length, 0);
+      if (known < items.length) {
+        groups.push({ key: '', name: 'Other', items: items.filter(i => !(g.categories || []).includes(String(i.category || ''))) });
+      }
+      return '<div id="spons-inventory">' + groups.map(gr => sponsGroupHtml(gr, g)).join('') + '</div>';
+    }
+
+    function sponsGroupHtml(gr, g) {
+      const sold = gr.items.reduce((n, i) => n + Number(i.units_sold || 0), 0);
+      const booked = gr.items.reduce((n, i) => n + Number(i.booked_inr || 0), 0);
+      return \`
+        <div class="glass rounded-xl p-4 mb-4">
+          <div class="flex flex-wrap items-baseline justify-between gap-2 mb-3">
+            <h4 class="text-sm font-semibold">\${escH(gr.name)}</h4>
+            <span class="text-[11px] text-gray-500 tabular-nums">\${gr.items.length} \${gr.items.length === 1 ? 'item' : 'items'} &middot; \${sold} sold &middot; \${inrShort(booked)} booked</span>
+          </div>
+          <div class="grid gap-2">\${gr.items.map(it => sponsItemHtml(it)).join('')}</div>
+        </div>\`;
+    }
+
+    function sponsItemHtml(it) {
+      const arg = escH(String(it.code));
+      const cap = it.unlimited ? null : Number(it.quantity_available || 0);
+      const left = it.unlimited ? null : Number(it.units_available || 0);
+      const units = sponsVisibleUnits(it);
+      const soldOut = !it.unlimited && left === 0;
+      const inactive = Number(it.is_active) === 0;
+      const capWord = it.unlimited ? 'unlimited' : cap + ' ' + sponsWord(it.unit_label, cap);
+      const leftPill = it.unlimited
+        ? '<span class="text-[10px] px-2 py-0.5 rounded bg-primary-500/15 text-primary-300">unlimited</span>'
+        : left > 0
+          ? '<span class="text-[10px] px-2 py-0.5 rounded bg-primary-500/20 text-primary-300">' + left + ' left</span>'
+          : '<span class="text-[10px] px-2 py-0.5 rounded bg-gray-500/20 text-gray-400">sold out</span>';
+      return \`
+        <div class="rounded-xl border \${inactive ? 'border-white/5 bg-white/[0.01] opacity-60' : 'border-white/10 bg-white/[0.02]'} p-3">
+          <div class="flex flex-wrap items-start gap-x-3 gap-y-2">
+            <div class="min-w-0 flex-1">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="text-sm font-semibold">\${escH(it.name)}</span>
+                \${leftPill}
+                \${inactive ? '<span class="text-[10px] px-2 py-0.5 rounded bg-gray-500/20 text-gray-400">retired</span>' : ''}
+              </div>
+              <div class="text-[11px] text-gray-500 mt-0.5">\${escH(it.code)} &middot; \${capWord} &middot; ₹\${inrN(it.list_price_inr)} per \${escH(it.unit_label || 'unit')}</div>
+              \${it.description ? '<div class="text-[11px] text-gray-600 mt-0.5">' + escH(it.description) + '</div>' : ''}
+            </div>
+            <div class="flex items-center gap-4 text-center">
+              <div><div class="text-sm font-bold tabular-nums text-green-400">\${Number(it.units_sold || 0)}</div><div class="text-[10px] text-gray-600">sold</div></div>
+              <div><div class="text-sm font-bold tabular-nums text-yellow-400">\${Number(it.units_held || 0)}</div><div class="text-[10px] text-gray-600">held</div></div>
+              <div><div class="text-sm font-bold tabular-nums">\${inrShort(it.booked_inr)}</div><div class="text-[10px] text-gray-600">booked</div></div>
+            </div>
+            <div class="flex gap-2 w-full sm:w-auto">
+              \${soldOut || inactive ? '' : '<button type="button" onclick="openSponsSaleModal(\\'' + arg + '\\')" class="flex-1 sm:flex-none px-2.5 py-1.5 rounded-lg text-[11px] font-semibold bg-green-600 hover:bg-green-500 text-white focus:outline-none focus:ring-2 focus:ring-green-400/70"><i class="fas fa-file-signature mr-1"></i>Record sale</button>'}
+              <button type="button" onclick="openSponsItemModal('\${arg}')" title="Edit this catalogue item" class="flex-1 sm:flex-none px-2.5 py-1.5 rounded-lg text-[11px] font-medium glass hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-primary-500/70"><i class="fas fa-pen mr-1"></i>Edit item</button>
+            </div>
+          </div>
+          \${units.length ? '<div class="mt-2 pt-2 border-t border-white/5 grid gap-1">' + units.map(u => sponsUnitRowHtml(it, u)).join('') + '</div>' : ''}
+        </div>\`;
+    }
+    function sponsWord(label, n) {
+      const s = String(label || 'unit').trim() || 'unit';
+      if (Number(n) === 1) return s;
+      const last2 = s.slice(-2).toLowerCase(), last = s.slice(-1).toLowerCase();
+      return (last === 's' || last === 'x' || last === 'z' || last2 === 'ch' || last2 === 'sh') ? s + 'es' : s + 's';
+    }
+
+    function sponsUnitRowHtml(it, u) {
+      const owing = sponsOwing(u);
+      const pill = u.hold_lapsed ? 'bg-red-500/15 text-red-300'
+        : u.status === 'confirmed' ? 'bg-green-500/20 text-green-300'
+        : u.status === 'held' ? 'bg-yellow-500/20 text-yellow-300'
+        : 'bg-gray-500/20 text-gray-400';
+      const label = u.hold_lapsed ? 'option expired' : u.status === 'confirmed' ? 'sold' : u.status;
+      return \`
+        <div class="flex flex-wrap items-center gap-x-2 gap-y-1 px-2 py-1.5 rounded-lg hover:bg-white/5 transition-colors">
+          <span class="text-[10px] tabular-nums text-gray-500 w-14 shrink-0">\${escH(u.unit_label || 'unit')} \${Number(u.unit_no)}</span>
+          <!-- min-w rather than a bare flex-1: at 390px the pills and figures beside it
+               squeezed "Tata Consultancy Services" down to "Ta...", which is the one
+               thing in this row nobody can look up. A floor on the width makes the
+               row wrap instead of eating the name. -->
+          <span class="text-xs font-medium flex-1 min-w-[7rem] truncate">\${escH(u.company_name || '')}</span>
+          <span class="text-[10px] px-2 py-0.5 rounded shrink-0 \${pill}">\${escH(label)}</span>
+          <span class="text-[11px] tabular-nums text-gray-400 shrink-0">\${Number(u.grand_total_inr) ? inrShort(u.grand_total_inr) + ' incl GST' : '&mdash;'}</span>
+          \${u.invoice_number ? '<span class="text-[10px] text-gray-500 shrink-0 hidden sm:inline">' + escH(u.invoice_number) + '</span>' : ''}
+          \${owing ? '<span class="text-[10px] text-red-300 tabular-nums shrink-0">₹' + inrN(owing) + ' owed</span>' : ''}
+          \${Number(u.tds_deducted_inr) ? '<span class="text-[10px] text-amber-300 tabular-nums shrink-0">₹' + inrN(u.tds_deducted_inr) + ' TDS</span>' : ''}
+          <span class="flex gap-1 shrink-0">
+            <button type="button" onclick="openSponsSaleModal('\${escH(String(it.code))}',\${Number(u.id)})" class="px-2 py-1 rounded text-[10px] font-medium glass hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-primary-500/70"><i class="fas fa-pen mr-1"></i>Edit</button>
+            <button type="button" onclick="releaseSponsUnit(\${Number(u.id)})" class="px-2 py-1 rounded text-[10px] font-medium text-red-400 hover:bg-red-500/10 focus:outline-none focus:ring-2 focus:ring-red-400/70"><i class="fas fa-arrow-rotate-left mr-1"></i>Release</button>
+          </span>
+        </div>\`;
+    }
+
+    // ============ RECORD A SALE ============
+    function sponsItemByCode(code) {
+      const g = adminSpons;
+      if (!g) return null;
+      const c = String(code || '').toUpperCase();
+      return (g.items || []).filter(i => String(i.code).toUpperCase() === c)[0] || null;
+    }
+    // The unit the server WILL choose, computed here for display only, by the same
+    // rule: the lowest positive integer not currently occupied. Shown so the operator
+    // knows which page of twelve they are selling before they save — but the server
+    // recomputes it inside the write, because two people can be looking at this same
+    // screen and only the database can decide between them.
+    function sponsNextUnit(it) {
+      const taken = {};
+      (it.units || []).forEach(u => { if (u.occupies) taken[Number(u.unit_no)] = 1; });
+      let n = 1;
+      while (taken[n]) n++;
+      if (it.unlimited) return n;
+      return n > Number(it.quantity_available || 0) ? null : n;
+    }
+
+    function openSponsSalePicker() {
+      const g = adminSpons;
+      if (!g || !g.ready) { toast('Reload the sponsorship screen and try again', 'error'); return; }
+      openModal(\`
+        <h3 class="text-lg font-bold mb-1">Record a sponsorship sale</h3>
+        <p class="text-xs text-gray-400 mb-3">Pick what was sold. The unit number is chosen for you &mdash; the lowest one that is free &mdash; so two people recording the same item cannot both take the same page.</p>
+        <input id="ssp-q" oninput="sponsSalePickerFilter()" autocomplete="off" placeholder="Search the catalogue&hellip;" class="w-full px-3 py-2 rounded-lg text-sm bg-white/5 border border-white/10 mb-3 focus:outline-none focus:ring-2 focus:ring-primary-500/70">
+        <div id="ssp-list" class="max-h-96 overflow-y-auto pr-1">\${sponsSalePickerListHtml('')}</div>\`);
+      const q = document.getElementById('ssp-q');
+      if (q) q.focus();
+    }
+    function sponsSalePickerFilter() {
+      const q = document.getElementById('ssp-q');
+      const list = document.getElementById('ssp-list');
+      if (list) list.innerHTML = sponsSalePickerListHtml(q ? q.value : '');
+    }
+    function sponsSalePickerListHtml(query) {
+      const g = adminSpons;
+      const q = String(query || '').trim().toLowerCase();
+      const hit = i => !q || String(i.code).toLowerCase().indexOf(q) !== -1 ||
+        String(i.name || '').toLowerCase().indexOf(q) !== -1 ||
+        String(i.category || '').toLowerCase().indexOf(q) !== -1 ||
+        (i.units || []).some(u => String(u.company_name || '').toLowerCase().indexOf(q) !== -1);
+      const all = (g.items || []).filter(i => Number(i.is_active) !== 0).filter(hit);
+      if (!all.length) return '<p class="text-sm text-gray-500 py-6 text-center">Nothing in the catalogue matches that.</p>';
+      const free = all.filter(i => i.unlimited || Number(i.units_available || 0) > 0);
+      const gone = all.filter(i => !i.unlimited && Number(i.units_available || 0) === 0);
+      const item = (i, dim) => {
+        const next = sponsNextUnit(i);
+        const leftTxt = i.unlimited ? 'unlimited' : Number(i.units_available || 0) + ' of ' + Number(i.quantity_available || 0) + ' left';
+        return '<button type="button" ' + (dim ? 'disabled ' : 'onclick="openSponsSaleModal(\\'' + escH(String(i.code)) + '\\')" ') +
+          'class="w-full text-left px-3 py-2 rounded-lg mb-1.5 flex items-center gap-3 border border-white/10 ' +
+          (dim ? 'bg-white/[0.02] opacity-60 cursor-not-allowed' : 'bg-white/5 hover:bg-primary-500/15 hover:border-primary-500/40 cursor-pointer') +
+          ' transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500/70">' +
+          '<span class="min-w-0 flex-1"><span class="text-xs font-semibold">' + escH(i.name) + '</span>' +
+          '<span class="block text-[10px] text-gray-500">' + escH(i.code) + ' &middot; ' + leftTxt +
+          (next && !dim ? ' &middot; next is ' + escH(i.unit_label || 'unit') + ' ' + next : '') + '</span></span>' +
+          '<span class="text-xs tabular-nums text-gray-400 shrink-0">' + inrShort(i.list_price_inr) + '</span></button>';
+      };
+      let html = '';
+      if (free.length) html += '<div class="text-[10px] uppercase tracking-wider text-gray-500 mb-1.5">Available &middot; ' + free.length + '</div>' + free.map(i => item(i, false)).join('');
+      if (gone.length) html += '<div class="text-[10px] uppercase tracking-wider text-gray-500 mt-3 mb-1.5">Sold out &middot; release a unit to sell it again</div>' + gone.map(i => item(i, true)).join('');
+      return html;
+    }
+
+    function openSponsSaleModal(code, allocId) {
+      const it = sponsItemByCode(code);
+      if (!it) { toast('Reload the sponsorship screen and try again', 'error'); return; }
+      const u = allocId ? ((it.units || []).filter(x => Number(x.id) === Number(allocId))[0] || null) : null;
+      const editing = !!u;
+      const b = u || {};
+      const nextUnit = editing ? Number(b.unit_no) : sponsNextUnit(it);
+      if (!editing && nextUnit === null) {
+        toast(it.name + ' is sold out. Release a unit first.', 'error');
+        return;
+      }
+      // The sticker is the starting price on a new sale; on an edit it is the price
+      // FROZEN at the sale, so repricing the catalogue cannot silently rewrite a deal
+      // already signed — and with every price in 0032 a placeholder awaiting the
+      // owner, that repricing is scheduled rather than hypothetical.
+      const list = editing ? Number(b.list_price_inr || it.list_price_inr || 0) : Number(it.list_price_inr || 0);
+      const discount = editing ? Number(b.discount_inr || 0) : 0;
+      const m = boothMoneyFrom(list, discount, editing ? Number(b.tds_deducted_inr || 0) : 0);
+      const v = (x) => escH(x == null ? '' : String(x));
+      const dateVal = x => String(x == null ? '' : x).slice(0, 10);
+      const status = editing ? (b.status === 'confirmed' ? 'confirmed' : b.status) : 'confirmed';
+      const holdDefault = (editing && b.hold_expires_at) ? dateVal(b.hold_expires_at) : dayPlus(14);
+      const fld = 'w-full px-3 py-2 rounded-lg text-sm bg-white/5 border border-white/10 focus:outline-none focus:ring-2 focus:ring-primary-500/70';
+      const num = fld + ' tabular-nums';
+      const unitWord = escH(it.unit_label || 'unit');
+      const capTxt = it.unlimited
+        ? 'unlimited &mdash; the show can always supply another'
+        : Number(it.quantity_available || 0) + ' ' + escH(sponsWord(it.unit_label, Number(it.quantity_available || 0))) + ' in total, ' + Number(it.units_available || 0) + ' still free';
+
+      openModal(\`
+        <h3 class="text-lg font-bold mb-1">\${editing ? 'Edit the sale on' : 'Record a sale &middot;'} \${escH(it.name)}</h3>
+        <p class="text-xs text-gray-400 mb-1">\${escH(it.code)} &middot; \${capTxt} &middot; lists at ₹\${inrN(it.list_price_inr)} per \${unitWord}</p>
+        <p class="text-[11px] text-gray-500 mb-3">\${it.description ? escH(it.description) : ''}</p>
+        <div class="rounded-lg border border-primary-500/25 bg-primary-500/[0.07] px-3 py-2 mb-4 text-[11px] text-gray-300">
+          <i class="fas fa-hashtag text-primary-400 mr-1.5"></i>\${editing
+            ? 'This is <b>' + unitWord + ' ' + nextUnit + '</b>. Editing rewrites this unit and leaves every other one alone.'
+            : 'This will take <b>' + unitWord + ' ' + nextUnit + '</b> &mdash; the lowest one free. The number is settled by the database when you save, so if somebody else takes it in the meantime you will be told rather than both of you getting it.'}
+        </div>
+        \${b.hold_lapsed ? '<div class="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 mb-4 text-[11px] text-amber-200"><i class="fas fa-hourglass-end mr-1.5"></i>The option ' + escH(b.company_name || '') + ' held on this ' + unitWord + ' expired on ' + escH(dateVal(b.hold_expires_at)) + ', so it is back on the market and counted as available. Saving a sale for a different company retires that record and writes a fresh one.</div>' : ''}
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+          <div><label class="block text-xs text-gray-400 mb-1" for="ss-company">Brand as it will be printed <span class="text-red-400">*</span></label>
+            <input id="ss-company" autocomplete="off" placeholder="Who bought it" class="\${fld}" value="\${v(b.company_name)}"></div>
+          <div><label class="block text-xs text-gray-400 mb-1" for="ss-contact">Contact person</label>
+            <input id="ss-contact" autocomplete="off" placeholder="Who you dealt with" class="\${fld}" value="\${v(b.contact_name)}"></div>
+          <div><label class="block text-xs text-gray-400 mb-1" for="ss-email">Email</label>
+            <input id="ss-email" autocomplete="off" inputmode="email" autocapitalize="none" spellcheck="false" class="\${fld}" value="\${v(b.email)}"></div>
+          <div><label class="block text-xs text-gray-400 mb-1" for="ss-phone">Phone</label>
+            <input id="ss-phone" autocomplete="off" inputmode="tel" class="\${fld}" value="\${v(b.phone)}"></div>
+        </div>
+
+        <label class="block text-xs text-gray-400 mb-1" for="ss-status">Status</label>
+        <select id="ss-status" onchange="sponsSaleRecalc()" class="\${fld}">
+          <option value="confirmed"\${status === 'confirmed' ? ' selected' : ''}>Confirmed &mdash; sold</option>
+          <option value="held"\${status === 'held' ? ' selected' : ''}>Held &mdash; agreed, not closed</option>
+          <option value="blocked"\${status === 'blocked' ? ' selected' : ''}>Organiser block &mdash; not a sale</option>
+        </select>
+        <p class="text-[11px] text-gray-500 mt-1 mb-3">All three take the \${unitWord} off the market. An organiser block is inventory held back &mdash; the lanyard kept for a ministry partner, a page reserved for the host's own ad &mdash; and never counts as revenue.</p>
+
+        <div id="ss-hold" class="rounded-xl border border-yellow-500/20 bg-yellow-500/[0.06] p-3 mb-4"\${status === 'held' ? '' : ' hidden'}>
+          <label class="block text-xs text-gray-300 mb-1 font-semibold" for="ss-holduntil"><i class="fas fa-hourglass-half text-yellow-400 mr-1.5"></i>Hold this \${unitWord} until</label>
+          <input id="ss-holduntil" type="date" oninput="sponsSaleRecalc()" class="\${fld}" value="\${v(holdDefault)}">
+          <p id="ss-hold-note" class="text-[11px] text-gray-500 mt-1.5"></p>
+        </div>
+
+        <div id="ss-money" class="rounded-xl border border-white/10 bg-white/[0.03] p-3 mb-4">
+          <div class="text-xs font-semibold text-gray-300 mb-2"><i class="fas fa-indian-rupee-sign text-primary-400 mr-1.5"></i>The deal <span class="font-normal text-gray-500">&mdash; whole rupees, GST is 18%</span></div>
+          <div class="grid grid-cols-2 gap-3 mb-3">
+            <div><label class="block text-xs text-gray-400 mb-1" for="ss-list">List price, ex-GST</label>
+              <input id="ss-list" inputmode="numeric" autocomplete="off" aria-describedby="ss-list-err" oninput="sponsSaleRecalc()" class="\${num}" value="\${m.list}">
+              <p id="ss-list-err" class="text-[11px] text-red-400 mt-1" hidden></p></div>
+            <div><label class="block text-xs text-gray-400 mb-1" for="ss-discount">Discount</label>
+              <input id="ss-discount" inputmode="numeric" autocomplete="off" aria-describedby="ss-discount-err" oninput="sponsSaleRecalc()" class="\${num}" value="\${m.discount}">
+              <p id="ss-discount-err" class="text-[11px] text-red-400 mt-1" hidden></p></div>
+          </div>
+          <div class="rounded-lg border border-white/10 px-3 py-2 mb-3" aria-live="polite">
+            <div class="flex items-baseline justify-between text-xs py-0.5"><span class="text-gray-500">Net, ex-GST</span><span id="ss-net" class="tabular-nums font-semibold">₹\${inrN(m.net)}</span></div>
+            <div class="flex items-baseline justify-between text-xs py-0.5"><span class="text-gray-500">GST 18%</span><span id="ss-gst" class="tabular-nums">₹\${inrN(m.gst)}</span></div>
+            <div class="flex items-baseline justify-between text-sm pt-1.5 mt-1 border-t border-white/10"><span class="font-semibold">Grand total</span><span id="ss-total" class="tabular-nums font-black">₹\${inrN(m.total)}</span></div>
+            <div id="ss-tds-row" class="pt-1.5 mt-1 border-t border-white/10"\${m.tds ? '' : ' hidden'}>
+              <div class="flex items-baseline justify-between text-xs py-0.5"><span class="text-gray-500">Less TDS withheld by the buyer</span><span id="ss-tds-shown" class="tabular-nums text-amber-300">&minus;₹\${inrN(m.tds)}</span></div>
+              <div class="flex items-baseline justify-between text-xs py-0.5"><span class="text-gray-500">Expected in the bank</span><span id="ss-due" class="tabular-nums font-semibold">₹\${inrN(m.due)}</span></div>
+            </div>
+          </div>
+          <p id="ss-derived" class="text-[11px] text-gray-500 mb-3"></p>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+            <div><label class="block text-xs text-gray-400 mb-1" for="ss-invoice">Invoice number</label>
+              <input id="ss-invoice" autocomplete="off" placeholder="BAI/2026/0001" class="\${fld}" value="\${v(b.invoice_number)}"></div>
+            <div><label class="block text-xs text-gray-400 mb-1" for="ss-invdate">Invoice date</label>
+              <input id="ss-invdate" type="date" class="\${fld}" value="\${v(dateVal(b.invoice_date))}"></div>
+            <div><label class="block text-xs text-gray-400 mb-1" for="ss-paid">Amount paid</label>
+              <input id="ss-paid" inputmode="numeric" autocomplete="off" aria-describedby="ss-paid-err" oninput="sponsSaleRecalc()" class="\${num}" value="\${Number(b.amount_paid_inr || 0)}">
+              <p id="ss-paid-err" class="text-[11px] text-red-400 mt-1" hidden></p></div>
+            <div><label class="block text-xs text-gray-400 mb-1" for="ss-paiddate">Payment date</label>
+              <input id="ss-paiddate" type="date" class="\${fld}" value="\${v(dateVal(b.paid_date))}"></div>
+            <div><label class="block text-xs text-gray-400 mb-1" for="ss-tds">TDS withheld by the buyer</label>
+              <input id="ss-tds" inputmode="numeric" autocomplete="off" aria-describedby="ss-tds-err" oninput="sponsSaleRecalc()" placeholder="0" class="\${num}" value="\${Number(b.tds_deducted_inr || 0)}">
+              <p id="ss-tds-err" class="text-[11px] text-red-400 mt-1" hidden></p>
+              <p class="text-[11px] text-gray-500 mt-1">Sponsorship is a service, so this is common. Counts towards settlement.</p></div>
+            <div><label class="block text-xs text-gray-400 mb-1" for="ss-duedate">Balance due by</label>
+              <input id="ss-duedate" type="date" oninput="sponsSaleRecalc()" class="\${fld}" value="\${v(dateVal(b.balance_due_date))}">
+              <p class="text-[11px] text-gray-500 mt-1">What the ageing view chases against.</p></div>
+          </div>
+          <label class="block text-xs text-gray-400 mb-1" for="ss-paystatus">Payment status</label>
+          <select id="ss-paystatus" onchange="sponsSaleRecalc(true)" class="\${fld}">
+            \${['pending', 'invoiced', 'part_paid', 'paid', 'refunded'].map(p =>
+              '<option value="' + p + '"' + (String(b.payment_status || 'pending') === p ? ' selected' : '') + '>' + p.split('_').join(' ') + '</option>').join('')}
+          </select>
+          <p id="ss-due-note" class="text-[11px] text-gray-500 mt-2" hidden></p>
+        </div>
+
+        <div class="rounded-xl border border-white/10 bg-white/[0.03] p-3 mb-4">
+          <div class="text-xs font-semibold text-gray-300 mb-2"><i class="fas fa-file-invoice text-primary-400 mr-1.5"></i>Who the invoice is made out to <span class="font-normal text-gray-500">&mdash; never blocks a sale</span></div>
+          <p class="text-[11px] text-gray-500 mb-2">The brand printed on the lanyard is very often not the registered entity, and an invoice made out to the brand is the one a buyer's accounts team sends back.</p>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div><label class="block text-xs text-gray-400 mb-1" for="ss-gstin">Buyer GSTIN</label>
+              <input id="ss-gstin" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="15" placeholder="27AABCU9603R1ZM" oninput="gstinCheck('ss')" class="\${num} uppercase" value="\${v(b.buyer_gstin)}">
+              <p id="ss-gstin-note" class="text-[11px] text-gray-500 mt-1"></p></div>
+            <div><label class="block text-xs text-gray-400 mb-1" for="ss-legal">Registered legal name</label>
+              <input id="ss-legal" autocomplete="off" placeholder="The entity on the GST certificate" class="\${fld}" value="\${v(b.buyer_legal_name)}">
+              <p class="text-[11px] text-gray-500 mt-1">Not the brand being printed.</p></div>
+          </div>
+          <div class="mt-3 sm:w-1/2 sm:pr-1.5">
+            <label class="block text-xs text-gray-400 mb-1" for="ss-state">Place of supply &middot; state code</label>
+            <input id="ss-state" inputmode="numeric" autocomplete="off" maxlength="2" placeholder="27" oninput="this.dataset.typed='1'; gstinCheck('ss')" class="\${num}" value="\${v(b.buyer_state_code)}"\${b.buyer_state_code ? ' data-typed="1"' : ''}>
+            <p class="text-[11px] text-gray-500 mt-1">Stored so IGST vs CGST+SGST can be applied once the accountant rules on it &mdash; and the answer may differ from the stands, since a lanyard print follows the recipient rather than the venue. Nothing here splits the tax.</p>
+          </div>
+        </div>
+
+        <label class="block text-xs text-gray-400 mb-1" for="ss-notes">Notes</label>
+        <textarea id="ss-notes" autocomplete="off" rows="2" placeholder="Artwork deadline, what was promised, which unit is which" class="\${fld} mb-4">\${v(b.notes)}</textarea>
+
+        <div class="flex flex-wrap gap-2">
+          <button type="button" id="ss-save" onclick="submitSponsSale('\${escH(String(it.code))}',\${editing ? Number(b.id) : 0})" class="px-4 py-2.5 rounded-lg text-sm font-semibold bg-green-600 hover:bg-green-500 text-white focus:outline-none focus:ring-2 focus:ring-green-400/70"><i class="fas fa-floppy-disk mr-1.5"></i>\${editing ? 'Save the changes' : 'Save the sale'}</button>
+          <button type="button" onclick="closeModal()" class="px-4 py-2.5 rounded-lg text-sm font-medium glass hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-primary-500/70">Cancel</button>
+          \${editing ? '<button type="button" onclick="releaseSponsUnit(' + Number(b.id) + ')" class="px-4 py-2.5 rounded-lg text-sm font-medium text-red-400 hover:bg-red-500/10 ml-auto focus:outline-none focus:ring-2 focus:ring-red-400/70"><i class="fas fa-arrow-rotate-left mr-1.5"></i>Release this ' + unitWord + '</button>' : ''}
+        </div>
+        <p class="text-[11px] text-gray-500 mt-3">Net, GST and the grand total are worked out from the list price and the discount by the same function the stands screen uses &mdash; they are never taken on trust, so what is saved is always what is shown. Releasing puts the \${unitWord} back on the market, keeping the record once an invoice has been raised against it because a credit note has to refer to something.</p>\`);
+      sponsSaleRecalc();
+    }
+
+    // The arithmetic, live, and identical to the server's — boothMoneyFrom is the
+    // same function the stands form calls, so a sponsorship total and a stand total
+    // cannot be worked out two different ways.
+    function sponsSaleRecalc(fromStatus) {
+      const el = id => document.getElementById(id);
+      const list = el('ss-list'), disc = el('ss-discount'), net = el('ss-net');
+      if (!list || !net) return;
+      const blocked = el('ss-status') && el('ss-status').value === 'blocked';
+      const box = el('ss-money');
+      if (box) box.style.opacity = blocked ? '0.45' : '';
+      const holdBox = el('ss-hold'), holdInput = el('ss-holduntil'), holdNote = el('ss-hold-note');
+      const isHeld = el('ss-status') && el('ss-status').value === 'held';
+      if (holdBox) holdBox.hidden = !isHeld;
+      if (holdNote && isHeld) {
+        const d = daysUntil(holdInput && holdInput.value);
+        holdNote.className = 'text-[11px] mt-1.5 ' + (d === null ? 'text-amber-300' : d < 0 ? 'text-red-400' : d <= 3 ? 'text-amber-300' : 'text-gray-500');
+        holdNote.innerHTML = d === null
+          ? 'Without a date this stays off the market until somebody remembers it. Fourteen days is the desk default.'
+          : d < 0
+            ? 'That date has already passed, so this counts as <b>available</b> everywhere the moment it is saved.'
+            : d === 0
+              ? 'Lapses at the end of today &mdash; after that it is back on the market on its own.'
+              : 'Lapses in ' + d + (d === 1 ? ' day' : ' days') + '. No cron runs: it simply reads as available from then on, and shows up under <b>Options</b> on the Sales tab first.';
+      }
+      gstinCheck('ss');
+
+      const issues = saleMoneyIssues('ss', 'item');
+      ['ss-list', 'ss-discount', 'ss-paid', 'ss-tds'].forEach(function (id) {
+        const hit = issues.filter(function (x) { return x.id === id; })[0];
+        boothSaleFieldNote(id, hit ? hit.msg : '');
+      });
+      const saveBtn = el('ss-save');
+      if (saveBtn) {
+        saveBtn.disabled = issues.length > 0;
+        saveBtn.classList.toggle('opacity-50', issues.length > 0);
+        saveBtn.classList.toggle('cursor-not-allowed', issues.length > 0);
+      }
+      if (issues.length) {
+        ['ss-net', 'ss-gst', 'ss-total'].forEach(function (id) { const e = el(id); if (e) e.textContent = '—'; });
+        const stop = el('ss-derived');
+        if (stop) stop.innerHTML = '<span class="text-red-400">Nothing is worked out from a figure that would be refused — fix the field' +
+          (issues.length > 1 ? 's' : '') + ' marked in red.</span>';
+        return;
+      }
+
+      const tdsEl = el('ss-tds');
+      const m = boothMoneyFrom(digitsOf(list.value), digitsOf(disc ? disc.value : 0), digitsOf(tdsEl ? tdsEl.value : 0));
+      const txt = (id, val) => { const e = el(id); if (e) e.textContent = '₹' + inrN(val); };
+      txt('ss-net', m.net); txt('ss-gst', m.gst); txt('ss-total', m.total);
+      const tdsRow = el('ss-tds-row');
+      if (tdsRow) {
+        tdsRow.hidden = !m.tds;
+        if (m.tds) {
+          const tShown = el('ss-tds-shown');
+          if (tShown) tShown.innerHTML = '&minus;₹' + inrN(m.tds);
+          const dueEl = el('ss-due');
+          if (dueEl) dueEl.textContent = '₹' + inrN(m.due);
+        }
+      }
+      const paidEl = el('ss-paid'), psEl = el('ss-paystatus');
+      let paid = Number(digitsOf(paidEl ? paidEl.value : 0));
+      if (fromStatus && psEl && psEl.value === 'paid') { paid = m.due; if (paidEl) paidEl.value = paid; }
+      if (paid > m.due) { paid = m.due; if (paidEl) paidEl.value = paid; }
+      if (psEl && psEl.value !== 'refunded' && !(fromStatus && psEl.value === 'paid')) {
+        const inv = el('ss-invoice') && String(el('ss-invoice').value || '').trim();
+        psEl.value = (paid + m.tds >= m.total && m.total > 0) ? 'paid'
+          : (paid > 0 || m.tds > 0) ? 'part_paid' : inv ? 'invoiced' : 'pending';
+      }
+      const owing = Math.max(0, m.total - paid - m.tds);
+      const note = el('ss-derived');
+      if (note) {
+        note.innerHTML = blocked
+          ? 'An organiser block is inventory taken off the market, not a sale &mdash; it will be saved with no money against it.'
+          : '₹' + inrN(m.list) + (m.discount ? ' &minus; ₹' + inrN(m.discount) + ' discount' : '') +
+            ' = <b class="text-gray-300">₹' + inrN(m.net) + '</b> net, + ₹' + inrN(m.gst) + ' GST = <b class="text-gray-300">₹' + inrN(m.total) + '</b> payable' +
+            (m.tds ? ' &middot; ₹' + inrN(m.tds) + ' withheld as TDS, so <b class="text-gray-300">₹' + inrN(m.due) + '</b> should reach the bank' : '') +
+            (paid ? ' &middot; ₹' + inrN(paid) + ' received, <b class="' + (owing > 0 ? 'text-amber-300' : 'text-green-400') + '">₹' + inrN(owing) + '</b> outstanding' : '');
+      }
+      const dueNote = el('ss-due-note'), dueDateEl = el('ss-duedate');
+      if (dueNote) {
+        const dd = daysUntil(dueDateEl && dueDateEl.value);
+        if (!owing || dd === null) { dueNote.hidden = true; }
+        else {
+          dueNote.hidden = false;
+          dueNote.className = 'text-[11px] mt-2 ' + (dd < -30 ? 'text-red-400' : dd < 0 ? 'text-amber-300' : 'text-gray-500');
+          dueNote.innerHTML = dd < 0
+            ? '₹' + inrN(owing) + ' is <b>' + (-dd) + (dd === -1 ? ' day' : ' days') + ' overdue</b> against this date.'
+            : '₹' + inrN(owing) + ' falls due in ' + dd + (dd === 1 ? ' day' : ' days') + '.';
+        }
+      }
+    }
+
+    async function submitSponsSale(code, allocId) {
+      const val = id => { const el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; };
+      const status = val('ss-status') || 'confirmed';
+      const company = val('ss-company');
+      if (!company && status !== 'blocked') {
+        toast('A brand name is required to record a sale', 'error');
+        const el = document.getElementById('ss-company');
+        if (el) { el.classList.add('border-red-500'); el.focus(); }
+        return;
+      }
+      // The second door on the same rule. Save is already disabled while a figure is
+      // refused, but a stale modal or a keyboard submit must not be able to post a
+      // number the server would reject.
+      const issues = saleMoneyIssues('ss', 'item');
+      if (issues.length) {
+        sponsSaleRecalc();
+        const bad = document.getElementById(issues[0].id);
+        if (bad) bad.focus();
+        toast(issues[0].msg, 'error');
+        return;
+      }
+      const btn = document.getElementById('ss-save');
+      if (btn) { btn.disabled = true; btn.classList.add('opacity-60'); }
+      try {
+        const r = await api.put('/api/admin/sellable-items/' + encodeURIComponent(code) + '/sale', {
+          event_id: EID,
+          allocation_id: Number(allocId) || null,
+          company_name: company, contact_name: val('ss-contact'),
+          email: val('ss-email'), phone: val('ss-phone'), status: status,
+          list_price_inr: String(boothRupeeStrict(val('ss-list'))),
+          discount_inr: String(boothRupeeStrict(val('ss-discount'))),
+          invoice_number: val('ss-invoice'), invoice_date: val('ss-invdate'),
+          amount_paid_inr: String(boothRupeeStrict(val('ss-paid'))), paid_date: val('ss-paiddate'),
+          tds_deducted_inr: String(boothRupeeStrict(val('ss-tds'))),
+          balance_due_date: val('ss-duedate'),
+          hold_expires_at: status === 'held' ? val('ss-holduntil') : '',
+          buyer_gstin: val('ss-gstin').toUpperCase(), buyer_legal_name: val('ss-legal'),
+          buyer_state_code: val('ss-state'),
+          payment_status: val('ss-paystatus'), notes: val('ss-notes'),
+        });
+        if (r && r.error) { toast(r.error, 'error'); return; }
+        closeModal();
+        toast(String(r.item_name || code) + ' &middot; ' + String(r.unit_label || 'unit') + ' ' + Number(r.unit_no) + ' &middot; ' +
+          (r.created ? 'sale recorded' : 'sale updated') +
+          (Number(r.grand_total_inr) ? ' · ₹' + inrN(r.grand_total_inr) + ' incl GST' : '') +
+          (Number(r.tds_deducted_inr) ? ' · ₹' + inrN(r.tds_deducted_inr) + ' TDS' : ''));
+        ((r && r.warnings) || []).forEach((w, i) => setTimeout(() => toast(w, 'error'), 400 + i * 300));
+        loadAdminSponsorship();
+      } catch (e) {
+        // A 409 is the unique index doing its job — somebody took that unit between
+        // opening this form and saving it. Reload so the screen agrees.
+        toast((e && e.message) || 'Could not record that sale', 'error');
+        loadAdminSponsorship();
+      } finally {
+        if (btn) { btn.disabled = false; btn.classList.remove('opacity-60'); }
+      }
+    }
+
+    async function releaseSponsUnit(id) {
+      if (!confirm('Release this unit? It goes straight back on the market. If an invoice has been raised the record is kept as a released row, because a credit note has to refer to something.')) return;
+      try {
+        const r = await api.del('/api/admin/item-allocations/' + Number(id) + '?event_id=' + EID);
+        if (r && r.error) { toast(r.error, 'error'); return; }
+        closeModal();
+        toast(String(r.item_name || '') + ' &middot; ' + (r.action === 'released'
+          ? 'released and kept' + (r.invoice_number ? ' &middot; ' + r.invoice_number + ' still needs a credit note' : '')
+          : 'released'));
+        loadAdminSponsorship();
+      } catch (e) { toast((e && e.message) || 'Could not release that unit', 'error'); }
+    }
+
+    // ============ EDITING A CATALOGUE ITEM ============
+    // 0032 argues the catalogue is a table and not a constant array precisely because
+    // the owner will edit it the first week it is used — every price in the seed is a
+    // placeholder they have never quoted. This is the form that makes that true, so
+    // confirming the rate card is an afternoon rather than a redeploy.
+    function openSponsItemModal(code) {
+      const it = sponsItemByCode(code);
+      if (!it) { toast('Reload the sponsorship screen and try again', 'error'); return; }
+      const v = (x) => escH(x == null ? '' : String(x));
+      const fld = 'w-full px-3 py-2 rounded-lg text-sm bg-white/5 border border-white/10 focus:outline-none focus:ring-2 focus:ring-primary-500/70';
+      const taken = Number(it.units_taken || 0);
+      openModal(\`
+        <h3 class="text-lg font-bold mb-1">\${escH(it.name)}</h3>
+        <p class="text-xs text-gray-400 mb-4">\${escH(it.code)} &middot; \${escH((adminSpons.category_labels && adminSpons.category_labels[it.category]) || it.category)} &middot; \${taken} \${taken === 1 ? 'unit' : 'units'} currently taken</p>
+        <div class="rounded-lg border border-amber-500/25 bg-amber-500/[0.08] px-3 py-2 mb-4 text-[11px] text-amber-200">
+          <i class="fas fa-triangle-exclamation mr-1.5"></i>Every price in this catalogue is a placeholder derived from what comparable Indian shows publish. None has been quoted by the owner, and none may reach a proposal or a rate card until it has. Changing it here never touches a deal already signed &mdash; every sale froze its own price at the time.
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+          <div><label class="block text-xs text-gray-400 mb-1" for="si-name">Name</label>
+            <input id="si-name" autocomplete="off" class="\${fld}" value="\${v(it.name)}"></div>
+          <div><label class="block text-xs text-gray-400 mb-1" for="si-unit">What one unit is called</label>
+            <input id="si-unit" autocomplete="off" placeholder="brand, page, slot, badge" class="\${fld}" value="\${v(it.unit_label)}">
+            <p class="text-[11px] text-gray-500 mt-1">Without this, "2" is ambiguous between two brands and two bottles.</p></div>
+          <div><label class="block text-xs text-gray-400 mb-1" for="si-price">List price per unit, ex-GST</label>
+            <input id="si-price" inputmode="numeric" autocomplete="off" class="\${fld} tabular-nums" value="\${Number(it.list_price_inr || 0)}"></div>
+          <div><label class="block text-xs text-gray-400 mb-1" for="si-qty">How many units exist</label>
+            <input id="si-qty" inputmode="numeric" autocomplete="off" placeholder="blank = unlimited" class="\${fld} tabular-nums" value="\${it.unlimited ? '' : Number(it.quantity_available || 0)}">
+            <p class="text-[11px] text-gray-500 mt-1">Blank means unlimited &mdash; the show can print another badge. It cannot go below the \${taken} already taken.</p></div>
+        </div>
+        <label class="block text-xs text-gray-400 mb-1" for="si-desc">What the buyer actually gets</label>
+        <textarea id="si-desc" autocomplete="off" rows="2" class="\${fld} mb-3">\${v(it.description)}</textarea>
+        <label class="flex items-center gap-2 text-xs text-gray-300 mb-4 cursor-pointer">
+          <input type="checkbox" id="si-active" class="rounded" \${Number(it.is_active) !== 0 ? 'checked' : ''}>
+          <span>Offer this on the sales screen</span>
+        </label>
+        <p class="text-[11px] text-gray-500 mb-4">Unticking retires the item without deleting it, which is the answer once something has been sold &mdash; history survives and the sales screen stops offering it. An item whose deliverable does not exist at this show is better deleted from the catalogue than left in it at any price, because an unsellable row is a promise waiting to be made by accident.</p>
+        <div class="flex flex-wrap gap-2">
+          <button type="button" id="si-save" onclick="submitSponsItem('\${escH(String(it.code))}')" class="px-4 py-2.5 rounded-lg text-sm font-semibold bg-primary-600 hover:bg-primary-500 text-white focus:outline-none focus:ring-2 focus:ring-primary-500/70"><i class="fas fa-floppy-disk mr-1.5"></i>Save the item</button>
+          <button type="button" onclick="closeModal()" class="px-4 py-2.5 rounded-lg text-sm font-medium glass hover:bg-white/10">Cancel</button>
+        </div>\`);
+    }
+
+    async function submitSponsItem(code) {
+      const val = id => { const el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; };
+      const active = document.getElementById('si-active');
+      const btn = document.getElementById('si-save');
+      if (btn) { btn.disabled = true; btn.classList.add('opacity-60'); }
+      try {
+        const r = await api.put('/api/admin/sellable-items/' + encodeURIComponent(code), {
+          event_id: EID,
+          name: val('si-name'), description: val('si-desc'), unit_label: val('si-unit'),
+          list_price_inr: val('si-price'), quantity_available: val('si-qty'),
+          is_active: active && active.checked ? 1 : 0,
+        });
+        if (r && r.error) { toast(r.error, 'error'); return; }
+        closeModal();
+        toast(code + ' updated');
+        loadAdminSponsorship();
+      } catch (e) {
+        toast((e && e.message) || 'Could not save that item', 'error');
+      } finally {
+        if (btn) { btn.disabled = false; btn.classList.remove('opacity-60'); }
+      }
+    }
+
+    // ============ CSV IMPORT ============
+    // The same twenty columns as the stand template, with item_code where that one
+    // says booth_code. A desk that has learned one spreadsheet has learned both, and
+    // every error message comes out of the same functions in the same words.
+    const SPONS_CSV_HEADERS = ['item_code', 'company_name', 'contact_name', 'email', 'phone', 'status',
+      'list_price_inr', 'discount_inr', 'invoice_number', 'invoice_date', 'amount_paid_inr',
+      'tds_deducted_inr', 'paid_date', 'balance_due_date', 'payment_status', 'buyer_gstin',
+      'buyer_legal_name', 'buyer_state_code', 'hold_expires_at', 'notes'];
+
+    function downloadSponsTemplate() {
+      const CRLF = String.fromCharCode(13, 10);
+      const BOM = String.fromCharCode(65279);
+      const sample = [
+        // A B2B buyer who withheld TDS: the cash that arrived is short of the invoice
+        // by exactly the deduction, and the row is still fully settled.
+        ['DK-LANYARD', 'Tata Consultancy Services', 'R Iyer', 'r@example.com', '+91 98765 43210', 'confirmed', '300000', '0', 'BAI/2026/0101', '2026-09-01', '324000', '30000', '2026-09-08', '', 'paid', '27AABCT1234M1Z5', 'Tata Consultancy Services Limited', '27', '', 'Sole brand on every lanyard'],
+        // The same item twice is the ORDINARY case here, unlike the stands file:
+        // twelve advertisers, twelve pages, one catalogue row.
+        ['PB-FULL', 'Acme Robotics', 'P Shah', 'p@example.com', '', 'confirmed', '30000', '0', 'BAI/2026/0102', '2026-09-03', '0', '0', '', '2026-09-30', 'invoiced', '29AACCA5678K1ZP', 'Acme Robotics Private Limited', '29', '', 'Right-hand page requested'],
+        ['PB-FULL', 'Seed Stage Labs', '', '', '', 'confirmed', '30000', '5000', '', '', '0', '0', '', '', 'pending', '', '', '', '', 'Startup rate agreed'],
+        ['SP-TRACK', 'Nova AI', '', '', '', 'held', '350000', '0', '', '', '', '', '', '', 'pending', '', '', '', '2026-09-30', 'Verbal hold on the healthcare track'],
+      ];
+      const csv = BOM + [SPONS_CSV_HEADERS.join(',')]
+        .concat(sample.map(r => r.map(boothCsvCell).join(','))).join(CRLF) + CRLF;
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+      a.download = 'sponsorship_sales_template.csv';
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+      toast('Template downloaded');
+    }
+
+    function openSponsImportModal() {
+      sponsImportText = '';
+      openModal(\`
+        <h3 class="text-lg font-bold mb-1"><i class="fas fa-file-csv text-green-400 mr-2"></i>Import sponsorship sales</h3>
+        <p class="text-xs text-gray-400 mb-4">For sponsorship already sold offline. Every row is checked before anything is written &mdash; one bad row and nothing at all is imported.</p>
+
+        <div class="glass rounded-lg p-3 mb-4">
+          <div class="text-xs font-semibold text-gray-300 mb-2">The header row, exactly</div>
+          <code class="block text-[10px] bg-black/30 rounded p-2 text-gray-400 overflow-x-auto whitespace-pre">\${escH(SPONS_CSV_HEADERS.join(','))}</code>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1 text-[11px] mt-2">
+            <span class="text-white font-medium">item_code <span class="text-red-400">*</span></span><span class="text-gray-500">The catalogue code: DK-LANYARD, PB-FULL</span>
+            <span class="text-white font-medium">company_name <span class="text-red-400">*</span></span><span class="text-gray-500">The brand as printed. Required unless status is blocked</span>
+            <span class="text-gray-400">status</span><span class="text-gray-500">confirmed (default) / held / blocked</span>
+            <span class="text-gray-400">list_price_inr</span><span class="text-gray-500">Blank takes the item's own price</span>
+            <span class="text-gray-400">discount_inr</span><span class="text-gray-500">Never more than the list price</span>
+            <span class="text-gray-400">payment_status</span><span class="text-gray-500">pending / invoiced / part_paid / paid / refunded</span>
+            <span class="text-gray-400">tds_deducted_inr</span><span class="text-gray-500">What the buyer withheld. Counts towards settlement.</span>
+            <span class="text-gray-400">balance_due_date</span><span class="text-gray-500">What the ageing view chases against</span>
+            <span class="text-gray-400">hold_expires_at</span><span class="text-gray-500">Only on a hold. Blank gives it 14 days.</span>
+            <span class="text-gray-400">buyer_gstin</span><span class="text-gray-500">Warned about if malformed &mdash; never refused</span>
+            <span class="text-gray-400">buyer_legal_name</span><span class="text-gray-500">The registered entity, not the printed brand</span>
+            <span class="text-gray-400">buyer_state_code</span><span class="text-gray-500">Blank reads it off the GSTIN</span>
+            <span class="text-gray-400">invoice_date, paid_date</span><span class="text-gray-500">2026-09-01 or 01/09/2026</span>
+          </div>
+          <p class="text-[11px] text-gray-500 mt-2"><b class="text-gray-400">The same item may appear many times</b> &mdash; twelve advertisers on twelve guide pages is one catalogue row and twelve rows in this file. There is no unit column: units are handed out in file order, lowest free first, and a row that would go past the item's quantity is refused by name before anything is written. Net, GST and the grand total are worked out for you: net = list &minus; discount, GST is 18%. A sale is <b>settled</b> when amount_paid_inr + tds_deducted_inr reaches the grand total.</p>
+          <button type="button" onclick="downloadSponsTemplate()" class="mt-3 px-3 py-1.5 rounded-lg text-[11px] font-medium glass hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-primary-500/70"><i class="fas fa-download mr-1 text-green-400"></i>Download the template</button>
+        </div>
+
+        <div id="simp-drop" onclick="document.getElementById('simp-file').click()"
+             ondragover="event.preventDefault(); this.classList.add('border-primary-500/50')"
+             ondragleave="this.classList.remove('border-primary-500/50')"
+             ondrop="handleSponsImportDrop(event)"
+             class="border-2 border-dashed border-white/15 rounded-xl p-6 text-center cursor-pointer hover:border-primary-500/50 hover:bg-white/[0.02] transition-all">
+          <i class="fas fa-cloud-upload-alt text-2xl text-gray-500 mb-2"></i>
+          <p class="text-sm font-medium mb-1">Drop the CSV here, or click to choose one</p>
+          <p class="text-xs text-gray-500">Up to 500 rows &middot; .csv only</p>
+        </div>
+        <input type="file" id="simp-file" accept=".csv,text/csv" class="hidden" onchange="handleSponsImportFile(this.files[0])">
+        <div id="simp-result" class="mt-4"></div>\`);
+    }
+
+    function handleSponsImportDrop(e) {
+      e.preventDefault();
+      e.currentTarget.classList.remove('border-primary-500/50');
+      const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if (f) handleSponsImportFile(f);
+    }
+    function handleSponsImportFile(file) {
+      if (!file) return;
+      const name = String(file.name || '');
+      if (name.toLowerCase().slice(-4) !== '.csv') { toast('That is not a .csv file', 'error'); return; }
+      if (file.size > 2 * 1024 * 1024) { toast('That file is too large; 2MB is the limit', 'error'); return; }
+      const reader = new FileReader();
+      reader.onload = ev => { sponsImportText = String(ev.target.result || ''); renderSponsImportPreview(name); };
+      reader.onerror = () => toast('Could not read that file', 'error');
+      reader.readAsText(file);
+    }
+
+    function renderSponsImportPreview(name) {
+      const box = document.getElementById('simp-result');
+      if (!box) return;
+      let rows = [];
+      try {
+        const clean = sponsImportText.charCodeAt(0) === 65279 ? sponsImportText.slice(1) : sponsImportText;
+        rows = parseCSV(clean) || [];
+      } catch (e) { rows = []; }
+      if (!rows.length) {
+        box.innerHTML = '<div class="glass rounded-lg p-4 text-sm text-red-300"><i class="fas fa-triangle-exclamation mr-2"></i>' +
+          escH(name) + ' has a header row and no data rows.</div>';
+        return;
+      }
+      const head = rows[0];
+      const missing = ['item_code', 'company_name'].filter(k => !(k in head));
+      const preview = rows.slice(0, 8).map((r, i) =>
+        '<tr class="border-b border-white/5"><td class="py-1 px-2 text-gray-500 tabular-nums">' + (i + 2) + '</td>' +
+        '<td class="py-1 px-2 font-semibold">' + escH(r.item_code || '') + '</td>' +
+        '<td class="py-1 px-2">' + escH(r.company_name || '') + '</td>' +
+        '<td class="py-1 px-2 text-gray-400">' + escH(r.status || 'confirmed') + '</td>' +
+        '<td class="py-1 px-2 text-right tabular-nums text-gray-400">' + escH(r.list_price_inr || '') + '</td>' +
+        '<td class="py-1 px-2 text-right tabular-nums text-gray-400">' + escH(r.discount_inr || '') + '</td></tr>').join('');
+      box.innerHTML =
+        '<div class="flex items-center justify-between mb-2"><span class="text-xs text-primary-300 font-medium">' + escH(name) +
+        '</span><span class="text-xs text-gray-500 tabular-nums">' + rows.length + (rows.length === 1 ? ' row' : ' rows') + '</span></div>' +
+        (missing.length ? '<div class="glass rounded-lg p-3 mb-3 text-xs text-red-300"><i class="fas fa-triangle-exclamation mr-1.5"></i>The header row is missing: ' + escH(missing.join(', ')) + '</div>' : '') +
+        '<div class="glass rounded-lg overflow-hidden mb-3"><div class="overflow-x-auto"><table class="w-full text-[11px]">' +
+        '<thead><tr class="text-gray-400 border-b border-white/10"><th class="py-1.5 px-2 text-left">Line</th><th class="py-1.5 px-2 text-left">Item</th><th class="py-1.5 px-2 text-left">Brand</th><th class="py-1.5 px-2 text-left">Status</th><th class="py-1.5 px-2 text-right">List</th><th class="py-1.5 px-2 text-right">Discount</th></tr></thead>' +
+        '<tbody>' + preview + '</tbody></table></div></div>' +
+        (rows.length > 8 ? '<p class="text-[11px] text-gray-500 mb-3">Showing the first 8 of ' + rows.length + '.</p>' : '') +
+        '<div class="flex gap-2"><button type="button" id="simp-go" onclick="runSponsImport()" class="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-green-600 hover:bg-green-500 text-white focus:outline-none focus:ring-2 focus:ring-green-400/70"><i class="fas fa-upload mr-1.5"></i>Check every row, then import</button>' +
+        '<button type="button" onclick="closeModal()" class="px-4 py-2.5 rounded-xl text-sm font-medium glass hover:bg-white/10">Cancel</button></div>';
+    }
+
+    async function runSponsImport() {
+      const box = document.getElementById('simp-result');
+      const btn = document.getElementById('simp-go');
+      if (!sponsImportText) { toast('Choose a file first', 'error'); return; }
+      if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1.5"></i>Checking every row&hellip;'; }
+      let res = null;
+      try {
+        res = await api.post('/api/admin/sellable-items/import', { event_id: EID, csv: sponsImportText });
+      } catch (e) {
+        res = (e && e.data) ? e.data : { error: (e && e.message) || 'The import failed.' };
+      }
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-upload mr-1.5"></i>Check every row, then import'; }
+      if (res && res.success) {
+        toast(res.imported + (res.imported === 1 ? ' sale imported' : ' sales imported') +
+          (Number(res.tds_inr) ? ' · ₹' + inrN(res.tds_inr) + ' TDS' : '') +
+          (Number(res.cleared_lapsed_holds) ? ' · ' + res.cleared_lapsed_holds + ' lapsed option cleared' : ''));
+        const warns = (res && res.warnings) || [];
+        if (warns.length && box) {
+          box.innerHTML =
+            '<div class="glass rounded-lg p-3 mb-3 border border-green-500/25"><div class="text-sm font-semibold text-green-300 mb-1"><i class="fas fa-check mr-1.5"></i>' +
+            res.imported + (res.imported === 1 ? ' sale imported' : ' sales imported') + '</div>' +
+            '<p class="text-xs text-gray-400">' + warns.length + (warns.length === 1 ? ' row has' : ' rows have') +
+            ' a GSTIN worth fixing before the invoice goes out. Nothing was refused.</p></div>' +
+            '<div class="glass rounded-lg overflow-hidden mb-3"><div class="overflow-y-auto max-h-64"><table class="w-full text-[11px]">' +
+            '<thead><tr class="text-gray-400 border-b border-white/10"><th class="py-1.5 px-2 text-left">Line</th><th class="py-1.5 px-2 text-left">Item</th><th class="py-1.5 px-2 text-left">What to fix</th></tr></thead><tbody>' +
+            warns.map(w => '<tr class="border-b border-white/5"><td class="py-1.5 px-2 tabular-nums text-amber-300">' + Number(w.line) + '</td>' +
+              '<td class="py-1.5 px-2 font-semibold">' + escH(w.code || '') + '</td>' +
+              '<td class="py-1.5 px-2 text-gray-300">' + escH(w.message) + '</td></tr>').join('') +
+            '</tbody></table></div></div>' +
+            '<button type="button" onclick="closeModal(); loadAdminSponsorship()" class="w-full py-2.5 rounded-xl text-sm font-medium glass hover:bg-white/10">Done</button>';
+          return;
+        }
+        closeModal();
+        loadAdminSponsorship();
+        return;
+      }
+      if (!box) { toast((res && res.error) || 'The import failed', 'error'); return; }
+      const errs = (res && res.errors) || [];
+      box.innerHTML =
+        '<div class="glass rounded-lg p-3 mb-3 border border-red-500/30">' +
+        '<div class="text-sm font-semibold text-red-300 mb-1"><i class="fas fa-triangle-exclamation mr-1.5"></i>Nothing was imported</div>' +
+        '<p class="text-xs text-gray-400">' + escH((res && res.error) || 'The file could not be imported.') + '</p></div>' +
+        (errs.length ? '<div class="glass rounded-lg overflow-hidden mb-3"><div class="overflow-y-auto max-h-64"><table class="w-full text-[11px]">' +
+          '<thead><tr class="text-gray-400 border-b border-white/10"><th class="py-1.5 px-2 text-left">Line</th><th class="py-1.5 px-2 text-left">Item</th><th class="py-1.5 px-2 text-left">What is wrong</th></tr></thead><tbody>' +
+          errs.map(e => '<tr class="border-b border-white/5"><td class="py-1.5 px-2 tabular-nums text-red-300">' + Number(e.line) + '</td>' +
+            '<td class="py-1.5 px-2 font-semibold">' + escH(e.code || '') + '</td>' +
+            '<td class="py-1.5 px-2 text-gray-300">' + escH(e.message) + '</td></tr>').join('') +
+          '</tbody></table></div></div>' +
+          ((res.error_count && res.error_count > errs.length) ? '<p class="text-[11px] text-gray-500 mb-3">Showing the first ' + errs.length + ' of ' + res.error_count + '.</p>' : '') : '') +
+        '<div class="flex gap-2"><button type="button" onclick="document.getElementById(\\'simp-file\\').click()" class="flex-1 py-2.5 rounded-xl text-sm font-medium glass hover:bg-white/10"><i class="fas fa-rotate mr-1.5"></i>Choose a corrected file</button>' +
+        '<button type="button" onclick="closeModal()" class="px-4 py-2.5 rounded-xl text-sm font-medium glass hover:bg-white/10">Close</button></div>';
     }
 
     // ============ THE ADMIN FLOOR-PLAN MAP ============
@@ -22506,7 +25759,8 @@ function adminPageHTML(): string {
           : b.status === 'blocked' ? 'bg-gray-500/70 border-gray-700/50 hover:bg-gray-400'
           : 'bg-white/70 border-primary-500/60 hover:bg-primary-500/40';
         const money = b.status === 'available' ? inrShort(b.list_price_inr) : inrShort(b.amount_inr);
-        const label = b.code + ' · ' + b.name + ' · ' + (b.dim || '') + ' · ' + b.status +
+        const label = b.code + ' · ' + b.name + ' · ' + (b.dim || '') + ' · ' +
+          sqmN(b.sqm) + ' sqm / ' + sqftN(b.sqm) + ' sq ft · ' + b.status +
           (b.company_name ? ' · ' + b.company_name : '') + ' · ' + money +
           (b.status === 'available' ? ' — click to record a sale' : ' — click to edit the sale');
         // Only where the box is big enough to hold it. A Startup Pod is 2% of the
@@ -22550,8 +25804,9 @@ function adminPageHTML(): string {
     // nothing at all — a half-applied import of 60 stands is worse than no import,
     // because nobody can tell afterwards which 23 landed.
     const BOOTH_CSV_HEADERS = ['booth_code', 'company_name', 'contact_name', 'email', 'phone', 'status',
-      'list_price_inr', 'discount_inr', 'invoice_number', 'invoice_date', 'amount_paid_inr', 'paid_date',
-      'payment_status', 'notes'];
+      'list_price_inr', 'discount_inr', 'invoice_number', 'invoice_date', 'amount_paid_inr',
+      'tds_deducted_inr', 'paid_date', 'balance_due_date', 'payment_status', 'buyer_gstin',
+      'buyer_legal_name', 'buyer_state_code', 'hold_expires_at', 'notes'];
     let boothImportText = '';
 
     function boothCsvCell(v) {
@@ -22563,9 +25818,11 @@ function adminPageHTML(): string {
       const CRLF = String.fromCharCode(13, 10);
       const BOM = String.fromCharCode(65279);
       const sample = [
-        ['51', 'Reliance Jio Platforms', 'A Ambani', 'a@example.com', '+91 98765 43210', 'confirmed', '387000', '37000', 'BAI/2026/0001', '2026-09-01', '413000', '2026-09-08', 'paid', 'Closed at the Delhi roadshow'],
-        ['19', 'Acme Robotics, Pvt Ltd', 'P Shah', 'p@example.com', '', 'confirmed', '125000', '0', 'BAI/2026/0002', '2026-09-03', '0', '', 'invoiced', 'Invoice raised, payment due 30 Sep'],
-        ['37', 'Seed Stage Labs', '', '', '', 'held', '38000', '0', '', '', '', '', 'pending', 'Verbal hold until 30 Sep'],
+        // A B2B buyer who withheld 2% u/s 194C: the cash that arrived is short of the
+        // invoice by exactly the TDS, and the row is still fully settled.
+        ['51', 'Reliance Jio Platforms', 'A Ambani', 'a@example.com', '+91 98765 43210', 'confirmed', '387000', '37000', 'BAI/2026/0001', '2026-09-01', '406000', '7000', '2026-09-08', '', 'paid', '27AABCR1234M1Z5', 'Reliance Jio Infocomm Limited', '27', '', 'Closed at the Delhi roadshow'],
+        ['19', 'Acme Robotics, Pvt Ltd', 'P Shah', 'p@example.com', '', 'confirmed', '125000', '0', 'BAI/2026/0002', '2026-09-03', '0', '0', '', '2026-09-30', 'invoiced', '29AACCA5678K1ZP', 'Acme Robotics Private Limited', '29', '', 'Invoice raised, payment due 30 Sep'],
+        ['37', 'Seed Stage Labs', '', '', '', 'held', '48000', '0', '', '', '', '', '', '', 'pending', '', '', '', '2026-09-30', 'Verbal hold, lapses 30 Sep'],
       ];
       const csv = BOM + [BOOTH_CSV_HEADERS.join(',')]
         .concat(sample.map(r => r.map(boothCsvCell).join(','))).join(CRLF) + CRLF;
@@ -22593,9 +25850,15 @@ function adminPageHTML(): string {
             <span class="text-gray-400">list_price_inr</span><span class="text-gray-500">Blank takes the stand's own price</span>
             <span class="text-gray-400">discount_inr</span><span class="text-gray-500">Never more than the list price</span>
             <span class="text-gray-400">payment_status</span><span class="text-gray-500">pending / invoiced / part_paid / paid / refunded</span>
+            <span class="text-gray-400">tds_deducted_inr</span><span class="text-gray-500">What the buyer withheld. Counts towards settlement.</span>
+            <span class="text-gray-400">balance_due_date</span><span class="text-gray-500">What the ageing view chases against</span>
+            <span class="text-gray-400">hold_expires_at</span><span class="text-gray-500">Only on a hold. Blank gives it 14 days.</span>
+            <span class="text-gray-400">buyer_gstin</span><span class="text-gray-500">Warned about if malformed &mdash; never refused</span>
+            <span class="text-gray-400">buyer_legal_name</span><span class="text-gray-500">The registered entity, not the fascia name</span>
+            <span class="text-gray-400">buyer_state_code</span><span class="text-gray-500">Blank reads it off the GSTIN</span>
             <span class="text-gray-400">invoice_date, paid_date</span><span class="text-gray-500">2026-09-01 or 01/09/2026</span>
           </div>
-          <p class="text-[11px] text-gray-500 mt-2">Net, GST and the grand total are worked out for you: net = list &minus; discount, GST is 18%. There is no column for them because a spreadsheet that disagrees with the arithmetic is how a wrong invoice gets raised.</p>
+          <p class="text-[11px] text-gray-500 mt-2">Net, GST and the grand total are worked out for you: net = list &minus; discount, GST is 18%. There is no column for them because a spreadsheet that disagrees with the arithmetic is how a wrong invoice gets raised. A stand is <b>settled</b> when amount_paid_inr + tds_deducted_inr reaches the grand total, which is why an Indian B2B row can be paid in full with less cash than the invoice.</p>
           <button type="button" onclick="downloadBoothTemplate()" class="mt-3 px-3 py-1.5 rounded-lg text-[11px] font-medium glass hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-primary-500/70"><i class="fas fa-download mr-1 text-green-400"></i>Download the template</button>
         </div>
 
@@ -22681,7 +25944,27 @@ function adminPageHTML(): string {
       }
       if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-upload mr-1.5"></i>Check every row, then import'; }
       if (res && res.success) {
-        toast(res.imported + (res.imported === 1 ? ' sale imported' : ' sales imported'));
+        toast(res.imported + (res.imported === 1 ? ' sale imported' : ' sales imported') +
+          (Number(res.tds_inr) ? ' · ₹' + inrN(res.tds_inr) + ' TDS' : '') +
+          (Number(res.cleared_lapsed_holds) ? ' · ' + res.cleared_lapsed_holds + ' lapsed hold cleared' : ''));
+        // The rows that imported but carry something to fix before an invoice goes
+        // out. Shown AFTER the success, because nothing here stopped the import.
+        const warns = (res && res.warnings) || [];
+        if (warns.length && box) {
+          box.innerHTML =
+            '<div class="glass rounded-lg p-3 mb-3 border border-green-500/25"><div class="text-sm font-semibold text-green-300 mb-1"><i class="fas fa-check mr-1.5"></i>' +
+            res.imported + (res.imported === 1 ? ' sale imported' : ' sales imported') + '</div>' +
+            '<p class="text-xs text-gray-400">' + warns.length + (warns.length === 1 ? ' row has' : ' rows have') +
+            ' a GSTIN worth fixing before the invoice goes out. Nothing was refused.</p></div>' +
+            '<div class="glass rounded-lg overflow-hidden mb-3"><div class="overflow-y-auto max-h-64"><table class="w-full text-[11px]">' +
+            '<thead><tr class="text-gray-400 border-b border-white/10"><th class="py-1.5 px-2 text-left">Line</th><th class="py-1.5 px-2 text-left">Stand</th><th class="py-1.5 px-2 text-left">What to fix</th></tr></thead><tbody>' +
+            warns.map(w => '<tr class="border-b border-white/5"><td class="py-1.5 px-2 tabular-nums text-amber-300">' + Number(w.line) + '</td>' +
+              '<td class="py-1.5 px-2 font-semibold">' + escH(w.code || '') + '</td>' +
+              '<td class="py-1.5 px-2 text-gray-300">' + escH(w.message) + '</td></tr>').join('') +
+            '</tbody></table></div></div>' +
+            '<button type="button" onclick="closeModal(); loadAdminFloorPlan()" class="w-full py-2.5 rounded-xl text-sm font-medium glass hover:bg-white/10">Done</button>';
+          return;
+        }
         closeModal();
         loadAdminFloorPlan();
         return;
@@ -22730,15 +26013,30 @@ function adminPageHTML(): string {
       } catch(e) { toast((e && e.message) || 'Could not change that stand', 'error'); }
     }
 
+    // RELEASE MEANS TWO DIFFERENT THINGS and the operator is told which one they are
+    // about to do BEFORE they do it. A hold with no invoice and no money against it
+    // is deleted, as it always was: there is no paperwork to keep. Once an invoice
+    // exists the row is kept and flagged released instead, because it is the
+    // counterparty of a tax document — the invoice number, the receipts, the agreed
+    // discount and the approval trail all have to survive, and a credit note has to
+    // have something to refer back to. Either way the stand is free immediately.
     async function releaseBooth(code) {
       const b = boothByCode(code);
       const who = (b && b.company_name) ? b.company_name : 'its occupant';
-      if (!confirm('Release stand ' + code + ' from ' + who + '? It goes back on the market immediately and the allocation record is deleted — the history stays in the audit log.')) return;
+      const paperwork = !!(b && (String(b.invoice_number || '').trim() || Number(b.amount_paid_inr || 0) > 0));
+      const what = paperwork
+        ? 'Stand ' + code + ' goes back on the market immediately.\\n\\nInvoice ' + String((b && b.invoice_number) || '').trim() +
+          ' has been raised' + (Number(b && b.amount_paid_inr) ? ' and ₹' + inrN(b.amount_paid_inr) + ' received' : '') +
+          ', so the allocation is KEPT and marked released rather than deleted — the invoice number, the receipts and the agreed discount all survive for the credit note.'
+        : 'Stand ' + code + ' goes back on the market immediately. Nothing has been invoiced and no money has been received, so the allocation record is deleted — the history stays in the audit log.';
+      if (!confirm('Release stand ' + code + ' from ' + who + '?\\n\\n' + what)) return;
       try {
         const r = await api.del('/api/admin/booths/' + encodeURIComponent(code) + '/allocation?event_id=' + EID);
         if (r && r.error) { toast(r.error, 'error'); return; }
         closeModal();
-        toast('Stand ' + code + ' released');
+        toast(r && r.kept
+          ? 'Stand ' + code + ' released · invoice ' + String(r.invoice_number || '') + ' kept for the credit note'
+          : 'Stand ' + code + ' released');
         loadAdminFloorPlan();
       } catch(e) { toast('Could not release that stand', 'error'); }
     }
