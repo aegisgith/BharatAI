@@ -728,7 +728,34 @@ section { position: relative; }
   background-clip: text;
 }
 
-.hero-title .line-gradient {
+.hero-title /* The title again in Devanagari, in the flag's three colours: saffron / white /
+   green, the same split the shareable attendee card uses. Mukta because neither
+   Bricolage nor Manrope carries Devanagari - without it the browser falls back to
+   whatever it has and the line stops matching the English above it.
+   Sized off the English line rather than fixed, so the two scale together. */
+.hero-title-hi {
+  display: block;
+  font-family: 'Mukta', 'Noto Sans Devanagari', sans-serif;
+  /* Its own clamp, not an em. A generic `.hero-title, h1` rule at <=768px drops the
+     English line to ~31px, and an em-sized Hindi line collapsed with it to 13px.
+     4.2vw reproduces the desktop 60px exactly (where both lines measure 767px and
+     sit flush); the 1.15rem floor keeps it readable once the English shrinks. */
+  font-size: clamp(1.15rem, 4.2vw, 3.75rem);
+  font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: 0;
+  margin-top: 0.35em;
+}
+.hero-title-hi .hi-saffron { color: #FF9933; }
+.hero-title-hi .hi-white   { color: #FFFFFF; }
+.hero-title-hi .hi-green   { color: #138808; }
+/* On the dark hero the green reads as almost black at small sizes, so it is lifted
+   just enough to stay legible without leaving the flag's green. */
+@media (max-width: 640px) {
+  .hero-title-hi .hi-green { color: #1FA015; }
+}
+
+.line-gradient {
   display: block;
   color: rgba(255,255,255,0.92);
 }
