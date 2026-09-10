@@ -1,0 +1,23 @@
+-- Migration 0031: when this attendee downloaded their shareable social card.
+--
+-- The card is the "I'm attending Bharat AI Innovation" creative a registered
+-- delegate downloads and posts to LinkedIn or WhatsApp. It is the first thing
+-- this app has built purely to be given away rather than used, so the only
+-- honest way to judge it later is to count who actually took one.
+--
+-- Deliberately separate from pass_downloaded_at. The pass is a utility document
+-- everyone confirmed has to fetch, so its count measures attendance admin; this
+-- one measures whether people were pleased enough to tell their network. Folding
+-- the two into a single "downloaded something" flag would make the second number
+-- unrecoverable, and it is the second number that decides whether the feature
+-- earns the space it takes up in the profile screen.
+--
+-- Set once, on the first download, and never overwritten - re-downloading in a
+-- second size is the same person sharing once, not twice. NULL means "has not
+-- taken one", which is what every existing row correctly gets.
+--
+-- The reach itself is NOT measured here and cannot be: the card carries a UTM
+-- tagged link in its caption, and whether that link turns into registrations is
+-- a question for the analytics on bharataiinnovation.com, not for this column.
+
+ALTER TABLE attendees ADD COLUMN social_card_downloaded_at DATETIME;

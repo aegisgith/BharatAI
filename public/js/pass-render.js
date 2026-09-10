@@ -288,7 +288,14 @@
     }
     y += stripH + px(16);
     f('400', 11, INTER);
-    centre('bharataiinnovation.com • networking.bharataiinnovation.com', y + px(9), '#4a577a');
+    // Was "bharataiinnovation.com • networking.bharataiinnovation.com", which read
+    // as the same domain printed twice and was worse than that: the networking
+    // subdomain 301s to the marketing homepage, so a holder who typed it off their
+    // pass never reached the networking app at all. The QR was moved off that
+    // subdomain for the same reason (see the note above), but the printed line was
+    // left behind. /app is where the app actually lives and where this pass came
+    // from, so it is the one address on here worth reading.
+    centre('bharataiinnovation.com/app', y + px(9), '#4a577a');
     y += px(30);
 
     // ---- borders, then crop to the height actually used ----
