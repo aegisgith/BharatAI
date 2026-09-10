@@ -12434,6 +12434,14 @@ function mainPageHTML(): string {
     function runPendingAction() {
       const act = pendingAction || new URLSearchParams(window.location.search).get('action');
       if (act === 'download-pass') { setTimeout(() => generateDelegatePass(), 1500); return; }
+      // The card had exactly one way in: offered once after a pass download and
+      // then remembered forever. That is the right moment for an unprompted
+      // offer, but it left campaign mail with nothing to link to - and the people
+      // most worth reaching are the ones who have not downloaded a pass at all.
+      // openSocialCard asks for a photo when there isn't one, which is what makes
+      // this safe to advertise to a list where almost nobody has uploaded yet:
+      // the ask and the reward arrive together.
+      if (act === 'social-card') { setTimeout(() => openSocialCard(), 1500); return; }
       if (act !== 'complete-profile') return;
       setTimeout(() => {
         switchTab('home');
