@@ -66,29 +66,29 @@
   var SIZES = {
     square: {
       key: 'square', w: 1080, h: 1080,
-      padX: 84, padTop: 60,
-      logoH: 46, logoPad: 13, gapLogo: 34,
-      photoR: 146, ring: 7, gapPhoto: 32,
+      padX: 84, padTop: 54,
+      logoH: 76, logoPad: 15, gapLogo: 30,
+      ebSize: 27, ebTrack: 6, ebRule: 66, gapEb: 54,
+      photoR: 140, ring: 7, gapPhoto: 30,
       nameSize: 50, nameMin: 30, gapName: 13,
-      roleSize: 24, gapRole: 40,
-      ebSize: 25, ebTrack: 5, ebRule: 62, gapEb: 32,
-      heroSize: 74, heroMin: 40, heroLead: 8, gapHero: 26,
-      tagSize: 25,
-      pillH: 64, pillSize: 25, pillGap: 24, gapAbovePill: 34,
-      urlSize: 22, urlBottom: 54
+      roleSize: 24, gapRole: 34,
+      heroSize: 72, heroMin: 40, heroLead: 8,
+      stripH: 98, stripGap: 22, stripPad: 30,
+      pillH: 62, pillSize: 25, pillGap: 22, gapAbovePill: 30,
+      urlSize: 22, urlBottom: 46
     },
     story: {
       key: 'story', w: 1080, h: 1920,
-      padX: 84, padTop: 150,
-      logoH: 56, logoPad: 16, gapLogo: 60,
-      photoR: 212, ring: 9, gapPhoto: 56,
-      nameSize: 66, nameMin: 36, gapName: 18,
-      roleSize: 31, gapRole: 74,
-      ebSize: 32, ebTrack: 7, ebRule: 80, gapEb: 48,
-      heroSize: 94, heroMin: 46, heroLead: 12, gapHero: 40,
-      tagSize: 32,
-      pillH: 80, pillSize: 30, pillGap: 32, gapAbovePill: 60,
-      urlSize: 26, urlBottom: 130
+      padX: 84, padTop: 140,
+      logoH: 96, logoPad: 18, gapLogo: 52,
+      ebSize: 33, ebTrack: 7, ebRule: 82, gapEb: 72,
+      photoR: 218, ring: 9, gapPhoto: 54,
+      nameSize: 68, nameMin: 36, gapName: 18,
+      roleSize: 30, gapRole: 52,
+      heroSize: 96, heroMin: 46, heroLead: 12,
+      stripH: 116, stripGap: 28, stripPad: 34,
+      pillH: 78, pillSize: 29, pillGap: 28, gapAbovePill: 52,
+      urlSize: 25, urlBottom: 120
     }
   };
 
@@ -306,13 +306,41 @@
     var m = {
       name: fitText(ctx, String((user && user.name) || 'Attendee').trim(), maxW, '700', S.nameSize, S.nameMin, MONT),
       role: roleText ? fitText(ctx, roleText, maxW, '500', S.roleSize, 18, MANR) : null,
-      hero: fitText(ctx, EVENT.name, maxW, '800', S.heroSize, S.heroMin, MONT),
-      tag: fitText(ctx, EVENT.tagline, maxW, '500', S.tagSize, 18, MANR)
+      hero: fitText(ctx, EVENT.name, maxW, '800', S.heroSize, S.heroMin, MONT)
     };
-    m.fixed = S.photoR * 2 + S.ring + m.name.size + (m.role ? m.role.size : 0) +
-              S.ebSize + m.hero.size * 2 + S.heroLead + m.tag.size;
-    m.gaps = S.gapPhoto + (m.role ? S.gapName : 0) + S.gapRole + S.gapEb + S.gapHero;
+    m.fixed = S.ebSize + S.photoR * 2 + S.ring + m.name.size +
+              (m.role ? m.role.size : 0) + m.hero.size * 2 + S.heroLead;
+    m.gaps = S.gapEb + S.gapPhoto + (m.role ? S.gapName : 0) + S.gapRole;
     return m;
+  }
+
+  /* The partner lockup from the pass, on a white plate. It is the one element that
+     makes the card read as issued by the event rather than made by the person in
+     it, which is exactly what an "I'm attending" post needs to borrow. */
+  function drawPartnerStrip(ctx, S, assets, y) {
+    var W = S.w, mid = W / 2, x = S.padX, w = W - S.padX * 2;
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.30)'; ctx.shadowBlur = 22; ctx.shadowOffsetY = 5;
+    ctx.fillStyle = '#FFFFFF';
+    roundRect(ctx, x, y, w, S.stripH, 14); ctx.fill();
+    ctx.restore();
+
+    var scale = S.stripH / 98;
+    var logos = [{ i: assets.aegis, h: 54 }, { i: assets.agba, h: 46 }, { i: assets.assessfy, h: 38 }]
+      .filter(function (o) { return o.i; });
+    if (!logos.length) return;
+    var gap = 40 * scale;
+    var widths = logos.map(function (o) { return o.i.width * ((o.h * scale) / o.i.height); });
+    var total = widths.reduce(function (a, b) { return a + b; }, 0) + gap * (logos.length - 1);
+    // Long partner names before a short one can outgrow the plate on the square
+    // card, so the whole lockup shrinks together rather than one logo clipping.
+    var fit = Math.min(1, (w - S.stripPad * 2) / total);
+    var lx = mid - (total * fit) / 2;
+    for (var k = 0; k < logos.length; k++) {
+      var hh = logos[k].h * scale * fit, ww = widths[k] * fit;
+      ctx.drawImage(logos[k].i, lx, y + (S.stripH - hh) / 2, ww, hh);
+      lx += ww + gap * fit;
+    }
   }
 
   /* Draws the whole card. One function for both sizes: everything that decides
@@ -325,8 +353,8 @@
 
     var m = measure(ctx, S, user);
 
-    // ---- the two fixed anchors: the logo at the top, the date pill at the
-    // bottom. Everything else is centred in what is left between them. ----
+    // ---- the two fixed anchors: the logo at the top, and the bottom stack of
+    // partner strip, date pill and address. Everything else is centred between. ----
     var logoBoxH = 0, logoW = 0;
     if (assets.logo) {
       logoW = assets.logo.width * (S.logoH / assets.logo.height);
@@ -336,23 +364,24 @@
       ctx.save();
       ctx.shadowColor = 'rgba(0,0,0,0.35)'; ctx.shadowBlur = 22; ctx.shadowOffsetY = 4;
       ctx.fillStyle = '#FFFFFF';
-      roundRect(ctx, mid - logoW / 2 - S.logoPad * 1.4, S.padTop, logoW + S.logoPad * 2.8, logoBoxH, 16);
+      roundRect(ctx, mid - logoW / 2 - S.logoPad * 1.4, S.padTop, logoW + S.logoPad * 2.8, logoBoxH, 18);
       ctx.fill();
       ctx.restore();
       ctx.drawImage(assets.logo, mid - logoW / 2, S.padTop + S.logoPad, logoW, S.logoH);
     }
 
     var urlY = S.h - S.urlBottom;
+    var stripY = urlY - S.urlSize - S.stripGap - S.stripH;
     var when = EVENT.when + '  ·  ' + EVENT.where;
     if (opts.booth) when = 'Booth ' + opts.booth + '  ·  ' + when;
     ctx.font = '700 ' + S.pillSize + 'px ' + MANR;
     var pillW = ctx.measureText(when).width + 68;
-    var pillY = urlY - S.urlSize - S.pillGap - S.pillH;
+    var pillY = stripY - S.pillGap - S.pillH;
 
-    /* Flowing from a fixed top put the tagline underneath the date pill on the
+    /* Flowing from a fixed top put content underneath the bottom stack on the
      * square card and left a hole in the middle of the story one, and it would
      * have broken again the first time a name wrapped. The block is therefore
-     * centred in the gap, and the gaps inside it are squeezed — never the type —
+     * centred in the gap, and the gaps inside it are squeezed - never the type -
      * if a long name has left less room than it wants. */
     var topLimit = S.padTop + logoBoxH + S.gapLogo;
     var botLimit = pillY - S.gapAbovePill;
@@ -360,6 +389,16 @@
     var k = m.gaps > 0 ? Math.max(0.3, Math.min(1, (avail - m.fixed) / m.gaps)) : 1;
     var flowH = m.fixed + m.gaps * k;
     var y = topLimit + Math.max(0, (avail - flowH) / 2);
+
+    // ---- the claim, above the portrait: it is the first thing the post says ----
+    ctx.font = '600 ' + S.ebSize + 'px ' + MONT;
+    y += S.ebSize;
+    var ebW = trackedText(ctx, V.eyebrow, mid, y, S.ebTrack, INK.saffronLo);
+    var ruleY = y - Math.round(S.ebSize * 0.32);
+    var gapToRule = 26;
+    hairline(ctx, mid - ebW / 2 - gapToRule - S.ebRule, mid - ebW / 2 - gapToRule, ruleY, true);
+    hairline(ctx, mid + ebW / 2 + gapToRule, mid + ebW / 2 + gapToRule + S.ebRule, ruleY, false);
+    y += S.gapEb * k;
 
     // ---- photo ----
     var cy = y + S.photoR;
@@ -390,16 +429,6 @@
     }
     y += S.gapRole * k;
 
-    // ---- the claim ----
-    ctx.font = '600 ' + S.ebSize + 'px ' + MONT;
-    y += S.ebSize;
-    var ebW = trackedText(ctx, V.eyebrow, mid, y, S.ebTrack, INK.saffronLo);
-    var ruleY = y - Math.round(S.ebSize * 0.32);
-    var gapToRule = 26;
-    hairline(ctx, mid - ebW / 2 - gapToRule - S.ebRule, mid - ebW / 2 - gapToRule, ruleY, true);
-    hairline(ctx, mid + ebW / 2 + gapToRule, mid + ebW / 2 + gapToRule + S.ebRule, ruleY, false);
-    y += S.gapEb * k;
-
     // ---- the event ----
     ctx.font = '800 ' + m.hero.size + 'px ' + MONT;
     ctx.textAlign = 'center'; ctx.fillStyle = INK.white;
@@ -412,16 +441,7 @@
     yg.addColorStop(0, '#FF6B00'); yg.addColorStop(1, '#FFB65C');
     trackedText(ctx, EVENT.year, mid, y, Math.round(m.hero.size * 0.10), yg);
 
-    y += S.gapHero * k + m.tag.size;
-    ctx.font = '500 ' + m.tag.size + 'px ' + MANR;
-    ctx.textAlign = 'center'; ctx.fillStyle = INK.mute;
-    ctx.fillText(m.tag.text, mid, y);
-
-    // ---- when / where ----
-    ctx.font = '400 ' + S.urlSize + 'px ' + MANR;
-    ctx.textAlign = 'center'; ctx.fillStyle = INK.faint;
-    ctx.fillText(EVENT.site, mid, urlY);
-
+    // ---- bottom stack ----
     ctx.save();
     ctx.shadowColor = 'rgba(255,107,0,0.35)'; ctx.shadowBlur = 30; ctx.shadowOffsetY = 6;
     var pg = ctx.createLinearGradient(mid - pillW / 2, pillY, mid + pillW / 2, pillY + S.pillH);
@@ -434,6 +454,12 @@
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText(when, mid, pillY + S.pillH / 2 + 1);
     ctx.textBaseline = 'alphabetic';
+
+    drawPartnerStrip(ctx, S, assets, stripY);
+
+    ctx.font = '400 ' + S.urlSize + 'px ' + MANR;
+    ctx.textAlign = 'center'; ctx.fillStyle = INK.faint;
+    ctx.fillText(EVENT.site, mid, urlY);
   }
 
   /* opts.size — 'square' (default) or 'story'.
@@ -453,7 +479,7 @@
      * dropped request, and a photo that still will not load is reported rather
      * than papered over, so the caller can say so instead of handing over a
      * letter in a circle. */
-    var assets = { logo: null, photo: null, companyLogo: null };
+    var assets = { logo: null, photo: null, companyLogo: null, aegis: null, agba: null, assessfy: null };
     var photoFailed = false;
     var src = photoSrc(user && user.avatar_url);
     if (src) {
@@ -466,6 +492,10 @@
       }
     }
     try { assets.logo = await loadImage('/images/Bharat%20AI%20Innovation%20Logo.png'); } catch (e) {}
+    // The same three files the pass puts on its white strip.
+    try { assets.aegis = await loadImage('/images/passes/aegis.png'); } catch (e) {}
+    try { assets.agba = await loadImage('/images/passes/agba.png'); } catch (e) {}
+    try { assets.assessfy = await loadImage('/images/passes/assessfy.jpg'); } catch (e) {}
 
     /* The employer disc is opt-out, not opt-in: pass companyLogo:'' to suppress
      * it. A favicon lookup can come back as a generic globe for a domain the
