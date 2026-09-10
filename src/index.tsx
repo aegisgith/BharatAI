@@ -564,6 +564,14 @@ async function sendRegistrationEmail(c: any, attendee: any) {
           <a href="${appUrl}" style="display:inline-block;padding:13px 32px;background:linear-gradient(135deg,#FF6B00,#FF8C38);color:#fff;text-decoration:none;border-radius:10px;font-weight:bold;font-size:14px;">Open the app</a>
         </div>
         <p style="margin:14px 0 0;font-size:12px;color:#888;text-align:center;">Sign in with this email address &mdash; we will send you a one-time code, no password needed.</p>
+        <div style="margin-top:22px;padding:16px;background:#F7F8FF;border:1px solid #E3E6F5;border-radius:10px;">
+          <p style="margin:0 0 5px;font-size:14px;font-weight:bold;color:#1E2140;">Tell people you are coming</p>
+          <p style="margin:0 0 12px;font-size:12.5px;line-height:1.65;color:#555;">
+            Once your photo is in, you can make an &ldquo;I&rsquo;m attending&rdquo; card &mdash; your photo, your name
+            and your organisation, sized for LinkedIn, Instagram and WhatsApp. One tap, and a caption you can copy with it.
+          </p>
+          <a href="${appUrl}?email=${encodeURIComponent(attendee.email)}&action=social-card" style="display:inline-block;padding:9px 20px;background:#1E2140;color:#fff;text-decoration:none;border-radius:8px;font-size:12.5px;font-weight:bold;">Make my card</a>
+        </div>
         <div style="margin-top:22px;padding:14px;background:#FFF6EF;border:1px solid rgba(255,107,0,0.25);border-radius:10px;">
           <p style="margin:0;font-size:12.5px;line-height:1.6;color:#1E2140;"><strong>On the day:</strong> bring a government photo ID matching the name on your pass. We check it at the badge desk &mdash; we never ask you to upload or send an identity document.</p>
         </div>
