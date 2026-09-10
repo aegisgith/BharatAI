@@ -3359,6 +3359,28 @@ app.post('/api/attendees/:id/track-pass-download', async (c) => {
   return c.json({ success: true })
 })
 
+/* Track the shareable social card. Separate column from the pass on purpose: the
+ * pass is a document everyone confirmed has to fetch, this one is only taken by
+ * people pleased enough to tell their network, and only the second number says
+ * whether the card was worth building.
+ *
+ * Set once and never overwritten - taking the square and then the story is one
+ * person sharing once. Answers success:false rather than 500 while migration 0031
+ * is unapplied, because a share that is merely uncounted must not look to the
+ * delegate like a share that failed. */
+app.post('/api/attendees/:id/track-social-card', async (c) => {
+  const id = c.req.param('id')
+  const denied = await requireSelf(c, id); if (denied) return denied
+  try {
+    await c.env.DB.prepare(
+      'UPDATE attendees SET social_card_downloaded_at = datetime("now") WHERE id = ? AND social_card_downloaded_at IS NULL'
+    ).bind(id).run()
+    return c.json({ success: true })
+  } catch {
+    return c.json({ success: false, reason: 'not_migrated' })
+  }
+})
+
 // ==================== RSVP APIs ====================
 
 // Update RSVP status (used by both email link and in-app)
@@ -7599,13 +7621,24 @@ app.get('/api/admin/events/:id/growth', async (c) => {
        FROM attendees WHERE event_id = ? GROUP BY city ORDER BY count DESC LIMIT 12`
   ).bind(eventId).all()
   // The funnel every organiser asks about: of the people holding each pass, how
-  // many were told, signed in, took their pass, and turned up.
+  // many were told, signed in, took their pass, told their network, and turned up.
+  //
+  // The social-card column is spliced in only once the schema actually has it.
+  // Naming it outright would answer 500 for the WHOLE statistics endpoint on a
+  // database one migration behind - not one blank column, the entire dashboard -
+  // so it degrades to a hard zero instead, exactly as the CSV export intersects
+  // its column list with the live table.
+  const statCols = await attendeeColumns(c)
+  const cardTaken = statCols.has('social_card_downloaded_at')
+    ? `SUM(CASE WHEN social_card_downloaded_at IS NOT NULL THEN 1 ELSE 0 END)`
+    : `0`
   const funnel = await c.env.DB.prepare(
     `SELECT COALESCE(NULLIF(badge_type,''),'Unspecified') AS badge_type,
             COUNT(*) AS registered,
             SUM(CASE WHEN notified_at IS NOT NULL THEN 1 ELSE 0 END) AS notified,
             SUM(CASE WHEN last_login_at IS NOT NULL THEN 1 ELSE 0 END) AS signed_in,
             SUM(CASE WHEN pass_downloaded_at IS NOT NULL THEN 1 ELSE 0 END) AS pass_taken,
+            ${cardTaken} AS card_taken,
             SUM(CASE WHEN checked_in_at IS NOT NULL THEN 1 ELSE 0 END) AS checked_in
        FROM attendees WHERE event_id = ? GROUP BY badge_type ORDER BY registered DESC`
   ).bind(eventId).all()
@@ -9964,6 +9997,9 @@ function mainPageHTML(): string {
   <!-- Shared with the admin panel, so a pass issued at the desk is the same
        document the holder downloaded. -->
   <script src="/js/pass-render.js"></script>
+  <!-- The "I'm attending" card delegates post. App only: the badge desk has no
+       reason to issue one, and it carries none of the pass's verification data. -->
+  <script src="/js/social-card.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Manrope:wght@300..800&family=Montserrat:wght@600;700;800&family=Playfair+Display:wght@600;700&family=Mukta:wght@500;600;700&display=swap');
     * { font-family: 'Manrope', sans-serif; }
@@ -12071,6 +12107,47 @@ function mainPageHTML(): string {
           <div id="profile-subtab-activity" class="profile-subtab-content hidden">
             <div id="my-activity-timeline" class="space-y-4"></div>
           </div>
+        </div>
+      </div>
+
+      <!-- Shareable Social Card Modal.
+           The preview is the safeguard, not decoration: the employer disc is a
+           favicon looked up from a domain, so the delegate has to see the card
+           before it goes anywhere public, and be able to drop the logo when the
+           lookup has returned something generic. -->
+      <div id="social-card-modal" class="fixed inset-0 z-40 modal-overlay hidden flex items-center justify-center p-4">
+        <div class="glass rounded-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto scroll-hide">
+          <div class="flex justify-between items-start mb-4">
+            <div>
+              <h2 class="text-lg font-bold"><i class="fas fa-share-alt text-primary-400 mr-2"></i>Tell your network</h2>
+              <p class="text-xs text-gray-400 mt-1">Post this on LinkedIn or WhatsApp. The people who follow you are exactly the people we want in the hall.</p>
+            </div>
+            <button onclick="closeSocialCard()" class="text-gray-400 hover:text-white shrink-0 ml-3"><i class="fas fa-times text-lg"></i></button>
+          </div>
+
+          <div class="flex gap-2 mb-3">
+            <button id="sc-tab-square" onclick="setSocialCardSize('square')" class="flex-1 px-3 py-2 rounded-xl text-xs font-semibold transition"><i class="fas fa-image mr-1.5"></i>Square<span class="block text-[10px] font-normal opacity-70">LinkedIn &amp; Instagram</span></button>
+            <button id="sc-tab-story" onclick="setSocialCardSize('story')" class="flex-1 px-3 py-2 rounded-xl text-xs font-semibold transition"><i class="fas fa-mobile-alt mr-1.5"></i>Story<span class="block text-[10px] font-normal opacity-70">WhatsApp &amp; Stories</span></button>
+          </div>
+
+          <div class="rounded-xl overflow-hidden mb-3 flex items-center justify-center" style="min-height:220px;background:rgba(30,33,64,0.06);">
+            <img id="sc-preview" alt="Your card" class="block" style="max-height:380px;max-width:100%;height:auto;">
+            <div id="sc-loading" class="text-xs text-gray-400 py-16"><i class="fas fa-spinner fa-spin mr-2"></i>Drawing your card…</div>
+          </div>
+
+          <label id="sc-logo-row" class="hidden items-center gap-2 mb-3 cursor-pointer select-none">
+            <input type="checkbox" id="sc-logo-toggle" checked onchange="renderSocialCardPreview()" class="rounded">
+            <span class="text-xs text-gray-400">Show my organisation's logo on the photo</span>
+          </label>
+
+          <label class="block text-xs font-semibold text-gray-400 mb-1.5">Caption — edit it, then copy</label>
+          <textarea id="sc-caption" rows="7" class="w-full text-xs rounded-xl p-3 mb-3 focus:outline-none" style="resize:vertical;background:rgba(30,33,64,0.05);border:1px solid rgba(30,33,64,0.15);color:inherit;line-height:1.6;"></textarea>
+
+          <div class="flex gap-2">
+            <button onclick="downloadSocialCard()" class="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold bg-primary-600 hover:bg-primary-500 text-white transition"><i class="fas fa-download mr-2"></i>Download</button>
+            <button id="sc-copy" onclick="copySocialCaption()" class="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold glass hover:bg-white/10 text-gray-200 transition"><i class="fas fa-clipboard-check mr-2"></i>Copy caption</button>
+          </div>
+          <button id="sc-share" onclick="shareSocialCard()" class="hidden w-full mt-2 px-4 py-2.5 rounded-xl text-sm font-semibold glass hover:bg-white/10 text-gray-200 transition"><i class="fas fa-paper-plane mr-2"></i>Share to an app…</button>
         </div>
       </div>
 
@@ -15440,6 +15517,7 @@ function mainPageHTML(): string {
       await BhaiPass.download(user, { token: passToken });
       showToast('Pass downloaded', 'success');
       if (!adminAttendee && user.id) { try { await api.post('/api/attendees/' + user.id + '/track-pass-download', {}); } catch (e) {} }
+      if (!adminAttendee) maybeOfferSocialCard();
     }
 
     // Photo is mandatory for a self-service download, so this resolves only on a
@@ -15500,6 +15578,143 @@ function mainPageHTML(): string {
 
     // Kept as the entry point: nine call sites reference this name.
     async function generateDelegatePass(adminAttendee) { return generateEventPass(adminAttendee); }
+
+    // ===== SHAREABLE SOCIAL CARD =========================================
+    // The drawing lives in /js/social-card.js. What stays here is the policy
+    // around it: who may make one, what has to be true first, and what gets
+    // counted afterwards.
+    var socialCard = { size: 'square', res: null, seq: 0 };
+
+    async function openSocialCard() {
+      var user = currentUser;
+      if (!user) { showToast('Please sign in first', 'error'); return; }
+      // The card is a portrait. Without a face it is a letter in a circle, which
+      // nobody posts - so this asks for one, exactly as the pass does, but it
+      // must not repeat the pass's reason, which is not true here.
+      if (!hasUploadedPhoto(user.avatar_url)) {
+        var got = await askForPassPhoto(user, {
+          title: 'Add your photo first',
+          body: 'The card is built around your photo. It is what makes someone scrolling past stop and read the rest of it.'
+        });
+        if (got !== 'done') return;
+      }
+      document.getElementById('sc-caption').value = BhaiSocialCard.caption(user);
+      var hasLogo = !!BhaiSocialCard.companyDomain(user);
+      var row = document.getElementById('sc-logo-row');
+      row.classList.toggle('hidden', !hasLogo);
+      row.classList.toggle('flex', hasLogo);
+      // navigator.share with files is the whole game on a phone: it opens
+      // WhatsApp or LinkedIn directly instead of asking someone to go and find a
+      // downloaded PNG in their gallery. Most desktop browsers cannot.
+      document.getElementById('sc-share').classList.toggle('hidden', !(navigator.canShare && navigator.share));
+      document.getElementById('social-card-modal').classList.remove('hidden');
+      setSocialCardSize(socialCard.size);
+    }
+
+    function closeSocialCard() {
+      document.getElementById('social-card-modal').classList.add('hidden');
+    }
+
+    function setSocialCardSize(size) {
+      socialCard.size = size;
+      ['square', 'story'].forEach(function (s) {
+        var on = s === size;
+        document.getElementById('sc-tab-' + s).className =
+          'flex-1 px-3 py-2 rounded-xl text-xs font-semibold transition ' +
+          (on ? 'bg-primary-600 text-white' : 'glass text-gray-400 hover:bg-white/10');
+      });
+      renderSocialCardPreview();
+    }
+
+    /* Every redraw is a full canvas render, including a network fetch for the
+     * employer logo, so tapping between the two sizes quickly can land the older
+     * result last. The sequence number makes the stale one throw itself away. */
+    async function renderSocialCardPreview() {
+      var user = currentUser;
+      if (!user) return;
+      var mine = ++socialCard.seq;
+      var img = document.getElementById('sc-preview');
+      var load = document.getElementById('sc-loading');
+      img.style.display = 'none';
+      load.classList.remove('hidden');
+      var useLogo = document.getElementById('sc-logo-toggle').checked;
+      try {
+        var res = await BhaiSocialCard.render(user, {
+          size: socialCard.size,
+          companyLogo: useLogo ? undefined : ''
+        });
+        if (mine !== socialCard.seq) return;
+        socialCard.res = res;
+        img.src = res.dataUrl;
+        img.style.display = 'block';
+        load.classList.add('hidden');
+        // Silently drawing an initial instead of the face would be discovered
+        // after the post, not before it.
+        if (res.photoFailed) showToast('Your photo could not be loaded - please re-upload it', 'error');
+      } catch (e) {
+        if (mine !== socialCard.seq) return;
+        load.textContent = 'Could not draw the card. Please try again.';
+      }
+    }
+
+    async function downloadSocialCard() {
+      var user = currentUser;
+      if (!user || !socialCard.res) return;
+      var link = document.createElement('a');
+      link.download = socialCard.res.filename;
+      link.href = socialCard.res.dataUrl;
+      link.click();
+      showToast('Card downloaded - post it with the caption', 'success');
+      if (user.id) { try { await api.post('/api/attendees/' + user.id + '/track-social-card', {}); } catch (e) {} }
+    }
+
+    function copySocialCaption() {
+      var ta = document.getElementById('sc-caption');
+      var btn = document.getElementById('sc-copy');
+      var done = function () {
+        showToast('Caption copied', 'success');
+        var was = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-check mr-2"></i>Copied';
+        setTimeout(function () { btn.innerHTML = was; }, 2000);
+      };
+      var legacy = function () { ta.select(); try { document.execCommand('copy'); } catch (e) {} done(); };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(ta.value).then(done, legacy);
+      } else { legacy(); }
+    }
+
+    async function shareSocialCard() {
+      var user = currentUser;
+      if (!user || !socialCard.res) return;
+      try {
+        var blob = await (await fetch(socialCard.res.dataUrl)).blob();
+        var file = new File([blob], socialCard.res.filename, { type: 'image/png' });
+        if (!navigator.canShare || !navigator.canShare({ files: [file] })) {
+          showToast('This browser cannot share files - use Download instead', 'error');
+          return;
+        }
+        await navigator.share({ files: [file], text: document.getElementById('sc-caption').value });
+        if (user.id) { try { await api.post('/api/attendees/' + user.id + '/track-social-card', {}); } catch (e) {} }
+      } catch (e) {
+        // Dismissing the share sheet throws AbortError. That is not a failure.
+        if (e && e.name !== 'AbortError') showToast('Could not open the share sheet', 'error');
+      }
+    }
+
+    /* The pass download is the one moment we know the delegate is pleased and
+     * still looking at the screen, which is the only moment a share prompt is
+     * welcome. Offered once and then never again - one that keeps reappearing is
+     * an advertisement, and this app is not that. */
+    var socialCardOffered = false;
+    function maybeOfferSocialCard() {
+      if (socialCardOffered) return;
+      socialCardOffered = true;
+      try {
+        if (localStorage.getItem('agba_social_card_offered')) return;
+        localStorage.setItem('agba_social_card_offered', '1');
+      } catch (e) {}
+      setTimeout(function () { openSocialCard(); }, 1600);
+    }
 
     function loadImage(src) {
       return new Promise((resolve, reject) => {
@@ -15639,6 +15854,7 @@ function mainPageHTML(): string {
                 </div>
                 <div class="flex gap-2 shrink-0 flex-wrap">
                   <button onclick="generateDelegatePass()" class="px-4 py-2.5 rounded-xl text-sm font-medium bg-primary-600 hover:bg-primary-500 text-white transition quick-action-btn"><i class="fas fa-id-badge mr-2"></i>Download Pass</button>
+                  <button onclick="openSocialCard()" class="px-4 py-2.5 rounded-xl text-sm font-medium glass hover:bg-white/10 text-gray-200 transition quick-action-btn"><i class="fas fa-share-alt mr-2"></i>Share Card</button>
                   <button onclick="generateCertificate()" class="px-4 py-2.5 rounded-xl text-sm font-medium glass hover:bg-white/10 text-gray-200 transition quick-action-btn"><i class="fas fa-award mr-2"></i>Certificate</button>
                   <button onclick="openEditProfile()" class="px-4 py-2.5 rounded-xl text-sm font-medium bg-primary-600 hover:bg-primary-500 text-white transition quick-action-btn"><i class="fas fa-user-edit mr-2"></i>Edit Profile</button>
                   <button onclick="logoutUser()" class="px-4 py-2.5 rounded-xl text-sm font-medium glass hover:bg-white/10 text-gray-400 transition quick-action-btn"><i class="fas fa-sign-out-alt mr-2"></i>Sign Out</button>
@@ -23614,6 +23830,7 @@ function adminPageHTML(): string {
         rows.push(['funnel_' + f.badge_type, 'notified', f.notified]);
         rows.push(['funnel_' + f.badge_type, 'signed_in', f.signed_in]);
         rows.push(['funnel_' + f.badge_type, 'pass_taken', f.pass_taken]);
+        rows.push(['funnel_' + f.badge_type, 'social_card_taken', f.card_taken || 0]);
         rows.push(['funnel_' + f.badge_type, 'checked_in', f.checked_in]);
       });
       var q = function (v) {
@@ -23687,7 +23904,8 @@ function adminPageHTML(): string {
             <thead><tr class="text-gray-500 uppercase text-[10px]">
               <th class="text-left py-2">Pass</th><th class="text-right py-2">Registered</th>
               <th class="text-right py-2">Notified</th><th class="text-right py-2">Signed in</th>
-              <th class="text-right py-2">Pass taken</th><th class="text-right py-2">Checked in</th>
+              <th class="text-right py-2">Pass taken</th><th class="text-right py-2">Shared</th>
+              <th class="text-right py-2">Checked in</th>
             </tr></thead>
             <tbody>
               \${(growth.funnel || []).map(function (f) {
@@ -23695,7 +23913,8 @@ function adminPageHTML(): string {
                 var cell = function (n) { return '<td class="text-right py-1.5">' + n + ' <span class="text-gray-600">' + pc(n) + '%</span></td>'; };
                 return '<tr class="border-t border-white/5"><td class="py-1.5 font-medium">' + escH(f.badge_type) + '</td>' +
                   '<td class="text-right py-1.5 font-semibold">' + f.registered + '</td>' +
-                  cell(f.notified) + cell(f.signed_in) + cell(f.pass_taken) + cell(f.checked_in) + '</tr>';
+                  cell(f.notified) + cell(f.signed_in) + cell(f.pass_taken) +
+                  cell(f.card_taken || 0) + cell(f.checked_in) + '</tr>';
               }).join('')}
             </tbody>
           </table>
@@ -23834,7 +24053,7 @@ function adminPageHTML(): string {
                 <div class="relative">
                   <i class="fas fa-link absolute left-3 top-1/2 -translate-y-1/2 text-gray-500"></i>
                   <input type="url" id="set-app-url" autocomplete="off" inputmode="url" autocapitalize="none" spellcheck="false" value="\${settings.app_url || 'https://bharataiinnovation.com/app'}" 
-                    placeholder="https://networking.bharataiinnovation.com" 
+                    placeholder="https://bharataiinnovation.com/app"
                     class="w-full pl-10 pr-4 py-2.5 rounded-xl text-sm">
                 </div>
                 <p class="text-xs text-gray-500 mt-1">Production URL used in email links (Download Pass, Open App). Leave default if unsure.</p>
