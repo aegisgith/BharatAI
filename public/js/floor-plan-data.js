@@ -19,4 +19,4 @@ window.PLOTS=[];
 // Legacy keys: standard=3×3 (Accelerator), accelerator=4×2 (Enterprise), enterprise=6×2 (Flagship).
 // premium=5×2 is new in this layout (booths 1 and 8) and has no package card yet;
 // 322500 = 10 sqm at 32,250/sqm, the rate every other non-pod tier already uses.
-window.BOOTH_PRICES={pod:38000,explorer:129000,innovator:195000,standard:291000,accelerator:258000,premium:322500,enterprise:387000,mega:1740000};
+window.BOOTH_PRICES={pod:48000,explorer:129000,innovator:195000,standard:291000,accelerator:258000,premium:322500,enterprise:387000,mega:1740000};
