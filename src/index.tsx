@@ -17063,6 +17063,9 @@ function adminPageHTML(): string {
   <!-- Shared with the app, so a pass issued at the desk is the same document the
        holder downloaded. -->
   <script src="/js/pass-render.js"></script>
+  <!-- Same renderer the delegate's own app uses, so a card the desk sends a speaker
+       is the card that speaker would have made themselves. -->
+  <script src="/js/social-card.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Manrope:wght@300..800&family=Montserrat:wght@600;700;800&family=Playfair+Display:wght@600;700&family=Mukta:wght@500;600;700&display=swap');
     * { font-family: 'Manrope', sans-serif; }
@@ -17138,6 +17141,17 @@ function adminPageHTML(): string {
     .modal-overlay { background: rgba(23,27,58,0.55); backdrop-filter: blur(5px); }
     .scroll-hide { scrollbar-width: none; }
     .scroll-hide::-webkit-scrollbar { display: none; }
+    /* A data grid is not a pill strip. scroll-hide was on the attendee table, and
+       ::-webkit-scrollbar{display:none} kills BOTH axes - so 21 columns and 50 rows
+       had no visible way to move in either direction, and the only way to reach the
+       Actions column was a shift+wheel most operators never try. These grids get a
+       scrollbar that can be seen and dragged. */
+    .data-scroll { scrollbar-width: thin; scrollbar-color: rgba(30,33,64,0.34) rgba(30,33,64,0.06); }
+    .data-scroll::-webkit-scrollbar { width: 13px; height: 13px; }
+    .data-scroll::-webkit-scrollbar-track { background: rgba(30,33,64,0.06); }
+    .data-scroll::-webkit-scrollbar-thumb { background: rgba(30,33,64,0.34); border-radius: 8px; border: 3px solid transparent; background-clip: content-box; }
+    .data-scroll::-webkit-scrollbar-thumb:hover { background: rgba(30,33,64,0.55); border: 3px solid transparent; background-clip: content-box; }
+    .data-scroll::-webkit-scrollbar-corner { background: transparent; }
     .badge-pulse { animation: pulse 2s infinite; }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
     table { border-collapse: separate; border-spacing: 0; }
@@ -18939,7 +18953,7 @@ function adminPageHTML(): string {
           <button onclick="bulkDelete()" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-red-600 text-white on-dark hover:bg-red-700"><i class="fas fa-trash mr-1"></i>Delete</button>
         </div>
         <div class="glass rounded-xl overflow-hidden">
-          <div class="overflow-x-auto max-h-[70vh] overflow-y-auto scroll-hide">
+          <div class="overflow-x-auto max-h-[70vh] overflow-y-auto data-scroll">
             <table class="w-full text-sm" id="attendee-table">
               <thead><tr class="text-gray-400 text-xs uppercase">
                 <th style="width:34px" class="att-check-col"><input type="checkbox" \${attAllVisibleSelected ? 'checked' : ''} onchange="attToggleAllVisible(this.checked)" title="Select the rows on this page" style="accent-color:#FF6B00;width:14px;height:14px;cursor:pointer"></th><th style="width:50px" class="sortable" onclick="sortAttendees('id')">ID\${sortIcon('id')}</th><th style="width:40px"></th><th style="width:130px" class="sortable" onclick="sortAttendees('name')">Name\${sortIcon('name')}<span class="col-resizer" data-col="2"></span></th><th style="width:180px" class="sortable" onclick="sortAttendees('email')">Email\${sortIcon('email')}<span class="col-resizer" data-col="3"></span></th><th style="width:100px" class="sortable" onclick="sortAttendees('mobile')">Mobile\${sortIcon('mobile')}<span class="col-resizer" data-col="4"></span></th><th style="width:130px" class="sortable" onclick="sortAttendees('company')">Company\${sortIcon('company')}<span class="col-resizer" data-col="5"></span></th><th style="width:110px" class="sortable" onclick="sortAttendees('job_title')">Title\${sortIcon('job_title')}<span class="col-resizer" data-col="6"></span></th><th style="width:80px" class="sortable" onclick="sortAttendees('city')">City\${sortIcon('city')}<span class="col-resizer" data-col="7"></span></th><th style="width:70px" class="sortable" onclick="sortAttendees('country')">Country\${sortIcon('country')}<span class="col-resizer" data-col="8"></span></th><th style="width:40px">In</th><th style="width:110px" class="sortable" onclick="sortAttendees('role')">Role\${sortIcon('role')}<span class="col-resizer" data-col="10"></span></th><th style="width:90px" class="sortable" onclick="sortAttendees('badge_type')">Badge\${sortIcon('badge_type')}<span class="col-resizer" data-col="11"></span></th><th style="width:60px" class="sortable" onclick="sortAttendees('rsvp_status')">RSVP\${sortIcon('rsvp_status')}</th><th style="width:45px" class="sortable" onclick="sortAttendees('lunch_inclusion')">Lunch\${sortIcon('lunch_inclusion')}</th><th style="width:60px" class="sortable" onclick="sortAttendees('arrival_time')">Arrival\${sortIcon('arrival_time')}</th><th style="width:80px" class="sortable" onclick="sortAttendees('registration_date')">Reg Date\${sortIcon('registration_date')}</th><th style="width:70px" class="sortable" onclick="sortAttendees('payment_amount')">Payment\${sortIcon('payment_amount')}</th><th style="width:45px">Notif</th><th style="width:80px">Engage</th><th style="width:140px">Actions</th>
@@ -18968,7 +18982,8 @@ function adminPageHTML(): string {
                   <td class="text-xs"><div class="flex gap-1.5 items-center" title="Login | Pass | Post-Email Login"><span class="\${a.last_login_at ? 'text-blue-400' : 'text-gray-600'}" title="\${a.last_login_at ? 'Logged in: '+a.last_login_at : 'Not logged in'}"><i class="fas fa-sign-in-alt"></i></span><span class="\${a.pass_downloaded_at ? 'text-emerald-400' : 'text-gray-600'}" title="\${a.pass_downloaded_at ? 'Pass downloaded: '+a.pass_downloaded_at : 'Pass not downloaded'}"><i class="fas fa-id-badge"></i></span><span class="\${a.notified_at && a.last_login_at && a.last_login_at >= a.notified_at ? 'text-violet-400' : 'text-gray-600'}" title="\${a.notified_at && a.last_login_at && a.last_login_at >= a.notified_at ? 'Opened after email' : 'Not opened after email'}"><i class="fas fa-envelope-open"></i></span></div></td>
                   <td class="flex gap-1">
                     <button onclick="openEditAttendeeById(\${a.id})" class="px-2 py-1 rounded text-xs bg-primary-500/20 text-primary-300 hover:bg-primary-500/30" title="Full Edit"><i class="fas fa-edit"></i></button>
-                    <button onclick='adminDownloadPass(\${JSON.stringify({id:a.id,name:a.name,email:a.email,company:a.company||"",job_title:a.job_title||"",badge_type:a.badge_type||"Delegate",avatar_url:a.avatar_url||""}).replace(/'/g,"&#39;")})' class="px-2 py-1 rounded text-xs bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30" title="Download Pass"><i class="fas fa-id-badge"></i></button>
+                    <button onclick='adminDownloadPass(\${JSON.stringify({id:a.id,name:a.name,email:a.email,company:a.company||"",job_title:a.job_title||"",badge_type:a.badge_type||"Delegate",avatar_url:a.avatar_url||"",role:a.role||"",website_url:a.website_url||""}).replace(/'/g,"&#39;")})' class="px-2 py-1 rounded text-xs bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30" title="Download Pass"><i class="fas fa-id-badge"></i></button>
+                    <button onclick='adminDownloadSocialCard(\${JSON.stringify({id:a.id,name:a.name,email:a.email,company:a.company||"",job_title:a.job_title||"",badge_type:a.badge_type||"Delegate",avatar_url:a.avatar_url||"",role:a.role||"",website_url:a.website_url||""}).replace(/'/g,"&#39;")})' class="px-2 py-1 rounded text-xs bg-violet-500/20 text-violet-300 hover:bg-violet-500/30" title="Download their &quot;I&#39;m attending&quot; social card"><i class="fas fa-share-alt"></i></button>
                     <button onclick="notifyAttendeeById(\${a.id})" class="px-2 py-1 rounded text-xs bg-amber-500/20 text-amber-300 hover:bg-amber-500/30" title="Send notification email"><i class="fas fa-envelope"></i></button>
                     <button onclick="deleteAttendee(\${a.id})" class="px-2 py-1 rounded text-xs bg-red-500/20 text-red-400 hover:bg-red-500/30" title="Delete"><i class="fas fa-trash"></i></button>
                   </td>
@@ -19474,7 +19489,7 @@ function adminPageHTML(): string {
 
           <!-- Preview Table -->
           <div class="glass rounded-lg overflow-hidden mb-4">
-            <div class="overflow-x-auto max-h-[300px] overflow-y-auto scroll-hide">
+            <div class="overflow-x-auto max-h-[300px] overflow-y-auto data-scroll">
               <table class="w-full text-xs" id="bulk-preview-table">
                 <thead><tr class="text-gray-400 uppercase">
                   <th class="text-[10px] py-2 px-2">#</th><th class="text-[10px] py-2 px-2">Name</th><th class="text-[10px] py-2 px-2">Email</th><th class="text-[10px] py-2 px-2">Mobile</th><th class="text-[10px] py-2 px-2">Company</th><th class="text-[10px] py-2 px-2">LinkedIn</th><th class="text-[10px] py-2 px-2">Lunch</th><th class="text-[10px] py-2 px-2">Badge</th><th class="text-[10px] py-2 px-2">Status</th>
@@ -20456,6 +20471,34 @@ function adminPageHTML(): string {
       }
     }
 
+    /* The delegate's own "I'm attending" card, generated from the desk. The point
+     * is speakers and exhibitors: they have the networks worth reaching and they
+     * are the least likely to go hunting for the button in an app they signed into
+     * once, so the team can make the card and send it to them.
+     *
+     * Square only. The 1080x1920 story is a phone-first shape a delegate picks in
+     * their own app; what the team wants to attach to an email is the LinkedIn one.
+     *
+     * No photo means no card - the whole thing is built around the face, and an
+     * initial in a circle is not something anyone posts. */
+    async function adminDownloadSocialCard(user) {
+      if (!user.avatar_url) {
+        toast(user.name + ' has no photo yet, so there is no card to make. Use "Ask for photos".', 'error');
+        return;
+      }
+      toast('Generating social card for ' + user.name + '...', 'info');
+      try {
+        var res = await BhaiSocialCard.download(user, { size: 'square' });
+        if (res && res.photoFailed) {
+          toast('Their photo would not load, so the card shows an initial. Not worth sending.', 'error');
+          return;
+        }
+        toast('Social card downloaded for ' + user.name, 'success');
+      } catch (e) {
+        toast('Could not generate the card: ' + (e.message || e), 'error');
+      }
+    }
+
     // Pass the row id, not the name and email. Those were interpolated straight
     // into the onclick attribute, so an attendee called O'Brien produced a broken
     // JS string literal and a button that silently did nothing when clicked.
@@ -20857,7 +20900,7 @@ function adminPageHTML(): string {
           <button onclick="openCreateSession()" class="px-4 py-2 rounded-xl text-xs font-medium bg-primary-600 hover:bg-primary-500 text-white transition"><i class="fas fa-plus mr-1"></i>Add Session</button>
         </div>
         <div class="glass rounded-xl overflow-hidden">
-          <div class="overflow-x-auto max-h-[70vh] overflow-y-auto scroll-hide">
+          <div class="overflow-x-auto max-h-[70vh] overflow-y-auto data-scroll">
             <table class="w-full text-sm">
               <thead><tr class="text-gray-400 text-xs uppercase">
                 <th>Time</th><th>Title</th><th>Speaker</th><th>Type</th><th>Track</th><th>Room</th><th>Actions</th>
