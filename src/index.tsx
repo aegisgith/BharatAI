@@ -6592,6 +6592,12 @@ async function profileReminderEmailHTML(c: any, attendee: any, link: string): Pr
     'industry': 'Used for the sector breakdown and to suggest people worth meeting.',
     'mobile number': 'Only used if something changes on the day &mdash; a hall move, a timing change.',
   }
+  // Same address, same sign-in token - only the action differs.
+  const cardLink = link.replace('action=complete-profile', 'action=social-card')
+  // "Once your photo is in" is only honest for the people who still owe one.
+  const cardLine = needsPhoto
+    ? 'Once your photo is in, you can make a card announcing you&rsquo;ll be at Bharat AI Innovation 2026'
+    : 'You can also make a card announcing you&rsquo;ll be at Bharat AI Innovation 2026'
   const row = (g: string) =>
     `<tr><td width="26" valign="top" style="padding:0 0 14px;"><div style="width:8px;height:8px;border-radius:50%;background:#FF6B00;margin-top:6px;"></div></td>` +
     `<td valign="top" style="padding:0 0 14px;"><p style="margin:0 0 2px;font-size:14px;font-weight:bold;color:#1E2140;text-transform:capitalize;">${esc(g)}</p>` +
@@ -6613,6 +6619,14 @@ async function profileReminderEmailHTML(c: any, attendee: any, link: string): Pr
         <p style="margin:12px 0 0;font-size:12px;color:#888;text-align:center;">Takes about a minute. The link signs you in automatically &mdash; no password, nothing to remember.</p>
         <div style="margin-top:24px;padding:14px;background:#FFF6EF;border:1px solid rgba(255,107,0,0.25);border-radius:10px;">
           <p style="margin:0;font-size:12.5px;line-height:1.6;color:#1E2140;"><strong>On the day:</strong> bring a government photo ID matching the name on your pass. We check it at the badge desk &mdash; we never ask you to upload or send an identity document, and we will never ask you for a payment over email.</p>
+        </div>
+        <div style="margin-top:18px;padding:16px;background:#F7F8FF;border:1px solid #E3E6F5;border-radius:10px;">
+          <p style="margin:0 0 5px;font-size:14px;font-weight:bold;color:#1E2140;">Then make your &ldquo;I&rsquo;m attending&rdquo; card</p>
+          <p style="margin:0 0 12px;font-size:12.5px;line-height:1.65;color:#555;">
+            ${cardLine} &mdash; your photo, your name and your organisation, sized for LinkedIn,
+            Instagram and WhatsApp. One tap, and a caption you can copy with it.
+          </p>
+          <a href="${cardLink}" style="display:inline-block;padding:9px 20px;background:#1E2140;color:#fff;text-decoration:none;border-radius:8px;font-size:12.5px;font-weight:bold;">Make my card</a>
         </div>
         <p style="margin:22px 0 0;font-size:12px;line-height:1.6;color:#999;">
           Already added these? Then you are set &mdash; nothing more to do, and you can ignore this. If you no longer plan to attend, just reply and tell us; we will take you off the list.
