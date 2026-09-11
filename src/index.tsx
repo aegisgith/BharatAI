@@ -12629,14 +12629,16 @@ function mainPageHTML(): string {
               <span class="text-gray-500 text-[11px] tracking-widest uppercase">World Trade Center Mumbai &nbsp;·&nbsp; India</span>
             </div>
 
-            <!-- Title -->
-            <h1 class="font-black leading-none tracking-tight mb-4" style="font-size:clamp(2.8rem,8vw,5.5rem);">
+            <!-- Title. Gated: a signed-in delegate does not need a billboard for
+                 the event they have a pass to, and at this size it pushed their
+                 pass, card and matches off the first screen entirely. -->
+            <h1 class="font-black leading-none tracking-tight mb-4 signed-out-only" style="font-size:clamp(2.8rem,8vw,5.5rem);">
               <span style="background:linear-gradient(120deg,#FF6B00 0%,#FF8C38 55%,#FFB300 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">Bharat AI</span><br>
               <span class="text-white">Innovation</span>
             </h1>
 
             <!-- Subtitle -->
-            <p class="text-sm md:text-base max-w-xl mx-auto mb-8" id="event-desc" style="color:#9ea8c8;">5,000+ researchers, founders, CXOs, and policymakers at WTC Mumbai<br class="hidden md:block"> — two days defining India's AI direction for the decade ahead.</p>
+            <p class="text-sm md:text-base max-w-xl mx-auto mb-8 signed-out-only" id="event-desc" style="color:#9ea8c8;">5,000+ researchers, founders, CXOs, and policymakers at WTC Mumbai<br class="hidden md:block"> — two days defining India's AI direction for the decade ahead.</p>
 
             <!-- CTA buttons. "Register Free" to somebody who is signed in is an
                  invitation to do the thing they already did, so the whole row is
@@ -16151,7 +16153,9 @@ function mainPageHTML(): string {
       pool.forEach(a => { const m = matchScore(a); a._score = m.score; a._shared = m.shared; });
       pool.sort((x, y) => (y._score - x._score) || (y.is_online - x.is_online));
       const top = pool.filter(a => a._score >= 10).slice(0, 8);
-      if (!top.length) { el.classList.add('hidden'); return; }
+      // An empty profile matches nobody, so hiding on "no results" silenced the
+      // ask for exactly the people whose answer would fix it. Keep the prompt.
+      if (!top.length && goalsOf(currentUser).length) { el.classList.add('hidden'); return; }
       /* Anyone who has not said why they are here is being matched on interests
        * alone, which at an AI conference means "ai, ml" and everybody. Say so on
        * the rail itself, where the payoff is visible, rather than burying the ask
@@ -16164,7 +16168,7 @@ function mainPageHTML(): string {
             + '<span class="font-semibold">Tell us what you are here for</span>'
             + '<span class="text-gray-400"> — selling, hiring, raising? These get far sharper.</span></p></button>'
           : '')
-        + '<div class="flex items-center justify-between gap-2 mb-3">'
+        + (top.length ? '<div class="flex items-center justify-between gap-2 mb-3">'
         + '<div class="flex items-center gap-2"><i class="fas fa-wand-magic-sparkles text-primary-400"></i>'
         + '<h3 class="text-sm font-semibold">People you should meet</h3></div>'
         // &quot; not \' — an escaped quote here is eaten by the enclosing template
@@ -16180,7 +16184,7 @@ function mainPageHTML(): string {
             + '<p class="text-[11px] text-primary-300 mt-2 line-clamp-2"><i class="fas fa-link mr-1"></i>' + esc(matchReason(a, a._shared || [])) + '</p>'
             + '<button type="button" onclick="viewProfile(' + a.id + ')" class="w-full mt-3 rounded-lg text-xs font-semibold text-white transition" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);min-height:44px;">View profile</button>'
             + '</div>').join('')
-        + '</div>';
+        + '</div>' : '');
       el.classList.remove('hidden');
     }
 
