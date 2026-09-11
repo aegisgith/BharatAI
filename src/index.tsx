@@ -12567,7 +12567,7 @@ function mainPageHTML(): string {
       <!-- Dashboard Tab -->
       <div id="tab-dashboard" class="tab-content">
         <!-- Hero -->
-        <div class="hero-gradient relative overflow-hidden" style="min-height:360px;">
+        <div class="hero-gradient relative overflow-hidden" id="hero-band" style="min-height:360px;">
           <!-- Background layer: deep navy with subtle purple shift (matches reference) -->
           <div class="absolute inset-0" style="background:radial-gradient(ellipse 80% 60% at 70% 30%, rgba(60,40,120,0.22) 0%, transparent 70%),radial-gradient(ellipse 60% 80% at 20% 80%, rgba(30,25,80,0.18) 0%, transparent 60%);"></div>
           <!-- Ambient glows -->
@@ -14908,6 +14908,10 @@ function mainPageHTML(): string {
         heroInner.style.paddingTop = currentUser ? '1.25rem' : '';
         heroInner.style.paddingBottom = currentUser ? '1rem' : '';
       }
+      // The band carries a hard min-height:360px for the headline it no longer
+      // shows. Padding alone could not shrink it, so the floor comes off too.
+      const heroBand = document.getElementById('hero-band');
+      if (heroBand) heroBand.style.minHeight = currentUser ? '0px' : '360px';
       document.querySelectorAll('.js-home-label').forEach(el => {
         el.textContent = currentUser ? 'Dashboard' : 'Home';
       });
