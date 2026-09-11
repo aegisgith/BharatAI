@@ -12374,7 +12374,7 @@ function mainPageHTML(): string {
     <div id="meeting-modal" class="fixed inset-0 z-40 modal-overlay hidden flex items-center justify-center p-4">
       <div class="glass rounded-2xl p-6 w-full max-w-md">
         <div class="flex justify-between items-start mb-4">
-          <h2 class="text-xl font-bold"><i class="fas fa-calendar-plus mr-2 text-primary-400"></i>Schedule Meeting</h2>
+          <h2 class="text-xl font-bold" id="meeting-modal-title"><i class="fas fa-calendar-plus mr-2 text-primary-400"></i>Schedule Meeting</h2>
           <button onclick="closeMeetingModal()" class="text-gray-400 hover:text-white"><i class="fas fa-times text-lg"></i></button>
         </div>
         <form id="meeting-form" class="space-y-4">
@@ -12406,9 +12406,12 @@ function mainPageHTML(): string {
                When migration 0029 has not been applied the room select above never
                unhides and this is the only location control, exactly as before. -->
           <input type="text" id="meeting-location" autocomplete="off" placeholder="Location" class="w-full px-4 py-3 rounded-xl text-sm">
+          <!-- Room-only mode. The server writes 'held', never 'confirmed', so this
+               has to say so before someone assumes they have paid for a room. -->
+          <p id="room-only-note" class="hidden text-xs text-gray-400"><i class="fas fa-circle-info mr-1 text-amber-400"></i>Asking holds the hours. The team invoices you and confirms &mdash; nothing is charged here.</p>
           <textarea id="meeting-notes" autocomplete="off" placeholder="Notes..." rows="2" class="w-full px-4 py-3 rounded-xl text-sm"></textarea>
           <button type="submit" class="w-full py-3 rounded-xl font-bold text-white transition-all hover:opacity-90" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);box-shadow:0 4px 20px rgba(245,98,10,0.28);">
-            <i class="fas fa-calendar-check mr-2"></i>Send Meeting Request
+            <i class="fas fa-calendar-check mr-2"></i><span id="meeting-submit-label">Send Meeting Request</span>
           </button>
         </form>
       </div>
@@ -14280,6 +14283,7 @@ function mainPageHTML(): string {
 
           <div class="flex gap-2 mt-5">
             <button onclick="closeNetworkingGuide(); switchTab('networking');" class="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold bg-primary-600 hover:bg-primary-500 text-white transition"><i class="fas fa-users mr-2"></i>Open the directory</button>
+            <button onclick="closeNetworkingGuide(); openRoomOnly();" class="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold glass hover:bg-white/10 text-gray-200 transition"><i class="fas fa-door-closed mr-2"></i>Book a room</button>
             <button onclick="closeNetworkingGuide()" class="px-4 py-2.5 rounded-xl text-sm font-semibold glass hover:bg-white/10 text-gray-200 transition">Close</button>
           </div>
         </div>
@@ -16362,13 +16366,59 @@ function mainPageHTML(): string {
       el.innerHTML = \`\${hours} \${hours === 1 ? 'hour' : 'hours'} &middot; ₹\${Number(net).toLocaleString('en-IN')} + \${gst}% GST = <span class="text-gray-400">₹\${Number(Math.round(net * (1 + gst / 100))).toLocaleString('en-IN')}</span> &middot; held for you until the team confirms it\`;
     }
 
+    /* A room could only ever be taken as part of asking a specific person for a
+     * meeting, which is the wrong way round for the commonest case: a team that
+     * knows it wants a room on the 20th and has not decided who is sitting in it
+     * yet. Room-only mode is the same form, the same grid and the same contiguity
+     * rule with the counterparty removed - rather than a second booking screen
+     * that would drift from this one. */
+    let roomOnlyMode = false;
+
+    function applyMeetingModalMode() {
+      const title = document.getElementById('meeting-modal-title');
+      const label = document.getElementById('meeting-submit-label');
+      const note = document.getElementById('room-only-note');
+      const t = document.getElementById('meeting-title');
+      if (roomOnlyMode) {
+        title.innerHTML = '<i class="fas fa-door-closed mr-2 text-primary-400"></i>Book a private room';
+        label.textContent = 'Request these hours';
+        note.classList.remove('hidden');
+        t.placeholder = 'What is it for? *';
+      } else {
+        title.innerHTML = '<i class="fas fa-calendar-plus mr-2 text-primary-400"></i>Schedule Meeting';
+        label.textContent = 'Send Meeting Request';
+        note.classList.add('hidden');
+        t.placeholder = 'Meeting Title *';
+      }
+    }
+
     function openMeetingModal(requesteeId) {
+      roomOnlyMode = false;
       document.getElementById('meeting-requestee-id').value = requesteeId;
       document.getElementById('meeting-modal').classList.remove('hidden');
       resetRoomSelection(true);
+      applyMeetingModalMode();
       // Lazily, and never blocking: a catalogue that fails to load leaves the modal
       // exactly as it was before rooms existed.
       loadRoomCatalog();
+    }
+
+    async function openRoomOnly() {
+      if (!currentUser) { showToast('Please sign in first', 'error'); return; }
+      roomOnlyMode = true;
+      document.getElementById('meeting-requestee-id').value = '';
+      document.getElementById('meeting-modal').classList.remove('hidden');
+      resetRoomSelection(true);
+      applyMeetingModalMode();
+      await loadRoomCatalog();
+      // The select stays hidden when migration 0029 is unapplied or no room is
+      // active. In meeting mode that is invisible and harmless; here it is the
+      // whole point of the screen, so say so instead of showing a dead form.
+      const sel = document.getElementById('meeting-room');
+      if (!sel || sel.classList.contains('hidden')) {
+        closeMeetingModal();
+        showToast('Room booking is not open yet', 'error');
+      }
     }
 
     function closeMeetingModal() {
@@ -16382,6 +16432,11 @@ function mainPageHTML(): string {
       if (btn) btn.disabled = true;
 
       try {
+        // In room-only mode the room IS the request, so it is not optional.
+        if (roomOnlyMode && (!selectedRoom || !selectedRoomSlots.length)) {
+          showToast('Pick a room and at least one hour', 'error');
+          return;
+        }
         // The room is the scarce resource, so it is taken first. If the hour has
         // gone in the meantime we stop here with the grid refreshed, rather than
         // leaving a meeting pointing at a room somebody else now holds.
@@ -16401,19 +16456,26 @@ function mainPageHTML(): string {
             return;
           }
         }
-        await api.post('/api/meetings', {
-          event_id: EVENT_ID,
-          requester_id: currentUser.id,
-          requestee_id: parseInt(document.getElementById('meeting-requestee-id').value),
-          title: document.getElementById('meeting-title').value,
-          meeting_time: document.getElementById('meeting-time').value,
-          duration_minutes: parseInt(document.getElementById('meeting-duration').value),
-          location: selectedRoom ? roomLocationLabel() : document.getElementById('meeting-location').value,
-          notes: document.getElementById('meeting-notes').value,
-        });
+        // No counterparty in room-only mode, so there is no meeting to request -
+        // the held hours are the whole transaction.
+        if (!roomOnlyMode) {
+          await api.post('/api/meetings', {
+            event_id: EVENT_ID,
+            requester_id: currentUser.id,
+            requestee_id: parseInt(document.getElementById('meeting-requestee-id').value),
+            title: document.getElementById('meeting-title').value,
+            meeting_time: document.getElementById('meeting-time').value,
+            duration_minutes: parseInt(document.getElementById('meeting-duration').value),
+            location: selectedRoom ? roomLocationLabel() : document.getElementById('meeting-location').value,
+            notes: document.getElementById('meeting-notes').value,
+          });
+        }
         const held = !!(selectedRoom && selectedRoomSlots.length);
+        const wasRoomOnly = roomOnlyMode;
         closeMeetingModal();
-        showToast(held ? 'Meeting request sent &middot; room held' : 'Meeting request sent!', 'success');
+        showToast(wasRoomOnly ? 'Hours held — the team will invoice you to confirm'
+                              : (held ? 'Meeting request sent · room held' : 'Meeting request sent!'), 'success');
+        if (wasRoomOnly && typeof renderEventPlan === 'function') renderEventPlan();
         document.getElementById('meeting-form').reset();
         resetRoomSelection(true);
         if (held) loadMyProfile();
@@ -19124,7 +19186,7 @@ function mainPageHTML(): string {
         { done: rooms > 0, icon: 'fa-door-closed', title: 'Take a private room if you need one',
           body: rooms > 0 ? rooms + (rooms === 1 ? ' room booked.' : ' rooms booked.')
                           : (roomLine || 'Four boardrooms inside WTC Mumbai') + ' For demos, partner sessions and investor conversations.',
-          cta: 'See the rooms', act: "window.open('https://bharataiinnovation.com/#networking','_blank')" },
+          cta: 'Book a room', act: 'openRoomOnly()' },
         { done: false, icon: 'fa-store', title: 'Selling? Take a stand or a sponsorship',
           body: boothLine || 'Two days in front of everyone, rather than one meeting at a time. Quoted by the team.',
           cta: boothCta ? 'See the floor plan' : 'Exhibit or sponsor',
