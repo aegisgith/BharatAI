@@ -587,7 +587,7 @@ async function sendRegistrationEmail(c: any, attendee: any) {
 
   const networking = !isVisitor ? `
         <div style="margin-top:26px;padding-top:22px;border-top:1px solid #eee;">
-          <p style="margin:0 0 4px;font-size:15px;font-weight:bold;color:#1E2140;text-align:center;">Your pass includes the networking app</p>
+          <p style="margin:0 0 4px;font-size:15px;font-weight:bold;color:#1E2140;text-align:center;">Your pass includes Bharat AI Connect</p>
           <p style="margin:0 0 16px;font-size:13px;line-height:1.6;color:#666;text-align:center;">Most of the value of two days is who you meet. Start before you arrive &mdash; the people worth meeting fill their diaries early.</p>
           <table style="width:100%;border-collapse:collapse;">${netRows}</table>
           <div style="text-align:center;margin:18px 0 0;">
@@ -606,7 +606,7 @@ async function sendRegistrationEmail(c: any, attendee: any) {
           <p style="margin:0 0 12px;font-size:13px;line-height:1.6;color:#666;text-align:center;">Here is what the app does, and why starting before you arrive matters &mdash; the people worth meeting fill their diaries early.</p>
           <table style="width:100%;border-collapse:collapse;">${netRows}</table>
           <table style="width:100%;border-collapse:separate;border-spacing:0;margin-top:18px;"><tr>
-            ${tier('#0f7b47', 'Delegate Pass', '&#8377;4,999 + GST', ['All conference sessions, both days', 'Workshops and lunch', 'Full networking app, as above'], 'https://bharataiinnovation.com/register#delegate')}
+            ${tier('#0f7b47', 'Delegate Pass', '&#8377;4,999 + GST', ['All conference sessions, both days', 'Workshops and lunch', 'Full access to Bharat AI Connect, as above'], 'https://bharataiinnovation.com/register#delegate')}
             ${tier('#A67C00', 'VIP Pass', '&#8377;14,999 + GST', ['Everything in Delegate', 'VIP lounge and priority seating', 'Speaker meet &amp; greet, VIP dinner'], 'https://bharataiinnovation.com/register#vip')}
           </tr></table>
           ${boardrooms}
@@ -822,14 +822,14 @@ async function audienceTeaser(c: any): Promise<string> {
       html = rows.length >= PUBLIC_COUNT_THRESHOLD
         ? open +
           `<strong>${round(rows.length)}</strong> people are already registered &mdash; among them <strong>${round(senior)}</strong> founders and C-suite ` +
-          `and <strong>${round(vp)}</strong> VPs and directors. The networking app is how you reach them.</p>`
+          `and <strong>${round(vp)}</strong> VPs and directors. Bharat AI Connect is how you reach them.</p>`
         // Below the threshold the total is left out and the composition carries the
         // paragraph on its own. It is the stronger claim anyway: who is coming
         // persuades a delegate far better than how many, and it is what the pass
         // actually buys access to.
         : open +
           `The room already includes <strong>${round(senior)}</strong> founders and C-suite ` +
-          `and <strong>${round(vp)}</strong> VPs and directors. The networking app is how you reach them.</p>`
+          `and <strong>${round(vp)}</strong> VPs and directors. Bharat AI Connect is how you reach them.</p>`
     }
   } catch { /* a teaser is not worth failing a confirmation email over */ }
   _teaser = { at: Date.now(), html }
@@ -1067,7 +1067,7 @@ async function notifyNewMessage(c: any, row: any, content: string): Promise<void
     const html = networkingEmailHTML({
       title: 'You have a new message',
       greeting: netFirstName(row.to_name),
-      lead: `<strong>${escEmail(row.from_name)}</strong> sent you a message on the networking app.`,
+      lead: `<strong>${escEmail(row.from_name)}</strong> sent you a message on Bharat AI Connect.`,
       detail: preview ? netQuote('#0f7b47', escEmail(preview) + (full.length > 140 ? '&hellip;' : '')) : '',
       cta: 'Read and reply',
       ctaUrl: await networkingAppUrl(c, '#inbox'),
@@ -8542,6 +8542,7 @@ async function profileReminderEmailHTML(c: any, attendee: any, link: string): Pr
   }
   // Same address, same sign-in token - only the action differs.
   const cardLink = link.replace('action=complete-profile', 'action=social-card')
+  const goalsLink = link.replace('action=complete-profile', 'action=goals')
   // "Once your photo is in" is only honest for the people who still owe one.
   const cardLine = needsPhoto
     ? 'Once your photo is in, you can make a card announcing you&rsquo;ll be at Bharat AI Innovation 2026'
@@ -8567,6 +8568,15 @@ async function profileReminderEmailHTML(c: any, attendee: any, link: string): Pr
         <p style="margin:12px 0 0;font-size:12px;color:#888;text-align:center;">Takes about a minute. The link signs you in automatically &mdash; no password, nothing to remember.</p>
         <div style="margin-top:24px;padding:14px;background:#FFF6EF;border:1px solid rgba(255,107,0,0.25);border-radius:10px;">
           <p style="margin:0;font-size:12.5px;line-height:1.6;color:#1E2140;"><strong>On the day:</strong> bring a government photo ID matching the name on your pass. We check it at the badge desk &mdash; we never ask you to upload or send an identity document, and we will never ask you for a payment over email.</p>
+        </div>
+        <div style="margin-top:18px;padding:16px;background:#F2FBF6;border:1px solid #CFEBDC;border-radius:10px;">
+          <p style="margin:0 0 5px;font-size:14px;font-weight:bold;color:#1E2140;">And tell us what you are here for</p>
+          <p style="margin:0 0 12px;font-size:12.5px;line-height:1.65;color:#555;">
+            Selling, hiring, raising, looking for partners? Bharat AI Connect pairs you with the
+            people who want the opposite &mdash; a buyer for a seller, an investor for a founder.
+            It is the difference between a list of 5,000 names and the ten worth your two days.
+          </p>
+          <a href="${goalsLink}" style="display:inline-block;padding:9px 20px;background:#0f7b47;color:#fff;text-decoration:none;border-radius:8px;font-size:12.5px;font-weight:bold;">Choose what you are here for</a>
         </div>
         <div style="margin-top:18px;padding:16px;background:#F7F8FF;border:1px solid #E3E6F5;border-radius:10px;">
           <p style="margin:0 0 5px;font-size:14px;font-weight:bold;color:#1E2140;">Then make your &ldquo;I&rsquo;m attending&rdquo; card</p>
@@ -14746,6 +14756,9 @@ function mainPageHTML(): string {
       // this safe to advertise to a list where almost nobody has uploaded yet:
       // the ask and the reward arrive together.
       if (act === 'social-card') { setTimeout(() => openSocialCard(), 1500); return; }
+      // The matchmaker is only as good as this answer, and the field is new, so
+      // almost nobody has given it yet.
+      if (act === 'goals') { setTimeout(() => openEditProfile(), 1500); return; }
       if (act !== 'complete-profile') return;
       setTimeout(() => {
         switchTab('home');
