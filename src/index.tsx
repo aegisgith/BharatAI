@@ -16190,7 +16190,9 @@ function mainPageHTML(): string {
       const chips = GOALS.map(function (g) {
         const on = mine.indexOf(g.key) !== -1;
         return '<button type="button" onclick="toggleGoalInline(&quot;' + g.key + '&quot;)" '
-          + 'class="px-3 py-2 rounded-full text-xs font-semibold border transition ' +
+          // 44px minimum: these are the primary control on the dashboard and they
+          // are tapped with a thumb. px-3 py-2 measured 34px on a phone.
+          + 'class="inline-flex items-center min-h-[44px] px-4 rounded-full text-xs font-semibold border transition ' +
           (on ? 'bg-primary-500 text-white border-primary-500' : 'border-gray-300 text-gray-600 hover:border-primary-400') + '">'
           + (on ? '<i class="fas fa-check mr-1.5"></i>' : '') + esc(g.label) + '</button>';
       }).join('');
