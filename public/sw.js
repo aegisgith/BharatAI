@@ -34,7 +34,7 @@ const PRECACHE = [
 // query-less entry here caches a key nobody ever asks for. Bump these with
 // those. The woff2 URLs inside fa-subset.css carry no query, so they don't.
 const PRECACHE_OPTIONAL = [
-  '/css/tailwind.css?v=1',
+  '/css/tailwind.css?v=2',
   '/css/fa-subset.css?v=1',
   '/webfonts/fa-solid-900.woff2',
   '/webfonts/fa-brands-400.woff2',

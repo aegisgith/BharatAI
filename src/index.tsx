@@ -10418,7 +10418,7 @@ app.get('/inquiry', (c) => {
 // background, so a stable filename can hand a returning visitor a four-hour-old
 // stylesheet. Bump it on every change that affects the generated CSS.
 // (src/routes/marketplace-pages.ts carries the same literal — see the note there.)
-export const TW_CSS = '/css/tailwind.css?v=1'
+export const TW_CSS = '/css/tailwind.css?v=2'
 
 // Font Awesome, cut down to the ~250 icons we actually draw by
 // scripts/build-fa-subset.py. Self-hosted because public/sw.js deliberately
