@@ -12770,7 +12770,7 @@ function mainPageHTML(): string {
                   <h3 class="font-bold text-base">Make the two days pay for themselves</h3>
                   <button type="button" onclick="openNetworkingGuide()" class="text-xs text-emerald-400 hover:text-emerald-300 underline shrink-0">How it works</button>
                 </div>
-                <p class="text-xs text-gray-400 mb-4">People who plan their meetings before they arrive leave with deals. People who turn up and wander leave with a tote bag.</p>
+                <p class="text-xs text-gray-400 mb-4">Plan your meetings before you arrive. The people who do are the ones who leave with deals.</p>
                 <div id="ep-steps" class="space-y-2"></div>
               </div>
             </div>
@@ -12801,8 +12801,10 @@ function mainPageHTML(): string {
         <!-- Quick Actions: Delegate Pass + Arrival Time -->
         <div class="max-w-7xl mx-auto px-4 mt-6 hidden" id="home-quick-actions">
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <!-- Download Delegate Pass Card -->
-            <div class="glass rounded-2xl p-5 border border-green-500/20 card-hover cursor-pointer" onclick="generateDelegatePass()">
+            <!-- Download Delegate Pass Card. Hidden: the pass already has its own
+                 panel at the top of the dashboard and an entry in the welcome
+                 panel. A third copy is noise, not emphasis. -->
+            <div class="glass rounded-2xl p-5 border border-green-500/20 card-hover cursor-pointer hidden" onclick="generateDelegatePass()">
               <div class="flex items-center gap-4">
                 <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-green-500/20 to-emerald-500/20 flex items-center justify-center shrink-0">
                   <i class="fas fa-id-badge text-2xl text-green-400"></i>
@@ -15513,6 +15515,7 @@ function mainPageHTML(): string {
         renderPassAndCardCta();
         renderDashMatchRail();
         updateProfileCompletionCard();
+        orderDashboard();
         // Not awaited: it makes three API calls and the home screen should not wait
         // on them to paint. The card reveals itself when it has something to say.
         renderEventPlan();
@@ -19393,6 +19396,31 @@ function mainPageHTML(): string {
       card.querySelector('#pc-photo-btn').classList.toggle('hidden', !needsPhoto);
       card.querySelector('#pc-details-btn').classList.toggle('hidden', !needsDetails);
       card.classList.remove('hidden');
+    }
+
+    /* The dashboard, in the order a delegate needs it. The blocks are siblings
+     * that arrived one at a time over months, each appended wherever its author
+     * was working, so by now the welcome sat fifth - under a matchmaking rail -
+     * and the one card that takes money sat near the bottom. This puts them in
+     * the order that matters and is the single place that order is decided.
+     *
+     *   1. who you are          - the welcome panel, name and pass
+     *   2. what you collect     - your pass, your shareable creative
+     *   3. what you could buy   - the upgrade card, for Visitor Pass holders
+     *   4. who to meet          - the matches
+     *   5. what is still missing- the profile ask, only while something is
+     *   6. how to get business  - the plan
+     *   7. everything else      - RSVP and the rest, unchanged */
+    function orderDashboard() {
+      const ids = ['role-home', 'pass-card-cta', 'home-quick-actions', 'dash-match-rail',
+                   'profile-complete-card', 'event-plan-card', 'rsvp-card-container'];
+      const first = document.getElementById(ids[0]);
+      if (!first || !first.parentNode) return;
+      const parent = first.parentNode;
+      // Everything not listed keeps its place relative to the last listed block.
+      const anchor = document.getElementById(ids[ids.length - 1]);
+      const after = anchor ? anchor.nextSibling : null;
+      ids.forEach(id => { const el = document.getElementById(id); if (el) parent.insertBefore(el, after); });
     }
 
     function openNetworkingGuide() { document.getElementById('networking-guide-modal').classList.remove('hidden'); }
