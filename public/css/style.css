@@ -465,6 +465,37 @@ section { position: relative; }
   z-index: 0;
 }
 
+/* Full-bleed archive photograph behind the hero (img/hero-backdrop.jpg).
+   Must stay the FIRST child of .hero-bg: .hero-bg-grid and .hero-bg-orb carry no
+   z-index and stack by DOM order, so a later sibling would paint over the grid.
+
+   The blur is baked into the file, not applied here, and that is deliberate. This
+   frame contains 2017 slide copy and third-party sponsor boards; a legible sponsor
+   logo behind a 2026 headline reads as a 2026 sponsor. A CSS blur() is a fixed px
+   radius, so it weakens as object-fit:cover magnifies the source - on a 2560px
+   display the old copy came back. Baked into the pixels, the blur magnifies WITH
+   the image and holds at every width. It also takes the file from 73KB to 17KB. */
+.hero-bg-photo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 42%;
+  filter: saturate(0.78) contrast(1.06);
+}
+
+/* --grad-hero is painted on .hero itself, which sits BEHIND .hero-bg, so an opaque
+   photo hides it. This re-applies the brand gradient above the photo and is what
+   keeps the white headline legible over the stage lighting. */
+.hero-bg-scrim {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 72% 62% at 50% 52%, rgba(13,15,30,0.36) 0%, rgba(13,15,30,0.88) 100%),
+    linear-gradient(135deg, rgba(13,15,30,0.90) 0%, rgba(26,35,126,0.74) 50%, rgba(13,27,75,0.92) 100%);
+}
+
 .hero-bg-grid {
   position: absolute;
   inset: 0;
@@ -559,6 +590,38 @@ section { position: relative; }
 }
 
 .hero-left { }
+
+/* The "From the Stage" gallery labels these photographs as Data Science Congress;
+   the hero has no caption of its own, so the credit travels with the image. */
+.hero-credit {
+  position: absolute;
+  right: 2rem;
+  bottom: 1.5rem;
+  z-index: 2;
+  margin: 0;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.60);
+  pointer-events: none;
+}
+
+/* Windows High Contrast turns off the scrim (backgrounds are stripped) but keeps the
+   <img>, which would leave the hero text sitting on a bare photograph. Drop the photo
+   so the hero falls back to the system colours it expects. */
+@media (forced-colors: active) {
+  .hero-bg-photo { display: none; }
+}
+
+@media (max-width: 768px) {
+  .hero-credit {
+    right: 1.25rem;
+    bottom: 1rem;
+    font-size: 0.6rem;
+    letter-spacing: 0.1em;
+  }
+}
 
 /* --- Hero date/venue line --- */
 .hero-dateline {
