@@ -12483,7 +12483,7 @@ function mainPageHTML(): string {
              the width instead of crushing; min touch target ~48px. -->
         <div class="flex md:hidden items-center justify-around py-1.5 overflow-x-auto no-scrollbar">
           <button class="nav-btn tab-active flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl text-[10px] font-medium transition-all" data-tab="dashboard" onclick="switchTab('dashboard')">
-            <i class="fas fa-th-large text-base"></i><span>Home</span>
+            <i class="fas fa-th-large text-base"></i><span class="js-home-label">Home</span>
           </button>
           <button class="nav-btn flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl text-[10px] font-medium text-gray-400 hover:text-white transition-all" data-tab="schedule" onclick="switchTab('schedule')">
             <i class="fas fa-calendar-alt text-base"></i><span>Schedule</span>
@@ -12518,7 +12518,7 @@ function mainPageHTML(): string {
 
           <!-- Center nav pills -->
           <div class="flex items-center gap-0.5 flex-1 justify-center">
-            <button class="nav-btn tab-active px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all" data-tab="dashboard" onclick="switchTab('dashboard')">Home</button>
+            <button class="nav-btn tab-active px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all" data-tab="dashboard" onclick="switchTab('dashboard')"><span class="js-home-label">Home</span></button>
             <button class="nav-btn px-3.5 py-1.5 rounded-full text-xs font-medium text-gray-300 hover:text-white hover:bg-white/8 transition-all" data-tab="schedule" onclick="switchTab('schedule')">Schedule</button>
             <button class="nav-btn auth-gated hidden px-3.5 py-1.5 rounded-full text-xs font-medium text-gray-300 hover:text-white hover:bg-white/8 transition-all" data-tab="networking" onclick="switchTab('networking')">Network</button>
             <button class="nav-btn px-3.5 py-1.5 rounded-full text-xs font-medium text-gray-300 hover:text-white hover:bg-white/8 transition-all" data-tab="workshops" onclick="switchTab('workshops')">Workshops</button>
@@ -12638,8 +12638,10 @@ function mainPageHTML(): string {
             <!-- Subtitle -->
             <p class="text-sm md:text-base max-w-xl mx-auto mb-8" id="event-desc" style="color:#9ea8c8;">5,000+ researchers, founders, CXOs, and policymakers at WTC Mumbai<br class="hidden md:block"> — two days defining India's AI direction for the decade ahead.</p>
 
-            <!-- CTA buttons -->
-            <div class="flex items-center justify-center gap-3 flex-wrap">
+            <!-- CTA buttons. "Register Free" to somebody who is signed in is an
+                 invitation to do the thing they already did, so the whole row is
+                 gated: see applySignedInChrome(). -->
+            <div class="flex items-center justify-center gap-3 flex-wrap signed-out-only">
               <button onclick="showRegistration()" class="flex items-center gap-2 px-6 py-3 rounded-full text-sm font-bold text-white transition hover:opacity-90" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);box-shadow:0 6px 20px rgba(245,98,10,0.35);">Register Free <i class="fas fa-arrow-right text-xs"></i></button>
               <a href="https://bharataiinnovation.com" target="_blank" class="flex items-center gap-2 px-6 py-3 rounded-full text-sm font-semibold text-gray-200 transition hover:bg-white/10 no-underline" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);">Learn More</a>
             </div>
@@ -12707,7 +12709,7 @@ function mainPageHTML(): string {
               <div class="flex-1 min-w-0">
                 <h3 class="font-bold text-sm mb-0.5">Tell your network you're coming</h3>
                 <p class="text-xs text-gray-400 mb-3">A card with your photo, sized for LinkedIn, WhatsApp and Instagram — with a caption you can copy.</p>
-                <button type="button" onclick="openSocialCard()" class="px-4 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition" style="min-height:44px;"><i class="fas fa-share-alt mr-1.5"></i>Get my card</button>
+                <button type="button" onclick="openSocialCard()" class="px-4 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition" style="min-height:44px;"><i class="fas fa-share-alt mr-1.5"></i>Download my LinkedIn / WhatsApp creative</button>
               </div>
             </div>
           </div>
@@ -12840,7 +12842,7 @@ function mainPageHTML(): string {
         </div>
 
         <!-- Pass Comparison & Registration CTA -->
-        <div class="max-w-7xl mx-auto px-4 py-8" id="pass-comparison-section">
+        <div class="max-w-7xl mx-auto px-4 py-8 signed-out-only" id="pass-comparison-section">
           <div class="glass rounded-2xl p-6 md:p-8 glow-accent">
             <div class="text-center mb-6">
               <h2 class="text-2xl font-bold mb-2"><i class="fas fa-ticket-alt text-amber-400 mr-2"></i>Choose Your Pass</h2>
@@ -13025,7 +13027,7 @@ function mainPageHTML(): string {
         </div>
 
         <!-- Quick Visitor Registration Section -->
-        <div class="max-w-7xl mx-auto px-4 py-6" id="quick-visitor-reg-section">
+        <div class="max-w-7xl mx-auto px-4 py-6 signed-out-only" id="quick-visitor-reg-section">
           <div class="glass rounded-2xl p-6 md:p-8 border border-green-500/20 glow-accent" id="quick-visitor-reg-card">
             <div class="flex items-center gap-3 mb-4">
               <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-green-500/20 to-emerald-500/20 flex items-center justify-center shrink-0">
@@ -13222,7 +13224,10 @@ function mainPageHTML(): string {
               <div class="font-semibold text-sm">Startup Pitch</div>
               <div class="text-xs text-gray-500 mt-0.5">Founders meet investors</div>
             </button>
-            <button onclick="switchTab('awards')" class="glass rounded-2xl p-5 text-left card-hover transition group">
+            <!-- Awards is not part of Bharat AI Innovation. Hidden rather than
+                 removed: the tab, its data and its routes are untouched, so
+                 unhiding this one button brings it all back. -->
+            <button onclick="switchTab('awards')" class="hidden glass rounded-2xl p-5 text-left card-hover transition group">
               <i class="fas fa-trophy text-2xl text-amber-400 mb-3 block"></i>
               <div class="font-semibold text-sm">Awards</div>
               <div class="text-xs text-gray-500 mt-0.5">Bharat AI Innovation Awards</div>
@@ -14881,7 +14886,25 @@ function mainPageHTML(): string {
     // There are TWO sign-in buttons (mobile + desktop) and TWO "me"/avatar
     // buttons; toggle ALL of them by class, not by a single (non-unique) id —
     // that bug left the desktop Sign In button visible while logged in.
+    /* A signed-in delegate is not a prospect. "Register Free", the free-pass form
+     * and the pass price list are all arguments for becoming a user, addressed to
+     * someone who already is - and worse, the price list has no way to buy from it,
+     * so it reads as a wall rather than an offer. They are hidden once signed in,
+     * which also promotes the pass, the card and the matches to the top of the
+     * screen where a dashboard belongs.
+     *
+     * The tab is called Home to a visitor and Dashboard to a delegate, because that
+     * is what it is in each case. */
+    function applySignedInChrome() {
+      const marketing = document.querySelectorAll('.signed-out-only');
+      marketing.forEach(el => el.classList.toggle('hidden', !!currentUser));
+      document.querySelectorAll('.js-home-label').forEach(el => {
+        el.textContent = currentUser ? 'Dashboard' : 'Home';
+      });
+    }
+
     function updateNavForAuth() {
+      applySignedInChrome();
       const signInBtns = document.querySelectorAll('.js-signin-btn');
       const loggedInBtns = document.querySelectorAll('.js-avatar-btn'); // avatar + Log Out
       const authGated = document.querySelectorAll('.auth-gated');       // Network, Inbox
