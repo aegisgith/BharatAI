@@ -5,7 +5,7 @@
     "dev": "vite",
     "css": "tailwindcss -c tailwind.config.cjs -i src/styles/tailwind.css -o public/css/tailwind.css --minify",
     "build": "npm run css && vite build",
-    "postbuild": "node scripts/gen-routes.mjs",
+    "postbuild": "node scripts/gen-routes.mjs && node scripts/check-no-counts.mjs",
     "preview": "wrangler pages dev dist",
     "deploy": "npm run build && wrangler pages deploy dist",
     "dev:sandbox": "wrangler pages dev dist --d1=bharatai-production --local --ip 0.0.0.0 --port 3000",

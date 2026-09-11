@@ -250,7 +250,7 @@ app.get('/api/events/:id/sessions/rooms', async (c) => {
 // the last sign-in. Nothing writes last_seen, so last_login_at is the only real
 // signal available; true presence would need a heartbeat from the client.
 const ONLINE_WINDOW_MINUTES = 15
-const ATTENDEE_PUBLIC_COLS = `id, event_id, name, company, job_title, bio, avatar_url, interests, linkedin_url, twitter_url, website_url, role, badge_type, CASE WHEN last_login_at > datetime('now', '-${ONLINE_WINDOW_MINUTES} minutes') THEN 1 ELSE 0 END AS is_online, last_seen, industry, city, country, created_at`
+const ATTENDEE_PUBLIC_COLS = `id, event_id, name, company, job_title, bio, avatar_url, interests, linkedin_url, twitter_url, website_url, role, badge_type, CASE WHEN last_login_at > datetime('now', '-${ONLINE_WINDOW_MINUTES} minutes') THEN 1 ELSE 0 END AS is_online, last_seen, industry, city, country`
 
 // What the ADMIN grid actually renders, plus what its row actions need: the CSV
 // export built in the browser, the pass download, notify, the segment filters and
@@ -313,6 +313,47 @@ const ATTENDEE_LIST_MAX_LIMIT = 20000
 // ?limit=all opts out of the ROW cap; it does not opt out of this one, because a
 // body nobody can parse is not a service to anybody.
 const ATTENDEE_LIST_MAX_BYTES = 950000
+
+// ---- Public directory paging ------------------------------------------------
+//
+// The public attendee list used to hand back every row in one response: 1,363
+// people, about 900KB of JSON, on every visit to the networking tab. That was
+// three separate problems wearing one coat. It was the slowest thing in the app;
+// it put the entire delegate list one curl from anyone who wanted to scrape it;
+// and its length WAS the registration count, so blanking the total header alone
+// would have hidden nothing.
+//
+// A page at a time fixes all three, and search is what makes it usable: the
+// filter runs in SQL, so looking for a person by name, company or job title
+// reaches the whole directory even though no single response ever contains it.
+//
+// Keyset, not OFFSET. The old ordering led with is_online, which is derived from
+// a rolling 30-minute window and therefore changes between one page and the next
+// - with OFFSET that silently duplicates and skips people as they sign in. The
+// order is now (name, id), which is total and stable, and the cursor carries the
+// last row of the page the caller actually received.
+//
+// The admin table is NOT paged this way and keeps its old behaviour exactly: it
+// pages on X-Total-Count, exports CSV from the full set, and is the one place
+// that is supposed to see everyone at once.
+const PUBLIC_PAGE_DEFAULT = 24
+const PUBLIC_PAGE_MAX = 48
+
+const encodeAttendeeCursor = (name: unknown, id: unknown): string =>
+  btoa(JSON.stringify([String(name ?? ''), Number(id)]))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+
+function decodeAttendeeCursor(raw: unknown): { name: string; id: number } | null {
+  const t = String(raw ?? '').trim()
+  if (!t) return null
+  try {
+    const b = t.replace(/-/g, '+').replace(/_/g, '/')
+    const v = JSON.parse(atob(b + '='.repeat((4 - (b.length % 4)) % 4)))
+    if (!Array.isArray(v) || v.length !== 2) return null
+    const id = Number(v[1])
+    return Number.isFinite(id) ? { name: String(v[0]), id } : null
+  } catch { return null }
+}
 // The opt-out lifts the default cap to the hard maximum; it does not mean
 // "unbounded". An unbounded SELECT on a large table costs the isolate a full scan
 // to build a body that still could not be delivered, so "all" honestly means "as
@@ -325,6 +366,29 @@ function attendeeListLimit(raw?: string): number {
   if (!Number.isFinite(n) || n <= 0) return ATTENDEE_LIST_DEFAULT_LIMIT
   return Math.min(n, ATTENDEE_LIST_MAX_LIMIT)
 }
+
+// ==================== PUBLIC REGISTRATION COUNT ====================
+//
+// How many people have registered is withheld from the public until it crosses
+// 5,000. At roughly 1,400 the true number argues against the event every time it
+// is quoted back - to a visitor deciding whether to come, and to a sponsor
+// deciding what a stand is worth - while the same number a few months from now
+// will sell it. This is a presentation decision, not a data one: nothing stops
+// being counted, and the operator's own tools keep showing the truth.
+//
+// The threshold is a constant rather than a setting on purpose. When the real
+// count crosses it the number simply appears, with no deploy and nobody
+// remembering to flip a switch.
+//
+// Marketing copy that advertises an EXPECTED audience ("5,000+ attendees") is a
+// projection and is untouched by any of this.
+const PUBLIC_COUNT_THRESHOLD = 5000
+
+// Admin and staff always see the real figure; they are the people who need it.
+// Everyone else - signed out, or signed in as an attendee - sees it only once it
+// is large enough to be worth showing.
+const mayRevealCount = (c: any, total: number): boolean =>
+  isAdminRequest(c) || Number(total) >= PUBLIC_COUNT_THRESHOLD
 
 // Resolved once per request by the middleware below. A WeakMap rather than
 // c.set() so the existing synchronous call sites need no changes.
@@ -754,9 +818,18 @@ async function audienceTeaser(c: any): Promise<string> {
     const vp = count('VP & Director')
     const round = (n: number) => n >= 100 ? Math.floor(n / 50) * 50 + '+' : String(n)
     if (rows.length >= 200 && senior + vp >= 50) {
-      html = `<p style="margin:0 0 14px;padding:11px 14px;background:#F4F8F6;border-radius:9px;font-size:12.5px;line-height:1.65;color:#1E2140;text-align:center;">` +
-        `<strong>${round(rows.length)}</strong> people are already registered &mdash; among them <strong>${round(senior)}</strong> founders and C-suite ` +
-        `and <strong>${round(vp)}</strong> VPs and directors. The networking app is how you reach them.</p>`
+      const open = `<p style="margin:0 0 14px;padding:11px 14px;background:#F4F8F6;border-radius:9px;font-size:12.5px;line-height:1.65;color:#1E2140;text-align:center;">`
+      html = rows.length >= PUBLIC_COUNT_THRESHOLD
+        ? open +
+          `<strong>${round(rows.length)}</strong> people are already registered &mdash; among them <strong>${round(senior)}</strong> founders and C-suite ` +
+          `and <strong>${round(vp)}</strong> VPs and directors. The networking app is how you reach them.</p>`
+        // Below the threshold the total is left out and the composition carries the
+        // paragraph on its own. It is the stronger claim anyway: who is coming
+        // persuades a delegate far better than how many, and it is what the pass
+        // actually buys access to.
+        : open +
+          `The room already includes <strong>${round(senior)}</strong> founders and C-suite ` +
+          `and <strong>${round(vp)}</strong> VPs and directors. The networking app is how you reach them.</p>`
     }
   } catch { /* a teaser is not worth failing a confirmation email over */ }
   _teaser = { at: Date.now(), html }
@@ -3010,6 +3083,39 @@ app.get('/api/events/:id/attendees', async (c) => {
     params.push(`%${interest}%`)
   }
 
+  // Everyone who is not an admin gets a page, never the whole directory.
+  if (!isAdminRequest(c)) {
+    const size = Math.min(PUBLIC_PAGE_MAX, Math.max(1,
+      parseInt(c.req.query('limit') || '', 10) || PUBLIC_PAGE_DEFAULT))
+    const cur = decodeAttendeeCursor(c.req.query('cursor'))
+    let pw = where
+    const pp = [...params]
+    if (cur) {
+      pw += ' AND (name > ? OR (name = ? AND id > ?))'
+      pp.push(cur.name, cur.name, cur.id)
+    }
+    // Fetch one more row than asked for. That single extra row answers "is there
+    // another page?" without a COUNT - which matters, because a COUNT here is the
+    // registration count, and not running it is the point.
+    const got = ((await c.env.DB.prepare(
+      `SELECT ${cols} FROM attendees${pw} ORDER BY name ASC, id ASC LIMIT ${size + 1}`
+    ).bind(...pp).all()).results || []) as any[]
+    const more = got.length > size
+    const pageRows = more ? got.slice(0, size) : got
+    const last = pageRows[pageRows.length - 1]
+    return new Response(JSON.stringify(pageRows), {
+      headers: {
+        'Content-Type': 'application/json; charset=UTF-8',
+        'X-Returned-Count': String(pageRows.length),
+        // Present only while more remain. Its absence is how the client knows to
+        // stop, and it says nothing about how many are left.
+        'X-Next-Cursor': more && last ? encodeAttendeeCursor(last.name, last.id) : '',
+        'X-Has-More': more ? '1' : '0',
+        'Access-Control-Expose-Headers': 'X-Returned-Count, X-Next-Cursor, X-Has-More',
+      },
+    })
+  }
+
   const limit = attendeeListLimit(c.req.query('limit'))
   const query = `SELECT ${cols} FROM attendees${where} ORDER BY is_online DESC, name ASC LIMIT ${limit}`
 
@@ -3059,6 +3165,9 @@ app.get('/api/events/:id/attendees', async (c) => {
   return new Response(body, {
     headers: {
       'Content-Type': 'application/json; charset=UTF-8',
+      // Only admins reach this far - every other caller was served a page above,
+      // with no total in it at all. The admin table pages on this header and is
+      // the one place meant to see the whole room, so it is sent as it always was.
       'X-Total-Count': String(total),
       'X-Returned-Count': String(rows.length),
       'X-Truncated': cut ? '1' : '0',
@@ -3066,6 +3175,49 @@ app.get('/api/events/:id/attendees', async (c) => {
       'Access-Control-Expose-Headers': 'X-Total-Count, X-Returned-Count, X-Truncated, X-Truncated-By',
     },
   })
+})
+
+// The "Recommended for you" rail used to rank the whole directory in the browser,
+// which only worked because the browser had the whole directory. It no longer
+// does, so the candidates come from here: everyone who shares at least one stated
+// interest with the caller, capped well below any useful headcount, topped up with
+// other attendees when the caller's interests match too few people.
+//
+// The ranking itself deliberately stays in the client, where the seniority table
+// already lives - duplicating that here would give us two copies to keep in step.
+const SUGGEST_POOL = 60
+app.get('/api/events/:id/suggested-attendees', async (c) => {
+  const eventId = c.req.param('id')
+  const me = await verifyAttendeeSession(c)
+  if (!me && attendeeSessionSecret(c)) return c.json([])
+
+  const mine = await c.env.DB.prepare('SELECT interests FROM attendees WHERE id = ?')
+    .bind(me).first() as any
+  const terms = String(mine?.interests || '')
+    .split(',').map((t: string) => t.trim()).filter(Boolean).slice(0, 6)
+
+  const out: any[] = []
+  const seen = new Set<number>([Number(me)])
+
+  if (terms.length) {
+    const ors = terms.map(() => 'interests LIKE ?').join(' OR ')
+    const rows = ((await c.env.DB.prepare(
+      `SELECT ${ATTENDEE_PUBLIC_COLS} FROM attendees WHERE event_id = ? AND id <> ? AND (${ors}) LIMIT ${SUGGEST_POOL}`
+    ).bind(eventId, me, ...terms.map((t: string) => '%' + t + '%')).all()).results || []) as any[]
+    for (const r of rows) { if (!seen.has(r.id)) { seen.add(r.id); out.push(r) } }
+  }
+
+  if (out.length < SUGGEST_POOL) {
+    const rows = ((await c.env.DB.prepare(
+      `SELECT ${ATTENDEE_PUBLIC_COLS} FROM attendees WHERE event_id = ? AND id <> ? ORDER BY id DESC LIMIT ${SUGGEST_POOL}`
+    ).bind(eventId, me).all()).results || []) as any[]
+    for (const r of rows) {
+      if (out.length >= SUGGEST_POOL) break
+      if (!seen.has(r.id)) { seen.add(r.id); out.push(r) }
+    }
+  }
+
+  return c.json(out)
 })
 
 app.get('/api/attendees/:id', async (c) => {
@@ -7233,10 +7385,23 @@ app.get('/api/events/:id/stats', async (c) => {
 
   const n = (i: number) => ((rows[i] as any)?.results?.[0]?.count) || 0
 
+  // This route is unauthenticated - it answers the app's dashboard - so it was
+  // handing the exact registration count to anyone who asked for it, and a single
+  // curl was all it took. Below the threshold the field comes back null rather
+  // than being dropped, so existing callers keep the same response shape and can
+  // tell "withheld" apart from "zero".
+  //
+  // checked_in is withheld on the same terms. It is a headcount of the same people
+  // by another name, and on the two event days it would answer the question this
+  // is meant to close just as directly.
+  const attendeeTotal = n(0)
+  const reveal = mayRevealCount(c, attendeeTotal)
+
   return c.json({
-    attendees: n(0),
+    attendees: reveal ? attendeeTotal : null,
+    attendees_withheld: reveal ? undefined : true,
     online: n(1),
-    checkedIn: checkedInCount,
+    checkedIn: reveal ? checkedInCount : null,
     sessions: n(2),
     exhibitors: n(3),
     connections: n(4),
@@ -11868,6 +12033,20 @@ function mainPageHTML(): string {
     body { background: #F8F9FF; color: #1E2140; }
     .glass { background: rgba(255,255,255,0.04); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.07); }
     .glass-light { background: rgba(255,255,255,0.07); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.10); }
+    /* The directory is not for lifting. Selection is disabled on the attendee
+       cards, the recommendation rail and the profile card only; the JS handlers
+       for copy/cut/drag are scoped to the same three containers. Inputs keep
+       normal behaviour everywhere, including inside these zones, so pasting and
+       typing are never affected. A determined person can still read the DOM -
+       this removes the one-gesture case, it is not a lock. */
+    #attendee-grid, #match-rail, #profile-content {
+      -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none;
+    }
+    #attendee-grid input, #attendee-grid textarea,
+    #match-rail input, #match-rail textarea,
+    #profile-content input, #profile-content textarea {
+      -webkit-user-select: text; -moz-user-select: text; -ms-user-select: text; user-select: text;
+    }
     .glow { box-shadow: 0 0 30px rgba(245,98,10,0.15); }
     .glow-accent { box-shadow: 0 0 30px rgba(245,98,10,0.25); }
     .gradient-text { background: linear-gradient(120deg, #ff7c1f 0%, #f5620a 40%, #e8406c 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
@@ -12393,8 +12572,8 @@ function mainPageHTML(): string {
         <!-- Complete-your-profile card. Rendered by updateProfileCompletionCard(),
              hidden the moment there is nothing left to ask for. The photo and the
              city/industry/designation fields were never requested anywhere after
-             registration, which is why ~1,000 records are missing them and only 10
-             attendees have a photo. -->
+             registration, which is why so many early records are missing them and
+             why almost nobody has uploaded a photo. -->
         <div class="max-w-7xl mx-auto px-4 mt-6 hidden" id="profile-complete-card">
           <div class="glass rounded-2xl p-6 border border-primary-500/25">
             <div class="flex items-start gap-4">
@@ -14052,8 +14231,8 @@ function mainPageHTML(): string {
                 <input type="text" id="edit-jobtitle" autocomplete="organization-title" class="w-full px-4 py-3 rounded-xl text-sm">
               </div>
             </div>
-            <!-- City and Industry are required at registration, but for the ~1,000
-                 people who signed up before that rule there was nowhere to enter
+            <!-- City and Industry are required at registration, but for everyone
+                 who signed up before that rule there was nowhere to enter
                  them: neither field existed on this form. They print on the badge
                  and drive the sector breakdown sponsors are shown. -->
             <div class="grid grid-cols-2 gap-3">
@@ -14946,8 +15125,13 @@ function mainPageHTML(): string {
           if (el) el.classList.add('hidden');
         });
 
+        // stats.attendees is null while the count is withheld (see
+        // PUBLIC_COUNT_THRESHOLD). This whole section is hidden today, but it is
+        // rendered from live data and has been un-hidden before, so it must not
+        // print "null" the day somebody shows it again.
+        const showCount = v => (v === null || v === undefined ? '—' : v);
         const statsData = [
-          { icon: 'fa-users', label: 'Attendees', value: stats.attendees, color: 'primary' },
+          { icon: 'fa-users', label: 'Attendees', value: showCount(stats.attendees), color: 'primary' },
           { icon: 'fa-circle', label: 'Online now', value: stats.online, color: 'green' },
           { icon: 'fa-microphone', label: 'Sessions', value: stats.sessions, color: 'purple' },
           { icon: 'fa-store', label: 'Exhibitors', value: stats.exhibitors, color: 'accent' },
@@ -15356,8 +15540,9 @@ function mainPageHTML(): string {
       if (isVisitor) {
         // The grid is NO LONGER blurred or disabled. A blurred rectangle is a poor
         // salesman: it hides the only thing that justifies the upgrade, which is
-        // WHO is in the room. 1,335 of 1,363 attendees hold a Visitor Pass, so the
-        // blur was hiding the event from 98% of the people who registered for it.
+        // WHO is in the room. The overwhelming majority of attendees hold a free
+        // Visitor Pass, so the blur was hiding the event from almost everyone who
+        // had registered for it.
         //
         // Browsing, searching and opening a profile are now free. Starting a
         // conversation, proposing a meeting and booking a room are what the paid
@@ -15378,108 +15563,127 @@ function mainPageHTML(): string {
         if (filterEl) filterEl.disabled = false;
       }
     }
+    // Match scoring lives out here, not inside loadAttendees, because two
+    // different callers need it: the grid, which explains why each card is
+    // relevant, and the recommendation rail, which now ranks a pool fetched
+    // separately from the server. While these were nested inside the loader the
+    // rail threw "matchScore is not defined" and silently rendered nothing.
+    // --- Matchmaking: rank by shared interests + complementary role, then
+    // online-first. Turns a raw alphabetical list into "who's worth meeting".
+    const complements = { 'startup': 'investor', 'investor': 'startup', 'exhibitor': 'delegate', 'media': 'speaker' };
 
-    async function loadAttendees() {
+    // Seniority weighting. Shared interests alone cannot separate this crowd —
+    // nearly everyone lists "ai, ml", so every profile tied on 20 points and the
+    // rail fell back to alphabetical order, leading with students. The rail is
+    // the strongest argument for buying a Delegate pass, so it has to lead with
+    // the people a buyer wants in the room. Matched against job_title only.
+    const SENIORITY = [
+      [/\b(chief executive|ceo|managing director|founder|co-?founder|chairman|chairperson|chairwoman|president|proprietor|minister|joint secretary|principal secretary|additional secretary|secretary to government)\b/, 60],
+      // Acronyms are listed explicitly: a class like c[tio]o only matches the
+      // three-letter forms and silently drops CISO, CHRO, CDAO.
+      [/\b(cto|cio|ciso|cfo|coo|cdo|cmo|cpo|cro|cso|chro|cdao|caio|cxo)\b/, 55],
+      [/\b(chief|global head|group head)\b/, 55],
+      [/\b(evp|svp|executive vice president|senior vice president|vice president|vp)\b/, 45],
+      [/\b(partner|managing partner|country head|business head|general manager|gm|commissioner|collector)\b/, 40],
+      [/\b(vice chancellor|pro vice chancellor|dean|registrar|principal investigator)\b/, 38],
+      [/\b(director|head of|head,|head -|department head)\b/, 35],
+      [/\b(principal|senior manager|associate director|group manager)\b/, 22],
+      [/\b(manager|lead|architect|senior)\b/, 14],
+    ];
+    // Deliberately last in the room, not excluded: they still appear, just below
+    // the people who make purchasing decisions.
+    const JUNIOR = [
+      [/\b(student|scholar|intern|trainee|fresher|undergraduate|graduand|b\.?tech|b\.?e\.?|bsc|msc|mca|bca|mba candidate|phd candidate|research scholar)\b/, -45],
+      [/\b(assistant professor|associate professor|professor|lecturer|faculty|teaching assistant)\b/, -18],
+      [/\b(junior|intern|associate engineer|trainee engineer)\b/, -12],
+    ];
+    function seniorityScore(title) {
+      const t = (title || '').toLowerCase();
+      if (!t) return 0;
+      let best = 0;
+      for (const [re, pts] of SENIORITY) { if (re.test(t)) { best = Math.max(best, pts); } }
+      let penalty = 0;
+      for (const [re, pts] of JUNIOR) { if (re.test(t)) { penalty = Math.min(penalty, pts); } }
+      // A senior title wins outright — "Dean" or "Director" of a university is a
+      // buyer even though the string also matches academic patterns.
+      return best > 0 ? best : penalty;
+    }
+
+    function matchScore(a) {
+      const myInterests = new Set((currentUser?.interests || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean));
+      const myRole = (currentUser?.badge_type || '').toLowerCase();
+      let score = 0;
+      const theirs = (a.interests || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+      const shared = theirs.filter(i => myInterests.has(i));
+      score += shared.length * 10;
+      score += seniorityScore(a.job_title);
+      const theirRole = (a.badge_type || '').toLowerCase();
+      for (const [k, v] of Object.entries(complements)) { if (myRole.includes(k) && theirRole.includes(v)) score += 15; }
+      if (a.is_online) score += 3;
+      return { score, shared };
+    }
+    function matchReason(a, shared) {
+      const myRole = (currentUser?.badge_type || '').toLowerCase();
+      if (shared.length) return \`\${shared.length} shared interest\${shared.length>1?'s':''}: \${shared.slice(0,2).join(', ')}\`;
+      const theirRole = (a.badge_type || '').toLowerCase();
+      for (const [k, v] of Object.entries(complements)) { if (myRole.includes(k) && theirRole.includes(v)) return \`\${displayBadge(a.badge_type)} — could be a great match\`; }
+      // Seniority can now put someone on the rail without a shared interest, so
+      // give that card an honest reason rather than an empty line.
+      if (seniorityScore(a.job_title) >= 40) return a.company ? \`Senior leadership · \${a.company}\` : 'Senior leadership';
+      if (a.is_online) return 'Online now';
+      return '';
+    }
+
+
+    // Paging state for the directory. The list is no longer held in the browser in
+    // full - a page arrives at a time - so "find me this person" is answered by
+    // search, which runs in SQL across everyone, rather than by scrolling.
+    let attendeeCursor = '';
+    let attendeeHasMore = false;
+    let attendeeLoading = false;
+
+    async function loadAttendees(append) {
+      // The guard is for "show more" only. A fresh load - a keystroke in the
+      // search box, or a filter change - must always win, or typing quickly
+      // silently drops the search the person actually wanted.
+      if (append && attendeeLoading) return;
       const search = document.getElementById('attendee-search')?.value || '';
       const role = document.getElementById('role-filter')?.value || '';
+      if (!append) { attendeeCursor = ''; attendeeHasMore = false; }
+      attendeeLoading = true;
 
-      // Always load a preview of attendees (so the blurred grid looks real)
       try {
-        const attendees = await api.get(\`/api/events/\${EVENT_ID}/attendees?search=\${encodeURIComponent(search)}&role=\${role}\`);
+        // fetch() rather than api.get() because the next-page cursor rides in a
+        // response header; the body stays the bare array every caller expects.
+        const qs = '/api/events/' + EVENT_ID + '/attendees'
+          + '?search=' + encodeURIComponent(search)
+          + '&role=' + encodeURIComponent(role)
+          + (append && attendeeCursor ? '&cursor=' + encodeURIComponent(attendeeCursor) : '');
+        const resp = await fetch(qs);
+        const attendees = await resp.json();
+        attendeeCursor = resp.headers.get('X-Next-Cursor') || '';
+        attendeeHasMore = resp.headers.get('X-Has-More') === '1';
 
-        // --- Matchmaking: rank by shared interests + complementary role, then
-        // online-first. Turns a raw alphabetical list into "who's worth meeting".
-        const myInterests = new Set((currentUser?.interests || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean));
-        const myRole = (currentUser?.badge_type || '').toLowerCase();
-        const complements = { 'startup': 'investor', 'investor': 'startup', 'exhibitor': 'delegate', 'media': 'speaker' };
-
-        // Seniority weighting. Shared interests alone cannot separate this crowd —
-        // nearly everyone lists "ai, ml", so every profile tied on 20 points and the
-        // rail fell back to alphabetical order, leading with students. The rail is
-        // the strongest argument for buying a Delegate pass, so it has to lead with
-        // the people a buyer wants in the room. Matched against job_title only.
-        const SENIORITY = [
-          [/\b(chief executive|ceo|managing director|founder|co-?founder|chairman|chairperson|chairwoman|president|proprietor|minister|joint secretary|principal secretary|additional secretary|secretary to government)\b/, 60],
-          // Acronyms are listed explicitly: a class like c[tio]o only matches the
-          // three-letter forms and silently drops CISO, CHRO, CDAO.
-          [/\b(cto|cio|ciso|cfo|coo|cdo|cmo|cpo|cro|cso|chro|cdao|caio|cxo)\b/, 55],
-          [/\b(chief|global head|group head)\b/, 55],
-          [/\b(evp|svp|executive vice president|senior vice president|vice president|vp)\b/, 45],
-          [/\b(partner|managing partner|country head|business head|general manager|gm|commissioner|collector)\b/, 40],
-          [/\b(vice chancellor|pro vice chancellor|dean|registrar|principal investigator)\b/, 38],
-          [/\b(director|head of|head,|head -|department head)\b/, 35],
-          [/\b(principal|senior manager|associate director|group manager)\b/, 22],
-          [/\b(manager|lead|architect|senior)\b/, 14],
-        ];
-        // Deliberately last in the room, not excluded: they still appear, just below
-        // the people who make purchasing decisions.
-        const JUNIOR = [
-          [/\b(student|scholar|intern|trainee|fresher|undergraduate|graduand|b\.?tech|b\.?e\.?|bsc|msc|mca|bca|mba candidate|phd candidate|research scholar)\b/, -45],
-          [/\b(assistant professor|associate professor|professor|lecturer|faculty|teaching assistant)\b/, -18],
-          [/\b(junior|intern|associate engineer|trainee engineer)\b/, -12],
-        ];
-        function seniorityScore(title) {
-          const t = (title || '').toLowerCase();
-          if (!t) return 0;
-          let best = 0;
-          for (const [re, pts] of SENIORITY) { if (re.test(t)) { best = Math.max(best, pts); } }
-          let penalty = 0;
-          for (const [re, pts] of JUNIOR) { if (re.test(t)) { penalty = Math.min(penalty, pts); } }
-          // A senior title wins outright — "Dean" or "Director" of a university is a
-          // buyer even though the string also matches academic patterns.
-          return best > 0 ? best : penalty;
-        }
-
-        function matchScore(a) {
-          let score = 0;
-          const theirs = (a.interests || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
-          const shared = theirs.filter(i => myInterests.has(i));
-          score += shared.length * 10;
-          score += seniorityScore(a.job_title);
-          const theirRole = (a.badge_type || '').toLowerCase();
-          for (const [k, v] of Object.entries(complements)) { if (myRole.includes(k) && theirRole.includes(v)) score += 15; }
-          if (a.is_online) score += 3;
-          return { score, shared };
-        }
-        function matchReason(a, shared) {
-          if (shared.length) return \`\${shared.length} shared interest\${shared.length>1?'s':''}: \${shared.slice(0,2).join(', ')}\`;
-          const theirRole = (a.badge_type || '').toLowerCase();
-          for (const [k, v] of Object.entries(complements)) { if (myRole.includes(k) && theirRole.includes(v)) return \`\${displayBadge(a.badge_type)} — could be a great match\`; }
-          // Seniority can now put someone on the rail without a shared interest, so
-          // give that card an honest reason rather than an empty line.
-          if (seniorityScore(a.job_title) >= 40) return a.company ? \`Senior leadership · \${a.company}\` : 'Senior leadership';
-          if (a.is_online) return 'Online now';
-          return '';
-        }
 
         let list = attendees.filter(a => a.id !== currentUser?.id);
-        // Only rank when logged in with interests, and no active search/filter.
+        // Score the page in hand so each card can still say WHY it is relevant.
+        // The grid is no longer re-sorted here: the server hands it back in a
+        // stable (name, id) order, which is what the paging cursor walks, and
+        // re-ordering a single page would scramble that for no gain. Ranking
+        // across everyone is the rail's job now.
         const ranking = currentUser && !search && !role;
-        if (ranking) {
+        if (currentUser) {
           list.forEach(a => { const m = matchScore(a); a._score = m.score; a._shared = m.shared; });
-          list.sort((x, y) => (y._score - x._score) || (y.is_online - x.is_online));
         }
 
-        // "Recommended for you" rail — top 3 scored matches, shown above the grid.
-        const railEl = document.getElementById('match-rail');
-        if (railEl) {
-          const top = ranking ? list.filter(a => a._score >= 10).slice(0, 3) : [];
-          railEl.innerHTML = top.length ? \`
-            <div class="mb-5">
-              <div class="flex items-center gap-2 mb-3"><i class="fas fa-wand-magic-sparkles text-primary-400"></i><h3 class="text-sm font-semibold">Recommended for you</h3><span class="text-[10px] text-gray-500">senior attendees matched to your interests</span></div>
-              <div class="grid grid-cols-1 md:grid-cols-3 gap-3">\${top.map(a => \`
-                <div class="rounded-xl p-4 border border-primary-500/25" style="background:linear-gradient(135deg,rgba(255,107,0,0.08),rgba(217,70,239,0.05));">
-                  <div class="flex items-center gap-3">
-                    <img src="\${getAvatarUrl(a.email, a.name, 88, a.avatar_url)}" class="w-11 h-11 rounded-full object-cover">
-                    <div class="min-w-0"><div class="font-semibold text-sm truncate">\${a.name}</div><div class="text-[11px] text-gray-400 truncate">\${a.job_title || ''}\${a.company ? ' · '+a.company : ''}</div></div>
-                  </div>
-                  <p class="text-[11px] text-primary-300 mt-2"><i class="fas fa-link mr-1"></i>\${matchReason(a, a._shared || [])}</p>
-                  <button onclick="viewProfile(\${a.id})" class="w-full mt-3 py-1.5 rounded-lg text-xs font-medium bg-primary-600/25 text-primary-200 hover:bg-primary-600/40 transition">View profile</button>
-                </div>\`).join('')}</div>
-            </div>\` : '';
-        }
+        // The rail ranks a candidate pool drawn from the whole directory, so it
+        // keeps working now that the browser only ever holds one page. Fetched
+        // once per fresh load, and never while searching - during a search the
+        // person already knows who they are looking for.
+        if (!append && ranking) renderMatchRail();
+        else if (!append) { const r = document.getElementById('match-rail'); if (r) r.innerHTML = ''; }
 
-        document.getElementById('attendee-grid').innerHTML = list.map(a => {
+        const gridHTML = list.map(a => {
           const compLogo = getCompanyLogoUrl(a.company, a.website_url, a.linkedin_url, a.email);
           const reason = ranking ? matchReason(a, a._shared || []) : '';
           return \`
@@ -15497,7 +15701,7 @@ function mainPageHTML(): string {
                 </div>
                 <p class="text-xs text-gray-400 truncate">\${a.job_title || ''}\${a.job_title && a.company ? ' · ' : ''}\${a.company || ''}</p>
                 \${a.interests ? \`<div class="flex flex-wrap gap-1 mt-2">\${a.interests.split(',').slice(0,3).map(i => \`<span class="px-2 py-0.5 rounded-full text-[10px] bg-white/5 text-gray-400">\${i.trim()}</span>\`).join('')}</div>\` : ''}
-                \${reason ? \`<p class="text-[11px] text-primary-300/90 mt-2"><i class="fas fa-link mr-1 text-[9px]"></i>\${reason}</p>\` : ''}
+                \${reason ? \`<p class="text-[11px] mt-2" style="color:#C2410C"><i class="fas fa-link mr-1 text-[9px]"></i>\${reason}</p>\` : ''}
               </div>
             </div>
             <div class="flex gap-2 mt-4">
@@ -15507,17 +15711,101 @@ function mainPageHTML(): string {
               <button onclick="\${isVisitorPass() ? 'showNetworkUpgradeModal(\\'' + a.name.replace(/'/g, '&apos;') + '\\')' : 'openMeetingModal(' + a.id + ')'}" class="py-2 px-3 rounded-lg text-xs font-medium bg-green-500/20 text-green-300 hover:bg-green-500/30 transition" title="Schedule Meeting"><i class="fas fa-calendar-plus"></i></button>
             </div>
           </div>\`;
-        }).join('') || '<div class="text-center text-gray-500 py-12 col-span-full"><i class="fas fa-search text-4xl mb-3 block"></i>No attendees found.</div>';
+        }).join('');
+
+        const grid = document.getElementById('attendee-grid');
+        if (append) grid.insertAdjacentHTML('beforeend', gridHTML);
+        else grid.innerHTML = gridHTML || '<div class="text-center text-gray-500 py-12 col-span-full"><i class="fas fa-search text-4xl mb-3 block"></i>Nobody matches that search. Try a company or a job title.</div>';
+
+        renderLoadMore();
 
         // Apply visitor lock AFTER grid is populated
         applyVisitorNetworkLock();
 
-      } catch(e) { console.error('Attendees error:', e); }
+      } catch(e) {
+        console.error('Attendees error:', e);
+        if (!append) document.getElementById('attendee-grid').innerHTML = '<div class="text-center text-gray-500 py-12 col-span-full">That did not load. Please try again.</div>';
+      } finally {
+        attendeeLoading = false;
+      }
     }
+
+    // Deliberately a button and not infinite scroll. Auto-loading on scroll is
+    // exactly the behaviour that makes a directory cheap to harvest, and it also
+    // puts the footer permanently out of reach on a phone.
+    function renderLoadMore() {
+      let el = document.getElementById('attendee-more');
+      if (!el) {
+        el = document.createElement('div');
+        el.id = 'attendee-more';
+        el.className = 'mt-5 text-center';
+        document.getElementById('attendee-grid').insertAdjacentElement('afterend', el);
+      }
+      el.innerHTML = attendeeHasMore
+        ? '<button onclick="loadMoreAttendees()" class="px-6 py-2.5 rounded-xl text-sm font-medium glass hover:bg-white/10 transition"><i class="fas fa-arrow-down mr-2"></i>Show more people</button>'
+          + '<p class="text-[11px] text-gray-500 mt-2">Looking for someone in particular? Search by name, company or job title.</p>'
+        : '';
+    }
+
+    async function loadMoreAttendees() {
+      const btn = document.querySelector('#attendee-more button');
+      if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Loading...'; }
+      await loadAttendees(true);
+      renderLoadMore();   // never leave the button spinning if that call was dropped
+    }
+
+    // The rail's candidates come from the server, scored here with the same
+    // seniority table the grid uses.
+    async function renderMatchRail() {
+      const railEl = document.getElementById('match-rail');
+      if (!railEl || !currentUser) return;
+      let pool = [];
+      try { pool = await api.get('/api/events/' + EVENT_ID + '/suggested-attendees'); } catch (e) { return; }
+      if (!Array.isArray(pool) || !pool.length) { railEl.innerHTML = ''; return; }
+      pool.forEach(a => { const m = matchScore(a); a._score = m.score; a._shared = m.shared; });
+      pool.sort((x, y) => (y._score - x._score) || (y.is_online - x.is_online));
+      const top = pool.filter(a => a._score >= 10).slice(0, 3);
+      railEl.innerHTML = top.length ? \`
+        <div class="mb-5">
+          <div class="flex items-center gap-2 mb-3"><i class="fas fa-wand-magic-sparkles text-primary-400"></i><h3 class="text-sm font-semibold">Recommended for you</h3><span class="text-[10px] text-gray-500">senior attendees matched to your interests</span></div>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3">\${top.map(a => \`
+            <div class="rounded-xl p-4 border border-primary-500/25" style="background:linear-gradient(135deg,rgba(255,107,0,0.08),rgba(217,70,239,0.05));">
+              <div class="flex items-center gap-3">
+                <img src="\${getAvatarUrl(a.email, a.name, 88, a.avatar_url)}" class="w-11 h-11 rounded-full object-cover">
+                <div class="min-w-0"><div class="font-semibold text-sm truncate">\${a.name}</div><div class="text-[11px] text-gray-400 truncate">\${a.job_title || ''}\${a.company ? ' · '+a.company : ''}</div></div>
+              </div>
+              <p class="text-[11px] text-primary-300 mt-2"><i class="fas fa-link mr-1"></i>\${matchReason(a, a._shared || [])}</p>
+              <button onclick="viewProfile(\${a.id})" class="w-full mt-3 py-1.5 rounded-lg text-xs font-semibold text-white transition" style="background:linear-gradient(135deg,#FF6B00,#FF8C38)">View profile</button>
+            </div>\`).join('')}</div>
+        </div>\` : '';
+    }
+
+    // Copying the directory out is blocked on the attendee cards, the rail and the
+    // profile card. This is a deterrent and nothing stronger - the data is still in
+    // the page and still behind an API - but it stops the one-gesture case of
+    // selecting the whole grid and pasting the directory into a spreadsheet, and
+    // paging means no single selection holds more than a screenful anyway.
+    //
+    // Scoped to those three containers ON PURPOSE. Pasting is never touched, and
+    // the search box, the connect note and every form field stay fully selectable,
+    // copyable and pasteable - blocking those would break the app to protect
+    // nothing.
+    const NO_COPY_ZONES = '#attendee-grid, #match-rail, #profile-content';
+    ['copy', 'cut', 'dragstart'].forEach(ev => {
+      document.addEventListener(ev, e => {
+        if (e.target?.closest?.(NO_COPY_ZONES)) {
+          e.preventDefault();
+          if (ev !== 'dragstart') showToast('The attendee list cannot be copied. Use search to find someone.', 'warning');
+        }
+      });
+    });
+    document.addEventListener('contextmenu', e => {
+      if (e.target?.closest?.(NO_COPY_ZONES)) e.preventDefault();
+    });
 
     function debounceSearch() {
       clearTimeout(searchTimeout);
-      searchTimeout = setTimeout(loadAttendees, 300);
+      searchTimeout = setTimeout(() => loadAttendees(false), 300);
     }
 
     // ==================== PROFILE MODAL ====================
@@ -21385,8 +21673,8 @@ function adminPageHTML(): string {
     }
 
     // Asks the people with no photo for one. The pass cannot be downloaded
-    // without a photo, so this is the message that unblocks them - and until now
-    // it had never been sent to anybody: 1,279 people, 0 asked.
+    // without a photo, so this is the message that unblocks them - and until this
+    // shipped it had never been sent to anybody at all.
     async function startPhotoChase() {
       var n = (lastAttendees || []).filter(function (a) { return !a.avatar_url; }).length;
       if (!confirm('Email the attendees who have no photo, asking for one?' + NL + NL +
