@@ -10580,7 +10580,7 @@ function sharedNavHTML(activePage: string): string {
     }">${label}</a>`
   }
   return `<nav style="background:rgba(255,255,255,0.85);backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);border-bottom:1px solid rgba(26,35,126,0.08);" class="sticky top-0 z-30">
-  <div class="max-w-7xl mx-auto px-4">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
     <div class="flex items-center h-14 gap-4">
       <!-- Logo -->
       <a href="/" class="flex items-center hover:opacity-90 transition shrink-0">
@@ -10623,7 +10623,7 @@ function sharedNavHTML(activePage: string): string {
 
 function sharedFooterHTML(): string {
   return `<footer class="glass border-t border-white/10 mt-12">
-  <div class="max-w-7xl mx-auto px-4 py-8">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
       <div>
         <div class="flex items-center gap-3 mb-3">
@@ -10681,7 +10681,7 @@ function contactPageHTML(): string {
 <body class="min-h-screen">
 ${sharedNavHTML('contact')}
 
-<main class="max-w-7xl mx-auto px-4 py-8">
+<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
   <!-- Hero -->
   <div class="text-center mb-8">
     <h1 class="text-3xl md:text-4xl font-bold mb-3"><i class="fas fa-headset text-primary-400 mr-3"></i>Contact Us</h1>
@@ -11064,7 +11064,7 @@ function registerPageHTML(): string {
 <body class="min-h-screen">
 ${sharedNavHTML('register')}
 
-<main class="max-w-7xl mx-auto px-4 py-8">
+<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
   <!-- Hero -->
   <div class="text-center mb-8">
     <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold bg-primary-500/20 text-primary-300 border border-primary-500/30 mb-4">
@@ -12478,7 +12478,7 @@ function mainPageHTML(): string {
 
     <!-- Main Navigation -->
     <nav id="main-nav" class="hidden fixed bottom-0 left-0 right-0 z-30 md:top-0 md:bottom-auto" style="background:rgba(255,255,255,0.9);backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);box-shadow:0 1px 0 rgba(26,35,126,0.08),0 -1px 0 rgba(26,35,126,0.06),0 6px 24px rgba(26,35,126,0.05);padding-bottom:env(safe-area-inset-bottom);">
-      <div class="max-w-7xl mx-auto px-4">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <!-- Mobile nav: icon bar at bottom. Scrolls horizontally if items exceed
              the width instead of crushing; min touch target ~48px. -->
         <div class="flex md:hidden items-center justify-around py-1.5 overflow-x-auto no-scrollbar">
@@ -12669,12 +12669,12 @@ function mainPageHTML(): string {
         </div>
 
         <!-- Stats (hidden until MIN_REGISTRATIONS) -->
-        <div class="max-w-7xl mx-auto px-4 -mt-6 relative z-10 hidden" id="stats-section">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-6 relative z-10 hidden" id="stats-section">
           <div class="grid grid-cols-3 md:grid-cols-6 gap-3" id="stats-grid"></div>
         </div>
 
         <!-- Venue Card (hidden until MIN_REGISTRATIONS) -->
-        <div class="max-w-7xl mx-auto px-4 mt-6 hidden" id="venue-section">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6 hidden" id="venue-section">
           <div class="glass rounded-2xl p-5 border border-primary-500/15 card-hover">
             <div class="flex items-start gap-4">
               <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-primary-500/20 to-blue-500/20 flex items-center justify-center shrink-0">
@@ -12704,7 +12704,7 @@ function mainPageHTML(): string {
              it, or who downloaded their pass before the card existed, had no way
              back to it. Signing in now lands on both, above everything else.
              Rendered by renderPassAndCardCta(). -->
-        <div class="max-w-7xl mx-auto px-4 mt-6 hidden" id="pass-card-cta">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6 hidden" id="pass-card-cta">
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div class="glass rounded-2xl p-5 border border-primary-500/25 flex items-start gap-4">
               <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-primary-500/20 to-orange-500/20 flex items-center justify-center shrink-0">
@@ -12735,18 +12735,18 @@ function mainPageHTML(): string {
              it until they went looking. On the dashboard it is a horizontal rail:
              this audience is on a phone, and three stacked cards would push
              everything else off the screen. -->
-        <div class="max-w-7xl mx-auto px-4 mt-6 hidden" id="dash-match-rail"></div>
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6 hidden" id="dash-match-rail"></div>
 
         <!-- Role-aware welcome panel (logged-in): greets each persona and
              surfaces the actions that matter to them. Populated by renderRoleHome(). -->
-        <div class="max-w-7xl mx-auto px-4 mt-6 hidden" id="role-home"></div>
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6 hidden" id="role-home"></div>
 
         <!-- Complete-your-profile card. Rendered by updateProfileCompletionCard(),
              hidden the moment there is nothing left to ask for. The photo and the
              city/industry/designation fields were never requested anywhere after
              registration, which is why so many early records are missing them and
              why almost nobody has uploaded a photo. -->
-        <div class="max-w-7xl mx-auto px-4 mt-6 hidden" id="profile-complete-card">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6 hidden" id="profile-complete-card">
           <div class="glass rounded-2xl p-6 border border-primary-500/25">
             <div class="flex items-start gap-4">
               <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-primary-500/20 to-orange-500/20 flex items-center justify-center shrink-0">
@@ -12771,7 +12771,7 @@ function mainPageHTML(): string {
              never do, and the event reads as two days of talks rather than two days
              of business. This is the one surface that says what to do next, in
              order, and marks off what is already done. Rendered by renderEventPlan(). -->
-        <div class="max-w-7xl mx-auto px-4 mt-6 hidden" id="event-plan-card">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6 hidden" id="event-plan-card">
           <div class="glass rounded-2xl p-6 border border-emerald-500/25">
             <div class="flex items-start gap-4">
               <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-emerald-500/20 to-teal-500/20 flex items-center justify-center shrink-0">
@@ -12790,7 +12790,7 @@ function mainPageHTML(): string {
         </div>
 
         <!-- RSVP Confirmation Card -->
-        <div class="max-w-7xl mx-auto px-4 mt-6 hidden" id="rsvp-card-container">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6 hidden" id="rsvp-card-container">
           <div class="glass rounded-2xl p-6 border border-amber-500/20" id="rsvp-card">
             <div class="flex items-start gap-4">
               <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-amber-500/20 to-orange-500/20 flex items-center justify-center shrink-0">
@@ -12811,7 +12811,7 @@ function mainPageHTML(): string {
         </div>
 
         <!-- Quick Actions: Delegate Pass + Arrival Time -->
-        <div class="max-w-7xl mx-auto px-4 mt-6 hidden" id="home-quick-actions">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6 hidden" id="home-quick-actions">
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <!-- Cross-sell. Somebody with a product to show is worth more to the
                  event than somebody with a pass, and the Showcase is the one item
@@ -12875,7 +12875,7 @@ function mainPageHTML(): string {
         </div>
 
         <!-- Pass Comparison & Registration CTA -->
-        <div class="max-w-7xl mx-auto px-4 py-8 signed-out-only" id="pass-comparison-section">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 signed-out-only" id="pass-comparison-section">
           <div class="glass rounded-2xl p-6 md:p-8 glow-accent">
             <div class="text-center mb-6">
               <h2 class="text-2xl font-bold mb-2"><i class="fas fa-ticket-alt text-amber-400 mr-2"></i>Choose Your Pass</h2>
@@ -13060,7 +13060,7 @@ function mainPageHTML(): string {
         </div>
 
         <!-- Quick Visitor Registration Section -->
-        <div class="max-w-7xl mx-auto px-4 py-6 signed-out-only" id="quick-visitor-reg-section">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 signed-out-only" id="quick-visitor-reg-section">
           <div class="glass rounded-2xl p-6 md:p-8 border border-green-500/20 glow-accent" id="quick-visitor-reg-card">
             <div class="flex items-center gap-3 mb-4">
               <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-green-500/20 to-emerald-500/20 flex items-center justify-center shrink-0">
@@ -13126,7 +13126,7 @@ function mainPageHTML(): string {
         </div>
 
         <!-- Exhibition & Inquiry Section -->
-        <div class="max-w-7xl mx-auto px-4 py-4">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <!-- Exhibit With Us Card -->
             <div class="glass rounded-2xl p-6 border border-amber-500/20 card-hover">
@@ -13228,7 +13228,7 @@ function mainPageHTML(): string {
         </div>
 
         <!-- Live Feed & Quick Actions -->
-        <div class="max-w-7xl mx-auto px-4 py-8 grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 grid grid-cols-1 lg:grid-cols-3 gap-6">
           <!-- Announcements -->
           <div class="lg:col-span-2">
             <h2 class="text-xl font-bold mb-4"><i class="fas fa-bullhorn text-accent-400 mr-2"></i>Live Feed</h2>
@@ -13244,7 +13244,7 @@ function mainPageHTML(): string {
         <!-- Explore hub: surfaces the sections that don't live in the top nav
              (Exhibition, Awards, Startup Pitch, Innovation Showcase) so they're
              discoverable without crowding the nav bar. -->
-        <div class="max-w-7xl mx-auto px-4 pb-10">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-10">
           <h2 class="text-xl font-bold mb-4"><i class="fas fa-compass text-primary-400 mr-2"></i>Explore the event</h2>
           <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
             <button onclick="switchTab('exhibition')" class="glass rounded-2xl p-5 text-left card-hover transition group">
@@ -13281,7 +13281,7 @@ function mainPageHTML(): string {
 
       <!-- Venue map -->
       <div id="tab-venue" class="tab-content hidden">
-        <div class="max-w-7xl mx-auto px-4 py-6">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <h2 class="text-2xl font-bold mb-1"><i class="fas fa-map-location-dot text-blue-400 mr-2"></i>Venue &amp; Halls</h2>
           <p class="text-gray-400 text-sm mb-5">World Trade Center, Cuffe Parade, Mumbai 400005</p>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
@@ -13304,7 +13304,7 @@ function mainPageHTML(): string {
 
       <!-- Schedule Tab -->
       <div id="tab-schedule" class="tab-content hidden">
-        <div class="max-w-7xl mx-auto px-4 py-6">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div class="flex items-start justify-between gap-3 flex-wrap mb-1">
             <h2 class="text-2xl font-bold"><i class="fas fa-calendar-alt text-primary-400 mr-2"></i>Event Schedule</h2>
             <button id="my-agenda-toggle" onclick="toggleMyAgendaView()" class="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-gray-300 glass hover:text-white transition">
@@ -13329,7 +13329,7 @@ function mainPageHTML(): string {
 
       <!-- Networking Tab -->
       <div id="tab-networking" class="tab-content hidden">
-        <div class="max-w-7xl mx-auto px-4 py-6">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <h2 class="text-2xl font-bold mb-2"><i class="fas fa-users text-primary-400 mr-2"></i>Networking Hub</h2>
           <p class="text-gray-400 text-sm mb-6">Connect with fellow attendees, speakers, and exhibitors</p>
 
@@ -13399,7 +13399,7 @@ function mainPageHTML(): string {
 
       <!-- Exhibition Tab -->
       <div id="tab-exhibition" class="tab-content hidden">
-        <div class="max-w-7xl mx-auto px-4 py-6">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <h2 class="text-2xl font-bold mb-2"><i class="fas fa-store text-primary-400 mr-2"></i>Exhibition Hall</h2>
           <p class="text-gray-400 text-sm mb-4">Explore booths, book your exhibition space, and connect with exhibitors</p>
 
@@ -13471,7 +13471,7 @@ function mainPageHTML(): string {
 
       <!-- Awards Tab -->
       <div id="tab-awards" class="tab-content hidden">
-        <div class="max-w-7xl mx-auto px-4 py-6">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div class="text-center mb-8">
             <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="w-16 h-16 mx-auto mb-3 rounded-xl object-contain">
             <h2 class="text-3xl font-bold mb-2"><i class="fas fa-trophy text-accent-400 mr-2"></i>Bharat AI Innovation &amp; BHAI Innovation Certification</h2>
@@ -13677,7 +13677,7 @@ function mainPageHTML(): string {
 
       <!-- BHAI 2026 Award Categories Tab (top-level, desktop) -->
       <div id="tab-agba-categories" class="tab-content hidden">
-        <div class="max-w-7xl mx-auto px-4 py-6">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div class="text-center mb-8">
             <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="w-16 h-16 mx-auto mb-3 rounded-xl object-contain">
             <h2 class="text-2xl font-bold mb-2"><i class="fas fa-list-alt text-accent-400 mr-2"></i>BHAI 2026 Award Categories</h2>
@@ -13689,7 +13689,7 @@ function mainPageHTML(): string {
 
       <!-- Speaker green-room -->
       <div id="tab-speaker-room" class="tab-content hidden">
-        <div class="max-w-7xl mx-auto px-4 py-6">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div class="rounded-2xl p-5 md:p-6 mb-6" style="border:1px solid #7c3aed33;background:linear-gradient(135deg,#7c3aed14,transparent 60%);">
             <div class="flex items-center gap-3">
               <div class="w-12 h-12 rounded-xl flex items-center justify-center shrink-0" style="background:#7c3aed22;"><i class="fas fa-microphone-lines text-xl" style="color:#7c3aed"></i></div>
@@ -13711,7 +13711,7 @@ function mainPageHTML(): string {
 
       <!-- Investor deal flow -->
       <div id="tab-investor" class="tab-content hidden">
-        <div class="max-w-7xl mx-auto px-4 py-6">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div class="rounded-2xl p-5 md:p-6 mb-6" style="border:1px solid #22c55e33;background:linear-gradient(135deg,#22c55e14,transparent 60%);">
             <div class="flex items-center gap-3">
               <div class="w-12 h-12 rounded-xl flex items-center justify-center shrink-0" style="background:#22c55e22;"><i class="fas fa-sack-dollar text-xl" style="color:#22c55e"></i></div>
@@ -13728,7 +13728,7 @@ function mainPageHTML(): string {
 
       <!-- Media press area -->
       <div id="tab-media" class="tab-content hidden">
-        <div class="max-w-7xl mx-auto px-4 py-6">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div class="rounded-2xl p-5 md:p-6 mb-6" style="border:1px solid #3b82f633;background:linear-gradient(135deg,#3b82f614,transparent 60%);">
             <div class="flex items-center gap-3">
               <div class="w-12 h-12 rounded-xl flex items-center justify-center shrink-0" style="background:#3b82f622;"><i class="fas fa-newspaper text-xl" style="color:#3b82f6"></i></div>
@@ -13751,7 +13751,7 @@ function mainPageHTML(): string {
 
       <!-- Exhibitor lead console -->
       <div id="tab-exhibitor-console" class="tab-content hidden">
-        <div class="max-w-7xl mx-auto px-4 py-6">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div class="flex items-center justify-between flex-wrap gap-3 mb-6">
             <div>
               <h2 class="text-2xl font-bold"><i class="fas fa-user-group text-primary-400 mr-2"></i>Lead Console</h2>
@@ -13766,7 +13766,7 @@ function mainPageHTML(): string {
 
       <!-- BHAI 2026 Jury Schedule Tab (top-level, desktop) -->
       <div id="tab-agba-jury" class="tab-content hidden">
-        <div class="max-w-7xl mx-auto px-4 py-6">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div class="text-center mb-8">
             <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="w-16 h-16 mx-auto mb-3 rounded-xl object-contain">
             <h2 class="text-2xl font-bold mb-2"><i class="fas fa-gavel text-violet-400 mr-2"></i>BHAI 2026 Jury Schedule</h2>
@@ -13778,21 +13778,21 @@ function mainPageHTML(): string {
 
       <!-- BHAI Startup Pitch Tab (top-level, desktop) -->
       <div id="tab-startup-pitch" class="tab-content hidden">
-        <div class="max-w-7xl mx-auto px-4 py-6">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div id="startup-pitch-content-desktop"></div>
         </div>
       </div>
 
       <!-- Innovation Talks Tab -->
       <div id="tab-innovation" class="tab-content hidden">
-        <div class="max-w-7xl mx-auto px-4 py-6">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div id="innovation-talks-content"></div>
         </div>
       </div>
 
       <!-- Workshops Tab -->
       <div id="tab-workshops" class="tab-content hidden">
-        <div class="max-w-7xl mx-auto px-4 py-6">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <!-- Hero -->
           <div class="text-center mb-8">
             <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-teal-500/20 to-cyan-500/20 border border-teal-500/30 mb-4">
@@ -14114,7 +14114,7 @@ function mainPageHTML(): string {
 
       <!-- Inbox Tab -->
       <div id="tab-inbox" class="tab-content hidden">
-        <div class="max-w-7xl mx-auto px-4 py-6">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <h2 class="text-2xl font-bold mb-2"><i class="fas fa-envelope text-primary-400 mr-2"></i>Inbox</h2>
           <p class="text-gray-400 text-sm mb-6">Your connections, messages, and meetings</p>
           <!-- Sub-tabs -->
@@ -14133,7 +14133,7 @@ function mainPageHTML(): string {
 
       <!-- My Profile / User Dashboard Tab -->
       <div id="tab-myprofile" class="tab-content hidden">
-        <div class="max-w-7xl mx-auto px-4 py-6">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <!-- Profile Header Card -->
           <div id="my-profile-header"></div>
 
