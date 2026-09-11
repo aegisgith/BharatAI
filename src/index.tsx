@@ -15435,10 +15435,16 @@ function mainPageHTML(): string {
       const el = document.getElementById('pass-card-cta');
       if (!el) return;
       if (!currentUser) { el.classList.add('hidden'); return; }
-      const name = String(currentUser.badge_type || '').trim() || 'Your pass';
+      // badge_type is stored lowercase ('general', 'delegate'), so reading it
+      // straight into the heading printed 'general is ready'.
+      const badge = String(currentUser.badge_type || '').trim();
+      const titled = badge.charAt(0).toUpperCase() + badge.slice(1);
+      const name = !badge ? 'Your pass'
+        : /pass/i.test(badge) ? titled
+        : 'Your ' + titled + ' pass';
       const pending = String(currentUser.payment_status || '').toLowerCase() === 'pending'
-        && /delegate|academic|vip/i.test(name);
-      document.getElementById('pcc-pass-name').textContent = pending ? name : name;
+        && /delegate|academic|vip/i.test(badge);
+      document.getElementById('pcc-pass-name').textContent = name;
       document.getElementById('pcc-pass-note').textContent = pending
         ? 'It will be issued as soon as your payment is confirmed.'
         : 'Keep it on your phone — the badge desk scans it to check you in.';
@@ -16669,7 +16675,7 @@ function mainPageHTML(): string {
                 <div>
                   <h3 class="font-bold">\${ex.company_name}</h3>
                   <div class="flex items-center gap-2 text-xs text-gray-500">
-                    <span><i class="fas fa-map-pin mr-1"></i>Booth \${ex.booth_number}</span>
+                    \${ex.booth_number ? '<span><i class="fas fa-map-pin mr-1"></i>Booth ' + ex.booth_number + '</span>' : ''}
                     <span class="px-1.5 py-0.5 rounded text-[10px] font-medium \${ex.booth_size === 'platinum' ? 'bg-accent-500/20 text-accent-300' : ex.booth_size === 'premium' ? 'bg-primary-500/20 text-primary-300' : 'bg-white/5 text-gray-400'}">\${ex.booth_size}</span>
                   </div>
                 </div>
