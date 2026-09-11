@@ -240,6 +240,46 @@ section { position: relative; }
   background: rgba(13,15,30,0.97);
 }
 
+/* Home page only, and only while the hero is still under the bar.
+
+   Three things made the bar read as a separate panel sitting ON the
+   photograph rather than part of it: an 85% fill, a hard bottom border, and a
+   backdrop blur whose edge stops in a straight line across the image. All three
+   go here, replaced by a top-down gradient that is dense behind the links and
+   reaches zero at the bar's bottom edge, so there is no line to see.
+
+   .scrolled still wins (it is listed after this in specificity terms via the
+   :not) and restores the solid bar, which matters because past the hero it is
+   arbitrary page content passing underneath, not a photograph chosen to sit
+   behind white type. */
+.navbar.nav-over-hero:not(.scrolled) {
+  background: linear-gradient(to bottom,
+    rgba(13,15,30,0.78) 0%,
+    rgba(13,15,30,0.46) 58%,
+    rgba(13,15,30,0.00) 100%);
+  border-bottom-color: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* Without the bar's flat backing the links carry themselves: brighter than the
+   0.7 they use on a solid bar, plus a shadow sized to survive the brightest
+   patch any of the seven hero frames puts behind them. */
+.navbar.nav-over-hero:not(.scrolled) .nav-link {
+  color: rgba(255,255,255,0.88);
+  text-shadow: 0 1px 4px rgba(0,0,0,0.55);
+}
+
+.navbar.nav-over-hero:not(.scrolled) .nav-link:hover,
+.navbar.nav-over-hero:not(.scrolled) .nav-link.active {
+  color: #fff;
+}
+
+/* The mobile toggle is three bare white bars - same problem, same fix. */
+.navbar.nav-over-hero:not(.scrolled) .bar {
+  box-shadow: 0 1px 3px rgba(0,0,0,0.5);
+}
+
 .nav-container {
   display: flex;
   align-items: center;
