@@ -2842,7 +2842,7 @@ async function boothRevenueTarget(c: any): Promise<number> {
 // The closed vocabulary the matchmaker understands. Mirrored by GOALS in the app;
 // anything outside it is dropped on write, because a goal the scorer cannot match
 // is a value that looks meaningful and never does anything.
-const NETWORKING_GOALS = ['selling', 'buying', 'raising', 'investing', 'hiring', 'jobseeking', 'partner', 'learning']
+const NETWORKING_GOALS = ['selling', 'buying', 'raising', 'investing', 'hiring', 'jobseeking', 'partner', 'networking', 'learning']
 // Mirrors GOAL_COMPLEMENT in the app. The server needs it too, because candidate
 // SELECTION has to ask the same question the client-side ranking answers - ranking
 // can only order what selection handed it.
@@ -2851,6 +2851,9 @@ const GOAL_COMPLEMENTS: Record<string, string> = {
   raising: 'investing', investing: 'raising',
   hiring: 'jobseeking', jobseeking: 'hiring',
   partner: 'partner',
+  // Two people who came to network are each other's match, the way two people
+  // looking for partners are. It is the goal most attendees will pick.
+  networking: 'networking',
 }
 
 const ROOM_DAYS = ['2026-11-20', '2026-11-21']
@@ -12790,6 +12793,9 @@ function mainPageHTML(): string {
         <!-- Role-aware welcome panel (logged-in): greets each persona and
              surfaces the actions that matter to them. Populated by renderRoleHome(). -->
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6 hidden" id="role-home"></div>
+        <!-- What the person came for, and what that means they should do next.
+             Rendered by renderGoalCard(). -->
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6 hidden" id="goal-card"></div>
 
         <!-- Complete-your-profile card. Rendered by updateProfileCompletionCard(),
              hidden the moment there is nothing left to ask for. The photo and the
@@ -15452,6 +15458,7 @@ function mainPageHTML(): string {
         if (registerVisitorBtn) registerVisitorBtn.classList.add('hidden');
         if (roleHome) { roleHome.classList.remove('hidden'); renderRoleHome(); }
         renderPassAndCardCta();
+        renderGoalCard();
         renderDashMatchRail();
         updateProfileCompletionCard();
         orderDashboard();
@@ -15877,21 +15884,57 @@ function mainPageHTML(): string {
      * goal to the goal it wants to sit opposite. 'partner' is the one that points
      * at itself, because two people looking for partners genuinely do match. */
     const GOALS = [
-      { key: 'selling',   label: 'Find customers',      short: 'selling' },
-      { key: 'buying',    label: 'Find solutions to buy', short: 'buying' },
-      { key: 'raising',   label: 'Raise investment',    short: 'raising' },
-      { key: 'investing', label: 'Invest in startups',  short: 'investing' },
-      { key: 'hiring',    label: 'Hire talent',         short: 'hiring' },
-      { key: 'jobseeking',label: 'Find a role',         short: 'looking for a role' },
-      { key: 'partner',   label: 'Find partners',       short: 'looking for partners' },
-      { key: 'learning',  label: 'Learn and upskill',   short: 'here to learn' }
+      { key: 'selling',   label: 'Selling',             short: 'selling' },
+      { key: 'buying',    label: 'Buying',              short: 'buying' },
+      { key: 'networking',label: 'B2B networking',      short: 'here to network' },
+      { key: 'raising',   label: 'Raising investment',  short: 'raising' },
+      { key: 'investing', label: 'Investing',           short: 'investing' },
+      { key: 'hiring',    label: 'Hiring',              short: 'hiring' },
+      { key: 'jobseeking',label: 'Looking for a job',   short: 'looking for a job' },
+      { key: 'partner',   label: 'Finding partners',    short: 'looking for partners' },
+      { key: 'learning',  label: 'Learning AI',         short: 'here to learn' }
     ];
     const GOAL_COMPLEMENT = {
       selling: 'buying', buying: 'selling',
       raising: 'investing', investing: 'raising',
       hiring: 'jobseeking', jobseeking: 'hiring',
-      partner: 'partner'
+      partner: 'partner', networking: 'networking'
     };
+    /* What each answer is FOR. A goal that only reorders a list is a survey.
+     * The reason to ask is that the app then behaves differently: someone here
+     * to learn is sent to the workshops, someone selling is sent to buyers and
+     * told to fix the meeting before they travel. One action per goal, named in
+     * the words the person just used about themselves. */
+    const GOAL_NEXT = {
+      selling:    { icon: 'fa-bullseye',   tab: 'networking', cta: 'See your buyers',
+                    title: 'Meet the people who buy',
+                    body: 'Buyers go to the top of your list. Fix the meeting before you travel - a slot in the diary beats find-me-at-the-stand.' },
+      buying:     { icon: 'fa-store',      tab: 'networking', cta: 'See suppliers',
+                    title: 'Meet the people who sell',
+                    body: 'Vendors and exhibitors matched to what you came to buy, so you are not walking the hall at random.' },
+      networking: { icon: 'fa-users',      tab: 'networking', cta: 'Open the directory',
+                    title: 'Build the room before you arrive',
+                    body: 'Browsing and accepting are free on every pass. Send requests early - the good slots go first.' },
+      raising:    { icon: 'fa-seedling',   tab: 'networking', cta: 'See investors',
+                    title: 'Meet investors',
+                    body: 'Investors first in your list. Twenty minutes with the right fund beats a day of stand-hopping.' },
+      investing:  { icon: 'fa-chart-line', tab: 'networking', cta: 'See founders',
+                    title: 'Meet founders who are raising',
+                    body: 'Founders raising this year, matched to the sectors you back.' },
+      hiring:     { icon: 'fa-user-plus',  tab: 'networking', cta: 'See candidates',
+                    title: 'Meet candidates',
+                    body: 'People who told us they are looking, ranked to the top of your list.' },
+      jobseeking: { icon: 'fa-briefcase',  tab: 'networking', cta: 'See who is hiring',
+                    title: 'Meet the people hiring',
+                    body: 'Teams hiring at the event come first. A conversation at a stand beats an application form.' },
+      partner:    { icon: 'fa-handshake',  tab: 'networking', cta: 'See partners',
+                    title: 'Meet potential partners',
+                    body: 'Others looking for partners, matched on what you both actually do.' },
+      learning:   { icon: 'fa-graduation-cap', tab: 'workshops', cta: 'See the workshops',
+                    title: 'Get into the workshops',
+                    body: 'Hands-on sessions with working AI practitioners, led by Dr. Ashish Tendulkar. Small groups, real datasets, a certificate you keep.' }
+    };
+
     const goalShort = (k) => (GOALS.find(g => g.key === k) || {}).short || k;
     const goalsOf = (u) => String((u && u.networking_goals) || '')
       .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
@@ -16132,6 +16175,90 @@ function mainPageHTML(): string {
      * "why" line are identical - what differs is the shape: the networking tab
      * gets a three-across grid, the dashboard gets a horizontal snap rail,
      * because on a phone three stacked cards push everything else off screen. */
+    /* Why this is a card on the dashboard rather than a question inside the
+     * Edit Profile dialog: the answer changes what the entire app recommends,
+     * so asking it somewhere nobody goes means almost nobody answers, and
+     * almost everybody keeps being matched on "ai, ml" - which at an AI
+     * conference is everybody. Chips save on tap: no modal, no Save button.
+     * One write after the tapping stops rather than one per chip. */
+    var goalSaveTimer = null;
+    function renderGoalCard() {
+      const el = document.getElementById('goal-card');
+      if (!el) return;
+      if (!currentUser) { el.classList.add('hidden'); return; }
+      const mine = goalsOf(currentUser);
+      const chips = GOALS.map(function (g) {
+        const on = mine.indexOf(g.key) !== -1;
+        return '<button type="button" onclick="toggleGoalInline(&quot;' + g.key + '&quot;)" '
+          + 'class="px-3 py-2 rounded-full text-xs font-semibold border transition ' +
+          (on ? 'bg-primary-500 text-white border-primary-500' : 'border-gray-300 text-gray-600 hover:border-primary-400') + '">'
+          + (on ? '<i class="fas fa-check mr-1.5"></i>' : '') + esc(g.label) + '</button>';
+      }).join('');
+      // Three at most. A person who picks six goals does not need six cards;
+      // they need the first thing to do.
+      const acts = mine.map(function (k) { return GOAL_NEXT[k]; }).filter(Boolean).slice(0, 3);
+      const actionsHTML = acts.length
+        ? '<div class="grid grid-cols-1 md:grid-cols-' + acts.length + ' gap-3 mt-4">'
+          + acts.map(function (a) {
+              return '<button type="button" onclick="switchTab(&quot;' + a.tab + '&quot;)" class="text-left rounded-xl p-4 border border-primary-500/20 hover:border-primary-400/50 transition" style="background:rgba(255,107,0,0.04)">'
+                + '<div class="flex items-center gap-2 mb-1"><i class="fas ' + a.icon + ' text-primary-400"></i>'
+                + '<span class="font-semibold text-sm">' + esc(a.title) + '</span></div>'
+                + '<p class="text-xs text-gray-500 mb-2">' + esc(a.body) + '</p>'
+                + '<span class="text-xs font-semibold text-primary-400">' + esc(a.cta) + ' <i class="fas fa-arrow-right ml-1"></i></span>'
+                + '</button>';
+            }).join('')
+          + '</div>'
+        : '';
+      el.innerHTML = '<div class="glass rounded-2xl p-5 md:p-6 border border-primary-500/25">'
+        + '<div class="flex items-start gap-3 mb-3">'
+        + '<div class="w-10 h-10 rounded-xl bg-primary-500/15 flex items-center justify-center shrink-0"><i class="fas fa-wand-magic-sparkles text-primary-400"></i></div>'
+        + '<div class="min-w-0 flex-1"><h3 class="font-bold">' + (mine.length ? 'What you are here for' : 'What are you here for?') + '</h3>'
+        + '<p class="text-sm text-gray-500">' + (mine.length
+            ? 'Tap to change it any time. Everything below follows what you pick.'
+            : 'Pick everything that applies. We put the right people at the top of your list and the right things on this page. It takes one tap.') + '</p></div></div>'
+        + '<div class="flex flex-wrap gap-2">' + chips + '</div>'
+        + actionsHTML
+        + '</div>';
+      el.classList.remove('hidden');
+    }
+
+    function toggleGoalInline(key) {
+      if (!currentUser) return;
+      const mine = goalsOf(currentUser);
+      const at = mine.indexOf(key);
+      if (at === -1) mine.push(key); else mine.splice(at, 1);
+      currentUser.networking_goals = mine.join(',');
+      try { localStorage.setItem('agba_user', JSON.stringify(currentUser)); } catch (e) {}
+      renderGoalCard();
+      if (goalSaveTimer) clearTimeout(goalSaveTimer);
+      goalSaveTimer = setTimeout(saveGoalsInline, 900);
+    }
+
+    async function saveGoalsInline() {
+      const u = currentUser;
+      if (!u) return;
+      try {
+        // The endpoint writes name, company and the rest unconditionally, so the
+        // current values have to travel with the goals: sending goals alone would
+        // blank the profile it is meant to sharpen.
+        const updated = await api.put('/api/attendees/' + u.id + '/profile', {
+          name: u.name, company: u.company || '', job_title: u.job_title || '',
+          bio: u.bio || '', interests: u.interests || '',
+          linkedin_url: u.linkedin_url || '', twitter_url: u.twitter_url || '',
+          website_url: u.website_url || '', mobile: u.mobile || '',
+          lunch_inclusion: u.lunch_inclusion || 'Yes', arrival_time: u.arrival_time || '',
+          networking_goals: u.networking_goals || ''
+        });
+        if (updated && updated.id) {
+          currentUser = updated;
+          try { localStorage.setItem('agba_user', JSON.stringify(currentUser)); } catch (e) {}
+        }
+        renderGoalCard();
+        renderDashMatchRail();
+        showToast('Saved - your recommendations just changed', 'success');
+      } catch (e) { showToast('Could not save that. Try again.', 'error'); }
+    }
+
     async function renderDashMatchRail() {
       const el = document.getElementById('dash-match-rail');
       if (!el || !currentUser) return;
@@ -16144,19 +16271,11 @@ function mainPageHTML(): string {
       // An empty profile matches nobody, so hiding on "no results" silenced the
       // ask for exactly the people whose answer would fix it. Keep the prompt.
       if (!top.length && goalsOf(currentUser).length) { el.classList.add('hidden'); return; }
-      /* Anyone who has not said why they are here is being matched on interests
-       * alone, which at an AI conference means "ai, ml" and everybody. Say so on
-       * the rail itself, where the payoff is visible, rather than burying the ask
-       * in a settings screen nobody opens. */
-      const noGoals = goalsOf(currentUser).length === 0;
+      // The ask used to live here as a one-line nudge. It is the goal card's job
+      // now, directly under the welcome, where it is the first thing on the page
+      // rather than a footnote above a carousel.
       el.innerHTML =
-        (noGoals
-          ? '<button type="button" onclick="openEditProfile()" class="w-full text-left glass rounded-xl p-3 mb-3 border border-primary-500/30 hover:bg-white/10 transition">'
-            + '<p class="text-xs"><i class="fas fa-wand-magic-sparkles text-primary-400 mr-1.5"></i>'
-            + '<span class="font-semibold">Tell us what you are here for</span>'
-            + '<span class="text-gray-400"> — selling, hiring, raising? These get far sharper.</span></p></button>'
-          : '')
-        + (top.length ? '<div class="flex items-center justify-between gap-2 mb-3">'
+        (top.length ? '<div class="flex items-center justify-between gap-2 mb-3">'
         + '<div class="flex items-center gap-2"><i class="fas fa-wand-magic-sparkles text-primary-400"></i>'
         + '<h3 class="text-sm font-semibold">People you should meet</h3></div>'
         // &quot; not \' — an escaped quote here is eaten by the enclosing template
@@ -19387,7 +19506,7 @@ function mainPageHTML(): string {
      *   6. how to get business  - the plan
      *   7. everything else      - RSVP and the rest, unchanged */
     function orderDashboard() {
-      const ids = ['role-home', 'pass-card-cta', 'home-quick-actions', 'dash-match-rail',
+      const ids = ['role-home', 'goal-card', 'pass-card-cta', 'home-quick-actions', 'dash-match-rail',
                    'profile-complete-card', 'event-plan-card', 'rsvp-card-container'];
       const first = document.getElementById(ids[0]);
       if (!first || !first.parentNode) return;
@@ -19832,6 +19951,7 @@ function mainPageHTML(): string {
         localStorage.setItem('agba_user', JSON.stringify(currentUser));
         // Goals change who should be on the rail, so redraw it rather than
         // leaving yesterday's recommendations on screen.
+        if (typeof renderGoalCard === 'function') renderGoalCard();
         if (typeof renderDashMatchRail === 'function') renderDashMatchRail();
         closeEditProfile();
         showToast('Profile updated!', 'success');
