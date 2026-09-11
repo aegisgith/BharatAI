@@ -98,7 +98,22 @@
       ? 'https://bharataiinnovation.com/verify/' + encodeURIComponent(opts.token)
       : 'https://bharataiinnovation.com/app';
 
-    var logo = null, aegis = null, agba = null, assessfy = null, qr = null, photo = null;
+    var logo = null, aegis = null, agba = null, assessfy = null, qr = null, photo = null, orgLogo = null;
+
+    /* The employer mark, resolved by the social card's chain — what the delegate
+     * uploaded, then a curated logo for a company we recognise, then a favicon
+     * guess — so the pass and the card never disagree about someone's employer.
+     * Absent if social-card.js is not on the page, which is fine: the pass has
+     * drawn without it for months. */
+    if (global.BhaiSocialCard && global.BhaiSocialCard.companyLogoCandidates) {
+      var orgCands = global.BhaiSocialCard.companyLogoCandidates(user);
+      for (var oi = 0; oi < orgCands.length; oi++) {
+        try {
+          var ol = await loadImage(orgCands[oi].src);
+          if (ol.width >= orgCands[oi].min && ol.height >= orgCands[oi].min) { orgLogo = ol; break; }
+        } catch (e) { /* next source */ }
+      }
+    }
     if (user.avatar_url) { try { photo = await loadImage(user.avatar_url); } catch (e) {} }
     try { logo = await loadImage('/images/Bharat%20AI%20Innovation%20Logo.png'); } catch (e) {}
     try { aegis = await loadImage('/images/passes/aegis.png'); } catch (e) {}
@@ -207,6 +222,30 @@
       ctx.restore();
     } else {
       ctx.fillText(T.gold ? '♛' : String(user.name || '?').trim().charAt(0).toUpperCase(), mid, cy + px(T.gold ? 19 : 20));
+    }
+
+    /* The holder's employer, in a white disc on the portrait's top-left corner —
+     * the same lockup the social card uses, so the two documents a delegate holds
+     * agree with each other. Drawn last so it sits over the avatar's ring.
+     *
+     * Skipped silently when there is nothing to draw: a pass is a document that
+     * has to work for every tier and every attendee, and most of them have no
+     * logo resolvable at all. */
+    if (orgLogo) {
+      var cr = Math.round(R * 0.33);
+      var ccx = mid - R * 0.70, ccy = cy - R * 0.70;
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,0.45)'; ctx.shadowBlur = px(10); ctx.shadowOffsetY = px(2);
+      ctx.fillStyle = '#FFFFFF';
+      ctx.beginPath(); ctx.arc(ccx, ccy, cr, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+      var lbox = (cr - cr * 0.30) * 2;
+      var lsc = Math.min(lbox / orgLogo.width, lbox / orgLogo.height);
+      var lw = orgLogo.width * lsc, lh = orgLogo.height * lsc;
+      ctx.save();
+      ctx.beginPath(); ctx.arc(ccx, ccy, cr - px(1), 0, Math.PI * 2); ctx.clip();
+      ctx.drawImage(orgLogo, ccx - lw / 2, ccy - lh / 2, lw, lh);
+      ctx.restore();
     }
     y = cy + R + px(20);
 

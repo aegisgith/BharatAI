@@ -250,7 +250,7 @@ app.get('/api/events/:id/sessions/rooms', async (c) => {
 // the last sign-in. Nothing writes last_seen, so last_login_at is the only real
 // signal available; true presence would need a heartbeat from the client.
 const ONLINE_WINDOW_MINUTES = 15
-const ATTENDEE_PUBLIC_COLS = `id, event_id, name, company, job_title, bio, avatar_url, interests, linkedin_url, twitter_url, website_url, role, badge_type, CASE WHEN last_login_at > datetime('now', '-${ONLINE_WINDOW_MINUTES} minutes') THEN 1 ELSE 0 END AS is_online, last_seen, industry, city, country`
+const ATTENDEE_PUBLIC_COLS = `id, event_id, name, company, job_title, bio, avatar_url, company_logo_url, interests, linkedin_url, twitter_url, website_url, role, badge_type, CASE WHEN last_login_at > datetime('now', '-${ONLINE_WINDOW_MINUTES} minutes') THEN 1 ELSE 0 END AS is_online, last_seen, industry, city, country`
 
 // What the ADMIN grid actually renders, plus what its row actions need: the CSV
 // export built in the browser, the pass download, notify, the segment filters and
@@ -263,7 +263,7 @@ const ATTENDEE_PUBLIC_COLS = `id, event_id, name, company, job_title, bio, avata
 // export stays full fidelity. bio and interests alone are most of the weight.
 const ATTENDEE_ADMIN_LIST_COLS = [
   'id', 'name', 'email', 'mobile', 'company', 'job_title', 'city', 'country',
-  'avatar_url', 'linkedin_url', 'role', 'badge_type', 'rsvp_status',
+  'avatar_url', 'company_logo_url', 'linkedin_url', 'role', 'badge_type', 'rsvp_status',
   'lunch_inclusion', 'arrival_time', 'payment_status', 'payment_amount',
   'registration_source', 'registration_date', 'created_at', 'notified_at',
   'last_login_at', 'pass_downloaded_at', 'checked_in_at',
@@ -7280,6 +7280,60 @@ app.delete('/api/attendees/:id/avatar', async (c) => {
   return c.json({ success: true })
 })
 
+/* The attendee's own organisation logo, for the corner of the social card and the
+ * pass. Same shape as the avatar route above and the same reasoning: bytes to R2,
+ * a URL in the row, and the previous object deleted so replacing a logo does not
+ * orphan one.
+ *
+ * Separate from the avatar on purpose. The photo is the person and a pass will not
+ * issue without it; this is their employer's mark and is always optional. A single
+ * route for both would mean removing one silently removed the other.
+ *
+ * Kept smaller than the avatar limit: this is drawn inside a disc about 90px
+ * across, so anything past a couple of hundred KB is bytes nobody will ever see. */
+app.post('/api/attendees/:id/company-logo', async (c) => {
+  const id = c.req.param('id')
+  const denied = await requireSelf(c, id); if (denied) return denied
+  const attendee = await c.env.DB.prepare('SELECT id FROM attendees WHERE id = ?').bind(id).first()
+  if (!attendee) return c.json({ error: 'Attendee not found' }, 404)
+
+  const { image } = await c.req.json()
+  if (!image) return c.json({ error: 'No image data provided' }, 400)
+  const m = /^data:(image\/(?:png|jpe?g|webp|gif|svg\+xml));base64,(.+)$/.exec(String(image))
+  if (!m) return c.json({ error: 'Invalid image format. Must be a base64 data:image URL.' }, 400)
+  if (image.length > 400000) {
+    return c.json({ error: 'Logo too large. Please use a smaller image (max ~300KB).' }, 400)
+  }
+
+  if (c.env.UPLOADS) {
+    const bytes = Uint8Array.from(atob(m[2]), ch => ch.charCodeAt(0))
+    const ext = m[1].split('/')[1].replace('jpeg', 'jpg').replace('svg+xml', 'svg')
+    const key = 'company-logos/' + id + '-' + Date.now() + '.' + ext
+    await c.env.UPLOADS.put(key, bytes, { httpMetadata: { contentType: m[1], cacheControl: 'public, max-age=31536000' } })
+    const url = '/api/uploads/' + key
+    const prev = await c.env.DB.prepare('SELECT company_logo_url FROM attendees WHERE id = ?').bind(id).first() as any
+    await c.env.DB.prepare('UPDATE attendees SET company_logo_url = ? WHERE id = ?').bind(url, id).run()
+    if (prev?.company_logo_url && String(prev.company_logo_url).startsWith('/api/uploads/')) {
+      try { await c.env.UPLOADS.delete(String(prev.company_logo_url).slice('/api/uploads/'.length)) } catch {}
+    }
+    return c.json({ success: true, company_logo_url: url })
+  }
+
+  await c.env.DB.prepare('UPDATE attendees SET company_logo_url = ? WHERE id = ?').bind(image, id).run()
+  return c.json({ success: true, company_logo_url: image })
+})
+
+app.delete('/api/attendees/:id/company-logo', async (c) => {
+  const id = c.req.param('id')
+  const denied = await requireSelf(c, id); if (denied) return denied
+  const prev = await c.env.DB.prepare('SELECT company_logo_url FROM attendees WHERE id = ?').bind(id).first() as any
+  await c.env.DB.prepare('UPDATE attendees SET company_logo_url = NULL WHERE id = ?').bind(id).run()
+  if (c.env.UPLOADS && prev?.company_logo_url && String(prev.company_logo_url).startsWith('/api/uploads/')) {
+    try { await c.env.UPLOADS.delete(String(prev.company_logo_url).slice('/api/uploads/'.length)) } catch {}
+  }
+  return c.json({ success: true })
+})
+
 // Get exhibitor booth linked to an attendee
 app.get('/api/attendees/:id/exhibitor', async (c) => {
   const id = c.req.param('id')
@@ -7721,7 +7775,7 @@ app.get('/api/admin/events/:id/attendees/export', async (c) => {
     'name', 'email', 'company', 'job_title', 'mobile', 'city', 'country',
     'linkedin_url', 'lunch_inclusion', 'arrival_time', 'bio', 'interests', 'role',
     'badge_type', 'registration_date', 'payment_amount', 'rsvp_status', 'rsvp_at',
-    'notified_at', 'last_login_at', 'pass_downloaded_at', 'social_card_downloaded_at', 'registration_source',
+    'notified_at', 'last_login_at', 'pass_downloaded_at', 'social_card_downloaded_at', 'company_logo_url', 'registration_source',
     'id', 'payment_status', 'industry', 'company_size', 'special_requirements',
     'pass_type', 'twitter_url', 'website_url', 'checked_in_at', 'checked_in_by',
     'created_at',
@@ -14180,6 +14234,12 @@ function mainPageHTML(): string {
             <input type="checkbox" id="sc-logo-toggle" checked onchange="renderSocialCardPreview()" class="rounded">
             <span class="text-xs text-gray-400">Show my organisation's logo on the photo</span>
           </label>
+          <!-- Shown only when nothing resolves. The card is what makes the logo
+               worth having, so this is the one place the ask actually lands. -->
+          <p id="sc-logo-nudge" class="hidden text-xs text-gray-400 mb-3">
+            <i class="fas fa-building mr-1.5 text-primary-400"></i>Want your organisation's logo on this card and on your pass?
+            <button type="button" onclick="closeSocialCard(); openEditProfile();" class="underline text-primary-400 hover:text-primary-300">Add it to your profile</button>
+          </p>
 
           <label class="block text-xs font-semibold text-gray-400 mb-1.5">Caption — edit it, then copy</label>
           <textarea id="sc-caption" rows="7" class="w-full text-xs rounded-xl p-3 mb-3 focus:outline-none" style="resize:vertical;background:rgba(30,33,64,0.05);border:1px solid rgba(30,33,64,0.15);color:inherit;line-height:1.6;"></textarea>
@@ -14214,6 +14274,28 @@ function mainPageHTML(): string {
                 <p class="text-xs text-gray-500">Click the camera icon to upload. Max 500KB, auto-resized.</p>
                 <button type="button" id="remove-avatar-btn" class="text-xs text-red-400 hover:text-red-300 mt-1 hidden" onclick="removeProfilePhoto()">
                   <i class="fas fa-trash-alt mr-1"></i>Remove photo
+                </button>
+              </div>
+            </div>
+
+            <!-- Organisation logo. Optional, and said so plainly: this is the
+                 employer's mark, not the person, and nothing depends on it. -->
+            <div class="flex items-center gap-4">
+              <div class="relative">
+                <div id="edit-orglogo-plate" class="w-16 h-16 rounded-full bg-white border-2 border-white/10 flex items-center justify-center overflow-hidden">
+                  <img id="edit-orglogo-preview" src="" alt="" class="max-w-[80%] max-h-[80%] object-contain hidden">
+                  <i id="edit-orglogo-empty" class="fas fa-building text-gray-400 text-lg"></i>
+                </div>
+                <label for="edit-orglogo-input" class="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-primary-600 hover:bg-primary-500 flex items-center justify-center cursor-pointer transition">
+                  <i class="fas fa-camera text-white text-xs"></i>
+                </label>
+                <input type="file" id="edit-orglogo-input" accept="image/*" class="hidden" onchange="handleCompanyLogoSelect(this)">
+              </div>
+              <div class="flex-1">
+                <p class="text-sm font-medium">Organisation Logo <span class="text-xs font-normal text-gray-500">— optional</span></p>
+                <p id="edit-orglogo-hint" class="text-xs text-gray-500">Shown on your pass and on your shareable card. Max 300KB.</p>
+                <button type="button" id="remove-orglogo-btn" class="text-xs text-red-400 hover:text-red-300 mt-1 hidden" onclick="removeCompanyLogo()">
+                  <i class="fas fa-trash-alt mr-1"></i>Remove logo
                 </button>
               </div>
             </div>
@@ -17942,10 +18024,14 @@ function mainPageHTML(): string {
         if (got !== 'done') return;
       }
       document.getElementById('sc-caption').value = BhaiSocialCard.caption(user);
-      var hasLogo = !!BhaiSocialCard.companyDomain(user);
+      // Ask the resolver, not just whether a domain exists: a domain whose only
+      // favicon is 16px resolves to nothing, and offering to toggle a logo that
+      // will never appear is worse than saying nothing.
+      var hasLogo = BhaiSocialCard.companyLogoCandidates(user).length > 0;
       var row = document.getElementById('sc-logo-row');
       row.classList.toggle('hidden', !hasLogo);
       row.classList.toggle('flex', hasLogo);
+      document.getElementById('sc-logo-nudge').classList.toggle('hidden', hasLogo);
       // navigator.share with files is the whole game on a phone: it opens
       // WhatsApp or LinkedIn directly instead of asking someone to go and find a
       // downloaded PNG in their gallery. Most desktop browsers cannot.
@@ -18915,6 +19001,7 @@ function mainPageHTML(): string {
       // Avatar preview
       document.getElementById('edit-avatar-preview').src = getAvatarUrl(currentUser.email, currentUser.name, 128, currentUser.avatar_url);
       document.getElementById('remove-avatar-btn').classList.toggle('hidden', !hasUploadedPhoto(currentUser.avatar_url));
+      paintCompanyLogoControl();
       document.getElementById('edit-profile-modal').classList.remove('hidden');
     }
 
@@ -18964,6 +19051,95 @@ function mainPageHTML(): string {
       } catch(e) {
         toast('Failed to remove photo', true);
       }
+    }
+
+    /* Logos get their own resize, not resizeImage(). That one emits JPEG, which
+     * turns every transparent pixel BLACK — and a logo is mostly transparent, so
+     * an uploaded PNG would arrive as a black rectangle with the mark knocked out
+     * of it. Flattened onto white instead, which is exactly the disc it will be
+     * drawn on, and emitted as PNG so flat brand colours stay crisp. */
+    function resizeLogoToWhite(file, maxSize) {
+      return new Promise((resolve, reject) => {
+        maxSize = maxSize || 256;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = new Image();
+          img.onload = () => {
+            let w = img.width, h = img.height;
+            if (w > h) { if (w > maxSize) { h = h * maxSize / w; w = maxSize; } }
+            else { if (h > maxSize) { w = w * maxSize / h; h = maxSize; } }
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.max(1, Math.round(w)); canvas.height = Math.max(1, Math.round(h));
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            resolve(canvas.toDataURL('image/png'));
+          };
+          img.onerror = reject;
+          img.src = e.target.result;
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+
+    async function handleCompanyLogoSelect(input) {
+      if (!input.files || !input.files[0]) return;
+      const file = input.files[0];
+      if (file.size > 5 * 1024 * 1024) { toast('Logo too large. Max 5MB.', true); return; }
+      try {
+        const dataUrl = await resizeLogoToWhite(file, 256);
+        const result = await api.post('/api/attendees/' + currentUser.id + '/company-logo', { image: dataUrl });
+        if (result && result.success) {
+          currentUser.company_logo_url = result.company_logo_url || dataUrl;
+          localStorage.setItem('agba_user', JSON.stringify(currentUser));
+          paintCompanyLogoControl();
+          toast('Organisation logo saved');
+        } else {
+          toast((result && result.error) || 'Could not save the logo', true);
+        }
+      } catch (e) {
+        toast('Failed to upload the logo: ' + (e.message || 'Unknown error'), true);
+      }
+    }
+
+    async function removeCompanyLogo() {
+      if (!confirm("Remove your organisation's logo?")) return;
+      try {
+        await fetch('/api/attendees/' + currentUser.id + '/company-logo', { method: 'DELETE' }).then(r => r.json());
+        currentUser.company_logo_url = null;
+        localStorage.setItem('agba_user', JSON.stringify(currentUser));
+        paintCompanyLogoControl();
+        toast('Logo removed');
+      } catch (e) {
+        toast('Failed to remove the logo', true);
+      }
+    }
+
+    /* One painter for the control, because it has three states and they are easy
+     * to get out of step: an uploaded logo, a curated one we already recognise
+     * from the company name, and nothing at all. Telling someone their employer
+     * is already recognised stops them uploading a worse copy of it. */
+    function paintCompanyLogoControl() {
+      const img = document.getElementById('edit-orglogo-preview');
+      const empty = document.getElementById('edit-orglogo-empty');
+      const hint = document.getElementById('edit-orglogo-hint');
+      const rm = document.getElementById('remove-orglogo-btn');
+      if (!img || !currentUser) return;
+      const own = currentUser.company_logo_url;
+      const curated = (window.BhaiSocialCard && BhaiSocialCard.curatedLogoUrl)
+        ? BhaiSocialCard.curatedLogoUrl(currentUser) : '';
+      const src = own || curated;
+      img.classList.toggle('hidden', !src);
+      empty.classList.toggle('hidden', !!src);
+      if (src) img.src = src;
+      rm.classList.toggle('hidden', !own);
+      hint.textContent = own
+        ? 'Shown on your pass and on your shareable card.'
+        : curated
+          ? 'We already recognise ' + (currentUser.company || 'your organisation') + '. Upload your own only if this is wrong.'
+          : 'Shown on your pass and on your shareable card. Max 300KB.';
     }
 
     async function openEditMyBooth() {

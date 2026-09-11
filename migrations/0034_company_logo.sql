@@ -1,0 +1,30 @@
+-- Migration 0034: the attendee's own organisation logo.
+--
+-- The social card draws a small employer disc on the corner of the portrait, and
+-- until now it had to GUESS that logo: a Google favicon lookup on the delegate's
+-- website_url, falling back to their work email domain. Measured against real
+-- attendee domains that turns out to be close to useless. Google ignores the size
+-- you ask for when it has nothing bigger, so aegis.edu.in comes back 16x16 (too
+-- small to draw, so the disc silently does not appear at all) and tcs.com comes
+-- back 48x48 (drawn at roughly twice its resolution, so it appears soft). Only
+-- domains Google happens to hold a large icon for look right.
+--
+-- A guessed logo also cannot be corrected. The delegate sees a blurry or missing
+-- mark on a card they are about to post publicly and has no way to fix it.
+--
+-- So: one column, filled by the person it belongs to. The favicon lookup stays as
+-- the fallback for everyone who never uploads one, which is most people - this
+-- replaces nothing, it just gives the card something better when it exists.
+--
+-- Deliberately separate from avatar_url. That is the person's face and is required
+-- before a pass will issue; this is their employer's mark and is always optional.
+-- Folding them together would mean a delegate who removes one loses the other.
+--
+-- Holds a URL, never the image. Photos were once written into avatar_url as base64
+-- data URLs, which inlined every image into the networking directory response; the
+-- comment on the avatar upload route records what that cost. Same rule here: the
+-- bytes go to R2 under company-logos/, the row keeps a /api/uploads/ path.
+--
+-- NULL means "none uploaded", which is what every existing row correctly gets.
+
+ALTER TABLE attendees ADD COLUMN company_logo_url TEXT;

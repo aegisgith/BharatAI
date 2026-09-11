@@ -271,14 +271,84 @@
     return d.indexOf('.') > 0 ? d : '';
   }
 
-  /* Derived, because nothing in this app stores a company logo. The delegate's
-   * own website_url is preferred over their email domain — they typed one of
-   * them on purpose. Returns '' when there is nothing trustworthy to draw, and
-   * the caller is expected to accept a card without a disc rather than force one. */
-  function companyLogoUrl(user) {
+  /* A curated set, checked before the favicon guess. It exists because the guess
+   * is close to useless: Google's favicon service ignores the size you ask for
+   * when it has nothing bigger, so most employer domains come back 16x16 (too
+   * small to draw at all) or 48x48 (drawn at roughly twice its resolution, and
+   * visibly soft). Only some domains hold a large icon.
+   *
+   * Keyed on the company NAME, not the domain, and that is the whole point: 753
+   * of 1,371 delegates registered with a gmail address, so their employer is
+   * knowable only from the free-text field they typed. Accenture's registrations
+   * do not appear in the domain list at all for exactly that reason. */
+  var ORG_LOGOS = {
+    'accenture': 'accenture',
+    'adani': 'adani', 'adani group': 'adani',
+    'aegis': 'aegis', 'aegis school of data science': 'aegis',
+    'agba': 'agba', 'aegis graham bell awards': 'agba',
+    'amazon': 'amazon', 'aws': 'amazon', 'amazon web services': 'amazon',
+    'capgemini': 'capgemini',
+    'cognizant': 'cognizant', 'cognizant technology solutions': 'cognizant',
+    'deloitte': 'deloitte',
+    'ey': 'ey', 'ernst young': 'ey', 'ernst and young': 'ey',
+    'google': 'google',
+    'hcl': 'hcl', 'hcltech': 'hcl', 'hcl technologies': 'hcl',
+    'hsbc': 'hsbc',
+    'ibm': 'ibm',
+    'icici bank': 'icici-bank', 'icici': 'icici-bank',
+    'infosys': 'infosys',
+    'kpmg': 'kpmg',
+    'microsoft': 'microsoft',
+    'oracle': 'oracle',
+    'pwc': 'pwc', 'pricewaterhousecoopers': 'pwc',
+    'tcs': 'tcs', 'tata consultancy services': 'tcs', 'tata consultancy': 'tcs',
+    'tech mahindra': 'tech-mahindra', 'techmahindra': 'tech-mahindra',
+    'wipro': 'wipro'
+  };
+
+  /* Strips punctuation and the legal form only. Words like "technologies" or
+   * "solutions" are deliberately kept: dropping them collapses genuinely
+   * different companies onto one another. */
+  function normaliseOrg(name) {
+    return String(name || '')
+      .toLowerCase()
+      .replace(/[.,'"`()&]/g, ' ')
+      .replace(/\b(pvt|private|ltd|limited|inc|incorporated|llp|llc|corp|corporation|plc)\b/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function curatedLogoUrl(user) {
+    var slug = ORG_LOGOS[normaliseOrg(user && user.company)];
+    return slug ? '/images/org-logos/' + slug + '.png' : '';
+  }
+
+  function faviconUrl(user) {
     var d = companyDomain(user);
     if (!d) return '';
     return '/api/image-proxy?url=' + encodeURIComponent('https://www.google.com/s2/favicons?sz=128&domain=' + d);
+  }
+
+  /* In order of how much we trust it: what the delegate uploaded, then the
+   * curated mark for a company we recognise, then the favicon guess. Each entry
+   * carries the smallest source it is worth drawing - a favicon under 64px blown
+   * up to fill the disc looks worse than no disc, whereas an uploaded file is
+   * whatever its owner chose and is not second-guessed. */
+  function companyLogoCandidates(user) {
+    var list = [];
+    var own = String((user && user.company_logo_url) || '').trim();
+    if (own) list.push({ src: photoSrc(own), min: 0 });
+    var curated = curatedLogoUrl(user);
+    if (curated) list.push({ src: curated, min: 0 });
+    var fav = faviconUrl(user);
+    if (fav) list.push({ src: fav, min: 64 });
+    return list;
+  }
+
+  // Kept for callers that only want to know whether anything at all is available.
+  function companyLogoUrl(user) {
+    var c = companyLogoCandidates(user);
+    return c.length ? c[0].src : '';
   }
 
   function drawInitial(ctx, name, cx, cy, r) {
@@ -545,12 +615,17 @@
      * service does not know, so the caller is expected to show the delegate the
      * result before they post it. Anything under 32px is that placeholder or a
      * 16px favicon that would smear at this size — better dropped than drawn. */
-    var logoSrc = opts.companyLogo === '' ? '' : (opts.companyLogo || companyLogoUrl(user));
-    if (logoSrc) {
+    var candidates = opts.companyLogo === '' ? []
+      : opts.companyLogo ? [{ src: opts.companyLogo, min: 0 }]
+      : companyLogoCandidates(user);
+    for (var ci = 0; ci < candidates.length; ci++) {
       try {
-        var cl = await loadImage(logoSrc);
-        if (cl.width >= 32 && cl.height >= 32) assets.companyLogo = cl;
-      } catch (e) {}
+        var cl = await loadImage(candidates[ci].src);
+        if (cl.width >= candidates[ci].min && cl.height >= candidates[ci].min) {
+          assets.companyLogo = cl;
+          break;
+        }
+      } catch (e) { /* try the next source down */ }
     }
 
     var canvas = document.createElement('canvas');
@@ -612,6 +687,9 @@
     variantFor: variantFor,
     companyDomain: companyDomain,
     companyLogoUrl: companyLogoUrl,
+    curatedLogoUrl: curatedLogoUrl,
+    companyLogoCandidates: companyLogoCandidates,
+    normaliseOrg: normaliseOrg,
     ensureFonts: ensureFonts,
     render: render,
     caption: caption,
