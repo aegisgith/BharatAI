@@ -12646,6 +12646,31 @@ function mainPageHTML(): string {
           </div>
         </div>
 
+        <!-- Your event plan.
+             Registration is where the app stops telling people anything. They get a
+             pass and a directory and are left to work out that this is a place to
+             book meetings, take a boardroom, or put a stand on the floor - so most
+             never do, and the event reads as two days of talks rather than two days
+             of business. This is the one surface that says what to do next, in
+             order, and marks off what is already done. Rendered by renderEventPlan(). -->
+        <div class="max-w-7xl mx-auto px-4 mt-6 hidden" id="event-plan-card">
+          <div class="glass rounded-2xl p-6 border border-emerald-500/25">
+            <div class="flex items-start gap-4">
+              <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-emerald-500/20 to-teal-500/20 flex items-center justify-center shrink-0">
+                <i class="fas fa-diagram-project text-2xl text-emerald-400"></i>
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-start justify-between gap-3 mb-1">
+                  <h3 class="font-bold text-base">Make the two days pay for themselves</h3>
+                  <button type="button" onclick="openNetworkingGuide()" class="text-xs text-emerald-400 hover:text-emerald-300 underline shrink-0">How it works</button>
+                </div>
+                <p class="text-xs text-gray-400 mb-4">People who plan their meetings before they arrive leave with deals. People who turn up and wander leave with a tote bag.</p>
+                <div id="ep-steps" class="space-y-2"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- RSVP Confirmation Card -->
         <div class="max-w-7xl mx-auto px-4 mt-6 hidden" id="rsvp-card-container">
           <div class="glass rounded-2xl p-6 border border-amber-500/20" id="rsvp-card">
@@ -14205,6 +14230,61 @@ function mainPageHTML(): string {
         </div>
       </div>
 
+      <!-- How networking works.
+           Written as instructions, not marketing. The free/paid line in particular
+           is stated exactly as the server enforces it, because getting it wrong
+           here produces a support ticket and a person who feels cheated: receiving
+           and accepting are free on EVERY pass, and only starting a conversation
+           needs a paid one. -->
+      <div id="networking-guide-modal" class="fixed inset-0 z-40 modal-overlay hidden flex items-center justify-center p-4">
+        <div class="glass rounded-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto data-scroll">
+          <div class="flex justify-between items-start mb-4">
+            <div>
+              <h2 class="text-lg font-bold"><i class="fas fa-handshake text-emerald-400 mr-2"></i>How to actually use these two days</h2>
+              <p class="text-xs text-gray-400 mt-1">Five minutes now is worth more than a day of walking the floor.</p>
+            </div>
+            <button onclick="closeNetworkingGuide()" class="text-gray-400 hover:text-white shrink-0 ml-3"><i class="fas fa-times text-lg"></i></button>
+          </div>
+
+          <div class="space-y-4 text-sm">
+            <div>
+              <p class="font-semibold mb-1"><i class="fas fa-user-check text-primary-400 mr-2"></i>1. Be findable first</p>
+              <p class="text-xs text-gray-400 leading-relaxed">People search the directory by company, role, industry and interests. A profile with no photo, no designation and no industry does not come up in anyone's search, and does not get accepted when it does. This is the step everything else depends on.</p>
+            </div>
+            <div>
+              <p class="font-semibold mb-1"><i class="fas fa-magnifying-glass text-primary-400 mr-2"></i>2. Build a shortlist before you travel</p>
+              <p class="text-xs text-gray-400 leading-relaxed">Browse the attendee directory and filter by what you sell or what you are looking to buy. Twenty names you actually want to meet beats five hundred you scroll past. Browsing is free on every pass.</p>
+            </div>
+            <div>
+              <p class="font-semibold mb-1"><i class="fas fa-paper-plane text-primary-400 mr-2"></i>3. Ask, and say why</p>
+              <p class="text-xs text-gray-400 leading-relaxed">Send a request with a reason — what you do and what you want twenty minutes for. Requests with a reason get accepted far more often than a bare connect.</p>
+              <p class="text-xs text-amber-300/90 leading-relaxed mt-1.5"><i class="fas fa-circle-info mr-1"></i><strong>Receiving and accepting requests is free on every pass, including a Visitor Pass.</strong> Starting a conversation is part of the Delegate, Academic and VIP passes.</p>
+            </div>
+            <div>
+              <p class="font-semibold mb-1"><i class="fas fa-calendar-check text-primary-400 mr-2"></i>4. Fix the time before you arrive</p>
+              <p class="text-xs text-gray-400 leading-relaxed">Once someone accepts, agree a slot in the app. The halls are loud and the corridors are full; a meeting with a time on it happens, and one left to "find me at the stand" does not.</p>
+            </div>
+            <div>
+              <p class="font-semibold mb-1"><i class="fas fa-door-closed text-primary-400 mr-2"></i>5. Take a room if the conversation is worth one</p>
+              <p class="text-xs text-gray-400 leading-relaxed">Four private boardrooms sit inside WTC Mumbai, steps from the floor — for client demos, partner sessions, investor conversations or anything you would not say in a corridor.</p>
+            </div>
+            <div>
+              <p class="font-semibold mb-1"><i class="fas fa-store text-primary-400 mr-2"></i>6. If you are selling, be somewhere people can find you</p>
+              <p class="text-xs text-gray-400 leading-relaxed">A stand on the exhibition floor or a sponsorship puts you in front of everyone for two days rather than one meeting at a time. Both are quoted by the team, not self-served.</p>
+            </div>
+            <div class="pt-1">
+              <p class="font-semibold mb-1"><i class="fas fa-rotate-left text-primary-400 mr-2"></i>Afterwards</p>
+              <p class="text-xs text-gray-400 leading-relaxed">Your connections, meetings and the notes against them stay in the app. Most people who close something here come back the next year with a stand.</p>
+            </div>
+          </div>
+
+          <div class="flex gap-2 mt-5">
+            <button onclick="closeNetworkingGuide(); switchTab('networking');" class="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold bg-primary-600 hover:bg-primary-500 text-white transition"><i class="fas fa-users mr-2"></i>Open the directory</button>
+            <button onclick="closeNetworkingGuide()" class="px-4 py-2.5 rounded-xl text-sm font-semibold glass hover:bg-white/10 text-gray-200 transition">Close</button>
+          </div>
+        </div>
+      </div>
+
       <!-- Shareable Social Card Modal.
            The preview is the safeguard, not decoration: the employer disc is a
            favicon looked up from a domain, so the delegate has to see the card
@@ -15280,12 +15360,17 @@ function mainPageHTML(): string {
         if (registerVisitorBtn) registerVisitorBtn.classList.add('hidden');
         if (roleHome) { roleHome.classList.remove('hidden'); renderRoleHome(); }
         updateProfileCompletionCard();
+        // Not awaited: it makes three API calls and the home screen should not wait
+        // on them to paint. The card reveals itself when it has something to say.
+        renderEventPlan();
       } else {
         if (rsvpCard) rsvpCard.classList.add('hidden');
         if (quickActions) quickActions.classList.add('hidden');
         if (registerVisitorBtn) registerVisitorBtn.classList.remove('hidden');
         if (roleHome) roleHome.classList.add('hidden');
         if (profileCard) profileCard.classList.add('hidden');
+        var planCard = document.getElementById('event-plan-card');
+        if (planCard) planCard.classList.add('hidden');
       }
 
       // Update arrival time card on homepage
@@ -18965,6 +19050,76 @@ function mainPageHTML(): string {
       card.querySelector('#pc-missing').textContent = list;
       card.querySelector('#pc-photo-btn').classList.toggle('hidden', !needsPhoto);
       card.querySelector('#pc-details-btn').classList.toggle('hidden', !needsDetails);
+      card.classList.remove('hidden');
+    }
+
+    function openNetworkingGuide() { document.getElementById('networking-guide-modal').classList.remove('hidden'); }
+    function closeNetworkingGuide() { document.getElementById('networking-guide-modal').classList.add('hidden'); }
+
+    /* The plan card. Reads real state rather than guessing: a step is done when the
+     * thing actually happened, so nobody is nagged to do something they have done.
+     *
+     * Only ONE step is ever open. A list of eight equal buttons is a list nobody
+     * reads; a single next action is an instruction. Everything above it is ticked,
+     * everything below is greyed until its turn.
+     *
+     * Counts are best-effort. If an endpoint fails the step simply reads as not
+     * done, which is the safe way round - it offers something to do rather than
+     * claiming credit for something that may not have happened. */
+    async function renderEventPlan() {
+      const card = document.getElementById('event-plan-card');
+      if (!card || !currentUser) { if (card) card.classList.add('hidden'); return; }
+
+      const idFor = (p) => '/api/attendees/' + currentUser.id + p;
+      const count = async (p) => {
+        try { const r = await api.get(idFor(p)); return Array.isArray(r) ? r.length : (r && Array.isArray(r.results) ? r.results.length : 0); }
+        catch (e) { return 0; }
+      };
+      const [connections, meetings, rooms] = await Promise.all([
+        count('/connections'), count('/meetings'), count('/room-bookings')
+      ]);
+
+      const visitor = typeof isVisitorPass === 'function' ? isVisitorPass(currentUser.badge_type) : false;
+      const findable = profileGaps(currentUser).length === 0;
+
+      const steps = [
+        { done: findable, icon: 'fa-user-check', title: 'Be findable',
+          body: findable ? 'Your profile is complete — you come up in searches.'
+                         : 'People search by company, role and industry. A thin profile does not come up at all.',
+          cta: 'Finish profile', act: 'openEditProfile()' },
+        { done: connections > 0, icon: 'fa-magnifying-glass', title: 'Build your shortlist',
+          body: connections > 0 ? connections + (connections === 1 ? ' connection so far.' : ' connections so far.')
+                                : 'Browse the directory and pick the people worth twenty minutes. Browsing is free on every pass.',
+          cta: 'Open directory', act: "switchTab('networking')" },
+        { done: meetings > 0, icon: 'fa-calendar-check', title: 'Fix meetings before you travel',
+          body: meetings > 0 ? meetings + (meetings === 1 ? ' meeting booked.' : ' meetings booked.')
+                : visitor ? 'Accepting requests is free on your Visitor Pass. Starting one is part of the Delegate, Academic and VIP passes.'
+                          : 'A meeting with a time on it happens. "Find me at the stand" does not.',
+          cta: 'Open directory', act: "switchTab('networking')" },
+        { done: rooms > 0, icon: 'fa-door-closed', title: 'Take a private room if you need one',
+          body: rooms > 0 ? rooms + (rooms === 1 ? ' room booked.' : ' rooms booked.')
+                          : 'Four boardrooms inside WTC Mumbai for demos, partner sessions and investor conversations.',
+          cta: 'See the rooms', act: "window.open('https://bharataiinnovation.com/#networking','_blank')" },
+        { done: false, icon: 'fa-store', title: 'Selling? Take a stand or a sponsorship',
+          body: 'Two days in front of everyone, rather than one meeting at a time. Both are quoted by the team.',
+          cta: 'Exhibit or sponsor', act: "window.open('https://bharataiinnovation.com/exhibition.html','_blank')" }
+      ];
+
+      const nextIdx = steps.findIndex(s => !s.done);
+      document.getElementById('ep-steps').innerHTML = steps.map((s, i) => {
+        const open = i === nextIdx;
+        const later = nextIdx >= 0 && i > nextIdx;
+        return '<div class="flex items-start gap-3 ' + (later ? 'opacity-45' : '') + '">'
+          + '<div class="w-7 h-7 rounded-full shrink-0 flex items-center justify-center text-xs '
+          + (s.done ? 'bg-emerald-500/20 text-emerald-400' : open ? 'bg-primary-500/25 text-primary-300' : 'bg-white/5 text-gray-500') + '">'
+          + '<i class="fas ' + (s.done ? 'fa-check' : s.icon) + '"></i></div>'
+          + '<div class="flex-1 min-w-0">'
+          + '<p class="text-sm font-semibold ' + (s.done ? 'text-gray-400 line-through decoration-1' : '') + '">' + esc(s.title) + '</p>'
+          + '<p class="text-xs text-gray-400 leading-relaxed">' + esc(s.body) + '</p>'
+          + (open ? '<button type="button" onclick="' + s.act + '" class="mt-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-primary-600 hover:bg-primary-500 text-white transition">' + esc(s.cta) + '</button>' : '')
+          + '</div></div>';
+      }).join('');
+
       card.classList.remove('hidden');
     }
 
