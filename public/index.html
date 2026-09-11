@@ -411,11 +411,11 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300..800&family=Mukta:wght@600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/css/fa-subset.css?v=1">
-    <link rel="stylesheet" href="css/style.css?v=20260911">
+    <link rel="stylesheet" href="css/style.css?v=20260911b">
 
-    <!-- Hero backdrop: decorative, but fetched early so the hero does not flash the
-         bare gradient before it lands. Pre-blurred at 640px, see .hero-bg-photo. -->
-    <link rel="preload" as="image" href="img/hero-backdrop.jpg" fetchpriority="high">
+    <!-- Hero backdrop: first frame of the rotation, fetched early so the hero does
+         not open on the bare gradient. The other six load lazily. -->
+    <link rel="preload" as="image" href="img/hero-bg-1.jpg" fetchpriority="high">
 
     <!-- Favicon -->
     <link rel="icon" type="image/png" href="images/Bharat%20AI%20Innovation%20Logo.png">
@@ -464,7 +464,13 @@
     <section class="hero" id="main-content">
         <!-- Animated Background -->
         <div class="hero-bg">
-            <img class="hero-bg-photo" width="640" height="427" loading="eager" fetchpriority="high" decoding="async" src="img/hero-backdrop.jpg" alt="">
+            <img class="hero-bg-photo" width="1280" height="853" loading="eager" fetchpriority="high" decoding="async" src="img/hero-bg-1.jpg" alt="">
+            <img class="hero-bg-photo" width="1024" height="683" loading="lazy" decoding="async" src="img/hero-bg-2.jpg" alt="">
+            <img class="hero-bg-photo" width="1024" height="683" loading="lazy" decoding="async" src="img/hero-bg-3.jpg" alt="">
+            <img class="hero-bg-photo" width="1024" height="683" loading="lazy" decoding="async" src="img/hero-bg-4.jpg" alt="">
+            <img class="hero-bg-photo" width="1024" height="683" loading="lazy" decoding="async" src="img/hero-bg-5.jpg" alt="">
+            <img class="hero-bg-photo" width="1024" height="683" loading="lazy" decoding="async" src="img/hero-bg-6.jpg" alt="">
+            <img class="hero-bg-photo" width="1024" height="683" loading="lazy" decoding="async" src="img/hero-bg-7.jpg" alt="">
             <div class="hero-bg-scrim"></div>
             <div class="hero-bg-grid"></div>
             <div class="hero-bg-orb hero-bg-orb-1"></div>
@@ -501,8 +507,6 @@
             </div>
 
         </div>
-
-        <p class="hero-credit">Data Science Congress &middot; 2017</p>
     </section>
 
 

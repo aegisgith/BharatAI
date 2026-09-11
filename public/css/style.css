@@ -465,35 +465,67 @@ section { position: relative; }
   z-index: 0;
 }
 
-/* Full-bleed archive photograph behind the hero (img/hero-backdrop.jpg).
-   Must stay the FIRST child of .hero-bg: .hero-bg-grid and .hero-bg-orb carry no
-   z-index and stack by DOM order, so a later sibling would paint over the grid.
+/* Seven archive frames crossfading behind the hero, 8s each on a 56s loop.
+   They must stay the FIRST children of .hero-bg: .hero-bg-grid and .hero-bg-orb
+   carry no z-index and stack by DOM order, so a later sibling would paint over
+   the grid. <canvas id="heroGlobe"> must remain a DIRECT child of .hero-bg - the
+   inline globe script sizes itself via cv.parentElement.parentElement.
 
-   The blur is baked into the file, not applied here, and that is deliberate. This
-   frame contains 2017 slide copy and third-party sponsor boards; a legible sponsor
-   logo behind a 2026 headline reads as a 2026 sponsor. A CSS blur() is a fixed px
-   radius, so it weakens as object-fit:cover magnifies the source - on a 2560px
-   display the old copy came back. Baked into the pixels, the blur magnifies WITH
-   the image and holds at every width. It also takes the file from 73KB to 17KB. */
+   Each file is pre-processed rather than filtered here: a light blur, and a
+   per-image exposure scale that caps the 95th-percentile luminance of the band
+   behind the headline at the same value for every frame. Without that the bright
+   frames (the lectern keynote, the expo booth) would swallow the white type while
+   the dark ones looked right. Normalising at bake time means ONE scrim suits all
+   seven, so the scrim can stay light and the photographs can actually be seen. */
 .hero-bg-photo {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: center 42%;
-  filter: saturate(0.78) contrast(1.06);
+  object-position: center 45%;
+  opacity: 0;
+  animation: heroFrameFade 56s linear infinite;
+  will-change: opacity, transform;
+}
+
+/* The first frame carries a negative delay so it is already at full opacity on
+   load - the hero must never open on the bare gradient. Each later frame starts
+   its fade-in while the previous one is still up, so they overlap, never gap. */
+.hero-bg-photo:nth-of-type(1) { animation-delay: -1.2s; }
+.hero-bg-photo:nth-of-type(2) { animation-delay: 6.8s; }
+.hero-bg-photo:nth-of-type(3) { animation-delay: 14.8s; }
+.hero-bg-photo:nth-of-type(4) { animation-delay: 22.8s; }
+.hero-bg-photo:nth-of-type(5) { animation-delay: 30.8s; }
+.hero-bg-photo:nth-of-type(6) { animation-delay: 38.8s; }
+.hero-bg-photo:nth-of-type(7) { animation-delay: 46.8s; }
+
+@keyframes heroFrameFade {
+  0%      { opacity: 0; transform: scale(1); }
+  2.143%  { opacity: 1; }
+  14.286% { opacity: 1; }
+  16.429% { opacity: 0; transform: scale(1.05); }
+  100%    { opacity: 0; transform: scale(1.05); }
 }
 
 /* --grad-hero is painted on .hero itself, which sits BEHIND .hero-bg, so an opaque
-   photo hides it. This re-applies the brand gradient above the photo and is what
-   keeps the white headline legible over the stage lighting. */
+   photo hides it. This re-applies the brand colour above the photo.
+
+   It is a horizontal BAND, not a vignette, and that is the point: the dark is
+   concentrated through the middle where the headline, paragraph and buttons sit,
+   and released towards the top and bottom so the truss lighting and the stage
+   floor read clearly. A centre-light vignette does the opposite - brightest
+   exactly where the white type needs the most protection. */
 .hero-bg-scrim {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(ellipse 72% 62% at 50% 52%, rgba(13,15,30,0.36) 0%, rgba(13,15,30,0.88) 100%),
-    linear-gradient(135deg, rgba(13,15,30,0.90) 0%, rgba(26,35,126,0.74) 50%, rgba(13,27,75,0.92) 100%);
+    linear-gradient(to bottom,
+      rgba(13,15,30,0.20) 0%,
+      rgba(13,15,30,0.40) 28%,
+      rgba(13,15,30,0.42) 68%,
+      rgba(13,15,30,0.22) 100%),
+    linear-gradient(135deg, rgba(13,15,30,0.20) 0%, rgba(26,35,126,0.16) 50%, rgba(13,27,75,0.24) 100%);
 }
 
 .hero-bg-grid {
@@ -591,36 +623,17 @@ section { position: relative; }
 
 .hero-left { }
 
-/* The "From the Stage" gallery labels these photographs as Data Science Congress;
-   the hero has no caption of its own, so the credit travels with the image. */
-.hero-credit {
-  position: absolute;
-  right: 2rem;
-  bottom: 1.5rem;
-  z-index: 2;
-  margin: 0;
-  font-size: 0.68rem;
-  font-weight: 600;
-  letter-spacing: 0.13em;
-  text-transform: uppercase;
-  color: rgba(255,255,255,0.60);
-  pointer-events: none;
-}
-
 /* Windows High Contrast turns off the scrim (backgrounds are stripped) but keeps the
-   <img>, which would leave the hero text sitting on a bare photograph. Drop the photo
+   <img>, which would leave the hero text sitting on a bare photograph. Drop the photos
    so the hero falls back to the system colours it expects. */
 @media (forced-colors: active) {
   .hero-bg-photo { display: none; }
 }
 
-@media (max-width: 768px) {
-  .hero-credit {
-    right: 1.25rem;
-    bottom: 1rem;
-    font-size: 0.6rem;
-    letter-spacing: 0.1em;
-  }
+/* No crossfade for anyone who asked for less motion - hold the opening frame. */
+@media (prefers-reduced-motion: reduce) {
+  .hero-bg-photo { animation: none; }
+  .hero-bg-photo:nth-of-type(1) { opacity: 1; }
 }
 
 /* --- Hero date/venue line --- */
