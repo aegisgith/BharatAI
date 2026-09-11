@@ -14230,6 +14230,57 @@ function mainPageHTML(): string {
         </div>
       </div>
 
+      <!-- Private meeting rooms.
+           The whole server side of this has existed since migration 0029 and had
+           no way in: rooms, hourly availability that hides WHO took an hour,
+           a booking route, and a release route. All that was missing was a screen.
+
+           A modal rather than a tab, because this is a task with an end - pick a
+           room, pick hours, ask for them - not a place to browse. It also keeps
+           the change off both nav bars.
+
+           Nothing here sells anything. The server only ever writes 'held', because
+           at Rs 10,000-15,000 an hour plus GST a room is invoiced by the team and
+           confirmed by them; the screen has to say that plainly or someone will
+           arrive expecting a room they never paid for. -->
+      <div id="rooms-modal" class="fixed inset-0 z-40 modal-overlay hidden flex items-center justify-center p-4">
+        <div class="glass rounded-2xl p-6 w-full max-w-3xl max-h-[92vh] overflow-y-auto data-scroll">
+          <div class="flex justify-between items-start mb-4">
+            <div>
+              <h2 class="text-lg font-bold"><i class="fas fa-door-closed text-primary-400 mr-2"></i><span id="rooms-title">Private meeting rooms</span></h2>
+              <p class="text-xs text-gray-400 mt-1" id="rooms-sub">Inside WTC Mumbai, steps from the exhibition floor.</p>
+            </div>
+            <button onclick="closeRooms()" class="text-gray-400 hover:text-white shrink-0 ml-3"><i class="fas fa-times text-lg"></i></button>
+          </div>
+
+          <div id="rooms-mine" class="hidden mb-4"></div>
+
+          <!-- step 1: pick a room -->
+          <div id="rooms-list" class="grid grid-cols-1 sm:grid-cols-2 gap-3"></div>
+
+          <!-- step 2: pick hours on a day -->
+          <div id="rooms-book" class="hidden">
+            <button onclick="roomsBackToList()" class="text-xs text-gray-400 hover:text-white mb-3"><i class="fas fa-arrow-left mr-1.5"></i>All rooms</button>
+            <div id="rooms-daytabs" class="flex gap-2 mb-3"></div>
+            <p class="text-xs text-gray-400 mb-2">Pick up to four hours. Grey hours are already taken.</p>
+            <div id="rooms-slots" class="grid grid-cols-3 sm:grid-cols-5 gap-2 mb-4"></div>
+            <div id="rooms-total" class="text-sm mb-4"></div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+              <div><label class="block text-xs text-gray-400 mb-1">What is it for</label>
+                <input id="rb-title" type="text" maxlength="80" placeholder="Client demo" class="w-full text-sm rounded-xl p-2.5" style="background:rgba(30,33,64,0.05);border:1px solid rgba(30,33,64,0.15);color:inherit;"></div>
+              <div><label class="block text-xs text-gray-400 mb-1">How many people</label>
+                <input id="rb-headcount" type="number" min="1" max="40" inputmode="numeric" class="w-full text-sm rounded-xl p-2.5" style="background:rgba(30,33,64,0.05);border:1px solid rgba(30,33,64,0.15);color:inherit;"></div>
+              <div><label class="block text-xs text-gray-400 mb-1">Contact name</label>
+                <input id="rb-name" type="text" autocomplete="off" class="w-full text-sm rounded-xl p-2.5" style="background:rgba(30,33,64,0.05);border:1px solid rgba(30,33,64,0.15);color:inherit;"></div>
+              <div><label class="block text-xs text-gray-400 mb-1">Mobile</label>
+                <input id="rb-phone" type="tel" inputmode="tel" autocomplete="off" class="w-full text-sm rounded-xl p-2.5" style="background:rgba(30,33,64,0.05);border:1px solid rgba(30,33,64,0.15);color:inherit;"></div>
+            </div>
+            <p class="text-xs text-gray-400 mb-3"><i class="fas fa-circle-info mr-1 text-amber-400"></i>Asking holds the hours. The team invoices you and confirms — nothing is charged here.</p>
+            <button id="rb-submit" onclick="submitRoomBooking()" class="w-full px-4 py-3 rounded-xl text-sm font-semibold bg-primary-600 hover:bg-primary-500 text-white transition disabled:opacity-40"><i class="fas fa-calendar-check mr-2"></i>Request these hours</button>
+          </div>
+        </div>
+      </div>
+
       <!-- How networking works.
            Written as instructions, not marketing. The free/paid line in particular
            is stated exactly as the server enforces it, because getting it wrong
@@ -14280,6 +14331,7 @@ function mainPageHTML(): string {
 
           <div class="flex gap-2 mt-5">
             <button onclick="closeNetworkingGuide(); switchTab('networking');" class="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold bg-primary-600 hover:bg-primary-500 text-white transition"><i class="fas fa-users mr-2"></i>Open the directory</button>
+            <button onclick="closeNetworkingGuide(); openRooms();" class="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold glass hover:bg-white/10 text-gray-200 transition"><i class="fas fa-door-closed mr-2"></i>Meeting rooms</button>
             <button onclick="closeNetworkingGuide()" class="px-4 py-2.5 rounded-xl text-sm font-semibold glass hover:bg-white/10 text-gray-200 transition">Close</button>
           </div>
         </div>
@@ -19053,6 +19105,212 @@ function mainPageHTML(): string {
       card.classList.remove('hidden');
     }
 
+    /* ===== PRIVATE MEETING ROOMS ==========================================
+     * All of this talks to routes that have existed since migration 0029. The
+     * money rule is the server's, not the screen's: a booking is written 'held'
+     * and only the team can confirm it, so every string here says "ask" and
+     * "hold", never "book" or "pay". */
+    var roomsState = { rooms: [], gst: 18, days: [], hours: [], roomId: null, date: null, picked: [], mine: [] };
+
+    var rupee = function (n) { return '₹' + Number(n || 0).toLocaleString('en-IN'); };
+    var slotLabel = function (s) { return String(s).split(' ')[1]; };
+    var dayLabel = function (d) {
+      var p = String(d).split('-');
+      var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      return Number(p[2]) + ' ' + months[Number(p[1]) - 1];
+    };
+
+    async function openRooms() {
+      if (!currentUser) { showToast('Please sign in first', 'error'); return; }
+      document.getElementById('rooms-modal').classList.remove('hidden');
+      roomsBackToList();
+      try {
+        const r = await api.get('/api/events/' + EVENT_ID + '/rooms');
+        roomsState.rooms = (r && r.rooms) || [];
+        roomsState.gst = (r && r.gst_percent) || 18;
+        roomsState.days = (r && r.days) || [];
+        roomsState.hours = (r && r.slot_hours) || [];
+        if (r && r.ready === false) {
+          document.getElementById('rooms-list').innerHTML =
+            '<p class="text-sm text-gray-400">Room booking is not open yet. Please check back.</p>';
+          return;
+        }
+      } catch (e) {
+        document.getElementById('rooms-list').innerHTML =
+          '<p class="text-sm text-gray-400">Could not load the rooms. Please try again.</p>';
+        return;
+      }
+      renderRoomList();
+      loadMyRoomBookings();
+    }
+    function closeRooms() { document.getElementById('rooms-modal').classList.add('hidden'); }
+
+    function roomsBackToList() {
+      document.getElementById('rooms-book').classList.add('hidden');
+      document.getElementById('rooms-list').classList.remove('hidden');
+      document.getElementById('rooms-title').textContent = 'Private meeting rooms';
+      document.getElementById('rooms-sub').textContent = 'Inside WTC Mumbai, steps from the exhibition floor.';
+      roomsState.roomId = null; roomsState.picked = [];
+    }
+
+    function renderRoomList() {
+      document.getElementById('rooms-list').innerHTML = roomsState.rooms.map(function (r) {
+        var bits = [r.wtc_name, r.layout, (r.capacity ? r.capacity + ' seats' : '')].filter(Boolean).join(' · ');
+        return '<button type="button" onclick="pickRoom(' + r.id + ')" class="text-left glass rounded-xl overflow-hidden hover:bg-white/10 transition">'
+          + (r.image_url ? '<img src="' + esc(r.image_url) + '" alt="" class="w-full h-28 object-cover">' : '')
+          + '<div class="p-3">'
+          + '<p class="font-semibold text-sm">' + esc(r.label || '') + '</p>'
+          + '<p class="text-xs text-gray-400">' + esc(bits) + '</p>'
+          + '<p class="text-xs mt-1.5"><span class="font-semibold text-primary-400">' + rupee(r.price_inr) + '</span><span class="text-gray-500"> / hour + ' + roomsState.gst + '% GST</span></p>'
+          + '</div></button>';
+      }).join('');
+    }
+
+    async function pickRoom(id) {
+      roomsState.roomId = id; roomsState.picked = [];
+      var room = roomsState.rooms.filter(function (r) { return r.id === id; })[0] || {};
+      document.getElementById('rooms-list').classList.add('hidden');
+      document.getElementById('rooms-book').classList.remove('hidden');
+      document.getElementById('rooms-title').textContent = room.label || 'Room';
+      document.getElementById('rooms-sub').textContent =
+        [room.wtc_name, room.capacity ? room.capacity + ' seats' : '', rupee(room.price_inr) + ' / hour'].filter(Boolean).join(' · ');
+      document.getElementById('rb-name').value = currentUser.name || '';
+      document.getElementById('rb-phone').value = currentUser.mobile || '';
+      document.getElementById('rooms-daytabs').innerHTML = roomsState.days.map(function (d) {
+        return '<button type="button" onclick="pickRoomDay(\'' + d + '\')" id="rd-' + d + '" class="px-3.5 py-1.5 rounded-xl text-xs font-semibold transition"></button>';
+      }).join('');
+      await pickRoomDay(roomsState.days[0]);
+    }
+
+    async function pickRoomDay(date) {
+      roomsState.date = date; roomsState.picked = [];
+      roomsState.days.forEach(function (d) {
+        var b = document.getElementById('rd-' + d);
+        if (b) { b.textContent = dayLabel(d); b.className = 'px-3.5 py-1.5 rounded-xl text-xs font-semibold transition '
+          + (d === date ? 'bg-primary-600 text-white' : 'glass text-gray-400 hover:bg-white/10'); }
+      });
+      var box = document.getElementById('rooms-slots');
+      box.innerHTML = '<p class="col-span-full text-xs text-gray-400">Checking…</p>';
+      var slots = [];
+      try {
+        var a = await api.get('/api/events/' + EVENT_ID + '/rooms/' + roomsState.roomId + '/availability?date=' + encodeURIComponent(date));
+        slots = (a && a.slots) || [];
+      } catch (e) { slots = []; }
+      if (!slots.length) { box.innerHTML = '<p class="col-span-full text-xs text-gray-400">No hours available for this day.</p>'; renderRoomTotal(); return; }
+      box.innerHTML = slots.map(function (s) {
+        var free = s.available;
+        return '<button type="button" ' + (free ? 'onclick="toggleSlot(\'' + s.start + '\')"' : 'disabled')
+          + ' id="rs-' + s.start.replace(/[^0-9]/g, '') + '"'
+          + ' class="px-2 py-2 rounded-lg text-xs font-semibold transition '
+          + (free ? 'glass hover:bg-white/10 text-gray-200' : 'bg-white/5 text-gray-600 line-through cursor-not-allowed') + '">'
+          + slotLabel(s.start) + '</button>';
+      }).join('');
+      renderRoomTotal();
+    }
+
+    function toggleSlot(start) {
+      var i = roomsState.picked.indexOf(start);
+      if (i >= 0) roomsState.picked.splice(i, 1);
+      else {
+        // The server refuses more than four, so the screen refuses first and says
+        // why - a 400 after filling in the form is a worse way to learn it.
+        if (roomsState.picked.length >= 4) { showToast('Four hours is the most you can hold at once', 'error'); return; }
+        roomsState.picked.push(start);
+      }
+      var el = document.getElementById('rs-' + start.replace(/[^0-9]/g, ''));
+      if (el) el.className = 'px-2 py-2 rounded-lg text-xs font-semibold transition '
+        + (roomsState.picked.indexOf(start) >= 0 ? 'bg-primary-600 text-white' : 'glass hover:bg-white/10 text-gray-200');
+      renderRoomTotal();
+    }
+
+    function renderRoomTotal() {
+      var room = roomsState.rooms.filter(function (r) { return r.id === roomsState.roomId; })[0] || {};
+      var n = roomsState.picked.length;
+      var net = (room.price_inr || 0) * n;
+      var gst = Math.round(net * roomsState.gst / 100);
+      document.getElementById('rb-submit').disabled = n === 0;
+      document.getElementById('rooms-total').innerHTML = n === 0
+        ? '<span class="text-xs text-gray-400">Pick at least one hour.</span>'
+        : '<span class="text-gray-400 text-xs">' + n + (n === 1 ? ' hour · ' : ' hours · ') + rupee(net) + ' + ' + roomsState.gst + '% GST ' + rupee(gst) + '</span>'
+          + '<span class="font-bold ml-2">' + rupee(net + gst) + '</span>';
+    }
+
+    async function submitRoomBooking() {
+      if (!roomsState.picked.length) return;
+      var btn = document.getElementById('rb-submit');
+      btn.disabled = true;
+      try {
+        var res = await api.post('/api/room-bookings', {
+          attendee_id: currentUser.id, event_id: EVENT_ID,
+          room_id: roomsState.roomId, slot_date: roomsState.date,
+          slot_starts: roomsState.picked.slice().sort(),
+          title: document.getElementById('rb-title').value || 'Private meeting',
+          headcount: Number(document.getElementById('rb-headcount').value) || null,
+          contact_name: document.getElementById('rb-name').value || currentUser.name || '',
+          contact_email: currentUser.email || '',
+          contact_phone: document.getElementById('rb-phone').value || ''
+        });
+        if (res && res.success) {
+          showToast('Held — the team will invoice you to confirm', 'success');
+          roomsBackToList(); renderRoomList(); loadMyRoomBookings(); renderEventPlan();
+        } else {
+          // api.post resolves the body on a 409 rather than throwing, so the
+          // collision lands here, not in the catch. Re-read the day: the whole
+          // point of the message is that the grid on screen is now stale.
+          var err = (res && res.error) || 'Could not hold those hours';
+          showToast(err, 'error');
+          if (/taken/i.test(err) && roomsState.date) pickRoomDay(roomsState.date);
+        }
+      } catch (e) {
+        // 409 is the interesting one: someone took an hour while this form was open.
+        var m = String((e && e.message) || '');
+        showToast(/just been taken|409/.test(m) ? 'One of those hours has just gone. Pick again.' : 'Could not hold those hours', 'error');
+        if (roomsState.date) pickRoomDay(roomsState.date);
+      } finally { btn.disabled = false; }
+    }
+
+    async function loadMyRoomBookings() {
+      var box = document.getElementById('rooms-mine');
+      var rows = [];
+      try { rows = await api.get('/api/attendees/' + currentUser.id + '/room-bookings') || []; } catch (e) { rows = []; }
+      roomsState.mine = rows;
+      if (!rows.length) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+      // Hours of the same request share a group_ref; show the request, not nine rows.
+      var groups = {};
+      rows.forEach(function (r) {
+        var k = r.group_ref || ('x' + r.id);
+        if (!groups[k]) groups[k] = { ref: k, room: r.room_label, date: r.slot_date, status: r.status, ids: [], hours: [] };
+        groups[k].ids.push(r.id); groups[k].hours.push(slotLabel(r.slot_start));
+      });
+      box.innerHTML = '<p class="text-xs font-semibold text-gray-400 mb-2">Your rooms</p>'
+        + Object.keys(groups).map(function (k) {
+            var g = groups[k]; g.hours.sort();
+            var badge = g.status === 'confirmed' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-300';
+            return '<div class="glass rounded-xl p-3 flex items-center justify-between gap-3 mb-2">'
+              + '<div class="min-w-0"><p class="text-sm font-semibold truncate">' + esc(g.room || 'Room') + '</p>'
+              + '<p class="text-xs text-gray-400">' + dayLabel(g.date) + ' · ' + esc(g.hours.join(', ')) + '</p></div>'
+              + '<div class="flex items-center gap-2 shrink-0">'
+              + '<span class="px-2 py-1 rounded-lg text-[10px] font-semibold ' + badge + '">' + esc(g.status === 'confirmed' ? 'Confirmed' : 'Held') + '</span>'
+              + '<button type="button" onclick="releaseRoomBooking(\'' + g.ids.join(',') + '\')" class="text-xs text-red-400 hover:text-red-300">Release</button>'
+              + '</div></div>';
+          }).join('');
+      box.classList.remove('hidden');
+    }
+
+    async function releaseRoomBooking(ids) {
+      if (!confirm('Release these hours? They go back to whoever wants them next.')) return;
+      var list = String(ids).split(',');
+      try {
+        for (var i = 0; i < list.length; i++) {
+          await api.put('/api/room-bookings/' + list[i], { status: 'cancelled' });
+        }
+        showToast('Released', 'success');
+        loadMyRoomBookings();
+        if (roomsState.roomId && roomsState.date) pickRoomDay(roomsState.date);
+        renderEventPlan();
+      } catch (e) { showToast('Could not release those hours', 'error'); }
+    }
+
     function openNetworkingGuide() { document.getElementById('networking-guide-modal').classList.remove('hidden'); }
     function closeNetworkingGuide() { document.getElementById('networking-guide-modal').classList.add('hidden'); }
 
@@ -19124,7 +19382,7 @@ function mainPageHTML(): string {
         { done: rooms > 0, icon: 'fa-door-closed', title: 'Take a private room if you need one',
           body: rooms > 0 ? rooms + (rooms === 1 ? ' room booked.' : ' rooms booked.')
                           : (roomLine || 'Four boardrooms inside WTC Mumbai') + ' For demos, partner sessions and investor conversations.',
-          cta: 'See the rooms', act: "window.open('https://bharataiinnovation.com/#networking','_blank')" },
+          cta: 'See the rooms', act: 'openRooms()' },
         { done: false, icon: 'fa-store', title: 'Selling? Take a stand or a sponsorship',
           body: boothLine || 'Two days in front of everyone, rather than one meeting at a time. Quoted by the team.',
           cta: boothCta ? 'See the floor plan' : 'Exhibit or sponsor',
