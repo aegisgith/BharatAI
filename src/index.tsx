@@ -823,6 +823,24 @@ async function networkingAppUrl(c: any, hash: string): Promise<string> {
   catch { return NET_APP_URL_FALLBACK + hash }
 }
 
+// The site root, derived from the same app_url setting rather than hardcoded, so
+// a staging deploy mails staging links. app_url points at the app itself
+// (".../app"), so the last path segment is dropped.
+async function netSiteOrigin(c: any): Promise<string> {
+  let base = NET_APP_URL_FALLBACK
+  try { base = (await netSetting(c, 'app_url')) || NET_APP_URL_FALLBACK } catch { /* default */ }
+  try { const u = new URL(base); return u.origin } catch { return 'https://bharataiinnovation.com' }
+}
+
+// "Delegate Pass" reads as "Delegate" beside a name. A Visitor is not labelled:
+// only a paid or invited badge may start a conversation, so the label always
+// carries information, and nobody is tagged in an email for not having paid.
+function netPassLabel(badgeType: unknown): string {
+  const raw = String(badgeType ?? '').trim()
+  if (!raw || /visitor/i.test(raw)) return ''
+  return raw.replace(/\s*pass\s*$/i, '').trim()
+}
+
 // meeting_time is written by <input type="datetime-local"> and stored verbatim as a
 // wall-clock string with no zone: "2026-11-20T14:30". Workers run in UTC, so
 // new Date(that) is read as UTC and any IST rendering prints the meeting 5.5 hours
@@ -895,26 +913,45 @@ function scheduleNotification(c: any, work: Promise<void>): Promise<void> {
 }
 
 // ---- 1. Connection requested -> the person being asked -------------------------
-async function notifyConnectionRequest(c: any, fromId: any, toId: any, note: string): Promise<void> {
+async function notifyConnectionRequest(c: any, connId: any, fromId: any, toId: any, note: string): Promise<void> {
   try {
     if (netSamePerson(fromId, toId)) return
     // Both parties in one query: who to write to, and who to name.
     const row = await c.env.DB.prepare(
       `SELECT t.name AS to_name, t.email AS to_email,
-              f.name AS from_name, f.company AS from_company, f.job_title AS from_job_title
+              f.name AS from_name, f.company AS from_company, f.job_title AS from_job_title,
+              f.industry AS from_industry, f.interests AS from_interests, f.badge_type AS from_badge
          FROM attendees t JOIN attendees f ON f.id = ?
         WHERE t.id = ?`
     ).bind(fromId, toId).first() as any
     if (!row?.to_email) return
     const at = [row.from_job_title, row.from_company].filter(Boolean).map(escEmail).join(', ')
-    const trimmed = String(note || '').replace(/\s+/g, ' ').trim().slice(0, 200)
+    const trimmed = String(note || '').replace(/\s+/g, ' ').trim().slice(0, 300)
+
+    // Everything the recipient needs to decide, in the mail itself: who is asking,
+    // what they do, what they work on, and what they want to talk about. The old
+    // mail said only "X would like to connect" and sent them to a tab behind a
+    // login wall, which is six steps and two emails to answer one question.
+    const facts: string[] = []
+    if (row.from_industry) facts.push('Industry: ' + escEmail(row.from_industry))
+    if (row.from_interests) facts.push('Works on: ' + escEmail(String(row.from_interests).split(',').slice(0, 4).map((x: string) => x.trim()).filter(Boolean).join(', ')))
+    const tier = netPassLabel(row.from_badge)
+
+    const token = await connectionActionToken(c, connId)
+    const decideUrl = token
+      ? (await netSiteOrigin(c)) + '/c/' + token
+      : await networkingAppUrl(c, '#inbox')
+
     const html = networkingEmailHTML({
       title: 'A new connection request',
       greeting: netFirstName(row.to_name),
-      lead: `<strong>${escEmail(row.from_name)}</strong>${at ? ' &mdash; ' + at : ''} would like to connect with you on the networking app.`,
+      lead: `<strong>${escEmail(row.from_name)}</strong>${at ? ' &mdash; ' + at : ''}` +
+        `${tier ? ` <span style="display:inline-block;padding:1px 7px;border-radius:20px;background:#FFF2E6;color:#C2410C;font-size:11px;font-weight:bold;vertical-align:middle;">${escEmail(tier)}</span>` : ''}` +
+        ` would like to connect with you at Bharat AI Innovation 2026.` +
+        `${facts.length ? `<br><span style="font-size:12.5px;color:#666;">${facts.join(' &middot; ')}</span>` : ''}`,
       detail: trimmed ? netQuote('#FF9933', '&ldquo;' + escEmail(trimmed) + '&rdquo;') : '',
       cta: 'Accept or decline',
-      ctaUrl: await networkingAppUrl(c, '#inbox'),
+      ctaUrl: decideUrl,
     })
     await notifyNetworking(c, row.to_email, `${netPlain(row.from_name)} wants to connect - Bharat AI Innovation 2026`, html)
   } catch { /* the connection row is already saved */ }
@@ -938,8 +975,11 @@ async function notifyConnectionAccepted(c: any, connectionId: any): Promise<void
     const html = networkingEmailHTML({
       title: 'Your connection was accepted',
       greeting: netFirstName(row.from_name),
-      lead: `<strong>${escEmail(row.to_name)}</strong>${at ? ' &mdash; ' + at : ''} accepted your connection request. You can message them now, or propose a meeting slot for the 20th or 21st &mdash; the good slots go early.`,
-      cta: 'Message them',
+      lead: `<strong>${escEmail(row.to_name)}</strong>${at ? ' &mdash; ' + at : ''} accepted your connection request. You can message them now, or put a time in the diary for the 20th or 21st &mdash; the good slots go early.`,
+      detail: netQuote('#0f7b47',
+        'Meeting properly? The four WTC boardrooms can be booked by the hour for a private conversation, ' +
+        'and they are the only rooms on site you can reserve. They go first to whoever asks first.'),
+      cta: 'Message them and pick a time',
       ctaUrl: await networkingAppUrl(c, '#inbox'),
     })
     await notifyNetworking(c, row.from_email, `${netPlain(row.to_name)} accepted your connection - Bharat AI Innovation 2026`, html)
@@ -3652,35 +3692,181 @@ app.get('/api/attendees/:id/connections', async (c) => {
       CASE WHEN c.from_attendee_id = ? THEN a2.job_title ELSE a1.job_title END as other_job_title,
       CASE WHEN c.from_attendee_id = ? THEN a2.id ELSE a1.id END as other_id,
       CASE WHEN (CASE WHEN c.from_attendee_id = ? THEN a2.last_login_at ELSE a1.last_login_at END) > datetime('now', '-${ONLINE_WINDOW_MINUTES} minutes') THEN 1 ELSE 0 END as other_online,
-      CASE WHEN c.from_attendee_id = ? THEN a2.avatar_url ELSE a1.avatar_url END as other_avatar
+      CASE WHEN c.from_attendee_id = ? THEN a2.avatar_url ELSE a1.avatar_url END as other_avatar,
+      CASE WHEN c.from_attendee_id = ? THEN a2.badge_type ELSE a1.badge_type END as other_badge
     FROM connections c
     JOIN attendees a1 ON c.from_attendee_id = a1.id
     JOIN attendees a2 ON c.to_attendee_id = a2.id
     WHERE c.from_attendee_id = ? OR c.to_attendee_id = ?
     ORDER BY c.created_at DESC
-  `).bind(attendeeId, attendeeId, attendeeId, attendeeId, attendeeId, attendeeId, attendeeId, attendeeId, attendeeId).all()
+  `).bind(attendeeId, attendeeId, attendeeId, attendeeId, attendeeId, attendeeId, attendeeId, attendeeId, attendeeId, attendeeId).all()
   return c.json(results)
 })
+
+// ==================== NETWORKING ENTITLEMENT & ETIQUETTE ====================
+
+// Only the free Visitor Pass is barred from STARTING a conversation. Every other
+// badge - Delegate, VIP, Academic, Organiser, Exhibitor, Speaker, Jury, Media -
+// may initiate. Mirrors isVisitorPass() in the app so the two cannot drift.
+//
+// Receiving, accepting and replying are deliberately NOT gated, and must never be.
+// A request its recipient is structurally unable to answer is worth nothing to the
+// Delegate who paid to send it. Every one of the first 17 requests went to a
+// Visitor, which is a large part of why none was ever accepted.
+const canInitiateNetworking = (badgeType: unknown): boolean =>
+  !/visitor/i.test(String(badgeType ?? ''))
+
+// What a profile must carry before its owner may approach a stranger. The person
+// deciding has to know who is asking and what they do; that is the whole
+// difference between business networking and a dating app. Photo and LinkedIn are
+// pushed hard in the UI but never required - a hard photo gate would stop the 95%
+// who have not uploaded one.
+function missingNetworkingProfileFields(a: any): string[] {
+  const has = (v: any) => { const t = String(v ?? '').trim(); return t.length > 0 && t !== '-' }
+  const missing: string[] = []
+  if (!has(a?.job_title)) missing.push('your designation')
+  if (!has(a?.company)) missing.push('your organisation')
+  if (!has(a?.industry)) missing.push('your industry')
+  if (!has(a?.interests)) missing.push('what you work on')
+  return missing
+}
+
+// A stated reason, not a wave. The Connect button used to post a hardcoded
+// "Would love to connect!" on everyone's behalf - all 17 requests in the database
+// carry that identical string. There was nothing for the recipient to judge, so
+// nobody judged it. The sender now has to say what they want to talk about.
+const CONNECT_REASON_MIN = 15
+const CONNECT_REASON_MAX = 500
+const CANNED_REASONS = new Set([
+  'would love to connect', 'love to connect', 'lets connect', "let's connect",
+  'connect', 'hi', 'hello', 'hey', 'hi there', 'networking', 'interested',
+])
+function connectionReasonProblem(note: unknown): string | null {
+  const t = String(note ?? '').replace(/\s+/g, ' ').trim()
+  if (!t) return 'Please say why you would like to connect.'
+  if (CANNED_REASONS.has(t.toLowerCase().replace(/[.!]+$/, '')))
+    return 'Please say something specific about what you would like to talk about.'
+  if (t.length < CONNECT_REASON_MIN)
+    return 'Please write at least ' + CONNECT_REASON_MIN + ' characters about what you would like to talk about.'
+  if (t.length > CONNECT_REASON_MAX) return 'Please keep your note under 500 characters.'
+  return null
+}
+
+// A one-click Accept / Not now link for the notification email. Signed, scoped to
+// a single connection row, and valid for 60 days - past the event, but not
+// forever, because the link travels in email and email gets forwarded.
+//
+// It grants EXACTLY those two actions on EXACTLY that one row. It deliberately
+// does NOT issue a session: a forwarded mail must never become a way into
+// somebody's account. Reading the thread or replying still requires signing in.
+const CONNECT_TOKEN_DAYS = 60
+const connectTokenSecret = (c: any): string => attendeeSessionSecret(c) || passTokenSecret(c)
+
+async function connectionActionToken(c: any, connId: any): Promise<string> {
+  const secret = connectTokenSecret(c)
+  if (!secret) return ''
+  const exp = Math.floor(Date.now() / 1000) + CONNECT_TOKEN_DAYS * 86400
+  const body = String(connId) + '.' + exp
+  return body + '.' + (await hmacHexA(secret, 'conn:' + body)).slice(0, 32)
+}
+
+async function verifyConnectionActionToken(c: any, token: unknown): Promise<number | null> {
+  const secret = connectTokenSecret(c)
+  if (!secret) return null
+  const parts = String(token ?? '').split('.')
+  if (parts.length !== 3) return null
+  const [id, exp, sig] = parts
+  if (!/^\d+$/.test(id) || !/^\d+$/.test(exp)) return null
+  if (parseInt(exp, 10) * 1000 < Date.now()) return null
+  const expected = (await hmacHexA(secret, 'conn:' + id + '.' + exp)).slice(0, 32)
+  return safeEqualA(sig, expected) ? parseInt(id, 10) : null
+}
 
 app.post('/api/connections', async (c) => {
   const body = await c.req.json()
   const { event_id, from_attendee_id, to_attendee_id, message } = body
   const denied = await requireSelf(c, from_attendee_id); if (denied) return denied
 
+  if (String(from_attendee_id) === String(to_attendee_id)) {
+    return c.json({ error: 'You cannot connect with yourself.' }, 400)
+  }
+
+  // Who is asking, and are they allowed to ask. The client hides the button from
+  // Visitors, but the client is not the authority: the profile modal's Connect
+  // button carried no such check, which is how every request in the table came
+  // from a Visitor Pass in the first place.
+  const sender = await c.env.DB.prepare(
+    'SELECT name, badge_type, job_title, company, industry, interests FROM attendees WHERE id = ?'
+  ).bind(from_attendee_id).first() as any
+  if (!sender) return c.json({ error: 'Please sign in again to continue.' }, 401)
+
+  if (!canInitiateNetworking(sender.badge_type)) {
+    return c.json({
+      error: 'upgrade_required',
+      message: 'Starting a conversation is part of the Delegate, Academic and VIP passes. Your Visitor Pass can still receive and accept requests.',
+    }, 402)
+  }
+
+  const gaps = missingNetworkingProfileFields(sender)
+  if (gaps.length) {
+    return c.json({
+      error: 'profile_incomplete',
+      message: 'Please add ' + humanList(gaps) + ' first, so they can see who is reaching out.',
+      missing: gaps,
+    }, 400)
+  }
+
+  const reasonProblem = connectionReasonProblem(message)
+  if (reasonProblem) return c.json({ error: 'reason_required', message: reasonProblem }, 400)
+
+  const note = String(message).replace(/\s+/g, ' ').trim()
+
   try {
-    await c.env.DB.prepare(
+    const ins = await c.env.DB.prepare(
       'INSERT INTO connections (event_id, from_attendee_id, to_attendee_id, message) VALUES (?, ?, ?, ?)'
-    ).bind(event_id, from_attendee_id, to_attendee_id, message || '').run()
+    ).bind(event_id, from_attendee_id, to_attendee_id, note).run()
 
     // The row is committed; the mail goes out behind the response and cannot fail it.
     // The UNIQUE(event_id, from, to) constraint means a repeat request throws above
     // and returns 409, so re-tapping Connect cannot re-mail.
-    await scheduleNotification(c, notifyConnectionRequest(c, from_attendee_id, to_attendee_id, message || ''))
+    await scheduleNotification(c, notifyConnectionRequest(c, ins.meta.last_row_id, from_attendee_id, to_attendee_id, note))
     return c.json({ success: true }, 201)
   } catch (e: any) {
-    if (e.message?.includes('UNIQUE')) return c.json({ error: 'Connection already exists' }, 409)
+    if (e.message?.includes('UNIQUE')) return c.json({ error: 'You have already asked to connect with them.' }, 409)
     return c.json({ error: 'Failed to create connection' }, 400)
   }
+})
+
+// Accept or decline straight from the email, with no sign-in. Deliberately a POST
+// from a button on /c/:token and never a GET side effect: Gmail, Outlook and every
+// corporate link scanner fetch the URLs in a message, and a GET that accepted
+// would have those scanners answering people's invitations for them.
+app.post('/api/connections/respond', async (c) => {
+  const { token, action } = await c.req.json().catch(() => ({} as any))
+  if (action !== 'accepted' && action !== 'declined') {
+    return c.json({ error: 'Unknown action.' }, 400)
+  }
+  const connId = await verifyConnectionActionToken(c, token)
+  if (!connId) return c.json({ error: 'This link has expired. Please open the app to reply.' }, 403)
+
+  const row = await c.env.DB.prepare('SELECT status FROM connections WHERE id = ?').bind(connId).first() as any
+  if (!row) return c.json({ error: 'That request no longer exists.' }, 404)
+
+  // Idempotent: a second click, or a double-tap on a slow phone, reports the
+  // settled state rather than re-firing the acceptance mail.
+  if (row.status === action) return c.json({ success: true, status: action, repeated: true })
+  if (row.status !== 'pending') {
+    return c.json({ success: true, status: row.status, repeated: true })
+  }
+
+  const upd = await c.env.DB.prepare(
+    'UPDATE connections SET status = ? WHERE id = ? AND status = ?'
+  ).bind(action, connId, 'pending').run()
+
+  if (upd?.meta?.changes === 1 && action === 'accepted') {
+    await scheduleNotification(c, notifyConnectionAccepted(c, connId))
+  }
+  return c.json({ success: true, status: action })
 })
 
 app.put('/api/connections/:id', async (c) => {
@@ -9296,7 +9482,7 @@ app.post('/api/inquiries', async (c) => {
   if (!name || !email) return c.json({ error: 'Name and email are required' }, 400)
   if (!inquiry_type) return c.json({ error: 'Inquiry type is required' }, 400)
 
-  const validTypes = ['general', 'exhibition', 'booth_inquiry', 'sponsorship', 'speaking', 'media', 'group_registration', 'pass_upgrade', 'other']
+  const validTypes = ['general', 'exhibition', 'booth_inquiry', 'sponsorship', 'speaking', 'media', 'group_registration', 'pass_upgrade', 'meeting_room', 'other']
   if (!validTypes.includes(inquiry_type)) return c.json({ error: 'Invalid inquiry type' }, 400)
 
   const result = await c.env.DB.prepare(
@@ -10123,8 +10309,17 @@ function sharedNavHTML(activePage: string): string {
         <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI Innovation Logo" loading="eager" style="height:44px;width:auto;border-radius:12px;padding:6px;background:rgba(255,255,255,0.95);box-shadow:0 2px 8px rgba(0,0,0,0.08);">
       </a>
       <!-- Center pills — same destinations as the app nav so navigation is
-           consistent on every page. In-app tabs deep-link into the SPA. -->
-      <div class="flex items-center gap-0.5 flex-1 justify-center flex-wrap">
+           consistent on every page. In-app tabs deep-link into the SPA.
+
+           Hidden below md, and that is a bug fix rather than a tidy-up. There is
+           no hamburger here, so on a 375px phone these six pills wrapped into six
+           rows - 178px of them - inside a bar fixed at h-14. The overflow was
+           drawn straight over the top of the page, which on /register meant the
+           nav sat across the registration form on every phone. The footer's Quick
+           Links already reach all six destinations, and the logo, Log In and
+           Register stay visible here, so nothing is lost by not showing them
+           twice. -->
+      <div class="hidden md:flex items-center gap-0.5 flex-1 justify-center flex-wrap">
         ${pill('/app', 'Home', 'home')}
         ${pill('/app#schedule', 'Schedule', 'schedule')}
         ${pill('/register', 'Register', 'register')}
@@ -10340,6 +10535,7 @@ const TYPE_CONFIG = {
   speaking: { icon: 'fa-microphone-alt', color: 'purple', title: 'Speaking Opportunity', subtitle: 'Submit your talk or workshop proposal' },
   media: { icon: 'fa-newspaper', color: 'rose', title: 'Media / Press Inquiry', subtitle: 'Accreditation, interviews & coverage' },
   group_registration: { icon: 'fa-users', color: 'green', title: 'Group Registration', subtitle: 'Delegation discounts for 5+ people' },
+  meeting_room: { icon: 'fa-handshake', color: 'green', title: 'Private Boardroom', subtitle: 'Reserve a WTC boardroom by the hour for 20-21 Nov' },
 };
 
 function selectType(type) {
@@ -10436,6 +10632,150 @@ function resetContactForm() {
 // Auto-select type from URL hash
 const hash = window.location.hash.replace('#', '');
 if (hash && TYPE_CONFIG[hash]) selectType(hash);
+</script>
+</body>
+</html>`
+}
+
+// The decision page a connection-request email links to. GET only renders; it
+// never changes the row, because every corporate mail scanner follows links and a
+// GET that accepted would have Outlook answering people's invitations for them.
+// The buttons POST to /api/connections/respond.
+//
+// No sign-in. The whole point is that answering takes one tap: the old mail sent
+// people to a protected tab, which bounced them to a login, which mailed them a
+// second time. Nobody completed that, and not one of the first 17 requests was
+// ever answered.
+app.get('/c/:token', async (c) => {
+  const token = c.req.param('token')
+  const connId = await verifyConnectionActionToken(c, token)
+  if (!connId) return c.html(connectDecisionPageHTML({ state: 'expired' }), 410)
+
+  const row = await c.env.DB.prepare(
+    `SELECT cn.status,
+            t.name AS to_name,
+            f.name AS from_name, f.company AS from_company, f.job_title AS from_job_title,
+            f.industry AS from_industry, f.interests AS from_interests,
+            f.badge_type AS from_badge, f.linkedin_url AS from_linkedin,
+            f.avatar_url AS from_avatar, cn.message AS note
+       FROM connections cn
+       JOIN attendees t ON t.id = cn.to_attendee_id
+       JOIN attendees f ON f.id = cn.from_attendee_id
+      WHERE cn.id = ?`
+  ).bind(connId).first() as any
+  if (!row) return c.html(connectDecisionPageHTML({ state: 'gone' }), 404)
+
+  return c.html(connectDecisionPageHTML({
+    state: row.status === 'pending' ? 'pending' : row.status,
+    token, appUrl: await networkingAppUrl(c, '#inbox'), person: row,
+  }))
+})
+
+function connectDecisionPageHTML(o: any): string {
+  const esc = (v: any) => String(v ?? '').replace(/[&<>"']/g, ch =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch] as string))
+  const p = o.person || {}
+  const name = esc(p.from_name)
+  const tier = esc(netPassLabel(p.from_badge))
+  const at = [p.from_job_title, p.from_company].filter(Boolean).map(esc).join(' &middot; ')
+  const tags = String(p.from_interests || '').split(',').map((t: string) => t.trim()).filter(Boolean).slice(0, 6)
+  const initials = String(p.from_name || '?').trim().split(/\s+/).slice(0, 2).map((w: string) => w[0] || '').join('').toUpperCase()
+  const note = String(p.note || '').replace(/\s+/g, ' ').trim()
+
+  const avatar = p.from_avatar
+    ? `<img src="${esc(p.from_avatar)}" alt="" class="w-16 h-16 rounded-full object-cover shrink-0">`
+    : `<div class="w-16 h-16 rounded-full shrink-0 flex items-center justify-center text-xl font-bold text-white" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);">${esc(initials)}</div>`
+
+  // Every state renders the same shell, so a settled or expired link is answered
+  // with a real page rather than an error the person has to interpret.
+  const body = o.state === 'expired' || o.state === 'gone'
+    ? `<div class="text-center py-6">
+         <div class="w-14 h-14 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-4"><i class="fas fa-link-slash text-xl text-gray-400"></i></div>
+         <h1 class="text-xl font-bold mb-2">This link is no longer active</h1>
+         <p class="text-sm text-gray-500 mb-6">${o.state === 'gone' ? 'That request is no longer on the system.' : 'Connection links stay live for 60 days.'} You can still see everything waiting for you in the networking app.</p>
+         <a href="/app#inbox" class="inline-block px-6 py-3 rounded-xl text-sm font-semibold text-white" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);">Open the networking app</a>
+       </div>`
+    : `<div id="decide-live" class="${o.state === 'pending' ? '' : 'hidden'}">
+         <p class="text-xs font-semibold tracking-wide text-orange-600 uppercase mb-4">Connection request</p>
+         <div class="flex items-start gap-4 mb-5">
+           ${avatar}
+           <div class="min-w-0">
+             <div class="flex items-center gap-2 flex-wrap">
+               <h1 class="text-lg font-bold">${name}</h1>
+               ${tier ? `<span class="px-2 py-0.5 rounded-full text-[11px] font-bold" style="background:#FFF2E6;color:#C2410C;">${tier}</span>` : ''}
+             </div>
+             ${at ? `<p class="text-sm text-gray-600 mt-0.5">${at}</p>` : ''}
+             ${p.from_industry ? `<p class="text-xs text-gray-500 mt-1">${esc(p.from_industry)}</p>` : ''}
+           </div>
+         </div>
+         ${tags.length ? `<div class="flex flex-wrap gap-1.5 mb-5">${tags.map((t: string) => `<span class="px-2.5 py-1 rounded-full text-[11px] bg-gray-100 text-gray-600">${esc(t)}</span>`).join('')}</div>` : ''}
+         ${note ? `<div class="rounded-xl px-4 py-3.5 mb-5" style="background:#FFF8F2;border-left:3px solid #FF6B00;">
+              <p class="text-[11px] font-semibold text-orange-700 uppercase tracking-wide mb-1.5">Why they want to meet</p>
+              <p class="text-sm text-gray-700 leading-relaxed">&ldquo;${esc(note)}&rdquo;</p>
+            </div>` : ''}
+         ${p.from_linkedin ? `<a href="${esc(p.from_linkedin)}" target="_blank" rel="noopener nofollow" class="inline-flex items-center gap-1.5 text-xs text-blue-600 hover:underline mb-5"><i class="fab fa-linkedin"></i>View their LinkedIn</a>` : ''}
+         <div class="flex flex-col sm:flex-row gap-2.5 mt-6">
+           <button type="button" onclick="respond('accepted')" id="btn-accept" class="flex-1 py-3.5 rounded-xl text-sm font-bold text-white transition-all" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);">Accept and connect</button>
+           <button type="button" onclick="respond('declined')" id="btn-decline" class="sm:w-40 py-3.5 rounded-xl text-sm font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 transition-all">Not now</button>
+         </div>
+         <p class="text-[11px] text-gray-400 text-center mt-4">Accepting shares your profile with them so you can message each other. It never shares your email address. Declining is silent, and they are not told.</p>
+       </div>
+
+       <div id="decide-accepted" class="${o.state === 'accepted' ? '' : 'hidden'} text-center py-4">
+         <div class="w-14 h-14 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-4"><i class="fas fa-check text-xl text-green-600"></i></div>
+         <h1 class="text-xl font-bold mb-2">You are connected with ${name}</h1>
+         <p class="text-sm text-gray-500 mb-6">They can message you in the app now. If this is worth a proper sit-down, the four WTC boardrooms can be reserved by the hour for 20 and 21 November, and they go to whoever asks first.</p>
+         <div class="flex flex-col sm:flex-row gap-2.5 justify-center">
+           <a href="/contact#meeting_room" class="px-6 py-3 rounded-xl text-sm font-bold text-white" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);">Ask about a private boardroom</a>
+           <a href="${esc(o.appUrl || '/app#inbox')}" class="px-6 py-3 rounded-xl text-sm font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200">Message them</a>
+         </div>
+       </div>
+
+       <div id="decide-declined" class="${o.state === 'declined' ? '' : 'hidden'} text-center py-6">
+         <div class="w-14 h-14 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-4"><i class="fas fa-check text-xl text-gray-400"></i></div>
+         <h1 class="text-xl font-bold mb-2">No problem</h1>
+         <p class="text-sm text-gray-500 mb-6">We have not told them, and they cannot ask you again. You can still meet anyone you like on the floor.</p>
+         <a href="/app#networking" class="inline-block px-6 py-3 rounded-xl text-sm font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200">See who else is coming</a>
+       </div>
+
+       <div id="decide-error" class="hidden rounded-xl px-4 py-3 mt-4 text-sm text-red-700 bg-red-50 border border-red-200"></div>`
+
+  return `${sharedHeadHTML('Connection request', '/c', 'Accept or decline a connection request for Bharat AI Innovation 2026.')}
+<body class="min-h-screen">
+${sharedNavHTML('')}
+<main class="max-w-lg mx-auto px-4 py-10 md:py-16">
+  <div class="glass rounded-2xl p-6 md:p-8">
+${body}
+  </div>
+</main>
+${sharedFooterHTML()}
+<script>
+  var TOKEN = ${JSON.stringify(o.token || '')};
+  async function respond(action) {
+    var live = document.getElementById('decide-live');
+    var err  = document.getElementById('decide-error');
+    var a = document.getElementById('btn-accept'), d = document.getElementById('btn-decline');
+    if (a) a.disabled = true; if (d) d.disabled = true;
+    if (a && action === 'accepted') a.textContent = 'Connecting...';
+    err.classList.add('hidden');
+    try {
+      var r = await fetch('/api/connections/respond', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: TOKEN, action: action })
+      });
+      var data = await r.json().catch(function () { return {}; });
+      if (!r.ok || data.error) throw new Error(data.error || 'That did not go through. Please try again.');
+      live.classList.add('hidden');
+      document.getElementById(data.status === 'accepted' ? 'decide-accepted' : 'decide-declined').classList.remove('hidden');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (e) {
+      err.textContent = (e && e.message) || 'That did not go through. Please try again.';
+      err.classList.remove('hidden');
+      if (a) { a.disabled = false; a.textContent = 'Accept and connect'; }
+      if (d) d.disabled = false;
+    }
+  }
 </script>
 </body>
 </html>`
@@ -14962,17 +15302,28 @@ function mainPageHTML(): string {
       return (currentUser?.badge_type || '').toLowerCase().includes('visitor');
     }
 
-    function showNetworkUpgradeModal() { showUpgradeModal('networking'); }
+    // Naming the person converts; an abstract lock does not. "Connect with Priya
+    // Sharma" is a specific thing somebody wants, "Networking is a paid feature"
+    // is a door closing.
+    function showNetworkUpgradeModal(personName) { showUpgradeModal('networking', personName); }
 
     // The same two cards sell in two different moments: hitting the networking
     // lock, and the minute a Visitor Pass is registered. The copy has to change —
     // "Networking is a Paid Feature" reads as a punishment to someone who just
     // signed up and has not been refused anything yet.
-    function showUpgradeModal(reason) {
+    function showUpgradeModal(reason, personName) {
       const m = document.getElementById('visitor-upgrade-modal');
       if (!m) return;
       const title = document.getElementById('upgrade-modal-title');
       const copy = document.getElementById('upgrade-modal-copy');
+      if (reason === 'networking' && title && copy) {
+        const who = String(personName || '').trim();
+        title.textContent = who ? ('Reach out to ' + who) : 'Start the conversation';
+        copy.innerHTML = (who
+            ? 'Anyone can browse who is coming and accept an introduction. <span class="text-white font-semibold">Starting</span> one is part of the Delegate, Academic and VIP passes.'
+            : 'Browsing and accepting are free on every pass. <span class="text-white font-semibold">Starting</span> a conversation is part of the Delegate, Academic and VIP passes.') +
+          '<br><span class="text-gray-400 text-xs">Delegates also propose meetings, reserve a private WTC boardroom by the hour, and attend every session and workshop.</span>';
+      }
       if (reason === 'welcome' && title && copy) {
         title.textContent = 'Want the full two days?';
         copy.innerHTML = 'Your <span class="text-white font-semibold">Visitor Pass</span> covers the exhibition floor and select keynotes.<br>' +
@@ -15003,16 +15354,21 @@ function mainPageHTML(): string {
       const filterEl = document.getElementById('role-filter');
 
       if (isVisitor) {
-        // Show banner
+        // The grid is NO LONGER blurred or disabled. A blurred rectangle is a poor
+        // salesman: it hides the only thing that justifies the upgrade, which is
+        // WHO is in the room. 1,335 of 1,363 attendees hold a Visitor Pass, so the
+        // blur was hiding the event from 98% of the people who registered for it.
+        //
+        // Browsing, searching and opening a profile are now free. Starting a
+        // conversation, proposing a meeting and booking a room are what the paid
+        // pass buys, and each of those buttons sells itself by name at the moment
+        // it is pressed. Receiving and accepting stay free for everyone, always -
+        // a request nobody can answer is worthless to the Delegate who sent it.
         banner?.classList.remove('hidden');
-        // Show lock overlay
-        lockEl?.classList.remove('hidden');
-        // Blur the grid and disable interaction. The persistent lock overlay
-        // (visitor-grid-lock) does the selling — no scroll/focus hijack, which
-        // read as a broken pop-up. Just disable the controls quietly.
-        if (gridEl) { gridEl.style.filter = 'blur(4px)'; gridEl.style.pointerEvents = 'none'; gridEl.style.userSelect = 'none'; }
-        if (searchEl) { searchEl.readOnly = true; searchEl.disabled = true; }
-        if (filterEl) { filterEl.disabled = true; }
+        lockEl?.classList.add('hidden');
+        if (gridEl) { gridEl.style.filter = ''; gridEl.style.pointerEvents = ''; gridEl.style.userSelect = ''; }
+        if (searchEl) { searchEl.readOnly = false; searchEl.disabled = false; }
+        if (filterEl) { filterEl.disabled = false; }
       } else {
         // Not a visitor — make sure lock is hidden and grid unblurred
         banner?.classList.add('hidden');
@@ -15145,10 +15501,10 @@ function mainPageHTML(): string {
               </div>
             </div>
             <div class="flex gap-2 mt-4">
-              <button onclick="\${isVisitorPass() ? 'showNetworkUpgradeModal()' : 'viewProfile(' + a.id + ')'}" class="flex-1 py-2 rounded-lg text-xs font-medium glass hover:bg-white/10 transition"><i class="fas fa-user mr-1"></i>Profile</button>
-              <button onclick="\${isVisitorPass() ? 'showNetworkUpgradeModal()' : 'sendConnectionRequest(' + a.id + ')'}" class="flex-1 py-2 rounded-lg text-xs font-medium bg-primary-600/20 text-primary-300 hover:bg-primary-600/30 transition"><i class="fas fa-plus mr-1"></i>Connect</button>
-              <button onclick="\${isVisitorPass() ? 'showNetworkUpgradeModal()' : 'openChat(' + a.id + ', \\'' + a.name.replace(/'/g, '&apos;') + '\\', \\'' + (a.company || '').replace(/'/g, '&apos;') + '\\')'}" class="py-2 px-3 rounded-lg text-xs font-medium bg-accent-500/20 text-accent-300 hover:bg-accent-500/30 transition" title="Message"><i class="fas fa-comment"></i></button>
-              <button onclick="\${isVisitorPass() ? 'showNetworkUpgradeModal()' : 'openMeetingModal(' + a.id + ')'}" class="py-2 px-3 rounded-lg text-xs font-medium bg-green-500/20 text-green-300 hover:bg-green-500/30 transition" title="Schedule Meeting"><i class="fas fa-calendar-plus"></i></button>
+              <button onclick="viewProfile(\${a.id})" class="flex-1 py-2 rounded-lg text-xs font-medium glass hover:bg-white/10 transition"><i class="fas fa-user mr-1"></i>Profile</button>
+              <button onclick="\${isVisitorPass() ? 'showNetworkUpgradeModal(\\'' + a.name.replace(/'/g, '&apos;') + '\\')' : 'openConnectModal(' + a.id + ')'}" class="flex-1 py-2 rounded-lg text-xs font-medium bg-primary-600/20 text-primary-300 hover:bg-primary-600/30 transition"><i class="fas \${isVisitorPass() ? 'fa-lock' : 'fa-plus'} mr-1"></i>Connect</button>
+              <button onclick="\${isVisitorPass() ? 'showNetworkUpgradeModal(\\'' + a.name.replace(/'/g, '&apos;') + '\\')' : 'openChat(' + a.id + ', \\'' + a.name.replace(/'/g, '&apos;') + '\\', \\'' + (a.company || '').replace(/'/g, '&apos;') + '\\')'}" class="py-2 px-3 rounded-lg text-xs font-medium bg-accent-500/20 text-accent-300 hover:bg-accent-500/30 transition" title="Message"><i class="fas fa-comment"></i></button>
+              <button onclick="\${isVisitorPass() ? 'showNetworkUpgradeModal(\\'' + a.name.replace(/'/g, '&apos;') + '\\')' : 'openMeetingModal(' + a.id + ')'}" class="py-2 px-3 rounded-lg text-xs font-medium bg-green-500/20 text-green-300 hover:bg-green-500/30 transition" title="Schedule Meeting"><i class="fas fa-calendar-plus"></i></button>
             </div>
           </div>\`;
         }).join('') || '<div class="text-center text-gray-500 py-12 col-span-full"><i class="fas fa-search text-4xl mb-3 block"></i>No attendees found.</div>';
@@ -15198,10 +15554,14 @@ function mainPageHTML(): string {
             \${a.twitter_url ? \`<a href="\${a.twitter_url}" target="_blank" class="text-sky-400 hover:text-sky-300"><i class="fab fa-twitter text-xl"></i></a>\` : ''}
             \${a.website_url ? \`<a href="\${a.website_url}" target="_blank" class="text-gray-400 hover:text-white"><i class="fas fa-globe text-xl"></i></a>\` : ''}
           </div>
+          <!-- These three buttons carried no tier check, which is how every one of
+               the first 17 connection requests was sent by a Visitor Pass despite
+               the grid being locked. The gate now lives in one place for both
+               surfaces, and on the server besides. -->
           <div class="flex gap-2">
-            <button onclick="sendConnectionRequest(\${a.id}); closeProfileModal();" class="flex-1 py-2.5 rounded-xl text-sm font-medium bg-primary-600 hover:bg-primary-500 text-white transition"><i class="fas fa-user-plus mr-2"></i>Connect</button>
-            <button onclick="openChat(\${a.id}, '\${a.name.replace(/'/g, "&apos;")}', '\${(a.company || '').replace(/'/g, "&apos;")}'); closeProfileModal();" class="flex-1 py-2.5 rounded-xl text-sm font-medium bg-accent-500/20 text-accent-300 hover:bg-accent-500/30 transition"><i class="fas fa-comment mr-2"></i>Message</button>
-            <button onclick="openMeetingModal(\${a.id}); closeProfileModal();" class="py-2.5 px-4 rounded-xl text-sm font-medium glass hover:bg-white/10 transition"><i class="fas fa-calendar-plus"></i></button>
+            <button onclick="\${isVisitorPass() ? 'showNetworkUpgradeModal(\\'' + a.name.replace(/'/g, '&apos;') + '\\')' : 'openConnectModal(' + a.id + ')'}; closeProfileModal();" class="flex-1 py-2.5 rounded-xl text-sm font-medium bg-primary-600 hover:bg-primary-500 text-white transition"><i class="fas \${isVisitorPass() ? 'fa-lock' : 'fa-user-plus'} mr-2"></i>Connect</button>
+            <button onclick="\${isVisitorPass() ? 'showNetworkUpgradeModal(\\'' + a.name.replace(/'/g, '&apos;') + '\\')' : 'openChat(' + a.id + ', \\'' + a.name.replace(/'/g, '&apos;') + '\\', \\'' + (a.company || '').replace(/'/g, '&apos;') + '\\')'}; closeProfileModal();" class="flex-1 py-2.5 rounded-xl text-sm font-medium bg-accent-500/20 text-accent-300 hover:bg-accent-500/30 transition"><i class="fas fa-comment mr-2"></i>Message</button>
+            <button onclick="\${isVisitorPass() ? 'showNetworkUpgradeModal(\\'' + a.name.replace(/'/g, '&apos;') + '\\')' : 'openMeetingModal(' + a.id + ')'}; closeProfileModal();" class="py-2.5 px-4 rounded-xl text-sm font-medium glass hover:bg-white/10 transition"><i class="fas fa-calendar-plus"></i></button>
           </div>
         \`;
         document.getElementById('profile-modal').classList.remove('hidden');
@@ -15211,18 +15571,150 @@ function mainPageHTML(): string {
     function closeProfileModal() { document.getElementById('profile-modal').classList.add('hidden'); }
 
     // ==================== CONNECTIONS ====================
-    async function sendConnectionRequest(toId) {
+    // What a profile must carry before you may approach a stranger. Mirrors
+    // missingNetworkingProfileFields() on the server, which is the authority.
+    function myNetworkingProfileGaps() {
+      const has = v => { const t = String(v == null ? '' : v).trim(); return t.length > 0 && t !== '-'; };
+      const gaps = [];
+      if (!has(currentUser?.job_title)) gaps.push('your designation');
+      if (!has(currentUser?.company))   gaps.push('your organisation');
+      if (!has(currentUser?.industry))  gaps.push('your industry');
+      if (!has(currentUser?.interests)) gaps.push('what you work on');
+      return gaps;
+    }
+
+    let connectTargetId = null;
+
+    // The old Connect button posted a hardcoded "Would love to connect!" for
+    // everybody. That is the dating-app gesture: a tap that costs the sender
+    // nothing and tells the recipient nothing, and all 17 requests in the database
+    // carry that identical sentence. This is business networking, so the sender
+    // says what they actually want to talk about, and the recipient decides on it.
+    async function openConnectModal(toId) {
       if (!currentUser) return;
+
+      const gaps = myNetworkingProfileGaps();
+      if (gaps.length) {
+        showToast('First add ' + gaps.join(', ') + ' — they need to see who is reaching out.', 'warning');
+        switchTab('myprofile');
+        return;
+      }
+
+      connectTargetId = toId;
+      let them = null;
+      try { them = await api.get('/api/attendees/' + toId); } catch (e) { /* fall back to a generic prompt */ }
+
+      const mine = new Set(String(currentUser.interests || '').split(',').map(x => x.trim().toLowerCase()).filter(Boolean));
+      const theirs = String(them?.interests || '').split(',').map(x => x.trim()).filter(Boolean);
+      const shared = theirs.filter(t => mine.has(t.toLowerCase()));
+      const firstName = String(them?.name || '').trim().split(/\s+/)[0] || 'them';
+
+      // Openers grounded in something real on their profile, so the sender starts
+      // from substance rather than a blank box.
+      const starters = [];
+      if (shared.length) starters.push('We both work on ' + shared[0] + ' — I would like to compare notes on how you are applying it at ' + (them?.company || 'your organisation') + '.');
+      if (them?.job_title) starters.push('I am keen to hear how ' + (them?.company || 'your team') + ' approaches ' + (theirs[0] || 'AI adoption') + ', and where you see it going in the next year.');
+      starters.push('I would like 15 minutes at the event to talk about where our work overlaps and whether there is anything worth building together.');
+
+      const esc = v => String(v == null ? '' : v).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+      let host = document.getElementById('connect-modal');
+      if (!host) {
+        host = document.createElement('div');
+        host.id = 'connect-modal';
+        document.body.appendChild(host);
+      }
+      host.className = 'fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4';
+      host.innerHTML = \`
+        <div class="glass rounded-t-2xl sm:rounded-2xl w-full sm:max-w-lg max-h-[92vh] overflow-y-auto p-5 sm:p-6">
+          <div class="flex items-start justify-between gap-3 mb-1">
+            <h3 class="font-bold text-lg">Connect with \${esc(them?.name || 'this attendee')}</h3>
+            <button onclick="closeConnectModal()" class="text-gray-400 hover:text-white shrink-0" aria-label="Close"><i class="fas fa-times"></i></button>
+          </div>
+          <p class="text-xs text-gray-400 mb-4">\${esc([them?.job_title, them?.company].filter(Boolean).join(' · '))}</p>
+          \${shared.length ? \`<div class="mb-4 flex flex-wrap items-center gap-1.5"><span class="text-[11px] text-gray-500">You both work on</span>\${shared.slice(0,3).map(t => \`<span class="px-2 py-0.5 rounded-full text-[11px] bg-primary-500/20 text-primary-300">\${esc(t)}</span>\`).join('')}</div>\` : ''}
+          <label class="text-xs text-gray-400 mb-1.5 block">What would you like to talk to \${esc(firstName)} about? *</label>
+          <textarea id="connect-note" rows="4" maxlength="500" oninput="connectNoteCount()" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Be specific — this is the only thing they see when deciding."></textarea>
+          <div class="flex items-center justify-between mt-1.5 mb-3">
+            <span id="connect-count" class="text-[11px] text-gray-500">0 / 500</span>
+            <span class="text-[11px] text-gray-500">At least 15 characters</span>
+          </div>
+          <div class="mb-4">
+            <p class="text-[11px] text-gray-500 mb-1.5">Or start from one of these:</p>
+            <div class="space-y-1.5">
+              \${starters.map(x => \`<button type="button" onclick="useStarter(this)" data-text="\${esc(x)}" class="w-full text-left px-3 py-2 rounded-lg text-[11px] leading-relaxed text-gray-300 bg-white/5 hover:bg-white/10 transition">\${esc(x)}</button>\`).join('')}
+            </div>
+          </div>
+          <div id="connect-error" class="hidden rounded-xl px-3 py-2.5 mb-3 text-xs text-red-300 bg-red-500/10 border border-red-500/20"></div>
+          <button type="button" id="connect-send" onclick="submitConnectionRequest()" class="w-full py-3 rounded-xl text-sm font-semibold text-white bg-primary-600 hover:bg-primary-500 transition"><i class="fas fa-paper-plane mr-2"></i>Send request</button>
+          <p class="text-[10px] text-gray-500 text-center mt-2.5">They can accept in one tap from their email. Your email address is never shared.</p>
+        </div>\`;
+      host.classList.remove('hidden');
+      setTimeout(() => document.getElementById('connect-note')?.focus(), 50);
+    }
+
+    function closeConnectModal() {
+      document.getElementById('connect-modal')?.remove();
+      connectTargetId = null;
+    }
+    function connectNoteCount() {
+      const t = document.getElementById('connect-note');
+      const c = document.getElementById('connect-count');
+      if (t && c) c.textContent = t.value.length + ' / 500';
+    }
+    function useStarter(btn) {
+      const t = document.getElementById('connect-note');
+      if (!t) return;
+      t.value = btn.getAttribute('data-text') || '';
+      connectNoteCount();
+      t.focus();
+    }
+
+    async function submitConnectionRequest() {
+      if (!currentUser || !connectTargetId) return;
+      const noteEl = document.getElementById('connect-note');
+      const errEl  = document.getElementById('connect-error');
+      const btn    = document.getElementById('connect-send');
+      const note   = (noteEl?.value || '').trim();
+
+      errEl.classList.add('hidden');
+      if (note.length < 15) {
+        errEl.textContent = 'Please write at least 15 characters about what you would like to talk about.';
+        errEl.classList.remove('hidden');
+        noteEl?.focus();
+        return;
+      }
+
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Sending...';
       try {
         const res = await api.post('/api/connections', {
           event_id: EVENT_ID,
           from_attendee_id: currentUser.id,
-          to_attendee_id: toId,
-          message: 'Would love to connect!'
+          to_attendee_id: connectTargetId,
+          message: note
         });
-        if (res.error) { showToast(res.error, 'warning'); }
-        else { showToast('Connection request sent!', 'success'); }
-      } catch(e) { showToast('Failed to send request', 'error'); }
+        if (res.error) {
+          // upgrade_required and profile_incomplete are machine codes; the human
+          // sentence is always in .message.
+          if (res.error === 'upgrade_required') {
+            closeConnectModal();
+            showNetworkUpgradeModal('');
+            return;
+          }
+          errEl.textContent = res.message || res.error;
+          errEl.classList.remove('hidden');
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fas fa-paper-plane mr-2"></i>Send request';
+          return;
+        }
+        closeConnectModal();
+        showToast('Request sent. They can accept straight from their email.', 'success');
+      } catch(e) {
+        errEl.textContent = 'That did not send. Please try again.';
+        errEl.classList.remove('hidden');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-paper-plane mr-2"></i>Send request';
+      }
     }
 
     // ==================== CHAT ====================
@@ -16595,9 +17087,12 @@ function mainPageHTML(): string {
                 <span class="\${conn.other_online ? 'online-dot' : 'offline-dot'} absolute -bottom-0.5 -right-0.5 border-2 border-dark-900"></span>
               </div>
               <div class="flex-1 min-w-0">
-                <h3 class="font-semibold text-sm">\${conn.other_name}</h3>
+                <div class="flex items-center gap-2 flex-wrap">
+                  <h3 class="font-semibold text-sm">\${conn.other_name}</h3>
+                  \${conn.other_badge ? \`<span class="px-1.5 py-0.5 rounded text-[10px] font-medium \${getBadgeClass(conn.other_badge)}">\${displayBadge(conn.other_badge)}</span>\` : ''}
+                </div>
                 <p class="text-xs text-gray-400">\${conn.other_job_title || ''}\${conn.other_job_title && conn.other_company ? ' · ' : ''}\${conn.other_company || ''}</p>
-                \${conn.message ? \`<p class="text-xs text-gray-500 mt-1 italic">"\${conn.message}"</p>\` : ''}
+                \${conn.message ? \`<p class="text-xs text-gray-300 mt-1.5 leading-relaxed border-l-2 border-primary-500/40 pl-2">"\${conn.message}"</p>\` : ''}
               </div>
               <div class="flex items-center gap-2 shrink-0">
                 <span class="px-2 py-0.5 rounded-full text-xs font-medium \${conn.status === 'accepted' ? 'bg-green-500/20 text-green-400' : conn.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400' : 'bg-red-500/20 text-red-400'}">\${conn.status}</span>
@@ -16616,9 +17111,38 @@ function mainPageHTML(): string {
     async function updateConnection(id, status) {
       try {
         await api.put(\`/api/connections/\${id}\`, { status });
-        showToast(\`Connection \${status}!\`, 'success');
         loadConnections();
+        if (status !== 'accepted') { showToast('Request declined. They are not told.', 'success'); return; }
+        showToast('Connected! They can message you now.', 'success');
+        // The moment a connection is agreed is the one moment both people are
+        // thinking about actually meeting. The boardrooms are the only bookable
+        // space on site and they are charged by the hour, so this is where that
+        // gets offered rather than in a menu nobody opens.
+        setTimeout(() => offerRoomAfterConnect(), 700);
       } catch(e) { showToast('Failed to update connection', 'error'); }
+    }
+
+    function offerRoomAfterConnect() {
+      if (isVisitorPass()) return;   // rooms are a Delegate/VIP facility
+      let el = document.getElementById('room-nudge');
+      if (el) el.remove();
+      el = document.createElement('div');
+      el.id = 'room-nudge';
+      el.className = 'fixed bottom-4 left-1/2 -translate-x-1/2 z-[80] w-[min(94vw,26rem)] glass rounded-2xl p-4 shadow-2xl border border-primary-500/30';
+      el.innerHTML = \`
+        <div class="flex items-start gap-3">
+          <div class="w-9 h-9 rounded-xl bg-primary-500/20 flex items-center justify-center shrink-0"><i class="fas fa-handshake text-primary-300"></i></div>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-semibold">Make it a real meeting?</p>
+            <p class="text-[11px] text-gray-400 mt-0.5 leading-relaxed">Reserve one of the four WTC boardrooms by the hour for 20 or 21 November. First asked, first served.</p>
+            <div class="flex gap-2 mt-2.5">
+              <button onclick="document.getElementById('room-nudge').remove(); window.open('/contact#meeting_room', '_blank', 'noopener');" class="flex-1 py-2 rounded-lg text-xs font-semibold bg-primary-600 hover:bg-primary-500 text-white transition">Ask about a room</button>
+              <button onclick="document.getElementById('room-nudge').remove()" class="px-3 py-2 rounded-lg text-xs text-gray-400 hover:text-white transition">Later</button>
+            </div>
+          </div>
+        </div>\`;
+      document.body.appendChild(el);
+      setTimeout(() => document.getElementById('room-nudge')?.remove(), 15000);
     }
 
     async function loadMeetings() {
