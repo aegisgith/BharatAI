@@ -19079,6 +19079,31 @@ function mainPageHTML(): string {
         count('/connections'), count('/meetings'), count('/room-bookings')
       ]);
 
+      /* Live inventory, now that the rooms and the floor are real tables rather
+       * than a static array. "67 of 93 stands still available" is an argument;
+       * "exhibit with us" is a banner people have learned not to read. Both fail
+       * soft to the generic wording - a plan card is not worth breaking over a
+       * number. */
+      let boothLine = '', roomLine = '', boothCta = null;
+      try {
+        const b = await api.get('/api/events/' + EVENT_ID + '/booths');
+        if (b && b.ready && b.summary && b.summary.total) {
+          const s = b.summary;
+          boothLine = s.available + ' of ' + s.total + ' stands are still available'
+                    + (s.sold ? ' — ' + s.sold + ' already sold.' : '.');
+          boothCta = "switchTab('exhibition')";
+        }
+      } catch (e) {}
+      try {
+        const r = await api.get('/api/events/' + EVENT_ID + '/rooms');
+        const list = (r && r.rooms) || [];
+        if (list.length) {
+          const from = Math.min.apply(null, list.map(x => Number(x.price_inr) || 0).filter(n => n > 0));
+          roomLine = list.length + ' private boardrooms inside WTC Mumbai'
+                   + (isFinite(from) && from > 0 ? ', from ₹' + from.toLocaleString('en-IN') + ' a slot' : '') + '.';
+        }
+      } catch (e) {}
+
       const visitor = typeof isVisitorPass === 'function' ? isVisitorPass(currentUser.badge_type) : false;
       const findable = profileGaps(currentUser).length === 0;
 
@@ -19098,11 +19123,12 @@ function mainPageHTML(): string {
           cta: 'Open directory', act: "switchTab('networking')" },
         { done: rooms > 0, icon: 'fa-door-closed', title: 'Take a private room if you need one',
           body: rooms > 0 ? rooms + (rooms === 1 ? ' room booked.' : ' rooms booked.')
-                          : 'Four boardrooms inside WTC Mumbai for demos, partner sessions and investor conversations.',
+                          : (roomLine || 'Four boardrooms inside WTC Mumbai') + ' For demos, partner sessions and investor conversations.',
           cta: 'See the rooms', act: "window.open('https://bharataiinnovation.com/#networking','_blank')" },
         { done: false, icon: 'fa-store', title: 'Selling? Take a stand or a sponsorship',
-          body: 'Two days in front of everyone, rather than one meeting at a time. Both are quoted by the team.',
-          cta: 'Exhibit or sponsor', act: "window.open('https://bharataiinnovation.com/exhibition.html','_blank')" }
+          body: boothLine || 'Two days in front of everyone, rather than one meeting at a time. Quoted by the team.',
+          cta: boothCta ? 'See the floor plan' : 'Exhibit or sponsor',
+          act: boothCta || "window.open('https://bharataiinnovation.com/exhibition.html','_blank')" }
       ];
 
       const nextIdx = steps.findIndex(s => !s.done);
