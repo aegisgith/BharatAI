@@ -3063,6 +3063,30 @@ app.get('/api/auth/status', async (c) => {
   })
 })
 
+// What the directory can actually be filtered by. The dropdown was a list
+// written by hand that outlived its data: it offered Speakers, Investors, Jury
+// and Finalists, none of which any attendee row carries, so choosing one was a
+// dead end. Distinct values only, never counts - which tiers exist is not a
+// headcount, so this stays readable below the reveal threshold.
+app.get('/api/events/:id/attendee-filters', async (c) => {
+  const eventId = c.req.param('id')
+  const distinct = async (col: string) => {
+    try {
+      const r = await c.env.DB.prepare(
+        `SELECT DISTINCT ${col} AS v FROM attendees
+          WHERE event_id = ? AND ${col} IS NOT NULL AND TRIM(${col}) != '' ORDER BY v`
+      ).bind(eventId).all()
+      return ((r.results || []) as any[]).map(x => String(x.v))
+    } catch (_) { return [] }
+  }
+  const [roles, badges] = await Promise.all([distinct('role'), distinct('badge_type')])
+  return c.json({
+    // 'attendee' is everybody, so it filters nothing and is left out.
+    roles: roles.filter(r => r.toLowerCase() !== 'attendee'),
+    badges,
+  })
+})
+
 app.get('/api/events/:id/attendees', async (c) => {
   const eventId = c.req.param('id')
   const search = c.req.query('search')
@@ -3089,8 +3113,12 @@ app.get('/api/events/:id/attendees', async (c) => {
     params.push(s, s, s)
   }
   if (role) {
-    where += ' AND role LIKE ?'
-    params.push(`%${role}%`)
+    // One dropdown, two different fields behind it: directory roles (Speaker,
+    // Exhibitor, Jury) live in `role`, pass tiers (Delegate Pass, VIP Pass,
+    // Visitor Pass) live in `badge_type`. Matching only `role` meant every pass
+    // option searched a column that never holds a pass name.
+    where += ' AND (role LIKE ? OR badge_type LIKE ?)'
+    params.push(`%${role}%`, `%${role}%`)
   }
   if (interest) {
     where += ' AND interests LIKE ?'
@@ -7065,7 +7093,7 @@ app.get('/api/admin/booth-stats', async (c) => {
             available_count: Number(r.available_count || 0),
             // The stand's own sticker price, not the catalogue's: booths.list_price_inr
             // is what an operator quotes off this screen, and the catalogue drifted
-            // (it still lists Explorer at 129000 against the plan's 125000).
+            // (the catalogue and the plan disagreed on Explorer until 0036).
             price_inr: Number(r.list_price_inr || (cat && cat.price_inr) || 0),
             requests: Number((cat && cat.requests) || 0),
             approved_qty: Number((cat && cat.approved_qty) || 0),
@@ -7473,7 +7501,20 @@ app.get('/api/events/:id/stats', async (c) => {
   // database the whole overview would 500 instead of degrading to 0. It runs
   // concurrently with the batch, keeping its own tolerance, so this is two round
   // trips rather than seven.
-  const [rows, checkedInCount] = await Promise.all([
+  // Each of these counts a column that a database one migration behind may not
+  // have. Kept out of the batch and tolerant one at a time, so a missing column
+  // costs that one tile rather than the whole overview, and never takes the
+  // other counts down with it.
+  const countWhere = async (clause: string) => {
+    try {
+      const r = await c.env.DB.prepare(
+        `SELECT COUNT(*) as count FROM attendees WHERE event_id = ? AND ${clause}`
+      ).bind(eventId).first() as any
+      return r?.count || 0
+    } catch (_) { return 0 }
+  }
+
+  const [rows, checkedInCount, passTaken, cardTaken] = await Promise.all([
     c.env.DB.batch([
       c.env.DB.prepare('SELECT COUNT(*) as count FROM attendees WHERE event_id = ?').bind(eventId),
       // is_online is written as 1 at registration and at every sign-in and is never
@@ -7486,14 +7527,9 @@ app.get('/api/events/:id/stats', async (c) => {
       c.env.DB.prepare('SELECT COUNT(*) as count FROM connections WHERE event_id = ?').bind(eventId),
       c.env.DB.prepare('SELECT COUNT(*) as count FROM award_categories WHERE event_id = ?').bind(eventId),
     ]),
-    (async () => {
-      try {
-        const r = await c.env.DB.prepare(
-          'SELECT COUNT(*) as count FROM attendees WHERE event_id = ? AND checked_in_at IS NOT NULL'
-        ).bind(eventId).first() as any
-        return r?.count || 0
-      } catch (_) { return 0 }
-    })(),
+    countWhere('checked_in_at IS NOT NULL'),
+    countWhere('pass_downloaded_at IS NOT NULL'),
+    countWhere('social_card_downloaded_at IS NOT NULL'),
   ])
 
   const n = (i: number) => ((rows[i] as any)?.results?.[0]?.count) || 0
@@ -7519,6 +7555,10 @@ app.get('/api/events/:id/stats', async (c) => {
     exhibitors: n(3),
     connections: n(4),
     categories: n(5),
+    // Withheld on the same terms as the registration count: both are headcounts
+    // of the same people by another name, and this route is unauthenticated.
+    passDownloaded: reveal ? passTaken : null,
+    cardDownloaded: reveal ? cardTaken : null,
   })
 })
 
@@ -10837,7 +10877,7 @@ function selectType(type) {
   // Extra fields
   let extra = '';
   if (type === 'exhibition') {
-    extra = '<div><label class="text-xs text-gray-400 mb-1 block">Preferred Booth Type</label><select id="cf-booth" class="w-full px-4 py-3 rounded-xl text-sm"><option value="">Select booth type</option><option value="Startup Pod - 1.5×1.5m - ₹48,000">Startup Pod — 1.5 × 1.5 m — ₹48,000</option><option value="Explorer Booth - 2×2m - ₹1,25,000">Explorer Booth — 2 × 2 m — ₹1,25,000</option><option value="Innovator Booth - 3×2m - ₹1,95,000">Innovator Booth — 3 × 2 m — ₹1,95,000</option><option value="Accelerator Booth - 3×3m - ₹2,91,000">Accelerator Booth — 3 × 3 m — ₹2,91,000</option><option value="Enterprise Booth - 4×2m - ₹2,58,000">Enterprise Booth — 4 × 2 m — ₹2,58,000</option><option value="Flagship Pavilion - 6×2m - ₹3,87,000">Flagship Pavilion — 6 × 2 m — ₹3,87,000</option><option value="Mega Pavilion - 7×7.7m - ₹17,40,000">Mega Pavilion — 7 × 7.7 m — ₹17,40,000</option><option value="Undecided">Not sure yet / Need consultation</option></select></div><div class="mt-4"><label class="text-xs text-gray-400 mb-1 block">Preferred Zone</label><select id="cf-zone" class="w-full px-4 py-3 rounded-xl text-sm"><option value="">Any zone</option><option value="Main Hall">Main Hall</option><option value="Innovation Hub">Innovation Hub</option><option value="Startup Alley">Startup Alley</option><option value="Enterprise Zone">Enterprise Zone</option></select></div>';
+    extra = '<div><label class="text-xs text-gray-400 mb-1 block">Preferred Booth Type</label><select id="cf-booth" class="w-full px-4 py-3 rounded-xl text-sm"><option value="">Select booth type</option><option value="Startup Pod - 1.5×1.5m - ₹48,000">Startup Pod — 1.5 × 1.5 m — ₹48,000</option><option value="Explorer Booth - 2×2m - ₹1,29,000">Explorer Booth — 2 × 2 m — ₹1,29,000</option><option value="Innovator Booth - 3×2m - ₹1,95,000">Innovator Booth — 3 × 2 m — ₹1,95,000</option><option value="Accelerator Booth - 3×3m - ₹2,91,000">Accelerator Booth — 3 × 3 m — ₹2,91,000</option><option value="Enterprise Booth - 4×2m - ₹2,58,000">Enterprise Booth — 4 × 2 m — ₹2,58,000</option><option value="Flagship Pavilion - 6×2m - ₹3,87,000">Flagship Pavilion — 6 × 2 m — ₹3,87,000</option><option value="Mega Pavilion - 7×7.7m - ₹17,40,000">Mega Pavilion — 7 × 7.7 m — ₹17,40,000</option><option value="Undecided">Not sure yet / Need consultation</option></select></div><div class="mt-4"><label class="text-xs text-gray-400 mb-1 block">Preferred Zone</label><select id="cf-zone" class="w-full px-4 py-3 rounded-xl text-sm"><option value="">Any zone</option><option value="Main Hall">Main Hall</option><option value="Innovation Hub">Innovation Hub</option><option value="Startup Alley">Startup Alley</option><option value="Enterprise Zone">Enterprise Zone</option></select></div>';
   } else if (type === 'speaking') {
     extra = '<div><label class="text-xs text-gray-400 mb-1 block">Proposed Topic</label><input type="text" id="cf-topic" autocomplete="off" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Your talk/workshop topic"></div>';
   } else if (type === 'group_registration') {
@@ -11700,13 +11740,13 @@ ${sharedNavHTML('inquiry')}
         </div>
       </div>
 
-      <div class="booth-pkg glass rounded-xl p-4 border border-blue-500/20 cursor-pointer hover:border-blue-400/40 transition" onclick="selectBooth(this, 'Explorer Booth - 2x2m - Rs.1,25,000')">
+      <div class="booth-pkg glass rounded-xl p-4 border border-blue-500/20 cursor-pointer hover:border-blue-400/40 transition" onclick="selectBooth(this, 'Explorer Booth - 2x2m - Rs.1,29,000')">
         <div class="flex items-center justify-between">
           <div>
             <span class="text-sm font-bold text-blue-300">&#x1F50D; Explorer Booth</span>
             <p class="text-[10px] text-gray-400 mt-0.5">2 x 2 m (4 sqm)</p>
           </div>
-          <span class="text-sm font-bold text-blue-400">&#x20B9;1,25,000</span>
+          <span class="text-sm font-bold text-blue-400">&#x20B9;1,29,000</span>
         </div>
       </div>
 
@@ -11794,7 +11834,7 @@ ${sharedNavHTML('inquiry')}
             <select id="iq-booth-type" required class="w-full px-4 py-3 rounded-xl text-sm">
               <option value="">Select booth type</option>
               <option value="Startup Pod - 1.5x1.5m - Rs.48,000">Startup Pod &#x2014; 1.5 x 1.5 m &#x2014; &#x20B9;48,000</option>
-              <option value="Explorer Booth - 2x2m - Rs.1,25,000">Explorer Booth &#x2014; 2 x 2 m &#x2014; &#x20B9;1,25,000</option>
+              <option value="Explorer Booth - 2x2m - Rs.1,29,000">Explorer Booth &#x2014; 2 x 2 m &#x2014; &#x20B9;1,29,000</option>
               <option value="Innovator Booth - 3x2m - Rs.1,95,000">Innovator Booth &#x2014; 3 x 2 m &#x2014; &#x20B9;1,95,000</option>
               <option value="Accelerator Booth - 3x3m - Rs.2,91,000">Accelerator Booth &#x2014; 3 x 3 m &#x2014; &#x20B9;2,91,000</option>
               <option value="Enterprise Booth - 4x2m - Rs.2,58,000">Enterprise Booth &#x2014; 4 x 2 m &#x2014; &#x20B9;2,58,000</option>
@@ -11965,7 +12005,7 @@ ${sharedToastJS()}
 
 var BOOTH_PRICES = {
   'Startup Pod - 1.5x1.5m - Rs.48,000': { name: 'Startup Pod (1.5 x 1.5 m)', price: 48000 },
-  'Explorer Booth - 2x2m - Rs.1,25,000': { name: 'Explorer Booth (2 x 2 m)', price: 125000 },
+  'Explorer Booth - 2x2m - Rs.1,29,000': { name: 'Explorer Booth (2 x 2 m)', price: 129000 },
   'Innovator Booth - 3x2m - Rs.1,95,000': { name: 'Innovator Booth (3 x 2 m)', price: 195000 },
   'Accelerator Booth - 3x3m - Rs.2,91,000': { name: 'Accelerator Booth (3 x 3 m)', price: 291000 },
   'Enterprise Booth - 4x2m - Rs.2,58,000': { name: 'Enterprise Booth (4 x 2 m)', price: 258000 },
@@ -14102,8 +14142,17 @@ function mainPageHTML(): string {
           <div class="glass rounded-2xl p-6 md:p-8 border border-white/10 mb-8">
             <div class="text-center max-w-xl mx-auto">
               <h3 class="text-lg font-bold mb-2"><i class="fas fa-chalkboard-teacher text-primary-400 mr-2"></i>Led by working AI practitioners</h3>
-              <p class="text-sm text-gray-300">Every workshop is run by engineers and researchers who build production AI systems day to day. Small groups, real datasets, and a completion certificate you keep. Instructor line-up is announced closer to the event.</p>
+              <p class="text-sm text-gray-300">Every workshop is run by engineers and researchers who build production AI systems day to day. Small groups, real datasets, and a completion certificate you keep.</p>
             </div>
+            <div class="mt-6 flex flex-col sm:flex-row items-center justify-center gap-4 text-center sm:text-left">
+              <img src="/images/speaker-ashish-tendulkar-final.jpg" alt="Dr. Ashish Tendulkar" width="96" height="96" loading="lazy" class="w-24 h-24 rounded-full object-cover border-2 border-primary-400 shrink-0">
+              <div>
+                <div class="text-[11px] font-bold tracking-widest uppercase text-primary-400">Workshop Facilitator</div>
+                <div class="text-lg font-bold">Dr. Ashish Tendulkar</div>
+                <div class="text-sm text-gray-400">Lead AI, Google</div>
+              </div>
+            </div>
+            <p class="text-xs text-gray-500 text-center mt-4">More facilitators announced closer to the event.</p>
           </div>
 
           <!-- CTA -->
@@ -15279,7 +15328,7 @@ function mainPageHTML(): string {
       switch(tab) {
         case 'dashboard': loadDashboard(); break;
         case 'schedule': loadSchedule(); break;
-        case 'networking': skeletonCards('attendee-grid', 6, 'card'); loadAttendees(); break;
+        case 'networking': skeletonCards('attendee-grid', 6, 'card'); loadAttendeeFilters(); loadAttendees(); break;
         case 'exhibition': loadExhibitors(); break;
         case 'awards': loadAwards(); break;
         case 'agba-categories': loadAgbaCategories(); break;
@@ -15936,6 +15985,34 @@ function mainPageHTML(): string {
     let attendeeCursor = '';
     let attendeeHasMore = false;
     let attendeeLoading = false;
+
+    // Built from the directory rather than from a list written months ago, so an
+    // option that cannot match anybody never appears, and a tier added later shows
+    // up without a deploy. Options are created as DOM nodes, not concatenated HTML,
+    // because these strings come from the database.
+    var attendeeFiltersLoaded = false;
+    async function loadAttendeeFilters() {
+      const sel = document.getElementById('role-filter');
+      if (!sel || attendeeFiltersLoaded) return;
+      try {
+        const r = await fetch('/api/events/' + EVENT_ID + '/attendee-filters');
+        if (!r.ok) return;
+        const d = await r.json();
+        const badges = d.badges || [], roles = d.roles || [];
+        if (!badges.length && !roles.length) return;
+        const keep = sel.value;
+        sel.innerHTML = '';
+        const add = (value, label) => {
+          const o = document.createElement('option');
+          o.value = value; o.textContent = label; sel.appendChild(o);
+        };
+        add('', 'Everyone');
+        badges.forEach(v => add(v, v));
+        roles.forEach(v => add(v, v));
+        sel.value = keep;
+        attendeeFiltersLoaded = true;
+      } catch (e) {}
+    }
 
     async function loadAttendees(append) {
       // The guard is for "show more" only. A fresh load - a keystroke in the
@@ -21399,17 +21476,19 @@ function adminPageHTML(): string {
           </div>
         </div>
 
-        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           \${[
-            {icon:'fa-users',label:'Total Attendees',value:stats.attendees,color:'primary'},
-            {icon:'fa-door-open',label:'Checked In',value:(typeof stats.checkedIn === 'number' ? stats.checkedIn : 0),color:'green'},
-            {icon:'fa-microphone',label:'Sessions',value:stats.sessions,color:'purple'},
-            {icon:'fa-store',label:'Exhibitors',value:stats.exhibitors,color:'accent'},
-            {icon:'fa-handshake',label:'Connections',value:stats.connections,color:'teal'},
-            {icon:'fa-trophy',label:'Categories',value:stats.categories,color:'pink'},
+            {icon:'fa-users',label:'Total Attendees',value:stats.attendees,color:'primary',section:'attendees'},
+            {icon:'fa-door-open',label:'Checked In',value:(typeof stats.checkedIn === 'number' ? stats.checkedIn : 0),color:'green',section:'badge-desk'},
+            {icon:'fa-id-card',label:'Pass Downloaded',value:(typeof stats.passDownloaded === 'number' ? stats.passDownloaded : 0),color:'blue',section:'attendees'},
+            {icon:'fa-share-alt',label:'Creative Shared',value:(typeof stats.cardDownloaded === 'number' ? stats.cardDownloaded : 0),color:'amber',section:'attendees'},
+            {icon:'fa-microphone',label:'Sessions',value:stats.sessions,color:'purple',section:'sessions'},
+            {icon:'fa-store',label:'Exhibitors',value:stats.exhibitors,color:'accent',section:'exhibitors'},
+            {icon:'fa-handshake',label:'Connections',value:stats.connections,color:'teal',section:'overview'},
+            {icon:'fa-trophy',label:'Categories',value:stats.categories,color:'pink',section:'awards'},
           ].map(s=>\`
-            <div class="glass rounded-xl p-4 card-hover text-center cursor-pointer" onclick="switchSection('\${s.label.includes('Attend')?'attendees':s.label.includes('Checked')?'badge-desk':s.label.includes('Session')?'sessions':s.label.includes('Exhib')?'exhibitors':s.label.includes('Categ')?'awards':'overview'}')">
-              <i class="fas \${s.icon} text-lg mb-2" style="color:\${s.color==='primary'?'#FF6B00':s.color==='green'?'#059669':s.color==='purple'?'#7c3aed':s.color==='accent'?'#e05a00':s.color==='teal'?'#0d9488':'#e11d48'}"></i>
+            <div class="glass rounded-xl p-4 card-hover text-center cursor-pointer" onclick="switchSection('\${s.section}')">
+              <i class="fas \${s.icon} text-lg mb-2" style="color:\${s.color==='primary'?'#FF6B00':s.color==='green'?'#059669':s.color==='purple'?'#7c3aed':s.color==='accent'?'#e05a00':s.color==='teal'?'#0d9488':s.color==='blue'?'#2563eb':s.color==='amber'?'#d97706':'#e11d48'}"></i>
               <div class="text-2xl font-bold">\${s.value}</div>
               <div class="text-[10px] text-gray-500">\${s.label}</div>
             </div>
@@ -27351,7 +27430,7 @@ function adminPageHTML(): string {
         // A B2B buyer who withheld 2% u/s 194C: the cash that arrived is short of the
         // invoice by exactly the TDS, and the row is still fully settled.
         ['51', 'Reliance Jio Platforms', 'A Ambani', 'a@example.com', '+91 98765 43210', 'confirmed', '387000', '37000', 'BAI/2026/0001', '2026-09-01', '406000', '7000', '2026-09-08', '', 'paid', '27AABCR1234M1Z5', 'Reliance Jio Infocomm Limited', '27', '', 'Closed at the Delhi roadshow'],
-        ['19', 'Acme Robotics, Pvt Ltd', 'P Shah', 'p@example.com', '', 'confirmed', '125000', '0', 'BAI/2026/0002', '2026-09-03', '0', '0', '', '2026-09-30', 'invoiced', '29AACCA5678K1ZP', 'Acme Robotics Private Limited', '29', '', 'Invoice raised, payment due 30 Sep'],
+        ['19', 'Acme Robotics, Pvt Ltd', 'P Shah', 'p@example.com', '', 'confirmed', '129000', '0', 'BAI/2026/0002', '2026-09-03', '0', '0', '', '2026-09-30', 'invoiced', '29AACCA5678K1ZP', 'Acme Robotics Private Limited', '29', '', 'Invoice raised, payment due 30 Sep'],
         ['37', 'Seed Stage Labs', '', '', '', 'held', '48000', '0', '', '', '', '', '', '', 'pending', '', '', '', '2026-09-30', 'Verbal hold, lapses 30 Sep'],
       ];
       const csv = BOM + [BOOTH_CSV_HEADERS.join(',')]

@@ -338,6 +338,58 @@
             max-width: 700px;
             margin: 0 auto 2rem;
         }
+        /* The named facilitator. The section sold the workshops on "FAANG
+           engineers" and "PhD researchers" with nobody's name against them;
+           a delegate books against a person, not a category. */
+        .facilitator {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 1.25rem;
+            flex-wrap: wrap;
+            background: white;
+            border: 1px solid var(--light);
+            border-radius: var(--r-2xl);
+            box-shadow: var(--shadow-sm);
+            padding: 1.5rem 2rem;
+            max-width: 520px;
+            margin: 0 auto 2rem;
+            text-align: left;
+        }
+        .facilitator img {
+            width: 96px;
+            height: 96px;
+            border-radius: var(--r-full);
+            object-fit: cover;
+            border: 3px solid var(--saffron);
+            flex-shrink: 0;
+        }
+        .facilitator-who {
+            display: flex;
+            flex-direction: column;
+            gap: 0.2rem;
+        }
+        .facilitator-label {
+            font-size: 0.72rem;
+            font-weight: 700;
+            letter-spacing: 0.09em;
+            text-transform: uppercase;
+            color: var(--saffron);
+        }
+        .facilitator-who strong {
+            font-family: var(--font-display);
+            font-size: 1.35rem;
+            font-weight: 800;
+            color: var(--charcoal);
+        }
+        .facilitator-role {
+            font-size: 0.95rem;
+            color: var(--dark-grey);
+        }
+        @media (max-width: 520px) {
+            .facilitator { text-align: center; padding: 1.5rem; }
+            .facilitator-who { align-items: center; }
+        }
         .instructor-badges {
             display: flex;
             gap: 1rem;
@@ -749,6 +801,14 @@
             <div class="instructor-section reveal">
                 <h3>Learn from Industry Experts</h3>
                 <p>Our workshops are led by experienced AI practitioners and researchers who are building real-world AI systems at leading tech companies, startups, and research institutions. Get insights beyond textbooks and online courses.</p>
+                <div class="facilitator">
+                    <img src="/images/speaker-ashish-tendulkar-final.jpg" alt="Dr. Ashish Tendulkar" width="96" height="96" loading="lazy">
+                    <div class="facilitator-who">
+                        <span class="facilitator-label">Workshop Facilitator</span>
+                        <strong>Dr. Ashish Tendulkar</strong>
+                        <span class="facilitator-role">Lead AI, Google</span>
+                    </div>
+                </div>
                 <div class="instructor-badges">
                     <span class="instructor-badge">🏢 FAANG Engineers</span>
                     <span class="instructor-badge">🎓 PhD Researchers</span>
