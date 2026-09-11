@@ -107,8 +107,8 @@ EXPECTED_TOTAL = 93  # what exhibition.html and index.html both advertise
 # inquiry form in src/index.tsx quotes (BOOTH_PRICES there, by display name).
 # ---------------------------------------------------------------------------
 LIST_PRICE_INR = {
-    "pod":            38_000,   # Startup Pod        1.5 x 1.5 m
-    "explorer":      125_000,   # Explorer Booth     2 x 2 m
+    "pod":            48_000,   # Startup Pod        1.5 x 1.5 m
+    "explorer":      129_000,   # Explorer Booth     2 x 2 m
     "innovator":     195_000,   # Innovator Booth    3 x 2 m
     "accelerator":   258_000,   # Enterprise Booth   4 x 2 m   (naming quirk)
     "standard":      291_000,   # Accelerator Booth  3 x 3 m   (naming quirk)
@@ -129,15 +129,12 @@ UNCONFIRMED_PRICE_TYPES = ("premium",)
 # truth for this seed -- it is only cross-checked, because it is demonstrably
 # stale. Anything listed here is a KNOWN, DELIBERATE disagreement; anything not
 # listed fails --verify.
+# The explorer entry that lived here had it backwards: it declared the JS map's
+# Rs 1,29,000 stale and this file's Rs 1,25,000 correct. The organiser has since
+# confirmed 1,29,000 - which is also 4 sqm x the Rs 32,250/sqm rate to the rupee -
+# so the two copies now agree and there is no divergence left to allow.
 KNOWN_PRICE_DIVERGENCE = {
     # type_key: (what floor-plan-data.js says, what we seed, why we win)
-    "explorer": (
-        129_000, 125_000,
-        "floor-plan-data.js still carries the old Rs 1,29,000. The inquiry form "
-        "in src/index.tsx and the Booth Inventory screen both say Rs 1,25,000, "
-        "and 15 explorer stands x Rs 1,25,000 is the Rs 18,75,000 the floor "
-        "plan totals to. Fix the JS map and delete this entry.",
-    ),
 }
 
 # What the seeded prices must add up to. Hard-coded on purpose: these were
@@ -145,14 +142,14 @@ KNOWN_PRICE_DIVERGENCE = {
 # layout change trips the assertion and somebody looks -- instead of the revenue
 # target quietly re-deriving itself from whatever happens to be in the file.
 EXPECTED_SQM = 604.3
-EXPECTED_REVENUE_INR = 18_290_000            # Rs 1,82,90,000 ex-GST, everything at list
+EXPECTED_REVENUE_INR = 18_690_000            # Rs 1,86,90,000 ex-GST, everything at list
 EXPECTED_REVENUE_BY_TYPE = {
     "standard":    5_238_000,
     "mega":        3_480_000,
     "enterprise":  2_709_000,
     "innovator":   2_535_000,
-    "explorer":    1_875_000,
-    "pod":         1_292_000,
+    "explorer":    1_935_000,
+    "pod":         1_632_000,
     "premium":       645_000,                # the unconfirmed slice
     "accelerator":   516_000,
 }

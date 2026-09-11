@@ -6,7 +6,7 @@
 
 // Bump on any deploy that must reach returning visitors immediately: activate
 // deletes every cache not ending in VERSION, so the next fetch repopulates.
-const VERSION = 'bhai-v4';
+const VERSION = 'bhai-v5';
 const SHELL = `shell-${VERSION}`;
 const DATA = `data-${VERSION}`;
 
