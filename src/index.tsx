@@ -12622,7 +12622,7 @@ function mainPageHTML(): string {
           </div>
 
           <!-- Hero content: centered -->
-          <div class="relative max-w-4xl mx-auto px-4 pt-10 pb-10 md:pt-16 md:pb-12 text-center">
+          <div class="relative max-w-4xl mx-auto px-4 pt-10 pb-10 md:pt-16 md:pb-12 text-center" id="hero-inner">
             <!-- Date + location pill -->
             <div class="flex items-center justify-center gap-2 mb-5">
               <span class="px-3 py-1 rounded-full text-[11px] font-semibold tracking-widest uppercase" style="background:rgba(245,98,10,0.12);color:#f5a070;border:1px solid rgba(245,98,10,0.25);">NOV 20–21, 2026</span>
@@ -14900,6 +14900,14 @@ function mainPageHTML(): string {
     function applySignedInChrome() {
       const marketing = document.querySelectorAll('.signed-out-only');
       marketing.forEach(el => el.classList.toggle('hidden', !!currentUser));
+      // Hiding the headline leaves the band it sat in. Without this a signed-in
+      // delegate gets a slab of empty gradient where the billboard used to be,
+      // which is worse than the billboard: at least that said something.
+      const heroInner = document.getElementById('hero-inner');
+      if (heroInner) {
+        heroInner.style.paddingTop = currentUser ? '1.25rem' : '';
+        heroInner.style.paddingBottom = currentUser ? '1rem' : '';
+      }
       document.querySelectorAll('.js-home-label').forEach(el => {
         el.textContent = currentUser ? 'Dashboard' : 'Home';
       });
