@@ -485,7 +485,7 @@ section { position: relative; }
   object-fit: cover;
   object-position: center 45%;
   opacity: 0;
-  animation: heroFrameFade 56s linear infinite;
+  animation: heroFrameFade 42s linear infinite;
   will-change: opacity, transform;
 }
 
@@ -493,19 +493,28 @@ section { position: relative; }
    load - the hero must never open on the bare gradient. Each later frame starts
    its fade-in while the previous one is still up, so they overlap, never gap. */
 .hero-bg-photo:nth-of-type(1) { animation-delay: -1.2s; }
-.hero-bg-photo:nth-of-type(2) { animation-delay: 6.8s; }
-.hero-bg-photo:nth-of-type(3) { animation-delay: 14.8s; }
-.hero-bg-photo:nth-of-type(4) { animation-delay: 22.8s; }
-.hero-bg-photo:nth-of-type(5) { animation-delay: 30.8s; }
-.hero-bg-photo:nth-of-type(6) { animation-delay: 38.8s; }
-.hero-bg-photo:nth-of-type(7) { animation-delay: 46.8s; }
+.hero-bg-photo:nth-of-type(2) { animation-delay: 4.8s; }
+.hero-bg-photo:nth-of-type(3) { animation-delay: 10.8s; }
+.hero-bg-photo:nth-of-type(4) { animation-delay: 16.8s; }
+.hero-bg-photo:nth-of-type(5) { animation-delay: 22.8s; }
+.hero-bg-photo:nth-of-type(6) { animation-delay: 28.8s; }
+.hero-bg-photo:nth-of-type(7) { animation-delay: 34.8s; }
 
 @keyframes heroFrameFade {
   0%      { opacity: 0; transform: scale(1); }
-  2.143%  { opacity: 1; }
+  2.857%  { opacity: 1; }
   14.286% { opacity: 1; }
-  16.429% { opacity: 0; transform: scale(1.05); }
+  17.143% { opacity: 0; transform: scale(1.05); }
   100%    { opacity: 0; transform: scale(1.05); }
+}
+
+/* The same crossfade with the zoom removed, used under reduced motion. */
+@keyframes heroFrameFadeStill {
+  0%      { opacity: 0; }
+  2.857%  { opacity: 1; }
+  14.286% { opacity: 1; }
+  17.143% { opacity: 0; }
+  100%    { opacity: 0; }
 }
 
 /* --grad-hero is painted on .hero itself, which sits BEHIND .hero-bg, so an opaque
@@ -630,10 +639,21 @@ section { position: relative; }
   .hero-bg-photo { display: none; }
 }
 
-/* No crossfade for anyone who asked for less motion - hold the opening frame. */
+/* Reduced motion keeps the crossfade but loses the zoom: a slow opacity fade
+   carries no movement and is not a vestibular trigger, the scale is.
+
+   The !important is not decoration. The global reduced-motion reset near the end
+   of this file sets animation-duration:0.01ms and iteration-count:1 on *, with
+   !important, which otherwise collapses this crossfade to a single instant frame
+   and leaves the hero on one static photo. The per-frame animation-delay values
+   above are untouched by that reset, so they still stagger correctly. */
 @media (prefers-reduced-motion: reduce) {
-  .hero-bg-photo { animation: none; }
-  .hero-bg-photo:nth-of-type(1) { opacity: 1; }
+  .hero-bg-photo {
+    animation-name: heroFrameFadeStill !important;
+    animation-duration: 42s !important;
+    animation-iteration-count: infinite !important;
+    animation-timing-function: linear !important;
+  }
 }
 
 /* --- Hero date/venue line --- */
