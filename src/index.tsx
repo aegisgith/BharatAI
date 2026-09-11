@@ -250,7 +250,7 @@ app.get('/api/events/:id/sessions/rooms', async (c) => {
 // the last sign-in. Nothing writes last_seen, so last_login_at is the only real
 // signal available; true presence would need a heartbeat from the client.
 const ONLINE_WINDOW_MINUTES = 15
-const ATTENDEE_PUBLIC_COLS = `id, event_id, name, company, job_title, bio, avatar_url, company_logo_url, interests, linkedin_url, twitter_url, website_url, role, badge_type, CASE WHEN last_login_at > datetime('now', '-${ONLINE_WINDOW_MINUTES} minutes') THEN 1 ELSE 0 END AS is_online, last_seen, industry, city, country`
+const ATTENDEE_PUBLIC_COLS = `id, event_id, name, company, job_title, bio, avatar_url, company_logo_url, networking_goals, interests, linkedin_url, twitter_url, website_url, role, badge_type, CASE WHEN last_login_at > datetime('now', '-${ONLINE_WINDOW_MINUTES} minutes') THEN 1 ELSE 0 END AS is_online, last_seen, industry, city, country`
 
 // What the ADMIN grid actually renders, plus what its row actions need: the CSV
 // export built in the browser, the pass download, notify, the segment filters and
@@ -2839,6 +2839,11 @@ async function boothRevenueTarget(c: any): Promise<number> {
 // 21 Nov. 09:00-18:00 therefore sits inside both days and clears the closing
 // ceremony. Kept in code, not in a table, so trimming the window is a deploy
 // rather than another --remote execute.
+// The closed vocabulary the matchmaker understands. Mirrored by GOALS in the app;
+// anything outside it is dropped on write, because a goal the scorer cannot match
+// is a value that looks meaningful and never does anything.
+const NETWORKING_GOALS = ['selling', 'buying', 'raising', 'investing', 'hiring', 'jobseeking', 'partner', 'learning']
+
 const ROOM_DAYS = ['2026-11-20', '2026-11-21']
 const ROOM_SLOT_HOURS = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00']
 const ROOM_GST_PERCENT = 18
@@ -7195,6 +7200,19 @@ app.put('/api/attendees/:id/profile', async (c) => {
   const extraVals: any[] = []
   if (city !== undefined) { extra.push('city = ?'); extraVals.push(String(city || '').trim()) }
   if (industry !== undefined && INDUSTRIES.includes(String(industry))) { extra.push('industry = ?'); extraVals.push(String(industry)) }
+  /* Why someone is here, for the matchmaker. Written only when sent, like city and
+   * industry above, so an older client cannot blank it.
+   *
+   * Filtered against the known vocabulary rather than stored as given: the rail
+   * matches a goal to its complement by exact token, so anything outside the list
+   * is dead weight that would never match and would sit in the row looking as
+   * though it might. */
+  if (body.networking_goals !== undefined) {
+    const clean = String(body.networking_goals || '')
+      .split(',').map((g: string) => g.trim().toLowerCase())
+      .filter((g: string) => NETWORKING_GOALS.includes(g))
+    extra.push('networking_goals = ?'); extraVals.push(Array.from(new Set(clean)).join(','))
+  }
 
   await c.env.DB.prepare(
     'UPDATE attendees SET name=?, company=?, job_title=?, bio=?, interests=?, linkedin_url=?, twitter_url=?, website_url=?, mobile=?, lunch_inclusion=?, arrival_time=?' +
@@ -7775,7 +7793,7 @@ app.get('/api/admin/events/:id/attendees/export', async (c) => {
     'name', 'email', 'company', 'job_title', 'mobile', 'city', 'country',
     'linkedin_url', 'lunch_inclusion', 'arrival_time', 'bio', 'interests', 'role',
     'badge_type', 'registration_date', 'payment_amount', 'rsvp_status', 'rsvp_at',
-    'notified_at', 'last_login_at', 'pass_downloaded_at', 'social_card_downloaded_at', 'company_logo_url', 'registration_source',
+    'notified_at', 'last_login_at', 'pass_downloaded_at', 'social_card_downloaded_at', 'company_logo_url', 'networking_goals', 'registration_source',
     'id', 'payment_status', 'industry', 'company_size', 'special_requirements',
     'pass_type', 'twitter_url', 'website_url', 'checked_in_at', 'checked_in_by',
     'created_at',
@@ -14460,6 +14478,13 @@ function mainPageHTML(): string {
               <textarea id="edit-bio" autocomplete="off" rows="3" class="w-full px-4 py-3 rounded-xl text-sm"></textarea>
             </div>
             <div>
+              <!-- Why you are here. Chips, not free text: the matchmaker pairs a
+                   goal with its complement by exact token, so anything typed by
+                   hand would be unmatchable - which is the problem this fixes. -->
+              <label class="text-xs text-gray-400 mb-1 block">What are you here for? <span class="text-gray-500">— decides who you see first</span></label>
+              <div id="edit-goals" class="flex flex-wrap gap-2"></div>
+            </div>
+            <div>
               <label class="text-xs text-gray-400 mb-1 block">Interests (comma-separated)</label>
               <input type="text" id="edit-interests" autocomplete="off" class="w-full px-4 py-3 rounded-xl text-sm">
             </div>
@@ -15812,6 +15837,49 @@ function mainPageHTML(): string {
     // online-first. Turns a raw alphabetical list into "who's worth meeting".
     const complements = { 'startup': 'investor', 'investor': 'startup', 'exhibitor': 'delegate', 'media': 'speaker' };
 
+    /* What someone is here to DO, which is the strongest signal this rail has and
+     * the one nobody was ever asked for. Interests cannot separate this crowd -
+     * nearly everyone writes "ai, ml" - and seniority only says who is important,
+     * not who is useful to you.
+     *
+     * The match that matters is COMPLEMENTARY, never identical: two people both
+     * selling are each other's worst use of twenty minutes, while a seller and a
+     * buyer are the meeting the entire event exists to cause. So the table maps a
+     * goal to the goal it wants to sit opposite. 'partner' is the one that points
+     * at itself, because two people looking for partners genuinely do match. */
+    const GOALS = [
+      { key: 'selling',   label: 'Find customers',      short: 'selling' },
+      { key: 'buying',    label: 'Find solutions to buy', short: 'buying' },
+      { key: 'raising',   label: 'Raise investment',    short: 'raising' },
+      { key: 'investing', label: 'Invest in startups',  short: 'investing' },
+      { key: 'hiring',    label: 'Hire talent',         short: 'hiring' },
+      { key: 'jobseeking',label: 'Find a role',         short: 'looking for a role' },
+      { key: 'partner',   label: 'Find partners',       short: 'looking for partners' },
+      { key: 'learning',  label: 'Learn and upskill',   short: 'here to learn' }
+    ];
+    const GOAL_COMPLEMENT = {
+      selling: 'buying', buying: 'selling',
+      raising: 'investing', investing: 'raising',
+      hiring: 'jobseeking', jobseeking: 'hiring',
+      partner: 'partner'
+    };
+    const goalShort = (k) => (GOALS.find(g => g.key === k) || {}).short || k;
+    const goalsOf = (u) => String((u && u.networking_goals) || '')
+      .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+
+    /* Returns the first pairing found, as [mine, theirs], or null. Worth more than
+     * any interest overlap: a shared interest says you would enjoy the chat, a
+     * complementary goal says one of you can buy from the other. */
+    function goalMatch(a) {
+      const mine = goalsOf(currentUser), theirs = goalsOf(a);
+      if (!mine.length || !theirs.length) return null;
+      for (const g of mine) {
+        const want = GOAL_COMPLEMENT[g];
+        if (want && theirs.indexOf(want) !== -1) return [g, want];
+      }
+      return null;
+    }
+
     // Seniority weighting. Shared interests alone cannot separate this crowd —
     // nearly everyone lists "ai, ml", so every profile tied on 20 points and the
     // rail fell back to alphabetical order, leading with students. The rail is
@@ -15859,11 +15927,18 @@ function mainPageHTML(): string {
       score += seniorityScore(a.job_title);
       const theirRole = (a.badge_type || '').toLowerCase();
       for (const [k, v] of Object.entries(complements)) { if (myRole.includes(k) && theirRole.includes(v)) score += 15; }
+      // Weighted above interests (10 each) and role complement (15) on purpose: a
+      // shared interest says you would enjoy the conversation, a complementary
+      // goal says one of you can buy from the other.
+      if (goalMatch(a)) score += 40;
       if (a.is_online) score += 3;
       return { score, shared };
     }
     function matchReason(a, shared) {
       const myRole = (currentUser?.badge_type || '').toLowerCase();
+      // Said before shared interests, because it is the better reason to meet.
+      const gm = goalMatch(a);
+      if (gm) return \`You're \${goalShort(gm[0])} · they're \${goalShort(gm[1])}\`;
       if (shared.length) return \`\${shared.length} shared interest\${shared.length>1?'s':''}: \${shared.slice(0,2).join(', ')}\`;
       const theirRole = (a.badge_type || '').toLowerCase();
       for (const [k, v] of Object.entries(complements)) { if (myRole.includes(k) && theirRole.includes(v)) return \`\${displayBadge(a.badge_type)} — could be a great match\`; }
@@ -16010,8 +16085,19 @@ function mainPageHTML(): string {
       pool.sort((x, y) => (y._score - x._score) || (y.is_online - x.is_online));
       const top = pool.filter(a => a._score >= 10).slice(0, 8);
       if (!top.length) { el.classList.add('hidden'); return; }
+      /* Anyone who has not said why they are here is being matched on interests
+       * alone, which at an AI conference means "ai, ml" and everybody. Say so on
+       * the rail itself, where the payoff is visible, rather than burying the ask
+       * in a settings screen nobody opens. */
+      const noGoals = goalsOf(currentUser).length === 0;
       el.innerHTML =
-        '<div class="flex items-center justify-between gap-2 mb-3">'
+        (noGoals
+          ? '<button type="button" onclick="openEditProfile()" class="w-full text-left glass rounded-xl p-3 mb-3 border border-primary-500/30 hover:bg-white/10 transition">'
+            + '<p class="text-xs"><i class="fas fa-wand-magic-sparkles text-primary-400 mr-1.5"></i>'
+            + '<span class="font-semibold">Tell us what you are here for</span>'
+            + '<span class="text-gray-400"> — selling, hiring, raising? These get far sharper.</span></p></button>'
+          : '')
+        + '<div class="flex items-center justify-between gap-2 mb-3">'
         + '<div class="flex items-center gap-2"><i class="fas fa-wand-magic-sparkles text-primary-400"></i>'
         + '<h3 class="text-sm font-semibold">People you should meet</h3></div>'
         // &quot; not \' — an escaped quote here is eaten by the enclosing template
@@ -19356,11 +19442,34 @@ function mainPageHTML(): string {
       document.getElementById('edit-avatar-preview').src = getAvatarUrl(currentUser.email, currentUser.name, 128, currentUser.avatar_url);
       document.getElementById('remove-avatar-btn').classList.toggle('hidden', !hasUploadedPhoto(currentUser.avatar_url));
       paintCompanyLogoControl();
+      renderGoalChips(goalsOf(currentUser));
       document.getElementById('edit-profile-modal').classList.remove('hidden');
     }
 
     function closeEditProfile() {
       document.getElementById('edit-profile-modal').classList.add('hidden');
+    }
+
+    // Held on the element rather than in a variable so reopening the dialog cannot
+    // leave the chips showing one thing and the pending save holding another.
+    function renderGoalChips(selected) {
+      const box = document.getElementById('edit-goals');
+      if (!box) return;
+      box.dataset.selected = (selected || []).join(',');
+      box.innerHTML = GOALS.map(g => {
+        const on = (selected || []).indexOf(g.key) !== -1;
+        return '<button type="button" onclick="toggleGoalChip(&quot;' + g.key + '&quot;)" class="px-3 rounded-full text-xs font-medium transition '
+          + (on ? 'bg-primary-600 text-white' : 'glass text-gray-400 hover:bg-white/10')
+          + '" style="min-height:36px;">' + (on ? '<i class="fas fa-check mr-1.5"></i>' : '') + esc(g.label) + '</button>';
+      }).join('');
+    }
+
+    function toggleGoalChip(key) {
+      const box = document.getElementById('edit-goals');
+      const cur = String(box.dataset.selected || '').split(',').filter(Boolean);
+      const i = cur.indexOf(key);
+      if (i === -1) cur.push(key); else cur.splice(i, 1);
+      renderGoalChips(cur);
     }
 
     async function handleProfilePhotoSelect(input) {
@@ -19591,6 +19700,7 @@ function mainPageHTML(): string {
           industry: document.getElementById('edit-industry').value,
           bio: document.getElementById('edit-bio').value,
           interests: document.getElementById('edit-interests').value,
+          networking_goals: document.getElementById('edit-goals').dataset.selected || '',
           linkedin_url: document.getElementById('edit-linkedin').value,
           mobile: document.getElementById('edit-mobile').value,
           lunch_inclusion: document.getElementById('edit-lunch').value,
@@ -19600,6 +19710,9 @@ function mainPageHTML(): string {
         });
         currentUser = updated;
         localStorage.setItem('agba_user', JSON.stringify(currentUser));
+        // Goals change who should be on the rail, so redraw it rather than
+        // leaving yesterday's recommendations on screen.
+        if (typeof renderDashMatchRail === 'function') renderDashMatchRail();
         closeEditProfile();
         showToast('Profile updated!', 'success');
         loadMyProfile();

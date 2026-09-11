@@ -1,0 +1,28 @@
+-- Migration 0035: what each attendee is actually here to do.
+--
+-- The matchmaking rail scores on shared interests, and the comment above
+-- SENIORITY in the app already records why that is not enough: at an AI
+-- conference nearly everyone lists "ai, ml", so every profile tied on the same
+-- score and the rail fell back to alphabetical order, leading with students.
+-- Seniority was added to break the tie, which helps a buyer but is a proxy, not
+-- an answer. It says who is important, not who is useful to YOU.
+--
+-- The field that actually matches people at a B2B event is the one nobody has
+-- been asked: why are you here. And the useful match on it is COMPLEMENTARY, not
+-- identical - two people both selling are each other's worst use of twenty
+-- minutes, while a seller and a buyer are the meeting the whole event exists for.
+-- Identical-interest matching cannot express that; this can.
+--
+-- Stored the way interests are, as a comma-separated list, because the same
+-- person is often doing two of these at once - raising and hiring, selling and
+-- partnering - and forcing one choice would throw away the second.
+--
+-- Deliberately a short closed vocabulary rather than free text. Free text cannot
+-- be matched on without guessing, which is the problem being fixed; the app
+-- writes only the tokens it offers, and anything else is ignored by the scorer.
+--
+-- NULL means "not answered", which every existing row gets. The rail keeps
+-- working on interests and seniority for those people and simply cannot make the
+-- stronger claim about them, which is the honest behaviour.
+
+ALTER TABLE attendees ADD COLUMN networking_goals TEXT;
