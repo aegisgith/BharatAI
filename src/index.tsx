@@ -12638,7 +12638,7 @@ function mainPageHTML(): string {
               <div class="flex-1 min-w-0">
                 <h3 class="font-bold text-sm mb-0.5"><span id="pcc-pass-name">Your pass</span> is ready</h3>
                 <p class="text-xs text-gray-400 mb-3" id="pcc-pass-note">Keep it on your phone — the badge desk scans it to check you in.</p>
-                <button type="button" onclick="generateDelegatePass()" class="px-4 py-2 rounded-xl text-xs font-semibold bg-primary-600 hover:bg-primary-500 text-white transition"><i class="fas fa-download mr-1.5"></i>Download my pass</button>
+                <button type="button" onclick="generateDelegatePass()" class="px-4 rounded-xl text-xs font-semibold bg-primary-600 hover:bg-primary-500 text-white transition" style="min-height:44px;"><i class="fas fa-download mr-1.5"></i>Download my pass</button>
               </div>
             </div>
             <div class="glass rounded-2xl p-5 border border-emerald-500/25 flex items-start gap-4">
@@ -12648,7 +12648,7 @@ function mainPageHTML(): string {
               <div class="flex-1 min-w-0">
                 <h3 class="font-bold text-sm mb-0.5">Tell your network you're coming</h3>
                 <p class="text-xs text-gray-400 mb-3">A card with your photo, sized for LinkedIn, WhatsApp and Instagram — with a caption you can copy.</p>
-                <button type="button" onclick="openSocialCard()" class="px-4 py-2 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition"><i class="fas fa-share-alt mr-1.5"></i>Get my card</button>
+                <button type="button" onclick="openSocialCard()" class="px-4 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition" style="min-height:44px;"><i class="fas fa-share-alt mr-1.5"></i>Get my card</button>
               </div>
             </div>
           </div>
@@ -14800,12 +14800,12 @@ function mainPageHTML(): string {
         switchTab(pendingTabAfterLogin);
         pendingTabAfterLogin = null;
       }
-      // Show arrival time prompt if not set
-      setTimeout(() => {
-        if (currentUser && !currentUser.arrival_time) {
-          showArrivalTimePrompt();
-        }
-      }, 1500);
+      // The arrival-time prompt used to open itself 1.5s after every sign-in: a
+      // full-screen modal asking about event logistics before the delegate had
+      // seen their pass, their matches or anything else, and it came back on the
+      // next sign-in because "Later" remembered nothing. The same question is
+      // already an inline card on the dashboard, so nothing is lost by letting
+      // people reach it when they are ready.
     }
 
     // Update nav bar to show Sign In button or avatar based on auth state.
@@ -14847,12 +14847,12 @@ function mainPageHTML(): string {
       updateNavAvatar();
       loadDashboard();
       checkUnread();
-      // Show arrival time prompt if not set
-      setTimeout(() => {
-        if (currentUser && !currentUser.arrival_time) {
-          showArrivalTimePrompt();
-        }
-      }, 1500);
+      // The arrival-time prompt used to open itself 1.5s after every sign-in: a
+      // full-screen modal asking about event logistics before the delegate had
+      // seen their pass, their matches or anything else, and it came back on the
+      // next sign-in because "Later" remembered nothing. The same question is
+      // already an inline card on the dashboard, so nothing is lost by letting
+      // people reach it when they are ready.
     }
 
     // ==================== QUICK VISITOR REGISTRATION ====================
@@ -16025,7 +16025,7 @@ function mainPageHTML(): string {
             + '<div class="min-w-0"><div class="font-semibold text-sm truncate">' + esc(a.name || '') + '</div>'
             + '<div class="text-[11px] text-gray-400 truncate">' + esc([a.job_title, a.company].filter(Boolean).join(' · ')) + '</div></div></div>'
             + '<p class="text-[11px] text-primary-300 mt-2 line-clamp-2"><i class="fas fa-link mr-1"></i>' + esc(matchReason(a, a._shared || [])) + '</p>'
-            + '<button type="button" onclick="viewProfile(' + a.id + ')" class="w-full mt-3 py-1.5 rounded-lg text-xs font-semibold text-white transition" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);">View profile</button>'
+            + '<button type="button" onclick="viewProfile(' + a.id + ')" class="w-full mt-3 rounded-lg text-xs font-semibold text-white transition" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);min-height:44px;">View profile</button>'
             + '</div>').join('')
         + '</div>';
       el.classList.remove('hidden');
