@@ -12622,6 +12622,38 @@ function mainPageHTML(): string {
           </div>
         </div>
 
+        <!-- The two things a delegate came here to collect.
+             Both existed already and both were effectively hidden: the pass button
+             lived in the My Profile tab, and the shareable card was offered ONCE,
+             automatically, straight after a pass download - so anyone who dismissed
+             it, or who downloaded their pass before the card existed, had no way
+             back to it. Signing in now lands on both, above everything else.
+             Rendered by renderPassAndCardCta(). -->
+        <div class="max-w-7xl mx-auto px-4 mt-6 hidden" id="pass-card-cta">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div class="glass rounded-2xl p-5 border border-primary-500/25 flex items-start gap-4">
+              <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-primary-500/20 to-orange-500/20 flex items-center justify-center shrink-0">
+                <i class="fas fa-id-badge text-xl text-primary-400"></i>
+              </div>
+              <div class="flex-1 min-w-0">
+                <h3 class="font-bold text-sm mb-0.5"><span id="pcc-pass-name">Your pass</span> is ready</h3>
+                <p class="text-xs text-gray-400 mb-3" id="pcc-pass-note">Keep it on your phone — the badge desk scans it to check you in.</p>
+                <button type="button" onclick="generateDelegatePass()" class="px-4 py-2 rounded-xl text-xs font-semibold bg-primary-600 hover:bg-primary-500 text-white transition"><i class="fas fa-download mr-1.5"></i>Download my pass</button>
+              </div>
+            </div>
+            <div class="glass rounded-2xl p-5 border border-emerald-500/25 flex items-start gap-4">
+              <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500/20 to-teal-500/20 flex items-center justify-center shrink-0">
+                <i class="fas fa-bullhorn text-xl text-emerald-400"></i>
+              </div>
+              <div class="flex-1 min-w-0">
+                <h3 class="font-bold text-sm mb-0.5">Tell your network you're coming</h3>
+                <p class="text-xs text-gray-400 mb-3">A card with your photo, sized for LinkedIn, WhatsApp and Instagram — with a caption you can copy.</p>
+                <button type="button" onclick="openSocialCard()" class="px-4 py-2 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition"><i class="fas fa-share-alt mr-1.5"></i>Get my card</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- Role-aware welcome panel (logged-in): greets each persona and
              surfaces the actions that matter to them. Populated by renderRoleHome(). -->
         <div class="max-w-7xl mx-auto px-4 mt-6 hidden" id="role-home"></div>
@@ -15363,6 +15395,7 @@ function mainPageHTML(): string {
         if (quickActions) quickActions.classList.remove('hidden');
         if (registerVisitorBtn) registerVisitorBtn.classList.add('hidden');
         if (roleHome) { roleHome.classList.remove('hidden'); renderRoleHome(); }
+        renderPassAndCardCta();
         updateProfileCompletionCard();
         // Not awaited: it makes three API calls and the home screen should not wait
         // on them to paint. The card reveals itself when it has something to say.
@@ -15373,6 +15406,8 @@ function mainPageHTML(): string {
         if (registerVisitorBtn) registerVisitorBtn.classList.remove('hidden');
         if (roleHome) roleHome.classList.add('hidden');
         if (profileCard) profileCard.classList.add('hidden');
+        var passCta = document.getElementById('pass-card-cta');
+        if (passCta) passCta.classList.add('hidden');
         var planCard = document.getElementById('event-plan-card');
         if (planCard) planCard.classList.add('hidden');
       }
@@ -15387,6 +15422,28 @@ function mainPageHTML(): string {
     // actions that matter to them, so the app stops being one dashboard for
     // everyone. Keyed off badge_type (and role) — falls back to a sensible
     // attendee default.
+    /* The pass and the card, surfaced on arrival. Both were reachable before and
+     * neither was findable: the pass sat in the My Profile tab, and the card was
+     * offered once, automatically, right after a pass download - so dismissing it
+     * once meant never seeing it again.
+     *
+     * The pass panel tells the truth about paid tiers. A Delegate, Academic or VIP
+     * pass will not issue until payment lands, and saying "ready" to someone whose
+     * payment is still pending sends them to a button that refuses them. */
+    function renderPassAndCardCta() {
+      const el = document.getElementById('pass-card-cta');
+      if (!el) return;
+      if (!currentUser) { el.classList.add('hidden'); return; }
+      const name = String(currentUser.badge_type || '').trim() || 'Your pass';
+      const pending = String(currentUser.payment_status || '').toLowerCase() === 'pending'
+        && /delegate|academic|vip/i.test(name);
+      document.getElementById('pcc-pass-name').textContent = pending ? name : name;
+      document.getElementById('pcc-pass-note').textContent = pending
+        ? 'It will be issued as soon as your payment is confirmed.'
+        : 'Keep it on your phone — the badge desk scans it to check you in.';
+      el.classList.remove('hidden');
+    }
+
     function renderRoleHome() {
       const el = document.getElementById('role-home');
       if (!el || !currentUser) return;
