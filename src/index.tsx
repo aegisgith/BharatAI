@@ -12648,6 +12648,18 @@ function mainPageHTML(): string {
               <a href="https://bharataiinnovation.com" target="_blank" class="flex items-center gap-2 px-6 py-3 rounded-full text-sm font-semibold text-gray-200 transition hover:bg-white/10 no-underline" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);">Learn More</a>
             </div>
 
+            <!-- The compact wordmark a signed-in delegate gets in place of the
+                 billboard. Same tricolour, and the same Devanagari line, as the
+                 pass and the shareable card, so all three agree. -->
+            <div class="hidden signed-in-only mt-3" id="hero-wordmark">
+              <div class="font-black tracking-tight" style="font-size:clamp(1.5rem,3.2vw,2.25rem);line-height:1.1;">
+                <span style="color:#FF7A00;">Bharat</span> <span style="color:#ffffff;">AI</span> <span style="color:#00996C;">Innovation</span>
+              </div>
+              <div class="mt-1" style="font-family:'Mukta','Nirmala UI','Noto Sans Devanagari',sans-serif;font-weight:600;font-size:clamp(0.95rem,2vw,1.25rem);">
+                <span style="color:#FF7A00;">&#2349;&#2366;&#2352;&#2340;</span> <span style="color:#e8edf5;">&#2319;&#2310;&#2312;</span> <span style="color:#00b57f;">&#2311;&#2344;&#2379;&#2357;&#2375;&#2358;&#2344;</span>
+              </div>
+            </div>
+
             <!-- Hidden fields for JS -->
             <div class="hidden" id="hero-venue-dates">
               <span id="event-venue"></span><span id="event-dates"></span>
@@ -12801,6 +12813,23 @@ function mainPageHTML(): string {
         <!-- Quick Actions: Delegate Pass + Arrival Time -->
         <div class="max-w-7xl mx-auto px-4 mt-6 hidden" id="home-quick-actions">
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <!-- Cross-sell. Somebody with a product to show is worth more to the
+                 event than somebody with a pass, and the Showcase is the one item
+                 that carries a booth with it - so it is said plainly rather than
+                 left for them to work out from two separate price lists. -->
+            <div class="glass rounded-2xl p-5 border border-teal-500/25 card-hover cursor-pointer" onclick="switchTab('innovation')">
+              <div class="flex items-center gap-4">
+                <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-teal-500/20 to-emerald-500/20 flex items-center justify-center shrink-0">
+                  <i class="fas fa-lightbulb text-2xl text-teal-400"></i>
+                </div>
+                <div class="flex-1">
+                  <h3 class="font-bold text-base mb-0.5">Have an AI product to show?</h3>
+                  <p class="text-xs text-gray-400">Book an AI Innovation Showcase &amp; Talk &mdash; an exhibition booth is included with it</p>
+                </div>
+                <i class="fas fa-chevron-right text-teal-400 text-lg"></i>
+              </div>
+            </div>
+
             <!-- Download Delegate Pass Card. Hidden: the pass already has its own
                  panel at the top of the dashboard and an entry in the welcome
                  panel. A third copy is noise, not emphasis. -->
@@ -13398,163 +13427,13 @@ function mainPageHTML(): string {
               <i class="fas fa-chevron-down text-gray-400 text-xs ml-auto md:ml-2"></i>
             </button>
 
-            <div id="floor-plan" class="hidden mt-4 glass rounded-2xl p-4 md:p-6 overflow-x-auto">
-              <!-- Legend -->
-              <div class="flex flex-wrap gap-3 mb-4 text-xs">
-                <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-red-500 inline-block"></span> Red Zone</span>
-                <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-green-500 inline-block"></span> Green Zone</span>
-                <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-blue-500 inline-block"></span> Blue Zone</span>
-                <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-purple-500 inline-block"></span> Purple Zone</span>
-                <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-yellow-500 inline-block"></span> Stage</span>
-              </div>
-
-              <!-- Floor Plan Grid -->
-              <div class="min-w-[600px]" style="display:grid; grid-template-columns: repeat(8, 1fr); grid-template-rows: repeat(14, auto); gap: 4px; font-size: 10px;">
-
-                <!-- Row 1: HALL C label -->
-                <div style="grid-column: 1 / 9; text-align:center; padding:6px; font-weight:800; font-size:14px; color:#94a3b8; letter-spacing:2px;">HALL C</div>
-
-                <!-- Row 2: STAGE -->
-                <div style="grid-column: 3 / 6; background: linear-gradient(135deg,#eab308,#ca8a04); color:#000; text-align:center; padding:10px 0; font-weight:800; font-size:13px; border-radius:8px;">🎤 STAGE</div>
-
-                <!-- Row 3: Cognizant (Purple 39) + gap + Capgemini (Purple 54) -->
-                <div style="grid-column: 1 / 2;"></div>
-                <div style="grid-column: 2 / 5; background:rgba(147,51,234,0.3); border:2px solid #9333ea; border-radius:8px; padding:8px; text-align:center; cursor:pointer;" onclick="highlightBooth('Cognizant')" class="booth-cell card-hover">
-                  <div style="font-weight:700; color:#9333EA;">39 · Purple</div>
-                  <div style="font-weight:800; color:white; font-size:11px;">Cognizant</div>
-                </div>
-                <div style="grid-column: 5 / 5;"></div>
-                <div style="grid-column: 5 / 8; background:rgba(147,51,234,0.3); border:2px solid #9333ea; border-radius:8px; padding:8px; text-align:center; cursor:pointer;" onclick="highlightBooth('Capgemini')" class="booth-cell card-hover">
-                  <div style="font-weight:700; color:#9333EA;">54 · Purple</div>
-                  <div style="font-weight:800; color:white; font-size:11px;">Capgemini</div>
-                </div>
-
-                <!-- Row 4: MedhAnkura (Red 38) + Velox (Blue 51) + JAAJI (Blue 53) -->
-                <div style="grid-column: 1 / 3; background:rgba(239,68,68,0.3); border:2px solid #ef4444; border-radius:8px; padding:6px; text-align:center; cursor:pointer;" onclick="highlightBooth('MedhAnkura')" class="booth-cell card-hover">
-                  <div style="font-weight:700; color:#DC2626;">38 · Red</div>
-                  <div style="font-weight:800; color:white;">MedhAnkura</div>
-                </div>
-                <div style="grid-column: 3 / 4; background:rgba(59,130,246,0.3); border:2px solid #3b82f6; border-radius:8px; padding:6px; text-align:center; cursor:pointer;" onclick="highlightBooth('Velox')" class="booth-cell card-hover">
-                  <div style="font-weight:700; color:#60a5fa;">51 · Blue</div>
-                  <div style="font-weight:800; color:white;">Velox</div>
-                </div>
-                <div style="grid-column: 4 / 6; background:rgba(59,130,246,0.3); border:2px solid #3b82f6; border-radius:8px; padding:6px; text-align:center; cursor:pointer;" onclick="highlightBooth('JAAJI')" class="booth-cell card-hover">
-                  <div style="font-weight:700; color:#60a5fa;">53 · Blue</div>
-                  <div style="font-weight:800; color:white;">JAAJI</div>
-                </div>
-                <div style="grid-column: 6 / 9;"></div>
-
-                <!-- Row 5: OneAssist (Red 37) + Assessfy (Green 41) + Bandhure/aivi (Blue 50) + Cams Online (Blue 52) -->
-                <div style="grid-column: 1 / 3; background:rgba(239,68,68,0.3); border:2px solid #ef4444; border-radius:8px; padding:6px; text-align:center; cursor:pointer;" onclick="highlightBooth('OneAssist')" class="booth-cell card-hover">
-                  <div style="font-weight:700; color:#DC2626;">37 · Red</div>
-                  <div style="font-weight:800; color:white;">OneAssist</div>
-                </div>
-                <div style="grid-column: 3 / 4; background:rgba(34,197,94,0.3); border:2px solid #22c55e; border-radius:8px; padding:6px; text-align:center; cursor:pointer;" onclick="highlightBooth('Assessfy')" class="booth-cell card-hover">
-                  <div style="font-weight:700; color:#4ade80;">41 · Green</div>
-                  <div style="font-weight:800; color:white;">Assessfy</div>
-                </div>
-                <div style="grid-column: 4 / 6; background:rgba(59,130,246,0.3); border:2px solid #3b82f6; border-radius:8px; padding:6px; text-align:center; cursor:pointer;" onclick="highlightBooth('Bandhure')" class="booth-cell card-hover">
-                  <div style="font-weight:700; color:#60a5fa;">50 · Blue</div>
-                  <div style="font-weight:800; color:white;">Bandhure (aivi)</div>
-                </div>
-                <div style="grid-column: 6 / 8; background:rgba(59,130,246,0.3); border:2px solid #3b82f6; border-radius:8px; padding:6px; text-align:center; cursor:pointer;" onclick="highlightBooth('Cams Online')" class="booth-cell card-hover">
-                  <div style="font-weight:700; color:#60a5fa;">52 · Blue</div>
-                  <div style="font-weight:800; color:white;">Cams Online</div>
-                </div>
-
-                <!-- Row 6: Cloudangles (Red 36) + Anur Cloud (Green 42) + Extrieve (Blue 49) + GenXAI (Blue 56) -->
-                <div style="grid-column: 1 / 3; background:rgba(239,68,68,0.3); border:2px solid #ef4444; border-radius:8px; padding:6px; text-align:center; cursor:pointer;" onclick="highlightBooth('Cloudangles')" class="booth-cell card-hover">
-                  <div style="font-weight:700; color:#DC2626;">36 · Red</div>
-                  <div style="font-weight:800; color:white;">Cloudangles</div>
-                </div>
-                <div style="grid-column: 3 / 4; background:rgba(34,197,94,0.3); border:2px solid #22c55e; border-radius:8px; padding:6px; text-align:center; cursor:pointer;" onclick="highlightBooth('Anur Cloud')" class="booth-cell card-hover">
-                  <div style="font-weight:700; color:#4ade80;">42 · Green</div>
-                  <div style="font-weight:800; color:white;">Anur Cloud</div>
-                </div>
-                <div style="grid-column: 4 / 6; background:rgba(59,130,246,0.3); border:2px solid #3b82f6; border-radius:8px; padding:6px; text-align:center; cursor:pointer;" onclick="highlightBooth('Extrieve')" class="booth-cell card-hover">
-                  <div style="font-weight:700; color:#60a5fa;">49 · Blue</div>
-                  <div style="font-weight:800; color:white;">Extrieve</div>
-                </div>
-                <div style="grid-column: 6 / 8; background:rgba(59,130,246,0.3); border:2px solid #3b82f6; border-radius:8px; padding:6px; text-align:center; cursor:pointer;" onclick="highlightBooth('GenXAI')" class="booth-cell card-hover">
-                  <div style="font-weight:700; color:#60a5fa;">56 · Blue</div>
-                  <div style="font-weight:800; color:white;">GenXAI</div>
-                </div>
-
-                <!-- Row 7: Comolho (Green 30) + Pyramed (Red 43) + HCL (Blue 48) + Wexa AI (Green 18) -->
-                <div style="grid-column: 1 / 3; background:rgba(34,197,94,0.3); border:2px solid #22c55e; border-radius:8px; padding:6px; text-align:center; cursor:pointer;" onclick="highlightBooth('Comolho')" class="booth-cell card-hover">
-                  <div style="font-weight:700; color:#4ade80;">30 · Green</div>
-                  <div style="font-weight:800; color:white;">Comolho</div>
-                </div>
-                <div style="grid-column: 3 / 4; background:rgba(239,68,68,0.3); border:2px solid #ef4444; border-radius:8px; padding:6px; text-align:center; cursor:pointer;" onclick="highlightBooth('Pyramed')" class="booth-cell card-hover">
-                  <div style="font-weight:700; color:#DC2626;">43 · Red</div>
-                  <div style="font-weight:800; color:white;">Pyramed</div>
-                </div>
-                <div style="grid-column: 4 / 5; background:rgba(59,130,246,0.3); border:2px solid #3b82f6; border-radius:8px; padding:6px; text-align:center; cursor:pointer;" onclick="highlightBooth('HCL')" class="booth-cell card-hover">
-                  <div style="font-weight:700; color:#60a5fa;">48 · Blue</div>
-                  <div style="font-weight:800; color:white;">HCL</div>
-                </div>
-                <div style="grid-column: 5 / 7; background:rgba(34,197,94,0.3); border:2px solid #22c55e; border-radius:8px; padding:6px; text-align:center; cursor:pointer;" onclick="highlightBooth('Wexa AI')" class="booth-cell card-hover">
-                  <div style="font-weight:700; color:#4ade80;">18 · Green</div>
-                  <div style="font-weight:800; color:white;">Wexa AI</div>
-                </div>
-
-                <!-- Row 8: Skyshade (Green 32) + Liquidmind (Blue 44) + Anur Cloud/Wexa (Green 47) + Decimal Point (Red 57) -->
-                <div style="grid-column: 1 / 3; background:rgba(34,197,94,0.3); border:2px solid #22c55e; border-radius:8px; padding:6px; text-align:center; cursor:pointer;" onclick="highlightBooth('Skyshade')" class="booth-cell card-hover">
-                  <div style="font-weight:700; color:#4ade80;">32 · Green</div>
-                  <div style="font-weight:800; color:white;">Skyshade</div>
-                </div>
-                <div style="grid-column: 3 / 4; background:rgba(59,130,246,0.3); border:2px solid #3b82f6; border-radius:8px; padding:6px; text-align:center; cursor:pointer;" onclick="highlightBooth('Liquidmind')" class="booth-cell card-hover">
-                  <div style="font-weight:700; color:#60a5fa;">44 · Blue</div>
-                  <div style="font-weight:800; color:white;">Liquidmind</div>
-                </div>
-                <div style="grid-column: 4 / 6; background:rgba(59,130,246,0.3); border:2px solid #3b82f6; border-radius:8px; padding:6px; text-align:center; cursor:pointer;" onclick="highlightBooth('CAMB.AI')" class="booth-cell card-hover">
-                  <div style="font-weight:700; color:#60a5fa;">45 · Blue</div>
-                  <div style="font-weight:800; color:white;">CAMB.AI</div>
-                </div>
-                <div style="grid-column: 6 / 8; background:rgba(239,68,68,0.3); border:2px solid #ef4444; border-radius:8px; padding:6px; text-align:center; cursor:pointer;" onclick="highlightBooth('Decimal Point')" class="booth-cell card-hover">
-                  <div style="font-weight:700; color:#DC2626;">57 · Red</div>
-                  <div style="font-weight:800; color:white;">Decimal Point</div>
-                </div>
-
-                <!-- Row 9: Castler (Blue 46) + Castler contd (Blue 46) + Deloitte (Red 58) -->
-                <div style="grid-column: 1 / 2;"></div>
-                <div style="grid-column: 2 / 4; background:rgba(59,130,246,0.3); border:2px solid #3b82f6; border-radius:8px; padding:6px; text-align:center; cursor:pointer;" onclick="highlightBooth('Castler')" class="booth-cell card-hover">
-                  <div style="font-weight:700; color:#60a5fa;">46 · Blue</div>
-                  <div style="font-weight:800; color:white;">Castler</div>
-                </div>
-                <div style="grid-column: 4 / 6; background:rgba(59,130,246,0.3); border:2px solid #3b82f6; border-radius:8px; padding:6px; text-align:center; cursor:pointer;" onclick="highlightBooth('CAMB.AI')" class="booth-cell card-hover">
-                  <div style="font-weight:700; color:#60a5fa;">45 · Blue</div>
-                  <div style="font-weight:800; color:white;">CAMB.AI</div>
-                </div>
-                <div style="grid-column: 6 / 8; background:rgba(239,68,68,0.3); border:2px solid #ef4444; border-radius:8px; padding:6px; text-align:center; cursor:pointer;" onclick="highlightBooth('Deloitte')" class="booth-cell card-hover">
-                  <div style="font-weight:700; color:#DC2626;">58 · Red</div>
-                  <div style="font-weight:800; color:white;">Deloitte</div>
-                </div>
-
-                <!-- Row 10: Spacer -->
-                <div style="grid-column: 1 / 9; height: 12px;"></div>
-
-                <!-- Row 11: Partners area - Aegis, Bharat AI, BOTel -->
-                <div style="grid-column: 1 / 4; display:flex; gap:4px;">
-                  <div style="flex:1; background:rgba(34,197,94,0.4); border:2px solid #22c55e; border-radius:8px; padding:6px; text-align:center; cursor:pointer;" onclick="highlightBooth('Aegis')" class="booth-cell card-hover">
-                    <div style="font-weight:800; color:white; font-size:9px;">Aegis</div>
-                  </div>
-                  <div style="flex:1; background:rgba(34,197,94,0.4); border:2px solid #22c55e; border-radius:8px; padding:6px; text-align:center; cursor:pointer;" onclick="highlightBooth('Bharat AI')" class="booth-cell card-hover">
-                    <div style="font-weight:800; color:white; font-size:9px;">Bharat AI</div>
-                  </div>
-                  <div style="flex:1; background:rgba(34,197,94,0.4); border:2px solid #22c55e; border-radius:8px; padding:6px; text-align:center; cursor:pointer;" onclick="highlightBooth('BOTel')" class="booth-cell card-hover">
-                    <div style="font-weight:800; color:white; font-size:9px;">BOTel</div>
-                  </div>
-                </div>
-
-                <!-- Row 12: EXIT -->
-                <div style="grid-column: 1 / 9; text-align:center; padding:8px; margin-top:4px;">
-                  <span style="background:rgba(255,255,255,0.1); padding:6px 24px; border-radius:8px; font-weight:800; font-size:12px; color:#94a3b8; letter-spacing:3px; border:1px solid rgba(255,255,255,0.15);">🚪 EXIT</span>
-                </div>
-
-              </div>
-
-              <p class="text-center text-[10px] text-gray-600 mt-3">Tap a booth to find it in the exhibitor list below</p>
+            <div id="floor-plan" class="hidden mt-4 glass rounded-2xl p-4 md:p-6">
+              <!-- Drawn from /api/events/:id/booths - the same source the public
+                   floor plan and the admin map read. What stood here was the 16th
+                   AGBA hall hand-written into markup: wrong event, wrong
+                   exhibitors, and no way for it to go stale gracefully because
+                   nothing fed it. Rendered by renderAppFloorPlan(). -->
+              <div id="app-floor-plan"></div>
             </div>
           </div>
 
@@ -14917,6 +14796,7 @@ function mainPageHTML(): string {
       document.querySelectorAll('.js-home-label').forEach(el => {
         el.textContent = currentUser ? 'Dashboard' : 'Home';
       });
+      document.querySelectorAll('.signed-in-only').forEach(el => el.classList.toggle('hidden', !currentUser));
     }
 
     function updateNavForAuth() {
@@ -16763,6 +16643,8 @@ function mainPageHTML(): string {
     let selectedExhibitorCategory = '';
 
     async function loadExhibitors() {
+      // Not awaited: the exhibitor list should not wait on the hall image.
+      renderAppFloorPlan();
       const search = document.getElementById('exhibitor-search')?.value || '';
       try {
         const [exhibitors, categories] = await Promise.all([
@@ -19421,6 +19303,51 @@ function mainPageHTML(): string {
       const anchor = document.getElementById(ids[ids.length - 1]);
       const after = anchor ? anchor.nextSibling : null;
       ids.forEach(id => { const el = document.getElementById(id); if (el) parent.insertBefore(el, after); });
+    }
+
+    /* The exhibition floor, from the live booth table. Every box is positioned by
+     * the same fx/fy/fw/fh fractions the public plan and the admin map use, over
+     * the same hall image, so the three cannot disagree about where a stand is or
+     * whether it is gone.
+     *
+     * Availability is the argument here, not decoration: a delegate looking at
+     * this is a delegate who might buy one. */
+    async function renderAppFloorPlan() {
+      const box = document.getElementById('app-floor-plan');
+      if (!box) return;
+      let d = null;
+      try { d = await api.get('/api/events/' + EVENT_ID + '/booths'); } catch (e) { d = null; }
+      if (!d || !d.ready || !(d.booths || []).length) {
+        box.innerHTML = '<p class="text-xs text-gray-400">The floor plan is being finalised. Check back shortly.</p>';
+        return;
+      }
+      const s = d.summary || {};
+      const tint = { available: 'rgba(16,185,129,0.45)', held: 'rgba(245,158,11,0.5)',
+                     sold: 'rgba(239,68,68,0.45)', blocked: 'rgba(107,114,128,0.45)' };
+      const edge = { available: '#10b981', held: '#f59e0b', sold: '#ef4444', blocked: '#6b7280' };
+      const chip = (c, label, n) => '<span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded inline-block" style="background:' + c + '"></span>' + label + ' ' + n + '</span>';
+      box.innerHTML =
+        '<div class="flex flex-wrap gap-3 text-[11px] text-gray-400 mb-3">'
+        + chip(edge.available, 'Available', s.available || 0)
+        + chip(edge.held, 'On hold', s.held || 0)
+        + chip(edge.sold, 'Sold', s.sold || 0)
+        + '</div>'
+        + '<div class="overflow-auto rounded-lg border border-white/10">'
+        + '<div class="relative mx-auto" style="min-width:640px;aspect-ratio:1600/1546;">'
+        + '<img src="/images/expo-layout.webp" alt="Exhibition floor plan" class="absolute inset-0 w-full h-full" style="object-fit:fill;">'
+        + d.booths.filter(b => b.fx != null && b.fy != null).map(b => {
+            const st = String(b.status || 'available');
+            return '<div title="' + esc(b.code + ' · ' + (b.name || '') + (b.company ? ' · ' + b.company : '')) + '"'
+              + ' style="position:absolute;left:' + (b.fx * 100) + '%;top:' + (b.fy * 100) + '%;'
+              + 'width:' + (b.fw * 100) + '%;height:' + (b.fh * 100) + '%;'
+              + 'background:' + (tint[st] || tint.blocked) + ';border:1px solid ' + (edge[st] || edge.blocked) + ';'
+              + 'border-radius:3px;display:flex;align-items:center;justify-content:center;overflow:hidden;">'
+              + '<span style="font-size:9px;font-weight:700;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.6);">' + esc(b.code) + '</span>'
+              + '</div>';
+          }).join('')
+        + '</div></div>'
+        + '<p class="text-[11px] text-gray-500 mt-3">' + (s.available || 0) + ' of ' + (s.total || 0) + ' stands are still available. '
+        + '<button type="button" onclick="switchTab(&quot;exhibition&quot;); showBoothPackages && showBoothPackages();" class="underline text-primary-400 hover:text-primary-300">See booth packages</button></p>';
     }
 
     function openNetworkingGuide() { document.getElementById('networking-guide-modal').classList.remove('hidden'); }
