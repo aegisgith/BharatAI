@@ -12654,6 +12654,14 @@ function mainPageHTML(): string {
           </div>
         </div>
 
+        <!-- The people worth meeting, on the screen you land on.
+             renderMatchRail() has scored and explained matches since networking
+             shipped, but it only ever drew into the Networking tab, so nobody saw
+             it until they went looking. On the dashboard it is a horizontal rail:
+             this audience is on a phone, and three stacked cards would push
+             everything else off the screen. -->
+        <div class="max-w-7xl mx-auto px-4 mt-6 hidden" id="dash-match-rail"></div>
+
         <!-- Role-aware welcome panel (logged-in): greets each persona and
              surfaces the actions that matter to them. Populated by renderRoleHome(). -->
         <div class="max-w-7xl mx-auto px-4 mt-6 hidden" id="role-home"></div>
@@ -14360,6 +14368,7 @@ function mainPageHTML(): string {
           <label class="block text-xs font-semibold text-gray-400 mb-1.5">Caption — edit it, then copy</label>
           <textarea id="sc-caption" rows="7" class="w-full text-xs rounded-xl p-3 mb-3 focus:outline-none" style="resize:vertical;background:rgba(30,33,64,0.05);border:1px solid rgba(30,33,64,0.15);color:inherit;line-height:1.6;"></textarea>
 
+          <button id="sc-share-primary" onclick="shareSocialCard()" class="hidden w-full mb-2 px-4 py-3 rounded-xl text-sm font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition"><i class="fas fa-share-alt mr-2"></i>Share to LinkedIn or WhatsApp</button>
           <div class="flex gap-2">
             <button onclick="downloadSocialCard()" class="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold bg-primary-600 hover:bg-primary-500 text-white transition"><i class="fas fa-download mr-2"></i>Download</button>
             <button id="sc-copy" onclick="copySocialCaption()" class="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold glass hover:bg-white/10 text-gray-200 transition"><i class="fas fa-clipboard-check mr-2"></i>Copy caption</button>
@@ -15396,6 +15405,7 @@ function mainPageHTML(): string {
         if (registerVisitorBtn) registerVisitorBtn.classList.add('hidden');
         if (roleHome) { roleHome.classList.remove('hidden'); renderRoleHome(); }
         renderPassAndCardCta();
+        renderDashMatchRail();
         updateProfileCompletionCard();
         // Not awaited: it makes three API calls and the home screen should not wait
         // on them to paint. The card reveals itself when it has something to say.
@@ -15408,6 +15418,8 @@ function mainPageHTML(): string {
         if (profileCard) profileCard.classList.add('hidden');
         var passCta = document.getElementById('pass-card-cta');
         if (passCta) passCta.classList.add('hidden');
+        var dashRail = document.getElementById('dash-match-rail');
+        if (dashRail) dashRail.classList.add('hidden');
         var planCard = document.getElementById('event-plan-card');
         if (planCard) planCard.classList.add('hidden');
       }
@@ -15984,6 +15996,41 @@ function mainPageHTML(): string {
 
     // The rail's candidates come from the server, scored here with the same
     // seniority table the grid uses.
+    /* Also drawn on the dashboard, where it matters more. The scoring and the
+     * "why" line are identical - what differs is the shape: the networking tab
+     * gets a three-across grid, the dashboard gets a horizontal snap rail,
+     * because on a phone three stacked cards push everything else off screen. */
+    async function renderDashMatchRail() {
+      const el = document.getElementById('dash-match-rail');
+      if (!el || !currentUser) return;
+      let pool = [];
+      try { pool = await api.get('/api/events/' + EVENT_ID + '/suggested-attendees'); } catch (e) { el.classList.add('hidden'); return; }
+      if (!Array.isArray(pool) || !pool.length) { el.classList.add('hidden'); return; }
+      pool.forEach(a => { const m = matchScore(a); a._score = m.score; a._shared = m.shared; });
+      pool.sort((x, y) => (y._score - x._score) || (y.is_online - x.is_online));
+      const top = pool.filter(a => a._score >= 10).slice(0, 8);
+      if (!top.length) { el.classList.add('hidden'); return; }
+      el.innerHTML =
+        '<div class="flex items-center justify-between gap-2 mb-3">'
+        + '<div class="flex items-center gap-2"><i class="fas fa-wand-magic-sparkles text-primary-400"></i>'
+        + '<h3 class="text-sm font-semibold">People you should meet</h3></div>'
+        // &quot; not \' — an escaped quote here is eaten by the enclosing template
+        // literal and emits a broken string. The entity survives it.
+        + '<button type="button" onclick="switchTab(&quot;networking&quot;)" class="text-xs text-primary-400 hover:text-primary-300 shrink-0">See all</button></div>'
+        + '<div class="flex gap-3 overflow-x-auto data-scroll pb-2" style="scroll-snap-type:x mandatory;">'
+        + top.map(a =>
+            '<div class="shrink-0 rounded-xl p-4 border border-primary-500/25" style="scroll-snap-align:start;width:232px;background:linear-gradient(135deg,rgba(255,107,0,0.08),rgba(217,70,239,0.05));">'
+            + '<div class="flex items-center gap-3">'
+            + '<img src="' + getAvatarUrl(a.email, a.name, 88, a.avatar_url) + '" alt="" class="w-11 h-11 rounded-full object-cover shrink-0">'
+            + '<div class="min-w-0"><div class="font-semibold text-sm truncate">' + esc(a.name || '') + '</div>'
+            + '<div class="text-[11px] text-gray-400 truncate">' + esc([a.job_title, a.company].filter(Boolean).join(' · ')) + '</div></div></div>'
+            + '<p class="text-[11px] text-primary-300 mt-2 line-clamp-2"><i class="fas fa-link mr-1"></i>' + esc(matchReason(a, a._shared || [])) + '</p>'
+            + '<button type="button" onclick="viewProfile(' + a.id + ')" class="w-full mt-3 py-1.5 rounded-lg text-xs font-semibold text-white transition" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);">View profile</button>'
+            + '</div>').join('')
+        + '</div>';
+      el.classList.remove('hidden');
+    }
+
     async function renderMatchRail() {
       const railEl = document.getElementById('match-rail');
       if (!railEl || !currentUser) return;
@@ -18239,7 +18286,14 @@ function mainPageHTML(): string {
       // navigator.share with files is the whole game on a phone: it opens
       // WhatsApp or LinkedIn directly instead of asking someone to go and find a
       // downloaded PNG in their gallery. Most desktop browsers cannot.
-      document.getElementById('sc-share').classList.toggle('hidden', !(navigator.canShare && navigator.share));
+      /* On a phone the native sheet IS how a card reaches LinkedIn or WhatsApp —
+       * it hands over the image and the caption in one gesture, where Download
+       * means hunting through the gallery afterwards. So where sharing exists it
+       * leads and the secondary copy is hidden; on desktop, where it mostly does
+       * not, Download and Copy caption remain the whole story. */
+      var canShare = !!(navigator.canShare && navigator.share);
+      document.getElementById('sc-share-primary').classList.toggle('hidden', !canShare);
+      document.getElementById('sc-share').classList.add('hidden');
       document.getElementById('social-card-modal').classList.remove('hidden');
       setSocialCardSize(socialCard.size);
     }
