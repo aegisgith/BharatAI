@@ -2843,6 +2843,15 @@ async function boothRevenueTarget(c: any): Promise<number> {
 // anything outside it is dropped on write, because a goal the scorer cannot match
 // is a value that looks meaningful and never does anything.
 const NETWORKING_GOALS = ['selling', 'buying', 'raising', 'investing', 'hiring', 'jobseeking', 'partner', 'learning']
+// Mirrors GOAL_COMPLEMENT in the app. The server needs it too, because candidate
+// SELECTION has to ask the same question the client-side ranking answers - ranking
+// can only order what selection handed it.
+const GOAL_COMPLEMENTS: Record<string, string> = {
+  selling: 'buying', buying: 'selling',
+  raising: 'investing', investing: 'raising',
+  hiring: 'jobseeking', jobseeking: 'hiring',
+  partner: 'partner',
+}
 
 const ROOM_DAYS = ['2026-11-20', '2026-11-21']
 const ROOM_SLOT_HOURS = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00']
@@ -3196,13 +3205,35 @@ app.get('/api/events/:id/suggested-attendees', async (c) => {
   const me = await verifyAttendeeSession(c)
   if (!me && attendeeSessionSecret(c)) return c.json([])
 
-  const mine = await c.env.DB.prepare('SELECT interests FROM attendees WHERE id = ?')
+  const mine = await c.env.DB.prepare('SELECT interests, networking_goals FROM attendees WHERE id = ?')
     .bind(me).first() as any
   const terms = String(mine?.interests || '')
     .split(',').map((t: string) => t.trim()).filter(Boolean).slice(0, 6)
 
   const out: any[] = []
   const seen = new Set<number>([Number(me)])
+
+  /* Goal-complementary people are fetched FIRST, before interests.
+   *
+   * Without this the 40-point goal bonus was mostly decorative: candidates were
+   * selected by `interests LIKE` with a LIMIT, and at an AI conference '%ai%'
+   * matches most of the list, so whether the one person who wants to buy what you
+   * sell made it into the pool was down to their row id. Verified on production -
+   * a buyer scoring 60 against a control scoring 10 never reached the rail at all,
+   * because sixty other people matched '%ai%' first.
+   *
+   * Scoring can only rank what selection hands it. So selection now asks the
+   * question the ranking cares about. */
+  const myGoals = String(mine?.networking_goals || '')
+    .split(',').map((g: string) => g.trim().toLowerCase()).filter((g: string) => NETWORKING_GOALS.includes(g))
+  const wanted = Array.from(new Set(myGoals.map((g: string) => GOAL_COMPLEMENTS[g]).filter(Boolean)))
+  if (wanted.length) {
+    const ors = wanted.map(() => 'networking_goals LIKE ?').join(' OR ')
+    const rows = ((await c.env.DB.prepare(
+      `SELECT ${ATTENDEE_PUBLIC_COLS} FROM attendees WHERE event_id = ? AND id <> ? AND (${ors}) LIMIT ${SUGGEST_POOL}`
+    ).bind(eventId, me, ...wanted.map((g: string) => '%' + g + '%')).all()).results || []) as any[]
+    for (const r of rows) { if (!seen.has(r.id)) { seen.add(r.id); out.push(r) } }
+  }
 
   if (terms.length) {
     const ors = terms.map(() => 'interests LIKE ?').join(' OR ')
