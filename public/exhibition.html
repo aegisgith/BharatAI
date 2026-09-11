@@ -72,8 +72,8 @@
           "mainEntity": [
             {
               "@type": "Question",
-              "name": "How many booths are available at Bharat AI Innovation 2026?",
-              "acceptedAnswer": { "@type": "Answer", "text": "The exhibition features 93 booths at World Trade Center Mumbai, organised into 8 industry zones, on a  exhibition floor." }
+              "name": "How big is the exhibition at Bharat AI Innovation 2026?",
+              "acceptedAnswer": { "@type": "Answer", "text": "The exhibition features 93 booths at World Trade Center Mumbai, organised into 8 industry zones." }
             },
             {
               "@type": "Question",
@@ -669,27 +669,17 @@
             <div class="fp-chips" id="fpChips"></div>
             <div class="fp-bar-right">
               <label class="fp-toggle" id="fpAvailToggle"><span class="fp-tk"></span> Available only</label>
-              <div class="fp-counter">
-                <span class="fp-big" id="fpAvailNum">93</span><span class="fp-tot" id="fpTotNum">/93</span>
-                <span class="fp-cap">available</span>
-              </div>
             </div>
           </div>
 
-          <!-- Legend + live availability.
-               The numbers here are the pre-JS static defaults; floor-plan.js
-               overwrites them from window.BOOTHS, then again from
-               GET /api/events/1/booths when that endpoint answers. -->
+          <!-- Colour key for the map. Deliberately carries no counts: a booth
+               tally is a sales figure. See scripts/check-no-counts.mjs. -->
           <div class="fp-legend" id="fpLegend">
             <div class="fp-lg-states">
-              <span class="fp-lg-i"><span class="fp-lg-sw fp-lg-available"></span>Available<b class="fp-lg-n" data-lg="available">93</b></span>
-              <span class="fp-lg-i"><span class="fp-lg-sw fp-lg-held"></span>On hold<b class="fp-lg-n" data-lg="held">0</b></span>
-              <span class="fp-lg-i"><span class="fp-lg-sw fp-lg-sold"></span>Sold<b class="fp-lg-n" data-lg="sold">0</b></span>
-              <span class="fp-lg-i"><span class="fp-lg-sw fp-lg-blocked"></span>Reserved<b class="fp-lg-n" data-lg="blocked">0</b></span>
-            </div>
-            <div class="fp-lg-meta">
-              <span class="fp-lg-count" id="fpLegendCount"><b>93</b> of 93 booths still available</span>
-              <span class="fp-lg-live" id="fpLegendLive">Live</span>
+              <span class="fp-lg-i"><span class="fp-lg-sw fp-lg-available"></span>Available</span>
+              <span class="fp-lg-i"><span class="fp-lg-sw fp-lg-held"></span>On hold</span>
+              <span class="fp-lg-i"><span class="fp-lg-sw fp-lg-sold"></span>Sold</span>
+              <span class="fp-lg-i"><span class="fp-lg-sw fp-lg-blocked"></span>Reserved</span>
             </div>
           </div>
 
@@ -766,13 +756,9 @@
              max-age=14400, so an edit to either file stays invisible to anyone who
              loaded this page in the last 4 hours. The HTML itself is max-age=0, so
              bumping the version ships the new file instantly.
-             BUMP IT whenever you change either script.
-             Booth *availability* no longer rides on this cache: floor-plan.js reads
-             it live from GET /api/events/1/booths on every page load. The `booked`
-             flags in floor-plan-data.js are only the offline fallback for when that
-             endpoint is missing or not ready - geometry is what this file is for. -->
-        <script src="js/floor-plan-data.js?v=2026-09-10"></script>
-        <script src="js/floor-plan.js?v=2026-09-10"></script>
+             BUMP IT whenever you change either script. -->
+        <script src="js/floor-plan-data.js?v=2026-09-11"></script>
+        <script src="js/floor-plan.js?v=2026-09-11"></script>
     </section>
 
     <!-- VALUE YOU DRIVE HOME -->
@@ -830,7 +816,6 @@
                     <div class="package-type">Starter</div>
                     <div class="package-name">Startup Pod</div>
                     <div class="package-size">1.5 × 1.5 m (2.25 sqm / 24 sqft)</div>
-                    <div class="package-count" data-pkg="pod">16 pods available</div>
                     <div class="package-price">₹48,000 <span>+ GST</span></div>
                     <ul class="package-features">
                         <li>Compact 2.25 sqm dedicated pod</li>
@@ -849,7 +834,6 @@
                     <div class="package-type">Explorer</div>
                     <div class="package-name">Explorer Booth</div>
                     <div class="package-size">2 × 2 m (4 sqm / 43 sqft)</div>
-                    <div class="package-count" data-pkg="explorer">8 booths available</div>
                     <div class="package-price">₹1,29,000 <span>+ GST</span></div>
                     <ul class="package-features">
                         <li>4 sqm shell scheme booth</li>
@@ -868,7 +852,6 @@
                     <div class="package-type">Innovator</div>
                     <div class="package-name">Innovator Booth</div>
                     <div class="package-size">3 × 2 m (6 sqm / 65 sqft)</div>
-                    <div class="package-count" data-pkg="innovator">6 booths available</div>
                     <div class="package-price">₹1,95,000 <span>+ GST</span></div>
                     <ul class="package-features">
                         <li>6 sqm shell scheme booth</li>
@@ -889,7 +872,6 @@
                     <div class="package-type">Accelerator</div>
                     <div class="package-name">Accelerator Booth</div>
                     <div class="package-size">3 × 3 m (9 sqm / 97 sqft)</div>
-                    <div class="package-count" data-pkg="standard">10 booths available</div>
                     <div class="package-price">₹2,91,000 <span>+ GST</span></div>
                     <ul class="package-features">
                         <li>9 sqm shell scheme booth</li>
@@ -910,7 +892,6 @@
                     <div class="package-type">Enterprise</div>
                     <div class="package-name">Enterprise Booth</div>
                     <div class="package-size">4 × 2 m (8 sqm / 86 sqft)</div>
-                    <div class="package-count package-count--scarce" data-pkg="accelerator"><span class="scarcity-dot"></span>Only 2 of 2 remaining</div>
                     <div class="package-price">₹2,58,000 <span>+ GST</span></div>
                     <ul class="package-features">
                         <li>8 sqm custom-built booth</li>
@@ -929,7 +910,6 @@
                     <div class="package-type">Flagship</div>
                     <div class="package-name">Flagship Pavilion</div>
                     <div class="package-size">6 × 2 m (12 sqm / 129 sqft)</div>
-                    <div class="package-count package-count--scarce" data-pkg="enterprise"><span class="scarcity-dot"></span>Only 2 of 2 remaining</div>
                     <div class="package-price">₹3,87,000 <span>+ GST</span></div>
                     <ul class="package-features">
                         <li>12 sqm custom-built pavilion</li>
@@ -951,7 +931,6 @@
                     <div class="package-type" style="color:var(--indigo);">Mega</div>
                     <div class="package-name">Mega Pavilion</div>
                     <div class="package-size">7 × 7.7 m (53.90 sqm / 580 sqft)</div>
-                    <div class="package-count package-count--scarce" data-pkg="mega"><span class="scarcity-dot"></span>Only 2 available — 1 enquiry in progress</div>
                     <div class="package-price" style="color:var(--indigo);">₹17,40,000 <span>+ GST</span></div>
                     <ul class="package-features">
                         <li>53.90 sqm mega custom pavilion</li>

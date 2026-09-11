@@ -4510,8 +4510,12 @@ app.get('/api/image-proxy', async (c) => {
 // for the same reason every boardroom route does.
 app.get('/api/events/:id/booths', async (c) => {
   const eventId = c.req.param('id')
+  // The per-stand `status` below is what the plan needs to draw itself. The aggregate
+  // summary is NOT returned: this route has no auth, so publishing {available, sold}
+  // here hands anyone with curl the sales figure the page deliberately stopped showing.
+  // /api/admin/booth-stats keeps the totals for the desk.
   const zero = { total: 0, available: 0, held: 0, sold: 0, blocked: 0, sold_sqm: 0 }
-  if (!(await boothInventoryEnabled(c))) return c.json({ ready: false, booths: [], summary: zero })
+  if (!(await boothInventoryEnabled(c))) return c.json({ ready: false, booths: [] })
   try {
     // A released allocation is history, not an occupant, and a hold past its expiry
     // is an option nobody took up — both must read as space on the market here, or
@@ -4558,13 +4562,13 @@ app.get('/api/events/:id/booths', async (c) => {
     // 2.25 sqm pods make this a float sum; round once at the end rather than
     // publishing 47.250000000000004.
     summary.sold_sqm = Math.round(summary.sold_sqm * 100) / 100
-    return c.json({ ready: true, booths, summary })
+    return c.json({ ready: true, booths })
   } catch (e: any) {
     // "no such column" as well as "no such table", now that the lifecycle columns
     // are read here: a database carrying an earlier draft of 0030 must read as
     // not-live and let the static plan keep answering, never 500 at a visitor.
     if (/no such (table|column)/i.test(String(e?.message || ''))) {
-      return c.json({ ready: false, booths: [], summary: zero })
+      return c.json({ ready: false, booths: [] })
     }
     throw e
   }
@@ -4577,7 +4581,10 @@ app.get('/api/booth-types', async (c) => {
   const { results } = await c.env.DB.prepare(
     'SELECT * FROM booth_types WHERE is_active = 1 ORDER BY sort_order'
   ).all()
-  return c.json(results)
+  // available_count is live inventory. On an unauthenticated route it is a sales
+  // figure, so it is stripped here; total_count is the advertised floor size and stays.
+  const publicTypes = (results as any[]).map(({ available_count, ...t }) => t)
+  return c.json(publicTypes)
 })
 
 // Get single booth type by slug
@@ -4605,7 +4612,10 @@ app.post('/api/booth-requests', async (c) => {
 
   const qty = Math.max(1, quantity || 1)
   if (qty > bt.available_count) {
-    return c.json({ error: `Only ${bt.available_count} ${bt.name} booths available` }, 400)
+    // Deliberately non-numeric. This route needs no auth and returns before the
+    // INSERT, so quoting the remaining count turns it into an inventory oracle:
+    // one request per tier with an absurd quantity reads the whole catalogue.
+    return c.json({ error: `That quantity is not available for ${bt.name}. Please contact the team for a larger block.` }, 400)
   }
 
   const total_price = bt.price_inr * qty
@@ -19327,16 +19337,15 @@ function mainPageHTML(): string {
         box.innerHTML = '<p class="text-xs text-gray-400">The floor plan is being finalised. Check back shortly.</p>';
         return;
       }
-      const s = d.summary || {};
       const tint = { available: 'rgba(16,185,129,0.45)', held: 'rgba(245,158,11,0.5)',
                      sold: 'rgba(239,68,68,0.45)', blocked: 'rgba(107,114,128,0.45)' };
       const edge = { available: '#10b981', held: '#f59e0b', sold: '#ef4444', blocked: '#6b7280' };
-      const chip = (c, label, n) => '<span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded inline-block" style="background:' + c + '"></span>' + label + ' ' + n + '</span>';
+      const chip = (c, label) => '<span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded inline-block" style="background:' + c + '"></span>' + label + '</span>';
       box.innerHTML =
         '<div class="flex flex-wrap gap-3 text-[11px] text-gray-400 mb-3">'
-        + chip(edge.available, 'Available', s.available || 0)
-        + chip(edge.held, 'On hold', s.held || 0)
-        + chip(edge.sold, 'Sold', s.sold || 0)
+        + chip(edge.available, 'Available')
+        + chip(edge.held, 'On hold')
+        + chip(edge.sold, 'Sold')
         + '</div>'
         + '<div class="overflow-auto rounded-lg border border-white/10">'
         + '<div class="relative mx-auto" style="min-width:640px;aspect-ratio:1600/1546;">'
@@ -19352,7 +19361,7 @@ function mainPageHTML(): string {
               + '</div>';
           }).join('')
         + '</div></div>'
-        + '<p class="text-[11px] text-gray-500 mt-3">' + (s.available || 0) + ' of ' + (s.total || 0) + ' stands are still available. '
+        + '<p class="text-[11px] text-gray-500 mt-3">Select a stand on the plan to enquire. '
         + '<button type="button" onclick="switchTab(&quot;exhibition&quot;); showBoothPackages && showBoothPackages();" class="underline text-primary-400 hover:text-primary-300">See booth packages</button></p>';
     }
 
@@ -19382,21 +19391,11 @@ function mainPageHTML(): string {
         count('/connections'), count('/meetings'), count('/room-bookings')
       ]);
 
-      /* Live inventory, now that the rooms and the floor are real tables rather
-       * than a static array. "67 of 93 stands still available" is an argument;
-       * "exhibit with us" is a banner people have learned not to read. Both fail
-       * soft to the generic wording - a plan card is not worth breaking over a
-       * number. */
+      /* The stand line used to quote live inventory ("67 of 93 stands still
+       * available"). It no longer does: a booth tally is a sales figure, and the
+       * booths route stopped returning the aggregate summary for that reason.
+       * The card keeps its generic wording and its CTA. */
       let boothLine = '', roomLine = '', boothCta = null;
-      try {
-        const b = await api.get('/api/events/' + EVENT_ID + '/booths');
-        if (b && b.ready && b.summary && b.summary.total) {
-          const s = b.summary;
-          boothLine = s.available + ' of ' + s.total + ' stands are still available'
-                    + (s.sold ? ' — ' + s.sold + ' already sold.' : '.');
-          boothCta = "switchTab('exhibition')";
-        }
-      } catch (e) {}
       try {
         const r = await api.get('/api/events/' + EVENT_ID + '/rooms');
         const list = (r && r.rooms) || [];

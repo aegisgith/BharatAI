@@ -39,7 +39,6 @@
     blocked:'<svg class="fp-lk" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><circle cx="12" cy="12" r="8"/><path d="M8.5 12h7"/></svg>'
   };
   const EVENT_ID=Number(window.FP_EVENT_ID)||1;
-  let liveStatus=false;
   // Keeps b.status, b.company and the legacy b.booked flag in lockstep.
   function setStatus(b,st,company){
     b.status=STATUSES[st]?st:'available';
@@ -138,7 +137,7 @@
   function buildChips(){
     const c=counts(), w=qs('#fpChips');
     w.innerHTML=`<button class="fp-chip fp-chip-active" data-all="1">All</button>`+
-      ORDER.map(t=>`<button class="fp-chip" data-type="${t}"><span class="fp-sw" style="background:${colorOf(t)}"></span>${TYPE_META[t].name.replace(' Booth','').replace(' Pavilion','')}<span class="fp-ct">${c[t].av}</span></button>`).join('');
+      ORDER.map(t=>`<button class="fp-chip" data-type="${t}"><span class="fp-sw" style="background:${colorOf(t)}"></span>${TYPE_META[t].name.replace(' Booth','').replace(' Pavilion','')}</button>`).join('');
     w.querySelectorAll('.fp-chip').forEach(ch=>ch.onclick=()=>{
       if(ch.dataset.all) activeTypes.clear();
       else { const t=ch.dataset.type; activeTypes.has(t)?activeTypes.delete(t):activeTypes.add(t); }
@@ -292,52 +291,6 @@
   };
   qs('#fpSuccessBack').onclick=closePanel;
 
-  /* ---------- counter + legend ----------
-     The "N of 93 booths still available" line and the per-state legend counts are
-     derived from the same BOOTHS array as the map and the package cards, so they
-     cannot disagree with what is drawn - live or on the static fallback. */
-  function syncCounter(){
-    const tot=BOOTHS.length, n={available:0,held:0,sold:0,blocked:0};
-    BOOTHS.forEach(b=>{ const st=b.status||'available'; if(n[st]!=null) n[st]++; });
-    const big=qs('#fpAvailNum'); if(big) big.textContent=n.available;
-    const tt=qs('#fpTotNum');    if(tt)  tt.textContent='/'+tot;
-    document.querySelectorAll('#fpLegend .fp-lg-n[data-lg]').forEach(el=>{
-      const k=el.getAttribute('data-lg'); if(n[k]!=null) el.textContent=n[k];
-    });
-    const line=qs('#fpLegendCount');
-    if(line){
-      line.textContent='';
-      const b=document.createElement('b'); b.textContent=String(n.available);
-      line.appendChild(b);
-      line.appendChild(document.createTextNode(' of '+tot+(n.available===1?' booth':' booths')+' still available'));
-    }
-    const pill=qs('#fpLegendLive');
-    if(pill) pill.classList.toggle('fp-lg-live-on', liveStatus);
-  }
-
-  /* ---------- package card availability ----------
-     The package cards used to carry hand-written counts that drifted from the map:
-     Innovator advertised 6 while the plan showed 10, Accelerator 10 against 17, and
-     Enterprise claimed "2 of 2" when only 1 was free. A visitor could click through
-     to a booth the card said was available and find it reserved. Both now read from
-     the same BOOTHS array as the map and the counter above, so they cannot diverge. */
-  // The <script> tag sits above the package cards in exhibition.html, so at execution
-  // time those elements have not been parsed yet. Wait for the document.
-  function syncPackageCounts(){
-    const c=counts();
-    document.querySelectorAll('.package-count[data-pkg]').forEach(el=>{
-      const t=el.getAttribute('data-pkg'); if(!c[t]) return;
-      const av=c[t].av, tot=c[t].tot;
-      const unit=t==='pod' ? (av===1?'pod':'pods') : (av===1?'booth':'booths');
-      const dot='<span class="scarcity-dot"></span>';
-      if(av===0){ el.classList.add('package-count--scarce'); el.innerHTML=dot+'Fully booked'; }
-      else if(av<=2){ el.classList.add('package-count--scarce'); el.innerHTML=dot+'Only '+av+' of '+tot+' remaining'; }
-      else { el.classList.remove('package-count--scarce'); el.textContent=av+' '+unit+' available'; }
-    });
-  }
-  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', syncPackageCounts);
-  else syncPackageCounts();
-
   /* ---------- live availability ----------
      GET /api/events/:id/booths -> { ready, booths:[{code,status,company}], summary }.
      Every failure mode lands in the same place: keep the statuses derived from the
@@ -364,14 +317,12 @@
       BOOTHS.forEach(b=>{ const r=by.get(String(b.code)); if(r){ hit++; setStatus(b,r.status,r.company); } });
       if(!hit) return;          // codes do not line up with this map - keep the fallback
 
-      liveStatus=true;
       allHots.forEach(paint);
-      buildChips(); syncChips(); render(); syncCounter(); syncPackageCounts();
+      buildChips(); syncChips(); render();
     }catch(e){ /* silent by design: the static map is already on screen */ }
   }
 
   /* ---------- init ---------- */
-  syncCounter();
   buildChips();
   function start(){ fit(); requestAnimationFrame(fit); }
   if(planImg.complete) start(); else planImg.onload=start;
