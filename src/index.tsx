@@ -3144,6 +3144,15 @@ app.post('/api/events/:id/attendees/register', async (c) => {
         return c.json(existing)
       }
     }
+    // Until now this swallowed the cause. A visitor reported "Registration failed"
+    // and there was nothing anywhere - no log, no audit row - to say what the
+    // database or the session signer had actually objected to. The row is written
+    // to the same admin_audit table the external route uses for its rejections, so
+    // the next report can be answered from the panel instead of guessed at.
+    console.error('attendee register failed', normalizedEmail, e?.message)
+    await audit(c, 'register.failed', 'attendee', null,
+      { email: normalizedEmail, error: String(e?.message || e).slice(0, 500), badge_type: passType, source: sourceValue || 'networking_app' },
+      { actor: 'public registration', kind: 'public' })
     return c.json({ error: 'Registration failed' }, 400)
   }
 })
@@ -10534,6 +10543,7 @@ ${sharedNavHTML('register')}
           <button type="submit" id="rf-submit" class="w-full py-3.5 rounded-xl font-semibold text-white bg-gradient-to-r from-primary-600 to-primary-500 hover:from-primary-500 hover:to-primary-400 transition-all text-sm shadow-lg shadow-primary-500/25">
             <i class="fas fa-check-circle mr-2"></i>Register — It's Free!
           </button>
+          <div id="rf-notice" class="hidden rounded-xl px-4 py-3 text-sm text-red-700 bg-red-50 border border-red-200"></div>
           <p class="text-center text-[10px] text-gray-500">By registering, you agree to receive event updates via email</p>
         </form>
 
@@ -10704,14 +10714,27 @@ async function submitRegistration(e) {
         registration_source: registrationSource()
       })
     });
-    const data = await resp.json();
+    const data = await resp.json().catch(() => ({}));
 
-    if (data.error) {
-      showToast(data.error, 'error');
+    if (!resp.ok || data.error) {
+      // 'verification_required' is a machine code: the address is already on the list
+      // (registered earlier, or added by the team), so the right next step is signing
+      // in, not registering again. The endpoint sends the human sentence in .message.
+      // A toast disappears in four seconds, which is not long enough to read a
+      // sentence and act on it, so the notice also stays under the button.
+      const known = data.error === 'verification_required';
+      const msg = data.message || (data.error && !known ? data.error : '') || 'Registration failed. Please try again.';
+      const notice = document.getElementById('rf-notice');
+      notice.innerHTML = msg + (known
+        ? ' <a href="/app#login" class="underline font-semibold whitespace-nowrap">Sign in here</a>.'
+        : '');
+      notice.classList.remove('hidden');
+      showToast(known ? 'This email is already registered' : msg, 'error');
       btn.innerHTML = '<i class="fas fa-check-circle mr-2"></i>Register — It\\'s Free!';
       btn.disabled = false;
       return;
     }
+    document.getElementById('rf-notice').classList.add('hidden');
 
     // Success
     document.getElementById('reg-form').classList.add('hidden');
@@ -14474,7 +14497,8 @@ function mainPageHTML(): string {
         });
 
         if (user.error) {
-          errorEl.textContent = user.error;
+          // verification_required is a machine code; the human sentence is in .message.
+          errorEl.textContent = user.message || user.error;
           errorEl.classList.remove('hidden');
           btn.innerHTML = '<i class="fas fa-user-plus mr-2"></i>Create Account & Enter';
           btn.disabled = false;
