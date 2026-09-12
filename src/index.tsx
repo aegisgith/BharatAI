@@ -2708,6 +2708,20 @@ const boothTypeRank = (k: string): number => {
 const boothExhibitorSize = (typeKey: string): string =>
   ['mega', 'enterprise', 'premium'].includes(String(typeKey || '')) ? 'premium' : 'standard'
 
+// exhibitors.booth_number for a company that took MORE THAN ONE stand. It is a
+// free-text field, so the whole floor presence lives in it as "47, 48" — adding
+// rather than replacing, because a company loses a stand it paid for otherwise.
+// Sorted numerically: a plain string sort prints "15, 9" and the visitor walks
+// the hall in the wrong order. Re-running the backfill cannot duplicate a code.
+const mergeBoothNumbers = (current: any, code: any): string => {
+  const codes = String(current || '').split(',').map(s => s.trim()).filter(Boolean)
+  const add = String(code ?? '').trim()
+  if (add && !codes.includes(add)) codes.push(add)
+  return codes
+    .sort((a, b) => (Number(a) - Number(b)) || a.localeCompare(b))
+    .join(', ')
+}
+
 // ---------------------------------------------------------------------------
 // BOOTH MONEY. Every figure below is WHOLE RUPEES. A float rupee becomes
 // 32249.999999 on a GST invoice and the exhibitor is the one who finds out, so
@@ -4622,8 +4636,43 @@ app.put('/api/meetings/:id', async (c) => {
 })
 
 // ==================== EXHIBITOR APIs ====================
+//
+// THE DIRECTORY IS NOT PUBLIC BY DEFAULT. These three routes are unauthenticated
+// and exhibitors is now filled by backfill-exhibitors from the confirmed stands —
+// which means naming companies publicly as exhibitors. Fourteen of the twenty-two
+// confirmed stands are still payment_status 'pending': a company that has signed
+// but not paid can still walk, and a listing that has already been indexed is not
+// something you can take back by deleting a row.
+//
+// So the gate is a switch the team flips when the line-up is ready to announce,
+// not a threshold like the registration count — nobody wants the floor plan to
+// publish itself the moment a twenty-third stand is sold. Admin and staff always
+// see the real list; it is their working screen.
+//
+//   app_settings.exhibitor_directory_public = '1'   ->  live to everyone
+//   anything else / unset                           ->  admin and staff only
+//
+// Flip it with the existing PUT /api/admin/settings — no deploy, no new endpoint.
+const EXHIBITOR_DIRECTORY_KEY = 'exhibitor_directory_public'
+
+const exhibitorDirectoryVisible = async (c: any): Promise<boolean> => {
+  if (isAdminRequest(c)) return true
+  try { return String(await netSetting(c, EXHIBITOR_DIRECTORY_KEY) || '') === '1' }
+  catch { return false }
+}
+
+// Hidden returns an EMPTY LIST rather than a 403, so the app's Exhibition Floor
+// tab shows its ordinary "nothing here yet" state instead of an error the visitor
+// can do nothing about. The header is there because an empty list that is really a
+// closed door is exactly the kind of silent nothing that goes unexplained for
+// months — this way the reason is one response header away.
+const exhibitorDirectoryHidden = (c: any) => {
+  c.header('X-Directory-Hidden', '1')
+  return c.json([])
+}
 
 app.get('/api/events/:id/exhibitors', async (c) => {
+  if (!(await exhibitorDirectoryVisible(c))) return exhibitorDirectoryHidden(c)
   const eventId = c.req.param('id')
   const category = c.req.query('category')
   const search = c.req.query('search')
@@ -4648,6 +4697,10 @@ app.get('/api/events/:id/exhibitors', async (c) => {
 })
 
 app.get('/api/exhibitors/:id', async (c) => {
+  // A single record, so 404 rather than an empty list: the honest answer to a
+  // direct fetch of something the caller may not see. Guessing ids must not be a
+  // way around the gate the list route applies.
+  if (!(await exhibitorDirectoryVisible(c))) return c.json({ error: 'Exhibitor not found' }, 404)
   const id = c.req.param('id')
   const exhibitor = await c.env.DB.prepare('SELECT * FROM exhibitors WHERE id = ?').bind(id).first()
   if (!exhibitor) return c.json({ error: 'Exhibitor not found' }, 404)
@@ -4671,6 +4724,9 @@ app.post('/api/exhibitors/:id/visit', async (c) => {
 })
 
 app.get('/api/events/:id/exhibitors/categories', async (c) => {
+  // The category list names the industries on the floor, which is a coarse but
+  // real read on who has bought. It closes with the directory it filters.
+  if (!(await exhibitorDirectoryVisible(c))) return exhibitorDirectoryHidden(c)
   const eventId = c.req.param('id')
   const { results } = await c.env.DB.prepare(
     'SELECT DISTINCT category FROM exhibitors WHERE event_id = ? ORDER BY category'
@@ -5224,7 +5280,7 @@ async function linkBoothExhibitor(c: any, booth: any, alloc: any): Promise<numbe
       ? `[BR-${String(alloc.booth_request_id).padStart(4, '0')}]`
       : `[BOOTH-${booth.code}]`
     const existing = await c.env.DB.prepare(
-      "SELECT id FROM exhibitors WHERE description LIKE ? OR (company_name = ? AND contact_email = ?)"
+      "SELECT id, booth_number, booth_size FROM exhibitors WHERE description LIKE ? OR (company_name = ? AND contact_email = ?)"
     ).bind('%' + marker + '%', alloc.company_name, alloc.email || '').first() as any
     if (existing) {
       // booth_number is the field that was always missing. It is free text nobody
@@ -5232,10 +5288,21 @@ async function linkBoothExhibitor(c: any, booth: any, alloc: any): Promise<numbe
       // empty. Stamp it from the allocation that now owns the stand. category is
       // only filled when blank — on a request-born exhibitor it holds the
       // industry, which is worth more than repeating the package name.
+      //
+      // ADDS the stand rather than replacing it: Kirusa holds 47 AND 48, Image
+      // Infosystem 15 AND 16, and overwriting would quietly drop a stand the
+      // company has paid for. One company is still ONE exhibitor — a directory
+      // that lists Kirusa twice is a directory nobody trusts.
       await c.env.DB.prepare(
         `UPDATE exhibitors SET booth_number = ?, booth_size = ?,
            category = COALESCE(NULLIF(category, ''), ?) WHERE id = ?`
-      ).bind(booth.code, boothExhibitorSize(booth.type_key), booth.name || '', existing.id).run()
+      ).bind(
+        mergeBoothNumbers(existing.booth_number, booth.code),
+        // The largest stand a company holds is what its listing should read as, so
+        // premium never degrades back to standard on a second, smaller stand.
+        existing.booth_size === 'premium' ? 'premium' : boothExhibitorSize(booth.type_key),
+        booth.name || '', existing.id
+      ).run()
       return existing.id
     }
     const ins = await c.env.DB.prepare(
@@ -5255,6 +5322,57 @@ async function linkBoothExhibitor(c: any, booth: any, alloc: any): Promise<numbe
     return null
   }
 }
+
+// Backfill for stands that were never SOLD through this panel. The 26 allocations
+// in production were bulk-loaded from the Confirmed Booth sheet straight into
+// booth_allocations (allocated_by 'import: confirmed sheet'), which is why every
+// one of them carries exhibitor_id NULL: the import wrote the table directly, so
+// linkBoothExhibitor never ran and 22 sold stands had no exhibitor at all.
+//
+// The mirror of /api/admin/booth-requests/backfill-exhibitors, and idempotent for
+// the same reason — linkBoothExhibitor adopts on the [BOOTH-51] marker, so running
+// this twice re-stamps the same rows instead of doubling the directory.
+//
+// CONFIRMED ONLY. A held stand is an option, not a sale: the company has not
+// signed and listing it as an exhibitor announces a deal that can still evaporate.
+// Released rows are excluded for the obvious reason. Payment is deliberately NOT
+// a condition — it is the same line linkBoothExhibitor draws on a live sale, and
+// a backfill that drew it somewhere else would leave the two permanently out of
+// step. What is NOT public is controlled by the directory gate, not by this.
+app.post('/api/admin/booths/backfill-exhibitors', async (c) => {
+  const eventId = Number(c.req.query('event_id') || 1)
+  const { results } = await c.env.DB.prepare(
+    `SELECT ba.*, b.code, b.name AS booth_name, b.type_key, b.event_id AS booth_event_id
+     FROM booth_allocations ba JOIN booths b ON ba.booth_id = b.id
+     WHERE ba.event_id = ? AND ba.status = 'confirmed' AND ba.released_at IS NULL
+     ORDER BY CAST(b.code AS INTEGER), b.code`
+  ).bind(eventId).all()
+
+  let linked = 0
+  const failed: string[] = []
+  for (const r of (results as any[]) || []) {
+    const booth = { id: r.booth_id, code: r.code, name: r.booth_name, type_key: r.type_key, event_id: r.booth_event_id }
+    const exhibitorId = await linkBoothExhibitor(c, booth, r)
+    if (!exhibitorId) { failed.push(String(r.code)); continue }
+    // Write the link back onto the allocation. Without this the stand and the
+    // exhibitor stay strangers and the next release cannot find what to detach.
+    await c.env.DB.prepare('UPDATE booth_allocations SET exhibitor_id = ? WHERE id = ?')
+      .bind(exhibitorId, r.id).run()
+    linked++
+  }
+
+  // Distinct exhibitors, not stands — two of these companies hold two stands each.
+  const exhibitors = await c.env.DB.prepare(
+    `SELECT COUNT(DISTINCT exhibitor_id) AS n FROM booth_allocations
+     WHERE event_id = ? AND exhibitor_id IS NOT NULL AND released_at IS NULL`
+  ).bind(eventId).first() as any
+
+  await audit(c, 'booth.backfill-exhibitors', 'exhibitor', null, { stands: linked, failed })
+  return c.json({
+    success: true, stands_linked: linked, exhibitors: exhibitors?.n || 0, failed,
+    message: `${linked} sold stand(s) linked to ${exhibitors?.n || 0} exhibitor(s)`,
+  })
+})
 
 // ---------------------------------------------------------------------------
 // RETIRING AN ALLOCATION, in ONE place, because the Release button and the lapsed
@@ -24687,6 +24805,7 @@ function adminPageHTML(): string {
         <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
           <span class="text-xs text-gray-400">\${exhibitors.length} exhibitors</span>
           <div class="flex gap-2">
+            <button onclick="backfillExhibitorsFromBooths()" class="px-4 py-2 rounded-xl text-xs font-medium bg-amber-600/20 text-amber-300 hover:bg-amber-600/30 border border-amber-500/30 transition"><i class="fas fa-store mr-1"></i>Sync from Booth Sales</button>
             <button onclick="syncExhibitorsFromAttendees()" class="px-4 py-2 rounded-xl text-xs font-medium bg-green-600/20 text-green-300 hover:bg-green-600/30 border border-green-500/30 transition"><i class="fas fa-sync mr-1"></i>Sync from Attendees</button>
             <button onclick="openCreateExhibitor()" class="px-4 py-2 rounded-xl text-xs font-medium bg-primary-600 hover:bg-primary-500 text-white transition"><i class="fas fa-plus mr-1"></i>Add Exhibitor</button>
           </div>
@@ -24765,6 +24884,20 @@ function adminPageHTML(): string {
         toast(result.message || 'Sync complete!');
         loadAdminExhibitors();
       } catch(e) { toast('Sync failed', 'error'); }
+    }
+
+    // Every CONFIRMED stand on the floor plan becomes an exhibitor. Needed because
+    // the stands sold before this panel existed were loaded straight into the
+    // database and never ran the code that creates the exhibitor behind a sale.
+    // Safe to press twice: a stand already linked is re-stamped, not duplicated.
+    async function backfillExhibitorsFromBooths() {
+      if (!confirm('Create an exhibitor for every confirmed stand on the floor plan?\\n\\nHeld stands are skipped. A company holding two stands stays one exhibitor. Running this again changes nothing.')) return;
+      try {
+        const result = await api.post('/api/admin/booths/backfill-exhibitors?event_id='+EID, {});
+        toast(result.message || 'Backfill complete!');
+        if (result.failed && result.failed.length) toast('Stand(s) '+result.failed.join(', ')+' could not be linked', 'error');
+        loadAdminExhibitors();
+      } catch(e) { toast('Backfill failed', 'error'); }
     }
 
     // ============ ADMIN BOOTH REQUESTS ============
