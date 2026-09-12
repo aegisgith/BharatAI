@@ -339,19 +339,43 @@ const ATTENDEE_LIST_MAX_BYTES = 950000
 const PUBLIC_PAGE_DEFAULT = 24
 const PUBLIC_PAGE_MAX = 48
 
-const encodeAttendeeCursor = (name: unknown, id: unknown): string =>
-  btoa(JSON.stringify([String(name ?? ''), Number(id)]))
+/* Students last, for everybody who is not one.
+ *
+ * The directory is ordered by name, so at an event with this many college
+ * registrations the first screen a paying delegate sees is largely students -
+ * which is nobody's idea of who they came to meet. Students are not hidden,
+ * they are moved behind the people the delegate is here for.
+ *
+ * SQLite has no regex, so this is the LIKE-able subset of the Students band in
+ * SENIORITY_BANDS. 'intern' is matched with a space on each side or
+ * "International" and "Internal" would demote half the sales directors in the
+ * room; the normalisation pads the title and flattens the punctuation people
+ * put around it ("Intern - Data", "Student.").
+ *
+ * Literals, not bound parameters: this expression appears in the SELECT, the
+ * keyset predicate and the ORDER BY of the same statement, and threading six
+ * placeholders through all three in the right order is how the bug gets in.
+ * Every value here is a constant in this file. */
+const STUDENT_TITLE_NORM =
+  `' ' || LOWER(REPLACE(REPLACE(REPLACE(COALESCE(job_title,''), '.', ' '), '-', ' '), ',', ' ')) || ' '`
+const STUDENT_RANK_SQL = '(CASE WHEN ' + ['%student%', '% intern %', '% interns %', '%scholar%', '%trainee%', '%graduand%']
+  .map(pat => `${STUDENT_TITLE_NORM} LIKE '${pat}'`).join(' OR ') + ' THEN 1 ELSE 0 END)'
+
+const encodeAttendeeCursor = (name: unknown, id: unknown, rank: unknown = 0): string =>
+  btoa(JSON.stringify([String(name ?? ''), Number(id), Number(rank) ? 1 : 0]))
     .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 
-function decodeAttendeeCursor(raw: unknown): { name: string; id: number } | null {
+function decodeAttendeeCursor(raw: unknown): { name: string; id: number; rank: number } | null {
   const t = String(raw ?? '').trim()
   if (!t) return null
   try {
     const b = t.replace(/-/g, '+').replace(/_/g, '/')
     const v = JSON.parse(atob(b + '='.repeat((4 - (b.length % 4)) % 4)))
-    if (!Array.isArray(v) || v.length !== 2) return null
+    // Two elements is the old shape, still in flight in somebody's open tab.
+    if (!Array.isArray(v) || v.length < 2) return null
     const id = Number(v[1])
-    return Number.isFinite(id) ? { name: String(v[0]), id } : null
+    const rank = v.length > 2 && Number(v[2]) ? 1 : 0
+    return Number.isFinite(id) ? { name: String(v[0]), id, rank } : null
   } catch { return null }
 }
 // The opt-out lifts the default cap to the hard maximum; it does not mean
@@ -3133,17 +3157,29 @@ app.get('/api/events/:id/attendees', async (c) => {
     const size = Math.min(PUBLIC_PAGE_MAX, Math.max(1,
       parseInt(c.req.query('limit') || '', 10) || PUBLIC_PAGE_DEFAULT))
     const cur = decodeAttendeeCursor(c.req.query('cursor'))
+    // Asked for by the client rather than assumed, because a student browsing
+    // the directory should still see other students in the normal place.
+    const demote = c.req.query('demote_students') === '1'
     let pw = where
     const pp = [...params]
     if (cur) {
-      pw += ' AND (name > ? OR (name = ? AND id > ?))'
-      pp.push(cur.name, cur.name, cur.id)
+      if (demote) {
+        pw += ` AND (${STUDENT_RANK_SQL} > ? OR (${STUDENT_RANK_SQL} = ? AND (name > ? OR (name = ? AND id > ?))))`
+        pp.push(cur.rank, cur.rank, cur.name, cur.name, cur.id)
+      } else {
+        pw += ' AND (name > ? OR (name = ? AND id > ?))'
+        pp.push(cur.name, cur.name, cur.id)
+      }
     }
     // Fetch one more row than asked for. That single extra row answers "is there
     // another page?" without a COUNT - which matters, because a COUNT here is the
     // registration count, and not running it is the point.
+    const order = demote ? `${STUDENT_RANK_SQL} ASC, name ASC, id ASC` : 'name ASC, id ASC'
+    // _srank rides along so the cursor for the next page can be built from the
+    // last row. It is derived from job_title, which this payload already carries.
+    const select = demote ? `${cols}, ${STUDENT_RANK_SQL} AS _srank` : cols
     const got = ((await c.env.DB.prepare(
-      `SELECT ${cols} FROM attendees${pw} ORDER BY name ASC, id ASC LIMIT ${size + 1}`
+      `SELECT ${select} FROM attendees${pw} ORDER BY ${order} LIMIT ${size + 1}`
     ).bind(...pp).all()).results || []) as any[]
     const more = got.length > size
     const pageRows = more ? got.slice(0, size) : got
@@ -3154,7 +3190,7 @@ app.get('/api/events/:id/attendees', async (c) => {
         'X-Returned-Count': String(pageRows.length),
         // Present only while more remain. Its absence is how the client knows to
         // stop, and it says nothing about how many are left.
-        'X-Next-Cursor': more && last ? encodeAttendeeCursor(last.name, last.id) : '',
+        'X-Next-Cursor': more && last ? encodeAttendeeCursor(last.name, last.id, last._srank) : '',
         'X-Has-More': more ? '1' : '0',
         'Access-Control-Expose-Headers': 'X-Returned-Count, X-Next-Cursor, X-Has-More',
       },
@@ -13456,7 +13492,7 @@ function mainPageHTML(): string {
               <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-gray-500"></i>
               <input type="text" id="attendee-search" autocomplete="off" placeholder="Search by name, company, or title..." class="w-full pl-11 pr-4 py-3 rounded-xl text-sm" oninput="debounceSearch()">
             </div>
-            <select id="role-filter" class="px-4 py-3 rounded-xl text-sm" onchange="loadAttendees()">
+            <select id="role-filter" class="px-4 py-3 rounded-xl text-sm hidden" onchange="loadAttendees()">
               <option value="">All Roles</option>
               <option value="Speaker">Speakers</option>
               <option value="Exhibitor">Exhibitors</option>
@@ -16086,9 +16122,25 @@ function mainPageHTML(): string {
     // Paging state for the directory. The list is no longer held in the browser in
     // full - a page arrives at a time - so "find me this person" is answered by
     // search, which runs in SQL across everyone, rather than by scrolling.
-    let attendeeCursor = '';
+    // One entry per page: the cursor that STARTS it. Page 0 starts at ''.
+    // Going back is walking this list, which is why it is kept rather than a
+    // single rolling cursor - a keyset cursor only ever points forwards.
+    // Same words as the Students band the server orders on. A student is not
+    // shown their own cohort last.
+    const viewerIsStudent = () =>
+      /\b(student|scholar|intern|trainee|graduand)\b/i.test(String((currentUser && currentUser.job_title) || ''));
+
+    let attendeePageCursors = [''];
+    let attendeePage = 0;
     let attendeeHasMore = false;
     let attendeeLoading = false;
+
+    /* Off at the organiser's request. The only filters the data can support
+     * today are pass tiers, and nobody looks for a person by which pass they
+     * bought. Everything behind it still works - the endpoint, the option
+     * building, the two-field query - so turning it back on is this one flag
+     * and removing 'hidden' from the select. */
+    const DIRECTORY_FILTER_ENABLED = false;
 
     // Built from the directory rather than from a list written months ago, so an
     // option that cannot match anybody never appears, and a tier added later shows
@@ -16098,6 +16150,8 @@ function mainPageHTML(): string {
     async function loadAttendeeFilters() {
       const sel = document.getElementById('role-filter');
       if (!sel || attendeeFiltersLoaded) return;
+      if (!DIRECTORY_FILTER_ENABLED) { sel.classList.add('hidden'); sel.value = ''; return; }
+      sel.classList.remove('hidden');
       try {
         const r = await fetch('/api/events/' + EVENT_ID + '/attendee-filters');
         if (!r.ok) return;
@@ -16118,14 +16172,20 @@ function mainPageHTML(): string {
       } catch (e) {}
     }
 
-    async function loadAttendees(append) {
-      // The guard is for "show more" only. A fresh load - a keystroke in the
-      // search box, or a filter change - must always win, or typing quickly
-      // silently drops the search the person actually wanted.
-      if (append && attendeeLoading) return;
+    /* Pass a page number to move to it; pass nothing for a fresh load, which
+     * resets to page one. A page REPLACES the grid rather than adding to it -
+     * see renderPager() for why that is the point and not a detail. */
+    async function loadAttendees(page) {
+      const fresh = (page === undefined || page === null || page === false);
+      // The guard is for page moves only. A fresh load - a keystroke in the
+      // search box - must always win, or typing quickly silently drops the
+      // search the person actually wanted.
+      if (!fresh && attendeeLoading) return;
       const search = document.getElementById('attendee-search')?.value || '';
-      const role = document.getElementById('role-filter')?.value || '';
-      if (!append) { attendeeCursor = ''; attendeeHasMore = false; }
+      const role = DIRECTORY_FILTER_ENABLED ? (document.getElementById('role-filter')?.value || '') : '';
+      const target = fresh ? 0 : page;
+      if (fresh) { attendeePageCursors = ['']; attendeePage = 0; attendeeHasMore = false; }
+      const cursor = attendeePageCursors[target] || '';
       attendeeLoading = true;
 
       try {
@@ -16134,11 +16194,15 @@ function mainPageHTML(): string {
         const qs = '/api/events/' + EVENT_ID + '/attendees'
           + '?search=' + encodeURIComponent(search)
           + '&role=' + encodeURIComponent(role)
-          + (append && attendeeCursor ? '&cursor=' + encodeURIComponent(attendeeCursor) : '');
+          // A student browsing should still see students where they expect them.
+          + (viewerIsStudent() ? '' : '&demote_students=1')
+          + (cursor ? '&cursor=' + encodeURIComponent(cursor) : '');
         const resp = await fetch(qs);
         const attendees = await resp.json();
-        attendeeCursor = resp.headers.get('X-Next-Cursor') || '';
+        const nextCursor = resp.headers.get('X-Next-Cursor') || '';
         attendeeHasMore = resp.headers.get('X-Has-More') === '1';
+        attendeePage = target;
+        if (attendeeHasMore && nextCursor) attendeePageCursors[target + 1] = nextCursor;
 
 
         let list = attendees.filter(a => a.id !== currentUser?.id);
@@ -16147,7 +16211,8 @@ function mainPageHTML(): string {
         // stable (name, id) order, which is what the paging cursor walks, and
         // re-ordering a single page would scramble that for no gain. Ranking
         // across everyone is the rail's job now.
-        const ranking = currentUser && !search && !role;
+        // Only on the first page: the 'why' line is about who leads the list.
+        const ranking = currentUser && !search && !role && target === 0;
         if (currentUser) {
           list.forEach(a => { const m = matchScore(a); a._score = m.score; a._shared = m.shared; });
         }
@@ -16156,8 +16221,8 @@ function mainPageHTML(): string {
         // keeps working now that the browser only ever holds one page. Fetched
         // once per fresh load, and never while searching - during a search the
         // person already knows who they are looking for.
-        if (!append && ranking) renderMatchRail();
-        else if (!append) { const r = document.getElementById('match-rail'); if (r) r.innerHTML = ''; }
+        if (ranking) renderMatchRail();
+        else { const r = document.getElementById('match-rail'); if (r) r.innerHTML = ''; }
 
         const gridHTML = list.map(a => {
           const compLogo = getCompanyLogoUrl(a.company, a.website_url, a.linkedin_url, a.email);
@@ -16190,26 +16255,34 @@ function mainPageHTML(): string {
         }).join('');
 
         const grid = document.getElementById('attendee-grid');
-        if (append) grid.insertAdjacentHTML('beforeend', gridHTML);
-        else grid.innerHTML = gridHTML || '<div class="text-center text-gray-500 py-12 col-span-full"><i class="fas fa-search text-4xl mb-3 block"></i>Nobody matches that search. Try a company or a job title.</div>';
+        grid.innerHTML = gridHTML || '<div class="text-center text-gray-500 py-12 col-span-full"><i class="fas fa-search text-4xl mb-3 block"></i>Nobody matches that search. Try a company or a job title.</div>';
 
-        renderLoadMore();
+        renderPager();
 
         // Apply visitor lock AFTER grid is populated
         applyVisitorNetworkLock();
 
       } catch(e) {
         console.error('Attendees error:', e);
-        if (!append) document.getElementById('attendee-grid').innerHTML = '<div class="text-center text-gray-500 py-12 col-span-full">That did not load. Please try again.</div>';
+        document.getElementById('attendee-grid').innerHTML = '<div class="text-center text-gray-500 py-12 col-span-full">That did not load. Please try again.</div>';
       } finally {
         attendeeLoading = false;
       }
     }
 
-    // Deliberately a button and not infinite scroll. Auto-loading on scroll is
-    // exactly the behaviour that makes a directory cheap to harvest, and it also
-    // puts the footer permanently out of reach on a phone.
-    function renderLoadMore() {
+    /* Pages that REPLACE each other, not a list that grows.
+     *
+     * "Show more" kept appending, so anyone patient enough to press it could
+     * assemble the entire attendee list into one page of DOM and then take it
+     * away with a single Ctrl+P - as a PDF, no copying required, whatever the
+     * page does about text selection. One page in the DOM at a time means the
+     * print dialog only ever sees twenty-four people, and a scraper has to come
+     * back for every page.
+     *
+     * Still buttons and not infinite scroll, for the same reason it always was:
+     * auto-loading on scroll is what makes a directory cheap to harvest, and it
+     * puts the footer permanently out of reach on a phone. */
+    function renderPager() {
       let el = document.getElementById('attendee-more');
       if (!el) {
         el = document.createElement('div');
@@ -16217,17 +16290,32 @@ function mainPageHTML(): string {
         el.className = 'mt-5 text-center';
         document.getElementById('attendee-grid').insertAdjacentElement('afterend', el);
       }
-      el.innerHTML = attendeeHasMore
-        ? '<button onclick="loadMoreAttendees()" class="px-6 py-2.5 rounded-xl text-sm font-medium glass hover:bg-white/10 transition"><i class="fas fa-arrow-down mr-2"></i>Show more people</button>'
-          + '<p class="text-[11px] text-gray-500 mt-2">Looking for someone in particular? Search by name, company or job title.</p>'
-        : '';
+      const hasPrev = attendeePage > 0;
+      if (!hasPrev && !attendeeHasMore) { el.innerHTML = ''; return; }
+      const btn = 'min-h-[44px] px-5 rounded-xl text-sm font-medium glass transition inline-flex items-center';
+      el.innerHTML =
+        '<div class="flex items-center justify-center gap-3 flex-wrap">'
+        + (hasPrev
+            ? '<button onclick="gotoAttendeePage(' + (attendeePage - 1) + ')" class="' + btn + ' hover:bg-white/10"><i class="fas fa-arrow-left mr-2"></i>Previous</button>'
+            : '<button disabled class="' + btn + ' opacity-40 cursor-not-allowed"><i class="fas fa-arrow-left mr-2"></i>Previous</button>')
+        + '<span class="text-xs text-gray-500">Page ' + (attendeePage + 1) + '</span>'
+        + (attendeeHasMore
+            ? '<button onclick="gotoAttendeePage(' + (attendeePage + 1) + ')" class="' + btn + ' hover:bg-white/10">Next<i class="fas fa-arrow-right ml-2"></i></button>'
+            : '<button disabled class="' + btn + ' opacity-40 cursor-not-allowed">Next<i class="fas fa-arrow-right ml-2"></i></button>')
+        + '</div>'
+        + '<p class="text-[11px] text-gray-500 mt-2">Looking for someone in particular? Search by name, company or job title.</p>';
     }
 
-    async function loadMoreAttendees() {
-      const btn = document.querySelector('#attendee-more button');
-      if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Loading...'; }
-      await loadAttendees(true);
-      renderLoadMore();   // never leave the button spinning if that call was dropped
+    async function gotoAttendeePage(p) {
+      // Forward only as far as a cursor has been earned: page 5 cannot be
+      // guessed at in the URL without walking pages 1 to 4 first.
+      if (p < 0 || attendeePageCursors[p] === undefined) return;
+      const el = document.getElementById('attendee-more');
+      if (el) el.innerHTML = '<i class="fas fa-spinner fa-spin text-gray-500"></i>';
+      await loadAttendees(p);
+      renderPager();
+      const grid = document.getElementById('attendee-grid');
+      if (grid) grid.scrollIntoView();
     }
 
     // The rail's candidates come from the server, scored here with the same
@@ -16407,7 +16495,7 @@ function mainPageHTML(): string {
 
     function debounceSearch() {
       clearTimeout(searchTimeout);
-      searchTimeout = setTimeout(() => loadAttendees(false), 300);
+      searchTimeout = setTimeout(() => loadAttendees(), 300);
     }
 
     // ==================== PROFILE MODAL ====================
