@@ -7257,6 +7257,67 @@ app.get('/api/attendees/:id/dashboard', async (c) => {
 })
 
 // Update attendee profile
+/* Who is owed a certificate of participation.
+ *
+ * The decision lives here rather than in the page because the browser's idea
+ * of who you are comes out of localStorage, which its holder can edit. The
+ * page still DRAWS the certificate; it no longer decides who gets one.
+ *
+ * Attendance means the badge desk scanned you in. checked_in_at can only be
+ * written by a desk account standing at the venue, so it is the one fact here
+ * that cannot be produced by wanting it. The start-date check is belt and
+ * braces against a backdated or imported row.
+ *
+ * Everything fails CLOSED. A missing column, a failed read, an unknown event:
+ * all of them withhold the certificate rather than hand one out, because the
+ * cost of wrongly refusing is an email to the organiser and the cost of
+ * wrongly issuing is that the certificate means nothing to anyone who earned
+ * it. */
+app.get('/api/attendees/:id/certificate-eligibility', async (c) => {
+  const id = c.req.param('id')
+  const denied = await requireSelf(c, id); if (denied) return denied
+
+  let row: any = null
+  try {
+    row = await c.env.DB.prepare(
+      `SELECT a.checked_in_at, e.start_date, e.end_date
+         FROM attendees a JOIN events e ON e.id = a.event_id
+        WHERE a.id = ?`
+    ).bind(id).first()
+  } catch (_) {
+    return c.json({ eligible: false, attended: false, started: false,
+      reason: 'We could not confirm your attendance just now. Please try again in a moment.' })
+  }
+  if (!row) return c.json({ error: 'Attendee not found' }, 404)
+
+  // The venue runs on IST and the worker on UTC, so a check against the raw
+  // UTC date would still call it 'before the event' until 5.30am on the day.
+  const todayIst = new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 10)
+  const start = String(row.start_date || '')
+  const started = !!start && todayIst >= start
+  const attended = !!row.checked_in_at
+
+  const months = ['January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December']
+  const parts = start.split('-')
+  const startLabel = parts.length === 3 ? Number(parts[2]) + ' ' + months[Number(parts[1]) - 1] : ''
+
+  const reason = attended && started ? ''
+    : started
+      ? 'Your certificate unlocks the moment the badge desk scans you in at the venue.'
+      : 'Certificates go to the people who turn up. Yours unlocks when you check in at the badge desk'
+        + (startLabel ? ' on ' + startLabel : '') + '.'
+
+  return c.json({
+    eligible: attended && started,
+    attended, started,
+    checked_in_at: row.checked_in_at || null,
+    starts: start || null,
+    ends: row.end_date || null,
+    reason,
+  })
+})
+
 app.put('/api/attendees/:id/profile', async (c) => {
   const id = c.req.param('id')
   const denied = await requireSelf(c, id); if (denied) return denied
@@ -18368,11 +18429,41 @@ function mainPageHTML(): string {
     }
 
     // ==================== DELEGATE PASS GENERATOR ====================
+    /* The certificate is drawn in this page but it is not granted here - the
+     * server decides, because currentUser comes from localStorage and its owner
+     * can edit it. Checked on render AND again on click, so a button left over
+     * from an earlier state is not a way in. */
+    async function certificateEligibility() {
+      if (!currentUser) return { eligible: false, reason: 'Please sign in first.' };
+      try {
+        return await api.get('/api/attendees/' + currentUser.id + '/certificate-eligibility');
+      } catch (e) {
+        return { eligible: false, reason: 'We could not confirm your attendance. Please try again.' };
+      }
+    }
+
+    async function refreshCertificateButton() {
+      const btn = document.getElementById('cert-btn');
+      if (!btn || !currentUser) return;
+      const gate = await certificateEligibility();
+      if (gate && gate.eligible) return;
+      btn.classList.add('opacity-50', 'cursor-not-allowed');
+      btn.setAttribute('title', (gate && gate.reason) || 'Available once you have attended.');
+      const icon = btn.querySelector('i');
+      if (icon) icon.className = 'fas fa-lock mr-2';
+    }
+
     // Certificate of participation — landscape canvas, same brand + logo
     // loading approach as the pass. Downloads a PNG the attendee keeps.
     async function generateCertificate() {
       const user = currentUser;
       if (!user) { showToast('Please sign in first', 'error'); return; }
+      const gate = await certificateEligibility();
+      if (!gate || !gate.eligible) {
+        showToast((gate && gate.reason) || 'Certificates are issued to people who attend the event.', 'error');
+        refreshCertificateButton();
+        return;
+      }
       showToast('Generating your certificate…', 'info');
       const W = 1600, H = 1130;
       const canvas = document.createElement('canvas'); canvas.width = W; canvas.height = H;
@@ -18810,7 +18901,7 @@ function mainPageHTML(): string {
                 <div class="flex gap-2 shrink-0 flex-wrap">
                   <button onclick="generateDelegatePass()" class="px-4 py-2.5 rounded-xl text-sm font-medium bg-primary-600 hover:bg-primary-500 text-white transition quick-action-btn"><i class="fas fa-id-badge mr-2"></i>Download Pass</button>
                   <button onclick="openSocialCard()" class="px-4 py-2.5 rounded-xl text-sm font-medium glass hover:bg-white/10 text-gray-200 transition quick-action-btn"><i class="fas fa-share-alt mr-2"></i>Share Card</button>
-                  <button onclick="generateCertificate()" class="px-4 py-2.5 rounded-xl text-sm font-medium glass hover:bg-white/10 text-gray-200 transition quick-action-btn"><i class="fas fa-award mr-2"></i>Certificate</button>
+                  <button id="cert-btn" onclick="generateCertificate()" class="px-4 py-2.5 rounded-xl text-sm font-medium glass hover:bg-white/10 text-gray-200 transition quick-action-btn"><i class="fas fa-award mr-2"></i>Certificate</button>
                   <button onclick="openEditProfile()" class="px-4 py-2.5 rounded-xl text-sm font-medium bg-primary-600 hover:bg-primary-500 text-white transition quick-action-btn"><i class="fas fa-user-edit mr-2"></i>Edit Profile</button>
                   <button onclick="logoutUser()" class="px-4 py-2.5 rounded-xl text-sm font-medium glass hover:bg-white/10 text-gray-400 transition quick-action-btn"><i class="fas fa-sign-out-alt mr-2"></i>Sign Out</button>
                 </div>
@@ -18818,6 +18909,10 @@ function mainPageHTML(): string {
             </div>
           </div>
         \`;
+
+        // Asked on render as well as on click: a button that looks available
+        // and then refuses is worse than one that says so up front.
+        refreshCertificateButton();
 
         // ---- Quick Actions ----
         document.getElementById('my-quick-actions').innerHTML = \`
