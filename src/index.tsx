@@ -717,6 +717,10 @@ async function sendRegistrationEmail(c: any, attendee: any) {
             with your photo, your name and your organisation, sized for LinkedIn, Instagram and WhatsApp,
             and a caption you can copy with it. One tap.
           </p>
+          <p style="margin:0 0 12px;font-size:12.5px;line-height:1.65;color:#555;">
+            It is how the other people coming find out that you are &mdash; and ask to meet you
+            before the two days fill up.
+          </p>
           <a href="${cardHref}" style="display:inline-block;padding:9px 20px;background:#1E2140;color:#fff;text-decoration:none;border-radius:8px;font-size:12.5px;font-weight:bold;">Make my LinkedIn post</a>
         </div>
         <div style="margin-top:22px;padding:14px;background:#FFF6EF;border:1px solid rgba(255,107,0,0.25);border-radius:10px;">
@@ -8891,6 +8895,10 @@ async function profileReminderEmailHTML(c: any, attendee: any, link: string): Pr
           <p style="margin:0 0 12px;font-size:12.5px;line-height:1.65;color:#555;">
             ${cardLine} &mdash; a ready-made image with your photo, your name and your organisation,
             sized for LinkedIn, Instagram and WhatsApp, and a caption you can copy with it. One tap.
+          </p>
+          <p style="margin:0 0 12px;font-size:12.5px;line-height:1.65;color:#555;">
+            It is how the other people coming find out that you are &mdash; and ask to meet you
+            before the two days fill up.
           </p>
           <a href="${cardLink}" style="display:inline-block;padding:9px 20px;background:#1E2140;color:#fff;text-decoration:none;border-radius:8px;font-size:12.5px;font-weight:bold;">Make my LinkedIn post</a>
         </div>
