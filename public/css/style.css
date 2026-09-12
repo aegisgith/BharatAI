@@ -912,6 +912,87 @@ section { position: relative; }
   animation: fadeSlideUp 0.9s var(--ease-out) 0.2s both;
 }
 
+/* --- Hero rallying line ---
+   The hero's second beat. .hero-desc says who is in the room; this says what the
+   room is for, so it must not read as another sentence of body copy. It changes
+   three things at once against .hero-desc: display face instead of body face,
+   full white instead of 65% white, and roughly +75% size. That still clears the
+   h1 (102px at 1024px; 33-42px once the `.hero-title, h1 { font-size: ...
+   !important }` override below takes over under 768px). The saffron lives in the
+   2px rule, NOT in the type, so it does not compete with the saffron
+   .btn-primary sitting below it.
+
+   The animation is not optional. .hero-dateline (0s), .hero-title (0.1s),
+   .hero-desc (0.2s) and .hero-actions (0.4s) all animate with `both`, and
+   fadeSlideUp's `from` frame is opacity:0 - so every one of them is invisible on
+   frame 1. A .hero-rally without its own animation would be the only hero
+   element painted immediately: a lone line floating over the photo above a title
+   and paragraph that have not arrived yet. 0.3s is the slot between desc and
+   actions. (.hero-meta below also uses 0.3s; it never appears in index.html's
+   hero, and two elements sharing a delay is harmless anyway.)
+
+   Reduced motion: the global reset near the end of this file sets
+   animation-duration:0.01ms !important on *, but does NOT touch animation-delay
+   or animation-fill-mode. With `both`, the backwards fill holds the `from` frame
+   through the delay, the 0.01ms run completes, and the forwards fill holds `to`
+   - so the line ends fully visible, exactly as .hero-title and .hero-desc
+   already survive that reset. Do not add a standalone `opacity: 0` here; unlike
+   the keyframe's `from`, it would stick. */
+.hero-rally {
+  font-family: var(--font-display);
+  /* Caps at 32.8px, where this 40-character line measures ~650px and stays on
+     one line - a single utterance, not a subheading. It wraps below ~460px, and
+     then into two balanced lines. */
+  font-size: clamp(1.35rem, 3.2vw, 2.05rem);
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.025em;
+  color: var(--white);
+  /* px, not ch: `ch` resolves against Bricolage and would change silently if the
+     webfont failed, and 46ch (~830px) never actually clamped anything - the copy
+     is ~650px and below 480px the container binds first. 720px is a real guard. */
+  max-width: 720px;
+  margin: 0 0 2.25rem;
+  text-wrap: balance;
+  animation: fadeSlideUp 0.9s var(--ease-out) 0.3s both;
+  /* Any of the seven .hero-bg-photo frames can put a truss light directly behind
+     this line. A depth shadow, not a glow - the same defence .hero-desc gets at
+     <=480px, applied here at every width because this is the line the eye is
+     supposed to land on. */
+  text-shadow: 0 2px 28px rgba(13,15,30,0.6), 0 1px 4px rgba(13,15,30,0.45);
+}
+
+/* The change-of-voice marker. A pseudo-element on purpose: no decorative <div>
+   for a screen reader to meet, nothing to aria-hide. It carries the brand colour
+   that the type deliberately does not. */
+.hero-rally::before {
+  content: "";
+  display: block;
+  width: 44px;
+  height: 2px;
+  margin: 0 auto 1.15rem;
+  border-radius: var(--r-full);
+  background: var(--grad-saffron);
+}
+
+/* Scoped here rather than in the far-away RESPONSIVE section. The corollary,
+   which is why no .hero-desc tweak appears here: a .hero-desc override in THIS
+   block would lose to the RESPONSIVE rules later in the file at equal
+   specificity. The phone budget is therefore spent on .hero-rally alone - and it
+   does need spending, because .hero is min-height:100vh + align-items:center +
+   overflow:hidden, so a stack taller than the viewport is clipped at BOTH ends,
+   dateline and title first, with no way to scroll them back. */
+@media (max-width: 480px) {
+  .hero-rally {
+    font-size: 1.2rem;
+    margin-bottom: 1.5rem;
+  }
+  .hero-rally::before {
+    width: 36px;
+    margin-bottom: 0.75rem;
+  }
+}
+
 .hero-meta {
   display: flex;
   gap: 1rem;
