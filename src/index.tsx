@@ -611,6 +611,18 @@ async function sendRegistrationEmail(c: any, attendee: any) {
   const fromEmail = senderEmailOrDefault(await g('sender_email'))
   const fromName = (await g('sender_name')) || 'Bharat AI Innovation'
   const appUrl = (await g('app_url')) || 'https://bharataiinnovation.com/app'
+  /* The card link further down carries ?email=, which sends the app down the
+   * auto-login path - and that path refuses an address arriving without a
+   * token, so the one link in the welcome mail that opens the photo picker has
+   * been answering 403 to every registrant. Two uses, because people click a
+   * link in an email twice more often than once. */
+  let cardHref = `${appUrl}?email=${encodeURIComponent(attendee.email)}&action=social-card`
+  try {
+    if (await verifiedLoginEnabled(c)) {
+      const issuedCard = await createLoginToken(c, attendee.event_id, String(attendee.email).toLowerCase(), PROFILE_LINK_TTL_MINUTES, 2)
+      cardHref += `&token=${issuedCard.token}`
+    }
+  } catch (_) { /* a welcome mail must still go out if the token cannot be minted */ }
   const esc = (v: any) => String(v ?? '').replace(/[&<>]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch] as string))
   const pending = String(attendee.payment_status || '').toLowerCase() === 'pending'
   const step = (n: string, title: string, body: string) =>
@@ -705,7 +717,7 @@ async function sendRegistrationEmail(c: any, attendee: any) {
             with your photo, your name and your organisation, sized for LinkedIn, Instagram and WhatsApp,
             and a caption you can copy with it. One tap.
           </p>
-          <a href="${appUrl}?email=${encodeURIComponent(attendee.email)}&action=social-card" style="display:inline-block;padding:9px 20px;background:#1E2140;color:#fff;text-decoration:none;border-radius:8px;font-size:12.5px;font-weight:bold;">Make my LinkedIn post</a>
+          <a href="${cardHref}" style="display:inline-block;padding:9px 20px;background:#1E2140;color:#fff;text-decoration:none;border-radius:8px;font-size:12.5px;font-weight:bold;">Make my LinkedIn post</a>
         </div>
         <div style="margin-top:22px;padding:14px;background:#FFF6EF;border:1px solid rgba(255,107,0,0.25);border-radius:10px;">
           <p style="margin:0;font-size:12.5px;line-height:1.6;color:#1E2140;"><strong>On the day:</strong> bring a government photo ID matching the name on your pass. We check it at the badge desk &mdash; we never ask you to upload or send an identity document.</p>
@@ -2390,15 +2402,29 @@ function verifyPageHTML(o: any): string {
     'Academic Pass': ['#7C5CFF', '#ffffff'], 'Visitor Pass': ['#2B8CFF', '#ffffff']
   }
   const tier = TIER[a.badge_type] || ['#2B8CFF', '#ffffff']
+  // TRIM, not truthiness: a whitespace-only avatar_url rendered an <img> with no
+  // usable src, and the operator saw a hollow ring they could not tell from a
+  // photo still loading.
+  const hasPassPhoto = String(a.avatar_url || '').trim() !== ''
   const unpaid = String(a.payment_status || '').toLowerCase() === 'pending'
   const ok = o.state === 'valid' && !unpaid
   const banner = o.state !== 'valid' ? ['#b3261e', 'NOT VALID', 'This code is not a Bharat AI Innovation pass.']
     : unpaid ? ['#b26a00', 'PAYMENT PENDING', 'This tier has not been paid for. Do not admit without checking.']
+    // The instruction has to match the document. Three of every four passes
+    // downloaded so far have no photo on them - the pass draws an initial in a
+    // coloured disc instead - and this screen was telling the operator to check a
+    // face against an ID in every one of those cases. An operator who is asked to
+    // do something impossible several times an hour stops reading the banner.
+    : !hasPassPhoto ? ['#0f7b47', 'VALID PASS \u00b7 NO PHOTO', 'No photo on file. Check the NAME on a government photo ID before admitting.']
     : ['#0f7b47', 'VALID PASS', 'Check the photo and name against a government photo ID.']
 
   // An unrecognised code has no holder, so it must not render a card with an empty
   // name, a default "Visitor Pass" pill and a live Check in button — that reads at a
   // glance like a pass the desk can admit, under a banner saying it is not one.
+  // Whitespace is not a photo. The codebase's own emptiness test is TRIM()-based
+  // and this screen used a bare truthiness check, so ' ' rendered an <img> with
+  // no src and the operator saw a hollow ring - indistinguishable from a photo
+  // still loading.
   const body = o.state !== 'valid'
     ? `<div class="card"><p class="muted">There is nothing to check in.</p>
          <p class="muted" style="margin-top:6px;">Ask for the pass again, or look the person up by name in the admin panel.</p>
@@ -2408,7 +2434,8 @@ function verifyPageHTML(o: any): string {
          <p class="muted" style="margin-top:6px;">Sign in with your desk account to see the holder's details and check them in. You stay signed in for three days, so you only do this once.</p>
          <button onclick="signIn()">Staff sign in</button></div>`
     : `<div class="card">
-         ${a.avatar_url ? `<img class="photo" src="${esc(a.avatar_url)}" alt="">` : `<div class="photo initial">${esc(String(a.name || '?').charAt(0).toUpperCase())}</div>`}
+         ${hasPassPhoto ? `<img class="photo" src="${esc(a.avatar_url)}" alt="">` : `<div class="photo initial">${esc(String(a.name || '?').charAt(0).toUpperCase())}</div>
+              <p class="nophoto">No photo on file &mdash; check the name on an ID</p>`}
          <h2>${esc(a.name)}</h2>
          ${a.job_title ? `<p class="muted">${esc(a.job_title)}</p>` : ''}
          ${a.company ? `<p class="muted">${esc(a.company)}</p>` : ''}
@@ -2431,6 +2458,7 @@ function verifyPageHTML(o: any): string {
  .card{margin-top:14px;background:#111731;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:20px;text-align:center;}
  .photo{width:130px;height:130px;border-radius:50%;object-fit:cover;display:block;margin:0 auto 12px;border:3px solid rgba(255,255,255,.18);}
  .initial{background:#243056;font-size:54px;line-height:130px;}
+ .nophoto{margin:-4px 0 12px;font-size:13px;font-weight:bold;color:#f0b429;}
  h2{margin:0 0 4px;font-size:23px;}
  .muted{margin:2px 0;color:#98a3bd;font-size:14px;}
  .tier{display:inline-block;margin:14px 0 4px;padding:9px 22px;border-radius:999px;font-weight:700;font-size:14px;}
@@ -2998,7 +3026,13 @@ async function loginTokenRateLimited(c: any, eventId: any, email: string): Promi
 // minutes is right when someone is sitting at the login screen waiting for a code;
 // it is useless for a mail sent to a thousand people who will open it that evening,
 // or on Monday. Callers that do not pass one keep the short default.
-async function createLoginToken(c: any, eventId: any, email: string, ttlMinutes: number = LOGIN_TOKEN_MINUTES) {
+/* maxUses exists because a campaign email offers more than one thing to do and
+ * builds every link from the same token. One is right for a sign-in code; a
+ * mail with three buttons needs three doors, and minting three rows would not
+ * work - the supersede below is deliberate, and each new token would retire the
+ * one before it. Whoever can read the inbox can already click the first link
+ * and the expiry is unchanged, so this only stops the second click failing. */
+async function createLoginToken(c: any, eventId: any, email: string, ttlMinutes: number = LOGIN_TOKEN_MINUTES, maxUses: number = 1) {
   // Nothing else prunes this table and every sign-in adds a row. Clearing spent and
   // expired rows here keeps it from growing without bound, with no cron needed.
   await c.env.DB.prepare(
@@ -3011,21 +3045,43 @@ async function createLoginToken(c: any, eventId: any, email: string, ttlMinutes:
   await c.env.DB.prepare(
     "UPDATE login_tokens SET used_at = datetime('now') WHERE event_id = ? AND email = ? AND used_at IS NULL"
   ).bind(eventId, email).run()
-  await c.env.DB.prepare(
-    `INSERT INTO login_tokens (event_id, email, token_hash, code_hash, expires_at)
-     VALUES (?, ?, ?, ?, datetime('now', '+${Math.max(1, Math.round(ttlMinutes))} minutes'))`
-  ).bind(eventId, email, await sha256Hex(token), await sha256Hex(code)).run()
+  const ttl = `+${Math.max(1, Math.round(ttlMinutes))} minutes`
+  const budget = Math.max(1, Math.round(maxUses))
+  // max_uses arrived in 0037. Naming a column SQLite does not have fails the
+  // whole statement at parse time, so a database one migration behind takes the
+  // second path and issues an ordinary single-use token - which signs people in
+  // perfectly well and is what it did before this existed.
+  try {
+    await c.env.DB.prepare(
+      `INSERT INTO login_tokens (event_id, email, token_hash, code_hash, expires_at, max_uses)
+       VALUES (?, ?, ?, ?, datetime('now', ?), ?)`
+    ).bind(eventId, email, await sha256Hex(token), await sha256Hex(code), ttl, budget).run()
+  } catch (_) {
+    await c.env.DB.prepare(
+      `INSERT INTO login_tokens (event_id, email, token_hash, code_hash, expires_at)
+       VALUES (?, ?, ?, ?, datetime('now', ?))`
+    ).bind(eventId, email, await sha256Hex(token), await sha256Hex(code), ttl).run()
+  }
   return { token, code }
 }
 
 // Redeems a token or code. Returns the email on success, or a reason string.
 async function redeemLoginToken(c: any, eventId: any, email: string, token?: string, code?: string):
     Promise<{ ok: true } | { ok: false; reason: string }> {
-  const row = await c.env.DB.prepare(
-    `SELECT id, token_hash, code_hash, attempts FROM login_tokens
-     WHERE event_id = ? AND email = ? AND used_at IS NULL AND expires_at > datetime('now')
+  const WHERE_LIVE = `WHERE event_id = ? AND email = ? AND used_at IS NULL AND expires_at > datetime('now')
      ORDER BY id DESC LIMIT 1`
-  ).bind(eventId, email).first() as any
+  // Same fallback as the insert: pre-0037 databases have neither column, and a
+  // SELECT that names one would fail outright rather than degrade.
+  let row: any = null
+  try {
+    row = await c.env.DB.prepare(
+      `SELECT id, token_hash, code_hash, attempts, max_uses, uses FROM login_tokens ${WHERE_LIVE}`
+    ).bind(eventId, email).first()
+  } catch (_) {
+    row = await c.env.DB.prepare(
+      `SELECT id, token_hash, code_hash, attempts FROM login_tokens ${WHERE_LIVE}`
+    ).bind(eventId, email).first()
+  }
   if (!row) return { ok: false, reason: 'That link or code has expired. Please request a new one.' }
   if (row.attempts >= LOGIN_MAX_ATTEMPTS) {
     await c.env.DB.prepare("UPDATE login_tokens SET used_at = datetime('now') WHERE id = ?").bind(row.id).run()
@@ -3037,7 +3093,18 @@ async function redeemLoginToken(c: any, eventId: any, email: string, token?: str
     await c.env.DB.prepare('UPDATE login_tokens SET attempts = attempts + 1 WHERE id = ?').bind(row.id).run()
     return { ok: false, reason: 'That code is not correct.' }
   }
-  await c.env.DB.prepare("UPDATE login_tokens SET used_at = datetime('now') WHERE id = ?").bind(row.id).run()
+  /* Spend one use rather than the whole token. A row with no budget recorded
+   * reads as 1 and is retired on first use, exactly as before. */
+  const budget = Math.max(1, Number(row.max_uses) || 1)
+  const spent = (Number(row.uses) || 0) + 1
+  const retire = async () => {
+    await c.env.DB.prepare("UPDATE login_tokens SET used_at = datetime('now') WHERE id = ?").bind(row.id).run()
+  }
+  if (spent >= budget) await retire()
+  else {
+    try { await c.env.DB.prepare('UPDATE login_tokens SET uses = ? WHERE id = ?').bind(spent, row.id).run() }
+    catch (_) { await retire() }
+  }
   return { ok: true }
 }
 
@@ -8696,7 +8763,12 @@ async function sendProfileReminder(c: any, attendee: any): Promise<SendOutcome> 
   // trying to get past.
   let link = `${appUrl}?email=${encodeURIComponent(attendee.email)}&action=complete-profile`
   if (await verifiedLoginEnabled(c)) {
-    const issued = await createLoginToken(c, attendee.event_id, String(attendee.email).toLowerCase(), PROFILE_LINK_TTL_MINUTES)
+    // Three, because this mail builds three links out of this one token by
+    // string-replacing the action - photo, card, goals. Single use meant the
+    // first click worked and the other two hit a sign-in wall on any device
+    // without a session, and the card is the link that gives somebody a reason
+    // to want a photo in the first place.
+    const issued = await createLoginToken(c, attendee.event_id, String(attendee.email).toLowerCase(), PROFILE_LINK_TTL_MINUTES, 3)
     link += `&token=${issued.token}`
   }
 

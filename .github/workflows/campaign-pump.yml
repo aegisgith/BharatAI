@@ -1,0 +1,83 @@
+# Drains email campaigns without anybody watching a browser tab.
+#
+# The send is durable on the server - POST /api/admin/campaigns/:id/pump claims a
+# batch of pending recipients, sends them, and honours the 09:00-21:00 IST window
+# and the pacing gap on its own. What it has never had is something to call it.
+# Cloudflare Pages has no cron trigger (wrangler.jsonc is a pages_build_output_dir
+# project, and cron is a Workers feature), so the only caller was runCampaignPump,
+# a while-loop living in the admin page. Close the tab and the campaign stops.
+#
+# That is how the photo request came to sit half-finished for three days with 518
+# people still pending. This is the heartbeat it was missing.
+#
+# ONE-TIME SETUP: add a repository secret named ADMIN_SECRET with the same value
+# as the Cloudflare Pages ADMIN_SECRET. Until that exists this job exits quietly
+# rather than failing every ten minutes and burying real failures in red.
+
+name: Drain email campaigns
+
+on:
+  schedule:
+    # Every 10 minutes between 03:00 and 16:00 UTC, which covers the server's
+    # 09:00-21:00 IST send window with a little either side. Outside it the pump
+    # returns wait_seconds and sends nothing, so an extra call costs nothing.
+    - cron: '*/10 3-16 * * *'
+  workflow_dispatch:
+
+# Never let two drains overlap: the pump claims rows before sending, so a second
+# run cannot double-send, but there is no reason to make it prove that.
+concurrency:
+  group: campaign-pump
+  cancel-in-progress: false
+
+jobs:
+  pump:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Send whatever is pending
+        env:
+          ADMIN_SECRET: ${{ secrets.ADMIN_SECRET }}
+          BASE: https://bharataiinnovation.com
+        run: |
+          if [ -z "$ADMIN_SECRET" ]; then
+            echo "ADMIN_SECRET is not set on this repository - nothing to do."
+            echo "Add it under Settings > Secrets and variables > Actions to turn this on."
+            exit 0
+          fi
+          node - <<'JS'
+          const BASE = process.env.BASE;
+          const auth = { Authorization: 'Bearer ' + process.env.ADMIN_SECRET };
+
+          const list = await fetch(BASE + '/api/admin/campaigns', { headers: auth });
+          if (!list.ok) { console.log('Could not list campaigns: HTTP ' + list.status); process.exit(0); }
+          const body = await list.json();
+          const all = Array.isArray(body) ? body : (body.campaigns || body.results || []);
+          const running = all.filter(c => c.status === 'running');
+          if (!running.length) { console.log('Nothing running. ' + all.length + ' campaign(s) on record.'); process.exit(0); }
+
+          for (const camp of running) {
+            console.log(`campaign ${camp.id} "${camp.title}": ${camp.sent}/${camp.total} sent`);
+            // A handful of batches per run, not a drain-to-empty: the pacing gap
+            // means a long loop would mostly be this runner sleeping, and the next
+            // tick is only ten minutes away.
+            for (let i = 0; i < 6; i++) {
+              const r = await fetch(`${BASE}/api/admin/campaigns/${camp.id}/pump`, {
+                method: 'POST',
+                headers: { ...auth, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ batch: 8 }),
+              });
+              if (!r.ok) { console.log('  pump failed: HTTP ' + r.status); break; }
+              const out = await r.json();
+              if (out.error) { console.log('  ' + out.error); break; }
+              if (out.paused) { console.log('  paused by an operator - leaving it alone'); break; }
+              if (out.finished) { console.log('  finished'); break; }
+              console.log(`  sent ${out.sent ?? 0}, failed ${out.failed ?? 0}, remaining ${out.remaining ?? '?'}`);
+              // The server says when the window is shut or the gap is not up yet.
+              // Waiting out anything longer than a minute is the next tick's job.
+              if (out.wait_seconds > 60) { console.log(`  waiting ${out.wait_seconds}s - leaving it for the next run`); break; }
+              if (out.wait_seconds > 0) await new Promise(r => setTimeout(r, out.wait_seconds * 1000));
+              if (!out.remaining) break;
+            }
+          }
+          JS
