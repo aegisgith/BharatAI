@@ -12370,6 +12370,26 @@ function mainPageHTML(): string {
     .profile-cover::before { content: ''; position: absolute; inset: 0; background: radial-gradient(circle at 30% 50%, rgba(76,110,245,0.15) 0%, transparent 60%), radial-gradient(circle at 70% 30%, rgba(255,152,0,0.1) 0%, transparent 50%); }
     .quick-action-btn { transition: all 0.2s ease; }
     .quick-action-btn:hover { transform: translateY(-2px); }
+    /* ---- the directory does not go on paper ----
+       The list is paged so that one Ctrl+P cannot take the whole room away,
+       but fifty-nine prints still could. Nothing that names an attendee is
+       printed: the grid, both match rails and the pager are dropped, and the
+       networking tab says so instead of leaving a blank page.
+
+       Deliberately narrow. Everything else still prints - an agenda, a room
+       booking, a booth confirmation, a single profile someone met and wants to
+       remember are all things a person has a good reason to want on paper.
+       This is not a security control either: anyone determined can read the
+       same rows out of the network tab. It removes the one-gesture bulk copy,
+       which is the difference between a leak and a chore.
+
+       Lives in the app page's own style rather than brandThemeCSS(), which is
+       shared with /admin - and the admin is the one place that is supposed to
+       be able to print the whole list. */
+    @media print {
+      #attendee-grid, #match-rail, #dash-match-rail, #attendee-more { display: none !important; }
+      #directory-print-notice { display: block !important; }
+    }
     ${brandThemeCSS()}
   </style>
   <!-- Last in <head> on purpose: the Play CDN appended its generated <style>
@@ -13527,6 +13547,11 @@ function mainPageHTML(): string {
 
           <!-- AI matchmaking rail: top recommended connections (populated by loadAttendees) -->
           <div id="match-rail"></div>
+          <!-- Screen-hidden, print-only: says why the page is short rather
+               than printing a blank sheet. See the @media print block. -->
+          <div id="directory-print-notice" class="hidden text-center text-sm text-gray-500 py-12">
+            The attendee directory is not printable. It lives in the app, where the people in it decide what they share and who may contact them.
+          </div>
           <!-- Attendee Grid wrapper — blurred for visitors -->
           <div id="attendee-grid-wrapper" class="relative">
             <div id="attendee-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
