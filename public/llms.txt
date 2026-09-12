@@ -18,6 +18,22 @@
 
 Bharat AI Innovation 2026 is a two-day conference and exhibition covering Generative AI, Large Language Models (LLMs), enterprise AI deployment, AI governance and ethics, AI startups, AI for industry verticals (BFSI, healthcare, manufacturing, retail, agriculture, government), AI talent and skills, deep learning research, and the Indian AI ecosystem. It includes 10+ conference tracks across 5 halls, a 27,238 sq.ft exhibition floor with 93 booths across 8 industry zones, a startup pitch competition, and AI/ML training workshops.
 
+## Positioning
+
+Bharat AI Innovation is a B2B business-networking and business-outcome platform, not a footfall exhibition. It brings together three sides of India's AI economy: buyers (enterprise CIOs, CDOs, CTOs, procurement heads, and state and central government departments), builders (AI startups, product companies and solution providers) and policymakers (MeitY, Maharashtra MITRA and MSInS, ministers). Business mechanisms: sponsor-curated CXO AI Leadership Panels; an Innovation Stage (8-minute main-stage slot, bundled with select booth packages); four private boardrooms at WTC Mumbai bookable by the hour (₹10,000–₹15,000 per hour + GST); Bharat AI Connect (AI matchmaking, attendee directory and 1:1 meeting booking, included with Delegate and VIP passes); the Innovators' Circle CXO cocktail evening; and a Startup Pitch to VCs and corporate venture arms.
+
+## Sponsorship and branding options (INR, excluding GST)
+
+- **Title Partner** — ₹1.2 Cr (1 slot, exclusive): keynote slot, premium booth, VIP dinner host, headline branding, 20 VIP passes
+- **Powered Partner** — ₹50 Lakhs (1 slot, exclusive): "Powered by" branding, premium booth, panel slot, tech workshop, 10 delegate passes
+- **Associate Partner** — ₹25 Lakhs (4 slots, one per sector: FinTech, HealthTech, AgriTech, MfgTech): category exclusivity, standard booth, speaking slot, 5 delegate passes
+- **Innovation Partner** — custom: innovation zone branding, panel slot, award category sponsor, startup pavilion integration
+- **AI Leadership Panel** — ₹10 Lakhs: sponsor-curated CXO panel with theme and moderation rights, "Powered by" branding, 5 VIP + 10 delegate passes
+- **Innovation Night** — ₹15 Lakhs: host the networking gala evening, welcome toast, evening branding
+- **Lanyard & Conference Bag** — ₹3 Lakhs
+- **Trophy Partner**, **Innovators' Round Table**, and custom activations (product launch, MoU signing, hackathon, TV/YouTube panel, road show) — on request
+- Sponsorship contact: partner@bharataiinnovation.com | +91 89765 80367
+
 ## Pass types and pricing (INR)
 
 - **Visitor Pass** — FREE (exhibition access)
@@ -75,7 +91,7 @@ All prices exclude 18% GST. 93 booths total across 8 industry zones.
 - [Exhibition](https://bharataiinnovation.com/exhibition.html): 93 booths, 8 industry zones, booth packages
 - [Startup Pitch](https://bharataiinnovation.com/startup-pitch.html): Startup pitch competition for AI startups
 - [Training & Workshop](https://bharataiinnovation.com/training-workshop.html): AI/ML hands-on training workshops
-- [Partner](https://bharataiinnovation.com/partner.html): Sponsorship and partnership tiers
+- [Partner](https://bharataiinnovation.com/partner.html): Sponsorship tiers, individually priced branding and activation options, AI Leadership Panel, startup path
 - [AI Readiness Certification](https://bharataiinnovation.com/ai-readiness.html): Independent AI maturity rating and certification, an Aegis Graham Bell Awards initiative
 - [Accommodation](https://bharataiinnovation.com/accommodation.html): Premium hotels near WTC Mumbai
 - [Register](https://networking.bharataiinnovation.com/register): Conference registration

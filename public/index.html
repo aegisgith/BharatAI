@@ -7,7 +7,7 @@
     <!-- Primary SEO Meta Tags -->
     <title>Bharat AI Innovation 2026 | India's Leading AI Conference & Gen AI Expo | WTC Mumbai</title>
     <meta name="title" content="Bharat AI Innovation 2026 | India's Leading AI Conference & Gen AI Expo | WTC Mumbai">
-    <meta name="description" content="Join Bharat AI Innovation conference & exhibition. Top speakers, exhibitors, GenAI, LLMs, enterprise AI. Nov 20-21, 2026 at WTC Mumbai. Register now.">
+    <meta name="description" content="India's B2B AI conference & exhibition — where enterprise and government buyers meet the companies building AI. CXO panels, Innovation Stage, 1:1 meetings. Nov 20-21, 2026, WTC Mumbai.">
     <meta name="keywords" content="Bharat AI, India AI Conference, AI Exhibition India, Gen AI Conference, GenAI Summit, AI Conference Mumbai, India AI Summit, Artificial Intelligence Conference, AI Expo India, Machine Learning Conference, LLM Conference, AI Startups India, Enterprise AI, AI Innovation, Generative AI Conference, ChatGPT Conference, AI Conference 2026, Mumbai AI Event, WTC Mumbai Conference, AI Technology Summit, Deep Learning Conference, AI for Business, AI Research Conference, Indian AI Ecosystem, Bharat AI Innovation, AI Trade Show India">
     <meta name="author" content="Aegis Knowledge Trust">
     <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
@@ -18,7 +18,7 @@
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://bharataiinnovation.com/">
     <meta property="og:title" content="Bharat AI Innovation 2026 | AI Conference & Gen AI Expo | WTC Mumbai">
-    <meta property="og:description" content="Join Bharat AI Innovation conference & exhibition. Top speakers, exhibitors, GenAI, LLMs, enterprise AI. Nov 20-21, 2026 at WTC Mumbai.">
+    <meta property="og:description" content="India's B2B AI conference & exhibition — where enterprise and government buyers meet the companies building AI. CXO panels, Innovation Stage, 1:1 meetings. Nov 20-21, 2026, WTC Mumbai.">
     <meta property="og:image" content="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png">
     <meta property="og:site_name" content="Bharat AI Innovation">
     <meta property="og:locale" content="en_IN">
@@ -27,7 +27,7 @@
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:url" content="https://bharataiinnovation.com/">
     <meta name="twitter:title" content="Bharat AI Innovation 2026 | AI Conference & Gen AI Expo">
-    <meta name="twitter:description" content="Join Bharat AI Innovation conference & exhibition. GenAI, LLMs, AI startups, enterprise AI. Nov 20-21, 2026 at WTC Mumbai.">
+    <meta name="twitter:description" content="India's B2B AI conference & exhibition — where enterprise and government buyers meet the companies building AI. CXO panels, Innovation Stage, 1:1 meetings. Nov 20-21, 2026, WTC Mumbai.">
     <meta name="twitter:image" content="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png">
     
     <!-- Additional SEO Meta Tags -->
@@ -425,6 +425,18 @@
             .seo-cards-grid { grid-template-columns: 1fr !important; }
             .seo-stats-grid { grid-template-columns: repeat(2, 1fr) !important; }
         }
+        /* B2B positioning + three-way participate grid */
+        .b2b-link { color: var(--saffron); font-weight: 700; white-space: nowrap; }
+        .participate-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.75rem; align-items: stretch; }
+        .participate-grid > div { padding: 2.25rem !important; }
+        @media (max-width: 1100px) {
+            .participate-grid { grid-template-columns: 1fr 1fr; }
+            .participate-grid > div:last-child { grid-column: 1 / -1; }
+        }
+        @media (max-width: 768px) {
+            .participate-grid { grid-template-columns: 1fr; }
+            .participate-grid > div:last-child { grid-column: auto; }
+        }
     </style>
 </head>
 <body>
@@ -493,16 +505,17 @@
             </h1>
 
             <p class="hero-desc">
-                5,000+ researchers, founders, CXOs, and policymakers at WTC Mumbai —
-                two days defining India’s AI direction for the decade ahead.
+                India’s B2B platform for AI business — where enterprise and government buyers,
+                the companies building AI, and the policymakers shaping it meet to do business.
+                Two days at WTC Mumbai.
             </p>
 
             <div class="hero-actions">
                 <a href="/register" class="btn btn-primary btn-xl">
                     Register Free <i class="fas fa-arrow-right"></i>
                 </a>
-                <a href="exhibition.html" class="btn btn-ghost btn-xl">
-                    Book Exhibit Space
+                <a href="#participate" class="btn btn-ghost btn-xl">
+                    Exhibit &amp; Sponsor
                 </a>
             </div>
 
@@ -520,6 +533,71 @@
             </div>
         </div>
     </div>
+
+    <!-- ===== B2B POSITIONING (who does business here, and how) ===== -->
+    <section class="section-pad-sm" style="background:white;" id="b2b-platform">
+        <div class="container">
+            <div class="section-header reveal">
+                <span class="section-eyebrow"><i class="fas fa-handshake"></i> A true B2B business networking &amp; business-outcome platform</span>
+                <h2 class="section-title">Built for business, <span class="accent">not footfall</span></h2>
+                <p class="section-subtitle">Bharat AI Innovation puts the three sides of India&rsquo;s AI economy in one building for two days &mdash; the people buying AI, the people building it, and the state that regulates and procures it &mdash; and gives them the tools to leave with outcomes, not just business cards.</p>
+            </div>
+
+            <div class="benefits-grid">
+                <div class="feature-card reveal reveal-delay-1">
+                    <div class="feature-card-icon"><i class="fas fa-building"></i></div>
+                    <h3>Buyers &mdash; Enterprise &amp; Government</h3>
+                    <p>CIOs, CDOs, CTOs and procurement heads from banking, insurance, pharma, manufacturing and state departments. Evaluate live solutions across 8 industry zones, shortlist vendors through AI matchmaking, and take the conversation into a private boardroom.</p>
+                </div>
+                <div class="feature-card reveal reveal-delay-2">
+                    <div class="feature-card-icon"><i class="fas fa-rocket"></i></div>
+                    <h3>Builders &mdash; Startups &amp; Solution Providers</h3>
+                    <p>AI product companies, service firms and funded startups. Exhibit to visitors who registered to evaluate AI, take the Innovation Stage with your booth, pitch to investors, and have buyer meetings booked before you arrive.</p>
+                </div>
+                <div class="feature-card reveal reveal-delay-3">
+                    <div class="feature-card-icon"><i class="fas fa-university"></i></div>
+                    <h3>Policy &mdash; State &amp; Union Government</h3>
+                    <p>MeitY, Maharashtra&rsquo;s MITRA and MSInS, ministers and secretaries on stage. Hear the IndiaAI Mission, state AI procurement and public&ndash;private models from the people writing them &mdash; and meet them on the floor.</p>
+                </div>
+            </div>
+
+            <div class="section-header reveal" style="margin-top:4.5rem;margin-bottom:2.5rem;">
+                <h3 class="section-title" style="font-size:clamp(1.5rem,3vw,2.1rem);">How business gets done here</h3>
+                <p class="section-subtitle">Six mechanisms, each built to turn a two-day event into pipeline.</p>
+            </div>
+            <div class="benefits-grid">
+                <div class="benefit-card reveal reveal-delay-1">
+                    <h3>CXO AI Leadership Panels</h3>
+                    <p>Sponsor-curated panels where CXOs, founders and policymakers debate a theme you set &mdash; with your own clients and prospects invited into the room. <a href="partner.html#leadership-panel" class="b2b-link">Sponsor a panel &rarr;</a></p>
+                </div>
+                <div class="benefit-card reveal reveal-delay-2">
+                    <h3>Innovation Showcase &amp; Stage</h3>
+                    <p>Eight minutes on the main stage in front of buyers and investors, bundled with your booth in select packages &mdash; the demo and the follow-up meeting in one place. <a href="exhibition.html#value" class="b2b-link">See booth packages &rarr;</a></p>
+                </div>
+                <div class="benefit-card reveal reveal-delay-3">
+                    <h3>Private Boardrooms</h3>
+                    <p>Four boardrooms inside WTC Mumbai, bookable by the hour and steps from the floor &mdash; for closed-door demos, negotiations and investor conversations. <a href="#boardrooms" class="b2b-link">Book a room &rarr;</a></p>
+                </div>
+                <div class="benefit-card reveal reveal-delay-1">
+                    <h3>Bharat AI Connect</h3>
+                    <p>AI matchmaking, a searchable attendee directory and 1:1 meeting booking, included with Delegate and VIP passes &mdash; so you arrive with a schedule, not a hope. <a href="#networking" class="b2b-link">How it works &rarr;</a></p>
+                </div>
+                <div class="benefit-card reveal reveal-delay-2">
+                    <h3>The Innovators&rsquo; Circle</h3>
+                    <p>A CXO cocktail evening for senior leaders and ministers &mdash; the room where day-two meetings get set up, and an evening a sponsor can host. <a href="conference.html#schedule" class="b2b-link">See the programme &rarr;</a></p>
+                </div>
+                <div class="benefit-card reveal reveal-delay-3">
+                    <h3>Startup Pitch</h3>
+                    <p>AI startups pitch to VCs, angels and corporate venture arms in front of the enterprise audience that could become their first customers. <a href="startup-pitch.html" class="b2b-link">Apply to pitch &rarr;</a></p>
+                </div>
+            </div>
+
+            <div class="reveal" style="display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;margin-top:2.75rem;">
+                <a href="/register" class="btn btn-primary btn-lg">Register to Attend <i class="fas fa-arrow-right"></i></a>
+                <a href="#participate" class="btn btn-outline btn-lg">Exhibit or Sponsor</a>
+            </div>
+        </div>
+    </section>
 
     <!-- ===== PM MODI VISION QUOTE ===== -->
     <section class="pm-vision-section section-pad-sm" id="pm-vision">
@@ -1047,7 +1125,7 @@
                     <p class="about-text">
                         Bharat AI Innovation 2026 is a two-day conference and exhibition at World Trade Center Mumbai
                         organized by Aegis Knowledge Trust. 5,000+ attendees, leading speakers from government and industry,
-                        An exhibition floor across 8 industry zones. Ministerially opened. Free to visit.
+                        An exhibition floor across 8 industry zones. Ministerially opened. Free for visitors, built for business.
                     </p>
                     <p class="about-text">
                         Backed by strong public and private sector momentum including India's ₹20,000 crore R&amp;D 
@@ -1098,11 +1176,11 @@
     <section id="participate" style="padding:7rem 0;background:var(--off-white);">
         <div class="container">
             <div class="section-header reveal">
-                <h2 class="section-title">Speak. Exhibit. <span class="accent">Inspire India.</span></h2>
-                <p class="section-subtitle">Open for speaker proposals and exhibition bookings</p>
+                <h2 class="section-title">Speak. Exhibit. <span class="accent">Sponsor.</span></h2>
+                <p class="section-subtitle">Three ways to put your organisation in front of India&rsquo;s AI buyers</p>
             </div>
 
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:2.5rem;align-items:stretch;">
+            <div class="participate-grid">
 
                 <!-- Call for Speakers Card -->
                 <div class="reveal reveal-delay-1" style="background:linear-gradient(135deg,#0D0F1A 0%,#131629 100%);border-radius:24px;padding:3rem;position:relative;overflow:hidden;border:1px solid rgba(255,107,0,0.2);">
@@ -1145,6 +1223,28 @@
                             <li style="display:flex;align-items:center;gap:0.65rem;color:rgba(255,255,255,0.75);font-size:0.88rem;"><i class="fas fa-check-circle" style="color:#2B8CFF;flex-shrink:0;"></i> Startup pavilion &amp; global pavilion</li>
                         </ul>
                         <a href="exhibition.html" class="btn btn-primary" style="width:100%;justify-content:center;background:linear-gradient(135deg,#2B8CFF,#0066DD);box-shadow:0 4px 20px rgba(43,140,255,0.4);">Explore Booth Packages <i class="fas fa-arrow-right"></i></a>
+                    </div>
+                </div>
+
+                <!-- Sponsor & Brand Card -->
+                <div class="reveal reveal-delay-3" style="background:linear-gradient(135deg,#14102a 0%,#1f1740 100%);border-radius:24px;padding:3rem;position:relative;overflow:hidden;border:1px solid rgba(255,213,79,0.22);">
+                    <div style="position:absolute;top:-40px;right:-40px;width:200px;height:200px;border-radius:50%;background:radial-gradient(circle,rgba(255,213,79,0.12) 0%,transparent 70%);pointer-events:none;"></div>
+                    <div style="position:absolute;bottom:-30px;left:-30px;width:150px;height:150px;border-radius:50%;background:radial-gradient(circle,rgba(255,213,79,0.08) 0%,transparent 70%);pointer-events:none;"></div>
+                    <div style="position:relative;z-index:1;">
+                        <div style="width:64px;height:64px;background:linear-gradient(135deg,#FFD54F,#F59E0B);border-radius:16px;display:flex;align-items:center;justify-content:center;margin-bottom:1.5rem;box-shadow:0 8px 24px rgba(245,158,11,0.35);">
+                            <i class="fas fa-crown" style="color:#1f1740;font-size:1.6rem;"></i>
+                        </div>
+                        <div style="display:inline-block;background:rgba(255,213,79,0.15);border:1px solid rgba(255,213,79,0.3);border-radius:100px;padding:0.3rem 0.9rem;font-size:0.75rem;font-weight:700;color:#FFD54F;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:1rem;">Slots Limited</div>
+                        <h3 style="color:white;font-family:var(--font-display);font-size:1.75rem;font-weight:800;margin-bottom:0.75rem;line-height:1.2;">Sponsor &amp; Brand</h3>
+                        <p style="color:rgba(255,255,255,0.6);font-size:0.95rem;line-height:1.7;margin-bottom:1.75rem;">Own a stage, a panel, an evening or the lanyard on every attendee. Sponsorship puts your brand in front of the people who approve enterprise AI budgets &mdash; and lets you invite your own clients into the room.</p>
+                        <ul style="list-style:none;padding:0;margin:0 0 2rem;display:flex;flex-direction:column;gap:0.65rem;">
+                            <li style="display:flex;align-items:center;gap:0.65rem;color:rgba(255,255,255,0.75);font-size:0.88rem;"><i class="fas fa-check-circle" style="color:#FFD54F;flex-shrink:0;"></i> Title Partner &mdash; &#8377;1.2 Cr, exclusive</li>
+                            <li style="display:flex;align-items:center;gap:0.65rem;color:rgba(255,255,255,0.75);font-size:0.88rem;"><i class="fas fa-check-circle" style="color:#FFD54F;flex-shrink:0;"></i> Powered Partner &mdash; &#8377;50 L, exclusive</li>
+                            <li style="display:flex;align-items:center;gap:0.65rem;color:rgba(255,255,255,0.75);font-size:0.88rem;"><i class="fas fa-check-circle" style="color:#FFD54F;flex-shrink:0;"></i> Associate Partner &mdash; &#8377;25 L, sector-exclusive</li>
+                            <li style="display:flex;align-items:center;gap:0.65rem;color:rgba(255,255,255,0.75);font-size:0.88rem;"><i class="fas fa-check-circle" style="color:#FFD54F;flex-shrink:0;"></i> AI Leadership Panel &mdash; &#8377;10 L, your theme</li>
+                            <li style="display:flex;align-items:center;gap:0.65rem;color:rgba(255,255,255,0.75);font-size:0.88rem;"><i class="fas fa-check-circle" style="color:#FFD54F;flex-shrink:0;"></i> Innovation Night, Lanyard &amp; Bag, custom activations</li>
+                        </ul>
+                        <a href="partner.html" class="btn btn-primary" style="width:100%;justify-content:center;background:linear-gradient(135deg,#FFD54F,#F59E0B);color:#1f1740;box-shadow:0 4px 20px rgba(245,158,11,0.4);">See Sponsorship Options <i class="fas fa-arrow-right"></i></a>
                     </div>
                 </div>
 
@@ -1283,18 +1383,18 @@
             <div class="audience-layout reveal">
                 <div class="audience-lead">
                     <h2 class="section-title" style="text-align:left;margin-bottom:1rem;">Who attends <span class="accent">Bharat AI</span></h2>
-                    <p style="color:var(--dark-grey);font-size:1rem;line-height:1.7;max-width:360px;">From IAS officers chairing AI committees to ML engineers at hyperscalers — the full decision chain, in one building.</p>
+                    <p style="color:var(--dark-grey);font-size:1rem;line-height:1.7;max-width:360px;">Buyers, builders and policymakers &mdash; from IAS officers chairing AI committees to the founders selling into them. The full decision chain, in one building.</p>
                     <div style="margin-top:2rem;">
                         <a href="/register" class="btn btn-primary">Register Now <i class="fas fa-arrow-right"></i></a>
                     </div>
                 </div>
                 <div class="audience-rows reveal reveal-delay-1">
-                    <div class="aud-row"><span class="aud-title">C-Suite &amp; Innovation Leaders</span><span class="aud-desc">CEOs, CTOs, CIOs, CDOs shaping enterprise AI strategy</span></div>
-                    <div class="aud-row"><span class="aud-title">AI Researchers &amp; Academics</span><span class="aud-desc">Faculty, PhD scholars, and R&amp;D teams across Indian institutions</span></div>
-                    <div class="aud-row"><span class="aud-title">Government &amp; Policy</span><span class="aud-desc">Ministries, regulators, smart-city officials, and public sector CIOs</span></div>
-                    <div class="aud-row"><span class="aud-title">Startups &amp; Investors</span><span class="aud-desc">Early-stage AI founders, VCs, and angel investors sourcing deals</span></div>
-                    <div class="aud-row"><span class="aud-title">Students &amp; Educators</span><span class="aud-desc">Engineering and management graduates entering the AI workforce</span></div>
+                    <div class="aud-row"><span class="aud-title">C-Suite &amp; Innovation Leaders</span><span class="aud-desc">CEOs, CTOs, CIOs, CDOs and procurement heads approving enterprise AI spend</span></div>
+                    <div class="aud-row"><span class="aud-title">Government &amp; Policy</span><span class="aud-desc">Ministries, state departments, regulators and public-sector CIOs &mdash; buyers as well as rule-makers</span></div>
+                    <div class="aud-row"><span class="aud-title">Startups &amp; Investors</span><span class="aud-desc">AI founders selling into enterprise, and the VCs and corporate venture arms backing them</span></div>
                     <div class="aud-row"><span class="aud-title">Technology Professionals</span><span class="aud-desc">Data scientists, ML engineers, product managers, developers</span></div>
+                    <div class="aud-row"><span class="aud-title">AI Researchers &amp; Academics</span><span class="aud-desc">Faculty, PhD scholars, and R&amp;D teams across Indian institutions</span></div>
+                    <div class="aud-row"><span class="aud-title">Students &amp; Educators</span><span class="aud-desc">Engineering and management graduates entering the AI workforce</span></div>
                 </div>
             </div>
         </div>
@@ -1336,7 +1436,7 @@
             <!-- Private boardrooms for hire at WTC. Rates are charged by the hour and
                  quoted exclusive of GST, so the CTA routes to the contact form rather
                  than taking a booking here. -->
-            <div class="reveal" style="margin-top:5rem;">
+            <div class="reveal" id="boardrooms" style="margin-top:5rem;">
                 <div class="section-header" style="margin-bottom:2.5rem;">
                     <span class="section-eyebrow"><i class="fas fa-handshake"></i> Private meeting space</span>
                     <h2 class="section-title">Need a room of <span class="accent">your own?</span></h2>

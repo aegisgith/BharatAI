@@ -394,6 +394,90 @@
             margin-right: auto;
         }
 
+        /* Best-for line under each tier subtitle */
+        .tier-fit {
+            font-size: 0.85rem;
+            color: var(--charcoal);
+            background: rgba(255,107,0,0.06);
+            border-left: 3px solid var(--saffron);
+            padding: 0.6rem 0.9rem;
+            border-radius: 0 8px 8px 0;
+            margin: -0.5rem 0 1.5rem;
+            line-height: 1.5;
+        }
+
+        /* Two ways in */
+        .paths-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 2rem; margin-top: 2rem; }
+        .path-card {
+            background: white;
+            border: 2px solid var(--light);
+            border-radius: var(--r-2xl);
+            padding: 2.5rem;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        .path-card::before { content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 6px; }
+        .path-card.corporate::before { background: var(--grad-saffron); }
+        .path-card.startup::before { background: var(--grad-electric); }
+        .path-kicker {
+            display: inline-flex; align-items: center; gap: 0.5rem;
+            font-size: 0.75rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.09em;
+            margin-bottom: 1rem;
+        }
+        .path-card.corporate .path-kicker { color: var(--saffron); }
+        .path-card.startup .path-kicker { color: var(--electric); }
+        .path-card h3 { font-family: var(--font-display); font-size: 1.6rem; font-weight: 800; color: var(--charcoal); line-height: 1.2; margin-bottom: 0.75rem; }
+        .path-card > p { font-size: 0.95rem; color: var(--dark-grey); line-height: 1.65; margin-bottom: 1.5rem; }
+        .path-card ul { list-style: none; padding: 0; margin: 0 0 2rem; display: flex; flex-direction: column; gap: 0.7rem; flex: 1; }
+        .path-card li { display: flex; gap: 0.65rem; align-items: flex-start; font-size: 0.9rem; color: var(--dark-grey); line-height: 1.5; }
+        .path-card li i { color: var(--emerald); margin-top: 0.2rem; flex-shrink: 0; }
+        .path-card li strong { color: var(--charcoal); }
+        .path-actions { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+
+        /* Branding & activation options (one card per item, on the dark panel) */
+        .option-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; }
+        .option-card {
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.18);
+            border-radius: var(--r-xl);
+            padding: 1.75rem;
+            display: flex;
+            flex-direction: column;
+            transition: var(--t-med);
+        }
+        .option-card:hover { background: rgba(255,255,255,0.13); transform: translateY(-4px); }
+        .option-card.featured { border-color: rgba(255,213,79,0.55); background: rgba(255,213,79,0.08); }
+        .option-badge {
+            align-self: flex-start;
+            font-size: 0.68rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.09em;
+            color: var(--gold-light);
+            border: 1px solid rgba(255,213,79,0.4);
+            border-radius: var(--r-full);
+            padding: 0.3rem 0.75rem;
+            margin-bottom: 0.9rem;
+        }
+        .option-card h3 { font-family: var(--font-display); font-size: 1.3rem; font-weight: 800; color: white; margin-bottom: 0.35rem; }
+        .option-price { font-family: var(--font-display); font-size: 1.6rem; font-weight: 900; color: var(--gold-light); margin-bottom: 1rem; }
+        .option-price span { font-size: 0.75rem; font-weight: 600; color: rgba(255,255,255,0.6); }
+        .option-card ul { list-style: none; padding: 0; margin: 0 0 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
+        .option-card li { position: relative; padding-left: 1.1rem; font-size: 0.86rem; color: rgba(255,255,255,0.85); line-height: 1.5; }
+        .option-card li::before { content: ''; position: absolute; left: 0; top: 0.55em; width: 6px; height: 6px; border-radius: 50%; background: var(--gold-light); }
+        .option-fit { font-size: 0.82rem; color: rgba(255,255,255,0.7); line-height: 1.5; margin: 0 0 1.25rem; flex: 1; }
+        .option-fit strong { color: white; }
+        .option-actions { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; }
+        .option-enquire { color: var(--gold-light); font-weight: 700; font-size: 0.9rem; text-decoration: none; }
+        .option-enquire:hover { text-decoration: underline; }
+        .option-assets { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; justify-content: center; margin-top: 2rem; }
+        .option-assets-label { width: 100%; text-align: center; font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.09em; color: rgba(255,255,255,0.55); margin-bottom: 0.25rem; }
+        .option-assets > span:not(.option-assets-label) { font-size: 0.8rem; font-weight: 600; color: rgba(255,255,255,0.85); border: 1px solid rgba(255,255,255,0.2); border-radius: var(--r-full); padding: 0.35rem 0.85rem; }
+        @media (max-width: 1024px) { .option-grid { grid-template-columns: repeat(2, 1fr); } }
+        @media (max-width: 768px) {
+            .option-grid, .paths-grid { grid-template-columns: 1fr; }
+            .path-card { padding: 1.75rem; }
+        }
+
         /* Photo Gallery */
         .event-gallery {
             display: grid;
@@ -767,7 +851,7 @@
         <div class="page-header-orb"></div>
         <div class="page-header-content container">
             <h1>Sponsor<br>Bharat AI</h1>
-            <p>India's senior AI buyers are in one room for two days. Put your brand in the room with them.</p>
+            <p>A true B2B business networking and business-outcome platform. Position your organisation at the forefront of India&rsquo;s AI revolution &mdash; engage decision-makers directly, shape industry narratives, and drive real business outcomes.</p>
         </div>
     </section>
 
@@ -791,8 +875,52 @@
         </div>
     </section>
 
+    <!-- TWO WAYS IN: corporate vs startup, each with its own priced options -->
+    <section class="section-pad" style="background:var(--off-white);" id="paths">
+        <div class="container">
+            <div class="section-header reveal">
+                <span class="section-eyebrow"><i class="fas fa-sitemap"></i> Two ways in</span>
+                <h2 class="section-title">Pick the path that matches <span class="accent">your budget and your goal</span></h2>
+                <p class="section-subtitle">Every option on this page is priced and listed on its own. Start from where you are.</p>
+            </div>
+            <div class="paths-grid reveal">
+                <div class="path-card corporate">
+                    <div class="path-kicker"><i class="fas fa-building"></i> Enterprise &amp; Corporate</div>
+                    <h3>Own the narrative. Fill the pipeline.</h3>
+                    <p>For companies selling AI, cloud, data or consulting into Indian enterprises and government &mdash; and for enterprises that want to be seen leading their sector&rsquo;s AI shift.</p>
+                    <ul>
+                        <li><i class="fas fa-check-circle"></i> <span><strong>Partnership tiers</strong> &mdash; Title, Powered, Associate: &#8377;25 L to &#8377;1.2 Cr, with exclusivity</span></li>
+                        <li><i class="fas fa-check-circle"></i> <span><strong>AI Leadership Panel</strong> &mdash; curate your own CXO panel, &#8377;10 L</span></li>
+                        <li><i class="fas fa-check-circle"></i> <span><strong>Branding &amp; activations</strong> &mdash; Innovation Night, lanyards, launches, roundtables</span></li>
+                        <li><i class="fas fa-check-circle"></i> <span><strong>Your buyers in the room</strong> &mdash; complimentary VIP and delegate passes for the clients you want to close</span></li>
+                    </ul>
+                    <div class="path-actions">
+                        <a href="#tiers" class="btn btn-primary">Partnership Tiers <i class="fas fa-arrow-right"></i></a>
+                        <a href="#options" class="btn btn-outline">Branding Options</a>
+                    </div>
+                </div>
+                <div class="path-card startup">
+                    <div class="path-kicker"><i class="fas fa-rocket"></i> Startup &amp; Scale-up</div>
+                    <h3>Buyers, investors and a stage &mdash; without a &#8377;25 L budget.</h3>
+                    <p>For AI startups that need enterprise pilots, investor meetings and eight minutes in front of the right audience.</p>
+                    <ul>
+                        <li><i class="fas fa-check-circle"></i> <span><strong>Startup Pod</strong> &mdash; from &#8377;48,000 + GST, in the startup pavilion</span></li>
+                        <li><i class="fas fa-check-circle"></i> <span><strong>Innovation Stage</strong> &mdash; 8-minute main-stage slot, bundled with select booth packages</span></li>
+                        <li><i class="fas fa-check-circle"></i> <span><strong>Startup Pitch</strong> &mdash; pitch to VCs, angels and corporate venture arms</span></li>
+                        <li><i class="fas fa-check-circle"></i> <span><strong>Bharat AI Connect</strong> &mdash; AI matchmaking and 1:1 meetings with enterprise buyers</span></li>
+                        <li><i class="fas fa-check-circle"></i> <span><strong>Innovation Partner</strong> &mdash; a custom package for accelerators and ecosystem players</span></li>
+                    </ul>
+                    <div class="path-actions">
+                        <a href="exhibition.html" class="btn btn-primary">Startup Booths &amp; Stage <i class="fas fa-arrow-right"></i></a>
+                        <a href="startup-pitch.html" class="btn btn-outline">Apply to Pitch</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
     <!-- PARTNERSHIP TIERS -->
-    <section class="section-pad" style="background:var(--off-white);">
+    <section class="section-pad" style="background:white;" id="tiers">
         <div class="container">
             <div class="section-header reveal">
                 <h2 class="section-title">Partnership <span class="accent">Tiers</span></h2>
@@ -804,6 +932,7 @@
                     <span class="tier-badge">1 Slot — Exclusive</span>
                     <h3>Title Partner</h3>
                     <p class="tier-subtitle">Keynote stage + headline branding across all touchpoints</p>
+                    <p class="tier-fit"><strong>Best for:</strong> A hyperscaler, large IT-services firm, bank or insurer that wants to own the event narrative.</p>
                     <div class="tier-price">₹1.2 Cr</div>
                     <ul class="tier-features">
                         <li><i class="fas fa-check-circle"></i> Keynote Speaking Slot</li>
@@ -823,6 +952,7 @@
                     <span class="tier-badge">1 Slot — Exclusive</span>
                     <h3>Powered Partner</h3>
                     <p class="tier-subtitle">Technology & infrastructure branding throughout the venue</p>
+                    <p class="tier-fit"><strong>Best for:</strong> Cloud, infrastructure, data-platform and AI-tooling companies &mdash; the technology the event visibly runs on.</p>
                     <div class="tier-price">₹50 Lakhs</div>
                     <ul class="tier-features">
                         <li><i class="fas fa-check-circle"></i> "Powered by" branding</li>
@@ -841,6 +971,7 @@
                     <span class="tier-badge" style="background:var(--grad-electric);">4 Slots — Sector-Specific</span>
                     <h3>Associate Partner</h3>
                     <p class="tier-subtitle">Category exclusivity in your sector: FinTech, HealthTech, AgriTech, or MfgTech</p>
+                    <p class="tier-fit"><strong>Best for:</strong> Sector leaders who want to be the only brand of their kind in FinTech, HealthTech, AgriTech or MfgTech.</p>
                     <div class="tier-price">₹25 Lakhs</div>
                     <ul class="tier-features">
                         <li><i class="fas fa-check-circle"></i> Category exclusivity (select sector)</li>
@@ -857,6 +988,7 @@
                 <div class="tier-card">
                     <h3>Innovation Partner</h3>
                     <p class="tier-subtitle">Championing new technologies and startups</p>
+                    <p class="tier-fit"><strong>Best for:</strong> Accelerators, corporate venture arms, universities and ecosystem enablers backing startups.</p>
                     <div class="tier-price">Custom</div>
                     <ul class="tier-features">
                         <li><i class="fas fa-check-circle"></i> Innovation Zone Branding</li>
@@ -872,60 +1004,111 @@
         </div>
     </section>
 
-    <!-- SPECIALIZED OPPORTUNITIES -->
-    <section class="section-pad" style="background:white;">
+    <!-- BRANDING & ACTIVATION OPTIONS: every item priced and listed on its own -->
+    <section class="section-pad" style="background:var(--off-white);" id="options">
         <div class="container">
-            <div class="investment-overview reveal">
+            <div class="investment-overview dark-section reveal">
                 <div class="investment-content">
-                    <div class="section-header" style="margin-bottom:2rem;">
-                        <h2 class="section-title" style="color:white;">Sponsorship <span class="accent">Categories</span></h2>
-                        <p class="section-subtitle" style="color:rgba(255,255,255,0.8);">Title, Powered, and category-exclusive Associate partnerships</p>
+                    <div class="section-header" style="margin-bottom:2.5rem;">
+                        <span class="section-eyebrow"><i class="fas fa-gem"></i> Priced individually</span>
+                        <h2 class="section-title" style="color:white;">Branding &amp; Activation <span class="accent">Options</span></h2>
+                        <p class="section-subtitle" style="color:rgba(255,255,255,0.8);">Stand-alone options you can take on their own or add to a tier. Each comes with its own deliverables, its own audience and its own price.</p>
                     </div>
-                    <div class="investment-grid">
-                        <div class="premium-partnerships">
-                            <div class="premium-item">
-                                <div class="premium-info">
-                                    <h4>Title Partner</h4>
-                                    <p>Headline Branding & Keynote Access</p>
-                                </div>
-                                <div class="premium-price">₹1.2 Cr</div>
-                            </div>
-                            <div class="premium-item">
-                                <div class="premium-info">
-                                    <h4>Powered Partner</h4>
-                                    <p>Technology & Infrastructure</p>
-                                </div>
-                                <div class="premium-price">₹50 Lakhs</div>
-                            </div>
-                            <div class="premium-item">
-                                <div class="premium-info">
-                                    <h4>Associate Partner</h4>
-                                    <p>Category Exclusivity (4 slots)</p>
-                                </div>
-                                <div class="premium-price">₹25 Lakhs</div>
+                    <div class="option-grid">
+
+                        <div class="option-card featured">
+                            <span class="option-badge">Curate your own panel</span>
+                            <h3>AI Leadership Panel</h3>
+                            <div class="option-price">&#8377;10 Lakhs <span>+ GST</span></div>
+                            <ul>
+                                <li>Panel slot presented by you &mdash; you set the theme and agenda</li>
+                                <li>Moderation rights for your senior leader</li>
+                                <li>&ldquo;Powered by&rdquo; branding on stage, agenda and app</li>
+                                <li>5 VIP + 10 Delegate passes to seat your prospects</li>
+                            </ul>
+                            <p class="option-fit"><strong>Best for:</strong> firms that need to be seen leading a sector conversation, with their named accounts in the audience.</p>
+                            <div class="option-actions">
+                                <a href="#leadership-panel" class="btn btn-primary btn-sm">Full Deliverables <i class="fas fa-arrow-right"></i></a>
+                                <a href="/contact" class="option-enquire">Enquire &rarr;</a>
                             </div>
                         </div>
-                        <div class="specialized-opps">
-                            <h4 style="color:white;font-size:1.2rem;margin-bottom:1rem;"><i class="fas fa-star" style="color:var(--gold-light);"></i> Specialized Opportunities</h4>
-                            <div class="specialized-item">
-                                <h5><i class="fas fa-moon"></i> Innovation Night</h5>
-                                <div class="price">₹15 Lakhs</div>
-                                <p>Networking Gala, Toast Opportunity</p>
-                            </div>
-                            <div class="specialized-item">
-                                <h5><i class="fas fa-users"></i> AI Leadership Panel</h5>
-                                <div class="price">₹10 Lakhs</div>
-                                <p>Policy Dialogue, Thought Leadership</p>
-                            </div>
-                            <div class="specialized-item">
-                                <h5><i class="fas fa-id-badge"></i> Lanyard & Conf. Bag</h5>
-                                <div class="price">₹3 Lakhs</div>
-                                <p>High Visibility, Attendee Engagement</p>
+
+                        <div class="option-card">
+                            <span class="option-badge">Evening host</span>
+                            <h3>Innovation Night</h3>
+                            <div class="option-price">&#8377;15 Lakhs <span>+ GST</span></div>
+                            <ul>
+                                <li>Host the networking gala evening</li>
+                                <li>Welcome toast from your leadership</li>
+                                <li>Evening branding across the venue and invitations</li>
+                                <li>Add your own guest list to the invite</li>
+                            </ul>
+                            <p class="option-fit"><strong>Best for:</strong> brands that want unhurried time with CXOs and ministers, not a booth conversation.</p>
+                            <div class="option-actions"><a href="/contact" class="option-enquire">Enquire &mdash; Innovation Night &rarr;</a></div>
+                        </div>
+
+                        <div class="option-card">
+                            <span class="option-badge">Highest recall per rupee</span>
+                            <h3>Lanyard &amp; Conference Bag</h3>
+                            <div class="option-price">&#8377;3 Lakhs <span>+ GST</span></div>
+                            <ul>
+                                <li>Your logo on every attendee lanyard, both days</li>
+                                <li>Branded conference bag for delegates</li>
+                                <li>In every photo, post and news clip from the floor</li>
+                            </ul>
+                            <p class="option-fit"><strong>Best for:</strong> brands that want recall across all 5,000+ attendees at an entry-level spend.</p>
+                            <div class="option-actions"><a href="/contact" class="option-enquire">Enquire &mdash; Lanyard &amp; Bag &rarr;</a></div>
+                        </div>
+
+                        <div class="option-card">
+                            <span class="option-badge">Awards moment</span>
+                            <h3>Trophy Partner</h3>
+                            <div class="option-price">On request</div>
+                            <ul>
+                                <li>Trophies and the on-stage awards moment carry your brand</li>
+                                <li>Your leadership presents alongside ministers and winners</li>
+                                <li>Photo and video assets you can use after the event</li>
+                            </ul>
+                            <p class="option-fit"><strong>Best for:</strong> brands that want association with the winners, not the crowd.</p>
+                            <div class="option-actions"><a href="/contact" class="option-enquire">Enquire &mdash; Trophy Partner &rarr;</a></div>
+                        </div>
+
+                        <div class="option-card">
+                            <span class="option-badge">Closed door</span>
+                            <h3>Innovators&rsquo; Round Table</h3>
+                            <div class="option-price">On request</div>
+                            <ul>
+                                <li>Invite-only roundtable of CXOs and officials on a theme you set</li>
+                                <li>Moderated by your leadership in a private WTC boardroom</li>
+                                <li>Summary content you can publish afterwards</li>
+                            </ul>
+                            <p class="option-fit"><strong>Best for:</strong> account-based marketing &mdash; ten named accounts, one room, ninety minutes.</p>
+                            <div class="option-actions"><a href="/contact" class="option-enquire">Enquire &mdash; Round Table &rarr;</a></div>
+                        </div>
+
+                        <div class="option-card">
+                            <span class="option-badge">Build your own</span>
+                            <h3>Custom Activation</h3>
+                            <div class="option-price">On request</div>
+                            <ul>
+                                <li>Product launch or MoU signing on the main stage</li>
+                                <li>Hackathon, TV/YouTube panel or multi-city road show</li>
+                                <li>Scoped and priced around your objective</li>
+                            </ul>
+                            <p class="option-fit"><strong>Best for:</strong> teams with a specific announcement or campaign to land.</p>
+                            <div class="option-actions">
+                                <a href="#activations" class="btn btn-primary btn-sm">Activation Formats <i class="fas fa-arrow-right"></i></a>
+                                <a href="/contact" class="option-enquire">Enquire &rarr;</a>
                             </div>
                         </div>
+
                     </div>
-                    <p style="text-align:center;margin-top:2rem;font-size:0.85rem;color:rgba(255,255,255,0.6);">
-                        <i class="fas fa-info-circle"></i> Investment amounts exclude applicable taxes. Trophy Partner & Innovators Round Table pricing on request
+                    <div class="option-assets">
+                        <span class="option-assets-label">Also available on request</span>
+                        <span>Registration &amp; badge</span><span>Wi-Fi &amp; charging lounge</span><span>Event app</span><span>Hall or track naming</span><span>Delegate kit insert</span><span>Session sponsor</span><span>Media wall</span>
+                    </div>
+                    <p style="text-align:center;margin-top:1.75rem;font-size:0.85rem;color:rgba(255,255,255,0.6);">
+                        <i class="fas fa-info-circle"></i> All amounts exclude applicable taxes. Any option can be combined with a partnership tier.
                     </p>
                 </div>
             </div>
@@ -933,7 +1116,7 @@
     </section>
 
     <!-- BEYOND SPONSORSHIP -->
-    <section class="section-pad" style="background:var(--off-white);">
+    <section class="section-pad" style="background:white;" id="activations">
         <div class="container">
             <div class="section-header reveal">
                 <h2 class="section-title">Beyond <span class="accent">Sponsorship</span></h2>
@@ -1008,47 +1191,38 @@
                     </div>
                 </div>
             </div>
+            <div class="reveal" style="text-align:center;margin-top:2.5rem;">
+                <a href="/contact" class="btn btn-primary btn-lg">Discuss a Custom Activation <i class="fas fa-arrow-right"></i></a>
+            </div>
         </div>
     </section>
 
-    <!-- PARTNER TYPES -->
-    <section class="section-pad" style="background:white;">
+    <!-- ECOSYSTEM & MEDIA PARTNERS (in-kind) -->
+    <section class="section-pad" style="background:var(--off-white);" id="ecosystem">
         <div class="container">
             <div class="section-header reveal">
-                <h2 class="section-title">Specialized <span class="accent">Partner Tracks</span></h2>
-                <p class="section-subtitle">Find the partnership category that aligns with your goals</p>
+                <h2 class="section-title">Ecosystem &amp; <span class="accent">Media Partners</span></h2>
+                <p class="section-subtitle">Non-cash and in-kind partnerships that extend the event&rsquo;s reach &mdash; for technology providers, associations, incubators and publishers.</p>
             </div>
             <div class="beyond-grid reveal">
                 <div class="beyond-card">
-                    <h4>Title Partner</h4>
-                    <p>Maximum visibility across all event collateral. Keynote speaking slot and VIP dinner host privileges.</p>
-                </div>
-                <div class="beyond-card">
-                    <h4>Innovation Partner</h4>
-                    <p>Championing new technologies and startups. Innovation zone branding and award category sponsorship.</p>
-                </div>
-                <div class="beyond-card">
-                    <h4>Sector Partner</h4>
-                    <p>Track sponsorship for healthcare, finance, agriculture, or manufacturing AI applications.</p>
-                </div>
-                <div class="beyond-card">
                     <h4>Technology Partner</h4>
-                    <p>Tech workshop opportunities and demo area sponsorship. Showcase your AI solutions.</p>
+                    <p>Provide the connectivity, AV, app or compute the event runs on. Demo-area branding and a tech workshop slot in return.</p>
                 </div>
                 <div class="beyond-card">
                     <h4>Ecosystem Partner</h4>
-                    <p>Community outreach and logo on website. Support India's AI ecosystem growth.</p>
+                    <p>Industry associations, incubators, accelerators and state bodies that bring their members. Community outreach and logo placement across the site and venue.</p>
                 </div>
                 <div class="beyond-card">
                     <h4>Media Partner</h4>
-                    <p>Amplify event reach through strategic media partnerships and content collaboration.</p>
+                    <p>Publishers, podcasts and broadcasters. Content collaboration, interview access to speakers, and reciprocal reach across both audiences.</p>
                 </div>
             </div>
         </div>
     </section>
 
     <!-- EVENT GALLERY -->
-    <section class="section-pad" style="background:var(--off-white);">
+    <section class="section-pad" style="background:white;">
         <div class="container">
             <div class="section-header reveal">
                 <h2 class="section-title">From the <span class="accent">Conference Floor</span></h2>
@@ -1075,7 +1249,7 @@
     </section>
 
     <!-- AI LEADERSHIP PANEL DETAIL -->
-    <section class="section-pad" style="background:white;">
+    <section class="section-pad" style="background:var(--off-white);" id="leadership-panel">
         <div class="container">
             <div class="section-header reveal">
                 <h2 class="section-title">AI <span class="accent">Leadership Panel</span></h2>
@@ -1220,7 +1394,7 @@
     </section>
 
     <!-- CTA BOX -->
-    <section class="section-pad" style="background:var(--off-white);">
+    <section class="section-pad" style="background:white;">
         <div class="container">
             <div class="partner-cta-box reveal">
                 <h3>Not sure which tier fits?</h3>
