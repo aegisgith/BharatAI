@@ -24807,7 +24807,7 @@ function adminPageHTML(): string {
         <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
           <span class="text-xs text-gray-400">\${exhibitors.length} exhibitors</span>
           <div class="flex gap-2">
-            <button onclick="backfillExhibitorsFromBooths()" class="px-4 py-2 rounded-xl text-xs font-medium bg-amber-600/20 text-amber-300 hover:bg-amber-600/30 border border-amber-500/30 transition"><i class="fas fa-store mr-1"></i>Sync from Booth Sales</button>
+            <button onclick="syncExhibitorsFromBoothSales()" class="px-4 py-2 rounded-xl text-xs font-medium bg-amber-600/20 text-amber-300 hover:bg-amber-600/30 border border-amber-500/30 transition"><i class="fas fa-store mr-1"></i>Sync from Booth Sales</button>
             <button onclick="syncExhibitorsFromAttendees()" class="px-4 py-2 rounded-xl text-xs font-medium bg-green-600/20 text-green-300 hover:bg-green-600/30 border border-green-500/30 transition"><i class="fas fa-sync mr-1"></i>Sync from Attendees</button>
             <button onclick="openCreateExhibitor()" class="px-4 py-2 rounded-xl text-xs font-medium bg-primary-600 hover:bg-primary-500 text-white transition"><i class="fas fa-plus mr-1"></i>Add Exhibitor</button>
           </div>
@@ -24892,7 +24892,15 @@ function adminPageHTML(): string {
     // the stands sold before this panel existed were loaded straight into the
     // database and never ran the code that creates the exhibitor behind a sale.
     // Safe to press twice: a stand already linked is re-stamped, not duplicated.
-    async function backfillExhibitorsFromBooths() {
+    //
+    // NOT backfillExhibitorsFromBooths — that name was taken, by the Booth
+    // Requests tab's own backfill further down THIS SAME inline script, which
+    // fills in approved REQUESTS. Two function declarations with one name do not
+    // collide loudly; the later one silently wins, and the first release of this
+    // button called the requests endpoint instead of this one. Stands sold on the
+    // floor plan and requests approved in the inbox are different backfills and
+    // now read as different names.
+    async function syncExhibitorsFromBoothSales() {
       if (!confirm('Create an exhibitor for every confirmed stand on the floor plan?\\n\\nHeld stands are skipped. A company holding two stands stays one exhibitor. Running this again changes nothing.')) return;
       try {
         const result = await api.post('/api/admin/booths/backfill-exhibitors?event_id='+EID, {});
