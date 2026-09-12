@@ -361,21 +361,67 @@ const STUDENT_TITLE_NORM =
 const STUDENT_RANK_SQL = '(CASE WHEN ' + ['%student%', '% intern %', '% interns %', '%scholar%', '%trainee%', '%graduand%']
   .map(pat => `${STUDENT_TITLE_NORM} LIKE '${pat}'`).join(' OR ') + ' THEN 1 ELSE 0 END)'
 
-const encodeAttendeeCursor = (name: unknown, id: unknown, rank: unknown = 0): string =>
-  btoa(JSON.stringify([String(name ?? ''), Number(id), Number(rank) ? 1 : 0]))
-    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+/* How deep one walk may go before the caller is told to search instead.
+ *
+ * Twenty pages is 480 people. Nobody looking for a person pages through 480
+ * cards - they type a name - so this costs a real user nothing and costs a
+ * scraper the ability to take the room in one pass. It applies to searches too:
+ * a search that returns more than 480 matches is not a search, it is a browse
+ * wearing a search's clothes, and exempting it would have left the obvious way
+ * round (walk ?search=a, then ?search=b...). */
+const DIRECTORY_MAX_PAGES = 20
 
-function decodeAttendeeCursor(raw: unknown): { name: string; id: number; rank: number } | null {
+/* The cursor is signed because it now carries a page number, and an unsigned
+ * counter is a counter the person being counted gets to write. Same HMAC and
+ * same secret as the session cookie rather than a second scheme.
+ *
+ * <payload>.<sig> where payload is base64url of [name, id, rank, page]. The
+ * payload alphabet has no dot in it, so the last dot is the separator. Ninety-
+ * six bits of signature: this authenticates a position in a list, it does not
+ * protect a secret.
+ *
+ * With no secret configured it degrades to the old unsigned cursor and the cap
+ * is not enforced - the same fail-open contract as requireSelf and
+ * requireSignedIn, so a rotated secret never bricks the directory.
+ *
+ * A cursor issued before this shipped has no signature and is refused, which
+ * puts an open tab back on page one the next time it pages. Once. */
+const CURSOR_SIG_CHARS = 24
+
+const b64urlA = (o: any): string =>
+  btoa(JSON.stringify(o)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+
+async function encodeAttendeeCursor(c: any, name: unknown, id: unknown, rank: unknown, page: number): Promise<string> {
+  const payload = b64urlA([String(name ?? ''), Number(id), Number(rank) ? 1 : 0, Math.max(0, Math.floor(page))])
+  const secret = attendeeSessionSecret(c)
+  if (!secret) return payload
+  return payload + '.' + (await hmacHexA(secret, payload)).slice(0, CURSOR_SIG_CHARS)
+}
+
+async function decodeAttendeeCursor(c: any, raw: unknown): Promise<{ name: string; id: number; rank: number; page: number } | null> {
   const t = String(raw ?? '').trim()
   if (!t) return null
+  const dot = t.lastIndexOf('.')
+  const payload = dot > 0 ? t.slice(0, dot) : t
+  const sig = dot > 0 ? t.slice(dot + 1) : ''
+  const secret = attendeeSessionSecret(c)
+  if (secret) {
+    if (!sig) return null
+    const expected = (await hmacHexA(secret, payload)).slice(0, CURSOR_SIG_CHARS)
+    if (!safeEqualA(sig, expected)) return null
+  }
   try {
-    const b = t.replace(/-/g, '+').replace(/_/g, '/')
+    const b = payload.replace(/-/g, '+').replace(/_/g, '/')
     const v = JSON.parse(atob(b + '='.repeat((4 - (b.length % 4)) % 4)))
-    // Two elements is the old shape, still in flight in somebody's open tab.
     if (!Array.isArray(v) || v.length < 2) return null
     const id = Number(v[1])
-    const rank = v.length > 2 && Number(v[2]) ? 1 : 0
-    return Number.isFinite(id) ? { name: String(v[0]), id, rank } : null
+    if (!Number.isFinite(id)) return null
+    return {
+      name: String(v[0]),
+      id,
+      rank: v.length > 2 && Number(v[2]) ? 1 : 0,
+      page: v.length > 3 ? Math.max(0, Math.floor(Number(v[3])) || 0) : 0,
+    }
   } catch { return null }
 }
 // The opt-out lifts the default cap to the hard maximum; it does not mean
@@ -3180,7 +3226,16 @@ app.get('/api/events/:id/attendees', async (c) => {
   if (!isAdminRequest(c)) {
     const size = Math.min(PUBLIC_PAGE_MAX, Math.max(1,
       parseInt(c.req.query('limit') || '', 10) || PUBLIC_PAGE_DEFAULT))
-    const cur = decodeAttendeeCursor(c.req.query('cursor'))
+    const cur = await decodeAttendeeCursor(c, c.req.query('cursor'))
+    const page = cur ? cur.page : 0
+    // Enforced on the way IN, so the row that would have been page 21 is never
+    // read out of the database, let alone serialised.
+    if (attendeeSessionSecret(c) && !isAdminRequest(c) && page >= DIRECTORY_MAX_PAGES) {
+      return c.json({
+        error: `The directory shows ${DIRECTORY_MAX_PAGES} pages at a time. Search by name, company or job title to find who you are looking for.`,
+        paged_out: true,
+      }, 429)
+    }
     // Asked for by the client rather than assumed, because a student browsing
     // the directory should still see other students in the normal place.
     const demote = c.req.query('demote_students') === '1'
@@ -3208,13 +3263,16 @@ app.get('/api/events/:id/attendees', async (c) => {
     const more = got.length > size
     const pageRows = more ? got.slice(0, size) : got
     const last = pageRows[pageRows.length - 1]
+    const nextCursor = more && last
+      ? await encodeAttendeeCursor(c, last.name, last.id, last._srank, page + 1)
+      : ''
     return new Response(JSON.stringify(pageRows), {
       headers: {
         'Content-Type': 'application/json; charset=UTF-8',
         'X-Returned-Count': String(pageRows.length),
         // Present only while more remain. Its absence is how the client knows to
         // stop, and it says nothing about how many are left.
-        'X-Next-Cursor': more && last ? encodeAttendeeCursor(last.name, last.id, last._srank) : '',
+        'X-Next-Cursor': nextCursor,
         'X-Has-More': more ? '1' : '0',
         'Access-Control-Expose-Headers': 'X-Returned-Count, X-Next-Cursor, X-Has-More',
       },
@@ -16182,6 +16240,10 @@ function mainPageHTML(): string {
     const viewerIsStudent = () =>
       /\b(student|scholar|intern|trainee|graduand)\b/i.test(String((currentUser && currentUser.job_title) || ''));
 
+    // Mirrors DIRECTORY_MAX_PAGES on the server. The server is the enforcement;
+    // this only stops us offering a button that is going to be refused.
+    const DIRECTORY_MAX_PAGES = 20;
+
     let attendeePageCursors = [''];
     let attendeePage = 0;
     let attendeeHasMore = false;
@@ -16250,6 +16312,19 @@ function mainPageHTML(): string {
           + (viewerIsStudent() ? '' : '&demote_students=1')
           + (cursor ? '&cursor=' + encodeURIComponent(cursor) : '');
         const resp = await fetch(qs);
+        if (!resp.ok) {
+          // 429 is the paging budget. The person is still looking at a perfectly
+          // good page, so leave it where it is and tell them what to do instead.
+          let msg = '';
+          try { msg = (await resp.json()).error || ''; } catch (e) {}
+          if (resp.status === 429) {
+            attendeeHasMore = false;
+            renderPager();
+            showToast(msg || 'Please search to narrow the list.', 'info');
+            return;
+          }
+          throw new Error(msg || ('HTTP ' + resp.status));
+        }
         const attendees = await resp.json();
         const nextCursor = resp.headers.get('X-Next-Cursor') || '';
         attendeeHasMore = resp.headers.get('X-Has-More') === '1';
@@ -16343,7 +16418,11 @@ function mainPageHTML(): string {
         document.getElementById('attendee-grid').insertAdjacentElement('afterend', el);
       }
       const hasPrev = attendeePage > 0;
-      if (!hasPrev && !attendeeHasMore) { el.innerHTML = ''; return; }
+      // The last page we are allowed to serve is DIRECTORY_MAX_PAGES - 1,
+      // zero-indexed, so Next stops being offered when the next one is over it.
+      const atCap = (attendeePage + 1) >= DIRECTORY_MAX_PAGES;
+      const hasNext = attendeeHasMore && !atCap;
+      if (!hasPrev && !hasNext && !atCap) { el.innerHTML = ''; return; }
       const btn = 'min-h-[44px] px-5 rounded-xl text-sm font-medium glass transition inline-flex items-center';
       el.innerHTML =
         '<div class="flex items-center justify-center gap-3 flex-wrap">'
@@ -16351,11 +16430,15 @@ function mainPageHTML(): string {
             ? '<button onclick="gotoAttendeePage(' + (attendeePage - 1) + ')" class="' + btn + ' hover:bg-white/10"><i class="fas fa-arrow-left mr-2"></i>Previous</button>'
             : '<button disabled class="' + btn + ' opacity-40 cursor-not-allowed"><i class="fas fa-arrow-left mr-2"></i>Previous</button>')
         + '<span class="text-xs text-gray-500">Page ' + (attendeePage + 1) + '</span>'
-        + (attendeeHasMore
+        + (hasNext
             ? '<button onclick="gotoAttendeePage(' + (attendeePage + 1) + ')" class="' + btn + ' hover:bg-white/10">Next<i class="fas fa-arrow-right ml-2"></i></button>'
             : '<button disabled class="' + btn + ' opacity-40 cursor-not-allowed">Next<i class="fas fa-arrow-right ml-2"></i></button>')
         + '</div>'
-        + '<p class="text-[11px] text-gray-500 mt-2">Looking for someone in particular? Search by name, company or job title.</p>';
+        + '<p class="text-[11px] text-gray-500 mt-2">'
+        + (atCap && attendeeHasMore
+            ? 'That is as far as browsing goes. Search by name, company or job title to find the person you want.'
+            : 'Looking for someone in particular? Search by name, company or job title.')
+        + '</p>';
     }
 
     async function gotoAttendeePage(p) {
