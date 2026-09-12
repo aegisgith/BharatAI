@@ -8981,7 +8981,7 @@ async function profileReminderEmailHTML(c: any, attendee: any, link: string): Pr
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
   <body style="margin:0;background:#f5f5f5;font-family:Arial,Helvetica,sans-serif;">
     <div style="max-width:600px;margin:20px auto;background:#fff;border-radius:12px;overflow:hidden;">
-      ${emailBrandHeader('Your pass is not finished', '20&ndash;21 Nov 2026 &bull; WTC Mumbai')}
+      ${emailBrandHeader('Your event pass &amp; LinkedIn share creative are not finished', '20&ndash;21 Nov 2026 &bull; WTC Mumbai')}
       <div style="padding:30px;">
         <p style="margin:0 0 6px;font-size:15px;color:#333;">Hi <strong>${esc(firstName)}</strong>,</p>
         <p style="margin:0 0 20px;font-size:14px;line-height:1.7;color:#555;">
