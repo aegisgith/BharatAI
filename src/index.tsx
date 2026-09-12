@@ -16407,7 +16407,9 @@ function mainPageHTML(): string {
             showToast(msg || 'Please search to narrow the list.', 'info');
             return;
           }
-          throw new Error(msg || ('HTTP ' + resp.status));
+          const err = new Error(msg || ('HTTP ' + resp.status));
+          err.fromServer = !!msg;   // only a sentence the endpoint wrote is shown
+          throw err;
         }
         const attendees = await resp.json();
         const nextCursor = resp.headers.get('X-Next-Cursor') || '';
@@ -16475,7 +16477,17 @@ function mainPageHTML(): string {
 
       } catch(e) {
         console.error('Attendees error:', e);
-        document.getElementById('attendee-grid').innerHTML = '<div class="text-center text-gray-500 py-12 col-span-full">That did not load. Please try again.</div>';
+        // Only a sentence the endpoint actually wrote is shown. A thrown network
+        // failure carries "Failed to fetch", which is for the console, not a page.
+        const human = e && e.fromServer ? String(e.message || '') : '';
+        const needsLogin = /sign in|sign-in|log in/i.test(human);
+        document.getElementById('attendee-grid').innerHTML = human
+          ? '<div class="text-center text-gray-400 py-12 col-span-full">' + human +
+            (needsLogin
+              ? ' <button onclick="showRegistration()" class="underline font-semibold text-primary-600 hover:text-primary-500">Sign in or register free</button>'
+              : '') + '</div>'
+          : '<div class="text-center text-gray-500 py-12 col-span-full">That did not load. Please try again.</div>';
+        renderPager();
       } finally {
         attendeeLoading = false;
       }
