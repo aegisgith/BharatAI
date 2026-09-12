@@ -3081,6 +3081,28 @@ async function requireSelf(c: any, targetId: any): Promise<Response | null> {
   return null
 }
 
+/* Guard for READS that hand back other people.
+ *
+ * The attendee directory is free to browse on every pass - that is a
+ * deliberate product rule and this does not change it. What it changes is who
+ * counts as browsing. The networking tab has required a sign-in since it was
+ * built (PROTECTED_TABS), so the app has never called these endpoints without
+ * a session; leaving them open served nobody except somebody with curl, who
+ * could walk all 59 pages unauthenticated and keep the room as a lead list.
+ * Names, employers, job titles, cities and LinkedIn URLs for everyone who
+ * registered, to anyone who asked, with no account and no trace.
+ *
+ * Fails OPEN when no secret is configured, exactly as requireSelf does and for
+ * the same reason: a rotated or missing secret should degrade to the old
+ * behaviour rather than lock every attendee out of the directory at once.
+ * GET /api/auth/status reports which mode is live. */
+async function requireSignedIn(c: any): Promise<Response | null> {
+  if (!attendeeSessionSecret(c)) return null
+  if (isAdminRequest(c)) return null
+  if (await verifyAttendeeSession(c)) return null
+  return c.json({ error: 'Please sign in to browse the attendee directory.' }, 401)
+}
+
 // Lets us confirm from outside whether enforcement is on, without exposing the
 // secret itself.
 app.get('/api/auth/status', async (c) => {
@@ -3115,6 +3137,8 @@ app.get('/api/events/:id/attendee-filters', async (c) => {
 })
 
 app.get('/api/events/:id/attendees', async (c) => {
+  // Bulk. This is the one that was worth walking.
+  const shutOut = await requireSignedIn(c); if (shutOut) return shutOut
   const eventId = c.req.param('id')
   const search = c.req.query('search')
   const role = c.req.query('role')
@@ -3324,6 +3348,9 @@ app.get('/api/events/:id/suggested-attendees', async (c) => {
 })
 
 app.get('/api/attendees/:id', async (c) => {
+  // One at a time. Gating the list alone would only have turned a 59-request
+  // walk into a 1,404-request one against sequential ids.
+  const shutOut = await requireSignedIn(c); if (shutOut) return shutOut
   const id = c.req.param('id')
   const cols = isAdminRequest(c) ? '*' : ATTENDEE_PUBLIC_COLS
   const attendee = await c.env.DB.prepare(`SELECT ${cols} FROM attendees WHERE id = ?`).bind(id).first()
