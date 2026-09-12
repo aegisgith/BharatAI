@@ -19045,7 +19045,12 @@ function mainPageHTML(): string {
          * holder. On a phone this is the shortest path in the product: the person
          * is already holding the camera, and hunting a gallery is where they give
          * up. A desktop gets the file picker and drag-and-drop instead. */
-        if (navigator.maxTouchPoints > 0) {
+        // NOT navigator.maxTouchPoints: measured headless, a desktop context
+        // reports 10 and a phone reports 1, and a Windows laptop with a
+        // touchscreen reports plenty while being driven by a mouse. (pointer:
+        // coarse) asks the question actually being asked - is the PRIMARY
+        // pointer a finger - which is true on the phone and false on both.
+        if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) {
           shoot.style.display = 'block';
           wrap.querySelector('#pass-photo-pick').setAttribute('style', 'width:100%;padding:11px;margin-top:9px;border:1px solid rgba(255,255,255,0.22);border-radius:11px;background:transparent;color:#e8edf5;font-weight:600;font-size:14px;cursor:pointer;');
         }
