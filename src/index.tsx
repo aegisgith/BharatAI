@@ -19020,7 +19020,14 @@ function mainPageHTML(): string {
             '<h3 style="margin:0 0 8px;font-size:17px;font-weight:700;">' + askTitle + '</h3>' +
             '<p style="margin:0 0 18px;font-size:13px;line-height:1.6;color:#98a3bd;">' + askBody + '</p>' +
             '<input type="file" accept="image/*" id="pass-photo-input" style="display:none;">' +
+            // capture opens the camera straight away rather than the gallery. Two
+            // separate inputs because the attribute cannot be toggled reliably
+            // once a picker has been opened on some Android builds.
+            '<input type="file" accept="image/*" capture="user" id="pass-photo-camera" style="display:none;">' +
+            '<img id="pass-photo-preview" alt="" style="display:none;width:92px;height:92px;border-radius:50%;object-fit:cover;margin:0 auto 14px;border:3px solid #FF6B00;">' +
+            '<button id="pass-photo-shoot" style="width:100%;padding:11px;border:none;border-radius:11px;background:linear-gradient(135deg,#FF6B00,#FF8C38);color:#fff;font-weight:700;font-size:14px;cursor:pointer;display:none;">Take a photo</button>' +
             '<button id="pass-photo-pick" style="width:100%;padding:11px;border:none;border-radius:11px;background:linear-gradient(135deg,#FF6B00,#FF8C38);color:#fff;font-weight:700;font-size:14px;cursor:pointer;">Choose a photo</button>' +
+            '<p id="pass-photo-hint" style="margin:10px 0 0;font-size:11.5px;color:#6c7893;">Any size &mdash; we resize it for you.</p>' +
             '<p id="pass-photo-status" style="margin:12px 0 0;font-size:12px;color:#98a3bd;min-height:16px;"></p>' +
           '</div>';
         document.body.appendChild(wrap);
@@ -19028,20 +19035,51 @@ function mainPageHTML(): string {
         wrap.addEventListener('click', function (e) { if (e.target === wrap) close('cancel'); });
         wrap.querySelector('#pass-photo-close').onclick = function () { close('cancel'); };
         var input = wrap.querySelector('#pass-photo-input');
+        var camera = wrap.querySelector('#pass-photo-camera');
         var status = wrap.querySelector('#pass-photo-status');
+        var preview = wrap.querySelector('#pass-photo-preview');
+        var shoot = wrap.querySelector('#pass-photo-shoot');
         wrap.querySelector('#pass-photo-pick').onclick = function () { input.click(); };
-        input.onchange = async function () {
-          if (!input.files || !input.files[0]) return;
+        shoot.onclick = function () { camera.click(); };
+        /* Offer the camera only where there is likely to be one pointing at the
+         * holder. On a phone this is the shortest path in the product: the person
+         * is already holding the camera, and hunting a gallery is where they give
+         * up. A desktop gets the file picker and drag-and-drop instead. */
+        if (navigator.maxTouchPoints > 0) {
+          shoot.style.display = 'block';
+          wrap.querySelector('#pass-photo-pick').setAttribute('style', 'width:100%;padding:11px;margin-top:9px;border:1px solid rgba(255,255,255,0.22);border-radius:11px;background:transparent;color:#e8edf5;font-weight:600;font-size:14px;cursor:pointer;');
+        }
+        // Drop anywhere on the card, which is what someone with a file manager open
+        // will try before they find the button.
+        var card = wrap.firstElementChild;
+        ['dragenter', 'dragover'].forEach(function (ev) {
+          card.addEventListener(ev, function (e) { e.preventDefault(); card.style.borderColor = '#FF6B00'; });
+        });
+        ['dragleave', 'drop'].forEach(function (ev) {
+          card.addEventListener(ev, function (e) { e.preventDefault(); card.style.borderColor = 'rgba(255,255,255,0.12)'; });
+        });
+        card.addEventListener('drop', function (e) {
+          var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+          if (f) handlePhoto(f);
+        });
+        input.onchange = function () { if (input.files && input.files[0]) handlePhoto(input.files[0]); };
+        camera.onchange = function () { if (camera.files && camera.files[0]) handlePhoto(camera.files[0]); };
+        async function handlePhoto(file) {
+          if (!file) return;
           // Resize FIRST. The raw file was refused at 5MB by the line that used
           // to be here - before the resize that turns it into about 40KB - so a
           // normal portrait off a modern phone, routinely 6-12MB, was told to
           // "choose a smaller one" with nowhere to go. The only size that matters
           // is what we are about to POST, which the server caps at 700,000 chars.
           // The raw guard survives at a height that only catches the absurd.
-          if (input.files[0].size > 40 * 1024 * 1024) { status.textContent = 'That image is enormous. Please choose another.'; return; }
+          if (file.size > 40 * 1024 * 1024) { status.textContent = 'That image is enormous. Please choose another.'; return; }
           status.textContent = 'Uploading...';
           try {
-            var dataUrl = await resizeImage(input.files[0], 400, 0.85);
+            var dataUrl = await resizeImage(file, 400, 0.85);
+            // Show them the crop the moment it exists. Uploading behind a bare
+            // "Uploading..." gives no sign the right picture was picked, and the
+            // modal then vanishes before they ever see it.
+            preview.src = dataUrl; preview.style.display = 'block';
             if (dataUrl.length > 700000) { status.textContent = 'That image would not compress small enough. Please try another.'; return; }
             var res = await api.post('/api/attendees/' + user.id + '/avatar', { image: dataUrl });
             if (res && res.success) {
