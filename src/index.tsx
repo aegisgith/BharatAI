@@ -699,12 +699,13 @@ async function sendRegistrationEmail(c: any, attendee: any) {
         </div>
         <p style="margin:14px 0 0;font-size:12px;color:#888;text-align:center;">Sign in with this email address &mdash; we will send you a one-time code, no password needed.</p>
         <div style="margin-top:22px;padding:16px;background:#F7F8FF;border:1px solid #E3E6F5;border-radius:10px;">
-          <p style="margin:0 0 5px;font-size:14px;font-weight:bold;color:#1E2140;">Tell people you are coming</p>
+          <p style="margin:0 0 5px;font-size:14px;font-weight:bold;color:#1E2140;">Tell your network you are coming</p>
           <p style="margin:0 0 12px;font-size:12.5px;line-height:1.65;color:#555;">
-            Once your photo is in, you can make an &ldquo;I&rsquo;m attending&rdquo; card &mdash; your photo, your name
-            and your organisation, sized for LinkedIn, Instagram and WhatsApp. One tap, and a caption you can copy with it.
+            Once your photo is in, you can make a post announcing you&rsquo;ll be there &mdash; a ready-made image
+            with your photo, your name and your organisation, sized for LinkedIn, Instagram and WhatsApp,
+            and a caption you can copy with it. One tap.
           </p>
-          <a href="${appUrl}?email=${encodeURIComponent(attendee.email)}&action=social-card" style="display:inline-block;padding:9px 20px;background:#1E2140;color:#fff;text-decoration:none;border-radius:8px;font-size:12.5px;font-weight:bold;">Make my card</a>
+          <a href="${appUrl}?email=${encodeURIComponent(attendee.email)}&action=social-card" style="display:inline-block;padding:9px 20px;background:#1E2140;color:#fff;text-decoration:none;border-radius:8px;font-size:12.5px;font-weight:bold;">Make my LinkedIn post</a>
         </div>
         <div style="margin-top:22px;padding:14px;background:#FFF6EF;border:1px solid rgba(255,107,0,0.25);border-radius:10px;">
           <p style="margin:0;font-size:12.5px;line-height:1.6;color:#1E2140;"><strong>On the day:</strong> bring a government photo ID matching the name on your pass. We check it at the badge desk &mdash; we never ask you to upload or send an identity document.</p>
@@ -8702,8 +8703,8 @@ async function sendProfileReminder(c: any, attendee: any): Promise<SendOutcome> 
   const gaps = attendeeProfileGaps(attendee)
   const html = await profileReminderEmailHTML(c, attendee, link)
   const subject = gaps.includes('photo')
-    ? 'Your pass still needs a photo - Bharat AI Innovation 2026'
-    : 'One minute to finish your Bharat AI Innovation 2026 profile'
+    ? "Tell your network you're attending - add your photo"
+    : "Tell your network you're attending - finish your profile"
 
   let res: Response
   try {
@@ -8780,8 +8781,8 @@ async function profileReminderEmailHTML(c: any, attendee: any, link: string): Pr
   const goalsLink = link.replace('action=complete-profile', 'action=goals')
   // "Once your photo is in" is only honest for the people who still owe one.
   const cardLine = needsPhoto
-    ? 'Once your photo is in, you can make a card announcing you&rsquo;ll be at Bharat AI Innovation 2026'
-    : 'You can also make a card announcing you&rsquo;ll be at Bharat AI Innovation 2026'
+    ? 'Once your photo is in, you can make a post announcing you&rsquo;ll be at Bharat AI Innovation 2026'
+    : 'You can also make a post announcing you&rsquo;ll be at Bharat AI Innovation 2026'
   const row = (g: string) =>
     `<tr><td width="26" valign="top" style="padding:0 0 14px;"><div style="width:8px;height:8px;border-radius:50%;background:#FF6B00;margin-top:6px;"></div></td>` +
     `<td valign="top" style="padding:0 0 14px;"><p style="margin:0 0 2px;font-size:14px;font-weight:bold;color:#1E2140;text-transform:capitalize;">${esc(g)}</p>` +
@@ -8814,12 +8815,12 @@ async function profileReminderEmailHTML(c: any, attendee: any, link: string): Pr
           <a href="${goalsLink}" style="display:inline-block;padding:9px 20px;background:#0f7b47;color:#fff;text-decoration:none;border-radius:8px;font-size:12.5px;font-weight:bold;">Choose what you are here for</a>
         </div>
         <div style="margin-top:18px;padding:16px;background:#F7F8FF;border:1px solid #E3E6F5;border-radius:10px;">
-          <p style="margin:0 0 5px;font-size:14px;font-weight:bold;color:#1E2140;">Then make your &ldquo;I&rsquo;m attending&rdquo; card</p>
+          <p style="margin:0 0 5px;font-size:14px;font-weight:bold;color:#1E2140;">Then tell your network you are going</p>
           <p style="margin:0 0 12px;font-size:12.5px;line-height:1.65;color:#555;">
-            ${cardLine} &mdash; your photo, your name and your organisation, sized for LinkedIn,
-            Instagram and WhatsApp. One tap, and a caption you can copy with it.
+            ${cardLine} &mdash; a ready-made image with your photo, your name and your organisation,
+            sized for LinkedIn, Instagram and WhatsApp, and a caption you can copy with it. One tap.
           </p>
-          <a href="${cardLink}" style="display:inline-block;padding:9px 20px;background:#1E2140;color:#fff;text-decoration:none;border-radius:8px;font-size:12.5px;font-weight:bold;">Make my card</a>
+          <a href="${cardLink}" style="display:inline-block;padding:9px 20px;background:#1E2140;color:#fff;text-decoration:none;border-radius:8px;font-size:12.5px;font-weight:bold;">Make my LinkedIn post</a>
         </div>
         <p style="margin:22px 0 0;font-size:12px;line-height:1.6;color:#999;">
           Already added these? Then you are set &mdash; nothing more to do, and you can ignore this. If you no longer plan to attend, just reply and tell us; we will take you off the list.
@@ -14932,8 +14933,8 @@ function mainPageHTML(): string {
         const card = document.getElementById('profile-complete-card');
         if (card && !card.classList.contains('hidden')) {
           card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          // The mail's subject line is "Your pass still needs a photo", so open
-          // the camera whenever a photo is what is missing. It used to do that
+          // The mail asks for a photo up front, so open the camera whenever a
+          // photo is what is missing. It used to do that
           // only when the photo was the ONLY gap, which is 22% of the people it
           // was sent to; the other 78% were handed a twelve-field form asking
           // for their city.
