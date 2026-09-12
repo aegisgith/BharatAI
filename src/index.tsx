@@ -14615,7 +14615,7 @@ function mainPageHTML(): string {
               </div>
               <div class="flex-1">
                 <p class="text-sm font-medium">Profile Photo</p>
-                <p class="text-xs text-gray-500">Click the camera icon to upload. Max 500KB, auto-resized.</p>
+                <p class="text-xs text-gray-500">Click the camera icon to upload. Any size &mdash; we resize it for you.</p>
                 <button type="button" id="remove-avatar-btn" class="text-xs text-red-400 hover:text-red-300 mt-1 hidden" onclick="removeProfilePhoto()">
                   <i class="fas fa-trash-alt mr-1"></i>Remove photo
                 </button>
@@ -14921,13 +14921,24 @@ function mainPageHTML(): string {
       if (act === 'goals') { setTimeout(() => openEditProfile(), 1500); return; }
       if (act !== 'complete-profile') return;
       setTimeout(() => {
-        switchTab('home');
+        // 'home' is not a tab and never has been - there is no #tab-home and no
+        // [data-tab=home] in this file. switchTab hid every .tab-content and then
+        // un-hid nothing, so the app went blank; the completion card below was
+        // un-hidden inside a display:none ancestor and its scrollIntoView did
+        // nothing. Everyone who clicked 'Add your photo' in the reminder mail
+        // landed on an empty screen with a modal floating over it.
+        switchTab('dashboard');
         updateProfileCompletionCard();
         const card = document.getElementById('profile-complete-card');
         if (card && !card.classList.contains('hidden')) {
           card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          // The mail's subject line is "Your pass still needs a photo", so open
+          // the camera whenever a photo is what is missing. It used to do that
+          // only when the photo was the ONLY gap, which is 22% of the people it
+          // was sent to; the other 78% were handed a twelve-field form asking
+          // for their city.
           const gaps = profileGaps(currentUser);
-          if (gaps.length === 1 && gaps[0] === 'photo') addProfilePhotoFromCard();
+          if (gaps.indexOf('photo') !== -1) addProfilePhotoFromCard();
           else openEditProfile();
         } else {
           showToast('Your profile is already complete - thank you!', 'success');
@@ -18816,10 +18827,17 @@ function mainPageHTML(): string {
         wrap.querySelector('#pass-photo-pick').onclick = function () { input.click(); };
         input.onchange = async function () {
           if (!input.files || !input.files[0]) return;
-          if (input.files[0].size > 5 * 1024 * 1024) { status.textContent = 'That image is over 5MB. Please choose a smaller one.'; return; }
+          // Resize FIRST. The raw file was refused at 5MB by the line that used
+          // to be here - before the resize that turns it into about 40KB - so a
+          // normal portrait off a modern phone, routinely 6-12MB, was told to
+          // "choose a smaller one" with nowhere to go. The only size that matters
+          // is what we are about to POST, which the server caps at 700,000 chars.
+          // The raw guard survives at a height that only catches the absurd.
+          if (input.files[0].size > 40 * 1024 * 1024) { status.textContent = 'That image is enormous. Please choose another.'; return; }
           status.textContent = 'Uploading...';
           try {
             var dataUrl = await resizeImage(input.files[0], 400, 0.85);
+            if (dataUrl.length > 700000) { status.textContent = 'That image would not compress small enough. Please try another.'; return; }
             var res = await api.post('/api/attendees/' + user.id + '/avatar', { image: dataUrl });
             if (res && res.success) {
               user.avatar_url = res.avatar_url || dataUrl;
@@ -20034,12 +20052,16 @@ function mainPageHTML(): string {
     async function handleProfilePhotoSelect(input) {
       if (!input.files || !input.files[0]) return;
       const file = input.files[0];
-      if (file.size > 5 * 1024 * 1024) {
-        toast('Image too large. Max 5MB.', true);
+      // Same reasoning as askForPassPhoto: the resize below is what decides the
+      // size, so judging the raw file was refusing photos that would have been
+      // fine. High guard only, then check what is actually being sent.
+      if (file.size > 40 * 1024 * 1024) {
+        toast('That image is enormous. Please choose another.', true);
         return;
       }
       try {
         const dataUrl = await resizeImage(file, 256, 0.8);
+        if (dataUrl.length > 700000) { toast('That image would not compress small enough. Please try another.', true); return; }
         document.getElementById('edit-avatar-preview').src = dataUrl;
         // Upload immediately
         const result = await api.post('/api/attendees/' + currentUser.id + '/avatar', { image: dataUrl });
