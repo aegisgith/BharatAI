@@ -19112,6 +19112,22 @@ function mainPageHTML(): string {
     async function openSocialCard() {
       var user = currentUser;
       if (!user) { showToast('Please sign in first', 'error'); return; }
+      /* The photo check below used to read currentUser.avatar_url straight out
+       * of localStorage. That copy is whatever this browser last saw: a photo
+       * removed since (by the person, from another device, or by an admin)
+       * still looks present here, the gate opens, the image then 404s, and
+       * the card is drawn with a letter in the circle. One GET makes the gate
+       * decide on what the server actually holds. */
+      try {
+        var fresh = await api.get('/api/attendees/' + user.id);
+        if (fresh && typeof fresh.avatar_url !== 'undefined') {
+          user.avatar_url = fresh.avatar_url || '';
+          if (currentUser && currentUser.id === user.id) {
+            currentUser.avatar_url = user.avatar_url;
+            try { localStorage.setItem('agba_user', JSON.stringify(currentUser)); } catch (e) {}
+          }
+        }
+      } catch (e) { /* offline or refused: fall through to the local copy */ }
       // The card is a portrait. Without a face it is a letter in a circle, which
       // nobody posts - so this asks for one, exactly as the pass does, but it
       // must not repeat the pass's reason, which is not true here.
@@ -19179,13 +19195,27 @@ function mainPageHTML(): string {
           companyLogo: useLogo ? undefined : ''
         });
         if (mine !== socialCard.seq) return;
+        /* A card whose photo did not load is not a card. This used to set the
+         * result anyway, show the letter-in-a-circle as the preview, raise a
+         * toast, and leave Download and Share live - so the toast was advice
+         * and the initials went out. Now the result is never stored, so there
+         * is nothing to download or share, and the person is asked for the
+         * photo again through the same modal the gate uses. */
+        if (res.photoFailed) {
+          socialCard.res = null;
+          load.classList.add('hidden');
+          closeSocialCard();
+          var again = await askForPassPhoto(user, {
+            title: 'We could not load your photo',
+            body: 'The photo on your profile did not open, so the card cannot be made from it. Add it again and the card will be ready.'
+          });
+          if (again === 'done') openSocialCard();
+          return;
+        }
         socialCard.res = res;
         img.src = res.dataUrl;
         img.style.display = 'block';
         load.classList.add('hidden');
-        // Silently drawing an initial instead of the face would be discovered
-        // after the post, not before it.
-        if (res.photoFailed) showToast('Your photo could not be loaded - please re-upload it', 'error');
       } catch (e) {
         if (mine !== socialCard.seq) return;
         load.textContent = 'Could not draw the card. Please try again.';
@@ -19194,7 +19224,9 @@ function mainPageHTML(): string {
 
     async function downloadSocialCard() {
       var user = currentUser;
-      if (!user || !socialCard.res) return;
+      // res is never stored for a failed photo, so this is belt and braces;
+      // it also stops a result from an earlier render being reused.
+      if (!user || !socialCard.res || socialCard.res.photoFailed) return;
       var link = document.createElement('a');
       link.download = socialCard.res.filename;
       link.href = socialCard.res.dataUrl;
@@ -19220,7 +19252,7 @@ function mainPageHTML(): string {
 
     async function shareSocialCard() {
       var user = currentUser;
-      if (!user || !socialCard.res) return;
+      if (!user || !socialCard.res || socialCard.res.photoFailed) return;
       try {
         var blob = await (await fetch(socialCard.res.dataUrl)).blob();
         var file = new File([blob], socialCard.res.filename, { type: 'image/png' });
