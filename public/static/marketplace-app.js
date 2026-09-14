@@ -18,39 +18,6 @@ const safeUrl = (v) => {
 const state = { user: null, listings: [] }
 const toast = document.getElementById('toast')
 
-const MASTER_INDUSTRIES = [
-  'Industry Agnostic','Aerospace','Agriculture','Airline','Automotive','Banking',
-  'Biotech','Chemicals','Construction','Consumer Goods','Cybersecurity','Defense',
-  'Education','Energy','Entertainment','Financial Services','Food & Beverage',
-  'Government','Healthcare','Hospitality','Insurance','Legal','Logistics',
-  'Manufacturing','Media & Publishing','Mining','Non-Profit','Pharma',
-  'Real Estate','Retail','Telecom','Transportation','Travel & Tourism','Utilities','Other'
-]
-
-const MASTER_AI_CATEGORIES = [
-  'Sales Automation','Lead Generation Automation','CRM Automation',
-  'Proposal / RFP Automation','Revenue Intelligence','Sales Forecasting','Inside Sales AI',
-  'Social Media Automation','Content Generation','Performance Marketing Optimization',
-  'SEO / SEM Automation','Personalization Engines','Campaign Automation','Brand Monitoring',
-  'Customer Support Automation','AI Chatbots','Sentiment Analysis',
-  'Customer Journey Analytics','Self-Service Portals',
-  'Invoice Processing','Expense Management','Fraud Detection',
-  'Financial Forecasting','Tax Automation','Audit Automation',
-  'Recruitment Automation','Resume Screening','Employee Engagement',
-  'Workforce Planning','Learning & Development AI','Compensation Intelligence',
-  'Contract Analysis','Regulatory Monitoring','Legal Document Automation',
-  'E-Discovery','Risk & Compliance Management',
-  'Workflow Automation','Inventory Optimization','Procurement AI',
-  'Demand Forecasting','Quality Control AI','Logistics / Route Optimization',
-  'Code Generation / SDLC','DevOps Automation','Cybersecurity AI',
-  'IT Service Management','Test Automation','Infrastructure Monitoring',
-  'Product Analytics','Market Intelligence','Competitive Analysis',
-  'Innovation Management','R&D Automation',
-  'AI Agents','Agentic Automation','Generative AI','LLM-powered','Multimodal AI',
-  'Computer Vision','Speech / Voice AI','Robotics','Edge AI','RAG','MLOps',
-  'Model Training / Hosting','AI Safety / Guardrails','Observability / Monitoring'
-]
-
 const showToast = (msg, isError = false) => {
   toast.textContent = msg; toast.classList.remove('hidden')
   toast.classList.toggle('border-rose-500', isError); toast.classList.toggle('border-slate-700', !isError)
@@ -75,17 +42,11 @@ const adminSection = document.getElementById('admin-section')
 const listingsContainer = document.getElementById('listings-container')
 const adminListingsContainer = document.getElementById('admin-listings')
 const companyNameField = document.getElementById('company-name')
-const filterTagsContainer = document.getElementById('filter-tags')
-const filterIndustriesContainer = document.getElementById('filter-industries')
-const filterCategoriesContainer = document.getElementById('filter-categories')
-
-const filters = { tag: null, industry: null, category: null }
 
 const loginButton = document.getElementById('login-button')
 const logoutButton = document.getElementById('logout-button')
 const dashboardLink = document.getElementById('dashboard-link')
 const openListingButton = document.getElementById('open-listing-button')
-const refreshButton = document.getElementById('refresh-button')
 const viewButtons = document.querySelectorAll('[data-view]')
 
 // Set when someone asked to list a product before signing in, so signing in
@@ -119,110 +80,146 @@ const setListingView = (view) => {
   const sel = view === 'list' ? 'list' : 'grid'
   listingsContainer.classList.toggle('listing-list', sel === 'list')
   listingsContainer.classList.toggle('listing-grid', sel === 'grid')
-  viewButtons.forEach(b => b.classList.toggle('view-active', b.getAttribute('data-view') === sel))
+  viewButtons.forEach(b => { const on = b.getAttribute('data-view') === sel; b.classList.toggle('view-active', on); b.setAttribute('aria-pressed', String(on)) })
   try { localStorage.setItem('mpListingView', sel) } catch {}
 }
 
 const loadMe = async () => { try { const d = await api('/api/mp/auth/me'); state.user = d.user; updateAuthUI() } catch {} }
 
-const FILTER_COLLAPSE_LIMIT = 12
-const renderFilterGroup = (container, options, activeValue, onSelect) => {
-  if (!container) return
-  const all = ['All', ...options]
-  const needsCollapse = all.length > FILTER_COLLAPSE_LIMIT + 1
-  const activeIdx = activeValue ? all.indexOf(activeValue) : -1
-  const startExpanded = activeIdx >= FILTER_COLLAPSE_LIMIT + 1
-  container.innerHTML = ''
-  const wrap = document.createElement('div'); wrap.className = 'filter-chip-wrap'
-  all.forEach((label, idx) => {
-    const value = label === 'All' ? null : label
-    const btn = document.createElement('button')
-    btn.className = `filter-chip ${value === activeValue ? 'filter-active' : ''}`
-    btn.textContent = label
-    if (needsCollapse && idx > FILTER_COLLAPSE_LIMIT && !startExpanded) btn.classList.add('filter-chip-hidden')
-    btn.addEventListener('click', () => onSelect(value))
-    wrap.appendChild(btn)
-  })
-  container.appendChild(wrap)
-  if (needsCollapse) {
-    const toggle = document.createElement('button'); toggle.className = 'filter-toggle-btn'
-    const hc = all.length - FILTER_COLLAPSE_LIMIT - 1
-    toggle.innerHTML = startExpanded ? '<i class="fa-solid fa-chevron-up"></i> Show fewer' : `<i class="fa-solid fa-chevron-down"></i> +${hc} more`
-    let exp = startExpanded
-    toggle.addEventListener('click', () => {
-      exp = !exp
-      if (exp) { wrap.querySelectorAll('.filter-chip-hidden').forEach(c => c.classList.remove('filter-chip-hidden')); toggle.innerHTML = '<i class="fa-solid fa-chevron-up"></i> Show fewer' }
-      else { Array.from(wrap.children).forEach((c, i) => { if (i > FILTER_COLLAPSE_LIMIT) c.classList.add('filter-chip-hidden') }); toggle.innerHTML = `<i class="fa-solid fa-chevron-down"></i> +${hc} more` }
-    })
-    container.appendChild(toggle)
-  }
-}
+// ── Search and filters ──
+// Each filter lists only values that approved listings actually use, with a count.
+// It used to render every master industry (35) and AI category (66) as a chip wall,
+// most of them leading to "No listings match", above the listings themselves.
+// Vendor-typed tags differ in case ("Recruitment" / "recruitment"), so values are
+// matched on a lower-cased key and shown with the first spelling seen.
+const keyOf = (v) => String(v || '').trim().toLowerCase()
+const FILTERS = [
+  { name: 'industry', field: 'target_industry', all: 'Industry', select: document.getElementById('filter-industry') },
+  { name: 'category', field: 'ai_category', all: 'Category', select: document.getElementById('filter-category') },
+  { name: 'tag', field: 'tags', all: 'Tag', select: document.getElementById('filter-tag') },
+]
+const filters = { q: '', industry: '', category: '', tag: '' }
+const filterLabels = {}
+const searchInput = document.getElementById('mk-search')
+const statusEl = document.getElementById('mk-status')
+let filtersBuiltFor = null
 
 const buildFilters = (listings) => {
-  const tags = new Set(); listings.forEach(l => toTagList(l.tags).forEach(t => tags.add(t)))
-  renderFilterGroup(filterTagsContainer, Array.from(tags).sort(), filters.tag, v => { filters.tag = v; renderListings() })
-  renderFilterGroup(filterIndustriesContainer, MASTER_INDUSTRIES, filters.industry, v => { filters.industry = v; renderListings() })
-  renderFilterGroup(filterCategoriesContainer, MASTER_AI_CATEGORIES, filters.category, v => { filters.category = v; renderListings() })
+  FILTERS.forEach(f => {
+    const counts = new Map()
+    listings.forEach(l => new Set(toTagList(l[f.field]).map(keyOf)).forEach(k => counts.set(k, (counts.get(k) || 0) + 1)))
+    const labels = filterLabels[f.name] = {}
+    listings.forEach(l => toTagList(l[f.field]).forEach(v => { const k = keyOf(v); if (!labels[k]) labels[k] = v }))
+    const keys = [...counts.keys()].sort((a, b) => counts.get(b) - counts.get(a) || labels[a].localeCompare(labels[b]))
+    if (filters[f.name] && !counts.has(filters[f.name])) filters[f.name] = ''
+    if (!f.select) return
+    f.select.innerHTML = `<option value="">${esc(f.all)}</option>` + keys.map(k => `<option value="${esc(k)}">${esc(labels[k])} (${counts.get(k)})</option>`).join('')
+    f.select.value = filters[f.name]
+    f.select.hidden = keys.length === 0
+  })
+  filtersBuiltFor = listings
 }
 
-const applyFilters = (listings) => listings.filter(l => {
-  const il = toTagList(l.target_industry), cl = toTagList(l.ai_category), tl = toTagList(l.tags)
-  return (!filters.industry || il.includes(filters.industry)) && (!filters.category || cl.includes(filters.category)) && (!filters.tag || tl.includes(filters.tag))
+const searchText = (l) => [l.product_name, l.company_name, l.description, l.ai_category, l.tags, l.target_industry, l.target_customer, l.use_cases].map(v => String(v || '')).join(' ').toLowerCase()
+
+const applyFilters = (listings) => {
+  const words = filters.q.toLowerCase().split(/\s+/).filter(Boolean)
+  return listings.filter(l => {
+    if (FILTERS.some(f => filters[f.name] && !toTagList(l[f.field]).map(keyOf).includes(filters[f.name]))) return false
+    if (!words.length) return true
+    const text = searchText(l)
+    return words.every(w => text.includes(w))
+  })
+}
+
+const isFiltering = () => !!(filters.q.trim() || FILTERS.some(f => filters[f.name]))
+
+const clearFilters = () => {
+  filters.q = ''; if (searchInput) searchInput.value = ''
+  FILTERS.forEach(f => { filters[f.name] = '' })
+  renderListings()
+}
+
+const renderStatus = (shown, total) => {
+  if (!statusEl) return
+  if (!isFiltering()) { statusEl.innerHTML = ''; return }
+  const chips = FILTERS.filter(f => filters[f.name]).map(f =>
+    `<button type="button" class="mk-active-chip" data-clear="${f.name}" aria-label="Remove filter ${esc(filterLabels[f.name]?.[filters[f.name]] || filters[f.name])}"><span>${esc(filterLabels[f.name]?.[filters[f.name]] || filters[f.name])}</span><i class="fas fa-xmark" aria-hidden="true"></i></button>`)
+  if (filters.q.trim()) chips.unshift(`<button type="button" class="mk-active-chip" data-clear="q" aria-label="Clear search"><span>&ldquo;${esc(filters.q.trim())}&rdquo;</span><i class="fas fa-xmark" aria-hidden="true"></i></button>`)
+  statusEl.innerHTML = `<span class="mk-count">${shown} of ${total} product${total === 1 ? '' : 's'}</span>${chips.join('')}<button type="button" class="mk-clear" data-clear="all">Clear all</button>`
+}
+
+if (statusEl) statusEl.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-clear]'); if (!btn) return
+  const which = btn.getAttribute('data-clear')
+  if (which === 'all') return clearFilters()
+  if (which === 'q') { filters.q = ''; if (searchInput) searchInput.value = '' }
+  else filters[which] = ''
+  renderListings()
 })
+FILTERS.forEach(f => f.select && f.select.addEventListener('change', () => { filters[f.name] = f.select.value; renderListings() }))
+if (searchInput) searchInput.addEventListener('input', () => { filters.q = searchInput.value; renderListings() })
 
+// ── Cards ──
+// The whole card is the link. Empty fields are left out rather than shown as "—",
+// and the company line is dropped when it only repeats the product name.
 const createListingCard = (listing) => {
-  const card = document.createElement('div'); card.className = 'listing-card'
-  const cats = toTagList(listing.ai_category), tags = toTagList(listing.tags)
+  const card = document.createElement('a')
+  card.className = 'listing-card'
+  card.href = listingUrl(listing)
+  const name = String(listing.product_name || '').trim() || 'Untitled product'
+  const company = String(listing.company_name || '').trim()
   const logo = safeUrl(listing.logo_url), image = safeUrl(listing.product_image_url)
-  const logoMk = logo ? `<img src="${esc(logo)}" alt="">` : esc(getInitials(listing.product_name))
-  const tagMk = items => items.length ? items.slice(0,3).map(i => `<span class="tag">${esc(i)}</span>`).join('') : '<span class="tag tag-muted">—</span>'
-  const imgMk = image ? `<div class="listing-product-img"><img src="${esc(image)}" alt="" loading="lazy"></div>` : ''
   const booth = listing.exhibitor_booth || listing.booth_number
-  const boothBadge = booth ? `<span class="listing-booth-badge"><i class="fas fa-map-marker-alt"></i> Booth ${esc(booth)}</span>` : ''
-  // No rating exists until one is given; "— Rating" on every card read as broken.
-  const rating = Number(listing.awards_rating) > 0 ? `<div class="rating-row"><i class="fa-solid fa-star"></i><span>${esc(listing.awards_rating)} Rating</span></div><span class="meta-dot">·</span>` : ''
+  const chipsFrom = [toTagList(listing.ai_category), toTagList(listing.tags), toTagList(listing.target_industry)].find(list => list.length) || []
+  const chips = chipsFrom.slice(0, 3).map(c => `<span class="chip">${esc(c)}</span>`).join('') + (chipsFrom.length > 3 ? `<span class="chip chip--more">+${chipsFrom.length - 3}</span>` : '')
 
-  card.innerHTML = `${imgMk}
-    <div class="listing-compact">
-      <div class="listing-logo">${logoMk}</div>
-      <div class="listing-compact-body">
-        <p class="listing-company">${esc(listing.company_name)} ${boothBadge}</p>
-        <h4 class="listing-title">${esc(listing.product_name)}</h4>
-        <p class="listing-desc">${esc(listing.description)}</p>
-        <div class="listing-meta">${rating}<span>${esc(listing.pricing_type || 'Pricing on request')}</span></div>
-        <div class="listing-section"><p class="section-label">AI Categories</p><div class="tag-row">${tagMk(cats)}</div></div>
-        <div class="listing-section"><p class="section-label">Tags</p><div class="tag-row">${tagMk(tags)}</div></div>
-        <div class="listing-cta"><a class="learn-more" href="${esc(listingUrl(listing))}">Learn more</a></div>
+  card.innerHTML = `${image ? `<div class="listing-product-img"><img src="${esc(image)}" alt="" loading="lazy"></div>` : ''}
+    <div class="listing-body">
+      <div class="listing-head">
+        <div class="listing-logo${logo ? '' : ' listing-logo--initials'}">${logo ? `<img src="${esc(logo)}" alt="" loading="lazy">` : esc(getInitials(name))}</div>
+        <div class="listing-names">
+          <h3 class="listing-title">${esc(name)}</h3>
+          ${company && keyOf(company) !== keyOf(name) ? `<p class="listing-company">${esc(company)}</p>` : ''}
+        </div>
+      </div>
+      ${listing.description ? `<p class="listing-desc">${esc(listing.description)}</p>` : ''}
+      ${chips ? `<div class="listing-chips">${chips}</div>` : ''}
+      <div class="listing-foot">
+        <span class="listing-price"><span>${esc(listing.pricing_type || 'Pricing on request')}</span>${booth ? `<span class="listing-booth-badge"><i class="fas fa-location-dot" aria-hidden="true"></i> Booth ${esc(booth)}</span>` : ''}</span>
+        <span class="listing-view">View details <i class="fas fa-arrow-right" aria-hidden="true"></i></span>
       </div>
     </div>`
   return card
 }
 
-const createHeroCard = () => {
-  const card = document.createElement('div'); card.className = 'listing-card listing-hero'
-  card.innerHTML = `<div class="hero-content"><p class="hero-kicker">AI Agents</p><h4>Explore AI Solutions</h4><p>Discover AI solutions that automate workflows, make decisions, and support teams across industries.</p><button class="hero-button" onclick="document.getElementById('filter-categories').scrollIntoView({behavior:'smooth'})">Explore categories</button></div>`
-  return card
-}
-
 const renderListings = () => {
+  listingsContainer.removeAttribute('aria-busy')
   // The marketplace is empty until listings are approved. It used to fall back to
   // five invented companies behind a small "Showing sample listings." note -
   // fabricated products, pricing and sales contacts a visitor could click straight
   // into, indistinguishable from the real thing. Say the truth instead.
   if (!state.listings.length) {
-    buildFilters([])
-    listingsContainer.innerHTML = '<div class="mp-empty-state"><i class="fa-solid fa-store"></i><h4>No listings published yet</h4><p>Approved AI products appear here as exhibitors submit them. Be one of the first &mdash; submitting is free and takes a few minutes.</p><button type="button" class="mp-hero-btn mp-hero-btn--primary" id="mp-empty-submit">Submit your product</button></div>'
+    buildFilters([]); renderStatus(0, 0)
+    listingsContainer.innerHTML = '<div class="mp-empty-state"><i class="fa-solid fa-store"></i><h4>No listings published yet</h4><p>Approved AI products appear here as exhibitors submit them. Be one of the first: submitting is free and takes a few minutes.</p><button type="button" class="mp-hero-btn mp-hero-btn--primary" id="mp-empty-submit">Submit your product</button></div>'
     const b = document.getElementById('mp-empty-submit')
     // Reuse the real button so the login-required guard is not duplicated here.
     if (b) b.addEventListener('click', () => openListingButton.click())
     return
   }
-  buildFilters(state.listings)
+  if (filtersBuiltFor !== state.listings) buildFilters(state.listings)
+  FILTERS.forEach(f => f.select && f.select.classList.toggle('is-set', !!filters[f.name]))
   const filtered = applyFilters(state.listings)
+  renderStatus(filtered.length, state.listings.length)
   listingsContainer.innerHTML = ''
-  if (!filtered.length) { listingsContainer.innerHTML = '<p class="text-slate-400 p-4">No listings match the selected filters.</p>'; return }
-  if (listingsContainer.classList.contains('listing-grid')) listingsContainer.appendChild(createHeroCard())
-  filtered.forEach(l => listingsContainer.appendChild(createListingCard(l)))
+  if (!filtered.length) {
+    listingsContainer.innerHTML = '<div class="mp-empty-state"><i class="fa-solid fa-search"></i><h4>No products match</h4><p>Try a shorter search, or remove one of the filters.</p><button type="button" class="mp-hero-btn mp-hero-btn--secondary" id="mp-empty-clear">Clear search and filters</button></div>'
+    document.getElementById('mp-empty-clear').addEventListener('click', clearFilters)
+    return
+  }
+  const frag = document.createDocumentFragment()
+  filtered.forEach(l => frag.appendChild(createListingCard(l)))
+  listingsContainer.appendChild(frag)
 }
 
 const loadListings = async () => {
@@ -268,7 +265,6 @@ openListingButton.addEventListener('click', () => {
   }
   showListingForm()
 })
-refreshButton.addEventListener('click', () => loadListings())
 viewButtons.forEach(b => b.addEventListener('click', () => { setListingView(b.getAttribute('data-view') || 'grid'); renderListings() }))
 
 const registerForm = document.getElementById('register-form')

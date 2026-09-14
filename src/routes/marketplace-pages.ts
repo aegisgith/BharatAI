@@ -38,8 +38,8 @@ function mpSharedHead(title: string): string {
        Bump each copy together. Load order is unchanged from the CDN days:
        Font Awesome first, marketplace.css last-but-one, Tailwind last. -->
   <link rel="stylesheet" href="/css/fa-subset.css?v=1">
-  <link href="/static/marketplace.css" rel="stylesheet">
-  <link rel="stylesheet" href="/css/tailwind.css?v=1">
+  <link href="/static/marketplace.css?v=2" rel="stylesheet">
+  <link rel="stylesheet" href="/css/tailwind.css?v=2">
 </head>`
 }
 
@@ -98,12 +98,12 @@ export function marketplacePageHTML(): string {
   <header class="mp-header">
     <div class="mp-header-inner">
       <a href="/marketplace" class="mp-logo-link">
-        <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI Innovation Logo" loading="eager" style="height:44px;width:auto;border-radius:12px;padding:6px;background:rgba(255,255,255,0.95);box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+        <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI Innovation" loading="eager" class="mp-brand-logo">
       </a>
       <nav class="mp-nav">
         <a href="/app" class="mp-nav-link"><i class="fas fa-home mr-1"></i>Home</a>
         <a href="/app#schedule" class="mp-nav-link">Schedule</a>
-        <a href="/marketplace" class="mp-nav-link">AI Market</a>
+        <a href="/marketplace" class="mp-nav-link" aria-current="page">AI Market</a>
         <a href="/inquiry" class="mp-nav-link">Book Booth</a>
         <a href="/marketplace/faq" class="mp-nav-link">FAQ</a>
         <a id="dashboard-link" href="/marketplace/dashboard" class="mp-nav-link hidden"><i class="fas fa-chart-pie mr-1"></i>Dashboard</a>
@@ -116,16 +116,12 @@ export function marketplacePageHTML(): string {
   <!-- Hero -->
   <section class="mp-hero">
     <div class="mp-hero-inner">
-      <div class="mp-hero-badge"><i class="fas fa-robot mr-1"></i> Bharat AI Innovation 2026</div>
-      <h2 class="mp-hero-title">India's Premier AI Solutions Marketplace</h2>
-      <p class="mp-hero-sub">Browse, compare, and connect with cutting-edge AI products. Exhibitors can list their AI solutions directly from the event.</p>
+      <div class="mp-hero-copy">
+        <h1 class="mp-hero-title">India's Premier AI Solutions Marketplace</h1>
+        <p class="mp-hero-sub">Find AI products by industry or use case, see who each one is built for, and contact the team behind it directly. Part of Bharat AI Innovation 2026.</p>
+      </div>
       <div class="mp-hero-actions">
-        <button id="open-listing-button" class="mp-hero-btn mp-hero-btn--primary"><i class="fas fa-plus mr-1"></i> List Your AI Product</button>
-        <button id="refresh-button" class="mp-hero-btn mp-hero-btn--secondary"><i class="fas fa-sync mr-1"></i> Refresh</button>
-        <div class="mp-view-toggle">
-          <button data-view="grid" class="view-btn view-active"><i class="fas fa-th"></i></button>
-          <button data-view="list" class="view-btn"><i class="fas fa-list"></i></button>
-        </div>
+        <button id="open-listing-button" class="mp-hero-btn mp-hero-btn--primary" type="button"><i class="fas fa-plus" aria-hidden="true"></i> List your AI product</button>
       </div>
     </div>
   </section>
@@ -154,27 +150,30 @@ export function marketplacePageHTML(): string {
     </div>
   </section>
 
-  <!-- Filters -->
-  <section class="mp-filters">
-    <div class="mp-filters-inner">
-      <div class="mp-filter-group">
-        <h4><i class="fas fa-tags mr-1"></i> Tags</h4>
-        <div id="filter-tags"></div>
+  <!-- Search + filters. Options are filled from the approved listings. -->
+  <section class="mk-toolbar" aria-label="Search and filter AI products">
+    <div class="mk-toolbar-row">
+      <label class="mk-search">
+        <i class="fas fa-search" aria-hidden="true"></i>
+        <span class="mp-sr">Search AI products</span>
+        <input id="mk-search" type="search" autocomplete="off" spellcheck="false" enterkeyhint="search" placeholder="Search products, companies or use cases">
+      </label>
+      <div class="mk-selects">
+        <select id="filter-industry" class="mk-select" aria-label="Filter by industry"><option value="">Industry</option></select>
+        <select id="filter-category" class="mk-select" aria-label="Filter by AI category"><option value="">Category</option></select>
+        <select id="filter-tag" class="mk-select" aria-label="Filter by tag"><option value="">Tag</option></select>
       </div>
-      <div class="mp-filter-group">
-        <h4><i class="fas fa-industry mr-1"></i> Industries</h4>
-        <div id="filter-industries"></div>
-      </div>
-      <div class="mp-filter-group">
-        <h4><i class="fas fa-brain mr-1"></i> AI Categories</h4>
-        <div id="filter-categories"></div>
+      <div class="mk-view-toggle" role="group" aria-label="Layout">
+        <button type="button" data-view="grid" class="view-btn view-active" aria-label="Grid view" aria-pressed="true"><i class="fas fa-th-large" aria-hidden="true"></i></button>
+        <button type="button" data-view="list" class="view-btn" aria-label="List view" aria-pressed="false"><i class="fas fa-list" aria-hidden="true"></i></button>
       </div>
     </div>
+    <div id="mk-status" class="mk-status" aria-live="polite"></div>
   </section>
 
   <!-- Listings -->
   <main class="mp-main">
-    <div id="listings-container" class="listing-grid"></div>
+    <div id="listings-container" class="listing-grid" aria-busy="true"><div class="listing-card listing-card--skeleton" aria-hidden="true"><div class="listing-body"><div class="listing-head"><div class="listing-logo sk"></div><div class="listing-names"><div class="sk sk-line sk-line--title"></div><div class="sk sk-line sk-line--short"></div></div></div><div class="sk-lines"><div class="sk sk-line"></div><div class="sk sk-line"></div><div class="sk sk-line sk-line--mid"></div></div></div></div><div class="listing-card listing-card--skeleton" aria-hidden="true"><div class="listing-body"><div class="listing-head"><div class="listing-logo sk"></div><div class="listing-names"><div class="sk sk-line sk-line--title"></div><div class="sk sk-line sk-line--short"></div></div></div><div class="sk-lines"><div class="sk sk-line"></div><div class="sk sk-line"></div><div class="sk sk-line sk-line--mid"></div></div></div></div><div class="listing-card listing-card--skeleton" aria-hidden="true"><div class="listing-body"><div class="listing-head"><div class="listing-logo sk"></div><div class="listing-names"><div class="sk sk-line sk-line--title"></div><div class="sk sk-line sk-line--short"></div></div></div><div class="sk-lines"><div class="sk sk-line"></div><div class="sk sk-line"></div><div class="sk sk-line sk-line--mid"></div></div></div></div><div class="listing-card listing-card--skeleton" aria-hidden="true"><div class="listing-body"><div class="listing-head"><div class="listing-logo sk"></div><div class="listing-names"><div class="sk sk-line sk-line--title"></div><div class="sk sk-line sk-line--short"></div></div></div><div class="sk-lines"><div class="sk sk-line"></div><div class="sk sk-line"></div><div class="sk sk-line sk-line--mid"></div></div></div></div><div class="listing-card listing-card--skeleton" aria-hidden="true"><div class="listing-body"><div class="listing-head"><div class="listing-logo sk"></div><div class="listing-names"><div class="sk sk-line sk-line--title"></div><div class="sk sk-line sk-line--short"></div></div></div><div class="sk-lines"><div class="sk sk-line"></div><div class="sk sk-line"></div><div class="sk sk-line sk-line--mid"></div></div></div></div><div class="listing-card listing-card--skeleton" aria-hidden="true"><div class="listing-body"><div class="listing-head"><div class="listing-logo sk"></div><div class="listing-names"><div class="sk sk-line sk-line--title"></div><div class="sk sk-line sk-line--short"></div></div></div><div class="sk-lines"><div class="sk sk-line"></div><div class="sk sk-line"></div><div class="sk sk-line sk-line--mid"></div></div></div></div></div>
   </main>
 
   <!-- Submit Listing Form -->
@@ -390,7 +389,7 @@ export function marketplacePageHTML(): string {
     </div>
   </footer>
 
-  <script src="/static/marketplace-app.js?v=4"></script>
+  <script src="/static/marketplace-app.js?v=5"></script>
 </body>
 </html>`
 }
@@ -407,68 +406,75 @@ const inlineJsString = (v: string) => JSON.stringify(String(v)).replace(/</g, '\
 export function marketplaceListingPageHTML(companySlug?: string, productSlug?: string, legacyId?: string): string {
   return `${mpSharedHead('AI Product Listing')}
 <body class="mp-body">
-  <div id="detail-toast" class="mp-toast hidden"></div>
+  <div id="detail-toast" class="mp-toast hidden" role="status" aria-live="polite"></div>
 
   <header class="mp-header">
     <div class="mp-header-inner">
       <a href="/marketplace" class="mp-logo-link">
-        <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="mp-logo-img">
-        <div>
-          <h1 class="mp-logo-title">Bharat AI Marketplace</h1>
-          <p class="mp-logo-sub">AI Solutions Directory</p>
-        </div>
+        <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI Innovation" loading="eager" class="mp-brand-logo">
       </a>
-      <nav class="mp-nav">
+      <nav class="mp-nav" aria-label="Marketplace">
+        <a href="/marketplace" class="mp-nav-link">All AI products</a>
         <a href="/marketplace/faq" class="mp-nav-link">FAQ</a>
-        <a href="/marketplace" class="mp-nav-link"><i class="fas fa-arrow-left mr-1"></i>Back to listings</a>
+        <a href="/marketplace?submit=true" class="mp-nav-btn mp-hide-sm">List your product</a>
       </nav>
     </div>
   </header>
 
-  <main class="mp-listing-detail">
-    <!-- Hero Section -->
-    <section class="detail-hero">
-      <div class="detail-hero-inner">
-        <div class="detail-hero-logo" data-detail-logo></div>
-        <div class="detail-hero-info">
-          <p class="detail-hero-company" data-detail-company>Loading...</p>
-          <h2 class="detail-hero-title" data-detail-title>Loading...</h2>
-          <div class="detail-hero-meta" data-detail-meta></div>
-        </div>
-        <div class="detail-hero-actions">
-          <button class="mp-btn-primary" data-detail-cta>Get it now</button>
-          <button class="mp-btn-secondary" data-detail-inquire>Inquire</button>
+  <!-- Filled by marketplace-listing.js; the placeholders hold the layout until then. -->
+  <section class="pd-hero" data-detail-hero>
+    <div class="pd-hero-inner" aria-busy="true">
+      <nav class="pd-crumbs" aria-label="Breadcrumb"><a href="/marketplace">AI Marketplace</a></nav>
+      <div class="pd-hero-main">
+        <div class="pd-logo sk" aria-hidden="true"></div>
+        <div class="pd-title-block" aria-hidden="true">
+          <div class="sk pd-sk-title"></div>
+          <div class="sk pd-sk-line"></div>
+          <div class="pd-sk-badges"><div class="sk"></div><div class="sk"></div></div>
         </div>
       </div>
-      <p class="detail-hero-sales" data-detail-sales></p>
-    </section>
-
-    <!-- Tabs -->
-    <div class="detail-tabs">
-      <button class="detail-tab" data-tab="overview">Overview</button>
-      <button class="detail-tab" data-tab="details">Details</button>
-      <button class="detail-tab" data-tab="reviews">Reviews</button>
     </div>
+  </section>
 
-    <!-- Tab Panels -->
-    <div class="detail-panels">
-      <div data-tab-panel="overview"></div>
-      <div data-tab-panel="details" class="hidden"></div>
-      <div data-tab-panel="reviews" class="hidden"></div>
+  <main class="pd-layout" data-detail-layout>
+    <div class="pd-main" data-detail-main>
+      <section class="pd-section" aria-hidden="true">
+        <div class="sk pd-sk-line pd-sk-heading"></div>
+        <div class="sk pd-sk-block"></div><div class="sk pd-sk-block"></div><div class="sk pd-sk-block pd-sk-block--short"></div>
+      </section>
     </div>
+    <aside class="pd-aside" data-detail-aside aria-label="Product facts"></aside>
 
-    <!-- Inquiry Form -->
-    <section class="detail-inquiry">
-      <h3><i class="fas fa-envelope mr-2"></i>Send an Inquiry</h3>
-      <form data-detail-form class="mp-form detail-inquiry-form">
-        <div class="form-grid">
-          <input name="inquirer_name" autocomplete="name" autocapitalize="words" placeholder="Your name *" required>
-          <input name="inquirer_email" autocomplete="email" inputmode="email" autocapitalize="none" spellcheck="false" type="email" placeholder="Email *" required>
-          <input name="inquirer_company" autocomplete="organization" placeholder="Your company">
-          <input name="inquirer_phone" autocomplete="tel" inputmode="tel" placeholder="Phone number">
+    <section class="pd-inquiry hidden" id="inquire" aria-labelledby="inquire-title">
+      <h2 id="inquire-title" data-detail-inquiry-title>Send an inquiry</h2>
+      <p class="pd-inquiry-sub" data-detail-inquiry-sub>Your message is emailed to the company with your contact details, so they can reply to you directly.</p>
+      <div data-detail-sent></div>
+      <form data-detail-form>
+        <div class="pd-form-grid">
+          <div class="pd-field">
+            <label for="inq-name">Your name</label>
+            <input id="inq-name" name="inquirer_name" autocomplete="name" autocapitalize="words" required>
+          </div>
+          <div class="pd-field">
+            <label for="inq-email">Email</label>
+            <input id="inq-email" name="inquirer_email" autocomplete="email" inputmode="email" autocapitalize="none" spellcheck="false" type="email" required>
+          </div>
+          <div class="pd-field">
+            <label for="inq-company">Company <span class="pd-optional">(optional)</span></label>
+            <input id="inq-company" name="inquirer_company" autocomplete="organization">
+          </div>
+          <div class="pd-field">
+            <label for="inq-phone">Phone <span class="pd-optional">(optional)</span></label>
+            <input id="inq-phone" name="inquirer_phone" autocomplete="tel" inputmode="tel" type="tel">
+          </div>
+          <div class="pd-field is-wide">
+            <label for="inq-message">What would you like to know? <span class="pd-optional">(optional)</span></label>
+            <textarea id="inq-message" name="inquirer_message" autocomplete="off" rows="4" placeholder="For example: pricing for a team of 20, or a demo next week"></textarea>
+          </div>
         </div>
-        <textarea name="inquirer_message" autocomplete="off" rows="3" placeholder="Your message..."></textarea>
-        <button type="submit" class="mp-btn-primary"><i class="fas fa-paper-plane mr-1"></i>Send Inquiry</button>
+        <div class="pd-form-foot">
+          <button type="submit" class="pd-btn pd-btn--primary"><i class="fas fa-paper-plane" aria-hidden="true"></i> Send inquiry</button>
+        </div>
       </form>
     </section>
   </main>
@@ -486,7 +492,7 @@ export function marketplaceListingPageHTML(companySlug?: string, productSlug?: s
         ? `window.__LISTING_LEGACY_ID = ${inlineJsString(legacyId)};`
         : ''}
   </script>
-  <script src="/static/marketplace-listing.js?v=2"></script>
+  <script src="/static/marketplace-listing.js?v=3"></script>
 </body>
 </html>`
 }
