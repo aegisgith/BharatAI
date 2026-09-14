@@ -114,7 +114,19 @@
         } catch (e) { /* next source */ }
       }
     }
-    if (user.avatar_url) { try { photo = await loadImage(user.avatar_url); } catch (e) {} }
+    /* A photo that will not load used to be swallowed here, and the pass was
+     * drawn with an initial in the circle and returned with no sign anything
+     * had gone wrong - so the badge desk got a pass that looked deliberate and
+     * the download was counted. Now it is retried once, as the social card
+     * does, and reported, so the caller can refuse to issue it. */
+    var photoFailed = false;
+    if (user.avatar_url) {
+      try { photo = await loadImage(user.avatar_url); }
+      catch (e) {
+        try { photo = await loadImage(user.avatar_url + (user.avatar_url.indexOf('?') >= 0 ? '&' : '?') + 'retry=' + Date.now()); }
+        catch (e2) { photoFailed = true; }
+      }
+    }
     try { logo = await loadImage('/images/Bharat%20AI%20Innovation%20Logo.png'); } catch (e) {}
     try { aegis = await loadImage('/images/passes/aegis.png'); } catch (e) {}
     try { agba = await loadImage('/images/passes/agba.png'); } catch (e) {}
@@ -354,12 +366,15 @@
       tier: tierKey,
       label: T.label,
       width: W,
-      height: H
+      height: H,
+      photoFailed: photoFailed
     };
   }
 
   async function download(user, opts) {
     var res = await render(user, opts);
+    // Not issued. The caller decides what to say; this just must not click.
+    if (res && res.photoFailed) return res;
     var link = document.createElement('a');
     link.download = res.filename;
     link.href = res.dataUrl;

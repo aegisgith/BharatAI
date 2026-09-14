@@ -267,6 +267,9 @@ const ATTENDEE_ADMIN_LIST_COLS = [
   'lunch_inclusion', 'arrival_time', 'payment_status', 'payment_amount',
   'registration_source', 'registration_date', 'created_at', 'notified_at',
   'last_login_at', 'pass_downloaded_at', 'checked_in_at',
+  // So the row can show who has shared a creative. Until now the only place
+  // that number existed was the overview tile, and nobody could say WHO.
+  'social_card_downloaded_at',
 ]
 
 // A list endpoint with no ceiling is one growth spurt away from the same outage.
@@ -18988,7 +18991,18 @@ function mainPageHTML(): string {
         passToken = (tk && tk.token) || '';
       } catch (e) {}
 
-      await BhaiPass.download(user, { token: passToken });
+      var passRes = await BhaiPass.download(user, { token: passToken });
+      if (passRes && passRes.photoFailed) {
+        // The renderer refused to click. Say why, and put the same uploader in
+        // front of them that the gate uses, then try again if they add one.
+        if (adminAttendee) { showToast('Their photo would not load, so the pass would show an initial. Not issued.', 'error'); return; }
+        var againP = await askForPassPhoto(user, {
+          title: 'We could not load your photo',
+          body: 'The photo on your profile did not open, so your pass cannot be made from it. Add it again and the pass will be ready.'
+        });
+        if (againP === 'done') return generateEventPass(adminAttendee);
+        return;
+      }
       showToast('Pass downloaded', 'success');
       if (!adminAttendee && user.id) { try { await api.post('/api/attendees/' + user.id + '/track-pass-download', {}); } catch (e) {} }
       if (!adminAttendee) maybeOfferSocialCard();
@@ -19131,6 +19145,19 @@ function mainPageHTML(): string {
       // The card is a portrait. Without a face it is a letter in a circle, which
       // nobody posts - so this asks for one, exactly as the pass does, but it
       // must not repeat the pass's reason, which is not true here.
+      // Same reason as openSocialCard: the local copy of avatar_url is whatever
+      // this browser last saw. A photo removed since still looked present, the
+      // gate opened, the image failed, and a pass went out with an initial on it.
+      try {
+        var freshP = await api.get('/api/attendees/' + user.id);
+        if (freshP && typeof freshP.avatar_url !== 'undefined') {
+          user.avatar_url = freshP.avatar_url || '';
+          if (currentUser && currentUser.id === user.id) {
+            currentUser.avatar_url = user.avatar_url;
+            try { localStorage.setItem('agba_user', JSON.stringify(currentUser)); } catch (e) {}
+          }
+        }
+      } catch (e) { /* offline or refused: fall through to the local copy */ }
       if (!hasUploadedPhoto(user.avatar_url)) {
         var got = await askForPassPhoto(user, {
           title: 'Add your photo first',
@@ -22837,7 +22864,7 @@ function adminPageHTML(): string {
                   <td class="text-xs text-gray-400" title="\${esc(a.registration_date||a.created_at||'')}">\${fmtRegDate(a.registration_date||a.created_at)}</td>
                   <td class="text-xs ie-cell" onclick="inlineEdit(this, \${a.id}, 'payment_amount', '\${esc(a.payment_amount||'')}')">\${a.payment_amount ? '<span class="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">₹'+escH(a.payment_amount)+'</span>' : '<span class=&quot;text-gray-600&quot;>-</span>'}</td>
                   <td class="text-xs" id="notified-\${a.id}">\${a.notified_at ? '<span class="text-green-400" title="'+a.notified_at+'"><i class="fas fa-check-circle"></i></span>' : '<span class="text-gray-600"><i class="fas fa-times-circle"></i></span>'}</td>
-                  <td class="text-xs"><div class="flex gap-1.5 items-center" title="Login | Pass | Post-Email Login"><span class="\${a.last_login_at ? 'text-blue-400' : 'text-gray-600'}" title="\${a.last_login_at ? 'Logged in: '+a.last_login_at : 'Not logged in'}"><i class="fas fa-sign-in-alt"></i></span><span class="\${a.pass_downloaded_at ? 'text-emerald-400' : 'text-gray-600'}" title="\${a.pass_downloaded_at ? 'Pass downloaded: '+a.pass_downloaded_at : 'Pass not downloaded'}"><i class="fas fa-id-badge"></i></span><span class="\${a.notified_at && a.last_login_at && a.last_login_at >= a.notified_at ? 'text-violet-400' : 'text-gray-600'}" title="\${a.notified_at && a.last_login_at && a.last_login_at >= a.notified_at ? 'Opened after email' : 'Not opened after email'}"><i class="fas fa-envelope-open"></i></span></div></td>
+                  <td class="text-xs"><div class="flex gap-1.5 items-center" title="Login | Pass | Card | Post-Email Login"><span class="\${a.last_login_at ? 'text-blue-400' : 'text-gray-600'}" title="\${a.last_login_at ? 'Logged in: '+a.last_login_at : 'Not logged in'}"><i class="fas fa-sign-in-alt"></i></span><span class="\${a.pass_downloaded_at ? 'text-emerald-400' : 'text-gray-600'}" title="\${a.pass_downloaded_at ? 'Pass downloaded: '+a.pass_downloaded_at : 'Pass not downloaded'}"><i class="fas fa-id-badge"></i></span><span class="\${a.social_card_downloaded_at ? 'text-amber-400' : 'text-gray-600'}" title="\${a.social_card_downloaded_at ? 'Creative shared: '+a.social_card_downloaded_at : 'Creative not shared'}"><i class="fas fa-share-alt"></i></span><span class="\${a.notified_at && a.last_login_at && a.last_login_at >= a.notified_at ? 'text-violet-400' : 'text-gray-600'}" title="\${a.notified_at && a.last_login_at && a.last_login_at >= a.notified_at ? 'Opened after email' : 'Not opened after email'}"><i class="fas fa-envelope-open"></i></span></div></td>
                   <td class="flex gap-1">
                     <button onclick="openEditAttendeeById(\${a.id})" class="px-2 py-1 rounded text-xs bg-primary-500/20 text-primary-300 hover:bg-primary-500/30" title="Full Edit"><i class="fas fa-edit"></i></button>
                     <button onclick='adminDownloadPass(\${JSON.stringify({id:a.id,name:a.name,email:a.email,company:a.company||"",job_title:a.job_title||"",badge_type:a.badge_type||"Delegate",avatar_url:a.avatar_url||"",role:a.role||"",website_url:a.website_url||""}).replace(/'/g,"&#39;")})' class="px-2 py-1 rounded text-xs bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30" title="Download Pass"><i class="fas fa-id-badge"></i></button>
