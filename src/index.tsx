@@ -3335,6 +3335,80 @@ async function requireSelf(c: any, targetId: any): Promise<Response | null> {
  * the same reason: a rotated or missing secret should degrade to the old
  * behaviour rather than lock every attendee out of the directory at once.
  * GET /api/auth/status reports which mode is live. */
+/* Speakers for the Network tab.
+ *
+ * The tab says "Connect with fellow attendees, speakers, and exhibitors", but the
+ * directory only ever listed attendees: 33 speakers live in the speakers table and
+ * none were in it. They are shown from that table rather than given attendee
+ * accounts - that would invent logins nobody signed up for, inflate the registration
+ * count, and let delegates message people who will never read it.
+ *
+ * Ministers are left out at the organiser's request. Matched on the role text, so a
+ * minister added later is left out too; senior officials who are not ministers
+ * (a Joint Secretary, a CEO of a state body) are included.
+ *
+ * A speaker links to a delegate profile - which is where Connect, Message and
+ * Meeting live, under the usual pass rules - only when that is the same person:
+ * the email matches, or the name matches AND the organisations share a word. Name
+ * alone is not enough: on 14 Sep the speaker Nilesh Shah (Kotak Mahindra AMC) matched
+ * attendee 'Nilesh shah', owner of Amit Tools, by name.
+ *
+ * Signed-in only, like the directory. Email and phone are never returned. */
+const SPEAKER_ORG_STOPWORDS = new Set(['and', 'the', 'for', 'pvt', 'ltd', 'limited', 'private', 'india', 'indian', 'inc', 'llp', 'group',
+  'company', 'services', 'solutions', 'technologies', 'technology', 'global', 'international', 'head', 'chief', 'officer', 'director',
+  'president', 'vice', 'senior', 'manager', 'leader', 'partner', 'founder', 'executive', 'ceo', 'cto', 'cio', 'coo'])
+
+function speakerLinkScore(sp: any, at: any): number {
+  const words = (v: any) => new Set(String(v || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/)
+    .filter(w => w.length >= 3 && !SPEAKER_ORG_STOPWORDS.has(w)))
+  const mine = words(String(sp.organisation || '') + ' ' + String(sp.role || ''))
+  let shared = 0
+  for (const w of words(String(at.company || '') + ' ' + String(at.job_title || ''))) if (mine.has(w)) shared++
+  return shared
+}
+
+app.get('/api/events/:id/speakers', async (c) => {
+  const shutOut = await requireSignedIn(c); if (shutOut) return shutOut
+  const eventId = c.req.param('id')
+  let speakers: any[] = []
+  try {
+    speakers = ((await c.env.DB.prepare(
+      'SELECT id, slug, name, role, organisation, topic, photo_url, bio, linkedin_url, email, is_featured, sort_order FROM speakers WHERE event_id = ? AND is_published = 1 ORDER BY is_featured DESC, sort_order ASC, id ASC'
+    ).bind(eventId).all()).results || []) as any[]
+  } catch (_) { return c.json([]) }
+  speakers = speakers.filter(sp => !/\bminister\b/i.test(String(sp.role || '')))
+  const names = [...new Set(speakers.map(sp => String(sp.name || '').trim().toLowerCase()).filter(Boolean))]
+  const emails = [...new Set(speakers.map(sp => String(sp.email || '').trim().toLowerCase()).filter(Boolean))]
+  let candidates: any[] = []
+  if (names.length || emails.length) {
+    const q = (n: number) => Array(n).fill('?').join(',')
+    const where = [names.length ? 'LOWER(TRIM(name)) IN (' + q(names.length) + ')' : '', emails.length ? 'LOWER(TRIM(email)) IN (' + q(emails.length) + ')' : ''].filter(Boolean).join(' OR ')
+    candidates = ((await c.env.DB.prepare('SELECT id, name, email, company, job_title FROM attendees WHERE event_id = ? AND (' + where + ')')
+      .bind(eventId, ...names, ...emails).all()).results || []) as any[]
+  }
+  const out = speakers.map(sp => {
+    const spEmail = String(sp.email || '').trim().toLowerCase()
+    const spName = String(sp.name || '').trim().toLowerCase()
+    let link: any = spEmail ? candidates.find(a => String(a.email || '').trim().toLowerCase() === spEmail) : null
+    if (!link) {
+      let best = 0
+      for (const a of candidates) {
+        if (String(a.name || '').trim().toLowerCase() !== spName) continue
+        const score = speakerLinkScore(sp, a)
+        if (score > best) { best = score; link = a }
+      }
+    }
+    const photo = String(sp.photo_url || '')
+    const lin = String(sp.linkedin_url || '')
+    return {
+      id: sp.id, slug: sp.slug, name: sp.name, role: sp.role || '', organisation: sp.organisation || '', topic: sp.topic || '',
+      bio: sp.bio || '', photo_url: /^(\/|https:\/\/)/.test(photo) ? photo : '',
+      linkedin_url: /^https:\/\//.test(lin) ? lin : '', attendee_id: link ? link.id : null,
+    }
+  })
+  return c.json(out)
+})
+
 async function requireSignedIn(c: any): Promise<Response | null> {
   if (!attendeeSessionSecret(c)) return null
   if (isAdminRequest(c)) return null
@@ -14143,6 +14217,8 @@ function mainPageHTML(): string {
             </div>
           </div>
 
+          <!-- Speakers, from the speakers table (loadSpeakerStrip). Ministers are left out. -->
+          <div id="speaker-strip" class="hidden mb-6"></div>
           <!-- AI matchmaking rail: top recommended connections (populated by loadAttendees) -->
           <div id="match-rail"></div>
           <!-- Screen-hidden, print-only: says why the page is short rather
@@ -15265,6 +15341,67 @@ function mainPageHTML(): string {
     // ==================== STATE ====================
     const EVENT_ID = 1;
     function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+
+    /* Speakers in the Network tab. Fetched once per page load, filtered by whatever
+     * is typed in the directory search, and opened in the same profile modal as a
+     * delegate. A speaker who is also a registered delegate links to that profile,
+     * which is where Connect, Message and Meeting live under the pass rules; the
+     * rest are view-only, because there is no account to message. */
+    let speakerStripData = null;
+    async function loadSpeakerStrip() {
+      if (speakerStripData === null) {
+        try {
+          const r = await fetch('/api/events/' + EVENT_ID + '/speakers');
+          speakerStripData = r.ok ? await r.json() : [];
+        } catch (e) { speakerStripData = []; }
+        if (!Array.isArray(speakerStripData)) speakerStripData = [];
+      }
+      renderSpeakerStrip();
+    }
+    function renderSpeakerStrip() {
+      const el = document.getElementById('speaker-strip');
+      if (!el || !Array.isArray(speakerStripData)) return;
+      const q = ((document.getElementById('attendee-search') || {}).value || '').trim().toLowerCase();
+      const list = speakerStripData.filter(sp => !q ||
+        [sp.name, sp.role, sp.organisation, sp.topic].join(' ').toLowerCase().indexOf(q) !== -1);
+      if (!list.length) { el.classList.add('hidden'); el.innerHTML = ''; return; }
+      el.innerHTML =
+        '<div class="flex items-baseline justify-between mb-3"><h3 class="font-bold text-base"><i class="fas fa-microphone text-primary-400 mr-2"></i>Speakers</h3>' +
+        '<span class="text-xs text-gray-500">Tap a speaker to see their profile</span></div>' +
+        '<div class="flex gap-3 overflow-x-auto scroll-hide pb-2" style="scroll-snap-type:x mandatory;">' +
+        list.map(sp =>
+          '<button type="button" onclick="openSpeakerProfile(' + Number(sp.id) + ')" class="glass rounded-xl p-3 text-center shrink-0 card-hover" style="width:150px;scroll-snap-align:start;">' +
+            (sp.photo_url
+              ? '<img src="' + esc(sp.photo_url) + '" alt="' + esc(sp.name) + '" loading="lazy" class="w-16 h-16 rounded-full object-cover mx-auto mb-2 border-2 border-primary-400">'
+              : '<div class="w-16 h-16 rounded-full mx-auto mb-2 bg-primary-500/20 flex items-center justify-center font-bold text-primary-400">' + esc(String(sp.name || '?').charAt(0)) + '</div>') +
+            '<div class="text-sm font-semibold leading-tight line-clamp-2">' + esc(sp.name) + '</div>' +
+            '<div class="text-[11px] text-gray-400 mt-1 leading-tight line-clamp-2">' + esc(sp.role) + '</div>' +
+            (sp.organisation ? '<div class="text-[11px] text-gray-500 leading-tight line-clamp-1">' + esc(sp.organisation) + '</div>' : '') +
+          '</button>'
+        ).join('') + '</div>';
+      el.classList.remove('hidden');
+    }
+    function openSpeakerProfile(id) {
+      const sp = (speakerStripData || []).find(x => Number(x.id) === Number(id));
+      if (!sp) return;
+      document.getElementById('profile-name').textContent = sp.name;
+      document.getElementById('profile-content').innerHTML =
+        '<div class="text-center">' +
+          (sp.photo_url ? '<img src="' + esc(sp.photo_url) + '" alt="' + esc(sp.name) + '" class="w-28 h-28 rounded-full object-cover mx-auto mb-3 border-2 border-primary-400">' : '') +
+          '<div class="inline-block px-2 py-0.5 rounded text-[10px] font-semibold bg-primary-500/20 text-primary-400 mb-2">SPEAKER</div>' +
+          (sp.role ? '<p class="text-sm text-gray-300">' + esc(sp.role) + '</p>' : '') +
+          (sp.organisation ? '<p class="text-sm text-gray-400">' + esc(sp.organisation) + '</p>' : '') +
+        '</div>' +
+        (sp.topic ? '<div class="mt-4 p-3 rounded-xl glass"><div class="text-[11px] text-gray-500 mb-1">Speaking on</div><div class="text-sm font-semibold">' + esc(sp.topic) + '</div></div>' : '') +
+        (sp.bio ? '<p class="mt-4 text-sm text-gray-300 leading-relaxed">' + esc(sp.bio) + '</p>' : '') +
+        '<div class="mt-4 flex flex-col gap-2">' +
+          (sp.attendee_id
+            ? '<button type="button" onclick="closeProfileModal(); viewProfile(' + Number(sp.attendee_id) + ')" class="w-full py-2.5 rounded-xl text-sm font-semibold bg-primary-600 hover:bg-primary-500 text-white">View delegate profile</button>'
+            : '<p class="text-xs text-gray-500 text-center">Not on the networking app yet, so they cannot be messaged here.</p>') +
+          (sp.linkedin_url ? '<a href="' + esc(sp.linkedin_url) + '" target="_blank" rel="noopener" class="w-full py-2.5 rounded-xl text-sm font-medium glass text-center"><i class="fab fa-linkedin mr-1"></i>LinkedIn</a>' : '') +
+        '</div>';
+      document.getElementById('profile-modal').classList.remove('hidden');
+    }
     let currentUser = null;
     let currentTab = 'dashboard';
     let searchTimeout = null;
@@ -16101,7 +16238,7 @@ function mainPageHTML(): string {
       switch(tab) {
         case 'dashboard': loadDashboard(); break;
         case 'schedule': loadSchedule(); break;
-        case 'networking': skeletonCards('attendee-grid', 6, 'card'); loadAttendeeFilters(); loadAttendees(); break;
+        case 'networking': skeletonCards('attendee-grid', 6, 'card'); loadAttendeeFilters(); loadSpeakerStrip(); loadAttendees(); break;
         case 'exhibition': loadExhibitors(); break;
         case 'awards': loadAwards(); break;
         case 'agba-categories': loadAgbaCategories(); break;
@@ -17202,7 +17339,7 @@ function mainPageHTML(): string {
 
     function debounceSearch() {
       clearTimeout(searchTimeout);
-      searchTimeout = setTimeout(() => loadAttendees(), 300);
+      searchTimeout = setTimeout(() => { loadAttendees(); renderSpeakerStrip(); }, 300);
     }
 
     // ==================== PROFILE MODAL ====================
