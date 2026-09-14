@@ -81,10 +81,69 @@ const loadListings = async () => {
   try {
     const d = await api('/api/mp/dashboard/listings'); const ls = d.listings || []
     if (!ls.length) { c.innerHTML = `<div class="dash-empty"><i class="fas fa-box-open"></i><p>No listings yet</p><p class="text-xs text-slate-500">Submit from <a href="/marketplace" class="text-emerald-400">marketplace</a>.</p></div>`; return }
-    c.innerHTML = `<table class="dash-table"><thead><tr><th>Product</th><th>Status</th><th>Views</th><th>Inquiries</th><th>Rating</th><th>Submitted</th><th>Actions</th></tr></thead><tbody>${ls.map(l => `<tr><td><div class="dash-product-cell">${l.product_image_url ? `<img src="${esc(l.product_image_url)}" class="dash-product-thumb">` : `<div class="dash-product-thumb-placeholder"><i class="fas fa-box"></i></div>`}<div><p class="font-medium text-sm">${esc(l.product_name)}</p><p class="text-xs text-slate-500 truncate" style="max-width:200px">${esc((l.description || '').slice(0,60))}...</p></div></div></td><td>${statusBadge(l.status)}</td><td class="text-sm">${(l.view_count||0).toLocaleString()}</td><td class="text-sm">${l.inquiry_count||0}</td><td class="text-sm">${l.avg_rating ? l.avg_rating + ' <i class="fas fa-star text-amber-400" style="font-size:0.65rem"></i>' : '—'}</td><td class="text-xs text-slate-400">${fmtDate(l.created_at)}</td><td><div class="dash-actions"><button class="dash-action-btn" data-edit-id="${esc(l.id)}"><i class="fas fa-pen-to-square"></i></button>${l.status==='approved' ? `<a href="/marketplace/listing/${encodeURIComponent(l.company_slug || dashCompanySlug)}/${encodeURIComponent(l.product_slug || toSlug(l.product_name))}" class="dash-action-btn" target="_blank" rel="noopener"><i class="fas fa-arrow-up-right-from-square"></i></a>` : ''}</div></td></tr>`).join('')}</tbody></table>`
+    c.innerHTML = `<table class="dash-table"><thead><tr><th>Product</th><th>Status</th><th>Views</th><th>Inquiries</th><th>Rating</th><th>Submitted</th><th>Actions</th></tr></thead><tbody>${ls.map(l => `<tr><td><div class="dash-product-cell">${l.product_image_url ? `<img src="${esc(l.product_image_url)}" class="dash-product-thumb">` : `<div class="dash-product-thumb-placeholder"><i class="fas fa-box"></i></div>`}<div><p class="font-medium text-sm">${esc(l.product_name)}</p><p class="text-xs text-slate-500 truncate" style="max-width:200px">${esc((l.description || '').slice(0,60))}...</p></div></div></td><td>${statusBadge(l.status)}${(l.missing || []).length ? `<button type="button" class="dash-badge dash-badge--yellow mt-1" style="display:inline-flex;cursor:pointer;border:0" data-edit-id="${esc(l.id)}" title="Missing: ${esc(l.missing.join(', '))}"><i class="fa-solid fa-exclamation-circle"></i> ${l.missing.length} to add</button>` : ''}</td><td class="text-sm">${(l.view_count||0).toLocaleString()}</td><td class="text-sm">${l.inquiry_count||0}</td><td class="text-sm">${l.avg_rating ? l.avg_rating + ' <i class="fas fa-star text-amber-400" style="font-size:0.65rem"></i>' : '—'}</td><td class="text-xs text-slate-400">${fmtDate(l.created_at)}</td><td><div class="dash-actions"><button class="dash-action-btn" data-edit-id="${esc(l.id)}"><i class="fas fa-pen-to-square"></i></button>${l.status==='approved' ? `<a href="/marketplace/listing/${encodeURIComponent(l.company_slug || dashCompanySlug)}/${encodeURIComponent(l.product_slug || toSlug(l.product_name))}" class="dash-action-btn" target="_blank" rel="noopener"><i class="fas fa-arrow-up-right-from-square"></i></a>` : ''}</div></td></tr>`).join('')}</tbody></table>`
     c.querySelectorAll('[data-edit-id]').forEach(b => b.addEventListener('click', () => openEditModal(b.getAttribute('data-edit-id'))))
+    renderCompleteness(ls)
   } catch { c.innerHTML = '<p class="text-sm text-rose-400">Failed to load listings</p>' }
 }
+
+// The server lists what each listing is missing; the overview says so up front, with
+// a button straight into the edit form, so nobody has to find it in the table.
+const renderCompleteness = (ls) => {
+  const box = document.getElementById('dash-complete'); if (!box) return
+  const incomplete = (ls || []).filter(l => (l.missing || []).length)
+  if (!incomplete.length) { box.classList.add('hidden'); box.innerHTML = ''; return }
+  box.innerHTML = `<h3 style="color:#9a3412"><i class="fas fa-exclamation-circle mr-2"></i>Complete your listing${incomplete.length === 1 ? '' : 's'}</h3>
+    <p class="text-sm mb-2" style="color:#7c2d12">Listings with a logo, a product image and clear pricing get more views and inquiries.</p>
+    ${incomplete.map(l => `<div class="flex gap-3 items-center justify-between flex-wrap" style="padding:10px 0;border-top:1px solid #fed7aa">
+      <div><p class="font-medium text-sm">${esc(l.product_name)}</p><p class="text-xs" style="color:#9a3412">Missing: ${esc(l.missing.join(', '))}</p></div>
+      <button type="button" class="mp-btn-primary text-sm py-2 px-4" data-complete-id="${esc(l.id)}">Add details</button>
+    </div>`).join('')}`
+  box.classList.remove('hidden')
+  box.querySelectorAll('[data-complete-id]').forEach(b => b.addEventListener('click', () => openEditModal(b.getAttribute('data-complete-id'))))
+}
+
+// ── Images (same handling as the listing form) ──
+const RASTER_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif']
+const IMAGE_KINDS = { logo: { maxDim: 512, type: 'image/png' }, photo: { maxDim: 1600, type: 'image/jpeg' } }
+const isSvgFile = (f) => f.type === 'image/svg+xml' || /\.svg$/i.test(f.name || '')
+const checkImageFile = (f, kind) => {
+  const svg = isSvgFile(f)
+  if (svg && kind !== 'logo') return `${f.name}: SVG works for the logo only. Use a PNG or JPG here.`
+  if (!svg && !RASTER_TYPES.includes(f.type)) return `${f.name}: please use a PNG, JPG, WebP${kind === 'logo' ? ' or SVG' : ''} image.`
+  if (f.size > 25 * 1024 * 1024) return `${f.name} is over 25MB. Please use a smaller image.`
+  return ''
+}
+const prepareImage = async (file, kind) => {
+  const problem = checkImageFile(file, kind); if (problem) throw new Error(problem)
+  const svg = isSvgFile(file)
+  const url = URL.createObjectURL(file)
+  try {
+    const img = await new Promise((resolve, reject) => { const i = new Image(); i.onload = () => resolve(i); i.onerror = () => reject(new Error(`${file.name} could not be read as an image.`)); i.src = url })
+    const { maxDim, type } = IMAGE_KINDS[kind]
+    let w = img.naturalWidth, h = img.naturalHeight
+    if (!w || !h) { w = maxDim; h = maxDim }
+    if (!svg && Math.max(w, h) <= maxDim && file.size <= 1024 * 1024) return file
+    const scale = svg ? maxDim / Math.max(w, h) : Math.min(1, maxDim / Math.max(w, h))
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.max(1, Math.round(w * scale)); canvas.height = Math.max(1, Math.round(h * scale))
+    const ctx = canvas.getContext('2d')
+    if (type === 'image/jpeg') { ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, canvas.width, canvas.height) }
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+    let blob = null
+    try { blob = await new Promise(r => canvas.toBlob(r, type, 0.86)) } catch { blob = null }
+    if (!blob) throw new Error(`${file.name} could not be converted. Please upload a PNG or JPG instead.`)
+    return new File([blob], (file.name || 'image').replace(/\.[^.]+$/, '') + (type === 'image/png' ? '.png' : '.jpg'), { type })
+  } finally { URL.revokeObjectURL(url) }
+}
+const uploadImage = async (file, kind) => {
+  const fd = new FormData(); fd.append('file', await prepareImage(file, kind))
+  const r = await fetch('/api/mp/uploads', { method: 'POST', body: fd, credentials: 'same-origin' })
+  const d = await r.json().catch(() => ({}))
+  if (!r.ok) throw new Error(`${file.name}: ${d.error || 'upload failed. Please try again.'}`)
+  return d.url
+}
+const safeImageUrl = (u) => /^\/api\/mp\/uploads\/\d+$/.test(String(u || '')) ? u : ''
 
 const loadRecentInquiries = async () => {
   const c = document.getElementById('dash-recent-inquiries'); if (!c) return
@@ -156,6 +215,18 @@ const openEditModal = async (id) => {
     document.getElementById('edit-product-url').value = l.product_url||''
     document.getElementById('edit-sales-name').value = l.sales_contact_name||''
     document.getElementById('edit-sales-email').value = l.sales_contact_email||''
+    const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || '' }
+    setVal('edit-sales-phone', l.sales_contact_phone); setVal('edit-demo-url', l.demo_url); setVal('edit-video-url', l.video_url)
+    setVal('edit-access-info', l.access_info); setVal('edit-use-cases', l.use_cases); setVal('edit-innovation', l.innovation)
+    const preview = (id, url) => { const el = document.getElementById(id); if (!el) return; const u = safeImageUrl(url); if (u) { el.src = u; el.classList.remove('hidden') } else { el.removeAttribute('src'); el.classList.add('hidden') } }
+    preview('edit-logo-preview', l.logo_url); preview('edit-image-preview', l.product_image_url)
+    document.getElementById('edit-logo-file').value = ''; document.getElementById('edit-image-file').value = ''
+    // Listing rows from the table carry the missing list; this one came from the detail route, so ask the table's data.
+    const fromTable = (await api('/api/mp/dashboard/listings')).listings.find(x => String(x.id) === String(l.id))
+    const missing = fromTable?.missing || []
+    const note = document.getElementById('edit-missing')
+    if (missing.length) { note.innerHTML = `<strong>Still missing:</strong> ${esc(missing.join(', '))}`; note.classList.remove('hidden') } else { note.classList.add('hidden'); note.innerHTML = '' }
+    document.getElementById('edit-review-note').classList.toggle('hidden', l.status !== 'approved')
     editModal.classList.remove('hidden')
   } catch { showToast('Failed to load listing', true) }
 }
@@ -168,13 +239,32 @@ editForm.addEventListener('submit', async (e) => {
   e.preventDefault()
   const id = document.getElementById('edit-listing-id').value
   const fields = {}
-  editForm.querySelectorAll('[name]').forEach(el => { if (el.name && el.value !== undefined) fields[el.name] = el.value })
+  editForm.querySelectorAll('[name]').forEach(el => { if (el.name && el.name !== 'id' && el.value !== undefined) fields[el.name] = el.value })
+  const saveBtn = editForm.querySelector('button[type="submit"]'); const saveHTML = saveBtn ? saveBtn.innerHTML : ''
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Saving...' }
   try {
+    const logoFile = document.getElementById('edit-logo-file').files[0]
+    const imageFile = document.getElementById('edit-image-file').files[0]
+    if (logoFile) fields.logo_url = await uploadImage(logoFile, 'logo')
+    if (imageFile) fields.product_image_url = await uploadImage(imageFile, 'photo')
     const r = await api(`/api/mp/dashboard/listings/${id}`, { method:'PUT', body:JSON.stringify(fields) })
     editModal.classList.add('hidden')
     showToast(r.changed ? 'Saved. The listing is in review and goes live once approved.' : 'No changes to save')
     await Promise.all([loadStats(), loadListings()])
   } catch (err) { showToast(err.message, true) }
+  finally { if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = saveHTML } }
+})
+
+// Show a chosen image before it is uploaded.
+;[['edit-logo-file', 'edit-logo-preview', 'logo'], ['edit-image-file', 'edit-image-preview', 'photo']].forEach(([inputId, previewId, kind]) => {
+  const input = document.getElementById(inputId), preview = document.getElementById(previewId)
+  if (!input || !preview) return
+  input.addEventListener('change', () => {
+    const f = input.files[0]; if (!f) return
+    const problem = checkImageFile(f, kind)
+    if (problem) { showToast(problem, true); input.value = ''; return }
+    preview.src = URL.createObjectURL(f); preview.classList.remove('hidden')
+  })
 })
 
 document.getElementById('dash-refresh-listings').addEventListener('click', async () => {

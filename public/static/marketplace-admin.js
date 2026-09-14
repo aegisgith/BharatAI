@@ -48,8 +48,9 @@ let exhibitors = []
 const initAdmin = async () => {
   try {
     const d = await api('/api/mp/auth/me')
-    const viaEventAdmin = !!d.event_admin
-    if (!viaEventAdmin && (!d.user || d.user.role !== 'admin')) {
+    const marketplaceAccountAdmin = !!(d.user && d.user.role === 'admin')
+    const viaEventAdmin = !marketplaceAccountAdmin && !!d.event_admin
+    if (!viaEventAdmin && !marketplaceAccountAdmin) {
       main.innerHTML = `<section class="dash-section"><div class="dash-login-required"><i class="fas fa-lock"></i><h2>Admin Access Required</h2><p>Sign in to the event admin panel and open AI Marketplace from its sidebar.</p><a href="/admin" class="dash-btn-primary">Open event admin</a></div></section>`
       return
     }
@@ -81,9 +82,14 @@ const loadStats = async () => {
   } catch {}
 }
 
+const missingBadge = (l) => (l.missing || []).length
+  ? `<span class="dash-badge dash-badge--yellow" title="Missing: ${esc(l.missing.join(', '))}"><i class="fa-solid fa-exclamation-circle"></i> ${l.missing.length} missing</span>`
+  : '<span class="dash-badge dash-badge--green"><i class="fa-solid fa-circle-check"></i> Complete</span>'
+
 const actionButtons = (l) => {
   const id = num(l.id)
-  return `${l.status!=='approved' ? `<button class="dash-action-btn" title="Approve" data-action="approved" data-id="${id}"><i class="fas fa-check text-emerald-400"></i></button>` : ''}${l.status!=='rejected' ? `<button class="dash-action-btn" title="Reject" data-action="rejected" data-id="${id}"><i class="fas fa-times text-rose-400"></i></button>` : ''}${l.status!=='pending' ? `<button class="dash-action-btn" title="Set Pending" data-action="pending" data-id="${id}"><i class="fas fa-clock text-amber-400"></i></button>` : ''}`
+  const remind = (l.missing || []).length ? `<button class="dash-action-btn" title="Email the company what is missing" data-remind="${id}" data-company="${esc(l.company_name)}" data-missing="${esc(l.missing.join(', '))}"><i class="fas fa-envelope text-blue-400"></i></button>` : ''
+  return `${remind}${l.status!=='approved' ? `<button class="dash-action-btn" title="Approve" data-action="approved" data-id="${id}"><i class="fas fa-check text-emerald-400"></i></button>` : ''}${l.status!=='rejected' ? `<button class="dash-action-btn" title="Reject" data-action="rejected" data-id="${id}"><i class="fas fa-times text-rose-400"></i></button>` : ''}${l.status!=='pending' ? `<button class="dash-action-btn" title="Set Pending" data-action="pending" data-id="${id}"><i class="fas fa-clock text-amber-400"></i></button>` : ''}`
 }
 
 const publicUrl = (l) => `/marketplace/listing/${encodeURIComponent(l.company_slug || '')}/${encodeURIComponent(l.product_slug || '')}`
@@ -93,7 +99,7 @@ const loadAllListings = async () => {
   try {
     const d = await api('/api/mp/admin/listings'); const ls = d.listings || []
     if (!ls.length) { c.innerHTML = '<p class="text-slate-400">No listings yet.</p>'; return }
-    c.innerHTML = `<div class="overflow-x-auto"><table class="dash-table"><thead><tr><th>Product</th><th>Company</th><th>Status</th><th>Views</th><th>Submitted</th><th>Actions</th></tr></thead><tbody>${ls.map(l => `<tr><td class="text-sm font-medium">${l.status === 'approved' ? `<a href="${esc(publicUrl(l))}" target="_blank" rel="noopener">${esc(l.product_name)}</a>` : esc(l.product_name)}</td><td class="text-sm">${esc(l.company_name)}<p class="text-xs text-slate-500">${esc(l.account_email || '')}</p></td><td>${statusBadge(l.status)}</td><td class="text-sm">${num(l.view_count).toLocaleString()}</td><td class="text-xs text-slate-400">${fmtDate(l.created_at)}</td><td><div class="dash-actions">${actionButtons(l)}</div></td></tr>`).join('')}</tbody></table></div>`
+    c.innerHTML = `<div class="overflow-x-auto"><table class="dash-table"><thead><tr><th>Product</th><th>Company</th><th>Status</th><th>Details</th><th>Views</th><th>Submitted</th><th>Actions</th></tr></thead><tbody>${ls.map(l => `<tr><td class="text-sm font-medium">${l.status === 'approved' ? `<a href="${esc(publicUrl(l))}" target="_blank" rel="noopener">${esc(l.product_name)}</a>` : esc(l.product_name)}</td><td class="text-sm">${esc(l.company_name)}<p class="text-xs text-slate-500">${esc(l.account_email || '')}</p></td><td>${statusBadge(l.status)}</td><td>${missingBadge(l)}</td><td class="text-sm">${num(l.view_count).toLocaleString()}</td><td class="text-xs text-slate-400">${fmtDate(l.created_at)}</td><td><div class="dash-actions">${actionButtons(l)}</div></td></tr>`).join('')}</tbody></table></div>`
   } catch { c.innerHTML = '<p class="text-rose-400">Failed</p>' }
 }
 
@@ -132,6 +138,7 @@ const pendingCard = (l) => {
     ${links ? `<p class="mt-2">${links}</p>` : ''}
     ${(image || shots.length) ? `<div class="flex gap-2 flex-wrap mt-2">${[image, ...shots].filter(Boolean).map(u => `<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${esc(u)}" alt="" style="height:72px;border-radius:6px"></a>`).join('')}</div>` : ''}
     ${rows ? `<details class="mt-2"><summary class="text-sm text-slate-400" style="cursor:pointer">All submitted details</summary><table class="mt-2">${rows}</table></details>` : ''}
+    ${(l.missing || []).length ? `<p class="text-xs mt-2" style="color:#9a3412"><i class="fa-solid fa-exclamation-circle"></i> Missing: ${esc(l.missing.join(', '))}. Approving still works; the approval email lists these for the company.</p>` : ''}
     <p class="text-xs text-slate-400 mt-2">${booth}</p>
     ${exhibitorPicker(l)}
     <div class="flex gap-2 mt-3"><button class="mp-btn-primary text-sm py-2 px-4" data-action="approved" data-id="${num(l.id)}"><i class="fas fa-check mr-1"></i>Approve</button><button class="mp-btn-secondary text-sm py-2 px-4" data-action="rejected" data-id="${num(l.id)}"><i class="fas fa-times mr-1"></i>Reject</button></div>
@@ -174,7 +181,20 @@ main.addEventListener('click', (e) => {
   if (btn) adminAction(btn.getAttribute('data-id'), btn.getAttribute('data-action'))
   const del = e.target.closest('[data-delete-inquiry]')
   if (del) deleteInquiry(del.getAttribute('data-delete-inquiry'))
+  const remind = e.target.closest('[data-remind]')
+  if (remind) sendReminder(remind)
 })
+
+const sendReminder = async (btn) => {
+  const company = btn.getAttribute('data-company'), missing = btn.getAttribute('data-missing')
+  if (!confirm(`Email ${company} a reminder to add: ${missing}?`)) return
+  btn.disabled = true
+  try {
+    await api(`/api/mp/admin/listings/${num(btn.getAttribute('data-remind'))}/remind`, { method: 'POST', body: '{}' })
+    showToast(`Reminder sent to ${company}`)
+  } catch (err) { showToast(err.message, true) }
+  finally { btn.disabled = false }
+}
 main.addEventListener('change', (e) => {
   const sel = e.target.closest('[data-link-exhibitor]')
   if (sel) linkExhibitor(sel.getAttribute('data-link-exhibitor'), sel.value)

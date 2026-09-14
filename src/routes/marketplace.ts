@@ -65,13 +65,46 @@ const emailRow = (k: string, v: any) => v
   ? `<tr><td style="padding:5px 12px 5px 0;color:#666;font-size:13px;vertical-align:top">${htmlEsc(k)}</td><td style="padding:5px 0;font-size:13px"><strong>${htmlEsc(v)}</strong></td></tr>`
   : ''
 
-const sendMail = async (c: any, to: string, subject: string, html: string) => {
-  if (!hooks.sendEmail || !to) return
-  await hooks.sendEmail(c, to, subject, html)
+// Returns whether the mail service accepted it. Cloudflare's live log is the only
+// record of these sends, so every attempt writes one line there (never the address).
+const sendMail = async (c: any, kind: string, to: string, subject: string, html: string): Promise<boolean> => {
+  if (!hooks.sendEmail || !to) return false
+  let ok = false, error: string | undefined
+  try { const r = await hooks.sendEmail(c, to, subject, html); ok = !!r.ok; error = r.ok ? undefined : r.error }
+  catch (e: any) { error = e?.message || 'send threw' }
+  console.log(JSON.stringify({ marketplaceMail: kind, ok, error }))
+  return ok
 }
 
 const teamAddress = async (c: any) =>
   (await setting(c, 'marketplace_notify_email')) || (await setting(c, 'inquiry_notify_email')) || 'info@bharataiinnovation.com'
+
+// ── Listing completeness ──
+// None of these is required to submit, but a listing without them gets passed
+// over: when the marketplace first went live no listing had a product image and
+// most had no logo. Companies are told what is missing, at submission, on
+// approval, in their dashboard, and by an admin reminder.
+const COMPLETENESS: { label: string; has: (l: any) => boolean }[] = [
+  { label: 'Company logo', has: l => !!String(l.logo_url || '').trim() },
+  { label: 'Product image', has: l => !!String(l.product_image_url || '').trim() },
+  { label: 'Website', has: l => !!String(l.website_url || '').trim() },
+  { label: 'Pricing model', has: l => !!String(l.pricing_type || '').trim() },
+  { label: 'AI category', has: l => !!String(l.ai_category || '').trim() },
+  { label: 'Target industry', has: l => !!String(l.target_industry || '').trim() },
+  { label: 'Use cases', has: l => !!String(l.use_cases || '').trim() },
+  { label: 'Demo or video link', has: l => !!String(l.demo_url || '').trim() || !!String(l.video_url || '').trim() },
+  { label: 'Sales contact email', has: l => !!String(l.sales_contact_email || '').trim() },
+]
+const missingListingInfo = (l: any): string[] => COMPLETENESS.filter(f => !f.has(l)).map(f => f.label)
+
+const emailMissingBlock = (c: any, missing: string[], intro: string) => missing.length
+  ? `<div style="margin-top:18px;padding:14px 16px;background:#fff7ed;border:1px solid #fed7aa;border-radius:10px">
+      <p style="margin:0 0 8px;font-size:14px;font-weight:600;color:#9a3412">${htmlEsc(intro)}</p>
+      <ul style="margin:0;padding-left:18px;font-size:14px;line-height:1.7;color:#7c2d12">${missing.map(m => `<li>${htmlEsc(m)}</li>`).join('')}</ul>
+      <p style="margin:10px 0 0;font-size:13px;color:#9a3412">Listings with a logo, a product image and clear pricing get noticeably more views and inquiries.</p>
+      ${emailButton(siteOrigin(c) + '/marketplace/dashboard', 'Complete your listing')}
+    </div>`
+  : ''
 
 const notifyTeamOfSubmission = (c: any, listing: { id: any; product_name: string; company_name: string; description?: string; website_url?: string }, accountEmail: string, kind: 'new' | 'updated') =>
   inBackground(c, async () => {
@@ -81,29 +114,64 @@ const notifyTeamOfSubmission = (c: any, listing: { id: any; product_name: string
       <table style="border-collapse:collapse">${emailRow('Product', listing.product_name)}${emailRow('Company', listing.company_name)}${emailRow('Account', accountEmail)}${emailRow('Website', listing.website_url)}</table>
       ${listing.description ? `<div style="margin-top:14px;padding:12px 14px;background:#f8f9fa;border-left:3px solid #FF9933;font-size:14px;line-height:1.6;white-space:pre-wrap">${htmlEsc(String(listing.description).slice(0, 600))}</div>` : ''}
       ${emailButton(siteOrigin(c) + '/marketplace/admin', 'Review pending listings')}
-      <p style="margin:12px 0 0;font-size:12px;color:#888">Sign in with the marketplace admin account on /marketplace, then open Pending Review.</p>`
-    await sendMail(c, await teamAddress(c), `${verb}: ${listing.product_name} (${listing.company_name})`, emailShell(verb, body))
+      <p style="margin:12px 0 0;font-size:12px;color:#888">Or open the event admin panel and choose AI Marketplace in the sidebar.</p>`
+    await sendMail(c, 'team-' + kind, await teamAddress(c), `${verb}: ${listing.product_name} (${listing.company_name})`, emailShell(verb, body))
   })
 
-const notifyCompanyOfDecision = (c: any, listingId: number, status: 'approved' | 'rejected', reason: string) =>
+const notifyCompanyWelcome = (c: any, companyName: string, email: string) =>
+  inBackground(c, async () => {
+    const origin = siteOrigin(c)
+    const body = `<p style="margin:0 0 12px;font-size:14px;line-height:1.6">Your Bharat AI Marketplace account for <strong>${htmlEsc(companyName)}</strong> is ready.</p>
+      <p style="margin:0 0 12px;font-size:14px;line-height:1.6">Next, list your AI product. It takes a few minutes: our team reviews each listing and emails you as soon as it is live, and buyers' inquiries come straight to this address.</p>
+      <p style="margin:0;font-size:14px;line-height:1.6">Exhibiting at Bharat AI Innovation 2026? If this is the email on your booth booking, your booth number is added to your listing automatically.</p>
+      ${emailButton(origin + '/marketplace?submit=true', 'List your AI product')}
+      <p style="margin:14px 0 0;font-size:12px;color:#888">Did not create this account? You can ignore this email.</p>`
+    await sendMail(c, 'company-welcome', email, 'Welcome to the Bharat AI Marketplace', emailShell('Welcome to the Bharat AI Marketplace', body))
+  })
+
+const notifyCompanyOfSubmission = (c: any, email: string, listing: any) =>
+  inBackground(c, async () => {
+    const missing = missingListingInfo(listing)
+    const body = `<p style="margin:0;font-size:14px;line-height:1.6">Thanks for listing <strong>${htmlEsc(listing.product_name)}</strong>. It is now with our team for review, and we will email you as soon as it is live on the marketplace.</p>
+      ${emailMissingBlock(c, missing, 'While you wait, your listing is missing:')}
+      ${missing.length ? '' : emailButton(siteOrigin(c) + '/marketplace/dashboard', 'Open your dashboard')}`
+    await sendMail(c, 'company-submitted', email, `We received your listing: ${listing.product_name}`, emailShell('Listing received', body))
+  })
+
+// Admin-triggered mails also leave their outcome in admin_audit, so whether a
+// company was actually told can be checked from the panel rather than guessed.
+const notifyCompanyOfDecision = (c: any, admin: any, listingId: number, status: 'approved' | 'rejected', reason: string) =>
   inBackground(c, async () => {
     const row = await c.env.DB.prepare(
-      'SELECT l.product_name, l.company_slug, l.product_slug, co.email FROM mp_listings l JOIN mp_companies co ON co.id = l.company_id WHERE l.id = ?'
+      'SELECT l.*, co.email AS account_email FROM mp_listings l JOIN mp_companies co ON co.id = l.company_id WHERE l.id = ?'
     ).bind(listingId).first() as any
-    if (!row?.email) return
+    if (!row?.account_email) return
     const origin = siteOrigin(c)
+    let ok: boolean
     if (status === 'approved') {
+      const missing = missingListingInfo(row)
       const body = `<p style="margin:0;font-size:14px;line-height:1.6"><strong>${htmlEsc(row.product_name)}</strong> is now live on the Bharat AI Marketplace. Buyers can find it, and their inquiries will reach this address.</p>
-        ${emailButton(`${origin}/marketplace/listing/${row.company_slug}/${row.product_slug}`, 'View your listing')}`
-      await sendMail(c, row.email, `Your listing is live: ${row.product_name}`, emailShell('Your listing is approved', body))
+        ${emailButton(`${origin}/marketplace/listing/${row.company_slug}/${row.product_slug}`, 'View your listing')}
+        ${emailMissingBlock(c, missing, 'To get more out of it, add:')}
+        ${missing.length ? '<p style="margin:10px 0 0;font-size:12px;color:#888">Changes are reviewed before they go live.</p>' : ''}`
+      ok = await sendMail(c, 'company-approved', row.account_email, `Your listing is live: ${row.product_name}`, emailShell('Your listing is approved', body))
     } else {
       const body = `<p style="margin:0;font-size:14px;line-height:1.6">We could not publish <strong>${htmlEsc(row.product_name)}</strong> as submitted.</p>
         ${reason ? `<div style="margin-top:14px;padding:12px 14px;background:#f8f9fa;border-left:3px solid #FF9933;font-size:14px;line-height:1.6;white-space:pre-wrap">${htmlEsc(reason)}</div>` : ''}
         <p style="margin:14px 0 0;font-size:14px;line-height:1.6">Edit the listing from your dashboard and it goes straight back into review.</p>
         ${emailButton(origin + '/marketplace/dashboard', 'Open your dashboard')}`
-      await sendMail(c, row.email, `Your listing needs changes: ${row.product_name}`, emailShell('Your listing was not approved', body))
+      ok = await sendMail(c, 'company-rejected', row.account_email, `Your listing needs changes: ${row.product_name}`, emailShell('Your listing was not approved', body))
     }
+    await auditAdmin(c, admin, ok ? 'marketplace.email-sent' : 'marketplace.email-failed', listingId, { kind: 'company-' + status })
   })
+
+const sendCompletionReminder = async (c: any, row: any, missing: string[]): Promise<boolean> => {
+  const live = row.status === 'approved'
+  const body = `<p style="margin:0;font-size:14px;line-height:1.6">${live ? `<strong>${htmlEsc(row.product_name)}</strong> is live on the Bharat AI Marketplace, but` : `Your listing <strong>${htmlEsc(row.product_name)}</strong> is`} missing some details buyers look for.</p>
+    ${emailMissingBlock(c, missing, 'Please add:')}
+    ${live ? '<p style="margin:10px 0 0;font-size:12px;color:#888">Changes are reviewed before they go live.</p>' : ''}`
+  return sendMail(c, 'company-reminder', row.account_email, `Complete your listing: ${row.product_name}`, emailShell('Complete your marketplace listing', body))
+}
 
 const notifyCompanyOfInquiry = (c: any, listing: any, inq: { name: string; email: string; company: string; phone: string; message: string }) =>
   inBackground(c, async () => {
@@ -113,7 +181,7 @@ const notifyCompanyOfInquiry = (c: any, listing: any, inq: { name: string; email
       <table style="border-collapse:collapse">${emailRow('Name', inq.name)}${emailRow('Email', inq.email)}${emailRow('Company', inq.company)}${emailRow('Phone', inq.phone)}</table>
       ${inq.message ? `<div style="margin-top:14px;padding:12px 14px;background:#f8f9fa;border-left:3px solid #FF9933;font-size:14px;line-height:1.6;white-space:pre-wrap">${htmlEsc(inq.message)}</div>` : ''}
       ${emailButton(siteOrigin(c) + '/marketplace/dashboard', 'See all inquiries')}`
-    await sendMail(c, owner.email, `New inquiry about ${listing.product_name} from ${inq.name}`, emailShell('New marketplace inquiry', body))
+    await sendMail(c, 'company-inquiry', owner.email, `New inquiry about ${listing.product_name} from ${inq.name}`, emailShell('New marketplace inquiry', body))
   })
 
 // ── Session signing ──
@@ -383,6 +451,19 @@ const normalizeListingInput = (body: any, fields: string[]): { values: Record<st
   return { values }
 }
 
+// An upload URL is only an id, so without this a listing could point at another
+// company's images.
+const imagesOwnedBy = async (c: any, companyId: number, values: Record<string, string>): Promise<boolean> => {
+  const urls = [values.logo_url, values.product_image_url, ...String(values.screenshot_urls || '').split(',')]
+    .map(u => String(u || '').trim()).filter(Boolean)
+  for (const u of urls) {
+    const id = parseInt(u.split('/').pop() || '', 10)
+    const row = await c.env.DB.prepare('SELECT company_id FROM mp_uploads WHERE id = ?').bind(id).first() as any
+    if (!row || row.company_id !== companyId) return false
+  }
+  return true
+}
+
 // ══════════════════════════════════════════
 // AUTH ROUTES
 // ══════════════════════════════════════════
@@ -409,6 +490,7 @@ mp.post('/api/mp/auth/register', async (c) => {
   // Signed straight in: registering used to end on "Please login", a second form
   // standing between a company and the listing form it came for.
   c.header('Set-Cookie', mpSessionCookie(await signSession(c, id as number)))
+  notifyCompanyWelcome(c, company_name, email)
   return c.json({ success: true, id, user: { id, company_name, email, role: 'company' } })
 })
 
@@ -445,7 +527,9 @@ mp.post('/api/mp/auth/login', async (c) => {
 
 mp.get('/api/mp/auth/me', async (c) => {
   const company = await getCompanyFromSession(c)
-  return c.json({ user: company, event_admin: !company && eventAdminRequest(c) })
+  // Reported whether or not a company is also signed in here: an organiser who has
+  // tried the listing flow as a company in the same browser is still an admin.
+  return c.json({ user: company, event_admin: eventAdminRequest(c) })
 })
 
 mp.post('/api/mp/auth/logout', async (c) => {
@@ -517,6 +601,7 @@ mp.post('/api/mp/listings', async (c) => {
   }
   const { values: v, error } = normalizeListingInput(body, ['product_name', 'description', ...TEXT_FIELDS, ...LINK_FIELDS, ...IMAGE_FIELDS, 'screenshot_urls'])
   if (error) return c.json({ error }, 400)
+  if (!(await imagesOwnedBy(c, company.id, v))) return c.json({ error: 'Images must be uploaded through the form' }, 400)
 
   // A failed upload used to lose the whole form, so people resubmitted; now that
   // submitting works, the same product twice is a mistake rather than a retry.
@@ -562,7 +647,8 @@ mp.post('/api/mp/listings', async (c) => {
 
   const id = result.meta.last_row_id
   notifyTeamOfSubmission(c, { id, product_name: v.product_name, company_name: company.company_name, description: v.description, website_url: v.website_url }, company.email, 'new')
-  return c.json({ success: true, id })
+  notifyCompanyOfSubmission(c, company.email, v)
+  return c.json({ success: true, id, missing: missingListingInfo(v) })
 })
 
 // ── Reviews ──
@@ -759,7 +845,7 @@ mp.get('/api/mp/dashboard/listings', async (c) => {
     FROM mp_listings l WHERE l.company_id = ? ORDER BY l.created_at DESC
   `).bind(company.id).all()
 
-  return c.json({ listings: listings.results })
+  return c.json({ listings: (listings.results as any[]).map(l => ({ ...l, missing: missingListingInfo(l) })) })
 })
 
 mp.get('/api/mp/dashboard/listings/:id', async (c) => {
@@ -773,9 +859,13 @@ mp.get('/api/mp/dashboard/listings/:id', async (c) => {
   return c.json({ listing })
 })
 
+// Everything the completeness check asks for has to be fixable here: the edit form
+// used to cover twelve text fields and no images, so a listing submitted without a
+// logo or product image could never get one.
 const DASHBOARD_EDITABLE = ['product_name', 'description', 'target_customer', 'pricing_type', 'pricing_details',
-  'tags', 'target_industry', 'ai_category', 'website_url', 'product_url',
-  'sales_contact_name', 'sales_contact_email']
+  'tags', 'target_industry', 'ai_category', 'website_url', 'product_url', 'demo_url', 'video_url',
+  'use_cases', 'innovation', 'access_info', 'logo_url', 'product_image_url', 'screenshot_urls',
+  'sales_contact_name', 'sales_contact_email', 'sales_contact_phone']
 
 mp.put('/api/mp/dashboard/listings/:id', async (c) => {
   const company = await getCompanyFromSession(c) as any
@@ -789,6 +879,7 @@ mp.put('/api/mp/dashboard/listings/:id', async (c) => {
   const body = await c.req.json().catch(() => ({})) as any
   const { values, error } = normalizeListingInput(body, DASHBOARD_EDITABLE)
   if (error) return c.json({ error }, 400)
+  if (!(await imagesOwnedBy(c, company.id, values))) return c.json({ error: 'Images must be uploaded through the form' }, 400)
 
   const changed = Object.keys(values).filter(f => values[f] !== String(listing[f] ?? '').trim())
   if (!changed.length) return c.json({ success: true, changed: false, new_status: listing.status })
@@ -905,7 +996,33 @@ mp.get('/api/mp/admin/listings', async (c) => {
   query += ' ORDER BY l.created_at DESC'
 
   const listings = await c.env.DB.prepare(query).bind(...params).all()
-  return c.json({ listings: listings.results })
+  return c.json({ listings: (listings.results as any[]).map(l => ({ ...l, missing: missingListingInfo(l) })) })
+})
+
+// Email a company what its listing is missing. Admin-triggered, at most once a day
+// per listing, and recorded in admin_audit with whether the mail service took it.
+mp.post('/api/mp/admin/listings/:id/remind', async (c) => {
+  const admin = await marketplaceAdmin(c)
+  if (!admin) return c.json({ error: 'Admin required' }, 403)
+
+  const id = parseInt(c.req.param('id'), 10)
+  const row = await c.env.DB.prepare('SELECT l.*, co.email AS account_email FROM mp_listings l JOIN mp_companies co ON co.id = l.company_id WHERE l.id = ?')
+    .bind(id).first() as any
+  if (!row) return c.json({ error: 'Listing not found' }, 404)
+  if (!row.account_email) return c.json({ error: 'This listing has no company account to email' }, 400)
+  const missing = missingListingInfo(row)
+  if (!missing.length) return c.json({ error: 'Nothing is missing from this listing' }, 400)
+
+  const recent = await c.env.DB.prepare(
+    "SELECT created_at FROM admin_audit WHERE action = 'marketplace.listing-reminded' AND entity = 'mp_listing' AND entity_id = ? AND created_at > datetime('now', '-1 day') ORDER BY id DESC LIMIT 1"
+  ).bind(String(id)).first().catch(() => null) as any
+  if (recent) return c.json({ error: `A reminder was already sent for this listing at ${recent.created_at} UTC. Try again tomorrow.` }, 429)
+
+  const sent = await sendCompletionReminder(c, row, missing)
+  // Only a delivered reminder counts toward the once-a-day limit.
+  await auditAdmin(c, admin, sent ? 'marketplace.listing-reminded' : 'marketplace.listing-remind-failed', id, { missing })
+  if (!sent) return c.json({ error: 'The email service did not accept the reminder. Check the Elastic Email settings.' }, 502)
+  return c.json({ success: true, missing })
 })
 
 // For linking a listing to a booth by hand when the emails don't match.
@@ -957,7 +1074,7 @@ mp.patch('/api/mp/admin/listings/:id', async (c) => {
       await auditAdmin(c, admin, 'marketplace.listing-' + status, id, { from: listing.status, reason: reason || undefined })
     }
     if (status !== listing.status && (status === 'approved' || status === 'rejected')) {
-      notifyCompanyOfDecision(c, id, status, reason)
+      notifyCompanyOfDecision(c, admin, id, status, reason)
     }
   }
 

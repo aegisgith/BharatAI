@@ -436,10 +436,49 @@ if (screenshotsInput) {
 
 // Listing form submit
 const submitBtn = listingForm.querySelector('button[type="submit"]')
-const submitBtnHTML = submitBtn ? submitBtn.innerHTML : 'Submit'
+let submitBtnHTML = submitBtn ? submitBtn.innerHTML : 'Submit'
+
+// Details buyers look for. None blocks a submission: the first click lists what is
+// missing, a second click submits anyway. Labels match the server's checklist, which
+// the confirmation email and the dashboard repeat.
+const field = (name) => listingForm.elements.namedItem(name)
+const RECOMMENDED = [
+  ['Company logo', () => !!logoInput?.files?.[0], 'logo_file'],
+  ['Product image', () => !!productImgInput?.files?.[0], 'product_image_file'],
+  ['Website', () => !!field('website_url')?.value.trim(), 'website_url'],
+  ['Pricing model', () => !!field('pricing_type')?.value, 'pricing_type'],
+  ['AI category', () => !!listingForm.querySelector('input[name="ai_category"]:checked'), 'ai_category'],
+  ['Target industry', () => !!listingForm.querySelector('input[name="target_industry"]:checked'), 'target_industry'],
+  ['Use cases', () => !!field('use_cases')?.value.trim(), 'use_cases'],
+  ['Demo or video link', () => !!(field('demo_url')?.value.trim() || field('video_url')?.value.trim()), 'demo_url'],
+  ['Sales contact email', () => !!field('sales_contact_email')?.value.trim(), 'sales_contact_email'],
+]
+let incompleteAcknowledged = false
+const incompleteNotice = document.createElement('div')
+incompleteNotice.hidden = true
+incompleteNotice.setAttribute('role', 'status')
+incompleteNotice.style.cssText = 'margin:16px 0;padding:14px 16px;border-radius:12px;border:1px solid #fed7aa;background:#fff7ed;color:#7c2d12;font-size:14px;line-height:1.6'
+listingForm.querySelector('.form-actions')?.before(incompleteNotice)
+incompleteNotice.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-goto-field]'); if (!b) return
+  const el = listingForm.querySelector(`[name="${b.getAttribute('data-goto-field')}"]`); if (!el) return
+  const section = el.closest('details'); if (section) section.open = true
+  ;(el.closest('.form-field') || el).scrollIntoView({ behavior: 'smooth', block: 'center' })
+  if (el.type !== 'file' && el.type !== 'checkbox' && el.focus) setTimeout(() => el.focus({ preventScroll: true }), 300)
+})
+const showIncomplete = (missing) => {
+  incompleteNotice.innerHTML = `<p style="margin:0 0 6px;font-weight:600">Your listing is missing ${missing.length} detail${missing.length === 1 ? '' : 's'} buyers look for:</p>
+    <ul style="margin:0 0 8px;padding-left:18px">${missing.map(([label, , name]) => `<li><button type="button" data-goto-field="${esc(name)}" style="background:none;border:0;padding:0;color:#c2410c;text-decoration:underline;cursor:pointer;font:inherit">${esc(label)}</button></li>`).join('')}</ul>
+    <p style="margin:0">Listings with a logo, a product image and clear pricing get more views and inquiries. Add them now, or submit anyway and finish later from your dashboard.</p>`
+  incompleteNotice.hidden = false
+  if (submitBtn) { submitBtnHTML = '<i class="fas fa-paper-plane mr-2"></i>Submit anyway'; submitBtn.innerHTML = submitBtnHTML }
+  incompleteNotice.scrollIntoView({ behavior: 'smooth', block: 'center' })
+}
 
 listingForm.addEventListener('submit', async (e) => {
   e.preventDefault()
+  const missing = RECOMMENDED.filter(([, has]) => !has())
+  if (missing.length && !incompleteAcknowledged) { incompleteAcknowledged = true; showIncomplete(missing); return }
   if (submitBtn) { submitBtn.disabled = true; submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Submitting...' }
   const fd = new FormData(listingForm)
   const payload = Object.fromEntries(fd.entries())
@@ -453,9 +492,11 @@ listingForm.addEventListener('submit', async (e) => {
     if (productImgInput?.files?.[0]) payload.product_image_url = await uploadImage(productImgInput.files[0], 'photo')
     if (selectedScreenshots.length) payload.screenshot_urls = (await Promise.all(selectedScreenshots.map(f => uploadImage(f, 'photo')))).join(', ')
 
-    await api('/api/mp/listings', { method:'POST', body:JSON.stringify(payload) })
+    const res = await api('/api/mp/listings', { method:'POST', body:JSON.stringify(payload) })
     const pn = payload.product_name || 'Your listing'
-    listingFormSection.innerHTML = `<div class="listing-success-panel"><div class="listing-success-icon"><i class="fas fa-check-circle"></i></div><h3 class="listing-success-title">Listing Submitted!</h3><p class="listing-success-sub"><strong>${esc(pn)}</strong> is now pending review. We will email you when it is live.</p><div class="listing-success-actions"><a href="/marketplace/dashboard" class="listing-success-btn listing-success-btn--primary"><i class="fas fa-chart-pie mr-2"></i>Dashboard</a><a href="/marketplace?submit=true" class="listing-success-btn listing-success-btn--secondary"><i class="fas fa-plus mr-2"></i>Submit Another</a><a href="/marketplace" class="listing-success-btn listing-success-btn--secondary"><i class="fas fa-store mr-2"></i>Marketplace</a></div></div>`
+    const stillMissing = Array.isArray(res.missing) ? res.missing : []
+    const missingNote = stillMissing.length ? ` It is still missing ${stillMissing.length} detail${stillMissing.length === 1 ? '' : 's'} (${esc(stillMissing.join(', '))}); you can add them from your dashboard.` : ''
+    listingFormSection.innerHTML = `<div class="listing-success-panel"><div class="listing-success-icon"><i class="fas fa-check-circle"></i></div><h3 class="listing-success-title">Listing Submitted!</h3><p class="listing-success-sub"><strong>${esc(pn)}</strong> is now pending review. We will email you when it is live.${missingNote}</p><div class="listing-success-actions"><a href="/marketplace/dashboard" class="listing-success-btn listing-success-btn--primary"><i class="fas fa-chart-pie mr-2"></i>Dashboard</a><a href="/marketplace?submit=true" class="listing-success-btn listing-success-btn--secondary"><i class="fas fa-plus mr-2"></i>Submit Another</a><a href="/marketplace" class="listing-success-btn listing-success-btn--secondary"><i class="fas fa-store mr-2"></i>Marketplace</a></div></div>`
     listingFormSection.scrollIntoView({ behavior:'smooth' })
   } catch (err) { showToast(err.message, true); if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = submitBtnHTML } }
 })

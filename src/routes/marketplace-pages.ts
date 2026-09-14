@@ -390,7 +390,7 @@ export function marketplacePageHTML(): string {
     </div>
   </footer>
 
-  <script src="/static/marketplace-app.js?v=3"></script>
+  <script src="/static/marketplace-app.js?v=4"></script>
 </body>
 </html>`
 }
@@ -553,6 +553,7 @@ export function marketplaceDashboardPageHTML(): string {
         <div class="dash-stat-card"><div class="dash-stat-icon text-purple-400"><i class="fas fa-envelope"></i></div><div><p class="dash-stat-label">Inquiries</p><p class="dash-stat-value" id="stat-inquiries">0</p></div></div>
         <div class="dash-stat-card"><div class="dash-stat-icon text-amber-400"><i class="fas fa-star"></i></div><div><p class="dash-stat-label">Avg Rating</p><p class="dash-stat-value" id="stat-rating">—</p></div></div>
       </div>
+      <div id="dash-complete" class="dash-card hidden" style="border:1px solid #fed7aa;background:#fff7ed"></div>
       <div class="dash-quick-actions">
         <button data-goto="listings" class="dash-quick-btn"><i class="fas fa-boxes mr-1"></i> View Listings</button>
         <button data-goto="inquiries" class="dash-quick-btn"><i class="fas fa-envelope mr-1"></i> Check Inquiries</button>
@@ -610,7 +611,23 @@ export function marketplaceDashboardPageHTML(): string {
       </div>
       <form id="edit-listing-form" class="mp-form">
         <input type="hidden" id="edit-listing-id" name="id">
+        <div id="edit-missing" class="hidden" style="margin-bottom:12px;padding:10px 12px;border-radius:10px;border:1px solid #fed7aa;background:#fff7ed;color:#9a3412;font-size:13px"></div>
+        <p id="edit-review-note" class="text-xs text-slate-500 mb-2 hidden">Saving sends this listing back for a quick review. It is hidden from the marketplace until approved again.</p>
         <div class="form-grid">
+          <div class="form-field">
+            <label>Company Logo</label>
+            <div class="flex gap-2 items-center">
+              <img id="edit-logo-preview" alt="" class="hidden" style="width:48px;height:48px;object-fit:contain;border-radius:8px;background:#fff;border:1px solid #e5e7eb">
+              <input id="edit-logo-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml,.svg" class="text-xs">
+            </div>
+          </div>
+          <div class="form-field">
+            <label>Product Image</label>
+            <div class="flex gap-2 items-center">
+              <img id="edit-image-preview" alt="" class="hidden" style="width:72px;height:48px;object-fit:cover;border-radius:8px;border:1px solid #e5e7eb">
+              <input id="edit-image-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif" class="text-xs">
+            </div>
+          </div>
           <div class="form-field"><label>Product Name</label><input id="edit-product-name" autocomplete="off" name="product_name" required></div>
           <div class="form-field full-width"><label>Description</label><textarea id="edit-description" autocomplete="off" name="description" rows="3" required></textarea></div>
           <div class="form-field"><label>Target Customer</label><input id="edit-target-customer" autocomplete="off" name="target_customer"></div>
@@ -623,6 +640,12 @@ export function marketplaceDashboardPageHTML(): string {
           <div class="form-field"><label>Product URL</label><input id="edit-product-url" autocomplete="off" inputmode="url" autocapitalize="none" spellcheck="false" name="product_url"></div>
           <div class="form-field"><label>Sales Contact</label><input id="edit-sales-name" autocomplete="off" name="sales_contact_name"></div>
           <div class="form-field"><label>Sales Email</label><input id="edit-sales-email" autocomplete="off" inputmode="email" autocapitalize="none" spellcheck="false" name="sales_contact_email"></div>
+          <div class="form-field"><label>Sales Phone</label><input id="edit-sales-phone" autocomplete="off" inputmode="tel" name="sales_contact_phone"></div>
+          <div class="form-field"><label>Demo URL</label><input id="edit-demo-url" autocomplete="off" inputmode="url" autocapitalize="none" spellcheck="false" name="demo_url" placeholder="https://"></div>
+          <div class="form-field"><label>Video URL</label><input id="edit-video-url" autocomplete="off" inputmode="url" autocapitalize="none" spellcheck="false" name="video_url" placeholder="YouTube or Vimeo link"></div>
+          <div class="form-field"><label>Access Information</label><input id="edit-access-info" autocomplete="off" name="access_info" placeholder="e.g. Self-serve signup, Request demo"></div>
+          <div class="form-field full-width"><label>Use Cases</label><textarea id="edit-use-cases" autocomplete="off" name="use_cases" rows="3" placeholder="One use case per line"></textarea></div>
+          <div class="form-field full-width"><label>Innovation / Differentiation</label><textarea id="edit-innovation" autocomplete="off" name="innovation" rows="2"></textarea></div>
         </div>
         <div class="mp-modal-actions">
           <button type="button" id="edit-cancel" class="mp-btn-secondary">Cancel</button>
@@ -632,7 +655,7 @@ export function marketplaceDashboardPageHTML(): string {
     </div>
   </div>
 
-  <script src="/static/marketplace-dashboard.js?v=2"></script>
+  <script src="/static/marketplace-dashboard.js?v=3"></script>
 </body>
 </html>`
 }
@@ -729,7 +752,7 @@ export function marketplaceAdminPageHTML(): string {
     </section>
   </div>
 
-  <script src="/static/marketplace-admin.js?v=3"></script>
+  <script src="/static/marketplace-admin.js?v=4"></script>
 </body>
 </html>`
 }
