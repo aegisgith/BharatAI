@@ -16075,7 +16075,12 @@ function mainPageHTML(): string {
       // Extra fields based on type
       let extra = '';
       if (type === 'exhibition') {
-        extra = '<select id="inq-booth-tier" class="w-full px-4 py-3 rounded-xl text-sm"><option value="">Preferred Booth Package</option><option value="Platinum - ₹5,00,000">Platinum — ₹5,00,000</option><option value="Gold - ₹3,00,000">Gold — ₹3,00,000</option><option value="Silver - ₹1,50,000">Silver — ₹1,50,000</option><option value="Startup - ₹75,000">Startup — ₹75,000</option><option value="Undecided">Not sure yet</option></select>';
+        // The packages are filled in from /api/booth-types, the catalogue the Booth
+        // Packages screen renders, once the form is on screen. This list used to be
+        // typed in here as Platinum, Gold, Silver and Startup tiers at Rs 5,00,000 down
+        // to Rs 75,000, which no package has ever been, including a Startup price
+        // that contradicted the Startup Pod on the screen next to it.
+        extra = '<select id="inq-booth-tier" class="w-full px-4 py-3 rounded-xl text-sm"><option value="">Preferred Booth Package</option><option value="Undecided">Not sure yet</option></select>';
       } else if (type === 'speaking') {
         extra = '<input type="text" id="inq-topic" autocomplete="off" placeholder="Proposed Talk / Workshop Topic" class="w-full px-4 py-3 rounded-xl text-sm">';
       } else if (type === 'group_registration') {
@@ -16084,11 +16089,31 @@ function mainPageHTML(): string {
         extra = '<select id="inq-budget" class="w-full px-4 py-3 rounded-xl text-sm"><option value="">Budget Range</option><option value="Under ₹1 Lakh">Under ₹1 Lakh</option><option value="₹1-3 Lakhs">₹1-3 Lakhs</option><option value="₹3-5 Lakhs">₹3-5 Lakhs</option><option value="₹5-10 Lakhs">₹5-10 Lakhs</option><option value="₹10+ Lakhs">₹10+ Lakhs</option></select>';
       }
       document.getElementById('inq-extra-fields').innerHTML = extra;
+      if (type === 'exhibition') fillInquiryBoothTiers();
 
       // Show form, hide success
       document.getElementById('inquiry-form').classList.remove('hidden');
       document.getElementById('inq-success').classList.add('hidden');
       document.getElementById('inquiry-modal').classList.remove('hidden');
+    }
+
+    async function fillInquiryBoothTiers() {
+      const sel = document.getElementById('inq-booth-tier');
+      if (!sel) return;
+      try {
+        const types = (Array.isArray(boothTypesCache) && boothTypesCache.length) ? boothTypesCache : await api.get('/api/booth-types');
+        if (!Array.isArray(types) || !types.length || !document.body.contains(sel)) return;
+        if (!boothTypesCache.length) boothTypesCache = types;
+        const undecided = sel.querySelector('option[value="Undecided"]');
+        types.forEach(function (t) {
+          const price = Number(t.price_inr || 0);
+          const rupees = price ? '₹' + price.toLocaleString('en-IN') : '';
+          const o = document.createElement('option');
+          o.value = t.name + (rupees ? ' - ' + rupees : '');
+          o.textContent = t.name + (rupees ? ' — ' + rupees + ' + GST' : '');
+          sel.insertBefore(o, undecided);
+        });
+      } catch (e) {}
     }
 
     function closeInquiryForm() {
