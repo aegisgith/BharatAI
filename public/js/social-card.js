@@ -641,7 +641,9 @@
       size: S.key,
       width: S.w,
       height: S.h,
-      photoFailed: photoFailed
+      photoFailed: photoFailed,
+      // Drawn, not merely present: an empty avatar_url never sets photoFailed.
+      hasPhoto: !!assets.photo
     };
   }
 
@@ -673,6 +675,9 @@
 
   async function download(user, opts) {
     var res = await render(user, opts);
+    // The renderer refuses to hand over a card with a letter where the face should
+    // be, whoever calls it - the page, the admin panel, or a console.
+    if (!res || res.photoFailed || !res.hasPhoto) return res;
     var link = document.createElement('a');
     link.download = res.filename;
     link.href = res.dataUrl;

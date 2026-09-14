@@ -5,6 +5,8 @@ import { marketplacePageHTML, marketplaceListingPageHTML, marketplaceDashboardPa
 
 type Bindings = {
   UPLOADS?: R2Bucket
+  // Workers AI. Used only by personInPhoto(); everything works without it.
+  AI?: any
   DB: D1Database
   // Bearer token for the read-only attendee export consumed by AImailPilot's
   // contact-list sync. Set via `wrangler secret put ATTENDEE_EXPORT_SECRET`
@@ -4055,6 +4057,10 @@ app.post('/api/attendees/:id/track-pass-download', async (c) => {
 app.post('/api/attendees/:id/track-social-card', async (c) => {
   const id = c.req.param('id')
   const denied = await requireSelf(c, id); if (denied) return denied
+  // The client could always call this, so the admin's "Creative shared" count
+  // was only as honest as the page. No photo on the row, no stamp.
+  const hasPic = await c.env.DB.prepare('SELECT avatar_url FROM attendees WHERE id = ?').bind(id).first() as any
+  if (!hasPic || !String(hasPic.avatar_url || '').trim()) return c.json({ success: false, reason: 'no_photo' })
   try {
     await c.env.DB.prepare(
       'UPDATE attendees SET social_card_downloaded_at = datetime("now") WHERE id = ? AND social_card_downloaded_at IS NULL'
@@ -7704,6 +7710,47 @@ app.put('/api/attendees/:id/profile', async (c) => {
 })
 
 // Upload avatar photo for attendee (self-service or admin)
+/* Is there a person in this photo?
+ *
+ * "Add your photo first" only ever checked that an image arrived. The profile
+ * photo goes on the pass the badge desk checks against a government ID and on
+ * the social creative people post, and on 14 Sep two of the 208 uploads were
+ * not people at all: a Java logo (which then made a creative) and a technical
+ * diagram of a vending kiosk.
+ *
+ * DETR object detection on Workers AI, run over all 208 real uploads before
+ * this shipped: 206 scored 0.896 or higher for 'person', the two non-photos
+ * scored 0.000. Nothing in between, so 0.5 rejects exactly the images that
+ * should be rejected and no genuine photo - including people standing small
+ * in a wide shot, in front of a stage, or in a photo of a printed photo.
+ * About 0.6s and $0.0000075 an upload.
+ *
+ * It answers "is a person in it", not "is this the right person" or "is the
+ * face clear"; a group photo passes. That is the line that can be held
+ * automatically without refusing real people.
+ *
+ * Fails OPEN: no AI binding, a model error, or a timeout accepts the upload
+ * and says so in person_checked, rather than stopping every attendee from
+ * adding a photo because a beta model had a bad minute. */
+const PERSON_MODEL = '@cf/facebook/detr-resnet-50'
+const PERSON_MIN_SCORE = 0.5
+
+async function personInPhoto(c: any, bytes: Uint8Array): Promise<{ checked: boolean; person: boolean; score: number }> {
+  if (!c.env.AI) return { checked: false, person: true, score: 0 }
+  try {
+    const run = c.env.AI.run(PERSON_MODEL, { image: Array.from(bytes) })
+    const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('person check timed out')), 8000))
+    const out: any = await Promise.race([run, timeout])
+    const objs: any[] = Array.isArray(out) ? out : (Array.isArray(out?.result) ? out.result : [])
+    let score = 0
+    for (const o of objs) if (o && o.label === 'person') score = Math.max(score, Number(o.score) || 0)
+    return { checked: true, person: score >= PERSON_MIN_SCORE, score }
+  } catch (e) {
+    console.log('personInPhoto: check unavailable, accepting upload:', String(e).slice(0, 200))
+    return { checked: false, person: true, score: 0 }
+  }
+}
+
 app.post('/api/attendees/:id/avatar', async (c) => {
   const id = c.req.param('id')
   const denied = await requireSelf(c, id); if (denied) return denied
@@ -7719,6 +7766,15 @@ app.post('/api/attendees/:id/avatar', async (c) => {
     return c.json({ error: 'Image too large. Please use a smaller image (max ~500KB).' }, 400)
   }
 
+  const bytes = Uint8Array.from(atob(m[2]), ch => ch.charCodeAt(0))
+  const verdict = await personInPhoto(c, bytes)
+  if (verdict.checked && !verdict.person) {
+    return c.json({
+      error: 'We could not see a person in that image. Please choose a clear photo of yourself - it goes on your pass and your card.',
+      not_a_person: true,
+    }, 422)
+  }
+
   // Photos go to R2, and the row keeps only a URL.
   //
   // They used to be written into attendees.avatar_url as the base64 data URL itself.
@@ -7727,7 +7783,6 @@ app.post('/api/attendees/:id/avatar', async (c) => {
   // ~1,000 attendees, and at 500KB a photo it would have become hundreds of MB. The
   // whole database is 1.7MB today; this is what would have grown it past 500MB.
   if (c.env.UPLOADS) {
-    const bytes = Uint8Array.from(atob(m[2]), ch => ch.charCodeAt(0))
     const ext = m[1].split('/')[1].replace('jpeg', 'jpg')
     const key = 'avatars/' + id + '-' + Date.now() + '.' + ext
     await c.env.UPLOADS.put(key, bytes, { httpMetadata: { contentType: m[1], cacheControl: 'public, max-age=31536000' } })
@@ -7738,7 +7793,9 @@ app.post('/api/attendees/:id/avatar', async (c) => {
     if (prev?.avatar_url && String(prev.avatar_url).startsWith('/api/uploads/')) {
       try { await c.env.UPLOADS.delete(String(prev.avatar_url).slice('/api/uploads/'.length)) } catch {}
     }
-    return c.json({ success: true, avatar_url: url })
+    // person_checked says whether the check actually ran, so a missing AI binding
+    // shows up in a response rather than as a silent fail-open.
+    return c.json({ success: true, avatar_url: url, person_checked: verdict.checked })
   }
 
   // No bucket bound (local or a preview build): fall back to the old behaviour so
@@ -19008,6 +19065,22 @@ function mainPageHTML(): string {
       // photo ID, and a pass carrying the holder's face is what makes that check
       // quick. Admin downloads bypass this so the desk can still issue for someone
       // who cannot upload on the spot.
+      // The local copy of avatar_url is whatever this browser last saw, so a photo
+      // removed since still looked present here. Ask the server. (dbd0419 said
+      // this was done; the edit anchored on the card gate instead, which is why
+      // the card asked twice and the pass never did.)
+      if (!adminAttendee) {
+        try {
+          var freshP = await api.get('/api/attendees/' + user.id);
+          if (freshP && typeof freshP.avatar_url !== 'undefined') {
+            user.avatar_url = freshP.avatar_url || '';
+            if (currentUser && currentUser.id === user.id) {
+              currentUser.avatar_url = user.avatar_url;
+              try { localStorage.setItem('agba_user', JSON.stringify(currentUser)); } catch (e) {}
+            }
+          }
+        } catch (e) { /* offline or refused: fall through to the local copy */ }
+      }
       if (!adminAttendee && !hasUploadedPhoto(user.avatar_url)) {
         var got = await askForPassPhoto(user);
         if (got !== 'done') return;
@@ -19141,7 +19214,12 @@ function mainPageHTML(): string {
                 try { localStorage.setItem('agba_user', JSON.stringify(currentUser)); } catch (e) {}
               }
               close('done');
-            } else { status.textContent = 'Upload failed. Please try another image.'; }
+            } else {
+              // The server says why - most usefully, that there is no person in it.
+              status.textContent = (res && res.error) ? res.error : 'Upload failed. Please try another image.';
+              preview.style.display = 'none';
+              input.value = ''; camera.value = '';
+            }
           } catch (e) { status.textContent = 'Upload failed. Please try another image.'; }
         };
       });
@@ -19178,19 +19256,6 @@ function mainPageHTML(): string {
       // The card is a portrait. Without a face it is a letter in a circle, which
       // nobody posts - so this asks for one, exactly as the pass does, but it
       // must not repeat the pass's reason, which is not true here.
-      // Same reason as openSocialCard: the local copy of avatar_url is whatever
-      // this browser last saw. A photo removed since still looked present, the
-      // gate opened, the image failed, and a pass went out with an initial on it.
-      try {
-        var freshP = await api.get('/api/attendees/' + user.id);
-        if (freshP && typeof freshP.avatar_url !== 'undefined') {
-          user.avatar_url = freshP.avatar_url || '';
-          if (currentUser && currentUser.id === user.id) {
-            currentUser.avatar_url = user.avatar_url;
-            try { localStorage.setItem('agba_user', JSON.stringify(currentUser)); } catch (e) {}
-          }
-        }
-      } catch (e) { /* offline or refused: fall through to the local copy */ }
       if (!hasUploadedPhoto(user.avatar_url)) {
         var got = await askForPassPhoto(user, {
           title: 'Add your photo first',
@@ -19244,6 +19309,9 @@ function mainPageHTML(): string {
       var user = currentUser;
       if (!user) return;
       var mine = ++socialCard.seq;
+      // Cleared up front: while a new render is in flight, Download must not hand
+      // over the previous one (a different size, or from before a photo change).
+      socialCard.res = null;
       var img = document.getElementById('sc-preview');
       var load = document.getElementById('sc-loading');
       img.style.display = 'none';
@@ -20416,6 +20484,11 @@ function mainPageHTML(): string {
           updateNavAvatar();
           updateProfileCompletionCard();
           toast('Photo uploaded!');
+        } else {
+          // This used to do nothing at all on a refused upload.
+          document.getElementById('edit-avatar-preview').src = getAvatarUrl(currentUser.email, currentUser.name, 96, currentUser.avatar_url);
+          toast((result && result.error) || 'That photo could not be saved. Please try another.', true);
+          input.value = '';
         }
       } catch(e) {
         toast('Failed to upload photo: ' + (e.message || 'Unknown error'), true);
@@ -24455,7 +24528,7 @@ function adminPageHTML(): string {
       toast('Generating social card for ' + user.name + '...', 'info');
       try {
         var res = await BhaiSocialCard.download(user, { size: 'square' });
-        if (res && res.photoFailed) {
+        if (res && (res.photoFailed || !res.hasPhoto)) {
           toast('Their photo would not load, so the card shows an initial. Not worth sending.', 'error');
           return;
         }

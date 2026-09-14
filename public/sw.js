@@ -9,7 +9,7 @@
 // Bumped because pass-render.js (precached below) now reports a photo that
 // failed to load and the page refuses to issue a pass on that flag; without
 // this a returning visitor keeps the old renderer until it revalidates.
-const VERSION = 'bhai-v6';
+const VERSION = 'bhai-v7';
 const SHELL = `shell-${VERSION}`;
 const DATA = `data-${VERSION}`;
 

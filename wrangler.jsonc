@@ -4,6 +4,9 @@
   "compatibility_date": "2026-02-20",
   "pages_build_output_dir": "./dist",
   "compatibility_flags": ["nodejs_compat"],
+  // Workers AI, for one job: checking an uploaded profile photo has a person in it
+  // before it is stored (personInPhoto in src/index.tsx). Fails open if absent.
+  "ai": { "binding": "AI" },
   "r2_buckets": [
     {
       "binding": "UPLOADS",
