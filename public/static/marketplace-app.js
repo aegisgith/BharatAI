@@ -307,10 +307,9 @@ loginForm.addEventListener('submit', async (e) => {
 })
 
 // ── Images ──
-// Uploads larger than ~120KB used to crash the server and lose the whole form, so
-// no listing has a product image. The server is fixed; photos are also scaled down
-// here so the marketplace grid is not loading multi-megabyte originals, and SVG
-// logos (which the server refuses, since SVG can carry script) are drawn to PNG.
+// Photos are scaled down here so the marketplace grid is not loading
+// multi-megabyte originals, and SVG logos (which the server refuses, since SVG can
+// carry script) are drawn to PNG.
 const RASTER_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif']
 const IMAGE_KINDS = { logo: { maxDim: 512, type: 'image/png' }, photo: { maxDim: 1600, type: 'image/jpeg' } }
 const KEEP_ORIGINAL_BELOW = 1024 * 1024

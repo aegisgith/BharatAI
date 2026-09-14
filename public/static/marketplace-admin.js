@@ -16,7 +16,17 @@ const num = (v) => Number.parseInt(v, 10) || 0
 const toast = document.getElementById('dash-toast')
 const main = document.getElementById('dash-main')
 const showToast = (msg, isError = false) => { toast.textContent = msg; toast.classList.remove('hidden'); toast.classList.toggle('border-rose-500', isError); toast.classList.toggle('border-slate-700', !isError); clearTimeout(showToast.t); showToast.t = setTimeout(() => toast.classList.add('hidden'), 3500) }
-const api = async (path, opts = {}) => { const r = await fetch(path, { headers:{'Content-Type':'application/json'}, credentials:'same-origin', ...opts }); const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error||'Request failed'); return d }
+// Opened from the /admin panel's sidebar, this page uses that panel's sign-in: a
+// staff account travels as a cookie on its own, and the shared admin password lives
+// in this tab's sessionStorage, so it is sent the way the panel sends it. The
+// operator name goes along so approvals are audited under the right person.
+const eventAdminHeaders = () => {
+  const h = {}
+  try { const t = sessionStorage.getItem('tc_admin_token'); if (t) h['Authorization'] = 'Bearer ' + t } catch {}
+  try { const op = localStorage.getItem('tc_admin_operator'); if (op) h['X-Admin-Actor'] = op } catch {}
+  return h
+}
+const api = async (path, opts = {}) => { const r = await fetch(path, { credentials:'same-origin', ...opts, headers:{ 'Content-Type':'application/json', ...eventAdminHeaders(), ...(opts.headers || {}) } }); const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error||'Request failed'); return d }
 const fmtDate = (d) => { if (!d) return '—'; return new Date(String(d).replace(' ', 'T') + (String(d).includes('Z') ? '' : 'Z')).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'}) }
 const statusBadge = (s) => {
   const m = { approved:{cls:'dash-badge--green',icon:'fa-circle-check',label:'Approved'}, pending:{cls:'dash-badge--yellow',icon:'fa-clock',label:'Pending'}, rejected:{cls:'dash-badge--red',icon:'fa-circle-xmark',label:'Rejected'} }
@@ -38,9 +48,17 @@ let exhibitors = []
 const initAdmin = async () => {
   try {
     const d = await api('/api/mp/auth/me')
-    if (!d.user || d.user.role !== 'admin') {
-      main.innerHTML = `<section class="dash-section"><div class="dash-login-required"><i class="fas fa-lock"></i><h2>Admin Access Required</h2><p>Log in with the marketplace admin account using "Exhibitor Login" on the marketplace page.</p><a href="/marketplace" class="dash-btn-primary">Go to Login</a></div></section>`
+    const viaEventAdmin = !!d.event_admin
+    if (!viaEventAdmin && (!d.user || d.user.role !== 'admin')) {
+      main.innerHTML = `<section class="dash-section"><div class="dash-login-required"><i class="fas fa-lock"></i><h2>Admin Access Required</h2><p>Sign in to the event admin panel and open AI Marketplace from its sidebar.</p><a href="/admin" class="dash-btn-primary">Open event admin</a></div></section>`
       return
+    }
+    if (viaEventAdmin) {
+      // Nothing to log out of here: the session belongs to the event admin panel.
+      const out = document.getElementById('dash-logout')
+      if (out) { out.innerHTML = '<i class="fas fa-arrow-left mr-1"></i> Back to event admin'; out.classList.remove('text-rose-400'); out.dataset.back = '1' }
+      const info = document.querySelector('.dash-topbar-info span')
+      if (info) info.textContent = 'Marketplace Admin · signed in through event admin'
     }
     try { exhibitors = (await api('/api/mp/admin/exhibitors')).exhibitors || [] } catch { exhibitors = [] }
     await Promise.all([loadStats(), loadAllListings(), loadPendingListings(), loadInquiries()])
@@ -231,7 +249,8 @@ if (adminRefresh) adminRefresh.addEventListener('click', async () => {
 })
 
 // Logout
-document.getElementById('dash-logout').addEventListener('click', async () => {
+document.getElementById('dash-logout').addEventListener('click', async (e) => {
+  if (e.currentTarget.dataset.back) { window.location.href = '/admin'; return }
   await api('/api/mp/auth/logout', { method:'POST' })
   window.location.href = '/marketplace'
 })

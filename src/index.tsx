@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
-import mp, { setMarketplaceMailer } from './routes/marketplace'
+import mp, { configureMarketplace } from './routes/marketplace'
 import { marketplacePageHTML, marketplaceListingPageHTML, marketplaceDashboardPageHTML, marketplaceAdminPageHTML, marketplaceFaqPageHTML } from './routes/marketplace-pages'
 
 type Bindings = {
@@ -162,9 +162,10 @@ app.get('/api/admin/audit', async (c) => {
 
 // ==================== AI MARKETPLACE (integrated) ====================
 // The marketplace emails the team on new listings and companies on approval and
-// inquiries through the same sender as everything else. Passed in because that
-// module cannot import from this file.
-setMarketplaceMailer(sendAdminEmail)
+// inquiries through the same sender as everything else, lets anyone this panel
+// trusts review listings without the separate marketplace login, and records those
+// reviews in admin_audit. Passed in because that module cannot import from this file.
+configureMarketplace({ sendEmail: sendAdminEmail, isEventAdmin: isAdminRequest, audit })
 app.route('/', mp)
 
 // Marketplace page routes
@@ -21225,6 +21226,9 @@ function adminPageHTML(): string {
       <button onclick="switchSection('inquiries')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="inquiries" title="Inquiries">
         <i class="fas fa-inbox w-5 text-center shrink-0"></i><span class="sidebar-label">Inquiries</span>
       </button>
+      <a href="/marketplace/admin" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all no-underline" title="AI Marketplace: review company listings">
+        <i class="fas fa-robot w-5 text-center shrink-0"></i><span class="sidebar-label">AI Marketplace <span id="mp-pending-badge" class="hidden ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-amber-500/20 text-amber-300" title="Listings waiting for review"></span></span>
+      </a>
       <button onclick="switchSection('payments')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="payments" title="Payments & Invoices">
         <i class="fas fa-file-invoice-dollar w-5 text-center shrink-0"></i><span class="sidebar-label">Payments</span>
       </button>
@@ -21416,6 +21420,20 @@ function adminPageHTML(): string {
       toast(who.trim() ? ('Recording changes as ' + who.trim()) : 'Operator name cleared');
       if (currentSection === 'settings') loadSettings();
     }
+    // Marketplace listings are reviewed on /marketplace/admin, which accepts this
+    // panel's sign-in. The sidebar shows how many are waiting so none go unseen.
+    function mpLoadPendingBadge() {
+      fetch('/api/mp/admin/stats', { headers: authHeaders() })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (s) {
+          var el = document.getElementById('mp-pending-badge');
+          if (!el || !s) return;
+          var n = Number(s.pending) || 0;
+          el.textContent = String(n);
+          el.classList.toggle('hidden', n === 0);
+        })
+        .catch(function () {});
+    }
     function authHeaders(extra) {
       const h = Object.assign({}, extra || {});
       const t = getAdminToken();
@@ -21576,6 +21594,7 @@ function adminPageHTML(): string {
       }
       loadIdentity();
       loadOverview();
+      mpLoadPendingBadge();
       startAutoRefresh();
       // Now that there is a dashboard to show, honour the deep link that arrived
       // before there was one - /admin#rooms opened while signed out lands on

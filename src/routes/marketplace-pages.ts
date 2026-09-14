@@ -390,7 +390,7 @@ export function marketplacePageHTML(): string {
     </div>
   </footer>
 
-  <script src="/static/marketplace-app.js?v=2"></script>
+  <script src="/static/marketplace-app.js?v=3"></script>
 </body>
 </html>`
 }
@@ -729,7 +729,7 @@ export function marketplaceAdminPageHTML(): string {
     </section>
   </div>
 
-  <script src="/static/marketplace-admin.js?v=2"></script>
+  <script src="/static/marketplace-admin.js?v=3"></script>
 </body>
 </html>`
 }

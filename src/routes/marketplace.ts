@@ -14,13 +14,22 @@ type Bindings = {
 }
 const mp = new Hono<{ Bindings: Bindings }>()
 
-// ── Email ──
-// The sender lives in src/index.tsx (sendAdminEmail: Elastic Email, key in
-// app_settings). It is handed in rather than imported because index.tsx imports
-// this module. Until it is set, notifications are skipped and nothing else changes.
+// ── Hooks from the event app ──
+// src/index.tsx owns email, the admin panel's authentication and its audit log.
+// They are handed in rather than imported because index.tsx imports this module.
+// Anything not configured is simply skipped.
 type Mailer = (c: any, to: string, subject: string, html: string) => Promise<{ ok: boolean; error?: string }>
-let mailer: Mailer | null = null
-export const setMarketplaceMailer = (fn: Mailer) => { mailer = fn }
+type MarketplaceHooks = {
+  // sendAdminEmail: Elastic Email, key in app_settings.
+  sendEmail?: Mailer
+  // isAdminRequest: a signed staff session with role 'admin', or the shared admin
+  // password sent as a Bearer header by the /admin panel.
+  isEventAdmin?: (c: any) => boolean
+  // audit(): the admin_audit table the /admin panel reads.
+  audit?: (c: any, action: string, entity?: string, entityId?: any, detail?: any, actorOverride?: { actor: string; kind: string }) => Promise<void>
+}
+let hooks: MarketplaceHooks = {}
+export const configureMarketplace = (h: MarketplaceHooks) => { hooks = { ...hooks, ...h } }
 
 // Eight real submissions sat in 'pending' for up to five months because nothing
 // told anyone they existed. Mail goes out after the response via waitUntil, so a
@@ -57,8 +66,8 @@ const emailRow = (k: string, v: any) => v
   : ''
 
 const sendMail = async (c: any, to: string, subject: string, html: string) => {
-  if (!mailer || !to) return
-  await mailer(c, to, subject, html)
+  if (!hooks.sendEmail || !to) return
+  await hooks.sendEmail(c, to, subject, html)
 }
 
 const teamAddress = async (c: any) =>
@@ -259,6 +268,34 @@ const getCompanyFromSession = async (c: any) => {
 
 const EMAIL_RE = /^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/
 
+// ── Who may moderate ──
+// The marketplace's own role='admin' account, or anyone the /admin event panel
+// already trusts, so the team reviews listings without a second password. The
+// panel's check also accepts ?token=<ADMIN_SECRET>; that is refused here, because
+// a link carrying it would put the master secret in browser history, logs and the
+// Referer of every outbound link on the review page.
+const eventAdminRequest = (c: any): boolean => {
+  if (!hooks.isEventAdmin || c.req.query('token')) return false
+  try { return !!hooks.isEventAdmin(c) } catch { return false }
+}
+
+type MarketplaceAdmin = { via: 'marketplace'; company: any } | { via: 'event'; company: null }
+const marketplaceAdmin = async (c: any): Promise<MarketplaceAdmin | null> => {
+  const company = await getCompanyFromSession(c) as any
+  if (company && company.role === 'admin') return { via: 'marketplace', company }
+  if (eventAdminRequest(c)) return { via: 'event', company: null }
+  return null
+}
+
+// Moderation goes into the same audit log as the rest of the admin panel. An event
+// admin is named the way the panel names them (staff account, or the operator name
+// typed into the panel); the separate marketplace account is named by its email.
+const auditAdmin = async (c: any, admin: MarketplaceAdmin, action: string, entityId: any, detail?: any) => {
+  if (!hooks.audit) return
+  const actorOverride = admin.via === 'marketplace' ? { actor: String(admin.company.email || 'marketplace admin'), kind: 'marketplace-account' } : undefined
+  try { await hooks.audit(c, action, 'mp_listing', entityId, detail, actorOverride) } catch { /* never fail the action it records */ }
+}
+
 // ── Exhibitor cross-link ──
 // Nothing ever set mp_companies.exhibitor_id once the credential-free
 // exhibitor-login route was deleted, so no listing could show a booth. A company
@@ -408,7 +445,7 @@ mp.post('/api/mp/auth/login', async (c) => {
 
 mp.get('/api/mp/auth/me', async (c) => {
   const company = await getCompanyFromSession(c)
-  return c.json({ user: company })
+  return c.json({ user: company, event_admin: !company && eventAdminRequest(c) })
 })
 
 mp.post('/api/mp/auth/logout', async (c) => {
@@ -854,8 +891,8 @@ mp.put('/api/mp/dashboard/profile', async (c) => {
 // ══════════════════════════════════════════
 
 mp.get('/api/mp/admin/listings', async (c) => {
-  const company = await getCompanyFromSession(c)
-  if (!company || company.role !== 'admin') return c.json({ error: 'Admin required' }, 403)
+  const admin = await marketplaceAdmin(c)
+  if (!admin) return c.json({ error: 'Admin required' }, 403)
 
   const status = c.req.query('status')
   let query = `SELECT l.*, co.email AS account_email, e.company_name AS exhibitor_company, e.booth_number AS exhibitor_booth
@@ -873,15 +910,15 @@ mp.get('/api/mp/admin/listings', async (c) => {
 
 // For linking a listing to a booth by hand when the emails don't match.
 mp.get('/api/mp/admin/exhibitors', async (c) => {
-  const company = await getCompanyFromSession(c)
-  if (!company || company.role !== 'admin') return c.json({ error: 'Admin required' }, 403)
+  const admin = await marketplaceAdmin(c)
+  if (!admin) return c.json({ error: 'Admin required' }, 403)
   const rows = await c.env.DB.prepare('SELECT id, company_name, booth_number FROM exhibitors ORDER BY company_name COLLATE NOCASE').all().catch(() => ({ results: [] }))
   return c.json({ exhibitors: rows.results })
 })
 
 mp.patch('/api/mp/admin/listings/:id', async (c) => {
-  const company = await getCompanyFromSession(c)
-  if (!company || company.role !== 'admin') return c.json({ error: 'Admin required' }, 403)
+  const admin = await marketplaceAdmin(c)
+  if (!admin) return c.json({ error: 'Admin required' }, 403)
 
   const id = parseInt(c.req.param('id'), 10)
   const body = await c.req.json().catch(() => ({})) as any
@@ -899,6 +936,7 @@ mp.patch('/api/mp/admin/listings/:id', async (c) => {
     }
     await c.env.DB.prepare('UPDATE mp_listings SET exhibitor_id = ?, booth_number = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').bind(exId, booth, id).run()
     if (listing.company_id) await c.env.DB.prepare('UPDATE mp_companies SET exhibitor_id = ? WHERE id = ?').bind(exId, listing.company_id).run()
+    await auditAdmin(c, admin, 'marketplace.listing-exhibitor', id, { exhibitor_id: exId, booth })
   }
 
   if (body.status !== undefined) {
@@ -914,8 +952,12 @@ mp.patch('/api/mp/admin/listings/:id', async (c) => {
     }
     await c.env.DB.prepare('UPDATE mp_listings SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
       .bind(status, id).run()
+    const reason = String(body.reason || '').trim().slice(0, 2000)
+    if (status !== listing.status) {
+      await auditAdmin(c, admin, 'marketplace.listing-' + status, id, { from: listing.status, reason: reason || undefined })
+    }
     if (status !== listing.status && (status === 'approved' || status === 'rejected')) {
-      notifyCompanyOfDecision(c, id, status, String(body.reason || '').trim().slice(0, 2000))
+      notifyCompanyOfDecision(c, id, status, reason)
     }
   }
 
@@ -923,8 +965,8 @@ mp.patch('/api/mp/admin/listings/:id', async (c) => {
 })
 
 mp.get('/api/mp/admin/inquiries', async (c) => {
-  const company = await getCompanyFromSession(c)
-  if (!company || company.role !== 'admin') return c.json({ error: 'Admin required' }, 403)
+  const admin = await marketplaceAdmin(c)
+  if (!admin) return c.json({ error: 'Admin required' }, 403)
 
   const inquiries = await c.env.DB.prepare(`
     SELECT i.*, l.product_name, l.company_name FROM mp_inquiries i
@@ -935,17 +977,18 @@ mp.get('/api/mp/admin/inquiries', async (c) => {
 })
 
 mp.delete('/api/mp/admin/inquiries/:id', async (c) => {
-  const company = await getCompanyFromSession(c)
-  if (!company || company.role !== 'admin') return c.json({ error: 'Admin required' }, 403)
+  const admin = await marketplaceAdmin(c)
+  if (!admin) return c.json({ error: 'Admin required' }, 403)
 
   const id = c.req.param('id')
   await c.env.DB.prepare('DELETE FROM mp_inquiries WHERE id = ?').bind(parseInt(id)).run()
+  await auditAdmin(c, admin, 'marketplace.inquiry-delete', id)
   return c.json({ success: true })
 })
 
 mp.get('/api/mp/admin/stats', async (c) => {
-  const company = await getCompanyFromSession(c)
-  if (!company || company.role !== 'admin') return c.json({ error: 'Admin required' }, 403)
+  const admin = await marketplaceAdmin(c)
+  if (!admin) return c.json({ error: 'Admin required' }, 403)
 
   const total = await c.env.DB.prepare('SELECT COUNT(*) as cnt FROM mp_listings').first()
   const approved = await c.env.DB.prepare('SELECT COUNT(*) as cnt FROM mp_listings WHERE status = ?').bind('approved').first()
@@ -968,11 +1011,16 @@ mp.get('/api/mp/admin/stats', async (c) => {
 
 // ── Bulk upload (admin) ──
 mp.post('/api/mp/admin/listings/bulk', async (c) => {
-  const company = await getCompanyFromSession(c)
-  if (!company || company.role !== 'admin') return c.json({ error: 'Admin required' }, 403)
+  const admin = await marketplaceAdmin(c)
+  if (!admin) return c.json({ error: 'Admin required' }, 403)
 
   const { listings } = await c.req.json()
   if (!Array.isArray(listings) || !listings.length) return c.json({ error: 'No listings provided' }, 400)
+
+  // Bulk rows belong to the marketplace admin account, whoever uploads them.
+  const ownerId = admin.company?.id
+    ?? ((await c.env.DB.prepare("SELECT id FROM mp_companies WHERE role = 'admin' ORDER BY id LIMIT 1").first()) as any)?.id
+    ?? 1
 
   let success = 0
   let failed = 0
@@ -999,7 +1047,7 @@ mp.post('/api/mp/admin/listings/bulk', async (c) => {
           founder_name, innovation, status
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
-        company.id, String(item.company_name).trim().slice(0, 150), company_slug, v.product_name, product_slug,
+        ownerId, String(item.company_name).trim().slice(0, 150), company_slug, v.product_name, product_slug,
         v.description, s('target_customer'), s('target_industry'), s('ai_category'), s('tags'),
         s('pricing_type'), s('pricing_details'), s('website_url'), s('product_url'),
         s('sales_contact_name'), s('sales_contact_email'), s('sales_contact_phone'),
@@ -1011,6 +1059,7 @@ mp.post('/api/mp/admin/listings/bulk', async (c) => {
     }
   }
 
+  await auditAdmin(c, admin, 'marketplace.bulk-upload', null, { uploaded: success, failed })
   return c.json({ success: true, uploaded: success, failed })
 })
 
