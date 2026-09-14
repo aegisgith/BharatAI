@@ -3425,21 +3425,6 @@ async function requireSelf(c: any, targetId: any): Promise<Response | null> {
   return null
 }
 
-/* Guard for READS that hand back other people.
- *
- * The attendee directory is free to browse on every pass - that is a
- * deliberate product rule and this does not change it. What it changes is who
- * counts as browsing. The networking tab has required a sign-in since it was
- * built (PROTECTED_TABS), so the app has never called these endpoints without
- * a session; leaving them open served nobody except somebody with curl, who
- * could walk all 59 pages unauthenticated and keep the room as a lead list.
- * Names, employers, job titles, cities and LinkedIn URLs for everyone who
- * registered, to anyone who asked, with no account and no trace.
- *
- * Fails OPEN when no secret is configured, exactly as requireSelf does and for
- * the same reason: a rotated or missing secret should degrade to the old
- * behaviour rather than lock every attendee out of the directory at once.
- * GET /api/auth/status reports which mode is live. */
 /* Speakers for the Network tab.
  *
  * The tab says "Connect with fellow attendees, speakers, and exhibitors", but the
@@ -3449,8 +3434,9 @@ async function requireSelf(c: any, targetId: any): Promise<Response | null> {
  * count, and let delegates message people who will never read it.
  *
  * Ministers are left out at the organiser's request. Matched on the role text, so a
- * minister added later is left out too; senior officials who are not ministers
- * (a Joint Secretary, a CEO of a state body) are included.
+ * minister added later is left out too. Two officials who are not ministers were
+ * then left out by name as well (organiser, 14 Sep): see NETWORK_HIDDEN_SPEAKER_SLUGS.
+ * Every other speaker is shown, including other government office holders.
  *
  * A speaker links to a delegate profile - which is where Connect, Message and
  * Meeting live, under the usual pass rules - only when that is the same person:
@@ -3462,6 +3448,15 @@ async function requireSelf(c: any, targetId: any): Promise<Response | null> {
 const SPEAKER_ORG_STOPWORDS = new Set(['and', 'the', 'for', 'pvt', 'ltd', 'limited', 'private', 'india', 'indian', 'inc', 'llp', 'group',
   'company', 'services', 'solutions', 'technologies', 'technology', 'global', 'international', 'head', 'chief', 'officer', 'director',
   'president', 'vice', 'senior', 'manager', 'leader', 'partner', 'founder', 'executive', 'ceo', 'cto', 'cio', 'coo'])
+
+// Officials the organiser asked to keep out of the Network tab although their role
+// is not a minister's: K.K. Singh (Joint Secretary, MeitY) and Praveen Pardeshi
+// (CEO, MITRA). By slug: speakers are seeded by migration 0033 and nothing in the
+// app edits them, so a slug only changes if someone reseeds, and then this list must
+// change with it. This is the only place the app reads the speakers table; the
+// marketing site's speaker sections (index.html, conference.html) are hand-written
+// and still show both.
+const NETWORK_HIDDEN_SPEAKER_SLUGS = new Set(['k-k-singh', 'praveen-pardeshi'])
 
 function speakerLinkScore(sp: any, at: any): number {
   const words = (v: any) => new Set(String(v || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/)
@@ -3481,7 +3476,8 @@ app.get('/api/events/:id/speakers', async (c) => {
       'SELECT id, slug, name, role, organisation, topic, photo_url, bio, linkedin_url, email, is_featured, sort_order FROM speakers WHERE event_id = ? AND is_published = 1 ORDER BY is_featured DESC, sort_order ASC, id ASC'
     ).bind(eventId).all()).results || []) as any[]
   } catch (_) { return c.json([]) }
-  speakers = speakers.filter(sp => !/\bminister\b/i.test(String(sp.role || '')))
+  speakers = speakers.filter(sp => !/\bminister\b/i.test(String(sp.role || '')) &&
+    !NETWORK_HIDDEN_SPEAKER_SLUGS.has(String(sp.slug || '').trim().toLowerCase()))
   const names = [...new Set(speakers.map(sp => String(sp.name || '').trim().toLowerCase()).filter(Boolean))]
   const emails = [...new Set(speakers.map(sp => String(sp.email || '').trim().toLowerCase()).filter(Boolean))]
   let candidates: any[] = []
@@ -3514,6 +3510,21 @@ app.get('/api/events/:id/speakers', async (c) => {
   return c.json(out)
 })
 
+/* Guard for READS that hand back other people.
+ *
+ * The attendee directory is free to browse on every pass - that is a
+ * deliberate product rule and this does not change it. What it changes is who
+ * counts as browsing. The networking tab has required a sign-in since it was
+ * built (PROTECTED_TABS), so the app has never called these endpoints without
+ * a session; leaving them open served nobody except somebody with curl, who
+ * could walk all 59 pages unauthenticated and keep the room as a lead list.
+ * Names, employers, job titles, cities and LinkedIn URLs for everyone who
+ * registered, to anyone who asked, with no account and no trace.
+ *
+ * Fails OPEN when no secret is configured, exactly as requireSelf does and for
+ * the same reason: a rotated or missing secret should degrade to the old
+ * behaviour rather than lock every attendee out of the directory at once.
+ * GET /api/auth/status reports which mode is live. */
 async function requireSignedIn(c: any): Promise<Response | null> {
   if (!attendeeSessionSecret(c)) return null
   if (isAdminRequest(c)) return null
