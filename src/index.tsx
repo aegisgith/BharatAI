@@ -21349,6 +21349,14 @@ function mainPageHTML(): string {
       setTimeout(() => { toast.classList.add('translate-x-full'); setTimeout(() => toast.remove(), 300); }, 3000);
     }
 
+    // The profile photo, logo and photo-removal handlers call toast(msg, isError),
+    // the admin page's name for this. /app never defined it, so all thirteen calls
+    // threw: a photo refused as someone else's showed no reason at all, and a photo
+    // that saved reported "Failed" from the catch, which threw again.
+    function toast(msg, isError) {
+      showToast(msg, isError === true ? 'error' : (typeof isError === 'string' ? isError : 'success'));
+    }
+
     // ==================== PAID PASS MODAL ====================
     function openPaidPassForm() {
       document.getElementById('paid-pass-modal').classList.remove('hidden');
