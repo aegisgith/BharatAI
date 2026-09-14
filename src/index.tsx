@@ -7735,20 +7735,33 @@ app.put('/api/attendees/:id/profile', async (c) => {
 const PERSON_MODEL = '@cf/facebook/detr-resnet-50'
 const PERSON_MIN_SCORE = 0.5
 
-async function personInPhoto(c: any, bytes: Uint8Array): Promise<{ checked: boolean; person: boolean; score: number }> {
+/* Open only when the binding is missing - a configuration state, visible in
+ * person_checked:false on every upload, where refusing would stop everyone.
+ * A model error or timeout is different: it is exactly what an oversized GIF or
+ * a malformed file produces, so treating it as a yes turned 'break the check'
+ * into 'skip the check'. One retry, then the upload is refused with a
+ * try-again message - a real photo from the app's own JPEG resize has not
+ * failed once across 208 real uploads. */
+async function personInPhoto(c: any, bytes: Uint8Array): Promise<{ checked: boolean; person: boolean; score: number; failed?: boolean }> {
   if (!c.env.AI) return { checked: false, person: true, score: 0 }
-  try {
+  const once = async () => {
     const run = c.env.AI.run(PERSON_MODEL, { image: Array.from(bytes) })
     const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('person check timed out')), 8000))
     const out: any = await Promise.race([run, timeout])
     const objs: any[] = Array.isArray(out) ? out : (Array.isArray(out?.result) ? out.result : [])
     let score = 0
     for (const o of objs) if (o && o.label === 'person') score = Math.max(score, Number(o.score) || 0)
-    return { checked: true, person: score >= PERSON_MIN_SCORE, score }
-  } catch (e) {
-    console.log('personInPhoto: check unavailable, accepting upload:', String(e).slice(0, 200))
-    return { checked: false, person: true, score: 0 }
+    return score
   }
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const score = await once()
+      return { checked: true, person: score >= PERSON_MIN_SCORE, score }
+    } catch (e) {
+      console.log('personInPhoto attempt ' + (attempt + 1) + ' failed:', String(e).slice(0, 200))
+    }
+  }
+  return { checked: true, person: false, score: 0, failed: true }
 }
 
 app.post('/api/attendees/:id/avatar', async (c) => {
@@ -7768,6 +7781,9 @@ app.post('/api/attendees/:id/avatar', async (c) => {
 
   const bytes = Uint8Array.from(atob(m[2]), ch => ch.charCodeAt(0))
   const verdict = await personInPhoto(c, bytes)
+  if (verdict.failed) {
+    return c.json({ error: 'We could not check that photo just now. Please try again in a moment.', check_failed: true }, 503)
+  }
   if (verdict.checked && !verdict.person) {
     return c.json({
       error: 'We could not see a person in that image. Please choose a clear photo of yourself - it goes on your pass and your card.',
@@ -15042,6 +15058,38 @@ function mainPageHTML(): string {
     let currentTab = 'dashboard';
     let searchTimeout = null;
 
+    /* The square the pass and the card actually draw. Both cover-fit the photo
+     * into a circle from the centre, so anything outside the centred square never
+     * appears - yet the person check used to score the whole frame, and a wide
+     * shot with the person at one edge passed while the circle showed the stage.
+     * Cropping before upload makes the checked image and the drawn image the same
+     * image. JPEG like resizeImage, so the server sees the same format as before. */
+    function squareCropImage(file, size, quality) {
+      return new Promise((resolve, reject) => {
+        size = size || 400;
+        quality = quality || 0.85;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = new Image();
+          img.onload = () => {
+            const side = Math.min(img.width, img.height);
+            const sx = (img.width - side) / 2, sy = (img.height - side) / 2;
+            const out = Math.min(size, side);
+            const canvas = document.createElement('canvas');
+            canvas.width = out; canvas.height = out;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, out, out);
+            ctx.drawImage(img, sx, sy, side, side, 0, 0, out, out);
+            resolve(canvas.toDataURL('image/jpeg', quality));
+          };
+          img.onerror = reject;
+          img.src = e.target.result;
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+
     function resizeImage(file, maxSize, quality) {
       return new Promise((resolve, reject) => {
         maxSize = maxSize || 256;
@@ -19200,7 +19248,7 @@ function mainPageHTML(): string {
           if (file.size > 40 * 1024 * 1024) { status.textContent = 'That image is enormous. Please choose another.'; return; }
           status.textContent = 'Uploading...';
           try {
-            var dataUrl = await resizeImage(file, 400, 0.85);
+            var dataUrl = await squareCropImage(file, 400, 0.85);
             // Show them the crop the moment it exists. Uploading behind a bare
             // "Uploading..." gives no sign the right picture was picked, and the
             // modal then vanishes before they ever see it.
@@ -19329,7 +19377,10 @@ function mainPageHTML(): string {
          * and the initials went out. Now the result is never stored, so there
          * is nothing to download or share, and the person is asked for the
          * photo again through the same modal the gate uses. */
-        if (res.photoFailed) {
+        // hasPhoto, not just photoFailed: an empty avatar_url never sets photoFailed,
+        // so a render reached without a photo (a re-render racing a profile save,
+        // or the size tabs driven from the console) drew initials and kept them.
+        if (res.photoFailed || !res.hasPhoto) {
           socialCard.res = null;
           load.classList.add('hidden');
           closeSocialCard();
@@ -19354,7 +19405,7 @@ function mainPageHTML(): string {
       var user = currentUser;
       // res is never stored for a failed photo, so this is belt and braces;
       // it also stops a result from an earlier render being reused.
-      if (!user || !socialCard.res || socialCard.res.photoFailed) return;
+      if (!user || !socialCard.res || socialCard.res.photoFailed || !socialCard.res.hasPhoto) return;
       var link = document.createElement('a');
       link.download = socialCard.res.filename;
       link.href = socialCard.res.dataUrl;
@@ -19380,7 +19431,7 @@ function mainPageHTML(): string {
 
     async function shareSocialCard() {
       var user = currentUser;
-      if (!user || !socialCard.res || socialCard.res.photoFailed) return;
+      if (!user || !socialCard.res || socialCard.res.photoFailed || !socialCard.res.hasPhoto) return;
       try {
         var blob = await (await fetch(socialCard.res.dataUrl)).blob();
         var file = new File([blob], socialCard.res.filename, { type: 'image/png' });
@@ -20468,7 +20519,7 @@ function mainPageHTML(): string {
         return;
       }
       try {
-        const dataUrl = await resizeImage(file, 256, 0.8);
+        const dataUrl = await squareCropImage(file, 400, 0.85);
         if (dataUrl.length > 700000) { toast('That image would not compress small enough. Please try another.', true); return; }
         document.getElementById('edit-avatar-preview').src = dataUrl;
         // Upload immediately
