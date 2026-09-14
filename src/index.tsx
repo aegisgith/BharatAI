@@ -3366,7 +3366,31 @@ app.get('/api/events/:id/attendees', async (c) => {
   }
 
   const limit = attendeeListLimit(c.req.query('limit'))
-  const query = `SELECT ${cols} FROM attendees${where} ORDER BY is_online DESC, name ASC LIMIT ${limit}`
+
+  /* Chunked mode, for the admin table. The byte cap below is load-bearing and
+   * its comment is right that the answer is never a bigger number - but a cap
+   * that drops rows off the end means the table quietly stops showing people
+   * as the rows fill up. By 14 Sep it was hiding the last 136 by name, and they
+   * were missing from Notify, Export, Set pass and Select all, with only a
+   * tooltip to say so.
+   *
+   * ?after_id=N walks the table in id order: every chunk is still measured and
+   * trimmed exactly as before, and the next chunk starts after the last id
+   * actually sent, so a trimmed chunk loses nobody - they arrive in the next
+   * one. id is total and never changes, unlike is_online, so nothing can be
+   * skipped or sent twice between requests. The grid sorts on its own, so the
+   * order rows arrive in does not reach the screen. Without after_id this
+   * route behaves exactly as it always has. */
+  const afterRaw = c.req.query('after_id')
+  const chunked = afterRaw !== undefined && afterRaw !== null && afterRaw !== ''
+  const afterId = chunked ? Math.max(0, parseInt(String(afterRaw), 10) || 0) : 0
+  // The count has to describe the whole list, not what is left after this id.
+  const countWhere = where
+  const countParams = [...params]
+  const query = chunked
+    ? `SELECT ${cols} FROM attendees${where} AND id > ? ORDER BY id ASC LIMIT ${limit}`
+    : `SELECT ${cols} FROM attendees${where} ORDER BY is_online DESC, name ASC LIMIT ${limit}`
+  if (chunked) params.push(afterId)
 
   const { results } = await c.env.DB.prepare(query).bind(...params).all()
   let rows = (results || []) as any[]
@@ -3394,9 +3418,9 @@ app.get('/api/events/:id/attendees', async (c) => {
   // count - but only when something was actually left out. In the normal case the
   // rows in hand are the count, and the extra query is not run at all.
   let total = rows.length
-  if (rows.length < fetched || fetched >= limit) {
+  if (chunked || rows.length < fetched || fetched >= limit) {
     try {
-      const row = await c.env.DB.prepare(`SELECT COUNT(*) AS n FROM attendees${where}`).bind(...params).first() as any
+      const row = await c.env.DB.prepare(`SELECT COUNT(*) AS n FROM attendees${countWhere}`).bind(...countParams).first() as any
       const n = Number(row && row.n)
       if (Number.isFinite(n) && n > total) total = n
     } catch { /* the count is a nicety; the rows already fetched are the answer */ }
@@ -3421,7 +3445,11 @@ app.get('/api/events/:id/attendees', async (c) => {
       'X-Returned-Count': String(rows.length),
       'X-Truncated': cut ? '1' : '0',
       'X-Truncated-By': cutBy,
-      'Access-Control-Expose-Headers': 'X-Total-Count, X-Returned-Count, X-Truncated, X-Truncated-By',
+      // X-Chunked tells the client this server understood after_id. An older
+      // deploy ignores the parameter and would hand back page one forever.
+      'X-Chunked': chunked ? '1' : '0',
+      'X-Last-Id': rows.length ? String((rows[rows.length - 1] as any).id) : '',
+      'Access-Control-Expose-Headers': 'X-Total-Count, X-Returned-Count, X-Truncated, X-Truncated-By, X-Chunked, X-Last-Id',
     },
   })
 })
@@ -21467,6 +21495,8 @@ function adminPageHTML(): string {
           total: isNaN(n) ? (Array.isArray(data) ? data.length : 0) : n,
           truncated: r.headers.get('X-Truncated') === '1',
           truncatedBy: r.headers.get('X-Truncated-By') || '',
+          chunked: r.headers.get('X-Chunked') === '1',
+          lastId: r.headers.get('X-Last-Id') || '',
         };
       }),
       post: (u,d) => fetch(u,{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify(d)}).then(async r => { if (r.status===401){handleAuthFailure();throw new Error('unauthorized');} const j = await r.json(); if (!r.ok) throw Object.assign(new Error(j.error||'Request failed'), {data:j}); return j; }),
@@ -22681,6 +22711,34 @@ function adminPageHTML(): string {
     function setAttPageSize(v) { attPageSize = v === 'all' ? Infinity : parseInt(v, 10); attPage = 1; loadAdminAttendees(null, true); }
     function searchAttendees(v) { attQuery = v; attPage = 1; loadAdminAttendees(null, true); }
 
+    /* The whole list, in pieces that each fit through the 950 KB cap. One request
+     * used to be the whole story, and the cap dropped the alphabetical tail - 136
+     * people by 14 Sep, and growing every time someone uploaded a photo.
+     * 700 rows is about half the cap at today's row width, so a chunk is never
+     * trimmed in normal use; if one ever is, the next starts after the last id
+     * that arrived and nobody is lost. Stops on an empty chunk, on reaching the
+     * total, on a server that does not understand after_id, or on an id that
+     * fails to advance - any of which would otherwise loop. */
+    async function fetchAdminAttendeesAll() {
+      var all = [], after = 0, total = 0, rounds = 0, seen = {};
+      while (rounds++ < 60) {
+        var r = await api.getWithMeta('/api/events/' + EID + '/attendees?limit=700&after_id=' + after);
+        var rows = Array.isArray(r.data) ? r.data : [];
+        if (rounds === 1 && !r.chunked) return r;   // older server: its answer, as before
+        total = Math.max(total, r.total || 0);
+        if (!rows.length) break;
+        for (var i = 0; i < rows.length; i++) {
+          if (!seen[rows[i].id]) { seen[rows[i].id] = 1; all.push(rows[i]); }
+        }
+        var next = Number(r.lastId || rows[rows.length - 1].id) || 0;
+        if (next <= after) break;
+        after = next;
+        if (all.length >= total) break;
+      }
+      var short = all.length < total;
+      return { data: all, total: Math.max(total, all.length), truncated: short, truncatedBy: short ? 'bytes' : '' };
+    }
+
     async function loadAdminAttendees(scrollToId, keepData) {
       // Preserve scroll position before reload
       const scrollContainer = document.querySelector('#section-attendees .overflow-y-auto');
@@ -22693,7 +22751,7 @@ function adminPageHTML(): string {
           attendees = lastAttendees; dupData = lastDupData || { groups: [] };
         } else {
           var _r = await Promise.all([
-            api.getWithMeta('/api/events/'+EID+'/attendees' + (attWantAll ? '?limit=all' : '')),
+            fetchAdminAttendeesAll(),
             api.get('/api/admin/events/'+EID+'/attendees/duplicates').catch(()=>({groups:[]}))
           ]);
           attendees = _r[0].data;
