@@ -69,5 +69,21 @@
     return canvas;
   }
 
-  global.BhaiPhotoFingerprint = { fromCanvas: fromCanvas, squareCanvas: squareCanvas };
+  /* The same fingerprint of the canvas flipped left to right. A mirror is one tap
+   * in any phone's photo editor, and it moves both hashes far past the match
+   * threshold, so a saved photo flipped once used to go straight through. The
+   * server compares this one as well: flipping an uploaded image back gives the
+   * original's fingerprint again. Drawn at scale -1 on whole pixels, so it is an
+   * exact mirror with no resampling. */
+  function mirroredFromCanvas(canvas) {
+    var m = document.createElement('canvas');
+    m.width = canvas.width; m.height = canvas.height;
+    var ctx = m.getContext('2d');
+    ctx.translate(canvas.width, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(canvas, 0, 0);
+    return fromCanvas(m);
+  }
+
+  global.BhaiPhotoFingerprint = { fromCanvas: fromCanvas, squareCanvas: squareCanvas, mirroredFromCanvas: mirroredFromCanvas };
 })(window);

@@ -2440,53 +2440,132 @@ app.post('/api/verify/:token/undo', async (c) => {
  * government ID next to the person, can. This records that judgement and acts on
  * it: the photo comes off the pass and the card (so the next pass or creative
  * they make has to start from a new photo, through the person and reuse checks),
- * but it is kept - moved to flagged_avatar_url, not deleted - with who flagged it
- * and when. Its fingerprint is kept too, so the same photo cannot simply be
- * uploaded again, by them or by anyone.
+ * but it is kept, with who flagged it and when. Its fingerprint stays blocked, so
+ * the same photo cannot simply be uploaded again, by them or by anyone.
+ *
+ * Every flag is its own row in photo_flags (0039) and is never overwritten. The
+ * flagged_* columns on attendees only summarise the latest open one for this
+ * screen and the admin list. When they were the only record, a second flag
+ * replaced the first: its URL was lost and its photo was unblocked.
+ *
+ * The page sends the photo the operator was looking at. If the attendee has
+ * changed it since the screen loaded, nothing is flagged, because the operator
+ * judged a different picture from the one on the pass now.
  *
  * It does not refuse entry. The desk still decides that, on the ID.
- * Undo is allowed for the same 15 minutes as a check-in, for a mis-tap. */
+ * Undo is allowed for the same 15 minutes as a check-in, for a mis-tap; after
+ * that an admin can clear a wrong flag from the attendee list. */
 app.post('/api/verify/:token/photo-mismatch', async (c) => {
   const who = await deskActor(c)
   if (!who) return c.json({ error: 'Badge desk sign-in required' }, 401)
   const id = await verifyPassToken(c, c.req.param('token'))
   if (id === null) return c.json({ error: 'Invalid pass' }, 400)
+  const body = await c.req.json().catch(() => ({})) as any
+  const judged = String(body.photo || '').trim()
+  const changed = { error: 'Their photo changed after this screen opened. Reload and check the new one.', reload: true }
+  if (!judged) return c.json(changed, 409)
   let a: any = null
   try {
-    a = await c.env.DB.prepare('SELECT id, avatar_url, photo_flagged_at FROM attendees WHERE id = ?').bind(id).first()
+    a = await c.env.DB.prepare('SELECT id, avatar_url, avatar_fingerprint FROM attendees WHERE id = ?').bind(id).first()
+    await c.env.DB.prepare('SELECT id FROM photo_flags LIMIT 1').first()
   } catch (_) {
     return c.json({ error: 'Photo flagging is not switched on yet.' }, 503)
   }
   if (!a) return c.json({ error: 'Not found' }, 404)
-  if (!String(a.avatar_url || '').trim()) return c.json({ error: 'There is no photo on this pass to flag.' }, 409)
-  await c.env.DB.prepare(
-    "UPDATE attendees SET flagged_avatar_url = avatar_url, flagged_avatar_fingerprint = avatar_fingerprint, avatar_url = NULL, avatar_fingerprint = NULL, photo_flagged_at = datetime('now'), photo_flagged_by = ? WHERE id = ?"
-  ).bind(String(who.name || 'desk').slice(0, 40), id).run()
-  try { await audit(c, 'attendee.photo-flagged', 'attendee', String(id), { by: who.name || 'desk' }) } catch (_) {}
+  const current = String(a.avatar_url || '').trim()
+  if (!current) return c.json({ error: 'There is no photo on this pass to flag.' }, 409)
+  if (current !== judged) return c.json(changed, 409)
+  const by = String(who.name || 'desk').slice(0, 40)
+  // One transaction. The UPDATE only lands if the judged photo is still the one
+  // on the row, and the history row is only written if it did.
+  const [upd] = await c.env.DB.batch([
+    c.env.DB.prepare(
+      "UPDATE attendees SET flagged_avatar_url = avatar_url, flagged_avatar_fingerprint = avatar_fingerprint, avatar_url = NULL, avatar_fingerprint = NULL, photo_flagged_at = datetime('now'), photo_flagged_by = ? WHERE id = ? AND avatar_url = ?"
+    ).bind(by, id, a.avatar_url),
+    c.env.DB.prepare(
+      "INSERT INTO photo_flags (attendee_id, avatar_url, fingerprint, flagged_at, flagged_by) SELECT id, flagged_avatar_url, flagged_avatar_fingerprint, photo_flagged_at, photo_flagged_by FROM attendees WHERE id = ? AND avatar_url IS NULL AND flagged_avatar_url = ? AND NOT EXISTS (SELECT 1 FROM photo_flags WHERE attendee_id = ? AND avatar_url = ? AND cleared_at IS NULL)"
+    ).bind(id, a.avatar_url, id, a.avatar_url),
+  ])
+  if (!upd?.meta?.changes) return c.json(changed, 409)
+  try {
+    await audit(c, 'attendee.photo-flagged', 'attendee', String(id),
+      { by, photo: a.avatar_url, fingerprint: a.avatar_fingerprint || null }, { actor: by, kind: 'desk-account' })
+  } catch (_) {}
   return c.json({ success: true })
 })
+
+/* Closes flags and puts the summary on the attendees row back in step with what
+ * is still open. If the attendee has no photo now, the most recent of the cleared
+ * flags goes back on the pass: clearing a flag means the desk got it wrong. */
+async function clearPhotoFlags(c: any, id: any, flagIds: number[], by: string, how: string) {
+  if (!flagIds.length) return
+  const marks = flagIds.map(() => '?').join(',')
+  const latest = await c.env.DB.prepare(
+    `SELECT avatar_url, fingerprint FROM photo_flags WHERE id IN (${marks}) ORDER BY id DESC LIMIT 1`
+  ).bind(...flagIds).first() as any
+  const openLatest = (col: string) =>
+    `(SELECT ${col} FROM photo_flags WHERE attendee_id = ? AND cleared_at IS NULL ORDER BY id DESC LIMIT 1)`
+  const stmts = [
+    c.env.DB.prepare(
+      `UPDATE photo_flags SET cleared_at = datetime('now'), cleared_by = ?, cleared_how = ? WHERE id IN (${marks}) AND cleared_at IS NULL`
+    ).bind(by, how, ...flagIds),
+  ]
+  if (latest?.avatar_url) {
+    stmts.push(c.env.DB.prepare(
+      "UPDATE attendees SET avatar_url = ?, avatar_fingerprint = ? WHERE id = ? AND (avatar_url IS NULL OR TRIM(avatar_url) = '')"
+    ).bind(latest.avatar_url, latest.fingerprint || null, id))
+  }
+  stmts.push(c.env.DB.prepare(
+    `UPDATE attendees SET flagged_avatar_url = ${openLatest('avatar_url')}, flagged_avatar_fingerprint = ${openLatest('fingerprint')}, photo_flagged_at = ${openLatest('flagged_at')}, photo_flagged_by = ${openLatest('flagged_by')} WHERE id = ?`
+  ).bind(id, id, id, id, id))
+  await c.env.DB.batch(stmts)
+}
 
 app.post('/api/verify/:token/photo-mismatch/undo', async (c) => {
   const who = await deskActor(c)
   if (!who) return c.json({ error: 'Badge desk sign-in required' }, 401)
   const id = await verifyPassToken(c, c.req.param('token'))
   if (id === null) return c.json({ error: 'Invalid pass' }, 400)
-  let a: any = null
+  let a: any = null, flag: any = null
   try {
-    a = await c.env.DB.prepare('SELECT id, avatar_url, flagged_avatar_url, photo_flagged_at FROM attendees WHERE id = ?').bind(id).first()
+    a = await c.env.DB.prepare('SELECT id, avatar_url FROM attendees WHERE id = ?').bind(id).first()
+    flag = await c.env.DB.prepare(
+      'SELECT id, flagged_at FROM photo_flags WHERE attendee_id = ? AND cleared_at IS NULL ORDER BY id DESC LIMIT 1'
+    ).bind(id).first()
   } catch (_) {
     return c.json({ error: 'Photo flagging is not switched on yet.' }, 503)
   }
   if (!a) return c.json({ error: 'Not found' }, 404)
-  if (!a.photo_flagged_at) return c.json({ success: true, already: false })
+  if (!flag) return c.json({ success: true, already: false })
   if (String(a.avatar_url || '').trim()) return c.json({ error: 'They have already added a new photo, so the old one cannot be put back.' }, 409)
-  const age = Date.now() - new Date(String(a.photo_flagged_at).replace(' ', 'T') + 'Z').getTime()
-  if (age > CHECKIN_UNDO_MINUTES * 60000) return c.json({ error: 'Too long ago to undo here. Ask the admin desk.' }, 409)
-  await c.env.DB.prepare(
-    'UPDATE attendees SET avatar_url = flagged_avatar_url, avatar_fingerprint = flagged_avatar_fingerprint, flagged_avatar_url = NULL, flagged_avatar_fingerprint = NULL, photo_flagged_at = NULL, photo_flagged_by = NULL WHERE id = ?'
-  ).bind(id).run()
-  try { await audit(c, 'attendee.photo-flag-undone', 'attendee', String(id), { by: who.name || 'desk' }) } catch (_) {}
+  const age = Date.now() - new Date(String(flag.flagged_at).replace(' ', 'T') + 'Z').getTime()
+  if (age > CHECKIN_UNDO_MINUTES * 60000) {
+    return c.json({ error: 'Too long ago to undo here. An admin can clear the flag from the attendee list.' }, 409)
+  }
+  const by = String(who.name || 'desk').slice(0, 40)
+  await clearPhotoFlags(c, id, [Number(flag.id)], by, 'desk-undo')
+  try { await audit(c, 'attendee.photo-flag-undone', 'attendee', String(id), { by, flag: flag.id }, { actor: by, kind: 'desk-account' }) } catch (_) {}
   return c.json({ success: true })
+})
+
+// After the desk's 15 minutes, a wrong flag had no way off: the attendee's own
+// photo stayed blocked for good. Admin clears every open flag on the attendee.
+app.post('/api/admin/attendees/:id/photo-flags/clear', async (c) => {
+  const id = c.req.param('id')
+  let open: any[] = []
+  try {
+    open = ((await c.env.DB.prepare(
+      'SELECT id FROM photo_flags WHERE attendee_id = ? AND cleared_at IS NULL ORDER BY id'
+    ).bind(id).all()).results || []) as any[]
+  } catch (_) {
+    return c.json({ error: 'Photo flagging is not switched on yet.' }, 503)
+  }
+  if (!open.length) return c.json({ success: true, cleared: 0 })
+  const actor = adminActor(c)
+  const ids = open.map(r => Number(r.id))
+  await clearPhotoFlags(c, id, ids, String(actor.actor || 'admin').slice(0, 40), 'admin')
+  try { await audit(c, 'attendee.photo-flag-cleared', 'attendee', String(id), { flags: ids }) } catch (_) {}
+  return c.json({ success: true, cleared: ids.length })
 })
 
 function verifyPageHTML(o: any): string {
@@ -2544,7 +2623,7 @@ function verifyPageHTML(o: any): string {
             ? `<div class="warn">Already checked in ${esc(istStamp(a.checked_in_at))}${a.checked_in_by ? ' by ' + esc(a.checked_in_by) : ''}</div>
                ${o.undoable ? `<button id="undo" onclick="undo()" style="background:#243056;">Undo this check-in</button>` : ''}`
             : `<button id="ci" onclick="checkIn()">Check in</button>`}
-         ${hasPassPhoto ? `<button id="pf" class="secondary" onclick="flagPhoto()">Photo doesn&rsquo;t match this person</button>` : ''}
+         ${hasPassPhoto ? `<button id="pf" class="secondary" data-photo="${esc(a.avatar_url)}" onclick="flagPhoto()">Photo doesn&rsquo;t match this person</button>` : ''}
          ${o.flagUndoable ? `<button id="pfu" class="secondary" onclick="undoFlag()">Undo photo flag</button>` : ''}
          <p id="msg" class="muted"></p>
        </div>`
@@ -2602,23 +2681,36 @@ function verifyPageHTML(o: any): string {
  }
  // The face on the pass is not the person in front of the desk. Takes the photo
  // off the pass and records who said so; entry is still decided on the ID.
+ // It sends the photo this screen showed, so a picture changed since the scan is
+ // never flagged on the strength of a look at a different one.
  async function flagPhoto(){
    var b = document.getElementById('pf'), m = document.getElementById('msg');
    if (!confirm('Remove this photo from their pass and card? They will have to add a new photo. Check their government ID before admitting.')) return;
    b.disabled = true; b.textContent = 'Flagging...';
-   var r = await fetch('/api/verify/' + encodeURIComponent(TOKEN) + '/photo-mismatch', { method:'POST' });
-   var j = await r.json().catch(function(){ return {}; });
-   if (r.ok) location.reload();
-   else if (r.status === 401) { signIn(); }
-   else { b.disabled = false; b.textContent = 'Photo doesn\u2019t match this person'; m.textContent = j.error || 'Could not flag the photo'; }
+   var label = 'Photo doesn\u2019t match this person';
+   try {
+     var r = await fetch('/api/verify/' + encodeURIComponent(TOKEN) + '/photo-mismatch', {
+       method: 'POST', headers: { 'Content-Type': 'application/json' },
+       body: JSON.stringify({ photo: b.getAttribute('data-photo') || '' })
+     });
+     var j = await r.json().catch(function(){ return {}; });
+     if (r.ok) location.reload();
+     else if (r.status === 401) { signIn(); }
+     else {
+       b.disabled = false; b.textContent = label; m.textContent = j.error || 'Could not flag the photo';
+       if (j.reload) setTimeout(function(){ location.reload(); }, 2500);
+     }
+   } catch (e) { b.disabled = false; b.textContent = label; m.textContent = 'Network error. Try again.'; }
  }
  async function undoFlag(){
    var b = document.getElementById('pfu'), m = document.getElementById('msg');
    b.disabled = true; b.textContent = 'Undoing...';
-   var r = await fetch('/api/verify/' + encodeURIComponent(TOKEN) + '/photo-mismatch/undo', { method:'POST' });
-   var j = await r.json().catch(function(){ return {}; });
-   if (r.ok) location.reload();
-   else { b.disabled = false; b.textContent = 'Undo photo flag'; m.textContent = j.error || 'Could not undo'; }
+   try {
+     var r = await fetch('/api/verify/' + encodeURIComponent(TOKEN) + '/photo-mismatch/undo', { method:'POST' });
+     var j = await r.json().catch(function(){ return {}; });
+     if (r.ok) location.reload();
+     else { b.disabled = false; b.textContent = 'Undo photo flag'; m.textContent = j.error || 'Could not undo'; }
+   } catch (e) { b.disabled = false; b.textContent = 'Undo photo flag'; m.textContent = 'Network error. Try again.'; }
  }
  // The desk works in a queue: finishing one person should offer the next scan.
  function next(){
@@ -7965,16 +8057,29 @@ async function personInPhoto(c: any, bytes: Uint8Array): Promise<{ checked: bool
  * photos of DIFFERENT people were 91+ apart on the difference hash. Matching on
  * d <= 64 AND a <= 16 caught every re-upload and matched nobody else.
  *
- * Two honest exceptions, both found in the real data:
- *  - the same person registered twice (#118 and #811 are one man with a work and
- *    a personal email and one mobile number): same email or mobile is allowed;
- *  - a speaker using their own website photo (#6): allowed when every part of
- *    the attendee's name appears in that image's filename.
+ * The browser also sends the fingerprint of the same square flipped left to
+ * right, and both are compared. A mirror is one tap in a phone's photo editor
+ * and it used to get any photo through: 20 of 423 flipped copies matched before,
+ * 423 of 423 with the flipped fingerprint, and it matched no other photo.
  *
- * Limit, stated rather than hidden: the fingerprint is computed in the browser,
- * so someone editing requests in developer tools can send a false one. What it
- * stops is the ordinary cheat through the ordinary app. A photo of a stranger
- * from elsewhere on the internet is not caught; the badge desk is. */
+ * A photo flagged at the badge desk is blocked for every account, with no
+ * exceptions: the exceptions below are about who owns a photo, and the desk has
+ * already said whose it is not.
+ *
+ * Two honest exceptions for everything else, both found in the real data:
+ *  - the same person registered twice (#118 and #811 are one person with a work
+ *    and a personal email and one mobile number): same email, or same mobile AND
+ *    a shared name, is allowed. Mobile alone is editable and not unique;
+ *  - a speaker using their own website photo (#6): allowed when at least two
+ *    parts of the attendee's name all appear in that image's filename. One part
+ *    was enough before, and a lone common surname matched many speaker files.
+ *
+ * Limits, stated rather than hidden. The fingerprint is computed in the browser,
+ * so someone editing requests in developer tools can send a false one. It is a
+ * near-duplicate check on the whole square, so a photo cropped hard on one side,
+ * or a screenshot of a round avatar with page background in its corners, is not
+ * matched. A photo of a stranger from elsewhere on the internet is not caught.
+ * The badge desk, holding a government ID, is the control for all of those. */
 const PHOTO_FP_MAX_D = 64
 const PHOTO_FP_MAX_A = 16
 const PHOTO_FP_RE = /^[0-9a-f]{64}:[0-9a-f]{64}$/
@@ -7993,11 +8098,33 @@ function photoFpClose(x: string, y: string): boolean {
   return bits(xd, yd) <= PHOTO_FP_MAX_D && bits(xa, ya) <= PHOTO_FP_MAX_A
 }
 
+const NAME_TITLES = new Set(['mr', 'mrs', 'ms', 'dr', 'prof', 'shri', 'sri', 'smt', 'hon', 'ble', 'honble', 'phd', 'er', 'adv', 'ca'])
+
+// Name words, lower case, accents dropped, titles removed, and a run of initials
+// joined up: "Shri. K.K. Singh" is ["kk", "singh"], which is how the site names
+// its photo files.
+function personNameTokens(name: any): string[] {
+  const raw = String(name || '').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ').trim().split(/\s+/).filter(t => t && !NAME_TITLES.has(t))
+  const out: string[] = []
+  let prevSingle = false
+  for (const t of raw) {
+    if (t.length === 1 && prevSingle) out[out.length - 1] += t
+    else out.push(t)
+    prevSingle = t.length === 1
+  }
+  return out.filter(t => t.length >= 2)
+}
+
 function nameInSiteFile(name: string, file: string): boolean {
   const slug = ' ' + String(file || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ') + ' '
-  const parts = String(name || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/)
-    .filter(t => t.length >= 3 && ['mr', 'mrs', 'ms', 'dr', 'prof', 'shri', 'smt'].indexOf(t) === -1)
-  return parts.length > 0 && parts.every(t => slug.indexOf(' ' + t + ' ') !== -1)
+  const parts = personNameTokens(name)
+  return parts.length >= 2 && parts.every(t => slug.indexOf(' ' + t + ' ') !== -1)
+}
+
+function namesOverlap(x: any, y: any): boolean {
+  const other = new Set(personNameTokens(y))
+  return personNameTokens(x).some(t => t.length >= 3 && other.has(t))
 }
 
 const digitsTail = (v: any) => String(v || '').replace(/\D/g, '').slice(-10)
@@ -8005,36 +8132,69 @@ const digitsTail = (v: any) => String(v || '').replace(/\D/g, '').slice(-10)
 /* Returns null when the photo is free to use, or the refusal to send. Degrades to
  * null if the 0038 columns are missing, so a database one migration behind still
  * accepts uploads. */
-async function photoReuseRefusal(c: any, id: any, fp: string): Promise<{ error: string; reused: string } | null> {
+async function photoReuseRefusal(c: any, id: any, fp: string, fpMirror: string): Promise<{ error: string; reused: string } | null> {
+  // The upload as it is, or flipped back: either one close to a reference is a match.
+  const near = (ref: any) => photoFpClose(fp, ref) || photoFpClose(fpMirror, ref)
   let me: any = null
   try {
-    me = await c.env.DB.prepare('SELECT id, name, email, mobile, flagged_avatar_fingerprint FROM attendees WHERE id = ?').bind(id).first()
+    me = await c.env.DB.prepare('SELECT id, name, email, mobile FROM attendees WHERE id = ?').bind(id).first()
   } catch (_) { return null }
   if (!me) return null
-  if (me.flagged_avatar_fingerprint && photoFpClose(fp, me.flagged_avatar_fingerprint)) {
-    return { reused: 'flagged', error: 'This photo was flagged at the badge desk as not matching you. Please upload a recent photo of yourself.' }
+  // Open desk flags, every account's. The attendees columns are the fallback for
+  // a database without 0039, where they are the only record.
+  let flagged: any[] = []
+  try {
+    flagged = ((await c.env.DB.prepare(
+      'SELECT attendee_id, fingerprint AS fp FROM photo_flags WHERE cleared_at IS NULL AND fingerprint IS NOT NULL'
+    ).all()).results || []) as any[]
+  } catch (_) {
+    try {
+      flagged = ((await c.env.DB.prepare(
+        'SELECT id AS attendee_id, flagged_avatar_fingerprint AS fp FROM attendees WHERE flagged_avatar_fingerprint IS NOT NULL'
+      ).all()).results || []) as any[]
+    } catch (_) { flagged = [] }
+  }
+  for (const f of flagged) {
+    if (!near(f.fp)) continue
+    return String(f.attendee_id) === String(id)
+      ? { reused: 'flagged', error: 'This photo was flagged at the badge desk as not matching you. Please upload a recent photo of yourself.' }
+      : { reused: 'flagged', error: 'This photo cannot be used on a pass. Please upload a recent photo of yourself.' }
   }
   for (const e of (SITE_PHOTO_FINGERPRINTS as any[])) {
-    if (photoFpClose(fp, e.fp) && !nameInSiteFile(me.name, e.file)) {
+    if (near(e.fp) && !nameInSiteFile(me.name, e.file)) {
       return { reused: 'site', error: 'This photo is already on the Bharat AI Innovation website, so it cannot be your pass photo. Please upload a photo of yourself.' }
     }
   }
   let rows: any[] = []
   try {
     rows = ((await c.env.DB.prepare(
-      'SELECT id, email, mobile, avatar_fingerprint AS fp, flagged_avatar_fingerprint AS ffp FROM attendees WHERE id != ? AND (avatar_fingerprint IS NOT NULL OR flagged_avatar_fingerprint IS NOT NULL)'
+      'SELECT id, name, email, mobile, avatar_fingerprint AS fp FROM attendees WHERE id != ? AND avatar_fingerprint IS NOT NULL'
     ).bind(id).all()).results || []) as any[]
   } catch (_) { return null }
   const myEmail = String(me.email || '').trim().toLowerCase(), myMob = digitsTail(me.mobile)
   for (const r of rows) {
-    if (!photoFpClose(fp, r.fp) && !photoFpClose(fp, r.ffp)) continue
+    if (!near(r.fp)) continue
     const samePerson = (myEmail && String(r.email || '').trim().toLowerCase() === myEmail) ||
-      (myMob.length === 10 && digitsTail(r.mobile) === myMob)
+      (myMob.length === 10 && digitsTail(r.mobile) === myMob && namesOverlap(me.name, r.name))
     if (samePerson) continue
     // Never say whose: that would turn this into a way to look people up.
     return { reused: 'attendee', error: 'This photo is already on another attendee\'s profile. Please upload a photo of yourself.' }
   }
   return null
+}
+
+// A photo the badge desk flagged is evidence, and its R2 object must outlive the
+// row moving on. An upload or delete that read the row just before a flag landed
+// used to delete the very file the desk had just flagged. Unknown means keep.
+async function photoIsFlagEvidence(c: any, url: any): Promise<boolean> {
+  try {
+    const hit = await c.env.DB.prepare(
+      'SELECT 1 AS x FROM photo_flags WHERE avatar_url = ? UNION ALL SELECT 1 AS x FROM attendees WHERE flagged_avatar_url = ? LIMIT 1'
+    ).bind(url, url).first()
+    return !!hit
+  } catch (_) {
+    return true
+  }
 }
 
 app.post('/api/attendees/:id/avatar', async (c) => {
@@ -8046,6 +8206,7 @@ app.post('/api/attendees/:id/avatar', async (c) => {
   const _body = await c.req.json().catch(() => ({})) as any
   const image = _body.image
   const fingerprint = String(_body.fingerprint || '').trim().toLowerCase()
+  const fingerprintMirror = String(_body.fingerprint_mirror || '').trim().toLowerCase()
   const adminUpload = isAdminRequest(c)
   if (!image) return c.json({ error: 'No image data provided' }, 400)
 
@@ -8057,15 +8218,16 @@ app.post('/api/attendees/:id/avatar', async (c) => {
 
   const bytes = Uint8Array.from(atob(m[2]), ch => ch.charCodeAt(0))
   // The reuse check runs before the person check: it is free, and it answers
-  // the cheat directly. Admin uploads (a speaker photo added by the team) skip
-  // it - the admin copy of the uploader sends no fingerprint.
+  // the cheat directly. Admin uploads skip it, because the team may mean to put
+  // a speaker's website photo on their pass, but the admin uploader sends a
+  // fingerprint too and it is stored, so that photo is protected like any other.
   if (!adminUpload) {
-    if (!PHOTO_FP_RE.test(fingerprint)) {
-      // Every current copy of the app sends one; a tab open since before this
+    if (!PHOTO_FP_RE.test(fingerprint) || !PHOTO_FP_RE.test(fingerprintMirror)) {
+      // Every current copy of the app sends both; a tab open since before this
       // shipped does not, and a reload fixes it.
       return c.json({ error: 'Please refresh this page and try again.', needs_refresh: true }, 400)
     }
-    const refusal = await photoReuseRefusal(c, id, fingerprint)
+    const refusal = await photoReuseRefusal(c, id, fingerprint, fingerprintMirror)
     if (refusal) return c.json({ error: refusal.error, reused: refusal.reused }, 409)
   }
 
@@ -8095,14 +8257,14 @@ app.post('/api/attendees/:id/avatar', async (c) => {
     // Remove the object the row pointed at, so replacing a photo does not orphan one.
     const prev = await c.env.DB.prepare('SELECT avatar_url FROM attendees WHERE id = ?').bind(id).first() as any
     // The fingerprint is stored with the photo so the NEXT person to upload it is
-    // refused. Admin uploads store none (the admin uploader does not compute one).
+    // refused. Admin uploads send one as well.
     const fpToStore = PHOTO_FP_RE.test(fingerprint) ? fingerprint : null
     try {
       await c.env.DB.prepare('UPDATE attendees SET avatar_url = ?, avatar_fingerprint = ? WHERE id = ?').bind(url, fpToStore, id).run()
     } catch (_) {
       await c.env.DB.prepare('UPDATE attendees SET avatar_url = ? WHERE id = ?').bind(url, id).run()
     }
-    if (prev?.avatar_url && String(prev.avatar_url).startsWith('/api/uploads/')) {
+    if (prev?.avatar_url && String(prev.avatar_url).startsWith('/api/uploads/') && !(await photoIsFlagEvidence(c, prev.avatar_url))) {
       try { await c.env.UPLOADS.delete(String(prev.avatar_url).slice('/api/uploads/'.length)) } catch {}
     }
     // person_checked says whether the check actually ran, so a missing AI binding
@@ -8139,7 +8301,7 @@ app.delete('/api/attendees/:id/avatar', async (c) => {
   const prev = await c.env.DB.prepare('SELECT avatar_url FROM attendees WHERE id = ?').bind(id).first() as any
   await c.env.DB.prepare('UPDATE attendees SET avatar_url = NULL WHERE id = ?').bind(id).run()
   try { await c.env.DB.prepare('UPDATE attendees SET avatar_fingerprint = NULL WHERE id = ?').bind(id).run() } catch (_) {}
-  if (c.env.UPLOADS && prev?.avatar_url && String(prev.avatar_url).startsWith('/api/uploads/')) {
+  if (c.env.UPLOADS && prev?.avatar_url && String(prev.avatar_url).startsWith('/api/uploads/') && !(await photoIsFlagEvidence(c, prev.avatar_url))) {
     try { await c.env.UPLOADS.delete(String(prev.avatar_url).slice('/api/uploads/'.length)) } catch {}
   }
   return c.json({ success: true })
@@ -12974,7 +13136,7 @@ function mainPageHTML(): string {
   <!-- The "I'm attending" card delegates post. App only: the badge desk has no
        reason to issue one, and it carries none of the pass's verification data. -->
   <script src="/js/social-card.js"></script>
-  <script src="/js/photo-fingerprint.js"></script>
+  <script src="/js/photo-fingerprint.js?v=2"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Manrope:wght@300..800&family=Montserrat:wght@600;700;800&family=Playfair+Display:wght@600;700&family=Mukta:wght@500;600;700&display=swap');
     * { font-family: 'Manrope', sans-serif; }
@@ -15443,9 +15605,15 @@ function mainPageHTML(): string {
             ctx.drawImage(img, sx, sy, side, side, 0, 0, out, out);
             // The fingerprint is taken from these exact pixels, before JPEG encoding,
             // so the server compares what is uploaded, not a re-decoded copy.
-            let fingerprint = '';
-            try { fingerprint = window.BhaiPhotoFingerprint ? BhaiPhotoFingerprint.fromCanvas(canvas) : ''; } catch (e) {}
-            resolve({ dataUrl: canvas.toDataURL('image/jpeg', quality), fingerprint: fingerprint });
+            // The flipped fingerprint lets the server catch a mirrored copy.
+            let fingerprint = '', fingerprintMirror = '';
+            try {
+              if (window.BhaiPhotoFingerprint) {
+                fingerprint = BhaiPhotoFingerprint.fromCanvas(canvas);
+                if (BhaiPhotoFingerprint.mirroredFromCanvas) fingerprintMirror = BhaiPhotoFingerprint.mirroredFromCanvas(canvas);
+              }
+            } catch (e) {}
+            resolve({ dataUrl: canvas.toDataURL('image/jpeg', quality), fingerprint: fingerprint, fingerprintMirror: fingerprintMirror });
           };
           img.onerror = reject;
           img.src = e.target.result;
@@ -19620,7 +19788,7 @@ function mainPageHTML(): string {
             // modal then vanishes before they ever see it.
             preview.src = dataUrl; preview.style.display = 'block';
             if (dataUrl.length > 700000) { status.textContent = 'That image would not compress small enough. Please try another.'; return; }
-            var res = await api.post('/api/attendees/' + user.id + '/avatar', { image: dataUrl, fingerprint: crop.fingerprint });
+            var res = await api.post('/api/attendees/' + user.id + '/avatar', { image: dataUrl, fingerprint: crop.fingerprint, fingerprint_mirror: crop.fingerprintMirror });
             if (res && res.success) {
               user.avatar_url = res.avatar_url || dataUrl;
               if (currentUser && currentUser.id === user.id) {
@@ -20890,7 +21058,7 @@ function mainPageHTML(): string {
         if (dataUrl.length > 700000) { toast('That image would not compress small enough. Please try another.', true); return; }
         document.getElementById('edit-avatar-preview').src = dataUrl;
         // Upload immediately
-        const result = await api.post('/api/attendees/' + currentUser.id + '/avatar', { image: dataUrl, fingerprint: crop.fingerprint });
+        const result = await api.post('/api/attendees/' + currentUser.id + '/avatar', { image: dataUrl, fingerprint: crop.fingerprint, fingerprint_mirror: crop.fingerprintMirror });
         if (result.success) {
           // Photos live in R2 now and the server returns a /api/uploads/... URL.
           // Keeping the base64 here would put the whole image back into localStorage
@@ -21462,6 +21630,8 @@ function adminPageHTML(): string {
   <!-- Shared with the app, so a pass issued at the desk is the same document the
        holder downloaded. -->
   <script src="/js/pass-render.js"></script>
+  <!-- The same photo fingerprint /app sends, for photos the team uploads. -->
+  <script src="/js/photo-fingerprint.js?v=2"></script>
   <!-- Same renderer the delegate's own app uses, so a card the desk sends a speaker
        is the card that speaker would have made themselves. -->
   <script src="/js/social-card.js"></script>
@@ -23436,7 +23606,7 @@ function adminPageHTML(): string {
                   <td class="text-xs text-gray-400" title="\${esc(a.registration_date||a.created_at||'')}">\${fmtRegDate(a.registration_date||a.created_at)}</td>
                   <td class="text-xs ie-cell" onclick="inlineEdit(this, \${a.id}, 'payment_amount', '\${esc(a.payment_amount||'')}')">\${a.payment_amount ? '<span class="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">₹'+escH(a.payment_amount)+'</span>' : '<span class=&quot;text-gray-600&quot;>-</span>'}</td>
                   <td class="text-xs" id="notified-\${a.id}">\${a.notified_at ? '<span class="text-green-400" title="'+a.notified_at+'"><i class="fas fa-check-circle"></i></span>' : '<span class="text-gray-600"><i class="fas fa-times-circle"></i></span>'}</td>
-                  <td class="text-xs"><div class="flex gap-1.5 items-center" title="Login | Pass | Card | Post-Email Login"><span class="\${a.last_login_at ? 'text-blue-400' : 'text-gray-600'}" title="\${a.last_login_at ? 'Logged in: '+a.last_login_at : 'Not logged in'}"><i class="fas fa-sign-in-alt"></i></span><span class="\${a.pass_downloaded_at ? 'text-emerald-400' : 'text-gray-600'}" title="\${a.pass_downloaded_at ? 'Pass downloaded: '+a.pass_downloaded_at : 'Pass not downloaded'}"><i class="fas fa-id-badge"></i></span><span class="\${a.social_card_downloaded_at ? 'text-amber-400' : 'text-gray-600'}" title="\${a.social_card_downloaded_at ? 'Creative shared: '+a.social_card_downloaded_at : 'Creative not shared'}"><i class="fas fa-share-alt"></i></span>\${a.photo_flagged_at ? '<span class="text-red-400" title="Photo flagged at the badge desk by ' + escH(a.photo_flagged_by || 'desk') + ' on ' + escH(a.photo_flagged_at) + ' - did not match"><i class="fas fa-exclamation-triangle"></i></span>' : ''}<span class="\${a.notified_at && a.last_login_at && a.last_login_at >= a.notified_at ? 'text-violet-400' : 'text-gray-600'}" title="\${a.notified_at && a.last_login_at && a.last_login_at >= a.notified_at ? 'Opened after email' : 'Not opened after email'}"><i class="fas fa-envelope-open"></i></span></div></td>
+                  <td class="text-xs"><div class="flex gap-1.5 items-center" title="Login | Pass | Card | Post-Email Login"><span class="\${a.last_login_at ? 'text-blue-400' : 'text-gray-600'}" title="\${a.last_login_at ? 'Logged in: '+a.last_login_at : 'Not logged in'}"><i class="fas fa-sign-in-alt"></i></span><span class="\${a.pass_downloaded_at ? 'text-emerald-400' : 'text-gray-600'}" title="\${a.pass_downloaded_at ? 'Pass downloaded: '+a.pass_downloaded_at : 'Pass not downloaded'}"><i class="fas fa-id-badge"></i></span><span class="\${a.social_card_downloaded_at ? 'text-amber-400' : 'text-gray-600'}" title="\${a.social_card_downloaded_at ? 'Creative shared: '+a.social_card_downloaded_at : 'Creative not shared'}"><i class="fas fa-share-alt"></i></span>\${a.photo_flagged_at ? '<button type="button" onclick="clearPhotoFlag(' + Number(a.id) + ')" class="text-red-400 hover:text-red-300" title="Photo flagged at the badge desk by ' + escH(a.photo_flagged_by || 'desk') + ' on ' + escH(a.photo_flagged_at) + ' - did not match. Click to clear a wrong flag."><i class="fas fa-exclamation-triangle"></i></button>' : ''}<span class="\${a.notified_at && a.last_login_at && a.last_login_at >= a.notified_at ? 'text-violet-400' : 'text-gray-600'}" title="\${a.notified_at && a.last_login_at && a.last_login_at >= a.notified_at ? 'Opened after email' : 'Not opened after email'}"><i class="fas fa-envelope-open"></i></span></div></td>
                   <td class="flex gap-1">
                     <button onclick="openEditAttendeeById(\${a.id})" class="px-2 py-1 rounded text-xs bg-primary-500/20 text-primary-300 hover:bg-primary-500/30" title="Full Edit"><i class="fas fa-edit"></i></button>
                     <button onclick='adminDownloadPass(\${JSON.stringify({id:a.id,name:a.name,email:a.email,company:a.company||"",job_title:a.job_title||"",badge_type:a.badge_type||"Delegate",avatar_url:a.avatar_url||"",role:a.role||"",website_url:a.website_url||""}).replace(/&/g,"&amp;").replace(/'/g,"&#39;")})' class="px-2 py-1 rounded text-xs bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30" title="Download Pass"><i class="fas fa-id-badge"></i></button>
@@ -24879,7 +25049,8 @@ function adminPageHTML(): string {
         try {
           const dataUrl = await resizeImage(this.files[0], 256, 0.8);
           document.getElementById('ea-avatar-preview').src = dataUrl;
-          const result = await api.post('/api/attendees/' + attId + '/avatar', { image: dataUrl });
+          const fps = await adminPhotoFingerprints(dataUrl);
+          const result = await api.post('/api/attendees/' + attId + '/avatar', { image: dataUrl, fingerprint: fps.fingerprint, fingerprint_mirror: fps.mirror });
           if (result.success) {
             document.getElementById('ea-remove-avatar').classList.remove('hidden');
             toast('Photo uploaded!');
@@ -24938,6 +25109,36 @@ function adminPageHTML(): string {
      *
      * No photo means no card - the whole thing is built around the face, and an
      * initial in a circle is not something anyone posts. */
+    // The same fingerprints /app sends, of the square the pass draws. Admin uploads
+    // are not refused, but a photo the team adds is stored with its fingerprint so
+    // nobody else can reuse it and a desk flag on it blocks it.
+    function adminPhotoFingerprints(dataUrl) {
+      return new Promise(function (resolve) {
+        var none = { fingerprint: '', mirror: '' };
+        if (!window.BhaiPhotoFingerprint) return resolve(none);
+        var img = new Image();
+        img.onload = function () {
+          try {
+            var cv = BhaiPhotoFingerprint.squareCanvas(img, 400);
+            resolve({ fingerprint: BhaiPhotoFingerprint.fromCanvas(cv),
+                      mirror: BhaiPhotoFingerprint.mirroredFromCanvas ? BhaiPhotoFingerprint.mirroredFromCanvas(cv) : '' });
+          } catch (e) { resolve(none); }
+        };
+        img.onerror = function () { resolve(none); };
+        img.src = dataUrl;
+      });
+    }
+
+    // A wrong desk flag used to be permanent after the desk's 15-minute undo.
+    async function clearPhotoFlag(id) {
+      if (!confirm('Clear the badge desk photo flag on this attendee? If they have not added a new photo since, the flagged one goes back on their pass, and it is no longer blocked. Only do this if the desk flagged it by mistake.')) return;
+      try {
+        const r = await api.post('/api/admin/attendees/' + id + '/photo-flags/clear', {});
+        if (r && r.success) { toast(r.cleared ? 'Photo flag cleared' : 'There was no open flag'); loadAdminAttendees(id); }
+        else toast((r && r.error) || 'Could not clear the flag', 'error');
+      } catch (e) { toast('Could not clear the flag', 'error'); }
+    }
+
     async function adminDownloadSocialCard(user) {
       if (!user.avatar_url) {
         toast(user.name + ' has no photo yet, so there is no card to make. Use "Ask for photos".', 'error');
