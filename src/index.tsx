@@ -2591,7 +2591,7 @@ function verifyPageHTML(o: any): string {
  // off the pass and records who said so; entry is still decided on the ID.
  async function flagPhoto(){
    var b = document.getElementById('pf'), m = document.getElementById('msg');
-   if (!confirm('Remove this photo from their pass and card?\n\nThey will have to add a new photo. Check their government ID before admitting.')) return;
+   if (!confirm('Remove this photo from their pass and card? They will have to add a new photo. Check their government ID before admitting.')) return;
    b.disabled = true; b.textContent = 'Flagging...';
    var r = await fetch('/api/verify/' + encodeURIComponent(TOKEN) + '/photo-mismatch', { method:'POST' });
    var j = await r.json().catch(function(){ return {}; });

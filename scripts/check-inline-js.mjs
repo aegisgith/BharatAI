@@ -13,7 +13,11 @@
 import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
 
-const PAGES = ['/app', '/admin']
+// /verify/<token> is the badge-desk screen. A bad token still renders the whole
+// page and its script, with no database, so it can be parsed here too - and on
+// 14 Sep 2026 it was the one page that was not, when a \n inside its template
+// literal broke the script in production and took Check in down with it.
+const PAGES = ['/app', '/admin', '/verify/check-inline-js-probe']
 const worker = (await import('../dist/_worker.js')).default
 
 // Enough of an environment to render HTML. Anything that reaches for D1 or R2
