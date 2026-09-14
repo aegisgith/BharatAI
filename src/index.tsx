@@ -14403,7 +14403,7 @@ function mainPageHTML(): string {
             </div>
           </div>
 
-          <!-- Speakers, from the speakers table (loadSpeakerStrip). Ministers are left out. -->
+          <!-- Speakers, from the speakers table (loadSpeakerStrip). Some are left out on the organiser's request; the server decides which. -->
           <div id="speaker-strip" class="hidden mb-6"></div>
           <!-- AI matchmaking rail: top recommended connections (populated by loadAttendees) -->
           <div id="match-rail"></div>
@@ -15528,20 +15528,30 @@ function mainPageHTML(): string {
     const EVENT_ID = 1;
     function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 
-    /* Speakers in the Network tab. Fetched once per page load, filtered by whatever
-     * is typed in the directory search, and opened in the same profile modal as a
+    /* Speakers in the Network tab. Filtered by whatever is typed in the directory
+     * search, and opened in the same profile modal as a
      * delegate. A speaker who is also a registered delegate links to that profile,
      * which is where Connect, Message and Meeting live under the pass rules; the
      * rest are view-only, because there is no account to message. */
+    // Fetched once per page load at first, which meant a tab left open kept a
+    // speaker the server had since been told to leave out, for as long as the tab
+    // lived. Now the list on hand is drawn at once and asked for again whenever the
+    // tab is opened after a few minutes; a good answer replaces it, a failed one
+    // leaves it as it was.
     let speakerStripData = null;
+    let speakerStripFetchedAt = 0;
+    const SPEAKER_STRIP_FRESH_MS = 5 * 60 * 1000;
     async function loadSpeakerStrip() {
-      if (speakerStripData === null) {
-        try {
-          const r = await fetch('/api/events/' + EVENT_ID + '/speakers');
-          speakerStripData = r.ok ? await r.json() : [];
-        } catch (e) { speakerStripData = []; }
-        if (!Array.isArray(speakerStripData)) speakerStripData = [];
+      if (speakerStripData !== null) {
+        renderSpeakerStrip();
+        if (Date.now() - speakerStripFetchedAt < SPEAKER_STRIP_FRESH_MS) return;
       }
+      try {
+        const r = await fetch('/api/events/' + EVENT_ID + '/speakers');
+        const d = r.ok ? await r.json() : null;
+        if (Array.isArray(d)) { speakerStripData = d; speakerStripFetchedAt = Date.now(); }
+      } catch (e) {}
+      if (!Array.isArray(speakerStripData)) speakerStripData = [];
       renderSpeakerStrip();
     }
     function renderSpeakerStrip() {

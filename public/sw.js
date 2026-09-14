@@ -9,7 +9,11 @@
 // Bumped because pass-render.js (precached below) now reports a photo that
 // failed to load and the page refuses to issue a pass on that flag; without
 // this a returning visitor keeps the old renderer until it revalidates.
-const VERSION = 'bhai-v8';
+// Bumped again (v9) because API reads are cached here with no expiry and served
+// whenever the network fails: a device that opened the Network tab before two
+// speakers were removed from it kept the old list for offline use, and only a
+// new VERSION deletes that cache.
+const VERSION = 'bhai-v9';
 const SHELL = `shell-${VERSION}`;
 const DATA = `data-${VERSION}`;
 
