@@ -26,11 +26,35 @@ const env = new Proxy({}, { get: () => undefined })
 const ctx = { waitUntil() {}, passThroughOnException() {} }
 
 let failed = 0
+
+// A value from the URL must never be able to end a <script> block. /verify/:token
+// once wrote the raw path segment into its script, so this link ran code on our
+// origin as whoever opened it. The probe is that link; the page must render the
+// marker as inert text, never as a script tag of its own.
+{
+  const probe = '/verify/' + encodeURIComponent('</script><script>INJECTED_PROBE()</script>')
+  const res = await worker.fetch(new Request('https://bharataiinnovation.com' + probe), env, ctx)
+  const html = await res.text()
+  if (/<script>INJECTED_PROBE/.test(html)) {
+    console.error('[check-inline-js] /verify: a crafted token opens a <script> block of its own (script injection).')
+    failed++
+  } else {
+    console.log('[check-inline-js] /verify: a crafted token cannot open a script block')
+  }
+}
+
 for (const path of PAGES) {
   let html
   try {
     const res = await worker.fetch(new Request('https://bharataiinnovation.com' + path), env, ctx)
     html = await res.text()
+    // Hono turns a thrown handler into a plain-text 500, which has no script to
+    // parse, and "0 blocks parse" used to count as a pass.
+    if (res.status >= 400) {
+      console.error(`[check-inline-js] ${path} answered ${res.status}, not the page`)
+      failed++
+      continue
+    }
   } catch (e) {
     console.error(`[check-inline-js] ${path} did not render: ${e.message}`)
     failed++
@@ -53,6 +77,11 @@ for (const path of PAGES) {
       console.error(`   near: ${near.trim().slice(0, 140)}`)
       failed++
     }
+  }
+  if (checked === 0) {
+    console.error(`[check-inline-js] ${path}: rendered no inline script at all, so nothing was checked`)
+    failed++
+    continue
   }
   if (!failed) console.log(`[check-inline-js] ${path}: ${checked} inline block(s) parse`)
 }

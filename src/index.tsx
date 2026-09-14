@@ -2218,6 +2218,19 @@ function staffShell(title: string, inner: string, script: string): string {
 </style></head><body><div class="wrap">${inner}</div><script>${script}</script></body></html>`
 }
 
+// JSON.stringify is not enough inside a <script> block. It leaves < and > alone,
+// so a value holding </script> ends the block and whatever follows runs as page
+// script on this origin, with the visitor's session cookie. /verify/:token put the
+// raw path segment there for any code, valid or not, so one crafted link could act
+// as whoever opened it. Escaping < > & and the two JS line separators as \u
+// sequences keeps the value identical once parsed and gives the HTML parser
+// nothing to end the block on.
+function jsonForScript(v: any): string {
+  return JSON.stringify(v === undefined ? null : v)
+    .replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026')
+    .replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029')
+}
+
 function staffLoginHTML(next: string): string {
   return staffShell('Badge desk', `
     <h1>Badge desk sign in</h1>
@@ -2226,7 +2239,7 @@ function staffLoginHTML(next: string): string {
     <input id="p" type="password" placeholder="Password" autocomplete="current-password">
     <button onclick="go()">Sign in</button>
     <p class="err" id="e"></p>`,
-  `var NEXT=${JSON.stringify(next)};
+  `var NEXT=${jsonForScript(next)};
    async function go(){
      var e=document.getElementById('e'); e.textContent='';
      var r=await fetch('/api/staff/login',{method:'POST',headers:{'Content-Type':'application/json'},
@@ -2339,7 +2352,7 @@ app.get('/verify/:token', async (c) => {
   const staff = (await verifyStaffSession(c)) || (isAdminRequest(c) ? { name: 'admin' } : null)
 
   if (id === null) {
-    return c.html(verifyPageHTML({ state: 'invalid', staff, token }))
+    return c.html(verifyPageHTML({ state: 'invalid', staff, token: '' }))
   }
   // The flag columns arrived in 0038; a database without them gets the old screen.
   let a: any = null
@@ -2352,7 +2365,7 @@ app.get('/verify/:token', async (c) => {
       'SELECT id, name, company, job_title, badge_type, payment_status, avatar_url, checked_in_at, checked_in_by FROM attendees WHERE id = ?'
     ).bind(id).first()
   }
-  if (!a) return c.html(verifyPageHTML({ state: 'invalid', staff, token }))
+  if (!a) return c.html(verifyPageHTML({ state: 'invalid', staff, token: '' }))
   const undoable = !!a.checked_in_at &&
     Date.now() - new Date(String(a.checked_in_at).replace(' ', 'T') + 'Z').getTime() < CHECKIN_UNDO_MINUTES * 60000
   const flagUndoable = !!a.photo_flagged_at && !String(a.avatar_url || '').trim() &&
@@ -2563,7 +2576,7 @@ function verifyPageHTML(o: any): string {
  <p class="foot">Bharat AI Innovation 2026 &bull; badge desk verification</p>
 </div>
 <script>
- var TOKEN = ${JSON.stringify(o.token || '')};
+ var TOKEN = ${jsonForScript(o.token || '')};
  function signIn(){ location.href = '/staff?next=' + encodeURIComponent(location.pathname); }
  async function checkIn(){
    var b = document.getElementById('ci'), m = document.getElementById('msg');
@@ -11849,7 +11862,7 @@ ${body}
 </main>
 ${sharedFooterHTML()}
 <script>
-  var TOKEN = ${JSON.stringify(o.token || '')};
+  var TOKEN = ${jsonForScript(o.token || '')};
   async function respond(action) {
     var live = document.getElementById('decide-live');
     var err  = document.getElementById('decide-error');
@@ -23426,8 +23439,8 @@ function adminPageHTML(): string {
                   <td class="text-xs"><div class="flex gap-1.5 items-center" title="Login | Pass | Card | Post-Email Login"><span class="\${a.last_login_at ? 'text-blue-400' : 'text-gray-600'}" title="\${a.last_login_at ? 'Logged in: '+a.last_login_at : 'Not logged in'}"><i class="fas fa-sign-in-alt"></i></span><span class="\${a.pass_downloaded_at ? 'text-emerald-400' : 'text-gray-600'}" title="\${a.pass_downloaded_at ? 'Pass downloaded: '+a.pass_downloaded_at : 'Pass not downloaded'}"><i class="fas fa-id-badge"></i></span><span class="\${a.social_card_downloaded_at ? 'text-amber-400' : 'text-gray-600'}" title="\${a.social_card_downloaded_at ? 'Creative shared: '+a.social_card_downloaded_at : 'Creative not shared'}"><i class="fas fa-share-alt"></i></span>\${a.photo_flagged_at ? '<span class="text-red-400" title="Photo flagged at the badge desk by ' + escH(a.photo_flagged_by || 'desk') + ' on ' + escH(a.photo_flagged_at) + ' - did not match"><i class="fas fa-exclamation-triangle"></i></span>' : ''}<span class="\${a.notified_at && a.last_login_at && a.last_login_at >= a.notified_at ? 'text-violet-400' : 'text-gray-600'}" title="\${a.notified_at && a.last_login_at && a.last_login_at >= a.notified_at ? 'Opened after email' : 'Not opened after email'}"><i class="fas fa-envelope-open"></i></span></div></td>
                   <td class="flex gap-1">
                     <button onclick="openEditAttendeeById(\${a.id})" class="px-2 py-1 rounded text-xs bg-primary-500/20 text-primary-300 hover:bg-primary-500/30" title="Full Edit"><i class="fas fa-edit"></i></button>
-                    <button onclick='adminDownloadPass(\${JSON.stringify({id:a.id,name:a.name,email:a.email,company:a.company||"",job_title:a.job_title||"",badge_type:a.badge_type||"Delegate",avatar_url:a.avatar_url||"",role:a.role||"",website_url:a.website_url||""}).replace(/'/g,"&#39;")})' class="px-2 py-1 rounded text-xs bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30" title="Download Pass"><i class="fas fa-id-badge"></i></button>
-                    <button onclick='adminDownloadSocialCard(\${JSON.stringify({id:a.id,name:a.name,email:a.email,company:a.company||"",job_title:a.job_title||"",badge_type:a.badge_type||"Delegate",avatar_url:a.avatar_url||"",role:a.role||"",website_url:a.website_url||""}).replace(/'/g,"&#39;")})' class="px-2 py-1 rounded text-xs bg-violet-500/20 text-violet-300 hover:bg-violet-500/30" title="Download their &quot;I&#39;m attending&quot; social card"><i class="fas fa-share-alt"></i></button>
+                    <button onclick='adminDownloadPass(\${JSON.stringify({id:a.id,name:a.name,email:a.email,company:a.company||"",job_title:a.job_title||"",badge_type:a.badge_type||"Delegate",avatar_url:a.avatar_url||"",role:a.role||"",website_url:a.website_url||""}).replace(/&/g,"&amp;").replace(/'/g,"&#39;")})' class="px-2 py-1 rounded text-xs bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30" title="Download Pass"><i class="fas fa-id-badge"></i></button>
+                    <button onclick='adminDownloadSocialCard(\${JSON.stringify({id:a.id,name:a.name,email:a.email,company:a.company||"",job_title:a.job_title||"",badge_type:a.badge_type||"Delegate",avatar_url:a.avatar_url||"",role:a.role||"",website_url:a.website_url||""}).replace(/&/g,"&amp;").replace(/'/g,"&#39;")})' class="px-2 py-1 rounded text-xs bg-violet-500/20 text-violet-300 hover:bg-violet-500/30" title="Download their &quot;I&#39;m attending&quot; social card"><i class="fas fa-share-alt"></i></button>
                     <button onclick="notifyAttendeeById(\${a.id})" class="px-2 py-1 rounded text-xs bg-amber-500/20 text-amber-300 hover:bg-amber-500/30" title="Send notification email"><i class="fas fa-envelope"></i></button>
                     <button onclick="deleteAttendee(\${a.id})" class="px-2 py-1 rounded text-xs bg-red-500/20 text-red-400 hover:bg-red-500/30" title="Delete"><i class="fas fa-trash"></i></button>
                   </td>
@@ -25358,7 +25371,7 @@ function adminPageHTML(): string {
                   <td class="text-xs text-gray-400">\${escH(s.track)||'-'}</td>
                   <td class="text-xs">\${escH(s.room)||'-'}</td>
                   <td class="flex gap-1">
-                    <button onclick='openEditSession(\${JSON.stringify(s).replace(/'/g,"&#39;")})' class="px-2 py-1 rounded text-xs bg-primary-500/20 text-primary-300 hover:bg-primary-500/30"><i class="fas fa-edit"></i></button>
+                    <button onclick='openEditSession(\${JSON.stringify(s).replace(/&/g,"&amp;").replace(/'/g,"&#39;")})' class="px-2 py-1 rounded text-xs bg-primary-500/20 text-primary-300 hover:bg-primary-500/30"><i class="fas fa-edit"></i></button>
                     <button onclick="deleteSession(\${s.id})" class="px-2 py-1 rounded text-xs bg-red-500/20 text-red-400 hover:bg-red-500/30"><i class="fas fa-trash"></i></button>
                   </td>
                 </tr>\`).join('')}
@@ -25493,7 +25506,7 @@ function adminPageHTML(): string {
               </div>
               <p class="text-xs text-gray-400 mb-3 line-clamp-2">\${ex.description ? escH(ex.description) : '<span class="italic">No description yet</span>'}</p>
               <div class="flex gap-1">
-                <button onclick='openEditExhibitor(\${JSON.stringify(ex).replace(/'/g,"&#39;")})' class="px-3 py-1.5 rounded-lg text-xs bg-primary-500/20 text-primary-300 hover:bg-primary-500/30"><i class="fas fa-edit mr-1"></i>Edit</button>
+                <button onclick='openEditExhibitor(\${JSON.stringify(ex).replace(/&/g,"&amp;").replace(/'/g,"&#39;")})' class="px-3 py-1.5 rounded-lg text-xs bg-primary-500/20 text-primary-300 hover:bg-primary-500/30"><i class="fas fa-edit mr-1"></i>Edit</button>
                 <button onclick="deleteExhibitor(\${ex.id})" class="px-3 py-1.5 rounded-lg text-xs bg-red-500/20 text-red-400 hover:bg-red-500/30"><i class="fas fa-trash mr-1"></i>Delete</button>
               </div>
             </div>
@@ -29350,7 +29363,7 @@ function adminPageHTML(): string {
                   </div>
                 </div>
                 <div class="flex gap-1 shrink-0 ml-2">
-                  <button onclick='openEditAnnouncement(\${JSON.stringify(a).replace(/'/g,"&#39;")})' class="px-2 py-1 rounded text-xs bg-primary-500/20 text-primary-300 hover:bg-primary-500/30"><i class="fas fa-edit"></i></button>
+                  <button onclick='openEditAnnouncement(\${JSON.stringify(a).replace(/&/g,"&amp;").replace(/'/g,"&#39;")})' class="px-2 py-1 rounded text-xs bg-primary-500/20 text-primary-300 hover:bg-primary-500/30"><i class="fas fa-edit"></i></button>
                   <button onclick="deleteAnnouncement(\${a.id})" class="px-2 py-1 rounded text-xs bg-red-500/20 text-red-400 hover:bg-red-500/30"><i class="fas fa-trash"></i></button>
                 </div>
               </div>
