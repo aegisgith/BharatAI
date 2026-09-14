@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
-import mp from './routes/marketplace'
+import mp, { setMarketplaceMailer } from './routes/marketplace'
 import { marketplacePageHTML, marketplaceListingPageHTML, marketplaceDashboardPageHTML, marketplaceAdminPageHTML, marketplaceFaqPageHTML } from './routes/marketplace-pages'
 
 type Bindings = {
@@ -161,6 +161,10 @@ app.get('/api/admin/audit', async (c) => {
 })
 
 // ==================== AI MARKETPLACE (integrated) ====================
+// The marketplace emails the team on new listings and companies on approval and
+// inquiries through the same sender as everything else. Passed in because that
+// module cannot import from this file.
+setMarketplaceMailer(sendAdminEmail)
 app.route('/', mp)
 
 // Marketplace page routes
@@ -15974,7 +15978,7 @@ function mainPageHTML(): string {
           actions: [A('My sessions','fa-calendar-check',"openSpeakerGreenRoom()"), A('Edit my profile','fa-user-pen',"switchTab('myprofile')"), A('Message attendees','fa-comments',"switchTab('networking')")] };
       } else if (badge.includes('exhibitor') || role.includes('exhibitor') || badge.includes('startup')) {
         p = { label: badge.includes('startup') ? 'Startup' : 'Exhibitor', icon: 'fa-store', tint: '#FF6B00', blurb: 'Manage your booth, capture leads, and connect with buyers & investors.',
-          actions: [A('Lead console','fa-user-group',"openExhibitorConsole()"), A('List on AI Market','fa-robot',"location.href='/marketplace'"), A('Find investors','fa-handshake',"switchTab('networking')")] };
+          actions: [A('Lead console','fa-user-group',"openExhibitorConsole()"), A('List on AI Market','fa-robot',"location.href='/marketplace?submit=true'"), A('Find investors','fa-handshake',"switchTab('networking')")] };
       } else if (badge.includes('investor')) {
         p = { label: 'Investor', icon: 'fa-sack-dollar', tint: '#22c55e', blurb: 'Discover startups pitching at the event, build a watchlist, and book meetings.',
           actions: [A('Deal flow','fa-rocket',"openInvestorDealflow()"), A('Browse founders','fa-users',"switchTab('networking')"), A('My meetings','fa-calendar',"switchTab('inbox')")] };
@@ -15983,7 +15987,7 @@ function mainPageHTML(): string {
           actions: [A('Press area','fa-newspaper',"openMediaCenter()"), A('Speaker directory','fa-users',"switchTab('networking')"), A('Schedule','fa-calendar-alt',"switchTab('schedule')")] };
       } else if (badge.includes('sponsor') || badge.includes('partner')) {
         p = { label: 'Sponsor', icon: 'fa-handshake-angle', tint: '#eab308', blurb: 'Your brand presence, booth leads, and audience reach at the event.',
-          actions: [A('Lead console','fa-user-group',"openExhibitorConsole()"), A('Brand on AI Market','fa-robot',"location.href='/marketplace'"), A('Meet attendees','fa-users',"switchTab('networking')")] };
+          actions: [A('Lead console','fa-user-group',"openExhibitorConsole()"), A('Brand on AI Market','fa-robot',"location.href='/marketplace?submit=true'"), A('Meet attendees','fa-users',"switchTab('networking')")] };
       } else if (badge.includes('organiser') || badge.includes('organizer') || role.includes('organizer') || badge.includes('support staff')) {
         p = { label: 'Organizer', icon: 'fa-clipboard-list', tint: '#FF6B00', blurb: 'Run the show — the admin console has attendees, sessions, and announcements.',
           actions: [A('Admin console','fa-gauge-high',"location.href='/admin'"), A('Live schedule','fa-calendar-alt',"switchTab('schedule')"), A('Announcements','fa-bullhorn',"location.href='/admin'")] };

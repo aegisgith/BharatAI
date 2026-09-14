@@ -148,6 +148,7 @@ export function marketplacePageHTML(): string {
           <input name="email" autocomplete="username" inputmode="email" autocapitalize="none" spellcheck="false" type="email" placeholder="Email address" required>
           <input name="password" autocomplete="new-password" type="password" placeholder="Password (min 6 chars)" required minlength="6">
           <button type="submit" class="mp-btn-secondary">Create Account</button>
+          <p class="text-xs text-slate-500 mt-2">Exhibiting at Bharat AI Innovation 2026? Use the email from your booth booking and your booth number is added to your listing automatically.</p>
         </form>
       </div>
     </div>
@@ -272,8 +273,8 @@ export function marketplacePageHTML(): string {
             <div class="form-field">
               <label>Company Logo</label>
               <div id="logo-upload-label" class="file-upload-area">
-                <input type="file" name="logo_file" accept="image/*" class="hidden">
-                <p><i class="fas fa-cloud-upload-alt mr-1"></i> Upload logo (max 5MB)</p>
+                <input type="file" name="logo_file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml,.svg" class="hidden">
+                <p><i class="fas fa-cloud-upload-alt mr-1"></i> Upload logo (PNG, JPG, WebP or SVG)</p>
               </div>
               <div id="logo-preview" class="file-preview hidden">
                 <img id="logo-preview-img" src="" alt="Logo preview">
@@ -284,8 +285,8 @@ export function marketplacePageHTML(): string {
               <label>Product Image</label>
               <div id="product-img-upload" class="file-upload-area">
                 <div id="product-img-label">
-                  <input type="file" name="product_image_file" accept="image/*" class="hidden">
-                  <p><i class="fas fa-cloud-upload-alt mr-1"></i> Upload product image (max 5MB)</p>
+                  <input type="file" name="product_image_file" accept="image/png,image/jpeg,image/webp,image/gif" class="hidden">
+                  <p><i class="fas fa-cloud-upload-alt mr-1"></i> Upload product image (large photos are resized for you)</p>
                 </div>
               </div>
               <div id="product-img-preview" class="file-preview hidden">
@@ -297,8 +298,8 @@ export function marketplacePageHTML(): string {
             <div class="form-field full-width">
               <label>Screenshots (max 3)</label>
               <div id="screenshots-label" class="file-upload-area">
-                <input type="file" name="screenshot_files" accept="image/*" multiple class="hidden">
-                <p><i class="fas fa-images mr-1"></i> Upload screenshots (max 5MB each)</p>
+                <input type="file" name="screenshot_files" accept="image/png,image/jpeg,image/webp,image/gif" multiple class="hidden">
+                <p><i class="fas fa-images mr-1"></i> Upload screenshots (up to 3, resized for you)</p>
               </div>
               <div id="screenshots-preview" class="screenshots-grid"></div>
             </div>
@@ -389,7 +390,7 @@ export function marketplacePageHTML(): string {
     </div>
   </footer>
 
-  <script src="/static/marketplace-app.js"></script>
+  <script src="/static/marketplace-app.js?v=2"></script>
 </body>
 </html>`
 }
@@ -397,6 +398,12 @@ export function marketplacePageHTML(): string {
 // ══════════════════════════════════════════
 // LISTING DETAIL PAGE
 // ══════════════════════════════════════════
+// The slugs come straight from the URL path, already percent-decoded, and are
+// written into an inline <script>. Interpolated inside quotes, a path like
+// /marketplace/listing/x";alert(1)//y ran as script on this origin. JSON-encode,
+// and escape "<" so a value can never close the script element either.
+const inlineJsString = (v: string) => JSON.stringify(String(v)).replace(/</g, '\\u003c')
+
 export function marketplaceListingPageHTML(companySlug?: string, productSlug?: string, legacyId?: string): string {
   return `${mpSharedHead('AI Product Listing')}
 <body class="mp-body">
@@ -474,12 +481,12 @@ export function marketplaceListingPageHTML(companySlug?: string, productSlug?: s
 
   <script>
     ${companySlug && productSlug
-      ? `window.__LISTING_COMPANY_SLUG = "${companySlug}"; window.__LISTING_PRODUCT_SLUG = "${productSlug}";`
+      ? `window.__LISTING_COMPANY_SLUG = ${inlineJsString(companySlug)}; window.__LISTING_PRODUCT_SLUG = ${inlineJsString(productSlug)};`
       : legacyId
-        ? `window.__LISTING_LEGACY_ID = "${legacyId}";`
+        ? `window.__LISTING_LEGACY_ID = ${inlineJsString(legacyId)};`
         : ''}
   </script>
-  <script src="/static/marketplace-listing.js"></script>
+  <script src="/static/marketplace-listing.js?v=2"></script>
 </body>
 </html>`
 }
@@ -625,7 +632,7 @@ export function marketplaceDashboardPageHTML(): string {
     </div>
   </div>
 
-  <script src="/static/marketplace-dashboard.js"></script>
+  <script src="/static/marketplace-dashboard.js?v=2"></script>
 </body>
 </html>`
 }
@@ -722,7 +729,7 @@ export function marketplaceAdminPageHTML(): string {
     </section>
   </div>
 
-  <script src="/static/marketplace-admin.js"></script>
+  <script src="/static/marketplace-admin.js?v=2"></script>
 </body>
 </html>`
 }
@@ -759,22 +766,22 @@ export function marketplaceFaqPageHTML(): string {
 
       <div class="faq-item">
         <h3><i class="fas fa-user-plus mr-2 text-primary-400"></i>Who can list products?</h3>
-        <p>Any registered company can list their AI products. Exhibitors at Bharat AI Innovation 2026 can directly access the marketplace from their exhibitor dashboard — no separate registration needed. Their booth information is automatically linked.</p>
+        <p>Any company can create a free marketplace account and list its AI products. If you are exhibiting at Bharat AI Innovation 2026, register with the same email address you used for your booth booking and your booth number is added to your listing automatically.</p>
       </div>
 
       <div class="faq-item">
         <h3><i class="fas fa-check-circle mr-2 text-emerald-400"></i>How does the approval process work?</h3>
-        <p>All submitted listings go through an admin review process. Once approved, they appear on the public marketplace. You can track your listing status from your dashboard.</p>
+        <p>Every submitted listing is reviewed by our team before it appears on the public marketplace, and we email you when it is approved. Editing a listing sends it back for review. You can track each listing's status from your dashboard.</p>
       </div>
 
       <div class="faq-item">
         <h3><i class="fas fa-search mr-2 text-blue-400"></i>How can buyers find my product?</h3>
-        <p>Buyers can search and filter by industry, AI category, and tags. Each listing has a detailed page with overview, technical specs, case studies, and a contact form for sending inquiries directly to you.</p>
+        <p>Buyers can filter by industry, AI category, and tags. Each listing has a detailed page with overview, technical specs, case studies, and a contact form. Inquiries are emailed to your account address and also appear in your dashboard.</p>
       </div>
 
       <div class="faq-item">
         <h3><i class="fas fa-link mr-2 text-amber-400"></i>How is the marketplace connected to the event?</h3>
-        <p>The marketplace is fully integrated with the Bharat AI Innovation 2026 networking app. Exhibitors can list products directly from their exhibitor profile. Approved listings show a "Meet at Booth" badge if the company has a booth at the event.</p>
+        <p>The marketplace is part of the Bharat AI Innovation 2026 event app. Approved listings from exhibiting companies show their booth number, so buyers can find you at the venue.</p>
       </div>
 
       <div class="faq-item">
@@ -784,7 +791,7 @@ export function marketplaceFaqPageHTML(): string {
 
       <div class="faq-item">
         <h3><i class="fas fa-star mr-2 text-amber-400"></i>How does the rating system work?</h3>
-        <p>Registered users can rate and review approved listings. Ratings are on a 1-5 scale. The Bharat AI Rating reflects the product's overall quality and market readiness as assessed by our review team and community.</p>
+        <p>Signed-in marketplace companies can rate and review approved listings on a 1-5 scale, one review per company per product. Companies cannot review their own listings.</p>
       </div>
 
       <div class="faq-item">

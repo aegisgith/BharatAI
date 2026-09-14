@@ -2,6 +2,9 @@ import { Hono } from 'hono'
 
 type Bindings = {
   DB: D1Database
+  // Listing images. Without the bucket (a local or preview build) uploads fall back
+  // to base64 in D1, which caps them lower - see MAX_INLINE_UPLOAD_BYTES.
+  UPLOADS?: R2Bucket
   // Secret used to HMAC-sign marketplace session cookies so the company id
   // can't be forged. Set via a Cloudflare Pages secret:
   //   npx wrangler pages secret put MP_SESSION_SECRET
@@ -10,6 +13,99 @@ type Bindings = {
   ADMIN_SECRET?: string
 }
 const mp = new Hono<{ Bindings: Bindings }>()
+
+// ── Email ──
+// The sender lives in src/index.tsx (sendAdminEmail: Elastic Email, key in
+// app_settings). It is handed in rather than imported because index.tsx imports
+// this module. Until it is set, notifications are skipped and nothing else changes.
+type Mailer = (c: any, to: string, subject: string, html: string) => Promise<{ ok: boolean; error?: string }>
+let mailer: Mailer | null = null
+export const setMarketplaceMailer = (fn: Mailer) => { mailer = fn }
+
+// Eight real submissions sat in 'pending' for up to five months because nothing
+// told anyone they existed. Mail goes out after the response via waitUntil, so a
+// slow or failing mail service can never fail the submission that triggered it.
+const inBackground = (c: any, work: () => Promise<unknown>) => {
+  const run = work().catch(() => {})
+  try { c.executionCtx.waitUntil(run) } catch { /* no execution context: the promise still runs */ }
+}
+
+const setting = async (c: any, key: string): Promise<string | undefined> => {
+  try {
+    return ((await c.env.DB.prepare('SELECT value FROM app_settings WHERE key = ?').bind(key).first()) as any)?.value || undefined
+  } catch { return undefined }
+}
+
+const htmlEsc = (v: any) => String(v ?? '')
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+
+const siteOrigin = (c: any) => { try { return new URL(c.req.url).origin } catch { return 'https://bharataiinnovation.com' } }
+
+const emailShell = (title: string, body: string) => `<!DOCTYPE html><html><head><meta charset="utf-8"></head>
+<body style="margin:0;background:#f6f7fb;padding:24px;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1e2140">
+  <div style="max-width:600px;margin:0 auto;background:#fff;border-radius:14px;padding:28px;border:1px solid #e7e9f5">
+    <h2 style="margin:0 0 16px;font-size:19px">${htmlEsc(title)}</h2>
+    ${body}
+    <p style="margin:24px 0 0;font-size:12px;color:#888">Bharat AI Marketplace &middot; Bharat AI Innovation 2026 &middot; 20-21 November 2026, World Trade Center, Mumbai</p>
+  </div></body></html>`
+
+const emailButton = (href: string, label: string) =>
+  `<p style="margin:20px 0 0"><a href="${htmlEsc(href)}" style="display:inline-block;background:#FF6B00;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;font-size:14px">${htmlEsc(label)}</a></p>`
+
+const emailRow = (k: string, v: any) => v
+  ? `<tr><td style="padding:5px 12px 5px 0;color:#666;font-size:13px;vertical-align:top">${htmlEsc(k)}</td><td style="padding:5px 0;font-size:13px"><strong>${htmlEsc(v)}</strong></td></tr>`
+  : ''
+
+const sendMail = async (c: any, to: string, subject: string, html: string) => {
+  if (!mailer || !to) return
+  await mailer(c, to, subject, html)
+}
+
+const teamAddress = async (c: any) =>
+  (await setting(c, 'marketplace_notify_email')) || (await setting(c, 'inquiry_notify_email')) || 'info@bharataiinnovation.com'
+
+const notifyTeamOfSubmission = (c: any, listing: { id: any; product_name: string; company_name: string; description?: string; website_url?: string }, accountEmail: string, kind: 'new' | 'updated') =>
+  inBackground(c, async () => {
+    const pending = ((await c.env.DB.prepare("SELECT COUNT(*) AS n FROM mp_listings WHERE status = 'pending'").first()) as any)?.n || 0
+    const verb = kind === 'new' ? 'New AI Marketplace listing' : 'AI Marketplace listing edited'
+    const body = `<p style="margin:0 0 14px;font-size:14px;line-height:1.6">${kind === 'new' ? 'A company submitted a product' : 'A company edited its listing, which takes it off the public marketplace'} and it is waiting for review. ${pending} listing${pending === 1 ? '' : 's'} pending in total.</p>
+      <table style="border-collapse:collapse">${emailRow('Product', listing.product_name)}${emailRow('Company', listing.company_name)}${emailRow('Account', accountEmail)}${emailRow('Website', listing.website_url)}</table>
+      ${listing.description ? `<div style="margin-top:14px;padding:12px 14px;background:#f8f9fa;border-left:3px solid #FF9933;font-size:14px;line-height:1.6;white-space:pre-wrap">${htmlEsc(String(listing.description).slice(0, 600))}</div>` : ''}
+      ${emailButton(siteOrigin(c) + '/marketplace/admin', 'Review pending listings')}
+      <p style="margin:12px 0 0;font-size:12px;color:#888">Sign in with the marketplace admin account on /marketplace, then open Pending Review.</p>`
+    await sendMail(c, await teamAddress(c), `${verb}: ${listing.product_name} (${listing.company_name})`, emailShell(verb, body))
+  })
+
+const notifyCompanyOfDecision = (c: any, listingId: number, status: 'approved' | 'rejected', reason: string) =>
+  inBackground(c, async () => {
+    const row = await c.env.DB.prepare(
+      'SELECT l.product_name, l.company_slug, l.product_slug, co.email FROM mp_listings l JOIN mp_companies co ON co.id = l.company_id WHERE l.id = ?'
+    ).bind(listingId).first() as any
+    if (!row?.email) return
+    const origin = siteOrigin(c)
+    if (status === 'approved') {
+      const body = `<p style="margin:0;font-size:14px;line-height:1.6"><strong>${htmlEsc(row.product_name)}</strong> is now live on the Bharat AI Marketplace. Buyers can find it, and their inquiries will reach this address.</p>
+        ${emailButton(`${origin}/marketplace/listing/${row.company_slug}/${row.product_slug}`, 'View your listing')}`
+      await sendMail(c, row.email, `Your listing is live: ${row.product_name}`, emailShell('Your listing is approved', body))
+    } else {
+      const body = `<p style="margin:0;font-size:14px;line-height:1.6">We could not publish <strong>${htmlEsc(row.product_name)}</strong> as submitted.</p>
+        ${reason ? `<div style="margin-top:14px;padding:12px 14px;background:#f8f9fa;border-left:3px solid #FF9933;font-size:14px;line-height:1.6;white-space:pre-wrap">${htmlEsc(reason)}</div>` : ''}
+        <p style="margin:14px 0 0;font-size:14px;line-height:1.6">Edit the listing from your dashboard and it goes straight back into review.</p>
+        ${emailButton(origin + '/marketplace/dashboard', 'Open your dashboard')}`
+      await sendMail(c, row.email, `Your listing needs changes: ${row.product_name}`, emailShell('Your listing was not approved', body))
+    }
+  })
+
+const notifyCompanyOfInquiry = (c: any, listing: any, inq: { name: string; email: string; company: string; phone: string; message: string }) =>
+  inBackground(c, async () => {
+    const owner = await c.env.DB.prepare('SELECT email FROM mp_companies WHERE id = ?').bind(listing.company_id).first() as any
+    if (!owner?.email) return
+    const body = `<p style="margin:0 0 14px;font-size:14px;line-height:1.6">Someone sent an inquiry about <strong>${htmlEsc(listing.product_name)}</strong> on the Bharat AI Marketplace. Reply to them directly at the address below.</p>
+      <table style="border-collapse:collapse">${emailRow('Name', inq.name)}${emailRow('Email', inq.email)}${emailRow('Company', inq.company)}${emailRow('Phone', inq.phone)}</table>
+      ${inq.message ? `<div style="margin-top:14px;padding:12px 14px;background:#f8f9fa;border-left:3px solid #FF9933;font-size:14px;line-height:1.6;white-space:pre-wrap">${htmlEsc(inq.message)}</div>` : ''}
+      ${emailButton(siteOrigin(c) + '/marketplace/dashboard', 'See all inquiries')}`
+    await sendMail(c, owner.email, `New inquiry about ${listing.product_name} from ${inq.name}`, emailShell('New marketplace inquiry', body))
+  })
 
 // ── Session signing ──
 // The session cookie is `<companyId>.<hmac>` where hmac = HMAC-SHA256 of the
@@ -69,6 +165,19 @@ const generateSlug = (text: string) =>
     .replace(/^-|-$/g, '')
     .slice(0, 80)
 
+// Two accounts can slugify to the same company ("Acme" and "ACME"), and the
+// by-slug lookup returns one row, so the second listing was unreachable.
+const uniqueProductSlug = async (c: any, companySlug: string, productName: string, excludeId = 0) => {
+  const root = generateSlug(productName) || 'product'
+  for (let n = 1; n <= 50; n++) {
+    const candidate = n === 1 ? root : `${root.slice(0, 76)}-${n}`
+    const clash = await c.env.DB.prepare('SELECT id FROM mp_listings WHERE company_slug = ? AND product_slug = ? AND id != ?')
+      .bind(companySlug, candidate, excludeId).first()
+    if (!clash) return candidate
+  }
+  return `${root.slice(0, 70)}-${Date.now().toString(36)}`
+}
+
 // Passwords were a single unsalted SHA-256 round. That is reversible for anything
 // in a wordlist and, being unsalted, identical passwords produced identical hashes
 // — one cracked hash exposed every account sharing that password.
@@ -81,10 +190,14 @@ const generateSlug = (text: string) =>
 // constant — the stored format keeps older hashes verifiable either way.
 const PBKDF2_ITERATIONS = 100000
 
+// Chunked: spreading a whole buffer into String.fromCharCode overflows the stack
+// somewhere past ~120KB, which is what made every product image upload fail.
 const b64 = (buf: ArrayBuffer | Uint8Array): string => {
   const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf)
   let bin = ''
-  for (const b of bytes) bin += String.fromCharCode(b)
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    bin += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + 0x8000)))
+  }
   return btoa(bin)
 }
 const unb64 = (s: string): Uint8Array => Uint8Array.from(atob(s), ch => ch.charCodeAt(0))
@@ -144,34 +257,134 @@ const getCompanyFromSession = async (c: any) => {
   return company || null
 }
 
+const EMAIL_RE = /^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/
+
+// ── Exhibitor cross-link ──
+// Nothing ever set mp_companies.exhibitor_id once the credential-free
+// exhibitor-login route was deleted, so no listing could show a booth. A company
+// whose marketplace email matches an exhibitor's contact email is linked
+// automatically; admin can also link or unlink one by hand while reviewing. The
+// email is not verified, which is why the link is shown to the admin before approval.
+const findExhibitorByEmail = async (c: any, email: string) => {
+  if (!email) return null
+  try {
+    return await c.env.DB.prepare(
+      "SELECT id, company_name, booth_number FROM exhibitors WHERE trim(ifnull(contact_email, '')) <> '' AND lower(trim(contact_email)) = lower(trim(?)) ORDER BY id DESC LIMIT 1"
+    ).bind(email).first() as any
+  } catch { return null }
+}
+
+const resolveExhibitor = async (c: any, company: any) => {
+  if (company.exhibitor_id) {
+    const linked = await c.env.DB.prepare('SELECT id, company_name, booth_number FROM exhibitors WHERE id = ?').bind(company.exhibitor_id).first().catch(() => null)
+    if (linked) return linked as any
+  }
+  const match = await findExhibitorByEmail(c, company.email)
+  if (match) await c.env.DB.prepare('UPDATE mp_companies SET exhibitor_id = ? WHERE id = ?').bind(match.id, company.id).run()
+  return match
+}
+
+// ── Listing input ──
+// Every link and image used to be stored as typed and then written into href/src
+// on the public page, so a javascript: URL was one click from running on this origin.
+const LINK_FIELDS = ['website_url', 'product_url', 'demo_url', 'video_url']
+const IMAGE_FIELDS = ['logo_url', 'product_image_url']
+const TEXT_FIELDS = [
+  'target_customer', 'target_industry', 'target_functional_area', 'ai_category', 'ai_category_custom', 'tags',
+  'innovation', 'use_cases', 'pricing_type', 'pricing_details', 'founder_name', 'cto_name', 'contact_name',
+  'company_registration', 'company_phone', 'company_address', 'sales_contact_name', 'sales_contact_email',
+  'sales_contact_phone', 'current_customers', 'integration_requirements', 'supported_platforms', 'tech_stack',
+  'security_protocols', 'case_studies', 'certifications_compliance', 'access_info', 'support_offering',
+  'sla_details', 'onboarding_process',
+]
+const FIELD_LABELS: Record<string, string> = {
+  product_name: 'Product name', description: 'Description', website_url: 'Website URL', product_url: 'Product URL',
+  demo_url: 'Demo URL', video_url: 'Video URL', sales_contact_email: 'Sales email',
+}
+const UPLOAD_URL_RE = /^\/api\/mp\/uploads\/\d+$/
+
+const cleanLink = (raw: any): string | null => {
+  const s = String(raw ?? '').trim()
+  if (!s) return ''
+  const isWeb = (v: string) => { try { const u = new URL(v); return u.protocol === 'https:' || u.protocol === 'http:' } catch { return false } }
+  // Returned as typed, not re-serialised: URL.toString() adds a trailing slash, and
+  // an untouched field would then count as an edit and send the listing back to review.
+  if (isWeb(s)) return s
+  // A bare domain ("example.com") is what people type into the dashboard's plain inputs.
+  if (/^[\w-]+(\.[\w-]+)+([/?#]\S*)?$/.test(s) && isWeb('https://' + s)) return 'https://' + s
+  return null
+}
+
+// Returns the cleaned values for the fields present in `body`, or an error message.
+const normalizeListingInput = (body: any, fields: string[]): { values: Record<string, string>; error?: string } => {
+  const values: Record<string, string> = {}
+  for (const f of fields) {
+    if (body[f] === undefined) continue
+    const label = FIELD_LABELS[f] || f.replace(/_/g, ' ')
+    if (LINK_FIELDS.includes(f)) {
+      const v = cleanLink(body[f])
+      if (v === null) return { values, error: `${label} must be a web address starting with http:// or https://` }
+      values[f] = v
+    } else if (IMAGE_FIELDS.includes(f)) {
+      const v = String(body[f] ?? '').trim()
+      if (v && !UPLOAD_URL_RE.test(v)) return { values, error: `${label} must be an image uploaded through the form` }
+      values[f] = v
+    } else if (f === 'screenshot_urls') {
+      const list = String(body[f] ?? '').split(',').map(s => s.trim()).filter(Boolean)
+      if (list.length > 3 || list.some(u => !UPLOAD_URL_RE.test(u))) return { values, error: 'Screenshots must be up to 3 images uploaded through the form' }
+      values[f] = list.join(', ')
+    } else {
+      const v = String(body[f] ?? '').trim()
+      const max = f === 'product_name' ? 150 : 5000
+      if (v.length > max) return { values, error: `${label} is too long (max ${max} characters)` }
+      if (f === 'sales_contact_email' && v && !EMAIL_RE.test(v)) return { values, error: 'Sales email is not a valid email address' }
+      values[f] = v
+    }
+  }
+  if ('product_name' in values && !values.product_name) return { values, error: 'Product name is required' }
+  if ('description' in values && !values.description) return { values, error: 'Description is required' }
+  return { values }
+}
+
 // ══════════════════════════════════════════
 // AUTH ROUTES
 // ══════════════════════════════════════════
 
 mp.post('/api/mp/auth/register', async (c) => {
-  const { company_name, email, password } = await c.req.json()
+  const body = await c.req.json().catch(() => ({})) as any
+  const company_name = String(body.company_name || '').trim()
+  const email = String(body.email || '').trim().toLowerCase()
+  const password = String(body.password || '')
   if (!company_name || !email || !password) return c.json({ error: 'All fields required' }, 400)
+  if (company_name.length > 150) return c.json({ error: 'Company name is too long' }, 400)
+  if (!EMAIL_RE.test(email)) return c.json({ error: 'Enter a valid email address' }, 400)
   if (password.length < 6) return c.json({ error: 'Password must be at least 6 characters' }, 400)
 
-  const existing = await c.env.DB.prepare('SELECT id FROM mp_companies WHERE email = ?').bind(email).first()
+  const existing = await c.env.DB.prepare('SELECT id FROM mp_companies WHERE lower(email) = ?').bind(email).first()
   if (existing) return c.json({ error: 'Email already registered' }, 400)
 
   const password_hash = await hashPassword(password)
   const result = await c.env.DB.prepare(
     'INSERT INTO mp_companies (company_name, email, password_hash) VALUES (?, ?, ?)'
   ).bind(company_name, email, password_hash).run()
+  const id = result.meta.last_row_id
 
-  return c.json({ success: true, id: result.meta.last_row_id })
+  // Signed straight in: registering used to end on "Please login", a second form
+  // standing between a company and the listing form it came for.
+  c.header('Set-Cookie', mpSessionCookie(await signSession(c, id as number)))
+  return c.json({ success: true, id, user: { id, company_name, email, role: 'company' } })
 })
 
 mp.post('/api/mp/auth/login', async (c) => {
-  const { email, password } = await c.req.json()
+  const body = await c.req.json().catch(() => ({})) as any
+  const email = String(body.email || '').trim()
+  const password = String(body.password || '')
   if (!email || !password) return c.json({ error: 'Email and password required' }, 400)
 
   // Matching in SQL is no longer possible: every account has its own salt, so the
   // row must be fetched first and the password verified in code.
   const company = await c.env.DB.prepare(
-    'SELECT id, company_name, email, role, password_hash FROM mp_companies WHERE email = ?'
+    'SELECT id, company_name, email, role, password_hash FROM mp_companies WHERE lower(email) = lower(?) ORDER BY id LIMIT 1'
   ).bind(email).first() as any
 
   if (!company) return c.json({ error: 'Invalid email or password' }, 401)
@@ -216,15 +429,19 @@ mp.post('/api/mp/auth/logout', async (c) => {
 // LISTINGS (PUBLIC)
 // ══════════════════════════════════════════
 
+// exhibitor_booth is read live from the exhibitor row, so a booth assigned after
+// the listing was approved still shows; booth_number is the snapshot taken at submit.
+const PUBLIC_LISTING_SELECT =
+  'SELECT l.*, e.company_name AS exhibitor_company, e.booth_number AS exhibitor_booth FROM mp_listings l LEFT JOIN exhibitors e ON l.exhibitor_id = e.id'
+
 mp.get('/api/mp/listings', async (c) => {
   // Hardcoded: this is the PUBLIC catalogue. The status used to come from the query
   // string, so ?status=pending / ?status=rejected dumped every unreviewed listing
   // with its private contact and registration details to anonymous callers.
   // Moderators read the queue through the admin routes, which check role='admin'.
-  const status = 'approved'
   const listings = await c.env.DB.prepare(
-    'SELECT l.*, e.company_name as exhibitor_company, e.booth_number as exhibitor_booth FROM mp_listings l LEFT JOIN exhibitors e ON l.exhibitor_id = e.id WHERE l.status = ? ORDER BY l.created_at DESC'
-  ).bind(status).all()
+    `${PUBLIC_LISTING_SELECT} WHERE l.status = ? ORDER BY l.created_at DESC`
+  ).bind('approved').all()
   return c.json({ listings: listings.results })
 })
 
@@ -232,7 +449,7 @@ mp.get('/api/mp/listings/by-slug/:companySlug/:productSlug', async (c) => {
   const companySlug = c.req.param('companySlug')
   const productSlug = c.req.param('productSlug')
   const listing = await c.env.DB.prepare(
-    'SELECT * FROM mp_listings WHERE company_slug = ? AND product_slug = ? AND status = ?'
+    `${PUBLIC_LISTING_SELECT} WHERE l.company_slug = ? AND l.product_slug = ? AND l.status = ?`
   ).bind(companySlug, productSlug, 'approved').first()
   if (!listing) return c.json({ error: 'Listing not found' }, 404)
   // Increment view count
@@ -241,8 +458,12 @@ mp.get('/api/mp/listings/by-slug/:companySlug/:productSlug', async (c) => {
 })
 
 mp.get('/api/mp/listings/:id', async (c) => {
-  const id = c.req.param('id')
-  const listing = await c.env.DB.prepare('SELECT * FROM mp_listings WHERE id = ?').bind(parseInt(id)).first()
+  // Approved only, like the slug route. This one had no status filter, and ids are
+  // sequential, so /api/mp/listings/1, /2, /3... returned every pending and
+  // rejected submission with its registration number, phone and address.
+  const id = parseInt(c.req.param('id'), 10)
+  if (!Number.isFinite(id)) return c.json({ error: 'Listing not found' }, 404)
+  const listing = await c.env.DB.prepare(`${PUBLIC_LISTING_SELECT} WHERE l.id = ? AND l.status = ?`).bind(id, 'approved').first()
   if (!listing) return c.json({ error: 'Listing not found' }, 404)
   await c.env.DB.prepare('UPDATE mp_listings SET view_count = view_count + 1 WHERE id = ?').bind(listing.id).run()
   return c.json({ listing })
@@ -250,28 +471,30 @@ mp.get('/api/mp/listings/:id', async (c) => {
 
 // ── Submit new listing ──
 mp.post('/api/mp/listings', async (c) => {
-  const company = await getCompanyFromSession(c)
+  const company = await getCompanyFromSession(c) as any
   if (!company) return c.json({ error: 'Login required' }, 401)
 
-  const body = await c.req.json()
-  const { product_name, description } = body
-  if (!product_name || !description) return c.json({ error: 'Product name and description are required' }, 400)
-
-  const company_slug = generateSlug(company.company_name)
-  const product_slug = generateSlug(product_name)
-
-  // Check if exhibitor to cross-link
-  let exhibitor_id = null
-  let booth_number = null
-  if (company.exhibitor_id) {
-    const exhibitor = await c.env.DB.prepare('SELECT id, booth_number FROM exhibitors WHERE id = ?')
-      .bind(company.exhibitor_id).first()
-    if (exhibitor) {
-      exhibitor_id = exhibitor.id
-      booth_number = (exhibitor as any).booth_number
-    }
+  const body = await c.req.json().catch(() => ({})) as any
+  if (!String(body.product_name || '').trim() || !String(body.description || '').trim()) {
+    return c.json({ error: 'Product name and description are required' }, 400)
   }
+  const { values: v, error } = normalizeListingInput(body, ['product_name', 'description', ...TEXT_FIELDS, ...LINK_FIELDS, ...IMAGE_FIELDS, 'screenshot_urls'])
+  if (error) return c.json({ error }, 400)
 
+  // A failed upload used to lose the whole form, so people resubmitted; now that
+  // submitting works, the same product twice is a mistake rather than a retry.
+  const dup = await c.env.DB.prepare('SELECT id FROM mp_listings WHERE company_id = ? AND lower(trim(product_name)) = lower(?)')
+    .bind(company.id, v.product_name).first()
+  if (dup) return c.json({ error: `You already have a listing called "${v.product_name}". Edit it from your dashboard instead.` }, 409)
+
+  const company_slug = generateSlug(company.company_name) || 'company'
+  const product_slug = await uniqueProductSlug(c, company_slug, v.product_name)
+
+  const exhibitor = await resolveExhibitor(c, company)
+  const exhibitor_id = exhibitor ? exhibitor.id : null
+  const booth_number = exhibitor ? (exhibitor.booth_number || null) : null
+
+  const s = (f: string) => v[f] || ''
   const result = await c.env.DB.prepare(`
     INSERT INTO mp_listings (
       company_id, company_name, company_slug, product_name, product_slug,
@@ -287,83 +510,144 @@ mp.post('/api/mp/listings', async (c) => {
       exhibitor_id, booth_number, status
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
-    company.id, company.company_name, company_slug, product_name, product_slug,
-    description, body.target_customer || '', body.target_industry || '', body.target_functional_area || '',
-    body.ai_category || '', body.ai_category_custom || '', body.tags || '', body.innovation || '', body.use_cases || '',
-    body.pricing_type || '', body.pricing_details || '', body.product_image_url || '', body.logo_url || '', body.screenshot_urls || '',
-    body.website_url || '', body.product_url || '', body.demo_url || '', body.video_url || '',
-    body.founder_name || '', body.cto_name || '', body.contact_name || '', body.company_registration || '', body.company_phone || '', body.company_address || '',
-    body.sales_contact_name || '', body.sales_contact_email || '', body.sales_contact_phone || '',
-    body.current_customers || '', body.integration_requirements || '', body.supported_platforms || '',
-    body.tech_stack || '', body.security_protocols || '', body.case_studies || '', body.certifications_compliance || '',
-    body.access_info || '', body.support_offering || '', body.sla_details || '', body.onboarding_process || '',
+    company.id, company.company_name, company_slug, v.product_name, product_slug,
+    v.description, s('target_customer'), s('target_industry'), s('target_functional_area'),
+    s('ai_category'), s('ai_category_custom'), s('tags'), s('innovation'), s('use_cases'),
+    s('pricing_type'), s('pricing_details'), s('product_image_url'), s('logo_url'), s('screenshot_urls'),
+    s('website_url'), s('product_url'), s('demo_url'), s('video_url'),
+    s('founder_name'), s('cto_name'), s('contact_name'), s('company_registration'), s('company_phone'), s('company_address'),
+    s('sales_contact_name'), s('sales_contact_email'), s('sales_contact_phone'),
+    s('current_customers'), s('integration_requirements'), s('supported_platforms'),
+    s('tech_stack'), s('security_protocols'), s('case_studies'), s('certifications_compliance'),
+    s('access_info'), s('support_offering'), s('sla_details'), s('onboarding_process'),
     exhibitor_id, booth_number, 'pending'
   ).run()
 
-  return c.json({ success: true, id: result.meta.last_row_id })
+  const id = result.meta.last_row_id
+  notifyTeamOfSubmission(c, { id, product_name: v.product_name, company_name: company.company_name, description: v.description, website_url: v.website_url }, company.email, 'new')
+  return c.json({ success: true, id })
 })
 
 // ── Reviews ──
 mp.get('/api/mp/listings/:id/reviews', async (c) => {
   const listingId = c.req.param('id')
   const reviews = await c.env.DB.prepare(
-    'SELECT * FROM mp_reviews WHERE listing_id = ? ORDER BY created_at DESC'
-  ).bind(parseInt(listingId)).all()
+    'SELECT r.id, r.listing_id, r.company_name, r.rating, r.comment, r.created_at FROM mp_reviews r JOIN mp_listings l ON l.id = r.listing_id WHERE r.listing_id = ? AND l.status = ? ORDER BY r.created_at DESC'
+  ).bind(parseInt(listingId), 'approved').all()
   return c.json({ reviews: reviews.results })
 })
 
 mp.post('/api/mp/listings/:id/reviews', async (c) => {
-  const company = await getCompanyFromSession(c)
+  const company = await getCompanyFromSession(c) as any
   if (!company) return c.json({ error: 'Login required' }, 401)
 
-  const listingId = c.req.param('id')
-  const { rating, comment } = await c.req.json()
-  if (!rating || rating < 1 || rating > 5) return c.json({ error: 'Rating must be 1-5' }, 400)
+  const listingId = parseInt(c.req.param('id'), 10)
+  const body = await c.req.json().catch(() => ({})) as any
+  const rating = Number(body.rating)
+  const comment = String(body.comment || '').trim().slice(0, 2000)
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) return c.json({ error: 'Rating must be 1-5' }, 400)
 
-  await c.env.DB.prepare(
-    'INSERT INTO mp_reviews (listing_id, company_id, company_name, rating, comment) VALUES (?, ?, ?, ?, ?)'
-  ).bind(parseInt(listingId), company.id, company.company_name, rating, comment || '').run()
+  const listing = await c.env.DB.prepare('SELECT id, company_id FROM mp_listings WHERE id = ? AND status = ?').bind(listingId, 'approved').first() as any
+  if (!listing) return c.json({ error: 'Listing not found' }, 404)
+  if (listing.company_id === company.id) return c.json({ error: 'You cannot review your own listing' }, 403)
 
+  // One review per company per listing: a second one replaces the first.
+  const existing = await c.env.DB.prepare('SELECT id FROM mp_reviews WHERE listing_id = ? AND company_id = ?').bind(listingId, company.id).first() as any
+  if (existing) {
+    await c.env.DB.prepare('UPDATE mp_reviews SET rating = ?, comment = ?, created_at = CURRENT_TIMESTAMP WHERE id = ?').bind(rating, comment, existing.id).run()
+  } else {
+    await c.env.DB.prepare(
+      'INSERT INTO mp_reviews (listing_id, company_id, company_name, rating, comment) VALUES (?, ?, ?, ?, ?)'
+    ).bind(listingId, company.id, company.company_name, rating, comment).run()
+  }
   return c.json({ success: true })
 })
 
 // ── Marketplace inquiries ──
 mp.post('/api/mp/inquiries', async (c) => {
-  const body = await c.req.json()
-  const { listing_id, inquirer_name, inquirer_email } = body
-  if (!listing_id || !inquirer_name || !inquirer_email) return c.json({ error: 'Name, email, and listing are required' }, 400)
+  const body = await c.req.json().catch(() => ({})) as any
+  const listingId = parseInt(body.listing_id, 10)
+  const name = String(body.inquirer_name || '').trim().slice(0, 120)
+  const email = String(body.inquirer_email || '').trim().slice(0, 200)
+  const company = String(body.inquirer_company || '').trim().slice(0, 200)
+  const phone = String(body.inquirer_phone || '').trim().slice(0, 40)
+  const message = String(body.inquirer_message || '').trim().slice(0, 4000)
+  if (!listingId || !name || !email) return c.json({ error: 'Name, email, and listing are required' }, 400)
+  if (!EMAIL_RE.test(email)) return c.json({ error: 'Enter a valid email address' }, 400)
+
+  const listing = await c.env.DB.prepare('SELECT id, company_id, product_name FROM mp_listings WHERE id = ? AND status = ?').bind(listingId, 'approved').first() as any
+  if (!listing) return c.json({ error: 'Listing not found' }, 404)
+
+  // Each inquiry now emails the vendor, and the form needs no login, so a repeat
+  // from the same address inside ten minutes is accepted but not stored or sent twice.
+  const recent = await c.env.DB.prepare(
+    "SELECT id FROM mp_inquiries WHERE listing_id = ? AND lower(inquirer_email) = lower(?) AND created_at > datetime('now', '-10 minutes')"
+  ).bind(listingId, email).first()
+  if (recent) return c.json({ success: true })
 
   await c.env.DB.prepare(
     'INSERT INTO mp_inquiries (listing_id, inquirer_name, inquirer_email, inquirer_company, inquirer_phone, inquirer_message) VALUES (?, ?, ?, ?, ?, ?)'
-  ).bind(listing_id, inquirer_name, inquirer_email, body.inquirer_company || '', body.inquirer_phone || '', body.inquirer_message || '').run()
+  ).bind(listingId, name, email, company, phone, message).run()
 
+  notifyCompanyOfInquiry(c, listing, { name, email, company, phone, message })
   return c.json({ success: true })
 })
 
-// ── File uploads (base64 in D1) ──
+// ── File uploads ──
+// Only real images are accepted, identified by their bytes rather than the
+// browser-declared type. SVG is refused here because it can carry script; the
+// listing form converts SVG logos to PNG before uploading.
+const MAX_UPLOAD_BYTES = 5 * 1024 * 1024
+// D1 caps a row at 2MB and base64 grows data by a third.
+const MAX_INLINE_UPLOAD_BYTES = 1400 * 1024
+const IMAGE_EXT: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp', 'image/avif': 'avif' }
+
+const sniffImageType = (b: Uint8Array): string | null => {
+  const ascii = (s: number, e: number) => String.fromCharCode(...Array.from(b.subarray(s, e)))
+  if (b.length >= 8 && b[0] === 0x89 && ascii(1, 4) === 'PNG') return 'image/png'
+  if (b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'image/jpeg'
+  if (b.length >= 6 && ascii(0, 4) === 'GIF8') return 'image/gif'
+  if (b.length >= 12 && ascii(0, 4) === 'RIFF' && ascii(8, 12) === 'WEBP') return 'image/webp'
+  if (b.length >= 12 && ascii(4, 8) === 'ftyp' && ['avif', 'avis'].includes(ascii(8, 12))) return 'image/avif'
+  return null
+}
+
 mp.post('/api/mp/uploads', async (c) => {
-  const company = await getCompanyFromSession(c)
+  const company = await getCompanyFromSession(c) as any
   if (!company) return c.json({ error: 'Login required' }, 401)
 
-  const formData = await c.req.formData()
-  const file = formData.get('file') as File
-  if (!file) return c.json({ error: 'No file provided' }, 400)
-  if (file.size > 5 * 1024 * 1024) return c.json({ error: 'File too large (max 5MB)' }, 400)
+  const formData = await c.req.formData().catch(() => null)
+  const file = formData?.get('file') as File | string | null
+  if (!file || typeof file === 'string') return c.json({ error: 'No file provided' }, 400)
 
-  const buffer = await file.arrayBuffer()
-  const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)))
-  const dataUrl = `data:${file.type};base64,${base64}`
+  const bytes = new Uint8Array(await file.arrayBuffer())
+  const type = sniffImageType(bytes)
+  if (!type) return c.json({ error: 'Please upload a PNG, JPG, WebP or GIF image.' }, 415)
+  const limit = c.env.UPLOADS ? MAX_UPLOAD_BYTES : MAX_INLINE_UPLOAD_BYTES
+  if (bytes.length > limit) return c.json({ error: `Image too large (max ${(limit / 1048576).toFixed(1)}MB)` }, 413)
+
+  // R2 when bound, as the attendee photos are; the D1 row keeps ownership and the id
+  // the listing URL uses, so /api/mp/uploads/<id> works for both storage kinds.
+  let data: string
+  if (c.env.UPLOADS) {
+    const key = `marketplace/${company.id}/${crypto.randomUUID()}.${IMAGE_EXT[type]}`
+    await c.env.UPLOADS.put(key, bytes, { httpMetadata: { contentType: type, cacheControl: 'public, max-age=31536000, immutable' } })
+    data = 'r2:' + key
+  } else {
+    data = `data:${type};base64,${b64(bytes)}`
+  }
 
   const result = await c.env.DB.prepare(
     'INSERT INTO mp_uploads (company_id, filename, content_type, size, data) VALUES (?, ?, ?, ?, ?)'
-  ).bind(company.id, file.name, file.type, file.size, dataUrl).run()
+  ).bind(company.id, String(file.name || 'image').slice(0, 200), type, bytes.length, data).run()
 
   return c.json({ success: true, url: `/api/mp/uploads/${result.meta.last_row_id}`, id: result.meta.last_row_id })
 })
 
 mp.get('/api/mp/uploads/:id', async (c) => {
-  const id = c.req.param('id')
-  const upload = await c.env.DB.prepare('SELECT data, content_type FROM mp_uploads WHERE id = ?').bind(parseInt(id)).first()
+  const id = parseInt(c.req.param('id'), 10)
+  if (!Number.isFinite(id)) return c.json({ error: 'File not found' }, 404)
+  const upload = await c.env.DB.prepare('SELECT data, content_type FROM mp_uploads WHERE id = ?').bind(id).first()
   if (!upload) return c.json({ error: 'File not found' }, 404)
 
   // The stored content_type is attacker-chosen at upload time. Replaying it let a
@@ -373,23 +657,27 @@ mp.get('/api/mp/uploads/:id', async (c) => {
   const SAFE_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif']
   const declared = String((upload as any).content_type || '').toLowerCase().split(';')[0].trim()
   const safeType = SAFE_IMAGE_TYPES.includes(declared) ? declared : 'application/octet-stream'
+  const headers: Record<string, string> = {
+    'Content-Type': safeType,
+    'Cache-Control': 'public, max-age=86400',
+    'X-Content-Type-Options': 'nosniff',
+    ...(safeType === 'application/octet-stream' ? { 'Content-Disposition': 'attachment' } : {}),
+  }
 
-  const dataUrl = upload.data as string
-  if (dataUrl.startsWith('data:')) {
-    const base64Data = dataUrl.split(',')[1]
+  const data = String((upload as any).data || '')
+  if (data.startsWith('r2:')) {
+    const obj = c.env.UPLOADS ? await c.env.UPLOADS.get(data.slice(3)) : null
+    if (!obj) return c.json({ error: 'File not found' }, 404)
+    return new Response(obj.body, { headers })
+  }
+  if (data.startsWith('data:')) {
+    const base64Data = data.split(',')[1] || ''
     const binaryString = atob(base64Data)
     const bytes = new Uint8Array(binaryString.length)
     for (let i = 0; i < binaryString.length; i++) {
       bytes[i] = binaryString.charCodeAt(i)
     }
-    return new Response(bytes, {
-      headers: {
-        'Content-Type': safeType,
-        'Cache-Control': 'public, max-age=86400',
-        'X-Content-Type-Options': 'nosniff',
-        ...(safeType === 'application/octet-stream' ? { 'Content-Disposition': 'attachment' } : {}),
-      }
-    })
+    return new Response(bytes, { headers })
   }
   return c.json({ error: 'Invalid file data' }, 500)
 })
@@ -448,49 +736,48 @@ mp.get('/api/mp/dashboard/listings/:id', async (c) => {
   return c.json({ listing })
 })
 
+const DASHBOARD_EDITABLE = ['product_name', 'description', 'target_customer', 'pricing_type', 'pricing_details',
+  'tags', 'target_industry', 'ai_category', 'website_url', 'product_url',
+  'sales_contact_name', 'sales_contact_email']
+
 mp.put('/api/mp/dashboard/listings/:id', async (c) => {
-  const company = await getCompanyFromSession(c)
+  const company = await getCompanyFromSession(c) as any
   if (!company) return c.json({ error: 'Login required' }, 401)
 
-  const id = c.req.param('id')
+  const id = parseInt(c.req.param('id'), 10)
   const listing = await c.env.DB.prepare('SELECT * FROM mp_listings WHERE id = ? AND company_id = ?')
-    .bind(parseInt(id), company.id).first()
+    .bind(id, company.id).first() as any
   if (!listing) return c.json({ error: 'Listing not found' }, 404)
 
-  const body = await c.req.json()
-  const fields = ['product_name', 'description', 'target_customer', 'pricing_type', 'pricing_details',
-    'tags', 'target_industry', 'ai_category', 'website_url', 'product_url',
-    'sales_contact_name', 'sales_contact_email']
+  const body = await c.req.json().catch(() => ({})) as any
+  const { values, error } = normalizeListingInput(body, DASHBOARD_EDITABLE)
+  if (error) return c.json({ error }, 400)
+
+  const changed = Object.keys(values).filter(f => values[f] !== String(listing[f] ?? '').trim())
+  if (!changed.length) return c.json({ success: true, changed: false, new_status: listing.status })
 
   const updates: string[] = []
-  const values: any[] = []
-  for (const field of fields) {
-    if (body[field] !== undefined) {
-      updates.push(`${field} = ?`)
-      values.push(body[field])
-    }
-  }
-
-  if (body.product_name) {
+  const params: any[] = []
+  for (const f of changed) { updates.push(`${f} = ?`); params.push(values[f]) }
+  if (changed.includes('product_name')) {
     updates.push('product_slug = ?')
-    values.push(generateSlug(body.product_name))
+    params.push(await uniqueProductSlug(c, listing.company_slug || generateSlug(company.company_name), values.product_name, id))
   }
 
-  // Re-submit for review if content changed
-  const contentFields = ['product_name', 'description', 'target_customer']
-  const contentChanged = contentFields.some(f => body[f] !== undefined && body[f] !== (listing as any)[f])
-  let newStatus = (listing as any).status
-  if (contentChanged && (listing as any).status === 'approved') {
-    updates.push('status = ?')
-    values.push('pending')
-    newStatus = 'pending'
-  }
-
+  // Any edit goes back to review. Only name, description and target customer used
+  // to, so an approved listing could swap its website or sales email for anything
+  // without a second look - and a rejected listing stayed rejected however it was fixed.
+  const newStatus = 'pending'
+  updates.push('status = ?')
+  params.push(newStatus)
   updates.push('updated_at = CURRENT_TIMESTAMP')
-  values.push(parseInt(id))
+  params.push(id)
 
-  await c.env.DB.prepare(`UPDATE mp_listings SET ${updates.join(', ')} WHERE id = ?`).bind(...values).run()
-  return c.json({ success: true, new_status: newStatus })
+  await c.env.DB.prepare(`UPDATE mp_listings SET ${updates.join(', ')} WHERE id = ?`).bind(...params).run()
+  if (listing.status !== 'pending') {
+    notifyTeamOfSubmission(c, { id, product_name: values.product_name || listing.product_name, company_name: listing.company_name, description: values.description || listing.description, website_url: values.website_url ?? listing.website_url }, company.email, 'updated')
+  }
+  return c.json({ success: true, changed: true, new_status: newStatus })
 })
 
 mp.get('/api/mp/dashboard/inquiries', async (c) => {
@@ -523,26 +810,43 @@ mp.get('/api/mp/dashboard/profile', async (c) => {
   const company = await getCompanyFromSession(c)
   if (!company) return c.json({ error: 'Login required' }, 401)
 
-  // Explicit column list: SELECT * returned password_hash to the browser.
+  // Explicit column list: SELECT * returned password_hash to the browser. It then
+  // named five columns (website, description, logo_url, contact_name,
+  // contact_phone) that mp_companies has never had, so every call returned 500.
   const profile = await c.env.DB.prepare(
-    'SELECT id, company_name, email, role, attendee_id, exhibitor_id, website, description, logo_url, contact_name, contact_phone, created_at FROM mp_companies WHERE id = ?'
+    'SELECT id, company_name, email, role, attendee_id, exhibitor_id, created_at FROM mp_companies WHERE id = ?'
   ).bind(company.id).first()
   return c.json({ profile })
 })
 
 mp.put('/api/mp/dashboard/profile', async (c) => {
-  const company = await getCompanyFromSession(c)
+  const company = await getCompanyFromSession(c) as any
   if (!company) return c.json({ error: 'Login required' }, 401)
 
-  const { company_name } = await c.req.json()
+  const body = await c.req.json().catch(() => ({})) as any
+  const company_name = String(body.company_name || '').trim()
   if (!company_name) return c.json({ error: 'Company name required' }, 400)
+  if (company_name.length > 150) return c.json({ error: 'Company name is too long' }, 400)
+  if (company_name === company.company_name) return c.json({ success: true })
 
   await c.env.DB.prepare('UPDATE mp_companies SET company_name = ? WHERE id = ?').bind(company_name, company.id).run()
-  // Update all listings too
-  await c.env.DB.prepare('UPDATE mp_listings SET company_name = ?, company_slug = ? WHERE company_id = ?')
-    .bind(company_name, generateSlug(company_name), company.id).run()
 
-  return c.json({ success: true })
+  // Listings carry the name too. A rename is an identity change, so a live listing
+  // goes back to review rather than appearing under a different company unchecked.
+  const company_slug = generateSlug(company_name) || 'company'
+  const listings = (await c.env.DB.prepare('SELECT id, product_name, status FROM mp_listings WHERE company_id = ?').bind(company.id).all()).results as any[]
+  let requeued = 0
+  for (const l of listings) {
+    const product_slug = await uniqueProductSlug(c, company_slug, l.product_name, l.id)
+    await c.env.DB.prepare("UPDATE mp_listings SET company_name = ?, company_slug = ?, product_slug = ?, status = 'pending', updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+      .bind(company_name, company_slug, product_slug, l.id).run()
+    if (l.status !== 'pending') requeued++
+  }
+  if (requeued && listings[0]) {
+    notifyTeamOfSubmission(c, { id: listings[0].id, product_name: listings.map(l => l.product_name).join(', '), company_name: `${company_name} (renamed from ${company.company_name})` }, company.email, 'updated')
+  }
+
+  return c.json({ success: true, requeued })
 })
 
 // ══════════════════════════════════════════
@@ -554,28 +858,66 @@ mp.get('/api/mp/admin/listings', async (c) => {
   if (!company || company.role !== 'admin') return c.json({ error: 'Admin required' }, 403)
 
   const status = c.req.query('status')
-  let query = 'SELECT * FROM mp_listings'
+  let query = `SELECT l.*, co.email AS account_email, e.company_name AS exhibitor_company, e.booth_number AS exhibitor_booth
+    FROM mp_listings l LEFT JOIN mp_companies co ON co.id = l.company_id LEFT JOIN exhibitors e ON e.id = l.exhibitor_id`
   const params: any[] = []
   if (status) {
-    query += ' WHERE status = ?'
+    query += ' WHERE l.status = ?'
     params.push(status)
   }
-  query += ' ORDER BY created_at DESC'
+  query += ' ORDER BY l.created_at DESC'
 
   const listings = await c.env.DB.prepare(query).bind(...params).all()
   return c.json({ listings: listings.results })
+})
+
+// For linking a listing to a booth by hand when the emails don't match.
+mp.get('/api/mp/admin/exhibitors', async (c) => {
+  const company = await getCompanyFromSession(c)
+  if (!company || company.role !== 'admin') return c.json({ error: 'Admin required' }, 403)
+  const rows = await c.env.DB.prepare('SELECT id, company_name, booth_number FROM exhibitors ORDER BY company_name COLLATE NOCASE').all().catch(() => ({ results: [] }))
+  return c.json({ exhibitors: rows.results })
 })
 
 mp.patch('/api/mp/admin/listings/:id', async (c) => {
   const company = await getCompanyFromSession(c)
   if (!company || company.role !== 'admin') return c.json({ error: 'Admin required' }, 403)
 
-  const id = c.req.param('id')
-  const { status } = await c.req.json()
-  if (!['approved', 'rejected', 'pending'].includes(status)) return c.json({ error: 'Invalid status' }, 400)
+  const id = parseInt(c.req.param('id'), 10)
+  const body = await c.req.json().catch(() => ({})) as any
+  const listing = await c.env.DB.prepare('SELECT l.id, l.status, l.exhibitor_id, co.id AS company_id, co.email, co.exhibitor_id AS company_exhibitor_id FROM mp_listings l LEFT JOIN mp_companies co ON co.id = l.company_id WHERE l.id = ?')
+    .bind(id).first() as any
+  if (!listing) return c.json({ error: 'Listing not found' }, 404)
 
-  await c.env.DB.prepare('UPDATE mp_listings SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
-    .bind(status, parseInt(id)).run()
+  if (body.exhibitor_id !== undefined) {
+    const exId = body.exhibitor_id === null || body.exhibitor_id === '' ? null : parseInt(body.exhibitor_id, 10)
+    let booth: string | null = null
+    if (exId !== null) {
+      const ex = await c.env.DB.prepare('SELECT id, booth_number FROM exhibitors WHERE id = ?').bind(exId).first() as any
+      if (!ex) return c.json({ error: 'Exhibitor not found' }, 400)
+      booth = ex.booth_number || null
+    }
+    await c.env.DB.prepare('UPDATE mp_listings SET exhibitor_id = ?, booth_number = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').bind(exId, booth, id).run()
+    if (listing.company_id) await c.env.DB.prepare('UPDATE mp_companies SET exhibitor_id = ? WHERE id = ?').bind(exId, listing.company_id).run()
+  }
+
+  if (body.status !== undefined) {
+    const status = body.status
+    if (!['approved', 'rejected', 'pending'].includes(status)) return c.json({ error: 'Invalid status' }, 400)
+    // An exhibitor who registered after submitting gets their booth on approval.
+    if (status === 'approved' && !listing.exhibitor_id && body.exhibitor_id === undefined && listing.email) {
+      const match = await findExhibitorByEmail(c, listing.email)
+      if (match) {
+        await c.env.DB.prepare('UPDATE mp_listings SET exhibitor_id = ?, booth_number = ? WHERE id = ?').bind(match.id, match.booth_number || null, id).run()
+        await c.env.DB.prepare('UPDATE mp_companies SET exhibitor_id = ? WHERE id = ?').bind(match.id, listing.company_id).run()
+      }
+    }
+    await c.env.DB.prepare('UPDATE mp_listings SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+      .bind(status, id).run()
+    if (status !== listing.status && (status === 'approved' || status === 'rejected')) {
+      notifyCompanyOfDecision(c, id, status, String(body.reason || '').trim().slice(0, 2000))
+    }
+  }
 
   return c.json({ success: true })
 })
@@ -641,23 +983,27 @@ mp.post('/api/mp/admin/listings/bulk', async (c) => {
         failed++
         continue
       }
-      const company_slug = generateSlug(item.company_name)
-      const product_slug = generateSlug(item.product_name)
+      const { values: v, error } = normalizeListingInput(item, ['product_name', 'description', 'target_customer', 'target_industry', 'ai_category', 'tags',
+        'pricing_type', 'pricing_details', 'website_url', 'product_url', 'sales_contact_name', 'sales_contact_email', 'sales_contact_phone', 'founder_name', 'innovation'])
+      if (error) { failed++; continue }
+      const s = (f: string) => v[f] || ''
+      const company_slug = generateSlug(item.company_name) || 'company'
+      const product_slug = await uniqueProductSlug(c, company_slug, v.product_name)
 
       await c.env.DB.prepare(`
         INSERT INTO mp_listings (
           company_id, company_name, company_slug, product_name, product_slug,
           description, target_customer, target_industry, ai_category, tags,
-          pricing_type, pricing_details, website_url, product_url, 
+          pricing_type, pricing_details, website_url, product_url,
           sales_contact_name, sales_contact_email, sales_contact_phone,
           founder_name, innovation, status
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
-        company.id, item.company_name, company_slug, item.product_name, product_slug,
-        item.description, item.target_customer || '', item.target_industry || '', item.ai_category || '', item.tags || '',
-        item.pricing_type || '', item.pricing_details || '', item.website_url || '', item.product_url || '',
-        item.sales_contact_name || '', item.sales_contact_email || '', item.sales_contact_phone || '',
-        item.founder_name || '', item.innovation || '', 'approved'
+        company.id, String(item.company_name).trim().slice(0, 150), company_slug, v.product_name, product_slug,
+        v.description, s('target_customer'), s('target_industry'), s('ai_category'), s('tags'),
+        s('pricing_type'), s('pricing_details'), s('website_url'), s('product_url'),
+        s('sales_contact_name'), s('sales_contact_email'), s('sales_contact_phone'),
+        s('founder_name'), s('innovation'), 'approved'
       ).run()
       success++
     } catch {
