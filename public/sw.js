@@ -6,7 +6,10 @@
 
 // Bump on any deploy that must reach returning visitors immediately: activate
 // deletes every cache not ending in VERSION, so the next fetch repopulates.
-const VERSION = 'bhai-v5';
+// Bumped because pass-render.js (precached below) now reports a photo that
+// failed to load and the page refuses to issue a pass on that flag; without
+// this a returning visitor keeps the old renderer until it revalidates.
+const VERSION = 'bhai-v6';
 const SHELL = `shell-${VERSION}`;
 const DATA = `data-${VERSION}`;
 
