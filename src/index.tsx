@@ -29269,6 +29269,98 @@ function adminPageHTML(): string {
       } catch(e) { toast('Could not release that stand', 'error'); }
     }
 
+    // Cards or a table for the two request queues (booth requests, inquiries).
+    // Both layouts are rendered and the switch only flips which one is hidden, so
+    // changing layout costs no refetch and keeps the scroll position. The choice
+    // is remembered per browser.
+    function adminListView(key) {
+      try { return localStorage.getItem('tc_admin_view_' + key) === 'table' ? 'table' : 'cards'; } catch (e) { return 'cards'; }
+    }
+    function adminListViewBtnClass(on) {
+      return 'px-3 py-1.5 rounded-lg text-xs font-medium ' + (on ? 'tab-active' : 'glass text-gray-400 hover:text-white');
+    }
+    function adminListViewToggleHtml(key) {
+      var mode = adminListView(key);
+      var btn = function (m, icon, label) {
+        return '<button type="button" data-view-btn="' + m + '" aria-pressed="' + (mode === m ? 'true' : 'false') +
+          '" onclick="adminListViewSet(&apos;' + key + '&apos;,&apos;' + m + '&apos;)" class="' + adminListViewBtnClass(mode === m) +
+          '"><i class="fas ' + icon + ' mr-1"></i>' + label + '</button>';
+      };
+      return '<div class="inline-flex gap-1" role="group" aria-label="Layout" data-view-toggle="' + key + '">' +
+        btn('cards', 'fa-th-large', 'Cards') + btn('table', 'fa-table', 'Table') + '</div>';
+    }
+    function adminListViewSet(key, mode) {
+      try { localStorage.setItem('tc_admin_view_' + key, mode); } catch (e) {}
+      document.querySelectorAll('[data-view-of="' + key + '"]').forEach(function (el) {
+        el.classList.toggle('hidden', el.getAttribute('data-view') !== mode);
+      });
+      document.querySelectorAll('[data-view-toggle="' + key + '"] [data-view-btn]').forEach(function (b) {
+        var on = b.getAttribute('data-view-btn') === mode;
+        b.className = adminListViewBtnClass(on);
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+    }
+    function adminListTh(label, align) {
+      return '<th class="' + (align || 'text-left') + ' py-2 px-2 text-gray-400 font-medium whitespace-nowrap">' + label + '</th>';
+    }
+    function adminListActBtn(call, tone, icon, label) {
+      return '<button type="button" onclick="' + call + '" title="' + label + '" aria-label="' + label +
+        '" class="w-7 h-7 rounded-lg text-[11px] transition ' + tone + '"><i class="fas ' + icon + '"></i></button>';
+    }
+    function adminListShortDate(value) {
+      var d = new Date(String(value || '').replace(' ', 'T'));
+      return isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+    }
+    function adminListSub(html, extra) {
+      return '<div class="text-[10px] text-gray-500' + (extra ? ' ' + extra : '') + '">' + html + '</div>';
+    }
+
+    // One row per booth request, with the same actions the cards offer. Related
+    // fields share a cell so a whole row, actions included, fits a laptop screen.
+    function boothReqTableHtml(list, statusColors, payColors) {
+      if (!list.length) return '<div class="text-center py-8 text-gray-500"><i class="fas fa-inbox text-2xl mb-2 block"></i>No booth requests found.</div>';
+      var body = list.map(function (r) {
+        var id = Number(r.id);
+        var status = String(r.status || '');
+        var pay = String(r.payment_status || '');
+        var acts = [];
+        if (status === 'submitted') acts.push(adminListActBtn('updateBoothRequest(' + id + ',&apos;under_review&apos;,null)', 'bg-amber-600/20 text-amber-300 hover:bg-amber-600/30', 'fa-search', 'Review'));
+        if (status !== 'approved' && status !== 'confirmed' && status !== 'cancelled') acts.push(adminListActBtn('updateBoothRequest(' + id + ',&apos;approved&apos;,null)', 'bg-green-600/20 text-green-300 hover:bg-green-600/30', 'fa-check', 'Approve'));
+        if (status !== 'rejected' && status !== 'cancelled') acts.push(adminListActBtn('updateBoothRequest(' + id + ',&apos;rejected&apos;,null)', 'bg-red-600/20 text-red-300 hover:bg-red-600/30', 'fa-times', 'Reject'));
+        if (status === 'approved' && pay !== 'paid') acts.push(adminListActBtn('updateBoothRequestPayment(' + id + ',&apos;paid&apos;)', 'bg-emerald-600/20 text-emerald-300 hover:bg-emerald-600/30', 'fa-check-double', 'Mark paid'));
+        acts.push(adminListActBtn('addBoothRequestNote(' + id + ')', 'bg-white/5 text-gray-400 hover:bg-white/10', 'fa-comment', 'Add note'));
+        var details = [r.products_to_display, r.special_requirements].filter(Boolean);
+        return '<tr class="border-b border-white/5 hover:bg-white/5 transition-colors align-top">' +
+          '<td class="py-2 px-2 whitespace-nowrap"><div class="font-mono text-primary-400">#BR-' + String(id).padStart(4, '0') + '</div>' +
+            adminListSub(adminListShortDate(r.created_at)) + '</td>' +
+          '<td class="py-2 px-2 min-w-[9rem]"><div class="font-semibold">' + escH(r.company_name) + '</div>' +
+            (r.industry ? adminListSub(escH(r.industry) + (r.company_size ? ' &middot; ' + escH(r.company_size) : '')) : '') + '</td>' +
+          '<td class="py-2 px-2"><div>' + escH(r.contact_name) + '</div>' + adminListSub(escH(r.email)) +
+            (r.phone ? adminListSub(escH(r.phone), 'whitespace-nowrap') : '') + '</td>' +
+          '<td class="py-2 px-2 whitespace-nowrap"><div class="font-semibold">' + escH(r.booth_type_name) + '</div>' +
+            adminListSub(escH(r.size_label) + 'm &middot; qty ' + (Number(r.quantity) || 0)) + '</td>' +
+          '<td class="py-2 px-2 text-right tabular-nums whitespace-nowrap font-bold text-green-400">₹' + Number(r.grand_total || 0).toLocaleString('en-IN') + '</td>' +
+          '<td class="py-2 px-2"><div class="flex flex-col items-start gap-1">' +
+            '<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase whitespace-nowrap ' + (statusColors[status] || '') + '">' + escH(status.replace('_', ' ')) + '</span>' +
+            '<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase whitespace-nowrap ' + (payColors[pay] || '') + '"><i class="fas fa-credit-card mr-1"></i>' + escH(pay.replace('_', ' ')) + '</span>' +
+          '</div></td>' +
+          '<td class="py-2 px-2 min-w-[10rem] text-gray-400">' +
+            (details.length ? '<div class="line-clamp-2" title="' + escH(details.join(' / ')) + '">' + details.map(escH).join(' &middot; ') + '</div>' : '') +
+            (r.admin_notes ? '<div class="mt-1 text-amber-300 line-clamp-2" title="' + escH(r.admin_notes) + '"><i class="fas fa-sticky-note mr-1"></i>' + escH(r.admin_notes) + '</div>' : '') +
+          '</td>' +
+          '<td class="py-2 px-2"><div class="flex gap-1 justify-end">' + acts.join('') + '</div></td>' +
+        '</tr>';
+      }).join('');
+      return '<div class="glass rounded-xl overflow-x-auto">' +
+        '<table class="w-full text-xs min-w-[46rem]">' +
+          '<thead><tr class="border-b border-white/10">' +
+            adminListTh('Request') + adminListTh('Company') + adminListTh('Contact') + adminListTh('Booth') +
+            adminListTh('Total', 'text-right') + adminListTh('Status') + adminListTh('Products, needs &amp; notes') + adminListTh('Actions', 'text-right') +
+          '</tr></thead>' +
+          '<tbody>' + body + '</tbody>' +
+        '</table></div>';
+    }
+
     async function loadAdminBoothRequests() {
       const section = document.getElementById('section-booth-requests');
       if (!section) return;
@@ -29344,10 +29436,11 @@ function adminPageHTML(): string {
             \`).join('')}
             \${adminBoothRequestTypeFilter ? '<span class="px-3 py-1.5 rounded-full text-xs font-medium bg-primary-500/20 text-primary-300 border border-primary-500/30"><i class="fas fa-filter mr-1"></i>' + escH(typeName) + ' &middot; <button type="button" onclick="clearBoothRequestFilters()" class="underline">clear</button></span>' : ''}
             <span class="text-xs text-gray-500 ml-auto tabular-nums">\${shownRequests.length} of \${requests.length} shown</span>
+            \${adminListViewToggleHtml('booth_requests')}
           </div>
 
           <!-- Requests List -->
-          <div class="space-y-3">
+          <div class="space-y-3\${adminListView('booth_requests') === 'table' ? ' hidden' : ''}" data-view-of="booth_requests" data-view="cards">
             \${shownRequests.length ? shownRequests.map(r => \`
               <div class="glass rounded-xl p-4 card-hover" style="border-left:3px solid \${r.booth_color || '#4c6ef5'};">
                 <div class="flex flex-col md:flex-row md:items-center justify-between gap-2 mb-2">
@@ -29376,10 +29469,13 @@ function adminPageHTML(): string {
                   \${r.status !== 'approved' && r.status !== 'confirmed' && r.status !== 'cancelled' ? '<button onclick="updateBoothRequest('+r.id+',&apos;approved&apos;,null)" class="px-3 py-1.5 rounded-lg text-[10px] font-semibold bg-green-600/20 text-green-300 hover:bg-green-600/30"><i class="fas fa-check mr-1"></i>Approve</button>' : ''}
                   \${r.status !== 'rejected' && r.status !== 'cancelled' ? '<button onclick="updateBoothRequest('+r.id+',&apos;rejected&apos;,null)" class="px-3 py-1.5 rounded-lg text-[10px] font-semibold bg-red-600/20 text-red-300 hover:bg-red-600/30"><i class="fas fa-times mr-1"></i>Reject</button>' : ''}
                   \${r.status === 'approved' && r.payment_status !== 'paid' ? '<button onclick="updateBoothRequestPayment('+r.id+',&apos;paid&apos;)" class="px-3 py-1.5 rounded-lg text-[10px] font-semibold bg-emerald-600/20 text-emerald-300 hover:bg-emerald-600/30"><i class="fas fa-check-double mr-1"></i>Mark Paid</button>' : ''}
-                  <button onclick="addBoothRequestNote('+r.id+')" class="px-3 py-1.5 rounded-lg text-[10px] font-semibold bg-white/5 text-gray-400 hover:bg-white/10"><i class="fas fa-comment mr-1"></i>Note</button>
+                  <button onclick="addBoothRequestNote(\${Number(r.id)})" class="px-3 py-1.5 rounded-lg text-[10px] font-semibold bg-white/5 text-gray-400 hover:bg-white/10"><i class="fas fa-comment mr-1"></i>Note</button>
                 </div>
               </div>
             \`).join('') : '<div class="text-center py-8 text-gray-500"><i class="fas fa-inbox text-2xl mb-2 block"></i>No booth requests found.</div>'}
+          </div>
+          <div class="\${adminListView('booth_requests') === 'table' ? '' : 'hidden'}" data-view-of="booth_requests" data-view="table">
+            \${boothReqTableHtml(shownRequests, statusColors, payColors)}
           </div>
         \`;
       } catch(e) {
@@ -30213,6 +30309,51 @@ function adminPageHTML(): string {
     let inquiryFilterStatus = '';
 
     let lastInquiries = null;
+    // One row per inquiry, with the same controls the cards offer. Related fields
+    // share a cell so a whole row, actions included, fits a laptop screen.
+    function inqTableHtml(list, typeLabels, statusColors) {
+      var body = list.map(function (inq) {
+        var id = Number(inq.id);
+        var cfg = typeLabels[inq.inquiry_type] || typeLabels.other;
+        var status = String(inq.status || 'new');
+        var meta = {};
+        if (inq.metadata) { try { meta = JSON.parse(inq.metadata) || {}; } catch (e) { meta = {}; } }
+        var metaStr = Object.entries(meta).filter(function (kv) { return kv[1]; }).map(function (kv) {
+          return escH(String(kv[0]).replace(/_/g, ' ')) + ': ' + escH(kv[1]);
+        }).join(' &middot; ');
+        var opt = function (v, label) { return '<option value="' + v + '"' + (status === v ? ' selected' : '') + '>' + label + '</option>'; };
+        return '<tr class="border-b border-white/5 hover:bg-white/5 transition-colors align-top">' +
+          '<td class="py-2 px-2 whitespace-nowrap"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-' + cfg.color + '-500/20 text-' + cfg.color + '-300"><i class="fas ' + cfg.icon + ' mr-1"></i>' + cfg.label + '</span>' +
+            adminListSub('#' + id, 'mt-1 tabular-nums') + '</td>' +
+          '<td class="py-2 px-2 min-w-[12rem]"><div class="font-semibold">' + escH(inq.subject || inq.name) + '</div>' +
+            '<div class="text-gray-400 line-clamp-2"' + (inq.message ? ' title="' + escH(inq.message) + '">' + escH(inq.message) : '><em class="text-gray-500">No message</em>') + '</div>' +
+            (metaStr ? adminListSub(metaStr, 'line-clamp-2') : '') +
+            (inq.admin_notes ? '<div class="mt-1 text-amber-300 line-clamp-2" title="' + escH(inq.admin_notes) + '"><i class="fas fa-sticky-note mr-1"></i>' + escH(inq.admin_notes) + '</div>' : '') +
+          '</td>' +
+          '<td class="py-2 px-2 min-w-[9rem]"><div>' + escH(inq.name) + '</div>' +
+            (inq.organization ? adminListSub(escH(inq.organization)) : '') + adminListSub(escH(inq.email)) +
+            (inq.phone ? adminListSub(escH(inq.phone), 'whitespace-nowrap') : '') + '</td>' +
+          '<td class="py-2 px-2 whitespace-nowrap">' + ageBadge(inq.created_at) + adminListSub(adminListShortDate(inq.created_at), 'mt-1') + '</td>' +
+          '<td class="py-2 px-2 whitespace-nowrap">' + (inq.assigned_to ? escH(inq.assigned_to) : '<span class="text-gray-500">&mdash;</span>') + '</td>' +
+          '<td class="py-2 px-2"><select onchange="updateInquiryStatus(' + id + ', this.value)" aria-label="Status of inquiry ' + id + '" class="px-2 py-1 rounded-lg text-[10px] font-semibold ' + (statusColors[status] || statusColors.new) + '">' +
+            opt('new', 'New') + opt('in_progress', 'In Progress') + opt('responded', 'Responded') + opt('closed', 'Closed') + '</select></td>' +
+          '<td class="py-2 px-2"><div class="flex gap-1 justify-end">' +
+            adminListActBtn('openInquiryReply(' + id + ')', 'bg-primary-500/20 text-primary-400 hover:bg-primary-500/30', 'fa-reply', 'Reply by email') +
+            adminListActBtn('assignInquiry(' + id + ')', 'glass hover:bg-white/10', 'fa-user-plus', 'Assign an owner') +
+            adminListActBtn('addInquiryNote(' + id + ')', 'glass hover:bg-white/10', 'fa-sticky-note', 'Add note') +
+            adminListActBtn('deleteInquiry(' + id + ')', 'glass text-red-400 hover:bg-red-500/10', 'fa-trash', 'Delete') +
+          '</div></td>' +
+        '</tr>';
+      }).join('');
+      return '<div class="glass rounded-xl overflow-x-auto">' +
+        '<table class="w-full text-xs min-w-[46rem]">' +
+          '<thead><tr class="border-b border-white/10">' +
+            adminListTh('Type') + adminListTh('Subject, message &amp; notes') + adminListTh('From') +
+            adminListTh('Waiting') + adminListTh('Owner') + adminListTh('Status') + adminListTh('Actions', 'text-right') +
+          '</tr></thead>' +
+          '<tbody>' + body + '</tbody>' +
+        '</table></div>';
+    }
     async function loadAdminInquiries() {
       try {
         let url = '/api/admin/inquiries?';
@@ -30297,10 +30438,14 @@ function adminPageHTML(): string {
           '</div>';
         }).join('');
 
+        const inqView = adminListView('inquiries');
         document.getElementById('section-inquiries').innerHTML =
           '<div class="space-y-4">' +
-            '<div class="flex flex-wrap gap-2 items-center">' + typeFilterHtml + '<div class="ml-auto">' + statusFilterHtml + '</div></div>' +
-            (rows || '<div class="text-center py-12 text-gray-500"><i class="fas fa-inbox text-4xl mb-3"></i><p>No inquiries yet</p></div>') +
+            '<div class="flex flex-wrap gap-2 items-center">' + typeFilterHtml + '<div class="ml-auto flex items-center gap-2">' + adminListViewToggleHtml('inquiries') + statusFilterHtml + '</div></div>' +
+            (rows
+              ? '<div class="space-y-4' + (inqView === 'table' ? ' hidden' : '') + '" data-view-of="inquiries" data-view="cards">' + rows + '</div>' +
+                '<div class="' + (inqView === 'table' ? '' : 'hidden') + '" data-view-of="inquiries" data-view="table">' + inqTableHtml(inquiries || [], typeLabels, statusColors) + '</div>'
+              : '<div class="text-center py-12 text-gray-500"><i class="fas fa-inbox text-4xl mb-3"></i><p>No inquiries yet</p></div>') +
           '</div>';
       } catch(err) {
         document.getElementById('section-inquiries').innerHTML = '<div class="text-center py-12 text-red-400"><i class="fas fa-exclamation-triangle text-3xl mb-3"></i><p>Failed to load inquiries: ' + err.message + '</p></div>';
