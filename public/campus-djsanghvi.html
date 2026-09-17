@@ -187,7 +187,7 @@
                     <ul class="cp-reg-points">
                         <li><i class="fas fa-check-circle"></i> No fee, and no payment details asked for</li>
                         <li><i class="fas fa-check-circle"></i> Seating is allocated by Dwarkadas J. Sanghvi College of Engineering &mdash; registering tells them to expect you, it does not reserve a seat</li>
-                        <li><i class="fas fa-check-circle"></i> The same details get you a free Visitor Pass for the main conference at WTC Mumbai in November</li>
+                        <li><i class="fas fa-check-circle"></i> We will ask you separately whether you would like a free Visitor Pass for the main conference at WTC Mumbai in November</li>
                     </ul>
                 </div>
 
@@ -543,7 +543,7 @@
             }
             if (!resp.ok) { fail(data.error || 'Something went wrong. Please try again.'); return; }
             done('You are registered',
-                 'We have your details and the host has been told to expect you. Your free pass for the main conference in November is on its way to ' + payload.email + '.');
+                 'We have your details and the host has been told to expect you. Your joining details are on their way to ' + payload.email + '. We will ask you separately about the main conference in November + '.');
           });
         }).catch(function () {
           fail('We could not reach the server. Please check your connection and try again.');

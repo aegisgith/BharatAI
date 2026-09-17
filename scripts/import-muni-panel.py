@@ -4,8 +4,9 @@
 Why a script and not the admin bulk upload: that upload writes no
 registration_source and defaults every row to a Delegate badge, which would put a
 few hundred students into the conference list as paying delegates. This writes
-each person as a free Visitor tagged campus:<slug> (exactly what the panel page's
-own form writes), and adds a panel_registrations row (0040) with source 'muni'.
+each person tagged campus:<slug> with main_event = 0 - registered for the panel,
+NOT for the conference until they answer the question in the email or the app
+(0041) - and adds a panel_registrations row (0040) with source 'muni'.
 
 Safe to run again on a fresh export: both inserts are INSERT OR IGNORE keyed on
 the email, so a person already in the database keeps their row - and keeps their
@@ -184,6 +185,10 @@ def main():
             f"SELECT id, {q(slug)}, 'muni', {q('muni:' + p['reg'])}, {q(p['reg'] + ' 00:00:00')} "
             f"FROM attendees WHERE event_id = {EVENT_ID} AND lower(email) = {q(p['email'])};"
         )
+    # Panel-only until they say yes to November (0041). Guarded on
+    # main_event_answered_at so a re-run never undoes an answer already given.
+    lines.append('')
+    lines.append("UPDATE attendees SET main_event = 0 WHERE registration_source LIKE 'campus:%' AND main_event_answered_at IS NULL;")
     with open(a.out, 'w', encoding='utf-8', newline='\n') as f:
         f.write('\n'.join(lines) + '\n')
 

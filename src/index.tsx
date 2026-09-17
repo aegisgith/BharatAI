@@ -283,6 +283,9 @@ const ATTENDEE_ADMIN_LIST_COLS = [
   'social_card_downloaded_at',
   // A photo the badge desk said did not match the person (0038).
   'photo_flagged_at', 'photo_flagged_by',
+  // Registered for the conference, or a campus-panel registrant who has not
+  // said yes (0041).
+  'main_event', 'main_event_answered_at',
 ]
 
 // A list endpoint with no ceiling is one growth spurt away from the same outage.
@@ -879,6 +882,15 @@ function sourceLabel(source: unknown): string {
 // chase and the thank-you-for-attending are all addressed to somebody else.
 const NOT_CAMPUS_SQL = "(registration_source IS NULL OR registration_source NOT LIKE 'campus:%')"
 
+// A campus-panel registrant is NOT a conference registrant until they say so
+// (0041). main_event = 1 means registered for 20-21 November; 0 means panel only,
+// or asked and declined. Rows from before 0041 default to 1: they registered for
+// the conference themselves. Every conference-facing query adds this clause; a
+// database short of 0041 gets '' and behaves exactly as before.
+async function mainEventClause(c: any, alias: string = ''): Promise<string> {
+  return (await attendeeColumns(c)).has('main_event') ? ` AND ${alias}main_event = 1` : ''
+}
+
 type PanelMailOpts = { withLogin?: boolean; eventId?: any; source?: string; preview?: boolean }
 
 /* The joining details for a campus panel. Returns whether the mail went, because
@@ -900,9 +912,10 @@ async function sendPanelConfirmationEmail(c: any, attendee: any, panel: CampusPa
   const esc = (v: any) => String(v ?? '').replace(/[&<>]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch] as string))
   const firstName = esc(String(attendee.name || '').trim().split(/\s+/)[0] || 'there')
 
-  // ?action=social-card opens the card once the person is signed in; the card
-  // asks for a photo if there is none, so the ask and the reward are one screen.
-  let openLink = appUrl + '?action=social-card'
+  // Every button is a deep link into the app: ?action=social-card opens the
+  // card (which asks for a photo first), main-event-yes / main-event-no record
+  // the November answer. With a sign-in token they all work in one tap.
+  let link = (action: string) => appUrl + '?action=' + action
   // A preview must never mint a live sign-in link for a real person.
   if (opts.withLogin && !opts.preview) {
     const email = String(attendee.email).trim().toLowerCase()
@@ -914,8 +927,11 @@ async function sendPanelConfirmationEmail(c: any, attendee: any, panel: CampusPa
         tokenPart = '&token=' + issued.token
       } catch { /* a link without a token still prefills the sign-in */ }
     }
-    openLink = `${appUrl}?email=${encodeURIComponent(email)}&action=social-card${tokenPart}`
+    link = (action: string) => `${appUrl}?email=${encodeURIComponent(email)}&action=${action}${tokenPart}`
   }
+  const openLink = link('social-card')
+  const yesLink = link('main-event-yes')
+  const noLink = link('main-event-no')
 
   const row = (label: string, value: string) =>
     `<tr><td valign="top" style="padding:0 14px 10px 0;font-size:12px;color:#888;white-space:nowrap;">${label}</td>` +
@@ -971,6 +987,8 @@ async function sendPanelConfirmationEmail(c: any, attendee: any, panel: CampusPa
             to post on LinkedIn, Instagram or WhatsApp &mdash; and it is how your friends find out.
           </p>
           ${btn(openLink, 'Add my photo &amp; get my creative', true)}
+          <span style="display:inline-block;width:10px;"></span>
+          ${btn(panel.pageUrl, 'Panel page', false)}
         </div>
       </td></tr>
       <tr><td style="padding:8px 28px 22px;">
@@ -986,14 +1004,15 @@ async function sendPanelConfirmationEmail(c: any, attendee: any, panel: CampusPa
         </div>
       </td></tr>
       <tr><td style="padding:0 28px 26px;border-top:1px solid #eee;">
-        <p style="margin:20px 0 6px;font-size:14px;font-weight:bold;color:#1E2140;">You also hold a free Visitor Pass for the main conference</p>
+        <p style="margin:20px 0 6px;font-size:14px;font-weight:bold;color:#1E2140;">Would you like to come to the main conference too?</p>
         <p style="margin:0 0 14px;font-size:13px;line-height:1.65;color:#555;">
-          Bharat AI Innovation 2026 is at the World Trade Center Mumbai on 20&ndash;21 November. The details you
-          just gave us are your registration &mdash; nothing more to fill in. Your pass and the schedule are in the app.
+          Bharat AI Innovation 2026 is at the World Trade Center Mumbai on 20&ndash;21 November: two days of talks,
+          an exhibition floor and India&rsquo;s AI employers in one place. A Visitor Pass is free for you, but we
+          will not register you unless you ask. One tap either way, and you can change your mind in the app.
         </p>
-        ${btn(openLink, 'Open the app', true)}
+        ${btn(yesLink, 'Yes, count me in for November', true)}
         <span style="display:inline-block;width:10px;"></span>
-        ${btn(panel.pageUrl, 'Panel page', false)}
+        ${btn(noLink, 'Not this time', false)}
       </td></tr>
       <tr><td style="background:#fafafa;padding:14px 28px;font-size:11px;color:#999;line-height:1.6;">
         Bharat AI Innovation &middot; Organised by Aegis Knowledge Trust &middot; info@bharataiinnovation.com
@@ -2467,6 +2486,14 @@ app.get('/api/my-pass-token', async (c) => {
   if (forId && isAdminRequest(c)) return c.json({ token: await signPassToken(c, forId) })
   const me = await verifyAttendeeSession(c)
   if (me === null) return c.json({ error: 'Sign in required' }, 401)
+  // No pass for someone who has not said they are coming (0041). The admin
+  // path above is untouched, so the desk can still issue one by hand.
+  try {
+    const row = await c.env.DB.prepare('SELECT main_event FROM attendees WHERE id = ?').bind(me).first() as any
+    if (row && Number(row.main_event ?? 1) === 0) {
+      return c.json({ error: 'main_event_consent', message: 'Tell us you are coming to the conference first, and your pass is ready.' }, 403)
+    }
+  } catch { /* pre-0041 */ }
   return c.json({ token: await signPassToken(c, me) })
 })
 
@@ -2493,6 +2520,12 @@ app.get('/verify/:token', async (c) => {
     ).bind(id).first()
   }
   if (!a) return c.html(verifyPageHTML({ state: 'invalid', staff, token: '' }))
+  // Panel-only registrants (0041) hold no conference pass. Read separately so a
+  // database short of 0041 still gets the full screen above.
+  try {
+    const m = await c.env.DB.prepare('SELECT main_event FROM attendees WHERE id = ?').bind(id).first() as any
+    a.main_event = m ? Number(m.main_event ?? 1) : 1
+  } catch { a.main_event = 1 }
   const undoable = !!a.checked_in_at &&
     Date.now() - new Date(String(a.checked_in_at).replace(' ', 'T') + 'Z').getTime() < CHECKIN_UNDO_MINUTES * 60000
   const flagUndoable = !!a.photo_flagged_at && !String(a.avatar_url || '').trim() &&
@@ -2508,6 +2541,10 @@ app.post('/api/verify/:token/checkin', async (c) => {
   const body = await c.req.json().catch(() => ({})) as any
   const a = await c.env.DB.prepare('SELECT id, name, checked_in_at FROM attendees WHERE id = ?').bind(id).first() as any
   if (!a) return c.json({ error: 'Not found' }, 404)
+  try {
+    const m = await c.env.DB.prepare('SELECT main_event FROM attendees WHERE id = ?').bind(id).first() as any
+    if (m && Number(m.main_event ?? 1) === 0) return c.json({ error: 'Registered for a campus panel only, not for the conference.' }, 400)
+  } catch { /* pre-0041 */ }
   // at stays UTC for anything programmatic; at_ist is what a human should be shown.
   if (a.checked_in_at) return c.json({ success: false, already: true, at: a.checked_in_at, at_ist: istStamp(a.checked_in_at), name: a.name })
   // Attributable: who admitted this person, not just that someone did.
@@ -2709,8 +2746,10 @@ function verifyPageHTML(o: any): string {
   const hasPassPhoto = String(a.avatar_url || '').trim() !== ''
   const photoFlagged = !!a.photo_flagged_at
   const unpaid = String(a.payment_status || '').toLowerCase() === 'pending'
-  const ok = o.state === 'valid' && !unpaid
+  const panelOnly = Number(a.main_event ?? 1) === 0
+  const ok = o.state === 'valid' && !unpaid && !panelOnly
   const banner = o.state !== 'valid' ? ['#b3261e', 'NOT VALID', 'This code is not a Bharat AI Innovation pass.']
+    : panelOnly ? ['#b3261e', 'NOT REGISTERED', 'Registered for a campus panel only, not for the conference. Do not admit on this pass; send them to the registration desk.']
     : unpaid ? ['#b26a00', 'PAYMENT PENDING', 'This tier has not been paid for. Do not admit without checking.']
     // The instruction has to match the document. Three of every four passes
     // downloaded so far have no photo on them - the pass draws an initial in a
@@ -3712,6 +3751,9 @@ app.get('/api/events/:id/attendees', async (c) => {
 
   // The WHERE is built once and reused by the count below, so the two can't drift.
   let where = ' WHERE event_id = ?'
+  // Panel-only registrants (0041) are not in the room in November, so they are
+  // not in the directory - to anyone but the admin, who sees the whole table.
+  if (!isAdminRequest(c)) where += await mainEventClause(c)
   const params: any[] = [eventId]
 
   if (search) {
@@ -4044,6 +4086,9 @@ app.post('/api/events/:id/attendees/register', async (c) => {
           "INSERT OR IGNORE INTO panel_registrations (attendee_id, panel_slug, source, registered_at) VALUES (?, ?, 'page', datetime('now'))"
         ).bind((attendee as any).id, panel.slug).run()
       } catch { /* 0040 not applied yet: the tag on the row still records it */ }
+      try {
+        await c.env.DB.prepare('UPDATE attendees SET main_event = 0 WHERE id = ?').bind((attendee as any).id).run()
+      } catch { /* 0041 not applied yet */ }
     }
     const welcome = panel ? sendPanelConfirmationEmail(c, attendee, panel) : sendRegistrationEmail(c, attendee)
     let scheduled = false
@@ -8139,6 +8184,36 @@ app.get('/api/attendees/:id/panels', async (c) => {
   return c.json(out)
 })
 
+// ==================== MAIN-EVENT CONSENT (0041) ====================
+//
+// Asked once, in the panel email and on My Profile, and answered by the person.
+// 'yes' makes them a conference registrant: pass, directory, count. 'no' is
+// remembered so the app stops asking, and can be reversed from My Profile.
+
+app.get('/api/attendees/:id/main-event', async (c) => {
+  const id = c.req.param('id')
+  const denied = await requireSelf(c, id); if (denied) return denied
+  try {
+    const r = await c.env.DB.prepare('SELECT main_event, main_event_answered_at FROM attendees WHERE id = ?').bind(id).first() as any
+    if (!r) return c.json({ error: 'Attendee not found' }, 404)
+    return c.json({ main_event: Number(r.main_event ?? 1), answered_at: r.main_event_answered_at || null })
+  } catch {
+    return c.json({ main_event: 1, answered_at: null })   // pre-0041: everyone is a registrant
+  }
+})
+
+app.post('/api/attendees/:id/main-event', async (c) => {
+  const id = c.req.param('id')
+  const denied = await requireSelf(c, id); if (denied) return denied
+  const body = await c.req.json().catch(() => ({})) as any
+  const answer = body.answer === 'yes' ? 1 : body.answer === 'no' ? 0 : null
+  if (answer === null) return c.json({ error: 'answer must be yes or no' }, 400)
+  try {
+    await c.env.DB.prepare("UPDATE attendees SET main_event = ?, main_event_answered_at = datetime('now') WHERE id = ?").bind(answer, id).run()
+  } catch { return c.json({ error: 'Not available just now. Please try again later.' }, 503) }
+  return c.json({ main_event: answer })
+})
+
 // Six tries an hour per registration. The code is short, so guessing has to stay
 // slower than turning up.
 const PANEL_CLAIM_MAX_ATTEMPTS = 6
@@ -8697,6 +8772,9 @@ app.get('/api/events/:id/stats', async (c) => {
   // have. Kept out of the batch and tolerant one at a time, so a missing column
   // costs that one tile rather than the whole overview, and never takes the
   // other counts down with it.
+  // The headline number is conference registrations. A student who registered
+  // for a campus panel and has not said yes to November is not one (0041).
+  const mainClause = await mainEventClause(c)
   const countWhere = async (clause: string) => {
     try {
       const r = await c.env.DB.prepare(
@@ -8708,7 +8786,7 @@ app.get('/api/events/:id/stats', async (c) => {
 
   const [rows, checkedInCount, passTaken, cardTaken] = await Promise.all([
     c.env.DB.batch([
-      c.env.DB.prepare('SELECT COUNT(*) as count FROM attendees WHERE event_id = ?').bind(eventId),
+      c.env.DB.prepare('SELECT COUNT(*) as count FROM attendees WHERE event_id = ?' + mainClause).bind(eventId),
       // is_online is written as 1 at registration and at every sign-in and is never
       // set back to 0, so this stat read 1325 of 1325 for the life of the app.
       // Derive presence from the last sign-in instead - the same window and the same
@@ -9057,6 +9135,7 @@ app.post('/api/admin/attendees/bulk', async (c) => {
 
 app.get('/api/admin/panels', async (c) => {
   const out: any[] = []
+  const hasMain = (await attendeeColumns(c)).has('main_event')
   for (const p of Object.values(CAMPUS_PANELS)) {
     let stats: any = {}
     try {
@@ -9069,6 +9148,7 @@ app.get('/api/admin/panels', async (c) => {
                 SUM(CASE WHEN pr.confirmation_error LIKE 'paused:%' THEN 1 ELSE 0 END) AS email_paused,
                 SUM(CASE WHEN COALESCE(TRIM(a.avatar_url), '') <> '' THEN 1 ELSE 0 END) AS with_photo,
                 SUM(CASE WHEN a.last_login_at IS NOT NULL THEN 1 ELSE 0 END) AS signed_in,
+                ${hasMain ? 'SUM(CASE WHEN a.main_event = 1 THEN 1 ELSE 0 END) AS main_event_yes, SUM(CASE WHEN a.main_event = 0 AND a.main_event_answered_at IS NOT NULL THEN 1 ELSE 0 END) AS main_event_no,' : ''}
                 SUM(CASE WHEN pr.card_downloaded_at IS NOT NULL THEN 1 ELSE 0 END) AS card_taken,
                 SUM(CASE WHEN pr.claimed_at IS NOT NULL THEN 1 ELSE 0 END) AS claimed,
                 SUM(CASE WHEN pr.certificate_downloaded_at IS NOT NULL THEN 1 ELSE 0 END) AS certificate_taken
@@ -9192,7 +9272,7 @@ app.get('/api/admin/events/:id/attendees/export', async (c) => {
     'badge_type', 'registration_date', 'payment_amount', 'rsvp_status', 'rsvp_at',
     'notified_at', 'last_login_at', 'pass_downloaded_at', 'social_card_downloaded_at', 'company_logo_url', 'networking_goals', 'registration_source',
     'id', 'payment_status', 'industry', 'company_size', 'special_requirements',
-    'pass_type', 'twitter_url', 'website_url', 'checked_in_at', 'checked_in_by',
+    'pass_type', 'twitter_url', 'website_url', 'checked_in_at', 'checked_in_by', 'main_event', 'main_event_answered_at',
     'created_at',
   ]
   // payment_amount was in the header row but never in the SELECT, so that column
@@ -16170,6 +16250,15 @@ function mainPageHTML(): string {
       // A stashed panel claim runs on every sign-in path, whatever else was asked.
       if (currentUser && pendingPanelClaim()) setTimeout(function () { applyPendingPanelClaim(); }, 800);
       const act = pendingAction || new URLSearchParams(window.location.search).get('action');
+      // The two buttons in the panel email. Only once there is a signed-in user;
+      // until then the action waits, exactly as download-pass does.
+      if (act === 'main-event-yes' || act === 'main-event-no') {
+        if (currentUser) {
+          pendingAction = null;
+          setTimeout(function () { answerMainEvent(act === 'main-event-yes' ? 'yes' : 'no'); }, 600);
+        }
+        return;
+      }
       if (act === 'download-pass') { setTimeout(() => generateDelegatePass(), 1500); return; }
       // The card had exactly one way in: offered once after a pass download and
       // then remembered forever. That is the right moment for an unprompted
@@ -20077,6 +20166,17 @@ function mainPageHTML(): string {
         showToast('Your ' + T.label + ' will be issued once payment is confirmed.', 'error');
         return;
       }
+      // A panel-only registrant has no conference pass until they say they are
+      // coming (0041). The server refuses the token too; this asks instead.
+      if (!adminAttendee) {
+        var consent = null;
+        try { consent = await api.get('/api/attendees/' + user.id + '/main-event'); } catch (e) {}
+        if (consent && consent.main_event === 0) {
+          showToast('Tell us you are coming to the conference first - the question is on My Profile.', 'error');
+          switchTab('myprofile');
+          return;
+        }
+      }
       // A photo is required: the badge desk checks the pass against a government
       // photo ID, and a pass carrying the holder's face is what makes that check
       // quick. Admin downloads bypass this so the desk can still issue for someone
@@ -20386,7 +20486,41 @@ function mainPageHTML(): string {
       var box = document.getElementById('my-panels');
       if (!box || !currentUser) return;
       var list = await fetchMyPanels();
-      box.innerHTML = list.length ? list.map(panelCardHTML).join('') : '';
+      var ask = await mainEventCardHTML();
+      box.innerHTML = ask + (list.length ? list.map(panelCardHTML).join('') : '');
+    }
+
+    // ==================== MAIN-EVENT CONSENT (attendee side) ====================
+    // Shown only to someone the server says is not a conference registrant. A
+    // person who said no sees a quieter version they can reverse.
+    async function mainEventCardHTML() {
+      if (!currentUser) return '';
+      var me = null;
+      try { me = await api.get('/api/attendees/' + currentUser.id + '/main-event'); } catch (e) {}
+      if (!me || me.main_event !== 0) return '';
+      var declined = !!me.answered_at;
+      return '<div class="glass rounded-2xl p-5 md:p-6 mb-6" style="border:1px solid rgba(255,107,0,0.35);">'
+        + '<div class="text-[10px] uppercase tracking-widest text-primary-400 font-semibold mb-1">Main conference · 20–21 November · World Trade Center, Mumbai</div>'
+        + '<h3 class="font-bold text-base md:text-lg leading-snug">' + (declined ? 'Changed your mind about November?' : 'Would you like to come to the main conference too?') + '</h3>'
+        + '<p class="text-sm text-gray-300 mt-2">You registered for the campus panel only. Bharat AI Innovation 2026 is two days of talks and an exhibition floor with India’s AI employers. A Visitor Pass is free, and we only register you if you ask.</p>'
+        + '<div class="flex gap-2 flex-wrap mt-4">'
+        + '<button onclick="answerMainEvent(&quot;yes&quot;)" class="px-4 py-2.5 rounded-xl text-sm font-semibold bg-primary-600 hover:bg-primary-500 text-white transition"><i class="fas fa-check mr-2"></i>Yes, count me in</button>'
+        + (declined ? '' : '<button onclick="answerMainEvent(&quot;no&quot;)" class="px-4 py-2.5 rounded-xl text-sm font-medium glass hover:bg-white/10 text-gray-300 transition">Not this time</button>')
+        + '</div></div>';
+    }
+
+    async function answerMainEvent(answer) {
+      if (!currentUser) return;
+      var r = null;
+      try { r = await api.post('/api/attendees/' + currentUser.id + '/main-event', { answer: answer }); } catch (e) {}
+      if (!r || r.error) { showToast((r && r.error) || 'Could not save that just now.', 'error'); return; }
+      if (answer === 'yes') {
+        showToast('You are registered for 20–21 November. Your Visitor Pass is on My Profile.', 'success');
+        switchTab('myprofile');
+      } else {
+        showToast('No problem. You can change your mind any time from My Profile.', 'info');
+      }
+      renderMyPanels();
     }
 
     function panelCardHTML(p) {
@@ -23930,7 +24064,7 @@ function adminPageHTML(): string {
                   <td class="text-gray-400">\${escH(a.email)}</td>
                   <td>\${escH(a.company)||'-'}</td>
                   <td><span class="px-2 py-0.5 rounded-full text-[10px] bg-primary-500/20 text-primary-300">\${escH(a.role)}</span></td>
-                  <td><span class="px-2 py-0.5 rounded-full text-[10px] \${getBadgeClass(a.badge_type)}">\${escH(a.badge_type)}</span></td>
+                  <td><span class="px-2 py-0.5 rounded-full text-[10px] \${getBadgeClass(a.badge_type)}">\${escH(a.badge_type)}</span>\${a.main_event === 0 ? '<span class="ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-white/10 text-gray-300" title="Registered for a campus panel; has not opted in to the conference">Panel only</span>' : ''}</td>
                   <td class="text-gray-500 text-xs">\${new Date(a.created_at).toLocaleString()}</td>
                 </tr>\`).join('')}
               </tbody>
@@ -25969,7 +26103,7 @@ function adminPageHTML(): string {
         var code = p.claim_code_set ? '' : ' <span class="text-amber-300">&middot; no claim code set</span>';
         return '<div class="p-3 rounded-xl bg-white/5 border border-white/10">'
           + '<div class="flex items-baseline justify-between gap-2 flex-wrap mb-1"><div class="text-sm font-semibold text-white">' + esc(p.hostShort) + ' <span class="text-gray-400 font-normal">&middot; ' + esc(p.dateLabel) + '</span></div><div class="text-[10px]">' + claim + code + '</div></div>'
-          + '<div class="text-xs text-gray-400 leading-relaxed">' + stat(p.registered, 'registered') + stat(p.via_muni, 'via mUni') + stat(p.via_page, 'via our page') + stat(p.emailed, 'emailed') + (p.email_failed ? stat(p.email_failed, 'failed') : '') + stat(p.signed_in, 'signed in') + stat(p.with_photo, 'with photo') + stat(p.card_taken, 'took the card') + stat(p.claimed, 'claimed attendance') + stat(p.certificate_taken, 'took the certificate') + '</div>'
+          + '<div class="text-xs text-gray-400 leading-relaxed">' + stat(p.registered, 'registered') + stat(p.via_muni, 'via mUni') + stat(p.via_page, 'via our page') + stat(p.emailed, 'emailed') + (p.email_failed ? stat(p.email_failed, 'failed') : '') + stat(p.signed_in, 'signed in') + stat(p.with_photo, 'with photo') + stat(p.card_taken, 'took the card') + stat(p.main_event_yes, 'coming in Nov') + stat(p.main_event_no, 'declined Nov') + stat(p.claimed, 'claimed attendance') + stat(p.certificate_taken, 'took the certificate') + '</div>'
           + '<div class="flex gap-2 mt-2 flex-wrap items-center">'
           + '<button onclick="previewPanelEmail(&quot;' + esc(p.slug) + '&quot;)" class="px-3 py-1.5 rounded-lg text-xs glass hover:bg-white/10 transition"><i class="fas fa-eye mr-1.5"></i>Preview email</button>'
           + (p.email_paused ? '<button onclick="resumePanelConfirmations(&quot;' + esc(p.slug) + '&quot;)" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-orange-600 hover:bg-orange-500 text-white transition"><i class="fas fa-play mr-1.5"></i>Resume sending (' + p.email_paused + ' paused)</button>' : '')
