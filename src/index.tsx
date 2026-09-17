@@ -448,6 +448,100 @@ const STUDENT_TITLE_NORM =
 const STUDENT_RANK_SQL = '(CASE WHEN ' + ['%student%', '% intern %', '% interns %', '%scholar%', '%trainee%', '%graduand%']
   .map(pat => `${STUDENT_TITLE_NORM} LIKE '${pat}'`).join(' OR ') + ' THEN 1 ELSE 0 END)'
 
+/* What a free Visitor Pass sees of the directory (organiser decision, 17 Sep 2026).
+ *
+ * Every signed-in account - and a Visitor Pass is free, with no payment - could
+ * page through the whole directory, search all of it, open any profile by id, and
+ * follow each person's LinkedIn link. The organiser's concern: a free registrant
+ * sees who is coming, connects on LinkedIn instead, and never buys the pass that
+ * networking is sold on. A free sign-up could also harvest the whole list.
+ *
+ * So a viewer who cannot start networking gets a teaser, not the list:
+ *  - one page of the strongest profiles (photo, a senior title, company given),
+ *    rotated daily, then locked cards that carry only a job title and industry;
+ *  - a search or a filter shows its first few matches, then locks;
+ *  - no LinkedIn / Twitter / website links, and a one-line bio;
+ *  - a profile opens only if the list just showed it (a signed view token), the
+ *    two have already been in touch, or it is a speaker, exhibitor or organiser.
+ * Receiving stays free: anyone who has contacted a Visitor is fully visible to
+ * them, so a Delegate's request is never wasted. No count is ever returned.
+ *
+ * Checked against production on 17 Sep: 95 profiles score the top mark (photo,
+ * senior title, company), so the daily rotation draws from founders, CEOs and
+ * directors rather than whoever sorts first by name. */
+const TEASER_VISIBLE = 24
+const TEASER_SEARCH_VISIBLE = 3
+const TEASER_LOCKED = 12
+const DIRECTORY_FULL_ROLE = /speaker|exhibitor|organi[sz]er|jury|media|admin|staff/i
+const SENIOR_RANK_SQL = '(CASE WHEN ' + ['%founder%', '%chief%', '%president%', '%director%', '%chairman%', '%chairperson%', '%managing%',
+  '% ceo %', '% cto %', '% cio %', '% coo %', '% cfo %', '% cmo %', '% cxo %', '% cdo %', '% md %',
+  '% vp %', '% avp %', '% svp %', '% evp %', '% head %', '% partner %', '% owner %', '% dean %', '% professor %', '% principal %']
+  .map(pat => `${STUDENT_TITLE_NORM} LIKE '${pat}'`).join(' OR ') + ' THEN 1 ELSE 0 END)'
+const TEASER_QUALITY_SQL = `((CASE WHEN COALESCE(TRIM(avatar_url),'') <> '' THEN 2 ELSE 0 END)` +
+  ` + (CASE WHEN COALESCE(TRIM(company),'') <> '' AND COALESCE(TRIM(job_title),'') <> '' THEN 1 ELSE 0 END)` +
+  ` + 2 * ${SENIOR_RANK_SQL} - 3 * ${STUDENT_RANK_SQL})`
+
+// Days in IST, so the rotation and the view tokens turn over at Mumbai midnight.
+const istDay = (daysAgo: number = 0): number => Math.floor((Date.now() + 19800000) / 86400000) - daysAgo
+
+/* Who is looking. full = the whole directory, as before. A database with no
+ * session secret keeps its old open behaviour, matching the documented fail-open
+ * rule for sessions; every production deploy has one. */
+async function directoryViewer(c: any): Promise<{ id: number | null; full: boolean }> {
+  if (isAdminRequest(c)) return { id: null, full: true }
+  if (!attendeeSessionSecret(c)) return { id: null, full: true }
+  const id = await verifyAttendeeSession(c)
+  if (!id) return { id: null, full: false }
+  try {
+    const r = await c.env.DB.prepare('SELECT badge_type, role FROM attendees WHERE id = ?').bind(id).first() as any
+    if (!r) return { id, full: false }
+    return { id, full: canInitiateNetworking(r.badge_type) || DIRECTORY_FULL_ROLE.test(String(r.role || '')) }
+  } catch { return { id, full: false } }
+}
+
+// A profile the list just showed this viewer may be opened today (or late last
+// night); a guessed id may not.
+async function profileViewToken(c: any, viewerId: any, targetId: any, day: number = istDay()): Promise<string> {
+  const secret = attendeeSessionSecret(c) || 'directory'
+  return (await hmacHexA(secret, `view:${viewerId}:${targetId}:${day}`)).slice(0, 24)
+}
+async function validProfileViewToken(c: any, viewerId: any, targetId: any, token: unknown): Promise<boolean> {
+  const t = String(token || '')
+  if (t.length !== 24) return false
+  for (const d of [istDay(), istDay(1)]) {
+    if (safeEqualA(t, await profileViewToken(c, viewerId, targetId, d))) return true
+  }
+  return false
+}
+
+function teaserProfile(r: any): any {
+  const bio = String(r.bio || '').replace(/\s+/g, ' ').trim()
+  const line = bio.length > 90 ? bio.slice(0, 90).replace(/\s+\S*$/, '') + '…' : bio
+  return { ...r, bio: line, linkedin_url: '', twitter_url: '', website_url: '', last_seen: null, limited: 1 }
+}
+const lockedCard = (r: any) => ({ locked: 1, job_title: String(r.job_title || '').slice(0, 80), industry: String(r.industry || '') })
+
+// Anyone who has been in touch with the viewer, either way round, or who is a
+// published speaker, is fully visible. Receiving is never gated.
+async function directoryAlwaysVisible(c: any, viewerId: any, targetId: any): Promise<boolean> {
+  try {
+    const r = await c.env.DB.prepare(
+      `SELECT (EXISTS(SELECT 1 FROM connections WHERE (from_attendee_id = ? AND to_attendee_id = ?) OR (from_attendee_id = ? AND to_attendee_id = ?))
+            OR EXISTS(SELECT 1 FROM messages WHERE (sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?))
+            OR EXISTS(SELECT 1 FROM meetings WHERE (requester_id = ? AND requestee_id = ?) OR (requester_id = ? AND requestee_id = ?))) AS ok`
+    ).bind(viewerId, targetId, targetId, viewerId, viewerId, targetId, targetId, viewerId, viewerId, targetId, targetId, viewerId).first() as any
+    if (Number(r?.ok)) return true
+  } catch { /* fall through */ }
+  try {
+    const sp = await c.env.DB.prepare(
+      `SELECT 1 AS ok FROM speakers s JOIN attendees a ON LOWER(a.email) = LOWER(s.email)
+        WHERE a.id = ? AND s.is_published = 1 AND COALESCE(s.email, '') <> '' LIMIT 1`
+    ).bind(targetId).first() as any
+    if (sp) return true
+  } catch { /* no speakers table */ }
+  return false
+}
+
 /* How deep one walk may go before the caller is told to search instead.
  *
  * Twenty pages is 480 people. Nobody looking for a person pages through 480
@@ -4205,6 +4299,38 @@ app.get('/api/events/:id/attendees', async (c) => {
     params.push(`%${goal}%`)
   }
 
+  // A viewer who cannot start networking gets the teaser (see directoryViewer).
+  const viewer = await directoryViewer(c)
+  if (!viewer.full) {
+    const filtered = !!(search || role || interest || industry || city || goal)
+    const visible = filtered ? TEASER_SEARCH_VISIBLE : TEASER_VISIBLE
+    let tw = where
+    const tp: any[] = [...params]
+    if (viewer.id) { tw += ' AND id <> ?'; tp.push(viewer.id) }
+    const order = filtered
+      ? `${TEASER_QUALITY_SQL} DESC, name ASC, id ASC`
+      : `${TEASER_QUALITY_SQL} DESC, ((id * 7919 + ?) % 1009) ASC, id ASC`
+    if (!filtered) tp.push(istDay())
+    const rows = ((await c.env.DB.prepare(
+      `SELECT ${ATTENDEE_PUBLIC_COLS} FROM attendees${tw} ORDER BY ${order} LIMIT ${visible + TEASER_LOCKED}`
+    ).bind(...tp).all()).results || []) as any[]
+    const out: any[] = []
+    for (let i = 0; i < rows.length; i++) {
+      if (i < visible) out.push({ ...teaserProfile(rows[i]), view_token: await profileViewToken(c, viewer.id || 0, rows[i].id) })
+      else out.push(lockedCard(rows[i]))
+    }
+    return new Response(JSON.stringify(out), {
+      headers: {
+        'Content-Type': 'application/json; charset=UTF-8',
+        'X-Returned-Count': String(Math.min(rows.length, visible)),
+        'X-Next-Cursor': '',
+        'X-Has-More': '0',
+        'X-Directory-Limited': '1',
+        'Access-Control-Expose-Headers': 'X-Returned-Count, X-Next-Cursor, X-Has-More, X-Directory-Limited',
+      },
+    })
+  }
+
   // Everyone who is not an admin gets a page, never the whole directory.
   if (!isAdminRequest(c)) {
     const size = Math.min(PUBLIC_PAGE_MAX, Math.max(1,
@@ -4414,6 +4540,13 @@ app.get('/api/events/:id/suggested-attendees', async (c) => {
     }
   }
 
+  // A free viewer gets the eight most relevant (selection already put goal and
+  // interest matches first), stripped like the teaser, each openable.
+  const viewer = await directoryViewer(c)
+  if (!viewer.full) {
+    const few = out.slice(0, 8)
+    return c.json(await Promise.all(few.map(async (r: any) => ({ ...teaserProfile(r), view_token: await profileViewToken(c, viewer.id || 0, r.id) }))))
+  }
   return c.json(out)
 })
 
@@ -4422,10 +4555,20 @@ app.get('/api/attendees/:id', async (c) => {
   // walk into a 1,404-request one against sequential ids.
   const shutOut = await requireSignedIn(c); if (shutOut) return shutOut
   const id = c.req.param('id')
+  const viewer = await directoryViewer(c)
   const cols = isAdminRequest(c) ? '*' : ATTENDEE_PUBLIC_COLS
-  const attendee = await c.env.DB.prepare(`SELECT ${cols} FROM attendees WHERE id = ?`).bind(id).first()
-  if (!attendee) return c.json({ error: 'Attendee not found' }, 404)
-  return c.json(attendee)
+  const attendee = await c.env.DB.prepare(`SELECT ${cols} FROM attendees WHERE id = ?`).bind(id).first() as any
+  const locked = () => c.json({ error: 'Open this profile from the directory. A Delegate, Academic or VIP pass shows everyone.', locked: true }, 403)
+  if (viewer.full || (viewer.id && String(viewer.id) === String(id))) {
+    if (!attendee) return c.json({ error: 'Attendee not found' }, 404)
+    return c.json(attendee)
+  }
+  // A free viewer. Unknown and locked answer alike, so walking ids reveals nothing.
+  if (!attendee || !viewer.id) return locked()
+  if (DIRECTORY_FULL_ROLE.test(String(attendee.role || ''))) return c.json(attendee)
+  if (await directoryAlwaysVisible(c, viewer.id, id)) return c.json(attendee)
+  if (await validProfileViewToken(c, viewer.id, id, c.req.query('v'))) return c.json(teaserProfile(attendee))
+  return locked()
 })
 
 // Where a registration came from. Until now neither registration endpoint wrote the
@@ -15514,8 +15657,8 @@ function mainPageHTML(): string {
                 <i class="fas fa-lock text-amber-400"></i>
               </div>
               <div class="flex-1 min-w-0">
-                <p class="text-sm font-semibold text-white">Networking requires a paid pass</p>
-                <p class="text-xs text-gray-400 mt-0.5">Upgrade to Delegate or VIP to connect, message, and meet attendees</p>
+                <p class="text-sm font-semibold text-white">You are seeing a selection of who is coming</p>
+                <p class="text-xs text-gray-400 mt-0.5">Delegate, Academic and VIP passes see the full directory, search everyone, and start conversations. Anyone who reaches out to you, you can always answer.</p>
               </div>
               <button type="button" onclick="openPaidPassForm()"
                  class="shrink-0 px-4 py-2 rounded-xl text-xs font-bold text-white transition-all whitespace-nowrap"
@@ -18187,6 +18330,10 @@ function mainPageHTML(): string {
             : 'Browsing and accepting are free on every pass. <span class="text-white font-semibold">Starting</span> a conversation is part of the Delegate, Academic and VIP passes.') +
           '<br><span class="text-gray-400 text-xs">Delegates also propose meetings, reserve a private WTC boardroom by the hour, and attend every session and workshop.</span>';
       }
+      if (reason === 'directory' && title && copy) {
+        title.textContent = 'See everyone who is coming';
+        copy.innerHTML = 'A free Visitor Pass shows a selection of who is attending. A <span class="text-primary-300 font-semibold">Delegate</span>, Academic or <span class="text-amber-300 font-semibold">VIP Pass</span> opens the full directory and search, and lets you start conversations and book meetings.';
+      }
       if (reason === 'welcome' && title && copy) {
         title.textContent = 'Want the full two days?';
         copy.innerHTML = 'Your <span class="text-white font-semibold">Visitor Pass</span> covers the exhibition floor and select keynotes.<br>' +
@@ -18507,6 +18654,27 @@ function mainPageHTML(): string {
     /* Pass a page number to move to it; pass nothing for a fresh load, which
      * resets to page one. A page REPLACES the grid rather than adding to it -
      * see renderPager() for why that is the point and not a detail. */
+    // View tokens the server hands a free Visitor Pass with each profile it shows,
+    // so that profile can be opened; a guessed id cannot.
+    var profileViewTokens = {};
+    function rememberViewTokens(rows) {
+      (Array.isArray(rows) ? rows : []).forEach(function (a) { if (a && a.id && a.view_token) profileViewTokens[a.id] = a.view_token; });
+    }
+
+    // A person a free pass is not shown: only what they do, never who they are.
+    function lockedCardHTML(a) {
+      return '<div class="glass rounded-xl p-5">'
+        + '<div class="flex items-start gap-3">'
+        + '<div class="w-14 h-14 rounded-full flex items-center justify-center shrink-0" style="background:rgba(99,102,241,0.12);"><i class="fas fa-lock text-gray-400"></i></div>'
+        + '<div class="flex-1 min-w-0">'
+        + '<div class="h-3.5 w-32 rounded mb-2" style="background:rgba(30,33,64,0.10);" aria-hidden="true"></div>'
+        + '<p class="text-xs text-gray-300 truncate">' + esc(a.job_title || 'Attendee') + '</p>'
+        + (a.industry ? '<p class="text-[11px] text-gray-500 truncate mt-0.5">' + esc(a.industry) + '</p>' : '')
+        + '</div></div>'
+        + '<button type="button" onclick="showUpgradeModal(&quot;directory&quot;)" class="w-full mt-4 py-2 rounded-lg text-xs font-semibold text-white transition" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);"><i class="fas fa-unlock mr-1.5"></i>See who this is</button>'
+        + '</div>';
+    }
+
     async function loadAttendees(page) {
       const fresh = (page === undefined || page === null || page === false);
       // The guard is for page moves only. A fresh load - a keystroke in the
@@ -18557,7 +18725,8 @@ function mainPageHTML(): string {
         if (attendeeHasMore && nextCursor) attendeePageCursors[target + 1] = nextCursor;
 
 
-        let list = attendees.filter(a => a.id !== currentUser?.id);
+        rememberViewTokens(attendees);
+        let list = attendees.filter(a => a.locked || a.id !== currentUser?.id);
         // Score the page in hand so each card can still say WHY it is relevant.
         // The grid is no longer re-sorted here: the server hands it back in a
         // stable (name, id) order, which is what the paging cursor walks, and
@@ -18566,7 +18735,7 @@ function mainPageHTML(): string {
         // Only on the first page: the 'why' line is about who leads the list.
         const ranking = currentUser && !search && !role && !chipFiltered && target === 0;
         if (currentUser) {
-          list.forEach(a => { const m = matchScore(a); a._score = m.score; a._shared = m.shared; });
+          list.forEach(a => { if (a.locked) return; const m = matchScore(a); a._score = m.score; a._shared = m.shared; });
         }
 
         // The rail ranks a candidate pool drawn from the whole directory, so it
@@ -18577,6 +18746,7 @@ function mainPageHTML(): string {
         else { const r = document.getElementById('match-rail'); if (r) r.innerHTML = ''; }
 
         const gridHTML = list.map(a => {
+          if (a.locked) return lockedCardHTML(a);
           const compLogo = getCompanyLogoUrl(a.company, a.website_url, a.linkedin_url, a.email);
           const reason = ranking ? matchReason(a, a._shared || []) : '';
           return \`
@@ -18786,6 +18956,7 @@ function mainPageHTML(): string {
       let pool = [];
       try { pool = await api.get('/api/events/' + EVENT_ID + '/suggested-attendees'); } catch (e) { el.classList.add('hidden'); return; }
       if (!Array.isArray(pool) || !pool.length) { el.classList.add('hidden'); return; }
+      rememberViewTokens(pool);
       pool.forEach(a => { const m = matchScore(a); a._score = m.score; a._shared = m.shared; });
       pool.sort((x, y) => (y._score - x._score) || (y.is_online - x.is_online));
       const top = pool.filter(a => a._score >= 10).slice(0, 8);
@@ -18822,6 +18993,7 @@ function mainPageHTML(): string {
       let pool = [];
       try { pool = await api.get('/api/events/' + EVENT_ID + '/suggested-attendees'); } catch (e) { return; }
       if (!Array.isArray(pool) || !pool.length) { railEl.innerHTML = ''; return; }
+      rememberViewTokens(pool);
       pool.forEach(a => { const m = matchScore(a); a._score = m.score; a._shared = m.shared; });
       pool.sort((x, y) => (y._score - x._score) || (y.is_online - x.is_online));
       const top = pool.filter(a => a._score >= 10).slice(0, 3);
@@ -18871,7 +19043,10 @@ function mainPageHTML(): string {
     // ==================== PROFILE MODAL ====================
     async function viewProfile(id) {
       try {
-        const a = await api.get(\`/api/attendees/\${id}\`);
+        const tok = profileViewTokens[id];
+        const a = await api.get('/api/attendees/' + id + (tok ? '?v=' + encodeURIComponent(tok) : ''));
+        if (a && a.locked) { showUpgradeModal('directory'); return; }
+        if (!a || a.error) { showToast((a && a.error) || 'Could not open that profile.', 'error'); return; }
         const compLogo = getCompanyLogoUrl(a.company, a.website_url, a.linkedin_url, a.email);
         document.getElementById('profile-name').textContent = a.name;
         document.getElementById('profile-content').innerHTML = \`
@@ -18897,6 +19072,7 @@ function mainPageHTML(): string {
               <div class="flex flex-wrap gap-1">\${a.interests.split(',').map(i => \`<span class="px-2 py-1 rounded-full text-xs bg-primary-500/20 text-primary-300">\${esc(i.trim())}</span>\`).join('')}</div>
             </div>
           \` : ''}
+          \${a.limited ? '<p class="text-xs text-gray-500 mb-4"><i class="fas fa-lock mr-1"></i>Contact links and the full profile come with a Delegate, Academic or VIP pass.</p>' : ''}
           <div class="flex gap-3 mb-4">
             \${safeUrl(a.linkedin_url) ? \`<a href="\${safeUrl(a.linkedin_url)}" target="_blank" rel="noopener" class="text-blue-400 hover:text-blue-300"><i class="fab fa-linkedin text-xl"></i></a>\` : ''}
             \${safeUrl(a.twitter_url) ? \`<a href="\${safeUrl(a.twitter_url)}" target="_blank" rel="noopener" class="text-sky-400 hover:text-sky-300"><i class="fab fa-twitter text-xl"></i></a>\` : ''}
