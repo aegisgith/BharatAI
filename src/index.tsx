@@ -14671,7 +14671,7 @@ function mainPageHTML(): string {
   <link rel="stylesheet" href="${FA_CSS}">
   <!-- Shared with the admin panel, so a pass issued at the desk is the same
        document the holder downloaded. -->
-  <script src="/js/pass-render.js"></script>
+  <script src="/js/pass-render.js?v=20260917"></script>
   <!-- The "I'm attending" card delegates post. App only: the badge desk has no
        reason to issue one, and it carries none of the pass's verification data. -->
   <script src="/js/social-card.js"></script>
@@ -16913,6 +16913,7 @@ function mainPageHTML(): string {
             <img id="sc-preview" alt="Your card" class="block" style="max-height:380px;max-width:100%;height:auto;">
             <div id="sc-loading" class="text-xs text-gray-400 py-16"><i class="fas fa-spinner fa-spin mr-2"></i>Drawing your card…</div>
           </div>
+          <p id="sc-phone-hint" class="hidden text-xs text-gray-400 mb-3"><i class="fas fa-circle-info mr-1"></i>This browser cannot share pictures directly. Tap <strong>Save picture</strong>, then press and hold the picture to keep it, and post it from your gallery.</p>
 
           <label id="sc-logo-row" class="hidden items-center gap-2 mb-3 cursor-pointer select-none">
             <input type="checkbox" id="sc-logo-toggle" checked onchange="renderSocialCardPreview()" class="rounded">
@@ -16930,7 +16931,7 @@ function mainPageHTML(): string {
 
           <button id="sc-share-primary" onclick="shareSocialCard()" class="hidden w-full mb-2 px-4 py-3 rounded-xl text-sm font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition"><i class="fas fa-share-alt mr-2"></i>Share to LinkedIn or WhatsApp</button>
           <div class="flex gap-2">
-            <button onclick="downloadSocialCard()" class="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold bg-primary-600 hover:bg-primary-500 text-white transition"><i class="fas fa-download mr-2"></i>Download</button>
+            <button onclick="downloadSocialCard()" class="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold bg-primary-600 hover:bg-primary-500 text-white transition" style="min-height:44px;"><i class="fas fa-download mr-2"></i><span id="sc-download-label">Download</span></button>
             <button id="sc-copy" onclick="copySocialCaption()" class="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold glass hover:bg-white/10 text-gray-200 transition"><i class="fas fa-clipboard-check mr-2"></i>Copy caption</button>
           </div>
           <button id="sc-share" onclick="shareSocialCard()" class="hidden w-full mt-2 px-4 py-2.5 rounded-xl text-sm font-semibold glass hover:bg-white/10 text-gray-200 transition"><i class="fas fa-paper-plane mr-2"></i>Share to an app…</button>
@@ -21591,8 +21592,8 @@ function mainPageHTML(): string {
       ctx.fillStyle = '#6b6a63'; ctx.font = '400 15px Inter, Arial';
       ctx.fillText('Certificate ID: BHAI-CERT-' + String(user.id).padStart(4,'0'), W/2, 1010);
       // Download
-      const a = document.createElement('a'); a.href = canvas.toDataURL('image/png'); a.download = 'BharatAI-2026-Certificate.png'; a.click();
-      showToast('Certificate downloaded', 'success');
+      const how = await deliverImage(canvas.toDataURL('image/png'), 'BharatAI-2026-Certificate.png', { title: 'Your certificate' });
+      if (how === 'downloaded') showToast('Certificate downloaded', 'success');
     }
 
     // ===== EVENT PASSES ==================================================
@@ -21675,7 +21676,7 @@ function mainPageHTML(): string {
         if (againP === 'done') return generateEventPass(adminAttendee);
         return;
       }
-      showToast('Pass downloaded', 'success');
+      if (adminAttendee || !isTouchPhone()) showToast('Pass downloaded', 'success');
       if (!adminAttendee && user.id) { try { await api.post('/api/attendees/' + user.id + '/track-pass-download', {}); } catch (e) {} }
       if (!adminAttendee) maybeOfferSocialCard();
     }
@@ -21799,7 +21800,93 @@ function mainPageHTML(): string {
     // The drawing lives in /js/social-card.js. What stays here is the policy
     // around it: who may make one, what has to be true first, and what gets
     // counted afterwards.
-    var socialCard = { size: 'square', res: null, seq: 0 };
+    // ===== PHONES: SAVING AND SHARING PICTURES =====
+    // Students reach this from a phone, usually from a link in Gmail or WhatsApp,
+    // never from a laptop. Three things break there: a download link on an iPhone
+    // saves into Files rather than Photos; in-app browsers (LinkedIn, Instagram)
+    // can neither share a file nor download one; and the share sheet refuses to
+    // open when a slow await sits between the tap and the call. Every picture a
+    // person keeps - the creative, a certificate, the pass - goes through here.
+    function isTouchPhone() {
+      try { return (navigator.maxTouchPoints || 0) > 0 && Math.min(window.screen.width, window.screen.height) <= 900; } catch (e) { return false; }
+    }
+    async function dataUrlToFile(dataUrl, filename) {
+      var blob = await (await fetch(dataUrl)).blob();
+      return new File([blob], filename, { type: blob.type || 'image/png' });
+    }
+    function canShareFile(file) {
+      try { return !!(file && navigator.share && navigator.canShare && navigator.canShare({ files: [file] })); } catch (e) { return false; }
+    }
+    function copyText(text, forPost) {
+      var done = function () { showToast(forPost ? 'Caption copied - paste it into your post' : 'Caption copied', forPost ? 'info' : 'success'); };
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(text).then(done, function () {}); return; }
+      } catch (e) {}
+      try {
+        var ta = document.createElement('textarea');
+        ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); done();
+      } catch (e) {}
+    }
+    function closeImageToSave() { var o = document.getElementById('image-to-save'); if (o) o.remove(); }
+    // The picture full screen. Press and hold to save works in every phone
+    // browser, in-app ones included; the share button appears where sharing works.
+    function showImageToSave(dataUrl, opts) {
+      opts = opts || {};
+      closeImageToSave();
+      var o = document.createElement('div');
+      o.id = 'image-to-save';
+      o.setAttribute('role', 'dialog');
+      o.setAttribute('aria-modal', 'true');
+      o.style.cssText = 'position:fixed;inset:0;z-index:95;background:#0A0C1B;display:flex;flex-direction:column;align-items:center;padding:14px 14px 28px;overflow-y:auto;';
+      var wa = opts.caption ? 'https://wa.me/?text=' + encodeURIComponent(opts.caption) : '';
+      o.innerHTML =
+        '<div style="width:100%;max-width:520px;display:flex;justify-content:space-between;align-items:center;margin:2px 0 10px;color:#fff;">'
+        + '<strong style="font-size:16px;">' + esc(opts.title || 'Your picture') + '</strong>'
+        + '<button type="button" id="its-close" aria-label="Close" style="background:none;border:0;color:#fff;font-size:30px;line-height:1;min-width:44px;min-height:44px;">&times;</button></div>'
+        + '<img src="' + dataUrl + '" alt="' + esc(opts.title || 'Your picture') + '" style="width:100%;max-width:520px;height:auto;border-radius:12px;-webkit-touch-callout:default;">'
+        + '<p style="color:#dfe3f1;font-size:14px;line-height:1.5;text-align:center;margin:12px 0;max-width:520px;">Press and hold the picture, then tap <strong>Save to Photos</strong> or <strong>Download image</strong>.</p>'
+        + '<div style="width:100%;max-width:520px;display:flex;flex-direction:column;gap:10px;">'
+        + '<button type="button" id="its-share" style="display:none;min-height:50px;border:0;border-radius:12px;background:#15803D;color:#fff;font-size:16px;font-weight:700;">Share to WhatsApp, LinkedIn or save</button>'
+        + (opts.caption ? '<button type="button" id="its-copy" style="min-height:50px;border:1px solid rgba(255,255,255,0.35);border-radius:12px;background:transparent;color:#fff;font-size:15px;font-weight:600;">Copy the caption</button>' : '')
+        + (wa ? '<a href="' + wa + '" target="_blank" rel="noopener" style="display:flex;align-items:center;justify-content:center;min-height:50px;border-radius:12px;background:#25D366;color:#073b1c;font-size:15px;font-weight:700;text-decoration:none;">Open WhatsApp with the caption</a>' : '')
+        + '</div>';
+      document.body.appendChild(o);
+      document.getElementById('its-close').onclick = closeImageToSave;
+      var copyBtn = document.getElementById('its-copy');
+      if (copyBtn) copyBtn.onclick = function () { copyText(opts.caption, false); };
+      var shareBtn = document.getElementById('its-share');
+      var fileP = opts.file ? Promise.resolve(opts.file) : dataUrlToFile(dataUrl, opts.filename || 'picture.png');
+      fileP.then(function (file) {
+        if (!canShareFile(file)) return;
+        shareBtn.style.display = 'block';
+        shareBtn.onclick = function () {
+          if (opts.caption) copyText(opts.caption, true);
+          navigator.share(opts.caption ? { files: [file], text: opts.caption } : { files: [file] })
+            .then(function () { if (opts.onShared) opts.onShared(); }).catch(function () {});
+        };
+      }).catch(function () {});
+    }
+    // Phones get the picture to share or keep; computers get a download.
+    async function deliverImage(dataUrl, filename, opts) {
+      opts = opts || {};
+      if (isTouchPhone()) {
+        showImageToSave(dataUrl, { title: opts.title, filename: filename, caption: opts.caption, file: opts.file, onShared: opts.onShared });
+        return 'shown';
+      }
+      try {
+        var file = opts.file || await dataUrlToFile(dataUrl, filename);
+        var url = URL.createObjectURL(file);
+        var a = document.createElement('a'); a.href = url; a.download = filename;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+      } catch (e) {
+        var a2 = document.createElement('a'); a2.href = dataUrl; a2.download = filename; a2.click();
+      }
+      return 'downloaded';
+    }
+
+    var socialCard = { size: 'square', res: null, seq: 0, file: null };
 
     async function openSocialCard(preferPanel) {
       var user = currentUser;
@@ -21873,8 +21960,10 @@ function mainPageHTML(): string {
        * means hunting through the gallery afterwards. So where sharing exists it
        * leads and the secondary copy is hidden; on desktop, where it mostly does
        * not, Download and Copy caption remain the whole story. */
-      var canShare = !!(navigator.canShare && navigator.share);
-      document.getElementById('sc-share-primary').classList.toggle('hidden', !canShare);
+      socialCard.file = null;
+      refreshSocialShareButtons();
+      var dl = document.getElementById('sc-download-label');
+      if (dl) dl.textContent = isTouchPhone() ? 'Save picture' : 'Download';
       document.getElementById('sc-share').classList.add('hidden');
       document.getElementById('social-card-modal').classList.remove('hidden');
       setSocialCardSize(socialCard.size);
@@ -22157,11 +22246,10 @@ function mainPageHTML(): string {
       ctx.fillStyle = '#6b6a63'; ctx.font = '400 15px Manrope, Arial';
       var certId = 'BHAI-CS-' + String(p.slug).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6) + '-' + String(user.id).padStart(5, '0');
       ctx.fillText('Certificate ID: ' + certId + '  ·  Attendance confirmed ' + panelWhen(p.claimed_at), W / 2, 1008);
-      var a = document.createElement('a');
-      a.href = canvas.toDataURL('image/png');
-      a.download = 'BharatAI-CampusSeries-' + String(p.hostShort || 'Panel').replace(/[^A-Za-z0-9]+/g, '') + '-Certificate.png';
-      a.click();
-      showToast('Certificate downloaded', 'success');
+      var how = await deliverImage(canvas.toDataURL('image/png'),
+        'BharatAI-CampusSeries-' + String(p.hostShort || 'Panel').replace(/[^A-Za-z0-9]+/g, '') + '-Certificate.png',
+        { title: 'Your certificate' });
+      if (how === 'downloaded') showToast('Certificate downloaded', 'success');
       try { api.post('/api/attendees/' + user.id + '/panels/' + encodeURIComponent(slug) + '/track', { what: 'certificate' }); } catch (e) {}
     }
 
@@ -22220,6 +22308,13 @@ function mainPageHTML(): string {
           return;
         }
         socialCard.res = res;
+        // The file is built now, not on tap: phones only open the share sheet
+        // inside the tap itself, and building it there can take too long.
+        socialCard.file = null;
+        refreshSocialShareButtons();
+        dataUrlToFile(res.dataUrl, res.filename).then(function (f) {
+          if (socialCard.res === res) { socialCard.file = f; refreshSocialShareButtons(); }
+        }).catch(function () {});
         img.src = res.dataUrl;
         img.style.display = 'block';
         load.classList.add('hidden');
@@ -22229,18 +22324,31 @@ function mainPageHTML(): string {
       }
     }
 
+    function refreshSocialShareButtons() {
+      var can = canShareFile(socialCard.file);
+      var primary = document.getElementById('sc-share-primary');
+      if (primary) primary.classList.toggle('hidden', !can);
+      var hint = document.getElementById('sc-phone-hint');
+      if (hint) hint.classList.toggle('hidden', can || !isTouchPhone() || !socialCard.res);
+    }
+
+    function trackSocialCardShare() {
+      var user = currentUser;
+      if (!user) return;
+      if (socialCard.mode === 'panel' && socialCard.panel) trackPanelCard();
+      else if (user.id) { try { api.post('/api/attendees/' + user.id + '/track-social-card', {}); } catch (e) {} }
+    }
+
     async function downloadSocialCard() {
       var user = currentUser;
       // res is never stored for a failed photo, so this is belt and braces;
       // it also stops a result from an earlier render being reused.
       if (!user || !socialCard.res || socialCard.res.photoFailed || !socialCard.res.hasPhoto) return;
-      var link = document.createElement('a');
-      link.download = socialCard.res.filename;
-      link.href = socialCard.res.dataUrl;
-      link.click();
-      showToast('Card downloaded - post it with the caption', 'success');
-      if (socialCard.mode === 'panel' && socialCard.panel) trackPanelCard();
-      else if (user.id) { try { await api.post('/api/attendees/' + user.id + '/track-social-card', {}); } catch (e) {} }
+      var caption = document.getElementById('sc-caption').value;
+      var how = await deliverImage(socialCard.res.dataUrl, socialCard.res.filename,
+        { title: 'Your creative', caption: caption, file: socialCard.file, onShared: trackSocialCardShare });
+      if (how === 'downloaded') showToast('Card downloaded - post it with the caption', 'success');
+      trackSocialCardShare();
     }
 
     function copySocialCaption() {
@@ -22261,19 +22369,26 @@ function mainPageHTML(): string {
     async function shareSocialCard() {
       var user = currentUser;
       if (!user || !socialCard.res || socialCard.res.photoFailed || !socialCard.res.hasPhoto) return;
+      var caption = document.getElementById('sc-caption').value;
+      var file = socialCard.file;
+      if (!canShareFile(file)) {
+        // No share sheet here (an in-app browser, or a computer): the picture to
+        // press and hold, with the caption one tap from WhatsApp.
+        showImageToSave(socialCard.res.dataUrl, { title: 'Your creative', filename: socialCard.res.filename, caption: caption, onShared: trackSocialCardShare });
+        return;
+      }
+      // Copied first: LinkedIn keeps the picture but drops shared text, so the
+      // caption has to be one paste away. Not awaited - the share sheet has to
+      // open inside this same tap or phones refuse it.
+      copyText(caption, true);
       try {
-        var blob = await (await fetch(socialCard.res.dataUrl)).blob();
-        var file = new File([blob], socialCard.res.filename, { type: 'image/png' });
-        if (!navigator.canShare || !navigator.canShare({ files: [file] })) {
-          showToast('This browser cannot share files - use Download instead', 'error');
-          return;
-        }
-        await navigator.share({ files: [file], text: document.getElementById('sc-caption').value });
-        if (socialCard.mode === 'panel' && socialCard.panel) trackPanelCard();
-        else if (user.id) { try { await api.post('/api/attendees/' + user.id + '/track-social-card', {}); } catch (e) {} }
+        await navigator.share({ files: [file], text: caption });
+        trackSocialCardShare();
       } catch (e) {
         // Dismissing the share sheet throws AbortError. That is not a failure.
-        if (e && e.name !== 'AbortError') showToast('Could not open the share sheet', 'error');
+        if (e && e.name !== 'AbortError') {
+          showImageToSave(socialCard.res.dataUrl, { title: 'Your creative', filename: socialCard.res.filename, caption: caption, file: file, onShared: trackSocialCardShare });
+        }
       }
     }
 
@@ -23950,7 +24065,7 @@ function adminPageHTML(): string {
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <!-- Shared with the app, so a pass issued at the desk is the same document the
        holder downloaded. -->
-  <script src="/js/pass-render.js"></script>
+  <script src="/js/pass-render.js?v=20260917"></script>
   <!-- The same photo fingerprint /app sends, for photos the team uploads. -->
   <script src="/js/photo-fingerprint.js?v=2"></script>
   <!-- Same renderer the delegate's own app uses, so a card the desk sends a speaker

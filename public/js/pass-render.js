@@ -375,6 +375,13 @@
     var res = await render(user, opts);
     // Not issued. The caller decides what to say; this just must not click.
     if (res && res.photoFailed) return res;
+    // On a phone the app shows the pass to share or press-and-hold save, because
+    // a download link on an iPhone saves to Files, not Photos. The admin page has
+    // no deliverImage and keeps the plain download.
+    if (typeof global.deliverImage === 'function') {
+      await global.deliverImage(res.dataUrl, res.filename, { title: 'Your event pass' });
+      return res;
+    }
     var link = document.createElement('a');
     link.download = res.filename;
     link.href = res.dataUrl;
