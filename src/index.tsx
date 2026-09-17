@@ -879,7 +879,7 @@ function sourceLabel(source: unknown): string {
 // chase and the thank-you-for-attending are all addressed to somebody else.
 const NOT_CAMPUS_SQL = "(registration_source IS NULL OR registration_source NOT LIKE 'campus:%')"
 
-type PanelMailOpts = { withLogin?: boolean; eventId?: any; source?: string }
+type PanelMailOpts = { withLogin?: boolean; eventId?: any; source?: string; preview?: boolean }
 
 /* The joining details for a campus panel. Returns whether the mail went, because
  * the admin's batch send for an imported list needs to know; the registration
@@ -890,9 +890,9 @@ type PanelMailOpts = { withLogin?: boolean; eventId?: any; source?: string }
  * good for a week and five opens, landing on the share card. The photo ask and
  * the reward for it then arrive in the same tap, which is the only way a list of
  * students ends up with photos. */
-async function sendPanelConfirmationEmail(c: any, attendee: any, panel: CampusPanel, opts: PanelMailOpts = {}): Promise<{ ok: boolean; error?: string }> {
+async function sendPanelConfirmationEmail(c: any, attendee: any, panel: CampusPanel, opts: PanelMailOpts = {}): Promise<{ ok: boolean; error?: string; html?: string }> {
   const apiKey = await settingValue(c, 'elastic_email_api_key')
-  if (!apiKey) return { ok: false, error: 'email service not configured' }
+  if (!apiKey && !opts.preview) return { ok: false, error: 'email service not configured' }
   if (!attendee?.email) return { ok: false, error: 'no email address' }
   const fromEmail = senderEmailOrDefault(await settingValue(c, 'sender_email'))
   const fromName = (await settingValue(c, 'sender_name')) || 'Bharat AI Innovation'
@@ -903,7 +903,8 @@ async function sendPanelConfirmationEmail(c: any, attendee: any, panel: CampusPa
   // ?action=social-card opens the card once the person is signed in; the card
   // asks for a photo if there is none, so the ask and the reward are one screen.
   let openLink = appUrl + '?action=social-card'
-  if (opts.withLogin) {
+  // A preview must never mint a live sign-in link for a real person.
+  if (opts.withLogin && !opts.preview) {
     const email = String(attendee.email).trim().toLowerCase()
     const eventId = opts.eventId ?? attendee.event_id ?? 1
     let tokenPart = ''
@@ -927,16 +928,26 @@ async function sendPanelConfirmationEmail(c: any, attendee: any, panel: CampusPa
   const viaMuni = opts.source === 'muni'
     ? `<p style="margin:0 0 18px;font-size:13px;line-height:1.65;color:#666;">You registered through mUni Campus. We have carried your details across, so there is nothing to fill in again.</p>`
     : ''
+  // The host's mark under the header, as on the card and the certificate. An
+  // absolute URL: a mail client has no page to resolve a relative one against.
+  const hostBand = panel.hostLogo
+    ? `<tr><td align="center" style="padding:16px 28px 4px;">
+        <table cellpadding="0" cellspacing="0" style="border-collapse:collapse;"><tr>
+          <td valign="middle" style="padding-right:12px;"><img src="https://bharataiinnovation.com${panel.hostLogo}" alt="${esc(panel.host)}" width="52" height="47" style="display:block;width:52px;height:auto;"></td>
+          <td valign="middle" style="font-size:12px;line-height:1.5;color:#666;text-align:left;">Hosted at<br><strong style="color:#1E2140;">${esc(panel.host)}</strong></td>
+        </tr></table>
+      </td></tr>`
+    : ''
   const btn = (href: string, label: string, primary: boolean) =>
     `<a href="${href}" style="display:inline-block;padding:10px 22px;${primary ? 'background:#FF6B00;color:#fff;' : 'border:1px solid #ccc;color:#1E2140;'}text-decoration:none;border-radius:8px;font-size:13px;font-weight:bold;">${label}</a>`
 
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#f5f5f5;font-family:Arial,sans-serif;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;padding:28px 12px;"><tr><td align="center">
     <table width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#fff;border-radius:14px;overflow:hidden;">
-      <tr><td style="background:#0D0F1E;padding:22px 28px;">
-        <p style="margin:0;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:#FF9A40;font-weight:bold;">Bharat AI Innovation &middot; Campus Series</p>
-        <p style="margin:6px 0 0;font-size:20px;color:#fff;font-weight:bold;">You are registered, ${firstName}.</p>
+      <tr><td style="padding:0;">
+        ${emailBrandHeader(`You are registered, ${firstName}.`, `Pre-Event Panel Discussion &bull; ${esc(panel.dateLabel)} &bull; ${esc(panel.hostShort)}, ${esc(panel.city)}`)}
       </td></tr>
+      ${hostBand}
       <tr><td style="padding:26px 28px 8px;">
         <p style="margin:0 0 18px;font-size:14px;line-height:1.65;color:#444;">
           Your place at the pre-event panel discussion at <strong>${esc(panel.host)}</strong> is confirmed.
@@ -944,10 +955,10 @@ async function sendPanelConfirmationEmail(c: any, attendee: any, panel: CampusPa
         </p>
         ${viaMuni}
         <table cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
-          ${row('Panel', esc(panel.title))}
+          ${row('Topic', esc(panel.titleShort) + (panel.subtitle ? ': ' + esc(panel.subtitle) : ''))}
           ${row('Date', esc(panel.dateLabel))}
           ${row('Time', esc(panel.timeLabel))}
-          ${row('Venue', esc(panel.venue))}
+          ${row('Venue', `${esc(panel.host)}, ${esc(panel.city)}<br><span style="font-weight:normal;color:#666;">${esc(panel.venue)}</span>`)}
           ${row('Entry', 'Free')}
           ${panellists}
         </table>
@@ -989,6 +1000,8 @@ async function sendPanelConfirmationEmail(c: any, attendee: any, panel: CampusPa
       </td></tr>
     </table>
   </td></tr></table></body></html>`
+
+  if (opts.preview) return { ok: true, html }
 
   try {
     const resp = await fetch('https://api.elasticemail.com/v4/emails/transactional', {
@@ -9052,7 +9065,8 @@ app.get('/api/admin/panels', async (c) => {
                 SUM(CASE WHEN pr.source = 'muni' THEN 1 ELSE 0 END) AS via_muni,
                 SUM(CASE WHEN pr.source = 'page' THEN 1 ELSE 0 END) AS via_page,
                 SUM(CASE WHEN pr.confirmation_sent_at IS NOT NULL THEN 1 ELSE 0 END) AS emailed,
-                SUM(CASE WHEN pr.confirmation_error IS NOT NULL THEN 1 ELSE 0 END) AS email_failed,
+                SUM(CASE WHEN pr.confirmation_error IS NOT NULL AND pr.confirmation_error NOT LIKE 'paused:%' THEN 1 ELSE 0 END) AS email_failed,
+                SUM(CASE WHEN pr.confirmation_error LIKE 'paused:%' THEN 1 ELSE 0 END) AS email_paused,
                 SUM(CASE WHEN COALESCE(TRIM(a.avatar_url), '') <> '' THEN 1 ELSE 0 END) AS with_photo,
                 SUM(CASE WHEN a.last_login_at IS NOT NULL THEN 1 ELSE 0 END) AS signed_in,
                 SUM(CASE WHEN pr.card_downloaded_at IS NOT NULL THEN 1 ELSE 0 END) AS card_taken,
@@ -9117,13 +9131,50 @@ app.post('/api/admin/panels/:slug/send-next-confirmations', async (c) => {
   return c.json({ done: left === 0, sent, failed, remaining: left })
 })
 
+// Resumes the queue. paused_only leaves genuine failures parked, so a resume
+// after a pause does not also retry addresses that bounced.
 app.post('/api/admin/panels/:slug/reset-email-errors', async (c) => {
   const slug = c.req.param('slug')
   if (!CAMPUS_PANELS[slug]) return c.json({ error: 'Unknown panel' }, 404)
+  const body = await c.req.json().catch(() => ({})) as any
+  const where = body.paused_only
+    ? "panel_slug = ? AND confirmation_error LIKE 'paused:%'"
+    : 'panel_slug = ? AND confirmation_error IS NOT NULL'
   try {
-    const r = await c.env.DB.prepare('UPDATE panel_registrations SET confirmation_error = NULL WHERE panel_slug = ? AND confirmation_error IS NOT NULL').bind(slug).run()
+    const r = await c.env.DB.prepare(`UPDATE panel_registrations SET confirmation_error = NULL WHERE ${where}`).bind(slug).run()
     return c.json({ success: true, reset: r.meta?.changes ?? 0 })
   } catch { return c.json({ success: false }) }
+})
+
+// Parks everyone not yet mailed, so no tab anywhere can send the next batch -
+// the pump in a browser only stops the tab it runs in.
+app.post('/api/admin/panels/:slug/pause', async (c) => {
+  const slug = c.req.param('slug')
+  if (!CAMPUS_PANELS[slug]) return c.json({ error: 'Unknown panel' }, 404)
+  try {
+    const r = await c.env.DB.prepare(
+      "UPDATE panel_registrations SET confirmation_error = 'paused: by admin' WHERE panel_slug = ? AND confirmation_sent_at IS NULL AND confirmation_error IS NULL"
+    ).bind(slug).run()
+    return c.json({ success: true, paused: r.meta?.changes ?? 0 })
+  } catch { return c.json({ success: false }) }
+})
+
+// The email exactly as the next person in the queue would receive it, except
+// that the sign-in link is not live. Nothing is sent and no token is minted.
+app.get('/api/admin/panels/:slug/confirmation-preview', async (c) => {
+  const slug = c.req.param('slug')
+  const panel = CAMPUS_PANELS[slug]
+  if (!panel) return c.json({ error: 'Unknown panel' }, 404)
+  let a: any = null
+  try {
+    a = await c.env.DB.prepare(
+      `SELECT pr.source AS pr_source, a.* FROM panel_registrations pr JOIN attendees a ON a.id = pr.attendee_id
+        WHERE pr.panel_slug = ? ORDER BY (pr.confirmation_sent_at IS NULL) DESC, pr.id ASC LIMIT 1`
+    ).bind(slug).first()
+  } catch { /* not migrated: fall through to a sample */ }
+  const person = a || { name: 'Sample Student', email: 'sample@example.com', event_id: 1, pr_source: 'muni' }
+  const r = await sendPanelConfirmationEmail(c, person, panel, { withLogin: true, eventId: person.event_id, source: person.pr_source, preview: true })
+  return c.html(r.html || '<p>Could not render the preview.</p>')
 })
 
 // Admin: Download attendees as CSV
@@ -25910,7 +25961,7 @@ function adminPageHTML(): string {
       if (!Array.isArray(list) || !list.length) { box.innerHTML = ''; return; }
       box.innerHTML = list.map(function (p) {
         if (p.not_migrated) return '<div class="p-3 rounded-xl bg-white/5 border border-white/10 text-xs text-amber-300">' + esc(p.hostShort) + ': migration 0040 is not applied, so nothing is recorded yet.</div>';
-        var left = (p.registered || 0) - (p.emailed || 0) - (p.email_failed || 0);
+        var left = (p.registered || 0) - (p.emailed || 0) - (p.email_failed || 0) - (p.email_paused || 0);
         var stat = function (n, label) { return '<span class="inline-block mr-3 whitespace-nowrap"><strong class="text-white">' + (n || 0) + '</strong> ' + label + '</span>'; };
         var claim = p.claim_state === 'open' ? '<span class="text-emerald-400">claims open</span>'
           : p.claim_state === 'closed' ? '<span class="text-gray-500">claims closed</span>'
@@ -25920,6 +25971,8 @@ function adminPageHTML(): string {
           + '<div class="flex items-baseline justify-between gap-2 flex-wrap mb-1"><div class="text-sm font-semibold text-white">' + esc(p.hostShort) + ' <span class="text-gray-400 font-normal">&middot; ' + esc(p.dateLabel) + '</span></div><div class="text-[10px]">' + claim + code + '</div></div>'
           + '<div class="text-xs text-gray-400 leading-relaxed">' + stat(p.registered, 'registered') + stat(p.via_muni, 'via mUni') + stat(p.via_page, 'via our page') + stat(p.emailed, 'emailed') + (p.email_failed ? stat(p.email_failed, 'failed') : '') + stat(p.signed_in, 'signed in') + stat(p.with_photo, 'with photo') + stat(p.card_taken, 'took the card') + stat(p.claimed, 'claimed attendance') + stat(p.certificate_taken, 'took the certificate') + '</div>'
           + '<div class="flex gap-2 mt-2 flex-wrap items-center">'
+          + '<button onclick="previewPanelEmail(&quot;' + esc(p.slug) + '&quot;)" class="px-3 py-1.5 rounded-lg text-xs glass hover:bg-white/10 transition"><i class="fas fa-eye mr-1.5"></i>Preview email</button>'
+          + (p.email_paused ? '<button onclick="resumePanelConfirmations(&quot;' + esc(p.slug) + '&quot;)" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-orange-600 hover:bg-orange-500 text-white transition"><i class="fas fa-play mr-1.5"></i>Resume sending (' + p.email_paused + ' paused)</button>' : '')
           + (left > 0
               ? '<button id="panel-send-' + esc(p.slug) + '" onclick="startPanelConfirmations(&quot;' + esc(p.slug) + '&quot;)" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-orange-600 hover:bg-orange-500 text-white transition"><i class="fas fa-paper-plane mr-1.5"></i>Send confirmations (' + left + ' left)</button>'
               : '<span class="text-xs text-emerald-400"><i class="fas fa-check mr-1"></i>Everyone on the list has been emailed</span>')
@@ -25931,20 +25984,52 @@ function adminPageHTML(): string {
 
     var _panelPump = {};
     function startPanelConfirmations(slug) {
-      if (!confirm('Send the panel confirmation email to everyone on the ' + slug + ' list who has not had one?\\n\\nReal email, a few at a time. You can close this page; nobody is mailed twice.')) return;
+      if (!confirm('Send the panel confirmation email to everyone on the ' + slug + ' list who has not had one?\\n\\nReal email, a few at a time. Use Stop to pause; nobody is mailed twice.')) return;
       var btn = document.getElementById('panel-send-' + slug);
-      if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1.5"></i>Sending…'; }
-      _panelPump[slug] = { sent: 0 };
+      if (btn) {
+        btn.innerHTML = '<i class="fas fa-stop mr-1.5"></i>Stop';
+        btn.onclick = function () { stopPanelConfirmations(slug); };
+      }
+      _panelPump[slug] = { sent: 0, stopped: false };
       pumpPanelConfirmations(slug);
+    }
+
+    // Stops this tab at once and parks the rest of the queue on the server, so a
+    // second tab left open cannot carry on sending.
+    async function stopPanelConfirmations(slug) {
+      if (_panelPump[slug]) _panelPump[slug].stopped = true;
+      var btn = document.getElementById('panel-send-' + slug);
+      if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1.5"></i>Stopping…'; }
+      try { await api.post('/api/admin/panels/' + encodeURIComponent(slug) + '/pause', {}); } catch (e) {}
+      renderCampusPanels();
+    }
+
+    async function resumePanelConfirmations(slug) {
+      try { await api.post('/api/admin/panels/' + encodeURIComponent(slug) + '/reset-email-errors', { paused_only: true }); } catch (e) {}
+      await renderCampusPanels();
+      startPanelConfirmations(slug);
+    }
+
+    // Opened through fetch rather than a link, so the preview carries the same
+    // Authorization header as every other admin call.
+    async function previewPanelEmail(slug) {
+      var w = window.open('', '_blank');
+      try {
+        var r = await fetch('/api/admin/panels/' + encodeURIComponent(slug) + '/confirmation-preview', { headers: authHeaders() });
+        var html = await r.text();
+        if (w) { w.document.open(); w.document.write(html); w.document.close(); }
+      } catch (e) { if (w) w.close(); toast('Could not load the preview', 'error'); }
     }
 
     async function pumpPanelConfirmations(slug) {
       var say = function (m) { var el = document.getElementById('panel-progress-' + slug); if (el) el.innerHTML = m; };
+      if (!_panelPump[slug] || _panelPump[slug].stopped) return;
       var r;
       try { r = await api.post('/api/admin/panels/' + encodeURIComponent(slug) + '/send-next-confirmations', { batch: 5 }); }
       catch (e) { say('<span class="text-red-400">Network error - retrying in 30s.</span>'); setTimeout(function () { pumpPanelConfirmations(slug); }, 30000); return; }
       if (!r || r.error) { say('<span class="text-red-400">' + esc((r && r.error) || 'failed') + '</span>'); renderCampusPanels(); return; }
       _panelPump[slug].sent += (r.sent || 0);
+      if (_panelPump[slug].stopped) { say('Stopped - ' + _panelPump[slug].sent + ' sent.'); return; }
       if (r.done) { say('<span class="text-green-400">Done - ' + _panelPump[slug].sent + ' sent.</span>'); renderCampusPanels(); return; }
       say(_panelPump[slug].sent + ' sent, ' + r.remaining + ' to go…');
       setTimeout(function () { pumpPanelConfirmations(slug); }, 1500);
