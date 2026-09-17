@@ -86,6 +86,33 @@ for (const path of PAGES) {
   if (!failed) console.log(`[check-inline-js] ${path}: ${checked} inline block(s) parse`)
 }
 
+// The static site. public/*.html is served as-is, never rendered by the worker,
+// so the loop above never saw it: on 17 Sep 2026 an edit left a string
+// unterminated in the campus pages' inline script, the registration handler
+// never attached, and a submit fell through to a GET reload for hours before
+// anyone noticed. Same parse, every page.
+{
+  const { readdirSync } = await import('node:fs')
+  let pages = 0, blocksChecked = 0, staticFailed = 0
+  for (const file of readdirSync('public').filter(f => f.endsWith('.html'))) {
+    const html = readFileSync('public/' + file, 'utf8')
+    pages++
+    for (const [, attrs, body] of html.matchAll(/<script(?![^>]*\bsrc=)([^>]*)>([\s\S]*?)<\/script>/g)) {
+      if (/type\s*=\s*["'](?!text\/javascript|module)/i.test(attrs)) continue
+      if (!body.trim()) continue
+      try {
+        new vm.Script(body)
+        blocksChecked++
+      } catch (e) {
+        console.error(`[check-inline-js] public/${file}: ${e.message}`)
+        staticFailed++
+      }
+    }
+  }
+  if (!staticFailed) console.log(`[check-inline-js] public/*.html: ${blocksChecked} inline block(s) across ${pages} pages parse`)
+  failed += staticFailed
+}
+
 if (failed) {
   console.error('[check-inline-js] FAILED — a page would ship with dead JavaScript.')
   process.exit(1)
