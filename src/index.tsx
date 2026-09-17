@@ -996,6 +996,11 @@ type CampusPanel = {
   hostLogo: string
   speakers: PanelSpeaker[]
   hashtags: string
+  // Lower-case fragments of the host's name or email domain, matched against a
+  // registrant's organisation and email to tell the host's own students from
+  // guests. Guests are told to carry photo ID, and the college can be given a
+  // list of the guests who said they are coming.
+  hostLike?: string[]
 }
 const CAMPUS_PANELS: Record<string, CampusPanel> = {
   'djsanghvi-21sep': {
@@ -1018,6 +1023,7 @@ const CAMPUS_PANELS: Record<string, CampusPanel> = {
       { name: 'Virendra Pal', role: 'AI & FinTech Expert' },
     ],
     hashtags: '#BharatAIInnovation #CampusSeries #DJSCE #AI #Employability #FutureOfWork',
+    hostLike: ['sanghvi', 'sanghavi', 'sangvi', 'shanghvi', 'djsce'],
   },
   'jnu-30sep': {
     slug: 'jnu-30sep',
@@ -1033,6 +1039,7 @@ const CAMPUS_PANELS: Record<string, CampusPanel> = {
     hostLogo: '',
     speakers: [],
     hashtags: '#BharatAIInnovation #CampusSeries #JNU #AI #Employability #FutureOfWork',
+    hostLike: ['jawaharlal nehru', 'jnu'],
   },
 }
 
@@ -8824,9 +8831,17 @@ app.get('/api/attendees/:id/certificate-eligibility', async (c) => {
 // means "scanned in at WTC in November" and unlocks the conference certificate.
 
 async function panelRows(c: any, attendeeId: any): Promise<any[]> {
+  const base = 'panel_slug, source, registered_at, claimed_at, certificate_downloaded_at, card_downloaded_at'
+  try {
+    // With the "are you coming?" answer (0043) where the database has it.
+    const { results } = await c.env.DB.prepare(
+      `SELECT ${base}, rsvp_status, rsvp_at, 1 AS rsvp_enabled FROM panel_registrations WHERE attendee_id = ? ORDER BY registered_at ASC`
+    ).bind(attendeeId).all()
+    return results || []
+  } catch { /* pre-0043 */ }
   try {
     const { results } = await c.env.DB.prepare(
-      'SELECT panel_slug, source, registered_at, claimed_at, certificate_downloaded_at, card_downloaded_at FROM panel_registrations WHERE attendee_id = ? ORDER BY registered_at ASC'
+      `SELECT ${base} FROM panel_registrations WHERE attendee_id = ? ORDER BY registered_at ASC`
     ).bind(attendeeId).all()
     return results || []
   } catch { return [] }   // not migrated yet: the person simply has no panels
@@ -8842,7 +8857,184 @@ function panelView(panel: CampusPanel, row: any) {
     card_downloaded_at: row.card_downloaded_at || null,
     claim_state: panelClaimState(panel),
     ended: Date.now() > Date.parse(panel.endsAt),
+    rsvp_enabled: !!row.rsvp_enabled,
+    rsvp_status: row.rsvp_status || null,
+    rsvp_open: Date.now() < Date.parse(panel.startsAt),
   }
+}
+
+// ==================== CAMPUS SERIES — "ARE YOU COMING?" (0043) ====================
+//
+// A registration says someone signed up, not that they will turn up. Asked once
+// in a reminder email with two one-tap buttons, and on the panel card in the app;
+// changeable until the panel starts. Students may not know the word RSVP, so no
+// attendee-facing text uses it.
+
+function isHostMember(panel: CampusPanel, a: any): boolean {
+  if (!panel.hostLike || !panel.hostLike.length) return true
+  const hay = (String(a?.company || '') + ' ' + String(a?.email || '')).toLowerCase()
+  return panel.hostLike.some(f => hay.includes(f))
+}
+function hostLikeSql(panel: CampusPanel, alias: string = 'a'): string {
+  if (!panel.hostLike || !panel.hostLike.length) return '1 = 1'
+  const hay = `LOWER(COALESCE(${alias}.company, '') || ' ' || COALESCE(${alias}.email, ''))`
+  return '(' + panel.hostLike.map(f => `${hay} LIKE '%${f.replace(/'/g, "''")}%'`).join(' OR ') + ')'
+}
+
+async function panelRsvpEnabled(c: any): Promise<boolean> {
+  try {
+    const { results } = await c.env.DB.prepare('PRAGMA table_info(panel_registrations)').all()
+    return (results || []).some((r: any) => r.name === 'rsvp_status')
+  } catch { return false }
+}
+
+async function panelRsvpSig(c: any, attendeeId: any, slug: string, answer: string): Promise<string> {
+  const secret = attendeeSessionSecret(c) || String(c.env?.ADMIN_SECRET || '') || 'panel-answer'
+  return (await hmacHexA(secret, `panel-rsvp:${attendeeId}:${slug}:${answer}`)).slice(0, 32)
+}
+async function panelRsvpUrl(c: any, attendeeId: any, slug: string, answer: string): Promise<string> {
+  const base = ((await settingValue(c, 'app_url')) || 'https://bharataiinnovation.com/app').replace(/\/app\/?$/, '')
+  return `${base}/panel-rsvp?a=${encodeURIComponent(String(attendeeId))}&p=${encodeURIComponent(slug)}&r=${answer}&s=${await panelRsvpSig(c, attendeeId, slug, answer)}`
+}
+
+async function recordPanelRsvp(c: any, attendeeId: any, slug: string, answer: string): Promise<'ok' | 'not_registered' | 'not_ready' | 'closed'> {
+  const panel = CAMPUS_PANELS[slug]
+  if (!panel || !['yes', 'no'].includes(answer)) return 'not_registered'
+  if (Date.now() >= Date.parse(panel.startsAt)) return 'closed'
+  try {
+    const r = await c.env.DB.prepare(
+      "UPDATE panel_registrations SET rsvp_status = ?, rsvp_at = datetime('now') WHERE attendee_id = ? AND panel_slug = ?"
+    ).bind(answer, attendeeId, slug).run()
+    return (r.meta?.changes ?? 0) > 0 ? 'ok' : 'not_registered'
+  } catch { return 'not_ready' }
+}
+
+// The page behind the email buttons. GET only shows a confirm step that submits
+// itself: mail scanners follow links but do not run scripts or post forms, so a
+// scanner can never answer on someone's behalf.
+function panelAnswerPage(title: string, body: string): string {
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title></head>
+<body style="margin:0;background:#f5f5f5;font-family:Arial,sans-serif;"><div style="max-width:520px;margin:40px auto;background:#fff;border-radius:14px;overflow:hidden;">
+${emailBrandHeader('', 'Pre-Event Panel Discussion')}
+<div style="padding:26px 28px 30px;">${body}</div></div></body></html>`
+}
+
+app.get('/panel-rsvp', async (c) => {
+  const a = String(c.req.query('a') || ''), p = String(c.req.query('p') || ''), r = String(c.req.query('r') || ''), sig = String(c.req.query('s') || '')
+  const esc = (v: string) => v.replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch] as string))
+  const panel = CAMPUS_PANELS[p]
+  const genuine = !!panel && /^\d+$/.test(a) && ['yes', 'no'].includes(r) && sig.length === 32 && safeEqualA(sig, await panelRsvpSig(c, a, p, r))
+  if (!genuine) {
+    return c.html(panelAnswerPage('Link not valid', `<h1 style="font-size:20px;margin:0 0 10px;color:#1E2140;">That link is not valid.</h1>
+<p style="font-size:14px;line-height:1.65;color:#555;margin:0;">Please use the buttons in your most recent email, or reply to that email and tell us whether you are coming.</p>`), 400)
+  }
+  const label = r === 'yes' ? 'Yes, I am coming' : 'I cannot make it'
+  return c.html(panelAnswerPage('Confirming', `<form id="f" method="post" action="/panel-rsvp">
+<input type="hidden" name="a" value="${esc(a)}"><input type="hidden" name="p" value="${esc(p)}"><input type="hidden" name="r" value="${esc(r)}"><input type="hidden" name="s" value="${esc(sig)}">
+<p style="font-size:14px;color:#555;margin:0 0 16px;">Saving your answer for ${esc(panel.titleShort)} at ${esc(panel.hostShort)}…</p>
+<button type="submit" style="padding:12px 22px;background:#FF6B00;color:#fff;border:0;border-radius:8px;font-size:14px;font-weight:bold;">${label}</button></form>
+<script>document.getElementById('f').submit();</script>`))
+})
+
+app.post('/panel-rsvp', async (c) => {
+  const form = await c.req.parseBody().catch(() => ({})) as Record<string, any>
+  const a = String(form.a || ''), p = String(form.p || ''), r = String(form.r || ''), sig = String(form.s || '')
+  const panel = CAMPUS_PANELS[p]
+  const genuine = !!panel && /^\d+$/.test(a) && ['yes', 'no'].includes(r) && sig.length === 32 && safeEqualA(sig, await panelRsvpSig(c, a, p, r))
+  const h1 = (t: string) => `<h1 style="font-size:20px;margin:0 0 10px;color:#1E2140;">${t}</h1>`
+  const para = (t: string) => `<p style="font-size:14px;line-height:1.65;color:#555;margin:0 0 14px;">${t}</p>`
+  if (!genuine) return c.html(panelAnswerPage('Link not valid', h1('That link is not valid.') + para('Please use the buttons in your most recent email.')), 400)
+  const outcome = await recordPanelRsvp(c, a, p, r)
+  if (outcome === 'closed') return c.html(panelAnswerPage('Panel started', h1('The panel has already started.') + para('Answers close when the session begins.')))
+  if (outcome === 'not_registered') return c.html(panelAnswerPage('Not found', h1('We could not find your registration for this panel.') + para('Reply to the email you received and we will sort it out.')))
+  if (outcome === 'not_ready') return c.html(panelAnswerPage('Try again', h1('We could not save that just now.') + para('Please try the button again in a few minutes, or reply to the email with your answer.')))
+  const other = r === 'yes' ? 'no' : 'yes'
+  const change = `<a href="${await panelRsvpUrl(c, a, p, other)}" style="color:#FF6B00;font-size:13px;">${r === 'yes' ? 'Plans changed? Tell us you cannot make it' : 'Changed your mind? Tell us you are coming'}</a>`
+  if (r === 'no') {
+    return c.html(panelAnswerPage('Thanks for telling us', h1('Thanks for letting us know.') + para(`We will free your seat at ${panel.hostShort}. You can still come to other Campus Series panels and to the main conference in November.`) + change))
+  }
+  let guest = false
+  try {
+    const person = await c.env.DB.prepare('SELECT company, email FROM attendees WHERE id = ?').bind(a).first() as any
+    guest = !!person && !isHostMember(panel, person)
+  } catch { /* the note is a courtesy */ }
+  return c.html(panelAnswerPage('See you there', h1('See you there.') +
+    para(`<strong>${panel.titleShort}</strong><br>${panel.dateLabel}, ${panel.timeLabel}<br>${panel.host}, ${panel.city}`) +
+    para(`Please arrive 15 minutes early${guest ? ' and carry a government photo ID: the session is on the college campus' : ''}. At the end, a code on the closing slide unlocks your certificate of participation in the app.`) +
+    change))
+})
+
+// The same answer from the app, for the person signed in.
+app.post('/api/attendees/:id/panels/:slug/rsvp', async (c) => {
+  const id = c.req.param('id'), slug = c.req.param('slug')
+  const denied = await requireSelf(c, id); if (denied) return denied
+  const body = await c.req.json().catch(() => ({})) as any
+  const answer = body.answer === 'yes' ? 'yes' : body.answer === 'no' ? 'no' : ''
+  if (!answer) return c.json({ error: 'answer must be yes or no' }, 400)
+  const outcome = await recordPanelRsvp(c, id, slug, answer)
+  if (outcome === 'ok') return c.json({ success: true, rsvp_status: answer })
+  if (outcome === 'closed') return c.json({ error: 'The panel has already started.' }, 400)
+  if (outcome === 'not_registered') return c.json({ error: 'You are not on the list for this panel.' }, 404)
+  return c.json({ error: 'That could not be saved just now. Please try again shortly.' }, 503)
+})
+
+// The reminder: "Are you coming?" with two buttons. Transactional (about a session
+// the person registered for), so no unsubscribe footer.
+async function sendPanelReminderEmail(c: any, attendee: any, panel: CampusPanel, opts: { preview?: boolean } = {}): Promise<{ ok: boolean; error?: string; html?: string }> {
+  const esc = (v: any) => String(v ?? '').replace(/[&<>]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch] as string))
+  const firstName = esc(String(attendee.name || '').trim().split(/\s+/)[0] || 'there')
+  const yes = opts.preview ? '#preview-yes' : await panelRsvpUrl(c, attendee.id, panel.slug, 'yes')
+  const no = opts.preview ? '#preview-no' : await panelRsvpUrl(c, attendee.id, panel.slug, 'no')
+  const guest = !isHostMember(panel, attendee)
+  const startTime = String(panel.timeLabel || '').split(/\s*[–-]\s*/)[0].trim()
+  const row = (label: string, value: string) =>
+    `<tr><td valign="top" style="padding:0 14px 10px 0;font-size:12px;color:#888;white-space:nowrap;">${label}</td>` +
+    `<td valign="top" style="padding:0 0 10px;font-size:14px;color:#1E2140;font-weight:bold;">${value}</td></tr>`
+  const hostBand = panel.hostLogo
+    ? `<tr><td align="center" style="padding:16px 28px 4px;"><table cellpadding="0" cellspacing="0" style="border-collapse:collapse;"><tr>
+        <td valign="middle" style="padding-right:12px;"><img src="https://bharataiinnovation.com${panel.hostLogo}" alt="${esc(panel.host)}" width="52" height="47" style="display:block;width:52px;height:auto;"></td>
+        <td valign="middle" style="font-size:12px;line-height:1.5;color:#666;text-align:left;">Hosted at<br><strong style="color:#1E2140;">${esc(panel.host)}</strong></td>
+      </tr></table></td></tr>`
+    : ''
+  const speakers = (panel.speakers || []).map(sp => esc(sp.name)).join(', ')
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#f5f5f5;font-family:Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;padding:28px 12px;"><tr><td align="center">
+    <table width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#fff;border-radius:14px;overflow:hidden;">
+      <tr><td style="padding:0;">${emailBrandHeader(`Are you coming, ${firstName}?`, `Pre-Event Panel Discussion &bull; ${esc(panel.dateLabel)} &bull; ${esc(panel.hostShort)}, ${esc(panel.city)}`)}</td></tr>
+      ${hostBand}
+      <tr><td style="padding:22px 28px 6px;">
+        <p style="margin:0 0 16px;font-size:14px;line-height:1.65;color:#444;">
+          The panel <strong>${esc(panel.titleShort)}</strong> is on <strong>${esc(panel.dateLabel)} at ${esc(startTime)}</strong> at
+          ${esc(panel.host)}, ${esc(panel.city)}. Seats are limited, so please tell us now whether you will be there. One tap is enough.
+        </p>
+        <table cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:0 0 8px;"><tr>
+          <td style="padding:0 10px 10px 0;"><a href="${yes}" style="display:inline-block;padding:13px 26px;background:#15803D;color:#fff;text-decoration:none;border-radius:9px;font-size:15px;font-weight:bold;">Yes, I&rsquo;m coming</a></td>
+          <td style="padding:0 0 10px;"><a href="${no}" style="display:inline-block;padding:12px 24px;border:1px solid #ccc;color:#1E2140;text-decoration:none;border-radius:9px;font-size:15px;font-weight:bold;">I can&rsquo;t make it</a></td>
+        </tr></table>
+        <p style="margin:0 0 18px;font-size:12px;color:#888;">If you can&rsquo;t come, tapping &ldquo;I can&rsquo;t make it&rdquo; frees your seat for someone else.</p>
+        <table cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+          ${row('Topic', esc(panel.titleShort) + (panel.subtitle ? ': ' + esc(panel.subtitle) : ''))}
+          ${row('Date', esc(panel.dateLabel))}
+          ${row('Time', esc(panel.timeLabel))}
+          ${row('Venue', `${esc(panel.host)}, ${esc(panel.city)}<br><span style="font-weight:normal;color:#666;">${esc(panel.venue)}</span>`)}
+          ${speakers ? row('Panellists', `<span style="font-weight:normal;">${speakers}</span>`) : ''}
+        </table>
+      </td></tr>
+      ${guest ? `<tr><td style="padding:4px 28px 6px;"><div style="background:#EEF4FF;border:1px solid #CFE0FF;border-radius:10px;padding:12px 16px;">
+        <p style="margin:0;font-size:13px;line-height:1.6;color:#1E2140;"><strong>Coming from outside ${esc(panel.hostShort)}?</strong> The session is on the college campus. Please carry a government photo ID and arrive 15 minutes early.</p>
+      </div></td></tr>` : ''}
+      <tr><td style="padding:10px 28px 24px;">
+        <p style="margin:0;font-size:13px;line-height:1.65;color:#555;">At the end of the panel, a code on the closing slide unlocks your certificate of participation in the app.</p>
+      </td></tr>
+      <tr><td style="background:#fafafa;padding:14px 28px;font-size:11px;color:#999;line-height:1.6;">
+        Bharat AI Innovation &middot; Organised by Aegis Knowledge Trust &middot; info@bharataiinnovation.com
+      </td></tr>
+    </table>
+  </td></tr></table></body></html>`
+  if (opts.preview) return { ok: true, html }
+  const subject = `Are you coming? ${panel.titleShort}, ${panel.dateLabel.replace(/^[A-Za-z]+, /, '').replace(/ \d{4}$/, '')} at ${panel.hostShort}`
+  const sent = await sendAdminEmail(c, attendee.email, subject, html, { unsubscribe: false })
+  return sent.ok ? { ok: true } : { ok: false, error: (sent as any).error }
 }
 
 app.get('/api/attendees/:id/panels', async (c) => {
@@ -9875,6 +10067,7 @@ app.post('/api/admin/attendees/bulk', async (c) => {
 app.get('/api/admin/panels', async (c) => {
   const out: any[] = []
   const hasMain = (await attendeeColumns(c)).has('main_event')
+  const hasRsvp = await panelRsvpEnabled(c)
   for (const p of Object.values(CAMPUS_PANELS)) {
     let stats: any = {}
     try {
@@ -9891,6 +10084,14 @@ app.get('/api/admin/panels', async (c) => {
                 SUM(CASE WHEN pr.card_downloaded_at IS NOT NULL THEN 1 ELSE 0 END) AS card_taken,
                 SUM(CASE WHEN pr.claimed_at IS NOT NULL THEN 1 ELSE 0 END) AS claimed,
                 SUM(CASE WHEN pr.certificate_downloaded_at IS NOT NULL THEN 1 ELSE 0 END) AS certificate_taken
+                ${hasRsvp ? `,
+                SUM(CASE WHEN pr.rsvp_status = 'yes' THEN 1 ELSE 0 END) AS rsvp_yes,
+                SUM(CASE WHEN pr.rsvp_status = 'no' THEN 1 ELSE 0 END) AS rsvp_no,
+                SUM(CASE WHEN pr.rsvp_status = 'yes' AND NOT ${hostLikeSql(p)} THEN 1 ELSE 0 END) AS rsvp_yes_outside,
+                SUM(CASE WHEN pr.reminder_sent_at IS NOT NULL THEN 1 ELSE 0 END) AS reminded,
+                SUM(CASE WHEN pr.reminder_error IS NOT NULL AND pr.reminder_error NOT LIKE 'paused:%' THEN 1 ELSE 0 END) AS reminder_failed,
+                SUM(CASE WHEN pr.reminder_error LIKE 'paused:%' THEN 1 ELSE 0 END) AS reminder_paused,
+                SUM(CASE WHEN pr.reminder_sent_at IS NULL AND pr.reminder_error IS NULL AND pr.rsvp_status IS NULL AND COALESCE(a.email, '') <> '' THEN 1 ELSE 0 END) AS reminder_left` : ''}
            FROM panel_registrations pr JOIN attendees a ON a.id = pr.attendee_id
           WHERE pr.panel_slug = ?`
       ).bind(p.slug).first()
@@ -9899,6 +10100,7 @@ app.get('/api/admin/panels', async (c) => {
     out.push({
       slug: p.slug, hostShort: p.hostShort, title: p.titleShort, dateLabel: p.dateLabel,
       claim_state: panelClaimState(p), claim_code_set: !!code,
+      rsvp_enabled: hasRsvp, rsvp_open: Date.now() < Date.parse(p.startsAt),
       ...(stats || {}),
     })
   }
@@ -9994,6 +10196,93 @@ app.get('/api/admin/panels/:slug/confirmation-preview', async (c) => {
   const person = a || { name: 'Sample Student', email: 'sample@example.com', event_id: 1, pr_source: 'muni' }
   const r = await sendPanelConfirmationEmail(c, person, panel, { withLogin: true, eventId: person.event_id, source: person.pr_source, preview: true })
   return c.html(r.html || '<p>Could not render the preview.</p>')
+})
+
+// "Are you coming?" reminders: the next few who have not answered and have not
+// been reminded. Pumped from the overview like the confirmation.
+app.post('/api/admin/panels/:slug/send-next-reminders', async (c) => {
+  const slug = c.req.param('slug')
+  const panel = CAMPUS_PANELS[slug]
+  if (!panel) return c.json({ error: 'Unknown panel' }, 404)
+  if (!(await panelRsvpEnabled(c))) return c.json({ error: 'Apply migration 0043 on the database first (npx wrangler d1 migrations apply bharatai-production --remote).' }, 409)
+  if (Date.now() >= Date.parse(panel.startsAt)) return c.json({ error: 'The panel has started, so there is nobody left to ask.' }, 400)
+  const body = await c.req.json().catch(() => ({})) as any
+  const batch = Math.min(10, Math.max(1, parseInt(body.batch, 10) || 5))
+  const PENDING = `pr.panel_slug = ? AND pr.reminder_sent_at IS NULL AND pr.reminder_error IS NULL AND pr.rsvp_status IS NULL AND COALESCE(a.email, '') <> ''`
+  const rows = ((await c.env.DB.prepare(
+    `SELECT pr.id AS pr_id, a.* FROM panel_registrations pr JOIN attendees a ON a.id = pr.attendee_id WHERE ${PENDING} ORDER BY pr.id ASC LIMIT ?`
+  ).bind(slug, batch).all()).results || []) as any[]
+  let sent = 0
+  const failed: string[] = []
+  for (const a of rows) {
+    const r = await sendPanelReminderEmail(c, a, panel)
+    if (r.ok) {
+      sent++
+      await c.env.DB.prepare("UPDATE panel_registrations SET reminder_sent_at = datetime('now') WHERE id = ?").bind(a.pr_id).run()
+    } else {
+      failed.push(String(a.email))
+      await c.env.DB.prepare('UPDATE panel_registrations SET reminder_error = ? WHERE id = ?').bind(String(r.error || 'failed').slice(0, 200), a.pr_id).run()
+    }
+  }
+  const left = ((await c.env.DB.prepare(`SELECT COUNT(*) AS n FROM panel_registrations pr JOIN attendees a ON a.id = pr.attendee_id WHERE ${PENDING}`).bind(slug).first()) as any)?.n || 0
+  if (rows.length) await audit(c, 'panel.reminders', 'panel', slug, { sent, failed: failed.length })
+  return c.json({ done: Number(left) === 0, sent, failed, remaining: Number(left) })
+})
+
+app.post('/api/admin/panels/:slug/pause-reminders', async (c) => {
+  const slug = c.req.param('slug')
+  if (!CAMPUS_PANELS[slug]) return c.json({ error: 'Unknown panel' }, 404)
+  try {
+    const r = await c.env.DB.prepare(
+      "UPDATE panel_registrations SET reminder_error = 'paused: by admin' WHERE panel_slug = ? AND reminder_sent_at IS NULL AND reminder_error IS NULL AND rsvp_status IS NULL"
+    ).bind(slug).run()
+    return c.json({ success: true, paused: r.meta?.changes ?? 0 })
+  } catch { return c.json({ success: false }) }
+})
+
+app.post('/api/admin/panels/:slug/resume-reminders', async (c) => {
+  const slug = c.req.param('slug')
+  if (!CAMPUS_PANELS[slug]) return c.json({ error: 'Unknown panel' }, 404)
+  try {
+    const r = await c.env.DB.prepare("UPDATE panel_registrations SET reminder_error = NULL WHERE panel_slug = ? AND reminder_error LIKE 'paused:%'").bind(slug).run()
+    return c.json({ success: true, resumed: r.meta?.changes ?? 0 })
+  } catch { return c.json({ success: false }) }
+})
+
+app.get('/api/admin/panels/:slug/reminder-preview', async (c) => {
+  const slug = c.req.param('slug')
+  const panel = CAMPUS_PANELS[slug]
+  if (!panel) return c.json({ error: 'Unknown panel' }, 404)
+  const guest = c.req.query('guest') === '1'
+  const person = guest
+    ? { id: 0, name: 'Sample Guest', email: 'guest@example.com', company: 'Another College' }
+    : { id: 0, name: 'Sample Student', email: 'student@example.com', company: panel.host }
+  const r = await sendPanelReminderEmail(c, person, panel, { preview: true })
+  return c.html(r.html || '<p>Could not render the preview.</p>')
+})
+
+// Everyone's answer, or only the guests from outside the host college who said
+// they are coming - the list a college's security desk may ask for.
+app.get('/api/admin/panels/:slug/answers.csv', async (c) => {
+  const slug = c.req.param('slug')
+  const panel = CAMPUS_PANELS[slug]
+  if (!panel) return c.json({ error: 'Unknown panel' }, 404)
+  const who = String(c.req.query('who') || 'all')
+  const hasRsvp = await panelRsvpEnabled(c)
+  const { results } = await c.env.DB.prepare(
+    `SELECT a.name, a.email, a.mobile, a.company, a.job_title, pr.source, pr.registered_at${hasRsvp ? ', pr.rsvp_status, pr.rsvp_at' : ''}
+       FROM panel_registrations pr JOIN attendees a ON a.id = pr.attendee_id WHERE pr.panel_slug = ? ORDER BY a.name`
+  ).bind(slug).all()
+  let rows = ((results || []) as any[]).map(r => ({ ...r, from_host: isHostMember(panel, r) ? 'yes' : 'no' }))
+  if (who === 'coming') rows = rows.filter(r => r.rsvp_status === 'yes')
+  if (who === 'guests-coming') rows = rows.filter(r => r.rsvp_status === 'yes' && r.from_host === 'no')
+  const cols = ['name', 'email', 'mobile', 'company', 'job_title', 'from_host', 'source', 'rsvp_status', 'rsvp_at', 'registered_at']
+  const cell = (v: any) => { const t = String(v ?? ''); return /[",\n\r]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t }
+  const csv = [cols.map(h => h === 'rsvp_status' ? 'coming' : h === 'rsvp_at' ? 'answered_at' : h).join(',')]
+    .concat(rows.map(r => cols.map(k => cell(k === 'rsvp_status' ? (r.rsvp_status === 'yes' ? 'yes' : r.rsvp_status === 'no' ? 'no' : '') : r[k])).join(',')))
+    .join('\r\n')
+  await audit(c, 'panel.answers.export', 'panel', slug, { who, rows: rows.length })
+  return new Response('\ufeff' + csv, { headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="${slug}-${who}.csv"` } })
 })
 
 // Admin: Download attendees as CSV
@@ -21697,6 +21986,36 @@ function mainPageHTML(): string {
       renderMyPanels();
     }
 
+    // "Are you coming?" on the panel card, until the panel starts. Plain words:
+    // plenty of students do not know what RSVP means.
+    function panelComingBlock(p) {
+      if (!p.rsvp_enabled || !p.rsvp_open) return '';
+      var slug = esc(p.slug);
+      var yesOn = p.rsvp_status === 'yes', noOn = p.rsvp_status === 'no';
+      var line = yesOn ? 'You told us you are coming. See you there.' : noOn ? 'You told us you can’t make it. Plans changed? Tap below.' : 'Are you coming? Tell us so the college can plan seats.';
+      return '<div class="mb-4 p-3 rounded-xl" style="background:rgba(99,102,241,0.08);">'
+        + '<p class="text-sm font-semibold mb-2">' + line + '</p>'
+        + '<div class="flex gap-2 flex-wrap">'
+        + '<button type="button" onclick="answerPanelComing(&quot;' + slug + '&quot;, &quot;yes&quot;)" class="px-4 py-2 rounded-xl text-sm font-semibold transition ' + (yesOn ? 'bg-emerald-600 text-white' : 'glass hover:bg-white/10') + '"><i class="fas fa-check mr-1.5"></i>I’m coming</button>'
+        + '<button type="button" onclick="answerPanelComing(&quot;' + slug + '&quot;, &quot;no&quot;)" class="px-4 py-2 rounded-xl text-sm font-semibold transition ' + (noOn ? 'bg-gray-600 text-white' : 'glass hover:bg-white/10') + '">I can’t make it</button>'
+        + '</div></div>';
+    }
+
+    async function answerPanelComing(slug, answer) {
+      if (!currentUser) return;
+      var data = null;
+      try {
+        var resp = await fetch('/api/attendees/' + currentUser.id + '/panels/' + encodeURIComponent(slug) + '/rsvp', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ answer: answer })
+        });
+        data = await resp.json().catch(function () { return null; });
+      } catch (e) { showToast('Could not reach the server. Please try again.', 'error'); return; }
+      if (!data || !data.success) { showToast((data && data.error) || 'Could not save that just now.', 'error'); return; }
+      showToast(answer === 'yes' ? 'Thanks - see you there.' : 'Thanks for letting us know. Your seat is freed.', 'success');
+      myPanels = null;
+      renderMyPanels();
+    }
+
     function panelCardHTML(p) {
       var slug = esc(p.slug);
       var body;
@@ -21713,7 +22032,7 @@ function mainPageHTML(): string {
           + '<button type="submit" class="px-4 py-2.5 rounded-xl text-sm font-semibold bg-primary-600 hover:bg-primary-500 text-white transition"><i class="fas fa-award mr-2"></i>Claim</button>'
           + '</form>';
       } else if (p.claim_state === 'before') {
-        body = '<p class="text-sm text-gray-300 mb-3">Your certificate of participation and an “I attended” card unlock with a code shown at the end of the panel. Keep this app handy on the day.</p>'
+        body = panelComingBlock(p) + '<p class="text-sm text-gray-300 mb-3">Your certificate of participation and an “I attended” card unlock with a code shown at the end of the panel. Keep this app handy on the day.</p>'
           + '<button onclick="openSocialCard(&quot;' + slug + '&quot;)" class="px-4 py-2.5 rounded-xl text-sm font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition"><i class="fas fa-share-alt mr-2"></i>Share the “I’m attending” card</button>';
       } else {
         body = '<p class="text-sm text-gray-400">The claim window for this panel has closed. If you attended and could not claim, email <a href="mailto:register@bharataiinnovation.com" class="text-primary-400 underline">register@bharataiinnovation.com</a>.</p>';
@@ -27386,6 +27705,29 @@ function adminPageHTML(): string {
           : p.claim_state === 'closed' ? '<span class="text-gray-500">claims closed</span>'
           : '<span class="text-gray-400">claims open at the end of the panel</span>';
         var code = p.claim_code_set ? '' : ' <span class="text-amber-300">&middot; no claim code set</span>';
+        var slugQ = '&quot;' + esc(p.slug) + '&quot;';
+        var answers = '';
+        if (p.rsvp_enabled === false) {
+          answers = '<div class="mt-3 pt-3 border-t border-white/10 text-[11px] text-amber-300"><i class="fas fa-circle-info mr-1"></i>&ldquo;Are you coming?&rdquo; is ready but needs migration 0043 on the database.</div>';
+        } else if (p.rsvp_enabled) {
+          var noAnswer = Math.max(0, (p.registered || 0) - (p.rsvp_yes || 0) - (p.rsvp_no || 0));
+          answers = '<div class="mt-3 pt-3 border-t border-white/10">'
+            + '<div class="text-xs text-gray-400 leading-relaxed mb-2"><span class="text-white font-semibold mr-2">Are you coming?</span>'
+            + stat(p.rsvp_yes, 'coming') + stat(p.rsvp_no, 'can&rsquo;t make it') + stat(noAnswer, 'no answer yet') + stat(p.rsvp_yes_outside, 'coming from outside ' + esc(p.hostShort)) + stat(p.reminded, 'reminded')
+            + (p.reminder_failed ? stat(p.reminder_failed, 'reminder failed') : '') + '</div>'
+            + '<div class="flex gap-2 flex-wrap items-center">'
+            + '<button onclick="previewPanelReminder(' + slugQ + ')" class="px-3 py-1.5 rounded-lg text-xs glass hover:bg-white/10 transition"><i class="fas fa-eye mr-1.5"></i>Preview reminder</button>'
+            + (p.reminder_paused ? '<button onclick="resumePanelReminders(' + slugQ + ')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-orange-600 hover:bg-orange-500 text-white transition"><i class="fas fa-play mr-1.5"></i>Resume reminders (' + p.reminder_paused + ' paused)</button>' : '')
+            + (p.rsvp_open
+                ? ((p.reminder_left || 0) > 0
+                    ? '<button id="panel-remind-' + esc(p.slug) + '" onclick="startPanelReminders(' + slugQ + ')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition"><i class="fas fa-paper-plane mr-1.5"></i>Send &ldquo;Are you coming?&rdquo; (' + p.reminder_left + ' to send)</button>'
+                    : '<span class="text-xs text-emerald-400"><i class="fas fa-check mr-1"></i>Everyone without an answer has been asked</span>')
+                : '<span class="text-xs text-gray-500">Answers closed: the panel has started</span>')
+            + '<button onclick="downloadPanelAnswers(' + slugQ + ', &quot;all&quot;)" class="px-3 py-1.5 rounded-lg text-xs glass hover:bg-white/10 transition"><i class="fas fa-download mr-1.5"></i>Everyone&rsquo;s answers</button>'
+            + '<button onclick="downloadPanelAnswers(' + slugQ + ', &quot;guests-coming&quot;)" class="px-3 py-1.5 rounded-lg text-xs glass hover:bg-white/10 transition"><i class="fas fa-id-card mr-1.5"></i>Guests coming (for the college)</button>'
+            + '<span id="panel-remind-progress-' + esc(p.slug) + '" class="text-xs text-gray-400"></span>'
+            + '</div></div>';
+        }
         return '<div class="p-3 rounded-xl bg-white/5 border border-white/10">'
           + '<div class="flex items-baseline justify-between gap-2 flex-wrap mb-1"><div class="text-sm font-semibold text-white">' + esc(p.hostShort) + ' <span class="text-gray-400 font-normal">&middot; ' + esc(p.dateLabel) + '</span></div><div class="text-[10px]">' + claim + code + '</div></div>'
           + '<div class="text-xs text-gray-400 leading-relaxed">' + stat(p.registered, 'registered') + stat(p.via_muni, 'via mUni') + stat(p.via_page, 'via our page') + stat(p.emailed, 'emailed') + (p.email_failed ? stat(p.email_failed, 'failed') : '') + stat(p.signed_in, 'signed in') + stat(p.with_photo, 'with photo') + stat(p.card_taken, 'took the card') + stat(p.main_event_yes, 'coming in Nov') + stat(p.main_event_no, 'declined Nov') + stat(p.claimed, 'claimed attendance') + stat(p.certificate_taken, 'took the certificate') + '</div>'
@@ -27397,8 +27739,54 @@ function adminPageHTML(): string {
               : '<span class="text-xs text-emerald-400"><i class="fas fa-check mr-1"></i>Everyone on the list has been emailed</span>')
           + (p.email_failed ? '<button onclick="resetPanelEmailErrors(&quot;' + esc(p.slug) + '&quot;)" class="px-3 py-1.5 rounded-lg text-xs glass hover:bg-white/10 transition"><i class="fas fa-redo mr-1.5"></i>Retry ' + p.email_failed + ' failed</button>' : '')
           + '<span id="panel-progress-' + esc(p.slug) + '" class="text-xs text-gray-400"></span>'
-          + '</div></div>';
+          + '</div>' + answers + '</div>';
       }).join('');
+    }
+
+    // ---- "Are you coming?" ----
+    var _reminderPump = {};
+    function startPanelReminders(slug) {
+      if (!confirm('Send the "Are you coming?" email to everyone on the ' + slug + ' list who has not answered yet?\\n\\nReal email, a few at a time. Use Stop to pause; nobody is asked twice.')) return;
+      var btn = document.getElementById('panel-remind-' + slug);
+      if (btn) { btn.innerHTML = '<i class="fas fa-stop mr-1.5"></i>Stop'; btn.onclick = function () { stopPanelReminders(slug); }; }
+      _reminderPump[slug] = { sent: 0, stopped: false };
+      pumpPanelReminders(slug);
+    }
+    async function pumpPanelReminders(slug) {
+      var say = function (m) { var el = document.getElementById('panel-remind-progress-' + slug); if (el) el.innerHTML = m; };
+      if (!_reminderPump[slug] || _reminderPump[slug].stopped) return;
+      var r;
+      try { r = await api.post('/api/admin/panels/' + encodeURIComponent(slug) + '/send-next-reminders', { batch: 5 }); }
+      catch (e) { say('<span class="text-red-400">Network error - retrying in 30s.</span>'); setTimeout(function () { pumpPanelReminders(slug); }, 30000); return; }
+      if (!r || r.error) { say('<span class="text-red-400">' + esc((r && r.error) || 'failed') + '</span>'); renderCampusPanels(); return; }
+      _reminderPump[slug].sent += (r.sent || 0);
+      if (_reminderPump[slug].stopped) { say('Stopped - ' + _reminderPump[slug].sent + ' sent.'); return; }
+      if (r.done) { say('<span class="text-green-400">Done - ' + _reminderPump[slug].sent + ' sent.</span>'); renderCampusPanels(); return; }
+      say(_reminderPump[slug].sent + ' sent, ' + r.remaining + ' to go…');
+      setTimeout(function () { pumpPanelReminders(slug); }, 1500);
+    }
+    async function stopPanelReminders(slug) {
+      if (_reminderPump[slug]) _reminderPump[slug].stopped = true;
+      var btn = document.getElementById('panel-remind-' + slug);
+      if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1.5"></i>Stopping…'; }
+      try { await api.post('/api/admin/panels/' + encodeURIComponent(slug) + '/pause-reminders', {}); } catch (e) {}
+      renderCampusPanels();
+    }
+    async function resumePanelReminders(slug) {
+      try { await api.post('/api/admin/panels/' + encodeURIComponent(slug) + '/resume-reminders', {}); } catch (e) {}
+      await renderCampusPanels();
+      startPanelReminders(slug);
+    }
+    async function previewPanelReminder(slug) {
+      var w = window.open('', '_blank');
+      try {
+        var r = await fetch('/api/admin/panels/' + encodeURIComponent(slug) + '/reminder-preview?guest=1', { headers: authHeaders() });
+        var html = await r.text();
+        if (w) { w.document.open(); w.document.write(html); w.document.close(); }
+      } catch (e) { if (w) w.close(); toast('Could not load the preview', 'error'); }
+    }
+    function downloadPanelAnswers(slug, who) {
+      downloadCsvViaApi('/api/admin/panels/' + encodeURIComponent(slug) + '/answers.csv?who=' + encodeURIComponent(who), slug + '-' + who + '.csv');
     }
 
     var _panelPump = {};
