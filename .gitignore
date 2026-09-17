@@ -16,3 +16,6 @@ logs/
 # Production database dumps taken before migrations: full attendee PII plus
 # the live email API key. Never to be committed.
 backup-*.sql
+
+# Screenshots written by scripts/verify/phone-test.cjs
+scripts/verify/.out/
