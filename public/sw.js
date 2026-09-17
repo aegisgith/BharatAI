@@ -13,9 +13,21 @@
 // whenever the network fails: a device that opened the Network tab before two
 // speakers were removed from it kept the old list for offline use, and only a
 // new VERSION deletes that cache.
-const VERSION = 'bhai-v9';
+// v10: the API cache is now an allowlist of public lists (below). Before this,
+// every /api GET was stored - a person's inbox, connections and pass token
+// included - and served offline to whoever picked up the phone next, sign-out
+// or not. The bump throws away every copy already on a device.
+const VERSION = 'bhai-v10';
 const SHELL = `shell-${VERSION}`;
 const DATA = `data-${VERSION}`;
+
+// The only API responses worth an offline copy: the event-wide lists that are
+// the same for everyone. /api/events/:id itself is included because the Home
+// tab cannot render without it. Everything else - anything under /attendees/,
+// /messages/, connections, meetings, the pass token - is personal and goes
+// straight to the network, never through a cache.
+const API_CACHEABLE = /^\/api\/events\/[^/]+(\/(sessions|announcements|speakers|exhibitors)(\/[^/]*)?)?$/;
+const API_PRIVATE = /\/(attendees|messages)\/|\/connections|\/meetings|my-pass-token/;
 
 // Precache the essentials so the app opens offline. Same-origin only: addAll
 // rejects the whole install if one entry fails, and a cross-origin CDN blip
@@ -93,13 +105,18 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return; // only same-origin
 
-  // API reads (schedule, attendees): network-first, cache fallback for offline.
+  // API reads: network-first with an offline fallback, but only for the public
+  // lists in API_CACHEABLE, and only 2xx bodies - a 401 or a 500 must never
+  // become the copy that is served when the venue WiFi drops.
   if (url.pathname.startsWith('/api/')) {
+    if (API_PRIVATE.test(url.pathname) || !API_CACHEABLE.test(url.pathname)) return;
     event.respondWith(
       fetch(request)
         .then((res) => {
-          const copy = res.clone();
-          caches.open(DATA).then((c) => c.put(request, copy));
+          if (res.ok) {
+            const copy = res.clone();
+            caches.open(DATA).then((c) => c.put(request, copy));
+          }
           return res;
         })
         .catch(() => caches.match(request))
