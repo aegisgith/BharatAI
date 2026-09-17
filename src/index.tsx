@@ -1430,7 +1430,7 @@ function seniorityOf(title: any): string {
 app.get('/api/admin/analytics/audience', async (c) => {
   try {
   const { results } = await c.env.DB.prepare(
-    'SELECT job_title, industry, company, badge_type, city, registration_source FROM attendees WHERE event_id = 1'
+    'SELECT job_title, industry, company, badge_type, city, registration_source FROM attendees WHERE event_id = 1' + (await mainEventClause(c))
   ).all() as any
   const rows = results || []
 
@@ -2090,14 +2090,15 @@ app.get('/api/admin/checkin-stats', async (c) => {
   if (!(cols.results || []).some((r: any) => r.name === 'checked_in_at')) {
     return c.json({ ready: false, total: 0, checkedIn: 0, byTier: [], recent: [] })
   }
+  const mc = await mainEventClause(c)
   const totals = await c.env.DB.prepare(
-    'SELECT COUNT(*) AS total, SUM(CASE WHEN checked_in_at IS NOT NULL THEN 1 ELSE 0 END) AS checked_in FROM attendees').first() as any
+    'SELECT COUNT(*) AS total, SUM(CASE WHEN checked_in_at IS NOT NULL THEN 1 ELSE 0 END) AS checked_in FROM attendees WHERE 1 = 1' + mc).first() as any
   const byTier = await c.env.DB.prepare(
     `SELECT COALESCE(badge_type, 'Visitor Pass') AS badge_type, COUNT(*) AS total,
             SUM(CASE WHEN checked_in_at IS NOT NULL THEN 1 ELSE 0 END) AS checked_in
-     FROM attendees GROUP BY 1 ORDER BY 2 DESC`).all() as any
+     FROM attendees WHERE 1 = 1${mc} GROUP BY 1 ORDER BY 2 DESC`).all() as any
   const recent = await c.env.DB.prepare(
-    'SELECT name, badge_type, checked_in_at, checked_in_by FROM attendees WHERE checked_in_at IS NOT NULL ORDER BY checked_in_at DESC LIMIT 15').all() as any
+    'SELECT name, badge_type, checked_in_at, checked_in_by FROM attendees WHERE checked_in_at IS NOT NULL' + mc + ' ORDER BY checked_in_at DESC LIMIT 15').all() as any
   return c.json({
     ready: true,
     total: totals?.total || 0,
@@ -3930,6 +3931,7 @@ app.get('/api/events/:id/attendees', async (c) => {
 // already lives - duplicating that here would give us two copies to keep in step.
 const SUGGEST_POOL = 60
 app.get('/api/events/:id/suggested-attendees', async (c) => {
+  const mc = await mainEventClause(c)
   const eventId = c.req.param('id')
   const me = await verifyAttendeeSession(c)
   if (!me && attendeeSessionSecret(c)) return c.json([])
@@ -3959,7 +3961,7 @@ app.get('/api/events/:id/suggested-attendees', async (c) => {
   if (wanted.length) {
     const ors = wanted.map(() => 'networking_goals LIKE ?').join(' OR ')
     const rows = ((await c.env.DB.prepare(
-      `SELECT ${ATTENDEE_PUBLIC_COLS} FROM attendees WHERE event_id = ? AND id <> ? AND (${ors}) LIMIT ${SUGGEST_POOL}`
+      `SELECT ${ATTENDEE_PUBLIC_COLS} FROM attendees WHERE event_id = ?${mc} AND id <> ? AND (${ors}) LIMIT ${SUGGEST_POOL}`
     ).bind(eventId, me, ...wanted.map((g: string) => '%' + g + '%')).all()).results || []) as any[]
     for (const r of rows) { if (!seen.has(r.id)) { seen.add(r.id); out.push(r) } }
   }
@@ -3967,14 +3969,14 @@ app.get('/api/events/:id/suggested-attendees', async (c) => {
   if (terms.length) {
     const ors = terms.map(() => 'interests LIKE ?').join(' OR ')
     const rows = ((await c.env.DB.prepare(
-      `SELECT ${ATTENDEE_PUBLIC_COLS} FROM attendees WHERE event_id = ? AND id <> ? AND (${ors}) LIMIT ${SUGGEST_POOL}`
+      `SELECT ${ATTENDEE_PUBLIC_COLS} FROM attendees WHERE event_id = ?${mc} AND id <> ? AND (${ors}) LIMIT ${SUGGEST_POOL}`
     ).bind(eventId, me, ...terms.map((t: string) => '%' + t + '%')).all()).results || []) as any[]
     for (const r of rows) { if (!seen.has(r.id)) { seen.add(r.id); out.push(r) } }
   }
 
   if (out.length < SUGGEST_POOL) {
     const rows = ((await c.env.DB.prepare(
-      `SELECT ${ATTENDEE_PUBLIC_COLS} FROM attendees WHERE event_id = ? AND id <> ? ORDER BY id DESC LIMIT ${SUGGEST_POOL}`
+      `SELECT ${ATTENDEE_PUBLIC_COLS} FROM attendees WHERE event_id = ?${mc} AND id <> ? ORDER BY id DESC LIMIT ${SUGGEST_POOL}`
     ).bind(eventId, me).all()).results || []) as any[]
     for (const r of rows) {
       if (out.length >= SUGGEST_POOL) break
@@ -8778,7 +8780,7 @@ app.get('/api/events/:id/stats', async (c) => {
   const countWhere = async (clause: string) => {
     try {
       const r = await c.env.DB.prepare(
-        `SELECT COUNT(*) as count FROM attendees WHERE event_id = ? AND ${clause}`
+        `SELECT COUNT(*) as count FROM attendees WHERE event_id = ?${mainClause} AND ${clause}`
       ).bind(eventId).first() as any
       return r?.count || 0
     } catch (_) { return 0 }
@@ -8791,7 +8793,7 @@ app.get('/api/events/:id/stats', async (c) => {
       // set back to 0, so this stat read 1325 of 1325 for the life of the app.
       // Derive presence from the last sign-in instead - the same window and the same
       // reasoning as ATTENDEE_PUBLIC_COLS, so the tile and the presence dots agree.
-      c.env.DB.prepare(`SELECT COUNT(*) as count FROM attendees WHERE event_id = ? AND last_login_at > datetime('now', '-${ONLINE_WINDOW_MINUTES} minutes')`).bind(eventId),
+      c.env.DB.prepare(`SELECT COUNT(*) as count FROM attendees WHERE event_id = ?${mainClause} AND last_login_at > datetime('now', '-${ONLINE_WINDOW_MINUTES} minutes')`).bind(eventId),
       c.env.DB.prepare('SELECT COUNT(*) as count FROM sessions WHERE event_id = ?').bind(eventId),
       c.env.DB.prepare('SELECT COUNT(*) as count FROM exhibitors WHERE event_id = ?').bind(eventId),
       c.env.DB.prepare('SELECT COUNT(*) as count FROM connections WHERE event_id = ?').bind(eventId),
@@ -10499,33 +10501,34 @@ app.post('/api/admin/settings/verify-key', async (c) => {
 // Admin: Get lunch pack stats based on arrival time
 app.get('/api/admin/events/:id/lunch-stats', async (c) => {
   const eventId = c.req.param('id')
+  const mc = await mainEventClause(c)
 
   const totalLunch = await c.env.DB.prepare(
-    "SELECT COUNT(*) as count FROM attendees WHERE event_id = ? AND (lunch_inclusion = 'Yes' OR lunch_inclusion IS NULL)"
+    "SELECT COUNT(*) as count FROM attendees WHERE event_id = ?" + mc + " AND (lunch_inclusion = 'Yes' OR lunch_inclusion IS NULL)"
   ).bind(eventId).first() as any
 
   const withArrival = await c.env.DB.prepare(
-    "SELECT COUNT(*) as count FROM attendees WHERE event_id = ? AND arrival_time IS NOT NULL AND arrival_time != ''"
+    "SELECT COUNT(*) as count FROM attendees WHERE event_id = ?" + mc + " AND arrival_time IS NOT NULL AND arrival_time != ''"
   ).bind(eventId).first() as any
 
   const beforeLunch = await c.env.DB.prepare(
-    "SELECT COUNT(*) as count FROM attendees WHERE event_id = ? AND arrival_time IS NOT NULL AND arrival_time != '' AND arrival_time <= '13:00' AND (lunch_inclusion = 'Yes' OR lunch_inclusion IS NULL)"
+    "SELECT COUNT(*) as count FROM attendees WHERE event_id = ?" + mc + " AND arrival_time IS NOT NULL AND arrival_time != '' AND arrival_time <= '13:00' AND (lunch_inclusion = 'Yes' OR lunch_inclusion IS NULL)"
   ).bind(eventId).first() as any
 
   const afterLunch = await c.env.DB.prepare(
-    "SELECT COUNT(*) as count FROM attendees WHERE event_id = ? AND arrival_time IS NOT NULL AND arrival_time != '' AND arrival_time > '13:00' AND (lunch_inclusion = 'Yes' OR lunch_inclusion IS NULL)"
+    "SELECT COUNT(*) as count FROM attendees WHERE event_id = ?" + mc + " AND arrival_time IS NOT NULL AND arrival_time != '' AND arrival_time > '13:00' AND (lunch_inclusion = 'Yes' OR lunch_inclusion IS NULL)"
   ).bind(eventId).first() as any
 
   const noArrivalLunch = await c.env.DB.prepare(
-    "SELECT COUNT(*) as count FROM attendees WHERE event_id = ? AND (arrival_time IS NULL OR arrival_time = '') AND (lunch_inclusion = 'Yes' OR lunch_inclusion IS NULL)"
+    "SELECT COUNT(*) as count FROM attendees WHERE event_id = ?" + mc + " AND (arrival_time IS NULL OR arrival_time = '') AND (lunch_inclusion = 'Yes' OR lunch_inclusion IS NULL)"
   ).bind(eventId).first() as any
 
   const notified = await c.env.DB.prepare(
-    "SELECT COUNT(*) as count FROM attendees WHERE event_id = ? AND notified_at IS NOT NULL"
+    "SELECT COUNT(*) as count FROM attendees WHERE event_id = ?" + mc + " AND notified_at IS NOT NULL"
   ).bind(eventId).first() as any
 
   const totalAttendees = await c.env.DB.prepare(
-    "SELECT COUNT(*) as count FROM attendees WHERE event_id = ?"
+    "SELECT COUNT(*) as count FROM attendees WHERE event_id = ?" + mc + ""
   ).bind(eventId).first() as any
 
   // Breakdown by time slot
@@ -10541,33 +10544,33 @@ app.get('/api/admin/events/:id/lunch-stats', async (c) => {
       END as slot,
       COUNT(*) as count
     FROM attendees 
-    WHERE event_id = ? AND arrival_time IS NOT NULL AND arrival_time != ''
+    WHERE event_id = ?${mc} AND arrival_time IS NOT NULL AND arrival_time != ''
     GROUP BY slot
     ORDER BY MIN(arrival_time)`
   ).bind(eventId).all()
 
   // Engagement tracking stats
   const loggedIn = await c.env.DB.prepare(
-    "SELECT COUNT(*) as count FROM attendees WHERE event_id = ? AND last_login_at IS NOT NULL"
+    "SELECT COUNT(*) as count FROM attendees WHERE event_id = ?" + mc + " AND last_login_at IS NOT NULL"
   ).bind(eventId).first() as any
 
   const loggedInAfterNotify = await c.env.DB.prepare(
-    "SELECT COUNT(*) as count FROM attendees WHERE event_id = ? AND last_login_at IS NOT NULL AND notified_at IS NOT NULL AND last_login_at >= notified_at"
+    "SELECT COUNT(*) as count FROM attendees WHERE event_id = ?" + mc + " AND last_login_at IS NOT NULL AND notified_at IS NOT NULL AND last_login_at >= notified_at"
   ).bind(eventId).first() as any
 
   const passDownloaded = await c.env.DB.prepare(
-    "SELECT COUNT(*) as count FROM attendees WHERE event_id = ? AND pass_downloaded_at IS NOT NULL"
+    "SELECT COUNT(*) as count FROM attendees WHERE event_id = ?" + mc + " AND pass_downloaded_at IS NOT NULL"
   ).bind(eventId).first() as any
 
   // RSVP stats
   const rsvpConfirmed = await c.env.DB.prepare(
-    "SELECT COUNT(*) as count FROM attendees WHERE event_id = ? AND rsvp_status = 'confirmed'"
+    "SELECT COUNT(*) as count FROM attendees WHERE event_id = ?" + mc + " AND rsvp_status = 'confirmed'"
   ).bind(eventId).first() as any
   const rsvpDeclined = await c.env.DB.prepare(
-    "SELECT COUNT(*) as count FROM attendees WHERE event_id = ? AND rsvp_status = 'declined'"
+    "SELECT COUNT(*) as count FROM attendees WHERE event_id = ?" + mc + " AND rsvp_status = 'declined'"
   ).bind(eventId).first() as any
   const rsvpMaybe = await c.env.DB.prepare(
-    "SELECT COUNT(*) as count FROM attendees WHERE event_id = ? AND rsvp_status = 'maybe'"
+    "SELECT COUNT(*) as count FROM attendees WHERE event_id = ?" + mc + " AND rsvp_status = 'maybe'"
   ).bind(eventId).first() as any
 
   return c.json({
@@ -10996,9 +10999,10 @@ app.post('/api/admin/campaigns/:id/retry-failed', async (c) => {
 // Admin: Advanced analytics
 app.get('/api/admin/events/:id/analytics', async (c) => {
   const eventId = c.req.param('id')
+  const mc = await mainEventClause(c)
   
-  const attendeesByRole = await c.env.DB.prepare('SELECT role, COUNT(*) as count FROM attendees WHERE event_id=? GROUP BY role').bind(eventId).all()
-  const attendeesByBadge = await c.env.DB.prepare('SELECT badge_type, COUNT(*) as count FROM attendees WHERE event_id=? GROUP BY badge_type').bind(eventId).all()
+  const attendeesByRole = await c.env.DB.prepare('SELECT role, COUNT(*) as count FROM attendees WHERE event_id=?' + mc + ' GROUP BY role').bind(eventId).all()
+  const attendeesByBadge = await c.env.DB.prepare('SELECT badge_type, COUNT(*) as count FROM attendees WHERE event_id=?' + mc + ' GROUP BY badge_type').bind(eventId).all()
   const sessionsByType = await c.env.DB.prepare('SELECT session_type, COUNT(*) as count FROM sessions WHERE event_id=? GROUP BY session_type').bind(eventId).all()
   const sessionsByTrack = await c.env.DB.prepare('SELECT track, COUNT(*) as count FROM sessions WHERE event_id=? AND track IS NOT NULL GROUP BY track').bind(eventId).all()
   const connectionsByStatus = await c.env.DB.prepare('SELECT status, COUNT(*) as count FROM connections WHERE event_id=? GROUP BY status').bind(eventId).all()
@@ -11030,19 +11034,20 @@ app.get('/api/admin/events/:id/analytics', async (c) => {
 // down the funnel. Everything here is one pass over attendees.
 app.get('/api/admin/events/:id/growth', async (c) => {
   const eventId = c.req.param('id')
+  const mc = await mainEventClause(c)
   const dateExpr = "substr(COALESCE(registration_date, created_at), 1, 10)"
   const daily = await c.env.DB.prepare(
     `SELECT ${dateExpr} AS day, COUNT(*) AS count FROM attendees
-      WHERE event_id = ? AND COALESCE(registration_date, created_at) IS NOT NULL
+      WHERE event_id = ?${mc} AND COALESCE(registration_date, created_at) IS NOT NULL
       GROUP BY day ORDER BY day`
   ).bind(eventId).all()
   const bySource = await c.env.DB.prepare(
     `SELECT COALESCE(NULLIF(registration_source,''), 'unknown') AS source, COUNT(*) AS count
-       FROM attendees WHERE event_id = ? GROUP BY source ORDER BY count DESC`
+       FROM attendees WHERE event_id = ?${mc} GROUP BY source ORDER BY count DESC`
   ).bind(eventId).all()
   const byCity = await c.env.DB.prepare(
     `SELECT COALESCE(NULLIF(city,''), 'unknown') AS city, COUNT(*) AS count
-       FROM attendees WHERE event_id = ? GROUP BY city ORDER BY count DESC LIMIT 12`
+       FROM attendees WHERE event_id = ?${mc} GROUP BY city ORDER BY count DESC LIMIT 12`
   ).bind(eventId).all()
   // The funnel every organiser asks about: of the people holding each pass, how
   // many were told, signed in, took their pass, told their network, and turned up.
@@ -11064,7 +11069,7 @@ app.get('/api/admin/events/:id/growth', async (c) => {
             SUM(CASE WHEN pass_downloaded_at IS NOT NULL THEN 1 ELSE 0 END) AS pass_taken,
             ${cardTaken} AS card_taken,
             SUM(CASE WHEN checked_in_at IS NOT NULL THEN 1 ELSE 0 END) AS checked_in
-       FROM attendees WHERE event_id = ? GROUP BY badge_type ORDER BY registered DESC`
+       FROM attendees WHERE event_id = ?${mc} GROUP BY badge_type ORDER BY registered DESC`
   ).bind(eventId).all()
   const profile = await c.env.DB.prepare(
     `SELECT COUNT(*) AS total,
@@ -11073,7 +11078,7 @@ app.get('/api/admin/events/:id/growth', async (c) => {
             SUM(CASE WHEN city IS NULL OR city = '' THEN 1 ELSE 0 END) AS no_city,
             SUM(CASE WHEN mobile IS NULL OR mobile = '' THEN 1 ELSE 0 END) AS no_mobile,
             SUM(CASE WHEN avatar_url IS NULL OR avatar_url = '' THEN 1 ELSE 0 END) AS no_photo
-       FROM attendees WHERE event_id = ?`
+       FROM attendees WHERE event_id = ?${mc}`
   ).bind(eventId).first()
   return c.json({
     daily: daily.results || [],
@@ -20759,8 +20764,8 @@ function mainPageHTML(): string {
       link.href = socialCard.res.dataUrl;
       link.click();
       showToast('Card downloaded - post it with the caption', 'success');
-      if (user.id) { try { await api.post('/api/attendees/' + user.id + '/track-social-card', {}); } catch (e) {} }
-      trackPanelCard();
+      if (socialCard.mode === 'panel' && socialCard.panel) trackPanelCard();
+      else if (user.id) { try { await api.post('/api/attendees/' + user.id + '/track-social-card', {}); } catch (e) {} }
     }
 
     function copySocialCaption() {
@@ -20789,8 +20794,8 @@ function mainPageHTML(): string {
           return;
         }
         await navigator.share({ files: [file], text: document.getElementById('sc-caption').value });
-        if (user.id) { try { await api.post('/api/attendees/' + user.id + '/track-social-card', {}); } catch (e) {} }
-      trackPanelCard();
+        if (socialCard.mode === 'panel' && socialCard.panel) trackPanelCard();
+        else if (user.id) { try { await api.post('/api/attendees/' + user.id + '/track-social-card', {}); } catch (e) {} }
       } catch (e) {
         // Dismissing the share sheet throws AbortError. That is not a failure.
         if (e && e.name !== 'AbortError') showToast('Could not open the share sheet', 'error');
@@ -24151,15 +24156,16 @@ function adminPageHTML(): string {
     // The tab could only free-text search. Working a list of 1,171 means asking
     // "which Delegates have not paid" or "who has not RSVP'd", so each of these
     // is a real column filter, and they compose.
-    let attFilters = { badge: '', rsvp: '', payment: '', checkin: '', source: '', profile: '' };
+    let attFilters = { badge: '', rsvp: '', payment: '', checkin: '', source: '', profile: '', main: 'yes' };
     let attSelected = new Set();
     function setAttFilter(k, v) { attFilters[k] = v; attPage = 1; loadAdminAttendees(null, true); }
     function clearAttFilters() {
-      attFilters = { badge: '', rsvp: '', payment: '', checkin: '', source: '', profile: '' };
+      attFilters = { badge: '', rsvp: '', payment: '', checkin: '', source: '', profile: '', main: 'yes' };
       attQuery = ''; attPage = 1; loadAdminAttendees(null, true);
     }
     function attActiveFilterCount() {
-      return Object.keys(attFilters).filter(function (k) { return attFilters[k]; }).length;
+      // 'main: yes' is the resting state, not a filter somebody applied.
+      return Object.keys(attFilters).filter(function (k) { return attFilters[k] && !(k === 'main' && attFilters[k] === 'yes'); }).length;
     }
     // A row is "incomplete" on the same fields the profile-reminder campaign chases.
     function attIncomplete(a) {
@@ -24172,6 +24178,10 @@ function adminPageHTML(): string {
       if (f.payment && String(a.payment_status || '') !== f.payment) return false;
       if (f.checkin === 'in' && !a.checked_in_at) return false;
       if (f.checkin === 'out' && a.checked_in_at) return false;
+      // Campus-panel registrants who have not said yes to November (0041) are
+      // not conference attendees; they are shown only when asked for.
+      if (f.main === 'yes' && a.main_event === 0) return false;
+      if (f.main === 'panel' && a.main_event !== 0) return false;
       if (f.source) {
         var src = String(a.registration_source || '');
         if (f.source === 'campus') { if (src.indexOf('campus:') !== 0) return false; }
@@ -24379,6 +24389,11 @@ function adminPageHTML(): string {
             <option value="">Anyone</option>
             <option value="in"\${attFilters.checkin === 'in' ? ' selected' : ''}>Checked in</option>
             <option value="out"\${attFilters.checkin === 'out' ? ' selected' : ''}>Not checked in</option>
+          </select>
+          <select onchange="setAttFilter('main', this.value)" class="px-2 py-1.5 rounded-lg text-xs" title="Conference registrants, or campus-panel registrants who have not opted in">
+            <option value="yes"\${attFilters.main === 'yes' ? ' selected' : ''}>Conference registrants</option>
+            <option value="panel"\${attFilters.main === 'panel' ? ' selected' : ''}>Panel only (not opted in)</option>
+            <option value=""\${attFilters.main === '' ? ' selected' : ''}>Everyone</option>
           </select>
           <select onchange="setAttFilter('source', this.value)" class="px-2 py-1.5 rounded-lg text-xs" title="Where they registered">
             <option value="">Any source</option>
