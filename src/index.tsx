@@ -12934,7 +12934,7 @@ function selectType(type) {
   } else if (type === 'speaking') {
     extra = '<div><label class="text-xs text-gray-400 mb-1 block">Proposed Topic</label><input type="text" id="cf-topic" autocomplete="off" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Your talk/workshop topic"></div>';
   } else if (type === 'group_registration') {
-    extra = '<div class="grid grid-cols-2 gap-4"><div><label class="text-xs text-gray-400 mb-1 block">Group Size</label><input type="number" id="cf-groupsize" autocomplete="off" min="2" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Number of people"></div><div><label class="text-xs text-gray-400 mb-1 block">Preferred Pass Type</label><select id="cf-passtype" class="w-full px-4 py-3 rounded-xl text-sm"><option value="">Select pass</option><option value="Delegate">Delegate (₹4,999)</option><option value="VIP">VIP (₹14,999)</option><option value="Academic">Academic (₹999)</option><option value="Visitor">Visitor (Free)</option><option value="Mixed">Mixed</option></select></div></div>';
+    extra = '<div class="grid grid-cols-2 gap-4"><div><label class="text-xs text-gray-400 mb-1 block">Group Size</label><input type="number" id="cf-groupsize" autocomplete="off" min="2" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Number of people"></div><div><label class="text-xs text-gray-400 mb-1 block">Preferred Pass Type</label><select id="cf-passtype" class="w-full px-4 py-3 rounded-xl text-sm"><option value="">Select pass</option><option value="Delegate">Delegate (₹4,999 + GST)</option><option value="VIP">VIP (₹14,999 + GST)</option><option value="Academic">Academic (₹999 + GST)</option><option value="Visitor">Visitor (Free)</option><option value="Mixed">Mixed</option></select></div></div>';
   } else if (type === 'sponsorship') {
     extra = '<div><label class="text-xs text-gray-400 mb-1 block">Budget Range</label><select id="cf-budget" class="w-full px-4 py-3 rounded-xl text-sm"><option value="">Select range</option><option value="Under ₹1 Lakh">Under ₹1 Lakh</option><option value="₹1-3 Lakhs">₹1-3 Lakhs</option><option value="₹3-5 Lakhs">₹3-5 Lakhs</option><option value="₹5-10 Lakhs">₹5-10 Lakhs</option><option value="₹10+ Lakhs">₹10+ Lakhs</option></select></div>';
   }
@@ -13288,7 +13288,7 @@ ${sharedNavHTML('register')}
               <div class="rounded-xl p-4 border border-primary-500/25 bg-primary-500/5">
                 <div class="flex items-baseline justify-between">
                   <span class="font-bold text-primary-300 text-sm">Delegate Pass</span>
-                  <span class="text-xs text-gray-400">&#8377;4,999</span>
+                  <span class="text-xs text-gray-400">&#8377;4,999 + GST</span>
                 </div>
                 <ul class="text-[11px] text-gray-400 mt-2 space-y-1">
                   <li><i class="fas fa-check text-green-400 mr-1.5"></i>All conference sessions, both days</li>
@@ -13303,7 +13303,7 @@ ${sharedNavHTML('register')}
                 <div class="absolute -top-2.5 right-4 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500 text-black">ALL ACCESS</div>
                 <div class="flex items-baseline justify-between">
                   <span class="font-bold text-amber-300 text-sm">VIP Pass</span>
-                  <span class="text-xs text-gray-400">&#8377;14,999</span>
+                  <span class="text-xs text-gray-400">&#8377;14,999 + GST</span>
                 </div>
                 <ul class="text-[11px] text-gray-400 mt-2 space-y-1">
                   <li><i class="fas fa-check text-amber-400 mr-1.5"></i>Everything in Delegate</li>
@@ -13346,21 +13346,21 @@ ${sharedNavHTML('register')}
               <span class="text-sm font-semibold">🎟️ Delegate Pass</span>
               <p class="text-[10px] text-gray-400">Full 2-day conference + exhibition + networking</p>
             </div>
-            <span class="text-sm font-bold text-primary-300">₹4,999</span>
+            <span class="text-sm font-bold text-primary-300">₹4,999 + GST</span>
           </div>
           <div class="flex items-center justify-between p-3 rounded-xl bg-white/5">
             <div>
               <span class="text-sm font-semibold">⭐ VIP Pass</span>
               <p class="text-[10px] text-gray-400">Everything + VIP lounge + speaker dinner</p>
             </div>
-            <span class="text-sm font-bold text-amber-300">₹14,999</span>
+            <span class="text-sm font-bold text-amber-300">₹14,999 + GST</span>
           </div>
           <div class="flex items-center justify-between p-3 rounded-xl bg-white/5">
             <div>
               <span class="text-sm font-semibold">🎓 Academic Pass</span>
               <p class="text-[10px] text-gray-400">Conference + hackathon + student zone</p>
             </div>
-            <span class="text-sm font-bold text-violet-300">₹999</span>
+            <span class="text-sm font-bold text-violet-300">₹999 + GST</span>
           </div>
         </div>
         <button onclick="openRegisterPaidPassModal()" class="mt-4 block w-full text-center py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 transition-all text-sm cursor-pointer">
@@ -13657,7 +13657,7 @@ function paintPayHoldingPage(w) {
           <div data-rpp-card style="padding:12px;border-radius:12px;text-align:center;background:rgba(139,92,246,0.08);border:1px solid rgba(255,107,0,0.2);transition:all 0.2s;">
             <i class="fas fa-id-badge" style="color:#7C3AED;font-size:20px;display:block;margin-bottom:4px;"></i>
             <div style="color:#1E2140;font-weight:600;font-size:12px;">Delegate</div>
-            <div style="color:#7C3AED;font-weight:700;font-size:14px;">&#8377;4,999</div>
+            <div style="color:#7C3AED;font-weight:700;font-size:14px;">&#8377;4,999 + GST</div>
             <div style="color:#5E6585;font-size:10px;">Full 2-day access</div>
           </div>
         </label>
@@ -13666,7 +13666,7 @@ function paintPayHoldingPage(w) {
           <div data-rpp-card style="padding:12px;border-radius:12px;text-align:center;background:rgba(251,191,36,0.06);border:1px solid rgba(251,191,36,0.2);transition:all 0.2s;">
             <i class="fas fa-crown" style="color:#B45309;font-size:20px;display:block;margin-bottom:4px;"></i>
             <div style="color:#1E2140;font-weight:600;font-size:12px;">VIP</div>
-            <div style="color:#B45309;font-weight:700;font-size:14px;">&#8377;14,999</div>
+            <div style="color:#B45309;font-weight:700;font-size:14px;">&#8377;14,999 + GST</div>
             <div style="color:#5E6585;font-size:10px;">Lounge + dinner</div>
           </div>
         </label>
@@ -13675,7 +13675,7 @@ function paintPayHoldingPage(w) {
           <div data-rpp-card style="padding:12px;border-radius:12px;text-align:center;background:rgba(192,132,252,0.06);border:1px solid rgba(192,132,252,0.2);transition:all 0.2s;">
             <i class="fas fa-graduation-cap" style="color:#9333EA;font-size:20px;display:block;margin-bottom:4px;"></i>
             <div style="color:#1E2140;font-weight:600;font-size:12px;">Academic</div>
-            <div style="color:#9333EA;font-weight:700;font-size:14px;">&#8377;999</div>
+            <div style="color:#9333EA;font-weight:700;font-size:14px;">&#8377;999 + GST</div>
             <div style="color:#5E6585;font-size:10px;">Students</div>
           </div>
         </label>
@@ -14504,7 +14504,7 @@ function mainPageHTML(): string {
           <div class="glass-light rounded-xl p-4 border border-primary-500/20">
             <div class="text-2xl mb-1">🎫</div>
             <div class="font-bold text-primary-300 text-sm">Delegate Pass</div>
-            <div class="text-xs text-gray-400 mt-0.5">₹4,999 / person</div>
+            <div class="text-xs text-gray-400 mt-0.5">₹4,999 + GST / person</div>
             <ul class="text-[11px] text-gray-400 mt-2 space-y-0.5 text-left">
               <li><i class="fas fa-check text-green-400 mr-1"></i>Full networking access</li>
               <li><i class="fas fa-check text-green-400 mr-1"></i>Connect & message all</li>
@@ -14515,7 +14515,7 @@ function mainPageHTML(): string {
             <div class="absolute -top-2.5 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500 text-black">BEST</div>
             <div class="text-2xl mb-1">👑</div>
             <div class="font-bold text-amber-300 text-sm">VIP Pass</div>
-            <div class="text-xs text-gray-400 mt-0.5">₹14,999 / person</div>
+            <div class="text-xs text-gray-400 mt-0.5">₹14,999 + GST / person</div>
             <ul class="text-[11px] text-gray-400 mt-2 space-y-0.5 text-left">
               <li><i class="fas fa-check text-amber-400 mr-1"></i>Everything in Delegate</li>
               <li><i class="fas fa-check text-amber-400 mr-1"></i>VIP lounge access</li>
@@ -15003,7 +15003,7 @@ function mainPageHTML(): string {
                 </div>
                 <div class="flex-1">
                   <h3 class="font-bold text-base mb-0.5">Upgrade your pass</h3>
-                  <p class="text-xs text-gray-400">Delegate &#8377;4,999 or VIP &#8377;14,999 &mdash; all sessions, workshops, lunch and networking</p>
+                  <p class="text-xs text-gray-400">Delegate &#8377;4,999 or VIP &#8377;14,999 (+ GST) &mdash; all sessions, workshops, lunch and networking</p>
                 </div>
                 <i class="fas fa-chevron-right text-amber-400 text-lg"></i>
               </div>
@@ -15039,7 +15039,7 @@ function mainPageHTML(): string {
                 <div class="absolute -top-2.5 right-3 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-gradient-to-r from-amber-500 to-orange-500 text-white">MOST POPULAR</div>
                 <div class="text-2xl mb-2">🎟️</div>
                 <h3 class="font-bold text-base text-primary-300">Delegate Pass</h3>
-                <div class="text-xl font-black text-white mt-1">₹4,999<span class="text-xs font-normal text-gray-400">/person</span></div>
+                <div class="text-xl font-black text-white mt-1">₹4,999<span class="text-xs font-normal text-gray-400"> + GST / person</span></div>
                 <ul class="mt-3 space-y-1.5 text-xs text-gray-300">
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Full 2-day conference access</li>
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Exhibition floor pass</li>
@@ -15057,7 +15057,7 @@ function mainPageHTML(): string {
               <div class="glass rounded-2xl p-5 border border-amber-500/30 hover:border-amber-400/50 transition-all group">
                 <div class="text-2xl mb-2">⭐</div>
                 <h3 class="font-bold text-base text-amber-300">VIP Pass</h3>
-                <div class="text-xl font-black text-white mt-1">₹14,999<span class="text-xs font-normal text-gray-400">/person</span></div>
+                <div class="text-xl font-black text-white mt-1">₹14,999<span class="text-xs font-normal text-gray-400"> + GST / person</span></div>
                 <ul class="mt-3 space-y-1.5 text-xs text-gray-300">
                   <li><i class="fas fa-id-badge text-amber-400 mr-1.5 text-[10px]"></i><span class="text-amber-300 font-semibold">VIP Badge</span></li>
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Everything in Delegate</li>
@@ -15075,7 +15075,7 @@ function mainPageHTML(): string {
               <div class="glass rounded-2xl p-5 border border-violet-500/30 hover:border-violet-400/50 transition-all group">
                 <div class="text-2xl mb-2">🎓</div>
                 <h3 class="font-bold text-base text-violet-300">Academic Pass</h3>
-                <div class="text-xl font-black text-white mt-1">₹999<span class="text-xs font-normal text-gray-400">/person</span></div>
+                <div class="text-xl font-black text-white mt-1">₹999<span class="text-xs font-normal text-gray-400"> + GST / person</span></div>
                 <div class="text-[10px] font-semibold text-violet-400 mt-0.5">Teachers, Students & researchers</div>
                 <ul class="mt-3 space-y-1.5 text-xs text-gray-300">
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Full conference access</li>
@@ -15153,9 +15153,9 @@ function mainPageHTML(): string {
                     <tr class="border-b border-white/10">
                       <th class="text-left py-3 px-2 text-gray-400 font-medium text-xs">Feature</th>
                       <th class="py-3 px-2 text-center text-green-400 font-bold text-xs">Visitor<br><span class="font-normal text-green-300">FREE</span></th>
-                      <th class="py-3 px-2 text-center text-primary-400 font-bold text-xs">Delegate<br><span class="font-normal text-primary-300">₹4,999</span></th>
-                      <th class="py-3 px-2 text-center text-amber-400 font-bold text-xs">VIP<br><span class="font-normal text-amber-300">₹14,999</span></th>
-                      <th class="py-3 px-2 text-center text-violet-400 font-bold text-xs">Academic<br><span class="font-normal text-violet-300">₹999</span></th>
+                      <th class="py-3 px-2 text-center text-primary-400 font-bold text-xs">Delegate<br><span class="font-normal text-primary-300">₹4,999 + GST</span></th>
+                      <th class="py-3 px-2 text-center text-amber-400 font-bold text-xs">VIP<br><span class="font-normal text-amber-300">₹14,999 + GST</span></th>
+                      <th class="py-3 px-2 text-center text-violet-400 font-bold text-xs">Academic<br><span class="font-normal text-violet-300">₹999 + GST</span></th>
                       <th class="py-3 px-2 text-center text-rose-400 font-bold text-xs">Media<br><span class="font-normal text-rose-300">By Invite</span></th>
                     </tr>
                   </thead>
@@ -17302,7 +17302,7 @@ function mainPageHTML(): string {
       } else if (type === 'speaking') {
         extra = '<input type="text" id="inq-topic" autocomplete="off" placeholder="Proposed Talk / Workshop Topic" class="w-full px-4 py-3 rounded-xl text-sm">';
       } else if (type === 'group_registration') {
-        extra = '<div class="grid grid-cols-2 gap-3"><input type="number" id="inq-group-size" autocomplete="off" placeholder="Group Size" min="2" class="w-full px-4 py-3 rounded-xl text-sm"><select id="inq-pass-type" class="w-full px-4 py-3 rounded-xl text-sm"><option value="">Preferred Pass</option><option value="Delegate">Delegate (₹4,999)</option><option value="VIP">VIP (₹14,999)</option><option value="Academic">Academic (₹999)</option><option value="Visitor">Visitor (Free)</option><option value="Mixed">Mixed</option></select></div>';
+        extra = '<div class="grid grid-cols-2 gap-3"><input type="number" id="inq-group-size" autocomplete="off" placeholder="Group Size" min="2" class="w-full px-4 py-3 rounded-xl text-sm"><select id="inq-pass-type" class="w-full px-4 py-3 rounded-xl text-sm"><option value="">Preferred Pass</option><option value="Delegate">Delegate (₹4,999 + GST)</option><option value="VIP">VIP (₹14,999 + GST)</option><option value="Academic">Academic (₹999 + GST)</option><option value="Visitor">Visitor (Free)</option><option value="Mixed">Mixed</option></select></div>';
       } else if (type === 'sponsorship') {
         extra = '<select id="inq-budget" class="w-full px-4 py-3 rounded-xl text-sm"><option value="">Budget Range</option><option value="Under ₹1 Lakh">Under ₹1 Lakh</option><option value="₹1-3 Lakhs">₹1-3 Lakhs</option><option value="₹3-5 Lakhs">₹3-5 Lakhs</option><option value="₹5-10 Lakhs">₹5-10 Lakhs</option><option value="₹10+ Lakhs">₹10+ Lakhs</option></select>';
       }
@@ -23340,7 +23340,7 @@ function mainPageHTML(): string {
             <div class="p-3 rounded-xl text-center" style="background:rgba(139,92,246,0.1);border:1px solid rgba(255,107,0,0.2);">
               <i class="fas fa-id-badge text-violet-400 text-lg mb-1 block"></i>
               <div class="text-white font-semibold text-xs">Delegate</div>
-              <div class="text-violet-300 font-bold text-sm">&#8377;4,999</div>
+              <div class="text-violet-300 font-bold text-sm">&#8377;4,999 + GST</div>
               <div class="text-gray-500 text-[10px]">Full 2-day access</div>
             </div>
           </label>
@@ -23349,7 +23349,7 @@ function mainPageHTML(): string {
             <div class="p-3 rounded-xl text-center" style="background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.2);">
               <i class="fas fa-crown text-yellow-400 text-lg mb-1 block"></i>
               <div class="text-white font-semibold text-xs">VIP</div>
-              <div class="text-yellow-300 font-bold text-sm">&#8377;14,999</div>
+              <div class="text-yellow-300 font-bold text-sm">&#8377;14,999 + GST</div>
               <div class="text-gray-500 text-[10px]">VIP lounge + dinner</div>
             </div>
           </label>
@@ -23358,7 +23358,7 @@ function mainPageHTML(): string {
             <div class="p-3 rounded-xl text-center" style="background:rgba(192,132,252,0.08);border:1px solid rgba(192,132,252,0.2);">
               <i class="fas fa-graduation-cap text-purple-400 text-lg mb-1 block"></i>
               <div class="text-white font-semibold text-xs">Academic</div>
-              <div class="text-purple-300 font-bold text-sm">&#8377;999</div>
+              <div class="text-purple-300 font-bold text-sm">&#8377;999 + GST</div>
               <div class="text-gray-500 text-[10px]">Students &amp; researchers</div>
             </div>
           </label>
