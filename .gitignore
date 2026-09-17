@@ -12,3 +12,7 @@ logs/
 *.log
 .pm2/
 .playwright-mcp/
+
+# Production database dumps taken before migrations: full attendee PII plus
+# the live email API key. Never to be committed.
+backup-*.sql
