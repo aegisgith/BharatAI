@@ -562,6 +562,12 @@ function isAdminRequest(c: any): boolean {
   try { return !!staffAdminByRequest.get(c.req.raw) } catch { return false }
 }
 
+// The named admin account behind this request, or null when it is the shared
+// password. For the few actions that must be attributable to an actual person.
+function adminAccountSession(c: any): any | null {
+  try { return staffAdminByRequest.get(c.req.raw) || null } catch { return null }
+}
+
 // Who is acting, for the audit log. A named account is authenticated and says so;
 // the shared password can only offer the name the operator typed into the panel.
 function adminActor(c: any): { actor: string; kind: string } {
@@ -591,6 +597,23 @@ function senderEmailOrDefault(v?: string | null): string {
 // Activates only once migration 0015 has added the column, so this deploy is safe
 // on its own.
 const PAID_TIERS = ['Delegate Pass', 'VIP Pass', 'Academic Pass']
+
+// One list of pass names for every admin picker: the inline grid cell, Set pass on a
+// selection, Add Attendee and Edit Attendee. Four hand-typed copies had drifted -
+// 'Delegate' beside 'Delegate Pass', no 'Academic Pass' in three of them - so which
+// names an admin could set depended on which dialog they happened to open. The paid
+// tiers are spelled exactly as PAID_TIERS, which is what the payment queue matches on.
+const BADGE_TYPES = [
+  'Delegate Pass', 'VIP Pass', 'Academic Pass', 'Visitor Pass', 'Media Pass',
+  'Organiser', 'VIP Guest', 'Exhibitor', 'Delegate', 'Exhibition Speaker', 'Jury',
+  'Media', 'Support Staff', 'Investor', 'Felicitation Delegate', 'Speaker', 'Startup Pitcher',
+]
+
+// What an admin may set payment_status to. Anything else is stored as 'pending', the
+// column's own default: the payments-pending queue matches on exactly 'pending', so a
+// stray value (or an empty string) would quietly drop someone out of it.
+const PAYMENT_STATUSES = ['pending', 'paid', 'refunded', 'waived']
+
 let _paymentStatusCol: boolean | null = null
 async function paymentStatusEnabled(c: any): Promise<boolean> {
   if (_paymentStatusCol !== null) return _paymentStatusCol
@@ -607,7 +630,7 @@ const ADMIN_ATTENDEE_FIELDS = [
   'name', 'email', 'mobile', 'company', 'job_title', 'role', 'badge_type',
   'rsvp_status', 'lunch_inclusion', 'arrival_time', 'linkedin_url', 'twitter_url',
   'website_url', 'bio', 'interests', 'city', 'country', 'industry',
-  'registration_date', 'payment_amount',
+  'registration_date', 'payment_amount', 'payment_status',
 ]
 
 // payment_amount is written by the admin table's inline Payment cell and read back
@@ -636,7 +659,25 @@ async function attendeeColumns(c: any): Promise<Set<string>> {
 function sanitizeAttendeeField(field: string, value: any): any {
   const v = value ?? ''
   if (field === 'industry') return INDUSTRIES.includes(String(v)) ? String(v) : ''
+  // Until now only createInvoice ever wrote payment_status, so a refund, a waived
+  // fee or a payment confirmed off-system had no way into the record.
+  if (field === 'payment_status') {
+    const s = String(v).trim().toLowerCase()
+    return PAYMENT_STATUSES.includes(s) ? s : 'pending'
+  }
   return v
+}
+
+// For the audit log: which of the fields just written actually changed, as
+// { field: [old, new] }, so a payment flip reads as pending -> paid and not as a
+// row id. Compared as strings because D1 hands numbers back for numeric text.
+function changedFields(before: any, after: Record<string, any>): Record<string, [any, any]> {
+  const out: Record<string, [any, any]> = {}
+  for (const [k, v] of Object.entries(after)) {
+    const prev = before ? before[k] : undefined
+    if (String(prev ?? '') !== String(v ?? '')) out[k] = [prev ?? null, v ?? null]
+  }
+  return out
 }
 
 // Enquiries were written to the database and nobody was told. 239 had accumulated
@@ -1706,27 +1747,57 @@ async function createInvoice(c: any, b: any) {
   const sgst = intra ? tax - cgst : 0
   const igst = intra ? 0 : tax
 
-  // The series is already at AKT/26-27/117 in the accountant's books. Starting again
-  // at 1 would issue a second invoice bearing a number that already exists, so the
-  // next number is a setting and the counter carries on from wherever they are.
-  const issued = ((await c.env.DB.prepare('SELECT COUNT(*) AS n FROM invoices').first() as any)?.n || 0)
-  const seq = parseInt(String(set.inv_next_number || '1'), 10) + issued
-  const invoiceNo = (set.inv_prefix || 'AKT') + '/' + financialYear(new Date()) + '/' + seq
-
-  const r = await c.env.DB.prepare(
-    `INSERT INTO invoices (invoice_no, attendee_id, buyer_name, buyer_email, buyer_company, buyer_gstin,
-       buyer_address, buyer_phone, item_desc, order_ref, payment_ref, paid_at, gst_rate,
-       taxable_paise, cgst_paise, sgst_paise, igst_paise, total_paise, place_of_supply)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).bind(
-    invoiceNo, b.attendee_id || null, String(b.buyer_name).trim(), String(b.buyer_email).trim().toLowerCase(),
+  // The series is already at AKT/26-27/117 in the accountant's books, so the next
+  // number is a setting. It used to be inv_next_number + COUNT(*) FROM invoices: two
+  // invoices raised in the same moment got the same number, and deleting one moved
+  // every later number down by one. inv_next_number is now the counter itself -
+  // read, used and moved on in the same batch as the INSERT, so it advances only
+  // when an invoice actually lands, and never goes backwards: a deleted invoice
+  // leaves a gap rather than handing its number to the next one.
+  //
+  // A database from before this change still holds the old starting value, so the
+  // counter is reconciled with the highest number already issued in this series;
+  // it catches up on the first invoice and never needs to again.
+  const series = (set.inv_prefix || 'AKT') + '/' + financialYear(new Date()) + '/'
+  const values = [
+    b.attendee_id || null, String(b.buyer_name).trim(), String(b.buyer_email).trim().toLowerCase(),
     b.buyer_company || '', b.buyer_gstin || '', b.buyer_address || '', b.buyer_phone || '',
     b.item_desc || 'Delegate Pass - Bharat AI Innovation Conference & Exhibition 2026',
     b.order_ref || '', b.payment_ref || '', b.paid_at || null, rate,
-    taxable, cgst, sgst, igst, total, pos
-  ).run()
-
-  const id = r.meta.last_row_id
+    taxable, cgst, sgst, igst, total, pos,
+  ]
+  let id: any = null
+  let invoiceNo = ''
+  for (let attempt = 0; attempt < 2 && id === null; attempt++) {
+    const counter = parseInt(String((await settingGet(c, 'inv_next_number')) || '1'), 10) || 1
+    const highest = Number((await c.env.DB.prepare(
+      'SELECT MAX(CAST(substr(invoice_no, ?) AS INTEGER)) AS n FROM invoices WHERE substr(invoice_no, 1, ?) = ?'
+    ).bind(series.length + 1, series.length, series).first() as any)?.n || 0)
+    const seq = Math.max(counter, highest + 1)
+    invoiceNo = series + seq
+    try {
+      const [ins] = await c.env.DB.batch([
+        c.env.DB.prepare(
+          `INSERT INTO invoices (invoice_no, attendee_id, buyer_name, buyer_email, buyer_company, buyer_gstin,
+             buyer_address, buyer_phone, item_desc, order_ref, payment_ref, paid_at, gst_rate,
+             taxable_paise, cgst_paise, sgst_paise, igst_paise, total_paise, place_of_supply)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ).bind(invoiceNo, ...values),
+        c.env.DB.prepare(
+          "INSERT INTO app_settings (key, value, updated_at) VALUES ('inv_next_number', ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at"
+        ).bind(String(seq + 1)),
+      ])
+      id = ins.meta.last_row_id
+    } catch (e: any) {
+      // Another invoice took this number between the read and the write. The batch
+      // rolled back as one, so nothing half-landed; go round once more with the
+      // number that request left behind.
+      if (!String(e?.message || '').includes('UNIQUE')) throw e
+    }
+  }
+  if (id === null) {
+    return c.json({ error: 'Two invoices were being raised at the same moment and ' + invoiceNo + ' was taken by the other one. Nothing was issued - try again.' }, 409)
+  }
 
   // Issuing an invoice IS the confirmation that payment landed, so it settles the
   // registration too. Without this the buyer holds an invoice for a pass the app
@@ -1741,6 +1812,13 @@ async function createInvoice(c: any, b: any) {
       await c.env.DB.prepare('UPDATE invoices SET attendee_id = ? WHERE id = ?').bind((target as any).id, id).run()
     }
   }
+
+  // Raised by finance as often as by admin; a finance session is not an admin one,
+  // so name it here rather than let the entry read "unnamed operator".
+  const fin = await financeSession(c)
+  await audit(c, 'invoice.create', 'invoice', id,
+    { invoice_no: invoiceNo, buyer_email: String(b.buyer_email).trim().toLowerCase(), total_paise: total, attendee_id: b.attendee_id || null },
+    fin ? { actor: fin.name || fin.username, kind: 'account' } : undefined)
 
   const token = await invoiceTokenFor(c, id, invoiceNo)
   if (b.send_email !== false) {
@@ -2143,6 +2221,12 @@ app.post('/api/admin/staff', async (c) => {
   if (!name || !username || !password) return c.json({ error: 'name, username and password required' }, 400)
   if (String(password).length < 8) return c.json({ error: 'Password must be at least 8 characters' }, 400)
   const roleValue = role === 'finance' ? 'finance' : role === 'admin' ? 'admin' : 'desk'
+  // An admin account is the whole panel with a name attached. Minting one has to be
+  // attributable itself, so the shared password cannot do it: only someone signed in
+  // on an admin account can create another.
+  if (roleValue === 'admin' && !adminAccountSession(c)) {
+    return c.json({ error: 'Creating an admin account needs a signed-in admin account, not the shared password. Sign in at /staff with an admin login first.' }, 403)
+  }
   const withRole = await staffRolesEnabled(c)
   try {
     const r = withRole
@@ -2150,6 +2234,7 @@ app.post('/api/admin/staff', async (c) => {
           .bind(String(name).trim(), String(username).trim().toLowerCase(), await pbkdf2Hash(String(password)), roleValue, String(email || '').trim().toLowerCase()).run()
       : await c.env.DB.prepare('INSERT INTO staff (name, username, password_hash) VALUES (?, ?, ?)')
           .bind(String(name).trim(), String(username).trim().toLowerCase(), await pbkdf2Hash(String(password))).run()
+    await audit(c, 'staff.create', 'staff', r.meta.last_row_id, { name: String(name).trim(), username: String(username).trim().toLowerCase(), role: withRole ? roleValue : 'desk' })
     return c.json({ success: true, id: r.meta.last_row_id }, 201)
   } catch (e: any) {
     if (String(e.message || '').includes('UNIQUE')) return c.json({ error: 'That username is taken' }, 409)
@@ -2163,20 +2248,28 @@ app.patch('/api/admin/staff/:id', async (c) => {
   if (!isAdminRequest(c)) return c.json({ error: 'Admin only' }, 401)
   const id = parseInt(c.req.param('id'), 10)
   const { active, password, name } = await c.req.json().catch(() => ({})) as any
+  // What the row was, so the audit entry can say what changed and not just that
+  // something did. A password reset is recorded as the fact, never the value.
+  const before = (await c.env.DB.prepare('SELECT name, username, active FROM staff WHERE id = ?').bind(id).first() as any) || {}
+  const detail: Record<string, any> = { username: before.username || null }
   // The name is what check_in rows record, so it has to be editable — the seeded
   // accounts ship as "Badge Desk 3" until someone is actually assigned to them.
   if (name !== undefined) {
     if (!String(name).trim()) return c.json({ error: 'Name cannot be empty' }, 400)
     await c.env.DB.prepare('UPDATE staff SET name = ? WHERE id = ?').bind(String(name).trim().slice(0, 40), id).run()
+    detail.name = [before.name ?? null, String(name).trim().slice(0, 40)]
   }
   if (password !== undefined) {
     if (String(password).length < 8) return c.json({ error: 'Password must be at least 8 characters' }, 400)
     await c.env.DB.prepare('UPDATE staff SET password_hash = ? WHERE id = ?')
       .bind(await pbkdf2Hash(String(password)), id).run()
+    detail.password = 'reset'
   }
   if (active !== undefined) {
     await c.env.DB.prepare('UPDATE staff SET active = ? WHERE id = ?').bind(active ? 1 : 0, id).run()
+    detail.active = [before.active == null ? null : (before.active ? 1 : 0), active ? 1 : 0]
   }
+  if (Object.keys(detail).length > 1) await audit(c, 'staff.update', 'staff', id, detail)
   return c.json({ success: true })
 })
 
@@ -2184,7 +2277,7 @@ app.get('/api/admin/checkin-stats', async (c) => {
   if (!isAdminRequest(c)) return c.json({ error: 'Admin only' }, 401)
   const cols = await c.env.DB.prepare('PRAGMA table_info(attendees)').all() as any
   if (!(cols.results || []).some((r: any) => r.name === 'checked_in_at')) {
-    return c.json({ ready: false, total: 0, checkedIn: 0, byTier: [], recent: [] })
+    return c.json({ ready: false, total: 0, checkedIn: 0, byTier: [], recent: [], buckets: [], byDesk: [] })
   }
   const mc = await mainEventClause(c)
   const totals = await c.env.DB.prepare(
@@ -2195,20 +2288,59 @@ app.get('/api/admin/checkin-stats', async (c) => {
      FROM attendees WHERE 1 = 1${mc} GROUP BY 1 ORDER BY 2 DESC`).all() as any
   const recent = await c.env.DB.prepare(
     'SELECT name, badge_type, checked_in_at, checked_in_by FROM attendees WHERE checked_in_at IS NOT NULL' + mc + ' ORDER BY checked_in_at DESC LIMIT 15').all() as any
+  // Arrivals per quarter hour today, on the Mumbai clock, so the desk lead can see
+  // the queue building rather than infer it from a total. checked_in_at is UTC;
+  // IST is a fixed +05:30, so the shift is exact.
+  const IST = "datetime(checked_in_at, '+330 minutes')"
+  const today = `date(${IST}) = date(datetime('now', '+330 minutes'))`
+  const buckets = await c.env.DB.prepare(
+    `SELECT strftime('%H', ${IST}) || ':' || printf('%02d', (CAST(strftime('%M', ${IST}) AS INTEGER) / 15) * 15) AS bucket,
+            COUNT(*) AS n
+       FROM attendees WHERE checked_in_at IS NOT NULL${mc} AND ${today}
+      GROUP BY 1 ORDER BY 1`).all() as any
+  // Who admitted how many: which desk is carrying the queue, and which one has
+  // stopped scanning.
+  const byDesk = await c.env.DB.prepare(
+    `SELECT COALESCE(NULLIF(TRIM(checked_in_by), ''), 'unknown') AS desk, COUNT(*) AS n,
+            SUM(CASE WHEN ${today} THEN 1 ELSE 0 END) AS today
+       FROM attendees WHERE checked_in_at IS NOT NULL${mc}
+      GROUP BY 1 ORDER BY 2 DESC`).all() as any
   return c.json({
     ready: true,
     total: totals?.total || 0,
     checkedIn: totals?.checked_in || 0,
     byTier: byTier.results || [],
     recent: recent.results || [],
+    buckets: buckets.results || [],
+    byDesk: byDesk.results || [],
+  })
+})
+
+// The list to chase on the morning: every conference registrant not yet admitted.
+// The panel fetches it with the bearer header and saves the bytes as a Blob, so
+// the admin secret never rides in a URL.
+app.get('/api/admin/events/:id/attendees/not-arrived.csv', async (c) => {
+  const eventId = c.req.param('id')
+  if (!(await attendeeColumns(c)).has('checked_in_at')) return c.json({ error: 'Check-in is not enabled on this database yet.' }, 503)
+  const mc = await mainEventClause(c)
+  const { results } = await c.env.DB.prepare(
+    `SELECT name, email, mobile, company, badge_type FROM attendees
+      WHERE event_id = ? AND checked_in_at IS NULL${mc} ORDER BY name`).bind(eventId).all() as any
+  const cols = ['name', 'email', 'mobile', 'company', 'badge_type']
+  const cell = (v: any) => { const s = (v == null ? '' : String(v)).replace(/"/g, '""'); return /[",\r\n]/.test(s) ? `"${s}"` : s }
+  const lines = [cols.join(',')].concat((results || []).map((r: any) => cols.map(k => cell(r[k])).join(',')))
+  return new Response('\uFEFF' + lines.join('\r\n'), {
+    headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="not-arrived.csv"' },
   })
 })
 
 app.get('/api/admin/staff', async (c) => {
   if (!isAdminRequest(c)) return c.json({ error: 'Admin only' }, 401)
+  // role and email arrived with 0022; a database short of it still lists the team.
+  const withRole = await staffRolesEnabled(c)
   const { results } = await c.env.DB.prepare(
-    'SELECT id, name, username, active, last_login_at, created_at FROM staff ORDER BY id').all()
-  return c.json(results)
+    'SELECT id, name, username, active, last_login_at, created_at' + (withRole ? ', role, email' : '') + ' FROM staff ORDER BY id').all()
+  return c.json((results || []).map((r: any) => ({ ...r, role: r.role || 'desk', email: r.email || null })))
 })
 
 // The likeliest failure at a door is not a forged pass, it is a flat phone battery.
@@ -2461,6 +2593,9 @@ function staffShell(title: string, inner: string, script: string): string {
  .hit{display:block;width:100%;text-align:left;margin-top:8px;padding:11px 13px;border-radius:10px;background:#0a0e1f;border:1px solid rgba(255,255,255,.1);color:#e8edf5;text-decoration:none;}
  .hit b{display:block;font-size:14px;} .hit span{display:block;font-size:11.5px;color:#98a3bd;margin-top:2px;}
  .hit em{font-style:normal;color:#ffb27a;}
+ details.find summary{cursor:pointer;font-size:13px;font-weight:600;color:#c7d0e4;list-style:none;}
+ details.find summary::-webkit-details-marker{display:none;}
+ details.find summary::before{content:'+ ';color:#ffb27a;} details[open].find summary::before{content:'- ';}
 </style></head><body><div class="wrap">${inner}</div><script>${script}</script></body></html>`
 }
 
@@ -2507,6 +2642,24 @@ function staffScanHTML(me: any): string {
       <input id="q" placeholder="Name, email, company, mobile or BHAI number" autocapitalize="words" autocomplete="off">
       <div id="res"></div>
     </div>
+    <details class="find"><summary>Walk-in: register someone at the door</summary>
+      <p class="muted" style="margin:8px 0 0;">No registration at all? Register them here as a Visitor. Their pass is ready to scan the moment it saves.</p>
+      <input id="w-name" placeholder="Full name" autocapitalize="words" autocomplete="off">
+      <input id="w-email" type="email" placeholder="Email" autocapitalize="none" autocomplete="off">
+      <input id="w-mobile" inputmode="tel" placeholder="Mobile" autocomplete="off">
+      <input id="w-company" placeholder="Company" autocomplete="off">
+      <input id="w-title" placeholder="Job title" autocomplete="off">
+      <button onclick="walkin()">Register as a Visitor</button>
+      <p class="err" id="w-msg"></p>
+      <div id="w-res"></div>
+    </details>
+    <details class="find"><summary>Reissue a pass</summary>
+      <p class="muted" style="margin:8px 0 0;">Phone dead, or the email never arrived? Find them and open their pass here.</p>
+      <input id="r-q" placeholder="Email, BHAI number or exact name" autocapitalize="none" autocomplete="off">
+      <button onclick="reissue()">Find and reissue</button>
+      <p class="err" id="r-msg"></p>
+      <div id="r-res"></div>
+    </details>
     <div class="hint"><strong>No camera?</strong> Your phone's own camera app also works &mdash; point it at the QR and tap the link it offers. You will land on the same verification screen.</div>`,
   `var v=document.getElementById('v'), e=document.getElementById('e'), stopped=false;
    async function out(){ await fetch('/api/staff/logout',{method:'POST'}); location.href='/staff'; }
@@ -2550,6 +2703,44 @@ function staffScanHTML(me: any): string {
        return '<a class="hit" href="/verify/'+encodeURIComponent(a.token)+'"><b>'+esc(a.name)+'</b>'+
               '<span>'+(sub?sub+' &middot; ':'')+esc(a.ref)+'</span><span>'+state+'</span></a>';
      }).join('');
+   }
+
+   // Walk-in registration and pass reissue. Both answer with a signed pass token,
+   // shown as the same tappable card the search uses, so the next step is the
+   // usual verification screen.
+   var escT=function(v){ return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); };
+   function passLink(j, note){
+     return '<a class="hit" href="/verify/'+encodeURIComponent(j.token)+'"><b>'+escT(j.name)+'</b>'+
+            '<span>'+escT(j.ref||'')+(j.badge_type?' &middot; '+escT(j.badge_type):'')+'</span><span><em>'+escT(note)+'</em></span></a>';
+   }
+   async function walkin(){
+     var g=function(id){ return document.getElementById(id).value.trim(); };
+     var msg=document.getElementById('w-msg'), res=document.getElementById('w-res');
+     msg.textContent=''; res.innerHTML='';
+     var r=await fetch('/api/desk/walkin',{method:'POST',headers:{'Content-Type':'application/json'},
+       body:JSON.stringify({name:g('w-name'),email:g('w-email'),mobile:g('w-mobile'),company:g('w-company'),job_title:g('w-title')})});
+     if(r.status===401){ location.href='/staff'; return; }
+     var j=await r.json().catch(function(){return{}});
+     if(j.token){
+       res.innerHTML=passLink(j, r.ok?'Registered - tap to check them in':'Already registered - tap to check them in');
+       if(r.ok) ['w-name','w-email','w-mobile','w-company','w-title'].forEach(function(id){ document.getElementById(id).value=''; });
+     }
+     if(!r.ok) msg.textContent=j.error||'Could not register them.';
+   }
+   async function reissue(){
+     var q=document.getElementById('r-q').value.trim(), msg=document.getElementById('r-msg'), res=document.getElementById('r-res');
+     msg.textContent=''; res.innerHTML='';
+     if(!q) return;
+     // A BHAI number is the id in disguise (BHAI-2026-01065); bare digits are the id.
+     var last=q.split('-').pop();
+     var body = q.indexOf('@')>=0 ? {email:q}
+       : (/^[0-9]+$/.test(q) ? {id:parseInt(q,10)}
+       : (/^BHAI-[0-9]{4}-[0-9]+$/i.test(q) ? {id:parseInt(last,10)} : {name:q}));
+     var r=await fetch('/api/desk/reissue',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+     if(r.status===401){ location.href='/staff'; return; }
+     var j=await r.json().catch(function(){return{}});
+     if(!r.ok){ msg.textContent=j.error||'Nobody found.'; return; }
+     res.innerHTML=passLink(j, 'Pass reissued - tap to open it and check them in');
    }`)
 }
 
@@ -2696,6 +2887,109 @@ app.post('/api/verify/:token/undo', async (c) => {
   }
   await c.env.DB.prepare('UPDATE attendees SET checked_in_at = NULL, checked_in_by = NULL WHERE id = ?').bind(id).run()
   return c.json({ success: true })
+})
+
+// "Ask the admin desk to reset it" - this is that. The undo above closes after
+// fifteen minutes; an admin can reset a check-in at any time, and the stamp and
+// desk name it replaces go into the audit log, so a re-admission is never silent.
+app.post('/api/admin/attendees/:id/checkin-reset', async (c) => {
+  const id = parseInt(c.req.param('id'), 10)
+  if (!Number.isFinite(id)) return c.json({ error: 'Bad attendee id' }, 400)
+  const a = await c.env.DB.prepare('SELECT id, name, checked_in_at, checked_in_by FROM attendees WHERE id = ?').bind(id).first() as any
+  if (!a) return c.json({ error: 'Not found' }, 404)
+  if (!a.checked_in_at) return c.json({ success: true, already: true })
+  await c.env.DB.prepare('UPDATE attendees SET checked_in_at = NULL, checked_in_by = NULL WHERE id = ?').bind(id).run()
+  await audit(c, 'attendee.checkin-reset', 'attendee', id, { name: a.name, was_checked_in_at: a.checked_in_at, was_checked_in_by: a.checked_in_by })
+  return c.json({ success: true })
+})
+
+// ==================== BADGE DESK: WALK-INS AND REISSUES ====================
+// Both need a desk sign-in, not the admin secret: they are door jobs, done by the
+// person at the door, and the audit entry carries that person's name.
+
+// Someone turns up on the day with no registration. Until now the desk could only
+// send them to the website on their own phone and wait for the email. This
+// registers them from the desk as a Visitor - the free tier, so nothing is owed
+// and the pass can be scanned straight away.
+app.post('/api/desk/walkin', async (c) => {
+  const who = await deskActor(c)
+  if (!who) return c.json({ error: 'Badge desk sign-in required' }, 401)
+  const b = await c.req.json().catch(() => ({})) as any
+  const name = String(b.name || '').trim().slice(0, 120)
+  const email = String(b.email || '').trim().toLowerCase().slice(0, 200)
+  if (!name || !email) return c.json({ error: 'Name and email are required' }, 400)
+  if (!validEmailSyntax(email)) return c.json({ error: 'That email address does not look right' }, 400)
+  const actor = { actor: String(who.name || 'desk').slice(0, 80), kind: who.role === 'admin' ? 'account' : 'desk' }
+  const existing = await c.env.DB.prepare('SELECT id, name FROM attendees WHERE event_id = 1 AND lower(email) = ?').bind(email).first() as any
+  if (existing) {
+    // Already on the list: hand back their pass rather than a duplicate row.
+    return c.json({ error: 'Already registered as ' + existing.name + ' - their pass is below.', id: existing.id, name: existing.name,
+      ref: 'BHAI-2026-' + String(existing.id).padStart(5, '0'), token: await signPassToken(c, existing.id) }, 409)
+  }
+  const cols = await attendeeColumns(c)
+  const row: Record<string, any> = {
+    event_id: 1, name, email,
+    mobile: String(b.mobile || '').trim().slice(0, 40),
+    company: String(b.company || '').trim().slice(0, 160),
+    job_title: String(b.job_title || '').trim().slice(0, 160),
+    badge_type: 'Visitor Pass', role: 'attendee', country: 'India',
+    registration_source: 'walkin',
+    registration_date: new Date().toISOString().slice(0, 19).replace('T', ' '),
+    // A Visitor pass is free, so there is no payment to wait for; and they are
+    // standing at the conference door, so main_event is not in question.
+    payment_status: 'paid', main_event: 1, is_online: 0,
+  }
+  // Intersected with the live schema like every other attendee write, so a column
+  // the migrations never added cannot fail the whole insert.
+  const always = new Set(['event_id', 'name', 'email', 'is_online'])
+  const names = Object.keys(row).filter(k => always.has(k) || cols.has(k))
+  try {
+    const r = await c.env.DB.prepare(
+      `INSERT INTO attendees (${names.join(', ')}) VALUES (${names.map(() => '?').join(', ')})`
+    ).bind(...names.map(k => row[k])).run()
+    const id = r.meta.last_row_id
+    await audit(c, 'desk.walkin', 'attendee', id, { name, email, company: row.company }, actor)
+    return c.json({ success: true, id, name, ref: 'BHAI-2026-' + String(id).padStart(5, '0'), token: await signPassToken(c, id) }, 201)
+  } catch (e: any) {
+    if (String(e?.message || '').includes('UNIQUE')) return c.json({ error: 'Somebody with that email is already registered - look them up instead.' }, 409)
+    return c.json({ error: 'Could not register them: ' + (e?.message || 'unknown error') }, 400)
+  }
+})
+
+// A pass for somebody whose phone is dead or whose email never arrived. The QR is
+// a signed token, so the desk can mint the same one the app would, for a person it
+// has identified by BHAI number, email, or an unambiguous name.
+app.post('/api/desk/reissue', async (c) => {
+  const who = await deskActor(c)
+  if (!who) return c.json({ error: 'Badge desk sign-in required' }, 401)
+  const b = await c.req.json().catch(() => ({})) as any
+  const id = parseInt(String(b.id ?? ''), 10)
+  const email = String(b.email || '').trim().toLowerCase()
+  const name = String(b.name || '').trim().toLowerCase()
+  const pick = 'SELECT id, name, badge_type, main_event FROM attendees'
+  let a: any = null
+  let by = ''
+  if (Number.isFinite(id) && id > 0) {
+    a = await c.env.DB.prepare(pick + ' WHERE id = ?').bind(id).first()
+    by = 'id'
+  } else if (email) {
+    a = await c.env.DB.prepare(pick + ' WHERE event_id = 1 AND lower(email) = ?').bind(email).first()
+    by = 'email'
+  } else if (name) {
+    const { results } = await c.env.DB.prepare(pick + ' WHERE event_id = 1 AND lower(name) = ? LIMIT 2').bind(name).all() as any
+    if ((results || []).length > 1) return c.json({ error: 'More than one attendee has that name - use their email or BHAI number.' }, 409)
+    a = (results || [])[0] || null
+    by = 'name'
+  } else {
+    return c.json({ error: 'Give a BHAI number, an email or a name' }, 400)
+  }
+  if (!a) return c.json({ error: 'Nobody found' }, 404)
+  if (Number(a.main_event ?? 1) === 0) return c.json({ error: 'Registered for a campus panel only, not for the conference.' }, 400)
+  await audit(c, 'desk.reissue', 'attendee', a.id, { name: a.name, found_by: by },
+    { actor: String(who.name || 'desk').slice(0, 80), kind: who.role === 'admin' ? 'account' : 'desk' })
+  const token = await signPassToken(c, a.id)
+  return c.json({ success: true, id: a.id, name: a.name, badge_type: a.badge_type,
+    ref: 'BHAI-2026-' + String(a.id).padStart(5, '0'), token, verify_url: '/verify/' + token })
 })
 
 /* The badge desk says the face on the pass is not the person holding it.
@@ -9024,21 +9318,30 @@ app.post('/api/admin/sessions', async (c) => {
   const result = await c.env.DB.prepare(
     'INSERT INTO sessions (event_id, title, description, speaker_name, speaker_title, speaker_avatar, session_type, track, room, start_time, end_time, capacity) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)'
   ).bind(b.event_id, b.title, b.description||'', b.speaker_name||'', b.speaker_title||'', b.speaker_avatar||'', b.session_type, b.track||'', b.room||'', b.start_time, b.end_time, b.capacity||100).run()
+  await audit(c, 'session.create', 'session', result.meta.last_row_id, { title: b.title, start_time: b.start_time, room: b.room || '' })
   return c.json({ id: result.meta.last_row_id, success: true }, 201)
 })
 
 app.put('/api/admin/sessions/:id', async (c) => {
   const id = c.req.param('id')
   const b = await c.req.json()
+  // Keyed in the column order of the UPDATE, so the same object feeds the bind and
+  // the before/after in the audit entry.
+  const after = { title: b.title, description: b.description||'', speaker_name: b.speaker_name||'', speaker_title: b.speaker_title||'', speaker_avatar: b.speaker_avatar||'',
+    session_type: b.session_type, track: b.track||'', room: b.room||'', start_time: b.start_time, end_time: b.end_time, capacity: b.capacity||100 }
+  const before = await c.env.DB.prepare('SELECT ' + Object.keys(after).join(', ') + ' FROM sessions WHERE id = ?').bind(id).first()
   await c.env.DB.prepare(
     'UPDATE sessions SET title=?, description=?, speaker_name=?, speaker_title=?, speaker_avatar=?, session_type=?, track=?, room=?, start_time=?, end_time=?, capacity=? WHERE id=?'
-  ).bind(b.title, b.description||'', b.speaker_name||'', b.speaker_title||'', b.speaker_avatar||'', b.session_type, b.track||'', b.room||'', b.start_time, b.end_time, b.capacity||100, id).run()
+  ).bind(...Object.values(after), id).run()
+  await audit(c, 'session.update', 'session', id, { title: b.title, changes: changedFields(before, after) })
   return c.json({ success: true })
 })
 
 app.delete('/api/admin/sessions/:id', async (c) => {
   const id = c.req.param('id')
+  const before = await c.env.DB.prepare('SELECT title, start_time, room FROM sessions WHERE id = ?').bind(id).first() as any
   await c.env.DB.prepare('DELETE FROM sessions WHERE id=?').bind(id).run()
+  await audit(c, 'session.delete', 'session', id, before || {})
   return c.json({ success: true })
 })
 
@@ -9055,14 +9358,21 @@ app.put('/api/admin/attendees/:id', async (c) => {
   const cols = await attendeeColumns(c)
   const updates: string[] = []
   const values: any[] = []
+  const written: Record<string, any> = {}
   for (const f of ADMIN_ATTENDEE_FIELDS) {
     if (!(f in b) || !cols.has(f)) continue
     updates.push(`${f} = ?`)
     values.push(sanitizeAttendeeField(f, b[f]))
+    written[f] = values[values.length - 1]
   }
   if (updates.length) {
+    // The row as it was, so the audit entry says what changed - payment_status
+    // pending -> paid, a corrected email - and not merely that a save happened.
+    const before = await c.env.DB.prepare(`SELECT ${Object.keys(written).join(', ')} FROM attendees WHERE id = ?`).bind(id).first()
     values.push(id)
     await c.env.DB.prepare(`UPDATE attendees SET ${updates.join(', ')} WHERE id = ?`).bind(...values).run()
+    const changes = changedFields(before, written)
+    if (Object.keys(changes).length) await audit(c, 'attendee.update', 'attendee', id, { changes })
   }
 
   // Auto-create exhibitor entry if badge is exhibitor-related
@@ -9092,15 +9402,20 @@ app.patch('/api/admin/attendees/:id', async (c) => {
   const allowedFields = ADMIN_ATTENDEE_FIELDS.filter(f => cols.has(f))
   const updates: string[] = []
   const values: any[] = []
+  const written: Record<string, any> = {}
   for (const [key, val] of Object.entries(body)) {
     if (allowedFields.includes(key)) {
       updates.push(`${key} = ?`)
       values.push(sanitizeAttendeeField(key, val))
+      written[key] = values[values.length - 1]
     }
   }
   if (updates.length === 0) return c.json({ error: 'No valid fields to update' }, 400)
+  const before = await c.env.DB.prepare(`SELECT ${Object.keys(written).join(', ')} FROM attendees WHERE id = ?`).bind(id).first()
   values.push(id)
   await c.env.DB.prepare(`UPDATE attendees SET ${updates.join(', ')} WHERE id = ?`).bind(...values).run()
+  const changes = changedFields(before, written)
+  if (Object.keys(changes).length) await audit(c, 'attendee.update', 'attendee', id, { changes, inline: true })
 
   // Auto-create exhibitor entry if badge changed to exhibitor-related
   if (body.badge_type) {
@@ -9121,7 +9436,10 @@ app.patch('/api/admin/attendees/:id', async (c) => {
 
 app.delete('/api/admin/attendees/:id', async (c) => {
   const id = c.req.param('id')
+  // Name and address into the log, so the row can be identified after it is gone.
+  const before = await c.env.DB.prepare('SELECT name, email, badge_type, checked_in_at FROM attendees WHERE id = ?').bind(id).first() as any
   await c.env.DB.prepare('DELETE FROM attendees WHERE id=?').bind(id).run()
+  await audit(c, 'attendee.delete', 'attendee', id, before || { missing: true })
   return c.json({ success: true })
 })
 
@@ -9139,6 +9457,9 @@ app.post('/api/admin/attendees', async (c) => {
   const nowStamp = new Date().toISOString().slice(0, 19).replace('T', ' ')
   const fallbacks: Record<string, any> = {
     lunch_inclusion: 'Yes', role: 'attendee', badge_type: 'Delegate', country: 'India',
+    // 'paid' is the column default (0015). With payment_status now in the field
+    // list, leaving it out here would store '' instead of that default.
+    payment_status: 'paid',
     // A row with no registration_date sorts to the bottom of a newest-first list -
     // exactly the row an admin just added and wants to see.
     registration_date: nowStamp,
@@ -9159,7 +9480,8 @@ app.post('/api/admin/attendees', async (c) => {
       `INSERT INTO attendees (${names.join(', ')}) VALUES (${names.map(() => '?').join(', ')})`
     ).bind(...vals).run()
 
-    const attendee = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(result.meta.last_row_id).first()
+    const attendee = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(result.meta.last_row_id).first() as any
+    await audit(c, 'attendee.create', 'attendee', result.meta.last_row_id, { name: name.trim(), email: normalizedEmail, badge_type: attendee?.badge_type || badge_type || null })
 
     // Auto-create exhibitor if badge is exhibitor-related
     const exhibitorBadges = ['exhibitor', 'exhibitor booth', 'exhibition speaker']
@@ -9190,18 +9512,33 @@ app.post('/api/admin/attendees/bulk-update', async (c) => {
   const cols = await attendeeColumns(c)
   const sets: string[] = []
   const vals: any[] = []
+  const fields: string[] = []
   for (const f of ADMIN_ATTENDEE_FIELDS) {
     if (!(f in changes) || !cols.has(f)) continue
     sets.push(`${f} = ?`)
     vals.push(sanitizeAttendeeField(f, changes[f]))
+    fields.push(f)
   }
   if (!sets.length) return c.json({ error: 'Nothing to change.' }, 400)
   const numericIds = ids.map((v) => parseInt(String(v), 10)).filter((n) => Number.isFinite(n))
   if (!numericIds.length) return c.json({ error: 'No valid attendee ids.' }, 400)
-  const placeholders = numericIds.map(() => '?').join(',')
-  await c.env.DB.prepare(`UPDATE attendees SET ${sets.join(', ')} WHERE id IN (${placeholders})`)
-    .bind(...vals, ...numericIds).run()
-  await audit(c, 'attendees.bulk-update', 'attendee', numericIds.join(','), { count: numericIds.length, changes })
+  // D1 binds at most 100 parameters to one statement, so anything past about 90
+  // selected rows failed outright. The ids go in chunks, all in one batch, so the
+  // change still lands as a whole or not at all.
+  const CHUNK = Math.max(1, 90 - vals.length)
+  const parts: number[][] = []
+  for (let i = 0; i < numericIds.length; i += CHUNK) parts.push(numericIds.slice(i, i + CHUNK))
+  const ph = (p: number[]) => p.map(() => '?').join(',')
+  // What each row held before, so the entry reads old -> new per person and not
+  // just the value everyone was set to. Long runs are cut by the log's own cap.
+  const before: Record<string, any> = {}
+  for (const s of await c.env.DB.batch(parts.map(p =>
+      c.env.DB.prepare(`SELECT id, ${fields.join(', ')} FROM attendees WHERE id IN (${ph(p)})`).bind(...p)))) {
+    for (const r of ((s.results || []) as any[])) before[r.id] = fields.length === 1 ? r[fields[0]] : fields.map(f => r[f])
+  }
+  await c.env.DB.batch(parts.map(p =>
+    c.env.DB.prepare(`UPDATE attendees SET ${sets.join(', ')} WHERE id IN (${ph(p)})`).bind(...vals, ...p)))
+  await audit(c, 'attendees.bulk-update', 'attendee', numericIds.join(','), { count: numericIds.length, changes, before })
   return c.json({ success: true, updated: numericIds.length })
 })
 
@@ -9213,10 +9550,16 @@ app.post('/api/admin/attendees/bulk-delete', async (c) => {
   const ids: any[] = Array.isArray(body.ids) ? body.ids.slice(0, 500) : []
   const numericIds = ids.map((v) => parseInt(String(v), 10)).filter((n) => Number.isFinite(n))
   if (!numericIds.length) return c.json({ error: 'No attendees selected.' }, 400)
-  const placeholders = numericIds.map(() => '?').join(',')
-  const { results: doomed } = await c.env.DB.prepare(
-    `SELECT id, name, email FROM attendees WHERE id IN (${placeholders})`).bind(...numericIds).all()
-  await c.env.DB.prepare(`DELETE FROM attendees WHERE id IN (${placeholders})`).bind(...numericIds).run()
+  // Same 100-parameter limit as the bulk update: chunked, one batch each way.
+  const parts: number[][] = []
+  for (let i = 0; i < numericIds.length; i += 90) parts.push(numericIds.slice(i, i + 90))
+  const ph = (p: number[]) => p.map(() => '?').join(',')
+  const doomed: any[] = []
+  for (const s of await c.env.DB.batch(parts.map(p =>
+      c.env.DB.prepare(`SELECT id, name, email FROM attendees WHERE id IN (${ph(p)})`).bind(...p)))) {
+    doomed.push(...((s.results || []) as any[]))
+  }
+  await c.env.DB.batch(parts.map(p => c.env.DB.prepare(`DELETE FROM attendees WHERE id IN (${ph(p)})`).bind(...p)))
   await audit(c, 'attendees.bulk-delete', 'attendee', numericIds.join(','), { deleted: doomed })
   return c.json({ success: true, deleted: numericIds.length })
 })
@@ -9301,6 +9644,8 @@ app.post('/api/admin/attendees/bulk', async (c) => {
     }
   }
 
+  await audit(c, 'attendees.import', 'attendee', null,
+    { event_id, rows: attendees.length, imported: results.imported, skipped: results.skipped, errors: results.errors.slice(0, 10) })
   return c.json(results)
 })
 
@@ -9495,21 +9840,30 @@ app.post('/api/admin/exhibitors', async (c) => {
   const result = await c.env.DB.prepare(
     'INSERT INTO exhibitors (event_id, company_name, description, booth_number, booth_size, category, website_url, contact_email, contact_phone, products) VALUES (?,?,?,?,?,?,?,?,?,?)'
   ).bind(b.event_id, b.company_name, b.description||'', b.booth_number||'', b.booth_size||'standard', b.category||'', b.website_url||'', b.contact_email||'', b.contact_phone||'', b.products||'').run()
+  await audit(c, 'exhibitor.create', 'exhibitor', result.meta.last_row_id, { company_name: b.company_name, booth_number: b.booth_number || '' })
   return c.json({ id: result.meta.last_row_id, success: true }, 201)
 })
 
 app.put('/api/admin/exhibitors/:id', async (c) => {
   const id = c.req.param('id')
   const b = await c.req.json()
+  // Keyed in the column order of the UPDATE, so one object feeds the bind and the
+  // before/after in the audit entry.
+  const after = { company_name: b.company_name, description: b.description||'', booth_number: b.booth_number||'', booth_size: b.booth_size||'standard', category: b.category||'',
+    website_url: b.website_url||'', contact_email: b.contact_email||'', contact_phone: b.contact_phone||'', products: b.products||'' }
+  const before = await c.env.DB.prepare('SELECT ' + Object.keys(after).join(', ') + ' FROM exhibitors WHERE id = ?').bind(id).first()
   await c.env.DB.prepare(
     'UPDATE exhibitors SET company_name=?, description=?, booth_number=?, booth_size=?, category=?, website_url=?, contact_email=?, contact_phone=?, products=? WHERE id=?'
-  ).bind(b.company_name, b.description||'', b.booth_number||'', b.booth_size||'standard', b.category||'', b.website_url||'', b.contact_email||'', b.contact_phone||'', b.products||'', id).run()
+  ).bind(...Object.values(after), id).run()
+  await audit(c, 'exhibitor.update', 'exhibitor', id, { company_name: b.company_name, changes: changedFields(before, after) })
   return c.json({ success: true })
 })
 
 app.delete('/api/admin/exhibitors/:id', async (c) => {
   const id = c.req.param('id')
+  const before = await c.env.DB.prepare('SELECT company_name, booth_number, contact_email FROM exhibitors WHERE id = ?').bind(id).first() as any
   await c.env.DB.prepare('DELETE FROM exhibitors WHERE id=?').bind(id).run()
+  await audit(c, 'exhibitor.delete', 'exhibitor', id, before || {})
   return c.json({ success: true })
 })
 
@@ -10838,21 +11192,27 @@ app.post('/api/admin/announcements', async (c) => {
   const result = await c.env.DB.prepare(
     'INSERT INTO announcements (event_id, title, content, announcement_type, author_name, pinned) VALUES (?,?,?,?,?,?)'
   ).bind(b.event_id, b.title, b.content, b.announcement_type||'general', b.author_name||'Admin', b.pinned ? 1 : 0).run()
+  await audit(c, 'announcement.create', 'announcement', result.meta.last_row_id, { title: b.title, announcement_type: b.announcement_type || 'general', pinned: !!b.pinned })
   return c.json({ id: result.meta.last_row_id, success: true }, 201)
 })
 
 app.put('/api/admin/announcements/:id', async (c) => {
   const id = c.req.param('id')
   const b = await c.req.json()
+  const after = { title: b.title, content: b.content, announcement_type: b.announcement_type||'general', author_name: b.author_name||'Admin', pinned: b.pinned ? 1 : 0 }
+  const before = await c.env.DB.prepare('SELECT ' + Object.keys(after).join(', ') + ' FROM announcements WHERE id = ?').bind(id).first()
   await c.env.DB.prepare(
     'UPDATE announcements SET title=?, content=?, announcement_type=?, author_name=?, pinned=? WHERE id=?'
-  ).bind(b.title, b.content, b.announcement_type||'general', b.author_name||'Admin', b.pinned ? 1 : 0, id).run()
+  ).bind(...Object.values(after), id).run()
+  await audit(c, 'announcement.update', 'announcement', id, { title: b.title, changes: changedFields(before, after) })
   return c.json({ success: true })
 })
 
 app.delete('/api/admin/announcements/:id', async (c) => {
   const id = c.req.param('id')
+  const before = await c.env.DB.prepare('SELECT title, announcement_type FROM announcements WHERE id = ?').bind(id).first() as any
   await c.env.DB.prepare('DELETE FROM announcements WHERE id=?').bind(id).run()
+  await audit(c, 'announcement.delete', 'announcement', id, before || {})
   return c.json({ success: true })
 })
 
@@ -10941,15 +11301,20 @@ async function campaignSendOne(c: any, kind: string, refId: any, r: any):
 
 // Build the recipient list for a campaign. Everyone here has an address; the
 // audience decides who among them is in scope.
-async function campaignAudienceRows(c: any, kind: string, audience: string): Promise<any[]> {
+// includePanelOnly: a campus-panel registrant who has not said yes to the conference
+// (main_event = 0) is not written to by default - the account-ready mail, the RSVP
+// chase and the thank-you all presume a conference registration. An explicit
+// include_panel_only:true on the request opts them back in.
+async function campaignAudienceRows(c: any, kind: string, audience: string, includePanelOnly: boolean = false): Promise<any[]> {
   const eventId = 1
+  const mc = includePanelOnly ? '' : await mainEventClause(c)
   if (kind === 'profile_reminder') {
     // Same predicate the one-at-a-time chase uses, so the campaign cannot pick
     // somebody it would then skip. 'photo' narrows it to the missing photos,
     // which is the gap worth chasing on its own.
     const extra = audience === 'photo' ? " AND COALESCE(TRIM(avatar_url),'') = ''" : ''
     const { results } = await c.env.DB.prepare(
-      `SELECT id, name, email FROM attendees WHERE ${NEEDS_REMINDER_SQL}${extra} ORDER BY id`
+      `SELECT id, name, email FROM attendees WHERE ${NEEDS_REMINDER_SQL}${extra}${mc} ORDER BY id`
     ).bind(eventId).all()
     return (results as any[]) || []
   }
@@ -10959,7 +11324,7 @@ async function campaignAudienceRows(c: any, kind: string, audience: string): Pro
   else if (audience === 'confirmed') where += " AND rsvp_status = 'confirmed'"
   else if (audience === 'checked_in') where += ' AND checked_in_at IS NOT NULL'
   const { results } = await c.env.DB.prepare(
-    `SELECT id, name, email FROM attendees WHERE event_id = ? AND ${where} ORDER BY id`
+    `SELECT id, name, email FROM attendees WHERE event_id = ? AND ${where}${mc} ORDER BY id`
   ).bind(eventId).all()
   return (results as any[]) || []
 }
@@ -10985,7 +11350,7 @@ app.post('/api/admin/campaigns', async (c) => {
     ).bind(...ids).all()
     rows = (results as any[]) || []
   } else {
-    rows = await campaignAudienceRows(c, kind, audience)
+    rows = await campaignAudienceRows(c, kind, audience, body.include_panel_only === true)
   }
   // Undeliverable addresses are dropped here rather than bounced later. They are
   // reported back so they can be corrected on the attendee and picked up by a
@@ -11282,11 +11647,11 @@ app.get('/api/admin/events/:id/growth', async (c) => {
 // Admin: Bulk operations
 app.post('/api/admin/events/:id/broadcast', async (c) => {
   const eventId = c.req.param('id')
-  const { title, content, announcement_type, author_name, email_it, audience } = await c.req.json()
+  const { title, content, announcement_type, author_name, email_it, audience, include_panel_only } = await c.req.json()
   const result = await c.env.DB.prepare(
     'INSERT INTO announcements (event_id, title, content, announcement_type, author_name, pinned) VALUES (?,?,?,?,?,1)'
   ).bind(eventId, title, content, announcement_type || 'urgent', author_name || 'Event Admin').run()
-  await audit(c, 'announcement.broadcast', 'announcement', result.meta.last_row_id, { title, email_it: !!email_it, audience })
+  await audit(c, 'announcement.broadcast', 'announcement', result.meta.last_row_id, { title, email_it: !!email_it, audience, include_panel_only: include_panel_only === true })
   // Posting a pinned notice only reaches people already in the app. When the
   // operator asks for it, return the recipient list so the panel can send too.
   let recipients: any[] = []
@@ -11294,8 +11659,11 @@ app.post('/api/admin/events/:id/broadcast', async (c) => {
     const who = audience === 'checked_in'
       ? 'AND checked_in_at IS NOT NULL'
       : audience === 'confirmed' ? "AND rsvp_status = 'confirmed'" : ''
+    // Panel-only registrants (main_event = 0) are left out unless asked for, as
+    // in campaignAudienceRows.
+    const mc = include_panel_only === true ? '' : await mainEventClause(c)
     const r = await c.env.DB.prepare(
-      `SELECT id, name, email FROM attendees WHERE event_id = ? AND email IS NOT NULL AND email != '' ${who} ORDER BY id`
+      `SELECT id, name, email FROM attendees WHERE event_id = ? AND email IS NOT NULL AND email != '' ${who}${mc} ORDER BY id`
     ).bind(eventId).all()
     recipients = (r.results as any[]) || []
   }
@@ -11533,7 +11901,9 @@ app.post('/api/admin/inquiries/:id/reply', async (c) => {
 // Admin: Delete an inquiry
 app.delete('/api/admin/inquiries/:id', async (c) => {
   const id = c.req.param('id')
+  const before = await c.env.DB.prepare('SELECT inquiry_type, name, email, subject, status FROM inquiries WHERE id = ?').bind(id).first() as any
   await c.env.DB.prepare('DELETE FROM inquiries WHERE id = ?').bind(id).run()
+  await audit(c, 'inquiry.delete', 'inquiry', id, before || {})
   return c.json({ success: true })
 })
 
@@ -23005,6 +23375,13 @@ function adminPageHTML(): string {
     // (the whole admin script is one server-side template literal), so a newline
     // inside a JS string has to be built rather than typed.
     var NL = String.fromCharCode(10);
+    // One list of pass names for every picker on this page (the inline cell, Set
+    // pass, Add and Edit Attendee), straight from the server's BADGE_TYPES; and the
+    // payment states an admin may set. Serialised here so the page cannot drift
+    // from what the API accepts.
+    var BADGE_TYPES = ${JSON.stringify(BADGE_TYPES)};
+    var PAYMENT_STATUSES = ${JSON.stringify(PAYMENT_STATUSES)};
+    var INVOICE_SETTING_KEYS = ${JSON.stringify(INVOICE_SETTING_KEYS)};
     const EID = 1;
     let currentSection = 'overview';
     let chartInstances = {};
@@ -23160,13 +23537,32 @@ function adminPageHTML(): string {
       stopAutoRefresh();
     }
 
-    // CSV export is a file download, so it can't carry an Authorization header.
-    // Pass the admin secret as ?token= instead (the server guard accepts it).
+    // A navigation cannot carry a header, so this used to put the admin secret in
+    // the URL - and so into browser history, proxy logs and the server log. Fetched
+    // with the normal bearer header instead and handed to the browser as a Blob;
+    // the secret never leaves the header. Shared with the not-arrived list.
+    async function downloadCsvViaApi(url, filename) {
+      var r;
+      try { r = await fetch(url, { headers: authHeaders() }); }
+      catch (e) { toast('Download failed: ' + (e.message || 'network error'), 'error'); return; }
+      if (r.status === 401) { handleAuthFailure(); return; }
+      if (!r.ok) {
+        var j = await r.json().catch(function () { return {}; });
+        toast(j.error || ('Download failed (HTTP ' + r.status + ')'), 'error');
+        return;
+      }
+      var href = URL.createObjectURL(await r.blob());
+      var a = document.createElement('a');
+      a.href = href; a.download = filename;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(function () { URL.revokeObjectURL(href); }, 1000);
+    }
     function exportAttendeesCsv(ev) {
       if (ev) ev.preventDefault();
-      const t = getAdminToken();
-      if (!t) { handleAuthFailure(); return; }
-      window.location.href = '/api/admin/events/' + EID + '/attendees/export?token=' + encodeURIComponent(t);
+      downloadCsvViaApi('/api/admin/events/' + EID + '/attendees/export', 'attendees_export.csv');
+    }
+    function downloadNotArrived() {
+      downloadCsvViaApi('/api/admin/events/' + EID + '/attendees/not-arrived.csv', 'not-arrived.csv');
     }
 
     // A non-JSON body used to surface as the browser's own "JSON.parse: unexpected
@@ -23739,11 +24135,30 @@ function adminPageHTML(): string {
             }).join('')
           : '<p class="text-gray-500 text-sm py-3">Nobody has been checked in yet.</p>';
 
+        // Arrivals per quarter hour today, so the queue building at the door is
+        // visible from here; and who admitted how many, so a desk that has stopped
+        // scanning shows up.
+        var buckets = stats.buckets || [];
+        var maxB = buckets.reduce(function (m, b) { return Math.max(m, Number(b.n) || 0); }, 0);
+        var bucketHtml = buckets.length
+          ? buckets.map(function (b) {
+              return '<div class="flex items-center gap-3 text-sm py-1">' +
+                '<div class="w-14 shrink-0 text-gray-400 text-xs">' + deskEsc(b.bucket) + '</div>' +
+                '<div class="flex-1 h-2 rounded-full bg-white/10 overflow-hidden"><div class="h-full bg-emerald-500" style="width:' + (maxB ? Math.round((b.n / maxB) * 100) : 0) + '%"></div></div>' +
+                '<div class="w-10 text-right text-gray-400 text-xs">' + (Number(b.n) || 0) + '</div></div>';
+            }).join('')
+          : '<p class="text-gray-500 text-sm py-2">No arrivals today yet.</p>';
+        var desks = (stats.byDesk || []).map(function (d) {
+          return '<div class="flex items-center justify-between gap-3 text-sm py-1 border-b border-white/5">' +
+            '<div class="truncate text-gray-300">' + deskEsc(d.desk) + '</div>' +
+            '<div class="text-xs text-gray-400 shrink-0">' + (Number(d.today) || 0) + ' today &middot; ' + (Number(d.n) || 0) + ' total</div></div>';
+        }).join('') || '<p class="text-gray-500 text-sm py-2">Nobody has scanned anyone in yet.</p>';
+
         var rows = (team || []).map(function (s) {
           return '<div class="flex items-center gap-3 py-2.5 border-b border-white/5">' +
-            '<div class="flex-1 min-w-0"><div class="text-sm text-gray-200 truncate">' + deskEsc(s.name) +
+            '<div class="flex-1 min-w-0"><div class="text-sm text-gray-200 truncate">' + deskEsc(s.name) + ' ' + roleChip(s.role) +
               (s.active ? '' : ' <span class="text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-300">disabled</span>') + '</div>' +
-              '<div class="text-[11px] text-gray-500">' + deskEsc(s.username) +
+              '<div class="text-[11px] text-gray-500">' + deskEsc(s.username) + (s.email ? ' &middot; ' + deskEsc(s.email) : '') +
               (s.last_login_at ? ' &middot; last signed in ' + fmtIst(s.last_login_at) : ' &middot; never signed in') + '</div></div>' +
             '<button onclick="renameStaff(' + s.id + ')" class="px-2.5 py-1.5 rounded-lg text-[11px] glass hover:bg-white/10 text-gray-300">Rename</button>' +
             '<button onclick="resetStaffPassword(' + s.id + ')" class="px-2.5 py-1.5 rounded-lg text-[11px] glass hover:bg-white/10 text-gray-300">Reset password</button>' +
@@ -23759,6 +24174,9 @@ function adminPageHTML(): string {
                 '<h3 class="text-sm font-semibold text-white mb-3">Check-in by pass type</h3>' + (tiers || '<p class="text-gray-500 text-sm">No registrations yet.</p>') +
                 '<h3 class="text-sm font-semibold text-white mt-6 mb-1">Latest arrivals <span class="text-[10px] font-normal text-gray-500">(IST)</span></h3>' +
                 '<div class="max-h-80 overflow-y-auto pr-1">' + recent + '</div>' +
+                '<h3 class="text-sm font-semibold text-white mt-6 mb-1">Arrivals today, per quarter hour <span class="text-[10px] font-normal text-gray-500">(IST)</span></h3>' + bucketHtml +
+                '<h3 class="text-sm font-semibold text-white mt-6 mb-1">Per desk</h3>' + desks +
+                '<button onclick="downloadNotArrived()" class="mt-4 px-3 py-2 rounded-lg text-xs font-medium glass hover:bg-white/10 text-gray-200" title="Every conference registrant not yet checked in: name, email, mobile, company, pass"><i class="fas fa-file-csv mr-1.5"></i>Download not-arrived list</button>' +
               '</div>' +
               '<div class="glass rounded-xl p-5 border border-white/5">' +
                 '<h3 class="text-sm font-semibold text-white mb-1">Desk accounts</h3>' +
@@ -23774,6 +24192,7 @@ function adminPageHTML(): string {
                     '<option value="finance">Finance - raise and email invoices</option>' +
                     '<option value="admin">Admin - the whole panel, changes recorded by name</option>' +
                   '</select>' +
+                  (identityIsAuthenticated() ? '' : '<p class="text-[11px] text-amber-300/80">An admin account can only be created from a signed-in admin account, not with the shared password.</p>') +
                   '<div class="flex gap-2">' +
                     '<input id="ns-pass" autocomplete="off" placeholder="Password (min 8)" class="flex-1 px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm">' +
                     '<button onclick="suggestDeskPassword()" class="px-3 py-2 rounded-lg text-xs glass hover:bg-white/10 text-gray-300">Suggest</button>' +
@@ -23789,6 +24208,14 @@ function adminPageHTML(): string {
         if (err && err.message === 'unauthorized') return;
         sectionError(el, 'the badge desk', err, 'loadBadgeDesk()');
       }
+    }
+
+    // Which door the account opens - the whole panel, the invoice desk, or the
+    // scanner. The list did not say, so an admin login looked like any other.
+    function roleChip(role) {
+      var r = String(role || 'desk');
+      var tone = r === 'admin' ? 'bg-amber-500/20 text-amber-300' : r === 'finance' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-sky-500/20 text-sky-300';
+      return '<span class="text-[10px] px-1.5 py-0.5 rounded ' + tone + '">' + deskEsc(r) + '</span>';
     }
 
     function statCard(label, value, icon, color) {
@@ -24607,6 +25034,7 @@ function adminPageHTML(): string {
           <button onclick="bulkSetField('badge_type')" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-primary-700 text-white on-dark hover:bg-primary-800"><i class="fas fa-id-badge mr-1"></i>Set pass</button>
           <button onclick="bulkSetField('lunch_inclusion')" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-amber-700 text-white on-dark hover:bg-amber-800"><i class="fas fa-utensils mr-1"></i>Set lunch</button>
           <button onclick="bulkSetField('rsvp_status')" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-emerald-700 text-white on-dark hover:bg-emerald-800"><i class="fas fa-clipboard-check mr-1"></i>Set RSVP</button>
+          <button onclick="bulkSetField('payment_status')" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-teal-700 text-white on-dark hover:bg-teal-800"><i class="fas fa-money-bill mr-1"></i>Set payment</button>
           <button onclick="bulkNotify()" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-blue-600 text-white on-dark hover:bg-blue-700"><i class="fas fa-envelope mr-1"></i>Notify</button>
           <button onclick="bulkExportSelected()" class="px-2.5 py-1.5 rounded-lg text-xs glass hover:bg-white/10"><i class="fas fa-download mr-1"></i>Export</button>
           <button onclick="bulkDelete()" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-red-600 text-white on-dark hover:bg-red-700"><i class="fas fa-trash mr-1"></i>Delete</button>
@@ -24631,7 +25059,7 @@ function adminPageHTML(): string {
                   <td class="text-xs text-gray-400 ie-cell" onclick="inlineEdit(this, \${a.id}, 'country', '\${esc(a.country||'')}')">\${a.country ? escH(a.country) : '<span class=&quot;text-gray-600&quot;>-</span>'}</td>
                   <td class="text-xs">\${safeUrl(a.linkedin_url) ? '<a href="'+safeUrl(a.linkedin_url)+'" target="_blank" class="text-blue-400 hover:text-blue-300"><i class="fab fa-linkedin"></i></a>' : '<span class="text-gray-600">-</span>'}</td>
                   <td class="ie-cell" onclick="inlineMultiSelect(this, \${a.id}, 'role', '\${esc(a.role||'attendee')}')"><div class="flex flex-wrap gap-0.5">\${(a.role||'attendee').split(',').map(r=>'<span class=&quot;px-1.5 py-0.5 rounded text-[9px] bg-primary-500/20 text-primary-300 whitespace-nowrap cursor-pointer&quot;>'+escH(r.trim())+'</span>').join('')}</div></td>
-                  <td class="ie-cell" onclick="inlineSelect(this, \${a.id}, 'badge_type', '\${esc(a.badge_type)}', ['Organiser','VIP Guest','Exhibitor','Delegate','Exhibition Speaker','Jury','Visitor Pass','Media','Support Staff','Investor','Felicitation Delegate','VIP Pass','Speaker','Startup Pitcher'])"><span class="px-2 py-0.5 rounded-full text-[10px] cursor-pointer hover:ring-1 hover:ring-primary-400/50 \${getBadgeClass(a.badge_type)}">\${escH(a.badge_type)}</span></td>
+                  <td class="ie-cell" onclick="inlineSelect(this, \${a.id}, 'badge_type', '\${esc(a.badge_type)}', BADGE_TYPES)"><span class="px-2 py-0.5 rounded-full text-[10px] cursor-pointer hover:ring-1 hover:ring-primary-400/50 \${getBadgeClass(a.badge_type)}">\${escH(a.badge_type)}</span></td>
                   <td class="ie-cell" onclick="inlineSelect(this, \${a.id}, 'rsvp_status', '\${a.rsvp_status||''}', ['','confirmed','maybe','declined'])"><span class="px-2 py-0.5 rounded-full text-[10px] font-medium cursor-pointer hover:ring-1 hover:ring-primary-400/50 \${a.rsvp_status === 'confirmed' ? 'bg-green-500/20 text-green-400' : a.rsvp_status === 'declined' ? 'bg-red-500/20 text-red-400' : a.rsvp_status === 'maybe' ? 'bg-amber-500/20 text-amber-400' : 'bg-gray-500/10 text-gray-500'}">\${a.rsvp_status ? (a.rsvp_status === 'confirmed' ? '✓ Yes' : a.rsvp_status === 'declined' ? '✗ No' : '? Maybe') : '—'}</span></td>
                   <td class="ie-cell" onclick="inlineSelect(this, \${a.id}, 'lunch_inclusion', '\${a.lunch_inclusion||'Yes'}', ['Yes','No'])"><span class="px-1.5 py-0.5 rounded text-[10px] font-medium cursor-pointer hover:ring-1 hover:ring-primary-400/50 \${(a.lunch_inclusion||'Yes')==='Yes' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}">\${a.lunch_inclusion||'Yes'}</span></td>
                   <td class="text-xs ie-cell" onclick="inlineSelect(this, \${a.id}, 'arrival_time', '\${a.arrival_time||''}', ['','09:00','09:30','10:00','10:30','11:00','11:30','12:00','12:30','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30'])">\${a.arrival_time ? '<span class="px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 cursor-pointer hover:ring-1 hover:ring-blue-400/50">'+ (parseInt(a.arrival_time) > 12 ? (parseInt(a.arrival_time)-12)+':'+a.arrival_time.split(':')[1]+' PM' : a.arrival_time+' AM') +'</span>' : '<span class="text-gray-600 cursor-pointer hover:text-gray-400">-</span>'}</td>
@@ -24644,6 +25072,7 @@ function adminPageHTML(): string {
                     <button onclick='adminDownloadPass(\${JSON.stringify({id:a.id,name:a.name,email:a.email,company:a.company||"",job_title:a.job_title||"",badge_type:a.badge_type||"Delegate",avatar_url:a.avatar_url||"",role:a.role||"",website_url:a.website_url||""}).replace(/&/g,"&amp;").replace(/'/g,"&#39;")})' class="px-2 py-1 rounded text-xs bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30" title="Download Pass"><i class="fas fa-id-badge"></i></button>
                     <button onclick='adminDownloadSocialCard(\${JSON.stringify({id:a.id,name:a.name,email:a.email,company:a.company||"",job_title:a.job_title||"",badge_type:a.badge_type||"Delegate",avatar_url:a.avatar_url||"",role:a.role||"",website_url:a.website_url||""}).replace(/&/g,"&amp;").replace(/'/g,"&#39;")})' class="px-2 py-1 rounded text-xs bg-violet-500/20 text-violet-300 hover:bg-violet-500/30" title="Download their &quot;I&#39;m attending&quot; social card"><i class="fas fa-share-alt"></i></button>
                     <button onclick="notifyAttendeeById(\${a.id})" class="px-2 py-1 rounded text-xs bg-amber-500/20 text-amber-300 hover:bg-amber-500/30" title="Send notification email"><i class="fas fa-envelope"></i></button>
+                    \${a.checked_in_at ? '<button onclick="resetCheckin(' + Number(a.id) + ')" class="px-2 py-1 rounded text-xs bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30" title="Checked in ' + escH(a.checked_in_at) + (a.checked_in_by ? ' by ' + escH(a.checked_in_by) : '') + '. Click to reset the check-in so they can be admitted again."><i class="fas fa-door-open"></i></button>' : ''}
                     <button onclick="deleteAttendee(\${a.id})" class="px-2 py-1 rounded text-xs bg-red-500/20 text-red-400 hover:bg-red-500/30" title="Delete"><i class="fas fa-trash"></i></button>
                   </td>
                 </tr>\`; }).join('')}
@@ -24890,11 +25319,32 @@ function adminPageHTML(): string {
     // a request per row, so a 500-person change is one statement and one audit
     // entry instead of 500 of each.
     var BULK_FIELD_OPTIONS = {
-      badge_type: ['Organiser','VIP Guest','Exhibitor','Delegate','Exhibition Speaker','Jury','Visitor Pass','Media','Support Staff','Investor','Felicitation Delegate','VIP Pass','Speaker','Startup Pitcher'],
+      badge_type: BADGE_TYPES,
       lunch_inclusion: ['Yes','No'],
       rsvp_status: ['confirmed','maybe','declined',''],
+      payment_status: PAYMENT_STATUSES,
     };
-    var BULK_FIELD_LABELS = { badge_type: 'pass type', lunch_inclusion: 'lunch', rsvp_status: 'RSVP' };
+    var BULK_FIELD_LABELS = { badge_type: 'pass type', lunch_inclusion: 'lunch', rsvp_status: 'RSVP', payment_status: 'payment status' };
+    // <option>s for a pass picker, from the one list. The current value is kept even
+    // when it is no longer on the list, so opening and saving a dialog cannot change
+    // somebody's pass by accident.
+    function badgeOptions(current) {
+      var opts = BADGE_TYPES.slice();
+      if (current && opts.indexOf(current) < 0) opts.unshift(current);
+      return opts.map(function (b) { return '<option value="' + escH(b) + '"' + (b === current ? ' selected' : '') + '>' + escH(b) + '</option>'; }).join('');
+    }
+    // The desk can undo a check-in for fifteen minutes; after that its screen says
+    // to ask the admin desk. This is the admin desk.
+    async function resetCheckin(id) {
+      if (!confirm('Reset the check-in for attendee #' + id + '?' + NL + NL + 'They will show as not arrived and can be admitted again at the door. The old stamp and desk name stay in the audit log.')) return;
+      try {
+        var r = await api.post('/api/admin/attendees/' + id + '/checkin-reset', {});
+        if (r && r.error) throw new Error(r.error);
+        toast('Check-in reset for #' + id);
+        lastAttendees = null;
+        loadAdminAttendees();
+      } catch (e) { toast('Could not reset the check-in: ' + (e.message || ''), 'error'); }
+    }
     function bulkSetField(field) {
       var ids = attSelectedIds();
       if (!ids.length) { toast('Nothing selected.', 'error'); return; }
@@ -25891,7 +26341,7 @@ function adminPageHTML(): string {
                 </select></div>
               <div><label class="text-xs text-gray-400 mb-1 block">Badge Type</label>
                 <select id="na-badge" class="w-full px-3 py-2 rounded-lg text-sm">
-                  \${['Delegate','Organiser','VIP Guest','Exhibitor','Exhibition Speaker','Jury','Visitor Pass','Media','Support Staff','Investor','Felicitation Delegate','VIP Pass'].map(b=>'<option value="'+b+'">'+b+'</option>').join('')}
+                  \${badgeOptions('Delegate')}
                 </select></div>
               <div><label class="text-xs text-gray-400 mb-1 block">Lunch</label>
                 <select id="na-lunch" class="w-full px-3 py-2 rounded-lg text-sm">
@@ -25960,10 +26410,10 @@ function adminPageHTML(): string {
         <form id="edit-att-form" class="flex flex-col h-full max-h-[90vh]">
           <div class="p-6 pb-3 border-b border-white/10 shrink-0">
             <div class="flex items-center gap-3">
-              <img src="\${getAvatarUrl(a.email, a.name, 96, a.avatar_url)}" alt="\${a.name}" class="w-12 h-12 rounded-full object-cover">
+              <img src="\${getAvatarUrl(a.email, a.name, 96, a.avatar_url)}" alt="\${escH(a.name)}" class="w-12 h-12 rounded-full object-cover">
               <div>
                 <h3 class="text-lg font-bold">Edit Attendee #\${a.id}</h3>
-                <p class="text-xs text-gray-400">\${a.name} &middot; \${a.email}</p>
+                <p class="text-xs text-gray-400">\${escH(a.name)} &middot; \${escH(a.email)}</p>
               </div>
             </div>
           </div>
@@ -26018,14 +26468,14 @@ function adminPageHTML(): string {
                 </select></div>
               <div><label class="text-xs text-gray-400 mb-1 block">Badge</label>
                 <select id="ea-badge" class="w-full px-3 py-2 rounded-lg text-sm">
-                  \${['Delegate Pass','VIP Pass','Academic Pass','Visitor Pass','Media Pass','Organiser','VIP Guest','Exhibitor','Delegate','Exhibition Speaker','Jury','Media','Support Staff','Investor','Felicitation Delegate'].map(b=>'<option value="'+b+'" '+(a.badge_type===b?'selected':'')+'>'+b+'</option>').join('')}
+                  \${badgeOptions(a.badge_type)}
                 </select></div>
               <div><label class="text-xs text-gray-400 mb-1 block">Lunch</label>
                 <select id="ea-lunch" class="w-full px-3 py-2 rounded-lg text-sm">
                   \${['Yes','No'].map(l=>'<option value="'+l+'" '+((a.lunch_inclusion||'Yes')===l?'selected':'')+'>'+l+'</option>').join('')}
                 </select></div>
             </div>
-            <div class="grid grid-cols-2 gap-3">
+            <div class="grid grid-cols-3 gap-3">
               <div><label class="text-xs text-gray-400 mb-1 block">Arrival Time</label>
                 <select id="ea-arrival" class="w-full px-3 py-2 rounded-lg text-sm">
                   <option value="">Not set</option>
@@ -26033,6 +26483,10 @@ function adminPageHTML(): string {
                 </select></div>
               <div><label class="text-xs text-gray-400 mb-1 block">Notified</label>
                 <div class="px-3 py-2 rounded-lg text-sm glass \${a.notified_at ? 'text-green-400' : 'text-gray-500'}">\${a.notified_at ? '<i class="fas fa-check-circle mr-1"></i>'+new Date(a.notified_at).toLocaleDateString() : '<i class="fas fa-times-circle mr-1"></i>Not yet'}</div></div>
+              <div><label class="text-xs text-gray-400 mb-1 block">Payment status</label>
+                <select id="ea-payment-status" class="w-full px-3 py-2 rounded-lg text-sm" title="Only createInvoice used to write this. Paid unlocks the pass on a paid tier; every change is in the audit log with the old value.">
+                  \${PAYMENT_STATUSES.map(p=>'<option value="'+p+'" '+((a.payment_status||'paid')===p?'selected':'')+'>'+p+'</option>').join('')}
+                </select></div>
             </div>
             <div><label class="text-xs text-gray-400 mb-1 block">Bio</label><textarea id="ea-bio" autocomplete="off" rows="2" class="w-full px-3 py-2 rounded-lg text-sm">\${escH(a.bio)}</textarea></div>
             <div><label class="text-xs text-gray-400 mb-1 block">Interests (comma-separated)</label><input id="ea-interests" autocomplete="off" value="\${escH(a.interests)}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
@@ -26064,6 +26518,7 @@ function adminPageHTML(): string {
           linkedin_url: document.getElementById('ea-linkedin').value,
           role: document.getElementById('ea-role').value,
           badge_type: document.getElementById('ea-badge').value,
+          payment_status: document.getElementById('ea-payment-status').value,
           lunch_inclusion: document.getElementById('ea-lunch').value,
           arrival_time: document.getElementById('ea-arrival').value,
           bio: document.getElementById('ea-bio').value,
@@ -26627,14 +27082,14 @@ function adminPageHTML(): string {
             const hasActivity = a.last_login_at || a.notified_at || a.rsvp_status;
             html += \`<tr class="border-t border-white/5 \${ai === 0 ? 'bg-white/[0.03]' : ''}">
               <td class="py-1.5 px-2 text-gray-500">#\${a.id}</td>
-              <td class="py-1.5 px-2 font-medium \${ai === 0 ? 'text-white' : 'text-gray-300'}">\${a.name}</td>
-              <td class="py-1.5 px-2 text-gray-400">\${a.email}</td>
-              <td class="py-1.5 px-2 text-gray-400">\${a.mobile || '-'}</td>
-              <td class="py-1.5 px-2 text-gray-400">\${a.company || '-'}</td>
-              <td class="py-1.5 px-2"><span class="px-1.5 py-0.5 rounded text-[10px] \${getBadgeClass(a.badge_type)}">\${a.badge_type}</span></td>
-              <td class="py-1.5 px-2">\${a.rsvp_status ? '<span class="text-green-400">'+a.rsvp_status+'</span>' : '<span class="text-gray-600">—</span>'}</td>
+              <td class="py-1.5 px-2 font-medium \${ai === 0 ? 'text-white' : 'text-gray-300'}">\${escH(a.name)}</td>
+              <td class="py-1.5 px-2 text-gray-400">\${escH(a.email)}</td>
+              <td class="py-1.5 px-2 text-gray-400">\${escH(a.mobile || '-')}</td>
+              <td class="py-1.5 px-2 text-gray-400">\${escH(a.company || '-')}</td>
+              <td class="py-1.5 px-2"><span class="px-1.5 py-0.5 rounded text-[10px] \${getBadgeClass(a.badge_type)}">\${escH(a.badge_type || '')}</span></td>
+              <td class="py-1.5 px-2">\${a.rsvp_status ? '<span class="text-green-400">'+escH(a.rsvp_status)+'</span>' : '<span class="text-gray-600">—</span>'}</td>
               <td class="py-1.5 px-2">\${ai === 0 ? '<span class="text-purple-300 font-semibold">Primary</span>' : '<span class="text-amber-400">'+sim+'</span>'}</td>
-              <td class="py-1.5 px-2"><button onclick="deleteDuplicate('+a.id+', this)" class="px-2 py-1 rounded text-[10px] font-medium '+(hasActivity ? 'bg-amber-500/20 text-amber-300 hover:bg-amber-500/30' : 'bg-red-500/20 text-red-400 hover:bg-red-500/30')+' transition" title="'+(hasActivity ? 'Has activity — review before deleting' : 'No activity — safe to delete')+'">'+(hasActivity ? '<i class="fas fa-exclamation-triangle mr-1"></i>' : '')+'<i class="fas fa-trash"></i> Delete</button></td>
+              <td class="py-1.5 px-2"><button onclick="deleteDuplicate(\${Number(a.id)}, this)" class="px-2 py-1 rounded text-[10px] font-medium \${hasActivity ? 'bg-amber-500/20 text-amber-300 hover:bg-amber-500/30' : 'bg-red-500/20 text-red-400 hover:bg-red-500/30'} transition" title="\${hasActivity ? 'Has activity — review before deleting' : 'No activity — safe to delete'}">\${hasActivity ? '<i class="fas fa-exclamation-triangle mr-1"></i>' : ''}<i class="fas fa-trash"></i> Delete</button></td>
             </tr>\`;
           });
           html += \`</tbody></table></div></div>\`;
@@ -31881,6 +32336,26 @@ function adminPageHTML(): string {
             </form>
           </div>
 
+          <!-- Invoicing. These keys had no UI at all: they were set by hand in D1. -->
+          <div class="glass rounded-2xl p-6">
+            <div class="flex items-center gap-3 mb-5">
+              <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center">
+                <i class="fas fa-file-invoice text-white"></i>
+              </div>
+              <div>
+                <h3 class="font-bold text-lg">Invoicing</h3>
+                <p class="text-xs text-gray-400">What prints on every GST invoice. One cannot be raised without the legal name and GSTIN.</p>
+              </div>
+            </div>
+            <form id="settings-invoice-form" class="space-y-4">
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">\${invoiceSettingsFields(settings)}</div>
+              <p class="text-xs text-gray-500">The next invoice number is a counter: it moves on by itself with every invoice issued and never reuses a number. Change it only to jump the series forward to where the accountant's books are.</p>
+              <button type="submit" class="px-6 py-2.5 rounded-xl font-semibold text-sm text-white bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 transition-all">
+                <i class="fas fa-save mr-2"></i>Save invoicing
+              </button>
+            </form>
+          </div>
+
           <!-- Email Status -->
           <div class="glass rounded-2xl p-6">
             <div class="flex items-center gap-3 mb-4">
@@ -31990,6 +32465,23 @@ function adminPageHTML(): string {
       loadAuditLog();
       loadCampaignList();
 
+      // Saves through the same settings PUT as the email form; only the keys on
+      // this card are sent, so nothing else is touched.
+      var invForm = document.getElementById('settings-invoice-form');
+      if (invForm) invForm.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        var btn = e.target.querySelector('button[type="submit"]');
+        var orig = btn.innerHTML;
+        var body = {};
+        INVOICE_SETTING_KEYS.forEach(function (k) { var el = document.getElementById('set-' + k); if (el) body[k] = el.value.trim(); });
+        // A counter that is not a whole number would break every invoice after it.
+        if (body.inv_next_number && !/^[0-9]+$/.test(body.inv_next_number)) { toast('The next invoice number must be a whole number.', 'error'); return; }
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Saving...'; btn.disabled = true;
+        try { await api.put('/api/admin/settings', body); toast('Invoicing settings saved'); }
+        catch (err) { toast('Could not save invoicing settings: ' + (err.message || ''), 'error'); }
+        finally { btn.innerHTML = orig; btn.disabled = false; }
+      });
+
       // Attach form handler
       document.getElementById('settings-email-form').addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -32019,6 +32511,24 @@ function adminPageHTML(): string {
       });
     }
 
+    // The Invoicing card, one input per INVOICE_SETTING_KEYS entry, so a key added
+    // on the server appears here without a matching edit.
+    var INVOICE_FIELD_LABELS = {
+      inv_legal_name: 'Legal name (as registered for GST)', inv_address: 'Registered address', inv_gstin: 'GSTIN', inv_pan: 'PAN',
+      inv_state: 'State', inv_state_code: 'State code (27 = Maharashtra)', inv_sac: 'SAC code', inv_prefix: 'Invoice number prefix',
+      inv_signatory: 'Authorised signatory', inv_contact_email: 'Contact email on the invoice', inv_contact_phone: 'Contact phone on the invoice',
+      inv_next_number: 'Next invoice number', inv_brand_line: 'Brand line under the name', inv_bank: 'Bank details', inv_footer_note: 'Footer note',
+    };
+    function invoiceSettingsFields(settings) {
+      return INVOICE_SETTING_KEYS.map(function (k) {
+        var multi = k === 'inv_address' || k === 'inv_bank' || k === 'inv_footer_note';
+        var field = multi
+          ? '<textarea id="set-' + k + '" rows="2" autocomplete="off" class="w-full px-4 py-2.5 rounded-xl text-sm">' + escH(settings[k] || '') + '</textarea>'
+          : '<input type="text" id="set-' + k + '" autocomplete="off" value="' + escH(settings[k] || '') + '" class="w-full px-4 py-2.5 rounded-xl text-sm">';
+        return '<div class="' + (multi ? 'md:col-span-2' : '') + '"><label class="block text-xs font-medium text-gray-400 mb-1.5">' + escH(INVOICE_FIELD_LABELS[k] || k) + '</label>' + field + '</div>';
+      }).join('');
+    }
+
     async function loadAuditLog() {
       var el = document.getElementById('audit-log-body');
       if (!el) return;
@@ -32043,8 +32553,13 @@ function adminPageHTML(): string {
       var TONE = {
         'attendees.bulk-delete': 'text-red-300',
         'attendee.delete': 'text-red-300',
+        'attendee.checkin-reset': 'text-amber-300',
         'inquiry.reply': 'text-emerald-300',
+        'inquiry.delete': 'text-red-300',
         'announcement.broadcast': 'text-amber-300',
+        'staff.create': 'text-amber-300',
+        'invoice.create': 'text-emerald-300',
+        'desk.walkin': 'text-cyan-300',
       };
       el.innerHTML = rows.map(function (e) {
         var tone = TONE[e.action] || 'text-gray-200';
