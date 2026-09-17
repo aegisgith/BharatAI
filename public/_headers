@@ -1,0 +1,10 @@
+# Headers for the static marketing site. Pages applies this file to static
+# assets only; the app and admin responses come from the worker, which sets the
+# same headers in code (see the middleware after `const app = new Hono` in
+# src/index.tsx). No CSP yet: the pages run inline scripts and load fonts and
+# images from several hosts, so a CSP needs its own change with a report-only
+# phase first.
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  X-Frame-Options: SAMEORIGIN

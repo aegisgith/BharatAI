@@ -30,6 +30,41 @@ const app = new Hono<{ Bindings: Bindings }>()
 
 app.use('/api/*', cors())
 
+// Until now an unhandled throw became Hono's plain-text 500 and nothing recorded
+// it anywhere. Logged with the path so the deployment tail shows what broke, and
+// answered as JSON on API paths so the app can show a sentence instead of
+// choking on text.
+app.onError((err: any, c) => {
+  const path = new URL(c.req.url).pathname
+  console.error('[unhandled]', c.req.method, path, err?.message, String(err?.stack || '').split('\n').slice(0, 3).join(' | '))
+  const msg = 'Something went wrong on our side. Please try again in a moment.'
+  return path.startsWith('/api/') ? c.json({ error: msg }, 500) : c.text(msg, 500)
+})
+
+// For Cloudflare Health Checks: a page for the event week, not a delegate's tweet.
+app.get('/health', async (c) => {
+  try {
+    await c.env.DB.prepare('SELECT 1').first()
+    return c.json({ ok: true, db: 'up', at: new Date().toISOString() })
+  } catch (e: any) {
+    return c.json({ ok: false, db: 'down', error: String(e?.message || e) }, 503)
+  }
+})
+
+// Security headers on every dynamic response. No CSP yet: both apps run inline
+// scripts and load fonts and images from a handful of hosts, and a wrong CSP
+// takes the app down, so that needs its own change with a report-only phase.
+// Responses built from a fetch() have immutable headers; those are re-wrapped.
+app.use('*', async (c, next) => {
+  await next()
+  const set = (h: Headers) => {
+    h.set('X-Content-Type-Options', 'nosniff')
+    h.set('Referrer-Policy', 'strict-origin-when-cross-origin')
+    if (!h.has('X-Frame-Options')) h.set('X-Frame-Options', 'SAMEORIGIN')
+  }
+  try { set(c.res.headers) } catch { c.res = new Response(c.res.body, c.res); set(c.res.headers) }
+})
+
 // ==================== ADMIN AUTHENTICATION ====================
 // Server-side guard for every /api/admin/* route. The admin panel sends the
 // secret as `Authorization: Bearer <ADMIN_SECRET>` on all fetches (see the
@@ -62,19 +97,51 @@ async function audit(c: any, action: string, entity?: string, entityId?: any, de
   } catch (_) { /* the table may predate migration 0027; never break the caller */ }
 }
 
+// The Elastic Email key is read from the Worker secret first (set with
+// `wrangler pages secret put ELASTIC_EMAIL_API_KEY`) and only then from
+// app_settings, which is where it has lived so far: in clear, in every backup
+// dump, and until today in the settings GET. Once the secret is set the row can
+// be blanked and nothing else changes.
+async function elasticKey(c: any): Promise<string> {
+  const fromEnv = String(c.env?.ELASTIC_EMAIL_API_KEY || '').trim()
+  if (fromEnv) return fromEnv
+  return settingValue(c, 'elastic_email_api_key')
+}
+
+// Every campaign mail carries this, in the footer and as List-Unsubscribe, so a
+// mailbox provider's own unsubscribe button works too. Signed over the address
+// with the session secret: a link cannot be forged for someone else.
+async function unsubscribeToken(c: any, email: string): Promise<string> {
+  const secret = attendeeSessionSecret(c) || String(c.env?.ADMIN_SECRET || '') || 'unsubscribe'
+  return (await hmacHexA(secret, 'unsubscribe:' + email.trim().toLowerCase())).slice(0, 32)
+}
+async function unsubscribeUrl(c: any, email: string): Promise<string> {
+  const base = ((await settingValue(c, 'app_url')) || 'https://bharataiinnovation.com/app').replace(/\/app\/?$/, '')
+  return `${base}/unsubscribe?e=${encodeURIComponent(email.trim().toLowerCase())}&t=${await unsubscribeToken(c, email)}`
+}
+const UNSUB_FOOTER = (url: string) =>
+  `<p style="margin:18px 0 0;font-size:11px;line-height:1.6;color:#999;font-family:Arial,sans-serif;text-align:center;">` +
+  `You are receiving this because you registered with Bharat AI Innovation. ` +
+  `<a href="${url}" style="color:#999;">Unsubscribe from event updates</a> &middot; sign-in links and replies to your own requests still arrive.</p>`
+
 // One place that knows how to send a transactional email, so new features do not
 // each re-implement the Elastic Email call and its settings lookup. Named for the
 // admin panel it was written for; it is the generic sender and the networking
 // notifications below use it too. Never throws: returns { ok:false, error } on a
 // missing key, a non-2xx, or an unreachable service. Sets no ReplyTo on purpose --
 // a notification must never hand one attendee another attendee's address.
-async function sendAdminEmail(c: any, to: string, subject: string, html: string):
+async function sendAdminEmail(c: any, to: string, subject: string, html: string, opts: { unsubscribe?: boolean } = {}):
     Promise<{ ok: true } | { ok: false; error: string }> {
   const g = async (k: string) => ((await c.env.DB.prepare('SELECT value FROM app_settings WHERE key = ?').bind(k).first()) as any)?.value
-  const key = await g('elastic_email_api_key')
+  const key = await elasticKey(c)
   if (!key) return { ok: false, error: 'Email service is not configured (no API key in Settings).' }
   const fromEmail = senderEmailOrDefault(await g('sender_email'))
   const fromName = (await g('sender_name')) || 'Bharat AI Innovation Conference & Exhibition 2026'
+  // Campaign-style mail (opts.unsubscribe !== false) carries the unsubscribe
+  // footer and header; a reply to somebody's own request may pass false.
+  const unsub = opts.unsubscribe === false ? '' : await unsubscribeUrl(c, to)
+  const body = unsub ? html.replace(/<\/body>\s*<\/html>\s*$/i, UNSUB_FOOTER(unsub) + '</body></html>') : html
+  const finalHtml = unsub && body === html ? html + UNSUB_FOOTER(unsub) : body
   try {
     const res = await fetch('https://api.elasticemail.com/v4/emails/transactional', {
       method: 'POST',
@@ -82,9 +149,10 @@ async function sendAdminEmail(c: any, to: string, subject: string, html: string)
       body: JSON.stringify({
         Recipients: { To: [to] },
         Content: {
-          Body: [{ ContentType: 'HTML', Content: html, Charset: 'utf-8' }],
+          Body: [{ ContentType: 'HTML', Content: finalHtml, Charset: 'utf-8' }],
           From: `${fromName} <${fromEmail}>`,
           Subject: subject,
+          ...(unsub ? { Headers: { 'List-Unsubscribe': `<${unsub}>` } } : {}),
         },
         Options: { TrackClicks: false, TrackOpens: false },
       }),
@@ -580,7 +648,7 @@ function sanitizeAttendeeField(field: string, value: any): any {
 // time this runs, so the lead is safe either way.
 async function notifyTeamOfInquiry(c: any, row: { id: any; inquiry_type: string; name: string; email: string; phone?: string; organization?: string; subject?: string; message?: string }) {
   const g = async (k: string) => ((await c.env.DB.prepare('SELECT value FROM app_settings WHERE key = ?').bind(k).first()) as any)?.value
-  const apiKey = await g('elastic_email_api_key')
+  const apiKey = await elasticKey(c)
   if (!apiKey) return
   const to = (await g('inquiry_notify_email')) || 'info@bharataiinnovation.com'
   const fromEmail = senderEmailOrDefault(await g('sender_email'))
@@ -625,7 +693,7 @@ async function notifyTeamOfInquiry(c: any, row: { id: any; inquiry_type: string;
 // itself — the row is already committed before this runs.
 async function sendRegistrationEmail(c: any, attendee: any) {
   const g = async (k: string) => ((await c.env.DB.prepare('SELECT value FROM app_settings WHERE key = ?').bind(k).first()) as any)?.value
-  const apiKey = await g('elastic_email_api_key')
+  const apiKey = await elasticKey(c)
   if (!apiKey || !attendee?.email) return
   const fromEmail = senderEmailOrDefault(await g('sender_email'))
   const fromName = (await g('sender_name')) || 'Bharat AI Innovation'
@@ -891,6 +959,34 @@ async function mainEventClause(c: any, alias: string = ''): Promise<string> {
   return (await attendeeColumns(c)).has('main_event') ? ` AND ${alias}main_event = 1` : ''
 }
 
+// Who campaign mail may go to (0042): nobody who unsubscribed, nobody who ticked
+// "no" on a form. NULL consent means never asked, and stays in - they registered
+// with us and the mail is about the event they registered for.
+async function suppressionClause(c: any, alias: string = ''): Promise<string> {
+  const cols = await attendeeColumns(c)
+  if (!cols.has('unsubscribed_at')) return ''
+  return ` AND ${alias}unsubscribed_at IS NULL AND (${alias}marketing_consent IS NULL OR ${alias}marketing_consent = 1)`
+}
+
+app.get('/unsubscribe', async (c) => {
+  const email = String(c.req.query('e') || '').trim().toLowerCase()
+  const t = String(c.req.query('t') || '')
+  const genuine = !!email && t.length === 32 && safeEqualA(t, await unsubscribeToken(c, email))
+  if (genuine) {
+    try {
+      await c.env.DB.prepare("UPDATE attendees SET unsubscribed_at = COALESCE(unsubscribed_at, datetime('now')) WHERE email = ?").bind(email).run()
+    } catch { /* pre-0042: nothing to record yet */ }
+  }
+  const esc = (v: string) => v.replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch] as string))
+  return c.html(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Unsubscribed</title></head>
+<body style="margin:0;background:#f5f5f5;font-family:Arial,sans-serif;"><div style="max-width:520px;margin:48px auto;background:#fff;border-radius:14px;padding:32px 28px;">
+<h1 style="font-size:20px;margin:0 0 12px;color:#1E2140;">${genuine ? 'You are unsubscribed from event updates.' : 'That link is not valid.'}</h1>
+<p style="font-size:14px;line-height:1.65;color:#555;margin:0 0 18px;">${genuine
+    ? 'We will not send campaign email to ' + esc(email) + ' any more. Sign-in links, and replies to things you do in the app, still arrive because you asked for them.'
+    : 'Please use the unsubscribe link from a recent email, or write to info@bharataiinnovation.com and we will do it by hand.'}</p>
+<a href="https://bharataiinnovation.com/" style="font-size:13px;color:#FF6B00;">bharataiinnovation.com</a></div></body></html>`)
+})
+
 type PanelMailOpts = { withLogin?: boolean; eventId?: any; source?: string; preview?: boolean }
 
 /* The joining details for a campus panel. Returns whether the mail went, because
@@ -903,7 +999,7 @@ type PanelMailOpts = { withLogin?: boolean; eventId?: any; source?: string; prev
  * the reward for it then arrive in the same tap, which is the only way a list of
  * students ends up with photos. */
 async function sendPanelConfirmationEmail(c: any, attendee: any, panel: CampusPanel, opts: PanelMailOpts = {}): Promise<{ ok: boolean; error?: string; html?: string }> {
-  const apiKey = await settingValue(c, 'elastic_email_api_key')
+  const apiKey = await elasticKey(c)
   if (!apiKey && !opts.preview) return { ok: false, error: 'email service not configured' }
   if (!attendee?.email) return { ok: false, error: 'no email address' }
   const fromEmail = senderEmailOrDefault(await settingValue(c, 'sender_email'))
@@ -1840,7 +1936,7 @@ function invoiceHTML(v: any, set: Record<string, string>): string {
 
 async function sendInvoiceEmail(c: any, v: any, token: string, set: Record<string, string>) {
   const g = async (k: string) => ((await c.env.DB.prepare('SELECT value FROM app_settings WHERE key = ?').bind(k).first()) as any)?.value
-  const apiKey = await g('elastic_email_api_key')
+  const apiKey = await elasticKey(c)
   if (!apiKey || !v?.buyer_email) return
   const fromEmail = senderEmailOrDefault(await g('sender_email'))
   const fromName = (await g('sender_name')) || 'Bharat AI Innovation'
@@ -2121,6 +2217,9 @@ app.get('/api/admin/staff', async (c) => {
 app.get('/api/staff/lookup', async (c) => {
   const me = await verifyStaffSession(c)
   if (!me) return c.json({ error: 'Staff sign-in required' }, 401)
+  // deskActor already keeps finance off the check-in; the lookup underneath it
+  // was still open, and it mints pass tokens.
+  if (String(me.role || '') === 'finance') return c.json({ error: 'Finance accounts cannot look up attendees.' }, 403)
   const q = String(c.req.query('q') || '').trim()
   // One letter would sweep most of the directory into a phone. One digit cannot:
   // it only ever matches a single id, so the early low-numbered ids stay findable.
@@ -4469,7 +4568,7 @@ app.post('/api/events/:id/attendees/send-magic-link', async (c) => {
 </body></html>`
 
   // Send via Elastic Email
-  const apiKeyRow = await c.env.DB.prepare("SELECT value FROM app_settings WHERE key = 'elastic_email_api_key'").first() as any
+  const apiKeyRow = { value: await elasticKey(c) } as any
   const senderRow = await c.env.DB.prepare("SELECT value FROM app_settings WHERE key = 'sender_email'").first() as any
   const senderNameRow = await c.env.DB.prepare("SELECT value FROM app_settings WHERE key = 'sender_name'").first() as any
 
@@ -4558,20 +4657,34 @@ app.post('/api/attendees/:id/rsvp', async (c) => {
 // NOTE: this one-click RSVP link is emailed to the attendee. It still identifies
 // the person by email alone, which is weak, but it no longer echoes their name back
 // to the caller — that turned it into a lookup oracle for any address.
+// The RSVP link is signed over address, answer and event. Without the signature
+// anyone who knew a delegate's address could decline on their behalf, and the
+// 404 for an unknown address told them which addresses were registered.
+async function rsvpSig(c: any, email: string, status: string, eventId: any): Promise<string> {
+  const secret = attendeeSessionSecret(c) || String(c.env?.ADMIN_SECRET || '') || 'rsvp'
+  return (await hmacHexA(secret, `rsvp:${eventId}:${String(email).trim().toLowerCase()}:${status}`)).slice(0, 32)
+}
+
 app.get('/api/rsvp', async (c) => {
   const email = c.req.query('email')
   const status = c.req.query('status')
   const eventId = c.req.query('event') || '1'
+  const sig = String(c.req.query('sig') || '')
   if (!email || !['confirmed', 'declined', 'maybe'].includes(status || '')) {
     return c.text('Invalid RSVP link', 400)
   }
-  const attendee = await c.env.DB.prepare('SELECT id, name FROM attendees WHERE event_id = ? AND email = ?').bind(eventId, email.trim().toLowerCase()).first() as any
-  if (!attendee) return c.text('Attendee not found', 404)
-  await c.env.DB.prepare('UPDATE attendees SET rsvp_status = ?, rsvp_at = datetime("now") WHERE id = ?').bind(status, attendee.id).run()
+  // Same redirect whether the address is known, unknown or the link was forged:
+  // nothing here may confirm that an address is registered.
+  const genuine = sig.length === 32 && safeEqualA(sig, await rsvpSig(c, email, status as string, eventId))
+  const attendee = genuine
+    ? await c.env.DB.prepare('SELECT id, name FROM attendees WHERE event_id = ? AND email = ?').bind(eventId, email.trim().toLowerCase()).first() as any
+    : null
+  if (attendee) {
+    await c.env.DB.prepare('UPDATE attendees SET rsvp_status = ?, rsvp_at = datetime("now") WHERE id = ?').bind(status, attendee.id).run()
+  }
 
   // Redirect to pretty RSVP confirmation page
-  const appUrlRow = await c.env.DB.prepare("SELECT value FROM app_settings WHERE key = 'app_url'").first() as any
-  const appUrl = appUrlRow?.value || 'https://bharataiinnovation.com/app'
+  const appUrl = (await settingValue(c, 'app_url')) || 'https://bharataiinnovation.com/app'
   // Name and email deliberately omitted from the redirect: echoing them back
   // turned this into an oracle that confirmed whether an address was registered
   // and revealed the person behind it, to anyone who guessed the address.
@@ -4867,8 +4980,35 @@ app.get('/api/messages/:userId/:otherUserId', async (c) => {
 
 app.post('/api/messages', async (c) => {
   const body = await c.req.json()
-  const { event_id, sender_id, receiver_id, content } = body
+  const { event_id, sender_id, receiver_id } = body
   const denied = await requireSelf(c, sender_id); if (denied) return denied
+
+  // The same rule POST /api/connections enforces: a free Visitor Pass can reply,
+  // never open. Client-side gating alone left this route open to a direct call,
+  // and with it the whole directory to spam. A Visitor may still answer an
+  // accepted connection or a thread the other person started.
+  const content = String(body.content ?? '').trim().slice(0, 4000)
+  if (!content) return c.json({ error: 'Empty message' }, 400)
+  if (netSamePerson(sender_id, receiver_id)) return c.json({ error: 'You cannot message yourself.' }, 400)
+  const senderRow = await c.env.DB.prepare('SELECT badge_type FROM attendees WHERE id = ?').bind(sender_id).first() as any
+  if (!senderRow) return c.json({ error: 'Sender not found' }, 404)
+  if (!canInitiateNetworking(senderRow.badge_type) && !isAdminRequest(c)) {
+    const replying = await c.env.DB.prepare(
+      `SELECT 1 AS ok FROM messages WHERE sender_id = ? AND receiver_id = ? LIMIT 1`
+    ).bind(receiver_id, sender_id).first()
+    const connected = await c.env.DB.prepare(
+      `SELECT 1 AS ok FROM connections WHERE status = 'accepted'
+         AND ((from_attendee_id = ? AND to_attendee_id = ?) OR (from_attendee_id = ? AND to_attendee_id = ?)) LIMIT 1`
+    ).bind(sender_id, receiver_id, receiver_id, sender_id).first()
+    if (!replying && !connected) {
+      return c.json({ error: 'Messaging is part of the Delegate and VIP passes. You can always reply to anyone who messages you.', code: 'networking_locked' }, 403)
+    }
+  }
+  // Twenty messages a minute is a conversation; more is a script.
+  const burst = await c.env.DB.prepare(
+    `SELECT COUNT(*) AS n FROM messages WHERE sender_id = ? AND created_at > datetime('now', '-1 minute')`
+  ).bind(sender_id).first() as any
+  if (Number(burst?.n) >= 20) return c.json({ error: 'Slow down: too many messages in a minute.' }, 429)
 
   // Read BEFORE the insert. Afterwards the message we are about to write is itself
   // unread and would suppress its own notification. One query carries both parties
@@ -5108,6 +5248,11 @@ app.post('/api/meetings', async (c) => {
   const body = await c.req.json()
   const { event_id, requester_id, requestee_id, title, meeting_time, duration_minutes, location, notes } = body
   const denied = await requireSelf(c, requester_id); if (denied) return denied
+  // Same pass rule as connections and messages; the client gate alone was bypassable.
+  const requester = await c.env.DB.prepare('SELECT badge_type FROM attendees WHERE id = ?').bind(requester_id).first() as any
+  if (requester && !canInitiateNetworking(requester.badge_type) && !isAdminRequest(c)) {
+    return c.json({ error: 'Meeting requests are part of the Delegate and VIP passes.', code: 'networking_locked' }, 403)
+  }
 
   const result = await c.env.DB.prepare(
     'INSERT INTO meetings (event_id, requester_id, requestee_id, title, meeting_time, duration_minutes, location, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
@@ -5268,9 +5413,13 @@ app.get('/api/image-proxy', async (c) => {
   ]
   if (!PROXY_ALLOWED.some(prefix => url.startsWith(prefix))) return c.text('Domain not allowed', 403)
   try {
-    const resp = await fetch(url)
+    // Narrow hosts, but no bound on time or size until now: a slow upstream held
+    // the worker, and any large file under our own domain was an amplifier.
+    const resp = await fetch(url, { signal: AbortSignal.timeout(8000) })
     if (!resp.ok) return c.text('Upstream error', resp.status)
+    if (Number(resp.headers.get('content-length') || 0) > 3 * 1024 * 1024) return c.text('Too large', 413)
     const buf = await resp.arrayBuffer()
+    if (buf.byteLength > 3 * 1024 * 1024) return c.text('Too large', 413)
     const ct = resp.headers.get('content-type') || 'image/png'
     return new Response(buf, {
       headers: {
@@ -7988,9 +8137,12 @@ app.get('/api/events/:id/startup-pitches', async (c) => {
 
 app.get('/api/events/:id/announcements', async (c) => {
   const eventId = c.req.param('id')
+  // Polled by every open app every 30 s for data that changes a few times a day:
+  // the edge answers most of those, and nobody scrolls past twenty.
   const { results } = await c.env.DB.prepare(
-    'SELECT * FROM announcements WHERE event_id = ? ORDER BY pinned DESC, created_at DESC'
+    'SELECT * FROM announcements WHERE event_id = ? ORDER BY pinned DESC, created_at DESC LIMIT 20'
   ).bind(eventId).all()
+  c.header('Cache-Control', 'public, max-age=30')
   return c.json(results)
 })
 
@@ -8280,24 +8432,40 @@ app.put('/api/attendees/:id/profile', async (c) => {
   const id = c.req.param('id')
   const denied = await requireSelf(c, id); if (denied) return denied
   const body = await c.req.json()
-  const { name, company, job_title, bio, interests, linkedin_url, twitter_url, website_url, mobile, lunch_inclusion, arrival_time, city, industry } = body
+  const { city, industry } = body
+
+  // Patch, not replace. The arrival prompt used to send {...currentUser, arrival_time}
+  // - whatever this browser had cached - and the statement wrote all eleven text
+  // fields back, so an edit made on another device, or by an admin, was undone by
+  // saying "I'll arrive at ten". Only keys the caller sent are written now, and
+  // free text is clamped: a 500 KB bio is served to every directory page that
+  // includes the person.
+  const LIMITS: Record<string, number> = {
+    name: 80, company: 120, job_title: 120, bio: 1000, interests: 300,
+    linkedin_url: 300, twitter_url: 300, website_url: 300, mobile: 20, lunch_inclusion: 10, arrival_time: 10,
+  }
+  const sets: string[] = []
+  const vals: any[] = []
+  for (const [k, max] of Object.entries(LIMITS)) {
+    if (body[k] === undefined) continue
+    let v = String(body[k] ?? '').trim().slice(0, max)
+    if (k === 'name' && !v) return c.json({ error: 'Name cannot be empty.' }, 400)
+    if (k === 'lunch_inclusion' && !v) v = 'Yes'
+    sets.push(`${k} = ?`); vals.push(v)
+  }
 
   // city and industry are required at registration but were missing from this
   // statement, so the ~1,000 people who registered before that rule existed had no
   // way to supply them: the Edit Profile dialog could not send what the endpoint
-  // would not accept. Both are only written when the caller sends them, so a client
-  // that omits them cannot blank a value that is already there.
+  // would not accept. Both are only written when the caller sends them, so a
+  // client that omits them cannot blank a value that is already there.
   const extra: string[] = []
   const extraVals: any[] = []
-  if (city !== undefined) { extra.push('city = ?'); extraVals.push(String(city || '').trim()) }
+  if (city !== undefined) { extra.push('city = ?'); extraVals.push(String(city || '').trim().slice(0, 80)) }
   if (industry !== undefined && INDUSTRIES.includes(String(industry))) { extra.push('industry = ?'); extraVals.push(String(industry)) }
-  /* Why someone is here, for the matchmaker. Written only when sent, like city and
-   * industry above, so an older client cannot blank it.
-   *
-   * Filtered against the known vocabulary rather than stored as given: the rail
-   * matches a goal to its complement by exact token, so anything outside the list
-   * is dead weight that would never match and would sit in the row looking as
-   * though it might. */
+  /* Why someone is here, for the matchmaker. Filtered against the known vocabulary
+   * rather than stored as given: the rail matches a goal to its complement by
+   * exact token, so anything outside the list is dead weight. */
   if (body.networking_goals !== undefined) {
     const clean = String(body.networking_goals || '')
       .split(',').map((g: string) => g.trim().toLowerCase())
@@ -8305,13 +8473,11 @@ app.put('/api/attendees/:id/profile', async (c) => {
     extra.push('networking_goals = ?'); extraVals.push(Array.from(new Set(clean)).join(','))
   }
 
-  await c.env.DB.prepare(
-    'UPDATE attendees SET name=?, company=?, job_title=?, bio=?, interests=?, linkedin_url=?, twitter_url=?, website_url=?, mobile=?, lunch_inclusion=?, arrival_time=?' +
-    (extra.length ? ', ' + extra.join(', ') : '') + ' WHERE id=?'
-  ).bind(
-    name, company || '', job_title || '', bio || '', interests || '',
-    linkedin_url || '', twitter_url || '', website_url || '', mobile || '', lunch_inclusion || 'Yes', arrival_time || '', ...extraVals, id
-  ).run()
+  const all = [...sets, ...extra]
+  if (all.length) {
+    await c.env.DB.prepare('UPDATE attendees SET ' + all.join(', ') + ' WHERE id = ?')
+      .bind(...vals, ...extraVals, id).run()
+  }
 
   const updated = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(id).first()
   return c.json(updated)
@@ -8693,6 +8859,9 @@ app.delete('/api/attendees/:id/company-logo', async (c) => {
 // Get exhibitor booth linked to an attendee
 app.get('/api/attendees/:id/exhibitor', async (c) => {
   const id = c.req.param('id')
+  // Was the only attendee-scoped route without a guard: contact email and phone
+  // of any exhibitor, to anyone, by attendee id.
+  const denied = await requireSelf(c, id); if (denied) return denied
   const exhibitor = await c.env.DB.prepare('SELECT * FROM exhibitors WHERE attendee_id = ?').bind(id).first()
   return c.json(exhibitor || null)
 })
@@ -8817,6 +8986,8 @@ app.get('/api/events/:id/stats', async (c) => {
   // is meant to close just as directly.
   const attendeeTotal = n(0)
   const reveal = mayRevealCount(c, attendeeTotal)
+  // The app's first call on every load. Admin always sees a fresh answer.
+  if (!isAdminRequest(c)) c.header('Cache-Control', 'public, max-age=60')
 
   return c.json({
     attendees: reveal ? attendeeTotal : null,
@@ -9429,13 +9600,13 @@ app.post('/api/admin/attendees/:id/notify', async (c) => {
         <table cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto;">
           <tr>
             <td style="padding:0 6px;">
-              <a href="${appUrl}/api/rsvp?email=${encodeURIComponent(attendee.email)}&status=confirmed&event=${attendee.event_id}" style="display:inline-block;padding:12px 24px;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;text-decoration:none;border-radius:10px;font-weight:bold;font-size:13px;">✅ Yes, I'll attend</a>
+              <a href="${appUrl}/api/rsvp?email=${encodeURIComponent(attendee.email)}&status=confirmed&event=${attendee.event_id}&sig=${await rsvpSig(c, attendee.email, 'confirmed', attendee.event_id)}" style="display:inline-block;padding:12px 24px;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;text-decoration:none;border-radius:10px;font-weight:bold;font-size:13px;">✅ Yes, I'll attend</a>
             </td>
             <td style="padding:0 6px;">
-              <a href="${appUrl}/api/rsvp?email=${encodeURIComponent(attendee.email)}&status=maybe&event=${attendee.event_id}" style="display:inline-block;padding:12px 24px;background:linear-gradient(135deg,#f59e0b,#d97706);color:white;text-decoration:none;border-radius:10px;font-weight:bold;font-size:13px;">🤔 Maybe</a>
+              <a href="${appUrl}/api/rsvp?email=${encodeURIComponent(attendee.email)}&status=maybe&event=${attendee.event_id}&sig=${await rsvpSig(c, attendee.email, 'maybe', attendee.event_id)}" style="display:inline-block;padding:12px 24px;background:linear-gradient(135deg,#f59e0b,#d97706);color:white;text-decoration:none;border-radius:10px;font-weight:bold;font-size:13px;">🤔 Maybe</a>
             </td>
             <td style="padding:0 6px;">
-              <a href="${appUrl}/api/rsvp?email=${encodeURIComponent(attendee.email)}&status=declined&event=${attendee.event_id}" style="display:inline-block;padding:12px 24px;background:linear-gradient(135deg,#ef4444,#dc2626);color:white;text-decoration:none;border-radius:10px;font-weight:bold;font-size:13px;">❌ Can't make it</a>
+              <a href="${appUrl}/api/rsvp?email=${encodeURIComponent(attendee.email)}&status=declined&event=${attendee.event_id}&sig=${await rsvpSig(c, attendee.email, 'declined', attendee.event_id)}" style="display:inline-block;padding:12px 24px;background:linear-gradient(135deg,#ef4444,#dc2626);color:white;text-decoration:none;border-radius:10px;font-weight:bold;font-size:13px;">❌ Can't make it</a>
             </td>
           </tr>
         </table>
@@ -9483,7 +9654,7 @@ app.post('/api/admin/attendees/:id/notify', async (c) => {
 </html>`
 
   // Try Elastic Email API v4 (stored in D1 settings)
-  const apiKeyRow = await c.env.DB.prepare("SELECT value FROM app_settings WHERE key = 'elastic_email_api_key'").first() as any
+  const apiKeyRow = { value: await elasticKey(c) } as any
   const senderRow = await c.env.DB.prepare("SELECT value FROM app_settings WHERE key = 'sender_email'").first() as any
   const senderNameRow = await c.env.DB.prepare("SELECT value FROM app_settings WHERE key = 'sender_name'").first() as any
 
@@ -9491,13 +9662,16 @@ app.post('/api/admin/attendees/:id/notify', async (c) => {
     const fromEmail = senderEmailOrDefault(senderRow?.value)
     const fromName = senderNameRow?.value || 'Bharat AI Innovation Conference & Exhibition 2026'
     try {
+      // Campaign mail: the unsubscribe footer and header, as sendAdminEmail adds.
+      const unsub = await unsubscribeUrl(c, attendee.email)
       const payload = {
         Recipients: { To: [attendee.email] },
         Content: {
           Body: [
-            { ContentType: "HTML", Content: emailHtml, Charset: "utf-8" }
+            { ContentType: "HTML", Content: emailHtml.replace(/<\/body>/i, UNSUB_FOOTER(unsub) + '</body>'), Charset: "utf-8" }
           ],
           From: `${fromName} <${fromEmail}>`,
+          Headers: { 'List-Unsubscribe': `<${unsub}>` },
           Subject: 'Your Delegate Pass for Bharat AI Innovation 2026'
         },
         Options: {
@@ -9700,7 +9874,7 @@ app.post('/api/admin/attendees/:id/send-thankyou', async (c) => {
 </html>`
 
   // Send via Elastic Email
-  const apiKeyRow = await c.env.DB.prepare("SELECT value FROM app_settings WHERE key = 'elastic_email_api_key'").first() as any
+  const apiKeyRow = { value: await elasticKey(c) } as any
   const senderRow = await c.env.DB.prepare("SELECT value FROM app_settings WHERE key = 'sender_email'").first() as any
   const senderNameRow = await c.env.DB.prepare("SELECT value FROM app_settings WHERE key = 'sender_name'").first() as any
 
@@ -9708,13 +9882,16 @@ app.post('/api/admin/attendees/:id/send-thankyou', async (c) => {
     const fromEmail = senderEmailOrDefault(senderRow?.value)
     const fromName = senderNameRow?.value || 'Bharat AI Innovation Conference & Exhibition 2026'
     try {
+      // Campaign mail: the unsubscribe footer and header, as sendAdminEmail adds.
+      const unsub = await unsubscribeUrl(c, attendee.email)
       const payload = {
         Recipients: { To: [attendee.email] },
         Content: {
           Body: [
-            { ContentType: "HTML", Content: emailHtml, Charset: "utf-8" }
+            { ContentType: "HTML", Content: emailHtml.replace(/<\/body>/i, UNSUB_FOOTER(unsub) + '</body>'), Charset: "utf-8" }
           ],
           From: `${fromName} <${fromEmail}>`,
+          Headers: { 'List-Unsubscribe': `<${unsub}>` },
           Subject: 'Thank You for Making the Bharat AI Innovation 2026 a Grand Success! \u{1F3C6}'
         },
         Options: {
@@ -9884,7 +10061,7 @@ type SendOutcome =
 // person. The cost is that a crash between claim and send marks one person as mailed
 // without a mail - rare, and cheaper than the alternative of mailing someone twice.
 async function sendProfileReminder(c: any, attendee: any): Promise<SendOutcome> {
-  const apiKey = await settingGet(c, 'elastic_email_api_key')
+  const apiKey = await elasticKey(c)
   if (!apiKey) return { ok: false, kind: 'fatal', error: 'Email service not configured.' }
 
   if (!validEmailSyntax(attendee.email)) {
@@ -10386,26 +10563,39 @@ app.get('/api/admin/events/:id/attendees/duplicates', async (c) => {
 })
 
 // Admin: App Settings CRUD
+// Secrets come back masked. The form re-saves what it was shown, so the PUT
+// below treats a masked value as "unchanged" rather than as a new key.
+const SECRET_SETTING = /api_key|secret|password|token/i
+const maskSecret = (v: any) => (v ? '••••••••' + String(v).slice(-4) : '')
 app.get('/api/admin/settings', async (c) => {
   const { results } = await c.env.DB.prepare('SELECT key, value FROM app_settings').all()
   const settings: Record<string, string> = {}
-  for (const r of results as any[]) { settings[r.key] = r.value }
+  for (const r of results as any[]) { settings[r.key] = SECRET_SETTING.test(r.key) ? maskSecret(r.value) : r.value }
+  if (String(c.env?.ELASTIC_EMAIL_API_KEY || '').trim()) settings.elastic_email_api_key = '••••••••(Worker secret)'
   return c.json(settings)
 })
 
 app.put('/api/admin/settings', async (c) => {
-  const body = await c.req.json()
+  const body = await c.req.json().catch(() => ({})) as Record<string, unknown>
+  const changed: Record<string, string> = {}
   for (const [key, value] of Object.entries(body)) {
+    // Only names our own code uses; a typo cannot create a junk row.
+    if (!/^[a-z0-9_:.-]{1,64}$/i.test(key)) continue
+    const v = String(value ?? '')
+    if (v.startsWith('••••')) continue   // the masked echo of a secret, not a change
     await c.env.DB.prepare(
       'INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, datetime("now")) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at'
-    ).bind(key, value as string).run()
+    ).bind(key, v).run()
+    changed[key] = SECRET_SETTING.test(key) ? `(secret, ${v.length} chars)` : v.slice(0, 200)
   }
-  return c.json({ success: true })
+  // A wrong sender address silently breaks every send; now there is a record of who changed it.
+  if (Object.keys(changed).length) await audit(c, 'settings.update', 'app_settings', null, changed)
+  return c.json({ success: true, changed: Object.keys(changed) })
 })
 
 app.post('/api/admin/settings/test-email', async (c) => {
   const { test_email } = await c.req.json()
-  const apiKeyRow = await c.env.DB.prepare("SELECT value FROM app_settings WHERE key = 'elastic_email_api_key'").first() as any
+  const apiKeyRow = { value: await elasticKey(c) } as any
   if (!apiKeyRow || !apiKeyRow.value) return c.json({ error: 'Elastic Email API key not configured' }, 400)
 
   const senderRow = await c.env.DB.prepare("SELECT value FROM app_settings WHERE key = 'sender_email'").first() as any
