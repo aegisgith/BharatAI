@@ -39,9 +39,9 @@ Bharat AI Innovation is India's B2B platform for AI, not a footfall exhibition. 
 ## Pass types and pricing (INR)
 
 - **Visitor Pass** — FREE (exhibition access)
-- **Academic Pass** — ₹999 (students/faculty with valid ID)
-- **Delegate Pass** — ₹4,999 (full conference + exhibition)
-- **VIP Pass** — ₹14,999 (premium seating, networking dinner, lounge access)
+- **Academic Pass** — ₹999 + GST (students/faculty with valid ID)
+- **Delegate Pass** — ₹4,999 + GST (full conference + exhibition)
+- **VIP Pass** — ₹14,999 + GST (premium seating, networking dinner, lounge access)
 - **Media Pass** — By Invite
 - **Team packages:** Team 5–9, Enterprise 10–19, Corporate 20+
 
