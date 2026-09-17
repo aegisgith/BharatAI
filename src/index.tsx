@@ -10147,7 +10147,7 @@ app.post('/api/admin/attendees/:id/notify', async (c) => {
 app.post('/api/admin/attendees/notify-all', async (c) => {
   const { event_id } = await c.req.json()
   const { results: unnotified } = await c.env.DB.prepare(
-    `SELECT id, name, email FROM attendees WHERE event_id = ? AND notified_at IS NULL AND email IS NOT NULL AND email != "" AND ${NOT_CAMPUS_SQL}`
+    `SELECT id, name, email FROM attendees WHERE event_id = ? AND notified_at IS NULL AND email IS NOT NULL AND email != "" AND ${NOT_CAMPUS_SQL}${await suppressionClause(c)}`
   ).bind(event_id).all()
   return c.json({ attendees: unnotified, count: unnotified.length })
 })
@@ -10156,7 +10156,7 @@ app.post('/api/admin/attendees/notify-all', async (c) => {
 app.post('/api/admin/attendees/resend-non-responders', async (c) => {
   const { event_id } = await c.req.json()
   const { results: nonResponders } = await c.env.DB.prepare(
-    `SELECT id, name, email FROM attendees WHERE event_id = ? AND notified_at IS NOT NULL AND (rsvp_status IS NULL) AND email IS NOT NULL AND email != "" AND ${NOT_CAMPUS_SQL}`
+    `SELECT id, name, email FROM attendees WHERE event_id = ? AND notified_at IS NOT NULL AND (rsvp_status IS NULL) AND email IS NOT NULL AND email != "" AND ${NOT_CAMPUS_SQL}${await suppressionClause(c)}`
   ).bind(event_id).all()
   return c.json({ attendees: nonResponders, count: nonResponders.length })
 })
@@ -10165,7 +10165,7 @@ app.post('/api/admin/attendees/resend-non-responders', async (c) => {
 app.post('/api/admin/attendees/thankyou-list', async (c) => {
   const { event_id } = await c.req.json()
   const { results: attendees } = await c.env.DB.prepare(
-    `SELECT id, name, email FROM attendees WHERE event_id = ? AND email IS NOT NULL AND email != "" AND ${NOT_CAMPUS_SQL}`
+    `SELECT id, name, email FROM attendees WHERE event_id = ? AND email IS NOT NULL AND email != "" AND ${NOT_CAMPUS_SQL}${await suppressionClause(c)}`
   ).bind(event_id).all()
   return c.json({ attendees, count: attendees.length })
 })
@@ -10711,7 +10711,7 @@ async function sendGapSeconds(c: any): Promise<number> {
 // poll, and it is what the panel shows while the run is paused overnight.
 app.get('/api/admin/attendees/profile-reminder-status', async (c) => {
   const eventId = c.req.query('event_id') || '1'
-  const remaining = await c.env.DB.prepare(`SELECT COUNT(*) n FROM attendees WHERE ${NEEDS_REMINDER_SQL}`).bind(eventId).first() as any
+  const remaining = await c.env.DB.prepare(`SELECT COUNT(*) n FROM attendees WHERE ${NEEDS_REMINDER_SQL}${await suppressionClause(c)}`).bind(eventId).first() as any
   const done = await c.env.DB.prepare(
     'SELECT COUNT(*) n FROM attendees WHERE event_id = ? AND profile_reminder_sent_at IS NOT NULL AND profile_reminder_error IS NULL'
   ).bind(eventId).first() as any
@@ -10764,8 +10764,9 @@ app.post('/api/admin/attendees/send-next-profile-reminder', async (c) => {
   }
 
   const gap = await sendGapSeconds(c)
-  const pick = () => c.env.DB.prepare(`SELECT * FROM attendees WHERE ${NEEDS_REMINDER_SQL} ORDER BY id LIMIT 1`).bind(eventId).first() as Promise<any>
-  const countLeft = async () => ((await c.env.DB.prepare(`SELECT COUNT(*) n FROM attendees WHERE ${NEEDS_REMINDER_SQL}`).bind(eventId).first()) as any)?.n || 0
+  const sc = await suppressionClause(c)
+  const pick = () => c.env.DB.prepare(`SELECT * FROM attendees WHERE ${NEEDS_REMINDER_SQL}${sc} ORDER BY id LIMIT 1`).bind(eventId).first() as Promise<any>
+  const countLeft = async () => ((await c.env.DB.prepare(`SELECT COUNT(*) n FROM attendees WHERE ${NEEDS_REMINDER_SQL}${sc}`).bind(eventId).first()) as any)?.n || 0
 
   // Addresses that cannot be delivered to are cleared from the head of the queue here,
   // before a send slot is spent on them: five malformed rows in a row would otherwise
@@ -11386,13 +11387,16 @@ async function campaignSendOne(c: any, kind: string, refId: any, r: any):
 async function campaignAudienceRows(c: any, kind: string, audience: string, includePanelOnly: boolean = false): Promise<any[]> {
   const eventId = 1
   const mc = includePanelOnly ? '' : await mainEventClause(c)
+  // Nobody who unsubscribed, nobody who said no to marketing on a form (0042).
+  // The unsubscribe page promises exactly this.
+  const sc = await suppressionClause(c)
   if (kind === 'profile_reminder') {
     // Same predicate the one-at-a-time chase uses, so the campaign cannot pick
     // somebody it would then skip. 'photo' narrows it to the missing photos,
     // which is the gap worth chasing on its own.
     const extra = audience === 'photo' ? " AND COALESCE(TRIM(avatar_url),'') = ''" : ''
     const { results } = await c.env.DB.prepare(
-      `SELECT id, name, email FROM attendees WHERE ${NEEDS_REMINDER_SQL}${extra}${mc} ORDER BY id`
+      `SELECT id, name, email FROM attendees WHERE ${NEEDS_REMINDER_SQL}${extra}${mc}${sc} ORDER BY id`
     ).bind(eventId).all()
     return (results as any[]) || []
   }
@@ -11402,7 +11406,7 @@ async function campaignAudienceRows(c: any, kind: string, audience: string, incl
   else if (audience === 'confirmed') where += " AND rsvp_status = 'confirmed'"
   else if (audience === 'checked_in') where += ' AND checked_in_at IS NOT NULL'
   const { results } = await c.env.DB.prepare(
-    `SELECT id, name, email FROM attendees WHERE event_id = ? AND ${where}${mc} ORDER BY id`
+    `SELECT id, name, email FROM attendees WHERE event_id = ? AND ${where}${mc}${sc} ORDER BY id`
   ).bind(eventId).all()
   return (results as any[]) || []
 }
@@ -11740,8 +11744,12 @@ app.post('/api/admin/events/:id/broadcast', async (c) => {
     // Panel-only registrants (main_event = 0) are left out unless asked for, as
     // in campaignAudienceRows.
     const mc = include_panel_only === true ? '' : await mainEventClause(c)
+    // Urgent is a service message (a hall change, a closure) to people holding a
+    // pass and goes to everyone; anything else is a campaign and honours
+    // unsubscribes and marketing consent.
+    const sc = (announcement_type || 'urgent') === 'urgent' ? '' : await suppressionClause(c)
     const r = await c.env.DB.prepare(
-      `SELECT id, name, email FROM attendees WHERE event_id = ? AND email IS NOT NULL AND email != '' ${who}${mc} ORDER BY id`
+      `SELECT id, name, email FROM attendees WHERE event_id = ? AND email IS NOT NULL AND email != '' ${who}${mc}${sc} ORDER BY id`
     ).bind(eventId).all()
     recipients = (r.results as any[]) || []
   }
