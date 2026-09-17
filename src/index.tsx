@@ -20385,13 +20385,25 @@ function mainPageHTML(): string {
       // panel that has ended without a claim offers nothing to say.
       var panels = await fetchMyPanels();
       socialCard.panels = panels.filter(function (p) { return !!panelVariantFor(p); });
+      // A panel-only registrant (0041) has not said they are coming to the
+      // conference, so "I'm attending Bharat AI Innovation 2026" is not yet
+      // theirs to post. Same rule as the pass.
+      var consent = null;
+      try { consent = await api.get('/api/attendees/' + user.id + '/main-event'); } catch (e) {}
+      socialCard.conferenceAllowed = !(consent && consent.main_event === 0);
       var wantSlug = typeof preferPanel === 'string' ? preferPanel : '';
       var pick = socialCard.panels.filter(function (p) { return p.slug === wantSlug; })[0] || socialCard.panels[0] || null;
+      if (!pick && !socialCard.conferenceAllowed) {
+        showToast('Say yes to the main conference on My Profile first, and the conference card is yours.', 'info');
+        switchTab('myprofile');
+        return;
+      }
       socialCard.panel = pick;
       socialCard.mode = pick ? 'panel' : 'conference';
       var modeRow = document.getElementById('sc-mode-row');
-      modeRow.classList.toggle('hidden', !pick);
-      modeRow.classList.toggle('flex', !!pick);
+      var showRow = !!pick && socialCard.conferenceAllowed;
+      modeRow.classList.toggle('hidden', !showRow);
+      modeRow.classList.toggle('flex', showRow);
       if (pick) document.getElementById('sc-mode-panel-label').textContent = (pick.claimed_at ? 'I attended' : 'I’m attending') + ' · ' + pick.hostShort;
       updateSocialCardModeTabs();
       document.getElementById('sc-caption').value = socialCardCaption(user);
@@ -20434,6 +20446,7 @@ function mainPageHTML(): string {
 
     function setSocialCardMode(mode) {
       if (mode === 'panel' && !socialCard.panel) mode = 'conference';
+      if (mode === 'conference' && socialCard.conferenceAllowed === false) mode = 'panel';
       socialCard.mode = mode;
       updateSocialCardModeTabs();
       if (currentUser) document.getElementById('sc-caption').value = socialCardCaption(currentUser);
