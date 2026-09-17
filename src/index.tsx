@@ -4117,11 +4117,28 @@ app.get('/api/events/:id/attendee-filters', async (c) => {
       return ((r.results || []) as any[]).map(x => String(x.v))
     } catch (_) { return [] }
   }
-  const [roles, badges] = await Promise.all([distinct('role'), distinct('badge_type')])
+  // Chip values for the Network tab. City is free text, so the list is the dozen
+  // most common spellings rather than every one ever typed; the ORDER BY uses a
+  // count but only the names leave the server, so nothing about size leaks.
+  const common = async (col: string, n: number) => {
+    try {
+      const r = await c.env.DB.prepare(
+        `SELECT TRIM(${col}) AS v FROM attendees
+          WHERE event_id = ? AND ${col} IS NOT NULL AND TRIM(${col}) != ''
+          GROUP BY LOWER(TRIM(${col})) ORDER BY COUNT(*) DESC, v ASC LIMIT ${n}`
+      ).bind(eventId).all()
+      return ((r.results || []) as any[]).map(x => String(x.v))
+    } catch (_) { return [] }
+  }
+  const [roles, badges, industries, cities] = await Promise.all([
+    distinct('role'), distinct('badge_type'), common('industry', 12), common('city', 12),
+  ])
   return c.json({
     // 'attendee' is everybody, so it filters nothing and is left out.
     roles: roles.filter(r => r.toLowerCase() !== 'attendee'),
     badges,
+    industries,
+    cities,
   })
 })
 
@@ -4132,6 +4149,11 @@ app.get('/api/events/:id/attendees', async (c) => {
   const search = c.req.query('search')
   const role = c.req.query('role')
   const interest = c.req.query('interest')
+  // The Network tab's filter chips. Each one narrows the same WHERE the cursor
+  // walks, so a filtered list pages exactly like an unfiltered one.
+  const industry = c.req.query('industry')
+  const city = c.req.query('city')
+  const goal = c.req.query('goal')
 
   // Named columns rather than *, and intersected with what the table actually
   // holds, so a database still short of migration 0015/0018/0023 answers with the
@@ -4166,6 +4188,21 @@ app.get('/api/events/:id/attendees', async (c) => {
   if (interest) {
     where += ' AND interests LIKE ?'
     params.push(`%${interest}%`)
+  }
+  // industry is a closed dropdown, so it matches exactly; city is typed by hand,
+  // so "mumbai" and "Mumbai " are the same city.
+  if (industry) {
+    where += ' AND industry = ?'
+    params.push(industry)
+  }
+  if (city) {
+    where += ' AND LOWER(TRIM(city)) = LOWER(?)'
+    params.push(String(city).trim())
+  }
+  // networking_goals is a comma list of the closed vocabulary in migration 0035.
+  if (goal) {
+    where += ' AND networking_goals LIKE ?'
+    params.push(`%${goal}%`)
   }
 
   // Everyone who is not an admin gets a page, never the whole directory.
@@ -5351,6 +5388,38 @@ app.get('/api/attendees/:id/unread', async (c) => {
   return c.json(result)
 })
 
+// The Inbox had no list of conversations: the unread badge counted messages the
+// person could only reach by finding the sender in the directory again. One row
+// per counterpart, newest thread first, with the last line and my unread count.
+app.get('/api/attendees/:id/threads', async (c) => {
+  const id = c.req.param('id')
+  const denied = await requireSelf(c, id); if (denied) return denied
+  const { results } = await c.env.DB.prepare(`
+    SELECT a.id, a.name, a.company, a.avatar_url, t.last_at, t.unread,
+           SUBSTR((SELECT m2.content FROM messages m2
+                    WHERE (m2.sender_id = ? AND m2.receiver_id = a.id) OR (m2.sender_id = a.id AND m2.receiver_id = ?)
+                    ORDER BY m2.created_at DESC, m2.id DESC LIMIT 1), 1, 120) AS last_content
+      FROM (SELECT CASE WHEN sender_id = ? THEN receiver_id ELSE sender_id END AS other_id,
+                   MAX(created_at) AS last_at,
+                   SUM(CASE WHEN receiver_id = ? AND is_read = 0 THEN 1 ELSE 0 END) AS unread
+              FROM messages
+             WHERE sender_id = ? OR receiver_id = ?
+             GROUP BY other_id) t
+      JOIN attendees a ON a.id = t.other_id
+     ORDER BY t.last_at DESC
+  `).bind(id, id, id, id, id, id).all()
+  return c.json(results || [])
+})
+
+// Sign-out has to reach the server: the session cookie is HttpOnly, so the page
+// cannot clear it, and until now "Log Out" left a valid 60-day cookie behind on
+// a shared device. Same attributes as attendeeSessionCookie, or the browser
+// treats it as a different cookie and keeps the old one.
+app.post('/api/attendees/logout', async (c) => {
+  c.header('Set-Cookie', 'bai_session=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0')
+  return c.json({ success: true })
+})
+
 // ==================== BOARDROOM APIs ====================
 //
 // Every route here answers as if the rooms simply had nothing booked when
@@ -5665,15 +5734,24 @@ app.post('/api/exhibitors/:id/visit', async (c) => {
   const { attendee_id, event_id, interested, notes } = await c.req.json()
   const denied = await requireSelf(c, attendee_id); if (denied) return denied
 
-  await c.env.DB.prepare(
-    'INSERT INTO booth_visits (exhibitor_id, attendee_id, event_id, interested, notes) VALUES (?, ?, ?, ?, ?)'
-  ).bind(exhibitorId, attendee_id, event_id, interested ? 1 : 0, notes || '').run()
+  // One lead per (exhibitor, attendee). A double tap used to write two rows and
+  // count the same person twice. The INSERT fires only when no row exists - a
+  // single statement, so two requests cannot both pass the check - and the
+  // visitor count moves only when the INSERT did.
+  const ins = await c.env.DB.prepare(
+    `INSERT INTO booth_visits (exhibitor_id, attendee_id, event_id, interested, notes)
+     SELECT ?, ?, ?, ?, ?
+      WHERE NOT EXISTS (SELECT 1 FROM booth_visits WHERE exhibitor_id = ? AND attendee_id = ?)`
+  ).bind(exhibitorId, attendee_id, event_id, interested ? 1 : 0, notes || '', exhibitorId, attendee_id).run()
+  const inserted = Number((ins as any)?.meta?.changes || 0) > 0
 
-  await c.env.DB.prepare(
-    'UPDATE exhibitors SET visitor_count = visitor_count + 1 WHERE id = ?'
-  ).bind(exhibitorId).run()
+  if (inserted) {
+    await c.env.DB.prepare(
+      'UPDATE exhibitors SET visitor_count = visitor_count + 1 WHERE id = ?'
+    ).bind(exhibitorId).run()
+  }
 
-  return c.json({ success: true }, 201)
+  return c.json({ success: true, already: !inserted }, inserted ? 201 : 200)
 })
 
 app.get('/api/events/:id/exhibitors/categories', async (c) => {
@@ -14268,6 +14346,8 @@ function mainPageHTML(): string {
 <body class="min-h-screen">
   <!-- App Container -->
   <div id="app">
+    <!-- Toasts land here rather than on <body> so a screen reader announces them. -->
+    <div id="toast-container" aria-live="polite"></div>
     <!-- Loading -->
     <div id="loading-screen" class="fixed inset-0 z-50 flex items-center justify-center" style="background:#F8F9FF;">
       <div class="text-center">
@@ -14281,7 +14361,7 @@ function mainPageHTML(): string {
     </div>
 
     <!-- Registration / Sign In Modal -->
-    <div id="registration-modal" class="fixed inset-0 z-40 modal-overlay hidden flex items-center justify-center p-4">
+    <div id="registration-modal" role="dialog" aria-modal="true" aria-label="Sign in or register" class="fixed inset-0 z-40 modal-overlay hidden flex items-center justify-center p-4">
       <div class="glass rounded-2xl p-8 w-full max-w-md relative">
         <button onclick="document.getElementById('registration-modal').classList.add('hidden')" class="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors text-lg">
           <i class="fas fa-times"></i>
@@ -14389,7 +14469,7 @@ function mainPageHTML(): string {
     </div>
 
     <!-- Attendee Profile Modal -->
-    <div id="profile-modal" class="fixed inset-0 z-40 modal-overlay hidden flex items-center justify-center p-4">
+    <div id="profile-modal" role="dialog" aria-modal="true" aria-labelledby="profile-name" class="fixed inset-0 z-40 modal-overlay hidden flex items-center justify-center p-4">
       <div class="glass rounded-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto scroll-hide">
         <div class="flex justify-between items-start mb-4">
           <h2 class="text-xl font-bold" id="profile-name"></h2>
@@ -14448,7 +14528,7 @@ function mainPageHTML(): string {
     </div>
 
     <!-- Chat Modal -->
-    <div id="chat-modal" class="fixed inset-0 z-40 modal-overlay hidden flex items-center justify-center p-4">
+    <div id="chat-modal" role="dialog" aria-modal="true" aria-labelledby="chat-partner-name" class="fixed inset-0 z-40 modal-overlay hidden flex items-center justify-center p-4">
       <div class="glass rounded-2xl w-full max-w-lg h-[80vh] flex flex-col">
         <div class="flex items-center justify-between p-4 border-b border-white/10">
           <div>
@@ -14468,7 +14548,7 @@ function mainPageHTML(): string {
     </div>
 
     <!-- Meeting Modal -->
-    <div id="meeting-modal" class="fixed inset-0 z-40 modal-overlay hidden flex items-center justify-center p-4">
+    <div id="meeting-modal" role="dialog" aria-modal="true" aria-label="Schedule a meeting" class="fixed inset-0 z-40 modal-overlay hidden flex items-center justify-center p-4">
       <div class="glass rounded-2xl p-6 w-full max-w-md">
         <div class="flex justify-between items-start mb-4">
           <h2 class="text-xl font-bold" id="meeting-modal-title"><i class="fas fa-calendar-plus mr-2 text-primary-400"></i>Schedule Meeting</h2>
@@ -14514,6 +14594,21 @@ function mainPageHTML(): string {
       </div>
     </div>
 
+    <!-- Mobile notification sheet: the same list the desktop bell drops down,
+         full-width because the bottom bar has no room for a popover. -->
+    <div id="notif-sheet" role="dialog" aria-modal="true" aria-label="Notifications" class="hidden fixed inset-0 z-50 md:hidden modal-overlay" onclick="if(event.target===this)closeMobileNotifs()">
+      <div class="absolute left-0 right-0 bottom-0 rounded-t-2xl overflow-hidden flex flex-col" style="max-height:80vh;background:rgba(255,255,255,0.98);border-top:1px solid #E4E7F4;box-shadow:0 -16px 44px rgba(26,35,126,0.16);padding-bottom:env(safe-area-inset-bottom);">
+        <div class="px-4 py-3 border-b border-white/8 flex items-center justify-between">
+          <span class="text-sm font-semibold">Notifications</span>
+          <div class="flex items-center gap-3">
+            <button onclick="markNotifsRead()" class="text-[11px] text-primary-400 hover:underline">Mark all read</button>
+            <button onclick="closeMobileNotifs()" class="text-gray-400 hover:text-white" aria-label="Close"><i class="fas fa-times text-lg"></i></button>
+          </div>
+        </div>
+        <div id="notif-list-mobile" class="overflow-y-auto"></div>
+      </div>
+    </div>
+
     <!-- Main Navigation -->
     <nav id="main-nav" class="hidden fixed bottom-0 left-0 right-0 z-30 md:top-0 md:bottom-auto" style="background:rgba(255,255,255,0.9);backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);box-shadow:0 1px 0 rgba(26,35,126,0.08),0 -1px 0 rgba(26,35,126,0.06),0 6px 24px rgba(26,35,126,0.05);padding-bottom:env(safe-area-inset-bottom);">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -14537,7 +14632,13 @@ function mainPageHTML(): string {
           </a>
           <button class="nav-btn auth-gated hidden flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl text-[10px] font-medium text-gray-400 hover:text-white transition-all relative" data-tab="inbox" onclick="switchTab('inbox')">
             <i class="fas fa-envelope text-base"></i><span>Inbox</span>
-            <span id="unread-badge-mobile" class="hidden absolute -top-1 right-0 w-4 h-4 bg-red-500 text-white text-[9px] rounded-full flex items-center justify-center badge-pulse">0</span>
+            <span id="unread-badge-mobile" onclick="event.stopPropagation();openInboxMessages()" class="hidden absolute -top-1 right-0 w-4 h-4 bg-red-500 text-white text-[9px] rounded-full flex items-center justify-center badge-pulse">0</span>
+          </button>
+          <!-- The bell lived only in the desktop bar, so on a phone the
+               announcement centre and the alerts opt-in did not exist. -->
+          <button class="js-avatar-btn hidden nav-btn flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl text-[10px] font-medium text-gray-400 hover:text-white transition-all relative" onclick="toggleMobileNotifs()" id="nav-notif-btn-mobile" title="Notifications">
+            <i class="fas fa-bell text-base"></i><span>Alerts</span>
+            <span id="notif-badge-mobile" class="hidden absolute -top-1 right-0 min-w-4 h-4 px-1 bg-primary-500 text-white text-[9px] rounded-full flex items-center justify-center">0</span>
           </button>
           <button class="js-signin-btn nav-btn flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl text-[10px] font-semibold text-orange-400 hover:text-orange-300 transition-all" id="nav-signin-btn" onclick="showRegistration()">
             <i class="fas fa-sign-in-alt text-base"></i><span>Sign In</span>
@@ -14570,7 +14671,7 @@ function mainPageHTML(): string {
           <div class="flex items-center gap-2 shrink-0">
             <button class="nav-btn nav-gated hidden items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium text-gray-300 hover:text-white hover:bg-white/8 transition-all relative" data-tab="inbox" onclick="switchTab('inbox')">
               <i class="fas fa-envelope"></i><span>Inbox</span>
-              <span id="unread-badge" class="hidden absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[9px] rounded-full flex items-center justify-center badge-pulse">0</span>
+              <span id="unread-badge" onclick="event.stopPropagation();openInboxMessages()" class="hidden absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[9px] rounded-full flex items-center justify-center badge-pulse">0</span>
             </button>
             <!-- Log In / Register button (opens combined modal; defaults to Sign In tab) -->
             <button class="js-signin-btn flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold text-white transition-all hover:opacity-90" id="nav-signin-btn-desktop" onclick="showRegistration()" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);box-shadow:0 4px 15px rgba(255,107,0,0.35);">
@@ -15231,7 +15332,7 @@ function mainPageHTML(): string {
         </div>
 
         <!-- Inquiry Form Modal -->
-        <div id="inquiry-modal" class="fixed inset-0 z-40 modal-overlay hidden flex items-center justify-center p-4">
+        <div id="inquiry-modal" role="dialog" aria-modal="true" aria-label="Inquiry" class="fixed inset-0 z-40 modal-overlay hidden flex items-center justify-center p-4">
           <div class="glass rounded-2xl p-6 md:p-8 w-full max-w-lg relative">
             <button onclick="closeInquiryForm()" class="absolute top-4 right-4 text-gray-400 hover:text-white transition text-lg"><i class="fas fa-times"></i></button>
             <div class="flex items-center gap-3 mb-5">
@@ -15394,6 +15495,9 @@ function mainPageHTML(): string {
               <option value="Finalist">Finalists</option>
             </select>
           </div>
+          <!-- Industry / city / goal chips, filled by loadAttendeeFilters from what
+               the directory actually holds. Hidden until there is something to offer. -->
+          <div id="directory-chips" class="hidden flex flex-wrap items-center gap-2 mb-6"></div>
 
           <!-- Visitor upgrade banner (shown only for visitor pass users) -->
           <div id="visitor-network-banner" class="hidden mb-5 rounded-2xl border border-amber-500/30 overflow-hidden" style="background:linear-gradient(135deg,rgba(245,158,11,0.08),rgba(99,102,241,0.08));">
@@ -16179,11 +16283,15 @@ function mainPageHTML(): string {
             <button class="inbox-tab px-4 py-2 rounded-xl text-sm font-medium tab-active" data-inbox="connections" onclick="switchInboxTab('connections')">
               <i class="fas fa-link mr-1"></i>Connections
             </button>
+            <button class="inbox-tab px-4 py-2 rounded-xl text-sm font-medium text-gray-400" data-inbox="messages" onclick="switchInboxTab('messages')">
+              <i class="fas fa-comment-dots mr-1"></i>Messages
+            </button>
             <button class="inbox-tab px-4 py-2 rounded-xl text-sm font-medium text-gray-400" data-inbox="meetings" onclick="switchInboxTab('meetings')">
               <i class="fas fa-calendar-check mr-1"></i>Meetings
             </button>
           </div>
           <div id="inbox-connections" class="space-y-3"></div>
+          <div id="inbox-messages" class="hidden space-y-3"></div>
           <div id="inbox-meetings" class="hidden space-y-3"></div>
         </div>
       </div>
@@ -16284,7 +16392,7 @@ function mainPageHTML(): string {
            here produces a support ticket and a person who feels cheated: receiving
            and accepting are free on EVERY pass, and only starting a conversation
            needs a paid one. -->
-      <div id="networking-guide-modal" class="fixed inset-0 z-40 modal-overlay hidden flex items-center justify-center p-4">
+      <div id="networking-guide-modal" role="dialog" aria-modal="true" aria-label="Networking guide" class="fixed inset-0 z-40 modal-overlay hidden flex items-center justify-center p-4">
         <div class="glass rounded-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto data-scroll">
           <div class="flex justify-between items-start mb-4">
             <div>
@@ -16339,7 +16447,7 @@ function mainPageHTML(): string {
            favicon looked up from a domain, so the delegate has to see the card
            before it goes anywhere public, and be able to drop the logo when the
            lookup has returned something generic. -->
-      <div id="social-card-modal" class="fixed inset-0 z-40 modal-overlay hidden flex items-center justify-center p-4">
+      <div id="social-card-modal" role="dialog" aria-modal="true" aria-label="Share card" class="fixed inset-0 z-40 modal-overlay hidden flex items-center justify-center p-4">
         <div class="glass rounded-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto scroll-hide">
           <div class="flex justify-between items-start mb-4">
             <div>
@@ -16390,7 +16498,7 @@ function mainPageHTML(): string {
       </div>
 
       <!-- Edit Profile Modal -->
-      <div id="edit-profile-modal" class="fixed inset-0 z-40 modal-overlay hidden flex items-center justify-center p-4">
+      <div id="edit-profile-modal" role="dialog" aria-modal="true" aria-label="Edit profile" class="fixed inset-0 z-40 modal-overlay hidden flex items-center justify-center p-4">
         <div class="glass rounded-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto scroll-hide">
           <div class="flex justify-between items-start mb-5">
             <h2 class="text-xl font-bold"><i class="fas fa-user-edit text-primary-400 mr-2"></i>Edit Profile</h2>
@@ -16544,7 +16652,45 @@ function mainPageHTML(): string {
   <script>
     // ==================== STATE ====================
     const EVENT_ID = 1;
-    function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+    function esc(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+    // Attendees supply their own LinkedIn/website URLs, and escaping does nothing
+    // about javascript: - only an allowed scheme does. Anything else renders no
+    // link. No regex on purpose: this script sits inside a server-side template
+    // literal, which eats the backslash an escaped scheme test needs.
+    function safeUrl(u) {
+      var v = String(u == null ? '' : u).trim();
+      var lower = v.toLowerCase();
+      return (lower.indexOf('http://') === 0 || lower.indexOf('https://') === 0) ? esc(v) : '';
+    }
+    // SQLite's datetime('now') / CURRENT_TIMESTAMP write UTC with no zone marker.
+    // new Date('2026-11-20 10:00') is local time in Chrome and Invalid Date in
+    // Safari, so every stored stamp is read through here: as UTC unless it says
+    // otherwise. A date-only value is already UTC by spec and is left alone.
+    function parseDbTime(s) {
+      var str = String(s == null ? '' : s).trim();
+      if (!str) return new Date(NaN);
+      if (str.length <= 10) return new Date(str);
+      return new Date(str.replace(' ', 'T') + (/[Z+]/.test(str) ? '' : 'Z'));
+    }
+    // Session start/end times are the venue's wall clock, not UTC: the Schedule
+    // tab prints HH:MM straight from the string. Pinned to IST so a phone set to
+    // any zone shows the time on the hall door, and "is it over yet" compares the
+    // right instant.
+    function parseVenueTime(s) {
+      var str = String(s == null ? '' : s).trim();
+      if (!str) return new Date(NaN);
+      if (str.length <= 10) return new Date(str + 'T00:00:00+05:30');
+      return new Date(str.replace(' ', 'T') + (/[Z+]/.test(str) ? '' : '+05:30'));
+    }
+    // The api helper hands back whatever JSON came, 4xx included, and callers
+    // that never looked at it reported success on a refusal. Returns the sentence
+    // the server wrote, or '' when the write went through.
+    function apiFailed(r) {
+      if (!r || typeof r !== 'object') return '';
+      if (r.error) return String(r.message && r.error === 'verification_required' ? r.message : r.error);
+      if (r.message && !r.success && !r.id) return String(r.message);
+      return '';
+    }
 
     /* Speakers in the Network tab. Filtered by whatever is typed in the directory
      * search, and opened in the same profile modal as a
@@ -16935,8 +17081,8 @@ function mainPageHTML(): string {
         if (!currentUser) { showRegistration(); if (typeof switchAuthMode === 'function') switchAuthMode('register'); }
         history.replaceState({}, '', window.location.pathname);
       } else if (['schedule','networking','workshops','inbox','myprofile'].includes(hash)) {
-        switchTab(hash);
-        history.replaceState({}, '', window.location.pathname);
+        switchTab(hash, true);
+        history.replaceState({ tab: hash }, '', window.location.pathname);
       }
 
       // Scanned the closing slide but not signed in: open sign-in and say why,
@@ -17487,7 +17633,7 @@ function mainPageHTML(): string {
       el.innerHTML = Array.from({length: count}, () => card).join('');
     }
 
-    function switchTab(tab) {
+    function switchTab(tab, fromHistory) {
       // Gate protected tabs behind login
       if (PROTECTED_TABS.includes(tab) && !currentUser) {
         pendingTabAfterLogin = tab;
@@ -17495,6 +17641,7 @@ function mainPageHTML(): string {
         return;
       }
       currentTab = tab;
+      rememberTab(tab, fromHistory);
       document.querySelectorAll('.nav-btn').forEach(b => {
         b.classList.remove('tab-active');
         b.classList.add('text-gray-400');
@@ -17521,14 +17668,58 @@ function mainPageHTML(): string {
       }
     }
 
+    // Every tab and sub-screen is a history entry, so the phone's back button
+    // walks the app instead of leaving it. fromHistory means the entry already
+    // exists (popstate, deep link) and must not be pushed a second time.
+    const SUB_SCREENS = {
+      'speaker-room': () => openSpeakerGreenRoom(true),
+      'investor': () => openInvestorDealflow(true),
+      'media': () => openMediaCenter(true),
+      'venue': () => openVenueMap(true),
+      'exhibitor-console': () => openExhibitorConsole(true)
+    };
+    function rememberTab(tab, fromHistory) {
+      if (fromHistory) return;
+      try {
+        const state = { tab: tab, sub: !!SUB_SCREENS[tab] };
+        if (history.state && history.state.tab === tab) history.replaceState(state, '', '#' + tab);
+        else history.pushState(state, '', '#' + tab);
+      } catch (e) {}
+    }
+    window.addEventListener('popstate', (e) => {
+      const tab = (e.state && e.state.tab) || 'dashboard';
+      if (SUB_SCREENS[tab]) SUB_SCREENS[tab]();
+      else switchTab(tab, true);
+    });
+    function goBackFromSubscreen() {
+      if (history.state && history.state.sub) history.back();
+      else switchTab('dashboard');
+    }
+    // The five sub-screens have no nav entry, so a Back control is added to
+    // each the first time it opens rather than written into five templates.
+    function ensureBackControl(tabEl) {
+      if (!tabEl || tabEl.querySelector('.js-sub-back')) return;
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'js-sub-back mb-4 inline-flex items-center gap-1.5 text-xs font-medium text-gray-400 hover:text-white transition';
+      b.innerHTML = '<i class="fas fa-arrow-left"></i>Back';
+      b.onclick = goBackFromSubscreen;
+      const inner = tabEl.firstElementChild || tabEl;
+      inner.insertBefore(b, inner.firstChild);
+    }
+
     const MIN_REGISTRATIONS = 100; // Threshold to show full app features
 
     // ==================== DASHBOARD ====================
     async function loadDashboard() {
       try {
+        // #stats-section is hidden in the markup and re-hidden below, so its
+        // numbers were fetched on every Home load for nobody. Skipped while hidden.
+        const statsEl = document.getElementById('stats-section');
+        const statsHidden = !statsEl || statsEl.classList.contains('hidden');
         const [event, stats, announcements, sessions] = await Promise.all([
           api.get(\`/api/events/\${EVENT_ID}\`),
-          api.get(\`/api/events/\${EVENT_ID}/stats\`),
+          statsHidden ? Promise.resolve(null) : api.get(\`/api/events/\${EVENT_ID}/stats\`),
           api.get(\`/api/events/\${EVENT_ID}/announcements\`),
           api.get(\`/api/events/\${EVENT_ID}/sessions\`),
         ]);
@@ -17563,6 +17754,7 @@ function mainPageHTML(): string {
         // PUBLIC_COUNT_THRESHOLD). This whole section is hidden today, but it is
         // rendered from live data and has been un-hidden before, so it must not
         // print "null" the day somebody shows it again.
+        if (stats) {
         const showCount = v => (v === null || v === undefined ? '—' : v);
         const statsData = [
           { icon: 'fa-users', label: 'Attendees', value: showCount(stats.attendees), color: 'primary' },
@@ -17580,6 +17772,7 @@ function mainPageHTML(): string {
             <div class="text-xs text-gray-500">\${s.label}</div>
           </div>
         \`).join('');
+        }
 
         document.getElementById('announcements-feed').innerHTML = announcements.length ? announcements.map(a => \`
           <div class="glass rounded-xl p-4 card-hover \${a.pinned ? 'glow border-l-4 border-accent-500' : ''}">
@@ -17589,13 +17782,13 @@ function mainPageHTML(): string {
               </div>
               <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-2 mb-1">
-                  <h3 class="font-semibold text-sm">\${a.title}</h3>
+                  <h3 class="font-semibold text-sm">\${esc(a.title)}</h3>
                   \${a.pinned ? '<span class="text-xs text-accent-400"><i class="fas fa-thumbtack"></i></span>' : ''}
                 </div>
-                <p class="text-sm text-gray-400">\${linkify(a.content)}</p>
+                <p class="text-sm text-gray-400">\${linkify(esc(a.content))}</p>
                 <div class="flex items-center gap-3 mt-2 text-xs text-gray-500">
-                  <span><i class="fas fa-user mr-1"></i>\${a.author_name}</span>
-                  <span><i class="fas fa-clock mr-1"></i>\${new Date(a.created_at).toLocaleString()}</span>
+                  <span><i class="fas fa-user mr-1"></i>\${esc(a.author_name)}</span>
+                  <span><i class="fas fa-clock mr-1"></i>\${parseDbTime(a.created_at).toLocaleString()}</span>
                 </div>
               </div>
             </div>
@@ -17603,7 +17796,10 @@ function mainPageHTML(): string {
         \`).join('') : \`<div class="glass rounded-xl p-8 text-center"><i class="fas fa-bullhorn text-2xl text-gray-600 mb-3"></i><p class="text-sm text-gray-400">No announcements yet</p><p class="text-xs text-gray-600 mt-1">Event updates from the organizers will appear here.</p></div>\`;
 
         const now = new Date();
-        document.getElementById('upcoming-sessions').innerHTML = sessions.length ? sessions.slice(0, 5).map(s => \`
+        // A session that has ended is no use on Home; the Schedule tab keeps the
+        // whole day. A row with no parseable start is kept rather than lost.
+        const upcoming = (Array.isArray(sessions) ? sessions : []).filter(s => { const t = parseVenueTime(s.start_time); return isNaN(t.getTime()) || t >= now; }).slice(0, 5);
+        document.getElementById('upcoming-sessions').innerHTML = upcoming.length ? upcoming.map(s => \`
           <div class="glass rounded-xl p-4 card-hover cursor-pointer" onclick="switchTab('schedule')">
             <div class="flex items-center gap-2 mb-2">
               <span class="text-lg">\${s.speaker_avatar || '📌'}</span>
@@ -17615,7 +17811,7 @@ function mainPageHTML(): string {
               \${s.room ? \`<span class="ml-2"><i class="fas fa-map-pin mr-1"></i>\${s.room}</span>\` : ''}
             </div>
           </div>
-        \`).join('') : \`<div class="glass rounded-xl p-8 text-center"><i class="fas fa-calendar-alt text-2xl text-gray-600 mb-3"></i><p class="text-sm text-gray-400">Schedule coming soon</p><a href="#" onclick="switchTab('schedule');return false;" class="text-xs text-primary-400 hover:underline mt-1 inline-block">View full schedule</a></div>\`;
+        \`).join('') : sessions.length ? \`<div class="glass rounded-xl p-8 text-center"><i class="fas fa-calendar-check text-2xl text-gray-600 mb-3"></i><p class="text-sm text-gray-400">No more sessions today</p><a href="#" onclick="switchTab('schedule');return false;" class="text-xs text-primary-400 hover:underline mt-1 inline-block">View full schedule</a></div>\` : \`<div class="glass rounded-xl p-8 text-center"><i class="fas fa-calendar-alt text-2xl text-gray-600 mb-3"></i><p class="text-sm text-gray-400">Schedule coming soon</p><a href="#" onclick="switchTab('schedule');return false;" class="text-xs text-primary-400 hover:underline mt-1 inline-block">View full schedule</a></div>\`;
       } catch(e) { console.error('Dashboard error:', e); }
 
       // Conditionally show/hide sections based on auth state
@@ -18228,29 +18424,76 @@ function mainPageHTML(): string {
     // up without a deploy. Options are created as DOM nodes, not concatenated HTML,
     // because these strings come from the database.
     var attendeeFiltersLoaded = false;
+    // The chips under the search box: one value per axis, and tapping the active
+    // chip clears it. Industry and city come from the directory itself; the goal
+    // list is the closed vocabulary the profile offers (GOALS).
+    const directoryFilters = { industry: '', city: '', goal: '' };
+    let directoryChipData = { industries: [], cities: [] };
     async function loadAttendeeFilters() {
       const sel = document.getElementById('role-filter');
-      if (!sel || attendeeFiltersLoaded) return;
-      if (!DIRECTORY_FILTER_ENABLED) { sel.classList.add('hidden'); sel.value = ''; return; }
-      sel.classList.remove('hidden');
+      if (attendeeFiltersLoaded) return;
+      if (sel) {
+        if (!DIRECTORY_FILTER_ENABLED) { sel.classList.add('hidden'); sel.value = ''; }
+        else sel.classList.remove('hidden');
+      }
       try {
         const r = await fetch('/api/events/' + EVENT_ID + '/attendee-filters');
         if (!r.ok) return;
         const d = await r.json();
+        directoryChipData = { industries: d.industries || [], cities: d.cities || [] };
+        renderDirectoryChips();
         const badges = d.badges || [], roles = d.roles || [];
-        if (!badges.length && !roles.length) return;
-        const keep = sel.value;
-        sel.innerHTML = '';
-        const add = (value, label) => {
-          const o = document.createElement('option');
-          o.value = value; o.textContent = label; sel.appendChild(o);
-        };
-        add('', 'Everyone');
-        badges.forEach(v => add(v, v));
-        roles.forEach(v => add(v, v));
-        sel.value = keep;
+        if (sel && DIRECTORY_FILTER_ENABLED && (badges.length || roles.length)) {
+          const keep = sel.value;
+          sel.innerHTML = '';
+          const add = (value, label) => {
+            const o = document.createElement('option');
+            o.value = value; o.textContent = label; sel.appendChild(o);
+          };
+          add('', 'Everyone');
+          badges.forEach(v => add(v, v));
+          roles.forEach(v => add(v, v));
+          sel.value = keep;
+        }
         attendeeFiltersLoaded = true;
       } catch (e) {}
+    }
+    function renderDirectoryChips() {
+      const wrap = document.getElementById('directory-chips');
+      if (!wrap) return;
+      const groups = [
+        { key: 'industry', label: 'Industry', values: directoryChipData.industries.map(v => ({ v: v, l: v })) },
+        { key: 'city', label: 'City', values: directoryChipData.cities.map(v => ({ v: v, l: v })) },
+        { key: 'goal', label: 'Here to', values: (typeof GOALS !== 'undefined' ? GOALS : []).map(g => ({ v: g.key, l: g.label })) }
+      ].filter(g => g.values.length);
+      if (!groups.length) { wrap.classList.add('hidden'); return; }
+      wrap.classList.remove('hidden');
+      wrap.innerHTML = '';
+      // DOM nodes, not concatenated HTML: industries and cities are typed by attendees.
+      groups.forEach(g => {
+        const row = document.createElement('div');
+        row.className = 'w-full flex items-center gap-2 overflow-x-auto no-scrollbar';
+        const lab = document.createElement('span');
+        lab.className = 'text-[11px] text-gray-500 shrink-0 w-14';
+        lab.textContent = g.label;
+        row.appendChild(lab);
+        g.values.forEach(o => {
+          const active = directoryFilters[g.key] === o.v;
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'shrink-0 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition ' + (active ? 'tab-active' : 'glass text-gray-400 hover:text-white');
+          b.textContent = o.l;
+          b.setAttribute('aria-pressed', active ? 'true' : 'false');
+          b.onclick = () => setDirectoryFilter(g.key, active ? '' : o.v);
+          row.appendChild(b);
+        });
+        wrap.appendChild(row);
+      });
+    }
+    function setDirectoryFilter(key, value) {
+      directoryFilters[key] = value;
+      renderDirectoryChips();
+      loadAttendees();
     }
 
     /* Pass a page number to move to it; pass nothing for a fresh load, which
@@ -18264,6 +18507,10 @@ function mainPageHTML(): string {
       if (!fresh && attendeeLoading) return;
       const search = document.getElementById('attendee-search')?.value || '';
       const role = DIRECTORY_FILTER_ENABLED ? (document.getElementById('role-filter')?.value || '') : '';
+      const chipFiltered = !!(directoryFilters.industry || directoryFilters.city || directoryFilters.goal);
+      const chipQs = '&industry=' + encodeURIComponent(directoryFilters.industry)
+        + '&city=' + encodeURIComponent(directoryFilters.city)
+        + '&goal=' + encodeURIComponent(directoryFilters.goal);
       const target = fresh ? 0 : page;
       if (fresh) { attendeePageCursors = ['']; attendeePage = 0; attendeeHasMore = false; }
       const cursor = attendeePageCursors[target] || '';
@@ -18275,6 +18522,7 @@ function mainPageHTML(): string {
         const qs = '/api/events/' + EVENT_ID + '/attendees'
           + '?search=' + encodeURIComponent(search)
           + '&role=' + encodeURIComponent(role)
+          + chipQs
           // A student browsing should still see students where they expect them.
           + (viewerIsStudent() ? '' : '&demote_students=1')
           + (cursor ? '&cursor=' + encodeURIComponent(cursor) : '');
@@ -18308,7 +18556,7 @@ function mainPageHTML(): string {
         // re-ordering a single page would scramble that for no gain. Ranking
         // across everyone is the rail's job now.
         // Only on the first page: the 'why' line is about who leads the list.
-        const ranking = currentUser && !search && !role && target === 0;
+        const ranking = currentUser && !search && !role && !chipFiltered && target === 0;
         if (currentUser) {
           list.forEach(a => { const m = matchScore(a); a._score = m.score; a._shared = m.shared; });
         }
@@ -18327,25 +18575,25 @@ function mainPageHTML(): string {
           <div class="glass rounded-xl p-5 \${isVisitorPass() ? '' : 'card-hover'}">
             <div class="flex items-start gap-3">
               <div class="relative">
-                <img src="\${getAvatarUrl(a.email, a.name, 112, a.avatar_url)}" alt="\${a.name}" class="w-14 h-14 rounded-full object-cover">
+                <img src="\${getAvatarUrl(a.email, a.name, 112, a.avatar_url)}" alt="\${esc(a.name)}" class="w-14 h-14 rounded-full object-cover">
                 <span class="\${a.is_online ? 'online-dot' : 'offline-dot'} absolute -bottom-0.5 -right-0.5 border-2 border-dark-900"></span>
                 \${compLogo ? \`<img src="\${compLogo}" alt="" class="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-white border border-white/20 shadow-sm object-contain" onerror="this.style.display='none'">\` : ''}
               </div>
               <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-2">
-                  <h3 class="font-semibold text-sm truncate">\${a.name}</h3>
+                  <h3 class="font-semibold text-sm truncate">\${esc(a.name)}</h3>
                   <span class="px-1.5 py-0.5 rounded text-[10px] font-medium \${getBadgeClass(a.badge_type)}">\${displayBadge(a.badge_type)}</span>
                 </div>
-                <p class="text-xs text-gray-400 truncate">\${a.job_title || ''}\${a.job_title && a.company ? ' · ' : ''}\${a.company || ''}</p>
-                \${a.interests ? \`<div class="flex flex-wrap gap-1 mt-2">\${a.interests.split(',').slice(0,3).map(i => \`<span class="px-2 py-0.5 rounded-full text-[10px] bg-white/5 text-gray-400">\${i.trim()}</span>\`).join('')}</div>\` : ''}
-                \${reason ? \`<p class="text-[11px] mt-2" style="color:#C2410C"><i class="fas fa-link mr-1 text-[9px]"></i>\${reason}</p>\` : ''}
+                <p class="text-xs text-gray-400 truncate">\${esc(a.job_title || '')}\${a.job_title && a.company ? ' · ' : ''}\${esc(a.company || '')}</p>
+                \${a.interests ? \`<div class="flex flex-wrap gap-1 mt-2">\${a.interests.split(',').slice(0,3).map(i => \`<span class="px-2 py-0.5 rounded-full text-[10px] bg-white/5 text-gray-400">\${esc(i.trim())}</span>\`).join('')}</div>\` : ''}
+                \${reason ? \`<p class="text-[11px] mt-2" style="color:#C2410C"><i class="fas fa-link mr-1 text-[9px]"></i>\${esc(reason)}</p>\` : ''}
               </div>
             </div>
             <div class="flex gap-2 mt-4">
               <button onclick="viewProfile(\${a.id})" class="flex-1 py-2 rounded-lg text-xs font-medium glass hover:bg-white/10 transition"><i class="fas fa-user mr-1"></i>Profile</button>
-              <button onclick="\${isVisitorPass() ? 'showNetworkUpgradeModal(\\'' + a.name.replace(/'/g, '&apos;') + '\\')' : 'openConnectModal(' + a.id + ')'}" class="flex-1 py-2 rounded-lg text-xs font-medium bg-primary-600/20 text-primary-300 hover:bg-primary-600/30 transition"><i class="fas \${isVisitorPass() ? 'fa-lock' : 'fa-plus'} mr-1"></i>Connect</button>
-              <button onclick="\${isVisitorPass() ? 'showNetworkUpgradeModal(\\'' + a.name.replace(/'/g, '&apos;') + '\\')' : 'openChat(' + a.id + ', \\'' + a.name.replace(/'/g, '&apos;') + '\\', \\'' + (a.company || '').replace(/'/g, '&apos;') + '\\')'}" class="py-2 px-3 rounded-lg text-xs font-medium bg-accent-500/20 text-accent-300 hover:bg-accent-500/30 transition" title="Message"><i class="fas fa-comment"></i></button>
-              <button onclick="\${isVisitorPass() ? 'showNetworkUpgradeModal(\\'' + a.name.replace(/'/g, '&apos;') + '\\')' : 'openMeetingModal(' + a.id + ')'}" class="py-2 px-3 rounded-lg text-xs font-medium bg-green-500/20 text-green-300 hover:bg-green-500/30 transition" title="Schedule Meeting"><i class="fas fa-calendar-plus"></i></button>
+              <button data-act="connect" data-gate="1" data-id="\${a.id}" data-name="\${esc(a.name)}" class="flex-1 py-2 rounded-lg text-xs font-medium bg-primary-600/20 text-primary-300 hover:bg-primary-600/30 transition"><i class="fas \${isVisitorPass() ? 'fa-lock' : 'fa-plus'} mr-1"></i>Connect</button>
+              <button data-act="chat" data-gate="1" data-id="\${a.id}" data-name="\${esc(a.name)}" data-company="\${esc(a.company || '')}" class="py-2 px-3 rounded-lg text-xs font-medium bg-accent-500/20 text-accent-300 hover:bg-accent-500/30 transition" title="Message"><i class="fas fa-comment"></i></button>
+              <button data-act="meet" data-gate="1" data-id="\${a.id}" data-name="\${esc(a.name)}" class="py-2 px-3 rounded-lg text-xs font-medium bg-green-500/20 text-green-300 hover:bg-green-500/30 transition" title="Schedule Meeting"><i class="fas fa-calendar-plus"></i></button>
             </div>
           </div>\`;
         }).join('');
@@ -18575,10 +18823,10 @@ function mainPageHTML(): string {
           <div class="grid grid-cols-1 md:grid-cols-3 gap-3">\${top.map(a => \`
             <div class="rounded-xl p-4 border border-primary-500/25" style="background:linear-gradient(135deg,rgba(255,107,0,0.08),rgba(217,70,239,0.05));">
               <div class="flex items-center gap-3">
-                <img src="\${getAvatarUrl(a.email, a.name, 88, a.avatar_url)}" class="w-11 h-11 rounded-full object-cover">
-                <div class="min-w-0"><div class="font-semibold text-sm truncate">\${a.name}</div><div class="text-[11px] text-gray-400 truncate">\${a.job_title || ''}\${a.company ? ' · '+a.company : ''}</div></div>
+                <img src="\${getAvatarUrl(a.email, a.name, 88, a.avatar_url)}" alt="" class="w-11 h-11 rounded-full object-cover">
+                <div class="min-w-0"><div class="font-semibold text-sm truncate">\${esc(a.name)}</div><div class="text-[11px] text-gray-400 truncate">\${esc(a.job_title || '')}\${a.company ? ' · ' + esc(a.company) : ''}</div></div>
               </div>
-              <p class="text-[11px] text-primary-300 mt-2"><i class="fas fa-link mr-1"></i>\${matchReason(a, a._shared || [])}</p>
+              <p class="text-[11px] text-primary-300 mt-2"><i class="fas fa-link mr-1"></i>\${esc(matchReason(a, a._shared || []))}</p>
               <button onclick="viewProfile(\${a.id})" class="w-full mt-3 py-1.5 rounded-lg text-xs font-semibold text-white transition" style="background:linear-gradient(135deg,#FF6B00,#FF8C38)">View profile</button>
             </div>\`).join('')}</div>
         </div>\` : '';
@@ -18621,7 +18869,7 @@ function mainPageHTML(): string {
         document.getElementById('profile-content').innerHTML = \`
           <div class="flex items-center gap-4 mb-4">
             <div class="relative">
-              <img src="\${getAvatarUrl(a.email, a.name, 160, a.avatar_url)}" alt="\${a.name}" class="w-20 h-20 rounded-full object-cover">
+              <img src="\${getAvatarUrl(a.email, a.name, 160, a.avatar_url)}" alt="\${esc(a.name)}" class="w-20 h-20 rounded-full object-cover">
               \${compLogo ? \`<img src="\${compLogo}" alt="" class="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-white border-2 border-dark-900 shadow object-contain p-0.5" onerror="this.style.display='none'">\` : ''}
             </div>
             <div>
@@ -18630,30 +18878,30 @@ function mainPageHTML(): string {
                 <span class="text-xs text-gray-400">\${a.is_online ? 'Online' : 'Offline'}</span>
                 <span class="px-2 py-0.5 rounded text-xs font-medium \${getBadgeClass(a.badge_type)}">\${displayBadge(a.badge_type)}</span>
               </div>
-              <p class="font-semibold mt-1">\${a.job_title || 'Attendee'}</p>
-              <p class="text-sm text-gray-400 flex items-center gap-1.5">\${compLogo ? \`<img src="\${compLogo}" alt="" class="w-4 h-4 rounded object-contain inline-block" onerror="this.style.display='none'">\` : ''}\${a.company || ''}</p>
+              <p class="font-semibold mt-1">\${esc(a.job_title || 'Attendee')}</p>
+              <p class="text-sm text-gray-400 flex items-center gap-1.5">\${compLogo ? \`<img src="\${compLogo}" alt="" class="w-4 h-4 rounded object-contain inline-block" onerror="this.style.display='none'">\` : ''}\${esc(a.company || '')}</p>
             </div>
           </div>
-          \${a.bio ? \`<p class="text-sm text-gray-300 mb-4">\${a.bio}</p>\` : ''}
+          \${a.bio ? \`<p class="text-sm text-gray-300 mb-4">\${esc(a.bio)}</p>\` : ''}
           \${a.interests ? \`
             <div class="mb-4">
               <h4 class="text-xs font-semibold text-gray-500 uppercase mb-2">Interests</h4>
-              <div class="flex flex-wrap gap-1">\${a.interests.split(',').map(i => \`<span class="px-2 py-1 rounded-full text-xs bg-primary-500/20 text-primary-300">\${i.trim()}</span>\`).join('')}</div>
+              <div class="flex flex-wrap gap-1">\${a.interests.split(',').map(i => \`<span class="px-2 py-1 rounded-full text-xs bg-primary-500/20 text-primary-300">\${esc(i.trim())}</span>\`).join('')}</div>
             </div>
           \` : ''}
           <div class="flex gap-3 mb-4">
-            \${a.linkedin_url ? \`<a href="\${a.linkedin_url}" target="_blank" class="text-blue-400 hover:text-blue-300"><i class="fab fa-linkedin text-xl"></i></a>\` : ''}
-            \${a.twitter_url ? \`<a href="\${a.twitter_url}" target="_blank" class="text-sky-400 hover:text-sky-300"><i class="fab fa-twitter text-xl"></i></a>\` : ''}
-            \${a.website_url ? \`<a href="\${a.website_url}" target="_blank" class="text-gray-400 hover:text-white"><i class="fas fa-globe text-xl"></i></a>\` : ''}
+            \${safeUrl(a.linkedin_url) ? \`<a href="\${safeUrl(a.linkedin_url)}" target="_blank" rel="noopener" class="text-blue-400 hover:text-blue-300"><i class="fab fa-linkedin text-xl"></i></a>\` : ''}
+            \${safeUrl(a.twitter_url) ? \`<a href="\${safeUrl(a.twitter_url)}" target="_blank" rel="noopener" class="text-sky-400 hover:text-sky-300"><i class="fab fa-twitter text-xl"></i></a>\` : ''}
+            \${safeUrl(a.website_url) ? \`<a href="\${safeUrl(a.website_url)}" target="_blank" rel="noopener" class="text-gray-400 hover:text-white"><i class="fas fa-globe text-xl"></i></a>\` : ''}
           </div>
           <!-- These three buttons carried no tier check, which is how every one of
                the first 17 connection requests was sent by a Visitor Pass despite
                the grid being locked. The gate now lives in one place for both
                surfaces, and on the server besides. -->
           <div class="flex gap-2">
-            <button onclick="\${isVisitorPass() ? 'showNetworkUpgradeModal(\\'' + a.name.replace(/'/g, '&apos;') + '\\')' : 'openConnectModal(' + a.id + ')'}; closeProfileModal();" class="flex-1 py-2.5 rounded-xl text-sm font-medium bg-primary-600 hover:bg-primary-500 text-white transition"><i class="fas \${isVisitorPass() ? 'fa-lock' : 'fa-user-plus'} mr-2"></i>Connect</button>
-            <button onclick="\${isVisitorPass() ? 'showNetworkUpgradeModal(\\'' + a.name.replace(/'/g, '&apos;') + '\\')' : 'openChat(' + a.id + ', \\'' + a.name.replace(/'/g, '&apos;') + '\\', \\'' + (a.company || '').replace(/'/g, '&apos;') + '\\')'}; closeProfileModal();" class="flex-1 py-2.5 rounded-xl text-sm font-medium bg-accent-500/20 text-accent-300 hover:bg-accent-500/30 transition"><i class="fas fa-comment mr-2"></i>Message</button>
-            <button onclick="\${isVisitorPass() ? 'showNetworkUpgradeModal(\\'' + a.name.replace(/'/g, '&apos;') + '\\')' : 'openMeetingModal(' + a.id + ')'}; closeProfileModal();" class="py-2.5 px-4 rounded-xl text-sm font-medium glass hover:bg-white/10 transition"><i class="fas fa-calendar-plus"></i></button>
+            <button data-act="connect" data-gate="1" data-id="\${a.id}" data-name="\${esc(a.name)}" class="flex-1 py-2.5 rounded-xl text-sm font-medium bg-primary-600 hover:bg-primary-500 text-white transition"><i class="fas \${isVisitorPass() ? 'fa-lock' : 'fa-user-plus'} mr-2"></i>Connect</button>
+            <button data-act="chat" data-gate="1" data-id="\${a.id}" data-name="\${esc(a.name)}" data-company="\${esc(a.company || '')}" class="flex-1 py-2.5 rounded-xl text-sm font-medium bg-accent-500/20 text-accent-300 hover:bg-accent-500/30 transition"><i class="fas fa-comment mr-2"></i>Message</button>
+            <button data-act="meet" data-gate="1" data-id="\${a.id}" data-name="\${esc(a.name)}" class="py-2.5 px-4 rounded-xl text-sm font-medium glass hover:bg-white/10 transition"><i class="fas fa-calendar-plus"></i></button>
           </div>
         \`;
         document.getElementById('profile-modal').classList.remove('hidden');
@@ -18811,31 +19059,46 @@ function mainPageHTML(): string {
 
     // ==================== CHAT ====================
     let chatPartnerId = null;
+    // The thread refreshes itself while the modal is open, and repaints only
+    // when the count or the last id moved, so scrolling and the caret survive.
+    let chatPollTimer = null;
+    let chatLastKey = '';
 
     async function openChat(partnerId, name, company) {
       if (!currentUser) return;
       chatPartnerId = partnerId;
+      chatLastKey = '';
       document.getElementById('chat-partner-name').textContent = name;
       document.getElementById('chat-partner-company').textContent = company;
       document.getElementById('chat-modal').classList.remove('hidden');
-      await loadMessages();
+      await loadMessages(true);
+      if (chatPollTimer) clearInterval(chatPollTimer);
+      chatPollTimer = setInterval(() => { if (!document.hidden) loadMessages(); }, 6000);
     }
 
     function closeChatModal() {
       document.getElementById('chat-modal').classList.add('hidden');
       chatPartnerId = null;
+      if (chatPollTimer) { clearInterval(chatPollTimer); chatPollTimer = null; }
+      chatLastKey = '';
     }
 
-    async function loadMessages() {
+    async function loadMessages(force) {
       if (!currentUser || !chatPartnerId) return;
       try {
-        const messages = await api.get(\`/api/messages/\${currentUser.id}/\${chatPartnerId}\`);
+        const partner = chatPartnerId;
+        const messages = await api.get(\`/api/messages/\${currentUser.id}/\${partner}\`);
+        if (partner !== chatPartnerId || !Array.isArray(messages)) return;
+        const last = messages.length ? messages[messages.length - 1] : null;
+        const key = messages.length + ':' + (last ? last.id : 0);
+        if (!force && key === chatLastKey) return;
+        chatLastKey = key;
         const container = document.getElementById('chat-messages');
         container.innerHTML = messages.length ? messages.map(m => \`
           <div class="flex \${m.sender_id == currentUser.id ? 'justify-end' : 'justify-start'}">
             <div class="max-w-[80%] px-4 py-2.5 \${m.sender_id == currentUser.id ? 'chat-bubble-sent' : 'chat-bubble-received'}">
-              <p class="text-sm">\${m.content}</p>
-              <p class="text-[10px] text-gray-400 mt-1 \${m.sender_id == currentUser.id ? 'text-right' : ''}">\${new Date(m.created_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</p>
+              <p class="text-sm">\${esc(m.content)}</p>
+              <p class="text-[10px] text-gray-400 mt-1 \${m.sender_id == currentUser.id ? 'text-right' : ''}">\${parseDbTime(m.created_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</p>
             </div>
           </div>
         \`).join('') : '<div class="text-center text-gray-500 py-8"><i class="fas fa-comments text-3xl mb-2 block"></i><p class="text-sm">Start a conversation!</p></div>';
@@ -18848,17 +19111,21 @@ function mainPageHTML(): string {
       const input = document.getElementById('chat-input');
       const content = input.value.trim();
       if (!content || !currentUser || !chatPartnerId) return;
-      input.value = '';
 
       try {
-        await api.post('/api/messages', {
+        const r = await api.post('/api/messages', {
           event_id: EVENT_ID,
           sender_id: currentUser.id,
           receiver_id: chatPartnerId,
           content
         });
-        await loadMessages();
-      } catch(e) { console.error('Send message error:', e); }
+        // The box used to be emptied before the send, so a refused message
+        // (signed out, blocked) simply vanished. It stays put until it is in.
+        const why = apiFailed(r);
+        if (why) { showToast(why, 'error'); return; }
+        input.value = '';
+        await loadMessages(true);
+      } catch(e) { console.error('Send message error:', e); showToast('Message not sent. Check your connection and try again.', 'error'); }
     });
 
     // ==================== MEETINGS ====================
@@ -19142,9 +19409,9 @@ function mainPageHTML(): string {
           <div class="glass rounded-xl p-5 card-hover \${ex.booth_size === 'platinum' ? 'booth-platinum glow-accent' : ex.booth_size === 'premium' ? 'booth-premium glow' : 'booth-standard'}">
             <div class="flex items-start justify-between mb-3">
               <div class="flex items-center gap-3">
-                <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-primary-500/20 to-accent-500/20 flex items-center justify-center text-lg font-bold text-primary-300 overflow-hidden">\${exLogo ? \`<img src="\${exLogo}" alt="\${ex.company_name}" class="w-8 h-8 object-contain" onerror="this.parentElement.innerHTML='\${ex.company_name.charAt(0)}'">\` : ex.company_name.charAt(0)}</div>
+                <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-primary-500/20 to-accent-500/20 flex items-center justify-center text-lg font-bold text-primary-300 overflow-hidden">\${exLogo ? \`<img src="\${exLogo}" alt="\${esc(ex.company_name)}" data-initial="\${esc(String(ex.company_name || '').charAt(0))}" class="w-8 h-8 object-contain" onerror="this.parentElement.textContent=this.dataset.initial">\` : esc(String(ex.company_name || '').charAt(0))}</div>
                 <div>
-                  <h3 class="font-bold">\${ex.company_name}</h3>
+                  <h3 class="font-bold">\${esc(ex.company_name)}</h3>
                   <div class="flex items-center gap-2 text-xs text-gray-500">
                     \${ex.booth_number ? '<span><i class="fas fa-map-pin mr-1"></i>Booth ' + ex.booth_number + '</span>' : ''}
                     <span class="px-1.5 py-0.5 rounded text-[10px] font-medium \${ex.booth_size === 'platinum' ? 'bg-accent-500/20 text-accent-300' : ex.booth_size === 'premium' ? 'bg-primary-500/20 text-primary-300' : 'bg-white/5 text-gray-400'}">\${ex.booth_size}</span>
@@ -19206,17 +19473,33 @@ function mainPageHTML(): string {
       }
     }
 
+    // "Booth visited" hands the exhibitor your contact details. Say so, and say
+    // exactly which, before anything is sent; and one tap at a time, because a
+    // double tap used to file two leads.
+    let boothVisitInFlight = false;
     async function visitBooth(exhibitorId) {
       if (!currentUser) return;
+      if (boothVisitInFlight) return;
+      const shared = [
+        'Name: ' + (currentUser.name || '-'),
+        'Email: ' + (currentUser.email || '-'),
+        'Phone: ' + (currentUser.mobile || currentUser.phone || '-'),
+        'Company: ' + (currentUser.company || '-')
+      ].join('\\n');
+      if (!window.confirm('Share your contact details with this exhibitor?\\n\\n' + shared + '\\n\\nThey can then reach you after the event.')) return;
+      boothVisitInFlight = true;
       try {
-        await api.post(\`/api/exhibitors/\${exhibitorId}/visit\`, {
+        const r = await api.post(\`/api/exhibitors/\${exhibitorId}/visit\`, {
           attendee_id: currentUser.id,
           event_id: EVENT_ID,
           interested: true
         });
-        showToast('Booth visited! Contact details shared.', 'success');
+        const why = apiFailed(r);
+        if (why) { showToast(why, 'error'); return; }
+        showToast(r && r.already ? 'Already shared with this exhibitor.' : 'Booth visited! Contact details shared.', 'success');
         loadExhibitors();
       } catch(e) { showToast('Failed to record visit', 'error'); }
+      finally { boothVisitInFlight = false; }
     }
 
     // ==================== BOOTH CATALOG & REQUEST SYSTEM ====================
@@ -19797,7 +20080,7 @@ function mainPageHTML(): string {
                   </div>
                   <div>
                     <span class="text-gray-500">Requested</span>
-                    <div>\${new Date(r.created_at).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' })}</div>
+                    <div>\${parseDbTime(r.created_at).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' })}</div>
                   </div>
                 </div>
                 \${r.admin_notes ? \`<div class="glass rounded-lg p-3 text-xs"><i class="fas fa-comment text-primary-400 mr-1.5"></i><span class="text-gray-400">Admin: </span>\${r.admin_notes}</div>\` : ''}
@@ -20218,13 +20501,48 @@ function mainPageHTML(): string {
       document.querySelector(\`[data-inbox="\${tab}"]\`).classList.add('tab-active');
       document.querySelector(\`[data-inbox="\${tab}"]\`).classList.remove('text-gray-400');
       document.getElementById('inbox-connections').classList.toggle('hidden', tab !== 'connections');
+      document.getElementById('inbox-messages').classList.toggle('hidden', tab !== 'messages');
       document.getElementById('inbox-meetings').classList.toggle('hidden', tab !== 'meetings');
       if (tab === 'connections') loadConnections();
+      else if (tab === 'messages') loadThreads();
       else loadMeetings();
     }
 
     async function loadInbox() {
-      await Promise.all([loadConnections(), loadMeetings()]);
+      await Promise.all([loadConnections(), loadThreads(), loadMeetings()]);
+    }
+
+    // Where the unread badge lands. Until the Messages tab existed it led to a
+    // list of connections and the person had to find the sender again.
+    function openInboxMessages() {
+      switchTab('inbox');
+      if (currentUser) switchInboxTab('messages');
+    }
+
+    async function loadThreads() {
+      if (!currentUser) return;
+      const el = document.getElementById('inbox-messages');
+      if (!el) return;
+      try {
+        const threads = await api.get(\`/api/attendees/\${currentUser.id}/threads\`);
+        if (!Array.isArray(threads)) { el.innerHTML = '<p class="text-sm text-gray-500 text-center py-6">' + esc(apiFailed(threads) || 'Could not load your messages.') + '</p>'; return; }
+        el.innerHTML = threads.length ? threads.map(t => \`
+          <button type="button" data-act="chat" data-id="\${t.id}" data-name="\${esc(t.name)}" data-company="\${esc(t.company || '')}" class="w-full text-left glass rounded-xl p-4 card-hover">
+            <div class="flex items-center gap-3">
+              <img src="\${getAvatarUrl('', t.name, 96, t.avatar_url)}" alt="" class="w-12 h-12 rounded-full object-cover shrink-0">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center justify-between gap-2">
+                  <h3 class="font-semibold text-sm truncate">\${esc(t.name)}</h3>
+                  <span class="text-[10px] text-gray-500 shrink-0">\${timeAgo(t.last_at)}</span>
+                </div>
+                \${t.company ? \`<p class="text-xs text-gray-400 truncate">\${esc(t.company)}</p>\` : ''}
+                <p class="text-xs truncate mt-0.5 \${t.unread > 0 ? 'text-white font-medium' : 'text-gray-500'}">\${esc(t.last_content || '')}</p>
+              </div>
+              \${t.unread > 0 ? \`<span class="min-w-5 h-5 px-1.5 rounded-full bg-primary-500 text-white text-[10px] font-semibold flex items-center justify-center shrink-0">\${t.unread}</span>\` : ''}
+            </div>
+          </button>
+        \`).join('') : '<div class="text-center text-gray-500 py-12"><i class="fas fa-comments text-4xl mb-3 block"></i><p>No messages yet. Say hello to a connection!</p></div>';
+      } catch(e) { el.innerHTML = '<p class="text-sm text-gray-500 text-center py-6">Could not load your messages.</p>'; }
     }
 
     async function loadConnections() {
@@ -20235,16 +20553,16 @@ function mainPageHTML(): string {
           <div class="glass rounded-xl p-4 card-hover">
             <div class="flex items-center gap-3">
               <div class="relative">
-                <img src="\${getAvatarUrl(conn.other_email, conn.other_name, 96, conn.other_avatar)}" alt="\${conn.other_name}" class="w-12 h-12 rounded-full object-cover">
+                <img src="\${getAvatarUrl(conn.other_email, conn.other_name, 96, conn.other_avatar)}" alt="\${esc(conn.other_name)}" class="w-12 h-12 rounded-full object-cover">
                 <span class="\${conn.other_online ? 'online-dot' : 'offline-dot'} absolute -bottom-0.5 -right-0.5 border-2 border-dark-900"></span>
               </div>
               <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-2 flex-wrap">
-                  <h3 class="font-semibold text-sm">\${conn.other_name}</h3>
+                  <h3 class="font-semibold text-sm">\${esc(conn.other_name)}</h3>
                   \${conn.other_badge ? \`<span class="px-1.5 py-0.5 rounded text-[10px] font-medium \${getBadgeClass(conn.other_badge)}">\${displayBadge(conn.other_badge)}</span>\` : ''}
                 </div>
-                <p class="text-xs text-gray-400">\${conn.other_job_title || ''}\${conn.other_job_title && conn.other_company ? ' · ' : ''}\${conn.other_company || ''}</p>
-                \${conn.message ? \`<p class="text-xs text-gray-300 mt-1.5 leading-relaxed border-l-2 border-primary-500/40 pl-2">"\${conn.message}"</p>\` : ''}
+                <p class="text-xs text-gray-400">\${esc(conn.other_job_title || '')}\${conn.other_job_title && conn.other_company ? ' · ' : ''}\${esc(conn.other_company || '')}</p>
+                \${conn.message ? \`<p class="text-xs text-gray-300 mt-1.5 leading-relaxed border-l-2 border-primary-500/40 pl-2">"\${esc(conn.message)}"</p>\` : ''}
               </div>
               <div class="flex items-center gap-2 shrink-0">
                 <span class="px-2 py-0.5 rounded-full text-xs font-medium \${conn.status === 'accepted' ? 'bg-green-500/20 text-green-400' : conn.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400' : 'bg-red-500/20 text-red-400'}">\${conn.status}</span>
@@ -20252,7 +20570,7 @@ function mainPageHTML(): string {
                   <button onclick="updateConnection(\${conn.id}, 'accepted')" class="px-2 py-1 rounded text-xs bg-green-500/20 text-green-400 hover:bg-green-500/30"><i class="fas fa-check"></i></button>
                   <button onclick="updateConnection(\${conn.id}, 'declined')" class="px-2 py-1 rounded text-xs bg-red-500/20 text-red-400 hover:bg-red-500/30"><i class="fas fa-times"></i></button>
                 \` : ''}
-                \${conn.status === 'accepted' ? \`<button onclick="openChat(\${conn.other_id}, '\${conn.other_name?.replace(/'/g, "&apos;")}', '\${(conn.other_company || '').replace(/'/g, "&apos;")}')" class="px-2 py-1 rounded text-xs bg-primary-500/20 text-primary-300 hover:bg-primary-500/30"><i class="fas fa-comment"></i></button>\` : ''}
+                \${conn.status === 'accepted' ? \`<button data-act="chat" data-id="\${conn.other_id}" data-name="\${esc(conn.other_name || '')}" data-company="\${esc(conn.other_company || '')}" class="px-2 py-1 rounded text-xs bg-primary-500/20 text-primary-300 hover:bg-primary-500/30"><i class="fas fa-comment"></i></button>\` : ''}
               </div>
             </div>
           </div>
@@ -20338,14 +20656,20 @@ function mainPageHTML(): string {
 
     async function updateMeeting(id, status) {
       try {
-        await api.put(\`/api/meetings/\${id}\`, { status });
+        const r = await api.put(\`/api/meetings/\${id}\`, { status });
+        const why = apiFailed(r);
+        if (why) { showToast(why, 'error'); return; }
         showToast(\`Meeting \${status}!\`, 'success');
         loadMeetings();
       } catch(e) { showToast('Failed to update meeting', 'error'); }
     }
 
     // ==================== UNREAD CHECK ====================
+    // A background tab polls at a quarter of the rate: there is nobody to show
+    // the badge to, and the venue network is shared with every other phone.
+    let unreadTimer = null;
     async function checkUnread() {
+      if (unreadTimer) { clearTimeout(unreadTimer); unreadTimer = null; }
       if (!currentUser) return;
       try {
         const data = await api.get(\`/api/attendees/\${currentUser.id}/unread\`);
@@ -20359,7 +20683,7 @@ function mainPageHTML(): string {
           if(badgeMobile) badgeMobile.classList.add('hidden');
         }
       } catch(e) {}
-      setTimeout(checkUnread, 15000);
+      if (currentUser) unreadTimer = setTimeout(checkUnread, document.hidden ? 60000 : 15000);
     }
 
     // ==================== NOTIFICATION CENTER ====================
@@ -20369,7 +20693,10 @@ function mainPageHTML(): string {
     let _notifCache = [];
     function _notifSeenId() { return parseInt(localStorage.getItem('bhai_notif_seen') || '0', 10); }
     function _notifReadId() { return parseInt(localStorage.getItem('bhai_notif_read') || '0', 10); }
+    let notifTimer = null;
     async function pollNotifications(firstRun) {
+      if (notifTimer) { clearTimeout(notifTimer); notifTimer = null; }
+      if (!currentUser) return;
       try {
         const anns = await api.get(\`/api/events/\${EVENT_ID}/announcements\`);
         _notifCache = anns || [];
@@ -20381,33 +20708,52 @@ function mainPageHTML(): string {
           const seen = _notifSeenId();
           const fresh = _notifCache.filter(a => (a.id || 0) > seen);
           fresh.slice(0, 2).forEach(a => {
-            showToast('📢 ' + a.title, a.announcement_type === 'urgent' ? 'error' : 'info');
+            showToast('📢 ' + esc(a.title), a.announcement_type === 'urgent' ? 'error' : 'info');
             fireOsNotification(a.title, a.content || 'Bharat AI Innovation 2026');
           });
         }
         if (maxId) localStorage.setItem('bhai_notif_seen', String(maxId));
         renderNotifCenter();
       } catch(e) {}
-      setTimeout(() => pollNotifications(false), 30000);
+      if (currentUser) notifTimer = setTimeout(() => pollNotifications(false), document.hidden ? 60000 : 30000);
     }
+    // Coming back to the tab polls at once instead of waiting out the slow interval.
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden || !currentUser) return;
+      checkUnread();
+      pollNotifications(false);
+    });
+    // Renders the same list into the desktop dropdown and the mobile sheet.
     function renderNotifCenter() {
-      const list = document.getElementById('notif-list');
-      const badge = document.getElementById('notif-badge');
-      if (!list) return;
+      const lists = [document.getElementById('notif-list'), document.getElementById('notif-list-mobile')].filter(Boolean);
+      const badges = [document.getElementById('notif-badge'), document.getElementById('notif-badge-mobile')].filter(Boolean);
+      if (!lists.length) return;
       const readId = _notifReadId();
       const unread = _notifCache.filter(a => (a.id || 0) > readId).length;
-      if (badge) { if (unread > 0) { badge.textContent = unread > 9 ? '9+' : unread; badge.classList.remove('hidden'); } else badge.classList.add('hidden'); }
+      badges.forEach(badge => { if (unread > 0) { badge.textContent = unread > 9 ? '9+' : unread; badge.classList.remove('hidden'); } else badge.classList.add('hidden'); });
       // Offer OS alerts if not yet granted.
       const canAsk = ('Notification' in window) && Notification.permission === 'default';
       const alertsRow = canAsk ? '<button onclick="enableAlerts()" class="w-full px-4 py-2.5 text-left text-xs text-primary-300 hover:bg-white/5 border-b border-white/5 flex items-center gap-2"><i class="fas fa-bell"></i>Turn on live alerts for this device</button>' : '';
-      list.innerHTML = alertsRow + (_notifCache.length ? _notifCache.slice(0, 12).map(a => {
+      const html = alertsRow + (_notifCache.length ? _notifCache.slice(0, 12).map(a => {
         const isUnread = (a.id || 0) > readId;
         const icon = a.announcement_type === 'urgent' ? 'fa-triangle-exclamation text-red-400' : a.announcement_type === 'schedule_change' ? 'fa-arrows-rotate text-yellow-400' : 'fa-bullhorn text-primary-400';
         return \`<div class="px-4 py-3 border-b border-white/5 \${isUnread ? 'bg-primary-500/5' : ''}">
           <div class="flex items-start gap-2.5"><i class="fas \${icon} mt-0.5 text-xs"></i>
-          <div class="min-w-0 flex-1"><p class="text-sm font-medium \${isUnread ? '' : 'text-gray-300'}">\${a.title}</p><p class="text-xs text-gray-500 mt-0.5 line-clamp-2">\${a.content || ''}</p><p class="text-[10px] text-gray-600 mt-1">\${new Date(a.created_at).toLocaleString()}</p></div>
+          <div class="min-w-0 flex-1"><p class="text-sm font-medium \${isUnread ? '' : 'text-gray-300'}">\${esc(a.title)}</p><p class="text-xs text-gray-500 mt-0.5 line-clamp-2">\${esc(a.content || '')}</p><p class="text-[10px] text-gray-600 mt-1">\${parseDbTime(a.created_at).toLocaleString()}</p></div>
           \${isUnread ? '<span class="w-2 h-2 rounded-full bg-primary-500 shrink-0 mt-1.5"></span>' : ''}</div></div>\`;
       }).join('') : '<div class="px-4 py-8 text-center text-sm text-gray-500"><i class="fas fa-bell-slash block text-xl mb-2"></i>No notifications yet</div>');
+      lists.forEach(list => { list.innerHTML = html; });
+    }
+    function toggleMobileNotifs() {
+      const sheet = document.getElementById('notif-sheet');
+      if (!sheet) return;
+      const opening = sheet.classList.contains('hidden');
+      sheet.classList.toggle('hidden');
+      if (opening) renderNotifCenter();
+    }
+    function closeMobileNotifs() {
+      const sheet = document.getElementById('notif-sheet');
+      if (sheet) sheet.classList.add('hidden');
     }
     function toggleNotifCenter(e) {
       if (e) e.stopPropagation();
@@ -20449,12 +20795,67 @@ function mainPageHTML(): string {
       if (dd && !dd.classList.contains('hidden') && !dd.contains(e.target) && btn && !btn.contains(e.target)) dd.classList.add('hidden');
     });
 
+    // One listener for every Connect / Message / Meet button the app renders.
+    // The person's name rides in data attributes rather than in an inline
+    // onclick, because a name with a quote in it used to break the attribute
+    // and the button with it. The visitor-pass gate is applied here, at click
+    // time, for the buttons that carry data-gate (directory cards and the
+    // profile card) - the same rule the inline handlers baked in at render time.
+    document.addEventListener('click', (e) => {
+      const b = e.target && e.target.closest ? e.target.closest('[data-act]') : null;
+      if (!b) return;
+      const act = b.getAttribute('data-act');
+      const id = parseInt(b.getAttribute('data-id') || '', 10);
+      const name = b.getAttribute('data-name') || '';
+      const company = b.getAttribute('data-company') || '';
+      if (!id) return;
+      const inProfile = !!b.closest('#profile-modal');
+      if (b.getAttribute('data-gate') === '1' && isVisitorPass()) showNetworkUpgradeModal(name);
+      else if (act === 'connect') openConnectModal(id);
+      else if (act === 'chat') openChat(id, name, company);
+      else if (act === 'meet') openMeetingModal(id, name);
+      else return;
+      if (inProfile) closeProfileModal();
+    });
+
+    // Escape closes whichever overlay is on top, through its own close function
+    // where one exists (some restore body scrolling or stop a timer), so the key
+    // does exactly what the X button does.
+    const MODAL_CLOSERS = {
+      'chat-modal': () => closeChatModal(),
+      'profile-modal': () => closeProfileModal(),
+      'meeting-modal': () => closeMeetingModal(),
+      'paid-pass-modal': () => closePaidPassModal(),
+      'social-card-modal': () => closeSocialCard(),
+      'edit-profile-modal': () => closeEditProfile(),
+      'networking-guide-modal': () => closeNetworkingGuide(),
+      'inquiry-modal': () => closeInquiryForm(),
+      'arrival-prompt-overlay': () => dismissArrivalPrompt(),
+      'notif-sheet': () => closeMobileNotifs()
+    };
+    function closeTopModal() {
+      const open = Array.from(document.querySelectorAll('.modal-overlay')).filter(m => getComputedStyle(m).display !== 'none');
+      if (!open.length) return false;
+      // Stable sort: equal z-index keeps DOM order, so the last one opened wins.
+      open.sort((a, b) => (parseInt(getComputedStyle(a).zIndex, 10) || 0) - (parseInt(getComputedStyle(b).zIndex, 10) || 0));
+      const top = open[open.length - 1];
+      const close = MODAL_CLOSERS[top.id];
+      if (close) close(); else top.classList.add('hidden');
+      return true;
+    }
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      if (closeTopModal()) e.preventDefault();
+    });
+
     // ==================== SPEAKER GREEN ROOM ====================
-    function openSpeakerGreenRoom() {
+    function openSpeakerGreenRoom(fromHistory) {
       document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
       const t = document.getElementById('tab-speaker-room');
       if (t) t.classList.remove('hidden');
       currentTab = 'speaker-room';
+      rememberTab('speaker-room', fromHistory === true);
+      ensureBackControl(t);
       loadSpeakerSessions();
     }
     async function loadSpeakerSessions() {
@@ -20486,10 +20887,13 @@ function mainPageHTML(): string {
       showToast(now ? 'Added to watchlist' : 'Removed from watchlist', 'success');
       loadInvestorDealflow();
     }
-    function openInvestorDealflow() {
+    function openInvestorDealflow(fromHistory) {
       document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
       const t = document.getElementById('tab-investor'); if (t) t.classList.remove('hidden');
-      currentTab = 'investor'; loadInvestorDealflow();
+      currentTab = 'investor';
+      rememberTab('investor', fromHistory === true);
+      ensureBackControl(t);
+      loadInvestorDealflow();
     }
     async function loadInvestorDealflow() {
       const el = document.getElementById('inv-list'); if (!el) return;
@@ -20519,17 +20923,21 @@ function mainPageHTML(): string {
     }
 
     // ==================== MEDIA PRESS AREA ====================
-    function openMediaCenter() {
+    function openMediaCenter(fromHistory) {
       document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
       const t = document.getElementById('tab-media'); if (t) t.classList.remove('hidden');
       currentTab = 'media';
+      rememberTab('media', fromHistory === true);
+      ensureBackControl(t);
     }
 
     // ==================== VENUE MAP ====================
-    function openVenueMap() {
+    function openVenueMap(fromHistory) {
       document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
       const t = document.getElementById('tab-venue'); if (t) t.classList.remove('hidden');
       currentTab = 'venue';
+      rememberTab('venue', fromHistory === true);
+      ensureBackControl(t);
       const wrap = document.getElementById('venue-halls');
       if (wrap && typeof HALLS !== 'undefined') {
         wrap.innerHTML = HALLS.map(h => \`<button onclick="switchTab('schedule');selectedHall='\${h.key}';setTimeout(loadSchedule,50)" class="rounded-xl p-3 text-left transition hover:bg-white/5 border border-white/8">
@@ -20539,13 +20947,15 @@ function mainPageHTML(): string {
 
     // ==================== EXHIBITOR LEAD CONSOLE ====================
     let _ecLeads = [];
-    function openExhibitorConsole() {
+    function openExhibitorConsole(fromHistory) {
       // Reveal + activate the console tab (it has no nav entry; entered from
       // the exhibitor role-home action).
       document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
       const t = document.getElementById('tab-exhibitor-console');
       if (t) t.classList.remove('hidden');
       currentTab = 'exhibitor-console';
+      rememberTab('exhibitor-console', fromHistory === true);
+      ensureBackControl(t);
       loadExhibitorLeads();
     }
     async function loadExhibitorLeads() {
@@ -20566,13 +20976,13 @@ function mainPageHTML(): string {
           <div class="glass rounded-xl p-4 flex items-center gap-4">
             <img src="\${getAvatarUrl(l.email, l.name, 88, l.avatar_url)}" class="w-11 h-11 rounded-full object-cover shrink-0">
             <div class="min-w-0 flex-1">
-              <div class="flex items-center gap-2"><span class="font-semibold text-sm truncate">\${l.name}</span>\${l.interested ? '<span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-500/20 text-green-300">Interested</span>' : ''}</div>
-              <div class="text-xs text-gray-400 truncate">\${l.job_title || ''}\${l.job_title && l.company ? ' · ' : ''}\${l.company || ''}</div>
-              \${l.notes ? \`<div class="text-[11px] text-gray-500 mt-1 truncate">"\${l.notes}"</div>\` : ''}
+              <div class="flex items-center gap-2"><span class="font-semibold text-sm truncate">\${esc(l.name)}</span>\${l.interested ? '<span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-500/20 text-green-300">Interested</span>' : ''}</div>
+              <div class="text-xs text-gray-400 truncate">\${esc(l.job_title || '')}\${l.job_title && l.company ? ' · ' : ''}\${esc(l.company || '')}</div>
+              \${l.notes ? \`<div class="text-[11px] text-gray-500 mt-1 truncate">"\${esc(l.notes)}"</div>\` : ''}
             </div>
             <div class="flex items-center gap-2 shrink-0">
-              <a href="mailto:\${l.email}" class="w-9 h-9 rounded-lg flex items-center justify-center bg-white/5 hover:bg-white/10 text-gray-300 transition" title="Email"><i class="fas fa-envelope text-xs"></i></a>
-              \${l.linkedin_url ? \`<a href="\${l.linkedin_url}" target="_blank" class="w-9 h-9 rounded-lg flex items-center justify-center bg-white/5 hover:bg-white/10 text-gray-300 transition" title="LinkedIn"><i class="fab fa-linkedin text-xs"></i></a>\` : ''}
+              <a href="mailto:\${esc(l.email)}" class="w-9 h-9 rounded-lg flex items-center justify-center bg-white/5 hover:bg-white/10 text-gray-300 transition" title="Email"><i class="fas fa-envelope text-xs"></i></a>
+              \${safeUrl(l.linkedin_url) ? \`<a href="\${safeUrl(l.linkedin_url)}" target="_blank" rel="noopener" class="w-9 h-9 rounded-lg flex items-center justify-center bg-white/5 hover:bg-white/10 text-gray-300 transition" title="LinkedIn"><i class="fab fa-linkedin text-xs"></i></a>\` : ''}
             </div>
           </div>\`).join('') : '<div class="glass rounded-xl p-10 text-center"><i class="fas fa-user-group text-3xl text-gray-600 mb-3 block"></i><p class="text-sm text-gray-400">No booth visitors yet</p><p class="text-xs text-gray-600 mt-1">Attendees who scan or visit your booth will show up here with their contact details.</p></div>';
       } catch(e) { if (list) list.innerHTML = '<p class="text-sm text-gray-500 text-center py-6">Could not load leads.</p>'; }
@@ -20590,7 +21000,9 @@ function mainPageHTML(): string {
     async function submitRsvp(status) {
       if (!currentUser) { showToast('Please sign in first', 'error'); return; }
       try {
-        await api.post('/api/attendees/' + currentUser.id + '/rsvp', { status });
+        const r = await api.post('/api/attendees/' + currentUser.id + '/rsvp', { status });
+        const why = apiFailed(r);
+        if (why) { showToast(why, 'error'); return; }
         currentUser.rsvp_status = status;
         currentUser.rsvp_at = new Date().toISOString();
         localStorage.setItem('agba_user', JSON.stringify(currentUser));
@@ -21404,8 +21816,9 @@ function mainPageHTML(): string {
     // ==================== HELPERS ====================
     function formatTime(dt) {
       if (!dt) return '';
-      const d = new Date(dt);
-      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const d = parseVenueTime(dt);
+      if (isNaN(d.getTime())) return '';
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' });
     }
 
     function getSessionTypeClass(type) {
@@ -21487,7 +21900,7 @@ function mainPageHTML(): string {
               <div class="absolute inset-0 flex items-end p-6">
                 <div class="flex items-end gap-4 w-full">
                   <div class="relative -mb-12 md:-mb-14 z-10 shrink-0">
-                    <img src="\${getAvatarUrl(p.email, p.name, 224, p.avatar_url)}" alt="\${p.name}" class="w-24 h-24 md:w-28 md:h-28 rounded-2xl object-cover shadow-2xl border-4 border-dark-900">
+                    <img src="\${getAvatarUrl(p.email, p.name, 224, p.avatar_url)}" alt="\${esc(p.name)}" class="w-24 h-24 md:w-28 md:h-28 rounded-2xl object-cover shadow-2xl border-4 border-dark-900">
                     <span class="\${p.is_online ? 'online-dot' : 'offline-dot'} absolute -bottom-1 -right-1 border-3 border-dark-900 w-5 h-5"></span>
                   </div>
                 </div>
@@ -21497,20 +21910,20 @@ function mainPageHTML(): string {
               <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
                 <div class="flex-1">
                   <div class="flex items-center gap-3 flex-wrap mb-1">
-                    <h2 class="text-2xl md:text-3xl font-black">\${p.name}</h2>
+                    <h2 class="text-2xl md:text-3xl font-black">\${esc(p.name)}</h2>
                     <span class="px-2.5 py-0.5 rounded-full text-xs font-bold \${getBadgeClass(p.badge_type)} uppercase tracking-wide">\${displayBadge(p.badge_type)}</span>
                     \${p.is_online ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-green-500/20 text-green-400"><i class="fas fa-circle text-[6px] mr-1"></i>Online</span>' : ''}
                   </div>
-                  <p class="text-gray-300 text-sm md:text-base">\${p.job_title || 'Attendee'}\${p.company ? ' at <span class="text-white font-semibold">' + p.company + '</span>' : ''}</p>
-                  \${p.bio ? \`<p class="text-sm text-gray-400 mt-2 max-w-2xl leading-relaxed">\${p.bio}</p>\` : ''}
+                  <p class="text-gray-300 text-sm md:text-base">\${esc(p.job_title || 'Attendee')}\${p.company ? ' at <span class="text-white font-semibold">' + esc(p.company) + '</span>' : ''}</p>
+                  \${p.bio ? \`<p class="text-sm text-gray-400 mt-2 max-w-2xl leading-relaxed">\${esc(p.bio)}</p>\` : ''}
                   \${p.interests ? \`
-                    <div class="flex flex-wrap gap-1.5 mt-3">\${p.interests.split(',').map(i => \`<span class="px-2.5 py-1 rounded-full text-xs bg-primary-500/15 text-primary-300 border border-primary-500/20 font-medium">\${i.trim()}</span>\`).join('')}</div>
+                    <div class="flex flex-wrap gap-1.5 mt-3">\${p.interests.split(',').map(i => \`<span class="px-2.5 py-1 rounded-full text-xs bg-primary-500/15 text-primary-300 border border-primary-500/20 font-medium">\${esc(i.trim())}</span>\`).join('')}</div>
                   \` : ''}
                   <div class="flex items-center gap-4 mt-3">
-                    \${p.linkedin_url ? \`<a href="\${p.linkedin_url}" target="_blank" class="text-blue-400 hover:text-blue-300 transition" title="LinkedIn"><i class="fab fa-linkedin text-lg"></i></a>\` : ''}
-                    \${p.twitter_url ? \`<a href="\${p.twitter_url}" target="_blank" class="text-sky-400 hover:text-sky-300 transition" title="Twitter"><i class="fab fa-twitter text-lg"></i></a>\` : ''}
-                    \${p.website_url ? \`<a href="\${p.website_url}" target="_blank" class="text-gray-400 hover:text-white transition" title="Website"><i class="fas fa-globe text-lg"></i></a>\` : ''}
-                    <span class="text-xs text-gray-500 ml-1"><i class="fas fa-envelope mr-1"></i>\${p.email}</span>
+                    \${safeUrl(p.linkedin_url) ? \`<a href="\${safeUrl(p.linkedin_url)}" target="_blank" rel="noopener" class="text-blue-400 hover:text-blue-300 transition" title="LinkedIn"><i class="fab fa-linkedin text-lg"></i></a>\` : ''}
+                    \${safeUrl(p.twitter_url) ? \`<a href="\${safeUrl(p.twitter_url)}" target="_blank" rel="noopener" class="text-sky-400 hover:text-sky-300 transition" title="Twitter"><i class="fab fa-twitter text-lg"></i></a>\` : ''}
+                    \${safeUrl(p.website_url) ? \`<a href="\${safeUrl(p.website_url)}" target="_blank" rel="noopener" class="text-gray-400 hover:text-white transition" title="Website"><i class="fas fa-globe text-lg"></i></a>\` : ''}
+                    <span class="text-xs text-gray-500 ml-1"><i class="fas fa-envelope mr-1"></i>\${esc(p.email)}</span>
                   </div>
                 </div>
                 <div class="flex gap-2 shrink-0 flex-wrap">
@@ -21667,7 +22080,7 @@ function mainPageHTML(): string {
           { icon: 'fa-comment-dots', label: 'Messages', value: s.totalMessages, sub: s.unreadMessages > 0 ? s.unreadMessages + ' unread' : '', color: '#22c55e', onClick: "switchTab('inbox')" },
           { icon: 'fa-calendar-check', label: 'Meetings', value: s.meetingsUpcoming, sub: s.meetingsPending > 0 ? s.meetingsPending + ' pending' : '', color: '#ff9800', onClick: "switchProfileSubtab('meetings')" },
           { icon: 'fa-store', label: 'Booths', value: s.boothVisits, sub: '', color: '#a78bfa', onClick: "switchTab('exhibition')" },
-          { icon: 'fa-clock', label: 'Since', value: new Date(p.created_at).toLocaleDateString([], {month:'short',day:'numeric'}), sub: '', color: '#14b8a6', onClick: '' },
+          { icon: 'fa-clock', label: 'Since', value: parseDbTime(p.created_at).toLocaleDateString([], {month:'short',day:'numeric'}), sub: '', color: '#14b8a6', onClick: '' },
         ];
         document.getElementById('my-profile-stats').innerHTML = statsData.map(st => \`
           <div class="glass rounded-xl p-4 card-hover text-center cursor-pointer" \${st.onClick ? 'onclick="' + st.onClick + '"' : ''}>
@@ -21708,16 +22121,16 @@ function mainPageHTML(): string {
         <div class="glass rounded-xl p-4 card-hover">
           <div class="flex items-center gap-3">
             <div class="relative">
-              <img src="\${getAvatarUrl(c.other_email, c.other_name, 80, c.other_avatar)}" alt="\${c.other_name}" class="w-10 h-10 rounded-full object-cover">
+              <img src="\${getAvatarUrl(c.other_email, c.other_name, 80, c.other_avatar)}" alt="\${esc(c.other_name)}" class="w-10 h-10 rounded-full object-cover">
               <span class="\${c.other_online ? 'online-dot' : 'offline-dot'} absolute -bottom-0.5 -right-0.5 border-2 border-dark-900"></span>
             </div>
             <div class="flex-1 min-w-0">
-              <h4 class="font-semibold text-sm truncate">\${c.other_name}</h4>
-              <p class="text-xs text-gray-500 truncate">\${c.other_company || ''}</p>
+              <h4 class="font-semibold text-sm truncate">\${esc(c.other_name)}</h4>
+              <p class="text-xs text-gray-500 truncate">\${esc(c.other_company || '')}</p>
             </div>
             <div class="flex gap-1.5">
-              <button onclick="openChat(\${c.other_id}, '\${(c.other_name || '').replace(/'/g, "\\\\&apos;")}', '\${(c.other_company || '').replace(/'/g, "\\\\&apos;")}')" class="px-3 py-1.5 rounded-lg text-xs bg-primary-500/20 text-primary-300 hover:bg-primary-500/30 transition" title="Chat"><i class="fas fa-comment"></i></button>
-              <button onclick="openMeetingModal(\${c.other_id}, '\${(c.other_name || '').replace(/'/g, "\\\\&apos;")}')" class="px-3 py-1.5 rounded-lg text-xs bg-green-500/20 text-green-300 hover:bg-green-500/30 transition" title="Schedule"><i class="fas fa-calendar-plus"></i></button>
+              <button data-act="chat" data-id="\${c.other_id}" data-name="\${esc(c.other_name || '')}" data-company="\${esc(c.other_company || '')}" class="px-3 py-1.5 rounded-lg text-xs bg-primary-500/20 text-primary-300 hover:bg-primary-500/30 transition" title="Chat"><i class="fas fa-comment"></i></button>
+              <button data-act="meet" data-id="\${c.other_id}" data-name="\${esc(c.other_name || '')}" class="px-3 py-1.5 rounded-lg text-xs bg-green-500/20 text-green-300 hover:bg-green-500/30 transition" title="Schedule"><i class="fas fa-calendar-plus"></i></button>
             </div>
           </div>
         </div>
@@ -21740,7 +22153,7 @@ function mainPageHTML(): string {
                   <h4 class="font-semibold text-sm truncate">\${m.title || 'Meeting'}</h4>
                   <span class="px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0 \${m.status === 'accepted' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}">\${m.status}</span>
                 </div>
-                <p class="text-xs text-gray-400">with \${otherN}\${otherC ? ' &middot; ' + otherC : ''}</p>
+                <p class="text-xs text-gray-400">with \${esc(otherN)}\${otherC ? ' &middot; ' + esc(otherC) : ''}</p>
                 <p class="text-xs text-gray-500 mt-1"><i class="fas fa-clock mr-1"></i>\${new Date(m.meeting_time).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})} &middot; \${m.duration_minutes}min\${m.location ? ' &middot; <i class="fas fa-map-pin ml-1 mr-1"></i>' + m.location : ''}</p>
               </div>
             </div>
@@ -21757,10 +22170,10 @@ function mainPageHTML(): string {
               <i class="fas fa-store text-accent-400"></i>
             </div>
             <div class="flex-1 min-w-0">
-              <h4 class="font-semibold text-sm truncate">\${bv.company_name}</h4>
+              <h4 class="font-semibold text-sm truncate">\${esc(bv.company_name)}</h4>
               <p class="text-xs text-gray-500">Booth \${bv.booth_number}\${bv.category ? ' &middot; ' + bv.category : ''}</p>
             </div>
-            <span class="text-[10px] text-gray-500 shrink-0">\${new Date(bv.visited_at).toLocaleDateString([], {month:'short',day:'numeric'})}</span>
+            <span class="text-[10px] text-gray-500 shrink-0">\${parseDbTime(bv.visited_at).toLocaleDateString([], {month:'short',day:'numeric'})}</span>
           </div>
         </div>
       \`).join('') : '<div class="glass rounded-xl p-6 text-center text-gray-500"><i class="fas fa-store-slash text-2xl mb-2 block opacity-30"></i><p class="text-sm">No booths visited yet</p><button onclick="switchTab(\\\'exhibition\\\')" class="mt-2 text-primary-400 text-xs hover:underline font-medium">Explore expo &rarr;</button></div>';
@@ -21781,13 +22194,13 @@ function mainPageHTML(): string {
             <div class="glass rounded-xl p-4 card-hover mb-3 border-l-2 border-yellow-500/50">
               <div class="flex items-center gap-3">
                 <div class="relative">
-                  <img src="\${getAvatarUrl(c.other_email, c.other_name, 80, c.other_avatar)}" alt="\${c.other_name}" class="w-10 h-10 rounded-full object-cover">
+                  <img src="\${getAvatarUrl(c.other_email, c.other_name, 80, c.other_avatar)}" alt="\${esc(c.other_name)}" class="w-10 h-10 rounded-full object-cover">
                   <span class="\${c.other_online ? 'online-dot' : 'offline-dot'} absolute -bottom-0.5 -right-0.5 border-2 border-dark-900"></span>
                 </div>
                 <div class="flex-1 min-w-0">
-                  <h4 class="font-semibold text-sm">\${c.other_name}</h4>
-                  <p class="text-xs text-gray-500">\${c.other_company || ''}\${c.other_job_title ? ' &middot; ' + c.other_job_title : ''}</p>
-                  \${c.message ? \`<p class="text-xs text-gray-400 mt-1 italic">"\${c.message}"</p>\` : ''}
+                  <h4 class="font-semibold text-sm">\${esc(c.other_name)}</h4>
+                  <p class="text-xs text-gray-500">\${esc(c.other_company || '')}\${c.other_job_title ? ' &middot; ' + esc(c.other_job_title) : ''}</p>
+                  \${c.message ? \`<p class="text-xs text-gray-400 mt-1 italic">"\${esc(c.message)}"</p>\` : ''}
                 </div>
                 \${isIncoming ? \`
                   <div class="flex gap-1.5">
@@ -21807,16 +22220,16 @@ function mainPageHTML(): string {
           <div class="glass rounded-xl p-4 card-hover mb-3">
             <div class="flex items-center gap-3">
               <div class="relative">
-                <img src="\${getAvatarUrl(c.other_email, c.other_name, 80, c.other_avatar)}" alt="\${c.other_name}" class="w-10 h-10 rounded-full object-cover">
+                <img src="\${getAvatarUrl(c.other_email, c.other_name, 80, c.other_avatar)}" alt="\${esc(c.other_name)}" class="w-10 h-10 rounded-full object-cover">
                 <span class="\${c.other_online ? 'online-dot' : 'offline-dot'} absolute -bottom-0.5 -right-0.5 border-2 border-dark-900"></span>
               </div>
               <div class="flex-1 min-w-0">
-                <h4 class="font-semibold text-sm">\${c.other_name}</h4>
-                <p class="text-xs text-gray-500">\${c.other_company || ''}\${c.other_job_title ? ' &middot; ' + c.other_job_title : ''}</p>
+                <h4 class="font-semibold text-sm">\${esc(c.other_name)}</h4>
+                <p class="text-xs text-gray-500">\${esc(c.other_company || '')}\${c.other_job_title ? ' &middot; ' + esc(c.other_job_title) : ''}</p>
               </div>
               <div class="flex gap-1.5">
-                <button onclick="openChat(\${c.other_id}, '\${(c.other_name || '').replace(/'/g, "\\\\&apos;")}', '\${(c.other_company || '').replace(/'/g, "\\\\&apos;")}')" class="px-3 py-1.5 rounded-lg text-xs bg-primary-500/20 text-primary-300 hover:bg-primary-500/30 transition" title="Chat"><i class="fas fa-comment"></i></button>
-                <button onclick="openMeetingModal(\${c.other_id}, '\${(c.other_name || '').replace(/'/g, "\\\\&apos;")}')" class="px-3 py-1.5 rounded-lg text-xs bg-green-500/20 text-green-300 hover:bg-green-500/30 transition" title="Schedule"><i class="fas fa-calendar-plus"></i></button>
+                <button data-act="chat" data-id="\${c.other_id}" data-name="\${esc(c.other_name || '')}" data-company="\${esc(c.other_company || '')}" class="px-3 py-1.5 rounded-lg text-xs bg-primary-500/20 text-primary-300 hover:bg-primary-500/30 transition" title="Chat"><i class="fas fa-comment"></i></button>
+                <button data-act="meet" data-id="\${c.other_id}" data-name="\${esc(c.other_name || '')}" class="px-3 py-1.5 rounded-lg text-xs bg-green-500/20 text-green-300 hover:bg-green-500/30 transition" title="Schedule"><i class="fas fa-calendar-plus"></i></button>
               </div>
             </div>
           </div>
@@ -22027,7 +22440,7 @@ function mainPageHTML(): string {
       });
 
       // Sort by time desc
-      timeline.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
+      timeline.sort((a, b) => parseDbTime(b.time).getTime() - parseDbTime(a.time).getTime());
 
       const el = document.getElementById('my-activity-timeline');
       el.innerHTML = timeline.length ? timeline.map((item, i) => \`
@@ -22054,7 +22467,8 @@ function mainPageHTML(): string {
     function timeAgo(dateStr) {
       if (!dateStr) return '';
       const now = new Date();
-      const then = new Date(dateStr);
+      const then = parseDbTime(dateStr);
+      if (isNaN(then.getTime())) return '';
       const diffMs = now.getTime() - then.getTime();
       const diffMin = Math.floor(diffMs / 60000);
       if (diffMin < 1) return 'just now';
@@ -22141,7 +22555,11 @@ function mainPageHTML(): string {
       const val = document.getElementById('arrival-prompt-select').value;
       if (!val) { showToast('Please select an arrival time', 'error'); return; }
       try {
-        await api.put(\`/api/attendees/\${currentUser.id}/profile\`, { ...currentUser, arrival_time: val });
+        // Only the arrival time: sending the cached profile back used to overwrite
+        // edits made on another device or by an admin.
+        const r = await api.put(\`/api/attendees/\${currentUser.id}/profile\`, { arrival_time: val });
+        const why = apiFailed(r);
+        if (why) { showToast(why, 'error'); return; }
         currentUser.arrival_time = val;
         localStorage.setItem('agba_user', JSON.stringify(currentUser));
         dismissArrivalPrompt();
@@ -22688,9 +23106,19 @@ function mainPageHTML(): string {
       }
     });
 
-    function logoutUser() {
+    async function logoutUser() {
       localStorage.removeItem('agba_user');
       currentUser = null;
+      // The session cookie is HttpOnly, so only the server can expire it; and
+      // the service worker's data cache goes with it, or the next person on
+      // this device could read the last one's API responses offline.
+      try { await fetch('/api/attendees/logout', { method: 'POST' }); } catch (e) {}
+      try {
+        if (window.caches) {
+          const keys = await caches.keys();
+          await Promise.all(keys.filter(k => k.indexOf('data-') === 0).map(k => caches.delete(k)));
+        }
+      } catch (e) {}
       location.reload();
     }
 
@@ -22701,7 +23129,7 @@ function mainPageHTML(): string {
       const toast = document.createElement('div');
       toast.className = \`fixed top-4 right-4 z-50 \${colors[type]} text-white px-4 py-3 rounded-xl shadow-lg flex items-center gap-2 text-sm transition-all transform translate-x-full\`;
       toast.innerHTML = \`<i class="fas \${icons[type]}"></i>\${msg}\`;
-      document.body.appendChild(toast);
+      (document.getElementById('toast-container') || document.body).appendChild(toast);
       setTimeout(() => toast.classList.remove('translate-x-full'), 10);
       setTimeout(() => { toast.classList.add('translate-x-full'); setTimeout(() => toast.remove(), 300); }, 3000);
     }
@@ -22878,7 +23306,7 @@ function mainPageHTML(): string {
   </script>
 
   <!-- ===== PAID PASS MODAL ===== -->
-  <div id="paid-pass-modal" class="fixed inset-0 z-50 modal-overlay hidden items-center justify-center p-4">
+  <div id="paid-pass-modal" role="dialog" aria-modal="true" aria-label="Get a paid pass" class="fixed inset-0 z-50 modal-overlay hidden items-center justify-center p-4">
     <div class="glass rounded-2xl w-full max-w-lg relative overflow-hidden" style="border:1px solid #E4E7F4;">
       <!-- Header -->
       <div style="background:linear-gradient(135deg,#FF6B00,#FF8C38);" class="p-5 flex items-center justify-between">
