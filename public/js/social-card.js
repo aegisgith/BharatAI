@@ -59,7 +59,23 @@
   var VARIANTS = {
     speaker:   { eyebrow: "I'M SPEAKING AT",     slug: 'Speaking'   },
     exhibitor: { eyebrow: "WE'RE EXHIBITING AT", slug: 'Exhibiting' },
-    attending: { eyebrow: "I'M ATTENDING",       slug: 'Attending'  }
+    attending: { eyebrow: "I'M ATTENDING",       slug: 'Attending'  },
+    /* Campus Series. The claim is about a panel on somebody's campus, not the
+     * conference, so these two are drawn by drawPanel() below with the host
+     * college's mark next to ours. Chosen by the caller, never derived from the
+     * attendee record: the record says where a person came from, not which
+     * card they are posting today. */
+    panel:          { eyebrow: "I'M ATTENDING", slug: 'Panel',         panel: true },
+    panel_attended: { eyebrow: "I ATTENDED",    slug: 'PanelAttended', panel: true }
+  };
+
+  /* The panel card carries more words than the conference one - a title, a
+   * subtitle and five panellists - so on the square the portrait gives up some
+   * radius and the gaps start tighter. The story has the room and keeps most of
+   * its profile. Everything not named here is inherited from SIZES. */
+  var PANEL_ADJ = {
+    square: { photoR: 118, heroSize: 54, heroMin: 36, gapEb: 36, gapPhoto: 24, gapRole: 24, subSize: 27, lineSize: 21 },
+    story:  { photoR: 200, heroSize: 80, heroMin: 44, gapEb: 60, gapPhoto: 44, gapRole: 40, subSize: 33, lineSize: 26 }
   };
 
   /* Speakers and exhibitors have both the largest networks and a professional
@@ -161,6 +177,27 @@
       out += '…';
     }
     return { text: out, size: s };
+  }
+
+  /* Greedy word wrap into at most maxLines; the last line is ellipsised if the
+   * text still does not fit. Used for the panel subtitle and the panellist
+   * line, both of which are sentences rather than names. */
+  function wrapLines(ctx, text, maxW, font, maxLines) {
+    ctx.font = font;
+    var words = String(text || '').split(/\s+/).filter(Boolean), lines = [], cur = '';
+    for (var i = 0; i < words.length; i++) {
+      var t = cur ? cur + ' ' + words[i] : words[i];
+      if (ctx.measureText(t).width <= maxW || !cur) cur = t;
+      else { lines.push(cur); cur = words[i]; }
+    }
+    if (cur) lines.push(cur);
+    if (lines.length > maxLines) {
+      lines = lines.slice(0, maxLines);
+      var last = lines[maxLines - 1];
+      while (last.length > 1 && ctx.measureText(last + '…').width > maxW) last = last.slice(0, -1);
+      lines[maxLines - 1] = last + '…';
+    }
+    return lines;
   }
 
   // Canvas letterSpacing is not reliable across the browsers delegates actually
@@ -575,7 +612,179 @@
     ctx.fillText(EVENT.site, mid, urlY);
   }
 
+  function measurePanel(ctx, P, user, panel) {
+    var maxW = P.w - P.padX * 2;
+    var roleText = identityLine(user);
+    var titleText = String(panel.titleShort || panel.title || '').trim();
+    if (panel.subtitle && titleText && !/[:?!]$/.test(titleText)) titleText += ':';
+    var hero = fitText(ctx, titleText, maxW, '800', P.heroSize, P.heroMin, MONT);
+    var subFont = '500 ' + P.subSize + 'px ' + MANR;
+    var sub = wrapLines(ctx, panel.subtitle || '', maxW, subFont, 2);
+    var brand = fitWords(ctx, EVENT.words, maxW * 0.7, '800', Math.round(P.heroSize * 0.62), 26, MONT, 0.30);
+    var brandSubSize = Math.round(P.lineSize * 0.95);
+    var names = (panel.speakers || []).map(function (sp) { return sp && sp.name; }).filter(Boolean);
+    var spFont = '500 ' + P.lineSize + 'px ' + MANR;
+    var speakers = names.length ? wrapLines(ctx, 'With ' + names.join('  ·  '), maxW, spFont, 2) : [];
+    var m = {
+      name: fitText(ctx, String((user && user.name) || 'Attendee').trim(), maxW, '700', P.nameSize, P.nameMin, MONT),
+      role: roleText ? fitText(ctx, roleText, maxW, '500', P.roleSize, 18, MANR) : null,
+      hero: hero, sub: sub, subFont: subFont, brand: brand, brandSubSize: brandSubSize,
+      speakers: speakers, spFont: spFont,
+      subLine: Math.round(P.subSize * 1.25), spLine: Math.round(P.lineSize * 1.3),
+      venue: fitText(ctx, [panel.host, panel.city].filter(Boolean).join(', '), maxW, '500', P.lineSize, 16, MANR)
+    };
+    m.fixed = P.ebSize + P.photoR * 2 + P.ring + m.name.size + (m.role ? m.role.size : 0)
+            + hero.size + sub.length * m.subLine + brand.size + brandSubSize + speakers.length * m.spLine;
+    m.gaps = P.gapEb + P.gapPhoto + (m.role ? P.gapName : 0) + P.gapRole
+           + (sub.length ? 14 : 0) + 22 + 10 + (speakers.length ? 22 : 0);
+    return m;
+  }
+
+  /* The Campus Series card. Same bones as draw() - claim, portrait, name, then
+   * what the event is, then the bottom stack - but the middle names the panel
+   * and who is on it, and the top carries the host college's mark next to ours.
+   * A separate function rather than a mode inside draw(): the conference card
+   * is what 1,300 delegates post and must not move when this one changes. */
+  function drawPanel(ctx, S, user, V, assets, opts) {
+    var panel = opts.panel || {};
+    var P = {}; for (var kk in S) P[kk] = S[kk];
+    var adj = PANEL_ADJ[S.key] || {}; for (var ak in adj) P[ak] = adj[ak];
+    var W = P.w, mid = W / 2;
+
+    background(ctx, P);
+    var m = measurePanel(ctx, P, user, panel);
+
+    // ---- top: our logo and the host's, two white chips that read as one lockup ----
+    var chips = [];
+    if (assets.logo) chips.push(assets.logo);
+    if (assets.hostLogo) chips.push(assets.hostLogo);
+    var logoBoxH = 0;
+    if (chips.length) {
+      logoBoxH = P.logoH + P.logoPad * 2;
+      var cgap = 22, widths = chips.map(function (im) { return im.width * (P.logoH / im.height); });
+      var chipWs = widths.map(function (w) { return w + P.logoPad * 2.8; });
+      var total = chipWs.reduce(function (a, b) { return a + b; }, 0) + cgap * (chips.length - 1);
+      var cx = mid - total / 2;
+      for (var i = 0; i < chips.length; i++) {
+        ctx.save();
+        ctx.shadowColor = 'rgba(0,0,0,0.35)'; ctx.shadowBlur = 22; ctx.shadowOffsetY = 4;
+        ctx.fillStyle = '#FFFFFF';
+        roundRect(ctx, cx, P.padTop, chipWs[i], logoBoxH, 18); ctx.fill();
+        ctx.restore();
+        ctx.drawImage(chips[i], cx + P.logoPad * 1.4, P.padTop + P.logoPad, widths[i], P.logoH);
+        cx += chipWs[i] + cgap;
+      }
+    }
+
+    // ---- bottom stack, sized first so the middle can centre in what is left ----
+    var urlY = P.h - P.urlBottom;
+    var stripY = urlY - P.urlSize - P.stripGap - P.stripH;
+    var attended = V === VARIANTS.panel_attended;
+    var startTime = String(panel.timeLabel || '').split(/\s*[–-]\s*/)[0].trim();
+    var when = attended
+      ? String(panel.dateShort || '')
+      : [panel.dateShort, startTime].filter(Boolean).join('  ·  ');
+    ctx.font = '700 ' + P.pillSize + 'px ' + MANR;
+    var pillW = Math.min(W - P.padX * 2, ctx.measureText(when).width + 68);
+    // The venue, in full, on its own line between the pill and the partner strip.
+    var venueH = m.venue.text ? m.venue.size + 16 : 0;
+    var pillY = stripY - P.pillGap - venueH - P.pillH;
+
+    var topLimit = P.padTop + logoBoxH + P.gapLogo;
+    var botLimit = pillY - P.gapAbovePill;
+    var avail = botLimit - topLimit;
+    var k = m.gaps > 0 ? Math.max(0.3, Math.min(1, (avail - m.fixed) / m.gaps)) : 1;
+    var flowH = m.fixed + m.gaps * k;
+    var y = topLimit + Math.max(0, (avail - flowH) / 2);
+
+    // ---- the claim ----
+    ctx.font = '600 ' + P.ebSize + 'px ' + MONT;
+    y += P.ebSize;
+    var ebW = trackedText(ctx, V.eyebrow, mid, y, P.ebTrack, INK.saffronLo);
+    var ruleY = y - Math.round(P.ebSize * 0.32), gapToRule = 26;
+    hairline(ctx, mid - ebW / 2 - gapToRule - P.ebRule, mid - ebW / 2 - gapToRule, ruleY, true);
+    hairline(ctx, mid + ebW / 2 + gapToRule, mid + ebW / 2 + gapToRule + P.ebRule, ruleY, false);
+    y += P.gapEb * k;
+
+    // ---- portrait ----
+    var cy = y + P.photoR;
+    ctx.save();
+    ctx.shadowColor = 'rgba(255,122,24,0.45)'; ctx.shadowBlur = 46;
+    var ring = ctx.createLinearGradient(mid - P.photoR, cy - P.photoR, mid + P.photoR, cy + P.photoR);
+    ring.addColorStop(0, '#FF6B00'); ring.addColorStop(1, '#FFC46B');
+    ctx.strokeStyle = ring; ctx.lineWidth = P.ring;
+    ctx.beginPath(); ctx.arc(mid, cy, P.photoR + P.ring / 2, 0, Math.PI * 2); ctx.stroke();
+    ctx.restore();
+    if (assets.photo) drawAvatar(ctx, assets.photo, mid, cy, P.photoR);
+    else drawInitial(ctx, user && user.name, mid, cy, P.photoR);
+    if (assets.companyLogo) drawCompanyChip(ctx, assets.companyLogo, mid, cy, P.photoR);
+    y = cy + P.photoR + P.ring + P.gapPhoto * k;
+
+    // ---- name, then course · college ----
+    ctx.font = '700 ' + m.name.size + 'px ' + MONT;
+    ctx.textAlign = 'center'; ctx.fillStyle = INK.white;
+    y += m.name.size; ctx.fillText(m.name.text, mid, y);
+    if (m.role) {
+      y += P.gapName * k + m.role.size;
+      ctx.font = '500 ' + m.role.size + 'px ' + MANR; ctx.textAlign = 'center'; ctx.fillStyle = INK.mute;
+      ctx.fillText(m.role.text, mid, y);
+    }
+    y += P.gapRole * k;
+
+    // ---- whose panel it is: the wordmark in the tricolour, then what it is ----
+    ctx.font = '800 ' + m.brand.size + 'px ' + MONT;
+    y += m.brand.size;
+    drawWords(ctx, EVENT.words, TIRANGA_EN, mid, y, m.brand.space);
+    y += 10 * k + m.brandSubSize;
+    ctx.font = '600 ' + m.brandSubSize + 'px ' + MANR; ctx.textAlign = 'center'; ctx.fillStyle = INK.saffronLo;
+    ctx.fillText('PRE-EVENT PANEL DISCUSSION', mid, y);
+
+    // ---- the topic ----
+    y += 22 * k;
+    ctx.font = '800 ' + m.hero.size + 'px ' + MONT; ctx.textAlign = 'center'; ctx.fillStyle = INK.white;
+    y += m.hero.size; ctx.fillText(m.hero.text, mid, y);
+    if (m.sub.length) {
+      y += 14 * k;
+      ctx.font = m.subFont; ctx.fillStyle = '#C9CFE6';
+      for (var si = 0; si < m.sub.length; si++) { y += m.subLine; ctx.fillText(m.sub[si], mid, y); }
+    }
+
+    // ---- who is on it ----
+    if (m.speakers.length) {
+      y += 22 * k;
+      ctx.font = m.spFont; ctx.textAlign = 'center'; ctx.fillStyle = INK.mute;
+      for (var pi = 0; pi < m.speakers.length; pi++) { y += m.spLine; ctx.fillText(m.speakers[pi], mid, y); }
+    }
+
+    // ---- bottom stack ----
+    ctx.save();
+    ctx.shadowColor = 'rgba(255,107,0,0.35)'; ctx.shadowBlur = 30; ctx.shadowOffsetY = 6;
+    var pg = ctx.createLinearGradient(mid - pillW / 2, pillY, mid + pillW / 2, pillY + P.pillH);
+    pg.addColorStop(0, '#FF6B00'); pg.addColorStop(1, '#FF8C38');
+    ctx.fillStyle = pg;
+    roundRect(ctx, mid - pillW / 2, pillY, pillW, P.pillH, P.pillH / 2); ctx.fill();
+    ctx.restore();
+    ctx.font = '700 ' + P.pillSize + 'px ' + MANR;
+    ctx.fillStyle = '#FFFFFF';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(fitText(ctx, when, pillW - 40, '700', P.pillSize, 16, MANR).text, mid, pillY + P.pillH / 2 + 1);
+    ctx.textBaseline = 'alphabetic';
+    if (m.venue.text) {
+      ctx.font = '500 ' + m.venue.size + 'px ' + MANR; ctx.textAlign = 'center'; ctx.fillStyle = '#DDE2F3';
+      ctx.fillText(m.venue.text, mid, pillY + P.pillH + 16 + m.venue.size * 0.8);
+    }
+
+    drawPartnerStrip(ctx, P, assets, stripY);
+
+    ctx.font = '400 ' + P.urlSize + 'px ' + MANR;
+    ctx.textAlign = 'center'; ctx.fillStyle = INK.faint;
+    ctx.fillText(EVENT.site, mid, urlY);
+  }
+
   /* opts.size — 'square' (default) or 'story'.
+   * opts.variant — one of VARIANTS; the panel ones also need opts.panel, the
+   *   panel record from /api/attendees/:id/panels (title, host, dates, hostLogo,
+   *   speakers). Without it they fall back to the conference card.
    * opts.booth — printed only when the caller has an allocation it trusts. It is
    *   deliberately not read off attendees/exhibitors here: booth_number there is
    *   free text that a paid request never writes to, and a wrong stand number on
@@ -592,7 +801,8 @@
      * dropped request, and a photo that still will not load is reported rather
      * than papered over, so the caller can say so instead of handing over a
      * letter in a circle. */
-    var assets = { logo: null, photo: null, companyLogo: null, aegis: null, agba: null, assessfy: null };
+    var assets = { logo: null, photo: null, companyLogo: null, aegis: null, agba: null, assessfy: null, hostLogo: null };
+    var panelCard = !!(V.panel && opts.panel);
     var photoFailed = false;
     var src = photoSrc(user && user.avatar_url);
     if (src) {
@@ -609,6 +819,11 @@
     try { assets.aegis = await loadImage('/images/passes/aegis.png'); } catch (e) {}
     try { assets.agba = await loadImage('/images/passes/agba.png'); } catch (e) {}
     try { assets.assessfy = await loadImage('/images/passes/assessfy.jpg'); } catch (e) {}
+    // The host college's mark, drawn beside ours on a panel card. Optional: a
+    // panel whose host has not sent a logo gets our chip alone, not a hole.
+    if (panelCard && opts.panel.hostLogo) {
+      try { assets.hostLogo = await loadImage(opts.panel.hostLogo); } catch (e) {}
+    }
 
     /* The employer disc is opt-out, not opt-in: pass companyLogo:'' to suppress
      * it. A favicon lookup can come back as a generic globe for a domain the
@@ -631,12 +846,16 @@
     var canvas = document.createElement('canvas');
     canvas.width = S.w; canvas.height = S.h;
     var ctx = canvas.getContext('2d');
-    draw(ctx, S, user, V, assets, opts);
+    if (panelCard) drawPanel(ctx, S, user, V, assets, opts);
+    else draw(ctx, S, user, V, assets, opts);
 
     var safeName = String((user && user.name) || 'attendee').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    var prefix = panelCard
+      ? 'BharatAI-CampusSeries-' + String(opts.panel.hostShort || 'Panel').replace(/[^A-Za-z0-9]+/g, '') + '-'
+      : 'BharatAI2026-';
     return {
       dataUrl: canvas.toDataURL('image/png'),
-      filename: 'BharatAI2026-' + V.slug + '-' + safeName + '-' + S.key + '.png',
+      filename: prefix + V.slug + '-' + safeName + '-' + S.key + '.png',
       variant: V.eyebrow,
       size: S.key,
       width: S.w,
@@ -650,9 +869,43 @@
   /* The caption is half the feature. A card with no words next to it is a card
    * most people do not post, and the tagged link is the only reason any of this
    * is worth building — it is what makes the reach measurable at all. */
+  /* The panel caption names the panellists. On LinkedIn that is what carries a
+   * student's post into the panellists' networks, which is most of the reach a
+   * campus card can have. */
+  function panelCaption(v, p) {
+    var attended = v === 'panel_attended';
+    var names = (p.speakers || []).map(function (sp) { return sp && sp.name; }).filter(Boolean);
+    var tag = 'campus-' + (p.slug || 'panel') + (attended ? '-attended' : '');
+    var utm = '?utm_source=social_card&utm_medium=attendee&utm_campaign=' + encodeURIComponent(tag);
+    var title = p.titleShort || p.title || 'AI and Employability';
+    if (p.subtitle) title += ': ' + p.subtitle;
+    var where = [p.host || p.hostShort, p.city].filter(Boolean).join(', ');
+    var lines = [];
+    if (attended) {
+      lines.push('I attended the ' + EVENT.name + ' Pre-Event Panel Discussion at ' + where + '.');
+    } else {
+      lines.push("I'm attending the " + EVENT.name + ' Pre-Event Panel Discussion at ' + where + (p.dateLabel ? ' on ' + p.dateLabel : '') + '.');
+    }
+    lines.push('');
+    lines.push('Topic: ' + title);
+    if (names.length) lines.push((attended ? 'Thank you to the panellists: ' : 'Panellists: ') + names.join(', ') + '.');
+    lines.push('');
+    if (attended) {
+      lines.push('The main event is ' + EVENT.name + ' ' + EVENT.year + ' — ' + EVENT.when + ', ' + EVENT.where + '. Free registration:');
+      lines.push('https://' + EVENT.site + '/' + utm);
+    } else {
+      lines.push('Free for students and faculty. Details and registration:');
+      lines.push((p.pageUrl || 'https://' + EVENT.site + '/campus-series') + utm);
+    }
+    lines.push('');
+    lines.push(p.hashtags || '#BharatAIInnovation #CampusSeries #AI');
+    return lines.join('\n');
+  }
+
   function caption(user, opts) {
     opts = opts || {};
     var v = opts.variant || variantFor(user);
+    if ((VARIANTS[v] || {}).panel && opts.panel) return panelCaption(v, opts.panel);
     var link = 'https://' + EVENT.site + '/?utm_source=social_card&utm_medium=attendee&utm_campaign=' + v;
     var lead;
     if (v === 'speaker') lead = "I'm speaking at " + EVENT.name + ' ' + EVENT.year + '.';

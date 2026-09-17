@@ -771,26 +771,83 @@ async function sendRegistrationEmail(c: any, attendee: any) {
 //
 // Keyed by the slug in the tag. An unknown slug falls back to the ordinary welcome,
 // so a tag written before its panel is listed here is never silently swallowed.
+type PanelSpeaker = { name: string; role: string; org?: string }
 type CampusPanel = {
-  title: string; host: string; hostShort: string
-  dateLabel: string; timeLabel: string; venue: string
+  slug: string
+  title: string; titleShort: string; subtitle: string
+  host: string; hostShort: string; city: string
+  dateLabel: string; dateShort: string; timeLabel: string; venue: string
   pageUrl: string
+  // ISO with the IST offset, so every comparison is exact wherever the worker runs.
+  startsAt: string; endsAt: string
+  // Attendance is CLAIMED with a code from the closing slide (see the panel
+  // routes). The window opens shortly before the scheduled end - the slide goes
+  // up in the closing minutes - and shuts a couple of days later, so a code
+  // forwarded around a hostel the following week buys nothing.
+  claimOpensAt: string; claimClosesAt: string
+  // Site-relative. Empty until the host sends a file; the card and the
+  // certificate then carry our mark alone rather than a hole.
+  hostLogo: string
+  speakers: PanelSpeaker[]
+  hashtags: string
 }
 const CAMPUS_PANELS: Record<string, CampusPanel> = {
   'djsanghvi-21sep': {
+    slug: 'djsanghvi-21sep',
     title: 'AI and Employability — Opportunities, Challenges and the Future of Work',
-    host: 'Dwarkadas J. Sanghvi College of Engineering', hostShort: 'DJ Sanghvi',
-    dateLabel: 'Monday, 21 September 2026', timeLabel: '11:00 AM – 12:30 PM IST',
+    titleShort: 'AI and Employability',
+    subtitle: 'Opportunities, Challenges & the Future of Work',
+    host: 'Dwarkadas J. Sanghvi College of Engineering', hostShort: 'DJ Sanghvi', city: 'Mumbai',
+    dateLabel: 'Monday, 21 September 2026', dateShort: 'Monday, 21 Sep 2026', timeLabel: '11:00 AM – 12:30 PM IST',
     venue: 'On campus, Vile Parle (West), Mumbai',
     pageUrl: 'https://bharataiinnovation.com/campus-djsanghvi',
+    startsAt: '2026-09-21T11:00:00+05:30', endsAt: '2026-09-21T12:30:00+05:30',
+    claimOpensAt: '2026-09-21T12:00:00+05:30', claimClosesAt: '2026-09-23T23:59:59+05:30',
+    hostLogo: '/images/campus/djsanghvi-logo.png',
+    speakers: [
+      { name: 'Dr. Hari Vasudevan', role: 'Principal', org: 'Dwarkadas J. Sanghvi College of Engineering' },
+      { name: 'Dr. Ashish Tendulkar', role: 'AI Practice Manager', org: 'Google' },
+      { name: 'Bhupesh Daheria', role: 'CEO, Aegis School of Data Science & AI; Founder, Assessfy' },
+      { name: 'Nida Parkar', role: 'Vice President, Citi (Moderator)' },
+      { name: 'Virendra Pal', role: 'AI & FinTech Expert' },
+    ],
+    hashtags: '#BharatAIInnovation #CampusSeries #DJSCE #AI #Employability #FutureOfWork',
   },
   'jnu-30sep': {
+    slug: 'jnu-30sep',
     title: 'AI and Employability — Opportunities, Challenges and the Future of Work',
-    host: 'Jawaharlal Nehru University', hostShort: 'JNU',
-    dateLabel: 'Wednesday, 30 September 2026', timeLabel: '3:00 PM – 4:30 PM IST',
+    titleShort: 'AI and Employability',
+    subtitle: 'Opportunities, Challenges & the Future of Work',
+    host: 'Jawaharlal Nehru University', hostShort: 'JNU', city: 'New Delhi',
+    dateLabel: 'Wednesday, 30 September 2026', dateShort: 'Wednesday, 30 Sep 2026', timeLabel: '3:00 PM – 4:30 PM IST',
     venue: 'On campus, New Delhi',
     pageUrl: 'https://bharataiinnovation.com/campus-jnu',
+    startsAt: '2026-09-30T15:00:00+05:30', endsAt: '2026-09-30T16:30:00+05:30',
+    claimOpensAt: '2026-09-30T16:00:00+05:30', claimClosesAt: '2026-10-02T23:59:59+05:30',
+    hostLogo: '',
+    speakers: [],
+    hashtags: '#BharatAIInnovation #CampusSeries #JNU #AI #Employability #FutureOfWork',
   },
+}
+
+function panelClaimState(panel: CampusPanel, now: number = Date.now()): 'before' | 'open' | 'closed' {
+  if (now < Date.parse(panel.claimOpensAt)) return 'before'
+  if (now > Date.parse(panel.claimClosesAt)) return 'closed'
+  return 'open'
+}
+
+// The claim code is six characters from an alphabet with no I, O, 0 or 1, so
+// there is nothing to mis-read off a projector. Whatever a person types is
+// upper-cased and stripped of spaces and dashes before it is compared.
+function normalisePanelCode(v: unknown): string {
+  return String(v ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+}
+
+async function settingValue(c: any, key: string): Promise<string> {
+  try {
+    const r = await c.env.DB.prepare('SELECT value FROM app_settings WHERE key = ?').bind(key).first() as any
+    return r?.value ? String(r.value) : ''
+  } catch { return '' }
 }
 function campusPanelFor(source: unknown): CampusPanel | undefined {
   const s = String(source ?? '')
@@ -822,19 +879,56 @@ function sourceLabel(source: unknown): string {
 // chase and the thank-you-for-attending are all addressed to somebody else.
 const NOT_CAMPUS_SQL = "(registration_source IS NULL OR registration_source NOT LIKE 'campus:%')"
 
-async function sendPanelConfirmationEmail(c: any, attendee: any, panel: CampusPanel) {
-  const g = async (k: string) => ((await c.env.DB.prepare('SELECT value FROM app_settings WHERE key = ?').bind(k).first()) as any)?.value
-  const apiKey = await g('elastic_email_api_key')
-  if (!apiKey || !attendee?.email) return
-  const fromEmail = senderEmailOrDefault(await g('sender_email'))
-  const fromName = (await g('sender_name')) || 'Bharat AI Innovation'
-  const appUrl = (await g('app_url')) || 'https://bharataiinnovation.com/app'
+type PanelMailOpts = { withLogin?: boolean; eventId?: any; source?: string }
+
+/* The joining details for a campus panel. Returns whether the mail went, because
+ * the admin's batch send for an imported list needs to know; the registration
+ * path still ignores the answer, exactly as it always did.
+ *
+ * withLogin: the person has never opened the app - they registered on mUni
+ * Campus, or on the panel page weeks ago - so the buttons carry a sign-in link
+ * good for a week and five opens, landing on the share card. The photo ask and
+ * the reward for it then arrive in the same tap, which is the only way a list of
+ * students ends up with photos. */
+async function sendPanelConfirmationEmail(c: any, attendee: any, panel: CampusPanel, opts: PanelMailOpts = {}): Promise<{ ok: boolean; error?: string }> {
+  const apiKey = await settingValue(c, 'elastic_email_api_key')
+  if (!apiKey) return { ok: false, error: 'email service not configured' }
+  if (!attendee?.email) return { ok: false, error: 'no email address' }
+  const fromEmail = senderEmailOrDefault(await settingValue(c, 'sender_email'))
+  const fromName = (await settingValue(c, 'sender_name')) || 'Bharat AI Innovation'
+  const appUrl = (await settingValue(c, 'app_url')) || 'https://bharataiinnovation.com/app'
   const esc = (v: any) => String(v ?? '').replace(/[&<>]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch] as string))
   const firstName = esc(String(attendee.name || '').trim().split(/\s+/)[0] || 'there')
+
+  // ?action=social-card opens the card once the person is signed in; the card
+  // asks for a photo if there is none, so the ask and the reward are one screen.
+  let openLink = appUrl + '?action=social-card'
+  if (opts.withLogin) {
+    const email = String(attendee.email).trim().toLowerCase()
+    const eventId = opts.eventId ?? attendee.event_id ?? 1
+    let tokenPart = ''
+    if (await verifiedLoginEnabled(c)) {
+      try {
+        const issued = await createLoginToken(c, eventId, email, 7 * 24 * 60, 5)
+        tokenPart = '&token=' + issued.token
+      } catch { /* a link without a token still prefills the sign-in */ }
+    }
+    openLink = `${appUrl}?email=${encodeURIComponent(email)}&action=social-card${tokenPart}`
+  }
 
   const row = (label: string, value: string) =>
     `<tr><td valign="top" style="padding:0 14px 10px 0;font-size:12px;color:#888;white-space:nowrap;">${label}</td>` +
     `<td valign="top" style="padding:0 0 10px;font-size:14px;color:#1E2140;font-weight:bold;">${value}</td></tr>`
+  const speakers = panel.speakers || []
+  const panellists = speakers.length
+    ? row('Panellists', speakers.map(sp =>
+        `${esc(sp.name)}<span style="font-weight:normal;color:#666;"> &mdash; ${esc(sp.role)}${sp.org ? ', ' + esc(sp.org) : ''}</span>`).join('<br>'))
+    : ''
+  const viaMuni = opts.source === 'muni'
+    ? `<p style="margin:0 0 18px;font-size:13px;line-height:1.65;color:#666;">You registered through mUni Campus. We have carried your details across, so there is nothing to fill in again.</p>`
+    : ''
+  const btn = (href: string, label: string, primary: boolean) =>
+    `<a href="${href}" style="display:inline-block;padding:10px 22px;${primary ? 'background:#FF6B00;color:#fff;' : 'border:1px solid #ccc;color:#1E2140;'}text-decoration:none;border-radius:8px;font-size:13px;font-weight:bold;">${label}</a>`
 
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#f5f5f5;font-family:Arial,sans-serif;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;padding:28px 12px;"><tr><td align="center">
@@ -848,13 +942,25 @@ async function sendPanelConfirmationEmail(c: any, attendee: any, panel: CampusPa
           Your place at the pre-event panel discussion at <strong>${esc(panel.host)}</strong> is confirmed.
           Here are the details you need.
         </p>
+        ${viaMuni}
         <table cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
           ${row('Panel', esc(panel.title))}
           ${row('Date', esc(panel.dateLabel))}
           ${row('Time', esc(panel.timeLabel))}
           ${row('Venue', esc(panel.venue))}
           ${row('Entry', 'Free')}
+          ${panellists}
         </table>
+      </td></tr>
+      <tr><td style="padding:8px 28px 8px;">
+        <div style="background:#EEF4FF;border:1px solid #CFE0FF;border-radius:10px;padding:14px 16px;">
+          <p style="margin:0 0 6px;font-size:13px;font-weight:bold;color:#1E2140;">Your &ldquo;I&rsquo;m attending&rdquo; creative</p>
+          <p style="margin:0 0 12px;font-size:13px;line-height:1.65;color:#555;">
+            Open the app and add your photo. A card with your name, the panel and the panellists is then ready
+            to post on LinkedIn, Instagram or WhatsApp &mdash; and it is how your friends find out.
+          </p>
+          ${btn(openLink, 'Add my photo &amp; get my creative', true)}
+        </div>
       </td></tr>
       <tr><td style="padding:8px 28px 22px;">
         <div style="background:#FFF7F0;border:1px solid #FFD9BC;border-radius:10px;padding:14px 16px;">
@@ -863,6 +969,8 @@ async function sendPanelConfirmationEmail(c: any, attendee: any, panel: CampusPa
             Please arrive 15 minutes early. Seating is allocated by ${esc(panel.hostShort)}, so this confirmation
             tells them to expect you rather than reserving a numbered seat &mdash; if you can no longer make it,
             reply to this email and we will free the place.
+            At the end of the panel, a code on the closing slide unlocks your <strong>certificate of participation</strong>
+            and an &ldquo;I attended&rdquo; card in the same app, so keep this email.
           </p>
         </div>
       </td></tr>
@@ -872,8 +980,9 @@ async function sendPanelConfirmationEmail(c: any, attendee: any, panel: CampusPa
           Bharat AI Innovation 2026 is at the World Trade Center Mumbai on 20&ndash;21 November. The details you
           just gave us are your registration &mdash; nothing more to fill in. Your pass and the schedule are in the app.
         </p>
-        <a href="${appUrl}" style="display:inline-block;padding:10px 22px;background:#FF6B00;color:#fff;text-decoration:none;border-radius:8px;font-size:13px;font-weight:bold;">Open the app</a>
-        <a href="${panel.pageUrl}" style="display:inline-block;margin-left:10px;padding:10px 22px;border:1px solid #ccc;color:#1E2140;text-decoration:none;border-radius:8px;font-size:13px;font-weight:bold;">Panel page</a>
+        ${btn(openLink, 'Open the app', true)}
+        <span style="display:inline-block;width:10px;"></span>
+        ${btn(panel.pageUrl, 'Panel page', false)}
       </td></tr>
       <tr><td style="background:#fafafa;padding:14px 28px;font-size:11px;color:#999;line-height:1.6;">
         Bharat AI Innovation &middot; Organised by Aegis Knowledge Trust &middot; info@bharataiinnovation.com
@@ -882,7 +991,7 @@ async function sendPanelConfirmationEmail(c: any, attendee: any, panel: CampusPa
   </td></tr></table></body></html>`
 
   try {
-    await fetch('https://api.elasticemail.com/v4/emails/transactional', {
+    const resp = await fetch('https://api.elasticemail.com/v4/emails/transactional', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-ElasticEmail-ApiKey': apiKey },
       body: JSON.stringify({
@@ -895,7 +1004,12 @@ async function sendPanelConfirmationEmail(c: any, attendee: any, panel: CampusPa
         Options: { TrackClicks: false, TrackOpens: false }
       })
     })
-  } catch { /* registration already succeeded; a failed email must not surface */ }
+    if (!resp.ok) return { ok: false, error: 'Elastic Email replied ' + resp.status }
+    return { ok: true }
+  } catch (e: any) {
+    // On the registration path this is fire-and-forget; the batch sender records it.
+    return { ok: false, error: String(e?.message || e) }
+  }
 }
 
 // Counted from the table at send time, cached briefly because a confirmation email
@@ -3911,6 +4025,13 @@ app.post('/api/events/:id/attendees/register', async (c) => {
     // c.executionCtx throws when absent rather than being undefined, so this is
     // guarded rather than optional-chained.
     const panel = campusPanelFor((attendee as any).registration_source)
+    if (panel) {
+      try {
+        await c.env.DB.prepare(
+          "INSERT OR IGNORE INTO panel_registrations (attendee_id, panel_slug, source, registered_at) VALUES (?, ?, 'page', datetime('now'))"
+        ).bind((attendee as any).id, panel.slug).run()
+      } catch { /* 0040 not applied yet: the tag on the row still records it */ }
+    }
     const welcome = panel ? sendPanelConfirmationEmail(c, attendee, panel) : sendRegistrationEmail(c, attendee)
     let scheduled = false
     try { c.executionCtx.waitUntil(welcome); scheduled = true } catch { /* no ctx */ }
@@ -7958,6 +8079,113 @@ app.get('/api/attendees/:id/certificate-eligibility', async (c) => {
   })
 })
 
+// ==================== CAMPUS SERIES — THE PANEL, FROM THE REGISTRANT'S SIDE ====================
+//
+// One row per person per panel in panel_registrations (0040): the source that
+// put them there, whether they were emailed, when they claimed attendance and
+// what they took afterwards. The attendee row's registration_source keeps saying
+// where the person FIRST came from and is never rewritten by any of this.
+//
+// Attendance is claimed, not taken. Nobody from the organiser stands at the door
+// of somebody else's college, so the closing slide shows a six-character code,
+// and a registrant who enters it inside the window has been in the room - or
+// has a friend who was, which is the trade accepted in return for needing no
+// desk, no volunteer and no attendance sheet from the host. The code lives in
+// app_settings under panel_claim_code:<slug>, set by the import, never in git.
+//
+// checked_in_at on attendees is deliberately not touched by a claim: that column
+// means "scanned in at WTC in November" and unlocks the conference certificate.
+
+async function panelRows(c: any, attendeeId: any): Promise<any[]> {
+  try {
+    const { results } = await c.env.DB.prepare(
+      'SELECT panel_slug, source, registered_at, claimed_at, certificate_downloaded_at, card_downloaded_at FROM panel_registrations WHERE attendee_id = ? ORDER BY registered_at ASC'
+    ).bind(attendeeId).all()
+    return results || []
+  } catch { return [] }   // not migrated yet: the person simply has no panels
+}
+
+function panelView(panel: CampusPanel, row: any) {
+  return {
+    ...panel,
+    source: row.source,
+    registered_at: row.registered_at,
+    claimed_at: row.claimed_at || null,
+    certificate_downloaded_at: row.certificate_downloaded_at || null,
+    card_downloaded_at: row.card_downloaded_at || null,
+    claim_state: panelClaimState(panel),
+    ended: Date.now() > Date.parse(panel.endsAt),
+  }
+}
+
+app.get('/api/attendees/:id/panels', async (c) => {
+  const id = c.req.param('id')
+  const denied = await requireSelf(c, id); if (denied) return denied
+  const rows = await panelRows(c, id)
+  const out = rows.map((r: any) => { const p = CAMPUS_PANELS[r.panel_slug]; return p ? panelView(p, r) : null }).filter(Boolean)
+  return c.json(out)
+})
+
+// Six tries an hour per registration. The code is short, so guessing has to stay
+// slower than turning up.
+const PANEL_CLAIM_MAX_ATTEMPTS = 6
+
+app.post('/api/attendees/:id/panels/:slug/claim', async (c) => {
+  const id = c.req.param('id'), slug = c.req.param('slug')
+  const denied = await requireSelf(c, id); if (denied) return denied
+  const panel = CAMPUS_PANELS[slug]
+  if (!panel) return c.json({ error: 'Unknown panel.' }, 404)
+  const body = await c.req.json().catch(() => ({})) as any
+  const supplied = normalisePanelCode(body.code)
+  if (!supplied) return c.json({ error: 'Enter the code shown at the end of the panel.' }, 400)
+
+  let row: any = null
+  try {
+    row = await c.env.DB.prepare(
+      'SELECT id, claimed_at, claim_attempts, last_claim_attempt_at FROM panel_registrations WHERE attendee_id = ? AND panel_slug = ?'
+    ).bind(id, slug).first()
+  } catch { return c.json({ error: 'Claims are not open yet. Please try again later.' }, 503) }
+  if (!row) return c.json({ error: 'You are not on the list for this panel. If you registered with a different email, sign in with that one.' }, 403)
+  if (row.claimed_at) return c.json({ claimed: true, claimed_at: row.claimed_at, already: true })
+
+  const state = panelClaimState(panel)
+  if (state === 'before') return c.json({ error: 'The code goes up at the end of the panel. Come back then.' }, 400)
+  if (state === 'closed') return c.json({ error: 'The claim window for this panel has closed. If you attended, email register@bharataiinnovation.com.' }, 400)
+
+  const lastAt = row.last_claim_attempt_at ? Date.parse(String(row.last_claim_attempt_at).replace(' ', 'T') + 'Z') : 0
+  const attempts = lastAt && Date.now() - lastAt < 3600 * 1000 ? Number(row.claim_attempts) || 0 : 0
+  if (attempts >= PANEL_CLAIM_MAX_ATTEMPTS) return c.json({ error: 'Too many tries. Please wait an hour and try again.' }, 429)
+
+  const expected = normalisePanelCode(await settingValue(c, 'panel_claim_code:' + slug))
+  if (!expected) return c.json({ error: 'Claims are not open yet. Please try again later.' }, 400)
+  const ok = safeEqualA(await sha256Hex(supplied), await sha256Hex(expected))
+  if (!ok) {
+    await c.env.DB.prepare("UPDATE panel_registrations SET claim_attempts = ?, last_claim_attempt_at = datetime('now') WHERE id = ?")
+      .bind(attempts + 1, row.id).run()
+    return c.json({ error: 'That code is not right. It is the six characters on the closing slide.' }, 400)
+  }
+  await c.env.DB.prepare("UPDATE panel_registrations SET claimed_at = datetime('now'), claim_attempts = 0 WHERE id = ? AND claimed_at IS NULL")
+    .bind(row.id).run()
+  const fresh = await c.env.DB.prepare('SELECT claimed_at FROM panel_registrations WHERE id = ?').bind(row.id).first() as any
+  return c.json({ claimed: true, claimed_at: fresh?.claimed_at || null })
+})
+
+// Set once, on the first download, like social_card_downloaded_at: taking the
+// certificate twice is one person, not two.
+app.post('/api/attendees/:id/panels/:slug/track', async (c) => {
+  const id = c.req.param('id'), slug = c.req.param('slug')
+  const denied = await requireSelf(c, id); if (denied) return denied
+  const body = await c.req.json().catch(() => ({})) as any
+  const col = body.what === 'certificate' ? 'certificate_downloaded_at' : body.what === 'card' ? 'card_downloaded_at' : ''
+  if (!col) return c.json({ error: 'what must be certificate or card' }, 400)
+  try {
+    await c.env.DB.prepare(
+      `UPDATE panel_registrations SET ${col} = datetime('now') WHERE attendee_id = ? AND panel_slug = ? AND ${col} IS NULL`
+    ).bind(id, slug).run()
+    return c.json({ success: true })
+  } catch { return c.json({ success: false }) }
+})
+
 app.put('/api/attendees/:id/profile', async (c) => {
   const id = c.req.param('id')
   const denied = await requireSelf(c, id); if (denied) return denied
@@ -8810,6 +9038,92 @@ app.post('/api/admin/attendees/bulk', async (c) => {
   }
 
   return c.json(results)
+})
+
+// ==================== CAMPUS SERIES — ADMIN ====================
+
+app.get('/api/admin/panels', async (c) => {
+  const out: any[] = []
+  for (const p of Object.values(CAMPUS_PANELS)) {
+    let stats: any = {}
+    try {
+      stats = await c.env.DB.prepare(
+        `SELECT COUNT(*) AS registered,
+                SUM(CASE WHEN pr.source = 'muni' THEN 1 ELSE 0 END) AS via_muni,
+                SUM(CASE WHEN pr.source = 'page' THEN 1 ELSE 0 END) AS via_page,
+                SUM(CASE WHEN pr.confirmation_sent_at IS NOT NULL THEN 1 ELSE 0 END) AS emailed,
+                SUM(CASE WHEN pr.confirmation_error IS NOT NULL THEN 1 ELSE 0 END) AS email_failed,
+                SUM(CASE WHEN COALESCE(TRIM(a.avatar_url), '') <> '' THEN 1 ELSE 0 END) AS with_photo,
+                SUM(CASE WHEN a.last_login_at IS NOT NULL THEN 1 ELSE 0 END) AS signed_in,
+                SUM(CASE WHEN pr.card_downloaded_at IS NOT NULL THEN 1 ELSE 0 END) AS card_taken,
+                SUM(CASE WHEN pr.claimed_at IS NOT NULL THEN 1 ELSE 0 END) AS claimed,
+                SUM(CASE WHEN pr.certificate_downloaded_at IS NOT NULL THEN 1 ELSE 0 END) AS certificate_taken
+           FROM panel_registrations pr JOIN attendees a ON a.id = pr.attendee_id
+          WHERE pr.panel_slug = ?`
+      ).bind(p.slug).first()
+    } catch { stats = { not_migrated: true } }
+    const code = await settingValue(c, 'panel_claim_code:' + p.slug)
+    out.push({
+      slug: p.slug, hostShort: p.hostShort, title: p.titleShort, dateLabel: p.dateLabel,
+      claim_state: panelClaimState(p), claim_code_set: !!code,
+      ...(stats || {}),
+    })
+  }
+  return c.json(out)
+})
+
+// Sends the panel confirmation to the next few people on the list who have not
+// had one. A pump, like the profile reminder: the admin page calls it until it
+// says done, and closing the tab loses nothing because the server owns who is
+// next. An address that fails is marked and skipped rather than retried forever;
+// reset-email-errors below puts those back in the queue.
+app.post('/api/admin/panels/:slug/send-next-confirmations', async (c) => {
+  const slug = c.req.param('slug')
+  const panel = CAMPUS_PANELS[slug]
+  if (!panel) return c.json({ error: 'Unknown panel' }, 404)
+  const body = await c.req.json().catch(() => ({})) as any
+  const batch = Math.min(10, Math.max(1, parseInt(body.batch, 10) || 5))
+
+  const PENDING = `pr.panel_slug = ? AND pr.confirmation_sent_at IS NULL AND pr.confirmation_error IS NULL AND a.email IS NOT NULL AND a.email <> ''`
+  const remaining = async () => {
+    const r = await c.env.DB.prepare(`SELECT COUNT(*) AS n FROM panel_registrations pr JOIN attendees a ON a.id = pr.attendee_id WHERE ${PENDING}`).bind(slug).first() as any
+    return Number(r?.n) || 0
+  }
+  let rows: any[] = []
+  try {
+    const r = await c.env.DB.prepare(
+      `SELECT pr.id AS pr_id, pr.source AS pr_source, a.* FROM panel_registrations pr JOIN attendees a ON a.id = pr.attendee_id
+        WHERE ${PENDING} ORDER BY pr.id ASC LIMIT ?`
+    ).bind(slug, batch).all()
+    rows = r.results || []
+  } catch (e: any) {
+    return c.json({ error: 'panel_registrations is not migrated: ' + String(e?.message || e) }, 503)
+  }
+  if (!rows.length) return c.json({ done: true, sent: 0, remaining: 0 })
+
+  let sent = 0
+  const failed: string[] = []
+  for (const a of rows) {
+    const r = await sendPanelConfirmationEmail(c, a, panel, { withLogin: true, eventId: a.event_id, source: a.pr_source })
+    if (r.ok) {
+      sent++
+      await c.env.DB.prepare("UPDATE panel_registrations SET confirmation_sent_at = datetime('now') WHERE id = ?").bind(a.pr_id).run()
+    } else {
+      failed.push(String(a.email))
+      await c.env.DB.prepare('UPDATE panel_registrations SET confirmation_error = ? WHERE id = ?').bind(String(r.error || 'failed').slice(0, 200), a.pr_id).run()
+    }
+  }
+  const left = await remaining()
+  return c.json({ done: left === 0, sent, failed, remaining: left })
+})
+
+app.post('/api/admin/panels/:slug/reset-email-errors', async (c) => {
+  const slug = c.req.param('slug')
+  if (!CAMPUS_PANELS[slug]) return c.json({ error: 'Unknown panel' }, 404)
+  try {
+    const r = await c.env.DB.prepare('UPDATE panel_registrations SET confirmation_error = NULL WHERE panel_slug = ? AND confirmation_error IS NOT NULL').bind(slug).run()
+    return c.json({ success: true, reset: r.meta?.changes ?? 0 })
+  } catch { return c.json({ success: false }) }
 })
 
 // Admin: Download attendees as CSV
@@ -15185,6 +15499,7 @@ function mainPageHTML(): string {
           <div id="my-profile-header"></div>
 
           <!-- Quick Actions Bar -->
+          <div id="my-panels"></div>
           <div id="my-quick-actions" class="mb-6"></div>
 
           <!-- My Exhibition Booth (for Exhibitor badge holders) -->
@@ -15336,6 +15651,13 @@ function mainPageHTML(): string {
               <p class="text-xs text-gray-400 mt-1">Post this on LinkedIn or WhatsApp. The people who follow you are exactly the people we want in the hall.</p>
             </div>
             <button onclick="closeSocialCard()" class="text-gray-400 hover:text-white shrink-0 ml-3"><i class="fas fa-times text-lg"></i></button>
+          </div>
+
+          <!-- Shown only to someone with a campus panel coming up or attended:
+               the panel card first, the conference card a tap away. -->
+          <div id="sc-mode-row" class="hidden gap-2 mb-3">
+            <button id="sc-mode-panel" onclick="setSocialCardMode('panel')" class="flex-1 px-3 py-2 rounded-xl text-xs font-semibold transition"><i class="fas fa-graduation-cap mr-1.5"></i><span id="sc-mode-panel-label">Campus panel</span><span class="block text-[10px] font-normal opacity-70">Pre-event panel</span></button>
+            <button id="sc-mode-conference" onclick="setSocialCardMode('conference')" class="flex-1 px-3 py-2 rounded-xl text-xs font-semibold transition"><i class="fas fa-calendar-day mr-1.5"></i>Conference<span class="block text-[10px] font-normal opacity-70">20&ndash;21 Nov, WTC Mumbai</span></button>
           </div>
 
           <div class="flex gap-2 mb-3">
@@ -15794,6 +16116,8 @@ function mainPageHTML(): string {
     // thing outstanding is a photo, the picker already open. Sending them to the app
     // and letting them find it is what the mail is trying to get past.
     function runPendingAction() {
+      // A stashed panel claim runs on every sign-in path, whatever else was asked.
+      if (currentUser && pendingPanelClaim()) setTimeout(function () { applyPendingPanelClaim(); }, 800);
       const act = pendingAction || new URLSearchParams(window.location.search).get('action');
       if (act === 'download-pass') { setTimeout(() => generateDelegatePass(), 1500); return; }
       // The card had exactly one way in: offered once after a pass download and
@@ -15840,6 +16164,11 @@ function mainPageHTML(): string {
       const urlParams = new URLSearchParams(window.location.search);
       const emailParam = urlParams.get('email');
       pendingAction = urlParams.get('action'); // Store action before URL cleanup
+      // The QR on a campus panel's closing slide lands here with ?panel=&claim=.
+      // Kept in localStorage rather than the URL: the person may still have to
+      // sign in, and the sign-in link opens from their mail app in another tab.
+      // Applied by runPendingAction once there is a signed-in user.
+      stashPanelClaim(urlParams);
 
       // Always show public app first (no login required for public tabs)
       showPublicApp();
@@ -15904,6 +16233,14 @@ function mainPageHTML(): string {
         switchTab(hash);
         history.replaceState({}, '', window.location.pathname);
       }
+
+      // Scanned the closing slide but not signed in: open sign-in and say why,
+      // so the claim is not lost between the camera and the inbox.
+      if (!currentUser && pendingPanelClaim()) {
+        showRegistration();
+        if (typeof switchAuthMode === 'function') switchAuthMode('signin');
+        showToast('Sign in with the email you registered with and your attendance is claimed automatically.', 'info');
+      }
     }
 
     // Show public app: nav + content visible, no login required
@@ -15917,6 +16254,7 @@ function mainPageHTML(): string {
 
     // Upgrade UI after successful login (show avatar, enable protected tabs)
     function upgradeToLoggedIn() {
+      myPanels = null; // never show one person's panels to the next sign-in
       updateNavForAuth();
       updateNavAvatar();
       checkUnread();
@@ -19862,7 +20200,7 @@ function mainPageHTML(): string {
     // counted afterwards.
     var socialCard = { size: 'square', res: null, seq: 0 };
 
-    async function openSocialCard() {
+    async function openSocialCard(preferPanel) {
       var user = currentUser;
       if (!user) { showToast('Please sign in first', 'error'); return; }
       /* The photo check below used to read currentUser.avatar_url straight out
@@ -19891,7 +20229,21 @@ function mainPageHTML(): string {
         });
         if (got !== 'done') return;
       }
-      document.getElementById('sc-caption').value = BhaiSocialCard.caption(user);
+      // Campus Series: a registrant with a panel coming up, or attended, gets a
+      // card about the panel first, with the conference card one tap away. A
+      // panel that has ended without a claim offers nothing to say.
+      var panels = await fetchMyPanels();
+      socialCard.panels = panels.filter(function (p) { return !!panelVariantFor(p); });
+      var wantSlug = typeof preferPanel === 'string' ? preferPanel : '';
+      var pick = socialCard.panels.filter(function (p) { return p.slug === wantSlug; })[0] || socialCard.panels[0] || null;
+      socialCard.panel = pick;
+      socialCard.mode = pick ? 'panel' : 'conference';
+      var modeRow = document.getElementById('sc-mode-row');
+      modeRow.classList.toggle('hidden', !pick);
+      modeRow.classList.toggle('flex', !!pick);
+      if (pick) document.getElementById('sc-mode-panel-label').textContent = (pick.claimed_at ? 'I attended' : 'I’m attending') + ' · ' + pick.hostShort;
+      updateSocialCardModeTabs();
+      document.getElementById('sc-caption').value = socialCardCaption(user);
       // Ask the resolver, not just whether a domain exists: a domain whose only
       // favicon is 16px resolves to nothing, and offering to toggle a logo that
       // will never appear is worse than saying nothing.
@@ -19917,6 +20269,222 @@ function mainPageHTML(): string {
 
     function closeSocialCard() {
       document.getElementById('social-card-modal').classList.add('hidden');
+    }
+
+    // ==================== CAMPUS SERIES (attendee side) ====================
+    // Which card a panel can carry today: attending before it, attended once the
+    // code has been claimed, nothing once it has ended unclaimed.
+    function panelVariantFor(p) {
+      if (!p) return '';
+      if (p.claimed_at) return 'panel_attended';
+      if (!p.ended) return 'panel';
+      return '';
+    }
+
+    function setSocialCardMode(mode) {
+      if (mode === 'panel' && !socialCard.panel) mode = 'conference';
+      socialCard.mode = mode;
+      updateSocialCardModeTabs();
+      if (currentUser) document.getElementById('sc-caption').value = socialCardCaption(currentUser);
+      renderSocialCardPreview();
+    }
+
+    function updateSocialCardModeTabs() {
+      ['panel', 'conference'].forEach(function (m) {
+        var el = document.getElementById('sc-mode-' + m);
+        if (!el) return;
+        var on = (socialCard.mode || 'conference') === m;
+        el.className = 'flex-1 px-3 py-2 rounded-xl text-xs font-semibold transition ' +
+          (on ? 'bg-primary-600 text-white' : 'glass text-gray-400 hover:bg-white/10');
+      });
+    }
+
+    function socialCardCaption(user) {
+      if (socialCard.mode === 'panel' && socialCard.panel) {
+        return BhaiSocialCard.caption(user, { variant: panelVariantFor(socialCard.panel), panel: socialCard.panel });
+      }
+      return BhaiSocialCard.caption(user);
+    }
+
+    function trackPanelCard() {
+      if (!currentUser || socialCard.mode !== 'panel' || !socialCard.panel) return;
+      try { api.post('/api/attendees/' + currentUser.id + '/panels/' + encodeURIComponent(socialCard.panel.slug) + '/track', { what: 'card' }); } catch (e) {}
+    }
+
+    var myPanels = null;
+    async function fetchMyPanels() {
+      if (!currentUser) return [];
+      if (myPanels) return myPanels;
+      try {
+        var r = await api.get('/api/attendees/' + currentUser.id + '/panels');
+        myPanels = Array.isArray(r) ? r : [];
+      } catch (e) { myPanels = []; }
+      return myPanels;
+    }
+
+    function panelWhen(ts) {
+      if (!ts) return '';
+      try {
+        var str = String(ts);
+        var d = new Date(str.replace(' ', 'T') + (str.indexOf('Z') > 0 || str.indexOf('+') > 0 ? '' : 'Z'));
+        return d.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+      } catch (e) { return String(ts); }
+    }
+
+    async function renderMyPanels() {
+      var box = document.getElementById('my-panels');
+      if (!box || !currentUser) return;
+      var list = await fetchMyPanels();
+      box.innerHTML = list.length ? list.map(panelCardHTML).join('') : '';
+    }
+
+    function panelCardHTML(p) {
+      var slug = esc(p.slug);
+      var body;
+      if (p.claimed_at) {
+        body = '<p class="text-sm text-emerald-400 mb-3"><i class="fas fa-check-circle mr-1.5"></i>Attendance confirmed, ' + esc(panelWhen(p.claimed_at)) + '.</p>'
+          + '<div class="flex gap-2 flex-wrap">'
+          + '<button onclick="generatePanelCertificate(&quot;' + slug + '&quot;)" class="px-4 py-2.5 rounded-xl text-sm font-semibold bg-primary-600 hover:bg-primary-500 text-white transition"><i class="fas fa-award mr-2"></i>Download certificate</button>'
+          + '<button onclick="openSocialCard(&quot;' + slug + '&quot;)" class="px-4 py-2.5 rounded-xl text-sm font-medium glass hover:bg-white/10 text-gray-200 transition"><i class="fas fa-share-alt mr-2"></i>Share the “I attended” card</button>'
+          + '</div>';
+      } else if (p.claim_state === 'open') {
+        body = '<p class="text-sm text-gray-300 mb-2">Enter the code from the closing slide to confirm you attended. It unlocks your certificate of participation and an “I attended” card.</p>'
+          + '<form onsubmit="submitPanelClaim(event, &quot;' + slug + '&quot;)" class="flex gap-2 flex-wrap">'
+          + '<input id="panel-code-' + slug + '" maxlength="12" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="6-character code" class="flex-1 min-w-[160px] px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm uppercase tracking-widest focus:outline-none focus:border-primary-500">'
+          + '<button type="submit" class="px-4 py-2.5 rounded-xl text-sm font-semibold bg-primary-600 hover:bg-primary-500 text-white transition"><i class="fas fa-award mr-2"></i>Claim</button>'
+          + '</form>';
+      } else if (p.claim_state === 'before') {
+        body = '<p class="text-sm text-gray-300 mb-3">Your certificate of participation and an “I attended” card unlock with a code shown at the end of the panel. Keep this app handy on the day.</p>'
+          + '<button onclick="openSocialCard(&quot;' + slug + '&quot;)" class="px-4 py-2.5 rounded-xl text-sm font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition"><i class="fas fa-share-alt mr-2"></i>Share the “I’m attending” card</button>';
+      } else {
+        body = '<p class="text-sm text-gray-400">The claim window for this panel has closed. If you attended and could not claim, email <a href="mailto:register@bharataiinnovation.com" class="text-primary-400 underline">register@bharataiinnovation.com</a>.</p>';
+      }
+      return '<div class="glass rounded-2xl p-5 md:p-6 mb-6">'
+        + '<div class="flex items-start gap-4">'
+        + (p.hostLogo ? '<img src="' + esc(p.hostLogo) + '" alt="" class="w-14 h-14 rounded-xl bg-white object-contain p-1 shrink-0">' : '')
+        + '<div class="flex-1 min-w-0">'
+        + '<div class="text-[10px] uppercase tracking-widest text-primary-400 font-semibold mb-1">Bharat AI Innovation · Pre-Event Panel Discussion</div>'
+        + '<h3 class="font-bold text-base md:text-lg leading-snug">' + esc(p.title) + '</h3>'
+        + '<p class="text-xs text-gray-400 mt-1">' + esc(p.dateLabel) + ' · ' + esc(p.timeLabel) + '<br>' + esc(p.host) + '</p>'
+        + '</div></div>'
+        + '<div class="mt-4">' + body + '</div>'
+        + '</div>';
+    }
+
+    function submitPanelClaim(e, slug) {
+      e.preventDefault();
+      var inp = document.getElementById('panel-code-' + slug);
+      var code = ((inp && inp.value) || '').trim();
+      if (!code) { showToast('Enter the code from the closing slide', 'error'); return; }
+      claimPanelCode(slug, code);
+    }
+
+    async function claimPanelCode(slug, code) {
+      if (!currentUser) return null;
+      var data = {};
+      try {
+        var resp = await fetch('/api/attendees/' + currentUser.id + '/panels/' + encodeURIComponent(slug) + '/claim', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: code })
+        });
+        data = await resp.json().catch(function () { return {}; });
+      } catch (e) { showToast('Could not reach the server. Please try again.', 'error'); return null; }
+      if (data && data.claimed) {
+        showToast(data.already ? 'Already claimed - your certificate is ready.' : 'Attendance confirmed. Your certificate and card are ready.', 'success');
+        myPanels = null;
+        renderMyPanels();
+        return data;
+      }
+      showToast((data && data.error) || 'Could not claim just now.', 'error');
+      return data;
+    }
+
+    function stashPanelClaim(params) {
+      var slug = params.get('panel'), code = params.get('claim');
+      if (!slug || !code) return;
+      try { localStorage.setItem('bhai_panel_claim', JSON.stringify({ slug: slug, code: code, at: Date.now() })); } catch (e) {}
+      if (!params.get('email')) window.history.replaceState({}, '', window.location.pathname);
+    }
+
+    function pendingPanelClaim() {
+      try {
+        var rawv = localStorage.getItem('bhai_panel_claim');
+        if (!rawv) return null;
+        var v = JSON.parse(rawv);
+        if (!v || !v.slug || !v.code || Date.now() - (v.at || 0) > 4 * 86400000) { localStorage.removeItem('bhai_panel_claim'); return null; }
+        return v;
+      } catch (e) { return null; }
+    }
+
+    async function applyPendingPanelClaim() {
+      var v = pendingPanelClaim();
+      if (!v || !currentUser) return;
+      // Whatever the answer, the stash has done its job; a wrong code is typed again by hand.
+      try { localStorage.removeItem('bhai_panel_claim'); } catch (e) {}
+      var r = await claimPanelCode(v.slug, v.code);
+      if (r && r.claimed) switchTab('myprofile');
+    }
+
+    // The panel certificate. Drawn here, granted by the server: it only exists
+    // for a panel whose claimed_at the /panels endpoint reports.
+    async function generatePanelCertificate(slug) {
+      var user = currentUser;
+      if (!user) { showToast('Please sign in first', 'error'); return; }
+      myPanels = null;
+      var p = (await fetchMyPanels()).filter(function (x) { return x.slug === slug; })[0];
+      if (!p) { showToast('You are not on the list for this panel.', 'error'); return; }
+      if (!p.claimed_at) { showToast('Enter the code from the closing slide first.', 'error'); return; }
+      showToast('Generating your certificate…', 'info');
+      var W = 1600, H = 1130;
+      var canvas = document.createElement('canvas'); canvas.width = W; canvas.height = H;
+      var ctx = canvas.getContext('2d');
+      var bg = ctx.createLinearGradient(0, 0, W, H);
+      bg.addColorStop(0, '#0b0d1a'); bg.addColorStop(1, '#141730');
+      ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+      var glow = ctx.createRadialGradient(W * 0.85, H * 0.1, 40, W * 0.85, H * 0.1, 700);
+      glow.addColorStop(0, 'rgba(255,107,0,0.22)'); glow.addColorStop(1, 'rgba(255,107,0,0)');
+      ctx.fillStyle = glow; ctx.fillRect(0, 0, W, H);
+      ctx.strokeStyle = 'rgba(255,107,0,0.55)'; ctx.lineWidth = 4; ctx.strokeRect(40, 40, W - 80, H - 80);
+      ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth = 1.5; ctx.strokeRect(58, 58, W - 116, H - 116);
+      // Two marks on white chips: ours and the host college's.
+      var chips = [];
+      try { chips.push(await loadImage('/images/Bharat%20AI%20Innovation%20Logo.png')); } catch (e) {}
+      if (p.hostLogo) { try { chips.push(await loadImage(p.hostLogo)); } catch (e) {} }
+      var chipH = 104, pad = 16, gap = 28;
+      var widths = chips.map(function (im) { return im.width * (chipH / im.height); });
+      var total = widths.reduce(function (a, b) { return a + b + pad * 2; }, 0) + gap * Math.max(0, chips.length - 1);
+      var x = (W - total) / 2, top = 96;
+      chips.forEach(function (im, i) {
+        ctx.fillStyle = '#FFFFFF'; roundRect(ctx, x, top, widths[i] + pad * 2, chipH + pad * 2, 16); ctx.fill();
+        ctx.drawImage(im, x + pad, top + pad, widths[i], chipH);
+        x += widths[i] + pad * 2 + gap;
+      });
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#ff9a52'; ctx.font = '600 26px Montserrat, Arial'; ctx.fillText('CERTIFICATE OF PARTICIPATION', W / 2, 318);
+      ctx.fillStyle = '#c8c9d6'; ctx.font = '400 22px Manrope, Arial'; ctx.fillText('This is proudly presented to', W / 2, 390);
+      ctx.fillStyle = '#ffffff'; ctx.font = '700 64px Georgia, serif'; ctx.fillText(user.name || 'Attendee', W / 2, 478);
+      var uw = Math.min(560, (user.name || '').length * 34 + 120);
+      var ug = ctx.createLinearGradient(W / 2 - uw / 2, 0, W / 2 + uw / 2, 0);
+      ug.addColorStop(0, 'rgba(255,107,0,0)'); ug.addColorStop(0.5, 'rgba(255,107,0,0.9)'); ug.addColorStop(1, 'rgba(255,107,0,0)');
+      ctx.fillStyle = ug; ctx.fillRect(W / 2 - uw / 2, 504, uw, 3);
+      ctx.fillStyle = '#c8c9d6'; ctx.font = '400 22px Manrope, Arial';
+      ctx.fillText('for participating in the pre-event panel discussion', W / 2, 568);
+      ctx.fillStyle = '#ffffff'; ctx.font = '700 40px Montserrat, Arial'; ctx.fillText((p.titleShort || p.title) + (p.subtitle ? ':' : ''), W / 2, 628);
+      ctx.fillStyle = '#dfe2f0'; ctx.font = '500 26px Manrope, Arial'; ctx.fillText(p.subtitle || '', W / 2, 670);
+      ctx.fillStyle = '#ff9a52'; ctx.font = '600 20px Montserrat, Arial'; ctx.fillText('BHARAT AI INNOVATION  ·  PRE-EVENT PANEL DISCUSSION', W / 2, 730);
+      ctx.fillStyle = '#9698ac'; ctx.font = '400 22px Manrope, Arial';
+      ctx.fillText('Hosted at ' + [p.host, p.city].filter(Boolean).join(', '), W / 2, 776);
+      ctx.fillText(p.dateLabel + '  ·  ' + p.timeLabel, W / 2, 812);
+      ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.fillRect(W / 2 - 150, 918, 300, 2);
+      ctx.fillStyle = '#9698ac'; ctx.font = '400 18px Manrope, Arial'; ctx.fillText('Organizing Committee · Aegis Knowledge Trust', W / 2, 953);
+      ctx.fillStyle = '#6b6a63'; ctx.font = '400 15px Manrope, Arial';
+      var certId = 'BHAI-CS-' + String(p.slug).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6) + '-' + String(user.id).padStart(5, '0');
+      ctx.fillText('Certificate ID: ' + certId + '  ·  Attendance confirmed ' + panelWhen(p.claimed_at), W / 2, 1008);
+      var a = document.createElement('a');
+      a.href = canvas.toDataURL('image/png');
+      a.download = 'BharatAI-CampusSeries-' + String(p.hostShort || 'Panel').replace(/[^A-Za-z0-9]+/g, '') + '-Certificate.png';
+      a.click();
+      showToast('Certificate downloaded', 'success');
+      try { api.post('/api/attendees/' + user.id + '/panels/' + encodeURIComponent(slug) + '/track', { what: 'certificate' }); } catch (e) {}
     }
 
     function setSocialCardSize(size) {
@@ -19946,10 +20514,12 @@ function mainPageHTML(): string {
       load.classList.remove('hidden');
       var useLogo = document.getElementById('sc-logo-toggle').checked;
       try {
-        var res = await BhaiSocialCard.render(user, {
-          size: socialCard.size,
-          companyLogo: useLogo ? undefined : ''
-        });
+        var ropts = { size: socialCard.size, companyLogo: useLogo ? undefined : '' };
+        if (socialCard.mode === 'panel' && socialCard.panel) {
+          ropts.variant = panelVariantFor(socialCard.panel);
+          ropts.panel = socialCard.panel;
+        }
+        var res = await BhaiSocialCard.render(user, ropts);
         if (mine !== socialCard.seq) return;
         /* A card whose photo did not load is not a card. This used to set the
          * result anyway, show the letter-in-a-circle as the preview, raise a
@@ -19992,6 +20562,7 @@ function mainPageHTML(): string {
       link.click();
       showToast('Card downloaded - post it with the caption', 'success');
       if (user.id) { try { await api.post('/api/attendees/' + user.id + '/track-social-card', {}); } catch (e) {} }
+      trackPanelCard();
     }
 
     function copySocialCaption() {
@@ -20021,6 +20592,7 @@ function mainPageHTML(): string {
         }
         await navigator.share({ files: [file], text: document.getElementById('sc-caption').value });
         if (user.id) { try { await api.post('/api/attendees/' + user.id + '/track-social-card', {}); } catch (e) {} }
+      trackPanelCard();
       } catch (e) {
         // Dismissing the share sheet throws AbortError. That is not a failure.
         if (e && e.name !== 'AbortError') showToast('Could not open the share sheet', 'error');
@@ -20193,6 +20765,7 @@ function mainPageHTML(): string {
         // Asked on render as well as on click: a button that looks available
         // and then refuses is worse than one that says so up front.
         refreshCertificateButton();
+        renderMyPanels();
 
         // ---- Quick Actions ----
         document.getElementById('my-quick-actions').innerHTML = \`
@@ -22574,6 +23147,7 @@ function adminPageHTML(): string {
         bars(a.sources || [], 'top-sources');
         var ssum = document.getElementById('source-summary');
         if (ssum) ssum.textContent = (a.campus_total || 0) + ' of ' + a.total + ' via campus panels';
+        renderCampusPanels();
       } catch (e) {
         var el = document.getElementById('top-orgs');
         if (el) el.innerHTML = '<p class="text-red-400 text-sm">Could not load the audience profile: ' + e.message + '</p>';
@@ -23069,6 +23643,7 @@ function adminPageHTML(): string {
               <span class="text-[10px] text-gray-500" id="source-summary"></span>
             </div>
             <div id="top-sources" class="text-sm"></div>
+            <div id="campus-panels" class="mt-4 space-y-3"></div>
           </div>
         </div>
 
@@ -25324,6 +25899,61 @@ function adminPageHTML(): string {
     // next, the 9am-9pm IST window and the gap between sends, so this side can be
     // closed, reopened, or opened twice without changing the outcome.
     let _chaseTimer = null;
+
+    // ==================== CAMPUS SERIES (overview) ====================
+    async function renderCampusPanels() {
+      var box = document.getElementById('campus-panels');
+      if (!box) return;
+      var list;
+      try { list = await api.get('/api/admin/panels'); }
+      catch (e) { box.innerHTML = '<p class="text-red-400 text-xs">Could not load the campus panels.</p>'; return; }
+      if (!Array.isArray(list) || !list.length) { box.innerHTML = ''; return; }
+      box.innerHTML = list.map(function (p) {
+        if (p.not_migrated) return '<div class="p-3 rounded-xl bg-white/5 border border-white/10 text-xs text-amber-300">' + esc(p.hostShort) + ': migration 0040 is not applied, so nothing is recorded yet.</div>';
+        var left = (p.registered || 0) - (p.emailed || 0) - (p.email_failed || 0);
+        var stat = function (n, label) { return '<span class="inline-block mr-3 whitespace-nowrap"><strong class="text-white">' + (n || 0) + '</strong> ' + label + '</span>'; };
+        var claim = p.claim_state === 'open' ? '<span class="text-emerald-400">claims open</span>'
+          : p.claim_state === 'closed' ? '<span class="text-gray-500">claims closed</span>'
+          : '<span class="text-gray-400">claims open at the end of the panel</span>';
+        var code = p.claim_code_set ? '' : ' <span class="text-amber-300">&middot; no claim code set</span>';
+        return '<div class="p-3 rounded-xl bg-white/5 border border-white/10">'
+          + '<div class="flex items-baseline justify-between gap-2 flex-wrap mb-1"><div class="text-sm font-semibold text-white">' + esc(p.hostShort) + ' <span class="text-gray-400 font-normal">&middot; ' + esc(p.dateLabel) + '</span></div><div class="text-[10px]">' + claim + code + '</div></div>'
+          + '<div class="text-xs text-gray-400 leading-relaxed">' + stat(p.registered, 'registered') + stat(p.via_muni, 'via mUni') + stat(p.via_page, 'via our page') + stat(p.emailed, 'emailed') + (p.email_failed ? stat(p.email_failed, 'failed') : '') + stat(p.signed_in, 'signed in') + stat(p.with_photo, 'with photo') + stat(p.card_taken, 'took the card') + stat(p.claimed, 'claimed attendance') + stat(p.certificate_taken, 'took the certificate') + '</div>'
+          + '<div class="flex gap-2 mt-2 flex-wrap items-center">'
+          + (left > 0
+              ? '<button id="panel-send-' + esc(p.slug) + '" onclick="startPanelConfirmations(&quot;' + esc(p.slug) + '&quot;)" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-orange-600 hover:bg-orange-500 text-white transition"><i class="fas fa-paper-plane mr-1.5"></i>Send confirmations (' + left + ' left)</button>'
+              : '<span class="text-xs text-emerald-400"><i class="fas fa-check mr-1"></i>Everyone on the list has been emailed</span>')
+          + (p.email_failed ? '<button onclick="resetPanelEmailErrors(&quot;' + esc(p.slug) + '&quot;)" class="px-3 py-1.5 rounded-lg text-xs glass hover:bg-white/10 transition"><i class="fas fa-redo mr-1.5"></i>Retry ' + p.email_failed + ' failed</button>' : '')
+          + '<span id="panel-progress-' + esc(p.slug) + '" class="text-xs text-gray-400"></span>'
+          + '</div></div>';
+      }).join('');
+    }
+
+    var _panelPump = {};
+    function startPanelConfirmations(slug) {
+      if (!confirm('Send the panel confirmation email to everyone on the ' + slug + ' list who has not had one?\\n\\nReal email, a few at a time. You can close this page; nobody is mailed twice.')) return;
+      var btn = document.getElementById('panel-send-' + slug);
+      if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1.5"></i>Sending…'; }
+      _panelPump[slug] = { sent: 0 };
+      pumpPanelConfirmations(slug);
+    }
+
+    async function pumpPanelConfirmations(slug) {
+      var say = function (m) { var el = document.getElementById('panel-progress-' + slug); if (el) el.innerHTML = m; };
+      var r;
+      try { r = await api.post('/api/admin/panels/' + encodeURIComponent(slug) + '/send-next-confirmations', { batch: 5 }); }
+      catch (e) { say('<span class="text-red-400">Network error - retrying in 30s.</span>'); setTimeout(function () { pumpPanelConfirmations(slug); }, 30000); return; }
+      if (!r || r.error) { say('<span class="text-red-400">' + esc((r && r.error) || 'failed') + '</span>'); renderCampusPanels(); return; }
+      _panelPump[slug].sent += (r.sent || 0);
+      if (r.done) { say('<span class="text-green-400">Done - ' + _panelPump[slug].sent + ' sent.</span>'); renderCampusPanels(); return; }
+      say(_panelPump[slug].sent + ' sent, ' + r.remaining + ' to go…');
+      setTimeout(function () { pumpPanelConfirmations(slug); }, 1500);
+    }
+
+    async function resetPanelEmailErrors(slug) {
+      try { await api.post('/api/admin/panels/' + encodeURIComponent(slug) + '/reset-email-errors', {}); } catch (e) {}
+      renderCampusPanels();
+    }
 
     function stopProfileReminderCampaign() {
       if (_chaseTimer) { clearTimeout(_chaseTimer); _chaseTimer = null; }
