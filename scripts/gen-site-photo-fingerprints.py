@@ -14,8 +14,26 @@ the same squareCanvas + fromCanvas on every image, so the list and the app canno
 compute a fingerprint differently. Logos, icons, org logos and pass artwork are left
 out: they are not people, and the person check refuses them anyway.
 """
-import base64, glob, json, os
+import base64, glob, json, os, re
 from playwright.sync_api import sync_playwright
+
+# Which of two paths for the SAME picture to keep. It matters because the refusal has
+# one exception - a speaker may upload the site's photo of themselves - and that
+# exception is decided from the stored FILENAME (nameInSiteFile in src/index.tsx).
+# Keep the path that carries a person's name, so the exception can still fire. Today
+# every duplicate pair is named alike, so this changes nothing; it is here for the
+# next one, where alphabetical order could have dropped the only named copy.
+# Words only, so a camera name like 577B0622 or 7PN2Sjyw scores zero rather than
+# reading as a name: a token counts only if it is all letters and stands on its own
+# between separators, which is how the site names people files (speaker-joy-chakraborty).
+GENERIC = {'images', 'img', 'gallery', 'venue', 'past', 'speakers', 'speaker', 'jpg', 'jpeg', 'png',
+           'webp', 'avif', 'final', 'panel', 'photo', 'image', 'new', 'old', 'copy', 'crop', 'campus',
+           # camera and phone prefixes, which are not names either
+           'dsc', 'dscn', 'omy', 'mnp', 'pxl', 'dji', 'gopr', 'imgp', 'psx', 'whatsapp'}
+
+def name_score(rel):
+    base = os.path.splitext(os.path.basename(rel))[0].lower()
+    return len([t for t in re.split(r'[^a-z0-9]+', base) if t.isalpha() and len(t) >= 3 and t not in GENERIC])
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(REPO, 'src', 'data', 'site-photo-fingerprints.json')
@@ -36,7 +54,7 @@ for p in sorted(set(paths)):
     files.append((rel, p))
 
 JS = open(os.path.join(REPO, 'public', 'js', 'photo-fingerprint.js'), encoding='utf-8').read()
-entries, seen = [], set()
+entries, seen = [], {}
 with sync_playwright() as pw:
     browser = pw.chromium.launch(args=['--no-sandbox'])
     page = browser.new_page()
@@ -50,8 +68,13 @@ with sync_playwright() as pw:
                 i.onerror = () => rej(new Error('decode')); i.src = s; })""", src)
         except Exception as e:
             print('skipped (could not decode):', rel, str(e)[:60]); continue
-        if fp in seen: continue          # the same image saved twice (jpg + webp, two folders)
-        seen.add(fp)
+        # The same picture saved twice (jpg + webp, two folders, a re-export under a
+        # new name) fingerprints identically, so one entry covers every copy of it.
+        if fp in seen:
+            kept = entries[seen[fp]]
+            if name_score(rel) > name_score(kept['file']): kept['file'] = rel
+            continue
+        seen[fp] = len(entries)
         entries.append({'file': rel, 'fp': fp})
     browser.close()
 
