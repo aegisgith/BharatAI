@@ -1019,7 +1019,6 @@ const CAMPUS_PANELS: Record<string, CampusPanel> = {
       { name: 'Dr. Hari Vasudevan', role: 'Principal', org: 'Dwarkadas J. Sanghvi College of Engineering' },
       { name: 'Dr. Ashish Tendulkar', role: 'AI Practice Manager', org: 'Google' },
       { name: 'Bhupesh Daheria', role: 'CEO, Aegis School of Data Science & AI; Founder, Assessfy' },
-      { name: 'Nida Parkar', role: 'Vice President, Citi (Moderator)' },
       { name: 'Virendra Pal', role: 'AI & FinTech Expert' },
     ],
     hashtags: '#BharatAIInnovation #CampusSeries #DJSCE #AI #Employability #FutureOfWork',
