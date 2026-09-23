@@ -2,11 +2,10 @@
 // Run after `npm run build`:  node scripts/verify/smoke-panel-answers.mjs
 // "Are you coming?" routes against the built worker with a fake D1.
 import crypto from 'node:crypto';
+import { readFileSync } from 'node:fs';
 const worker = (await import(new URL('../../dist/_worker.js?' + Date.now(), import.meta.url).href)).default;
 const SECRET = 'smoke-session';
 const state = { rsvpColumns: true, updateThrows: false, updates: [], sqls: [] };
-const PEOPLE = { 5: { id: 5, name: 'Guest Person', email: 'guest@tm.com', company: 'Tech Mahindra', event_id: 1 },
-                 6: { id: 6, name: 'Host Student', email: 'host@djsce.ac.in', company: 'Dwarkadas J. Sanghvi College of Engineering', event_id: 1 } };
 const DB = {
   prepare(sql) {
     let args = [];
@@ -27,7 +26,7 @@ const DB = {
         if (/SELECT pr.id AS pr_id, a\.\*/.test(sql)) return { results: [{ pr_id: 1, ...PEOPLE[5] }, { pr_id: 2, ...PEOPLE[6] }] };
         if (/SELECT a.name, a.email, a.mobile/.test(sql)) return { results: [
           { name: 'Guest Person', email: 'guest@tm.com', mobile: '1', company: 'Tech Mahindra', job_title: 'Engineer', source: 'linkedin', registered_at: 'x', rsvp_status: 'yes', rsvp_at: 'y' },
-          { name: 'Host, Student', email: 'host@djsce.ac.in', mobile: '2', company: 'DJ Sanghvi', job_title: 'Student', source: 'muni', registered_at: 'x', rsvp_status: 'yes', rsvp_at: 'y' },
+          { name: 'Host, Student', email: HOST_EMAIL, mobile: '2', company: HOST_TOKEN, job_title: 'Student', source: 'muni', registered_at: 'x', rsvp_status: 'yes', rsvp_at: 'y' },
           { name: 'Undecided', email: 'u@x.com', mobile: '3', company: 'Other', job_title: '', source: 'linkedin', registered_at: 'x', rsvp_status: null, rsvp_at: null } ] };
         return { results: [] };
       },
@@ -54,7 +53,37 @@ const form = (o) => ({ method: 'POST', headers: { 'Content-Type': 'application/x
 const admin = (method = 'GET', body) => ({ method, headers: { Authorization: 'Bearer smoke-admin', 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
 let fails = 0;
 const check = (n, ok, d) => { console.log((ok ? 'PASS ' : 'FAIL ') + n + (ok ? '' : '  <- ' + d)); if (!ok) fails++; };
-const SLUG = 'djsanghvi-21sep';
+// A panel stops taking answers once it starts, so pin the test to one that is still
+// ahead of today rather than a slug that quietly ages out (21 Sep aged out on 21 Sep).
+const PANEL_SRC = readFileSync(new URL('../../src/index.tsx', import.meta.url), 'utf8');
+const panelField = (slug, field) => {
+  const block = PANEL_SRC.slice(PANEL_SRC.indexOf("'" + slug + "': {"));
+  const m = block.match(new RegExp(field + ": '([^']+)'"));
+  return m && m[1];
+};
+const panelHostToken = (slug) => {
+  const block = PANEL_SRC.slice(PANEL_SRC.indexOf("'" + slug + "': {"));
+  const m = block.match(/hostLike: \[([^\]]*)\]/);
+  if (!m) return 'host';
+  const words = m[1].split(',').map(t => t.trim().replace(/'/g, '')).filter(Boolean);
+  // one word only: the fixture puts it in an email address, and hostLike matches on
+  // substrings, so a two-word phrase like 'jawaharlal nehru' would never match back.
+  return words.find(w => /^[a-z0-9]+$/.test(w)) || words[0].replace(/\s+/g, '');
+};
+const SLUG = (() => {
+  const src = PANEL_SRC;
+  const now = Date.now();
+  const found = [...src.matchAll(/'([a-z0-9-]+)':\s*\{[\s\S]{0,80}?slug: '\1'[\s\S]*?startsAt: '([^']+)'/g)]
+    .map(m => ({ slug: m[1], at: Date.parse(m[2]) }))
+    .filter(p => p.at > now).sort((a, b) => a.at - b.at)[0];
+  if (!found) throw new Error('every campus panel in CAMPUS_PANELS has already started - add a future one or this suite cannot run');
+  return found.slug;
+})();
+
+const HOST_TOKEN = panelHostToken(SLUG);                 // e.g. 'djsce' or 'jnu'
+const HOST_EMAIL = 'host@' + HOST_TOKEN + '.ac.in';
+const PEOPLE = { 5: { id: 5, name: 'Guest Person', email: 'guest@tm.com', company: 'Tech Mahindra', event_id: 1 },
+                 6: { id: 6, name: 'Host Student', email: HOST_EMAIL, company: HOST_TOKEN, event_id: 1 } };
 
 // Email link: confirm page only
 let r = await hit(`/panel-rsvp?a=5&p=${SLUG}&r=yes&s=${'0'.repeat(32)}`);
@@ -114,7 +143,7 @@ check('overview stats report answers are enabled', r.status === 200 && Array.isA
 
 // After the panel starts
 const realNow = Date.now;
-Date.now = () => Date.parse('2026-09-21T11:05:00+05:30');
+Date.now = () => Date.parse(panelField(SLUG, 'startsAt')) + 5 * 60 * 1000;
 r = await hit('/panel-rsvp', form({ a: '5', p: SLUG, r: 'yes', s: sig(5, SLUG, 'yes') }));
 check('after the start, answers are closed', r.text.includes('already started'), r.text.slice(0, 120));
 Date.now = realNow;

@@ -6,6 +6,17 @@ const { chromium } = require('./playwright.cjs');
 const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
+// A panel stops taking answers once it starts, so use one that is still ahead of today
+// rather than a slug that ages out on the day of the panel.
+const RSVP_SLUG = (() => {
+  const src = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'index.tsx'), 'utf8');
+  const now = Date.now();
+  const found = [...src.matchAll(/'([a-z0-9-]+)':\s*\{[\s\S]{0,80}?slug: '\1'[\s\S]*?startsAt: '([^']+)'/g)]
+    .map(m => ({ slug: m[1], at: Date.parse(m[2]) }))
+    .filter(p => p.at > now).sort((a, b) => a.at - b.at)[0];
+  if (!found) throw new Error('every campus panel in CAMPUS_PANELS has already started - add a future one or this suite cannot run');
+  return found.slug;
+})();
 const BASE = 'http://localhost:8772';
 const SHOTS = path.join(__dirname, '.out', 'phone-shots');
 const PHOTO = path.join(__dirname, '..', '..', 'public', 'images', 'speaker-virendra-pal.webp');
@@ -197,7 +208,7 @@ const tall = (page, sel) => page.evaluate((s) => { const e = document.querySelec
     await page.goto(BASE + '/app', { waitUntil: 'domcontentloaded' });
     await setState(page, { reset: true });
     const sig = (a, p, r) => crypto.createHmac('sha256', 'h-secret').update(`panel-rsvp:${a}:${p}:${r}`).digest('hex').slice(0, 32);
-    await page.goto(`${BASE}/panel-rsvp?a=5&p=djsanghvi-21sep&r=yes&s=${sig(5, 'djsanghvi-21sep', 'yes')}`, { waitUntil: 'load' });
+    await page.goto(`${BASE}/panel-rsvp?a=5&p=${RSVP_SLUG}&r=yes&s=${sig(5, RSVP_SLUG, 'yes')}`, { waitUntil: 'load' });
     await page.waitForLoadState('load');
     await sleep(1500);
     const text = await page.evaluate(() => document.body.innerText);
