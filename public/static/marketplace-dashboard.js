@@ -60,7 +60,7 @@ const initDashboard = async () => {
     document.getElementById('dash-company-name').textContent = name
     const tn = document.getElementById('dash-topbar-name'); if (tn) tn.textContent = name
     const av = document.getElementById('dash-avatar'); if (av) av.textContent = name.charAt(0).toUpperCase()
-    await Promise.all([loadStats(), loadListings(), loadInquiries(), loadReviews(), loadProfile(), loadRecentInquiries()])
+    await Promise.all([loadStats(), loadListings(), loadStage(), loadInquiries(), loadReviews(), loadProfile(), loadRecentInquiries()])
   } catch (err) { showToast('Failed to load dashboard', true) }
 }
 
@@ -80,6 +80,7 @@ const loadListings = async () => {
   const c = document.getElementById('dash-listings-table')
   try {
     const d = await api('/api/mp/dashboard/listings'); const ls = d.listings || []
+    dashListings = ls; renderTodo()
     if (!ls.length) { c.innerHTML = `<div class="dash-empty"><i class="fas fa-box-open"></i><p>No listings yet</p><p class="text-xs text-slate-500">Submit from <a href="/marketplace" class="text-emerald-400">marketplace</a>.</p></div>`; return }
     c.innerHTML = `<table class="dash-table"><thead><tr><th>Product</th><th>Status</th><th>Views</th><th>Inquiries</th><th>Rating</th><th>Submitted</th><th>Actions</th></tr></thead><tbody>${ls.map(l => `<tr><td><div class="dash-product-cell">${l.product_image_url ? `<img src="${esc(l.product_image_url)}" class="dash-product-thumb">` : `<div class="dash-product-thumb-placeholder"><i class="fas fa-box"></i></div>`}<div><p class="font-medium text-sm">${esc(l.product_name)}</p><p class="text-xs text-slate-500 truncate" style="max-width:200px">${esc((l.description || '').slice(0,60))}...</p></div></div></td><td>${statusBadge(l.status)}${(l.missing || []).length ? `<button type="button" class="dash-badge dash-badge--yellow mt-1" style="display:inline-flex;cursor:pointer;border:0" data-edit-id="${esc(l.id)}" title="Missing: ${esc(l.missing.join(', '))}"><i class="fa-solid fa-exclamation-circle"></i> ${l.missing.length} to add</button>` : ''}</td><td class="text-sm">${(l.view_count||0).toLocaleString()}</td><td class="text-sm">${l.inquiry_count||0}</td><td class="text-sm">${l.avg_rating ? l.avg_rating + ' <i class="fas fa-star text-amber-400" style="font-size:0.65rem"></i>' : '—'}</td><td class="text-xs text-slate-400">${fmtDate(l.created_at)}</td><td><div class="dash-actions"><button class="dash-action-btn" data-edit-id="${esc(l.id)}"><i class="fas fa-pen-to-square"></i></button>${l.status==='approved' ? `<a href="/marketplace/listing/${encodeURIComponent(l.company_slug || dashCompanySlug)}/${encodeURIComponent(l.product_slug || toSlug(l.product_name))}" class="dash-action-btn" target="_blank" rel="noopener"><i class="fas fa-arrow-up-right-from-square"></i></a>` : ''}</div></td></tr>`).join('')}</tbody></table>`
     c.querySelectorAll('[data-edit-id]').forEach(b => b.addEventListener('click', () => openEditModal(b.getAttribute('data-edit-id'))))
@@ -105,7 +106,7 @@ const renderCompleteness = (ls) => {
 
 // ── Images (same handling as the listing form) ──
 const RASTER_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif']
-const IMAGE_KINDS = { logo: { maxDim: 512, type: 'image/png' }, photo: { maxDim: 1600, type: 'image/jpeg' } }
+const IMAGE_KINDS = { logo: { maxDim: 512, type: 'image/png' }, photo: { maxDim: 1600, type: 'image/jpeg' }, avatar: { maxDim: 600, type: 'image/jpeg' } }
 const isSvgFile = (f) => f.type === 'image/svg+xml' || /\.svg$/i.test(f.name || '')
 const checkImageFile = (f, kind) => {
   const svg = isSvgFile(f)
@@ -144,6 +145,78 @@ const uploadImage = async (file, kind) => {
   return d.url
 }
 const safeImageUrl = (u) => /^\/api\/mp\/uploads\/\d+$/.test(String(u || '')) ? u : ''
+
+// ── Stage talk ──
+// Every confirmed stand includes an Innovation Talk & Showcase slot. The exhibitor
+// fills in the talk and the speaker here; the organisers set the time, which then
+// shows here and in the event app's programme.
+let dashListings = null
+let stageInfo = null
+
+const loadStage = async () => {
+  try { stageInfo = await api('/api/mp/dashboard/stage-talk') } catch { stageInfo = null }
+  const eligible = !!(stageInfo && stageInfo.eligible)
+  const nav = document.getElementById('dash-nav-stage'); if (nav) nav.classList.toggle('hidden', !eligible)
+  if (eligible) renderStage()
+  renderTodo()
+}
+
+const renderStage = () => {
+  const s = stageInfo
+  document.getElementById('stage-slot').innerHTML = s.slot
+    ? `<p class="text-sm"><i class="fas fa-calendar-check mr-1" style="color:#059669"></i> Your time on stage: <strong>${esc(s.slot)}</strong></p>
+       <p class="text-xs text-slate-500 mt-1">${s.in_programme ? 'Your talk is in the event app programme. Anything you change here shows there straight away.' : 'Add your topic and speaker below and your talk appears in the event app programme.'}</p>`
+    : `<p class="text-sm"><i class="fas fa-microphone-alt mr-1" style="color:#FF6B00"></i> Your booth includes ${s.minutes ? `a <strong>${esc(s.minutes)}-minute</strong>` : 'an'} Innovation Talk &amp; Showcase slot.</p>
+       <p class="text-xs text-slate-500 mt-1">Fill in the details below. The organisers set the time, and it shows here.</p>`
+  // Never overwrite a box the exhibitor is typing in.
+  const set = (id, v) => { const el = document.getElementById(id); if (el && document.activeElement !== el) el.value = v || '' }
+  set('stage-topic', s.topic); set('stage-showcase', s.showcase); set('stage-speaker', s.speaker_name); set('stage-speaker-title', s.speaker_title); set('stage-bio', s.speaker_bio)
+  const img = document.getElementById('stage-photo-preview'), u = safeImageUrl(s.speaker_photo_url)
+  if (u) { img.src = u; img.classList.remove('hidden') } else { img.removeAttribute('src'); img.classList.add('hidden') }
+}
+
+// Exhibitors see what their booth includes as two steps, so nothing depends on
+// finding the right menu item.
+const renderTodo = () => {
+  const box = document.getElementById('dash-todo'); if (!box) return
+  if (!stageInfo || !stageInfo.eligible || dashListings === null) { box.classList.add('hidden'); return }
+  const s = stageInfo, listed = dashListings.length > 0, live = dashListings.some(l => l.status === 'approved')
+  const step = (done, title, note, action) => `<div class="flex gap-3 items-center justify-between flex-wrap" style="padding:12px 0;border-top:1px solid #e5e7eb">
+      <div class="flex gap-3 items-center" style="flex:1;min-width:200px"><i class="fas ${done ? 'fa-check-circle' : 'fa-circle'}" style="font-size:20px;color:${done ? '#059669' : '#cbd5e1'}"></i>
+        <div><p class="font-medium text-sm">${title}</p><p class="text-xs text-slate-500">${note}</p></div></div>
+      ${action}</div>`
+  box.innerHTML = '<h3><i class="fas fa-clipboard-list mr-2"></i>Your exhibitor to-do list</h3>'
+    + step(listed, 'List your AI product',
+      live ? 'Live on the AI Marketplace.' : listed ? 'In review. We email you as soon as it is live.' : 'Free with your booth. Takes about five minutes.',
+      listed ? '' : '<a href="/marketplace?submit=true" class="mp-btn-primary text-sm py-2 px-4" style="display:inline-block;text-decoration:none">List your product</a>')
+    + step(s.details_complete, `Add your stage talk${s.minutes ? ` (${esc(s.minutes)} minutes)` : ''}`,
+      s.slot ? `On stage ${esc(s.slot)}.` : s.details_complete ? 'Details saved. Your time on stage will show here.' : 'Your topic, what you will showcase, and the speaker with a photo.',
+      `<button type="button" class="${s.details_complete ? 'mp-btn-secondary' : 'mp-btn-primary'} text-sm py-2 px-4" data-goto="stage">${s.details_complete ? 'Edit' : 'Add details'}</button>`)
+    // Every exhibitor is also a delegate: the pass is made when the organisers email them.
+    + (s.delegate ? step(s.delegate.signed_in, 'Network as a delegate',
+      `Your exhibitor pass is also a delegate pass. Sign in to the event app with ${esc(s.delegate.email)}; we email you a code.`,
+      '<a href="/app" class="mp-btn-secondary text-sm py-2 px-4" style="display:inline-block;text-decoration:none">Open the event app</a>') : '')
+  box.classList.remove('hidden')
+  box.querySelectorAll('[data-goto]').forEach(b => b.addEventListener('click', () => switchSection(b.getAttribute('data-goto'))))
+}
+
+const stageForm = document.getElementById('stage-form')
+if (stageForm) stageForm.addEventListener('submit', async (e) => {
+  e.preventDefault()
+  const btn = stageForm.querySelector('button[type="submit"]'), html = btn.innerHTML
+  btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Saving...'
+  try {
+    const fields = {}
+    stageForm.querySelectorAll('[name]').forEach(el => { fields[el.name] = el.value })
+    const photo = document.getElementById('stage-photo-file')
+    if (photo.files[0]) fields.speaker_photo_url = await uploadImage(photo.files[0], 'avatar')
+    stageInfo = await api('/api/mp/dashboard/stage-talk', { method: 'PUT', body: JSON.stringify(fields) })
+    photo.value = ''
+    renderStage(); renderTodo()
+    showToast(stageInfo.details_complete ? 'Saved. Thank you!' : 'Saved. Add the topic and the speaker name to complete it.')
+  } catch (err) { showToast(err.message, true) }
+  finally { btn.disabled = false; btn.innerHTML = html }
+})
 
 const loadRecentInquiries = async () => {
   const c = document.getElementById('dash-recent-inquiries'); if (!c) return
@@ -256,7 +329,7 @@ editForm.addEventListener('submit', async (e) => {
 })
 
 // Show a chosen image before it is uploaded.
-;[['edit-logo-file', 'edit-logo-preview', 'logo'], ['edit-image-file', 'edit-image-preview', 'photo']].forEach(([inputId, previewId, kind]) => {
+;[['edit-logo-file', 'edit-logo-preview', 'logo'], ['edit-image-file', 'edit-image-preview', 'photo'], ['stage-photo-file', 'stage-photo-preview', 'avatar']].forEach(([inputId, previewId, kind]) => {
   const input = document.getElementById(inputId), preview = document.getElementById(previewId)
   if (!input || !preview) return
   input.addEventListener('change', () => {
@@ -268,7 +341,7 @@ editForm.addEventListener('submit', async (e) => {
 })
 
 document.getElementById('dash-refresh-listings').addEventListener('click', async () => {
-  await Promise.all([loadStats(), loadListings(), loadInquiries(), loadReviews(), loadRecentInquiries()])
+  await Promise.all([loadStats(), loadListings(), loadStage(), loadInquiries(), loadReviews(), loadRecentInquiries()])
   showToast('Refreshed')
 })
 

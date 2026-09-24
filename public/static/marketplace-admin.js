@@ -62,7 +62,7 @@ const initAdmin = async () => {
       if (info) info.textContent = 'Marketplace Admin · signed in through event admin'
     }
     try { exhibitors = (await api('/api/mp/admin/exhibitors')).exhibitors || [] } catch { exhibitors = [] }
-    await Promise.all([loadStats(), loadAllListings(), loadPendingListings(), loadInquiries(), loadExhibitors()])
+    await Promise.all([loadStats(), loadAllListings(), loadPendingListings(), loadInquiries(), loadExhibitors(), loadStageTalks()])
     // The queue is what an admin comes here for; open it when there is something in it.
     if (num(document.getElementById('stat-pending').textContent) > 0) switchSection('pending')
   } catch { showToast('Failed to load', true) }
@@ -187,6 +187,13 @@ main.addEventListener('click', (e) => {
   if (invite) inviteExhibitor(invite)
   const link = e.target.closest('[data-link]')
   if (link) sendSignInLink(link)
+  const stageEdit = e.target.closest('[data-stage-edit]')
+  if (stageEdit) openStageEditor(num(stageEdit.getAttribute('data-stage-edit')))
+  const stageSave = e.target.closest('[data-stage-save]')
+  if (stageSave) saveStageTime(stageSave)
+  const stageClear = e.target.closest('[data-stage-clear]')
+  if (stageClear) clearStageTime(stageClear)
+  if (e.target.closest('[data-stage-cancel]')) closeStageEditor()
 })
 
 const sendReminder = async (btn) => {
@@ -307,6 +314,98 @@ if (linkAllBtn) linkAllBtn.addEventListener('click', () => runPaced(linkAllBtn, 
   confirm: n => `Email ${n} exhibitor${n === 1 ? '' : 's'} a one-click sign-in link ("your account is ready")? ${pace} Anyone already listing, sent a link today, or unsubscribed is skipped.`,
 }))
 
+// ── Stage talks ──
+// Each exhibitor with a confirmed stand has one Innovation Talk & Showcase slot. They
+// fill in the talk from their dashboard; the time is set here, one row at a time.
+let stageRows = [], stageDays = []
+const hhmm = (mins) => `${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`
+const minutesOf = (startsAt) => { const [h, m] = String(startsAt).slice(11, 16).split(':').map(Number); return h * 60 + m }
+
+const loadStageTalks = async () => {
+  const c = document.getElementById('admin-stage'); if (!c) return
+  try {
+    const d = await api('/api/mp/admin/stage-talks')
+    stageDays = d.days || []
+    if (!d.ready) { c.innerHTML = '<p class="text-slate-400">Stage talks start working once migration 0044 has been run on the database.</p>'; return }
+    stageRows = d.talks || []
+    const s = d.summary || {}
+    const sum = document.getElementById('stage-summary')
+    if (sum) sum.textContent = `${num(s.exhibitors)} exhibitors with a slot · ${num(s.with_details)} have sent their details · ${num(s.scheduled)} have a time · ${num(s.in_programme)} in the event app`
+    if (!stageRows.length) { c.innerHTML = '<p class="text-slate-400">No confirmed stands yet.</p>'; return }
+    c.innerHTML = `<div class="overflow-x-auto"><table class="dash-table"><thead><tr><th>Exhibitor</th><th>Talk</th><th>Time</th><th></th></tr></thead><tbody>${stageRows.map(stageRow).join('')}</tbody></table></div>`
+  } catch (err) { c.innerHTML = `<p class="text-rose-400">${esc(err.message)}</p>` }
+}
+
+const stageRow = (t) => {
+  const photo = safeUrl(t.speaker_photo_url)
+  const talk = t.details_complete || t.topic || t.speaker_name
+    ? `<p class="text-sm font-medium">${esc(t.topic || 'No topic yet')}</p>
+       <div class="flex gap-2 items-center mt-1">${photo ? `<img src="${esc(photo)}" alt="" style="width:28px;height:28px;border-radius:50%;object-fit:cover">` : ''}
+         <p class="text-xs text-slate-500">${esc(t.speaker_name || 'No speaker yet')}${t.speaker_title ? `, ${esc(t.speaker_title)}` : ''}</p></div>
+       ${t.showcase || t.speaker_bio ? `<details class="mt-1"><summary class="text-xs text-slate-400" style="cursor:pointer">Showcase and bio</summary>${t.showcase ? `<p class="text-xs mt-1" style="white-space:pre-wrap"><strong>Showcase:</strong> ${esc(t.showcase)}</p>` : ''}${t.speaker_bio ? `<p class="text-xs mt-1" style="white-space:pre-wrap"><strong>Bio:</strong> ${esc(t.speaker_bio)}</p>` : ''}</details>` : ''}`
+    : '<span class="dash-badge dash-badge--yellow"><i class="fa-solid fa-clock"></i> Waiting for details</span>'
+  const time = t.slot
+    ? `<p class="text-sm">${esc(t.slot)}</p>${t.clashes.length ? `<p class="text-xs" style="color:#be123c"><i class="fas fa-exclamation-triangle"></i> Overlaps ${esc(t.clashes.join(', '))}</p>` : ''}${t.in_programme ? '' : '<p class="text-xs text-slate-500">Not in the app until the topic and speaker are in</p>'}`
+    : '<span class="text-xs text-slate-500">Not set</span>'
+  return `<tr data-stage-row="${num(t.exhibitor_id)}">
+    <td class="text-sm"><p class="font-medium">${esc(t.company_name)}</p><p class="text-xs text-slate-500">${t.has_stand ? `Booth ${esc(t.booths.join(', '))} · ${esc(t.packages.join(', '))}` : 'No confirmed stand any more'}${t.minutes ? ` · ${num(t.minutes)} min` : ''}</p></td>
+    <td>${talk}</td>
+    <td>${time}</td>
+    <td><button class="mp-btn-secondary text-sm py-2 px-4" style="white-space:nowrap" data-stage-edit="${num(t.exhibitor_id)}">${t.starts_at ? 'Change' : 'Set time'}</button></td>
+  </tr>`
+}
+
+// A new slot starts where the programme currently ends, so filling the day is one
+// Save after another. Falls to the second day once the first runs past 6 pm.
+const nextFreeSlot = () => {
+  for (const d of stageDays) {
+    const ends = stageRows.filter(r => r.starts_at && r.starts_at.slice(0, 10) === d.date).map(r => minutesOf(r.starts_at) + num(r.minutes))
+    const end = ends.length ? Math.max(...ends) : 10 * 60
+    if (end < 18 * 60) return { date: d.date, time: hhmm(end) }
+  }
+  return { date: (stageDays[0] || {}).date || '', time: '10:00' }
+}
+
+const closeStageEditor = () => { const open = document.getElementById('stage-editor'); if (open) open.remove() }
+const openStageEditor = (id) => {
+  closeStageEditor()
+  const t = stageRows.find(r => num(r.exhibitor_id) === id); if (!t) return
+  const at = t.starts_at ? { date: t.starts_at.slice(0, 10), time: t.starts_at.slice(11, 16) } : nextFreeSlot()
+  const row = document.querySelector(`[data-stage-row="${id}"]`); if (!row) return
+  row.insertAdjacentHTML('afterend', `<tr id="stage-editor"><td colspan="4" style="background:#fff7ed">
+    <div class="flex gap-3 items-end flex-wrap">
+      <label class="text-xs text-slate-500">Day<select class="form-input mt-1" data-stage-day>${stageDays.map(d => `<option value="${esc(d.date)}"${d.date === at.date ? ' selected' : ''}>${esc(d.label)}</option>`).join('')}</select></label>
+      <label class="text-xs text-slate-500">Starts<input type="time" class="form-input mt-1" data-stage-time value="${esc(at.time)}" step="300"></label>
+      <label class="text-xs text-slate-500">Minutes<input type="number" class="form-input mt-1" data-stage-minutes min="1" max="120" value="${num(t.minutes) || ''}" style="width:90px"></label>
+      <button class="mp-btn-primary text-sm py-2 px-4" data-stage-save="${id}">Save</button>
+      ${t.starts_at ? `<button class="mp-btn-secondary text-sm py-2 px-4" data-stage-clear="${id}">Remove time</button>` : ''}
+      <button class="mp-btn-secondary text-sm py-2 px-4" data-stage-cancel>Cancel</button>
+    </div>
+    ${t.minutes ? '' : '<p class="text-xs mt-2" style="color:#9a3412">This package has no talk length on the exhibition page. Enter the minutes you have agreed.</p>'}
+  </td></tr>`)
+}
+
+const saveStageTime = async (btn) => {
+  const box = document.getElementById('stage-editor'); if (!box) return
+  const body = { date: box.querySelector('[data-stage-day]').value, time: box.querySelector('[data-stage-time]').value, minutes: num(box.querySelector('[data-stage-minutes]').value) }
+  btn.disabled = true
+  try {
+    const r = await api(`/api/mp/admin/stage-talks/${num(btn.getAttribute('data-stage-save'))}`, { method: 'PATCH', body: JSON.stringify(body) })
+    showToast(r.clashes && r.clashes.length ? `Saved, but it overlaps ${r.clashes.join(', ')}` : `Saved: ${r.slot}`, !!(r.clashes && r.clashes.length))
+    await loadStageTalks()
+  } catch (err) { showToast(err.message, true); btn.disabled = false }
+}
+
+const clearStageTime = async (btn) => {
+  if (!confirm('Remove this talk from the programme? The exhibitor keeps their details and you can set a new time later.')) return
+  btn.disabled = true
+  try {
+    await api(`/api/mp/admin/stage-talks/${num(btn.getAttribute('data-stage-clear'))}`, { method: 'PATCH', body: JSON.stringify({ clear: true }) })
+    showToast('Time removed')
+    await loadStageTalks()
+  } catch (err) { showToast(err.message, true); btn.disabled = false }
+}
+
 const loadInquiries = async () => {
   const c = document.getElementById('admin-inquiries')
   try {
@@ -371,7 +470,7 @@ if (bulkCancelBtn) bulkCancelBtn.addEventListener('click', () => { bulkPreview.c
 // Refresh
 const adminRefresh = document.getElementById('admin-refresh')
 if (adminRefresh) adminRefresh.addEventListener('click', async () => {
-  await Promise.all([loadStats(), loadAllListings(), loadPendingListings(), loadInquiries(), loadExhibitors()])
+  await Promise.all([loadStats(), loadAllListings(), loadPendingListings(), loadInquiries(), loadExhibitors(), loadStageTalks()])
   showToast('Refreshed')
 })
 

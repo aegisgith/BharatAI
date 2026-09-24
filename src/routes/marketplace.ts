@@ -27,6 +27,9 @@ type MarketplaceHooks = {
   isEventAdmin?: (c: any) => boolean
   // audit(): the admin_audit table the /admin panel reads.
   audit?: (c: any, action: string, entity?: string, entityId?: any, detail?: any, actorOverride?: { actor: string; kind: string }) => Promise<void>
+  // ensureExhibitorDelegate: every exhibitor is also a delegate. Gives the booth
+  // contact an event-app pass under the booth email; null when there is no confirmed stand.
+  ensureDelegate?: (c: any, x: { exhibitorId: number; email: string; company: string }) => Promise<{ attendeeId: number; created: boolean; upgraded: boolean } | null>
 }
 let hooks: MarketplaceHooks = {}
 export const configureMarketplace = (h: MarketplaceHooks) => { hooks = { ...hooks, ...h } }
@@ -394,10 +397,10 @@ const marketplaceAdmin = async (c: any): Promise<MarketplaceAdmin | null> => {
 // Moderation goes into the same audit log as the rest of the admin panel. An event
 // admin is named the way the panel names them (staff account, or the operator name
 // typed into the panel); the separate marketplace account is named by its email.
-const auditAdmin = async (c: any, admin: MarketplaceAdmin, action: string, entityId: any, detail?: any) => {
+const auditAdmin = async (c: any, admin: MarketplaceAdmin, action: string, entityId: any, detail?: any, entity = 'mp_listing') => {
   if (!hooks.audit) return
   const actorOverride = admin.via === 'marketplace' ? { actor: String(admin.company.email || 'marketplace admin'), kind: 'marketplace-account' } : undefined
-  try { await hooks.audit(c, action, 'mp_listing', entityId, detail, actorOverride) } catch { /* never fail the action it records */ }
+  try { await hooks.audit(c, action, entity, entityId, detail, actorOverride) } catch { /* never fail the action it records */ }
 }
 
 // ── Exhibitor cross-link ──
@@ -505,16 +508,16 @@ const normalizeListingInput = (body: any, fields: string[]): { values: Record<st
 
 // An upload URL is only an id, so without this a listing could point at another
 // company's images.
-const imagesOwnedBy = async (c: any, companyId: number, values: Record<string, string>): Promise<boolean> => {
-  const urls = [values.logo_url, values.product_image_url, ...String(values.screenshot_urls || '').split(',')]
-    .map(u => String(u || '').trim()).filter(Boolean)
-  for (const u of urls) {
+const uploadsOwnedBy = async (c: any, companyId: number, urls: any[]): Promise<boolean> => {
+  for (const u of urls.map(u => String(u || '').trim()).filter(Boolean)) {
     const id = parseInt(u.split('/').pop() || '', 10)
     const row = await c.env.DB.prepare('SELECT company_id FROM mp_uploads WHERE id = ?').bind(id).first() as any
     if (!row || row.company_id !== companyId) return false
   }
   return true
 }
+const imagesOwnedBy = (c: any, companyId: number, values: Record<string, string>): Promise<boolean> =>
+  uploadsOwnedBy(c, companyId, [values.logo_url, values.product_image_url, ...String(values.screenshot_urls || '').split(',')])
 
 // ══════════════════════════════════════════
 // AUTH ROUTES
@@ -595,11 +598,14 @@ mp.post('/api/mp/auth/link', async (c) => {
 mp.get('/marketplace/signin', async (c) => {
   const link = await verifySignInToken(c, c.req.query('t') || '')
   if (!link) return c.redirect('/marketplace?signin=expired')
-  const company = await c.env.DB.prepare('SELECT id, role, password_hash FROM mp_companies WHERE id = ?').bind(link.id).first() as any
+  const company = await c.env.DB.prepare('SELECT id, role, password_hash, exhibitor_id FROM mp_companies WHERE id = ?').bind(link.id).first() as any
   // A password set since the link was sent changes the fingerprint and retires the link.
   if (!company || company.role === 'admin' || !safeEqual(link.fp, await linkFingerprint(c, String(company.password_hash || '')))) return c.redirect('/marketplace?signin=expired')
   c.header('Set-Cookie', mpSessionCookie(await signSession(c, company.id)))
-  // Straight to the listing form; a company that already has a listing lands on its dashboard.
+  // An exhibitor with a stage slot has two things to do, the listing and the talk, and
+  // the dashboard's to-do list shows both. Anyone else goes straight to the listing
+  // form until they have a listing.
+  if (company.exhibitor_id && await stageSlotOf(c, Number(company.exhibitor_id))) return c.redirect('/marketplace/dashboard')
   const has = await c.env.DB.prepare('SELECT 1 AS hit FROM mp_listings WHERE company_id = ? LIMIT 1').bind(company.id).first()
   return c.redirect(has ? '/marketplace/dashboard' : '/marketplace?submit=true')
 })
@@ -1213,6 +1219,15 @@ const exhibitorInviteRows = async (c: any) => {
   return rows.map(r => ({ ...r, ...inviteState(r) }))
 }
 
+// Every exhibitor is also a delegate. The pass is made, or a Visitor Pass raised, as
+// the email goes out, so an email only ever mentions a pass that exists.
+const exhibitorDelegate = async (c: any, row: any) => {
+  try { return (await hooks.ensureDelegate?.(c, { exhibitorId: Number(row.id), email: String(row.contact_email || ''), company: String(row.company_name || '') })) || null }
+  catch { return null }
+}
+const delegateHowTo = (c: any) =>
+  `open <a href="${htmlEsc(siteOrigin(c) + '/app')}" style="color:#FF6B00">bharataiinnovation.com/app</a> and sign in with this email address. We email you a code, so there is nothing to register.`
+
 const sendExhibitorInvite = async (c: any, row: any): Promise<boolean> => {
   const booth = String(row.booth_number || '').trim()
   // The account is made here, so the button signs them in. If that fails for any
@@ -1220,13 +1235,17 @@ const sendExhibitorInvite = async (c: any, row: any): Promise<boolean> => {
   let accountId: number | null = null
   try { accountId = await ensureExhibitorAccount(c, { id: Number(row.id), company_name: row.company_name, contact_email: row.contact_email }) } catch { accountId = null }
   const href = accountId ? await signInLink(c, accountId) : siteOrigin(c) + '/marketplace?submit=true'
+  const stage = accountId ? await stageSlotOf(c, Number(row.id)) : null
+  const delegate = await exhibitorDelegate(c, row)
   const body = `<p style="margin:0 0 12px;font-size:14px;line-height:1.6">You are exhibiting at Bharat AI Innovation 2026 (20-21 November, World Trade Center, Mumbai), and your booth includes a free listing on the event's AI Marketplace, where buyers browse AI products before and during the show.</p>
     <p style="margin:0 0 12px;font-size:14px;line-height:1.6">Your listing is public on bharataiinnovation.com and in the event app attendees use to plan who to meet, and it stays online after the show.</p>
     <p style="margin:0 0 12px;font-size:14px;line-height:1.6">It takes about five minutes: the button below signs you in &mdash; no password needed &mdash; then describe your product and add a logo and an image. We review every listing and email you as soon as it is live.</p>
     <p style="margin:0;font-size:14px;line-height:1.6">${accountId
       ? `Your account is under this email address${booth ? `, with Booth ${htmlEsc(booth)} already on it` : ''}, so visitors can find you at the venue.`
       : `Please register with this email address &mdash; your booth number${booth ? ` (Booth ${htmlEsc(booth)})` : ''} is then added to your listing automatically, so visitors can find you at the venue.`}</p>
-    ${emailButton(href, accountId ? 'Sign in and list your product' : 'List your AI product')}
+    ${stage ? `<p style="margin:12px 0 0;font-size:14px;line-height:1.6">Your booth also includes ${stageSlotPhrase(stage.minutes)}. In the same dashboard, add your talk topic, what you will showcase, and your speaker's name, photo and a short bio. Your time on stage shows there once the programme is set.</p>` : ''}
+    ${delegate ? `<p style="margin:12px 0 0;font-size:14px;line-height:1.6">Your exhibitor pass is also a delegate pass for the event app, where you can meet and message attendees: ${delegateHowTo(c)}</p>` : ''}
+    ${emailButton(href, stage ? 'Sign in to your exhibitor dashboard' : accountId ? 'Sign in and list your product' : 'List your AI product')}
     <p style="margin:16px 0 0;font-size:12px;color:#888">${accountId ? 'The button works for seven days. After that, choose "Email me a sign-in link" on bharataiinnovation.com/marketplace and a fresh one is sent to this address. ' : ''}If you would rather not receive marketplace emails, reply to this message and we will stop.</p>`
   return sendMail(c, 'exhibitor-invite', String(row.contact_email).trim(), 'Your booth includes a free AI Marketplace listing', emailShell('Your free AI Marketplace listing', body))
 }
@@ -1235,11 +1254,26 @@ const sendExhibitorSignInMail = async (c: any, row: any): Promise<boolean> => {
   const accountId = await ensureExhibitorAccount(c, { id: Number(row.id), company_name: row.company_name, contact_email: row.contact_email })
   if (!accountId) return false
   const booth = String(row.booth_number || '').trim()
-  const body = `<p style="margin:0 0 12px;font-size:14px;line-height:1.6">You do not need to create an account for the Bharat AI Marketplace: one is ready under this email address${booth ? `, with Booth ${htmlEsc(booth)} already on it` : ''}.</p>
+  const stage = await stageSlotOf(c, Number(row.id))
+  const delegate = await exhibitorDelegate(c, row)
+  const li = (html: string) => `<li style="margin:0 0 8px">${html}</li>`
+  // Everything the booth includes, in one list. The listing and the talk are in the
+  // dashboard the button opens; the delegate pass is in the event app.
+  const includes = [
+    li('<strong>A free AI Marketplace listing.</strong> Describe your product; it takes about five minutes.'),
+    ...(stage ? [li(`<strong>${stage.minutes ? `A ${stage.minutes}-minute` : 'An'} Innovation Talk &amp; Showcase slot.</strong> Add your stage talk: the topic, what you will showcase, and your speaker's name, photo and a short bio.`)] : []),
+    ...(delegate ? [li(`<strong>A delegate pass for the event app</strong>, to meet and message attendees: ${delegateHowTo(c)}`)] : []),
+  ]
+  const body = includes.length > 1
+    ? `<p style="margin:0 0 12px;font-size:14px;line-height:1.6">You do not need to create an account: your exhibitor account is ready under this email address${booth ? `, with Booth ${htmlEsc(booth)} already on it` : ''}. Your booth includes:</p>
+    <ul style="margin:0;padding-left:20px;font-size:14px;line-height:1.6">${includes.join('')}</ul>
+    <p style="margin:4px 0 0;font-size:14px;line-height:1.6">The button signs you in to your exhibitor dashboard, where you list your product${stage ? ' and add your stage talk' : ''}. No password needed.</p>
+    ${emailButton(await signInLink(c, accountId), 'Sign in to your exhibitor dashboard')}`
+    : `<p style="margin:0 0 12px;font-size:14px;line-height:1.6">You do not need to create an account for the Bharat AI Marketplace: one is ready under this email address${booth ? `, with Booth ${htmlEsc(booth)} already on it` : ''}.</p>
     <p style="margin:0;font-size:14px;line-height:1.6">Click the button to sign in &mdash; no password needed &mdash; and list your AI product. It takes about five minutes, and we email you as soon as the listing is live.</p>
-    ${emailButton(await signInLink(c, accountId), 'Sign in and list your product')}
-    <p style="margin:16px 0 0;font-size:12px;color:#888">The button works for seven days. After that, choose "Email me a sign-in link" on bharataiinnovation.com/marketplace and a fresh one is sent to this address. If you would rather not receive marketplace emails, reply to this message and we will stop.</p>`
-  return sendMail(c, 'exhibitor-signin', String(row.contact_email).trim(), 'Your AI Marketplace account is ready', emailShell('Your account is ready', body))
+    ${emailButton(await signInLink(c, accountId), 'Sign in and list your product')}`
+  const footer = `<p style="margin:16px 0 0;font-size:12px;color:#888">The button works for seven days. After that, choose "Email me a sign-in link" on bharataiinnovation.com/marketplace and a fresh one is sent to this address. If you would rather not receive marketplace emails, reply to this message and we will stop.</p>`
+  return sendMail(c, 'exhibitor-signin', String(row.contact_email).trim(), includes.length > 1 ? 'Your exhibitor account is ready' : 'Your AI Marketplace account is ready', emailShell('Your account is ready', body + footer))
 }
 
 mp.get('/api/mp/admin/exhibitor-invites', async (c) => {
@@ -1266,8 +1300,7 @@ mp.post('/api/mp/admin/exhibitors/:id/signin-link', async (c) => {
   if (!row) return c.json({ error: 'Exhibitor not found' }, 404)
   if (!row.can_link) return c.json({ error: row.link_reason || 'A sign-in link cannot be sent to this exhibitor' }, 409)
   const sent = await sendExhibitorSignInMail(c, row)
-  const actorOverride = admin.via === 'marketplace' ? { actor: String(admin.company.email || 'marketplace admin'), kind: 'marketplace-account' } : undefined
-  try { await hooks.audit?.(c, sent ? LINK_SENT : LINK_FAILED, 'exhibitor', id, { company: row.company_name, booth: row.booth_number || null }, actorOverride) } catch { /* never fail the send it records */ }
+  await auditAdmin(c, admin, sent ? LINK_SENT : LINK_FAILED, id, { company: row.company_name, booth: row.booth_number || null }, 'exhibitor')
   if (!sent) return c.json({ error: 'The email service did not accept the message. Check the Elastic Email settings.' }, 502)
   return c.json({ success: true, company: row.company_name })
 })
@@ -1275,8 +1308,7 @@ mp.post('/api/mp/admin/exhibitors/:id/signin-link', async (c) => {
 const inviteOne = async (c: any, admin: MarketplaceAdmin, row: any) => {
   if (!row.can_invite) return { status: 409, body: { error: row.reason || 'This exhibitor cannot be invited' } }
   const sent = await sendExhibitorInvite(c, row)
-  const actorOverride = admin.via === 'marketplace' ? { actor: String(admin.company.email || 'marketplace admin'), kind: 'marketplace-account' } : undefined
-  try { await hooks.audit?.(c, sent ? INVITE_SENT : INVITE_FAILED, 'exhibitor', row.id, { company: row.company_name, booth: row.booth_number || null }, actorOverride) } catch { /* never fail the send it records */ }
+  await auditAdmin(c, admin, sent ? INVITE_SENT : INVITE_FAILED, row.id, { company: row.company_name, booth: row.booth_number || null }, 'exhibitor')
   if (!sent) return { status: 502, body: { error: 'The email service did not accept the invitation. Check the Elastic Email settings.' } }
   return { status: 200, body: { success: true, company: row.company_name } }
 }
@@ -1294,6 +1326,274 @@ mp.post('/api/mp/admin/exhibitors/:id/invite', async (c) => {
 // There is deliberately no send-everyone route. The admin page sends one invitation
 // per request with a gap between them, as the panel sender on /admin does: a burst
 // of identical mail to the same domains lands in spam.
+
+// ══════════════════════════════════════════
+// STAGE TALKS (Innovation Talk & Showcase)
+// ══════════════════════════════════════════
+// Every booth package includes a slot on stage. The exhibitor fills in the talk and
+// the speaker from the dashboard; the organisers give it a day and a time from the
+// admin page. The rows are innovation_talks rows with an exhibitor_id (migration
+// 0044), which is the programme the /admin Innovation Talks tab edits and the event
+// app shows: an exhibitor's talk appears there once it has a time, a topic and a speaker.
+
+// Minutes on stage per package, as the exhibition page sells them. The keys are the
+// floor plan's legacy type_key, so 'accelerator' is the Enterprise Booth and
+// 'standard' the Accelerator Booth. The Premium Booth is not on that page, so it has
+// no length until the organisers set one.
+const STAGE_MINUTES: Record<string, number> = { pod: 8, explorer: 10, innovator: 12, accelerator: 15, standard: 20, enterprise: 30, mega: 40 }
+const STAGE_DAYS = [{ date: '2026-11-20', label: 'Fri 20 Nov' }, { date: '2026-11-21', label: 'Sat 21 Nov' }]
+const STAGE_FIELDS: Record<string, { label: string; max: number }> = {
+  topic: { label: 'Talk topic', max: 150 },
+  showcase: { label: 'What you will showcase', max: 1000 },
+  speaker_name: { label: 'Speaker name', max: 120 },
+  speaker_title: { label: 'Designation', max: 120 },
+  speaker_bio: { label: 'Short bio', max: 800 },
+}
+const STAGE_COLS = 'id, event_id, exhibitor_id, company, topic, showcase, speaker_name, speaker_title, speaker_bio, speaker_photo_url, duration_min, starts_at, time_slot, details_updated_at'
+const STAGE_SCHEDULED = 'marketplace.stage-talk-scheduled'
+const STAGE_CLEARED = 'marketplace.stage-talk-cleared'
+
+// Until 0044 has run, the feature is simply absent: no dashboard card, no admin list.
+const stageReady = async (c: any): Promise<boolean> => {
+  try { await c.env.DB.prepare(`SELECT ${STAGE_COLS} FROM innovation_talks LIMIT 0`).all(); return true } catch { return false }
+}
+
+// The confirmed stands behind each exhibitor, and the one slot they add up to: the
+// longest their packages include. A held stand is not a sale, so it earns no slot.
+type StageStands = { event_id: number; booths: string[]; packages: string[]; minutes: number | null }
+const confirmedStands = async (c: any, exhibitorId?: number): Promise<Map<number, StageStands>> => {
+  const st = c.env.DB.prepare(`SELECT ba.exhibitor_id, ba.event_id, b.code, b.type_key, b.name
+    FROM booth_allocations ba JOIN booths b ON b.id = ba.booth_id
+    WHERE ba.status = 'confirmed' AND ba.released_at IS NULL AND ba.exhibitor_id IS NOT NULL${exhibitorId ? ' AND ba.exhibitor_id = ?' : ''}
+    ORDER BY CAST(b.code AS INTEGER), b.code`)
+  let rows: any[] = []
+  try { rows = ((await (exhibitorId ? st.bind(exhibitorId) : st).all()).results || []) as any[] } catch { rows = [] }
+  const by = new Map<number, StageStands>()
+  for (const r of rows) {
+    const id = Number(r.exhibitor_id)
+    const s = by.get(id) || { event_id: Number(r.event_id) || 1, booths: [], packages: [], minutes: null }
+    s.booths.push(String(r.code))
+    if (r.name && !s.packages.includes(r.name)) s.packages.push(r.name)
+    const m = STAGE_MINUTES[r.type_key]
+    if (m && (s.minutes === null || m > s.minutes)) s.minutes = m
+    by.set(id, s)
+  }
+  return by
+}
+
+// For the exhibitor emails: whether there is a slot to mention, and how long it is.
+const stageSlotOf = async (c: any, exhibitorId: number): Promise<{ minutes: number | null } | null> => {
+  if (!(await stageReady(c))) return null
+  const s = (await confirmedStands(c, exhibitorId)).get(exhibitorId)
+  if (!s) return null
+  const talk = await c.env.DB.prepare('SELECT duration_min FROM innovation_talks WHERE exhibitor_id = ? LIMIT 1').bind(exhibitorId).first().catch(() => null) as any
+  return { minutes: Number(talk?.duration_min) || s.minutes }
+}
+const stageSlotPhrase = (minutes: number | null) =>
+  minutes ? `a ${minutes}-minute Innovation Talk &amp; Showcase slot` : 'an Innovation Talk &amp; Showcase slot'
+
+// "Fri 20 Nov · 10:00 – 10:08 AM", the shape the programme's time column already uses.
+const stageMinuteOfDay = (startsAt: string) => { const [h, m] = String(startsAt).split(' ')[1].split(':').map(Number); return h * 60 + m }
+const stageClock = (mins: number) => {
+  const h = Math.floor(mins / 60) % 24, m = mins % 60
+  return { text: `${h % 12 || 12}:${String(m).padStart(2, '0')}`, pm: h >= 12 }
+}
+const stageSlotLabel = (startsAt: string, minutes: number) => {
+  const start = stageMinuteOfDay(startsAt)
+  const a = stageClock(start), b = stageClock(start + (minutes || 0))
+  const date = String(startsAt).slice(0, 10)
+  const day = STAGE_DAYS.find(d => d.date === date)?.label || date
+  return `${day} · ${a.pm === b.pm ? a.text : `${a.text} ${a.pm ? 'PM' : 'AM'}`} – ${b.text} ${b.pm ? 'PM' : 'AM'}`
+}
+
+const stageDetailsInput = (body: any): { values: Record<string, string>; error?: string } => {
+  const values: Record<string, string> = {}
+  for (const [f, { label, max }] of Object.entries(STAGE_FIELDS)) {
+    if (body[f] === undefined) continue
+    const v = String(body[f] ?? '').trim()
+    if (v.length > max) return { values, error: `${label} is too long (max ${max} characters)` }
+    values[f] = v
+  }
+  if (body.speaker_photo_url !== undefined) {
+    const v = String(body.speaker_photo_url ?? '').trim()
+    if (v && !UPLOAD_URL_RE.test(v)) return { values, error: 'The speaker photo must be uploaded through the form' }
+    values.speaker_photo_url = v
+  }
+  return { values }
+}
+
+const stageTalkOf = (c: any, exhibitorId: number): Promise<any> =>
+  c.env.DB.prepare(`SELECT ${STAGE_COLS} FROM innovation_talks WHERE exhibitor_id = ? ORDER BY id LIMIT 1`).bind(exhibitorId).first()
+
+// Made by whichever comes first, the exhibitor's details or the organisers' time.
+const ensureStageTalk = async (c: any, exhibitor: { id: number; company_name: string }, stands?: StageStands): Promise<any> => {
+  const existing = await stageTalkOf(c, exhibitor.id)
+  if (existing) return existing
+  try {
+    await c.env.DB.prepare("INSERT INTO innovation_talks (event_id, exhibitor_id, company, speaker_name, topic, duration_min) VALUES (?, ?, ?, '', '', ?)")
+      .bind(stands?.event_id || 1, exhibitor.id, String(exhibitor.company_name || '').trim(), stands?.minutes ?? null).run()
+  } catch { /* two saves in the same instant: the unique index kept one row, read it back */ }
+  return stageTalkOf(c, exhibitor.id)
+}
+
+// Slot numbers follow the clock, so the programme's order and its numbering agree.
+const renumberStageTalks = async (c: any, eventId: number) => {
+  const rows = ((await c.env.DB.prepare('SELECT id FROM innovation_talks WHERE event_id = ? AND exhibitor_id IS NOT NULL AND starts_at IS NOT NULL ORDER BY starts_at, id')
+    .bind(eventId).all()).results || []) as any[]
+  for (let i = 0; i < rows.length; i++) await c.env.DB.prepare('UPDATE innovation_talks SET slot_no = ? WHERE id = ?').bind(i + 1, rows[i].id).run()
+}
+
+// Two talks on one day whose times overlap. Warned about, not refused: swapping two
+// talks passes through an overlap.
+const stageClashes = (talks: any[]) => {
+  const timed = talks.filter(t => t.starts_at && Number(t.duration_min) > 0)
+  const out = new Map<number, string[]>()
+  for (const a of timed) for (const b of timed) {
+    if (a === b || String(a.starts_at).slice(0, 10) !== String(b.starts_at).slice(0, 10)) continue
+    const a0 = stageMinuteOfDay(a.starts_at), b0 = stageMinuteOfDay(b.starts_at)
+    if (a0 < b0 + Number(b.duration_min) && b0 < a0 + Number(a.duration_min)) {
+      out.set(Number(a.exhibitor_id), [...(out.get(Number(a.exhibitor_id)) || []), String(b.company || 'another talk')])
+    }
+  }
+  return out
+}
+
+const stageSummary = (t: any, fallbackMinutes: number | null) => {
+  const minutes = Number(t.duration_min) || fallbackMinutes || null
+  return {
+    minutes,
+    topic: t.topic || '', showcase: t.showcase || '', speaker_name: t.speaker_name || '', speaker_title: t.speaker_title || '',
+    speaker_bio: t.speaker_bio || '', speaker_photo_url: t.speaker_photo_url || '', details_updated_at: t.details_updated_at || null,
+    starts_at: t.starts_at || null,
+    // time_slot is what the programme shows, and the /admin tab can edit it.
+    slot: t.starts_at ? (t.time_slot || stageSlotLabel(t.starts_at, minutes || 0)) : null,
+    details_complete: !!(t.topic && t.speaker_name),
+    in_programme: !!(t.starts_at && t.topic && t.speaker_name),
+  }
+}
+
+// The exhibitor behind a signed-in account and its stands, or null when the account
+// has no slot: not an exhibitor, no confirmed stand, or 0044 not yet run.
+const dashboardStage = async (c: any, company: any) => {
+  if (!(await stageReady(c))) return null
+  const exhibitor = await resolveExhibitor(c, company)
+  if (!exhibitor) return null
+  const stands = (await confirmedStands(c, Number(exhibitor.id))).get(Number(exhibitor.id))
+  return stands ? { exhibitor: { id: Number(exhibitor.id), company_name: String(exhibitor.company_name || '') }, stands } : null
+}
+
+// The event-app pass on this account's email. Anything but the free Visitor Pass may
+// start conversations (canInitiateNetworking in index.tsx), so that is what counts.
+const delegatePassOf = async (c: any, email: string, eventId: number) => {
+  const a = await c.env.DB.prepare('SELECT badge_type, last_login_at FROM attendees WHERE event_id = ? AND lower(email) = lower(?) ORDER BY id LIMIT 1')
+    .bind(eventId, String(email || '').trim()).first().catch(() => null) as any
+  return a && !/visitor/i.test(String(a.badge_type || '')) ? { email: String(email).trim().toLowerCase(), signed_in: !!a.last_login_at } : null
+}
+
+const dashboardStageJson = async (c: any, company: any, s: NonNullable<Awaited<ReturnType<typeof dashboardStage>>>) => ({
+  eligible: true, booths: s.stands.booths, packages: s.stands.packages,
+  ...stageSummary((await stageTalkOf(c, s.exhibitor.id)) || {}, s.stands.minutes),
+  delegate: await delegatePassOf(c, company.email, s.stands.event_id),
+})
+
+mp.get('/api/mp/dashboard/stage-talk', async (c) => {
+  const company = await getCompanyFromSession(c)
+  if (!company) return c.json({ error: 'Login required' }, 401)
+  const s = await dashboardStage(c, company)
+  if (!s) return c.json({ eligible: false })
+  return c.json(await dashboardStageJson(c, company, s))
+})
+
+// Saved as typed and shown in the event app as soon as the talk has a time: these are
+// paying exhibitors describing their own talk, and the organisers can still correct
+// it from the /admin Innovation Talks tab.
+mp.put('/api/mp/dashboard/stage-talk', async (c) => {
+  const company = await getCompanyFromSession(c) as any
+  if (!company) return c.json({ error: 'Login required' }, 401)
+  const { values, error } = stageDetailsInput((await c.req.json().catch(() => ({}))) || {})
+  if (error) return c.json({ error }, 400)
+  const fields = Object.keys(values)
+  if (!fields.length) return c.json({ error: 'Nothing to save' }, 400)
+  const s = await dashboardStage(c, company)
+  if (!s) return c.json({ error: 'Stage talks come with a confirmed exhibition stand' }, 403)
+  if (!(await uploadsOwnedBy(c, company.id, [values.speaker_photo_url]))) return c.json({ error: 'The speaker photo must be uploaded through the form' }, 400)
+  const talk = await ensureStageTalk(c, s.exhibitor, s.stands)
+  await c.env.DB.prepare(`UPDATE innovation_talks SET ${fields.map(f => `${f} = ?`).join(', ')}, details_updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+    .bind(...fields.map(f => values[f]), talk.id).run()
+  return c.json({ success: true, ...(await dashboardStageJson(c, company, s)) })
+})
+
+mp.get('/api/mp/admin/stage-talks', async (c) => {
+  const admin = await marketplaceAdmin(c)
+  if (!admin) return c.json({ error: 'Admin required' }, 403)
+  if (!(await stageReady(c))) return c.json({ ready: false, days: STAGE_DAYS, talks: [] })
+  const stands = await confirmedStands(c)
+  const talks = ((await c.env.DB.prepare(`SELECT ${STAGE_COLS} FROM innovation_talks WHERE exhibitor_id IS NOT NULL`).all()).results || []) as any[]
+  const talkOf = new Map(talks.map(t => [Number(t.exhibitor_id), t]))
+  const clashes = stageClashes(talks)
+  // Never exhibitors.description: it holds internal import notes.
+  const exhibitors = ((await c.env.DB.prepare('SELECT id, company_name, contact_email FROM exhibitors').all()).results || []) as any[]
+  const rows = exhibitors.filter(e => stands.has(Number(e.id)) || talkOf.has(Number(e.id))).map(e => {
+    const id = Number(e.id), s = stands.get(id)
+    return {
+      exhibitor_id: id, company_name: e.company_name, contact_email: e.contact_email || '',
+      booths: s?.booths || [], packages: s?.packages || [], has_stand: !!s, package_minutes: s?.minutes ?? null,
+      ...stageSummary(talkOf.get(id) || {}, s?.minutes ?? null),
+      clashes: clashes.get(id) || [],
+    }
+  })
+  // The programme in time order, then everyone still without a time, A to Z.
+  rows.sort((a, b) => (a.starts_at ? 0 : 1) - (b.starts_at ? 0 : 1)
+    || String(a.starts_at || '').localeCompare(String(b.starts_at || ''))
+    || String(a.company_name).localeCompare(String(b.company_name)))
+  return c.json({
+    ready: true, days: STAGE_DAYS, talks: rows,
+    summary: {
+      exhibitors: rows.filter(r => r.has_stand).length,
+      with_details: rows.filter(r => r.details_complete).length,
+      scheduled: rows.filter(r => r.starts_at).length,
+      in_programme: rows.filter(r => r.in_programme).length,
+    },
+  })
+})
+
+// Sets or clears one exhibitor's time: { date, time, minutes } or { clear: true }.
+mp.patch('/api/mp/admin/stage-talks/:exhibitorId', async (c) => {
+  const admin = await marketplaceAdmin(c)
+  if (!admin) return c.json({ error: 'Admin required' }, 403)
+  if (!(await stageReady(c))) return c.json({ error: 'Stage talks need migration 0044 on the database first' }, 503)
+  const id = parseInt(c.req.param('exhibitorId'), 10)
+  const exhibitor = await c.env.DB.prepare('SELECT id, company_name FROM exhibitors WHERE id = ?').bind(id).first() as any
+  if (!exhibitor) return c.json({ error: 'Exhibitor not found' }, 404)
+  const body = ((await c.req.json().catch(() => ({}))) || {}) as any
+
+  if (body.clear) {
+    const talk = await stageTalkOf(c, id)
+    if (talk?.starts_at) {
+      await c.env.DB.prepare('UPDATE innovation_talks SET starts_at = NULL, time_slot = NULL, slot_no = NULL WHERE id = ?').bind(talk.id).run()
+      await renumberStageTalks(c, Number(talk.event_id) || 1)
+      await auditAdmin(c, admin, STAGE_CLEARED, id, { company: exhibitor.company_name, was: talk.time_slot || talk.starts_at }, 'exhibitor')
+    }
+    return c.json({ success: true })
+  }
+
+  const date = String(body.date || ''), time = String(body.time || ''), minutes = Number(body.minutes)
+  if (!STAGE_DAYS.some(d => d.date === date)) return c.json({ error: 'Choose one of the event days' }, 400)
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return c.json({ error: 'The start time must look like 10:30' }, 400)
+  if (!Number.isInteger(minutes) || minutes < 1 || minutes > 120) return c.json({ error: 'The length must be between 1 and 120 minutes' }, 400)
+  const stands = (await confirmedStands(c, id)).get(id)
+  if (!stands && !(await stageTalkOf(c, id))) return c.json({ error: 'This exhibitor has no confirmed stand' }, 409)
+
+  const talk = await ensureStageTalk(c, { id, company_name: exhibitor.company_name }, stands)
+  const startsAt = `${date} ${time}`
+  const slot = stageSlotLabel(startsAt, minutes)
+  await c.env.DB.prepare('UPDATE innovation_talks SET starts_at = ?, duration_min = ?, time_slot = ?, session_type = ? WHERE id = ?')
+    .bind(startsAt, minutes, slot, stageMinuteOfDay(startsAt) < 13 * 60 ? 'Morning' : 'Afternoon', talk.id).run()
+  await renumberStageTalks(c, Number(talk.event_id) || 1)
+  await auditAdmin(c, admin, STAGE_SCHEDULED, id, { company: exhibitor.company_name, slot }, 'exhibitor')
+  const all = ((await c.env.DB.prepare(`SELECT ${STAGE_COLS} FROM innovation_talks WHERE exhibitor_id IS NOT NULL`).all()).results || []) as any[]
+  return c.json({ success: true, slot, clashes: stageClashes(all).get(id) || [] })
+})
 
 mp.patch('/api/mp/admin/listings/:id', async (c) => {
   const admin = await marketplaceAdmin(c)

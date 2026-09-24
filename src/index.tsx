@@ -235,11 +235,73 @@ app.get('/api/admin/audit', async (c) => {
 })
 
 // ==================== AI MARKETPLACE (integrated) ====================
+// Every exhibitor is also a delegate. A booth includes exhibitor passes, and an
+// Exhibitor pass may start conversations in the app, which the free Visitor Pass may
+// not (canInitiateNetworking). So the booth contact gets an attendee row under the
+// booth email and signs in with the emailed link or code like everyone else, with
+// nothing to register. A free Visitor Pass on that address is raised to Exhibitor;
+// any other pass already networks and is left alone. The marketplace calls this when
+// the admin emails the exhibitor, so the email can say the pass is there.
+//
+// Not through POST /api/admin/attendees: an Exhibitor badge there also inserts an
+// exhibitors row, which would duplicate the exhibitor this came from.
+async function ensureExhibitorDelegate(c: any, x: { exhibitorId: number; email: string; company: string }): Promise<{ attendeeId: number; created: boolean; upgraded: boolean } | null> {
+  const email = String(x.email || '').trim().toLowerCase()
+  if (!email || !x.exhibitorId) return null
+  // A held or released stand is not a sale, so it carries no pass.
+  const stand = await c.env.DB.prepare(
+    "SELECT event_id, contact_name FROM booth_allocations WHERE exhibitor_id = ? AND status = 'confirmed' AND released_at IS NULL ORDER BY id LIMIT 1"
+  ).bind(x.exhibitorId).first().catch(() => null) as any
+  if (!stand) return null
+  const eventId = Number(stand.event_id) || 1
+  const cols = await attendeeColumns(c)
+  const existing = await c.env.DB.prepare('SELECT id, badge_type, role FROM attendees WHERE event_id = ? AND lower(email) = ? ORDER BY id LIMIT 1')
+    .bind(eventId, email).first() as any
+  let attendeeId: number, created = false, upgraded = false
+  if (existing) {
+    attendeeId = Number(existing.id)
+    if (!canInitiateNetworking(existing.badge_type)) {
+      const sets = ["badge_type = 'Exhibitor'"]
+      const role = String(existing.role || '').trim().toLowerCase()
+      if (!role || role === 'attendee') sets.push("role = 'Exhibitor'")
+      if (cols.has('main_event')) sets.push('main_event = 1')
+      await c.env.DB.prepare(`UPDATE attendees SET ${sets.join(', ')} WHERE id = ?`).bind(attendeeId).run()
+      await audit(c, 'attendee.exhibitor-pass', 'attendee', attendeeId, { badge_type: [existing.badge_type || null, 'Exhibitor'], exhibitor_id: x.exhibitorId })
+      upgraded = true
+    }
+  } else {
+    // The shape Add Attendee writes: every admin field the table has, blank unless set here.
+    const set: Record<string, any> = {
+      company: String(x.company || '').trim(), badge_type: 'Exhibitor', role: 'Exhibitor', lunch_inclusion: 'Yes', country: 'India',
+      payment_status: 'waived', registration_date: new Date().toISOString().slice(0, 19).replace('T', ' '),
+    }
+    const name = String(stand.contact_name || '').trim() || set.company || 'Exhibitor'
+    const names: string[] = ['event_id', 'name', 'email']
+    const vals: any[] = [eventId, name, email]
+    for (const f of ADMIN_ATTENDEE_FIELDS) {
+      if (f === 'name' || f === 'email' || !cols.has(f)) continue
+      names.push(f)
+      vals.push(set[f] ?? '')
+    }
+    if (cols.has('main_event')) { names.push('main_event'); vals.push(1) }
+    if (cols.has('registration_source')) { names.push('registration_source'); vals.push('exhibitor') }
+    names.push('is_online')
+    vals.push(0)
+    const r = await c.env.DB.prepare(`INSERT INTO attendees (${names.join(', ')}) VALUES (${names.map(() => '?').join(', ')})`).bind(...vals).run()
+    attendeeId = Number(r.meta.last_row_id)
+    created = true
+    await audit(c, 'attendee.create', 'attendee', attendeeId, { name, email, badge_type: 'Exhibitor', source: 'exhibitor', exhibitor_id: x.exhibitorId })
+  }
+  await c.env.DB.prepare('UPDATE exhibitors SET attendee_id = ? WHERE id = ? AND attendee_id IS NULL').bind(attendeeId, x.exhibitorId).run().catch(() => {})
+  return { attendeeId, created, upgraded }
+}
+
 // The marketplace emails the team on new listings and companies on approval and
 // inquiries through the same sender as everything else, lets anyone this panel
-// trusts review listings without the separate marketplace login, and records those
-// reviews in admin_audit. Passed in because that module cannot import from this file.
-configureMarketplace({ sendEmail: sendAdminEmail, isEventAdmin: isAdminRequest, audit })
+// trusts review listings without the separate marketplace login, records those
+// reviews in admin_audit, and gives each exhibitor its delegate pass. Passed in
+// because that module cannot import from this file.
+configureMarketplace({ sendEmail: sendAdminEmail, isEventAdmin: isAdminRequest, audit, ensureDelegate: ensureExhibitorDelegate })
 app.route('/', mp)
 
 // Marketplace page routes
@@ -11290,16 +11352,32 @@ app.post('/api/admin/attendees/:id/send-profile-reminder', async (c) => {
 
 app.get('/api/events/:id/innovation-talks', async (c) => {
   const eventId = c.req.param('id')
+  const admin = isAdminRequest(c)
+  // notes are the organisers' own, so the public gets named columns. Exhibitors' talks
+  // (migration 0044) are drafted from the marketplace dashboard and join the programme
+  // only once the organisers give them a time (Marketplace admin, Stage Talks); the
+  // public also waits for a topic and a speaker, so a half-filled draft never shows.
+  const base = 'id, event_id, slot_no, session_type, time_slot, speaker_name, company, topic, status, created_at'
   try {
     const { results } = await c.env.DB.prepare(
-      'SELECT * FROM innovation_talks WHERE event_id = ? ORDER BY slot_no ASC'
+      `SELECT ${admin ? '*' : base + ', speaker_title, speaker_photo_url, showcase'} FROM innovation_talks
+       WHERE event_id = ? AND (exhibitor_id IS NULL OR (starts_at IS NOT NULL${admin ? '' : " AND trim(ifnull(topic, '')) <> '' AND trim(ifnull(speaker_name, '')) <> ''"}))
+       ORDER BY slot_no ASC, starts_at`
     ).bind(eventId).all()
     return c.json(results)
   } catch (e: any) {
+    const message = String(e?.message || '')
     // The table went missing from production for the life of this feature and the
     // 500 took down both the admin tab and the app's Innovation Talks tab. An
     // empty list degrades to "nothing scheduled yet", which is recoverable.
-    if (/no such table/i.test(String(e?.message || ''))) return c.json([])
+    if (/no such table/i.test(message)) return c.json([])
+    // A database without 0044 holds only the organisers' own talks.
+    if (/no such column/i.test(message)) {
+      const { results } = await c.env.DB.prepare(
+        `SELECT ${admin ? '*' : base} FROM innovation_talks WHERE event_id = ? ORDER BY slot_no ASC`
+      ).bind(eventId).all()
+      return c.json(results)
+    }
     throw e
   }
 })
@@ -20923,10 +21001,17 @@ function mainPageHTML(): string {
         const afternoon = talks.filter(t => t.session_type === 'Afternoon');
 
         function talkCard(t, idx) {
-          const isMultiSpeaker = t.speaker_name.includes(',') || t.speaker_name.includes('&');
+          const speaker = String(t.speaker_name || '');
+          const isMultiSpeaker = speaker.includes(',') || speaker.includes('&');
+          // An exhibitor talk can carry a speaker photo, always a marketplace upload on this site.
+          const photo = String(t.speaker_photo_url || '');
+          const hasPhoto = photo.indexOf('/api/mp/uploads/') === 0 && /^[0-9]+$/.test(photo.slice(16));
+          const showcase = String(t.showcase || '');
           return '<div class="glass rounded-xl p-4 hover:bg-white/[0.04] transition group">'
             + '<div class="flex items-start gap-4">'
-            + '<div class="shrink-0 w-12 h-12 rounded-xl bg-gradient-to-br from-primary-500/20 to-violet-500/20 flex items-center justify-center text-primary-300 font-bold text-lg">' + t.slot_no + '</div>'
+            + (hasPhoto
+              ? '<img src="' + esc(photo) + '" alt="" loading="lazy" class="shrink-0 w-12 h-12 rounded-xl" style="object-fit:cover">'
+              : '<div class="shrink-0 w-12 h-12 rounded-xl bg-gradient-to-br from-primary-500/20 to-violet-500/20 flex items-center justify-center text-primary-300 font-bold text-lg">' + t.slot_no + '</div>')
             + '<div class="flex-1 min-w-0">'
             + '<div class="flex items-center gap-2 mb-1">'
             + '<span class="text-xs px-2 py-0.5 rounded-full bg-white/5 text-gray-400"><i class="fas fa-clock mr-1"></i>' + esc(t.time_slot) + '</span>'
@@ -20934,9 +21019,11 @@ function mainPageHTML(): string {
             + '</div>'
             + '<h4 class="font-semibold text-white group-hover:text-primary-300 transition ' + (t.status === 'cancelled' ? 'line-through opacity-50' : '') + '">'
             + (isMultiSpeaker ? '<i class="fas fa-user-friends text-xs text-violet-400 mr-1.5"></i>' : '<i class="fas fa-user text-xs text-primary-400 mr-1.5"></i>')
-            + esc(t.speaker_name) + '</h4>'
+            + esc(speaker) + '</h4>'
+            + (t.speaker_title ? '<p class="text-xs text-gray-400">' + esc(t.speaker_title) + '</p>' : '')
             + '<p class="text-sm text-gray-400 mt-0.5"><i class="fas fa-building text-xs mr-1.5"></i>' + esc(t.company) + '</p>'
             + (t.topic ? '<p class="text-xs text-gray-500 mt-1"><i class="fas fa-tag mr-1"></i>' + esc(t.topic) + '</p>' : '')
+            + (showcase ? '<p class="text-xs text-gray-500 mt-1"><i class="fas fa-lightbulb mr-1"></i>' + esc(showcase.length > 180 ? showcase.slice(0, 177) + '...' : showcase) + '</p>' : '')
             + '</div>'
             + '</div></div>';
         }

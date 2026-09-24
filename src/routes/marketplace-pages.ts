@@ -522,6 +522,7 @@ export function marketplaceDashboardPageHTML(): string {
     <nav class="dash-sidebar-nav">
       <button class="dash-sidebar-item dash-sidebar-active" data-section="overview"><i class="fas fa-chart-pie"></i> Overview</button>
       <button class="dash-sidebar-item" data-section="listings"><i class="fas fa-boxes"></i> My Listings</button>
+      <button class="dash-sidebar-item hidden" data-section="stage" id="dash-nav-stage"><i class="fas fa-microphone-alt"></i> Stage Talk</button>
       <button class="dash-sidebar-item" data-section="inquiries"><i class="fas fa-envelope"></i> Inquiries</button>
       <button class="dash-sidebar-item" data-section="reviews"><i class="fas fa-star"></i> Reviews</button>
       <button class="dash-sidebar-item" data-section="profile"><i class="fas fa-user"></i> Profile</button>
@@ -556,6 +557,8 @@ export function marketplaceDashboardPageHTML(): string {
           <p class="text-sm text-slate-400">Welcome to your AI Marketplace Dashboard</p>
         </div>
       </div>
+      <!-- Exhibitors only: the two things their booth includes, and how far they have got. -->
+      <div id="dash-todo" class="dash-card hidden"></div>
       <div class="dash-stats-grid">
         <div class="dash-stat-card"><div class="dash-stat-icon"><i class="fas fa-boxes"></i></div><div><p class="dash-stat-label">Total Listings</p><p class="dash-stat-value" id="stat-total">0</p></div></div>
         <div class="dash-stat-card"><div class="dash-stat-icon text-emerald-400"><i class="fas fa-check-circle"></i></div><div><p class="dash-stat-label">Approved</p><p class="dash-stat-value" id="stat-approved">0</p></div></div>
@@ -582,6 +585,33 @@ export function marketplaceDashboardPageHTML(): string {
         <h2><i class="fas fa-boxes mr-2"></i>My Listings</h2>
       </div>
       <div id="dash-listings-table"></div>
+    </section>
+
+    <!-- Stage talk (exhibitors with a confirmed stand) -->
+    <section id="section-stage" class="dash-section hidden">
+      <div class="dash-section-header"><h2><i class="fas fa-microphone-alt mr-2"></i>Stage Talk</h2></div>
+      <div id="stage-slot" class="dash-card"></div>
+      <form id="stage-form" class="dash-card mp-form">
+        <h3>Your talk</h3>
+        <div class="form-grid" style="padding:0">
+          <div class="form-field full-width"><label for="stage-topic">Talk topic</label><input id="stage-topic" name="topic" maxlength="150" autocomplete="off" placeholder="e.g. Cutting loan approvals from days to minutes with AI"></div>
+          <div class="form-field full-width"><label for="stage-showcase">What you will showcase</label><textarea id="stage-showcase" name="showcase" rows="3" maxlength="1000" autocomplete="off" placeholder="The product, demo or prototype you will show on stage"></textarea></div>
+        </div>
+        <h3 style="margin-top:20px">Speaker</h3>
+        <div class="form-grid" style="padding:0">
+          <div class="form-field full-width">
+            <label for="stage-photo-file">Photo</label>
+            <div class="flex gap-3 items-center">
+              <img id="stage-photo-preview" alt="" class="hidden" style="width:64px;height:64px;object-fit:cover;border-radius:50%;border:1px solid #e5e7eb">
+              <input id="stage-photo-file" type="file" accept="image/png,image/jpeg,image/webp" class="text-xs">
+            </div>
+          </div>
+          <div class="form-field"><label for="stage-speaker">Name</label><input id="stage-speaker" name="speaker_name" maxlength="120" autocomplete="off"></div>
+          <div class="form-field"><label for="stage-speaker-title">Designation</label><input id="stage-speaker-title" name="speaker_title" maxlength="120" autocomplete="off" placeholder="e.g. Co-founder &amp; CTO"></div>
+          <div class="form-field full-width"><label for="stage-bio">Short bio (optional)</label><textarea id="stage-bio" name="speaker_bio" rows="3" maxlength="800" autocomplete="off" placeholder="Two or three lines the host can read out before the talk"></textarea></div>
+        </div>
+        <button type="submit" class="mp-btn-primary mt-4"><i class="fas fa-save mr-1"></i> Save</button>
+      </form>
     </section>
 
     <!-- Inquiries -->
@@ -666,7 +696,7 @@ export function marketplaceDashboardPageHTML(): string {
     </div>
   </div>
 
-  <script src="/static/marketplace-dashboard.js?v=3"></script>
+  <script src="/static/marketplace-dashboard.js?v=4"></script>
 </body>
 </html>`
 }
@@ -693,6 +723,7 @@ export function marketplaceAdminPageHTML(): string {
       <button class="dash-sidebar-item" data-section="pending"><i class="fas fa-clock"></i> Pending Review</button>
       <button class="dash-sidebar-item" data-section="inquiries"><i class="fas fa-envelope"></i> Inquiries</button>
       <button class="dash-sidebar-item" data-section="exhibitors"><i class="fas fa-store"></i> Exhibitors</button>
+      <button class="dash-sidebar-item" data-section="stage"><i class="fas fa-microphone-alt"></i> Stage Talks</button>
       <button class="dash-sidebar-item" data-section="bulk"><i class="fas fa-upload"></i> Bulk Upload</button>
     </nav>
     <div class="dash-sidebar-footer">
@@ -756,6 +787,16 @@ export function marketplaceAdminPageHTML(): string {
       <div id="admin-exhibitors" class="mt-3"></div>
     </section>
 
+    <!-- Stage talks -->
+    <section id="section-stage" class="dash-section hidden">
+      <div class="dash-section-header"><h2><i class="fas fa-microphone-alt mr-2"></i>Stage Talks</h2></div>
+      <div class="dash-card">
+        <p class="text-sm text-slate-400">Every confirmed stand includes an Innovation Talk &amp; Showcase slot. Exhibitors add their topic and speaker from their own dashboard; you set the day and time here. A talk appears in the event app's Innovation Talks programme once it has a time, a topic and a speaker.</p>
+        <p id="stage-summary" class="text-sm text-slate-400 mt-2"></p>
+      </div>
+      <div id="admin-stage" class="mt-3"></div>
+    </section>
+
     <!-- Bulk Upload -->
     <section id="section-bulk" class="dash-section hidden">
       <div class="dash-section-header"><h2><i class="fas fa-upload mr-2"></i>Bulk Upload</h2></div>
@@ -778,7 +819,7 @@ export function marketplaceAdminPageHTML(): string {
     </section>
   </div>
 
-  <script src="/static/marketplace-admin.js?v=7"></script>
+  <script src="/static/marketplace-admin.js?v=8"></script>
 </body>
 </html>`
 }

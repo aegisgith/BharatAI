@@ -19,7 +19,7 @@ let fails = 0;
 const check = (name, ok, detail) => { console.log((ok ? 'PASS ' : 'FAIL ') + name + (ok ? '' : '  <- ' + detail)); if (!ok) fails++; };
 
 // ---- admin routes: closed to the public, open to the event admin panel ----
-const ADMIN_GET = ['/api/mp/admin/listings', '/api/mp/admin/listings?status=pending', '/api/mp/admin/stats', '/api/mp/admin/inquiries', '/api/mp/admin/exhibitors', '/api/mp/admin/exhibitor-invites'];
+const ADMIN_GET = ['/api/mp/admin/listings', '/api/mp/admin/listings?status=pending', '/api/mp/admin/stats', '/api/mp/admin/inquiries', '/api/mp/admin/exhibitors', '/api/mp/admin/exhibitor-invites', '/api/mp/admin/stage-talks'];
 for (const p of ADMIN_GET) {
   const r = await hit(p);
   check('refuses anonymous: ' + p, r.status === 403, r.status + ' ' + r.text.slice(0, 60));
@@ -30,6 +30,8 @@ for (const p of ['/api/mp/admin/listings/1/remind', '/api/mp/admin/exhibitors/1/
 }
 let r = await hit('/api/mp/admin/listings/1', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: '{"status":"approved"}' });
 check('refuses anonymous: PATCH listing status', r.status === 403, r.status);
+r = await hit('/api/mp/admin/stage-talks/1', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: '{"date":"2026-11-20","time":"10:00","minutes":10}' });
+check('refuses anonymous: PATCH a stage-talk time', r.status === 403, r.status);
 
 // The panel's own check also accepts ?token=<secret>; the marketplace must not, or a
 // link would carry the master secret into history, logs and every Referer.
@@ -45,10 +47,12 @@ r = await hit('/api/mp/admin/exhibitor-invites', { headers: { Authorization: 'Be
 check('event admin reaches the handler (JSON 500 without DB)', r.status === 500 && r.text.startsWith('{'), r.status + ' ' + r.text.slice(0, 60));
 
 // ---- company routes need a signed marketplace session ----
-for (const p of ['/api/mp/dashboard/listings', '/api/mp/dashboard/stats', '/api/mp/dashboard/profile', '/api/mp/dashboard/inquiries', '/api/mp/dashboard/reviews']) {
+for (const p of ['/api/mp/dashboard/listings', '/api/mp/dashboard/stats', '/api/mp/dashboard/profile', '/api/mp/dashboard/inquiries', '/api/mp/dashboard/reviews', '/api/mp/dashboard/stage-talk']) {
   r = await hit(p);
   check('login required: ' + p, r.status === 401, r.status);
 }
+r = await hit('/api/mp/dashboard/stage-talk', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: '{"topic":"X"}' });
+check('login required: saving stage-talk details', r.status === 401, r.status);
 r = await hit('/api/mp/listings', post({ product_name: 'X', description: 'Y' }));
 check('login required: submitting a listing', r.status === 401, r.status);
 r = await hit('/api/mp/uploads', { method: 'POST' });
@@ -86,11 +90,12 @@ for (const marker of ['marketplace-app.js?v=', 'open-listing-button', 'listings-
 }
 r = await hit('/marketplace/admin');
 check('/marketplace/admin renders', r.status === 200, r.status);
-for (const marker of ['marketplace-admin.js?v=', 'data-section="exhibitors"', 'id="admin-exhibitors"', 'id="invite-all"', 'id="admin-pending-listings"']) {
+for (const marker of ['marketplace-admin.js?v=', 'data-section="exhibitors"', 'id="admin-exhibitors"', 'id="invite-all"', 'id="admin-pending-listings"', 'data-section="stage"', 'id="admin-stage"']) {
   check('/marketplace/admin carries ' + marker, r.text.includes(marker), 'missing');
 }
 r = await hit('/marketplace/dashboard');
 check('/marketplace/dashboard carries the completeness panel', r.text.includes('id="dash-complete"') && r.text.includes('id="edit-logo-file"'), 'missing');
+check('/marketplace/dashboard carries the stage-talk form and to-do list', ['id="stage-form"', 'id="stage-photo-file"', 'name="speaker_bio"', 'id="dash-todo"', 'id="dash-nav-stage"'].every(m => r.text.includes(m)), 'missing');
 
 // A slug is written into an inline script; a crafted link must not be able to close it.
 r = await hit('/marketplace/listing/x%22%3Balert(1)%2F%2F%3C%2Fscript%3E/y');
