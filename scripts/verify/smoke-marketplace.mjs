@@ -72,6 +72,12 @@ check('a well-formed forged token is refused before any database read', r.status
 r = await hit('/api/mp/auth/link', post({ email: 'not-an-email' }));
 check('sign-in link request rejects a bad address', r.status === 400, r.status);
 
+// ---- signed in to the event app, signed in here: only with a genuine app session ----
+r = await hit('/api/mp/auth/from-app', post({}));
+check('from-app without an app session is refused', r.status === 401 && !r.h['set-cookie'], r.status);
+r = await hit('/api/mp/auth/from-app', { ...post({}), headers: { 'Content-Type': 'application/json', Cookie: 'bai_session=1.4102444800.' + 'ab'.repeat(32) } });
+check('from-app with a forged app session is refused before any database read', r.status === 401 && !r.h['set-cookie'], r.status + ' ' + r.text.slice(0, 60));
+
 // ---- input rules that must not need a database ----
 r = await hit('/api/mp/auth/register', post({ company_name: 'A', email: 'not-an-email', password: 'secret123' }));
 check('register rejects a bad email address', r.status === 400, r.status + ' ' + r.text.slice(0, 60));

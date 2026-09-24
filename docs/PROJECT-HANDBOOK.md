@@ -54,6 +54,8 @@ Secrets, claim codes and conference registration totals are deliberately **not**
 | 0042_consent_and_hot_indexes | `attendees.marketing_consent`, `attendees.unsubscribed_at`, indexes on `(event_id, name, id)`, `unsubscribed_at`, `messages(receiver_id, is_read)` |
 | 0043_panel_rsvp | `panel_registrations.rsvp_status`, `rsvp_at`, `reminder_sent_at`, `reminder_error` |
 
+**Written, not yet applied (24 Sep):** `0044_exhibitor_stage_talks` adds `innovation_talks.exhibitor_id`, `speaker_title`, `speaker_bio`, `speaker_photo_url`, `showcase`, `duration_min`, `starts_at`, `details_updated_at` and a partial unique index (one talk per exhibitor). Additive; `ADD COLUMN` is not idempotent, so run it once: a second run errors at the first line, and a run that fails halfway leaves the earlier columns in place. Until it runs (or if it half-runs), the stage-talk card, the admin Stage Talks list and the email's mention of the talk stay away and nothing fails; the "no such column" fallback in `GET /api/events/:id/innovation-talks` is what makes that true, so it stays after the migration lands. Run **before** "Send sign-in links" so those emails carry the stage-talk ask: `npx wrangler d1 execute bharatai-production --remote --file=migrations/0044_exhibitor_stage_talks.sql`.
+
 Take a backup before any migration: `npx wrangler d1 export bharatai-production --remote --output=backup-pre-XXXX-<date>.sql` (these files are gitignored; they contain PII and the email key).
 
 **Verification — run all of it for any change that touches the app:**
@@ -99,6 +101,10 @@ Playwright comes from `scripts/verify/playwright.cjs` (local `playwright-core`, 
 | Attendance at other colleges is **claimed** with a closing-slide code, never taken at a desk | 17 Sep | `/api/attendees/:id/panels/:slug/claim` |
 | No government backing claims anywhere | 17 Sep | site copy (see memory `no-meity-backing-claims`) |
 | Pass prices are **+ GST**; Innovation Talks are 8 minutes; the evening is "Bharat AI CXO Innovation Night" | 17 Sep | site copy, app copy, D1 `sessions` rows |
+| **Every pass includes an AI Marketplace listing** (organiser's model: Exhibitor = delegate + stage talk + listing; Delegate = networking app + listing; Visitor = visitor pass + listing; VIP = delegate + networking + listing + VIP lounge). Signed in to the app = signed in to the marketplace, but an app session never opens a marketplace account made any other way: the inbox gets a sign-in link instead | 24 Sep | `POST /api/mp/auth/from-app`, `sessionAttendee()`, `signInFromApp()` in marketplace-app.js; pass cards in `mainPageHTML` |
+| **Every exhibitor is also a delegate** (badge Exhibitor, payment waived, `main_event` 1, lunch Yes; a Visitor Pass on the booth email is raised) and gets an **Innovation Talk & Showcase slot** of the package length (Pod 8 … Mega 40; Premium unknown). The exhibitor writes topic, showcase, speaker, photo and bio in the marketplace dashboard; the organisers set day and time in Marketplace admin → Stage Talks; the talk joins the app programme once it has a time, a topic and a speaker | 24 Sep | `ensureExhibitorDelegate()`, `STAGE_MINUTES` and `/api/mp/dashboard/stage-talk` + `/api/mp/admin/stage-talks` in routes/marketplace.ts, migration 0044, `GET /api/events/:id/innovation-talks` |
+| A pre-made (password-less) marketplace account is never claimed by "Create account": the inbox is emailed a sign-in link. Exhibitors-tab "Signed in" = used a link or set a password | 24 Sep | `POST /api/mp/auth/register`, audit action `marketplace.signed-in` |
+| Speakers = delegate + speaker + networking app is the organiser's stated model (24 Sep) but **not built**: since 14 Sep speakers are shown from the `speakers` table without app accounts (would inflate the count and invent logins). Ask before reversing | 24 Sep | `NETWORK_HIDDEN_SPEAKER_SLUGS` block in src/index.tsx |
 
 ---
 

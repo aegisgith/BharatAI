@@ -296,12 +296,23 @@ async function ensureExhibitorDelegate(c: any, x: { exhibitorId: number; email: 
   return { attendeeId, created, upgraded }
 }
 
+// Who is signed in to the event app, from the same signed cookie every attendee
+// write checks. Every pass includes an AI Marketplace listing, and the marketplace
+// uses this to open one without a second account (POST /api/mp/auth/from-app).
+async function sessionAttendee(c: any): Promise<{ id: number; email: string; name: string; company: string } | null> {
+  const id = await verifyAttendeeSession(c)
+  if (!id) return null
+  const a = await c.env.DB.prepare('SELECT id, email, name, company FROM attendees WHERE id = ?').bind(id).first().catch(() => null) as any
+  return a?.email ? { id: Number(a.id), email: String(a.email).trim().toLowerCase(), name: String(a.name || ''), company: String(a.company || '') } : null
+}
+
 // The marketplace emails the team on new listings and companies on approval and
 // inquiries through the same sender as everything else, lets anyone this panel
 // trusts review listings without the separate marketplace login, records those
-// reviews in admin_audit, and gives each exhibitor its delegate pass. Passed in
-// because that module cannot import from this file.
-configureMarketplace({ sendEmail: sendAdminEmail, isEventAdmin: isAdminRequest, audit, ensureDelegate: ensureExhibitorDelegate })
+// reviews in admin_audit, gives each exhibitor its delegate pass, and lets anyone
+// signed in to the app list a product. Passed in because that module cannot import
+// from this file.
+configureMarketplace({ sendEmail: sendAdminEmail, isEventAdmin: isAdminRequest, audit, ensureDelegate: ensureExhibitorDelegate, attendeeOf: sessionAttendee })
 app.route('/', mp)
 
 // Marketplace page routes
@@ -15564,7 +15575,7 @@ function mainPageHTML(): string {
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Networking & startup zone</li>
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Lunch & refreshments</li>
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>1 AI workshop (hands-on)</li>
-                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>AI Marketplace access</li>
+                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>AI Marketplace listing</li>
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Certificate of participation <span class="text-gray-500 text-[10px]">(workshop)</span></li>
                   <li><i class="fas fa-wifi text-primary-400 mr-1.5 text-[10px]"></i><span class="text-primary-300 font-semibold">Access to networking app</span></li>
                 </ul>
@@ -15600,7 +15611,7 @@ function mainPageHTML(): string {
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Networking & startup zone</li>
                   <li><i class="fas fa-check text-violet-400 mr-1.5 text-[10px]"></i>Hackathon participation</li>
                   <li><i class="fas fa-check text-violet-400 mr-1.5 text-[10px]"></i>1 workshop</li>
-                  <li><i class="fas fa-check text-violet-400 mr-1.5 text-[10px]"></i>AI Marketplace access</li>
+                  <li><i class="fas fa-check text-violet-400 mr-1.5 text-[10px]"></i>AI Marketplace listing</li>
                   <li><i class="fas fa-check text-violet-400 mr-1.5 text-[10px]"></i>Certificate of participation</li>
                   <li><i class="fas fa-wifi text-primary-400 mr-1.5 text-[10px]"></i><span class="text-primary-300 font-semibold">Access to networking app</span></li>
                 </ul>
@@ -15633,7 +15644,7 @@ function mainPageHTML(): string {
                 <ul class="mt-3 space-y-1.5 text-xs text-gray-300">
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Exhibition floor access</li>
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Exhibition day activities</li>
-                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>AI Marketplace browsing</li>
+                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>AI Marketplace listing</li>
                 </ul>
               </div>
             </div>
@@ -15682,7 +15693,7 @@ function mainPageHTML(): string {
                     <tr><td class="py-2 px-2 text-gray-300">Exhibition Floor Access</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
                     <tr><td class="py-2 px-2 text-gray-300">Conference Sessions</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
                     <tr><td class="py-2 px-2 text-gray-300">Networking & Startup Zone</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
-                    <tr><td class="py-2 px-2 text-gray-300">AI Marketplace Access</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
+                    <tr><td class="py-2 px-2 text-gray-300">AI Marketplace Listing</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
                     <!-- Benefits -->
                     <tr class="bg-white/[0.02]"><td class="py-1.5 px-2 text-gray-500 font-semibold uppercase tracking-wider text-[10px]" colspan="6">Benefits</td></tr>
                     <tr><td class="py-2 px-2 text-gray-300">Conference Materials & Kit</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>

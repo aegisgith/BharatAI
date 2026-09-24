@@ -257,8 +257,24 @@ const loadAdminListings = async () => {
 // Auth events
 loginButton.addEventListener('click', () => authSection.classList.toggle('hidden'))
 logoutButton.addEventListener('click', async () => { await api('/api/mp/auth/logout', { method: 'POST' }); state.user = null; updateAuthUI(); showToast('Logged out') })
-openListingButton.addEventListener('click', () => {
+// Every event pass includes a listing: someone signed in to the event app is signed
+// in here without a second account. The server decides whether that is safe for
+// their email; when it is not, it emails them a sign-in link instead.
+const signInFromApp = async () => {
+  try {
+    const r = await fetch('/api/mp/auth/from-app', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+    const d = await r.json().catch(() => ({}))
+    if (r.ok && d.user) { await loadMe(); return !!state.user }
+    if (d.link_sent) { showToast(d.message); return 'link-sent' }
+  } catch {}
+  return false
+}
+
+openListingButton.addEventListener('click', async () => {
   if (!state.user) {
+    const viaApp = await signInFromApp()
+    if (viaApp === 'link-sent') return
+    if (viaApp) { showListingForm(); return }
     wantsToSubmit = true
     authSection.classList.remove('hidden'); authSection.scrollIntoView({ behavior:'smooth' })
     showToast('Log in or create a free account to submit your product', true); return
@@ -283,8 +299,11 @@ const afterSignIn = () => {
 registerForm.addEventListener('submit', async (e) => {
   e.preventDefault()
   try {
-    await api('/api/mp/auth/register', { method:'POST', body:JSON.stringify(Object.fromEntries(new FormData(registerForm).entries())) })
+    const d = await api('/api/mp/auth/register', { method:'POST', body:JSON.stringify(Object.fromEntries(new FormData(registerForm).entries())) })
     registerForm.reset()
+    // An account already set up for this address (an exhibitor's, say): the server
+    // emailed a sign-in link rather than letting a password be set on it here.
+    if (d.link_sent) { showToast(d.message); return }
     // Registering signs you in. Someone creating an account here has come to list.
     wantsToSubmit = true
     await loadMe()
@@ -513,8 +532,9 @@ listingForm.addEventListener('submit', async (e) => {
 const init = async () => {
   await loadMe()
   // The event app's "List on AI Market" lands here with ?submit=true.
+  const viaApp = wantsToSubmit && !state.user ? await signInFromApp() : false
   if (wantsToSubmit && state.user) showListingForm()
-  else if (wantsToSubmit) { authSection.classList.remove('hidden'); setTimeout(() => authSection.scrollIntoView({ behavior:'smooth' }), 150) }
+  else if (wantsToSubmit && viaApp !== 'link-sent') { authSection.classList.remove('hidden'); setTimeout(() => authSection.scrollIntoView({ behavior:'smooth' }), 150) }
   // A sign-in link past its seven days lands here; the form below sends a fresh one.
   if (new URLSearchParams(window.location.search).get('signin') === 'expired' && !state.user) {
     authSection.classList.remove('hidden'); setTimeout(() => authSection.scrollIntoView({ behavior:'smooth' }), 150)

@@ -220,7 +220,7 @@ const INVITE_STATE = {
   live: { cls: 'dash-badge--green', icon: 'fa-circle-check', label: 'Listing live' },
   pending: { cls: 'dash-badge--yellow', icon: 'fa-clock', label: 'Listing in review' },
   invited: { cls: 'dash-badge--blue', icon: 'fa-paper-plane', label: 'Invited' },
-  registered: { cls: 'dash-badge--blue', icon: 'fa-user', label: 'Registered, no listing' },
+  registered: { cls: 'dash-badge--blue', icon: 'fa-user', label: 'Signed in, no listing' },
   new: { cls: '', icon: 'fa-circle', label: 'Not invited' },
 }
 const inviteBadge = (e) => {

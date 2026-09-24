@@ -30,6 +30,8 @@ type MarketplaceHooks = {
   // ensureExhibitorDelegate: every exhibitor is also a delegate. Gives the booth
   // contact an event-app pass under the booth email; null when there is no confirmed stand.
   ensureDelegate?: (c: any, x: { exhibitorId: number; email: string; company: string }) => Promise<{ attendeeId: number; created: boolean; upgraded: boolean } | null>
+  // sessionAttendee: who is signed in to the event app (its signed bai_session cookie).
+  attendeeOf?: (c: any) => Promise<{ id: number; email: string; name: string; company: string } | null>
 }
 let hooks: MarketplaceHooks = {}
 export const configureMarketplace = (h: MarketplaceHooks) => { hooks = { ...hooks, ...h } }
@@ -533,28 +535,76 @@ mp.post('/api/mp/auth/register', async (c) => {
   if (!EMAIL_RE.test(email)) return c.json({ error: 'Enter a valid email address' }, 400)
   if (password.length < 6) return c.json({ error: 'Password must be at least 6 characters' }, 400)
 
-  const existing = await c.env.DB.prepare('SELECT id, password_hash FROM mp_companies WHERE lower(email) = ? ORDER BY id LIMIT 1').bind(email).first() as any
+  const existing = await c.env.DB.prepare('SELECT id, company_name, role, password_hash FROM mp_companies WHERE lower(email) = ? ORDER BY id LIMIT 1').bind(email).first() as any
   if (existing && existing.password_hash) return c.json({ error: 'Email already registered' }, 400)
+  if (existing) {
+    // Made for an exhibitor from the booth record, or from an event-app sign-in, and
+    // never given a password. Registering used to claim it on the spot, so anyone who
+    // knew the booth email could take the account and the stage talk the event app
+    // publishes from it. The inbox is asked instead: a sign-in link goes to it.
+    if (existing.role !== 'admin') await mailSignInLink(c, existing, email)
+    return c.json({ success: true, link_sent: true, message: 'An account is already set up for this email address. We have emailed you a sign-in link: open it to continue, no password needed.' })
+  }
 
   const password_hash = await hashPassword(password)
-  let id: number
-  if (existing) {
-    // Made for an exhibitor from the booth record and not yet claimed: registering
-    // with that email claims it, keeping the booth link, rather than being refused.
-    await c.env.DB.prepare('UPDATE mp_companies SET company_name = ?, password_hash = ? WHERE id = ?').bind(company_name, password_hash, existing.id).run()
-    id = existing.id
-  } else {
-    const result = await c.env.DB.prepare(
-      'INSERT INTO mp_companies (company_name, email, password_hash) VALUES (?, ?, ?)'
-    ).bind(company_name, email, password_hash).run()
-    id = result.meta.last_row_id as number
-  }
+  const result = await c.env.DB.prepare(
+    'INSERT INTO mp_companies (company_name, email, password_hash) VALUES (?, ?, ?)'
+  ).bind(company_name, email, password_hash).run()
+  const id = result.meta.last_row_id as number
 
   // Signed straight in: registering used to end on "Please login", a second form
   // standing between a company and the listing form it came for.
   c.header('Set-Cookie', mpSessionCookie(await signSession(c, id)))
   notifyCompanyWelcome(c, company_name, email)
-  return c.json({ success: true, id, claimed: !!existing, user: { id, company_name, email, role: 'company' } })
+  return c.json({ success: true, id, user: { id, company_name, email, role: 'company' } })
+})
+
+// One sign-in link per account every two minutes, so no form can flood an inbox.
+const mailSignInLink = async (c: any, company: { id: number; company_name: string }, email: string) => {
+  const recent = await c.env.DB.prepare(
+    "SELECT 1 AS hit FROM admin_audit WHERE action = 'marketplace.signin-link' AND entity = 'mp_company' AND entity_id = ? AND created_at > datetime('now', '-2 minutes')"
+  ).bind(String(company.id)).first().catch(() => null)
+  if (recent) return
+  const link = await signInLink(c, company.id)
+  const html = emailShell('Your marketplace sign-in link', `<p style="margin:0;font-size:14px;line-height:1.6">Click the button to sign in to the Bharat AI Marketplace as <strong>${htmlEsc(company.company_name)}</strong>. It works for seven days and needs no password.</p>
+    ${emailButton(link, 'Sign in to the marketplace')}
+    <p style="margin:16px 0 0;font-size:12px;color:#888">If you did not ask for this, you can ignore this email.</p>`)
+  inBackground(c, async () => {
+    const ok = await sendMail(c, 'signin-link', email, 'Your Bharat AI Marketplace sign-in link', html)
+    try { await hooks.audit?.(c, ok ? 'marketplace.signin-link' : 'marketplace.signin-link-failed', 'mp_company', company.id, undefined, { actor: 'marketplace', kind: 'system' }) } catch { /* the send stands either way */ }
+  })
+}
+
+// ── Signed in to the event app, signed in here ──
+// Every pass includes an AI Marketplace listing, so nobody signed in to the event app
+// should need a second account for it. Their app session is enough to MAKE an account
+// for an address that has none (no more than the open registration above allows) and
+// to come back into one made that way. It is never enough to enter an account made
+// any other way: registering in the app does not check the inbox, so the inbox is
+// asked instead, with a sign-in link.
+mp.post('/api/mp/auth/from-app', async (c) => {
+  let attendee: { id: number; email: string; name: string; company: string } | null = null
+  try { attendee = hooks.attendeeOf ? await hooks.attendeeOf(c) : null } catch { attendee = null }
+  const email = String(attendee?.email || '').trim().toLowerCase()
+  if (!attendee || !EMAIL_RE.test(email)) return c.json({ error: 'Not signed in to the event app' }, 401)
+
+  const find = () => c.env.DB.prepare('SELECT id, company_name, role, attendee_id FROM mp_companies WHERE lower(email) = ? ORDER BY id LIMIT 1').bind(email).first() as Promise<any>
+  let account = await find()
+  if (!account) {
+    const name = (String(attendee.company || '').trim() || String(attendee.name || '').trim() || 'My company').slice(0, 150)
+    try {
+      await c.env.DB.prepare("INSERT INTO mp_companies (company_name, email, password_hash, attendee_id) VALUES (?, ?, '', ?)").bind(name, email, attendee.id).run()
+    } catch { /* a second tap in the same instant: email is unique, read the row back */ }
+    account = await find()
+  }
+  if (!account) return c.json({ error: 'Could not open your marketplace account. Please try again.' }, 500)
+  if (account.role === 'admin') return c.json({ error: 'This is the marketplace admin account: sign in with its password.' }, 403)
+  if (Number(account.attendee_id) !== Number(attendee.id)) {
+    await mailSignInLink(c, account, email)
+    return c.json({ link_sent: true, message: 'You already have a marketplace account under this email. We have emailed you a sign-in link: open it to continue.' })
+  }
+  c.header('Set-Cookie', mpSessionCookie(await signSession(c, account.id)))
+  return c.json({ success: true, user: { id: account.id, company_name: account.company_name, email, role: 'company' } })
 })
 
 // "Email me a sign-in link": for an exhibitor whose account was made for them, and for
@@ -576,20 +626,7 @@ mp.post('/api/mp/auth/link', async (c) => {
   }
   // The admin account keeps its password; a mailed link would make its inbox the key.
   if (!company || company.role === 'admin') return reply()
-  // One link per account every two minutes, so the form cannot flood an inbox.
-  const recent = await c.env.DB.prepare(
-    "SELECT 1 AS hit FROM admin_audit WHERE action = 'marketplace.signin-link' AND entity = 'mp_company' AND entity_id = ? AND created_at > datetime('now', '-2 minutes')"
-  ).bind(String(company.id)).first().catch(() => null)
-  if (recent) return reply()
-
-  const link = await signInLink(c, company.id)
-  const html = emailShell('Your marketplace sign-in link', `<p style="margin:0;font-size:14px;line-height:1.6">Click the button to sign in to the Bharat AI Marketplace as <strong>${htmlEsc(company.company_name)}</strong>. It works for seven days and needs no password.</p>
-    ${emailButton(link, 'Sign in to the marketplace')}
-    <p style="margin:16px 0 0;font-size:12px;color:#888">If you did not ask for this, you can ignore this email.</p>`)
-  inBackground(c, async () => {
-    const ok = await sendMail(c, 'signin-link', email, 'Your Bharat AI Marketplace sign-in link', html)
-    try { await hooks.audit?.(c, ok ? 'marketplace.signin-link' : 'marketplace.signin-link-failed', 'mp_company', company.id, undefined, { actor: 'marketplace', kind: 'system' }) } catch { /* the send stands either way */ }
-  })
+  await mailSignInLink(c, company, email)
   return reply()
 })
 
@@ -602,6 +639,9 @@ mp.get('/marketplace/signin', async (c) => {
   // A password set since the link was sent changes the fingerprint and retires the link.
   if (!company || company.role === 'admin' || !safeEqual(link.fp, await linkFingerprint(c, String(company.password_hash || '')))) return c.redirect('/marketplace?signin=expired')
   c.header('Set-Cookie', mpSessionCookie(await signSession(c, company.id)))
+  // What tells the admin's Exhibitors list that someone has got in: an account made
+  // from the booth record never gets a password, so that cannot say it.
+  try { await hooks.audit?.(c, SIGNED_IN, 'mp_company', company.id, undefined, { actor: 'marketplace', kind: 'system' }) } catch { /* the sign-in stands either way */ }
   // An exhibitor with a stage slot has two things to do, the listing and the talk, and
   // the dashboard's to-do list shows both. Anyone else goes straight to the listing
   // form until they have a listing.
@@ -1166,12 +1206,15 @@ const INVITE_COOLDOWN_DAYS = 7
 // invited before accounts were made for them, and for anyone who has not got in.
 const LINK_SENT = 'marketplace.exhibitor-link-sent'
 const LINK_FAILED = 'marketplace.exhibitor-link-failed'
+// Written when a sign-in link is used (GET /marketplace/signin).
+const SIGNED_IN = 'marketplace.signed-in'
 
 // exhibitors.description holds internal import notes ("Owner: <staff name>"), so it
 // is never selected here and must never reach a page or an email.
 const INVITE_ROWS_SQL = (withUnsub: boolean) => `
   SELECT e.id, e.company_name, e.booth_number, e.contact_email, co.id AS account_id,
-    (co.password_hash IS NOT NULL AND co.password_hash <> '') AS account_claimed,
+    ((co.password_hash IS NOT NULL AND co.password_hash <> '')
+      OR EXISTS (SELECT 1 FROM admin_audit a WHERE a.action = '${SIGNED_IN}' AND a.entity = 'mp_company' AND a.entity_id = CAST(co.id AS TEXT))) AS signed_in,
     (SELECT COUNT(*) FROM mp_listings l WHERE l.exhibitor_id = e.id OR (co.id IS NOT NULL AND l.company_id = co.id)) AS listing_count,
     (SELECT COUNT(*) FROM mp_listings l WHERE (l.exhibitor_id = e.id OR (co.id IS NOT NULL AND l.company_id = co.id)) AND l.status = 'approved') AS live_count,
     (SELECT MAX(created_at) FROM admin_audit a WHERE a.action = '${INVITE_SENT}' AND a.entity = 'exhibitor' AND a.entity_id = CAST(e.id AS TEXT)) AS last_invited,
@@ -1182,10 +1225,10 @@ const INVITE_ROWS_SQL = (withUnsub: boolean) => `
   ORDER BY e.company_name COLLATE NOCASE`
 
 // The state says how far this exhibitor has got, so an invitation sent last week
-// does not hide the fact that they have since registered. Whether the button is
+// does not hide the fact that they have since signed in. Whether the button is
 // offered is a separate question, answered by can_invite. "Registered" means they
-// set a password: every invited exhibitor has an account made for them, so the
-// account's existence says nothing about whether they have done anything.
+// have used a sign-in link or set a password: every invited exhibitor has an account
+// made for them, so the account's existence says nothing about whether they came.
 const daysSince = (stamp: any): number | null => stamp ? (Date.now() - Date.parse(String(stamp).replace(' ', 'T') + 'Z')) / 86400000 : null
 
 const inviteState = (r: any) => {
@@ -1196,7 +1239,7 @@ const inviteState = (r: any) => {
     : r.listing_count ? 'pending'
     : !email ? 'no-email'
     : r.unsubscribed ? 'unsubscribed'
-    : r.account_claimed ? 'registered'
+    : r.signed_in ? 'registered'
     : days !== null ? 'invited'
     : 'new'
   // What blocks BOTH mails, then what blocks each on its own.
