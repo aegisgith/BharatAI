@@ -772,7 +772,7 @@ export function marketplaceAdminPageHTML(): string {
     </section>
   </div>
 
-  <script src="/static/marketplace-admin.js?v=5"></script>
+  <script src="/static/marketplace-admin.js?v=6"></script>
 </body>
 </html>`
 }

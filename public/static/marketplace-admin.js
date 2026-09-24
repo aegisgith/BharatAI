@@ -252,18 +252,33 @@ const inviteExhibitor = async (btn) => {
   } catch (err) { showToast(err.message, true); btn.disabled = false }
 }
 
+// One invitation per request with a gap between them, the way the panel sender on
+// /admin works: a burst of identical mail to the same domains lands in spam. The tab
+// has to stay open; clicking again stops after the one in flight. Each send still
+// goes through the server's own checks, so a stale row is refused, not emailed.
+const INVITE_GAP_MS = 30000
+let inviteRun = null
 const inviteAllBtn = document.getElementById('invite-all')
 if (inviteAllBtn) inviteAllBtn.addEventListener('click', async () => {
+  if (inviteRun) { inviteRun.stop = true; inviteAllBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Stopping after this one...'; return }
   const n = num(inviteAllBtn.dataset.count)
-  if (!n || !confirm(`Email ${n} exhibitor${n === 1 ? '' : 's'} an invitation to list on the AI Marketplace? Anyone already listing, already invited this week, or unsubscribed is skipped.`)) return
+  if (!n || !confirm(`Email ${n} exhibitor${n === 1 ? '' : 's'} an invitation to list on the AI Marketplace? They go out one at a time, ${INVITE_GAP_MS / 1000} seconds apart, so keep this tab open. Anyone already listing, invited this week, or unsubscribed is skipped.`)) return
   const html = inviteAllBtn.innerHTML
-  inviteAllBtn.disabled = true; inviteAllBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Sending...'
+  const run = inviteRun = { stop: false }
+  let sent = 0, failed = 0, i = 0
   try {
-    const r = await api('/api/mp/admin/exhibitor-invites/send-all', { method: 'POST', body: '{}' })
-    showToast(`${num(r.sent)} invitation${num(r.sent) === 1 ? '' : 's'} sent${num(r.failed) ? `, ${num(r.failed)} failed` : ''}`, !!num(r.failed))
-    await loadExhibitors()
+    const eligible = ((await api('/api/mp/admin/exhibitor-invites')).exhibitors || []).filter(e => e.can_invite)
+    for (const e of eligible) {
+      if (run.stop) break
+      i++
+      inviteAllBtn.innerHTML = `<i class="fas fa-spinner fa-spin mr-1"></i> Sending ${i} of ${eligible.length} · ${esc(e.company_name)} — click to stop`
+      try { await api(`/api/mp/admin/exhibitors/${num(e.id)}/invite`, { method: 'POST', body: '{}' }); sent++ }
+      catch (err) { failed++; showToast(`${e.company_name}: ${err.message}`, true) }
+      if (i < eligible.length && !run.stop) await new Promise(r => setTimeout(r, INVITE_GAP_MS))
+    }
+    showToast(`${sent} invitation${sent === 1 ? '' : 's'} sent${failed ? `, ${failed} failed` : ''}${run.stop ? ' (stopped)' : ''}`, !!failed)
   } catch (err) { showToast(err.message, true) }
-  finally { inviteAllBtn.innerHTML = html }
+  finally { inviteRun = null; inviteAllBtn.innerHTML = html; await loadExhibitors() }
 })
 
 const loadInquiries = async () => {

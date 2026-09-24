@@ -1134,20 +1134,9 @@ mp.post('/api/mp/admin/exhibitors/:id/invite', async (c) => {
   return c.json(r.body, r.status as any)
 })
 
-// Everyone eligible in one click. Capped so a mistaken double-click cannot turn into
-// an unbounded run, and each address still goes through the same checks.
-const INVITE_BATCH_CAP = 40
-mp.post('/api/mp/admin/exhibitor-invites/send-all', async (c) => {
-  const admin = await marketplaceAdmin(c)
-  if (!admin) return c.json({ error: 'Admin required' }, 403)
-  const eligible = (await exhibitorInviteRows(c)).filter(r => r.can_invite).slice(0, INVITE_BATCH_CAP)
-  let sent = 0, failed = 0
-  for (const row of eligible) {
-    const r = await inviteOne(c, admin, row)
-    if (r.status === 200) sent++; else failed++
-  }
-  return c.json({ success: true, sent, failed, attempted: eligible.length })
-})
+// There is deliberately no send-everyone route. The admin page sends one invitation
+// per request with a gap between them, as the panel sender on /admin does: a burst
+// of identical mail to the same domains lands in spam.
 
 mp.patch('/api/mp/admin/listings/:id', async (c) => {
   const admin = await marketplaceAdmin(c)

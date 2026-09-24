@@ -24,7 +24,7 @@ for (const p of ADMIN_GET) {
   const r = await hit(p);
   check('refuses anonymous: ' + p, r.status === 403, r.status + ' ' + r.text.slice(0, 60));
 }
-for (const p of ['/api/mp/admin/listings/1/remind', '/api/mp/admin/exhibitors/1/invite', '/api/mp/admin/exhibitor-invites/send-all', '/api/mp/admin/listings/bulk']) {
+for (const p of ['/api/mp/admin/listings/1/remind', '/api/mp/admin/exhibitors/1/invite', '/api/mp/admin/listings/bulk']) {
   const r = await hit(p, post({}));
   check('refuses anonymous: POST ' + p, r.status === 403, r.status + ' ' + r.text.slice(0, 60));
 }
