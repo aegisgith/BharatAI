@@ -29,7 +29,7 @@ type MarketplaceHooks = {
   audit?: (c: any, action: string, entity?: string, entityId?: any, detail?: any, actorOverride?: { actor: string; kind: string }) => Promise<void>
   // ensureExhibitorDelegate: every exhibitor is also a delegate. Gives the booth
   // contact an event-app pass under the booth email; null when there is no confirmed stand.
-  ensureDelegate?: (c: any, x: { exhibitorId: number; email: string; company: string }) => Promise<{ attendeeId: number; created: boolean; upgraded: boolean } | null>
+  ensureDelegate?: (c: any, x: { exhibitorId: number; email: string; company: string }) => Promise<{ attendeeId: number; created: boolean; upgraded: boolean; trusted: boolean } | null>
   // sessionAttendee: who is signed in to the event app (its signed bai_session cookie).
   attendeeOf?: (c: any) => Promise<{ id: number; email: string; name: string; company: string } | null>
 }
@@ -1265,8 +1265,18 @@ const exhibitorInviteRows = async (c: any) => {
 // Every exhibitor is also a delegate. The pass is made, or a Visitor Pass raised, as
 // the email goes out, so an email only ever mentions a pass that exists.
 const exhibitorDelegate = async (c: any, row: any) => {
-  try { return (await hooks.ensureDelegate?.(c, { exhibitorId: Number(row.id), email: String(row.contact_email || ''), company: String(row.company_name || '') })) || null }
+  const email = String(row.contact_email || '').trim().toLowerCase()
+  let pass: Awaited<ReturnType<NonNullable<MarketplaceHooks['ensureDelegate']>>> = null
+  try { pass = (await hooks.ensureDelegate?.(c, { exhibitorId: Number(row.id), email, company: String(row.company_name || '') })) || null }
   catch { return null }
+  // A pass made just now can only be entered with a code mailed to the booth address,
+  // so the app session behind it may open this exhibitor's marketplace account too
+  // (POST /api/mp/auth/from-app): "List on AI Market" in the app then just works.
+  if (pass?.trusted) {
+    await c.env.DB.prepare("UPDATE mp_companies SET attendee_id = ? WHERE lower(email) = ? AND attendee_id IS NULL AND role <> 'admin'")
+      .bind(pass.attendeeId, email).run().catch(() => {})
+  }
+  return pass
 }
 const delegateHowTo = (c: any) =>
   `open <a href="${htmlEsc(siteOrigin(c) + '/app')}" style="color:#FF6B00">bharataiinnovation.com/app</a> and sign in with this email address. We email you a code, so there is nothing to register.`

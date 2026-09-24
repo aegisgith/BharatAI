@@ -245,7 +245,12 @@ app.get('/api/admin/audit', async (c) => {
 //
 // Not through POST /api/admin/attendees: an Exhibitor badge there also inserts an
 // exhibitors row, which would duplicate the exhibitor this came from.
-async function ensureExhibitorDelegate(c: any, x: { exhibitorId: number; email: string; company: string }): Promise<{ attendeeId: number; created: boolean; upgraded: boolean } | null> {
+//
+// trusted: this call made the row, and the app only signs people in with a code
+// mailed to the address, so whoever holds a session for it has the booth inbox. The
+// marketplace links the exhibitor's account to it on that basis, and on no other: a
+// row that already existed may have been registered by anyone, unverified.
+async function ensureExhibitorDelegate(c: any, x: { exhibitorId: number; email: string; company: string }): Promise<{ attendeeId: number; created: boolean; upgraded: boolean; trusted: boolean } | null> {
   const email = String(x.email || '').trim().toLowerCase()
   if (!email || !x.exhibitorId) return null
   // A held or released stand is not a sale, so it carries no pass.
@@ -293,7 +298,7 @@ async function ensureExhibitorDelegate(c: any, x: { exhibitorId: number; email: 
     await audit(c, 'attendee.create', 'attendee', attendeeId, { name, email, badge_type: 'Exhibitor', source: 'exhibitor', exhibitor_id: x.exhibitorId })
   }
   await c.env.DB.prepare('UPDATE exhibitors SET attendee_id = ? WHERE id = ? AND attendee_id IS NULL').bind(attendeeId, x.exhibitorId).run().catch(() => {})
-  return { attendeeId, created, upgraded }
+  return { attendeeId, created, upgraded, trusted: created && await verifiedLoginEnabled(c) }
 }
 
 // Who is signed in to the event app, from the same signed cookie every attendee
