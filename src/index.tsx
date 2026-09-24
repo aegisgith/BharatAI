@@ -1038,7 +1038,7 @@ const CAMPUS_PANELS: Record<string, CampusPanel> = {
     hostLogo: '',
     speakers: [
       { name: 'Prof. Sougata Mukherjea', role: 'Professor of Practice, Computer Technology, IIT Delhi' },
-      { name: 'Dr. Buddha Chandrasekhar', role: 'Chief Coordinating Officer, AICTE, Ministry of Education, Government of India' },
+      { name: 'Dr. Buddha Chandrashekhar', role: 'CEO, Anuvadini AI; Chief Coordinating Officer, AICTE, Ministry of Education' },
       { name: 'Madhvendra Singh', role: 'Chief Executive Officer, Electronics Sector Skills Council of India (ESSCI)' },
       { name: 'Dr. Rajkumar Upadhyay', role: 'CEO & Chairman, Board of Directors, C-DOT' },
       { name: 'Parna Ghosh', role: 'President, Group CIO & Data Protection Officer, Uno Minda' },
