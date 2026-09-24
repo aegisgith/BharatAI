@@ -45,7 +45,7 @@ Secrets, claim codes and conference registration totals are deliberately **not**
 
 **Deploy:** `git push origin main` → Cloudflare Pages builds and deploys (usually 1–5 min; one build failed for no code reason on 17 Sep and the next succeeded). Check with `npx wrangler pages deployment list --project-name=bharatai-networking`.
 
-**Migrations applied to production (all confirmed 17 Sep 2026):**
+**Migrations applied to production (0040–0043 confirmed 17 Sep 2026, 0044 applied 24 Sep):**
 
 | Migration | Adds |
 |---|---|
@@ -53,8 +53,9 @@ Secrets, claim codes and conference registration totals are deliberately **not**
 | 0041_main_event_consent | `attendees.main_event` (1 = conference registrant, 0 = panel only / declined), `main_event_answered_at` |
 | 0042_consent_and_hot_indexes | `attendees.marketing_consent`, `attendees.unsubscribed_at`, indexes on `(event_id, name, id)`, `unsubscribed_at`, `messages(receiver_id, is_read)` |
 | 0043_panel_rsvp | `panel_registrations.rsvp_status`, `rsvp_at`, `reminder_sent_at`, `reminder_error` |
+| 0044_exhibitor_stage_talks | `innovation_talks.exhibitor_id`, `speaker_title`, `speaker_bio`, `speaker_photo_url`, `showcase`, `duration_min`, `starts_at`, `details_updated_at`, and `idx_innovation_talks_exhibitor` (one talk per exhibitor). **Do not run it again**: `ADD COLUMN` is not idempotent, so a second run errors at its first line. Backup taken just before: `backup-pre-0044-2026-09-24.sql` |
 
-**Written, not yet applied (24 Sep):** `0044_exhibitor_stage_talks` adds `innovation_talks.exhibitor_id`, `speaker_title`, `speaker_bio`, `speaker_photo_url`, `showcase`, `duration_min`, `starts_at`, `details_updated_at` and a partial unique index (one talk per exhibitor). Additive; `ADD COLUMN` is not idempotent, so run it once: a second run errors at the first line, and a run that fails halfway leaves the earlier columns in place. Until it runs (or if it half-runs), the stage-talk card, the admin Stage Talks list and the email's mention of the talk stay away and nothing fails; the "no such column" fallback in `GET /api/events/:id/innovation-talks` is what makes that true, so it stays after the migration lands. Run **before** "Send sign-in links" so those emails carry the stage-talk ask: `npx wrangler d1 execute bharatai-production --remote --file=migrations/0044_exhibitor_stage_talks.sql`.
+The "no such column" fallback in `GET /api/events/:id/innovation-talks` stays even though 0044 is applied: it is what keeps a database that is a migration behind (a fresh copy, a half-run file) answering instead of failing.
 
 **One-off SQL that writes to production is attacked before it is run**, against a scratch database shaped like the real one, twice, with the awkward rows seeded: `scripts/verify/check-import-sql.py` for a generated panel import, `scripts/verify/check-speaker-sql.py` for the speaker passes. Two real defects were caught that way on 24 Sep, neither visible on a reading. An `INSERT ... SELECT` without `OR IGNORE` aborts **the whole statement** when two source rows carry the same email, so one shared address means nobody gets a pass and the rest of the file never runs. An `UPDATE ... WHERE email IN (SELECT ...)` that does not constrain `event_id` reaches across events. Seed the duplicate address, the mixed case, the already-paid row and a second event, then run the file twice.
 
@@ -224,7 +225,7 @@ Still to do: `hostLogo` (file in `public/images/campus/`); a claim code in `app_
 
 ## 13. Open items (reviewed 17 Sep, not done)
 - Cloudflare WAF rate-limit rules on registration, inquiries and booth requests (dashboard, not code).
-- **`MP_SESSION_SECRET` is not set in production** (checked 24 Sep), so marketplace exhibitor sessions and sign-in links are signed with `ADMIN_SECRET`. Set it with `npx wrangler pages secret put MP_SESSION_SECRET --project-name bharatai-networking`. Setting it invalidates exhibitor cookies and any outstanding sign-in link, so do it before a batch of links goes out, not after.
+- **`MP_SESSION_SECRET` is set in production** (24 Sep, before any exhibitor sign-in link went out; the redeploy that attached it is `0646ece`). Marketplace sessions and sign-in links are signed with it, no longer with `ADMIN_SECRET`. Changing it again signs every exhibitor out and voids every sign-in link already emailed, so do not rotate it casually; a secret only reaches deployments made after it is set.
 - Move the Elastic Email key to a Worker secret (`npx wrangler pages secret put ELASTIC_EMAIL_API_KEY --project-name bharatai-networking`), then blank the `app_settings` row.
 - Badge desk offline mode; in-page QR scanning on iPhones (no `BarcodeDetector`).
 - Generate the pass QR locally instead of `api.qrserver.com` (a failure renders a pass without a QR).
