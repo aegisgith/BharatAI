@@ -21,10 +21,25 @@ const PANEL = {
   hashtags: '#BharatAIInnovation #CampusSeries', source: 'muni', claim_state: 'before', ended: false,
   rsvp_enabled: true, rsvp_open: true, rsvp_status: null, claimed_at: null,
 };
+// Exhibitor stage talks as the public route now returns them (no notes). Every free-text
+// field carries a payload, and three of the four photo URLs are ones the card must refuse.
+const XSS_NAME = '<img src=x onerror="window.__xssTalk=1">Riya Shah';
+const XSS_TITLE = '<scr' + 'ipt>window.__xssTitle=1<\/scr' + 'ipt>Head of AI';
+const XSS_SHOW = '<svg onload="window.__xssShow=1"></svg>Live demo of our edge box';
+const TALKS = [
+  { id: 1, event_id: 1, slot_no: 1, session_type: 'Morning', time_slot: '11:00 - 11:08', speaker_name: XSS_NAME, company: 'Acme Robotics',
+    topic: 'Vision on the factory floor', status: 'confirmed', speaker_title: XSS_TITLE, showcase: XSS_SHOW, speaker_photo_url: '/api/mp/uploads/77' },
+  { id: 2, event_id: 1, slot_no: 2, session_type: 'Morning', time_slot: '11:10 - 11:18', speaker_name: 'Second Speaker', company: 'Beta Ltd',
+    topic: 'Forecasting', status: 'confirmed', speaker_title: 'CTO', showcase: '', speaker_photo_url: 'javascript:alert(1)' },
+  { id: 3, event_id: 1, slot_no: 3, session_type: 'Afternoon', time_slot: '14:00 - 14:08', speaker_name: 'Third Speaker', company: 'Gamma',
+    topic: 'Logistics', status: 'confirmed', speaker_title: 'Founder', showcase: '', speaker_photo_url: 'https://evil.example/pixel.png' },
+  { id: 4, event_id: 1, slot_no: 4, session_type: 'Afternoon', time_slot: '14:10 - 14:18', speaker_name: 'Fourth Speaker', company: 'Delta',
+    topic: 'Claims', status: 'confirmed', speaker_title: 'Head of Data', showcase: '', speaker_photo_url: '/api/mp/uploads/77/../../secret' },
+];
 const freshState = () => ({
   user: { id: 5, event_id: 1, name: 'Riya Shah', email: 'riya@gmail.com', company: 'Dwarkadas J. Sanghvi College of Engineering', job_title: 'Student',
     badge_type: 'Visitor Pass', payment_status: 'paid', avatar_url: '', industry: 'Education & Academia', interests: 'ml', networking_goals: 'learn', city: 'Mumbai', mobile: '9876543210' },
-  panels: [{ ...PANEL }], mainEvent: 1, records: [], dbWrites: [],
+  panels: [{ ...PANEL }], mainEvent: 1, records: [], dbWrites: [], talks: TALKS.map(t => ({ ...t })),
 });
 let state = freshState();
 
@@ -57,6 +72,7 @@ const api = (method, p, body) => {
   if (p === '/api/__state') { if (method === 'POST') { if (body && body.reset) state = freshState(); Object.assign(state, body && body.set || {}); } return state; }
   if (method === 'POST' && p === '/api/events/1/attendees/register') return state.user;
   if (p === '/api/events/1') return {"id": 1, "title": "Bharat AI Innovation 2026", "description": "India's largest AI conference and exhibition bringing together 60+ speakers, 100+ exhibitors, and thousands of AI professionals. Two days of intensive learning, networking, and collaboration across 10+ focused tracks covering Generative AI, Healthcare AI, FinTech AI, Manufacturing AI, AgriTech, and more.", "event_type": "conference", "venue": "World Trade Center, Mumbai", "start_date": "2026-11-20", "end_date": "2026-11-21", "banner_url": null, "status": "upcoming", "max_attendees": 5000, "created_at": "2026-03-05 11:50:17"};
+  if (p === '/api/events/1/innovation-talks') return state.talks;
   if (p === '/api/events/1/sessions') return [{ id: 1, title: 'Keynote', start_time: '2099-11-20 10:00', end_time: '2099-11-20 11:00', hall: 'Homi J. Bhabha Hall', session_type: 'keynote' }];
   if (p === '/api/events/1/attendees') {
     if (/visitor/i.test(state.user.badge_type)) return { __headers: { 'X-Has-More': '0', 'X-Directory-Limited': '1' }, body: [

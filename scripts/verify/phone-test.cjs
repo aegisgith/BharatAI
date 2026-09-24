@@ -280,6 +280,33 @@ const tall = (page, sel) => page.evaluate((s) => { const e = document.querySelec
     await ctx.close();
   }
 
+  // ---------- 10. Exhibitor stage talks: nothing an exhibitor types can run ----------
+  {
+    const { ctx, page, errors } = await phone(browser, { canShare: true });
+    await page.goto(BASE + '/app', { waitUntil: 'domcontentloaded' });
+    await setState(page, { reset: true });
+    await page.evaluate(() => localStorage.setItem('agba_user', JSON.stringify({ id: 5, event_id: 1, name: 'Riya Shah', email: 'riya@gmail.com', badge_type: 'Visitor Pass' })));
+    await page.goto(BASE + '/app', { waitUntil: 'domcontentloaded' });
+    await sleep(3000);
+    await page.evaluate(() => switchTab('innovation'));
+    await sleep(2000);
+    const box = '#innovation-talks-content';
+    const text = await page.evaluate((s) => (document.querySelector(s) || {}).innerText || '', box);
+    check('10. the stage talks render on a phone', /Vision on the factory floor/.test(text), text.slice(0, 200));
+    const ran = await page.evaluate(() => [window.__xssTalk, window.__xssTitle, window.__xssShow]);
+    check('10. a script in the speaker name, title or showcase line does not run', ran.every(v => v === undefined), JSON.stringify(ran));
+    check('10. the payload is shown as text, not markup', /Head of AI/.test(text) && /Live demo of our edge box/.test(text), text.slice(0, 300));
+    const imgs = await page.evaluate((s) => Array.from(document.querySelectorAll(s + ' img')).map(i => i.getAttribute('src') || ''), box);
+    check('10. only an uploaded photo is shown', imgs.length === 1 && /\/api\/mp\/uploads\/77$/.test(imgs[0]), JSON.stringify(imgs));
+    check('10. a javascript:, an outside URL and a path trick are all refused', !imgs.some(s => /javascript:|evil\.example|\.\./.test(s)), JSON.stringify(imgs));
+    const html = await page.evaluate((s) => (document.querySelector(s) || {}).innerHTML || '', box);
+    check('10. no injected tag survives into the markup', !/<img[^>]+onerror|<svg[^>]+onload|<script/i.test(html), (html.match(/<(img|svg|script)[^>]*>/gi) || []).slice(0, 3).join(' '));
+    check('10. the schedule fits a 390px phone', await noOverflow(page), 'overflow');
+    await page.screenshot({ path: SHOTS + '/10-stage-talks.png', fullPage: false });
+    check('10. no JavaScript errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+    await ctx.close();
+  }
+
   await browser.close();
   console.log(fails ? `\n${fails} FAILED` : '\nall phone and admin checks passed');
   process.exit(fails ? 1 : 0);
