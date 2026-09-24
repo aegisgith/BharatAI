@@ -293,6 +293,18 @@ registerForm.addEventListener('submit', async (e) => {
   } catch (err) { showToast(err.message, true) }
 })
 
+// "Email me a sign-in link": the same reply whether or not the address is known.
+const linkForm = document.getElementById('link-form')
+if (linkForm) linkForm.addEventListener('submit', async (e) => {
+  e.preventDefault()
+  const btn = linkForm.querySelector('button[type="submit"]'); if (btn) btn.disabled = true
+  try {
+    const d = await api('/api/mp/auth/link', { method:'POST', body:JSON.stringify(Object.fromEntries(new FormData(linkForm).entries())) })
+    showToast(d.message || 'If that address is known to us, a sign-in link is on its way.'); linkForm.reset()
+  } catch (err) { showToast(err.message, true) }
+  finally { if (btn) btn.disabled = false }
+})
+
 loginForm.addEventListener('submit', async (e) => {
   e.preventDefault()
   try {
@@ -503,6 +515,12 @@ const init = async () => {
   // The event app's "List on AI Market" lands here with ?submit=true.
   if (wantsToSubmit && state.user) showListingForm()
   else if (wantsToSubmit) { authSection.classList.remove('hidden'); setTimeout(() => authSection.scrollIntoView({ behavior:'smooth' }), 150) }
+  // A sign-in link past its seven days lands here; the form below sends a fresh one.
+  if (new URLSearchParams(window.location.search).get('signin') === 'expired' && !state.user) {
+    authSection.classList.remove('hidden'); setTimeout(() => authSection.scrollIntoView({ behavior:'smooth' }), 150)
+    showToast('That sign-in link has expired. Enter your email below and we will send a new one.', true)
+    const el = linkForm && linkForm.querySelector('input[name="email"]'); if (el) setTimeout(() => el.focus({ preventScroll: true }), 400)
+  }
   let view = 'grid'; try { view = localStorage.getItem('mpListingView') || 'grid' } catch {}
   setListingView(view)
   await loadListings()

@@ -136,6 +136,11 @@ export function marketplacePageHTML(): string {
           <input name="password" autocomplete="current-password" type="password" placeholder="Password" required>
           <button type="submit" class="mp-btn-primary">Login</button>
         </form>
+        <form id="link-form" class="mp-form mt-3">
+          <p class="text-xs text-slate-500 mb-1">Exhibiting with us, or forgotten your password? We will email you a sign-in link &mdash; no password needed.</p>
+          <input name="email" autocomplete="email" inputmode="email" autocapitalize="none" spellcheck="false" type="email" placeholder="Email address" required>
+          <button type="submit" class="mp-btn-secondary">Email me a sign-in link</button>
+        </form>
       </div>
       <div class="mp-auth-card">
         <h3><i class="fas fa-user-plus mr-2"></i>Register</h3>
@@ -389,7 +394,7 @@ export function marketplacePageHTML(): string {
     </div>
   </footer>
 
-  <script src="/static/marketplace-app.js?v=5"></script>
+  <script src="/static/marketplace-app.js?v=6"></script>
 </body>
 </html>`
 }

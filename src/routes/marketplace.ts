@@ -232,6 +232,29 @@ const verifySession = async (c: any, value: string): Promise<number | null> => {
 const mpSessionCookie = (value: string, maxAge = 604800) =>
   `mp_session=${value}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}`
 
+// ── Sign-in links ──
+// An exhibitor's account is made for them from the booth record, so the invitation
+// can sign them straight in - no form, no password - the way the campus panel emails
+// already do. The link is <id>.<exp>.<hmac>: good for seven days, bound to the
+// account by the signature, and it opens an ordinary session. Whoever the email is
+// forwarded to gets in as that company, which is usually the colleague meant to fill
+// the listing in; the panel links make the same trade.
+const SIGNIN_LINK_DAYS = 7
+const signInToken = async (c: any, companyId: number | string): Promise<string> => {
+  const exp = Math.floor(Date.now() / 1000) + SIGNIN_LINK_DAYS * 86400
+  const sig = await hmacHex(sessionSecret(c), `mplink:${companyId}.${exp}`)
+  return `${companyId}.${exp}.${sig}`
+}
+const verifySignInToken = async (c: any, token: string): Promise<number | null> => {
+  const secret = sessionSecret(c)
+  const [id, exp, sig] = String(token || '').split('.')
+  if (!secret || !/^\d+$/.test(id || '') || !/^\d+$/.test(exp || '') || !sig) return null
+  if (parseInt(exp, 10) * 1000 < Date.now()) return null
+  if (!safeEqual(sig, await hmacHex(secret, `mplink:${id}.${exp}`))) return null
+  return parseInt(id, 10)
+}
+const signInLink = async (c: any, companyId: number | string) => `${siteOrigin(c)}/marketplace/signin?t=${await signInToken(c, companyId)}`
+
 // ── Helpers ──
 const generateSlug = (text: string) =>
   (text || '').toLowerCase().trim()
@@ -379,6 +402,22 @@ const findExhibitorByEmail = async (c: any, email: string) => {
   } catch { return null }
 }
 
+// The account behind an invitation, made from the booth record with no password. The
+// sign-in link opens it, and "Create Account" with the same email claims it (sets a
+// password) instead of being refused as already registered.
+const ensureExhibitorAccount = async (c: any, exhibitor: { id: number; company_name: string; contact_email: string }): Promise<number | null> => {
+  const email = String(exhibitor.contact_email || '').trim().toLowerCase()
+  if (!email) return null
+  const existing = await c.env.DB.prepare('SELECT id, exhibitor_id FROM mp_companies WHERE lower(email) = ? ORDER BY id LIMIT 1').bind(email).first() as any
+  if (existing) {
+    if (!existing.exhibitor_id) await c.env.DB.prepare('UPDATE mp_companies SET exhibitor_id = ? WHERE id = ?').bind(exhibitor.id, existing.id).run()
+    return existing.id
+  }
+  const ins = await c.env.DB.prepare('INSERT INTO mp_companies (company_name, email, password_hash, exhibitor_id) VALUES (?, ?, ?, ?)')
+    .bind(String(exhibitor.company_name || 'Exhibitor').trim().slice(0, 150), email, '', exhibitor.id).run()
+  return ins.meta.last_row_id as number
+}
+
 const resolveExhibitor = async (c: any, company: any) => {
   if (company.exhibitor_id) {
     const linked = await c.env.DB.prepare('SELECT id, company_name, booth_number FROM exhibitors WHERE id = ?').bind(company.exhibitor_id).first().catch(() => null)
@@ -478,20 +517,76 @@ mp.post('/api/mp/auth/register', async (c) => {
   if (!EMAIL_RE.test(email)) return c.json({ error: 'Enter a valid email address' }, 400)
   if (password.length < 6) return c.json({ error: 'Password must be at least 6 characters' }, 400)
 
-  const existing = await c.env.DB.prepare('SELECT id FROM mp_companies WHERE lower(email) = ?').bind(email).first()
-  if (existing) return c.json({ error: 'Email already registered' }, 400)
+  const existing = await c.env.DB.prepare('SELECT id, password_hash FROM mp_companies WHERE lower(email) = ? ORDER BY id LIMIT 1').bind(email).first() as any
+  if (existing && existing.password_hash) return c.json({ error: 'Email already registered' }, 400)
 
   const password_hash = await hashPassword(password)
-  const result = await c.env.DB.prepare(
-    'INSERT INTO mp_companies (company_name, email, password_hash) VALUES (?, ?, ?)'
-  ).bind(company_name, email, password_hash).run()
-  const id = result.meta.last_row_id
+  let id: number
+  if (existing) {
+    // Made for an exhibitor from the booth record and not yet claimed: registering
+    // with that email claims it, keeping the booth link, rather than being refused.
+    await c.env.DB.prepare('UPDATE mp_companies SET company_name = ?, password_hash = ? WHERE id = ?').bind(company_name, password_hash, existing.id).run()
+    id = existing.id
+  } else {
+    const result = await c.env.DB.prepare(
+      'INSERT INTO mp_companies (company_name, email, password_hash) VALUES (?, ?, ?)'
+    ).bind(company_name, email, password_hash).run()
+    id = result.meta.last_row_id as number
+  }
 
   // Signed straight in: registering used to end on "Please login", a second form
   // standing between a company and the listing form it came for.
-  c.header('Set-Cookie', mpSessionCookie(await signSession(c, id as number)))
+  c.header('Set-Cookie', mpSessionCookie(await signSession(c, id)))
   notifyCompanyWelcome(c, company_name, email)
-  return c.json({ success: true, id, user: { id, company_name, email, role: 'company' } })
+  return c.json({ success: true, id, claimed: !!existing, user: { id, company_name, email, role: 'company' } })
+})
+
+// "Email me a sign-in link": for an exhibitor whose account was made for them, and for
+// anyone who has forgotten a password. The reply is the same whether or not the
+// address is known, so the form cannot be used to find out who has an account.
+mp.post('/api/mp/auth/link', async (c) => {
+  const body = await c.req.json().catch(() => ({})) as any
+  const email = String(body.email || '').trim().toLowerCase()
+  if (!EMAIL_RE.test(email)) return c.json({ error: 'Enter a valid email address' }, 400)
+  const reply = () => c.json({ success: true, message: 'If that address has a marketplace account or a booth booking, a sign-in link is on its way.' })
+
+  let company = await c.env.DB.prepare('SELECT id, company_name, role FROM mp_companies WHERE lower(email) = ? ORDER BY id LIMIT 1').bind(email).first() as any
+  if (!company) {
+    const ex = await findExhibitorByEmail(c, email)
+    if (ex) {
+      const id = await ensureExhibitorAccount(c, { id: ex.id, company_name: ex.company_name, contact_email: email })
+      if (id) company = { id, company_name: ex.company_name, role: 'company' }
+    }
+  }
+  // The admin account keeps its password; a mailed link would make its inbox the key.
+  if (!company || company.role === 'admin') return reply()
+  // One link per account every two minutes, so the form cannot flood an inbox.
+  const recent = await c.env.DB.prepare(
+    "SELECT 1 AS hit FROM admin_audit WHERE action = 'marketplace.signin-link' AND entity = 'mp_company' AND entity_id = ? AND created_at > datetime('now', '-2 minutes')"
+  ).bind(String(company.id)).first().catch(() => null)
+  if (recent) return reply()
+
+  const link = await signInLink(c, company.id)
+  const html = emailShell('Your marketplace sign-in link', `<p style="margin:0;font-size:14px;line-height:1.6">Click the button to sign in to the Bharat AI Marketplace as <strong>${htmlEsc(company.company_name)}</strong>. It works for seven days and needs no password.</p>
+    ${emailButton(link, 'Sign in to the marketplace')}
+    <p style="margin:16px 0 0;font-size:12px;color:#888">If you did not ask for this, you can ignore this email.</p>`)
+  inBackground(c, async () => {
+    const ok = await sendMail(c, 'signin-link', email, 'Your Bharat AI Marketplace sign-in link', html)
+    try { await hooks.audit?.(c, ok ? 'marketplace.signin-link' : 'marketplace.signin-link-failed', 'mp_company', company.id, undefined, { actor: 'marketplace', kind: 'system' }) } catch { /* the send stands either way */ }
+  })
+  return reply()
+})
+
+// Where a sign-in link lands. A bad or expired link goes back to the marketplace
+// with a flag the page turns into "ask for a fresh one".
+mp.get('/marketplace/signin', async (c) => {
+  const id = await verifySignInToken(c, c.req.query('t') || '')
+  const company = id ? await c.env.DB.prepare('SELECT id, role FROM mp_companies WHERE id = ?').bind(id).first() as any : null
+  if (!company || company.role === 'admin') return c.redirect('/marketplace?signin=expired')
+  c.header('Set-Cookie', mpSessionCookie(await signSession(c, company.id)))
+  // Straight to the listing form; a company that already has a listing lands on its dashboard.
+  const has = await c.env.DB.prepare('SELECT 1 AS hit FROM mp_listings WHERE company_id = ? LIMIT 1').bind(company.id).first()
+  return c.redirect(has ? '/marketplace/dashboard' : '/marketplace?submit=true')
 })
 
 mp.post('/api/mp/auth/login', async (c) => {
@@ -507,6 +602,8 @@ mp.post('/api/mp/auth/login', async (c) => {
   ).bind(email).first() as any
 
   if (!company) return c.json({ error: 'Invalid email or password' }, 401)
+  // An account made for an exhibitor that nobody has claimed has no password to check.
+  if (!company.password_hash) return c.json({ error: 'This account has no password yet. Use "Email me a sign-in link" below, or create the account with this email to set one.' }, 401)
 
   const verdict = await verifyPassword(password, company.password_hash || '')
   if (verdict === 'bad') return c.json({ error: 'Invalid email or password' }, 401)
@@ -1049,6 +1146,7 @@ const INVITE_COOLDOWN_DAYS = 7
 // is never selected here and must never reach a page or an email.
 const INVITE_ROWS_SQL = (withUnsub: boolean) => `
   SELECT e.id, e.company_name, e.booth_number, e.contact_email, co.id AS account_id,
+    (co.password_hash IS NOT NULL AND co.password_hash <> '') AS account_claimed,
     (SELECT COUNT(*) FROM mp_listings l WHERE l.exhibitor_id = e.id OR (co.id IS NOT NULL AND l.company_id = co.id)) AS listing_count,
     (SELECT COUNT(*) FROM mp_listings l WHERE (l.exhibitor_id = e.id OR (co.id IS NOT NULL AND l.company_id = co.id)) AND l.status = 'approved') AS live_count,
     (SELECT MAX(created_at) FROM admin_audit a WHERE a.action = '${INVITE_SENT}' AND a.entity = 'exhibitor' AND a.entity_id = CAST(e.id AS TEXT)) AS last_invited,
@@ -1059,7 +1157,9 @@ const INVITE_ROWS_SQL = (withUnsub: boolean) => `
 
 // The state says how far this exhibitor has got, so an invitation sent last week
 // does not hide the fact that they have since registered. Whether the button is
-// offered is a separate question, answered by can_invite.
+// offered is a separate question, answered by can_invite. "Registered" means they
+// set a password: every invited exhibitor has an account made for them, so the
+// account's existence says nothing about whether they have done anything.
 const inviteState = (r: any) => {
   const email = String(r.contact_email || '').trim()
   const days = r.last_invited ? (Date.now() - Date.parse(String(r.last_invited).replace(' ', 'T') + 'Z')) / 86400000 : null
@@ -1067,7 +1167,7 @@ const inviteState = (r: any) => {
     : r.listing_count ? 'pending'
     : !email ? 'no-email'
     : r.unsubscribed ? 'unsubscribed'
-    : r.account_id ? 'registered'
+    : r.account_claimed ? 'registered'
     : days !== null ? 'invited'
     : 'new'
   if (!email) return { state, can_invite: false, reason: 'No email address on file' }
@@ -1091,12 +1191,19 @@ const exhibitorInviteRows = async (c: any) => {
 
 const sendExhibitorInvite = async (c: any, row: any): Promise<boolean> => {
   const booth = String(row.booth_number || '').trim()
+  // The account is made here, so the button signs them in. If that fails for any
+  // reason the button falls back to the listing form, where the same email still works.
+  let accountId: number | null = null
+  try { accountId = await ensureExhibitorAccount(c, { id: Number(row.id), company_name: row.company_name, contact_email: row.contact_email }) } catch { accountId = null }
+  const href = accountId ? await signInLink(c, accountId) : siteOrigin(c) + '/marketplace?submit=true'
   const body = `<p style="margin:0 0 12px;font-size:14px;line-height:1.6">You are exhibiting at Bharat AI Innovation 2026 (20-21 November, World Trade Center, Mumbai), and your booth includes a free listing on the event's AI Marketplace, where buyers browse AI products before and during the show.</p>
     <p style="margin:0 0 12px;font-size:14px;line-height:1.6">Your listing is public on bharataiinnovation.com and in the event app attendees use to plan who to meet, and it stays online after the show.</p>
-    <p style="margin:0 0 12px;font-size:14px;line-height:1.6">It takes about five minutes: create an account, describe your product, add a logo and an image. We review every listing and email you as soon as it is live.</p>
-    <p style="margin:0;font-size:14px;line-height:1.6">Please register with this email address &mdash; your booth number${booth ? ` (Booth ${htmlEsc(booth)})` : ''} is then added to your listing automatically, so visitors can find you at the venue.</p>
-    ${emailButton(siteOrigin(c) + '/marketplace?submit=true', 'List your AI product')}
-    <p style="margin:16px 0 0;font-size:12px;color:#888">If you would rather not receive marketplace emails, reply to this message and we will stop.</p>`
+    <p style="margin:0 0 12px;font-size:14px;line-height:1.6">It takes about five minutes: the button below signs you in &mdash; no password needed &mdash; then describe your product and add a logo and an image. We review every listing and email you as soon as it is live.</p>
+    <p style="margin:0;font-size:14px;line-height:1.6">${accountId
+      ? `Your account is under this email address${booth ? `, with Booth ${htmlEsc(booth)} already on it` : ''}, so visitors can find you at the venue.`
+      : `Please register with this email address &mdash; your booth number${booth ? ` (Booth ${htmlEsc(booth)})` : ''} is then added to your listing automatically, so visitors can find you at the venue.`}</p>
+    ${emailButton(href, accountId ? 'Sign in and list your product' : 'List your AI product')}
+    <p style="margin:16px 0 0;font-size:12px;color:#888">${accountId ? 'The button works for seven days. After that, choose "Email me a sign-in link" on bharataiinnovation.com/marketplace and a fresh one is sent to this address. ' : ''}If you would rather not receive marketplace emails, reply to this message and we will stop.</p>`
   return sendMail(c, 'exhibitor-invite', String(row.contact_email).trim(), 'Your booth includes a free AI Marketplace listing', emailShell('Your free AI Marketplace listing', body))
 }
 

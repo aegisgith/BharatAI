@@ -12,7 +12,7 @@ const ctx = { waitUntil() {}, passThroughOnException() {} };
 const base = 'https://bharataiinnovation.com';
 const hit = async (path, init) => {
   const res = await worker.fetch(new Request(base + path, init), env, ctx);
-  return { status: res.status, text: await res.text() };
+  return { status: res.status, h: Object.fromEntries(res.headers), text: await res.text() };
 };
 const post = (body, auth) => ({ method: 'POST', headers: { 'Content-Type': 'application/json', ...(auth ? { Authorization: 'Bearer smoke-secret' } : {}) }, body: JSON.stringify(body || {}) });
 let fails = 0;
@@ -56,6 +56,14 @@ check('login required: uploads', r.status === 401, r.status);
 r = await hit('/api/mp/auth/me', { headers: { Cookie: 'mp_session=1' } });
 check('an unsigned session cookie is nobody', r.status === 200 && JSON.parse(r.text).user === null, r.text.slice(0, 80));
 
+// ---- sign-in links: refused before the database is consulted ----
+r = await hit('/marketplace/signin', { redirect: 'manual' });
+check('sign-in landing without a token bounces to the marketplace', r.status === 302 && r.h.location === '/marketplace?signin=expired' && !r.h['set-cookie'], r.status + ' ' + r.h.location);
+r = await hit('/marketplace/signin?t=1.4102444800.deadbeef', { redirect: 'manual' });
+check('a forged sign-in token sets no session', r.status === 302 && !r.h['set-cookie'], r.status);
+r = await hit('/api/mp/auth/link', post({ email: 'not-an-email' }));
+check('sign-in link request rejects a bad address', r.status === 400, r.status);
+
 // ---- input rules that must not need a database ----
 r = await hit('/api/mp/auth/register', post({ company_name: 'A', email: 'not-an-email', password: 'secret123' }));
 check('register rejects a bad email address', r.status === 400, r.status + ' ' + r.text.slice(0, 60));
@@ -69,7 +77,7 @@ check('a non-numeric listing id is not found', r.status === 404, r.status);
 // ---- pages ----
 r = await hit('/marketplace');
 check('/marketplace renders', r.status === 200 && r.text.includes('<html'), r.status);
-for (const marker of ['marketplace-app.js?v=', 'open-listing-button', 'listings-container']) {
+for (const marker of ['marketplace-app.js?v=', 'open-listing-button', 'listings-container', 'id="link-form"']) {
   check('/marketplace carries ' + marker, r.text.includes(marker), 'missing');
 }
 r = await hit('/marketplace/admin');
