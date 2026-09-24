@@ -1,6 +1,6 @@
 # Bharat AI Innovation platform — handbook
 
-Last updated **17 September 2026**. Read this before changing `src/index.tsx`, the campus pages, or anything that emails attendees. It records what exists, why, and how to verify it, so the next session does not have to rediscover it.
+Last updated **24 September 2026**. Read this before changing `src/index.tsx`, the campus pages, or anything that emails attendees. It records what exists, why, and how to verify it, so the next session does not have to rediscover it.
 
 Secrets, claim codes and conference registration totals are deliberately **not** in this file (the repo is on GitHub, and the registration count is withheld from the public until it passes 5,000).
 
@@ -102,15 +102,19 @@ Playwright comes from `scripts/verify/playwright.cjs` (local `playwright-core`, 
 ### Configuration
 `CAMPUS_PANELS` in `src/index.tsx` (search `const CAMPUS_PANELS`). Each panel: `slug`, `title`, `titleShort`, `subtitle`, `host`, `hostShort`, `city`, `dateLabel`, `dateShort`, `timeLabel`, `venue`, `pageUrl`, `startsAt`/`endsAt`, `claimOpensAt`/`claimClosesAt` (ISO with `+05:30`), `hostLogo`, `speakers`, `hashtags`, `hostLike` (lower-case fragments of the host's name/email domain that mark a registrant as the host's own student; everyone else is a guest).
 
-Live panels: `djsanghvi-21sep` (DJ Sanghvi, Mon 21 Sep 2026, 11:00–12:30 IST, claims 12:00 21 Sep → 23:59 23 Sep) and `jnu-30sep` (JNU, Wed 30 Sep 2026, 15:00–16:30 IST; logo, speakers and claim code not set yet).
+Live panels: `djsanghvi-21sep` (DJ Sanghvi, Mon 21 Sep 2026, 11:00–12:30 IST, claims closed 23:59 on 23 Sep) and `jnu-30sep` (JNU, Wed 30 Sep 2026, 15:00–16:30 IST, claims 16:00 30 Sep → 23:59 2 Oct; seven panellists set on 23 Sep, `hostLogo` and claim code still empty).
 
 ### Registrations
 Every panel registrant is an `attendees` row tagged `registration_source = 'campus:<slug>'` (unless they registered for the conference first, which keeps their source) plus a `panel_registrations` row with `source` = `page` | `muni` | `linkedin`.
 
 - **Panel page form** (`campus-*.html`) posts to `/api/events/1/attendees/register` with the campus tag → panel row + `main_event = 0`.
 - **mUni Campus export (.xls):** `python scripts/import-muni-panel.py --xls "<file>" --panel <slug> --out import.sql [--new-code]`. mUni's .xls breaks xlrd's directory parser; the script reads the raw Workbook stream with `olefile`.
-- **LinkedIn Lead Gen export (.csv, actually tab-separated, Windows-1252):** `python scripts/import-linkedin-panel.py --tsv "<file>" --panel <slug> --out import-linkedin.sql` → also writes `import-linkedin.consent.sql` (apply after 0042). The LinkedIn form's marketing question is recorded in `marketing_consent`.
+- **LinkedIn Lead Gen export:** `python scripts/import-linkedin-panel.py --file "<export>" --panel <slug> --out import-linkedin.sql` → also writes `import-linkedin.consent.sql` (apply after 0042). The form's marketing question is recorded in `marketing_consent`.
+  - **Two live forms carry the same name.** "Registration form for Pre-Event of Bharat AI Innovation" exists twice: form `7503394077217042432` (imported to DJ Sanghvi on 17 Sep) and form `7503370180731846656` (imported to JNU on 24 Sep). Two downloads with the same file name can be different audiences, so read the `form_id` the script prints, not the file name.
+  - The delimiter varies: LinkedIn's own download is comma-separated UTF-8, and a file that has been through Excel is tab-separated Windows-1252 with `event_id` mangled into `7.50339E+18`. The script sniffs the header, so pass the file as it came.
+  - `--exclude-file <earlier export>` (repeatable) skips leads already imported, which is how to import only what a newer download added.
 - Both scripts are `INSERT OR IGNORE` on email and safe to re-run on a fresh export. The organiser runs the SQL files.
+- **Check any generated file before it is run:** `python scripts/verify/check-import-sql.py <import.sql>` applies it to a scratch database shaped like production, twice, and proves that each lead gets one attendee row and one panel row, that a person already in the database keeps their details and conference place, that nobody lands in the conference count, and that a second run changes nothing.
 
 ### Emails
 - **Confirmation** — `sendPanelConfirmationEmail()`: brand header (`emailBrandHeader`), host logo band, topic/date/time/venue/panellists, a 7-day, 5-use sign-in link that lands on the creative, and "Would you like to come to the main conference too?" with yes/no deep links. Admin → Overview → Campus panels: **Preview email**, **Send confirmations** (pumped 5 at a time, **Stop** parks the rest server-side, **Resume** un-parks only paused rows).
@@ -125,14 +129,17 @@ Every panel registrant is an `attendees` row tagged `registration_source = 'camp
 - After a claim: panel certificate (`generatePanelCertificate`) and the "I attended" creative (`panel_attended` variant).
 - Before: the "I'm attending" panel creative; the conference creative is a second tab, shown only after the November yes.
 
-### Runbook — DJ Sanghvi (21 Sep 2026)
-1. **Sat 19 Sep morning:** Admin → Overview → Campus panels → Preview reminder → Send "Are you coming?".
-2. **Sun 20 Sep evening:** download **Guests coming (for the college)** and send it to DJ Sanghvi if they need names at the gate.
-3. **Mon 21 Sep:** moderator shows the closing slide (image kept outside the repo); claims open 12:00.
-4. **Wed 23 Sep 23:59:** claims close; late claims come by email.
+### Runbook — the four steps for any panel
+1. **Two days before, morning:** Admin → Overview → Campus panels → Preview reminder → Send "Are you coming?".
+2. **The evening before:** download **Guests coming (for the college)** and send it to the host if they need names at the gate.
+3. **On the day:** the moderator shows the closing slide (image kept outside the repo); claims open at `claimOpensAt`.
+4. **`claimClosesAt`:** claims close; late claims come by email.
+
+**What happened at DJ Sanghvi (21 Sep 2026):** 433 registrations (270 mUni, 158 LinkedIn, 5 from the page) and all 433 confirmation emails went out. Steps 1, 3 and 4 were not used: **no "Are you coming?" send, no answers, and no attendance claims at all**, so nobody received a panel certificate and the claim window closed on 23 Sep. If certificates are still wanted, reopen `claimClosesAt` for that panel and send the code to the list. Plan the JNU run-up so the reminder and the slide actually happen.
 
 ### Checklist — JNU (30 Sep 2026)
-Add `hostLogo` (file in `public/images/campus/`) and `speakers` to `jnu-30sep`; import the registrant export with `--new-code`; draw the slide; send confirmations; send "Are you coming?" two days before.
+Done: seven panellists in `CAMPUS_PANELS`, the page and the home-page Pre-Event Speakers section, 127 LinkedIn leads prepared for import on 24 Sep.
+Still to do: `hostLogo` (file in `public/images/campus/`); a claim code in `app_settings` (`panel_claim_code:jnu-30sep`) and the closing slide from `make-panel-claim-slide.py`; send confirmations after the import; send "Are you coming?" on 28 Sep.
 
 ---
 
@@ -211,7 +218,13 @@ Add `hostLogo` (file in `public/images/campus/`) and `speakers` to `jnu-30sep`; 
 - Contrast of `text-gray-500/600` tokens; third-party avatar and favicon lookups; static Workshops tab.
 - `src/index.tsx` is one ~34,000-line file with no unit tests beyond `scripts/verify/`.
 
-## 14. Change log — 17 Sep 2026
+## 14. Change log
+
+**19–23 Sep 2026 (another session):** `815f518` `4eca44c` the 21 Sep creative · `5cc5f35` Nida Parkar off the DJ Sanghvi panel · `3ec52b3` `73a0290` `0796f22` site portraits · `900d201` a November speaker · `c9ffe7b` booth Innovation Talk slots · `7851712` the JNU seven-panellist line-up · `e538b57` the panel suites pick a panel that has not started · `12d9b3d` `70511f7` Pre-Event Speakers on the home and conference pages.
+
+**24 Sep 2026:** JNU LinkedIn import (127 leads from the second form), the import script reads either delimiter and takes `--exclude-file`, and `scripts/verify/check-import-sql.py` proves a generated import before it is run.
+
+**17 Sep 2026**
 Campus: `cfb33f8` panel import, claim, card, certificate · `e8d43cf` panellist headshots · `a228a6b` branded panel email, Stop/Preview/Resume · `78f316e` panel ≠ conference consent · `003d30b` conference card waits for yes · `99f27ed` campus form fixed · `73e8b03` "Are you coming?".
 Data separation and directory: `bf8dabc` conference-only numbers · `33ad421` free-pass directory teaser.
 Security, admin, app: `24dd57a` backups ignored · `75c7846` (contains the security batch, committed under a site message) · `2b14a71` icon font · `7d473b7` admin/ops merge · `d88d3f3` attendee app merge · `dda6efc` suppression wired · `801223e` static-page script check · `cea6af9` phones first.

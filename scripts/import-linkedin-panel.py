@@ -1,11 +1,22 @@
 #!/usr/bin/env python3
 """Turn a LinkedIn Lead Gen Form export into SQL for one campus panel.
 
-LinkedIn exports a tab-separated file (despite the .csv name) in Windows-1252,
-with one row per lead: First name, Last name, Email address, Company name, Job
-title, Country/Region, created_date/created_time, and the consent question
-"The event organizer may use the above information to send communications about
-their offerings" as TRUE/FALSE. There is no phone number and no city.
+LinkedIn exports one row per lead: First name, Last name, Email address, Company
+name, Job title, Country/Region, created_date/created_time, and the consent
+question "The event organizer may use the above information to send
+communications about their offerings" as TRUE/FALSE. There is no phone number
+and no city.
+
+The file is comma-separated in UTF-8 when downloaded from LinkedIn, and
+tab-separated in Windows-1252 once it has been through Excel (which also turns
+event_id and form_id into 7.50339E+18). Both are read here; the delimiter is
+sniffed from the header line, so pass the file as it came.
+
+Watch the form id, not the file name: there have been two live forms both named
+"Registration form for Pre-Event of Bharat AI Innovation", so two exports with
+the same name can be different audiences. --exclude-file skips leads that are
+already in another export, which is how to import only what a newer download
+added.
 
 Each lead becomes an attendee row tagged campus:<slug> with main_event = 0 - a
 panel registrant, NOT a conference registrant until they answer the question in
@@ -17,15 +28,18 @@ keep the person out of every non-transactional campaign.
 Safe to re-run: every insert is INSERT OR IGNORE on the email.
 
 Usage:
-    python scripts/import-linkedin-panel.py --tsv "leads.csv" --panel djsanghvi-21sep --out import-linkedin.sql
-Then:
+    python scripts/import-linkedin-panel.py --file "leads.csv" --panel jnu-30sep --out import-linkedin.sql
+    python scripts/import-linkedin-panel.py --file "new.csv" --exclude-file "imported.csv" --panel jnu-30sep --out top-up.sql
+Then, run by the organiser:
     npx wrangler d1 execute bharatai-production --remote --file=import-linkedin.sql
+    npx wrangler d1 execute bharatai-production --remote --file=import-linkedin.consent.sql
 """
 import argparse
 import collections
 import csv
 import datetime as dt
 import io
+import os
 import re
 import sys
 
@@ -43,6 +57,23 @@ def tidy(s):
     if s and (s.isupper() or s.islower()):
         s = ' '.join(w.capitalize() for w in s.split(' '))
     return s
+
+
+def read_rows(path):
+    """LinkedIn's own download is comma-separated UTF-8; an Excel round-trip makes it
+    tab-separated Windows-1252. Sniff the header line rather than assuming either."""
+    raw = open(path, 'rb').read()
+    try:
+        text = raw.decode('utf-8-sig')
+    except UnicodeDecodeError:
+        text = raw.decode('cp1252', errors='replace')
+    head = text.split('\n', 1)[0]
+    delim = '\t' if head.count('\t') >= head.count(',') else ','
+    return delim, list(csv.DictReader(io.StringIO(text), delimiter=delim))
+
+
+def clean_email(v):
+    return re.sub(r'[\s"]+', '', str(v or '')).lower().rstrip('.')
 
 
 def parse_when(date_s, time_s):
@@ -67,27 +98,40 @@ def parse_when(date_s, time_s):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('--tsv', required=True)
+    ap.add_argument('--tsv', '--csv', '--file', dest='tsv', required=True,
+                    help='the export as LinkedIn wrote it; comma or tab separated')
     ap.add_argument('--panel', required=True, choices=PANELS)
     ap.add_argument('--out', required=True)
     ap.add_argument('--drop-email', action='append', default=[])
+    ap.add_argument('--exclude-file', action='append', default=[],
+                    help='another export whose leads are already imported; repeatable')
     a = ap.parse_args()
 
-    raw = open(a.tsv, 'rb').read()
-    text = raw.decode('utf-8-sig') if raw.startswith(b'\xef\xbb\xbf') else raw.decode('cp1252', errors='replace')
-    rows = list(csv.DictReader(io.StringIO(text), delimiter='\t'))
+    delim, rows = read_rows(a.tsv)
     consent_col = next((k for k in rows[0].keys() if 'organizer may use' in k.lower()), None)
     drop = {e.strip().lower() for e in a.drop_email}
+    already = {}
+    for path in a.exclude_file:
+        for r in read_rows(path)[1]:
+            e = clean_email(r.get('Email address'))
+            if e:
+                already.setdefault(e, os.path.basename(path))
+    forms = sorted({(r.get('form_id') or '').strip() for r in rows})
+    print(f'{a.tsv}\n  separator {"tab" if delim == chr(9) else "comma"}, {len(rows)} leads, form id {", ".join(forms) or "(none)"}')
+    if already:
+        print(f'  excluding {len(already)} lead(s) listed in {len(a.exclude_file)} earlier export(s)')
 
     kept, dropped, seen = [], [], set()
     for r in rows:
-        email = re.sub(r'[\s"]+', '', (r.get('Email address') or '')).lower().rstrip('.')
+        email = clean_email(r.get('Email address'))
         name = tidy((r.get('First name') or '') + ' ' + (r.get('Last name') or ''))
         why = ''
         if str(r.get('test_lead', '')).upper() == 'TRUE':
             why = 'LinkedIn test lead'
         elif not re.match(r'^[^@\s]+@[^@\s]+\.[a-z]{2,}$', email):
             why = 'malformed email'
+        elif email in already:
+            why = 'already in ' + already[email]
         elif email in drop:
             why = 'dropped by --drop-email'
         elif any(d in email for d in DISPOSABLE):
@@ -129,7 +173,7 @@ def main():
         lines.append(
             f"INSERT OR IGNORE INTO panel_registrations (attendee_id, panel_slug, source, external_ref, registered_at) "
             f"SELECT id, {q(a.panel)}, 'linkedin', {q(ref)}, {q(p['when'])} "
-            f"FROM attendees WHERE event_id = {EVENT_ID} AND lower(email) = {q(p['email'])};"
+            f"FROM attendees WHERE event_id = {EVENT_ID} AND lower(email) = {q(p['email'])} ORDER BY id LIMIT 1;"
         )
     with open(a.out, 'w', encoding='utf-8', newline='\n') as f:
         f.write('\n'.join(lines) + '\n')
@@ -145,8 +189,13 @@ def main():
             f.write(f"UPDATE attendees SET marketing_consent = {p['consent']} WHERE event_id = {EVENT_ID} AND lower(email) = {q(p['email'])} AND unsubscribed_at IS NULL;\n")
 
     print(f'leads in export: {len(rows)}   kept: {len(kept)}   left out: {len(dropped)}')
-    for e, n, why in dropped:
-        print(f'  left out: {e}  ({n})  - {why}')
+    by_reason = collections.Counter(why for _, _, why in dropped)
+    for why, n in by_reason.most_common():
+        print(f'  left out ({n}): {why}')
+        for e, nm, w in [d for d in dropped if d[2] == why][:8]:
+            print(f'      {e}  ({nm})')
+        if n > 8:
+            print(f'      ... and {n - 8} more')
     c = collections.Counter(p['consent'] for p in kept)
     print(f'marketing consent: yes {c.get(1, 0)}, no {c.get(0, 0)}, unanswered {c.get(None, 0)}')
     print(f'wrote {a.out}  ({2 * len(kept)} inserts)')
