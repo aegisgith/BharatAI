@@ -60,7 +60,7 @@ Take a backup before any migration: `npx wrangler d1 export bharatai-production 
 
 ```
 npm run build          # must pass, including check-inline-js on public/*.html
-npm run verify         # local: 193 checks, starts and stops its own harnesses
+npm run verify         # local: every suite, starts and stops its own harnesses
 git push origin main   # deploy
 npm run verify:prod    # production, read-only, no credentials
 ```
@@ -70,13 +70,13 @@ npm run verify:prod    # production, read-only, no credentials
 | `smoke-routes.mjs attendee` (36) | Built worker: admin + desk route guards, security batch, attendee routes, markers present |
 | `smoke-directory-teaser.mjs` (24) | Free-pass teaser: 24 + 12 locked, no links, view tokens, profile rules, delegate/admin unchanged |
 | `smoke-panel-answers.mjs` (25) | `/panel-rsvp` signatures and scanner safety, app answer route, reminder pump, CSVs, closed after start |
-| `smoke-marketplace.mjs` (40) | AI marketplace gates, pages and exhibitor invites (added 24 Sep by the marketplace session) |
+| `smoke-marketplace.mjs` | AI marketplace gates, pages and paced exhibitor invites (owned by the marketplace session) |
 | `browser-delegate.cjs` via `app-harness.mjs` (18) | Delegate in `/app`: directory, chat, connect (apostrophe name), meet, Visitor gating, inbox, Back, Escape, no injected script runs |
 | `phone-test.cjs` via `phone-harness.mjs` (50) | Emulated Android phone: photo upload, creative share sheet + caption, in-app fallback, "Are you coming?", panel certificate, pass, November question, email answers through the real `/panel-rsvp` routes, directory, admin Campus panels block |
 | `prod-sweep.mjs` (33) | Production pages, headers, guards, caches, new routes |
 | `live-phone-check.cjs` (8) | Production on a phone: new functions present, no JS errors, forged link refused, campus forms (POST intercepted) |
 
-Any session may register a suite in `run-all.mjs`, so the total moves: 153 on 17 Sep, 193 on 24 Sep. Run it rather than trusting a number written anywhere, including here.
+Any session may register a suite in `run-all.mjs`, so the total moves on its own: 153 on 17 Sep, then 193 and 192 within one morning on 24 Sep. The per-suite counts above are a rough guide, not a contract. Run the command and read what it prints rather than trusting a number written anywhere, including here.
 
 Playwright comes from `scripts/verify/playwright.cjs` (local `playwright-core`, `$PLAYWRIGHT_CORE`, or the copy inside the global Playwright MCP install) and launches system Edge — no browser download needed.
 
