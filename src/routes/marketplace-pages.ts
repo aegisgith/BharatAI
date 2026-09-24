@@ -687,6 +687,7 @@ export function marketplaceAdminPageHTML(): string {
       <button class="dash-sidebar-item" data-section="listings"><i class="fas fa-boxes"></i> All Listings</button>
       <button class="dash-sidebar-item" data-section="pending"><i class="fas fa-clock"></i> Pending Review</button>
       <button class="dash-sidebar-item" data-section="inquiries"><i class="fas fa-envelope"></i> Inquiries</button>
+      <button class="dash-sidebar-item" data-section="exhibitors"><i class="fas fa-store"></i> Exhibitors</button>
       <button class="dash-sidebar-item" data-section="bulk"><i class="fas fa-upload"></i> Bulk Upload</button>
     </nav>
     <div class="dash-sidebar-footer">
@@ -736,6 +737,19 @@ export function marketplaceAdminPageHTML(): string {
       <div id="admin-inquiries"></div>
     </section>
 
+    <!-- Exhibitors -->
+    <section id="section-exhibitors" class="dash-section hidden">
+      <div class="dash-section-header"><h2><i class="fas fa-store mr-2"></i>Exhibitors</h2></div>
+      <div class="dash-card">
+        <p class="text-sm text-slate-400">A booth includes a free marketplace listing. Inviting emails the exhibitor's booth contact a link to the listing form; registering with that same address links their booth automatically. Each exhibitor is asked at most once a week, and anyone who has unsubscribed is skipped.</p>
+        <div class="flex gap-3 items-center flex-wrap mt-3">
+          <button id="invite-all" class="mp-btn-primary text-sm py-2 px-4"><i class="fas fa-paper-plane mr-1"></i> Invite everyone eligible</button>
+          <span id="invite-summary" class="text-sm text-slate-400"></span>
+        </div>
+      </div>
+      <div id="admin-exhibitors" class="mt-3"></div>
+    </section>
+
     <!-- Bulk Upload -->
     <section id="section-bulk" class="dash-section hidden">
       <div class="dash-section-header"><h2><i class="fas fa-upload mr-2"></i>Bulk Upload</h2></div>
@@ -758,7 +772,7 @@ export function marketplaceAdminPageHTML(): string {
     </section>
   </div>
 
-  <script src="/static/marketplace-admin.js?v=4"></script>
+  <script src="/static/marketplace-admin.js?v=5"></script>
 </body>
 </html>`
 }

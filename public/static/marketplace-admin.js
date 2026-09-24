@@ -62,7 +62,7 @@ const initAdmin = async () => {
       if (info) info.textContent = 'Marketplace Admin · signed in through event admin'
     }
     try { exhibitors = (await api('/api/mp/admin/exhibitors')).exhibitors || [] } catch { exhibitors = [] }
-    await Promise.all([loadStats(), loadAllListings(), loadPendingListings(), loadInquiries()])
+    await Promise.all([loadStats(), loadAllListings(), loadPendingListings(), loadInquiries(), loadExhibitors()])
     // The queue is what an admin comes here for; open it when there is something in it.
     if (num(document.getElementById('stat-pending').textContent) > 0) switchSection('pending')
   } catch { showToast('Failed to load', true) }
@@ -183,6 +183,8 @@ main.addEventListener('click', (e) => {
   if (del) deleteInquiry(del.getAttribute('data-delete-inquiry'))
   const remind = e.target.closest('[data-remind]')
   if (remind) sendReminder(remind)
+  const invite = e.target.closest('[data-invite]')
+  if (invite) inviteExhibitor(invite)
 })
 
 const sendReminder = async (btn) => {
@@ -198,6 +200,70 @@ const sendReminder = async (btn) => {
 main.addEventListener('change', (e) => {
   const sel = e.target.closest('[data-link-exhibitor]')
   if (sel) linkExhibitor(sel.getAttribute('data-link-exhibitor'), sel.value)
+})
+
+// ── Exhibitors ──
+// Who among the paid exhibitors has taken up the free listing, and who has not been
+// asked. The invitation is sent from here, one exhibitor or all eligible at once.
+const INVITE_STATE = {
+  'no-email': { cls: '', icon: 'fa-envelope-open', label: 'No email' },
+  unsubscribed: { cls: 'dash-badge--red', icon: 'fa-ban', label: 'Unsubscribed' },
+  live: { cls: 'dash-badge--green', icon: 'fa-circle-check', label: 'Listing live' },
+  pending: { cls: 'dash-badge--yellow', icon: 'fa-clock', label: 'Listing in review' },
+  invited: { cls: 'dash-badge--blue', icon: 'fa-paper-plane', label: 'Invited' },
+  registered: { cls: 'dash-badge--blue', icon: 'fa-user', label: 'Registered, no listing' },
+  new: { cls: '', icon: 'fa-circle', label: 'Not invited' },
+}
+const inviteBadge = (e) => {
+  const s = INVITE_STATE[e.state] || INVITE_STATE.new
+  return `<span class="dash-badge ${s.cls}"><i class="fa-solid ${s.icon}"></i> ${esc(s.label)}</span>`
+}
+
+const loadExhibitors = async () => {
+  const c = document.getElementById('admin-exhibitors'); if (!c) return
+  try {
+    const d = await api('/api/mp/admin/exhibitor-invites')
+    const rows = d.exhibitors || [], s = d.summary || {}
+    const sum = document.getElementById('invite-summary')
+    if (sum) sum.textContent = `${num(s.total)} exhibitors · ${num(s.live)} listing · ${num(s.can_invite)} can be invited now · ${num(s.no_email)} without an email address`
+    const btn = document.getElementById('invite-all')
+    if (btn) { btn.disabled = !num(s.can_invite); btn.dataset.count = String(num(s.can_invite)) }
+    if (!rows.length) { c.innerHTML = '<p class="text-slate-400">No exhibitors yet.</p>'; return }
+    c.innerHTML = `<div class="overflow-x-auto"><table class="dash-table"><thead><tr><th>Company</th><th>Booth</th><th>Booth contact</th><th>Status</th><th>Last invited</th><th>Actions</th></tr></thead><tbody>${rows.map(e => `<tr>
+      <td class="text-sm font-medium">${esc(e.company_name)}</td>
+      <td class="text-sm">${esc(e.booth_number || '—')}</td>
+      <td class="text-sm">${esc(e.contact_email || '—')}</td>
+      <td>${inviteBadge(e)}</td>
+      <td class="text-xs text-slate-400">${e.last_invited ? fmtDate(e.last_invited) : '—'}</td>
+      <td>${e.can_invite
+        ? `<button class="dash-action-btn" title="Email this exhibitor an invitation" data-invite="${num(e.id)}" data-company="${esc(e.company_name)}" data-email="${esc(e.contact_email || '')}"><i class="fas fa-paper-plane text-blue-400"></i></button>`
+        : `<span class="text-xs text-slate-500">${esc(e.reason || '')}</span>`}</td></tr>`).join('')}</tbody></table></div>`
+  } catch (err) { c.innerHTML = `<p class="text-rose-400">${esc(err.message)}</p>` }
+}
+
+const inviteExhibitor = async (btn) => {
+  const company = btn.getAttribute('data-company'), email = btn.getAttribute('data-email')
+  if (!confirm(`Email ${company} at ${email} an invitation to list on the AI Marketplace?`)) return
+  btn.disabled = true
+  try {
+    await api(`/api/mp/admin/exhibitors/${num(btn.getAttribute('data-invite'))}/invite`, { method: 'POST', body: '{}' })
+    showToast(`Invitation sent to ${company}`)
+    await loadExhibitors()
+  } catch (err) { showToast(err.message, true); btn.disabled = false }
+}
+
+const inviteAllBtn = document.getElementById('invite-all')
+if (inviteAllBtn) inviteAllBtn.addEventListener('click', async () => {
+  const n = num(inviteAllBtn.dataset.count)
+  if (!n || !confirm(`Email ${n} exhibitor${n === 1 ? '' : 's'} an invitation to list on the AI Marketplace? Anyone already listing, already invited this week, or unsubscribed is skipped.`)) return
+  const html = inviteAllBtn.innerHTML
+  inviteAllBtn.disabled = true; inviteAllBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Sending...'
+  try {
+    const r = await api('/api/mp/admin/exhibitor-invites/send-all', { method: 'POST', body: '{}' })
+    showToast(`${num(r.sent)} invitation${num(r.sent) === 1 ? '' : 's'} sent${num(r.failed) ? `, ${num(r.failed)} failed` : ''}`, !!num(r.failed))
+    await loadExhibitors()
+  } catch (err) { showToast(err.message, true) }
+  finally { inviteAllBtn.innerHTML = html }
 })
 
 const loadInquiries = async () => {
@@ -264,7 +330,7 @@ if (bulkCancelBtn) bulkCancelBtn.addEventListener('click', () => { bulkPreview.c
 // Refresh
 const adminRefresh = document.getElementById('admin-refresh')
 if (adminRefresh) adminRefresh.addEventListener('click', async () => {
-  await Promise.all([loadStats(), loadAllListings(), loadPendingListings(), loadInquiries()])
+  await Promise.all([loadStats(), loadAllListings(), loadPendingListings(), loadInquiries(), loadExhibitors()])
   showToast('Refreshed')
 })
 

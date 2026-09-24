@@ -1033,6 +1033,122 @@ mp.get('/api/mp/admin/exhibitors', async (c) => {
   return c.json({ exhibitors: rows.results })
 })
 
+// ══════════════════════════════════════════
+// EXHIBITOR INVITATIONS
+// ══════════════════════════════════════════
+// A booth includes a free listing and nothing ever said so: every listing on the
+// marketplace came from a company that found it by itself, and not one exhibitor is
+// among them. Admin sends these; nothing goes out on a schedule, an exhibitor is
+// asked at most once a week, and whoever has unsubscribed is skipped even though
+// this is about a service they have paid for.
+const INVITE_SENT = 'marketplace.exhibitor-invited'
+const INVITE_FAILED = 'marketplace.exhibitor-invite-failed'
+const INVITE_COOLDOWN_DAYS = 7
+
+// exhibitors.description holds internal import notes ("Owner: <staff name>"), so it
+// is never selected here and must never reach a page or an email.
+const INVITE_ROWS_SQL = (withUnsub: boolean) => `
+  SELECT e.id, e.company_name, e.booth_number, e.contact_email, co.id AS account_id,
+    (SELECT COUNT(*) FROM mp_listings l WHERE l.exhibitor_id = e.id OR (co.id IS NOT NULL AND l.company_id = co.id)) AS listing_count,
+    (SELECT COUNT(*) FROM mp_listings l WHERE (l.exhibitor_id = e.id OR (co.id IS NOT NULL AND l.company_id = co.id)) AND l.status = 'approved') AS live_count,
+    (SELECT MAX(created_at) FROM admin_audit a WHERE a.action = '${INVITE_SENT}' AND a.entity = 'exhibitor' AND a.entity_id = CAST(e.id AS TEXT)) AS last_invited,
+    ${withUnsub ? `(SELECT COUNT(*) FROM attendees t WHERE t.unsubscribed_at IS NOT NULL AND lower(trim(t.email)) = lower(trim(e.contact_email))) AS unsubscribed` : '0 AS unsubscribed'}
+  FROM exhibitors e
+  LEFT JOIN mp_companies co ON trim(ifnull(e.contact_email, '')) <> '' AND lower(trim(co.email)) = lower(trim(e.contact_email))
+  ORDER BY e.company_name COLLATE NOCASE`
+
+// The state says how far this exhibitor has got, so an invitation sent last week
+// does not hide the fact that they have since registered. Whether the button is
+// offered is a separate question, answered by can_invite.
+const inviteState = (r: any) => {
+  const email = String(r.contact_email || '').trim()
+  const days = r.last_invited ? (Date.now() - Date.parse(String(r.last_invited).replace(' ', 'T') + 'Z')) / 86400000 : null
+  const state = r.live_count ? 'live'
+    : r.listing_count ? 'pending'
+    : !email ? 'no-email'
+    : r.unsubscribed ? 'unsubscribed'
+    : r.account_id ? 'registered'
+    : days !== null ? 'invited'
+    : 'new'
+  if (!email) return { state, can_invite: false, reason: 'No email address on file' }
+  if (r.unsubscribed) return { state, can_invite: false, reason: 'This address has unsubscribed' }
+  if (r.live_count) return { state, can_invite: false, reason: 'Already listing' }
+  if (days !== null && days < INVITE_COOLDOWN_DAYS) {
+    const d = Math.floor(days)
+    return { state, can_invite: false, reason: d === 0 ? 'Invited today' : d === 1 ? 'Invited yesterday' : `Invited ${d} days ago` }
+  }
+  return { state, can_invite: true, reason: '' }
+}
+
+const exhibitorInviteRows = async (c: any) => {
+  // attendees carries the unsubscribe flag; if that table is ever out of reach the
+  // list still loads, and the send path checks again before mailing anyone.
+  let rows: any[] = []
+  try { rows = ((await c.env.DB.prepare(INVITE_ROWS_SQL(true)).all()).results || []) as any[] }
+  catch { rows = ((await c.env.DB.prepare(INVITE_ROWS_SQL(false)).all().catch(() => ({ results: [] }))).results || []) as any[] }
+  return rows.map(r => ({ ...r, ...inviteState(r) }))
+}
+
+const sendExhibitorInvite = async (c: any, row: any): Promise<boolean> => {
+  const booth = String(row.booth_number || '').trim()
+  const body = `<p style="margin:0 0 12px;font-size:14px;line-height:1.6">You are exhibiting at Bharat AI Innovation 2026 (20-21 November, World Trade Center, Mumbai), and your booth includes a free listing on the event's AI Marketplace, where buyers browse AI products before and during the show.</p>
+    <p style="margin:0 0 12px;font-size:14px;line-height:1.6">Your listing is public on bharataiinnovation.com and in the event app attendees use to plan who to meet, and it stays online after the show.</p>
+    <p style="margin:0 0 12px;font-size:14px;line-height:1.6">It takes about five minutes: create an account, describe your product, add a logo and an image. We review every listing and email you as soon as it is live.</p>
+    <p style="margin:0;font-size:14px;line-height:1.6">Please register with this email address &mdash; your booth number${booth ? ` (Booth ${htmlEsc(booth)})` : ''} is then added to your listing automatically, so visitors can find you at the venue.</p>
+    ${emailButton(siteOrigin(c) + '/marketplace?submit=true', 'List your AI product')}
+    <p style="margin:16px 0 0;font-size:12px;color:#888">If you would rather not receive marketplace emails, reply to this message and we will stop.</p>`
+  return sendMail(c, 'exhibitor-invite', String(row.contact_email).trim(), 'Your booth includes a free AI Marketplace listing', emailShell('Your free AI Marketplace listing', body))
+}
+
+mp.get('/api/mp/admin/exhibitor-invites', async (c) => {
+  const admin = await marketplaceAdmin(c)
+  if (!admin) return c.json({ error: 'Admin required' }, 403)
+  const exhibitors = await exhibitorInviteRows(c)
+  return c.json({
+    exhibitors,
+    summary: {
+      total: exhibitors.length,
+      can_invite: exhibitors.filter(e => e.can_invite).length,
+      no_email: exhibitors.filter(e => e.state === 'no-email').length,
+      live: exhibitors.filter(e => e.state === 'live').length,
+    },
+  })
+})
+
+const inviteOne = async (c: any, admin: MarketplaceAdmin, row: any) => {
+  if (!row.can_invite) return { status: 409, body: { error: row.reason || 'This exhibitor cannot be invited' } }
+  const sent = await sendExhibitorInvite(c, row)
+  const actorOverride = admin.via === 'marketplace' ? { actor: String(admin.company.email || 'marketplace admin'), kind: 'marketplace-account' } : undefined
+  try { await hooks.audit?.(c, sent ? INVITE_SENT : INVITE_FAILED, 'exhibitor', row.id, { company: row.company_name, booth: row.booth_number || null }, actorOverride) } catch { /* never fail the send it records */ }
+  if (!sent) return { status: 502, body: { error: 'The email service did not accept the invitation. Check the Elastic Email settings.' } }
+  return { status: 200, body: { success: true, company: row.company_name } }
+}
+
+mp.post('/api/mp/admin/exhibitors/:id/invite', async (c) => {
+  const admin = await marketplaceAdmin(c)
+  if (!admin) return c.json({ error: 'Admin required' }, 403)
+  const id = parseInt(c.req.param('id'), 10)
+  const row = (await exhibitorInviteRows(c)).find(r => Number(r.id) === id)
+  if (!row) return c.json({ error: 'Exhibitor not found' }, 404)
+  const r = await inviteOne(c, admin, row)
+  return c.json(r.body, r.status as any)
+})
+
+// Everyone eligible in one click. Capped so a mistaken double-click cannot turn into
+// an unbounded run, and each address still goes through the same checks.
+const INVITE_BATCH_CAP = 40
+mp.post('/api/mp/admin/exhibitor-invites/send-all', async (c) => {
+  const admin = await marketplaceAdmin(c)
+  if (!admin) return c.json({ error: 'Admin required' }, 403)
+  const eligible = (await exhibitorInviteRows(c)).filter(r => r.can_invite).slice(0, INVITE_BATCH_CAP)
+  let sent = 0, failed = 0
+  for (const row of eligible) {
+    const r = await inviteOne(c, admin, row)
+    if (r.status === 200) sent++; else failed++
+  }
+  return c.json({ success: true, sent, failed, attempted: eligible.length })
+})
+
 mp.patch('/api/mp/admin/listings/:id', async (c) => {
   const admin = await marketplaceAdmin(c)
   if (!admin) return c.json({ error: 'Admin required' }, 403)

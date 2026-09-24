@@ -18,6 +18,7 @@ const SUITES = [
   { name: 'server: admin, desk, security and attendee routes', args: ['smoke-routes.mjs', 'attendee'] },
   { name: 'server: free-pass directory teaser', args: ['smoke-directory-teaser.mjs'] },
   { name: 'server: campus panel "Are you coming?"', args: ['smoke-panel-answers.mjs'] },
+  { name: 'server: AI marketplace gates, pages and exhibitor invites', args: ['smoke-marketplace.mjs'] },
   { name: 'browser: delegate app (chat, connect, meet, inbox, back, XSS)', args: ['browser-delegate.cjs'], harness: 'app-harness.mjs', port: 8770 },
   { name: 'browser: phone journey and admin Campus panels block', args: ['phone-test.cjs'], harness: 'phone-harness.mjs', port: 8772 },
 ];
