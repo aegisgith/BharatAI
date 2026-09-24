@@ -213,6 +213,7 @@ Still to do: `hostLogo` (file in `public/images/campus/`); a claim code in `app_
 
 ## 13. Open items (reviewed 17 Sep, not done)
 - Cloudflare WAF rate-limit rules on registration, inquiries and booth requests (dashboard, not code).
+- **`MP_SESSION_SECRET` is not set in production** (checked 24 Sep), so marketplace exhibitor sessions and sign-in links are signed with `ADMIN_SECRET`. Set it with `npx wrangler pages secret put MP_SESSION_SECRET --project-name bharatai-networking`. Setting it invalidates exhibitor cookies and any outstanding sign-in link, so do it before a batch of links goes out, not after.
 - Move the Elastic Email key to a Worker secret (`npx wrangler pages secret put ELASTIC_EMAIL_API_KEY --project-name bharatai-networking`), then blank the `app_settings` row.
 - Badge desk offline mode; in-page QR scanning on iPhones (no `BarcodeDetector`).
 - Generate the pass QR locally instead of `api.qrserver.com` (a failure renders a pass without a QR).
