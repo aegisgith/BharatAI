@@ -118,6 +118,7 @@ Every panel registrant is an `attendees` row tagged `registration_source = 'camp
 
 ### Emails
 - **Confirmation** — `sendPanelConfirmationEmail()`: brand header (`emailBrandHeader`), host logo band, topic/date/time/venue/panellists, a 7-day, 5-use sign-in link that lands on the creative, and "Would you like to come to the main conference too?" with yes/no deep links. Admin → Overview → Campus panels: **Preview email**, **Send confirmations** (pumped 5 at a time, **Stop** parks the rest server-side, **Resume** un-parks only paused rows).
+- **Pace (24 Sep):** both sends go out **one email at a time**, with the gap chosen in the control beside the button (`paceControl`, `panelGapSeconds`, `panelWait`). Two minutes is the default and the choice is remembered in that browser. A burst of identical mail to the same few domains is what puts a sender in the spam folder. The progress line counts down and gives the finishing time; 129 emails at two minutes takes about four and a half hours and the tab has to stay open. Stop parks the rest on the server, Resume continues, and nobody is mailed twice.
 - **"Are you coming?" reminder** — `sendPanelReminderEmail()`: two one-tap buttons, details, panellists; guests get "carry a government photo ID". Transactional (no unsubscribe footer). Admin: **Preview reminder** (as a guest), **Send "Are you coming?"** (only to people who have not answered), Stop / Resume, CSVs **Everyone's answers** and **Guests coming (for the college)**.
 
 ### "Are you coming?" answers
@@ -135,7 +136,9 @@ Every panel registrant is an `attendees` row tagged `registration_source = 'camp
 3. **On the day:** the moderator shows the closing slide (image kept outside the repo); claims open at `claimOpensAt`.
 4. **`claimClosesAt`:** claims close; late claims come by email.
 
-**What happened at DJ Sanghvi (21 Sep 2026):** 433 registrations (270 mUni, 158 LinkedIn, 5 from the page) and all 433 confirmation emails went out. Steps 1, 3 and 4 were not used: **no "Are you coming?" send, no answers, and no attendance claims at all**, so nobody received a panel certificate and the claim window closed on 23 Sep. If certificates are still wanted, reopen `claimClosesAt` for that panel and send the code to the list. Plan the JNU run-up so the reminder and the slide actually happen.
+**What happened at DJ Sanghvi (21 Sep 2026):** 433 registrations (270 mUni, 158 LinkedIn, 5 from the page), all 433 confirmations sent, 426 asked "Are you coming?", 49 said yes and 15 said no, 51 signed in, 28 said yes to November. **Nobody claimed attendance and no certificate was issued**, and the claim window closed on 23 Sep. So the sending machinery works and the closing-slide step is the weak link. For JNU, have the code and the slide ready before the day; if DJ Sanghvi certificates are still wanted, push `claimClosesAt` out and mail the code to the list.
+
+**Answers are stored as `yes` and `no`** in `panel_registrations.rsvp_status`, not `coming`. A query for `'coming'` returns zero and reads like nobody answered; that mistake was made on 24 Sep.
 
 ### Checklist — JNU (30 Sep 2026)
 Done: seven panellists in `CAMPUS_PANELS`, the page and the home-page Pre-Event Speakers section, 127 LinkedIn leads prepared for import on 24 Sep.

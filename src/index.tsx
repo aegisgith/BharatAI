@@ -27845,6 +27845,7 @@ function adminPageHTML(): string {
                     ? '<button id="panel-remind-' + esc(p.slug) + '" onclick="startPanelReminders(' + slugQ + ')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition"><i class="fas fa-paper-plane mr-1.5"></i>Send &ldquo;Are you coming?&rdquo; (' + p.reminder_left + ' to send)</button>'
                     : '<span class="text-xs text-emerald-400"><i class="fas fa-check mr-1"></i>Everyone without an answer has been asked</span>')
                 : '<span class="text-xs text-gray-500">Answers closed: the panel has started</span>')
+            + (p.rsvp_open && (p.reminder_left || 0) > 0 ? paceControl(p.slug) : '')
             + '<button onclick="downloadPanelAnswers(' + slugQ + ', &quot;all&quot;)" class="px-3 py-1.5 rounded-lg text-xs glass hover:bg-white/10 transition"><i class="fas fa-download mr-1.5"></i>Everyone&rsquo;s answers</button>'
             + '<button onclick="downloadPanelAnswers(' + slugQ + ', &quot;guests-coming&quot;)" class="px-3 py-1.5 rounded-lg text-xs glass hover:bg-white/10 transition"><i class="fas fa-id-card mr-1.5"></i>Guests coming (for the college)</button>'
             + '<span id="panel-remind-progress-' + esc(p.slug) + '" class="text-xs text-gray-400"></span>'
@@ -27859,16 +27860,70 @@ function adminPageHTML(): string {
           + (left > 0
               ? '<button id="panel-send-' + esc(p.slug) + '" onclick="startPanelConfirmations(&quot;' + esc(p.slug) + '&quot;)" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-orange-600 hover:bg-orange-500 text-white transition"><i class="fas fa-paper-plane mr-1.5"></i>Send confirmations (' + left + ' left)</button>'
               : '<span class="text-xs text-emerald-400"><i class="fas fa-check mr-1"></i>Everyone on the list has been emailed</span>')
+          + (left > 0 ? paceControl(p.slug) : '')
           + (p.email_failed ? '<button onclick="resetPanelEmailErrors(&quot;' + esc(p.slug) + '&quot;)" class="px-3 py-1.5 rounded-lg text-xs glass hover:bg-white/10 transition"><i class="fas fa-redo mr-1.5"></i>Retry ' + p.email_failed + ' failed</button>' : '')
           + '<span id="panel-progress-' + esc(p.slug) + '" class="text-xs text-gray-400"></span>'
           + '</div>' + answers + '</div>';
       }).join('');
     }
 
+    // ---- how fast panel email goes out ----
+    // A burst of identical mail to the same handful of domains is what puts a sender in
+    // the spam folder, so panel email goes out one at a time with a gap between two
+    // emails. The organiser picks the gap, this browser remembers it, and the default is
+    // two minutes. The queue lives on the server, so stopping and starting again never
+    // mails anyone twice.
+    var PANEL_GAPS = [[120, '2 min'], [180, '3 min'], [60, '1 min'], [30, '30 sec'], [0, 'no gap']];
+    function panelGapSeconds(slug) {
+      var sel = document.getElementById('panel-gap-' + slug);
+      var s = sel ? parseInt(sel.value, 10) : NaN;
+      if (isNaN(s)) { try { s = parseInt(localStorage.getItem('panel_gap_seconds'), 10); } catch (e) { s = NaN; } }
+      return (s >= 0 && s <= 3600) ? s : 120;
+    }
+    function savePanelGap(slug) {
+      try { localStorage.setItem('panel_gap_seconds', String(panelGapSeconds(slug))); } catch (e) {}
+    }
+    function paceControl(slug) {
+      var now = 120;
+      try { var v = parseInt(localStorage.getItem('panel_gap_seconds'), 10); if (v >= 0 && v <= 3600) now = v; } catch (e) {}
+      var opts = PANEL_GAPS.map(function (g) {
+        return '<option value="' + g[0] + '"' + (g[0] === now ? ' selected' : '') + '>' + g[1] + '</option>';
+      }).join('');
+      return '<label class="text-[11px] text-gray-400 flex items-center gap-1 whitespace-nowrap">one email every'
+        + '<select id="panel-gap-' + esc(slug) + '" onchange="savePanelGap(&quot;' + esc(slug) + '&quot;)" class="bg-white/10 border border-white/10 rounded-lg px-2 py-1 text-[11px] text-white">'
+        + opts + '</select></label>';
+    }
+    function gapWords(s) {
+      if (!s) return 'with no gap between them';
+      return s >= 60 ? 'one every ' + Math.round(s / 60) + ' minute' + (s >= 120 ? 's' : '') : 'one every ' + s + ' seconds';
+    }
+    function panelEta(remaining, slug) {
+      var gap = panelGapSeconds(slug);
+      if (!gap || !remaining) return '';
+      var mins = Math.round(remaining * gap / 60);
+      var end = new Date(Date.now() + remaining * gap * 1000);
+      var hh = end.getHours(), mm = end.getMinutes();
+      var when = (hh % 12 || 12) + ':' + (mm < 10 ? '0' : '') + mm + (hh < 12 ? ' am' : ' pm');
+      return ' ' + (mins >= 60 ? Math.floor(mins / 60) + 'h ' + (mins % 60) + 'm' : mins + ' min') + ' left, ending about ' + when + '.';
+    }
+    // The wait between two emails, counted down so the tab visibly still has work to do.
+    function panelWait(state, slug, say, head, next) {
+      var left = panelGapSeconds(slug);
+      if (!left) { state.timer = setTimeout(next, 400); return; }
+      var tick = function () {
+        if (!state || state.stopped) return;
+        if (left <= 0) { next(); return; }
+        say(head + ' Next in ' + (left >= 60 ? Math.floor(left / 60) + 'm ' + (left % 60) + 's' : left + 's') + '.');
+        left--;
+        state.timer = setTimeout(tick, 1000);
+      };
+      tick();
+    }
+
     // ---- "Are you coming?" ----
     var _reminderPump = {};
     function startPanelReminders(slug) {
-      if (!confirm('Send the "Are you coming?" email to everyone on the ' + slug + ' list who has not answered yet?\\n\\nReal email, a few at a time. Use Stop to pause; nobody is asked twice.')) return;
+      if (!confirm('Send the "Are you coming?" email to everyone on the ' + slug + ' list who has not answered yet?\\n\\nReal email, ' + gapWords(panelGapSeconds(slug)) + '.\\nKeep this tab open until it finishes. Use Stop to pause; nobody is asked twice.')) return;
       var btn = document.getElementById('panel-remind-' + slug);
       if (btn) { btn.innerHTML = '<i class="fas fa-stop mr-1.5"></i>Stop'; btn.onclick = function () { stopPanelReminders(slug); }; }
       _reminderPump[slug] = { sent: 0, stopped: false };
@@ -27878,17 +27933,20 @@ function adminPageHTML(): string {
       var say = function (m) { var el = document.getElementById('panel-remind-progress-' + slug); if (el) el.innerHTML = m; };
       if (!_reminderPump[slug] || _reminderPump[slug].stopped) return;
       var r;
-      try { r = await api.post('/api/admin/panels/' + encodeURIComponent(slug) + '/send-next-reminders', { batch: 5 }); }
-      catch (e) { say('<span class="text-red-400">Network error - retrying in 30s.</span>'); setTimeout(function () { pumpPanelReminders(slug); }, 30000); return; }
+      try { r = await api.post('/api/admin/panels/' + encodeURIComponent(slug) + '/send-next-reminders', { batch: 1 }); }
+      catch (e) { say('<span class="text-red-400">Network error - retrying in 30s.</span>'); _reminderPump[slug].timer = setTimeout(function () { pumpPanelReminders(slug); }, 30000); return; }
       if (!r || r.error) { say('<span class="text-red-400">' + esc((r && r.error) || 'failed') + '</span>'); renderCampusPanels(); return; }
       _reminderPump[slug].sent += (r.sent || 0);
       if (_reminderPump[slug].stopped) { say('Stopped - ' + _reminderPump[slug].sent + ' sent.'); return; }
-      if (r.done) { say('<span class="text-green-400">Done - ' + _reminderPump[slug].sent + ' sent.</span>'); renderCampusPanels(); return; }
-      say(_reminderPump[slug].sent + ' sent, ' + r.remaining + ' to go…');
-      setTimeout(function () { pumpPanelReminders(slug); }, 1500);
+      // The refresh rebuilds this row, so the finished message is written after it,
+      // not before, or the organiser never sees that the run ended.
+      if (r.done) { var total = _reminderPump[slug].sent; Promise.resolve(renderCampusPanels()).then(function () { say('<span class="text-green-400">Done - ' + total + ' sent.</span>'); }); return; }
+      var head = _reminderPump[slug].sent + ' sent, ' + r.remaining + ' to go.' + panelEta(r.remaining, slug);
+      say(head);
+      panelWait(_reminderPump[slug], slug, say, head, function () { pumpPanelReminders(slug); });
     }
     async function stopPanelReminders(slug) {
-      if (_reminderPump[slug]) _reminderPump[slug].stopped = true;
+      if (_reminderPump[slug]) { _reminderPump[slug].stopped = true; if (_reminderPump[slug].timer) clearTimeout(_reminderPump[slug].timer); }
       var btn = document.getElementById('panel-remind-' + slug);
       if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1.5"></i>Stopping…'; }
       try { await api.post('/api/admin/panels/' + encodeURIComponent(slug) + '/pause-reminders', {}); } catch (e) {}
@@ -27913,7 +27971,7 @@ function adminPageHTML(): string {
 
     var _panelPump = {};
     function startPanelConfirmations(slug) {
-      if (!confirm('Send the panel confirmation email to everyone on the ' + slug + ' list who has not had one?\\n\\nReal email, a few at a time. Use Stop to pause; nobody is mailed twice.')) return;
+      if (!confirm('Send the panel confirmation email to everyone on the ' + slug + ' list who has not had one?\\n\\nReal email, ' + gapWords(panelGapSeconds(slug)) + '.\\nKeep this tab open until it finishes. Use Stop to pause; nobody is mailed twice.')) return;
       var btn = document.getElementById('panel-send-' + slug);
       if (btn) {
         btn.innerHTML = '<i class="fas fa-stop mr-1.5"></i>Stop';
@@ -27926,7 +27984,7 @@ function adminPageHTML(): string {
     // Stops this tab at once and parks the rest of the queue on the server, so a
     // second tab left open cannot carry on sending.
     async function stopPanelConfirmations(slug) {
-      if (_panelPump[slug]) _panelPump[slug].stopped = true;
+      if (_panelPump[slug]) { _panelPump[slug].stopped = true; if (_panelPump[slug].timer) clearTimeout(_panelPump[slug].timer); }
       var btn = document.getElementById('panel-send-' + slug);
       if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1.5"></i>Stopping…'; }
       try { await api.post('/api/admin/panels/' + encodeURIComponent(slug) + '/pause', {}); } catch (e) {}
@@ -27954,14 +28012,17 @@ function adminPageHTML(): string {
       var say = function (m) { var el = document.getElementById('panel-progress-' + slug); if (el) el.innerHTML = m; };
       if (!_panelPump[slug] || _panelPump[slug].stopped) return;
       var r;
-      try { r = await api.post('/api/admin/panels/' + encodeURIComponent(slug) + '/send-next-confirmations', { batch: 5 }); }
-      catch (e) { say('<span class="text-red-400">Network error - retrying in 30s.</span>'); setTimeout(function () { pumpPanelConfirmations(slug); }, 30000); return; }
+      try { r = await api.post('/api/admin/panels/' + encodeURIComponent(slug) + '/send-next-confirmations', { batch: 1 }); }
+      catch (e) { say('<span class="text-red-400">Network error - retrying in 30s.</span>'); _panelPump[slug].timer = setTimeout(function () { pumpPanelConfirmations(slug); }, 30000); return; }
       if (!r || r.error) { say('<span class="text-red-400">' + esc((r && r.error) || 'failed') + '</span>'); renderCampusPanels(); return; }
       _panelPump[slug].sent += (r.sent || 0);
       if (_panelPump[slug].stopped) { say('Stopped - ' + _panelPump[slug].sent + ' sent.'); return; }
-      if (r.done) { say('<span class="text-green-400">Done - ' + _panelPump[slug].sent + ' sent.</span>'); renderCampusPanels(); return; }
-      say(_panelPump[slug].sent + ' sent, ' + r.remaining + ' to go…');
-      setTimeout(function () { pumpPanelConfirmations(slug); }, 1500);
+      // The refresh rebuilds this row, so the finished message is written after it,
+      // not before, or the organiser never sees that the run ended.
+      if (r.done) { var total = _panelPump[slug].sent; Promise.resolve(renderCampusPanels()).then(function () { say('<span class="text-green-400">Done - ' + total + ' sent.</span>'); }); return; }
+      var head = _panelPump[slug].sent + ' sent, ' + r.remaining + ' to go.' + panelEta(r.remaining, slug);
+      say(head);
+      panelWait(_panelPump[slug], slug, say, head, function () { pumpPanelConfirmations(slug); });
     }
 
     async function resetPanelEmailErrors(slug) {
