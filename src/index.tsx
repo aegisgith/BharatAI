@@ -32692,6 +32692,10 @@ function adminPageHTML(): string {
         const fd = new FormData(e.target);
         const data = Object.fromEntries(fd.entries());
         data.slot_no = parseInt(data.slot_no);
+        // The row this form was filled from can arrive without every column: a caller
+        // that is not recognised as admin gets a trimmed shape. An empty box would then
+        // overwrite what is stored, so only send back fields the row actually carried.
+        Object.keys(data).forEach(function (k) { if (t[k] === undefined) delete data[k]; });
         try {
           await api.patch('/api/admin/innovation-talks/'+id, data);
           toast('Talk updated', 'success');
