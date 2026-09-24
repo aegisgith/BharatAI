@@ -746,9 +746,10 @@ export function marketplaceAdminPageHTML(): string {
     <section id="section-exhibitors" class="dash-section hidden">
       <div class="dash-section-header"><h2><i class="fas fa-store mr-2"></i>Exhibitors</h2></div>
       <div class="dash-card">
-        <p class="text-sm text-slate-400">A booth includes a free marketplace listing. Inviting emails the exhibitor's booth contact a link to the listing form; registering with that same address links their booth automatically. Each exhibitor is asked at most once a week, and anyone who has unsubscribed is skipped.</p>
+        <p class="text-sm text-slate-400">A booth includes a free marketplace listing, and an account is made for each exhibitor from the booth record. <strong>Invite</strong> emails the full invitation with a one-click sign-in (once a week per exhibitor). <strong>Send sign-in links</strong> emails the short "your account is ready" note with the same one-click sign-in (once a day) &mdash; for anyone invited before accounts were made, or who has not got in. Anyone already listing or unsubscribed is skipped.</p>
         <div class="flex gap-3 items-center flex-wrap mt-3">
           <button id="invite-all" class="mp-btn-primary text-sm py-2 px-4"><i class="fas fa-paper-plane mr-1"></i> Invite everyone eligible</button>
+          <button id="link-all" class="mp-btn-secondary text-sm py-2 px-4"><i class="fas fa-sign-in-alt mr-1"></i> Send sign-in links</button>
           <span id="invite-summary" class="text-sm text-slate-400"></span>
         </div>
       </div>
@@ -777,7 +778,7 @@ export function marketplaceAdminPageHTML(): string {
     </section>
   </div>
 
-  <script src="/static/marketplace-admin.js?v=6"></script>
+  <script src="/static/marketplace-admin.js?v=7"></script>
 </body>
 </html>`
 }

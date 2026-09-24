@@ -24,7 +24,7 @@ for (const p of ADMIN_GET) {
   const r = await hit(p);
   check('refuses anonymous: ' + p, r.status === 403, r.status + ' ' + r.text.slice(0, 60));
 }
-for (const p of ['/api/mp/admin/listings/1/remind', '/api/mp/admin/exhibitors/1/invite', '/api/mp/admin/listings/bulk']) {
+for (const p of ['/api/mp/admin/listings/1/remind', '/api/mp/admin/exhibitors/1/invite', '/api/mp/admin/exhibitors/1/signin-link', '/api/mp/admin/listings/bulk']) {
   const r = await hit(p, post({}));
   check('refuses anonymous: POST ' + p, r.status === 403, r.status + ' ' + r.text.slice(0, 60));
 }
@@ -60,7 +60,11 @@ check('an unsigned session cookie is nobody', r.status === 200 && JSON.parse(r.t
 r = await hit('/marketplace/signin', { redirect: 'manual' });
 check('sign-in landing without a token bounces to the marketplace', r.status === 302 && r.h.location === '/marketplace?signin=expired' && !r.h['set-cookie'], r.status + ' ' + r.h.location);
 r = await hit('/marketplace/signin?t=1.4102444800.deadbeef', { redirect: 'manual' });
-check('a forged sign-in token sets no session', r.status === 302 && !r.h['set-cookie'], r.status);
+check('a malformed sign-in token sets no session', r.status === 302 && !r.h['set-cookie'], r.status);
+// Well-formed but forged: the signature must fail before the account is looked up,
+// which is what the 302 (not a JSON 500 from a missing DB) proves here.
+r = await hit('/marketplace/signin?t=1.4102444800.0123456789abcdef.' + 'ab'.repeat(32), { redirect: 'manual' });
+check('a well-formed forged token is refused before any database read', r.status === 302 && r.h.location === '/marketplace?signin=expired' && !r.h['set-cookie'], r.status + ' ' + r.h.location);
 r = await hit('/api/mp/auth/link', post({ email: 'not-an-email' }));
 check('sign-in link request rejects a bad address', r.status === 400, r.status);
 

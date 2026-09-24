@@ -240,20 +240,33 @@ const mpSessionCookie = (value: string, maxAge = 604800) =>
 // forwarded to gets in as that company, which is usually the colleague meant to fill
 // the listing in; the panel links make the same trade.
 const SIGNIN_LINK_DAYS = 7
-const signInToken = async (c: any, companyId: number | string): Promise<string> => {
+// The signature also covers the account's password hash, so the moment an exhibitor
+// sets a password every link still out there stops working. Until then the link is
+// the only key, and a forwarded email is a week of access - the same trade the
+// panel links make, on something less sensitive than a badge.
+const linkFingerprint = async (c: any, passwordHash: string) => (await hmacHex(sessionSecret(c), 'mplink-pw:' + (passwordHash || ''))).slice(0, 16)
+// <id>.<exp>.<fingerprint>.<sig>. The fingerprint travels inside the signed token so a
+// forged link is refused on the signature alone, before the database is read; only a
+// genuine link costs a lookup, to compare its fingerprint with the account's now.
+const signInToken = async (c: any, companyId: number | string, passwordHash: string): Promise<string> => {
   const exp = Math.floor(Date.now() / 1000) + SIGNIN_LINK_DAYS * 86400
-  const sig = await hmacHex(sessionSecret(c), `mplink:${companyId}.${exp}`)
-  return `${companyId}.${exp}.${sig}`
+  const fp = await linkFingerprint(c, passwordHash)
+  const sig = await hmacHex(sessionSecret(c), `mplink:${companyId}.${exp}.${fp}`)
+  return `${companyId}.${exp}.${fp}.${sig}`
 }
-const verifySignInToken = async (c: any, token: string): Promise<number | null> => {
+// Signature and expiry only; returns the account id and the fingerprint to compare.
+const verifySignInToken = async (c: any, token: string): Promise<{ id: number; fp: string } | null> => {
   const secret = sessionSecret(c)
-  const [id, exp, sig] = String(token || '').split('.')
-  if (!secret || !/^\d+$/.test(id || '') || !/^\d+$/.test(exp || '') || !sig) return null
+  const [id, exp, fp, sig] = String(token || '').split('.')
+  if (!secret || !/^\d+$/.test(id || '') || !/^\d+$/.test(exp || '') || !/^[0-9a-f]{16}$/.test(fp || '') || !sig) return null
   if (parseInt(exp, 10) * 1000 < Date.now()) return null
-  if (!safeEqual(sig, await hmacHex(secret, `mplink:${id}.${exp}`))) return null
-  return parseInt(id, 10)
+  if (!safeEqual(sig, await hmacHex(secret, `mplink:${id}.${exp}.${fp}`))) return null
+  return { id: parseInt(id, 10), fp }
 }
-const signInLink = async (c: any, companyId: number | string) => `${siteOrigin(c)}/marketplace/signin?t=${await signInToken(c, companyId)}`
+const signInLink = async (c: any, companyId: number | string) => {
+  const row = await c.env.DB.prepare('SELECT password_hash FROM mp_companies WHERE id = ?').bind(companyId).first() as any
+  return `${siteOrigin(c)}/marketplace/signin?t=${await signInToken(c, companyId, String(row?.password_hash || ''))}`
+}
 
 // ── Helpers ──
 const generateSlug = (text: string) =>
@@ -580,9 +593,11 @@ mp.post('/api/mp/auth/link', async (c) => {
 // Where a sign-in link lands. A bad or expired link goes back to the marketplace
 // with a flag the page turns into "ask for a fresh one".
 mp.get('/marketplace/signin', async (c) => {
-  const id = await verifySignInToken(c, c.req.query('t') || '')
-  const company = id ? await c.env.DB.prepare('SELECT id, role FROM mp_companies WHERE id = ?').bind(id).first() as any : null
-  if (!company || company.role === 'admin') return c.redirect('/marketplace?signin=expired')
+  const link = await verifySignInToken(c, c.req.query('t') || '')
+  if (!link) return c.redirect('/marketplace?signin=expired')
+  const company = await c.env.DB.prepare('SELECT id, role, password_hash FROM mp_companies WHERE id = ?').bind(link.id).first() as any
+  // A password set since the link was sent changes the fingerprint and retires the link.
+  if (!company || company.role === 'admin' || !safeEqual(link.fp, await linkFingerprint(c, String(company.password_hash || '')))) return c.redirect('/marketplace?signin=expired')
   c.header('Set-Cookie', mpSessionCookie(await signSession(c, company.id)))
   // Straight to the listing form; a company that already has a listing lands on its dashboard.
   const has = await c.env.DB.prepare('SELECT 1 AS hit FROM mp_listings WHERE company_id = ? LIMIT 1').bind(company.id).first()
@@ -1141,6 +1156,10 @@ mp.get('/api/mp/admin/exhibitors', async (c) => {
 const INVITE_SENT = 'marketplace.exhibitor-invited'
 const INVITE_FAILED = 'marketplace.exhibitor-invite-failed'
 const INVITE_COOLDOWN_DAYS = 7
+// The shorter follow-up: "your account is ready, click to sign in". For exhibitors
+// invited before accounts were made for them, and for anyone who has not got in.
+const LINK_SENT = 'marketplace.exhibitor-link-sent'
+const LINK_FAILED = 'marketplace.exhibitor-link-failed'
 
 // exhibitors.description holds internal import notes ("Owner: <staff name>"), so it
 // is never selected here and must never reach a page or an email.
@@ -1150,6 +1169,7 @@ const INVITE_ROWS_SQL = (withUnsub: boolean) => `
     (SELECT COUNT(*) FROM mp_listings l WHERE l.exhibitor_id = e.id OR (co.id IS NOT NULL AND l.company_id = co.id)) AS listing_count,
     (SELECT COUNT(*) FROM mp_listings l WHERE (l.exhibitor_id = e.id OR (co.id IS NOT NULL AND l.company_id = co.id)) AND l.status = 'approved') AS live_count,
     (SELECT MAX(created_at) FROM admin_audit a WHERE a.action = '${INVITE_SENT}' AND a.entity = 'exhibitor' AND a.entity_id = CAST(e.id AS TEXT)) AS last_invited,
+    (SELECT MAX(created_at) FROM admin_audit a WHERE a.action = '${LINK_SENT}' AND a.entity = 'exhibitor' AND a.entity_id = CAST(e.id AS TEXT)) AS last_link,
     ${withUnsub ? `(SELECT COUNT(*) FROM attendees t WHERE t.unsubscribed_at IS NOT NULL AND lower(trim(t.email)) = lower(trim(e.contact_email))) AS unsubscribed` : '0 AS unsubscribed'}
   FROM exhibitors e
   LEFT JOIN mp_companies co ON trim(ifnull(e.contact_email, '')) <> '' AND lower(trim(co.email)) = lower(trim(e.contact_email))
@@ -1160,9 +1180,12 @@ const INVITE_ROWS_SQL = (withUnsub: boolean) => `
 // offered is a separate question, answered by can_invite. "Registered" means they
 // set a password: every invited exhibitor has an account made for them, so the
 // account's existence says nothing about whether they have done anything.
+const daysSince = (stamp: any): number | null => stamp ? (Date.now() - Date.parse(String(stamp).replace(' ', 'T') + 'Z')) / 86400000 : null
+
 const inviteState = (r: any) => {
   const email = String(r.contact_email || '').trim()
-  const days = r.last_invited ? (Date.now() - Date.parse(String(r.last_invited).replace(' ', 'T') + 'Z')) / 86400000 : null
+  const days = daysSince(r.last_invited)
+  const linkDays = daysSince(r.last_link)
   const state = r.live_count ? 'live'
     : r.listing_count ? 'pending'
     : !email ? 'no-email'
@@ -1170,14 +1193,15 @@ const inviteState = (r: any) => {
     : r.account_claimed ? 'registered'
     : days !== null ? 'invited'
     : 'new'
-  if (!email) return { state, can_invite: false, reason: 'No email address on file' }
-  if (r.unsubscribed) return { state, can_invite: false, reason: 'This address has unsubscribed' }
-  if (r.live_count) return { state, can_invite: false, reason: 'Already listing' }
-  if (days !== null && days < INVITE_COOLDOWN_DAYS) {
+  // What blocks BOTH mails, then what blocks each on its own.
+  const block = !email ? 'No email address on file' : r.unsubscribed ? 'This address has unsubscribed' : r.live_count ? 'Already listing' : ''
+  let reason = block, link_reason = block
+  if (!block && days !== null && days < INVITE_COOLDOWN_DAYS) {
     const d = Math.floor(days)
-    return { state, can_invite: false, reason: d === 0 ? 'Invited today' : d === 1 ? 'Invited yesterday' : `Invited ${d} days ago` }
+    reason = d === 0 ? 'Invited today' : d === 1 ? 'Invited yesterday' : `Invited ${d} days ago`
   }
-  return { state, can_invite: true, reason: '' }
+  if (!block && linkDays !== null && linkDays < 1) link_reason = 'Sign-in link sent today'
+  return { state, can_invite: !reason, reason, can_link: !link_reason, link_reason }
 }
 
 const exhibitorInviteRows = async (c: any) => {
@@ -1207,6 +1231,17 @@ const sendExhibitorInvite = async (c: any, row: any): Promise<boolean> => {
   return sendMail(c, 'exhibitor-invite', String(row.contact_email).trim(), 'Your booth includes a free AI Marketplace listing', emailShell('Your free AI Marketplace listing', body))
 }
 
+const sendExhibitorSignInMail = async (c: any, row: any): Promise<boolean> => {
+  const accountId = await ensureExhibitorAccount(c, { id: Number(row.id), company_name: row.company_name, contact_email: row.contact_email })
+  if (!accountId) return false
+  const booth = String(row.booth_number || '').trim()
+  const body = `<p style="margin:0 0 12px;font-size:14px;line-height:1.6">You do not need to create an account for the Bharat AI Marketplace: one is ready under this email address${booth ? `, with Booth ${htmlEsc(booth)} already on it` : ''}.</p>
+    <p style="margin:0;font-size:14px;line-height:1.6">Click the button to sign in &mdash; no password needed &mdash; and list your AI product. It takes about five minutes, and we email you as soon as the listing is live.</p>
+    ${emailButton(await signInLink(c, accountId), 'Sign in and list your product')}
+    <p style="margin:16px 0 0;font-size:12px;color:#888">The button works for seven days. After that, choose "Email me a sign-in link" on bharataiinnovation.com/marketplace and a fresh one is sent to this address. If you would rather not receive marketplace emails, reply to this message and we will stop.</p>`
+  return sendMail(c, 'exhibitor-signin', String(row.contact_email).trim(), 'Your AI Marketplace account is ready', emailShell('Your account is ready', body))
+}
+
 mp.get('/api/mp/admin/exhibitor-invites', async (c) => {
   const admin = await marketplaceAdmin(c)
   if (!admin) return c.json({ error: 'Admin required' }, 403)
@@ -1216,10 +1251,25 @@ mp.get('/api/mp/admin/exhibitor-invites', async (c) => {
     summary: {
       total: exhibitors.length,
       can_invite: exhibitors.filter(e => e.can_invite).length,
+      can_link: exhibitors.filter(e => e.can_link).length,
       no_email: exhibitors.filter(e => e.state === 'no-email').length,
       live: exhibitors.filter(e => e.state === 'live').length,
     },
   })
+})
+
+mp.post('/api/mp/admin/exhibitors/:id/signin-link', async (c) => {
+  const admin = await marketplaceAdmin(c)
+  if (!admin) return c.json({ error: 'Admin required' }, 403)
+  const id = parseInt(c.req.param('id'), 10)
+  const row = (await exhibitorInviteRows(c)).find(r => Number(r.id) === id)
+  if (!row) return c.json({ error: 'Exhibitor not found' }, 404)
+  if (!row.can_link) return c.json({ error: row.link_reason || 'A sign-in link cannot be sent to this exhibitor' }, 409)
+  const sent = await sendExhibitorSignInMail(c, row)
+  const actorOverride = admin.via === 'marketplace' ? { actor: String(admin.company.email || 'marketplace admin'), kind: 'marketplace-account' } : undefined
+  try { await hooks.audit?.(c, sent ? LINK_SENT : LINK_FAILED, 'exhibitor', id, { company: row.company_name, booth: row.booth_number || null }, actorOverride) } catch { /* never fail the send it records */ }
+  if (!sent) return c.json({ error: 'The email service did not accept the message. Check the Elastic Email settings.' }, 502)
+  return c.json({ success: true, company: row.company_name })
 })
 
 const inviteOne = async (c: any, admin: MarketplaceAdmin, row: any) => {

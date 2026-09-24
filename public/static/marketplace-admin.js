@@ -185,6 +185,8 @@ main.addEventListener('click', (e) => {
   if (remind) sendReminder(remind)
   const invite = e.target.closest('[data-invite]')
   if (invite) inviteExhibitor(invite)
+  const link = e.target.closest('[data-link]')
+  if (link) sendSignInLink(link)
 })
 
 const sendReminder = async (btn) => {
@@ -225,9 +227,11 @@ const loadExhibitors = async () => {
     const d = await api('/api/mp/admin/exhibitor-invites')
     const rows = d.exhibitors || [], s = d.summary || {}
     const sum = document.getElementById('invite-summary')
-    if (sum) sum.textContent = `${num(s.total)} exhibitors · ${num(s.live)} listing · ${num(s.can_invite)} can be invited now · ${num(s.no_email)} without an email address`
+    if (sum) sum.textContent = `${num(s.total)} exhibitors · ${num(s.live)} listing · ${num(s.can_invite)} can be invited now · ${num(s.can_link)} can be sent a sign-in link · ${num(s.no_email)} without an email address`
     const btn = document.getElementById('invite-all')
     if (btn) { btn.disabled = !num(s.can_invite); btn.dataset.count = String(num(s.can_invite)) }
+    const lbtn = document.getElementById('link-all')
+    if (lbtn) { lbtn.disabled = !num(s.can_link); lbtn.dataset.count = String(num(s.can_link)) }
     if (!rows.length) { c.innerHTML = '<p class="text-slate-400">No exhibitors yet.</p>'; return }
     c.innerHTML = `<div class="overflow-x-auto"><table class="dash-table"><thead><tr><th>Company</th><th>Booth</th><th>Booth contact</th><th>Status</th><th>Last invited</th><th>Actions</th></tr></thead><tbody>${rows.map(e => `<tr>
       <td class="text-sm font-medium">${esc(e.company_name)}</td>
@@ -235,9 +239,10 @@ const loadExhibitors = async () => {
       <td class="text-sm">${esc(e.contact_email || '—')}</td>
       <td>${inviteBadge(e)}</td>
       <td class="text-xs text-slate-400">${e.last_invited ? fmtDate(e.last_invited) : '—'}</td>
-      <td>${e.can_invite
-        ? `<button class="dash-action-btn" title="Email this exhibitor an invitation" data-invite="${num(e.id)}" data-company="${esc(e.company_name)}" data-email="${esc(e.contact_email || '')}"><i class="fas fa-paper-plane text-blue-400"></i></button>`
-        : `<span class="text-xs text-slate-500">${esc(e.reason || '')}</span>`}</td></tr>`).join('')}</tbody></table></div>`
+      <td><div class="dash-actions">${e.can_invite
+        ? `<button class="dash-action-btn" title="Email this exhibitor the invitation" data-invite="${num(e.id)}" data-company="${esc(e.company_name)}" data-email="${esc(e.contact_email || '')}"><i class="fas fa-paper-plane text-blue-400"></i></button>` : ''}${e.can_link
+        ? `<button class="dash-action-btn" title="Email this exhibitor a one-click sign-in link" data-link="${num(e.id)}" data-company="${esc(e.company_name)}" data-email="${esc(e.contact_email || '')}"><i class="fas fa-sign-in-alt text-emerald-400"></i></button>` : ''}${(!e.can_invite && !e.can_link)
+        ? `<span class="text-xs text-slate-500">${esc(e.link_reason || e.reason || '')}</span>` : ''}</div></td></tr>`).join('')}</tbody></table></div>`
   } catch (err) { c.innerHTML = `<p class="text-rose-400">${esc(err.message)}</p>` }
 }
 
@@ -252,34 +257,55 @@ const inviteExhibitor = async (btn) => {
   } catch (err) { showToast(err.message, true); btn.disabled = false }
 }
 
-// One invitation per request with a gap between them, the way the panel sender on
-// /admin works: a burst of identical mail to the same domains lands in spam. The tab
-// has to stay open; clicking again stops after the one in flight. Each send still
-// goes through the server's own checks, so a stale row is refused, not emailed.
+const sendSignInLink = async (btn) => {
+  const company = btn.getAttribute('data-company'), email = btn.getAttribute('data-email')
+  if (!confirm(`Email ${company} at ${email} a one-click sign-in link ("your account is ready")?`)) return
+  btn.disabled = true
+  try {
+    await api(`/api/mp/admin/exhibitors/${num(btn.getAttribute('data-link'))}/signin-link`, { method: 'POST', body: '{}' })
+    showToast(`Sign-in link sent to ${company}`)
+    await loadExhibitors()
+  } catch (err) { showToast(err.message, true); btn.disabled = false }
+}
+
+// One email per request with a gap between them, the way the panel sender on /admin
+// works: a burst of identical mail to the same domains lands in spam. The tab has to
+// stay open; clicking the same button again stops after the one in flight. Each send
+// still goes through the server's own checks, so a stale row is refused, not emailed.
 const INVITE_GAP_MS = 30000
-let inviteRun = null
-const inviteAllBtn = document.getElementById('invite-all')
-if (inviteAllBtn) inviteAllBtn.addEventListener('click', async () => {
-  if (inviteRun) { inviteRun.stop = true; inviteAllBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Stopping after this one...'; return }
-  const n = num(inviteAllBtn.dataset.count)
-  if (!n || !confirm(`Email ${n} exhibitor${n === 1 ? '' : 's'} an invitation to list on the AI Marketplace? They go out one at a time, ${INVITE_GAP_MS / 1000} seconds apart, so keep this tab open. Anyone already listing, invited this week, or unsubscribed is skipped.`)) return
-  const html = inviteAllBtn.innerHTML
-  const run = inviteRun = { stop: false }
+let pacedRun = null
+const runPaced = async (btn, opts) => {
+  if (pacedRun) { pacedRun.stop = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Stopping after this one...'; return }
+  const rows = ((await api('/api/mp/admin/exhibitor-invites')).exhibitors || []).filter(opts.eligible)
+  if (!rows.length) { showToast('Nobody is eligible right now'); return }
+  if (!confirm(opts.confirm(rows.length))) return
+  const html = btn.innerHTML
+  const run = pacedRun = { stop: false }
   let sent = 0, failed = 0, i = 0
   try {
-    const eligible = ((await api('/api/mp/admin/exhibitor-invites')).exhibitors || []).filter(e => e.can_invite)
-    for (const e of eligible) {
+    for (const e of rows) {
       if (run.stop) break
       i++
-      inviteAllBtn.innerHTML = `<i class="fas fa-spinner fa-spin mr-1"></i> Sending ${i} of ${eligible.length} · ${esc(e.company_name)} — click to stop`
-      try { await api(`/api/mp/admin/exhibitors/${num(e.id)}/invite`, { method: 'POST', body: '{}' }); sent++ }
+      btn.innerHTML = `<i class="fas fa-spinner fa-spin mr-1"></i> Sending ${i} of ${rows.length} · ${esc(e.company_name)} — click to stop`
+      try { await api(opts.url(e), { method: 'POST', body: '{}' }); sent++ }
       catch (err) { failed++; showToast(`${e.company_name}: ${err.message}`, true) }
-      if (i < eligible.length && !run.stop) await new Promise(r => setTimeout(r, INVITE_GAP_MS))
+      if (i < rows.length && !run.stop) await new Promise(r => setTimeout(r, INVITE_GAP_MS))
     }
-    showToast(`${sent} invitation${sent === 1 ? '' : 's'} sent${failed ? `, ${failed} failed` : ''}${run.stop ? ' (stopped)' : ''}`, !!failed)
+    showToast(`${sent} ${opts.noun}${sent === 1 ? '' : 's'} sent${failed ? `, ${failed} failed` : ''}${run.stop ? ' (stopped)' : ''}`, !!failed)
   } catch (err) { showToast(err.message, true) }
-  finally { inviteRun = null; inviteAllBtn.innerHTML = html; await loadExhibitors() }
-})
+  finally { pacedRun = null; btn.innerHTML = html; await loadExhibitors() }
+}
+const pace = `They go out one at a time, ${INVITE_GAP_MS / 1000} seconds apart, so keep this tab open.`
+const inviteAllBtn = document.getElementById('invite-all')
+if (inviteAllBtn) inviteAllBtn.addEventListener('click', () => runPaced(inviteAllBtn, {
+  eligible: e => e.can_invite, noun: 'invitation', url: e => `/api/mp/admin/exhibitors/${num(e.id)}/invite`,
+  confirm: n => `Email ${n} exhibitor${n === 1 ? '' : 's'} the invitation to list on the AI Marketplace? ${pace} Anyone already listing, invited this week, or unsubscribed is skipped.`,
+}))
+const linkAllBtn = document.getElementById('link-all')
+if (linkAllBtn) linkAllBtn.addEventListener('click', () => runPaced(linkAllBtn, {
+  eligible: e => e.can_link, noun: 'sign-in link', url: e => `/api/mp/admin/exhibitors/${num(e.id)}/signin-link`,
+  confirm: n => `Email ${n} exhibitor${n === 1 ? '' : 's'} a one-click sign-in link ("your account is ready")? ${pace} Anyone already listing, sent a link today, or unsubscribed is skipped.`,
+}))
 
 const loadInquiries = async () => {
   const c = document.getElementById('admin-inquiries')
