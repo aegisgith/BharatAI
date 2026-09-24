@@ -80,6 +80,8 @@ Any session may register a suite in `run-all.mjs`, so the total moves on its own
 
 Playwright comes from `scripts/verify/playwright.cjs` (local `playwright-core`, `$PLAYWRIGHT_CORE`, or the copy inside the global Playwright MCP install) and launches system Edge — no browser download needed.
 
+**Run the suite on its own.** The browser suites drive real Edge windows, and a second heavy job beside them (another Playwright run, a build, a big node script) makes `page.goto` time out after 30 s. That shows up as a suite with **0 passed** and `crashed: page.goto: Timeout`, which reads like a regression and is not one. Seen 24 Sep. Re-run it alone before believing it.
+
 **Harness gotchas:** `hasUploadedPhoto()` only accepts `data:`, `/api/uploads/` or `http(s)` URLs; the profile needs `recentConnections`; the admin overview needs `analytics.recentRegistrations` as an array and the real `/api/events/1` shape; the admin panel opens only with `localStorage.tc_admin = '1'` plus `sessionStorage.tc_admin_token`; `page.goto` to the same URL with only a new `#hash` does not reload; links built from `app_url` point at production unless the stand-in DB returns a local `app_url`.
 
 ---
