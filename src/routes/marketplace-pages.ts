@@ -11,7 +11,12 @@
 // tags, tech stack and read-only fields are "off" too.
 
 // ── Shared head for marketplace pages ──
-function mpSharedHead(title: string): string {
+// `path` is the page's own canonical URL. Listing pages keep /marketplace: their
+// slugs come from the URL and are never echoed into the head (see inlineJsString).
+// The seller dashboard and marketplace admin are private screens: noindex.
+const MP_OG_IMAGE = 'https://bharataiinnovation.com/images/og/marketplace.jpg'
+function mpSharedHead(title: string, opts: { path?: string; noindex?: boolean } = {}): string {
+  const url = `https://bharataiinnovation.com${opts.path || '/marketplace'}`
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -19,20 +24,26 @@ function mpSharedHead(title: string): string {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${title} — Bharat AI Marketplace</title>
   <meta name="description" content="${title} - Bharat AI Innovation 2026 AI Marketplace. Discover, compare, and connect with India's leading AI solutions.">
-  <link rel="canonical" href="https://bharataiinnovation.com/marketplace">
+  <link rel="canonical" href="${url}">
+  <meta name="robots" content="${opts.noindex ? 'noindex, nofollow' : 'index, follow, max-image-preview:large'}">
   <meta name="theme-color" content="#F8F9FF">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Bharat AI Innovation">
-  <meta property="og:url" content="https://bharataiinnovation.com/marketplace">
+  <meta property="og:locale" content="en_IN">
+  <meta property="og:url" content="${url}">
   <meta property="og:title" content="Bharat AI Marketplace — Discover India's Leading AI Solutions">
-  <meta property="og:description" content="Explore AI products and companies at Bharat AI Innovation 2026. Discover, compare, and connect with India's leading AI solutions. 20-21 Nov 2026, WTC Mumbai.">
-  <meta property="og:image" content="https://bharataiinnovation.com/images/og-card.png">
+  <meta property="og:description" content="Explore AI products and companies at Bharat AI Innovation 2026. Discover, compare, and connect with India's leading AI solutions. 20–21 Nov 2026, WTC Mumbai.">
+  <meta property="og:image" content="${MP_OG_IMAGE}">
+  <meta property="og:image:secure_url" content="${MP_OG_IMAGE}">
+  <meta property="og:image:type" content="image/jpeg">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Discover India's AI solutions: the Bharat AI Marketplace">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Bharat AI Marketplace">
   <meta name="twitter:description" content="Discover India's leading AI solutions at Bharat AI Innovation 2026.">
-  <meta name="twitter:image" content="https://bharataiinnovation.com/images/og-card.png">
+  <meta name="twitter:image" content="${MP_OG_IMAGE}">
+  <meta name="twitter:image:alt" content="Discover India's AI solutions: the Bharat AI Marketplace">
   <!-- The two /css/ literals here are FA_CSS and TW_CSS from src/index.tsx,
        duplicated rather than imported because index.tsx imports this module.
        Bump each copy together. Load order is unchanged from the CDN days:
@@ -506,7 +517,7 @@ export function marketplaceListingPageHTML(companySlug?: string, productSlug?: s
 // COMPANY DASHBOARD PAGE
 // ══════════════════════════════════════════
 export function marketplaceDashboardPageHTML(): string {
-  return `${mpSharedHead('Dashboard')}
+  return `${mpSharedHead('Dashboard', { path: '/marketplace/dashboard', noindex: true })}
 <body class="mp-body mp-dashboard-body">
   <div id="dash-toast" class="mp-toast hidden"></div>
 
@@ -705,7 +716,7 @@ export function marketplaceDashboardPageHTML(): string {
 // SUPER ADMIN DASHBOARD (reuses marketplace admin tab)
 // ══════════════════════════════════════════
 export function marketplaceAdminPageHTML(): string {
-  return `${mpSharedHead('Admin Dashboard')}
+  return `${mpSharedHead('Admin Dashboard', { path: '/marketplace/admin', noindex: true })}
 <body class="mp-body mp-dashboard-body">
   <div id="dash-toast" class="mp-toast hidden"></div>
 
@@ -828,7 +839,7 @@ export function marketplaceAdminPageHTML(): string {
 // FAQ PAGE
 // ══════════════════════════════════════════
 export function marketplaceFaqPageHTML(): string {
-  return `${mpSharedHead('FAQ')}
+  return `${mpSharedHead('FAQ', { path: '/marketplace/faq' })}
 <body class="mp-body">
   <header class="mp-header">
     <div class="mp-header-inner">

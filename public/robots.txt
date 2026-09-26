@@ -1,112 +1,78 @@
 # Robots.txt for Bharat AI Innovation Conference & Exhibition 2026
-# Allow all search engines and AI crawlers to crawl the site
+# Search engines and AI assistants are welcome to read and cite every public page.
+#
+# How this file is read: a crawler obeys ONLY the most specific group that names
+# it, and ignores "User-agent: *" when one does. So every named crawler below
+# shares one group and one set of Disallow lines. A crawler given a group of its
+# own would skip the private paths unless they were repeated there.
+#
+# Private screens (sign-in links, invoices, staff tools) are also noindex or
+# token-gated in the app; these lines just keep crawlers from wasting visits.
+#
+# Note: robots.txt is advice. Cloudflare's "Block AI bots" setting is enforced
+# before this file is read, and overrides the Allow lines for AI crawlers.
 
-User-agent: *
-Allow: /
-Disallow: /admin.html
-Disallow: /cdn/
-Disallow: /register-backup.html
-Disallow: /contact-backup.html
-
-# Sitemap location
-Sitemap: https://bharataiinnovation.com/sitemap.xml
-
-# ===== Traditional search engines =====
+# ===== Search engines =====
 User-agent: Googlebot
-Allow: /
-Crawl-delay: 0
-
 User-agent: Googlebot-Image
-Allow: /
-
 User-agent: Bingbot
-Allow: /
-Crawl-delay: 0
-
 User-agent: Slurp
-Allow: /
-
 User-agent: DuckDuckBot
-Allow: /
-
 User-agent: YandexBot
-Allow: /
-
 User-agent: Baiduspider
-Allow: /
-
-# ===== AI / LLM crawlers =====
+User-agent: Applebot
+# ===== AI assistants and AI search =====
 # OpenAI / ChatGPT
 User-agent: GPTBot
-Allow: /
-
 User-agent: ChatGPT-User
-Allow: /
-
 User-agent: OAI-SearchBot
-Allow: /
-
 # Anthropic / Claude
 User-agent: ClaudeBot
-Allow: /
-
+User-agent: Claude-User
+User-agent: Claude-SearchBot
 User-agent: anthropic-ai
-Allow: /
-
 User-agent: Claude-Web
-Allow: /
-
-# Google AI (Bard / Gemini / AI Overviews)
+# Google AI (Gemini, AI Overviews)
 User-agent: Google-Extended
-Allow: /
-
 # Perplexity
 User-agent: PerplexityBot
-Allow: /
-
 User-agent: Perplexity-User
-Allow: /
-
-# Common Crawl (used by many LLMs)
-User-agent: CCBot
-Allow: /
-
 # Apple Intelligence
-User-agent: Applebot
-Allow: /
-
 User-agent: Applebot-Extended
-Allow: /
-
 # Meta AI
 User-agent: FacebookBot
-Allow: /
-
 User-agent: Meta-ExternalAgent
-Allow: /
-
-# Mistral
+# Microsoft Copilot uses Bingbot (above); DuckDuckGo's assistant:
+User-agent: DuckAssistBot
+# Amazon (Alexa, Rufus)
+User-agent: Amazonbot
+# Mistral, You.com, Cohere, Diffbot, Common Crawl (used by many LLMs)
 User-agent: MistralAI-User
-Allow: /
-
-# You.com
 User-agent: YouBot
-Allow: /
-
-# Cohere
 User-agent: cohere-ai
-Allow: /
-
-# Diffbot (used by many AI products)
 User-agent: Diffbot
+User-agent: CCBot
+# ===== Everyone else =====
+User-agent: *
+Disallow: /admin
+Disallow: /staff
+Disallow: /finance
+Disallow: /marketplace/admin
+Disallow: /marketplace/dashboard
+Disallow: /invoice/
+Disallow: /verify/
+Disallow: /c/
+Disallow: /unsubscribe
+Disallow: /rsvp-confirmed
+Disallow: /panel-rsvp
+Disallow: /cdn/
 Allow: /
 
-# Disallow specific bad bots
+# SEO-tool crawlers: blocked on purpose (they index for competitors' tools,
+# not for search results).
 User-agent: AhrefsBot
-Disallow: /
-
 User-agent: SemrushBot
-Disallow: /
-
 User-agent: MJ12bot
 Disallow: /
+
+Sitemap: https://bharataiinnovation.com/sitemap.xml

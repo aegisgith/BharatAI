@@ -10,7 +10,7 @@
 - **Organizer:** Aegis Knowledge Trust
 - **Contact:** info@bharataiinnovation.com | +91 89765 80367
 - **Website:** https://bharataiinnovation.com/
-- **Registration:** https://networking.bharataiinnovation.com/register
+- **Registration:** https://bharataiinnovation.com/register (Visitor Pass free)
 - **Format:** In-person (offline)
 - **Language:** English
 
@@ -88,18 +88,31 @@ All prices exclude 18% GST. 93 booths total across 8 industry zones.
 
 ## Pages
 
-- [Home](https://bharataiinnovation.com/index.html): Event overview, dates, speakers, registration
-- [About](https://bharataiinnovation.com/about.html): About the event and Aegis Knowledge Trust
-- [Conference](https://bharataiinnovation.com/conference.html): 10+ tracks, schedule across 5 halls, 2 days
-- [Exhibition](https://bharataiinnovation.com/exhibition.html): 93 booths, 8 industry zones, booth packages
-- [Startup Pitch](https://bharataiinnovation.com/startup-pitch.html): Startup pitch competition for AI startups
-- [Training & Workshop](https://bharataiinnovation.com/training-workshop.html): AI/ML hands-on training workshops
-- [Partner](https://bharataiinnovation.com/partner.html): Sponsorship tiers, individually priced branding and activation options, AI Leadership Panel, startup path
-- [AI Readiness Certification](https://bharataiinnovation.com/ai-readiness.html): Independent AI maturity rating and certification, an Aegis Graham Bell Awards initiative
-- [Accommodation](https://bharataiinnovation.com/accommodation.html): Premium hotels near WTC Mumbai
-- [Register](https://networking.bharataiinnovation.com/register): Conference registration
-- [Contact](https://networking.bharataiinnovation.com/contact): Contact form and event team
-- [Policies](https://bharataiinnovation.com/terms.html): Terms of Service, Privacy Policy, Refund & Cancellation, Shipping & Delivery
+- [Home](https://bharataiinnovation.com/): Event overview, dates, speakers, registration
+- [About](https://bharataiinnovation.com/about): About the event and Aegis Knowledge Trust
+- [Conference](https://bharataiinnovation.com/conference): 10+ tracks, schedule across 5 halls, 2 days
+- [Exhibition](https://bharataiinnovation.com/exhibition): 93 booths, 8 industry zones, booth packages
+- [Startup Pitch](https://bharataiinnovation.com/startup-pitch): Startup pitch competition for AI startups
+- [Training & Workshop](https://bharataiinnovation.com/training-workshop): AI/ML hands-on training workshops
+- [Partner](https://bharataiinnovation.com/partner): Sponsorship tiers, individually priced branding and activation options, AI Leadership Panel, startup path
+- [AI Readiness Certification](https://bharataiinnovation.com/ai-readiness): Independent AI maturity rating and certification, an Aegis Graham Bell Awards initiative
+- [Accommodation](https://bharataiinnovation.com/accommodation): Premium hotels near WTC Mumbai
+- [Campus Series](https://bharataiinnovation.com/campus-series): Free pre-event panel discussions on AI and employability at universities (DJ Sanghvi College of Engineering, Mumbai, 21 Sep 2026; Jawaharlal Nehru University, New Delhi, 30 Sep 2026)
+- [Past Speakers](https://bharataiinnovation.com/past-speakers): Speakers from the Data Science Congress, the forerunner event hosted by Aegis School of Data Science
+- [AI Marketplace](https://bharataiinnovation.com/marketplace): Directory of AI products and companies exhibiting at the event
+- [Register](https://bharataiinnovation.com/register): Registration: free Visitor Pass, or Academic, Delegate and VIP passes
+- [Book a booth](https://bharataiinnovation.com/inquiry): Exhibition booth enquiry form
+- [Contact](https://bharataiinnovation.com/contact): Contact form and event team
+- [Policies](https://bharataiinnovation.com/terms): [Terms of Service](https://bharataiinnovation.com/terms), [Privacy Policy](https://bharataiinnovation.com/privacy), [Refund & Cancellation](https://bharataiinnovation.com/refund), [Shipping & Delivery](https://bharataiinnovation.com/shipping), [Code of Conduct](https://bharataiinnovation.com/code-of-conduct)
+
+## Common questions
+
+- **When and where is Bharat AI Innovation 2026?** 20–21 November 2026, 09:00–18:00 IST each day, at World Trade Center Mumbai, Cuffe Parade, Mumbai.
+- **Is it free to attend?** The Visitor Pass is free and covers the exhibition. The full conference and networking features (AI matchmaking, connection requests, 1:1 meeting booking) need an Academic (₹999 + GST), Delegate (₹4,999 + GST) or VIP (₹14,999 + GST) pass. Register at https://bharataiinnovation.com/register.
+- **Who is it for?** Enterprise and government buyers of AI (CIOs, CDOs, CTOs, procurement heads), AI builders (startups, product companies, solution providers), policymakers, and investors.
+- **How do I exhibit?** Book one of 93 booths across 8 industry zones, from the Startup Pod at ₹48,000 + GST to the Mega Pavilion at ₹17,40,000 + GST. See https://bharataiinnovation.com/exhibition.
+- **How do I sponsor?** Every sponsorship and branding option is priced separately at https://bharataiinnovation.com/partner, or write to partner@bharataiinnovation.com.
+- **Who organises it?** Aegis Knowledge Trust.
 
 ## Key topics
 

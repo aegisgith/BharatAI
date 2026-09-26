@@ -13130,12 +13130,16 @@ function brandThemeCSS(): string {
 // Shared <head> for app pages (contact, register, marketplace). `path` and
 // `desc` power per-page canonical + social-share cards so links pasted into
 // WhatsApp/LinkedIn/X render a proper preview (previously these pages had NO
-// og/twitter/canonical/JSON-LD at all). og:image is a 1200x630 card.
+// og/twitter/canonical/JSON-LD at all). og:image is a 1200x630 card from
+// scripts/gen-og-cards.mjs; a path without its own card uses the home card.
+const OG_CARD_BY_PATH: Record<string, string> = { '/register': 'register', '/contact': 'contact', '/inquiry': 'inquiry' }
 function sharedHeadHTML(title: string, path: string = '/', desc?: string): string {
   const fullTitle = `${title} — Bharat AI Innovation 2026`
-  const description = desc || `${title} for Bharat AI Innovation 2026 — India's largest AI Conference & Exhibition, 20-21 Nov 2026, WTC Mumbai. Register free.`
+  const description = desc || `${title} for Bharat AI Innovation 2026, India's B2B AI conference and exhibition. 20–21 Nov 2026, WTC Mumbai. Register free.`
   const url = `https://bharataiinnovation.com${path}`
-  const ogImage = 'https://bharataiinnovation.com/images/og-card.png'
+  const ogImage = `https://bharataiinnovation.com/images/og/${OG_CARD_BY_PATH[path] || 'home'}.jpg`
+  // /c/:token pages are one person's connection request: shareable, never indexed.
+  const robots = path === '/c' ? 'noindex, follow' : 'index, follow, max-image-preview:large, max-snippet:-1'
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -13144,7 +13148,7 @@ function sharedHeadHTML(title: string, path: string = '/', desc?: string): strin
   <title>${fullTitle}</title>
   <meta name="description" content="${description}">
   <link rel="canonical" href="${url}">
-  <meta name="robots" content="index, follow, max-image-preview:large">
+  <meta name="robots" content="${robots}">
   <!-- Open Graph -->
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Bharat AI Innovation">
@@ -13153,19 +13157,22 @@ function sharedHeadHTML(title: string, path: string = '/', desc?: string): strin
   <meta property="og:title" content="${fullTitle}">
   <meta property="og:description" content="${description}">
   <meta property="og:image" content="${ogImage}">
+  <meta property="og:image:secure_url" content="${ogImage}">
+  <meta property="og:image:type" content="image/jpeg">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="${fullTitle}, 20–21 November 2026, World Trade Center Mumbai">
   <!-- Twitter -->
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:url" content="${url}">
   <meta name="twitter:title" content="${fullTitle}">
   <meta name="twitter:description" content="${description}">
   <meta name="twitter:image" content="${ogImage}">
+  <meta name="twitter:image:alt" content="${fullTitle}, 20–21 November 2026, World Trade Center Mumbai">
   <!-- Structured data -->
   <script type="application/ld+json">${JSON.stringify({
     "@context": "https://schema.org", "@type": "Event",
     name: "Bharat AI Innovation 2026",
-    description: "India's largest AI Conference & Exhibition — GenAI, LLMs, enterprise AI, startups. 20-21 Nov 2026, WTC Mumbai.",
+    description: "India's B2B AI conference and exhibition: the organisations running AI in production, the companies providing it and the policymakers shaping it. 20–21 Nov 2026, WTC Mumbai.",
     startDate: "2026-11-20", endDate: "2026-11-21",
     eventStatus: "https://schema.org/EventScheduled",
     eventAttendanceMode: "https://schema.org/OfflineEventAttendanceMode",
@@ -13696,7 +13703,7 @@ ${sharedFooterHTML()}
 }
 
 function registerPageHTML(): string {
-  return `${sharedHeadHTML('Register Free', '/register', "Register free for Bharat AI Innovation 2026 — India's largest AI conference. Get your Visitor Pass in 30 seconds, or upgrade to Delegate/VIP. 20-21 Nov 2026, WTC Mumbai.")}
+  return `${sharedHeadHTML('Register Free', '/register', "Register free for Bharat AI Innovation 2026, India's B2B AI conference and exhibition. Get your Visitor Pass in 30 seconds, or choose Delegate or VIP for networking and 1:1 meetings. 20–21 Nov 2026, WTC Mumbai.")}
 <body class="min-h-screen">
 ${sharedNavHTML('register')}
 
@@ -14296,7 +14303,7 @@ function paintPayHoldingPage(w) {
 // ==================== STANDALONE INQUIRY FORM PAGE ====================
 
 function inquiryFormPageHTML(): string {
-  return `${sharedHeadHTML('Book Your Booth', '/inquiry', "Exhibit at Bharat AI Innovation 2026. Book a booth to reach 5,000+ AI decision-makers at WTC Mumbai, 20-21 Nov 2026. Booths from ₹48,000.")}
+  return `${sharedHeadHTML('Book Your Booth', '/inquiry', "Exhibit at Bharat AI Innovation 2026. Book a booth to reach 5,000+ AI decision-makers at WTC Mumbai, 20–21 Nov 2026. Booths from ₹48,000 + GST.")}
 <body class="min-h-screen">
 ${sharedNavHTML('inquiry')}
 
@@ -14761,14 +14768,19 @@ function mainPageHTML(): string {
   <meta property="og:site_name" content="Bharat AI Innovation">
   <meta property="og:url" content="https://bharataiinnovation.com/app">
   <meta property="og:title" content="Bharat AI Innovation 2026 — Networking & Registration">
-  <meta property="og:description" content="Register free and connect with 5,000+ AI researchers, founders, and CXOs at India's largest AI conference. 20-21 Nov 2026, WTC Mumbai.">
-  <meta property="og:image" content="https://bharataiinnovation.com/images/og-card.png">
+  <meta property="og:description" content="Your pass, the schedule, the attendee and exhibitor directory and 1:1 meetings for Bharat AI Innovation 2026, India's B2B AI conference. Register free. 20–21 Nov 2026, WTC Mumbai.">
+  <meta property="og:locale" content="en_IN">
+  <meta property="og:image" content="https://bharataiinnovation.com/images/og/app.jpg">
+  <meta property="og:image:secure_url" content="https://bharataiinnovation.com/images/og/app.jpg">
+  <meta property="og:image:type" content="image/jpeg">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Your pass, schedule and meetings: the Bharat AI Innovation 2026 app">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Bharat AI Innovation 2026 — Networking & Registration">
-  <meta name="twitter:description" content="Register free and connect with 5,000+ AI leaders at India's largest AI conference. 20-21 Nov 2026, WTC Mumbai.">
-  <meta name="twitter:image" content="https://bharataiinnovation.com/images/og-card.png">
+  <meta name="twitter:description" content="Your pass, the schedule, the directory and 1:1 meetings for India's B2B AI conference. 20–21 Nov 2026, WTC Mumbai.">
+  <meta name="twitter:image" content="https://bharataiinnovation.com/images/og/app.jpg">
+  <meta name="twitter:image:alt" content="Your pass, schedule and meetings: the Bharat AI Innovation 2026 app">
   <link rel="stylesheet" href="${FA_CSS}">
   <!-- Shared with the admin panel, so a pass issued at the desk is the same
        document the holder downloaded. -->

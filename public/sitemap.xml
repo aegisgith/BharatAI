@@ -1,76 +1,108 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- Every public page, at its served address: Pages redirects /x.html to /x, so
+     only the clean form belongs here. Keep in step with each page's canonical.
+     Images are the link-preview cards (scripts/gen-og-cards.mjs). -->
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
-        xmlns:news="http://www.google.com/schemas/sitemap-news/0.9"
-        xmlns:xhtml="http://www.w3.org/1999/xhtml"
-        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"
-        xmlns:video="http://www.google.com/schemas/sitemap-video/1.1">
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
 
-    <!-- Home Page -->
+    <!-- Home -->
     <url>
         <loc>https://bharataiinnovation.com/</loc>
-        <lastmod>2026-05-15</lastmod>
-        <changefreq>daily</changefreq>
-        <priority>1.0</priority>
+        <lastmod>2026-09-26</lastmod>
         <image:image>
-            <image:loc>https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png</image:loc>
-            <image:title>Bharat AI Innovation 2026</image:title>
+            <image:loc>https://bharataiinnovation.com/images/og/home.jpg</image:loc>
+            <image:title>Bharat AI Innovation 2026 — India's B2B platform for AI, 20–21 Nov 2026, WTC Mumbai</image:title>
         </image:image>
     </url>
 
-    <!-- Conference Page -->
+    <!-- Conference -->
     <url>
-        <loc>https://bharataiinnovation.com/conference.html</loc>
-        <lastmod>2026-05-15</lastmod>
-        <changefreq>weekly</changefreq>
-        <priority>0.95</priority>
+        <loc>https://bharataiinnovation.com/conference</loc>
+        <lastmod>2026-09-26</lastmod>
+        <image:image>
+            <image:loc>https://bharataiinnovation.com/images/og/conference.jpg</image:loc>
+            <image:title>Bharat AI Innovation 2026 conference: two days, five halls, 10+ tracks</image:title>
+        </image:image>
     </url>
 
-    <!-- Exhibition Page -->
+    <!-- Exhibition -->
     <url>
-        <loc>https://bharataiinnovation.com/exhibition.html</loc>
-        <lastmod>2026-05-15</lastmod>
-        <changefreq>weekly</changefreq>
-        <priority>0.95</priority>
+        <loc>https://bharataiinnovation.com/exhibition</loc>
+        <lastmod>2026-09-26</lastmod>
+        <image:image>
+            <image:loc>https://bharataiinnovation.com/images/og/exhibition.jpg</image:loc>
+            <image:title>Bharat AI Innovation 2026 exhibition: 93 booths across 8 industry zones</image:title>
+        </image:image>
     </url>
 
-    <!-- Register Page -->
+    <!-- Register -->
     <url>
         <loc>https://bharataiinnovation.com/register</loc>
-        <lastmod>2026-05-15</lastmod>
-        <changefreq>weekly</changefreq>
-        <priority>0.95</priority>
+        <lastmod>2026-09-26</lastmod>
+        <image:image>
+            <image:loc>https://bharataiinnovation.com/images/og/register.jpg</image:loc>
+            <image:title>Register free for Bharat AI Innovation 2026</image:title>
+        </image:image>
     </url>
 
-    <!-- Partner Page -->
+    <!-- Partnership & sponsorship -->
     <url>
-        <loc>https://bharataiinnovation.com/partner.html</loc>
-        <lastmod>2026-05-15</lastmod>
-        <changefreq>weekly</changefreq>
-        <priority>0.9</priority>
+        <loc>https://bharataiinnovation.com/partner</loc>
+        <lastmod>2026-09-26</lastmod>
+        <image:image>
+            <image:loc>https://bharataiinnovation.com/images/og/partner.jpg</image:loc>
+            <image:title>Partnership and sponsorship at Bharat AI Innovation 2026</image:title>
+        </image:image>
     </url>
 
-    <!-- About Page -->
+    <!-- About -->
     <url>
-        <loc>https://bharataiinnovation.com/about.html</loc>
-        <lastmod>2026-05-15</lastmod>
-        <changefreq>monthly</changefreq>
-        <priority>0.85</priority>
+        <loc>https://bharataiinnovation.com/about</loc>
+        <lastmod>2026-09-26</lastmod>
+        <image:image>
+            <image:loc>https://bharataiinnovation.com/images/og/about.jpg</image:loc>
+            <image:title>About Bharat AI Innovation 2026</image:title>
+        </image:image>
     </url>
 
-    <!-- Past Speakers — Data Science Congress archive -->
+    <!-- AI Readiness Certification -->
     <url>
-        <loc>https://bharataiinnovation.com/past-speakers.html</loc>
-        <lastmod>2026-09-02</lastmod>
-        <changefreq>monthly</changefreq>
-        <priority>0.7</priority>
+        <loc>https://bharataiinnovation.com/ai-readiness</loc>
+        <lastmod>2026-09-26</lastmod>
+        <image:image>
+            <image:loc>https://bharataiinnovation.com/images/og/ai-readiness.jpg</image:loc>
+            <image:title>AI Readiness Certification — Aegis Graham Bell Awards</image:title>
+        </image:image>
     </url>
 
-    <!-- Campus Series — pre-event panel discussions -->
+    <!-- Training workshops -->
     <url>
-        <loc>https://bharataiinnovation.com/campus-series.html</loc>
-        <lastmod>2026-09-02</lastmod>
-        <changefreq>weekly</changefreq>
-        <priority>0.85</priority>
+        <loc>https://bharataiinnovation.com/training-workshop</loc>
+        <lastmod>2026-09-26</lastmod>
+        <image:image>
+            <image:loc>https://bharataiinnovation.com/images/og/training-workshop.jpg</image:loc>
+            <image:title>AI training workshops at Bharat AI Innovation 2026</image:title>
+        </image:image>
+    </url>
+
+    <!-- Startup pitch -->
+    <url>
+        <loc>https://bharataiinnovation.com/startup-pitch</loc>
+        <lastmod>2026-09-26</lastmod>
+        <image:image>
+            <image:loc>https://bharataiinnovation.com/images/og/startup-pitch.jpg</image:loc>
+            <image:title>AI startup pitch at Bharat AI Innovation 2026</image:title>
+        </image:image>
+    </url>
+
+    <!-- Campus Series -->
+    <url>
+        <loc>https://bharataiinnovation.com/campus-series</loc>
+        <lastmod>2026-09-26</lastmod>
+        <image:image>
+            <image:loc>https://bharataiinnovation.com/images/og/campus-series.jpg</image:loc>
+            <image:title>Bharat AI Innovation Campus Series — AI and Employability</image:title>
+        </image:image>
         <image:image>
             <image:loc>https://bharataiinnovation.com/images/campus-djsanghvi-21sep-panel-v4.jpg</image:loc>
             <image:title>AI and Employability — DJ Sanghvi College of Engineering, Mumbai, 21 September 2026</image:title>
@@ -81,96 +113,100 @@
         </image:image>
     </url>
 
-    <!-- Campus Series — individual panel pages -->
+    <!-- Campus panel — DJ Sanghvi -->
     <url>
-        <loc>https://bharataiinnovation.com/campus-djsanghvi.html</loc>
-        <lastmod>2026-09-02</lastmod>
-        <changefreq>weekly</changefreq>
-        <priority>0.8</priority>
+        <loc>https://bharataiinnovation.com/campus-djsanghvi</loc>
+        <lastmod>2026-09-26</lastmod>
         <image:image>
             <image:loc>https://bharataiinnovation.com/images/campus-djsanghvi-21sep-panel-v4.jpg</image:loc>
             <image:title>AI and Employability — DJ Sanghvi College of Engineering, Mumbai, 21 September 2026</image:title>
         </image:image>
     </url>
+
+    <!-- Campus panel — JNU -->
     <url>
-        <loc>https://bharataiinnovation.com/campus-jnu.html</loc>
-        <lastmod>2026-09-02</lastmod>
-        <changefreq>weekly</changefreq>
-        <priority>0.8</priority>
+        <loc>https://bharataiinnovation.com/campus-jnu</loc>
+        <lastmod>2026-09-26</lastmod>
         <image:image>
             <image:loc>https://bharataiinnovation.com/images/campus-jnu-30sep.jpg</image:loc>
             <image:title>AI and Employability — Jawaharlal Nehru University, New Delhi, 30 September 2026</image:title>
         </image:image>
     </url>
 
-    <!-- Startup Pitch Page -->
+    <!-- Past speakers -->
     <url>
-        <loc>https://bharataiinnovation.com/startup-pitch.html</loc>
-        <lastmod>2026-05-15</lastmod>
-        <changefreq>weekly</changefreq>
-        <priority>0.85</priority>
-    </url>
-    <url>
-        <loc>https://bharataiinnovation.com/ai-readiness.html</loc>
-        <lastmod>2026-08-18</lastmod>
-        <changefreq>weekly</changefreq>
-        <priority>0.85</priority>
+        <loc>https://bharataiinnovation.com/past-speakers</loc>
+        <lastmod>2026-09-26</lastmod>
+        <image:image>
+            <image:loc>https://bharataiinnovation.com/images/og/past-speakers.jpg</image:loc>
+            <image:title>Past speakers of the Data Science Congress</image:title>
+        </image:image>
     </url>
 
-    <!-- Training Workshop Page -->
+    <!-- AI Marketplace -->
     <url>
-        <loc>https://bharataiinnovation.com/training-workshop.html</loc>
-        <lastmod>2026-05-15</lastmod>
-        <changefreq>weekly</changefreq>
-        <priority>0.85</priority>
+        <loc>https://bharataiinnovation.com/marketplace</loc>
+        <lastmod>2026-09-26</lastmod>
+        <image:image>
+            <image:loc>https://bharataiinnovation.com/images/og/marketplace.jpg</image:loc>
+            <image:title>Bharat AI Marketplace</image:title>
+        </image:image>
     </url>
 
-    <!-- Accommodation Page -->
+    <!-- AI Marketplace FAQ -->
     <url>
-        <loc>https://bharataiinnovation.com/accommodation.html</loc>
-        <lastmod>2026-05-15</lastmod>
-        <changefreq>monthly</changefreq>
-        <priority>0.7</priority>
+        <loc>https://bharataiinnovation.com/marketplace/faq</loc>
+        <lastmod>2026-09-26</lastmod>
     </url>
 
-    <!-- Contact Page -->
+    <!-- Accommodation -->
+    <url>
+        <loc>https://bharataiinnovation.com/accommodation</loc>
+        <lastmod>2026-09-26</lastmod>
+        <image:image>
+            <image:loc>https://bharataiinnovation.com/images/og/accommodation.jpg</image:loc>
+            <image:title>Hotels near WTC Mumbai for Bharat AI Innovation 2026</image:title>
+        </image:image>
+    </url>
+
+    <!-- Contact -->
     <url>
         <loc>https://bharataiinnovation.com/contact</loc>
-        <lastmod>2026-05-15</lastmod>
-        <changefreq>monthly</changefreq>
-        <priority>0.7</priority>
+        <lastmod>2026-09-26</lastmod>
+        <image:image>
+            <image:loc>https://bharataiinnovation.com/images/og/contact.jpg</image:loc>
+            <image:title>Contact the Bharat AI Innovation team</image:title>
+        </image:image>
     </url>
 
-    <!-- Policy Pages -->
+    <!-- Code of Conduct -->
     <url>
-        <loc>https://bharataiinnovation.com/privacy.html</loc>
-        <lastmod>2026-05-15</lastmod>
-        <changefreq>yearly</changefreq>
-        <priority>0.4</priority>
+        <loc>https://bharataiinnovation.com/code-of-conduct</loc>
+        <lastmod>2026-09-26</lastmod>
     </url>
+
+    <!-- Privacy Policy -->
     <url>
-        <loc>https://bharataiinnovation.com/terms.html</loc>
-        <lastmod>2026-05-15</lastmod>
-        <changefreq>yearly</changefreq>
-        <priority>0.4</priority>
+        <loc>https://bharataiinnovation.com/privacy</loc>
+        <lastmod>2026-09-26</lastmod>
     </url>
+
+    <!-- Terms of Service -->
     <url>
-        <loc>https://bharataiinnovation.com/refund.html</loc>
-        <lastmod>2026-05-15</lastmod>
-        <changefreq>yearly</changefreq>
-        <priority>0.4</priority>
+        <loc>https://bharataiinnovation.com/terms</loc>
+        <lastmod>2026-09-26</lastmod>
     </url>
+
+    <!-- Refund & Cancellation Policy -->
     <url>
-        <loc>https://bharataiinnovation.com/shipping.html</loc>
-        <lastmod>2026-08-18</lastmod>
-        <changefreq>yearly</changefreq>
-        <priority>0.4</priority>
+        <loc>https://bharataiinnovation.com/refund</loc>
+        <lastmod>2026-09-26</lastmod>
     </url>
+
+    <!-- Shipping & Delivery Policy -->
     <url>
-        <loc>https://bharataiinnovation.com/code-of-conduct.html</loc>
-        <lastmod>2026-05-15</lastmod>
-        <changefreq>yearly</changefreq>
-        <priority>0.4</priority>
+        <loc>https://bharataiinnovation.com/shipping</loc>
+        <lastmod>2026-09-26</lastmod>
     </url>
 
 </urlset>
