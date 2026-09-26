@@ -148,5 +148,43 @@ r = await hit('/panel-rsvp', form({ a: '5', p: SLUG, r: 'yes', s: sig(5, SLUG, '
 check('after the start, answers are closed', r.text.includes('already started'), r.text.slice(0, 120));
 Date.now = realNow;
 
+// Someone already registered (here a conference registrant) fills in a panel page.
+// The page tells them "you are set for this panel", so they must land on its list,
+// and nothing about their own record may change. Found on production, 26 Sep.
+const regWrites = [];
+const EXISTING = { id: 85, event_id: 1, email: 'known@example.com', company: 'Their Company', job_title: 'Their Title', main_event: 1, registration_source: 'website' };
+const regDB = {
+  prepare(sql) {
+    let args = [];
+    const stmt = {
+      bind(...a) { args = a; return stmt; },
+      async first() { return /FROM attendees WHERE event_id = \? AND email = \?/.test(sql) ? EXISTING : null; },
+      async all() { return { results: [] }; },
+      async run() {
+        regWrites.push({ sql, args });
+        if (/INSERT INTO attendees/.test(sql)) throw new Error('D1_ERROR: UNIQUE constraint failed: attendees.event_id, attendees.email');
+        return { meta: { changes: 1 } };
+      },
+    };
+    return stmt;
+  },
+  async batch(list) { return Promise.all(list.map(s => s.all())); },
+};
+const regEnv = new Proxy({ SESSION_SECRET: SECRET, DB: regDB }, { get: (t, k) => (k in t ? t[k] : undefined) });
+const register = async (source) => {
+  regWrites.length = 0;
+  const res = await worker.fetch(new Request('https://bharataiinnovation.com/api/events/1/attendees/register', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: 'Someone Else', email: 'Known@Example.com', mobile: '1', company: 'Typed By A Stranger', job_title: 'Typed', city: 'Delhi', industry: 'Other', badge_type: 'Visitor Pass', registration_source: source }),
+  }), regEnv, ctx);
+  return res.status;
+};
+let st = await register('campus:' + SLUG);
+const panelRow = regWrites.find(w => /INSERT OR IGNORE INTO panel_registrations/.test(w.sql));
+check('an existing registrant who uses the panel page goes on that panel\'s list', !!panelRow && panelRow.args[0] === 85 && panelRow.args[1] === SLUG, st + ' ' + JSON.stringify(regWrites.map(w => w.sql.slice(0, 60))));
+check('...without their profile, pass or conference place changing', !regWrites.some(w => /UPDATE attendees SET (?!is_online = 1, last_login_at)/.test(w.sql)), JSON.stringify(regWrites.map(w => w.sql.slice(0, 60))));
+st = await register('website');
+check('an existing registrant on a non-panel form joins no panel', !regWrites.some(w => /panel_registrations/.test(w.sql)), JSON.stringify(regWrites.map(w => w.sql.slice(0, 60))));
+
 console.log(fails ? `\n${fails} FAILED` : '\nall "are you coming?" checks passed');
 process.exit(fails ? 1 : 0);

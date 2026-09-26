@@ -4785,6 +4785,19 @@ app.post('/api/events/:id/attendees/register', async (c) => {
     if (e.message?.includes('UNIQUE')) {
       const existing = await c.env.DB.prepare('SELECT * FROM attendees WHERE event_id = ? AND email = ?').bind(eventId, normalizedEmail).first()
       if (existing) {
+        // Already in the database and now registering for a campus panel, most often
+        // a conference registrant. The panel page tells them "you are set for this
+        // panel", so they go on its list (reminder, guest list for the college).
+        // Only the panel row: a form anyone can fill must not change their profile,
+        // pass or conference place, and no email goes out from here.
+        const joining = campusPanelFor(sourceValue)
+        if (joining) {
+          try {
+            await c.env.DB.prepare(
+              "INSERT OR IGNORE INTO panel_registrations (attendee_id, panel_slug, source, registered_at) VALUES (?, ?, 'page', datetime('now'))"
+            ).bind((existing as any).id, joining.slug).run()
+          } catch { /* 0040 not applied yet */ }
+        }
         // Registering with an address that already exists must NOT hand back that
         // account — that made /register a second email-only login. A caller holding
         // a valid session for this account (the app re-registers on load to mark
