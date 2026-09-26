@@ -1055,7 +1055,10 @@ async function sendRegistrationEmail(c: any, attendee: any) {
 //
 // Keyed by the slug in the tag. An unknown slug falls back to the ordinary welcome,
 // so a tag written before its panel is listed here is never silently swallowed.
-type PanelSpeaker = { name: string; role: string; org?: string }
+// photo: site-relative path to a small JPEG for the email. JPEG rather than the
+// site's WebP because Outlook on Windows renders no WebP at all, and small
+// because a mail client fetches it on every open.
+type PanelSpeaker = { name: string; role: string; org?: string; photo?: string }
 type CampusPanel = {
   slug: string
   title: string; titleShort: string; subtitle: string
@@ -1109,19 +1112,22 @@ const CAMPUS_PANELS: Record<string, CampusPanel> = {
     subtitle: 'Opportunities, Challenges & the Future of Work',
     host: 'Jawaharlal Nehru University', hostShort: 'JNU', city: 'New Delhi',
     dateLabel: 'Wednesday, 30 September 2026', dateShort: 'Wednesday, 30 Sep 2026', timeLabel: '3:00 PM – 4:30 PM IST',
-    venue: 'On campus, New Delhi',
+    venue: 'JNU Convention Centre',
     pageUrl: 'https://bharataiinnovation.com/campus-jnu',
     startsAt: '2026-09-30T15:00:00+05:30', endsAt: '2026-09-30T16:30:00+05:30',
     claimOpensAt: '2026-09-30T16:00:00+05:30', claimClosesAt: '2026-10-02T23:59:59+05:30',
     hostLogo: '',
     speakers: [
-      { name: 'Prof. Sougata Mukherjea', role: 'Professor of Practice, Computer Technology, IIT Delhi' },
-      { name: 'Dr. Buddha Chandrashekhar', role: 'CEO, Anuvadini AI; Chief Coordinating Officer, AICTE, Ministry of Education' },
-      { name: 'Madhvendra Singh', role: 'Chief Executive Officer, Electronics Sector Skills Council of India (ESSCI)' },
-      { name: 'Dr. Rajkumar Upadhyay', role: 'CEO & Chairman, Board of Directors, C-DOT' },
-      { name: 'Parna Ghosh', role: 'President, Group CIO & Data Protection Officer, Uno Minda' },
-      { name: 'Bhupesh Daheria', role: 'CEO, Aegis School of Data Science; Founder, Assessfy' },
-      { name: 'Shreenivas Chetlapalli', role: 'Vice President, Technology and Strategy (TSO), Jade Global' },
+      { name: 'Prof. R. K. Brojen Singh', role: 'Professor & Dean, School of Computational and Integrative Sciences, JNU', photo: '/images/email/brojen-singh.jpg' },
+      { name: 'Prof. Sougata Mukherjea', role: 'Professor of Practice, Computer Technology, IIT Delhi', photo: '/images/email/sougata-mukherjea.jpg' },
+      { name: 'Dr. Buddha Chandrashekhar', role: 'CEO, Anuvadini AI; Chief Coordinating Officer, AICTE, Ministry of Education', photo: '/images/email/buddha-chandrashekhar.jpg' },
+      { name: 'Madhvendra Singh', role: 'Chief Executive Officer, Electronics Sector Skills Council of India (ESSCI)', photo: '/images/email/madhvendra-singh.jpg' },
+      { name: 'Dr. Rajkumar Upadhyay', role: 'CEO & Chairman, Board of Directors, C-DOT', photo: '/images/email/rajkumar-upadhyay.jpg' },
+      { name: 'Parna Ghosh', role: 'President, Group CIO & Data Protection Officer, Uno Minda', photo: '/images/email/parna-ghosh.jpg' },
+      { name: 'Bhupesh Daheria', role: 'CEO, Aegis School of Data Science; Founder, Assessfy', photo: '/images/email/bhupesh-daheria.jpg' },
+      { name: 'Shreenivas Chetlapalli', role: 'Vice President, Technology and Strategy (TSO), Jade Global', photo: '/images/email/shreenivas-chetlapalli.jpg' },
+      { name: 'Dr. Nishakant Ojha', role: 'Chief Advisor, Strategic Affairs', photo: '/images/email/nishakant-ojha.jpg' },
+      { name: 'Priyanka Srivastava', role: 'Senior Editor, Education Times (Moderator)', photo: '/images/email/priyanka-srivastava.jpg' },
     ],
     hashtags: '#BharatAIInnovation #CampusSeries #JNU #AI #Employability #FutureOfWork',
     hostLike: ['jawaharlal nehru', 'jnu'],
@@ -1260,9 +1266,21 @@ async function sendPanelConfirmationEmail(c: any, attendee: any, panel: CampusPa
     `<tr><td valign="top" style="padding:0 14px 10px 0;font-size:12px;color:#888;white-space:nowrap;">${label}</td>` +
     `<td valign="top" style="padding:0 0 10px;font-size:14px;color:#1E2140;font-weight:bold;">${value}</td></tr>`
   const speakers = panel.speakers || []
+  // The photos are fetched from the site, not carried in the message, so the email
+  // itself stays a few kilobytes. A client that blocks images still shows the whole
+  // line-up, because every name and title is text beside the picture.
+  const anyPhoto = speakers.some(sp => sp.photo)
+  const panellistRow = (sp: PanelSpeaker) =>
+    `<tr>`
+    + (anyPhoto
+        ? `<td valign="top" width="56" style="padding:0 12px 12px 0;">${sp.photo
+            ? `<img src="https://bharataiinnovation.com${sp.photo}" width="44" height="44" alt="" style="display:block;width:44px;height:44px;border-radius:22px;border:0;outline:none;">`
+            : ''}</td>`
+        : '')
+    + `<td valign="top" style="padding:0 0 12px;font-size:14px;color:#1E2140;font-weight:bold;line-height:1.45;">${esc(sp.name)}`
+    + `<span style="font-weight:normal;color:#666;"> &mdash; ${esc(sp.role)}${sp.org ? ', ' + esc(sp.org) : ''}</span></td></tr>`
   const panellists = speakers.length
-    ? row('Panellists', speakers.map(sp =>
-        `${esc(sp.name)}<span style="font-weight:normal;color:#666;"> &mdash; ${esc(sp.role)}${sp.org ? ', ' + esc(sp.org) : ''}</span>`).join('<br>'))
+    ? row('Panellists', `<table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">${speakers.map(panellistRow).join('')}</table>`)
     : ''
   const viaMuni = opts.source === 'muni'
     ? `<p style="margin:0 0 18px;font-size:13px;line-height:1.65;color:#666;">You registered through mUni Campus. We have carried your details across, so there is nothing to fill in again.</p>`
