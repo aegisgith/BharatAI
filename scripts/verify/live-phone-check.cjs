@@ -37,6 +37,9 @@ const check = (n, ok, d) => { console.log((ok ? 'PASS ' : 'FAIL ') + n + (ok ? '
     await p2.goto(`${BASE}/${slug}?live=${Date.now()}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
     await p2.waitForTimeout(1500);
     if (await p2.locator('#cp-reg-form').count()) {
+      // Pages with the "I am" choice register as a professional (the usual panel registrant).
+      const pro = p2.locator('#cp-reg-form input[name="who"][value="professional"]');
+      if (await pro.count()) { await pro.check(); await p2.locator('#cp-reg-form [name="industry"]').selectOption('Software & SaaS'); }
       for (const [n, v] of [['name', 'Live Check'], ['email', 'live.check@example.com'], ['mobile', '9876543210'], ['company', 'Test College'], ['job_title', 'Student'], ['city', 'Mumbai']]) {
         const l = p2.locator(`#cp-reg-form [name="${n}"]`); if (await l.count()) await l.first().fill(v);
       }

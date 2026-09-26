@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI and Employability — Jawaharlal Nehru University | Campus Series</title>
-    <meta name="description" content="Bharat AI Innovation Campus Series panel discussion at Jawaharlal Nehru University, New Delhi — “AI and Employability: Opportunities, Challenges and the Future of Work”. Wednesday 30 September 2026, 3:00 PM – 4:30 PM. Free for JNU students and faculty.">
+    <meta name="description" content="Bharat AI Innovation Campus Series panel discussion at Jawaharlal Nehru University, New Delhi — “AI and Employability: Opportunities, Challenges and the Future of Work”. Wednesday 30 September 2026, 3:00 PM – 4:30 PM. Free to attend, for students, faculty and working professionals.">
     <link rel="canonical" href="https://bharataiinnovation.com/campus-jnu">
     <!-- Link previews (WhatsApp, LinkedIn, X, Slack). Card: scripts/gen-og-cards.mjs -->
     <meta property="og:type" content="website">
@@ -12,7 +12,7 @@
     <meta property="og:locale" content="en_IN">
     <meta property="og:url" content="https://bharataiinnovation.com/campus-jnu">
     <meta property="og:title" content="AI and Employability — Jawaharlal Nehru University | Bharat AI Innovation">
-    <meta property="og:description" content="Pre-event panel discussion on AI, hiring and the future of work. Wednesday 30 September 2026, 3:00 PM – 4:30 PM, New Delhi. Free for JNU students and faculty.">
+    <meta property="og:description" content="Pre-event panel discussion on AI, hiring and the future of work. Wednesday 30 September 2026, 3:00 PM – 4:30 PM, New Delhi. Free to attend, for students, faculty and working professionals.">
     <meta property="og:image" content="https://bharataiinnovation.com/images/campus-jnu-30sep.jpg">
     <meta property="og:image:secure_url" content="https://bharataiinnovation.com/images/campus-jnu-30sep.jpg">
     <meta property="og:image:type" content="image/jpeg">
@@ -124,7 +124,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300..800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/css/fa-subset.css?v=1">
     <link rel="stylesheet" href="css/style.css?v=20260912a">
-    <link rel="stylesheet" href="css/campus-panel.css">
+    <link rel="stylesheet" href="css/campus-panel.css?v=20260926a">
     <link rel="icon" type="image/png" href="images/Bharat%20AI%20Innovation%20Logo.png">
 </head>
 <body>
@@ -169,7 +169,7 @@
                     <div><i class="fas fa-university"></i><div><strong>Jawaharlal Nehru University</strong><span>Host Institution</span></div></div>
                     <div><i class="fas fa-calendar-day"></i><div><strong>Wednesday, 30 September 2026</strong><span>3:00 PM – 4:30 PM IST</span></div></div>
                     <div><i class="fas fa-location-dot"></i><div><strong>JNU Convention Centre</strong><span>New Delhi</span></div></div>
-                    <div><i class="fas fa-ticket"></i><div><strong>Free entry</strong><span>Open to JNU students &amp; faculty</span></div></div>
+                    <div><i class="fas fa-ticket"></i><div><strong>Free entry</strong><span>Students, faculty &amp; professionals</span></div></div>
                 </div>
 
                 <div class="cp-actions">
@@ -222,16 +222,52 @@
                             <label for="cpf-city">City</label>
                             <input id="cpf-city" name="city" type="text" autocomplete="address-level2" value="New Delhi" required>
                         </div>
+                        <fieldset class="cp-field--wide cp-role" id="cpf-who">
+                            <legend>I am</legend>
+                            <div class="cp-role-opts">
+                                <label class="cp-role-opt"><input type="radio" name="who" value="professional"> A working professional</label>
+                                <label class="cp-role-opt"><input type="radio" name="who" value="student"> A student</label>
+                                <label class="cp-role-opt"><input type="radio" name="who" value="faculty"> Faculty or staff</label>
+                            </div>
+                        </fieldset>
                         <div class="cp-field cp-field--wide">
-                            <label for="cpf-college">Institution</label>
-                            <input id="cpf-college" name="company" type="text" value="Jawaharlal Nehru University" required>
+                            <label for="cpf-college" id="cpf-college-label">Organisation or college</label>
+                            <input id="cpf-college" name="company" type="text" autocomplete="organization" required>
                         </div>
                         <div class="cp-field cp-field--wide">
-                            <label for="cpf-course">Course &amp; year</label>
-                            <input id="cpf-course" name="job_title" type="text" placeholder="e.g. B.Tech Computer Engineering, Final Year" required>
+                            <label for="cpf-course" id="cpf-course-label">Job title, or course &amp; year</label>
+                            <input id="cpf-course" name="job_title" type="text" required>
+                        </div>
+                        <div class="cp-field cp-field--wide" id="cpf-industry-field" hidden>
+                            <label for="cpf-industry">Industry</label>
+                            <select id="cpf-industry" name="industry">
+                                <option value="">Choose your industry</option>
+                                <option>Banking &amp; Financial Services</option>
+                                <option>Insurance</option>
+                                <option>IT Services &amp; Consulting</option>
+                                <option>Software &amp; SaaS</option>
+                                <option>Telecom</option>
+                                <option>Manufacturing</option>
+                                <option>Automotive</option>
+                                <option>Pharma &amp; Life Sciences</option>
+                                <option>Healthcare &amp; Hospitals</option>
+                                <option>Retail &amp; E-commerce</option>
+                                <option>Logistics &amp; Supply Chain</option>
+                                <option>Energy &amp; Utilities</option>
+                                <option>Media &amp; Entertainment</option>
+                                <option>Education &amp; Academia</option>
+                                <option>Government &amp; Public Sector</option>
+                                <option>Consulting &amp; Professional Services</option>
+                                <option>Startup / Early stage</option>
+                                <option>Venture Capital &amp; Investment</option>
+                                <option>Agriculture &amp; Agritech</option>
+                                <option>Real Estate &amp; Construction</option>
+                                <option>Aerospace &amp; Defence</option>
+                                <option>Other</option>
+                            </select>
                         </div>
 
-                        <p class="cp-form-msg cp-form-msg--err" id="cp-reg-error" hidden></p>
+                        <p class="cp-form-msg cp-form-msg--err" id="cp-reg-error" role="alert" hidden></p>
 
                         <div class="cp-field--wide">
                             <button type="submit" class="btn btn-primary btn-lg" id="cp-reg-submit" style="width:100%;justify-content:center;">
@@ -253,7 +289,7 @@
         <div class="container">
             <div class="section-header reveal">
                 <h2 class="section-title">What This Panel <span class="accent">Covers</span></h2>
-                <p class="section-subtitle">Ninety minutes on the question every final-year student is actually asking.</p>
+                <p class="section-subtitle">Ninety minutes on what AI is doing to work, for the people starting careers and the people hiring for them.</p>
             </div>
             <div class="cp-points">
                 <div class="cp-point reveal"><span>01</span><p>Which entry-level roles are genuinely changing, which are not, and how quickly the line is moving.</p></div>
@@ -377,9 +413,9 @@
                     <h2>Jawaharlal Nehru University</h2>
                     <p>
                         This session is hosted at the JNU Convention Centre, on the JNU campus in New Delhi, and is
-                        free for the institution's students and faculty. Seating is limited by the venue.
-                        Students from other colleges who would like to attend can write to us and we will
-                        check availability with the host.
+                        free to attend. Seating is limited by the venue. Guests from outside JNU, whether
+                        working professionals or students from other colleges, register above and carry a
+                        government photo ID, because the session is on the university campus.
                     </p>
                     <div class="cp-host-actions">
                         <a href="#register" class="btn btn-outline btn-sm">Register to Attend</a>
@@ -540,6 +576,50 @@
       var panel = document.getElementById('cp-reg-panel');
       var IDLE = 'Register to Attend <i class="fas fa-arrow-right"></i>';
 
+      // Most people registering for this panel are working professionals, not JNU
+      // students, so the form asks which one before it names the last fields. The
+      // register endpoint also refuses a new row without an industry: students and
+      // faculty are Education & Academia, professionals choose theirs.
+      var HOST = 'Jawaharlal Nehru University';
+      var ROLES = {
+        professional: { org: 'Organisation', orgHint: 'e.g. Tata Consultancy Services', title: 'Job title', titleHint: 'e.g. Product Manager' },
+        student: { org: 'College or university', orgHint: 'e.g. ' + HOST, title: 'Course & year', titleHint: 'e.g. MCA, 2nd year' },
+        faculty: { org: 'Institution', orgHint: 'e.g. ' + HOST, title: 'Designation & department', titleHint: 'e.g. Assistant Professor, School of Computer & Systems Sciences' }
+      };
+      var whoSet = document.getElementById('cpf-who');
+      var company = form.company, title = form.job_title, industry = form.industry;
+      var industryField = document.getElementById('cpf-industry-field');
+      var hostFilled = false;
+
+      function who() {
+        var r = form.querySelector('input[name="who"]:checked');
+        return r ? r.value : '';
+      }
+
+      function humanList(xs) {
+        return xs.length < 2 ? (xs[0] || '') : xs.slice(0, -1).join(', ') + ' and ' + xs[xs.length - 1];
+      }
+
+      function applyRole() {
+        var role = who(), r = ROLES[role];
+        if (!r) return;
+        document.getElementById('cpf-college-label').textContent = r.org;
+        document.getElementById('cpf-course-label').textContent = r.title;
+        company.placeholder = r.orgHint;
+        title.placeholder = r.titleHint;
+        industryField.hidden = role !== 'professional';
+        whoSet.removeAttribute('aria-invalid');
+        // A JNU student should not have to type the host's name, and a professional
+        // should not inherit it; anything the person typed themselves is left alone.
+        if (role !== 'professional' && !company.value.trim()) { company.value = HOST; hostFilled = true; }
+        else if (role === 'professional' && hostFilled) { company.value = ''; hostFilled = false; }
+      }
+
+      whoSet.addEventListener('change', applyRole);
+      company.addEventListener('input', function () { hostFilled = false; });
+      form.addEventListener('input', function (e) { e.target.removeAttribute('aria-invalid'); });
+      applyRole();
+
       function fail(msg) {
         errBox.textContent = msg;
         errBox.hidden = false;
@@ -562,14 +642,15 @@
         e.preventDefault();
         errBox.hidden = true;
 
+        var role = who();
         var payload = {
           name: form.name.value.trim(),
           email: form.email.value.trim().toLowerCase(),
           mobile: form.mobile.value.trim(),
-          company: form.company.value.trim(),
-          job_title: form.job_title.value.trim(),
+          company: company.value.trim(),
+          job_title: title.value.trim(),
           city: form.city.value.trim(),
-          industry: 'Education & Academia',
+          industry: role === 'professional' ? industry.value : 'Education & Academia',
           badge_type: 'Visitor Pass',
           bio: '',
           interests: '',
@@ -577,7 +658,37 @@
           registration_source: PANEL_SOURCE
         };
 
-        if (!payload.name || !payload.email) { fail('Please add your name and email.'); return; }
+        // Name every empty field, not just the first, and put the cursor on the
+        // first one: on a phone the message sits below the fold of the keyboard.
+        var missing = [], first = null;
+        function need(el, label) {
+          if (el.value.trim()) { el.removeAttribute('aria-invalid'); return; }
+          el.setAttribute('aria-invalid', 'true');
+          missing.push(label);
+          first = first || el;
+        }
+        need(form.name, 'name');
+        need(form.email, 'email');
+        need(form.mobile, 'mobile number');
+        need(form.city, 'city');
+        var msg = '';
+        if (!role) {
+          whoSet.setAttribute('aria-invalid', 'true');
+          first = first || form.querySelector('input[name="who"]');
+          msg = 'Please choose whether you are a working professional, a student or faculty' +
+                (missing.length ? ', and add your ' + humanList(missing) + '.' : '.');
+        } else {
+          need(company, ROLES[role].org.toLowerCase());
+          need(title, ROLES[role].title.toLowerCase());
+          if (role === 'professional') need(industry, 'industry');
+          if (missing.length) msg = 'Please add your ' + humanList(missing) + '.';
+        }
+        if (!msg && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.email)) {
+          form.email.setAttribute('aria-invalid', 'true');
+          first = form.email;
+          msg = 'Please check your email address.';
+        }
+        if (msg) { fail(msg); first.focus(); return; }
 
         btn.disabled = true;
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Registering...';

@@ -310,7 +310,8 @@
   font-size: 0.78rem; font-weight: 700; color: var(--charcoal);
   text-transform: uppercase; letter-spacing: 0.05em;
 }
-.cp-field input {
+.cp-field input,
+.cp-field select {
   font-family: var(--font-body);
   font-size: 0.95rem; color: var(--charcoal);
   padding: 0.8rem 0.95rem;
@@ -320,13 +321,40 @@
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
   width: 100%;
 }
-.cp-field input:focus {
+.cp-field input:focus,
+.cp-field select:focus {
   outline: none;
   border-color: var(--saffron);
   box-shadow: 0 0 0 3px rgba(255,107,0,0.14);
   background: #fff;
 }
 .cp-field input:disabled { opacity: 0.6; cursor: not-allowed; }
+.cp-field[hidden] { display: none; }
+.cp-field input[aria-invalid="true"],
+.cp-field select[aria-invalid="true"] { border-color: #dc2626; background: #fff; }
+
+/* "I am": professional / student / faculty. Decides the labels of the fields below. */
+.cp-role { border: 0; padding: 0; margin: 0; min-width: 0; }
+.cp-role legend {
+  padding: 0; margin-bottom: 0.5rem;
+  font-size: 0.78rem; font-weight: 700; color: var(--charcoal);
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+.cp-role-opts { display: flex; flex-wrap: wrap; gap: 0.55rem; }
+.cp-role-opt {
+  flex: 1 1 auto;
+  display: flex; align-items: center; gap: 0.55rem;
+  min-height: 48px; padding: 0.65rem 0.95rem;
+  border: 1px solid var(--light); border-radius: 10px;
+  background: var(--off-white);
+  font-size: 0.93rem; color: var(--charcoal);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.cp-role-opt input { width: 18px; height: 18px; margin: 0; flex-shrink: 0; accent-color: var(--saffron); }
+.cp-role-opt:has(input:checked) { border-color: var(--saffron); background: rgba(255,107,0,0.07); font-weight: 600; }
+.cp-role-opt:focus-within { box-shadow: 0 0 0 3px rgba(255,107,0,0.14); }
+.cp-role[aria-invalid="true"] .cp-role-opt { border-color: #dc2626; }
 .cp-form-note { grid-column: 1 / -1; font-size: 0.8rem; color: var(--mid-grey); line-height: 1.6; margin: 0; }
 .cp-form-msg {
   grid-column: 1 / -1;
