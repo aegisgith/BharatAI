@@ -13463,13 +13463,32 @@ ${sharedNavHTML('contact')}
     </div>
   </div>
 
+  <!-- Office + venue -->
+  <div class="max-w-2xl mx-auto mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+    <div class="glass rounded-xl p-5">
+      <div class="flex items-center gap-2 mb-2">
+        <div class="w-8 h-8 rounded-lg bg-primary-500/20 flex items-center justify-center shrink-0"><i class="fas fa-building text-sm text-primary-400"></i></div>
+        <h3 class="font-semibold text-sm">Our office</h3>
+      </div>
+      <address class="not-italic text-xs text-gray-400 leading-relaxed">Kukreja Centre, 11th Floor, B Wing,<br>Plot 13, Sector 11, Central Business District (CBD) Belapur,<br>Navi Mumbai - 400614</address>
+      <a href="https://maps.google.com/?q=Kukreja+Centre+Plot+13+Sector+11+CBD+Belapur+Navi+Mumbai+400614" target="_blank" rel="noopener" class="inline-block mt-2 text-xs text-primary-400 hover:underline"><i class="fas fa-directions mr-1"></i>Open in Maps</a>
+    </div>
+    <div class="glass rounded-xl p-5">
+      <div class="flex items-center gap-2 mb-2">
+        <div class="w-8 h-8 rounded-lg bg-primary-500/20 flex items-center justify-center shrink-0"><i class="fas fa-map-marker-alt text-sm text-primary-400"></i></div>
+        <h3 class="font-semibold text-sm">Event venue</h3>
+      </div>
+      <address class="not-italic text-xs text-gray-400 leading-relaxed">World Trade Center Mumbai,<br>Centre 1 Building, Cuffe Parade,<br>Mumbai - 400005</address>
+      <a href="https://maps.google.com/?q=World+Trade+Centre+Mumbai+Cuffe+Parade" target="_blank" rel="noopener" class="inline-block mt-2 text-xs text-primary-400 hover:underline"><i class="fas fa-directions mr-1"></i>Get Directions</a>
+    </div>
+  </div>
+
   <!-- Quick Info Bar -->
   <div class="max-w-2xl mx-auto mt-6">
     <div class="glass rounded-xl p-4 flex flex-wrap items-center justify-center gap-4 text-xs text-gray-400">
       <span><i class="fas fa-envelope text-primary-400 mr-1.5"></i><a href="mailto:info@bharataiinnovation.com" class="hover:text-white transition">info@bharataiinnovation.com</a></span>
       <span><i class="fas fa-phone text-primary-400 mr-1.5"></i><a href="tel:+918976580367" class="hover:text-white transition">+91 89765 80367</a></span>
       <span><i class="fas fa-globe text-primary-400 mr-1.5"></i><a href="https://bharataiinnovation.com" target="_blank" class="hover:text-white transition">bharataiinnovation.com</a></span>
-      <span><i class="fas fa-map-marker-alt text-primary-400 mr-1.5"></i>WTC Mumbai, Cuffe Parade</span>
       <span><i class="fas fa-calendar text-primary-400 mr-1.5"></i>20-21 Nov 2026</span>
     </div>
   </div>

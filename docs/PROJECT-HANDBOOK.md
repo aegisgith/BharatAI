@@ -241,6 +241,8 @@ Still to do: `hostLogo` (file in `public/images/campus/`); a claim code in `app_
 
 ## 14. Change log
 
+**28 Sep 2026:** `/contact` shows the organiser's office address (Kukreja Centre, 11th Floor, B Wing, Plot 13, Sector 11, CBD Belapur, Navi Mumbai 400614) in an "Our office" card beside an "Event venue" card, each with a maps link; the venue chip left the quick-info bar. `contactPageHTML()` only.
+
 **19–23 Sep 2026 (another session):** `815f518` `4eca44c` the 21 Sep creative · `5cc5f35` Nida Parkar off the DJ Sanghvi panel · `3ec52b3` `73a0290` `0796f22` site portraits · `900d201` a November speaker · `c9ffe7b` booth Innovation Talk slots · `7851712` the JNU seven-panellist line-up · `e538b57` the panel suites pick a panel that has not started · `12d9b3d` `70511f7` Pre-Event Speakers on the home and conference pages.
 
 **24 Sep 2026:** JNU LinkedIn import (127 leads from the second form), the import script reads either delimiter and takes `--exclude-file`, and `scripts/verify/check-import-sql.py` proves a generated import before it is run.
