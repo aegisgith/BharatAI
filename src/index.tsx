@@ -13470,7 +13470,7 @@ ${sharedNavHTML('contact')}
         <div class="w-8 h-8 rounded-lg bg-primary-500/20 flex items-center justify-center shrink-0"><i class="fas fa-building text-sm text-primary-400"></i></div>
         <h3 class="font-semibold text-sm">Our office</h3>
       </div>
-      <address class="not-italic text-xs text-gray-400 leading-relaxed">Kukreja Centre, 11th Floor, B Wing,<br>Plot 13, Sector 11, Central Business District (CBD) Belapur,<br>Navi Mumbai - 400614</address>
+      <address class="not-italic text-xs text-gray-400 leading-relaxed">Kukreja Centre, 11th Floor, B Wing,<br>Plot 13, Sector 11,<br>Central Business District (CBD) Belapur,<br>Navi Mumbai - 400614</address>
       <a href="https://maps.google.com/?q=Kukreja+Centre+Plot+13+Sector+11+CBD+Belapur+Navi+Mumbai+400614" target="_blank" rel="noopener" class="inline-block mt-2 text-xs text-primary-400 hover:underline"><i class="fas fa-directions mr-1"></i>Open in Maps</a>
     </div>
     <div class="glass rounded-xl p-5">
