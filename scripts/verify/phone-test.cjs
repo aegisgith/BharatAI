@@ -276,6 +276,24 @@ const tall = (page, sel) => page.evaluate((s) => { const e = document.querySelec
     st = await getState(page);
     check('9. Guests coming downloads through the authenticated route', st.records.some(r => r.what === 'answers-csv'), JSON.stringify(st.records.map(r => r.what)));
     await page.screenshot({ path: SHOTS + '/9-admin-block.png', clip: await page.evaluate(() => { const r = document.getElementById('campus-panels').getBoundingClientRect(); return { x: 0, y: Math.max(0, r.top - 10), width: 1366, height: Math.min(900, r.height + 20) }; }) }).catch(() => {});
+    // Every number opens the people it counts.
+    await page.evaluate(() => renderCampusPanels());
+    await sleep(800);
+    // By its label: "12 coming" is the harness's count of yes answers, and an exact
+    // match keeps it apart from "4 coming from outside DJ Sanghvi".
+    const comingBtn = page.locator('#campus-panels').getByRole('button', { name: '12 coming', exact: true });
+    check('9. a number is a button', (await comingBtn.count()) === 1, 'no button for the coming count');
+    await comingBtn.click();
+    await sleep(1200);
+    st = await getState(page);
+    check('9. clicking it asks for that number, not another', st.records.some(r => r.what === 'people:rsvp_yes'), JSON.stringify(st.records.map(r => r.what)));
+    const modal = await page.evaluate(() => (document.getElementById('modal-box') || {}).innerText || '');
+    check('9. the list shows names, emails and mobiles', /Ravi Kumar/.test(modal) && /ravi@example\.com/.test(modal) && /9876500002/.test(modal), modal.slice(0, 200));
+    check('9. a name in the list cannot run anything', !(await page.evaluate(() => window.__xssPeople)), 'payload ran');
+    check('9. the list offers everyone as a CSV', (await page.locator('#modal-box button:has-text("CSV")').count()) === 1);
+    const zeroIsButton = await page.evaluate(() => Array.from(document.querySelectorAll('#campus-panels button')).some(b => /^0\s/.test(b.innerText.trim())));
+    check('9. a zero stays plain text, with nobody behind it', !zeroIsButton);
+    await page.evaluate(() => closeModal());
     check('9. no JavaScript errors in admin', errors.length === 0, errors.slice(0, 3).join(' | '));
     await ctx.close();
   }

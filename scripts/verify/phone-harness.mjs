@@ -67,7 +67,7 @@ const DB = {
 const env = new Proxy({ ADMIN_SECRET: 'h-admin', SESSION_SECRET: 'h-secret', DB }, { get: (t, k) => (k in t ? t[k] : undefined) });
 const ctx = { waitUntil() {}, passThroughOnException() {} };
 
-const api = (method, p, body) => {
+const api = (method, p, body, q) => {
   const rec = (what) => state.records.push({ method, path: p, body, what });
   if (p === '/api/__state') { if (method === 'POST') { if (body && body.reset) state = freshState(); Object.assign(state, body && body.set || {}); } return state; }
   if (method === 'POST' && p === '/api/events/1/attendees/register') return state.user;
@@ -102,6 +102,13 @@ const api = (method, p, body) => {
     rsvp_enabled: true, rsvp_open: true, registered: 431, via_muni: 270, via_page: 3, emailed: 431, email_failed: 0, email_paused: 0, with_photo: 10, signed_in: 37, card_taken: 3, claimed: 0, certificate_taken: 0,
     rsvp_yes: 12, rsvp_no: 3, rsvp_yes_outside: 4, reminded: 0, reminder_failed: 0, reminder_paused: 0, reminder_left: 416 }];
   if (method === 'POST' && p === '/api/admin/panels/djsanghvi-21sep/send-next-reminders') { rec('send-reminders'); return { done: true, sent: 5, failed: [], remaining: 0 }; }
+  if (p === '/api/admin/panels/djsanghvi-21sep/people') {
+    rec('people:' + (q && q.get('metric')));
+    return { panel: 'DJ Sanghvi · Monday, 21 September 2026', metric: q && q.get('metric'), label: 'Coming', total: 2, rows: [
+      { name: 'Asha <img src=x onerror="window.__xssPeople=1">', email: 'asha@example.com', mobile: '9876500001', company: 'DJ Sanghvi', when_at: '2026-09-19 10:15:00', note: '' },
+      { name: 'Ravi Kumar', email: 'ravi@example.com', mobile: '9876500002', company: 'Guest College', when_at: '2026-09-19 11:00:00', note: '' },
+    ] };
+  }
   if (p === '/api/admin/panels/djsanghvi-21sep/answers.csv') { rec('answers-csv'); return { __csv: 'name,email,coming\r\nGuest,g@x.com,yes' }; }
   if (method === 'GET') return p.startsWith('/api/admin/') ? {} : [];
   return { success: true };
@@ -128,7 +135,7 @@ http.createServer(async (req, res) => {
     }
     if (url.pathname.startsWith('/api/')) {
       let body = null; try { body = raw ? JSON.parse(raw) : null; } catch {}
-      const out = api(req.method, url.pathname, body);
+      const out = api(req.method, url.pathname, body, url.searchParams);
       if (out && out.__csv) { res.writeHead(200, { 'Content-Type': 'text/csv' }); return res.end(out.__csv); }
       res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Expose-Headers': 'X-Has-More, X-Directory-Limited', ...(out && out.__headers ? out.__headers : {}) });
       return res.end(JSON.stringify(out && out.__headers ? out.body : out));

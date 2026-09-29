@@ -10401,6 +10401,61 @@ app.get('/api/admin/panels/:slug/answers.csv', async (c) => {
   return new Response('\ufeff' + csv, { headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="${slug}-${who}.csv"` } })
 })
 
+// The people behind each number on the admin Campus panels block. Every condition
+// here is the one GET /api/admin/panels counts with, word for word, so clicking a
+// number lists exactly the people it counted. Keep the two in step.
+const PANEL_PEOPLE_METRICS: Record<string, { label: string; where: (p: CampusPanel) => string; when: string; needs?: 'main' | 'rsvp'; note?: string }> = {
+  registered:        { label: 'Registered', where: () => '1 = 1', when: 'pr.registered_at' },
+  via_muni:          { label: 'Registered via mUni', where: () => "pr.source = 'muni'", when: 'pr.registered_at' },
+  via_page:          { label: 'Registered on our page', where: () => "pr.source = 'page'", when: 'pr.registered_at' },
+  emailed:           { label: 'Emailed', where: () => 'pr.confirmation_sent_at IS NOT NULL', when: 'pr.confirmation_sent_at' },
+  email_failed:      { label: 'Email failed', where: () => "pr.confirmation_error IS NOT NULL AND pr.confirmation_error NOT LIKE 'paused:%'", when: 'pr.registered_at', note: 'pr.confirmation_error' },
+  email_paused:      { label: 'Email paused', where: () => "pr.confirmation_error LIKE 'paused:%'", when: 'pr.registered_at', note: 'pr.confirmation_error' },
+  signed_in:         { label: 'Signed in', where: () => 'a.last_login_at IS NOT NULL', when: 'a.last_login_at' },
+  with_photo:        { label: 'With a photo', where: () => "COALESCE(TRIM(a.avatar_url), '') <> ''", when: 'a.last_login_at' },
+  card_taken:        { label: 'Took the card', where: () => 'pr.card_downloaded_at IS NOT NULL', when: 'pr.card_downloaded_at' },
+  main_event_yes:    { label: 'Coming in November', where: () => 'a.main_event = 1', when: 'a.main_event_answered_at', needs: 'main' },
+  main_event_no:     { label: 'Declined November', where: () => 'a.main_event = 0 AND a.main_event_answered_at IS NOT NULL', when: 'a.main_event_answered_at', needs: 'main' },
+  claimed:           { label: 'Claimed attendance', where: () => 'pr.claimed_at IS NOT NULL', when: 'pr.claimed_at' },
+  certificate_taken: { label: 'Took the certificate', where: () => 'pr.certificate_downloaded_at IS NOT NULL', when: 'pr.certificate_downloaded_at' },
+  rsvp_yes:          { label: 'Coming', where: () => "pr.rsvp_status = 'yes'", when: 'pr.rsvp_at', needs: 'rsvp' },
+  rsvp_no:           { label: "Can't make it", where: () => "pr.rsvp_status = 'no'", when: 'pr.rsvp_at', needs: 'rsvp' },
+  rsvp_none:         { label: 'No answer yet', where: () => 'pr.rsvp_status IS NULL', when: 'pr.reminder_sent_at', needs: 'rsvp' },
+  rsvp_yes_outside:  { label: 'Coming from outside the host', where: p => `pr.rsvp_status = 'yes' AND NOT ${hostLikeSql(p)}`, when: 'pr.rsvp_at', needs: 'rsvp' },
+  reminded:          { label: 'Reminded', where: () => 'pr.reminder_sent_at IS NOT NULL', when: 'pr.reminder_sent_at', needs: 'rsvp' },
+  reminder_failed:   { label: 'Reminder failed', where: () => "pr.reminder_error IS NOT NULL AND pr.reminder_error NOT LIKE 'paused:%'", when: 'pr.registered_at', needs: 'rsvp', note: 'pr.reminder_error' },
+}
+
+app.get('/api/admin/panels/:slug/people', async (c) => {
+  const slug = c.req.param('slug')
+  const panel = CAMPUS_PANELS[slug]
+  if (!panel) return c.json({ error: 'Unknown panel' }, 404)
+  const metric = String(c.req.query('metric') || 'registered')
+  const m = PANEL_PEOPLE_METRICS[metric]
+  if (!m) return c.json({ error: 'Unknown number' }, 400)
+  if (m.needs === 'main' && !(await attendeeColumns(c)).has('main_event')) return c.json({ error: 'The November answer is not recorded on this database yet.' }, 400)
+  if (m.needs === 'rsvp' && !(await panelRsvpEnabled(c))) return c.json({ error: 'Answers to "Are you coming?" are not recorded on this database yet.' }, 400)
+  const { results } = await c.env.DB.prepare(
+    `SELECT a.id, a.name, a.email, a.mobile, a.company, a.job_title, pr.source,
+            ${m.when} AS when_at, ${m.note || "''"} AS note
+       FROM panel_registrations pr JOIN attendees a ON a.id = pr.attendee_id
+      WHERE pr.panel_slug = ? AND (${m.where(panel)})
+      ORDER BY (${m.when} IS NULL), ${m.when} DESC, a.name COLLATE NOCASE`
+  ).bind(slug).all()
+  const rows = (results || []) as any[]
+  if (c.req.query('format') === 'csv') {
+    const cols = ['name', 'email', 'mobile', 'company', 'job_title', 'source', 'when_at', 'note']
+    const cell = (v: any) => { const t = String(v ?? ''); return /[",\n\r]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t }
+    const csv = [cols.map(h => h === 'when_at' ? 'when' : h).join(',')]
+      .concat(rows.map(r => cols.map(k => cell(r[k])).join(',')))
+      .join('\r\n')
+    await audit(c, 'panel.people.export', 'panel', slug, { metric, rows: rows.length })
+    return new Response('\ufeff' + csv, { headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="${slug}-${metric}.csv"` } })
+  }
+  // The modal shows at most a thousand; the CSV always carries everyone.
+  return c.json({ panel: `${panel.hostShort} · ${panel.dateLabel}`, metric, label: m.label, total: rows.length, rows: rows.slice(0, 1000) })
+})
+
 // Admin: Download attendees as CSV
 app.get('/api/admin/events/:id/attendees/export', async (c) => {
   const eventId = c.req.param('id')
@@ -27987,7 +28042,11 @@ function adminPageHTML(): string {
       box.innerHTML = list.map(function (p) {
         if (p.not_migrated) return '<div class="p-3 rounded-xl bg-white/5 border border-white/10 text-xs text-amber-300">' + esc(p.hostShort) + ': migration 0040 is not applied, so nothing is recorded yet.</div>';
         var left = (p.registered || 0) - (p.emailed || 0) - (p.email_failed || 0) - (p.email_paused || 0);
-        var stat = function (n, label) { return '<span class="inline-block mr-3 whitespace-nowrap"><strong class="text-white">' + (n || 0) + '</strong> ' + label + '</span>'; };
+        var stat = function (n, label, metric) {
+          var inner = '<strong class="text-white">' + (n || 0) + '</strong> ' + label;
+          if (!metric || !n) return '<span class="inline-block mr-3 whitespace-nowrap">' + inner + '</span>';
+          return '<button type="button" onclick="panelPeople(&quot;' + esc(p.slug) + '&quot;, &quot;' + metric + '&quot;)" title="See who" class="inline-block mr-3 whitespace-nowrap underline decoration-dotted decoration-white/30 underline-offset-4 hover:decoration-white hover:text-white transition cursor-pointer">' + inner + '</button>';
+        };
         var claim = p.claim_state === 'open' ? '<span class="text-emerald-400">claims open</span>'
           : p.claim_state === 'closed' ? '<span class="text-gray-500">claims closed</span>'
           : '<span class="text-gray-400">claims open at the end of the panel</span>';
@@ -28000,8 +28059,8 @@ function adminPageHTML(): string {
           var noAnswer = Math.max(0, (p.registered || 0) - (p.rsvp_yes || 0) - (p.rsvp_no || 0));
           answers = '<div class="mt-3 pt-3 border-t border-white/10">'
             + '<div class="text-xs text-gray-400 leading-relaxed mb-2"><span class="text-white font-semibold mr-2">Are you coming?</span>'
-            + stat(p.rsvp_yes, 'coming') + stat(p.rsvp_no, 'can&rsquo;t make it') + stat(noAnswer, 'no answer yet') + stat(p.rsvp_yes_outside, 'coming from outside ' + esc(p.hostShort)) + stat(p.reminded, 'reminded')
-            + (p.reminder_failed ? stat(p.reminder_failed, 'reminder failed') : '') + '</div>'
+            + stat(p.rsvp_yes, 'coming', 'rsvp_yes') + stat(p.rsvp_no, 'can&rsquo;t make it', 'rsvp_no') + stat(noAnswer, 'no answer yet', 'rsvp_none') + stat(p.rsvp_yes_outside, 'coming from outside ' + esc(p.hostShort), 'rsvp_yes_outside') + stat(p.reminded, 'reminded', 'reminded')
+            + (p.reminder_failed ? stat(p.reminder_failed, 'reminder failed', 'reminder_failed') : '') + '</div>'
             + '<div class="flex gap-2 flex-wrap items-center">'
             + '<button onclick="previewPanelReminder(' + slugQ + ')" class="px-3 py-1.5 rounded-lg text-xs glass hover:bg-white/10 transition"><i class="fas fa-eye mr-1.5"></i>Preview reminder</button>'
             + (p.reminder_paused ? '<button onclick="resumePanelReminders(' + slugQ + ')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-orange-600 hover:bg-orange-500 text-white transition"><i class="fas fa-play mr-1.5"></i>Resume reminders (' + p.reminder_paused + ' paused)</button>' : '')
@@ -28018,7 +28077,7 @@ function adminPageHTML(): string {
         }
         return '<div class="p-3 rounded-xl bg-white/5 border border-white/10">'
           + '<div class="flex items-baseline justify-between gap-2 flex-wrap mb-1"><div class="text-sm font-semibold text-white">' + esc(p.hostShort) + ' <span class="text-gray-400 font-normal">&middot; ' + esc(p.dateLabel) + '</span></div><div class="text-[10px]">' + claim + code + '</div></div>'
-          + '<div class="text-xs text-gray-400 leading-relaxed">' + stat(p.registered, 'registered') + stat(p.via_muni, 'via mUni') + stat(p.via_page, 'via our page') + stat(p.emailed, 'emailed') + (p.email_failed ? stat(p.email_failed, 'failed') : '') + stat(p.signed_in, 'signed in') + stat(p.with_photo, 'with photo') + stat(p.card_taken, 'took the card') + stat(p.main_event_yes, 'coming in Nov') + stat(p.main_event_no, 'declined Nov') + stat(p.claimed, 'claimed attendance') + stat(p.certificate_taken, 'took the certificate') + '</div>'
+          + '<div class="text-xs text-gray-400 leading-relaxed">' + stat(p.registered, 'registered', 'registered') + stat(p.via_muni, 'via mUni', 'via_muni') + stat(p.via_page, 'via our page', 'via_page') + stat(p.emailed, 'emailed', 'emailed') + (p.email_failed ? stat(p.email_failed, 'failed', 'email_failed') : '') + stat(p.signed_in, 'signed in', 'signed_in') + stat(p.with_photo, 'with photo', 'with_photo') + stat(p.card_taken, 'took the card', 'card_taken') + stat(p.main_event_yes, 'coming in Nov', 'main_event_yes') + stat(p.main_event_no, 'declined Nov', 'main_event_no') + stat(p.claimed, 'claimed attendance', 'claimed') + stat(p.certificate_taken, 'took the certificate', 'certificate_taken') + '</div>'
           + '<div class="flex gap-2 mt-2 flex-wrap items-center">'
           + '<button onclick="previewPanelEmail(&quot;' + esc(p.slug) + '&quot;)" class="px-3 py-1.5 rounded-lg text-xs glass hover:bg-white/10 transition"><i class="fas fa-eye mr-1.5"></i>Preview email</button>'
           + (p.email_paused ? '<button onclick="resumePanelConfirmations(&quot;' + esc(p.slug) + '&quot;)" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-orange-600 hover:bg-orange-500 text-white transition"><i class="fas fa-play mr-1.5"></i>Resume sending (' + p.email_paused + ' paused)</button>' : '')
@@ -28132,6 +28191,43 @@ function adminPageHTML(): string {
     }
     function downloadPanelAnswers(slug, who) {
       downloadCsvViaApi('/api/admin/panels/' + encodeURIComponent(slug) + '/answers.csv?who=' + encodeURIComponent(who), slug + '-' + who + '.csv');
+    }
+
+    async function panelPeople(slug, metric) {
+      openModal('<div class="text-sm text-gray-400"><i class="fas fa-spinner fa-spin mr-2"></i>Loading...</div>');
+      var r;
+      try { r = await api.get('/api/admin/panels/' + encodeURIComponent(slug) + '/people?metric=' + encodeURIComponent(metric)); }
+      catch (e) { openModal('<p class="text-sm text-red-400">Could not load that list. ' + esc((e && e.message) || '') + '</p>'); return; }
+      var rows = (r && r.rows) || [];
+      var anyNote = rows.some(function (x) { return x.note; });
+      var th = function (t) { return '<th class="px-3 py-2 font-medium">' + t + '</th>'; };
+      var head = '<tr class="text-left text-[11px] uppercase tracking-wide text-gray-500">'
+        + th('Name') + th('Email') + th('Mobile') + th('Organisation') + th('When') + (anyNote ? th('Note') : '') + '</tr>';
+      var body = rows.map(function (x) {
+        return '<tr class="border-t border-white/5 align-top">'
+          + '<td class="px-3 py-2 text-sm text-white">' + esc(x.name || '') + '</td>'
+          + '<td class="px-3 py-2 text-xs text-gray-300 break-all">' + esc(x.email || '') + '</td>'
+          + '<td class="px-3 py-2 text-xs text-gray-300 whitespace-nowrap">' + esc(x.mobile || '') + '</td>'
+          + '<td class="px-3 py-2 text-xs text-gray-400">' + esc(x.company || '') + '</td>'
+          + '<td class="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">' + esc(String(x.when_at || '').slice(0, 16)) + '</td>'
+          + (anyNote ? '<td class="px-3 py-2 text-xs text-amber-300">' + esc(x.note || '') + '</td>' : '')
+          + '</tr>';
+      }).join('');
+      var total = (r && r.total) || 0;
+      var shown = rows.length < total ? ' <span class="text-xs">(showing ' + rows.length + '; the CSV has all)</span>' : '';
+      var csvUrl = '/api/admin/panels/' + encodeURIComponent(slug) + '/people?format=csv&amp;metric=' + encodeURIComponent(metric);
+      openModal(
+        '<div class="flex items-start justify-between gap-3 mb-4">'
+        + '<div><div class="text-xs text-gray-400">' + esc((r && r.panel) || slug) + '</div>'
+        + '<h3 class="text-lg font-bold text-white">' + esc((r && r.label) || metric) + ' <span class="text-gray-400 font-normal">' + total + '</span>' + shown + '</h3></div>'
+        + '<div class="flex gap-2 shrink-0">'
+        + (total ? '<button onclick="downloadCsvViaApi(&quot;' + csvUrl + '&quot;, &quot;' + esc(slug) + '-' + esc(metric) + '.csv&quot;)" class="px-3 py-1.5 rounded-lg text-xs glass hover:bg-white/10 transition"><i class="fas fa-download mr-1.5"></i>CSV</button>' : '')
+        + '<button onclick="closeModal()" class="px-3 py-1.5 rounded-lg text-xs glass hover:bg-white/10 transition">Close</button>'
+        + '</div></div>'
+        + (rows.length
+            ? '<div class="overflow-x-auto"><table class="w-full">' + head + body + '</table></div>'
+            : '<p class="text-sm text-gray-400 py-6 text-center">Nobody here yet.</p>')
+      );
     }
 
     var _panelPump = {};
