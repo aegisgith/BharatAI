@@ -21,6 +21,7 @@ const SUITES = [
   { name: 'server: AI marketplace gates, pages and exhibitor invites', args: ['smoke-marketplace.mjs'] },
   { name: 'browser: delegate app (chat, connect, meet, inbox, back, XSS)', args: ['browser-delegate.cjs'], harness: 'app-harness.mjs', port: 8770 },
   { name: 'browser: phone journey and admin Campus panels block', args: ['phone-test.cjs'], harness: 'phone-harness.mjs', port: 8772 },
+  { name: 'browser: paced panel email (one at a time, survives the redraw)', args: ['pace-test.cjs'], harness: 'pace-harness.mjs', port: 8774 },
 ];
 
 const run = (args, opts = {}) => new Promise((resolve) => {
