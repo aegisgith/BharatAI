@@ -20096,7 +20096,8 @@ function mainPageHTML(): string {
         \`;
 
         document.getElementById('exhibitor-grid').innerHTML = exhibitors.map(ex => {
-          const exLogo = getCompanyLogoUrl(ex.company_name, ex.website_url, '', ex.contact_email);
+          // A logo the organisers set (scripts/sql/exhibitor-logos.sql) beats a guess from the domain.
+          const exLogo = safeUrl(ex.logo_url) || getCompanyLogoUrl(ex.company_name, ex.website_url, '', ex.contact_email);
           return \`
           <div class="glass rounded-xl p-5 card-hover \${ex.booth_size === 'platinum' ? 'booth-platinum glow-accent' : ex.booth_size === 'premium' ? 'booth-premium glow' : 'booth-standard'}">
             <div class="flex items-start justify-between mb-3">
