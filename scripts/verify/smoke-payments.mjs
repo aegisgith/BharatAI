@@ -240,18 +240,140 @@ let fin = 0; try { fin = scriptsParse(r.text); } catch (e) { fin = -1; console.l
 check('/finance renders and its script parses', r.status === 200 && fin === 1, r.status + ' ' + fin);
 for (const m of ['id="online-card"', 'openForm(i, fromOnline)', 'Raise invoice']) check('/finance carries ' + m, r.text.includes(m), 'missing');
 
+// ---- checkout follow-up: a form closed before Proceed, and "remind to pay" ----
+const mail = [];
+const realFetch = globalThis.fetch;
+globalThis.fetch = async (u, init) => {
+  if (String(u).includes('api.elasticemail.com')) {
+    const b = JSON.parse(init.body);
+    mail.push({ to: b.Recipients.To[0], subject: b.Content.Subject, html: b.Content.Body[0].Content });
+    return new Response(JSON.stringify({ TransactionID: 't' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  }
+  return realFetch(u, init);
+};
+const MAIL = envOf({ ...SECRETS, ELASTIC_EMAIL_API_KEY: 'smoke-mail' });
+const lead = (body, env = MAIL, ip = '203.0.113.7') => hit('/api/payments/checkout-lead', { method: 'POST', headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': ip }, body: JSON.stringify(body) }, env);
+const adminGet = (path, env = MAIL) => hit(path, { headers: { Authorization: 'Bearer smoke-admin' } }, env);
+const remind = (body, env = MAIL) => hit('/api/admin/payments/remind', { method: 'POST', headers: { Authorization: 'Bearer smoke-admin', 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, env);
+const rows = async () => ((await adminGet('/api/admin/payments/abandoned')).json?.results || []);
+const leadRow = (email) => state.leads.find(l => l.email === email);
+
+state.leadsTable = false;
+r = await lead({ email: 'early@example.com', pass_type: 'Delegate Pass' });
+check('before migration 0046 the form carries on and nothing is kept', r.json?.ok === true && state.leads.length === 0, r.text);
+r = await adminGet('/api/admin/payments/abandoned');
+check('before 0046 the list still answers, and says forms are not kept yet', r.status === 200 && r.json?.leads_ready === false && (r.json?.results || []).some(x => x.id === 4), r.status + ' ' + r.text.slice(0, 150));
+r = await remind({ kind: 'attendee', id: 4 });
+check('before 0046 a reminder is refused, so nobody can be sent two', r.status === 503 && /0046/.test(r.json?.error || '') && mail.length === 0, r.status + ' ' + r.text);
+state.leadsTable = true;
+
+r = await lead({ page: 'register', email: 'Meera.Lead@Example.com', name: 'Meera Lead', mobile: '9820011111', company: 'Lead Co', pass_type: 'Delegate Pass' });
+check('a form closed before Proceed is kept, and the answer is a plain ok', r.status === 200 && r.text === '{"ok":true}' && leadRow('meera.lead@example.com')?.name === 'Meera Lead', r.text + ' ' + JSON.stringify(state.leads));
+r = await lead({ page: 'register', email: 'meera.lead@example.com', name: '', city: 'Pune', pass_type: 'VIP Pass' });
+check('a later keystroke adds to it and an empty field wipes nothing', leadRow('meera.lead@example.com')?.name === 'Meera Lead' && leadRow('meera.lead@example.com')?.city === 'Pune' && leadRow('meera.lead@example.com')?.pass_type === 'VIP Pass' && state.leads.length === 1, JSON.stringify(state.leads));
+const keptBefore = state.leads.length;
+for (const bad of [{ email: 'not-an-email', pass_type: 'Delegate Pass' }, { email: 'x@y.com', pass_type: 'Visitor Pass' }, { email: '<b>@x.com', pass_type: 'VIP Pass' }]) {
+  r = await lead(bad);
+  check('a bad lead gets the same answer and is not kept: ' + JSON.stringify(bad).slice(0, 48), r.text === '{"ok":true}' && state.leads.length === keptBefore, r.text);
+}
+r = await lead({ email: 'a2@example.com', pass_type: 'VIP Pass' });
+check('an address already registered gets the very same answer', r.status === 200 && r.text === '{"ok":true}', r.text);
+state.ipCount = 30;
+r = await lead({ email: 'flood@example.com', pass_type: 'Delegate Pass' });
+check('the 31st new lead in an hour from one address is not kept, same answer', r.text === '{"ok":true}' && !leadRow('flood@example.com'), r.text);
+state.ipCount = null;
+
+r = await hit('/api/admin/payments/abandoned', {}, MAIL);
+check('the follow-up list needs admin', r.status === 401, r.status);
+person(20, { name: 'Old Registrant', email: 'old@example.com', badge_type: 'Delegate Pass', payment_status: 'pending', created_at: '2026-09-20 10:00:00' });
+person(21, { name: 'Gone Away', email: 'gone@example.com', badge_type: 'Delegate Pass', payment_status: 'pending', unsubscribed_at: '2026-09-30 10:00:00' });
+person(22, { name: 'At Checkout', email: 'now@example.com', badge_type: 'Academic Pass', payment_status: 'pending' });
+await start(22, 'Academic Pass');
+person(23, { name: 'Vee Visitor', email: 'vee@example.com', badge_type: 'Visitor Pass', payment_status: 'paid' });
+await lead({ page: 'app', email: 'vee@example.com', name: 'Vee Visitor', pass_type: 'Delegate Pass' });
+let list = await rows();
+const L = list.find(x => x.kind === 'lead' && x.email === 'meera.lead@example.com');
+check('the lead is listed with what they typed and the price', L && L.name === 'Meera Lead' && L.pass_type === 'VIP Pass' && L.amount === 17698.82 && L.stage === 'form_only', JSON.stringify(L));
+check('a lead from a minute ago is not reminded yet: they may still be on the form', L && /still filling in/.test(L.why_not || ''), JSON.stringify(L));
+check('an address that is a paid registration is not a lead', !list.some(x => x.kind === 'lead' && x.email === 'a2@example.com'), JSON.stringify(list.map(x => x.email)));
+const V4 = list.find(x => x.kind === 'attendee' && x.id === 4);
+check('a pending VIP whose payment failed is listed and can be reminded', V4 && V4.stage === 'failed' && !V4.why_not && V4.amount === 17698.82, JSON.stringify(V4));
+const O = list.find(x => x.kind === 'attendee' && x.id === 20);
+check('registered before online checkout and never tried here: flagged as maybe paid on mUni', O && O.before_online === true && O.stage === 'none', JSON.stringify(O));
+const G = list.find(x => x.kind === 'attendee' && x.id === 21);
+check('an unsubscribed person is listed but never reminded', G && /unsubscribed/.test(G.why_not || ''), JSON.stringify(G));
+const N = list.find(x => x.kind === 'attendee' && x.id === 22);
+check('someone on the CCAvenue page right now is not reminded', N && N.stage === 'at_checkout' && /right now/.test(N.why_not || ''), JSON.stringify(N));
+const U = list.find(x => x.kind === 'lead' && x.email === 'vee@example.com');
+check('a Visitor who started an upgrade and closed the form is a lead', U && U.stage === 'upgrade_started' && U.attendee_id === 23, JSON.stringify(U));
+check('no secret value is in the list', !JSON.stringify(list).includes(KEY), 'secret in list');
+state.orders.find(o => o.attendee_id === 22).created_at = '2026-01-01 00:00:00';
+list = await rows();
+const N2 = list.find(x => x.kind === 'attendee' && x.id === 22) || {};
+check('an order nobody answered for an hour reads as "left the CCAvenue page"', N2.stage === 'abandoned' && /left the CCAvenue page/.test(N2.stage_label || '') && !N2.why_not, JSON.stringify(N2));
+r = await adminGet('/api/admin/payments-pending');
+check('and the payments queue says the same', (r.json?.results || []).find(x => x.id === 22)?.last_order?.status === 'abandoned', JSON.stringify((r.json?.results || []).find(x => x.id === 22)));
+
+r = await remind({ kind: 'lead', id: L.id });
+check('a lead still on the form is sent nothing', /still filling in/.test(r.json?.skipped || '') && mail.length === 0, r.text);
+r = await remind({ kind: 'lead', id: L.id, preview: true });
+check('Preview shows the email and sends nothing', r.status === 200 && /Finish registering/.test(r.json?.html || '') && r.json?.to === 'meera.lead@example.com' && (r.json?.html || '').includes('#preview') && mail.length === 0, r.status + ' ' + r.text.slice(0, 120));
+leadRow('meera.lead@example.com').updated_at = '2026-01-01 00:00:00';
+r = await remind({ kind: 'lead', id: L.id });
+const m1 = mail[mail.length - 1] || {};
+const resume = ((m1.html || '').match(/\/register\?resume=([^"&]+)/) || [])[1];
+check('a lead is sent one reminder with a link back into the form', r.json?.sent === true && m1.to === 'meera.lead@example.com' && /Finish registering for your VIP Pass/.test(m1.subject || '') && !!resume, r.text + ' ' + (m1.subject || ''));
+check('it is campaign mail: it carries the unsubscribe link', /unsubscribe\?e=/.test(m1.html || ''), 'no unsubscribe link');
+check('it gives the price with GST, and says nothing about mUni', /17,698\.82/.test(m1.html || '') && !/mUni/i.test(m1.html || ''), 'copy');
+check('the reminder is recorded and audited', !!leadRow('meera.lead@example.com').reminded_at && leadRow('meera.lead@example.com').reminder_count === 1 && state.audits.some(a => a.action === 'payment.reminder'), JSON.stringify(leadRow('meera.lead@example.com')));
+r = await hit('/api/payments/checkout-lead?t=' + resume, {}, MAIL);
+check('the link fills the form in again with what they typed', r.status === 200 && r.json?.name === 'Meera Lead' && r.json?.city === 'Pune' && r.json?.pass_type === 'VIP Pass' && r.json?.email === 'meera.lead@example.com' && /no-store/.test(r.h['cache-control'] || ''), r.status + ' ' + r.text);
+const forged = decodeURIComponent(resume || '').replace(/.$/, (ch) => (ch === '0' ? '1' : '0'));
+r = await hit('/api/payments/checkout-lead?t=' + encodeURIComponent(forged), {}, MAIL);
+check('a changed link fills in nothing', r.status === 404 && !r.text.includes('Meera'), r.status + ' ' + r.text);
+r = await remind({ kind: 'lead', id: L.id });
+check('a second reminder is refused', /reminded/.test(r.json?.skipped || '') && mail.length === 1, r.text);
+r = await remind({ kind: 'lead', id: L.id, again: true });
+check('even "Remind again" waits a day', /less than a day/.test(r.json?.skipped || '') && mail.length === 1, r.text);
+
+r = await remind({ kind: 'attendee', id: 4 });
+const m2 = mail[mail.length - 1] || {};
+check('a pending VIP gets a one-tap sign-in link straight back to checkout', r.json?.sent === true && m2.to === 'a4@example.com' && /action=pay&amp;pass=vip|action=pay&pass=vip/.test(m2.html || '') && /token=[0-9a-f]{20,}/.test(m2.html || '') && /is waiting/.test(m2.subject || ''), r.text + ' ' + ((m2.html || '').match(/href="[^"]*app\?[^"]*"/) || [''])[0].slice(0, 120));
+check('a registration from today is not told about mUni', !/mUni/i.test(m2.html || ''), 'mUni line');
+r = await remind({ kind: 'attendee', id: 20 });
+const m3 = mail[mail.length - 1] || {};
+check('someone who registered before online checkout is told to reply if they already paid', r.json?.sent === true && m3.to === 'old@example.com' && /do not pay again/.test(m3.html || '') && /mUni Campus/.test(m3.html || ''), r.text);
+r = await remind({ kind: 'attendee', id: 21 });
+check('an unsubscribed person is never sent one', /unsubscribed/.test(r.json?.skipped || '') && !mail.some(m => m.to === 'gone@example.com'), r.text);
+leadRow('vee@example.com').updated_at = '2026-01-01 00:00:00';
+r = await remind({ kind: 'lead', id: U.id });
+const m4 = mail[mail.length - 1] || {};
+check('a Visitor who started an upgrade is signed in and sent back to the Delegate form', r.json?.sent === true && m4.to === 'vee@example.com' && /action=pay&(amp;)?pass=delegate/.test(m4.html || '') && /started upgrading/.test(m4.html || ''), r.text);
+person(24, { name: 'Bounce Back', email: 'bounce@example.com', badge_type: 'Delegate Pass', payment_status: 'pending' });
+r = await remind({ kind: 'attendee', id: 24 }, envOf(SECRETS));
+check('a reminder that could not go is recorded as failed and can be tried again', r.status === 502 && r.json?.sent === false && !!leadRow('bounce@example.com')?.reminder_error && !leadRow('bounce@example.com')?.reminded_at, r.status + ' ' + r.text);
+list = await rows();
+check('and the list says why', !!(list.find(x => x.id === 24) || {}).reminder_error && !(list.find(x => x.id === 24) || {}).reminded_at, JSON.stringify(list.find(x => x.id === 24)));
+r = await remind({ kind: 'attendee', id: 24 });
+check('the retry goes', r.json?.sent === true && mail.some(m => m.to === 'bounce@example.com'), r.text);
+r = await remind({ kind: 'attendee', id: 99999 });
+check('someone not waiting to pay is sent nothing', /no longer waiting/.test(r.json?.skipped || ''), r.text);
+r = await hit('/api/admin/payments/remind', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"kind":"attendee","id":4}' }, MAIL);
+check('sending a reminder needs admin', r.status === 401, r.status);
+globalThis.fetch = realFetch;
+
 // ---- the forms ----
 r = await hit('/register');
 let parsed = 0; try { parsed = scriptsParse(r.text); } catch (e) { parsed = -1; console.log('  /register script: ' + e.message); }
 check('/register renders and every inline script parses', r.status === 200 && parsed > 0, r.status + ' ' + parsed);
-for (const m of ['function startOnlinePayment', 'id="rpp-next-copy"', 'Checkout opens on <strong>CCAvenue</strong>']) check('/register carries ' + m, r.text.includes(m), 'missing');
+for (const m of ['function startOnlinePayment', 'id="rpp-next-copy"', 'Checkout opens on <strong>CCAvenue</strong>', 'function rppSaveLead', 'function rppResumeLead', 'We keep what you type here']) check('/register carries ' + m, r.text.includes(m), 'missing');
 const GONE = ['municampus.com', 'muniPayUrl', 'mUni Campus', 'PAY_GATEWAY', 'window.open(\'\', \'_blank\')'];
 for (const m of GONE) check('/register has no trace of ' + m, !r.text.includes(m), 'still there');
 r = await hit('/app');
-for (const m of ['function startOnlinePayment', 'function payPendingPass', 'id="pcc-pay-btn"', 'id="pp-next-copy"', 'Checkout opens on <strong>CCAvenue</strong>']) check('/app carries ' + m, r.text.includes(m), 'missing');
+for (const m of ['function startOnlinePayment', 'function payPendingPass', 'id="pcc-pay-btn"', 'id="pp-next-copy"', 'Checkout opens on <strong>CCAvenue</strong>', 'function ppSaveLead', 'function resumePayment', "act === 'pay'", 'We keep what you type here']) check('/app carries ' + m, r.text.includes(m), 'missing');
 for (const m of GONE.concat(['pass_upgrade'])) check('/app has no trace of ' + m, !r.text.includes(m), 'still there');
 r = await hit('/admin');
-for (const m of ['_paidOnline', 'Paid online: invoice to raise', 'openInvoiceFor(idx, fromOnline)', 'id="gateway-checks"', 'What it is waiting for']) check('/admin carries ' + m, r.text.includes(m), 'missing');
+for (const m of ['_paidOnline', 'Paid online: invoice to raise', 'openInvoiceFor(idx, fromOnline)', 'id="gateway-checks"', 'What it is waiting for', 'id="abandoned-block"', 'function loadAbandoned', 'function startPayReminders', 'function payRemindWait']) check('/admin carries ' + m, r.text.includes(m), 'missing');
 
 if (process.env.DUMP_SQL) writeFileSync(process.env.DUMP_SQL, JSON.stringify([...new Set(state.sqls)], null, 2));
 console.log(fails ? `\n${fails} FAILED` : '\nall payment smoke checks passed');

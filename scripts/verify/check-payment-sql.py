@@ -23,6 +23,7 @@ db.executescript("""
 CREATE TABLE attendees (id INTEGER PRIMARY KEY AUTOINCREMENT, event_id INTEGER NOT NULL, name TEXT NOT NULL, email TEXT NOT NULL,
   company TEXT, mobile TEXT, city TEXT, badge_type TEXT DEFAULT 'general', payment_status TEXT, payment_amount TEXT,
   main_event INTEGER NOT NULL DEFAULT 1, main_event_answered_at DATETIME, created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  unsubscribed_at DATETIME, marketing_consent INTEGER,
   UNIQUE(event_id, email));
 CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT, updated_at DATETIME);
 CREATE TABLE admin_audit (id INTEGER PRIMARY KEY AUTOINCREMENT, actor TEXT, actor_kind TEXT, action TEXT, entity TEXT, entity_id TEXT, detail TEXT, ip TEXT, user_agent TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
@@ -46,7 +47,15 @@ idx = [r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type = 'in
 check('both indexes exist once', sorted(idx) == ['idx_payment_orders_attendee', 'idx_payment_orders_status'], idx)
 
 # every statement the worker issued in the smoke run, prepared by the real engine
-sqls = [s for s in json.load(open(dump, encoding='utf-8')) if 'payment_orders' in s or s.startswith('UPDATE attendees SET badge_type')]
+mig46 = open(os.path.join(repo, 'migrations', '0046_checkout_leads.sql'), encoding='utf-8').read()
+db.executescript(mig46)
+try:
+    db.executescript(mig46); again46 = True
+except Exception as e:
+    again46 = str(e)
+check('0046 applies, and a second time without error', again46 is True and db.execute("SELECT COUNT(*) FROM sqlite_master WHERE name IN ('checkout_leads', 'idx_checkout_leads_ip')").fetchone()[0] == 2, again46)
+
+sqls = [s for s in json.load(open(dump, encoding='utf-8')) if 'payment_orders' in s or 'checkout_leads' in s or s.startswith('UPDATE attendees SET badge_type')]
 bad = []
 for s in sqls:
     try:
@@ -62,7 +71,7 @@ def one(pat):
 INSERT = one(r'^INSERT INTO payment_orders')
 UPDATE = one(r'^UPDATE payment_orders')
 COUNT = one(r'SELECT COUNT\(\*\) AS n FROM payment_orders')
-PENDING = one(r'AS last_order')
+PENDING = one(r'AS last_order[\s\S]*FROM attendees a\s+WHERE a\.badge_type IN')
 PAIDON = one(r'FROM payment_orders o JOIN attendees a')
 SETTLE = one(r'^UPDATE attendees SET badge_type')
 
@@ -110,5 +119,54 @@ check('paid online lists both paid orders with the attendee id', sorted(r['order
 db.execute("INSERT INTO invoices (invoice_no, buyer_name, buyer_email, item_desc, order_ref, taxable_paise, total_paise) VALUES ('AKT/26-27/900', 'Asha', 'a@x.com', 'Delegate Pass', 'BAI1-AAAAAAAAAAAA', 499900, 589882)")
 po = [r['order_id'] for r in db.execute(PAIDON)]
 check('an invoice with that order_ref takes it off the list', po == ['BAI4-BBBBBBBBBBBB'], po)
+# ---- checkout follow-up (0046) ----
+CAPTURE = one(r'^INSERT INTO checkout_leads \(event_id, email, name, mobile,')
+RECORD = one(r'^INSERT INTO checkout_leads \(event_id, email, name, pass_type, page, reminded_at')
+IPCOUNT = one(r'SELECT COUNT\(\*\) AS n FROM checkout_leads WHERE ip = \?')
+WAITING = one(r'LEFT JOIN checkout_leads l ON l.event_id = a.event_id')
+LEADS = one(r'FROM checkout_leads l LEFT JOIN attendees a')
+
+def lead(email, name='', mobile='', company='', job='', city='', industry='', pass_type='Delegate Pass', page='register', ip='203.0.113.7'):
+    db.execute(CAPTURE, [email, name, mobile, company, job, city, industry, pass_type, page, ip])
+def L(email):
+    r = db.execute('SELECT * FROM checkout_leads WHERE email = ?', [email]).fetchone()
+    return dict(r) if r else None
+
+lead('meera@x.com', name='Meera', mobile='9820011111', company='Lead Co')
+lead('meera@x.com', name='', city='Pune', pass_type='VIP Pass')
+m = L('meera@x.com')
+check('a later keystroke adds to a lead and an empty field wipes nothing', m['name'] == 'Meera' and m['mobile'] == '9820011111' and m['city'] == 'Pune' and m['pass_type'] == 'VIP Pass' and db.execute('SELECT COUNT(*) FROM checkout_leads').fetchone()[0] == 1, m)
+check('the per-address cap counts new rows from the last hour', db.execute(IPCOUNT, ['203.0.113.7']).fetchone()['n'] == 1)
+db.execute("UPDATE checkout_leads SET created_at = datetime('now', '-2 hours') WHERE email = 'meera@x.com'")
+check('and not older ones', db.execute(IPCOUNT, ['203.0.113.7']).fetchone()['n'] == 0)
+
+db.execute(RECORD, ['meera@x.com', 'Meera', 'VIP Pass', 0, 0, 'Email service is not configured'])
+m = L('meera@x.com')
+check('a failed reminder records the error and not a send', m['reminded_at'] is None and m['reminder_count'] == 0 and m['reminder_error'].startswith('Email service') and m['page'] == 'register', m)
+db.execute(RECORD, ['meera@x.com', 'Meera', 'VIP Pass', 1, 1, None])
+m = L('meera@x.com')
+check('a sent reminder records the time, counts it, and clears the error', m['reminded_at'] is not None and m['reminder_count'] == 1 and m['reminder_error'] is None and m['page'] == 'register', m)
+db.execute(RECORD, ['meera@x.com', 'Meera', 'VIP Pass', 0, 0, 'later failure'])
+check('a later failure keeps the earlier send on record', L('meera@x.com')['reminded_at'] is not None and L('meera@x.com')['reminder_count'] == 1)
+
+# Who is waiting: id 4 is a pending VIP from earlier in this file. Add the rest.
+db.execute("INSERT INTO attendees (id, event_id, name, email, badge_type, payment_status) VALUES (30, 1, 'Pending D', 'pd@x.com', 'Delegate Pass', 'pending')")
+db.execute("INSERT INTO attendees (id, event_id, name, email, badge_type, payment_status) VALUES (31, 1, 'Paid D', 'paid@x.com', 'Delegate Pass', 'paid')")
+db.execute("INSERT INTO attendees (id, event_id, name, email, badge_type, payment_status) VALUES (32, 1, 'Visitor V', 'vis@x.com', 'Visitor Pass', 'paid')")
+db.execute("INSERT INTO attendees (id, event_id, name, email, badge_type, payment_status) VALUES (33, 1, 'Speaker S', 'spk@x.com', 'Speaker', 'waived')")
+db.execute("INSERT INTO attendees (id, event_id, name, email, badge_type, payment_status) VALUES (34, 2, 'Other Event', 'other@x.com', 'Delegate Pass', 'pending')")
+db.execute(RECORD, ['pd@x.com', 'Pending D', 'Delegate Pass', 1, 1, None])
+for e in ['paid@x.com', 'vis@x.com', 'spk@x.com', 'nobody@x.com']:
+    lead(e, name=e.split('@')[0])
+n = WAITING.count('?')
+waiting = {r['id']: dict(r) for r in db.execute(WAITING, ['Delegate Pass', 'VIP Pass', 'Academic Pass'][:n])}
+check('registered and still pending: exactly the event 1 pending paid passes', sorted(waiting) == [4, 30], sorted(waiting))
+check('their reminder state comes along from checkout_leads', waiting[30]['reminder_count'] == 1 and waiting[30]['reminded_at'] is not None and waiting[4]['reminded_at'] is None, waiting)
+check('and their latest online attempt', waiting[4]['last_order'].startswith('BAI4-'), waiting[4].get('last_order'))
+leads = sorted(r['email'] for r in db.execute(LEADS))
+check('leads: nobody registered, or a free pass holder; never a paid pass, a speaker or a reminder-only row', leads == ['meera@x.com', 'nobody@x.com', 'vis@x.com'], leads)
+vis = [dict(r) for r in db.execute(LEADS) if r['email'] == 'vis@x.com'][0]
+check('a Visitor lead carries their registration, so the reminder signs them in', vis['attendee_id'] == 32 and vis['registered_badge'] == 'Visitor Pass', vis)
+
 print('\n%d FAILED' % fails if fails else '\nall payment SQL checks passed')
 sys.exit(1 if fails else 0)

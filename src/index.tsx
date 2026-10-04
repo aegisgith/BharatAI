@@ -2565,11 +2565,306 @@ async function pendingPaymentsJSON(c: any) {
         // What they should have been charged, so the number in the payment report can
         // be checked rather than retyped from memory.
         expected: (passAmounts(r.badge_type)?.total || 0) / 100,
-        last_order: order_id ? { order_id, status, created_at } : null,
+        last_order: order_id ? { order_id, ...payStage(status, created_at), created_at } : null,
       }
     }),
     paid_online: paidOnline,
   })
+}
+
+// What an order's state means to someone reading a list. An order nobody answered
+// for an hour is somebody who closed the CCAvenue tab: the same outcome as
+// pressing Cancel there, so the two read alike.
+function payStage(status: string, createdAt: string): { status: string; label: string } {
+  const born = Date.parse(String(createdAt || '').replace(' ', 'T') + 'Z')
+  const stale = !Number.isFinite(born) || Date.now() - born > PAY_LINK_MINUTES * 60000
+  if (status === 'created') {
+    return stale ? { status: 'abandoned', label: 'left the CCAvenue page without paying' }
+      : { status: 'at_checkout', label: 'on the CCAvenue page now' }
+  }
+  const LABEL: Record<string, string> = {
+    paid: 'paid', aborted: 'pressed Cancel on the CCAvenue page', failed: 'the payment failed',
+    awaited: 'the bank has not confirmed yet', mismatch: 'amount mismatch: check it before anything else',
+  }
+  return { status, label: LABEL[status] || status }
+}
+
+// ==================== CHECKOUT FOLLOW-UP ====================
+//
+// People who start buying a pass and stop come in two kinds:
+//  - a lead: filled in the paid form and closed it before Proceed to Payment. There
+//    is no registration, only what they typed (checkout_leads, 0046). The form
+//    says it keeps what is typed, and why.
+//  - an attendee whose paid pass is still pending: registered, then left the
+//    CCAvenue page, pressed Cancel there, or had the payment fail.
+// Admin -> Payments lists both under "Didn't finish paying", and each can be sent
+// a reminder with a one-tap link back to where they stopped, at a pace the
+// organiser picks. The reminder is campaign mail: it carries the unsubscribe
+// footer and skips anyone who unsubscribed or said no to email.
+
+// Online checkout began on this day. A paid pass registered before it, with no
+// online attempt since, may have been paid on mUni Campus: such people are never
+// in a bulk send, and their email says to reply rather than pay twice.
+const ONLINE_CHECKOUT_FROM = '2026-10-04'
+const LEADS_PER_IP_PER_HOUR = 30
+const REMIND_AGAIN_HOURS = 24
+const RESUME_LINK_DAYS = 14
+const FREE_BADGES_SQL = "lower(trim(COALESCE(a.badge_type, ''))) IN ('', 'visitor', 'visitor pass', 'general', 'general pass')"
+
+let _leadsTable = false
+async function checkoutLeadsReady(c: any): Promise<boolean> {
+  if (_leadsTable) return true
+  try {
+    await c.env.DB.prepare('SELECT id FROM checkout_leads LIMIT 1').first()
+    _leadsTable = true
+  } catch { /* 0046 has not run yet */ }
+  return _leadsTable
+}
+
+const leadText = (v: any, max: number): string =>
+  String(v ?? '').replace(/[\u0000-\u001f\u007f<>]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max)
+const LEAD_EMAIL_RE = /^[^\s@<>"']{1,64}@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,24}$/
+
+// What the paid form has been given so far. Public and unauthenticated, so it
+// answers the same way whatever it did: it must not reveal who is registered, and
+// a refusal must teach a script nothing.
+app.post('/api/payments/checkout-lead', async (c) => {
+  const same = () => c.json({ ok: true })
+  try {
+    if (!(await checkoutLeadsReady(c))) return same()
+    const b = await c.req.json().catch(() => ({})) as any
+    const email = String(b.email || '').trim().toLowerCase()
+    const passType = String(b.pass_type || '')
+    if (email.length > 254 || !LEAD_EMAIL_RE.test(email) || !PAID_TIERS.includes(passType)) return same()
+    const ip = String(c.req.header('CF-Connecting-IP') || '').slice(0, 64)
+    if (ip) {
+      const n = await c.env.DB.prepare(
+        "SELECT COUNT(*) AS n FROM checkout_leads WHERE ip = ? AND created_at > datetime('now', '-1 hour')"
+      ).bind(ip).first() as any
+      if (Number(n?.n || 0) >= LEADS_PER_IP_PER_HOUR) return same()
+    }
+    const industry = INDUSTRIES.includes(String(b.industry || '')) ? String(b.industry) : ''
+    // A field left empty never wipes one given earlier, and a reminder already
+    // sent stays recorded.
+    await c.env.DB.prepare(
+      `INSERT INTO checkout_leads (event_id, email, name, mobile, company, job_title, city, industry, pass_type, page, ip)
+       VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(event_id, email) DO UPDATE SET
+         name = COALESCE(NULLIF(excluded.name, ''), checkout_leads.name),
+         mobile = COALESCE(NULLIF(excluded.mobile, ''), checkout_leads.mobile),
+         company = COALESCE(NULLIF(excluded.company, ''), checkout_leads.company),
+         job_title = COALESCE(NULLIF(excluded.job_title, ''), checkout_leads.job_title),
+         city = COALESCE(NULLIF(excluded.city, ''), checkout_leads.city),
+         industry = COALESCE(NULLIF(excluded.industry, ''), checkout_leads.industry),
+         pass_type = excluded.pass_type,
+         page = excluded.page,
+         updated_at = datetime('now')`
+    ).bind(email, leadText(b.name, 120), leadText(b.mobile, 30), leadText(b.company, 160), leadText(b.job_title, 120),
+      leadText(b.city, 80), industry, passType, b.page === 'app' ? 'app' : 'register', ip).run()
+  } catch (e: any) {
+    console.error('checkout lead not kept', e?.message)
+  }
+  return same()
+})
+
+// The reminder's link back into the form. Signed over the row and the address,
+// and good for RESUME_LINK_DAYS: it hands back what the person typed, to them.
+const leadResumeToken = async (c: any, id: any, email: string, exp: number): Promise<string> =>
+  id + '.' + exp + '.' + (await hmacHexA(passTokenSecret(c), 'lead-resume:' + id + ':' + email + ':' + exp)).slice(0, 24)
+
+async function leadFromResumeToken(c: any, token: any): Promise<any | null> {
+  const t = String(token || '')
+  const m = /^(\d{1,10})\.(\d{9,11})\.([0-9a-f]{24})$/.exec(t)
+  if (!m || !passTokenSecret(c) || Number(m[2]) * 1000 < Date.now()) return null
+  if (!(await checkoutLeadsReady(c))) return null
+  const row = await c.env.DB.prepare('SELECT * FROM checkout_leads WHERE id = ?').bind(m[1]).first() as any
+  if (!row) return null
+  return safeEqualA(t, await leadResumeToken(c, row.id, row.email, Number(m[2]))) ? row : null
+}
+
+app.get('/api/payments/checkout-lead', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  const row = await leadFromResumeToken(c, c.req.query('t'))
+  if (!row) return c.json({ error: 'That link has expired. Please fill in the form again; it takes a minute.' }, 404)
+  return c.json({
+    email: row.email, name: row.name || '', mobile: row.mobile || '', company: row.company || '',
+    job_title: row.job_title || '', city: row.city || '', industry: row.industry || '', pass_type: row.pass_type || '',
+  })
+})
+
+// Why a person is not to be reminded right now, or null when they may be. The
+// list and the send both ask this, so the button and the server cannot disagree.
+function whyNotRemind(r: any): string | null {
+  if (r.suppressed) return 'unsubscribed, or said no to email'
+  if (r.stage === 'at_checkout') return 'on the CCAvenue page right now'
+  if (r.stage === 'awaited') return 'the bank has not confirmed their payment yet'
+  if (r.stage === 'mismatch') return 'amount mismatch: check it in CCAvenue first'
+  const seen = Date.parse(String(r.last_seen || '').replace(' ', 'T') + 'Z')
+  if (r.kind === 'lead' && Number.isFinite(seen) && Date.now() - seen < PAY_LINK_MINUTES * 60000) return 'still filling in the form (less than an hour ago)'
+  const sent = Date.parse(String(r.reminded_at || '').replace(' ', 'T') + 'Z')
+  if (Number.isFinite(sent) && Date.now() - sent < REMIND_AGAIN_HOURS * 3600000) return 'reminded less than a day ago'
+  return null
+}
+
+async function abandonedRows(c: any): Promise<any> {
+  if (!(await paymentStatusEnabled(c))) return { ready: false, leads_ready: false, results: [] }
+  const leadsOn = await checkoutLeadsReady(c)
+  const online = await paymentOrdersReady(c)
+  const cols = await attendeeColumns(c)
+  const consent = (cols.has('unsubscribed_at') ? ', a.unsubscribed_at' : '') + (cols.has('marketing_consent') ? ', a.marketing_consent' : '')
+  const marks = PAID_TIERS.map(() => '?').join(', ')
+  const people = ((await c.env.DB.prepare(
+    `SELECT a.id, a.name, a.email, a.mobile, a.company, a.badge_type, a.created_at${consent}
+       ${online ? ", (SELECT o.order_id || '|' || o.status || '|' || o.created_at FROM payment_orders o WHERE o.attendee_id = a.id ORDER BY o.id DESC LIMIT 1) AS last_order" : ''}
+       ${leadsOn ? ', l.reminded_at, l.reminder_count, l.reminder_error' : ''}
+       FROM attendees a${leadsOn ? ' LEFT JOIN checkout_leads l ON l.event_id = a.event_id AND l.email = a.email' : ''}
+      WHERE a.event_id = 1 AND a.badge_type IN (${marks})
+        AND lower(COALESCE(a.payment_status, 'pending')) = 'pending'
+      ORDER BY a.created_at DESC
+      LIMIT 300`
+  ).bind(...PAID_TIERS).all()).results || []) as any[]
+
+  const out: any[] = people.map((a: any) => {
+    const [order_id, st, at] = String(a.last_order || '').split('|')
+    const stage = order_id ? payStage(st, at) : { status: 'none', label: 'registered, never reached the CCAvenue page' }
+    return {
+      kind: 'attendee', id: a.id, name: a.name || '', email: a.email, mobile: a.mobile || '', company: a.company || '',
+      pass_type: a.badge_type, started_at: a.created_at, last_seen: at || a.created_at,
+      stage: stage.status, stage_label: stage.label, order_id: order_id || null,
+      before_online: !order_id && String(a.created_at || '') < ONLINE_CHECKOUT_FROM,
+      suppressed: !!a.unsubscribed_at || String(a.marketing_consent ?? '') === '0',
+      reminded_at: a.reminded_at || null, reminder_error: a.reminder_error || null,
+    }
+  })
+
+  if (leadsOn) {
+    // A lead whose address has since registered for a paid pass is that attendee
+    // now (listed above, or paid). One who holds a free pass is still a lead: they
+    // started an upgrade and stopped.
+    const leads = ((await c.env.DB.prepare(
+      `SELECT l.id, l.name, l.email, l.mobile, l.company, l.pass_type, l.page, l.created_at, l.updated_at,
+              l.reminded_at, l.reminder_count, l.reminder_error, a.id AS attendee_id, a.badge_type AS registered_badge${consent}
+         FROM checkout_leads l LEFT JOIN attendees a ON a.event_id = l.event_id AND a.email = l.email
+        WHERE l.event_id = 1 AND l.page <> 'reminder'
+          AND (a.id IS NULL OR ${FREE_BADGES_SQL})
+        ORDER BY l.updated_at DESC
+        LIMIT 300`
+    ).all()).results || []) as any[]
+    for (const l of leads) {
+      out.push({
+        kind: 'lead', id: l.id, name: l.name || '', email: l.email, mobile: l.mobile || '', company: l.company || '',
+        pass_type: l.pass_type, started_at: l.created_at, last_seen: l.updated_at,
+        stage: l.attendee_id ? 'upgrade_started' : 'form_only',
+        stage_label: l.attendee_id
+          ? 'holds a ' + (l.registered_badge || 'Visitor Pass') + '; started an upgrade and closed the form'
+          : 'filled in the form and closed it before Proceed to Payment',
+        attendee_id: l.attendee_id || null, before_online: false,
+        suppressed: !!l.unsubscribed_at || String(l.marketing_consent ?? '') === '0',
+        reminded_at: l.reminded_at || null, reminder_error: l.reminder_error || null,
+      })
+    }
+  }
+
+  for (const r of out) {
+    r.amount = (passAmounts(r.pass_type)?.total || 0) / 100
+    r.started_on = istStamp(r.started_at)
+    r.reminded_on = r.reminded_at ? istStamp(r.reminded_at) : null
+    r.why_not = whyNotRemind(r)
+  }
+  out.sort((x, y) => String(y.last_seen || '').localeCompare(String(x.last_seen || '')))
+  return { ready: true, leads_ready: leadsOn, online_from: ONLINE_CHECKOUT_FROM, results: out }
+}
+
+app.get('/api/admin/payments/abandoned', async (c) => c.json(await abandonedRows(c)))
+
+// The email. Three versions: a lead goes back to the form filled in; a free-pass
+// holder who started an upgrade, and a registered attendee whose payment did not
+// go through, are signed in and taken straight back to checkout.
+async function payReminderMail(c: any, r: any, preview: boolean): Promise<{ subject: string; html: string }> {
+  const base = ((await settingValue(c, 'app_url')) || 'https://bharataiinnovation.com/app').replace(/\/app\/?$/, '')
+  const tier = String(r.pass_type || 'Delegate Pass').split(' ')[0].toLowerCase()
+  const lead = r.kind === 'lead' && !r.attendee_id
+  let href = '#preview'
+  if (!preview && lead) {
+    const exp = Math.floor(Date.now() / 1000) + RESUME_LINK_DAYS * 86400
+    href = base + '/register?resume=' + encodeURIComponent(await leadResumeToken(c, r.id, r.email, exp))
+  } else if (!preview) {
+    href = base + '/app?email=' + encodeURIComponent(r.email) + '&action=pay&pass=' + encodeURIComponent(tier)
+    try {
+      if (await verifiedLoginEnabled(c)) {
+        const issued = await createLoginToken(c, 1, String(r.email).toLowerCase(), PROFILE_LINK_TTL_MINUTES, 3)
+        href += '&token=' + issued.token
+      }
+    } catch { /* the plain link still opens the app, which asks them to sign in */ }
+  }
+  const first = payEsc(String(r.name || '').trim().split(/\s+/)[0] || 'there')
+  const pass = payEsc(r.pass_type || 'pass')
+  const amount = rupees(Math.round(Number(r.amount || 0) * 100))
+  const WHAT: Record<string, string> = {
+    'Delegate Pass': 'every conference session across both days, the workshops, lunch, and the networking app to meet people before you arrive',
+    'VIP Pass': 'everything in the Delegate Pass, plus the VIP lounge, priority seating and the speaker meet and greet',
+  }
+  const opening = lead
+    ? `You started registering for a <strong>${pass}</strong> for Bharat AI Innovation 2026 and stopped before the payment. What you typed is saved: the button opens the form filled in, and paying takes about a minute.`
+    : r.stage === 'upgrade_started'
+      ? `You started upgrading your registration to a <strong>${pass}</strong> and stopped before the payment. The button signs you in and opens it again, filled in.`
+      : `Your <strong>${pass}</strong> for Bharat AI Innovation 2026 is registered, but the payment has not gone through, so the pass cannot be issued yet. The button signs you in and takes you straight to the secure payment page.`
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#f5f5f5;font-family:Arial,sans-serif;">
+    <div style="max-width:600px;margin:20px auto;background:#fff;border-radius:12px;overflow:hidden;">
+      ${emailBrandHeader(lead ? 'Your registration is saved' : 'Your pass is waiting', '20&ndash;21 Nov 2026 &bull; WTC Mumbai')}
+      <div style="padding:28px;">
+        <p style="margin:0 0 6px;font-size:15px;color:#333;">Hi <strong>${first}</strong>,</p>
+        <p style="margin:0 0 18px;font-size:14px;line-height:1.7;color:#555;">${opening}</p>
+        ${WHAT[r.pass_type] ? `<p style="margin:0 0 18px;font-size:13.5px;line-height:1.7;color:#555;">The ${pass} includes ${WHAT[r.pass_type]}.</p>` : ''}
+        <div style="text-align:center;margin:22px 0 8px;">
+          <a href="${href}" style="display:inline-block;padding:14px 34px;background:linear-gradient(135deg,#FF6B00,#FF8C38);color:#fff;text-decoration:none;border-radius:10px;font-weight:bold;font-size:15px;">${lead ? 'Finish registering' : 'Finish paying'}</a>
+        </div>
+        <p style="margin:0 0 18px;font-size:12.5px;color:#888;text-align:center;">${pass}: &#8377;${amount} including ${PASS_GST_RATE}% GST &middot; paid securely through CCAvenue</p>
+        ${r.before_online ? `<div style="margin:0 0 16px;padding:13px 15px;background:#FFF6EF;border:1px solid rgba(255,107,0,0.25);border-radius:10px;"><p style="margin:0;font-size:13px;line-height:1.6;color:#1E2140;"><strong>Already paid?</strong> If you paid for this pass before 4 October (on mUni Campus), do not pay again: reply to this email and we will confirm it.</p></div>` : ''}
+        <p style="margin:0;font-size:12.5px;line-height:1.6;color:#777;">Changed your mind? No need to do anything. Questions: reply to this email or write to info@bharataiinnovation.com.</p>
+      </div>
+    </div></body></html>`
+  const subject = lead ? 'Finish registering for your ' + r.pass_type
+    : 'Your ' + r.pass_type + ' is waiting: finish in one tap'
+  return { subject, html }
+}
+
+app.post('/api/admin/payments/remind', async (c) => remindToPay(c, await c.req.json().catch(() => ({}))))
+
+// One reminder to one person. A bulk run is this, called once per person by the
+// admin page, with the gap the organiser chose between two calls.
+async function remindToPay(c: any, b: any) {
+  if (!(await checkoutLeadsReady(c))) {
+    return c.json({ error: 'Run migration 0046 first: it is where reminders are recorded, so nobody is sent two.' }, 503)
+  }
+  const kind = b.kind === 'lead' ? 'lead' : 'attendee'
+  const id = Number(b.id)
+  if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Which person?' }, 400)
+  // Read exactly as the list reads, so the button and this cannot disagree.
+  const list = await abandonedRows(c)
+  const r = (list.results || []).find((x: any) => x.kind === kind && Number(x.id) === id)
+  if (!r) return c.json({ skipped: 'This person is no longer waiting to pay.' })
+  if (b.preview) {
+    const mail = await payReminderMail(c, r, true)
+    return c.json({ to: r.email, subject: mail.subject, html: mail.html })
+  }
+  if (r.why_not) return c.json({ skipped: 'Not sent: ' + r.why_not + '.' })
+  if (r.reminded_at && !b.again) return c.json({ skipped: 'Not sent: reminded already.' })
+
+  const mail = await payReminderMail(c, r, false)
+  const res = await sendAdminEmail(c, r.email, mail.subject, mail.html)
+  const error = res.ok ? null : String((res as any).error || 'not sent').slice(0, 300)
+  await c.env.DB.prepare(
+    `INSERT INTO checkout_leads (event_id, email, name, pass_type, page, reminded_at, reminder_count, reminder_error)
+     VALUES (1, ?, ?, ?, 'reminder', CASE WHEN ? = 1 THEN datetime('now') END, ?, ?)
+     ON CONFLICT(event_id, email) DO UPDATE SET
+       reminded_at = COALESCE(excluded.reminded_at, checkout_leads.reminded_at),
+       reminder_count = checkout_leads.reminder_count + excluded.reminder_count,
+       reminder_error = excluded.reminder_error`
+  ).bind(r.email, r.name || '', r.pass_type || '', res.ok ? 1 : 0, res.ok ? 1 : 0, error).run()
+  await audit(c, 'payment.reminder', kind === 'lead' ? 'checkout_lead' : 'attendee', id,
+    { email: r.email, pass_type: r.pass_type, stage: r.stage, sent: res.ok, error })
+  return res.ok ? c.json({ sent: true }) : c.json({ sent: false, error }, 502)
 }
 
 app.get('/api/admin/invoices', async (c) => invoiceListJSON(c))
@@ -3229,7 +3524,7 @@ function financeHTML(me: any): string {
    document.getElementById('pending').innerHTML = pending.length ? pending.map(function (a, i) {
      return '<div class="row"><div class="grow"><div class="nm">' + esc(a.name) + '</div>' +
        '<div class="sub">' + esc(a.email) + (a.company ? ' &middot; ' + esc(a.company) : '') + '</div>' +
-       (a.last_order ? '<div class="sub">online attempt: ' + esc(a.last_order.status) + ' &middot; ' + esc(a.last_order.order_id) + '</div>' : '') + '</div>' +
+       (a.last_order ? '<div class="sub">online attempt: ' + esc(a.last_order.label || a.last_order.status) + ' &middot; ' + esc(a.last_order.order_id) + '</div>' : '') + '</div>' +
        '<span class="pill">' + esc(a.badge_type) + '</span>' +
        '<span class="sub">expected &#8377;' + a.expected.toLocaleString('en-IN') + '</span>' +
        '<button onclick="openForm(' + i + ')">Confirm &amp; invoice</button></div>';
@@ -14690,6 +14985,7 @@ document.addEventListener('DOMContentLoaded', function () {
   if (want) openRegisterPaidPassModal(want);
 });
 function closeRegisterPaidPassModal() {
+  try { rppSaveLead(true); } catch (e) {}
   document.getElementById('reg-paid-pass-modal').classList.add('hidden');
   document.getElementById('reg-paid-pass-modal').classList.remove('flex');
   document.body.style.overflow = '';
@@ -14771,6 +15067,54 @@ async function startOnlinePayment(passType) {
   } catch (e) {
     return { error: 'Network error. Nothing was charged. Please try again.' };
   }
+}
+
+// What is typed into the paid form is kept as it is typed (the form says so), so
+// someone who closes it before Proceed to Payment can be sent one reminder.
+var _rppLeadTimer = null, _rppLeadLast = '';
+function rppSaveLead(now) {
+  clearTimeout(_rppLeadTimer);
+  var send = function () {
+    var v = function (id) { var el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; };
+    var body = { page: 'register', email: v('rpp-email'), name: v('rpp-name'), mobile: v('rpp-phone'), company: v('rpp-company'),
+      job_title: v('rpp-designation'), city: v('rpp-city'), industry: v('rpp-industry'), pass_type: v('rpp-pass-type') };
+    var at = body.email.indexOf('@');
+    if (at < 1 || body.email.lastIndexOf('.') < at || !body.pass_type) return;
+    var key = JSON.stringify(body);
+    if (key === _rppLeadLast) return;
+    _rppLeadLast = key;
+    try { fetch('/api/payments/checkout-lead', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: key, keepalive: true }).catch(function () {}); } catch (e) {}
+  };
+  if (now) send(); else _rppLeadTimer = setTimeout(send, 800);
+}
+document.addEventListener('DOMContentLoaded', function () {
+  var m = document.getElementById('reg-paid-pass-modal');
+  if (m) {
+    m.addEventListener('input', function () { rppSaveLead(); });
+    m.addEventListener('change', function () { rppSaveLead(); });
+  }
+  window.addEventListener('pagehide', function () { rppSaveLead(true); });
+  rppResumeLead();
+});
+
+// The reminder's link, /register?resume=<signed id>: opens the form filled in with
+// what they typed last time, and takes the token out of the address bar.
+function rppResumeLead() {
+  var t = new URLSearchParams(window.location.search).get('resume');
+  if (!t) return;
+  try { history.replaceState({}, '', window.location.pathname + window.location.hash); } catch (e) {}
+  fetch('/api/payments/checkout-lead?t=' + encodeURIComponent(t))
+    .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, j: j }; }); })
+    .then(function (x) {
+      if (!x.ok) { showToast(x.j.error || 'That link has expired. Please fill in the form again.', 'error'); return; }
+      var j = x.j;
+      openRegisterPaidPassModal(j.pass_type || 'Delegate Pass');
+      var fill = { 'rpp-name': j.name, 'rpp-email': j.email, 'rpp-phone': j.mobile, 'rpp-company': j.company, 'rpp-designation': j.job_title, 'rpp-city': j.city };
+      Object.keys(fill).forEach(function (id) { var el = document.getElementById(id); if (el && !el.value && fill[id]) el.value = fill[id]; });
+      var ind = document.getElementById('rpp-industry');
+      if (ind && !ind.value && j.industry) ind.value = j.industry;
+    })
+    .catch(function () {});
 }
 
 // Backdrop click handler set after DOM is ready
@@ -14893,7 +15237,7 @@ async function startOnlinePayment(passType) {
           <p style="font-size:11px;color:#1E2140;margin:0 0 4px;font-weight:700;">What happens next</p>
           <p id="rpp-next-copy" style="font-size:11px;color:#5E6585;margin:0;line-height:1.5;">Checkout opens on <strong>CCAvenue</strong>, our secure payment gateway. Your pass is confirmed the moment the payment goes through, and you are brought straight back here.</p>
         </div>
-        <p style="text-align:center;font-size:10px;color:#5E6585;margin:0;">Your details are already saved with us &mdash; we&rsquo;ll email your pass once payment clears.</p>
+        <p style="text-align:center;font-size:10px;color:#5E6585;margin:0;">We keep what you type here as you go, so you can finish later if checkout is interrupted. Your pass is emailed the moment the payment goes through.</p>
       </form>
     </div>
   </div>
@@ -18109,6 +18453,7 @@ function mainPageHTML(): string {
 
     // ==================== INIT ====================
     let pendingAction = null; // Store pending action (e.g. 'download-pass') for post-login
+    let pendingPayPass = null; // ?pass= on a finish-paying link, kept like pendingAction
 
     // Emailed links carry ?action=. download-pass opens the pass generator;
     // complete-profile is the profile-reminder campaign, which lands the person on
@@ -18126,6 +18471,11 @@ function mainPageHTML(): string {
           pendingAction = null;
           setTimeout(function () { answerMainEvent(act === 'main-event-yes' ? 'yes' : 'no'); }, 600);
         }
+        return;
+      }
+      // The "finish paying" reminder: once signed in, straight back to checkout.
+      if (act === 'pay') {
+        if (currentUser) { pendingAction = null; setTimeout(function () { resumePayment(pendingPayPass); }, 900); }
         return;
       }
       if (act === 'download-pass') { setTimeout(() => generateDelegatePass(), 1500); return; }
@@ -18173,6 +18523,7 @@ function mainPageHTML(): string {
       const urlParams = new URLSearchParams(window.location.search);
       const emailParam = urlParams.get('email');
       pendingAction = urlParams.get('action'); // Store action before URL cleanup
+      pendingPayPass = urlParams.get('pass');
       // The QR on a campus panel's closing slide lands here with ?panel=&claim=.
       // Kept in localStorage rather than the URL: the person may still have to
       // sign in, and the sign-in link opens from their mail app in another tab.
@@ -24500,6 +24851,7 @@ function mainPageHTML(): string {
     }
 
     function closePaidPassModal() {
+      try { ppSaveLead(true); } catch (e) {}
       document.getElementById('paid-pass-modal').classList.add('hidden');
       document.getElementById('paid-pass-modal').classList.remove('flex');
       document.body.style.overflow = '';
@@ -24585,6 +24937,53 @@ function mainPageHTML(): string {
       } catch (e) {
         return { error: 'Network error. Nothing was charged. Please try again.' };
       }
+    }
+
+    // What is typed into the paid form is kept as it is typed (the form says so),
+    // so someone who closes it before Proceed to Payment can be sent one reminder.
+    var _ppLeadTimer = null, _ppLeadLast = '';
+    function ppSaveLead(now) {
+      clearTimeout(_ppLeadTimer);
+      var send = function () {
+        var v = function (id) { var el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; };
+        var body = { page: 'app', email: v('pp-email'), name: v('pp-name'), mobile: v('pp-phone'), company: v('pp-company'),
+          job_title: v('pp-designation'), city: v('pp-city'), industry: v('pp-industry'), pass_type: v('pp-pass-type') };
+        var at = body.email.indexOf('@');
+        if (at < 1 || body.email.lastIndexOf('.') < at || !body.pass_type) return;
+        var key = JSON.stringify(body);
+        if (key === _ppLeadLast) return;
+        _ppLeadLast = key;
+        try { fetch('/api/payments/checkout-lead', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: key, keepalive: true }).catch(function () {}); } catch (e) {}
+      };
+      if (now) send(); else _ppLeadTimer = setTimeout(send, 800);
+    }
+    document.addEventListener('DOMContentLoaded', function () {
+      var m = document.getElementById('paid-pass-modal');
+      if (m) {
+        m.addEventListener('input', function () { ppSaveLead(); });
+        m.addEventListener('change', function () { ppSaveLead(); });
+      }
+      window.addEventListener('pagehide', function () { ppSaveLead(true); });
+    });
+
+    // The "finish paying" reminder lands here signed in, with ?action=pay&pass=.
+    // A pending paid pass goes straight to checkout; a free pass gets the paid form
+    // open on the tier they started, filled in from their profile.
+    function resumePayment(passKey) {
+      if (!currentUser) return;
+      var badge = String(currentUser.badge_type || '');
+      var paidTier = /delegate|academic|vip/i.test(badge);
+      if (paidTier && String(currentUser.payment_status || '').toLowerCase() === 'pending') { payPendingPass(); return; }
+      if (paidTier) { showToast('Your ' + badge + ' is already confirmed.', 'success'); return; }
+      var PASS = { delegate: 'Delegate Pass', vip: 'VIP Pass', academic: 'Academic Pass' };
+      var want = PASS[String(passKey || '').toLowerCase()] || 'Delegate Pass';
+      openPaidPassForm();
+      var radio = document.querySelector('input[name="pp-pass"][value="' + want + '"]');
+      if (radio) { radio.checked = true; radio.dispatchEvent(new Event('change')); }
+      var fill = { 'pp-name': currentUser.name, 'pp-email': currentUser.email, 'pp-phone': currentUser.mobile, 'pp-company': currentUser.company, 'pp-designation': currentUser.job_title, 'pp-city': currentUser.city };
+      Object.keys(fill).forEach(function (id) { var el = document.getElementById(id); if (el && !el.value && fill[id]) el.value = fill[id]; });
+      var ind = document.getElementById('pp-industry');
+      if (ind && !ind.value && currentUser.industry) ind.value = currentUser.industry;
     }
 
     // Someone who chose a paid pass and has not paid yet (closed the tab, card
@@ -24738,7 +25137,7 @@ function mainPageHTML(): string {
             <p class="text-[11px] font-bold mb-1" style="color:#1E2140;">What happens next</p>
             <p id="pp-next-copy" class="text-[11px] leading-relaxed" style="color:#5E6585;">Checkout opens on <strong>CCAvenue</strong>, our secure payment gateway. Your pass is confirmed the moment the payment goes through, and you are brought straight back to the app.</p>
           </div>
-          <p class="text-center text-[10px]" style="color:#5E6585;">Your details are already saved with us &mdash; we&rsquo;ll email your pass once payment clears.</p>
+          <p class="text-center text-[10px]" style="color:#5E6585;">We keep what you type here as you go, so you can finish later if checkout is interrupted. Your pass is confirmed the moment the payment goes through.</p>
         </form>
       </div>
     </div>
@@ -25708,7 +26107,7 @@ function adminPageHTML(): string {
             '<span class="px-2 py-0.5 rounded-full text-[10px] bg-amber-500/15 text-amber-300">' + deskEsc(a.badge_type) + '</span>' +
             '<span class="text-[11px] text-gray-400">expected &#8377;' + a.expected.toLocaleString('en-IN') + '</span>' +
             (a.invoices ? '<span class="text-[10px] text-green-400">invoiced</span>' : '') +
-            (a.last_order ? '<span class="text-[10px] text-gray-500">online attempt: ' + deskEsc(a.last_order.status) + ' &middot; ' + deskEsc(a.last_order.order_id) + '</span>' : '') +
+            (a.last_order ? '<span class="text-[10px] text-gray-500">online attempt: ' + deskEsc(a.last_order.label || a.last_order.status) + ' &middot; ' + deskEsc(a.last_order.order_id) + '</span>' : '') +
             '<button onclick="openInvoiceFor(' + i + ')" class="px-3 py-1.5 rounded-lg text-[11px] bg-primary-500/20 text-primary-300 hover:bg-primary-500/30">Confirm payment &amp; invoice</button>' +
             '</div>';
         }).join('') || '<p class="text-gray-500 text-sm py-4">Nobody is waiting on a payment.</p>';
@@ -25752,6 +26151,7 @@ function adminPageHTML(): string {
               }).join('') +
               '<div class="text-[11px] text-gray-500 mt-1">A secret reaches the site only through a deployment made after it was set.</div>' +
             '</div>' : '') +
+            '<div id="abandoned-block"></div>' +
             (online ? '<div class="glass rounded-xl p-5 border border-white/5">' +
               '<h3 class="text-sm font-semibold text-white mb-1">Paid online: invoice to raise</h3>' +
               '<p class="text-[11px] text-gray-500 mb-3">Paid through CCAvenue on this site. The pass is already unlocked, so the GST invoice is the one step left.</p>' +
@@ -25770,6 +26170,7 @@ function adminPageHTML(): string {
               '<div class="max-h-96 overflow-y-auto pr-1">' + issued + '</div>' +
             '</div>' +
           '</div>';
+        loadAbandoned();
       } catch (err) {
         el.innerHTML = '<div class="text-center py-12 text-red-400"><i class="fas fa-exclamation-triangle text-3xl mb-3"></i><p>Failed to load payments: ' + err.message + '</p></div>';
       }
@@ -25849,6 +26250,158 @@ function adminPageHTML(): string {
     async function resendInvoice(id) {
       try { await api.post('/api/admin/invoices/' + id + '/email', {}); toast('Invoice emailed again', 'success'); loadPayments(); }
       catch (e) { alert(e.message || 'Could not send it.'); }
+    }
+
+    // ============ DIDN'T FINISH PAYING ============
+    // Everyone who started buying a pass and stopped: a paid form filled in and
+    // closed before Proceed, or a registration that never got through CCAvenue.
+    // Each can be sent one reminder. A run goes one email at a time with a gap, as
+    // panel email does, and lives in this tab; the server refuses a second
+    // reminder within a day whatever this page asks.
+    var _abandoned = [];
+    var _abandonedMeta = null;
+    var _payRemindRun = null;
+    var PAY_REMIND_GAPS = [[30, '30 sec'], [60, '1 min'], [120, '2 min'], [0, 'no gap']];
+    function payRemindGap() {
+      if (_payRemindRun && _payRemindRun.gap != null && !_payRemindRun.stopped && !_payRemindRun.done) return _payRemindRun.gap;
+      var sel = document.getElementById('pay-remind-gap');
+      var s = sel ? parseInt(sel.value, 10) : 30;
+      return (s >= 0 && s <= 3600) ? s : 30;
+    }
+    function payRemindEligible(r, everyone) {
+      return !r.why_not && !r.reminded_at && (everyone || !r.before_online);
+    }
+    async function loadAbandoned() {
+      var el = document.getElementById('abandoned-block');
+      if (!el) return;
+      try {
+        var d = await api.get('/api/admin/payments/abandoned');
+        _abandonedMeta = d || {};
+        _abandoned = (d && d.results) || [];
+        renderAbandoned();
+      } catch (e) {
+        el.innerHTML = '<p class="text-red-400 text-sm">Could not load who did not finish paying: ' + deskEsc(e.message) + '</p>';
+      }
+    }
+    function renderAbandoned() {
+      var el = document.getElementById('abandoned-block');
+      if (!el) return;
+      var whoSel = document.getElementById('pay-remind-who');
+      var everyone = whoSel ? whoSel.value === 'all' : false;
+      var gapNow = payRemindGap();
+      var waiting = _abandoned.filter(function (r) { return payRemindEligible(r, everyone); }).length;
+      var running = !!(_payRemindRun && !_payRemindRun.stopped && !_payRemindRun.done);
+      var rows = _abandoned.map(function (r, i) {
+        var state = r.reminder_error ? '<span class="text-red-400">last reminder failed: ' + deskEsc(r.reminder_error) + '</span>'
+          : r.reminded_at ? '<span class="text-green-400">reminded ' + deskEsc(r.reminded_on) + '</span>' : '';
+        return '<div class="flex flex-wrap items-center gap-3 py-3 border-b border-white/5">' +
+          '<div class="flex-1 min-w-[180px]"><div class="text-sm text-gray-200">' + deskEsc(r.name || '(no name given)') + '</div>' +
+            '<div class="text-[11px] text-gray-500">' + deskEsc(r.email) + (r.mobile ? ' &middot; ' + deskEsc(r.mobile) : '') + (r.company ? ' &middot; ' + deskEsc(r.company) : '') + '</div>' +
+            '<div class="text-[11px] text-gray-400">' + deskEsc(r.stage_label) + ' &middot; started ' + deskEsc(r.started_on) +
+              (r.before_online ? ' &middot; <span class="text-amber-300">registered before online checkout, may have paid on mUni Campus</span>' : '') + '</div>' +
+            (state ? '<div class="text-[11px]">' + state + '</div>' : '') +
+            (r.why_not ? '<div class="text-[11px] text-gray-500">not now: ' + deskEsc(r.why_not) + '</div>' : '') +
+          '</div>' +
+          '<span class="px-2 py-0.5 rounded-full text-[10px] bg-amber-500/15 text-amber-300">' + deskEsc(r.pass_type) + '</span>' +
+          '<span class="text-[11px] text-gray-400">&#8377;' + Number(r.amount || 0).toLocaleString('en-IN') + '</span>' +
+          '<button onclick="previewPayReminder(' + i + ')" class="px-2.5 py-1.5 rounded-lg text-[11px] glass hover:bg-white/10 text-gray-300">Preview</button>' +
+          (r.why_not ? '' : '<button onclick="remindPayOne(' + i + ')" class="pay-remind-one px-3 py-1.5 rounded-lg text-[11px] bg-primary-500/20 text-primary-300 hover:bg-primary-500/30">' + (r.reminded_at ? 'Remind again' : 'Remind') + '</button>') +
+        '</div>';
+      }).join('') || '<p class="text-gray-500 text-sm py-4">Nobody has stopped part-way.</p>';
+      var gapOpts = PAY_REMIND_GAPS.map(function (g) {
+        return '<option value="' + g[0] + '"' + (g[0] === gapNow ? ' selected' : '') + '>' + g[1] + '</option>';
+      }).join('');
+      el.innerHTML = '<div class="glass rounded-xl p-5 border border-white/5">' +
+        '<div class="flex flex-wrap items-center justify-between gap-2 mb-1">' +
+          '<h3 class="text-sm font-semibold text-white">Didn&rsquo;t finish paying (' + _abandoned.length + ')</h3>' +
+          '<div class="flex flex-wrap items-center gap-2">' +
+            '<select id="pay-remind-who" onchange="renderAbandoned()" class="bg-white/10 border border-white/10 rounded-lg px-2 py-1 text-[11px] text-white">' +
+              '<option value="online"' + (everyone ? '' : ' selected') + '>Started since online checkout</option>' +
+              '<option value="all"' + (everyone ? ' selected' : '') + '>Everyone, older ones too</option></select>' +
+            '<label class="text-[11px] text-gray-400 flex items-center gap-1 whitespace-nowrap">one email every' +
+              '<select id="pay-remind-gap" class="bg-white/10 border border-white/10 rounded-lg px-2 py-1 text-[11px] text-white">' + gapOpts + '</select></label>' +
+            (running
+              ? '<button id="pay-remind-all" onclick="stopPayReminders()" class="px-3 py-1.5 rounded-lg text-[11px] bg-red-500/20 text-red-300"><i class="fas fa-stop mr-1"></i>Stop</button>'
+              : '<button id="pay-remind-all" onclick="startPayReminders()"' + (waiting ? '' : ' disabled style="opacity:.4"') + ' class="px-3 py-1.5 rounded-lg text-[11px] bg-primary-500 text-white">Remind ' + waiting + ' not yet reminded</button>') +
+          '</div></div>' +
+        '<p class="text-[11px] text-gray-500 mb-1">Everyone who started buying a pass and stopped: filled in the form and closed it, or registered and never got through CCAvenue. One reminder each, with a one-tap link back to where they stopped. Anyone who unsubscribed is skipped.</p>' +
+        ((_abandonedMeta && _abandonedMeta.leads_ready === false) ? '<p class="text-[11px] text-amber-300 mb-1">Forms closed before Proceed are not being kept yet, and reminders cannot be sent: migration 0046 has not run.</p>' : '') +
+        '<p id="pay-remind-progress" class="text-[11px] text-amber-300 min-h-4 mb-2">' + deskEsc((_payRemindRun && _payRemindRun.lastSay) || '') + '</p>' +
+        '<div class="max-h-96 overflow-y-auto pr-1">' + rows + '</div></div>';
+    }
+    async function remindPayOne(i) {
+      var r = _abandoned[i];
+      if (!r) return;
+      var again = !!r.reminded_at;
+      var note = r.before_online ? '\\n\\nThey registered before online checkout and may have paid on mUni Campus. The email tells them to reply instead of paying again.' : '';
+      if (!confirm((again ? 'Send another reminder to ' : 'Send a payment reminder to ') + r.email + '?' + note)) return;
+      try {
+        var res = await api.post('/api/admin/payments/remind', { kind: r.kind, id: r.id, again: again });
+        if (res.sent) toast('Reminder sent to ' + r.email, 'success');
+        else toast(res.skipped || 'Not sent', 'error');
+      } catch (e) { toast(e.message || 'Not sent', 'error'); }
+      loadAbandoned();
+    }
+    async function previewPayReminder(i) {
+      var r = _abandoned[i];
+      if (!r) return;
+      var w = window.open('', '_blank');
+      try {
+        var res = await api.post('/api/admin/payments/remind', { kind: r.kind, id: r.id, preview: true });
+        if (!res.html) { if (w) w.close(); toast(res.skipped || 'No preview', 'error'); return; }
+        if (w) { w.document.write(res.html); w.document.close(); }
+      } catch (e) { if (w) w.close(); toast(e.message || 'No preview', 'error'); }
+    }
+    function startPayReminders() {
+      if (_payRemindRun && !_payRemindRun.stopped && !_payRemindRun.done) return;
+      var everyone = (document.getElementById('pay-remind-who') || {}).value === 'all';
+      var queue = _abandoned.filter(function (r) { return payRemindEligible(r, everyone); })
+        .map(function (r) { return { kind: r.kind, id: r.id }; });
+      if (!queue.length) return;
+      var gap = payRemindGap();
+      if (!confirm('Send a payment reminder to ' + queue.length + ' people?\\n\\nReal email, ' + gapWords(gap) + '. Keep this tab open until it finishes; Stop pauses it, and nobody is sent two.')) return;
+      _payRemindRun = { queue: queue, total: queue.length, sent: 0, failed: 0, skipped: 0, gap: gap, stopped: false, done: false, lastSay: 'Starting.' };
+      renderAbandoned();
+      pumpPayReminders();
+    }
+    function stopPayReminders() {
+      var run = _payRemindRun;
+      if (!run) return;
+      run.stopped = true;
+      clearTimeout(run.timer);
+      run.lastSay = 'Stopped: ' + run.sent + ' sent, ' + run.queue.length + ' not sent. Press Remind to carry on; nobody is sent two.';
+      loadAbandoned();
+    }
+    function payRemindWait(run, say, head, next) {
+      if (!run.gap) { run.timer = setTimeout(next, 400); return; }
+      var due = Date.now() + run.gap * 1000;
+      var tick = function () {
+        if (run.stopped) return;
+        var left = Math.ceil((due - Date.now()) / 1000);
+        if (left <= 0) { next(); return; }
+        say(head + ' Next in ' + (left >= 60 ? Math.floor(left / 60) + 'm ' + (left % 60) + 's' : left + 's') + '.');
+        run.timer = setTimeout(tick, Math.min(1000, Math.max(50, due - Date.now())));
+      };
+      tick();
+    }
+    async function pumpPayReminders() {
+      var run = _payRemindRun;
+      if (!run || run.stopped) return;
+      var say = function (m) { run.lastSay = m; var el = document.getElementById('pay-remind-progress'); if (el) el.textContent = m; };
+      var next = run.queue.shift();
+      if (!next) {
+        run.done = true;
+        run.lastSay = 'Done: ' + run.sent + ' sent' + (run.failed ? ', ' + run.failed + ' failed' : '') + (run.skipped ? ', ' + run.skipped + ' skipped' : '') + '.';
+        loadAbandoned();
+        return;
+      }
+      try {
+        var res = await api.post('/api/admin/payments/remind', { kind: next.kind, id: next.id });
+        if (res.sent) run.sent++; else run.skipped++;
+      } catch (e) { run.failed++; }
+      if (run.stopped) return;
+      if (!run.queue.length) { pumpPayReminders(); return; }
+      payRemindWait(run, say, run.sent + ' of ' + run.total + ' sent.', pumpPayReminders);
     }
 
     // ============ BADGE DESK ============

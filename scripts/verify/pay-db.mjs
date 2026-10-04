@@ -31,7 +31,10 @@ export const gatewayAnswer = (secret, o, over = {}) => {
 const now = () => new Date().toISOString().slice(0, 19).replace('T', ' ');
 
 export function makePayDb() {
-  const state = { table: true, settings: {}, attendees: {}, orders: [], invoices: [], audits: [], attendeeUpdates: [], sqls: [], recent: null, staff: {} };
+  const state = { table: true, settings: {}, attendees: {}, orders: [], invoices: [], audits: [], attendeeUpdates: [], sqls: [], recent: null, staff: {},
+    leadsTable: true, leads: [], ipCount: null, loginTokens: true };
+  const FREE = /^((visitor|general)( pass)?)?$/i;
+  const byEmail = (email) => Object.values(state.attendees).find(a => a.email === email) || null;
   const person = (id, over = {}) => (state.attendees[id] = {
     id, event_id: 1, name: 'Asha Rao', email: `a${id}@example.com`, mobile: '+91 98200 12345', city: 'Mumbai', company: 'Acme', job_title: 'CTO',
     badge_type: 'Visitor Pass', payment_status: 'paid', main_event: 0, ...over,
@@ -47,13 +50,36 @@ export function makePayDb() {
           if (/SELECT value FROM app_settings WHERE key = \?/.test(sql)) return args[0] in state.settings ? { value: state.settings[args[0]] } : null;
           if (/SELECT COUNT\(\*\) AS n FROM payment_orders WHERE attendee_id = \?/.test(sql)) return { n: state.recent ?? state.orders.filter(o => o.attendee_id === args[0]).length };
           if (/SELECT \* FROM payment_orders WHERE order_id = \?/.test(sql)) { const o = state.orders.find(x => x.order_id === args[0]); return o ? { ...o } : null; }
+          if (/SELECT id FROM checkout_leads LIMIT 1/.test(sql)) { if (!state.leadsTable) throw new Error('no such table: checkout_leads'); return null; }
+          if (/SELECT COUNT\(\*\) AS n FROM checkout_leads WHERE ip = \?/.test(sql)) return { n: state.ipCount ?? state.leads.filter(l => l.ip === args[0]).length };
+          if (/SELECT \* FROM checkout_leads WHERE id = \?/.test(sql)) { const l = state.leads.find(x => x.id === Number(args[0])); return l ? { ...l } : null; }
+          if (/FROM sqlite_master WHERE type='table' AND name='login_tokens'/.test(sql)) return state.loginTokens ? { name: 'login_tokens' } : null;
           if (/FROM staff WHERE id = \?/.test(sql)) return state.staff[Number(args[0])] || null;
           if (/FROM attendees WHERE id = \?/.test(sql)) { const a = state.attendees[Number(args[0])]; return a ? { ...a } : null; }
           return null;
         },
         async all() {
           state.sqls.push(sql);
-          if (/PRAGMA table_info\(attendees\)/.test(sql)) return { results: ['id', 'event_id', 'name', 'email', 'badge_type', 'payment_status', 'payment_amount', 'main_event', 'main_event_answered_at'].map(name => ({ name })) };
+          if (/PRAGMA table_info\(attendees\)/.test(sql)) return { results: ['id', 'event_id', 'name', 'email', 'badge_type', 'payment_status', 'payment_amount', 'main_event', 'main_event_answered_at', 'unsubscribed_at', 'marketing_consent', 'created_at'].map(name => ({ name })) };
+          // "Didn't finish paying": registered, paid tier, still pending.
+          if (/FROM attendees a(?: LEFT JOIN checkout_leads l[^\n]*)?\s+WHERE a\.event_id = 1 AND a\.badge_type IN/.test(sql)) {
+            const joined = /LEFT JOIN checkout_leads l/.test(sql);
+            return { results: Object.values(state.attendees).filter(a => args.includes(a.badge_type) && a.payment_status === 'pending').map(a => {
+              const last = state.orders.filter(o => o.attendee_id === a.id).slice(-1)[0];
+              const l = joined ? state.leads.find(x => x.email === a.email) : null;
+              return { id: a.id, name: a.name, email: a.email, mobile: a.mobile, company: a.company, badge_type: a.badge_type, created_at: a.created_at || now(),
+                unsubscribed_at: a.unsubscribed_at || null, marketing_consent: a.marketing_consent ?? null,
+                ...(/AS last_order/.test(sql) ? { last_order: last ? `${last.order_id}|${last.status}|${last.created_at}` : null } : {}),
+                ...(joined ? { reminded_at: l ? l.reminded_at : null, reminder_count: l ? l.reminder_count : null, reminder_error: l ? l.reminder_error : null } : {}) };
+            }) };
+          }
+          // Leads: a form closed before Proceed, with no registration or only a free one.
+          if (/FROM checkout_leads l LEFT JOIN attendees a/.test(sql)) {
+            return { results: state.leads.filter(l => l.page !== 'reminder').filter(l => { const a = byEmail(l.email); return !a || FREE.test(String(a.badge_type || '').trim()); }).map(l => {
+              const a = byEmail(l.email);
+              return { ...l, attendee_id: a ? a.id : null, registered_badge: a ? a.badge_type : null, unsubscribed_at: a ? a.unsubscribed_at || null : null, marketing_consent: a ? a.marketing_consent ?? null : null };
+            }) };
+          }
           if (/PRAGMA table_info\(staff\)/.test(sql)) return { results: ['id', 'name', 'username', 'active', 'role'].map(name => ({ name })) };
           if (/FROM payment_orders o JOIN attendees a/.test(sql)) {
             return { results: state.orders.filter(o => o.status === 'paid' && !state.invoices.some(i => i.order_ref === o.order_id)).map(o => {
@@ -92,6 +118,25 @@ export function makePayDb() {
             if (/payment_status = 'paid'/.test(sql)) a.payment_status = 'paid';
             if (/payment_amount = \?/.test(sql)) a.payment_amount = args[1];
             if (/main_event = 1/.test(sql)) a.main_event = 1;
+            return { meta: { changes: 1 } };
+          }
+          if (/^INSERT INTO checkout_leads \(event_id, email, name, mobile,/.test(sql)) {
+            const [email, name, mobile, company, job_title, city, industry, pass_type, page, ip] = args;
+            const l = state.leads.find(x => x.email === email);
+            const given = { name, mobile, company, job_title, city, industry };
+            if (l) {
+              for (const [k, v] of Object.entries(given)) if (v) l[k] = v;
+              Object.assign(l, { pass_type, page, updated_at: now() });
+            } else {
+              state.leads.push({ id: state.leads.length + 1, event_id: 1, email, ...given, pass_type, page, ip, created_at: now(), updated_at: now(), reminded_at: null, reminder_count: 0, reminder_error: null });
+            }
+            return { meta: { changes: 1 } };
+          }
+          if (/^INSERT INTO checkout_leads \(event_id, email, name, pass_type, page, reminded_at/.test(sql)) {
+            const [email, name, pass_type, sent, inc, error] = args;
+            const l = state.leads.find(x => x.email === email);
+            if (l) Object.assign(l, { reminded_at: sent ? now() : l.reminded_at, reminder_count: l.reminder_count + inc, reminder_error: error });
+            else state.leads.push({ id: state.leads.length + 1, event_id: 1, email, name, pass_type, page: 'reminder', created_at: now(), updated_at: now(), reminded_at: sent ? now() : null, reminder_count: inc, reminder_error: error });
             return { meta: { changes: 1 } };
           }
           if (/INSERT INTO admin_audit/.test(sql)) { state.audits.push({ action: args[2], entity_id: args[4], detail: args[5] }); return { meta: { changes: 1 } }; }

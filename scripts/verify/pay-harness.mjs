@@ -24,13 +24,27 @@ const fresh = () => {
   db.state.inquiries = [];
   db.state.nextId = 100;
   db.state.staff[3] = { id: 3, name: 'Finance Person', username: 'fin', active: 1, role: 'finance' };
+  db.state.mail = [];
+  db.state.loginTokens = false;   // the harness has no real sign-in route, so links carry no token
 };
 fresh();
-const env = () => new Proxy({ ADMIN_SECRET: 'h-admin', SESSION_SECRET: SESSION, DB: db.DB, ...SECRETS }, { get: (t, k) => (k in t ? t[k] : undefined) });
+const env = () => new Proxy({ ADMIN_SECRET: 'h-admin', SESSION_SECRET: SESSION, DB: db.DB, ELASTIC_EMAIL_API_KEY: 'h-mail', ...SECRETS }, { get: (t, k) => (k in t ? t[k] : undefined) });
+
+// The email service, played here: every message the worker sends is kept for the test to read.
+const realFetch = globalThis.fetch;
+globalThis.fetch = async (u, init) => {
+  if (String(u).includes('api.elasticemail.com')) {
+    const b = JSON.parse(init.body);
+    db.state.mail.push({ to: b.Recipients.To[0], subject: b.Content.Subject, html: b.Content.Body[0].Content });
+    return new Response(JSON.stringify({ TransactionID: 'h' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  }
+  return realFetch(u, init);
+};
 const ctx = { waitUntil() {}, passThroughOnException() {} };
 
 const REAL = (p) => p === '/app' || p === '/admin' || p === '/register' || p === '/finance' || p.startsWith('/pay/') || p.startsWith('/api/payments/')
-  || p === '/api/admin/payments-pending' || p === '/api/admin/invoices' || p === '/api/finance/payments-pending' || p === '/api/finance/invoices';
+  || p === '/api/admin/payments-pending' || p === '/api/admin/invoices' || p === '/api/finance/payments-pending' || p === '/api/finance/invoices'
+  || p.startsWith('/api/admin/payments/');
 
 const sessionId = (cookie) => { const m = /bai_session=(\d+)\./.exec(cookie || ''); return m ? Number(m[1]) : null; };
 
@@ -42,8 +56,11 @@ const api = (method, p, body, req) => {
       Object.assign(db.state.settings, body.settings || {});
       for (const k of body.unset || []) delete db.state.settings[k];
       for (const a of body.people || []) db.person(a.id, a);
+      // "An hour has passed": leads and orders old enough to be reminded.
+      if (body.ageLeads) for (const l of db.state.leads) l.updated_at = '2026-01-01 00:00:00';
+      if (body.ageOrders) for (const o of db.state.orders) if (o.status === 'created') o.created_at = '2026-01-01 00:00:00';
     }
-    return { orders: db.state.orders, attendees: db.state.attendees, inquiries: db.state.inquiries, settings: db.state.settings, audits: db.state.audits };
+    return { orders: db.state.orders, attendees: db.state.attendees, inquiries: db.state.inquiries, settings: db.state.settings, audits: db.state.audits, leads: db.state.leads, mail: db.state.mail };
   }
   if (method === 'POST' && p === '/api/events/1/attendees/register') {
     const email = String(body.email || '').trim().toLowerCase();

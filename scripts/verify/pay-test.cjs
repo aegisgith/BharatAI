@@ -256,6 +256,146 @@ const PHONE = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isM
     await ctx.close();
   }
 
+  // ---- 6. Stopped part-way, reminded, came back and paid ----
+  // Three ways to stop: close the /register form before Proceed (a lead), leave the
+  // CCAvenue page without paying (a pending registration), and close the app's
+  // upgrade form as a Visitor (a lead with a free pass).
+  await setState({ people: [
+    { id: 40, name: 'Pria Left', email: 'pria@example.com', badge_type: 'Delegate Pass', payment_status: 'pending', main_event: 1 },
+    { id: 41, name: 'Vera Visitor', email: 'vera@example.com', badge_type: 'Visitor Pass', payment_status: 'paid', main_event: 1, mobile: '9820088888', company: 'Vera Co', job_title: 'Lead', city: 'Thane', industry: 'Software & SaaS' },
+  ] });
+  {
+    const { ctx, page } = await phone();
+    await page.goto(BASE + '/register#delegate', { waitUntil: 'domcontentloaded' });
+    await sleep(800);
+    check('the form says it keeps what is typed', /We keep what you type here/.test(await page.textContent('#reg-paid-pass-modal')), 'no notice');
+    await page.fill('#rpp-name', 'Lena Leaver');
+    await page.fill('#rpp-email', 'lena@example.com');
+    await page.fill('#rpp-phone', '9820077777');
+    await page.fill('#rpp-company', 'Leaver Labs');
+    await page.fill('#rpp-city', 'Nagpur');
+    await page.click('#reg-paid-pass-modal button[onclick="closeRegisterPaidPassModal()"]');
+    await sleep(1000);
+    const st = await getState();
+    const kept = st.leads.find(l => l.email === 'lena@example.com') || {};
+    check('closing the form before Proceed keeps what was typed', kept.name === 'Lena Leaver' && kept.mobile === '9820077777' && kept.city === 'Nagpur' && kept.pass_type === 'Delegate Pass' && kept.page === 'register', JSON.stringify(kept));
+    check('and registers nobody', !Object.values(st.attendees).some(a => a.email === 'lena@example.com'), 'registered');
+    await ctx.close();
+  }
+  {
+    const st0 = await getState();
+    const { ctx, page } = await phone({ person: st0.attendees[40] });
+    await page.goto(BASE + '/app', { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => { const b = document.getElementById('pcc-pay-btn'); return b && !b.classList.contains('hidden') && b.offsetParent !== null; }, null, { timeout: 25000 }).catch(() => {});
+    gw.hold = true; gw.reply = 'Success';
+    await page.click('#pcc-pay-btn');
+    await page.waitForSelector('#stub', { timeout: 20000 });
+    await ctx.close();   // left the CCAvenue page without paying
+  }
+  {
+    const st0 = await getState();
+    const { ctx, page } = await phone({ person: st0.attendees[41] });
+    await page.goto(BASE + '/app', { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => typeof currentUser !== 'undefined' && currentUser, null, { timeout: 25000 }).catch(() => {});
+    await page.evaluate(() => {
+      openPaidPassForm();
+      const r = document.querySelector('input[name="pp-pass"][value="VIP Pass"]');
+      r.checked = true; r.dispatchEvent(new Event('change'));
+    });
+    await page.fill('#pp-name', 'Vera Visitor');
+    await page.fill('#pp-email', 'vera@example.com');
+    await page.evaluate(() => closePaidPassModal());
+    await sleep(1000);
+    const st = await getState();
+    const kept = st.leads.find(l => l.email === 'vera@example.com') || {};
+    check('a Visitor closing the upgrade form in the app is kept too', kept.pass_type === 'VIP Pass' && kept.page === 'app', JSON.stringify(kept));
+    await ctx.close();
+  }
+
+  await setState({ ageLeads: true, ageOrders: true });   // an hour later
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1366, height: 900 } });
+    await ctx.addInitScript(() => {
+      sessionStorage.setItem('tc_admin_token', 'h-admin');
+      localStorage.setItem('tc_admin', '1');
+      localStorage.setItem('tc_admin_operator', 'Harness');
+    });
+    const page = await ctx.newPage();
+    page.on('pageerror', e => errors.push(String(e)));
+    page.on('dialog', d => d.accept());
+    await page.goto(BASE + '/admin', { waitUntil: 'domcontentloaded' });
+    await sleep(2500);
+    await page.evaluate(() => switchSection('payments'));
+    await page.waitForFunction(() => /finish paying/.test((document.getElementById('abandoned-block') || {}).textContent || ''), null, { timeout: 20000 }).catch(() => {});
+    const text = await page.textContent('#abandoned-block');
+    check('Admin, Payments lists who did not finish paying', /Lena Leaver/.test(text) && /Pria Left/.test(text) && /Vera Visitor/.test(text), text.slice(0, 200));
+    check('each says where they stopped', /closed it before Proceed to Payment/.test(text) && /left the CCAvenue page without paying/.test(text) && /started an upgrade/.test(text), text.slice(0, 400));
+    const label = await page.textContent('#pay-remind-all');
+    check('the bulk button counts who can be reminded', /Remind [3-9] not yet reminded/.test(label || ''), label);
+    const mailBefore = (await getState()).mail.length;
+    const [preview] = await Promise.all([ctx.waitForEvent('page', { timeout: 10000 }).catch(() => null), page.click('#abandoned-block button:has-text("Preview")')]);
+    await sleep(800);
+    const previewText = preview ? await preview.textContent('body').catch(() => '') : '';
+    check('Preview opens the email and sends nothing', /Finish/.test(previewText) && (await getState()).mail.length === mailBefore, (await getState()).mail.length + ' vs ' + mailBefore + ' ' + previewText.slice(0, 80));
+    if (preview) await preview.close();
+    await page.selectOption('#pay-remind-gap', '0');
+    await page.click('#pay-remind-all');
+    await page.waitForFunction(() => /Done:/.test((document.getElementById('pay-remind-progress') || {}).textContent || ''), null, { timeout: 30000 }).catch(() => {});
+    const done = await page.textContent('#pay-remind-progress');
+    const st = await getState();
+    const to = st.mail.map(m => m.to);
+    check('one press reminds them all, one email each', /Done: [3-9] sent/.test(done || '') && ['lena@example.com', 'pria@example.com', 'vera@example.com'].every(e => to.filter(x => x === e).length === 1), done + ' ' + JSON.stringify(to));
+    await sleep(800);
+    check('afterwards each row says when it was reminded', /reminded \d/.test(await page.textContent('#abandoned-block')) && /Remind 0 not yet reminded/.test(await page.textContent('#pay-remind-all')), (await page.textContent('#pay-remind-all')));
+    await page.screenshot({ path: path.join(OUT, 'pay-admin-remind.png') });
+    await ctx.close();
+  }
+  {
+    const st = await getState();
+    const lena = st.mail.find(m => m.to === 'lena@example.com') || {};
+    const link = ((lena.html || '').match(/href="([^"]*\/register\?resume=[^"]+)"/) || [])[1] || '';
+    const { ctx, page } = await phone();
+    await page.goto(link.replace(/&amp;/g, '&'), { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => (document.getElementById('rpp-email') || {}).value === 'lena@example.com', null, { timeout: 15000 }).catch(() => {});
+    const f = await page.evaluate(() => ({ name: document.getElementById('rpp-name').value, phone: document.getElementById('rpp-phone').value, company: document.getElementById('rpp-company').value, city: document.getElementById('rpp-city').value, pass: document.getElementById('rpp-pass-type').value, url: location.href }));
+    check('the reminder link opens the form filled in with what she typed', f.name === 'Lena Leaver' && f.phone === '9820077777' && f.company === 'Leaver Labs' && f.city === 'Nagpur' && f.pass === 'Delegate Pass', JSON.stringify(f));
+    check('and takes the token out of the address bar', !/resume=/.test(f.url), f.url);
+    await page.selectOption('#rpp-industry', 'Software & SaaS');
+    await page.fill('#rpp-designation', 'Founder');
+    gw.hold = false; gw.reply = 'Success';
+    await page.evaluate(() => document.getElementById('rpp-submit-btn').scrollIntoView({ block: 'center' }));
+    await page.click('#rpp-submit-btn');
+    await page.waitForURL(/\/pay\/result\?o=/, { timeout: 30000, waitUntil: 'domcontentloaded' }).catch(() => {});
+    const after = await getState();
+    const a = Object.values(after.attendees).find(x => x.email === 'lena@example.com') || {};
+    check('she pays from there and her Delegate Pass is confirmed', /Payment received/.test(await page.textContent('body')) && a.badge_type === 'Delegate Pass' && a.payment_status === 'paid', JSON.stringify(a));
+    await ctx.close();
+  }
+  {
+    const st = await getState();
+    const pria = st.mail.find(m => m.to === 'pria@example.com') || {};
+    const link = (((pria.html || '').match(/href="([^"]*\/app\?email=[^"]+)"/) || [])[1] || '').replace(/&amp;/g, '&');
+    check('the reminder to someone registered signs them in and goes back to checkout', /action=pay&pass=delegate/.test(link), link);
+    const { ctx, page } = await phone({ person: st.attendees[40] });
+    gw.hold = false; gw.reply = 'Success';
+    await page.goto(link, { waitUntil: 'domcontentloaded' });
+    await page.waitForURL(/\/pay\/result\?o=/, { timeout: 40000, waitUntil: 'domcontentloaded' }).catch(() => {});
+    const after = await getState();
+    check('one tap from the email, and her pending pass is paid', /Payment received/.test(await page.textContent('body')) && after.attendees[40].payment_status === 'paid', page.url() + ' ' + after.attendees[40].payment_status);
+    await ctx.close();
+  }
+  {
+    const st = await getState();
+    const vera = st.mail.find(m => m.to === 'vera@example.com') || {};
+    const link = (((vera.html || '').match(/href="([^"]*\/app\?email=[^"]+)"/) || [])[1] || '').replace(/&amp;/g, '&');
+    const { ctx, page } = await phone({ person: st.attendees[41] });
+    await page.goto(link, { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => { const m = document.getElementById('paid-pass-modal'); return m && !m.classList.contains('hidden'); }, null, { timeout: 25000 }).catch(() => {});
+    const f = await page.evaluate(() => ({ open: !document.getElementById('paid-pass-modal').classList.contains('hidden'), pass: document.getElementById('pp-pass-type').value, email: document.getElementById('pp-email').value, city: document.getElementById('pp-city').value }));
+    check('a Visitor\'s reminder reopens the upgrade on the tier she chose, filled in from her profile', f.open && f.pass === 'VIP Pass' && f.email === 'vera@example.com' && f.city === 'Thane', JSON.stringify(f));
+    await ctx.close();
+  }
+
   check('no page threw a script error', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
   console.log(fails ? `\n${fails} FAILED` : '\nall checkout browser checks passed');

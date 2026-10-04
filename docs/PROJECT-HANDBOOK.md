@@ -57,6 +57,7 @@ Secrets, claim codes and conference registration totals are deliberately **not**
 | 0044_exhibitor_stage_talks | `innovation_talks.exhibitor_id`, `speaker_title`, `speaker_bio`, `speaker_photo_url`, `showcase`, `duration_min`, `starts_at`, `details_updated_at`, and `idx_innovation_talks_exhibitor` (one talk per exhibitor). **Do not run it again**: `ADD COLUMN` is not idempotent, so a second run errors at its first line. Backup taken just before: `backup-pre-0044-2026-09-24.sql` |
 
 | 0045_payment_orders | `payment_orders`, one row per attempt sent to the payment gateway. Applied 4 Oct 2026 (backup `backup-pre-0045-2026-10-04.sql`). `IF NOT EXISTS` throughout, so it is safe to run twice, and it was |
+| 0046_checkout_leads | `checkout_leads`: what the paid form was given by people who closed it before Proceed, and the "finish paying" reminder record for everyone. **Not applied yet (4 Oct 2026).** Until it runs, the forms keep nothing and reminders are refused. `IF NOT EXISTS` throughout |
 
 The "no such column" fallback in `GET /api/events/:id/innovation-talks` stays even though 0044 is applied: it is what keeps a database that is a migration behind (a fresh copy, a half-run file) answering instead of failing.
 
@@ -81,9 +82,9 @@ npm run verify:prod    # production, read-only, no credentials
 | `smoke-marketplace.mjs` | AI marketplace gates, pages and paced exhibitor invites (owned by the marketplace session) |
 | `browser-delegate.cjs` via `app-harness.mjs` (18) | Delegate in `/app`: directory, chat, connect (apostrophe name), meet, Visitor gating, inbox, Back, Escape, no injected script runs |
 | `phone-test.cjs` via `phone-harness.mjs` (50) | Emulated Android phone: photo upload, creative share sheet + caption, in-app fallback, "Are you coming?", panel certificate, pass, November question, email answers through the real `/panel-rsvp` routes, directory, admin Campus panels block |
-| `smoke-payments.mjs` (106) | Checkout on this site: the switch, our price on the order, the request decrypting with CCAvenue's kit algorithm, every answer that must not be believed, a paid order being final, the admin and finance queues, the "what is it waiting for" readout, and no trace of a mUni Campus link on /register or /app |
-| `pay-test.cjs` via `pay-harness.mjs` (38) | Buying a pass on a phone in a real browser: /register to the gateway (played by the test) to the result page to the app signed in, "Pay now" for a pending pass, cancel and retry, being told so when checkout is off (and sent nowhere), the invoice form filled in on /admin and /finance |
-| `check-payment-sql.py` (18, run by hand) | Migration 0045 and every payment statement the worker sends, on a real SQLite engine. Usage is in its header |
+| `smoke-payments.mjs` (159) | Checkout on this site: the switch, our price on the order, the request decrypting with CCAvenue's kit algorithm, every answer that must not be believed, a paid order being final, the admin and finance queues, the "what is it waiting for" readout, no trace of a mUni Campus link, and the follow-up: forms kept, the list, every reason not to remind, the three reminder emails and their links (email service played by the test) |
+| `pay-test.cjs` via `pay-harness.mjs` (54) | Buying a pass on a phone in a real browser: /register to the gateway (played by the test) to the result page to the app signed in, "Pay now" for a pending pass, cancel and retry, being told so when checkout is off, the invoice form on /admin and /finance, and stopping part-way three ways, a bulk reminder from Admin, and each person coming back through their own link and paying |
+| `check-payment-sql.py` (34, run by hand) | Migrations 0045 and 0046 and every payment and follow-up statement the worker sends, on a real SQLite engine. Usage is in its header |
 | `prod-sweep.mjs` (33) | Production pages, headers, guards, caches, new routes |
 | `live-phone-check.cjs` (8) | Production on a phone: new functions present, no JS errors, forged link refused, campus forms (POST intercepted) |
 
@@ -323,6 +324,29 @@ Set the value to `on` to switch it back. (The older value `muni` still means off
 - Ten orders per person per hour. A checkout link is good for one attempt, for an hour.
 - The working key is only ever a Worker secret. It is not in the repo, the database, the settings screen or any page.
 - Order statuses: `created`, `paid`, `failed`, `aborted`, `awaited`, `mismatch`.
+
+### People who stop part-way, and "Remind to pay" (built 4 Oct 2026, needs 0046)
+The organiser asked for abandoned checkouts to be captured and followed up. Three ways to stop, all on Admin → Payments under **Didn't finish paying**:
+
+| Stopped | What is kept | The reminder's button goes to |
+|---|---|---|
+| Filled in the paid form on `/register` and closed it before Proceed | the fields typed so far, as they are typed (`checkout_leads`, page `register`) | `/register?resume=<signed id>`: the form opens filled in. The link is good for 14 days and is taken out of the address bar on arrival |
+| Holds a free pass and closed the app's upgrade form | the same (page `app`) | the app, signed in (`?action=pay&pass=<tier>`): the paid form opens on that tier, filled in from their profile |
+| Registered for a paid pass and did not pay: left the CCAvenue page, pressed Cancel there, or the payment failed | the registration and its orders | the app, signed in, straight to the CCAvenue page |
+
+- **The forms say it:** "We keep what you type here as you go, so you can finish later if checkout is interrupted." A lead is not a registration, counts nowhere, and has no pass.
+- An order nobody answered for an hour is shown as **left the CCAvenue page**, the same as pressing Cancel.
+- **Never reminded** (the row says why): anyone unsubscribed or who said no to email; someone on the CCAvenue page right now; a bank still confirming; an amount mismatch; a lead active in the last hour (they may still be typing); anyone reminded in the last 24 hours.
+- **One reminder each** from the bulk button, which skips anyone already reminded; a row's "Remind again" is allowed after a day. The run goes one email at a time with the gap chosen beside the button, lives in the tab, and Stop pauses it.
+- Someone who registered for a paid pass **before 4 Oct** and never tried online may have paid on mUni Campus: they are left out of the bulk send unless "Everyone, older ones too" is chosen, and their email says to reply instead of paying again.
+- It is campaign mail: the unsubscribe footer is on it.
+- The capture endpoint (`POST /api/payments/checkout-lead`) is public, answers `{"ok":true}` whatever it did (so it reveals nobody's registration), and keeps no more than 30 new addresses an hour from one IP.
+
+To apply 0046 (backup first):
+```
+npx wrangler d1 export bharatai-production --remote --output=backup-pre-0046-2026-10-04.sql
+npx wrangler d1 execute bharatai-production --remote --file=migrations/0046_checkout_leads.sql
+```
 
 ### Decisions the organiser has not been asked yet (built to the cautious answer)
 - **Invoices stay a person's step.** They use the accountant's number series and need the buyer's GSTIN; issuing one per payment automatically would be quick to add once the CA agrees.
