@@ -334,6 +334,21 @@ A free Visitor can reach a paid pass from four places. Two of them were broken u
 
 Both paid forms now show the amount charged, **"You pay ₹5,898.82 in total (₹4,999 + 18% GST)"**, above the button. Before this the GST-inclusive figure first appeared on CCAvenue's page. The figures come from `GET /api/payments/config` (`passes`), built from `passAmounts()`, so the form cannot disagree with the charge. The listener is on the capture phase because a pass chosen in code fires a `change` that does not bubble.
 
+### Upgrade campaign (built 4 Oct 2026)
+Admin → Payments → **Upgrade campaign**: one email to each free Visitor, with a button that signs them in and opens the paid form on the pass that fits (`?action=pay&pass=`, `resumePayment()` in the app).
+
+| Audience | Rule | Offer |
+|---|---|---|
+| Senior Visitors | `SENIOR_RANK_SQL = 1 AND STUDENT_RANK_SQL = 0`, the rules the directory teaser ranks by | Delegate Pass, ₹5,898.82 incl. GST |
+| Students, interns, scholars | `STUDENT_RANK_SQL = 1` | Academic Pass, ₹1,178.82 incl. GST, "bring your student or faculty ID" |
+
+- It is a campaign of kind `upgrade` on the existing bulk email campaigns (0028): one row per person, the shared send gap (`profile_reminder_gap_seconds`, 90 s by default), only 9am–9pm IST, Pause in the monitor, Resume and Retry under Settings → Bulk email. No new table.
+- Only conference Visitors (`main_event = 1`, `badge_type = 'Visitor Pass'`), never anyone unsubscribed or who said no to email, and **never anyone already on an upgrade campaign** (pending, sending or sent), so a second run cannot send twice. A failed send can be included in a later run. The two audiences cannot overlap.
+- The send re-checks the person: a paid pass by then, unsubscribed, or panel-only means skipped, not sent.
+- No discount (organiser had not chosen one); the price is `passAmounts()`. The offer rides in `campaigns.ref_id` (1 Delegate, 2 Academic) so "Retry those" keeps it.
+- The email claims only what the site's own pages say for each pass. The Delegate email lists sessions, workshops, lunch and the directory. The Academic email lists the concessionary rate, networking, select workshops and the ID check.
+- Tests: `smoke-payments.mjs` (audiences, preview, the gap, the window, no second send, skips, other campaign kinds untouched), `pay-test.cjs` (the Payments block, Preview, Send), `check-payment-sql.py` (both audiences on real SQLite with the awkward rows).
+
 ### People who stop part-way, and "Remind to pay" (live 4 Oct 2026)
 The organiser asked for abandoned checkouts to be captured and followed up. Three ways to stop, all on Admin → Payments under **Didn't finish paying**:
 

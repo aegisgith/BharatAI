@@ -44,7 +44,7 @@ const ctx = { waitUntil() {}, passThroughOnException() {} };
 
 const REAL = (p) => p === '/app' || p === '/admin' || p === '/register' || p === '/finance' || p.startsWith('/pay/') || p.startsWith('/api/payments/')
   || p === '/api/admin/payments-pending' || p === '/api/admin/invoices' || p === '/api/finance/payments-pending' || p === '/api/finance/invoices'
-  || p.startsWith('/api/admin/payments/');
+  || p.startsWith('/api/admin/payments/') || p.startsWith('/api/admin/campaigns') || /^\/api\/admin\/attendees\/\d+\/send-upgrade$/.test(p);
 
 const sessionId = (cookie) => { const m = /bai_session=(\d+)\./.exec(cookie || ''); return m ? Number(m[1]) : null; };
 
@@ -60,7 +60,7 @@ const api = (method, p, body, req) => {
       if (body.ageLeads) for (const l of db.state.leads) l.updated_at = '2026-01-01 00:00:00';
       if (body.ageOrders) for (const o of db.state.orders) if (o.status === 'created') o.created_at = '2026-01-01 00:00:00';
     }
-    return { orders: db.state.orders, attendees: db.state.attendees, inquiries: db.state.inquiries, settings: db.state.settings, audits: db.state.audits, leads: db.state.leads, mail: db.state.mail };
+    return { orders: db.state.orders, attendees: db.state.attendees, inquiries: db.state.inquiries, settings: db.state.settings, audits: db.state.audits, leads: db.state.leads, mail: db.state.mail, campaigns: db.state.campaigns, recipients: db.state.recipients };
   }
   if (method === 'POST' && p === '/api/events/1/attendees/register') {
     const email = String(body.email || '').trim().toLowerCase();

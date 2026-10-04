@@ -23,7 +23,7 @@ db.executescript("""
 CREATE TABLE attendees (id INTEGER PRIMARY KEY AUTOINCREMENT, event_id INTEGER NOT NULL, name TEXT NOT NULL, email TEXT NOT NULL,
   company TEXT, mobile TEXT, city TEXT, badge_type TEXT DEFAULT 'general', payment_status TEXT, payment_amount TEXT,
   main_event INTEGER NOT NULL DEFAULT 1, main_event_answered_at DATETIME, created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  unsubscribed_at DATETIME, marketing_consent INTEGER,
+  unsubscribed_at DATETIME, marketing_consent INTEGER, job_title TEXT, industry TEXT,
   UNIQUE(event_id, email));
 CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT, updated_at DATETIME);
 CREATE TABLE admin_audit (id INTEGER PRIMARY KEY AUTOINCREMENT, actor TEXT, actor_kind TEXT, action TEXT, entity TEXT, entity_id TEXT, detail TEXT, ip TEXT, user_agent TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
@@ -55,7 +55,8 @@ except Exception as e:
     again46 = str(e)
 check('0046 applies, and a second time without error', again46 is True and db.execute("SELECT COUNT(*) FROM sqlite_master WHERE name IN ('checkout_leads', 'idx_checkout_leads_ip')").fetchone()[0] == 2, again46)
 
-sqls = [s for s in json.load(open(dump, encoding='utf-8')) if 'payment_orders' in s or 'checkout_leads' in s or s.startswith('UPDATE attendees SET badge_type')]
+db.executescript(open(os.path.join(repo, 'migrations', '0028_campaigns.sql'), encoding='utf-8').read())
+sqls = [s for s in json.load(open(dump, encoding='utf-8')) if 'payment_orders' in s or 'checkout_leads' in s or s.startswith('UPDATE attendees SET badge_type') or 'campaign_recipients cr JOIN campaigns cp' in s]
 bad = []
 for s in sqls:
     try:
@@ -167,6 +168,44 @@ leads = sorted(r['email'] for r in db.execute(LEADS))
 check('leads: nobody registered, or a free pass holder; never a paid pass, a speaker or a reminder-only row', leads == ['meera@x.com', 'nobody@x.com', 'vis@x.com'], leads)
 vis = [dict(r) for r in db.execute(LEADS) if r['email'] == 'vis@x.com'][0]
 check('a Visitor lead carries their registration, so the reminder signs them in', vis['attendee_id'] == 32 and vis['registered_badge'] == 'Visitor Pass', vis)
+
+# ---- the upgrade campaign's two audiences (on 0028's campaigns tables) ----
+SENIOR_Q = one(r"badge_type = 'Visitor Pass'[\s\S]*% principal %[\s\S]*campaign_recipients cr JOIN campaigns cp")
+STUDENT_Q = [s for s in sqls if "badge_type = 'Visitor Pass'" in s and 'campaign_recipients cr JOIN campaigns cp' in s and '% principal %' not in s]
+check('both audience queries were captured from the worker', len(STUDENT_Q) == 1, len(STUDENT_Q))
+people = [
+    (100, 1, 'Visitor Pass', 1, 'Co-Founder & CEO', None, None),
+    (101, 1, 'Visitor Pass', 1, 'Director, Data Platforms', None, None),
+    (102, 1, 'Visitor Pass', 1, 'B.Tech Student', None, None),
+    (103, 1, 'Visitor Pass', 1, 'Data Analyst', None, None),
+    (104, 1, 'Visitor Pass', 1, 'VP Engineering', '2026-09-01 10:00:00', None),   # unsubscribed
+    (105, 1, 'Visitor Pass', 0, 'Head of Department', None, None),                # campus panel only
+    (106, 1, 'Delegate Pass', 1, 'CEO', None, None),                              # already paid tier
+    (107, 1, 'Visitor Pass', 1, 'Research Intern', None, None),
+    (108, 1, 'Visitor Pass', 1, 'Principal Engineer', None, None),
+    (109, 1, 'Visitor Pass', 1, 'CTO', None, 0),                                  # said no to email
+    (110, 1, 'Visitor Pass', 1, 'Managing Partner', None, None),                  # already sent an upgrade
+    (111, 2, 'Visitor Pass', 1, 'Founder', None, None),                           # another event
+    (112, 1, 'Visitor Pass', 1, 'Founder', None, None),                           # only on a notify campaign
+]
+for (i, ev, badge, me, title, unsub, consent) in people:
+    db.execute('INSERT INTO attendees (id, event_id, name, email, badge_type, payment_status, main_event, job_title, unsubscribed_at, marketing_consent) VALUES (?,?,?,?,?,?,?,?,?,?)',
+               [i, ev, 'P%d' % i, 'p%d@x.com' % i, badge, 'paid', me, title, unsub, consent])
+db.execute("INSERT INTO campaigns (id, kind, title, audience, status, total) VALUES (1, 'upgrade', 'u', 'senior', 'done', 1)")
+db.execute("INSERT INTO campaign_recipients (campaign_id, attendee_id, email, name, status) VALUES (1, 110, 'p110@x.com', 'P110', 'sent')")
+db.execute("INSERT INTO campaigns (id, kind, title, audience, status, total) VALUES (2, 'notify', 'n', 'all', 'done', 1)")
+db.execute("INSERT INTO campaign_recipients (campaign_id, attendee_id, email, name, status) VALUES (2, 112, 'p112@x.com', 'P112', 'sent')")
+senior = sorted(r['id'] for r in db.execute(SENIOR_Q, [1] * SENIOR_Q.count('?')) if r['id'] >= 100)
+students = sorted(r['id'] for r in db.execute(STUDENT_Q[0], [1] * STUDENT_Q[0].count('?')) if r['id'] >= 100)
+check('senior audience: Visitors with senior titles, event 1, conference, mailable, never sent an upgrade', senior == [100, 101, 108, 112], senior)
+check('student audience: students and interns, same rules', students == [102, 107], students)
+check('the two audiences never overlap, so nobody gets both offers', not set(senior) & set(students))
+db.execute("INSERT INTO campaign_recipients (campaign_id, attendee_id, email, name, status) VALUES (1, 100, 'p100@x.com', 'P100', 'pending')")
+senior2 = sorted(r['id'] for r in db.execute(SENIOR_Q, [1] * SENIOR_Q.count('?')) if r['id'] >= 100)
+check('someone queued on a run still in progress is not queued again', 100 not in senior2, senior2)
+db.execute("UPDATE campaign_recipients SET status = 'failed' WHERE attendee_id = 100 AND campaign_id = 1")
+senior3 = sorted(r['id'] for r in db.execute(SENIOR_Q, [1] * SENIOR_Q.count('?')) if r['id'] >= 100)
+check('a send that failed can be tried again in a later run', 100 in senior3, senior3)
 
 print('\n%d FAILED' % fails if fails else '\nall payment SQL checks passed')
 sys.exit(1 if fails else 0)

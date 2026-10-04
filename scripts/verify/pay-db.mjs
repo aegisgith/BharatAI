@@ -32,7 +32,12 @@ const now = () => new Date().toISOString().slice(0, 19).replace('T', ' ');
 
 export function makePayDb() {
   const state = { table: true, settings: {}, attendees: {}, orders: [], invoices: [], audits: [], attendeeUpdates: [], sqls: [], recent: null, staff: {},
-    leadsTable: true, leads: [], ipCount: null, loginTokens: true };
+    leadsTable: true, leads: [], ipCount: null, loginTokens: true, campaigns: [], recipients: [] };
+  // The two audience rules, as the SQL has them (STUDENT_RANK_SQL, SENIOR_RANK_SQL).
+  // check-payment-sql.py runs the real SQL; this only has to agree for the fixtures.
+  const norm = (t) => ' ' + String(t || '').toLowerCase().replace(/[.,-]/g, ' ') + ' ';
+  const isStudent = (t) => /student|scholar|trainee|graduand| interns? /.test(norm(t));
+  const isSenior = (t) => /founder|chief|president|director|chairman|chairperson|managing| (ceo|cto|cio|coo|cfo|cmo|cxo|cdo|md|vp|avp|svp|evp|head|partner|owner|dean|professor|principal) /.test(norm(t));
   const FREE = /^((visitor|general)( pass)?)?$/i;
   const byEmail = (email) => Object.values(state.attendees).find(a => a.email === email) || null;
   const person = (id, over = {}) => (state.attendees[id] = {
@@ -56,6 +61,8 @@ export function makePayDb() {
           if (/FROM sqlite_master WHERE type='table' AND name='login_tokens'/.test(sql)) return state.loginTokens ? { name: 'login_tokens' } : null;
           if (/SELECT id FROM attendees WHERE event_id = \? AND email = \?/.test(sql)) { const a = byEmail(args[1]); return a ? { id: a.id } : null; }
           if (/SELECT \* FROM attendees WHERE event_id = \? AND email = \?/.test(sql)) { const a = byEmail(args[1]); return a ? { ...a } : null; }
+          if (/SELECT \* FROM campaigns WHERE id = \?/.test(sql)) { const k = state.campaigns.find(x => x.id === Number(args[0])); return k ? { ...k } : null; }
+          if (/SELECT COUNT\(\*\) AS n FROM campaign_recipients WHERE campaign_id = \? AND status IN \('pending','sending'\)/.test(sql)) return { n: state.recipients.filter(x => x.campaign_id === Number(args[0]) && ['pending', 'sending'].includes(x.status)).length };
           if (/FROM staff WHERE id = \?/.test(sql)) return state.staff[Number(args[0])] || null;
           if (/FROM attendees WHERE id = \?/.test(sql)) { const a = state.attendees[Number(args[0])]; return a ? { ...a } : null; }
           return null;
@@ -74,6 +81,19 @@ export function makePayDb() {
                 ...(/AS last_order/.test(sql) ? { last_order: last ? `${last.order_id}|${last.status}|${last.created_at}` : null } : {}),
                 ...(joined ? { reminded_at: l ? l.reminded_at : null, reminder_count: l ? l.reminder_count : null, reminder_error: l ? l.reminder_error : null } : {}) };
             }) };
+          }
+          // The upgrade campaign's audiences: conference Visitors, not unsubscribed,
+          // senior or student, and on no upgrade campaign yet.
+          if (/badge_type = 'Visitor Pass'/.test(sql) && /campaign_recipients cr JOIN campaigns cp/.test(sql)) {
+            const senior = /% principal %/.test(sql);
+            const onOne = new Set(state.recipients.filter(x => ['pending', 'sending', 'sent'].includes(x.status) && (state.campaigns.find(k => k.id === x.campaign_id) || {}).kind === 'upgrade').map(x => x.attendee_id));
+            return { results: Object.values(state.attendees).filter(a => a.email && a.badge_type === 'Visitor Pass' && Number(a.main_event) === 1
+              && !a.unsubscribed_at && String(a.marketing_consent ?? '') !== '0' && !onOne.has(a.id)
+              && (senior ? isSenior(a.job_title) && !isStudent(a.job_title) : isStudent(a.job_title)))
+              .sort((x, y) => x.id - y.id).map(a => ({ id: a.id, name: a.name, email: a.email })) };
+          }
+          if (/SELECT \* FROM campaign_recipients WHERE campaign_id = \? AND status = 'pending' ORDER BY id LIMIT \?/.test(sql)) {
+            return { results: state.recipients.filter(x => x.campaign_id === Number(args[0]) && x.status === 'pending').slice(0, Number(args[1])).map(x => ({ ...x })) };
           }
           // Leads: a form closed before Proceed, with no registration or only a free one.
           if (/FROM checkout_leads l LEFT JOIN attendees a/.test(sql)) {
@@ -121,6 +141,49 @@ export function makePayDb() {
             if (/payment_amount = \?/.test(sql)) a.payment_amount = args[1];
             if (/main_event = 1/.test(sql)) a.main_event = 1;
             return { meta: { changes: 1 } };
+          }
+          // Bulk email campaigns (0028), as the campaign routes use them.
+          if (/^INSERT INTO campaigns \(kind, title, ref_id, audience, status, total, created_by\)/.test(sql)) {
+            const [kind, title, ref_id, audience, status, total, created_by] = args;
+            const id = state.campaigns.length + 1;
+            state.campaigns.push({ id, kind, title, ref_id, audience, status, total, sent: 0, failed: 0, created_by, created_at: now(), finished_at: null });
+            return { meta: { changes: 1, last_row_id: id } };
+          }
+          if (/^\s*INSERT INTO campaign_recipients \(campaign_id, attendee_id, email, name\) VALUES/.test(sql)) {
+            for (let i = 0; i < args.length; i += 4) state.recipients.push({ id: state.recipients.length + 1, campaign_id: Number(args[i]), attendee_id: args[i + 1], email: args[i + 2], name: args[i + 3], status: 'pending', error: null, sent_at: null });
+            return { meta: { changes: args.length / 4 } };
+          }
+          {
+            const m = /^UPDATE campaign_recipients SET status = '(sending|pending|skipped|sent|failed)'/.exec(sql);
+            if (m && /WHERE id = \?/.test(sql)) {
+              const id = args[args.length - 1];
+              const x = state.recipients.find(y => y.id === Number(id));
+              if (!x || (/AND status = 'pending'/.test(sql) && x.status !== 'pending')) return { meta: { changes: 0 } };
+              x.status = m[1];
+              if (/error = \?/.test(sql)) x.error = args[0];
+              if (m[1] === 'sent') { x.sent_at = now(); x.error = null; }
+              return { meta: { changes: 1 } };
+            }
+          }
+          if (/^UPDATE campaigns SET sent = sent \+ \?, failed = failed \+ \?/.test(sql)) {
+            const k = state.campaigns.find(x => x.id === Number(args[2]));
+            if (k) { k.sent += args[0]; k.failed += args[1]; }
+            return { meta: { changes: k ? 1 : 0 } };
+          }
+          if (/^UPDATE campaigns SET status = 'done'/.test(sql)) {
+            const k = state.campaigns.find(x => x.id === Number(args[0]));
+            if (k) { k.status = 'done'; k.finished_at = k.finished_at || now(); }
+            return { meta: { changes: k ? 1 : 0 } };
+          }
+          // The shared send slot (claimSendSlot): one email per gap, across every paced send.
+          if (/^INSERT OR IGNORE INTO app_settings \(key, value\) VALUES \(\?, '1970-01-01T00:00:00.000Z'\)/.test(sql)) {
+            if (!(args[0] in state.settings)) state.settings[args[0]] = '1970-01-01T00:00:00.000Z';
+            return { meta: { changes: 1 } };
+          }
+          if (/^UPDATE app_settings SET value = \?, updated_at = CURRENT_TIMESTAMP WHERE key = \? AND value <= \?/.test(sql)) {
+            const [value, key, cutoff] = args;
+            if (String(state.settings[key] || '') <= String(cutoff)) { state.settings[key] = value; return { meta: { changes: 1 } }; }
+            return { meta: { changes: 0 } };
           }
           // A registration through the real /api/events/:id/attendees/register.
           if (/^INSERT INTO attendees \(event_id, name, email, company, job_title, bio, interests, linkedin_url, mobile, city, industry, lunch_inclusion, badge_type, payment_status/.test(sql)) {

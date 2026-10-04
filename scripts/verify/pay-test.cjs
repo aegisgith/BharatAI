@@ -442,6 +442,45 @@ const PHONE = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isM
     await ctx.close();
   }
 
+  // ---- 8. The upgrade campaign, from Admin, Payments ----
+  await setState({ people: [
+    { id: 80, name: 'Neha Founder', email: 'neha@startup.example', badge_type: 'Visitor Pass', payment_status: 'paid', main_event: 1, job_title: 'Founder & CEO' },
+    { id: 81, name: 'Omar Director', email: 'omar@corp.example', badge_type: 'Visitor Pass', payment_status: 'paid', main_event: 1, job_title: 'Director, AI' },
+    { id: 82, name: 'Riya Student', email: 'riya@college.example', badge_type: 'Visitor Pass', payment_status: 'paid', main_event: 1, job_title: 'MBA Student' },
+  ] });
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1366, height: 900 } });
+    await ctx.addInitScript(() => {
+      sessionStorage.setItem('tc_admin_token', 'h-admin');
+      localStorage.setItem('tc_admin', '1');
+      localStorage.setItem('tc_admin_operator', 'Harness');
+    });
+    const page = await ctx.newPage();
+    page.on('pageerror', e => errors.push(String(e)));
+    page.on('dialog', d => d.accept());
+    await page.goto(BASE + '/admin', { waitUntil: 'domcontentloaded' });
+    await sleep(2500);
+    await page.evaluate(() => switchSection('payments'));
+    await page.waitForFunction(() => /Upgrade campaign/.test((document.getElementById('upgrade-campaign-block') || {}).textContent || ''), null, { timeout: 20000 }).catch(() => {});
+    const text = await page.textContent('#upgrade-campaign-block');
+    check('Admin, Payments shows the upgrade campaign with who each offer reaches', /Upgrade campaign/.test(text) && /Senior Visitors/.test(text) && /Delegate Pass/.test(text) && /Students, interns and scholars/.test(text) && /Academic Pass/.test(text), text.slice(0, 200));
+    check('with the counts and how long a run takes', /Send to [1-9]/.test(await page.textContent('#upgrade-send-senior')) && /Send to 1\b/.test(await page.textContent('#upgrade-send-students')) && /of sending/.test(text), (await page.textContent('#upgrade-send-senior')) + ' / ' + (await page.textContent('#upgrade-send-students')));
+    const before = (await getState()).mail.length;
+    const [pv] = await Promise.all([ctx.waitForEvent('page', { timeout: 10000 }).catch(() => null), page.click('#upgrade-campaign-block button:has-text("Preview")')]);
+    await sleep(800);
+    const pvText = pv ? await pv.textContent('body').catch(() => '') : '';
+    check('Preview opens the Delegate offer and sends nothing', /Upgrade to Delegate/.test(pvText) && /5,898\.82/.test(pvText) && (await getState()).mail.length === before, pvText.slice(0, 100));
+    if (pv) await pv.close();
+    await page.click('#upgrade-send-students');
+    await page.waitForFunction(() => /Upgrade offer: Academic Pass to students/.test(document.body.textContent || ''), null, { timeout: 10000 }).catch(() => {});
+    const st = await getState();
+    const k = st.campaigns.find(x => x.kind === 'upgrade' && x.audience === 'students');
+    check('Send starts a durable campaign of exactly the students, and opens its progress', !!k && k.total === 1 && st.recipients.filter(x => x.campaign_id === k.id).map(x => x.attendee_id).join() === '82' && /Upgrade offer: Academic Pass to students/.test(await page.textContent('body')), JSON.stringify(k));
+    await page.evaluate(() => { try { stopCampaignPump(); } catch (e) {} });
+    await page.screenshot({ path: path.join(OUT, 'pay-admin-upgrade.png') });
+    await ctx.close();
+  }
+
   check('no page threw a script error', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
   console.log(fails ? `\n${fails} FAILED` : '\nall checkout browser checks passed');

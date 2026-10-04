@@ -406,6 +406,67 @@ const wa = mail.slice(mark).filter(m => m.to === 'newacad@example.com');
 check('when the payment lands, the welcome goes out once, with the receipt in it', wa.length === 1 && /Payment received: your Academic Pass is confirmed/.test(wa[0].subject) && /Add your photo/.test(wa[0].html) && wa[0].html.includes(AO.order_id) && /115023456789/.test(wa[0].html) && /GST invoice/.test(wa[0].html) && /an <strong>Academic|your <strong>Academic Pass/.test(wa[0].html), JSON.stringify(wa.map(m => m.subject)));
 check('and the team is told', mail.slice(mark).some(m => /Paid online: New Academic/.test(m.subject)), JSON.stringify(mail.slice(mark).map(m => m.subject)));
 check('and now the Academic Pass is paid, so it is a paid pass', state.attendees[acad.id].payment_status === 'paid', JSON.stringify(state.attendees[acad.id]));
+
+// ---- the upgrade campaign: one email per free Visitor, on the existing campaigns ----
+// The clock is pinned (noon IST, then 11pm IST) so the 9am-9pm sending window gives
+// the same answer whenever this suite runs.
+const RealDate = Date;
+const atIst = (hhmm) => { const off = new RealDate('2026-10-06T' + hhmm + ':00+05:30').getTime() - RealDate.now(); globalThis.Date = class extends RealDate { constructor(...a) { if (a.length) super(...a); else super(RealDate.now() + off); } static now() { return RealDate.now() + off; } }; };
+const realClock = () => { globalThis.Date = RealDate; };
+const camp = (body) => hit('/api/admin/campaigns', { method: 'POST', headers: { Authorization: 'Bearer smoke-admin', 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, MAIL);
+const pump = (id) => hit('/api/admin/campaigns/' + id + '/pump', { method: 'POST', headers: { Authorization: 'Bearer smoke-admin', 'Content-Type': 'application/json' }, body: '{"batch":8}' }, MAIL);
+const upgradeTo = (id, offer, force) => hit('/api/admin/attendees/' + id + '/send-upgrade?offer=' + offer + (force ? '&force=1' : ''), { method: 'POST', headers: { Authorization: 'Bearer smoke-admin', 'Content-Type': 'application/json' }, body: '{}' }, MAIL);
+person(60, { name: 'Fiona Founder', email: 'fiona@acme.example', badge_type: 'Visitor Pass', main_event: 1, job_title: 'Co-Founder & CEO' });
+person(61, { name: 'Dev Director', email: 'dev@corp.example', badge_type: 'Visitor Pass', main_event: 1, job_title: 'Director, Data Platforms' });
+person(62, { name: 'Sana Student', email: 'sana@college.example', badge_type: 'Visitor Pass', main_event: 1, job_title: 'B.Tech Student', industry: 'Education & Academia' });
+person(63, { name: 'Arun Analyst', email: 'arun@corp.example', badge_type: 'Visitor Pass', main_event: 1, job_title: 'Data Analyst' });
+person(64, { name: 'Gita Gone', email: 'gita@corp.example', badge_type: 'Visitor Pass', main_event: 1, job_title: 'VP Engineering', unsubscribed_at: '2026-09-01 10:00:00' });
+person(65, { name: 'Pooja Panel', email: 'pooja@college.example', badge_type: 'Visitor Pass', main_event: 0, job_title: 'Head of Department' });
+r = await adminGet('/api/admin/campaigns/upgrade-audiences');
+check('the panel is told how many each offer reaches: senior Visitors and students only', r.status === 200 && r.json?.senior === 2 && r.json?.students === 1 && r.json?.gap_seconds >= 30, r.status + ' ' + r.text);
+mark = mail.length;
+r = await adminGet('/api/admin/campaigns/upgrade-preview?audience=senior');
+check('Preview shows the Delegate offer as the first senior Visitor gets it, and sends nothing', r.status === 200 && /Upgrade to Delegate/.test(r.json?.html || '') && /5,898\.82/.test(r.json?.html || '') && (r.json?.html || '').includes('href="#preview"') && r.json?.to === 'fiona@acme.example' && mail.length === mark, r.status + ' ' + (r.json?.subject || r.text.slice(0, 120)));
+r = await camp({ kind: 'upgrade', audience: 'everyone' });
+check('an upgrade campaign is only ever "senior" or "students"', r.status === 400, r.status + ' ' + r.text);
+r = await camp({ kind: 'upgrade', audience: 'senior' });
+const UC = r.json || {};
+check('starting it queues exactly the two senior Visitors, offered the Delegate Pass', r.status === 201 && UC.total === 2 && /Delegate Pass to senior Visitors/.test(UC.title || '') && state.campaigns.find(k => k.id === UC.id)?.ref_id === 1, r.status + ' ' + r.text);
+atIst('12:00');
+mark = mail.length;
+r = await pump(UC.id);
+const u1 = mail.slice(mark);
+check('inside the window the first email goes, and the next waits for the send gap', r.status === 200 && r.json?.sent === 1 && r.json?.waiting === true && r.json?.wait_seconds > 0 && u1.length === 1 && u1[0].to === 'fiona@acme.example', r.status + ' ' + r.text.slice(0, 200));
+check('the email is the Delegate offer with a one-tap sign-in link to the paid form', /Fiona, the full Bharat AI Innovation conference is one tap away/.test(u1[0]?.subject || '') && /action=pay&(amp;)?pass=delegate&(amp;)?token=[0-9a-f]{20,}/.test(u1[0]?.html || '') && /5,898\.82/.test(u1[0]?.html || '') && /unsubscribe\?e=/.test(u1[0]?.html || ''), (u1[0]?.subject || '') + ' ' + (((u1[0]?.html || '').match(/href="[^"]*pass=[^"]*"/) || [''])[0]).slice(0, 160));
+atIst('12:02');
+r = await pump(UC.id);
+check('after the gap the second goes, and the run is finished', mail.slice(mark).length === 2 && mail[mail.length - 1].to === 'dev@corp.example' && state.campaigns.find(k => k.id === UC.id)?.status === 'done' && state.campaigns.find(k => k.id === UC.id)?.sent === 2, JSON.stringify(state.campaigns.find(k => k.id === UC.id)));
+r = await camp({ kind: 'upgrade', audience: 'senior' });
+check('a second senior run finds nobody: nobody is sent two', r.status === 400 && /Nobody matches/.test(r.json?.error || ''), r.status + ' ' + r.text);
+r = await adminGet('/api/admin/campaigns/upgrade-audiences');
+check('and the count says so', r.json?.senior === 0 && r.json?.students === 1, r.text);
+r = await camp({ kind: 'upgrade', audience: 'students' });
+const SC = r.json || {};
+atIst('12:05');
+mark = mail.length;
+r = await pump(SC.id);
+const u2 = mail.slice(mark);
+check('the student is offered the Academic Pass, at the student rate, and told to bring an ID', r.status === 200 && u2.length === 1 && u2[0].to === 'sana@college.example' && /action=pay&(amp;)?pass=academic/.test(u2[0].html) && /1,178\.82/.test(u2[0].html) && /student or faculty ID/.test(u2[0].html) && /student rate/.test(u2[0].subject), r.status + ' ' + JSON.stringify(u2.map(m => m.subject)));
+mark = mail.length;
+for (const [id, why] of [[2, /Holds a Delegate Pass/], [64, /Unsubscribed/], [65, /Campus panel only/]]) {
+  r = await upgradeTo(id, 'delegate', true);
+  check('never sent to someone it no longer fits: ' + why.source, r.status === 200 && r.json?.skipped === true && why.test(r.json?.reason || ''), r.status + ' ' + r.text);
+}
+check('and none of them got an email', mail.length === mark, JSON.stringify(mail.slice(mark).map(m => m.to)));
+atIst('23:00');
+r = await upgradeTo(63, 'delegate', false);
+check('outside 9am-9pm IST nothing is sent, and the pump is told to wait', r.status === 409 && r.json?.paused === true && mail.length === mark, r.status + ' ' + r.text);
+realClock();
+// The other campaign types go exactly where they always did.
+r = await camp({ kind: 'mystery' });
+check('an unknown campaign type is still refused', r.status === 400 && /Unknown campaign type/.test(r.json?.error || ''), r.text);
+r = await camp({ kind: 'profile_reminder', audience: 'all' });
+check('the existing campaign types are still accepted', r.status !== 400 || !/Unknown campaign type|senior/.test(r.json?.error || ''), r.status + ' ' + r.text);
 globalThis.fetch = realFetch;
 
 // ---- the forms ----

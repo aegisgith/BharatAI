@@ -12837,6 +12837,140 @@ app.get('/api/admin/events/:id/session-conflicts', async (c) => {
 })
 
 
+// ==================== UPGRADE CAMPAIGN ====================
+//
+// One email to each free Visitor, offering the pass that fits: a Delegate Pass to
+// senior titles, an Academic Pass to students. The two audiences are the rules the
+// directory teaser already ranks by (SENIOR_RANK_SQL, STUDENT_RANK_SQL), so the site
+// has one idea of who is senior and who is a student.
+//
+// It is a campaign of kind 'upgrade' (BULK EMAIL CAMPAIGNS below): one row per
+// person, paced by the shared send gap, only inside the 9am-9pm IST window,
+// pausable, resumable, and retryable from Settings. Nobody is sent two, on a resume
+// or across runs: UPGRADE_NOT_YET_SQL leaves out anyone already on an upgrade
+// campaign. The button signs them in and opens the paid form on that pass
+// (?action=pay, resumePayment in the app), the path "Remind to pay" uses.
+// Campaign mail: the unsubscribe footer, and suppressionClause() applies.
+//
+// No discount: the price is the one passAmounts() charges. The offer rides in
+// campaigns.ref_id (1 Delegate, 2 Academic), so "Retry those" keeps it.
+const UPGRADE_OFFERS: Record<string, { pass: string; refId: number; key: string }> = {
+  senior: { pass: 'Delegate Pass', refId: 1, key: 'delegate' },
+  students: { pass: 'Academic Pass', refId: 2, key: 'academic' },
+}
+const UPGRADE_AUDIENCE_SQL: Record<string, string> = {
+  senior: `${SENIOR_RANK_SQL} = 1 AND ${STUDENT_RANK_SQL} = 0`,
+  students: `${STUDENT_RANK_SQL} = 1`,
+}
+const UPGRADE_NOT_YET_SQL = ` AND id NOT IN (SELECT cr.attendee_id FROM campaign_recipients cr JOIN campaigns cp ON cp.id = cr.campaign_id
+    WHERE cp.kind = 'upgrade' AND cr.attendee_id IS NOT NULL AND cr.status IN ('pending', 'sending', 'sent'))`
+
+async function upgradeOfferMail(c: any, a: any, offer: { pass: string; key: string }, preview: boolean): Promise<{ subject: string; html: string }> {
+  const appUrl = (await settingValue(c, 'app_url')) || 'https://bharataiinnovation.com/app'
+  let href = '#preview'
+  if (!preview) {
+    href = `${appUrl}?email=${encodeURIComponent(String(a.email || ''))}&action=pay&pass=${offer.key}`
+    try {
+      if (await verifiedLoginEnabled(c)) {
+        const issued = await createLoginToken(c, a.event_id || 1, String(a.email).toLowerCase(), PROFILE_LINK_TTL_MINUTES, 3)
+        href += '&token=' + issued.token
+      }
+    } catch { /* the plain link still opens the app, which asks them to sign in */ }
+  }
+  const amounts = passAmounts(offer.pass)
+  const total = amounts ? rupees(amounts.total) : ''
+  const base = amounts ? (amounts.base / 100).toLocaleString('en-IN') : ''
+  const firstPlain = String(a.name || '').replace(/[<>\r\n]/g, ' ').trim().split(/\s+/)[0].slice(0, 40) || 'there'
+  const first = payEsc(firstPlain)
+  const academic = offer.key === 'academic'
+  // What the site itself promises for each pass, and nothing more (conference
+  // and terms pages): the Academic Pass is the concessionary rate, with networking
+  // and select workshops, and needs a student or faculty ID at the badge desk.
+  const lines = academic ? [
+    'The student rate for the conference: 20&ndash;21 November 2026, World Trade Center, Mumbai',
+    'Networking in the app: the full attendee directory, connection requests, and meetings you book before you arrive',
+    'Select workshops, on top of the exhibition floor and keynotes your Visitor Pass already covers',
+  ] : [
+    'Every conference session, both days, and the workshops',
+    'Lunch at the venue',
+    'The full attendee directory in the app: search everyone, start conversations and book meetings before you arrive',
+  ]
+  const item = (t: string) =>
+    `<tr><td width="24" valign="top" style="padding:0 0 10px;color:#0f7b47;font-size:14px;">&#10003;</td>` +
+    `<td valign="top" style="padding:0 0 10px;font-size:14px;line-height:1.6;color:#333;">${t}</td></tr>`
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#f5f5f5;font-family:Arial,sans-serif;">
+    <div style="max-width:600px;margin:20px auto;background:#fff;border-radius:12px;overflow:hidden;">
+      ${emailBrandHeader(academic ? 'The student rate for the full conference' : 'Join the full conference', '20&ndash;21 Nov 2026 &bull; WTC Mumbai')}
+      <div style="padding:28px;">
+        <p style="margin:0 0 6px;font-size:15px;color:#333;">Hi <strong>${first}</strong>,</p>
+        <p style="margin:0 0 16px;font-size:14px;line-height:1.7;color:#555;">Your free Visitor Pass covers the exhibition floor and select keynotes. ${academic
+          ? 'As a student you can upgrade to the <strong>Academic Pass</strong>, the concessionary rate:'
+          : 'A <strong>Delegate Pass</strong> adds the rest of the two days:'}</p>
+        <table style="width:100%;border-collapse:collapse;margin:0 0 8px;">${lines.map(item).join('')}</table>
+        <div style="text-align:center;margin:20px 0 8px;">
+          <a href="${href}" style="display:inline-block;padding:14px 34px;background:linear-gradient(135deg,#FF6B00,#FF8C38);color:#fff;text-decoration:none;border-radius:10px;font-weight:bold;font-size:15px;">${academic ? 'Get the Academic Pass' : 'Upgrade to Delegate'}</a>
+        </div>
+        <p style="margin:0 0 18px;font-size:12.5px;line-height:1.6;color:#888;text-align:center;">${offer.pass}: &#8377;${base} + ${PASS_GST_RATE}% GST, <strong>&#8377;${total}</strong> in total, paid securely through CCAvenue.<br>The button signs you in. Your registration and reference number stay the same, and the pass is confirmed the moment the payment goes through.</p>
+        ${academic
+          ? `<p style="margin:0;font-size:13px;line-height:1.6;color:#1E2140;padding:12px 14px;background:#FFF6EF;border:1px solid rgba(255,107,0,0.25);border-radius:10px;"><strong>Bring your student or faculty ID.</strong> The badge desk checks it for the Academic Pass.</p>`
+          : `<p style="margin:0;font-size:13px;line-height:1.6;color:#555;">Need a GST invoice for your company, or coming with colleagues? Write to info@bharataiinnovation.com and we will set it up.</p>`}
+      </div>
+    </div></body></html>`
+  const subject = academic
+    ? firstPlain + ', the student rate for the full Bharat AI Innovation conference'
+    : firstPlain + ', the full Bharat AI Innovation conference is one tap away'
+  return { subject, html }
+}
+
+// One upgrade email to ONE attendee, called per recipient by the campaign pump, the
+// same shape as send-profile-reminder: 409 outside the window, 429 inside the gap
+// (the pump waits and tries again), skipped for anyone the offer no longer fits.
+app.post('/api/admin/attendees/:id/send-upgrade', async (c) => {
+  const offer = UPGRADE_OFFERS[c.req.query('offer') === 'academic' ? 'students' : 'senior']
+  const a = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(c.req.param('id')).first() as any
+  if (!a) return c.json({ error: 'Attendee not found' }, 404)
+  if (!a.email || !validEmailSyntax(a.email)) return c.json({ skipped: true, reason: 'No usable email address' })
+  const badge = String(a.badge_type || '').trim()
+  if (badge !== 'Visitor Pass') return c.json({ skipped: true, reason: 'Holds a ' + (badge || 'pass') + ' now' })
+  if (a.unsubscribed_at || String(a.marketing_consent ?? '') === '0') return c.json({ skipped: true, reason: 'Unsubscribed, or said no to email' })
+  if (Number(a.main_event ?? 1) === 0) return c.json({ skipped: true, reason: 'Campus panel only: has not said yes to the conference' })
+  const win = sendWindowState()
+  if (!win.open && c.req.query('force') !== '1') {
+    return c.json({ paused: true, reason: `Outside the ${win.window} sending window (it is ${win.ist_time}).`, window: win }, 409)
+  }
+  const slot = await claimSendSlot(c, await sendGapSeconds(c))
+  if (!slot.ok) return c.json({ throttled: true, wait_seconds: slot.wait }, 429)
+  const mail = await upgradeOfferMail(c, a, offer, false)
+  const res = await sendAdminEmail(c, a.email, mail.subject, mail.html)
+  if (!res.ok) return c.json({ error: (res as any).error || 'Not sent' }, 502)
+  return c.json({ success: true, sent_to: a.email, offer: offer.pass })
+})
+
+// How many each audience would reach now (nobody already on an upgrade campaign),
+// and the pace, so the panel can say how long a run takes.
+app.get('/api/admin/campaigns/upgrade-audiences', async (c) => {
+  try {
+    const out: Record<string, any> = {}
+    for (const key of Object.keys(UPGRADE_OFFERS)) out[key] = (await campaignAudienceRows(c, 'upgrade', key)).length
+    return c.json({ ...out, gap_seconds: await sendGapSeconds(c), window: sendWindowState().window })
+  } catch (e: any) {
+    if (/no such table/i.test(String(e?.message || ''))) return c.json({ unavailable: true })
+    throw e
+  }
+})
+
+// The email as the first person in that audience would get it. Mints no token and
+// sends nothing.
+app.get('/api/admin/campaigns/upgrade-preview', async (c) => {
+  const key = c.req.query('audience') === 'students' ? 'students' : 'senior'
+  const rows = await campaignAudienceRows(c, 'upgrade', key).catch(() => [] as any[])
+  const a = rows.length
+    ? await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(rows[0].id).first() as any
+    : { name: 'Sample Person', email: 'sample@example.com', event_id: 1 }
+  const mail = await upgradeOfferMail(c, a || { name: 'Sample Person', email: '' }, UPGRADE_OFFERS[key], true)
+  return c.json({ to: (a && a.email) || '', subject: mail.subject, html: mail.html })
+})
+
 // ==================== BULK EMAIL CAMPAIGNS ====================
 // Every bulk send used to be a for-loop in the operator's browser tab. Closing
 // the tab stopped it with no record of where it had reached, and starting again
@@ -12858,11 +12992,12 @@ async function campaignSendOne(c: any, kind: string, refId: any, r: any):
   const path = kind === 'thankyou' ? `/api/admin/attendees/${r.attendee_id}/send-thankyou`
     : kind === 'announcement' ? `/api/admin/announcements/${refId}/email/${r.attendee_id}`
     : kind === 'profile_reminder' ? `/api/admin/attendees/${r.attendee_id}/send-profile-reminder`
+    : kind === 'upgrade' ? `/api/admin/attendees/${r.attendee_id}/send-upgrade`
     : `/api/admin/attendees/${r.attendee_id}/notify`
   try {
     const url = new URL(c.req.url)
     url.pathname = path
-    url.search = ''
+    url.search = kind === 'upgrade' ? '?offer=' + (Number(refId) === 2 ? 'academic' : 'delegate') : ''
     const res = await app.fetch(new Request(url.toString(), {
       method: 'POST',
       headers: {
@@ -12903,6 +13038,19 @@ async function campaignAudienceRows(c: any, kind: string, audience: string, incl
   // Nobody who unsubscribed, nobody who said no to marketing on a form (0042).
   // The unsubscribe page promises exactly this.
   const sc = await suppressionClause(c)
+  if (kind === 'upgrade') {
+    // Free Visitors only, in one of the two audiences, never anyone already on an
+    // upgrade campaign. The send checks the pass again, in case it changed since.
+    const who = UPGRADE_AUDIENCE_SQL[audience]
+    if (!who) return []
+    const { results } = await c.env.DB.prepare(
+      `SELECT id, name, email FROM attendees
+        WHERE event_id = ? AND email IS NOT NULL AND TRIM(email) != '' AND badge_type = 'Visitor Pass'
+          AND ${who}${mc}${sc}${UPGRADE_NOT_YET_SQL}
+        ORDER BY id`
+    ).bind(eventId).all()
+    return (results as any[]) || []
+  }
   if (kind === 'profile_reminder') {
     // Same predicate the one-at-a-time chase uses, so the campaign cannot pick
     // somebody it would then skip. 'photo' narrows it to the missing photos,
@@ -12927,10 +13075,14 @@ async function campaignAudienceRows(c: any, kind: string, audience: string, incl
 // Start a campaign. Returns it with its recipient count; nothing is sent yet.
 app.post('/api/admin/campaigns', async (c) => {
   const body = await c.req.json().catch(() => ({})) as any
-  const kind = ['notify', 'thankyou', 'announcement', 'profile_reminder'].includes(body.kind) ? body.kind : ''
+  const kind = ['notify', 'thankyou', 'announcement', 'profile_reminder', 'upgrade'].includes(body.kind) ? body.kind : ''
   if (!kind) return c.json({ error: 'Unknown campaign type.' }, 400)
   const audience = String(body.audience || 'all')
-  const refId = body.ref_id ? parseInt(String(body.ref_id), 10) : null
+  let refId = body.ref_id ? parseInt(String(body.ref_id), 10) : null
+  if (kind === 'upgrade') {
+    if (!UPGRADE_OFFERS[audience]) return c.json({ error: 'An upgrade campaign is for "senior" or "students".' }, 400)
+    refId = UPGRADE_OFFERS[audience].refId
+  }
   if (kind === 'announcement' && !refId) return c.json({ error: 'An announcement campaign needs the announcement id.' }, 400)
 
   // Explicit ids win over an audience query, so the Attendees tab can turn a
@@ -12955,7 +13107,8 @@ app.post('/api/admin/campaigns', async (c) => {
   if (!rows.length) return c.json({ error: 'Nobody matches that audience.', malformed }, 400)
 
   const who = adminActor(c)
-  const title = String(body.title || (kind === 'notify' ? 'Account-ready email'
+  const title = String(body.title || (kind === 'upgrade' ? (audience === 'students' ? 'Upgrade offer: Academic Pass to students' : 'Upgrade offer: Delegate Pass to senior Visitors')
+    : kind === 'notify' ? 'Account-ready email'
     : kind === 'thankyou' ? 'Post-event thank you'
     : kind === 'profile_reminder' ? 'Complete your profile' : 'Announcement')).slice(0, 160)
   const ins = await c.env.DB.prepare(
@@ -26320,6 +26473,7 @@ function adminPageHTML(): string {
               '<div class="text-[11px] text-gray-500 mt-1">A secret reaches the site only through a deployment made after it was set.</div>' +
             '</div>' : '') +
             '<div id="abandoned-block"></div>' +
+            '<div id="upgrade-campaign-block"></div>' +
             (online ? '<div class="glass rounded-xl p-5 border border-white/5">' +
               '<h3 class="text-sm font-semibold text-white mb-1">Paid online: invoice to raise</h3>' +
               '<p class="text-[11px] text-gray-500 mb-3">Paid through CCAvenue on this site. The pass is already unlocked, so the GST invoice is the one step left.</p>' +
@@ -26339,6 +26493,7 @@ function adminPageHTML(): string {
             '</div>' +
           '</div>';
         loadAbandoned();
+        loadUpgradeCampaign();
       } catch (err) {
         el.innerHTML = '<div class="text-center py-12 text-red-400"><i class="fas fa-exclamation-triangle text-3xl mb-3"></i><p>Failed to load payments: ' + err.message + '</p></div>';
       }
@@ -26570,6 +26725,52 @@ function adminPageHTML(): string {
       if (run.stopped) return;
       if (!run.queue.length) { pumpPayReminders(); return; }
       payRemindWait(run, say, run.sent + ' of ' + run.total + ' sent.', pumpPayReminders);
+    }
+
+    // ============ UPGRADE CAMPAIGN ============
+    // One email to each free Visitor: a Delegate offer to senior titles, an Academic
+    // offer to students. It runs on the bulk email campaigns (startCampaign), so it
+    // is paced, kept to 9am-9pm IST, pausable, resumable from Settings, and nobody
+    // is sent two.
+    async function loadUpgradeCampaign() {
+      var el = document.getElementById('upgrade-campaign-block');
+      if (!el) return;
+      var d;
+      try { d = await api.get('/api/admin/campaigns/upgrade-audiences'); }
+      catch (e) { el.innerHTML = '<p class="text-red-400 text-sm">Could not load the upgrade campaign: ' + deskEsc(e.message) + '</p>'; return; }
+      if (!d || d.unavailable) { el.innerHTML = ''; return; }
+      var gap = Number(d.gap_seconds || 90);
+      var row = function (key, label, pass, n) {
+        var mins = Math.ceil(n * gap / 60);
+        var takes = mins < 60 ? mins + ' min' : (Math.round(mins / 6) / 10) + ' hours';
+        return '<div class="flex flex-wrap items-center gap-3 py-3 border-b border-white/5">' +
+          '<div class="flex-1 min-w-[180px]"><div class="text-sm text-gray-200">' + label + '</div>' +
+            '<div class="text-[11px] text-gray-500">' + n + ' not sent yet &middot; offered the ' + pass + ' &middot; about ' + takes + ' of sending, one every ' + gap + 's, ' + deskEsc(d.window || '') + '</div></div>' +
+          '<button onclick="previewUpgradeCampaign(&quot;' + key + '&quot;)" class="px-2.5 py-1.5 rounded-lg text-[11px] glass hover:bg-white/10 text-gray-300">Preview</button>' +
+          '<button id="upgrade-send-' + key + '" onclick="startUpgradeCampaign(&quot;' + key + '&quot;, ' + n + ')"' + (n ? '' : ' disabled style="opacity:.4"') + ' class="px-3 py-1.5 rounded-lg text-[11px] bg-primary-500 text-white">Send to ' + n + '</button>' +
+        '</div>';
+      };
+      el.innerHTML = '<div class="glass rounded-xl p-5 border border-white/5">' +
+        '<h3 class="text-sm font-semibold text-white mb-1">Upgrade campaign</h3>' +
+        '<p class="text-[11px] text-gray-500 mb-2">One email to each free Visitor, with a button that signs them in and opens the paid form on the pass that fits. No discount: the normal price, with GST shown. Anyone who unsubscribed, holds a paid pass already, or has been sent one before is left out. Progress and Resume are under Settings, Bulk email.</p>' +
+        row('senior', 'Senior Visitors (founders, CXOs, directors, VPs, heads, partners)', 'Delegate Pass', Number(d.senior || 0)) +
+        row('students', 'Students, interns and scholars', 'Academic Pass', Number(d.students || 0)) +
+      '</div>';
+    }
+    async function previewUpgradeCampaign(key) {
+      var w = window.open('', '_blank');
+      try {
+        var r = await api.get('/api/admin/campaigns/upgrade-preview?audience=' + encodeURIComponent(key));
+        if (!r || !r.html) { if (w) w.close(); toast('No preview', 'error'); return; }
+        if (w) { w.document.write(r.html); w.document.close(); }
+      } catch (e) { if (w) w.close(); toast(e.message || 'No preview', 'error'); }
+    }
+    async function startUpgradeCampaign(key, n) {
+      if (!n) return;
+      var pass = key === 'students' ? 'Academic Pass' : 'Delegate Pass';
+      if (!confirm('Email the ' + pass + ' offer to ' + n + ' Visitors?\\n\\nReal email, one at a time, only between 9am and 9pm IST. It carries on while this tab is open; Pause stops it, and it can be resumed from Settings. Nobody is sent two.')) return;
+      var camp = await startCampaign('upgrade', { audience: key });
+      if (camp) setTimeout(loadUpgradeCampaign, 1500);
     }
 
     // ============ BADGE DESK ============
