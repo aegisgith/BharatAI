@@ -80,6 +80,13 @@ const PHONE = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isM
     await page.goto(BASE + '/register#delegate', { waitUntil: 'domcontentloaded' });
     check('the paid form says where checkout happens', /CCAvenue/.test(await page.textContent('#rpp-next-copy') || ''), await page.textContent('#rpp-next-copy'));
     check('the Delegate tier is already chosen from the link', (await page.inputValue('#rpp-pass-type')) === 'Delegate Pass', await page.inputValue('#rpp-pass-type'));
+    await page.waitForFunction(() => /5,898\.82/.test((document.getElementById('rpp-total') || {}).textContent || ''), null, { timeout: 10000 }).catch(() => {});
+    check('the total with GST is shown before checkout, not first on CCAvenue', /You pay ₹5,898\.82 in total \(₹4,999 \+ 18% GST\)/.test(await page.textContent('#rpp-total') || '') && await page.isVisible('#rpp-total'), await page.textContent('#rpp-total'));
+    await page.click('input[name="rpp-pass"][value="VIP Pass"] + div');
+    await page.waitForFunction(() => /17,698\.82/.test((document.getElementById('rpp-total') || {}).textContent || ''), null, { timeout: 5000 }).catch(() => {});
+    check('and follows the pass chosen', /17,698\.82/.test(await page.textContent('#rpp-total') || ''), await page.textContent('#rpp-total'));
+    await page.click('input[name="rpp-pass"][value="Delegate Pass"] + div');
+    await page.waitForFunction(() => /5,898\.82/.test((document.getElementById('rpp-total') || {}).textContent || ''), null, { timeout: 5000 }).catch(() => {});
     await fillRegisterForm(page, 'meera@example.com');
 
     gw.hold = true; gw.reply = 'Success'; gw.seen.length = 0;
@@ -177,6 +184,8 @@ const PHONE = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isM
       r.checked = true; r.dispatchEvent(new Event('change'));
     });
     check('the app\'s paid form says where checkout happens', /CCAvenue/.test(await page.textContent('#pp-next-copy') || ''), await page.textContent('#pp-next-copy'));
+    await page.waitForFunction(() => /17,698\.82/.test((document.getElementById('pp-total') || {}).textContent || ''), null, { timeout: 10000 }).catch(() => {});
+    check('the app\'s paid form shows the VIP total with GST too', /You pay ₹17,698\.82 in total/.test(await page.textContent('#pp-total') || ''), await page.textContent('#pp-total'));
     await page.fill('#pp-name', 'Kiran Rao');
     await page.fill('#pp-email', 'kiran@example.com');
     await page.fill('#pp-phone', '9820066666');
@@ -397,6 +406,39 @@ const PHONE = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isM
     await page.waitForFunction(() => { const m = document.getElementById('paid-pass-modal'); return m && !m.classList.contains('hidden'); }, null, { timeout: 25000 }).catch(() => {});
     const f = await page.evaluate(() => ({ open: !document.getElementById('paid-pass-modal').classList.contains('hidden'), pass: document.getElementById('pp-pass-type').value, email: document.getElementById('pp-email').value, city: document.getElementById('pp-city').value }));
     check('a Visitor\'s reminder reopens the upgrade on the tier she chose, filled in from her profile', f.open && f.pass === 'VIP Pass' && f.email === 'vera@example.com' && f.city === 'Thane', JSON.stringify(f));
+    await ctx.close();
+  }
+
+  // ---- 7. Register free, then upgrade from the success screen ----
+  // The best moment to sell is the second after someone registers. Until 4 Oct
+  // 2026 the success screen's Upgrade buttons only changed the address bar.
+  {
+    const { ctx, page } = await phone();
+    await page.goto(BASE + '/register', { waitUntil: 'domcontentloaded' });
+    await sleep(800);
+    await page.fill('#rf-name', 'Ravi Upsell');
+    await page.fill('#rf-email', 'ravi.upsell@example.com');
+    await page.fill('#rf-phone', '9820099999');
+    await page.fill('#rf-company', 'Upsell Co');
+    await page.fill('#rf-title', 'CTO');
+    await page.fill('#rf-city', 'Mumbai');
+    await page.selectOption('#rf-industry', 'Software & SaaS');
+    await page.evaluate(() => { const f = document.getElementById('reg-form'); f.requestSubmit ? f.requestSubmit() : f.submit(); });
+    await page.waitForFunction(() => { const s = document.getElementById('reg-success'); return s && !s.classList.contains('hidden'); }, null, { timeout: 15000 }).catch(() => {});
+    check('a free registration reaches the success screen', await page.isVisible('#reg-success'));
+    await page.click('#reg-success a:has-text("Upgrade to Delegate")');
+    await sleep(800);
+    const f = await page.evaluate(() => ({ open: !document.getElementById('reg-paid-pass-modal').classList.contains('hidden'), pass: document.getElementById('rpp-pass-type').value, name: document.getElementById('rpp-name').value, email: document.getElementById('rpp-email').value, phone: document.getElementById('rpp-phone').value, company: document.getElementById('rpp-company').value, title: document.getElementById('rpp-designation').value, city: document.getElementById('rpp-city').value, industry: document.getElementById('rpp-industry').value }));
+    check('"Upgrade to Delegate" on the success screen opens the paid form on Delegate', f.open && f.pass === 'Delegate Pass', JSON.stringify(f));
+    check('filled in with what they typed a moment ago', f.name === 'Ravi Upsell' && f.email === 'ravi.upsell@example.com' && f.phone === '9820099999' && f.company === 'Upsell Co' && f.title === 'CTO' && f.city === 'Mumbai' && f.industry === 'Software & SaaS', JSON.stringify(f));
+    check('and with the total shown', /5,898\.82/.test(await page.textContent('#rpp-total') || ''), await page.textContent('#rpp-total'));
+    gw.hold = false; gw.reply = 'Success';
+    await page.evaluate(() => document.getElementById('rpp-submit-btn').scrollIntoView({ block: 'center' }));
+    await page.click('#rpp-submit-btn');
+    await page.waitForURL(/\/pay\/result\?o=/, { timeout: 30000, waitUntil: 'domcontentloaded' }).catch(() => {});
+    const st = await getState();
+    const a = Object.values(st.attendees).find(x => x.email === 'ravi.upsell@example.com') || {};
+    check('one press later the free Visitor is a paid Delegate, on the same registration', /Payment received/.test(await page.textContent('body')) && a.badge_type === 'Delegate Pass' && a.payment_status === 'paid' && Object.values(st.attendees).filter(x => x.email === 'ravi.upsell@example.com').length === 1, JSON.stringify(a));
     await ctx.close();
   }
 

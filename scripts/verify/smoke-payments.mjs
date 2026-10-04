@@ -392,6 +392,10 @@ r = await reg({ name: 'New Visitor', email: 'newvis@example.com', mobile: '98200
 await settle();
 const wv = mail.slice(mark).find(m => m.to === 'newvis@example.com');
 check('a free Visitor Pass still gets the welcome straight away', r.status === 201 && !!wv && /You are registered/.test(wv.subject) && /booked as a <strong>Visitor Pass/.test(wv.html), r.status + ' ' + JSON.stringify(mail.slice(mark).map(m => m.subject)));
+check('its Upgrade buttons sign the Visitor in and open the paid form: no "already registered" dead end', !!wv && /action=pay&(amp;)?pass=delegate&(amp;)?token=[0-9a-f]{20,}/.test(wv.html) && /action=pay&(amp;)?pass=vip&(amp;)?token=/.test(wv.html) && !/register#(delegate|vip)/.test(wv.html), ((wv && wv.html.match(/href="[^"]*pass=[^"]*"/g)) || []).join(' ').slice(0, 240));
+check('the card link and the Upgrade buttons share one sign-in token, so neither cancels the other', !!wv && new Set((wv.html.match(/token=([0-9a-f]{20,})/g) || [])).size === 1, ((wv && wv.html.match(/token=[0-9a-f]{8}/g)) || []).join(' '));
+r = await hit('/api/payments/config', {}, MAIL);
+check('the config gives each pass its price and total with GST, from the table that charges them', r.json?.passes?.['Delegate Pass']?.total === 5898.82 && r.json?.passes?.['Delegate Pass']?.base === 4999 && r.json?.passes?.['VIP Pass']?.total === 17698.82 && r.json?.passes?.['Academic Pass']?.total === 1178.82 && r.json?.gst_rate === 18, r.text);
 const acad = Object.values(state.attendees).find(a => a.email === 'newacad@example.com');
 r = await start(acad.id, 'Academic Pass', MAIL);
 const AO = r.json || {};
@@ -408,11 +412,11 @@ globalThis.fetch = realFetch;
 r = await hit('/register');
 let parsed = 0; try { parsed = scriptsParse(r.text); } catch (e) { parsed = -1; console.log('  /register script: ' + e.message); }
 check('/register renders and every inline script parses', r.status === 200 && parsed > 0, r.status + ' ' + parsed);
-for (const m of ['function startOnlinePayment', 'id="rpp-next-copy"', 'Checkout opens on <strong>CCAvenue</strong>', 'function rppSaveLead', 'function rppResumeLead', 'We keep what you type here']) check('/register carries ' + m, r.text.includes(m), 'missing');
+for (const m of ['function startOnlinePayment', 'id="rpp-next-copy"', 'Checkout opens on <strong>CCAvenue</strong>', 'function rppSaveLead', 'function rppResumeLead', 'We keep what you type here', 'function upgradeFromSuccess', "addEventListener('hashchange', rppOpenFromHash)", 'id="rpp-total"', "onclick=\"return upgradeFromSuccess('Delegate Pass')\""]) check('/register carries ' + m, r.text.includes(m), 'missing');
 const GONE = ['municampus.com', 'muniPayUrl', 'mUni Campus', 'PAY_GATEWAY', 'window.open(\'\', \'_blank\')'];
 for (const m of GONE) check('/register has no trace of ' + m, !r.text.includes(m), 'still there');
 r = await hit('/app');
-for (const m of ['function startOnlinePayment', 'function payPendingPass', 'id="pcc-pay-btn"', 'id="pp-next-copy"', 'Checkout opens on <strong>CCAvenue</strong>', 'function ppSaveLead', 'function resumePayment', "act === 'pay'", 'We keep what you type here']) check('/app carries ' + m, r.text.includes(m), 'missing');
+for (const m of ['function startOnlinePayment', 'function payPendingPass', 'id="pcc-pay-btn"', 'id="pp-next-copy"', 'Checkout opens on <strong>CCAvenue</strong>', 'function ppSaveLead', 'function resumePayment', "act === 'pay'", 'We keep what you type here', 'id="pp-total"', 'function ppShowTotal']) check('/app carries ' + m, r.text.includes(m), 'missing');
 for (const m of GONE.concat(['pass_upgrade'])) check('/app has no trace of ' + m, !r.text.includes(m), 'still there');
 r = await hit('/admin');
 for (const m of ['_paidOnline', 'Paid online: invoice to raise', 'openInvoiceFor(idx, fromOnline)', 'id="gateway-checks"', 'What it is waiting for', 'id="abandoned-block"', 'function loadAbandoned', 'function startPayReminders', 'function payRemindWait']) check('/admin carries ' + m, r.text.includes(m), 'missing');

@@ -326,6 +326,14 @@ Set the value to `on` to switch it back. (The older value `muni` still means off
 - The working key is only ever a Worker secret. It is not in the repo, the database, the settings screen or any page.
 - Order statuses: `created`, `paid`, `failed`, `aborted`, `awaited`, `mismatch`.
 
+### The ways a Visitor upgrades (fixed 4 Oct 2026)
+A free Visitor can reach a paid pass from four places. Two of them were broken until 4 Oct, found while looking for revenue gaps:
+- **The `/register` success screen's Upgrade buttons** linked to `/register#delegate` on the same page, which changes only the hash, so nothing opened. They now call `upgradeFromSuccess()`, which opens the paid form on that pass filled in from the free form; the page also listens for `hashchange`.
+- **The welcome email's Upgrade buttons** linked to `/register#delegate`, which for an existing Visitor in any browser without their session ends at "That email is already registered". They now go to the app signed in (`?action=pay&pass=…&token=`), sharing the card link's token (a second `createLoginToken` would cancel the first), and `resumePayment()` opens the paid form filled in.
+- The app's own upgrade prompts, and "Remind to pay", were already fine.
+
+Both paid forms now show the amount charged, **"You pay ₹5,898.82 in total (₹4,999 + 18% GST)"**, above the button. Before this the GST-inclusive figure first appeared on CCAvenue's page. The figures come from `GET /api/payments/config` (`passes`), built from `passAmounts()`, so the form cannot disagree with the charge. The listener is on the capture phase because a pass chosen in code fires a `change` that does not bubble.
+
 ### People who stop part-way, and "Remind to pay" (live 4 Oct 2026)
 The organiser asked for abandoned checkouts to be captured and followed up. Three ways to stop, all on Admin → Payments under **Didn't finish paying**:
 

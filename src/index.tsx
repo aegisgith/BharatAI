@@ -929,12 +929,22 @@ async function sendRegistrationEmail(c: any, attendee: any, opts: { receipt?: st
    * been answering 403 to every registrant. Two uses, because people click a
    * link in an email twice more often than once. */
   let cardHref = `${appUrl}?email=${encodeURIComponent(attendee.email)}&action=social-card`
+  // The Upgrade buttons share the card link's token: minting a second one would
+  // cancel the first (createLoginToken supersedes). They pointed at
+  // /register#delegate until 4 Oct 2026, which for somebody already registered,
+  // opened anywhere but the browser they registered in, ended at "That email is
+  // already registered": the upsell in every Visitor's welcome led nowhere.
+  let linkToken = ''
   try {
     if (await verifiedLoginEnabled(c)) {
-      const issuedCard = await createLoginToken(c, attendee.event_id, String(attendee.email).toLowerCase(), PROFILE_LINK_TTL_MINUTES, 2)
+      const issuedCard = await createLoginToken(c, attendee.event_id, String(attendee.email).toLowerCase(), PROFILE_LINK_TTL_MINUTES, 4)
+      linkToken = issuedCard.token
       cardHref += `&token=${issuedCard.token}`
     }
   } catch (_) { /* a welcome mail must still go out if the token cannot be minted */ }
+  // Signed in, and straight to the paid form on that pass (resumePayment in the app).
+  const upgradeHref = (tier: string) =>
+    `${appUrl}?email=${encodeURIComponent(attendee.email)}&action=pay&pass=${tier}${linkToken ? '&token=' + linkToken : ''}`
   const esc = (v: any) => String(v ?? '').replace(/[&<>]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch] as string))
   const pending = String(attendee.payment_status || '').toLowerCase() === 'pending'
   const step = (n: string, title: string, body: string) =>
@@ -1000,11 +1010,11 @@ async function sendRegistrationEmail(c: any, attendee: any, opts: { receipt?: st
           <p style="margin:0 0 12px;font-size:13px;line-height:1.6;color:#666;text-align:center;">Here is what the app does, and why starting before you arrive matters &mdash; the people worth meeting fill their diaries early.</p>
           <table style="width:100%;border-collapse:collapse;">${netRows}</table>
           <table style="width:100%;border-collapse:separate;border-spacing:0;margin-top:18px;"><tr>
-            ${tier('#0f7b47', 'Delegate Pass', '&#8377;4,999 + GST', ['All conference sessions, both days', 'Workshops and lunch', 'Full access to Bharat AI Connect, as above'], 'https://bharataiinnovation.com/register#delegate')}
-            ${tier('#A67C00', 'VIP Pass', '&#8377;14,999 + GST', ['Everything in Delegate', 'VIP lounge and priority seating', 'Speaker meet &amp; greet, VIP dinner'], 'https://bharataiinnovation.com/register#vip')}
+            ${tier('#0f7b47', 'Delegate Pass', '&#8377;4,999 + GST', ['All conference sessions, both days', 'Workshops and lunch', 'Full access to Bharat AI Connect, as above'], upgradeHref('delegate'))}
+            ${tier('#A67C00', 'VIP Pass', '&#8377;14,999 + GST', ['Everything in Delegate', 'VIP lounge and priority seating', 'Speaker meet &amp; greet, VIP dinner'], upgradeHref('vip'))}
           </tr></table>
           ${boardrooms}
-          <p style="margin:12px 0 0;font-size:11.5px;color:#999;text-align:center;">Use this same email address. We move your registration to the new tier once payment is confirmed &mdash; your reference number does not change.</p>
+          <p style="margin:12px 0 0;font-size:11.5px;color:#999;text-align:center;">The button signs you in with this email and opens the secure payment page. Your registration and reference number stay the same.</p>
         </div>` : ''
 
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#f5f5f5;font-family:Arial,sans-serif;">
@@ -2181,11 +2191,19 @@ function payRefusal(a: any): string | null {
   return 'Your pass (' + badge + ') is arranged by the organisers and cannot be changed here. Write to info@bharataiinnovation.com and we will sort it out.'
 }
 
-// Which checkout the forms should use. Public, because the register page asks
-// before anyone is signed in; it says nothing but the one word.
+// Whether checkout is on, and what each paid pass costs including GST, so the
+// forms show the amount the buyer is charged before they leave for CCAvenue. The
+// figures come from passAmounts(), which is what the gateway is asked for, so the
+// form and the charge cannot drift apart. Public, because the register page asks
+// before anyone is signed in; the same prices are on every page of the site.
 app.get('/api/payments/config', async (c) => {
   c.header('Cache-Control', 'no-store')
-  return c.json({ gateway: (await onlinePaymentsOn(c)) ? 'ccavenue' : 'off' })
+  const passes: Record<string, { base: number; total: number }> = {}
+  for (const p of PAID_TIERS) {
+    const a = passAmounts(p)
+    if (a) passes[p] = { base: a.base / 100, total: a.total / 100 }
+  }
+  return c.json({ gateway: (await onlinePaymentsOn(c)) ? 'ccavenue' : 'off', gst_rate: PASS_GST_RATE, passes })
 })
 
 // Step one: record the order, at our price, for whoever is signed in. 503 means
@@ -14818,7 +14836,7 @@ ${sharedNavHTML('register')}
                 </ul>
                 <!-- -300, not -200: the light theme remaps the -300 shades to dark ink
                      and leaves -200 pale, so -200 was near-invisible on this page. -->
-                <a href="/register#delegate" class="mt-3 block text-center px-4 py-2 rounded-lg text-xs font-semibold bg-primary-500/20 text-primary-300 hover:bg-primary-500/30 transition">Upgrade to Delegate</a>
+                <a href="/register#delegate" onclick="return upgradeFromSuccess('Delegate Pass')" class="mt-3 block text-center px-4 py-2 rounded-lg text-xs font-semibold bg-primary-500/20 text-primary-300 hover:bg-primary-500/30 transition">Upgrade to Delegate</a>
               </div>
               <div class="rounded-xl p-4 border border-amber-500/30 bg-amber-500/5 relative">
                 <div class="absolute -top-2.5 right-4 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500 text-black">ALL ACCESS</div>
@@ -14831,7 +14849,7 @@ ${sharedNavHTML('register')}
                   <li><i class="fas fa-check text-amber-400 mr-1.5"></i>VIP lounge and priority seating</li>
                   <li><i class="fas fa-check text-amber-400 mr-1.5"></i>Speaker meet &amp; greet, VIP dinner</li>
                 </ul>
-                <a href="/register#vip" class="mt-3 block text-center px-4 py-2 rounded-lg text-xs font-semibold bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition">Upgrade to VIP</a>
+                <a href="/register#vip" onclick="return upgradeFromSuccess('VIP Pass')" class="mt-3 block text-center px-4 py-2 rounded-lg text-xs font-semibold bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition">Upgrade to VIP</a>
               </div>
             </div>
             <p class="text-[11px] text-gray-500 text-center mt-3">Use the same email address. We move your existing registration to the new tier once payment is confirmed &mdash; your reference number does not change.</p>
@@ -15031,10 +15049,53 @@ function openRegisterPaidPassModal(preselect) {
 }
 // Deep-link support: /register#delegate | #vip | #academic opens the paid modal
 // with that tier already chosen (used by the site's Networking CTA).
-document.addEventListener('DOMContentLoaded', function () {
+// On hashchange too: a link to /register#delegate from this same page changes only
+// the hash, and until 4 Oct 2026 the success screen's Upgrade buttons did nothing.
+function rppOpenFromHash() {
   const PASS_BY_HASH = { delegate: 'Delegate Pass', vip: 'VIP Pass', academic: 'Academic Pass' };
   const want = PASS_BY_HASH[(window.location.hash || '').replace('#', '').toLowerCase()];
   if (want) openRegisterPaidPassModal(want);
+}
+document.addEventListener('DOMContentLoaded', rppOpenFromHash);
+window.addEventListener('hashchange', rppOpenFromHash);
+
+// The success screen's Upgrade buttons: the paid form on that pass, filled in from
+// what was typed a moment ago. The new registration's session is already in this
+// browser, so the payment lands on that same registration.
+function upgradeFromSuccess(passType) {
+  openRegisterPaidPassModal(passType);
+  var map = { 'rf-name': 'rpp-name', 'rf-email': 'rpp-email', 'rf-phone': 'rpp-phone', 'rf-company': 'rpp-company', 'rf-title': 'rpp-designation', 'rf-city': 'rpp-city', 'rf-industry': 'rpp-industry' };
+  Object.keys(map).forEach(function (from) {
+    var a = document.getElementById(from), b = document.getElementById(map[from]);
+    if (a && b && !b.value && a.value) b.value = a.value;
+  });
+  try { rppSaveLead(); } catch (e) {}
+  return false;
+}
+
+// The amount the buyer is charged, including GST, shown above the button, so the
+// first time they see it is not on CCAvenue's page. The prices come from the server
+// that charges them; if they cannot be read, the line stays hidden.
+var _passPrices = null, _passGst = 18;
+function rppShowTotal() {
+  var el = document.getElementById('rpp-total');
+  if (!el) return;
+  var p = _passPrices && _passPrices[(document.getElementById('rpp-pass-type') || {}).value];
+  if (!p) { el.style.display = 'none'; return; }
+  el.innerHTML = 'You pay <strong>&#8377;' + Number(p.total).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '</strong> in total (&#8377;' + Number(p.base).toLocaleString('en-IN') + ' + ' + _passGst + '% GST)';
+  el.style.display = '';
+}
+document.addEventListener('DOMContentLoaded', function () {
+  fetch('/api/payments/config').then(function (r) { return r.json(); }).then(function (j) {
+    _passPrices = (j && j.passes) || null;
+    if (j && j.gst_rate) _passGst = j.gst_rate;
+    rppShowTotal();
+  }).catch(function () {});
+  var m = document.getElementById('reg-paid-pass-modal');
+  // Capture, not bubble: choosing a pass in code fires a change that does not
+  // bubble, and the total has to follow it too. Read after the radio's own
+  // handler has set the pass.
+  if (m) m.addEventListener('change', function () { setTimeout(rppShowTotal, 0); }, true);
 });
 function closeRegisterPaidPassModal() {
   try { rppSaveLead(true); } catch (e) {}
@@ -15281,6 +15342,7 @@ function rppResumeLead() {
             <input type="text" id="rpp-city" autocomplete="address-level2" required placeholder="Your city" style="width:100%;padding:10px 14px;border-radius:10px;background:#fff;border:1px solid #D7DBEC;color:#1E2140;font-size:13px;outline:none;box-sizing:border-box;">
           </div>
         </div>
+        <p id="rpp-total" style="display:none;margin:4px 0 0;text-align:center;font-size:13px;color:#1E2140;"></p>
         <button type="submit" id="rpp-submit-btn" style="width:100%;padding:13px;border-radius:10px;border:none;background:linear-gradient(135deg,#FF6B00,#FF8C38);color:white;font-weight:700;font-size:14px;cursor:pointer;margin-top:4px;">
           <i class="fas fa-arrow-right" style="margin-right:8px;"></i>Proceed to Payment
         </button>
@@ -25049,6 +25111,28 @@ function mainPageHTML(): string {
       window.addEventListener('pagehide', function () { ppSaveLead(true); });
     });
 
+    // The amount the buyer is charged, including GST, shown above the button, so the
+    // first time they see it is not on CCAvenue's page. Prices come from the server.
+    var _ppPrices = null, _ppGst = 18;
+    function ppShowTotal() {
+      var el = document.getElementById('pp-total');
+      if (!el) return;
+      var p = _ppPrices && _ppPrices[(document.getElementById('pp-pass-type') || {}).value];
+      if (!p) { el.style.display = 'none'; return; }
+      el.innerHTML = 'You pay <strong>&#8377;' + Number(p.total).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '</strong> in total (&#8377;' + Number(p.base).toLocaleString('en-IN') + ' + ' + _ppGst + '% GST)';
+      el.style.display = '';
+    }
+    document.addEventListener('DOMContentLoaded', function () {
+      fetch('/api/payments/config').then(function (r) { return r.json(); }).then(function (j) {
+        _ppPrices = (j && j.passes) || null;
+        if (j && j.gst_rate) _ppGst = j.gst_rate;
+        ppShowTotal();
+      }).catch(function () {});
+      var m = document.getElementById('paid-pass-modal');
+      // Capture, not bubble: a pass chosen in code fires a change that does not bubble.
+      if (m) m.addEventListener('change', function () { setTimeout(ppShowTotal, 0); }, true);
+    });
+
     // The "finish paying" reminder lands here signed in, with ?action=pay&pass=.
     // A pending paid pass goes straight to checkout; a free pass gets the paid form
     // open on the tier they started, filled in from their profile.
@@ -25212,6 +25296,7 @@ function mainPageHTML(): string {
               <option>Other</option>
             </select>
           </div>
+          <p id="pp-total" class="text-center text-sm mt-1" style="display:none;color:#1E2140;"></p>
           <button type="submit" id="pp-submit-btn" class="w-full py-3 rounded-xl font-bold text-white mt-2 transition-all" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);">
             <i class="fas fa-arrow-right mr-2"></i>Proceed to Payment
           </button>
