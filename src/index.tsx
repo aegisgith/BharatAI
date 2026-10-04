@@ -584,7 +584,8 @@ async function directoryViewer(c: any): Promise<{ id: number | null; full: boole
   try {
     const r = await c.env.DB.prepare('SELECT badge_type, role FROM attendees WHERE id = ?').bind(id).first() as any
     if (!r) return { id, full: false }
-    return { id, full: canInitiateNetworking(r.badge_type) || DIRECTORY_FULL_ROLE.test(String(r.role || '')) }
+    if (DIRECTORY_FULL_ROLE.test(String(r.role || ''))) return { id, full: true }
+    return { id, full: canInitiateNetworking(r.badge_type) && !(await unpaidPaidPass(c, id, r.badge_type)) }
   } catch { return { id, full: false } }
 }
 
@@ -915,7 +916,7 @@ async function notifyTeamOfInquiry(c: any, row: { id: any; inquiry_type: string;
 //
 // waitUntil, so a slow or failing mail never delays or fails the registration
 // itself — the row is already committed before this runs.
-async function sendRegistrationEmail(c: any, attendee: any) {
+async function sendRegistrationEmail(c: any, attendee: any, opts: { receipt?: string } = {}) {
   const g = async (k: string) => ((await c.env.DB.prepare('SELECT value FROM app_settings WHERE key = ?').bind(k).first()) as any)?.value
   const apiKey = await elasticKey(c)
   if (!apiKey || !attendee?.email) return
@@ -1008,10 +1009,12 @@ async function sendRegistrationEmail(c: any, attendee: any) {
 
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#f5f5f5;font-family:Arial,sans-serif;">
     <div style="max-width:600px;margin:20px auto;background:#fff;border-radius:12px;overflow:hidden;">
-      ${emailBrandHeader('You are registered', '20&ndash;21 Nov 2026 &bull; WTC Mumbai')}
+      ${emailBrandHeader(opts.receipt ? 'Payment received' : 'You are registered', '20&ndash;21 Nov 2026 &bull; WTC Mumbai')}
       <div style="padding:30px;">
         <p style="margin:0 0 6px;font-size:15px;color:#333;">Hi <strong>${esc(attendee.name)}</strong>,</p>
-        <p style="margin:0 0 20px;font-size:14px;line-height:1.7;color:#555;">Your registration is confirmed. You are booked as a <strong>${esc(attendee.badge_type || 'Visitor Pass')}</strong> holder.</p>
+        ${opts.receipt
+          ? `<p style="margin:0 0 20px;font-size:14px;line-height:1.7;color:#555;">Thank you. Your payment has arrived and your <strong>${esc(attendee.badge_type)}</strong> for Bharat AI Innovation 2026 is confirmed.</p>${opts.receipt}`
+          : `<p style="margin:0 0 20px;font-size:14px;line-height:1.7;color:#555;">Your registration is confirmed. You are booked as ${/^[aeiou]/i.test(String(attendee.badge_type || 'Visitor Pass')) ? 'an' : 'a'} <strong>${esc(attendee.badge_type || 'Visitor Pass')}</strong> holder.</p>`}
         <table style="width:100%;border-collapse:collapse;">
           ${step('1', 'Add your photo', 'A photo is required on your pass. You will be asked for one the first time you download it.')}
           ${step('2', 'Complete your profile', 'Your job title and organisation appear on your pass and in the networking directory.')}
@@ -1048,7 +1051,7 @@ async function sendRegistrationEmail(c: any, attendee: any) {
         Content: {
           Body: [{ ContentType: 'HTML', Charset: 'utf-8', Content: html }],
           From: `${fromName} <${fromEmail}>`,
-          Subject: 'You are registered - Bharat AI Innovation 2026'
+          Subject: opts.receipt ? 'Payment received: your ' + attendee.badge_type + ' is confirmed' : 'You are registered - Bharat AI Innovation 2026'
         },
         Options: { TrackClicks: false, TrackOpens: false }
       })
@@ -2423,7 +2426,15 @@ async function sendPaymentEmails(c: any, a: any, order: any, trackingId: string,
         </div>
       </div>
     </div></body></html>`
-    await sendAdminEmail(c, a.email, 'Payment received: your ' + order.pass_type + ' is confirmed', html, { unsubscribe: false })
+    if (unlocked) {
+      // The welcome they were not sent at registration, with the receipt in it:
+      // one email that says it is paid, and what to do next.
+      const fresh = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(a.id).first().catch(() => null) as any
+      const gst = `<div style="margin:0 0 20px;padding:14px;background:#F7F8FF;border:1px solid #E3E6F5;border-radius:10px;"><p style="margin:0;font-size:12.5px;line-height:1.6;color:#1E2140;"><strong>GST invoice:</strong> we will email your tax invoice separately. If it should be made out to your organisation, send its registered name, GSTIN and billing address to info@bharataiinnovation.com, quoting order ${payEsc(order.order_id)}.</p></div>`
+      await sendRegistrationEmail(c, fresh || { ...a, badge_type: order.pass_type, payment_status: 'paid' }, { receipt: rows + gst })
+    } else {
+      await sendAdminEmail(c, a.email, 'Payment received: your ' + order.pass_type + ' is confirmed', html, { unsubscribe: false })
+    }
 
     const team = (await settingValue(c, 'inquiry_notify_email')) || 'info@bharataiinnovation.com'
     const teamHtml = `<div style="font-family:Arial,sans-serif;max-width:560px;">
@@ -3813,6 +3824,14 @@ app.get('/api/my-pass-token', async (c) => {
       return c.json({ error: 'main_event_consent', message: 'Tell us you are coming to the conference first, and your pass is ready.' }, 403)
     }
   } catch { /* pre-0041 */ }
+  // A paid pass is issued when the payment lands. The app already refuses; this is
+  // the check that holds when the app is not the one asking.
+  try {
+    const t = await c.env.DB.prepare('SELECT badge_type FROM attendees WHERE id = ?').bind(me).first() as any
+    if (t && await unpaidPaidPass(c, me, t.badge_type)) {
+      return c.json({ error: 'payment_pending', message: 'Your ' + t.badge_type + ' is issued the moment your payment goes through. Use Pay now on your pass card.' }, 402)
+    }
+  } catch { /* a failed read never blocks a pass */ }
   return c.json({ token: await signPassToken(c, me) })
 })
 
@@ -5599,7 +5618,14 @@ app.post('/api/events/:id/attendees/register', async (c) => {
         await c.env.DB.prepare('UPDATE attendees SET main_event = 0 WHERE id = ?').bind((attendee as any).id).run()
       } catch { /* 0041 not applied yet */ }
     }
-    const welcome = panel ? sendPanelConfirmationEmail(c, attendee, panel) : sendRegistrationEmail(c, attendee)
+    // A paid pass chosen here is not a registration until it is paid for, so nobody
+    // is told "you are registered" before that: the welcome goes out with the
+    // payment receipt when the money lands (sendPaymentEmails). Someone who never
+    // pays is on Admin, Payments under "Didn't finish paying".
+    const unpaidTier = !panel && needsPayment && withPaymentCol
+    const welcome = panel ? sendPanelConfirmationEmail(c, attendee, panel)
+      : unpaidTier ? Promise.resolve()
+      : sendRegistrationEmail(c, attendee)
     let scheduled = false
     try { c.executionCtx.waitUntil(welcome); scheduled = true } catch { /* no ctx */ }
     if (!scheduled) await welcome
@@ -6186,6 +6212,24 @@ app.get('/api/attendees/:id/connections', async (c) => {
 const canInitiateNetworking = (badgeType: unknown): boolean =>
   !/visitor/i.test(String(badgeType ?? ''))
 
+// A paid pass chosen on a form and not paid for (payment_status 'pending', or
+// 'refunded') works like a Visitor Pass until the payment lands: choosing
+// Delegate is not buying it. Until 4 Oct 2026 it was not, and an unpaid
+// Delegate could message, connect, book meetings and see the whole directory.
+// One extra read, made only for a paid tier, so a Visitor or a speaker costs
+// nothing. A database without payment_status (pre-0015) treats every pass as
+// paid, as it always did.
+async function unpaidPaidPass(c: any, id: any, badgeType: unknown): Promise<boolean> {
+  if (!PAID_TIERS.includes(String(badgeType ?? ''))) return false
+  if (!(await paymentStatusEnabled(c))) return false
+  try {
+    const r = await c.env.DB.prepare('SELECT payment_status FROM attendees WHERE id = ?').bind(id).first() as any
+    return ['pending', 'refunded'].includes(String(r?.payment_status ?? '').trim().toLowerCase())
+  } catch { return false }
+}
+const unpaidSentence = (badge: any, what: string): string =>
+  'Your ' + String(badge || 'pass') + ' is not paid yet, so ' + what + ' is not open to you yet. It unlocks the moment the payment goes through: use Pay now on your pass card in the app.'
+
 // What a profile must carry before its owner may approach a stranger. The person
 // deciding has to know who is asking and what they do; that is the whole
 // difference between business networking and a dating app. Photo and LinkedIn are
@@ -6270,10 +6314,14 @@ app.post('/api/connections', async (c) => {
   ).bind(from_attendee_id).first() as any
   if (!sender) return c.json({ error: 'Please sign in again to continue.' }, 401)
 
-  if (!canInitiateNetworking(sender.badge_type)) {
+  const senderUnpaid = await unpaidPaidPass(c, from_attendee_id, sender.badge_type)
+  if (!canInitiateNetworking(sender.badge_type) || senderUnpaid) {
     return c.json({
       error: 'upgrade_required',
-      message: 'Starting a conversation is part of the Delegate, Academic and VIP passes. Your Visitor Pass can still receive and accept requests.',
+      payment_pending: senderUnpaid || undefined,
+      message: senderUnpaid
+        ? unpaidSentence(sender.badge_type, 'starting a conversation') + ' You can still receive and accept requests.'
+        : 'Starting a conversation is part of the Delegate, Academic and VIP passes. Your Visitor Pass can still receive and accept requests.',
     }, 402)
   }
 
@@ -6413,7 +6461,8 @@ app.post('/api/messages', async (c) => {
   if (netSamePerson(sender_id, receiver_id)) return c.json({ error: 'You cannot message yourself.' }, 400)
   const senderRow = await c.env.DB.prepare('SELECT badge_type FROM attendees WHERE id = ?').bind(sender_id).first() as any
   if (!senderRow) return c.json({ error: 'Sender not found' }, 404)
-  if (!canInitiateNetworking(senderRow.badge_type) && !isAdminRequest(c)) {
+  const senderUnpaid = await unpaidPaidPass(c, sender_id, senderRow.badge_type)
+  if ((!canInitiateNetworking(senderRow.badge_type) || senderUnpaid) && !isAdminRequest(c)) {
     const replying = await c.env.DB.prepare(
       `SELECT 1 AS ok FROM messages WHERE sender_id = ? AND receiver_id = ? LIMIT 1`
     ).bind(receiver_id, sender_id).first()
@@ -6422,7 +6471,9 @@ app.post('/api/messages', async (c) => {
          AND ((from_attendee_id = ? AND to_attendee_id = ?) OR (from_attendee_id = ? AND to_attendee_id = ?)) LIMIT 1`
     ).bind(sender_id, receiver_id, receiver_id, sender_id).first()
     if (!replying && !connected) {
-      return c.json({ error: 'Messaging is part of the Delegate and VIP passes. You can always reply to anyone who messages you.', code: 'networking_locked' }, 403)
+      return c.json({ error: senderUnpaid
+        ? unpaidSentence(senderRow.badge_type, 'messaging people') + ' You can always reply to anyone who messages you.'
+        : 'Messaging is part of the Delegate and VIP passes. You can always reply to anyone who messages you.', code: 'networking_locked' }, 403)
     }
   }
   // Twenty messages a minute is a conversation; more is a script.
@@ -6703,8 +6754,9 @@ app.post('/api/meetings', async (c) => {
   const denied = await requireSelf(c, requester_id); if (denied) return denied
   // Same pass rule as connections and messages; the client gate alone was bypassable.
   const requester = await c.env.DB.prepare('SELECT badge_type FROM attendees WHERE id = ?').bind(requester_id).first() as any
-  if (requester && !canInitiateNetworking(requester.badge_type) && !isAdminRequest(c)) {
-    return c.json({ error: 'Meeting requests are part of the Delegate and VIP passes.', code: 'networking_locked' }, 403)
+  const requesterUnpaid = requester ? await unpaidPaidPass(c, requester_id, requester.badge_type) : false
+  if (requester && (!canInitiateNetworking(requester.badge_type) || requesterUnpaid) && !isAdminRequest(c)) {
+    return c.json({ error: requesterUnpaid ? unpaidSentence(requester.badge_type, 'asking for a meeting') : 'Meeting requests are part of the Delegate and VIP passes.', code: 'networking_locked' }, 403)
   }
 
   const result = await c.env.DB.prepare(
@@ -16015,7 +16067,7 @@ function mainPageHTML(): string {
             </ul>
           </div>
         </div>
-        <button type="button" onclick="const m=document.getElementById('visitor-upgrade-modal');m.classList.add('hidden');m.classList.remove('flex');openPaidPassForm();"
+        <button type="button" id="upgrade-modal-go" onclick="upgradeModalGo()"
            class="block w-full py-3.5 rounded-xl font-bold text-white text-sm transition-all mb-3"
            style="background:linear-gradient(135deg,#FF6B00,#FF8C38);">
           <i class="fas fa-arrow-up-right-from-square mr-2"></i>Upgrade My Pass — Get Full Access
@@ -17007,10 +17059,10 @@ function mainPageHTML(): string {
                 <i class="fas fa-lock text-amber-400"></i>
               </div>
               <div class="flex-1 min-w-0">
-                <p class="text-sm font-semibold text-white">You are seeing a selection of who is coming</p>
-                <p class="text-xs text-gray-400 mt-0.5">Delegate, Academic and VIP passes see the full directory, search everyone, and start conversations. Anyone who reaches out to you, you can always answer.</p>
+                <p id="vnb-title" class="text-sm font-semibold text-white">You are seeing a selection of who is coming</p>
+                <p id="vnb-copy" class="text-xs text-gray-400 mt-0.5">Delegate, Academic and VIP passes see the full directory, search everyone, and start conversations. Anyone who reaches out to you, you can always answer.</p>
               </div>
-              <button type="button" onclick="openPaidPassForm()"
+              <button type="button" id="vnb-go" onclick="upgradeModalGo()"
                  class="shrink-0 px-4 py-2 rounded-xl text-xs font-bold text-white transition-all whitespace-nowrap"
                  style="background:linear-gradient(135deg,#FF6B00,#FF8C38);">
                 Upgrade Now <i class="fas fa-arrow-right ml-1"></i>
@@ -19329,7 +19381,7 @@ function mainPageHTML(): string {
       const registerVisitorBtn = document.getElementById('register-visitor-btn');
       const roleHome = document.getElementById('role-home');
       const upgradeCard = document.getElementById('home-upgrade-card');
-      if (upgradeCard) upgradeCard.classList.toggle('hidden', !(currentUser && isVisitorPass()));
+      if (upgradeCard) upgradeCard.classList.toggle('hidden', !(currentUser && isVisitorPass() && !passAwaitingPayment()));
       const profileCard = document.getElementById('profile-complete-card');
       if (currentUser) {
         if (rsvpCard) rsvpCard.classList.remove('hidden');
@@ -19667,8 +19719,14 @@ function mainPageHTML(): string {
     }
 
     // ==================== NETWORKING ====================
+    // A paid pass chosen on a form and not paid for works like a Visitor Pass until
+    // the payment lands, exactly as the server sees it (unpaidPaidPass).
+    function passAwaitingPayment() {
+      return !!currentUser && ['Delegate Pass', 'VIP Pass', 'Academic Pass'].indexOf(String(currentUser.badge_type || '')) >= 0
+        && ['pending', 'refunded'].indexOf(String(currentUser.payment_status || '').toLowerCase()) >= 0;
+    }
     function isVisitorPass() {
-      return (currentUser?.badge_type || '').toLowerCase().includes('visitor');
+      return (currentUser?.badge_type || '').toLowerCase().includes('visitor') || passAwaitingPayment();
     }
 
     // Naming the person converts; an abstract lock does not. "Connect with Priya
@@ -19685,6 +19743,17 @@ function mainPageHTML(): string {
       if (!m) return;
       const title = document.getElementById('upgrade-modal-title');
       const copy = document.getElementById('upgrade-modal-copy');
+      const go = document.getElementById('upgrade-modal-go');
+      if (passAwaitingPayment()) {
+        // They chose a paid pass and have not paid: the answer is to finish, not
+        // to choose again.
+        if (title) title.textContent = 'Finish paying for your ' + currentUser.badge_type;
+        if (copy) copy.innerHTML = 'Your <span class="text-white font-semibold">' + esc(currentUser.badge_type) + '</span> is saved but not paid yet, so for now it works like a Visitor Pass. The full directory, conversations and meetings open the moment the payment goes through.';
+        if (go) go.innerHTML = '<i class="fas fa-credit-card mr-2"></i>Pay now';
+        m.classList.remove('hidden');
+        m.classList.add('flex');
+        return;
+      }
       if (reason === 'networking' && title && copy) {
         const who = String(personName || '').trim();
         title.textContent = who ? ('Reach out to ' + who) : 'Start the conversation';
@@ -19706,6 +19775,14 @@ function mainPageHTML(): string {
       m.classList.add('flex');
     }
 
+    // The modal's one button, and the directory banner's: pay for the pass already
+    // chosen, or choose one.
+    function upgradeModalGo() {
+      var m = document.getElementById('visitor-upgrade-modal');
+      if (m) { m.classList.add('hidden'); m.classList.remove('flex'); }
+      if (passAwaitingPayment()) payPendingPass(); else openPaidPassForm();
+    }
+
     // Shown once. A visitor who has said no does not want to be asked on every
     // load; the networking lock still offers the upgrade when they reach for it.
     function maybeOfferUpgrade() {
@@ -19721,6 +19798,12 @@ function mainPageHTML(): string {
     function applyVisitorNetworkLock() {
       const isVisitor = isVisitorPass();
       const banner   = document.getElementById('visitor-network-banner');
+      if (isVisitor && passAwaitingPayment()) {
+        var vt = document.getElementById('vnb-title'), vc = document.getElementById('vnb-copy'), vg = document.getElementById('vnb-go');
+        if (vt) vt.textContent = 'Your ' + currentUser.badge_type + ' is not paid yet';
+        if (vc) vc.textContent = 'Until the payment goes through you see a selection of who is coming, as on a Visitor Pass. The full directory, search and conversations open the moment it does.';
+        if (vg) vg.textContent = 'Pay now';
+      }
       const lockEl   = document.getElementById('visitor-grid-lock');
       const gridEl   = document.getElementById('attendee-grid');
       const searchEl = document.getElementById('attendee-search');

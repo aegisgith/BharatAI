@@ -360,6 +360,48 @@ r = await remind({ kind: 'attendee', id: 99999 });
 check('someone not waiting to pay is sent nothing', /no longer waiting/.test(r.json?.skipped || ''), r.text);
 r = await hit('/api/admin/payments/remind', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"kind":"attendee","id":4}' }, MAIL);
 check('sending a reminder needs admin', r.status === 401, r.status);
+// ---- an unpaid paid pass is not a paid pass ----
+const settle = () => new Promise((ok) => setTimeout(ok, 400));   // mail is sent after the response
+person(50, { name: 'Unpaid Una', email: 'una@example.com', badge_type: 'Delegate Pass', payment_status: 'pending', main_event: 1, job_title: 'CTO', company: 'Una Co', industry: 'Software & SaaS', interests: 'ai' });
+person(51, { name: 'Paid Pat', email: 'pat@example.com', badge_type: 'Delegate Pass', payment_status: 'paid', main_event: 1, job_title: 'CTO', company: 'Pat Co', industry: 'Software & SaaS', interests: 'ai' });
+const asUser = (id, method, path, body) => hit(path, { method, headers: { 'Content-Type': 'application/json', Cookie: cookie(id) }, body: body ? JSON.stringify(body) : undefined }, MAIL);
+r = await asUser(50, 'POST', '/api/connections', { event_id: 1, from_attendee_id: 50, to_attendee_id: 51, message: 'hello' });
+check('an unpaid Delegate cannot start a conversation', r.status === 402 && r.json?.error === 'upgrade_required' && r.json?.payment_pending === true && /not paid yet/.test(r.json?.message || ''), r.status + ' ' + r.text);
+r = await asUser(51, 'POST', '/api/connections', { event_id: 1, from_attendee_id: 51, to_attendee_id: 50, message: 'hello' });
+check('a paid Delegate is past that gate', !(r.status === 402 && r.json?.error === 'upgrade_required'), r.status + ' ' + r.text.slice(0, 120));
+r = await asUser(50, 'POST', '/api/messages', { event_id: 1, sender_id: 50, receiver_id: 51, content: 'hello' });
+check('an unpaid Delegate cannot message someone who has not written first', r.status === 403 && /not paid yet/.test(r.json?.error || ''), r.status + ' ' + r.text);
+r = await asUser(50, 'POST', '/api/meetings', { event_id: 1, requester_id: 50, requestee_id: 51, title: 'Coffee', meeting_time: '2026-11-20 10:00' });
+check('an unpaid Delegate cannot ask for a meeting', r.status === 403 && /not paid yet/.test(r.json?.error || ''), r.status + ' ' + r.text);
+r = await asUser(50, 'GET', '/api/my-pass-token');
+check('an unpaid Delegate is not issued a pass, even asking the server directly', r.status === 402 && r.json?.error === 'payment_pending', r.status + ' ' + r.text);
+r = await asUser(51, 'GET', '/api/my-pass-token');
+check('a paid Delegate is', r.status === 200 && !!r.json?.token, r.status + ' ' + r.text);
+r = await asUser(50, 'GET', '/api/events/1/attendees');
+check('an unpaid Delegate sees the directory teaser, not the directory', r.h['x-directory-limited'] === '1', r.status + ' ' + r.h['x-directory-limited']);
+r = await asUser(51, 'GET', '/api/events/1/attendees');
+check('a paid Delegate sees the directory', r.status === 200 && r.h['x-directory-limited'] !== '1', r.status + ' ' + r.h['x-directory-limited']);
+
+const reg = (body) => hit('/api/events/1/attendees/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, MAIL);
+let mark = mail.length;
+r = await reg({ name: 'New Academic', email: 'newacad@example.com', mobile: '9820012121', company: 'IIT Bombay', job_title: 'Student', city: 'Mumbai', industry: 'Education & Academia', badge_type: 'Academic Pass' });
+await settle();
+check('choosing a paid pass saves the details and sends no "you are registered"', r.status === 201 && r.json?.payment_status === 'pending' && mail.length === mark, r.status + ' ' + JSON.stringify(mail.slice(mark).map(m => m.subject)));
+mark = mail.length;
+r = await reg({ name: 'New Visitor', email: 'newvis@example.com', mobile: '9820013131', company: 'Vis Co', job_title: 'Analyst', city: 'Pune', industry: 'Software & SaaS', badge_type: 'Visitor Pass' });
+await settle();
+const wv = mail.slice(mark).find(m => m.to === 'newvis@example.com');
+check('a free Visitor Pass still gets the welcome straight away', r.status === 201 && !!wv && /You are registered/.test(wv.subject) && /booked as a <strong>Visitor Pass/.test(wv.html), r.status + ' ' + JSON.stringify(mail.slice(mark).map(m => m.subject)));
+const acad = Object.values(state.attendees).find(a => a.email === 'newacad@example.com');
+r = await start(acad.id, 'Academic Pass', MAIL);
+const AO = r.json || {};
+mark = mail.length;
+r = await back(kitEncrypt(answer(order(AO.order_id))), MAIL);
+await settle();
+const wa = mail.slice(mark).filter(m => m.to === 'newacad@example.com');
+check('when the payment lands, the welcome goes out once, with the receipt in it', wa.length === 1 && /Payment received: your Academic Pass is confirmed/.test(wa[0].subject) && /Add your photo/.test(wa[0].html) && wa[0].html.includes(AO.order_id) && /115023456789/.test(wa[0].html) && /GST invoice/.test(wa[0].html) && /an <strong>Academic|your <strong>Academic Pass/.test(wa[0].html), JSON.stringify(wa.map(m => m.subject)));
+check('and the team is told', mail.slice(mark).some(m => /Paid online: New Academic/.test(m.subject)), JSON.stringify(mail.slice(mark).map(m => m.subject)));
+check('and now the Academic Pass is paid, so it is a paid pass', state.attendees[acad.id].payment_status === 'paid', JSON.stringify(state.attendees[acad.id]));
 globalThis.fetch = realFetch;
 
 // ---- the forms ----

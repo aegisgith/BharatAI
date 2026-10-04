@@ -54,6 +54,8 @@ export function makePayDb() {
           if (/SELECT COUNT\(\*\) AS n FROM checkout_leads WHERE ip = \?/.test(sql)) return { n: state.ipCount ?? state.leads.filter(l => l.ip === args[0]).length };
           if (/SELECT \* FROM checkout_leads WHERE id = \?/.test(sql)) { const l = state.leads.find(x => x.id === Number(args[0])); return l ? { ...l } : null; }
           if (/FROM sqlite_master WHERE type='table' AND name='login_tokens'/.test(sql)) return state.loginTokens ? { name: 'login_tokens' } : null;
+          if (/SELECT id FROM attendees WHERE event_id = \? AND email = \?/.test(sql)) { const a = byEmail(args[1]); return a ? { id: a.id } : null; }
+          if (/SELECT \* FROM attendees WHERE event_id = \? AND email = \?/.test(sql)) { const a = byEmail(args[1]); return a ? { ...a } : null; }
           if (/FROM staff WHERE id = \?/.test(sql)) return state.staff[Number(args[0])] || null;
           if (/FROM attendees WHERE id = \?/.test(sql)) { const a = state.attendees[Number(args[0])]; return a ? { ...a } : null; }
           return null;
@@ -119,6 +121,13 @@ export function makePayDb() {
             if (/payment_amount = \?/.test(sql)) a.payment_amount = args[1];
             if (/main_event = 1/.test(sql)) a.main_event = 1;
             return { meta: { changes: 1 } };
+          }
+          // A registration through the real /api/events/:id/attendees/register.
+          if (/^INSERT INTO attendees \(event_id, name, email, company, job_title, bio, interests, linkedin_url, mobile, city, industry, lunch_inclusion, badge_type, payment_status/.test(sql)) {
+            const [event_id, name, email, company, job_title, , , , mobile, city, industry, , badge_type, payment_status, registration_source] = args;
+            const id = Math.max(499, ...Object.keys(state.attendees).map(Number)) + 1;
+            state.attendees[id] = { id, event_id: Number(event_id), name, email, company, job_title, mobile, city, industry, badge_type, payment_status, registration_source, main_event: 1, created_at: now() };
+            return { meta: { changes: 1, last_row_id: id } };
           }
           if (/^INSERT INTO checkout_leads \(event_id, email, name, mobile,/.test(sql)) {
             const [email, name, mobile, company, job_title, city, industry, pass_type, page, ip] = args;

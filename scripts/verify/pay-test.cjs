@@ -137,6 +137,10 @@ const PHONE = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isM
     check('a pending VIP sees "Pay now" on the pass card', await page.isVisible('#pcc-pay-btn'));
     check('and is told the pass is issued the moment they pay', /Pay now to finish/.test(await page.textContent('#pcc-pass-note') || ''), await page.textContent('#pcc-pass-note'));
     check('and the card does not call an unpaid pass ready', /waiting for payment/.test(await page.textContent('#pcc-pass-state') || ''), await page.textContent('#pcc-pass-state'));
+    check('the app treats an unpaid VIP Pass as not yet a paid pass', await page.evaluate(() => isVisitorPass() && passAwaitingPayment()));
+    await page.evaluate(() => showUpgradeModal('directory'));
+    check('reaching for a locked feature asks them to finish paying, not to choose a pass again', /Finish paying for your VIP Pass/.test(await page.textContent('#upgrade-modal-title') || '') && /Pay now/.test(await page.textContent('#upgrade-modal-go') || ''), await page.textContent('#upgrade-modal-title'));
+    await page.evaluate(() => { const m = document.getElementById('visitor-upgrade-modal'); m.classList.add('hidden'); m.classList.remove('flex'); });
     await page.evaluate(() => document.getElementById('pcc-pay-btn').scrollIntoView({ block: 'center' }));
     await page.screenshot({ path: path.join(OUT, 'pay-app-pending.png') });
 
