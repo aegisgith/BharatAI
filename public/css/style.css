@@ -4909,7 +4909,10 @@ p { text-wrap: pretty; }
 }
 .exh-row { display: flex; width: max-content; }
 .exh-row[hidden] { display: none; }
+/* Nothing in a row may shrink. The site-wide img { max-width: 100% } lets a
+   logo's minimum width collapse to zero, so a squeezed chip loses its name. */
 .exh-track {
+  flex: 0 0 auto;
   list-style: none; margin: 0; padding: 0 0.75rem 0 0;
   display: flex; align-items: stretch; gap: 0.75rem;
   animation: exhScroll var(--exh-dur, 60s) linear var(--exh-delay, 0s) infinite;
@@ -4949,7 +4952,7 @@ p { text-wrap: pretty; }
 /* A fixed logo band keeps every name on one line of sight across a row; the
    logo inside takes its optical height. */
 .exh-logo { height: calc(60px * var(--ls)); display: flex; align-items: center; justify-content: center; }
-.exh-logo img { height: calc(var(--lh, 44px) * var(--ls)); width: auto; border-radius: 6px; }
+.exh-logo img { height: calc(var(--lh, 44px) * var(--ls)); width: auto; max-width: none; flex-shrink: 0; border-radius: 6px; }
 .exh-name {
   max-width: 176px; font-size: 0.78rem; font-weight: 600; line-height: 1.3; color: var(--dark-grey);
   text-wrap: balance;
@@ -4989,13 +4992,14 @@ p { text-wrap: pretty; }
 .exh-strip { --ls: 1; background: #fff; overflow: hidden; }
 .exh-strip .section-header { margin-bottom: 2.25rem; }
 .exh-chip {
+  flex-shrink: 0;
   display: flex; align-items: center; gap: 0.65rem; white-space: nowrap;
   padding: 0.45rem 1.05rem 0.45rem 0.5rem;
   background: #fff; border: 1px solid rgba(30, 33, 64, 0.08); border-radius: 999px;
   box-shadow: 0 1px 2px rgba(13, 15, 30, 0.04), 0 10px 22px -16px rgba(13, 15, 30, 0.22);
   font-size: 0.85rem; font-weight: 600; color: var(--charcoal);
 }
-.exh-chip img { height: max(18px, calc(var(--lh, 44px) * 0.68 * var(--ls))); width: auto; border-radius: 5px; }
+.exh-chip img { height: max(18px, calc(var(--lh, 44px) * 0.68 * var(--ls))); width: auto; max-width: none; flex-shrink: 0; border-radius: 5px; }
 .exh-strip-foot { text-align: center; }
 .exh-strip-foot .exh-media { margin-top: 1.75rem; }
 .exh-strip-ctas { margin-top: 1.25rem; display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; }
@@ -5016,11 +5020,23 @@ p { text-wrap: pretty; }
   .exh-card { max-width: 248px; padding: 1.05rem 1.35rem 0.95rem; }
   .exh-name { max-width: 196px; font-size: 0.82rem; }
 }
-/* Animations off: one still row per line that the visitor can swipe, no copies. */
+/* Animations off (an OS setting many visitors have): nothing moves and the
+   loop copies go. */
 @media (prefers-reduced-motion: reduce) {
-  .exh-marquee { -webkit-mask-image: none; mask-image: none; }
+  .exh-track { animation: none; will-change: auto; }
+  .exh-track[aria-hidden="true"] { display: none; }
+}
+/* ...on a laptop or desktop: one still, centred cloud of every logo. Widths
+   still vary, so there are no columns to count, and the whole list is in view. */
+@media (prefers-reduced-motion: reduce) and (min-width: 700px) {
+  .exh-marquee { max-width: 1240px; margin: 0 auto; padding: 0.5rem 1.5rem; -webkit-mask-image: none; mask-image: none; }
+  .exh-row { width: auto; }
+  .exh-track { flex: 1 1 100%; min-width: 0; flex-wrap: wrap; justify-content: center; padding: 0; }
+  .exh-wall .exh-track { padding: 0; }
+  .exh-cta-tile { display: none; }
+}
+/* ...on a phone: one still row per line that the visitor can swipe. */
+@media (prefers-reduced-motion: reduce) and (max-width: 699px) {
   .exh-row { width: auto; overflow-x: auto; padding: 0 1rem; scrollbar-width: none; }
   .exh-row::-webkit-scrollbar { display: none; }
-  .exh-track { animation: none; }
-  .exh-track[aria-hidden="true"] { display: none; }
 }

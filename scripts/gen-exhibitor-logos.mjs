@@ -194,10 +194,16 @@ const SHUFFLE = `<script>
       (li.hasAttribute('data-featured') ? featured : rest).push(li);
     });
   });
-  // A very wide screen shows more tiles per row than a row holds, so the same
-  // logo would appear twice: deal into one row fewer there (never below three).
   var rows = all;
-  if (window.innerWidth >= 1700 && all.length > 3) {
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce) and (min-width: 700px)').matches) {
+    // Animations off on a wide screen: the CSS shows one still cloud, so deal
+    // every logo into one row and let it wrap in a single flow (separate rows
+    // would each leave a short line mid-cloud). Known names lead the cloud.
+    rows = all.slice(0, 1);
+    all.slice(1).forEach(function (row) { row.hidden = true; });
+  } else if (window.innerWidth >= 1700 && all.length > 3) {
+    // A very wide screen shows more tiles per row than a row holds, so the same
+    // logo would appear twice: deal into one row fewer (never below three).
     rows = all.slice(0, all.length - 1);
     all[all.length - 1].hidden = true;
   }
@@ -217,7 +223,7 @@ const SHUFFLE = `<script>
     var cta = first.querySelector('.exh-cta-tile');
     dealt[r].forEach(function (li) { first.insertBefore(li, cta); });
   });
-  rows.forEach(function (row) {
+  all.forEach(function (row) {
     var tracks = row.querySelectorAll('.exh-track');
     var first = tracks[0], copy = tracks[1];
     if (!copy) return;
