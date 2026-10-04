@@ -88,7 +88,7 @@ const PHONE = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isM
     await page.waitForSelector('#stub', { timeout: 20000 });
     check('the buyer reaches the gateway in the same tab, no popup', popups === 0 && /secure\.ccavenue\.com/.test(page.url()), popups + ' popups, ' + page.url());
     const sent = (gw.seen[0] || {}).sent || {};
-    check('the gateway is asked for 5,898.82 for a Delegate Pass', sent.amount === '5898.82' && sent.currency === 'INR' && sent.merchant_param2 === 'Delegate Pass' && (gw.seen[0] || {}).access_code === 'AVSMOKE00TEST', JSON.stringify(sent).slice(0, 200));
+    check('the gateway is asked for 5,898.82 for a Delegate Pass', sent.amount === '5898.82' && sent.currency === 'INR' && sent.merchant_param2 === 'Delegate Pass' && (gw.seen[0] || {}).access_code === 'AVSM00KE00TE00ST00', JSON.stringify(sent).slice(0, 200));
     check('with the buyer\'s name, phone and email already filled in', sent.billing_name === 'Meera Nair' && sent.billing_tel === '9820055555' && sent.billing_email === 'meera@example.com', JSON.stringify(sent).slice(0, 300));
 
     // Back from the gateway must never throw the buyer forward again. Chromium

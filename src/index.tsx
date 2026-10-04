@@ -2114,6 +2114,23 @@ async function onlinePaymentsOn(c: any): Promise<CcavenueConfig | null> {
   return (await paymentOrdersReady(c)) ? cfg : null
 }
 
+// Why checkout is or is not on, for the Payments screen: one line per condition
+// onlinePaymentsOn() needs. States and shapes only; no secret, nor any part of
+// one, leaves the Worker. A shape unlike CCAvenue's is reported rather than
+// refused, because the gateway is what decides whether a key works.
+async function onlinePaymentsChecks(c: any): Promise<Record<string, string>> {
+  const v = (k: string) => String(c.env?.[k] || '').trim()
+  const shape = (s: string, re: RegExp) => !s ? 'missing' : re.test(s) ? 'ok' : 'set, but not the usual shape'
+  return {
+    CCAVENUE_MERCHANT_ID: shape(v('CCAVENUE_MERCHANT_ID'), /^\d{4,12}$/),
+    CCAVENUE_ACCESS_CODE: shape(v('CCAVENUE_ACCESS_CODE'), /^[A-Z0-9]{18}$/),
+    CCAVENUE_WORKING_KEY: shape(v('CCAVENUE_WORKING_KEY'), /^[0-9A-Fa-f]{32}$/),
+    session_secret: attendeeSessionSecret(c) ? 'ok' : 'missing',
+    payment_orders_table: (await paymentOrdersReady(c)) ? 'ok' : 'missing (run migration 0045)',
+    switch: (await settingValue(c, 'payment_gateway')).trim().toLowerCase() === 'muni' ? 'off (app_settings payment_gateway = muni)' : 'ok',
+  }
+}
+
 const PAY_ORDER_RE = /^BAI\d{1,9}-[A-Z0-9]{8,18}$/
 const PAY_ORDERS_PER_HOUR = 10
 const PAY_LINK_MINUTES = 60
@@ -2535,6 +2552,7 @@ async function pendingPaymentsJSON(c: any) {
   return c.json({
     ready: true,
     gateway: (await onlinePaymentsOn(c)) ? 'ccavenue' : 'muni',
+    gateway_checks: await onlinePaymentsChecks(c),
     results: (results || []).map((r: any) => {
       const [order_id, status, created_at] = String(r.last_order || '').split('|')
       return {
@@ -25902,6 +25920,14 @@ function adminPageHTML(): string {
                 : 'Payments are taken on mUni Campus through CCAvenue and nothing is sent back to this site, so a paid Delegate stays marked pending until someone confirms it here. ' +
                   'Check the order in the CCAvenue or mUni report, then confirm it below &mdash; that issues the GST invoice, emails it, and unlocks their pass in one step.') +
             '</div>' +
+            (!direct && pending.gateway_checks ? '<div id="gateway-checks" class="glass rounded-xl p-4 border border-white/10 text-[12px] text-gray-300 leading-relaxed">' +
+              '<div class="font-semibold text-white mb-1">Online checkout (CCAvenue) is off. What it is waiting for:</div>' +
+              Object.keys(pending.gateway_checks).map(function (k) {
+                var v = pending.gateway_checks[k];
+                return '<div>' + (v === 'ok' ? '<span class="text-green-400">&#10003;</span> ' : '<span class="text-amber-400">&#10007;</span> ') + deskEsc(k) + ': ' + deskEsc(v) + '</div>';
+              }).join('') +
+              '<div class="text-[11px] text-gray-500 mt-1">A secret reaches the site only through a deployment made after it was set.</div>' +
+            '</div>' : '') +
             (online ? '<div class="glass rounded-xl p-5 border border-white/5">' +
               '<h3 class="text-sm font-semibold text-white mb-1">Paid online: invoice to raise</h3>' +
               '<p class="text-[11px] text-gray-500 mb-3">Paid through CCAvenue on this site. The pass is already unlocked, so the GST invoice is the one step left.</p>' +

@@ -5,7 +5,7 @@
 import crypto from 'node:crypto';
 
 export const KEY = '0123456789ABCDEF0123456789ABCDEF';   // shaped like a working key, not one
-export const SECRETS = { CCAVENUE_MERCHANT_ID: '9900001', CCAVENUE_ACCESS_CODE: 'AVSMOKE00TEST', CCAVENUE_WORKING_KEY: KEY };
+export const SECRETS = { CCAVENUE_MERCHANT_ID: '9900001', CCAVENUE_ACCESS_CODE: 'AVSM00KE00TE00ST00', CCAVENUE_WORKING_KEY: KEY };
 const IV = Buffer.from([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
 const kitKey = (k) => crypto.createHash('md5').update(k).digest();
 export const kitEncrypt = (plain, k = KEY) => { const c = crypto.createCipheriv('aes-128-cbc', kitKey(k), IV); return Buffer.concat([c.update(plain, 'utf8'), c.final()]).toString('hex'); };

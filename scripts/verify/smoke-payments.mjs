@@ -88,7 +88,7 @@ state.recent = null;
 // ---- the hand-off page ----
 r = await hit(A.pay_url);
 const enc = (r.text.match(/name="encRequest" value="([0-9a-f]+)"/) || [])[1] || '';
-check('checkout page posts to the live gateway', r.status === 200 && r.text.includes('action="https://secure.ccavenue.com/transaction/transaction.do?command=initiateTransaction"') && r.text.includes('name="access_code" value="AVSMOKE00TEST"'), r.status);
+check('checkout page posts to the live gateway', r.status === 200 && r.text.includes('action="https://secure.ccavenue.com/transaction/transaction.do?command=initiateTransaction"') && r.text.includes('name="access_code" value="AVSM00KE00TE00ST00"'), r.status);
 check('checkout page is never cached and its script parses', /no-store/.test(r.h['cache-control'] || '') && scriptsParse(r.text) === 1, r.h['cache-control']);
 check('the working key never reaches the page', !r.text.includes(KEY), 'key in page');
 let sent = {};
@@ -209,6 +209,17 @@ r = await hit('/api/admin/payments-pending', { headers: { Authorization: 'Bearer
 const q = r.json || {};
 const vip = (q.results || []).find(x => x.id === 4);
 check('queue: a pending VIP shows the expected amount and their last online attempt', q.ready === true && q.gateway === 'ccavenue' && vip?.expected === 17698.82 && vip?.last_order?.order_id === V3.order_id && vip?.last_order?.status === 'failed', JSON.stringify(vip));
+const allOk = (g) => !!g && Object.keys(g).length === 6 && Object.values(g).every(v => v === 'ok');
+check('queue: with everything in place, every gateway check reads ok', allOk(q.gateway_checks), JSON.stringify(q.gateway_checks));
+check('queue: no secret value is ever in the answer', !r.text.includes(KEY) && !r.text.includes(SECRETS.CCAVENUE_ACCESS_CODE) && !r.text.includes(SECRETS.CCAVENUE_MERCHANT_ID), 'secret in answer');
+r = await hit('/api/admin/payments-pending', { headers: { Authorization: 'Bearer smoke-admin' } }, envOf());
+check('queue: with no secrets it says which three are missing', r.json?.gateway === 'muni' && ['CCAVENUE_MERCHANT_ID', 'CCAVENUE_ACCESS_CODE', 'CCAVENUE_WORKING_KEY'].every(k => r.json?.gateway_checks?.[k] === 'missing') && r.json?.gateway_checks?.payment_orders_table === 'ok', JSON.stringify(r.json?.gateway_checks));
+r = await hit('/api/admin/payments-pending', { headers: { Authorization: 'Bearer smoke-admin' } }, envOf({ ...SECRETS, CCAVENUE_WORKING_KEY: 'pasted with the wrong row' }));
+check('queue: a working key that is not 32 hex characters is reported, not hidden', r.json?.gateway_checks?.CCAVENUE_WORKING_KEY === 'set, but not the usual shape' && !r.text.includes('pasted with the wrong row'), JSON.stringify(r.json?.gateway_checks));
+state.settings.payment_gateway = 'muni';
+r = await hit('/api/admin/payments-pending', { headers: { Authorization: 'Bearer smoke-admin' } });
+check('queue: the Settings switch is reported', r.json?.gateway === 'muni' && /^off/.test(r.json?.gateway_checks?.switch || ''), JSON.stringify(r.json?.gateway_checks));
+delete state.settings.payment_gateway;
 const paid = (q.paid_online || []).find(x => x.order_id === A.order_id);
 check('queue: a payment taken here waits for its invoice, order and reference filled in', paid?.amount === 5898.82 && paid?.tracking_id === '115023456789' && paid?.badge_type === 'Delegate Pass' && paid?.id === 1 && !!paid?.paid_on, JSON.stringify(paid));
 state.invoices.push({ order_ref: A.order_id });
@@ -234,7 +245,7 @@ for (const m of ['function startOnlinePayment', 'function loadPayGateway', 'id="
 r = await hit('/app');
 for (const m of ['function startOnlinePayment', 'function payPendingPass', 'id="pcc-pay-btn"', 'id="pp-next-copy"', 'function muniPayUrl']) check('/app carries ' + m, r.text.includes(m), 'missing');
 r = await hit('/admin');
-for (const m of ['_paidOnline', 'Paid online: invoice to raise', 'openInvoiceFor(idx, fromOnline)']) check('/admin carries ' + m, r.text.includes(m), 'missing');
+for (const m of ['_paidOnline', 'Paid online: invoice to raise', 'openInvoiceFor(idx, fromOnline)', 'id="gateway-checks"', 'What it is waiting for']) check('/admin carries ' + m, r.text.includes(m), 'missing');
 
 if (process.env.DUMP_SQL) writeFileSync(process.env.DUMP_SQL, JSON.stringify([...new Set(state.sqls)], null, 2));
 console.log(fails ? `\n${fails} FAILED` : '\nall payment smoke checks passed');
