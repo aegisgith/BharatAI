@@ -1,6 +1,6 @@
 # Bharat AI Innovation platform — handbook
 
-Last updated **24 September 2026**. Read this before changing `src/index.tsx`, the campus pages, or anything that emails attendees. It records what exists, why, and how to verify it, so the next session does not have to rediscover it.
+Last updated **4 October 2026**. Read this before changing `src/index.tsx`, the campus pages, anything that emails attendees, or anything that takes money (§15). It records what exists, why, and how to verify it, so the next session does not have to rediscover it.
 
 Secrets, claim codes and conference registration totals are deliberately **not** in this file (the repo is on GitHub, and the registration count is withheld from the public until it passes 5,000).
 
@@ -18,6 +18,7 @@ Secrets, claim codes and conference registration totals are deliberately **not**
 | Database | Cloudflare D1 `bharatai-production`; schema only via `migrations/*.sql` |
 | Uploads | R2 bucket `bharatai-uploads`, served at `/api/uploads/...` |
 | Email | Elastic Email v4 transactional API |
+| Checkout (CCAvenue) | `src/lib/ccavenue.ts` (the wire format, nothing else) and the `ONLINE PAYMENTS` block in `src/index.tsx`; table `payment_orders` (0045). See §15 |
 | Build guards | `scripts/check-inline-js.mjs`, `scripts/check-no-counts.mjs` (run by `npm run build`) |
 | Campus tooling | `scripts/import-muni-panel.py`, `scripts/import-linkedin-panel.py`, `scripts/make-panel-claim-slide.py` |
 | Verification | `scripts/verify/` (see §3) |
@@ -55,6 +56,8 @@ Secrets, claim codes and conference registration totals are deliberately **not**
 | 0043_panel_rsvp | `panel_registrations.rsvp_status`, `rsvp_at`, `reminder_sent_at`, `reminder_error` |
 | 0044_exhibitor_stage_talks | `innovation_talks.exhibitor_id`, `speaker_title`, `speaker_bio`, `speaker_photo_url`, `showcase`, `duration_min`, `starts_at`, `details_updated_at`, and `idx_innovation_talks_exhibitor` (one talk per exhibitor). **Do not run it again**: `ADD COLUMN` is not idempotent, so a second run errors at its first line. Backup taken just before: `backup-pre-0044-2026-09-24.sql` |
 
+| 0045_payment_orders | `payment_orders`, one row per attempt sent to the payment gateway. **Not applied yet (4 Oct 2026)**: until it runs, paid passes keep going to mUni Campus. `IF NOT EXISTS` throughout, so it is safe to run twice |
+
 The "no such column" fallback in `GET /api/events/:id/innovation-talks` stays even though 0044 is applied: it is what keeps a database that is a migration behind (a fresh copy, a half-run file) answering instead of failing.
 
 **One-off SQL that writes to production is attacked before it is run**, against a scratch database shaped like the real one, twice, with the awkward rows seeded: `scripts/verify/check-import-sql.py` for a generated panel import, `scripts/verify/check-speaker-sql.py` for the speaker passes. Two real defects were caught that way on 24 Sep, neither visible on a reading. An `INSERT ... SELECT` without `OR IGNORE` aborts **the whole statement** when two source rows carry the same email, so one shared address means nobody gets a pass and the rest of the file never runs. An `UPDATE ... WHERE email IN (SELECT ...)` that does not constrain `event_id` reaches across events. Seed the duplicate address, the mixed case, the already-paid row and a second event, then run the file twice.
@@ -78,12 +81,17 @@ npm run verify:prod    # production, read-only, no credentials
 | `smoke-marketplace.mjs` | AI marketplace gates, pages and paced exhibitor invites (owned by the marketplace session) |
 | `browser-delegate.cjs` via `app-harness.mjs` (18) | Delegate in `/app`: directory, chat, connect (apostrophe name), meet, Visitor gating, inbox, Back, Escape, no injected script runs |
 | `phone-test.cjs` via `phone-harness.mjs` (50) | Emulated Android phone: photo upload, creative share sheet + caption, in-app fallback, "Are you coming?", panel certificate, pass, November question, email answers through the real `/panel-rsvp` routes, directory, admin Campus panels block |
+| `smoke-payments.mjs` (89) | Checkout on this site: the switch, our price on the order, the request decrypting with CCAvenue's kit algorithm, every answer that must not be believed, a paid order being final, the admin and finance queues |
+| `pay-test.cjs` via `pay-harness.mjs` (37) | Buying a pass on a phone in a real browser: /register to the gateway (played by the test) to the result page to the app signed in, "Pay now" for a pending pass, cancel and retry, the mUni fallback, the invoice form filled in on /admin and /finance |
+| `check-payment-sql.py` (18, run by hand) | Migration 0045 and every payment statement the worker sends, on a real SQLite engine. Usage is in its header |
 | `prod-sweep.mjs` (33) | Production pages, headers, guards, caches, new routes |
 | `live-phone-check.cjs` (8) | Production on a phone: new functions present, no JS errors, forged link refused, campus forms (POST intercepted) |
 
 Any session may register a suite in `run-all.mjs`, so the total moves on its own: 153 on 17 Sep, then 193 and 192 within one morning on 24 Sep. The per-suite counts above are a rough guide, not a contract. Run the command and read what it prints rather than trusting a number written anywhere, including here.
 
 Playwright comes from `scripts/verify/playwright.cjs` (local `playwright-core`, `$PLAYWRIGHT_CORE`, or the copy inside the global Playwright MCP install) and launches system Edge — no browser download needed.
+
+**Two suites cannot run when no campus panel is ahead of today.** `smoke-panel-answers.mjs` and `phone-test.cjs` pick a panel that has not started, and stop with "every campus panel in CAMPUS_PANELS has already started" when there is none (the case since 30 Sep 2026). They show as `FAIL (0 passed)` in `npm run verify`; that is the missing panel, not a regression. They run again once a future panel is added to `CAMPUS_PANELS`.
 
 **Run the suite on its own.** The browser suites drive real Edge windows, and a second heavy job beside them (another Playwright run, a build, a big node script) makes `page.goto` time out after 30 s. That shows up as a suite with **0 passed** and `crashed: page.goto: Timeout`, which reads like a regression and is not one. Seen 24 Sep. Re-run it alone before believing it.
 
@@ -234,7 +242,8 @@ Still to do: `hostLogo` (file in `public/images/campus/`); a claim code in `app_
 - Move the Elastic Email key to a Worker secret (`npx wrangler pages secret put ELASTIC_EMAIL_API_KEY --project-name bharatai-networking`), then blank the `app_settings` row.
 - Badge desk offline mode; in-page QR scanning on iPhones (no `BarcodeDetector`).
 - Generate the pass QR locally instead of `api.qrserver.com` (a failure renders a pass without a QR).
-- A return path from mUni Campus payments; invoice credit notes, search and GST export.
+- Checkout on this site is built and waiting on the organiser's go-live steps (§15). Still open after that: refunds are made in the CCAvenue dashboard and then marked `refunded` here by hand; booth and sponsorship payments are not on the gateway; a payment whose buyer never comes back to the site (closed tab, dead battery) stays pending until someone confirms it from the CCAvenue report, because their status API wants a fixed server IP that Workers do not have.
+- Invoice credit notes, search and GST export.
 - Speaker admin UI; session capacity/attendance; soft delete instead of orphaning invoices/connections.
 - A scheduled campaign sender (cron) so bulk sends do not depend on an open tab.
 - Content-Security-Policy; revocable sessions (cookies are stateless for 60 days).
@@ -243,6 +252,8 @@ Still to do: `hostLogo` (file in `public/images/campus/`); a claim code in `app_
 - `src/index.tsx` is one ~34,000-line file with no unit tests beyond `scripts/verify/`.
 
 ## 14. Change log
+
+**4 Oct 2026:** checkout on this site through the event's own CCAvenue account (§15): `src/lib/ccavenue.ts`, the `ONLINE PAYMENTS` block, migration 0045, "Pay now" on the app's pass card, "Paid online: invoice to raise" on /admin Payments and /finance, and three new checks (`smoke-payments.mjs`, `pay-test.cjs`, `check-payment-sql.py`). Dormant until the organiser sets the three secrets and runs 0045. Found on the way and **not** fixed: `python scripts/build-fa-subset.py --check` fails on `fa-unlock` (the "See who this is" button on locked directory cards draws no icon); the subset needs rebuilding and `FA_CSS` / `sw.js` bumping with it.
 
 **28 Sep 2026:** `/contact` shows the organiser's office address (Kukreja Centre, 11th Floor, B Wing, Plot 13, Sector 11, CBD Belapur, Navi Mumbai 400614) in an "Our office" card beside an "Event venue" card, each with a maps link; the venue chip left the quick-info bar. `contactPageHTML()` only.
 
@@ -255,3 +266,58 @@ Campus: `cfb33f8` panel import, claim, card, certificate · `e8d43cf` panellist 
 Data separation and directory: `bf8dabc` conference-only numbers · `33ad421` free-pass directory teaser.
 Security, admin, app: `24dd57a` backups ignored · `75c7846` (contains the security batch, committed under a site message) · `2b14a71` icon font · `7d473b7` admin/ops merge · `d88d3f3` attendee app merge · `dda6efc` suppression wired · `801223e` static-page script check · `cea6af9` phones first.
 Site copy (another session): `458ccb9`, `b387e71`, `1fab289`, `9b0dda7`, `861218b`, `176c488`, `52de7b9`.
+
+---
+
+## 15. Online payments (CCAvenue), built 4 Oct 2026
+
+Until now a paid pass was bought on mUni Campus (their CCAvenue account) and nothing came back: a Delegate stayed `pending` until somebody found the payment in a report and raised the invoice. The event now has its own CCAvenue merchant account, so checkout starts on this site and the answer lands on it.
+
+### How it works
+1. The paid form (on `/register` and in the app) saves the registration as before, then calls `POST /api/payments/ccavenue/start`. That writes a `payment_orders` row at **our** price and returns a signed link.
+2. `/pay/ccavenue/<link>` encrypts the request and posts the buyer to CCAvenue in the same tab (no popup, so nothing for a phone's popup blocker to swallow).
+3. CCAvenue posts the buyer back to `/pay/ccavenue/return` for a payment and a cancellation alike. A believed "Success" marks the order `paid`, sets the badge to the pass bought, `payment_status = 'paid'`, `payment_amount`, and `main_event = 1`, writes `payment.received` to the audit log, emails the buyer and emails the team.
+4. `/pay/result` tells the buyer what happened. A failed or cancelled payment offers **Try again**; a pending pass shows **Pay now** on the app's pass card.
+5. The GST invoice is **not** raised automatically. The paid order appears under **Paid online: invoice to raise** on /admin Payments and on /finance, with the order number, the CCAvenue reference and the amount filled in. Raising the invoice is what takes it off that list (matched on `invoices.order_ref`).
+
+### It is off until three things are true
+`GET /api/payments/config` answers `{"gateway":"ccavenue"}` only when the three Worker secrets are set, migration 0045 has run, and `app_settings.payment_gateway` is not `muni`. Otherwise it answers `muni` and both forms behave exactly as they did before (new tab to mUni Campus, the pass-upgrade enquiry, manual confirmation).
+
+**Go-live, by the organiser, in this order:**
+```
+# 1. The three values are on the CCAvenue dashboard: Settings, API Keys, for the
+#    website URL https://bharataiinnovation.com. Each command asks for the value.
+npx wrangler pages secret put CCAVENUE_MERCHANT_ID  --project-name bharatai-networking
+npx wrangler pages secret put CCAVENUE_ACCESS_CODE  --project-name bharatai-networking
+npx wrangler pages secret put CCAVENUE_WORKING_KEY  --project-name bharatai-networking
+
+# 2. Backup, then the table.
+npx wrangler d1 export bharatai-production --remote --output=backup-pre-0045-2026-10-04.sql
+npx wrangler d1 execute bharatai-production --remote --file=migrations/0045_payment_orders.sql
+
+# 3. A secret only reaches deployments made after it is set: redeploy
+#    (push a commit, or "Retry deployment" in the Cloudflare dashboard).
+
+# 4. Check, then buy one Academic Pass (Rs 1,178.82) with your own card and
+#    refund it from the CCAvenue dashboard.
+curl https://bharataiinnovation.com/api/payments/config
+```
+**To switch it off without a deploy** (the forms fall back to mUni Campus within a page load; a payment already at the gateway is still accepted when it comes back):
+```
+npx wrangler d1 execute bharatai-production --remote --command "INSERT INTO app_settings (key, value, updated_at) VALUES ('payment_gateway', 'muni', datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at"
+```
+Set the value to anything else to switch it back on. `CCAVENUE_ENV=test` (a fourth, optional secret) sends checkout to `test.ccavenue.com`; it needs the sandbox's own keys.
+
+### Rules that hold
+- **The price is decided on the server.** `PASS_PRICES_INR` (whole rupees before GST) plus `PASS_GST_RATE` is the one figure the gateway is asked for and the one the payments queue calls "expected". The prices printed on the forms, the upgrade modal and the welcome email are still hand-written copies: change them together.
+- **The gateway's answer travels through the buyer's browser, so it is checked, not trusted.** It must decrypt to clean text, name an order of ours, carry the signature sent with that order (`merchant_param1`, an HMAC of order and amount), and report the same amount in INR. "Success" for another amount sets the order to `mismatch`, unlocks nothing, and emails the team. Every answer that cannot be believed gets the same reply (`303 /pay/result`), whatever was wrong with it. Do not add a more helpful error there: a different reply for bad padding is a padding oracle.
+- **A paid order is final.** The `UPDATE` carries `AND status <> 'paid'`, and only the request that changed the row unlocks the pass and sends mail, so a refresh or a second tab does nothing.
+- **Who may pay:** a free pass (any paid tier), or a paid tier that is `pending` or `refunded`. A confirmed paid pass, and every pass the organisers hand out (Speaker, Exhibitor, Media and so on), is refused with a sentence. If the badge was set by hand between the order and the payment, the payment is recorded and the badge left alone; the team email says so.
+- Ten orders per person per hour. A checkout link is good for one attempt, for an hour.
+- The working key is only ever a Worker secret. It is not in the repo, the database, the settings screen or any page.
+- Order statuses: `created`, `paid`, `failed`, `aborted`, `awaited`, `mismatch`.
+
+### Decisions the organiser has not been asked yet (built to the cautious answer)
+- **Invoices stay a person's step.** They use the accountant's number series and need the buyer's GSTIN; issuing one per payment automatically would be quick to add once the CA agrees.
+- **A confirmed Delegate cannot buy a VIP upgrade here.** They would be charged the full VIP price on top; the price of an upgrade is a commercial decision.
+- **mUni Campus stays as the fallback.** If the event should stop taking money there altogether, the mUni event has to be closed on their side as well.

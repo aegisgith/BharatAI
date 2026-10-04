@@ -5,6 +5,7 @@ import { Hono } from 'hono'
 import SITE_PHOTO_FINGERPRINTS from './data/site-photo-fingerprints.json'
 import { cors } from 'hono/cors'
 import mp, { configureMarketplace } from './routes/marketplace'
+import { ccavEncrypt, ccavDecrypt, ccavRequestBody, ccavParseResponse } from './lib/ccavenue'
 import { marketplacePageHTML, marketplaceListingPageHTML, marketplaceDashboardPageHTML, marketplaceAdminPageHTML, marketplaceFaqPageHTML } from './routes/marketplace-pages'
 
 type Bindings = {
@@ -24,6 +25,16 @@ type Bindings = {
   // Secret used to HMAC-sign marketplace session cookies so the company id
   // can't be forged. Falls back to ADMIN_SECRET if unset.
   MP_SESSION_SECRET?: string
+  // The event's own CCAvenue merchant account (their dashboard: Settings, API
+  // Keys). Set with `npx wrangler pages secret put <NAME> --project-name
+  // bharatai-networking`, never in this repo or the database. All three must be
+  // present before a paid pass is sold here; until then checkout stays on mUni
+  // Campus. See ONLINE PAYMENTS below.
+  CCAVENUE_MERCHANT_ID?: string
+  CCAVENUE_ACCESS_CODE?: string
+  CCAVENUE_WORKING_KEY?: string
+  // 'test' sends checkout to test.ccavenue.com, their sandbox. Anything else is live.
+  CCAVENUE_ENV?: string
 }
 
 const app = new Hono<{ Bindings: Bindings }>()
@@ -2033,32 +2044,508 @@ async function createInvoice(c: any, b: any) {
   return c.json({ success: true, id, invoice_no: invoiceNo, url: '/invoice/' + token }, 201)
 }
 
-// Everyone on a paid tier whose payment has never been confirmed. Nothing flows
-// back from mUni Campus, so without this list a Delegate who paid on the 27th sits
-// unnoticed with a pass the app refuses to print.
+// ==================== ONLINE PAYMENTS (CCAvenue) ====================
+//
+// Paid passes used to be bought on mUni Campus, and nothing came back: a Delegate
+// stayed 'pending' until somebody found the payment in a report. The event now has
+// its own CCAvenue merchant account, so checkout starts here and the answer lands
+// here: the pass is unlocked the moment the gateway says the money arrived.
+//
+// The three credentials are Worker secrets (CCAVENUE_MERCHANT_ID, _ACCESS_CODE and
+// _WORKING_KEY). Until all three are set and migration 0045 has run, every paid
+// pass keeps going to mUni Campus exactly as before, and app_settings
+// payment_gateway = 'muni' sends them back there without a deploy.
+//
+// What is trusted, and what is not:
+//  - The amount is decided here, from PASS_PRICES_INR, and written to
+//    payment_orders before the buyer leaves. The browser never names a price.
+//  - The gateway's answer travels through the buyer's browser. It is believed only
+//    if it decrypts to clean text, names an order of ours, carries the signature
+//    sent with that order (merchant_param1), and reports the same amount.
+//    "Success" for any other amount unlocks nothing and is flagged for a person.
+//  - A paid order is final. A second answer for it changes nothing.
+//  - Every answer that cannot be believed gets the same reply, whatever was wrong
+//    with it, so the reply says nothing about the encryption.
+
+// What each paid pass costs, in whole rupees before GST. The payments queue's
+// "expected" figure and the gateway's charge both read this, so what a person is
+// charged and what finance is told to look for cannot drift apart.
+const PASS_PRICES_INR: Record<string, number> = { 'Delegate Pass': 4999, 'VIP Pass': 14999, 'Academic Pass': 999 }
+const PASS_GST_RATE = 18
+
+function passAmounts(passType: string): { base: number; gst: number; total: number } | null {
+  const price = PASS_PRICES_INR[passType]
+  if (!price) return null
+  const base = price * 100
+  const gst = Math.round(base * PASS_GST_RATE / 100)
+  return { base, gst, total: base + gst }
+}
+
+type CcavenueConfig = { merchantId: string; accessCode: string; workingKey: string; endpoint: string }
+function ccavenueConfig(c: any): CcavenueConfig | null {
+  const merchantId = String(c.env?.CCAVENUE_MERCHANT_ID || '').trim()
+  const accessCode = String(c.env?.CCAVENUE_ACCESS_CODE || '').trim()
+  const workingKey = String(c.env?.CCAVENUE_WORKING_KEY || '').trim()
+  if (!merchantId || !accessCode || !workingKey) return null
+  const host = String(c.env?.CCAVENUE_ENV || '').trim().toLowerCase() === 'test' ? 'test.ccavenue.com' : 'secure.ccavenue.com'
+  return { merchantId, accessCode, workingKey, endpoint: 'https://' + host + '/transaction/transaction.do?command=initiateTransaction' }
+}
+
+// Cloudflare deploys do not run migrations, so this code ships before its table
+// exists. Probed once, and only a yes is remembered: a remembered no would keep
+// the gateway off until the isolate happened to be recycled.
+let _paymentOrdersTable = false
+async function paymentOrdersReady(c: any): Promise<boolean> {
+  if (_paymentOrdersTable) return true
+  try {
+    await c.env.DB.prepare('SELECT id FROM payment_orders LIMIT 1').first()
+    _paymentOrdersTable = true
+  } catch { /* 0045 has not run yet */ }
+  return _paymentOrdersTable
+}
+
+// The one question every caller asks: is checkout on this site live right now?
+// Needs the three secrets, a session secret (an order belongs to whoever is signed
+// in), the table, and nobody having switched it back to mUni in Settings.
+async function onlinePaymentsOn(c: any): Promise<CcavenueConfig | null> {
+  const cfg = ccavenueConfig(c)
+  if (!cfg || !attendeeSessionSecret(c)) return null
+  if ((await settingValue(c, 'payment_gateway')).trim().toLowerCase() === 'muni') return null
+  return (await paymentOrdersReady(c)) ? cfg : null
+}
+
+const PAY_ORDER_RE = /^BAI\d{1,9}-[A-Z0-9]{8,18}$/
+const PAY_ORDERS_PER_HOUR = 10
+const PAY_LINK_MINUTES = 60
+const FREE_BADGE_RE = /^(visitor|general)( pass)?$/i
+
+// Sent to the gateway as merchant_param1 and expected back unchanged. It ties an
+// answer to one order at one amount, so the "Success" of a cheaper order cannot be
+// passed off as the answer to a dearer one.
+const payOrderSig = async (c: any, orderId: string, amountPaise: any): Promise<string> =>
+  (await hmacHexA(passTokenSecret(c), 'pay-order:' + orderId + ':' + Number(amountPaise))).slice(0, 32)
+
+// The checkout and result pages are opened by link, not by session: the gateway
+// sends the buyer back with a cross-site POST, which carries no cookie.
+const payLinkToken = async (c: any, orderId: string): Promise<string> =>
+  orderId + '.' + (await hmacHexA(passTokenSecret(c), 'pay-link:' + orderId)).slice(0, 24)
+
+async function orderFromLinkToken(c: any, token: string): Promise<any | null> {
+  const t = String(token || '')
+  const dot = t.lastIndexOf('.')
+  if (dot < 1 || !passTokenSecret(c)) return null
+  const orderId = t.slice(0, dot)
+  if (!PAY_ORDER_RE.test(orderId) || !safeEqualA(t, await payLinkToken(c, orderId))) return null
+  try {
+    return await c.env.DB.prepare('SELECT * FROM payment_orders WHERE order_id = ?').bind(orderId).first()
+  } catch { return null }
+}
+
+// Who may start a payment. A free pass may buy any paid tier; a paid tier still
+// waiting on its payment (or refunded) may pay for it, or pick another. Anyone
+// already settled, and every pass the organisers hand out (Speaker, Exhibitor,
+// Media and so on), is told so in a sentence rather than charged a second time.
+function payRefusal(a: any): string | null {
+  const badge = String(a.badge_type || '').trim()
+  const status = String(a.payment_status || '').trim().toLowerCase()
+  if (!badge || FREE_BADGE_RE.test(badge)) return null
+  if (PAID_TIERS.includes(badge)) {
+    return status === 'pending' || status === 'refunded' ? null
+      : 'Your ' + badge + ' is already confirmed, so there is nothing to pay. To change it, write to info@bharataiinnovation.com.'
+  }
+  return 'Your pass (' + badge + ') is arranged by the organisers and cannot be changed here. Write to info@bharataiinnovation.com and we will sort it out.'
+}
+
+// Which checkout the forms should use. Public, because the register page asks
+// before anyone is signed in; it says nothing but the one word.
+app.get('/api/payments/config', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  return c.json({ gateway: (await onlinePaymentsOn(c)) ? 'ccavenue' : 'muni' })
+})
+
+// Step one: record the order, at our price, for whoever is signed in. 503 tells
+// the form to fall back to mUni Campus.
+app.post('/api/payments/ccavenue/start', async (c) => {
+  if (!(await onlinePaymentsOn(c))) return c.json({ error: 'not_configured', message: 'Online payment is not switched on yet.' }, 503)
+  const me = await verifyAttendeeSession(c)
+  if (!me) return c.json({ error: 'Please sign in again to continue.' }, 401)
+  const body = await c.req.json().catch(() => ({})) as any
+  const passType = String(body.pass_type || '')
+  const amounts = PAID_TIERS.includes(passType) ? passAmounts(passType) : null
+  if (!amounts) return c.json({ error: 'Choose a Delegate, VIP or Academic pass.' }, 400)
+
+  const a = await c.env.DB.prepare('SELECT id, event_id, badge_type, payment_status FROM attendees WHERE id = ?').bind(me).first() as any
+  if (!a) return c.json({ error: 'Please sign in again to continue.' }, 401)
+  const refused = payRefusal(a)
+  if (refused) return c.json({ error: refused }, 409)
+
+  const recent = await c.env.DB.prepare(
+    "SELECT COUNT(*) AS n FROM payment_orders WHERE attendee_id = ? AND created_at > datetime('now', '-1 hour')"
+  ).bind(a.id).first() as any
+  if (Number(recent?.n || 0) >= PAY_ORDERS_PER_HOUR) {
+    return c.json({ error: 'That is a lot of payment attempts in one hour. Please wait a little, or write to info@bharataiinnovation.com.' }, 429)
+  }
+
+  const rand = Array.from(crypto.getRandomValues(new Uint8Array(4))).map(b => (b % 36).toString(36)).join('')
+  const orderId = ('BAI' + a.id + '-' + Date.now().toString(36) + rand).toUpperCase()
+  await c.env.DB.prepare(
+    'INSERT INTO payment_orders (order_id, attendee_id, event_id, pass_type, previous_badge, base_paise, gst_paise, amount_paise) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  ).bind(orderId, a.id, a.event_id || 1, passType, a.badge_type || '', amounts.base, amounts.gst, amounts.total).run()
+  return c.json({ order_id: orderId, amount: amounts.total / 100, pay_url: '/pay/ccavenue/' + await payLinkToken(c, orderId) }, 201)
+})
+
+const payEsc = (v: any) => String(v ?? '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch] as string))
+const payH1 = (t: string) => `<h1 style="font-size:20px;margin:0 0 10px;color:#1E2140;">${t}</h1>`
+const payP = (t: string) => `<p style="font-size:14px;line-height:1.65;color:#555;margin:0 0 14px;">${t}</p>`
+const payButton = (href: string, label: string) =>
+  `<a href="${href}" style="display:inline-block;padding:13px 24px;background:#FF6B00;color:#fff;text-decoration:none;border-radius:9px;font-size:15px;font-weight:bold;">${label}</a>`
+const payRows = (rows: [string, string][]) =>
+  `<table cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:0 0 16px;">` + rows.map(([k, v]) =>
+    `<tr><td valign="top" style="padding:0 16px 8px 0;font-size:12px;color:#888;white-space:nowrap;">${k}</td>` +
+    `<td valign="top" style="padding:0 0 8px;font-size:14px;color:#1E2140;font-weight:bold;word-break:break-word;">${v}</td></tr>`).join('') + `</table>`
+
+function payPage(title: string, body: string): string {
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${title} - Bharat AI Innovation 2026</title></head>
+<body style="margin:0;padding:24px 12px;background:#f5f5f5;font-family:Arial,sans-serif;"><div style="max-width:520px;margin:0 auto;background:#fff;border-radius:14px;overflow:hidden;">
+${emailBrandHeader('', '20&ndash;21 Nov 2026 &bull; WTC Mumbai')}
+<div style="padding:26px 24px 30px;">${body}</div></div></body></html>`
+}
+
+// The gateway turns a request away over characters it does not like in a billing
+// field, and a name it cannot read is worth less than a payment. Anything outside
+// plain letters, digits and a little punctuation is dropped; a field left empty by
+// that is simply not sent, and their own page asks for it.
+const ccavText = (v: any, max: number): string =>
+  String(v ?? '').normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9 .-]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max)
+
+// Step two: the page that hands the buyer to the gateway. It posts itself once;
+// coming Back to it shows the button instead of bouncing them forward again.
+app.get('/pay/ccavenue/:token', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  const cfg = ccavenueConfig(c)
+  const token = c.req.param('token')
+  const order = cfg ? await orderFromLinkToken(c, token) : null
+  if (!cfg || !order) {
+    return c.html(payPage('Link not valid', payH1('That payment link is not valid.') +
+      payP('Nothing has been charged. Please start again from the app.') + payButton('/app', 'Open the app')), 404)
+  }
+  if (order.status === 'paid') return c.redirect('/pay/result?o=' + encodeURIComponent(token), 303)
+  const born = Date.parse(String(order.created_at).replace(' ', 'T') + 'Z')
+  const fresh = Number.isFinite(born) && Date.now() - born < PAY_LINK_MINUTES * 60000
+  if (order.status !== 'created' || !fresh) {
+    return c.html(payPage('Start again', payH1('This checkout has closed.') +
+      payP('A payment link is good for one attempt, for an hour. Nothing further has been charged. Please start a new payment from the app.') +
+      payButton('/app', 'Open the app')), 410)
+  }
+
+  const a = (await c.env.DB.prepare('SELECT name, email, mobile, city FROM attendees WHERE id = ?').bind(order.attendee_id).first() as any) || {}
+  const base = ((await settingValue(c, 'app_url')) || 'https://bharataiinnovation.com/app').replace(/\/app\/?$/, '')
+  const tel = String(a.mobile || '').replace(/\D/g, '').slice(-10)
+  const email = String(a.email || '').trim()
+  const encRequest = await ccavEncrypt(ccavRequestBody({
+    merchant_id: cfg.merchantId,
+    order_id: order.order_id,
+    currency: 'INR',
+    amount: (Number(order.amount_paise) / 100).toFixed(2),
+    redirect_url: base + '/pay/ccavenue/return',
+    cancel_url: base + '/pay/ccavenue/return',
+    language: 'EN',
+    billing_name: ccavText(a.name, 60),
+    billing_tel: tel.length === 10 ? tel : '',
+    billing_email: /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(email) ? email.slice(0, 70) : '',
+    billing_city: ccavText(a.city, 30),
+    billing_country: 'India',
+    merchant_param1: await payOrderSig(c, order.order_id, order.amount_paise),
+    merchant_param2: order.pass_type,
+  }), cfg.workingKey)
+
+  return c.html(payPage('Opening secure checkout',
+    payH1('Taking you to the secure payment page') +
+    payP(`${payEsc(order.pass_type)} &middot; &#8377;${rupees(Number(order.amount_paise))} including GST`) +
+    `<form id="f" method="post" action="${cfg.endpoint}"><input type="hidden" name="encRequest" value="${encRequest}"><input type="hidden" name="access_code" value="${payEsc(cfg.accessCode)}">` +
+    `<button type="submit" style="padding:13px 24px;background:#FF6B00;color:#fff;border:0;border-radius:9px;font-size:15px;font-weight:bold;cursor:pointer;">Continue to secure payment</button>` +
+    `</form><p style="margin:14px 0 0;"><a href="/app" style="font-size:13px;color:#555;">Back to the app</a></p>` +
+    `<p style="font-size:12px;line-height:1.6;color:#888;margin:16px 0 0;">Payments are handled by CCAvenue. Card and bank details are entered on their page and never reach this site.</p>` +
+    `<script>(function(){var k="pay-sent-${order.order_id}",again=false;try{again=!!sessionStorage.getItem(k);sessionStorage.setItem(k,"1");}catch(e){}if(!again)document.getElementById("f").submit();})();</script>`))
+})
+
+// Step three: the gateway sends the buyer back here with its answer, for a
+// payment that went through and for one that was cancelled alike.
+const payUnconfirmed = (c: any) => c.redirect('/pay/result', 303)
+
+async function ccavenueReturn(c: any) {
+  const cfg = ccavenueConfig(c)
+  if (!cfg) return payUnconfirmed(c)
+  const form = await c.req.parseBody().catch(() => ({})) as Record<string, any>
+  const plain = await ccavDecrypt(String(form.encResp || ''), cfg.workingKey)
+  const f = plain ? ccavParseResponse(plain) : null
+  const orderId = String(f?.order_id || '')
+  if (!f || !PAY_ORDER_RE.test(orderId) || !(await paymentOrdersReady(c))) return payUnconfirmed(c)
+  const order = await c.env.DB.prepare('SELECT * FROM payment_orders WHERE order_id = ?').bind(orderId).first() as any
+  if (!order) return payUnconfirmed(c)
+  if (!safeEqualA(String(f.merchant_param1 || ''), await payOrderSig(c, orderId, order.amount_paise))) return payUnconfirmed(c)
+
+  const resultUrl = '/pay/result?o=' + encodeURIComponent(await payLinkToken(c, orderId))
+  if (order.status === 'paid') return c.redirect(resultUrl, 303)
+
+  const said = String(f.order_status || '')
+  let status = said === 'Success' ? 'paid'
+    : said === 'Aborted' ? 'aborted'
+    : (said === 'Awaited' || said === 'Initiated') ? 'awaited'
+    : 'failed'
+  // "Success" counts only for the amount that was asked for, in rupees, with a
+  // reference number that looks like one of theirs.
+  if (status === 'paid' && (Math.round(Number(f.amount) * 100) !== Number(order.amount_paise)
+      || String(f.currency || '') !== 'INR' || !/^\d{6,20}$/.test(String(f.tracking_id || '')))) status = 'mismatch'
+
+  const cut = (v: any, n: number) => String(v ?? '').slice(0, n)
+  const upd = await c.env.DB.prepare(
+    `UPDATE payment_orders
+        SET status = ?, tracking_id = ?, bank_ref_no = ?, payment_mode = ?, card_name = ?, gateway_status = ?,
+            status_message = ?, gateway_amount = ?, responded_at = datetime('now'),
+            paid_at = CASE WHEN ? = 'paid' THEN datetime('now') ELSE paid_at END
+      WHERE order_id = ? AND status <> 'paid'`
+  ).bind(status, cut(f.tracking_id, 40), cut(f.bank_ref_no, 60), cut(f.payment_mode, 40), cut(f.card_name, 60), cut(said, 30),
+    cut(f.failure_message || f.status_message, 300), cut(f.amount, 20), status, orderId).run()
+  // Two copies of the same answer can arrive together (a refresh, a second tab).
+  // Only the one that changed the row goes on to unlock the pass and send mail.
+  const landed = Number(upd?.meta?.changes || 0) > 0
+
+  if (landed && status === 'paid') {
+    try {
+      await settlePaidOrder(c, order, cut(f.tracking_id, 40), cut(f.payment_mode, 40))
+    } catch (e: any) {
+      // The order row already says paid, so the money is not lost track of: it
+      // shows under "Paid online" in the payments queue for a person to finish.
+      console.error('payment settle failed', orderId, e?.message)
+      await audit(c, 'payment.settle-failed', 'attendee', order.attendee_id,
+        { order_id: orderId, error: String(e?.message || e).slice(0, 300) }, { actor: 'CCAvenue', kind: 'gateway' })
+    }
+  }
+  if (landed && status === 'mismatch' && order.status !== 'mismatch') {
+    await audit(c, 'payment.mismatch', 'attendee', order.attendee_id,
+      { order_id: orderId, asked_paise: order.amount_paise, gateway_amount: cut(f.amount, 20), currency: cut(f.currency, 8), tracking_id: cut(f.tracking_id, 40) },
+      { actor: 'CCAvenue', kind: 'gateway' })
+    const note = sendAdminEmail(c, (await settingValue(c, 'inquiry_notify_email')) || 'info@bharataiinnovation.com',
+      'CHECK THIS PAYMENT: order ' + orderId,
+      `<p style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;">CCAvenue reported Success for order <strong>${payEsc(orderId)}</strong> (attendee #${payEsc(order.attendee_id)}, ${payEsc(order.pass_type)}), but for <strong>${payEsc(cut(f.currency, 8))} ${payEsc(cut(f.amount, 20))}</strong> where &#8377;${rupees(Number(order.amount_paise))} was asked for. CCAvenue reference: ${payEsc(cut(f.tracking_id, 40))}.<br><br>The pass has NOT been unlocked. Look the order up in the CCAvenue dashboard before doing anything else.</p>`,
+      { unsubscribe: false })
+    try { c.executionCtx.waitUntil(note) } catch { await note }
+  }
+  return c.redirect(resultUrl, 303)
+}
+
+app.post('/pay/ccavenue/return', ccavenueReturn)
+
+// The money has arrived: unlock the pass, write it down, tell the buyer and the team.
+async function settlePaidOrder(c: any, order: any, trackingId: string, paymentMode: string) {
+  const a = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(order.attendee_id).first() as any
+  if (!a) throw new Error('attendee ' + order.attendee_id + ' no longer exists')
+  const badge = String(a.badge_type || '').trim()
+  // A pass the organisers set by hand since the order was started (Speaker,
+  // Exhibitor ...) is left alone: the payment is recorded and a person decides.
+  const changeable = !badge || FREE_BADGE_RE.test(badge) || PAID_TIERS.includes(badge)
+  if (changeable) {
+    const cols = await attendeeColumns(c)
+    const sets = ['badge_type = ?'], vals: any[] = [order.pass_type]
+    if (cols.has('payment_status')) sets.push("payment_status = 'paid'")
+    if (cols.has('payment_amount')) { sets.push('payment_amount = ?'); vals.push((Number(order.amount_paise) / 100).toFixed(2)) }
+    // Buying a conference pass is the plainest possible yes to the conference (0041).
+    if (cols.has('main_event')) sets.push('main_event = 1')
+    if (cols.has('main_event_answered_at')) sets.push("main_event_answered_at = COALESCE(main_event_answered_at, datetime('now'))")
+    await c.env.DB.prepare(`UPDATE attendees SET ${sets.join(', ')} WHERE id = ?`).bind(...vals, a.id).run()
+  }
+  await audit(c, 'payment.received', 'attendee', a.id, {
+    order_id: order.order_id, tracking_id: trackingId, pass_type: order.pass_type, amount_paise: order.amount_paise,
+    payment_mode: paymentMode, badge: changeable ? [badge || null, order.pass_type] : 'left as ' + badge,
+  }, { actor: 'CCAvenue', kind: 'gateway' })
+
+  const mails = sendPaymentEmails(c, a, order, trackingId, paymentMode, changeable)
+  let scheduled = false
+  try { c.executionCtx.waitUntil(mails); scheduled = true } catch { /* no ctx */ }
+  if (!scheduled) await mails
+}
+
+// Never throws: the pass is already unlocked by the time this runs.
+async function sendPaymentEmails(c: any, a: any, order: any, trackingId: string, paymentMode: string, unlocked: boolean) {
+  try {
+    const amount = rupees(Number(order.amount_paise))
+    const appUrl = (await settingValue(c, 'app_url')) || 'https://bharataiinnovation.com/app'
+    let href = appUrl
+    try {
+      if (await verifiedLoginEnabled(c)) {
+        const issued = await createLoginToken(c, a.event_id, String(a.email).toLowerCase(), PROFILE_LINK_TTL_MINUTES, 2)
+        href = `${appUrl}?email=${encodeURIComponent(a.email)}&token=${issued.token}`
+      }
+    } catch { /* the plain link still opens the app */ }
+    const rows = payRows([
+      ['Pass', payEsc(order.pass_type)],
+      ['Amount paid', `&#8377;${amount} <span style="font-weight:normal;color:#666;">(includes ${PASS_GST_RATE}% GST)</span>`],
+      ['Order number', payEsc(order.order_id)],
+      ['CCAvenue reference', payEsc(trackingId)],
+      ['Paid on', payEsc(istStamp(new Date().toISOString()))],
+    ])
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#f5f5f5;font-family:Arial,sans-serif;">
+    <div style="max-width:600px;margin:20px auto;background:#fff;border-radius:12px;overflow:hidden;">
+      ${emailBrandHeader('Payment received', '20&ndash;21 Nov 2026 &bull; WTC Mumbai')}
+      <div style="padding:30px;">
+        <p style="margin:0 0 6px;font-size:15px;color:#333;">Hi <strong>${payEsc(a.name)}</strong>,</p>
+        <p style="margin:0 0 20px;font-size:14px;line-height:1.7;color:#555;">Thank you. Your payment has arrived and your <strong>${payEsc(order.pass_type)}</strong> for Bharat AI Innovation 2026 is confirmed.</p>
+        ${rows}
+        <div style="text-align:center;margin:22px 0 6px;">
+          <a href="${href}" style="display:inline-block;padding:13px 32px;background:linear-gradient(135deg,#FF6B00,#FF8C38);color:#fff;text-decoration:none;border-radius:10px;font-weight:bold;font-size:14px;">Open the app</a>
+        </div>
+        <p style="margin:16px 0 0;font-size:13px;line-height:1.65;color:#555;">In the app, add your photo and download your pass: the badge desk scans it to check you in.</p>
+        <div style="margin-top:20px;padding:14px;background:#F7F8FF;border:1px solid #E3E6F5;border-radius:10px;">
+          <p style="margin:0;font-size:12.5px;line-height:1.6;color:#1E2140;"><strong>GST invoice:</strong> we will email your tax invoice separately. If it should be made out to your organisation, send its registered name, GSTIN and billing address to info@bharataiinnovation.com, quoting order ${payEsc(order.order_id)}.</p>
+        </div>
+      </div>
+    </div></body></html>`
+    await sendAdminEmail(c, a.email, 'Payment received: your ' + order.pass_type + ' is confirmed', html, { unsubscribe: false })
+
+    const team = (await settingValue(c, 'inquiry_notify_email')) || 'info@bharataiinnovation.com'
+    const teamHtml = `<div style="font-family:Arial,sans-serif;max-width:560px;">
+      <p style="font-size:14px;line-height:1.6;color:#333;margin:0 0 14px;"><strong>${payEsc(a.name)}</strong> (${payEsc(a.email)}${a.company ? ', ' + payEsc(a.company) : ''}) has paid online through CCAvenue.</p>
+      ${rows}
+      <p style="font-size:13px;line-height:1.6;color:#555;margin:0;">${unlocked
+        ? 'The pass is unlocked already. The GST invoice is the one step left: Admin, Payments, &ldquo;Paid online&rdquo; (or the finance page), where the order number and reference are filled in.'
+        : 'Their pass was <strong>not</strong> changed, because it had been set to ' + payEsc(a.badge_type) + ' by hand. Decide what this payment was for, then raise the invoice from Admin, Payments.'}</p></div>`
+    await sendAdminEmail(c, team, `Paid online: ${a.name}, ${order.pass_type}, Rs ${amount}`, teamHtml, { unsubscribe: false })
+  } catch (e: any) {
+    console.error('payment emails failed', order?.order_id, e?.message)
+  }
+}
+
+// Where the buyer lands afterwards. Opened by the signed link, so it works without
+// a session and is safe to refresh; with no link it is the one page shown for
+// every answer that could not be believed.
+app.get('/pay/result', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  const order = await orderFromLinkToken(c, String(c.req.query('o') || ''))
+  if (!order) {
+    return c.html(payPage('Payment not confirmed', payH1('We could not confirm a payment here.') +
+      payP('If you paid and money left your account, nothing is lost: write to info@bharataiinnovation.com with your name and the time of the payment, and we will match it by hand.') +
+      payButton('/app', 'Open the app')))
+  }
+  const no = payEsc(order.order_id)
+  const retry = `<button id="again" type="button" style="padding:13px 24px;background:#FF6B00;color:#fff;border:0;border-radius:9px;font-size:15px;font-weight:bold;cursor:pointer;">Try again</button>` +
+    `<a href="/app" style="margin-left:14px;font-size:13px;color:#555;">Back to the app</a>` +
+    `<p id="again-msg" style="font-size:13px;color:#B3261E;margin:12px 0 0;min-height:16px;"></p>` +
+    `<script>document.getElementById("again").onclick=function(){var b=this,m=document.getElementById("again-msg");b.disabled=true;m.textContent="";` +
+    `fetch("/api/payments/ccavenue/start",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({pass_type:${JSON.stringify(String(order.pass_type))}})})` +
+    `.then(function(r){return r.json().catch(function(){return {};}).then(function(j){return {ok:r.ok,j:j};});})` +
+    `.then(function(x){if(x.ok&&x.j.pay_url){location.href=x.j.pay_url;return;}b.disabled=false;m.textContent=x.j.message||x.j.error||"We could not start a new payment. Please open the app and try from there.";})` +
+    `.catch(function(){b.disabled=false;m.textContent="Network error. Nothing was charged. Please try again.";});};</script>`
+
+  if (order.status === 'paid') {
+    // Someone who bought from /register has never opened the app in this browser,
+    // so "Open the app" would greet them with a sign-in form seconds after they
+    // paid. If this browser holds their session, leave the note a registration
+    // made inside the app leaves (agba_user), and the app signs them in by itself.
+    // Only for the session's owner: the link alone never yields anyone's details.
+    let seed = ''
+    const me = await verifyAttendeeSession(c)
+    if (me !== null && String(me) === String(order.attendee_id)) {
+      let a: any = null
+      try {
+        a = await c.env.DB.prepare('SELECT id, event_id, name, email, company, job_title, badge_type, payment_status FROM attendees WHERE id = ?').bind(me).first()
+      } catch { /* the page is worth more than the convenience */ }
+      if (a) seed = `<script>try{if(!localStorage.getItem("agba_user"))localStorage.setItem("agba_user",${JSON.stringify(JSON.stringify(a)).replace(/</g, '\\u003c')});}catch(e){}</script>`
+    }
+    return c.html(payPage('Payment received', payH1('Payment received. Thank you.') +
+      payP(`Your <strong>${payEsc(order.pass_type)}</strong> for Bharat AI Innovation 2026 is confirmed.`) +
+      payRows([
+        ['Amount paid', `&#8377;${rupees(Number(order.amount_paise))} <span style="font-weight:normal;color:#666;">(includes GST)</span>`],
+        ['Order number', no],
+        ['CCAvenue reference', payEsc(order.tracking_id)],
+      ]) +
+      payP('A confirmation is on its way to your email, and your GST invoice follows separately. Next, add your photo in the app and download your pass.') +
+      payButton('/app', 'Open the app') + seed))
+  }
+  if (order.status === 'aborted') {
+    return c.html(payPage('Payment cancelled', payH1('You cancelled the payment.') +
+      payP(`Nothing was charged and your ${payEsc(order.pass_type)} is still waiting. You can pay whenever you are ready.`) + retry))
+  }
+  if (order.status === 'awaited') {
+    return c.html(payPage('Waiting for your bank', payH1('Your bank has not confirmed yet.') +
+      payP('Please do not pay a second time. If the money has left your account, your pass is confirmed as soon as the bank reports it.') +
+      payP(`If nothing has changed in a day, write to info@bharataiinnovation.com quoting order <strong>${no}</strong>.`) +
+      payButton('/app', 'Open the app')))
+  }
+  if (order.status === 'mismatch') {
+    return c.html(payPage('We are checking this payment', payH1('We need to check this payment.') +
+      payP('The amount the payment gateway reported is not the price of the pass, so the pass has not been issued automatically. Our team has been told and will write to you.') +
+      payP(`Your order number is <strong>${no}</strong>.`) + payButton('/app', 'Open the app')))
+  }
+  if (order.status === 'created') {
+    return c.html(payPage('No answer yet', payH1('We have not heard back about this payment.') +
+      payP('If you completed it, give it a minute and refresh this page. If you did not, nothing was charged.') +
+      payP(`Your order number is <strong>${no}</strong>.`) + retry))
+  }
+  const why = String(order.status_message || '').trim()
+  return c.html(payPage('Payment not completed', payH1('The payment did not go through.') +
+    payP('No pass has been issued for it. If money left your account, your bank returns it on its own; if it has not come back within a week, write to info@bharataiinnovation.com quoting order <strong>' + no + '</strong>.') +
+    (why && why.toLowerCase() !== 'null' ? payP('The payment gateway said: ' + payEsc(why)) : '') + retry))
+})
+
+// Everyone on a paid tier whose payment has never been confirmed, and everyone who
+// paid through the gateway and has no invoice yet. A payment on mUni Campus sends
+// nothing back, so without the first list a Delegate who paid there on the 27th
+// sits unnoticed with a pass the app refuses to print.
 app.get('/api/admin/payments-pending', async (c) => pendingPaymentsJSON(c))
 
 async function pendingPaymentsJSON(c: any) {
   if (!(await paymentStatusEnabled(c))) return c.json({ ready: false, results: [] })
+  const online = await paymentOrdersReady(c)
   const marks = PAID_TIERS.map(() => '?').join(', ')
+  // Their latest online attempt, if any: "has not tried" and "tried twice and the
+  // bank said no" are different phone calls.
+  const lastOrder = online
+    ? `, (SELECT o.order_id || '|' || o.status || '|' || o.created_at FROM payment_orders o WHERE o.attendee_id = a.id ORDER BY o.id DESC LIMIT 1) AS last_order`
+    : ''
   const { results } = await c.env.DB.prepare(
     `SELECT a.id, a.name, a.email, a.company, a.mobile, a.badge_type, a.created_at,
-            (SELECT COUNT(*) FROM invoices i WHERE i.attendee_id = a.id) AS invoices
+            (SELECT COUNT(*) FROM invoices i WHERE i.attendee_id = a.id) AS invoices${lastOrder}
        FROM attendees a
       WHERE a.badge_type IN (${marks})
         AND lower(COALESCE(a.payment_status, 'pending')) = 'pending'
       ORDER BY a.created_at DESC
       LIMIT 300`
   ).bind(...PAID_TIERS).all() as any
-  const LIST = { 'Delegate Pass': 4999, 'VIP Pass': 14999, 'Academic Pass': 999 } as Record<string, number>
+
+  // Paid here and not invoiced yet. The pass is already unlocked; what is left is
+  // the tax invoice, which stays a person's decision (whose name, which GSTIN).
+  // Matched on order_ref, so raising the invoice is what takes a row off this list.
+  let paidOnline: any[] = []
+  if (online) {
+    const rows = await c.env.DB.prepare(
+      `SELECT o.order_id, o.tracking_id, o.amount_paise, o.pass_type, o.paid_at, o.payment_mode,
+              a.id, a.name, a.email, a.company, a.mobile
+         FROM payment_orders o JOIN attendees a ON a.id = o.attendee_id
+        WHERE o.status = 'paid'
+          AND NOT EXISTS (SELECT 1 FROM invoices i WHERE i.order_ref = o.order_id)
+        ORDER BY o.paid_at DESC
+        LIMIT 300`
+    ).all() as any
+    paidOnline = (rows.results || []).map((o: any) => ({
+      ...o, badge_type: o.pass_type, amount: Number(o.amount_paise) / 100, paid_on: istStamp(o.paid_at),
+    }))
+  }
+
   return c.json({
     ready: true,
-    results: (results || []).map((r: any) => ({
-      ...r,
-      // What they should have been charged, so the number in the payment report can
-      // be checked rather than retyped from memory.
-      expected: Math.round((LIST[r.badge_type] || 0) * 1.18 * 100) / 100,
-    })),
+    gateway: (await onlinePaymentsOn(c)) ? 'ccavenue' : 'muni',
+    results: (results || []).map((r: any) => {
+      const [order_id, status, created_at] = String(r.last_order || '').split('|')
+      return {
+        ...r,
+        // What they should have been charged, so the number in the payment report can
+        // be checked rather than retyped from memory.
+        expected: (passAmounts(r.badge_type)?.total || 0) / 100,
+        last_order: order_id ? { order_id, status, created_at } : null,
+      }
+    }),
+    paid_online: paidOnline,
   })
 }
 
@@ -2679,9 +3166,14 @@ function financeHTML(me: any): string {
   <div>${esc(me.name)} &middot; <a href="#" onclick="out()">Sign out</a></div>
 </div>
 <div class="wrap">
+  <div class="card" id="online-card" style="display:none;">
+    <h2>Paid online: invoice to raise</h2>
+    <p class="muted">Paid through CCAvenue on this site. The pass is already unlocked and the order number and reference are filled in for you, so the GST invoice is the one step left.</p>
+    <div id="online"></div>
+  </div>
   <div class="card">
     <h2>Waiting on payment confirmation</h2>
-    <p class="muted">Everyone who chose a paid pass and has not been confirmed. Payments are taken on mUni Campus through CCAvenue and nothing comes back to this site, so check the order in the gateway report first. Confirming here raises the GST invoice, emails it, and unlocks their pass in one step.</p>
+    <p class="muted">Everyone who chose a paid pass and has not been confirmed. A payment taken on mUni Campus sends nothing back to this site, so check the order in the gateway report first. Confirming here raises the GST invoice, emails it, and unlocks their pass in one step.</p>
     <div id="pending">Loading&hellip;</div>
   </div>
   <div class="card">
@@ -2693,7 +3185,7 @@ function financeHTML(me: any): string {
   </div>
 </div>
 <script>
- var pending = [];
+ var pending = [], online = [];
  var esc = function (v) { return String(v == null ? '' : v).replace(/[&<>"]/g, function (c) { return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]; }); };
  async function out(){ await fetch('/api/staff/logout', { method:'POST' }); location.href = '/staff'; }
 
@@ -2701,9 +3193,20 @@ function financeHTML(me: any): string {
    var p = await (await fetch('/api/finance/payments-pending')).json();
    var inv = await (await fetch('/api/finance/invoices')).json();
    pending = p.results || [];
+   online = p.paid_online || [];
+   document.getElementById('online-card').style.display = online.length ? '' : 'none';
+   document.getElementById('online').innerHTML = online.map(function (o, i) {
+     return '<div class="row"><div class="grow"><div class="nm">' + esc(o.name) + '</div>' +
+       '<div class="sub">' + esc(o.email) + (o.company ? ' &middot; ' + esc(o.company) : '') + '</div>' +
+       '<div class="sub">' + esc(o.order_id) + ' &middot; CCAvenue ' + esc(o.tracking_id) + ' &middot; ' + esc(o.paid_on) + '</div></div>' +
+       '<span class="pill">' + esc(o.pass_type) + '</span>' +
+       '<span class="sub">paid &#8377;' + Number(o.amount).toLocaleString('en-IN') + '</span>' +
+       '<button onclick="openForm(' + i + ', true)">Raise invoice</button></div>';
+   }).join('');
    document.getElementById('pending').innerHTML = pending.length ? pending.map(function (a, i) {
      return '<div class="row"><div class="grow"><div class="nm">' + esc(a.name) + '</div>' +
-       '<div class="sub">' + esc(a.email) + (a.company ? ' &middot; ' + esc(a.company) : '') + '</div></div>' +
+       '<div class="sub">' + esc(a.email) + (a.company ? ' &middot; ' + esc(a.company) : '') + '</div>' +
+       (a.last_order ? '<div class="sub">online attempt: ' + esc(a.last_order.status) + ' &middot; ' + esc(a.last_order.order_id) + '</div>' : '') + '</div>' +
        '<span class="pill">' + esc(a.badge_type) + '</span>' +
        '<span class="sub">expected &#8377;' + a.expected.toLocaleString('en-IN') + '</span>' +
        '<button onclick="openForm(' + i + ')">Confirm &amp; invoice</button></div>';
@@ -2722,22 +3225,25 @@ function financeHTML(me: any): string {
    return '<div><label>' + label + '</label><input id="' + id + '" value="' + esc(value || '') + '" placeholder="' + (ph || '') + '"></div>';
  }
 
- function openForm(i){
-   var a = i >= 0 ? pending[i] : null;
+ function openForm(i, fromOnline){
+   var a = i >= 0 ? (fromOnline ? online[i] : pending[i]) : null;
+   var paid = fromOnline && a ? a : null;
    var d = document.createElement('div');
    d.className = 'modal'; d.id = 'modal';
    d.innerHTML = '<div><h2 style="margin:0 0 3px;font-size:16px;">Confirm payment &amp; issue invoice</h2>' +
-     '<p class="muted">Copy the order and reference from the CCAvenue or mUni report. An invoice cannot be raised without one &mdash; it has to point at a payment somebody can check.</p>' +
+     '<p class="muted">' + (paid
+       ? 'Paid online through CCAvenue. The order number and reference came from the gateway, so there is nothing to copy. Add the GSTIN and address if the buyer sent them.'
+       : 'Copy the order and reference from the CCAvenue or mUni report. An invoice cannot be raised without one &mdash; it has to point at a payment somebody can check.') + '</p>' +
      '<div class="grid">' +
        field('f-name', 'Buyer name', a ? a.name : '') +
        field('f-email', 'Email', a ? a.email : '') +
        field('f-company', 'Registered company name', a ? a.company : '') +
        field('f-gstin', 'Buyer GSTIN', '', '29AAICS0944E1ZB') +
        field('f-phone', 'Mobile', a ? a.mobile : '') +
-       field('f-amount', 'Amount charged (INR)', a ? a.expected : '', '5898.82') +
-       field('f-order', 'mUni order number', '', '34364_1787816667') +
-       field('f-payref', 'CCAvenue reference', '', 'CCAvenue 114772182155') +
-       field('f-paid', 'Paid on', '', 'YYYY-MM-DD HH:MM') +
+       field('f-amount', 'Amount charged (INR)', paid ? paid.amount : (a ? a.expected : ''), '5898.82') +
+       field('f-order', paid ? 'Order number' : 'mUni order number', paid ? paid.order_id : '', '34364_1787816667') +
+       field('f-payref', 'CCAvenue reference', paid ? 'CCAvenue ' + paid.tracking_id : '', 'CCAvenue 114772182155') +
+       field('f-paid', paid ? 'Paid on (UTC, leave as it is)' : 'Paid on', paid ? paid.paid_at : '', 'YYYY-MM-DD HH:MM') +
        field('f-pos', 'Place of supply', '', 'taken from the GSTIN if left blank') +
      '</div>' +
      '<div style="margin-top:12px;">' + field('f-address', 'Billing address', '', 'as it should print on the invoice') + '</div>' +
@@ -14202,7 +14708,10 @@ async function submitRegisterPaidPassForm(e) {
   // Open the payment tab NOW, while the user's click activation is still live.
   // Opening it after the await below gets silently swallowed by popup blockers
   // (iOS Safari especially), which made this button appear to do nothing.
-  const payWin = window.open('', '_blank');
+  // With the gateway on this site there is no second tab: checkout opens in this
+  // one and comes back here, so there is nothing for a popup blocker to swallow.
+  const direct = PAY_GATEWAY === 'ccavenue';
+  const payWin = direct ? null : window.open('', '_blank');
   // Snapshot NOW: blocked popups are null (or a closed stub) immediately. Checked
   // later, "blocked" and "user closed the tab meanwhile" look identical — and the
   // latter must NOT hijack the current page.
@@ -14235,6 +14744,17 @@ async function submitRegisterPaidPassForm(e) {
     return;   // modal stays open, details still typed in
   }
 
+  if (direct) {
+    const started = await startOnlinePayment(passType);
+    if (started.url || !started.fallback) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-arrow-right mr-2"></i>Proceed to Payment';
+      if (started.url) window.location.href = started.url;
+      else showToast(started.error, 'error');
+      return;
+    }
+  }
+
   const payUrl = muniPayUrl(passType);
   if (payWinOpened && !payWin.closed) payWin.location.replace(payUrl);
   else if (!payWinOpened) window.location.href = payUrl;  // popup blocked -> same tab, never a dead end
@@ -14257,6 +14777,41 @@ function muniPayUrl(passType) {
   return c
     ? 'https://municampus.com/event/event_registration.php?id=425&category=' + c
     : 'https://municampus.com/event/BharatAI';  // unknown pass -> event page, user picks there
+}
+
+// Which checkout is live. The server answers ccavenue once the gateway on this
+// site is switched on; until it does, or if the question cannot be asked, the
+// mUni Campus path is used exactly as before.
+var PAY_GATEWAY = 'muni';
+function loadPayGateway() {
+  fetch('/api/payments/config').then(function (r) { return r.json(); }).then(function (j) {
+    PAY_GATEWAY = j && j.gateway === 'ccavenue' ? 'ccavenue' : 'muni';
+    applyPayGatewayCopy();
+  }).catch(function () {});
+}
+function applyPayGatewayCopy() {
+  var el = document.getElementById('rpp-next-copy');
+  if (el && PAY_GATEWAY === 'ccavenue') {
+    el.innerHTML = 'Checkout opens on <strong>CCAvenue</strong>, our secure payment gateway. Your pass is confirmed the moment the payment goes through, and you are brought straight back here.';
+  }
+}
+document.addEventListener('DOMContentLoaded', loadPayGateway);
+
+// Records the order on the server and returns where to send the buyer:
+// url to go there, fallback when the gateway is off, error to show.
+async function startOnlinePayment(passType) {
+  try {
+    const r = await fetch('/api/payments/ccavenue/start', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pass_type: passType })
+    });
+    const j = await r.json().catch(function () { return {}; });
+    if (r.ok && j.pay_url) return { url: j.pay_url };
+    if (r.status === 503) return { fallback: true };
+    return { error: j.message || j.error || 'We could not open the checkout. Nothing was charged. Please try again.' };
+  } catch (e) {
+    return { error: 'Network error. Nothing was charged. Please try again.' };
+  }
 }
 
 // The tab is opened before the save completes (to keep the click activation), so
@@ -14393,7 +14948,7 @@ function paintPayHoldingPage(w) {
              details and verify an OTP. Saying so up front stops it reading as a bug. -->
         <div style="background:#FFF6EF;border:1px solid rgba(255,107,0,0.25);border-radius:10px;padding:10px 12px;">
           <p style="font-size:11px;color:#1E2140;margin:0 0 4px;font-weight:700;">What happens next</p>
-          <p style="font-size:11px;color:#5E6585;margin:0;line-height:1.5;">Checkout opens on <strong>mUni Campus</strong>, our secure payments partner, with your pass pre-selected. You&rsquo;ll confirm your details there and verify a one-time OTP to complete payment.</p>
+          <p id="rpp-next-copy" style="font-size:11px;color:#5E6585;margin:0;line-height:1.5;">Checkout opens on <strong>mUni Campus</strong>, our secure payments partner, with your pass pre-selected. You&rsquo;ll confirm your details there and verify a one-time OTP to complete payment.</p>
         </div>
         <p style="text-align:center;font-size:10px;color:#5E6585;margin:0;">Your details are already saved with us &mdash; we&rsquo;ll email your pass once payment clears.</p>
       </form>
@@ -15508,8 +16063,9 @@ function mainPageHTML(): string {
                 <i class="fas fa-id-badge text-xl text-primary-400"></i>
               </div>
               <div class="flex-1 min-w-0">
-                <h3 class="font-bold text-sm mb-0.5"><span id="pcc-pass-name">Your pass</span> is ready</h3>
+                <h3 class="font-bold text-sm mb-0.5"><span id="pcc-pass-name">Your pass</span><span id="pcc-pass-state"> is ready</span></h3>
                 <p class="text-xs text-gray-400 mb-3" id="pcc-pass-note">Keep it on your phone — the badge desk scans it to check you in.</p>
+                <button type="button" id="pcc-pay-btn" onclick="payPendingPass()" class="hidden px-4 mr-2 mb-2 rounded-xl text-xs font-semibold text-white transition" style="min-height:44px;background:linear-gradient(135deg,#FF6B00,#FF8C38);"><i class="fas fa-credit-card mr-1.5"></i>Pay now</button>
                 <button type="button" onclick="generateDelegatePass()" class="px-4 rounded-xl text-xs font-semibold bg-primary-600 hover:bg-primary-500 text-white transition" style="min-height:44px;"><i class="fas fa-download mr-1.5"></i>Download my pass</button>
               </div>
             </div>
@@ -18540,8 +19096,13 @@ function mainPageHTML(): string {
       const pending = String(currentUser.payment_status || '').toLowerCase() === 'pending'
         && /delegate|academic|vip/i.test(badge);
       document.getElementById('pcc-pass-name').textContent = name;
+      const payNow = pending && PAY_GATEWAY === 'ccavenue';
+      const payBtn = document.getElementById('pcc-pay-btn');
+      if (payBtn) payBtn.classList.toggle('hidden', !payNow);
+      const stateEl = document.getElementById('pcc-pass-state');
+      if (stateEl) stateEl.textContent = pending ? ' is waiting for payment' : ' is ready';
       document.getElementById('pcc-pass-note').textContent = pending
-        ? 'It will be issued as soon as your payment is confirmed.'
+        ? (payNow ? 'It is issued the moment your payment goes through. Pay now to finish.' : 'It will be issued as soon as your payment is confirmed.')
         : 'Keep it on your phone — the badge desk scans it to check you in.';
       el.classList.remove('hidden');
     }
@@ -24039,7 +24600,10 @@ function mainPageHTML(): string {
       // live. Doing it after the await (worse: inside a setTimeout) is silently
       // blocked by popup blockers — iOS Safari especially — so the button looked
       // dead on mobile. We keep the handle and point it at the URL once saved.
-      const payWin = window.open('', '_blank');
+      // With the gateway on this site there is no second tab: checkout opens in
+      // this one and comes back here.
+      const direct = PAY_GATEWAY === 'ccavenue';
+      const payWin = direct ? null : window.open('', '_blank');
       // Snapshot NOW: blocked popups are null (or a closed stub) immediately. Checked
       // later, "blocked" and "user closed the tab meanwhile" look identical — and the
       // latter must NOT hijack the current page.
@@ -24071,6 +24635,19 @@ function mainPageHTML(): string {
         btn.disabled = false;
         btn.innerHTML = '<i class="fas fa-arrow-right mr-2"></i>Proceed to Payment';
         return;   // modal stays open, details still typed in
+      }
+
+      // On this site the order is recorded on the server and the badge changes by
+      // itself when the payment lands, so there is nothing to log by hand.
+      if (direct) {
+        const started = await startOnlinePayment(passType);
+        if (started.url || !started.fallback) {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fas fa-arrow-right mr-2"></i>Proceed to Payment';
+          if (started.url) window.location.href = started.url;
+          else showToast(started.error, 'error');
+          return;
+        }
       }
 
       // Payment lands on mUni Campus, outside this database, and a repeat
@@ -24114,6 +24691,54 @@ function mainPageHTML(): string {
       return c
         ? 'https://municampus.com/event/event_registration.php?id=425&category=' + c
         : 'https://municampus.com/event/BharatAI';
+    }
+
+    // Which checkout is live. The server answers ccavenue once the gateway on this
+    // site is switched on; until it does, or if the question cannot be asked, the
+    // mUni Campus path is used exactly as before.
+    var PAY_GATEWAY = 'muni';
+    function loadPayGateway() {
+      fetch('/api/payments/config').then(function (r) { return r.json(); }).then(function (j) {
+        PAY_GATEWAY = j && j.gateway === 'ccavenue' ? 'ccavenue' : 'muni';
+        applyPayGatewayCopy();
+      }).catch(function () {});
+    }
+    function applyPayGatewayCopy() {
+      var el = document.getElementById('pp-next-copy');
+      if (el && PAY_GATEWAY === 'ccavenue') {
+        el.innerHTML = 'Checkout opens on <strong>CCAvenue</strong>, our secure payment gateway. Your pass is confirmed the moment the payment goes through, and you are brought straight back to the app.';
+      }
+      try { renderPassAndCardCta(); } catch (e) {}
+    }
+    document.addEventListener('DOMContentLoaded', loadPayGateway);
+
+    // Records the order on the server and returns where to send the buyer:
+    // url to go there, fallback when the gateway is off, error to show.
+    async function startOnlinePayment(passType) {
+      try {
+        const r = await fetch('/api/payments/ccavenue/start', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pass_type: passType })
+        });
+        const j = await r.json().catch(function () { return {}; });
+        if (r.ok && j.pay_url) return { url: j.pay_url };
+        if (r.status === 503) return { fallback: true };
+        return { error: j.message || j.error || 'We could not open the checkout. Nothing was charged. Please try again.' };
+      } catch (e) {
+        return { error: 'Network error. Nothing was charged. Please try again.' };
+      }
+    }
+
+    // Someone who chose a paid pass and has not paid yet (closed the tab, card
+    // declined) finishes from the pass card on Home.
+    async function payPendingPass() {
+      if (!currentUser) return;
+      var btn = document.getElementById('pcc-pay-btn');
+      if (btn) btn.disabled = true;
+      var started = await startOnlinePayment(currentUser.badge_type);
+      if (btn) btn.disabled = false;
+      if (started.url) { window.location.href = started.url; return; }
+      showToast(started.error || 'Online payment is not available just now. Please try again later.', 'error');
     }
 
     // The tab is opened before the save completes (to keep the click activation), so
@@ -24269,7 +24894,7 @@ function mainPageHTML(): string {
                details and verify an OTP. Saying so up front stops it reading as a bug. -->
           <div class="rounded-xl px-3 py-2.5" style="background:#FFF6EF;border:1px solid rgba(255,107,0,0.25);">
             <p class="text-[11px] font-bold mb-1" style="color:#1E2140;">What happens next</p>
-            <p class="text-[11px] leading-relaxed" style="color:#5E6585;">Checkout opens on <strong>mUni Campus</strong>, our secure payments partner, with your pass pre-selected. You&rsquo;ll confirm your details there and verify a one-time OTP to complete payment.</p>
+            <p id="pp-next-copy" class="text-[11px] leading-relaxed" style="color:#5E6585;">Checkout opens on <strong>mUni Campus</strong>, our secure payments partner, with your pass pre-selected. You&rsquo;ll confirm your details there and verify a one-time OTP to complete payment.</p>
           </div>
           <p class="text-center text-[10px]" style="color:#5E6585;">Your details are already saved with us &mdash; we&rsquo;ll email your pass once payment clears.</p>
         </form>
@@ -25039,7 +25664,7 @@ function adminPageHTML(): string {
       document.getElementById('section-'+sec).classList.remove('hidden');
 
       const titles = { overview:'Overview', attendees:'Attendee Management', sessions:'Session Management', exhibitors:'Exhibitor Management', 'booth-requests':'Booth Requests', 'floor-plan':'Floor Plan', sponsorship:'Sponsorship & Branding', awards:'Awards Management', announcements:'Announcement Management', innovation:'Innovation Talk & Showcase', 'startup-pitch':'Startup Pitch Management', inquiries:'Inquiry Management', payments:'Payments & Invoices', 'badge-desk':'Badge Desk', analytics:'Analytics & Reports', rooms:'Boardrooms', settings:'Settings' };
-      const subtitles = { overview:'Real-time event management dashboard', attendees:'Manage all registered attendees', sessions:'Create and manage event sessions', exhibitors:'Manage exhibition booths', 'booth-requests':'Review and manage booth booking requests', 'floor-plan':'Which of the 93 stands are sold, held and still on the market', sponsorship:'Everything the show sells that is not floor space — and the combined revenue picture', awards:'Manage award categories and nominees', announcements:'Create and manage live feed announcements', innovation:'Manage innovation talk and showcase schedule', 'startup-pitch':'Manage startup pitches and investor panel', inquiries:'View and manage all incoming inquiries', payments:'Confirm payments taken on mUni Campus and issue GST invoices', 'badge-desk':'Event-day check-in and the staff accounts that scan passes', analytics:'Deep dive into event engagement metrics', rooms:'Who has which WTC boardroom, hour by hour, across both event days', settings:'Configure email, API keys and app settings' };
+      const subtitles = { overview:'Real-time event management dashboard', attendees:'Manage all registered attendees', sessions:'Create and manage event sessions', exhibitors:'Manage exhibition booths', 'booth-requests':'Review and manage booth booking requests', 'floor-plan':'Which of the 93 stands are sold, held and still on the market', sponsorship:'Everything the show sells that is not floor space — and the combined revenue picture', awards:'Manage award categories and nominees', announcements:'Create and manage live feed announcements', innovation:'Manage innovation talk and showcase schedule', 'startup-pitch':'Manage startup pitches and investor panel', inquiries:'View and manage all incoming inquiries', payments:'Payments taken online, payments to confirm, and GST invoices', 'badge-desk':'Event-day check-in and the staff accounts that scan passes', analytics:'Deep dive into event engagement metrics', rooms:'Who has which WTC boardroom, hour by hour, across both event days', settings:'Configure email, API keys and app settings' };
       document.getElementById('page-title').textContent = titles[sec] || sec;
       document.getElementById('page-subtitle').textContent = subtitles[sec] || '';
 
@@ -25219,6 +25844,7 @@ function adminPageHTML(): string {
 
     // ============ PAYMENTS & INVOICES ============
     var _pendingPayments = [];
+    var _paidOnline = [];
 
     async function loadPayments() {
       var el = document.getElementById('section-payments');
@@ -25230,6 +25856,8 @@ function adminPageHTML(): string {
           (Array.isArray(invoices) ? null : 'Invoices came back in an unexpected shape.');
         if (_bad) { sectionError(el, 'payments', { message: _bad }, 'loadPayments()'); return; }
         _pendingPayments = pending.results || [];
+        _paidOnline = pending.paid_online || [];
+        var direct = pending.gateway === 'ccavenue';
 
         var rows = _pendingPayments.map(function (a, i) {
           return '<div class="flex flex-wrap items-center gap-3 py-3 border-b border-white/5">' +
@@ -25238,9 +25866,21 @@ function adminPageHTML(): string {
             '<span class="px-2 py-0.5 rounded-full text-[10px] bg-amber-500/15 text-amber-300">' + deskEsc(a.badge_type) + '</span>' +
             '<span class="text-[11px] text-gray-400">expected &#8377;' + a.expected.toLocaleString('en-IN') + '</span>' +
             (a.invoices ? '<span class="text-[10px] text-green-400">invoiced</span>' : '') +
+            (a.last_order ? '<span class="text-[10px] text-gray-500">online attempt: ' + deskEsc(a.last_order.status) + ' &middot; ' + deskEsc(a.last_order.order_id) + '</span>' : '') +
             '<button onclick="openInvoiceFor(' + i + ')" class="px-3 py-1.5 rounded-lg text-[11px] bg-primary-500/20 text-primary-300 hover:bg-primary-500/30">Confirm payment &amp; invoice</button>' +
             '</div>';
         }).join('') || '<p class="text-gray-500 text-sm py-4">Nobody is waiting on a payment.</p>';
+
+        var online = _paidOnline.map(function (o, i) {
+          return '<div class="flex flex-wrap items-center gap-3 py-3 border-b border-white/5">' +
+            '<div class="flex-1 min-w-[180px]"><div class="text-sm text-gray-200">' + deskEsc(o.name) + '</div>' +
+              '<div class="text-[11px] text-gray-500">' + deskEsc(o.email) + (o.company ? ' &middot; ' + deskEsc(o.company) : '') + '</div>' +
+              '<div class="text-[11px] text-gray-500">' + deskEsc(o.order_id) + ' &middot; CCAvenue ' + deskEsc(o.tracking_id) + ' &middot; ' + deskEsc(o.paid_on) + '</div></div>' +
+            '<span class="px-2 py-0.5 rounded-full text-[10px] bg-amber-500/15 text-amber-300">' + deskEsc(o.pass_type) + '</span>' +
+            '<span class="text-[11px] text-gray-400">paid &#8377;' + Number(o.amount).toLocaleString('en-IN') + '</span>' +
+            '<button onclick="openInvoiceFor(' + i + ', true)" class="px-3 py-1.5 rounded-lg text-[11px] bg-primary-500/20 text-primary-300 hover:bg-primary-500/30">Raise invoice</button>' +
+            '</div>';
+        }).join('');
 
         var issued = (invoices || []).map(function (v) {
           return '<div class="flex items-center gap-3 py-2.5 border-b border-white/5">' +
@@ -25256,9 +25896,17 @@ function adminPageHTML(): string {
           '<div class="space-y-4">' +
             '<div class="glass rounded-xl p-4 border border-amber-500/20 text-[12px] text-gray-300 leading-relaxed">' +
               '<i class="fas fa-circle-info text-amber-400 mr-1.5"></i>' +
-              'Payments are taken on mUni Campus through CCAvenue and nothing is sent back to this site, so a paid Delegate stays marked pending until someone confirms it here. ' +
-              'Check the order in the CCAvenue or mUni report, then confirm it below &mdash; that issues the GST invoice, emails it, and unlocks their pass in one step.' +
+              (direct
+                ? 'Paid passes are bought on this site through the event&rsquo;s own CCAvenue account. A payment that goes through unlocks the pass at once and is listed under <strong>Paid online</strong>, ready for its GST invoice. ' +
+                  'Anyone still waiting below has either not paid, or paid on mUni Campus before the change: check the report, then confirm it here.'
+                : 'Payments are taken on mUni Campus through CCAvenue and nothing is sent back to this site, so a paid Delegate stays marked pending until someone confirms it here. ' +
+                  'Check the order in the CCAvenue or mUni report, then confirm it below &mdash; that issues the GST invoice, emails it, and unlocks their pass in one step.') +
             '</div>' +
+            (online ? '<div class="glass rounded-xl p-5 border border-white/5">' +
+              '<h3 class="text-sm font-semibold text-white mb-1">Paid online: invoice to raise</h3>' +
+              '<p class="text-[11px] text-gray-500 mb-3">Paid through CCAvenue on this site. The pass is already unlocked, so the GST invoice is the one step left.</p>' +
+              '<div class="max-h-96 overflow-y-auto pr-1">' + online + '</div>' +
+            '</div>' : '') +
             '<div class="glass rounded-xl p-5 border border-white/5">' +
               '<h3 class="text-sm font-semibold text-white mb-1">Waiting on payment confirmation</h3>' +
               '<p class="text-[11px] text-gray-500 mb-3">Everyone who chose a paid pass and has not been confirmed.</p>' +
@@ -25277,8 +25925,9 @@ function adminPageHTML(): string {
       }
     }
 
-    function openInvoiceFor(idx) {
-      var a = idx >= 0 ? _pendingPayments[idx] : null;
+    function openInvoiceFor(idx, fromOnline) {
+      var a = idx >= 0 ? (fromOnline ? _paidOnline[idx] : _pendingPayments[idx]) : null;
+      var paid = fromOnline && a ? a : null;
       var f = function (id, label, value, ph) {
         return '<div><label class="block text-[11px] text-gray-400 mb-1">' + label + '</label>' +
           '<input id="' + id + '" autocomplete="off" value="' + deskEsc(value || '') + '" placeholder="' + (ph || '') + '" class="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm"></div>';
@@ -25290,17 +25939,19 @@ function adminPageHTML(): string {
       wrap.innerHTML =
         '<div class="glass rounded-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto border border-white/10">' +
           '<h3 class="font-bold text-lg mb-1">Confirm payment &amp; issue invoice</h3>' +
-          '<p class="text-[11px] text-gray-500 mb-4">Copy the order and reference from the CCAvenue or mUni report. The invoice cannot be issued without one &mdash; it has to point at a payment somebody can check.</p>' +
+          '<p class="text-[11px] text-gray-500 mb-4">' + (paid
+            ? 'Paid online through CCAvenue. The order number and reference came from the gateway, so there is nothing to copy. Add the GSTIN and address if the buyer sent them.'
+            : 'Copy the order and reference from the CCAvenue or mUni report. The invoice cannot be issued without one &mdash; it has to point at a payment somebody can check.') + '</p>' +
           '<div class="grid grid-cols-2 gap-3">' +
             f('iv-name', 'Buyer name', a ? a.name : '') +
             f('iv-email', 'Email', a ? a.email : '') +
             f('iv-company', 'Organisation', a ? a.company : '') +
             f('iv-phone', 'Mobile', a ? a.mobile : '') +
             f('iv-gstin', 'Buyer GSTIN (for their input credit)', '', 'optional') +
-            f('iv-amount', 'Amount charged (INR)', a ? a.expected : '', '5898.82') +
-            f('iv-order', 'mUni order number', '', '34364_1787816667') +
-            f('iv-payref', 'CCAvenue reference', '', '114772182155') +
-            f('iv-paid', 'Paid on', '', 'YYYY-MM-DD HH:MM') +
+            f('iv-amount', 'Amount charged (INR)', paid ? paid.amount : (a ? a.expected : ''), '5898.82') +
+            f('iv-order', paid ? 'Order number' : 'mUni order number', paid ? paid.order_id : '', '34364_1787816667') +
+            f('iv-payref', 'CCAvenue reference', paid ? 'CCAvenue ' + paid.tracking_id : '', '114772182155') +
+            f('iv-paid', paid ? 'Paid on (UTC, leave as it is)' : 'Paid on', paid ? paid.paid_at : '', 'YYYY-MM-DD HH:MM') +
           '</div>' +
           '<div class="mt-3">' + f('iv-address', 'Billing address', '', 'optional, for their finance team') + '</div>' +
           '<div class="mt-3">' + f('iv-item', 'Description', a ? (a.badge_type + ' - Bharat AI Innovation Conference & Exhibition 2026') : 'Delegate Pass - Bharat AI Innovation Conference & Exhibition 2026') + '</div>' +

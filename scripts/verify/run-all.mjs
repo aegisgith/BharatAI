@@ -19,9 +19,11 @@ const SUITES = [
   { name: 'server: free-pass directory teaser', args: ['smoke-directory-teaser.mjs'] },
   { name: 'server: campus panel "Are you coming?"', args: ['smoke-panel-answers.mjs'] },
   { name: 'server: AI marketplace gates, pages and exhibitor invites', args: ['smoke-marketplace.mjs'] },
+  { name: 'server: checkout on this site (CCAvenue), the switch, the answer, the queues', args: ['smoke-payments.mjs'] },
   { name: 'browser: delegate app (chat, connect, meet, inbox, back, XSS)', args: ['browser-delegate.cjs'], harness: 'app-harness.mjs', port: 8770 },
   { name: 'browser: phone journey and admin Campus panels block', args: ['phone-test.cjs'], harness: 'phone-harness.mjs', port: 8772 },
   { name: 'browser: paced panel email (one at a time, survives the redraw)', args: ['pace-test.cjs'], harness: 'pace-harness.mjs', port: 8774 },
+  { name: 'browser: buying a pass on a phone (checkout, result, retry, mUni fallback, invoice queues)', args: ['pay-test.cjs'], harness: 'pay-harness.mjs', port: 8776 },
 ];
 
 const run = (args, opts = {}) => new Promise((resolve) => {
