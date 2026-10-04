@@ -57,7 +57,8 @@ const EXHIBITORS = [
   { name: 'Kadeep.ai', file: 'Kadeep Ai logo.jpg', db: [26, 'kadeep.ai'] },
   { name: 'Kirusa', file: 'Kirusa Inc.jpg', db: [20, 'Kirusa Inc'] },
   { name: 'LightMetrics', file: 'LightMetrics logo.jpg' },
-  { name: 'Ministry of Tribal Affairs', file: 'Minsitry of Tribal Affairs  Logo.jpg', db: [24, 'Ministry of Tribal Affairs'] },
+  // The ministry's own logo (organiser, 4 Oct), replacing an old Azadi Ka Amrit Mahotsav graphic.
+  { name: 'Ministry of Tribal Affairs', file: 'Ministry_of_Tribal_Affairs.svg', db: [24, 'Ministry of Tribal Affairs'] },
   { name: 'NoBroker', file: 'NoBroker Technologies Solutions Private Limited.jpg', db: [10, 'NoBroker Technologies Solutions Private Limited'] },
   { name: 'Omnirises Technologies', file: 'Omnirises Technologies logo.jpg' },
   { name: 'Oranje AI', file: 'ORANJE AI PRIVATE LIMITED logo.jpg', db: [14, 'ORANJE AI PRIVATE LIMITED'] },
@@ -86,13 +87,19 @@ const byName = (a, b) => a.name.localeCompare(b.name, 'en', { sensitivity: 'base
 // or the mark stays a speck in the middle of a black tile.
 async function bake(src, slug, dark) {
   const bg = dark ? '#000000' : '#ffffff'
-  const flat = await sharp(src).flatten({ background: bg }).toBuffer()
-  let img = sharp(flat)
-  try { img = sharp(await sharp(flat).trim({ background: bg, threshold: 24 }).toBuffer()) } catch { /* nothing to trim */ }
-  const m = await img.metadata()
+  // An SVG renders at 72 dpi by default; draw it big so small lettering survives the downscale.
+  const input = /\.svg$/i.test(src) ? sharp(src, { density: 300 }) : sharp(src)
+  const flat = await input.flatten({ background: bg }).png().toBuffer()
+  let trimmed = flat
+  try { trimmed = await sharp(flat).trim({ background: bg, threshold: 24 }).png().toBuffer() } catch { /* nothing to trim */ }
+  // Intermediates are PNG: toBuffer() keeps the input format, so a JPEG would be
+  // recompressed at every step. Separate passes: sharp always resizes before it
+  // extends, whatever the call order, so a pad sized from the unresized image
+  // swamps a large source.
+  const fitted = await sharp(trimmed).resize({ width: 300, height: 150, fit: 'inside', withoutEnlargement: true }).png().toBuffer()
+  const m = await sharp(fitted).metadata()
   const pad = Math.round(Math.max(m.width, m.height) * (dark ? 0.12 : 0.06))
-  const buf = await img.extend({ top: pad, bottom: pad, left: pad, right: pad, background: bg })
-    .resize({ width: 320, height: 160, fit: 'inside', withoutEnlargement: true })
+  const buf = await sharp(fitted).extend({ top: pad, bottom: pad, left: pad, right: pad, background: bg })
     .webp({ quality: 90 }).toBuffer()
   writeFileSync(join(OUT, `${slug}.webp`), buf)
 }
