@@ -57,7 +57,7 @@ Secrets, claim codes and conference registration totals are deliberately **not**
 | 0044_exhibitor_stage_talks | `innovation_talks.exhibitor_id`, `speaker_title`, `speaker_bio`, `speaker_photo_url`, `showcase`, `duration_min`, `starts_at`, `details_updated_at`, and `idx_innovation_talks_exhibitor` (one talk per exhibitor). **Do not run it again**: `ADD COLUMN` is not idempotent, so a second run errors at its first line. Backup taken just before: `backup-pre-0044-2026-09-24.sql` |
 
 | 0045_payment_orders | `payment_orders`, one row per attempt sent to the payment gateway. Applied 4 Oct 2026 (backup `backup-pre-0045-2026-10-04.sql`). `IF NOT EXISTS` throughout, so it is safe to run twice, and it was |
-| 0046_checkout_leads | `checkout_leads`: what the paid form was given by people who closed it before Proceed, and the "finish paying" reminder record for everyone. **Not applied yet (4 Oct 2026).** Until it runs, the forms keep nothing and reminders are refused. `IF NOT EXISTS` throughout |
+| 0046_checkout_leads | `checkout_leads`: what the paid form was given by people who closed it before Proceed, and the "finish paying" reminder record for everyone. Applied 4 Oct 2026 (backup `backup-pre-0046-2026-10-04.sql`), and a live capture checked straight after. `IF NOT EXISTS` throughout |
 
 The "no such column" fallback in `GET /api/events/:id/innovation-talks` stays even though 0044 is applied: it is what keeps a database that is a migration behind (a fresh copy, a half-run file) answering instead of failing.
 
@@ -326,7 +326,7 @@ Set the value to `on` to switch it back. (The older value `muni` still means off
 - The working key is only ever a Worker secret. It is not in the repo, the database, the settings screen or any page.
 - Order statuses: `created`, `paid`, `failed`, `aborted`, `awaited`, `mismatch`.
 
-### People who stop part-way, and "Remind to pay" (built 4 Oct 2026, needs 0046)
+### People who stop part-way, and "Remind to pay" (live 4 Oct 2026)
 The organiser asked for abandoned checkouts to be captured and followed up. Three ways to stop, all on Admin → Payments under **Didn't finish paying**:
 
 | Stopped | What is kept | The reminder's button goes to |
@@ -343,11 +343,7 @@ The organiser asked for abandoned checkouts to be captured and followed up. Thre
 - It is campaign mail: the unsubscribe footer is on it.
 - The capture endpoint (`POST /api/payments/checkout-lead`) is public, answers `{"ok":true}` whatever it did (so it reveals nobody's registration), and keeps no more than 30 new addresses an hour from one IP.
 
-To apply 0046 (backup first):
-```
-npx wrangler d1 export bharatai-production --remote --output=backup-pre-0046-2026-10-04.sql
-npx wrangler d1 execute bharatai-production --remote --file=migrations/0046_checkout_leads.sql
-```
+0046 was applied on 4 Oct 2026. The three test registrations made while proving checkout live (#2697, #2698, #2699, with their 4 orders and sign-in tokens) were deleted the same day after a backup. By then two real buyers had already reached CCAvenue without paying (an Academic and a VIP); they are the first entries under "Didn't finish paying". A real successful payment had still not been made at the end of that day, so the Success path is proven only by the test suites.
 
 ### Decisions the organiser has not been asked yet (built to the cautious answer)
 - **Invoices stay a person's step.** They use the accountant's number series and need the buyer's GSTIN; issuing one per payment automatically would be quick to add once the CA agrees.
