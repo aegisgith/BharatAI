@@ -1121,7 +1121,6 @@ const CAMPUS_PANELS: Record<string, CampusPanel> = {
     claimOpensAt: '2026-09-21T12:00:00+05:30', claimClosesAt: '2026-09-23T23:59:59+05:30',
     hostLogo: '/images/campus/djsanghvi-logo.png',
     speakers: [
-      { name: 'Dr. Hari Vasudevan', role: 'Principal', org: 'Dwarkadas J. Sanghvi College of Engineering' },
       { name: 'Dr. Ashish Tendulkar', role: 'AI Practice Manager', org: 'Google' },
       { name: 'Bhupesh Daheria', role: 'CEO, Aegis School of Data Science & AI; Founder, Assessfy' },
       { name: 'Virendra Pal', role: 'AI & FinTech Expert' },
@@ -1144,13 +1143,10 @@ const CAMPUS_PANELS: Record<string, CampusPanel> = {
     speakers: [
       { name: 'Prof. R. K. Brojen Singh', role: 'Professor & Dean, School of Computational and Integrative Sciences, JNU', photo: '/images/email/brojen-singh.jpg' },
       { name: 'Prof. Sougata Mukherjea', role: 'Professor of Practice, Computer Technology, IIT Delhi', photo: '/images/email/sougata-mukherjea.jpg' },
-      { name: 'Dr. Buddha Chandrashekhar', role: 'CEO, Anuvadini AI; Chief Coordinating Officer, AICTE, Ministry of Education', photo: '/images/email/buddha-chandrashekhar.jpg' },
       { name: 'Madhvendra Singh', role: 'Chief Executive Officer, Electronics Sector Skills Council of India (ESSCI)', photo: '/images/email/madhvendra-singh.jpg' },
-      { name: 'Dr. Rajkumar Upadhyay', role: 'CEO & Chairman, Board of Directors, C-DOT', photo: '/images/email/rajkumar-upadhyay.jpg' },
       { name: 'Parna Ghosh', role: 'President, Group CIO & Data Protection Officer, Uno Minda', photo: '/images/email/parna-ghosh.jpg' },
       { name: 'Bhupesh Daheria', role: 'CEO, Aegis School of Data Science; Founder, Assessfy', photo: '/images/email/bhupesh-daheria.jpg' },
       { name: 'Shreenivas Chetlapalli', role: 'Vice President, Technology and Strategy (TSO), Jade Global', photo: '/images/email/shreenivas-chetlapalli.jpg' },
-      { name: 'Dr. Nishakant Ojha', role: 'Chief Advisor, Strategic Affairs', photo: '/images/email/nishakant-ojha.jpg' },
       { name: 'Priyanka Srivastava', role: 'Senior Editor, Education Times (Moderator)', photo: '/images/email/priyanka-srivastava.jpg' },
     ],
     hashtags: '#BharatAIInnovation #CampusSeries #JNU #AI #Employability #FutureOfWork',
