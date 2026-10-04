@@ -6,7 +6,7 @@
 //    trimmed (many arrive as a small wordmark in a big white square), never
 //    enlarged past the source.
 // 2. The block between <!-- exhibitors:start --> and <!-- exhibitors:end --> in
-//    public/index.html (a scrolling strip) and public/exhibition.html (the grid).
+//    public/index.html (a strip of chips) and public/exhibition.html (the wall).
 // 3. The same markers in public/llms.txt, so AI assistants can name exhibitors.
 // 4. scripts/sql/exhibitor-logos.sql — fills exhibitors.logo_url for the app's
 //    Exhibitors tab. The organiser runs it; it never overwrites a logo set by hand.
@@ -23,6 +23,7 @@
 // at the organiser's request, with no exhibitor or booth row yet.
 //
 // The names are printed under every logo: half of these are symbol-only marks.
+// `optical` enlarges a lockup whose small lettering would otherwise be lost.
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
@@ -33,13 +34,13 @@ const OUT = 'public/images/exhibitors'
 
 const EXHIBITORS = [
   { name: 'Actin Technologies', file: 'Actin Technologies logo.jpg' },
-  { name: 'Aegis School of Data Science & AI', file: 'Our Logo/logo-aegis (1) (1).webp' },
+  { name: 'Aegis School of Data Science & AI', file: 'Our Logo/logo-aegis (1) (1).webp', optical: 1.15 },
   { name: 'Ai Vie Insights', file: 'Ai Vie Insights Private Limited.jpg', db: [9, 'Ai Vie Insights Private Limited'] },
   { name: 'AlgoAnalytics', file: 'Algo Analytics.jpg', db: [6, 'Algo Analytics'] },
   { name: 'Amnex Infotechnologies', file: 'Amnex infotech logo.jpg', db: [22, 'Amnex technologies'] },
   { name: 'Ary-Soft', file: 'ary-soft logo.jpg', db: [31, 'ary-soft'] },
   { name: 'Asmadiya Technologies', file: 'Asmadiya technologies.jpg', db: [12, 'Asmadiya'] },
-  { name: 'Assessfy', file: 'Our Logo/Assessfy.png' },
+  { name: 'Assessfy', file: 'Our Logo/Assessfy.png', optical: 1.15 },
   { name: 'CGI', file: 'CGI logo.jpg', db: [5, 'CGI'] },
   { name: 'Cosmica Telematics', file: 'COSMICA TELEMATICS PRIVATE LIMITED.jpg', db: [8, 'COSMICA TELEMATICS PRIVATE LIMITED'] },
   { name: 'Daten Technology Solutions', file: 'Daten Technology Solutions logo.jpg', db: [16, 'Daten Intelligenz Software, AIGyan Technologies'] },
@@ -47,8 +48,8 @@ const EXHIBITORS = [
   { name: 'Eurys Infosystems', file: 'EURYS infosystemS private limited.jpg', db: [15, 'EURYS infosystemS private limited'] },
   { name: 'Evoke Technologies', file: 'Evoke Technologies logo.jpg', db: [27, 'Evoke Technologies'] },
   { name: 'Gupshup.ai', file: 'gupshup ai logo.jpg' },
-  { name: 'Harrier Information Systems', file: 'Harrier information system pvt ltd logo.jpg', db: [25, 'Harrier Information Systems Pvt. Ltd.'] },
-  { name: 'Image Infosystems', file: 'Image Infosystem.jpg', db: [4, 'Image Infosystem'] },
+  { name: 'Harrier Information Systems', file: 'Harrier information system pvt ltd logo.jpg', db: [25, 'Harrier Information Systems Pvt. Ltd.'], optical: 1.1 },
+  { name: 'Image Infosystems', file: 'Image Infosystem.jpg', db: [4, 'Image Infosystem'], optical: 1.3 },
   { name: 'Indigloo Software', file: 'Indigloo Software Pvt Ltd logo.jpg', db: [32, 'Indigloo Software Pvt Ltd'] },
   { name: 'Info Science Labs', file: 'Info Science Labs logo.jpg' },
   { name: 'Intangles', file: 'Intangles Logo.jpg', db: [3, 'Intangles'] },
@@ -58,7 +59,7 @@ const EXHIBITORS = [
   { name: 'Kirusa', file: 'Kirusa Inc.jpg', db: [20, 'Kirusa Inc'] },
   { name: 'LightMetrics', file: 'LightMetrics logo.jpg' },
   // The ministry's own logo (organiser, 4 Oct), replacing an old Azadi Ka Amrit Mahotsav graphic.
-  { name: 'Ministry of Tribal Affairs', file: 'Ministry_of_Tribal_Affairs.svg', db: [24, 'Ministry of Tribal Affairs'] },
+  { name: 'Ministry of Tribal Affairs', file: 'Ministry_of_Tribal_Affairs.svg', db: [24, 'Ministry of Tribal Affairs'], optical: 1.3 },
   { name: 'NoBroker', file: 'NoBroker Technologies Solutions Private Limited.jpg', db: [10, 'NoBroker Technologies Solutions Private Limited'] },
   { name: 'Omnirises Technologies', file: 'Omnirises Technologies logo.jpg' },
   { name: 'Oranje AI', file: 'ORANJE AI PRIVATE LIMITED logo.jpg', db: [14, 'ORANJE AI PRIVATE LIMITED'] },
@@ -140,7 +141,19 @@ if (srcDir) {
 }
 for (const e of [...all, media]) Object.assign(e, await size(e.slug))
 
-const img = (e, cls = '') => `<img${cls} src="/images/exhibitors/${e.slug}.webp" width="${e.w}" height="${e.h}" alt="" loading="lazy" decoding="async">`
+// Optical sizing. At one shared height a wide wordmark shouts and a square mark
+// whispers, so the displayed height falls as the logo gets wider (aspect^-0.4,
+// a little gentler than equal area, which leaves long wordmarks too small).
+// The page scales the result per screen size through --ls.
+for (const e of all) {
+  const r = e.w / e.h
+  let h = 52 * Math.pow(r, -0.4) * (e.optical || 1)
+  h = Math.min(58, Math.max(24, h))
+  if (h * r > 180) h = 180 / r
+  e.lh = Math.round(h)
+}
+
+const img = (e, style = '') => `<img src="/images/exhibitors/${e.slug}.webp" width="${e.w}" height="${e.h}"${style ? ` style="${style}"` : ''} alt="" loading="lazy" decoding="async">`
 const START = '<!-- exhibitors:start (generated by scripts/gen-exhibitor-logos.mjs: edit the list there, not here) -->'
 
 // Both pages show the exhibitors as rows that drift in opposite directions,
@@ -154,7 +167,10 @@ const START = '<!-- exhibitors:start (generated by scripts/gen-exhibitor-logos.m
 //   offset, so there are no columns to multiply by rows (3 rows of 7 equal
 //   cards read as "21" at a glance, under half the real number);
 // - rows are dense enough that a wide screen shows about every exhibitor at
-//   once, which is the true scale, without a logo repeating in view.
+//   once, which is the true scale, without a logo repeating in view. The row
+//   count grows with the list (rowsFor): about 11 logos a row on the
+//   exhibition page, 14 on the home page. More rows than that would put the
+//   same logo twice on one screen, which reads as padding.
 // Each row leads with a recognisable name (FEATURED), then the rest at random.
 // The second copy of each row makes the loop seamless; screen readers skip it.
 const FEATURED = ['CGI', 'NoBroker', 'Gupshup.ai', 'Jade Global', 'Evoke Technologies', 'Ministry of Tribal Affairs']
@@ -162,21 +178,29 @@ for (const n of FEATURED) if (!all.some((e) => e.name === n)) throw new Error(`F
 for (const e of all) e.featured = FEATURED.includes(e.name)
 const ordered = [...all.filter((e) => e.featured), ...all.filter((e) => !e.featured)]
 const deal = (n) => ordered.reduce((rows, e, i) => (rows[i % n].push(e), rows), Array.from({ length: n }, () => []))
+const rowsFor = (perRow, min, max) => Math.min(max, Math.max(min, Math.round(all.length / perRow)))
 const feat = (e) => (e.featured ? ' data-featured' : '')
 
 // Runs at load. Without it the build-time order above stays, which is fine.
 const SHUFFLE = `<script>
 (function () {
   var wall = document.getElementById('exhibitors');
-  var rows = wall ? wall.querySelectorAll('.exh-row') : [];
-  if (!rows.length) return;
+  var all = wall ? Array.prototype.slice.call(wall.querySelectorAll('.exh-row')) : [];
+  if (!all.length) return;
   var featured = [], rest = [];
-  rows.forEach(function (row) {
+  all.forEach(function (row) {
     Array.prototype.slice.call(row.querySelector('.exh-track').children).forEach(function (li) {
       if (li.classList.contains('exh-cta-tile')) return;
       (li.hasAttribute('data-featured') ? featured : rest).push(li);
     });
   });
+  // A very wide screen shows more tiles per row than a row holds, so the same
+  // logo would appear twice: deal into one row fewer there (never below three).
+  var rows = all;
+  if (window.innerWidth >= 1700 && all.length > 3) {
+    rows = all.slice(0, all.length - 1);
+    all[all.length - 1].hidden = true;
+  }
   function shuffle(a) {
     for (var i = a.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)); var t = a[i]; a[i] = a[j]; a[j] = t; }
     return a;
@@ -208,30 +232,33 @@ const SHUFFLE = `<script>
 </script>`
 
 const marquee = (cls, rows, item, tail = '') => `    <div class="${cls}">
-${rows.map((r, i) => `      <div class="exh-row${i % 2 ? ' exh-row-rev' : ''}" style="--exh-dur:${[84, 100, 76, 92][i % 4]}s;--exh-delay:-${[0, 41, 23, 57][i % 4]}s">
+${rows.map((r, i) => `      <div class="exh-row${i % 2 ? ' exh-row-rev' : ''}" style="--exh-dur:${[84, 100, 76, 92, 88, 96][i % 6]}s;--exh-delay:-${[0, 41, 23, 57, 12, 33][i % 6]}s">
 ${[0, 1].map((copy) => `        <ul class="exh-track"${copy ? ' aria-hidden="true"' : ' aria-label="Exhibitors"'}>
 ${r.map(item).join('\n')}${tail && i % 2 === 0 ? '\n' + tail(copy) : ''}
         </ul>`).join('\n')}
       </div>`).join('\n')}
     </div>`
 
-const chip = (e) => `          <li class="exh-chip"${feat(e)}>${img(e)}<span>${esc(e.name)}</span></li>`
-const card = (e) => `          <li class="exh-card"${feat(e)}><span class="exh-logo">${img(e)}</span><span class="exh-name">${esc(e.name)}</span></li>`
+const chip = (e) => `          <li class="exh-chip"${feat(e)}>${img(e, `--lh:${e.lh}px`)}<span>${esc(e.name)}</span></li>`
+const card = (e) => `          <li class="exh-card"${feat(e)}><span class="exh-logo">${img(e, `--lh:${e.lh}px`)}</span><span class="exh-name">${esc(e.name)}</span></li>`
 // A call to action at the end of every other exhibition row (more than one or
 // two in view reads as empty booths), plainly labelled: an invitation, not an
 // exhibitor.
 const ctaTile = (copy) => `          <li class="exh-card exh-cta-tile"><a href="#packages"${copy ? ' tabindex="-1"' : ''}><span class="exh-cta-plus" aria-hidden="true">+</span><span class="exh-name">Your company here</span><span class="exh-cta-link">Book a booth &rarr;</span></a></li>`
 const mediaLine = `<p class="exh-media"><span class="exh-media-label">Digital media partner</span><span class="exh-media-name">${img(media)}<span>${esc(media.name)}</span></span></p>`
+// Who is on the floor, by kind, naming only exhibitors with a confirmed booth so
+// the line stays true if a held booth falls through.
+const WHO = 'Global IT firms like CGI, platforms like NoBroker, AI startups and the Ministry of Tribal Affairs, showing their work to enterprise and government buyers.'
 
 const home = `${START}
 <section class="section-pad-sm exh-strip" id="exhibitors">
     <div class="container">
         <div class="section-header reveal">
             <h2 class="section-title">Already on the <span class="accent">exhibition floor</span></h2>
-            <p class="section-subtitle">AI companies, enterprises and government departments taking a stand at WTC Mumbai, 20&ndash;21 November 2026.</p>
+            <p class="section-subtitle">${WHO}</p>
         </div>
     </div>
-${marquee('exh-marquee', deal(3), chip)}
+${marquee('exh-marquee', deal(rowsFor(14, 2, 4)), chip)}
     <div class="container exh-strip-foot">
         ${mediaLine}
         <div class="exh-strip-ctas">
@@ -248,10 +275,10 @@ const grid = `${START}
     <div class="container">
         <div class="section-header reveal">
             <h2 class="section-title">Join the companies <span class="accent">already exhibiting</span></h2>
-            <p class="section-subtitle">AI companies, enterprises and government departments taking a stand at WTC Mumbai, 20&ndash;21 November 2026.</p>
+            <p class="section-subtitle">${WHO}</p>
         </div>
     </div>
-${marquee('exh-marquee exh-wall', deal(4), card, ctaTile)}
+${marquee('exh-marquee exh-wall', deal(rowsFor(11, 3, 6)), card, ctaTile)}
     <div class="container">
         ${mediaLine}
         <p class="exh-cta"><a href="#packages" class="btn btn-primary">Book your booth</a></p>
