@@ -19,7 +19,8 @@
 // LightMetrics, Teenage Works, ValuEnable and Xtant Tech were "held" in
 // booth_allocations; gupshup.ai, Omnirises, Pramaana Labs and Vassar Labs were not
 // in the database at all. They are listed because the organiser's logo folder
-// lists them.
+// lists them. Aegis School of Data Science & AI and Assessfy were added on 4 Oct
+// at the organiser's request, with no exhibitor or booth row yet.
 //
 // The names are printed under every logo: half of these are symbol-only marks.
 
@@ -32,11 +33,13 @@ const OUT = 'public/images/exhibitors'
 
 const EXHIBITORS = [
   { name: 'Actin Technologies', file: 'Actin Technologies logo.jpg' },
+  { name: 'Aegis School of Data Science & AI', file: 'Our Logo/logo-aegis (1) (1).webp' },
   { name: 'Ai Vie Insights', file: 'Ai Vie Insights Private Limited.jpg', db: [9, 'Ai Vie Insights Private Limited'] },
   { name: 'AlgoAnalytics', file: 'Algo Analytics.jpg', db: [6, 'Algo Analytics'] },
   { name: 'Amnex Infotechnologies', file: 'Amnex infotech logo.jpg', db: [22, 'Amnex technologies'] },
   { name: 'Ary-Soft', file: 'ary-soft logo.jpg', db: [31, 'ary-soft'] },
   { name: 'Asmadiya Technologies', file: 'Asmadiya technologies.jpg', db: [12, 'Asmadiya'] },
+  { name: 'Assessfy', file: 'Our Logo/Assessfy.png' },
   { name: 'CGI', file: 'CGI logo.jpg', db: [5, 'CGI'] },
   { name: 'Cosmica Telematics', file: 'COSMICA TELEMATICS PRIVATE LIMITED.jpg', db: [8, 'COSMICA TELEMATICS PRIVATE LIMITED'] },
   { name: 'Daten Technology Solutions', file: 'Daten Technology Solutions logo.jpg', db: [16, 'Daten Intelligenz Software, AIGyan Technologies'] },

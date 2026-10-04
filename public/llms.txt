@@ -92,11 +92,13 @@ All prices exclude 18% GST. 93 booths total across 8 industry zones.
 Companies and organisations exhibiting at Bharat AI Innovation 2026 (list updated 3 October 2026; see https://bharataiinnovation.com/exhibition#exhibitors):
 
 - Actin Technologies
+- Aegis School of Data Science & AI
 - Ai Vie Insights
 - AlgoAnalytics
 - Amnex Infotechnologies
 - Ary-Soft
 - Asmadiya Technologies
+- Assessfy
 - CGI
 - Cosmica Telematics
 - Daten Technology Solutions
