@@ -39,23 +39,26 @@ const check = (n, ok, d) => { console.log((ok ? 'PASS ' : 'FAIL ') + n + (ok ? '
 
 // ---- the switch ----
 let r = await hit('/api/payments/config', {}, envOf());
-check('no secrets: checkout stays on mUni Campus', r.status === 200 && r.json?.gateway === 'muni', r.status + ' ' + r.text);
+check('no secrets: checkout is off', r.status === 200 && r.json?.gateway === 'off', r.status + ' ' + r.text);
 r = await hit('/api/payments/config', {}, envOf({ CCAVENUE_MERCHANT_ID: '1', CCAVENUE_ACCESS_CODE: 'x' }));
-check('two of three secrets is not enough', r.json?.gateway === 'muni', r.text);
+check('two of three secrets is not enough', r.json?.gateway === 'off', r.text);
 state.table = false;
 r = await hit('/api/payments/config');
-check('secrets set but migration 0045 not run: still mUni', r.json?.gateway === 'muni', r.text);
+check('secrets set but migration 0045 not run: still off', r.json?.gateway === 'off', r.text);
 r = await start(1, 'Delegate Pass');
-check('start answers 503 not_configured before the table exists', r.status === 503 && r.json?.error === 'not_configured', r.status + ' ' + r.text);
+check('start answers 503 with a sentence for the buyer, and no other gateway', r.status === 503 && r.json?.error === 'not_configured' && /not available just now/.test(r.json?.message || '') && !/muni/i.test(r.text), r.status + ' ' + r.text);
 state.table = true;
+state.settings.payment_gateway = 'off';
+r = await hit('/api/payments/config');
+check('Settings payment_gateway = off switches it off without a deploy', r.json?.gateway === 'off', r.text);
 state.settings.payment_gateway = 'muni';
 r = await hit('/api/payments/config');
-check('Settings payment_gateway = muni switches it off without a deploy', r.json?.gateway === 'muni', r.text);
+check('the old value muni still means off, and sends nobody anywhere else', r.json?.gateway === 'off', r.text);
 delete state.settings.payment_gateway;
 r = await hit('/api/payments/config');
 check('secrets + table: checkout is on this site', r.json?.gateway === 'ccavenue' && /no-store/.test(r.h['cache-control'] || ''), r.text);
 r = await hit('/api/payments/config', {}, envOf({ ...SECRETS, SESSION_SECRET: undefined, ADMIN_SECRET: undefined }));
-check('no session secret: stays off (an order must belong to someone)', r.json?.gateway === 'muni', r.text);
+check('no session secret: stays off (an order must belong to someone)', r.json?.gateway === 'off', r.text);
 
 // ---- starting an order ----
 person(1);
@@ -213,12 +216,12 @@ const allOk = (g) => !!g && Object.keys(g).length === 6 && Object.values(g).ever
 check('queue: with everything in place, every gateway check reads ok', allOk(q.gateway_checks), JSON.stringify(q.gateway_checks));
 check('queue: no secret value is ever in the answer', !r.text.includes(KEY) && !r.text.includes(SECRETS.CCAVENUE_ACCESS_CODE) && !r.text.includes(SECRETS.CCAVENUE_MERCHANT_ID), 'secret in answer');
 r = await hit('/api/admin/payments-pending', { headers: { Authorization: 'Bearer smoke-admin' } }, envOf());
-check('queue: with no secrets it says which three are missing', r.json?.gateway === 'muni' && ['CCAVENUE_MERCHANT_ID', 'CCAVENUE_ACCESS_CODE', 'CCAVENUE_WORKING_KEY'].every(k => r.json?.gateway_checks?.[k] === 'missing') && r.json?.gateway_checks?.payment_orders_table === 'ok', JSON.stringify(r.json?.gateway_checks));
+check('queue: with no secrets it says which three are missing', r.json?.gateway === 'off' && ['CCAVENUE_MERCHANT_ID', 'CCAVENUE_ACCESS_CODE', 'CCAVENUE_WORKING_KEY'].every(k => r.json?.gateway_checks?.[k] === 'missing') && r.json?.gateway_checks?.payment_orders_table === 'ok', JSON.stringify(r.json?.gateway_checks));
 r = await hit('/api/admin/payments-pending', { headers: { Authorization: 'Bearer smoke-admin' } }, envOf({ ...SECRETS, CCAVENUE_WORKING_KEY: 'pasted with the wrong row' }));
 check('queue: a working key that is not 32 hex characters is reported, not hidden', r.json?.gateway_checks?.CCAVENUE_WORKING_KEY === 'set, but not the usual shape' && !r.text.includes('pasted with the wrong row'), JSON.stringify(r.json?.gateway_checks));
-state.settings.payment_gateway = 'muni';
+state.settings.payment_gateway = 'off';
 r = await hit('/api/admin/payments-pending', { headers: { Authorization: 'Bearer smoke-admin' } });
-check('queue: the Settings switch is reported', r.json?.gateway === 'muni' && /^off/.test(r.json?.gateway_checks?.switch || ''), JSON.stringify(r.json?.gateway_checks));
+check('queue: the Settings switch is reported', r.json?.gateway === 'off' && /^off/.test(r.json?.gateway_checks?.switch || ''), JSON.stringify(r.json?.gateway_checks));
 delete state.settings.payment_gateway;
 const paid = (q.paid_online || []).find(x => x.order_id === A.order_id);
 check('queue: a payment taken here waits for its invoice, order and reference filled in', paid?.amount === 5898.82 && paid?.tracking_id === '115023456789' && paid?.badge_type === 'Delegate Pass' && paid?.id === 1 && !!paid?.paid_on, JSON.stringify(paid));
@@ -241,9 +244,12 @@ for (const m of ['id="online-card"', 'openForm(i, fromOnline)', 'Raise invoice']
 r = await hit('/register');
 let parsed = 0; try { parsed = scriptsParse(r.text); } catch (e) { parsed = -1; console.log('  /register script: ' + e.message); }
 check('/register renders and every inline script parses', r.status === 200 && parsed > 0, r.status + ' ' + parsed);
-for (const m of ['function startOnlinePayment', 'function loadPayGateway', 'id="rpp-next-copy"', "PAY_GATEWAY === 'ccavenue'", 'function muniPayUrl']) check('/register carries ' + m, r.text.includes(m), 'missing');
+for (const m of ['function startOnlinePayment', 'id="rpp-next-copy"', 'Checkout opens on <strong>CCAvenue</strong>']) check('/register carries ' + m, r.text.includes(m), 'missing');
+const GONE = ['municampus.com', 'muniPayUrl', 'mUni Campus', 'PAY_GATEWAY', 'window.open(\'\', \'_blank\')'];
+for (const m of GONE) check('/register has no trace of ' + m, !r.text.includes(m), 'still there');
 r = await hit('/app');
-for (const m of ['function startOnlinePayment', 'function payPendingPass', 'id="pcc-pay-btn"', 'id="pp-next-copy"', 'function muniPayUrl']) check('/app carries ' + m, r.text.includes(m), 'missing');
+for (const m of ['function startOnlinePayment', 'function payPendingPass', 'id="pcc-pay-btn"', 'id="pp-next-copy"', 'Checkout opens on <strong>CCAvenue</strong>']) check('/app carries ' + m, r.text.includes(m), 'missing');
+for (const m of GONE.concat(['pass_upgrade'])) check('/app has no trace of ' + m, !r.text.includes(m), 'still there');
 r = await hit('/admin');
 for (const m of ['_paidOnline', 'Paid online: invoice to raise', 'openInvoiceFor(idx, fromOnline)', 'id="gateway-checks"', 'What it is waiting for']) check('/admin carries ' + m, r.text.includes(m), 'missing');
 

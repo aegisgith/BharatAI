@@ -3,7 +3,8 @@
 // - /app, /admin, /register, /finance, /pay/*, /api/payments/*, the payments queues:
 //   the REAL built worker, with the stand-in D1 from pay-db.mjs.
 // - registration and the rest of /api/*: canned answers over the same state.
-// - the gateway itself is played by the test (it intercepts secure.ccavenue.com).
+// - the gateway itself is played by the test (it intercepts secure.ccavenue.com,
+//   and counts any request to municampus.com, which must stay at zero).
 // - everything else: public/.
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';

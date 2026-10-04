@@ -28,8 +28,8 @@ type Bindings = {
   // The event's own CCAvenue merchant account (their dashboard: Settings, API
   // Keys). Set with `npx wrangler pages secret put <NAME> --project-name
   // bharatai-networking`, never in this repo or the database. All three must be
-  // present before a paid pass is sold here; until then checkout stays on mUni
-  // Campus. See ONLINE PAYMENTS below.
+  // present before a paid pass can be bought: this is the only way to pay.
+  // See ONLINE PAYMENTS below.
   CCAVENUE_MERCHANT_ID?: string
   CCAVENUE_ACCESS_CODE?: string
   CCAVENUE_WORKING_KEY?: string
@@ -776,7 +776,7 @@ function senderEmailOrDefault(v?: string | null): string {
 
 // A self-declared paid tier confers nothing until payment is confirmed. The tier
 // itself must still be recorded at registration, because the paid flow sets it
-// before redirecting to mUni Campus and nothing sets it afterwards.
+// before sending the buyer to checkout.
 // Activates only once migration 0015 has added the column, so this deploy is safe
 // on its own.
 const PAID_TIERS = ['Delegate Pass', 'VIP Pass', 'Academic Pass']
@@ -1931,7 +1931,7 @@ async function createInvoice(c: any, b: any) {
   // own reference, copied in by whoever checked the payment report. Requiring it
   // means no invoice can exist that cannot be traced back to a transaction.
   if (!String(b.order_ref || '').trim() && !String(b.payment_ref || '').trim()) {
-    return c.json({ error: 'Add the mUni order number or the CCAvenue reference. An invoice must point at a payment that can be checked.' }, 400)
+    return c.json({ error: 'Add the order number or the CCAvenue reference. An invoice must point at a payment that can be checked.' }, 400)
   }
 
   // The charged total is the anchor. Deriving it from a taxable value would let
@@ -2051,10 +2051,13 @@ async function createInvoice(c: any, b: any) {
 // its own CCAvenue merchant account, so checkout starts here and the answer lands
 // here: the pass is unlocked the moment the gateway says the money arrived.
 //
+// CCAvenue is the only way to pay (organiser, 4 Oct 2026): the forms never send
+// anybody to mUni Campus any more.
+//
 // The three credentials are Worker secrets (CCAVENUE_MERCHANT_ID, _ACCESS_CODE and
-// _WORKING_KEY). Until all three are set and migration 0045 has run, every paid
-// pass keeps going to mUni Campus exactly as before, and app_settings
-// payment_gateway = 'muni' sends them back there without a deploy.
+// _WORKING_KEY). Checkout needs all three and migration 0045; without them, or
+// with app_settings payment_gateway = 'off', a buyer is told online payment is not
+// available and nothing else happens. Admin, Payments says which piece is missing.
 //
 // What is trusted, and what is not:
 //  - The amount is decided here, from PASS_PRICES_INR, and written to
@@ -2106,11 +2109,13 @@ async function paymentOrdersReady(c: any): Promise<boolean> {
 
 // The one question every caller asks: is checkout on this site live right now?
 // Needs the three secrets, a session secret (an order belongs to whoever is signed
-// in), the table, and nobody having switched it back to mUni in Settings.
+// in), the table, and nobody having switched it off in Settings ('off'; the old
+// value 'muni' still means off).
+const paymentSwitchedOff = (v: string): boolean => ['off', 'muni'].includes(String(v || '').trim().toLowerCase())
 async function onlinePaymentsOn(c: any): Promise<CcavenueConfig | null> {
   const cfg = ccavenueConfig(c)
   if (!cfg || !attendeeSessionSecret(c)) return null
-  if ((await settingValue(c, 'payment_gateway')).trim().toLowerCase() === 'muni') return null
+  if (paymentSwitchedOff(await settingValue(c, 'payment_gateway'))) return null
   return (await paymentOrdersReady(c)) ? cfg : null
 }
 
@@ -2127,7 +2132,7 @@ async function onlinePaymentsChecks(c: any): Promise<Record<string, string>> {
     CCAVENUE_WORKING_KEY: shape(v('CCAVENUE_WORKING_KEY'), /^[0-9A-Fa-f]{32}$/),
     session_secret: attendeeSessionSecret(c) ? 'ok' : 'missing',
     payment_orders_table: (await paymentOrdersReady(c)) ? 'ok' : 'missing (run migration 0045)',
-    switch: (await settingValue(c, 'payment_gateway')).trim().toLowerCase() === 'muni' ? 'off (app_settings payment_gateway = muni)' : 'ok',
+    switch: paymentSwitchedOff(await settingValue(c, 'payment_gateway')) ? 'off (app_settings payment_gateway)' : 'ok',
   }
 }
 
@@ -2177,13 +2182,13 @@ function payRefusal(a: any): string | null {
 // before anyone is signed in; it says nothing but the one word.
 app.get('/api/payments/config', async (c) => {
   c.header('Cache-Control', 'no-store')
-  return c.json({ gateway: (await onlinePaymentsOn(c)) ? 'ccavenue' : 'muni' })
+  return c.json({ gateway: (await onlinePaymentsOn(c)) ? 'ccavenue' : 'off' })
 })
 
-// Step one: record the order, at our price, for whoever is signed in. 503 tells
-// the form to fall back to mUni Campus.
+// Step one: record the order, at our price, for whoever is signed in. 503 means
+// checkout is off, and the sentence that goes with it is shown to the buyer.
 app.post('/api/payments/ccavenue/start', async (c) => {
-  if (!(await onlinePaymentsOn(c))) return c.json({ error: 'not_configured', message: 'Online payment is not switched on yet.' }, 503)
+  if (!(await onlinePaymentsOn(c))) return c.json({ error: 'not_configured', message: 'Online payment is not available just now. Your details are saved. Please try again in a little while, or write to info@bharataiinnovation.com.' }, 503)
   const me = await verifyAttendeeSession(c)
   if (!me) return c.json({ error: 'Please sign in again to continue.' }, 401)
   const body = await c.req.json().catch(() => ({})) as any
@@ -2551,7 +2556,7 @@ async function pendingPaymentsJSON(c: any) {
 
   return c.json({
     ready: true,
-    gateway: (await onlinePaymentsOn(c)) ? 'ccavenue' : 'muni',
+    gateway: (await onlinePaymentsOn(c)) ? 'ccavenue' : 'off',
     gateway_checks: await onlinePaymentsChecks(c),
     results: (results || []).map((r: any) => {
       const [order_id, status, created_at] = String(r.last_order || '').split('|')
@@ -3191,7 +3196,7 @@ function financeHTML(me: any): string {
   </div>
   <div class="card">
     <h2>Waiting on payment confirmation</h2>
-    <p class="muted">Everyone who chose a paid pass and has not been confirmed. A payment taken on mUni Campus sends nothing back to this site, so check the order in the gateway report first. Confirming here raises the GST invoice, emails it, and unlocks their pass in one step.</p>
+    <p class="muted">Everyone who chose a paid pass and has not been confirmed. A payment made on this site confirms itself and moves to the list above, so anyone here has either not paid or paid some other way (a bank transfer, or mUni Campus before 4 October): check that payment first. Confirming here raises the GST invoice, emails it, and unlocks their pass in one step.</p>
     <div id="pending">Loading&hellip;</div>
   </div>
   <div class="card">
@@ -3251,7 +3256,7 @@ function financeHTML(me: any): string {
    d.innerHTML = '<div><h2 style="margin:0 0 3px;font-size:16px;">Confirm payment &amp; issue invoice</h2>' +
      '<p class="muted">' + (paid
        ? 'Paid online through CCAvenue. The order number and reference came from the gateway, so there is nothing to copy. Add the GSTIN and address if the buyer sent them.'
-       : 'Copy the order and reference from the CCAvenue or mUni report. An invoice cannot be raised without one &mdash; it has to point at a payment somebody can check.') + '</p>' +
+       : 'Copy the order number or the payment reference from the report it is in. An invoice cannot be raised without one &mdash; it has to point at a payment somebody can check.') + '</p>' +
      '<div class="grid">' +
        field('f-name', 'Buyer name', a ? a.name : '') +
        field('f-email', 'Email', a ? a.email : '') +
@@ -3259,7 +3264,7 @@ function financeHTML(me: any): string {
        field('f-gstin', 'Buyer GSTIN', '', '29AAICS0944E1ZB') +
        field('f-phone', 'Mobile', a ? a.mobile : '') +
        field('f-amount', 'Amount charged (INR)', paid ? paid.amount : (a ? a.expected : ''), '5898.82') +
-       field('f-order', paid ? 'Order number' : 'mUni order number', paid ? paid.order_id : '', '34364_1787816667') +
+       field('f-order', 'Order number', paid ? paid.order_id : '', 'BAI1432-MG3X0A1BK9ZQ') +
        field('f-payref', 'CCAvenue reference', paid ? 'CCAvenue ' + paid.tracking_id : '', 'CCAvenue 114772182155') +
        field('f-paid', paid ? 'Paid on (UTC, leave as it is)' : 'Paid on', paid ? paid.paid_at : '', 'YYYY-MM-DD HH:MM') +
        field('f-pos', 'Place of supply', '', 'taken from the GSTIN if left blank') +
@@ -5263,7 +5268,7 @@ app.post('/api/events/:id/attendees/register', async (c) => {
   const sourceValue = sanitizeRegistrationSource(registration_source)
 
   // A paid tier chosen at registration is recorded but marked unpaid; payment is
-  // confirmed out of band on mUni Campus, so it cannot be trusted from the client.
+  // confirmed by the payment gateway's answer, never by anything the client says.
   const needsPayment = PAID_TIERS.includes(passType)
   const withPaymentCol = await paymentStatusEnabled(c)
 
@@ -14723,25 +14728,9 @@ async function submitRegisterPaidPassForm(e) {
     return;
   }
 
-  // Open the payment tab NOW, while the user's click activation is still live.
-  // Opening it after the await below gets silently swallowed by popup blockers
-  // (iOS Safari especially), which made this button appear to do nothing.
-  // With the gateway on this site there is no second tab: checkout opens in this
-  // one and comes back here, so there is nothing for a popup blocker to swallow.
-  const direct = PAY_GATEWAY === 'ccavenue';
-  const payWin = direct ? null : window.open('', '_blank');
-  // Snapshot NOW: blocked popups are null (or a closed stub) immediately. Checked
-  // later, "blocked" and "user closed the tab meanwhile" look identical — and the
-  // latter must NOT hijack the current page.
-  const payWinOpened = !!payWin && !payWin.closed;
-  paintPayHoldingPage(payWin);
-
-  // The response used to be thrown away. A 403 verification_required, a 400 for a
-  // missing field, or a dropped connection all fell straight through to the payment
-  // tab, so someone could pay on mUni with no attendee row to reconcile it against -
-  // and mUni sends nothing back to this site, so that payment is unfindable.
-  // The tab is still opened BEFORE this await (see above) so iOS Safari keeps the
-  // click activation; on failure we close the tab we already opened.
+  // Save the details first: a payment with nobody to attach it to cannot be
+  // matched to a person afterwards. Checkout then opens in this same tab and
+  // comes back here, so there is no second tab for a popup blocker to swallow.
   try {
     const resp = await fetch('/api/events/1/attendees/register', {
       method: 'POST',
@@ -14755,68 +14744,21 @@ async function submitRegisterPaidPassForm(e) {
       throw new Error(data.message || (data.error && data.error !== 'verification_required' ? data.error : '') || 'We could not save your details, so checkout was not opened. Please try again.');
     }
   } catch (err) {
-    try { if (payWinOpened && !payWin.closed) payWin.close(); } catch (_) {}
     showToast((err && err.message) || 'Network error. Nothing was charged. Please try again.', 'error');
     btn.disabled = false;
     btn.innerHTML = '<i class="fas fa-arrow-right mr-2"></i>Proceed to Payment';
     return;   // modal stays open, details still typed in
   }
 
-  if (direct) {
-    const started = await startOnlinePayment(passType);
-    if (started.url || !started.fallback) {
-      btn.disabled = false;
-      btn.innerHTML = '<i class="fas fa-arrow-right mr-2"></i>Proceed to Payment';
-      if (started.url) window.location.href = started.url;
-      else showToast(started.error, 'error');
-      return;
-    }
-  }
-
-  const payUrl = muniPayUrl(passType);
-  if (payWinOpened && !payWin.closed) payWin.location.replace(payUrl);
-  else if (!payWinOpened) window.location.href = payUrl;  // popup blocked -> same tab, never a dead end
-  // else: tab opened but user closed it mid-flight — treat as cancel, stay put
-  closeRegisterPaidPassModal();
+  const started = await startOnlinePayment(passType);
   btn.disabled = false;
   btn.innerHTML = '<i class="fas fa-arrow-right mr-2"></i>Proceed to Payment';
+  if (started.url) { window.location.href = started.url; return; }
+  showToast(started.error, 'error');
 }
-
-// mUni Campus checkout deep-link. Their page ignores personal prefill params, but
-// DOES honour ?category=<id> — their own dropdown handler builds exactly this URL,
-// and the registration page renders it into "var category = '<id>'" which is then
-// POSTed with the signup. So this skips the event-page hop AND pre-selects the pass.
-// NB: ?type= is a DIFFERENT field (their eventType, hardcoded 0) — do not use it.
-// IDs are their category dropdown's option values; id=425 = Bharat AI 2026
-// (same event as the /event/BharatAI alias).
-function muniPayUrl(passType) {
-  const CATEGORY = { 'VIP Pass': 1, 'Visitor Pass': 2, 'Delegate Pass': 3, 'Academic Pass': 4 };
-  const c = CATEGORY[passType];
-  return c
-    ? 'https://municampus.com/event/event_registration.php?id=425&category=' + c
-    : 'https://municampus.com/event/BharatAI';  // unknown pass -> event page, user picks there
-}
-
-// Which checkout is live. The server answers ccavenue once the gateway on this
-// site is switched on; until it does, or if the question cannot be asked, the
-// mUni Campus path is used exactly as before.
-var PAY_GATEWAY = 'muni';
-function loadPayGateway() {
-  fetch('/api/payments/config').then(function (r) { return r.json(); }).then(function (j) {
-    PAY_GATEWAY = j && j.gateway === 'ccavenue' ? 'ccavenue' : 'muni';
-    applyPayGatewayCopy();
-  }).catch(function () {});
-}
-function applyPayGatewayCopy() {
-  var el = document.getElementById('rpp-next-copy');
-  if (el && PAY_GATEWAY === 'ccavenue') {
-    el.innerHTML = 'Checkout opens on <strong>CCAvenue</strong>, our secure payment gateway. Your pass is confirmed the moment the payment goes through, and you are brought straight back here.';
-  }
-}
-document.addEventListener('DOMContentLoaded', loadPayGateway);
 
 // Records the order on the server and returns where to send the buyer:
-// url to go there, fallback when the gateway is off, error to show.
+// url to go there, or error to show.
 async function startOnlinePayment(passType) {
   try {
     const r = await fetch('/api/payments/ccavenue/start', {
@@ -14825,28 +14767,12 @@ async function startOnlinePayment(passType) {
     });
     const j = await r.json().catch(function () { return {}; });
     if (r.ok && j.pay_url) return { url: j.pay_url };
-    if (r.status === 503) return { fallback: true };
     return { error: j.message || j.error || 'We could not open the checkout. Nothing was charged. Please try again.' };
   } catch (e) {
     return { error: 'Network error. Nothing was charged. Please try again.' };
   }
 }
 
-// The tab is opened before the save completes (to keep the click activation), so
-// it would otherwise sit on about:blank for a beat. Paint a branded holding note.
-function paintPayHoldingPage(w) {
-  if (!w) return;
-  try {
-    w.document.write('<!doctype html><meta charset="utf-8"><title>Opening secure checkout\\u2026</title>'
-      + '<body style="margin:0;height:100vh;display:flex;align-items:center;justify-content:center;'
-      + 'font-family:Manrope,system-ui,-apple-system,sans-serif;background:#F8F9FF;color:#1E2140;">'
-      + '<div style="text-align:center;padding:24px;">'
-      + '<div style="font-size:18px;font-weight:700;">Opening secure checkout\\u2026</div>'
-      + '<div style="font-size:13px;color:#5E6585;margin-top:6px;">Taking you to mUni Campus, our payments partner.</div>'
-      + '</div>');
-    w.document.close();
-  } catch (_) {}
-}
 // Backdrop click handler set after DOM is ready
 </script>
 
@@ -14962,11 +14888,10 @@ function paintPayHoldingPage(w) {
         <button type="submit" id="rpp-submit-btn" style="width:100%;padding:13px;border-radius:10px;border:none;background:linear-gradient(135deg,#FF6B00,#FF8C38);color:white;font-weight:700;font-size:14px;cursor:pointer;margin-top:4px;">
           <i class="fas fa-arrow-right" style="margin-right:8px;"></i>Proceed to Payment
         </button>
-        <!-- Set expectations: mUni can't accept our prefill, so people WILL re-enter
-             details and verify an OTP. Saying so up front stops it reading as a bug. -->
+        <!-- Say where checkout happens and what comes back, before the buyer leaves. -->
         <div style="background:#FFF6EF;border:1px solid rgba(255,107,0,0.25);border-radius:10px;padding:10px 12px;">
           <p style="font-size:11px;color:#1E2140;margin:0 0 4px;font-weight:700;">What happens next</p>
-          <p id="rpp-next-copy" style="font-size:11px;color:#5E6585;margin:0;line-height:1.5;">Checkout opens on <strong>mUni Campus</strong>, our secure payments partner, with your pass pre-selected. You&rsquo;ll confirm your details there and verify a one-time OTP to complete payment.</p>
+          <p id="rpp-next-copy" style="font-size:11px;color:#5E6585;margin:0;line-height:1.5;">Checkout opens on <strong>CCAvenue</strong>, our secure payment gateway. Your pass is confirmed the moment the payment goes through, and you are brought straight back here.</p>
         </div>
         <p style="text-align:center;font-size:10px;color:#5E6585;margin:0;">Your details are already saved with us &mdash; we&rsquo;ll email your pass once payment clears.</p>
       </form>
@@ -19114,7 +19039,7 @@ function mainPageHTML(): string {
       const pending = String(currentUser.payment_status || '').toLowerCase() === 'pending'
         && /delegate|academic|vip/i.test(badge);
       document.getElementById('pcc-pass-name').textContent = name;
-      const payNow = pending && PAY_GATEWAY === 'ccavenue';
+      const payNow = pending;
       const payBtn = document.getElementById('pcc-pay-btn');
       if (payBtn) payBtn.classList.toggle('hidden', !payNow);
       const stateEl = document.getElementById('pcc-pass-state');
@@ -22415,8 +22340,8 @@ function mainPageHTML(): string {
       var tierKey = BhaiPass.tierFor(user);
       var T = BhaiPass.TIERS[tierKey];
 
-      // A paid tier is recorded at registration but confirmed out of band on mUni
-      // Campus, so the pass must not print until payment lands. Without this the
+      // A paid tier is recorded at registration and confirmed only when the payment
+      // lands, so the pass must not print before then. Without this the
       // ticket someone self-declared is indistinguishable from one they paid for.
       // Admin downloads bypass this so the desk can still issue a pass manually.
       var awaitingPayment = String(user.payment_status || '').toLowerCase() === 'pending';
@@ -24614,25 +24539,10 @@ function mainPageHTML(): string {
         return;
       }
 
-      // Open the payment tab NOW, while the user's click activation is still
-      // live. Doing it after the await (worse: inside a setTimeout) is silently
-      // blocked by popup blockers — iOS Safari especially — so the button looked
-      // dead on mobile. We keep the handle and point it at the URL once saved.
-      // With the gateway on this site there is no second tab: checkout opens in
-      // this one and comes back here.
-      const direct = PAY_GATEWAY === 'ccavenue';
-      const payWin = direct ? null : window.open('', '_blank');
-      // Snapshot NOW: blocked popups are null (or a closed stub) immediately. Checked
-      // later, "blocked" and "user closed the tab meanwhile" look identical — and the
-      // latter must NOT hijack the current page.
-      const payWinOpened = !!payWin && !payWin.closed;
-      paintPayHoldingPage(payWin);
-
-      // The response used to be discarded - see the twin in the register page. A 403
-      // verification_required or a dropped connection sent the user to mUni anyway,
-      // and nothing comes back from mUni, so that payment could never be matched to
-      // a person. The tab is still opened BEFORE this await so iOS Safari keeps the
-      // click activation; on failure we close the tab we already opened.
+      // Save the details first, then open checkout in this same tab. A repeat
+      // registration on an existing email deliberately does not change the badge:
+      // the order carries the pass being bought, and the badge changes by itself
+      // when the payment lands.
       try {
         const resp = await fetch('/api/events/' + EVENT_ID + '/attendees/register', {
           method: 'POST',
@@ -24648,90 +24558,21 @@ function mainPageHTML(): string {
           throw new Error(data.message || (data.error && data.error !== 'verification_required' ? data.error : '') || 'We could not save your details, so checkout was not opened. Please try again.');
         }
       } catch (err) {
-        try { if (payWinOpened && !payWin.closed) payWin.close(); } catch (_) {}
         showToast((err && err.message) || 'Network error. Nothing was charged. Please try again.', 'error');
         btn.disabled = false;
         btn.innerHTML = '<i class="fas fa-arrow-right mr-2"></i>Proceed to Payment';
         return;   // modal stays open, details still typed in
       }
 
-      // On this site the order is recorded on the server and the badge changes by
-      // itself when the payment lands, so there is nothing to log by hand.
-      if (direct) {
-        const started = await startOnlinePayment(passType);
-        if (started.url || !started.fallback) {
-          btn.disabled = false;
-          btn.innerHTML = '<i class="fas fa-arrow-right mr-2"></i>Proceed to Payment';
-          if (started.url) window.location.href = started.url;
-          else showToast(started.error, 'error');
-          return;
-        }
-      }
-
-      // Payment lands on mUni Campus, outside this database, and a repeat
-      // registration on an existing email deliberately does NOT change the badge.
-      // Without this the team would see a payment with no way to tell which
-      // Visitor it belongs to. Logging the intent is what makes the upgrade
-      // reconcilable — and it must not block checkout if it fails.
-      try {
-        await fetch('/api/inquiries', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            inquiry_type: 'pass_upgrade', name: name, email: email, phone: phone,
-            organization: company,
-            subject: passType + ' requested' + (currentUser ? ' (upgrade from ' + (currentUser.badge_type || 'Visitor Pass') + ')' : ''),
-            message: name + ' has been sent to checkout for a ' + passType + '.' +
-                     (currentUser ? ' They are already registered as attendee #' + currentUser.id + '. Change their badge type in Attendee Management once payment is confirmed.'
-                                  : ' No existing registration was found for this email.'),
-            metadata: { pass_type: passType, city: city, designation: desig, attendee_id: currentUser ? currentUser.id : null }
-          })
-        });
-      } catch(_) { /* checkout must open regardless */ }
-
-      const payUrl = muniPayUrl(passType);
-      showToast('Opening secure checkout…', 'success');
-      if (payWinOpened && !payWin.closed) payWin.location.replace(payUrl);
-      else if (!payWinOpened) window.location.href = payUrl;  // popup blocked -> same tab, never a dead end
-      // else: tab opened but user closed it mid-flight — treat as cancel, stay put
-      closePaidPassModal();
+      const started = await startOnlinePayment(passType);
       btn.disabled = false;
       btn.innerHTML = '<i class="fas fa-arrow-right mr-2"></i>Proceed to Payment';
+      if (started.url) { window.location.href = started.url; return; }
+      showToast(started.error, 'error');
     }
-
-    // mUni Campus checkout deep-link — see the twin in the register page. Their page
-    // ignores personal prefill but honours ?category=<id> (it renders into
-    // "var category = '<id>'" and is POSTed with the signup), so this skips the event
-    // page and pre-selects the pass the user already picked here.
-    // NB: ?type= is a DIFFERENT field (their eventType) — do not use it.
-    function muniPayUrl(passType) {
-      const CATEGORY = { 'VIP Pass': 1, 'Visitor Pass': 2, 'Delegate Pass': 3, 'Academic Pass': 4 };
-      const c = CATEGORY[passType];
-      return c
-        ? 'https://municampus.com/event/event_registration.php?id=425&category=' + c
-        : 'https://municampus.com/event/BharatAI';
-    }
-
-    // Which checkout is live. The server answers ccavenue once the gateway on this
-    // site is switched on; until it does, or if the question cannot be asked, the
-    // mUni Campus path is used exactly as before.
-    var PAY_GATEWAY = 'muni';
-    function loadPayGateway() {
-      fetch('/api/payments/config').then(function (r) { return r.json(); }).then(function (j) {
-        PAY_GATEWAY = j && j.gateway === 'ccavenue' ? 'ccavenue' : 'muni';
-        applyPayGatewayCopy();
-      }).catch(function () {});
-    }
-    function applyPayGatewayCopy() {
-      var el = document.getElementById('pp-next-copy');
-      if (el && PAY_GATEWAY === 'ccavenue') {
-        el.innerHTML = 'Checkout opens on <strong>CCAvenue</strong>, our secure payment gateway. Your pass is confirmed the moment the payment goes through, and you are brought straight back to the app.';
-      }
-      try { renderPassAndCardCta(); } catch (e) {}
-    }
-    document.addEventListener('DOMContentLoaded', loadPayGateway);
 
     // Records the order on the server and returns where to send the buyer:
-    // url to go there, fallback when the gateway is off, error to show.
+    // url to go there, or error to show.
     async function startOnlinePayment(passType) {
       try {
         const r = await fetch('/api/payments/ccavenue/start', {
@@ -24740,7 +24581,6 @@ function mainPageHTML(): string {
         });
         const j = await r.json().catch(function () { return {}; });
         if (r.ok && j.pay_url) return { url: j.pay_url };
-        if (r.status === 503) return { fallback: true };
         return { error: j.message || j.error || 'We could not open the checkout. Nothing was charged. Please try again.' };
       } catch (e) {
         return { error: 'Network error. Nothing was charged. Please try again.' };
@@ -24759,21 +24599,6 @@ function mainPageHTML(): string {
       showToast(started.error || 'Online payment is not available just now. Please try again later.', 'error');
     }
 
-    // The tab is opened before the save completes (to keep the click activation), so
-    // it would otherwise sit on about:blank for a beat. Paint a branded holding note.
-    function paintPayHoldingPage(w) {
-      if (!w) return;
-      try {
-        w.document.write('<!doctype html><meta charset="utf-8"><title>Opening secure checkout\\u2026</title>'
-          + '<body style="margin:0;height:100vh;display:flex;align-items:center;justify-content:center;'
-          + 'font-family:Manrope,system-ui,-apple-system,sans-serif;background:#F8F9FF;color:#1E2140;">'
-          + '<div style="text-align:center;padding:24px;">'
-          + '<div style="font-size:18px;font-weight:700;">Opening secure checkout\\u2026</div>'
-          + '<div style="font-size:13px;color:#5E6585;margin-top:6px;">Taking you to mUni Campus, our payments partner.</div>'
-          + '</div>');
-        w.document.close();
-      } catch (_) {}
-    }
 
     // Close modal on backdrop click — deferred until after DOM is fully parsed
     document.addEventListener('DOMContentLoaded', function() {
@@ -24908,11 +24733,10 @@ function mainPageHTML(): string {
           <button type="submit" id="pp-submit-btn" class="w-full py-3 rounded-xl font-bold text-white mt-2 transition-all" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);">
             <i class="fas fa-arrow-right mr-2"></i>Proceed to Payment
           </button>
-          <!-- Set expectations: mUni can't accept our prefill, so people WILL re-enter
-               details and verify an OTP. Saying so up front stops it reading as a bug. -->
+          <!-- Say where checkout happens and what comes back, before the buyer leaves. -->
           <div class="rounded-xl px-3 py-2.5" style="background:#FFF6EF;border:1px solid rgba(255,107,0,0.25);">
             <p class="text-[11px] font-bold mb-1" style="color:#1E2140;">What happens next</p>
-            <p id="pp-next-copy" class="text-[11px] leading-relaxed" style="color:#5E6585;">Checkout opens on <strong>mUni Campus</strong>, our secure payments partner, with your pass pre-selected. You&rsquo;ll confirm your details there and verify a one-time OTP to complete payment.</p>
+            <p id="pp-next-copy" class="text-[11px] leading-relaxed" style="color:#5E6585;">Checkout opens on <strong>CCAvenue</strong>, our secure payment gateway. Your pass is confirmed the moment the payment goes through, and you are brought straight back to the app.</p>
           </div>
           <p class="text-center text-[10px]" style="color:#5E6585;">Your details are already saved with us &mdash; we&rsquo;ll email your pass once payment clears.</p>
         </form>
@@ -25917,8 +25741,8 @@ function adminPageHTML(): string {
               (direct
                 ? 'Paid passes are bought on this site through the event&rsquo;s own CCAvenue account. A payment that goes through unlocks the pass at once and is listed under <strong>Paid online</strong>, ready for its GST invoice. ' +
                   'Anyone still waiting below has either not paid, or paid on mUni Campus before the change: check the report, then confirm it here.'
-                : 'Payments are taken on mUni Campus through CCAvenue and nothing is sent back to this site, so a paid Delegate stays marked pending until someone confirms it here. ' +
-                  'Check the order in the CCAvenue or mUni report, then confirm it below &mdash; that issues the GST invoice, emails it, and unlocks their pass in one step.') +
+                : '<strong>Online checkout is off</strong>, so nobody can pay for a pass on this site right now; the box below says what it is waiting for. ' +
+                  'A payment made some other way is still confirmed here: that issues the GST invoice, emails it, and unlocks their pass in one step.') +
             '</div>' +
             (!direct && pending.gateway_checks ? '<div id="gateway-checks" class="glass rounded-xl p-4 border border-white/10 text-[12px] text-gray-300 leading-relaxed">' +
               '<div class="font-semibold text-white mb-1">Online checkout (CCAvenue) is off. What it is waiting for:</div>' +
@@ -25967,7 +25791,7 @@ function adminPageHTML(): string {
           '<h3 class="font-bold text-lg mb-1">Confirm payment &amp; issue invoice</h3>' +
           '<p class="text-[11px] text-gray-500 mb-4">' + (paid
             ? 'Paid online through CCAvenue. The order number and reference came from the gateway, so there is nothing to copy. Add the GSTIN and address if the buyer sent them.'
-            : 'Copy the order and reference from the CCAvenue or mUni report. The invoice cannot be issued without one &mdash; it has to point at a payment somebody can check.') + '</p>' +
+            : 'Copy the order number or the payment reference from the report it is in. The invoice cannot be issued without one &mdash; it has to point at a payment somebody can check.') + '</p>' +
           '<div class="grid grid-cols-2 gap-3">' +
             f('iv-name', 'Buyer name', a ? a.name : '') +
             f('iv-email', 'Email', a ? a.email : '') +
@@ -25975,7 +25799,7 @@ function adminPageHTML(): string {
             f('iv-phone', 'Mobile', a ? a.mobile : '') +
             f('iv-gstin', 'Buyer GSTIN (for their input credit)', '', 'optional') +
             f('iv-amount', 'Amount charged (INR)', paid ? paid.amount : (a ? a.expected : ''), '5898.82') +
-            f('iv-order', paid ? 'Order number' : 'mUni order number', paid ? paid.order_id : '', '34364_1787816667') +
+            f('iv-order', 'Order number', paid ? paid.order_id : '', 'BAI1432-MG3X0A1BK9ZQ') +
             f('iv-payref', 'CCAvenue reference', paid ? 'CCAvenue ' + paid.tracking_id : '', '114772182155') +
             f('iv-paid', paid ? 'Paid on (UTC, leave as it is)' : 'Paid on', paid ? paid.paid_at : '', 'YYYY-MM-DD HH:MM') +
           '</div>' +

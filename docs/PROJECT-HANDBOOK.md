@@ -56,7 +56,7 @@ Secrets, claim codes and conference registration totals are deliberately **not**
 | 0043_panel_rsvp | `panel_registrations.rsvp_status`, `rsvp_at`, `reminder_sent_at`, `reminder_error` |
 | 0044_exhibitor_stage_talks | `innovation_talks.exhibitor_id`, `speaker_title`, `speaker_bio`, `speaker_photo_url`, `showcase`, `duration_min`, `starts_at`, `details_updated_at`, and `idx_innovation_talks_exhibitor` (one talk per exhibitor). **Do not run it again**: `ADD COLUMN` is not idempotent, so a second run errors at its first line. Backup taken just before: `backup-pre-0044-2026-09-24.sql` |
 
-| 0045_payment_orders | `payment_orders`, one row per attempt sent to the payment gateway. **Not applied yet (4 Oct 2026)**: until it runs, paid passes keep going to mUni Campus. `IF NOT EXISTS` throughout, so it is safe to run twice |
+| 0045_payment_orders | `payment_orders`, one row per attempt sent to the payment gateway. Applied 4 Oct 2026 (backup `backup-pre-0045-2026-10-04.sql`). `IF NOT EXISTS` throughout, so it is safe to run twice, and it was |
 
 The "no such column" fallback in `GET /api/events/:id/innovation-talks` stays even though 0044 is applied: it is what keeps a database that is a migration behind (a fresh copy, a half-run file) answering instead of failing.
 
@@ -81,8 +81,8 @@ npm run verify:prod    # production, read-only, no credentials
 | `smoke-marketplace.mjs` | AI marketplace gates, pages and paced exhibitor invites (owned by the marketplace session) |
 | `browser-delegate.cjs` via `app-harness.mjs` (18) | Delegate in `/app`: directory, chat, connect (apostrophe name), meet, Visitor gating, inbox, Back, Escape, no injected script runs |
 | `phone-test.cjs` via `phone-harness.mjs` (50) | Emulated Android phone: photo upload, creative share sheet + caption, in-app fallback, "Are you coming?", panel certificate, pass, November question, email answers through the real `/panel-rsvp` routes, directory, admin Campus panels block |
-| `smoke-payments.mjs` (89) | Checkout on this site: the switch, our price on the order, the request decrypting with CCAvenue's kit algorithm, every answer that must not be believed, a paid order being final, the admin and finance queues |
-| `pay-test.cjs` via `pay-harness.mjs` (37) | Buying a pass on a phone in a real browser: /register to the gateway (played by the test) to the result page to the app signed in, "Pay now" for a pending pass, cancel and retry, the mUni fallback, the invoice form filled in on /admin and /finance |
+| `smoke-payments.mjs` (106) | Checkout on this site: the switch, our price on the order, the request decrypting with CCAvenue's kit algorithm, every answer that must not be believed, a paid order being final, the admin and finance queues, the "what is it waiting for" readout, and no trace of a mUni Campus link on /register or /app |
+| `pay-test.cjs` via `pay-harness.mjs` (38) | Buying a pass on a phone in a real browser: /register to the gateway (played by the test) to the result page to the app signed in, "Pay now" for a pending pass, cancel and retry, being told so when checkout is off (and sent nowhere), the invoice form filled in on /admin and /finance |
 | `check-payment-sql.py` (18, run by hand) | Migration 0045 and every payment statement the worker sends, on a real SQLite engine. Usage is in its header |
 | `prod-sweep.mjs` (33) | Production pages, headers, guards, caches, new routes |
 | `live-phone-check.cjs` (8) | Production on a phone: new functions present, no JS errors, forged link refused, campus forms (POST intercepted) |
@@ -116,6 +116,7 @@ Playwright comes from `scripts/verify/playwright.cjs` (local `playwright-core`, 
 | **Every exhibitor is also a delegate** (badge Exhibitor, payment waived, `main_event` 1, lunch Yes; a Visitor Pass on the booth email is raised) and gets an **Innovation Talk & Showcase slot** of the package length (Pod 8 … Mega 40; Premium unknown). The exhibitor writes topic, showcase, speaker, photo and bio in the marketplace dashboard; the organisers set day and time in Marketplace admin → Stage Talks; the talk joins the app programme once it has a time, a topic and a speaker | 24 Sep | `ensureExhibitorDelegate()`, `STAGE_MINUTES` and `/api/mp/dashboard/stage-talk` + `/api/mp/admin/stage-talks` in routes/marketplace.ts, migration 0044, `GET /api/events/:id/innovation-talks` |
 | A pre-made (password-less) marketplace account is never claimed by "Create account": the inbox is emailed a sign-in link. Exhibitors-tab "Signed in" = used a link or set a password | 24 Sep | `POST /api/mp/auth/register`, audit action `marketplace.signed-in` |
 | **Speaker = delegate + speaker + networking app** (organiser, 24 Sep, reversing 14 Sep): every published speaker with an email gets a Speaker pass (payment waived, conference registrant). **Never ministers**, nor the two officials hidden from the Network tab. Speakers had no emails on 24 Sep; the organiser sends them later, then add them (`UPDATE speakers SET email = … WHERE slug = …`) and run the script, which is safe to re-run | 24 Sep | `scripts/sql/speaker-delegate-passes.sql` (organiser runs it) |
+| **CCAvenue, on this site, is the only way to buy a pass.** Nobody is sent to mUni Campus to pay any more; if checkout is off the buyer is told so and nothing else happens | 4 Oct | `startOnlinePayment()` in both paid forms, `onlinePaymentsOn()`; `smoke-payments.mjs` and `pay-test.cjs` fail if a `municampus.com` link comes back |
 | Exhibitor and speaker passes **count as conference registrants and get lunch**, like any delegate (organiser said yes, 24 Sep, after being told it moves the count sponsors see and the lunch-pack count) | 24 Sep | `ensureExhibitorDelegate()`, the speaker script |
 
 ---
@@ -242,7 +243,7 @@ Still to do: `hostLogo` (file in `public/images/campus/`); a claim code in `app_
 - Move the Elastic Email key to a Worker secret (`npx wrangler pages secret put ELASTIC_EMAIL_API_KEY --project-name bharatai-networking`), then blank the `app_settings` row.
 - Badge desk offline mode; in-page QR scanning on iPhones (no `BarcodeDetector`).
 - Generate the pass QR locally instead of `api.qrserver.com` (a failure renders a pass without a QR).
-- Checkout on this site is built and waiting on the organiser's go-live steps (§15). Still open after that: refunds are made in the CCAvenue dashboard and then marked `refunded` here by hand; booth and sponsorship payments are not on the gateway; a payment whose buyer never comes back to the site (closed tab, dead battery) stays pending until someone confirms it from the CCAvenue report, because their status API wants a fixed server IP that Workers do not have.
+- Checkout on this site (§15) is the only way to pay since 4 Oct 2026. Still open: refunds are made in the CCAvenue dashboard and then marked `refunded` here by hand; booth and sponsorship payments are not on the gateway; a payment whose buyer never comes back to the site (closed tab, dead battery) stays pending until someone confirms it from the CCAvenue report, because their status API wants a fixed server IP that Workers do not have.
 - Invoice credit notes, search and GST export.
 - Speaker admin UI; session capacity/attendance; soft delete instead of orphaning invoices/connections.
 - A scheduled campaign sender (cron) so bulk sends do not depend on an open tab.
@@ -253,7 +254,7 @@ Still to do: `hostLogo` (file in `public/images/campus/`); a claim code in `app_
 
 ## 14. Change log
 
-**4 Oct 2026:** checkout on this site through the event's own CCAvenue account (§15): `src/lib/ccavenue.ts`, the `ONLINE PAYMENTS` block, migration 0045, "Pay now" on the app's pass card, "Paid online: invoice to raise" on /admin Payments and /finance, and three new checks (`smoke-payments.mjs`, `pay-test.cjs`, `check-payment-sql.py`). Dormant until the organiser sets the three secrets and runs 0045. Found on the way and **not** fixed: `python scripts/build-fa-subset.py --check` fails on `fa-unlock` (the "See who this is" button on locked directory cards draws no icon); the subset needs rebuilding and `FA_CSS` / `sw.js` bumping with it.
+**4 Oct 2026:** checkout on this site through the event's own CCAvenue account (§15): `src/lib/ccavenue.ts`, the `ONLINE PAYMENTS` block, migration 0045, "Pay now" on the app's pass card, "Paid online: invoice to raise" on /admin Payments and /finance, and three new checks (`smoke-payments.mjs`, `pay-test.cjs`, `check-payment-sql.py`). The same day the organiser made it the **only** gateway: every mUni Campus checkout path was removed, the secrets were set, 0045 was applied, and Admin → Payments gained a readout of what checkout is waiting for. Found on the way and **not** fixed: `python scripts/build-fa-subset.py --check` fails on `fa-unlock` (the "See who this is" button on locked directory cards draws no icon); the subset needs rebuilding and `FA_CSS` / `sw.js` bumping with it.
 
 **28 Sep 2026:** `/contact` shows the organiser's office address (Kukreja Centre, 11th Floor, B Wing, Plot 13, Sector 11, CBD Belapur, Navi Mumbai 400614) in an "Our office" card beside an "Event venue" card, each with a maps link; the venue chip left the quick-info bar. `contactPageHTML()` only.
 
@@ -280,10 +281,16 @@ Until now a paid pass was bought on mUni Campus (their CCAvenue account) and not
 4. `/pay/result` tells the buyer what happened. A failed or cancelled payment offers **Try again**; a pending pass shows **Pay now** on the app's pass card.
 5. The GST invoice is **not** raised automatically. The paid order appears under **Paid online: invoice to raise** on /admin Payments and on /finance, with the order number, the CCAvenue reference and the amount filled in. Raising the invoice is what takes it off that list (matched on `invoices.order_ref`).
 
-### It is off until three things are true
-`GET /api/payments/config` answers `{"gateway":"ccavenue"}` only when the three Worker secrets are set, migration 0045 has run, and `app_settings.payment_gateway` is not `muni`. Otherwise it answers `muni` and both forms behave exactly as they did before (new tab to mUni Campus, the pass-upgrade enquiry, manual confirmation).
+### It is the only gateway, and it needs three things to be on
+The organiser decided on 4 Oct 2026 that CCAvenue is the only way to pay. The mUni Campus checkout link, the second tab it opened and the "pass upgrade" enquiry that went with it are gone from both forms.
 
-**Go-live, by the organiser, in this order:**
+`GET /api/payments/config` answers `{"gateway":"ccavenue"}` when the three Worker secrets are set, migration 0045 has run, and `app_settings.payment_gateway` is not `off`. Otherwise it answers `off`: the form still saves the buyer's details, then tells them online payment is not available just now. **Admin → Payments shows which piece is missing** (one line per condition: ok, missing, or "set, but not the usual shape"; never a value).
+
+What went wrong on go-live day, so it is recognised next time: all three names were in `secret list`, the table existed, the site was redeployed, and it still answered off. The terminal showed the first `secret put` confirmed as `Enter a secret value: ...` with **no asterisks** after it, where the next one showed eighteen, so the likely cause is a merchant ID saved empty (nobody can read a secret back to be sure). An empty secret counts as missing, and its name is listed all the same. Setting all three again fixed it. Piping the value in avoids it: `printf '%s' 'VALUE' | npx wrangler pages secret put NAME --project-name bharatai-networking`.
+
+CCAvenue issues one access code and one working key **per registered URL**. The pair in use is the row for `https://bharataiinnovation.com/`; a code from one row with a key from another fails every request (their error 10002).
+
+**Setting it up from nothing, in this order (done on 4 Oct 2026):**
 ```
 # 1. The three values are on the CCAvenue dashboard: Settings, API Keys, for the
 #    website URL https://bharataiinnovation.com. Each command asks for the value.
@@ -302,11 +309,11 @@ npx wrangler d1 execute bharatai-production --remote --file=migrations/0045_paym
 #    refund it from the CCAvenue dashboard.
 curl https://bharataiinnovation.com/api/payments/config
 ```
-**To switch it off without a deploy** (the forms fall back to mUni Campus within a page load; a payment already at the gateway is still accepted when it comes back):
+**To switch it off without a deploy** (buyers are told online payment is not available; a payment already at the gateway is still accepted when it comes back):
 ```
-npx wrangler d1 execute bharatai-production --remote --command "INSERT INTO app_settings (key, value, updated_at) VALUES ('payment_gateway', 'muni', datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at"
+npx wrangler d1 execute bharatai-production --remote --command "INSERT INTO app_settings (key, value, updated_at) VALUES ('payment_gateway', 'off', datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at"
 ```
-Set the value to anything else to switch it back on. `CCAVENUE_ENV=test` (a fourth, optional secret) sends checkout to `test.ccavenue.com`; it needs the sandbox's own keys.
+Set the value to `on` to switch it back. (The older value `muni` still means off; it no longer sends anyone anywhere.) `CCAVENUE_ENV=test` (a fourth, optional secret) sends checkout to `test.ccavenue.com`; it needs the sandbox's own keys.
 
 ### Rules that hold
 - **The price is decided on the server.** `PASS_PRICES_INR` (whole rupees before GST) plus `PASS_GST_RATE` is the one figure the gateway is asked for and the one the payments queue calls "expected". The prices printed on the forms, the upgrade modal and the welcome email are still hand-written copies: change them together.
@@ -320,4 +327,4 @@ Set the value to anything else to switch it back on. `CCAVENUE_ENV=test` (a four
 ### Decisions the organiser has not been asked yet (built to the cautious answer)
 - **Invoices stay a person's step.** They use the accountant's number series and need the buyer's GSTIN; issuing one per payment automatically would be quick to add once the CA agrees.
 - **A confirmed Delegate cannot buy a VIP upgrade here.** They would be charged the full VIP price on top; the price of an upgrade is a commercial decision.
-- **mUni Campus stays as the fallback.** If the event should stop taking money there altogether, the mUni event has to be closed on their side as well.
+- **The mUni Campus event page is still open on their side.** This site no longer links to it, but anyone holding the old link can still pay there, and that payment would arrive with no word to this database. Closing it is a request to mUni, not a change here.

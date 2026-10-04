@@ -1,7 +1,8 @@
 // Buying a pass on a phone, in a real browser, against pay-harness.mjs (:8776):
 // the paid form on /register, the hand-off page, the gateway's answer, the result
 // page, landing in the app signed in, paying a pending pass from the app, cancelling
-// and trying again, the mUni Campus fallback, and the invoice queues in /admin and
+// and trying again, what a buyer is told when checkout is off (nobody is sent to
+// mUni Campus any more), and the invoice queues in /admin and
 // /finance. The gateway is played here: secure.ccavenue.com is intercepted, its
 // request is decrypted the way CCAvenue's kits do it, and an answer is posted back.
 const path = require('path');
@@ -28,7 +29,7 @@ const PHONE = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isM
   const errors = [];
 
   // What the gateway does next: answer at once, or wait on its page for a tap.
-  const gw = { reply: 'Success', hold: false, seen: [] };
+  const gw = { reply: 'Success', hold: false, seen: [], muniHits: 0 };
   const playGateway = async (ctx) => {
     await ctx.route('https://secure.ccavenue.com/**', async (route) => {
       const form = new URLSearchParams(route.request().postData() || '');
@@ -43,7 +44,7 @@ const PHONE = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isM
         '<input type="hidden" name="encResp" value="' + encResp + '"><input type="hidden" name="orderNo" value="' + sent.order_id + '">' +
         '<button id="pay" type="submit">Answer</button></form>' + (gw.hold ? '' : '<script>document.forms[0].submit()</script>') + '</body></html>' });
     });
-    await ctx.route('https://municampus.com/**', route => route.fulfill({ status: 200, contentType: 'text/html', body: '<h1 id="muni">MUNI STUB</h1>' }));
+    await ctx.route('https://municampus.com/**', route => { gw.muniHits++; return route.fulfill({ status: 200, contentType: 'text/html', body: '<h1 id="muni">MUNI STUB</h1>' }); });
   };
   const phone = async (opts = {}) => {
     const ctx = await browser.newContext(PHONE);
@@ -77,8 +78,6 @@ const PHONE = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isM
     ctx.on('page', () => { popups++; });
     popups = 0;
     await page.goto(BASE + '/register#delegate', { waitUntil: 'domcontentloaded' });
-    await page.waitForFunction(() => window.PAY_GATEWAY === 'ccavenue', null, { timeout: 15000 });
-    check('/register learns that checkout is on this site', true);
     check('the paid form says where checkout happens', /CCAvenue/.test(await page.textContent('#rpp-next-copy') || ''), await page.textContent('#rpp-next-copy'));
     check('the Delegate tier is already chosen from the link', (await page.inputValue('#rpp-pass-type')) === 'Delegate Pass', await page.inputValue('#rpp-pass-type'));
     await fillRegisterForm(page, 'meera@example.com');
@@ -166,7 +165,7 @@ const PHONE = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isM
     const { ctx, page } = await phone({ person: st0.attendees[8] });
     let popups = 0;
     await page.goto(BASE + '/app', { waitUntil: 'domcontentloaded' });
-    await page.waitForFunction(() => typeof currentUser !== 'undefined' && currentUser && window.PAY_GATEWAY === 'ccavenue', null, { timeout: 25000 }).catch(() => {});
+    await page.waitForFunction(() => typeof currentUser !== 'undefined' && currentUser, null, { timeout: 25000 }).catch(() => {});
     ctx.on('page', () => { popups++; });
     await page.evaluate(() => {
       openPaidPassForm();
@@ -190,20 +189,27 @@ const PHONE = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isM
     await ctx.close();
   }
 
-  // ---- 4. Switched off: the mUni Campus path is exactly as it was ----
-  await setState({ settings: { payment_gateway: 'muni' } });
+  // ---- 4. Switched off: the buyer is told so, and is sent nowhere else ----
+  await setState({ settings: { payment_gateway: 'off' } });
   {
     const { ctx, page } = await phone();
+    let popups = 0;
+    ctx.on('page', () => { popups++; });
+    popups = 0; gw.seen.length = 0; gw.muniHits = 0;
     await page.goto(BASE + '/register#delegate', { waitUntil: 'domcontentloaded' });
-    await sleep(1500);
-    check('with the gateway off the form still names mUni Campus', (await page.evaluate(() => window.PAY_GATEWAY)) === 'muni' && /mUni Campus/.test(await page.textContent('#rpp-next-copy') || ''), await page.textContent('#rpp-next-copy'));
-    await fillRegisterForm(page, 'old-path@example.com');
-    const [popup] = await Promise.all([ctx.waitForEvent('page', { timeout: 15000 }).catch(() => null), page.click('#rpp-submit-btn')]);
-    if (popup) await popup.waitForURL(/municampus\.com/, { timeout: 15000, waitUntil: 'domcontentloaded' }).catch(() => {});
-    check('and checkout opens on mUni Campus with the pass pre-selected', !!popup && /municampus\.com\/event\/event_registration\.php\?id=425&category=3/.test(popup.url()), popup ? popup.url() : 'no popup');
+    await sleep(800);
+    check('the form names CCAvenue and never mUni Campus', /CCAvenue/.test(await page.textContent('#rpp-next-copy') || '') && !/mUni/i.test(await page.content()), await page.textContent('#rpp-next-copy'));
+    await fillRegisterForm(page, 'switched-off@example.com');
+    await page.evaluate(() => document.getElementById('rpp-submit-btn').scrollIntoView({ block: 'center' }));
+    await page.click('#rpp-submit-btn');
+    await page.waitForFunction(() => /not available just now/.test(document.body.textContent), null, { timeout: 15000 }).catch(() => {});
+    check('with checkout off the buyer is told so, on the form', /not available just now/.test(await page.textContent('body')) && /\/register/.test(page.url()), page.url());
+    await sleep(1200);
+    check('and is sent nowhere: no popup, no gateway, no mUni Campus', popups === 0 && gw.seen.length === 0 && gw.muniHits === 0 && /\/register/.test(page.url()), popups + ' popups, ' + gw.seen.length + ' gateway, ' + gw.muniHits + ' muni');
+    check('the button is ready to try again', !(await page.isDisabled('#rpp-submit-btn')));
     const st = await getState();
-    const who = Object.values(st.attendees).find(a => a.email === 'old-path@example.com') || {};
-    check('no order is made here for it', !st.orders.some(o => o.attendee_id === who.id) && who.payment_status === 'pending', JSON.stringify(who));
+    const who = Object.values(st.attendees).find(a => a.email === 'switched-off@example.com') || {};
+    check('their details are saved and no order is made', who.payment_status === 'pending' && !st.orders.some(o => o.attendee_id === who.id), JSON.stringify(who));
     await ctx.close();
   }
   await setState({ unset: ['payment_gateway'] });
@@ -226,7 +232,7 @@ const PHONE = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isM
     const text = await page.textContent('#section-payments');
     check('/admin Payments lists what was paid online', /Paid online: invoice to raise/.test(text) && /Meera Nair/.test(text) && /Vikram Shah/.test(text) && /CCAvenue 115023456789/.test(text), text.slice(0, 200));
     check('and explains that payments now confirm themselves', /unlocks the pass at once/.test(text), text.slice(0, 200));
-    check('the old-path buyer is still waiting, as before', /old-path@example\.com/.test(text), 'missing');
+    check('someone who has not paid is still listed as waiting', /switched-off@example\.com/.test(text), 'missing');
     await page.click('#section-payments button:has-text("Raise invoice")');
     const st = await getState();
     const filled = await page.evaluate(() => ({ order: document.getElementById('iv-order').value, ref: document.getElementById('iv-payref').value, amount: document.getElementById('iv-amount').value, email: document.getElementById('iv-email').value, item: document.getElementById('iv-item').value, att: document.getElementById('iv-attendee').value }));
