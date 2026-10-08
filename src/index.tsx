@@ -11577,7 +11577,7 @@ app.post('/api/admin/panels/:slug/send-next-reports', async (c) => {
   const slug = c.req.param('slug')
   const panel = CAMPUS_PANELS[slug]
   if (!panel) return c.json({ error: 'Unknown panel' }, 404)
-  if (!(await reportDownloadsReady(c))) return c.json({ error: 'Apply migration 0047 on the database first (npx wrangler d1 migrations apply bharatai-production --remote).' }, 409)
+  if (!(await reportDownloadsReady(c))) return c.json({ error: 'Apply migration 0047 on the database first: npx wrangler d1 execute bharatai-production --remote --file=./migrations/0047_report_downloads.sql (the migrations ledger stops at 0043, so "migrations apply" fails on 0044).' }, 409)
   const body = await c.req.json().catch(() => ({})) as any
   const batch = Math.min(10, Math.max(1, parseInt(body.batch, 10) || 5))
   const PENDING = reportPendingSql(await suppressionClause(c, 'a.'))
