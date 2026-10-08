@@ -84,5 +84,23 @@ check('app page carries the new client code', ['function parseDbTime', 'function
 r = await hit('/sw.js');
 check('service worker is bhai-v10', r.status === 200 && r.text.includes("'bhai-v10'"), r.status);
 
+// ---- Campus Series insights reports ----
+r = await hit('/insights');
+check('/insights 200 with the form', r.status === 200 && r.text.includes('id="ir-form"') && r.text.includes('/api/reports/request'), r.status);
+r = await hit('/reports/djsce-ai-and-employability-insights-report.pdf');
+check('a report without a link is not served (302 to the form)', r.status === 302 && String(r.h.location || '').includes('/insights'), r.status + ' ' + r.h.location);
+r = await hit('/reports/djsce-ai-and-employability-insights-report.pdf?t=l1.9999999999.000000000000000000000000');
+check('a forged report link is refused the same way', r.status === 302, r.status);
+r = await hit('/api/reports/request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+check('the report form refuses an empty request (400, nothing kept)', r.status === 400 && /missing/.test(r.text), r.status + ' ' + r.text.slice(0, 80));
+r = await hit('/api/admin/reports/summary');
+check('report numbers need admin', r.status === 401, r.status);
+r = await hit('/api/admin/panels/djsanghvi-21sep/send-next-reports', { method: 'POST' });
+check('the reports pump needs admin', r.status === 401, r.status);
+for (const [p, id] of [['/campus-djsanghvi', 'fIPXB3mTNOM'], ['/campus-jnu', '6tlYBxAPw3g']]) {
+  r = await hit(p);
+  check(`${p} embeds the recording`, r.status === 200 && r.text.includes('youtube-nocookie.com/embed/' + id), r.status);
+}
+
 console.log(fails ? `\n${fails} FAILED` : '\nall production checks passed');
 process.exit(fails ? 1 : 0);

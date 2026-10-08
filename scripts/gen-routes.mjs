@@ -27,6 +27,13 @@ const ROUTES = '_routes.json'
 // were intentionally not copied, but guard here in case they reappear.
 const FORCE_DYNAMIC = new Set(['/contact', '/register'])
 
+// Directories whose files the Worker must serve, never Pages directly. The
+// Campus Series insights reports (public/reports/*.pdf) are given out only
+// behind a signed link that the Worker checks (GET /reports/:file in
+// src/index.tsx, which then reads the file through env.ASSETS). Excluding
+// /reports/* here would hand every PDF to anyone who guessed its name.
+const FORCE_DYNAMIC_DIRS = new Set(['reports'])
+
 const entries = readdirSync(DIST)
 const exclude = new Set()
 
@@ -34,7 +41,7 @@ for (const name of entries) {
   if (name === WORKER || name === ROUTES) continue
   const full = join(DIST, name)
   if (statSync(full).isDirectory()) {
-    exclude.add(`/${name}/*`)
+    if (!FORCE_DYNAMIC_DIRS.has(name)) exclude.add(`/${name}/*`)
   } else {
     exclude.add(`/${name}`)
     // Add the clean-URL twin for HTML pages: /conference.html -> /conference

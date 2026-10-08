@@ -21,6 +21,7 @@ Secrets, claim codes and conference registration totals are deliberately **not**
 | Checkout (CCAvenue) | `src/lib/ccavenue.ts` (the wire format, nothing else) and the `ONLINE PAYMENTS` block in `src/index.tsx`; table `payment_orders` (0045). See §15 |
 | Build guards | `scripts/check-inline-js.mjs`, `scripts/check-no-counts.mjs` (run by `npm run build`) |
 | Campus tooling | `scripts/import-muni-panel.py`, `scripts/import-linkedin-panel.py`, `scripts/make-panel-claim-slide.py` |
+| Campus Series insights reports | PDFs in `public/reports/` (served only by `GET /reports/:file` with a signed link), page `public/insights.html`, the `CAMPUS SERIES INSIGHTS REPORTS` block in `src/index.tsx` (`INSIGHTS_REPORTS`, `sendReportsEmail`, the admin pump), table `report_downloads` (0047). See §16 |
 | Verification | `scripts/verify/` (see §3) |
 
 ---
@@ -58,6 +59,7 @@ Secrets, claim codes and conference registration totals are deliberately **not**
 
 | 0045_payment_orders | `payment_orders`, one row per attempt sent to the payment gateway. Applied 4 Oct 2026 (backup `backup-pre-0045-2026-10-04.sql`). `IF NOT EXISTS` throughout, so it is safe to run twice, and it was |
 | 0046_checkout_leads | `checkout_leads`: what the paid form was given by people who closed it before Proceed, and the "finish paying" reminder record for everyone. Applied 4 Oct 2026 (backup `backup-pre-0046-2026-10-04.sql`), and a live capture checked straight after. `IF NOT EXISTS` throughout |
+| 0047_report_downloads | `report_downloads`: who has the Campus Series insights reports (asked on `/insights`, or mailed from the admin Campus panels block), the "your reports" email record and the opens. **Not yet applied** (written 8 Oct 2026): until it runs, `/insights` still hands out working links and records nothing, and the admin block says so. `IF NOT EXISTS` throughout, safe to run twice. See §16 |
 
 The "no such column" fallback in `GET /api/events/:id/innovation-talks` stays even though 0044 is applied: it is what keeps a database that is a migration behind (a fresh copy, a half-run file) answering instead of failing.
 
@@ -256,6 +258,8 @@ Still to do: `hostLogo` (file in `public/images/campus/`); a claim code in `app_
 
 ## 14. Change log
 
+**8 Oct 2026:** the Campus Series insights reports (§16): two PDFs behind a signed link, `/insights` with a contact form that hands out both links and emails them, the "your reports" email with a paced admin pump per panel, the two recordings embedded on `/insights`, `/campus-series`, `/campus-djsanghvi` and `/campus-jnu`, migration 0047 (not yet applied), `scripts/verify/smoke-reports.mjs`, and seven more production checks in `prod-sweep.mjs`.
+
 **4 Oct 2026:** checkout on this site through the event's own CCAvenue account (§15): `src/lib/ccavenue.ts`, the `ONLINE PAYMENTS` block, migration 0045, "Pay now" on the app's pass card, "Paid online: invoice to raise" on /admin Payments and /finance, and three new checks (`smoke-payments.mjs`, `pay-test.cjs`, `check-payment-sql.py`). The same day the organiser made it the **only** gateway: every mUni Campus checkout path was removed, the secrets were set, 0045 was applied, and Admin → Payments gained a readout of what checkout is waiting for. Found on the way and **not** fixed: `python scripts/build-fa-subset.py --check` fails on `fa-unlock` (the "See who this is" button on locked directory cards draws no icon); the subset needs rebuilding and `FA_CSS` / `sw.js` bumping with it.
 
 **28 Sep 2026:** `/contact` shows the organiser's office address (Kukreja Centre, 11th Floor, B Wing, Plot 13, Sector 11, CBD Belapur, Navi Mumbai 400614) in an "Our office" card beside an "Event venue" card, each with a maps link; the venue chip left the quick-info bar. `contactPageHTML()` only.
@@ -374,3 +378,37 @@ The organiser asked for abandoned checkouts to be captured and followed up. Thre
 - **Invoices stay a person's step.** They use the accountant's number series and need the buyer's GSTIN; issuing one per payment automatically would be quick to add once the CA agrees.
 - **A confirmed Delegate cannot buy a VIP upgrade here.** They would be charged the full VIP price on top; the price of an upgrade is a commercial decision.
 - **The mUni Campus event page is still open on their side.** This site no longer links to it, but anyone holding the old link can still pay there, and that payment would arrive with no word to this database. Closing it is a request to mUni, not a change here.
+
+---
+
+## 16. Campus Series insights reports (built 8 Oct 2026)
+
+Two PDFs, one per panel, given out for contact details: `public/reports/djsce-ai-and-employability-insights-report.pdf` ("Beyond the Fear", DJ Sanghvi, 21 Sep, 20 pages, 10 MB) and `public/reports/jnu-ai-and-employability-insights-report.pdf` ("AI and Employability", JNU, 30 Sep, 22 pages, 6 MB). The two recordings are `fIPXB3mTNOM` (DJ Sanghvi) and `6tlYBxAPw3g` (JNU), both on the Bharat AI Innovation channel; the JNU keynote is `Vfr3Rhr2RKI`. All of this is `INSIGHTS_REPORTS` in `src/index.tsx`.
+
+### How a PDF is served
+- `scripts/gen-routes.mjs` keeps `/reports/*` **with the worker** (`FORCE_DYNAMIC_DIRS`); every other top-level folder is served by Pages directly. `GET /reports/:file` checks the token on `?t=`, then reads the file through `env.ASSETS` (the Pages static-asset binding, typed on `Bindings`) and streams it with `Cache-Control: private, no-store`, `X-Robots-Tag: noindex` and `Content-Disposition: inline`. Without a valid token, an unknown name and a bad or stale token all get the same `302` to `/insights?link=expired#get`.
+- A token is `<subject>.<expiry>.<24 hex>`: subject `l<row id>` for someone who asked on the page, `a<attendee id>` for a panel registrant; HMAC of `report:<slug>:<subject>:<expiry>` with `passTokenSecret()`; `REPORT_LINK_DAYS = 90`. A link is good for anyone who has it for those 90 days: the gate is contact details, not DRM.
+- `public/sw.js` never caches `/reports/` (no VERSION bump was needed: nothing stale had to be purged).
+- A link that is opened is written to the row as `downloads + 1`, `last_download_at`, `last_report`.
+
+### The two doors
+1. **`/insights`** (`public/insights.html`, the `ir-*` classes plus `campus-panel.css`): name, email, mobile, "I am" (professional / student / faculty, which renames the organisation and title fields and shows the industry list only to professionals, like the JNU form), organisation, an optional job title and city, and an unticked "keep me posted" box. `POST /api/reports/request` validates (`400 {missing:[...]}` names every empty field), caps **30 rows an hour per address**, upserts `report_downloads` (never wiping a detail given earlier, never un-ticking consent), answers with both links at once, and emails the same links (`sendReportsEmail`) **once per address** (a repeat visit shows the links but does not mail again). The page keeps the links in `localStorage` for 60 days ("Welcome back"), forgets them when `?link=expired` brings someone back, and builds the thank-you with DOM calls, not markup. **Asking for the reports registers nobody**: the row is not an attendee, counts nowhere, and the November Visitor Pass stays a separate choice (a button after the links).
+2. **Admin → Overview → Campus panels → "Send the reports"** (per panel, the orange button under "Insights reports"): `POST /api/admin/panels/:slug/send-next-reports` mails the panel's registrants one at a time at the chosen pace (`paceControl`, same gap setting as the other two pumps), Stop parks the rest on the server (`pause-reports`, which also creates parked rows for people without one), Resume un-parks only paused rows, "Retry N failed" clears errors (`resume-reports`), **Preview reports email** renders it for a sample registrant. The queue is `LEFT JOIN report_downloads` on the lower-cased email, so a registrant of both panels, or one who already asked on the page, is mailed once. It honours `suppressionClause()` (unsubscribed, or "no" to marketing), and the block shows those as "not mailed (unsubscribed or said no)". The email carries the unsubscribe footer. Migration 0047 must be applied first; the pump answers `409` naming it, and the block says so.
+
+### The email (`sendReportsEmail`)
+Brand header, "Thank you for registering for the Campus Series panel at <host>" (or "Here are the two reports you asked for" from the page), a card per report with its cover (`public/images/reports/*-cover.jpg`, page 1 rendered with PyMuPDF), the two recordings, "Use them, share them" with the 90-day note, and the November ask: a **Register free** button, or "You are registered, see you there" when `attendees.main_event = 1`. Subject: "Your AI and Employability insights reports (Campus Series)".
+
+### Numbers
+- Per panel on the Campus panels block (`panelReportStats`, in `GET /api/admin/panels`): have the reports email, opened a report, to send, not mailed, failed. These count rows of `report_downloads` joined by email, not the panel list, so they are **plain text, not drill-downs**, and `PANEL_PEOPLE_METRICS` has no copy of them; `check-panel-drilldown.mjs` is unaffected.
+- Under the panel rows (`renderReportSummary`, `GET /api/admin/reports/summary`): everyone who has the links, asked on the website, emailed, opened, opens in all, said yes to updates, with **Everyone, as CSV** (`GET /api/admin/reports/leads.csv`, audited).
+
+### Where the recordings and the reports appear on the site
+`/insights` (both, with the keynote link), `/campus-series` ("Watch the panels, read the reports" after the panel cards, plus a "Watch & Read the Report" button on each card), `/campus-djsanghvi` and `/campus-jnu` ("Watch the panel, read the report" straight after the hero; the concluded notice and the hero button now lead there), and an "Insights Reports & Recordings" button in the home-page Campus Series strip. Embeds use `youtube-nocookie.com`, `loading="lazy"`, in a `.yt` 16:9 box (`campus-panel.css?v=20261008`). The og card is `images/og/insights.jpg` from `gen-og-cards.mjs`; `/insights` is in `sitemap.xml` and `llms.txt`.
+
+### Verify
+`scripts/verify/smoke-reports.mjs` (in `npm run verify`): the gate (no link, forged, wrong report, expired, unknown file, no Pages binding), the form (what is missing, both links, the row, the email with signed absolute links and both recordings and the unsubscribe header, no second email, the registered-attendee wording, the per-address cap, before 0047), the admin side (auth, batch of one, lower-casing, suppression in the SQL, audit, Stop/Resume/Retry SQL, preview, numbers, CSV, before 0047, markers on `/admin`), and what is built (`_routes.json`, both PDFs in `dist/`, the page, the service worker, the campus embeds). `prod-sweep.mjs` checks `/insights`, the gate, the empty form, the admin guards and the embeds on production.
+
+### To go live
+1. Push (the PDFs and covers are in the repo; nothing to upload by hand).
+2. Organiser: `npx wrangler d1 export bharatai-production --remote --output=backup-pre-0047-<date>.sql` then `npx wrangler d1 migrations apply bharatai-production --remote` (0047 only; it is `IF NOT EXISTS`).
+3. Admin → Overview → Campus panels → **Preview reports email**, then **Send the reports** on each panel (one email a minute by default; about 433 for DJ Sanghvi, a little under 7½ hours with the tab open; Stop and Resume as needed).

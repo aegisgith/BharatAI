@@ -10,6 +10,9 @@ import { marketplacePageHTML, marketplaceListingPageHTML, marketplaceDashboardPa
 
 type Bindings = {
   UPLOADS?: R2Bucket
+  // Cloudflare Pages' own static files, for the worker to read a file it then
+  // serves itself: the Campus Series insights reports under /reports/.
+  ASSETS?: { fetch: (input: Request | string) => Promise<Response> }
   // Workers AI. Used only by personInPhoto(); everything works without it.
   AI?: any
   DB: D1Database
@@ -11108,6 +11111,7 @@ app.get('/api/admin/panels', async (c) => {
       claim_state: panelClaimState(p), claim_code_set: !!code,
       rsvp_enabled: hasRsvp, rsvp_open: Date.now() < Date.parse(p.startsAt),
       ...(stats || {}),
+      ...(await panelReportStats(c, p.slug)),
     })
   }
   return c.json(out)
@@ -11289,6 +11293,387 @@ app.get('/api/admin/panels/:slug/answers.csv', async (c) => {
     .join('\r\n')
   await audit(c, 'panel.answers.export', 'panel', slug, { who, rows: rows.length })
   return new Response('\ufeff' + csv, { headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="${slug}-${who}.csv"` } })
+})
+
+// ==================== CAMPUS SERIES INSIGHTS REPORTS ====================
+//
+// One PDF per campus panel (public/reports/*.pdf), given out behind a signed link.
+// Two doors lead to a link: /insights, where anyone leaves their name, email and
+// phone and is shown both links at once (and emailed them), and Admin -> Overview
+// -> Campus panels -> "Send the reports", which mails every registrant of a panel.
+// The worker serves the file itself (GET /reports/:file) only with a valid token,
+// reading it through env.ASSETS; scripts/gen-routes.mjs keeps /reports/* with the
+// worker, so the path on its own opens nothing. Who asked, and who opened what, is
+// kept in report_downloads (0047); short of that table the links still work and
+// nothing is recorded.
+type InsightsReport = {
+  slug: string; file: string; title: string; subtitle: string
+  host: string; hostShort: string; city: string; dateLabel: string
+  pages: number; size: string; panelSlug: string; video: string; cover: string
+}
+const INSIGHTS_REPORTS: Record<string, InsightsReport> = {
+  djsce: {
+    slug: 'djsce', file: 'djsce-ai-and-employability-insights-report.pdf',
+    title: 'Beyond the Fear',
+    subtitle: 'How AI is reshaping work, skills and assessment, and what students, educators and employers must do next',
+    host: 'Dwarkadas J. Sanghvi College of Engineering', hostShort: 'DJ Sanghvi', city: 'Mumbai', dateLabel: '21 September 2026',
+    pages: 20, size: '10 MB', panelSlug: 'djsanghvi-21sep', video: 'fIPXB3mTNOM', cover: '/images/reports/djsce-cover.jpg',
+  },
+  jnu: {
+    slug: 'jnu', file: 'jnu-ai-and-employability-insights-report.pdf',
+    title: 'AI and Employability',
+    subtitle: 'Opportunities, challenges and the future of work: perspectives from industry, academia and the skilling ecosystem',
+    host: 'Jawaharlal Nehru University', hostShort: 'JNU', city: 'New Delhi', dateLabel: '30 September 2026',
+    pages: 22, size: '6 MB', panelSlug: 'jnu-30sep', video: '6tlYBxAPw3g', cover: '/images/reports/jnu-cover.jpg',
+  },
+}
+const REPORT_LINK_DAYS = 90
+const REPORT_LEADS_PER_IP_PER_HOUR = 30
+const REPORT_WHO = ['professional', 'student', 'faculty']
+const youtubeWatch = (id: string) => 'https://www.youtube.com/watch?v=' + id
+
+let _reportsTable = false
+async function reportDownloadsReady(c: any): Promise<boolean> {
+  if (_reportsTable) return true
+  try {
+    await c.env.DB.prepare('SELECT id FROM report_downloads LIMIT 1').first()
+    _reportsTable = true
+  } catch { /* 0047 has not run yet */ }
+  return _reportsTable
+}
+
+// A link is "<subject>.<expiry>.<signature>": the subject is l<row id> for someone
+// who asked on /insights and a<attendee id> for a panel registrant, so an open can
+// be written back to the right row. Signed with the pass secret, like the pass QR.
+const reportSecret = (c: any): string => passTokenSecret(c) || 'insights-report'
+async function reportToken(c: any, slug: string, subject: string, exp: number): Promise<string> {
+  return subject + '.' + exp + '.' + (await hmacHexA(reportSecret(c), `report:${slug}:${subject}:${exp}`)).slice(0, 24)
+}
+async function reportUrl(c: any, slug: string, subject: string, opts: { absolute?: boolean } = {}): Promise<string> {
+  const r = INSIGHTS_REPORTS[slug]
+  const exp = Math.floor(Date.now() / 1000) + REPORT_LINK_DAYS * 86400
+  const path = `/reports/${r.file}?t=${await reportToken(c, slug, subject, exp)}`
+  if (!opts.absolute) return path
+  const base = ((await settingValue(c, 'app_url')) || 'https://bharataiinnovation.com/app').replace(/\/app\/?$/, '')
+  return base + path
+}
+async function reportSubjectFromToken(c: any, slug: string, token: any): Promise<string | null> {
+  const t = String(token || '')
+  const m = /^([la]\d{1,10})\.(\d{9,11})\.([0-9a-f]{24})$/.exec(t)
+  if (!m || Number(m[2]) * 1000 < Date.now()) return null
+  return safeEqualA(t, await reportToken(c, slug, m[1], Number(m[2]))) ? m[1] : null
+}
+
+async function recordReportOpen(c: any, slug: string, subject: string): Promise<void> {
+  try {
+    if (!(await reportDownloadsReady(c))) return
+    const where = subject[0] === 'l' ? 'id = ?' : 'attendee_id = ?'
+    await c.env.DB.prepare(
+      `UPDATE report_downloads SET downloads = downloads + 1, last_download_at = datetime('now'), last_report = ? WHERE ${where}`
+    ).bind(slug, subject.slice(1)).run()
+  } catch (e: any) { console.error('report open not recorded', e?.message) }
+}
+
+// The file. An unknown name and a bad or stale token get the same answer, a
+// redirect to the form, so a guess learns nothing; a genuine link streams the PDF
+// from Pages' own copy with headers that keep it out of every cache.
+app.get('/reports/:file', async (c) => {
+  const file = c.req.param('file')
+  const report = Object.values(INSIGHTS_REPORTS).find(r => r.file === file)
+  const subject = report ? await reportSubjectFromToken(c, report.slug, c.req.query('t')) : null
+  if (!report || !subject) return c.redirect('/insights?link=expired#get', 302)
+  if (!c.env.ASSETS) return c.text('The report file is not available here.', 404)
+  const asset = await c.env.ASSETS.fetch(new Request(new URL('/reports/' + report.file, c.req.url).toString()))
+  if (!asset.ok) return c.text('The report file is missing.', 404)
+  const record = recordReportOpen(c, report.slug, subject)
+  try { c.executionCtx.waitUntil(record) } catch { await record }
+  const h = new Headers()
+  h.set('Content-Type', 'application/pdf')
+  h.set('Content-Disposition', `inline; filename="${report.file}"`)
+  h.set('Cache-Control', 'private, no-store')
+  h.set('X-Robots-Tag', 'noindex')
+  // The stored length is right only for the bytes as stored; a copy that arrives
+  // encoded is left to the runtime to measure.
+  const len = asset.headers.get('content-length')
+  if (len && !asset.headers.get('content-encoding')) h.set('Content-Length', len)
+  return new Response(asset.body, { status: 200, headers: h })
+})
+
+async function upsertReportRow(c: any, p: { email: string; name?: any; mobile?: any; company?: any; job_title?: any; city?: any; industry?: any; who?: string; attendee_id?: any; source: 'page' | 'email'; consent?: number | null; ip?: string }): Promise<void> {
+  // A field left empty never wipes one given earlier; a "yes" to updates is never
+  // undone by a later form that left the box empty.
+  await c.env.DB.prepare(
+    `INSERT INTO report_downloads (event_id, email, name, mobile, company, job_title, city, industry, who, attendee_id, source, marketing_consent, ip)
+     VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(event_id, email) DO UPDATE SET
+       name = COALESCE(NULLIF(excluded.name, ''), report_downloads.name),
+       mobile = COALESCE(NULLIF(excluded.mobile, ''), report_downloads.mobile),
+       company = COALESCE(NULLIF(excluded.company, ''), report_downloads.company),
+       job_title = COALESCE(NULLIF(excluded.job_title, ''), report_downloads.job_title),
+       city = COALESCE(NULLIF(excluded.city, ''), report_downloads.city),
+       industry = COALESCE(NULLIF(excluded.industry, ''), report_downloads.industry),
+       who = COALESCE(NULLIF(excluded.who, ''), report_downloads.who),
+       attendee_id = COALESCE(report_downloads.attendee_id, excluded.attendee_id),
+       marketing_consent = CASE WHEN excluded.marketing_consent = 1 THEN 1 ELSE report_downloads.marketing_consent END,
+       updated_at = datetime('now')`
+  ).bind(p.email, leadText(p.name, 120), leadText(p.mobile, 30), leadText(p.company, 160), leadText(p.job_title, 120),
+    leadText(p.city, 80), leadText(p.industry, 80), p.who || '', p.attendee_id ?? null, p.source, p.consent ?? null, p.ip || null).run()
+}
+
+async function markReportEmail(c: any, email: string, r: { ok: boolean; error?: string }): Promise<void> {
+  try {
+    if (r.ok) await c.env.DB.prepare("UPDATE report_downloads SET email_sent_at = datetime('now'), email_error = NULL WHERE event_id = 1 AND email = ?").bind(email).run()
+    else await c.env.DB.prepare('UPDATE report_downloads SET email_error = ? WHERE event_id = 1 AND email = ?').bind(String(r.error || 'failed').slice(0, 200), email).run()
+  } catch (e: any) { console.error('report email not recorded', e?.message) }
+}
+
+// The "your reports" email: both links, the two recordings, and the November ask
+// for anyone not already registered. Campaign-style (unsubscribe footer), because
+// it is the first mail after the panel and the person may not want a second.
+async function sendReportsEmail(c: any, person: any, opts: { tokenSubject: string; panel?: CampusPanel; preview?: boolean }): Promise<{ ok: boolean; error?: string; html?: string }> {
+  const esc = (v: any) => String(v ?? '').replace(/[&<>]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch] as string))
+  const firstName = esc(String(person.name || '').trim().split(/\s+/)[0] || 'there')
+  const reports = Object.values(INSIGHTS_REPORTS)
+  const links: Record<string, string> = {}
+  for (const r of reports) links[r.slug] = opts.preview ? '#preview-' + r.slug : await reportUrl(c, r.slug, opts.tokenSubject, { absolute: true })
+  const panel = opts.panel
+  const other = panel ? reports.find(r => r.panelSlug !== panel.slug) : undefined
+  const intro = panel
+    ? `Thank you for registering for the Campus Series panel <strong>${esc(panel.titleShort)}</strong> at ${esc(panel.host)}, ${esc(panel.city)}.
+       The insights report from that session${other ? `, and the one from the companion panel at ${esc(other.host)},` : ''} is ready:
+       the key findings, the panellists&rsquo; own examples, and an agenda for action for students, educators, employers and policymakers.`
+    : `Here are the two Campus Series insights reports you asked for on bharataiinnovation.com: the key findings from each panel,
+       the panellists&rsquo; own examples, and an agenda for action for students, educators, employers and policymakers.`
+  const card = (r: InsightsReport) =>
+    `<tr><td style="padding:0 0 14px;"><table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e6e6ef;border-radius:12px;border-collapse:separate;"><tr>
+      <td width="98" valign="top" style="padding:14px 0 14px 14px;"><img src="https://bharataiinnovation.com${r.cover}" alt="${esc(r.title)} report cover" width="84" style="display:block;width:84px;height:auto;border:1px solid #ddd;border-radius:4px;"></td>
+      <td valign="top" style="padding:14px 16px 14px 14px;">
+        <div style="font-size:11px;font-weight:bold;letter-spacing:0.08em;text-transform:uppercase;color:#FF6B00;">${esc(r.hostShort)}, ${esc(r.city)} &bull; ${esc(r.dateLabel)}</div>
+        <div style="margin:4px 0;font-size:16px;line-height:1.3;font-weight:bold;color:#1E2140;">${esc(r.title)}</div>
+        <div style="font-size:13px;line-height:1.5;color:#555;">${esc(r.subtitle)}</div>
+        <div style="margin:10px 0 0;"><a href="${links[r.slug]}" style="display:inline-block;padding:11px 18px;background:#FF6B00;color:#fff;text-decoration:none;border-radius:8px;font-size:14px;font-weight:bold;">Download the report</a>
+          <span style="font-size:12px;color:#888;white-space:nowrap;">PDF &middot; ${r.pages} pages &middot; ${esc(r.size)}</span></div>
+      </td></tr></table></td></tr>`
+  const watch = reports.map(r =>
+    `<tr><td style="padding:0 0 8px;font-size:14px;line-height:1.5;"><a href="${youtubeWatch(r.video)}" style="color:#1a4fa0;font-weight:bold;text-decoration:none;">&#9654;&nbsp; Watch the ${esc(r.hostShort)} panel</a> <span style="color:#888;font-size:12px;">AI and Employability &middot; ${esc(r.dateLabel)} &middot; YouTube</span></td></tr>`
+  ).join('')
+  const registered = Number(person.main_event) === 1
+  const november = registered
+    ? `<p style="margin:0;font-size:14px;line-height:1.65;color:#444;">You are registered for <strong>Bharat AI Innovation 2026</strong> at the World Trade Center Mumbai on 20 to 21 November, where this conversation continues. See you there.</p>`
+    : `<p style="margin:0 0 12px;font-size:14px;line-height:1.65;color:#444;">The conversation continues at <strong>Bharat AI Innovation 2026</strong>, World Trade Center Mumbai, 20 to 21 November: two days of conference, exhibition and business meetings. Visitor passes are free.</p>
+       <a href="https://bharataiinnovation.com/register?utm_source=email&amp;utm_medium=insights-report" style="display:inline-block;padding:12px 22px;background:#1E2140;color:#fff;text-decoration:none;border-radius:8px;font-size:14px;font-weight:bold;">Register free for November</a>`
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#f5f5f5;font-family:Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;padding:28px 12px;"><tr><td align="center">
+    <table width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#fff;border-radius:14px;overflow:hidden;">
+      <tr><td style="padding:0;">${emailBrandHeader('Your AI and Employability insights reports', 'Campus Series &bull; Insights Reports &bull; September 2026')}</td></tr>
+      <tr><td style="padding:24px 28px 6px;">
+        <p style="margin:0 0 12px;font-size:15px;color:#1E2140;">Hi ${firstName},</p>
+        <p style="margin:0 0 18px;font-size:14px;line-height:1.65;color:#444;">${intro}</p>
+        <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">${reports.map(card).join('')}</table>
+      </td></tr>
+      <tr><td style="padding:4px 28px 6px;">
+        <div style="font-size:11px;font-weight:bold;letter-spacing:0.08em;text-transform:uppercase;color:#888;margin:0 0 8px;">Watch the panels</div>
+        <table cellpadding="0" cellspacing="0" style="border-collapse:collapse;">${watch}</table>
+      </td></tr>
+      <tr><td style="padding:10px 28px 6px;"><div style="background:#EEF4FF;border:1px solid #CFE0FF;border-radius:10px;padding:12px 16px;">
+        <p style="margin:0;font-size:13px;line-height:1.6;color:#1E2140;"><strong>Use them, share them.</strong> The reports are free to read and to pass on: to your class, your department or your team. The links work for ${REPORT_LINK_DAYS} days; after that, fresh ones are a minute away at <a href="https://bharataiinnovation.com/insights" style="color:#1a4fa0;">bharataiinnovation.com/insights</a>.</p>
+      </div></td></tr>
+      <tr><td style="padding:14px 28px 24px;">${november}</td></tr>
+      <tr><td style="background:#fafafa;padding:14px 28px;font-size:11px;color:#999;line-height:1.6;">
+        Bharat AI Innovation &middot; Organised by Aegis Knowledge Trust &middot; info@bharataiinnovation.com
+      </td></tr>
+    </table>
+  </td></tr></table></body></html>`
+  if (opts.preview) return { ok: true, html }
+  const sent = await sendAdminEmail(c, person.email, 'Your AI and Employability insights reports (Campus Series)', html)
+  return sent.ok ? { ok: true } : { ok: false, error: (sent as any).error }
+}
+
+// The form on /insights. Name, email and phone are the price of the reports; the
+// answer carries both links at once, and the same links go out by email so they
+// are on the person's phone. Repeat submissions update the row and are not mailed
+// again once the email has gone.
+app.post('/api/reports/request', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  const b = await c.req.json().catch(() => ({})) as any
+  const email = String(b.email || '').trim().toLowerCase()
+  const name = leadText(b.name, 120), mobile = leadText(b.mobile, 30), company = leadText(b.company, 160)
+  const who = REPORT_WHO.includes(String(b.who || '')) ? String(b.who) : ''
+  const missing: string[] = []
+  if (!name) missing.push('name')
+  if (email.length > 254 || !LEAD_EMAIL_RE.test(email)) missing.push('email')
+  if (mobile.replace(/\D/g, '').length < 8) missing.push('mobile')
+  if (!who) missing.push('who')
+  if (!company) missing.push('company')
+  if (missing.length) return c.json({ error: 'Please check the highlighted fields.', missing }, 400)
+  const industry = who === 'professional' ? (INDUSTRIES.includes(String(b.industry || '')) ? String(b.industry) : '') : 'Education & Academia'
+  const consent = b.consent === true || b.consent === 1 || b.consent === '1' ? 1 : 0
+  const ip = String(c.req.header('CF-Connecting-IP') || '').slice(0, 64)
+  let subject = 'l0'
+  let emailed = false
+  if (await reportDownloadsReady(c)) {
+    try {
+      if (ip) {
+        const n = await c.env.DB.prepare(
+          "SELECT COUNT(*) AS n FROM report_downloads WHERE ip = ? AND created_at > datetime('now', '-1 hour')"
+        ).bind(ip).first() as any
+        if (Number(n?.n || 0) >= REPORT_LEADS_PER_IP_PER_HOUR) return c.json({ error: 'Too many requests from this connection. Please try again in an hour.' }, 429)
+      }
+      const attendee = await c.env.DB.prepare('SELECT id, main_event FROM attendees WHERE event_id = 1 AND LOWER(email) = ?').bind(email).first() as any
+      await upsertReportRow(c, { email, name, mobile, company, job_title: b.job_title, city: b.city, industry, who, attendee_id: attendee?.id ?? null, source: 'page', consent, ip })
+      const row = await c.env.DB.prepare('SELECT id, email_sent_at FROM report_downloads WHERE event_id = 1 AND email = ?').bind(email).first() as any
+      if (row?.id) {
+        subject = 'l' + row.id
+        if (!row.email_sent_at) {
+          emailed = true
+          const send = sendReportsEmail(c, { id: row.id, name, email, main_event: attendee?.main_event }, { tokenSubject: subject })
+            .then(r => markReportEmail(c, email, r))
+          try { c.executionCtx.waitUntil(send) } catch { await send }
+        }
+      }
+    } catch (e: any) {
+      console.error('report lead not kept', e?.message)
+    }
+  }
+  const reports = await Promise.all(Object.values(INSIGHTS_REPORTS).map(async r => ({
+    slug: r.slug, title: r.title, host: r.host, hostShort: r.hostShort, city: r.city, dateLabel: r.dateLabel,
+    pages: r.pages, size: r.size, url: await reportUrl(c, r.slug, subject),
+  })))
+  return c.json({ ok: true, reports, emailed })
+})
+
+// ---- the admin side: the pump that mails a panel's registrants, and the numbers ----
+const REPORT_PUMP_FROM = `FROM panel_registrations pr JOIN attendees a ON a.id = pr.attendee_id
+       LEFT JOIN report_downloads rd ON rd.event_id = a.event_id AND rd.email = LOWER(a.email)`
+const reportPendingSql = (supp: string) =>
+  `pr.panel_slug = ? AND COALESCE(a.email, '') <> '' AND rd.email_sent_at IS NULL AND rd.email_error IS NULL${supp}`
+const PANEL_EMAILS_SQL = 'SELECT LOWER(a.email) FROM panel_registrations pr JOIN attendees a ON a.id = pr.attendee_id WHERE pr.panel_slug = ?'
+
+async function panelReportStats(c: any, slug: string): Promise<Record<string, any>> {
+  if (!(await reportDownloadsReady(c))) return { reports_ready: false }
+  try {
+    const supp = await suppressionClause(c, 'a.')
+    const can = supp ? supp.replace(/^ AND /, '') : '1 = 1'
+    const r = await c.env.DB.prepare(
+      `SELECT SUM(CASE WHEN rd.email_sent_at IS NOT NULL THEN 1 ELSE 0 END) AS reports_sent,
+              SUM(CASE WHEN rd.email_error IS NOT NULL AND rd.email_error NOT LIKE 'paused:%' THEN 1 ELSE 0 END) AS reports_failed,
+              SUM(CASE WHEN rd.email_error LIKE 'paused:%' THEN 1 ELSE 0 END) AS reports_paused,
+              SUM(CASE WHEN COALESCE(rd.downloads, 0) > 0 THEN 1 ELSE 0 END) AS reports_opened,
+              SUM(CASE WHEN COALESCE(a.email, '') <> '' AND rd.email_sent_at IS NULL AND rd.email_error IS NULL AND ${can} THEN 1 ELSE 0 END) AS reports_left,
+              SUM(CASE WHEN COALESCE(a.email, '') <> '' AND rd.email_sent_at IS NULL AND NOT (${can}) THEN 1 ELSE 0 END) AS reports_suppressed
+         ${REPORT_PUMP_FROM} WHERE pr.panel_slug = ?`
+    ).bind(slug).first() as any
+    const out: Record<string, any> = { reports_ready: true }
+    for (const k of ['reports_sent', 'reports_failed', 'reports_paused', 'reports_opened', 'reports_left', 'reports_suppressed']) out[k] = Number(r?.[k]) || 0
+    return out
+  } catch { return { reports_ready: false } }
+}
+
+// Sends the reports email to the next few registrants of a panel who do not have
+// it. Pumped from the Overview like the confirmation and the reminder; an address
+// that fails is parked and skipped, and "Retry failed" puts it back. Honours
+// unsubscribes and a "no" to updates: this is the first mail after the panel.
+app.post('/api/admin/panels/:slug/send-next-reports', async (c) => {
+  const slug = c.req.param('slug')
+  const panel = CAMPUS_PANELS[slug]
+  if (!panel) return c.json({ error: 'Unknown panel' }, 404)
+  if (!(await reportDownloadsReady(c))) return c.json({ error: 'Apply migration 0047 on the database first (npx wrangler d1 migrations apply bharatai-production --remote).' }, 409)
+  const body = await c.req.json().catch(() => ({})) as any
+  const batch = Math.min(10, Math.max(1, parseInt(body.batch, 10) || 5))
+  const PENDING = reportPendingSql(await suppressionClause(c, 'a.'))
+  const rows = ((await c.env.DB.prepare(`SELECT a.* ${REPORT_PUMP_FROM} WHERE ${PENDING} ORDER BY pr.id ASC LIMIT ?`).bind(slug, batch).all()).results || []) as any[]
+  let sent = 0
+  const failed: string[] = []
+  for (const a of rows) {
+    const email = String(a.email).trim().toLowerCase()
+    await upsertReportRow(c, { email, name: a.name, mobile: a.mobile, company: a.company, job_title: a.job_title, city: a.city, industry: a.industry, attendee_id: a.id, source: 'email' })
+    const r = await sendReportsEmail(c, { ...a, email }, { tokenSubject: 'a' + a.id, panel })
+    await markReportEmail(c, email, r)
+    if (r.ok) sent++
+    else failed.push(email)
+  }
+  const left = Number(((await c.env.DB.prepare(`SELECT COUNT(*) AS n ${REPORT_PUMP_FROM} WHERE ${PENDING}`).bind(slug).first()) as any)?.n || 0)
+  if (rows.length) await audit(c, 'panel.reports', 'panel', slug, { sent, failed: failed.length })
+  return c.json({ done: left === 0, sent, failed, remaining: left })
+})
+
+// Parks everyone on the panel's list who has not been mailed, so no tab anywhere
+// can send the next batch. People without a row yet get one, already parked.
+app.post('/api/admin/panels/:slug/pause-reports', async (c) => {
+  const slug = c.req.param('slug')
+  if (!CAMPUS_PANELS[slug]) return c.json({ error: 'Unknown panel' }, 404)
+  try {
+    const PENDING = reportPendingSql(await suppressionClause(c, 'a.'))
+    const ins = await c.env.DB.prepare(
+      `INSERT OR IGNORE INTO report_downloads (event_id, email, name, attendee_id, source, email_error)
+       SELECT a.event_id, LOWER(a.email), a.name, a.id, 'email', 'paused: by admin' ${REPORT_PUMP_FROM} WHERE ${PENDING} AND rd.id IS NULL`
+    ).bind(slug).run()
+    const upd = await c.env.DB.prepare(
+      `UPDATE report_downloads SET email_error = 'paused: by admin' WHERE event_id = 1 AND email_sent_at IS NULL AND email_error IS NULL AND email IN (${PANEL_EMAILS_SQL})`
+    ).bind(slug).run()
+    return c.json({ success: true, paused: (ins.meta?.changes ?? 0) + (upd.meta?.changes ?? 0) })
+  } catch { return c.json({ success: false }) }
+})
+
+// Resumes the queue. paused_only leaves genuine failures parked, so a resume after
+// a pause does not also retry addresses that bounced.
+app.post('/api/admin/panels/:slug/resume-reports', async (c) => {
+  const slug = c.req.param('slug')
+  if (!CAMPUS_PANELS[slug]) return c.json({ error: 'Unknown panel' }, 404)
+  const body = await c.req.json().catch(() => ({})) as any
+  const where = body.paused_only ? "email_error LIKE 'paused:%'" : 'email_error IS NOT NULL'
+  try {
+    const r = await c.env.DB.prepare(
+      `UPDATE report_downloads SET email_error = NULL WHERE event_id = 1 AND ${where} AND email IN (${PANEL_EMAILS_SQL})`
+    ).bind(slug).run()
+    return c.json({ success: true, resumed: r.meta?.changes ?? 0 })
+  } catch { return c.json({ success: false }) }
+})
+
+// The email as a registrant of this panel would get it, links not live.
+app.get('/api/admin/panels/:slug/reports-preview', async (c) => {
+  const slug = c.req.param('slug')
+  const panel = CAMPUS_PANELS[slug]
+  if (!panel) return c.json({ error: 'Unknown panel' }, 404)
+  const person = { id: 0, name: 'Sample Registrant', email: 'sample@example.com', main_event: 0 }
+  const r = await sendReportsEmail(c, person, { tokenSubject: 'a0', panel, preview: true })
+  return c.html(r.html || '<p>Could not render the preview.</p>')
+})
+
+// Everyone who has the reports, however they got them, for the Overview and as CSV.
+app.get('/api/admin/reports/summary', async (c) => {
+  if (!(await reportDownloadsReady(c))) return c.json({ ready: false })
+  try {
+    const r = await c.env.DB.prepare(
+      `SELECT COUNT(*) AS people,
+              SUM(CASE WHEN source = 'page' THEN 1 ELSE 0 END) AS asked_on_page,
+              SUM(CASE WHEN email_sent_at IS NOT NULL THEN 1 ELSE 0 END) AS emailed,
+              SUM(CASE WHEN email_error IS NOT NULL AND email_error NOT LIKE 'paused:%' THEN 1 ELSE 0 END) AS email_failed,
+              SUM(CASE WHEN downloads > 0 THEN 1 ELSE 0 END) AS opened,
+              SUM(downloads) AS downloads,
+              SUM(CASE WHEN marketing_consent = 1 THEN 1 ELSE 0 END) AS said_yes_to_updates
+         FROM report_downloads WHERE event_id = 1`
+    ).first() as any
+    const out: Record<string, any> = { ready: true }
+    for (const k of ['people', 'asked_on_page', 'emailed', 'email_failed', 'opened', 'downloads', 'said_yes_to_updates']) out[k] = Number(r?.[k]) || 0
+    return c.json(out)
+  } catch { return c.json({ ready: false }) }
+})
+
+app.get('/api/admin/reports/leads.csv', async (c) => {
+  if (!(await reportDownloadsReady(c))) return c.json({ error: 'Apply migration 0047 on the database first.' }, 409)
+  const { results } = await c.env.DB.prepare(
+    `SELECT name, email, mobile, company, job_title, city, industry, who, source, marketing_consent, created_at, email_sent_at, email_error, downloads, last_download_at, last_report
+       FROM report_downloads WHERE event_id = 1 ORDER BY created_at DESC`
+  ).all()
+  const rows = (results || []) as any[]
+  const cols = ['name', 'email', 'mobile', 'company', 'job_title', 'city', 'industry', 'who', 'source', 'marketing_consent', 'created_at', 'email_sent_at', 'email_error', 'downloads', 'last_download_at', 'last_report']
+  const cell = (v: any) => { const t = String(v ?? ''); return /[",\n\r]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t }
+  const csv = [cols.map(h => h === 'marketing_consent' ? 'said_yes_to_updates' : h === 'created_at' ? 'asked_at' : h).join(',')]
+    .concat(rows.map(r => cols.map(k => cell(k === 'marketing_consent' ? (r[k] === 1 ? 'yes' : r[k] === 0 ? 'no' : '') : r[k])).join(',')))
+    .join('\r\n')
+  await audit(c, 'reports.leads.export', 'report_downloads', null, { rows: rows.length })
+  return new Response('﻿' + csv, { headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="insights-report-leads.csv"' } })
 })
 
 // The people behind each number on the admin Campus panels block. Every condition
@@ -29497,6 +29882,32 @@ function adminPageHTML(): string {
             + '<span id="panel-remind-progress-' + esc(p.slug) + '" class="text-xs text-gray-400">' + panelLastSay(_reminderPump, p.slug) + '</span>'
             + '</div></div>';
         }
+        // The insights reports email, mailed once per address whichever panel's
+        // button sent it. Numbers here are plain text, not drill-downs: they count
+        // rows of report_downloads, not of the panel list, so PANEL_PEOPLE_METRICS
+        // has no copy of them.
+        var reports = '';
+        if (p.reports_ready === false) {
+          reports = '<div class="mt-3 pt-3 border-t border-white/10 text-[11px] text-amber-300"><i class="fas fa-circle-info mr-1"></i>The insights reports email is ready but needs migration 0047 on the database.</div>';
+        } else if (p.reports_ready) {
+          reports = '<div class="mt-3 pt-3 border-t border-white/10">'
+            + '<div class="text-xs text-gray-400 leading-relaxed mb-2"><span class="text-white font-semibold mr-2">Insights reports</span>'
+            + stat(p.reports_sent, 'have the reports email') + stat(p.reports_opened, 'opened a report') + stat(p.reports_left, 'to send')
+            + (p.reports_suppressed ? stat(p.reports_suppressed, 'not mailed (unsubscribed or said no)') : '')
+            + (p.reports_failed ? stat(p.reports_failed, 'failed') : '') + '</div>'
+            + '<div class="flex gap-2 flex-wrap items-center">'
+            + '<button onclick="previewPanelReports(' + slugQ + ')" class="px-3 py-1.5 rounded-lg text-xs glass hover:bg-white/10 transition"><i class="fas fa-eye mr-1.5"></i>Preview reports email</button>'
+            + (p.reports_paused ? '<button onclick="resumePanelReports(' + slugQ + ')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-orange-600 hover:bg-orange-500 text-white transition"><i class="fas fa-play mr-1.5"></i>Resume the reports (' + p.reports_paused + ' paused)</button>' : '')
+            + ((p.reports_left || 0) > 0
+                ? (panelRunning(_reportPump, p.slug)
+                    ? '<button id="panel-reports-' + esc(p.slug) + '" onclick="stopPanelReports(' + slugQ + ')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-orange-600 hover:bg-orange-500 text-white transition"><i class="fas fa-stop mr-1.5"></i>Stop</button>'
+                    : '<button id="panel-reports-' + esc(p.slug) + '" onclick="startPanelReports(' + slugQ + ')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-orange-600 hover:bg-orange-500 text-white transition"><i class="fas fa-paper-plane mr-1.5"></i>Send the reports (' + p.reports_left + ' to send)</button>')
+                : '<span class="text-xs text-emerald-400"><i class="fas fa-check mr-1"></i>Everyone who can be mailed has the reports</span>')
+            + ((p.reports_left || 0) > 0 ? paceControl(p.slug) : '')
+            + (p.reports_failed ? '<button onclick="retryPanelReports(' + slugQ + ')" class="px-3 py-1.5 rounded-lg text-xs glass hover:bg-white/10 transition"><i class="fas fa-redo mr-1.5"></i>Retry ' + p.reports_failed + ' failed</button>' : '')
+            + '<span id="panel-reports-progress-' + esc(p.slug) + '" class="text-xs text-gray-400">' + panelLastSay(_reportPump, p.slug) + '</span>'
+            + '</div></div>';
+        }
         return '<div class="p-3 rounded-xl bg-white/5 border border-white/10">'
           + '<div class="flex items-baseline justify-between gap-2 flex-wrap mb-1"><div class="text-sm font-semibold text-white">' + esc(p.hostShort) + ' <span class="text-gray-400 font-normal">&middot; ' + esc(p.dateLabel) + '</span></div><div class="text-[10px]">' + claim + code + '</div></div>'
           + '<div class="text-xs text-gray-400 leading-relaxed">' + stat(p.registered, 'registered', 'registered') + stat(p.via_muni, 'via mUni', 'via_muni') + stat(p.via_page, 'via our page', 'via_page') + stat(p.emailed, 'emailed', 'emailed') + (p.email_failed ? stat(p.email_failed, 'failed', 'email_failed') : '') + stat(p.signed_in, 'signed in', 'signed_in') + stat(p.with_photo, 'with photo', 'with_photo') + stat(p.card_taken, 'took the card', 'card_taken') + stat(p.main_event_yes, 'coming in Nov', 'main_event_yes') + stat(p.main_event_no, 'declined Nov', 'main_event_no') + stat(p.claimed, 'claimed attendance', 'claimed') + stat(p.certificate_taken, 'took the certificate', 'certificate_taken') + '</div>'
@@ -29511,8 +29922,9 @@ function adminPageHTML(): string {
           + (left > 0 ? paceControl(p.slug) : '')
           + (p.email_failed ? '<button onclick="resetPanelEmailErrors(&quot;' + esc(p.slug) + '&quot;)" class="px-3 py-1.5 rounded-lg text-xs glass hover:bg-white/10 transition"><i class="fas fa-redo mr-1.5"></i>Retry ' + p.email_failed + ' failed</button>' : '')
           + '<span id="panel-progress-' + esc(p.slug) + '" class="text-xs text-gray-400">' + panelLastSay(_panelPump, p.slug) + '</span>'
-          + '</div>' + answers + '</div>';
+          + '</div>' + answers + reports + '</div>';
       }).join('');
+      renderReportSummary();
     }
 
     // ---- how fast panel email goes out ----
@@ -29722,6 +30134,83 @@ function adminPageHTML(): string {
     async function resetPanelEmailErrors(slug) {
       try { await api.post('/api/admin/panels/' + encodeURIComponent(slug) + '/reset-email-errors', {}); } catch (e) {}
       renderCampusPanels();
+    }
+
+    // ---- the insights reports email ----
+    // Same shape as the confirmation and the reminder pumps above: one email at a
+    // time at the chosen pace, the queue on the server, Stop parks the rest.
+    var _reportPump = {};
+    function startPanelReports(slug) {
+      if (panelRunning(_reportPump, slug)) return;
+      if (!confirm('Send the insights reports email to everyone on the ' + slug + ' list who does not have it yet?\\n\\nReal email, ' + gapWords(panelGapSeconds(slug)) + '.\\nKeep this tab open until it finishes. Use Stop to pause; nobody is mailed twice.')) return;
+      var btn = document.getElementById('panel-reports-' + slug);
+      if (btn) { btn.innerHTML = '<i class="fas fa-stop mr-1.5"></i>Stop'; btn.onclick = function () { stopPanelReports(slug); }; }
+      _reportPump[slug] = { sent: 0, stopped: false };
+      pumpPanelReports(slug);
+    }
+    async function pumpPanelReports(slug) {
+      var say = function (m) { if (_reportPump[slug]) _reportPump[slug].lastSay = m; var el = document.getElementById('panel-reports-progress-' + slug); if (el) el.innerHTML = m; };
+      if (!_reportPump[slug] || _reportPump[slug].stopped) return;
+      var r;
+      try { r = await api.post('/api/admin/panels/' + encodeURIComponent(slug) + '/send-next-reports', { batch: 1 }); }
+      catch (e) { say('<span class="text-red-400">Network error - retrying in 30s.</span>'); _reportPump[slug].timer = setTimeout(function () { pumpPanelReports(slug); }, 30000); return; }
+      if (!r || r.error) { _reportPump[slug].stopped = true; say('<span class="text-red-400">' + esc((r && r.error) || 'failed') + '</span>'); renderCampusPanels(); return; }
+      _reportPump[slug].sent += (r.sent || 0);
+      if (_reportPump[slug].stopped) { say('Stopped - ' + _reportPump[slug].sent + ' sent.'); return; }
+      if (r.done) { var total = _reportPump[slug].sent; _reportPump[slug].done = true; _reportPump[slug].lastSay = '<span class="text-green-400">Done - ' + total + ' sent.</span>'; renderCampusPanels(); return; }
+      var head = _reportPump[slug].sent + ' sent, ' + r.remaining + ' to go.' + panelEta(r.remaining, slug);
+      say(head);
+      panelWait(_reportPump[slug], slug, say, head, function () { pumpPanelReports(slug); });
+    }
+    async function stopPanelReports(slug) {
+      if (_reportPump[slug]) { _reportPump[slug].stopped = true; if (_reportPump[slug].timer) clearTimeout(_reportPump[slug].timer); _reportPump[slug].lastSay = 'Stopped - ' + (_reportPump[slug].sent || 0) + ' sent.'; }
+      var btn = document.getElementById('panel-reports-' + slug);
+      if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1.5"></i>Stopping…'; }
+      try { await api.post('/api/admin/panels/' + encodeURIComponent(slug) + '/pause-reports', {}); } catch (e) {}
+      renderCampusPanels();
+    }
+    async function resumePanelReports(slug) {
+      try { await api.post('/api/admin/panels/' + encodeURIComponent(slug) + '/resume-reports', { paused_only: true }); } catch (e) {}
+      await renderCampusPanels();
+      startPanelReports(slug);
+    }
+    async function retryPanelReports(slug) {
+      try { await api.post('/api/admin/panels/' + encodeURIComponent(slug) + '/resume-reports', {}); } catch (e) {}
+      renderCampusPanels();
+    }
+    async function previewPanelReports(slug) {
+      var w = window.open('', '_blank');
+      try {
+        var r = await fetch('/api/admin/panels/' + encodeURIComponent(slug) + '/reports-preview', { headers: authHeaders() });
+        var html = await r.text();
+        if (w) { w.document.open(); w.document.write(html); w.document.close(); }
+      } catch (e) { if (w) w.close(); toast('Could not load the preview', 'error'); }
+    }
+    function downloadReportLeads() {
+      downloadCsvViaApi('/api/admin/reports/leads.csv', 'insights-report-leads.csv');
+    }
+    // Everyone who has the reports, from the website form or the panel emails,
+    // under the panel rows. Drawn after them so a database short of 0047, or a
+    // harness that knows nothing of it, simply shows nothing here.
+    async function renderReportSummary() {
+      var box = document.getElementById('campus-panels');
+      if (!box) return;
+      var s;
+      try { s = await api.get('/api/admin/reports/summary'); } catch (e) { return; }
+      if (!s || !s.ready) return;
+      var old = document.getElementById('report-summary');
+      if (old) old.remove();
+      var n = function (v, label) { return '<span class="inline-block mr-3 whitespace-nowrap"><strong class="text-white">' + (v || 0) + '</strong> ' + label + '</span>'; };
+      var row = document.createElement('div');
+      row.id = 'report-summary';
+      row.className = 'p-3 rounded-xl bg-white/5 border border-white/10 mt-2';
+      row.innerHTML = '<div class="flex items-baseline justify-between gap-2 flex-wrap mb-1"><div class="text-sm font-semibold text-white">Insights reports <span class="text-gray-400 font-normal">&middot; /insights and the panel emails</span></div></div>'
+        + '<div class="text-xs text-gray-400 leading-relaxed">' + n(s.people, 'people have the links') + n(s.asked_on_page, 'asked on the website') + n(s.emailed, 'emailed') + (s.email_failed ? n(s.email_failed, 'email failed') : '') + n(s.opened, 'opened a report') + n(s.downloads, 'opens in all') + n(s.said_yes_to_updates, 'said yes to updates') + '</div>'
+        + '<div class="flex gap-2 mt-2 flex-wrap items-center">'
+        + '<button onclick="downloadReportLeads()" class="px-3 py-1.5 rounded-lg text-xs glass hover:bg-white/10 transition"><i class="fas fa-download mr-1.5"></i>Everyone, as CSV</button>'
+        + '<a href="/insights" target="_blank" rel="noopener" class="px-3 py-1.5 rounded-lg text-xs glass hover:bg-white/10 transition"><i class="fas fa-arrow-up-right-from-square mr-1.5"></i>Open /insights</a>'
+        + '</div>';
+      box.appendChild(row);
     }
 
     function stopProfileReminderCampaign() {

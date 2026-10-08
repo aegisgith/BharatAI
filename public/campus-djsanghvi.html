@@ -117,7 +117,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300..800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/css/fa-subset.css?v=1">
     <link rel="stylesheet" href="css/style.css?v=20261004d">
-    <link rel="stylesheet" href="css/campus-panel.css">
+    <link rel="stylesheet" href="css/campus-panel.css?v=20261008">
     <link rel="icon" type="image/png" href="images/Bharat%20AI%20Innovation%20Logo.png">
 </head>
 <body>
@@ -176,6 +176,31 @@
                      src="images/campus-djsanghvi-21sep-panel-v5.jpg"
                      alt="Panel discussion: AI and Employability at Dwarkadas J. Sanghvi College of Engineering on 21 September 2026, with Dr. Ashish Tendulkar, Bhupesh Daheria and Virendra Pal">
             </figure>
+        </div>
+    </section>
+
+    <!-- ===== WATCH THE PANEL, READ THE REPORT ===== -->
+    <section class="cp-section cp-section--tint" id="watch" style="scroll-margin-top:calc(var(--nav-h) + 16px);">
+        <div class="container">
+            <div class="section-header reveal">
+                <h2 class="section-title">Watch the panel, <span class="accent">read the report</span></h2>
+                <p class="section-subtitle">The full recording, and a 20-page insights report on what the panel found: the key findings, the panellists&rsquo; examples and an agenda for action.</p>
+            </div>
+            <div class="cp-watch">
+                <div class="yt reveal">
+                    <iframe src="https://www.youtube-nocookie.com/embed/fIPXB3mTNOM" title="AI and Employability panel discussion at Dwarkadas J. Sanghvi College of Engineering, 21 September 2026" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>
+                </div>
+                <aside class="cp-report reveal reveal-delay-1">
+                    <img width="720" height="1019" loading="lazy" decoding="async" src="images/reports/djsce-cover.jpg" alt="Cover of Beyond the Fear, the insights report from this panel">
+                    <div>
+                        <span class="cp-report-label"><i class="fas fa-file-lines"></i> Insights report</span>
+                        <h3>Beyond the Fear</h3>
+                        <p>How AI is reshaping work, skills and assessment, and what students, educators and employers must do next. 20 pages, free to read and share.</p>
+                        <a href="/insights#get" class="btn btn-primary">Get the insights report <i class="fas fa-arrow-right"></i></a>
+                        <a href="https://www.youtube.com/watch?v=fIPXB3mTNOM" class="cp-report-ext" target="_blank" rel="noopener noreferrer"><i class="fas fa-play"></i> Watch on YouTube</a>
+                    </div>
+                </aside>
+            </div>
         </div>
     </section>
 
@@ -557,11 +582,12 @@
         '<div class="cp-reg-done">' +
           '<div class="cp-reg-done-icon" style="background:#5E6585;box-shadow:none;"><i class="fas fa-check"></i></div>' +
           '<h3>This panel has concluded</h3>' +
-          '<p>Thank you to everyone who came. The Campus Series continues on other campuses ahead of the main conference in November.</p>' +
+          '<p>Thank you to everyone who came. The recording and the insights report are above, and the Campus Series continues on other campuses ahead of the main conference in November.</p>' +
+          '<a class="btn btn-primary" href="#watch" style="margin:0 0.5rem 0.6rem 0;">Watch &amp; get the report <i class="fas fa-arrow-right"></i></a>' +
           '<a class="btn btn-outline" href="/campus-series">See upcoming panels <i class="fas fa-arrow-right"></i></a>' +
         '</div>';
       var hero = document.querySelector('.cp-actions a[href="#register"]');
-      if (hero) { hero.setAttribute('href', 'campus-series.html'); hero.innerHTML = 'See Upcoming Panels <i class="fas fa-arrow-right"></i>'; }
+      if (hero) { hero.setAttribute('href', '#watch'); hero.innerHTML = 'Watch the Panel &amp; Get the Report <i class="fas fa-arrow-right"></i>'; }
       var pend = document.querySelector('.cp-spk-pending a[href="#register"]');
       if (pend) pend.remove();
       var seat = document.querySelector('.cp-host-actions a[href="#register"]');

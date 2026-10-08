@@ -388,7 +388,29 @@
     }
     .cs-host-list i { color: var(--saffron); margin-top: 0.25rem; flex-shrink: 0; }
 
+    /* --- Watch and read: the recordings and the insights reports --- */
+    .cs-watch { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
+    .cs-watch-card {
+        background: #fff; border: 1px solid var(--light); border-radius: 24px;
+        overflow: hidden; box-shadow: var(--shadow-sm);
+    }
+    .yt { position: relative; aspect-ratio: 16 / 9; background: #000; overflow: hidden; }
+    .yt iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+    .cs-watch-body { padding: 1.75rem 2rem 2rem; display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 1.25rem; align-items: start; }
+    .cs-watch-body img { width: 100%; height: auto; display: block; border-radius: 5px; border: 1px solid var(--light); box-shadow: 0 8px 20px rgba(0,0,0,0.12); }
+    .cs-watch-body h3 { font-family: var(--font-display); font-size: 1.3rem; font-weight: 800; color: var(--charcoal); line-height: 1.2; margin: 0 0 0.4rem; }
+    .cs-watch-body p { font-size: 0.9rem; color: var(--dark-grey); line-height: 1.6; margin: 0 0 1rem; }
+    .cs-watch-actions { display: flex; gap: 0.6rem 1.25rem; flex-wrap: wrap; align-items: center; }
+    .cs-ext { display: inline-flex; align-items: center; gap: 0.45rem; font-size: 0.85rem; font-weight: 700; color: var(--charcoal); text-decoration: none; }
+    .cs-ext i { color: var(--saffron); }
+
+    @media (max-width: 480px) {
+        .cs-watch-body { grid-template-columns: 1fr; }
+        .cs-watch-body img { max-width: 120px; }
+    }
     @media (max-width: 900px) {
+        .cs-watch { grid-template-columns: 1fr; }
+        .cs-watch-body { padding: 1.5rem 1.5rem 1.75rem; }
         .cs-panel { grid-template-columns: 1fr; }
         .cs-panel-media { min-height: 200px; }
         .cs-panel-body { padding: 2rem 1.5rem; }
@@ -485,6 +507,7 @@
                         <div class="cs-panel-actions">
                             <a href="/campus-djsanghvi" class="btn btn-primary">Panel Details &amp; Speakers <i class="fas fa-arrow-right"></i></a>
                             <a href="/campus-djsanghvi#register" class="btn btn-outline">Register to Attend</a>
+                            <a href="#insights" class="btn btn-outline"><i class="fas fa-play"></i> Watch &amp; Read the Report</a>
                         </div>
                     </div>
                 </article>
@@ -511,6 +534,7 @@
                         <div class="cs-panel-actions">
                             <a href="/campus-jnu" class="btn btn-primary">Panel Details &amp; Speakers <i class="fas fa-arrow-right"></i></a>
                             <a href="/campus-jnu#register" class="btn btn-outline">Register to Attend</a>
+                            <a href="#insights" class="btn btn-outline"><i class="fas fa-play"></i> Watch &amp; Read the Report</a>
                         </div>
                     </div>
                 </article>
@@ -523,6 +547,55 @@
                 </div>
 
             </div>
+        </div>
+    </section>
+
+    <!-- ===== WATCH AND READ ===== -->
+    <section id="insights" style="padding:6rem 0;background:#fff;scroll-margin-top:calc(var(--nav-h) + 16px);">
+        <div class="container">
+            <div class="section-header reveal">
+                <h2 class="section-title">Watch the panels, <span class="accent">read the reports</span></h2>
+                <p class="section-subtitle">Both sessions were recorded, and each has become a free insights report: the key findings, the panellists&rsquo; examples and an agenda for action for students, educators, employers and policymakers.</p>
+            </div>
+            <div class="cs-watch">
+                <article class="cs-watch-card reveal">
+                    <div class="yt">
+                        <iframe src="https://www.youtube-nocookie.com/embed/fIPXB3mTNOM" title="AI and Employability panel discussion at Dwarkadas J. Sanghvi College of Engineering, 21 September 2026" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>
+                    </div>
+                    <div class="cs-watch-body">
+                        <img width="720" height="1019" loading="lazy" decoding="async" src="images/reports/djsce-cover.jpg" alt="Cover of Beyond the Fear, the insights report from the DJ Sanghvi panel">
+                        <div>
+                            <div class="cs-panel-host"><i class="fas fa-university"></i> DJ Sanghvi, Mumbai &middot; 21 Sep 2026</div>
+                            <h3>Beyond the Fear</h3>
+                            <p>How AI is reshaping work, skills and assessment, and what students, educators and employers must do next. 20 pages.</p>
+                            <div class="cs-watch-actions">
+                                <a href="/insights#get" class="btn btn-primary btn-sm">Get the report <i class="fas fa-arrow-right"></i></a>
+                                <a href="https://www.youtube.com/watch?v=fIPXB3mTNOM" class="cs-ext" target="_blank" rel="noopener noreferrer"><i class="fas fa-play"></i> Watch on YouTube</a>
+                            </div>
+                        </div>
+                    </div>
+                </article>
+                <article class="cs-watch-card reveal reveal-delay-1">
+                    <div class="yt">
+                        <iframe src="https://www.youtube-nocookie.com/embed/6tlYBxAPw3g" title="AI and Employability panel discussion at Jawaharlal Nehru University, 30 September 2026" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>
+                    </div>
+                    <div class="cs-watch-body">
+                        <img width="720" height="1019" loading="lazy" decoding="async" src="images/reports/jnu-cover.jpg" alt="Cover of AI and Employability, the insights report from the JNU panel">
+                        <div>
+                            <div class="cs-panel-host"><i class="fas fa-university"></i> JNU, New Delhi &middot; 30 Sep 2026</div>
+                            <h3>AI and Employability</h3>
+                            <p>Opportunities, challenges and the future of work: perspectives from industry, academia and the skilling ecosystem. 22 pages.</p>
+                            <div class="cs-watch-actions">
+                                <a href="/insights#get" class="btn btn-primary btn-sm">Get the report <i class="fas fa-arrow-right"></i></a>
+                                <a href="https://www.youtube.com/watch?v=6tlYBxAPw3g" class="cs-ext" target="_blank" rel="noopener noreferrer"><i class="fas fa-play"></i> Watch on YouTube</a>
+                            </div>
+                        </div>
+                    </div>
+                </article>
+            </div>
+            <p class="reveal" style="text-align:center;margin-top:2rem;">
+                <a href="/insights" class="btn btn-outline">Both reports and recordings on one page <i class="fas fa-arrow-right"></i></a>
+            </p>
         </div>
     </section>
 

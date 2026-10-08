@@ -121,7 +121,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300..800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/css/fa-subset.css?v=1">
     <link rel="stylesheet" href="css/style.css?v=20261004d">
-    <link rel="stylesheet" href="css/campus-panel.css?v=20260926a">
+    <link rel="stylesheet" href="css/campus-panel.css?v=20261008">
     <link rel="icon" type="image/png" href="images/Bharat%20AI%20Innovation%20Logo.png">
 </head>
 <body>
@@ -180,6 +180,32 @@
                      src="images/campus-jnu-30sep.jpg"
                      alt="AI and Employability panel discussion at Jawaharlal Nehru University, 30 September 2026">
             </figure>
+        </div>
+    </section>
+
+    <!-- ===== WATCH THE PANEL, READ THE REPORT ===== -->
+    <section class="cp-section cp-section--tint" id="watch" style="scroll-margin-top:calc(var(--nav-h) + 16px);">
+        <div class="container">
+            <div class="section-header reveal">
+                <h2 class="section-title">Watch the panel, <span class="accent">read the report</span></h2>
+                <p class="section-subtitle">The full recording, and a 22-page insights report on what the panel found: the readiness gap, India&rsquo;s place in the AI value chain, the skilling value chain and where a learner should start.</p>
+            </div>
+            <div class="cp-watch">
+                <div class="yt reveal">
+                    <iframe src="https://www.youtube-nocookie.com/embed/6tlYBxAPw3g" title="AI and Employability panel discussion at Jawaharlal Nehru University, 30 September 2026" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>
+                </div>
+                <aside class="cp-report reveal reveal-delay-1">
+                    <img width="720" height="1019" loading="lazy" decoding="async" src="images/reports/jnu-cover.jpg" alt="Cover of AI and Employability, the insights report from this panel">
+                    <div>
+                        <span class="cp-report-label"><i class="fas fa-file-lines"></i> Insights report</span>
+                        <h3>AI and Employability</h3>
+                        <p>Opportunities, challenges and the future of work: perspectives from industry, academia and the skilling ecosystem. 22 pages, free to read and share.</p>
+                        <a href="/insights#get" class="btn btn-primary">Get the insights report <i class="fas fa-arrow-right"></i></a>
+                        <a href="https://www.youtube.com/watch?v=6tlYBxAPw3g" class="cp-report-ext" target="_blank" rel="noopener noreferrer"><i class="fas fa-play"></i> Watch on YouTube</a>
+                        <a href="https://www.youtube.com/watch?v=Vfr3Rhr2RKI" class="cp-report-ext" target="_blank" rel="noopener noreferrer"><i class="fas fa-microphone"></i> The opening keynote</a>
+                    </div>
+                </aside>
+            </div>
         </div>
     </section>
 
@@ -708,11 +734,12 @@
         '<div class="cp-reg-done">' +
           '<div class="cp-reg-done-icon" style="background:#5E6585;box-shadow:none;"><i class="fas fa-check"></i></div>' +
           '<h3>This panel has concluded</h3>' +
-          '<p>Thank you to everyone who came. The Campus Series continues on other campuses ahead of the main conference in November.</p>' +
+          '<p>Thank you to everyone who came. The recording and the insights report are above, and the Campus Series continues on other campuses ahead of the main conference in November.</p>' +
+          '<a class="btn btn-primary" href="#watch" style="margin:0 0.5rem 0.6rem 0;">Watch &amp; get the report <i class="fas fa-arrow-right"></i></a>' +
           '<a class="btn btn-outline" href="/campus-series">See upcoming panels <i class="fas fa-arrow-right"></i></a>' +
         '</div>';
       var hero = document.querySelector('.cp-actions a[href="#register"]');
-      if (hero) { hero.setAttribute('href', 'campus-series.html'); hero.innerHTML = 'See Upcoming Panels <i class="fas fa-arrow-right"></i>'; }
+      if (hero) { hero.setAttribute('href', '#watch'); hero.innerHTML = 'Watch the Panel &amp; Get the Report <i class="fas fa-arrow-right"></i>'; }
       var pend = document.querySelector('.cp-spk-pending a[href="#register"]');
       if (pend) pend.remove();
       var seat = document.querySelector('.cp-host-actions a[href="#register"]');

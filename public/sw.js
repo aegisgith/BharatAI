@@ -105,6 +105,11 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return; // only same-origin
 
+  // The Campus Series insights reports are PDFs behind a signed link, several
+  // MB each: never a copy in the shell cache, and never served to the next
+  // person who picks up the phone.
+  if (url.pathname.startsWith('/reports/')) return;
+
   // API reads: network-first with an offline fallback, but only for the public
   // lists in API_CACHEABLE, and only 2xx bodies - a 401 or a 500 must never
   // become the copy that is served when the venue WiFi drops.

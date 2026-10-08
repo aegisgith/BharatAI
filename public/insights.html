@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Insights Reports — AI and Employability | Bharat AI Innovation Campus Series</title>
+    <meta name="description" content="Two free insights reports from the Bharat AI Innovation Campus Series: AI and Employability at Dwarkadas J. Sanghvi College of Engineering, Mumbai (21 September 2026) and Jawaharlal Nehru University, New Delhi (30 September 2026). The findings, the panellists' examples and an agenda for action for students, educators, employers and policymakers, plus both recordings.">
+    <link rel="canonical" href="https://bharataiinnovation.com/insights">
+    <!-- Link previews (WhatsApp, LinkedIn, X, Slack). Card: scripts/gen-og-cards.mjs -->
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Bharat AI Innovation">
+    <meta property="og:locale" content="en_IN">
+    <meta property="og:url" content="https://bharataiinnovation.com/insights">
+    <meta property="og:title" content="AI and Employability: two free insights reports | Bharat AI Innovation Campus Series">
+    <meta property="og:description" content="What the DJ Sanghvi and JNU panels found about AI, skills, hiring and assessment. Two free PDF reports and both recordings.">
+    <meta property="og:image" content="https://bharataiinnovation.com/images/og/insights.jpg">
+    <meta property="og:image:secure_url" content="https://bharataiinnovation.com/images/og/insights.jpg">
+    <meta property="og:image:type" content="image/jpeg">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="What two campuses learned about AI and jobs — Bharat AI Innovation Campus Series insights reports">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="AI and Employability: two free insights reports">
+    <meta name="twitter:description" content="What the DJ Sanghvi and JNU panels found about AI, skills, hiring and assessment. Free PDFs and both recordings.">
+    <meta name="twitter:image" content="https://bharataiinnovation.com/images/og/insights.jpg">
+    <meta name="twitter:image:alt" content="What two campuses learned about AI and jobs — Bharat AI Innovation Campus Series insights reports">
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
+
+    <!-- Schema.org Structured Data -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "WebPage",
+          "@id": "https://bharataiinnovation.com/insights",
+          "url": "https://bharataiinnovation.com/insights",
+          "name": "Campus Series Insights Reports: AI and Employability",
+          "description": "Two free insights reports from the Bharat AI Innovation Campus Series panels at Dwarkadas J. Sanghvi College of Engineering, Mumbai, and Jawaharlal Nehru University, New Delhi, with both recordings.",
+          "isPartOf": { "@type": "WebSite", "url": "https://bharataiinnovation.com/", "name": "Bharat AI Innovation" },
+          "publisher": { "@id": "https://bharataiinnovation.com/#organization" }
+        },
+        {
+          "@type": "Organization",
+          "@id": "https://bharataiinnovation.com/#organization",
+          "name": "Bharat AI Innovation",
+          "url": "https://bharataiinnovation.com",
+          "logo": "https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png",
+          "email": "info@bharataiinnovation.com",
+          "telephone": "+91-89765-80367"
+        },
+        {
+          "@type": "BreadcrumbList",
+          "itemListElement": [
+            { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://bharataiinnovation.com/" },
+            { "@type": "ListItem", "position": 2, "name": "Campus Series", "item": "https://bharataiinnovation.com/campus-series" },
+            { "@type": "ListItem", "position": 3, "name": "Insights Reports", "item": "https://bharataiinnovation.com/insights" }
+          ]
+        }
+      ]
+    }
+    </script>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300..800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/fa-subset.css?v=1">
+    <link rel="stylesheet" href="css/style.css?v=20261004d">
+    <link rel="stylesheet" href="css/campus-panel.css?v=20261008">
+    <link rel="icon" type="image/png" href="images/Bharat%20AI%20Innovation%20Logo.png">
+
+    <style>
+    /* ===== INSIGHTS REPORTS — page-scoped ===== */
+    .ir-hero {
+        position: relative;
+        padding: calc(var(--nav-h) + 4.5rem) 0 4.5rem;
+        background: var(--grad-hero);
+        overflow: hidden;
+    }
+    .ir-hero::after {
+        content: '';
+        position: absolute; top: -180px; right: -140px;
+        width: 520px; height: 520px; border-radius: 50%;
+        background: radial-gradient(circle, rgba(255,107,0,0.16) 0%, transparent 70%);
+        pointer-events: none;
+    }
+    .ir-hero-inner {
+        position: relative; z-index: 1;
+        display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+        gap: 3rem; align-items: center;
+    }
+    .ir-eyebrow {
+        display: inline-flex; align-items: center; gap: 0.5rem;
+        background: rgba(255,107,0,0.15); border: 1px solid rgba(255,107,0,0.3);
+        border-radius: 100px; padding: 0.4rem 1rem;
+        font-size: 0.75rem; font-weight: 700; color: #FF9A40;
+        text-transform: uppercase; letter-spacing: 0.09em; margin-bottom: 1.5rem;
+    }
+    .ir-title {
+        font-family: var(--font-display);
+        font-size: clamp(2.1rem, 4.6vw, 3.4rem);
+        font-weight: 800; line-height: 1.1; color: #fff;
+        margin-bottom: 1.1rem; max-width: 20ch;
+    }
+    .ir-title .accent { color: var(--saffron); }
+    .ir-desc { font-size: 1.08rem; line-height: 1.75; color: rgba(255,255,255,0.7); max-width: 58ch; margin-bottom: 2rem; }
+    .ir-actions { display: flex; gap: 1rem; flex-wrap: wrap; }
+    .ir-facts {
+        display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+        margin-top: 2.5rem; padding-top: 1.75rem;
+        border-top: 1px solid rgba(255,255,255,0.12);
+        color: rgba(255,255,255,0.62); font-size: 0.9rem; font-weight: 600;
+    }
+    .ir-facts i { color: var(--saffron); margin-right: 0.45rem; }
+    .ir-facts-sep { width: 1px; height: 18px; background: rgba(255,255,255,0.15); }
+    .ir-covers { position: relative; display: flex; justify-content: center; align-items: flex-end; min-height: 380px; }
+    .ir-covers img {
+        width: min(48%, 250px); height: auto; display: block;
+        border-radius: 8px; border: 1px solid rgba(255,255,255,0.14);
+        box-shadow: 0 24px 60px rgba(0,0,0,0.45);
+    }
+    .ir-covers img:first-child { transform: rotate(-6deg) translate(8px, 14px); z-index: 1; }
+    .ir-covers img:last-child { transform: rotate(5deg) translateX(-10px); }
+
+    /* --- the two reports --- */
+    .ir-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
+    .ir-report {
+        display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 1.5rem;
+        background: #fff; border: 1px solid var(--light); border-radius: 22px;
+        padding: 1.75rem; box-shadow: var(--shadow-sm);
+        scroll-margin-top: calc(var(--nav-h) + 24px);
+    }
+    .ir-report img { width: 100%; height: auto; display: block; border-radius: 6px; border: 1px solid var(--light); box-shadow: 0 10px 24px rgba(0,0,0,0.12); }
+    .ir-report-host {
+        display: flex; align-items: center; gap: 0.5rem;
+        font-size: 0.74rem; font-weight: 800; color: var(--saffron);
+        text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 0.6rem;
+    }
+    .ir-report h3 { font-family: var(--font-display); font-size: 1.5rem; font-weight: 800; line-height: 1.2; color: var(--charcoal); margin: 0 0 0.45rem; }
+    .ir-report-sub { font-size: 0.95rem; color: var(--dark-grey); line-height: 1.6; margin: 0 0 1rem; }
+    .ir-inside { list-style: none; padding: 0; margin: 0 0 1.1rem; display: flex; flex-direction: column; gap: 0.45rem; }
+    .ir-inside li { display: flex; gap: 0.6rem; font-size: 0.9rem; line-height: 1.55; color: var(--charcoal); }
+    .ir-inside i { color: var(--saffron); margin-top: 0.3rem; flex-shrink: 0; }
+    .ir-meta { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 1.2rem; }
+    .ir-meta span { background: var(--off-white); border-radius: 100px; padding: 0.3rem 0.75rem; font-size: 0.78rem; font-weight: 600; color: var(--dark-grey); }
+    .ir-report-actions { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; }
+    .ir-ext { display: inline-flex; align-items: center; gap: 0.45rem; font-size: 0.85rem; font-weight: 700; color: var(--charcoal); text-decoration: none; }
+    .ir-ext i { color: var(--saffron); }
+
+    /* --- the form's thank-you state --- */
+    .ir-dl { display: flex; flex-direction: column; gap: 0.75rem; margin: 1.25rem 0; text-align: left; }
+    .ir-dl-btn { justify-content: flex-start !important; width: 100%; text-align: left; }
+    .ir-dl-btn span { display: block; min-width: 0; }
+    .ir-dl-btn strong { display: block; }
+    .ir-dl-btn small { display: block; font-weight: 500; font-size: 0.75rem; opacity: 0.85; white-space: normal; }
+    .ir-small { font-size: 0.85rem; color: var(--dark-grey); line-height: 1.6; }
+    .ir-reset { display: block; margin: 0.9rem auto 0; background: none; border: 0; color: var(--mid-grey, #777); font-size: 0.8rem; text-decoration: underline; cursor: pointer; }
+    .ir-consent { grid-column: 1 / -1; display: flex; gap: 0.6rem; align-items: flex-start; font-size: 0.85rem; color: var(--dark-grey); line-height: 1.5; cursor: pointer; }
+    .ir-consent input { width: 18px; height: 18px; margin-top: 0.15rem; flex-shrink: 0; accent-color: var(--saffron); }
+
+    /* --- the recordings --- */
+    .yt { position: relative; aspect-ratio: 16 / 9; background: #000; border-radius: 18px; overflow: hidden; box-shadow: var(--shadow-lg, 0 20px 50px rgba(0,0,0,0.14)); }
+    .yt iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+    .ir-videos { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
+    .ir-video h3 { font-family: var(--font-display); font-size: 1.15rem; font-weight: 800; color: var(--charcoal); margin: 1rem 0 0.3rem; }
+    .ir-video p { font-size: 0.9rem; color: var(--dark-grey); line-height: 1.6; margin: 0 0 0.6rem; }
+    .ir-video-links { display: flex; gap: 1.25rem; flex-wrap: wrap; }
+
+    @media (max-width: 900px) {
+        .ir-hero-inner { grid-template-columns: 1fr; gap: 2rem; }
+        .ir-covers { min-height: 0; margin-top: 0.5rem; }
+        .ir-grid, .ir-videos { grid-template-columns: 1fr; }
+        .ir-report { grid-template-columns: 130px minmax(0, 1fr); padding: 1.25rem; gap: 1.1rem; }
+    }
+    @media (max-width: 480px) {
+        .ir-report { grid-template-columns: 1fr; }
+        .ir-report img { max-width: 170px; }
+        .ir-covers img { width: 46%; }
+    }
+    </style>
+</head>
+<body>
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+
+    <!-- NAVBAR -->
+    <nav class="navbar dark-nav" id="navbar">
+        <div class="nav-container">
+            <a href="/" class="nav-logo">
+                <img width="120" height="50" loading="eager" fetchpriority="high" decoding="async" src="images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI Innovation Logo" style="height:44px;width:auto;border-radius:12px;padding:6px;background:rgba(255,255,255,0.95);box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+            </a>
+            <div class="nav-menu" id="nav-menu">
+                <a href="/" class="nav-link">Home</a>
+                <a href="/conference" class="nav-link">Conference</a>
+                <a href="/exhibition" class="nav-link">Exhibition</a>
+                <a href="/#networking" class="nav-link">Networking</a>
+                <a href="/partner" class="nav-link">Partner</a>
+                <a href="/training-workshop" class="nav-link">Workshops</a>
+                <a href="/ai-readiness" class="nav-link">AI Readiness</a>
+                <a href="/about" class="nav-link">About</a>
+                <a href="https://bellaward.com" target="_blank" rel="noopener noreferrer" class="nav-link">AGBA</a>
+                <a href="/campus-series" class="nav-link active">Campus Series</a>
+                <a href="/contact" class="nav-link">Contact</a>
+                <a href="/register" class="nav-cta">Register <i class="fas fa-arrow-right"></i></a>
+            </div>
+            <div class="nav-toggle" id="nav-toggle">
+                <span class="bar"></span><span class="bar"></span><span class="bar"></span>
+            </div>
+        </div>
+    </nav>
+
+    <!-- ===== HERO ===== -->
+    <section class="ir-hero" id="main-content">
+        <div class="container ir-hero-inner">
+            <div>
+                <a href="/campus-series" class="cp-back"><i class="fas fa-arrow-left"></i> Campus Series</a>
+                <div class="ir-eyebrow"><i class="fas fa-file-lines"></i> Insights Reports &middot; September 2026</div>
+                <h1 class="ir-title">What two campuses learned about <span class="accent">AI and jobs</span></h1>
+                <p class="ir-desc">
+                    Two panels on AI and Employability, at Dwarkadas J. Sanghvi College of Engineering in Mumbai and
+                    Jawaharlal Nehru University in New Delhi, with voices from Google, HDFC Life, IIT Delhi, JNU,
+                    Uno Minda, the Electronics Sector Skills Council and The Times of India. Each has become a free
+                    insights report: the findings, the panellists&rsquo; own examples, and an agenda for action for
+                    students, educators, employers and policymakers.
+                </p>
+                <div class="ir-actions">
+                    <a href="#get" class="btn btn-primary btn-lg">Get both reports, free <i class="fas fa-arrow-right"></i></a>
+                    <a href="#watch" class="btn btn-ghost btn-lg"><i class="fas fa-play"></i> Watch the panels</a>
+                </div>
+                <div class="ir-facts">
+                    <span><i class="fas fa-university"></i> 2 campuses</span>
+                    <span class="ir-facts-sep"></span>
+                    <span><i class="fas fa-users"></i> 13 panellists and moderators</span>
+                    <span class="ir-facts-sep"></span>
+                    <span><i class="fas fa-file-lines"></i> 42 pages, free to share</span>
+                </div>
+            </div>
+            <div class="ir-covers">
+                <img width="720" height="1019" loading="eager" fetchpriority="high" decoding="async" src="images/reports/djsce-cover.jpg" alt="Cover of Beyond the Fear, the insights report from the DJ Sanghvi panel">
+                <img width="720" height="1019" loading="eager" decoding="async" src="images/reports/jnu-cover.jpg" alt="Cover of AI and Employability, the insights report from the JNU panel">
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== THE TWO REPORTS ===== -->
+    <section class="cp-section cp-section--white" id="reports">
+        <div class="container">
+            <div class="section-header reveal">
+                <h2 class="section-title">Two panels, <span class="accent">two reports</span></h2>
+                <p class="section-subtitle">Quotes lightly edited for clarity; figures as cited by the panellists. Both reports are free and may be shared.</p>
+            </div>
+            <div class="ir-grid">
+
+                <article class="ir-report reveal" id="report-djsce">
+                    <img width="720" height="1019" loading="lazy" decoding="async" src="images/reports/djsce-cover.jpg" alt="Cover of Beyond the Fear">
+                    <div>
+                        <div class="ir-report-host"><i class="fas fa-university"></i> DJ Sanghvi, Mumbai &middot; 21 September 2026</div>
+                        <h3>Beyond the Fear</h3>
+                        <p class="ir-report-sub">How AI is reshaping work, skills and assessment, and what students, educators and employers must do next.</p>
+                        <ul class="ir-inside">
+                            <li><i class="fas fa-check-circle"></i> Tasks change, roles remain: what AI absorbs and what people still own</li>
+                            <li><i class="fas fa-check-circle"></i> Fundamentals are the moat: why using an AI tool is not, by itself, a skill</li>
+                            <li><i class="fas fa-check-circle"></i> Rethinking assessment: how DJSCE grades AI-assisted work, and how industry does</li>
+                            <li><i class="fas fa-check-circle"></i> AI beyond software: civil, health, law and governance</li>
+                        </ul>
+                        <div class="ir-meta"><span>PDF</span><span>20 pages</span><span>10 MB</span><span>6 voices</span></div>
+                        <div class="ir-report-actions">
+                            <a href="#get" class="btn btn-primary">Get the report <i class="fas fa-arrow-right"></i></a>
+                            <a href="#watch-djsce" class="ir-ext"><i class="fas fa-play"></i> Watch the panel</a>
+                        </div>
+                    </div>
+                </article>
+
+                <article class="ir-report reveal reveal-delay-1" id="report-jnu">
+                    <img width="720" height="1019" loading="lazy" decoding="async" src="images/reports/jnu-cover.jpg" alt="Cover of AI and Employability">
+                    <div>
+                        <div class="ir-report-host"><i class="fas fa-university"></i> JNU, New Delhi &middot; 30 September 2026</div>
+                        <h3>AI and Employability</h3>
+                        <p class="ir-report-sub">Opportunities, challenges and the future of work: perspectives from industry, academia and the skilling ecosystem.</p>
+                        <ul class="ir-inside">
+                            <li><i class="fas fa-check-circle"></i> The readiness gap: qualified, but not yet job-ready</li>
+                            <li><i class="fas fa-check-circle"></i> Consumer or creator: where India sits in the AI value chain</li>
+                            <li><i class="fas fa-check-circle"></i> Sector readiness and the six-step skilling value chain</li>
+                            <li><i class="fas fa-check-circle"></i> Where a learner should start: three routes into AI</li>
+                        </ul>
+                        <div class="ir-meta"><span>PDF</span><span>22 pages</span><span>6 MB</span><span>8 voices</span></div>
+                        <div class="ir-report-actions">
+                            <a href="#get" class="btn btn-primary">Get the report <i class="fas fa-arrow-right"></i></a>
+                            <a href="#watch-jnu" class="ir-ext"><i class="fas fa-play"></i> Watch the panel</a>
+                        </div>
+                    </div>
+                </article>
+
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== GET THE REPORTS ===== -->
+    <section class="cp-section cp-section--tint" id="get" style="scroll-margin-top:calc(var(--nav-h) + 16px);">
+        <div class="container">
+            <div class="cp-reg reveal">
+                <div>
+                    <div class="cp-eyebrow cp-eyebrow--light"><i class="fas fa-download"></i> Free download</div>
+                    <h2>Get both reports <span class="accent">in a minute</span></h2>
+                    <p class="cp-reg-lede">
+                        Tell us who you are and both PDFs open straight away. We also email you the links,
+                        so they are on your phone when you want them.
+                    </p>
+                    <ul class="cp-reg-points">
+                        <li><i class="fas fa-check-circle"></i> Both reports, free, and no payment details asked for</li>
+                        <li><i class="fas fa-check-circle"></i> Share them with your class, your department or your team</li>
+                        <li><i class="fas fa-check-circle"></i> Asking for the reports does not register you for anything; the free Visitor Pass for the conference in November is a separate choice</li>
+                    </ul>
+                </div>
+
+                <div id="ir-panel">
+                    <form class="cp-form" id="ir-form" novalidate>
+                        <p class="cp-form-msg cp-form-msg--err cp-field--wide" id="ir-notice" role="alert" hidden>That download link has expired. Fill in the form and you will get fresh links straight away.</p>
+                        <div class="cp-field">
+                            <label for="irf-name">Full name</label>
+                            <input id="irf-name" name="name" type="text" autocomplete="name" required>
+                        </div>
+                        <div class="cp-field">
+                            <label for="irf-email">Email</label>
+                            <input id="irf-email" name="email" type="email" autocomplete="email" inputmode="email" required>
+                        </div>
+                        <div class="cp-field">
+                            <label for="irf-mobile">Mobile</label>
+                            <input id="irf-mobile" name="mobile" type="tel" autocomplete="tel" inputmode="tel" required>
+                        </div>
+                        <div class="cp-field">
+                            <label for="irf-city">City</label>
+                            <input id="irf-city" name="city" type="text" autocomplete="address-level2">
+                        </div>
+                        <fieldset class="cp-field--wide cp-role" id="irf-who">
+                            <legend>I am</legend>
+                            <div class="cp-role-opts">
+                                <label class="cp-role-opt"><input type="radio" name="who" value="professional"> A working professional</label>
+                                <label class="cp-role-opt"><input type="radio" name="who" value="student"> A student</label>
+                                <label class="cp-role-opt"><input type="radio" name="who" value="faculty"> Faculty or staff</label>
+                            </div>
+                        </fieldset>
+                        <div class="cp-field cp-field--wide">
+                            <label for="irf-company" id="irf-company-label">Organisation or college</label>
+                            <input id="irf-company" name="company" type="text" autocomplete="organization" required>
+                        </div>
+                        <div class="cp-field cp-field--wide">
+                            <label for="irf-title" id="irf-title-label">Job title, or course &amp; year</label>
+                            <input id="irf-title" name="job_title" type="text" autocomplete="organization-title">
+                        </div>
+                        <div class="cp-field cp-field--wide" id="irf-industry-field" hidden>
+                            <label for="irf-industry">Industry</label>
+                            <select id="irf-industry" name="industry">
+                                <option value="">Choose your industry</option>
+                                <option>Banking &amp; Financial Services</option>
+                                <option>Insurance</option>
+                                <option>IT Services &amp; Consulting</option>
+                                <option>Software &amp; SaaS</option>
+                                <option>Telecom</option>
+                                <option>Manufacturing</option>
+                                <option>Automotive</option>
+                                <option>Pharma &amp; Life Sciences</option>
+                                <option>Healthcare &amp; Hospitals</option>
+                                <option>Retail &amp; E-commerce</option>
+                                <option>Logistics &amp; Supply Chain</option>
+                                <option>Energy &amp; Utilities</option>
+                                <option>Media &amp; Entertainment</option>
+                                <option>Education &amp; Academia</option>
+                                <option>Government &amp; Public Sector</option>
+                                <option>Consulting &amp; Professional Services</option>
+                                <option>Startup / Early stage</option>
+                                <option>Venture Capital &amp; Investment</option>
+                                <option>Agriculture &amp; Agritech</option>
+                                <option>Real Estate &amp; Construction</option>
+                                <option>Aerospace &amp; Defence</option>
+                                <option>Other</option>
+                            </select>
+                        </div>
+                        <label class="ir-consent"><input type="checkbox" name="consent" value="1"> Keep me posted about Bharat AI Innovation 2026 and future Campus Series panels. Unsubscribe any time.</label>
+
+                        <p class="cp-form-msg cp-form-msg--err" id="ir-error" role="alert" hidden></p>
+
+                        <div class="cp-field--wide">
+                            <button type="submit" class="btn btn-primary btn-lg" id="ir-submit" style="width:100%;justify-content:center;">
+                                Get the reports <i class="fas fa-arrow-right"></i>
+                            </button>
+                        </div>
+                        <p class="cp-form-note">
+                            We use these details to send you the report links. See our <a href="/privacy">privacy policy</a>.
+                        </p>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== WATCH THE PANELS ===== -->
+    <section class="cp-section cp-section--white" id="watch" style="scroll-margin-top:calc(var(--nav-h) + 16px);">
+        <div class="container">
+            <div class="section-header reveal">
+                <h2 class="section-title">Watch <span class="accent">the panels</span></h2>
+                <p class="section-subtitle">Both sessions in full, including the questions from the floor.</p>
+            </div>
+            <div class="ir-videos">
+                <div class="ir-video reveal" id="watch-djsce" style="scroll-margin-top:calc(var(--nav-h) + 16px);">
+                    <div class="yt">
+                        <iframe src="https://www.youtube-nocookie.com/embed/fIPXB3mTNOM" title="AI and Employability panel at Dwarkadas J. Sanghvi College of Engineering, 21 September 2026" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>
+                    </div>
+                    <h3>DJ Sanghvi College of Engineering, Mumbai</h3>
+                    <p>Dr. Ashish Tendulkar (Google), Bala Singhania (HDFC Life), Dr. Kriti Srivastava (DJSCE), Virendra Pal and Sudarshan Shidore, moderated by Bhupesh Daheria. 21 September 2026.</p>
+                    <div class="ir-video-links">
+                        <a class="ir-ext" href="https://www.youtube.com/watch?v=fIPXB3mTNOM" target="_blank" rel="noopener noreferrer"><i class="fas fa-play"></i> Watch on YouTube</a>
+                        <a class="ir-ext" href="/campus-djsanghvi"><i class="fas fa-arrow-right"></i> About this panel</a>
+                    </div>
+                </div>
+                <div class="ir-video reveal reveal-delay-1" id="watch-jnu" style="scroll-margin-top:calc(var(--nav-h) + 16px);">
+                    <div class="yt">
+                        <iframe src="https://www.youtube-nocookie.com/embed/6tlYBxAPw3g" title="AI and Employability panel at Jawaharlal Nehru University, 30 September 2026" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>
+                    </div>
+                    <h3>Jawaharlal Nehru University, New Delhi</h3>
+                    <p>Prof. R. K. Brojen Singh (JNU), Prof. Sougata Mukherjea (IIT Delhi), Parna Ghosh (Uno Minda), Madhvendra Singh and Narendra Mohapatra (ESSCI), Shreenivas Chetlapalli (Jade Global) and Bhupesh Daheria, moderated by Priyanka Srivastava (The Times of India). 30 September 2026.</p>
+                    <div class="ir-video-links">
+                        <a class="ir-ext" href="https://www.youtube.com/watch?v=6tlYBxAPw3g" target="_blank" rel="noopener noreferrer"><i class="fas fa-play"></i> Watch on YouTube</a>
+                        <a class="ir-ext" href="https://www.youtube.com/watch?v=Vfr3Rhr2RKI" target="_blank" rel="noopener noreferrer"><i class="fas fa-microphone"></i> The opening keynote</a>
+                        <a class="ir-ext" href="/campus-jnu"><i class="fas fa-arrow-right"></i> About this panel</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== CLOSING CTA ===== -->
+    <section class="cp-closing">
+        <div class="container">
+            <h2>The panels are the warm-up.</h2>
+            <p>Bharat AI Innovation 2026 brings 5,000+ researchers, founders, CXOs and policymakers to the World Trade Center Mumbai on 20–21 November. Visitor passes are free.</p>
+            <a href="/register?utm_source=insights&amp;utm_medium=closing-cta" class="btn btn-primary btn-xl">Register Free <i class="fas fa-arrow-right"></i></a>
+        </div>
+    </section>
+
+    <!-- FOOTER -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <div class="footer-logo">
+                        <img width="120" height="50" loading="lazy" decoding="async" src="images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI Innovation Logo" style="height:40px;width:auto;border-radius:10px;padding:5px;background:rgba(255,255,255,0.95);box-shadow:0 2px 6px rgba(0,0,0,0.08);">
+                    </div>
+                    <p class="footer-description">Advancing India's Future Through AI Innovation. Join us in creating a Viksit Bharat by 2047.</p>
+                    <div class="social-links">
+                        <a href="https://www.linkedin.com/showcase/bharat-ai-innovation" class="social-link" target="_blank" rel="noopener noreferrer" aria-label="Bharat AI Innovation on LinkedIn"><i class="fab fa-linkedin"></i></a>
+                        <a href="https://www.facebook.com/BharatAIInnovation/" class="social-link" target="_blank" rel="noopener noreferrer" aria-label="Bharat AI Innovation on Facebook"><i class="fab fa-facebook"></i></a>
+                        <a href="https://www.instagram.com/BharatAIInnovation.ai/" class="social-link" target="_blank" rel="noopener noreferrer" aria-label="Bharat AI Innovation on Instagram"><i class="fab fa-instagram"></i></a>
+                    </div>
+                </div>
+                <div class="footer-section">
+                    <h4>Quick Links</h4>
+                    <ul class="footer-links">
+                        <li><a href="/about">About Us</a></li>
+                        <li><a href="/conference">Conference</a></li>
+                        <li><a href="/exhibition">Exhibition</a></li>
+                        <li><a href="/campus-series">Campus Series</a></li>
+                        <li><a href="/insights">Insights Reports</a></li>
+                        <li><a href="/past-speakers">Past Speakers</a></li>
+                        <li><a href="/register">Register &amp; Delegation</a></li>
+                        <li><a href="/startup-pitch">Startup Pitch</a></li>
+                        <li><a href="/training-workshop">Workshops</a></li>
+                        <li><a href="/partner">Partner</a></li>
+                        <li><a href="https://bellaward.com/" target="_blank" rel="noopener noreferrer">Aegis Graham Bell Awards</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h4>Event Info</h4>
+                    <ul class="footer-links">
+                        <li><a href="/conference#schedule">Schedule</a></li>
+                        <li><a href="/conference">Programme</a></li>
+                        <li><a href="/exhibition">Exhibition Zones</a></li>
+                        <li><a href="/accommodation">Hotels</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h4>Contact Us</h4>
+                    <div class="contact-info">
+                        <p><i class="fas fa-envelope"></i> info@bharataiinnovation.com</p>
+                        <p><i class="fas fa-phone"></i> +91 89765 80367</p>
+                        <p><i class="fas fa-map-marker-alt"></i> World Trade Center Mumbai, Cuffe Parade, Mumbai</p>
+                    </div>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2026 Bharat AI Innovation. All rights reserved. | Organized by Aegis Knowledge Trust</p>
+                <div class="footer-bottom-links">
+                    <a href="/privacy">Privacy Policy</a>
+                    <a href="/terms">Terms of Service</a>
+                    <a href="/refund">Refund &amp; Cancellation</a>
+                    <a href="/shipping">Shipping &amp; Delivery</a>
+                    <a href="/code-of-conduct">Code of Conduct</a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+    (function () {
+      // The reports are given out behind a signed link the worker checks, so the
+      // form is the only door: name, email and phone, then both links at once. The
+      // same links are emailed, and this phone remembers them for a while.
+      var form = document.getElementById('ir-form');
+      if (!form) return;
+      var panel = document.getElementById('ir-panel');
+      var errBox = document.getElementById('ir-error');
+      var notice = document.getElementById('ir-notice');
+      var btn = document.getElementById('ir-submit');
+      var IDLE = btn.innerHTML;
+      var KEY = 'bhai_insights_links';
+      var ROLES = {
+        professional: { org: 'Organisation', orgHint: 'e.g. Tata Consultancy Services', title: 'Job title', titleHint: 'e.g. Product Manager' },
+        student: { org: 'College or university', orgHint: 'e.g. Dwarkadas J. Sanghvi College of Engineering', title: 'Course & year', titleHint: 'e.g. B.Tech Computer Engineering, final year' },
+        faculty: { org: 'Institution', orgHint: 'e.g. Jawaharlal Nehru University', title: 'Designation & department', titleHint: 'e.g. Assistant Professor, Computer Engineering' }
+      };
+      var whoSet = document.getElementById('irf-who');
+      var company = form.company, title = form.job_title, industry = form.industry;
+      var industryField = document.getElementById('irf-industry-field');
+
+      function who() {
+        var r = form.querySelector('input[name="who"]:checked');
+        return r ? r.value : '';
+      }
+      function applyRole() {
+        var r = ROLES[who()];
+        if (!r) return;
+        document.getElementById('irf-company-label').textContent = r.org;
+        document.getElementById('irf-title-label').textContent = r.title;
+        company.placeholder = r.orgHint;
+        title.placeholder = r.titleHint;
+        industryField.hidden = who() !== 'professional';
+        whoSet.removeAttribute('aria-invalid');
+      }
+      whoSet.addEventListener('change', applyRole);
+      form.addEventListener('input', function (e) { if (e.target && e.target.removeAttribute) e.target.removeAttribute('aria-invalid'); });
+      applyRole();
+
+      function el(tag, cls, text) {
+        var n = document.createElement(tag);
+        if (cls) n.className = cls;
+        if (text != null) n.textContent = text;
+        return n;
+      }
+      function humanList(xs) {
+        return xs.length < 2 ? (xs[0] || '') : xs.slice(0, -1).join(', ') + ' and ' + xs[xs.length - 1];
+      }
+      function fail(msg) {
+        errBox.textContent = msg;
+        errBox.hidden = false;
+        btn.disabled = false;
+        btn.innerHTML = IDLE;
+      }
+
+      // Built with DOM calls, not markup, so nothing in the answer can become HTML.
+      function showLinks(data, note) {
+        panel.innerHTML = '';
+        var done = el('div', 'cp-reg-done');
+        var icon = el('div', 'cp-reg-done-icon');
+        icon.innerHTML = '<i class="fas fa-check"></i>';
+        done.appendChild(icon);
+        done.appendChild(el('h3', null, 'Your reports are ready'));
+        done.appendChild(el('p', null, note));
+        var list = el('div', 'ir-dl');
+        (data.reports || []).forEach(function (r) {
+          var a = el('a', 'btn btn-primary btn-lg ir-dl-btn');
+          a.href = r.url; a.target = '_blank'; a.rel = 'noopener';
+          a.appendChild(el('i', 'fas fa-download'));
+          var span = el('span');
+          span.appendChild(el('strong', null, r.title));
+          span.appendChild(el('small', null, (r.hostShort || r.host) + ', ' + r.dateLabel + ' · PDF · ' + r.pages + ' pages · ' + r.size));
+          a.appendChild(span);
+          list.appendChild(a);
+        });
+        done.appendChild(list);
+        done.appendChild(el('p', 'ir-small', 'The reports are free to share with your class, your department or your team. The links work for 90 days; come back here for fresh ones.'));
+        var reg = el('a', 'btn btn-outline');
+        reg.href = '/register?utm_source=insights&utm_medium=thanks';
+        reg.innerHTML = 'Register free for the conference <i class="fas fa-arrow-right"></i>';
+        done.appendChild(reg);
+        var reset = el('button', 'ir-reset', 'Not you? Fill in the form for your own links');
+        reset.type = 'button';
+        reset.addEventListener('click', function () {
+          try { localStorage.removeItem(KEY); } catch (e) {}
+          location.href = location.pathname + '#get';
+          location.reload();
+        });
+        done.appendChild(reset);
+        panel.appendChild(done);
+      }
+
+      // A link that has run out brings the person back here: say so, and forget any
+      // links this phone kept, since they have run out too.
+      var expired = /[?&]link=expired/.test(location.search);
+      if (expired) {
+        try { localStorage.removeItem(KEY); } catch (e) {}
+        if (notice) notice.hidden = false;
+      }
+      // Someone who already asked, on this phone, gets their links straight back.
+      try {
+        var saved = JSON.parse(localStorage.getItem(KEY) || 'null');
+        if (!expired && saved && saved.reports && saved.reports.length && Date.now() - saved.at < 60 * 86400000) {
+          showLinks(saved, 'Welcome back. These are the links we gave ' + (saved.email || 'you') + '; they still work.');
+        }
+      } catch (e) {}
+
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        errBox.hidden = true;
+        if (notice) notice.hidden = true;
+
+        var role = who();
+        var missing = [], first = null;
+        function need(input, label) {
+          if (input.value.trim()) { input.removeAttribute('aria-invalid'); return; }
+          input.setAttribute('aria-invalid', 'true');
+          missing.push(label);
+          first = first || input;
+        }
+        need(form.name, 'name');
+        need(form.email, 'email');
+        need(form.mobile, 'mobile number');
+        var msg = '';
+        if (!role) {
+          whoSet.setAttribute('aria-invalid', 'true');
+          first = first || form.querySelector('input[name="who"]');
+          msg = 'Please choose whether you are a working professional, a student or faculty' +
+                (missing.length ? ', and add your ' + humanList(missing) + '.' : '.');
+        } else {
+          need(company, ROLES[role].org.toLowerCase());
+          if (role === 'professional') need(industry, 'industry');
+          if (missing.length) msg = 'Please add your ' + humanList(missing) + '.';
+        }
+        var email = form.email.value.trim().toLowerCase();
+        if (!msg && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+          form.email.setAttribute('aria-invalid', 'true');
+          first = form.email;
+          msg = 'Please check your email address.';
+        }
+        if (msg) { fail(msg); if (first) first.focus(); return; }
+
+        var payload = {
+          name: form.name.value.trim(),
+          email: email,
+          mobile: form.mobile.value.trim(),
+          who: role,
+          company: company.value.trim(),
+          job_title: title.value.trim(),
+          city: form.city.value.trim(),
+          industry: role === 'professional' ? industry.value : 'Education & Academia',
+          consent: !!form.consent.checked
+        };
+
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Getting your reports...';
+
+        fetch('/api/reports/request', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        }).then(function (resp) {
+          return resp.json().catch(function () { return {}; }).then(function (data) {
+            if (!resp.ok || !data.ok) {
+              (data.missing || []).forEach(function (k) {
+                var f = form.elements[k];
+                if (f && f.setAttribute) f.setAttribute('aria-invalid', 'true');
+                else if (k === 'who') whoSet.setAttribute('aria-invalid', 'true');
+              });
+              fail(data.error || 'Something went wrong. Please try again.');
+              return;
+            }
+            try { localStorage.setItem(KEY, JSON.stringify({ at: Date.now(), email: email, reports: data.reports })); } catch (e2) {}
+            showLinks(data, data.emailed
+              ? 'Tap a report to open it. We have also emailed the links to ' + email + ', so they are on your phone.'
+              : 'Tap a report to open it, and save it to your phone.');
+          });
+        }).catch(function () {
+          fail('We could not reach the server. Please check your connection and try again.');
+        });
+      });
+    })();
+    </script>
+    <script src="js/main.js"></script>
+</body>
+</html>

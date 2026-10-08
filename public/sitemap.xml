@@ -113,6 +113,24 @@
         </image:image>
     </url>
 
+    <!-- Campus Series insights reports -->
+    <url>
+        <loc>https://bharataiinnovation.com/insights</loc>
+        <lastmod>2026-10-08</lastmod>
+        <image:image>
+            <image:loc>https://bharataiinnovation.com/images/og/insights.jpg</image:loc>
+            <image:title>Campus Series insights reports — AI and Employability</image:title>
+        </image:image>
+        <image:image>
+            <image:loc>https://bharataiinnovation.com/images/reports/djsce-cover.jpg</image:loc>
+            <image:title>Beyond the Fear — insights report, DJ Sanghvi College of Engineering, 21 September 2026</image:title>
+        </image:image>
+        <image:image>
+            <image:loc>https://bharataiinnovation.com/images/reports/jnu-cover.jpg</image:loc>
+            <image:title>AI and Employability — insights report, Jawaharlal Nehru University, 30 September 2026</image:title>
+        </image:image>
+    </url>
+
     <!-- Campus panel — DJ Sanghvi -->
     <url>
         <loc>https://bharataiinnovation.com/campus-djsanghvi</loc>

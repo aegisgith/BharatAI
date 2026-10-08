@@ -121,6 +121,14 @@ export const CARDS = {
     sub: 'Free pre-event panel discussions at universities across India, on the road to WTC Mumbai.',
     chips: ['Mumbai · 21 Sep', 'New Delhi · 30 Sep'],
   },
+  insights: {
+    path: '/insights',
+    label: 'Campus Series · Insights Reports',
+    headline: 'What two campuses learned about AI and jobs',
+    accent: 'AI and jobs',
+    sub: 'Two free reports from the DJ Sanghvi and JNU panels: the findings, the panellists’ examples and an agenda for action. Both recordings included.',
+    chips: ['DJ Sanghvi · 21 Sep', 'JNU · 30 Sep', 'Free PDFs'],
+  },
   register: {
     path: '/register',
     label: 'Register',

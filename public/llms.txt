@@ -150,6 +150,7 @@ Digital media partner: The Mainstream.
 - [AI Readiness Certification](https://bharataiinnovation.com/ai-readiness): Independent AI maturity rating and certification, an Aegis Graham Bell Awards initiative
 - [Accommodation](https://bharataiinnovation.com/accommodation): Premium hotels near WTC Mumbai
 - [Campus Series](https://bharataiinnovation.com/campus-series): Free pre-event panel discussions on AI and employability at universities (DJ Sanghvi College of Engineering, Mumbai, 21 Sep 2026; Jawaharlal Nehru University, New Delhi, 30 Sep 2026)
+- [Campus Series Insights Reports](https://bharataiinnovation.com/insights): Two free PDF reports from the AI and Employability panels ("Beyond the Fear", DJ Sanghvi, 20 pages; "AI and Employability", JNU, 22 pages) with findings, panellists' examples and an agenda for action for students, educators, employers and policymakers; both recordings embedded. Given out after a short form (name, email, phone)
 - [Past Speakers](https://bharataiinnovation.com/past-speakers): Speakers from the Data Science Congress, the forerunner event hosted by Aegis School of Data Science
 - [AI Marketplace](https://bharataiinnovation.com/marketplace): Directory of AI products and companies exhibiting at the event
 - [Register](https://bharataiinnovation.com/register): Registration: free Visitor Pass, or Academic, Delegate and VIP passes
