@@ -21,9 +21,10 @@ const SUITES = [
   { name: 'server: AI marketplace gates, pages and exhibitor invites', args: ['smoke-marketplace.mjs'] },
   { name: 'server: checkout on this site (CCAvenue), the switch, the answer, the queues', args: ['smoke-payments.mjs'] },
   { name: 'server: Campus Series insights reports (gated PDF, /insights form, reports email, admin pump)', args: ['smoke-reports.mjs'] },
+  { name: 'server: panel email as server jobs (scheduler door, claim, stop, resume, done, failures)', args: ['smoke-mail-jobs.mjs'] },
   { name: 'browser: delegate app (chat, connect, meet, inbox, back, XSS)', args: ['browser-delegate.cjs'], harness: 'app-harness.mjs', port: 8770 },
   { name: 'browser: phone journey and admin Campus panels block', args: ['phone-test.cjs'], harness: 'phone-harness.mjs', port: 8772 },
-  { name: 'browser: paced panel email (one at a time, survives the redraw)', args: ['pace-test.cjs'], harness: 'pace-harness.mjs', port: 8774 },
+  { name: 'browser: panel email as a server job (start, pace, stop, resume, done, the scheduler note)', args: ['pace-test.cjs'], harness: 'pace-harness.mjs', port: 8774 },
   { name: 'browser: buying a pass on a phone (checkout, result, retry, checkout off, invoice queues)', args: ['pay-test.cjs'], harness: 'pay-harness.mjs', port: 8776 },
 ];
 

@@ -294,7 +294,7 @@ r = await hit('/api/admin/reports/leads.csv', admin);
 // (the text decoder eats the BOM the route writes, so the header is matched without it)
 check('the CSV of everyone says what each person opened and watched', r.status === 200 && /text\/csv/.test(r.h['content-type']) && /^﻿?name,email,mobile/.test(r.text) && /reports_opened,videos_watched/.test(r.text) && /"Lead, One",one@x\.com/.test(r.text) && /,yes,/.test(r.text) && /"djsce,jnu"/.test(r.text), r.text.slice(0, 220));
 r = await hit('/admin');
-for (const m of ['startPanelReports', 'send-next-reports', 'Send the reports', 'renderReportSummary', 'reports-preview', 'insights-report-leads.csv', 'function reportPeople', 'function reportStat', 'watched a recording', 'Who watched']) check('/admin carries ' + m, r.text.includes(m), 'missing');
+for (const m of ['startMailJob', 'mail-jobs/tick', 'Send the reports', 'renderReportSummary', 'reports-preview', 'insights-report-leads.csv', 'function reportPeople', 'function reportStat', 'watched a recording', 'Who watched']) check('/admin carries ' + m, r.text.includes(m), 'missing');
 check('/admin no longer says "or said no"', !r.text.includes('unsubscribed or said no'), 'old wording');
 
 // ---- what is built and what is served ----

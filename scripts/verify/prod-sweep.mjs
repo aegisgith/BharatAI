@@ -112,5 +112,15 @@ check('who opened and who watched need admin', r.status === 401, r.status);
 r = await hit('/js/watch-track.js');
 check('the play tracker is served', r.status === 200 && r.text.includes('/api/reports/watch'), r.status);
 
+// ---- panel email as server jobs ----
+r = await hit('/api/cron/tick', { method: 'POST' });
+check('the scheduler door needs its secret', r.status === 401, r.status);
+r = await hit('/api/admin/mail-jobs');
+check('the jobs view needs admin', r.status === 401, r.status);
+r = await hit('/api/admin/mail-jobs/tick', { method: 'POST' });
+check('the page tick needs admin', r.status === 401, r.status);
+r = await hit('/admin');
+check('the admin page runs panel email as server jobs', r.text.includes('function startMailJob') && r.text.includes('mail-jobs/tick') && !r.text.includes('pumpPanelReports'), 'markers');
+
 console.log(fails ? `\n${fails} FAILED` : '\nall production checks passed');
 process.exit(fails ? 1 : 0);

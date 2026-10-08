@@ -38,6 +38,10 @@ type Bindings = {
   CCAVENUE_WORKING_KEY?: string
   // 'test' sends checkout to test.ccavenue.com, their sandbox. Anything else is live.
   CCAVENUE_ENV?: string
+  // What the scheduler Worker (cron/) sends to POST /api/cron/tick. Optional: when
+  // it is unset the admin secret is accepted there, so a first setup needs only
+  // the one secret the Worker already has to be given.
+  CRON_SECRET?: string
 }
 
 const app = new Hono<{ Bindings: Bindings }>()
@@ -11128,38 +11132,9 @@ app.post('/api/admin/panels/:slug/send-next-confirmations', async (c) => {
   if (!panel) return c.json({ error: 'Unknown panel' }, 404)
   const body = await c.req.json().catch(() => ({})) as any
   const batch = Math.min(10, Math.max(1, parseInt(body.batch, 10) || 5))
-
-  const PENDING = `pr.panel_slug = ? AND pr.confirmation_sent_at IS NULL AND pr.confirmation_error IS NULL AND a.email IS NOT NULL AND a.email <> ''`
-  const remaining = async () => {
-    const r = await c.env.DB.prepare(`SELECT COUNT(*) AS n FROM panel_registrations pr JOIN attendees a ON a.id = pr.attendee_id WHERE ${PENDING}`).bind(slug).first() as any
-    return Number(r?.n) || 0
-  }
-  let rows: any[] = []
-  try {
-    const r = await c.env.DB.prepare(
-      `SELECT pr.id AS pr_id, pr.source AS pr_source, a.* FROM panel_registrations pr JOIN attendees a ON a.id = pr.attendee_id
-        WHERE ${PENDING} ORDER BY pr.id ASC LIMIT ?`
-    ).bind(slug, batch).all()
-    rows = r.results || []
-  } catch (e: any) {
-    return c.json({ error: 'panel_registrations is not migrated: ' + String(e?.message || e) }, 503)
-  }
-  if (!rows.length) return c.json({ done: true, sent: 0, remaining: 0 })
-
-  let sent = 0
-  const failed: string[] = []
-  for (const a of rows) {
-    const r = await sendPanelConfirmationEmail(c, a, panel, { withLogin: true, eventId: a.event_id, source: a.pr_source })
-    if (r.ok) {
-      sent++
-      await c.env.DB.prepare("UPDATE panel_registrations SET confirmation_sent_at = datetime('now') WHERE id = ?").bind(a.pr_id).run()
-    } else {
-      failed.push(String(a.email))
-      await c.env.DB.prepare('UPDATE panel_registrations SET confirmation_error = ? WHERE id = ?').bind(String(r.error || 'failed').slice(0, 200), a.pr_id).run()
-    }
-  }
-  const left = await remaining()
-  return c.json({ done: left === 0, sent, failed, remaining: left })
+  const r = await sendNextPanelConfirmations(c, panel, batch)
+  if (r.error) return c.json({ error: r.error }, (r.status || 503) as any)
+  return c.json({ done: r.done, sent: r.sent, failed: r.failed, remaining: r.remaining })
 })
 
 // Resumes the queue. paused_only leaves genuine failures parked, so a resume
@@ -11168,26 +11143,17 @@ app.post('/api/admin/panels/:slug/reset-email-errors', async (c) => {
   const slug = c.req.param('slug')
   if (!CAMPUS_PANELS[slug]) return c.json({ error: 'Unknown panel' }, 404)
   const body = await c.req.json().catch(() => ({})) as any
-  const where = body.paused_only
-    ? "panel_slug = ? AND confirmation_error LIKE 'paused:%'"
-    : 'panel_slug = ? AND confirmation_error IS NOT NULL'
-  try {
-    const r = await c.env.DB.prepare(`UPDATE panel_registrations SET confirmation_error = NULL WHERE ${where}`).bind(slug).run()
-    return c.json({ success: true, reset: r.meta?.changes ?? 0 })
-  } catch { return c.json({ success: false }) }
+  try { return c.json({ success: true, reset: await unparkPanelMail(c, 'confirmations', slug, !!body.paused_only) }) }
+  catch { return c.json({ success: false }) }
 })
 
-// Parks everyone not yet mailed, so no tab anywhere can send the next batch -
-// the pump in a browser only stops the tab it runs in.
+// Parks everyone not yet mailed, so no ticker and no page anywhere can send the
+// next one. Stop on a job does this too.
 app.post('/api/admin/panels/:slug/pause', async (c) => {
   const slug = c.req.param('slug')
   if (!CAMPUS_PANELS[slug]) return c.json({ error: 'Unknown panel' }, 404)
-  try {
-    const r = await c.env.DB.prepare(
-      "UPDATE panel_registrations SET confirmation_error = 'paused: by admin' WHERE panel_slug = ? AND confirmation_sent_at IS NULL AND confirmation_error IS NULL"
-    ).bind(slug).run()
-    return c.json({ success: true, paused: r.meta?.changes ?? 0 })
-  } catch { return c.json({ success: false }) }
+  try { return c.json({ success: true, paused: await parkPanelMail(c, 'confirmations', slug) }) }
+  catch { return c.json({ success: false }) }
 })
 
 // The email exactly as the next person in the queue would receive it, except
@@ -11214,49 +11180,25 @@ app.post('/api/admin/panels/:slug/send-next-reminders', async (c) => {
   const slug = c.req.param('slug')
   const panel = CAMPUS_PANELS[slug]
   if (!panel) return c.json({ error: 'Unknown panel' }, 404)
-  if (!(await panelRsvpEnabled(c))) return c.json({ error: 'Apply migration 0043 on the database first (npx wrangler d1 migrations apply bharatai-production --remote).' }, 409)
-  if (Date.now() >= Date.parse(panel.startsAt)) return c.json({ error: 'The panel has started, so there is nobody left to ask.' }, 400)
   const body = await c.req.json().catch(() => ({})) as any
   const batch = Math.min(10, Math.max(1, parseInt(body.batch, 10) || 5))
-  const PENDING = `pr.panel_slug = ? AND pr.reminder_sent_at IS NULL AND pr.reminder_error IS NULL AND pr.rsvp_status IS NULL AND COALESCE(a.email, '') <> ''`
-  const rows = ((await c.env.DB.prepare(
-    `SELECT pr.id AS pr_id, a.* FROM panel_registrations pr JOIN attendees a ON a.id = pr.attendee_id WHERE ${PENDING} ORDER BY pr.id ASC LIMIT ?`
-  ).bind(slug, batch).all()).results || []) as any[]
-  let sent = 0
-  const failed: string[] = []
-  for (const a of rows) {
-    const r = await sendPanelReminderEmail(c, a, panel)
-    if (r.ok) {
-      sent++
-      await c.env.DB.prepare("UPDATE panel_registrations SET reminder_sent_at = datetime('now') WHERE id = ?").bind(a.pr_id).run()
-    } else {
-      failed.push(String(a.email))
-      await c.env.DB.prepare('UPDATE panel_registrations SET reminder_error = ? WHERE id = ?').bind(String(r.error || 'failed').slice(0, 200), a.pr_id).run()
-    }
-  }
-  const left = ((await c.env.DB.prepare(`SELECT COUNT(*) AS n FROM panel_registrations pr JOIN attendees a ON a.id = pr.attendee_id WHERE ${PENDING}`).bind(slug).first()) as any)?.n || 0
-  if (rows.length) await audit(c, 'panel.reminders', 'panel', slug, { sent, failed: failed.length })
-  return c.json({ done: Number(left) === 0, sent, failed, remaining: Number(left) })
+  const r = await sendNextPanelReminders(c, panel, batch)
+  if (r.error) return c.json({ error: r.error }, (r.status || 503) as any)
+  return c.json({ done: r.done, sent: r.sent, failed: r.failed, remaining: r.remaining })
 })
 
 app.post('/api/admin/panels/:slug/pause-reminders', async (c) => {
   const slug = c.req.param('slug')
   if (!CAMPUS_PANELS[slug]) return c.json({ error: 'Unknown panel' }, 404)
-  try {
-    const r = await c.env.DB.prepare(
-      "UPDATE panel_registrations SET reminder_error = 'paused: by admin' WHERE panel_slug = ? AND reminder_sent_at IS NULL AND reminder_error IS NULL AND rsvp_status IS NULL"
-    ).bind(slug).run()
-    return c.json({ success: true, paused: r.meta?.changes ?? 0 })
-  } catch { return c.json({ success: false }) }
+  try { return c.json({ success: true, paused: await parkPanelMail(c, 'reminders', slug) }) }
+  catch { return c.json({ success: false }) }
 })
 
 app.post('/api/admin/panels/:slug/resume-reminders', async (c) => {
   const slug = c.req.param('slug')
   if (!CAMPUS_PANELS[slug]) return c.json({ error: 'Unknown panel' }, 404)
-  try {
-    const r = await c.env.DB.prepare("UPDATE panel_registrations SET reminder_error = NULL WHERE panel_slug = ? AND reminder_error LIKE 'paused:%'").bind(slug).run()
-    return c.json({ success: true, resumed: r.meta?.changes ?? 0 })
-  } catch { return c.json({ success: false }) }
+  try { return c.json({ success: true, resumed: await unparkPanelMail(c, 'reminders', slug, true) }) }
+  catch { return c.json({ success: false }) }
 })
 
 app.get('/api/admin/panels/:slug/reminder-preview', async (c) => {
@@ -11710,65 +11652,32 @@ async function panelReportStats(c: any, slug: string): Promise<Record<string, an
   } catch { return { reports_ready: false } }
 }
 
-// Sends the reports email to the next few registrants of a panel who do not have
-// it. Pumped from the Overview like the confirmation and the reminder; an address
-// that fails is parked and skipped, and "Retry failed" puts it back. Honours
-// unsubscribes and a "no" to updates: this is the first mail after the panel.
+// The reports email to the next few registrants of a panel who do not have it.
+// The queue is the same whether a job, the scheduler or this route pumps it.
 app.post('/api/admin/panels/:slug/send-next-reports', async (c) => {
   const slug = c.req.param('slug')
   const panel = CAMPUS_PANELS[slug]
   if (!panel) return c.json({ error: 'Unknown panel' }, 404)
-  if (!(await reportDownloadsReady(c))) return c.json({ error: 'Apply migration 0047 on the database first: npx wrangler d1 execute bharatai-production --remote --file=./migrations/0047_report_downloads.sql (the migrations ledger stops at 0043, so "migrations apply" fails on 0044).' }, 409)
   const body = await c.req.json().catch(() => ({})) as any
   const batch = Math.min(10, Math.max(1, parseInt(body.batch, 10) || 5))
-  const PENDING = reportPendingSql(await unsubscribedClause(c))
-  const rows = ((await c.env.DB.prepare(`SELECT a.* ${REPORT_PUMP_FROM} WHERE ${PENDING} ORDER BY pr.id ASC LIMIT ?`).bind(slug, batch).all()).results || []) as any[]
-  let sent = 0
-  const failed: string[] = []
-  for (const a of rows) {
-    const email = String(a.email).trim().toLowerCase()
-    await upsertReportRow(c, { email, name: a.name, mobile: a.mobile, company: a.company, job_title: a.job_title, city: a.city, industry: a.industry, attendee_id: a.id, source: 'email' })
-    const r = await sendReportsEmail(c, { ...a, email }, { tokenSubject: 'a' + a.id, panel })
-    await markReportEmail(c, email, r)
-    if (r.ok) sent++
-    else failed.push(email)
-  }
-  const left = Number(((await c.env.DB.prepare(`SELECT COUNT(*) AS n ${REPORT_PUMP_FROM} WHERE ${PENDING}`).bind(slug).first()) as any)?.n || 0)
-  if (rows.length) await audit(c, 'panel.reports', 'panel', slug, { sent, failed: failed.length })
-  return c.json({ done: left === 0, sent, failed, remaining: left })
+  const r = await sendNextPanelReports(c, panel, batch)
+  if (r.error) return c.json({ error: r.error }, (r.status || 503) as any)
+  return c.json({ done: r.done, sent: r.sent, failed: r.failed, remaining: r.remaining })
 })
 
-// Parks everyone on the panel's list who has not been mailed, so no tab anywhere
-// can send the next batch. People without a row yet get one, already parked.
 app.post('/api/admin/panels/:slug/pause-reports', async (c) => {
   const slug = c.req.param('slug')
   if (!CAMPUS_PANELS[slug]) return c.json({ error: 'Unknown panel' }, 404)
-  try {
-    const PENDING = reportPendingSql(await unsubscribedClause(c))
-    const ins = await c.env.DB.prepare(
-      `INSERT OR IGNORE INTO report_downloads (event_id, email, name, attendee_id, source, email_error)
-       SELECT a.event_id, LOWER(a.email), a.name, a.id, 'email', 'paused: by admin' ${REPORT_PUMP_FROM} WHERE ${PENDING} AND rd.id IS NULL`
-    ).bind(slug).run()
-    const upd = await c.env.DB.prepare(
-      `UPDATE report_downloads SET email_error = 'paused: by admin' WHERE event_id = 1 AND email_sent_at IS NULL AND email_error IS NULL AND email IN (${PANEL_EMAILS_SQL})`
-    ).bind(slug).run()
-    return c.json({ success: true, paused: (ins.meta?.changes ?? 0) + (upd.meta?.changes ?? 0) })
-  } catch { return c.json({ success: false }) }
+  try { return c.json({ success: true, paused: await parkPanelMail(c, 'reports', slug) }) }
+  catch { return c.json({ success: false }) }
 })
 
-// Resumes the queue. paused_only leaves genuine failures parked, so a resume after
-// a pause does not also retry addresses that bounced.
 app.post('/api/admin/panels/:slug/resume-reports', async (c) => {
   const slug = c.req.param('slug')
   if (!CAMPUS_PANELS[slug]) return c.json({ error: 'Unknown panel' }, 404)
   const body = await c.req.json().catch(() => ({})) as any
-  const where = body.paused_only ? "email_error LIKE 'paused:%'" : 'email_error IS NOT NULL'
-  try {
-    const r = await c.env.DB.prepare(
-      `UPDATE report_downloads SET email_error = NULL WHERE event_id = 1 AND ${where} AND email IN (${PANEL_EMAILS_SQL})`
-    ).bind(slug).run()
-    return c.json({ success: true, resumed: r.meta?.changes ?? 0 })
-  } catch { return c.json({ success: false }) }
+  try { return c.json({ success: true, resumed: await unparkPanelMail(c, 'reports', slug, !!body.paused_only) }) }
+  catch { return c.json({ success: false }) }
 })
 
 // The email as a registrant of this panel would get it, links not live.
@@ -11875,6 +11784,350 @@ app.get('/api/admin/reports/people', async (c) => {
     return new Response('﻿' + csv, { headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="insights-${what}${slug ? '-' + slug : ''}.csv"` } })
   }
   return c.json({ label, panel, total: rows.length, rows: rows.slice(0, 500) })
+})
+
+// ==================== PANEL MAIL JOBS ====================
+//
+// A send is a job that lives on the server, not in a browser tab. Before 8 Oct
+// 2026 the admin page pumped the three panel emails (confirmation, "Are you
+// coming?", the insights reports) one at a time from a timer in the tab, so
+// closing the laptop stopped the run. Now:
+//
+//   - Pressing Send writes a job, mail_job:<kind>:<slug> in app_settings, as
+//     JSON: status, the gap, when the next email is due, the counts.
+//   - A tick (POST /api/cron/tick from the scheduler Worker in cron/, every
+//     minute; POST /api/admin/mail-jobs/tick from any open admin page every ten
+//     seconds) sends whatever is due. Several tickers at once are fine: a ticker
+//     claims the next email by moving the job's next_at forward with a
+//     compare-and-swap on the stored JSON, and only the one whose swap landed
+//     sends. Nobody is mailed twice.
+//   - Stop sets the job to paused and parks the rows, as the old Stop did, so a
+//     page still running the old script cannot carry on either. Resume is Send
+//     again: the counters continue, the parked rows are freed.
+//   - A hard error (a migration missing, a panel that has started) or five
+//     failed sends in a row stop the job with the reason on it, rather than
+//     burning through the list marking everyone failed.
+//
+// The admin page shows whether the scheduler is alive (cron_last_tick, written
+// only by /api/cron/tick): if it is, "you can close this page"; if not, the
+// page says so and keeps ticking itself while it is open.
+type MailJob = {
+  kind: string; slug: string
+  status: 'running' | 'paused' | 'done' | 'failed'
+  gap: number            // seconds between two emails; 0 = no gap
+  next_at: number        // epoch ms the next email is due
+  sent: number; failed: number; remaining: number | null
+  fails_in_a_row: number
+  started_at: number; started_by: string; updated_at: number; finished_at: number | null
+  last_error: string | null
+}
+type SendNextResult = { done: boolean; sent: number; failed: string[]; remaining: number; error?: string; status?: number; last_error?: string }
+type MailKind = 'confirmations' | 'reminders' | 'reports'
+
+const MAIL_JOB_KINDS: Record<MailKind, { label: string; sendNext: (c: any, panel: CampusPanel, batch: number) => Promise<SendNextResult> }> = {
+  confirmations: { label: 'confirmation email', sendNext: sendNextPanelConfirmations },
+  reminders: { label: '"Are you coming?" email', sendNext: sendNextPanelReminders },
+  reports: { label: 'insights reports email', sendNext: sendNextPanelReports },
+}
+const MAIL_JOB_MAX_TICK_SECONDS = 55
+const MAIL_JOB_FAILS_IN_A_ROW = 5
+const CRON_ALIVE_MS = 3 * 60 * 1000
+const sleepMs = (ms: number) => new Promise<void>(r => setTimeout(r, ms))
+
+// ---- the three emails, one function each, shared by the routes and the tick ----
+async function sendNextPanelConfirmations(c: any, panel: CampusPanel, batch: number): Promise<SendNextResult> {
+  const slug = panel.slug
+  const PENDING = `pr.panel_slug = ? AND pr.confirmation_sent_at IS NULL AND pr.confirmation_error IS NULL AND a.email IS NOT NULL AND a.email <> ''`
+  const remaining = async () => {
+    const r = await c.env.DB.prepare(`SELECT COUNT(*) AS n FROM panel_registrations pr JOIN attendees a ON a.id = pr.attendee_id WHERE ${PENDING}`).bind(slug).first() as any
+    return Number(r?.n) || 0
+  }
+  let rows: any[] = []
+  try {
+    const r = await c.env.DB.prepare(
+      `SELECT pr.id AS pr_id, pr.source AS pr_source, a.* FROM panel_registrations pr JOIN attendees a ON a.id = pr.attendee_id
+        WHERE ${PENDING} ORDER BY pr.id ASC LIMIT ?`
+    ).bind(slug, batch).all()
+    rows = r.results || []
+  } catch (e: any) {
+    return { done: false, sent: 0, failed: [], remaining: 0, error: 'panel_registrations is not migrated: ' + String(e?.message || e), status: 503 }
+  }
+  if (!rows.length) return { done: true, sent: 0, failed: [], remaining: 0 }
+  let sent = 0, lastError = ''
+  const failed: string[] = []
+  for (const a of rows) {
+    const r = await sendPanelConfirmationEmail(c, a, panel, { withLogin: true, eventId: a.event_id, source: a.pr_source })
+    if (r.ok) {
+      sent++
+      await c.env.DB.prepare("UPDATE panel_registrations SET confirmation_sent_at = datetime('now') WHERE id = ?").bind(a.pr_id).run()
+    } else {
+      failed.push(String(a.email)); lastError = String(r.error || 'failed')
+      await c.env.DB.prepare('UPDATE panel_registrations SET confirmation_error = ? WHERE id = ?').bind(lastError.slice(0, 200), a.pr_id).run()
+    }
+  }
+  const left = await remaining()
+  return { done: left === 0, sent, failed, remaining: left, ...(lastError ? { last_error: lastError } : {}) }
+}
+
+async function sendNextPanelReminders(c: any, panel: CampusPanel, batch: number): Promise<SendNextResult> {
+  const slug = panel.slug
+  if (!(await panelRsvpEnabled(c))) return { done: false, sent: 0, failed: [], remaining: 0, error: 'Apply migration 0043 on the database first (npx wrangler d1 migrations apply bharatai-production --remote).', status: 409 }
+  if (Date.now() >= Date.parse(panel.startsAt)) return { done: false, sent: 0, failed: [], remaining: 0, error: 'The panel has started, so there is nobody left to ask.', status: 400 }
+  const PENDING = `pr.panel_slug = ? AND pr.reminder_sent_at IS NULL AND pr.reminder_error IS NULL AND pr.rsvp_status IS NULL AND COALESCE(a.email, '') <> ''`
+  const rows = ((await c.env.DB.prepare(
+    `SELECT pr.id AS pr_id, a.* FROM panel_registrations pr JOIN attendees a ON a.id = pr.attendee_id WHERE ${PENDING} ORDER BY pr.id ASC LIMIT ?`
+  ).bind(slug, batch).all()).results || []) as any[]
+  let sent = 0, lastError = ''
+  const failed: string[] = []
+  for (const a of rows) {
+    const r = await sendPanelReminderEmail(c, a, panel)
+    if (r.ok) {
+      sent++
+      await c.env.DB.prepare("UPDATE panel_registrations SET reminder_sent_at = datetime('now') WHERE id = ?").bind(a.pr_id).run()
+    } else {
+      failed.push(String(a.email)); lastError = String(r.error || 'failed')
+      await c.env.DB.prepare('UPDATE panel_registrations SET reminder_error = ? WHERE id = ?').bind(lastError.slice(0, 200), a.pr_id).run()
+    }
+  }
+  const left = ((await c.env.DB.prepare(`SELECT COUNT(*) AS n FROM panel_registrations pr JOIN attendees a ON a.id = pr.attendee_id WHERE ${PENDING}`).bind(slug).first()) as any)?.n || 0
+  if (rows.length) await audit(c, 'panel.reminders', 'panel', slug, { sent, failed: failed.length })
+  return { done: Number(left) === 0, sent, failed, remaining: Number(left), ...(lastError ? { last_error: lastError } : {}) }
+}
+
+async function sendNextPanelReports(c: any, panel: CampusPanel, batch: number): Promise<SendNextResult> {
+  const slug = panel.slug
+  if (!(await reportDownloadsReady(c))) return { done: false, sent: 0, failed: [], remaining: 0, error: 'Apply migration 0047 on the database first: npx wrangler d1 execute bharatai-production --remote --file=./migrations/0047_report_downloads.sql (the migrations ledger stops at 0043, so "migrations apply" fails on 0044).', status: 409 }
+  const PENDING = reportPendingSql(await unsubscribedClause(c))
+  const rows = ((await c.env.DB.prepare(`SELECT a.* ${REPORT_PUMP_FROM} WHERE ${PENDING} ORDER BY pr.id ASC LIMIT ?`).bind(slug, batch).all()).results || []) as any[]
+  let sent = 0, lastError = ''
+  const failed: string[] = []
+  for (const a of rows) {
+    const email = String(a.email).trim().toLowerCase()
+    await upsertReportRow(c, { email, name: a.name, mobile: a.mobile, company: a.company, job_title: a.job_title, city: a.city, industry: a.industry, attendee_id: a.id, source: 'email' })
+    const r = await sendReportsEmail(c, { ...a, email }, { tokenSubject: 'a' + a.id, panel })
+    await markReportEmail(c, email, r)
+    if (r.ok) sent++
+    else { failed.push(email); lastError = String(r.error || 'failed') }
+  }
+  const left = Number(((await c.env.DB.prepare(`SELECT COUNT(*) AS n ${REPORT_PUMP_FROM} WHERE ${PENDING}`).bind(slug).first()) as any)?.n || 0)
+  if (rows.length) await audit(c, 'panel.reports', 'panel', slug, { sent, failed: failed.length })
+  return { done: left === 0, sent, failed, remaining: left, ...(lastError ? { last_error: lastError } : {}) }
+}
+
+// Parks everyone not yet mailed ('paused: by admin' on the row), so no ticker and
+// no page anywhere can send the next one; and frees them again. paused_only on
+// the way back leaves genuine failures parked, so a resume after a pause does
+// not also retry addresses that bounced.
+async function parkPanelMail(c: any, kind: MailKind, slug: string): Promise<number> {
+  if (kind === 'confirmations') {
+    const r = await c.env.DB.prepare(
+      "UPDATE panel_registrations SET confirmation_error = 'paused: by admin' WHERE panel_slug = ? AND confirmation_sent_at IS NULL AND confirmation_error IS NULL"
+    ).bind(slug).run()
+    return r.meta?.changes ?? 0
+  }
+  if (kind === 'reminders') {
+    const r = await c.env.DB.prepare(
+      "UPDATE panel_registrations SET reminder_error = 'paused: by admin' WHERE panel_slug = ? AND reminder_sent_at IS NULL AND reminder_error IS NULL AND rsvp_status IS NULL"
+    ).bind(slug).run()
+    return r.meta?.changes ?? 0
+  }
+  const PENDING = reportPendingSql(await unsubscribedClause(c))
+  const ins = await c.env.DB.prepare(
+    `INSERT OR IGNORE INTO report_downloads (event_id, email, name, attendee_id, source, email_error)
+     SELECT a.event_id, LOWER(a.email), a.name, a.id, 'email', 'paused: by admin' ${REPORT_PUMP_FROM} WHERE ${PENDING} AND rd.id IS NULL`
+  ).bind(slug).run()
+  const upd = await c.env.DB.prepare(
+    `UPDATE report_downloads SET email_error = 'paused: by admin' WHERE event_id = 1 AND email_sent_at IS NULL AND email_error IS NULL AND email IN (${PANEL_EMAILS_SQL})`
+  ).bind(slug).run()
+  return (ins.meta?.changes ?? 0) + (upd.meta?.changes ?? 0)
+}
+async function unparkPanelMail(c: any, kind: MailKind, slug: string, pausedOnly: boolean): Promise<number> {
+  if (kind === 'confirmations') {
+    const where = pausedOnly ? "panel_slug = ? AND confirmation_error LIKE 'paused:%'" : 'panel_slug = ? AND confirmation_error IS NOT NULL'
+    const r = await c.env.DB.prepare(`UPDATE panel_registrations SET confirmation_error = NULL WHERE ${where}`).bind(slug).run()
+    return r.meta?.changes ?? 0
+  }
+  if (kind === 'reminders') {
+    const where = pausedOnly ? "panel_slug = ? AND reminder_error LIKE 'paused:%'" : 'panel_slug = ? AND reminder_error IS NOT NULL'
+    const r = await c.env.DB.prepare(`UPDATE panel_registrations SET reminder_error = NULL WHERE ${where}`).bind(slug).run()
+    return r.meta?.changes ?? 0
+  }
+  const where = pausedOnly ? "email_error LIKE 'paused:%'" : 'email_error IS NOT NULL'
+  const r = await c.env.DB.prepare(
+    `UPDATE report_downloads SET email_error = NULL WHERE event_id = 1 AND ${where} AND email IN (${PANEL_EMAILS_SQL})`
+  ).bind(slug).run()
+  return r.meta?.changes ?? 0
+}
+
+// ---- the job record ----
+const mailJobKey = (kind: string, slug: string) => `mail_job:${kind}:${slug}`
+async function settingWrite(c: any, key: string, value: string): Promise<void> {
+  await c.env.DB.prepare(
+    "INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at"
+  ).bind(key, value).run()
+}
+async function readMailJob(c: any, kind: string, slug: string): Promise<{ raw: string; job: MailJob } | null> {
+  const r = await c.env.DB.prepare('SELECT value FROM app_settings WHERE key = ?').bind(mailJobKey(kind, slug)).first() as any
+  if (!r?.value) return null
+  try { return { raw: String(r.value), job: JSON.parse(String(r.value)) } } catch { return null }
+}
+// Writes the job only if the stored JSON is still what was read: whoever's write
+// lands first owns the next email, and the other ticker learns it lost.
+async function swapMailJob(c: any, job: MailJob, expectRaw: string): Promise<boolean> {
+  const r = await c.env.DB.prepare(
+    "UPDATE app_settings SET value = ?, updated_at = datetime('now') WHERE key = ? AND value = ?"
+  ).bind(JSON.stringify(job), mailJobKey(job.kind, job.slug), expectRaw).run()
+  return (r.meta?.changes ?? 0) > 0
+}
+// Read, change, swap; a few times if a ticker got in between.
+async function updateMailJob(c: any, kind: string, slug: string, change: (job: MailJob) => MailJob | null): Promise<MailJob | null> {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const cur = await readMailJob(c, kind, slug)
+    if (!cur) return null
+    const next = change({ ...cur.job })
+    if (!next) return cur.job
+    next.updated_at = Date.now()
+    if (await swapMailJob(c, next, cur.raw)) return next
+  }
+  return null
+}
+async function listMailJobs(c: any): Promise<{ raw: string; job: MailJob }[]> {
+  try {
+    const { results } = await c.env.DB.prepare("SELECT value FROM app_settings WHERE key LIKE 'mail_job:%'").all()
+    const out: { raw: string; job: MailJob }[] = []
+    for (const r of (results || []) as any[]) { try { out.push({ raw: String(r.value), job: JSON.parse(String(r.value)) }) } catch { /* a broken row is not a job */ } }
+    return out
+  } catch { return [] }
+}
+async function mailJobsSnapshot(c: any): Promise<any> {
+  const jobs: Record<string, MailJob> = {}
+  for (const e of await listMailJobs(c)) jobs[e.job.kind + ':' + e.job.slug] = e.job
+  const last = Number(await settingValue(c, 'cron_last_tick')) || 0
+  return { jobs, cron_last_tick: last, cron_alive: Date.now() - last < CRON_ALIVE_MS, server_time: Date.now() }
+}
+
+// Sends what is due. For up to maxSeconds it also waits for the next email of a
+// running job and sends that, so a scheduler that knocks once a minute still
+// honours a thirty-second gap and a run with no gap moves at full speed.
+async function tickMailJobs(c: any, maxSeconds: number, fromCron: boolean): Promise<any> {
+  const started = Date.now()
+  const deadline = started + Math.max(0, Math.min(MAIL_JOB_MAX_TICK_SECONDS, Number(maxSeconds) || 0)) * 1000
+  if (fromCron) { try { await settingWrite(c, 'cron_last_tick', String(started)) } catch { /* nothing to record on */ } }
+  const acted: any[] = []
+  for (const entry of await listMailJobs(c)) {
+    let { raw, job } = entry
+    if (job.status !== 'running') continue
+    const kind = MAIL_JOB_KINDS[job.kind as MailKind]
+    const panel = CAMPUS_PANELS[job.slug]
+    if (!kind || !panel) continue
+    let sentNow = 0, failedNow = 0
+    for (let guard = 0; guard < 500; guard++) {
+      const now = Date.now()
+      if (job.next_at > now) {
+        if (job.next_at > deadline) break
+        await sleepMs(job.next_at - now)
+      }
+      // Claim this email by moving the job on; if the swap misses, another ticker
+      // has it, and this one leaves the job alone for now.
+      const claimed: MailJob = { ...job, next_at: Date.now() + job.gap * 1000, updated_at: Date.now() }
+      if (!(await swapMailJob(c, claimed, raw))) break
+      raw = JSON.stringify(claimed); job = claimed
+      let r: SendNextResult
+      try { r = await kind.sendNext(c, panel, 1) }
+      catch (e: any) { r = { done: false, sent: 0, failed: [], remaining: job.remaining ?? 0, error: 'Could not send: ' + String(e?.message || e) } }
+      sentNow += r.sent; failedNow += r.failed.length
+      const after = await updateMailJob(c, job.kind, job.slug, (j) => {
+        j.sent += r.sent; j.failed += r.failed.length; j.remaining = r.remaining
+        if (r.last_error) j.last_error = r.last_error
+        if (r.error) { j.status = 'failed'; j.last_error = r.error; j.finished_at = Date.now(); return j }
+        j.fails_in_a_row = r.sent > 0 ? 0 : (j.fails_in_a_row || 0) + (r.failed.length ? 1 : 0)
+        if (j.status !== 'running') return j   // Stop got in while this one was sending
+        if (j.fails_in_a_row >= MAIL_JOB_FAILS_IN_A_ROW) {
+          j.status = 'failed'; j.finished_at = Date.now()
+          j.last_error = `${MAIL_JOB_FAILS_IN_A_ROW} emails in a row could not be sent` + (r.last_error ? ': ' + r.last_error : '') + '. Fix the cause, then press Send again.'
+        } else if (r.done) { j.status = 'done'; j.finished_at = Date.now() }
+        return j
+      })
+      if (!after) break
+      raw = JSON.stringify(after); job = after
+      if (job.status !== 'running') break
+      if (Date.now() >= deadline) break
+    }
+    if (sentNow || failedNow) acted.push({ kind: job.kind, slug: job.slug, sent: sentNow, failed: failedNow, remaining: job.remaining, status: job.status })
+  }
+  return { ok: true, acted, ...(await mailJobsSnapshot(c)) }
+}
+
+// The scheduler's door. Bearer CRON_SECRET, or the admin secret when no
+// CRON_SECRET is set on the site, so a first setup needs only one secret.
+app.post('/api/cron/tick', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  const want = String(c.env.CRON_SECRET || c.env.ADMIN_SECRET || '')
+  const header = c.req.header('Authorization') || ''
+  const token = header.startsWith('Bearer ') ? header.slice(7) : ''
+  if (!want || !token || !safeEqualA(token, want)) return c.json({ error: 'unauthorized' }, 401)
+  const body = await c.req.json().catch(() => ({})) as any
+  return c.json(await tickMailJobs(c, Number(body.max_seconds) || 0, true))
+})
+
+// The admin page's view and its own ticking while it is open.
+app.get('/api/admin/mail-jobs', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  return c.json(await mailJobsSnapshot(c))
+})
+app.post('/api/admin/mail-jobs/tick', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  const body = await c.req.json().catch(() => ({})) as any
+  return c.json(await tickMailJobs(c, Math.min(10, Number(body.max_seconds) || 0), false))
+})
+
+// Send, or Resume, or Try again: one door. A paused job keeps its counts; its
+// parked rows are freed; a done or failed one starts afresh.
+app.post('/api/admin/mail-jobs/:kind/:slug/start', async (c) => {
+  const kind = c.req.param('kind') as MailKind
+  const slug = c.req.param('slug')
+  if (!MAIL_JOB_KINDS[kind]) return c.json({ error: 'Unknown email' }, 400)
+  if (!CAMPUS_PANELS[slug]) return c.json({ error: 'Unknown panel' }, 404)
+  const body = await c.req.json().catch(() => ({})) as any
+  const gapIn = Number(body.gap_seconds)
+  const gap = Number.isFinite(gapIn) && gapIn >= 0 && gapIn <= 3600 ? Math.round(gapIn) : 60
+  const cur = await readMailJob(c, kind, slug)
+  if (cur && cur.job.status === 'running') return c.json({ ok: true, already: true, ...(await mailJobsSnapshot(c)) })
+  try { await unparkPanelMail(c, kind, slug, true) } catch { /* a table short of its migration: the first send will say so */ }
+  const now = Date.now()
+  const who = adminActor(c).actor
+  const job: MailJob = cur && cur.job.status === 'paused'
+    ? { ...cur.job, status: 'running', gap, next_at: now, updated_at: now, finished_at: null, last_error: null, fails_in_a_row: 0 }
+    : { kind, slug, status: 'running', gap, next_at: now, sent: 0, failed: 0, remaining: null, fails_in_a_row: 0, started_at: now, started_by: who, updated_at: now, finished_at: null, last_error: null }
+  await settingWrite(c, mailJobKey(kind, slug), JSON.stringify(job))
+  await audit(c, 'panel.mail.start', 'panel', slug, { kind, gap, resumed: !!(cur && cur.job.status === 'paused') })
+  return c.json({ ok: true, ...(await mailJobsSnapshot(c)) })
+})
+
+app.post('/api/admin/mail-jobs/:kind/:slug/stop', async (c) => {
+  const kind = c.req.param('kind') as MailKind
+  const slug = c.req.param('slug')
+  if (!MAIL_JOB_KINDS[kind]) return c.json({ error: 'Unknown email' }, 400)
+  if (!CAMPUS_PANELS[slug]) return c.json({ error: 'Unknown panel' }, 404)
+  const job = await updateMailJob(c, kind, slug, (j) => { if (j.status !== 'running') return null; j.status = 'paused'; return j })
+  let parked = 0
+  try { parked = await parkPanelMail(c, kind, slug) } catch { /* nothing to park */ }
+  await audit(c, 'panel.mail.stop', 'panel', slug, { kind, sent: job?.sent ?? null, parked })
+  return c.json({ ok: true, parked, ...(await mailJobsSnapshot(c)) })
+})
+
+// A shorter gap takes effect at once; a longer one from the next email on.
+app.post('/api/admin/mail-jobs/:kind/:slug/pace', async (c) => {
+  const kind = c.req.param('kind') as MailKind
+  const slug = c.req.param('slug')
+  if (!MAIL_JOB_KINDS[kind]) return c.json({ error: 'Unknown email' }, 400)
+  if (!CAMPUS_PANELS[slug]) return c.json({ error: 'Unknown panel' }, 404)
+  const body = await c.req.json().catch(() => ({})) as any
+  const gapIn = Number(body.gap_seconds)
+  if (!Number.isFinite(gapIn) || gapIn < 0 || gapIn > 3600) return c.json({ error: 'The gap must be between 0 and 3600 seconds.' }, 400)
+  const gap = Math.round(gapIn)
+  await updateMailJob(c, kind, slug, (j) => { j.gap = gap; j.next_at = Math.min(j.next_at, Date.now() + gap * 1000); return j })
+  return c.json({ ok: true, ...(await mailJobsSnapshot(c)) })
 })
 
 // The people behind each number on the admin Campus panels block. Every condition
@@ -30042,10 +30295,14 @@ function adminPageHTML(): string {
       var box = document.getElementById('campus-panels');
       if (!box) return;
       var list;
-      try { list = await api.get('/api/admin/panels'); }
+      try {
+        var both = await Promise.all([api.get('/api/admin/panels'), api.get('/api/admin/mail-jobs').catch(function () { return null; })]);
+        list = both[0];
+        mailJobsTake(both[1]);
+      }
       catch (e) { box.innerHTML = '<p class="text-red-400 text-xs">Could not load the campus panels.</p>'; return; }
       if (!Array.isArray(list) || !list.length) { box.innerHTML = ''; return; }
-      box.innerHTML = list.map(function (p) {
+      box.innerHTML = '<div id="mail-jobs-note" class="text-[11px] mb-2">' + mailJobsNote() + '</div>' + list.map(function (p) {
         if (p.not_migrated) return '<div class="p-3 rounded-xl bg-white/5 border border-white/10 text-xs text-amber-300">' + esc(p.hostShort) + ': migration 0040 is not applied, so nothing is recorded yet.</div>';
         var left = (p.registered || 0) - (p.emailed || 0) - (p.email_failed || 0) - (p.email_paused || 0);
         var stat = function (n, label, metric) {
@@ -30069,24 +30326,17 @@ function adminPageHTML(): string {
             + (p.reminder_failed ? stat(p.reminder_failed, 'reminder failed', 'reminder_failed') : '') + '</div>'
             + '<div class="flex gap-2 flex-wrap items-center">'
             + '<button onclick="previewPanelReminder(' + slugQ + ')" class="px-3 py-1.5 rounded-lg text-xs glass hover:bg-white/10 transition"><i class="fas fa-eye mr-1.5"></i>Preview reminder</button>'
-            + (p.reminder_paused ? '<button onclick="resumePanelReminders(' + slugQ + ')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-orange-600 hover:bg-orange-500 text-white transition"><i class="fas fa-play mr-1.5"></i>Resume reminders (' + p.reminder_paused + ' paused)</button>' : '')
             + (p.rsvp_open
-                ? ((p.reminder_left || 0) > 0
-                    ? (panelRunning(_reminderPump, p.slug)
-                        ? '<button id="panel-remind-' + esc(p.slug) + '" onclick="stopPanelReminders(' + slugQ + ')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition"><i class="fas fa-stop mr-1.5"></i>Stop</button>'
-                        : '<button id="panel-remind-' + esc(p.slug) + '" onclick="startPanelReminders(' + slugQ + ')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition"><i class="fas fa-paper-plane mr-1.5"></i>Send &ldquo;Are you coming?&rdquo; (' + p.reminder_left + ' to send)</button>')
-                    : '<span class="text-xs text-emerald-400"><i class="fas fa-check mr-1"></i>Everyone without an answer has been asked</span>')
+                ? mailButtons('reminders', p.slug, p.reminder_left || 0, p.reminder_paused || 0, 'Send &ldquo;Are you coming?&rdquo;', 'bg-emerald-600 hover:bg-emerald-500', 'Everyone without an answer has been asked')
                 : '<span class="text-xs text-gray-500">Answers closed: the panel has started</span>')
-            + (p.rsvp_open && (p.reminder_left || 0) > 0 ? paceControl(p.slug) : '')
             + '<button onclick="downloadPanelAnswers(' + slugQ + ', &quot;all&quot;)" class="px-3 py-1.5 rounded-lg text-xs glass hover:bg-white/10 transition"><i class="fas fa-download mr-1.5"></i>Everyone&rsquo;s answers</button>'
             + '<button onclick="downloadPanelAnswers(' + slugQ + ', &quot;guests-coming&quot;)" class="px-3 py-1.5 rounded-lg text-xs glass hover:bg-white/10 transition"><i class="fas fa-id-card mr-1.5"></i>Guests coming (for the college)</button>'
-            + '<span id="panel-remind-progress-' + esc(p.slug) + '" class="text-xs text-gray-400">' + panelLastSay(_reminderPump, p.slug) + '</span>'
+            + mailProgress('reminders', p.slug)
             + '</div></div>';
         }
         // The insights reports email, mailed once per address whichever panel's
-        // button sent it. Numbers here are plain text, not drill-downs: they count
-        // rows of report_downloads, not of the panel list, so PANEL_PEOPLE_METRICS
-        // has no copy of them.
+        // button sent it. Numbers here count rows of report_downloads, not of the
+        // panel list, so PANEL_PEOPLE_METRICS has no copy of them.
         var reports = '';
         if (p.reports_ready === false) {
           reports = '<div class="mt-3 pt-3 border-t border-white/10 text-[11px] text-amber-300"><i class="fas fa-circle-info mr-1"></i>The insights reports email is ready but needs migration 0047 on the database.</div>';
@@ -30099,15 +30349,9 @@ function adminPageHTML(): string {
             + (p.reports_failed ? stat(p.reports_failed, 'failed') : '') + '</div>'
             + '<div class="flex gap-2 flex-wrap items-center">'
             + '<button onclick="previewPanelReports(' + slugQ + ')" class="px-3 py-1.5 rounded-lg text-xs glass hover:bg-white/10 transition"><i class="fas fa-eye mr-1.5"></i>Preview reports email</button>'
-            + (p.reports_paused ? '<button onclick="resumePanelReports(' + slugQ + ')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-orange-600 hover:bg-orange-500 text-white transition"><i class="fas fa-play mr-1.5"></i>Resume the reports (' + p.reports_paused + ' paused)</button>' : '')
-            + ((p.reports_left || 0) > 0
-                ? (panelRunning(_reportPump, p.slug)
-                    ? '<button id="panel-reports-' + esc(p.slug) + '" onclick="stopPanelReports(' + slugQ + ')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-orange-600 hover:bg-orange-500 text-white transition"><i class="fas fa-stop mr-1.5"></i>Stop</button>'
-                    : '<button id="panel-reports-' + esc(p.slug) + '" onclick="startPanelReports(' + slugQ + ')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-orange-600 hover:bg-orange-500 text-white transition"><i class="fas fa-paper-plane mr-1.5"></i>Send the reports (' + p.reports_left + ' to send)</button>')
-                : '<span class="text-xs text-emerald-400"><i class="fas fa-check mr-1"></i>Everyone who can be mailed has the reports</span>')
-            + ((p.reports_left || 0) > 0 ? paceControl(p.slug) : '')
+            + mailButtons('reports', p.slug, p.reports_left || 0, p.reports_paused || 0, 'Send the reports', 'bg-orange-600 hover:bg-orange-500', 'Everyone who can be mailed has the reports')
             + (p.reports_failed ? '<button onclick="retryPanelReports(' + slugQ + ')" class="px-3 py-1.5 rounded-lg text-xs glass hover:bg-white/10 transition"><i class="fas fa-redo mr-1.5"></i>Retry ' + p.reports_failed + ' failed</button>' : '')
-            + '<span id="panel-reports-progress-' + esc(p.slug) + '" class="text-xs text-gray-400">' + panelLastSay(_reportPump, p.slug) + '</span>'
+            + mailProgress('reports', p.slug)
             + '</div></div>';
         }
         return '<div class="p-3 rounded-xl bg-white/5 border border-white/10">'
@@ -30115,18 +30359,143 @@ function adminPageHTML(): string {
           + '<div class="text-xs text-gray-400 leading-relaxed">' + stat(p.registered, 'registered', 'registered') + stat(p.via_muni, 'via mUni', 'via_muni') + stat(p.via_page, 'via our page', 'via_page') + stat(p.emailed, 'emailed', 'emailed') + (p.email_failed ? stat(p.email_failed, 'failed', 'email_failed') : '') + stat(p.signed_in, 'signed in', 'signed_in') + stat(p.with_photo, 'with photo', 'with_photo') + stat(p.card_taken, 'took the card', 'card_taken') + stat(p.main_event_yes, 'coming in Nov', 'main_event_yes') + stat(p.main_event_no, 'declined Nov', 'main_event_no') + stat(p.claimed, 'claimed attendance', 'claimed') + stat(p.certificate_taken, 'took the certificate', 'certificate_taken') + '</div>'
           + '<div class="flex gap-2 mt-2 flex-wrap items-center">'
           + '<button onclick="previewPanelEmail(&quot;' + esc(p.slug) + '&quot;)" class="px-3 py-1.5 rounded-lg text-xs glass hover:bg-white/10 transition"><i class="fas fa-eye mr-1.5"></i>Preview email</button>'
-          + (p.email_paused ? '<button onclick="resumePanelConfirmations(&quot;' + esc(p.slug) + '&quot;)" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-orange-600 hover:bg-orange-500 text-white transition"><i class="fas fa-play mr-1.5"></i>Resume sending (' + p.email_paused + ' paused)</button>' : '')
-          + (left > 0
-              ? (panelRunning(_panelPump, p.slug)
-                  ? '<button id="panel-send-' + esc(p.slug) + '" onclick="stopPanelConfirmations(&quot;' + esc(p.slug) + '&quot;)" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-orange-600 hover:bg-orange-500 text-white transition"><i class="fas fa-stop mr-1.5"></i>Stop</button>'
-                  : '<button id="panel-send-' + esc(p.slug) + '" onclick="startPanelConfirmations(&quot;' + esc(p.slug) + '&quot;)" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-orange-600 hover:bg-orange-500 text-white transition"><i class="fas fa-paper-plane mr-1.5"></i>Send confirmations (' + left + ' left)</button>')
-              : '<span class="text-xs text-emerald-400"><i class="fas fa-check mr-1"></i>Everyone on the list has been emailed</span>')
-          + (left > 0 ? paceControl(p.slug) : '')
+          + mailButtons('confirmations', p.slug, left, p.email_paused || 0, 'Send confirmations', 'bg-orange-600 hover:bg-orange-500', 'Everyone on the list has been emailed')
           + (p.email_failed ? '<button onclick="resetPanelEmailErrors(&quot;' + esc(p.slug) + '&quot;)" class="px-3 py-1.5 rounded-lg text-xs glass hover:bg-white/10 transition"><i class="fas fa-redo mr-1.5"></i>Retry ' + p.email_failed + ' failed</button>' : '')
-          + '<span id="panel-progress-' + esc(p.slug) + '" class="text-xs text-gray-400">' + panelLastSay(_panelPump, p.slug) + '</span>'
+          + mailProgress('confirmations', p.slug)
           + '</div>' + answers + reports + '</div>';
       }).join('');
       renderReportSummary();
+      mailJobsWatch();
+    }
+
+    // ---- panel email runs on the server ----
+    // A send is a job on the server (mail_job:<kind>:<slug>); see PANEL MAIL JOBS
+    // in the worker. This page starts it, stops it, and watches it. A tick
+    // (POST /api/admin/mail-jobs/tick) sends whatever is due; the scheduler
+    // Worker (cron/, every minute) ticks whether or not a page is open, and so
+    // does this page every ten seconds while it is open, which is what keeps a
+    // run going before the Worker is set up and keeps the progress line live.
+    // Both may tick at once: the server hands each email to one of them.
+    var MAIL_KINDS = { confirmations: 'confirmation email', reminders: '"Are you coming?" email', reports: 'insights reports email' };
+    var _mailJobs = { jobs: {}, cron_alive: false, cron_last_tick: 0, skew: 0, loaded: false };
+    var _mailTickTimer = null, _mailLineTimer = null;
+    function mailJobsTake(r) {
+      if (!r || typeof r !== 'object' || !('jobs' in r)) return;
+      _mailJobs.jobs = (r.jobs && typeof r.jobs === 'object') ? r.jobs : {};
+      _mailJobs.cron_alive = !!r.cron_alive;
+      _mailJobs.cron_last_tick = Number(r.cron_last_tick) || 0;
+      _mailJobs.skew = (Number(r.server_time) || Date.now()) - Date.now();
+      _mailJobs.loaded = true;
+    }
+    function mailJob(kind, slug) { return _mailJobs.jobs[kind + ':' + slug] || null; }
+    function mailJobsRunning() { return Object.keys(_mailJobs.jobs).filter(function (k) { return _mailJobs.jobs[k].status === 'running'; }).length; }
+    function mailClock(ms) {
+      var d = new Date(ms), hh = d.getHours(), mm = d.getMinutes();
+      return (hh % 12 || 12) + ':' + (mm < 10 ? '0' : '') + mm + (hh < 12 ? ' am' : ' pm');
+    }
+    function mailCountdown(s) { return s >= 60 ? Math.floor(s / 60) + 'm ' + (s % 60) + 's' : s + 's'; }
+    // The line under the buttons, from the job alone, so a redraw never forgets a run.
+    function mailJobLine(j) {
+      if (!j) return '';
+      var sent = j.sent || 0, failed = j.failed || 0, left = (j.remaining == null) ? null : j.remaining;
+      if (j.status === 'running') {
+        var now = Date.now() + (_mailJobs.skew || 0);
+        var next = Math.max(0, Math.ceil((j.next_at - now) / 1000));
+        var s = sent + ' sent' + (failed ? ', ' + failed + ' failed' : '') + (left == null ? '' : ', ' + left + ' to go') + ', ' + gapWords(j.gap) + '.';
+        if (left) {
+          var secs = left * (j.gap || 1);
+          var mins = Math.round(secs / 60);
+          s += ' Next in ' + mailCountdown(next) + '.' + (j.gap ? ' ' + (mins >= 60 ? Math.floor(mins / 60) + 'h ' + (mins % 60) + 'm' : mins + ' min') + ' left, ending about ' + mailClock(now + secs * 1000) + '.' : '');
+        } else if (left == null) s += ' Starting&hellip;';
+        return s;
+      }
+      if (j.status === 'paused') return 'Stopped - ' + sent + ' sent' + (failed ? ', ' + failed + ' failed' : '') + '. Press Resume to carry on.';
+      if (j.status === 'done') return '<span class="text-green-400">Done - ' + sent + ' sent' + (failed ? ', ' + failed + ' failed' : '') + (j.finished_at ? ', finished at ' + mailClock(j.finished_at) : '') + '.</span>';
+      if (j.status === 'failed') return '<span class="text-red-400">Stopped - ' + sent + ' sent. ' + esc(j.last_error || 'It could not go on.') + '</span>';
+      return '';
+    }
+    function mailProgress(kind, slug) {
+      return '<span id="mail-progress-' + kind + '-' + esc(slug) + '" class="text-xs text-gray-400">' + mailJobLine(mailJob(kind, slug)) + '</span>';
+    }
+    // The buttons for one email on one panel: Stop and the pace while it runs;
+    // Send, Resume or Try again when it does not; a word when there is nobody left.
+    function mailButtons(kind, slug, left, paused, sendLabel, cls, nobodyLeft) {
+      var j = mailJob(kind, slug);
+      var slugQ = '&quot;' + esc(slug) + '&quot;', kindQ = '&quot;' + kind + '&quot;';
+      var id = 'mail-btn-' + kind + '-' + esc(slug);
+      var btn = function (verb, icon) {
+        return '<button id="' + id + '" onclick="startMailJob(' + kindQ + ', ' + slugQ + ')" class="px-3 py-1.5 rounded-lg text-xs font-semibold ' + cls + ' text-white transition"><i class="fas ' + icon + ' mr-1.5"></i>' + verb + '</button>';
+      };
+      if (j && j.status === 'running') {
+        return '<button id="' + id + '" onclick="stopMailJob(' + kindQ + ', ' + slugQ + ')" class="px-3 py-1.5 rounded-lg text-xs font-semibold ' + cls + ' text-white transition"><i class="fas fa-stop mr-1.5"></i>Stop</button>' + paceControl(slug, kind, j.gap);
+      }
+      if (paused > 0 || (j && j.status === 'paused')) return btn('Resume (' + (left + paused) + ' to send)', 'fa-play') + paceControl(slug, kind, null);
+      if (left > 0) return btn((j && j.status === 'failed' ? 'Try again' : sendLabel) + ' (' + left + ' to send)', j && j.status === 'failed' ? 'fa-redo' : 'fa-paper-plane') + paceControl(slug, kind, null);
+      return '<span class="text-xs text-emerald-400"><i class="fas fa-check mr-1"></i>' + nobodyLeft + '</span>';
+    }
+    function mailJobsNote() {
+      if (!mailJobsRunning()) return '';
+      if (_mailJobs.cron_alive) {
+        var ago = Math.max(0, Math.round((Date.now() + (_mailJobs.skew || 0) - _mailJobs.cron_last_tick) / 1000));
+        return '<span class="text-emerald-400"><i class="fas fa-check mr-1"></i>Sending runs on the server (scheduler seen ' + mailCountdown(ago) + ' ago): you can close this page.</span>';
+      }
+      return '<span class="text-amber-300"><i class="fas fa-triangle-exclamation mr-1"></i>The scheduler is not running, so sending stops when this page is closed. Set it up once (handbook, section 17) and it carries on without you.</span>';
+    }
+    function mailJobsLines() {
+      Object.keys(_mailJobs.jobs).forEach(function (k) {
+        var j = _mailJobs.jobs[k];
+        var el = document.getElementById('mail-progress-' + j.kind + '-' + j.slug);
+        if (el) el.innerHTML = mailJobLine(j);
+      });
+      var note = document.getElementById('mail-jobs-note');
+      if (note) note.innerHTML = mailJobsNote();
+    }
+    function mailJobsWatch() {
+      if (_mailTickTimer) return;
+      _mailTickTimer = setInterval(mailJobsTick, 10000);
+      _mailLineTimer = setInterval(mailJobsLines, 1000);
+    }
+    async function mailJobsTick() {
+      if (!mailJobsRunning()) return;
+      var before = JSON.stringify(Object.keys(_mailJobs.jobs).map(function (k) { return k + ':' + _mailJobs.jobs[k].status; }));
+      var r;
+      try { r = await api.post('/api/admin/mail-jobs/tick', { max_seconds: 5 }); } catch (e) { return; }
+      mailJobsTake(r);
+      var after = JSON.stringify(Object.keys(_mailJobs.jobs).map(function (k) { return k + ':' + _mailJobs.jobs[k].status; }));
+      // A run that ended changes the buttons; a run going on only changes the line.
+      if (before !== after) renderCampusPanels(); else mailJobsLines();
+    }
+    async function startMailJob(kind, slug) {
+      var j = mailJob(kind, slug);
+      if (j && j.status === 'running') return;
+      var gap = panelGapSeconds(slug, kind);
+      var where = _mailJobs.cron_alive
+        ? 'It runs on the server, so you can close this page.'
+        : 'Keep this page open until it finishes, or set up the scheduler (handbook, section 17) so it runs on its own.';
+      var verb = (j && j.status === 'paused') ? 'Carry on sending' : 'Send';
+      if (!confirm(verb + ' the ' + MAIL_KINDS[kind] + ' to everyone on the ' + slug + ' list who has not had it?\\n\\nReal email, ' + gapWords(gap) + '. ' + where + '\\nUse Stop to pause; nobody is mailed twice.')) return;
+      var btn = document.getElementById('mail-btn-' + kind + '-' + slug);
+      if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1.5"></i>Starting&hellip;'; }
+      try { mailJobsTake(await api.post('/api/admin/mail-jobs/' + kind + '/' + encodeURIComponent(slug) + '/start', { gap_seconds: gap })); }
+      catch (e) { toast((e && e.message) || 'Could not start sending', 'error'); }
+      await renderCampusPanels();
+      mailJobsTick();
+    }
+    // Stops on the server at once and parks the rest of the queue, so no page
+    // anywhere, this one included, sends the next one.
+    async function stopMailJob(kind, slug) {
+      var btn = document.getElementById('mail-btn-' + kind + '-' + slug);
+      if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1.5"></i>Stopping&hellip;'; }
+      try { mailJobsTake(await api.post('/api/admin/mail-jobs/' + kind + '/' + encodeURIComponent(slug) + '/stop', {})); }
+      catch (e) { toast((e && e.message) || 'Could not stop', 'error'); }
+      renderCampusPanels();
+    }
+    async function setMailJobPace(kind, slug) {
+      savePanelGap(slug, kind);
+      var j = mailJob(kind, slug);
+      if (!j || j.status !== 'running') return;
+      try { mailJobsTake(await api.post('/api/admin/mail-jobs/' + kind + '/' + encodeURIComponent(slug) + '/pace', { gap_seconds: panelGapSeconds(slug, kind) })); mailJobsLines(); }
+      catch (e) { toast((e && e.message) || 'Could not change the pace', 'error'); }
     }
 
     // ---- how fast panel email goes out ----
@@ -30136,97 +30505,32 @@ function adminPageHTML(): string {
     // one minute. The queue lives on the server, so stopping and starting again never
     // mails anyone twice.
     var PANEL_GAPS = [[60, '1 min'], [120, '2 min'], [180, '3 min'], [30, '30 sec'], [0, 'no gap']];
-    function panelGapSeconds(slug) {
-      var sel = document.getElementById('panel-gap-' + slug);
+    function panelGapSeconds(slug, kind) {
+      var sel = document.getElementById('panel-gap-' + (kind || 'confirmations') + '-' + slug);
       var s = sel ? parseInt(sel.value, 10) : NaN;
       if (isNaN(s)) { try { s = parseInt(localStorage.getItem('panel_gap_seconds'), 10); } catch (e) { s = NaN; } }
       return (s >= 0 && s <= 3600) ? s : 60;
     }
-    function savePanelGap(slug) {
-      try { localStorage.setItem('panel_gap_seconds', String(panelGapSeconds(slug))); } catch (e) {}
+    function savePanelGap(slug, kind) {
+      try { localStorage.setItem('panel_gap_seconds', String(panelGapSeconds(slug, kind))); } catch (e) {}
     }
-    function paceControl(slug) {
+    // While a run is on, the control shows the run's own gap and changes it.
+    function paceControl(slug, kind, current) {
       var now = 60;
-      try { var v = parseInt(localStorage.getItem('panel_gap_seconds'), 10); if (v >= 0 && v <= 3600) now = v; } catch (e) {}
+      if (current != null && current >= 0) now = current;
+      else { try { var v = parseInt(localStorage.getItem('panel_gap_seconds'), 10); if (v >= 0 && v <= 3600) now = v; } catch (e) {} }
       var opts = PANEL_GAPS.map(function (g) {
         return '<option value="' + g[0] + '"' + (g[0] === now ? ' selected' : '') + '>' + g[1] + '</option>';
       }).join('');
       return '<label class="text-[11px] text-gray-400 flex items-center gap-1 whitespace-nowrap">one email every'
-        + '<select id="panel-gap-' + esc(slug) + '" onchange="savePanelGap(&quot;' + esc(slug) + '&quot;)" class="bg-white/10 border border-white/10 rounded-lg px-2 py-1 text-[11px] text-white">'
+        + '<select id="panel-gap-' + kind + '-' + esc(slug) + '" onchange="setMailJobPace(&quot;' + kind + '&quot;, &quot;' + esc(slug) + '&quot;)" class="bg-white/10 border border-white/10 rounded-lg px-2 py-1 text-[11px] text-white">'
         + opts + '</select></label>';
     }
     function gapWords(s) {
       if (!s) return 'with no gap between them';
       return s >= 60 ? 'one every ' + Math.round(s / 60) + ' minute' + (s >= 120 ? 's' : '') : 'one every ' + s + ' seconds';
     }
-    function panelEta(remaining, slug) {
-      var gap = panelGapSeconds(slug);
-      if (!gap || !remaining) return '';
-      var mins = Math.round(remaining * gap / 60);
-      var end = new Date(Date.now() + remaining * gap * 1000);
-      var hh = end.getHours(), mm = end.getMinutes();
-      var when = (hh % 12 || 12) + ':' + (mm < 10 ? '0' : '') + mm + (hh < 12 ? ' am' : ' pm');
-      return ' ' + (mins >= 60 ? Math.floor(mins / 60) + 'h ' + (mins % 60) + 'm' : mins + ' min') + ' left, ending about ' + when + '.';
-    }
-    // The wait between two emails. It works to a deadline on the clock, not a count of
-    // ticks: a background tab gets its ticks slowed to about one a minute, and a count
-    // would stretch a two-minute gap into two hours.
-    function panelWait(state, slug, say, head, next) {
-      var gap = panelGapSeconds(slug);
-      if (!gap) { state.timer = setTimeout(next, 400); return; }
-      var due = Date.now() + gap * 1000;
-      var tick = function () {
-        if (!state || state.stopped) return;
-        var left = Math.ceil((due - Date.now()) / 1000);
-        if (left <= 0) { next(); return; }
-        say(head + ' Next in ' + (left >= 60 ? Math.floor(left / 60) + 'm ' + (left % 60) + 's' : left + 's') + '.');
-        state.timer = setTimeout(tick, Math.min(1000, Math.max(50, due - Date.now())));
-      };
-      tick();
-    }
-    // A run lives in this tab, not in the block the Overview redraws every minute, so the
-    // redraw has to show the run rather than forget it.
-    function panelRunning(pump, slug) { var s = pump && pump[slug]; return !!(s && !s.stopped && !s.done); }
-    function panelLastSay(pump, slug) { var s = pump && pump[slug]; return (s && s.lastSay) || ''; }
 
-    // ---- "Are you coming?" ----
-    var _reminderPump = {};
-    function startPanelReminders(slug) {
-      if (panelRunning(_reminderPump, slug)) return;
-      if (!confirm('Send the "Are you coming?" email to everyone on the ' + slug + ' list who has not answered yet?\\n\\nReal email, ' + gapWords(panelGapSeconds(slug)) + '.\\nKeep this tab open until it finishes. Use Stop to pause; nobody is asked twice.')) return;
-      var btn = document.getElementById('panel-remind-' + slug);
-      if (btn) { btn.innerHTML = '<i class="fas fa-stop mr-1.5"></i>Stop'; btn.onclick = function () { stopPanelReminders(slug); }; }
-      _reminderPump[slug] = { sent: 0, stopped: false };
-      pumpPanelReminders(slug);
-    }
-    async function pumpPanelReminders(slug) {
-      var say = function (m) { if (_reminderPump[slug]) _reminderPump[slug].lastSay = m; var el = document.getElementById('panel-remind-progress-' + slug); if (el) el.innerHTML = m; };
-      if (!_reminderPump[slug] || _reminderPump[slug].stopped) return;
-      var r;
-      try { r = await api.post('/api/admin/panels/' + encodeURIComponent(slug) + '/send-next-reminders', { batch: 1 }); }
-      catch (e) { say('<span class="text-red-400">Network error - retrying in 30s.</span>'); _reminderPump[slug].timer = setTimeout(function () { pumpPanelReminders(slug); }, 30000); return; }
-      if (!r || r.error) { _reminderPump[slug].stopped = true; say('<span class="text-red-400">' + esc((r && r.error) || 'failed') + '</span>'); renderCampusPanels(); return; }
-      _reminderPump[slug].sent += (r.sent || 0);
-      if (_reminderPump[slug].stopped) { say('Stopped - ' + _reminderPump[slug].sent + ' sent.'); return; }
-      // The refresh rebuilds this row, so the finished message is written after it,
-      // not before, or the organiser never sees that the run ended.
-      if (r.done) { var total = _reminderPump[slug].sent; _reminderPump[slug].done = true; _reminderPump[slug].lastSay = '<span class="text-green-400">Done - ' + total + ' sent.</span>'; renderCampusPanels(); return; }
-      var head = _reminderPump[slug].sent + ' sent, ' + r.remaining + ' to go.' + panelEta(r.remaining, slug);
-      say(head);
-      panelWait(_reminderPump[slug], slug, say, head, function () { pumpPanelReminders(slug); });
-    }
-    async function stopPanelReminders(slug) {
-      if (_reminderPump[slug]) { _reminderPump[slug].stopped = true; if (_reminderPump[slug].timer) clearTimeout(_reminderPump[slug].timer); _reminderPump[slug].lastSay = 'Stopped - ' + (_reminderPump[slug].sent || 0) + ' sent.'; }
-      var btn = document.getElementById('panel-remind-' + slug);
-      if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1.5"></i>Stopping…'; }
-      try { await api.post('/api/admin/panels/' + encodeURIComponent(slug) + '/pause-reminders', {}); } catch (e) {}
-      renderCampusPanels();
-    }
-    async function resumePanelReminders(slug) {
-      try { await api.post('/api/admin/panels/' + encodeURIComponent(slug) + '/resume-reminders', {}); } catch (e) {}
-      await renderCampusPanels();
-      startPanelReminders(slug);
-    }
     async function previewPanelReminder(slug) {
       var w = window.open('', '_blank');
       try {
@@ -30276,35 +30580,6 @@ function adminPageHTML(): string {
       );
     }
 
-    var _panelPump = {};
-    function startPanelConfirmations(slug) {
-      if (panelRunning(_panelPump, slug)) return;
-      if (!confirm('Send the panel confirmation email to everyone on the ' + slug + ' list who has not had one?\\n\\nReal email, ' + gapWords(panelGapSeconds(slug)) + '.\\nKeep this tab open until it finishes. Use Stop to pause; nobody is mailed twice.')) return;
-      var btn = document.getElementById('panel-send-' + slug);
-      if (btn) {
-        btn.innerHTML = '<i class="fas fa-stop mr-1.5"></i>Stop';
-        btn.onclick = function () { stopPanelConfirmations(slug); };
-      }
-      _panelPump[slug] = { sent: 0, stopped: false };
-      pumpPanelConfirmations(slug);
-    }
-
-    // Stops this tab at once and parks the rest of the queue on the server, so a
-    // second tab left open cannot carry on sending.
-    async function stopPanelConfirmations(slug) {
-      if (_panelPump[slug]) { _panelPump[slug].stopped = true; if (_panelPump[slug].timer) clearTimeout(_panelPump[slug].timer); _panelPump[slug].lastSay = 'Stopped - ' + (_panelPump[slug].sent || 0) + ' sent.'; }
-      var btn = document.getElementById('panel-send-' + slug);
-      if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1.5"></i>Stopping…'; }
-      try { await api.post('/api/admin/panels/' + encodeURIComponent(slug) + '/pause', {}); } catch (e) {}
-      renderCampusPanels();
-    }
-
-    async function resumePanelConfirmations(slug) {
-      try { await api.post('/api/admin/panels/' + encodeURIComponent(slug) + '/reset-email-errors', { paused_only: true }); } catch (e) {}
-      await renderCampusPanels();
-      startPanelConfirmations(slug);
-    }
-
     // Opened through fetch rather than a link, so the preview carries the same
     // Authorization header as every other admin call.
     async function previewPanelEmail(slug) {
@@ -30316,66 +30591,11 @@ function adminPageHTML(): string {
       } catch (e) { if (w) w.close(); toast('Could not load the preview', 'error'); }
     }
 
-    async function pumpPanelConfirmations(slug) {
-      var say = function (m) { if (_panelPump[slug]) _panelPump[slug].lastSay = m; var el = document.getElementById('panel-progress-' + slug); if (el) el.innerHTML = m; };
-      if (!_panelPump[slug] || _panelPump[slug].stopped) return;
-      var r;
-      try { r = await api.post('/api/admin/panels/' + encodeURIComponent(slug) + '/send-next-confirmations', { batch: 1 }); }
-      catch (e) { say('<span class="text-red-400">Network error - retrying in 30s.</span>'); _panelPump[slug].timer = setTimeout(function () { pumpPanelConfirmations(slug); }, 30000); return; }
-      if (!r || r.error) { _panelPump[slug].stopped = true; say('<span class="text-red-400">' + esc((r && r.error) || 'failed') + '</span>'); renderCampusPanels(); return; }
-      _panelPump[slug].sent += (r.sent || 0);
-      if (_panelPump[slug].stopped) { say('Stopped - ' + _panelPump[slug].sent + ' sent.'); return; }
-      // The refresh rebuilds this row, so the finished message is written after it,
-      // not before, or the organiser never sees that the run ended.
-      if (r.done) { var total = _panelPump[slug].sent; _panelPump[slug].done = true; _panelPump[slug].lastSay = '<span class="text-green-400">Done - ' + total + ' sent.</span>'; renderCampusPanels(); return; }
-      var head = _panelPump[slug].sent + ' sent, ' + r.remaining + ' to go.' + panelEta(r.remaining, slug);
-      say(head);
-      panelWait(_panelPump[slug], slug, say, head, function () { pumpPanelConfirmations(slug); });
-    }
-
     async function resetPanelEmailErrors(slug) {
       try { await api.post('/api/admin/panels/' + encodeURIComponent(slug) + '/reset-email-errors', {}); } catch (e) {}
       renderCampusPanels();
     }
 
-    // ---- the insights reports email ----
-    // Same shape as the confirmation and the reminder pumps above: one email at a
-    // time at the chosen pace, the queue on the server, Stop parks the rest.
-    var _reportPump = {};
-    function startPanelReports(slug) {
-      if (panelRunning(_reportPump, slug)) return;
-      if (!confirm('Send the insights reports email to everyone on the ' + slug + ' list who does not have it yet?\\n\\nReal email, ' + gapWords(panelGapSeconds(slug)) + '.\\nKeep this tab open until it finishes. Use Stop to pause; nobody is mailed twice.')) return;
-      var btn = document.getElementById('panel-reports-' + slug);
-      if (btn) { btn.innerHTML = '<i class="fas fa-stop mr-1.5"></i>Stop'; btn.onclick = function () { stopPanelReports(slug); }; }
-      _reportPump[slug] = { sent: 0, stopped: false };
-      pumpPanelReports(slug);
-    }
-    async function pumpPanelReports(slug) {
-      var say = function (m) { if (_reportPump[slug]) _reportPump[slug].lastSay = m; var el = document.getElementById('panel-reports-progress-' + slug); if (el) el.innerHTML = m; };
-      if (!_reportPump[slug] || _reportPump[slug].stopped) return;
-      var r;
-      try { r = await api.post('/api/admin/panels/' + encodeURIComponent(slug) + '/send-next-reports', { batch: 1 }); }
-      catch (e) { say('<span class="text-red-400">Network error - retrying in 30s.</span>'); _reportPump[slug].timer = setTimeout(function () { pumpPanelReports(slug); }, 30000); return; }
-      if (!r || r.error) { _reportPump[slug].stopped = true; say('<span class="text-red-400">' + esc((r && r.error) || 'failed') + '</span>'); renderCampusPanels(); return; }
-      _reportPump[slug].sent += (r.sent || 0);
-      if (_reportPump[slug].stopped) { say('Stopped - ' + _reportPump[slug].sent + ' sent.'); return; }
-      if (r.done) { var total = _reportPump[slug].sent; _reportPump[slug].done = true; _reportPump[slug].lastSay = '<span class="text-green-400">Done - ' + total + ' sent.</span>'; renderCampusPanels(); return; }
-      var head = _reportPump[slug].sent + ' sent, ' + r.remaining + ' to go.' + panelEta(r.remaining, slug);
-      say(head);
-      panelWait(_reportPump[slug], slug, say, head, function () { pumpPanelReports(slug); });
-    }
-    async function stopPanelReports(slug) {
-      if (_reportPump[slug]) { _reportPump[slug].stopped = true; if (_reportPump[slug].timer) clearTimeout(_reportPump[slug].timer); _reportPump[slug].lastSay = 'Stopped - ' + (_reportPump[slug].sent || 0) + ' sent.'; }
-      var btn = document.getElementById('panel-reports-' + slug);
-      if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1.5"></i>Stopping…'; }
-      try { await api.post('/api/admin/panels/' + encodeURIComponent(slug) + '/pause-reports', {}); } catch (e) {}
-      renderCampusPanels();
-    }
-    async function resumePanelReports(slug) {
-      try { await api.post('/api/admin/panels/' + encodeURIComponent(slug) + '/resume-reports', { paused_only: true }); } catch (e) {}
-      await renderCampusPanels();
-      startPanelReports(slug);
-    }
     async function retryPanelReports(slug) {
       try { await api.post('/api/admin/panels/' + encodeURIComponent(slug) + '/resume-reports', {}); } catch (e) {}
       renderCampusPanels();

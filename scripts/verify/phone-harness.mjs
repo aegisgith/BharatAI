@@ -98,6 +98,7 @@ const api = (method, p, body, q) => {
   if (p === '/api/admin/events/1/lunch-stats') return { totalAttendees: 1601, totalLunchEligible: 54, withArrivalTime: 47, arrivingBeforeLunch: 40, arrivingAfterLunch: 7, noArrivalTimeLunch: 14, estimatedLunchPacks: 54, notifiedCount: 3, loggedInCount: 521, loggedInAfterNotifyCount: 1, passDownloadedCount: 510, timeSlots: [], rsvpConfirmed: 0, rsvpDeclined: 0, rsvpMaybe: 0, rsvpNoResponse: 1601 };
   if (p === '/api/admin/analytics/audience') return { total: 1601, seniority: [], industries: [], companies: [], cities: [], sources: [], campus_total: 413 };
   if (p === '/api/admin/whoami') return { authenticated: true, name: 'Harness Admin', username: 'harness', role: 'admin' };
+  if (p === '/api/admin/mail-jobs') return { jobs: {}, cron_alive: false, cron_last_tick: 0, server_time: Date.now() };
   if (p === '/api/admin/panels') return [{ slug: 'djsanghvi-21sep', hostShort: 'DJ Sanghvi', title: 'AI and Employability', dateLabel: 'Monday, 21 September 2026', claim_state: 'before', claim_code_set: true,
     rsvp_enabled: true, rsvp_open: true, registered: 431, via_muni: 270, via_page: 3, emailed: 431, email_failed: 0, email_paused: 0, with_photo: 10, signed_in: 37, card_taken: 3, claimed: 0, certificate_taken: 0,
     rsvp_yes: 12, rsvp_no: 3, rsvp_yes_outside: 4, reminded: 0, reminder_failed: 0, reminder_paused: 0, reminder_left: 416 }];

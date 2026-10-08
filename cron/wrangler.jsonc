@@ -1,0 +1,20 @@
+// The scheduler that keeps panel email going when no admin page is open.
+//
+// Cloudflare Pages cannot run on a timer, so this one-file Worker does: every
+// minute it asks the site to send whatever is due (POST /api/cron/tick). The
+// queue, the pace and Stop all live on the site; this Worker only knocks.
+//
+// Deploy once, from the repo root (the organiser's terminal):
+//   npx wrangler deploy --config cron/wrangler.jsonc
+//   echo "<the admin password, or a CRON_SECRET set on the Pages project>" | npx wrangler secret put CRON_SECRET --config cron/wrangler.jsonc
+// Check it is knocking: Admin -> Overview -> Campus panels shows "scheduler seen
+// N s ago" while a send is running, and the Worker's own logs show each tick:
+//   npx wrangler tail --config cron/wrangler.jsonc
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "bharatai-mail-cron",
+  "main": "src/index.js",
+  "compatibility_date": "2026-02-20",
+  "triggers": { "crons": ["* * * * *"] },
+  "vars": { "SITE": "https://bharataiinnovation.com" }
+}

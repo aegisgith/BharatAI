@@ -26,6 +26,8 @@ const freshState = () => ({
   user: { id: 5, event_id: 1, name: 'Riya Shah', email: 'riya@gmail.com', company: 'Dwarkadas J. Sanghvi College of Engineering', job_title: 'Student',
     badge_type: 'Visitor Pass', payment_status: 'paid', avatar_url: '', industry: 'Education & Academia', interests: 'ml', networking_goals: 'learn', city: 'Mumbai', mobile: '9876543210' },
   panels: [{ ...PANEL }], mainEvent: 1, records: [], dbWrites: [],
+  // Panel email as server jobs (the worker's /api/admin/mail-jobs/*), played here.
+  mailJobs: {}, cronAlive: false, startCalls: [], stopCalls: [], sendCalls: [], due: false,
 });
 let state = freshState();
 
@@ -85,7 +87,42 @@ const api = (method, p, body) => {
   if (p === '/api/admin/whoami') return { authenticated: true, name: 'Harness Admin', username: 'harness', role: 'admin' };
   if (p === '/api/admin/panels') return [{ slug: 'djsanghvi-21sep', hostShort: 'DJ Sanghvi', title: 'AI and Employability', dateLabel: 'Monday, 21 September 2026', claim_state: 'before', claim_code_set: true,
     rsvp_enabled: true, rsvp_open: true, registered: 431, via_muni: 270, via_page: 3, emailed: 0, email_failed: 0, email_paused: 0, with_photo: 10, signed_in: 37, card_taken: 3, claimed: 0, certificate_taken: 0,
-    rsvp_yes: 12, rsvp_no: 3, rsvp_yes_outside: 4, reminded: 0, reminder_failed: 0, reminder_paused: 0, reminder_left: 416 }];
+    rsvp_yes: 12, rsvp_no: 3, rsvp_yes_outside: 4, reminded: 0, reminder_failed: 0, reminder_paused: 0, reminder_left: 416,
+    reports_ready: true, reports_watch_ready: false, reports_sent: 0, reports_opened: 0, reports_watched: 0, reports_left: 400, reports_suppressed: 0, reports_failed: 0, reports_paused: 0 }];
+  // ---- mail jobs ----
+  const snapshot = () => ({ jobs: state.mailJobs, cron_alive: !!state.cronAlive, cron_last_tick: state.cronAlive ? Date.now() - 20000 : 0, server_time: Date.now() });
+  if (p === '/api/admin/mail-jobs') return snapshot();
+  const mj = p.match(/^\/api\/admin\/mail-jobs\/([a-z]+)\/([a-z0-9-]+)\/(start|stop|pace)$/);
+  if (method === 'POST' && mj) {
+    const key = mj[1] + ':' + mj[2]; const cur = state.mailJobs[key];
+    if (mj[3] === 'start') {
+      state.startCalls.push({ kind: mj[1], slug: mj[2], gap_seconds: body && body.gap_seconds });
+      if (cur && cur.status === 'running') return { ok: true, already: true, ...snapshot() };
+      const gap = body && typeof body.gap_seconds === 'number' ? body.gap_seconds : 60;
+      state.mailJobs[key] = cur && cur.status === 'paused'
+        ? { ...cur, status: 'running', gap, next_at: Date.now(), finished_at: null, last_error: null }
+        : { kind: mj[1], slug: mj[2], status: 'running', gap, next_at: Date.now(), sent: 0, failed: 0, remaining: 4, fails_in_a_row: 0, started_at: Date.now(), started_by: 'Harness', updated_at: Date.now(), finished_at: null, last_error: null };
+      return { ok: true, ...snapshot() };
+    }
+    if (mj[3] === 'stop') { state.stopCalls.push({ kind: mj[1], slug: mj[2] }); if (cur && cur.status === 'running') cur.status = 'paused'; return { ok: true, parked: 3, ...snapshot() }; }
+    if (mj[3] === 'pace') { if (cur) { cur.gap = body.gap_seconds; cur.next_at = Math.min(cur.next_at, Date.now() + cur.gap * 1000); } return { ok: true, ...snapshot() }; }
+  }
+  if (method === 'POST' && p === '/api/admin/mail-jobs/tick') {
+    const acted = [];
+    for (const j of Object.values(state.mailJobs)) {
+      if (j.status !== 'running') continue;
+      if (state.due) j.next_at = Date.now();
+      let n = 0;
+      while (j.status === 'running' && j.next_at <= Date.now() && n < 50) {
+        state.sendCalls.push({ at: Date.now(), kind: j.kind, slug: j.slug }); j.sent++; j.remaining--; n++;
+        j.next_at = Date.now() + j.gap * 1000;
+        if (j.remaining <= 0) { j.status = 'done'; j.finished_at = Date.now(); }
+        if (j.gap > 0) break;
+      }
+      if (n) acted.push({ kind: j.kind, slug: j.slug, sent: n, failed: 0, remaining: j.remaining, status: j.status });
+    }
+    return { ok: true, acted, ...snapshot() };
+  }
   if (method === 'POST' && p === '/api/admin/panels/djsanghvi-21sep/send-next-confirmations') {
     state.sendCalls = (state.sendCalls || []); state.sendCalls.push({ at: Date.now(), batch: body && body.batch });
     const done = state.sendCalls.length >= 4;

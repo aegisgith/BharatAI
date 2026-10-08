@@ -21,6 +21,7 @@ Secrets, claim codes and conference registration totals are deliberately **not**
 | Checkout (CCAvenue) | `src/lib/ccavenue.ts` (the wire format, nothing else) and the `ONLINE PAYMENTS` block in `src/index.tsx`; table `payment_orders` (0045). See §15 |
 | Build guards | `scripts/check-inline-js.mjs`, `scripts/check-no-counts.mjs` (run by `npm run build`) |
 | Campus tooling | `scripts/import-muni-panel.py`, `scripts/import-linkedin-panel.py`, `scripts/make-panel-claim-slide.py` |
+| Panel email scheduler | `cron/` (a one-file Worker, `bharatai-mail-cron`, every minute → `POST /api/cron/tick`); the `PANEL MAIL JOBS` block in `src/index.tsx`; jobs are `mail_job:<kind>:<slug>` rows in `app_settings`. See §17 |
 | Campus Series insights reports | PDFs in `public/reports/` (served only by `GET /reports/:file` with a signed link), page `public/insights.html`, the `CAMPUS SERIES INSIGHTS REPORTS` block in `src/index.tsx` (`INSIGHTS_REPORTS`, `sendReportsEmail`, the admin pump), table `report_downloads` (0047). See §16 |
 | Verification | `scripts/verify/` (see §3) |
 
@@ -152,7 +153,8 @@ Every panel registrant is an `attendees` row tagged `registration_source = 'camp
 
 ### Emails
 - **Confirmation** — `sendPanelConfirmationEmail()`: brand header (`emailBrandHeader`), host logo band, topic/date/time/venue/panellists, a 7-day, 5-use sign-in link that lands on the creative, and "Would you like to come to the main conference too?" with yes/no deep links. Admin → Overview → Campus panels: **Preview email**, **Send confirmations** (pumped 5 at a time, **Stop** parks the rest server-side, **Resume** un-parks only paused rows).
-- **Pace (24 Sep):** both sends go out **one email at a time**, with the gap chosen in the control beside the button (`paceControl`, `panelGapSeconds`, `panelWait`). One minute is the default since 29 Sep and the choice is remembered in that browser. The run lives in the tab: the Overview redraws the block every 60 s, and the redraw shows Stop and the last progress line while a run is going, so a second press starts nothing. The wait works to a clock deadline, because a background tab's timers are slowed to about one tick a minute and a tick count would stretch the gap. `scripts/verify/pace-test.cjs` covers all of this. A burst of identical mail to the same few domains is what puts a sender in the spam folder. The progress line counts down and gives the finishing time; 129 emails at two minutes takes about four and a half hours and the tab has to stay open. Stop parks the rest on the server, Resume continues, and nobody is mailed twice.
+- **Since 8 Oct the run is a job on the server (§17)**: Send writes it, the scheduler Worker and any open admin page tick it, and closing the laptop does not stop it once the Worker is deployed. What follows describes the pace, which is unchanged.
+- **Pace (24 Sep):** both sends go out **one email at a time**, with the gap chosen in the control beside the button (`paceControl`, `panelGapSeconds`; the job's `gap`). One minute is the default since 29 Sep and the choice is remembered in that browser. The run lives in the tab: the Overview redraws the block every 60 s, and the redraw shows Stop and the last progress line while a run is going, so a second press starts nothing. The wait works to a clock deadline, because a background tab's timers are slowed to about one tick a minute and a tick count would stretch the gap. `scripts/verify/pace-test.cjs` covers all of this. A burst of identical mail to the same few domains is what puts a sender in the spam folder. The progress line counts down and gives the finishing time; 129 emails at two minutes takes about four and a half hours and the tab has to stay open. Stop parks the rest on the server, Resume continues, and nobody is mailed twice.
 - **"Are you coming?" reminder** — `sendPanelReminderEmail()`: two one-tap buttons, details, panellists; guests get "carry a government photo ID". Transactional (no unsubscribe footer). Admin: **Preview reminder** (as a guest), **Send "Are you coming?"** (only to people who have not answered), Stop / Resume, CSVs **Everyone's answers** and **Guests coming (for the college)**.
 
 ### Every number opens its list (29 Sep)
@@ -254,13 +256,15 @@ Still to do: `hostLogo` (file in `public/images/campus/`); a claim code in `app_
 - Checkout on this site (§15) is the only way to pay since 4 Oct 2026. Still open: refunds are made in the CCAvenue dashboard and then marked `refunded` here by hand; booth and sponsorship payments are not on the gateway; a payment whose buyer never comes back to the site (closed tab, dead battery) stays pending until someone confirms it from the CCAvenue report, because their status API wants a fixed server IP that Workers do not have.
 - Invoice credit notes, search and GST export.
 - Speaker admin UI; session capacity/attendance; soft delete instead of orphaning invoices/connections.
-- A scheduled campaign sender (cron) so bulk sends do not depend on an open tab.
+- ~~A scheduled campaign sender (cron) so bulk sends do not depend on an open tab.~~ Done for the three panel emails on 8 Oct (§17). The profile-reminder campaign (`pumpProfileReminder`) and the upgrade campaign are still driven from the tab.
 - Content-Security-Policy; revocable sessions (cookies are stateless for 60 days).
 - Notification centre covers only announcements; no session feedback, reminders, calendar export, QR-to-connect or Web Push.
 - Contrast of `text-gray-500/600` tokens; third-party avatar and favicon lookups; static Workshops tab.
 - `src/index.tsx` is one ~34,000-line file with no unit tests beyond `scripts/verify/`.
 
 ## 14. Change log
+
+**8 Oct 2026 (evening):** panel email as server jobs (§17): Send writes `mail_job:<kind>:<slug>`, `POST /api/cron/tick` and the admin page's own tick send what is due with a compare-and-swap claim, Stop and Resume on the job, five failures in a row stop it, the scheduler Worker in `cron/` (deployed by the organiser), the page says whether the scheduler is alive. The three tab pumps are gone. `smoke-mail-jobs.mjs` (66 checks), `pace-test.cjs` rewritten, four production checks.
 
 **8 Oct 2026 (afternoon):** the reports email reaches panel registrants who said no to marketing (without the November ask; unsubscribes still left out), and tracking of who opened which report and who watched which recording: `/r/` and `/w/` link pages, `public/js/watch-track.js` on the four pages with players, `POST /api/reports/watch`, the people lists on the admin block, migration 0048 (not yet applied). `smoke-reports.mjs` now 105 checks.
 
@@ -426,3 +430,29 @@ Brand header, "Thank you for registering for the Campus Series panel at <host>" 
 1. Push (the PDFs and covers are in the repo; nothing to upload by hand).
 2. Organiser: `npx wrangler d1 export bharatai-production --remote --output=backup-pre-0047-<date>.sql` then `npx wrangler d1 execute bharatai-production --remote --file=./migrations/0047_report_downloads.sql` (it is `IF NOT EXISTS`, safe to run twice). **Not `migrations apply`**: it was tried on 8 Oct and failed on 0044, see §3.
 3. Admin → Overview → Campus panels → **Preview reports email**, then **Send the reports** on each panel (one email a minute by default; about 433 for DJ Sanghvi, a little under 7½ hours with the tab open; Stop and Resume as needed).
+
+---
+
+## 17. Panel email runs on the server (built 8 Oct 2026)
+
+Until 8 Oct the three panel emails (confirmation, "Are you coming?", the insights reports) went out from a timer in the admin tab: one email, a wait, the next. Closing the laptop stopped the run. Now a send is a **job on the server**, and the organiser can close the page once the scheduler Worker is deployed.
+
+### How it works
+- **The job** is one row in `app_settings`, `mail_job:<kind>:<slug>` (kind = `confirmations` | `reminders` | `reports`), as JSON: `status` (running | paused | done | failed), `gap` seconds, `next_at` (epoch ms the next email is due), `sent`, `failed`, `remaining`, `fails_in_a_row`, `started_by`, `last_error`, `finished_at`. No migration: the table has always been there.
+- **A tick sends what is due.** `tickMailJobs(c, maxSeconds, fromCron)`: for every running job, if `next_at` has passed it **claims** the next email by swapping the job's JSON for one with `next_at = now + gap` (`UPDATE app_settings SET value = ? WHERE key = ? AND value = ?`), and only the ticker whose swap landed sends. Two tickers at once therefore send one email, never two; nobody is mailed twice. For up to `maxSeconds` the tick also waits for the next email inside its window and sends that, so a scheduler that knocks once a minute still honours a 30-second gap, and "no gap" runs at full speed.
+- **Two tickers.** `POST /api/cron/tick` (bearer `CRON_SECRET`, or `ADMIN_SECRET` while no `CRON_SECRET` is set on the site; records `cron_last_tick`) is for the scheduler Worker, which knocks every minute with `max_seconds: 50`. `POST /api/admin/mail-jobs/tick` (admin, `max_seconds` capped at 10) is the admin page's own, every 10 seconds while a job is running, which keeps a run going before the Worker is deployed and keeps the progress line live.
+- **Send / Resume / Try again** are one door, `POST /api/admin/mail-jobs/:kind/:slug/start {gap_seconds}`: a paused job keeps its counts and its parked rows are freed (`unparkPanelMail(paused_only)`); a done or failed job starts afresh. **Stop** (`/stop`) sets the job paused and **parks the rows** as the old Stop did, so a page still running the old script cannot carry on either. **Pace** (`/pace`) changes the gap mid-run; a shorter gap takes effect at once.
+- **It stops itself** on a hard error (a migration missing, "Are you coming?" for a panel that has started) and after **five failed sends in a row**, with the reason on the job, rather than burning through the list marking everyone failed. The admin line shows the reason and offers Try again.
+- **The three send functions** (`sendNextPanelConfirmations`, `sendNextPanelReminders`, `sendNextPanelReports`) are shared by the jobs and by the old `send-next-*` routes, which still answer the same, so an admin page on the old script keeps working until it is refreshed.
+- **The admin page** (`renderCampusPanels`, `mailButtons`, `mailJobLine`, `startMailJob`, `stopMailJob`, `setMailJobPace`, `mailJobsTick`) is a window onto the job. A line at the top of the Campus panels block says either "Sending runs on the server (scheduler seen N s ago): you can close this page" or, in amber, "The scheduler is not running, so sending stops when this page is closed". That is decided from `cron_last_tick` being under three minutes old, so it is honest: a Worker that stopped knocking shows within three minutes.
+
+### Deploying the scheduler Worker (organiser, once)
+Cloudflare Pages cannot run on a timer, so `cron/` is a separate one-file Worker with a cron trigger. From the repo root:
+```
+npx wrangler deploy --config cron/wrangler.jsonc
+echo "<the admin password>" | npx wrangler secret put CRON_SECRET --config cron/wrangler.jsonc
+```
+Pipe the value in (a `wrangler secret put` that is answered at the prompt can save an empty value). The site accepts the admin secret at `/api/cron/tick` while it has no `CRON_SECRET` of its own; to use a dedicated secret instead, set it on both (`npx wrangler pages secret put CRON_SECRET --project-name bharatai-networking` plus the Worker) and redeploy the site, since a Pages secret reaches only deployments made after it is set. Check it is alive: start a send and the block says "scheduler seen N s ago" within a minute; `npx wrangler tail --config cron/wrangler.jsonc` shows every knock. A 401 in that log means the two secrets differ.
+
+### Verify
+`scripts/verify/smoke-mail-jobs.mjs` (in `npm run verify`): the doors, start, the tick, the wait inside a window, two tickers at once, Stop, Resume, pace, done, five failures, a started panel, a missing migration, the old routes, the page markers, the Worker's config. `pace-test.cjs` drives the admin page on `pace-harness.mjs`, whose job endpoints mirror the worker's. `prod-sweep.mjs` checks the doors on production.
