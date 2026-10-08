@@ -11349,10 +11349,12 @@ const reportSecret = (c: any): string => passTokenSecret(c) || 'insights-report'
 async function reportToken(c: any, slug: string, subject: string, exp: number): Promise<string> {
   return subject + '.' + exp + '.' + (await hmacHexA(reportSecret(c), `report:${slug}:${subject}:${exp}`)).slice(0, 24)
 }
-async function reportUrl(c: any, slug: string, subject: string, opts: { absolute?: boolean } = {}): Promise<string> {
-  const r = INSIGHTS_REPORTS[slug]
+// Every link goes through a page of ours first, /r/ for a report and /w/ for a
+// recording, so an open or a play can be put against the person; reportHopPage
+// says why that page posts a form rather than redirecting.
+async function reportUrl(c: any, slug: string, subject: string, opts: { absolute?: boolean; kind?: 'open' | 'watch'; from?: 'site' } = {}): Promise<string> {
   const exp = Math.floor(Date.now() / 1000) + REPORT_LINK_DAYS * 86400
-  const path = `/reports/${r.file}?t=${await reportToken(c, slug, subject, exp)}`
+  const path = (opts.kind === 'watch' ? '/w/' : '/r/') + slug + '?t=' + (await reportToken(c, slug, subject, exp)) + (opts.from ? '&from=' + opts.from : '')
   if (!opts.absolute) return path
   const base = ((await settingValue(c, 'app_url')) || 'https://bharataiinnovation.com/app').replace(/\/app\/?$/, '')
   return base + path
@@ -11364,15 +11366,143 @@ async function reportSubjectFromToken(c: any, slug: string, token: any): Promise
   return safeEqualA(t, await reportToken(c, slug, m[1], Number(m[2]))) ? m[1] : null
 }
 
-async function recordReportOpen(c: any, slug: string, subject: string): Promise<void> {
+// ---- tracking: who opened which report, who started which recording (0048) ----
+let _reportEvents = false
+async function reportEventsReady(c: any): Promise<boolean> {
+  if (_reportEvents) return true
   try {
-    if (!(await reportDownloadsReady(c))) return
-    const where = subject[0] === 'l' ? 'id = ?' : 'attendee_id = ?'
-    await c.env.DB.prepare(
-      `UPDATE report_downloads SET downloads = downloads + 1, last_download_at = datetime('now'), last_report = ? WHERE ${where}`
-    ).bind(slug, subject.slice(1)).run()
-  } catch (e: any) { console.error('report open not recorded', e?.message) }
+    await c.env.DB.prepare('SELECT id FROM report_events LIMIT 1').first()
+    _reportEvents = true
+  } catch { /* 0048 has not run yet */ }
+  return _reportEvents
 }
+
+// The reports email honours an unsubscribe but not a "no" to marketing on a
+// sign-up form: it is the follow-up of the panel the person registered for, and
+// for them it leaves out the November ask (organiser, 8 Oct 2026).
+async function unsubscribedClause(c: any): Promise<string> {
+  return (await attendeeColumns(c)).has('unsubscribed_at') ? ' AND a.unsubscribed_at IS NULL' : ''
+}
+
+async function reportSubjectEmail(c: any, subject: string): Promise<string | null> {
+  try {
+    const id = subject.slice(1)
+    const row = subject[0] === 'l'
+      ? await c.env.DB.prepare('SELECT email FROM report_downloads WHERE id = ?').bind(id).first() as any
+      : subject[0] === 'a' ? await c.env.DB.prepare('SELECT email FROM attendees WHERE id = ?').bind(id).first() as any : null
+    return row?.email ? String(row.email).trim().toLowerCase() : null
+  } catch { return null }
+}
+
+const REPORT_EVENTS_PER_IP_PER_HOUR = 120
+const REPORT_SOURCE_LABEL: Record<string, string> = {
+  page: 'asked on the website', email: 'from the email', site: 'on the website', link: 'email (first links)',
+}
+
+// One act: a PDF opened, or a recording started. An open also moves the running
+// count on report_downloads, as it did before 0048. The same person repeating the
+// same act within half an hour is one act, and one address writes at most
+// REPORT_EVENTS_PER_IP_PER_HOUR rows an hour.
+async function recordReportAct(c: any, kind: 'open' | 'watch', slug: string, subject: string, source: string, page: string = ''): Promise<void> {
+  try {
+    if (kind === 'open' && subject && (await reportDownloadsReady(c))) {
+      const where = subject[0] === 'l' ? 'id = ?' : 'attendee_id = ?'
+      await c.env.DB.prepare(
+        `UPDATE report_downloads SET downloads = downloads + 1, last_download_at = datetime('now'), last_report = ? WHERE ${where}`
+      ).bind(slug, subject.slice(1)).run()
+    }
+    if (!(await reportEventsReady(c))) return
+    const ip = String(c.req.header('CF-Connecting-IP') || '').slice(0, 64)
+    if (ip) {
+      const n = await c.env.DB.prepare(
+        "SELECT COUNT(*) AS n FROM report_events WHERE ip = ? AND created_at > datetime('now', '-1 hour')"
+      ).bind(ip).first() as any
+      if (Number(n?.n || 0) >= REPORT_EVENTS_PER_IP_PER_HOUR) return
+    }
+    const again = await c.env.DB.prepare(
+      "SELECT id FROM report_events WHERE kind = ? AND report = ? AND subject = ? AND COALESCE(ip, '') = ? AND created_at > datetime('now', '-30 minutes') LIMIT 1"
+    ).bind(kind, slug, subject, ip).first()
+    if (again) return
+    const email = subject ? await reportSubjectEmail(c, subject) : null
+    await c.env.DB.prepare(
+      'INSERT INTO report_events (event_id, kind, report, subject, email, source, page, ip) VALUES (1, ?, ?, ?, ?, ?, ?, ?)'
+    ).bind(kind, slug, subject, email, source, page || null, ip || null).run()
+  } catch (e: any) { console.error('report act not recorded', kind, e?.message) }
+}
+
+// The page an emailed link lands on. Mail scanners follow every link in a message
+// but do not submit forms, so the act is recorded only when this page posts
+// itself, which a person's browser does at once: the same reasoning as
+// /panel-rsvp. Without script, the button does it.
+function reportHopPage(what: string, action: string, fields: Record<string, string>, fallback: string = ''): string {
+  const attr = (v: string) => String(v).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch] as string))
+  const inputs = Object.entries(fields).map(([k, v]) => `<input type="hidden" name="${attr(k)}" value="${attr(v)}">`).join('')
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Opening ${attr(what)}</title></head>
+<body style="margin:0;padding:0 16px;background:#f5f5f5;font-family:Arial,sans-serif;"><div style="max-width:520px;margin:48px auto;background:#fff;border-radius:14px;padding:28px 24px;text-align:center;">
+<p style="font-size:16px;color:#1E2140;margin:0 0 18px;">Opening ${attr(what)}&hellip;</p>
+<form method="post" action="${attr(action)}">${inputs}<button type="submit" style="padding:13px 24px;background:#FF6B00;color:#fff;border:0;border-radius:9px;font-size:15px;font-weight:bold;">Open ${attr(what)}</button></form>
+${fallback ? `<p style="font-size:12px;color:#888;margin:16px 0 0;">Nothing happening? <a href="${attr(fallback)}" style="color:#1a4fa0;">Open it here</a>.</p>` : ''}
+</div><script>document.forms[0].submit()</script></body></html>`
+}
+
+// A report link from the email or from /insights. Opening the link records
+// nothing; the page posts itself, the post records the open and sends the
+// browser on to the file.
+app.get('/r/:slug', async (c) => {
+  const r = INSIGHTS_REPORTS[c.req.param('slug')]
+  const t = String(c.req.query('t') || '')
+  if (!r || !(await reportSubjectFromToken(c, r.slug, t))) return c.redirect('/insights?link=expired#get', 302)
+  c.header('Cache-Control', 'no-store')
+  c.header('X-Robots-Tag', 'noindex')
+  return c.html(reportHopPage('the report', '/r/' + r.slug, { t, from: c.req.query('from') === 'site' ? 'site' : 'email' }))
+})
+app.post('/r/:slug', async (c) => {
+  const r = INSIGHTS_REPORTS[c.req.param('slug')]
+  const b = await c.req.parseBody().catch(() => ({})) as any
+  const t = String(b.t || '')
+  const subject = r ? await reportSubjectFromToken(c, r.slug, t) : null
+  if (!r || !subject) return c.redirect('/insights?link=expired#get', 303)
+  await recordReportAct(c, 'open', r.slug, subject, b.from === 'site' ? 'site' : 'email')
+  return c.redirect(`/reports/${r.file}?t=${encodeURIComponent(t)}&via=1`, 303)
+})
+
+// A recording link from the email. A broken or expired link still plays the
+// video; it is only not counted.
+app.get('/w/:slug', async (c) => {
+  const r = INSIGHTS_REPORTS[c.req.param('slug')]
+  if (!r) return c.redirect('/insights#watch', 302)
+  const t = String(c.req.query('t') || '')
+  if (!(await reportSubjectFromToken(c, r.slug, t))) return c.redirect(youtubeWatch(r.video), 302)
+  c.header('Cache-Control', 'no-store')
+  c.header('X-Robots-Tag', 'noindex')
+  return c.html(reportHopPage('the recording', '/w/' + r.slug, { t }, youtubeWatch(r.video)))
+})
+app.post('/w/:slug', async (c) => {
+  const r = INSIGHTS_REPORTS[c.req.param('slug')]
+  if (!r) return c.redirect('/insights#watch', 303)
+  const b = await c.req.parseBody().catch(() => ({})) as any
+  const subject = await reportSubjectFromToken(c, r.slug, b.t)
+  if (subject) await recordReportAct(c, 'watch', r.slug, subject, 'email')
+  return c.redirect(youtubeWatch(r.video), 303)
+})
+
+// A recording started on a page of this site (public/js/watch-track.js, from the
+// YouTube player's own "playing" signal). Answers the same whatever it did. A
+// valid link token names the person; without one the play is counted with
+// nobody's name on it.
+app.post('/api/reports/watch', async (c) => {
+  try {
+    const b = await c.req.json().catch(() => ({})) as any
+    const r = INSIGHTS_REPORTS[String(b.report || '')]
+    if (r) {
+      const subject = (await reportSubjectFromToken(c, r.slug, b.t)) || ''
+      const page = /^\/[a-z0-9-]{0,40}$/.test(String(b.page || '')) ? String(b.page) : ''
+      await recordReportAct(c, 'watch', r.slug, subject, 'site', page)
+    }
+  } catch (e: any) { console.error('watch not recorded', e?.message) }
+  return c.body(null, 204)
+})
+
 
 // The file. An unknown name and a bad or stale token get the same answer, a
 // redirect to the form, so a guess learns nothing; a genuine link streams the PDF
@@ -11385,7 +11515,9 @@ app.get('/reports/:file', async (c) => {
   if (!c.env.ASSETS) return c.text('The report file is not available here.', 404)
   const asset = await c.env.ASSETS.fetch(new Request(new URL('/reports/' + report.file, c.req.url).toString()))
   if (!asset.ok) return c.text('The report file is missing.', 404)
-  const record = recordReportOpen(c, report.slug, subject)
+  // A link from before 8 Oct 2026 points here directly and is counted here; one
+  // that came through /r/ was counted there and carries via=1.
+  const record = c.req.query('via') === '1' ? Promise.resolve() : recordReportAct(c, 'open', report.slug, subject, 'link')
   try { c.executionCtx.waitUntil(record) } catch { await record }
   const h = new Headers()
   h.set('Content-Type', 'application/pdf')
@@ -11435,7 +11567,11 @@ async function sendReportsEmail(c: any, person: any, opts: { tokenSubject: strin
   const firstName = esc(String(person.name || '').trim().split(/\s+/)[0] || 'there')
   const reports = Object.values(INSIGHTS_REPORTS)
   const links: Record<string, string> = {}
-  for (const r of reports) links[r.slug] = opts.preview ? '#preview-' + r.slug : await reportUrl(c, r.slug, opts.tokenSubject, { absolute: true })
+  const watchLinks: Record<string, string> = {}
+  for (const r of reports) {
+    links[r.slug] = opts.preview ? '#preview-' + r.slug : await reportUrl(c, r.slug, opts.tokenSubject, { absolute: true })
+    watchLinks[r.slug] = opts.preview ? '#preview-watch-' + r.slug : await reportUrl(c, r.slug, opts.tokenSubject, { absolute: true, kind: 'watch' })
+  }
   const panel = opts.panel
   const other = panel ? reports.find(r => r.panelSlug !== panel.slug) : undefined
   const intro = panel
@@ -11455,10 +11591,13 @@ async function sendReportsEmail(c: any, person: any, opts: { tokenSubject: strin
           <span style="font-size:12px;color:#888;white-space:nowrap;">PDF &middot; ${r.pages} pages &middot; ${esc(r.size)}</span></div>
       </td></tr></table></td></tr>`
   const watch = reports.map(r =>
-    `<tr><td style="padding:0 0 8px;font-size:14px;line-height:1.5;"><a href="${youtubeWatch(r.video)}" style="color:#1a4fa0;font-weight:bold;text-decoration:none;">&#9654;&nbsp; Watch the ${esc(r.hostShort)} panel</a> <span style="color:#888;font-size:12px;">AI and Employability &middot; ${esc(r.dateLabel)} &middot; YouTube</span></td></tr>`
+    `<tr><td style="padding:0 0 8px;font-size:14px;line-height:1.5;"><a href="${watchLinks[r.slug]}" style="color:#1a4fa0;font-weight:bold;text-decoration:none;">&#9654;&nbsp; Watch the ${esc(r.hostShort)} panel</a> <span style="color:#888;font-size:12px;">AI and Employability &middot; ${esc(r.dateLabel)} &middot; YouTube</span></td></tr>`
   ).join('')
   const registered = Number(person.main_event) === 1
-  const november = registered
+  // Someone who said no to marketing still gets the report of the panel they
+  // registered for (organiser, 8 Oct 2026), but not the November ask.
+  const noMarketing = String(person.marketing_consent ?? '') === '0'
+  const november = noMarketing ? '' : registered
     ? `<p style="margin:0;font-size:14px;line-height:1.65;color:#444;">You are registered for <strong>Bharat AI Innovation 2026</strong> at the World Trade Center Mumbai on 20 to 21 November, where this conversation continues. See you there.</p>`
     : `<p style="margin:0 0 12px;font-size:14px;line-height:1.65;color:#444;">The conversation continues at <strong>Bharat AI Innovation 2026</strong>, World Trade Center Mumbai, 20 to 21 November: two days of conference, exhibition and business meetings. Visitor passes are free.</p>
        <a href="https://bharataiinnovation.com/register?utm_source=email&amp;utm_medium=insights-report" style="display:inline-block;padding:12px 22px;background:#1E2140;color:#fff;text-decoration:none;border-radius:8px;font-size:14px;font-weight:bold;">Register free for November</a>`
@@ -11519,14 +11658,14 @@ app.post('/api/reports/request', async (c) => {
         ).bind(ip).first() as any
         if (Number(n?.n || 0) >= REPORT_LEADS_PER_IP_PER_HOUR) return c.json({ error: 'Too many requests from this connection. Please try again in an hour.' }, 429)
       }
-      const attendee = await c.env.DB.prepare('SELECT id, main_event FROM attendees WHERE event_id = 1 AND LOWER(email) = ?').bind(email).first() as any
+      const attendee = await c.env.DB.prepare('SELECT * FROM attendees WHERE event_id = 1 AND LOWER(email) = ?').bind(email).first() as any
       await upsertReportRow(c, { email, name, mobile, company, job_title: b.job_title, city: b.city, industry, who, attendee_id: attendee?.id ?? null, source: 'page', consent, ip })
       const row = await c.env.DB.prepare('SELECT id, email_sent_at FROM report_downloads WHERE event_id = 1 AND email = ?').bind(email).first() as any
       if (row?.id) {
         subject = 'l' + row.id
         if (!row.email_sent_at) {
           emailed = true
-          const send = sendReportsEmail(c, { id: row.id, name, email, main_event: attendee?.main_event }, { tokenSubject: subject })
+          const send = sendReportsEmail(c, { id: row.id, name, email, main_event: attendee?.main_event, marketing_consent: attendee?.marketing_consent }, { tokenSubject: subject })
             .then(r => markReportEmail(c, email, r))
           try { c.executionCtx.waitUntil(send) } catch { await send }
         }
@@ -11537,7 +11676,7 @@ app.post('/api/reports/request', async (c) => {
   }
   const reports = await Promise.all(Object.values(INSIGHTS_REPORTS).map(async r => ({
     slug: r.slug, title: r.title, host: r.host, hostShort: r.hostShort, city: r.city, dateLabel: r.dateLabel,
-    pages: r.pages, size: r.size, url: await reportUrl(c, r.slug, subject),
+    pages: r.pages, size: r.size, url: await reportUrl(c, r.slug, subject, { from: 'site' }),
   })))
   return c.json({ ok: true, reports, emailed })
 })
@@ -11552,19 +11691,21 @@ const PANEL_EMAILS_SQL = 'SELECT LOWER(a.email) FROM panel_registrations pr JOIN
 async function panelReportStats(c: any, slug: string): Promise<Record<string, any>> {
   if (!(await reportDownloadsReady(c))) return { reports_ready: false }
   try {
-    const supp = await suppressionClause(c, 'a.')
+    const supp = await unsubscribedClause(c)
     const can = supp ? supp.replace(/^ AND /, '') : '1 = 1'
+    const watchReady = await reportEventsReady(c)
     const r = await c.env.DB.prepare(
       `SELECT SUM(CASE WHEN rd.email_sent_at IS NOT NULL THEN 1 ELSE 0 END) AS reports_sent,
               SUM(CASE WHEN rd.email_error IS NOT NULL AND rd.email_error NOT LIKE 'paused:%' THEN 1 ELSE 0 END) AS reports_failed,
               SUM(CASE WHEN rd.email_error LIKE 'paused:%' THEN 1 ELSE 0 END) AS reports_paused,
               SUM(CASE WHEN COALESCE(rd.downloads, 0) > 0 THEN 1 ELSE 0 END) AS reports_opened,
+              ${watchReady ? "SUM(CASE WHEN EXISTS (SELECT 1 FROM report_events e WHERE e.kind = 'watch' AND e.email = LOWER(a.email)) THEN 1 ELSE 0 END) AS reports_watched," : ''}
               SUM(CASE WHEN COALESCE(a.email, '') <> '' AND rd.email_sent_at IS NULL AND rd.email_error IS NULL AND ${can} THEN 1 ELSE 0 END) AS reports_left,
               SUM(CASE WHEN COALESCE(a.email, '') <> '' AND rd.email_sent_at IS NULL AND NOT (${can}) THEN 1 ELSE 0 END) AS reports_suppressed
          ${REPORT_PUMP_FROM} WHERE pr.panel_slug = ?`
     ).bind(slug).first() as any
-    const out: Record<string, any> = { reports_ready: true }
-    for (const k of ['reports_sent', 'reports_failed', 'reports_paused', 'reports_opened', 'reports_left', 'reports_suppressed']) out[k] = Number(r?.[k]) || 0
+    const out: Record<string, any> = { reports_ready: true, reports_watch_ready: watchReady }
+    for (const k of ['reports_sent', 'reports_failed', 'reports_paused', 'reports_opened', 'reports_watched', 'reports_left', 'reports_suppressed']) out[k] = Number(r?.[k]) || 0
     return out
   } catch { return { reports_ready: false } }
 }
@@ -11580,7 +11721,7 @@ app.post('/api/admin/panels/:slug/send-next-reports', async (c) => {
   if (!(await reportDownloadsReady(c))) return c.json({ error: 'Apply migration 0047 on the database first: npx wrangler d1 execute bharatai-production --remote --file=./migrations/0047_report_downloads.sql (the migrations ledger stops at 0043, so "migrations apply" fails on 0044).' }, 409)
   const body = await c.req.json().catch(() => ({})) as any
   const batch = Math.min(10, Math.max(1, parseInt(body.batch, 10) || 5))
-  const PENDING = reportPendingSql(await suppressionClause(c, 'a.'))
+  const PENDING = reportPendingSql(await unsubscribedClause(c))
   const rows = ((await c.env.DB.prepare(`SELECT a.* ${REPORT_PUMP_FROM} WHERE ${PENDING} ORDER BY pr.id ASC LIMIT ?`).bind(slug, batch).all()).results || []) as any[]
   let sent = 0
   const failed: string[] = []
@@ -11603,7 +11744,7 @@ app.post('/api/admin/panels/:slug/pause-reports', async (c) => {
   const slug = c.req.param('slug')
   if (!CAMPUS_PANELS[slug]) return c.json({ error: 'Unknown panel' }, 404)
   try {
-    const PENDING = reportPendingSql(await suppressionClause(c, 'a.'))
+    const PENDING = reportPendingSql(await unsubscribedClause(c))
     const ins = await c.env.DB.prepare(
       `INSERT OR IGNORE INTO report_downloads (event_id, email, name, attendee_id, source, email_error)
        SELECT a.event_id, LOWER(a.email), a.name, a.id, 'email', 'paused: by admin' ${REPORT_PUMP_FROM} WHERE ${PENDING} AND rd.id IS NULL`
@@ -11656,24 +11797,84 @@ app.get('/api/admin/reports/summary', async (c) => {
     ).first() as any
     const out: Record<string, any> = { ready: true }
     for (const k of ['people', 'asked_on_page', 'emailed', 'email_failed', 'opened', 'downloads', 'said_yes_to_updates']) out[k] = Number(r?.[k]) || 0
+    out.watch_ready = await reportEventsReady(c)
+    if (out.watch_ready) {
+      const w = await c.env.DB.prepare(
+        `SELECT COUNT(DISTINCT CASE WHEN kind = 'watch' AND email IS NOT NULL THEN email END) AS watched_people,
+                SUM(CASE WHEN kind = 'watch' AND source = 'email' THEN 1 ELSE 0 END) AS watch_from_email,
+                SUM(CASE WHEN kind = 'watch' AND source = 'site' THEN 1 ELSE 0 END) AS plays_on_site,
+                SUM(CASE WHEN kind = 'watch' AND report = 'djsce' THEN 1 ELSE 0 END) AS watch_djsce,
+                SUM(CASE WHEN kind = 'watch' AND report = 'jnu' THEN 1 ELSE 0 END) AS watch_jnu
+           FROM report_events WHERE event_id = 1`
+      ).first() as any
+      for (const k of ['watched_people', 'watch_from_email', 'plays_on_site', 'watch_djsce', 'watch_jnu']) out[k] = Number(w?.[k]) || 0
+    }
     return c.json(out)
   } catch { return c.json({ ready: false }) }
 })
 
 app.get('/api/admin/reports/leads.csv', async (c) => {
   if (!(await reportDownloadsReady(c))) return c.json({ error: 'Apply migration 0047 on the database first.' }, 409)
+  const ev = await reportEventsReady(c)
+  const acts = (kind: string) => ev ? `(SELECT GROUP_CONCAT(DISTINCT e.report) FROM report_events e WHERE e.kind = '${kind}' AND e.email = report_downloads.email)` : 'NULL'
   const { results } = await c.env.DB.prepare(
-    `SELECT name, email, mobile, company, job_title, city, industry, who, source, marketing_consent, created_at, email_sent_at, email_error, downloads, last_download_at, last_report
+    `SELECT name, email, mobile, company, job_title, city, industry, who, source, marketing_consent, created_at, email_sent_at, email_error, downloads, last_download_at, last_report,
+            ${acts('open')} AS reports_opened, ${acts('watch')} AS videos_watched
        FROM report_downloads WHERE event_id = 1 ORDER BY created_at DESC`
   ).all()
   const rows = (results || []) as any[]
-  const cols = ['name', 'email', 'mobile', 'company', 'job_title', 'city', 'industry', 'who', 'source', 'marketing_consent', 'created_at', 'email_sent_at', 'email_error', 'downloads', 'last_download_at', 'last_report']
+  const cols = ['name', 'email', 'mobile', 'company', 'job_title', 'city', 'industry', 'who', 'source', 'marketing_consent', 'created_at', 'email_sent_at', 'email_error', 'downloads', 'last_download_at', 'last_report', 'reports_opened', 'videos_watched']
   const cell = (v: any) => { const t = String(v ?? ''); return /[",\n\r]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t }
   const csv = [cols.map(h => h === 'marketing_consent' ? 'said_yes_to_updates' : h === 'created_at' ? 'asked_at' : h).join(',')]
     .concat(rows.map(r => cols.map(k => cell(k === 'marketing_consent' ? (r[k] === 1 ? 'yes' : r[k] === 0 ? 'no' : '') : r[k])).join(',')))
     .join('\r\n')
   await audit(c, 'reports.leads.export', 'report_downloads', null, { rows: rows.length })
   return new Response('﻿' + csv, { headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="insights-report-leads.csv"' } })
+})
+
+// Who opened a report, or watched a recording, by name: everyone, or one panel's
+// registrants (?panel=<slug>). Plays on the website by people we cannot name are
+// counted on the summary, never listed.
+app.get('/api/admin/reports/people', async (c) => {
+  const what = String(c.req.query('what') || 'opened')
+  if (what !== 'opened' && what !== 'watched') return c.json({ error: 'Unknown list' }, 400)
+  const slug = String(c.req.query('panel') || '')
+  if (slug && !CAMPUS_PANELS[slug]) return c.json({ error: 'Unknown panel' }, 404)
+  if (!(await reportDownloadsReady(c))) return c.json({ error: 'Apply migration 0047 on the database first.' }, 409)
+  const ev = await reportEventsReady(c)
+  if (what === 'watched' && !ev) return c.json({ error: 'Who watched is recorded once migration 0048 is on the database.' }, 409)
+  const inPanel = (col: string) => slug ? ` AND ${col} IN (${PANEL_EMAILS_SQL})` : ''
+  const sql = what === 'opened'
+    ? `SELECT rd.name, rd.email, rd.mobile, rd.company, rd.source,
+              COALESCE(${ev ? "(SELECT GROUP_CONCAT(DISTINCT e.report) FROM report_events e WHERE e.kind = 'open' AND e.email = rd.email)" : 'NULL'}, rd.last_report) AS which,
+              rd.downloads AS times, rd.last_download_at AS last_at
+         FROM report_downloads rd WHERE rd.event_id = 1 AND rd.downloads > 0${inPanel('rd.email')}
+        ORDER BY rd.last_download_at DESC LIMIT 2000`
+    : `SELECT COALESCE(MAX(rd.name), '') AS name, e.email, COALESCE(MAX(rd.mobile), '') AS mobile, COALESCE(MAX(rd.company), '') AS company,
+              GROUP_CONCAT(DISTINCT e.source) AS source, GROUP_CONCAT(DISTINCT e.report) AS which, COUNT(*) AS times, MAX(e.created_at) AS last_at
+         FROM report_events e LEFT JOIN report_downloads rd ON rd.event_id = 1 AND rd.email = e.email
+        WHERE e.event_id = 1 AND e.kind = 'watch' AND e.email IS NOT NULL${inPanel('e.email')}
+        GROUP BY e.email ORDER BY last_at DESC LIMIT 2000`
+  const stmt = c.env.DB.prepare(sql)
+  const raw = ((await (slug ? stmt.bind(slug) : stmt).all()).results || []) as any[]
+  const words = (v: any, map: Record<string, string>) => String(v || '').split(',').filter(Boolean).map((s: string) => map[s] || s).join(' + ')
+  const hosts: Record<string, string> = {}
+  for (const r of Object.values(INSIGHTS_REPORTS)) hosts[r.slug] = r.hostShort
+  const rows = raw.map(r => ({
+    name: r.name || '', email: r.email || '', mobile: r.mobile || '', company: r.company || '',
+    which: words(r.which, hosts), via: words(r.source, REPORT_SOURCE_LABEL), times: Number(r.times) || 0, last_at: r.last_at || '',
+  }))
+  const label = what === 'opened' ? 'Opened a report' : 'Watched a recording'
+  const panel = slug ? CAMPUS_PANELS[slug].hostShort + ' registrants' : 'Everyone'
+  if (c.req.query('format') === 'csv') {
+    const cols = ['name', 'email', 'mobile', 'company', 'which', 'via', 'times', 'last_at']
+    const head = ['name', 'email', 'mobile', 'company', what === 'opened' ? 'reports' : 'recordings', 'how', 'times', 'last']
+    const cell = (v: any) => { const t = String(v ?? ''); return /[",\n\r]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t }
+    const csv = [head.join(',')].concat(rows.map((r: any) => cols.map(k => cell(r[k])).join(','))).join('\r\n')
+    await audit(c, 'reports.people.export', 'report_downloads', slug || null, { what, rows: rows.length })
+    return new Response('﻿' + csv, { headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="insights-${what}${slug ? '-' + slug : ''}.csv"` } })
+  }
+  return c.json({ label, panel, total: rows.length, rows: rows.slice(0, 500) })
 })
 
 // The people behind each number on the admin Campus panels block. Every condition
@@ -29892,8 +30093,9 @@ function adminPageHTML(): string {
         } else if (p.reports_ready) {
           reports = '<div class="mt-3 pt-3 border-t border-white/10">'
             + '<div class="text-xs text-gray-400 leading-relaxed mb-2"><span class="text-white font-semibold mr-2">Insights reports</span>'
-            + stat(p.reports_sent, 'have the reports email') + stat(p.reports_opened, 'opened a report') + stat(p.reports_left, 'to send')
-            + (p.reports_suppressed ? stat(p.reports_suppressed, 'not mailed (unsubscribed or said no)') : '')
+            + stat(p.reports_sent, 'have the reports email') + reportStat(p.slug, p.reports_opened, 'opened a report', 'opened')
+            + (p.reports_watch_ready ? reportStat(p.slug, p.reports_watched, 'watched a recording', 'watched') : '') + stat(p.reports_left, 'to send')
+            + (p.reports_suppressed ? stat(p.reports_suppressed, 'not mailed (unsubscribed)') : '')
             + (p.reports_failed ? stat(p.reports_failed, 'failed') : '') + '</div>'
             + '<div class="flex gap-2 flex-wrap items-center">'
             + '<button onclick="previewPanelReports(' + slugQ + ')" class="px-3 py-1.5 rounded-lg text-xs glass hover:bg-white/10 transition"><i class="fas fa-eye mr-1.5"></i>Preview reports email</button>'
@@ -30189,6 +30391,54 @@ function adminPageHTML(): string {
     function downloadReportLeads() {
       downloadCsvViaApi('/api/admin/reports/leads.csv', 'insights-report-leads.csv');
     }
+    // A number on the Insights reports lines that opens the people behind it. Its
+    // own lists, not panelPeople: these count report_downloads and report_events,
+    // not the panel list, so PANEL_PEOPLE_METRICS has no copy of them.
+    function reportStat(slug, n, label, what) {
+      var inner = '<strong class="text-white">' + (n || 0) + '</strong> ' + label;
+      if (!n) return '<span class="inline-block mr-3 whitespace-nowrap">' + inner + '</span>';
+      return '<button type="button" onclick="reportPeople(&quot;' + esc(slug) + '&quot;, &quot;' + what + '&quot;)" title="See who" class="inline-block mr-3 whitespace-nowrap underline decoration-dotted decoration-white/30 underline-offset-4 hover:decoration-white hover:text-white transition cursor-pointer">' + inner + '</button>';
+    }
+    async function reportPeople(slug, what) {
+      openModal('<div class="text-sm text-gray-400"><i class="fas fa-spinner fa-spin mr-2"></i>Loading...</div>');
+      var q = '/api/admin/reports/people?what=' + encodeURIComponent(what) + (slug ? '&panel=' + encodeURIComponent(slug) : '');
+      var r;
+      try { r = await api.get(q); }
+      catch (e) { openModal('<p class="text-sm text-red-400">Could not load that list. ' + esc((e && e.message) || '') + '</p>'); return; }
+      if (!r || r.error) { openModal('<p class="text-sm text-amber-300">' + esc((r && r.error) || 'Could not load that list.') + '</p>'); return; }
+      var rows = r.rows || [];
+      var th = function (t) { return '<th class="px-3 py-2 font-medium">' + t + '</th>'; };
+      var head = '<tr class="text-left text-[11px] uppercase tracking-wide text-gray-500">'
+        + th('Name') + th('Email') + th('Mobile') + th('Organisation') + th(what === 'opened' ? 'Reports' : 'Recordings') + th('How') + th('Times') + th('Last') + '</tr>';
+      var body = rows.map(function (x) {
+        return '<tr class="border-t border-white/5 align-top">'
+          + '<td class="px-3 py-2 text-sm text-white">' + esc(x.name || '') + '</td>'
+          + '<td class="px-3 py-2 text-xs text-gray-300 break-all">' + esc(x.email || '') + '</td>'
+          + '<td class="px-3 py-2 text-xs text-gray-300 whitespace-nowrap">' + esc(x.mobile || '') + '</td>'
+          + '<td class="px-3 py-2 text-xs text-gray-400">' + esc(x.company || '') + '</td>'
+          + '<td class="px-3 py-2 text-xs text-gray-300 whitespace-nowrap">' + esc(x.which || '') + '</td>'
+          + '<td class="px-3 py-2 text-xs text-gray-400">' + esc(x.via || '') + '</td>'
+          + '<td class="px-3 py-2 text-xs text-gray-300">' + (x.times || 0) + '</td>'
+          + '<td class="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">' + esc(String(x.last_at || '').slice(0, 16)) + '</td>'
+          + '</tr>';
+      }).join('');
+      var total = r.total || 0;
+      var shown = rows.length < total ? ' <span class="text-xs">(showing ' + rows.length + '; the CSV has all)</span>' : '';
+      var csvUrl = '/api/admin/reports/people?format=csv&amp;what=' + encodeURIComponent(what) + (slug ? '&amp;panel=' + encodeURIComponent(slug) : '');
+      var csvName = 'insights-' + what + (slug ? '-' + slug : '') + '.csv';
+      openModal(
+        '<div class="flex items-start justify-between gap-3 mb-4">'
+        + '<div><div class="text-xs text-gray-400">' + esc(r.panel || '') + '</div>'
+        + '<h3 class="text-lg font-bold text-white">' + esc(r.label || what) + ' <span class="text-gray-400 font-normal">' + total + '</span>' + shown + '</h3></div>'
+        + '<div class="flex gap-2 shrink-0">'
+        + (total ? '<button onclick="downloadCsvViaApi(&quot;' + csvUrl + '&quot;, &quot;' + esc(csvName) + '&quot;)" class="px-3 py-1.5 rounded-lg text-xs glass hover:bg-white/10 transition"><i class="fas fa-download mr-1.5"></i>CSV</button>' : '')
+        + '<button onclick="closeModal()" class="px-3 py-1.5 rounded-lg text-xs glass hover:bg-white/10 transition">Close</button>'
+        + '</div></div>'
+        + (rows.length
+            ? '<div class="overflow-x-auto"><table class="w-full">' + head + body + '</table></div>'
+            : '<p class="text-sm text-gray-400 py-6 text-center">Nobody yet.</p>')
+      );
+    }
     // Everyone who has the reports, from the website form or the panel emails,
     // under the panel rows. Drawn after them so a database short of 0047, or a
     // harness that knows nothing of it, simply shows nothing here.
@@ -30205,8 +30455,12 @@ function adminPageHTML(): string {
       row.id = 'report-summary';
       row.className = 'p-3 rounded-xl bg-white/5 border border-white/10 mt-2';
       row.innerHTML = '<div class="flex items-baseline justify-between gap-2 flex-wrap mb-1"><div class="text-sm font-semibold text-white">Insights reports <span class="text-gray-400 font-normal">&middot; /insights and the panel emails</span></div></div>'
-        + '<div class="text-xs text-gray-400 leading-relaxed">' + n(s.people, 'people have the links') + n(s.asked_on_page, 'asked on the website') + n(s.emailed, 'emailed') + (s.email_failed ? n(s.email_failed, 'email failed') : '') + n(s.opened, 'opened a report') + n(s.downloads, 'opens in all') + n(s.said_yes_to_updates, 'said yes to updates') + '</div>'
+        + '<div class="text-xs text-gray-400 leading-relaxed">' + n(s.people, 'people have the links') + n(s.asked_on_page, 'asked on the website') + n(s.emailed, 'emailed') + (s.email_failed ? n(s.email_failed, 'email failed') : '') + n(s.opened, 'opened a report') + n(s.downloads, 'opens in all')
+        + (s.watch_ready ? n(s.watched_people, 'watched a recording (by name)') + n(s.watch_from_email, 'video taps in the email') + n(s.plays_on_site, 'plays on the website') + n(s.watch_djsce, 'DJ Sanghvi plays') + n(s.watch_jnu, 'JNU plays') : '')
+        + n(s.said_yes_to_updates, 'said yes to updates') + '</div>'
         + '<div class="flex gap-2 mt-2 flex-wrap items-center">'
+        + '<button onclick="reportPeople(&quot;&quot;, &quot;opened&quot;)" class="px-3 py-1.5 rounded-lg text-xs glass hover:bg-white/10 transition"><i class="fas fa-file-lines mr-1.5"></i>Who opened a report</button>'
+        + (s.watch_ready ? '<button onclick="reportPeople(&quot;&quot;, &quot;watched&quot;)" class="px-3 py-1.5 rounded-lg text-xs glass hover:bg-white/10 transition"><i class="fas fa-play mr-1.5"></i>Who watched</button>' : '')
         + '<button onclick="downloadReportLeads()" class="px-3 py-1.5 rounded-lg text-xs glass hover:bg-white/10 transition"><i class="fas fa-download mr-1.5"></i>Everyone, as CSV</button>'
         + '<a href="/insights" target="_blank" rel="noopener" class="px-3 py-1.5 rounded-lg text-xs glass hover:bg-white/10 transition"><i class="fas fa-arrow-up-right-from-square mr-1.5"></i>Open /insights</a>'
         + '</div>';

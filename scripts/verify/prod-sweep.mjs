@@ -99,8 +99,18 @@ r = await hit('/api/admin/panels/djsanghvi-21sep/send-next-reports', { method: '
 check('the reports pump needs admin', r.status === 401, r.status);
 for (const [p, id] of [['/campus-djsanghvi', 'fIPXB3mTNOM'], ['/campus-jnu', '6tlYBxAPw3g']]) {
   r = await hit(p);
-  check(`${p} embeds the recording`, r.status === 200 && r.text.includes('youtube-nocookie.com/embed/' + id), r.status);
+  check(`${p} embeds the recording, tracked`, r.status === 200 && r.text.includes('youtube-nocookie.com/embed/' + id + '?enablejsapi=1') && r.text.includes('js/watch-track.js'), r.status);
 }
+r = await hit('/r/djsce');
+check('a report link without a token goes to the form', r.status === 302 && String(r.h.location || '').includes('/insights'), r.status + ' ' + r.h.location);
+r = await hit('/w/jnu');
+check('a recording link without a token still plays the video', r.status === 302 && String(r.h.location || '').includes('youtube.com/watch?v=6tlYBxAPw3g'), r.status + ' ' + r.h.location);
+r = await hit('/api/reports/watch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ report: 'no-such-report' }) });
+check('the play counter answers 204 and writes nothing for an unknown recording', r.status === 204, r.status);
+r = await hit('/api/admin/reports/people?what=opened');
+check('who opened and who watched need admin', r.status === 401, r.status);
+r = await hit('/js/watch-track.js');
+check('the play tracker is served', r.status === 200 && r.text.includes('/api/reports/watch'), r.status);
 
 console.log(fails ? `\n${fails} FAILED` : '\nall production checks passed');
 process.exit(fails ? 1 : 0);
