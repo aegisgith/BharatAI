@@ -23132,11 +23132,16 @@ function mainPageHTML(): string {
           const photo = String(t.speaker_photo_url || '');
           const hasPhoto = (photo.indexOf('/api/mp/uploads/') === 0 && /^[0-9]+$/.test(photo.slice(16))) || (photo.indexOf('/images/talks/') === 0 && /^[a-z0-9-]+[.]webp$/.test(photo.slice(14)));
           const showcase = String(t.showcase || '');
+          // A slot number only means something once the talk has a time; until then the
+          // badge shows the speaker's initials, like the pass photo placeholder does.
+          const untimed = !t.time_slot || /to be announced/i.test(String(t.time_slot));
+          const initials = speaker.split(' ').filter(w => w && ['dr', 'dr.', 'mr', 'mr.', 'ms', 'ms.', 'prof', 'prof.'].indexOf(w.toLowerCase()) < 0).slice(0, 2).map(w => w[0].toUpperCase()).join('');
+          const badge = untimed && initials ? initials : (t.slot_no == null ? initials : t.slot_no);
           return '<div class="glass rounded-xl p-4 hover:bg-white/[0.04] transition group">'
             + '<div class="flex items-start gap-4">'
             + (hasPhoto
               ? '<img src="' + esc(photo) + '" alt="" loading="lazy" class="shrink-0 w-12 h-12 rounded-xl" style="object-fit:cover">'
-              : '<div class="shrink-0 w-12 h-12 rounded-xl bg-gradient-to-br from-primary-500/20 to-violet-500/20 flex items-center justify-center text-primary-300 font-bold text-lg">' + t.slot_no + '</div>')
+              : '<div class="shrink-0 w-12 h-12 rounded-xl bg-gradient-to-br from-primary-500/20 to-violet-500/20 flex items-center justify-center text-primary-300 font-bold text-lg">' + esc(badge) + '</div>')
             + '<div class="flex-1 min-w-0">'
             + '<div class="flex items-center gap-2 mb-1">'
             + '<span class="text-xs px-2 py-0.5 rounded-full bg-white/5 text-gray-400"><i class="fas fa-clock mr-1"></i>' + esc(t.time_slot) + '</span>'
