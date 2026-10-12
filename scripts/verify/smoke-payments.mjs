@@ -361,7 +361,10 @@ check('someone not waiting to pay is sent nothing', /no longer waiting/.test(r.j
 r = await hit('/api/admin/payments/remind', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"kind":"attendee","id":4}' }, MAIL);
 check('sending a reminder needs admin', r.status === 401, r.status);
 // ---- an unpaid paid pass is not a paid pass ----
-const settle = () => new Promise((ok) => setTimeout(ok, 400));   // mail is sent after the response
+// Mail goes out after the response (waitUntil), so wait for it to arrive rather
+// than a fixed beat: under a full `npm run verify` a fixed 400 ms was too short
+// and three checks here failed that pass on their own (12 Oct 2026).
+const settle = async (until = () => false, ms = 10000) => { const end = Date.now() + ms; while (!until() && Date.now() < end) await new Promise((ok) => setTimeout(ok, 50)); };
 person(50, { name: 'Unpaid Una', email: 'una@example.com', badge_type: 'Delegate Pass', payment_status: 'pending', main_event: 1, job_title: 'CTO', company: 'Una Co', industry: 'Software & SaaS', interests: 'ai' });
 person(51, { name: 'Paid Pat', email: 'pat@example.com', badge_type: 'Delegate Pass', payment_status: 'paid', main_event: 1, job_title: 'CTO', company: 'Pat Co', industry: 'Software & SaaS', interests: 'ai' });
 const asUser = (id, method, path, body) => hit(path, { method, headers: { 'Content-Type': 'application/json', Cookie: cookie(id) }, body: body ? JSON.stringify(body) : undefined }, MAIL);
@@ -385,11 +388,11 @@ check('a paid Delegate sees the directory', r.status === 200 && r.h['x-directory
 const reg = (body) => hit('/api/events/1/attendees/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, MAIL);
 let mark = mail.length;
 r = await reg({ name: 'New Academic', email: 'newacad@example.com', mobile: '9820012121', company: 'IIT Bombay', job_title: 'Student', city: 'Mumbai', industry: 'Education & Academia', badge_type: 'Academic Pass' });
-await settle();
+await settle(() => false, 1500);   // proving an absence: give any mail every chance to show up
 check('choosing a paid pass saves the details and sends no "you are registered"', r.status === 201 && r.json?.payment_status === 'pending' && mail.length === mark, r.status + ' ' + JSON.stringify(mail.slice(mark).map(m => m.subject)));
 mark = mail.length;
 r = await reg({ name: 'New Visitor', email: 'newvis@example.com', mobile: '9820013131', company: 'Vis Co', job_title: 'Analyst', city: 'Pune', industry: 'Software & SaaS', badge_type: 'Visitor Pass' });
-await settle();
+await settle(() => mail.some(m => m.to === 'newvis@example.com'));
 const wv = mail.slice(mark).find(m => m.to === 'newvis@example.com');
 check('a free Visitor Pass still gets the welcome straight away', r.status === 201 && !!wv && /You are registered/.test(wv.subject) && /booked as a <strong>Visitor Pass/.test(wv.html), r.status + ' ' + JSON.stringify(mail.slice(mark).map(m => m.subject)));
 check('its Upgrade buttons sign the Visitor in and open the paid form: no "already registered" dead end', !!wv && /action=pay&(amp;)?pass=delegate&(amp;)?token=[0-9a-f]{20,}/.test(wv.html) && /action=pay&(amp;)?pass=vip&(amp;)?token=/.test(wv.html) && !/register#(delegate|vip)/.test(wv.html), ((wv && wv.html.match(/href="[^"]*pass=[^"]*"/g)) || []).join(' ').slice(0, 240));
@@ -401,7 +404,7 @@ r = await start(acad.id, 'Academic Pass', MAIL);
 const AO = r.json || {};
 mark = mail.length;
 r = await back(kitEncrypt(answer(order(AO.order_id))), MAIL);
-await settle();
+await settle(() => mail.slice(mark).length >= 2);   // the buyer's welcome and the team's note
 const wa = mail.slice(mark).filter(m => m.to === 'newacad@example.com');
 check('when the payment lands, the welcome goes out once, with the receipt in it', wa.length === 1 && /Payment received: your Academic Pass is confirmed/.test(wa[0].subject) && /Add your photo/.test(wa[0].html) && wa[0].html.includes(AO.order_id) && /115023456789/.test(wa[0].html) && /GST invoice/.test(wa[0].html) && /an <strong>Academic|your <strong>Academic Pass/.test(wa[0].html), JSON.stringify(wa.map(m => m.subject)));
 check('and the team is told', mail.slice(mark).some(m => /Paid online: New Academic/.test(m.subject)), JSON.stringify(mail.slice(mark).map(m => m.subject)));
