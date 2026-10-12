@@ -93,6 +93,7 @@ Companies and organisations exhibiting at Bharat AI Innovation 2026 (list update
 
 - Actin Technologies
 - Aegis School of Data Science & AI
+- AI Products Factory
 - Ai Vie Insights
 - AlgoAnalytics
 - Amnex Infotechnologies
@@ -102,6 +103,7 @@ Companies and organisations exhibiting at Bharat AI Innovation 2026 (list update
 - CGI
 - Cosmica Telematics
 - Daten Technology Solutions
+- Dysosphere
 - Envista Cyber Defence
 - Eurys Infosystems
 - Evoke Technologies

@@ -35,6 +35,7 @@ const OUT = 'public/images/exhibitors'
 const EXHIBITORS = [
   { name: 'Actin Technologies', file: 'Actin Technologies logo.jpg' },
   { name: 'Aegis School of Data Science & AI', file: 'Our Logo/logo-aegis (1) (1).webp', optical: 1.15 },
+  { name: 'AI Products Factory', file: 'Our Logo/AI Product Factory/aipf-logo-horizontal-transparent.png' },
   { name: 'Ai Vie Insights', file: 'Ai Vie Insights Private Limited.jpg', db: [9, 'Ai Vie Insights Private Limited'] },
   { name: 'AlgoAnalytics', file: 'Algo Analytics.jpg', db: [6, 'Algo Analytics'] },
   { name: 'Amnex Infotechnologies', file: 'Amnex infotech logo.jpg', db: [22, 'Amnex technologies'] },
@@ -44,6 +45,7 @@ const EXHIBITORS = [
   { name: 'CGI', file: 'CGI logo.jpg', db: [5, 'CGI'] },
   { name: 'Cosmica Telematics', file: 'COSMICA TELEMATICS PRIVATE LIMITED.jpg', db: [8, 'COSMICA TELEMATICS PRIVATE LIMITED'] },
   { name: 'Daten Technology Solutions', file: 'Daten Technology Solutions logo.jpg', db: [16, 'Daten Intelligenz Software, AIGyan Technologies'] },
+  { name: 'Dysosphere', file: 'Dysosphere Pvt Ltd Logo.png' },
   { name: 'Envista Cyber Defence', file: 'Envista cyber defence logo.jpg', db: [28, 'Envista Cyber Defence'] },
   { name: 'Eurys Infosystems', file: 'EURYS infosystemS private limited.jpg', db: [15, 'EURYS infosystemS private limited'] },
   { name: 'Evoke Technologies', file: 'Evoke Technologies logo.jpg', db: [27, 'Evoke Technologies'] },
@@ -59,10 +61,10 @@ const EXHIBITORS = [
   { name: 'Kirusa', file: 'Kirusa Inc.jpg', db: [20, 'Kirusa Inc'] },
   { name: 'LightMetrics', file: 'LightMetrics logo.jpg' },
   // The ministry's own logo (organiser, 4 Oct), replacing an old Azadi Ka Amrit Mahotsav graphic.
-  { name: 'Ministry of Tribal Affairs', file: 'Ministry_of_Tribal_Affairs.svg', db: [24, 'Ministry of Tribal Affairs'], optical: 1.3 },
+  { name: 'Ministry of Tribal Affairs', file: 'Minsitry of Tribal Affairs  Logo.png', db: [24, 'Ministry of Tribal Affairs'], optical: 1.3 },
   { name: 'NoBroker', file: 'NoBroker Technologies Solutions Private Limited.jpg', db: [10, 'NoBroker Technologies Solutions Private Limited'] },
   { name: 'Omnirises Technologies', file: 'Omnirises Technologies logo.jpg' },
-  { name: 'Oranje AI', file: 'ORANJE AI PRIVATE LIMITED logo.jpg', db: [14, 'ORANJE AI PRIVATE LIMITED'] },
+  { name: 'Oranje AI', file: 'ORANJE AI PRIVATE LIMITED logo.png', db: [14, 'ORANJE AI PRIVATE LIMITED'] },
   { name: 'Origin AI', file: 'Origin AI.jpg', db: [19, 'Origin AI'] },
   { name: 'Paisani Technology Services', file: 'Paisani Technology Services_.jpg', db: [13, 'Paisani Technology Services'] },
   { name: 'Phoebetal Technologies', file: 'Phoebetal Technologies Pvt Ltd.jpg', db: [30, 'Phoebetal Technologies Pvt Ltd'] },
@@ -73,7 +75,7 @@ const EXHIBITORS = [
   { name: 'Seem Fintech & Sustainability', file: 'Seem Fintech & Sustainability Pvt Ltd.jpg', db: [7, 'Seem Fintech & Sustainability Pvt Ltd'] },
   { name: 'Teenage Works', file: 'Teenage Works Logo.jpg' },
   { name: 'ValuEnable', file: 'Valuenable pvt ltd.jpg' },
-  { name: 'Vassar Labs', file: 'Vassar labs logo.jpg' },
+  { name: 'Vassar Labs', file: 'Vassar labs logo.webp' },
   { name: 'Wyn Labs', file: 'Wyn Labs.jpg', db: [17, 'Wyn Labs'] },
   { name: 'Xtant Tech', file: 'Xtant Tech.png', dark: true }, // white wordmark on a big black square
   { name: 'Zanopy AI', file: 'Zanopy AI.jpg', db: [21, 'Zanopy AI'] },
