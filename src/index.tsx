@@ -23119,15 +23119,18 @@ function mainPageHTML(): string {
             + '</div>';
           return;
         }
-        const morning = talks.filter(t => t.session_type === 'Morning');
-        const afternoon = talks.filter(t => t.session_type === 'Afternoon');
+        // Speakers are published before the schedule is: a talk with no time yet is listed
+        // under its own heading rather than filed under a session it has not been given.
+        const unscheduled = talks.filter(t => !t.time_slot || /to be announced/i.test(String(t.time_slot)));
+        const morning = talks.filter(t => t.session_type === 'Morning' && unscheduled.indexOf(t) < 0);
+        const afternoon = talks.filter(t => t.session_type === 'Afternoon' && unscheduled.indexOf(t) < 0);
 
         function talkCard(t, idx) {
           const speaker = String(t.speaker_name || '');
           const isMultiSpeaker = speaker.includes(',') || speaker.includes('&');
           // An exhibitor talk can carry a speaker photo, always a marketplace upload on this site.
           const photo = String(t.speaker_photo_url || '');
-          const hasPhoto = photo.indexOf('/api/mp/uploads/') === 0 && /^[0-9]+$/.test(photo.slice(16));
+          const hasPhoto = (photo.indexOf('/api/mp/uploads/') === 0 && /^[0-9]+$/.test(photo.slice(16))) || (photo.indexOf('/images/talks/') === 0 && /^[a-z0-9-]+[.]webp$/.test(photo.slice(14)));
           const showcase = String(t.showcase || '');
           return '<div class="glass rounded-xl p-4 hover:bg-white/[0.04] transition group">'
             + '<div class="flex items-start gap-4">'
@@ -23167,11 +23170,12 @@ function mainPageHTML(): string {
           + '<p class="text-gray-400 text-sm">10-minute presentations showcasing cutting-edge AI & technology solutions</p>'
           + '<div class="flex gap-4 mt-3">'
           + '<span class="text-xs glass px-3 py-1.5 rounded-full"><i class="fas fa-microphone-alt text-primary-400 mr-1.5"></i>' + talks.length + ' presentations</span>'
-          + '<span class="text-xs glass px-3 py-1.5 rounded-full"><i class="fas fa-sun text-amber-400 mr-1.5"></i>' + morning.length + ' morning</span>'
-          + '<span class="text-xs glass px-3 py-1.5 rounded-full"><i class="fas fa-moon text-indigo-400 mr-1.5"></i>' + afternoon.length + ' afternoon</span>'
+          + (morning.length ? '<span class="text-xs glass px-3 py-1.5 rounded-full"><i class="fas fa-sun text-amber-400 mr-1.5"></i>' + morning.length + ' morning</span>' : '')
+          + (afternoon.length ? '<span class="text-xs glass px-3 py-1.5 rounded-full"><i class="fas fa-moon text-indigo-400 mr-1.5"></i>' + afternoon.length + ' afternoon</span>' : '')
           + '</div></div>'
-          + sessionSection('Morning Session', 'sun', 'amber-500/30', 'orange-500/30', morning, '10:00 – 11:30 AM')
-          + sessionSection('Afternoon Session', 'moon', 'indigo-500/30', 'violet-500/30', afternoon, '2:00 – 4:10 PM');
+          + (unscheduled.length ? sessionSection('Speakers announced', 'microphone-alt', 'primary-500/30', 'violet-500/30', unscheduled, 'Hall and times to follow') : '')
+          + (morning.length ? sessionSection('Morning Session', 'sun', 'amber-500/30', 'orange-500/30', morning, '10:00 – 11:30 AM') : '')
+          + (afternoon.length ? sessionSection('Afternoon Session', 'moon', 'indigo-500/30', 'violet-500/30', afternoon, '2:00 – 4:10 PM') : '');
 
       } catch(err) {
         container.innerHTML = '<div class="text-center py-12"><i class="fas fa-exclamation-triangle text-2xl text-red-400"></i><p class="text-gray-400 text-sm mt-2">Failed to load innovation talks</p></div>';

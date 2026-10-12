@@ -1,0 +1,180 @@
+[
+  {
+    "name": "Vineet Upadhayay",
+    "title": "AI Head",
+    "company": "P99Soft",
+    "topic": "AI Governance - Observability and Security",
+    "photo": "Vineet Upadhayay _AI Head_ P99SOFT.PNG",
+    "slug": "vineet-upadhayay",
+    "crop": {
+      "left": 0.0,
+      "top": 0.22,
+      "size": 1.0
+    }
+  },
+  {
+    "name": "Shashank KP",
+    "title": "Chief Technology Officer",
+    "company": "RedFerns Tech",
+    "topic": "From Intelligence to Innovation: Building the Next Wave",
+    "photo": "Shashank K P _ CTO_ Redferns Tech.jpg",
+    "slug": "shashank-kp"
+  },
+  {
+    "name": "Amritesh Kumar",
+    "title": "Product Manager",
+    "company": "Phoebetal Technologies",
+    "topic": "AVISA One : From Health Signals to Connected Care - The power of Personalised AI care",
+    "photo": null,
+    "slug": "amritesh-kumar"
+  },
+  {
+    "name": "Dr. Anand Deshpande",
+    "title": "CSO",
+    "company": "AlgoAnalytics",
+    "topic": "AI-based Business Transformations in Manufacturing and Industrial Domains",
+    "photo": "Anand Deshpande - CSO - Algo Analytics.jpg",
+    "slug": "anand-deshpande"
+  },
+  {
+    "name": "Seema Sutradhar",
+    "title": "Founder",
+    "company": "Seem Fintech & Sustainability",
+    "topic": "Digital Transformation in systemically important banks and others",
+    "photo": "Seema - CEO - Seem Fintech.JPG",
+    "slug": "seema-sutradhar"
+  },
+  {
+    "name": "Raveesh Dewan",
+    "title": "President & CEO",
+    "company": "Joget",
+    "topic": "The Last Mile of AI: Where Models Become Business Value",
+    "photo": "Raveesh_Dewan_Joget_Inc (1).png",
+    "slug": "raveesh-dewan"
+  },
+  {
+    "name": "Dr Rahul Ghodke",
+    "title": "Senior Vice President & Business Unit leader.",
+    "company": "CGI",
+    "topic": "Your Next Colleague Is an AI: Lessons from Delivering Technology Operations for Global Clients",
+    "photo": "Dr Rahul Ghodke – Senior Vice President & Business Unit leader - CGI.png",
+    "slug": "rahul-ghodke"
+  },
+  {
+    "name": "Shivendra Singh",
+    "title": "Founder",
+    "company": "Oranje AI",
+    "topic": "Your Brand Now Has a Brain",
+    "photo": null,
+    "slug": "shivendra-singh"
+  },
+  {
+    "name": "Saurabh Singh",
+    "title": "CEO & Co-Founder",
+    "company": "Zanopy AI",
+    "topic": "Don’t Just Build with AI. Sell with It.",
+    "photo": "Saurabh Singh-CEO & Co-Founder-Zanopy.jpg",
+    "slug": "saurabh-singh"
+  },
+  {
+    "name": "Sushil Sani",
+    "title": "Engineering Manager",
+    "company": "Trust3 AI",
+    "topic": "Trust3AI Security Governance",
+    "photo": null,
+    "slug": "sushil-sani"
+  },
+  {
+    "name": "Mayank Sen Sharma",
+    "title": "Co-Founder",
+    "company": "Dysosphere",
+    "topic": "Edge AI",
+    "photo": null,
+    "slug": "mayank-sen-sharma"
+  },
+  {
+    "name": "Dr. Pushkar Patwardhan",
+    "title": "Co-founder and Head of Cloud Engineering",
+    "company": "LightMetrics",
+    "topic": "From Roadside Risk to Real-Time Response: Building AI That Acts in Time",
+    "photo": null,
+    "slug": "pushkar-patwardhan"
+  },
+  {
+    "name": "Ganesh Nagarajan",
+    "title": "Deputy Secretary",
+    "company": "Ministry of Tribal Affairs",
+    "topic": "Adi Vaani: Taking India's Tribal Languages from the Margins to the Mainstream with AI",
+    "photo": "Ganesh Nagarajan IFS, Deputy Secretary Ministry of Tribal Affairs.png",
+    "slug": "ganesh-nagarajan"
+  },
+  {
+    "name": "Shashi Bhushan",
+    "title": "Vice President – Sales & Head of Public Sector Sales (India)",
+    "company": "Gupshup.ai",
+    "topic": "",
+    "photo": null,
+    "slug": "shashi-bhushan"
+  },
+  {
+    "name": "Divyanshi Saxena",
+    "title": "Sr. Manager – Sales",
+    "company": "Eurys Infosystems",
+    "topic": "Pioneering the Shift from E-Governance to AI-Governance using conversational AI",
+    "photo": "EURYS infosystemS private limited,Divyanshi Saxena,Sr. Manager – Sales.jpg",
+    "slug": "divyanshi-saxena",
+    "crop": {
+      "left": 0.31,
+      "top": 0.43,
+      "size": 0.48
+    }
+  },
+  {
+    "name": "Mr. Anand Natarajan",
+    "title": "Director & Chief Technical Officer",
+    "company": "Image Infosystems",
+    "topic": "",
+    "photo": null,
+    "slug": "anand-natarajan"
+  },
+  {
+    "name": "Kiran Kumar V",
+    "title": "AVP - Product",
+    "company": "Saranyu Technologies",
+    "topic": "Beyond Translation: Solving the Real Challenges of AI Dubbing for Indian Audiences.",
+    "photo": null,
+    "slug": "kiran-kumar-v"
+  },
+  {
+    "name": "Mr. Nikhilesh Kumar",
+    "title": "Co-founder & CEO",
+    "company": "Vassar Labs",
+    "topic": "AI-Powered Intelligence for a Climate-Resilient Future",
+    "photo": null,
+    "slug": "nikhilesh-kumar"
+  },
+  {
+    "name": "Ankit Kumar",
+    "title": "Founder and CEO",
+    "company": "Xtant Tech",
+    "topic": "xGMS, proprietary AI governance management system developed by Xtant.tech.",
+    "photo": null,
+    "slug": "ankit-kumar"
+  },
+  {
+    "name": "Gaurav Jha",
+    "title": "Founder and CEO",
+    "company": "Origin AI",
+    "topic": "",
+    "photo": null,
+    "slug": "gaurav-jha"
+  },
+  {
+    "name": "Dhiman Bhattacharya",
+    "title": "Business Head, Insurance AI & Distribution",
+    "company": "ValuEnable",
+    "topic": "Valuenable's AI Agent Assist",
+    "photo": "Valuenable - Dhiman Bhattacharya - Business head_.jpg",
+    "slug": "dhiman-bhattacharya"
+  }
+]
