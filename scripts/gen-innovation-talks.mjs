@@ -100,6 +100,25 @@ const cards = talks.map((t) => {
 })
 fill('public/exhibition.html', `<div class="speakers-grid">\n${cards.join('\n')}\n</div>\n`)
 
+// ---- conference.html: the same speakers in that page's card style ----
+const confCards = talks.map((t) => {
+  const alt = `${t.name}, ${t.title ? t.title + ', ' : ''}${t.company}`
+  const avatar = t.hasPhoto
+    ? `<div class="speaker-avatar"><img width="320" height="320" loading="lazy" decoding="async" src="images/talks/${t.slug}.webp" alt="${esc(alt)}"></div>`
+    : `<div class="speaker-avatar" aria-hidden="true"><span style="color:#fff;font-family:var(--font-display);font-weight:800;font-size:1.4rem;letter-spacing:0.02em;">${esc(initials(t.name))}</span></div>`
+  const topic = t.topic
+    ? `<p class="talk-topic" style="font-size:0.84rem;color:var(--charcoal);line-height:1.45;margin:0.6rem 0 0;position:relative;z-index:1;">&ldquo;${esc(t.topic)}&rdquo;</p>`
+    : `<p class="talk-topic" style="font-size:0.8rem;color:var(--dark-grey);margin:0.6rem 0 0;position:relative;z-index:1;">Topic to be announced</p>`
+  return `<div class="speaker-card reveal">
+    ${avatar}
+    <h4>${esc(t.name)}</h4>
+    ${t.title ? `<div class="speaker-role">${esc(t.title)}</div>` : ''}
+    <div class="speaker-org">${esc(t.company)}</div>
+    ${topic}
+</div>`
+})
+fill('public/conference.html', `<div class="speakers-grid">\n${confCards.join('\n')}\n</div>\n`)
+
 // ---- llms.txt ----
 const lines = talks.map((t) => `- **${t.name}** (${t.title ? t.title + ', ' : ''}${t.company})${t.topic ? ' — ' + t.topic : ''}`)
 fill('public/llms.txt', [
