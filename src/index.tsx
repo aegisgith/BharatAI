@@ -11259,7 +11259,7 @@ const INSIGHTS_REPORTS: Record<string, InsightsReport> = {
     title: 'Beyond the Fear',
     subtitle: 'How AI is reshaping work, skills and assessment, and what students, educators and employers must do next',
     host: 'Dwarkadas J. Sanghvi College of Engineering', hostShort: 'DJ Sanghvi', city: 'Mumbai', dateLabel: '21 September 2026',
-    pages: 20, size: '10 MB', panelSlug: 'djsanghvi-21sep', video: 'fIPXB3mTNOM', cover: '/images/reports/djsce-cover.jpg',
+    pages: 21, size: '10 MB', panelSlug: 'djsanghvi-21sep', video: 'fIPXB3mTNOM', cover: '/images/reports/djsce-cover.jpg',
   },
   jnu: {
     slug: 'jnu', file: 'jnu-ai-and-employability-insights-report.pdf',
