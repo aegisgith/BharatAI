@@ -286,10 +286,11 @@
         .badge-awards   { background: rgba(255,179,0,0.12); color: var(--gold); }
 
         /* Speaker Cards */
+        /* Same column rule as the home page grid, so both pages show the same rows. */
         .speakers-grid {
             display: grid;
-            grid-template-columns: repeat(4,1fr);
-            gap: 1.5rem;
+            grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+            gap: 1.75rem 1.25rem;
         }
         .speaker-card {
             background: white;
@@ -410,12 +411,8 @@
         }
         .conf-stat-label { font-size: 0.8rem; color: rgba(255,255,255,0.6); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
 
-        @media (max-width: 1024px) {
-            .speakers-grid { grid-template-columns: repeat(3,1fr); }
-        }
         @media (max-width: 768px) {
             .tracks-grid    { grid-template-columns: repeat(2,1fr); }
-            .speakers-grid  { grid-template-columns: repeat(2,1fr); }
             .format-grid    { grid-template-columns: 1fr; }
             .conf-stat-bar  { grid-template-columns: repeat(2,1fr); }
             .schedule-item  { grid-template-columns: 1fr; gap: 0.5rem; }
@@ -1282,7 +1279,29 @@
                 <h2 class="section-title">Confirmed <span class="accent">Speakers</span></h2>
                 <p class="section-subtitle">Policymakers shaping the IndiaAI Mission. Researchers deploying AI at Google. CXOs leading transformation at Capgemini, Kotak, and Bandhan Bank. One stage, two days.</p>
             </div>
-            <div class="speakers-grid">
+            <h3 class="reveal" style="font-family:var(--font-display);font-size:1.25rem;font-weight:700;color:var(--charcoal);text-align:center;margin:0 0 1.25rem;">Inauguration &amp; Keynote Addresses</h3>
+            <div class="speakers-grid" style="margin-bottom:3rem;">
+                <div class="speaker-card reveal reveal-delay-1">
+                    <div class="speaker-avatar"><img width="1024" height="576" loading="lazy" decoding="async" src="images/chirag-paswan.jpg" alt="Hon’ble Shri Chirag Paswan, Union Minister of Food Processing Industries"></div>
+                    <h4>Hon’ble Shri Chirag Paswan</h4>
+                    <div class="speaker-role">Union Minister, Food Processing Industries</div>
+                    <div class="speaker-org">Government of India</div>
+                    <span class="speaker-topic topic-policy">Inaugural Address</span>
+                </div>
+                <div class="speaker-card reveal reveal-delay-1">
+                    <div class="speaker-avatar"><img width="535" height="449" loading="lazy" decoding="async" src="images/chandrakant-patil.jpg" alt="Hon’ble Shri Chandrakant Dada Patil, Minister of Higher and Technical Education, Government of Maharashtra"></div>
+                    <h4>Hon’ble Shri Chandrakant Dada Patil</h4>
+                    <div class="speaker-role">Minister, Higher &amp; Technical Education</div>
+                    <div class="speaker-org">Government of Maharashtra</div>
+                    <span class="speaker-topic topic-policy">Keynote Address</span>
+                </div>
+                <div class="speaker-card reveal reveal-delay-1">
+                    <div class="speaker-avatar"><img width="1200" height="675" loading="lazy" decoding="async" src="images/dattatray-bharane.avif" alt="Hon’ble Shri Dattatray Bharane, Minister of Agriculture, Government of Maharashtra"></div>
+                    <h4>Hon’ble Shri Dattatray Bharane</h4>
+                    <div class="speaker-role">Minister, Agriculture</div>
+                    <div class="speaker-org">Government of Maharashtra</div>
+                    <span class="speaker-topic topic-policy">Keynote Address</span>
+                </div>
                 <div class="speaker-card reveal reveal-delay-1">
                     <div class="speaker-avatar"><img width="1013" height="675" loading="lazy" decoding="async" src="images/aditi-tatkare.jpg" alt="Hon’ble Smt. Aditi Tatkare, Minister of Women and Child Development, Government of Maharashtra"></div>
                     <h4>Hon’ble Smt. Aditi Tatkare</h4>
@@ -1297,6 +1316,9 @@
                     <div class="speaker-org">Government of Maharashtra</div>
                     <span class="speaker-topic topic-policy">Keynote Address</span>
                 </div>
+            </div>
+            <h3 class="reveal" style="font-family:var(--font-display);font-size:1.25rem;font-weight:700;color:var(--charcoal);text-align:center;margin:0 0 1.25rem;">Speakers</h3>
+            <div class="speakers-grid">
                 <div class="speaker-card reveal reveal-delay-1">
                     <div class="speaker-avatar"><img width="173" height="159" loading="lazy" decoding="async" src="images/speaker-kk-singh-v2.jpg" alt="Shri. K.K. Singh"></div>
                     <h4>Shri. K.K. Singh</h4>
