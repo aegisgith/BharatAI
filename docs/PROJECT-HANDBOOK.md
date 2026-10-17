@@ -389,7 +389,7 @@ The organiser asked for abandoned checkouts to be captured and followed up. Thre
 ### Audit of 17 Oct 2026 (register → pay → pass)
 - **Fixed:** `/api/external/register` minted paid tiers as `paid` (the column default from 0015), so `package=vip` was a free VIP Pass; it now stores them `pending`, and `media` as a Visitor. The public register route no longer accepts `Media Pass` (by invite). The organiser asked for the GST invoice to go out after payment: it does now (above).
 - **22 paid passes carry no payment on record** (no order, invoice or amount): 18 chose a paid tier before 25 Aug 2026, when choosing one gave it; #403, #531, #1613, #1658 were raised by hand in admin; #1199 has no trail. A list for finance to check against the mUni Campus report was handed to the organiser (not in the repo: it has contact details). Nobody was downgraded. Raising a badge by hand in admin leaves `payment_status` as it was (`paid` for a Visitor), so a hand-raised pass is never tracked as paid or complimentary.
-- **The scheduler Worker (`cron/`) had never ticked** in production (`cron_last_tick` empty), so the panel mail jobs that depend on it have not run on their own.
+- **The scheduler Worker (`cron/`) had never been deployed** (`cron_last_tick` empty), so panel mail jobs ran only while an admin page was open. Deployed the same day (§17).
 
 ### Decisions the organiser has not been asked yet (built to the cautious answer)
 - **A confirmed Delegate cannot buy a VIP upgrade here.** They would be charged the full VIP price on top; the price of an upgrade is a commercial decision.
@@ -452,7 +452,10 @@ Until 8 Oct the three panel emails (confirmation, "Are you coming?", the insight
 - **The three send functions** (`sendNextPanelConfirmations`, `sendNextPanelReminders`, `sendNextPanelReports`) are shared by the jobs and by the old `send-next-*` routes, which still answer the same, so an admin page on the old script keeps working until it is refreshed.
 - **The admin page** (`renderCampusPanels`, `mailButtons`, `mailJobLine`, `startMailJob`, `stopMailJob`, `setMailJobPace`, `mailJobsTick`) is a window onto the job. A line at the top of the Campus panels block says either "Sending runs on the server (scheduler seen N s ago): you can close this page" or, in amber, "The scheduler is not running, so sending stops when this page is closed". That is decided from `cron_last_tick` being under three minutes old, so it is honest: a Worker that stopped knocking shows within three minutes.
 
-### Deploying the scheduler Worker (organiser, once)
+### Deployed 17 Oct 2026
+Until 17 Oct the Worker had never been deployed (`wrangler deployments list` answered "This Worker does not exist", `cron_last_tick` was empty), so panel mail ran only while an admin page was open. It is now live as `bharatai-mail-cron` (schedule `* * * * *`), with a **dedicated** `CRON_SECRET`: one random 64-character value set on both the Worker and the Pages project, piped in, never written down anywhere. The site therefore no longer accepts the admin secret at `/api/cron/tick`. Nobody needs to know the value: to rotate it, generate a new one and set it on both the same way, then redeploy the site. Before it went live both stored jobs (`reports:jnu-30sep`, `reports:djsanghvi-21sep`) were `done`, so the first ticks sent nothing; a tick with no running job only writes `cron_last_tick`.
+
+### Deploying the scheduler Worker (from nothing)
 Cloudflare Pages cannot run on a timer, so `cron/` is a separate one-file Worker with a cron trigger. From the repo root:
 ```
 npx wrangler deploy --config cron/wrangler.jsonc
