@@ -89,6 +89,23 @@ const PHONE = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isM
     await page.waitForFunction(() => /5,898\.82/.test((document.getElementById('rpp-total') || {}).textContent || ''), null, { timeout: 5000 }).catch(() => {});
     await fillRegisterForm(page, 'meera@example.com');
 
+    // The GST invoice section: optional, closed until opened, and a GSTIN that is
+    // not one is caught on the phone before anything is saved or charged.
+    check('the GST invoice section is offered, optional and closed', await page.isVisible('#rpp-gst summary') && (await page.getAttribute('#rpp-gst', 'open')) === null && /optional/.test(await page.textContent('#rpp-gst summary') || ''), await page.textContent('#rpp-gst summary'));
+    await page.click('#rpp-gst summary');
+    await page.fill('#rpp-gst-name', 'Nair Analytics Pvt Ltd');
+    await page.fill('#rpp-gstin', '27abc');
+    check('opened, it fits a phone', await page.isVisible('#rpp-gst-address') && await fits(page));
+    const said = []; const onDialog = (d) => said.push(d.message());
+    page.on('dialog', onDialog);
+    await page.evaluate(() => document.getElementById('rpp-submit-btn').scrollIntoView({ block: 'center' }));
+    await page.click('#rpp-submit-btn');
+    await page.waitForTimeout(600);
+    page.off('dialog', onDialog);
+    check('a GSTIN that is not one stops on the form with a plain sentence, before checkout', said.some(m => /GSTIN does not look right/.test(m)) && /\/register/.test(page.url()) && !(await page.$('#stub')), JSON.stringify(said) + ' ' + page.url());
+    await page.fill('#rpp-gst-name', '');
+    await page.fill('#rpp-gstin', '');
+
     gw.hold = true; gw.reply = 'Success'; gw.seen.length = 0;
     await page.click('#rpp-submit-btn');
     await page.waitForSelector('#stub', { timeout: 20000 });

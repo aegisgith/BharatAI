@@ -65,6 +65,13 @@ export function makePayDb() {
           if (/SELECT COUNT\(\*\) AS n FROM campaign_recipients WHERE campaign_id = \? AND status IN \('pending','sending'\)/.test(sql)) return { n: state.recipients.filter(x => x.campaign_id === Number(args[0]) && ['pending', 'sending'].includes(x.status)).length };
           if (/FROM staff WHERE id = \?/.test(sql)) return state.staff[Number(args[0])] || null;
           if (/FROM attendees WHERE id = \?/.test(sql)) { const a = state.attendees[Number(args[0])]; return a ? { ...a } : null; }
+          // Invoices, as issueInvoice and autoInvoiceForOrder read them.
+          if (/^SELECT id FROM invoices WHERE order_ref = \?/.test(sql)) { const i = state.invoices.find(x => x.order_ref === args[0]); return i ? { id: i.id } : null; }
+          if (/SELECT MAX\(CAST\(substr\(invoice_no, \?\) AS INTEGER\)\) AS n FROM invoices WHERE substr\(invoice_no, 1, \?\) = \?/.test(sql)) {
+            const ns = state.invoices.filter(i => String(i.invoice_no || '').slice(0, args[1]) === args[2]).map(i => parseInt(String(i.invoice_no).slice(args[0] - 1), 10) || 0);
+            return { n: ns.length ? Math.max(...ns) : null };
+          }
+          if (/^SELECT \* FROM invoices WHERE id = \?/.test(sql)) { const i = state.invoices.find(x => x.id === Number(args[0])); return i ? { ...i } : null; }
           return null;
         },
         async all() {
@@ -103,6 +110,7 @@ export function makePayDb() {
             }) };
           }
           if (/PRAGMA table_info\(staff\)/.test(sql)) return { results: ['id', 'name', 'username', 'active', 'role'].map(name => ({ name })) };
+          if (/^SELECT key, value FROM app_settings$/.test(sql)) return { results: Object.entries(state.settings).map(([key, value]) => ({ key, value })) };
           if (/FROM payment_orders o JOIN attendees a/.test(sql)) {
             return { results: state.orders.filter(o => o.status === 'paid' && !state.invoices.some(i => i.order_ref === o.order_id)).map(o => {
               const a = state.attendees[o.attendee_id];
@@ -200,11 +208,33 @@ export function makePayDb() {
             state.attendees[id] = { id, event_id: Number(event_id), name, email, company, job_title, mobile, city, industry, badge_type, payment_status: 'paid', registration_source: 'website', main_event: 1, created_at: now() };
             return { meta: { changes: 1, last_row_id: id } };
           }
-          if (/^UPDATE attendees SET payment_status = 'pending' WHERE id = \?$/.test(sql)) {
-            const a = state.attendees[args[0]];
-            if (a) a.payment_status = 'pending';
-            return { meta: { changes: a ? 1 : 0 } };
+          {
+            const m = /^UPDATE attendees SET payment_status = '(pending|paid)' WHERE id = \?$/.exec(sql);
+            if (m) {
+              const a = state.attendees[args[0]];
+              if (a) a.payment_status = m[1];
+              return { meta: { changes: a ? 1 : 0 } };
+            }
           }
+          // The buyer's GST details (billing:<id>) and the invoice counter. Other
+          // settings writes keep falling through, as they always have here.
+          if (/^INSERT INTO app_settings \(key, value, updated_at\) VALUES \(\?, \?, datetime\('now'\)\) ON CONFLICT/.test(sql) && /^billing:/.test(String(args[0]))) {
+            state.settings[args[0]] = args[1];
+            return { meta: { changes: 1 } };
+          }
+          if (/^DELETE FROM app_settings WHERE key = \?$/.test(sql)) { delete state.settings[args[0]]; return { meta: { changes: 1 } }; }
+          if (/^INSERT INTO app_settings \(key, value, updated_at\) VALUES \('inv_next_number', \?/.test(sql)) { state.settings.inv_next_number = args[0]; return { meta: { changes: 1 } }; }
+          if (/^INSERT INTO invoices \(invoice_no,/.test(sql)) {
+            const [invoice_no, attendee_id, buyer_name, buyer_email, buyer_company, buyer_gstin, buyer_address, buyer_phone, item_desc, order_ref, payment_ref, paid_at, gst_rate,
+              taxable_paise, cgst_paise, sgst_paise, igst_paise, total_paise, place_of_supply] = args;
+            if (state.invoices.some(i => i.invoice_no === invoice_no)) throw new Error('UNIQUE constraint failed: invoices.invoice_no');
+            const id = state.invoices.length + 1;
+            state.invoices.push({ id, invoice_no, attendee_id, buyer_name, buyer_email, buyer_company, buyer_gstin, buyer_address, buyer_phone, item_desc, order_ref, payment_ref, paid_at, gst_rate,
+              taxable_paise, cgst_paise, sgst_paise, igst_paise, total_paise, place_of_supply, emailed_at: null, created_at: now() });
+            return { meta: { changes: 1, last_row_id: id } };
+          }
+          if (/^UPDATE invoices SET attendee_id = \? WHERE id = \?/.test(sql)) { const i = state.invoices.find(x => x.id === Number(args[1])); if (i) i.attendee_id = args[0]; return { meta: { changes: i ? 1 : 0 } }; }
+          if (/^UPDATE invoices SET emailed_at = datetime\('now'\) WHERE id = \?/.test(sql)) { const i = state.invoices.find(x => x.id === Number(args[0])); if (i) i.emailed_at = now(); return { meta: { changes: i ? 1 : 0 } }; }
           if (/^INSERT INTO checkout_leads \(event_id, email, name, mobile,/.test(sql)) {
             const [email, name, mobile, company, job_title, city, industry, pass_type, page, ip] = args;
             const l = state.leads.find(x => x.email === email);

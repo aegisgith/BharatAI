@@ -1951,24 +1951,34 @@ app.post('/api/admin/invoices', async (c) => createInvoice(c, await c.req.json()
 // Named rather than inline, so the finance routes run exactly the same code. A
 // second copy of invoice arithmetic is the last thing this needs.
 async function createInvoice(c: any, b: any) {
+  const r = await issueInvoice(c, b)
+  if ('error' in r) return c.json({ error: r.error }, r.status as any)
+  return c.json({ success: true, id: r.id, invoice_no: r.invoice_no, url: r.url }, 201)
+}
+
+// The invoice itself, for a person at /admin or /finance and for the gateway when
+// a payment lands (autoInvoiceForOrder). `who` names the actor in the audit log
+// when there is no admin or finance session behind the call.
+async function issueInvoice(c: any, b: any, who?: { actor: string; kind: string }):
+    Promise<{ id: any; invoice_no: string; url: string } | { error: string; status: number }> {
   const set = await invoiceSettings(c)
   if (!set.inv_legal_name || !set.inv_gstin) {
-    return c.json({ error: 'Add your legal name and GSTIN under Settings first - an invoice without them is not a tax invoice.' }, 400)
+    return { error: 'Add your legal name and GSTIN under Settings first - an invoice without them is not a tax invoice.', status: 400 }
   }
-  if (!b.buyer_name || !b.buyer_email) return c.json({ error: 'Buyer name and email are required' }, 400)
+  if (!b.buyer_name || !b.buyer_email) return { error: 'Buyer name and email are required', status: 400 }
 
   // An invoice asserts that money was received. Nothing flows back from mUni Campus
   // or CCAvenue to this database, so the only evidence we can hold is the gateway's
   // own reference, copied in by whoever checked the payment report. Requiring it
   // means no invoice can exist that cannot be traced back to a transaction.
   if (!String(b.order_ref || '').trim() && !String(b.payment_ref || '').trim()) {
-    return c.json({ error: 'Add the order number or the CCAvenue reference. An invoice must point at a payment that can be checked.' }, 400)
+    return { error: 'Add the order number or the CCAvenue reference. An invoice must point at a payment that can be checked.', status: 400 }
   }
 
   // The charged total is the anchor. Deriving it from a taxable value would let
   // rounding drift a paisa away from what the card was actually debited.
   const total = Math.round(Number(b.total_amount) * 100)
-  if (!Number.isFinite(total) || total <= 0) return c.json({ error: 'Enter the amount that was charged' }, 400)
+  if (!Number.isFinite(total) || total <= 0) return { error: 'Enter the amount that was charged', status: 400 }
   const rate = Number.isFinite(Number(b.gst_rate)) ? Number(b.gst_rate) : 18
   const taxable = Math.round(total / (1 + rate / 100))
   const tax = total - taxable
@@ -2042,7 +2052,7 @@ async function createInvoice(c: any, b: any) {
     }
   }
   if (id === null) {
-    return c.json({ error: 'Two invoices were being raised at the same moment and ' + invoiceNo + ' was taken by the other one. Nothing was issued - try again.' }, 409)
+    return { error: 'Two invoices were being raised at the same moment and ' + invoiceNo + ' was taken by the other one. Nothing was issued - try again.', status: 409 }
   }
 
   // Issuing an invoice IS the confirmation that payment landed, so it settles the
@@ -2064,7 +2074,7 @@ async function createInvoice(c: any, b: any) {
   const fin = await financeSession(c)
   await audit(c, 'invoice.create', 'invoice', id,
     { invoice_no: invoiceNo, buyer_email: String(b.buyer_email).trim().toLowerCase(), total_paise: total, attendee_id: b.attendee_id || null },
-    fin ? { actor: fin.name || fin.username, kind: 'account' } : undefined)
+    fin ? { actor: fin.name || fin.username, kind: 'account' } : who)
 
   const token = await invoiceTokenFor(c, id, invoiceNo)
   if (b.send_email !== false) {
@@ -2072,7 +2082,81 @@ async function createInvoice(c: any, b: any) {
     await sendInvoiceEmail(c, row, token, set)
     await c.env.DB.prepare("UPDATE invoices SET emailed_at = datetime('now') WHERE id = ?").bind(id).run()
   }
-  return c.json({ success: true, id, invoice_no: invoiceNo, url: '/invoice/' + token }, 201)
+  return { id, invoice_no: invoiceNo, url: '/invoice/' + token }
+}
+
+// ---- The buyer's GST details, asked for on the paid form (optional) ----
+//
+// Kept per person in app_settings as billing:<attendee id> (the mail_job: rows set
+// the precedent), so the details reach the invoice without a migration and a
+// later "Pay now" or "Try again" reuses them. A company name alone is enough for a
+// company invoice (an unregistered firm has no GSTIN); a GSTIN must be a GSTIN
+// and must come with the registered name and address a tax invoice prints.
+type Billing = { legal_name: string; gstin: string; address: string }
+const billingKey = (attendeeId: any) => 'billing:' + Number(attendeeId)
+
+function cleanBilling(raw: any): { billing: Billing | null } | { error: string } {
+  const t = (v: any, n: number) => String(v ?? '').replace(/[\u0000-\u001f\u007f<>]/g, ' ').replace(/[ \t]+/g, ' ').trim().slice(0, n)
+  const legal_name = t(raw?.legal_name, 160)
+  const gstin = String(raw?.gstin ?? '').replace(/\s+/g, '').toUpperCase().slice(0, 20)
+  const address = String(raw?.address ?? '').replace(/[\u0000-\u0009\u000b-\u001f\u007f<>]/g, ' ').trim().slice(0, 400)
+  if (!legal_name && !gstin && !address) return { billing: null }
+  if (!legal_name) return { error: 'Add the registered company name for the GST invoice, or leave the GST invoice section empty.' }
+  if (gstin) {
+    if (boothGstinWarning(gstin)) return { error: 'That GSTIN does not look right (' + gstin + '). A GSTIN is 15 characters, like 27AAACB1234C1Z5. Check it, or leave it empty.' }
+    if (!address) return { error: 'Add the billing address registered with that GSTIN: a GST invoice has to print it.' }
+  }
+  return { billing: { legal_name, gstin, address } }
+}
+
+async function savedBilling(c: any, attendeeId: any): Promise<Billing | null> {
+  try {
+    const raw = await settingValue(c, billingKey(attendeeId))
+    const b = raw ? JSON.parse(raw) : null
+    return b && b.legal_name ? { legal_name: String(b.legal_name), gstin: String(b.gstin || ''), address: String(b.address || '') } : null
+  } catch { return null }
+}
+
+async function saveBilling(c: any, attendeeId: any, b: Billing | null): Promise<void> {
+  if (b) await settingWrite(c, billingKey(attendeeId), JSON.stringify({ ...b, at: new Date().toISOString() }))
+  else await c.env.DB.prepare('DELETE FROM app_settings WHERE key = ?').bind(billingKey(attendeeId)).run()
+}
+
+// The GST invoice for a payment that has just landed, raised and emailed with no
+// one in the loop (organiser, 17 Oct 2026: the buyer gets the invoice after
+// paying). Billed to the company they named on the form, else to them. Place of
+// supply comes from the GSTIN, else Maharashtra, as a hand-raised one would.
+// Never throws: when it cannot be raised (settings missing, a clash on the
+// number) the order stays under "Paid online: invoice to raise" for a person.
+async function autoInvoiceForOrder(c: any, order: any, a: any, trackingId: string): Promise<{ invoice_no: string; url: string } | null> {
+  try {
+    const have = await c.env.DB.prepare('SELECT id FROM invoices WHERE order_ref = ?').bind(order.order_id).first()
+    if (have) return null
+    const bill = await savedBilling(c, a.id)
+    const r = await issueInvoice(c, {
+      attendee_id: a.id,
+      buyer_name: String(a.name || '').trim() || String(a.email),
+      buyer_email: a.email,
+      buyer_company: bill ? bill.legal_name : '',
+      buyer_gstin: bill ? bill.gstin : '',
+      buyer_address: bill ? bill.address : String(a.city || ''),
+      buyer_phone: a.mobile || '',
+      item_desc: order.pass_type + ' - Bharat AI Innovation Conference & Exhibition 2026',
+      order_ref: order.order_id,
+      payment_ref: trackingId ? 'CCAvenue ' + trackingId : '',
+      paid_at: new Date().toISOString().slice(0, 19).replace('T', ' '),
+      total_amount: Number(order.amount_paise) / 100,
+      gst_rate: PASS_GST_RATE,
+    }, { actor: 'CCAvenue', kind: 'gateway' })
+    // A refusal (invoicing settings not filled in, a clash on the number) is told
+    // to the team in the payment email, which says to raise it by hand.
+    if ('error' in r) { console.error('auto invoice refused', order.order_id, r.error); return null }
+    return { invoice_no: r.invoice_no, url: 'https://bharataiinnovation.com' + r.url }
+  } catch (e: any) {
+    console.error('auto invoice failed', order?.order_id, e?.message)
+    try { await audit(c, 'invoice.auto-failed', 'attendee', a?.id, { order_id: order?.order_id, error: String(e?.message || e).slice(0, 300) }, { actor: 'CCAvenue', kind: 'gateway' }) } catch { /* nothing more to do */ }
+    return null
+  }
 }
 
 // ==================== ONLINE PAYMENTS (CCAvenue) ====================
@@ -2234,6 +2318,12 @@ app.post('/api/payments/ccavenue/start', async (c) => {
   const passType = String(body.pass_type || '')
   const amounts = PAID_TIERS.includes(passType) ? passAmounts(passType) : null
   if (!amounts) return c.json({ error: 'Choose a Delegate, VIP or Academic pass.' }, 400)
+  // The GST invoice section of the form. Sent (even empty, which means an invoice
+  // in their own name) it replaces what was kept; absent, as from Try again or Pay
+  // now, the details given last time stand. Checked before anyone leaves for
+  // CCAvenue: a wrong GSTIN found after the payment means a credit note.
+  const billing = body.billing === undefined ? undefined : cleanBilling(body.billing)
+  if (billing && 'error' in billing) return c.json({ error: billing.error }, 400)
 
   const a = await c.env.DB.prepare('SELECT id, event_id, badge_type, payment_status FROM attendees WHERE id = ?').bind(me).first() as any
   if (!a) return c.json({ error: 'Please sign in again to continue.' }, 401)
@@ -2246,6 +2336,7 @@ app.post('/api/payments/ccavenue/start', async (c) => {
   if (Number(recent?.n || 0) >= PAY_ORDERS_PER_HOUR) {
     return c.json({ error: 'That is a lot of payment attempts in one hour. Please wait a little, or write to info@bharataiinnovation.com.' }, 429)
   }
+  if (billing) await saveBilling(c, a.id, billing.billing)
 
   const rand = Array.from(crypto.getRandomValues(new Uint8Array(4))).map(b => (b % 36).toString(36)).join('')
   const orderId = ('BAI' + a.id + '-' + Date.now().toString(36) + rand).toUpperCase()
@@ -2278,6 +2369,10 @@ ${emailBrandHeader('', '20&ndash;21 Nov 2026 &bull; WTC Mumbai')}
 // that is simply not sent, and their own page asks for it.
 const ccavText = (v: any, max: number): string =>
   String(v ?? '').normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9 .-]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max)
+
+// CCAvenue's dashboard may open the notice address (ccavenueNotify, below) to
+// check it before saving it. Registered ahead of /:token, which would take it.
+app.get('/pay/ccavenue/notify', (c) => c.text('OK'))
 
 // Step two: the page that hands the buyer to the gateway. It posts itself once;
 // coming Back to it shows the button instead of bouncing them forward again.
@@ -2335,19 +2430,46 @@ app.get('/pay/ccavenue/:token', async (c) => {
 const payUnconfirmed = (c: any) => c.redirect('/pay/result', 303)
 
 async function ccavenueReturn(c: any) {
-  const cfg = ccavenueConfig(c)
-  if (!cfg) return payUnconfirmed(c)
   const form = await c.req.parseBody().catch(() => ({})) as Record<string, any>
-  const plain = await ccavDecrypt(String(form.encResp || ''), cfg.workingKey)
+  const orderId = await ccavenueAnswer(c, String(form.encResp || ''))
+  if (!orderId) return payUnconfirmed(c)
+  return c.redirect('/pay/result?o=' + encodeURIComponent(await payLinkToken(c, orderId)), 303)
+}
+
+// CCAvenue's own copy of the answer, server to server (Dynamic Event Notification,
+// "Order Status", registered in their dashboard as /pay/ccavenue/notify). The
+// browser's return is not enough on its own: a phone that pays in its UPI app and
+// never comes back, or a tab closed on the bank page, leaves the order 'created'
+// with the money taken, and "Didn't finish paying" would ask them to pay again.
+// Their status API cannot stand in for this: it answers only a registered IP, and
+// a Worker has none. Same checks as the return, same single settle; it always
+// answers 200 OK, and says nothing about what it made of the answer.
+async function ccavenueNotify(c: any) {
+  let enc = ''
+  try {
+    const type = String(c.req.header('Content-Type') || '')
+    const body: any = type.includes('json') ? await c.req.json() : await c.req.parseBody()
+    enc = String(body?.encResp || body?.encResponse || body?.enc_response || '')
+  } catch { /* an unreadable body is an answer we cannot believe */ }
+  const orderId = enc ? await ccavenueAnswer(c, enc) : null
+  if (!orderId && enc) console.error('ccavenue notify not believed', enc.length)
+  return c.text('OK')
+}
+
+// The one place a gateway answer is judged, whichever way it arrived. Returns the
+// order it settled or recorded, or null for an answer that cannot be believed.
+async function ccavenueAnswer(c: any, encResp: string): Promise<string | null> {
+  const cfg = ccavenueConfig(c)
+  if (!cfg) return null
+  const plain = await ccavDecrypt(encResp, cfg.workingKey)
   const f = plain ? ccavParseResponse(plain) : null
   const orderId = String(f?.order_id || '')
-  if (!f || !PAY_ORDER_RE.test(orderId) || !(await paymentOrdersReady(c))) return payUnconfirmed(c)
+  if (!f || !PAY_ORDER_RE.test(orderId) || !(await paymentOrdersReady(c))) return null
   const order = await c.env.DB.prepare('SELECT * FROM payment_orders WHERE order_id = ?').bind(orderId).first() as any
-  if (!order) return payUnconfirmed(c)
-  if (!safeEqualA(String(f.merchant_param1 || ''), await payOrderSig(c, orderId, order.amount_paise))) return payUnconfirmed(c)
+  if (!order) return null
+  if (!safeEqualA(String(f.merchant_param1 || ''), await payOrderSig(c, orderId, order.amount_paise))) return null
 
-  const resultUrl = '/pay/result?o=' + encodeURIComponent(await payLinkToken(c, orderId))
-  if (order.status === 'paid') return c.redirect(resultUrl, 303)
+  if (order.status === 'paid') return orderId
 
   const said = String(f.order_status || '')
   let status = said === 'Success' ? 'paid'
@@ -2393,10 +2515,11 @@ async function ccavenueReturn(c: any) {
       { unsubscribe: false })
     try { c.executionCtx.waitUntil(note) } catch { await note }
   }
-  return c.redirect(resultUrl, 303)
+  return orderId
 }
 
 app.post('/pay/ccavenue/return', ccavenueReturn)
+app.post('/pay/ccavenue/notify', ccavenueNotify)
 
 // The money has arrived: unlock the pass, write it down, tell the buyer and the team.
 async function settlePaidOrder(c: any, order: any, trackingId: string, paymentMode: string) {
@@ -2421,14 +2544,20 @@ async function settlePaidOrder(c: any, order: any, trackingId: string, paymentMo
     payment_mode: paymentMode, badge: changeable ? [badge || null, order.pass_type] : 'left as ' + badge,
   }, { actor: 'CCAvenue', kind: 'gateway' })
 
-  const mails = sendPaymentEmails(c, a, order, trackingId, paymentMode, changeable)
+  // The invoice first, so the receipt can name it. Only for a pass this payment
+  // unlocked: when the badge was set by hand, a person decides what it paid for.
+  const mails = (async () => {
+    const invoice = changeable ? await autoInvoiceForOrder(c, order, a, trackingId) : null
+    await sendPaymentEmails(c, a, order, trackingId, paymentMode, changeable, invoice)
+  })()
   let scheduled = false
   try { c.executionCtx.waitUntil(mails); scheduled = true } catch { /* no ctx */ }
   if (!scheduled) await mails
 }
 
 // Never throws: the pass is already unlocked by the time this runs.
-async function sendPaymentEmails(c: any, a: any, order: any, trackingId: string, paymentMode: string, unlocked: boolean) {
+async function sendPaymentEmails(c: any, a: any, order: any, trackingId: string, paymentMode: string, unlocked: boolean,
+    invoice: { invoice_no: string; url: string } | null = null) {
   try {
     const amount = rupees(Number(order.amount_paise))
     const appUrl = (await settingValue(c, 'app_url')) || 'https://bharataiinnovation.com/app'
@@ -2466,7 +2595,9 @@ async function sendPaymentEmails(c: any, a: any, order: any, trackingId: string,
       // The welcome they were not sent at registration, with the receipt in it:
       // one email that says it is paid, and what to do next.
       const fresh = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(a.id).first().catch(() => null) as any
-      const gst = `<div style="margin:0 0 20px;padding:14px;background:#F7F8FF;border:1px solid #E3E6F5;border-radius:10px;"><p style="margin:0;font-size:12.5px;line-height:1.6;color:#1E2140;"><strong>GST invoice:</strong> we will email your tax invoice separately. If it should be made out to your organisation, send its registered name, GSTIN and billing address to info@bharataiinnovation.com, quoting order ${payEsc(order.order_id)}.</p></div>`
+      const gst = `<div style="margin:0 0 20px;padding:14px;background:#F7F8FF;border:1px solid #E3E6F5;border-radius:10px;"><p style="margin:0;font-size:12.5px;line-height:1.6;color:#1E2140;"><strong>GST invoice:</strong> ${invoice
+        ? `your tax invoice <strong>${payEsc(invoice.invoice_no)}</strong> is in a separate email, and here: <a href="${payEsc(invoice.url)}" style="color:#FF6B00;font-weight:bold;">view and download the invoice</a>. If something on it needs correcting, write to info@bharataiinnovation.com quoting ${payEsc(invoice.invoice_no)}.`
+        : `we will email your tax invoice separately. If it should be made out to your organisation, send its registered name, GSTIN and billing address to info@bharataiinnovation.com, quoting order ${payEsc(order.order_id)}.`}</p></div>`
       await sendRegistrationEmail(c, fresh || { ...a, badge_type: order.pass_type, payment_status: 'paid' }, { receipt: rows + gst })
     } else {
       await sendAdminEmail(c, a.email, 'Payment received: your ' + order.pass_type + ' is confirmed', html, { unsubscribe: false })
@@ -2476,9 +2607,11 @@ async function sendPaymentEmails(c: any, a: any, order: any, trackingId: string,
     const teamHtml = `<div style="font-family:Arial,sans-serif;max-width:560px;">
       <p style="font-size:14px;line-height:1.6;color:#333;margin:0 0 14px;"><strong>${payEsc(a.name)}</strong> (${payEsc(a.email)}${a.company ? ', ' + payEsc(a.company) : ''}) has paid online through CCAvenue.</p>
       ${rows}
-      <p style="font-size:13px;line-height:1.6;color:#555;margin:0;">${unlocked
-        ? 'The pass is unlocked already. The GST invoice is the one step left: Admin, Payments, &ldquo;Paid online&rdquo; (or the finance page), where the order number and reference are filled in.'
-        : 'Their pass was <strong>not</strong> changed, because it had been set to ' + payEsc(a.badge_type) + ' by hand. Decide what this payment was for, then raise the invoice from Admin, Payments.'}</p></div>`
+      <p style="font-size:13px;line-height:1.6;color:#555;margin:0;">${!unlocked
+        ? 'Their pass was <strong>not</strong> changed, because it had been set to ' + payEsc(a.badge_type) + ' by hand. Decide what this payment was for, then raise the invoice from Admin, Payments.'
+        : invoice
+          ? 'The pass is unlocked and GST invoice <strong>' + payEsc(invoice.invoice_no) + '</strong> was raised and emailed to the buyer automatically: <a href="' + payEsc(invoice.url) + '">open it</a>. Nothing is left to do.'
+          : 'The pass is unlocked already. The GST invoice could <strong>not</strong> be raised automatically, so it is the one step left: Admin, Payments, &ldquo;Paid online&rdquo; (or the finance page), where the order number and reference are filled in.'}</p></div>`
     await sendAdminEmail(c, team, `Paid online: ${a.name}, ${order.pass_type}, Rs ${amount}`, teamHtml, { unsubscribe: false })
   } catch (e: any) {
     console.error('payment emails failed', order?.order_id, e?.message)
@@ -16149,6 +16282,14 @@ async function submitRegisterPaidPassForm(e) {
     btn.innerHTML = '<i class="fas fa-arrow-right mr-2"></i>Proceed to Payment';
     return;
   }
+  const bill = rppBilling();
+  if (bill.error) {
+    var gstBox = document.getElementById('rpp-gst'); if (gstBox) gstBox.open = true;
+    alert(bill.error);
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-arrow-right mr-2"></i>Proceed to Payment';
+    return;
+  }
 
   // Save the details first: a payment with nobody to attach it to cannot be
   // matched to a person afterwards. Checkout then opens in this same tab and
@@ -16172,20 +16313,34 @@ async function submitRegisterPaidPassForm(e) {
     return;   // modal stays open, details still typed in
   }
 
-  const started = await startOnlinePayment(passType);
+  const started = await startOnlinePayment(passType, bill.billing);
   btn.disabled = false;
   btn.innerHTML = '<i class="fas fa-arrow-right mr-2"></i>Proceed to Payment';
   if (started.url) { window.location.href = started.url; return; }
   showToast(started.error, 'error');
 }
 
+// The GST invoice section: the details (all empty means an invoice in their own
+// name), or a sentence saying what to fix before checkout opens. The server
+// checks the same things; asking here saves a round trip on a phone.
+function rppBilling() {
+  var v = function (id) { var el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; };
+  var name = v('rpp-gst-name'), gstin = v('rpp-gstin').split(' ').join('').toUpperCase(), address = v('rpp-gst-address');
+  if (!name && !gstin && !address) return { billing: { legal_name: '', gstin: '', address: '' } };
+  if (!name) return { error: 'Add the registered company name for the GST invoice, or leave that section empty.' };
+  if (gstin && !/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]{3}$/.test(gstin)) return { error: 'That GSTIN does not look right. A GSTIN is 15 characters, like 27AAACB1234C1Z5.' };
+  if (gstin && !address) return { error: 'Add the billing address registered with that GSTIN: the tax invoice has to print it.' };
+  return { billing: { legal_name: name, gstin: gstin, address: address } };
+}
+
 // Records the order on the server and returns where to send the buyer:
-// url to go there, or error to show.
-async function startOnlinePayment(passType) {
+// url to go there, or error to show. billing is left out by callers that have no
+// form (the server then keeps the GST details given last time).
+async function startOnlinePayment(passType, billing) {
   try {
     const r = await fetch('/api/payments/ccavenue/start', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pass_type: passType })
+      body: JSON.stringify(billing ? { pass_type: passType, billing: billing } : { pass_type: passType })
     });
     const j = await r.json().catch(function () { return {}; });
     if (r.ok && j.pay_url) return { url: j.pay_url };
@@ -16355,6 +16510,15 @@ function rppResumeLead() {
             <input type="text" id="rpp-city" autocomplete="address-level2" required placeholder="Your city" style="width:100%;padding:10px 14px;border-radius:10px;background:#fff;border:1px solid #D7DBEC;color:#1E2140;font-size:13px;outline:none;box-sizing:border-box;">
           </div>
         </div>
+        <details id="rpp-gst" style="border:1px solid #E3E6F5;border-radius:10px;padding:10px 12px;background:#F7F8FF;">
+          <summary style="cursor:pointer;font-size:12px;font-weight:700;color:#1E2140;">Need the GST invoice in your company&rsquo;s name? <span style="font-weight:400;color:#5E6585;">(optional)</span></summary>
+          <div style="display:grid;gap:10px;margin-top:10px;">
+            <input type="text" id="rpp-gst-name" autocomplete="organization" placeholder="Registered company name" style="width:100%;padding:10px 14px;border-radius:10px;background:#fff;border:1px solid #D7DBEC;color:#1E2140;font-size:13px;outline:none;box-sizing:border-box;">
+            <input type="text" id="rpp-gstin" maxlength="15" autocapitalize="characters" spellcheck="false" placeholder="GSTIN, 15 characters (empty if not registered)" style="width:100%;padding:10px 14px;border-radius:10px;background:#fff;border:1px solid #D7DBEC;color:#1E2140;font-size:13px;outline:none;box-sizing:border-box;text-transform:uppercase;">
+            <textarea id="rpp-gst-address" rows="2" autocomplete="street-address" placeholder="Billing address registered with the GSTIN" style="width:100%;padding:10px 14px;border-radius:10px;background:#fff;border:1px solid #D7DBEC;color:#1E2140;font-size:13px;outline:none;box-sizing:border-box;resize:vertical;"></textarea>
+            <p style="font-size:10.5px;color:#5E6585;margin:0;line-height:1.5;">Your tax invoice is emailed the moment the payment goes through. Leave this empty for an invoice in your own name.</p>
+          </div>
+        </details>
         <p id="rpp-total" style="display:none;margin:4px 0 0;text-align:center;font-size:13px;color:#1E2140;"></p>
         <button type="submit" id="rpp-submit-btn" style="width:100%;padding:13px;border-radius:10px;border:none;background:linear-gradient(135deg,#FF6B00,#FF8C38);color:white;font-weight:700;font-size:14px;cursor:pointer;margin-top:4px;">
           <i class="fas fa-arrow-right" style="margin-right:8px;"></i>Proceed to Payment
@@ -26057,6 +26221,14 @@ function mainPageHTML(): string {
         btn.innerHTML = '<i class="fas fa-arrow-right mr-2"></i>Proceed to Payment';
         return;
       }
+      var bill = ppBilling();
+      if (bill.error) {
+        var gstBox = document.getElementById('pp-gst'); if (gstBox) gstBox.open = true;
+        showToast(bill.error, 'error');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-arrow-right mr-2"></i>Proceed to Payment';
+        return;
+      }
 
       // Save the details first, then open checkout in this same tab. A repeat
       // registration on an existing email deliberately does not change the badge:
@@ -26083,20 +26255,34 @@ function mainPageHTML(): string {
         return;   // modal stays open, details still typed in
       }
 
-      const started = await startOnlinePayment(passType);
+      const started = await startOnlinePayment(passType, bill.billing);
       btn.disabled = false;
       btn.innerHTML = '<i class="fas fa-arrow-right mr-2"></i>Proceed to Payment';
       if (started.url) { window.location.href = started.url; return; }
       showToast(started.error, 'error');
     }
 
+    // The GST invoice section: the details (all empty means an invoice in their
+    // own name), or a sentence saying what to fix before checkout opens. The
+    // server checks the same things.
+    function ppBilling() {
+      var v = function (id) { var el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; };
+      var name = v('pp-gst-name'), gstin = v('pp-gstin').split(' ').join('').toUpperCase(), address = v('pp-gst-address');
+      if (!name && !gstin && !address) return { billing: { legal_name: '', gstin: '', address: '' } };
+      if (!name) return { error: 'Add the registered company name for the GST invoice, or leave that section empty.' };
+      if (gstin && !/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]{3}$/.test(gstin)) return { error: 'That GSTIN does not look right. A GSTIN is 15 characters, like 27AAACB1234C1Z5.' };
+      if (gstin && !address) return { error: 'Add the billing address registered with that GSTIN: the tax invoice has to print it.' };
+      return { billing: { legal_name: name, gstin: gstin, address: address } };
+    }
+
     // Records the order on the server and returns where to send the buyer:
-    // url to go there, or error to show.
-    async function startOnlinePayment(passType) {
+    // url to go there, or error to show. Without billing (Pay now on the pass
+    // card) the server keeps the GST details given last time.
+    async function startOnlinePayment(passType, billing) {
       try {
         const r = await fetch('/api/payments/ccavenue/start', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ pass_type: passType })
+          body: JSON.stringify(billing ? { pass_type: passType, billing: billing } : { pass_type: passType })
         });
         const j = await r.json().catch(function () { return {}; });
         if (r.ok && j.pay_url) return { url: j.pay_url };
@@ -26318,6 +26504,15 @@ function mainPageHTML(): string {
               <option>Other</option>
             </select>
           </div>
+          <details id="pp-gst" class="rounded-xl" style="border:1px solid #E3E6F5;padding:10px 12px;background:#F7F8FF;">
+            <summary class="text-xs font-bold" style="cursor:pointer;color:#1E2140;">Need the GST invoice in your company&rsquo;s name? <span class="font-normal" style="color:#5E6585;">(optional)</span></summary>
+            <div class="grid gap-2.5 mt-2.5">
+              <input type="text" id="pp-gst-name" autocomplete="organization" placeholder="Registered company name" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:#fff;border:1px solid #D7DBEC;color:#1E2140;outline:none;">
+              <input type="text" id="pp-gstin" maxlength="15" autocapitalize="characters" spellcheck="false" placeholder="GSTIN, 15 characters (empty if not registered)" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:#fff;border:1px solid #D7DBEC;color:#1E2140;outline:none;text-transform:uppercase;">
+              <textarea id="pp-gst-address" rows="2" autocomplete="street-address" placeholder="Billing address registered with the GSTIN" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:#fff;border:1px solid #D7DBEC;color:#1E2140;outline:none;resize:vertical;"></textarea>
+              <p class="text-[10.5px] leading-relaxed" style="color:#5E6585;">Your tax invoice is emailed the moment the payment goes through. Leave this empty for an invoice in your own name.</p>
+            </div>
+          </details>
           <p id="pp-total" class="text-center text-sm mt-1" style="display:none;color:#1E2140;"></p>
           <button type="submit" id="pp-submit-btn" class="w-full py-3 rounded-xl font-bold text-white mt-2 transition-all" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);">
             <i class="fas fa-arrow-right mr-2"></i>Proceed to Payment
