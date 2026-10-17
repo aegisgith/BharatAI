@@ -407,6 +407,8 @@ r = await back(kitEncrypt(answer(order(AO.order_id))), MAIL);
 await settle(() => mail.slice(mark).length >= 2);   // the buyer's welcome and the team's note
 const wa = mail.slice(mark).filter(m => m.to === 'newacad@example.com');
 check('when the payment lands, the welcome goes out once, with the receipt in it', wa.length === 1 && /Payment received: your Academic Pass is confirmed/.test(wa[0].subject) && /Add your photo/.test(wa[0].html) && wa[0].html.includes(AO.order_id) && /115023456789/.test(wa[0].html) && /GST invoice/.test(wa[0].html) && /an <strong>Academic|your <strong>Academic Pass/.test(wa[0].html), JSON.stringify(wa.map(m => m.subject)));
+check('its buttons sign the buyer in and open the photo + pass, and the profile: no sign-in form straight after paying', wa.length === 1 && /action=download-pass&(amp;)?token=[0-9a-f]{20,}/.test(wa[0].html) && /action=complete-profile&(amp;)?token=[0-9a-f]{20,}/.test(wa[0].html) && /download my pass/.test(wa[0].html), ((wa[0] && wa[0].html.match(/href="[^"]*action=[^"]*"/g)) || []).join(' ').slice(0, 300));
+check('and they share the card link\'s one sign-in token, so none cancels another', wa.length === 1 && new Set((wa[0].html.match(/token=([0-9a-f]{20,})/g) || [])).size === 1, ((wa[0] && wa[0].html.match(/token=[0-9a-f]{8}/g)) || []).join(' '));
 check('and the team is told', mail.slice(mark).some(m => /Paid online: New Academic/.test(m.subject)), JSON.stringify(mail.slice(mark).map(m => m.subject)));
 check('and now the Academic Pass is paid, so it is a paid pass', state.attendees[acad.id].payment_status === 'paid', JSON.stringify(state.attendees[acad.id]));
 
@@ -470,6 +472,14 @@ r = await camp({ kind: 'mystery' });
 check('an unknown campaign type is still refused', r.status === 400 && /Unknown campaign type/.test(r.json?.error || ''), r.text);
 r = await camp({ kind: 'profile_reminder', audience: 'all' });
 check('the existing campaign types are still accepted', r.status !== 400 || !/Unknown campaign type|senior/.test(r.json?.error || ''), r.status + ' ' + r.text);
+// Last, so the Visitors they make cannot change the campaign counts above.
+r = await reg({ name: 'Self Media', email: 'selfmedia@example.com', mobile: '9820014141', company: 'Blog', job_title: 'Writer', city: 'Pune', industry: 'Media & Entertainment', badge_type: 'Media Pass' });
+check('the public form cannot mint a Media Pass (by invite): it is stored as a Visitor Pass', r.status === 201 && r.json?.badge_type === 'Visitor Pass', r.status + ' ' + r.json?.badge_type);
+const ext = (body) => hit('/api/external/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ last_name: 'X', phone: '9820015151', organization: 'Org', job_title: 'Head', industry: 'Software & SaaS', city: 'Mumbai', ...body }) }, MAIL);
+r = await ext({ first_name: 'Ext VIP', email: 'extvip@example.com', package: 'vip' });
+check('the unauthenticated external route records VIP as pending, not a free paid pass', r.status === 201 && r.json?.badge_type === 'VIP Pass' && state.attendees[r.json?.attendee_id]?.payment_status === 'pending', r.status + ' ' + JSON.stringify(state.attendees[r.json?.attendee_id] || r.text));
+r = await ext({ first_name: 'Ext Media', email: 'extmedia@example.com', package: 'media' });
+check('and turns a Media package into a Visitor Pass', r.status === 201 && r.json?.badge_type === 'Visitor Pass', r.status + ' ' + r.json?.badge_type);
 globalThis.fetch = realFetch;
 
 // ---- the forms ----

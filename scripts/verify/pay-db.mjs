@@ -192,6 +192,19 @@ export function makePayDb() {
             state.attendees[id] = { id, event_id: Number(event_id), name, email, company, job_title, mobile, city, industry, badge_type, payment_status, registration_source, main_event: 1, created_at: now() };
             return { meta: { changes: 1, last_row_id: id } };
           }
+          // /api/external/register names no payment_status, so the row takes the
+          // column's default, which is 'paid' (0015), as production does.
+          if (/^INSERT INTO attendees \(\s+event_id, name, email, company, job_title, mobile, badge_type,/.test(sql)) {
+            const [event_id, name, email, company, job_title, mobile, badge_type, , industry, city] = args;
+            const id = Math.max(499, ...Object.keys(state.attendees).map(Number)) + 1;
+            state.attendees[id] = { id, event_id: Number(event_id), name, email, company, job_title, mobile, city, industry, badge_type, payment_status: 'paid', registration_source: 'website', main_event: 1, created_at: now() };
+            return { meta: { changes: 1, last_row_id: id } };
+          }
+          if (/^UPDATE attendees SET payment_status = 'pending' WHERE id = \?$/.test(sql)) {
+            const a = state.attendees[args[0]];
+            if (a) a.payment_status = 'pending';
+            return { meta: { changes: a ? 1 : 0 } };
+          }
           if (/^INSERT INTO checkout_leads \(event_id, email, name, mobile,/.test(sql)) {
             const [email, name, mobile, company, job_title, city, industry, pass_type, page, ip] = args;
             const l = state.leads.find(x => x.email === email);

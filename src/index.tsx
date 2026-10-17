@@ -952,6 +952,13 @@ async function sendRegistrationEmail(c: any, attendee: any, opts: { receipt?: st
   // Signed in, and straight to the paid form on that pass (resumePayment in the app).
   const upgradeHref = (tier: string) =>
     `${appUrl}?email=${encodeURIComponent(attendee.email)}&action=pay&pass=${tier}${linkToken ? '&token=' + linkToken : ''}`
+  // After a payment the next steps are the photo and the pass, so those buttons go
+  // there signed in (runPendingAction in the app; download-pass asks for the photo
+  // first). The plain "Open the app" left someone who had just paid at a sign-in
+  // form, and on 17 Oct three of the eight online buyers had no photo and no pass.
+  // No token, no ?email=: the app refuses an address that arrives without one.
+  const actionHref = (action: string) => linkToken
+    ? `${appUrl}?email=${encodeURIComponent(attendee.email)}&action=${action}&token=${linkToken}` : appUrl
   const esc = (v: any) => String(v ?? '').replace(/[&<>]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch] as string))
   const pending = String(attendee.payment_status || '').toLowerCase() === 'pending'
   const step = (n: string, title: string, body: string) =>
@@ -1037,10 +1044,18 @@ async function sendRegistrationEmail(c: any, attendee: any, opts: { receipt?: st
           ${step('2', 'Complete your profile', 'Your job title and organisation appear on your pass and in the networking directory.')}
           ${step('3', 'Download your pass', pending ? 'Your pass becomes available once payment is confirmed.' : 'Then download your pass and keep it on your phone for the badge desk.')}
         </table>
+        ${opts.receipt ? `
+        <div style="text-align:center;margin:26px 0 6px;">
+          <a href="${actionHref('download-pass')}" style="display:inline-block;padding:13px 28px;background:linear-gradient(135deg,#FF6B00,#FF8C38);color:#fff;text-decoration:none;border-radius:10px;font-weight:bold;font-size:14px;">Add my photo &amp; download my pass</a>
+        </div>
+        <div style="text-align:center;margin:12px 0 6px;">
+          <a href="${actionHref('complete-profile')}" style="display:inline-block;padding:10px 24px;background:#fff;color:#1E2140;text-decoration:none;border:1px solid #D5D9EA;border-radius:10px;font-weight:bold;font-size:13px;">Complete my profile</a>
+        </div>
+        <p style="margin:14px 0 0;font-size:12px;color:#888;text-align:center;">${linkToken ? 'These buttons sign you in. If one has expired, open the app and sign in with this email address &mdash; we will send you a one-time code.' : 'Sign in with this email address &mdash; we will send you a one-time code, no password needed.'}</p>` : `
         <div style="text-align:center;margin:26px 0 6px;">
           <a href="${appUrl}" style="display:inline-block;padding:13px 32px;background:linear-gradient(135deg,#FF6B00,#FF8C38);color:#fff;text-decoration:none;border-radius:10px;font-weight:bold;font-size:14px;">Open the app</a>
         </div>
-        <p style="margin:14px 0 0;font-size:12px;color:#888;text-align:center;">Sign in with this email address &mdash; we will send you a one-time code, no password needed.</p>
+        <p style="margin:14px 0 0;font-size:12px;color:#888;text-align:center;">Sign in with this email address &mdash; we will send you a one-time code, no password needed.</p>`}
         <div style="margin-top:22px;padding:16px;background:#F7F8FF;border:1px solid #E3E6F5;border-radius:10px;">
           <p style="margin:0 0 5px;font-size:14px;font-weight:bold;color:#1E2140;">Tell your network you are coming</p>
           <p style="margin:0 0 12px;font-size:12.5px;line-height:1.65;color:#555;">
@@ -5597,7 +5612,10 @@ app.post('/api/events/:id/attendees/register', async (c) => {
   // free Visitor and then locked out of networking. Validate against a known
   // allowlist so a bad value can't create an arbitrary pass; default to Visitor.
   const industryValue = INDUSTRIES.includes(String(body.industry || '')) ? String(body.industry) : ''
-  const ALLOWED_PASSES = ['Visitor Pass', 'Delegate Pass', 'VIP Pass', 'Academic Pass', 'Media Pass']
+  // No Media Pass: it is "By Invite" on every page and costs nothing, so a form
+  // anyone can post must not mint one (it opened the full directory and
+  // networking for free). The organisers issue it from the admin panel.
+  const ALLOWED_PASSES = ['Visitor Pass', 'Delegate Pass', 'VIP Pass', 'Academic Pass']
   const passType = ALLOWED_PASSES.includes(badge_type) ? badge_type : 'Visitor Pass'
 
   const sourceValue = sanitizeRegistrationSource(registration_source)
@@ -5765,7 +5783,11 @@ app.post('/api/external/register', async (c) => {
 
   const fullName = `${first_name.trim()} ${(last_name || '').trim()}`.trim()
   const normalizedEmail = email.trim().toLowerCase()
-  const badgeType = PASS_TYPE_MAP[passPackage] || 'Visitor Pass'
+  // Unauthenticated, so it records a choice and confers nothing: a paid tier is
+  // stored 'pending' below (payment_status defaults to 'paid', 0015, which made
+  // package=vip a free VIP Pass), and Media, which is by invite, is a Visitor.
+  const mapped = PASS_TYPE_MAP[passPackage] || 'Visitor Pass'
+  const badgeType = mapped === 'Media Pass' ? 'Visitor Pass' : mapped
   const eventId = 1
 
   // The same required fields as the in-app form: a pass is printed from this
@@ -5809,6 +5831,9 @@ app.post('/api/external/register', async (c) => {
       sanitizeRegistrationSource(source) || 'website', passPackage || 'visitor'
     ).run()
 
+    if (PAID_TIERS.includes(badgeType) && await paymentStatusEnabled(c)) {
+      await c.env.DB.prepare("UPDATE attendees SET payment_status = 'pending' WHERE id = ?").bind(result.meta.last_row_id).run()
+    }
     const attendee = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(result.meta.last_row_id).first() as any
 
     const refId = 'BHAI-2026-' + String(attendee.id).padStart(5, '0')
