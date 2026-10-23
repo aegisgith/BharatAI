@@ -81,8 +81,14 @@
     "title": "Engineering Manager",
     "company": "Trust3 AI",
     "topic": "Trust3AI Security Governance",
-    "photo": null,
-    "slug": "sushil-sani"
+    "photo": "Trust3 AI.jpg",
+    "slug": "sushil-sani",
+    "crop": {
+      "pad": 0.2,
+      "left": 0.0,
+      "top": 0.0,
+      "size": 1.0
+    }
   },
   {
     "name": "Mayank Sen Sharma",
@@ -97,8 +103,13 @@
     "title": "Co-founder and Head of Cloud Engineering",
     "company": "LightMetrics",
     "topic": "From Roadside Risk to Real-Time Response: Building AI That Acts in Time",
-    "photo": null,
-    "slug": "pushkar-patwardhan"
+    "photo": "Pushkar_Lightmetrics.png",
+    "slug": "pushkar-patwardhan",
+    "crop": {
+      "left": 0.2,
+      "top": 0.06,
+      "size": 0.55
+    }
   },
   {
     "name": "Ganesh Nagarajan",
@@ -121,12 +132,12 @@
     "title": "Sr. Manager – Sales",
     "company": "Eurys Infosystems",
     "topic": "Pioneering the Shift from E-Governance to AI-Governance using conversational AI",
-    "photo": "EURYS infosystemS private limited,Divyanshi Saxena,Sr. Manager – Sales.jpg",
+    "photo": "EURYS infosystemS private limited,Divyanshi Saxena,Sr. Manager – Sales.png",
     "slug": "divyanshi-saxena",
     "crop": {
-      "left": 0.31,
-      "top": 0.43,
-      "size": 0.48
+      "left": 0.12,
+      "top": 0.04,
+      "size": 0.78
     }
   },
   {
@@ -134,7 +145,7 @@
     "title": "Director & Chief Technical Officer",
     "company": "Image Infosystems",
     "topic": "",
-    "photo": null,
+    "photo": "Mr. Anand Natarajan Director & Chief Technical Officer at image infosystem.png",
     "slug": "anand-natarajan"
   },
   {
@@ -142,15 +153,20 @@
     "title": "AVP - Product",
     "company": "Saranyu Technologies",
     "topic": "Beyond Translation: Solving the Real Challenges of AI Dubbing for Indian Audiences.",
-    "photo": null,
-    "slug": "kiran-kumar-v"
+    "photo": "saranyu technologies - Kiran Kumar.jpg",
+    "slug": "kiran-kumar-v",
+    "crop": {
+      "left": 0.1,
+      "top": 0.13,
+      "size": 0.8
+    }
   },
   {
     "name": "Mr. Nikhilesh Kumar",
     "title": "Co-founder & CEO",
     "company": "Vassar Labs",
     "topic": "AI-Powered Intelligence for a Climate-Resilient Future",
-    "photo": null,
+    "photo": "Vassar Lab - Nikhilesh Kumar.jpg",
     "slug": "nikhilesh-kumar"
   },
   {
@@ -158,15 +174,20 @@
     "title": "Founder and CEO",
     "company": "Xtant Tech",
     "topic": "xGMS, proprietary AI governance management system developed by Xtant.tech.",
-    "photo": null,
-    "slug": "ankit-kumar"
+    "photo": "Xtant  tech - Ankit Kumar.jpg",
+    "slug": "ankit-kumar",
+    "crop": {
+      "left": 0.22,
+      "top": 0.04,
+      "size": 0.6
+    }
   },
   {
     "name": "Gaurav Jha",
     "title": "Founder and CEO",
     "company": "Origin AI",
     "topic": "",
-    "photo": null,
+    "photo": "Gaurav Jha Founder at Origins AI.png",
     "slug": "gaurav-jha"
   },
   {
