@@ -25,8 +25,13 @@
     "title": "Product Manager",
     "company": "Phoebetal Technologies",
     "topic": "AVISA One : From Health Signals to Connected Care - The power of Personalised AI care",
-    "photo": null,
-    "slug": "amritesh-kumar"
+    "photo": "Amritesh - Product Head - Phoebetal Technologies.jpeg",
+    "slug": "amritesh-kumar",
+    "crop": {
+      "left": 0.2,
+      "top": 0.0,
+      "size": 0.65
+    }
   },
   {
     "name": "Dr. Anand Deshpande",
@@ -65,8 +70,13 @@
     "title": "Founder",
     "company": "Oranje AI",
     "topic": "Your Brand Now Has a Brain",
-    "photo": null,
-    "slug": "shivendra-singh"
+    "photo": "Shivendra Singh- Founder-Oranje AI.jpg",
+    "slug": "shivendra-singh",
+    "crop": {
+      "left": 0.16,
+      "top": 0.06,
+      "size": 0.75
+    }
   },
   {
     "name": "Saurabh Singh",
@@ -95,8 +105,13 @@
     "title": "Co-Founder",
     "company": "Dysosphere",
     "topic": "Edge AI",
-    "photo": null,
-    "slug": "mayank-sen-sharma"
+    "photo": "Dysosphere - Mayank Sen.jpg",
+    "slug": "mayank-sen-sharma",
+    "crop": {
+      "left": 0.09,
+      "top": 0.12,
+      "size": 0.8
+    }
   },
   {
     "name": "Dr. Pushkar Patwardhan",

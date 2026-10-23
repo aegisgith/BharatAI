@@ -1200,6 +1200,10 @@
 "fp":"023f013d023f021f821f009f0363027924e12b0001b2f8f1c1c3d1c343c3c3df:f800f800fb00fb00fb80fe00fd00ff1cff78fff0c00000386070f860f060f001"
 },
 {
+"file":"public/images/talks/amritesh-kumar.webp",
+"fp":"11fa91f3833d879d071d27582d5d6dcded57871297cff5cf8d860d874d0e8919:fefff83ff01ff3cff3eff1eff7ff97ff07ff03fe00e001e003c0008006800480"
+},
+{
 "file":"public/images/talks/anand-deshpande.webp",
 "fp":"d7ed87ff00ff01bf03bf03bf02bf00ff03ff01df145f24473d6737473b573347:fffffffffe3ffc1ff81ff81ff81ff03ff03ff03fde3f977f9fff9ff71fff0ff3"
 },
@@ -1232,6 +1236,10 @@
 "fp":"0000000000f003340418841c027cc25c00dc8278023800dc88cf1b8f1d0c3d0c:fffffffffc3ff81ffa0ffa0ff80ffc0ffc0ff81ff81ffc0ff403c58087808780"
 },
 {
+"file":"public/images/talks/mayank-sen-sharma.webp",
+"fp":"c8e0c06080f0037807bc079c075c075e05dc017c03bc01fe03dd078713375315:fffffffffc3ff81ff01ff0cff01ff01ff05ff83ff83ffc1ff84fe00380000000"
+},
+{
 "file":"public/images/talks/nikhilesh-kumar.webp",
 "fp":"c051030416203f1172d0f250d59433bc837678fd51b9c65f06ef13d96b11711b:fffffffffffffffffd7ffd7ffefff87ff83ffc1ff80ff003c000800080000000"
 },
@@ -1258,6 +1266,10 @@
 {
 "file":"public/images/talks/shashank-kp.webp",
 "fp":"fe00fe00ff00ff00fcc0fd40fe40f440f2c0e330e530e690e618c618c618cb38:000007801fe03ff87e7c7ffc7ffc7ffcfffc7dbc71dc705c700c700c20002000"
+},
+{
+"file":"public/images/talks/shivendra-singh.webp",
+"fp":"ffbefffef0fcc1fecf3f8f9f8f9f4ebfceffcefde4bbf35bf1bbe0f7e4f7e439:fffffffff83ff01fe01fe0dfe09fe01fe07fe01ff01ff81ff81ff81ffe1fff9f"
 },
 {
 "file":"public/images/talks/sushil-sani.webp",
