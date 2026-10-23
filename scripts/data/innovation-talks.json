@@ -22,7 +22,7 @@
   },
   {
     "name": "Amritesh Kumar",
-    "title": "Product Manager",
+    "title": "Product Head",
     "company": "Phoebetal Technologies",
     "topic": "AVISA One : From Health Signals to Connected Care - The power of Personalised AI care",
     "photo": "Amritesh - Product Head - Phoebetal Technologies.jpeg",
@@ -212,5 +212,26 @@
     "topic": "Valuenable's AI Agent Assist",
     "photo": "Valuenable - Dhiman Bhattacharya - Business head_.jpg",
     "slug": "dhiman-bhattacharya"
+  },
+  {
+    "name": "Harshal Wakharkar",
+    "title": "",
+    "company": "Intangles",
+    "topic": "Beyond Tracking: Intelligent Fleet Telematics for Driving Behaviour, Fleet Health & Video Intelligence.",
+    "photo": "Harshal Wakharkar(Tentative) - Intangles_.jpg",
+    "slug": "harshal-wakharkar",
+    "crop": {
+      "left": 0.08,
+      "top": 0.02,
+      "size": 0.85
+    }
+  },
+  {
+    "name": "Dr. Raja N. Moorthy",
+    "title": "Chief Operating Officer",
+    "company": "Kirusa",
+    "topic": "",
+    "photo": "Dr. Raja N. Moorthy, Chief Operating Officer, Kirusa Inc.jpg",
+    "slug": "raja-moorthy"
   }
 ]

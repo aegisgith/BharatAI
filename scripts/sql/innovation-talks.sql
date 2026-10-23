@@ -23,7 +23,7 @@ UPDATE innovation_talks SET speaker_photo_url = '/images/talks/shashank-kp.webp'
 WHERE event_id = 1 AND speaker_name = 'Shashank KP' AND company = 'RedFerns Tech' AND COALESCE(speaker_photo_url, '') = '';
 
 INSERT INTO innovation_talks (event_id, slot_no, session_type, time_slot, speaker_name, company, topic, status, speaker_title, speaker_photo_url, notes)
-SELECT 1, 3, 'Morning', 'To be announced', 'Amritesh Kumar', 'Phoebetal Technologies', 'AVISA One : From Health Signals to Connected Care - The power of Personalised AI care', 'confirmed', 'Product Manager', '/images/talks/amritesh-kumar.webp', 'Imported from the Innovation Talk sheet, 12 Oct 2026'
+SELECT 1, 3, 'Morning', 'To be announced', 'Amritesh Kumar', 'Phoebetal Technologies', 'AVISA One : From Health Signals to Connected Care - The power of Personalised AI care', 'confirmed', 'Product Head', '/images/talks/amritesh-kumar.webp', 'Imported from the Innovation Talk sheet, 12 Oct 2026'
 WHERE NOT EXISTS (SELECT 1 FROM innovation_talks WHERE event_id = 1 AND speaker_name = 'Amritesh Kumar' AND company = 'Phoebetal Technologies');
 
 UPDATE innovation_talks SET speaker_photo_url = '/images/talks/amritesh-kumar.webp'
@@ -151,3 +151,17 @@ WHERE NOT EXISTS (SELECT 1 FROM innovation_talks WHERE event_id = 1 AND speaker_
 
 UPDATE innovation_talks SET speaker_photo_url = '/images/talks/dhiman-bhattacharya.webp'
 WHERE event_id = 1 AND speaker_name = 'Dhiman Bhattacharya' AND company = 'ValuEnable' AND COALESCE(speaker_photo_url, '') = '';
+
+INSERT INTO innovation_talks (event_id, slot_no, session_type, time_slot, speaker_name, company, topic, status, speaker_title, speaker_photo_url, notes)
+SELECT 1, 22, 'Morning', 'To be announced', 'Harshal Wakharkar', 'Intangles', 'Beyond Tracking: Intelligent Fleet Telematics for Driving Behaviour, Fleet Health & Video Intelligence.', 'confirmed', '', '/images/talks/harshal-wakharkar.webp', 'Imported from the Innovation Talk sheet, 12 Oct 2026'
+WHERE NOT EXISTS (SELECT 1 FROM innovation_talks WHERE event_id = 1 AND speaker_name = 'Harshal Wakharkar' AND company = 'Intangles');
+
+UPDATE innovation_talks SET speaker_photo_url = '/images/talks/harshal-wakharkar.webp'
+WHERE event_id = 1 AND speaker_name = 'Harshal Wakharkar' AND company = 'Intangles' AND COALESCE(speaker_photo_url, '') = '';
+
+INSERT INTO innovation_talks (event_id, slot_no, session_type, time_slot, speaker_name, company, topic, status, speaker_title, speaker_photo_url, notes)
+SELECT 1, 23, 'Morning', 'To be announced', 'Dr. Raja N. Moorthy', 'Kirusa', '', 'confirmed', 'Chief Operating Officer', '/images/talks/raja-moorthy.webp', 'Imported from the Innovation Talk sheet, 12 Oct 2026'
+WHERE NOT EXISTS (SELECT 1 FROM innovation_talks WHERE event_id = 1 AND speaker_name = 'Dr. Raja N. Moorthy' AND company = 'Kirusa');
+
+UPDATE innovation_talks SET speaker_photo_url = '/images/talks/raja-moorthy.webp'
+WHERE event_id = 1 AND speaker_name = 'Dr. Raja N. Moorthy' AND company = 'Kirusa' AND COALESCE(speaker_photo_url, '') = '';
