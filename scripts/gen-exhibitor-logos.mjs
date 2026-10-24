@@ -20,7 +20,9 @@
 // booth_allocations; gupshup.ai, Omnirises, Pramaana Labs and Vassar Labs were not
 // in the database at all. They are listed because the organiser's logo folder
 // lists them. Aegis School of Data Science & AI and Assessfy were added on 4 Oct
-// at the organiser's request, with no exhibitor or booth row yet.
+// at the organiser's request, with no exhibitor or booth row yet. Aria Telecom,
+// JoyVibe, OliAI and P99Soft came from the organiser's 23 Oct folder; none had an
+// exhibitors row on 24 Oct.
 //
 // The names are printed under every logo: half of these are symbol-only marks.
 // `optical` enlarges a lockup whose small lettering would otherwise be lost.
@@ -39,6 +41,7 @@ const EXHIBITORS = [
   { name: 'Ai Vie Insights', file: 'Ai Vie Insights Private Limited.jpg', db: [9, 'Ai Vie Insights Private Limited'] },
   { name: 'AlgoAnalytics', file: 'Algo Analytics.jpg', db: [6, 'Algo Analytics'] },
   { name: 'Amnex Infotechnologies', file: 'Amnex infotech logo.jpg', db: [22, 'Amnex technologies'] },
+  { name: 'Aria Telecom', file: 'Aria Telecom Solutions Pvt. Ltd.jpg', dark: true }, // white wordmark on navy
   { name: 'Ary-Soft', file: 'ary-soft logo.jpg', db: [31, 'ary-soft'] },
   { name: 'Asmadiya Technologies', file: 'Asmadiya technologies.jpg', db: [12, 'Asmadiya'] },
   { name: 'Assessfy', file: 'Our Logo/Assessfy.png', optical: 1.15 },
@@ -57,15 +60,18 @@ const EXHIBITORS = [
   { name: 'Intangles', file: 'Intangles Logo.jpg', db: [3, 'Intangles'] },
   { name: 'Jade Global', file: 'Jade Global logo.jpg' },
   { name: 'Joget', file: 'Joget INC logo.jpg', db: [23, 'Joget INC'] },
+  { name: 'JoyVibe', file: 'joyvibe_logo.jpg', optical: 1.15 },
   { name: 'Kadeep.ai', file: 'Kadeep Ai logo.jpg', db: [26, 'kadeep.ai'] },
   { name: 'Kirusa', file: 'Kirusa Inc.jpg', db: [20, 'Kirusa Inc'] },
   { name: 'LightMetrics', file: 'LightMetrics logo.jpg' },
   // The ministry's own logo (organiser, 4 Oct), replacing an old Azadi Ka Amrit Mahotsav graphic.
   { name: 'Ministry of Tribal Affairs', file: 'Minsitry of Tribal Affairs  Logo.png', db: [24, 'Ministry of Tribal Affairs'], optical: 1.3 },
   { name: 'NoBroker', file: 'NoBroker Technologies Solutions Private Limited.jpg', db: [10, 'NoBroker Technologies Solutions Private Limited'] },
+  { name: 'OliAI', file: 'OliAI  Logo_.jpg', optical: 1.15 },
   { name: 'Omnirises Technologies', file: 'Omnirises Technologies logo.jpg' },
   { name: 'Oranje AI', file: 'ORANJE AI PRIVATE LIMITED logo.png', db: [14, 'ORANJE AI PRIVATE LIMITED'] },
   { name: 'Origin AI', file: 'Origin AI.jpg', db: [19, 'Origin AI'] },
+  { name: 'P99Soft', file: 'P99SOFT Logo.jpg', dark: true }, // white mark on dark teal
   { name: 'Paisani Technology Services', file: 'Paisani Technology Services_.jpg', db: [13, 'Paisani Technology Services'] },
   { name: 'Phoebetal Technologies', file: 'Phoebetal Technologies Pvt Ltd.jpg', db: [30, 'Phoebetal Technologies Pvt Ltd'] },
   { name: 'Pramaana Labs', file: 'pramaana labs logo.jpg' },
@@ -75,7 +81,7 @@ const EXHIBITORS = [
   { name: 'Seem Fintech & Sustainability', file: 'Seem Fintech & Sustainability Pvt Ltd.jpg', db: [7, 'Seem Fintech & Sustainability Pvt Ltd'] },
   { name: 'Teenage Works', file: 'Teenage Works Logo.jpg' },
   { name: 'ValuEnable', file: 'Valuenable pvt ltd.jpg' },
-  { name: 'Vassar Labs', file: 'Vassar labs logo.webp' },
+  { name: 'Vassar Labs', file: 'vassar_labs_logo.jpg' },
   { name: 'Wyn Labs', file: 'Wyn Labs.jpg', db: [17, 'Wyn Labs'] },
   { name: 'Xtant Tech', file: 'Xtant Tech.png', dark: true }, // white wordmark on a big black square
   { name: 'Zanopy AI', file: 'Zanopy AI.jpg', db: [21, 'Zanopy AI'] },
@@ -87,12 +93,17 @@ const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replac
 const byName = (a, b) => a.name.localeCompare(b.name, 'en', { sensitivity: 'base' })
 
 // `dark`: a light mark on a dark field. Trim the dark field instead of white,
-// or the mark stays a speck in the middle of a black tile.
+// or the mark stays a speck in the middle of a dark tile. The field's colour is
+// read from the top-left pixel (black, navy, teal...), so the pad matches it.
 async function bake(src, slug, dark) {
-  const bg = dark ? '#000000' : '#ffffff'
   // An SVG renders at 72 dpi by default; draw it big so small lettering survives the downscale.
   const input = /\.svg$/i.test(src) ? sharp(src, { density: 300 }) : sharp(src)
-  const flat = await input.flatten({ background: bg }).png().toBuffer()
+  const flat = await input.flatten({ background: dark ? '#000000' : '#ffffff' }).png().toBuffer()
+  let bg = '#ffffff'
+  if (dark) {
+    const { data } = await sharp(flat).extract({ left: 0, top: 0, width: 1, height: 1 }).removeAlpha().raw().toBuffer({ resolveWithObject: true })
+    bg = { r: data[0], g: data[1], b: data[2] }
+  }
   let trimmed = flat
   try { trimmed = await sharp(flat).trim({ background: bg, threshold: 24 }).png().toBuffer() } catch { /* nothing to trim */ }
   // Intermediates are PNG: toBuffer() keeps the input format, so a JPEG would be
@@ -298,7 +309,7 @@ ${SHUFFLE}
 const llms = `${START}
 ## Exhibitors
 
-Companies and organisations exhibiting at Bharat AI Innovation 2026 (list updated 3 October 2026; see https://bharataiinnovation.com/exhibition#exhibitors):
+Companies and organisations exhibiting at Bharat AI Innovation 2026 (list updated 24 October 2026; see https://bharataiinnovation.com/exhibition#exhibitors):
 
 ${all.map((e) => `- ${e.name}`).join('\n')}
 
