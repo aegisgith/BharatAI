@@ -17,9 +17,9 @@
 // `db` is exhibitors.id + company_name in production (read 3 Oct 2026). Entries
 // without it had no confirmed booth then: Actin, Info Science Labs, Jade Global,
 // LightMetrics, Teenage Works, ValuEnable and Xtant Tech were "held" in
-// booth_allocations; gupshup.ai, Omnirises, Pramaana Labs and Vassar Labs were not
-// in the database at all. They are listed because the organiser's logo folder
-// lists them. Aegis School of Data Science & AI and Assessfy were added on 4 Oct
+// booth_allocations; gupshup.ai, Pramaana Labs and Vassar Labs were not in the
+// database at all. They are listed because the organiser's logo folder lists
+// them. Omnirises Technologies was dropped on 24 Oct: not participating. Aegis School of Data Science & AI and Assessfy were added on 4 Oct
 // at the organiser's request, with no exhibitor or booth row yet. Aria Telecom,
 // JoyVibe, OliAI and P99Soft came from the organiser's 23 Oct folder; none had an
 // exhibitors row on 24 Oct.
@@ -68,7 +68,6 @@ const EXHIBITORS = [
   { name: 'Ministry of Tribal Affairs', file: 'Minsitry of Tribal Affairs  Logo.png', db: [24, 'Ministry of Tribal Affairs'], optical: 1.3 },
   { name: 'NoBroker', file: 'NoBroker Technologies Solutions Private Limited.jpg', db: [10, 'NoBroker Technologies Solutions Private Limited'] },
   { name: 'OliAI', file: 'OliAI  Logo_.jpg', optical: 1.15 },
-  { name: 'Omnirises Technologies', file: 'Omnirises Technologies logo.jpg' },
   { name: 'Oranje AI', file: 'ORANJE AI PRIVATE LIMITED logo.png', db: [14, 'ORANJE AI PRIVATE LIMITED'] },
   { name: 'Origin AI', file: 'Origin AI.jpg', db: [19, 'Origin AI'] },
   { name: 'P99Soft', file: 'P99SOFT Logo.jpg', dark: true }, // white mark on dark teal
