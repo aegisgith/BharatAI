@@ -18800,6 +18800,12 @@ function mainPageHTML(): string {
               <p class="text-xs text-gray-400 mb-3">Watch an enterprise AI workflow built live, tested against realistic cases, and taken through what production really needs.</p>
               <span class="text-xs font-semibold text-teal-300">See the agenda <i class="fas fa-arrow-right ml-1"></i></span>
             </a>
+            <a href="/training-workshop#cxo-roundtable" class="glass rounded-2xl p-6 border border-violet-500/20 hover:border-violet-400/40 transition-all block md:col-span-2">
+              <span class="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-violet-500/10 text-violet-300 mb-2">Roundtable &middot; For CXOs</span>
+              <h4 class="font-bold text-base text-white mb-2">CXO Roundtable on Enterprise AI Workforce &amp; Forward-Deployed Engineering</h4>
+              <p class="text-xs text-gray-400 mb-3">Building the enterprise AI workforce, and the role of Forward-Deployed Engineers in taking AI from pilot to production. Participants announced closer to the event.</p>
+              <span class="text-xs font-semibold text-violet-300">Details <i class="fas fa-arrow-right ml-1"></i></span>
+            </a>
           </div>
 
           <!-- Workshop Cards -->

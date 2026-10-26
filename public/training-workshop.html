@@ -471,6 +471,7 @@
             margin: 1.5rem 0;
         }
         .session-feature + .session-feature { margin-top: 2rem; }
+        .session-feature--solo { grid-template-columns: 1fr; }
         .session-format { font-size: 0.9rem; font-weight: 600; color: var(--dark-grey); margin-left: 0.5rem; }
         .session-agenda { list-style: none; counter-reset: agenda; padding: 0; margin: 0; display: grid; gap: 0.85rem; }
         .session-agenda li { counter-increment: agenda; position: relative; padding-left: 2.5rem; color: var(--dark-grey); line-height: 1.6; }
@@ -611,7 +612,7 @@
         <div class="container">
             <div class="section-header reveal">
                 <h2 class="section-title">Featured <span class="accent">Sessions</span></h2>
-                <p class="section-subtitle">Two named sessions: one for the leaders deciding where AI goes, one for the engineers who build it</p>
+                <p class="section-subtitle">For the leaders deciding where AI goes, and the engineers who build it</p>
             </div>
             <article class="session-feature reveal" id="cxo-guide">
                 <div class="session-lead">
@@ -666,6 +667,14 @@
                     </ol>
                     <div class="session-takeaway"><strong>Who should attend:</strong> fresh engineering graduates, software developers, AI/ML engineers, data scientists, technology leaders, and enterprise decision-makers, including CIOs, CTOs and Chief Data Officers.</div>
                     <a href="/register" class="btn btn-primary">Register Now <i class="fas fa-arrow-right"></i></a>
+                </div>
+            </article>
+            <article class="session-feature session-feature--solo reveal" id="cxo-roundtable">
+                <div class="session-body">
+                    <span class="workshop-badge" style="position:static;display:inline-block;">Roundtable</span><span class="session-format">For CXOs</span>
+                    <h3>CXO Roundtable on Enterprise AI Workforce &amp; Forward-Deployed Engineering</h3>
+                    <p>A roundtable for CXOs on building the enterprise AI workforce and on the role of Forward-Deployed Engineers in taking AI from pilot to production. Participants and format will be announced closer to the event.</p>
+                    <a href="/contact" class="btn btn-primary">Ask about a seat <i class="fas fa-arrow-right"></i></a>
                 </div>
             </article>
         </div>
