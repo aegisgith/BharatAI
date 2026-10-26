@@ -83,8 +83,8 @@ const PHONE = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isM
     await page.waitForFunction(() => /5,898\.82/.test((document.getElementById('rpp-total') || {}).textContent || ''), null, { timeout: 10000 }).catch(() => {});
     check('the total with GST is shown before checkout, not first on CCAvenue', /You pay ₹5,898\.82 in total \(₹4,999 \+ 18% GST\)/.test(await page.textContent('#rpp-total') || '') && await page.isVisible('#rpp-total'), await page.textContent('#rpp-total'));
     await page.click('input[name="rpp-pass"][value="VIP Pass"] + div');
-    await page.waitForFunction(() => /17,698\.82/.test((document.getElementById('rpp-total') || {}).textContent || ''), null, { timeout: 5000 }).catch(() => {});
-    check('and follows the pass chosen', /17,698\.82/.test(await page.textContent('#rpp-total') || ''), await page.textContent('#rpp-total'));
+    await page.waitForFunction(() => /23,598\.82/.test((document.getElementById('rpp-total') || {}).textContent || ''), null, { timeout: 5000 }).catch(() => {});
+    check('and follows the pass chosen', /23,598\.82/.test(await page.textContent('#rpp-total') || ''), await page.textContent('#rpp-total'));
     await page.click('input[name="rpp-pass"][value="Delegate Pass"] + div');
     await page.waitForFunction(() => /5,898\.82/.test((document.getElementById('rpp-total') || {}).textContent || ''), null, { timeout: 5000 }).catch(() => {});
     await fillRegisterForm(page, 'meera@example.com');
@@ -171,7 +171,7 @@ const PHONE = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isM
     gw.hold = false; gw.reply = 'Aborted'; gw.seen.length = 0;
     await page.click('#pcc-pay-btn');
     await page.waitForURL(/\/pay\/result\?o=/, { timeout: 30000, waitUntil: 'domcontentloaded' });
-    check('the gateway was asked for 17,698.82', ((gw.seen[0] || {}).sent || {}).amount === '17698.82', JSON.stringify((gw.seen[0] || {}).sent || {}).slice(0, 120));
+    check('the gateway was asked for 23,598.82', ((gw.seen[0] || {}).sent || {}).amount === '23598.82', JSON.stringify((gw.seen[0] || {}).sent || {}).slice(0, 120));
     check('cancelling says so, and that nothing was charged', /You cancelled the payment/.test(await page.textContent('body')) && /Nothing was charged/.test(await page.textContent('body')));
     check('the cancelled page fits a phone', await fits(page));
     await page.screenshot({ path: path.join(OUT, 'pay-result-cancelled.png') });
@@ -201,8 +201,8 @@ const PHONE = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isM
       r.checked = true; r.dispatchEvent(new Event('change'));
     });
     check('the app\'s paid form says where checkout happens', /CCAvenue/.test(await page.textContent('#pp-next-copy') || ''), await page.textContent('#pp-next-copy'));
-    await page.waitForFunction(() => /17,698\.82/.test((document.getElementById('pp-total') || {}).textContent || ''), null, { timeout: 10000 }).catch(() => {});
-    check('the app\'s paid form shows the VIP total with GST too', /You pay ₹17,698\.82 in total/.test(await page.textContent('#pp-total') || ''), await page.textContent('#pp-total'));
+    await page.waitForFunction(() => /23,598\.82/.test((document.getElementById('pp-total') || {}).textContent || ''), null, { timeout: 10000 }).catch(() => {});
+    check('the app\'s paid form shows the VIP total with GST too', /You pay ₹23,598\.82 in total/.test(await page.textContent('#pp-total') || ''), await page.textContent('#pp-total'));
     await page.fill('#pp-name', 'Kiran Rao');
     await page.fill('#pp-email', 'kiran@example.com');
     await page.fill('#pp-phone', '9820066666');

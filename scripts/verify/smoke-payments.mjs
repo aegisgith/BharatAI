@@ -80,7 +80,7 @@ check('a Visitor can start a Delegate payment', r.status === 201 && /^BAI1-[A-Z0
 check('the order carries our price: 4,999 + 18% GST, in paise', order(A.order_id)?.base_paise === 499900 && order(A.order_id)?.gst_paise === 89982 && order(A.order_id)?.amount_paise === 589882 && order(A.order_id)?.previous_badge === 'Visitor Pass', JSON.stringify(order(A.order_id)));
 r = await start(4, 'VIP Pass');
 const V = r.json || {};
-check('a pending VIP can pay: 14,999 + GST', r.status === 201 && order(V.order_id)?.amount_paise === 1769882, r.status + ' ' + r.text);
+check('a pending VIP can pay: 19,999 + GST', r.status === 201 && order(V.order_id)?.amount_paise === 2359882, r.status + ' ' + r.text);
 r = await start(4, 'Academic Pass');
 check('Academic is 999 + GST', r.status === 201 && order(r.json.order_id)?.amount_paise === 117882, r.status + ' ' + r.text);
 state.recent = 10;
@@ -129,7 +129,7 @@ r = await back('zz-not-hex');
 check('rubbish is answered with the plain unconfirmed page', unconfirmed(r), r.status + ' ' + r.h.location);
 r = await back(kitEncrypt(answer(order(A.order_id)), 'some-other-working-key-0000000000'));
 check('an answer encrypted with another key is not believed', unconfirmed(r), r.status + ' ' + r.h.location);
-r = await back(kitEncrypt(answer(order(A.order_id), { merchant_param1: sigOf(V.order_id, 1769882) })));
+r = await back(kitEncrypt(answer(order(A.order_id), { merchant_param1: sigOf(V.order_id, 2359882) })));
 check('an answer carrying another order\'s signature is not believed', unconfirmed(r), r.status + ' ' + r.h.location);
 r = await back(kitEncrypt(answer({ ...order(A.order_id), order_id: 'BAI1-ZZZZZZZZZZZZ' })));
 check('an answer for an order we never made is not believed', unconfirmed(r), r.status + ' ' + r.h.location);
@@ -211,7 +211,7 @@ check('payments queue refuses without admin', r.status === 401, r.status);
 r = await hit('/api/admin/payments-pending', { headers: { Authorization: 'Bearer smoke-admin' } });
 const q = r.json || {};
 const vip = (q.results || []).find(x => x.id === 4);
-check('queue: a pending VIP shows the expected amount and their last online attempt', q.ready === true && q.gateway === 'ccavenue' && vip?.expected === 17698.82 && vip?.last_order?.order_id === V3.order_id && vip?.last_order?.status === 'failed', JSON.stringify(vip));
+check('queue: a pending VIP shows the expected amount and their last online attempt', q.ready === true && q.gateway === 'ccavenue' && vip?.expected === 23598.82 && vip?.last_order?.order_id === V3.order_id && vip?.last_order?.status === 'failed', JSON.stringify(vip));
 const allOk = (g) => !!g && Object.keys(g).length === 6 && Object.values(g).every(v => v === 'ok');
 check('queue: with everything in place, every gateway check reads ok', allOk(q.gateway_checks), JSON.stringify(q.gateway_checks));
 check('queue: no secret value is ever in the answer', !r.text.includes(KEY) && !r.text.includes(SECRETS.CCAVENUE_ACCESS_CODE) && !r.text.includes(SECRETS.CCAVENUE_MERCHANT_ID), 'secret in answer');
@@ -293,11 +293,11 @@ person(23, { name: 'Vee Visitor', email: 'vee@example.com', badge_type: 'Visitor
 await lead({ page: 'app', email: 'vee@example.com', name: 'Vee Visitor', pass_type: 'Delegate Pass' });
 let list = await rows();
 const L = list.find(x => x.kind === 'lead' && x.email === 'meera.lead@example.com');
-check('the lead is listed with what they typed and the price', L && L.name === 'Meera Lead' && L.pass_type === 'VIP Pass' && L.amount === 17698.82 && L.stage === 'form_only', JSON.stringify(L));
+check('the lead is listed with what they typed and the price', L && L.name === 'Meera Lead' && L.pass_type === 'VIP Pass' && L.amount === 23598.82 && L.stage === 'form_only', JSON.stringify(L));
 check('a lead from a minute ago is not reminded yet: they may still be on the form', L && /still filling in/.test(L.why_not || ''), JSON.stringify(L));
 check('an address that is a paid registration is not a lead', !list.some(x => x.kind === 'lead' && x.email === 'a2@example.com'), JSON.stringify(list.map(x => x.email)));
 const V4 = list.find(x => x.kind === 'attendee' && x.id === 4);
-check('a pending VIP whose payment failed is listed and can be reminded', V4 && V4.stage === 'failed' && !V4.why_not && V4.amount === 17698.82, JSON.stringify(V4));
+check('a pending VIP whose payment failed is listed and can be reminded', V4 && V4.stage === 'failed' && !V4.why_not && V4.amount === 23598.82, JSON.stringify(V4));
 const O = list.find(x => x.kind === 'attendee' && x.id === 20);
 check('registered before online checkout and never tried here: flagged as maybe paid on mUni', O && O.before_online === true && O.stage === 'none', JSON.stringify(O));
 const G = list.find(x => x.kind === 'attendee' && x.id === 21);
@@ -324,7 +324,7 @@ const m1 = mail[mail.length - 1] || {};
 const resume = ((m1.html || '').match(/\/register\?resume=([^"&]+)/) || [])[1];
 check('a lead is sent one reminder with a link back into the form', r.json?.sent === true && m1.to === 'meera.lead@example.com' && /Finish registering for your VIP Pass/.test(m1.subject || '') && !!resume, r.text + ' ' + (m1.subject || ''));
 check('it is campaign mail: it carries the unsubscribe link', /unsubscribe\?e=/.test(m1.html || ''), 'no unsubscribe link');
-check('it gives the price with GST, and says nothing about mUni', /17,698\.82/.test(m1.html || '') && !/mUni/i.test(m1.html || ''), 'copy');
+check('it gives the price with GST, and says nothing about mUni', /23,598\.82/.test(m1.html || '') && !/mUni/i.test(m1.html || ''), 'copy');
 check('the reminder is recorded and audited', !!leadRow('meera.lead@example.com').reminded_at && leadRow('meera.lead@example.com').reminder_count === 1 && state.audits.some(a => a.action === 'payment.reminder'), JSON.stringify(leadRow('meera.lead@example.com')));
 r = await hit('/api/payments/checkout-lead?t=' + resume, {}, MAIL);
 check('the link fills the form in again with what they typed', r.status === 200 && r.json?.name === 'Meera Lead' && r.json?.city === 'Pune' && r.json?.pass_type === 'VIP Pass' && r.json?.email === 'meera.lead@example.com' && /no-store/.test(r.h['cache-control'] || ''), r.status + ' ' + r.text);
@@ -398,7 +398,7 @@ check('a free Visitor Pass still gets the welcome straight away', r.status === 2
 check('its Upgrade buttons sign the Visitor in and open the paid form: no "already registered" dead end', !!wv && /action=pay&(amp;)?pass=delegate&(amp;)?token=[0-9a-f]{20,}/.test(wv.html) && /action=pay&(amp;)?pass=vip&(amp;)?token=/.test(wv.html) && !/register#(delegate|vip)/.test(wv.html), ((wv && wv.html.match(/href="[^"]*pass=[^"]*"/g)) || []).join(' ').slice(0, 240));
 check('the card link and the Upgrade buttons share one sign-in token, so neither cancels the other', !!wv && new Set((wv.html.match(/token=([0-9a-f]{20,})/g) || [])).size === 1, ((wv && wv.html.match(/token=[0-9a-f]{8}/g)) || []).join(' '));
 r = await hit('/api/payments/config', {}, MAIL);
-check('the config gives each pass its price and total with GST, from the table that charges them', r.json?.passes?.['Delegate Pass']?.total === 5898.82 && r.json?.passes?.['Delegate Pass']?.base === 4999 && r.json?.passes?.['VIP Pass']?.total === 17698.82 && r.json?.passes?.['Academic Pass']?.total === 1178.82 && r.json?.gst_rate === 18, r.text);
+check('the config gives each pass its price and total with GST, from the table that charges them', r.json?.passes?.['Delegate Pass']?.total === 5898.82 && r.json?.passes?.['Delegate Pass']?.base === 4999 && r.json?.passes?.['VIP Pass']?.total === 23598.82 && r.json?.passes?.['Premium Delegate Pass']?.total === 17698.82 && r.json?.passes?.['Premium Delegate Pass']?.base === 14999 && r.json?.passes?.['Academic Pass']?.total === 1178.82 && r.json?.gst_rate === 18, r.text);
 const acad = Object.values(state.attendees).find(a => a.email === 'newacad@example.com');
 r = await start(acad.id, 'Academic Pass', MAIL);
 const AO = r.json || {};
@@ -544,6 +544,25 @@ check('the same answer again, as a notice or from the browser, settles nothing t
 r = await hit('/pay/ccavenue/notify', {}, MAIL);
 check('the notice address answers a plain GET, for their dashboard to check it', r.status === 200 && r.text === 'OK', r.status + ' ' + r.text);
 
+// ---- the Premium Delegate Pass (26 Oct 2026): priced, sent, settled and invoiced like the others ----
+person(84, { name: 'Prem Buyer', email: 'prem@example.com', main_event: 1 });
+r = await startB(84, 'Premium Delegate Pass', { legal_name: '', gstin: '', address: '' });
+const prOrd = r.json || {};
+check('a Visitor can start a Premium Delegate payment: 14,999 + 18% GST, in paise', r.status === 201 && prOrd.amount === 17698.82 && order(prOrd.order_id)?.base_paise === 1499900 && order(prOrd.order_id)?.amount_paise === 1769882, r.status + ' ' + r.text);
+{
+  const pg = await hit(prOrd.pay_url);
+  let ps = {};
+  try { ps = Object.fromEntries(new URLSearchParams(kitDecrypt((pg.text.match(/name="encRequest" value="([0-9a-f]+)"/) || [])[1] || ''))); } catch (e) { ps = { error: e.message }; }
+  check('the gateway is asked for 17,698.82, signed, for a Premium Delegate Pass', ps.amount === '17698.82' && ps.merchant_param2 === 'Premium Delegate Pass' && ps.merchant_param1 === sigOf(prOrd.order_id, 1769882), JSON.stringify(ps).slice(0, 240));
+}
+mk = mail.length;
+r = await back(kitEncrypt(answer(order(prOrd.order_id))), MAIL);
+await settle(() => state.invoices.some(i => i.order_ref === prOrd.order_id) && mail.slice(mk).length >= 3);
+const prinv = state.invoices.find(i => i.order_ref === prOrd.order_id);
+check('paying unlocks a Premium Delegate Pass: badge, paid, amount, conference yes', state.attendees[84].badge_type === 'Premium Delegate Pass' && state.attendees[84].payment_status === 'paid' && state.attendees[84].payment_amount === '17698.82' && state.attendees[84].main_event === 1, JSON.stringify(state.attendees[84]));
+check('and its GST invoice names the pass and adds up to the charge', !!prinv && prinv.total_paise === 1769882 && /^Premium Delegate Pass - /.test(prinv.item_desc || ''), JSON.stringify(prinv));
+check('and the buyer is sent the welcome with the receipt', mail.slice(mk).some(m => m.to === 'prem@example.com' && /Payment received/.test(m.subject)), JSON.stringify(mail.slice(mk).map(m => m.to + ': ' + m.subject)));
+
 delete state.settings.inv_legal_name;
 person(83, { name: 'No Settings', email: 'noset@example.com', main_event: 1 });
 r = await startB(83, 'Delegate Pass');
@@ -559,11 +578,11 @@ globalThis.fetch = realFetch;
 r = await hit('/register');
 let parsed = 0; try { parsed = scriptsParse(r.text); } catch (e) { parsed = -1; console.log('  /register script: ' + e.message); }
 check('/register renders and every inline script parses', r.status === 200 && parsed > 0, r.status + ' ' + parsed);
-for (const m of ['function startOnlinePayment', 'id="rpp-next-copy"', 'Checkout opens on <strong>CCAvenue</strong>', 'function rppSaveLead', 'function rppResumeLead', 'We keep what you type here', 'function upgradeFromSuccess', "addEventListener('hashchange', rppOpenFromHash)", 'id="rpp-total"', "onclick=\"return upgradeFromSuccess('Delegate Pass')\"", 'function rppBilling', 'id="rpp-gstin"', 'startOnlinePayment(passType, bill.billing)']) check('/register carries ' + m, r.text.includes(m), 'missing');
+for (const m of ['function startOnlinePayment', 'id="rpp-next-copy"', 'Checkout opens on <strong>CCAvenue</strong>', 'function rppSaveLead', 'function rppResumeLead', 'We keep what you type here', 'function upgradeFromSuccess', "addEventListener('hashchange', rppOpenFromHash)", 'id="rpp-total"', "onclick=\"return upgradeFromSuccess('Delegate Pass')\"", "onclick=\"return upgradeFromSuccess('Premium Delegate Pass')\"", 'value="Premium Delegate Pass"', "premium: 'Premium Delegate Pass'", 'id="compare"', 'class="pcmp"', 'id="delegation-section"', 'function rppBilling', 'id="rpp-gstin"', 'startOnlinePayment(passType, bill.billing)']) check('/register carries ' + m, r.text.includes(m), 'missing');
 const GONE = ['municampus.com', 'muniPayUrl', 'mUni Campus', 'PAY_GATEWAY', 'window.open(\'\', \'_blank\')'];
 for (const m of GONE) check('/register has no trace of ' + m, !r.text.includes(m), 'still there');
 r = await hit('/app');
-for (const m of ['function startOnlinePayment', 'function payPendingPass', 'id="pcc-pay-btn"', 'id="pp-next-copy"', 'Checkout opens on <strong>CCAvenue</strong>', 'function ppSaveLead', 'function resumePayment', "act === 'pay'", 'We keep what you type here', 'id="pp-total"', 'function ppShowTotal', 'function ppBilling', 'id="pp-gstin"', 'startOnlinePayment(passType, bill.billing)', '[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]{3}$/']) check('/app carries ' + m, r.text.includes(m), 'missing');
+for (const m of ['function startOnlinePayment', 'function payPendingPass', 'id="pcc-pay-btn"', 'id="pp-next-copy"', 'Checkout opens on <strong>CCAvenue</strong>', 'function ppSaveLead', 'function resumePayment', "act === 'pay'", 'We keep what you type here', 'id="pp-total"', 'value="Premium Delegate Pass"', "premium: 'Premium Delegate Pass'", 'class="pcmp"', "['delegate', 'premium', 'academic', 'vip'].indexOf(tierKey)", 'function ppShowTotal', 'function ppBilling', 'id="pp-gstin"', 'startOnlinePayment(passType, bill.billing)', '[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]{3}$/']) check('/app carries ' + m, r.text.includes(m), 'missing');
 for (const m of GONE.concat(['pass_upgrade'])) check('/app has no trace of ' + m, !r.text.includes(m), 'still there');
 r = await hit('/admin');
 for (const m of ['_paidOnline', 'Paid online: invoice to raise', 'openInvoiceFor(idx, fromOnline)', 'id="gateway-checks"', 'What it is waiting for', 'id="abandoned-block"', 'function loadAbandoned', 'function startPayReminders', 'function payRemindWait']) check('/admin carries ' + m, r.text.includes(m), 'missing');

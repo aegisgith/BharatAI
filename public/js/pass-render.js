@@ -20,6 +20,7 @@
     visitor:  { label: 'VISITOR PASS',  hi: '',                  c1: '#2B8CFF', c2: '#1f6fd6', edge: 'rgba(43,140,255,0.50)',  inner: 'rgba(43,140,255,0.28)', top: '#0b1c3d' },
     speaker:  { label: 'SPEAKER PASS',  hi: 'वक्ता पास',          c1: '#FF7A00', c2: '#e06400', edge: 'rgba(255,122,0,0.50)',   inner: 'rgba(255,122,0,0.28)',  top: '#2a1608' },
     delegate: { label: 'DELEGATE PASS', hi: 'प्रतिनिधि पास',      c1: '#00996C', c2: '#007352', edge: 'rgba(0,153,108,0.50)',   inner: 'rgba(0,153,108,0.28)',  top: '#052419' },
+    premium:  { label: 'PREMIUM DELEGATE', hi: 'प्रीमियम प्रतिनिधि पास', c1: '#0B7A75', c2: '#075c58', edge: 'rgba(11,122,117,0.55)', inner: 'rgba(11,122,117,0.30)', top: '#04211f' },
     academic: { label: 'ACADEMIC PASS', hi: 'शैक्षणिक पास',       c1: '#7C5CFF', c2: '#5b3fd6', edge: 'rgba(124,92,255,0.50)',  inner: 'rgba(124,92,255,0.28)', top: '#170f33' },
     vip:      { label: 'V I P',         hi: 'विशिष्ट अतिथि पास',  c1: '#E9C356', c2: '#c79a2a', edge: '#D4A21A',               inner: 'rgba(233,195,86,0.60)', top: '#3a2c0a', gold: true }
   };
@@ -31,6 +32,8 @@
     var b = String((u && u.badge_type) || '').toLowerCase();
     var r = String((u && u.role) || '').toLowerCase();
     if (b.indexOf('vip') >= 0) return 'vip';
+    // Before 'delegate': the workshop desk has to tell a Premium Delegate apart.
+    if (b.indexOf('premium delegate') >= 0) return 'premium';
     if (b.indexOf('delegate') >= 0) return 'delegate';
     if (b.indexOf('academic') >= 0) return 'academic';
     if (b.indexOf('speaker') >= 0 || r.indexOf('speaker') >= 0) return 'speaker';

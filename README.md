@@ -48,8 +48,10 @@
 | Pass | Price | Includes |
 |------|-------|----------|
 | Visitor | FREE | Exhibition access, keynotes |
-| Delegate | ₹5,000 | Full conference, all tracks, workshops, meals |
-| VIP | ₹14,999 | Everything + gala dinner, VIP lounge, priority seating |
+| Academic | ₹999 + GST | Conference, student zone (student/faculty ID; no lunch or workshop) |
+| Delegate | ₹4,999 + GST | Full conference, all tracks, lunch (no workshop) |
+| Premium Delegate | ₹14,999 + GST | Delegate + one workshop (first come, first served) |
+| VIP | ₹19,999 + GST | Premium Delegate + VIP lounge, priority seating, speaker meet & greet |
 
 ## Data Architecture
 - **Database**: Cloudflare D1 (SQLite) - `bharatai-production`

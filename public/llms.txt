@@ -40,9 +40,11 @@ Bharat AI Innovation is India's B2B platform for AI, not a footfall exhibition. 
 ## Pass types and pricing (INR)
 
 - **Visitor Pass** — FREE (exhibition access)
-- **Academic Pass** — ₹999 + GST (students/faculty with valid ID)
-- **Delegate Pass** — ₹4,999 + GST (full conference + exhibition)
-- **VIP Pass** — ₹14,999 + GST (premium seating, networking dinner, lounge access)
+- **Academic Pass** — ₹999 + GST (conference + student zone; students/faculty with valid ID; no lunch or workshop)
+- **Delegate Pass** — ₹4,999 + GST (full conference + exhibition + lunch; no workshop)
+- **Premium Delegate Pass** — ₹14,999 + GST (everything in Delegate + one hands-on workshop)
+- **VIP Pass** — ₹19,999 + GST (everything in Premium Delegate + VIP lounge, priority seating, speaker meet & greet)
+- Workshop seats are limited and go first come, first served. Comparison: https://bharataiinnovation.com/register#compare
 - **Media Pass** — By Invite
 - **Team packages:** Team 5–9, Enterprise 10–19, Corporate 20+
 
@@ -210,7 +212,7 @@ Digital media partner: The Mainstream.
 ## Common questions
 
 - **When and where is Bharat AI Innovation 2026?** 20–21 November 2026, 09:00–18:00 IST each day, at World Trade Center Mumbai, Cuffe Parade, Mumbai.
-- **Is it free to attend?** The Visitor Pass is free and covers the exhibition. The full conference and networking features (AI matchmaking, connection requests, 1:1 meeting booking) need an Academic (₹999 + GST), Delegate (₹4,999 + GST) or VIP (₹14,999 + GST) pass. Register at https://bharataiinnovation.com/register.
+- **Is it free to attend?** The Visitor Pass is free and covers the exhibition. The full conference and networking features (AI matchmaking, connection requests, 1:1 meeting booking) need an Academic (₹999 + GST), Delegate (₹4,999 + GST), Premium Delegate (₹14,999 + GST) or VIP (₹19,999 + GST) pass. Register at https://bharataiinnovation.com/register.
 - **Who is it for?** Enterprise and government buyers of AI (CIOs, CDOs, CTOs, procurement heads), AI builders (startups, product companies, solution providers), policymakers, and investors.
 - **How do I exhibit?** Book one of 93 booths across 8 industry zones, from the Startup Pod at ₹48,000 + GST to the Mega Pavilion at ₹17,40,000 + GST. See https://bharataiinnovation.com/exhibition.
 - **How do I sponsor?** Every sponsorship and branding option is priced separately at https://bharataiinnovation.com/partner, or write to partner@bharataiinnovation.com.

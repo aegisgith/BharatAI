@@ -15,7 +15,7 @@ import { SECRETS, makePayDb, sessionCookie } from './pay-db.mjs';
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const worker = (await import(pathToFileURL(join(ROOT, 'dist', '_worker.js')).href + '?' + Date.now())).default;
 const PORT = 8776, BASE = 'http://localhost:' + PORT, SESSION = 'h-secret';
-const PAID = ['Delegate Pass', 'VIP Pass', 'Academic Pass'];
+const PAID = ['Delegate Pass', 'Premium Delegate Pass', 'VIP Pass', 'Academic Pass'];
 
 let db;
 const fresh = () => {

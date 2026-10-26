@@ -787,7 +787,7 @@ function senderEmailOrDefault(v?: string | null): string {
 // before sending the buyer to checkout.
 // Activates only once migration 0015 has added the column, so this deploy is safe
 // on its own.
-const PAID_TIERS = ['Delegate Pass', 'VIP Pass', 'Academic Pass']
+const PAID_TIERS = ['Delegate Pass', 'Premium Delegate Pass', 'VIP Pass', 'Academic Pass']
 
 // One list of pass names for every admin picker: the inline grid cell, Set pass on a
 // selection, Add Attendee and Edit Attendee. Four hand-typed copies had drifted -
@@ -795,7 +795,7 @@ const PAID_TIERS = ['Delegate Pass', 'VIP Pass', 'Academic Pass']
 // names an admin could set depended on which dialog they happened to open. The paid
 // tiers are spelled exactly as PAID_TIERS, which is what the payment queue matches on.
 const BADGE_TYPES = [
-  'Delegate Pass', 'VIP Pass', 'Academic Pass', 'Visitor Pass', 'Media Pass',
+  'Delegate Pass', 'Premium Delegate Pass', 'VIP Pass', 'Academic Pass', 'Visitor Pass', 'Media Pass',
   'Organiser', 'VIP Guest', 'Exhibitor', 'Delegate', 'Exhibition Speaker', 'Jury',
   'Media', 'Support Staff', 'Investor', 'Felicitation Delegate', 'Speaker', 'Startup Pitcher',
 ]
@@ -968,14 +968,14 @@ async function sendRegistrationEmail(c: any, attendee: any, opts: { receipt?: st
   // The free Visitor Pass is the floor, not the conference. Say what the paid tiers
   // add rather than what the free one lacks — and only to the people it applies to.
   const tier = (color: string, label: string, price: string, lines: string[], href: string) =>
-    `<td width="50%" valign="top" style="padding:0 6px;">
+    `<tr><td valign="top" style="padding:0 0 10px;">
        <div style="border:1px solid ${color}33;background:${color}0d;border-radius:10px;padding:14px;">
          <p style="margin:0 0 2px;font-size:14px;font-weight:bold;color:${color};">${label}</p>
          <p style="margin:0 0 10px;font-size:12px;color:#777;">${price}</p>
          ${lines.map(l => `<p style="margin:0 0 5px;font-size:12px;line-height:1.5;color:#555;">&#10003; ${l}</p>`).join('')}
          <a href="${href}" style="display:block;margin-top:10px;padding:9px 0;text-align:center;background:${color};color:#fff;text-decoration:none;border-radius:8px;font-size:12px;font-weight:bold;">Upgrade to ${label.split(' ')[0]}</a>
        </div>
-     </td>`
+     </td></tr>`
 
   // The networking app is the main thing a Delegate buys, and the confirmation used
   // to mention it to nobody. It is now described to both sides of the line: to those
@@ -1019,14 +1019,15 @@ async function sendRegistrationEmail(c: any, attendee: any, opts: { receipt?: st
   const upsell = isVisitor ? `
         <div style="margin-top:26px;padding-top:22px;border-top:1px solid #eee;">
           <p style="margin:0 0 4px;font-size:15px;font-weight:bold;color:#1E2140;text-align:center;">Coming for the conference too?</p>
-          <p style="margin:0 0 14px;font-size:13px;line-height:1.6;color:#666;text-align:center;">Your Visitor Pass covers the exhibition floor and select keynotes. A Delegate or VIP pass adds every conference session, the workshops, lunch &mdash; and the networking app, which is where most of the value of two days actually is.</p>
+          <p style="margin:0 0 14px;font-size:13px;line-height:1.6;color:#666;text-align:center;">Your Visitor Pass covers the exhibition floor and select keynotes. A Delegate pass adds every conference session and lunch &mdash; and the networking app, which is where most of the value of two days actually is. Premium Delegate and VIP add a hands-on workshop.</p>
           ${roomLine}
           <p style="margin:0 0 12px;font-size:13px;line-height:1.6;color:#666;text-align:center;">Here is what the app does, and why starting before you arrive matters &mdash; the people worth meeting fill their diaries early.</p>
           <table style="width:100%;border-collapse:collapse;">${netRows}</table>
-          <table style="width:100%;border-collapse:separate;border-spacing:0;margin-top:18px;"><tr>
-            ${tier('#0f7b47', 'Delegate Pass', '&#8377;4,999 + GST', ['All conference sessions, both days', 'Workshops and lunch', 'Full access to Bharat AI Connect, as above'], upgradeHref('delegate'))}
-            ${tier('#A67C00', 'VIP Pass', '&#8377;14,999 + GST', ['Everything in Delegate', 'VIP lounge and priority seating', 'Speaker meet &amp; greet, VIP dinner'], upgradeHref('vip'))}
-          </tr></table>
+          <table style="width:100%;border-collapse:collapse;margin-top:18px;">
+            ${tier('#0f7b47', 'Delegate Pass', '&#8377;4,999 + GST', ['All conference sessions, both days', 'Lunch pass', 'Full access to Bharat AI Connect, as above'], upgradeHref('delegate'))}
+            ${tier('#0B7A75', 'Premium Delegate Pass', '&#8377;14,999 + GST', ['Everything in Delegate', 'One hands-on workshop: seats are limited and go first come, first served'], upgradeHref('premium'))}
+            ${tier('#A67C00', 'VIP Pass', '&#8377;19,999 + GST', ['Everything in Premium Delegate, workshop included', 'VIP lounge and priority seating', 'Speaker meet &amp; greet'], upgradeHref('vip'))}
+          </table>
           ${boardrooms}
           <p style="margin:12px 0 0;font-size:11.5px;color:#999;text-align:center;">The button signs you in with this email and opens the secure payment page. Your registration and reference number stay the same.</p>
         </div>` : ''
@@ -2188,7 +2189,10 @@ async function autoInvoiceForOrder(c: any, order: any, a: any, trackingId: strin
 // What each paid pass costs, in whole rupees before GST. The payments queue's
 // "expected" figure and the gateway's charge both read this, so what a person is
 // charged and what finance is told to look for cannot drift apart.
-const PASS_PRICES_INR: Record<string, number> = { 'Delegate Pass': 4999, 'VIP Pass': 14999, 'Academic Pass': 999 }
+// 26 Oct 2026 (organiser): Premium Delegate added at 14,999 (Delegate plus one
+// workshop), VIP raised from 14,999 to 19,999 and given a workshop. An order keeps
+// the amount it was created with, so a VIP who paid 14,999 stays paid in full.
+const PASS_PRICES_INR: Record<string, number> = { 'Delegate Pass': 4999, 'Premium Delegate Pass': 14999, 'VIP Pass': 19999, 'Academic Pass': 999 }
 const PASS_GST_RATE = 18
 
 function passAmounts(passType: string): { base: number; gst: number; total: number } | null {
@@ -2317,7 +2321,7 @@ app.post('/api/payments/ccavenue/start', async (c) => {
   const body = await c.req.json().catch(() => ({})) as any
   const passType = String(body.pass_type || '')
   const amounts = PAID_TIERS.includes(passType) ? passAmounts(passType) : null
-  if (!amounts) return c.json({ error: 'Choose a Delegate, VIP or Academic pass.' }, 400)
+  if (!amounts) return c.json({ error: 'Choose a Delegate, Premium Delegate, VIP or Academic pass.' }, 400)
   // The GST invoice section of the form. Sent (even empty, which means an invoice
   // in their own name) it replaces what was kept; absent, as from Try again or Pay
   // now, the details given last time stand. Checked before anyone leaves for
@@ -2981,8 +2985,9 @@ async function payReminderMail(c: any, r: any, preview: boolean): Promise<{ subj
   const pass = payEsc(r.pass_type || 'pass')
   const amount = rupees(Math.round(Number(r.amount || 0) * 100))
   const WHAT: Record<string, string> = {
-    'Delegate Pass': 'every conference session across both days, the workshops, lunch, and the networking app to meet people before you arrive',
-    'VIP Pass': 'everything in the Delegate Pass, plus the VIP lounge, priority seating and the speaker meet and greet',
+    'Delegate Pass': 'every conference session across both days, lunch, and the networking app to meet people before you arrive',
+    'Premium Delegate Pass': 'everything in the Delegate Pass, plus one hands-on workshop (seats are limited and go first come, first served)',
+    'VIP Pass': 'everything in the Premium Delegate Pass, workshop included, plus the VIP lounge, priority seating and the speaker meet and greet',
   }
   const opening = lead
     ? `You started registering for a <strong>${pass}</strong> for Bharat AI Innovation 2026 and stopped before the payment. What you typed is saved: the button opens the form filled in, and paying takes about a minute.`
@@ -4347,6 +4352,7 @@ function verifyPageHTML(o: any): string {
   const esc = (v: any) => String(v ?? '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch] as string))
   const TIER: any = {
     'VIP Pass': ['#E9C356', '#5a3f08'], 'Delegate Pass': ['#00996C', '#ffffff'],
+    'Premium Delegate Pass': ['#0B7A75', '#ffffff'],
     'Academic Pass': ['#7C5CFF', '#ffffff'], 'Visitor Pass': ['#2B8CFF', '#ffffff']
   }
   const tier = TIER[a.badge_type] || ['#2B8CFF', '#ffffff']
@@ -5748,7 +5754,7 @@ app.post('/api/events/:id/attendees/register', async (c) => {
   // No Media Pass: it is "By Invite" on every page and costs nothing, so a form
   // anyone can post must not mint one (it opened the full directory and
   // networking for free). The organisers issue it from the admin panel.
-  const ALLOWED_PASSES = ['Visitor Pass', 'Delegate Pass', 'VIP Pass', 'Academic Pass']
+  const ALLOWED_PASSES = ['Visitor Pass', 'Delegate Pass', 'Premium Delegate Pass', 'VIP Pass', 'Academic Pass']
   const passType = ALLOWED_PASSES.includes(badge_type) ? badge_type : 'Visitor Pass'
 
   const sourceValue = sanitizeRegistrationSource(registration_source)
@@ -5897,6 +5903,8 @@ const humanList = (xs: string[]): string =>
 // Maps pass types from main site to badge_type in DB
 const PASS_TYPE_MAP: Record<string, string> = {
   'delegate': 'Delegate Pass',
+  'premium': 'Premium Delegate Pass',
+  'premium_delegate': 'Premium Delegate Pass',
   'vip': 'VIP Pass',
   'startup': 'Visitor Pass',
   'academic': 'Academic Pass',
@@ -6500,7 +6508,7 @@ app.post('/api/connections', async (c) => {
       payment_pending: senderUnpaid || undefined,
       message: senderUnpaid
         ? unpaidSentence(sender.badge_type, 'starting a conversation') + ' You can still receive and accept requests.'
-        : 'Starting a conversation is part of the Delegate, Academic and VIP passes. Your Visitor Pass can still receive and accept requests.',
+        : 'Starting a conversation is part of every paid pass. Your Visitor Pass can still receive and accept requests.',
     }, 402)
   }
 
@@ -13878,13 +13886,14 @@ async function upgradeOfferMail(c: any, a: any, offer: { pass: string; key: stri
   const academic = offer.key === 'academic'
   // What the site itself promises for each pass, and nothing more (conference
   // and terms pages): the Academic Pass is the concessionary rate, with networking
-  // and select workshops, and needs a student or faculty ID at the badge desk.
+  // and the student zone, and needs a student or faculty ID at the badge desk.
+  // Workshops come only with Premium Delegate and VIP (organiser, 26 Oct 2026).
   const lines = academic ? [
     'The student rate for the conference: 20&ndash;21 November 2026, World Trade Center, Mumbai',
     'Networking in the app: the full attendee directory, connection requests, and meetings you book before you arrive',
-    'Select workshops, on top of the exhibition floor and keynotes your Visitor Pass already covers',
+    'The student networking zone, on top of the exhibition floor and keynotes your Visitor Pass already covers',
   ] : [
-    'Every conference session, both days, and the workshops',
+    'Every conference session, both days',
     'Lunch at the venue',
     'The full attendee directory in the app: search everyone, start conversations and book meetings before you arrive',
   ]
@@ -15847,6 +15856,89 @@ ${sharedFooterHTML()}
 </html>`
 }
 
+// One pass comparison, shown on /register and in the app's signed-out pass section,
+// so a buyer can compare before paying and the two copies cannot drift (the app's
+// old table promised a VIP dinner, a hackathon and an image suite). Prices are
+// hand-written copies of PASS_PRICES_INR, like every other printed price.
+function passComparisonHTML(): string {
+  const passes = [
+    { name: 'Visitor', price: 'Free', color: '#2B8CFF' },
+    { name: 'Academic', price: '&#8377;999', color: '#7C5CFF' },
+    { name: 'Delegate', price: '&#8377;4,999', color: '#00996C' },
+    { name: 'Premium Delegate', price: '&#8377;14,999', color: '#0B7A75' },
+    { name: 'VIP', price: '&#8377;19,999', color: '#A67C00' },
+  ]
+  // One flag per pass, in the order above.
+  const groups: { title: string; rows: [string, number[]][] }[] = [
+    { title: 'The event', rows: [
+      ['Exhibition floor and product demos', [1, 1, 1, 1, 1]],
+      ['Conference sessions, both days', [0, 1, 1, 1, 1]],
+      ['AI Marketplace listing', [1, 1, 1, 1, 1]],
+      ['Certificate of participation', [0, 1, 1, 1, 1]],
+    ] },
+    { title: 'Networking', rows: [
+      ['Full directory, start conversations, book meetings', [0, 1, 1, 1, 1]],
+      ['Student networking zone', [0, 1, 0, 0, 0]],
+    ] },
+    { title: 'Lunch and workshops', rows: [
+      ['Conference kit', [0, 0, 1, 1, 1]],
+      ['Lunch pass', [0, 0, 1, 1, 1]],
+      ['One hands-on workshop <small>seats first come, first served</small>', [0, 0, 0, 1, 1]],
+    ] },
+    { title: 'VIP', rows: [
+      ['VIP lounge and priority seating', [0, 0, 0, 0, 1]],
+      ['Speaker meet &amp; greet', [0, 0, 0, 0, 1]],
+    ] },
+  ]
+  const yes = '<span class="pcmp-yes" role="img" aria-label="Included">&#10003;</span>'
+  const no = '<span class="pcmp-no" role="img" aria-label="Not included">&mdash;</span>'
+  const head = passes.map(p => `<th scope="col" style="color:${p.color};">${p.name}<span>${p.price}</span></th>`).join('')
+  // On a phone the feature name takes its own line above the five marks, so every
+  // pass stays in view without scrolling sideways; on a wider screen it is the
+  // first column. Only the copy on display reaches a screen reader. The pass names
+  // stick under the site nav (57px on /register, 56px in the app) while scrolling.
+  const body = groups.map(g =>
+    `<tr class="pcmp-group"><th colspan="${passes.length + 1}">${g.title}</th></tr>` +
+    `<tr class="pcmp-group pcmp-narrow"><th colspan="${passes.length}">${g.title}</th></tr>` +
+    g.rows.map(([label, has]) =>
+      `<tr class="pcmp-label"><th colspan="${passes.length}">${label}</th></tr>` +
+      `<tr class="pcmp-row"><th scope="row">${label}</th>` +
+      has.map(h => `<td>${h ? yes : no}</td>`).join('') + '</tr>').join('')).join('')
+  return `<style>
+      .pcmp{border:1px solid #E4E7F4;border-radius:14px;background:#fff}
+      .pcmp table{width:100%;border-collapse:collapse;table-layout:fixed}
+      .pcmp thead th{position:sticky;top:57px;z-index:2;background:#fff;box-shadow:0 1px 0 #E4E7F4;padding:12px 6px;text-align:center;vertical-align:bottom;font-size:13px;font-weight:700;line-height:1.25}
+      .pcmp thead th span{display:block;color:#1E2140;font-weight:600;font-size:12px;margin-top:3px}
+      .pcmp thead th.pcmp-what{width:34%;text-align:left;padding-left:14px;font-size:12px;color:#5E6585;font-weight:600}
+      .pcmp-group th{text-align:left;padding:12px 14px 6px;font-size:11px;letter-spacing:0.06em;text-transform:uppercase;color:#5E6585;background:#F7F8FC}
+      .pcmp-row{border-top:1px solid #EEF0F7}
+      .pcmp-row th{text-align:left;padding:10px 14px;font-weight:500;font-size:13px;color:#1E2140}
+      .pcmp-row td{text-align:center;padding:10px 4px}
+      .pcmp-label,.pcmp-group.pcmp-narrow{display:none}
+      .pcmp-yes{color:#0f7b47;font-weight:700;font-size:15px}
+      .pcmp-no{color:#B7BCD3}
+      .pcmp small{display:block;font-size:11px;color:#5E6585;font-weight:400}
+      @media (max-width:640px){
+        .pcmp thead th{font-size:11px;padding:10px 2px}
+        .pcmp thead th span{font-size:11px}
+        .pcmp thead th.pcmp-what,.pcmp-row th,.pcmp-group{display:none}
+        .pcmp-group.pcmp-narrow{display:table-row}
+        .pcmp-label{display:table-row;border-top:1px solid #EEF0F7}
+        .pcmp-label th{text-align:left;padding:10px 12px 0;font-weight:500;font-size:13px;color:#1E2140}
+        .pcmp-label small{display:inline;margin-left:4px}
+        .pcmp-row{border-top:0}
+        .pcmp-row td{padding:4px 2px 10px}
+      }
+    </style>
+    <div class="pcmp">
+      <table>
+        <thead><tr><th scope="col" class="pcmp-what">What you get</th>${head}</tr></thead>
+        <tbody>${body}</tbody>
+      </table>
+    </div>
+    <p style="margin:10px 2px 0;font-size:12px;line-height:1.6;color:#5E6585;">Paid passes are + 18% GST. Workshop seats are limited and go first come, first served: after you pay, we email you the workshops to choose from, one per pass. The Academic Pass needs a valid student or faculty ID at the badge desk. Media passes are by invitation.</p>`
+}
+
 function registerPageHTML(): string {
   return `${sharedHeadHTML('Register Free', '/register', "Register free for Bharat AI Innovation 2026, India's B2B AI conference and exhibition. Get your Visitor Pass in 30 seconds, or choose Delegate or VIP for networking and 1:1 meetings. 20–21 Nov 2026, WTC Mumbai.")}
 <body class="min-h-screen">
@@ -15969,7 +16061,7 @@ ${sharedNavHTML('register')}
           <div class="mt-6 pt-5 border-t border-white/10 text-left">
             <p class="text-sm font-semibold text-white text-center mb-1">Coming for the conference too?</p>
             <p class="text-xs text-gray-400 text-center mb-4">Your Visitor Pass covers the exhibition floor and select keynotes. These add the rest.</p>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div class="rounded-xl p-4 border border-primary-500/25 bg-primary-500/5">
                 <div class="flex items-baseline justify-between">
                   <span class="font-bold text-primary-300 text-sm">Delegate Pass</span>
@@ -15977,23 +16069,35 @@ ${sharedNavHTML('register')}
                 </div>
                 <ul class="text-[11px] text-gray-400 mt-2 space-y-1">
                   <li><i class="fas fa-check text-green-400 mr-1.5"></i>All conference sessions, both days</li>
-                  <li><i class="fas fa-check text-green-400 mr-1.5"></i>Workshops and lunch</li>
+                  <li><i class="fas fa-check text-green-400 mr-1.5"></i>Lunch pass</li>
                   <li><i class="fas fa-check text-green-400 mr-1.5"></i>Full networking hub and meetings</li>
                 </ul>
                 <!-- -300, not -200: the light theme remaps the -300 shades to dark ink
                      and leaves -200 pale, so -200 was near-invisible on this page. -->
                 <a href="/register#delegate" onclick="return upgradeFromSuccess('Delegate Pass')" class="mt-3 block text-center px-4 py-2 rounded-lg text-xs font-semibold bg-primary-500/20 text-primary-300 hover:bg-primary-500/30 transition">Upgrade to Delegate</a>
               </div>
+              <div class="rounded-xl p-4 border" style="border-color:rgba(11,122,117,0.35);background:rgba(11,122,117,0.04);">
+                <div class="flex items-baseline justify-between gap-2">
+                  <span class="font-bold text-sm" style="color:#0B7A75;">Premium Delegate</span>
+                  <span class="text-xs text-gray-400">&#8377;14,999 + GST</span>
+                </div>
+                <ul class="text-[11px] text-gray-400 mt-2 space-y-1">
+                  <li><i class="fas fa-check text-green-400 mr-1.5"></i>Everything in Delegate</li>
+                  <li><i class="fas fa-check text-green-400 mr-1.5"></i>One hands-on workshop</li>
+                  <li><i class="fas fa-check text-green-400 mr-1.5"></i>Seats go first come, first served</li>
+                </ul>
+                <a href="/register#premium" onclick="return upgradeFromSuccess('Premium Delegate Pass')" class="mt-3 block text-center px-4 py-2 rounded-lg text-xs font-semibold transition" style="background:rgba(11,122,117,0.12);color:#0B7A75;">Upgrade to Premium</a>
+              </div>
               <div class="rounded-xl p-4 border border-amber-500/30 bg-amber-500/5 relative">
                 <div class="absolute -top-2.5 right-4 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500 text-black">ALL ACCESS</div>
                 <div class="flex items-baseline justify-between">
                   <span class="font-bold text-amber-300 text-sm">VIP Pass</span>
-                  <span class="text-xs text-gray-400">&#8377;14,999 + GST</span>
+                  <span class="text-xs text-gray-400">&#8377;19,999 + GST</span>
                 </div>
                 <ul class="text-[11px] text-gray-400 mt-2 space-y-1">
-                  <li><i class="fas fa-check text-amber-400 mr-1.5"></i>Everything in Delegate</li>
+                  <li><i class="fas fa-check text-amber-400 mr-1.5"></i>Everything in Premium Delegate</li>
                   <li><i class="fas fa-check text-amber-400 mr-1.5"></i>VIP lounge and priority seating</li>
-                  <li><i class="fas fa-check text-amber-400 mr-1.5"></i>Speaker meet &amp; greet, VIP dinner</li>
+                  <li><i class="fas fa-check text-amber-400 mr-1.5"></i>Speaker meet &amp; greet</li>
                 </ul>
                 <a href="/register#vip" onclick="return upgradeFromSuccess('VIP Pass')" class="mt-3 block text-center px-4 py-2 rounded-lg text-xs font-semibold bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition">Upgrade to VIP</a>
               </div>
@@ -16024,26 +16128,33 @@ ${sharedNavHTML('register')}
       <!-- Upgrade Options -->
       <div class="glass rounded-2xl p-6 border border-amber-500/20">
         <h3 class="font-bold text-base text-amber-300 mb-3"><i class="fas fa-arrow-up mr-2"></i>Want Full Conference Access?</h3>
-        <p class="text-xs text-gray-400 mb-4">Upgrade to a paid pass for complete conference sessions, workshops, meals, and exclusive perks.</p>
+        <p class="text-xs text-gray-400 mb-4">Every paid pass adds the full conference and the networking app. A workshop comes only with Premium Delegate and VIP: one each, seats first come, first served.</p>
         <div class="space-y-3">
           <div class="flex items-center justify-between p-3 rounded-xl bg-white/5">
             <div>
               <span class="text-sm font-semibold">🎟️ Delegate Pass</span>
-              <p class="text-[10px] text-gray-400">Full 2-day conference + exhibition + networking</p>
+              <p class="text-[10px] text-gray-400">Full 2-day conference + lunch + networking</p>
             </div>
             <span class="text-sm font-bold text-primary-300">₹4,999 + GST</span>
           </div>
           <div class="flex items-center justify-between p-3 rounded-xl bg-white/5">
             <div>
-              <span class="text-sm font-semibold">⭐ VIP Pass</span>
-              <p class="text-[10px] text-gray-400">Everything + VIP lounge + speaker dinner</p>
+              <span class="text-sm font-semibold">🛠️ Premium Delegate</span>
+              <p class="text-[10px] text-gray-400">Delegate + one workshop (first come, first served)</p>
             </div>
-            <span class="text-sm font-bold text-amber-300">₹14,999 + GST</span>
+            <span class="text-sm font-bold" style="color:#0B7A75;">₹14,999 + GST</span>
+          </div>
+          <div class="flex items-center justify-between p-3 rounded-xl bg-white/5">
+            <div>
+              <span class="text-sm font-semibold">⭐ VIP Pass</span>
+              <p class="text-[10px] text-gray-400">Premium + VIP lounge + speaker meet &amp; greet</p>
+            </div>
+            <span class="text-sm font-bold text-amber-300">₹19,999 + GST</span>
           </div>
           <div class="flex items-center justify-between p-3 rounded-xl bg-white/5">
             <div>
               <span class="text-sm font-semibold">🎓 Academic Pass</span>
-              <p class="text-[10px] text-gray-400">Conference + hackathon + student zone</p>
+              <p class="text-[10px] text-gray-400">Conference + student zone, with a student or faculty ID</p>
             </div>
             <span class="text-sm font-bold text-violet-300">₹999 + GST</span>
           </div>
@@ -16051,10 +16162,11 @@ ${sharedNavHTML('register')}
         <button onclick="openRegisterPaidPassModal()" class="mt-4 block w-full text-center py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 transition-all text-sm cursor-pointer">
           <i class="fas fa-external-link-alt mr-2"></i>Get Paid Pass
         </button>
+        <a href="#compare" class="mt-3 block text-center text-xs font-semibold text-primary-400 hover:underline">Compare every pass, side by side</a>
       </div>
 
       <!-- Group Discount -->
-      <div class="glass rounded-2xl p-6 border border-orange-500/20">
+      <div class="glass rounded-2xl p-6 border border-orange-500/20" id="delegation-section" style="scroll-margin-top:90px;">
         <h3 class="font-bold text-base text-orange-300 mb-2"><i class="fas fa-users mr-2"></i>Group Registration</h3>
         <p class="text-xs text-gray-400 mb-3">Bringing a team of 5+? Save up to 30% with delegation packages.</p>
         <div class="flex gap-2">
@@ -16064,6 +16176,18 @@ ${sharedNavHTML('register')}
       </div>
     </div>
   </div>
+
+  <!-- Compare passes: what each pass includes, before anyone pays -->
+  <section id="compare" class="mt-10" style="scroll-margin-top:72px;max-width:1024px;margin-left:auto;margin-right:auto;">
+    <div class="text-center mb-5">
+      <h2 class="text-2xl font-bold mb-2">Compare passes</h2>
+      <p class="text-gray-400 text-sm">Every paid pass adds the full conference and the networking app. Workshops come only with Premium Delegate and VIP.</p>
+    </div>
+    ${passComparisonHTML()}
+    <div style="text-align:center;margin-top:18px;">
+      <button type="button" onclick="openRegisterPaidPassModal()" style="padding:12px 28px;border:none;border-radius:12px;font-weight:700;font-size:14px;color:#fff;cursor:pointer;background:linear-gradient(135deg,#FF6B00,#FF8C38);box-shadow:0 4px 20px rgba(245,98,10,0.28);">Get a paid pass</button>
+    </div>
+  </section>
 </main>
 
 ${sharedFooterHTML()}
@@ -16193,12 +16317,12 @@ function openRegisterPaidPassModal(preselect) {
     if (radio) { radio.checked = true; radio.dispatchEvent(new Event('change')); }
   }
 }
-// Deep-link support: /register#delegate | #vip | #academic opens the paid modal
+// Deep-link support: /register#delegate | #premium | #vip | #academic opens the paid modal
 // with that tier already chosen (used by the site's Networking CTA).
 // On hashchange too: a link to /register#delegate from this same page changes only
 // the hash, and until 4 Oct 2026 the success screen's Upgrade buttons did nothing.
 function rppOpenFromHash() {
-  const PASS_BY_HASH = { delegate: 'Delegate Pass', vip: 'VIP Pass', academic: 'Academic Pass' };
+  const PASS_BY_HASH = { delegate: 'Delegate Pass', premium: 'Premium Delegate Pass', vip: 'VIP Pass', academic: 'Academic Pass' };
   const want = PASS_BY_HASH[(window.location.hash || '').replace('#', '').toLowerCase()];
   if (want) openRegisterPaidPassModal(want);
 }
@@ -16420,14 +16544,23 @@ function rppResumeLead() {
     </div>
     <div style="padding:24px;max-height:calc(90vh - 80px);overflow-y:auto;">
       <!-- Pass Type Selector -->
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px;">
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:12px;">
         <label style="cursor:pointer;">
           <input type="radio" name="rpp-pass" value="Delegate Pass" style="display:none;" onchange="document.getElementById('rpp-pass-type').value=this.value;document.querySelectorAll('[data-rpp-card]').forEach(el=>{el.style.boxShadow='none';el.style.borderColor='rgba(255,107,0,0.2)'});this.nextElementSibling.style.boxShadow='0 0 0 2px #FF6B00';this.nextElementSibling.style.borderColor='#FF6B00';rppApplyPassFields(this.value)">
           <div data-rpp-card style="padding:12px;border-radius:12px;text-align:center;background:rgba(139,92,246,0.08);border:1px solid rgba(255,107,0,0.2);transition:all 0.2s;">
             <i class="fas fa-id-badge" style="color:#7C3AED;font-size:20px;display:block;margin-bottom:4px;"></i>
             <div style="color:#1E2140;font-weight:600;font-size:12px;">Delegate</div>
             <div style="color:#7C3AED;font-weight:700;font-size:14px;">&#8377;4,999 + GST</div>
-            <div style="color:#5E6585;font-size:10px;">Full 2-day access</div>
+            <div style="color:#5E6585;font-size:10px;">2 days + lunch</div>
+          </div>
+        </label>
+        <label style="cursor:pointer;">
+          <input type="radio" name="rpp-pass" value="Premium Delegate Pass" style="display:none;" onchange="document.getElementById('rpp-pass-type').value=this.value;document.querySelectorAll('[data-rpp-card]').forEach(el=>{el.style.boxShadow='none';el.style.borderColor='rgba(11,122,117,0.2)'});this.nextElementSibling.style.boxShadow='0 0 0 2px #FF6B00';this.nextElementSibling.style.borderColor='#FF6B00';rppApplyPassFields(this.value)">
+          <div data-rpp-card style="padding:12px;border-radius:12px;text-align:center;background:rgba(11,122,117,0.06);border:1px solid rgba(11,122,117,0.2);transition:all 0.2s;">
+            <i class="fas fa-star" style="color:#0B7A75;font-size:20px;display:block;margin-bottom:4px;"></i>
+            <div style="color:#1E2140;font-weight:600;font-size:12px;">Premium Delegate</div>
+            <div style="color:#0B7A75;font-weight:700;font-size:14px;">&#8377;14,999 + GST</div>
+            <div style="color:#5E6585;font-size:10px;">Delegate + 1 workshop</div>
           </div>
         </label>
         <label style="cursor:pointer;">
@@ -16435,8 +16568,8 @@ function rppResumeLead() {
           <div data-rpp-card style="padding:12px;border-radius:12px;text-align:center;background:rgba(251,191,36,0.06);border:1px solid rgba(251,191,36,0.2);transition:all 0.2s;">
             <i class="fas fa-crown" style="color:#B45309;font-size:20px;display:block;margin-bottom:4px;"></i>
             <div style="color:#1E2140;font-weight:600;font-size:12px;">VIP</div>
-            <div style="color:#B45309;font-weight:700;font-size:14px;">&#8377;14,999 + GST</div>
-            <div style="color:#5E6585;font-size:10px;">Lounge + dinner</div>
+            <div style="color:#B45309;font-weight:700;font-size:14px;">&#8377;19,999 + GST</div>
+            <div style="color:#5E6585;font-size:10px;">Workshop + VIP lounge</div>
           </div>
         </label>
         <label style="cursor:pointer;">
@@ -16449,6 +16582,7 @@ function rppResumeLead() {
           </div>
         </label>
       </div>
+      <p style="margin:0 0 18px;font-size:12px;line-height:1.5;color:#5E6585;text-align:center;">A workshop comes only with Premium Delegate and VIP, one each, seats first come, first served. <a href="#compare" onclick="closeRegisterPaidPassModal()" style="color:#E05A00;font-weight:600;">Compare passes</a></p>
       <input type="hidden" id="rpp-pass-type" value="">
 
       <form id="reg-paid-pass-form" onsubmit="submitRegisterPaidPassForm(event)" style="display:flex;flex-direction:column;gap:12px;">
@@ -17022,7 +17156,7 @@ function mainPageHTML(): string {
   <link rel="stylesheet" href="${FA_CSS}">
   <!-- Shared with the admin panel, so a pass issued at the desk is the same
        document the holder downloaded. -->
-  <script src="/js/pass-render.js?v=20260917"></script>
+  <script src="/js/pass-render.js?v=20261026"></script>
   <!-- The "I'm attending" card delegates post. App only: the badge desk has no
        reason to issue one, and it carries none of the pass's verification data. -->
   <script src="/js/social-card.js"></script>
@@ -17298,7 +17432,7 @@ function mainPageHTML(): string {
             <div class="absolute -top-2.5 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500 text-black">BEST</div>
             <div class="text-2xl mb-1">👑</div>
             <div class="font-bold text-amber-300 text-sm">VIP Pass</div>
-            <div class="text-xs text-gray-400 mt-0.5">₹14,999 + GST / person</div>
+            <div class="text-xs text-gray-400 mt-0.5">₹19,999 + GST / person</div>
             <ul class="text-[11px] text-gray-400 mt-2 space-y-0.5 text-left">
               <li><i class="fas fa-check text-amber-400 mr-1"></i>Everything in Delegate</li>
               <li><i class="fas fa-check text-amber-400 mr-1"></i>VIP lounge access</li>
@@ -17787,7 +17921,7 @@ function mainPageHTML(): string {
                 </div>
                 <div class="flex-1">
                   <h3 class="font-bold text-base mb-0.5">Upgrade your pass</h3>
-                  <p class="text-xs text-gray-400">Delegate &#8377;4,999 or VIP &#8377;14,999 (+ GST) &mdash; all sessions, workshops, lunch and networking</p>
+                  <p class="text-xs text-gray-400">Delegate &#8377;4,999, Premium Delegate &#8377;14,999 or VIP &#8377;19,999 (+ GST) &mdash; sessions, lunch and networking; a workshop with Premium and VIP</p>
                 </div>
                 <i class="fas fa-chevron-right text-amber-400 text-lg"></i>
               </div>
@@ -17817,7 +17951,7 @@ function mainPageHTML(): string {
             </div>
 
             <!-- Pass Cards Grid -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
               <!-- Delegate Pass -->
               <div class="relative glass rounded-2xl p-5 border border-primary-500/30 hover:border-primary-400/50 transition-all group">
                 <div class="absolute -top-2.5 right-3 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-gradient-to-r from-amber-500 to-orange-500 text-white">MOST POPULAR</div>
@@ -17829,28 +17963,41 @@ function mainPageHTML(): string {
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Exhibition floor pass</li>
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Conference materials & kit</li>
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Networking & startup zone</li>
-                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Lunch & refreshments</li>
-                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>1 AI workshop (hands-on)</li>
+                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Lunch pass</li>
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>AI Marketplace listing</li>
-                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Certificate of participation <span class="text-gray-500 text-[10px]">(workshop)</span></li>
+                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Certificate of participation</li>
+                  <li><i class="fas fa-wifi text-primary-400 mr-1.5 text-[10px]"></i><span class="text-primary-300 font-semibold">Access to networking app</span></li>
+                  <li class="text-gray-500"><i class="fas fa-minus mr-1.5 text-[10px]"></i>No workshop</li>
+                </ul>
+              </div>
+
+              <!-- Premium Delegate Pass -->
+              <div class="relative glass rounded-2xl p-5 border transition-all group" style="border-color:rgba(11,122,117,0.35);">
+                <div class="absolute -top-2.5 right-3 px-2.5 py-0.5 rounded-full text-[10px] font-bold" style="background:#0B7A75;color:#fff;">INCLUDES A WORKSHOP</div>
+                <div class="text-2xl mb-2">🛠️</div>
+                <h3 class="font-bold text-base" style="color:#0B7A75;">Premium Delegate Pass</h3>
+                <div class="text-xl font-black text-white mt-1">₹14,999<span class="text-xs font-normal text-gray-400"> + GST / person</span></div>
+                <ul class="mt-3 space-y-1.5 text-xs text-gray-300">
+                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Everything in Delegate, lunch included</li>
+                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i><span class="font-semibold">1 hands-on AI workshop</span></li>
+                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Workshop certificate</li>
                   <li><i class="fas fa-wifi text-primary-400 mr-1.5 text-[10px]"></i><span class="text-primary-300 font-semibold">Access to networking app</span></li>
                 </ul>
+                <p class="mt-3 text-[11px] text-gray-500 leading-relaxed">Workshop seats are limited and go first come, first served. After you pay, we email you the workshops to choose from.</p>
               </div>
 
               <!-- VIP Pass -->
               <div class="glass rounded-2xl p-5 border border-amber-500/30 hover:border-amber-400/50 transition-all group">
                 <div class="text-2xl mb-2">⭐</div>
                 <h3 class="font-bold text-base text-amber-300">VIP Pass</h3>
-                <div class="text-xl font-black text-white mt-1">₹14,999<span class="text-xs font-normal text-gray-400"> + GST / person</span></div>
+                <div class="text-xl font-black text-white mt-1">₹19,999<span class="text-xs font-normal text-gray-400"> + GST / person</span></div>
                 <ul class="mt-3 space-y-1.5 text-xs text-gray-300">
                   <li><i class="fas fa-id-badge text-amber-400 mr-1.5 text-[10px]"></i><span class="text-amber-300 font-semibold">VIP Badge</span></li>
-                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Everything in Delegate</li>
+                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Everything in Premium Delegate</li>
+                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>1 hands-on AI workshop</li>
                   <li><i class="fas fa-check text-amber-400 mr-1.5 text-[10px]"></i>VIP lounge access</li>
                   <li><i class="fas fa-check text-amber-400 mr-1.5 text-[10px]"></i>Speaker meet & greet</li>
                   <li><i class="fas fa-check text-amber-400 mr-1.5 text-[10px]"></i>Priority front-row seating</li>
-                  <li><i class="fas fa-check text-amber-400 mr-1.5 text-[10px]"></i>Exclusive VIP dinner</li>
-                  <li><i class="fas fa-check text-amber-400 mr-1.5 text-[10px]"></i>AI image generation suite</li>
-                  <li><i class="fas fa-check text-amber-400 mr-1.5 text-[10px]"></i>VIP networking zone</li>
                   <li><i class="fas fa-wifi text-primary-400 mr-1.5 text-[10px]"></i><span class="text-primary-300 font-semibold">Access to networking app</span></li>
                 </ul>
               </div>
@@ -17865,11 +18012,11 @@ function mainPageHTML(): string {
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Full conference access</li>
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Exhibition floor pass</li>
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Networking & startup zone</li>
-                  <li><i class="fas fa-check text-violet-400 mr-1.5 text-[10px]"></i>Hackathon participation</li>
-                  <li><i class="fas fa-check text-violet-400 mr-1.5 text-[10px]"></i>1 workshop</li>
+                  <li><i class="fas fa-check text-violet-400 mr-1.5 text-[10px]"></i>Student networking zone</li>
                   <li><i class="fas fa-check text-violet-400 mr-1.5 text-[10px]"></i>AI Marketplace listing</li>
                   <li><i class="fas fa-check text-violet-400 mr-1.5 text-[10px]"></i>Certificate of participation</li>
                   <li><i class="fas fa-wifi text-primary-400 mr-1.5 text-[10px]"></i><span class="text-primary-300 font-semibold">Access to networking app</span></li>
+                  <li class="text-gray-500"><i class="fas fa-minus mr-1.5 text-[10px]"></i>No lunch or workshop</li>
                 </ul>
               </div>
 
@@ -17924,58 +18071,8 @@ function mainPageHTML(): string {
               <div class="flex items-center gap-2 mb-3">
                 <i class="fas fa-table text-xs text-primary-300"></i>
                 <span class="text-sm font-semibold text-primary-300">Full Pass Comparison</span>
-                <span class="ml-auto flex items-center gap-3 text-[10px] text-gray-500">
-                  <span><span class="text-green-400 mr-1">✔</span>Included</span>
-                  <span><span class="text-amber-400 mr-1">✔</span>VIP only</span>
-                  <span><span class="text-rose-400 mr-1">✔</span>Media only</span>
-                  <span><span class="text-gray-500 mr-1">○</span>Not included</span>
-                </span>
               </div>
-              <div class="overflow-x-auto mt-2">
-                <table class="w-full text-sm">
-                  <thead>
-                    <tr class="border-b border-white/10">
-                      <th class="text-left py-3 px-2 text-gray-400 font-medium text-xs">Feature</th>
-                      <th class="py-3 px-2 text-center text-green-400 font-bold text-xs">Visitor<br><span class="font-normal text-green-300">FREE</span></th>
-                      <th class="py-3 px-2 text-center text-primary-400 font-bold text-xs">Delegate<br><span class="font-normal text-primary-300">₹4,999 + GST</span></th>
-                      <th class="py-3 px-2 text-center text-amber-400 font-bold text-xs">VIP<br><span class="font-normal text-amber-300">₹14,999 + GST</span></th>
-                      <th class="py-3 px-2 text-center text-violet-400 font-bold text-xs">Academic<br><span class="font-normal text-violet-300">₹999 + GST</span></th>
-                      <th class="py-3 px-2 text-center text-rose-400 font-bold text-xs">Media<br><span class="font-normal text-rose-300">By Invite</span></th>
-                    </tr>
-                  </thead>
-                  <tbody class="divide-y divide-white/5 text-xs">
-                    <!-- Access -->
-                    <tr class="bg-white/[0.02]"><td class="py-1.5 px-2 text-gray-500 font-semibold uppercase tracking-wider text-[10px]" colspan="6">Access</td></tr>
-                    <tr><td class="py-2 px-2 text-gray-300">Exhibition Floor Access</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
-                    <tr><td class="py-2 px-2 text-gray-300">Conference Sessions</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
-                    <tr><td class="py-2 px-2 text-gray-300">Networking & Startup Zone</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
-                    <tr><td class="py-2 px-2 text-gray-300">AI Marketplace Listing</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
-                    <!-- Benefits -->
-                    <tr class="bg-white/[0.02]"><td class="py-1.5 px-2 text-gray-500 font-semibold uppercase tracking-wider text-[10px]" colspan="6">Benefits</td></tr>
-                    <tr><td class="py-2 px-2 text-gray-300">Conference Materials & Kit</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
-                    <tr><td class="py-2 px-2 text-gray-300">Lunch & Refreshments</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
-                    <tr><td class="py-2 px-2 text-gray-300">Certificate of Participation</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
-                    <tr><td class="py-2 px-2 text-gray-300">Speaker Meet & Greet</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
-                    <tr><td class="py-2 px-2 text-gray-300">Digital Recordings Access</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-green-400">✔</td></tr>
-                    <tr><td class="py-2 px-2 text-gray-300"><i class="fas fa-wifi text-primary-400 mr-1"></i>Networking App Access</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-gray-600">○</td></tr>
-                    <!-- Learning & Activities -->
-                    <tr class="bg-white/[0.02]"><td class="py-1.5 px-2 text-gray-500 font-semibold uppercase tracking-wider text-[10px]" colspan="6">Learning & Activities</td></tr>
-                    <tr><td class="py-2 px-2 text-gray-300">AI Workshops (Hands-on)</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-gray-600">○</td></tr>
-                    <tr><td class="py-2 px-2 text-gray-300">Hackathon Participation</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-gray-600">○</td></tr>
-                    <tr><td class="py-2 px-2 text-gray-300">Student Networking Zone</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-green-400">✔</td><td class="py-2 px-2 text-center text-gray-600">○</td></tr>
-                    <!-- VIP Exclusive -->
-                    <tr class="bg-white/[0.02]"><td class="py-1.5 px-2 text-gray-500 font-semibold uppercase tracking-wider text-[10px]" colspan="6">VIP Exclusive</td></tr>
-                    <tr><td class="py-2 px-2 text-gray-300">VIP Lounge & Priority Seating</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-amber-400">✔</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-gray-600">○</td></tr>
-                    <tr><td class="py-2 px-2 text-gray-300">Exclusive VIP Dinner</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-amber-400">✔</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-gray-600">○</td></tr>
-                    <tr><td class="py-2 px-2 text-gray-300">AI Image Generation Suite</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-amber-400">✔</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-gray-600">○</td></tr>
-                    <tr><td class="py-2 px-2 text-gray-300">VIP Student Networking Zone</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-amber-400">✔</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-gray-600">○</td></tr>
-                    <!-- Media Exclusive -->
-                    <tr class="bg-white/[0.02]"><td class="py-1.5 px-2 text-gray-500 font-semibold uppercase tracking-wider text-[10px]" colspan="6">Media Exclusive</td></tr>
-                    <tr><td class="py-2 px-2 text-gray-300">Press/Media Area Access</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-rose-400">✔</td></tr>
-                    <tr><td class="py-2 px-2 text-gray-300">Interview & Recording Rights</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-gray-600">○</td><td class="py-2 px-2 text-center text-rose-400">✔</td></tr>
-                  </tbody>
-                </table>
-              </div>
+              ${passComparisonHTML()}
             </div>
 
             <!-- CTA Buttons -->
@@ -17984,7 +18081,7 @@ function mainPageHTML(): string {
                 <i class="fas fa-ticket-alt mr-2"></i>Register Free — Visitor Pass
               </button>
               <button onclick="openPaidPassForm()" class="px-6 py-3 rounded-xl font-bold text-white transition-all text-sm hover:opacity-90" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);box-shadow:0 4px 20px rgba(245,98,10,0.28);">
-                <i class="fas fa-star mr-2"></i>Get Paid Pass (Delegate/VIP)
+                <i class="fas fa-star mr-2"></i>Get a Paid Pass
               </button>
               <a href="https://bharataiinnovation.com/register#delegation-section" target="_blank" class="px-6 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 transition-all text-sm">
                 <i class="fas fa-users mr-2"></i>Group Packages
@@ -18280,6 +18377,7 @@ function mainPageHTML(): string {
               <option value="Investor">Investors</option>
               <option value="Jury">Jury</option>
               <option value="Delegate Pass">Delegate Pass</option>
+              <option value="Premium Delegate Pass">Premium Delegate Pass</option>
               <option value="VIP Pass">VIP Pass</option>
               <option value="Academic Pass">Academic Pass</option>
               <option value="Visitor Pass">Visitor Pass</option>
@@ -19257,7 +19355,7 @@ function mainPageHTML(): string {
             <div>
               <p class="font-semibold mb-1"><i class="fas fa-paper-plane text-primary-400 mr-2"></i>3. Ask, and say why</p>
               <p class="text-xs text-gray-400 leading-relaxed">Send a request with a reason — what you do and what you want twenty minutes for. Requests with a reason get accepted far more often than a bare connect.</p>
-              <p class="text-xs text-amber-300/90 leading-relaxed mt-1.5"><i class="fas fa-circle-info mr-1"></i><strong>Receiving and accepting requests is free on every pass, including a Visitor Pass.</strong> Starting a conversation is part of the Delegate, Academic and VIP passes.</p>
+              <p class="text-xs text-amber-300/90 leading-relaxed mt-1.5"><i class="fas fa-circle-info mr-1"></i><strong>Receiving and accepting requests is free on every pass, including a Visitor Pass.</strong> Starting a conversation is part of every paid pass.</p>
             </div>
             <div>
               <p class="font-semibold mb-1"><i class="fas fa-calendar-check text-primary-400 mr-2"></i>4. Fix the time before you arrive</p>
@@ -21012,7 +21110,7 @@ function mainPageHTML(): string {
     // A paid pass chosen on a form and not paid for works like a Visitor Pass until
     // the payment lands, exactly as the server sees it (unpaidPaidPass).
     function passAwaitingPayment() {
-      return !!currentUser && ['Delegate Pass', 'VIP Pass', 'Academic Pass'].indexOf(String(currentUser.badge_type || '')) >= 0
+      return !!currentUser && ['Delegate Pass', 'Premium Delegate Pass', 'VIP Pass', 'Academic Pass'].indexOf(String(currentUser.badge_type || '')) >= 0
         && ['pending', 'refunded'].indexOf(String(currentUser.payment_status || '').toLowerCase()) >= 0;
     }
     function isVisitorPass() {
@@ -21048,9 +21146,9 @@ function mainPageHTML(): string {
         const who = String(personName || '').trim();
         title.textContent = who ? ('Reach out to ' + who) : 'Start the conversation';
         copy.innerHTML = (who
-            ? 'Anyone can browse who is coming and accept an introduction. <span class="text-white font-semibold">Starting</span> one is part of the Delegate, Academic and VIP passes.'
-            : 'Browsing and accepting are free on every pass. <span class="text-white font-semibold">Starting</span> a conversation is part of the Delegate, Academic and VIP passes.') +
-          '<br><span class="text-gray-400 text-xs">Delegates also propose meetings, reserve a private WTC boardroom by the hour, and attend every session and workshop.</span>';
+            ? 'Anyone can browse who is coming and accept an introduction. <span class="text-white font-semibold">Starting</span> one is part of every paid pass.'
+            : 'Browsing and accepting are free on every pass. <span class="text-white font-semibold">Starting</span> a conversation is part of every paid pass.') +
+          '<br><span class="text-gray-400 text-xs">Delegates also propose meetings, reserve a private WTC boardroom by the hour, and attend every session.</span>';
       }
       if (reason === 'directory' && title && copy) {
         title.textContent = 'See everyone who is coming';
@@ -21059,7 +21157,7 @@ function mainPageHTML(): string {
       if (reason === 'welcome' && title && copy) {
         title.textContent = 'Want the full two days?';
         copy.innerHTML = 'Your <span class="text-white font-semibold">Visitor Pass</span> covers the exhibition floor and select keynotes.<br>' +
-          'A <span class="text-primary-300 font-semibold">Delegate</span> or <span class="text-amber-300 font-semibold">VIP Pass</span> adds every conference session, the workshops, lunch and the networking hub.';
+          'A <span class="text-primary-300 font-semibold">Delegate</span> or <span class="text-amber-300 font-semibold">VIP Pass</span> adds every conference session, lunch and the networking hub. Premium Delegate and VIP add a hands-on workshop.';
       }
       m.classList.remove('hidden');
       m.classList.add('flex');
@@ -24078,7 +24176,7 @@ function mainPageHTML(): string {
       // ticket someone self-declared is indistinguishable from one they paid for.
       // Admin downloads bypass this so the desk can still issue a pass manually.
       var awaitingPayment = String(user.payment_status || '').toLowerCase() === 'pending';
-      if (awaitingPayment && ['delegate', 'academic', 'vip'].indexOf(tierKey) >= 0 && !adminAttendee) {
+      if (awaitingPayment && ['delegate', 'premium', 'academic', 'vip'].indexOf(tierKey) >= 0 && !adminAttendee) {
         showToast('Your ' + T.label + ' will be issued once payment is confirmed.', 'error');
         return;
       }
@@ -24933,6 +25031,7 @@ function mainPageHTML(): string {
         'investor': 'bg-emerald-500/20 text-emerald-300',
         'felicitation delegate': 'bg-pink-500/20 text-pink-300',
         'vip pass': 'bg-yellow-500/20 text-yellow-300',
+        'premium delegate pass': 'bg-emerald-500/20 text-emerald-300',
         // Legacy mappings
         'vip': 'bg-amber-500/20 text-amber-300',
         'speaker': 'bg-purple-500/20 text-purple-300',
@@ -25830,7 +25929,7 @@ function mainPageHTML(): string {
           cta: 'Open directory', act: "switchTab('networking')" },
         { done: meetings > 0, icon: 'fa-calendar-check', title: 'Fix meetings before you travel',
           body: meetings > 0 ? meetings + (meetings === 1 ? ' meeting booked.' : ' meetings booked.')
-                : visitor ? 'Accepting requests is free on your Visitor Pass. Starting one is part of the Delegate, Academic and VIP passes.'
+                : visitor ? 'Accepting requests is free on your Visitor Pass. Starting one is part of every paid pass.'
                           : 'A meeting with a time on it happens. "Find me at the stand" does not.',
           cta: 'Open directory', act: "switchTab('networking')" },
         { done: rooms > 0, icon: 'fa-door-closed', title: 'Take a private room if you need one',
@@ -26401,7 +26500,7 @@ function mainPageHTML(): string {
       var paidTier = /delegate|academic|vip/i.test(badge);
       if (paidTier && String(currentUser.payment_status || '').toLowerCase() === 'pending') { payPendingPass(); return; }
       if (paidTier) { showToast('Your ' + badge + ' is already confirmed.', 'success'); return; }
-      var PASS = { delegate: 'Delegate Pass', vip: 'VIP Pass', academic: 'Academic Pass' };
+      var PASS = { delegate: 'Delegate Pass', premium: 'Premium Delegate Pass', vip: 'VIP Pass', academic: 'Academic Pass' };
       var want = PASS[String(passKey || '').toLowerCase()] || 'Delegate Pass';
       openPaidPassForm();
       var radio = document.querySelector('input[name="pp-pass"][value="' + want + '"]');
@@ -26465,14 +26564,23 @@ function mainPageHTML(): string {
       <!-- Body -->
       <div class="p-6 overflow-y-auto" style="max-height:calc(90vh - 80px);">
         <!-- Pass Type Selector -->
-        <div class="grid grid-cols-3 gap-2 mb-5">
+        <div class="grid grid-cols-2 gap-2 mb-5">
           <label class="pass-option cursor-pointer">
             <input type="radio" name="pp-pass" value="Delegate Pass" class="hidden" onchange="document.getElementById('pp-pass-type').value=this.value;document.querySelectorAll('.pass-option').forEach(el=>el.classList.remove('ring-2','ring-orange-500'));this.closest('.pass-option').classList.add('ring-2','ring-orange-500')">
             <div class="p-3 rounded-xl text-center" style="background:rgba(139,92,246,0.1);border:1px solid rgba(255,107,0,0.2);">
               <i class="fas fa-id-badge text-violet-400 text-lg mb-1 block"></i>
               <div class="text-white font-semibold text-xs">Delegate</div>
               <div class="text-violet-300 font-bold text-sm">&#8377;4,999 + GST</div>
-              <div class="text-gray-500 text-[10px]">Full 2-day access</div>
+              <div class="text-gray-500 text-[10px]">2 days + lunch</div>
+            </div>
+          </label>
+          <label class="pass-option cursor-pointer">
+            <input type="radio" name="pp-pass" value="Premium Delegate Pass" class="hidden" onchange="document.getElementById('pp-pass-type').value=this.value;document.querySelectorAll('.pass-option').forEach(el=>el.classList.remove('ring-2','ring-orange-500'));this.closest('.pass-option').classList.add('ring-2','ring-orange-500')">
+            <div class="p-3 rounded-xl text-center" style="background:rgba(11,122,117,0.08);border:1px solid rgba(11,122,117,0.25);">
+              <i class="fas fa-star text-lg mb-1 block" style="color:#0B7A75;"></i>
+              <div class="text-white font-semibold text-xs">Premium Delegate</div>
+              <div class="font-bold text-sm" style="color:#0B7A75;">&#8377;14,999 + GST</div>
+              <div class="text-gray-500 text-[10px]">Delegate + 1 workshop</div>
             </div>
           </label>
           <label class="pass-option cursor-pointer">
@@ -26480,8 +26588,8 @@ function mainPageHTML(): string {
             <div class="p-3 rounded-xl text-center" style="background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.2);">
               <i class="fas fa-crown text-yellow-400 text-lg mb-1 block"></i>
               <div class="text-white font-semibold text-xs">VIP</div>
-              <div class="text-yellow-300 font-bold text-sm">&#8377;14,999 + GST</div>
-              <div class="text-gray-500 text-[10px]">VIP lounge + dinner</div>
+              <div class="text-yellow-300 font-bold text-sm">&#8377;19,999 + GST</div>
+              <div class="text-gray-500 text-[10px]">Workshop + VIP lounge</div>
             </div>
           </label>
           <label class="pass-option cursor-pointer">
@@ -26595,7 +26703,7 @@ function adminPageHTML(): string {
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <!-- Shared with the app, so a pass issued at the desk is the same document the
        holder downloaded. -->
-  <script src="/js/pass-render.js?v=20260917"></script>
+  <script src="/js/pass-render.js?v=20261026"></script>
   <!-- The same photo fingerprint /app sends, for photos the team uploads. -->
   <script src="/js/photo-fingerprint.js?v=2"></script>
   <!-- Same renderer the delegate's own app uses, so a card the desk sends a speaker
@@ -28120,6 +28228,7 @@ function adminPageHTML(): string {
         'investor': 'bg-emerald-500/20 text-emerald-300',
         'felicitation delegate': 'bg-pink-500/20 text-pink-300',
         'vip pass': 'bg-yellow-500/20 text-yellow-300',
+        'premium delegate pass': 'bg-emerald-500/20 text-emerald-300',
         'vip': 'bg-amber-500/20 text-amber-300',
         'speaker': 'bg-purple-500/20 text-purple-300',
         'press': 'bg-blue-500/20 text-blue-300',
@@ -29844,7 +29953,7 @@ function adminPageHTML(): string {
       select.addEventListener('blur', () => { setTimeout(() => { if (activeInlineEdit && activeInlineEdit.cell === cell) save(); }, 150); });
     }
 
-    const ROLE_OPTIONS = ['Visitor Pass','Exhibitor','Star Rating','Finalist Startup','Finalist Enterprise','Delegate Pass (paid)','VIP Pass (paid)','VIP Guest (CTO/CIO/other)','Investor','Jury Morning','Jury Evening','Jury Whole Day','Speaker','Family & Friends Guest'];
+    const ROLE_OPTIONS = ['Visitor Pass','Exhibitor','Star Rating','Finalist Startup','Finalist Enterprise','Delegate Pass (paid)','Premium Delegate Pass (paid)','VIP Pass (paid)','VIP Guest (CTO/CIO/other)','Investor','Jury Morning','Jury Evening','Jury Whole Day','Speaker','Family & Friends Guest'];
 
     function inlineMultiSelect(cell, id, field, currentVal) {
       if (activeInlineEdit && activeInlineEdit.cell === cell) return;
@@ -30149,7 +30258,7 @@ function adminPageHTML(): string {
             <div class="grid grid-cols-3 gap-3">
               <div><label class="text-xs text-gray-400 mb-1 block">Role</label>
                 <select id="na-role" class="w-full px-3 py-2 rounded-lg text-sm">
-                  \${['Visitor Pass','Exhibitor','Star Rating','Finalist Startup','Finalist Enterprise','Delegate Pass (paid)','VIP Pass (paid)','VIP Guest (CTO/CIO/other)','Investor','Jury Morning','Jury Evening','Jury Whole Day','Speaker','Family & Friends Guest'].map(r=>'<option value="'+r+'">'+r+'</option>').join('')}
+                  \${['Visitor Pass','Exhibitor','Star Rating','Finalist Startup','Finalist Enterprise','Delegate Pass (paid)','Premium Delegate Pass (paid)','VIP Pass (paid)','VIP Guest (CTO/CIO/other)','Investor','Jury Morning','Jury Evening','Jury Whole Day','Speaker','Family & Friends Guest'].map(r=>'<option value="'+r+'">'+r+'</option>').join('')}
                 </select></div>
               <div><label class="text-xs text-gray-400 mb-1 block">Badge Type</label>
                 <select id="na-badge" class="w-full px-3 py-2 rounded-lg text-sm">
@@ -30276,7 +30385,7 @@ function adminPageHTML(): string {
             <div class="grid grid-cols-3 gap-3">
               <div><label class="text-xs text-gray-400 mb-1 block">Role</label>
                 <select id="ea-role" class="w-full px-3 py-2 rounded-lg text-sm">
-                  \${['Visitor Pass','Exhibitor','Star Rating','Finalist Startup','Finalist Enterprise','Delegate Pass (paid)','VIP Pass (paid)','VIP Guest (CTO/CIO/other)','Investor','Jury Morning','Jury Evening','Jury Whole Day','Speaker','Family & Friends Guest'].map(r=>'<option value="'+r+'" '+(a.role===r?'selected':'')+'>'+r+'</option>').join('')}
+                  \${['Visitor Pass','Exhibitor','Star Rating','Finalist Startup','Finalist Enterprise','Delegate Pass (paid)','Premium Delegate Pass (paid)','VIP Pass (paid)','VIP Guest (CTO/CIO/other)','Investor','Jury Morning','Jury Evening','Jury Whole Day','Speaker','Family & Friends Guest'].map(r=>'<option value="'+r+'" '+(a.role===r?'selected':'')+'>'+r+'</option>').join('')}
                 </select></div>
               <div><label class="text-xs text-gray-400 mb-1 block">Badge</label>
                 <select id="ea-badge" class="w-full px-3 py-2 rounded-lg text-sm">

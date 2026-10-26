@@ -113,7 +113,7 @@ db.execute(SETTLE, (['Delegate Pass', '5898.82', 1] if n == 3 else ['Delegate Pa
 a1 = db.execute('SELECT * FROM attendees WHERE id = 1').fetchone()
 check('settling sets the badge, paid, the amount and the conference yes', a1['badge_type'] == 'Delegate Pass' and a1['payment_status'] == 'paid' and a1['payment_amount'] == '5898.82' and a1['main_event'] == 1 and a1['main_event_answered_at'] is not None, dict(a1))
 
-pend = [dict(r) for r in db.execute(PENDING, ['Delegate Pass', 'VIP Pass', 'Academic Pass'])]
+pend = [dict(r) for r in db.execute(PENDING, ['Delegate Pass', 'Premium Delegate Pass', 'VIP Pass', 'Academic Pass'])]
 check('the pending list carries the latest attempt as order|status|time', len(pend) == 1 and pend[0]['id'] == 4 and pend[0]['last_order'].startswith('BAI4-BBBBBBBBBBBB|paid|'), pend)
 po = [dict(r) for r in db.execute(PAIDON)]
 check('paid online lists both paid orders with the attendee id', sorted(r['order_id'] for r in po) == ['BAI1-AAAAAAAAAAAA', 'BAI4-BBBBBBBBBBBB'] and {r['id'] for r in po} == {1, 4}, po)
@@ -160,7 +160,7 @@ db.execute(RECORD, ['pd@x.com', 'Pending D', 'Delegate Pass', 1, 1, None])
 for e in ['paid@x.com', 'vis@x.com', 'spk@x.com', 'nobody@x.com']:
     lead(e, name=e.split('@')[0])
 n = WAITING.count('?')
-waiting = {r['id']: dict(r) for r in db.execute(WAITING, ['Delegate Pass', 'VIP Pass', 'Academic Pass'][:n])}
+waiting = {r['id']: dict(r) for r in db.execute(WAITING, ['Delegate Pass', 'Premium Delegate Pass', 'VIP Pass', 'Academic Pass'][:n])}
 check('registered and still pending: exactly the event 1 pending paid passes', sorted(waiting) == [4, 30], sorted(waiting))
 check('their reminder state comes along from checkout_leads', waiting[30]['reminder_count'] == 1 and waiting[30]['reminded_at'] is not None and waiting[4]['reminded_at'] is None, waiting)
 check('and their latest online attempt', waiting[4]['last_order'].startswith('BAI4-'), waiting[4].get('last_order'))
