@@ -1057,6 +1057,12 @@ async function sendRegistrationEmail(c: any, attendee: any, opts: { receipt?: st
           <a href="${appUrl}" style="display:inline-block;padding:13px 32px;background:linear-gradient(135deg,#FF6B00,#FF8C38);color:#fff;text-decoration:none;border-radius:10px;font-weight:bold;font-size:14px;">Open the app</a>
         </div>
         <p style="margin:14px 0 0;font-size:12px;color:#888;text-align:center;">Sign in with this email address &mdash; we will send you a one-time code, no password needed.</p>`}
+        ${opts.receipt && WORKSHOP_TIERS.includes(String(attendee.badge_type || '')) ? `
+        <div style="margin-top:22px;padding:16px;background:#EEF8F7;border:1px solid rgba(11,122,117,0.3);border-radius:10px;">
+          <p style="margin:0 0 5px;font-size:14px;font-weight:bold;color:#0B7A75;">Choose your workshop</p>
+          <p style="margin:0 0 12px;font-size:12.5px;line-height:1.65;color:#555;">Your pass includes one hands-on workshop. Seats are limited and go first come, first served, so take yours now: it takes a few seconds in the app.</p>
+          <a href="${actionHref('workshop')}" style="display:inline-block;padding:9px 20px;background:#0B7A75;color:#fff;text-decoration:none;border-radius:8px;font-size:12.5px;font-weight:bold;">Choose my workshop</a>
+        </div>` : ''}
         <div style="margin-top:22px;padding:16px;background:#F7F8FF;border:1px solid #E3E6F5;border-radius:10px;">
           <p style="margin:0 0 5px;font-size:14px;font-weight:bold;color:#1E2140;">Tell your network you are coming</p>
           <p style="margin:0 0 12px;font-size:12.5px;line-height:1.65;color:#555;">
@@ -2665,8 +2671,11 @@ app.get('/pay/result', async (c) => {
         ['Order number', no],
         ['CCAvenue reference', payEsc(order.tracking_id)],
       ]) +
-      payP('A confirmation is on its way to your email, and your GST invoice follows separately. Next, add your photo in the app and download your pass.') +
-      payButton('/app', 'Open the app') + seed))
+      (WORKSHOP_TIERS.includes(String(order.pass_type))
+        ? payP('A confirmation is on its way to your email, and your GST invoice follows separately. Your pass includes one workshop, and seats go first come, first served: choose yours now, then add your photo and download your pass.') +
+          payButton('/app?action=workshop', 'Choose my workshop')
+        : payP('A confirmation is on its way to your email, and your GST invoice follows separately. Next, add your photo in the app and download your pass.') +
+          payButton('/app', 'Open the app')) + seed))
   }
   if (order.status === 'aborted') {
     return c.html(payPage('Payment cancelled', payH1('You cancelled the payment.') +
@@ -4038,6 +4047,13 @@ app.get('/verify/:token', async (c) => {
     const m = await c.env.DB.prepare('SELECT main_event FROM attendees WHERE id = ?').bind(id).first() as any
     a.main_event = m ? Number(m.main_event ?? 1) : 1
   } catch { a.main_event = 1 }
+  // The workshop door scans the same pass: it says which workshop, if any.
+  try {
+    if (await workshopsReady(c)) {
+      const ws = await c.env.DB.prepare('SELECT w.title FROM workshop_seats s JOIN workshops w ON w.id = s.workshop_id WHERE s.event_id = 1 AND s.attendee_id = ?').bind(id).first() as any
+      if (ws) a.workshop_title = ws.title
+    }
+  } catch { /* the check-in screen matters more */ }
   const undoable = !!a.checked_in_at &&
     Date.now() - new Date(String(a.checked_in_at).replace(' ', 'T') + 'Z').getTime() < CHECKIN_UNDO_MINUTES * 60000
   const flagUndoable = !!a.photo_flagged_at && !String(a.avatar_url || '').trim() &&
@@ -4401,6 +4417,7 @@ function verifyPageHTML(o: any): string {
          ${a.job_title ? `<p class="muted">${esc(a.job_title)}</p>` : ''}
          ${a.company ? `<p class="muted">${esc(a.company)}</p>` : ''}
          <div class="tier" style="background:${tier[0]};color:${tier[1]};">${esc(a.badge_type || 'Visitor Pass')}</div>
+         ${a.workshop_title ? `<p class="muted" style="margin-top:10px;"><strong>Workshop:</strong> ${esc(a.workshop_title)}</p>` : ''}
          ${a.checked_in_at
             ? `<div class="warn">Already checked in ${esc(istStamp(a.checked_in_at))}${a.checked_in_by ? ' by ' + esc(a.checked_in_by) : ''}</div>
                ${o.undoable ? `<button id="undo" onclick="undo()" style="background:#243056;">Undo this check-in</button>` : ''}`
@@ -5897,6 +5914,229 @@ function missingRegistrationFields(b: any): string[] {
 
 const humanList = (xs: string[]): string =>
   xs.length < 2 ? (xs[0] || '') : xs.slice(0, -1).join(', ') + ' and ' + xs[xs.length - 1]
+
+// ==================== WORKSHOP SEATS ====================
+//
+// A Premium Delegate or VIP Pass includes one workshop (organiser, 26 Oct 2026),
+// and the buyer takes the seat in the app after paying, first come, first served.
+// The catalogue is the workshops table (0049), not the schedule: the schedule's
+// older "Workshop 1-3" rows stay listed but are not bookable.
+//
+//  - Only a paid (or waived) Premium Delegate or VIP holds a seat. An unpaid one is
+//    told to finish paying first, as everywhere else.
+//  - Taking a seat is one statement that counts the seats and writes the row, so
+//    two people cannot both take the last seat.
+//  - A seat can be switched until workshop_choice_closes (app_settings, IST). After
+//    that it is fixed, but someone without a seat may still take one while seats
+//    remain and the workshop has not started.
+//  - Admin may place, move or remove anyone, ignoring the cut-off but not the seat
+//    limit: to add a seat, raise the workshop's seats.
+//  - The public answer never states how many seats are taken (it would say how
+//    many premium passes have sold): only "full", or the count once 20 or fewer
+//    are left. Admin sees the numbers.
+// Until 0049 runs every answer says ready: false and the app shows nothing.
+const WORKSHOP_TIERS = ['Premium Delegate Pass', 'VIP Pass']
+const WORKSHOP_SWITCH_CLOSES_DEFAULT = '2026-11-18 23:59'
+const WORKSHOP_FEW_LEFT = 20
+
+let _workshopsTable = false
+async function workshopsReady(c: any): Promise<boolean> {
+  if (_workshopsTable) return true
+  try {
+    await c.env.DB.prepare('SELECT id FROM workshops LIMIT 1').first()
+    await c.env.DB.prepare('SELECT id FROM workshop_seats LIMIT 1').first()
+    _workshopsTable = true
+  } catch { /* 0049 has not run yet */ }
+  return _workshopsTable
+}
+
+// The table keeps IST wall-clock strings ('2026-11-21 14:00'); this is the instant.
+const istWallClock = (v: unknown): number => {
+  const m = String(v || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})$/)
+  return m ? Date.parse(`${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:00+05:30`) : NaN
+}
+
+async function workshopSwitchCloses(c: any): Promise<string> {
+  const v = (await settingValue(c, 'workshop_choice_closes')).trim()
+  return Number.isFinite(istWallClock(v)) ? v : WORKSHOP_SWITCH_CLOSES_DEFAULT
+}
+
+// Who may hold a seat, and why not when they may not.
+function workshopEntitlement(a: any): { ok: boolean; why: string } {
+  if (!a) return { ok: false, why: 'signin' }
+  if (!WORKSHOP_TIERS.includes(String(a.badge_type || ''))) return { ok: false, why: 'tier' }
+  if (['pending', 'refunded'].includes(String(a.payment_status || '').trim().toLowerCase())) return { ok: false, why: 'unpaid' }
+  return { ok: true, why: '' }
+}
+
+async function workshopList(c: any) {
+  const { results } = await c.env.DB.prepare(
+    `SELECT w.id, w.slug, w.title, w.speaker, w.summary, w.starts_at, w.ends_at, w.room, w.capacity, w.is_open,
+            (SELECT COUNT(*) FROM workshop_seats s WHERE s.workshop_id = w.id) AS taken
+       FROM workshops w WHERE w.event_id = 1 ORDER BY w.sort_order, w.id`
+  ).all() as any
+  const now = Date.now()
+  return ((results || []) as any[]).map(w => {
+    const capacity = Number(w.capacity) || 0
+    const taken = Number(w.taken) || 0
+    const start = istWallClock(w.starts_at)
+    return {
+      id: Number(w.id), slug: String(w.slug || ''), title: String(w.title || ''), speaker: String(w.speaker || ''),
+      summary: String(w.summary || ''), starts_at: w.starts_at || null, ends_at: w.ends_at || null, room: String(w.room || ''),
+      capacity, taken, left: Math.max(0, capacity - taken), is_open: Number(w.is_open) === 1,
+      open: Number(w.is_open) === 1 && !(Number.isFinite(start) && now >= start),
+    }
+  })
+}
+
+async function workshopSeatOf(c: any, attendeeId: number): Promise<number | null> {
+  const r = await c.env.DB.prepare('SELECT workshop_id FROM workshop_seats WHERE event_id = 1 AND attendee_id = ?').bind(attendeeId).first() as any
+  return r ? Number(r.workshop_id) : null
+}
+
+// One statement: the seat is written only while the workshop has room, counting
+// everyone but this person, so a switch never counts them twice. D1 runs a
+// statement whole, so the last seat goes to exactly one person.
+async function takeWorkshopSeat(c: any, attendeeId: number, workshopId: number, by: string): Promise<boolean> {
+  const r = await c.env.DB.prepare(
+    `INSERT INTO workshop_seats (event_id, attendee_id, workshop_id, chosen_by)
+     SELECT 1, ?, ?, ?
+      WHERE (SELECT COUNT(*) FROM workshop_seats WHERE workshop_id = ? AND attendee_id <> ?)
+          < (SELECT capacity FROM workshops WHERE id = ? AND event_id = 1)
+     ON CONFLICT(event_id, attendee_id) DO UPDATE SET workshop_id = excluded.workshop_id, chosen_by = excluded.chosen_by, updated_at = datetime('now')`
+  ).bind(attendeeId, workshopId, by, workshopId, attendeeId, workshopId).run() as any
+  return Number(r?.meta?.changes || 0) > 0
+}
+
+// What the app is told: no seat counts, only whether a workshop is full or nearly.
+async function workshopState(c: any, me: any) {
+  const ent = workshopEntitlement(me)
+  const closes = await workshopSwitchCloses(c)
+  const workshops = (await workshopList(c)).map(w => ({
+    id: w.id, slug: w.slug, title: w.title, speaker: w.speaker, summary: w.summary,
+    starts_at: w.starts_at, ends_at: w.ends_at, room: w.room, open: w.open,
+    full: w.left <= 0, few_left: w.left > 0 && w.left <= WORKSHOP_FEW_LEFT ? w.left : null,
+  }))
+  return {
+    ready: true, entitled: ent.ok, why: ent.why, mine: me ? await workshopSeatOf(c, Number(me.id)) : null,
+    can_switch: Date.now() < istWallClock(closes), switch_closes: closes, workshops,
+  }
+}
+
+app.get('/api/workshops', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  if (!(await workshopsReady(c))) return c.json({ ready: false, workshops: [] })
+  const id = await verifyAttendeeSession(c)
+  const me = id ? await c.env.DB.prepare('SELECT id, badge_type, payment_status FROM attendees WHERE id = ?').bind(id).first() : null
+  return c.json(await workshopState(c, me))
+})
+
+app.post('/api/workshops/choose', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  if (!(await workshopsReady(c))) return c.json({ error: 'Workshop seats open soon. Please try again later.' }, 503)
+  const id = await verifyAttendeeSession(c)
+  if (!id) return c.json({ error: 'Please sign in again to choose your workshop.' }, 401)
+  const me = await c.env.DB.prepare('SELECT id, name, badge_type, payment_status FROM attendees WHERE id = ?').bind(id).first() as any
+  const ent = workshopEntitlement(me)
+  if (!ent.ok) {
+    return c.json({ error: ent.why === 'unpaid'
+      ? 'Your ' + me.badge_type + ' is not paid yet. You can choose your workshop the moment the payment goes through.'
+      : 'A workshop seat comes with the Premium Delegate and VIP passes.' }, 403)
+  }
+  const body = await c.req.json().catch(() => ({})) as any
+  const wid = Number(body.workshop_id)
+  const w = (await workshopList(c)).find(x => x.id === wid)
+  if (!w) return c.json({ error: 'That is not a workshop you can choose.' }, 400)
+  const mine = await workshopSeatOf(c, id)
+  if (mine === wid) return c.json(await workshopState(c, me))
+  if (!w.open) return c.json({ error: 'Seats for this workshop are closed.', ...(await workshopState(c, me)) }, 409)
+  if (mine !== null && Date.now() >= istWallClock(await workshopSwitchCloses(c))) {
+    return c.json({ error: 'Workshop choices are fixed now. Write to info@bharataiinnovation.com if you need to change yours.', ...(await workshopState(c, me)) }, 409)
+  }
+  if (!(await takeWorkshopSeat(c, id, wid, 'attendee'))) {
+    return c.json({ error: 'That workshop has just filled up. Another one may still have seats.', ...(await workshopState(c, me)) }, 409)
+  }
+  try {
+    await audit(c, mine === null ? 'workshop.seat-taken' : 'workshop.seat-switched', 'attendee', String(id),
+      { workshop_id: wid, from: mine }, { actor: String(me.name || 'attendee').slice(0, 40), kind: 'attendee' })
+  } catch { /* the seat is taken; the log line is not worth failing it */ }
+  return c.json(await workshopState(c, me))
+})
+
+// Admin: every workshop with its numbers, who sits where, and who has paid for a
+// seat and not taken one yet (they are the ones to chase).
+app.get('/api/admin/workshops', async (c) => {
+  if (!(await workshopsReady(c))) return c.json({ ready: false, workshops: [], seats: [], unchosen: [] })
+  const seats = ((await c.env.DB.prepare(
+    `SELECT s.workshop_id, s.chosen_by, s.updated_at, a.id, a.name, a.email, a.mobile, a.company, a.job_title, a.badge_type
+       FROM workshop_seats s JOIN attendees a ON a.id = s.attendee_id
+      WHERE s.event_id = 1 ORDER BY s.workshop_id, s.updated_at`
+  ).all()).results || [])
+  const marks = WORKSHOP_TIERS.map(() => '?').join(', ')
+  const unchosen = ((await c.env.DB.prepare(
+    `SELECT a.id, a.name, a.email, a.mobile, a.company, a.badge_type FROM attendees a
+      WHERE a.event_id = 1 AND a.badge_type IN (${marks})
+        AND LOWER(COALESCE(a.payment_status, '')) NOT IN ('pending', 'refunded')
+        AND a.id NOT IN (SELECT attendee_id FROM workshop_seats WHERE event_id = 1)
+      ORDER BY a.name`
+  ).bind(...WORKSHOP_TIERS).all()).results || [])
+  return c.json({ ready: true, switch_closes: await workshopSwitchCloses(c), workshops: await workshopList(c), seats, unchosen })
+})
+
+// Admin: the slot, the room, the seats and whether it is open for choosing.
+app.post('/api/admin/workshops/:id', async (c) => {
+  if (!(await workshopsReady(c))) return c.json({ error: 'Run migration 0049 first.' }, 503)
+  const wid = Number(c.req.param('id'))
+  const w = (await workshopList(c)).find(x => x.id === wid)
+  if (!w) return c.json({ error: 'No such workshop.' }, 404)
+  const b = await c.req.json().catch(() => ({})) as any
+  const when = (v: unknown) => String(v ?? '').trim()
+  const starts = when(b.starts_at), ends = when(b.ends_at)
+  for (const v of [starts, ends]) {
+    if (v && !Number.isFinite(istWallClock(v))) return c.json({ error: 'Write times as 2026-11-21 14:00 (IST), or leave them empty for "to be announced".' }, 400)
+  }
+  const capacity = Math.floor(Number(b.capacity))
+  if (!Number.isFinite(capacity) || capacity < 1 || capacity > 5000) return c.json({ error: 'Seats must be a number from 1 to 5000.' }, 400)
+  if (capacity < w.taken) return c.json({ error: w.taken + ' seats are already taken, so the limit cannot go below that. Move people first.' }, 400)
+  await c.env.DB.prepare('UPDATE workshops SET starts_at = ?, ends_at = ?, room = ?, capacity = ?, is_open = ? WHERE id = ? AND event_id = 1')
+    .bind(starts || null, ends || null, String(b.room ?? '').trim().slice(0, 120) || null, capacity, b.is_open ? 1 : 0, wid).run()
+  try { await audit(c, 'workshop.updated', 'workshop', String(wid), { starts_at: starts, ends_at: ends, room: b.room, capacity, is_open: !!b.is_open }) } catch { /* logged best effort */ }
+  return c.json({ ok: true })
+})
+
+// Admin: give someone a seat, move them, or take it away (workshop_id null).
+app.post('/api/admin/workshop-seat', async (c) => {
+  if (!(await workshopsReady(c))) return c.json({ error: 'Run migration 0049 first.' }, 503)
+  const b = await c.req.json().catch(() => ({})) as any
+  const aid = Number(b.attendee_id)
+  const a = await c.env.DB.prepare('SELECT id, name FROM attendees WHERE id = ?').bind(aid).first() as any
+  if (!a) return c.json({ error: 'No such attendee.' }, 404)
+  const who = adminActor(c)
+  if (b.workshop_id === null || b.workshop_id === 'none') {
+    await c.env.DB.prepare('DELETE FROM workshop_seats WHERE event_id = 1 AND attendee_id = ?').bind(aid).run()
+    try { await audit(c, 'workshop.seat-removed', 'attendee', String(aid), {}) } catch { /* best effort */ }
+    return c.json({ ok: true })
+  }
+  const wid = Number(b.workshop_id)
+  if (!(await workshopList(c)).some(x => x.id === wid)) return c.json({ error: 'No such workshop.' }, 404)
+  if (!(await takeWorkshopSeat(c, aid, wid, ('admin:' + who.actor).slice(0, 60)))) {
+    return c.json({ error: 'That workshop is full. Raise its seats first.' }, 409)
+  }
+  try { await audit(c, 'workshop.seat-assigned', 'attendee', String(aid), { workshop_id: wid }) } catch { /* best effort */ }
+  return c.json({ ok: true })
+})
+
+// Admin: until when a seat may be switched.
+app.post('/api/admin/workshop-settings', async (c) => {
+  const b = await c.req.json().catch(() => ({})) as any
+  const v = String(b.switch_closes ?? '').trim()
+  if (!Number.isFinite(istWallClock(v))) return c.json({ error: 'Write the cut-off as 2026-11-18 23:59 (IST).' }, 400)
+  await c.env.DB.prepare(
+    "INSERT INTO app_settings (key, value, updated_at) VALUES ('workshop_choice_closes', ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at"
+  ).bind(v).run()
+  try { await audit(c, 'workshop.cutoff-set', 'setting', 'workshop_choice_closes', { value: v }) } catch { /* best effort */ }
+  return c.json({ ok: true, switch_closes: v })
+})
 
 // ==================== EXTERNAL REGISTRATION (from bharataiinnovation.com) ====================
 
@@ -15936,7 +16176,7 @@ function passComparisonHTML(): string {
         <tbody>${body}</tbody>
       </table>
     </div>
-    <p style="margin:10px 2px 0;font-size:12px;line-height:1.6;color:#5E6585;">Paid passes are + 18% GST. Workshop seats are limited and go first come, first served: after you pay, we email you the workshops to choose from, one per pass. The Academic Pass needs a valid student or faculty ID at the badge desk. Media passes are by invitation.</p>`
+    <p style="margin:10px 2px 0;font-size:12px;line-height:1.6;color:#5E6585;">Paid passes are + 18% GST. Workshop seats are limited and go first come, first served: after you pay, you choose your seat in the app, one per pass. The Academic Pass needs a valid student or faculty ID at the badge desk. Media passes are by invitation.</p>`
 }
 
 function registerPageHTML(): string {
@@ -17777,6 +18017,7 @@ function mainPageHTML(): string {
               <div class="flex-1 min-w-0">
                 <h3 class="font-bold text-sm mb-0.5"><span id="pcc-pass-name">Your pass</span><span id="pcc-pass-state"> is ready</span></h3>
                 <p class="text-xs text-gray-400 mb-3" id="pcc-pass-note">Keep it on your phone — the badge desk scans it to check you in.</p>
+                <p class="hidden text-xs text-gray-300 mb-3" id="pcc-workshop"></p>
                 <button type="button" id="pcc-pay-btn" onclick="payPendingPass()" class="hidden px-4 mr-2 mb-2 rounded-xl text-xs font-semibold text-white transition" style="min-height:44px;background:linear-gradient(135deg,#FF6B00,#FF8C38);"><i class="fas fa-credit-card mr-1.5"></i>Pay now</button>
                 <button type="button" onclick="generateDelegatePass()" class="px-4 rounded-xl text-xs font-semibold bg-primary-600 hover:bg-primary-500 text-white transition" style="min-height:44px;"><i class="fas fa-download mr-1.5"></i>Download my pass</button>
               </div>
@@ -17983,7 +18224,7 @@ function mainPageHTML(): string {
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Workshop certificate</li>
                   <li><i class="fas fa-wifi text-primary-400 mr-1.5 text-[10px]"></i><span class="text-primary-300 font-semibold">Access to networking app</span></li>
                 </ul>
-                <p class="mt-3 text-[11px] text-gray-500 leading-relaxed">Workshop seats are limited and go first come, first served. After you pay, we email you the workshops to choose from.</p>
+                <p class="mt-3 text-[11px] text-gray-500 leading-relaxed">Workshop seats are limited and go first come, first served. After you pay, you choose your seat in the app.</p>
               </div>
 
               <!-- VIP Pass -->
@@ -18869,6 +19110,9 @@ function mainPageHTML(): string {
             </div>
           </div>
 
+          <!-- Your workshop seat: drawn by wsRender() from /api/workshops -->
+          <div id="ws-panel" class="hidden mb-8" style="scroll-margin-top:72px;"></div>
+
           <!-- Featured Sessions -->
           <h3 class="text-lg font-bold mb-3"><i class="fas fa-star text-amber-400 mr-2"></i>Featured sessions</h3>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8" id="featured-sessions">
@@ -18912,7 +19156,9 @@ function mainPageHTML(): string {
             </a>
           </div>
 
-          <!-- Workshop Cards -->
+          <!-- Workshop Cards: not bookable yet (organiser, 26 Oct 2026) -->
+          <h3 class="text-lg font-bold mb-1"><i class="fas fa-hourglass-half text-gray-400 mr-2"></i>More workshops, coming soon</h3>
+          <p class="text-xs text-gray-500 mb-3">These are not open for seats yet. The workshop that comes with your pass is one of the two above.</p>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8" id="workshop-cards">
             <!-- Generative AI & LLMs -->
             <div class="glass rounded-2xl p-6 border border-teal-500/20 hover:border-teal-400/40 transition-all group relative overflow-hidden">
@@ -18935,9 +19181,7 @@ function mainPageHTML(): string {
                   <span class="px-2 py-0.5 rounded-full text-[10px] bg-teal-500/10 text-teal-300 border border-teal-500/20">Fine-tuning</span>
                 </div>
               </div>
-              <a href="https://bharataiinnovation.com/register" target="_blank" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-teal-600 hover:bg-teal-500 text-white transition-all shadow-lg shadow-teal-900/30">
-                <i class="fas fa-ticket-alt"></i>Register Now
-              </a>
+              <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold bg-white/5 text-gray-400 border border-white/10"><i class="fas fa-hourglass-half"></i>Coming soon</span>
             </div>
 
             <!-- Agentic AI Development -->
@@ -18961,9 +19205,7 @@ function mainPageHTML(): string {
                   <span class="px-2 py-0.5 rounded-full text-[10px] bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">Orchestration</span>
                 </div>
               </div>
-              <a href="https://bharataiinnovation.com/register" target="_blank" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-cyan-600 hover:bg-cyan-500 text-white transition-all shadow-lg shadow-cyan-900/30">
-                <i class="fas fa-ticket-alt"></i>Register Now
-              </a>
+              <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold bg-white/5 text-gray-400 border border-white/10"><i class="fas fa-hourglass-half"></i>Coming soon</span>
             </div>
 
             <!-- VibeCoding & AI-Assisted Development -->
@@ -18987,9 +19229,7 @@ function mainPageHTML(): string {
                   <span class="px-2 py-0.5 rounded-full text-[10px] bg-purple-500/10 text-purple-300 border border-purple-500/20">AI Code Review</span>
                 </div>
               </div>
-              <a href="https://bharataiinnovation.com/register" target="_blank" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-purple-600 hover:bg-purple-500 text-white transition-all shadow-lg shadow-purple-900/30">
-                <i class="fas fa-ticket-alt"></i>Register Now
-              </a>
+              <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold bg-white/5 text-gray-400 border border-white/10"><i class="fas fa-hourglass-half"></i>Coming soon</span>
             </div>
 
             <!-- AI Product Development -->
@@ -19013,9 +19253,7 @@ function mainPageHTML(): string {
                   <span class="px-2 py-0.5 rounded-full text-[10px] bg-orange-500/10 text-orange-300 border border-orange-500/20">Deployment & Monitoring</span>
                 </div>
               </div>
-              <a href="https://bharataiinnovation.com/register" target="_blank" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-orange-600 hover:bg-orange-500 text-white transition-all shadow-lg shadow-orange-900/30">
-                <i class="fas fa-ticket-alt"></i>Register Now
-              </a>
+              <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold bg-white/5 text-gray-400 border border-white/10"><i class="fas fa-hourglass-half"></i>Coming soon</span>
             </div>
 
             <!-- Recommender System Development -->
@@ -19039,9 +19277,7 @@ function mainPageHTML(): string {
                   <span class="px-2 py-0.5 rounded-full text-[10px] bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">Real-time Systems</span>
                 </div>
               </div>
-              <a href="https://bharataiinnovation.com/register" target="_blank" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-all shadow-lg shadow-emerald-900/30">
-                <i class="fas fa-ticket-alt"></i>Register Now
-              </a>
+              <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold bg-white/5 text-gray-400 border border-white/10"><i class="fas fa-hourglass-half"></i>Coming soon</span>
             </div>
 
             <!-- AI Chatbot Development -->
@@ -19065,9 +19301,7 @@ function mainPageHTML(): string {
                   <span class="px-2 py-0.5 rounded-full text-[10px] bg-blue-500/10 text-blue-300 border border-blue-500/20">Platform Integration</span>
                 </div>
               </div>
-              <a href="https://bharataiinnovation.com/register" target="_blank" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white transition-all shadow-lg shadow-blue-900/30">
-                <i class="fas fa-ticket-alt"></i>Register Now
-              </a>
+              <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold bg-white/5 text-gray-400 border border-white/10"><i class="fas fa-hourglass-half"></i>Coming soon</span>
             </div>
 
             <!-- LLM Model Fine-Tuning -->
@@ -19091,9 +19325,7 @@ function mainPageHTML(): string {
                   <span class="px-2 py-0.5 rounded-full text-[10px] bg-rose-500/10 text-rose-300 border border-rose-500/20">Deployment</span>
                 </div>
               </div>
-              <a href="https://bharataiinnovation.com/register" target="_blank" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white transition-all shadow-lg shadow-rose-900/30">
-                <i class="fas fa-ticket-alt"></i>Register Now
-              </a>
+              <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold bg-white/5 text-gray-400 border border-white/10"><i class="fas fa-hourglass-half"></i>Coming soon</span>
             </div>
 
             <!-- Computer Vision & Image AI -->
@@ -19117,9 +19349,7 @@ function mainPageHTML(): string {
                   <span class="px-2 py-0.5 rounded-full text-[10px] bg-sky-500/10 text-sky-300 border border-sky-500/20">Edge Deployment</span>
                 </div>
               </div>
-              <a href="https://bharataiinnovation.com/register" target="_blank" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-sky-600 hover:bg-sky-500 text-white transition-all shadow-lg shadow-sky-900/30">
-                <i class="fas fa-ticket-alt"></i>Register Now
-              </a>
+              <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold bg-white/5 text-gray-400 border border-white/10"><i class="fas fa-hourglass-half"></i>Coming soon</span>
             </div>
           </div>
 
@@ -19201,10 +19431,10 @@ function mainPageHTML(): string {
           <!-- CTA -->
           <div class="text-center">
             <h3 class="text-xl font-bold mb-2">Ready to Master AI Technologies?</h3>
-            <p class="text-gray-400 text-sm mb-4">Special conference rates for workshop attendees. Includes materials, certificate & lifetime access to recordings.</p>
+            <p class="text-gray-400 text-sm mb-4">A seat in one workshop comes with the Premium Delegate (&#8377;14,999 + GST) and VIP (&#8377;19,999 + GST) passes, first come, first served.</p>
             <div class="flex flex-col sm:flex-row justify-center gap-3">
-              <a href="https://bharataiinnovation.com/register" target="_blank" class="px-6 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 transition-all text-sm shadow-lg shadow-teal-500/20">
-                <i class="fas fa-ticket-alt mr-2"></i>Register for Workshops
+              <a href="/register#premium" class="px-6 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 transition-all text-sm shadow-lg shadow-teal-500/20">
+                <i class="fas fa-ticket-alt mr-2"></i>Get a workshop seat
               </a>
               <a href="/training-workshop" class="px-6 py-3 rounded-xl font-semibold text-white glass hover:bg-white/10 transition-all text-sm border border-white/10">
                 <i class="fas fa-external-link-alt mr-2"></i>View Full Details
@@ -19918,6 +20148,11 @@ function mainPageHTML(): string {
         if (currentUser) { pendingAction = null; setTimeout(function () { resumePayment(pendingPayPass); }, 900); }
         return;
       }
+      // "Choose my workshop" in the paid welcome and on the payment result page.
+      if (act === 'workshop') {
+        if (currentUser) { pendingAction = null; setTimeout(function () { openWorkshopChoice(); }, 900); }
+        return;
+      }
       if (act === 'download-pass') { setTimeout(() => generateDelegatePass(), 1500); return; }
       // The card had exactly one way in: offered once after a pass download and
       // then remembered forever. That is the right moment for an unprompted
@@ -20611,7 +20846,7 @@ function mainPageHTML(): string {
         case 'agba-jury': loadAgbaJurySchedule(); break;
         case 'startup-pitch': loadStartupPitch(); break;
         case 'innovation': loadInnovationShowcase(); break;
-        case 'workshops': break; // Static content, no dynamic loading needed
+        case 'workshops': loadWorkshopSeat(true); break;
         case 'inbox': loadInbox(); break;
         case 'myprofile': loadMyProfile(); break;
       }
@@ -20839,6 +21074,7 @@ function mainPageHTML(): string {
         ? (payNow ? 'It is issued the moment your payment goes through. Pay now to finish.' : 'It will be issued as soon as your payment is confirmed.')
         : 'Keep it on your phone — the badge desk scans it to check you in.';
       el.classList.remove('hidden');
+      if (!pending) loadWorkshopSeat();
     }
 
     function renderRoleHome() {
@@ -21104,6 +21340,119 @@ function mainPageHTML(): string {
               : '<div class="text-center text-gray-500 py-12"><i class="fas fa-calendar-times text-4xl mb-3 block opacity-40"></i><p>No sessions found for this filter.</p></div>');
 
       } catch(e) { console.error('Schedule error:', e); listEl.innerHTML = '<div class="text-center text-gray-500 py-12">Failed to load schedule. Please try again.</div>'; }
+    }
+
+    // ==================== WORKSHOP SEAT ====================
+    // A Premium Delegate or VIP Pass includes one workshop, taken here after paying,
+    // first come, first served (/api/workshops). Drawn at the top of the Workshops
+    // tab and as one line on the pass card. The server never says how many seats
+    // are taken: only full, or the count once few are left.
+    var _wsState = null, _wsLoadedAt = 0;
+    async function loadWorkshopSeat(force) {
+      if (!force && _wsState && Date.now() - _wsLoadedAt < 30000) { wsRender(); return; }
+      try { _wsState = await api.get('/api/workshops'); _wsLoadedAt = Date.now(); } catch (e) { _wsState = null; }
+      wsRender();
+    }
+    function wsWhen(w) {
+      if (!w.starts_at) return 'Day and time to be announced';
+      var d = new Date(String(w.starts_at).replace(' ', 'T') + ':00+05:30');
+      if (isNaN(d.getTime())) return 'Day and time to be announced';
+      var day = d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' });
+      var t = d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Kolkata' });
+      return day + ', ' + t + (w.room ? ' &middot; ' + esc(w.room) : '');
+    }
+    function wsCloseText(v) {
+      var d = new Date(String(v || '').replace(' ', 'T') + ':00+05:30');
+      if (isNaN(d.getTime())) return '';
+      return d.toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Kolkata' });
+    }
+    function wsRender() {
+      var s = _wsState;
+      var panel = document.getElementById('ws-panel');
+      var line = document.getElementById('pcc-workshop');
+      if (!s || !s.ready || !(s.workshops || []).length) {
+        if (panel) panel.classList.add('hidden');
+        if (line) line.classList.add('hidden');
+        return;
+      }
+      var mine = s.workshops.filter(function (w) { return w.id === s.mine; })[0] || null;
+      var teal = '#0B7A75';
+      if (line) {
+        if (s.entitled) {
+          line.innerHTML = '<i class="fas fa-laptop-code mr-1.5" style="color:' + teal + ';"></i>' + (mine
+            ? 'Your workshop: <strong>' + esc(mine.title) + '</strong>'
+            : 'Your pass includes a workshop. <button type="button" onclick="openWorkshopChoice()" class="font-semibold underline" style="color:' + teal + ';">Choose your seat</button>');
+          line.classList.remove('hidden');
+        } else {
+          line.classList.add('hidden');
+        }
+      }
+      if (!panel) return;
+      var head, sub, cta = '';
+      if (s.entitled) {
+        head = mine ? 'Your workshop seat is booked' : 'Choose your workshop';
+        sub = mine
+          ? (s.can_switch ? 'You can switch to another workshop while it has seats, until ' + esc(wsCloseText(s.switch_closes)) + '.' : 'Workshop choices are fixed now.')
+          : 'Your pass includes one hands-on workshop. Seats are limited and go first come, first served, so take yours now.';
+      } else if (s.why === 'unpaid') {
+        head = 'Your workshop seat';
+        sub = 'You can choose your workshop the moment your payment goes through.';
+        cta = '<button type="button" onclick="payPendingPass()" class="px-5 rounded-xl text-xs font-semibold" style="min-height:44px;color:#fff;background:linear-gradient(135deg,#FF6B00,#FF8C38);">Pay now</button>';
+      } else {
+        head = 'Workshop seats';
+        sub = 'A seat in one workshop comes with the Premium Delegate (&#8377;14,999 + GST) and VIP (&#8377;19,999 + GST) passes. Seats go first come, first served.';
+        cta = currentUser
+          ? '<button type="button" onclick="resumePayment(&quot;premium&quot;)" class="px-5 rounded-xl text-xs font-semibold" style="min-height:44px;color:#fff;background:' + teal + ';">Get Premium Delegate</button>'
+          : '<a href="/register#premium" class="inline-flex items-center px-5 rounded-xl text-xs font-semibold" style="min-height:44px;color:#fff;background:' + teal + ';">Get Premium Delegate</a>';
+      }
+      var cards = s.workshops.map(function (w) {
+        var isMine = w.id === s.mine;
+        var seats = w.full ? '<span class="text-xs font-semibold" style="color:#B91C1C;">Full</span>'
+          : w.few_left ? '<span class="text-xs font-semibold" style="color:#B45309;">Only ' + Number(w.few_left) + ' seats left</span>'
+          : '<span class="text-xs font-semibold" style="color:' + teal + ';">Seats available</span>';
+        var btn = '';
+        if (s.entitled) {
+          if (isMine) btn = '<span class="px-3 py-2 rounded-xl text-xs font-bold" style="background:rgba(11,122,117,0.12);color:' + teal + ';"><i class="fas fa-check mr-1"></i>Your seat</span>';
+          else if (!w.open) btn = '<span class="text-xs text-gray-500">Closed</span>';
+          else if (w.full) btn = '';
+          else if (mine && !s.can_switch) btn = '';
+          else btn = '<button type="button" onclick="wsTake(' + Number(w.id) + ', this)" class="px-4 rounded-xl text-xs font-semibold" style="min-height:44px;color:#fff;background:' + teal + ';">' + (mine ? 'Switch to this one' : 'Take this seat') + '</button>';
+        }
+        return '<div class="glass rounded-2xl p-5 border" style="border-color:' + (isMine ? teal : 'rgba(11,122,117,0.2)') + ';' + (isMine ? 'box-shadow:0 0 0 1px ' + teal + ';' : '') + '">' +
+          '<h4 class="font-bold text-sm text-white mb-1">' + esc(w.title) + '</h4>' +
+          (w.speaker ? '<p class="text-[11px] text-gray-400 mb-2">' + esc(w.speaker) + '</p>' : '') +
+          '<p class="text-[11px] text-gray-500 mb-3"><i class="fas fa-clock mr-1"></i>' + wsWhen(w) + '</p>' +
+          '<div class="flex flex-wrap items-center justify-between gap-3">' + seats + btn + '</div>' +
+        '</div>';
+      }).join('');
+      panel.innerHTML = '<div class="rounded-2xl p-5 md:p-6 border" style="border-color:rgba(11,122,117,0.3);background:rgba(11,122,117,0.05);">' +
+        '<h3 class="text-lg font-bold mb-1" style="color:' + teal + ';"><i class="fas fa-laptop-code mr-2"></i>' + head + '</h3>' +
+        '<p class="text-xs text-gray-400 mb-4">' + sub + '</p>' +
+        '<div class="grid grid-cols-1 md:grid-cols-2 gap-3">' + cards + '</div>' +
+        (cta ? '<div class="mt-4">' + cta + '</div>' : '') +
+      '</div>';
+      panel.classList.remove('hidden');
+    }
+    async function wsTake(id, btn) {
+      if (btn) { btn.disabled = true; btn.textContent = 'Booking...'; }
+      try {
+        var r = await fetch('/api/workshops/choose', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ workshop_id: id }) });
+        var j = await r.json().catch(function () { return {}; });
+        if (j && j.ready) { _wsState = j; _wsLoadedAt = Date.now(); }
+        wsRender();
+        if (!r.ok) { showToast(j.error || 'We could not book that seat. Please try again.', 'error'); return; }
+        showToast('Your workshop seat is booked.', 'success');
+      } catch (e) {
+        showToast('We could not reach the server. Please try again.', 'error');
+        wsRender();
+      }
+    }
+    function openWorkshopChoice() {
+      switchTab('workshops');
+      setTimeout(function () {
+        var p = document.getElementById('ws-panel');
+        if (p && !p.classList.contains('hidden')) p.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 600);
     }
 
     // ==================== NETWORKING ====================
@@ -26967,6 +27316,9 @@ function adminPageHTML(): string {
       <button onclick="switchSection('payments')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="payments" title="Payments & Invoices">
         <i class="fas fa-file-invoice-dollar w-5 text-center shrink-0"></i><span class="sidebar-label">Payments</span>
       </button>
+      <button onclick="switchSection('workshops')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="workshops" title="Workshop Seats">
+        <i class="fas fa-laptop-code w-5 text-center shrink-0"></i><span class="sidebar-label">Workshop Seats</span>
+      </button>
       <button onclick="switchSection('badge-desk')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="badge-desk" title="Badge Desk">
         <i class="fas fa-qrcode w-5 text-center shrink-0"></i><span class="sidebar-label">Badge Desk</span>
       </button>
@@ -27038,6 +27390,8 @@ function adminPageHTML(): string {
       <div id="section-inquiries" class="section-content hidden"></div>
       <!-- Payments & Invoices Section -->
       <div id="section-payments" class="section-content hidden"></div>
+      <!-- Workshop Seats Section -->
+      <div id="section-workshops" class="section-content hidden"></div>
       <!-- Badge Desk Section -->
       <div id="section-badge-desk" class="section-content hidden"></div>
       <!-- Analytics Section -->
@@ -27448,8 +27802,8 @@ function adminPageHTML(): string {
       document.querySelectorAll('.section-content').forEach(s => s.classList.add('hidden'));
       document.getElementById('section-'+sec).classList.remove('hidden');
 
-      const titles = { overview:'Overview', attendees:'Attendee Management', sessions:'Session Management', exhibitors:'Exhibitor Management', 'booth-requests':'Booth Requests', 'floor-plan':'Floor Plan', sponsorship:'Sponsorship & Branding', awards:'Awards Management', announcements:'Announcement Management', innovation:'Innovation Talk & Showcase', 'startup-pitch':'Startup Pitch Management', inquiries:'Inquiry Management', payments:'Payments & Invoices', 'badge-desk':'Badge Desk', analytics:'Analytics & Reports', rooms:'Boardrooms', settings:'Settings' };
-      const subtitles = { overview:'Real-time event management dashboard', attendees:'Manage all registered attendees', sessions:'Create and manage event sessions', exhibitors:'Manage exhibition booths', 'booth-requests':'Review and manage booth booking requests', 'floor-plan':'Which of the 93 stands are sold, held and still on the market', sponsorship:'Everything the show sells that is not floor space — and the combined revenue picture', awards:'Manage award categories and nominees', announcements:'Create and manage live feed announcements', innovation:'Manage innovation talk and showcase schedule', 'startup-pitch':'Manage startup pitches and investor panel', inquiries:'View and manage all incoming inquiries', payments:'Payments taken online, payments to confirm, and GST invoices', 'badge-desk':'Event-day check-in and the staff accounts that scan passes', analytics:'Deep dive into event engagement metrics', rooms:'Who has which WTC boardroom, hour by hour, across both event days', settings:'Configure email, API keys and app settings' };
+      const titles = { overview:'Overview', workshops:'Workshop Seats', attendees:'Attendee Management', sessions:'Session Management', exhibitors:'Exhibitor Management', 'booth-requests':'Booth Requests', 'floor-plan':'Floor Plan', sponsorship:'Sponsorship & Branding', awards:'Awards Management', announcements:'Announcement Management', innovation:'Innovation Talk & Showcase', 'startup-pitch':'Startup Pitch Management', inquiries:'Inquiry Management', payments:'Payments & Invoices', 'badge-desk':'Badge Desk', analytics:'Analytics & Reports', rooms:'Boardrooms', settings:'Settings' };
+      const subtitles = { overview:'Real-time event management dashboard', workshops:'Who sits where, who has not chosen yet, and each workshop slot and seat limit', attendees:'Manage all registered attendees', sessions:'Create and manage event sessions', exhibitors:'Manage exhibition booths', 'booth-requests':'Review and manage booth booking requests', 'floor-plan':'Which of the 93 stands are sold, held and still on the market', sponsorship:'Everything the show sells that is not floor space — and the combined revenue picture', awards:'Manage award categories and nominees', announcements:'Create and manage live feed announcements', innovation:'Manage innovation talk and showcase schedule', 'startup-pitch':'Manage startup pitches and investor panel', inquiries:'View and manage all incoming inquiries', payments:'Payments taken online, payments to confirm, and GST invoices', 'badge-desk':'Event-day check-in and the staff accounts that scan passes', analytics:'Deep dive into event engagement metrics', rooms:'Who has which WTC boardroom, hour by hour, across both event days', settings:'Configure email, API keys and app settings' };
       document.getElementById('page-title').textContent = titles[sec] || sec;
       document.getElementById('page-subtitle').textContent = subtitles[sec] || '';
 
@@ -27564,6 +27918,7 @@ function adminPageHTML(): string {
         case 'startup-pitch': loadAdminStartupPitch(); break;
         case 'inquiries': loadAdminInquiries(); break;
         case 'payments': loadPayments(); break;
+        case 'workshops': loadAdminWorkshops(); break;
         case 'rooms': loadAdminRooms(); break;
         case 'badge-desk': loadBadgeDesk(); break;
         case 'settings': loadSettings(); break;
@@ -27630,6 +27985,114 @@ function adminPageHTML(): string {
     // ============ PAYMENTS & INVOICES ============
     var _pendingPayments = [];
     var _paidOnline = [];
+
+    // ============ WORKSHOP SEATS ============
+    // A Premium Delegate or VIP Pass includes one workshop, chosen by the buyer in
+    // the app (/api/workshops). Here: each workshop's slot, room and seat limit,
+    // who sits where (move or remove), and who has paid for a seat and not taken
+    // one. Placing someone ignores the switching cut-off but not the seat limit.
+    var _adminWs = null;
+    async function loadAdminWorkshops() {
+      var el = document.getElementById('section-workshops');
+      try {
+        var d = await api.get('/api/admin/workshops');
+        var bad = bodyError(d) || (d && Array.isArray(d.workshops) ? null : 'Workshops came back in an unexpected shape.');
+        if (bad) { sectionError(el, 'workshop seats', { message: bad }, 'loadAdminWorkshops()'); return; }
+        _adminWs = d;
+        if (!d.ready) {
+          el.innerHTML = '<div class="glass rounded-2xl p-6 text-sm text-gray-300">Workshop seats need migration 0049. Run this once, then reload:' +
+            '<pre class="mt-3 p-3 rounded-lg bg-black/30 text-xs text-gray-300 overflow-x-auto">npx wrangler d1 execute bharatai-production --remote --file=./migrations/0049_workshop_seats.sql</pre></div>';
+          return;
+        }
+        var inputCls = 'w-full px-2 py-1.5 rounded-lg text-xs mt-1';
+        var options = function (except) {
+          return d.workshops.map(function (w) {
+            return '<option value="' + w.id + '"' + (w.id === except ? ' disabled' : '') + '>' + deskEsc(w.title) + '</option>';
+          }).join('');
+        };
+        var cards = d.workshops.map(function (w) {
+          var people = d.seats.filter(function (s) { return s.workshop_id === w.id; });
+          var rows = people.map(function (p) {
+            return '<tr class="border-b border-white/5">' +
+              '<td class="py-2 pr-3 text-gray-200">' + deskEsc(p.name) + '</td>' +
+              '<td class="py-2 pr-3 text-gray-400">' + deskEsc(p.company || '') + '</td>' +
+              '<td class="py-2 pr-3 text-gray-400">' + deskEsc(p.email || '') + '</td>' +
+              '<td class="py-2 pr-3 text-gray-400">' + deskEsc(p.badge_type || '') + '</td>' +
+              '<td class="py-2"><select onchange="adminWsAssign(' + Number(p.id) + ', this.value)" class="px-2 py-1 rounded-lg text-xs"><option value="">Move or remove</option>' + options(w.id) + '<option value="none">Remove the seat</option></select></td>' +
+            '</tr>';
+          }).join('') || '<tr><td colspan="5" class="py-3 text-gray-500">Nobody has taken a seat yet.</td></tr>';
+          return '<div class="glass rounded-2xl p-5 mb-5">' +
+            '<div class="flex flex-wrap items-start justify-between gap-3 mb-4">' +
+              '<div class="min-w-0"><h3 class="font-bold text-base">' + deskEsc(w.title) + '</h3><p class="text-xs text-gray-400">' + deskEsc(w.speaker) + '</p></div>' +
+              '<span class="px-3 py-1 rounded-full text-xs font-semibold ' + (w.left > 0 ? 'bg-green-500/15 text-green-300' : 'bg-red-500/15 text-red-300') + '">' + w.taken + ' of ' + w.capacity + ' seats taken</span>' +
+            '</div>' +
+            '<div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-3 text-xs text-gray-400">' +
+              '<label>Starts (IST)<input id="ws-start-' + w.id + '" value="' + deskEsc(w.starts_at || '') + '" placeholder="e.g. 2026-11-21 14:00" class="' + inputCls + '"></label>' +
+              '<label>Ends (IST)<input id="ws-end-' + w.id + '" value="' + deskEsc(w.ends_at || '') + '" placeholder="e.g. 2026-11-21 15:00" class="' + inputCls + '"></label>' +
+              '<label>Room<input id="ws-room-' + w.id + '" value="' + deskEsc(w.room || '') + '" placeholder="To be announced" class="' + inputCls + '"></label>' +
+              '<label>Seats<input id="ws-cap-' + w.id + '" type="number" min="' + Math.max(1, w.taken) + '" value="' + w.capacity + '" class="' + inputCls + '"></label>' +
+              '<label class="flex items-center gap-2 pt-5"><input id="ws-open-' + w.id + '" type="checkbox"' + (w.is_open ? ' checked' : '') + '> Open for choosing</label>' +
+            '</div>' +
+            '<button onclick="adminWsSave(' + w.id + ')" class="px-4 py-2 rounded-lg text-xs font-semibold bg-primary-500/20 text-primary-300 hover:bg-primary-500/30">Save slot and seats</button>' +
+            '<p class="text-[11px] text-gray-500 mt-2">Leave the times empty and the app says &ldquo;Day and time to be announced&rdquo;.</p>' +
+            '<div class="overflow-x-auto mt-4"><table class="w-full text-xs"><thead><tr class="text-left text-gray-500 border-b border-white/10"><th class="py-2 pr-3 font-medium">Name</th><th class="py-2 pr-3 font-medium">Organisation</th><th class="py-2 pr-3 font-medium">Email</th><th class="py-2 pr-3 font-medium">Pass</th><th class="py-2 font-medium"></th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+          '</div>';
+        }).join('');
+        var waiting = d.unchosen.map(function (p) {
+          return '<div class="flex flex-wrap items-center gap-3 py-2 border-b border-white/5">' +
+            '<div class="flex-1 min-w-[180px]"><div class="text-sm text-gray-200">' + deskEsc(p.name) + '</div><div class="text-[11px] text-gray-500">' + deskEsc(p.email || '') + (p.company ? ' &middot; ' + deskEsc(p.company) : '') + '</div></div>' +
+            '<span class="px-2 py-0.5 rounded-full text-[10px] bg-amber-500/15 text-amber-300">' + deskEsc(p.badge_type) + '</span>' +
+            '<select onchange="adminWsAssign(' + Number(p.id) + ', this.value)" class="px-2 py-1 rounded-lg text-xs"><option value="">Give a seat in</option>' + options(null) + '</select>' +
+          '</div>';
+        }).join('') || '<p class="text-gray-500 text-sm py-2">Everyone who has paid for a seat has chosen one.</p>';
+        el.innerHTML =
+          '<div class="glass rounded-2xl p-5 mb-5 flex flex-wrap items-end gap-3">' +
+            '<label class="text-xs text-gray-400">Seats can be switched until (IST)<input id="ws-closes" value="' + deskEsc(d.switch_closes) + '" class="' + inputCls + '" style="min-width:180px;"></label>' +
+            '<button onclick="adminWsCloses()" class="px-4 py-2 rounded-lg text-xs font-semibold bg-primary-500/20 text-primary-300 hover:bg-primary-500/30">Save cut-off</button>' +
+            '<button onclick="adminWsCsv()" class="px-4 py-2 rounded-lg text-xs font-semibold glass text-gray-300 hover:bg-white/10 ml-auto"><i class="fas fa-download mr-1.5"></i>Download CSV</button>' +
+          '</div>' +
+          cards +
+          '<div class="glass rounded-2xl p-5"><h3 class="font-bold text-base mb-1">Paid for a seat, not chosen yet (' + d.unchosen.length + ')</h3>' +
+            '<p class="text-xs text-gray-400 mb-3">Premium Delegate and VIP passes that are paid. They choose in the app; you can also place them here.</p>' + waiting + '</div>';
+      } catch (e) { sectionError(el, 'workshop seats', e, 'loadAdminWorkshops()'); }
+    }
+    async function adminWsSave(id) {
+      var v = function (k) { var x = document.getElementById(k + id); return x ? x.value : ''; };
+      var res = await api.post('/api/admin/workshops/' + id, {
+        starts_at: v('ws-start-'), ends_at: v('ws-end-'), room: v('ws-room-'), capacity: Number(v('ws-cap-')),
+        is_open: !!(document.getElementById('ws-open-' + id) || {}).checked,
+      });
+      if (res && res.error) { toast(res.error, 'error'); return; }
+      toast('Workshop saved');
+      loadAdminWorkshops();
+    }
+    async function adminWsAssign(attendeeId, value) {
+      if (!value) return;
+      var res = await api.post('/api/admin/workshop-seat', { attendee_id: attendeeId, workshop_id: value === 'none' ? null : Number(value) });
+      if (res && res.error) { toast(res.error, 'error'); loadAdminWorkshops(); return; }
+      toast(value === 'none' ? 'Seat removed' : 'Seat given');
+      loadAdminWorkshops();
+    }
+    async function adminWsCloses() {
+      var res = await api.post('/api/admin/workshop-settings', { switch_closes: (document.getElementById('ws-closes') || {}).value || '' });
+      if (res && res.error) { toast(res.error, 'error'); return; }
+      toast('Cut-off saved');
+      loadAdminWorkshops();
+    }
+    function adminWsCsv() {
+      var d = _adminWs;
+      if (!d || !d.ready) return;
+      var title = {};
+      d.workshops.forEach(function (w) { title[w.id] = w.title; });
+      var cell = function (x) { var s = String(x == null ? '' : x); return /[",\\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+      var lines = [['Workshop', 'Name', 'Email', 'Mobile', 'Organisation', 'Job title', 'Pass', 'Chosen by', 'When (UTC)'].join(',')];
+      d.seats.forEach(function (p) { lines.push([title[p.workshop_id], p.name, p.email, p.mobile, p.company, p.job_title, p.badge_type, p.chosen_by, p.updated_at].map(cell).join(',')); });
+      d.unchosen.forEach(function (p) { lines.push(['NOT CHOSEN YET', p.name, p.email, p.mobile, p.company, '', p.badge_type, '', ''].map(cell).join(',')); });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([lines.join('\\n')], { type: 'text/csv' }));
+      a.download = 'workshop-seats.csv';
+      document.body.appendChild(a); a.click(); a.remove();
+    }
 
     async function loadPayments() {
       var el = document.getElementById('section-payments');
