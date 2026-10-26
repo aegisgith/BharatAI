@@ -993,7 +993,7 @@ async function sendRegistrationEmail(c: any, attendee: any, opts: { receipt?: st
             ${net('Book a meeting slot', 'Propose a time, a length and a place. They accept or decline in the app, so you arrive with a diary rather than a hope.')}
             ${net('Build your agenda', 'Star the sessions you want across both days and carry the plan on your phone.')}`
 
-  const boardrooms = `<p style="margin:14px 0 0;font-size:11.5px;line-height:1.6;color:#999;text-align:center;">Need somewhere private for a longer conversation? WTC boardrooms can be hired by the hour &mdash; rates are on the <a href="https://bharataiinnovation.com/#networking" style="color:#0f7b47;">networking page</a>.</p>`
+  const boardrooms = `<p style="margin:14px 0 0;font-size:11.5px;line-height:1.6;color:#999;text-align:center;">Need somewhere private for a longer conversation? WTC boardrooms can be hired by the hour &mdash; rates are on the <a href="https://bharataiinnovation.com/networking#boardrooms" style="color:#0f7b47;">networking page</a>.</p>`
 
   const isVisitor = String(attendee.badge_type || 'Visitor Pass') === 'Visitor Pass'
 

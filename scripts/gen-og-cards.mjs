@@ -105,6 +105,14 @@ export const CARDS = {
     sub: 'Hotels in Cuffe Parade, Colaba and Marine Drive for attendees and exhibitors at Bharat AI Innovation 2026.',
     chips: ['Cuffe Parade', 'Colaba', 'Marine Drive'],
   },
+  networking: {
+    path: '/networking',
+    label: 'Networking & Private Boardrooms',
+    headline: 'Meet the right people, not just the crowd',
+    accent: 'not just the crowd',
+    sub: 'AI matchmaking and 1:1 meetings on Bharat AI Connect, then four private WTC Mumbai boardrooms bookable by the hour.',
+    chips: ['AI matchmaking', '1:1 meetings', 'Private boardrooms'],
+  },
   'past-speakers': {
     path: '/past-speakers',
     label: 'Data Science Congress archive',
