@@ -401,6 +401,93 @@
             .facilitator { text-align: center; padding: 1.5rem; }
             .facilitator-who { align-items: center; }
         }
+        /* A named session, ahead of the generic workshop list: who leads it,
+           what it covers, and what a leader leaves with. */
+        .session-feature {
+            display: grid;
+            grid-template-columns: 260px 1fr;
+            gap: 2.5rem;
+            background: white;
+            border: 1px solid var(--light);
+            border-radius: var(--r-2xl);
+            box-shadow: var(--shadow-sm);
+            padding: 2.5rem;
+        }
+        .session-lead { text-align: center; }
+        .session-lead img {
+            width: 180px;
+            height: 180px;
+            border-radius: var(--r-full);
+            object-fit: cover;
+            border: 4px solid var(--saffron);
+            margin-bottom: 1rem;
+        }
+        .session-lead strong {
+            display: block;
+            font-family: var(--font-display);
+            font-size: 1.3rem;
+            font-weight: 800;
+            color: var(--charcoal);
+        }
+        .session-lead span {
+            display: block;
+            font-size: 0.92rem;
+            color: var(--dark-grey);
+            line-height: 1.5;
+            margin-top: 0.35rem;
+        }
+        .session-body h3 {
+            font-family: var(--font-display);
+            font-size: 1.75rem;
+            font-weight: 800;
+            color: var(--charcoal);
+            line-height: 1.25;
+            margin: 0.5rem 0 1rem;
+        }
+        .session-body > p {
+            color: var(--dark-grey);
+            line-height: 1.7;
+            margin-bottom: 1rem;
+        }
+        .session-body h4 {
+            font-size: 0.78rem;
+            font-weight: 700;
+            letter-spacing: 0.09em;
+            text-transform: uppercase;
+            color: var(--saffron);
+            margin: 1.5rem 0 0.75rem;
+        }
+        .session-covers { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.75rem; }
+        .session-covers li { color: var(--dark-grey); line-height: 1.6; padding-left: 1.5rem; position: relative; }
+        .session-covers li::before { content: ""; position: absolute; left: 0; top: 0.6em; width: 0.5rem; height: 0.5rem; border-radius: 50%; background: var(--saffron); }
+        .session-covers strong { color: var(--charcoal); }
+        .session-takeaway {
+            background: var(--off-white);
+            border-left: 4px solid var(--saffron);
+            border-radius: 0 var(--r-xl, 12px) var(--r-xl, 12px) 0;
+            padding: 1rem 1.25rem;
+            color: var(--charcoal);
+            line-height: 1.6;
+            margin: 1.5rem 0;
+        }
+        .session-feature + .session-feature { margin-top: 2rem; }
+        .session-format { font-size: 0.9rem; font-weight: 600; color: var(--dark-grey); margin-left: 0.5rem; }
+        .session-agenda { list-style: none; counter-reset: agenda; padding: 0; margin: 0; display: grid; gap: 0.85rem; }
+        .session-agenda li { counter-increment: agenda; position: relative; padding-left: 2.5rem; color: var(--dark-grey); line-height: 1.6; }
+        .session-agenda li::before {
+            content: counter(agenda);
+            position: absolute; left: 0; top: 0;
+            width: 1.75rem; height: 1.75rem; border-radius: 50%;
+            background: rgba(255,107,0,0.1); color: var(--saffron);
+            font-weight: 800; font-size: 0.85rem;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .session-agenda strong { display: block; color: var(--charcoal); }
+        @media (max-width: 760px) {
+            .session-feature { grid-template-columns: 1fr; gap: 1.5rem; padding: 1.5rem; }
+            .session-lead img { width: 140px; height: 140px; }
+            .session-body h3 { font-size: 1.4rem; }
+        }
         .instructor-badges {
             display: flex;
             gap: 1rem;
@@ -519,8 +606,73 @@
         </div>
     </section>
 
+    <!-- FEATURED SESSIONS -->
+    <section class="section-pad" style="background:var(--off-white);" id="sessions">
+        <div class="container">
+            <div class="section-header reveal">
+                <h2 class="section-title">Featured <span class="accent">Sessions</span></h2>
+                <p class="section-subtitle">Two named sessions: one for the leaders deciding where AI goes, one for the engineers who build it</p>
+            </div>
+            <article class="session-feature reveal" id="cxo-guide">
+                <div class="session-lead">
+                    <img src="/images/speaker-vinay-kulkarni-sq.webp" alt="Dr. Vinay Kulkarni" width="180" height="180" loading="lazy" decoding="async">
+                    <strong>Dr. Vinay Kulkarni</strong>
+                    <span>Adjunct Faculty, IIT Bombay</span>
+                    <span>Director, Aegis School of Data Science &amp; AI</span>
+                </div>
+                <div class="session-body">
+                    <span class="workshop-badge" style="position:static;display:inline-block;">For CXOs</span>
+                    <h3>Data Science to Agentic AI: A CXO&rsquo;s Guide to Strategic Decision-Making</h3>
+                    <p>As organizations move from Data Science and Machine Learning to Generative AI and Agentic AI, CXOs face a critical challenge: identifying the right business problems, selecting high-value AI use cases, evaluating pilot outcomes, and scaling successful solutions into production.</p>
+                    <p>This session gives business and technology leaders a practical framework for navigating the AI landscape, making informed technology and investment decisions, and turning AI opportunities into measurable business outcomes.</p>
+                    <h4>What the session covers</h4>
+                    <ul class="session-covers">
+                        <li><strong>Identifying the right business problems:</strong> where AI can address meaningful business challenges and create measurable value.</li>
+                        <li><strong>Selecting and prioritizing AI use cases:</strong> when to use Data Science, Machine Learning, Generative AI or Agentic AI, based on business needs, feasibility and risk.</li>
+                        <li><strong>Designing and evaluating AI pilots:</strong> defining success metrics, establishing baselines, and evaluating technical performance and business impact.</li>
+                        <li><strong>Moving from pilot to production:</strong> assessing readiness for enterprise deployment, including integration, security, governance, scalability and operational reliability.</li>
+                        <li><strong>Scaling AI for business impact:</strong> a roadmap to prioritize investments, scale successful solutions, and realize sustained business value.</li>
+                    </ul>
+                    <div class="session-takeaway"><strong>Key takeaway:</strong> a practical decision-making framework for CXOs to move from AI opportunities and pilot projects to reliable, scalable, production-ready enterprise solutions.</div>
+                    <a href="/register" class="btn btn-primary">Register Now <i class="fas fa-arrow-right"></i></a>
+                </div>
+            </article>
+            <article class="session-feature reveal" id="fde-workshop">
+                <div class="session-lead">
+                    <img src="/images/speaker-ashish-tendulkar-panel.webp" alt="Dr. Ashish Tendulkar" width="180" height="180" loading="lazy" decoding="async">
+                    <strong>Dr. Ashish Tendulkar</strong>
+                    <span>Google AI</span>
+                </div>
+                <div class="session-body">
+                    <span class="workshop-badge" style="position:static;display:inline-block;">Live coding</span><span class="session-format">60 minutes</span>
+                    <h3>From Prototype to Production: Building Enterprise AI with Forward-Deployed Engineers</h3>
+                    <p>How do you turn a real business problem into an AI solution that can work in an enterprise? This 60-minute session introduces the Forward-Deployed Engineer (FDE) role and shows how business needs, AI engineering and enterprise integration come together. Through live coding, participants see an AI-powered workflow built, tested against realistic cases, and examined through the lens of production readiness.</p>
+                    <h4>What you will take away</h4>
+                    <ul class="session-covers">
+                        <li>What a Forward-Deployed Engineer does, and how the role differs from traditional software and AI engineering.</li>
+                        <li>How an engineer translates a business problem into a scoped AI solution and architecture.</li>
+                        <li>A live-coded enterprise AI workflow that connects an LLM with data, tools and business logic.</li>
+                        <li>Why testing, failure handling, security, reliability and evaluation matter beyond a working prototype.</li>
+                    </ul>
+                    <h4>The 60 minutes</h4>
+                    <ol class="session-agenda">
+                        <li><strong>The rise of the FDE</strong>What a Forward-Deployed Engineer is, why the role is emerging, and why enterprises need engineers who can connect business problems to working technology.</li>
+                        <li><strong>The FDE mindset</strong>How FDEs discover the real problem, clarify requirements, define constraints, and identify what success should look like.</li>
+                        <li><strong>Designing the solution</strong>A concise walkthrough of the architecture: model, enterprise data, tools or APIs, workflow, and guardrails.</li>
+                        <li><strong>Live coding: build an enterprise AI workflow</strong>A focused business workflow agent, such as a procurement assistant that checks policy and supporting information through a mock enterprise API, then recommends a next step.</li>
+                        <li><strong>Test, find failures, improve</strong>Realistic test cases, including missing information or a policy exception. Examine the output, identify failure modes, and demonstrate an improvement.</li>
+                        <li><strong>From prototype to production</strong>What real deployment needs: access control, privacy, reliability, observability, evaluation, human approval, and integration.</li>
+                        <li><strong>Key takeaways</strong>The FDE mindset and the capabilities required to build useful enterprise AI.</li>
+                    </ol>
+                    <div class="session-takeaway"><strong>Who should attend:</strong> fresh engineering graduates, software developers, AI/ML engineers, data scientists, technology leaders, and enterprise decision-makers, including CIOs, CTOs and Chief Data Officers.</div>
+                    <a href="/register" class="btn btn-primary">Register Now <i class="fas fa-arrow-right"></i></a>
+                </div>
+            </article>
+        </div>
+    </section>
+
     <!-- WORKSHOPS -->
-    <section class="section-pad" style="background:var(--off-white);">
+    <section class="section-pad" style="background:var(--off-white);padding-top:0;">
         <div class="container">
             <div class="section-header reveal">
                 <h2 class="section-title">Available <span class="accent">Workshops</span></h2>
@@ -818,6 +970,14 @@
                         <span class="facilitator-label">Workshop Facilitator</span>
                         <strong>Dr. Ashish Tendulkar</strong>
                         <span class="facilitator-role">Lead AI, Google</span>
+                    </div>
+                </div>
+                <div class="facilitator">
+                    <img src="/images/speaker-vinay-kulkarni-sq.webp" alt="Dr. Vinay Kulkarni" width="96" height="96" loading="lazy">
+                    <div class="facilitator-who">
+                        <span class="facilitator-label">Workshop Facilitator</span>
+                        <strong>Dr. Vinay Kulkarni</strong>
+                        <span class="facilitator-role">Adjunct Faculty, IIT Bombay &middot; Director, Aegis School of Data Science &amp; AI</span>
                     </div>
                 </div>
                 <div class="instructor-badges">

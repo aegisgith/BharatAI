@@ -18771,6 +18771,37 @@ function mainPageHTML(): string {
             </div>
           </div>
 
+          <!-- Featured Sessions -->
+          <h3 class="text-lg font-bold mb-3"><i class="fas fa-star text-amber-400 mr-2"></i>Featured sessions</h3>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8" id="featured-sessions">
+            <a href="/training-workshop#cxo-guide" class="glass rounded-2xl p-6 border border-amber-500/20 hover:border-amber-400/40 transition-all block">
+              <div class="flex items-center gap-3 mb-3">
+                <img src="/images/speaker-vinay-kulkarni-sq.webp" alt="Dr. Vinay Kulkarni" width="56" height="56" loading="lazy" class="w-14 h-14 rounded-full object-cover border-2 border-amber-400 shrink-0">
+                <div>
+                  <div class="font-bold text-sm text-white">Dr. Vinay Kulkarni</div>
+                  <div class="text-[11px] text-gray-400">Adjunct Faculty, IIT Bombay &middot; Director, Aegis School of Data Science &amp; AI</div>
+                </div>
+              </div>
+              <span class="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-300 mb-2">For CXOs</span>
+              <h4 class="font-bold text-base text-white mb-2">Data Science to Agentic AI: A CXO&rsquo;s Guide to Strategic Decision-Making</h4>
+              <p class="text-xs text-gray-400 mb-3">A practical framework for choosing the right business problems and AI use cases, judging pilots, and scaling what works into reliable production systems.</p>
+              <span class="text-xs font-semibold text-amber-300">What it covers <i class="fas fa-arrow-right ml-1"></i></span>
+            </a>
+            <a href="/training-workshop#fde-workshop" class="glass rounded-2xl p-6 border border-teal-500/20 hover:border-teal-400/40 transition-all block">
+              <div class="flex items-center gap-3 mb-3">
+                <img src="/images/speaker-ashish-tendulkar-panel.webp" alt="Dr. Ashish Tendulkar" width="56" height="56" loading="lazy" class="w-14 h-14 rounded-full object-cover border-2 border-teal-400 shrink-0">
+                <div>
+                  <div class="font-bold text-sm text-white">Dr. Ashish Tendulkar</div>
+                  <div class="text-[11px] text-gray-400">Google AI</div>
+                </div>
+              </div>
+              <span class="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-teal-500/10 text-teal-300 mb-2">Live coding &middot; 60 minutes</span>
+              <h4 class="font-bold text-base text-white mb-2">From Prototype to Production: Building Enterprise AI with Forward-Deployed Engineers</h4>
+              <p class="text-xs text-gray-400 mb-3">Watch an enterprise AI workflow built live, tested against realistic cases, and taken through what production really needs.</p>
+              <span class="text-xs font-semibold text-teal-300">See the agenda <i class="fas fa-arrow-right ml-1"></i></span>
+            </a>
+          </div>
+
           <!-- Workshop Cards -->
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8" id="workshop-cards">
             <!-- Generative AI & LLMs -->
@@ -19044,6 +19075,14 @@ function mainPageHTML(): string {
                 <div class="text-[11px] font-bold tracking-widest uppercase text-primary-400">Workshop Facilitator</div>
                 <div class="text-lg font-bold">Dr. Ashish Tendulkar</div>
                 <div class="text-sm text-gray-400">Lead AI, Google</div>
+              </div>
+            </div>
+            <div class="mt-4 flex flex-col sm:flex-row items-center justify-center gap-4 text-center sm:text-left">
+              <img src="/images/speaker-vinay-kulkarni-sq.webp" alt="Dr. Vinay Kulkarni" width="96" height="96" loading="lazy" class="w-24 h-24 rounded-full object-cover border-2 border-primary-400 shrink-0">
+              <div>
+                <div class="text-[11px] font-bold tracking-widest uppercase text-primary-400">Workshop Facilitator</div>
+                <div class="text-lg font-bold">Dr. Vinay Kulkarni</div>
+                <div class="text-sm text-gray-400">Adjunct Faculty, IIT Bombay &middot; Director, Aegis School of Data Science &amp; AI</div>
               </div>
             </div>
             <p class="text-xs text-gray-500 text-center mt-4">More facilitators announced closer to the event.</p>
