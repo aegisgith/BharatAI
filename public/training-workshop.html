@@ -472,6 +472,15 @@
         }
         .session-feature + .session-feature { margin-top: 2rem; }
         .session-feature--solo { grid-template-columns: 1fr; }
+        .session-facts { list-style: none; padding: 0; margin: 0 0 1.5rem; display: flex; flex-wrap: wrap; gap: 0.5rem 1.5rem; color: var(--dark-grey); font-size: 0.95rem; font-weight: 600; }
+        .session-facts i { color: var(--saffron); margin-right: 0.35rem; }
+        .session-people { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+        .session-person { display: flex; gap: 0.85rem; align-items: flex-start; background: var(--off-white); border-radius: var(--r-xl, 12px); padding: 1rem; }
+        .session-person img { width: 72px; height: 72px; border-radius: var(--r-full); object-fit: cover; border: 3px solid var(--saffron); flex-shrink: 0; }
+        .session-person strong { display: block; font-family: var(--font-display); font-weight: 800; color: var(--charcoal); margin: 0.15rem 0; }
+        .session-person span:not(.facilitator-label) { display: block; font-size: 0.85rem; color: var(--dark-grey); line-height: 1.45; }
+        .session-mins { display: inline-block; margin-left: 0.4rem; font-size: 0.75rem; font-weight: 700; color: var(--saffron); background: rgba(255,107,0,0.1); border-radius: var(--r-full); padding: 0.05rem 0.5rem; vertical-align: middle; }
+        @media (max-width: 960px) { .session-people { grid-template-columns: 1fr; } }
         .session-format { font-size: 0.9rem; font-weight: 600; color: var(--dark-grey); margin-left: 0.5rem; }
         .session-agenda { list-style: none; counter-reset: agenda; padding: 0; margin: 0; display: grid; gap: 0.85rem; }
         .session-agenda li { counter-increment: agenda; position: relative; padding-left: 2.5rem; color: var(--dark-grey); line-height: 1.6; }
@@ -671,9 +680,38 @@
             </article>
             <article class="session-feature session-feature--solo reveal" id="cxo-roundtable">
                 <div class="session-body">
-                    <span class="workshop-badge" style="position:static;display:inline-block;">Roundtable</span><span class="session-format">For CXOs</span>
-                    <h3>CXO Roundtable on Enterprise AI Workforce &amp; Forward-Deployed Engineering</h3>
-                    <p>A roundtable for CXOs on building the enterprise AI workforce and on the role of Forward-Deployed Engineers in taking AI from pilot to production. Participants and format will be announced closer to the event.</p>
+                    <span class="workshop-badge" style="position:static;display:inline-block;">CXO Roundtable</span>
+                    <h3>Building the Enterprise AI Workforce: Talent, Delivery and the Rise of Forward-Deployed Engineering</h3>
+                    <ul class="session-facts">
+                        <li><i class="fas fa-calendar-alt" aria-hidden="true"></i> 20&ndash;21 November 2026</li>
+                        <li><i class="fas fa-map-marker-alt" aria-hidden="true"></i> World Trade Center, Mumbai</li>
+                        <li><i class="fas fa-clock" aria-hidden="true"></i> 60 minutes</li>
+                        <li><i class="fas fa-lock" aria-hidden="true"></i> Closed-door</li>
+                    </ul>
+                    <div class="session-people">
+                        <div class="session-person">
+                            <img src="/images/speaker-bhupesh-daheria-panel.webp" alt="Bhupesh Daheria" width="72" height="72" loading="lazy" decoding="async">
+                            <div><span class="facilitator-label">Moderator</span><strong>Bhupesh Daheria</strong><span>CEO, Aegis School of Data Science &amp; AI; Aegis Super Intelligence Lab</span></div>
+                        </div>
+                        <div class="session-person">
+                            <img src="/images/speaker-vinay-kulkarni-sq.webp" alt="Dr. Vinay Kulkarni" width="72" height="72" loading="lazy" decoding="async">
+                            <div><span class="facilitator-label">Speaker</span><strong>Dr. Vinay Kulkarni</strong><span>Adjunct Professor, IIT Bombay; Director, Aegis School of Data Science &amp; AI</span></div>
+                        </div>
+                        <div class="session-person">
+                            <img src="/images/speaker-ashish-tendulkar-panel.webp" alt="Dr. Ashish Tendulkar" width="72" height="72" loading="lazy" decoding="async">
+                            <div><span class="facilitator-label">Speaker</span><strong>Dr. Ashish Tendulkar</strong><span>Lead, Google AI</span></div>
+                        </div>
+                    </div>
+                    <h4>Roundtable agenda</h4>
+                    <ol class="session-agenda">
+                        <li><strong>The Enterprise AI Execution Challenge <span class="session-mins">5 min</span></strong>Why organizations struggle to translate AI investments into production-ready solutions and measurable business outcomes.</li>
+                        <li><strong>Building the Enterprise AI Workforce <span class="session-mins">10 min</span></strong>Emerging skills, capability gaps, and preparing engineering and data teams for Generative AI and Agentic AI.</li>
+                        <li><strong>The Rise of Forward-Deployed Engineering <span class="session-mins">15 min</span></strong>How FDEs bridge business problems, AI engineering and enterprise implementation, and how the approach differs from traditional software engineering, AI engineering and consulting.</li>
+                        <li><strong>From AI Pilots to Production <span class="session-mins">15 min</span></strong>Evaluating pilots, establishing success metrics, addressing integration and governance challenges, and developing scalable AI delivery models.</li>
+                        <li><strong>Industry&ndash;Academia Collaboration <span class="session-mins">10 min</span></strong>Industry-ready talent, corporate training, reskilling, and practical learning pathways for enterprise AI.</li>
+                        <li><strong>Key Takeaways and Next Steps <span class="session-mins">5 min</span></strong>Priority workforce capabilities, enterprise challenges, and opportunities for collaboration.</li>
+                    </ol>
+                    <div class="session-takeaway"><strong>Intended audience:</strong> L&amp;D Heads, Delivery Heads, Chief AI Officers, Chief Data Officers, CIOs, CTOs, and enterprise technology and workforce transformation leaders.</div>
                     <a href="/contact" class="btn btn-primary">Ask about a seat <i class="fas fa-arrow-right"></i></a>
                 </div>
             </article>

@@ -18801,10 +18801,16 @@ function mainPageHTML(): string {
               <span class="text-xs font-semibold text-teal-300">See the agenda <i class="fas fa-arrow-right ml-1"></i></span>
             </a>
             <a href="/training-workshop#cxo-roundtable" class="glass rounded-2xl p-6 border border-violet-500/20 hover:border-violet-400/40 transition-all block md:col-span-2">
-              <span class="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-violet-500/10 text-violet-300 mb-2">Roundtable &middot; For CXOs</span>
-              <h4 class="font-bold text-base text-white mb-2">CXO Roundtable on Enterprise AI Workforce &amp; Forward-Deployed Engineering</h4>
-              <p class="text-xs text-gray-400 mb-3">Building the enterprise AI workforce, and the role of Forward-Deployed Engineers in taking AI from pilot to production. Participants announced closer to the event.</p>
-              <span class="text-xs font-semibold text-violet-300">Details <i class="fas fa-arrow-right ml-1"></i></span>
+              <span class="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-violet-500/10 text-violet-300 mb-2">CXO Roundtable &middot; Closed-door &middot; 60 minutes</span>
+              <h4 class="font-bold text-base text-white mb-2">Building the Enterprise AI Workforce: Talent, Delivery and the Rise of Forward-Deployed Engineering</h4>
+              <div class="flex items-center gap-2 mb-3">
+                <img src="/images/speaker-bhupesh-daheria-panel.webp" alt="Bhupesh Daheria" width="36" height="36" loading="lazy" class="w-9 h-9 rounded-full object-cover border-2 border-violet-400 shrink-0">
+                <img src="/images/speaker-vinay-kulkarni-sq.webp" alt="Dr. Vinay Kulkarni" width="36" height="36" loading="lazy" class="w-9 h-9 rounded-full object-cover border-2 border-violet-400 shrink-0">
+                <img src="/images/speaker-ashish-tendulkar-panel.webp" alt="Dr. Ashish Tendulkar" width="36" height="36" loading="lazy" class="w-9 h-9 rounded-full object-cover border-2 border-violet-400 shrink-0">
+                <span class="text-[11px] text-gray-400">Moderated by Bhupesh Daheria, with Dr. Vinay Kulkarni and Dr. Ashish Tendulkar</span>
+              </div>
+              <p class="text-xs text-gray-400 mb-3">For L&amp;D and Delivery Heads, Chief AI and Data Officers, CIOs and CTOs: building the AI workforce, how Forward-Deployed Engineers take AI from pilot to production, and industry&ndash;academia pathways. 20&ndash;21 November, World Trade Center, Mumbai.</p>
+              <span class="text-xs font-semibold text-violet-300">See the agenda <i class="fas fa-arrow-right ml-1"></i></span>
             </a>
           </div>
 
