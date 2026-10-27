@@ -50,7 +50,8 @@ function mpSharedHead(title: string, opts: { path?: string; noindex?: boolean } 
        Bump each copy together. Load order is unchanged from the CDN days:
        Font Awesome first, marketplace.css last-but-one, Tailwind last. -->
   <link rel="stylesheet" href="/css/fa-subset.css?v=1">
-  <link href="/static/marketplace.css?v=2" rel="stylesheet">
+  <link rel="stylesheet" href="/css/fonts-app.css?v=1">
+  <link href="/static/marketplace.css?v=3" rel="stylesheet">
   <link rel="stylesheet" href="/css/tailwind.css?v=2">
 </head>`
 }

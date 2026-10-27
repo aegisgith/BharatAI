@@ -3,7 +3,8 @@
    Rebranded from AGBA AI Marketplace
    ══════════════════════════════════════════ */
 
-@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Manrope:wght@300..800&display=swap');
+/* Fonts: /css/fonts-app.css, linked before this file in mpSharedHead()
+   (served from this origin since 27 Oct 2026, scripts/fetch-fonts.mjs). */
 
 :root {
   --mp-bg: #F8F9FF;
