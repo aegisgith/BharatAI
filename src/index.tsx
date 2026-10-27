@@ -24108,7 +24108,34 @@ function mainPageHTML(): string {
       if (document.hidden || !currentUser) return;
       checkUnread();
       pollNotifications(false);
+      refreshMyPass();
     });
+    // A pass the organisers change (a Visitor made Exhibitor, a payment recorded by
+    // hand) reached an open app only on its next full reload: until then it showed
+    // the copy saved at sign-in, and an exhibitor was told they held a Visitor Pass.
+    // Coming back to the app re-reads the account, at most once a minute, the same
+    // way a reload does, and redraws the screen when the pass has changed.
+    let _passCheckedAt = Date.now();
+    async function refreshMyPass() {
+      if (!currentUser || Date.now() - _passCheckedAt < 60000) return;
+      _passCheckedAt = Date.now();
+      try {
+        const user = await api.post(\`/api/events/\${EVENT_ID}/attendees/register\`, {
+          name: currentUser.name,
+          email: currentUser.email,
+          company: currentUser.company,
+          job_title: currentUser.job_title,
+        });
+        if (!user || !user.id || !currentUser || String(user.id) !== String(currentUser.id)) return;
+        const changed = ['badge_type', 'payment_status', 'role', 'main_event'].some(k => String(user[k] ?? '') !== String(currentUser[k] ?? ''));
+        currentUser = user;
+        try { localStorage.setItem('agba_user', JSON.stringify(currentUser)); } catch (e) {}
+        if (!changed) return;
+        updateNavForAuth();
+        switchTab(currentTab, true);
+        showToast('Your pass is now ' + esc(currentUser.badge_type || 'Visitor Pass') + '.', 'success');
+      } catch (e) {}
+    }
     // Renders the same list into the desktop dropdown and the mobile sheet.
     function renderNotifCenter() {
       const lists = [document.getElementById('notif-list'), document.getElementById('notif-list-mobile')].filter(Boolean);
