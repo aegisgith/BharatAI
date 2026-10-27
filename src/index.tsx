@@ -6579,10 +6579,10 @@ app.get('/rsvp-confirmed', (c) => {
   }
   const cfg = statusConfig[status] || statusConfig.confirmed
 
-  return c.html(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>RSVP - Bharat AI Innovation 2026</title><link rel="stylesheet" href="${FA_CSS}"><link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Manrope:wght@300..800&display=swap" rel="stylesheet"><style>${brandThemeCSS()}</style><link rel="stylesheet" href="${TW_CSS}"></head>
+  return c.html(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>RSVP - Bharat AI Innovation 2026</title><link rel="stylesheet" href="${FA_CSS}"><link rel="stylesheet" href="/css/fonts-app.css?v=1"><style>${brandThemeCSS()}</style><link rel="stylesheet" href="${TW_CSS}"></head>
 <body class="min-h-screen bg-gradient-to-br from-[#F8F9FF] via-[#EEF0FF] to-[#F8F9FF] flex items-center justify-center p-4 font-sans">
   <div class="max-w-md w-full text-center">
-    <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="h-16 mx-auto mb-8 opacity-80">
+    <img src="/images/logo-nav.webp" alt="BHAI" class="h-16 mx-auto mb-8 opacity-80">
     <div class="bg-white/5 backdrop-blur-xl border ${cfg.border} rounded-3xl p-8 shadow-2xl">
       <div class="text-6xl mb-4">${cfg.emoji}</div>
       <h1 class="text-2xl font-bold text-white mb-2">${cfg.title}</h1>
@@ -15557,8 +15557,8 @@ function sharedHeadHTML(title: string, path: string = '/', desc?: string): strin
     offers: { "@type": "Offer", url: "https://bharataiinnovation.com/register", price: "0", priceCurrency: "INR", availability: "https://schema.org/InStock" }
   })}</script>
   <link rel="stylesheet" href="${FA_CSS}">
+  <link rel="stylesheet" href="/css/fonts-app.css?v=1">
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Manrope:wght@300..800&family=Montserrat:wght@600;700;800&family=Playfair+Display:wght@600;700&family=Mukta:wght@500;600;700&display=swap');
     * { font-family: 'Manrope', sans-serif; }
     body { background: #F8F9FF; color: #1E2140; }
     .glass { background: rgba(255,255,255,0.04); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.07); }
@@ -15602,7 +15602,7 @@ function sharedNavHTML(activePage: string): string {
     <div class="flex items-center h-14 gap-4">
       <!-- Logo -->
       <a href="/" class="flex items-center hover:opacity-90 transition shrink-0">
-        <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI Innovation Logo" loading="eager" style="height:44px;width:auto;border-radius:12px;padding:6px;background:rgba(255,255,255,0.95);box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+        <img src="/images/logo-nav.webp" alt="Bharat AI Innovation Logo" loading="eager" style="height:44px;width:auto;border-radius:12px;padding:6px;background:rgba(255,255,255,0.95);box-shadow:0 2px 8px rgba(0,0,0,0.08);">
       </a>
       <!-- Center pills — same destinations as the app nav so navigation is
            consistent on every page. In-app tabs deep-link into the SPA.
@@ -15645,7 +15645,7 @@ function sharedFooterHTML(): string {
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
       <div>
         <div class="flex items-center gap-3 mb-3">
-          <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="w-10 h-10 rounded-lg object-contain">
+          <img src="/images/logo-nav.webp" alt="BHAI" class="w-10 h-10 rounded-lg object-contain">
           <div>
             <h3 class="font-bold text-sm">Bharat AI Innovation 2026</h3>
             <p class="text-[10px] text-gray-400">Conference &amp; Exhibition 2026</p>
@@ -17358,6 +17358,27 @@ app.get('/app', (c) => {
   return c.html(mainPageHTML())
 })
 
+// GET /app.js: the app's own code (mainPageScript, below mainPageHTML), served
+// as a file so a phone keeps it between opens instead of downloading and
+// compiling 430 KB on every visit. The URL carries a hash of the text, so the
+// answer may be kept for a year and any edit is a new URL. Hashed once per
+// isolate.
+let appScriptCache: { text: string; version: string } | null = null
+function appScript(): { text: string; version: string } {
+  if (!appScriptCache) {
+    const text = mainPageScript()
+    let h = 0x811c9dc5
+    for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0 }
+    appScriptCache = { text, version: h.toString(16).padStart(8, '0') }
+  }
+  return appScriptCache
+}
+function appScriptVersion(): string { return appScript().version }
+app.get('/app.js', (c) => c.body(appScript().text, 200, {
+  'Content-Type': 'application/javascript; charset=utf-8',
+  'Cache-Control': 'public, max-age=31536000, immutable',
+}))
+
 function mainPageHTML(): string {
   return `<!DOCTYPE html>
 <html lang="en">
@@ -17399,10 +17420,10 @@ function mainPageHTML(): string {
   <script src="/js/pass-render.js?v=20261026"></script>
   <!-- The "I'm attending" card delegates post. App only: the badge desk has no
        reason to issue one, and it carries none of the pass's verification data. -->
-  <script src="/js/social-card.js"></script>
+  <script src="/js/social-card.js?v=20261027"></script>
   <script src="/js/photo-fingerprint.js?v=2"></script>
+  <link rel="stylesheet" href="/css/fonts-app.css?v=1">
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Manrope:wght@300..800&family=Montserrat:wght@600;700;800&family=Playfair+Display:wght@600;700&family=Mukta:wght@500;600;700&display=swap');
     * { font-family: 'Manrope', sans-serif; }
     body { background: #F8F9FF; color: #1E2140; }
     .glass { background: rgba(255,255,255,0.04); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.07); }
@@ -17516,7 +17537,7 @@ function mainPageHTML(): string {
     <!-- Loading -->
     <div id="loading-screen" class="fixed inset-0 z-50 flex items-center justify-center" style="background:#F8F9FF;">
       <div class="text-center">
-        <div class="mb-6"><img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="w-20 h-20 mx-auto rounded-xl object-contain"></div>
+        <div class="mb-6"><img src="/images/logo-nav.webp" alt="BHAI" class="w-20 h-20 mx-auto rounded-xl object-contain"></div>
         <h1 class="text-3xl font-bold gradient-text mb-2">Bharat AI Innovation 2026</h1>
         <p class="text-gray-400 mb-6">Loading your experience...</p>
         <div class="w-48 h-1 bg-gray-800 rounded-full mx-auto overflow-hidden">
@@ -17532,7 +17553,7 @@ function mainPageHTML(): string {
           <i class="fas fa-times"></i>
         </button>
         <div class="text-center mb-6">
-          <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="w-20 h-20 mx-auto mb-3 rounded-xl object-contain">
+          <img src="/images/logo-nav.webp" alt="BHAI" class="w-20 h-20 mx-auto mb-3 rounded-xl object-contain">
           <h2 class="text-2xl font-bold gradient-text">Bharat AI Innovation 2026</h2>
           <p class="text-gray-400 mt-1 text-sm">Sign in to access networking, inbox & your profile</p>
         </div>
@@ -17817,7 +17838,7 @@ function mainPageHTML(): string {
         <div class="hidden md:flex items-center h-14 gap-6">
           <!-- Logo -->
           <a href="/app" class="flex items-center hover:opacity-90 transition shrink-0">
-            <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI Innovation Logo" loading="eager" style="height:44px;width:auto;border-radius:12px;padding:6px;background:rgba(255,255,255,0.95);box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+            <img src="/images/logo-nav.webp" alt="Bharat AI Innovation Logo" loading="eager" style="height:44px;width:auto;border-radius:12px;padding:6px;background:rgba(255,255,255,0.95);box-shadow:0 2px 8px rgba(0,0,0,0.08);">
           </a>
 
           <!-- Center nav pills -->
@@ -18756,7 +18777,7 @@ function mainPageHTML(): string {
       <div id="tab-awards" class="tab-content hidden">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div class="text-center mb-8">
-            <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="w-16 h-16 mx-auto mb-3 rounded-xl object-contain">
+            <img src="/images/logo-nav.webp" alt="BHAI" class="w-16 h-16 mx-auto mb-3 rounded-xl object-contain">
             <h2 class="text-3xl font-bold mb-2"><i class="fas fa-trophy text-accent-400 mr-2"></i>Bharat AI Innovation &amp; BHAI Innovation Certification</h2>
           </div>
 
@@ -18962,7 +18983,7 @@ function mainPageHTML(): string {
       <div id="tab-agba-categories" class="tab-content hidden">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div class="text-center mb-8">
-            <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="w-16 h-16 mx-auto mb-3 rounded-xl object-contain">
+            <img src="/images/logo-nav.webp" alt="BHAI" class="w-16 h-16 mx-auto mb-3 rounded-xl object-contain">
             <h2 class="text-2xl font-bold mb-2"><i class="fas fa-list-alt text-accent-400 mr-2"></i>BHAI 2026 Award Categories</h2>
             <p class="text-gray-400 text-sm">Award categories for the 17th Bharat AI Innovation &amp; Innovation Certification</p>
           </div>
@@ -19051,7 +19072,7 @@ function mainPageHTML(): string {
       <div id="tab-agba-jury" class="tab-content hidden">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div class="text-center mb-8">
-            <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="w-16 h-16 mx-auto mb-3 rounded-xl object-contain">
+            <img src="/images/logo-nav.webp" alt="BHAI" class="w-16 h-16 mx-auto mb-3 rounded-xl object-contain">
             <h2 class="text-2xl font-bold mb-2"><i class="fas fa-gavel text-violet-400 mr-2"></i>BHAI 2026 Jury Schedule</h2>
             <p class="text-gray-400 text-sm">Monthly jury evaluation across 3 parallel category tracks (Wed&#8211;Fri)</p>
           </div>
@@ -19821,8 +19842,172 @@ function mainPageHTML(): string {
     </main>
   </div>
 
+  <script src="/app.js?v=${appScriptVersion()}"></script>
   <script>
-    // ==================== STATE ====================
+    // Register the service worker for install + offline resilience at the venue.
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').catch(() => {});
+      });
+    }
+  </script>
+
+  <!-- ===== PAID PASS MODAL ===== -->
+  <div id="paid-pass-modal" role="dialog" aria-modal="true" aria-label="Get a paid pass" class="fixed inset-0 z-50 modal-overlay hidden items-center justify-center p-4">
+    <div class="glass rounded-2xl w-full max-w-lg relative overflow-hidden" style="border:1px solid #E4E7F4;">
+      <!-- Header -->
+      <div style="background:linear-gradient(135deg,#FF6B00,#FF8C38);" class="p-5 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background:rgba(255,255,255,0.22);">
+            <i class="fas fa-star text-lg" style="color:#fff;"></i>
+          </div>
+          <div>
+            <h2 class="font-bold text-lg" style="color:#fff;">Get Your Paid Pass</h2>
+            <p class="text-xs" style="color:rgba(255,255,255,0.9);">Fill in your details to proceed to payment</p>
+          </div>
+        </div>
+        <button onclick="closePaidPassModal()" class="transition text-xl w-8 h-8 flex items-center justify-center rounded-lg" style="color:rgba(255,255,255,0.9);" onmouseover="this.style.background='rgba(255,255,255,0.2)'" onmouseout="this.style.background='transparent'">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+      <!-- Body -->
+      <div class="p-6 overflow-y-auto" style="max-height:calc(90vh - 80px);">
+        <!-- Pass Type Selector -->
+        <div class="grid grid-cols-2 gap-2 mb-5">
+          <label class="pass-option cursor-pointer">
+            <input type="radio" name="pp-pass" value="Delegate Pass" class="hidden" onchange="document.getElementById('pp-pass-type').value=this.value;document.querySelectorAll('.pass-option').forEach(el=>el.classList.remove('ring-2','ring-orange-500'));this.closest('.pass-option').classList.add('ring-2','ring-orange-500')">
+            <div class="p-3 rounded-xl text-center" style="background:rgba(139,92,246,0.1);border:1px solid rgba(255,107,0,0.2);">
+              <i class="fas fa-id-badge text-violet-400 text-lg mb-1 block"></i>
+              <div class="text-white font-semibold text-xs">Delegate</div>
+              <div class="text-violet-300 font-bold text-sm">&#8377;4,999 + GST</div>
+              <div class="text-gray-500 text-[10px]">2 days + lunch</div>
+            </div>
+          </label>
+          <label class="pass-option cursor-pointer">
+            <input type="radio" name="pp-pass" value="Premium Delegate Pass" class="hidden" onchange="document.getElementById('pp-pass-type').value=this.value;document.querySelectorAll('.pass-option').forEach(el=>el.classList.remove('ring-2','ring-orange-500'));this.closest('.pass-option').classList.add('ring-2','ring-orange-500')">
+            <div class="p-3 rounded-xl text-center" style="background:rgba(11,122,117,0.08);border:1px solid rgba(11,122,117,0.25);">
+              <i class="fas fa-star text-lg mb-1 block" style="color:#0B7A75;"></i>
+              <div class="text-white font-semibold text-xs">Premium Delegate</div>
+              <div class="font-bold text-sm" style="color:#0B7A75;">&#8377;14,999 + GST</div>
+              <div class="text-gray-500 text-[10px]">Delegate + 1 workshop</div>
+            </div>
+          </label>
+          <label class="pass-option cursor-pointer">
+            <input type="radio" name="pp-pass" value="VIP Pass" class="hidden" onchange="document.getElementById('pp-pass-type').value=this.value;document.querySelectorAll('.pass-option').forEach(el=>el.classList.remove('ring-2','ring-orange-500'));this.closest('.pass-option').classList.add('ring-2','ring-orange-500')">
+            <div class="p-3 rounded-xl text-center" style="background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.2);">
+              <i class="fas fa-crown text-yellow-400 text-lg mb-1 block"></i>
+              <div class="text-white font-semibold text-xs">VIP</div>
+              <div class="text-yellow-300 font-bold text-sm">&#8377;19,999 + GST</div>
+              <div class="text-gray-500 text-[10px]">Workshop + VIP lounge</div>
+            </div>
+          </label>
+          <label class="pass-option cursor-pointer">
+            <input type="radio" name="pp-pass" value="Academic Pass" class="hidden" onchange="document.getElementById('pp-pass-type').value=this.value;document.querySelectorAll('.pass-option').forEach(el=>el.classList.remove('ring-2','ring-orange-500'));this.closest('.pass-option').classList.add('ring-2','ring-orange-500')">
+            <div class="p-3 rounded-xl text-center" style="background:rgba(192,132,252,0.08);border:1px solid rgba(192,132,252,0.2);">
+              <i class="fas fa-graduation-cap text-purple-400 text-lg mb-1 block"></i>
+              <div class="text-white font-semibold text-xs">Academic</div>
+              <div class="text-purple-300 font-bold text-sm">&#8377;999 + GST</div>
+              <div class="text-gray-500 text-[10px]">Students &amp; researchers</div>
+            </div>
+          </label>
+        </div>
+        <input type="hidden" id="pp-pass-type" value="">
+
+        <form id="paid-pass-form" onsubmit="submitPaidPassForm(event)" class="space-y-3">
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="text-xs text-gray-400 mb-1 block">Full Name <span class="text-red-400">*</span></label>
+              <input type="text" id="pp-name" autocomplete="name" autocapitalize="words" required placeholder="Your full name" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:#fff;border:1px solid #D7DBEC;color:#1E2140;outline:none;">
+            </div>
+            <div>
+              <label class="text-xs text-gray-400 mb-1 block">Email Address <span class="text-red-400">*</span></label>
+              <input type="email" id="pp-email" autocomplete="email" inputmode="email" autocapitalize="none" spellcheck="false" required placeholder="you@email.com" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:#fff;border:1px solid #D7DBEC;color:#1E2140;outline:none;">
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="text-xs text-gray-400 mb-1 block">Mobile Number *</label>
+              <input type="tel" id="pp-phone" autocomplete="tel" required placeholder="+91 XXXXX XXXXX" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:#fff;border:1px solid #D7DBEC;color:#1E2140;outline:none;">
+            </div>
+            <div>
+              <label class="text-xs text-gray-400 mb-1 block">Organization *</label>
+              <input type="text" id="pp-company" autocomplete="organization" required placeholder="Company / Institute" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:#fff;border:1px solid #D7DBEC;color:#1E2140;outline:none;">
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="text-xs text-gray-400 mb-1 block">Designation *</label>
+              <input type="text" id="pp-designation" autocomplete="organization-title" required placeholder="Your designation" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:#fff;border:1px solid #D7DBEC;color:#1E2140;outline:none;">
+            </div>
+            <div>
+              <label class="text-xs text-gray-400 mb-1 block">City *</label>
+              <input type="text" id="pp-city" autocomplete="address-level2" required placeholder="Your city" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:#fff;border:1px solid #D7DBEC;color:#1E2140;outline:none;">
+            </div>
+          </div>
+          <div>
+            <label class="text-xs text-gray-400 mb-1 block">Industry *</label>
+            <select id="pp-industry" required class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:#fff;border:1px solid #D7DBEC;color:#1E2140;outline:none;">
+              <option value="">Select industry *</option>
+              <option>Banking & Financial Services</option>
+              <option>Insurance</option>
+              <option>IT Services & Consulting</option>
+              <option>Software & SaaS</option>
+              <option>Telecom</option>
+              <option>Manufacturing</option>
+              <option>Automotive</option>
+              <option>Pharma & Life Sciences</option>
+              <option>Healthcare & Hospitals</option>
+              <option>Retail & E-commerce</option>
+              <option>Logistics & Supply Chain</option>
+              <option>Energy & Utilities</option>
+              <option>Media & Entertainment</option>
+              <option>Education & Academia</option>
+              <option>Government & Public Sector</option>
+              <option>Consulting & Professional Services</option>
+              <option>Startup / Early stage</option>
+              <option>Venture Capital & Investment</option>
+              <option>Agriculture & Agritech</option>
+              <option>Real Estate & Construction</option>
+              <option>Aerospace & Defence</option>
+              <option>Other</option>
+            </select>
+          </div>
+          <details id="pp-gst" class="rounded-xl" style="border:1px solid #E3E6F5;padding:10px 12px;background:#F7F8FF;">
+            <summary class="text-xs font-bold" style="cursor:pointer;color:#1E2140;">Need the GST invoice in your company&rsquo;s name? <span class="font-normal" style="color:#5E6585;">(optional)</span></summary>
+            <div class="grid gap-2.5 mt-2.5">
+              <input type="text" id="pp-gst-name" autocomplete="organization" placeholder="Registered company name" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:#fff;border:1px solid #D7DBEC;color:#1E2140;outline:none;">
+              <input type="text" id="pp-gstin" maxlength="15" autocapitalize="characters" spellcheck="false" placeholder="GSTIN, 15 characters (empty if not registered)" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:#fff;border:1px solid #D7DBEC;color:#1E2140;outline:none;text-transform:uppercase;">
+              <textarea id="pp-gst-address" rows="2" autocomplete="street-address" placeholder="Billing address registered with the GSTIN" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:#fff;border:1px solid #D7DBEC;color:#1E2140;outline:none;resize:vertical;"></textarea>
+              <p class="text-[10.5px] leading-relaxed" style="color:#5E6585;">Your tax invoice is emailed the moment the payment goes through. Leave this empty for an invoice in your own name.</p>
+            </div>
+          </details>
+          <p id="pp-total" class="text-center text-sm mt-1" style="display:none;color:#1E2140;"></p>
+          <button type="submit" id="pp-submit-btn" class="w-full py-3 rounded-xl font-bold text-white mt-2 transition-all" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);">
+            <i class="fas fa-arrow-right mr-2"></i>Proceed to Payment
+          </button>
+          <!-- Say where checkout happens and what comes back, before the buyer leaves. -->
+          <div class="rounded-xl px-3 py-2.5" style="background:#FFF6EF;border:1px solid rgba(255,107,0,0.25);">
+            <p class="text-[11px] font-bold mb-1" style="color:#1E2140;">What happens next</p>
+            <p id="pp-next-copy" class="text-[11px] leading-relaxed" style="color:#5E6585;">Checkout opens on <strong>CCAvenue</strong>, our secure payment gateway. Your pass is confirmed the moment the payment goes through, and you are brought straight back to the app.</p>
+          </div>
+          <p class="text-center text-[10px]" style="color:#5E6585;">We keep what you type here as you go, so you can finish later if checkout is interrupted. Your pass is confirmed the moment the payment goes through.</p>
+        </form>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>`
+}
+
+// The app's client code, until 27 Oct 2026 the inline <script> of mainPageHTML().
+// GET /app.js (beside the /app route) serves it as its own file, so a phone keeps
+// a copy between opens. It is still a template literal, so the rules of
+// mainPageHTML() hold: a backtick and a ${ are escaped, never a backslash-quote,
+// a // comment ships to the public, every function is a global. check-inline-js
+// parses the whole file on every build.
+function mainPageScript(): string {
+  return `    // ==================== STATE ====================
     const EVENT_ID = 1;
     function esc(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
     // Attendees supply their own LinkedIn/website URLs, and escaping does nothing
@@ -23585,7 +23770,7 @@ function mainPageHTML(): string {
         if (pitchData.length === 0 && investors.length === 0) {
           const emptyHtml = \`
             <div class="text-center py-16">
-              <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="w-16 h-16 mx-auto mb-4 rounded-xl object-contain opacity-50">
+              <img src="/images/logo-nav.webp" alt="BHAI" class="w-16 h-16 mx-auto mb-4 rounded-xl object-contain opacity-50">
               <h2 class="text-2xl font-bold mb-2"><i class="fas fa-rocket text-orange-400 mr-2"></i>BHAI Startup Pitch</h2>
               <p class="text-lg font-semibold text-orange-300 mb-1">BHAI Innovation Pitch: Where Innovation Meets Investment</p>
               <p class="text-gray-400 text-sm mb-6">Connect. Pitch. Fund. The Ultimate Startup-Investor Experience</p>
@@ -23605,7 +23790,7 @@ function mainPageHTML(): string {
 
       const html = \`
         <div class="text-center mb-8">
-          <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="w-16 h-16 mx-auto mb-3 rounded-xl object-contain">
+          <img src="/images/logo-nav.webp" alt="BHAI" class="w-16 h-16 mx-auto mb-3 rounded-xl object-contain">
           <h2 class="text-2xl font-bold mb-2"><i class="fas fa-rocket text-orange-400 mr-2"></i>BHAI Startup Pitch</h2>
           <p class="text-lg font-semibold text-orange-300 mb-1">BHAI Innovation Pitch: Where Innovation Meets Investment</p>
           <p class="text-gray-400 text-sm">Connect. Pitch. Fund. The Ultimate Startup-Investor Experience</p>
@@ -26911,160 +27096,7 @@ function mainPageHTML(): string {
     // Init
     init();
 
-    // Register the service worker for install + offline resilience at the venue.
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js').catch(() => {});
-      });
-    }
-  </script>
-
-  <!-- ===== PAID PASS MODAL ===== -->
-  <div id="paid-pass-modal" role="dialog" aria-modal="true" aria-label="Get a paid pass" class="fixed inset-0 z-50 modal-overlay hidden items-center justify-center p-4">
-    <div class="glass rounded-2xl w-full max-w-lg relative overflow-hidden" style="border:1px solid #E4E7F4;">
-      <!-- Header -->
-      <div style="background:linear-gradient(135deg,#FF6B00,#FF8C38);" class="p-5 flex items-center justify-between">
-        <div class="flex items-center gap-3">
-          <div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background:rgba(255,255,255,0.22);">
-            <i class="fas fa-star text-lg" style="color:#fff;"></i>
-          </div>
-          <div>
-            <h2 class="font-bold text-lg" style="color:#fff;">Get Your Paid Pass</h2>
-            <p class="text-xs" style="color:rgba(255,255,255,0.9);">Fill in your details to proceed to payment</p>
-          </div>
-        </div>
-        <button onclick="closePaidPassModal()" class="transition text-xl w-8 h-8 flex items-center justify-center rounded-lg" style="color:rgba(255,255,255,0.9);" onmouseover="this.style.background='rgba(255,255,255,0.2)'" onmouseout="this.style.background='transparent'">
-          <i class="fas fa-times"></i>
-        </button>
-      </div>
-      <!-- Body -->
-      <div class="p-6 overflow-y-auto" style="max-height:calc(90vh - 80px);">
-        <!-- Pass Type Selector -->
-        <div class="grid grid-cols-2 gap-2 mb-5">
-          <label class="pass-option cursor-pointer">
-            <input type="radio" name="pp-pass" value="Delegate Pass" class="hidden" onchange="document.getElementById('pp-pass-type').value=this.value;document.querySelectorAll('.pass-option').forEach(el=>el.classList.remove('ring-2','ring-orange-500'));this.closest('.pass-option').classList.add('ring-2','ring-orange-500')">
-            <div class="p-3 rounded-xl text-center" style="background:rgba(139,92,246,0.1);border:1px solid rgba(255,107,0,0.2);">
-              <i class="fas fa-id-badge text-violet-400 text-lg mb-1 block"></i>
-              <div class="text-white font-semibold text-xs">Delegate</div>
-              <div class="text-violet-300 font-bold text-sm">&#8377;4,999 + GST</div>
-              <div class="text-gray-500 text-[10px]">2 days + lunch</div>
-            </div>
-          </label>
-          <label class="pass-option cursor-pointer">
-            <input type="radio" name="pp-pass" value="Premium Delegate Pass" class="hidden" onchange="document.getElementById('pp-pass-type').value=this.value;document.querySelectorAll('.pass-option').forEach(el=>el.classList.remove('ring-2','ring-orange-500'));this.closest('.pass-option').classList.add('ring-2','ring-orange-500')">
-            <div class="p-3 rounded-xl text-center" style="background:rgba(11,122,117,0.08);border:1px solid rgba(11,122,117,0.25);">
-              <i class="fas fa-star text-lg mb-1 block" style="color:#0B7A75;"></i>
-              <div class="text-white font-semibold text-xs">Premium Delegate</div>
-              <div class="font-bold text-sm" style="color:#0B7A75;">&#8377;14,999 + GST</div>
-              <div class="text-gray-500 text-[10px]">Delegate + 1 workshop</div>
-            </div>
-          </label>
-          <label class="pass-option cursor-pointer">
-            <input type="radio" name="pp-pass" value="VIP Pass" class="hidden" onchange="document.getElementById('pp-pass-type').value=this.value;document.querySelectorAll('.pass-option').forEach(el=>el.classList.remove('ring-2','ring-orange-500'));this.closest('.pass-option').classList.add('ring-2','ring-orange-500')">
-            <div class="p-3 rounded-xl text-center" style="background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.2);">
-              <i class="fas fa-crown text-yellow-400 text-lg mb-1 block"></i>
-              <div class="text-white font-semibold text-xs">VIP</div>
-              <div class="text-yellow-300 font-bold text-sm">&#8377;19,999 + GST</div>
-              <div class="text-gray-500 text-[10px]">Workshop + VIP lounge</div>
-            </div>
-          </label>
-          <label class="pass-option cursor-pointer">
-            <input type="radio" name="pp-pass" value="Academic Pass" class="hidden" onchange="document.getElementById('pp-pass-type').value=this.value;document.querySelectorAll('.pass-option').forEach(el=>el.classList.remove('ring-2','ring-orange-500'));this.closest('.pass-option').classList.add('ring-2','ring-orange-500')">
-            <div class="p-3 rounded-xl text-center" style="background:rgba(192,132,252,0.08);border:1px solid rgba(192,132,252,0.2);">
-              <i class="fas fa-graduation-cap text-purple-400 text-lg mb-1 block"></i>
-              <div class="text-white font-semibold text-xs">Academic</div>
-              <div class="text-purple-300 font-bold text-sm">&#8377;999 + GST</div>
-              <div class="text-gray-500 text-[10px]">Students &amp; researchers</div>
-            </div>
-          </label>
-        </div>
-        <input type="hidden" id="pp-pass-type" value="">
-
-        <form id="paid-pass-form" onsubmit="submitPaidPassForm(event)" class="space-y-3">
-          <div class="grid grid-cols-2 gap-3">
-            <div>
-              <label class="text-xs text-gray-400 mb-1 block">Full Name <span class="text-red-400">*</span></label>
-              <input type="text" id="pp-name" autocomplete="name" autocapitalize="words" required placeholder="Your full name" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:#fff;border:1px solid #D7DBEC;color:#1E2140;outline:none;">
-            </div>
-            <div>
-              <label class="text-xs text-gray-400 mb-1 block">Email Address <span class="text-red-400">*</span></label>
-              <input type="email" id="pp-email" autocomplete="email" inputmode="email" autocapitalize="none" spellcheck="false" required placeholder="you@email.com" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:#fff;border:1px solid #D7DBEC;color:#1E2140;outline:none;">
-            </div>
-          </div>
-          <div class="grid grid-cols-2 gap-3">
-            <div>
-              <label class="text-xs text-gray-400 mb-1 block">Mobile Number *</label>
-              <input type="tel" id="pp-phone" autocomplete="tel" required placeholder="+91 XXXXX XXXXX" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:#fff;border:1px solid #D7DBEC;color:#1E2140;outline:none;">
-            </div>
-            <div>
-              <label class="text-xs text-gray-400 mb-1 block">Organization *</label>
-              <input type="text" id="pp-company" autocomplete="organization" required placeholder="Company / Institute" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:#fff;border:1px solid #D7DBEC;color:#1E2140;outline:none;">
-            </div>
-          </div>
-          <div class="grid grid-cols-2 gap-3">
-            <div>
-              <label class="text-xs text-gray-400 mb-1 block">Designation *</label>
-              <input type="text" id="pp-designation" autocomplete="organization-title" required placeholder="Your designation" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:#fff;border:1px solid #D7DBEC;color:#1E2140;outline:none;">
-            </div>
-            <div>
-              <label class="text-xs text-gray-400 mb-1 block">City *</label>
-              <input type="text" id="pp-city" autocomplete="address-level2" required placeholder="Your city" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:#fff;border:1px solid #D7DBEC;color:#1E2140;outline:none;">
-            </div>
-          </div>
-          <div>
-            <label class="text-xs text-gray-400 mb-1 block">Industry *</label>
-            <select id="pp-industry" required class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:#fff;border:1px solid #D7DBEC;color:#1E2140;outline:none;">
-              <option value="">Select industry *</option>
-              <option>Banking & Financial Services</option>
-              <option>Insurance</option>
-              <option>IT Services & Consulting</option>
-              <option>Software & SaaS</option>
-              <option>Telecom</option>
-              <option>Manufacturing</option>
-              <option>Automotive</option>
-              <option>Pharma & Life Sciences</option>
-              <option>Healthcare & Hospitals</option>
-              <option>Retail & E-commerce</option>
-              <option>Logistics & Supply Chain</option>
-              <option>Energy & Utilities</option>
-              <option>Media & Entertainment</option>
-              <option>Education & Academia</option>
-              <option>Government & Public Sector</option>
-              <option>Consulting & Professional Services</option>
-              <option>Startup / Early stage</option>
-              <option>Venture Capital & Investment</option>
-              <option>Agriculture & Agritech</option>
-              <option>Real Estate & Construction</option>
-              <option>Aerospace & Defence</option>
-              <option>Other</option>
-            </select>
-          </div>
-          <details id="pp-gst" class="rounded-xl" style="border:1px solid #E3E6F5;padding:10px 12px;background:#F7F8FF;">
-            <summary class="text-xs font-bold" style="cursor:pointer;color:#1E2140;">Need the GST invoice in your company&rsquo;s name? <span class="font-normal" style="color:#5E6585;">(optional)</span></summary>
-            <div class="grid gap-2.5 mt-2.5">
-              <input type="text" id="pp-gst-name" autocomplete="organization" placeholder="Registered company name" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:#fff;border:1px solid #D7DBEC;color:#1E2140;outline:none;">
-              <input type="text" id="pp-gstin" maxlength="15" autocapitalize="characters" spellcheck="false" placeholder="GSTIN, 15 characters (empty if not registered)" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:#fff;border:1px solid #D7DBEC;color:#1E2140;outline:none;text-transform:uppercase;">
-              <textarea id="pp-gst-address" rows="2" autocomplete="street-address" placeholder="Billing address registered with the GSTIN" class="w-full px-4 py-2.5 rounded-xl text-sm" style="background:#fff;border:1px solid #D7DBEC;color:#1E2140;outline:none;resize:vertical;"></textarea>
-              <p class="text-[10.5px] leading-relaxed" style="color:#5E6585;">Your tax invoice is emailed the moment the payment goes through. Leave this empty for an invoice in your own name.</p>
-            </div>
-          </details>
-          <p id="pp-total" class="text-center text-sm mt-1" style="display:none;color:#1E2140;"></p>
-          <button type="submit" id="pp-submit-btn" class="w-full py-3 rounded-xl font-bold text-white mt-2 transition-all" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);">
-            <i class="fas fa-arrow-right mr-2"></i>Proceed to Payment
-          </button>
-          <!-- Say where checkout happens and what comes back, before the buyer leaves. -->
-          <div class="rounded-xl px-3 py-2.5" style="background:#FFF6EF;border:1px solid rgba(255,107,0,0.25);">
-            <p class="text-[11px] font-bold mb-1" style="color:#1E2140;">What happens next</p>
-            <p id="pp-next-copy" class="text-[11px] leading-relaxed" style="color:#5E6585;">Checkout opens on <strong>CCAvenue</strong>, our secure payment gateway. Your pass is confirmed the moment the payment goes through, and you are brought straight back to the app.</p>
-          </div>
-          <p class="text-center text-[10px]" style="color:#5E6585;">We keep what you type here as you go, so you can finish later if checkout is interrupted. Your pass is confirmed the moment the payment goes through.</p>
-        </form>
-      </div>
-    </div>
-  </div>
-
-</body>
-</html>`
+`
 }
 
 function adminPageHTML(): string {
@@ -27084,9 +27116,9 @@ function adminPageHTML(): string {
   <script src="/js/photo-fingerprint.js?v=2"></script>
   <!-- Same renderer the delegate's own app uses, so a card the desk sends a speaker
        is the card that speaker would have made themselves. -->
-  <script src="/js/social-card.js"></script>
+  <script src="/js/social-card.js?v=20261027"></script>
+  <link rel="stylesheet" href="/css/fonts-app.css?v=1">
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Manrope:wght@300..800&family=Montserrat:wght@600;700;800&family=Playfair+Display:wght@600;700&family=Mukta:wght@500;600;700&display=swap');
     * { font-family: 'Manrope', sans-serif; }
     body { background: #F8F9FF; color: #1E2140; }
     .glass { background: rgba(255,255,255,0.05); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.08); }
@@ -27259,7 +27291,7 @@ function adminPageHTML(): string {
   <div id="login-overlay" class="fixed inset-0 z-50 modal-overlay flex items-center justify-center">
     <div class="glass rounded-2xl p-8 w-full max-w-sm">
       <div class="text-center mb-6">
-        <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="w-16 h-16 mx-auto mb-4 rounded-xl object-contain">
+        <img src="/images/logo-nav.webp" alt="BHAI" class="w-16 h-16 mx-auto mb-4 rounded-xl object-contain">
         <h2 class="text-xl font-bold">Admin Login</h2>
         <p class="text-gray-400 text-sm mt-1">Enter password to continue</p>
       </div>
@@ -27289,7 +27321,7 @@ function adminPageHTML(): string {
   <!-- Sidebar -->
   <aside id="sidebar" class="hidden w-64 min-h-screen glass border-r border-white/10 flex-col shrink-0 fixed left-0 top-0 bottom-0 z-20 overflow-y-auto scroll-hide">
     <div class="sidebar-header p-5 border-b border-white/10 flex items-center gap-3">
-      <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="w-10 h-10 rounded-lg object-contain shrink-0">
+      <img src="/images/logo-nav.webp" alt="BHAI" class="w-10 h-10 rounded-lg object-contain shrink-0">
       <div class="sidebar-header-text flex-1 min-w-0">
         <h1 class="font-bold text-sm">BHAI</h1>
         <p class="text-[10px] text-gray-400">Admin Dashboard</p>
@@ -31685,7 +31717,7 @@ function adminPageHTML(): string {
       openModal(\`
         <div style="max-height:80vh;overflow-y:auto;background:#f4f4f5;border-radius:12px;padding:8px;">
           <div style="text-align:center;margin-bottom:12px;">
-            <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" style="height:60px;">
+            <img src="/images/logo-nav.webp" alt="BHAI" style="height:60px;">
           </div>
           <div style="background:linear-gradient(135deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%);border-radius:16px;padding:24px 20px;text-align:center;color:white;">
             <h2 style="margin:0 0 6px;font-size:20px;">Confirm Your Attendance!</h2>

@@ -501,9 +501,8 @@
     <link rel="sitemap" type="application/xml" title="Sitemap" href="/sitemap.xml">
 
     <!-- Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300..800&family=Mukta:wght@600;700&display=swap" rel="stylesheet">
+    <link rel="preload" href="/fonts/manrope-latin-300-800.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="/css/fonts.css?v=1">
     <link rel="stylesheet" href="/css/fa-subset.css?v=1">
     <link rel="stylesheet" href="css/style.css?v=20261004d">
 
@@ -512,7 +511,7 @@
     <link rel="preload" as="image" href="img/hero-bg-1.jpg" fetchpriority="high">
 
     <!-- Favicon -->
-    <link rel="icon" type="image/png" href="images/Bharat%20AI%20Innovation%20Logo.png">
+    <link rel="icon" type="image/png" sizes="64x64" href="/images/favicon-64.png">
     <style>
         /* SEO + FAQ section responsive */
         @media (max-width: 768px) {
@@ -540,7 +539,7 @@
     <nav class="navbar dark-nav nav-over-hero" id="navbar">
         <div class="nav-container">
             <a href="/" class="nav-logo">
-                <img width="120" height="50" loading="eager" fetchpriority="high" decoding="async" src="images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI Innovation Logo" style="height:44px;width:auto;border-radius:12px;padding:6px;background:rgba(255,255,255,0.95);box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+                <img width="120" height="50" loading="eager" fetchpriority="high" decoding="async" src="/images/logo-nav.webp" alt="Bharat AI Innovation Logo" style="height:44px;width:auto;border-radius:12px;padding:6px;background:rgba(255,255,255,0.95);box-shadow:0 2px 8px rgba(0,0,0,0.08);">
             </a>
             <div class="nav-menu" id="nav-menu">
                 <a href="/" class="nav-link active">Home</a>
@@ -924,7 +923,7 @@
                         <img width="690" height="388" loading="lazy" decoding="async" src="images/speaker-nilesh-shah-kotak.avif" alt="Nilesh Shah, Managing Director, Kotak Mahindra Asset Management Co. Ltd" class="speaker-photo" style="aspect-ratio:1;border-radius:50%;width:160px;height:160px;margin:0 auto;">
                         <h4>Nilesh Shah</h4>
                         <p style="font-size:0.82rem;color:var(--saffron);font-weight:600;margin:0;">Managing Director</p>
-                        <p class="spk-org" style="font-size:0.78rem;"><img width="64" height="64" class="spk-logo" src="https://www.google.com/s2/favicons?sz=64&amp;domain=kotak.com" alt="" loading="lazy" onerror="this.remove()">Kotak Mahindra Asset Management Co. Ltd</p>
+                        <p class="spk-org" style="font-size:0.78rem;"><img width="64" height="64" class="spk-logo" src="images/org-logos/favicon-kotak.com.png" alt="" loading="lazy" onerror="this.remove()">Kotak Mahindra Asset Management Co. Ltd</p>
                         <span class="speaker-topic topic-finance" style="margin-top:0.5rem;">AI in Finance</span>
                     </div>
 
@@ -933,7 +932,7 @@
                         <img width="800" height="800" loading="lazy" decoding="async" src="images/speaker-yogesh-bhalla.jpg" alt="Yogesh Bhalla, Chief Technology Officer, DSP Mutual Fund" class="speaker-photo" style="aspect-ratio:1;border-radius:50%;width:160px;height:160px;margin:0 auto;">
                         <h4>Yogesh Bhalla</h4>
                         <p style="font-size:0.82rem;color:var(--saffron);font-weight:600;margin:0;">Chief Technology Officer</p>
-                        <p class="spk-org" style="font-size:0.78rem;"><img width="64" height="64" class="spk-logo" src="https://www.google.com/s2/favicons?sz=64&amp;domain=dspim.com" alt="" loading="lazy" onerror="this.remove()">DSP Mutual Fund</p>
+                        <p class="spk-org" style="font-size:0.78rem;"><img width="64" height="64" class="spk-logo" src="images/org-logos/favicon-dspim.com.png" alt="" loading="lazy" onerror="this.remove()">DSP Mutual Fund</p>
                         <span class="speaker-topic topic-finance" style="margin-top:0.5rem;">AI in Asset Management</span>
                     </div>
 
@@ -942,7 +941,7 @@
                         <img width="800" height="800" loading="lazy" decoding="async" src="images/speaker-saurabh-kumar-sahu.jpg" alt="Saurabh Kumar Sahu, CEO, Accenture in India" class="speaker-photo" style="aspect-ratio:1;border-radius:50%;width:160px;height:160px;margin:0 auto;">
                         <h4>Saurabh Kumar Sahu</h4>
                         <p style="font-size:0.82rem;color:var(--saffron);font-weight:600;margin:0;">CEO</p>
-                        <p class="spk-org" style="font-size:0.78rem;"><img width="64" height="64" class="spk-logo" src="https://www.google.com/s2/favicons?sz=64&amp;domain=accenture.com" alt="" loading="lazy" onerror="this.remove()">Accenture in India</p>
+                        <p class="spk-org" style="font-size:0.78rem;"><img width="64" height="64" class="spk-logo" src="images/org-logos/favicon-accenture.com.png" alt="" loading="lazy" onerror="this.remove()">Accenture in India</p>
                         <span class="speaker-topic" style="margin-top:0.5rem;">Enterprise AI</span>
                     </div>
 
@@ -951,7 +950,7 @@
                         <picture><source type="image/webp" srcset="images/speaker-umar-ali-shaikh.webp"><img width="800" height="735" loading="lazy" decoding="async" src="images/speaker-umar-ali-shaikh.jpg" alt="Umar Ali Shaikh, CEO, Atos Solutions & Systems" class="speaker-photo" style="aspect-ratio:1;border-radius:50%;width:160px;height:160px;margin:0 auto;"></picture>
                         <h4>Umar Ali Shaikh</h4>
                         <p style="font-size:0.82rem;color:var(--saffron);font-weight:600;margin:0;">CEO</p>
-                        <p class="spk-org" style="font-size:0.78rem;"><img width="64" height="64" class="spk-logo" src="https://www.google.com/s2/favicons?sz=64&amp;domain=atos.net" alt="" loading="lazy" onerror="this.remove()">Atos Solutions & Systems</p>
+                        <p class="spk-org" style="font-size:0.78rem;"><img width="64" height="64" class="spk-logo" src="images/org-logos/favicon-atos.net.png" alt="" loading="lazy" onerror="this.remove()">Atos Solutions & Systems</p>
                         <span class="speaker-topic" style="margin-top:0.5rem;">AI Infrastructure</span>
                     </div>
 
@@ -969,7 +968,7 @@
                         <img width="979" height="1024" loading="lazy" decoding="async" src="images/speaker-shailesh-dhuri-final.webp" alt="Shailesh Dhuri, CEO, Decimal Point Analytics" class="speaker-photo" style="aspect-ratio:1;border-radius:50%;width:160px;height:160px;margin:0 auto;">
                         <h4>Shailesh Dhuri</h4>
                         <p style="font-size:0.82rem;color:var(--saffron);font-weight:600;margin:0;">Chief Executive Officer</p>
-                        <p class="spk-org" style="font-size:0.78rem;"><img width="64" height="64" class="spk-logo" src="https://www.google.com/s2/favicons?sz=64&amp;domain=decimalpointanalytics.com" alt="" loading="lazy" onerror="this.remove()">Decimal Point Analytics</p>
+                        <p class="spk-org" style="font-size:0.78rem;"><img width="64" height="64" class="spk-logo" src="images/org-logos/favicon-decimalpointanalytics.com.png" alt="" loading="lazy" onerror="this.remove()">Decimal Point Analytics</p>
                         <span class="speaker-topic topic-finance" style="margin-top:0.5rem;">Fintech AI</span>
                     </div>
 
@@ -978,7 +977,7 @@
                         <img width="682" height="1024" loading="lazy" decoding="async" src="images/speaker-rajesh-dhuddu.jpg" alt="Rajesh Dhuddu, Partner & Emerging Tech Leader, PwC" class="speaker-photo" style="aspect-ratio:1;border-radius:50%;width:160px;height:160px;margin:0 auto;">
                         <h4>Rajesh Dhuddu (PhD)</h4>
                         <p style="font-size:0.82rem;color:var(--saffron);font-weight:600;margin:0;">Partner & Emerging Tech Leader</p>
-                        <p class="spk-org" style="font-size:0.78rem;"><img width="64" height="64" class="spk-logo" src="https://www.google.com/s2/favicons?sz=64&amp;domain=pwc.com" alt="" loading="lazy" onerror="this.remove()">Leadership Team @ iDAC, PwC</p>
+                        <p class="spk-org" style="font-size:0.78rem;"><img width="64" height="64" class="spk-logo" src="images/org-logos/favicon-pwc.com.png" alt="" loading="lazy" onerror="this.remove()">Leadership Team @ iDAC, PwC</p>
                         <span class="speaker-topic topic-research" style="margin-top:0.5rem;">AI Strategy</span>
                     </div>
 
@@ -987,7 +986,7 @@
                         <img width="192" height="192" loading="lazy" decoding="async" src="images/speaker-ashish-tendulkar-final.jpg" alt="Dr. Ashish Tendulkar, Lead AI, Google" class="speaker-photo" style="aspect-ratio:1;border-radius:50%;width:160px;height:160px;margin:0 auto;">
                         <h4>Dr. Ashish Tendulkar</h4>
                         <p style="font-size:0.82rem;color:var(--saffron);font-weight:600;margin:0;">Lead AI</p>
-                        <p class="spk-org" style="font-size:0.78rem;"><img width="64" height="64" class="spk-logo" src="https://www.google.com/s2/favicons?sz=64&amp;domain=google.com" alt="" loading="lazy" onerror="this.remove()">Google</p>
+                        <p class="spk-org" style="font-size:0.78rem;"><img width="64" height="64" class="spk-logo" src="images/org-logos/favicon-google.com.png" alt="" loading="lazy" onerror="this.remove()">Google</p>
                         <span class="speaker-topic topic-research" style="margin-top:0.5rem;">AI Research</span>
                     </div>
 
@@ -996,7 +995,7 @@
                         <picture><source type="image/webp" srcset="images/speaker-mukesh-jain-capgemini.webp"><img width="800" height="800" loading="lazy" decoding="async" src="images/speaker-mukesh-jain-capgemini.webp" alt="Mukesh Jain, Global Executive VP & CTO, Capgemini" class="speaker-photo" style="aspect-ratio:1;border-radius:50%;width:160px;height:160px;margin:0 auto;"></picture>
                         <h4>Mukesh Jain</h4>
                         <p style="font-size:0.82rem;color:var(--saffron);font-weight:600;margin:0;">Global Executive VP & CTO</p>
-                        <p class="spk-org" style="font-size:0.78rem;"><img width="64" height="64" class="spk-logo" src="https://www.google.com/s2/favicons?sz=64&amp;domain=capgemini.com" alt="" loading="lazy" onerror="this.remove()">Capgemini</p>
+                        <p class="spk-org" style="font-size:0.78rem;"><img width="64" height="64" class="spk-logo" src="images/org-logos/favicon-capgemini.com.png" alt="" loading="lazy" onerror="this.remove()">Capgemini</p>
                         <span class="speaker-topic" style="margin-top:0.5rem;">AI at Scale</span>
                     </div>
 
@@ -1005,7 +1004,7 @@
                         <picture><source type="image/webp" srcset="images/speaker-manish-agarwal-comviva.webp"><img width="800" height="800" loading="lazy" decoding="async" src="images/speaker-manish-agarwal-comviva.webp" alt="Manish Agrawal, President &amp; Chief Operating Officer, Comviva" class="speaker-photo" style="aspect-ratio:1;border-radius:50%;width:160px;height:160px;margin:0 auto;"></picture>
                         <h4>Manish Agrawal</h4>
                         <p style="font-size:0.82rem;color:var(--saffron);font-weight:600;margin:0;">President &amp; Chief Operating Officer</p>
-                        <p class="spk-org" style="font-size:0.78rem;"><img width="64" height="64" class="spk-logo" src="https://www.google.com/s2/favicons?sz=64&amp;domain=comviva.com" alt="" loading="lazy" onerror="this.remove()">Comviva</p>
+                        <p class="spk-org" style="font-size:0.78rem;"><img width="64" height="64" class="spk-logo" src="images/org-logos/favicon-comviva.com.png" alt="" loading="lazy" onerror="this.remove()">Comviva</p>
                         <span class="speaker-topic" style="margin-top:0.5rem;">AI in Telecom</span>
                     </div>
 
@@ -1022,7 +1021,7 @@
                         <img width="1280" height="1600" loading="lazy" decoding="async" src="images/speaker-ramanarayana-parhi-alkem.webp" alt="Ramanarayana Parhi, VP & CIO, Alkem Laboratories" class="speaker-photo" style="aspect-ratio:1;border-radius:50%;width:160px;height:160px;margin:0 auto;">
                         <h4>Ramanarayana Parhi</h4>
                         <p style="font-size:0.82rem;color:var(--saffron);font-weight:600;margin:0;">VP &amp; CIO</p>
-                        <p class="spk-org" style="font-size:0.78rem;"><img width="64" height="64" class="spk-logo" src="https://www.google.com/s2/favicons?sz=64&amp;domain=alkemlabs.com" alt="" loading="lazy" onerror="this.remove()">Alkem Laboratories</p>
+                        <p class="spk-org" style="font-size:0.78rem;"><img width="64" height="64" class="spk-logo" src="images/org-logos/favicon-alkemlabs.com.png" alt="" loading="lazy" onerror="this.remove()">Alkem Laboratories</p>
                         <span class="speaker-topic" style="margin-top:0.5rem;">AI in Pharma</span>
                     </div>
 
@@ -1040,7 +1039,7 @@
                         <img width="800" height="800" loading="lazy" decoding="async" src="images/speaker-sandeep-kumar-godigit.webp" alt="Sandeep Kumar, CIO, Go Digit Insurance" class="speaker-photo" style="aspect-ratio:1;border-radius:50%;width:160px;height:160px;margin:0 auto;">
                         <h4>Sandeep Kumar</h4>
                         <p style="font-size:0.82rem;color:var(--saffron);font-weight:600;margin:0;">CIO</p>
-                        <p class="spk-org" style="font-size:0.78rem;"><img width="64" height="64" class="spk-logo" src="https://www.google.com/s2/favicons?sz=64&amp;domain=godigit.com" alt="" loading="lazy" onerror="this.remove()">Go Digit Insurance</p>
+                        <p class="spk-org" style="font-size:0.78rem;"><img width="64" height="64" class="spk-logo" src="images/org-logos/favicon-godigit.com.png" alt="" loading="lazy" onerror="this.remove()">Go Digit Insurance</p>
                         <span class="speaker-topic topic-finance" style="margin-top:0.5rem;">AI in Insurance</span>
                     </div>
 
@@ -1058,7 +1057,7 @@
                         <img width="200" height="200" loading="lazy" decoding="async" src="images/speaker-joy-chakraborty.jpg" alt="Joy Chakraborty, Deputy Chief Executive Officer, P. D. Hinduja National Hospital &amp; Medical Research Centre" class="speaker-photo" style="aspect-ratio:1;border-radius:50%;width:160px;height:160px;margin:0 auto;">
                         <h4>Joy Chakraborty</h4>
                         <p style="font-size:0.82rem;color:var(--saffron);font-weight:600;margin:0;">Deputy Chief Executive Officer</p>
-                        <p class="spk-org" style="font-size:0.78rem;"><img width="64" height="64" class="spk-logo" src="https://www.google.com/s2/favicons?sz=64&amp;domain=hindujahospital.com" alt="" loading="lazy" onerror="this.remove()">P. D. Hinduja National Hospital &amp; Medical Research Centre</p>
+                        <p class="spk-org" style="font-size:0.78rem;"><img width="64" height="64" class="spk-logo" src="images/org-logos/favicon-hindujahospital.com.png" alt="" loading="lazy" onerror="this.remove()">P. D. Hinduja National Hospital &amp; Medical Research Centre</p>
                         <span class="speaker-topic topic-research" style="margin-top:0.5rem;">Healthcare AI</span>
                     </div>
 
@@ -1067,7 +1066,7 @@
                         <img width="200" height="200" loading="lazy" decoding="async" src="images/speaker-rahul-molasi.jpg" alt="Rahul Molasi, Associate Director L&D, Cipla" class="speaker-photo" style="aspect-ratio:1;border-radius:50%;width:160px;height:160px;margin:0 auto;">
                         <h4>Rahul Molasi</h4>
                         <p style="font-size:0.82rem;color:var(--saffron);font-weight:600;margin:0;">Associate Director, L&D</p>
-                        <p class="spk-org" style="font-size:0.78rem;"><img width="64" height="64" class="spk-logo" src="https://www.google.com/s2/favicons?sz=64&amp;domain=cipla.com" alt="" loading="lazy" onerror="this.remove()">Cipla Digital Learning Transformation</p>
+                        <p class="spk-org" style="font-size:0.78rem;"><img width="64" height="64" class="spk-logo" src="images/org-logos/favicon-cipla.com.png" alt="" loading="lazy" onerror="this.remove()">Cipla Digital Learning Transformation</p>
                         <span class="speaker-topic" style="margin-top:0.5rem;">AI in Pharma</span>
                     </div>
 
@@ -1076,7 +1075,7 @@
                         <img width="199" height="200" loading="lazy" decoding="async" src="images/speaker-abdul-hai-mattoo.jpg" alt="Abdul Hai Mattoo, CVP & Head of Training, Axis Max Life Insurance" class="speaker-photo" style="aspect-ratio:1;border-radius:50%;width:160px;height:160px;margin:0 auto;">
                         <h4>Abdul Hai Mattoo</h4>
                         <p style="font-size:0.82rem;color:var(--saffron);font-weight:600;margin:0;">CVP & Head of Training – Axis Relationship</p>
-                        <p class="spk-org" style="font-size:0.78rem;"><img width="64" height="64" class="spk-logo" src="https://www.google.com/s2/favicons?sz=64&amp;domain=axismaxlife.com" alt="" loading="lazy" onerror="this.remove()">Axis Max Life Insurance</p>
+                        <p class="spk-org" style="font-size:0.78rem;"><img width="64" height="64" class="spk-logo" src="images/org-logos/favicon-axismaxlife.com.png" alt="" loading="lazy" onerror="this.remove()">Axis Max Life Insurance</p>
                         <span class="speaker-topic topic-finance" style="margin-top:0.5rem;">AI in Insurance</span>
                     </div>
 
@@ -1094,7 +1093,7 @@
                         <img width="400" height="400" loading="lazy" decoding="async" src="images/speaker-soly-thomas.webp" alt="Soly Thomas, Deputy CEO & Chief Digital Officer, Canara HSBC Life Insurance" class="speaker-photo" style="aspect-ratio:1;border-radius:50%;width:160px;height:160px;margin:0 auto;">
                         <h4>Soly Thomas</h4>
                         <p style="font-size:0.82rem;color:var(--saffron);font-weight:600;margin:0;">Deputy CEO & Chief Digital Officer, Bancassurance</p>
-                        <p class="spk-org" style="font-size:0.78rem;"><img width="64" height="64" class="spk-logo" src="https://www.google.com/s2/favicons?sz=64&amp;domain=canarahsbclife.com" alt="" loading="lazy" onerror="this.remove()">Canara HSBC Life Insurance</p>
+                        <p class="spk-org" style="font-size:0.78rem;"><img width="64" height="64" class="spk-logo" src="images/org-logos/favicon-canarahsbclife.com.png" alt="" loading="lazy" onerror="this.remove()">Canara HSBC Life Insurance</p>
                         <span class="speaker-topic topic-finance" style="margin-top:0.5rem;">AI in Banking</span>
                     </div>
 
@@ -1103,7 +1102,7 @@
                         <img width="400" height="400" loading="lazy" decoding="async" src="images/speaker-jagbir-singh.webp" alt="Jagbir Singh, CTIO, Vodafone Idea Limited" class="speaker-photo" style="aspect-ratio:1;border-radius:50%;width:160px;height:160px;margin:0 auto;">
                         <h4>Jagbir Singh</h4>
                         <p style="font-size:0.82rem;color:var(--saffron);font-weight:600;margin:0;">Chief Technology &amp; Information Officer</p>
-                        <p class="spk-org" style="font-size:0.78rem;"><img width="64" height="64" class="spk-logo" src="https://www.google.com/s2/favicons?sz=64&amp;domain=myvi.in" alt="" loading="lazy" onerror="this.remove()">Vodafone Idea Limited</p>
+                        <p class="spk-org" style="font-size:0.78rem;"><img width="64" height="64" class="spk-logo" src="images/org-logos/favicon-myvi.in.png" alt="" loading="lazy" onerror="this.remove()">Vodafone Idea Limited</p>
                         <span class="speaker-topic" style="margin-top:0.5rem;">AI in Telecom</span>
                     </div>
 
@@ -1112,7 +1111,7 @@
                         <img width="400" height="400" loading="lazy" decoding="async" src="images/speaker-akhil-gupta.webp" alt="Akhil Gupta, Founder, NoBroker.com" class="speaker-photo" style="aspect-ratio:1;border-radius:50%;width:160px;height:160px;margin:0 auto;">
                         <h4>Akhil Gupta</h4>
                         <p style="font-size:0.82rem;color:var(--saffron);font-weight:600;margin:0;">Founder</p>
-                        <p class="spk-org" style="font-size:0.78rem;"><img width="64" height="64" class="spk-logo" src="https://www.google.com/s2/favicons?sz=64&amp;domain=nobroker.in" alt="" loading="lazy" onerror="this.remove()">NoBroker.com</p>
+                        <p class="spk-org" style="font-size:0.78rem;"><img width="64" height="64" class="spk-logo" src="images/org-logos/favicon-nobroker.in.png" alt="" loading="lazy" onerror="this.remove()">NoBroker.com</p>
                         <span class="speaker-topic" style="margin-top:0.5rem;">AI in PropTech</span>
                     </div>
 
@@ -1121,7 +1120,7 @@
                         <img width="400" height="400" loading="lazy" decoding="async" src="images/speaker-rajiv-kumar.webp" alt="Rajiv Kumar, MD & Corporate Vice President, Microsoft" class="speaker-photo" style="aspect-ratio:1;border-radius:50%;width:160px;height:160px;margin:0 auto;">
                         <h4>Rajiv Kumar</h4>
                         <p style="font-size:0.82rem;color:var(--saffron);font-weight:600;margin:0;">MD &amp; Corporate Vice President</p>
-                        <p class="spk-org" style="font-size:0.78rem;"><img width="64" height="64" class="spk-logo" src="https://www.google.com/s2/favicons?sz=64&amp;domain=microsoft.com" alt="" loading="lazy" onerror="this.remove()">Microsoft</p>
+                        <p class="spk-org" style="font-size:0.78rem;"><img width="64" height="64" class="spk-logo" src="images/org-logos/favicon-microsoft.com.png" alt="" loading="lazy" onerror="this.remove()">Microsoft</p>
                         <span class="speaker-topic" style="margin-top:0.5rem;">Enterprise AI</span>
                     </div>
 
@@ -1130,7 +1129,7 @@
                         <img width="400" height="400" loading="lazy" decoding="async" src="images/speaker-dheeraj-sinha.webp" alt="Dheeraj Sinha, EVP & Global Chief Information Officer, Sun Pharma" class="speaker-photo" style="aspect-ratio:1;border-radius:50%;width:160px;height:160px;margin:0 auto;">
                         <h4>Dheeraj Sinha</h4>
                         <p style="font-size:0.82rem;color:var(--saffron);font-weight:600;margin:0;">EVP &amp; Global Chief Information Officer</p>
-                        <p class="spk-org" style="font-size:0.78rem;"><img width="64" height="64" class="spk-logo" src="https://www.google.com/s2/favicons?sz=64&amp;domain=sunpharma.com" alt="" loading="lazy" onerror="this.remove()">Sun Pharma</p>
+                        <p class="spk-org" style="font-size:0.78rem;"><img width="64" height="64" class="spk-logo" src="images/org-logos/favicon-sunpharma.com.png" alt="" loading="lazy" onerror="this.remove()">Sun Pharma</p>
                         <span class="speaker-topic" style="margin-top:0.5rem;">AI in Pharma</span>
                     </div>
 
@@ -1148,7 +1147,7 @@
                         <img width="200" height="200" loading="lazy" decoding="async" src="images/speaker-pravin-kumar.jpg" alt="Pravin Kumar, Chief Market Information Security Officer &amp; Data Protection Officer, National Payments Corporation of India (NPCI)" class="speaker-photo" style="aspect-ratio:1;border-radius:50%;width:160px;height:160px;margin:0 auto;">
                         <h4>Pravin Kumar</h4>
                         <p style="font-size:0.82rem;color:var(--saffron);font-weight:600;margin:0;">Chief Market Information Security Officer &amp; Data Protection Officer</p>
-                        <p class="spk-org" style="font-size:0.78rem;"><img width="64" height="64" class="spk-logo" src="https://www.google.com/s2/favicons?sz=64&amp;domain=npci.org.in" alt="" loading="lazy" onerror="this.remove()">National Payments Corporation of India (NPCI)</p>
+                        <p class="spk-org" style="font-size:0.78rem;"><img width="64" height="64" class="spk-logo" src="images/org-logos/favicon-npci.org.in.png" alt="" loading="lazy" onerror="this.remove()">National Payments Corporation of India (NPCI)</p>
                         <span class="speaker-topic" style="margin-top:0.5rem;">AI Governance</span>
                     </div>
 
@@ -2195,7 +2194,7 @@
             <div class="footer-content">
                 <div class="footer-section">
                     <div class="footer-logo">
-                        <img width="120" height="50" loading="lazy" decoding="async" src="images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI Innovation Logo" style="height:40px;width:auto;border-radius:10px;padding:5px;background:rgba(255,255,255,0.95);box-shadow:0 2px 6px rgba(0,0,0,0.08);">
+                        <img width="120" height="50" loading="lazy" decoding="async" src="/images/logo-nav.webp" alt="Bharat AI Innovation Logo" style="height:40px;width:auto;border-radius:10px;padding:5px;background:rgba(255,255,255,0.95);box-shadow:0 2px 6px rgba(0,0,0,0.08);">
                     </div>
                     <p class="footer-description">
                         Building a vibrant AI ecosystem that showcases India's talent, research, startups, and enterprises while driving innovation, economic growth, and societal impact for Bharat and the world.
@@ -2272,18 +2271,23 @@
       }
     })();
     </script>
-    <script defer src="js/main.js"></script>
-    <script defer src="js/carousel.js"></script>
+    <script defer src="js/main.js?v=20261027"></script>
+    <script defer src="js/carousel.js?v=20261027"></script>
     <!-- images loaded directly from img/ folder -->
 
-    <!-- Neural globe background -->
+    <!-- Neural globe background. Drawn only while the hero is on screen, the
+         lines in a dozen batched strokes, 30 frames a second on a phone, and a
+         single still frame for anyone whose device has animations turned off.
+         The first version stroked each of its ~900 lines on its own 60 times a
+         second for as long as the page was open, and kept a mid-range phone's
+         processor about 95% busy; measured 27 Oct 2026. -->
     <script>
     (function(){
       'use strict';
       var cv=document.getElementById('heroGlobe');
       if(!cv)return;
       var ctx=cv.getContext('2d');
-      var N=150,SPD=0.00020,THR=0.52;
+      var N=150,SPD=0.00020,THR=0.52,STEPS=12;
       var PHI=Math.PI*(3-Math.sqrt(5));
       var pts=[];
       for(var i=0;i<N;i++){
@@ -2296,10 +2300,8 @@
         cv.width=hero.clientWidth||window.innerWidth;
         cv.height=hero.clientHeight||window.innerHeight;
       }
-      var ang=0,prev=0;
-      function frame(ts){
-        var dt=Math.min(ts-prev,100);prev=ts;
-        ang+=SPD*dt;
+      var ang=0,prev=0,last=0,running=false;
+      function draw(){
         var W=cv.width,H=cv.height;
         var mob=W<600;
         var centX=W*.5,centY=H*(mob?.38:.5);
@@ -2311,7 +2313,10 @@
           var d=(rz+1.18)/2.36;
           return{sx:centX+rx*R,sy:centY+ry*R,d:d,rx:rx,ry:ry,rz:rz};
         });
-        // Saffron connecting lines
+        // Saffron connecting lines, gathered by brightness into STEPS batches
+        // and stroked once per batch.
+        var buckets=[];
+        for(var s=0;s<STEPS;s++)buckets.push([]);
         for(var i=0;i<N;i++){
           for(var j=i+1;j<N;j++){
             var dx=q[i].rx-q[j].rx,dy=q[i].ry-q[j].ry,dz=q[i].rz-q[j].rz;
@@ -2319,27 +2324,69 @@
             if(d2>=THR*THR)continue;
             var a=(1-Math.sqrt(d2)/THR)*Math.min(q[i].d,q[j].d)*.55;
             if(a<.02)continue;
-            ctx.beginPath();
-            ctx.strokeStyle='rgba(255,120,40,'+a.toFixed(3)+')';
-            ctx.lineWidth=.8;
-            ctx.moveTo(q[i].sx,q[i].sy);
-            ctx.lineTo(q[j].sx,q[j].sy);
-            ctx.stroke();
+            buckets[Math.min(STEPS-1,Math.floor(a/.55*STEPS))].push(i,j);
           }
         }
-        // White dots (visible against dark blue gradient)
-        for(var k=0;k<N;k++){
-          var pt=q[k];
+        ctx.lineWidth=.8;
+        for(var b=0;b<STEPS;b++){
+          var seg=buckets[b];
+          if(!seg.length)continue;
           ctx.beginPath();
-          ctx.arc(pt.sx,pt.sy,Math.max(1,pt.d*3.5),0,6.283);
-          ctx.fillStyle='rgba(255,255,255,'+Math.max(.08,pt.d*.92).toFixed(3)+')';
+          for(var m=0;m<seg.length;m+=2){
+            ctx.moveTo(q[seg[m]].sx,q[seg[m]].sy);
+            ctx.lineTo(q[seg[m+1]].sx,q[seg[m+1]].sy);
+          }
+          ctx.strokeStyle='rgba(255,120,40,'+((b+.5)/STEPS*.55).toFixed(3)+')';
+          ctx.stroke();
+        }
+        // White dots (visible against dark blue gradient), gathered by
+        // brightness the same way: ten fills instead of one per dot.
+        var dots=[];
+        for(var s=0;s<10;s++)dots.push([]);
+        for(var k=0;k<N;k++){
+          dots[Math.min(9,Math.floor(Math.max(.08,q[k].d*.92)*10))].push(k);
+        }
+        for(var b=0;b<10;b++){
+          var set=dots[b];
+          if(!set.length)continue;
+          ctx.beginPath();
+          for(var m=0;m<set.length;m++){
+            var pt=q[set[m]],r=Math.max(1,pt.d*3.5);
+            ctx.moveTo(pt.sx+r,pt.sy);
+            ctx.arc(pt.sx,pt.sy,r,0,6.283);
+          }
+          ctx.fillStyle='rgba(255,255,255,'+((b+.5)/10).toFixed(3)+')';
           ctx.fill();
         }
+      }
+      function frame(ts){
+        if(!running)return;
+        var dt=Math.min(ts-prev,100);prev=ts;
+        ang+=SPD*dt;
+        // A phone draws 30 frames a second: on a slow drift the eye cannot tell
+        // it from 60, for half the work.
+        if(cv.width<600&&ts-last<30){requestAnimationFrame(frame);return;}
+        last=ts;
+        draw();
         requestAnimationFrame(frame);
       }
-      window.addEventListener('resize',resize,{passive:true});
+      function start(){
+        if(running)return;
+        running=true;
+        requestAnimationFrame(function(t){prev=t;last=0;requestAnimationFrame(frame);});
+      }
+      function stop(){running=false;}
+      window.addEventListener('resize',function(){resize();if(!running)draw();},{passive:true});
       resize();
-      requestAnimationFrame(function(t){prev=t;requestAnimationFrame(frame);});
+      // Animations turned off on the device: one still globe, drawn once.
+      if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches){draw();return;}
+      // Only while the hero is on screen; scrolled past, the drawing stops and
+      // the processor is the page's again.
+      if('IntersectionObserver' in window){
+        new IntersectionObserver(function(es){
+          for(var e=0;e<es.length;e++){if(es[e].isIntersecting)start();else stop();}
+        }).observe(cv);
+      }else start();
     })();
     </script>
 

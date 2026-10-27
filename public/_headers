@@ -8,3 +8,27 @@
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
   X-Frame-Options: SAMEORIGIN
+
+# How long a phone may keep each kind of file. Cloudflare's default was four
+# hours for everything, so a visitor back the next day downloaded the site
+# again. Scripts and stylesheets are asked for with a ?v= that changes when they
+# do (handbook rule 9), so a week is safe; the fonts never change in place; a
+# picture replaced under the same name reaches everyone within a day.
+/css/*
+  Cache-Control: public, max-age=604800
+/js/*
+  Cache-Control: public, max-age=604800
+/webfonts/*
+  Cache-Control: public, max-age=604800
+/fonts/*
+  Cache-Control: public, max-age=31536000, immutable
+/images/*
+  Cache-Control: public, max-age=86400
+/img/*
+  Cache-Control: public, max-age=86400
+/cdn/*
+  Cache-Control: public, max-age=86400
+/static/*
+  Cache-Control: public, max-age=86400
+/favicon.ico
+  Cache-Control: public, max-age=86400

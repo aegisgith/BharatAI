@@ -80,9 +80,26 @@ check('threads need a session', r.status === 401, r.status);
 r = await hit('/api/attendees/logout', { method: 'POST' });
 check('logout expires the cookie', r.status < 400 && /Max-Age=0/i.test(r.h['set-cookie'] || ''), r.status + ' ' + r.h['set-cookie']);
 r = await hit('/app');
+r.text += (await hit('/app.js')).text;   // the app's code is its own file
 check('app page carries the new client code', ['function parseDbTime', 'function safeUrl', 'id="notif-sheet"', 'function loadThreads', 'function closeTopModal'].every(m => r.text.includes(m)), 'markers');
 r = await hit('/sw.js');
-check('service worker is bhai-v10', r.status === 200 && r.text.includes("'bhai-v10'"), r.status);
+check('service worker is bhai-v11', r.status === 200 && r.text.includes("'bhai-v11'"), r.status);
+
+// ---- what a phone downloads (27 Oct 2026) ----
+r = await hit('/app.js');
+check('/app.js is JavaScript a phone may keep for a year', r.status === 200 && /javascript/.test(r.h['content-type'] || '') && /max-age=31536000/.test(r.h['cache-control'] || ''), r.status + ' ' + r.h['content-type'] + ' ' + r.h['cache-control']);
+r = await hit('/css/fonts.css?v=1');
+check('the fonts come from this origin', r.status === 200 && r.text.includes('url(/fonts/manrope-latin-300-800.woff2)'), r.status);
+r = await hit('/fonts/manrope-latin-300-800.woff2');
+check('the body font is served and kept for a year', r.status === 200 && /immutable/.test(r.h['cache-control'] || ''), r.status + ' ' + r.h['cache-control']);
+r = await hit('/css/style.css?v=20261004d');
+check('stylesheets are kept for a week, not four hours', r.status === 200 && /max-age=604800/.test(r.h['cache-control'] || ''), r.status + ' ' + r.h['cache-control']);
+r = await hit('/images/logo-nav.webp');
+check('the small logo is served', r.status === 200 && /webp/.test(r.h['content-type'] || ''), r.status + ' ' + r.h['content-type']);
+r = await hit('/favicon.ico');
+check('/favicon.ico answers', r.status === 200, r.status);
+r = await hit('/');
+check('the home page fetches nothing from Google Fonts or the favicon service', r.status === 200 && !/fonts\.g(oogleapis|static)\.com|google\.com\/s2\/favicons/.test(r.text), r.status);
 
 // ---- Campus Series insights reports ----
 r = await hit('/insights');

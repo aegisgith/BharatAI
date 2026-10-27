@@ -27,6 +27,7 @@ function mpSharedHead(title: string, opts: { path?: string; noindex?: boolean } 
   <link rel="canonical" href="${url}">
   <meta name="robots" content="${opts.noindex ? 'noindex, nofollow' : 'index, follow, max-image-preview:large'}">
   <meta name="theme-color" content="#F8F9FF">
+  <link rel="icon" type="image/png" sizes="64x64" href="/images/favicon-64.png">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Bharat AI Innovation">
   <meta property="og:locale" content="en_IN">
@@ -109,7 +110,7 @@ export function marketplacePageHTML(): string {
   <header class="mp-header">
     <div class="mp-header-inner">
       <a href="/marketplace" class="mp-logo-link">
-        <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI Innovation" loading="eager" class="mp-brand-logo">
+        <img src="/images/logo-nav.webp" alt="Bharat AI Innovation" loading="eager" class="mp-brand-logo">
       </a>
       <nav class="mp-nav">
         <a href="/app" class="mp-nav-link"><i class="fas fa-home mr-1"></i>Home</a>
@@ -389,7 +390,7 @@ export function marketplacePageHTML(): string {
   <footer class="mp-footer">
     <div class="mp-footer-inner">
       <div class="mp-footer-brand">
-        <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="mp-footer-logo">
+        <img src="/images/logo-nav.webp" alt="BHAI" class="mp-footer-logo">
         <div>
           <h3>Bharat AI Marketplace</h3>
           <p>Part of Bharat AI Innovation 2026</p>
@@ -427,7 +428,7 @@ export function marketplaceListingPageHTML(companySlug?: string, productSlug?: s
   <header class="mp-header">
     <div class="mp-header-inner">
       <a href="/marketplace" class="mp-logo-link">
-        <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI Innovation" loading="eager" class="mp-brand-logo">
+        <img src="/images/logo-nav.webp" alt="Bharat AI Innovation" loading="eager" class="mp-brand-logo">
       </a>
       <nav class="mp-nav" aria-label="Marketplace">
         <a href="/marketplace" class="mp-nav-link">All AI products</a>
@@ -524,7 +525,7 @@ export function marketplaceDashboardPageHTML(): string {
   <!-- Sidebar -->
   <aside id="dash-sidebar" class="dash-sidebar">
     <div class="dash-sidebar-header">
-      <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="dash-sidebar-logo">
+      <img src="/images/logo-nav.webp" alt="BHAI" class="dash-sidebar-logo">
       <div>
         <h2 class="text-sm font-bold">AI Marketplace</h2>
         <p class="text-[10px] text-slate-400">Company Dashboard</p>
@@ -722,7 +723,7 @@ export function marketplaceAdminPageHTML(): string {
 
   <aside id="dash-sidebar" class="dash-sidebar">
     <div class="dash-sidebar-header">
-      <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="dash-sidebar-logo">
+      <img src="/images/logo-nav.webp" alt="BHAI" class="dash-sidebar-logo">
       <div>
         <h2 class="text-sm font-bold">AI Marketplace</h2>
         <p class="text-[10px] text-slate-400">Super Admin</p>
@@ -844,7 +845,7 @@ export function marketplaceFaqPageHTML(): string {
   <header class="mp-header">
     <div class="mp-header-inner">
       <a href="/marketplace" class="mp-logo-link">
-        <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="BHAI" class="mp-logo-img">
+        <img src="/images/logo-nav.webp" alt="BHAI" class="mp-logo-img">
         <div>
           <h1 class="mp-logo-title">Bharat AI Marketplace</h1>
           <p class="mp-logo-sub">Frequently Asked Questions</p>

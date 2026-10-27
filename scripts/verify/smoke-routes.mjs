@@ -62,6 +62,10 @@ if (phase === 'attendee') {
   check('booth visit refuses without a session', r.status === 401, r.status + ' ' + r.text.slice(0, 80));
   r = await hit('/app');
   check('/app renders', r.status === 200 && r.text.includes('<html'), r.status);
+  check('/app loads its code from a versioned /app.js', /<script src="\/app\.js\?v=[0-9a-f]{8}"><\/script>/.test(r.text), 'no versioned /app.js tag');
+  const appJs = await hit('/app.js');
+  check('/app.js is JavaScript a phone may keep for a year', appJs.status === 200 && /javascript/.test(appJs.h['content-type'] || '') && /immutable/.test(appJs.h['cache-control'] || ''), appJs.status + ' ' + appJs.h['content-type'] + ' ' + appJs.h['cache-control']);
+  r.text += appJs.text;   // the app's code is its own file: a marker below is in one or the other
   for (const marker of ['function parseDbTime', 'function apiFailed', 'function safeUrl', 'id="notif-sheet"', 'id="directory-chips"', 'aria-live="polite"', 'function closeTopModal', 'function loadThreads', 'answerMainEvent', 'conferenceAllowed', 'function openSocialCard']) {
     check('/app carries ' + marker, r.text.includes(marker), 'missing');
   }

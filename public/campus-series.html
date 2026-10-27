@@ -198,12 +198,11 @@
     }
     </script>
 
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300..800&display=swap" rel="stylesheet">
+    <link rel="preload" href="/fonts/manrope-latin-300-800.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="/css/fonts.css?v=1">
     <link rel="stylesheet" href="/css/fa-subset.css?v=1">
     <link rel="stylesheet" href="css/style.css?v=20261004d">
-    <link rel="icon" type="image/png" href="images/Bharat%20AI%20Innovation%20Logo.png">
+    <link rel="icon" type="image/png" sizes="64x64" href="/images/favicon-64.png">
 
     <style>
     /* ===== CAMPUS SERIES — page-scoped ===== */
@@ -426,7 +425,7 @@
     <nav class="navbar dark-nav" id="navbar">
         <div class="nav-container">
             <a href="/" class="nav-logo">
-                <img width="120" height="50" loading="eager" fetchpriority="high" decoding="async" src="images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI Innovation Logo" style="height:44px;width:auto;border-radius:12px;padding:6px;background:rgba(255,255,255,0.95);box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+                <img width="120" height="50" loading="eager" fetchpriority="high" decoding="async" src="/images/logo-nav.webp" alt="Bharat AI Innovation Logo" style="height:44px;width:auto;border-radius:12px;padding:6px;background:rgba(255,255,255,0.95);box-shadow:0 2px 8px rgba(0,0,0,0.08);">
             </a>
             <div class="nav-menu" id="nav-menu">
                 <a href="/" class="nav-link">Home</a>
@@ -489,7 +488,7 @@
                 <article class="cs-panel reveal" id="djsanghvi-21sep" data-start="2026-09-21T11:00:00+05:30" data-end="2026-09-21T12:30:00+05:30">
                     <div class="cs-panel-media">
                         <img width="590" height="350" loading="lazy" decoding="async"
-                             src="images/campus-djsanghvi-21sep-panel-v5.jpg"
+                             src="images/campus-djsanghvi-21sep-panel-v5-1200.webp"
                              alt="AI and Employability panel discussion at Dwarkadas J. Sanghvi College of Engineering, 21 September 2026">
                     </div>
                     <div class="cs-panel-body">
@@ -563,7 +562,7 @@
                         <iframe src="https://www.youtube-nocookie.com/embed/fIPXB3mTNOM?enablejsapi=1" data-report="djsce" title="AI and Employability panel discussion at Dwarkadas J. Sanghvi College of Engineering, 21 September 2026" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>
                     </div>
                     <div class="cs-watch-body">
-                        <img width="720" height="1019" loading="lazy" decoding="async" src="images/reports/djsce-cover.jpg" alt="Cover of Beyond the Fear, the insights report from the DJ Sanghvi panel">
+                        <img width="720" height="1019" loading="lazy" decoding="async" src="images/reports/djsce-cover.webp" alt="Cover of Beyond the Fear, the insights report from the DJ Sanghvi panel">
                         <div>
                             <div class="cs-panel-host"><i class="fas fa-university"></i> DJ Sanghvi, Mumbai &middot; 21 Sep 2026</div>
                             <h3>Beyond the Fear</h3>
@@ -580,7 +579,7 @@
                         <iframe src="https://www.youtube-nocookie.com/embed/6tlYBxAPw3g?enablejsapi=1" data-report="jnu" title="AI and Employability panel discussion at Jawaharlal Nehru University, 30 September 2026" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>
                     </div>
                     <div class="cs-watch-body">
-                        <img width="720" height="1019" loading="lazy" decoding="async" src="images/reports/jnu-cover.jpg" alt="Cover of AI and Employability, the insights report from the JNU panel">
+                        <img width="720" height="1019" loading="lazy" decoding="async" src="images/reports/jnu-cover.webp" alt="Cover of AI and Employability, the insights report from the JNU panel">
                         <div>
                             <div class="cs-panel-host"><i class="fas fa-university"></i> JNU, New Delhi &middot; 30 Sep 2026</div>
                             <h3>AI and Employability</h3>
@@ -678,7 +677,7 @@
             <div class="footer-content">
                 <div class="footer-section">
                     <div class="footer-logo">
-                        <img width="120" height="50" loading="lazy" decoding="async" src="images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI Innovation Logo" style="height:40px;width:auto;border-radius:10px;padding:5px;background:rgba(255,255,255,0.95);box-shadow:0 2px 6px rgba(0,0,0,0.08);">
+                        <img width="120" height="50" loading="lazy" decoding="async" src="/images/logo-nav.webp" alt="Bharat AI Innovation Logo" style="height:40px;width:auto;border-radius:10px;padding:5px;background:rgba(255,255,255,0.95);box-shadow:0 2px 6px rgba(0,0,0,0.08);">
                     </div>
                     <p class="footer-description">Advancing India's Future Through AI Innovation. Join us in creating a Viksit Bharat by 2047.</p>
                     <div class="social-links">
@@ -765,6 +764,6 @@
     })();
     </script>
     <script src="js/watch-track.js?v=20261008" defer></script>
-    <script src="js/main.js"></script>
+    <script src="js/main.js?v=20261027"></script>
 </body>
 </html>

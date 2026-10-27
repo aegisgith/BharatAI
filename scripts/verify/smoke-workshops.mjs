@@ -220,6 +220,7 @@ check('scanned by anyone else, it shows no workshop or other detail', r.status =
 
 // ---- the pages ----
 r = await hit('/app');
+r.text += (await hit('/app.js')).text;   // the app's code is its own file
 for (const m of ['id="ws-panel"', 'id="pcc-workshop"', 'function loadWorkshopSeat', 'function wsTake', 'function openWorkshopChoice', "act === 'workshop'", "case 'workshops': loadWorkshopSeat(true)", 'More workshops, coming soon'])
   check('/app carries ' + m, r.text.includes(m), 'missing');
 check('/app no longer sends the coming-soon workshops to a register page', !/fa-ticket-alt"><\/i>Register Now/.test(r.text), 'a Register Now is left');

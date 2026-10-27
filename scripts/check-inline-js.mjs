@@ -86,6 +86,30 @@ for (const path of PAGES) {
   if (!failed) console.log(`[check-inline-js] ${path}: ${checked} inline block(s) parse`)
 }
 
+// The app's code is its own file since 27 Oct 2026 (GET /app.js, mainPageScript
+// in src/index.tsx): still a template literal, with the same ways to die, so it
+// is parsed whole the way the inline blocks are. The /app page keeps one small
+// inline block (the service-worker registration), which the loop above checks.
+{
+  const res = await worker.fetch(new Request('https://bharataiinnovation.com/app.js'), env, ctx)
+  const body = await res.text()
+  const type = res.headers.get('content-type') || ''
+  if (res.status !== 200 || !/javascript/.test(type)) {
+    console.error(`[check-inline-js] /app.js answered ${res.status} ${type}, not the script`)
+    failed++
+  } else {
+    try {
+      new vm.Script(body)
+      console.log(`[check-inline-js] /app.js: ${Math.round(body.length / 1024)} KB parses`)
+    } catch (e) {
+      const line = Number((/(\d+)/.exec(e.stack?.split('\n')[0] ?? '') || [])[1])
+      console.error(`[check-inline-js] /app.js: ${e.message}`)
+      console.error(`   near: ${(body.split('\n')[(line || 1) - 1] ?? '').trim().slice(0, 140)}`)
+      failed++
+    }
+  }
+}
+
 // The static site. public/*.html is served as-is, never rendered by the worker,
 // so the loop above never saw it: on 17 Sep 2026 an edit left a string
 // unterminated in the campus pages' inline script, the registration handler
