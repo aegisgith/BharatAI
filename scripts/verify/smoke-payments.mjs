@@ -9,6 +9,8 @@
 import crypto from 'node:crypto';
 import vm from 'node:vm';
 import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { KEY, SECRETS, kitEncrypt, kitDecrypt, sessionCookie, staffCookie, orderSig, gatewayAnswer, makePayDb } from './pay-db.mjs';
 const worker = (await import(new URL('../../dist/_worker.js?' + Date.now(), import.meta.url).href)).default;
 
@@ -261,7 +263,7 @@ const realFetch = globalThis.fetch;
 globalThis.fetch = async (u, init) => {
   if (String(u).includes('api.elasticemail.com')) {
     const b = JSON.parse(init.body);
-    mail.push({ to: b.Recipients.To[0], subject: b.Content.Subject, html: b.Content.Body[0].Content });
+    mail.push({ to: b.Recipients.To[0], bcc: b.Recipients.BCC || [], subject: b.Content.Subject, html: b.Content.Body[0].Content, attachments: b.Content.Attachments || [] });
     return new Response(JSON.stringify({ TransactionID: 't' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   }
   return realFetch(u, init);
@@ -540,6 +542,20 @@ check('when the payment lands a GST invoice is raised by itself, in the company 
 check('a Karnataka GSTIN is drawn as IGST, and the tax adds up to what was charged', !!ginv && ginv.igst_paise === 89982 && ginv.cgst_paise === 0 && ginv.taxable_paise + ginv.igst_paise === 589882 && ginv.place_of_supply === 'Karnataka', JSON.stringify(ginv));
 const toG = mail.slice(mk).filter(m => m.to === 'gst@example.com');
 check('the buyer gets the invoice email, and a receipt that names the invoice and links it', !!ginv && toG.some(m => m.subject.startsWith('Invoice ' + ginv.invoice_no)) && toG.some(m => /Payment received/.test(m.subject) && m.html.includes(ginv.invoice_no) && /bharataiinnovation\.com\/invoice\/\d+\.[0-9a-f]{24}/.test(m.html)), JSON.stringify(toG.map(m => m.subject)));
+const gMail = toG.find(m => ginv && m.subject.startsWith('Invoice ' + ginv.invoice_no));
+const gPdf = gMail && gMail.attachments[0] ? Buffer.from(gMail.attachments[0].BinaryContent, 'base64') : null;
+check('the invoice email acknowledges the amount received, as the accounts team wrote it by hand', !!gMail && /We acknowledge the receipt of <strong>INR 5,898\.82<\/strong> against Delegate Pass fees/.test(gMail.html) && /tax invoice attached/.test(gMail.html), gMail ? gMail.html.slice(0, 300) : 'no invoice email');
+check('the invoice travels as a PDF attachment named for its number', !!gPdf && gPdf.subarray(0, 5).toString() === '%PDF-' && gMail.attachments[0].Name === 'Tax Invoice AKT-' + fy + '-119.pdf' && gMail.attachments[0].ContentType === 'application/pdf', gMail ? JSON.stringify(gMail.attachments.map(a => a.Name)) : 'none');
+check('the accounts mailbox gets a blind copy of every invoice email', !!gMail && gMail.bcc.length === 1 && gMail.bcc[0] === 'accounts@bellaward.com', gMail ? JSON.stringify(gMail.bcc) : 'none');
+check('nobody else is copied on the receipt', toG.filter(m => m !== gMail).every(m => !m.bcc.length && !m.attachments.length), JSON.stringify(toG.map(m => m.bcc)));
+if (gPdf) writeFileSync(join(tmpdir(), 'smoke-invoice.pdf'), gPdf);
+{
+  const tok = (gMail?.html.match(/invoice\/(\d+\.[0-9a-f]{24})/) || [])[1];
+  const pr = await hit('/invoice/' + tok + '/pdf');
+  const page = await hit('/invoice/' + tok);
+  const bad = await hit('/invoice/' + String(tok).slice(0, -1) + '0/pdf');
+  check('the invoice link offers the same PDF, and a forged link gets nothing', pr.status === 200 && pr.text.startsWith('%PDF-') && page.text.includes('/invoice/' + tok + '/pdf') && bad.status === 404, pr.status + ' ' + bad.status);
+}
 check('the team is told it is done, not asked to raise it', mail.slice(mk).some(m => /Paid online: Gst Buyer/.test(m.subject) && /raised and emailed to the buyer automatically/.test(m.html)), JSON.stringify(mail.slice(mk).map(m => m.subject)));
 r = await adminGet('/api/admin/payments-pending');
 check('so it is not on the "invoice to raise" list', r.status === 200 && !(r.json?.paid_online || []).some(x => x.order_id === gOrd.order_id), r.status + ' ' + r.text.slice(0, 160));

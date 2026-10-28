@@ -6,6 +6,7 @@ import SITE_PHOTO_FINGERPRINTS from './data/site-photo-fingerprints.json'
 import { cors } from 'hono/cors'
 import mp, { configureMarketplace } from './routes/marketplace'
 import { ccavEncrypt, ccavDecrypt, ccavRequestBody, ccavParseResponse } from './lib/ccavenue'
+import { invoicePdf } from './lib/invoice-pdf'
 import { marketplacePageHTML, marketplaceListingPageHTML, marketplaceDashboardPageHTML, marketplaceAdminPageHTML, marketplaceFaqPageHTML } from './routes/marketplace-pages'
 
 type Bindings = {
@@ -1897,8 +1898,14 @@ const GST_STATES: Record<string, string> = {
 const INVOICE_SETTING_KEYS = [
   'inv_legal_name', 'inv_address', 'inv_gstin', 'inv_pan', 'inv_state', 'inv_state_code',
   'inv_sac', 'inv_prefix', 'inv_signatory', 'inv_contact_email', 'inv_contact_phone',
-  'inv_next_number', 'inv_brand_line', 'inv_bank', 'inv_footer_note',
+  'inv_next_number', 'inv_brand_line', 'inv_bank', 'inv_footer_note', 'inv_accounts_email',
 ] as const
+
+// Every invoice email is copied here, so the accounts team files the same PDF the
+// buyer got instead of drawing up its own. They used accounts@bellaward.com for
+// the copies they sent by hand, so that is the default until the setting says
+// otherwise.
+const INVOICE_ACCOUNTS_EMAIL = 'accounts@bellaward.com'
 
 async function invoiceSettings(c: any): Promise<Record<string, string>> {
   const { results } = await c.env.DB.prepare('SELECT key, value FROM app_settings').all() as any
@@ -3221,23 +3228,82 @@ async function emailInvoice(c: any, invoiceId: any) {
 app.get('/invoice/:token', async (c) => {
   const row = await invoiceFromToken(c, c.req.param('token'))
   if (!row) return c.html('<p style="font-family:system-ui;padding:40px;text-align:center;">That invoice link is not valid.</p>', 404)
-  return c.html(invoiceHTML(row, await invoiceSettings(c)))
+  return c.html(invoiceHTML(row, await invoiceSettings(c), '/invoice/' + c.req.param('token') + '/pdf'))
 })
 
-function invoiceHTML(v: any, set: Record<string, string>): string {
+// The same invoice as a PDF file, the one attached to the email.
+app.get('/invoice/:token/pdf', async (c) => {
+  const row = await invoiceFromToken(c, c.req.param('token'))
+  if (!row) return c.text('That invoice link is not valid.', 404)
+  const pdf = await invoicePdfFor(c, row, await invoiceSettings(c))
+  return new Response(pdf, { headers: {
+    'Content-Type': 'application/pdf',
+    'Content-Disposition': 'inline; filename="' + invoicePdfName(row) + '"',
+    'Cache-Control': 'private, no-store',
+  } })
+})
+
+// dd-MMM-yy in IST, the format the accountant's own invoices carry.
+function invoiceDate(raw: any): string {
+  if (!raw) return '-'
+  const d = new Date(String(raw).replace(' ', 'T') + (/Z$/.test(String(raw)) ? '' : 'Z'))
+  if (isNaN(d.getTime())) return String(raw)
+  const t = new Date(d.getTime() + IST_OFFSET_MINUTES * 60000)
+  return t.getUTCDate().toString().padStart(2, '0') + '-' + IST_MONTHS[t.getUTCMonth()] + '-' + String(t.getUTCFullYear()).slice(2)
+}
+
+// "AKT/26-27/185" cannot be a file name, so the slashes become dashes.
+const invoicePdfName = (v: any) => 'Tax Invoice ' + String(v.invoice_no).replace(/[^A-Za-z0-9-]+/g, '-') + '.pdf'
+
+// The figures go in formatted exactly as invoiceHTML() prints them, so the page
+// and the PDF cannot disagree. The logo comes from the site's own files; without
+// them (a test, a local build) the PDF is drawn without it.
+async function invoicePdfFor(c: any, v: any, set: Record<string, string>): Promise<Uint8Array> {
+  let logo: Uint8Array | null = null
+  try {
+    if (c.env?.ASSETS) {
+      const r = await c.env.ASSETS.fetch(new Request('https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png'))
+      if (r.ok) logo = new Uint8Array(await r.arrayBuffer())
+    }
+  } catch { /* drawn without the logo */ }
+  const money = (n: number) => n ? rupees(n) : '-'
+  return invoicePdf({
+    invoiceNo: String(v.invoice_no),
+    date: invoiceDate(v.paid_at || v.created_at),
+    billTo: String(v.buyer_company || v.buyer_name || ''),
+    address: String(v.buyer_address || ''),
+    buyerGstin: String(v.buyer_gstin || ''),
+    itemDesc: String(v.item_desc || ''),
+    buyerName: String(v.buyer_name || ''),
+    refLine: [v.order_ref ? 'Order ' + v.order_ref : '', v.payment_ref || ''].filter(Boolean).join('  |  '),
+    sac: String(set.inv_sac || '998596'),
+    gstRate: Number(v.gst_rate),
+    taxable: rupees(v.taxable_paise),
+    cgst: money(v.cgst_paise),
+    sgst: money(v.sgst_paise),
+    igst: money(v.igst_paise),
+    total: rupees(v.total_paise),
+    words: rupeesInWords(v.total_paise).replace(/^Rupees /, ''),
+    placeOfSupply: String(v.place_of_supply || ''),
+    seller: {
+      brandLine: String(set.inv_brand_line || ''),
+      legalName: String(set.inv_legal_name || 'Aegis Knowledge Trust'),
+      address: String(set.inv_address || ''),
+      pan: String(set.inv_pan || ''),
+      gstin: String(set.inv_gstin || ''),
+      signatory: String(set.inv_signatory || 'Authorized Signatory'),
+      bank: String(set.inv_bank || ''),
+      footer: String(set.inv_footer_note || ''),
+    },
+  }, logo)
+}
+
+function invoiceHTML(v: any, set: Record<string, string>, pdfUrl = ''): string {
   const esc = (x: any) => String(x ?? '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch] as string))
   const nl = (x: any) => esc(x).replace(/\r?\n/g, '<br>')
   const money = (n: number) => n ? rupees(n) : '-'
   const half = v.gst_rate / 2
-
-  // dd-MMM-yy, the format the accountant's own invoices carry.
-  const shortDate = (raw: any) => {
-    if (!raw) return '-'
-    const d = new Date(String(raw).replace(' ', 'T') + (/Z$/.test(String(raw)) ? '' : 'Z'))
-    if (isNaN(d.getTime())) return esc(raw)
-    const t = new Date(d.getTime() + IST_OFFSET_MINUTES * 60000)
-    return t.getUTCDate().toString().padStart(2, '0') + '-' + IST_MONTHS[t.getUTCMonth()] + '-' + String(t.getUTCFullYear()).slice(2)
-  }
+  const shortDate = (raw: any) => esc(invoiceDate(raw))
 
   // The company name already sits in the row above; repeating it here just pushes
   // the address down and makes the block look duplicated.
@@ -3255,10 +3321,10 @@ function invoiceHTML(v: any, set: Record<string, string>): string {
  .logo{height:52px;width:auto;}
  .right{text-align:right;} .centre{text-align:center;}
  .print{max-width:820px;margin:0 auto;text-align:right;}
- .print button{padding:10px 20px;border:none;border-radius:8px;background:#FF6B00;color:#fff;font-weight:600;cursor:pointer;font-size:13px;}
+ .print button,.print a{padding:10px 20px;border:none;border-radius:8px;background:#FF6B00;color:#fff;font-weight:600;cursor:pointer;font-size:13px;text-decoration:none;display:inline-block;margin-left:8px;}
  @media print{ body{background:#fff;} .sheet{margin:0;border:1px solid #000;} .print{display:none;} }
 </style></head><body>
-<div class="print"><button onclick="window.print()">Save as PDF / Print</button></div>
+<div class="print">${pdfUrl ? `<a href="${esc(pdfUrl)}">Download PDF</a>` : ''}<button onclick="window.print()">Print</button></div>
 <div class="sheet">
   <div class="title">TAX INVOICE</div>
 
@@ -3356,13 +3422,29 @@ async function sendInvoiceEmail(c: any, v: any, token: string, set: Record<strin
   const fromName = (await g('sender_name')) || 'Bharat AI Innovation'
   const esc = (x: any) => String(x ?? '').replace(/[&<>]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch] as string))
   const url = 'https://bharataiinnovation.com/invoice/' + token
+  // "VIP Pass - Bharat AI Innovation ..." reads as "VIP Pass fees" in the
+  // acknowledgement, the way the accounts team wrote it by hand.
+  const paidFor = String(v.item_desc || 'Pass').split(' - ')[0].trim() || 'Pass'
+
+  // The PDF is what a buyer's finance team files; the link stays for anyone who
+  // lost the attachment. A PDF that cannot be drawn must not stop the email.
+  let pdf: string | null = null
+  try {
+    const bytes = await invoicePdfFor(c, v, set)
+    let bin = ''
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+    pdf = btoa(bin)
+  } catch (e: any) { console.error('invoice pdf failed', v?.invoice_no, e?.message) }
+  const accounts = String(set.inv_accounts_email || INVOICE_ACCOUNTS_EMAIL).trim().toLowerCase()
+  const copyTo = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(accounts) && accounts !== String(v.buyer_email).trim().toLowerCase() ? [accounts] : []
 
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#f5f5f5;font-family:Arial,sans-serif;">
     <div style="max-width:600px;margin:20px auto;background:#fff;border-radius:12px;overflow:hidden;">
       ${emailBrandHeader('Your invoice and confirmation', '20&ndash;21 Nov 2026 &bull; WTC Mumbai')}
       <div style="padding:30px;">
         <p style="margin:0 0 6px;font-size:15px;color:#333;">Dear <strong>${esc(v.buyer_name)}</strong>,</p>
-        <p style="margin:0 0 20px;font-size:14px;line-height:1.7;color:#555;">Your registration is confirmed and your tax invoice is below &mdash; everything your finance team needs for reimbursement.</p>
+        <p style="margin:0 0 12px;font-size:14px;line-height:1.7;color:#333;">We acknowledge the receipt of <strong>INR ${rupees(v.total_paise)}</strong> against ${esc(paidFor)} fees.${pdf ? ' Please find the tax invoice attached for your accounting purpose.' : ''}</p>
+        <p style="margin:0 0 20px;font-size:14px;line-height:1.7;color:#555;">Your registration is confirmed. The details are below, and the button opens the same invoice online.</p>
         <table style="width:100%;border-collapse:collapse;font-size:13.5px;">
           <tr><td style="padding:7px 0;color:#666;">Invoice number</td><td style="padding:7px 0;text-align:right;"><strong>${esc(v.invoice_no)}</strong></td></tr>
           <tr><td style="padding:7px 0;color:#666;">Pass</td><td style="padding:7px 0;text-align:right;">${esc(v.item_desc)}</td></tr>
@@ -3375,7 +3457,7 @@ async function sendInvoiceEmail(c: any, v: any, token: string, set: Record<strin
         <div style="text-align:center;margin:26px 0 6px;">
           <a href="${url}" style="display:inline-block;padding:13px 32px;background:linear-gradient(135deg,#FF6B00,#FF8C38);color:#fff;text-decoration:none;border-radius:10px;font-weight:bold;font-size:14px;">View and download the invoice</a>
         </div>
-        <p style="margin:14px 0 0;font-size:12px;color:#888;text-align:center;">Open the link and choose Save as PDF to attach it to an expense claim.</p>
+        <p style="margin:14px 0 0;font-size:12px;color:#888;text-align:center;">${pdf ? 'The PDF attached to this email is the same invoice.' : 'The page has a Download PDF button for an expense claim.'}</p>
         <div style="margin-top:22px;padding:14px;background:#FFF6EF;border:1px solid rgba(255,107,0,0.25);border-radius:10px;">
           <p style="margin:0;font-size:12.5px;line-height:1.6;color:#1E2140;"><strong>On the day:</strong> bring a government photo ID matching the name on your pass. We check it at the badge desk.</p>
         </div>
@@ -3387,12 +3469,13 @@ async function sendInvoiceEmail(c: any, v: any, token: string, set: Record<strin
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-ElasticEmail-ApiKey': apiKey },
       body: JSON.stringify({
-        Recipients: { To: [v.buyer_email] },
+        Recipients: copyTo.length ? { To: [v.buyer_email], BCC: copyTo } : { To: [v.buyer_email] },
         Content: {
           Body: [{ ContentType: 'HTML', Charset: 'utf-8', Content: html }],
           From: `${fromName} <${fromEmail}>`,
           ReplyTo: fromEmail,
           Subject: 'Invoice ' + v.invoice_no + ' and registration confirmation - Bharat AI Innovation 2026',
+          ...(pdf ? { Attachments: [{ BinaryContent: pdf, Name: invoicePdfName(v), ContentType: 'application/pdf' }] } : {}),
         },
         Options: { TrackClicks: false, TrackOpens: false },
       }),
@@ -37728,6 +37811,7 @@ function adminPageScript(): string {
       inv_state: 'State', inv_state_code: 'State code (27 = Maharashtra)', inv_sac: 'SAC code', inv_prefix: 'Invoice number prefix',
       inv_signatory: 'Authorised signatory', inv_contact_email: 'Contact email on the invoice', inv_contact_phone: 'Contact phone on the invoice',
       inv_next_number: 'Next invoice number', inv_brand_line: 'Brand line under the name', inv_bank: 'Bank details', inv_footer_note: 'Footer note',
+      inv_accounts_email: 'Accounts mailbox: gets a copy of every invoice email (empty = accounts@bellaward.com)',
     };
     function invoiceSettingsFields(settings) {
       return INVOICE_SETTING_KEYS.map(function (k) {
