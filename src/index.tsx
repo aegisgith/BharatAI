@@ -2222,7 +2222,8 @@ const PRICE_DEADLINE_IST = '2026-11-05'          // the last day of the standard
 const PRICE_DEADLINE_TEXT = '5 Nov 2026'
 const PRICE_LATE_FROM_TEXT = '6 Nov'
 const PASS_PRICES_INR: Record<string, number> = { 'Delegate Pass': 4999, 'Premium Delegate Pass': 9999, 'VIP Pass': 19999, 'Academic Pass': 999 }
-const LATE_PASS_PRICES_INR: Record<string, number> = { 'Delegate Pass': 5999, 'Premium Delegate Pass': 11999, 'VIP Pass': 22999, 'Academic Pass': 999 }
+// Late prices set by the organiser, 28 Oct 2026, the Academic Pass included.
+const LATE_PASS_PRICES_INR: Record<string, number> = { 'Delegate Pass': 8999, 'Premium Delegate Pass': 14999, 'VIP Pass': 24999, 'Academic Pass': 3999 }
 const PASS_GST_RATE = 18
 const GROUP_RATE_TEXT = 'Teams of five or more: five passes for the price of four (Delegate or Premium Delegate), on request.'
 // Organiser, 28 Oct 2026: a free pass is not a promise of entry. Said in these words
@@ -2241,7 +2242,12 @@ const rsPrice = (passType: string, late = latePricing()): string => '&#8377;' + 
 // The sentence under every price list: what holds until when, and what follows.
 function priceDeadlineNote(): string {
   if (latePricing()) return `These are the prices from ${PRICE_LATE_FROM_TEXT} ${PRICE_DEADLINE_TEXT.slice(-4)}; the standard prices ended on ${PRICE_DEADLINE_TEXT}.`
-  return `Standard prices until <strong>${PRICE_DEADLINE_TEXT}</strong>. From ${PRICE_LATE_FROM_TEXT}: Delegate ${rsPrice('Delegate Pass', true)}, Premium Delegate ${rsPrice('Premium Delegate Pass', true)}, VIP ${rsPrice('VIP Pass', true)} (+ GST); the Academic Pass stays ${rsPrice('Academic Pass', true)}.`
+  return `Standard prices until <strong>${PRICE_DEADLINE_TEXT}</strong>. From ${PRICE_LATE_FROM_TEXT}: Academic ${rsPrice('Academic Pass', true)}, Delegate ${rsPrice('Delegate Pass', true)}, Premium Delegate ${rsPrice('Premium Delegate Pass', true)}, VIP ${rsPrice('VIP Pass', true)} (+ GST).`
+}
+// "₹8,999 from 6 Nov", under a price, until the day the price changes; '' after.
+function latePriceTag(passType: string): string {
+  if (latePricing() || passPriceInr(passType, true) === passPriceInr(passType, false)) return ''
+  return `<span style="display:block;font-size:11px;font-weight:600;color:#B45309;">${rsPrice(passType, true)} from ${PRICE_LATE_FROM_TEXT}</span>`
 }
 
 function passAmounts(passType: string, late = latePricing()): { base: number; gst: number; total: number } | null {
@@ -14422,17 +14428,17 @@ async function upgradeOfferMail(c: any, a: any, offer: { pass: string; key: stri
   // pass includes; the price sits beside what waiting costs; the P.S. repeats the
   // one reason to act. Never a figure in the subject line.
   const late = latePricing()
-  const save = academic ? 0 : passPriceInr(offer.pass, true) - passPriceInr(offer.pass, false)
+  const save = passPriceInr(offer.pass, true) - passPriceInr(offer.pass, false)
   const saveText = save > 0 ? '&#8377;' + save.toLocaleString('en-IN') : ''
   const preheader = academic
-    ? 'Guaranteed entry on both days, at the student rate.'
+    ? (late ? 'Guaranteed entry on both days, at the student rate.' : `Guaranteed entry on both days, at the student rate. The standard price ends on ${PRICE_DEADLINE_TEXT}.`)
     : late ? 'Guarantee your place on both days, 20&ndash;21 Nov, WTC Mumbai.'
       : `Guarantee your place on both days. The standard price ends on ${PRICE_DEADLINE_TEXT}.`
   const priceBox =
     `<p style="margin:0 0 6px;font-size:15px;color:#1E2140;text-align:center;"><strong>${offer.pass}: &#8377;${base} + ${PASS_GST_RATE}% GST</strong> (&#8377;${total} in total)</p>` +
-    (!academic && !late && saveText ? `<p style="margin:0 0 4px;font-size:13.5px;line-height:1.6;color:#B45309;text-align:center;">This is the standard price, until <strong>${PRICE_DEADLINE_TEXT}</strong>. From ${PRICE_LATE_FROM_TEXT} it is ${rsPrice(offer.pass, true)} + GST: book now and save ${saveText}.</p>` : '')
+    (!late && saveText ? `<p style="margin:0 0 4px;font-size:13.5px;line-height:1.6;color:#B45309;text-align:center;">This is the standard price, until <strong>${PRICE_DEADLINE_TEXT}</strong>. From ${PRICE_LATE_FROM_TEXT} it is ${rsPrice(offer.pass, true)} + GST: book now and save ${saveText}.</p>` : '')
   const ps = academic
-    ? `P.S. Free-pass entry slots are confirmed by email closer to the event, and some people will get a half-day slot or none. The Academic Pass takes that uncertainty away for &#8377;${base} + GST.`
+    ? `P.S. Free-pass entry slots are confirmed by email closer to the event, and some people will get a half-day slot or none. The Academic Pass takes that uncertainty away for &#8377;${base} + GST${!late && saveText ? `, ${saveText} less than from ${PRICE_LATE_FROM_TEXT}` : ''}.`
     : `P.S. Free-pass entry slots are confirmed by email closer to the event, and some people will get a half-day slot or none. A Delegate Pass takes that uncertainty away${!late && saveText ? `, and costs ${saveText} less if you book by ${PRICE_DEADLINE_TEXT}` : ''}.`
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#f5f5f5;font-family:Arial,sans-serif;">
     <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:#f5f5f5;">${preheader}</div>
@@ -16426,11 +16432,11 @@ ${sharedFooterHTML()}
 function passComparisonHTML(): string {
   const passes = [
     { name: 'Visitor', price: 'Free', color: '#2B8CFF' },
-    { name: 'Academic', price: rsPrice('Academic Pass'), color: '#7C5CFF' },
-    { name: 'Delegate', price: rsPrice('Delegate Pass'), color: '#00996C' },
-    { name: 'Premium Delegate', price: rsPrice('Premium Delegate Pass'), color: '#0B7A75' },
-    { name: 'VIP', price: rsPrice('VIP Pass'), color: '#A67C00' },
-  ]
+    { name: 'Academic', price: rsPrice('Academic Pass'), color: '#7C5CFF', late: latePriceTag('Academic Pass') },
+    { name: 'Delegate', price: rsPrice('Delegate Pass'), color: '#00996C', late: latePriceTag('Delegate Pass') },
+    { name: 'Premium Delegate', price: rsPrice('Premium Delegate Pass'), color: '#0B7A75', late: latePriceTag('Premium Delegate Pass') },
+    { name: 'VIP', price: rsPrice('VIP Pass'), color: '#A67C00', late: latePriceTag('VIP Pass') },
+  ] as { name: string; price: string; color: string; late?: string }[]
   // One flag per pass, in the order above.
   const groups: { title: string; rows: [string, number[]][] }[] = [
     { title: 'The event', rows: [
@@ -16458,7 +16464,7 @@ function passComparisonHTML(): string {
   ]
   const yes = '<span class="pcmp-yes" role="img" aria-label="Included">&#10003;</span>'
   const no = '<span class="pcmp-no" role="img" aria-label="Not included">&mdash;</span>'
-  const head = passes.map(p => `<th scope="col" style="color:${p.color};">${p.name}<span>${p.price}</span></th>`).join('')
+  const head = passes.map(p => `<th scope="col" style="color:${p.color};">${p.name}<span>${p.price}</span>${p.late || ''}</th>`).join('')
   // On a phone the feature name takes its own line above the five marks, so every
   // pass stays in view without scrolling sideways; on a wider screen it is the
   // first column. Only the copy on display reaches a screen reader. The pass names
@@ -16696,34 +16702,35 @@ ${sharedNavHTML('register')}
       <div class="glass rounded-2xl p-6 border border-amber-500/20">
         <h3 class="font-bold text-base text-amber-300 mb-3"><i class="fas fa-arrow-up mr-2"></i>Want Full Conference Access?</h3>
         <p class="text-xs text-gray-400 mb-4">Every paid pass has guaranteed entry on both days and adds the full conference and the networking app. A workshop comes only with Premium Delegate and VIP: one each, seats first come, first served.</p>
+        ${latePricing() ? '' : `<p class="text-xs font-semibold mb-4" style="color:#B45309;"><i class="fas fa-clock mr-1"></i>Prices rise on ${PRICE_LATE_FROM_TEXT}. Book by ${PRICE_DEADLINE_TEXT} to pay the standard price.</p>`}
         <div class="space-y-3">
           <div class="flex items-center justify-between p-3 rounded-xl bg-white/5">
             <div>
               <span class="text-sm font-semibold">🎟️ Delegate Pass</span>
               <p class="text-[10px] text-gray-400">Full 2-day conference + lunch + networking</p>
             </div>
-            <span class="text-sm font-bold text-primary-300">${rsPrice('Delegate Pass')} + GST</span>
+            <span class="text-right"><span class="text-sm font-bold text-primary-300">${rsPrice('Delegate Pass')} + GST</span>${latePriceTag('Delegate Pass')}</span>
           </div>
           <div class="flex items-center justify-between p-3 rounded-xl bg-white/5">
             <div>
               <span class="text-sm font-semibold">🛠️ Premium Delegate</span>
               <p class="text-[10px] text-gray-400">Delegate + one workshop (first come, first served)</p>
             </div>
-            <span class="text-sm font-bold" style="color:#0B7A75;">${rsPrice('Premium Delegate Pass')} + GST</span>
+            <span class="text-right"><span class="text-sm font-bold" style="color:#0B7A75;">${rsPrice('Premium Delegate Pass')} + GST</span>${latePriceTag('Premium Delegate Pass')}</span>
           </div>
           <div class="flex items-center justify-between p-3 rounded-xl bg-white/5">
             <div>
               <span class="text-sm font-semibold">⭐ VIP Pass</span>
               <p class="text-[10px] text-gray-400">Premium + VIP lounge + speaker meet &amp; greet</p>
             </div>
-            <span class="text-sm font-bold text-amber-300">${rsPrice('VIP Pass')} + GST</span>
+            <span class="text-right"><span class="text-sm font-bold text-amber-300">${rsPrice('VIP Pass')} + GST</span>${latePriceTag('VIP Pass')}</span>
           </div>
           <div class="flex items-center justify-between p-3 rounded-xl bg-white/5">
             <div>
               <span class="text-sm font-semibold">🎓 Academic Pass</span>
               <p class="text-[10px] text-gray-400">Conference + student zone, with a student or faculty ID</p>
             </div>
-            <span class="text-sm font-bold text-violet-300">${rsPrice('Academic Pass')} + GST</span>
+            <span class="text-right"><span class="text-sm font-bold text-violet-300">${rsPrice('Academic Pass')} + GST</span>${latePriceTag('Academic Pass')}</span>
           </div>
         </div>
         <button onclick="openRegisterPaidPassModal()" class="mt-4 block w-full text-center py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 transition-all text-sm cursor-pointer">

@@ -418,7 +418,7 @@ r = await hit('/api/payments/config', {}, MAIL);
 check('the config gives each pass its price and total with GST, from the table that charges them', r.json?.passes?.['Delegate Pass']?.total === 5898.82 && r.json?.passes?.['Delegate Pass']?.base === 4999 && r.json?.passes?.['VIP Pass']?.total === 23598.82 && r.json?.passes?.['Premium Delegate Pass']?.total === 11798.82 && r.json?.passes?.['Premium Delegate Pass']?.base === 9999 && r.json?.passes?.['Academic Pass']?.total === 1178.82 && r.json?.gst_rate === 18, r.text);
 
 // ---- dated prices (28 Oct 2026): the standard price until the end of 5 Nov 2026 IST, the late price from 6 Nov ----
-check('the config says when the standard price ends and what follows it', r.json?.deadline === '2026-11-05' && r.json?.late === false && r.json?.late_passes?.['Delegate Pass']?.base === 5999 && r.json?.late_passes?.['Delegate Pass']?.total === 7078.82 && r.json?.late_passes?.['Premium Delegate Pass']?.base === 11999 && r.json?.late_passes?.['VIP Pass']?.base === 22999 && r.json?.late_passes?.['Academic Pass']?.base === 999, r.text);
+check('the config says when the standard price ends and what follows it', r.json?.deadline === '2026-11-05' && r.json?.late === false && r.json?.late_passes?.['Delegate Pass']?.base === 8999 && r.json?.late_passes?.['Delegate Pass']?.total === 10618.82 && r.json?.late_passes?.['Premium Delegate Pass']?.base === 14999 && r.json?.late_passes?.['VIP Pass']?.base === 24999 && r.json?.late_passes?.['Academic Pass']?.base === 3999, r.text);
 {
   const realNow = Date.now;
   Date.now = () => Date.parse('2026-11-05T18:29:00Z');   // 23:59 IST on 5 Nov: still the standard price
@@ -426,10 +426,10 @@ check('the config says when the standard price ends and what follows it', r.json
   check('at 23:59 IST on 5 Nov the standard price still holds', r.json?.late === false && r.json?.passes?.['Delegate Pass']?.base === 4999, r.text);
   Date.now = () => Date.parse('2026-11-05T18:31:00Z');   // 00:01 IST on 6 Nov
   r = await hit('/api/payments/config');
-  check('from 00:00 IST on 6 Nov the late price applies, Academic unchanged', r.json?.late === true && r.json?.passes?.['Delegate Pass']?.total === 7078.82 && r.json?.passes?.['Premium Delegate Pass']?.total === 14158.82 && r.json?.passes?.['VIP Pass']?.total === 27138.82 && r.json?.passes?.['Academic Pass']?.total === 1178.82, r.text);
+  check('from 00:00 IST on 6 Nov the late price applies to every pass', r.json?.late === true && r.json?.passes?.['Delegate Pass']?.total === 10618.82 && r.json?.passes?.['Premium Delegate Pass']?.total === 17698.82 && r.json?.passes?.['VIP Pass']?.total === 29498.82 && r.json?.passes?.['Academic Pass']?.total === 4718.82, r.text);
   person(190, { main_event: 1 });
   r = await start(190, 'Delegate Pass');
-  check('an order started after the deadline carries the late price', r.status === 201 && r.json?.amount === 7078.82 && order(r.json.order_id)?.base_paise === 599900, r.status + ' ' + r.text);
+  check('an order started after the deadline carries the late price', r.status === 201 && r.json?.amount === 10618.82 && order(r.json.order_id)?.base_paise === 899900, r.status + ' ' + r.text);
   person(191, { badge_type: 'Delegate Pass', payment_status: 'paid', payment_amount: '5898.82', main_event: 1 });
   r = await start(191, 'Premium Delegate Pass');
   check('a step up after the deadline is the difference between the two late prices', r.status === 201 && r.json?.amount === 7080 && order(r.json.order_id)?.base_paise === 600000, r.status + ' ' + r.text);
@@ -482,7 +482,7 @@ mark = mail.length;
 r = await pump(UC.id);
 const u1 = mail.slice(mark);
 check('inside the window the first email goes, and the next waits for the send gap', r.status === 200 && r.json?.sent === 1 && r.json?.waiting === true && r.json?.wait_seconds > 0 && u1.length === 1 && u1[0].to === 'fiona@acme.example', r.status + ' ' + r.text.slice(0, 200));
-check('the email is the Delegate offer with a one-tap sign-in link to the paid form, the deadline and guaranteed entry', /^Fiona, your free pass does not guarantee entry on 20 and 21 Nov$/.test(u1[0]?.subject || '') && !/(Rs|INR|₹|&#8377;|\d,\d{3})/.test(u1[0]?.subject || '') && /Secure my Delegate Pass/.test(u1[0]?.html || '') && /save &#8377;1,000/.test(u1[0]?.html || '') && /pass=premium/.test(u1[0]?.html || '') && /action=pay&(amp;)?pass=delegate&(amp;)?token=[0-9a-f]{20,}/.test(u1[0]?.html || '') && /5,898\.82/.test(u1[0]?.html || '') && /standard price, until <strong>5 Nov 2026<\/strong>/.test(u1[0]?.html || '') && /5,999/.test(u1[0]?.html || '') && /guaranteed entry on both days/.test(u1[0]?.html || '') && /unsubscribe\?e=/.test(u1[0]?.html || ''), (u1[0]?.subject || '') + ' ' + (((u1[0]?.html || '').match(/href="[^"]*pass=[^"]*"/) || [''])[0]).slice(0, 160));
+check('the email is the Delegate offer with a one-tap sign-in link to the paid form, the deadline and guaranteed entry', /^Fiona, your free pass does not guarantee entry on 20 and 21 Nov$/.test(u1[0]?.subject || '') && !/(Rs|INR|₹|&#8377;|\d,\d{3})/.test(u1[0]?.subject || '') && /Secure my Delegate Pass/.test(u1[0]?.html || '') && /save &#8377;4,000/.test(u1[0]?.html || '') && /pass=premium/.test(u1[0]?.html || '') && /action=pay&(amp;)?pass=delegate&(amp;)?token=[0-9a-f]{20,}/.test(u1[0]?.html || '') && /5,898\.82/.test(u1[0]?.html || '') && /standard price, until <strong>5 Nov 2026<\/strong>/.test(u1[0]?.html || '') && /8,999/.test(u1[0]?.html || '') && /guaranteed entry on both days/.test(u1[0]?.html || '') && /unsubscribe\?e=/.test(u1[0]?.html || ''), (u1[0]?.subject || '') + ' ' + (((u1[0]?.html || '').match(/href="[^"]*pass=[^"]*"/) || [''])[0]).slice(0, 160));
 atIst('12:02');
 r = await pump(UC.id);
 check('the second subject goes to odd registration numbers, still with no price', mail.slice(mark).length === 2 && /^Dev, upgrade your pass for Bharat AI Innovation$/.test(mail[mail.length - 1].subject || ''), mail[mail.length - 1]?.subject);
