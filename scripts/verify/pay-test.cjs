@@ -486,7 +486,7 @@ const PHONE = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isM
     const [pv] = await Promise.all([ctx.waitForEvent('page', { timeout: 10000 }).catch(() => null), page.click('#upgrade-campaign-block button:has-text("Preview")')]);
     await sleep(800);
     const pvText = pv ? await pv.textContent('body').catch(() => '') : '';
-    check('Preview opens the Delegate offer and sends nothing', /Upgrade to Delegate/.test(pvText) && /5,898\.82/.test(pvText) && (await getState()).mail.length === before, pvText.slice(0, 100));
+    check('Preview opens the Delegate offer and sends nothing', /Secure my Delegate Pass/.test(pvText) && /5,898\.82/.test(pvText) && (await getState()).mail.length === before, pvText.slice(0, 100));
     if (pv) await pv.close();
     await page.click('#upgrade-send-students');
     await page.waitForFunction(() => /Upgrade offer: Academic Pass to students/.test(document.body.textContent || ''), null, { timeout: 10000 }).catch(() => {});

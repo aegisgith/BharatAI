@@ -14402,30 +14402,51 @@ async function upgradeOfferMail(c: any, a: any, offer: { pass: string; key: stri
   const item = (t: string) =>
     `<tr><td width="24" valign="top" style="padding:0 0 10px;color:#0f7b47;font-size:14px;">&#10003;</td>` +
     `<td valign="top" style="padding:0 0 10px;font-size:14px;line-height:1.6;color:#333;">${t}</td></tr>`
+  // Written as a marketer would (organiser, 28 Oct 2026). The subject and the
+  // opening sell what a free pass does not promise; the list names everything the
+  // pass includes; the price sits beside what waiting costs; the P.S. repeats the
+  // one reason to act. Never a figure in the subject line.
+  const late = latePricing()
+  const save = academic ? 0 : passPriceInr(offer.pass, true) - passPriceInr(offer.pass, false)
+  const saveText = save > 0 ? '&#8377;' + save.toLocaleString('en-IN') : ''
+  const preheader = academic
+    ? 'Guaranteed entry on both days, at the student rate.'
+    : late ? 'Guarantee your place on both days, 20&ndash;21 Nov, WTC Mumbai.'
+      : `Guarantee your place on both days. The standard price ends on ${PRICE_DEADLINE_TEXT}.`
+  const priceBox =
+    `<p style="margin:0 0 6px;font-size:15px;color:#1E2140;text-align:center;"><strong>${offer.pass}: &#8377;${base} + ${PASS_GST_RATE}% GST</strong> (&#8377;${total} in total)</p>` +
+    (!academic && !late && saveText ? `<p style="margin:0 0 4px;font-size:13.5px;line-height:1.6;color:#B45309;text-align:center;">This is the standard price, until <strong>${PRICE_DEADLINE_TEXT}</strong>. From ${PRICE_LATE_FROM_TEXT} it is ${rsPrice(offer.pass, true)} + GST: book now and save ${saveText}.</p>` : '')
+  const ps = academic
+    ? `P.S. Free-pass entry slots are confirmed by email closer to the event, and some people will get a half-day slot or none. The Academic Pass takes that uncertainty away for &#8377;${base} + GST.`
+    : `P.S. Free-pass entry slots are confirmed by email closer to the event, and some people will get a half-day slot or none. A Delegate Pass takes that uncertainty away${!late && saveText ? `, and costs ${saveText} less if you book by ${PRICE_DEADLINE_TEXT}` : ''}.`
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#f5f5f5;font-family:Arial,sans-serif;">
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:#f5f5f5;">${preheader}</div>
     <div style="max-width:600px;margin:20px auto;background:#fff;border-radius:12px;overflow:hidden;">
-      ${emailBrandHeader(academic ? 'The student rate for the full conference' : 'Join the full conference', '20&ndash;21 Nov 2026 &bull; WTC Mumbai')}
+      ${emailBrandHeader('Guarantee your place', '20&ndash;21 Nov 2026 &bull; WTC Mumbai')}
       <div style="padding:28px;">
         <p style="margin:0 0 6px;font-size:15px;color:#333;">Hi <strong>${first}</strong>,</p>
-        <p style="margin:0 0 16px;font-size:14px;line-height:1.7;color:#555;">Your free Visitor Pass covers the exhibition floor and select keynotes, but <strong>entry is not guaranteed</strong>: it depends on slot availability on 20 and 21 Nov, so you may be offered a half-day slot, or none; we confirm by email before the event. ${academic
-          ? 'As a student you can upgrade to the <strong>Academic Pass</strong>, the concessionary rate, with guaranteed entry:'
-          : 'A <strong>Delegate Pass</strong> has guaranteed entry on both days and adds the rest:'}</p>
+        <p style="margin:0 0 14px;font-size:14px;line-height:1.7;color:#555;">Your free Visitor Pass gets you onto the exhibition floor <strong>only if a slot is free</strong>. Entry on a free pass is not guaranteed: it depends on slot availability on 20 and 21 Nov, and you may be offered a half-day slot, or none.</p>
+        <p style="margin:0 0 16px;font-size:14px;line-height:1.7;color:#555;">${academic
+          ? 'The <strong>Academic Pass</strong> gives you guaranteed entry on both days at the student rate, and the whole conference with it:'
+          : 'A <strong>Delegate Pass</strong> gives you guaranteed entry on both days, and the part of the event where the business gets done: the conference, and the people in it. It includes:'}</p>
         <table style="width:100%;border-collapse:collapse;margin:0 0 8px;">${lines.map(item).join('')}</table>
-        ${workshopBox}
-        <div style="text-align:center;margin:20px 0 8px;">
-          <a href="${href}" style="display:inline-block;padding:14px 34px;background:linear-gradient(135deg,#FF6B00,#FF8C38);color:#fff;text-decoration:none;border-radius:10px;font-weight:bold;font-size:15px;">${academic ? 'Get the Academic Pass' : 'Upgrade to Delegate'}</a>
+        <p style="margin:6px 0 20px;font-size:13.5px;line-height:1.6;color:#1E2140;padding:12px 14px;background:#F7F8FF;border:1px solid #E3E6F5;border-radius:10px;"><strong>On stage:</strong> leaders from Google, PwC, Capgemini, Microsoft and the Government of Maharashtra, with Innovation Talks from the companies building AI for India.</p>
+        ${priceBox}
+        <div style="text-align:center;margin:16px 0 8px;">
+          <a href="${href}" style="display:inline-block;padding:14px 34px;background:linear-gradient(135deg,#FF6B00,#FF8C38);color:#fff;text-decoration:none;border-radius:10px;font-weight:bold;font-size:15px;">${academic ? 'Secure my Academic Pass' : 'Secure my Delegate Pass'}</a>
         </div>
-        <p style="margin:0 0 18px;font-size:12.5px;line-height:1.6;color:#888;text-align:center;">${offer.pass}: &#8377;${base} + ${PASS_GST_RATE}% GST, <strong>&#8377;${total}</strong> in total, paid securely through CCAvenue.<br>The button signs you in. Your registration and reference number stay the same, and the pass is confirmed the moment the payment goes through.</p>
-        ${!academic && !latePricing() ? `<p style="margin:0 0 18px;font-size:13.5px;line-height:1.6;color:#1E2140;text-align:center;padding:12px 14px;background:#FFF6EF;border:1px solid rgba(255,107,0,0.25);border-radius:10px;">This is the standard price, until <strong>${PRICE_DEADLINE_TEXT}</strong>. From ${PRICE_LATE_FROM_TEXT} the Delegate Pass is ${rsPrice('Delegate Pass', true)} + GST.</p>` : ''}
+        <p style="margin:0 0 18px;font-size:12px;line-height:1.6;color:#888;text-align:center;">The button signs you in and opens a secure CCAvenue payment. Your registration and reference number stay the same, and your pass is confirmed the moment the payment goes through.</p>
+        ${workshopBox}
         ${academic
-          ? `<p style="margin:0;font-size:13px;line-height:1.6;color:#1E2140;padding:12px 14px;background:#FFF6EF;border:1px solid rgba(255,107,0,0.25);border-radius:10px;"><strong>Bring your student or faculty ID.</strong> The badge desk checks it for the Academic Pass.</p>`
-          : `<p style="margin:0;font-size:13px;line-height:1.6;color:#555;">Need a GST invoice in your company's name? The form asks for it. Coming with colleagues? ${GROUP_RATE_TEXT.replace(', on request.', ': write to info@bharataiinnovation.com.')}</p>`}
+          ? `<p style="margin:14px 0 0;font-size:13px;line-height:1.6;color:#1E2140;padding:12px 14px;background:#FFF6EF;border:1px solid rgba(255,107,0,0.25);border-radius:10px;"><strong>Bring your student or faculty ID.</strong> The badge desk checks it for the Academic Pass.</p>`
+          : `<p style="margin:14px 0 0;font-size:13px;line-height:1.6;color:#555;">Need a GST invoice in your company's name? The form asks for it. Coming with colleagues? ${GROUP_RATE_TEXT.replace(', on request.', ': write to info@bharataiinnovation.com.')}</p>`}
+        <p style="margin:18px 0 0;font-size:13px;line-height:1.6;color:#555;font-style:italic;">${ps}</p>
       </div>
     </div></body></html>`
+  // No figure in the subject (organiser, 28 Oct 2026): it carries the reason to act.
   const subject = academic
-    ? firstPlain + ', the student rate for the full Bharat AI Innovation conference'
-    // No figure in the subject (organiser, 28 Oct 2026); the date carries the urgency.
-    : firstPlain + ', the full Bharat AI Innovation conference is one tap away' + (latePricing() ? '' : '. Book by ' + PRICE_DEADLINE_TEXT.slice(0, -5))
+    ? firstPlain + ', guaranteed entry to Bharat AI Innovation at the student rate'
+    : firstPlain + ', your free pass does not guarantee entry on 20 and 21 Nov'
   return { subject, html }
 }
 
