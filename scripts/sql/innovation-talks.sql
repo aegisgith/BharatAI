@@ -165,3 +165,10 @@ WHERE NOT EXISTS (SELECT 1 FROM innovation_talks WHERE event_id = 1 AND speaker_
 
 UPDATE innovation_talks SET speaker_photo_url = '/images/talks/raja-moorthy.webp'
 WHERE event_id = 1 AND speaker_name = 'Dr. Raja N. Moorthy' AND company = 'Kirusa' AND COALESCE(speaker_photo_url, '') = '';
+
+INSERT INTO innovation_talks (event_id, slot_no, session_type, time_slot, speaker_name, company, topic, status, speaker_title, speaker_photo_url, notes)
+SELECT 1, 24, 'Morning', 'To be announced', 'Ferosh Sethumadhavan', 'Evoke Technologies', '', 'confirmed', 'Senior Director', '/images/talks/ferosh-sethumadhavan.webp', 'Imported from the Innovation Talk sheet, 12 Oct 2026'
+WHERE NOT EXISTS (SELECT 1 FROM innovation_talks WHERE event_id = 1 AND speaker_name = 'Ferosh Sethumadhavan' AND company = 'Evoke Technologies');
+
+UPDATE innovation_talks SET speaker_photo_url = '/images/talks/ferosh-sethumadhavan.webp'
+WHERE event_id = 1 AND speaker_name = 'Ferosh Sethumadhavan' AND company = 'Evoke Technologies' AND COALESCE(speaker_photo_url, '') = '';
