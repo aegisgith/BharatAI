@@ -19,7 +19,8 @@
 // LightMetrics, Teenage Works, ValuEnable and Xtant Tech were "held" in
 // booth_allocations; gupshup.ai, Pramaana Labs and Vassar Labs were not in the
 // database at all. They are listed because the organiser's logo folder lists
-// them. Omnirises Technologies was dropped on 24 Oct: not participating. Aegis School of Data Science & AI and Assessfy were added on 4 Oct
+// them. Omnirises Technologies was dropped on 24 Oct, and Amnex Infotechnologies and
+// Indigloo Software on 28 Oct: not participating. Aegis School of Data Science & AI and Assessfy were added on 4 Oct
 // at the organiser's request, with no exhibitor or booth row yet. Aria Telecom,
 // JoyVibe, OliAI and P99Soft came from the organiser's 23 Oct folder; none had an
 // exhibitors row on 24 Oct.
@@ -40,7 +41,6 @@ const EXHIBITORS = [
   { name: 'AI Products Factory', file: 'Our Logo/AI Product Factory/aipf-logo-horizontal-transparent.png' },
   { name: 'Ai Vie Insights', file: 'Ai Vie Insights Private Limited.jpg', db: [9, 'Ai Vie Insights Private Limited'] },
   { name: 'AlgoAnalytics', file: 'Algo Analytics.jpg', db: [6, 'Algo Analytics'] },
-  { name: 'Amnex Infotechnologies', file: 'Amnex infotech logo.jpg', db: [22, 'Amnex technologies'] },
   { name: 'Aria Telecom', file: 'Aria Telecom Solutions Pvt. Ltd.jpg', dark: true }, // white wordmark on navy
   { name: 'Ary-Soft', file: 'ary-soft logo.jpg', db: [31, 'ary-soft'] },
   { name: 'Asmadiya Technologies', file: 'Asmadiya technologies.jpg', db: [12, 'Asmadiya'] },
@@ -55,7 +55,6 @@ const EXHIBITORS = [
   { name: 'Gupshup.ai', file: 'gupshup ai logo.jpg' },
   { name: 'Harrier Information Systems', file: 'Harrier information system pvt ltd logo.jpg', db: [25, 'Harrier Information Systems Pvt. Ltd.'], optical: 1.1 },
   { name: 'Image Infosystems', file: 'Image Infosystem.jpg', db: [4, 'Image Infosystem'], optical: 1.3 },
-  { name: 'Indigloo Software', file: 'Indigloo Software Pvt Ltd logo.jpg', db: [32, 'Indigloo Software Pvt Ltd'] },
   { name: 'Info Science Labs', file: 'Info Science Labs logo.jpg' },
   { name: 'Intangles', file: 'Intangles Logo.jpg', db: [3, 'Intangles'] },
   { name: 'Jade Global', file: 'Jade Global logo.jpg' },
@@ -69,7 +68,9 @@ const EXHIBITORS = [
   { name: 'NoBroker', file: 'NoBroker Technologies Solutions Private Limited.jpg', db: [10, 'NoBroker Technologies Solutions Private Limited'] },
   { name: 'OliAI', file: 'OliAI  Logo_.jpg', optical: 1.15 },
   { name: 'Oranje AI', file: 'ORANJE AI PRIVATE LIMITED logo.png', db: [14, 'ORANJE AI PRIVATE LIMITED'] },
-  { name: 'Origin AI', file: 'Origin AI.jpg', db: [19, 'Origin AI'] },
+  // Renamed Origins AI with a new logo on 28 Oct; the database row is renamed by
+  // scripts/sql/exhibitor-changes-2026-10-28.sql (organiser runs it).
+  { name: 'Origins AI', file: 'Origins AI logo.jpg', db: [19, 'Origins AI'] },
   { name: 'P99Soft', file: 'P99SOFT Logo.jpg', dark: true }, // white mark on dark teal
   { name: 'Paisani Technology Services', file: 'Paisani Technology Services_.jpg', db: [13, 'Paisani Technology Services'] },
   { name: 'Phoebetal Technologies', file: 'Phoebetal Technologies Pvt Ltd.jpg', db: [30, 'Phoebetal Technologies Pvt Ltd'] },

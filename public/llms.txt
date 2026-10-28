@@ -116,7 +116,6 @@ Companies and organisations exhibiting at Bharat AI Innovation 2026 (list update
 - AI Products Factory
 - Ai Vie Insights
 - AlgoAnalytics
-- Amnex Infotechnologies
 - Aria Telecom
 - Ary-Soft
 - Asmadiya Technologies
@@ -131,7 +130,6 @@ Companies and organisations exhibiting at Bharat AI Innovation 2026 (list update
 - Gupshup.ai
 - Harrier Information Systems
 - Image Infosystems
-- Indigloo Software
 - Info Science Labs
 - Intangles
 - Jade Global
@@ -144,7 +142,7 @@ Companies and organisations exhibiting at Bharat AI Innovation 2026 (list update
 - NoBroker
 - OliAI
 - Oranje AI
-- Origin AI
+- Origins AI
 - P99Soft
 - Paisani Technology Services
 - Phoebetal Technologies
@@ -186,7 +184,7 @@ Digital media partner: The Mainstream.
 - **Kiran Kumar V** (AVP - Product, Saranyu Technologies) — Beyond Translation: Solving the Real Challenges of AI Dubbing for Indian Audiences.
 - **Mr. Nikhilesh Kumar** (Co-founder & CEO, Vassar Labs) — AI-Powered Intelligence for a Climate-Resilient Future
 - **Ankit Kumar** (Founder and CEO, Xtant Tech) — xGMS, proprietary AI governance management system developed by Xtant.tech.
-- **Gaurav Jha** (Founder and CEO, Origin AI)
+- **Gaurav Jha** (Founder and CEO, Origins AI)
 - **Dhiman Bhattacharya** (Business Head, Insurance AI & Distribution, ValuEnable) — Valuenable's AI Agent Assist
 - **Harshal Wakharkar** (Intangles) — Beyond Tracking: Intelligent Fleet Telematics for Driving Behaviour, Fleet Health & Video Intelligence.
 - **Dr. Raja N. Moorthy** (Chief Operating Officer, Kirusa)

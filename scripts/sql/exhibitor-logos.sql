@@ -9,7 +9,6 @@
 
 UPDATE exhibitors SET logo_url = 'https://bharataiinnovation.com/images/exhibitors/ai-vie-insights.webp' WHERE id = 9 AND company_name = 'Ai Vie Insights Private Limited' AND COALESCE(logo_url, '') = '';
 UPDATE exhibitors SET logo_url = 'https://bharataiinnovation.com/images/exhibitors/algoanalytics.webp' WHERE id = 6 AND company_name = 'Algo Analytics' AND COALESCE(logo_url, '') = '';
-UPDATE exhibitors SET logo_url = 'https://bharataiinnovation.com/images/exhibitors/amnex-infotechnologies.webp' WHERE id = 22 AND company_name = 'Amnex technologies' AND COALESCE(logo_url, '') = '';
 UPDATE exhibitors SET logo_url = 'https://bharataiinnovation.com/images/exhibitors/ary-soft.webp' WHERE id = 31 AND company_name = 'ary-soft' AND COALESCE(logo_url, '') = '';
 UPDATE exhibitors SET logo_url = 'https://bharataiinnovation.com/images/exhibitors/asmadiya-technologies.webp' WHERE id = 12 AND company_name = 'Asmadiya' AND COALESCE(logo_url, '') = '';
 UPDATE exhibitors SET logo_url = 'https://bharataiinnovation.com/images/exhibitors/cgi.webp' WHERE id = 5 AND company_name = 'CGI' AND COALESCE(logo_url, '') = '';
@@ -20,7 +19,6 @@ UPDATE exhibitors SET logo_url = 'https://bharataiinnovation.com/images/exhibito
 UPDATE exhibitors SET logo_url = 'https://bharataiinnovation.com/images/exhibitors/evoke-technologies.webp' WHERE id = 27 AND company_name = 'Evoke Technologies' AND COALESCE(logo_url, '') = '';
 UPDATE exhibitors SET logo_url = 'https://bharataiinnovation.com/images/exhibitors/harrier-information-systems.webp' WHERE id = 25 AND company_name = 'Harrier Information Systems Pvt. Ltd.' AND COALESCE(logo_url, '') = '';
 UPDATE exhibitors SET logo_url = 'https://bharataiinnovation.com/images/exhibitors/image-infosystems.webp' WHERE id = 4 AND company_name = 'Image Infosystem' AND COALESCE(logo_url, '') = '';
-UPDATE exhibitors SET logo_url = 'https://bharataiinnovation.com/images/exhibitors/indigloo-software.webp' WHERE id = 32 AND company_name = 'Indigloo Software Pvt Ltd' AND COALESCE(logo_url, '') = '';
 UPDATE exhibitors SET logo_url = 'https://bharataiinnovation.com/images/exhibitors/intangles.webp' WHERE id = 3 AND company_name = 'Intangles' AND COALESCE(logo_url, '') = '';
 UPDATE exhibitors SET logo_url = 'https://bharataiinnovation.com/images/exhibitors/joget.webp' WHERE id = 23 AND company_name = 'Joget INC' AND COALESCE(logo_url, '') = '';
 UPDATE exhibitors SET logo_url = 'https://bharataiinnovation.com/images/exhibitors/kadeep-ai.webp' WHERE id = 26 AND company_name = 'kadeep.ai' AND COALESCE(logo_url, '') = '';
@@ -28,7 +26,7 @@ UPDATE exhibitors SET logo_url = 'https://bharataiinnovation.com/images/exhibito
 UPDATE exhibitors SET logo_url = 'https://bharataiinnovation.com/images/exhibitors/ministry-of-tribal-affairs.webp' WHERE id = 24 AND company_name = 'Ministry of Tribal Affairs' AND COALESCE(logo_url, '') = '';
 UPDATE exhibitors SET logo_url = 'https://bharataiinnovation.com/images/exhibitors/nobroker.webp' WHERE id = 10 AND company_name = 'NoBroker Technologies Solutions Private Limited' AND COALESCE(logo_url, '') = '';
 UPDATE exhibitors SET logo_url = 'https://bharataiinnovation.com/images/exhibitors/oranje-ai.webp' WHERE id = 14 AND company_name = 'ORANJE AI PRIVATE LIMITED' AND COALESCE(logo_url, '') = '';
-UPDATE exhibitors SET logo_url = 'https://bharataiinnovation.com/images/exhibitors/origin-ai.webp' WHERE id = 19 AND company_name = 'Origin AI' AND COALESCE(logo_url, '') = '';
+UPDATE exhibitors SET logo_url = 'https://bharataiinnovation.com/images/exhibitors/origins-ai.webp' WHERE id = 19 AND company_name = 'Origins AI' AND COALESCE(logo_url, '') = '';
 UPDATE exhibitors SET logo_url = 'https://bharataiinnovation.com/images/exhibitors/paisani-technology-services.webp' WHERE id = 13 AND company_name = 'Paisani Technology Services' AND COALESCE(logo_url, '') = '';
 UPDATE exhibitors SET logo_url = 'https://bharataiinnovation.com/images/exhibitors/phoebetal-technologies.webp' WHERE id = 30 AND company_name = 'Phoebetal Technologies Pvt Ltd' AND COALESCE(logo_url, '') = '';
 UPDATE exhibitors SET logo_url = 'https://bharataiinnovation.com/images/exhibitors/qapitol-ai.webp' WHERE id = 2 AND company_name = 'Qapitol AI' AND COALESCE(logo_url, '') = '';

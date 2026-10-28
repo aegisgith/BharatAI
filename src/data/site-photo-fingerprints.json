@@ -120,10 +120,6 @@
 "fp":"030023c033c013c013d803f80bf0063c0bbc0f4f0757eb5792a5256d395d3059:fffffbffd9ffe9ffe0ffe0fff07fe01fe00fc3af801f3dd700000200dfffffff"
 },
 {
-"file":"public/images/exhibitors/amnex-infotechnologies.webp",
-"fp":"118f518f40034003400340135523352d25ab3523400140014001400140810083:ffff8001800180018001800180018d818061800180018001800180018001ffff"
-},
-{
 "file":"public/images/exhibitors/aria-telecom.webp",
 "fp":"00000000683b3a523c31a9918993c933c93349b3e992266732274b1900000000:0000000000008000cf98dfd96cd9efd9ff9b3cdb3cdb91139113000000000000"
 },
@@ -180,10 +176,6 @@
 "fp":"00000000000000002a5c2a9c5b9d4cdd25ab5565659525a30000000000000000:ffffffffffffffffff7f800f808f800f900081018010ffffffffffffffffffff"
 },
 {
-"file":"public/images/exhibitors/indigloo-software.webp",
-"fp":"0000000000001800aec18d41c8c5cb59cb59eb49eb65c12c0412000000000000:fffffffffffffffff7fd67fd602121092189618175a1ffffffffffffffffffff"
-},
-{
 "file":"public/images/exhibitors/info-science-labs.webp",
 "fp":"00e801fc05be070f0f073f073e071c03380318073c070f07070f572b4f271f27:fffff81fe007c003c7e387e18ff18ff9dff98ff1c7e1c3e3e18381818181ffff"
 },
@@ -232,8 +224,8 @@
 "fp":"000034a93cadce9967892709159acdaacdaa55933ba526a5e6933c00ba240000:ffffffff8fff37ff338081c081c02680228000c18180938033db07ffffffffff"
 },
 {
-"file":"public/images/exhibitors/origin-ai.webp",
-"fp":"073f09db207f03cf01fb38eb2a2721e700f7063b1f1f1a8f3e0f3e0f3b8f1f1f:fbffe0fffe1ffffff87ffe7ffffff87fe01fc00fc78787c78fc78fc78fc7c787"
+"file":"public/images/exhibitors/origins-ai.webp",
+"fp":"00000000c000c000e000e264074504920696e29ee000f000e000e00080000000:ffffffff7fff7fff3fff3ffff105f400f0807fcf1fff1fff3fffffffffffffff"
 },
 {
 "file":"public/images/exhibitors/p99soft.webp",
