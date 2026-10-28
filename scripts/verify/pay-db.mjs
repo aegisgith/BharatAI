@@ -99,6 +99,19 @@ export function makePayDb() {
               && (senior ? isSenior(a.job_title) && !isStudent(a.job_title) : isStudent(a.job_title)))
               .sort((x, y) => x.id - y.id).map(a => ({ id: a.id, name: a.name, email: a.email })) };
           }
+          // The upgrade panel's view of each audience's campaigns: held, sent, left.
+          if (/FROM campaign_recipients cr JOIN campaigns cp ON cp\.id = cr\.campaign_id/.test(sql) && /GROUP BY cp\.audience, cp\.status/.test(sql)) {
+            const groups = {};
+            for (const x of state.recipients) {
+              const k = state.campaigns.find(y => y.id === x.campaign_id);
+              if (!k || k.kind !== 'upgrade') continue;
+              const g = groups[k.audience + '|' + k.status] || (groups[k.audience + '|' + k.status] = { audience: k.audience, status: k.status, total: 0, sent: 0, left_to_send: 0 });
+              g.total++;
+              if (x.status === 'sent') g.sent++;
+              if (['pending', 'sending'].includes(x.status)) g.left_to_send++;
+            }
+            return { results: Object.values(groups) };
+          }
           // The minute clock's list of campaigns to move on (tickCampaigns).
           if (/^SELECT id FROM campaigns WHERE status = 'running' ORDER BY id$/.test(sql)) {
             return { results: state.campaigns.filter(k => k.status === 'running').map(k => ({ id: k.id })) };

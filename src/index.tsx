@@ -14563,7 +14563,23 @@ app.get('/api/admin/campaigns/upgrade-audiences', async (c) => {
   try {
     const out: Record<string, any> = {}
     for (const key of Object.keys(UPGRADE_OFFERS)) out[key] = (await campaignAudienceRows(c, 'upgrade', key)).length
-    return c.json({ ...out, gap_seconds: await sendGapSeconds(c), window: sendWindowState().window })
+    // And the people each audience's campaigns already hold. Those counts above
+    // leave them out, so a run in progress read as "3 not sent yet" with 959 on it
+    // (organiser, 28 Oct 2026); the panel shows both.
+    const onCampaign: Record<string, { total: number, sent: number, left: number, paused: boolean }> = {}
+    const { results } = await c.env.DB.prepare(
+      `SELECT cp.audience, cp.status, COUNT(*) AS total,
+          SUM(CASE WHEN cr.status = 'sent' THEN 1 ELSE 0 END) AS sent,
+          SUM(CASE WHEN cr.status IN ('pending','sending') THEN 1 ELSE 0 END) AS left_to_send
+        FROM campaign_recipients cr JOIN campaigns cp ON cp.id = cr.campaign_id
+        WHERE cp.kind = 'upgrade' GROUP BY cp.audience, cp.status`
+    ).all()
+    for (const r of (results as any[]) || []) {
+      const q = onCampaign[r.audience] || (onCampaign[r.audience] = { total: 0, sent: 0, left: 0, paused: false })
+      q.total += Number(r.total || 0); q.sent += Number(r.sent || 0); q.left += Number(r.left_to_send || 0)
+      if (r.status === 'paused' && Number(r.left_to_send || 0) > 0) q.paused = true
+    }
+    return c.json({ ...out, on_campaign: onCampaign, gap_seconds: await sendGapSeconds(c), window: sendWindowState().window })
   } catch (e: any) {
     if (/no such table/i.test(String(e?.message || ''))) return c.json({ unavailable: true })
     throw e
@@ -29155,11 +29171,18 @@ function adminPageScript(): string {
       var row = function (key, label, pass, n) {
         var mins = Math.ceil(n * gap / 60);
         var takes = mins < 60 ? mins + ' min' : (Math.round(mins / 6) / 10) + ' hours';
+        // The run already going for this audience, then the newcomers it does not hold.
+        var q = (d.on_campaign || {})[key] || { total: 0, sent: 0, left: 0, paused: false };
+        var hrs = q.left * gap / 3600;
+        var left = !q.left ? 'all sent'
+          : q.paused ? q.left + ' still to go &middot; <span class="text-amber-300">paused: Resume is under Settings, Bulk email</span>'
+          : q.left + ' still to go, about ' + (hrs < 12 ? (Math.round(hrs * 10) / 10) + ' hours' : Math.ceil(hrs / 12) + ' days') + ' more in the sending window, sent by the server on its own';
+        var running = q.total ? '<div class="text-[12px] text-gray-300 mt-0.5">Already on the campaign: <strong class="text-white">' + q.sent + ' of ' + q.total + ' sent</strong> &middot; ' + left + '</div>' : '';
         return '<div class="flex flex-wrap items-center gap-3 py-3 border-b border-white/5">' +
-          '<div class="flex-1 min-w-[180px]"><div class="text-sm text-gray-200">' + label + '</div>' +
-            '<div class="text-[11px] text-gray-500">' + n + ' not sent yet &middot; offered the ' + pass + ' &middot; about ' + takes + ' of sending, one every ' + gap + 's, ' + deskEsc(d.window || '') + '</div></div>' +
+          '<div class="flex-1 min-w-[180px]"><div class="text-sm text-gray-200">' + label + '</div>' + running +
+            '<div class="text-[11px] text-gray-500">' + n + (q.total ? ' new since, not on it yet' : ' not sent yet') + ' &middot; offered the ' + pass + ' &middot; about ' + takes + ' of sending, one every ' + gap + 's, ' + deskEsc(d.window || '') + '</div></div>' +
           '<button onclick="previewUpgradeCampaign(&quot;' + key + '&quot;)" class="px-2.5 py-1.5 rounded-lg text-[11px] glass hover:bg-white/10 text-gray-300">Preview</button>' +
-          '<button id="upgrade-send-' + key + '" onclick="startUpgradeCampaign(&quot;' + key + '&quot;, ' + n + ')"' + (n ? '' : ' disabled style="opacity:.4"') + ' class="px-3 py-1.5 rounded-lg text-[11px] bg-primary-500 text-white">Send to ' + n + '</button>' +
+          '<button id="upgrade-send-' + key + '" onclick="startUpgradeCampaign(&quot;' + key + '&quot;, ' + n + ')"' + (n ? '' : ' disabled style="opacity:.4"') + ' class="px-3 py-1.5 rounded-lg text-[11px] bg-primary-500 text-white">Send to ' + n + (q.total ? ' new' : '') + '</button>' +
         '</div>';
       };
       el.innerHTML = '<div class="glass rounded-xl p-5 border border-white/5">' +

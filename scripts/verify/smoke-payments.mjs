@@ -483,6 +483,8 @@ r = await pump(UC.id);
 const u1 = mail.slice(mark);
 check('inside the window the first email goes, and the next waits for the send gap', r.status === 200 && r.json?.sent === 1 && r.json?.waiting === true && r.json?.wait_seconds > 0 && u1.length === 1 && u1[0].to === 'fiona@acme.example', r.status + ' ' + r.text.slice(0, 200));
 check('the email is the Delegate offer with a one-tap sign-in link to the paid form, the deadline and guaranteed entry', /^Fiona, your free pass does not guarantee entry on 20 and 21 Nov$/.test(u1[0]?.subject || '') && !/(Rs|INR|₹|&#8377;|\d,\d{3})/.test(u1[0]?.subject || '') && /Secure my Delegate Pass/.test(u1[0]?.html || '') && /save &#8377;4,000/.test(u1[0]?.html || '') && /pass=premium/.test(u1[0]?.html || '') && /action=pay&(amp;)?pass=delegate&(amp;)?token=[0-9a-f]{20,}/.test(u1[0]?.html || '') && /5,898\.82/.test(u1[0]?.html || '') && /standard price, until <strong>5 Nov 2026<\/strong>/.test(u1[0]?.html || '') && /8,999/.test(u1[0]?.html || '') && /guaranteed entry on both days/.test(u1[0]?.html || '') && /unsubscribe\?e=/.test(u1[0]?.html || ''), (u1[0]?.subject || '') + ' ' + (((u1[0]?.html || '').match(/href="[^"]*pass=[^"]*"/) || [''])[0]).slice(0, 160));
+r = await adminGet('/api/admin/campaigns/upgrade-audiences');
+check('mid-run the panel shows the run as well as the newcomers: 1 of 2 sent, 1 still to go', r.json?.senior === 0 && r.json?.on_campaign?.senior?.total === 2 && r.json?.on_campaign?.senior?.sent === 1 && r.json?.on_campaign?.senior?.left === 1 && r.json?.on_campaign?.senior?.paused === false && !r.json?.on_campaign?.students, r.text);
 atIst('12:02');
 r = await pump(UC.id);
 check('the second subject goes to odd registration numbers, still with no price', mail.slice(mark).length === 2 && /^Dev, upgrade your pass for Bharat AI Innovation$/.test(mail[mail.length - 1].subject || ''), mail[mail.length - 1]?.subject);
@@ -490,7 +492,7 @@ check('after the gap the second goes, and the run is finished', mail.slice(mark)
 r = await camp({ kind: 'upgrade', audience: 'senior' });
 check('a second senior run finds nobody: nobody is sent two', r.status === 400 && /Nobody matches/.test(r.json?.error || ''), r.status + ' ' + r.text);
 r = await adminGet('/api/admin/campaigns/upgrade-audiences');
-check('and the count says so', r.json?.senior === 0 && r.json?.students === 1, r.text);
+check('and the count says so, with the finished run beside it', r.json?.senior === 0 && r.json?.students === 1 && r.json?.on_campaign?.senior?.sent === 2 && r.json?.on_campaign?.senior?.left === 0, r.text);
 r = await camp({ kind: 'upgrade', audience: 'students' });
 const SC = r.json || {};
 atIst('12:05');
