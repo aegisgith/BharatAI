@@ -413,7 +413,30 @@ check('a free Visitor Pass still gets the welcome straight away', r.status === 2
 check('its Upgrade buttons sign the Visitor in and open the paid form: no "already registered" dead end', !!wv && /action=pay&(amp;)?pass=delegate&(amp;)?token=[0-9a-f]{20,}/.test(wv.html) && /action=pay&(amp;)?pass=vip&(amp;)?token=/.test(wv.html) && !/register#(delegate|vip)/.test(wv.html), ((wv && wv.html.match(/href="[^"]*pass=[^"]*"/g)) || []).join(' ').slice(0, 240));
 check('the card link and the Upgrade buttons share one sign-in token, so neither cancels the other', !!wv && new Set((wv.html.match(/token=([0-9a-f]{20,})/g) || [])).size === 1, ((wv && wv.html.match(/token=[0-9a-f]{8}/g)) || []).join(' '));
 r = await hit('/api/payments/config', {}, MAIL);
-check('the config gives each pass its price and total with GST, from the table that charges them', r.json?.passes?.['Delegate Pass']?.total === 5898.82 && r.json?.passes?.['Delegate Pass']?.base === 4999 && r.json?.passes?.['VIP Pass']?.total === 23598.82 && r.json?.passes?.['Premium Delegate Pass']?.total === 17698.82 && r.json?.passes?.['Premium Delegate Pass']?.base === 14999 && r.json?.passes?.['Academic Pass']?.total === 1178.82 && r.json?.gst_rate === 18, r.text);
+check('the config gives each pass its price and total with GST, from the table that charges them', r.json?.passes?.['Delegate Pass']?.total === 5898.82 && r.json?.passes?.['Delegate Pass']?.base === 4999 && r.json?.passes?.['VIP Pass']?.total === 23598.82 && r.json?.passes?.['Premium Delegate Pass']?.total === 11798.82 && r.json?.passes?.['Premium Delegate Pass']?.base === 9999 && r.json?.passes?.['Academic Pass']?.total === 1178.82 && r.json?.gst_rate === 18, r.text);
+
+// ---- dated prices (28 Oct 2026): the standard price until the end of 5 Nov 2026 IST, the late price from 6 Nov ----
+check('the config says when the standard price ends and what follows it', r.json?.deadline === '2026-11-05' && r.json?.late === false && r.json?.late_passes?.['Delegate Pass']?.base === 5999 && r.json?.late_passes?.['Delegate Pass']?.total === 7078.82 && r.json?.late_passes?.['Premium Delegate Pass']?.base === 11999 && r.json?.late_passes?.['VIP Pass']?.base === 22999 && r.json?.late_passes?.['Academic Pass']?.base === 999, r.text);
+{
+  const realNow = Date.now;
+  Date.now = () => Date.parse('2026-11-05T18:29:00Z');   // 23:59 IST on 5 Nov: still the standard price
+  r = await hit('/api/payments/config');
+  check('at 23:59 IST on 5 Nov the standard price still holds', r.json?.late === false && r.json?.passes?.['Delegate Pass']?.base === 4999, r.text);
+  Date.now = () => Date.parse('2026-11-05T18:31:00Z');   // 00:01 IST on 6 Nov
+  r = await hit('/api/payments/config');
+  check('from 00:00 IST on 6 Nov the late price applies, Academic unchanged', r.json?.late === true && r.json?.passes?.['Delegate Pass']?.total === 7078.82 && r.json?.passes?.['Premium Delegate Pass']?.total === 14158.82 && r.json?.passes?.['VIP Pass']?.total === 27138.82 && r.json?.passes?.['Academic Pass']?.total === 1178.82, r.text);
+  person(190, { main_event: 1 });
+  r = await start(190, 'Delegate Pass');
+  check('an order started after the deadline carries the late price', r.status === 201 && r.json?.amount === 7078.82 && order(r.json.order_id)?.base_paise === 599900, r.status + ' ' + r.text);
+  person(191, { badge_type: 'Delegate Pass', payment_status: 'paid', payment_amount: '5898.82', main_event: 1 });
+  r = await start(191, 'Premium Delegate Pass');
+  check('a step up after the deadline is the difference between the two late prices', r.status === 201 && r.json?.amount === 7080 && order(r.json.order_id)?.base_paise === 600000, r.status + ' ' + r.text);
+  Date.now = realNow;
+  // These two are not part of the campaign audiences counted below.
+  delete state.attendees[190];
+  delete state.attendees[191];
+}
+r = await hit('/api/payments/config');
 const acad = Object.values(state.attendees).find(a => a.email === 'newacad@example.com');
 r = await start(acad.id, 'Academic Pass', MAIL);
 const AO = r.json || {};
@@ -457,7 +480,7 @@ mark = mail.length;
 r = await pump(UC.id);
 const u1 = mail.slice(mark);
 check('inside the window the first email goes, and the next waits for the send gap', r.status === 200 && r.json?.sent === 1 && r.json?.waiting === true && r.json?.wait_seconds > 0 && u1.length === 1 && u1[0].to === 'fiona@acme.example', r.status + ' ' + r.text.slice(0, 200));
-check('the email is the Delegate offer with a one-tap sign-in link to the paid form', /Fiona, the full Bharat AI Innovation conference is one tap away/.test(u1[0]?.subject || '') && /action=pay&(amp;)?pass=delegate&(amp;)?token=[0-9a-f]{20,}/.test(u1[0]?.html || '') && /5,898\.82/.test(u1[0]?.html || '') && /unsubscribe\?e=/.test(u1[0]?.html || ''), (u1[0]?.subject || '') + ' ' + (((u1[0]?.html || '').match(/href="[^"]*pass=[^"]*"/) || [''])[0]).slice(0, 160));
+check('the email is the Delegate offer with a one-tap sign-in link to the paid form, the deadline and guaranteed entry', /Fiona, the full Bharat AI Innovation conference at Rs 4,999 until 5 Nov/.test(u1[0]?.subject || '') && /action=pay&(amp;)?pass=delegate&(amp;)?token=[0-9a-f]{20,}/.test(u1[0]?.html || '') && /5,898\.82/.test(u1[0]?.html || '') && /standard price, until <strong>5 Nov 2026<\/strong>/.test(u1[0]?.html || '') && /5,999/.test(u1[0]?.html || '') && /guaranteed entry on both days/.test(u1[0]?.html || '') && /unsubscribe\?e=/.test(u1[0]?.html || ''), (u1[0]?.subject || '') + ' ' + (((u1[0]?.html || '').match(/href="[^"]*pass=[^"]*"/) || [''])[0]).slice(0, 160));
 atIst('12:02');
 r = await pump(UC.id);
 check('after the gap the second goes, and the run is finished', mail.slice(mark).length === 2 && mail[mail.length - 1].to === 'dev@corp.example' && state.campaigns.find(k => k.id === UC.id)?.status === 'done' && state.campaigns.find(k => k.id === UC.id)?.sent === 2, JSON.stringify(state.campaigns.find(k => k.id === UC.id)));
@@ -563,30 +586,30 @@ check('the notice address answers a plain GET, for their dashboard to check it',
 person(84, { name: 'Prem Buyer', email: 'prem@example.com', main_event: 1 });
 r = await startB(84, 'Premium Delegate Pass', { legal_name: '', gstin: '', address: '' });
 const prOrd = r.json || {};
-check('a Visitor can start a Premium Delegate payment: 14,999 + 18% GST, in paise', r.status === 201 && prOrd.amount === 17698.82 && order(prOrd.order_id)?.base_paise === 1499900 && order(prOrd.order_id)?.amount_paise === 1769882, r.status + ' ' + r.text);
+check('a Visitor can start a Premium Delegate payment: 9,999 + 18% GST, in paise', r.status === 201 && prOrd.amount === 11798.82 && order(prOrd.order_id)?.base_paise === 999900 && order(prOrd.order_id)?.amount_paise === 1179882, r.status + ' ' + r.text);
 {
   const pg = await hit(prOrd.pay_url);
   let ps = {};
   try { ps = Object.fromEntries(new URLSearchParams(kitDecrypt((pg.text.match(/name="encRequest" value="([0-9a-f]+)"/) || [])[1] || ''))); } catch (e) { ps = { error: e.message }; }
-  check('the gateway is asked for 17,698.82, signed, for a Premium Delegate Pass', ps.amount === '17698.82' && ps.merchant_param2 === 'Premium Delegate Pass' && ps.merchant_param1 === sigOf(prOrd.order_id, 1769882), JSON.stringify(ps).slice(0, 240));
+  check('the gateway is asked for 11,798.82, signed, for a Premium Delegate Pass', ps.amount === '11798.82' && ps.merchant_param2 === 'Premium Delegate Pass' && ps.merchant_param1 === sigOf(prOrd.order_id, 1179882), JSON.stringify(ps).slice(0, 240));
 }
 mk = mail.length;
 r = await back(kitEncrypt(answer(order(prOrd.order_id))), MAIL);
 await settle(() => state.invoices.some(i => i.order_ref === prOrd.order_id) && mail.slice(mk).length >= 3);
 const prinv = state.invoices.find(i => i.order_ref === prOrd.order_id);
-check('paying unlocks a Premium Delegate Pass: badge, paid, amount, conference yes', state.attendees[84].badge_type === 'Premium Delegate Pass' && state.attendees[84].payment_status === 'paid' && state.attendees[84].payment_amount === '17698.82' && state.attendees[84].main_event === 1, JSON.stringify(state.attendees[84]));
-check('and its GST invoice names the pass and adds up to the charge', !!prinv && prinv.total_paise === 1769882 && /^Premium Delegate Pass - /.test(prinv.item_desc || ''), JSON.stringify(prinv));
+check('paying unlocks a Premium Delegate Pass: badge, paid, amount, conference yes', state.attendees[84].badge_type === 'Premium Delegate Pass' && state.attendees[84].payment_status === 'paid' && state.attendees[84].payment_amount === '11798.82' && state.attendees[84].main_event === 1, JSON.stringify(state.attendees[84]));
+check('and its GST invoice names the pass and adds up to the charge', !!prinv && prinv.total_paise === 1179882 && /^Premium Delegate Pass - /.test(prinv.item_desc || ''), JSON.stringify(prinv));
 check('and the buyer is sent the welcome with the receipt', mail.slice(mk).some(m => m.to === 'prem@example.com' && /Payment received/.test(m.subject)), JSON.stringify(mail.slice(mk).map(m => m.to + ': ' + m.subject)));
 
 r = await startB(84, 'VIP Pass');
 const upOrd = r.json || {};
-check('a confirmed Premium Delegate moves up to VIP for the difference: 5,000 + GST', r.status === 201 && upOrd.amount === 5900 && order(upOrd.order_id)?.amount_paise === 590000 && order(upOrd.order_id)?.previous_badge === 'Premium Delegate Pass', r.status + ' ' + r.text);
+check('a confirmed Premium Delegate moves up to VIP for the difference: 10,000 + GST', r.status === 201 && upOrd.amount === 11800 && order(upOrd.order_id)?.amount_paise === 1180000 && order(upOrd.order_id)?.previous_badge === 'Premium Delegate Pass', r.status + ' ' + r.text);
 mk = mail.length;
 r = await back(kitEncrypt(answer(order(upOrd.order_id))), MAIL);
 await settle(() => state.invoices.some(i => i.order_ref === upOrd.order_id) && mail.slice(mk).length >= 3);
 const upinv = state.invoices.find(i => i.order_ref === upOrd.order_id);
-check('the step up is invoiced for the difference and says what it was for', !!upinv && upinv.total_paise === 590000 && /^Upgrade from Premium Delegate Pass to VIP Pass - /.test(upinv.item_desc || ''), JSON.stringify(upinv));
-check('the pass is now VIP, paid in all 17,698.82 + 5,900', state.attendees[84].badge_type === 'VIP Pass' && state.attendees[84].payment_status === 'paid' && state.attendees[84].payment_amount === '23598.82', JSON.stringify(state.attendees[84]));
+check('the step up is invoiced for the difference and says what it was for', !!upinv && upinv.total_paise === 1180000 && /^Upgrade from Premium Delegate Pass to VIP Pass - /.test(upinv.item_desc || ''), JSON.stringify(upinv));
+check('the pass is now VIP, paid in all 11,798.82 + 11,800', state.attendees[84].badge_type === 'VIP Pass' && state.attendees[84].payment_status === 'paid' && state.attendees[84].payment_amount === '23598.82', JSON.stringify(state.attendees[84]));
 check('the buyer gets the receipt and the invoice, not a second welcome; the team hears it was a move up',
   mail.slice(mk).filter(m => m.to === 'prem@example.com').length === 2 && mail.slice(mk).some(m => m.to === 'prem@example.com' && /Payment received: your VIP Pass is confirmed/.test(m.subject)) && mail.slice(mk).some(m => /moved up from Premium Delegate Pass/.test(m.subject)),
   JSON.stringify(mail.slice(mk).map(m => m.to + ': ' + m.subject)));
