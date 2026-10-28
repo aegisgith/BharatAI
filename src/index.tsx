@@ -1019,7 +1019,7 @@ async function sendRegistrationEmail(c: any, attendee: any, opts: { receipt?: st
   const upsell = isVisitor ? `
         <div style="margin-top:26px;padding-top:22px;border-top:1px solid #eee;">
           <p style="margin:0 0 4px;font-size:15px;font-weight:bold;color:#1E2140;text-align:center;">Coming for the conference too?</p>
-          <p style="margin:0 0 14px;font-size:13px;line-height:1.6;color:#666;text-align:center;">Your Visitor Pass covers the exhibition floor and select keynotes as entry slots allow; we confirm your slot by email before the event. A Delegate pass has <strong>guaranteed entry on both days</strong> and adds every conference session and lunch &mdash; and the networking app, which is where most of the value of two days actually is. Premium Delegate and VIP add a hands-on workshop.</p>
+          <p style="margin:0 0 14px;font-size:13px;line-height:1.6;color:#666;text-align:center;">Your Visitor Pass covers the exhibition floor and select keynotes, but entry is not guaranteed: it depends on slot availability on 20 and 21 Nov, so you may be offered a half-day slot, or none; we confirm by email before the event. A Delegate pass has <strong>guaranteed entry on both days</strong> and adds every conference session and lunch &mdash; and the networking app, which is where most of the value of two days actually is. Premium Delegate and VIP add a hands-on workshop.</p>
           ${roomLine}
           <p style="margin:0 0 12px;font-size:13px;line-height:1.6;color:#666;text-align:center;">Here is what the app does, and why starting before you arrive matters &mdash; the people worth meeting fill their diaries early.</p>
           <table style="width:100%;border-collapse:collapse;">${netRows}</table>
@@ -1041,7 +1041,7 @@ async function sendRegistrationEmail(c: any, attendee: any, opts: { receipt?: st
         ${opts.receipt
           ? `<p style="margin:0 0 20px;font-size:14px;line-height:1.7;color:#555;">Thank you. Your payment has arrived and your <strong>${esc(attendee.badge_type)}</strong> for Bharat AI Innovation 2026 is confirmed.</p>${opts.receipt}`
           : `<p style="margin:0 0 20px;font-size:14px;line-height:1.7;color:#555;">Your registration is confirmed. You are booked as ${/^[aeiou]/i.test(String(attendee.badge_type || 'Visitor Pass')) ? 'an' : 'a'} <strong>${esc(attendee.badge_type || 'Visitor Pass')}</strong> holder.</p>${isVisitor
-            ? `<p style="margin:-10px 0 20px;font-size:13.5px;line-height:1.7;color:#555;">Entry on a free Visitor Pass is by time slot, as available: we confirm your slot by email before the event. Every paid pass has guaranteed entry on both days.</p>` : ''}`}
+            ? `<p style="margin:-10px 0 20px;font-size:13.5px;line-height:1.7;color:#555;">${FREE_ENTRY_TEXT}</p>` : ''}`}
         <table style="width:100%;border-collapse:collapse;">
           ${step('1', 'Add your photo', 'A photo is required on your pass. You will be asked for one the first time you download it.')}
           ${step('2', 'Complete your profile', 'Your job title and organisation appear on your pass and in the networking directory.')}
@@ -2218,6 +2218,10 @@ const PASS_PRICES_INR: Record<string, number> = { 'Delegate Pass': 4999, 'Premiu
 const LATE_PASS_PRICES_INR: Record<string, number> = { 'Delegate Pass': 5999, 'Premium Delegate Pass': 11999, 'VIP Pass': 22999, 'Academic Pass': 999 }
 const PASS_GST_RATE = 18
 const GROUP_RATE_TEXT = 'Teams of five or more: five passes for the price of four (Delegate or Premium Delegate), on request.'
+// Organiser, 28 Oct 2026: a free pass is not a promise of entry. Said in these words
+// wherever the free pass is described (register page, app, emails, the comparison
+// chart), and on the website and terms by hand.
+const FREE_ENTRY_TEXT = 'Entry on a free Visitor Pass is not guaranteed. It depends on slot availability on 20 and 21 Nov: you may be offered a half-day slot, or none. We confirm by email before the event. Every paid pass has guaranteed entry on both days.'
 
 // Date.now(), not new Date(), so the smoke test can move the clock.
 const priceIstDay = (ms = Date.now()) => new Date(ms + 19800000).toISOString().slice(0, 10)
@@ -14309,7 +14313,7 @@ async function upgradeOfferMail(c: any, a: any, offer: { pass: string; key: stri
       ${emailBrandHeader(academic ? 'The student rate for the full conference' : 'Join the full conference', '20&ndash;21 Nov 2026 &bull; WTC Mumbai')}
       <div style="padding:28px;">
         <p style="margin:0 0 6px;font-size:15px;color:#333;">Hi <strong>${first}</strong>,</p>
-        <p style="margin:0 0 16px;font-size:14px;line-height:1.7;color:#555;">Your free Visitor Pass covers the exhibition floor and select keynotes as entry slots allow; we confirm your slot by email before the event. ${academic
+        <p style="margin:0 0 16px;font-size:14px;line-height:1.7;color:#555;">Your free Visitor Pass covers the exhibition floor and select keynotes, but <strong>entry is not guaranteed</strong>: it depends on slot availability on 20 and 21 Nov, so you may be offered a half-day slot, or none; we confirm by email before the event. ${academic
           ? 'As a student you can upgrade to the <strong>Academic Pass</strong>, the concessionary rate, with guaranteed entry:'
           : 'A <strong>Delegate Pass</strong> has guaranteed entry on both days and adds the rest:'}</p>
         <table style="width:100%;border-collapse:collapse;margin:0 0 8px;">${lines.map(item).join('')}</table>
@@ -16285,7 +16289,7 @@ function passComparisonHTML(): string {
     { title: 'The event', rows: [
       // Organiser, 28 Oct 2026: a free pass is admitted as entry slots allow (the
       // slot is confirmed by email before the event); a paid pass is guaranteed in.
-      ['Guaranteed entry on both days <small>a free Visitor Pass is admitted as entry slots allow, confirmed by email</small>', [0, 1, 1, 1, 1]],
+      ['Guaranteed entry on both days <small>not on a free Visitor Pass: entry depends on slot availability on 20 and 21 Nov, a half-day slot or none, confirmed by email</small>', [0, 1, 1, 1, 1]],
       ['Exhibition floor and product demos', [1, 1, 1, 1, 1]],
       ['Conference sessions, both days', [0, 1, 1, 1, 1]],
       ['AI Marketplace listing', [1, 1, 1, 1, 1]],
@@ -16384,7 +16388,7 @@ ${sharedNavHTML('register')}
           </div>
         </div>
         <div class="text-center p-3 rounded-xl bg-primary-500/10 border border-primary-500/20 mb-5">
-          <span class="text-primary-400 text-xs font-semibold"><i class="fas fa-check-circle mr-1"></i>Exhibition floor &amp; product demos, free &middot; entry by time slot, as available, confirmed by email</span>
+          <span class="text-primary-400 text-xs font-semibold"><i class="fas fa-check-circle mr-1"></i>Exhibition floor &amp; product demos, free &middot; entry not guaranteed: by slot availability on 20 and 21 Nov, confirmed by email</span>
         </div>
 
         <form id="reg-form" onsubmit="submitRegistration(event)" class="space-y-4">
@@ -16467,7 +16471,7 @@ ${sharedNavHTML('register')}
           </div>
           <h3 class="font-bold text-xl text-primary-300" id="rs-name"></h3>
           <p class="text-sm text-gray-300 mt-1" id="rs-ref"></p>
-          <p class="text-xs text-gray-400 mt-2">Your Visitor Pass is registered. Entry is by time slot, as available: we confirm yours by email before the event. You can now access the networking app.</p>
+          <p class="text-xs text-gray-400 mt-2">Your Visitor Pass is registered. ${FREE_ENTRY_TEXT} You can now access the networking app.</p>
           <div class="flex gap-3 justify-center mt-5">
             <a href="/app" id="rs-app-link" class="px-6 py-2.5 rounded-xl text-sm font-semibold bg-primary-500/20 text-primary-300 hover:bg-primary-500/30 transition"><i class="fas fa-rocket mr-2"></i>Open Networking App</a>
           </div>
@@ -16476,7 +16480,7 @@ ${sharedNavHTML('register')}
                tiers are worth showing — as what they add, not as what is withheld. -->
           <div class="mt-6 pt-5 border-t border-white/10 text-left">
             <p class="text-sm font-semibold text-white text-center mb-1">Coming for the conference too?</p>
-            <p class="text-xs text-gray-400 text-center mb-4">Your Visitor Pass covers the exhibition floor and select keynotes, as entry slots allow. These have guaranteed entry on both days and add the rest.</p>
+            <p class="text-xs text-gray-400 text-center mb-4">Entry on a free Visitor Pass is not guaranteed: it depends on slot availability on 20 and 21 Nov, a half-day slot or none. These have guaranteed entry on both days and add the rest.</p>
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div class="rounded-xl p-4 border border-primary-500/25 bg-primary-500/5">
                 <div class="flex items-baseline justify-between">
@@ -16597,7 +16601,7 @@ ${sharedNavHTML('register')}
   <section id="compare" class="mt-10" style="scroll-margin-top:72px;max-width:1024px;margin-left:auto;margin-right:auto;">
     <div class="text-center mb-5">
       <h2 class="text-2xl font-bold mb-2">Compare passes</h2>
-      <p class="text-gray-400 text-sm">Every paid pass has guaranteed entry on both days and adds the full conference and the networking app. A free Visitor Pass is admitted as entry slots allow. Workshops come only with Premium Delegate and VIP.</p>
+      <p class="text-gray-400 text-sm">Every paid pass has guaranteed entry on both days and adds the full conference and the networking app. Entry on a free Visitor Pass is not guaranteed: it depends on slot availability on 20 and 21 Nov, a half-day slot or none. Workshops come only with Premium Delegate and VIP.</p>
     </div>
     ${passComparisonHTML()}
     <div style="text-align:center;margin-top:18px;">
@@ -18545,7 +18549,7 @@ function mainPageHTML(): string {
               </div>
               <div>
                 <h2 class="text-xl font-bold text-green-300">Get Your Free Visitor Pass</h2>
-                <p class="text-xs text-gray-400">Register in 30 seconds — exhibition floor entry by time slot, as available, confirmed by email</p>
+                <p class="text-xs text-gray-400">Register in 30 seconds — entry not guaranteed: by slot availability on 20 and 21 Nov (a half-day slot, or none), confirmed by email</p>
               </div>
             </div>
             <form id="quick-visitor-form" onsubmit="submitQuickVisitorReg(event)" class="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -20831,7 +20835,7 @@ function mainPageScript(): string {
         successDiv.classList.remove('hidden');
         document.getElementById('qv-success-name').textContent = 'Welcome, ' + data.name + '!';
         const refId = 'BHAI-2026-' + String(data.id).padStart(5, '0');
-        document.getElementById('qv-success-msg').innerHTML = 'Your Visitor Pass is registered. Reference: <strong>' + refId + '</strong><br>Entry is by time slot, as available: we confirm yours by email before the event. You can now sign in to access networking, inbox & more.';
+        document.getElementById('qv-success-msg').innerHTML = 'Your Visitor Pass is registered. Reference: <strong>' + refId + '</strong><br>${FREE_ENTRY_TEXT} You can now sign in to access networking, inbox & more.';
 
         // Auto-sign-in the user
         currentUser = data;
@@ -22016,13 +22020,13 @@ function mainPageScript(): string {
         }
         if (reason === 'welcome') {
           title.textContent = 'Want the full two days?';
-          copy.innerHTML = 'Your <span class="text-white font-semibold">Visitor Pass</span> covers the exhibition floor and select keynotes, as entry slots allow.<br>' +
+          copy.innerHTML = 'Your <span class="text-white font-semibold">Visitor Pass</span> covers the exhibition floor and select keynotes, but entry is not guaranteed: it depends on slot availability on 20 and 21 Nov, a half-day slot or none.<br>' +
             'A <span class="text-primary-300 font-semibold">Delegate</span> or <span class="text-amber-300 font-semibold">VIP Pass</span> has guaranteed entry on both days and adds every conference session, lunch and the networking hub. Premium Delegate and VIP add a hands-on workshop.' + priceDeadlineLine('Delegate Pass');
         }
         if (reason === 'agenda') {
           title.textContent = 'Be in the room for this one';
           copy.innerHTML = (who ? '<span class="text-white font-semibold">' + esc(who) + '</span> is a conference session. ' : '') +
-            'Your Visitor Pass covers the exhibition floor and select keynotes, as entry slots allow. A <span class="text-primary-300 font-semibold">Delegate Pass</span>' + (delegatePrice ? ' (' + delegatePrice + ')' : '') +
+            'Your Visitor Pass covers the exhibition floor and select keynotes, but entry is not guaranteed: it depends on slot availability on 20 and 21 Nov, a half-day slot or none. A <span class="text-primary-300 font-semibold">Delegate Pass</span>' + (delegatePrice ? ' (' + delegatePrice + ')' : '') +
             ' has guaranteed entry on both days and adds every session, lunch and the networking app.' + priceDeadlineLine('Delegate Pass');
           _upgradeTarget = 'Delegate Pass';
         }
