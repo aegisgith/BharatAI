@@ -267,7 +267,7 @@ Still to do: `hostLogo` (file in `public/images/campus/`); a claim code in `app_
 - ~~A scheduled campaign sender (cron) so bulk sends do not depend on an open tab.~~ Done for the three panel emails on 8 Oct (§17). The profile-reminder campaign (`pumpProfileReminder`) and the upgrade campaign are still driven from the tab.
 - Content-Security-Policy; revocable sessions (cookies are stateless for 60 days).
 - Notification centre covers only announcements; no session feedback, reminders, calendar export, QR-to-connect or Web Push.
-- Contrast of `text-gray-500/600` tokens; the `ui-avatars.com` placeholder avatar (the speaker-organisation favicons are local since 27 Oct 2026); static Workshops tab.
+- Contrast of `text-gray-500/600` tokens; third-party avatar and favicon lookups (the `ui-avatars.com` placeholder avatar, and each attendee's company logo from Google's favicon service: `getCompanyLogoUrl()` in the app loads it directly, the social card through `/api/image-proxy`; these are per-attendee domains, so they cannot be stored ahead of time the way the home page's speaker-organisation icons were on 27 Oct 2026); static Workshops tab.
 - The admin page still carries its ~8,000-line script inline (765 KB of HTML, 167 KB over the wire); it could go the way of `/app.js` if organisers find /admin slow on phones.
 - `src/index.tsx` is one ~34,000-line file with no unit tests beyond `scripts/verify/`.
 
