@@ -3097,8 +3097,20 @@ async function upgradeFunnelJSON(c: any) {
     `SELECT status, pass_type, previous_badge, base_paise, COUNT(*) AS n, COUNT(DISTINCT attendee_id) AS people, SUM(amount_paise) AS paise
        FROM payment_orders WHERE created_at > datetime('now', ?)
       GROUP BY 1, 2, 3, 4 ORDER BY 1, 2`).bind(since).all().catch(() => ({ results: [] })) : { results: [] }
+  // The upgrade email's two subjects (upgradeSubjectVariant: even id A, odd id B),
+  // all time: how many were sent each, and how many of those started and paid an
+  // order after their email went.
+  const subjects = (await paymentOrdersReady(c)) ? await c.env.DB.prepare(
+    `SELECT cp.audience AS audience, (cr.attendee_id % 2) AS odd, COUNT(*) AS sent,
+            SUM(EXISTS (SELECT 1 FROM payment_orders o WHERE o.attendee_id = cr.attendee_id AND o.created_at >= cr.sent_at)) AS started,
+            SUM(EXISTS (SELECT 1 FROM payment_orders o WHERE o.attendee_id = cr.attendee_id AND o.status = 'paid' AND o.paid_at >= cr.sent_at)) AS paid
+       FROM campaign_recipients cr JOIN campaigns cp ON cp.id = cr.campaign_id
+      WHERE cp.kind = 'upgrade' AND cr.status = 'sent' AND cr.attendee_id IS NOT NULL
+      GROUP BY 1, 2 ORDER BY 1, 2`).all().catch(() => ({ results: [] })) : { results: [] }
   return {
     days: 14,
+    subjects: (subjects?.results || []).map((r: any) => ({ audience: r.audience, variant: Number(r.odd) ? 'B' : 'A',
+      sent: Number(r.sent || 0), started: Number(r.started || 0), paid: Number(r.paid || 0) })),
     prompts: (prompts?.results || []).filter((r: any) => r.reason),
     orders: (orders?.results || []).map((r: any) => ({
       status: r.status, pass_type: r.pass_type, previous_badge: r.previous_badge, n: Number(r.n || 0), people: Number(r.people || 0),
@@ -14357,6 +14369,9 @@ const UPGRADE_AUDIENCE_SQL: Record<string, string> = {
 const UPGRADE_NOT_YET_SQL = ` AND id NOT IN (SELECT cr.attendee_id FROM campaign_recipients cr JOIN campaigns cp ON cp.id = cr.campaign_id
     WHERE cp.kind = 'upgrade' AND cr.attendee_id IS NOT NULL AND cr.status IN ('pending', 'sending', 'sent'))`
 
+// The upgrade email's subject test: A for an even registration number, B for odd.
+const upgradeSubjectVariant = (id: any): 'A' | 'B' => (Math.abs(Number(id) || 0) % 2 === 1 ? 'B' : 'A')
+
 async function upgradeOfferMail(c: any, a: any, offer: { pass: string; key: string }, preview: boolean): Promise<{ subject: string; html: string }> {
   const appUrl = (await settingValue(c, 'app_url')) || 'https://bharataiinnovation.com/app'
   let href = '#preview'
@@ -14444,9 +14459,14 @@ async function upgradeOfferMail(c: any, a: any, offer: { pass: string; key: stri
       </div>
     </div></body></html>`
   // No figure in the subject (organiser, 28 Oct 2026): it carries the reason to act.
-  const subject = academic
-    ? firstPlain + ', guaranteed entry to Bharat AI Innovation at the student rate'
-    : firstPlain + ', your free pass does not guarantee entry on 20 and 21 Nov'
+  // Two subjects, split by registration number so a resend or a retry keeps the
+  // same one: even ids get A (the reason to act), odd ids get B (the organiser's
+  // plain "upgrade your pass"). Admin, Payments, "What sells" compares them.
+  const subject = upgradeSubjectVariant(a.id) === 'B'
+    ? firstPlain + ', upgrade your pass for Bharat AI Innovation'
+    : academic
+      ? firstPlain + ', guaranteed entry to Bharat AI Innovation at the student rate'
+      : firstPlain + ', your free pass does not guarantee entry on 20 and 21 Nov'
   return { subject, html }
 }
 
@@ -14645,14 +14665,25 @@ app.post('/api/admin/campaigns', async (c) => {
   const campaignId = ins.meta.last_row_id
 
   // Batched inserts: one statement per recipient would be a thousand round trips.
-  for (let i = 0; i < rows.length; i += 50) {
-    const chunk = rows.slice(i, i + 50)
-    const values = chunk.map(() => '(?,?,?,?)').join(',')
-    const binds: any[] = []
-    chunk.forEach((r) => binds.push(campaignId, r.id, r.email, r.name || ''))
-    await c.env.DB.prepare(
-      `INSERT INTO campaign_recipients (campaign_id, attendee_id, email, name) VALUES ${values}`
-    ).bind(...binds).run()
+  // 20 rows of 4 values: D1 refuses a statement with more than 100 bound values,
+  // and 50 rows (200 values) failed every campaign of more than 25 people (28 Oct
+  // 2026, two upgrade campaigns left with a row and no recipients). If a batch
+  // still fails, the campaign is taken out again so nothing is left half-made.
+  try {
+    for (let i = 0; i < rows.length; i += 20) {
+      const chunk = rows.slice(i, i + 20)
+      const values = chunk.map(() => '(?,?,?,?)').join(',')
+      const binds: any[] = []
+      chunk.forEach((r) => binds.push(campaignId, r.id, r.email, r.name || ''))
+      await c.env.DB.prepare(
+        `INSERT INTO campaign_recipients (campaign_id, attendee_id, email, name) VALUES ${values}`
+      ).bind(...binds).run()
+    }
+  } catch (e: any) {
+    console.error('campaign recipients failed', campaignId, e?.message)
+    await c.env.DB.prepare('DELETE FROM campaign_recipients WHERE campaign_id = ?').bind(campaignId).run().catch(() => {})
+    await c.env.DB.prepare('DELETE FROM campaigns WHERE id = ?').bind(campaignId).run().catch(() => {})
+    return c.json({ error: 'The recipient list could not be saved, so nothing was started and nothing was sent. Please try again.' }, 500)
   }
   await audit(c, 'campaign.start', 'campaign', campaignId,
     { kind, audience, total: rows.length, title, malformed: malformed.length })
@@ -29065,7 +29096,18 @@ function adminPageScript(): string {
           '<div class="text-gray-300 font-semibold">' + Number(o.people || 0) + ' <span class="text-gray-500 font-normal">people</span></div>' +
           '<div class="text-gray-500 w-24 text-right">' + (o.status === 'paid' ? '&#8377;' + Number(o.inr || 0).toLocaleString('en-IN') : Number(o.n || 0) + ' orders') + '</div></div>';
       }).join('') || '<p class="text-gray-500 text-[12px] py-2">No orders in this time.</p>';
+      var SUBJ = { A: { senior: 'A: your free pass does not guarantee entry', students: 'A: guaranteed entry at the student rate' }, B: { senior: 'B: upgrade your pass for Bharat AI Innovation', students: 'B: upgrade your pass for Bharat AI Innovation' } };
+      var subjects = (d.subjects || []).map(function (s) {
+        var rate = s.sent ? Math.round(s.paid * 1000 / s.sent) / 10 : 0;
+        return '<div class="flex items-center gap-3 py-2 border-b border-white/5 text-[12px]"><div class="flex-1 text-gray-200">' +
+          ((SUBJ[s.variant] || {})[s.audience] || deskEsc(s.variant)) + ' <span class="text-gray-500">&middot; ' + (s.audience === 'students' ? 'students' : 'senior Visitors') + '</span></div>' +
+          '<div class="text-gray-300">' + Number(s.sent) + ' sent</div><div class="text-gray-400 w-20 text-right">' + Number(s.started) + ' started</div>' +
+          '<div class="text-gray-200 font-semibold w-24 text-right">' + Number(s.paid) + ' paid (' + rate + '%)</div></div>';
+      }).join('');
       el.innerHTML = '<div class="glass rounded-xl p-5 border border-white/5">' +
+        (subjects ? '<h3 class="text-sm font-semibold text-white mb-1">Upgrade email: which subject sells</h3>' +
+          '<p class="text-[11px] text-gray-500 mb-2">Half the list gets each subject (even registration numbers A, odd B). Started and paid count orders made after that person&rsquo;s email went.</p>' +
+          subjects + '<div class="mb-5"></div>' : '') +
         '<h3 class="text-sm font-semibold text-white mb-1">What sells, last ' + Number(d.days || 14) + ' days</h3>' +
         '<p class="text-[11px] text-gray-500 mb-3">Where people in the app were offered a paid pass, and what was then started and paid. A door many meet and nobody pays through needs better copy or a better offer; a door few meet needs to be found.</p>' +
         '<div class="grid grid-cols-1 md:grid-cols-2 gap-4">' +
