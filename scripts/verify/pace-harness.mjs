@@ -141,7 +141,7 @@ http.createServer(async (req, res) => {
   try {
     let raw = '';
     for await (const chunk of req) raw += chunk;
-    if (url.pathname === '/app' || url.pathname === '/app.js' || url.pathname === '/admin' || url.pathname === '/panel-rsvp') {
+    if (url.pathname === '/app' || url.pathname === '/app.js' || url.pathname === '/admin' || url.pathname === '/admin.js' || url.pathname === '/panel-rsvp') {
       const init = { method: req.method, headers: { 'Content-Type': req.headers['content-type'] || '' } };
       if (req.method === 'POST') init.body = raw;
       const r = await worker.fetch(new Request('https://bharataiinnovation.com' + url.pathname + url.search, init), env, ctx);

@@ -56,7 +56,7 @@ const TYPES = { '.js': 'application/javascript', '.css': 'text/css', '.png': 'im
 http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost:8770');
   try {
-    if (url.pathname === '/app' || url.pathname === '/app.js' || url.pathname === '/admin') {
+    if (url.pathname === '/app' || url.pathname === '/app.js' || url.pathname === '/admin' || url.pathname === '/admin.js') {
       const r = await worker.fetch(new Request('https://bharataiinnovation.com' + url.pathname), env, ctx);
       res.writeHead(r.status, { 'Content-Type': r.headers.get('content-type') || 'text/html; charset=utf-8' });
       return res.end(await r.text());

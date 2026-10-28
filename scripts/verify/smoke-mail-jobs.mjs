@@ -222,6 +222,7 @@ check('resume-reminders frees paused reminders as before', r.json.success && /re
 
 // ---- the page and the scheduler Worker ----
 r = await hit('/admin');
+r.text += (await hit('/admin.js')).text;   // the admin page's code is its own file
 for (const m of ['function startMailJob', 'function stopMailJob', 'mail-jobs/tick', 'function mailJobsNote', 'section 17', 'you can close this page', 'function setMailJobPace']) check('/admin carries ' + m, r.text.includes(m), 'missing');
 for (const gone of ['pumpPanelReports', 'pumpPanelConfirmations', 'pumpPanelReminders', '_panelPump']) check('/admin no longer carries ' + gone, !r.text.includes(gone), 'still there');
 const cfg = readFileSync(new URL('../../cron/wrangler.jsonc', import.meta.url), 'utf8');

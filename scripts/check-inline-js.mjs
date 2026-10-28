@@ -78,36 +78,36 @@ for (const path of PAGES) {
       failed++
     }
   }
-  if (checked === 0) {
-    console.error(`[check-inline-js] ${path}: rendered no inline script at all, so nothing was checked`)
-    failed++
-    continue
-  }
-  if (!failed) console.log(`[check-inline-js] ${path}: ${checked} inline block(s) parse`)
-}
-
-// The app's code is its own file since 27 Oct 2026 (GET /app.js, mainPageScript
-// in src/index.tsx): still a template literal, with the same ways to die, so it
-// is parsed whole the way the inline blocks are. The /app page keeps one small
-// inline block (the service-worker registration), which the loop above checks.
-{
-  const res = await worker.fetch(new Request('https://bharataiinnovation.com/app.js'), env, ctx)
-  const body = await res.text()
-  const type = res.headers.get('content-type') || ''
-  if (res.status !== 200 || !/javascript/.test(type)) {
-    console.error(`[check-inline-js] /app.js answered ${res.status} ${type}, not the script`)
-    failed++
-  } else {
+  // /app and /admin keep their code in a file of their own (GET /app.js since 27
+  // Oct 2026, /admin.js since 28 Oct; mainPageScript and adminPageScript in
+  // src/index.tsx). Still a template literal, with the same ways to die, so the
+  // file the page names is fetched and parsed whole, like an inline block.
+  const files = []
+  for (const [, src] of html.matchAll(/<script src="(\/(?:app|admin)\.js\?v=[0-9a-f]+)"><\/script>/g)) {
+    const res = await worker.fetch(new Request('https://bharataiinnovation.com' + src), env, ctx)
+    const body = await res.text()
+    const type = res.headers.get('content-type') || ''
+    if (res.status !== 200 || !/javascript/.test(type)) {
+      console.error(`[check-inline-js] ${path}: ${src} answered ${res.status} ${type}, not the script`)
+      failed++
+      continue
+    }
     try {
       new vm.Script(body)
-      console.log(`[check-inline-js] /app.js: ${Math.round(body.length / 1024)} KB parses`)
+      files.push(`${src.split('?')[0]} (${Math.round(body.length / 1024)} KB)`)
     } catch (e) {
       const line = Number((/(\d+)/.exec(e.stack?.split('\n')[0] ?? '') || [])[1])
-      console.error(`[check-inline-js] /app.js: ${e.message}`)
+      console.error(`[check-inline-js] ${path}: ${src.split('?')[0]}: ${e.message}`)
       console.error(`   near: ${(body.split('\n')[(line || 1) - 1] ?? '').trim().slice(0, 140)}`)
       failed++
     }
   }
+  if (checked === 0 && files.length === 0) {
+    console.error(`[check-inline-js] ${path}: rendered no script at all, so nothing was checked`)
+    failed++
+    continue
+  }
+  if (!failed) console.log(`[check-inline-js] ${path}: ${checked} inline block(s)${files.length ? ' and ' + files.join(', ') : ''} parse`)
 }
 
 // The static site. public/*.html is served as-is, never rendered by the worker,

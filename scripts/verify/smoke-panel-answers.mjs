@@ -3,6 +3,7 @@
 // "Are you coming?" routes against the built worker with a fake D1.
 import crypto from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import panelClockModule from './panel-clock.cjs';
 const worker = (await import(new URL('../../dist/_worker.js?' + Date.now(), import.meta.url).href)).default;
 const SECRET = 'smoke-session';
 const state = { rsvpColumns: true, updateThrows: false, updates: [], sqls: [] };
@@ -70,15 +71,12 @@ const panelHostToken = (slug) => {
   // substrings, so a two-word phrase like 'jawaharlal nehru' would never match back.
   return words.find(w => /^[a-z0-9]+$/.test(w)) || words[0].replace(/\s+/g, '');
 };
-const SLUG = (() => {
-  const src = PANEL_SRC;
-  const now = Date.now();
-  const found = [...src.matchAll(/'([a-z0-9-]+)':\s*\{[\s\S]{0,80}?slug: '\1'[\s\S]*?startsAt: '([^']+)'/g)]
-    .map(m => ({ slug: m[1], at: Date.parse(m[2]) }))
-    .filter(p => p.at > now).sort((a, b) => a.at - b.at)[0];
-  if (!found) throw new Error('every campus panel in CAMPUS_PANELS has already started - add a future one or this suite cannot run');
-  return found.slug;
-})();
+// The next panel that has not started; with none ahead (every panel since 30
+// Sep 2026), the last one, with this process's clock moved to two days before it.
+// See panel-clock.cjs.
+const CLOCK = panelClockModule.panelClock();
+panelClockModule.shiftClock(CLOCK.shiftMs);
+const SLUG = CLOCK.slug;
 
 const HOST_TOKEN = panelHostToken(SLUG);                 // e.g. 'djsce' or 'jnu'
 const HOST_EMAIL = 'host@' + HOST_TOKEN + '.ac.in';

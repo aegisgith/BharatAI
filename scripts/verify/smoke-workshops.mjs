@@ -225,6 +225,7 @@ for (const m of ['id="ws-panel"', 'id="pcc-workshop"', 'function loadWorkshopSea
   check('/app carries ' + m, r.text.includes(m), 'missing');
 check('/app no longer sends the coming-soon workshops to a register page', !/fa-ticket-alt"><\/i>Register Now/.test(r.text), 'a Register Now is left');
 r = await hit('/admin');
+r.text += (await hit('/admin.js')).text;   // the admin page's code is its own file
 for (const m of ['data-section="workshops"', 'id="section-workshops"', 'function loadAdminWorkshops', 'function adminWsCsv', "case 'workshops': loadAdminWorkshops()"])
   check('/admin carries ' + m, r.text.includes(m), 'missing');
 r = await hit('/register');

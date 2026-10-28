@@ -9,7 +9,12 @@ import { readFile } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import panelClockModule from './panel-clock.cjs';
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
+// The panel phone-test.cjs answers for must not have started: with every panel
+// in the past, this process's clock (and so the worker's) moves to two days
+// before the last one, the same panel phone-test.cjs picks.
+panelClockModule.shiftClock(panelClockModule.panelClock().shiftMs);
 const worker = (await import(pathToFileURL(join(ROOT, 'dist', '_worker.js')).href + '?' + Date.now())).default;
 
 const PANEL = {
@@ -102,7 +107,10 @@ const api = (method, p, body, q) => {
   if (p === '/api/admin/panels') return [{ slug: 'djsanghvi-21sep', hostShort: 'DJ Sanghvi', title: 'AI and Employability', dateLabel: 'Monday, 21 September 2026', claim_state: 'before', claim_code_set: true,
     rsvp_enabled: true, rsvp_open: true, registered: 431, via_muni: 270, via_page: 3, emailed: 431, email_failed: 0, email_paused: 0, with_photo: 10, signed_in: 37, card_taken: 3, claimed: 0, certificate_taken: 0,
     rsvp_yes: 12, rsvp_no: 3, rsvp_yes_outside: 4, reminded: 0, reminder_failed: 0, reminder_paused: 0, reminder_left: 416 }];
-  if (method === 'POST' && p === '/api/admin/panels/djsanghvi-21sep/send-next-reminders') { rec('send-reminders'); return { done: true, sent: 5, failed: [], remaining: 0 }; }
+  // Since 8 Oct 2026 Send starts a job on the server (§17) instead of pumping
+  // send-next-reminders from the tab. The job's own behaviour is pace-test.cjs's.
+  if (method === 'POST' && p === '/api/admin/mail-jobs/reminders/djsanghvi-21sep/start') { rec('start-reminders'); return { jobs: {}, cron_alive: false, cron_last_tick: 0, server_time: Date.now() }; }
+  if (method === 'POST' && p === '/api/admin/mail-jobs/tick') return { jobs: {}, cron_alive: false, cron_last_tick: 0, server_time: Date.now() };
   if (p === '/api/admin/panels/djsanghvi-21sep/people') {
     rec('people:' + (q && q.get('metric')));
     return { panel: 'DJ Sanghvi · Monday, 21 September 2026', metric: q && q.get('metric'), label: 'Coming', total: 2, rows: [
@@ -122,7 +130,7 @@ http.createServer(async (req, res) => {
   try {
     let raw = '';
     for await (const chunk of req) raw += chunk;
-    if (url.pathname === '/app' || url.pathname === '/app.js' || url.pathname === '/admin' || url.pathname === '/panel-rsvp') {
+    if (url.pathname === '/app' || url.pathname === '/app.js' || url.pathname === '/admin' || url.pathname === '/admin.js' || url.pathname === '/panel-rsvp') {
       const init = { method: req.method, headers: { 'Content-Type': req.headers['content-type'] || '' } };
       if (req.method === 'POST') init.body = raw;
       const r = await worker.fetch(new Request('https://bharataiinnovation.com' + url.pathname + url.search, init), env, ctx);

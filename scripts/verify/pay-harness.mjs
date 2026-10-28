@@ -42,7 +42,7 @@ globalThis.fetch = async (u, init) => {
 };
 const ctx = { waitUntil() {}, passThroughOnException() {} };
 
-const REAL = (p) => p === '/app' || p === '/app.js' || p === '/admin' || p === '/register' || p === '/finance' || p.startsWith('/pay/') || p.startsWith('/api/payments/')
+const REAL = (p) => p === '/app' || p === '/app.js' || p === '/admin' || p === '/admin.js' || p === '/register' || p === '/finance' || p.startsWith('/pay/') || p.startsWith('/api/payments/')
   || p === '/api/admin/payments-pending' || p === '/api/admin/invoices' || p === '/api/finance/payments-pending' || p === '/api/finance/invoices'
   || p.startsWith('/api/admin/payments/') || p.startsWith('/api/admin/campaigns') || /^\/api\/admin\/attendees\/\d+\/send-upgrade$/.test(p);
 

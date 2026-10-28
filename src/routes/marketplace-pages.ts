@@ -10,6 +10,9 @@
 // filler's own name there would be wrong data, not a shortcut. Product copy,
 // tags, tech stack and read-only fields are "off" too.
 
+// Put in by vite.config.ts: a hash of the built public/css/tailwind.css (see TW_CSS).
+declare const __TW_CSS_HASH__: string
+
 // ── Shared head for marketplace pages ──
 // `path` is the page's own canonical URL. Listing pages keep /marketplace: their
 // slugs come from the URL and are never echoed into the head (see inlineJsString).
@@ -45,14 +48,15 @@ function mpSharedHead(title: string, opts: { path?: string; noindex?: boolean } 
   <meta name="twitter:description" content="Discover India's leading AI solutions at Bharat AI Innovation 2026.">
   <meta name="twitter:image" content="${MP_OG_IMAGE}">
   <meta name="twitter:image:alt" content="Discover India's AI solutions: the Bharat AI Marketplace">
-  <!-- The two /css/ literals here are FA_CSS and TW_CSS from src/index.tsx,
-       duplicated rather than imported because index.tsx imports this module.
-       Bump each copy together. Load order is unchanged from the CDN days:
-       Font Awesome first, marketplace.css last-but-one, Tailwind last. -->
-  <link rel="stylesheet" href="/css/fa-subset.css?v=1">
+  <!-- The fa-subset.css literal is FA_CSS from src/index.tsx, duplicated rather
+       than imported because index.tsx imports this module: bump both together.
+       Tailwind's version is the build's hash of the file, as in TW_CSS. Load
+       order is unchanged from the CDN days: Font Awesome first, marketplace.css
+       last-but-one, Tailwind last. -->
+  <link rel="stylesheet" href="/css/fa-subset.css?v=2">
   <link rel="stylesheet" href="/css/fonts-app.css?v=1">
   <link href="/static/marketplace.css?v=3" rel="stylesheet">
-  <link rel="stylesheet" href="/css/tailwind.css?v=2">
+  <link rel="stylesheet" href="/css/tailwind.css?v=${__TW_CSS_HASH__}">
 </head>`
 }
 

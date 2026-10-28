@@ -34,10 +34,21 @@ r = await hit('/api/admin/attendees/bulk-update', json('POST', { ids: [1], chang
 check('bulk update refuses without admin', r.status === 401, r.status);
 r = await hit('/admin');
 check('/admin renders', r.status === 200 && r.text.includes('<html'), r.status);
+check('/admin loads its code from a versioned /admin.js', /<script src="\/admin\.js\?v=[0-9a-f]{8}"><\/script>/.test(r.text), 'no versioned /admin.js tag');
+{
+  const js = await hit('/admin.js');
+  check('/admin.js is JavaScript a browser may keep for a year', js.status === 200 && /javascript/.test(js.h['content-type'] || '') && /immutable/.test(js.h['cache-control'] || ''), js.status + ' ' + js.h['content-type'] + ' ' + js.h['cache-control']);
+  r.text += js.text;   // the admin page's code is its own file: a marker below is in one or the other
+}
 for (const marker of ['checkin-reset', 'not-arrived.csv', 'downloadCsvViaApi', 'PAYMENT_STATUSES', 'BADGE_TYPES', 'previewPanelEmail', 'Panel only (not opted in)']) {
   check('/admin carries ' + marker, r.text.includes(marker), 'missing');
 }
 check('/admin no longer puts the secret in a URL', !/export\?token=/.test(r.text), 'export?token= still present');
+r = await hit('/api/company-logo?d=' + encodeURIComponent('evil.example/../x'));
+check('the company-logo route takes a hostname and nothing else', r.status === 400, r.status);
+r = await hit('/app');
+check('/app asks no outside avatar service', !/ui-avatars\.com|gravatar\.com/.test(r.text + (await hit('/app.js')).text), 'an outside avatar URL is left');
+check('/app asks Google for no company icon itself', !/s2\/favicons/.test((await hit('/app.js')).text), 'the app still loads favicons from Google');
 r = await hit('/staff/scan', { redirect: 'manual' });
 check('/staff/scan without a session redirects or renders, never 500', r.status !== 500, r.status);
 

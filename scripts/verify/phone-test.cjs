@@ -6,17 +6,11 @@ const { chromium } = require('./playwright.cjs');
 const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
-// A panel stops taking answers once it starts, so use one that is still ahead of today
-// rather than a slug that ages out on the day of the panel.
-const RSVP_SLUG = (() => {
-  const src = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'index.tsx'), 'utf8');
-  const now = Date.now();
-  const found = [...src.matchAll(/'([a-z0-9-]+)':\s*\{[\s\S]{0,80}?slug: '\1'[\s\S]*?startsAt: '([^']+)'/g)]
-    .map(m => ({ slug: m[1], at: Date.parse(m[2]) }))
-    .filter(p => p.at > now).sort((a, b) => a.at - b.at)[0];
-  if (!found) throw new Error('every campus panel in CAMPUS_PANELS has already started - add a future one or this suite cannot run');
-  return found.slug;
-})();
+// A panel stops taking answers once it starts, so use one that is still ahead of
+// today; with none ahead, the last one, and phone-harness.mjs moves its clock to
+// two days before it (panel-clock.cjs). The browser keeps the real date: the
+// answer is decided by the worker, inside the harness.
+const RSVP_SLUG = require('./panel-clock.cjs').panelClock().slug;
 const BASE = 'http://localhost:8772';
 const SHOTS = path.join(__dirname, '.out', 'phone-shots');
 const PHOTO = path.join(__dirname, '..', '..', 'public', 'images', 'speaker-virendra-pal.webp');
@@ -263,12 +257,14 @@ const tall = (page, sel) => page.evaluate((s) => { const e = document.querySelec
     await page.evaluate(() => document.getElementById('campus-panels').scrollIntoView());
     const html = await page.evaluate(() => (document.getElementById('campus-panels') || {}).innerText || '');
     check('9. admin shows the answers: coming, can’t make it, no answer, guests', /12\s*coming/.test(html) && /3\s*can’t make it/.test(html) && /416\s*no answer yet/.test(html) && /4\s*coming from outside DJ Sanghvi/.test(html), html.slice(0, 400));
-    const sendBtn = page.locator('#panel-remind-djsanghvi-21sep');
+    // The button's id and what it does changed on 8 Oct 2026 (panel email became a
+    // job on the server); the suite could not run from 30 Sep, so it caught up on 28 Oct.
+    const sendBtn = page.locator('#mail-btn-reminders-djsanghvi-21sep');
     check('9. the send button reads in plain words with the count', /Send “Are you coming\?” \(416 to send\)/.test(await sendBtn.innerText()), await sendBtn.innerText());
     await sendBtn.click();
     await sleep(2500);
     let st = await getState(page);
-    check('9. Send pumps the reminder route', st.records.some(r => r.what === 'send-reminders'), JSON.stringify(st.records.map(r => r.what)));
+    check('9. Send starts the reminder job on the server', st.records.some(r => r.what === 'start-reminders'), JSON.stringify(st.records.map(r => r.what)));
     await page.evaluate(() => renderCampusPanels());
     await sleep(800);
     await page.locator('button:has-text("Guests coming (for the college)")').click();

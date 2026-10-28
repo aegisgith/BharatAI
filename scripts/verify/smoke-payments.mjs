@@ -586,6 +586,7 @@ r.text += (await hit('/app.js')).text;   // the app's code is its own file
 for (const m of ['function startOnlinePayment', 'function payPendingPass', 'id="pcc-pay-btn"', 'id="pp-next-copy"', 'Checkout opens on <strong>CCAvenue</strong>', 'function ppSaveLead', 'function resumePayment', "act === 'pay'", 'We keep what you type here', 'id="pp-total"', 'value="Premium Delegate Pass"', "premium: 'Premium Delegate Pass'", 'class="pcmp"', "['delegate', 'premium', 'academic', 'vip'].indexOf(tierKey)", 'function ppShowTotal', 'function ppBilling', 'id="pp-gstin"', 'startOnlinePayment(passType, bill.billing)', '[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]{3}$/']) check('/app carries ' + m, r.text.includes(m), 'missing');
 for (const m of GONE.concat(['pass_upgrade'])) check('/app has no trace of ' + m, !r.text.includes(m), 'still there');
 r = await hit('/admin');
+r.text += (await hit('/admin.js')).text;   // the admin page's code is its own file
 for (const m of ['_paidOnline', 'Paid online: invoice to raise', 'openInvoiceFor(idx, fromOnline)', 'id="gateway-checks"', 'What it is waiting for', 'id="abandoned-block"', 'function loadAbandoned', 'function startPayReminders', 'function payRemindWait']) check('/admin carries ' + m, r.text.includes(m), 'missing');
 
 if (process.env.DUMP_SQL) writeFileSync(process.env.DUMP_SQL, JSON.stringify([...new Set(state.sqls)], null, 2));

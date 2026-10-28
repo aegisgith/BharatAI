@@ -73,6 +73,7 @@ check('check-in reset needs admin', r.status === 401, r.status);
 r = await hit('/api/admin/events/1/attendees/not-arrived.csv');
 check('not-arrived export needs admin', r.status === 401, r.status);
 r = await hit('/admin');
+r.text += (await hit('/admin.js')).text;   // the admin page's code is its own file
 check('admin page carries the new tools', r.text.includes('downloadCsvViaApi') && r.text.includes('checkin-reset') && !/export\?token=/.test(r.text), 'markers');
 // ---- attendee batch ----
 r = await hit('/api/attendees/1/threads');
@@ -83,7 +84,27 @@ r = await hit('/app');
 r.text += (await hit('/app.js')).text;   // the app's code is its own file
 check('app page carries the new client code', ['function parseDbTime', 'function safeUrl', 'id="notif-sheet"', 'function loadThreads', 'function closeTopModal'].every(m => r.text.includes(m)), 'markers');
 r = await hit('/sw.js');
-check('service worker is bhai-v11', r.status === 200 && r.text.includes("'bhai-v11'"), r.status);
+check('service worker is bhai-v12', r.status === 200 && r.text.includes("'bhai-v12'"), r.status);
+
+// ---- what a phone downloads, second pass (28 Oct 2026) ----
+r = await hit('/admin');
+const adminTag = /<script src="(\/admin\.js\?v=[0-9a-f]{8})"><\/script>/.exec(r.text);
+check('/admin loads its code from a versioned /admin.js', !!adminTag, 'no versioned /admin.js tag');
+if (adminTag) {
+  r = await hit(adminTag[1]);
+  check('/admin.js is JavaScript a browser may keep for a year', r.status === 200 && /javascript/.test(r.h['content-type'] || '') && /max-age=31536000/.test(r.h['cache-control'] || ''), r.status + ' ' + r.h['content-type'] + ' ' + r.h['cache-control']);
+}
+r = await hit('/app');
+const twTag = /href="\/css\/tailwind\.css\?v=([0-9a-f]{10})"/.exec(r.text);
+check('Tailwind is asked for by a hash of the build', !!twTag, 'no hashed tailwind.css link');
+r = await hit('/css/fa-subset.css?v=2');
+check('the icon subset draws the unlock icon', r.status === 200 && r.text.includes('.fa-unlock::before'), r.status);
+r = await hit('/api/company-logo?d=infosys.com');
+check('a known company icon comes through this site', r.status === 200 && /^image\//.test(r.h['content-type'] || ''), r.status + ' ' + r.h['content-type']);
+r = await hit('/api/company-logo?d=no-such-company-xyz-4821.com');
+check('an unknown company has no icon (a bare 404, so the card hides it)', r.status === 404 && r.text === '', r.status + ' ' + r.text.length);
+r = await hit('/api/company-logo?d=' + encodeURIComponent('evil.example/../x'));
+check('the company-logo route takes a hostname and nothing else', r.status === 400, r.status);
 
 // ---- what a phone downloads (27 Oct 2026) ----
 r = await hit('/app.js');
@@ -137,6 +158,7 @@ check('the jobs view needs admin', r.status === 401, r.status);
 r = await hit('/api/admin/mail-jobs/tick', { method: 'POST' });
 check('the page tick needs admin', r.status === 401, r.status);
 r = await hit('/admin');
+r.text += (await hit('/admin.js')).text;   // the admin page's code is its own file
 check('the admin page runs panel email as server jobs', r.text.includes('function startMailJob') && r.text.includes('mail-jobs/tick') && !r.text.includes('pumpPanelReports'), 'markers');
 
 console.log(fails ? `\n${fails} FAILED` : '\nall production checks passed');
