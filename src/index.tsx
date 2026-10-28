@@ -14325,9 +14325,8 @@ async function upgradeOfferMail(c: any, a: any, offer: { pass: string; key: stri
     </div></body></html>`
   const subject = academic
     ? firstPlain + ', the student rate for the full Bharat AI Innovation conference'
-    : latePricing()
-      ? firstPlain + ', the full Bharat AI Innovation conference is one tap away'
-      : firstPlain + ', the full Bharat AI Innovation conference at Rs ' + base + ' until ' + PRICE_DEADLINE_TEXT.slice(0, -5)
+    // No figure in the subject (organiser, 28 Oct 2026); the date carries the urgency.
+    : firstPlain + ', the full Bharat AI Innovation conference is one tap away' + (latePricing() ? '' : '. Book by ' + PRICE_DEADLINE_TEXT.slice(0, -5))
   return { subject, html }
 }
 
