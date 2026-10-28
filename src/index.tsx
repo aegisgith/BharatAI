@@ -3104,19 +3104,11 @@ async function upgradeFunnelJSON(c: any) {
        FROM payment_orders WHERE created_at > datetime('now', ?)
       GROUP BY 1, 2, 3, 4 ORDER BY 1, 2`).bind(since).all().catch(() => ({ results: [] })) : { results: [] }
   // The upgrade email's two subjects (upgradeSubjectVariant: even id A, odd id B),
-  // all time: how many were sent each, and how many of those started and paid an
-  // order after their email went.
-  const subjects = (await paymentOrdersReady(c)) ? await c.env.DB.prepare(
-    `SELECT cp.audience AS audience, (cr.attendee_id % 2) AS odd, COUNT(*) AS sent,
-            SUM(EXISTS (SELECT 1 FROM payment_orders o WHERE o.attendee_id = cr.attendee_id AND o.created_at >= cr.sent_at)) AS started,
-            SUM(EXISTS (SELECT 1 FROM payment_orders o WHERE o.attendee_id = cr.attendee_id AND o.status = 'paid' AND o.paid_at >= cr.sent_at)) AS paid
-       FROM campaign_recipients cr JOIN campaigns cp ON cp.id = cr.campaign_id
-      WHERE cp.kind = 'upgrade' AND cr.status = 'sent' AND cr.attendee_id IS NOT NULL
-      GROUP BY 1, 2 ORDER BY 1, 2`).all().catch(() => ({ results: [] })) : { results: [] }
+  // all time: sent, opened, clicked, and started and paid after their email went.
   return {
     days: 14,
-    subjects: (subjects?.results || []).map((r: any) => ({ audience: r.audience, variant: Number(r.odd) ? 'B' : 'A',
-      sent: Number(r.sent || 0), started: Number(r.started || 0), paid: Number(r.paid || 0) })),
+    subjects: await upgradeMailStats(c),
+    marks_from: istStamp(await settingValue(c, 'upgrade_marks_from')),
     prompts: (prompts?.results || []).filter((r: any) => r.reason),
     orders: (orders?.results || []).map((r: any) => ({
       status: r.status, pass_type: r.pass_type, previous_badge: r.previous_badge, n: Number(r.n || 0), people: Number(r.people || 0),
@@ -14654,6 +14646,62 @@ const UPGRADE_NOT_YET_SQL = ` AND id NOT IN (SELECT cr.attendee_id FROM campaign
 // The upgrade email's subject test: A for an even registration number, B for odd.
 const upgradeSubjectVariant = (id: any): 'A' | 'B' => (Math.abs(Number(id) || 0) % 2 === 1 ? 'B' : 'A')
 
+// Who opened the upgrade email and who clicked its button (organiser, 28 Oct
+// 2026: "how many opened, clicked and paid"). Elastic Email's own tracking stays
+// off for every mail; this one carries a picture and a button tag of its own,
+// signed per attendee, and each is written once per person to the audit log as
+// upgrade.open / upgrade.click. A click is counted by the app once the page runs,
+// not by the link, so a mail scanner following links does not count. The first
+// send that carries them stamps app_settings 'upgrade_marks_from'; emails sent
+// before it carried neither, and are left out of opened and clicked.
+async function upgradeMarksFrom(c: any): Promise<string> {
+  return (await settingValue(c, 'upgrade_marks_from')) || '9999-12-31 00:00:00'
+}
+async function upgradeMailSig(c: any, id: any): Promise<string> {
+  const secret = attendeeSessionSecret(c) || String(c.env?.ADMIN_SECRET || '') || 'upgrade'
+  return (await hmacHexA(secret, 'upgrade-mail:' + Number(id))).slice(0, 20)
+}
+async function upgradeMailMark(c: any, action: string, id: any, sig: any) {
+  const n = Number(id)
+  if (!Number.isInteger(n) || n <= 0 || String(sig || '') !== await upgradeMailSig(c, n)) return
+  const seen = await c.env.DB.prepare("SELECT 1 FROM admin_audit WHERE entity = 'attendee' AND entity_id = ? AND action = ? LIMIT 1")
+    .bind(String(n), action).first().catch(() => null)
+  if (!seen) await audit(c, action, 'attendee', n, null, { actor: 'attendee ' + n, kind: 'attendee' })
+}
+const UPGRADE_PIXEL = Uint8Array.from(atob('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'), ch => ch.charCodeAt(0))
+app.get('/api/upgrade-open', async (c) => {
+  await upgradeMailMark(c, 'upgrade.open', c.req.query('a'), c.req.query('s'))
+  return c.body(UPGRADE_PIXEL, 200, { 'Content-Type': 'image/gif', 'Cache-Control': 'no-store, private' })
+})
+app.post('/api/upgrade-click', async (c) => {
+  const b = await c.req.json().catch(() => ({})) as any
+  await upgradeMailMark(c, 'upgrade.click', b.a, b.s)
+  return c.json({ ok: true })
+})
+
+// Per audience and subject: sent, and of those sent since the marks began, how
+// many opened (a click counts as an open: pictures are often blocked) and clicked;
+// of all sent, how many started and paid an order after their email went.
+async function upgradeMailStats(c: any): Promise<any[]> {
+  if (!(await paymentOrdersReady(c))) return []
+  const mark = (action: string) => `LEFT JOIN (SELECT entity_id, 1 AS hit FROM admin_audit WHERE entity = 'attendee' AND action = '${action}' GROUP BY entity_id)`
+  const r = await c.env.DB.prepare(
+    `SELECT cp.audience AS audience, (cr.attendee_id % 2) AS odd, COUNT(*) AS sent,
+            SUM(cr.sent_at >= ?1) AS tracked,
+            SUM(cr.sent_at >= ?1 AND (op.hit = 1 OR ck.hit = 1)) AS opened,
+            SUM(cr.sent_at >= ?1 AND ck.hit = 1) AS clicked,
+            SUM(EXISTS (SELECT 1 FROM payment_orders o WHERE o.attendee_id = cr.attendee_id AND o.created_at >= cr.sent_at)) AS started,
+            SUM(EXISTS (SELECT 1 FROM payment_orders o WHERE o.attendee_id = cr.attendee_id AND o.status = 'paid' AND o.paid_at >= cr.sent_at)) AS paid
+       FROM campaign_recipients cr JOIN campaigns cp ON cp.id = cr.campaign_id
+       ${mark('upgrade.open')} op ON op.entity_id = CAST(cr.attendee_id AS TEXT)
+       ${mark('upgrade.click')} ck ON ck.entity_id = CAST(cr.attendee_id AS TEXT)
+      WHERE cp.kind = 'upgrade' AND cr.status = 'sent' AND cr.attendee_id IS NOT NULL
+      GROUP BY 1, 2 ORDER BY 1, 2`).bind(await upgradeMarksFrom(c)).all().catch(() => ({ results: [] }))
+  return (r?.results || []).map((x: any) => ({ audience: x.audience, variant: Number(x.odd) ? 'B' : 'A',
+    sent: Number(x.sent || 0), tracked: Number(x.tracked || 0), opened: Number(x.opened || 0), clicked: Number(x.clicked || 0),
+    started: Number(x.started || 0), paid: Number(x.paid || 0) }))
+}
+
 async function upgradeOfferMail(c: any, a: any, offer: { pass: string; key: string }, preview: boolean): Promise<{ subject: string; html: string }> {
   const appUrl = (await settingValue(c, 'app_url')) || 'https://bharataiinnovation.com/app'
   let href = '#preview'
@@ -14665,6 +14713,13 @@ async function upgradeOfferMail(c: any, a: any, offer: { pass: string; key: stri
         href += '&token=' + issued.token
       }
     } catch { /* the plain link still opens the app, which asks them to sign in */ }
+  }
+  // The open picture and the button tag (upgradeMailMark). Not in a preview.
+  let pixel = ''
+  if (!preview && a.id) {
+    const sig = await upgradeMailSig(c, a.id)
+    href += `&ue=${Number(a.id)}.${sig}`
+    pixel = `<img src="${appUrl.replace(/\/app\/?$/, '')}/api/upgrade-open?a=${Number(a.id)}&amp;s=${sig}" width="1" height="1" alt="" style="display:block;border:0;width:1px;height:1px;">`
   }
   const amounts = passAmounts(offer.pass)
   const total = amounts ? rupees(amounts.total) : ''
@@ -14739,7 +14794,7 @@ async function upgradeOfferMail(c: any, a: any, offer: { pass: string; key: stri
           : `<p style="margin:14px 0 0;font-size:13px;line-height:1.6;color:#555;">Need a GST invoice in your company's name? The form asks for it. Coming with colleagues? ${GROUP_RATE_TEXT.replace(', on request.', ': write to info@bharataiinnovation.com.')}</p>`}
         <p style="margin:18px 0 0;font-size:13px;line-height:1.6;color:#555;font-style:italic;">${ps}</p>
       </div>
-    </div></body></html>`
+    </div>${pixel}</body></html>`
   // No figure in the subject (organiser, 28 Oct 2026): it carries the reason to act.
   // Two subjects, split by registration number so a resend or a retry keeps the
   // same one: even ids get A (the reason to act), odd ids get B (the organiser's
@@ -14773,6 +14828,8 @@ app.post('/api/admin/attendees/:id/send-upgrade', async (c) => {
   const mail = await upgradeOfferMail(c, a, offer, false)
   const res = await sendAdminEmail(c, a.email, mail.subject, mail.html)
   if (!res.ok) return c.json({ error: (res as any).error || 'Not sent' }, 502)
+  // The first email with the open and click marks says from when they count.
+  await c.env.DB.prepare("INSERT INTO app_settings (key, value, updated_at) VALUES ('upgrade_marks_from', datetime('now', '-1 minute'), datetime('now')) ON CONFLICT(key) DO NOTHING").run().catch(() => {})
   return c.json({ success: true, sent_to: a.email, offer: offer.pass })
 })
 
@@ -14798,7 +14855,13 @@ app.get('/api/admin/campaigns/upgrade-audiences', async (c) => {
       q.total += Number(r.total || 0); q.sent += Number(r.sent || 0); q.left += Number(r.left_to_send || 0)
       if (r.status === 'paused' && Number(r.left_to_send || 0) > 0) q.paused = true
     }
-    return c.json({ ...out, on_campaign: onCampaign, gap_seconds: await sendGapSeconds(c), window: sendWindowState().window })
+    // What came of it so far, both subjects together (upgradeMailStats).
+    const outcome: Record<string, { tracked: number, opened: number, clicked: number, paid: number }> = {}
+    for (const s of await upgradeMailStats(c)) {
+      const t = outcome[s.audience] || (outcome[s.audience] = { tracked: 0, opened: 0, clicked: 0, paid: 0 })
+      t.tracked += s.tracked; t.opened += s.opened; t.clicked += s.clicked; t.paid += s.paid
+    }
+    return c.json({ ...out, on_campaign: onCampaign, outcome, marks_from: istStamp(await settingValue(c, 'upgrade_marks_from')), gap_seconds: await sendGapSeconds(c), window: sendWindowState().window })
   } catch (e: any) {
     if (/no such table/i.test(String(e?.message || ''))) return c.json({ unavailable: true })
     throw e
@@ -21081,6 +21144,10 @@ function mainPageScript(): string {
       const emailParam = urlParams.get('email');
       pendingAction = urlParams.get('action'); // Store action before URL cleanup
       pendingPayPass = urlParams.get('pass');
+      // The upgrade email's button carries ue=<id>.<signature>: one click, counted
+      // here once the page runs, whether or not its sign-in link is still good.
+      const ueParam = (urlParams.get('ue') || '').split('.');
+      if (ueParam[1]) fetch('/api/upgrade-click', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ a: ueParam[0], s: ueParam[1] }), keepalive: true }).catch(function () {});
       // The QR on a campus panel's closing slide lands here with ?panel=&claim=.
       // Kept in localStorage rather than the URL: the person may still have to
       // sign in, and the sign-in link opens from their mail app in another tab.
@@ -29401,6 +29468,12 @@ function adminPageScript(): string {
           : q.paused ? q.left + ' still to go &middot; <span class="text-amber-300">paused: Resume is under Settings, Bulk email</span>'
           : q.left + ' still to go, about ' + (hrs < 12 ? (Math.round(hrs * 10) / 10) + ' hours' : Math.ceil(hrs / 12) + ' days') + ' more in the sending window, sent by the server on its own';
         var running = q.total ? '<div class="text-[12px] text-gray-300 mt-0.5">Already on the campaign: <strong class="text-white">' + q.sent + ' of ' + q.total + ' sent</strong> &middot; ' + left + '</div>' : '';
+        // What came of it: opened and clicked only among the emails that carried the marks.
+        var o = (d.outcome || {})[key];
+        if (o && q.sent) running += '<div class="text-[12px] text-gray-300 mt-0.5">So far: ' + (d.marks_from
+            ? '<strong class="text-white">' + o.opened + ' opened &middot; ' + o.clicked + ' clicked</strong> of the ' + o.tracked + ' sent since ' + deskEsc(d.marks_from)
+            : 'opened and clicked are counted from the next email on') +
+          ' &middot; <strong class="text-white">' + o.paid + ' paid</strong> of all ' + q.sent + ' sent</div>';
         return '<div class="flex flex-wrap items-center gap-3 py-3 border-b border-white/5">' +
           '<div class="flex-1 min-w-[180px]"><div class="text-sm text-gray-200">' + label + '</div>' + running +
             '<div class="text-[11px] text-gray-500">' + n + (q.total ? ' new since, not on it yet' : ' not sent yet') + ' &middot; offered the ' + pass + ' &middot; about ' + takes + ' of sending, one every ' + gap + 's, ' + deskEsc(d.window || '') + '</div></div>' +
@@ -29440,16 +29513,20 @@ function adminPageScript(): string {
           '<div class="text-gray-500 w-24 text-right">' + (o.status === 'paid' ? '&#8377;' + Number(o.inr || 0).toLocaleString('en-IN') : Number(o.n || 0) + ' orders') + '</div></div>';
       }).join('') || '<p class="text-gray-500 text-[12px] py-2">No orders in this time.</p>';
       var SUBJ = { A: { senior: 'A: your free pass does not guarantee entry', students: 'A: guaranteed entry at the student rate' }, B: { senior: 'B: upgrade your pass for Bharat AI Innovation', students: 'B: upgrade your pass for Bharat AI Innovation' } };
+      var pct = function (n, of) { return of ? ' <span class="text-gray-500">(' + Math.round(n * 100 / of) + '%)</span>' : ''; };
       var subjects = (d.subjects || []).map(function (s) {
         var rate = s.sent ? Math.round(s.paid * 1000 / s.sent) / 10 : 0;
         return '<div class="flex items-center gap-3 py-2 border-b border-white/5 text-[12px]"><div class="flex-1 text-gray-200">' +
           ((SUBJ[s.variant] || {})[s.audience] || deskEsc(s.variant)) + ' <span class="text-gray-500">&middot; ' + (s.audience === 'students' ? 'students' : 'senior Visitors') + '</span></div>' +
-          '<div class="text-gray-300">' + Number(s.sent) + ' sent</div><div class="text-gray-400 w-20 text-right">' + Number(s.started) + ' started</div>' +
+          '<div class="text-gray-300">' + Number(s.sent) + ' sent</div>' +
+          '<div class="text-gray-300 w-28 text-right" title="Of the ' + Number(s.tracked) + ' sent since the marks began">' + Number(s.opened) + ' opened' + pct(s.opened, s.tracked) + '</div>' +
+          '<div class="text-gray-300 w-28 text-right" title="Of the ' + Number(s.tracked) + ' sent since the marks began">' + Number(s.clicked) + ' clicked' + pct(s.clicked, s.tracked) + '</div>' +
+          '<div class="text-gray-400 w-20 text-right">' + Number(s.started) + ' started</div>' +
           '<div class="text-gray-200 font-semibold w-24 text-right">' + Number(s.paid) + ' paid (' + rate + '%)</div></div>';
       }).join('');
       el.innerHTML = '<div class="glass rounded-xl p-5 border border-white/5">' +
         (subjects ? '<h3 class="text-sm font-semibold text-white mb-1">Upgrade email: which subject sells</h3>' +
-          '<p class="text-[11px] text-gray-500 mb-2">Half the list gets each subject (even registration numbers A, odd B). Started and paid count orders made after that person&rsquo;s email went.</p>' +
+          '<p class="text-[11px] text-gray-500 mb-2">Half the list gets each subject (even registration numbers A, odd B). Started and paid count orders made after that person&rsquo;s email went. Opened and clicked count only the emails ' + (d.marks_from ? 'sent since ' + deskEsc(d.marks_from) : 'from the next one on') + ', which carry the marks; the ones before did not. Opens are approximate: Apple Mail loads every picture (too high), many work mailboxes block them (too low), and a click counts as an open. A click is counted when the app opens from the button.</p>' +
           subjects + '<div class="mb-5"></div>' : '') +
         '<h3 class="text-sm font-semibold text-white mb-1">What sells, last ' + Number(d.days || 14) + ' days</h3>' +
         '<p class="text-[11px] text-gray-500 mb-3">Where people in the app were offered a paid pass, and what was then started and paid. A door many meet and nobody pays through needs better copy or a better offer; a door few meet needs to be found.</p>' +
