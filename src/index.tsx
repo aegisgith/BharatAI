@@ -4397,6 +4397,12 @@ app.post('/api/desk/walkin', async (c) => {
     return c.json({ error: 'Already registered as ' + existing.name + ' - their pass is below.', id: existing.id, name: existing.name,
       ref: 'BHAI-2026-' + String(existing.id).padStart(5, '0'), token: await signPassToken(c, existing.id) }, 409)
   }
+  // The same person registered under another email: theirs is the pass to print.
+  const byMobile = await mobileHolder(c, 1, b.mobile)
+  if (byMobile) {
+    return c.json({ error: 'That mobile is already registered as ' + byMobile.name + ' (' + byMobile.email + ') - their pass is below.', id: byMobile.id, name: byMobile.name,
+      ref: 'BHAI-2026-' + String(byMobile.id).padStart(5, '0'), token: await signPassToken(c, byMobile.id) }, 409)
+  }
   const cols = await attendeeColumns(c)
   const row: Record<string, any> = {
     event_id: 1, name, email,
@@ -5989,17 +5995,26 @@ const maskEmail = (email: string): string => {
   return user.slice(0, Math.min(2, user.length - 1)) + '•••@' + domain
 }
 
-// The email already holding this mobile in the event, or null. Every row is read
-// rather than matched in SQL because mobiles are stored as typed (spaces, dashes,
-// +91, a leading 0), and a few thousand short rows cost nothing.
-async function mobileRegisteredTo(c: any, eventId: any, mobile: unknown): Promise<string | null> {
+// The attendee already holding this mobile in the event (other than exceptId), or
+// null. Every row is read rather than matched in SQL because mobiles are stored as
+// typed (spaces, dashes, +91, a leading 0), and a few thousand short rows cost
+// nothing.
+async function mobileHolder(c: any, eventId: any, mobile: unknown, exceptId: any = null): Promise<{ id: number; name: string; email: string } | null> {
   const key = mobileKey(mobile)
   if (!key) return null
   const { results } = await c.env.DB.prepare(
-    "SELECT email, mobile FROM attendees WHERE event_id = ? AND mobile IS NOT NULL AND mobile != ''"
+    "SELECT id, name, email, mobile FROM attendees WHERE event_id = ? AND mobile IS NOT NULL AND mobile != ''"
   ).bind(eventId).all() as any
-  const hit = (results || []).find((r: any) => mobileKey(r.mobile) === key)
-  return hit ? String(hit.email || '') : null
+  const hit = (results || []).find((r: any) => mobileKey(r.mobile) === key && String(r.id) !== String(exceptId))
+  return hit ? { id: Number(hit.id), name: String(hit.name || ''), email: String(hit.email || '') } : null
+}
+
+// An edit only answers for a number it changes: rows that already shared one before
+// 28 Oct must still be able to save the rest of their profile.
+async function mobileChangeHolder(c: any, id: any, mobile: unknown) {
+  const row = await c.env.DB.prepare('SELECT event_id, mobile FROM attendees WHERE id = ?').bind(id).first() as any
+  if (!row || mobileKey(mobile) === mobileKey(row.mobile)) return null
+  return mobileHolder(c, row.event_id, mobile, id)
 }
 
 const mobileTakenReply = (email: string) => {
@@ -6036,12 +6051,12 @@ app.post('/api/events/:id/attendees/register', async (c) => {
     }
     // error carries the sentence (every caller shows .error or .message), code the
     // machine word for the forms that add a sign-in link.
-    const holder = await mobileRegisteredTo(c, eventId, mobile)
-    if (holder !== null) {
-      await audit(c, 'register.mobile_taken', 'attendee', null,
-        { email: normalizedEmail, holder, source: sanitizeRegistrationSource(registration_source) || 'networking_app' },
+    const holder = await mobileHolder(c, eventId, mobile)
+    if (holder) {
+      await audit(c, 'register.mobile_taken', 'attendee', holder.id,
+        { email: normalizedEmail, holder: holder.email, source: sanitizeRegistrationSource(registration_source) || 'networking_app' },
         { actor: 'public registration', kind: 'public' })
-      return c.json(mobileTakenReply(holder), 409)
+      return c.json(mobileTakenReply(holder.email), 409)
     }
   }
 
@@ -6480,8 +6495,8 @@ app.post('/api/external/register', async (c) => {
   const knownEmail = await c.env.DB.prepare('SELECT id FROM attendees WHERE event_id = ? AND email = ?')
     .bind(eventId, normalizedEmail).first()
   if (!knownEmail) {
-    const holder = await mobileRegisteredTo(c, eventId, phone)
-    if (holder !== null) return c.json(mobileTakenReply(holder), 409)
+    const holder = await mobileHolder(c, eventId, phone)
+    if (holder) return c.json(mobileTakenReply(holder.email), 409)
   }
 
   try {
@@ -10884,6 +10899,10 @@ app.put('/api/attendees/:id/profile', async (c) => {
   const denied = await requireSelf(c, id); if (denied) return denied
   const body = await c.req.json()
   const { city, industry } = body
+  if (body.mobile !== undefined) {
+    const holder = await mobileChangeHolder(c, id, body.mobile)
+    if (holder) return c.json({ error: 'That mobile number is already registered to another attendee (' + maskEmail(holder.email) + '). Please use your own number.', code: 'mobile_registered' }, 409)
+  }
 
   // Patch, not replace. The arrival prompt used to send {...currentUser, arrival_time}
   // - whatever this browser had cached - and the statement wrote all eleven text
@@ -11512,6 +11531,10 @@ app.put('/api/admin/attendees/:id', async (c) => {
   // country or registration_date - blanked all three on an attendee who had them.
   // Sending a key with an empty value still clears that one field, so an admin can
   // deliberately empty a cell as before.
+  if ('mobile' in b) {
+    const holder = await mobileChangeHolder(c, id, b.mobile)
+    if (holder) return c.json({ error: 'That mobile is already on ' + holder.name + ' (' + holder.email + ', #' + holder.id + '). One mobile, one attendee: merge or correct that row first.' }, 409)
+  }
   const cols = await attendeeColumns(c)
   const updates: string[] = []
   const values: any[] = []
@@ -11568,6 +11591,10 @@ app.patch('/api/admin/attendees/:id', async (c) => {
     }
   }
   if (updates.length === 0) return c.json({ error: 'No valid fields to update' }, 400)
+  if ('mobile' in written) {
+    const holder = await mobileChangeHolder(c, id, written.mobile)
+    if (holder) return c.json({ error: 'That mobile is already on ' + holder.name + ' (' + holder.email + ', #' + holder.id + ').' }, 409)
+  }
   const before = await c.env.DB.prepare(`SELECT ${Object.keys(written).join(', ')} FROM attendees WHERE id = ?`).bind(id).first()
   values.push(id)
   await c.env.DB.prepare(`UPDATE attendees SET ${updates.join(', ')} WHERE id = ?`).bind(...values).run()
@@ -11606,6 +11633,8 @@ app.post('/api/admin/attendees', async (c) => {
   const { event_id, name, email, company, badge_type } = body
   if (!name || !email) return c.json({ error: 'Name and email are required' }, 400)
   const normalizedEmail = email.trim().toLowerCase()
+  const holder = await mobileHolder(c, event_id, body.mobile)
+  if (holder) return c.json({ error: 'That mobile is already on ' + holder.name + ' (' + holder.email + ', #' + holder.id + '). Look them up instead, or leave the mobile empty.' }, 409)
 
   // Built from the same field list as the edit paths and intersected with the real
   // schema, so a column the migrations never added cannot fail the whole insert -
@@ -11758,6 +11787,14 @@ app.post('/api/admin/attendees/bulk', async (c) => {
 
   const results = { imported: 0, skipped: 0, errors: [] as string[] }
 
+  // One mobile, one attendee: numbers already on the list, and a number repeated
+  // further down the same sheet, are skipped like a repeated email.
+  const { results: held } = await c.env.DB.prepare(
+    "SELECT email, mobile FROM attendees WHERE event_id = ? AND mobile IS NOT NULL AND mobile != ''"
+  ).bind(event_id).all() as any
+  const mobiles = new Map<string, string>()
+  for (const r of (held || [])) { const k = mobileKey(r.mobile); if (k && !mobiles.has(k)) mobiles.set(k, String(r.email || '')) }
+
   for (const a of attendees) {
     if (!a.name || !a.email) {
       results.errors.push(`Row missing name or email: ${a.name || '?'} / ${a.email || '?'}`)
@@ -11765,6 +11802,12 @@ app.post('/api/admin/attendees/bulk', async (c) => {
       continue
     }
     const email = a.email.trim().toLowerCase()
+    const mk = mobileKey(a.mobile)
+    if (mk && mobiles.has(mk) && mobiles.get(mk) !== email) {
+      results.errors.push(`Duplicate mobile: ${email} (${String(a.mobile).trim()} is already on ${mobiles.get(mk)})`)
+      results.skipped++
+      continue
+    }
     try {
       // city, country and industry are parsed out of the CSV by the uploader but were
       // never in this statement, so every bulk-imported attendee landed with those
@@ -11790,6 +11833,7 @@ app.post('/api/admin/attendees/bulk', async (c) => {
         a.registration_date?.trim() || new Date().toISOString().slice(0, 19).replace('T', ' ')
       ).run()
       results.imported++
+      if (mk) mobiles.set(mk, email)
     } catch (e: any) {
       if (e.message?.includes('UNIQUE')) {
         results.errors.push(`Duplicate email: ${email}`)
@@ -13991,12 +14035,103 @@ app.post('/api/admin/innovation-talks/reorder', async (c) => {
   return c.json({ success: true })
 })
 
-// Admin: Find suspected duplicate attendees
-app.get('/api/admin/events/:id/attendees/duplicates', async (c) => {
-  const eventId = c.req.param('id')
-  const { results: attendees } = await c.env.DB.prepare(
-    'SELECT id, name, email, company, job_title, badge_type, mobile, rsvp_status, notified_at, last_login_at FROM attendees WHERE event_id = ? ORDER BY name'
-  ).bind(eventId).all() as any
+// ==================== DUPLICATES AND MERGING ====================
+//
+// A duplicate is first of all one mobile on two rows (email is unique per event).
+// Until 28 Oct 2026 the finder mixed that with "similar names", so the badge read
+// 214 groups when 111 were the same number, and its only remedy was Delete, which
+// left a duplicate's payment orders, invoices and connections pointing at nobody.
+//
+// A same-mobile group is "certain", and merged by Merge all, only when every name
+// is the same person's (Imad / Imaad Jaweed, Ritesh / Ritesh D Parekh), every row
+// is on a public pass and at most one row holds a payment. Production had family
+// members and colleagues sharing one number (husband and wife, two people on an
+// office line) and the organiser's own team: those wait for a person to look.
+// Similar names on different numbers are listed as a hint only.
+const DUP_MERGEABLE_PASSES = ['Visitor Pass', 'Delegate Pass', 'Premium Delegate Pass', 'VIP Pass', 'Academic Pass']
+
+const personTokens = (name: unknown): string[] =>
+  String(name || '').toLowerCase()
+    .replace(/\b(dr|prof|mr|mrs|ms|shri|smt|col|capt)\b\.?/g, ' ')
+    .replace(/[^a-z\s]/g, ' ')
+    .split(/\s+/).filter(t => t.length > 1)
+
+const editDistance = (a: string, b: string): number => {
+  const d = Array.from({ length: b.length + 1 }, (_, j) => j)
+  for (let i = 1; i <= a.length; i++) {
+    let prev = d[0]; d[0] = i
+    for (let j = 1; j <= b.length; j++) {
+      const cur = d[j]
+      d[j] = Math.min(d[j] + 1, d[j - 1] + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1))
+      prev = cur
+    }
+  }
+  return d[b.length]
+}
+
+// The first names agree and every word of the shorter name appears in the longer
+// one, allowing one typo in a word of four letters or more. "Vaibhav" and "Vaibhav
+// Punjabi" are one person; "Jitendra Jagtap" and "Archana Jitendra Jagtap" are not
+// (a wife's middle name is often her husband's first name).
+function samePerson(a: unknown, b: unknown): boolean {
+  const ta = personTokens(a), tb = personTokens(b)
+  if (!ta.length || !tb.length) return false
+  const near = (t: string, u: string) => t === u || (t.length >= 4 && u.length >= 4 && editDistance(t, u) <= 1)
+  if (!near(ta[0], tb[0])) return false
+  const [short, long] = ta.length <= tb.length ? [ta, tb] : [tb, ta]
+  return short.every(t => long.some(u => near(t, u)))
+}
+
+const paidHolder = (r: any): boolean =>
+  (PAID_TIERS.includes(String(r.badge_type || '')) && ['paid', 'waived'].includes(String(r.payment_status || ''))) ||
+  Number(r.orders_paid || 0) > 0 || Number(r.invoices || 0) > 0
+
+// The row to keep: the one holding a payment, then an order, a check-in, the pass
+// they downloaded (its QR carries that id), the most links, then the oldest.
+const keeperScore = (r: any): number =>
+  (paidHolder(r) ? 1e7 : 0) + Number(r.orders || 0) * 1e5 + (r.checked_in_at ? 1e4 : 0) +
+  (r.pass_downloaded_at ? 1e3 : 0) + Math.min(99, Number(r.links || 0)) * 10 + (r.last_login_at ? 5 : 0)
+
+async function findDuplicateGroups(c: any, eventId: any) {
+  const { results } = await c.env.DB.prepare('SELECT * FROM attendees WHERE event_id = ? ORDER BY name').bind(eventId).all() as any
+  const counts = async (sql: string, args: any[]) => {
+    const m = new Map<number, any>()
+    try { for (const r of ((await c.env.DB.prepare(sql).bind(...args).all()).results || []) as any[]) m.set(Number(r.id), r) } catch { /* table not there */ }
+    return m
+  }
+  const orders = await counts("SELECT attendee_id id, count(*) n, sum(CASE WHEN status = 'paid' THEN 1 ELSE 0 END) paid FROM payment_orders WHERE event_id = ? GROUP BY attendee_id", [eventId])
+  const invoices = await counts('SELECT attendee_id id, count(*) n FROM invoices WHERE attendee_id IN (SELECT id FROM attendees WHERE event_id = ?) GROUP BY attendee_id', [eventId])
+  const links = await counts('SELECT id, count(*) n FROM (SELECT from_attendee_id id FROM connections WHERE event_id = ? UNION ALL SELECT to_attendee_id id FROM connections WHERE event_id = ?) GROUP BY id', [eventId, eventId])
+  const attendees = ((results || []) as any[]).map(a => ({
+    id: a.id, name: a.name, email: a.email, company: a.company, job_title: a.job_title, badge_type: a.badge_type,
+    payment_status: a.payment_status, mobile: a.mobile, rsvp_status: a.rsvp_status, notified_at: a.notified_at,
+    last_login_at: a.last_login_at, pass_downloaded_at: a.pass_downloaded_at, checked_in_at: a.checked_in_at,
+    registration_date: a.registration_date, registration_source: a.registration_source,
+    orders: Number(orders.get(Number(a.id))?.n || 0), orders_paid: Number(orders.get(Number(a.id))?.paid || 0),
+    invoices: Number(invoices.get(Number(a.id))?.n || 0), links: Number(links.get(Number(a.id))?.n || 0),
+  }))
+
+  const groups: any[] = []
+  const used = new Set<number>()
+  const byMobile = new Map<string, any[]>()
+  for (const a of attendees) {
+    const k = mobileKey(a.mobile)
+    if (!k) continue
+    if (!byMobile.has(k)) byMobile.set(k, [])
+    byMobile.get(k)!.push(a)
+  }
+  for (const list of byMobile.values()) {
+    if (list.length < 2) continue
+    list.sort((x, y) => keeperScore(y) - keeperScore(x) || Number(x.id) - Number(y.id))
+    const [keep, ...rest] = list
+    const same = rest.every(r => samePerson(keep.name, r.name))
+    const special = list.some(r => !DUP_MERGEABLE_PASSES.includes(String(r.badge_type || '')))
+    const paidRows = list.filter(paidHolder).length
+    const review = !same ? 'Different names on one mobile: family or colleagues?' : special ? 'A team or special pass is in this group'
+      : paidRows > 1 ? 'More than one row holds a payment' : ''
+    groups.push({ reason: 'mobile', certain: !review, review, primary: keep, duplicates: rest, count: list.length })
+    list.forEach(r => used.add(r.id))
+  }
 
   // Normalize name for comparison: lowercase, remove titles, trim
   function normalizeName(name: string): string {
@@ -14037,23 +14172,15 @@ app.get('/api/admin/events/:id/attendees/duplicates', async (c) => {
     return matches / maxLen
   }
 
-  const groups: any[] = []
-  const used = new Set<number>()
-
+  // Similar names on different numbers: a hint, never merged in bulk.
   for (let i = 0; i < attendees.length; i++) {
     if (used.has(attendees[i].id)) continue
     const dupes: any[] = []
 
     for (let j = i + 1; j < attendees.length; j++) {
       if (used.has(attendees[j].id)) continue
-
-      const sim = nameSimilarity(attendees[i].name, attendees[j].name)
-
-      // Also check if same mobile (non-empty)
-      const sameMobile = attendees[i].mobile && attendees[j].mobile &&
-        attendees[i].mobile.replace(/\D/g, '').slice(-10) === attendees[j].mobile.replace(/\D/g, '').slice(-10)
-
-      if (sim >= 0.6 || sameMobile) {
+      const sim = nameSimilarity(String(attendees[i].name || ''), String(attendees[j].name || ''))
+      if (sim >= 0.6) {
         dupes.push({ ...attendees[j], similarity: Math.round(sim * 100) })
         used.add(attendees[j].id)
       }
@@ -14061,18 +14188,110 @@ app.get('/api/admin/events/:id/attendees/duplicates', async (c) => {
 
     if (dupes.length > 0) {
       used.add(attendees[i].id)
-      groups.push({
-        primary: attendees[i],
-        duplicates: dupes,
-        count: dupes.length + 1
-      })
+      const list = [attendees[i], ...dupes].sort((x, y) => keeperScore(y) - keeperScore(x) || Number(x.id) - Number(y.id))
+      groups.push({ reason: 'name', certain: false, review: 'Similar names, different mobiles', primary: list[0], duplicates: list.slice(1), count: list.length })
     }
   }
 
-  // Sort by group size descending
-  groups.sort((a: any, b: any) => b.count - a.count)
+  // Same mobile first, the mergeable ones on top; then similar names.
+  const rank = (g: any) => (g.reason === 'mobile' ? 0 : 2) + (g.certain ? 0 : 1)
+  groups.sort((a: any, b: any) => rank(a) - rank(b) || b.count - a.count)
 
-  return c.json({ groups, totalGroups: groups.length, totalDuplicates: groups.reduce((s: number, g: any) => s + g.duplicates.length, 0) })
+  const mobileGroups = groups.filter(g => g.reason === 'mobile').length
+  return {
+    groups, totalGroups: groups.length, totalDuplicates: groups.reduce((s: number, g: any) => s + g.duplicates.length, 0),
+    mobileGroups, certainGroups: groups.filter(g => g.certain).length, nameGroups: groups.length - mobileGroups,
+  }
+}
+
+// Admin: Find suspected duplicate attendees
+app.get('/api/admin/events/:id/attendees/duplicates', async (c) => {
+  return c.json(await findDuplicateGroups(c, c.req.param('id')))
+})
+
+// Every table that points at an attendee, and whether a pair of rows there can
+// collide (a unique key including the person): those move with OR IGNORE and the
+// leftovers are dropped, since the kept row already has the same thing.
+const ATTENDEE_LINKS: [string, string, boolean][] = [
+  ['payment_orders', 'attendee_id', false], ['invoices', 'attendee_id', false],
+  ['exhibitors', 'attendee_id', false], ['booth_requests', 'attendee_id', false],
+  ['booth_visits', 'attendee_id', false], ['room_bookings', 'attendee_id', false],
+  ['photo_flags', 'attendee_id', false],
+  ['messages', 'sender_id', false], ['messages', 'receiver_id', false],
+  ['meetings', 'requester_id', false], ['meetings', 'requestee_id', false],
+  ['panel_registrations', 'attendee_id', true], ['workshop_seats', 'attendee_id', true],
+  ['award_votes', 'attendee_id', true], ['report_downloads', 'attendee_id', true],
+  ['mp_companies', 'attendee_id', true], ['campaign_recipients', 'attendee_id', true],
+  ['connections', 'from_attendee_id', true], ['connections', 'to_attendee_id', true],
+]
+// Profile fields the kept row takes from the other when its own is empty.
+const MERGE_FILL_FIELDS = ['company', 'job_title', 'city', 'industry', 'linkedin_url', 'twitter_url', 'website_url',
+  'bio', 'interests', 'avatar_url', 'mobile', 'networking_goals', 'arrival_time', 'rsvp_status', 'rsvp_at', 'pass_downloaded_at']
+
+// Folds one attendee into another in a single batch (all or nothing): links move,
+// empty fields are filled, the folded row is logged in full and deleted.
+async function mergeAttendeeInto(c: any, loseId: any, keepId: any): Promise<{ ok: true } | { ok: false; error: string; status: number }> {
+  if (String(loseId) === String(keepId)) return { ok: false, error: 'Pick two different attendees.', status: 400 }
+  const lose = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(loseId).first() as any
+  const keep = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(keepId).first() as any
+  if (!lose || !keep) return { ok: false, error: 'One of the two attendees no longer exists. Refresh the list.', status: 404 }
+  if (String(lose.event_id) !== String(keep.event_id)) return { ok: false, error: 'Those two are registered for different events.', status: 400 }
+  const tables = new Set(((await c.env.DB.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all()).results || []).map((r: any) => r.name))
+  const payments = async (id: any) => {
+    let n = 0
+    if (tables.has('payment_orders')) n += Number((await c.env.DB.prepare("SELECT count(*) n FROM payment_orders WHERE attendee_id = ? AND status = 'paid'").bind(id).first() as any)?.n || 0)
+    if (tables.has('invoices')) n += Number((await c.env.DB.prepare('SELECT count(*) n FROM invoices WHERE attendee_id = ?').bind(id).first() as any)?.n || 0)
+    return n
+  }
+  if (paidHolder({ ...lose, orders_paid: await payments(lose.id) }) && !paidHolder({ ...keep, orders_paid: await payments(keep.id) })) {
+    return { ok: false, error: '#' + lose.id + ' holds the paid pass. Keep #' + lose.id + ' and merge #' + keep.id + ' into it instead.', status: 409 }
+  }
+
+  const cols = await attendeeColumns(c)
+  const fill = MERGE_FILL_FIELDS.filter(f => cols.has(f) && String(lose[f] ?? '').trim() !== '' && String(keep[f] ?? '').trim() === '')
+  const stmts: any[] = []
+  if (fill.length) {
+    stmts.push(c.env.DB.prepare(`UPDATE attendees SET ${fill.map(f => `${f} = ?`).join(', ')} WHERE id = ?`).bind(...fill.map(f => lose[f]), keep.id))
+  }
+  for (const [t, col, unique] of ATTENDEE_LINKS) {
+    if (!tables.has(t)) continue
+    stmts.push(c.env.DB.prepare(`UPDATE ${unique ? 'OR IGNORE ' : ''}${t} SET ${col} = ? WHERE ${col} = ?`).bind(keep.id, lose.id))
+    if (unique) stmts.push(c.env.DB.prepare(`DELETE FROM ${t} WHERE ${col} = ?`).bind(lose.id))
+  }
+  if (tables.has('connections')) stmts.push(c.env.DB.prepare('DELETE FROM connections WHERE from_attendee_id = ? AND to_attendee_id = ?').bind(keep.id, keep.id))
+  stmts.push(c.env.DB.prepare('DELETE FROM attendees WHERE id = ?').bind(lose.id))
+  try {
+    await c.env.DB.batch(stmts)
+  } catch (e: any) {
+    return { ok: false, error: 'Nothing was changed: ' + String(e?.message || e).slice(0, 200), status: 500 }
+  }
+  const snapshot: Record<string, any> = {}
+  for (const k of ['id', 'name', 'email', 'mobile', 'company', 'job_title', 'badge_type', 'payment_status', 'registration_date', 'registration_source', 'last_login_at', 'pass_downloaded_at']) snapshot[k] = lose[k] ?? null
+  await audit(c, 'attendee.merge', 'attendee', keep.id, { into: { id: keep.id, email: keep.email }, merged: snapshot, filled: fill })
+  return { ok: true }
+}
+
+app.post('/api/admin/attendees/:id/merge-into/:keep', async (c) => {
+  const r = await mergeAttendeeInto(c, c.req.param('id'), c.req.param('keep'))
+  if (!r.ok) return c.json({ error: r.error }, r.status as any)
+  return c.json({ success: true, kept: Number(c.req.param('keep')) })
+})
+
+// Merge every certain group, thirty at a time so one request stays well inside the
+// Worker's limits; the page calls again while something is left and moving.
+app.post('/api/admin/events/:id/attendees/merge-certain', async (c) => {
+  const todo = (await findDuplicateGroups(c, c.req.param('id'))).groups.filter((g: any) => g.certain)
+  const slice = todo.slice(0, 30)
+  let merged = 0
+  const failed: any[] = []
+  for (const g of slice) {
+    for (const d of g.duplicates) {
+      const r = await mergeAttendeeInto(c, d.id, g.primary.id)
+      if (r.ok) merged++
+      else failed.push({ id: d.id, keep: g.primary.id, error: r.error })
+    }
+  }
+  return c.json({ success: true, merged, groups: slice.length, remaining: todo.length - slice.length, failed })
 })
 
 // Admin: App Settings CRUD
@@ -27475,6 +27694,10 @@ function mainPageScript(): string {
           twitter_url: document.getElementById('edit-twitter').value,
           website_url: document.getElementById('edit-website').value,
         });
+        // A refusal (a mobile already on another attendee) must not become the
+        // signed-in user.
+        const refused = apiFailed(updated);
+        if (refused || !updated || !updated.id) { showToast(refused || 'Failed to update profile', 'error'); return; }
         currentUser = updated;
         localStorage.setItem('agba_user', JSON.stringify(currentUser));
         // Goals change who should be on the rail, so redraw it rather than
@@ -30145,7 +30368,8 @@ function adminPageScript(): string {
             \${attTruncated ? '<span class="text-xs text-amber-300 ml-1" title="One response can only carry so much. This page is working from the first ' + attendees.length + ' rows; Export CSV always covers everyone."><i class="fas fa-scissors mr-1"></i>showing ' + attendees.length + '</span>' + (attTruncatedBy === 'rows'
               ? '<button onclick="attLoadAll()" class="text-[10px] px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-200 hover:bg-amber-500/30 ml-1">Load all ' + attTotal + '</button>'
               : '<button onclick="exportAttendeesCsv(event)" class="text-[10px] px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-200 hover:bg-amber-500/30 ml-1" title="A single response cannot carry all ' + attTotal + ' rows. The CSV can.">Export all ' + attTotal + '</button>') : ''}
-            \${Object.keys(dupMap).length > 0 ? '<span class="text-xs text-red-400 ml-1"><i class="fas fa-exclamation-triangle mr-0.5"></i>' + (dupData.totalGroups||0) + ' dup groups (' + Object.keys(dupMap).length + ' entries)</span>' : ''}
+            \${(dupData.mobileGroups||0) > 0 ? '<button onclick="findDuplicates()" class="text-xs text-red-500 ml-1 hover:underline"><i class="fas fa-exclamation-triangle mr-0.5"></i>' + dupData.mobileGroups + ' same-mobile duplicates' + ((dupData.certainGroups||0) > 0 ? ' (' + dupData.certainGroups + ' ready to merge)' : '') + '</button>' : ''}
+            \${(dupData.nameGroups||0) > 0 ? '<span class="text-xs text-gray-400 ml-1">' + dupData.nameGroups + ' similar names</span>' : ''}
             \${attSortCol ? '<span class="text-xs text-indigo-400 ml-2"><i class="fas fa-sort-amount-'+(attSortDir==='asc'?'up':'down')+' mr-0.5"></i>Sorted by '+attSortCol.replace('_',' ')+'</span><button onclick="resetAttSort()" class="text-[10px] text-gray-500 hover:text-white ml-1" title="Reset sort"><i class="fas fa-times-circle"></i></button>' : ''}
           </div>
           <div class="flex gap-2 flex-wrap">
@@ -31685,6 +31909,7 @@ function adminPageScript(): string {
       document.getElementById('ea-industry').value = a.industry || '';
       document.getElementById('edit-att-form').onsubmit = async e => {
         e.preventDefault();
+        try {
         await api.put('/api/admin/attendees/'+a.id, {
           city: document.getElementById('ea-city').value,
           country: document.getElementById('ea-country').value,
@@ -31705,6 +31930,7 @@ function adminPageScript(): string {
           twitter_url: document.getElementById('ea-twitter').value,
           website_url: document.getElementById('ea-website').value,
         });
+        } catch (err) { toast(err.message || 'Could not save', 'error'); return; }
         closeModal(); toast('Attendee updated!', 'success'); loadAdminAttendees();
       };
 
@@ -32537,17 +32763,22 @@ function adminPageScript(): string {
         let html = \`
           <div class="flex items-center justify-between mb-4">
             <h3 class="text-lg font-bold"><i class="fas fa-user-friends text-purple-400 mr-2"></i>Suspected Duplicates</h3>
-            <span class="text-xs text-gray-400">\${data.totalGroups} groups · \${data.totalDuplicates} potential duplicates</span>
+            <span class="text-xs text-gray-400">\${data.mobileGroups || 0} same mobile · \${data.nameGroups || 0} similar names</span>
           </div>
-          <p class="text-xs text-gray-500 mb-4">These attendees have similar names but different emails. Review and delete duplicates as needed.</p>
+          <p class="text-xs text-gray-500 mb-3">One mobile on two rows is one person registered twice. <strong>Merge</strong> keeps the row marked Keep (the one with the payment, the downloaded pass or the most activity), moves the other row's orders, invoices, connections, messages and panel sign-ups onto it, fills its empty profile fields, and deletes the other row. Every merge is in the audit log. Groups marked <em>Check</em> may be two different people sharing a phone: merge only if they are one person.</p>
+          \${(data.certainGroups || 0) > 0 ? '<button id="merge-certain-btn" onclick="mergeCertainDuplicates(' + data.certainGroups + ')" class="w-full mb-4 py-2.5 rounded-xl text-sm font-semibold bg-green-600 hover:bg-green-500 text-white transition"><i class="fas fa-user-check mr-1.5"></i>Merge all ' + data.certainGroups + ' certain duplicates (same mobile, same name)</button>' : ''}
           <div class="space-y-4 max-h-[60vh] overflow-y-auto scroll-hide pr-1">
         \`;
 
         data.groups.forEach((g, gi) => {
           const all = [g.primary, ...g.duplicates];
+          const chip = g.certain
+            ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-green-500/20 text-green-600">Same mobile · same person</span>'
+            : '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold ' + (g.reason === 'mobile' ? 'bg-amber-500/20 text-amber-600' : 'bg-gray-500/20 text-gray-500') + '">Check: ' + escH(g.review || '') + '</span>';
           html += \`<div class="glass rounded-xl p-4 border border-purple-500/20">
-            <div class="flex items-center gap-2 mb-3">
+            <div class="flex items-center gap-2 mb-3 flex-wrap">
               <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/20 text-purple-300">Group \${gi+1}</span>
+              \${chip}
               <span class="text-xs text-gray-500">\${all.length} entries</span>
             </div>
             <div class="overflow-x-auto">
@@ -32575,8 +32806,8 @@ function adminPageScript(): string {
               <td class="py-1.5 px-2 text-gray-400">\${escH(a.company || '-')}</td>
               <td class="py-1.5 px-2"><span class="px-1.5 py-0.5 rounded text-[10px] \${getBadgeClass(a.badge_type)}">\${escH(a.badge_type || '')}</span></td>
               <td class="py-1.5 px-2">\${a.rsvp_status ? '<span class="text-green-400">'+escH(a.rsvp_status)+'</span>' : '<span class="text-gray-600">—</span>'}</td>
-              <td class="py-1.5 px-2">\${ai === 0 ? '<span class="text-purple-300 font-semibold">Primary</span>' : '<span class="text-amber-400">'+sim+'</span>'}</td>
-              <td class="py-1.5 px-2"><button onclick="deleteDuplicate(\${Number(a.id)}, this)" class="px-2 py-1 rounded text-[10px] font-medium \${hasActivity ? 'bg-amber-500/20 text-amber-300 hover:bg-amber-500/30' : 'bg-red-500/20 text-red-400 hover:bg-red-500/30'} transition" title="\${hasActivity ? 'Has activity — review before deleting' : 'No activity — safe to delete'}">\${hasActivity ? '<i class="fas fa-exclamation-triangle mr-1"></i>' : ''}<i class="fas fa-trash"></i> Delete</button></td>
+              <td class="py-1.5 px-2">\${ai === 0 ? '<span class="text-purple-300 font-semibold">Keep</span>' : (g.reason === 'mobile' ? '<span class="text-amber-500">same mobile</span>' : '<span class="text-amber-400">'+sim+'</span>')}</td>
+              <td class="py-1.5 px-2">\${ai === 0 ? '' : '<button onclick="mergeDuplicate(' + Number(a.id) + ', ' + Number(g.primary.id) + ', this)" class="px-2 py-1 mr-1 rounded text-[10px] font-medium bg-green-500/20 text-green-600 hover:bg-green-500/30 transition" title="Fold this row into #' + Number(g.primary.id) + '"><i class="fas fa-user-check mr-1"></i>Merge into #' + Number(g.primary.id) + '</button>'}<button onclick="deleteDuplicate(\${Number(a.id)}, this)" class="px-2 py-1 rounded text-[10px] font-medium \${hasActivity ? 'bg-amber-500/20 text-amber-300 hover:bg-amber-500/30' : 'bg-red-500/20 text-red-400 hover:bg-red-500/30'} transition" title="\${hasActivity ? 'Has activity — review before deleting' : 'No activity — safe to delete'}">\${hasActivity ? '<i class="fas fa-exclamation-triangle mr-1"></i>' : ''}<i class="fas fa-trash"></i> Delete</button></td>
             </tr>\`;
           });
           html += \`</tbody></table></div></div>\`;
@@ -32598,6 +32829,39 @@ function adminPageScript(): string {
         btnEl.closest('tr').remove();
         toast('Deleted attendee #' + id, 'success');
       } catch(e) { toast('Failed to delete', 'error'); }
+    }
+
+    async function mergeDuplicate(id, keepId, btnEl) {
+      if (!confirm('Merge #' + id + ' into #' + keepId + '?\\n\\nIts orders, invoices, connections, messages and panel sign-ups move to #' + keepId + ', empty profile fields are filled from it, and #' + id + ' is deleted. This cannot be undone.')) return;
+      btnEl.disabled = true;
+      try {
+        await api.post('/api/admin/attendees/' + id + '/merge-into/' + keepId, {});
+        btnEl.closest('tr').remove();
+        lastDupData = null;
+        toast('Merged #' + id + ' into #' + keepId, 'success');
+      } catch(e) { btnEl.disabled = false; toast(e.message || 'Could not merge', 'error'); }
+    }
+
+    async function mergeCertainDuplicates(n) {
+      if (!confirm('Merge all ' + n + ' certain duplicate groups?\\n\\nEach group shares one mobile and one name. The row marked Keep stays; the others are folded into it and deleted. Groups marked Check are left alone. This cannot be undone.')) return;
+      const btn = document.getElementById('merge-certain-btn');
+      if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1.5"></i>Merging...'; }
+      let merged = 0, failed = [];
+      try {
+        for (let round = 0; round < 20; round++) {
+          const r = await api.post('/api/admin/events/' + EID + '/attendees/merge-certain', {});
+          merged += r.merged || 0;
+          failed = failed.concat(r.failed || []);
+          if (btn) btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1.5"></i>Merged ' + merged + '...';
+          if (!r.remaining || !r.merged) break;
+        }
+        lastDupData = null;
+        toast('Merged ' + merged + ' duplicate rows' + (failed.length ? '; ' + failed.length + ' could not be merged: ' + failed[0].error : ''), failed.length ? 'error' : 'success');
+        findDuplicates();
+      } catch(e) {
+        toast((e && e.message) || 'Merge stopped', 'error');
+        if (btn) { btn.disabled = false; btn.textContent = 'Merge stopped after ' + merged + ' rows. Try again'; }
+      }
     }
 
     // ============ SESSIONS ============

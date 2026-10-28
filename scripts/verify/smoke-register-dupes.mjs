@@ -21,8 +21,8 @@ const DB = {
         return null;
       },
       async all() {
-        if (/SELECT email, mobile FROM attendees WHERE event_id = \?/.test(sql)) {
-          return { results: rows.filter(r => String(r.event_id) === String(args[0]) && r.mobile).map(r => ({ email: r.email, mobile: r.mobile })) };
+        if (/SELECT (id, name, )?email, mobile FROM attendees WHERE event_id = \?/.test(sql)) {
+          return { results: rows.filter(r => String(r.event_id) === String(args[0]) && r.mobile).map(r => ({ id: r.id, name: r.name, email: r.email, mobile: r.mobile })) };
         }
         return { results: [] };
       },
