@@ -14379,15 +14379,26 @@ async function upgradeOfferMail(c: any, a: any, offer: { pass: string; key: stri
   // and terms pages): the Academic Pass is the concessionary rate, with networking
   // and the student zone, and needs a student or faculty ID at the badge desk.
   // Workshops come only with Premium Delegate and VIP (organiser, 26 Oct 2026).
+  // Organiser, 28 Oct 2026: name every feature. The workshop is NOT in the
+  // Delegate Pass (Premium Delegate and VIP only), so it is offered below the list
+  // as the step up, never inside it.
   const lines = academic ? [
     'Guaranteed entry on both days, 20&ndash;21 November 2026, World Trade Center, Mumbai, at the student rate',
-    'Networking in the app: the full attendee directory, connection requests, and meetings you book before you arrive',
-    'The student networking zone, on top of the exhibition floor and keynotes your Visitor Pass already covers',
+    'Access to the entire conference: every keynote, panel discussion and Innovation Talk',
+    'The Bharat AI Connect networking app: the full attendee directory, connection requests, and meetings you book before you arrive',
+    'The student networking zone, on top of the exhibition floor',
   ] : [
-    'Guaranteed entry on both days, and every conference session',
-    'Lunch at the venue',
-    'The full attendee directory in the app: search everyone, start conversations and book meetings before you arrive',
+    'Guaranteed entry on both days, 20&ndash;21 November 2026, World Trade Center, Mumbai',
+    'Access to the entire conference: every keynote, panel discussion and Innovation Talk across both days',
+    'The Bharat AI Connect networking app: search everyone attending, start conversations and book 1:1 meetings before you arrive',
+    'Lunch at the venue, the conference kit and a certificate of participation',
+    'The exhibition floor and product demos',
   ]
+  const premiumHref = preview ? '#preview' : href.replace('pass=delegate', 'pass=premium')
+  const workshopBox = academic ? '' :
+    `<div style="margin:14px 0 4px;padding:14px 16px;background:#EEF8F7;border:1px solid rgba(11,122,117,0.3);border-radius:10px;">` +
+    `<p style="margin:0 0 6px;font-size:14px;line-height:1.6;color:#1E2140;"><strong>Want a hands-on workshop too?</strong> The <strong>Premium Delegate Pass</strong> (${rsPrice('Premium Delegate Pass')} + GST) is everything above plus one workshop. Seats are limited and go first come, first served.</p>` +
+    `<a href="${premiumHref}" style="font-size:13.5px;font-weight:bold;color:#0B7A75;">Get Premium Delegate &rarr;</a></div>`
   const item = (t: string) =>
     `<tr><td width="24" valign="top" style="padding:0 0 10px;color:#0f7b47;font-size:14px;">&#10003;</td>` +
     `<td valign="top" style="padding:0 0 10px;font-size:14px;line-height:1.6;color:#333;">${t}</td></tr>`
@@ -14400,6 +14411,7 @@ async function upgradeOfferMail(c: any, a: any, offer: { pass: string; key: stri
           ? 'As a student you can upgrade to the <strong>Academic Pass</strong>, the concessionary rate, with guaranteed entry:'
           : 'A <strong>Delegate Pass</strong> has guaranteed entry on both days and adds the rest:'}</p>
         <table style="width:100%;border-collapse:collapse;margin:0 0 8px;">${lines.map(item).join('')}</table>
+        ${workshopBox}
         <div style="text-align:center;margin:20px 0 8px;">
           <a href="${href}" style="display:inline-block;padding:14px 34px;background:linear-gradient(135deg,#FF6B00,#FF8C38);color:#fff;text-decoration:none;border-radius:10px;font-weight:bold;font-size:15px;">${academic ? 'Get the Academic Pass' : 'Upgrade to Delegate'}</a>
         </div>
