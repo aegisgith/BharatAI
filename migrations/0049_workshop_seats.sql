@@ -51,5 +51,5 @@ INSERT OR IGNORE INTO workshops (event_id, slug, title, speaker, summary, capaci
   (1, 'fde-workshop',
    'From Prototype to Production: Building Enterprise AI with Forward-Deployed Engineers',
    'Dr. Ashish Tendulkar, Google AI',
-   'Live coding, 60 minutes: an enterprise AI workflow built live, tested against realistic cases, and taken through what production needs.',
+   'Live coding, 90 minutes: an enterprise AI workflow built live, tested against realistic cases, and taken through what production needs.',
    100, 2);

@@ -141,6 +141,23 @@
             line-height: 1.7;
             margin-bottom: 1.5rem;
         }
+        /* The named lead on a workshop card (Agentic AI Development, 28 Oct 2026). */
+        .workshop-lead {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin: 0 0 1.25rem;
+        }
+        .workshop-lead img {
+            width: 44px;
+            height: 44px;
+            border-radius: var(--r-full);
+            object-fit: cover;
+            border: 2px solid var(--saffron);
+            flex-shrink: 0;
+        }
+        .workshop-lead span { display: block; font-size: 0.8rem; color: var(--dark-grey); line-height: 1.35; }
+        .workshop-lead strong { display: block; font-size: 0.95rem; color: var(--charcoal); }
         .workshop-meta {
             display: flex;
             gap: 1.5rem;
@@ -657,9 +674,9 @@
                     <span>Google AI</span>
                 </div>
                 <div class="session-body">
-                    <span class="workshop-badge" style="position:static;display:inline-block;">Live coding</span><span class="session-format">60 minutes</span>
+                    <span class="workshop-badge" style="position:static;display:inline-block;">Live coding</span><span class="session-format">90 minutes</span>
                     <h3>From Prototype to Production: Building Enterprise AI with Forward-Deployed Engineers</h3>
-                    <p>How do you turn a real business problem into an AI solution that can work in an enterprise? This 60-minute session introduces the Forward-Deployed Engineer (FDE) role and shows how business needs, AI engineering and enterprise integration come together. Through live coding, participants see an AI-powered workflow built, tested against realistic cases, and examined through the lens of production readiness.</p>
+                    <p>How do you turn a real business problem into an AI solution that can work in an enterprise? This 90-minute session introduces the Forward-Deployed Engineer (FDE) role and shows how business needs, AI engineering and enterprise integration come together. Through live coding, participants see an AI-powered workflow built, tested against realistic cases, and examined through the lens of production readiness.</p>
                     <h4>What you will take away</h4>
                     <ul class="session-covers">
                         <li>What a Forward-Deployed Engineer does, and how the role differs from traditional software and AI engineering.</li>
@@ -667,7 +684,7 @@
                         <li>A live-coded enterprise AI workflow that connects an LLM with data, tools and business logic.</li>
                         <li>Why testing, failure handling, security, reliability and evaluation matter beyond a working prototype.</li>
                     </ul>
-                    <h4>The 60 minutes</h4>
+                    <h4>The 90 minutes</h4>
                     <ol class="session-agenda">
                         <li><strong>The rise of the FDE</strong>What a Forward-Deployed Engineer is, why the role is emerging, and why enterprises need engineers who can connect business problems to working technology.</li>
                         <li><strong>The FDE mindset</strong>How FDEs discover the real problem, clarify requirements, define constraints, and identify what success should look like.</li>
@@ -761,10 +778,14 @@
                     <span class="workshop-badge">New</span>
                     <h3>Agentic AI Development</h3>
                     <p>Build autonomous AI agents that can reason, plan, and take actions to accomplish complex tasks.</p>
+                    <div class="workshop-lead">
+                        <img src="/images/speaker-ashish-tendulkar-panel.webp" alt="Dr. Ashish Tendulkar" width="44" height="44" loading="lazy" decoding="async">
+                        <div><span>Led by</span><strong>Dr. Ashish Tendulkar</strong><span>Lead, Google AI</span></div>
+                    </div>
                     <div class="workshop-meta">
                         <div class="meta-item">
                             <i class="fas fa-clock"></i>
-                            <span>4 Hours</span>
+                            <span>90 minutes</span>
                         </div>
                         <div class="meta-item">
                             <i class="fas fa-signal"></i>

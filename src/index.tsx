@@ -19158,7 +19158,7 @@ function mainPageHTML(): string {
                   <div class="text-[11px] text-gray-400">Google AI</div>
                 </div>
               </div>
-              <span class="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-teal-500/10 text-teal-300 mb-2">Live coding &middot; 60 minutes</span>
+              <span class="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-teal-500/10 text-teal-300 mb-2">Live coding &middot; 90 minutes</span>
               <h4 class="font-bold text-base text-white mb-2">From Prototype to Production: Building Enterprise AI with Forward-Deployed Engineers</h4>
               <p class="text-xs text-gray-400 mb-3">Watch an enterprise AI workflow built live, tested against realistic cases, and taken through what production really needs.</p>
               <span class="text-xs font-semibold text-teal-300">See the agenda <i class="fas fa-arrow-right ml-1"></i></span>
@@ -19216,6 +19216,10 @@ function mainPageHTML(): string {
                   <h3 class="font-bold text-base text-white group-hover:text-cyan-300 transition">Agentic AI Development</h3>
                   <p class="text-[11px] text-gray-500">Build autonomous AI agents that reason, plan & act</p>
                 </div>
+              </div>
+              <div class="flex items-center gap-2 mb-4">
+                <img src="/images/speaker-ashish-tendulkar-panel.webp" alt="Dr. Ashish Tendulkar" width="32" height="32" loading="lazy" class="w-8 h-8 rounded-full object-cover border-2 border-cyan-400 shrink-0">
+                <span class="text-[11px] text-gray-400">Led by <span class="font-semibold text-gray-300">Dr. Ashish Tendulkar</span>, Google AI &middot; 90 minutes</span>
               </div>
               <div class="mb-4">
                 <div class="text-xs font-semibold text-gray-400 mb-2">Topics Covered</div>
