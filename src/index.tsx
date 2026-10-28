@@ -2135,7 +2135,7 @@ async function saveBilling(c: any, attendeeId: any, b: Billing | null): Promise<
 // supply comes from the GSTIN, else Maharashtra, as a hand-raised one would.
 // Never throws: when it cannot be raised (settings missing, a clash on the
 // number) the order stays under "Paid online: invoice to raise" for a person.
-async function autoInvoiceForOrder(c: any, order: any, a: any, trackingId: string): Promise<{ invoice_no: string; url: string } | null> {
+async function autoInvoiceForOrder(c: any, order: any, a: any, trackingId: string, upgradeFrom = ''): Promise<{ invoice_no: string; url: string } | null> {
   try {
     const have = await c.env.DB.prepare('SELECT id FROM invoices WHERE order_ref = ?').bind(order.order_id).first()
     if (have) return null
@@ -2148,7 +2148,9 @@ async function autoInvoiceForOrder(c: any, order: any, a: any, trackingId: strin
       buyer_gstin: bill ? bill.gstin : '',
       buyer_address: bill ? bill.address : String(a.city || ''),
       buyer_phone: a.mobile || '',
-      item_desc: order.pass_type + ' - Bharat AI Innovation Conference & Exhibition 2026',
+      // An upgrade order carries the difference, so its invoice says what the
+      // difference was for.
+      item_desc: (upgradeFrom ? 'Upgrade from ' + upgradeFrom + ' to ' + order.pass_type : order.pass_type) + ' - Bharat AI Innovation Conference & Exhibition 2026',
       order_ref: order.order_id,
       payment_ref: trackingId ? 'CCAvenue ' + trackingId : '',
       paid_at: new Date().toISOString().slice(0, 19).replace('T', ' '),
@@ -2288,17 +2290,46 @@ async function orderFromLinkToken(c: any, token: string): Promise<any | null> {
   } catch { return null }
 }
 
+// A confirmed paid pass may move up to a dearer one for the difference between
+// the two list prices (28 Oct 2026: a confirmed Delegate who wanted the workshop
+// was refused and told to write in, and Delegate to Premium is the one step up
+// the line-up sells). Never down, never sideways. Whole rupees before GST; 0 is no.
+function upgradeStep(fromBadge: string, toPass: string): number {
+  const from = PASS_PRICES_INR[fromBadge] || 0, to = PASS_PRICES_INR[toPass] || 0
+  return from && to > from ? to - from : 0
+}
+// The paid tier this person holds and has paid for, else ''. A pending or refunded
+// one is not settled, and a Visitor Pass is 'paid' by column default (0015).
+const settledPaidTier = (a: any): string => {
+  const badge = String(a?.badge_type || '').trim()
+  return PAID_TIERS.includes(badge) && String(a?.payment_status || '').trim().toLowerCase() === 'paid' ? badge : ''
+}
+// What this buyer is charged for this pass: the list price, or, for a confirmed
+// paid pass moving up, the difference, with GST on that.
+function orderAmountsFor(a: any, passType: string): { base: number; gst: number; total: number } | null {
+  const step = upgradeStep(settledPaidTier(a), passType)
+  if (!step) return passAmounts(passType)
+  const base = step * 100
+  const gst = Math.round(base * PASS_GST_RATE / 100)
+  return { base, gst, total: base + gst }
+}
+
 // Who may start a payment. A free pass may buy any paid tier; a paid tier still
-// waiting on its payment (or refunded) may pay for it, or pick another. Anyone
-// already settled, and every pass the organisers hand out (Speaker, Exhibitor,
-// Media and so on), is told so in a sentence rather than charged a second time.
-function payRefusal(a: any): string | null {
+// waiting on its payment (or refunded) may pay for it, or pick another; a
+// confirmed one may move up for the difference. Anyone settled who asks for the
+// same or a cheaper pass, and every pass the organisers hand out (Speaker,
+// Exhibitor, Media and so on), is told so in a sentence rather than charged again.
+function payRefusal(a: any, passType = ''): string | null {
   const badge = String(a.badge_type || '').trim()
   const status = String(a.payment_status || '').trim().toLowerCase()
   if (!badge || FREE_BADGE_RE.test(badge)) return null
   if (PAID_TIERS.includes(badge)) {
-    return status === 'pending' || status === 'refunded' ? null
-      : 'Your ' + badge + ' is already confirmed, so there is nothing to pay. To change it, write to info@bharataiinnovation.com.'
+    if (status === 'pending' || status === 'refunded') return null
+    if (status === 'paid' && upgradeStep(badge, passType) > 0) return null
+    const up = PAID_TIERS.filter(p => upgradeStep(badge, p) > 0)
+    return 'Your ' + badge + ' is already confirmed, so there is nothing to pay' + (up.length
+      ? '. You can move up to ' + up.join(' or ') + ' for the difference from your pass card in the app.'
+      : '. To change it, write to info@bharataiinnovation.com.')
   }
   return 'Your pass (' + badge + ') is arranged by the organisers and cannot be changed here. Write to info@bharataiinnovation.com and we will sort it out.'
 }
@@ -2326,8 +2357,7 @@ app.post('/api/payments/ccavenue/start', async (c) => {
   if (!me) return c.json({ error: 'Please sign in again to continue.' }, 401)
   const body = await c.req.json().catch(() => ({})) as any
   const passType = String(body.pass_type || '')
-  const amounts = PAID_TIERS.includes(passType) ? passAmounts(passType) : null
-  if (!amounts) return c.json({ error: 'Choose a Delegate, Premium Delegate, VIP or Academic pass.' }, 400)
+  if (!PAID_TIERS.includes(passType) || !passAmounts(passType)) return c.json({ error: 'Choose a Delegate, Premium Delegate, VIP or Academic pass.' }, 400)
   // The GST invoice section of the form. Sent (even empty, which means an invoice
   // in their own name) it replaces what was kept; absent, as from Try again or Pay
   // now, the details given last time stand. Checked before anyone leaves for
@@ -2337,8 +2367,10 @@ app.post('/api/payments/ccavenue/start', async (c) => {
 
   const a = await c.env.DB.prepare('SELECT id, event_id, badge_type, payment_status FROM attendees WHERE id = ?').bind(me).first() as any
   if (!a) return c.json({ error: 'Please sign in again to continue.' }, 401)
-  const refused = payRefusal(a)
+  const refused = payRefusal(a, passType)
   if (refused) return c.json({ error: refused }, 409)
+  // The list price, or the difference for a confirmed pass moving up.
+  const amounts = orderAmountsFor(a, passType) as { base: number; gst: number; total: number }
 
   const recent = await c.env.DB.prepare(
     "SELECT COUNT(*) AS n FROM payment_orders WHERE attendee_id = ? AND created_at > datetime('now', '-1 hour')"
@@ -2354,6 +2386,29 @@ app.post('/api/payments/ccavenue/start', async (c) => {
     'INSERT INTO payment_orders (order_id, attendee_id, event_id, pass_type, previous_badge, base_paise, gst_paise, amount_paise) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
   ).bind(orderId, a.id, a.event_id || 1, passType, a.badge_type || '', amounts.base, amounts.gst, amounts.total).run()
   return c.json({ order_id: orderId, amount: amounts.total / 100, pay_url: '/pay/ccavenue/' + await payLinkToken(c, orderId) }, 201)
+})
+
+// Which upgrade prompts people meet in the app, so the organisers can see what
+// sells (Admin, Payments, "What sells"): one row per prompt shown, as the person,
+// in the audit log. No table, admin-only to read, and nothing is answered about
+// it. The app sends each reason and target once per sitting; this end keeps one a
+// minute per person, reason and target besides, so a loop cannot fill the log.
+const UPGRADE_PROMPT_REASONS = new Set(['welcome', 'networking', 'directory', 'agenda', 'workshop', 'vip', 'passcard', 'form'])
+const _upgradePromptLast = new Map<string, number>()
+app.post('/api/upgrade-prompt', async (c) => {
+  const me = await verifyAttendeeSession(c)
+  const body = await c.req.json().catch(() => ({})) as any
+  const reason = String(body.reason || '')
+  const target = String(body.target || '').slice(0, 80)
+  if (me && UPGRADE_PROMPT_REASONS.has(reason)) {
+    const key = me + ':' + reason + ':' + target, now = Date.now()
+    if (now - (_upgradePromptLast.get(key) || 0) > 60000) {
+      if (_upgradePromptLast.size > 5000) _upgradePromptLast.clear()
+      _upgradePromptLast.set(key, now)
+      await audit(c, 'upgrade.prompt', 'attendee', me, { reason, target, pass: String(body.pass || '').slice(0, 30) }, { actor: 'attendee ' + me, kind: 'attendee' })
+    }
+  }
+  return c.json({ ok: true })
 })
 
 const payEsc = (v: any) => String(v ?? '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch] as string))
@@ -2427,7 +2482,7 @@ app.get('/pay/ccavenue/:token', async (c) => {
 
   return c.html(payPage('Opening secure checkout',
     payH1('Taking you to the secure payment page') +
-    payP(`${payEsc(order.pass_type)} &middot; &#8377;${rupees(Number(order.amount_paise))} including GST`) +
+    payP(`${PAID_TIERS.includes(String(order.previous_badge || '')) && Number(order.base_paise) < (passAmounts(order.pass_type)?.base || 0) ? 'Upgrade to ' : ''}${payEsc(order.pass_type)} &middot; &#8377;${rupees(Number(order.amount_paise))} including GST`) +
     `<form id="f" method="post" action="${cfg.endpoint}"><input type="hidden" name="encRequest" value="${encRequest}"><input type="hidden" name="access_code" value="${payEsc(cfg.accessCode)}">` +
     `<button type="submit" style="padding:13px 24px;background:#FF6B00;color:#fff;border:0;border-radius:9px;font-size:15px;font-weight:bold;cursor:pointer;">Continue to secure payment</button>` +
     `</form><p style="margin:14px 0 0;"><a href="/app" style="font-size:13px;color:#555;">Back to the app</a></p>` +
@@ -2539,11 +2594,14 @@ async function settlePaidOrder(c: any, order: any, trackingId: string, paymentMo
   // A pass the organisers set by hand since the order was started (Speaker,
   // Exhibitor ...) is left alone: the payment is recorded and a person decides.
   const changeable = !badge || FREE_BADGE_RE.test(badge) || PAID_TIERS.includes(badge)
+  // A confirmed pass moving up: the order carried the difference, so what they
+  // have paid in all is what they had paid plus this.
+  const upgradeFrom = changeable && settledPaidTier(a) && badge !== String(order.pass_type) ? badge : ''
   if (changeable) {
     const cols = await attendeeColumns(c)
     const sets = ['badge_type = ?'], vals: any[] = [order.pass_type]
     if (cols.has('payment_status')) sets.push("payment_status = 'paid'")
-    if (cols.has('payment_amount')) { sets.push('payment_amount = ?'); vals.push((Number(order.amount_paise) / 100).toFixed(2)) }
+    if (cols.has('payment_amount')) { sets.push('payment_amount = ?'); vals.push(((upgradeFrom ? Number(a.payment_amount) || 0 : 0) + Number(order.amount_paise) / 100).toFixed(2)) }
     // Buying a conference pass is the plainest possible yes to the conference (0041).
     if (cols.has('main_event')) sets.push('main_event = 1')
     if (cols.has('main_event_answered_at')) sets.push("main_event_answered_at = COALESCE(main_event_answered_at, datetime('now'))")
@@ -2552,13 +2610,14 @@ async function settlePaidOrder(c: any, order: any, trackingId: string, paymentMo
   await audit(c, 'payment.received', 'attendee', a.id, {
     order_id: order.order_id, tracking_id: trackingId, pass_type: order.pass_type, amount_paise: order.amount_paise,
     payment_mode: paymentMode, badge: changeable ? [badge || null, order.pass_type] : 'left as ' + badge,
+    upgrade_from: upgradeFrom || undefined,
   }, { actor: 'CCAvenue', kind: 'gateway' })
 
   // The invoice first, so the receipt can name it. Only for a pass this payment
   // unlocked: when the badge was set by hand, a person decides what it paid for.
   const mails = (async () => {
-    const invoice = changeable ? await autoInvoiceForOrder(c, order, a, trackingId) : null
-    await sendPaymentEmails(c, a, order, trackingId, paymentMode, changeable, invoice)
+    const invoice = changeable ? await autoInvoiceForOrder(c, order, a, trackingId, upgradeFrom) : null
+    await sendPaymentEmails(c, a, order, trackingId, paymentMode, changeable, invoice, upgradeFrom)
   })()
   let scheduled = false
   try { c.executionCtx.waitUntil(mails); scheduled = true } catch { /* no ctx */ }
@@ -2567,7 +2626,7 @@ async function settlePaidOrder(c: any, order: any, trackingId: string, paymentMo
 
 // Never throws: the pass is already unlocked by the time this runs.
 async function sendPaymentEmails(c: any, a: any, order: any, trackingId: string, paymentMode: string, unlocked: boolean,
-    invoice: { invoice_no: string; url: string } | null = null) {
+    invoice: { invoice_no: string; url: string } | null = null, upgradeFrom = '') {
   try {
     const amount = rupees(Number(order.amount_paise))
     const appUrl = (await settingValue(c, 'app_url')) || 'https://bharataiinnovation.com/app'
@@ -2579,7 +2638,7 @@ async function sendPaymentEmails(c: any, a: any, order: any, trackingId: string,
       }
     } catch { /* the plain link still opens the app */ }
     const rows = payRows([
-      ['Pass', payEsc(order.pass_type)],
+      ['Pass', payEsc(order.pass_type) + (upgradeFrom ? ` <span style="font-weight:normal;color:#666;">(moved up from ${payEsc(upgradeFrom)})</span>` : '')],
       ['Amount paid', `&#8377;${amount} <span style="font-weight:normal;color:#666;">(includes ${PASS_GST_RATE}% GST)</span>`],
       ['Order number', payEsc(order.order_id)],
       ['CCAvenue reference', payEsc(trackingId)],
@@ -2590,20 +2649,24 @@ async function sendPaymentEmails(c: any, a: any, order: any, trackingId: string,
       ${emailBrandHeader('Payment received', '20&ndash;21 Nov 2026 &bull; WTC Mumbai')}
       <div style="padding:30px;">
         <p style="margin:0 0 6px;font-size:15px;color:#333;">Hi <strong>${payEsc(a.name)}</strong>,</p>
-        <p style="margin:0 0 20px;font-size:14px;line-height:1.7;color:#555;">Thank you. Your payment has arrived and your <strong>${payEsc(order.pass_type)}</strong> for Bharat AI Innovation 2026 is confirmed.</p>
+        <p style="margin:0 0 20px;font-size:14px;line-height:1.7;color:#555;">${upgradeFrom
+          ? `Thank you. Your payment has arrived and your ${payEsc(upgradeFrom)} for Bharat AI Innovation 2026 is now a <strong>${payEsc(order.pass_type)}</strong>.`
+          : `Thank you. Your payment has arrived and your <strong>${payEsc(order.pass_type)}</strong> for Bharat AI Innovation 2026 is confirmed.`}</p>
         ${rows}
         <div style="text-align:center;margin:22px 0 6px;">
           <a href="${href}" style="display:inline-block;padding:13px 32px;background:linear-gradient(135deg,#FF6B00,#FF8C38);color:#fff;text-decoration:none;border-radius:10px;font-weight:bold;font-size:14px;">Open the app</a>
         </div>
         <p style="margin:16px 0 0;font-size:13px;line-height:1.65;color:#555;">In the app, add your photo and download your pass: the badge desk scans it to check you in.</p>
+        ${unlocked && /premium|vip/i.test(String(order.pass_type)) ? `<p style="margin:12px 0 0;font-size:13px;line-height:1.65;color:#555;">Your pass includes one hands-on workshop. Seats go first come, first served: <a href="${payEsc(href + (href.includes('?') ? '&' : '?') + 'action=workshop')}" style="color:#FF6B00;font-weight:bold;">choose your seat in the app</a>.</p>` : ''}
         <div style="margin-top:20px;padding:14px;background:#F7F8FF;border:1px solid #E3E6F5;border-radius:10px;">
           <p style="margin:0;font-size:12.5px;line-height:1.6;color:#1E2140;"><strong>GST invoice:</strong> we will email your tax invoice separately. If it should be made out to your organisation, send its registered name, GSTIN and billing address to info@bharataiinnovation.com, quoting order ${payEsc(order.order_id)}.</p>
         </div>
       </div>
     </div></body></html>`
-    if (unlocked) {
+    if (unlocked && !upgradeFrom) {
       // The welcome they were not sent at registration, with the receipt in it:
-      // one email that says it is paid, and what to do next.
+      // one email that says it is paid, and what to do next. Someone moving up
+      // was welcomed when they first paid, so they get the receipt alone.
       const fresh = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(a.id).first().catch(() => null) as any
       const gst = `<div style="margin:0 0 20px;padding:14px;background:#F7F8FF;border:1px solid #E3E6F5;border-radius:10px;"><p style="margin:0;font-size:12.5px;line-height:1.6;color:#1E2140;"><strong>GST invoice:</strong> ${invoice
         ? `your tax invoice <strong>${payEsc(invoice.invoice_no)}</strong> is in a separate email, and here: <a href="${payEsc(invoice.url)}" style="color:#FF6B00;font-weight:bold;">view and download the invoice</a>. If something on it needs correcting, write to info@bharataiinnovation.com quoting ${payEsc(invoice.invoice_no)}.`
@@ -2622,7 +2685,7 @@ async function sendPaymentEmails(c: any, a: any, order: any, trackingId: string,
         : invoice
           ? 'The pass is unlocked and GST invoice <strong>' + payEsc(invoice.invoice_no) + '</strong> was raised and emailed to the buyer automatically: <a href="' + payEsc(invoice.url) + '">open it</a>. Nothing is left to do.'
           : 'The pass is unlocked already. The GST invoice could <strong>not</strong> be raised automatically, so it is the one step left: Admin, Payments, &ldquo;Paid online&rdquo; (or the finance page), where the order number and reference are filled in.'}</p></div>`
-    await sendAdminEmail(c, team, `Paid online: ${a.name}, ${order.pass_type}, Rs ${amount}`, teamHtml, { unsubscribe: false })
+    await sendAdminEmail(c, team, `Paid online: ${a.name}, ${order.pass_type}${upgradeFrom ? ' (moved up from ' + upgradeFrom + ')' : ''}, Rs ${amount}`, teamHtml, { unsubscribe: false })
   } catch (e: any) {
     console.error('payment emails failed', order?.order_id, e?.message)
   }
@@ -2969,6 +3032,34 @@ async function abandonedRows(c: any): Promise<any> {
 }
 
 app.get('/api/admin/payments/abandoned', async (c) => c.json(await abandonedRows(c)))
+
+// The upgrade funnel for Admin, Payments: the prompts met in the app over the last
+// fortnight (people, not rows), against the orders started and paid in the same
+// time. Which door people come through, and which of them pay. An order whose
+// amount is below the list price of its pass, started from a paid tier, is a move
+// up for the difference.
+async function upgradeFunnelJSON(c: any) {
+  const since = '-14 days'
+  const prompts = await c.env.DB.prepare(
+    `SELECT json_extract(detail, '$.reason') AS reason, COUNT(*) AS shown, COUNT(DISTINCT entity_id) AS people
+       FROM admin_audit WHERE action = 'upgrade.prompt' AND created_at > datetime('now', ?)
+      GROUP BY 1 ORDER BY people DESC`).bind(since).all().catch(() => ({ results: [] }))
+  const orders = (await paymentOrdersReady(c)) ? await c.env.DB.prepare(
+    `SELECT status, pass_type, previous_badge, base_paise, COUNT(*) AS n, COUNT(DISTINCT attendee_id) AS people, SUM(amount_paise) AS paise
+       FROM payment_orders WHERE created_at > datetime('now', ?)
+      GROUP BY 1, 2, 3, 4 ORDER BY 1, 2`).bind(since).all().catch(() => ({ results: [] })) : { results: [] }
+  return {
+    days: 14,
+    prompts: (prompts?.results || []).filter((r: any) => r.reason),
+    orders: (orders?.results || []).map((r: any) => ({
+      status: r.status, pass_type: r.pass_type, previous_badge: r.previous_badge, n: Number(r.n || 0), people: Number(r.people || 0),
+      inr: Number(r.paise || 0) / 100,
+      upgrade: PAID_TIERS.includes(String(r.previous_badge || '')) && String(r.previous_badge) !== String(r.pass_type)
+        && Number(r.base_paise) < (passAmounts(String(r.pass_type))?.base || 0),
+    })),
+  }
+}
+app.get('/api/admin/payments/funnel', async (c) => c.json(await upgradeFunnelJSON(c)))
 
 // The email. Three versions: a lead goes back to the form filled in; a free-pass
 // holder who started an upgrade, and a registered attendee whose payment did not
@@ -16449,10 +16540,10 @@ ${sharedNavHTML('register')}
       <!-- Group Discount -->
       <div class="glass rounded-2xl p-6 border border-orange-500/20" id="delegation-section" style="scroll-margin-top:90px;">
         <h3 class="font-bold text-base text-orange-300 mb-2"><i class="fas fa-users mr-2"></i>Group Registration</h3>
-        <p class="text-xs text-gray-400 mb-3">Bringing a team of 5+? Save up to 30% with delegation packages.</p>
+        <p class="text-xs text-gray-400 mb-3">Bringing a team of five or more? Ask for a group rate on Delegate and Premium Delegate passes.</p>
         <div class="flex gap-2">
-          <a href="https://bharataiinnovation.com/register#delegation-section" target="_blank" class="px-4 py-2 rounded-lg text-xs font-semibold bg-orange-500/20 text-orange-300 hover:bg-orange-500/30 transition border border-orange-500/30">View Packages</a>
-          <a href="/contact#group_registration" class="px-4 py-2 rounded-lg text-xs font-semibold glass text-gray-300 hover:bg-white/10 transition">Send Inquiry</a>
+          <a href="/contact#group_registration" class="px-4 py-2 rounded-lg text-xs font-semibold bg-orange-500/20 text-orange-300 hover:bg-orange-500/30 transition border border-orange-500/30">Ask for a group rate</a>
+          <a href="#compare" class="px-4 py-2 rounded-lg text-xs font-semibold glass text-gray-300 hover:bg-white/10 transition">Compare passes</a>
         </div>
       </div>
     </div>
@@ -17722,8 +17813,8 @@ function mainPageHTML(): string {
           Your <span class="text-white font-semibold">Visitor Pass</span> doesn't include access to the Networking Hub.<br>
           Upgrade to a <span class="text-primary-300 font-semibold">Delegate</span> or <span class="text-amber-300 font-semibold">VIP Pass</span> to connect with 500+ attendees, speakers, and investors.
         </p>
-        <!-- Pass options -->
-        <div class="grid grid-cols-2 gap-3 mb-6">
+        <!-- Pass options; hidden when a paid pass is offered the one step up -->
+        <div class="grid grid-cols-2 gap-3 mb-6" id="upgrade-modal-cards">
           <div class="glass-light rounded-xl p-4 border border-primary-500/20">
             <div class="text-2xl mb-1">🎫</div>
             <div class="font-bold text-primary-300 text-sm">Delegate Pass</div>
@@ -18087,6 +18178,7 @@ function mainPageHTML(): string {
                 <h3 class="font-bold text-sm mb-0.5"><span id="pcc-pass-name">Your pass</span><span id="pcc-pass-state"> is ready</span></h3>
                 <p class="text-xs text-gray-400 mb-3" id="pcc-pass-note">Keep it on your phone — the badge desk scans it to check you in.</p>
                 <p class="hidden text-xs text-gray-300 mb-3" id="pcc-workshop"></p>
+                <p class="hidden text-xs text-gray-300 mb-3" id="pcc-upgrade"></p>
                 <button type="button" id="pcc-pay-btn" onclick="payPendingPass()" class="hidden px-4 mr-2 mb-2 rounded-xl text-xs font-semibold text-white transition" style="min-height:44px;background:linear-gradient(135deg,#FF6B00,#FF8C38);"><i class="fas fa-credit-card mr-1.5"></i>Pay now</button>
                 <button type="button" onclick="generateDelegatePass()" class="px-4 rounded-xl text-xs font-semibold bg-primary-600 hover:bg-primary-500 text-white transition" style="min-height:44px;"><i class="fas fa-download mr-1.5"></i>Download my pass</button>
               </div>
@@ -18367,11 +18459,11 @@ function mainPageHTML(): string {
               <div class="flex items-center gap-3">
                 <span class="text-2xl">👥</span>
                 <div class="flex-1">
-                  <p class="text-sm font-semibold text-orange-300">Bringing a team? Save up to 30%!</p>
-                  <p class="text-xs text-gray-400 mt-0.5">Check Delegation Packages for group discounts on 5+ registrations</p>
+                  <p class="text-sm font-semibold text-orange-300">Bringing a team?</p>
+                  <p class="text-xs text-gray-400 mt-0.5">Ask for a group rate on five or more Delegate or Premium Delegate passes</p>
                 </div>
-                <a href="https://bharataiinnovation.com/register#delegation-section" target="_blank" class="px-4 py-2 rounded-lg text-xs font-semibold bg-orange-500/20 text-orange-300 hover:bg-orange-500/30 transition border border-orange-500/30">
-                  <i class="fas fa-users mr-1"></i>View Packages
+                <a href="/contact#group_registration" target="_blank" class="px-4 py-2 rounded-lg text-xs font-semibold bg-orange-500/20 text-orange-300 hover:bg-orange-500/30 transition border border-orange-500/30">
+                  <i class="fas fa-users mr-1"></i>Ask for a group rate
                 </a>
               </div>
             </div>
@@ -18393,8 +18485,8 @@ function mainPageHTML(): string {
               <button onclick="openPaidPassForm()" class="px-6 py-3 rounded-xl font-bold text-white transition-all text-sm hover:opacity-90" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);box-shadow:0 4px 20px rgba(245,98,10,0.28);">
                 <i class="fas fa-star mr-2"></i>Get a Paid Pass
               </button>
-              <a href="https://bharataiinnovation.com/register#delegation-section" target="_blank" class="px-6 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 transition-all text-sm">
-                <i class="fas fa-users mr-2"></i>Group Packages
+              <a href="/contact#group_registration" target="_blank" class="px-6 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 transition-all text-sm">
+                <i class="fas fa-users mr-2"></i>Group rate
               </a>
             </div>
           </div>
@@ -20168,8 +20260,19 @@ function mainPageScript(): string {
             ? '<button type="button" onclick="closeProfileModal(); viewProfile(' + Number(sp.attendee_id) + ')" class="w-full py-2.5 rounded-xl text-sm font-semibold bg-primary-600 hover:bg-primary-500 text-white">View delegate profile</button>'
             : '<p class="text-xs text-gray-500 text-center">Not on the networking app yet, so they cannot be messaged here.</p>') +
           (sp.linkedin_url ? '<a href="' + esc(sp.linkedin_url) + '" target="_blank" rel="noopener" class="w-full py-2.5 rounded-xl text-sm font-medium glass text-center"><i class="fab fa-linkedin mr-1"></i>LinkedIn</a>' : '') +
+          vipUpsellLine(sp.name) +
         '</div>';
       document.getElementById('profile-modal').classList.remove('hidden');
+    }
+    // Under a speaker: the meet and greet is the VIP Pass's one concrete, nameable
+    // thing. Not shown to a VIP, nor to anyone whose pass the organisers arranged.
+    function vipUpsellLine(name) {
+      if (!currentUser) return '';
+      var b = String(currentUser.badge_type || '');
+      if (!/visitor|general|delegate|academic/i.test(b) || /vip/i.test(b)) return '';
+      if (/speaker|exhibitor|organiser|jury|media|staff/i.test(String(currentUser.role || ''))) return '';
+      return '<button type="button" onclick="closeProfileModal();showUpgradeModal(&quot;vip&quot;, this.getAttribute(&quot;data-name&quot;))" data-name="' + esc(name) + '"' +
+        ' class="w-full py-2.5 rounded-xl text-sm font-medium text-center" style="background:rgba(245,158,11,0.12);color:#FBBF24;"><i class="fas fa-crown mr-1"></i>Meet ' + esc(name) + ' at the speaker meet &amp; greet (VIP)</button>';
     }
     let currentUser = null;
     let currentTab = 'dashboard';
@@ -21327,6 +21430,23 @@ function mainPageScript(): string {
         : 'Keep it on your phone — the badge desk scans it to check you in.';
       el.classList.remove('hidden');
       if (!pending) loadWorkshopSeat();
+      renderPassUpgradeLine();
+    }
+
+    // A confirmed Delegate, Premium Delegate or Academic sees the step up on the
+    // pass card itself, priced as the difference from the server's prices. Drawn
+    // again when the prices arrive, in case the card painted first.
+    function renderPassUpgradeLine() {
+      var el = document.getElementById('pcc-upgrade');
+      if (!el) return;
+      var from = paidUpgradeFrom();
+      var steps = from ? ['Premium Delegate Pass', 'VIP Pass'].map(function (p) { var u = upgradePrice(from, p); return u ? { pass: p, up: u } : null; }).filter(Boolean) : [];
+      if (!steps.length) { el.classList.add('hidden'); return; }
+      el.innerHTML = '<i class="fas fa-arrow-up mr-1.5 text-amber-400"></i>Move up for the difference: ' + steps.map(function (s) {
+        var what = s.pass === 'VIP Pass' ? 'VIP, with the lounge and the speaker meet &amp; greet' : 'Premium Delegate, with one workshop';
+        return '<button type="button" onclick="openUpgradeFor(&quot;' + s.pass + '&quot;, &quot;passcard&quot;)" class="font-semibold underline" style="color:#FBBF24;">' + what + ', &#8377;' + inr(s.up.base) + ' + GST</button>';
+      }).join(' &middot; ');
+      el.classList.remove('hidden');
     }
 
     function renderRoleHome() {
@@ -21431,6 +21551,20 @@ function mainPageScript(): string {
     function _agendaSet() { try { return new Set(JSON.parse(localStorage.getItem('bhai_agenda') || '[]')); } catch { return new Set(); } }
     function _agendaSave(set) { localStorage.setItem('bhai_agenda', JSON.stringify([...set])); }
     function isInAgenda(id) { return _agendaSet().has(id); }
+    // A Visitor sees which sessions their pass does not cover, by name, with the way
+    // in: panels and talks are Delegate sessions, a workshop needs Premium or VIP.
+    // Keynotes, networking and breaks are open to every pass. Starring stays free:
+    // a plan is harmless, and the chip is the sale.
+    function delegateSessionChip(s) {
+      if (!currentUser || !isVisitorPass()) return '';
+      var t = String(s.session_type || '').toLowerCase();
+      if (t !== 'panel' && t !== 'talk' && t !== 'workshop') return '';
+      var ws = t === 'workshop';
+      return '<button type="button" onclick="event.stopPropagation();showUpgradeModal(this.getAttribute(&quot;data-reason&quot;), this.getAttribute(&quot;data-title&quot;))"' +
+        ' data-reason="' + (ws ? 'workshop' : 'agenda') + '" data-title="' + esc(s.title) + '"' +
+        ' class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold mb-2" style="background:rgba(255,107,0,0.12);color:#FF8C40;min-height:32px;">' +
+        '<i class="fas fa-lock text-[10px]"></i>' + (ws ? 'Premium Delegate session &middot; Take a seat' : 'Delegate session &middot; Attend this') + '</button>';
+    }
     function toggleAgenda(id, btn) {
       const set = _agendaSet();
       const nowIn = !set.has(id);
@@ -21530,6 +21664,7 @@ function mainPageScript(): string {
               \${!isBreak ? \`<button onclick="event.stopPropagation();toggleAgenda(\${s.id},this)" class="agenda-star ml-auto w-8 h-8 rounded-lg flex items-center justify-center transition \${isInAgenda(s.id) ? 'text-amber-400 bg-amber-500/15' : 'text-gray-500 hover:text-amber-400 hover:bg-white/5'}" title="\${isInAgenda(s.id) ? 'In your agenda' : 'Add to my agenda'}"><i class="fa\${isInAgenda(s.id) ? 's' : 'r'} fa-star text-sm"></i></button>\` : ''}
             </div>
             <h3 class="font-bold text-[15px] leading-snug mb-1 \${isBreak ? 'text-gray-400' : 'text-white'}">\${s.title}</h3>
+            \${delegateSessionChip(s)}
             \${s.description && !isBreak ? \`<p class="text-xs text-gray-400 mb-2 leading-relaxed">\${s.description}</p>\` : ''}
             \${s.title.toLowerCase().includes('innovation talk') ? \`<button onclick="event.stopPropagation();switchTab('innovation')" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-amber-500/15 text-amber-400 hover:bg-amber-500/25 transition mb-2"><i class="fas fa-lightbulb"></i>Full Innovation Talk Schedule <i class="fas fa-arrow-right text-[10px]"></i></button>\` : ''}
             \${s.title.toLowerCase().includes('startup pitch') ? \`<button onclick="event.stopPropagation();switchTab('startup-pitch')" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-violet-500/15 text-violet-400 hover:bg-violet-500/25 transition mb-2"><i class="fas fa-rocket"></i>View Startup Pitch Schedule <i class="fas fa-arrow-right text-[10px]"></i></button>\` : ''}
@@ -21651,10 +21786,17 @@ function mainPageScript(): string {
         sub = 'You can choose your workshop the moment your payment goes through.';
         cta = '<button type="button" onclick="payPendingPass()" class="px-5 rounded-xl text-xs font-semibold" style="min-height:44px;color:#fff;background:linear-gradient(135deg,#FF6B00,#FF8C38);">Pay now</button>';
       } else {
-        head = 'Workshop seats';
-        sub = 'A seat in one workshop comes with the Premium Delegate (&#8377;14,999 + GST) and VIP (&#8377;19,999 + GST) passes. Seats go first come, first served.';
+        // A confirmed Delegate or Academic moves up for the difference; a Visitor
+        // buys Premium; nobody signed in is sent to /register.
+        var from = paidUpgradeFrom();
+        var up = from ? upgradePrice(from, 'Premium Delegate Pass') : null;
+        head = from ? 'Add a workshop to your ' + esc(from) : 'Workshop seats';
+        sub = from
+          ? 'Move up to Premium Delegate for the difference' + (up ? ', &#8377;' + inr(up.base) + ' + GST' : '') + ', and choose your seat straight away. Seats go first come, first served.'
+          : 'A seat in one workshop comes with the Premium Delegate (&#8377;14,999 + GST) and VIP (&#8377;19,999 + GST) passes. Seats go first come, first served.';
         cta = currentUser
-          ? '<button type="button" onclick="resumePayment(&quot;premium&quot;)" class="px-5 rounded-xl text-xs font-semibold" style="min-height:44px;color:#fff;background:' + teal + ';">Get Premium Delegate</button>'
+          ? '<button type="button" onclick="openUpgradeFor(&quot;Premium Delegate Pass&quot;, &quot;workshop&quot;)" class="px-5 rounded-xl text-xs font-semibold" style="min-height:44px;color:#fff;background:' + teal + ';">' +
+            (from ? 'Move up to Premium Delegate' + (up ? ' &mdash; &#8377;' + inr(up.total) + ' incl. GST' : '') : 'Get Premium Delegate') + '</button>'
           : '<a href="/register#premium" class="inline-flex items-center px-5 rounded-xl text-xs font-semibold" style="min-height:44px;color:#fff;background:' + teal + ';">Get Premium Delegate</a>';
       }
       var cards = s.workshops.map(function (w) {
@@ -21723,16 +21865,59 @@ function mainPageScript(): string {
     // is a door closing.
     function showNetworkUpgradeModal(personName) { showUpgradeModal('networking', personName); }
 
+    // A confirmed Delegate, Premium Delegate or Academic may move up for the
+    // difference between list prices (the server charges exactly that, see
+    // orderAmountsFor). The modal then sells the step, not the whole pass. '' for
+    // everyone else, including an unpaid paid pass, which has to finish paying first.
+    function paidUpgradeFrom() {
+      if (!currentUser || passAwaitingPayment()) return '';
+      var b = String(currentUser.badge_type || '');
+      return ['Delegate Pass', 'Premium Delegate Pass', 'Academic Pass'].indexOf(b) >= 0
+        && String(currentUser.payment_status || '').toLowerCase() === 'paid' ? b : '';
+    }
+    // Rupees before GST, and the total with it, from the server's own prices
+    // (/api/payments/config), so nothing here can disagree with the charge. null
+    // until the prices have loaded, and when the step is not up.
+    function upgradePrice(from, to) {
+      var p = _ppPrices || {};
+      if (!p[to]) return null;
+      var base = Number(p[to].base) - (from && p[from] ? Number(p[from].base) : 0);
+      if (base <= 0) return null;
+      return { base: base, total: Math.round(base * (100 + _ppGst)) / 100 };
+    }
+    function inr(n) { return Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 }); }
+    // "4,999 + GST" from the server's prices; '' before they load, so this copy
+    // never carries a hand-written price.
+    function passPriceText(pass) {
+      var u = upgradePrice('', pass);
+      return u ? '&#8377;' + inr(u.base) + ' + GST' : '';
+    }
+    // The pass a prompt leads to: a workshop or a session means Premium (VIP for a
+    // Premium holder); the speaker meet and greet means VIP.
+    var _upgradeTarget = '';
+    function upgradeTargetFor(reason, from) {
+      if (reason === 'vip') return 'VIP Pass';
+      return from === 'Premium Delegate Pass' ? 'VIP Pass' : 'Premium Delegate Pass';
+    }
+
     // The same two cards sell in two different moments: hitting the networking
     // lock, and the minute a Visitor Pass is registered. The copy has to change —
     // "Networking is a Paid Feature" reads as a punishment to someone who just
-    // signed up and has not been refused anything yet.
+    // signed up and has not been refused anything yet. Since 28 Oct 2026 the
+    // agenda, the workshops and the speakers prompt too, each naming the thing
+    // wanted, and every prompt shown is counted (trackUpgradePrompt).
     function showUpgradeModal(reason, personName) {
       const m = document.getElementById('visitor-upgrade-modal');
       if (!m) return;
       const title = document.getElementById('upgrade-modal-title');
       const copy = document.getElementById('upgrade-modal-copy');
       const go = document.getElementById('upgrade-modal-go');
+      const cards = document.getElementById('upgrade-modal-cards');
+      const who = String(personName || '').trim();
+      const from = paidUpgradeFrom();
+      _upgradeTarget = '';
+      if (cards) cards.classList.toggle('hidden', !!from);
+      if (go) go.innerHTML = '<i class="fas fa-arrow-up-right-from-square mr-2"></i>Upgrade My Pass &mdash; Get Full Access';
       if (passAwaitingPayment()) {
         // They chose a paid pass and have not paid: the answer is to finish, not
         // to choose again.
@@ -21741,35 +21926,109 @@ function mainPageScript(): string {
         if (go) go.innerHTML = '<i class="fas fa-credit-card mr-2"></i>Pay now';
         m.classList.remove('hidden');
         m.classList.add('flex');
+        trackUpgradePrompt(reason, who);
         return;
       }
-      if (reason === 'networking' && title && copy) {
-        const who = String(personName || '').trim();
-        title.textContent = who ? ('Reach out to ' + who) : 'Start the conversation';
-        copy.innerHTML = (who
-            ? 'Anyone can browse who is coming and accept an introduction. <span class="text-white font-semibold">Starting</span> one is part of every paid pass.'
-            : 'Browsing and accepting are free on every pass. <span class="text-white font-semibold">Starting</span> a conversation is part of every paid pass.') +
-          '<br><span class="text-gray-400 text-xs">Delegates also propose meetings, reserve a private WTC boardroom by the hour, and attend every session.</span>';
-      }
-      if (reason === 'directory' && title && copy) {
-        title.textContent = 'See everyone who is coming';
-        copy.innerHTML = 'A free Visitor Pass shows a selection of who is attending. A <span class="text-primary-300 font-semibold">Delegate</span>, Academic or <span class="text-amber-300 font-semibold">VIP Pass</span> opens the full directory and search, and lets you start conversations and book meetings.';
-      }
-      if (reason === 'welcome' && title && copy) {
-        title.textContent = 'Want the full two days?';
-        copy.innerHTML = 'Your <span class="text-white font-semibold">Visitor Pass</span> covers the exhibition floor and select keynotes.<br>' +
-          'A <span class="text-primary-300 font-semibold">Delegate</span> or <span class="text-amber-300 font-semibold">VIP Pass</span> adds every conference session, lunch and the networking hub. Premium Delegate and VIP add a hands-on workshop.';
+      if (from && title && copy) {
+        // A paid pass moving up: one step, priced as the difference.
+        var to = upgradeTargetFor(reason, from);
+        var up = upgradePrice(from, to);
+        var step = up ? ', &#8377;' + inr(up.base) + ' + GST' : '';
+        _upgradeTarget = to;
+        if (reason === 'vip') {
+          title.textContent = who ? 'Meet ' + who + ' in person' : 'Move up to VIP';
+          copy.innerHTML = 'The speaker meet &amp; greet, the VIP lounge and priority seating come with the <span class="text-amber-300 font-semibold">VIP Pass</span>' +
+            (from === 'Premium Delegate Pass' ? '' : ', with one hands-on workshop') + '. Move up from your ' + esc(from) + ' for the difference' + step + '.';
+        } else {
+          title.textContent = who ? 'Take a seat in ' + who : 'Add a workshop to your pass';
+          copy.innerHTML = 'One hands-on workshop comes with the <span class="text-primary-300 font-semibold">' + esc(to.replace(' Pass', '')) + ' Pass</span>. Move up from your ' + esc(from) +
+            ' for the difference' + step + ', and choose your seat the moment the payment goes through.';
+        }
+        if (go) go.innerHTML = '<i class="fas fa-credit-card mr-2"></i>Move up to ' + esc(to.replace(' Pass', '')) + (up ? ' &mdash; &#8377;' + inr(up.total) + ' incl. GST' : '');
+      } else if (title && copy) {
+        var delegatePrice = passPriceText('Delegate Pass');
+        var premiumPrice = passPriceText('Premium Delegate Pass');
+        var vipPrice = passPriceText('VIP Pass');
+        if (reason === 'networking') {
+          title.textContent = who ? ('Reach out to ' + who) : 'Start the conversation';
+          copy.innerHTML = (who
+              ? 'Anyone can browse who is coming and accept an introduction. <span class="text-white font-semibold">Starting</span> one is part of every paid pass.'
+              : 'Browsing and accepting are free on every pass. <span class="text-white font-semibold">Starting</span> a conversation is part of every paid pass.') +
+            '<br><span class="text-gray-400 text-xs">Delegates also propose meetings, reserve a private WTC boardroom by the hour, and attend every session.</span>';
+        }
+        if (reason === 'directory') {
+          title.textContent = 'See everyone who is coming';
+          copy.innerHTML = 'A free Visitor Pass shows a selection of who is attending. A <span class="text-primary-300 font-semibold">Delegate</span>, Academic or <span class="text-amber-300 font-semibold">VIP Pass</span> opens the full directory and search, and lets you start conversations and book meetings.';
+        }
+        if (reason === 'welcome') {
+          title.textContent = 'Want the full two days?';
+          copy.innerHTML = 'Your <span class="text-white font-semibold">Visitor Pass</span> covers the exhibition floor and select keynotes.<br>' +
+            'A <span class="text-primary-300 font-semibold">Delegate</span> or <span class="text-amber-300 font-semibold">VIP Pass</span> adds every conference session, lunch and the networking hub. Premium Delegate and VIP add a hands-on workshop.';
+        }
+        if (reason === 'agenda') {
+          title.textContent = 'Be in the room for this one';
+          copy.innerHTML = (who ? '<span class="text-white font-semibold">' + esc(who) + '</span> is a conference session. ' : '') +
+            'Your Visitor Pass covers the exhibition floor and select keynotes. A <span class="text-primary-300 font-semibold">Delegate Pass</span>' + (delegatePrice ? ' (' + delegatePrice + ')' : '') +
+            ' adds every session across both days, lunch and the networking app.';
+          _upgradeTarget = 'Delegate Pass';
+        }
+        if (reason === 'workshop') {
+          title.textContent = who ? 'Take a seat in ' + who : 'Take a workshop seat';
+          copy.innerHTML = 'One hands-on workshop comes with the <span class="text-primary-300 font-semibold">Premium Delegate Pass</span>' + (premiumPrice ? ' (' + premiumPrice + ')' : '') +
+            ' and the <span class="text-amber-300 font-semibold">VIP Pass</span>. Seats go first come, first served, and are chosen in the app the moment the payment goes through.';
+          _upgradeTarget = 'Premium Delegate Pass';
+        }
+        if (reason === 'vip') {
+          title.textContent = who ? 'Meet ' + who + ' in person' : 'The VIP Pass';
+          copy.innerHTML = 'The speaker meet &amp; greet, the VIP lounge and priority seating come with the <span class="text-amber-300 font-semibold">VIP Pass</span>' + (vipPrice ? ' (' + vipPrice + ')' : '') +
+            ', with every session, lunch, the networking app and one hands-on workshop.';
+          _upgradeTarget = 'VIP Pass';
+        }
       }
       m.classList.remove('hidden');
       m.classList.add('flex');
+      trackUpgradePrompt(reason, who);
     }
 
     // The modal's one button, and the directory banner's: pay for the pass already
-    // chosen, or choose one.
+    // chosen, pay the step up, or choose a pass (on the tier the prompt was about).
     function upgradeModalGo() {
       var m = document.getElementById('visitor-upgrade-modal');
       if (m) { m.classList.add('hidden'); m.classList.remove('flex'); }
-      if (passAwaitingPayment()) payPendingPass(); else openPaidPassForm();
+      if (passAwaitingPayment()) { payPendingPass(); return; }
+      if (paidUpgradeFrom() && _upgradeTarget) { startUpgradePayment(_upgradeTarget); return; }
+      if (_upgradeTarget) { resumePayment(_upgradeTarget === 'VIP Pass' ? 'vip' : _upgradeTarget === 'Premium Delegate Pass' ? 'premium' : 'delegate'); return; }
+      openPaidPassForm();
+    }
+
+    // A confirmed pass moving up: the server prices the difference and the checkout
+    // page names it before the gateway. GST details given last time are kept.
+    async function startUpgradePayment(pass) {
+      var started = await startOnlinePayment(pass);
+      if (started.url) { window.location.href = started.url; return; }
+      showToast(started.error || 'Online payment is not available just now. Please try again later.', 'error');
+    }
+    // From a locked place to the right checkout: an unpaid paid pass finishes
+    // paying, a confirmed one pays the step, a Visitor gets the paid form on that
+    // pass, filled in from their profile.
+    function openUpgradeFor(pass, reason) {
+      if (reason) trackUpgradePrompt(reason, pass);
+      if (passAwaitingPayment()) { payPendingPass(); return; }
+      if (paidUpgradeFrom()) { startUpgradePayment(pass); return; }
+      resumePayment(pass === 'VIP Pass' ? 'vip' : pass === 'Premium Delegate Pass' ? 'premium' : pass === 'Academic Pass' ? 'academic' : 'delegate');
+    }
+    // Which prompts people meet, once per sitting per reason and target, as the
+    // person (POST /api/upgrade-prompt). Admin, Payments shows them against orders.
+    var _promptSeen = {};
+    function trackUpgradePrompt(reason, target) {
+      try {
+        if (!currentUser) return;
+        var k = reason + '|' + String(target || '');
+        if (_promptSeen[k]) return;
+        _promptSeen[k] = 1;
+        fetch('/api/upgrade-prompt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, keepalive: true,
+          body: JSON.stringify({ reason: reason, target: String(target || '').slice(0, 80), pass: String(currentUser.badge_type || '') }) }).catch(function () {});
+      } catch (e) {}
     }
 
     // Shown once. A visitor who has said no does not want to be asked on every
@@ -26954,6 +27213,7 @@ function mainPageScript(): string {
 
     // ==================== PAID PASS MODAL ====================
     function openPaidPassForm() {
+      trackUpgradePrompt('form', (document.getElementById('pp-pass-type') || {}).value || '');
       document.getElementById('paid-pass-modal').classList.remove('hidden');
       document.getElementById('paid-pass-modal').classList.add('flex');
       document.body.style.overflow = 'hidden';
@@ -27113,6 +27373,7 @@ function mainPageScript(): string {
         _ppPrices = (j && j.passes) || null;
         if (j && j.gst_rate) _ppGst = j.gst_rate;
         ppShowTotal();
+        renderPassUpgradeLine();
       }).catch(function () {});
       var m = document.getElementById('paid-pass-modal');
       // Capture, not bubble: a pass chosen in code fires a change that does not bubble.
@@ -27127,9 +27388,14 @@ function mainPageScript(): string {
       var badge = String(currentUser.badge_type || '');
       var paidTier = /delegate|academic|vip/i.test(badge);
       if (paidTier && String(currentUser.payment_status || '').toLowerCase() === 'pending') { payPendingPass(); return; }
-      if (paidTier) { showToast('Your ' + badge + ' is already confirmed.', 'success'); return; }
       var PASS = { delegate: 'Delegate Pass', premium: 'Premium Delegate Pass', vip: 'VIP Pass', academic: 'Academic Pass' };
       var want = PASS[String(passKey || '').toLowerCase()] || 'Delegate Pass';
+      if (paidTier) {
+        // A confirmed pass moving up pays the difference; the same or a cheaper
+        // pass is nothing to pay for.
+        if (paidUpgradeFrom() && upgradePrice(badge, want)) { startUpgradePayment(want); return; }
+        showToast('Your ' + badge + ' is already confirmed.', 'success'); return;
+      }
       openPaidPassForm();
       var radio = document.querySelector('input[name="pp-pass"][value="' + want + '"]');
       if (radio) { radio.checked = true; radio.dispatchEvent(new Event('change')); }
@@ -28311,6 +28577,7 @@ function adminPageScript(): string {
             '</div>' : '') +
             '<div id="abandoned-block"></div>' +
             '<div id="upgrade-campaign-block"></div>' +
+            '<div id="upgrade-funnel-block"></div>' +
             (online ? '<div class="glass rounded-xl p-5 border border-white/5">' +
               '<h3 class="text-sm font-semibold text-white mb-1">Paid online: invoice to raise</h3>' +
               '<p class="text-[11px] text-gray-500 mb-3">Paid through CCAvenue on this site. The pass is already unlocked, so the GST invoice is the one step left.</p>' +
@@ -28331,6 +28598,7 @@ function adminPageScript(): string {
           '</div>';
         loadAbandoned();
         loadUpgradeCampaign();
+        loadUpgradeFunnel();
       } catch (err) {
         el.innerHTML = '<div class="text-center py-12 text-red-400"><i class="fas fa-exclamation-triangle text-3xl mb-3"></i><p>Failed to load payments: ' + err.message + '</p></div>';
       }
@@ -28593,6 +28861,38 @@ function adminPageScript(): string {
         row('senior', 'Senior Visitors (founders, CXOs, directors, VPs, heads, partners)', 'Delegate Pass', Number(d.senior || 0)) +
         row('students', 'Students, interns and scholars', 'Academic Pass', Number(d.students || 0)) +
       '</div>';
+    }
+    // What sells: the upgrade prompts people met in the app over the last fortnight,
+    // each named for where it appeared, against the orders started and paid in the
+    // same time. People, not rows, so a prompt seen twice counts once.
+    async function loadUpgradeFunnel() {
+      var el = document.getElementById('upgrade-funnel-block');
+      if (!el) return;
+      var d;
+      try { d = await api.get('/api/admin/payments/funnel'); } catch (e) { el.innerHTML = ''; return; }
+      if (!d || !Array.isArray(d.prompts)) { el.innerHTML = ''; return; }
+      var NAME = { welcome: 'Welcome card, first sign-in', networking: 'Tried to start a conversation', directory: 'Locked directory card',
+        agenda: 'A Delegate session on the agenda', workshop: 'A workshop seat', vip: 'Speaker meet &amp; greet (VIP)', passcard: 'Move up, from the pass card', form: 'Opened the paid form' };
+      var STATUS = { created: 'started, no answer yet', paid: 'paid', failed: 'failed', aborted: 'cancelled', awaited: 'bank undecided', mismatch: 'amount mismatch' };
+      var prompts = d.prompts.map(function (p) {
+        return '<div class="flex items-center gap-3 py-2 border-b border-white/5 text-[12px]"><div class="flex-1 text-gray-200">' + (NAME[p.reason] || deskEsc(p.reason)) + '</div>' +
+          '<div class="text-gray-300 font-semibold">' + Number(p.people || 0) + ' <span class="text-gray-500 font-normal">people</span></div>' +
+          '<div class="text-gray-500 w-16 text-right">' + Number(p.shown || 0) + ' shown</div></div>';
+      }).join('') || '<p class="text-gray-500 text-[12px] py-2">No prompts recorded yet. They are counted from the deploy of 28 Oct 2026.</p>';
+      var orders = (d.orders || []).map(function (o) {
+        return '<div class="flex items-center gap-3 py-2 border-b border-white/5 text-[12px]"><div class="flex-1 text-gray-200">' + deskEsc(o.pass_type) +
+          (o.upgrade ? ' <span class="text-amber-300">moved up from ' + deskEsc(o.previous_badge) + '</span>' : '') +
+          ' <span class="text-gray-500">&middot; ' + (STATUS[o.status] || deskEsc(o.status)) + '</span></div>' +
+          '<div class="text-gray-300 font-semibold">' + Number(o.people || 0) + ' <span class="text-gray-500 font-normal">people</span></div>' +
+          '<div class="text-gray-500 w-24 text-right">' + (o.status === 'paid' ? '&#8377;' + Number(o.inr || 0).toLocaleString('en-IN') : Number(o.n || 0) + ' orders') + '</div></div>';
+      }).join('') || '<p class="text-gray-500 text-[12px] py-2">No orders in this time.</p>';
+      el.innerHTML = '<div class="glass rounded-xl p-5 border border-white/5">' +
+        '<h3 class="text-sm font-semibold text-white mb-1">What sells, last ' + Number(d.days || 14) + ' days</h3>' +
+        '<p class="text-[11px] text-gray-500 mb-3">Where people in the app were offered a paid pass, and what was then started and paid. A door many meet and nobody pays through needs better copy or a better offer; a door few meet needs to be found.</p>' +
+        '<div class="grid grid-cols-1 md:grid-cols-2 gap-4">' +
+          '<div><div class="text-[11px] uppercase tracking-wide text-gray-500 mb-1">Prompts met</div>' + prompts + '</div>' +
+          '<div><div class="text-[11px] uppercase tracking-wide text-gray-500 mb-1">Orders</div>' + orders + '</div>' +
+        '</div></div>';
     }
     async function previewUpgradeCampaign(key) {
       var w = window.open('', '_blank');

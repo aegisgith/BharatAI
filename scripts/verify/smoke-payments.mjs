@@ -70,8 +70,10 @@ r = await start(null, 'Delegate Pass');
 check('start needs a session', r.status === 401, r.status + ' ' + r.text);
 r = await start(1, 'Visitor Pass');
 check('start refuses a pass that is not a paid tier', r.status === 400, r.status + ' ' + r.text);
-r = await start(2, 'VIP Pass');
-check('a confirmed Delegate is not charged again', r.status === 409 && /already confirmed/.test(r.json?.error || ''), r.status + ' ' + r.text);
+r = await start(2, 'Delegate Pass');
+check('a confirmed Delegate is not charged for the same pass again, and is told about the step up', r.status === 409 && /already confirmed/.test(r.json?.error || '') && /move up to Premium Delegate Pass or VIP Pass for the difference/.test(r.json?.error || ''), r.status + ' ' + r.text);
+r = await start(2, 'Academic Pass');
+check('nor moved down to a cheaper pass', r.status === 409 && /already confirmed/.test(r.json?.error || ''), r.status + ' ' + r.text);
 r = await start(3, 'Delegate Pass');
 check('an Exhibitor pass cannot be changed by paying', r.status === 409 && /organisers/.test(r.json?.error || ''), r.status + ' ' + r.text);
 r = await start(1, 'Delegate Pass');
@@ -189,8 +191,21 @@ r = await back(kitEncrypt(answer(order(A.order_id), { order_status: 'Failure' })
 check('a later "Failure" cannot undo a paid order', order(A.order_id).status === 'paid' && state.attendees[1].payment_status === 'paid', order(A.order_id).status);
 r = await hit(A.pay_url);
 check('the checkout link of a paid order goes to the result, not the gateway', r.status === 303 && (r.h.location || '').startsWith('/pay/result?o='), r.status);
+r = await start(1, 'Delegate Pass');
+check('having paid, they cannot be charged for the same pass again', r.status === 409, r.status + ' ' + r.text);
+
+// ---- a confirmed pass moves up for the difference (28 Oct 2026) ----
 r = await start(1, 'VIP Pass');
-check('having paid, they cannot be charged for another pass', r.status === 409, r.status + ' ' + r.text);
+const UP = r.json || {};
+check('a confirmed Delegate can start a VIP upgrade: (19,999 - 4,999) + 18% GST', r.status === 201 && UP.amount === 17700 && order(UP.order_id)?.base_paise === 1500000 && order(UP.order_id)?.gst_paise === 270000 && order(UP.order_id)?.amount_paise === 1770000 && order(UP.order_id)?.previous_badge === 'Delegate Pass', r.status + ' ' + r.text);
+r = await hit(UP.pay_url);
+check('the hand-off page says it is an upgrade, for the difference', r.status === 200 && /Upgrade to VIP Pass/.test(r.text) && r.text.includes('17,700.00'), r.status);
+const upAudits = state.audits.length;
+r = await back(kitEncrypt(answer(order(UP.order_id))));
+check('paying the difference makes the pass a VIP Pass and adds up what was paid in all', order(UP.order_id).status === 'paid' && state.attendees[1].badge_type === 'VIP Pass' && state.attendees[1].payment_status === 'paid' && state.attendees[1].payment_amount === '23598.82', JSON.stringify(state.attendees[1]));
+check('and the audit names the pass it moved up from', state.audits.length === upAudits + 1 && /"upgrade_from":"Delegate Pass"/.test(state.audits[state.audits.length - 1].detail || ''), JSON.stringify(state.audits.slice(-1)));
+r = await start(1, 'Premium Delegate Pass');
+check('a VIP has nowhere further up to go', r.status === 409 && /write to info@/.test(r.json?.error || ''), r.status + ' ' + r.text);
 
 r = await start(5, 'Delegate Pass');
 const S = r.json;
@@ -563,6 +578,19 @@ check('paying unlocks a Premium Delegate Pass: badge, paid, amount, conference y
 check('and its GST invoice names the pass and adds up to the charge', !!prinv && prinv.total_paise === 1769882 && /^Premium Delegate Pass - /.test(prinv.item_desc || ''), JSON.stringify(prinv));
 check('and the buyer is sent the welcome with the receipt', mail.slice(mk).some(m => m.to === 'prem@example.com' && /Payment received/.test(m.subject)), JSON.stringify(mail.slice(mk).map(m => m.to + ': ' + m.subject)));
 
+r = await startB(84, 'VIP Pass');
+const upOrd = r.json || {};
+check('a confirmed Premium Delegate moves up to VIP for the difference: 5,000 + GST', r.status === 201 && upOrd.amount === 5900 && order(upOrd.order_id)?.amount_paise === 590000 && order(upOrd.order_id)?.previous_badge === 'Premium Delegate Pass', r.status + ' ' + r.text);
+mk = mail.length;
+r = await back(kitEncrypt(answer(order(upOrd.order_id))), MAIL);
+await settle(() => state.invoices.some(i => i.order_ref === upOrd.order_id) && mail.slice(mk).length >= 3);
+const upinv = state.invoices.find(i => i.order_ref === upOrd.order_id);
+check('the step up is invoiced for the difference and says what it was for', !!upinv && upinv.total_paise === 590000 && /^Upgrade from Premium Delegate Pass to VIP Pass - /.test(upinv.item_desc || ''), JSON.stringify(upinv));
+check('the pass is now VIP, paid in all 17,698.82 + 5,900', state.attendees[84].badge_type === 'VIP Pass' && state.attendees[84].payment_status === 'paid' && state.attendees[84].payment_amount === '23598.82', JSON.stringify(state.attendees[84]));
+check('the buyer gets the receipt and the invoice, not a second welcome; the team hears it was a move up',
+  mail.slice(mk).filter(m => m.to === 'prem@example.com').length === 2 && mail.slice(mk).some(m => m.to === 'prem@example.com' && /Payment received: your VIP Pass is confirmed/.test(m.subject)) && mail.slice(mk).some(m => /moved up from Premium Delegate Pass/.test(m.subject)),
+  JSON.stringify(mail.slice(mk).map(m => m.to + ': ' + m.subject)));
+
 delete state.settings.inv_legal_name;
 person(83, { name: 'No Settings', email: 'noset@example.com', main_event: 1 });
 r = await startB(83, 'Delegate Pass');
@@ -573,6 +601,22 @@ await settle(() => mail.slice(mk).some(m => /Paid online: No Settings/.test(m.su
 r = await adminGet('/api/admin/payments-pending');
 check('without invoicing settings the pass still unlocks, the team is asked to raise it, and it stays on the list', state.attendees[83].payment_status === 'paid' && !state.invoices.some(i => i.order_ref === nOrd.order_id) && mail.slice(mk).some(m => /Paid online: No Settings/.test(m.subject) && /could <strong>not<\/strong> be raised automatically/.test(m.html)) && (r.json?.paid_online || []).some(x => x.order_id === nOrd.order_id), JSON.stringify(mail.slice(mk).map(m => m.subject)));
 globalThis.fetch = realFetch;
+
+// ---- which upgrade prompts people meet (28 Oct 2026): counted as the person, read by admin ----
+const prompt = (id, body) => hit('/api/upgrade-prompt', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(id ? { Cookie: cookie(id) } : {}) }, body: JSON.stringify(body) });
+const pa = state.audits.length;
+r = await prompt(null, { reason: 'agenda', target: 'AI in Education' });
+check('a prompt without a session is answered ok and written nowhere', r.status === 200 && r.json?.ok === true && state.audits.length === pa, r.status + ' ' + r.text);
+r = await prompt(2, { reason: 'agenda', target: 'AI in Education', pass: 'Visitor Pass' });
+check('a signed-in prompt is one audit row, as the person, naming the door and the thing wanted', r.status === 200 && state.audits.length === pa + 1 && state.audits[pa].action === 'upgrade.prompt' && /"reason":"agenda"/.test(state.audits[pa].detail) && /AI in Education/.test(state.audits[pa].detail) && String(state.audits[pa].entity_id) === '2', JSON.stringify(state.audits.slice(pa)));
+r = await prompt(2, { reason: 'agenda', target: 'AI in Education' });
+check('the same prompt again within a minute is not written twice', state.audits.length === pa + 1, (state.audits.length - pa) + ' rows');
+r = await prompt(2, { reason: 'made-up', target: 'x' });
+check('a reason the app does not send is dropped', state.audits.length === pa + 1, (state.audits.length - pa) + ' rows');
+r = await hit('/api/admin/payments/funnel');
+check('the funnel refuses without admin', r.status === 401, r.status);
+r = await adminGet('/api/admin/payments/funnel');
+check('the funnel answers prompts and orders for the last 14 days', r.status === 200 && r.json?.days === 14 && Array.isArray(r.json?.prompts) && Array.isArray(r.json?.orders), r.status + ' ' + r.text);
 
 // ---- the forms ----
 r = await hit('/register');
