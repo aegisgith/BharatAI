@@ -99,6 +99,10 @@ export function makePayDb() {
               && (senior ? isSenior(a.job_title) && !isStudent(a.job_title) : isStudent(a.job_title)))
               .sort((x, y) => x.id - y.id).map(a => ({ id: a.id, name: a.name, email: a.email })) };
           }
+          // The minute clock's list of campaigns to move on (tickCampaigns).
+          if (/^SELECT id FROM campaigns WHERE status = 'running' ORDER BY id$/.test(sql)) {
+            return { results: state.campaigns.filter(k => k.status === 'running').map(k => ({ id: k.id })) };
+          }
           if (/SELECT \* FROM campaign_recipients WHERE campaign_id = \? AND status = 'pending' ORDER BY id LIMIT \?/.test(sql)) {
             return { results: state.recipients.filter(x => x.campaign_id === Number(args[0]) && x.status === 'pending').slice(0, Number(args[1])).map(x => ({ ...x })) };
           }

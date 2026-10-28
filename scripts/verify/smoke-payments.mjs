@@ -495,8 +495,10 @@ r = await camp({ kind: 'upgrade', audience: 'students' });
 const SC = r.json || {};
 atIst('12:05');
 mark = mail.length;
-r = await pump(SC.id);
+// Sent by the server's minute clock, with no tab driving it (28 Oct 2026).
+r = await hit('/api/cron/tick', { method: 'POST', headers: { Authorization: 'Bearer smoke-admin', 'Content-Type': 'application/json' }, body: '{"max_seconds":0}' }, MAIL);
 const u2 = mail.slice(mark);
+check('the minute clock moves a running campaign on by itself', r.status === 200 && Array.isArray(r.json?.campaigns) && r.json.campaigns.some(k => k.id === SC.id), r.status + ' ' + r.text.slice(0, 200));
 check('the student is offered the Academic Pass, at the student rate, and told to bring an ID', r.status === 200 && u2.length === 1 && u2[0].to === 'sana@college.example' && /action=pay&(amp;)?pass=academic/.test(u2[0].html) && /1,178\.82/.test(u2[0].html) && /student or faculty ID/.test(u2[0].html) && /student rate/.test(u2[0].subject), r.status + ' ' + JSON.stringify(u2.map(m => m.subject)));
 mark = mail.length;
 for (const [id, why] of [[2, /Holds a Delegate Pass/], [64, /Unsubscribed/], [65, /Campus panel only/]]) {

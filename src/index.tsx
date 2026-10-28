@@ -5969,6 +5969,45 @@ function sanitizeRegistrationSource(value: unknown): string | null {
   return REGISTRATION_SOURCE_RE.test(raw) ? raw : null
 }
 
+// One person, one registration. The email was always unique per event (the UNIQUE
+// index), but the mobile was not, so the same person signed up again under a second
+// address: on 28 Oct 2026, 111 numbers sat on 228 rows, nearly all through the
+// ordinary form, and in 90 of them the name matched too. A new registration whose
+// number is already on the list is now refused and pointed at the address that
+// holds it, masked, so the form does not hand a stranger somebody's email.
+//
+// Compared on the last ten digits, so +91 98200 15151, 09820015151 and 9820015151
+// are one number. Fewer than eight digits is not a number we can match on.
+const mobileKey = (v: unknown): string => {
+  const d = String(v ?? '').replace(/\D/g, '')
+  return d.length >= 8 ? d.slice(-10) : ''
+}
+
+const maskEmail = (email: string): string => {
+  const [user, domain] = String(email || '').split('@')
+  if (!user || !domain) return 'another email'
+  return user.slice(0, Math.min(2, user.length - 1)) + '•••@' + domain
+}
+
+// The email already holding this mobile in the event, or null. Every row is read
+// rather than matched in SQL because mobiles are stored as typed (spaces, dashes,
+// +91, a leading 0), and a few thousand short rows cost nothing.
+async function mobileRegisteredTo(c: any, eventId: any, mobile: unknown): Promise<string | null> {
+  const key = mobileKey(mobile)
+  if (!key) return null
+  const { results } = await c.env.DB.prepare(
+    "SELECT email, mobile FROM attendees WHERE event_id = ? AND mobile IS NOT NULL AND mobile != ''"
+  ).bind(eventId).all() as any
+  const hit = (results || []).find((r: any) => mobileKey(r.mobile) === key)
+  return hit ? String(hit.email || '') : null
+}
+
+const mobileTakenReply = (email: string) => {
+  const message = 'This mobile number is already registered with ' + maskEmail(email) +
+    '. Please sign in with that email instead, or use your own mobile number.'
+  return { error: message, message, code: 'mobile_registered' }
+}
+
 app.post('/api/events/:id/attendees/register', async (c) => {
   const eventId = c.req.param('id')
   const body = await c.req.json()
@@ -5994,6 +6033,15 @@ app.post('/api/events/:id/attendees/register', async (c) => {
     const missing = missingRegistrationFields(body)
     if (missing.length) {
       return c.json({ error: 'Please add your ' + humanList(missing) + '.', missing }, 400)
+    }
+    // error carries the sentence (every caller shows .error or .message), code the
+    // machine word for the forms that add a sign-in link.
+    const holder = await mobileRegisteredTo(c, eventId, mobile)
+    if (holder !== null) {
+      await audit(c, 'register.mobile_taken', 'attendee', null,
+        { email: normalizedEmail, holder, source: sanitizeRegistrationSource(registration_source) || 'networking_app' },
+        { actor: 'public registration', kind: 'public' })
+      return c.json(mobileTakenReply(holder), 409)
     }
   }
 
@@ -6426,6 +6474,14 @@ app.post('/api/external/register', async (c) => {
       error: `Please provide ${humanList(missing)}.`,
       missing,
     }, 400)
+  }
+  // The same one-number-one-person rule as the app's form. Only for a new address:
+  // a repeat of an existing one is answered below as before.
+  const knownEmail = await c.env.DB.prepare('SELECT id FROM attendees WHERE event_id = ? AND email = ?')
+    .bind(eventId, normalizedEmail).first()
+  if (!knownEmail) {
+    const holder = await mobileRegisteredTo(c, eventId, phone)
+    if (holder !== null) return c.json(mobileTakenReply(holder), 409)
   }
 
   try {
@@ -12742,7 +12798,8 @@ app.post('/api/cron/tick', async (c) => {
   const token = header.startsWith('Bearer ') ? header.slice(7) : ''
   if (!want || !token || !safeEqualA(token, want)) return c.json({ error: 'unauthorized' }, 401)
   const body = await c.req.json().catch(() => ({})) as any
-  return c.json(await tickMailJobs(c, Number(body.max_seconds) || 0, true))
+  const out = await tickMailJobs(c, Number(body.max_seconds) || 0, true)
+  return c.json({ ...out, campaigns: await tickCampaigns(c) })
 })
 
 // The admin page's view and its own ticking while it is open.
@@ -14541,7 +14598,7 @@ app.get('/api/admin/campaigns/upgrade-preview', async (c) => {
 // build it, rather than duplicating a hundred and seventy lines of email HTML in
 // a second place where the two could drift apart. The caller's credentials are
 // forwarded so the subrequest passes the same admin guard.
-async function campaignSendOne(c: any, kind: string, refId: any, r: any):
+async function campaignSendOne(c: any, kind: string, refId: any, r: any, auth = ''):
     Promise<{ ok: boolean; error?: string; defer?: number; skipped?: string }> {
   const path = kind === 'thankyou' ? `/api/admin/attendees/${r.attendee_id}/send-thankyou`
     : kind === 'announcement' ? `/api/admin/announcements/${refId}/email/${r.attendee_id}`
@@ -14556,8 +14613,8 @@ async function campaignSendOne(c: any, kind: string, refId: any, r: any):
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: c.req.header('Authorization') || '',
-        Cookie: c.req.header('Cookie') || '',
+        Authorization: auth || c.req.header('Authorization') || '',
+        Cookie: auth ? '' : (c.req.header('Cookie') || ''),
       },
       body: '{}',
     }), c.env, (c as any).executionCtx)
@@ -14567,6 +14624,8 @@ async function campaignSendOne(c: any, kind: string, refId: any, r: any):
     // recipient goes back in the queue and the caller is told how long to wait.
     if (res.status === 429) return { ok: false, defer: Math.max(1, Number(body?.wait_seconds) || 30) }
     if (res.status === 409 && body?.paused) return { ok: false, defer: 300 }
+    // A refused sign-in is ours, not the recipient's: wait, never mark them failed.
+    if (res.status === 401 || res.status === 403 || res.status === 503) return { ok: false, defer: 60 }
     // Nothing left to ask this person for: not a send, not a failure.
     if (body?.skipped) return { ok: false, skipped: String(body.reason || 'Nothing outstanding').slice(0, 200) }
     if (!res.ok || body?.error) return { ok: false, error: String(body?.error || 'HTTP ' + res.status).slice(0, 300) }
@@ -14702,12 +14761,40 @@ app.post('/api/admin/campaigns', async (c) => {
 // Send the next few. Called repeatedly by whichever tab is driving; safe to call
 // from two tabs at once, because a recipient is claimed before it is sent.
 app.post('/api/admin/campaigns/:id/pump', async (c) => {
-  const id = c.req.param('id')
   const body = await c.req.json().catch(() => ({})) as any
   const batch = Math.min(25, Math.max(1, parseInt(String(body.batch || 8), 10) || 8))
+  const out = await pumpCampaign(c, c.req.param('id'), batch)
+  return c.json(out.body, out.status as any)
+})
+
+// The server's minute clock (POST /api/cron/tick) moves every running campaign on
+// by one email at most; the send gap and the 9am-9pm window still decide whether
+// that email goes now. Since 28 Oct 2026, when a five-minute-gap upgrade run sat
+// still for hours because its tab was in the background, a long paced run no
+// longer needs a tab open for days. It signs its sends with the admin secret, and
+// only when one is set; a refused sign-in waits (campaignSendOne), it never marks
+// anyone failed. The tab may drive at the same time: a recipient is claimed
+// before it is sent, and the send slot is shared.
+async function tickCampaigns(c: any): Promise<any[]> {
+  const secret = String(c.env?.ADMIN_SECRET || '')
+  if (!secret) return []
+  const { results } = await c.env.DB.prepare("SELECT id FROM campaigns WHERE status = 'running' ORDER BY id").all().catch(() => ({ results: [] }))
+  const out: any[] = []
+  for (const k of (results as any[]) || []) {
+    try {
+      const r = await pumpCampaign(c, k.id, 1, 'Bearer ' + secret)
+      out.push({ id: k.id, sent: r.body?.sent ?? null, remaining: r.body?.remaining ?? null, wait_seconds: r.body?.wait_seconds ?? 0 })
+    } catch (e: any) { out.push({ id: k.id, error: String(e?.message || e).slice(0, 200) }) }
+  }
+  return out
+}
+
+// One step of a campaign: for the tab that drives it, and for the minute clock.
+// auth stands in for the caller's credentials when the clock is asking.
+async function pumpCampaign(c: any, id: any, batch: number, auth = ''): Promise<{ status: number; body: any }> {
   const camp = await c.env.DB.prepare('SELECT * FROM campaigns WHERE id = ?').bind(id).first() as any
-  if (!camp) return c.json({ error: 'Campaign not found' }, 404)
-  if (camp.status === 'paused') return c.json({ paused: true, ...campaignProgress(camp) })
+  if (!camp) return { status: 404, body: { error: 'Campaign not found' } }
+  if (camp.status === 'paused') return { status: 200, body: { paused: true, ...campaignProgress(camp) } }
 
   const { results } = await c.env.DB.prepare(
     "SELECT * FROM campaign_recipients WHERE campaign_id = ? AND status = 'pending' ORDER BY id LIMIT ?"
@@ -14719,7 +14806,7 @@ app.post('/api/admin/campaigns/:id/pump', async (c) => {
       "UPDATE campaigns SET status = 'done', finished_at = COALESCE(finished_at, datetime('now')), updated_at = datetime('now') WHERE id = ?"
     ).bind(id).run()
     const done = await c.env.DB.prepare('SELECT * FROM campaigns WHERE id = ?').bind(id).first() as any
-    return c.json({ finished: true, ...campaignProgress(done) })
+    return { status: 200, body: { finished: true, ...campaignProgress(done) } }
   }
 
   let sent = 0, failed = 0, skipped = 0
@@ -14732,7 +14819,7 @@ app.post('/api/admin/campaigns/:id/pump', async (c) => {
       "UPDATE campaign_recipients SET status = 'sending' WHERE id = ? AND status = 'pending'"
     ).bind(r.id).run()
     if (!claim.meta.changes) continue
-    const out = await campaignSendOne(c, camp.kind, camp.ref_id, r)
+    const out = await campaignSendOne(c, camp.kind, camp.ref_id, r, auth)
     if (out.defer) {
       // Not this recipient's turn yet. Put them back exactly as they were and
       // stop the batch - pushing on would only collect more deferrals.
@@ -14779,15 +14866,15 @@ app.post('/api/admin/campaigns/:id/pump', async (c) => {
   }
   // wait_seconds tells the driver how long to hold off. A paced campaign spends
   // most of its life here rather than sending.
-  return c.json({
+  return { status: 200, body: {
     ...campaignProgress(after),
     remaining: left?.n || 0,
     skipped_now: skipped,
     wait_seconds: deferFor || 0,
     waiting: deferFor > 0,
     recent,
-  })
-})
+  } }
+}
 
 function campaignProgress(camp: any) {
   return {
@@ -16826,14 +16913,17 @@ async function submitRegistration(e) {
       // in, not registering again. The endpoint sends the human sentence in .message.
       // A toast disappears in four seconds, which is not long enough to read a
       // sentence and act on it, so the notice also stays under the button.
+      // A mobile already on the list (code 'mobile_registered') is the same person
+      // under another email, so it gets the same way out.
       const known = data.error === 'verification_required';
+      const knownMobile = data.code === 'mobile_registered';
       const msg = data.message || (data.error && !known ? data.error : '') || 'Registration failed. Please try again.';
       const notice = document.getElementById('rf-notice');
-      notice.innerHTML = msg + (known
+      notice.innerHTML = msg + (known || knownMobile
         ? ' <a href="/app#login" class="underline font-semibold whitespace-nowrap">Sign in here</a>.'
         : '');
       notice.classList.remove('hidden');
-      showToast(known ? 'This email is already registered' : msg, 'error');
+      showToast(known ? 'This email is already registered' : knownMobile ? 'This mobile number is already registered' : msg, 'error');
       btn.innerHTML = '<i class="fas fa-check-circle mr-2"></i>Register — It\\'s Free!';
       btn.disabled = false;
       return;
@@ -29133,7 +29223,7 @@ function adminPageScript(): string {
     async function startUpgradeCampaign(key, n) {
       if (!n) return;
       var pass = key === 'students' ? 'Academic Pass' : 'Delegate Pass';
-      if (!confirm('Email the ' + pass + ' offer to ' + n + ' Visitors?\\n\\nReal email, one at a time, only between 9am and 9pm IST. It carries on while this tab is open; Pause stops it, and it can be resumed from Settings. Nobody is sent two.')) return;
+      if (!confirm('Email the ' + pass + ' offer to ' + n + ' Visitors?\\n\\nReal email, one at a time, only between 9am and 9pm IST. It carries on by itself on the server, even with this tab closed; Pause (Settings, Bulk email) stops it. Nobody is sent two.')) return;
       var camp = await startCampaign('upgrade', { audience: key });
       if (camp) setTimeout(loadUpgradeCampaign, 1500);
     }
@@ -30227,12 +30317,15 @@ function adminPageScript(): string {
         // The server sets wait_seconds when the send is paced or the window is
         // shut. Sleep it out rather than spinning; the run is durable, so the
         // operator can also close the tab and resume later instead of waiting.
+        // By the clock, not by counting ticks: a tab in the background has its
+        // timers slowed to one a minute, and 300 counted ticks became hours
+        // (28 Oct 2026). The server's minute clock sends as well, so this tab is
+        // only a second driver now.
         if (r.wait_seconds > 0) {
-          var waited = 0;
-          while (waited < r.wait_seconds && !campaignPump.stop && campaignPump.id === id) {
+          var until = Date.now() + r.wait_seconds * 1000;
+          while (Date.now() < until && !campaignPump.stop && campaignPump.id === id) {
             await new Promise(function (res) { setTimeout(res, 1000); });
-            waited++;
-            updateCampaignWait(r.wait_seconds - waited);
+            updateCampaignWait(Math.max(0, Math.ceil((until - Date.now()) / 1000)));
           }
         }
       }
@@ -30252,7 +30345,7 @@ function adminPageScript(): string {
       openModal(
         '<h3 class="text-lg font-bold mb-1">' + escH(camp.title || 'Sending') + '</h3>' +
         '<p class="text-xs text-gray-400 mb-4">' + camp.total + ' recipient' + (camp.total === 1 ? '' : 's') +
-          '. You can close this and it will carry on while the tab is open; closing the tab pauses it, and it can be resumed later.</p>' +
+          '. It carries on by itself: the server sends on its own minute clock, so you can close this, and the tab too. Pause stops it.</p>' +
         '<div class="w-full bg-white/5 rounded-full h-3 mb-2"><div id="camp-bar" class="h-full rounded-full bg-gradient-to-r from-primary-500 to-amber-400 transition-all" style="width:0%"></div></div>' +
         '<p id="camp-status" class="text-xs text-gray-400 min-h-4">Starting...</p>' +
         '<p id="camp-wait" class="text-[11px] text-amber-300 mt-1 min-h-4"></p>' +
