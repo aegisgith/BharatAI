@@ -23,6 +23,7 @@ Secrets, claim codes and conference registration totals are deliberately **not**
 | Database | Cloudflare D1 `bharatai-production`; schema only via `migrations/*.sql` |
 | Uploads | R2 bucket `bharatai-uploads`, served at `/api/uploads/...` |
 | Email | Elastic Email v4 transactional API |
+| AImailPilot attendee sync | `GET /api/external/attendees-export` (bearer `ATTENDEE_EXPORT_SECRET`, `?mode=state`); AImailPilot pulls every 30 min into two lists. Deploy steps and the field contract: `docs/AIMAILPILOT-SYNC.md` |
 | Checkout (CCAvenue) | `src/lib/ccavenue.ts` (the wire format, nothing else) and the `ONLINE PAYMENTS` block in `src/index.tsx`; table `payment_orders` (0045). See §15 |
 | Build guards | `scripts/check-inline-js.mjs`, `scripts/check-no-counts.mjs` (run by `npm run build`) |
 | Campus tooling | `scripts/import-muni-panel.py`, `scripts/import-linkedin-panel.py`, `scripts/make-panel-claim-slide.py` |

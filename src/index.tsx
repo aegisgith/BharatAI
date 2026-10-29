@@ -6593,10 +6593,42 @@ app.get('/api/external/attendees-export', async (c) => {
   const limitRaw = parseInt(c.req.query('limit') || '5000', 10)
   const limit = Math.min(Math.max(limitRaw || 5000, 1), 5000)
 
+  // Each row also says whether the person is coming to the November conference
+  // (main_event) and whether they opted out of marketing mail (opted_out: 1 for
+  // consent "no" or the unsubscribe link, 0 for neither, NULL when this database
+  // cannot tell). The AImailPilot sweeper skips opted-out rows - the rule every
+  // campaign here follows - and files campus students who said yes under the
+  // conference list. Columns are intersected with the table as it actually is,
+  // like the admin export, so a database a migration behind still answers.
+  const have = await attendeeColumns(c)
+  const optOutParts = [
+    have.has('marketing_consent') ? 'marketing_consent = 0' : '',
+    have.has('unsubscribed_at') ? 'unsubscribed_at IS NOT NULL' : '',
+  ].filter(Boolean)
+  const optedOutExpr = optOutParts.length === 2 ? `CASE WHEN ${optOutParts.join(' OR ')} THEN 1 ELSE 0 END`
+    : optOutParts.length === 1 ? `CASE WHEN ${optOutParts[0]} THEN 1 END`
+    : 'NULL'
+  const mainEventExpr = have.has('main_event') ? 'main_event' : 'NULL'
+  const mobileExpr = have.has('mobile') ? 'mobile' : 'NULL'
+
+  // ?mode=state - every attendee of the event, five small fields, campus rows
+  // included. It lets the sweeper take people out of its lists when they opt out
+  // AFTER being imported (the since= cursor never re-reads an old row), and move
+  // a campus student who later says yes. Default responses are unchanged apart
+  // from the three fields above.
+  if (c.req.query('mode') === 'state') {
+    const st = await c.env.DB.prepare(
+      `SELECT id, email, registration_source, ${mainEventExpr} AS main_event, ${optedOutExpr} AS opted_out
+         FROM attendees WHERE event_id = ? ORDER BY id LIMIT 50000`
+    ).bind(eventId).all()
+    return c.json({ mode: 'state', attendees: st.results || [] })
+  }
+
   let sql = `SELECT id, event_id, name, email, company, job_title, bio,
                     avatar_url, interests, linkedin_url, twitter_url,
                     website_url, role, badge_type, industry, city, country,
-                    company_size, pass_type, registration_source, created_at
+                    company_size, pass_type, registration_source, created_at,
+                    ${mobileExpr} AS mobile, ${mainEventExpr} AS main_event, ${optedOutExpr} AS opted_out
                FROM attendees
               WHERE event_id = ?`
   const args: any[] = [eventId]
@@ -6611,8 +6643,9 @@ app.get('/api/external/attendees-export', async (c) => {
   // the paid-conversion rate look worse than it is. Excluded by default;
   // ?include_campus=1 opts back in once a student-appropriate sequence exists.
   //
-  // No row carries a campus: tag yet — the writes that create them ship alongside
-  // this — so today the clause matches everything and the sweeper sees no change.
+  // Since 29 Oct 2026 the sweeper asks with include_campus=1 (once ?mode=state
+  // answers) and files those rows in its own "Campus Panel" list, apart from the
+  // paid-pass audience.
   if (c.req.query('include_campus') !== '1') {
     sql += ` AND (registration_source IS NULL OR registration_source NOT LIKE 'campus:%')`
   }
