@@ -17385,7 +17385,7 @@ function passesPageHTML(): string {
         <a href="/register${hash}" class="mt-4 block text-center px-4 rounded-xl text-xs font-semibold text-white transition" style="min-height:44px;line-height:44px;background:${color};">Get the ${name}</a>
       </div>`
   const faq: [string, string][] = [
-    ['Which pass should I buy?', 'Coming for the conference: the <strong>Delegate Pass</strong>. Want a hands-on workshop seat as well: <strong>Premium Delegate</strong>. Want the CXO Gala Networking Evening, the lounge and the speaker meet &amp; greet: <strong>VIP</strong>. A student or faculty member with ID: <strong>Academic</strong>. Only the exhibition floor: the free <strong>Visitor Pass</strong>, admitted by time slot.'],
+    ['Which pass should I buy?', 'Coming for the conference: the <strong>Delegate Pass</strong>. Want a hands-on workshop seat as well: <strong>Premium Delegate</strong>. Want the CXO Gala Networking Evening, the lounge and the speaker meet &amp; greet: <strong>VIP</strong>. A student or faculty member with ID: <strong>Academic</strong>. Only the exhibition floor: the free <strong>Visitor Pass</strong>, where entry is not guaranteed: it depends on slot availability on 20 and 21 Nov, a half-day slot or none, confirmed by email.'],
     ['Is entry guaranteed?', 'On every paid pass, yes, on both days. ' + FREE_ENTRY_TEXT],
     ['What does the price include?', 'Prices are + 18% GST. ' + priceDeadlineNote() + ' An order keeps the price it was made at.'],
     ['Can I get a GST invoice in my company&rsquo;s name?', 'Yes. The paid form has a section for the registered company name, GSTIN and billing address. A receipt is emailed the moment the payment goes through, and the GST invoice follows from the accounts team.'],
@@ -17395,7 +17395,7 @@ function passesPageHTML(): string {
     ['We are a team of five or more', GROUP_RATE_TEXT + ' <a href="/contact#group_registration" class="text-primary-400 underline">Ask for a group rate</a>.'],
     ['I already hold a paid pass. Can I move up?', 'Yes. A confirmed Delegate, Premium Delegate or Academic pass moves up to any dearer pass for the difference between the two list prices, from the pass card in the app.'],
   ]
-  return `${sharedHeadHTML('Passes', '/passes', "Every pass for Bharat AI Innovation 2026 compared: free Visitor Pass admitted by time slot, Academic, Delegate, Premium Delegate and VIP, all + GST. Standard prices until 5 Nov 2026. 20–21 Nov, World Trade Center Mumbai.")}
+  return `${sharedHeadHTML('Passes', '/passes', "Every pass for Bharat AI Innovation 2026 compared: free Visitor Pass (entry not guaranteed, by slot as available), Academic, Delegate, Premium Delegate and VIP, all + GST. Standard prices until 5 Nov 2026. 20–21 Nov, World Trade Center Mumbai.")}
 <body class="min-h-screen">
 ${sharedNavHTML('passes')}
 
@@ -17432,7 +17432,7 @@ ${sharedNavHTML('passes')}
 
   <div class="text-center mt-10">
     <a href="/register#delegate" class="inline-block px-8 rounded-xl font-bold text-sm text-white" style="min-height:48px;line-height:48px;background:linear-gradient(135deg,#FF6B00,#FF8C38);">Get a Delegate Pass &mdash; ${rsPrice('Delegate Pass')} + GST</a>
-    <p class="text-xs text-gray-500 mt-3">Only the exhibition floor? <a href="/register" class="text-primary-400 underline">Free Visitor Pass</a>, admitted by time slot. Already registered? <a href="/app" class="text-primary-400 underline">Open the app</a>.</p>
+    <p class="text-xs text-gray-500 mt-3">Only the exhibition floor? <a href="/register" class="text-primary-400 underline">Free Visitor Pass</a>: entry not guaranteed, by slot availability on 20 and 21 Nov, confirmed by email. Already registered? <a href="/app" class="text-primary-400 underline">Open the app</a>.</p>
   </div>
 </main>
 
@@ -17442,7 +17442,7 @@ ${sharedFooterHTML()}
 }
 
 function registerPageHTML(): string {
-  return `${sharedHeadHTML('Passes & Registration', '/register', "Passes for Bharat AI Innovation 2026, India's B2B AI conference and exhibition: Delegate ₹4,999 + GST until 5 Nov with guaranteed entry, Premium Delegate, VIP, Academic, or a free Visitor Pass admitted by time slot. 20–21 Nov 2026, WTC Mumbai.")}
+  return `${sharedHeadHTML('Passes & Registration', '/register', "Passes for Bharat AI Innovation 2026, India's B2B AI conference and exhibition: Delegate ₹4,999 + GST until 5 Nov with guaranteed entry, Premium Delegate, VIP, Academic, or a free Visitor Pass where entry is not guaranteed (by slot as available). 20–21 Nov 2026, WTC Mumbai.")}
 <body class="min-h-screen">
 ${sharedNavHTML('register')}
 
@@ -17453,7 +17453,7 @@ ${sharedNavHTML('register')}
       <i class="fas fa-ticket-alt"></i>STANDARD PRICES UNTIL 5 NOV
     </div>
     <h1 class="text-3xl md:text-4xl font-bold mb-3">Passes and registration for Bharat AI Innovation 2026</h1>
-    <p class="text-gray-400 max-w-2xl mx-auto">World Trade Center, Mumbai, 20–21 Nov 2026. A Delegate Pass has guaranteed entry on both days, every session, lunch and the networking app. A free Visitor Pass covers the exhibition floor, with entry by time slot.</p>
+    <p class="text-gray-400 max-w-2xl mx-auto">World Trade Center, Mumbai, 20–21 Nov 2026. A Delegate Pass has guaranteed entry on both days, every session, lunch and the networking app. A free Visitor Pass covers the exhibition floor, and its entry is not guaranteed: it depends on slot availability on 20 and 21 Nov, a half-day slot or none, confirmed by email.</p>
   </div>
 
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 max-w-5xl mx-auto">
@@ -22593,10 +22593,10 @@ function mainPageScript(): string {
       const gBtn = document.getElementById('pcc-guarantee-btn');
       if (gBtn) gBtn.classList.toggle('hidden', !visitor);
       const stateEl = document.getElementById('pcc-pass-state');
-      if (stateEl) stateEl.textContent = pending ? ' is waiting for payment' : visitor ? ' is a free pass' : ' is ready';
+      if (stateEl) stateEl.textContent = pending ? ' is waiting for payment' : visitor ? ' is a free pass: entry not guaranteed' : ' is ready';
       document.getElementById('pcc-pass-note').textContent = pending
         ? (payNow ? 'It is issued the moment your payment goes through. Pay now to finish.' : 'It will be issued as soon as your payment is confirmed.')
-        : visitor ? 'Entry is by time slot on 20 and 21 Nov, confirmed by email before the event. Every paid pass has guaranteed entry on both days.'
+        : visitor ? 'Entry on a free Visitor Pass is not guaranteed: it depends on slot availability on 20 and 21 Nov, a half-day slot or none, confirmed by email. Every paid pass has guaranteed entry on both days.'
         : 'Keep it on your phone — the badge desk scans it to check you in.';
       el.classList.remove('hidden');
       if (!pending) loadWorkshopSeat();
@@ -23238,7 +23238,7 @@ function mainPageScript(): string {
         }
         if (reason === 'passcard') {
           title.textContent = 'Guarantee your entry on both days';
-          copy.innerHTML = 'Your <span class="text-white font-semibold">Visitor Pass</span> is admitted by time slot as available on 20 and 21 Nov, a half-day slot or none, confirmed by email. A <span class="text-primary-300 font-semibold">Delegate Pass</span>' + (delegatePrice ? ' (' + delegatePrice + ')' : '') +
+          copy.innerHTML = 'Your <span class="text-white font-semibold">Visitor Pass</span> does not guarantee entry: it depends on slot availability on 20 and 21 Nov, a half-day slot or none, confirmed by email. A <span class="text-primary-300 font-semibold">Delegate Pass</span>' + (delegatePrice ? ' (' + delegatePrice + ')' : '') +
             ' has guaranteed entry on both days and adds every session, lunch and the networking app.' + priceDeadlineLine('Delegate Pass');
           _upgradeTarget = 'Delegate Pass';
         }
@@ -28139,7 +28139,7 @@ function mainPageScript(): string {
         { done: _agendaSet().size > 0, icon: 'fa-star', title: 'Star the sessions you want',
           body: 'Build your two days and download them to your calendar.', cta: 'See the schedule', act: "switchTab('schedule')" },
         { done: false, icon: 'fa-arrow-up', title: 'Guarantee your entry on both days',
-          body: 'A free pass is admitted by time slot as available, confirmed by email. A Delegate Pass has guaranteed entry, every session, lunch and the networking app.', cta: 'See the Delegate Pass', act: "showUpgradeModal('passcard')" }
+          body: 'Entry on a free pass is not guaranteed: it depends on slot availability on 20 and 21 Nov, a half-day slot or none, confirmed by email. A Delegate Pass has guaranteed entry, every session, lunch and the networking app.', cta: 'See the Delegate Pass', act: "showUpgradeModal('passcard')" }
       ];
       renderPlanSteps(steps);
       card.classList.remove('hidden');
