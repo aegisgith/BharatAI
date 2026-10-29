@@ -17514,6 +17514,7 @@ ${sharedNavHTML('register')}
     <!-- Registration Form -->
     <div>
       <div class="glass rounded-2xl p-6 md:p-8 border border-primary-500/20">
+        <div id="reg-intro">
         <div class="flex items-center gap-3 mb-2">
           <div class="w-10 h-10 rounded-xl bg-primary-500/20 flex items-center justify-center shrink-0">
             <i class="fas fa-id-badge text-lg text-primary-400"></i>
@@ -17525,6 +17526,7 @@ ${sharedNavHTML('register')}
         </div>
         <div class="text-center p-3 rounded-xl bg-primary-500/10 border border-primary-500/20 mb-5">
           <span class="text-primary-400 text-xs font-semibold"><i class="fas fa-check-circle mr-1"></i>Exhibition floor &amp; product demos, free &middot; entry not guaranteed: by slot availability on 20 and 21 Nov, confirmed by email</span>
+        </div>
         </div>
 
         <form id="reg-form" onsubmit="submitRegistration(event)" class="space-y-4">
@@ -17601,70 +17603,146 @@ ${sharedNavHTML('register')}
           <p class="text-center text-[10px] text-gray-500">By registering, you agree to receive event updates via email</p>
         </form>
 
-        <div id="reg-success" class="hidden text-center py-6">
-          <div class="w-20 h-20 rounded-full bg-primary-500/20 flex items-center justify-center mx-auto mb-4">
-            <i class="fas fa-check text-3xl text-primary-400"></i>
+        <!-- After a free registration: one clear next step (photo, then the shareable
+             badge), three places worth going in the app, and the paid passes last,
+             sold on the one thing the free pass cannot promise: entry. Colours are set
+             here, not with utilities, because the light theme remaps those. -->
+        <style>
+          #reg-success { scroll-margin-top: 96px; }
+          @media (prefers-reduced-motion: no-preference) {
+            #reg-success { animation: rsIn .35s ease-out both; }
+            @keyframes rsIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+          }
+          #reg-success .rs-head { text-align: center; padding: 2px 0 22px; }
+          #reg-success .rs-tick { width: 56px; height: 56px; border-radius: 50%; margin: 0 auto 14px; display: flex; align-items: center; justify-content: center; font-size: 24px; color: #0F7B47; background: #E3F5EA; box-shadow: 0 0 0 8px #F2FAF5; }
+          #reg-success .rs-title { margin: 0; font-size: 22px; line-height: 1.25; font-weight: 800; color: #1E2140; }
+          #reg-success .rs-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-top: 10px; }
+          #reg-success .rs-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px; border-radius: 999px; font-size: 12px; font-weight: 700; color: #B84A00; background: #FFF1E6; border: 1px solid #FFD9BF; }
+          #reg-success .rs-chip-ref { color: #3A3F5C; background: #F4F5F9; border-color: #E3E6EF; font-variant-numeric: tabular-nums; }
+          #reg-success .rs-sent { margin: 10px 0 0; font-size: 13px; color: #5B6178; overflow-wrap: anywhere; }
+          #reg-success .rs-kicker { margin: 0 0 10px; font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: #8A8FA8; }
+          #reg-success .rs-hero { display: block; padding: 18px; border-radius: 18px; text-decoration: none; color: #fff; background: linear-gradient(135deg, #FF6B00, #FF8C38); box-shadow: 0 12px 26px -12px rgba(255,107,0,.6); }
+          #reg-success .rs-hero-top { display: flex; align-items: center; gap: 12px; }
+          #reg-success .rs-hero-ic { flex: 0 0 44px; height: 44px; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 18px; background: rgba(255,255,255,.2); }
+          #reg-success .rs-pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 10.5px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; background: rgba(255,255,255,.22); }
+          #reg-success .rs-hero-title { display: block; margin-top: 4px; font-size: 17px; line-height: 1.3; font-weight: 800; }
+          #reg-success .rs-hero-text { display: block; margin-top: 10px; font-size: 13px; line-height: 1.5; color: rgba(255,255,255,.92); }
+          #reg-success .rs-hero-btn { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 46px; margin-top: 14px; border-radius: 12px; font-size: 14.5px; font-weight: 800; color: #C2410C; background: #fff; }
+          #reg-success .rs-list { margin-top: 12px; border: 1px solid #ECEEF4; border-radius: 18px; overflow: hidden; background: #fff; }
+          #reg-success .rs-row { display: flex; align-items: center; gap: 12px; min-height: 68px; padding: 12px 14px; text-decoration: none; color: #1E2140; border-top: 1px solid #ECEEF4; transition: background-color .15s; }
+          #reg-success .rs-row:first-child { border-top: 0; }
+          #reg-success .rs-row:hover { background: #FAFAFC; }
+          #reg-success .rs-ic { flex: 0 0 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 16px; }
+          #reg-success .rs-row-body { flex: 1; min-width: 0; }
+          #reg-success .rs-row-body strong { display: block; font-size: 14.5px; font-weight: 700; color: #1E2140; }
+          #reg-success .rs-row-body span { display: block; margin-top: 2px; font-size: 12.5px; line-height: 1.45; color: #5B6178; }
+          #reg-success .rs-chev { color: #B4B8C8; font-size: 12px; }
+          #reg-success .rs-up { margin-top: 26px; padding: 20px 16px 16px; border-radius: 20px; color: #fff; background: linear-gradient(160deg, #1A237E, #10164F); }
+          #reg-success .rs-up-head { display: flex; gap: 12px; align-items: flex-start; }
+          #reg-success .rs-up-ic { flex: 0 0 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 17px; color: #FFC24D; background: rgba(255,194,77,.14); }
+          #reg-success .rs-up-title { margin: 0; font-size: 18px; line-height: 1.3; font-weight: 800; color: #fff; }
+          #reg-success .rs-up-sub { margin: 6px 0 0; font-size: 12.5px; line-height: 1.55; color: #C9CDEA; }
+          #reg-success .rs-up-clock { display: inline-flex; align-items: center; gap: 6px; margin: 14px 0 0; padding: 5px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; color: #FFD58A; background: rgba(255,194,77,.12); }
+          #reg-success .rs-tiers { display: grid; gap: 10px; margin-top: 14px; }
+          #reg-success .rs-tier { padding: 14px; border-radius: 14px; background: #fff; color: #1E2140; border: 2px solid transparent; }
+          #reg-success .rs-tier-main { border-color: #FF8C38; }
+          #reg-success .rs-tier-top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+          #reg-success .rs-tier-name { margin: 0; font-size: 15px; font-weight: 800; }
+          #reg-success .rs-tier-perk { margin: 4px 0 0; font-size: 12.5px; line-height: 1.45; color: #5B6178; }
+          #reg-success .rs-tier-perk + span { margin-top: 4px; }
+          #reg-success .rs-tier-price { flex: 0 0 auto; margin: 0; white-space: nowrap; }
+          #reg-success .rs-tier-price strong { font-size: 16px; font-weight: 800; color: #1E2140; }
+          #reg-success .rs-tier-price small { margin-left: 4px; font-size: 11px; color: #8A8FA8; }
+          #reg-success .rs-btn { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; margin-top: 12px; border-radius: 11px; font-size: 14px; font-weight: 800; text-decoration: none; transition: filter .15s; }
+          #reg-success .rs-btn:hover { filter: brightness(1.05); }
+          #reg-success .rs-btn-main { color: #fff; background: linear-gradient(135deg, #FF6B00, #FF8C38); }
+          #reg-success .rs-btn-premium { color: #0B7A75; background: #E6F4F3; }
+          #reg-success .rs-btn-vip { color: #8A6400; background: #FFF4D6; }
+          #reg-success .rs-up-foot { margin: 12px 0 0; font-size: 11.5px; line-height: 1.5; text-align: center; color: #AEB3D6; }
+          #reg-success .rs-app { margin: 18px 0 0; text-align: center; }
+          #reg-success .rs-app a { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 8px; font-size: 14px; font-weight: 700; color: #C2410C; text-decoration: none; }
+        </style>
+        <div id="reg-success" class="hidden">
+          <div class="rs-head">
+            <div class="rs-tick"><i class="fas fa-check"></i></div>
+            <h3 class="rs-title" id="rs-name"></h3>
+            <div class="rs-chips"><span class="rs-chip"><i class="fas fa-ticket-alt"></i>Free Visitor Pass</span><span class="rs-chip rs-chip-ref" id="rs-ref"></span></div>
+            <p class="rs-sent" id="rs-sent"></p>
           </div>
-          <h3 class="font-bold text-xl text-primary-300" id="rs-name"></h3>
-          <p class="text-sm text-gray-300 mt-1" id="rs-ref"></p>
-          <p class="text-xs text-gray-400 mt-2">Your Visitor Pass is registered. ${FREE_ENTRY_TEXT} You can now access the networking app.</p>
-          <div class="flex gap-3 justify-center mt-5">
-            <a href="/app" id="rs-app-link" class="px-6 py-2.5 rounded-xl text-sm font-semibold bg-primary-500/20 text-primary-300 hover:bg-primary-500/30 transition"><i class="fas fa-rocket mr-2"></i>Open Networking App</a>
+
+          <p class="rs-kicker">Your next steps</p>
+          <a href="/app?action=social-card" class="rs-hero">
+            <span class="rs-hero-top">
+              <span class="rs-hero-ic"><i class="fas fa-camera"></i></span>
+              <span><span class="rs-pill">Start here</span><span class="rs-hero-title">Add your photo and get your &ldquo;I&rsquo;m attending&rdquo; badge</span></span>
+            </span>
+            <span class="rs-hero-text">Post it on LinkedIn and WhatsApp so the people you want to meet know you are coming.</span>
+            <span class="rs-hero-btn">Add my photo <i class="fas fa-arrow-right"></i></span>
+          </a>
+          <div class="rs-list">
+            <a href="/app#networking" class="rs-row">
+              <span class="rs-ic" style="color:#1A237E;background:#EEF0FB;"><i class="fas fa-users"></i></span>
+              <span class="rs-row-body"><strong>See who is coming</strong><span>Preview the delegate directory. Replying to anyone who writes to you is free.</span></span>
+              <i class="fas fa-chevron-right rs-chev"></i>
+            </a>
+            <a href="/app#workshops" class="rs-row">
+              <span class="rs-ic" style="color:#0B7A75;background:#E6F4F3;"><i class="fas fa-chalkboard-teacher"></i></span>
+              <span class="rs-row-body"><strong>Hands-on workshops</strong><span>Expert-led and seated. A seat comes with Premium Delegate and VIP.</span></span>
+              <i class="fas fa-chevron-right rs-chev"></i>
+            </a>
+            <a href="/app#schedule" class="rs-row">
+              <span class="rs-ic" style="color:#A66A00;background:#FFF4D6;"><i class="fas fa-calendar-alt"></i></span>
+              <span class="rs-row-body"><strong>Plan your two days</strong><span>Keynotes, panels and Innovation Talks, 20 and 21 Nov at WTC Mumbai.</span></span>
+              <i class="fas fa-chevron-right rs-chev"></i>
+            </a>
           </div>
-          <!-- The Visitor Pass is free and covers the floor. This is the one moment
-               someone is holding their plans in mind, so it is where the two paid
-               tiers are worth showing — as what they add, not as what is withheld. -->
-          <div class="mt-6 pt-5 border-t border-white/10 text-left">
-            <p class="text-sm font-semibold text-white text-center mb-1">Coming for the conference too?</p>
-            <p class="text-xs text-gray-400 text-center mb-4">Entry on a free Visitor Pass is not guaranteed: it depends on slot availability on 20 and 21 Nov, a half-day slot or none. These have guaranteed entry on both days and add the rest.</p>
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div class="rounded-xl p-4 border border-primary-500/25 bg-primary-500/5">
-                <div class="flex items-baseline justify-between">
-                  <span class="font-bold text-primary-300 text-sm">Delegate Pass</span>
-                  <span class="text-xs text-gray-400">${rsPrice('Delegate Pass')} + GST</span>
-                </div>
-                <ul class="text-[11px] text-gray-400 mt-2 space-y-1">
-                  <li><i class="fas fa-check text-green-400 mr-1.5"></i>All conference sessions, both days</li>
-                  <li><i class="fas fa-check text-green-400 mr-1.5"></i>Lunch pass</li>
-                  <li><i class="fas fa-check text-green-400 mr-1.5"></i>Full networking hub and meetings</li>
-                </ul>
-                <!-- -300, not -200: the light theme remaps the -300 shades to dark ink
-                     and leaves -200 pale, so -200 was near-invisible on this page. -->
-                <a href="/register#delegate" onclick="return upgradeFromSuccess('Delegate Pass')" class="mt-3 block text-center px-4 py-2 rounded-lg text-xs font-semibold bg-primary-500/20 text-primary-300 hover:bg-primary-500/30 transition">Upgrade to Delegate</a>
-              </div>
-              <div class="rounded-xl p-4 border" style="border-color:rgba(11,122,117,0.35);background:rgba(11,122,117,0.04);">
-                <div class="flex items-baseline justify-between gap-2">
-                  <span class="font-bold text-sm" style="color:#0B7A75;">Premium Delegate</span>
-                  <span class="text-xs text-gray-400">${rsPrice('Premium Delegate Pass')} + GST</span>
-                </div>
-                <ul class="text-[11px] text-gray-400 mt-2 space-y-1">
-                  <li><i class="fas fa-check text-green-400 mr-1.5"></i>Everything in Delegate</li>
-                  <li><i class="fas fa-check text-green-400 mr-1.5"></i>One hands-on workshop</li>
-                  <li><i class="fas fa-check text-green-400 mr-1.5"></i>Seats go first come, first served</li>
-                </ul>
-                <a href="/register#premium" onclick="return upgradeFromSuccess('Premium Delegate Pass')" class="mt-3 block text-center px-4 py-2 rounded-lg text-xs font-semibold transition" style="background:rgba(11,122,117,0.12);color:#0B7A75;">Upgrade to Premium</a>
-              </div>
-              <div class="rounded-xl p-4 border border-amber-500/30 bg-amber-500/5 relative">
-                <div class="absolute -top-2.5 right-4 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500 text-black">ALL ACCESS</div>
-                <div class="flex items-baseline justify-between">
-                  <span class="font-bold text-amber-300 text-sm">VIP Pass</span>
-                  <span class="text-xs text-gray-400">${rsPrice('VIP Pass')} + GST</span>
-                </div>
-                <ul class="text-[11px] text-gray-400 mt-2 space-y-1">
-                  <li><i class="fas fa-check text-amber-400 mr-1.5"></i>Everything in Premium Delegate</li>
-                  <li><i class="fas fa-check text-amber-400 mr-1.5"></i>CXO Gala Networking Evening, Day 1</li>
-                  <li><i class="fas fa-check text-amber-400 mr-1.5"></i>VIP lounge and priority seating</li>
-                  <li><i class="fas fa-check text-amber-400 mr-1.5"></i>Speaker meet &amp; greet</li>
-                </ul>
-                <a href="/register#vip" onclick="return upgradeFromSuccess('VIP Pass')" class="mt-3 block text-center px-4 py-2 rounded-lg text-xs font-semibold bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition">Upgrade to VIP</a>
+
+          <div class="rs-up">
+            <div class="rs-up-head">
+              <span class="rs-up-ic"><i class="fas fa-shield-alt"></i></span>
+              <div>
+                <p class="rs-up-title">Guarantee your entry on both days</p>
+                <p class="rs-up-sub">${FREE_ENTRY_TEXT}</p>
               </div>
             </div>
-            <p class="text-[11px] text-gray-500 text-center mt-3">Use the same email address. We move your existing registration to the new tier once payment is confirmed &mdash; your reference number does not change.</p>
+            ${latePricing() ? '' : `<p class="rs-up-clock"><i class="fas fa-clock"></i>Standard prices until ${PRICE_DEADLINE_TEXT}</p>`}
+            <div class="rs-tiers">
+              <div class="rs-tier rs-tier-main">
+                <div class="rs-tier-top">
+                  <p class="rs-tier-name">Delegate Pass</p>
+                  <p class="rs-tier-price"><strong>${rsPrice('Delegate Pass')}</strong><small>+ GST</small></p>
+                </div>
+                <p class="rs-tier-perk">Every session on both days, lunch, and full networking: message anyone and book meetings.</p>
+                ${latePriceTag('Delegate Pass')}
+                <a href="/register#delegate" onclick="return upgradeFromSuccess('Delegate Pass')" class="rs-btn rs-btn-main">Upgrade to Delegate <i class="fas fa-arrow-right"></i></a>
+              </div>
+              <div class="rs-tier">
+                <div class="rs-tier-top">
+                  <p class="rs-tier-name" style="color:#0B7A75;">Premium Delegate</p>
+                  <p class="rs-tier-price"><strong>${rsPrice('Premium Delegate Pass')}</strong><small>+ GST</small></p>
+                </div>
+                <p class="rs-tier-perk">Everything in Delegate, plus one hands-on workshop. Seats go first come, first served.</p>
+                ${latePriceTag('Premium Delegate Pass')}
+                <a href="/register#premium" onclick="return upgradeFromSuccess('Premium Delegate Pass')" class="rs-btn rs-btn-premium">Upgrade to Premium</a>
+              </div>
+              <div class="rs-tier">
+                <div class="rs-tier-top">
+                  <p class="rs-tier-name" style="color:#8A6400;">VIP Pass</p>
+                  <p class="rs-tier-price"><strong>${rsPrice('VIP Pass')}</strong><small>+ GST</small></p>
+                </div>
+                <p class="rs-tier-perk">Everything in Premium, plus the CXO Gala Networking Evening on Day 1, the VIP lounge, priority seating and a speaker meet &amp; greet.</p>
+                ${latePriceTag('VIP Pass')}
+                <a href="/register#vip" onclick="return upgradeFromSuccess('VIP Pass')" class="rs-btn rs-btn-vip">Upgrade to VIP</a>
+              </div>
+            </div>
+            <p class="rs-up-foot">Pay with the same email. We move this registration up once the payment lands, and your reference number stays the same.</p>
           </div>
+
+          <p class="rs-app"><a href="/app" id="rs-app-link">Open the networking app <i class="fas fa-arrow-right"></i></a></p>
         </div>
 
         <!-- Already registered? -->
-        <div class="mt-4 pt-4 border-t border-white/10 text-center">
+        <div id="reg-signin-note" class="mt-4 pt-4 border-t border-white/10 text-center">
           <p class="text-xs text-gray-500">Already registered? <a href="/app" class="text-primary-400 hover:underline font-semibold">Sign in on the networking app</a></p>
         </div>
       </div>
@@ -17833,11 +17911,21 @@ async function submitRegistration(e) {
 
     // Success
     document.getElementById('reg-form').classList.add('hidden');
-    document.getElementById('reg-success').classList.remove('hidden');
+    document.getElementById('reg-intro').classList.add('hidden');
+    document.getElementById('reg-signin-note').classList.add('hidden');
+    const success = document.getElementById('reg-success');
+    success.classList.remove('hidden');
     const refId = 'BHAI-2026-' + String(data.id).padStart(5, '0');
-    document.getElementById('rs-name').textContent = 'Welcome, ' + data.name + '!';
-    document.getElementById('rs-ref').textContent = 'Reference: ' + refId + ' · ' + data.email;
-    document.getElementById('rs-app-link').href = '/app?email=' + encodeURIComponent(data.email);
+    document.getElementById('rs-name').textContent = 'Welcome, ' + data.name;
+    document.getElementById('rs-ref').textContent = refId;
+    document.getElementById('rs-sent').textContent = 'Confirmation sent to ' + data.email;
+    // Every link on this screen goes into the app. Registering set this browser's
+    // session, so leave the note a registration made inside the app leaves and the
+    // app signs them in by itself (the old /app?email= link had no token, so it
+    // landed on the sign-in form).
+    try { localStorage.setItem('agba_user', JSON.stringify(data)); } catch (err) {}
+    const still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    success.scrollIntoView({ behavior: still ? 'auto' : 'smooth', block: 'start' });
     showToast('Registration successful!', 'success');
   } catch(err) {
     showToast('Network error. Please try again.', 'error');
