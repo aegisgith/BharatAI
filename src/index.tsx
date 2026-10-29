@@ -13489,7 +13489,7 @@ async function notifyEmail(c: any, attendee: any, opts: { preview?: boolean } = 
     <div style="text-align:center;margin-top:20px;padding:16px 0;">
       <table cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto;background:#ffffff;border-radius:12px;">
         <tr>
-          <td style="padding:12px 14px;vertical-align:middle;"><img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI Innovation" width="97" height="40" style="height:40px;width:97px;border:0;"></td>
+          <td style="padding:12px 14px;vertical-align:middle;"><img src="https://bharataiinnovation.com/images/agba-logo.png" alt="Aegis Graham Bell Awards" width="100" height="40" style="height:40px;width:100px;border:0;"></td>
           <td style="padding:12px 14px;vertical-align:middle;"><img src="https://bharataiinnovation.com/images/passes/aegis.png" alt="Aegis School of Data Science and AI" width="108" height="40" style="height:40px;width:108px;border:0;"></td>
           <td style="padding:12px 14px;vertical-align:middle;"><img src="https://bharataiinnovation.com/images/passes/assessfy.jpg" alt="Assessfy" width="102" height="35" style="height:35px;width:102px;border:0;"></td>
         </tr>
@@ -13796,7 +13796,7 @@ app.post('/api/admin/attendees/:id/send-thankyou', async (c) => {
     <div style="text-align:center;margin-top:20px;padding:16px 0;">
       <table cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto;background:#ffffff;border-radius:12px;">
         <tr>
-          <td style="padding:12px 14px;vertical-align:middle;"><img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI Innovation" width="97" height="40" style="height:40px;width:97px;border:0;"></td>
+          <td style="padding:12px 14px;vertical-align:middle;"><img src="https://bharataiinnovation.com/images/agba-logo.png" alt="Aegis Graham Bell Awards" width="100" height="40" style="height:40px;width:100px;border:0;"></td>
           <td style="padding:12px 14px;vertical-align:middle;"><img src="https://bharataiinnovation.com/images/passes/aegis.png" alt="Aegis School of Data Science and AI" width="108" height="40" style="height:40px;width:108px;border:0;"></td>
           <td style="padding:12px 14px;vertical-align:middle;"><img src="https://bharataiinnovation.com/images/passes/assessfy.jpg" alt="Assessfy" width="102" height="35" style="height:35px;width:102px;border:0;"></td>
         </tr>
