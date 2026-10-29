@@ -13540,23 +13540,46 @@ app.post('/api/admin/attendees/:id/notify', async (c) => {
   return c.json({ success: true, method: 'mailto', email: attendee.email, subject: mail.subject, body: mail.text })
 })
 
+// The account-ready run for this audience that is still running or paused, if
+// any: Notify All resumes it rather than starting a second (POST /api/admin/campaigns).
+async function openNotifyRun(c: any, audience: string): Promise<any> {
+  return await c.env.DB.prepare(
+    "SELECT id, status, title FROM campaigns WHERE kind = 'notify' AND audience = ? AND status IN ('running', 'paused') ORDER BY id DESC LIMIT 1"
+  ).bind(audience).first().catch(() => null)
+}
+
 // What Notify All would send, before it sends: the exact mail one real recipient
 // of the chosen kind gets (free, paid, or paid but not paid yet), and how many of
-// each kind the run reaches. ?id= previews one attendee instead. Sends nothing,
-// mints no sign-in token, writes no mark.
+// each kind the run reaches. ?id= previews one attendee; ?campaign= a run already
+// made, as it stands. A new run for an audience that has one open says so
+// (open_run). Sends nothing, mints no sign-in token, writes no mark.
 app.get('/api/admin/notify-preview', async (c) => {
   const audience = c.req.query('audience') === 'non-responders' ? 'non-responders' : 'un-notified'
   const want = String(c.req.query('kind') || '')
   const counts: Record<string, number> = { free: 0, paid: 0, unpaid: 0, total: 0 }
   let sample: any = null
   const oneId = parseInt(String(c.req.query('id') || ''), 10)
+  const campId = parseInt(String(c.req.query('campaign') || ''), 10)
+  const openRun = Number.isFinite(oneId) || Number.isFinite(campId) ? null : await openNotifyRun(c, audience)
   if (Number.isFinite(oneId)) {
     sample = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(oneId).first()
     if (!sample) return c.json({ error: 'Attendee not found' }, 404)
   } else {
-    // The run's own audience and its own address check (POST /api/admin/campaigns),
-    // so these are the numbers the run will show.
-    const rows = (await campaignAudienceRows(c, 'notify', audience)).filter((r: any) => validEmailSyntax(r.email))
+    let rows: any[]
+    if (Number.isFinite(campId)) {
+      // A run already made (Settings, Bulk email): the people it still has to send
+      // to, or everyone on it once it is done. Each is mailed from their row as it
+      // is at the send, so this is what Resume will send.
+      const listed = async (more: string) => ((await c.env.DB.prepare(
+        `SELECT attendee_id AS id, email FROM campaign_recipients WHERE campaign_id = ?${more} ORDER BY id`
+      ).bind(campId).all()).results as any[]) || []
+      rows = await listed(" AND status IN ('pending', 'sending')")
+      if (!rows.length) rows = await listed('')
+    } else {
+      // The run's own audience and its own address check (POST /api/admin/campaigns),
+      // so these are the numbers the run will show.
+      rows = (await campaignAudienceRows(c, 'notify', audience)).filter((r: any) => validEmailSyntax(r.email))
+    }
     const ps = (await paymentStatusEnabled(c)) ? 'payment_status' : 'NULL AS payment_status'
     const { results } = await c.env.DB.prepare(`SELECT id, badge_type, ${ps} FROM attendees WHERE event_id = 1`).all()
     const byId = new Map(((results as any[]) || []).map((r: any) => [Number(r.id), r]))
@@ -13570,10 +13593,10 @@ app.get('/api/admin/notify-preview', async (c) => {
     const pick = want ? first[want] : (first.free || first.paid || first.unpaid)
     if (pick) sample = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(pick.id).first()
   }
-  if (!sample) return c.json({ audience, counts, kind: want, sample: null })
+  if (!sample) return c.json({ audience, counts, kind: want, sample: null, open_run: openRun })
   const mail = await notifyEmail(c, sample, { preview: true })
   return c.json({
-    audience, counts, kind: notifyKind(sample),
+    audience, counts, kind: notifyKind(sample), open_run: openRun,
     sample: { id: sample.id, name: sample.name, email: sample.email, badge_type: sample.badge_type || 'Visitor Pass' },
     subject: mail.subject,
     html: mail.html.replace(/<\/body>/i, UNSUB_FOOTER(await unsubscribeUrl(c, sample.email)) + '</body>'),
@@ -15382,6 +15405,14 @@ app.post('/api/admin/campaigns', async (c) => {
     refId = UPGRADE_OFFERS[audience].refId
   }
   if (kind === 'announcement' && !refId) return c.json({ error: 'An announcement campaign needs the announcement id.' }, 400)
+  // Two account-ready runs open at once would mail the same people twice: a new
+  // one is built from everyone not yet notified, and the open one still holds
+  // them as pending (29 Oct 2026: one was paused with 2,469 still to go). The
+  // open run is resumed instead. A hand-picked list (ids) is the operator's call.
+  if (kind === 'notify' && !(Array.isArray(body.ids) && body.ids.length)) {
+    const open = await openNotifyRun(c, audience)
+    if (open) return c.json({ error: `An account-ready run is already ${open.status} (number ${open.id}). Resume or pause that one under Settings, Bulk email: a second run would email the same people twice.`, open_run: open }, 409)
+  }
 
   // Explicit ids win over an audience query, so the Attendees tab can turn a
   // filtered selection into a campaign.
@@ -15563,7 +15594,7 @@ async function pumpCampaign(c: any, id: any, batch: number, auth = ''): Promise<
 
 function campaignProgress(camp: any) {
   return {
-    id: camp.id, kind: camp.kind, title: camp.title, status: camp.status,
+    id: camp.id, kind: camp.kind, title: camp.title, audience: camp.audience, status: camp.status,
     total: camp.total, sent: camp.sent, failed: camp.failed,
     created_by: camp.created_by, created_at: camp.created_at, finished_at: camp.finished_at,
   }
@@ -30460,8 +30491,12 @@ function adminPageScript(): string {
           <div class="glass rounded-xl p-5">
             <div class="flex items-center justify-between mb-4">
               <h3 class="font-semibold text-sm"><i class="fas fa-bell text-blue-400 mr-2"></i>Notification Status</h3>
-              <button onclick="notifyAllAttendees()" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-amber-600 hover:bg-amber-500 text-white transition"><i class="fas fa-paper-plane mr-1"></i>Notify All</button>
+              <div class="flex items-center gap-2">
+                <button onclick="notifyAllAttendees()" class="px-3 py-1.5 rounded-lg text-xs font-medium border border-amber-500/40 text-amber-300 hover:bg-amber-500/10 transition"><i class="fas fa-eye mr-1"></i>Preview email</button>
+                <button onclick="notifyAllAttendees()" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-amber-600 hover:bg-amber-500 text-white transition"><i class="fas fa-paper-plane mr-1"></i>Notify All</button>
+              </div>
             </div>
+            <div id="notify-run-strip"></div>
             <div class="grid grid-cols-2 gap-3 mb-4">
               <div class="text-center p-3 rounded-xl bg-green-500/10 border border-green-500/20">
                 <div class="text-2xl font-black text-green-400">\${lunchStats.notifiedCount}</div>
@@ -30484,7 +30519,7 @@ function adminPageScript(): string {
               <p class="text-xs text-gray-400 leading-relaxed">
                 <i class="fas fa-info-circle text-blue-400 mr-1"></i>
                 Notification emails inform attendees that their account is ready. They are asked to update their profile and expected arrival time. Lunch packs are calculated based on arrival time vs the 1-2 PM lunch window.
-                Opens are approximate: Apple Mail loads every picture (too high) and many work mailboxes block them (too low). A click is counted when the app opens from one of the email's two buttons.
+                Opens are approximate: Apple Mail loads every picture (too high) and many work mailboxes block them (too low). A click is counted when the app opens from any of the email's buttons.
               </p>
             </div>
           </div>
@@ -30656,6 +30691,7 @@ function adminPageScript(): string {
       \`;
 
       markSectionFresh();
+      loadNotifyRunStrip();
       // Render charts
       setTimeout(() => {
         loadAudience();
@@ -31190,6 +31226,7 @@ function adminPageScript(): string {
     // The list of runs, in Settings. This is the record that did not exist: a
     // campaign a closed tab interrupted is here, resumable, rather than lost.
     async function loadCampaignList() {
+      loadNotifyRunStrip();
       var el = document.getElementById('campaign-list');
       if (!el) return;
       var data;
@@ -31205,6 +31242,7 @@ function adminPageScript(): string {
         return;
       }
       var rows = (data && data.campaigns) || [];
+      rows.forEach(function (c) { campaignRows[c.id] = c; });
       if (!rows.length) { el.innerHTML = '<p class="text-xs text-gray-500 py-3">No bulk emails have been sent from here yet.</p>'; return; }
       el.innerHTML = rows.map(function (c) {
         var done = (c.sent || 0) + (c.failed || 0);
@@ -31219,8 +31257,9 @@ function adminPageScript(): string {
             '<span class="text-[11px] text-gray-500">' + done + ' of ' + c.total + ' \u00b7 ' + (c.sent || 0) + ' sent, ' +
               (c.failed || 0) + ' failed \u00b7 by ' + escH(c.created_by || 'unknown') + ' \u00b7 ' + fmtIst(c.created_at) + '</span>' +
             '<span class="flex gap-1.5">' +
+              (c.kind === 'notify' || (c.kind === 'upgrade' && c.audience) ? '<button onclick="previewCampaignFromList(' + c.id + ')" class="px-2.5 py-1 rounded-lg text-[10px] font-medium border border-white/10 text-gray-300 hover:bg-black/5"><i class="fas fa-eye mr-1"></i>Preview</button>' : '') +
               (c.status === 'running' ? '<button onclick="pauseCampaignFromList(' + c.id + ')" class="px-2.5 py-1 rounded-lg text-[10px] font-semibold bg-amber-700 text-white on-dark hover:bg-amber-800">Pause</button>' : '') +
-              (c.status !== 'done' && c.status !== 'running' ? '<button onclick="resumeCampaign(' + c.id + ')" class="px-2.5 py-1 rounded-lg text-[10px] font-semibold bg-primary-700 text-white on-dark hover:bg-primary-800">Resume</button>' : '') +
+              (c.status !== 'done' && c.status !== 'running' ? '<button onclick="' + (c.kind === 'notify' ? 'previewCampaignFromList' : 'resumeCampaign') + '(' + c.id + ')" class="px-2.5 py-1 rounded-lg text-[10px] font-semibold bg-primary-700 text-white on-dark hover:bg-primary-800">Resume</button>' : '') +
               (c.failed ? '<button onclick="showCampaignFailures(' + c.id + ')" class="px-2.5 py-1 rounded-lg text-[10px] font-medium border border-white/10 text-gray-400 hover:bg-black/5">' + c.failed + ' failed</button>' : '') +
               (c.failed ? '<button onclick="retryCampaignFailures(' + c.id + ')" class="px-2.5 py-1 rounded-lg text-[10px] font-semibold bg-amber-700 text-white on-dark hover:bg-amber-800">Retry those</button>' : '') +
             '</span>' +
@@ -31251,6 +31290,42 @@ function adminPageScript(): string {
         toast('Paused. Nothing more goes out on it until Resume.');
       } catch (e) { toast('Could not pause: ' + (e.message || ''), 'error'); }
       loadCampaignList();
+    }
+
+    // Settings, Bulk email: the email a run sends. The account-ready email (and its
+    // RSVP chase) shows the people the run still has to send to, and its Resume
+    // goes through this preview too; the upgrade offer uses the Payments preview.
+    var campaignRows = {};
+    function previewCampaignFromList(id) {
+      var c = campaignRows[id];
+      if (!c) return;
+      if (c.kind === 'upgrade') return previewUpgradeCampaign(c.audience);
+      return openNotifyPreview({ campaign: c.id, status: c.status, title: c.title });
+    }
+
+    // The account-ready run on the card that starts it (Overview, Notification
+    // Status): how far it has gone, with Preview and Pause or Resume beside it, so
+    // stopping a send does not mean finding Settings first.
+    async function loadNotifyRunStrip() {
+      var el = document.getElementById('notify-run-strip');
+      if (!el) return;
+      var d;
+      try { d = await api.get('/api/admin/campaigns'); } catch (e) { return; }
+      var c = ((d && d.campaigns) || []).filter(function (x) { return x.kind === 'notify' && (x.status === 'running' || x.status === 'paused'); })[0];
+      if (!c) { el.innerHTML = ''; return; }
+      campaignRows[c.id] = c;
+      var done = (c.sent || 0) + (c.failed || 0);
+      var running = c.status === 'running';
+      el.innerHTML = '<div class="flex items-center justify-between gap-3 flex-wrap p-3 mb-4 rounded-xl ' + (running ? 'bg-amber-500/10 border border-amber-500/30' : 'bg-white/5 border border-white/10') + '">' +
+        '<div class="text-xs"><span class="font-semibold ' + (running ? 'text-amber-300' : 'text-gray-300') + '">' +
+          (running ? '<i class="fas fa-circle text-[8px] mr-1.5 animate-pulse"></i>Sending now' : '<i class="fas fa-pause mr-1.5"></i>Paused') + '</span>' +
+          ' <span class="text-gray-400">' + escH(c.title || 'Account-ready email') + ' &middot; ' + done + ' of ' + c.total + ' sent' + (c.failed ? ', ' + c.failed + ' failed' : '') + '</span></div>' +
+        '<div class="flex gap-1.5">' +
+          '<button onclick="previewCampaignFromList(' + c.id + ')" class="px-3 py-1.5 rounded-lg text-xs font-medium border border-white/10 text-gray-300 hover:bg-white/5"><i class="fas fa-eye mr-1"></i>Preview</button>' +
+          (running
+            ? '<button onclick="pauseCampaignFromList(' + c.id + ')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-700 text-white on-dark hover:bg-amber-800"><i class="fas fa-pause mr-1"></i>Pause</button>'
+            : '<button onclick="previewCampaignFromList(' + c.id + ')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-primary-700 text-white on-dark hover:bg-primary-800"><i class="fas fa-play mr-1"></i>Resume</button>') +
+        '</div></div>';
     }
 
     async function showCampaignFailures(id) {
@@ -32655,6 +32730,11 @@ function adminPageScript(): string {
     var notifyPrev = { audience: 'un-notified' };
     function notifyAllAttendees() { return openNotifyPreview({ audience: 'un-notified' }); }
 
+    // opts: { audience } for a new run, { id, name, email } for one attendee, or
+    // { campaign, status, title } for a run already made (Settings, Bulk email, and
+    // the Notification Status card), whose button is Resume or Pause, not a new send.
+    // A new run asked for while one is open for the same people becomes that run:
+    // a second would mail them twice.
     async function openNotifyPreview(opts, kind) {
       notifyPrev = opts || { audience: 'un-notified' };
       var o = notifyPrev;
@@ -32662,11 +32742,15 @@ function adminPageScript(): string {
       var d;
       try {
         d = await api.get('/api/admin/notify-preview?' + (o.id ? 'id=' + encodeURIComponent(o.id)
-          : 'audience=' + encodeURIComponent(o.audience || 'un-notified') + (kind ? '&kind=' + encodeURIComponent(kind) : '')));
+          : (o.campaign ? 'campaign=' + encodeURIComponent(o.campaign) : 'audience=' + encodeURIComponent(o.audience || 'un-notified')) +
+            (kind ? '&kind=' + encodeURIComponent(kind) : '')));
         if (d && d.error) throw new Error(d.error);
       } catch (e) {
         openModal('<p class="text-sm text-red-400">Could not build the preview: ' + escH(e.message || '') + '</p>');
         return;
+      }
+      if (d.open_run && !o.id && !o.campaign) {
+        return openNotifyPreview({ campaign: d.open_run.id, status: d.open_run.status, title: d.open_run.title, wasNew: true }, kind);
       }
       var cnt = d.counts || {};
       var total = o.id ? 1 : (cnt.total || 0);
@@ -32674,7 +32758,11 @@ function adminPageScript(): string {
       if (o.id) {
         head = '<p class="text-xs text-gray-400 mb-3">Exactly what ' + escH(d.sample.name) + ' (' + escH(d.sample.email) + ') will get.</p>';
       } else {
-        head = '<p class="text-xs text-gray-400 mb-3">' + total + ' ' + (total === 1 ? 'person' : 'people') + ' in this run: ' +
+        head = (o.wasNew ? '<p class="text-xs text-amber-300 mb-2"><i class="fas fa-circle-info mr-1"></i>This email is already on a run that is ' + escH(o.status) +
+            '. ' + (o.status === 'paused' ? 'Resume sends it to the people still waiting' : 'Pause stops it') + '; a second run would email them twice.</p>' : '') +
+          '<p class="text-xs text-gray-400 mb-3">' + (o.campaign
+            ? (o.status === 'done' ? total + ' were on this run' : total + ' still to send on this run')
+            : total + ' ' + (total === 1 ? 'person' : 'people') + ' in this run') + ': ' +
           (cnt.free || 0) + ' on a Free Visitor Pass, ' + (cnt.paid || 0) + ' on a paid or given pass, ' + (cnt.unpaid || 0) +
           ' who chose a paid pass and have not paid. Each gets the version for the pass they hold.</p>' +
           '<div class="flex gap-1.5 flex-wrap mb-3">' + [['free', 'Free Visitor Pass'], ['paid', 'Paid pass'], ['unpaid', 'Not paid yet']].map(function (k) {
@@ -32689,25 +32777,35 @@ function adminPageScript(): string {
           '<p class="text-sm font-semibold text-white mb-2">Subject: ' + escH(d.subject) + '</p>' +
           '<iframe id="notify-prev-frame" sandbox="" title="Email preview" class="w-full rounded-xl bg-white" style="height:60vh;border:1px solid rgba(0,0,0,0.1);"></iframe>'
         : '<p class="text-sm text-gray-400 py-8 text-center">Nobody in this run holds that kind of pass.</p>';
-      openModal('<h3 class="text-lg font-bold mb-1"><i class="fas fa-envelope text-amber-400 mr-2"></i>' +
-          (o.audience === 'non-responders' ? 'Reminder to non-responders' : 'Account-ready email') + ': check it before it goes</h3>' +
+      var act = o.id ? 'Send to ' + escH(o.name || d.sample.name)
+        : o.campaign ? (o.status === 'running' ? 'Pause this run' : o.status === 'done' ? '' : 'Resume: send to ' + total)
+        : 'Send to ' + total + ' ' + (total === 1 ? 'person' : 'people');
+      var heading = o.campaign ? escH(o.title || 'Account-ready email') + ': what it sends'
+        : (o.audience === 'non-responders' ? 'Reminder to non-responders' : 'Account-ready email') + ': check it before it goes';
+      openModal('<h3 class="text-lg font-bold mb-1"><i class="fas fa-envelope text-amber-400 mr-2"></i>' + heading + '</h3>' +
         head + body +
         '<div class="flex gap-2 mt-4">' +
-          '<button onclick="closeModal()" class="flex-1 py-2.5 rounded-xl text-sm glass hover:bg-white/10">Cancel</button>' +
-          '<button onclick="sendNotifyFromPreview()"' + (total ? '' : ' disabled') + ' class="flex-1 py-2.5 rounded-xl text-sm bg-amber-600 hover:bg-amber-500 text-white font-semibold' + (total ? '' : ' opacity-40') + '">' +
-            (o.id ? 'Send to ' + escH(o.name || d.sample.name) : 'Send to ' + total + ' ' + (total === 1 ? 'person' : 'people')) + '</button>' +
+          '<button onclick="closeModal()" class="flex-1 py-2.5 rounded-xl text-sm glass hover:bg-white/10">' + (act ? 'Cancel' : 'Close') + '</button>' +
+          (act ? '<button onclick="sendNotifyFromPreview()"' + (total ? '' : ' disabled') + ' class="flex-1 py-2.5 rounded-xl text-sm bg-amber-600 hover:bg-amber-500 text-white font-semibold' + (total ? '' : ' opacity-40') + '">' + act + '</button>' : '') +
         '</div>' +
-        (o.id ? '' : '<p class="text-[11px] text-gray-500 mt-2">It goes one email at a time, between 9am and 9pm IST, on the server&rsquo;s clock. Pause is in the window that opens next, and under Settings, Bulk email.</p>'));
+        (o.id || !act || o.status === 'running' ? '' : '<p class="text-[11px] text-gray-500 mt-2">It goes one email at a time, between 9am and 9pm IST, on the server&rsquo;s clock. Pause is on the Notification Status card, in the window that opens next, and under Settings, Bulk email.</p>'));
       var f = document.getElementById('notify-prev-frame');
       if (f) f.srcdoc = d.html;
     }
 
-    function sendNotifyFromPreview() {
+    async function sendNotifyFromPreview() {
       var o = notifyPrev || {};
       closeModal();
       if (o.id) return notifyAttendee(o.id, o.name, o.email, true);
-      if (o.audience === 'non-responders') return startCampaign('notify', { audience: 'non-responders', title: 'RSVP reminder to non-responders' });
-      return startCampaign('notify', { audience: 'un-notified', title: 'Account-ready email' });
+      if (o.campaign) {
+        if (o.status === 'running') await pauseCampaignFromList(o.campaign);
+        else await resumeCampaign(o.campaign);
+      } else if (o.audience === 'non-responders') {
+        await startCampaign('notify', { audience: 'non-responders', title: 'RSVP reminder to non-responders' });
+      } else {
+        await startCampaign('notify', { audience: 'un-notified', title: 'Account-ready email' });
+      }
+      loadNotifyRunStrip();
     }
 
     // Profile-completion campaign. Deliberately a two-step: the first screen only

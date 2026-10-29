@@ -191,6 +191,24 @@ r = await hit('GET', '/api/admin/notify-preview');
 check('the preview is for admins only', r.status === 401 || r.status === 403, String(r.status));
 check('/admin.js: Notify All and the RSVP chase open the preview; a running campaign has Pause in the list',
   adminJs.includes('function notifyAllAttendees() { return openNotifyPreview(') && adminJs.includes("openNotifyPreview({ audience: 'non-responders' })") && adminJs.includes('pauseCampaignFromList(') && adminJs.includes("'/api/admin/notify-preview?'"), '');
+check('/admin.js: the Notification Status card has Preview email and the run strip; the list has Preview',
+  adminJs.includes('Preview email</button>') && adminJs.includes('id="notify-run-strip"') && adminJs.includes('loadNotifyRunStrip();') && adminJs.includes('previewCampaignFromList('), '');
+
+// ---- an open run is resumed, never doubled; a run already made can be previewed ----
+r = await hit('POST', '/api/admin/campaigns', { kind: 'notify', audience: 'un-notified' }, ADMIN);
+const runId = r.json?.id;
+check('Notify All makes a run of the two not yet notified', r.status === 201 && r.json.total === 2, r.status + ' ' + r.text.slice(0, 200));
+await hit('POST', `/api/admin/campaigns/${runId}/pause`, {}, ADMIN);
+r = await hit('POST', '/api/admin/campaigns', { kind: 'notify', audience: 'un-notified' }, ADMIN);
+check('a second run while one is paused is refused (it would email the same people twice)', r.status === 409 && r.json?.open_run?.id === runId, r.status + ' ' + r.text.slice(0, 200));
+p = await hit('GET', '/api/admin/notify-preview', undefined, ADMIN);
+check('the Notify All preview names the open run', p.json?.open_run?.id === runId && p.json.open_run.status === 'paused', JSON.stringify(p.json?.open_run));
+p = await hit('GET', `/api/admin/notify-preview?campaign=${runId}&kind=paid`, undefined, ADMIN);
+check('?campaign= previews what that run still has to send', p.json?.counts?.total === 2 && p.json.sample?.id === 9 && !p.json.open_run, JSON.stringify(p.json?.counts));
+r = await hit('GET', '/api/admin/campaigns', undefined, ADMIN);
+check('the campaign list carries each run\'s audience (the upgrade preview needs it)', (r.json?.campaigns || []).some(x => x.id === runId && x.audience === 'un-notified'), '');
+r = await hit('POST', '/api/admin/campaigns', { kind: 'notify', audience: 'non-responders' }, ADMIN);
+check('a run for another audience is not blocked by it', r.status !== 409, r.status + ' ' + r.text.slice(0, 120));
 
 console.log(fails ? `\n${fails} check(s) failed` : '\nall notify-funnel checks passed');
 process.exit(fails ? 1 : 0);
