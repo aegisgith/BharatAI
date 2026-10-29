@@ -24,6 +24,7 @@ CREATE TABLE attendees (id INTEGER PRIMARY KEY AUTOINCREMENT, event_id INTEGER N
   company TEXT, mobile TEXT, city TEXT, badge_type TEXT DEFAULT 'general', payment_status TEXT, payment_amount TEXT,
   main_event INTEGER NOT NULL DEFAULT 1, main_event_answered_at DATETIME, created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   unsubscribed_at DATETIME, marketing_consent INTEGER, job_title TEXT, industry TEXT,
+  lunch_inclusion TEXT DEFAULT 'Yes',
   UNIQUE(event_id, email));
 CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT, updated_at DATETIME);
 CREATE TABLE admin_audit (id INTEGER PRIMARY KEY AUTOINCREMENT, actor TEXT, actor_kind TEXT, action TEXT, entity TEXT, entity_id TEXT, detail TEXT, ip TEXT, user_agent TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
@@ -111,9 +112,11 @@ db.execute(UPDATE.replace("'paid' THEN", "'paid' THEN"), ['failed', 'x', 'x', 'x
 check('and then it too is final', db.execute("SELECT status FROM payment_orders WHERE order_id = 'BAI4-BBBBBBBBBBBB'").fetchone()[0] == 'paid')
 
 n = SETTLE.count('?')
-db.execute(SETTLE, (['Delegate Pass', '5898.82', 1] if n == 3 else ['Delegate Pass', 1]))
+# badge, amount, then (since 29 Oct 2026) the lunch the pass includes, then the id
+db.execute(SETTLE, {2: ['Delegate Pass', 1], 3: ['Delegate Pass', '5898.82', 1], 4: ['Delegate Pass', '5898.82', 'Yes', 1]}[n])
 a1 = db.execute('SELECT * FROM attendees WHERE id = 1').fetchone()
 check('settling sets the badge, paid, the amount and the conference yes', a1['badge_type'] == 'Delegate Pass' and a1['payment_status'] == 'paid' and a1['payment_amount'] == '5898.82' and a1['main_event'] == 1 and a1['main_event_answered_at'] is not None, dict(a1))
+check('and the lunch a Delegate Pass includes', n < 4 or a1['lunch_inclusion'] == 'Yes', dict(a1))
 
 pend = [dict(r) for r in db.execute(PENDING, ['Delegate Pass', 'Premium Delegate Pass', 'VIP Pass', 'Academic Pass'])]
 check('the pending list carries the latest attempt as order|status|time', len(pend) == 1 and pend[0]['id'] == 4 and pend[0]['last_order'].startswith('BAI4-BBBBBBBBBBBB|paid|'), pend)

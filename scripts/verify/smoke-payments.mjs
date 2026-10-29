@@ -178,6 +178,7 @@ r = await back(kitEncrypt(answer(order(A.order_id))));
 const paidUrl = r.h.location || '';
 check('a genuine Success marks the order paid', r.status === 303 && paidUrl.startsWith('/pay/result?o=') && order(A.order_id).status === 'paid' && order(A.order_id).tracking_id === '115023456789' && !!order(A.order_id).paid_at, r.status + ' ' + order(A.order_id).status);
 check('and unlocks the pass: badge, paid, amount, conference yes', state.attendees[1].badge_type === 'Delegate Pass' && state.attendees[1].payment_status === 'paid' && state.attendees[1].payment_amount === '5898.82' && state.attendees[1].main_event === 1, JSON.stringify(state.attendees[1]));
+check('and puts them on the lunch count: a Delegate Pass includes lunch', state.attendees[1].lunch_inclusion === 'Yes', JSON.stringify(state.attendees[1].lunch_inclusion));
 check('and is written to the audit log as the gateway', state.audits.length === auditsBefore + 1 && state.audits[state.audits.length - 1].action === 'payment.received' && /115023456789/.test(state.audits[state.audits.length - 1].detail || ''), JSON.stringify(state.audits.slice(-1)));
 r = await hit(paidUrl);
 check('the result page confirms it with amount and reference', r.status === 200 && /Payment received/.test(r.text) && r.text.includes('5,898.82') && r.text.includes('115023456789') && r.text.includes(A.order_id), r.status);

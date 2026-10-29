@@ -76,7 +76,7 @@ export function makePayDb() {
         },
         async all() {
           state.sqls.push(sql);
-          if (/PRAGMA table_info\(attendees\)/.test(sql)) return { results: ['id', 'event_id', 'name', 'email', 'badge_type', 'payment_status', 'payment_amount', 'main_event', 'main_event_answered_at', 'unsubscribed_at', 'marketing_consent', 'created_at'].map(name => ({ name })) };
+          if (/PRAGMA table_info\(attendees\)/.test(sql)) return { results: ['id', 'event_id', 'name', 'email', 'badge_type', 'payment_status', 'payment_amount', 'main_event', 'main_event_answered_at', 'unsubscribed_at', 'marketing_consent', 'created_at', 'lunch_inclusion'].map(name => ({ name })) };
           // "Didn't finish paying": registered, paid tier, still pending.
           if (/FROM attendees a(?: LEFT JOIN checkout_leads l[^\n]*)?\s+WHERE a\.event_id = 1 AND a\.badge_type IN/.test(sql)) {
             const joined = /LEFT JOIN checkout_leads l/.test(sql);
@@ -167,6 +167,8 @@ export function makePayDb() {
             if (/payment_status = 'paid'/.test(sql)) a.payment_status = 'paid';
             if (/payment_amount = \?/.test(sql)) a.payment_amount = args[1];
             if (/main_event = 1/.test(sql)) a.main_event = 1;
+            // The lunch the pass includes is the last value before the id.
+            if (/lunch_inclusion = \?/.test(sql)) a.lunch_inclusion = args[args.length - 2];
             return { meta: { changes: 1 } };
           }
           // Bulk email campaigns (0028), as the campaign routes use them.

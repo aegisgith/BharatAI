@@ -36,7 +36,7 @@ const D1 = {
   async exec(sql) { db.exec(sql); return { count: 1 }; },
 };
 const SESSION = 'smoke-session';
-const env = new Proxy({ ADMIN_SECRET: 'smoke-admin', SESSION_SECRET: SESSION, DB: D1 }, { get: (t, k) => (k in t ? t[k] : undefined) });
+const env = new Proxy({ ADMIN_SECRET: 'smoke-admin', SESSION_SECRET: SESSION, ATTENDEE_EXPORT_SECRET: 'smoke-export', DB: D1 }, { get: (t, k) => (k in t ? t[k] : undefined) });
 const ctx = { waitUntil() {}, passThroughOnException() {} };
 const hit = async (path, headers = {}) => {
   const res = await worker.fetch(new Request('https://bharataiinnovation.com' + path, { headers }), env, ctx);
@@ -132,6 +132,72 @@ for (const [id, who] of [[4, 'refunded Delegate'], [2, 'unpaid VIP'], [3, 'paid 
 r = await hit('/api/admin/checkin-stats', ADMIN);
 const tiers = Object.fromEntries((r.json?.byTier || []).map(x => [x.badge_type, x.total]));
 check('the badge desk card counts unpaid VIPs apart', !r.json?.ready || (tiers['VIP Pass'] === 1 && tiers['VIP Pass · not paid'] === 2), r.status + ' ' + JSON.stringify(r.json).slice(0, 200));
+
+// ---- a pass set by hand is given, not sold; lunch comes from the pass ----
+const send = async (method, path, body) => {
+  const res = await worker.fetch(new Request('https://bharataiinnovation.com' + path, { method, headers: { 'Content-Type': 'application/json', ...ADMIN }, body: JSON.stringify(body) }), env, ctx);
+  const text = await res.text(); let json = null; try { json = JSON.parse(text); } catch {}
+  return { status: res.status, text, json };
+};
+const at = (id) => rows('SELECT badge_type, payment_status, lunch_inclusion FROM attendees WHERE id = ?', [id])[0] || {};
+const atEmail = (email) => rows('SELECT badge_type, payment_status, lunch_inclusion FROM attendees WHERE email = ?', [email])[0] || {};
+const is = (row, badge, pay, lunch) => row.badge_type === badge && row.payment_status === pay && row.lunch_inclusion === lunch;
+person(20, 'Raised By Edit', { lunch_inclusion: 'No' });
+person(21, 'Raised Inline', { lunch_inclusion: 'Yes' });
+person(22, 'Owes Delegate', { badge_type: 'Delegate Pass', payment_status: 'pending', lunch_inclusion: 'No' });
+person(23, 'Owes Vip', { badge_type: 'VIP Pass', payment_status: 'pending', lunch_inclusion: 'No' });
+person(24, 'Bulk Visitor', { lunch_inclusion: 'No' });
+person(25, 'Bulk Paid Delegate', { badge_type: 'Delegate Pass', lunch_inclusion: 'No' });
+person(26, 'Explicit Both', { lunch_inclusion: 'Yes' });
+person(27, 'Eats Unpaid', { badge_type: 'Delegate Pass', payment_status: 'pending', lunch_inclusion: 'Yes' });
+
+r = await send('PUT', '/api/admin/attendees/20', { badge_type: 'VIP Pass' });
+check('Edit: a Visitor raised to VIP by hand is complimentary (waived), with lunch', r.status === 200 && is(at(20), 'VIP Pass', 'waived', 'Yes'), JSON.stringify(at(20)));
+r = await send('PATCH', '/api/admin/attendees/21', { badge_type: 'Academic Pass' });
+check('inline cell: raised to Academic is complimentary, and Academic has no lunch', r.status === 200 && is(at(21), 'Academic Pass', 'waived', 'No'), JSON.stringify(at(21)));
+r = await send('PATCH', '/api/admin/attendees/22', { payment_status: 'paid' });
+check('Set payment to paid on an unpaid Delegate adds the lunch the pass includes', r.status === 200 && is(at(22), 'Delegate Pass', 'paid', 'Yes'), JSON.stringify(at(22)));
+r = await send('PATCH', '/api/admin/attendees/23', { badge_type: 'Delegate Pass' });
+check('someone part-way through paying stays pending when the tier is changed, and gets no lunch yet', r.status === 200 && is(at(23), 'Delegate Pass', 'pending', 'No'), JSON.stringify(at(23)));
+r = await send('POST', '/api/admin/attendees/bulk-update', { ids: [24, 25], changes: { badge_type: 'VIP Pass' } });
+check('Set pass on a selection: the Visitor is given (waived), the paid Delegate keeps paid, both get lunch',
+  r.status === 200 && is(at(24), 'VIP Pass', 'waived', 'Yes') && is(at(25), 'VIP Pass', 'paid', 'Yes'), JSON.stringify([at(24), at(25)]));
+r = await send('PUT', '/api/admin/attendees/26', { badge_type: 'VIP Pass', payment_status: 'paid', lunch_inclusion: 'No' });
+check('a save that sets Payment and Lunch itself is taken as it is', r.status === 200 && is(at(26), 'VIP Pass', 'paid', 'No'), JSON.stringify(at(26)));
+r = await send('POST', '/api/admin/attendees', { event_id: 1, name: 'Added Vip', email: 'added-vip@example.com', badge_type: 'VIP Pass' });
+const addAcad = await send('POST', '/api/admin/attendees', { event_id: 1, name: 'Added Academic', email: 'added-acad@example.com', badge_type: 'Academic Pass' });
+const addVis = await send('POST', '/api/admin/attendees', { event_id: 1, name: 'Added Visitor', email: 'added-vis@example.com', badge_type: 'Visitor Pass' });
+check('Add Attendee: a VIP is given with lunch, an Academic given without, a Visitor as before',
+  r.status === 201 && addAcad.status === 201 && addVis.status === 201 && is(atEmail('added-vip@example.com'), 'VIP Pass', 'waived', 'Yes')
+  && is(atEmail('added-acad@example.com'), 'Academic Pass', 'waived', 'No') && is(atEmail('added-vis@example.com'), 'Visitor Pass', 'paid', 'Yes'),
+  JSON.stringify([atEmail('added-vip@example.com'), atEmail('added-acad@example.com'), atEmail('added-vis@example.com')]));
+r = await send('POST', '/api/admin/attendees/bulk', { event_id: 1, attendees: [{ name: 'Imported Premium', email: 'imp-premium@example.com', badge_type: 'Premium Delegate Pass' }, { name: 'Imported Visitor', email: 'imp-vis@example.com', badge_type: 'Visitor Pass' }] });
+check('Bulk Upload: a Premium Delegate row is given with lunch, a Visitor row as before',
+  r.status === 200 && is(atEmail('imp-premium@example.com'), 'Premium Delegate Pass', 'waived', 'Yes') && is(atEmail('imp-vis@example.com'), 'Visitor Pass', 'paid', 'Yes'),
+  r.status + ' ' + JSON.stringify([atEmail('imp-premium@example.com'), atEmail('imp-vis@example.com')]));
+r = await hit('/api/admin/events/1/analytics', ADMIN);
+const pie2 = Object.fromEntries((r.json?.attendeesByBadge || []).map(x => [x.badge_type, x.count]));
+check('Analytics counts passes given by hand apart from the ones sold', pie2['VIP Pass · complimentary'] === 3 && pie2['VIP Pass'] === 3, JSON.stringify(pie2));
+
+// ---- the lunch count leaves out anyone still owing for their pass ----
+const lunchCount = async () => (await hit('/api/admin/events/1/lunch-stats', ADMIN)).json?.totalLunchEligible;
+const owing = await lunchCount();
+db.run("UPDATE attendees SET payment_status = 'paid' WHERE id = 27");
+const settled = await lunchCount();
+check('an unpaid Delegate marked lunch Yes is not catered for until the money lands', typeof owing === 'number' && settled === owing + 1, owing + ' -> ' + settled);
+
+// ---- AImailPilot: the pass held, not only the pass chosen ----
+const EXPORT = { Authorization: 'Bearer smoke-export' };
+r = await hit('/api/external/attendees-export?event_id=1', EXPORT);
+const ex = Object.fromEntries((Array.isArray(r.json) ? r.json : []).map(x => [x.id, x]));
+check('export: an abandoned VIP checkout goes out as chosen VIP Pass, pending, holding a Visitor Pass',
+  r.status === 200 && ex[2]?.badge_type === 'VIP Pass' && ex[2]?.payment_status === 'pending' && ex[2]?.pass_held === 'Visitor Pass', r.status + ' ' + JSON.stringify(ex[2] || r.text.slice(0, 160)));
+check('export: a paid VIP holds a VIP Pass', ex[3]?.pass_held === 'VIP Pass' && ex[3]?.payment_status === 'paid', JSON.stringify(ex[3] || {}));
+r = await hit('/api/external/attendees-export?event_id=1&mode=state', EXPORT);
+const st = Object.fromEntries((r.json?.attendees || []).map(x => [x.id, x]));
+check('mode=state carries badge, payment and the pass held for every row, so a later payment reaches AImailPilot',
+  r.json?.mode === 'state' && st[2]?.pass_held === 'Visitor Pass' && st[22]?.pass_held === 'Delegate Pass' && st[22]?.payment_status === 'paid' && st[2]?.opted_out !== undefined,
+  JSON.stringify([st[2], st[22]]));
 
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');
 process.exit(fails ? 1 : 0);

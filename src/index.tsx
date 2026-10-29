@@ -433,7 +433,7 @@ const ONLINE_WINDOW_MINUTES = 15
 // PAID_TIERS, spelled out because that const is declared further down. t is a
 // table alias with its dot ('a1.'), or empty.
 const unpaidTierSql = (t: string = ''): string =>
-  `(${t}badge_type IN ('Delegate Pass', 'Premium Delegate Pass', 'VIP Pass', 'Academic Pass') AND LOWER(TRIM(COALESCE(${t}payment_status, ''))) IN ('pending', 'refunded'))`
+  `(COALESCE(${t}badge_type, '') IN ('Delegate Pass', 'Premium Delegate Pass', 'VIP Pass', 'Academic Pass') AND LOWER(TRIM(COALESCE(${t}payment_status, ''))) IN ('pending', 'refunded'))`
 const publicBadgeSql = (t: string = ''): string => `(CASE WHEN ${unpaidTierSql(t)} THEN 'Visitor Pass' ELSE ${t}badge_type END)`
 const PUBLIC_BADGE_COL = `${publicBadgeSql()} AS badge_type`
 const ATTENDEE_PUBLIC_COLS = `id, event_id, name, company, job_title, bio, avatar_url, company_logo_url, networking_goals, interests, linkedin_url, twitter_url, website_url, role, ${PUBLIC_BADGE_COL}, CASE WHEN last_login_at > datetime('now', '-${ONLINE_WINDOW_MINUTES} minutes') THEN 1 ELSE 0 END AS is_online, last_seen, industry, city, country`
@@ -830,11 +830,62 @@ async function paymentStatusEnabled(c: any): Promise<boolean> {
 }
 
 // The pass an admin count files a row under. A paid tier not paid for is counted
-// apart ("VIP Pass · not paid"), never as a sale; attPassLabel() in the admin
-// page says the same, so the grid, its filter and these counts agree.
+// apart ("VIP Pass · not paid"), never as a sale, and so is one given free
+// ("VIP Pass · complimentary"); attPassLabel() in the admin page says the same,
+// so the grid, its filter and these counts agree.
 async function passLabelSql(c: any): Promise<string> {
   if (!(await paymentStatusEnabled(c))) return 'badge_type'
-  return `(CASE WHEN ${unpaidTierSql()} THEN badge_type || ' · not paid' ELSE badge_type END)`
+  return `(CASE WHEN ${unpaidTierSql()} THEN badge_type || ' · not paid'` +
+    ` WHEN badge_type IN (${PAID_TIERS.map(t => `'${t}'`).join(', ')}) AND LOWER(TRIM(COALESCE(payment_status, ''))) = 'waived' THEN badge_type || ' · complimentary'` +
+    ` ELSE badge_type END)`
+}
+
+// What each paid pass says about lunch (passComparisonHTML): Delegate, Premium
+// Delegate and VIP include it, Academic does not. Lunch was only a hand-set flag
+// that no payment touched, so on 29 Oct 2026 24 paid Delegates and 6 paid VIPs
+// were missing from the lunch count. Every other pass keeps what was set by hand.
+const LUNCH_BY_PASS: Record<string, 'Yes' | 'No'> = { 'Delegate Pass': 'Yes', 'Premium Delegate Pass': 'Yes', 'VIP Pass': 'Yes', 'Academic Pass': 'No' }
+const LUNCH_FROM_PASS_SQL = `CASE badge_type ${Object.entries(LUNCH_BY_PASS).map(([k, v]) => `WHEN '${k}' THEN '${v}'`).join(' ')} ELSE lunch_inclusion END`
+
+// An admin setting a pass by hand. A paid tier given to someone who did not hold
+// one is complimentary ('waived'), not a sale: until 29 Oct 2026 it kept the
+// Visitor Pass's 'paid' and counted as a VIP sold. Moving between paid tiers, or
+// someone part-way through paying ('pending'), keeps the payment as it is, and so
+// does a save that sets Payment itself. Run BEFORE the write: it reads the pass
+// each row holds now. ids in chunks: D1 binds at most 100 parameters.
+async function handGivenPassIds(c: any, ids: number[], written: Record<string, any>): Promise<number[]> {
+  if (!PAID_TIERS.includes(String(written.badge_type ?? '')) || 'payment_status' in written) return []
+  if (!ids.length || !(await paymentStatusEnabled(c))) return []
+  const out: number[] = []
+  for (let i = 0; i < ids.length; i += 80) {
+    const part = ids.slice(i, i + 80)
+    const { results } = await c.env.DB.prepare(
+      `SELECT id FROM attendees WHERE id IN (${part.map(() => '?').join(', ')})
+          AND COALESCE(badge_type, '') NOT IN (${PAID_TIERS.map(() => '?').join(', ')})
+          AND LOWER(TRIM(COALESCE(payment_status, ''))) <> 'pending'`
+    ).bind(...part, ...PAID_TIERS).all() as any
+    for (const r of (results || [])) out.push(Number(r.id))
+  }
+  return out
+}
+// After the write: the hand-given ones become 'waived', then a paid or given paid
+// tier takes the lunch its pass includes, unless the same save set Lunch too.
+async function settleHandSetPass(c: any, ids: number[], written: Record<string, any>, given: number[]): Promise<void> {
+  const inChunks = async (list: number[], sql: (marks: string) => string) => {
+    for (let i = 0; i < list.length; i += 80) {
+      const part = list.slice(i, i + 80)
+      await c.env.DB.prepare(sql(part.map(() => '?').join(', '))).bind(...part).run()
+    }
+  }
+  if (given.length) {
+    await inChunks(given, m => `UPDATE attendees SET payment_status = 'waived' WHERE id IN (${m})`)
+    await audit(c, 'attendee.pass-given', 'attendee', given.join(','), { badge_type: written.badge_type, payment_status: 'waived', count: given.length })
+  }
+  if (('badge_type' in written || 'payment_status' in written) && !('lunch_inclusion' in written) && await paymentStatusEnabled(c)) {
+    await inChunks(ids, m => `UPDATE attendees SET lunch_inclusion = ${LUNCH_FROM_PASS_SQL} WHERE id IN (${m})
+        AND badge_type IN (${Object.keys(LUNCH_BY_PASS).map(k => `'${k}'`).join(', ')})
+        AND LOWER(TRIM(COALESCE(payment_status, ''))) IN ('paid', 'waived')`)
+  }
 }
 
 // Columns the admin panel may write on an attendee. Shared by the full edit (PUT),
@@ -2116,6 +2167,8 @@ async function issueInvoice(c: any, b: any, who?: { actor: string; kind: string 
           .bind(String(b.buyer_email).trim().toLowerCase()).first()
     if (target) {
       await c.env.DB.prepare("UPDATE attendees SET payment_status = 'paid' WHERE id = ?").bind((target as any).id).run()
+      // ...and the lunch the pass includes, as a payment through checkout does.
+      await c.env.DB.prepare(`UPDATE attendees SET lunch_inclusion = ${LUNCH_FROM_PASS_SQL} WHERE id = ?`).bind((target as any).id).run()
       await c.env.DB.prepare('UPDATE invoices SET attendee_id = ? WHERE id = ?').bind((target as any).id, id).run()
     }
   }
@@ -2700,6 +2753,9 @@ async function settlePaidOrder(c: any, order: any, trackingId: string, paymentMo
     // Buying a conference pass is the plainest possible yes to the conference (0041).
     if (cols.has('main_event')) sets.push('main_event = 1')
     if (cols.has('main_event_answered_at')) sets.push("main_event_answered_at = COALESCE(main_event_answered_at, datetime('now'))")
+    // The lunch the pass includes (LUNCH_BY_PASS): paying for a Delegate Pass is
+    // what puts someone on the lunch count.
+    if (cols.has('lunch_inclusion') && LUNCH_BY_PASS[String(order.pass_type)]) { sets.push('lunch_inclusion = ?'); vals.push(LUNCH_BY_PASS[String(order.pass_type)]) }
     await c.env.DB.prepare(`UPDATE attendees SET ${sets.join(', ')} WHERE id = ?`).bind(...vals, a.id).run()
   }
   await audit(c, 'payment.received', 'attendee', a.id, {
@@ -7138,6 +7194,13 @@ app.get('/api/external/attendees-export', async (c) => {
     : 'NULL'
   const mainEventExpr = have.has('main_event') ? 'main_event' : 'NULL'
   const mobileExpr = have.has('mobile') ? 'mobile' : 'NULL'
+  // badge_type is the pass chosen on the form; pass_held is the pass the person
+  // holds: a paid tier only once it is paid or given, a Visitor Pass until then
+  // (publicBadgeSql). Until 29 Oct 2026 only badge_type went out, so AImailPilot
+  // filed everyone who left a VIP checkout as a VIP. Both modes carry it, and
+  // ?mode=state reads every row on every run, so a later payment reaches it too.
+  const payExpr = have.has('payment_status') ? 'payment_status' : 'NULL'
+  const heldExpr = have.has('payment_status') ? publicBadgeSql() : 'badge_type'
 
   // ?mode=state - every attendee of the event, five small fields, campus rows
   // included. It lets the sweeper take people out of its lists when they opt out
@@ -7146,7 +7209,8 @@ app.get('/api/external/attendees-export', async (c) => {
   // from the three fields above.
   if (c.req.query('mode') === 'state') {
     const st = await c.env.DB.prepare(
-      `SELECT id, email, registration_source, ${mainEventExpr} AS main_event, ${optedOutExpr} AS opted_out
+      `SELECT id, email, registration_source, ${mainEventExpr} AS main_event, ${optedOutExpr} AS opted_out,
+              badge_type, ${payExpr} AS payment_status, ${heldExpr} AS pass_held
          FROM attendees WHERE event_id = ? ORDER BY id LIMIT 50000`
     ).bind(eventId).all()
     return c.json({ mode: 'state', attendees: st.results || [] })
@@ -7156,7 +7220,8 @@ app.get('/api/external/attendees-export', async (c) => {
                     avatar_url, interests, linkedin_url, twitter_url,
                     website_url, role, badge_type, industry, city, country,
                     company_size, pass_type, registration_source, created_at,
-                    ${mobileExpr} AS mobile, ${mainEventExpr} AS main_event, ${optedOutExpr} AS opted_out
+                    ${mobileExpr} AS mobile, ${mainEventExpr} AS main_event, ${optedOutExpr} AS opted_out,
+                    ${payExpr} AS payment_status, ${heldExpr} AS pass_held
                FROM attendees
               WHERE event_id = ?`
   const args: any[] = [eventId]
@@ -12222,8 +12287,10 @@ app.put('/api/admin/attendees/:id', async (c) => {
     // The row as it was, so the audit entry says what changed - payment_status
     // pending -> paid, a corrected email - and not merely that a save happened.
     const before = await c.env.DB.prepare(`SELECT ${Object.keys(written).join(', ')} FROM attendees WHERE id = ?`).bind(id).first()
+    const given = await handGivenPassIds(c, [Number(id)], written)
     values.push(id)
     await c.env.DB.prepare(`UPDATE attendees SET ${updates.join(', ')} WHERE id = ?`).bind(...values).run()
+    await settleHandSetPass(c, [Number(id)], written, given)
     const changes = changedFields(before, written)
     if (Object.keys(changes).length) await audit(c, 'attendee.update', 'attendee', id, { changes })
   }
@@ -12269,8 +12336,10 @@ app.patch('/api/admin/attendees/:id', async (c) => {
     if (holder) return c.json({ error: 'That mobile is already on ' + holder.name + ' (' + holder.email + ', #' + holder.id + ').' }, 409)
   }
   const before = await c.env.DB.prepare(`SELECT ${Object.keys(written).join(', ')} FROM attendees WHERE id = ?`).bind(id).first()
+  const given = await handGivenPassIds(c, [Number(id)], written)
   values.push(id)
   await c.env.DB.prepare(`UPDATE attendees SET ${updates.join(', ')} WHERE id = ?`).bind(...values).run()
+  await settleHandSetPass(c, [Number(id)], written, given)
   const changes = changedFields(before, written)
   if (Object.keys(changes).length) await audit(c, 'attendee.update', 'attendee', id, { changes, inline: true })
 
@@ -12322,6 +12391,13 @@ app.post('/api/admin/attendees', async (c) => {
     // A row with no registration_date sorts to the bottom of a newest-first list -
     // exactly the row an admin just added and wants to see.
     registration_date: nowStamp,
+  }
+  // A paid tier added by hand is given, not sold (handGivenPassIds), and comes with
+  // the lunch its pass includes, unless the form said otherwise.
+  const addedPass = String(badge_type || '').trim()
+  if (PAID_TIERS.includes(addedPass)) {
+    fallbacks.payment_status = 'waived'
+    fallbacks.lunch_inclusion = LUNCH_BY_PASS[addedPass] || fallbacks.lunch_inclusion
   }
   const names: string[] = ['event_id', 'name', 'email']
   const vals: any[] = [event_id, name.trim(), normalizedEmail]
@@ -12395,8 +12471,12 @@ app.post('/api/admin/attendees/bulk-update', async (c) => {
       c.env.DB.prepare(`SELECT id, ${fields.join(', ')} FROM attendees WHERE id IN (${ph(p)})`).bind(...p)))) {
     for (const r of ((s.results || []) as any[])) before[r.id] = fields.length === 1 ? r[fields[0]] : fields.map(f => r[f])
   }
+  const writtenNow: Record<string, any> = {}
+  fields.forEach((f, i) => { writtenNow[f] = vals[i] })
+  const given = await handGivenPassIds(c, numericIds, writtenNow)
   await c.env.DB.batch(parts.map(p =>
     c.env.DB.prepare(`UPDATE attendees SET ${sets.join(', ')} WHERE id IN (${ph(p)})`).bind(...vals, ...p)))
+  await settleHandSetPass(c, numericIds, writtenNow, given)
   await audit(c, 'attendees.bulk-update', 'attendee', numericIds.join(','), { count: numericIds.length, changes, before })
   return c.json({ success: true, updated: numericIds.length })
 })
@@ -12497,7 +12577,7 @@ app.post('/api/admin/attendees/bulk', async (c) => {
         a.interests?.trim() || '',
         a.linkedin_url?.trim() || '',
         a.mobile?.trim() || '',
-        a.lunch_inclusion?.trim() || 'Yes',
+        a.lunch_inclusion?.trim() || LUNCH_BY_PASS[String(a.badge_type || '').trim()] || 'Yes',
         a.role?.trim() || 'attendee',
         a.badge_type?.trim() || 'Delegate',
         a.city?.trim() || '',
@@ -12505,6 +12585,11 @@ app.post('/api/admin/attendees/bulk', async (c) => {
         INDUSTRIES.includes(String(a.industry || '').trim()) ? String(a.industry).trim() : '',
         a.registration_date?.trim() || new Date().toISOString().slice(0, 19).replace('T', ' ')
       ).run()
+      // The insert names no payment_status, so the column default ('paid') made an
+      // imported VIP Pass a VIP sold. An import is given by hand, like Add Attendee.
+      if (PAID_TIERS.includes(String(a.badge_type || '').trim()) && await paymentStatusEnabled(c)) {
+        await c.env.DB.prepare("UPDATE attendees SET payment_status = 'waived' WHERE event_id = ? AND email = ?").bind(event_id, email).run()
+      }
       results.imported++
       if (mk) mobiles.set(mk, email)
     } catch (e: any) {
@@ -15300,9 +15385,12 @@ app.post('/api/admin/settings/verify-key', async (c) => {
 app.get('/api/admin/events/:id/lunch-stats', async (c) => {
   const eventId = c.req.param('id')
   const mc = await mainEventClause(c)
+  // Who eats: lunch marked Yes, and not a paid tier still waiting for its money
+  // (unpaidPaidPass). An abandoned Delegate checkout is not a lunch to cater.
+  const eats = " AND (lunch_inclusion = 'Yes' OR lunch_inclusion IS NULL)" + (await paymentStatusEnabled(c) ? ' AND NOT ' + unpaidTierSql() : '')
 
   const totalLunch = await c.env.DB.prepare(
-    "SELECT COUNT(*) as count FROM attendees WHERE event_id = ?" + mc + " AND (lunch_inclusion = 'Yes' OR lunch_inclusion IS NULL)"
+    "SELECT COUNT(*) as count FROM attendees WHERE event_id = ?" + mc + "" + eats
   ).bind(eventId).first() as any
 
   const withArrival = await c.env.DB.prepare(
@@ -15310,15 +15398,15 @@ app.get('/api/admin/events/:id/lunch-stats', async (c) => {
   ).bind(eventId).first() as any
 
   const beforeLunch = await c.env.DB.prepare(
-    "SELECT COUNT(*) as count FROM attendees WHERE event_id = ?" + mc + " AND arrival_time IS NOT NULL AND arrival_time != '' AND arrival_time <= '13:00' AND (lunch_inclusion = 'Yes' OR lunch_inclusion IS NULL)"
+    "SELECT COUNT(*) as count FROM attendees WHERE event_id = ?" + mc + " AND arrival_time IS NOT NULL AND arrival_time != '' AND arrival_time <= '13:00'" + eats
   ).bind(eventId).first() as any
 
   const afterLunch = await c.env.DB.prepare(
-    "SELECT COUNT(*) as count FROM attendees WHERE event_id = ?" + mc + " AND arrival_time IS NOT NULL AND arrival_time != '' AND arrival_time > '13:00' AND (lunch_inclusion = 'Yes' OR lunch_inclusion IS NULL)"
+    "SELECT COUNT(*) as count FROM attendees WHERE event_id = ?" + mc + " AND arrival_time IS NOT NULL AND arrival_time != '' AND arrival_time > '13:00'" + eats
   ).bind(eventId).first() as any
 
   const noArrivalLunch = await c.env.DB.prepare(
-    "SELECT COUNT(*) as count FROM attendees WHERE event_id = ?" + mc + " AND (arrival_time IS NULL OR arrival_time = '') AND (lunch_inclusion = 'Yes' OR lunch_inclusion IS NULL)"
+    "SELECT COUNT(*) as count FROM attendees WHERE event_id = ?" + mc + " AND (arrival_time IS NULL OR arrival_time = '')" + eats
   ).bind(eventId).first() as any
 
   const notified = await c.env.DB.prepare(
@@ -31285,10 +31373,17 @@ function adminPageScript(): string {
     }
     // What the Badge column, its filter and the drawer call a row. The same words
     // as passLabelSql() on the server, so Analytics counts what the grid shows.
+    // A paid tier given by hand is 'waived' (handGivenPassIds on the server), and
+    // is counted apart from the ones sold.
+    function attGivenTier(a) {
+      return !!a && ['Delegate Pass', 'Premium Delegate Pass', 'VIP Pass', 'Academic Pass'].indexOf(String(a.badge_type || '')) >= 0
+        && String(a.payment_status || '').trim().toLowerCase() === 'waived';
+    }
     function attPassLabel(a) {
-      return attUnpaidTier(a) ? a.badge_type + ' · not paid' : String(a.badge_type || '');
+      return attUnpaidTier(a) ? a.badge_type + ' · not paid' : attGivenTier(a) ? a.badge_type + ' · complimentary' : String(a.badge_type || '');
     }
     function attPassChip(a, cls) {
+      if (attGivenTier(a)) return '<span class="' + cls + ' ' + getBadgeClass(a.badge_type) + '" title="Complimentary: given by hand, not paid for. Counted apart from passes sold.">' + escH(a.badge_type) + ' <span class="opacity-70">· free</span></span>';
       if (!attUnpaidTier(a)) return '<span class="' + cls + ' ' + getBadgeClass(a.badge_type) + '">' + escH(a.badge_type) + '</span>';
       return '<span class="' + cls + ' bg-white/5 text-gray-400" title="Chose the ' + escH(a.badge_type) + ' and has not paid (' + escH(a.payment_status) + '). Works as a Free Visitor Pass until the payment lands: see Payments, Didn&#39;t finish paying.">' +
         // Not paid first: the Badge column is narrow and cuts the end off.
