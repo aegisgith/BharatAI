@@ -20,8 +20,36 @@ const check = (n, ok, d) => { console.log((ok ? 'PASS ' : 'FAIL ') + n + (ok ? '
   check('live /app on a phone has every new function', fns.length === 0, 'missing: ' + fns.join(','));
   check('live /app has no JavaScript errors on a phone', errors.length === 0, errors.slice(0, 3).join(' | '));
   check('live /app fits a 390px phone', await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'overflow');
-  const passJs = await page.evaluate(() => fetch('/js/pass-render.js?v=20260917').then(r => r.text()));
+  const passJs = await page.evaluate(() => fetch('/js/pass-render.js?v=20261029').then(r => r.text()));
   check('live pass renderer hands phones to the share-or-save view', /global\.deliverImage/.test(passJs), 'old pass-render.js served');
+  check('live pass renderer draws its own QR (bundled encoder first, qrserver only as fallback)', /global\.qrcode\(0, 'M'\)/.test(passJs) && /qrFailed/.test(passJs), 'old pass-render.js served');
+
+  // A real pass, drawn on the live page with a stand-in token, and its QR read
+  // back by the bundled decoder at full size and at the size a phone screen
+  // shows it. Nothing is written: the token is made up, no API is called.
+  const TOKEN = '12345.abcdefabcdefabcdefabcdef';
+  const pass = await page.evaluate(async (token) => {
+    const r = await window.BhaiPass.render({ id: 12345, name: 'Live Check', company: 'Acme AI', job_title: 'CTO', badge_type: 'Delegate Pass', avatar_url: '' }, { token });
+    const shrink = async (w) => { const img = new Image(); img.src = r.dataUrl; await img.decode();
+      const c = document.createElement('canvas'); c.width = w; c.height = Math.round(img.height * w / img.width);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      const d = c.getContext('2d').getImageData(0, 0, c.width, c.height); return { w: c.width, h: c.height, data: Array.from(d.data) }; };
+    return { qrSource: r.qrSource, qrFailed: r.qrFailed, width: r.width, height: r.height, full: await shrink(r.width), phone: await shrink(390) };
+  }, TOKEN);
+  check('live pass draws its QR locally (no api.qrserver.com in the path)', pass.qrSource === 'local' && !pass.qrFailed, 'qrSource=' + pass.qrSource + ' qrFailed=' + pass.qrFailed);
+  // A classic UMD script: under this package's "type": "module" a require() would
+  // read it as ESM and get nothing, so it runs with a module object to export into.
+  const jsQRm = { exports: {} };
+  require('node:vm').runInNewContext(require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'public', 'js', 'vendor', 'jsQR.js'), 'utf8'), { module: jsQRm, exports: jsQRm.exports });
+  const jsQR = jsQRm.exports;
+  for (const [label, img] of [['full size', pass.full], ['a 390px phone screen', pass.phone]]) {
+    const d = jsQR(new Uint8ClampedArray(img.data), img.w, img.h);
+    check(`live pass QR decodes at ${label} to the signed verify link`, !!d && d.data === 'https://bharataiinnovation.com/verify/' + TOKEN, d ? d.data : 'no decode');
+  }
+  const scan = await page.goto(BASE + '/staff/scan', { waitUntil: 'domcontentloaded' });
+  check('live /staff/scan without a desk session lands on the sign-in page', /\/staff(\?|$)/.test(scan.url()) && /Badge desk sign in/.test(await page.evaluate(() => document.body.innerText)), scan.url());
+  const vendor = await page.evaluate(() => Promise.all(['/js/vendor/jsQR.js?v=20261029', '/js/vendor/qrcode-generator.js?v=20261029'].map(u => fetch(u).then(r => r.ok && r.headers.get('content-type')))));
+  check('live vendor QR libraries are served as JavaScript', vendor.every(t => /javascript/.test(String(t))), JSON.stringify(vendor));
 
   const r = await page.goto(BASE + '/panel-rsvp?a=1&p=djsanghvi-21sep&r=yes&s=' + '0'.repeat(32), { waitUntil: 'load' });
   const txt = await page.evaluate(() => document.body.innerText);

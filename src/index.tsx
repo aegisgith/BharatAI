@@ -4193,7 +4193,8 @@ function financeHTML(me: any): string {
 </script></body></html>`
 }
 
-function staffShell(title: string, inner: string, script: string): string {
+// head: extra tags for <head> (the scan page loads its QR decoder there).
+function staffShell(title: string, inner: string, script: string, head: string = ''): string {
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>${title} - Bharat AI Innovation 2026</title><style>
  *{box-sizing:border-box}
@@ -4216,7 +4217,7 @@ function staffShell(title: string, inner: string, script: string): string {
  details.find summary{cursor:pointer;font-size:13px;font-weight:600;color:#c7d0e4;list-style:none;}
  details.find summary::-webkit-details-marker{display:none;}
  details.find summary::before{content:'+ ';color:#ffb27a;} details[open].find summary::before{content:'- ';}
-</style></head><body><div class="wrap">${inner}</div><script>${script}</script></body></html>`
+</style>${head}</head><body><div class="wrap">${inner}</div><script>${script}</script></body></html>`
 }
 
 // JSON.stringify is not enough inside a <script> block. It leaves < and > alone,
@@ -4255,8 +4256,9 @@ function staffScanHTML(me: any): string {
   return staffShell('Scan passes', `
     <div class="bar"><h1>Scan a pass</h1><a href="#" onclick="out()">Sign out</a></div>
     <p class="muted">Signed in as ${String(me.name).replace(/[<>&]/g, '')}. Point the camera at the QR on the attendee's pass.</p>
-    <video id="v" playsinline muted></video>
+    <video id="v" playsinline muted autoplay></video>
     <p class="err" id="e"></p>
+    <button id="cam" onclick="start()" style="display:none;">Start the camera</button>
     <div class="find">
       <label for="q">No pass to scan?</label>
       <input id="q" placeholder="Name, email, company, mobile or BHAI number" autocapitalize="words" autocomplete="off">
@@ -4281,28 +4283,74 @@ function staffScanHTML(me: any): string {
       <div id="r-res"></div>
     </details>
     <div class="hint"><strong>No camera?</strong> Your phone's own camera app also works &mdash; point it at the QR and tap the link it offers. You will land on the same verification screen.</div>`,
-  `var v=document.getElementById('v'), e=document.getElementById('e'), stopped=false;
+  `var v=document.getElementById('v'), e=document.getElementById('e'), camBtn=document.getElementById('cam'), stopped=false, stream=null;
    async function out(){ await fetch('/api/staff/logout',{method:'POST'}); location.href='/staff'; }
+
+   // A code is a link to this site's verification page. Only the token is taken
+   // out of it and the phone goes to /verify/ on this origin, so a code that
+   // merely contains the word cannot send the desk anywhere else. (No backslash
+   // in this literal: it is served from a template string.)
+   var VERIFY=new RegExp('/verify/([A-Za-z0-9._%-]+)');
+   function found(raw){
+     var m=VERIFY.exec(String(raw||''));
+     if(!m) return false;
+     stopped=true;
+     try{ stream.getTracks().forEach(function(t){ t.stop(); }); }catch(err){}
+     location.href='/verify/'+m[1];
+     return true;
+   }
+
+   // Two readers. BarcodeDetector is the browser's own (Android Chrome). Every
+   // iPhone lacks it, and on some phones it exists but reads nothing, so the
+   // bundled decoder (/js/vendor/jsQR.js) takes over the moment it is missing,
+   // lists no qr_code, or throws. Until 29 Oct 2026 an iPhone at the desk could
+   // not scan in-page at all.
+   var det=null, useJs=!('BarcodeDetector' in window), jsCanvas=null, jsCtx=null;
+   function readJs(){
+     if(typeof jsQR!=='function'||!v.videoWidth) return null;
+     if(!jsCanvas){ jsCanvas=document.createElement('canvas'); jsCtx=jsCanvas.getContext('2d',{willReadFrequently:true}); }
+     var scale=Math.min(1,640/v.videoWidth), w=Math.round(v.videoWidth*scale), h=Math.round(v.videoHeight*scale);
+     if(jsCanvas.width!==w||jsCanvas.height!==h){ jsCanvas.width=w; jsCanvas.height=h; }
+     jsCtx.drawImage(v,0,0,w,h);
+     var img=jsCtx.getImageData(0,0,w,h);
+     var code=jsQR(img.data,w,h,{inversionAttempts:'dontInvert'});
+     return code&&code.data?code.data:null;
+   }
+   async function readNative(){
+     if(!det) det=new BarcodeDetector({formats:['qr_code']});
+     var codes=await det.detect(v);
+     return codes&&codes.length?(codes[0].rawValue||''):null;
+   }
+   async function loop(){
+     if(stopped) return;
+     var raw=null;
+     try{
+       if(!useJs){
+         try{ raw=await readNative(); }
+         catch(err){ useJs=true; }
+       }
+       if(useJs&&raw===null) raw=readJs();
+       if(raw&&found(raw)) return;
+     }catch(err){}
+     setTimeout(loop,200);
+   }
    async function start(){
-     if(!('BarcodeDetector' in window)){
-       e.textContent='This browser cannot scan in-page. Use your phone camera app on the QR instead.'; return;
+     e.textContent=''; camBtn.style.display='none';
+     if(useJs&&typeof jsQR!=='function'){
+       e.textContent='This browser cannot scan in-page. Use your phone camera app on the QR instead, or search below.'; return;
      }
      try{
-       var stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+       stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
        v.srcObject=stream; await v.play();
-     }catch(err){ e.textContent='Camera unavailable. Use your phone camera app on the QR instead.'; return; }
-     var det=new BarcodeDetector({formats:['qr_code']});
-     (async function loop(){
-       if(stopped) return;
-       try{
-         var codes=await det.detect(v);
-         if(codes && codes.length){
-           var url=codes[0].rawValue||'';
-           if(url.indexOf('/verify/')>=0){ stopped=true; location.href=url; return; }
-         }
-       }catch(err){}
-       setTimeout(loop,250);
-     })();
+     }catch(err){
+       // iOS sometimes wants the first camera start from a tap: offer one.
+       e.textContent='Camera not started. Tap Start the camera and allow it, or use your phone camera app on the QR, or search below.';
+       camBtn.style.display='block'; return;
+     }
+     if(!useJs&&BarcodeDetector.getSupportedFormats){
+       try{ var fm=await BarcodeDetector.getSupportedFormats(); if(fm.indexOf('qr_code')<0) useJs=true; }catch(err){ useJs=true; }
+     }
+     loop();
    }
    start();
 
@@ -4361,7 +4409,10 @@ function staffScanHTML(me: any): string {
      var j=await r.json().catch(function(){return{}});
      if(!r.ok){ msg.textContent=j.error||'Nobody found.'; return; }
      res.innerHTML=passLink(j, 'Pass reissued - tap to open it and check them in');
-   }`)
+   }`,
+  // The bundled QR decoder, for the phones (every iPhone) whose browser has no
+  // BarcodeDetector. Loaded on this page only.
+  `<script src="/js/vendor/jsQR.js?v=20261029"></script>`)
 }
 
 // ==================== PASS VERIFICATION ====================
@@ -4825,6 +4876,9 @@ function verifyPageHTML(o: any): string {
          ${a.checked_in_at
             ? `<div class="warn">Already checked in ${esc(istStamp(a.checked_in_at))}${a.checked_in_by ? ' by ' + esc(a.checked_in_by) : ''}</div>
                ${o.undoable ? `<button id="undo" onclick="undo()" style="background:#243056;">Undo this check-in</button>` : ''}`
+            // The banner says do not admit on this pass and the server refuses the
+            // check-in anyway, so no button that invites the tap.
+            : panelOnly ? `<button onclick="location.href='/staff/scan'" style="background:#243056;">Scan another pass</button>`
             : `<button id="ci" onclick="checkIn()">Check in</button>`}
          ${hasPassPhoto ? `<button id="pf" class="secondary" data-photo="${esc(a.avatar_url)}" onclick="flagPhoto()">Photo doesn&rsquo;t match this person</button>` : ''}
          ${o.flagUndoable ? `<button id="pfu" class="secondary" onclick="undoFlag()">Undo photo flag</button>` : ''}
@@ -18697,8 +18751,10 @@ function mainPageHTML(): string {
   <meta name="twitter:image:alt" content="Your pass, schedule and meetings: the Bharat AI Innovation 2026 app">
   <link rel="stylesheet" href="${FA_CSS}">
   <!-- Shared with the admin panel, so a pass issued at the desk is the same
-       document the holder downloaded. -->
-  <script src="/js/pass-render.js?v=20261026"></script>
+       document the holder downloaded. The pass draws its own QR with the
+       encoder, so no third-party service is in the path. -->
+  <script src="/js/vendor/qrcode-generator.js?v=20261029"></script>
+  <script src="/js/pass-render.js?v=20261029"></script>
   <!-- The "I'm attending" card delegates post. App only: the badge desk has no
        reason to issue one, and it carries none of the pass's verification data. -->
   <script src="/js/social-card.js?v=20261029"></script>
@@ -26368,15 +26424,28 @@ function mainPageScript(): string {
       showToast('Generating your pass...', 'info');
 
       // The QR carries a signed token rather than an email address, so it has to be
-      // fetched before drawing. Without one the code falls back to the app and
-      // verifies nothing, so a failure here is worth surfacing.
-      var passToken = '';
+      // fetched before drawing. Without one the code would point at the app and
+      // verify nothing: a pass whose QR does nothing at the door. Until 29 Oct 2026
+      // a failed fetch (flaky signal, a 402 the app had not caught) still drew that
+      // pass. Now no token means no pass, and the person is told why.
+      var passToken = '', tokenErr = '';
       try {
         var tk = await api.get('/api/my-pass-token' + (adminAttendee ? ('?id=' + user.id) : ''));
         passToken = (tk && tk.token) || '';
+        tokenErr = (tk && (tk.message || tk.error)) || '';
       } catch (e) {}
+      if (!passToken) {
+        showToast(tokenErr || 'Could not prepare the QR code for your pass. Check your connection and try again.', 'error');
+        return;
+      }
 
       var passRes = await BhaiPass.download(user, { token: passToken });
+      if (passRes && passRes.qrFailed) {
+        // The renderer could not draw the code (nor fetch the fallback). A pass
+        // the desk cannot scan is not issued.
+        showToast('The QR code on the pass could not be drawn, so it was not issued. Try again in a moment.', 'error');
+        return;
+      }
       if (passRes && passRes.photoFailed) {
         // The renderer refused to click. Say why, and put the same uploader in
         // front of them that the gate uses, then try again if they add one.
@@ -28772,8 +28841,9 @@ function adminPageHTML(): string {
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <!-- Shared with the app, so a pass issued at the desk is the same document the
-       holder downloaded. -->
-  <script src="/js/pass-render.js?v=20261026"></script>
+       holder downloaded. The pass draws its own QR with the encoder. -->
+  <script src="/js/vendor/qrcode-generator.js?v=20261029"></script>
+  <script src="/js/pass-render.js?v=20261029"></script>
   <!-- The same photo fingerprint /app sends, for photos the team uploads. -->
   <script src="/js/photo-fingerprint.js?v=2"></script>
   <!-- Same renderer the delegate's own app uses, so a card the desk sends a speaker
@@ -32896,13 +32966,17 @@ function adminPageScript(): string {
       toast('Generating pass for ' + user.name + '...', 'info');
       try {
         // Admin may mint a token for anyone, so the QR verifies at the desk exactly
-        // as the attendee's own copy does.
-        var token = '';
+        // as the attendee's own copy does. No token means no pass: a QR that
+        // points at the app does nothing at the door.
+        var token = '', tokenErr = '';
         try {
           var tk = await api.get('/api/my-pass-token?id=' + user.id);
           token = (tk && tk.token) || '';
-        } catch (e) {}
-        await BhaiPass.download(user, { token: token });
+        } catch (e) { tokenErr = (e && e.message) || ''; }
+        if (!token) { toast('Could not get a pass token for ' + user.name + (tokenErr ? ' (' + tokenErr + ')' : '') + '. Not issued.', 'error'); return; }
+        var res = await BhaiPass.download(user, { token: token });
+        if (res && res.qrFailed) { toast('The QR code could not be drawn, so the pass for ' + user.name + ' was not issued. Try again.', 'error'); return; }
+        if (res && res.photoFailed) { toast('Their photo would not load, so the pass would show an initial. Not issued.', 'error'); return; }
         toast('Pass downloaded for ' + user.name, 'success');
       } catch (e) {
         toast('Could not generate the pass: ' + (e.message || e), 'error');

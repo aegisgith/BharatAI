@@ -1,7 +1,13 @@
 // One command for the local verification suite. Needs a fresh `npm run build` first.
 //   npm run verify            (or: node scripts/verify/run-all.mjs)
+//   node scripts/verify/run-all.mjs --only phone     (suites whose name contains "phone")
 // Starts each harness it needs, runs the suite, stops the harness, prints a summary,
 // and exits non-zero if anything failed. Production checks are separate: npm run verify:prod
+//
+// A harness port that is already answering is a FAIL, not a head start: on 29 Oct
+// 2026 a pace-harness from the morning was still on :8774 and a stale phone
+// harness on :8772 served an old /app, so the phone suite judged new code
+// against an old page and failed for a reason that was not in the code.
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -26,14 +32,18 @@ const SUITES = [
   { name: 'server: Campus Series insights reports (gated PDF, /insights form, reports email, admin pump)', args: ['smoke-reports.mjs'] },
   { name: 'server: panel email as server jobs (scheduler door, claim, stop, resume, done, failures)', args: ['smoke-mail-jobs.mjs'] },
   { name: 'server: workshop seats (who may choose, the seat limit, switching cut-off, admin, door scan)', args: ['smoke-workshops.mjs'] },
+  { name: 'server: pass QR and badge desk (signed token, verify screen states, check-in, lookup, reissue, scanner, encoder round trip)', args: ['smoke-pass-desk.mjs'] },
+  { name: 'browser: badge desk scanner (fake camera, iPhone without BarcodeDetector, native reader failing, hostile QR)', args: ['browser-scan-page.mjs'] },
   { name: 'browser: delegate app (chat, connect, meet, inbox, back, XSS)', args: ['browser-delegate.cjs'], harness: 'app-harness.mjs', port: 8770 },
-  { name: 'browser: phone journey and admin Campus panels block', args: ['phone-test.cjs'], harness: 'phone-harness.mjs', port: 8772 },
+  // portEnv: the harness and the test read HARNESS_PORT, so a busy :8772 (another
+  // session's run) moves this suite to :9772 instead of failing it.
+  { name: 'browser: phone journey and admin Campus panels block', args: ['phone-test.cjs'], harness: 'phone-harness.mjs', port: 8772, portEnv: true },
   { name: 'browser: panel email as a server job (start, pace, stop, resume, done, the scheduler note)', args: ['pace-test.cjs'], harness: 'pace-harness.mjs', port: 8774 },
   { name: 'browser: buying a pass on a phone (checkout, result, retry, checkout off, invoice queues)', args: ['pay-test.cjs'], harness: 'pay-harness.mjs', port: 8776 },
 ];
 
 const run = (args, opts = {}) => new Promise((resolve) => {
-  const p = spawn(process.execPath, args, { cwd: here, stdio: opts.quiet ? 'ignore' : ['ignore', 'pipe', 'pipe'] });
+  const p = spawn(process.execPath, args, { cwd: here, stdio: opts.quiet ? 'ignore' : ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...(opts.env || {}) } });
   let out = '';
   if (!opts.quiet) {
     p.stdout.on('data', d => { out += d; });
@@ -43,27 +53,43 @@ const run = (args, opts = {}) => new Promise((resolve) => {
   p.on('close', code => resolve({ code, out }));
 });
 
+const portAnswers = async (port) => {
+  try { const r = await fetch(`http://localhost:${port}/app`); return r.ok; } catch (e) { return false; }
+};
 const waitForPort = async (port, ms = 30000) => {
   const until = Date.now() + ms;
   while (Date.now() < until) {
-    try { const r = await fetch(`http://localhost:${port}/app`); if (r.ok) return true; } catch (e) { /* not up yet */ }
+    if (await portAnswers(port)) return true;
     await new Promise(r => setTimeout(r, 400));
   }
   return false;
 };
 
+const onlyArg = process.argv.indexOf('--only');
+const only = onlyArg > 0 ? String(process.argv[onlyArg + 1] || '').toLowerCase() : '';
+const suites = only ? SUITES.filter(s => s.name.toLowerCase().includes(only)) : SUITES;
+if (!suites.length) { console.error(`no suite name contains "${only}"`); process.exit(2); }
+
 let failed = 0;
 const summary = [];
-for (const s of SUITES) {
-  let harness = null;
+for (const s of suites) {
+  let harness = null, port = s.port, env = {};
   if (s.harness) {
-    harness = await run([s.harness], { background: true, quiet: true });
-    if (!(await waitForPort(s.port))) {
-      summary.push(`FAIL  ${s.name}: harness ${s.harness} did not start on :${s.port}`);
+    if (await portAnswers(port)) {
+      if (!s.portEnv || await portAnswers(port + 1000)) {
+        summary.push(`FAIL  ${s.name}: something is already listening on :${port} (a stale ${s.harness}, or another session's run? stop it, then run again)`);
+        failed++; continue;
+      }
+      port = port + 1000; env = { HARNESS_PORT: String(port) };
+      console.log(`:${s.port} is busy, running ${s.harness} on :${port}`);
+    }
+    harness = await run([s.harness], { background: true, quiet: true, env });
+    if (!(await waitForPort(port))) {
+      summary.push(`FAIL  ${s.name}: harness ${s.harness} did not start on :${port}`);
       failed++; harness.kill(); continue;
     }
   }
-  const { code, out } = await run(s.args);
+  const { code, out } = await run(s.args, { env });
   if (harness) harness.kill();
   const passes = (out.match(/^PASS /gm) || []).length;
   const fails = out.split('\n').filter(l => /^FAIL |crashed/.test(l));

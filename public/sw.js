@@ -23,7 +23,10 @@
 // v12: the icon subset gained fa-unlock (fa-subset.css?v=2 and a new
 // fa-solid-900.woff2 under the same name, which only a new VERSION replaces in
 // this cache), and Tailwind's ?v= became a build hash, so it left the list.
-const VERSION = 'bhai-v16';
+// v17: the pass draws its own QR with /js/vendor/qrcode-generator.js (precached
+// below, so a pass can still be made on venue WiFi) instead of fetching one from
+// api.qrserver.com; pass-render.js?v=20261029 refuses to issue a pass without a QR.
+const VERSION = 'bhai-v17';
 const SHELL = `shell-${VERSION}`;
 const DATA = `data-${VERSION}`;
 
@@ -52,7 +55,8 @@ const PRECACHE = [
   '/images/logo-nav.webp',             // every page's header
   '/images/icon-192.png',
   '/manifest.webmanifest',
-  '/js/pass-render.js?v=20261026',
+  '/js/pass-render.js?v=20261029',
+  '/js/vendor/qrcode-generator.js?v=20261029',   // the pass draws its QR with it
   '/css/style.css?v=20261029d',        // marketing shell: /, /conference, /exhibition, ...
   '/js/main.js?v=20261029',
   '/js/carousel.js?v=20261027',

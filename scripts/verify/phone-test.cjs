@@ -11,7 +11,7 @@ const fs = require('fs');
 // two days before it (panel-clock.cjs). The browser keeps the real date: the
 // answer is decided by the worker, inside the harness.
 const RSVP_SLUG = require('./panel-clock.cjs').panelClock().slug;
-const BASE = 'http://localhost:8772';
+const BASE = 'http://localhost:' + (process.env.HARNESS_PORT || 8772);   // run-all.mjs may hand over another port
 const SHOTS = path.join(__dirname, '.out', 'phone-shots');
 const PHOTO = path.join(__dirname, '..', '..', 'public', 'images', 'speaker-virendra-pal.webp');
 const UA = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36';

@@ -11,6 +11,8 @@ import { extname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import panelClockModule from './panel-clock.cjs';
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
+// run-all.mjs hands over another port when :8772 is taken (another session's run).
+const PORT = Number(process.env.HARNESS_PORT || 8772);
 // The panel phone-test.cjs answers for must not have started: with every panel
 // in the past, this process's clock (and so the worker's) moves to two days
 // before the last one, the same panel phone-test.cjs picks.
@@ -56,7 +58,7 @@ const DB = {
       bind(...a) { args = a; return st; },
       async first() {
         if (/SELECT company, email FROM attendees WHERE id = \?/.test(sql)) return { company: 'Tech Mahindra', email: 'guest@techm.com' };
-        if (/SELECT value FROM app_settings/.test(sql)) return args[0] === 'app_url' ? { value: 'http://localhost:8772/app' } : null;
+        if (/SELECT value FROM app_settings/.test(sql)) return args[0] === 'app_url' ? { value: 'http://localhost:' + PORT + '/app' } : null;
         return null;
       },
       async all() { return { results: [] }; },
@@ -126,7 +128,7 @@ const api = (method, p, body, q) => {
 const TYPES = { '.js': 'application/javascript', '.css': 'text/css', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.woff2': 'font/woff2', '.svg': 'image/svg+xml', '.json': 'application/json' };
 
 http.createServer(async (req, res) => {
-  const url = new URL(req.url, 'http://localhost:8772');
+  const url = new URL(req.url, 'http://localhost:' + PORT);
   try {
     let raw = '';
     for await (const chunk of req) raw += chunk;
@@ -156,4 +158,4 @@ http.createServer(async (req, res) => {
   } catch (e) {
     res.writeHead(404); res.end('not found');
   }
-}).listen(8772, () => console.log('phone harness on http://localhost:8772'));
+}).listen(PORT, () => console.log('phone harness on http://localhost:' + PORT));

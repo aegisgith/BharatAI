@@ -77,9 +77,11 @@
     ctx.closePath();
   }
 
-  /* Draws the pass and returns { dataUrl, filename, tier, label }.
+  /* Draws the pass and returns { dataUrl, filename, tier, label, photoFailed,
+   * qrFailed, qrSource }.
    * opts.token — the signed pass token the QR should carry. Without one the QR
-   * falls back to the app, which verifies nothing; callers should always pass it. */
+   * falls back to the app, which verifies nothing; callers must pass it, and
+   * both pages now refuse to draw without one. */
   async function render(user, opts) {
     opts = opts || {};
     var tierKey = tierFor(user);
@@ -92,6 +94,7 @@
     canvas.width = W; canvas.height = 1500 * S;
     var ctx = canvas.getContext('2d');
     var proxy = function (u) { return '/api/image-proxy?url=' + encodeURIComponent(u); };
+    function px(v) { return v * S; }
 
     var passId = 'BHAI-2026-' + String(user.id == null ? '0' : user.id).padStart(4, '0');
     // Was networking.bharataiinnovation.com?email=<address> — a subdomain that 301s
@@ -134,12 +137,38 @@
     try { aegis = await loadImage('/images/passes/aegis.png'); } catch (e) {}
     try { agba = await loadImage('/images/passes/agba.png'); } catch (e) {}
     try { assessfy = await loadImage('/images/passes/assessfy.jpg'); } catch (e) {}
-    // Cross-origin images taint the canvas and make toDataURL throw, so the QR goes
-    // through the same-origin proxy the logos already use.
-    try { qr = await loadImage(proxy('https://api.qrserver.com/v1/create-qr-code/?size=340x340&margin=0&data=' + encodeURIComponent(qrTarget))); } catch (e) {}
+    /* The QR is drawn here, by the bundled encoder (/js/vendor/qrcode-generator.js),
+     * so no third-party service sits in the path at the moment somebody asks for
+     * their pass. Until 29 Oct 2026 every pass fetched its code from
+     * api.qrserver.com, and an outage there issued a pass with no QR at all.
+     * That service, through the same-origin proxy, is now only the fallback for
+     * a page that loaded without the encoder. (Cross-origin images taint the
+     * canvas and make toDataURL throw, hence the proxy.)
+     * Error level M: a screen with glare or a thumb over a corner still reads.
+     * One module is a whole number of pixels, chosen so the code lands near 170
+     * CSS px wide, and it is drawn 1:1 below so no module blurs into the next. */
+    var qrSource = '';
+    if (typeof global.qrcode === 'function') {
+      try {
+        var code = global.qrcode(0, 'M');
+        code.addData(qrTarget);
+        code.make();
+        var cell = Math.max(2, Math.round(px(170) / code.getModuleCount()));
+        qr = await loadImage(code.createDataURL(cell, 0));
+        qrSource = 'local';
+      } catch (e) { qr = null; }
+    }
+    if (!qr) {
+      try {
+        qr = await loadImage(proxy('https://api.qrserver.com/v1/create-qr-code/?size=340x340&margin=0&data=' + encodeURIComponent(qrTarget)));
+        qrSource = 'qrserver';
+      } catch (e) { qr = null; }
+    }
+    // No QR is no pass: a document the desk cannot scan must not be handed out
+    // looking finished. Reported like photoFailed; download() refuses to click.
+    var qrFailed = !qr;
 
     var mid = W / 2;
-    function px(v) { return v * S; }
     var f = function (weight, size, family) { ctx.font = weight + ' ' + (size * S) + 'px ' + family; };
     var MONT = '"Montserrat", Arial, sans-serif';
     var PLAY = '"Playfair Display", Georgia, serif';
@@ -310,10 +339,16 @@
     ctx.letterSpacing = '0px';
     y += px(26);
     if (qr) {
-      var q = px(150), pad = px(9);
+      // The bundled code is drawn at its own size, whole pixels per module and
+      // no resampling; the fallback bitmap is scaled into the same box. The white
+      // pad is the quiet zone a reader needs around the code.
+      var q = qrSource === 'local' ? qr.width : px(170), pad = px(12);
       ctx.fillStyle = '#ffffff';
       roundRect(ctx, mid - q / 2 - pad, y, q + pad * 2, q + pad * 2, px(6)); ctx.fill();
-      ctx.drawImage(qr, mid - q / 2, y + pad, q, q);
+      var smooth = ctx.imageSmoothingEnabled;
+      if (qrSource === 'local') ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(qr, Math.round(mid - q / 2), Math.round(y + pad), q, q);
+      ctx.imageSmoothingEnabled = smooth;
       y += q + pad * 2;
     }
     f('400', 12, INTER); centre('Scan at the badge desk to verify & check in', y + px(20), T.gold ? '#7a6a3a' : '#5a6a8a');
@@ -370,14 +405,16 @@
       label: T.label,
       width: W,
       height: H,
-      photoFailed: photoFailed
+      photoFailed: photoFailed,
+      qrFailed: qrFailed,
+      qrSource: qrSource
     };
   }
 
   async function download(user, opts) {
     var res = await render(user, opts);
     // Not issued. The caller decides what to say; this just must not click.
-    if (res && res.photoFailed) return res;
+    if (res && (res.photoFailed || res.qrFailed)) return res;
     // On a phone the app shows the pass to share or press-and-hold save, because
     // a download link on an iPhone saves to Files, not Photos. The admin page has
     // no deliverImage and keeps the plain download.
