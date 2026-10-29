@@ -83,7 +83,9 @@ check('threads need a session', r.status === 401, r.status);
 r = await hit('/api/attendees/logout', { method: 'POST' });
 check('logout expires the cookie', r.status < 400 && /Max-Age=0/i.test(r.h['set-cookie'] || ''), r.status + ' ' + r.h['set-cookie']);
 r = await hit('/app');
-r.text += (await hit('/app.js')).text;   // the app's code is its own file
+// The app's code is its own file; read the one the page asks for, not the bare
+// /app.js the edge may hold an older copy of.
+r.text += (await hit('/app.js?v=' + ((/\/app\.js\?v=([0-9a-f]{8})/.exec(r.text) || [])[1] || ''))).text;
 check('app page carries the new client code', ['function parseDbTime', 'function safeUrl', 'id="notif-sheet"', 'function loadThreads', 'function closeTopModal'].every(m => r.text.includes(m)), 'markers');
 r = await hit('/sw.js');
 check('service worker is bhai-v17 (the pass draws its own QR; the encoder is precached)', r.status === 200 && r.text.includes("'bhai-v17'") && r.text.includes('/js/vendor/qrcode-generator.js?v=20261029'), r.status);
@@ -121,8 +123,15 @@ r = await hit('/api/company-logo?d=' + encodeURIComponent('evil.example/../x'));
 check('the company-logo route takes a hostname and nothing else', r.status === 400, r.status);
 
 // ---- what a phone downloads (27 Oct 2026) ----
+// The year is for the versioned URL the page asks for. The bare /app.js is the
+// service worker's offline copy: ten minutes from the worker (the zone's Browser
+// Cache TTL makes it four hours), never immutable. This check expected a year
+// until 29 Oct 2026 and passed only while the edge still held a stale immutable copy.
+r = await hit('/app');
+r = await hit('/app.js?v=' + ((/\/app\.js\?v=([0-9a-f]{8})/.exec(r.text) || [])[1] || ''));
+check('/app.js?v= is JavaScript a phone may keep for a year', r.status === 200 && /javascript/.test(r.h['content-type'] || '') && /max-age=31536000/.test(r.h['cache-control'] || ''), r.status + ' ' + r.h['content-type'] + ' ' + r.h['cache-control']);
 r = await hit('/app.js');
-check('/app.js is JavaScript a phone may keep for a year', r.status === 200 && /javascript/.test(r.h['content-type'] || '') && /max-age=31536000/.test(r.h['cache-control'] || ''), r.status + ' ' + r.h['content-type'] + ' ' + r.h['cache-control']);
+check('bare /app.js is never kept for a year', r.status === 200 && /javascript/.test(r.h['content-type'] || '') && !/immutable|max-age=31536000/.test(r.h['cache-control'] || ''), r.status + ' ' + r.h['cache-control']);
 r = await hit('/css/fonts.css?v=1');
 check('the fonts come from this origin', r.status === 200 && r.text.includes('url(/fonts/manrope-latin-300-800.woff2)'), r.status);
 r = await hit('/fonts/manrope-latin-300-800.woff2');

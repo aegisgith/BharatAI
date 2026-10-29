@@ -32,7 +32,9 @@ async function phone(browser, opts = {}) {
   return { ctx, page, seen };
 }
 const loadingShown = (page) => page.evaluate(() => { const e = document.getElementById('loading-screen'); return !!e && getComputedStyle(e).display !== 'none'; });
-const until = async (fn, ms) => { const end = Date.now() + ms; while (Date.now() < end) { if (await fn()) return true; await sleep(250); } return false; };
+// A read that lands while the startup check is reopening the page throws
+// ("Execution context was destroyed"); that is "not yet", not a failure.
+const until = async (fn, ms) => { const end = Date.now() + ms; while (Date.now() < end) { try { if (await fn()) return true; } catch (e) {} await sleep(250); } return false; };
 
 (async () => {
   const browser = await chromium.launch({ channel: 'msedge', headless: true });
@@ -60,8 +62,8 @@ const until = async (fn, ms) => { const end = Date.now() + ms; while (Date.now()
     block = false;
     await page.click('#boot-retry');
     const opened = await until(async () => !(await loadingShown(page)), 15000);
-    await sleep(800);
-    check('never arrives: "Try again" once the code can arrive opens the app, reported as recovered', opened && seen.boot.some(b => b.stage === 'ok'), JSON.stringify(seen.boot.map(b => b.stage)));
+    const okSeen = await until(async () => seen.boot.some(b => b.stage === 'ok'), 8000);
+    check('never arrives: "Try again" once the code can arrive opens the app, reported as recovered', opened && okSeen, JSON.stringify({ opened, stages: seen.boot.map(b => b.stage) }));
     check('never arrives: no script error on the way', !seen.errors.length, seen.errors.join(' | '));
     await ctx.close();
   }
@@ -202,6 +204,13 @@ const until = async (fn, ms) => { const end = Date.now() + ms; while (Date.now()
     const shown = await until(() => page.evaluate(() => /who tried, who got stuck/.test((document.getElementById('help-funnel') || {}).innerText || '')), 20000);
     const text = shown ? await page.evaluate(() => document.getElementById('help-funnel').innerText) : '';
     check('admin card: shows on the Overview with the badge and pass funnels', shown && /Made their badge\s*21\s*of 40/.test(text) && /Downloaded their pass\s*19\s*of 25/.test(text) && /Still stuck\s*6\s*of 40/.test(text), text.slice(0, 300));
+    const place = await page.evaluate(() => {
+      const card = document.getElementById('help-funnel').getBoundingClientRect().top + window.scrollY;
+      const sen = [...document.querySelectorAll('h3')].find(h => /by seniority/.test(h.textContent));
+      const tiles = [...document.querySelectorAll('#section-overview .card-hover')].pop();
+      return { card, seniority: sen ? sen.getBoundingClientRect().top + window.scrollY : -1, tiles: tiles ? tiles.getBoundingClientRect().bottom + window.scrollY : -1 };
+    });
+    check('admin card: straight under the number tiles, above everything else on the Overview', place.card > place.tiles && place.card < place.seniority, JSON.stringify(place));
     check('admin card: the way in, the reasons, the browsers and the switch', /App did not open\s*2/.test(text) && /Link no longer signed in\s*7/.test(text) && /There is no face in this photo/.test(text) && /in-app LinkedIn/.test(text) && /5 sent, 1 due now/.test(text), text.slice(0, 600));
     await page.click('#help-funnel details summary');
     const row = await page.evaluate(() => document.querySelector('#help-funnel table').innerText);
@@ -227,6 +236,19 @@ const until = async (fn, ms) => { const end = Date.now() + ms; while (Date.now()
     await page.evaluate(() => document.getElementById('help-funnel').scrollIntoView());
     await page.screenshot({ path: path.join(__dirname, '.out', 'help-admin-card.png'), clip: await page.evaluate(() => { const r = document.getElementById('help-funnel').getBoundingClientRect(); return { x: 0, y: Math.max(0, r.top - 8), width: 1366, height: Math.min(900, r.height + 16) }; }) }).catch(() => {});
     await ctx.close();
+
+    // The numbers cannot be loaded: the card says so and Send the steps still works.
+    const ctx2 = await browser.newContext({ viewport: { width: 1366, height: 900 } });
+    await ctx2.addInitScript(() => { sessionStorage.setItem('tc_admin_token', 'h-admin'); localStorage.setItem('tc_admin', '1'); localStorage.setItem('tc_admin_operator', 'Harness'); });
+    await ctx2.route(/\/api\/admin\/help-stats$/, (r) => r.fulfill({ status: 500, json: { error: 'D1 went away' } }));
+    const page2 = await ctx2.newPage();
+    const errors2 = [];
+    page2.on('pageerror', e => errors2.push(e.message));
+    await page2.goto(BASE + '/admin', { waitUntil: 'domcontentloaded' });
+    const said = await until(() => page2.evaluate(() => /Could not load these numbers/.test((document.getElementById('help-funnel') || {}).innerText || '')), 20000);
+    const t2 = said ? await page2.evaluate(() => document.getElementById('help-funnel').innerText) : '';
+    check('admin card: numbers that cannot load are said, with Try again, and Send the steps stays', said && /who tried, who got stuck/.test(t2) && /Try again/.test(t2) && /Send the steps/.test(t2) && !!(await page2.$('#help-send-email')) && !errors2.length, t2.slice(0, 200) + errors2.join('|'));
+    await ctx2.close();
   }
 
   await browser.close();

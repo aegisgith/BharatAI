@@ -31330,12 +31330,39 @@ function adminPageScript(): string {
     // Pass & badge (GET /api/admin/help-stats): who started the badge or the pass,
     // what stopped them, who could not open the app, and the email that sends them
     // the steps by itself (autoSendHelpMail on the server) or from here by hand.
+    // The card is drawn at once with its heading and Send the steps, then filled.
+    // A failed load says so, with Try again, and keeps Send the steps: it used to
+    // leave the space empty, which read as no card at all.
     async function loadHelpFunnel() {
       var el = document.getElementById('help-funnel');
       if (!el) return;
-      var d;
-      try { d = await api.get('/api/admin/help-stats'); } catch (e) { el.innerHTML = ''; return; }
-      el.innerHTML = helpFunnelHTML(d || {});
+      if (!el.innerHTML.trim()) el.innerHTML = helpFunnelShell('<p class="text-xs text-gray-500 mb-4"><i class="fas fa-spinner fa-spin mr-1"></i>Counting who tried and who got stuck...</p>');
+      var d, why = '';
+      // api.get hands back an error body (a 500 with JSON) rather than throwing.
+      try { d = await api.get('/api/admin/help-stats'); why = bodyError(d) || ''; }
+      catch (e) {
+        if (e && e.message === 'unauthorized') return;
+        why = (e && e.message) || 'no answer';
+      }
+      if (why) {
+        el.innerHTML = helpFunnelShell('<p class="text-xs text-red-400 mb-2">Could not load these numbers: ' + escH(why) + '</p>' +
+          '<button onclick="loadHelpFunnel()" class="px-3 py-1.5 mb-4 rounded-lg text-xs font-medium bg-primary-600 hover:bg-primary-500 text-white transition"><i class="fas fa-rotate-right mr-1"></i>Try again</button>');
+        return;
+      }
+      try { el.innerHTML = helpFunnelHTML(d || {}); }
+      catch (e) { el.innerHTML = helpFunnelShell('<p class="text-xs text-red-400 mb-4">Could not show these numbers: ' + escH((e && e.message) || '') + '</p>'); }
+    }
+    function helpFunnelShell(inner) {
+      return '<div class="glass rounded-xl p-5"><h3 class="font-semibold text-sm mb-3"><i class="fas fa-life-ring text-orange-400 mr-2"></i>Pass &amp; badge: who tried, who got stuck</h3>' +
+        inner + '<div class="pt-4 border-t border-white/10"><h4 class="text-sm font-semibold text-white mb-2">Send the steps by email</h4>' + helpSendRowHTML() + '</div></div>';
+    }
+    function helpSendRowHTML() {
+      return '<div class="flex flex-wrap items-center gap-2">' +
+        '<input id="help-send-email" type="email" autocomplete="off" placeholder="attendee@email.com" class="px-3 py-2 rounded-lg text-xs w-64">' +
+        '<select id="help-send-topic" class="px-3 py-2 rounded-lg text-xs"><option value="app">Opening the app</option><option value="card">Making the badge</option><option value="pass">Getting the pass</option></select>' +
+        '<button onclick="previewHelpMail()" class="px-3 py-2 rounded-lg text-xs font-medium border border-amber-500/40 text-amber-300 hover:bg-amber-500/10 transition"><i class="fas fa-eye mr-1"></i>Preview</button>' +
+        '<button onclick="sendHelpMailTo()" class="px-3 py-2 rounded-lg text-xs font-medium bg-amber-600 hover:bg-amber-500 text-white transition"><i class="fas fa-paper-plane mr-1"></i>Send the steps</button>' +
+        '</div>';
     }
     function helpFunnelHTML(d) {
       var by = {};
@@ -31397,12 +31424,7 @@ function adminPageScript(): string {
           sent + ' sent' + (errs ? ', ' + errs + ' not delivered' : '') + (h.due ? ', ' + h.due + ' due now' : '') +
           (h.cron_alive === false ? '. The minute clock is not running, so nothing goes by itself.' : '.') + '</p></div>' +
           '<label class="flex items-center gap-2 text-xs text-gray-300 cursor-pointer"><input type="checkbox" ' + (h.on ? 'checked' : '') + ' onchange="toggleHelpMailAuto(this.checked)"> Send by itself</label></div>' +
-          '<div class="flex flex-wrap items-center gap-2">' +
-            '<input id="help-send-email" type="email" autocomplete="off" placeholder="attendee@email.com" class="px-3 py-2 rounded-lg text-xs w-64">' +
-            '<select id="help-send-topic" class="px-3 py-2 rounded-lg text-xs"><option value="app">Opening the app</option><option value="card">Making the badge</option><option value="pass">Getting the pass</option></select>' +
-            '<button onclick="previewHelpMail()" class="px-3 py-2 rounded-lg text-xs font-medium border border-amber-500/40 text-amber-300 hover:bg-amber-500/10 transition"><i class="fas fa-eye mr-1"></i>Preview</button>' +
-            '<button onclick="sendHelpMailTo()" class="px-3 py-2 rounded-lg text-xs font-medium bg-amber-600 hover:bg-amber-500 text-white transition"><i class="fas fa-paper-plane mr-1"></i>Send the steps</button>' +
-          '</div>' +
+          helpSendRowHTML() +
         '</div>' +
         (recent ? '<details class="mt-4"><summary class="text-xs text-gray-400 cursor-pointer">Who got stuck (latest 40)</summary><div class="overflow-x-auto mt-2"><table class="w-full text-xs">' + recent + '</table></div></details>' : '') +
         '</div>';
@@ -31524,6 +31546,9 @@ function adminPageScript(): string {
             </div>
           \`).join('')}
         </div>
+
+        <!-- Pass & badge: who tried, who got stuck (loadHelpFunnel), under the tiles so it is seen. -->
+        <div id="help-funnel" class="mb-6"></div>
 
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
           <div class="glass rounded-xl p-5">
@@ -31697,8 +31722,6 @@ function adminPageScript(): string {
             </p>
           </div>
         </div>
-
-        <div id="help-funnel" class="mb-6"></div>
 
         <!-- RSVP Status -->
         <div class="glass rounded-xl p-5 mb-6">
