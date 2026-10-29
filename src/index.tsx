@@ -17748,7 +17748,8 @@ async function submitRegistration(e) {
         interests: document.getElementById('rf-interests').value.trim(),
         bio: '',
         badge_type: 'Visitor Pass',
-        registration_source: registrationSource()
+        // No tag means the person came to this page itself.
+        registration_source: registrationSource() || 'website'
       })
     });
     const data = await resp.json().catch(() => ({}));

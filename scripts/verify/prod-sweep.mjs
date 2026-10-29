@@ -84,7 +84,7 @@ r = await hit('/app');
 r.text += (await hit('/app.js')).text;   // the app's code is its own file
 check('app page carries the new client code', ['function parseDbTime', 'function safeUrl', 'id="notif-sheet"', 'function loadThreads', 'function closeTopModal'].every(m => r.text.includes(m)), 'markers');
 r = await hit('/sw.js');
-check('service worker is bhai-v15', r.status === 200 && r.text.includes("'bhai-v15'"), r.status);
+check('service worker is bhai-v16', r.status === 200 && r.text.includes("'bhai-v16'"), r.status);
 
 // ---- the 29 Oct 2026 audit: a passes page, and the app's Visitor fixes ----
 r = await hit('/passes');
