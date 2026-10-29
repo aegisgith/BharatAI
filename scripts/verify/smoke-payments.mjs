@@ -620,15 +620,15 @@ let mk = mail.length;
 r = await back(kitEncrypt(answer(order(gOrd.order_id))), MAIL);
 await settle(() => mail.slice(mk).length >= 3);
 const ginv = state.invoices.find(i => i.order_ref === gOrd.order_id);
-check('when the payment lands a GST invoice is raised by itself, in the company name, with its GSTIN and the next number', !!ginv && ginv.buyer_company === 'Acme Technologies Pvt Ltd' && ginv.buyer_gstin === '29AAICS0944E1ZB' && ginv.buyer_name === 'Gst Buyer' && ginv.total_paise === 589882 && ginv.invoice_no === 'AKT/' + fy + '/119' && ginv.payment_ref === 'CCAvenue 115023456789' && !!ginv.emailed_at, JSON.stringify(ginv));
+check('when the payment lands a payment receipt is raised by itself, in the company name, with its GSTIN, first in the receipt series', !!ginv && ginv.buyer_company === 'Acme Technologies Pvt Ltd' && ginv.buyer_gstin === '29AAICS0944E1ZB' && ginv.buyer_name === 'Gst Buyer' && ginv.total_paise === 589882 && ginv.invoice_no === 'RCT/' + fy + '/1' && ginv.payment_ref === 'CCAvenue 115023456789' && !!ginv.emailed_at, JSON.stringify(ginv));
 check('a Karnataka GSTIN is drawn as IGST, and the tax adds up to what was charged', !!ginv && ginv.igst_paise === 89982 && ginv.cgst_paise === 0 && ginv.taxable_paise + ginv.igst_paise === 589882 && ginv.place_of_supply === 'Karnataka', JSON.stringify(ginv));
 const toG = mail.slice(mk).filter(m => m.to === 'gst@example.com');
-check('the buyer gets the invoice email, and a receipt that names the invoice and links it', !!ginv && toG.some(m => m.subject.startsWith('Invoice ' + ginv.invoice_no)) && toG.some(m => /Payment received/.test(m.subject) && m.html.includes(ginv.invoice_no) && /bharataiinnovation\.com\/invoice\/\d+\.[0-9a-f]{24}/.test(m.html)), JSON.stringify(toG.map(m => m.subject)));
-const gMail = toG.find(m => ginv && m.subject.startsWith('Invoice ' + ginv.invoice_no));
+check('the buyer gets the receipt email, and a welcome that names the receipt and links it', !!ginv && toG.some(m => m.subject.startsWith('Receipt ' + ginv.invoice_no)) && toG.some(m => /Payment received/.test(m.subject) && m.html.includes(ginv.invoice_no) && /bharataiinnovation\.com\/invoice\/\d+\.[0-9a-f]{24}/.test(m.html)), JSON.stringify(toG.map(m => m.subject)));
+const gMail = toG.find(m => ginv && m.subject.startsWith('Receipt ' + ginv.invoice_no));
 const gPdf = gMail && gMail.attachments[0] ? Buffer.from(gMail.attachments[0].BinaryContent, 'base64') : null;
-check('the invoice email acknowledges the amount received, as the accounts team wrote it by hand', !!gMail && /We acknowledge the receipt of <strong>INR 5,898\.82<\/strong> against Delegate Pass fees/.test(gMail.html) && /tax invoice attached/.test(gMail.html), gMail ? gMail.html.slice(0, 300) : 'no invoice email');
-check('the invoice travels as a PDF attachment named for its number', !!gPdf && gPdf.subarray(0, 5).toString() === '%PDF-' && gMail.attachments[0].Name === 'Tax Invoice AKT-' + fy + '-119.pdf' && gMail.attachments[0].ContentType === 'application/pdf', gMail ? JSON.stringify(gMail.attachments.map(a => a.Name)) : 'none');
-check('the accounts mailbox gets a blind copy of every invoice email', !!gMail && gMail.bcc.length === 1 && gMail.bcc[0] === 'accounts@bellaward.com', gMail ? JSON.stringify(gMail.bcc) : 'none');
+check('the receipt email acknowledges the amount received, as the accounts team wrote it by hand, and says the tax invoice follows', !!gMail && /We acknowledge the receipt of <strong>INR 5,898\.82<\/strong> against Delegate Pass fees/.test(gMail.html) && /receipt attached/.test(gMail.html) && /GST invoice follows separately/.test(gMail.html), gMail ? gMail.html.slice(0, 300) : 'no invoice email');
+check('the receipt travels as a PDF attachment named for its number', !!gPdf && gPdf.subarray(0, 5).toString() === '%PDF-' && gMail.attachments[0].Name === 'Receipt RCT-' + fy + '-1.pdf' && gMail.attachments[0].ContentType === 'application/pdf', gMail ? JSON.stringify(gMail.attachments.map(a => a.Name)) : 'none');
+check('the accounts mailbox gets a blind copy of every receipt and invoice email', !!gMail && gMail.bcc.length === 1 && gMail.bcc[0] === 'accounts@bellaward.com', gMail ? JSON.stringify(gMail.bcc) : 'none');
 check('nobody else is copied on the receipt', toG.filter(m => m !== gMail).every(m => !m.bcc.length && !m.attachments.length), JSON.stringify(toG.map(m => m.bcc)));
 if (gPdf) writeFileSync(join(tmpdir(), 'smoke-invoice.pdf'), gPdf);
 {
@@ -636,11 +636,27 @@ if (gPdf) writeFileSync(join(tmpdir(), 'smoke-invoice.pdf'), gPdf);
   const pr = await hit('/invoice/' + tok + '/pdf');
   const page = await hit('/invoice/' + tok);
   const bad = await hit('/invoice/' + String(tok).slice(0, -1) + '0/pdf');
-  check('the invoice link offers the same PDF, and a forged link gets nothing', pr.status === 200 && pr.text.startsWith('%PDF-') && page.text.includes('/invoice/' + tok + '/pdf') && bad.status === 404, pr.status + ' ' + bad.status);
+  check('the receipt link offers the same PDF, and a forged link gets nothing', pr.status === 200 && pr.text.startsWith('%PDF-') && page.text.includes('/invoice/' + tok + '/pdf') && bad.status === 404, pr.status + ' ' + bad.status);
+  check('the page is a receipt: titled RECEIPT, marked Paid, no bank details, and says it is not a tax invoice', />RECEIPT</.test(page.text) && !/TAX INVOICE/.test(page.text) && /Receipt No\./.test(page.text) && />Paid</.test(page.text) && /Amount Received/.test(page.text) && !/Online Transfer Details/.test(page.text) && /It is not a tax invoice/.test(page.text), page.text.slice(0, 200));
 }
-check('the team is told it is done, not asked to raise it', mail.slice(mk).some(m => /Paid online: Gst Buyer/.test(m.subject) && /raised and emailed to the buyer automatically/.test(m.html)), JSON.stringify(mail.slice(mk).map(m => m.subject)));
+check('the team is told the receipt went and the tax invoice is still theirs to raise', mail.slice(mk).some(m => /Paid online: Gst Buyer/.test(m.subject) && /payment receipt <strong>RCT\//.test(m.html) && /GST tax invoice is still to raise/.test(m.html)), JSON.stringify(mail.slice(mk).map(m => m.subject)));
 r = await adminGet('/api/admin/payments-pending');
-check('so it is not on the "invoice to raise" list', r.status === 200 && !(r.json?.paid_online || []).some(x => x.order_id === gOrd.order_id), r.status + ' ' + r.text.slice(0, 160));
+check('so it stays on the "invoice to raise" list: a receipt is not the tax invoice', r.status === 200 && (r.json?.paid_online || []).some(x => x.order_id === gOrd.order_id), r.status + ' ' + r.text.slice(0, 160));
+{
+  // Accounts then raises the tax invoice for it: the AKT series, untouched by receipts.
+  const mk2 = mail.length;
+  const ti = await hit('/api/admin/invoices', { method: 'POST', headers: { Authorization: 'Bearer smoke-admin', 'Content-Type': 'application/json' }, body: JSON.stringify({
+    attendee_id: 80, buyer_name: 'Gst Buyer', buyer_email: 'gst@example.com', buyer_company: 'Acme Technologies Pvt Ltd', buyer_gstin: '29AAICS0944E1ZB',
+    buyer_address: '12 MG Road, Bengaluru 560001', item_desc: 'Delegate Pass - Bharat AI Innovation Conference & Exhibition 2026',
+    order_ref: gOrd.order_id, payment_ref: 'CCAvenue 115023456789', total_amount: 5898.82 }) }, MAIL);
+  await settle(() => mail.length > mk2);
+  const tMail = mail.slice(mk2).find(m => m.to === 'gst@example.com');
+  check('a tax invoice raised by a person still takes the next AKT number, is a TAX INVOICE, and is emailed as one', ti.status === 201 && ti.json?.invoice_no === 'AKT/' + fy + '/119' && !!tMail && tMail.subject.startsWith('Invoice AKT/' + fy + '/119') && tMail.attachments[0]?.Name === 'Tax Invoice AKT-' + fy + '-119.pdf' && /tax invoice attached/.test(tMail.html), ti.status + ' ' + ti.text.slice(0, 200));
+  const tPage = await hit(ti.json?.url || '/invoice/x');
+  check('and its page is the tax invoice',/TAX INVOICE/.test(tPage.text) && /Grand Total/.test(tPage.text) && !/>RECEIPT</.test(tPage.text), tPage.status + '');
+  r = await adminGet('/api/admin/payments-pending');
+  check('which is what takes the order off the "invoice to raise" list', r.status === 200 && !(r.json?.paid_online || []).some(x => x.order_id === gOrd.order_id), r.status + ' ' + r.text.slice(0, 160));
+}
 
 person(81, { name: 'Solo Buyer', email: 'solo@example.com', company: 'Self', city: 'Pune', main_event: 1 });
 state.settings['billing:81'] = JSON.stringify({ legal_name: 'Old Co', gstin: '', address: '' });
@@ -651,7 +667,7 @@ mk = mail.length;
 r = await back(kitEncrypt(answer(order(pOrd.order_id))), MAIL);
 await settle(() => state.invoices.some(i => i.order_ref === pOrd.order_id) && mail.slice(mk).length >= 3);
 const pinv = state.invoices.find(i => i.order_ref === pOrd.order_id);
-check('then the invoice is in their name, unregistered, CGST + SGST in Maharashtra, numbered next', !!pinv && pinv.buyer_company === '' && pinv.buyer_name === 'Solo Buyer' && !pinv.buyer_gstin && pinv.cgst_paise + pinv.sgst_paise === 17982 && pinv.igst_paise === 0 && pinv.place_of_supply === 'Maharashtra' && pinv.invoice_no === 'AKT/' + fy + '/120', JSON.stringify(pinv));
+check('then the receipt is in their name, unregistered, CGST + SGST in Maharashtra, numbered next in the receipt series', !!pinv && pinv.buyer_company === '' && pinv.buyer_name === 'Solo Buyer' && !pinv.buyer_gstin && pinv.cgst_paise + pinv.sgst_paise === 17982 && pinv.igst_paise === 0 && pinv.place_of_supply === 'Maharashtra' && pinv.invoice_no === 'RCT/' + fy + '/2', JSON.stringify(pinv));
 
 person(82, { name: 'Upi Buyer', email: 'upi@example.com', main_event: 1 });
 state.settings['billing:82'] = JSON.stringify({ legal_name: 'Upi Labs LLP', gstin: '27AAAFU1234B1Z2', address: 'Andheri, Mumbai 400053' });
@@ -720,7 +736,7 @@ mk = mail.length;
 r = await back(kitEncrypt(answer(order(nOrd.order_id))), MAIL);
 await settle(() => mail.slice(mk).some(m => /Paid online: No Settings/.test(m.subject)));
 r = await adminGet('/api/admin/payments-pending');
-check('without invoicing settings the pass still unlocks, the team is asked to raise it, and it stays on the list', state.attendees[83].payment_status === 'paid' && !state.invoices.some(i => i.order_ref === nOrd.order_id) && mail.slice(mk).some(m => /Paid online: No Settings/.test(m.subject) && /could <strong>not<\/strong> be raised automatically/.test(m.html)) && (r.json?.paid_online || []).some(x => x.order_id === nOrd.order_id), JSON.stringify(mail.slice(mk).map(m => m.subject)));
+check('without invoicing settings the pass still unlocks, the team is asked to raise it, and it stays on the list', state.attendees[83].payment_status === 'paid' && !state.invoices.some(i => i.order_ref === nOrd.order_id) && mail.slice(mk).some(m => /Paid online: No Settings/.test(m.subject) && /could <strong>not<\/strong> be sent automatically/.test(m.html)) && (r.json?.paid_online || []).some(x => x.order_id === nOrd.order_id), JSON.stringify(mail.slice(mk).map(m => m.subject)));
 globalThis.fetch = realFetch;
 
 // ---- which upgrade prompts people meet (28 Oct 2026): counted as the person, read by admin ----

@@ -3,12 +3,18 @@
 // invoices use (the Excel sheet they printed to PDF by hand until 28 Oct 2026),
 // so a buyer's finance team sees the same document whichever way it reached them.
 //
+// The same sheet is the payment receipt the app sends when a payment lands
+// (receipt: true, since 29 Oct 2026): titled RECEIPT, "Received from" in place of
+// the billing and shipping columns, marked Paid, no bank details, and a line that
+// says the tax invoice is issued separately.
+//
 // Layout only: every figure arrives already formatted by the worker (rupees(),
 // rupeesInWords(), invoiceDate()), so there is no second copy of the arithmetic.
 // Helvetica is one of the PDF base fonts, so nothing is embedded but the logo.
 import { PDFDocument, PDFFont, PDFPage, StandardFonts, rgb } from 'pdf-lib'
 
 export type InvoicePdfView = {
+  receipt: boolean
   invoiceNo: string
   date: string
   billTo: string
@@ -64,7 +70,7 @@ function wrap(text: string, font: PDFFont, size: number, width: number): string[
 
 export async function invoicePdf(v: InvoicePdfView, logoPng: Uint8Array | null): Promise<Uint8Array> {
   const doc = await PDFDocument.create()
-  doc.setTitle('Tax Invoice ' + v.invoiceNo)
+  doc.setTitle((v.receipt ? 'Receipt ' : 'Tax Invoice ') + v.invoiceNo)
   doc.setAuthor(v.seller.legalName)
   doc.setSubject('Bharat AI Innovation 2026')
   doc.setCreator('bharataiinnovation.com')
@@ -100,7 +106,7 @@ export async function invoicePdf(v: InvoicePdfView, logoPng: Uint8Array | null):
   }
 
   let top = 40
-  text('TAX INVOICE', L, top, { bold: true, size: 13, align: 'center', width: W })
+  text(v.receipt ? 'RECEIPT' : 'TAX INVOICE', L, top, { bold: true, size: 13, align: 'center', width: W })
   top += 24
 
   // Seller on the left, the event logo on the right.
@@ -118,24 +124,40 @@ export async function invoicePdf(v: InvoicePdfView, logoPng: Uint8Array | null):
   }
   top += Math.max(sellerLines.length * LEAD, logoH) + 10
 
-  const c1 = W * 0.08, c2 = W * 0.30, c3 = W * 0.30, c4 = W * 0.16, c5 = W - c1 - c2 - c3 - c4
-  top = row(top, [
-    { w: c1, text: 'To,', bold: true }, { w: c2, text: 'Billing Address', bold: true, align: 'center' },
-    { w: c3, text: 'Shipping Address', bold: true, align: 'center' }, { w: c4, text: 'Invoice No.', bold: true, align: 'center' },
-    { w: c5, text: v.invoiceNo, bold: true, align: 'center' },
-  ])
-  top = row(top, [
-    { w: c1 }, { w: c2, text: v.billTo, align: 'center' }, { w: c3, text: v.billTo, align: 'center' },
-    { w: c4, text: 'Date', bold: true, align: 'center' }, { w: c5, text: v.date, align: 'center' },
-  ])
-  top = row(top, [
-    { w: c1 }, { w: c2, text: v.address }, { w: c3, text: v.address },
-    { w: c4, text: 'Due Date', bold: true, align: 'center' }, { w: c5, text: '-', align: 'center' },
-  ], 40)
-  top = row(top, [
-    { w: c1 + c2 + c3, text: 'GST No: - ' + (v.buyerGstin || 'Unregistered'), bold: true, align: 'center' },
-    { w: c4 + c5 },
-  ])
+  if (v.receipt) {
+    const r1 = W * 0.20, r2 = W * 0.48, r3 = W * 0.16, r4 = W - r1 - r2 - r3
+    top = row(top, [
+      { w: r1, text: 'Received from', bold: true }, { w: r2, text: v.billTo },
+      { w: r3, text: 'Receipt No.', bold: true, align: 'center' }, { w: r4, text: v.invoiceNo, bold: true, align: 'center' },
+    ])
+    top = row(top, [
+      { w: r1, text: 'Address', bold: true }, { w: r2, text: v.address || '-' },
+      { w: r3, text: 'Date', bold: true, align: 'center' }, { w: r4, text: v.date, align: 'center' },
+    ])
+    top = row(top, [
+      { w: r1, text: 'GST No.', bold: true }, { w: r2, text: v.buyerGstin || 'Unregistered' },
+      { w: r3, text: 'Status', bold: true, align: 'center' }, { w: r4, text: 'Paid', bold: true, align: 'center' },
+    ])
+  } else {
+    const c1 = W * 0.08, c2 = W * 0.30, c3 = W * 0.30, c4 = W * 0.16, c5 = W - c1 - c2 - c3 - c4
+    top = row(top, [
+      { w: c1, text: 'To,', bold: true }, { w: c2, text: 'Billing Address', bold: true, align: 'center' },
+      { w: c3, text: 'Shipping Address', bold: true, align: 'center' }, { w: c4, text: 'Invoice No.', bold: true, align: 'center' },
+      { w: c5, text: v.invoiceNo, bold: true, align: 'center' },
+    ])
+    top = row(top, [
+      { w: c1 }, { w: c2, text: v.billTo, align: 'center' }, { w: c3, text: v.billTo, align: 'center' },
+      { w: c4, text: 'Date', bold: true, align: 'center' }, { w: c5, text: v.date, align: 'center' },
+    ])
+    top = row(top, [
+      { w: c1 }, { w: c2, text: v.address }, { w: c3, text: v.address },
+      { w: c4, text: 'Due Date', bold: true, align: 'center' }, { w: c5, text: '-', align: 'center' },
+    ], 40)
+    top = row(top, [
+      { w: c1 + c2 + c3, text: 'GST No: - ' + (v.buyerGstin || 'Unregistered'), bold: true, align: 'center' },
+      { w: c4 + c5 },
+    ])
+  }
 
   const d1 = W * 0.08, d2 = W * 0.60, d3 = W * 0.16, d4 = W - d1 - d2 - d3
   top = row(top, [
@@ -152,7 +174,7 @@ export async function invoicePdf(v: InvoicePdfView, logoPng: Uint8Array | null):
   // Place of supply and the seller's numbers beside the four tax rows.
   const half = v.gstRate / 2
   const taxRows: [string, string][] = [
-    ['Total', v.taxable], ['Add: CGST @ ' + half + '%', v.cgst],
+    [v.receipt ? 'Taxable Value' : 'Total', v.taxable], ['Add: CGST @ ' + half + '%', v.cgst],
     ['Add: SGST @ ' + half + '%', v.sgst], ['Add: IGST @ ' + v.gstRate + '%', v.igst],
   ]
   const rowH = LEAD + 2 * PAD
@@ -172,8 +194,13 @@ export async function invoicePdf(v: InvoicePdfView, logoPng: Uint8Array | null):
   top += rowH * 4
   top = row(top, [
     { w: d1 + d2, text: 'In Words: ' + v.words, bold: true },
-    { w: d3, text: 'Grand Total', bold: true }, { w: d4, text: v.total, bold: true, align: 'right' },
+    { w: d3, text: v.receipt ? 'Amount Received' : 'Grand Total', bold: true }, { w: d4, text: v.total, bold: true, align: 'right' },
   ])
+
+  if (v.receipt) {
+    top += 12
+    for (const ln of wrap('This receipt acknowledges the payment above. It is not a tax invoice: the GST tax invoice for this payment is issued separately.', reg, SIZE, W - 2 * PAD)) { text(ln, L + PAD, top); top += LEAD }
+  }
 
   top += 18
   text('For ' + v.seller.legalName, L + PAD, top, { bold: true })
@@ -181,7 +208,7 @@ export async function invoicePdf(v: InvoicePdfView, logoPng: Uint8Array | null):
   text(v.seller.signatory, L + PAD, top, { bold: true })
   top += 24
 
-  if (v.seller.bank) {
+  if (v.seller.bank && !v.receipt) {
     text('Online Transfer Details :-', L + PAD, top, { bold: true })
     top += LEAD + 2
     for (const ln of wrap(v.seller.bank, reg, SIZE, W - 2 * PAD)) { text(ln, L + PAD, top); top += LEAD }

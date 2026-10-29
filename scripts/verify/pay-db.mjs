@@ -131,7 +131,7 @@ export function makePayDb() {
           if (/PRAGMA table_info\(staff\)/.test(sql)) return { results: ['id', 'name', 'username', 'active', 'role'].map(name => ({ name })) };
           if (/^SELECT key, value FROM app_settings$/.test(sql)) return { results: Object.entries(state.settings).map(([key, value]) => ({ key, value })) };
           if (/FROM payment_orders o JOIN attendees a/.test(sql)) {
-            return { results: state.orders.filter(o => o.status === 'paid' && !state.invoices.some(i => i.order_ref === o.order_id)).map(o => {
+            return { results: state.orders.filter(o => o.status === 'paid' && !state.invoices.some(i => i.order_ref === o.order_id && !String(i.invoice_no).startsWith('RCT/'))).map(o => {
               const a = state.attendees[o.attendee_id];
               return { order_id: o.order_id, tracking_id: o.tracking_id, amount_paise: o.amount_paise, pass_type: o.pass_type, paid_at: o.paid_at, payment_mode: o.payment_mode, id: a.id, name: a.name, email: a.email, company: a.company, mobile: a.mobile };
             }) };
@@ -242,7 +242,7 @@ export function makePayDb() {
             return { meta: { changes: 1 } };
           }
           if (/^DELETE FROM app_settings WHERE key = \?$/.test(sql)) { delete state.settings[args[0]]; return { meta: { changes: 1 } }; }
-          if (/^INSERT INTO app_settings \(key, value, updated_at\) VALUES \('inv_next_number', \?/.test(sql)) { state.settings.inv_next_number = args[0]; return { meta: { changes: 1 } }; }
+          { const m = /^INSERT INTO app_settings \(key, value, updated_at\) VALUES \('(inv|rcpt)_next_number', \?/.exec(sql); if (m) { state.settings[m[1] + '_next_number'] = args[0]; return { meta: { changes: 1 } }; } }
           if (/^INSERT INTO invoices \(invoice_no,/.test(sql)) {
             const [invoice_no, attendee_id, buyer_name, buyer_email, buyer_company, buyer_gstin, buyer_address, buyer_phone, item_desc, order_ref, payment_ref, paid_at, gst_rate,
               taxable_paise, cgst_paise, sgst_paise, igst_paise, total_paise, place_of_supply] = args;

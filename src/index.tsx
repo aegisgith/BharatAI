@@ -1907,6 +1907,16 @@ const INVOICE_SETTING_KEYS = [
 // otherwise.
 const INVOICE_ACCOUNTS_EMAIL = 'accounts@bellaward.com'
 
+// What the app sends when a payment lands is a payment RECEIPT, not a tax invoice
+// (organiser, 29 Oct 2026). The accounts team numbers the tax invoices in the AKT
+// series in their own books, so the app taking AKT numbers made two different
+// documents share one number (the app's AKT/26-27/132 on 29 Oct; the team was
+// past 185 by 12 Oct). Receipts live in the invoices table, with its token links
+// and PDF, in a series of their own; the prefix is what marks one, so it is a
+// constant rather than a setting that could be changed under the rows.
+const RECEIPT_PREFIX = 'RCT'
+const isReceipt = (v: any): boolean => String(v?.invoice_no || '').startsWith(RECEIPT_PREFIX + '/')
+
 async function invoiceSettings(c: any): Promise<Record<string, string>> {
   const { results } = await c.env.DB.prepare('SELECT key, value FROM app_settings').all() as any
   const out: Record<string, string> = {}
@@ -1973,7 +1983,7 @@ async function createInvoice(c: any, b: any) {
 }
 
 // The invoice itself, for a person at /admin or /finance and for the gateway when
-// a payment lands (autoInvoiceForOrder). `who` names the actor in the audit log
+// a payment lands (autoReceiptForOrder, kind receipt). `who` names the actor in the audit log
 // when there is no admin or finance session behind the call.
 async function issueInvoice(c: any, b: any, who?: { actor: string; kind: string }):
     Promise<{ id: any; invoice_no: string; url: string } | { error: string; status: number }> {
@@ -2030,7 +2040,9 @@ async function issueInvoice(c: any, b: any, who?: { actor: string; kind: string 
   // A database from before this change still holds the old starting value, so the
   // counter is reconciled with the highest number already issued in this series;
   // it catches up on the first invoice and never needs to again.
-  const series = (set.inv_prefix || 'AKT') + '/' + financialYear(new Date()) + '/'
+  const receipt = b.kind === 'receipt'
+  const series = (receipt ? RECEIPT_PREFIX : (set.inv_prefix || 'AKT')) + '/' + financialYear(new Date()) + '/'
+  const counterKey = receipt ? 'rcpt_next_number' : 'inv_next_number'
   const values = [
     b.attendee_id || null, String(b.buyer_name).trim(), String(b.buyer_email).trim().toLowerCase(),
     b.buyer_company || '', b.buyer_gstin || '', b.buyer_address || '', b.buyer_phone || '',
@@ -2041,7 +2053,7 @@ async function issueInvoice(c: any, b: any, who?: { actor: string; kind: string 
   let id: any = null
   let invoiceNo = ''
   for (let attempt = 0; attempt < 2 && id === null; attempt++) {
-    const counter = parseInt(String((await settingGet(c, 'inv_next_number')) || '1'), 10) || 1
+    const counter = parseInt(String((await settingGet(c, counterKey)) || '1'), 10) || 1
     const highest = Number((await c.env.DB.prepare(
       'SELECT MAX(CAST(substr(invoice_no, ?) AS INTEGER)) AS n FROM invoices WHERE substr(invoice_no, 1, ?) = ?'
     ).bind(series.length + 1, series.length, series).first() as any)?.n || 0)
@@ -2055,8 +2067,9 @@ async function issueInvoice(c: any, b: any, who?: { actor: string; kind: string 
              taxable_paise, cgst_paise, sgst_paise, igst_paise, total_paise, place_of_supply)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         ).bind(invoiceNo, ...values),
-        c.env.DB.prepare(
-          "INSERT INTO app_settings (key, value, updated_at) VALUES ('inv_next_number', ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at"
+        c.env.DB.prepare(receipt
+          ? "INSERT INTO app_settings (key, value, updated_at) VALUES ('rcpt_next_number', ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at"
+          : "INSERT INTO app_settings (key, value, updated_at) VALUES ('inv_next_number', ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at"
         ).bind(String(seq + 1)),
       ])
       id = ins.meta.last_row_id
@@ -2088,7 +2101,7 @@ async function issueInvoice(c: any, b: any, who?: { actor: string; kind: string 
   // Raised by finance as often as by admin; a finance session is not an admin one,
   // so name it here rather than let the entry read "unnamed operator".
   const fin = await financeSession(c)
-  await audit(c, 'invoice.create', 'invoice', id,
+  await audit(c, receipt ? 'receipt.create' : 'invoice.create', 'invoice', id,
     { invoice_no: invoiceNo, buyer_email: String(b.buyer_email).trim().toLowerCase(), total_paise: total, attendee_id: b.attendee_id || null },
     fin ? { actor: fin.name || fin.username, kind: 'account' } : who)
 
@@ -2138,13 +2151,14 @@ async function saveBilling(c: any, attendeeId: any, b: Billing | null): Promise<
   else await c.env.DB.prepare('DELETE FROM app_settings WHERE key = ?').bind(billingKey(attendeeId)).run()
 }
 
-// The GST invoice for a payment that has just landed, raised and emailed with no
-// one in the loop (organiser, 17 Oct 2026: the buyer gets the invoice after
-// paying). Billed to the company they named on the form, else to them. Place of
-// supply comes from the GSTIN, else Maharashtra, as a hand-raised one would.
-// Never throws: when it cannot be raised (settings missing, a clash on the
-// number) the order stays under "Paid online: invoice to raise" for a person.
-async function autoInvoiceForOrder(c: any, order: any, a: any, trackingId: string, upgradeFrom = ''): Promise<{ invoice_no: string; url: string } | null> {
+// The payment receipt for a payment that has just landed, raised and emailed with
+// no one in the loop (organiser, 17 Oct 2026: the buyer hears back after paying;
+// 29 Oct: a receipt, not a tax invoice, see RECEIPT_PREFIX). Made out to the
+// company they named on the form, else to them, with the GST in the amount shown
+// as a hand-raised invoice would show it. The order stays under "Paid online:
+// invoice to raise" either way, because the tax invoice is still the accounts
+// team's to issue. Never throws.
+async function autoReceiptForOrder(c: any, order: any, a: any, trackingId: string, upgradeFrom = ''): Promise<{ invoice_no: string; url: string } | null> {
   try {
     const have = await c.env.DB.prepare('SELECT id FROM invoices WHERE order_ref = ?').bind(order.order_id).first()
     if (have) return null
@@ -2165,10 +2179,11 @@ async function autoInvoiceForOrder(c: any, order: any, a: any, trackingId: strin
       paid_at: new Date().toISOString().slice(0, 19).replace('T', ' '),
       total_amount: Number(order.amount_paise) / 100,
       gst_rate: PASS_GST_RATE,
+      kind: 'receipt',
     }, { actor: 'CCAvenue', kind: 'gateway' })
     // A refusal (invoicing settings not filled in, a clash on the number) is told
     // to the team in the payment email, which says to raise it by hand.
-    if ('error' in r) { console.error('auto invoice refused', order.order_id, r.error); return null }
+    if ('error' in r) { console.error('auto receipt refused', order.order_id, r.error); return null }
     return { invoice_no: r.invoice_no, url: 'https://bharataiinnovation.com' + r.url }
   } catch (e: any) {
     console.error('auto invoice failed', order?.order_id, e?.message)
@@ -2671,11 +2686,11 @@ async function settlePaidOrder(c: any, order: any, trackingId: string, paymentMo
     upgrade_from: upgradeFrom || undefined,
   }, { actor: 'CCAvenue', kind: 'gateway' })
 
-  // The invoice first, so the receipt can name it. Only for a pass this payment
+  // The receipt first, so the welcome can name it. Only for a pass this payment
   // unlocked: when the badge was set by hand, a person decides what it paid for.
   const mails = (async () => {
-    const invoice = changeable ? await autoInvoiceForOrder(c, order, a, trackingId, upgradeFrom) : null
-    await sendPaymentEmails(c, a, order, trackingId, paymentMode, changeable, invoice, upgradeFrom)
+    const receipt = changeable ? await autoReceiptForOrder(c, order, a, trackingId, upgradeFrom) : null
+    await sendPaymentEmails(c, a, order, trackingId, paymentMode, changeable, receipt, upgradeFrom)
   })()
   let scheduled = false
   try { c.executionCtx.waitUntil(mails); scheduled = true } catch { /* no ctx */ }
@@ -2684,7 +2699,7 @@ async function settlePaidOrder(c: any, order: any, trackingId: string, paymentMo
 
 // Never throws: the pass is already unlocked by the time this runs.
 async function sendPaymentEmails(c: any, a: any, order: any, trackingId: string, paymentMode: string, unlocked: boolean,
-    invoice: { invoice_no: string; url: string } | null = null, upgradeFrom = '') {
+    receipt: { invoice_no: string; url: string } | null = null, upgradeFrom = '') {
   try {
     const amount = rupees(Number(order.amount_paise))
     const appUrl = (await settingValue(c, 'app_url')) || 'https://bharataiinnovation.com/app'
@@ -2702,6 +2717,9 @@ async function sendPaymentEmails(c: any, a: any, order: any, trackingId: string,
       ['CCAvenue reference', payEsc(trackingId)],
       ['Paid on', payEsc(istStamp(new Date().toISOString()))],
     ])
+    const gstText = receipt
+      ? `<strong>Payment receipt:</strong> receipt <strong>${payEsc(receipt.invoice_no)}</strong> is in a separate email, and here: <a href="${payEsc(receipt.url)}" style="color:#FF6B00;font-weight:bold;">view and download the receipt</a>. Your GST invoice follows separately from our accounts team. If it should be made out to your organisation and you did not give its details when paying, send its registered name, GSTIN and billing address to info@bharataiinnovation.com, quoting order ${payEsc(order.order_id)}.`
+      : `<strong>GST invoice:</strong> we will email your tax invoice separately. If it should be made out to your organisation, send its registered name, GSTIN and billing address to info@bharataiinnovation.com, quoting order ${payEsc(order.order_id)}.`
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#f5f5f5;font-family:Arial,sans-serif;">
     <div style="max-width:600px;margin:20px auto;background:#fff;border-radius:12px;overflow:hidden;">
       ${emailBrandHeader('Payment received', '20&ndash;21 Nov 2026 &bull; WTC Mumbai')}
@@ -2717,7 +2735,7 @@ async function sendPaymentEmails(c: any, a: any, order: any, trackingId: string,
         <p style="margin:16px 0 0;font-size:13px;line-height:1.65;color:#555;">In the app, add your photo and download your pass: the badge desk scans it to check you in.</p>
         ${unlocked && /premium|vip/i.test(String(order.pass_type)) ? `<p style="margin:12px 0 0;font-size:13px;line-height:1.65;color:#555;">Your pass includes one hands-on workshop. Seats go first come, first served: <a href="${payEsc(href + (href.includes('?') ? '&' : '?') + 'action=workshop')}" style="color:#FF6B00;font-weight:bold;">choose your seat in the app</a>.</p>` : ''}
         <div style="margin-top:20px;padding:14px;background:#F7F8FF;border:1px solid #E3E6F5;border-radius:10px;">
-          <p style="margin:0;font-size:12.5px;line-height:1.6;color:#1E2140;"><strong>GST invoice:</strong> we will email your tax invoice separately. If it should be made out to your organisation, send its registered name, GSTIN and billing address to info@bharataiinnovation.com, quoting order ${payEsc(order.order_id)}.</p>
+          <p style="margin:0;font-size:12.5px;line-height:1.6;color:#1E2140;">${gstText}</p>
         </div>
       </div>
     </div></body></html>`
@@ -2726,9 +2744,7 @@ async function sendPaymentEmails(c: any, a: any, order: any, trackingId: string,
       // one email that says it is paid, and what to do next. Someone moving up
       // was welcomed when they first paid, so they get the receipt alone.
       const fresh = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(a.id).first().catch(() => null) as any
-      const gst = `<div style="margin:0 0 20px;padding:14px;background:#F7F8FF;border:1px solid #E3E6F5;border-radius:10px;"><p style="margin:0;font-size:12.5px;line-height:1.6;color:#1E2140;"><strong>GST invoice:</strong> ${invoice
-        ? `your tax invoice <strong>${payEsc(invoice.invoice_no)}</strong> is in a separate email, and here: <a href="${payEsc(invoice.url)}" style="color:#FF6B00;font-weight:bold;">view and download the invoice</a>. If something on it needs correcting, write to info@bharataiinnovation.com quoting ${payEsc(invoice.invoice_no)}.`
-        : `we will email your tax invoice separately. If it should be made out to your organisation, send its registered name, GSTIN and billing address to info@bharataiinnovation.com, quoting order ${payEsc(order.order_id)}.`}</p></div>`
+      const gst = `<div style="margin:0 0 20px;padding:14px;background:#F7F8FF;border:1px solid #E3E6F5;border-radius:10px;"><p style="margin:0;font-size:12.5px;line-height:1.6;color:#1E2140;">${gstText}</p></div>`
       await sendRegistrationEmail(c, fresh || { ...a, badge_type: order.pass_type, payment_status: 'paid' }, { receipt: rows + gst })
     } else {
       await sendAdminEmail(c, a.email, 'Payment received: your ' + order.pass_type + ' is confirmed', html, { unsubscribe: false })
@@ -2740,9 +2756,9 @@ async function sendPaymentEmails(c: any, a: any, order: any, trackingId: string,
       ${rows}
       <p style="font-size:13px;line-height:1.6;color:#555;margin:0;">${!unlocked
         ? 'Their pass was <strong>not</strong> changed, because it had been set to ' + payEsc(a.badge_type) + ' by hand. Decide what this payment was for, then raise the invoice from Admin, Payments.'
-        : invoice
-          ? 'The pass is unlocked and GST invoice <strong>' + payEsc(invoice.invoice_no) + '</strong> was raised and emailed to the buyer automatically: <a href="' + payEsc(invoice.url) + '">open it</a>. Nothing is left to do.'
-          : 'The pass is unlocked already. The GST invoice could <strong>not</strong> be raised automatically, so it is the one step left: Admin, Payments, &ldquo;Paid online&rdquo; (or the finance page), where the order number and reference are filled in.'}</p></div>`
+        : receipt
+          ? 'The pass is unlocked and payment receipt <strong>' + payEsc(receipt.invoice_no) + '</strong> was emailed to the buyer automatically: <a href="' + payEsc(receipt.url) + '">open it</a>. The GST tax invoice is still to raise: Admin, Payments, &ldquo;Paid online&rdquo; (or the finance page), where the order number and reference are filled in.'
+          : 'The pass is unlocked already. The payment receipt could <strong>not</strong> be sent automatically. The GST tax invoice is still to raise: Admin, Payments, &ldquo;Paid online&rdquo; (or the finance page), where the order number and reference are filled in.'}</p></div>`
     await sendAdminEmail(c, team, `Paid online: ${a.name}, ${order.pass_type}${upgradeFrom ? ' (moved up from ' + upgradeFrom + ')' : ''}, Rs ${amount}`, teamHtml, { unsubscribe: false })
   } catch (e: any) {
     console.error('payment emails failed', order?.order_id, e?.message)
@@ -2851,7 +2867,8 @@ async function pendingPaymentsJSON(c: any) {
 
   // Paid here and not invoiced yet. The pass is already unlocked; what is left is
   // the tax invoice, which stays a person's decision (whose name, which GSTIN).
-  // Matched on order_ref, so raising the invoice is what takes a row off this list.
+  // Matched on order_ref, so raising the invoice is what takes a row off this list;
+  // the automatic payment receipt (RECEIPT_PREFIX) does not.
   let paidOnline: any[] = []
   if (online) {
     const rows = await c.env.DB.prepare(
@@ -2859,7 +2876,7 @@ async function pendingPaymentsJSON(c: any) {
               a.id, a.name, a.email, a.company, a.mobile
          FROM payment_orders o JOIN attendees a ON a.id = o.attendee_id
         WHERE o.status = 'paid'
-          AND NOT EXISTS (SELECT 1 FROM invoices i WHERE i.order_ref = o.order_id)
+          AND NOT EXISTS (SELECT 1 FROM invoices i WHERE i.order_ref = o.order_id AND i.invoice_no NOT LIKE '${RECEIPT_PREFIX}/%')
         ORDER BY o.paid_at DESC
         LIMIT 300`
     ).all() as any
@@ -3383,7 +3400,7 @@ function invoiceDate(raw: any): string {
 }
 
 // "AKT/26-27/185" cannot be a file name, so the slashes become dashes.
-const invoicePdfName = (v: any) => 'Tax Invoice ' + String(v.invoice_no).replace(/[^A-Za-z0-9-]+/g, '-') + '.pdf'
+const invoicePdfName = (v: any) => (isReceipt(v) ? 'Receipt ' : 'Tax Invoice ') + String(v.invoice_no).replace(/[^A-Za-z0-9-]+/g, '-') + '.pdf'
 
 // The figures go in formatted exactly as invoiceHTML() prints them, so the page
 // and the PDF cannot disagree. The logo comes from the site's own files; without
@@ -3398,6 +3415,7 @@ async function invoicePdfFor(c: any, v: any, set: Record<string, string>): Promi
   } catch { /* drawn without the logo */ }
   const money = (n: number) => n ? rupees(n) : '-'
   return invoicePdf({
+    receipt: isReceipt(v),
     invoiceNo: String(v.invoice_no),
     date: invoiceDate(v.paid_at || v.created_at),
     billTo: String(v.buyer_company || v.buyer_name || ''),
@@ -3434,6 +3452,7 @@ function invoiceHTML(v: any, set: Record<string, string>, pdfUrl = ''): string {
   const money = (n: number) => n ? rupees(n) : '-'
   const half = v.gst_rate / 2
   const shortDate = (raw: any) => esc(invoiceDate(raw))
+  const receipt = isReceipt(v)
 
   // The company name already sits in the row above; repeating it here just pushes
   // the address down and makes the block look duplicated.
@@ -3442,7 +3461,7 @@ function invoiceHTML(v: any, set: Record<string, string>, pdfUrl = ''): string {
   const head = cell + 'font-weight:bold;text-align:center;background:#fff;'
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Invoice ${esc(v.invoice_no)} - Bharat AI Innovation 2026</title><style>
+<title>${receipt ? 'Receipt' : 'Invoice'} ${esc(v.invoice_no)} - Bharat AI Innovation 2026</title><style>
  body{margin:0;background:#f2f4f8;color:#000;font-family:Calibri,Carlito,"Segoe UI",Arial,sans-serif;font-size:13px;}
  .sheet{max-width:820px;margin:20px auto;background:#fff;padding:26px;border:1px solid #000;}
  table{width:100%;border-collapse:collapse;}
@@ -3456,7 +3475,7 @@ function invoiceHTML(v: any, set: Record<string, string>, pdfUrl = ''): string {
 </style></head><body>
 <div class="print">${pdfUrl ? `<a href="${esc(pdfUrl)}">Download PDF</a>` : ''}<button onclick="window.print()">Print</button></div>
 <div class="sheet">
-  <div class="title">TAX INVOICE</div>
+  <div class="title">${receipt ? 'RECEIPT' : 'TAX INVOICE'}</div>
 
   <table style="margin-bottom:10px;"><tr>
     <td style="vertical-align:top;width:60%;" class="brand">
@@ -3468,6 +3487,28 @@ function invoiceHTML(v: any, set: Record<string, string>, pdfUrl = ''): string {
     </td>
   </tr></table>
 
+  ${receipt ? `
+  <table>
+    <tr>
+      <td style="${head}width:20%;text-align:left;">Received from</td>
+      <td style="${cell}width:48%;">${esc(v.buyer_company || v.buyer_name)}</td>
+      <td style="${head}width:16%;">Receipt No.</td>
+      <td style="${cell}width:16%;text-align:center;font-weight:bold;">${esc(v.invoice_no)}</td>
+    </tr>
+    <tr>
+      <td style="${head}text-align:left;">Address</td>
+      <td style="${cell}">${billing || '-'}</td>
+      <td style="${head}">Date</td>
+      <td style="${cell}text-align:center;">${shortDate(v.paid_at || v.created_at)}</td>
+    </tr>
+    <tr>
+      <td style="${head}text-align:left;">GST No.</td>
+      <td style="${cell}">${esc(v.buyer_gstin || 'Unregistered')}</td>
+      <td style="${head}">Status</td>
+      <td style="${cell}text-align:center;font-weight:bold;">Paid</td>
+    </tr>
+  </table>
+` : `
   <table>
     <tr>
       <td style="${head}width:8%;">To,</td>
@@ -3495,6 +3536,7 @@ function invoiceHTML(v: any, set: Record<string, string>, pdfUrl = ''): string {
       <td colspan="2" style="${cell}"></td>
     </tr>
   </table>
+`}
 
   <table style="margin-top:-1px;">
     <tr>
@@ -3517,7 +3559,7 @@ function invoiceHTML(v: any, set: Record<string, string>, pdfUrl = ''): string {
         <p style="margin:0;"><strong>PAN No.:</strong>&nbsp;&nbsp;&nbsp;&nbsp;${esc(set.inv_pan || '')}</p>
         <p style="margin:2px 0 0;"><strong>GST. No.:</strong>&nbsp;&nbsp;${esc(set.inv_gstin || '')}</p>
       </td>
-      <td style="${head}text-align:left;">Total</td>
+      <td style="${head}text-align:left;">${receipt ? 'Taxable Value' : 'Total'}</td>
       <td style="${cell}text-align:right;font-weight:bold;">${rupees(v.taxable_paise)}</td>
     </tr>
     <tr><td style="${head}text-align:left;">Add: CGST @ ${half}%</td><td style="${cell}text-align:right;">${money(v.cgst_paise)}</td></tr>
@@ -3525,17 +3567,19 @@ function invoiceHTML(v: any, set: Record<string, string>, pdfUrl = ''): string {
     <tr><td style="${head}text-align:left;">Add: IGST @ ${v.gst_rate}%</td><td style="${cell}text-align:right;">${money(v.igst_paise)}</td></tr>
     <tr>
       <td colspan="2" style="${cell}font-weight:bold;">In Words: ${esc(rupeesInWords(v.total_paise).replace(/^Rupees /, ''))}</td>
-      <td style="${head}text-align:left;">Grand Total</td>
+      <td style="${head}text-align:left;">${receipt ? 'Amount Received' : 'Grand Total'}</td>
       <td style="${cell}text-align:right;font-weight:bold;">${rupees(v.total_paise)}</td>
     </tr>
   </table>
+
+  ${receipt ? `<p style="margin:14px 0 0;line-height:1.6;">This receipt acknowledges the payment above. It is not a tax invoice: the GST tax invoice for this payment is issued separately.</p>` : ''}
 
   <div style="margin-top:18px;">
     <p style="margin:0 0 46px;font-weight:bold;">For ${esc(set.inv_legal_name || 'Aegis Knowledge Trust')}</p>
     <p style="margin:0;font-weight:bold;">${esc(set.inv_signatory || 'Authorized Signatory')}</p>
   </div>
 
-  ${set.inv_bank ? `<div style="margin-top:18px;">
+  ${set.inv_bank && !receipt ? `<div style="margin-top:18px;">
     <p style="margin:0 0 4px;font-weight:bold;">Online Transfer Details :-</p>
     <p style="margin:0;line-height:1.6;">${nl(set.inv_bank)}</p>
   </div>` : ''}
@@ -3555,6 +3599,8 @@ async function sendInvoiceEmail(c: any, v: any, token: string, set: Record<strin
   // "VIP Pass - Bharat AI Innovation ..." reads as "VIP Pass fees" in the
   // acknowledgement, the way the accounts team wrote it by hand.
   const paidFor = String(v.item_desc || 'Pass').split(' - ')[0].trim() || 'Pass'
+  const receipt = isReceipt(v)
+  const doc = receipt ? 'receipt' : 'invoice'
 
   // The PDF is what a buyer's finance team files; the link stays for anyone who
   // lost the attachment. A PDF that cannot be drawn must not stop the email.
@@ -3570,13 +3616,13 @@ async function sendInvoiceEmail(c: any, v: any, token: string, set: Record<strin
 
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#f5f5f5;font-family:Arial,sans-serif;">
     <div style="max-width:600px;margin:20px auto;background:#fff;border-radius:12px;overflow:hidden;">
-      ${emailBrandHeader('Your invoice and confirmation', '20&ndash;21 Nov 2026 &bull; WTC Mumbai')}
+      ${emailBrandHeader(receipt ? 'Your payment receipt' : 'Your invoice and confirmation', '20&ndash;21 Nov 2026 &bull; WTC Mumbai')}
       <div style="padding:30px;">
         <p style="margin:0 0 6px;font-size:15px;color:#333;">Dear <strong>${esc(v.buyer_name)}</strong>,</p>
-        <p style="margin:0 0 12px;font-size:14px;line-height:1.7;color:#333;">We acknowledge the receipt of <strong>INR ${rupees(v.total_paise)}</strong> against ${esc(paidFor)} fees.${pdf ? ' Please find the tax invoice attached for your accounting purpose.' : ''}</p>
-        <p style="margin:0 0 20px;font-size:14px;line-height:1.7;color:#555;">Your registration is confirmed. The details are below, and the button opens the same invoice online.</p>
+        <p style="margin:0 0 12px;font-size:14px;line-height:1.7;color:#333;">We acknowledge the receipt of <strong>INR ${rupees(v.total_paise)}</strong> against ${esc(paidFor)} fees.${pdf ? (receipt ? ' Please find the receipt attached for your records.' : ' Please find the tax invoice attached for your accounting purpose.') : ''}</p>
+        <p style="margin:0 0 20px;font-size:14px;line-height:1.7;color:#555;">Your registration is confirmed. The details are below, and the button opens the same ${doc} online.${receipt ? ' Your GST invoice follows separately from our accounts team.' : ''}</p>
         <table style="width:100%;border-collapse:collapse;font-size:13.5px;">
-          <tr><td style="padding:7px 0;color:#666;">Invoice number</td><td style="padding:7px 0;text-align:right;"><strong>${esc(v.invoice_no)}</strong></td></tr>
+          <tr><td style="padding:7px 0;color:#666;">${receipt ? 'Receipt number' : 'Invoice number'}</td><td style="padding:7px 0;text-align:right;"><strong>${esc(v.invoice_no)}</strong></td></tr>
           <tr><td style="padding:7px 0;color:#666;">Pass</td><td style="padding:7px 0;text-align:right;">${esc(v.item_desc)}</td></tr>
           ${v.order_ref ? `<tr><td style="padding:7px 0;color:#666;">Order</td><td style="padding:7px 0;text-align:right;">${esc(v.order_ref)}</td></tr>` : ''}
           ${v.payment_ref ? `<tr><td style="padding:7px 0;color:#666;">Payment reference</td><td style="padding:7px 0;text-align:right;">${esc(v.payment_ref)}</td></tr>` : ''}
@@ -3585,9 +3631,9 @@ async function sendInvoiceEmail(c: any, v: any, token: string, set: Record<strin
           <tr><td style="padding:12px 0;border-top:2px solid #1c2033;font-weight:bold;">Total paid</td><td style="padding:12px 0;border-top:2px solid #1c2033;text-align:right;font-weight:bold;">&#8377;${rupees(v.total_paise)}</td></tr>
         </table>
         <div style="text-align:center;margin:26px 0 6px;">
-          <a href="${url}" style="display:inline-block;padding:13px 32px;background:linear-gradient(135deg,#FF6B00,#FF8C38);color:#fff;text-decoration:none;border-radius:10px;font-weight:bold;font-size:14px;">View and download the invoice</a>
+          <a href="${url}" style="display:inline-block;padding:13px 32px;background:linear-gradient(135deg,#FF6B00,#FF8C38);color:#fff;text-decoration:none;border-radius:10px;font-weight:bold;font-size:14px;">View and download the ${doc}</a>
         </div>
-        <p style="margin:14px 0 0;font-size:12px;color:#888;text-align:center;">${pdf ? 'The PDF attached to this email is the same invoice.' : 'The page has a Download PDF button for an expense claim.'}</p>
+        <p style="margin:14px 0 0;font-size:12px;color:#888;text-align:center;">${pdf ? 'The PDF attached to this email is the same ' + doc + '.' : 'The page has a Download PDF button for an expense claim.'}</p>
         <div style="margin-top:22px;padding:14px;background:#FFF6EF;border:1px solid rgba(255,107,0,0.25);border-radius:10px;">
           <p style="margin:0;font-size:12.5px;line-height:1.6;color:#1E2140;"><strong>On the day:</strong> bring a government photo ID matching the name on your pass. We check it at the badge desk.</p>
         </div>
@@ -3604,7 +3650,9 @@ async function sendInvoiceEmail(c: any, v: any, token: string, set: Record<strin
           Body: [{ ContentType: 'HTML', Charset: 'utf-8', Content: html }],
           From: `${fromName} <${fromEmail}>`,
           ReplyTo: fromEmail,
-          Subject: 'Invoice ' + v.invoice_no + ' and registration confirmation - Bharat AI Innovation 2026',
+          Subject: receipt
+            ? 'Receipt ' + v.invoice_no + ' for your payment - Bharat AI Innovation 2026'
+            : 'Invoice ' + v.invoice_no + ' and registration confirmation - Bharat AI Innovation 2026',
           ...(pdf ? { Attachments: [{ BinaryContent: pdf, Name: invoicePdfName(v), ContentType: 'application/pdf' }] } : {}),
         },
         Options: { TrackClicks: false, TrackOpens: false },
@@ -4026,7 +4074,7 @@ function financeHTML(me: any): string {
 <div class="wrap">
   <div class="card" id="online-card" style="display:none;">
     <h2>Paid online: invoice to raise</h2>
-    <p class="muted">Paid through CCAvenue on this site. The pass is already unlocked and the order number and reference are filled in for you, so the GST invoice is the one step left.</p>
+    <p class="muted">Paid through CCAvenue on this site. The pass is already unlocked and the buyer has been emailed a payment receipt; the order number and reference are filled in for you, so the GST invoice is the one step left.</p>
     <div id="online"></div>
   </div>
   <div class="card">
@@ -29629,7 +29677,7 @@ function adminPageScript(): string {
             '<div id="upgrade-funnel-block"></div>' +
             (online ? '<div class="glass rounded-xl p-5 border border-white/5">' +
               '<h3 class="text-sm font-semibold text-white mb-1">Paid online: invoice to raise</h3>' +
-              '<p class="text-[11px] text-gray-500 mb-3">Paid through CCAvenue on this site. The pass is already unlocked, so the GST invoice is the one step left.</p>' +
+              '<p class="text-[11px] text-gray-500 mb-3">Paid through CCAvenue on this site. The pass is already unlocked and the buyer has been emailed a payment receipt, so the GST invoice is the one step left.</p>' +
               '<div class="max-h-96 overflow-y-auto pr-1">' + online + '</div>' +
             '</div>' : '') +
             '<div class="glass rounded-xl p-5 border border-white/5">' +
@@ -39033,6 +39081,7 @@ function adminPageScript(): string {
         'announcement.broadcast': 'text-amber-300',
         'staff.create': 'text-amber-300',
         'invoice.create': 'text-emerald-300',
+        'receipt.create': 'text-emerald-300',
         'desk.walkin': 'text-cyan-300',
       };
       el.innerHTML = rows.map(function (e) {
