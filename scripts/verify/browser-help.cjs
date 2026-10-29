@@ -166,6 +166,69 @@ const until = async (fn, ms) => { const end = Date.now() + ms; while (Date.now()
     await ctx.close();
   }
 
+  // ---- 8. Admin, Overview: the "Pass & badge" card, clicked the way the organiser will ----
+  {
+    console.log('-- 8. Admin card');
+    const ctx = await browser.newContext({ viewport: { width: 1366, height: 900 } });
+    await ctx.addInitScript(() => { sessionStorage.setItem('tc_admin_token', 'h-admin'); localStorage.setItem('tc_admin', '1'); localStorage.setItem('tc_admin_operator', 'Harness'); });
+    const calls = { preview: [], send: [], auto: [] };
+    const STATS = {
+      since: '29 Oct 2026, 8:46 pm',
+      steps: [
+        { action: 'card.open', people: 40 }, { action: 'card.photo_asked', people: 31 }, { action: 'card.photo_cancel', people: 12 },
+        { action: 'card.photo_fail', people: 5 }, { action: 'card.fail', people: 2 }, { action: 'pass.open', people: 25 },
+        { action: 'pass.photo_asked', people: 9 }, { action: 'pass.blocked', people: 3 }, { action: 'pass.fail', people: 1 },
+        { action: 'app.boot_fail', people: 2 }, { action: 'app.boot_slow', people: 4 }, { action: 'app.boot_ok', people: 3 },
+        { action: 'login.link_refused', people: 7 }, { action: 'help.sent.app', people: 2 }, { action: 'help.sent.card', people: 3 },
+      ],
+      made: [{ kind: 'card', n: 21 }, { kind: 'pass', n: 19 }],
+      stuck: [{ kind: 'card', n: 6 }, { kind: 'pass', n: 1 }],
+      reasons: [{ action: 'card.photo_fail', why: 'There is no face in this photo', people: 4 }, { action: 'login.link_refused', why: 'That link or code has expired.', people: 7 }],
+      browsers: [{ browser: 'in-app LinkedIn, Chrome 128 on Android 14', people: 2 }, { browser: 'Chrome 130 on Windows', people: 1 }],
+      visitors: [{ action: 'app.boot_fail', people: 1 }],
+      recent: [{ id: '3329', name: 'Rajib <img src=x onerror="window.__xssHelp=1">', email: 'rajib@technocracy.sg', action: 'app.boot_fail', at: '29 Oct 2026, 9:02 pm', why: 'did not load /app.js?v=1de3727a', browser: 'Chrome 130 on Windows', helped: '' }],
+      help: { on: true, due: 1, quiet_minutes: 10, cron_alive: true },
+    };
+    await ctx.route(/\/api\/admin\/help-stats$/, (r) => r.fulfill({ json: STATS }));
+    await ctx.route(/\/api\/admin\/help-mail\/preview/, (r) => { calls.preview.push(r.request().url()); return r.fulfill({ json: { to: 'rajib@technocracy.sg', subject: 'Your Bharat AI Innovation account: the quickest way in', html: '<p id="pv">Hi <strong>Rajib</strong>,</p><ul><li>Refresh the page</li></ul>' } }); });
+    await ctx.route(/\/api\/admin\/help-mail\/send$/, (r) => { calls.send.push(JSON.parse(r.request().postData() || '{}')); return r.fulfill({ json: { sent: true } }); });
+    await ctx.route(/\/api\/admin\/help-mail\/auto$/, (r) => { calls.auto.push(JSON.parse(r.request().postData() || '{}')); return r.fulfill({ json: { ok: true, on: false } }); });
+    const page = await ctx.newPage();
+    const errors = [];
+    const dialogs = [];
+    page.on('pageerror', e => errors.push(e.message));
+    page.on('dialog', d => { dialogs.push(d.message()); d.accept(); });
+    await page.goto(BASE + '/admin', { waitUntil: 'domcontentloaded' });
+    const shown = await until(() => page.evaluate(() => /who tried, who got stuck/.test((document.getElementById('help-funnel') || {}).innerText || '')), 20000);
+    const text = shown ? await page.evaluate(() => document.getElementById('help-funnel').innerText) : '';
+    check('admin card: shows on the Overview with the badge and pass funnels', shown && /Made their badge\s*21\s*of 40/.test(text) && /Downloaded their pass\s*19\s*of 25/.test(text) && /Still stuck\s*6\s*of 40/.test(text), text.slice(0, 300));
+    check('admin card: the way in, the reasons, the browsers and the switch', /App did not open\s*2/.test(text) && /Link no longer signed in\s*7/.test(text) && /There is no face in this photo/.test(text) && /in-app LinkedIn/.test(text) && /5 sent, 1 due now/.test(text), text.slice(0, 600));
+    await page.click('#help-funnel details summary');
+    const row = await page.evaluate(() => document.querySelector('#help-funnel table').innerText);
+    check('admin card: the people list, and a name is text, never markup', /rajib@technocracy\.sg/.test(row) && /Rajib <img/.test(row) && !(await page.evaluate(() => window.__xssHelp)), row.slice(0, 160));
+    await page.fill('#help-send-email', 'rajib@technocracy.sg');
+    await page.selectOption('#help-send-topic', 'app');
+    const [pop] = await Promise.all([ctx.waitForEvent('page'), page.click('#help-funnel button:has-text("Preview")')]);
+    await pop.waitForLoadState('domcontentloaded');
+    await until(() => pop.evaluate(() => !!document.getElementById('pv')).catch(() => false), 5000);
+    const pv = await pop.evaluate(() => ({ title: document.title, body: document.body.innerText }));
+    check('admin card: Preview opens the exact email for that address and topic', /quickest way in/.test(pv.title) && /To: rajib@technocracy\.sg/.test(pv.body) && /Hi Rajib/.test(pv.body) && /topic=app&email=rajib%40technocracy\.sg/.test(calls.preview[0] || ''), JSON.stringify({ pv, url: calls.preview[0] }));
+    await pop.close();
+    await page.click('#help-funnel button:has-text("Send the steps")');
+    await until(async () => calls.send.length > 0, 5000);
+    await sleep(800);
+    check('admin card: Send the steps asks first, then sends that address and topic', dialogs.some(m => /rajib@technocracy\.sg/.test(m) && /replaces the one in their earlier emails/.test(m)) && calls.send.length === 1 && calls.send[0].email === 'rajib@technocracy.sg' && calls.send[0].topic === 'app', JSON.stringify({ dialogs, send: calls.send }));
+    check('admin card: says it was sent', await page.evaluate(() => /Sent to rajib@technocracy\.sg/.test(document.body.innerText)), 'no toast');
+    await page.uncheck('#help-funnel input[type=checkbox]');
+    await until(async () => calls.auto.length > 0, 5000);
+    check('admin card: the switch pauses the automatic email', calls.auto.length === 1 && calls.auto[0].on === false, JSON.stringify(calls.auto));
+    check('admin card: no script error', !errors.length, errors.join(' | '));
+    require('fs').mkdirSync(path.join(__dirname, '.out'), { recursive: true });
+    await page.evaluate(() => document.getElementById('help-funnel').scrollIntoView());
+    await page.screenshot({ path: path.join(__dirname, '.out', 'help-admin-card.png'), clip: await page.evaluate(() => { const r = document.getElementById('help-funnel').getBoundingClientRect(); return { x: 0, y: Math.max(0, r.top - 8), width: 1366, height: Math.min(900, r.height + 16) }; }) }).catch(() => {});
+    await ctx.close();
+  }
+
   await browser.close();
   console.log(fails ? `\n${fails} FAILED` : '\nall passed');
   process.exit(fails ? 1 : 0);
