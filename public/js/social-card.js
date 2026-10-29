@@ -4,8 +4,13 @@
  * is a utility document: it carries a signed QR, a pass ID and the holder's tier,
  * and it exists to get one person through the badge desk. This is a promotional
  * one, posted publicly by the holder, so it carries none of that — a QR that
- * verifies a real identity has no business on a LinkedIn feed, and a printed tier
- * invites both forgery and "why did they get VIP" support mail.
+ * verifies a real identity has no business on a LinkedIn feed.
+ *
+ * Paid passes get a gold edition with the pass named on a ribbon (organiser, 29
+ * Oct 2026): the card is the one thing a delegate shows the world, and it is
+ * what makes paying visible. It still verifies nothing — the pass does that.
+ * Free cards are drawn exactly as before and never say "free": they are most
+ * of the posts, and most of the registrations come from them.
  *
  * What it does carry is the holder's face, their name, and a claim about the
  * event. The claim is derived from the attendee record rather than picked in the
@@ -50,6 +55,13 @@
 
   // Saffron, white, green - the flag, in the order the words are read. Values are
   // lifted verbatim from pass-render.js so the two documents cannot drift apart.
+  // The gold edition's foil. Deep and light ends, so a flat fill never reads as
+  // mustard on a phone screen.
+  var GOLD = {
+    deep: '#B8862B', light: '#F7DD8A', mid: '#C99A2E',
+    text: '#EBC66B', ink: '#1B1405', glow: 'rgba(232,184,74,0.50)'
+  };
+
   var TIRANGA_EN = ['#FF7A00', '#ffffff', '#00996C'];
   var TIRANGA_HI = ['#FF7A00', '#e8edf5', '#00b57f'];
   var MUKTA = '"Mukta", "Nirmala UI", "Noto Sans Devanagari", Arial, sans-serif';
@@ -81,12 +93,54 @@
   /* Speakers and exhibitors have both the largest networks and a professional
    * reason to post, so they get the line that is actually about them. Everyone
    * else — visitor, delegate, academic, VIP — attends. VIP is deliberately not
-   * its own line: it is a ticket tier, not something to announce. */
+   * its own line: the tier goes on the ribbon (tierFor), the claim stays the same. */
   function variantFor(u) {
     var hay = (String((u && u.role) || '') + ' ' + String((u && u.badge_type) || '')).toLowerCase();
     if (hay.indexOf('speaker') >= 0) return 'speaker';
     if (hay.indexOf('exhibitor') >= 0) return 'exhibitor';
     return 'attending';
+  }
+
+  /* The ribbon on the gold edition. null is the ordinary card. A paid tier that
+   * is not paid for is a Visitor until the money lands (the app's own rule), so
+   * it gets the ordinary card too: a ribbon that says DELEGATE before payment
+   * is a public claim the badge desk would then refuse. */
+  var PAID_TIERS = ['delegate pass', 'premium delegate pass', 'vip pass', 'academic pass'];
+  var TIER_LABELS = {
+    'vip pass': 'VIP', 'vip guest': 'VIP',
+    'premium delegate pass': 'PREMIUM DELEGATE',
+    'delegate pass': 'DELEGATE', 'delegate': 'DELEGATE', 'felicitation delegate': 'DELEGATE',
+    'academic pass': 'ACADEMIC DELEGATE',
+    'speaker': 'SPEAKER', 'exhibition speaker': 'SPEAKER',
+    'exhibitor': 'EXHIBITOR', 'jury': 'JURY', 'media': 'MEDIA', 'media pass': 'MEDIA',
+    'investor': 'INVESTOR', 'startup pitcher': 'STARTUP PITCH', 'organiser': 'ORGANISER'
+  };
+
+  function tierFor(u) {
+    // The ribbon agrees with the claim above the photo: a speaker's card says
+    // SPEAKER whatever pass they were issued.
+    var v = variantFor(u);
+    if (v === 'speaker') return 'SPEAKER';
+    if (v === 'exhibitor') return 'EXHIBITOR';
+    var b = String((u && u.badge_type) || '').trim().toLowerCase();
+    if (PAID_TIERS.indexOf(b) >= 0) {
+      var ps = String((u && u.payment_status) || '').trim().toLowerCase();
+      if (ps === 'pending' || ps === 'refunded') return null;
+    }
+    return TIER_LABELS[b] || null;
+  }
+
+  // opts.tier overrides the record: a label, or '' for the ordinary card.
+  function resolveTier(user, opts) {
+    if (opts && typeof opts.tier === 'string') return opts.tier ? opts.tier.trim().toUpperCase() : null;
+    return tierFor(user);
+  }
+
+  // 'PREMIUM DELEGATE' -> 'Premium Delegate'; VIP stays VIP.
+  function tierWords(tier) {
+    return String(tier || '').split(/\s+/).map(function (w) {
+      return w === 'VIP' ? w : w.charAt(0) + w.slice(1).toLowerCase();
+    }).join(' ');
   }
 
   var SIZES = {
@@ -101,7 +155,8 @@
       heroSize: 70, heroMin: 40, heroLead: 14, hiSize: 42, subLead: 16, subSize: 25,
       stripH: 98, stripGap: 22, stripPad: 30,
       pillH: 62, pillSize: 25, pillGap: 22, gapAbovePill: 30,
-      urlSize: 22, urlBottom: 46
+      urlSize: 22, urlBottom: 46,
+      ribbonH: 50, ribbonSize: 21, ribbonTrack: 4.5, ribbonPad: 34, frameInset: 22
     },
     story: {
       key: 'story', w: 1080, h: 1920,
@@ -114,7 +169,8 @@
       heroSize: 88, heroMin: 46, heroLead: 18, hiSize: 52, subLead: 20, subSize: 30,
       stripH: 116, stripGap: 28, stripPad: 34,
       pillH: 78, pillSize: 29, pillGap: 28, gapAbovePill: 52,
-      urlSize: 25, urlBottom: 120
+      urlSize: 25, urlBottom: 120,
+      ribbonH: 64, ribbonSize: 27, ribbonTrack: 6, ribbonPad: 44, frameInset: 26
     }
   };
 
@@ -400,7 +456,7 @@
     ctx.textBaseline = 'alphabetic';
   }
 
-  function background(ctx, S) {
+  function background(ctx, S, gold) {
     var W = S.w, H = S.h;
 
     var base = ctx.createLinearGradient(0, 0, W * 0.5, H);
@@ -423,15 +479,70 @@
     }
 
     var bar = ctx.createLinearGradient(0, 0, W, 0);
-    bar.addColorStop(0, '#FF6B00'); bar.addColorStop(0.55, '#FF9E4D'); bar.addColorStop(1, '#E8406C');
+    if (gold) { bar.addColorStop(0, GOLD.deep); bar.addColorStop(0.5, GOLD.light); bar.addColorStop(1, GOLD.mid); }
+    else { bar.addColorStop(0, '#FF6B00'); bar.addColorStop(0.55, '#FF9E4D'); bar.addColorStop(1, '#E8406C'); }
     ctx.fillStyle = bar; ctx.fillRect(0, 0, W, 7);
+
+    // A thin foil frame inside the edge: the certificate cue, read at a glance
+    // in a feed before any of the words are.
+    if (gold) {
+      var i = S.frameInset;
+      var fg = ctx.createLinearGradient(i, i, W - i, H - i);
+      fg.addColorStop(0, 'rgba(247,221,138,0.75)');
+      fg.addColorStop(0.5, 'rgba(201,154,46,0.35)');
+      fg.addColorStop(1, 'rgba(247,221,138,0.75)');
+      ctx.strokeStyle = fg; ctx.lineWidth = 2;
+      roundRect(ctx, i, i + 7, W - i * 2, H - i * 2 - 7, 26); ctx.stroke();
+    }
   }
 
-  function hairline(ctx, x1, x2, y, fadeLeft) {
+  function hairline(ctx, x1, x2, y, fadeLeft, rgb) {
+    rgb = rgb || '255,122,24';
     var g = ctx.createLinearGradient(x1, y, x2, y);
-    if (fadeLeft) { g.addColorStop(0, 'rgba(255,122,24,0)'); g.addColorStop(1, 'rgba(255,122,24,0.85)'); }
-    else { g.addColorStop(0, 'rgba(255,122,24,0.85)'); g.addColorStop(1, 'rgba(255,122,24,0)'); }
+    if (fadeLeft) { g.addColorStop(0, 'rgba(' + rgb + ',0)'); g.addColorStop(1, 'rgba(' + rgb + ',0.85)'); }
+    else { g.addColorStop(0, 'rgba(' + rgb + ',0.85)'); g.addColorStop(1, 'rgba(' + rgb + ',0)'); }
     ctx.fillStyle = g; ctx.fillRect(x1, y, x2 - x1, 2);
+  }
+
+  /* The pass, named on a foil banner across the foot of the portrait, the way a
+   * printed badge carries its tier. Centred on the photo's bottom edge, so half
+   * of it hangs below the ring; ribbonDrop() is that half, for the layout. */
+  function ribbonDrop(S) {
+    return Math.max(0, S.ribbonH / 2 - S.ring + 6);
+  }
+
+  function drawRibbon(ctx, S, label, mid, y) {
+    ctx.font = '700 ' + S.ribbonSize + 'px ' + MONT;
+    var tw = trackedWidth(ctx, label, S.ribbonTrack);
+    var dia = S.ribbonSize * 0.22, gapD = S.ribbonSize * 0.8;
+    var w = tw + S.ribbonPad * 2 + (dia * 2 + gapD) * 2;
+    var h = S.ribbonH, x = mid - w / 2, top = y - h / 2;
+
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.50)'; ctx.shadowBlur = 20; ctx.shadowOffsetY = 5;
+    var foil = ctx.createLinearGradient(x, top, x + w, top + h);
+    foil.addColorStop(0, GOLD.deep); foil.addColorStop(0.28, '#E9C46A');
+    foil.addColorStop(0.5, '#F9E6A6'); foil.addColorStop(0.74, '#E2B857');
+    foil.addColorStop(1, '#AE7A1F');
+    ctx.fillStyle = foil;
+    roundRect(ctx, x, top, w, h, h / 2); ctx.fill();
+    ctx.restore();
+
+    // An engraved inner line and a lit top edge: what makes it foil, not paint.
+    ctx.strokeStyle = 'rgba(27,20,5,0.30)'; ctx.lineWidth = 1.5;
+    roundRect(ctx, x + 5, top + 5, w - 10, h - 10, (h - 10) / 2); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,246,214,0.70)'; ctx.lineWidth = 1;
+    roundRect(ctx, x + 0.5, top + 0.5, w - 1, h - 1, h / 2); ctx.stroke();
+
+    ctx.font = '700 ' + S.ribbonSize + 'px ' + MONT;
+    trackedText(ctx, label, mid, y + S.ribbonSize * 0.36, S.ribbonTrack, GOLD.ink);
+
+    ctx.fillStyle = 'rgba(27,20,5,0.75)';
+    [mid - tw / 2 - gapD - dia, mid + tw / 2 + gapD + dia].forEach(function (dx) {
+      ctx.beginPath();
+      ctx.moveTo(dx, y - dia); ctx.lineTo(dx + dia, y); ctx.lineTo(dx, y + dia); ctx.lineTo(dx - dia, y);
+      ctx.closePath(); ctx.fill();
+    });
   }
 
   function identityLine(user) {
@@ -444,7 +555,7 @@
   /* Sizes every line before a single one is drawn, and splits the result into the
    * height that cannot shrink and the height that can. draw() needs both to know
    * where the block starts. */
-  function measure(ctx, S, user) {
+  function measure(ctx, S, user, tier) {
     var maxW = S.w - S.padX * 2;
     var roleText = identityLine(user);
     var m = {
@@ -456,7 +567,8 @@
     };
     m.fixed = S.ebSize + S.photoR * 2 + S.ring + m.name.size +
               (m.role ? m.role.size : 0) +
-              m.hero.size + S.heroLead + m.hi.size + S.subLead + m.sub.size;
+              m.hero.size + S.heroLead + m.hi.size + S.subLead + m.sub.size +
+              (tier ? ribbonDrop(S) : 0);
     m.gaps = S.gapEb + S.gapPhoto + (m.role ? S.gapName : 0) + S.gapRole;
     return m;
   }
@@ -493,12 +605,19 @@
   /* Draws the whole card. One function for both sizes: everything that decides
    * what the card SAYS lives here, and the size profile only decides how much
    * room each part gets. */
-  function draw(ctx, S, user, V, assets, opts) {
+  function draw(ctx, S, user, V, assets, opts, tier) {
+    // The ribbon hangs below the portrait, so the portrait gives up that much: the
+    // square card has no slack, and the type below it must not move.
+    if (tier) {
+      var G = {}; for (var gk in S) G[gk] = S[gk];
+      G.photoR = S.photoR - Math.ceil(ribbonDrop(S) / 2);
+      S = G;
+    }
     var W = S.w, mid = W / 2;
 
-    background(ctx, S);
+    background(ctx, S, !!tier);
 
-    var m = measure(ctx, S, user);
+    var m = measure(ctx, S, user, tier);
 
     // ---- the two fixed anchors: the logo at the top, and the bottom stack of
     // partner strip, date pill and address. Everything else is centred between. ----
@@ -540,26 +659,31 @@
     // ---- the claim, above the portrait: it is the first thing the post says ----
     ctx.font = '600 ' + S.ebSize + 'px ' + MONT;
     y += S.ebSize;
-    var ebW = trackedText(ctx, V.eyebrow, mid, y, S.ebTrack, INK.saffronLo);
+    var ebW = trackedText(ctx, V.eyebrow, mid, y, S.ebTrack, tier ? GOLD.text : INK.saffronLo);
     var ruleY = y - Math.round(S.ebSize * 0.32);
     var gapToRule = 26;
-    hairline(ctx, mid - ebW / 2 - gapToRule - S.ebRule, mid - ebW / 2 - gapToRule, ruleY, true);
-    hairline(ctx, mid + ebW / 2 + gapToRule, mid + ebW / 2 + gapToRule + S.ebRule, ruleY, false);
+    var ruleRgb = tier ? '235,198,107' : undefined;
+    hairline(ctx, mid - ebW / 2 - gapToRule - S.ebRule, mid - ebW / 2 - gapToRule, ruleY, true, ruleRgb);
+    hairline(ctx, mid + ebW / 2 + gapToRule, mid + ebW / 2 + gapToRule + S.ebRule, ruleY, false, ruleRgb);
     y += S.gapEb * k;
 
     // ---- photo ----
     var cy = y + S.photoR;
     ctx.save();
-    ctx.shadowColor = 'rgba(255,122,24,0.45)'; ctx.shadowBlur = 46;
+    ctx.shadowColor = tier ? GOLD.glow : 'rgba(255,122,24,0.45)'; ctx.shadowBlur = 46;
     var ring = ctx.createLinearGradient(mid - S.photoR, cy - S.photoR, mid + S.photoR, cy + S.photoR);
-    ring.addColorStop(0, '#FF6B00'); ring.addColorStop(1, '#FFC46B');
+    if (tier) { ring.addColorStop(0, GOLD.deep); ring.addColorStop(0.5, GOLD.light); ring.addColorStop(1, GOLD.mid); }
+    else { ring.addColorStop(0, '#FF6B00'); ring.addColorStop(1, '#FFC46B'); }
     ctx.strokeStyle = ring; ctx.lineWidth = S.ring;
     ctx.beginPath(); ctx.arc(mid, cy, S.photoR + S.ring / 2, 0, Math.PI * 2); ctx.stroke();
     ctx.restore();
     if (assets.photo) drawAvatar(ctx, assets.photo, mid, cy, S.photoR);
     else drawInitial(ctx, user && user.name, mid, cy, S.photoR);
+    // The employer disc sits top-left and the ribbon across the foot, so the two
+    // never meet at either size.
     if (assets.companyLogo) drawCompanyChip(ctx, assets.companyLogo, mid, cy, S.photoR);
-    y = cy + S.photoR + S.ring + S.gapPhoto * k;
+    if (tier) drawRibbon(ctx, S, tier, mid, cy + S.photoR);
+    y = cy + S.photoR + S.ring + (tier ? ribbonDrop(S) : 0) + S.gapPhoto * k;
 
     // ---- name ----
     ctx.font = '700 ' + m.name.size + 'px ' + MONT;
@@ -785,6 +909,8 @@
    * opts.variant — one of VARIANTS; the panel ones also need opts.panel, the
    *   panel record from /api/attendees/:id/panels (title, host, dates, hostLogo,
    *   speakers). Without it they fall back to the conference card.
+   * opts.tier — the ribbon's label, or '' for the ordinary card. Left out, it is
+   *   read off the record by tierFor() (badge_type, payment_status, role).
    * opts.booth — printed only when the caller has an allocation it trusts. It is
    *   deliberately not read off attendees/exhibitors here: booth_number there is
    *   free text that a paid request never writes to, and a wrong stand number on
@@ -846,17 +972,21 @@
     var canvas = document.createElement('canvas');
     canvas.width = S.w; canvas.height = S.h;
     var ctx = canvas.getContext('2d');
+    // Campus panel cards are the panel's, not the pass's: no ribbon there.
+    var tier = panelCard ? null : resolveTier(user, opts);
     if (panelCard) drawPanel(ctx, S, user, V, assets, opts);
-    else draw(ctx, S, user, V, assets, opts);
+    else draw(ctx, S, user, V, assets, opts, tier);
 
     var safeName = String((user && user.name) || 'attendee').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '');
     var prefix = panelCard
       ? 'BharatAI-CampusSeries-' + String(opts.panel.hostShort || 'Panel').replace(/[^A-Za-z0-9]+/g, '') + '-'
       : 'BharatAI2026-';
+    var slug = V.slug + (tier ? '-' + tierWords(tier).replace(/[^A-Za-z0-9]+/g, '') : '');
     return {
       dataUrl: canvas.toDataURL('image/png'),
-      filename: prefix + V.slug + '-' + safeName + '-' + S.key + '.png',
+      filename: prefix + slug + '-' + safeName + '-' + S.key + '.png',
       variant: V.eyebrow,
+      tier: tier,
       size: S.key,
       width: S.w,
       height: S.h,
@@ -906,19 +1036,39 @@
     opts = opts || {};
     var v = opts.variant || variantFor(user);
     if ((VARIANTS[v] || {}).panel && opts.panel) return panelCaption(v, opts.panel);
-    var link = 'https://' + EVENT.site + '/?utm_source=social_card&utm_medium=attendee&utm_campaign=' + v;
+    var tier = resolveTier(user, opts);
+    // Only the bought passes are said in words; "as a Jury" is not a sentence.
+    var asTier = v === 'attending' && ['DELEGATE', 'PREMIUM DELEGATE', 'VIP', 'ACADEMIC DELEGATE'].indexOf(tier) >= 0;
+    // Per tier in the tag, so the reach of a paid post can be told from a free one.
+    var tag = v + (v === 'attending' && tier ? '-' + tierWords(tier).toLowerCase().replace(/[^a-z0-9]+/g, '-') : '');
+    var link = 'https://' + EVENT.site + '/?utm_source=social_card&utm_medium=attendee&utm_campaign=' + tag;
     var lead;
     if (v === 'speaker') lead = "I'm speaking at " + EVENT.name + ' ' + EVENT.year + '.';
     else if (v === 'exhibitor') lead = "We're exhibiting at " + EVENT.name + ' ' + EVENT.year + '.';
+    else if (asTier) {
+      var words = tierWords(tier);
+      lead = "I'll be at " + EVENT.name + ' ' + EVENT.year + ' as ' + (/^[AEIOU]/.test(words) ? 'an ' : 'a ') + words + '.';
+    }
     else lead = "I'm attending " + EVENT.name + ' ' + EVENT.year + '.';
 
+    // An attendee's post is an invitation as much as an announcement: the line
+    // asks the reader to come, and the link is where they register.
+    if (v === 'attending') {
+      return [
+        lead,
+        '',
+        EVENT.tagline + ' — ' + EVENT.when + ', ' + EVENT.where + '.',
+        "Going too? Let's meet there. Registration is open:",
+        link,
+        '',
+        '#BharatAIInnovation #BharatAI2026 #ArtificialIntelligence #AI #Mumbai'
+      ].join('\n');
+    }
     return [
       lead,
       '',
       EVENT.tagline + ' — ' + EVENT.when + ', ' + EVENT.where + '.',
-      (v === 'attending'
-        ? 'Come and say hello if you are there.'
-        : 'Come and find us — I would be glad to talk.'),
+      'Come and find us — I would be glad to talk.',
       '',
       link,
       '',
@@ -943,6 +1093,7 @@
     SIZES: SIZES,
     VARIANTS: VARIANTS,
     variantFor: variantFor,
+    tierFor: tierFor,
     companyDomain: companyDomain,
     companyLogoUrl: companyLogoUrl,
     curatedLogoUrl: curatedLogoUrl,

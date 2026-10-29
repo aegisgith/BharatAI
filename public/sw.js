@@ -23,7 +23,7 @@
 // v12: the icon subset gained fa-unlock (fa-subset.css?v=2 and a new
 // fa-solid-900.woff2 under the same name, which only a new VERSION replaces in
 // this cache), and Tailwind's ?v= became a build hash, so it left the list.
-const VERSION = 'bhai-v12';
+const VERSION = 'bhai-v13';
 const SHELL = `shell-${VERSION}`;
 const DATA = `data-${VERSION}`;
 
@@ -77,7 +77,7 @@ const PRECACHE_OPTIONAL = [
   '/css/fonts-app.css?v=1',         // /app, /admin and the other worker pages
   '/fonts/manrope-latin-300-800.woff2',           // the body font everywhere
   '/fonts/bricolage-grotesque-latin-400-800.woff2', // the app's headings
-  '/js/social-card.js?v=20261027',
+  '/js/social-card.js?v=20261029',
   '/images/favicon-64.png',
   '/webfonts/fa-solid-900.woff2',
   '/webfonts/fa-brands-400.woff2',

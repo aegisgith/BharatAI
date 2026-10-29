@@ -2451,7 +2451,7 @@ app.post('/api/payments/ccavenue/start', async (c) => {
 // in the audit log. No table, admin-only to read, and nothing is answered about
 // it. The app sends each reason and target once per sitting; this end keeps one a
 // minute per person, reason and target besides, so a loop cannot fill the log.
-const UPGRADE_PROMPT_REASONS = new Set(['welcome', 'networking', 'directory', 'agenda', 'workshop', 'vip', 'passcard', 'form'])
+const UPGRADE_PROMPT_REASONS = new Set(['welcome', 'networking', 'directory', 'agenda', 'workshop', 'vip', 'passcard', 'form', 'card'])
 const _upgradePromptLast = new Map<string, number>()
 app.post('/api/upgrade-prompt', async (c) => {
   const me = await verifyAttendeeSession(c)
@@ -13228,110 +13228,216 @@ app.post('/api/admin/exhibitors/sync', async (c) => {
 })
 
 // Admin: Send notification email to attendee
-app.post('/api/admin/attendees/:id/notify', async (c) => {
-  const id = c.req.param('id')
-  const attendee = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(id).first() as any
-  if (!attendee) return c.json({ error: 'Attendee not found' }, 404)
-  if (!attendee.email) return c.json({ error: 'Attendee has no email' }, 400)
+//
+// The account-ready email. Until 29 Oct 2026 it told everybody "You are now
+// registered as an official Delegate" and offered a "Delegate Pass" to download,
+// free Visitors included, who are most of the list and hold no such thing. It now
+// names the pass the person really holds. The order is the organiser's: photo and
+// details, then the "I'm attending" badge to post (thousands of posts reach people
+// no advert of ours would), then the pass, and only then, for the free pass and
+// quietly, what a Delegate Pass adds.
+//
+// 'unpaid' is a paid tier whose payment never landed. It works as a Visitor Pass
+// until the money does (unpaidPaidPass), so the mail calls it one too.
+type NotifyKind = 'free' | 'unpaid' | 'paid'
+function notifyKind(a: any): NotifyKind {
+  const badge = String(a?.badge_type || '').trim()
+  if (!badge || FREE_BADGE_RE.test(badge)) return 'free'
+  if (PAID_TIERS.includes(badge) && ['pending', 'refunded'].includes(String(a?.payment_status ?? '').trim().toLowerCase())) return 'unpaid'
+  return 'paid'
+}
+const PASS_KEY: Record<string, string> = { 'Delegate Pass': 'delegate', 'Premium Delegate Pass': 'premium', 'VIP Pass': 'vip', 'Academic Pass': 'academic' }
 
-  const event = await c.env.DB.prepare('SELECT * FROM events WHERE id = ?').bind(attendee.event_id).first() as any
+// "riddhi" and "DR. RAJESH KUMAR" both arrive from imports; the subject and the
+// greeting want "Riddhi" and "Rajesh". '' when there is no usable word.
+function greetingName(name: any): string {
+  const words = String(name || '').trim().split(/\s+/).filter(w => !/^(dr|prof|mr|mrs|ms|miss|shri|smt|er|ca|adv)\.?$/i.test(w))
+  const w = words[0] || ''
+  if (!/[a-z]/i.test(w)) return ''
+  return w === w.toUpperCase() || w === w.toLowerCase() ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : w
+}
 
-  // Use stored app_url setting, or fall back to production domain, or derive from request
-  const appUrlRow = await c.env.DB.prepare("SELECT value FROM app_settings WHERE key = 'app_url'").first() as any
-  const appUrl = appUrlRow?.value || 'https://bharataiinnovation.com/app'
-
-  // The button tag and the open picture (mailMark, notify_marks_from). The picture
-  // and /api/rsvp are on the site root: app_url ends in /app, and the yes / maybe /
-  // no buttons built on it went to /app/api/rsvp, which does not exist.
+// Built apart from the send so Notify All can show the exact mail first. preview:
+// no sign-in token (a new one would cancel the link this person already holds), no
+// open picture and no button tag, so reading the preview counts as nobody's open.
+async function notifyEmail(c: any, attendee: any, opts: { preview?: boolean } = {}): Promise<{ subject: string; html: string; text: string }> {
+  const appUrl = (await settingGet(c, 'app_url')) || 'https://bharataiinnovation.com/app'
+  // The picture and /api/rsvp are on the site root: app_url ends in /app, and the
+  // yes / maybe / no buttons built on it went to /app/api/rsvp, which does not exist.
   const origin = appUrl.replace(/\/app\/?$/, '')
-  const markSig = await mailMarkSig(c, 'notify', attendee.id)
-  const markTag = `&ne=${Number(attendee.id)}.${markSig}`
-  const pixel = `<img src="${origin}/api/notify-open?a=${Number(attendee.id)}&amp;s=${markSig}" width="1" height="1" alt="" style="display:block;border:0;width:1px;height:1px;">`
-  const passUrl = `${appUrl}?email=${encodeURIComponent(attendee.email)}&action=download-pass${markTag}`
+  const esc = (v: any) => String(v ?? '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch] as string))
+  const email = String(attendee.email || '')
+  const first = greetingName(attendee.name)
+  const kind = notifyKind(attendee)
+  const badge = String(attendee.badge_type || '').trim()
+  // "Speaker" reads as "Speaker Pass"; a Visitor's is the Free Visitor Pass.
+  const passName = kind === 'paid' ? (/pass$/i.test(badge) ? badge : badge + ' Pass') : 'Free Visitor Pass'
+  const passShort = passName.replace(/ Pass$/, '')
 
-  const emailHtml = `
-<!DOCTYPE html>
+  let token = '', markTag = '', pixel = ''
+  if (!opts.preview) {
+    // The button tag and the open picture (mailMark, notify_marks_from).
+    const markSig = await mailMarkSig(c, 'notify', attendee.id)
+    markTag = `&ne=${Number(attendee.id)}.${markSig}`
+    pixel = `<img src="${origin}/api/notify-open?a=${Number(attendee.id)}&amp;s=${markSig}" width="1" height="1" alt="" style="display:block;border:0;width:1px;height:1px;">`
+    // One token for every button: minting a second would cancel the first. Six
+    // uses, because the mail has that many ways in and people click twice.
+    try {
+      if (await verifiedLoginEnabled(c)) token = (await createLoginToken(c, attendee.event_id, email.trim().toLowerCase(), PROFILE_LINK_TTL_MINUTES, 6)).token
+    } catch (_) { /* the mail still goes; its buttons then end at the sign-in form */ }
+  }
+  // Signed in and straight to the thing (runPendingAction in the app). Without the
+  // token the app refuses the address and the person lands at the sign-in form,
+  // which is where every button of this mail used to leave them. The ne= tag is on
+  // every button, so any click counts, once (/api/notify-click).
+  const base = `${appUrl}?email=${encodeURIComponent(email)}`
+  const tail = `${token ? '&token=' + token : ''}${markTag}`
+  const go = (action: string, extra = '') => `${base}&action=${action}${extra}${tail}`
+
+  const gaps = attendeeProfileGaps(attendee)
+  const needsPhoto = gaps.includes('photo')
+  const details = gaps.filter(g => g !== 'photo')
+  const list = (a: string[]) => a.length < 2 ? (a[0] || '') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1]
+
+  const btn = (href: string, label: string, bg: string) =>
+    `<a href="${href}" style="display:inline-block;padding:13px 28px;background:${bg};color:#fff;text-decoration:none;border-radius:10px;font-weight:bold;font-size:14px;">${label}</a>`
+  const ghost = (href: string, label: string) =>
+    `<a href="${href}" style="display:inline-block;padding:10px 22px;background:#fff;color:#1E2140;text-decoration:none;border:1px solid #D5D9EA;border-radius:10px;font-weight:bold;font-size:13px;">${label}</a>`
+  const step = (n: number, done: boolean, title: string, body: string) =>
+    `<tr><td width="36" valign="top" style="padding:0 0 14px;"><div style="width:26px;height:26px;border-radius:50%;background:${done ? '#0f7b47' : '#FF6B00'};color:#fff;font-weight:bold;font-size:13px;line-height:26px;text-align:center;">${done ? '&#10003;' : n}</div></td>` +
+    `<td valign="top" style="padding:0 0 14px;"><p style="margin:0 0 3px;font-size:14px;font-weight:bold;color:#1E2140;">${title}</p><p style="margin:0;font-size:13px;line-height:1.6;color:#555;">${body}</p></td></tr>`
+  const tick = (t: string) =>
+    `<tr><td width="24" valign="top" style="padding:0 0 8px;color:#A67C00;font-size:14px;font-weight:bold;">&#10003;</td><td valign="top" style="padding:0 0 8px;font-size:13px;line-height:1.55;color:#333;">${t}</td></tr>`
+
+  const where = '20&ndash;21 Nov at the World Trade Center, Mumbai'
+  const intro = kind === 'free'
+    ? `Your account for <strong>Bharat AI Innovation 2026</strong> is ready. You hold a <strong>Free Visitor Pass</strong> for ${where}.`
+    : kind === 'unpaid'
+      ? `Your account for <strong>Bharat AI Innovation 2026</strong> is ready. You chose the <strong>${esc(badge)}</strong>, and its payment is not complete, so for now your account holds a <strong>Free Visitor Pass</strong>.`
+      : `Your account for <strong>Bharat AI Innovation 2026</strong> is ready. You are confirmed as ${/^[aeiou]/i.test(passName) ? 'an' : 'a'} <strong>${esc(passName)}</strong> holder for ${where}, with guaranteed entry on both days.`
+
+  // First, because it is what people most want to do with this mail, and every
+  // post carries the event into a network we could never reach ourselves.
+  // A paid pass gets the gold edition of the card (social-card.js tierFor).
+  const badgeBlock = `
+      <div style="margin:22px 0 0;padding:22px;background:#1E2140;background:linear-gradient(135deg,#1E2140,#2A2F5C);border-radius:14px;">
+        <p style="margin:0 0 4px;font-size:11px;letter-spacing:1.6px;font-weight:bold;color:${kind === 'paid' ? '#F2C94C' : '#FF9E4D'};">TELL YOUR NETWORK</p>
+        <p style="margin:0 0 8px;font-size:19px;font-weight:bold;color:#fff;line-height:1.3;">${kind === 'paid' ? `Your gold ${esc(passShort)} badge is ready to post` : 'Your &ldquo;I&rsquo;m attending&rdquo; badge is ready to post'}</p>
+        <p style="margin:0 0 16px;font-size:13px;line-height:1.65;color:#C9CDE6;">A ready-made picture with your photo, name and organisation, sized for LinkedIn, Instagram, WhatsApp and Stories, with a caption to copy. Post it and the people coming can find you before you arrive and ask to connect or to meet. Accepting and replying are free on every pass.</p>
+        <table style="width:100%;border-collapse:collapse;background:#fff;border-radius:10px;"><tr><td style="padding:16px 16px 2px;">
+          <table style="width:100%;border-collapse:collapse;">
+            ${step(1, !needsPhoto, needsPhoto ? 'Add your photo' : 'Your photo is in', needsPhoto ? 'It goes on your badge and on your pass. Take one with your phone in the app; it takes seconds.' : 'It is on your badge and your pass. You can change it in the app at any time.')}
+            ${step(2, !details.length, details.length ? 'Add your ' + esc(list(details)) : 'Your details are complete', 'Your designation and organisation are printed under your name on the badge and the pass. They are what people read before they ask to meet you.')}
+            ${step(3, false, 'Download your badge and post it', 'Tag Bharat AI Innovation and add #BharatAI2026, so the people coming see it.')}
+          </table>
+        </td></tr></table>
+        <div style="text-align:center;margin:18px 0 0;">
+          ${btn(go('social-card'), (needsPhoto ? 'Add my photo &amp; make my badge' : 'Make my badge') + ' &rarr;', 'linear-gradient(135deg,#FF6B00,#FF8C38)')}
+        </div>
+        ${details.length ? `<p style="margin:12px 0 0;text-align:center;font-size:12.5px;"><a href="${go('complete-profile')}" style="color:#FFC46B;">Add my details first</a></p>` : ''}
+      </div>`
+
+  const idNote = 'Bring a government photo ID with the same name; we check it at the badge desk and never ask you to send one.'
+  let passBlock: string
+  if (kind === 'unpaid') {
+    passBlock = `
+      <div style="margin:22px 0 0;padding:20px;border:1px solid #CFEBDC;background:#F2FBF6;border-radius:12px;">
+        <p style="margin:0 0 6px;font-size:16px;font-weight:bold;color:#1E2140;">Your ${esc(badge)} is one payment away</p>
+        <p style="margin:0 0 14px;font-size:13px;line-height:1.65;color:#555;">Pay ${rsPrice(badge)} + GST and it is yours, with guaranteed entry on both days and your pass to download. Your registration and reference number stay the same.</p>
+        ${btn(go('pay', '&pass=' + (PASS_KEY[badge] || 'delegate')), 'Finish paying &rarr;', '#0f7b47')}
+        <p style="margin:12px 0 0;font-size:11.5px;line-height:1.6;color:#888;">${FREE_ENTRY_TEXT}</p>
+      </div>`
+  } else if (kind === 'free') {
+    passBlock = `
+      <div style="margin:22px 0 0;padding:20px;border:1px solid #E3E6F5;border-radius:12px;">
+        <p style="margin:0 0 6px;font-size:16px;font-weight:bold;color:#1E2140;">Your Free Visitor Pass</p>
+        <p style="margin:0 0 14px;font-size:13px;line-height:1.65;color:#555;">The exhibition floor and select keynotes. Keep the pass on your phone for the badge desk. ${idNote}</p>
+        ${ghost(go('download-pass'), 'Download my pass')}
+        <p style="margin:12px 0 0;font-size:11.5px;line-height:1.6;color:#888;">${FREE_ENTRY_TEXT}</p>
+      </div>`
+  } else {
+    // A confirmed Delegate or Premium Delegate may move up for the difference
+    // (upgradeStep). Said once, in a line, under the pass they already have.
+    const next = badge === 'Delegate Pass' ? { pass: 'Premium Delegate Pass', adds: 'a hands-on workshop seat' }
+      : badge === 'Premium Delegate Pass' ? { pass: 'VIP Pass', adds: 'the VIP lounge, priority seating and a speaker meet &amp; greet' } : null
+    const diff = next && settledPaidTier(attendee) ? upgradeStep(badge, next.pass) : 0
+    passBlock = `
+      <div style="margin:22px 0 0;padding:20px;border:1px solid #EADFC2;background:#FFFCF4;border-radius:12px;">
+        <p style="margin:0 0 6px;font-size:16px;font-weight:bold;color:#1E2140;">Your ${esc(passName)}</p>
+        <p style="margin:0 0 14px;font-size:13px;line-height:1.65;color:#555;">Keep it on your phone for the badge desk. ${idNote}</p>
+        ${btn(go('download-pass'), 'Download my pass', '#1E2140')}
+        ${WORKSHOP_TIERS.includes(badge) ? `<p style="margin:14px 0 0;font-size:13px;line-height:1.6;color:#555;">Your pass includes one hands-on workshop. Seats go first come, first served: <a href="${go('workshop')}" style="color:#0B7A75;font-weight:bold;">choose my workshop</a>.</p>` : ''}
+        ${diff ? `<p style="margin:14px 0 0;font-size:12.5px;line-height:1.6;color:#777;">Want ${next!.adds}? Move up to ${next!.pass.replace(/ Pass$/, '')} for the difference, &#8377;${diff.toLocaleString('en-IN')} + GST. <a href="${go('pay', '&pass=' + PASS_KEY[next!.pass])}" style="color:#A67C00;font-weight:bold;">Move up</a></p>` : ''}
+      </div>`
+  }
+
+  const rsvpHref = async (status: string) =>
+    `${origin}/api/rsvp?email=${encodeURIComponent(email)}&status=${status}&event=${attendee.event_id}&sig=${await rsvpSig(c, email, status, attendee.event_id)}`
+  // Inline blocks, not table cells: three cells on a 390px phone left "I can't
+  // make it" one word to a line. These wrap as whole buttons.
+  const answer = (href: string, label: string, bg: string) =>
+    `<a href="${href}" style="display:inline-block;margin:4px;padding:11px 18px;background:${bg};color:#fff;text-decoration:none;border-radius:10px;font-weight:bold;font-size:13px;white-space:nowrap;">${label}</a>`
+  const coming = `
+      <div style="margin:22px 0 0;padding:20px;background:#FFF8EC;border:1px solid #F3DDB0;border-radius:12px;text-align:center;">
+        <p style="margin:0 0 6px;font-size:16px;font-weight:bold;color:#1E2140;">Are you coming?</p>
+        <p style="margin:0 0 14px;font-size:13px;line-height:1.6;color:#555;">One tap tells us. If you are, add your arrival time in the app as well: it helps us plan the badge desk and the halls.</p>
+        <div>
+          ${answer(await rsvpHref('confirmed'), 'Yes, I&rsquo;m coming', '#16a34a')}
+          ${answer(await rsvpHref('maybe'), 'Maybe', '#d97706')}
+          ${answer(await rsvpHref('declined'), 'I can&rsquo;t make it', '#6b7280')}
+        </div>
+      </div>`
+
+  // Last, and only to the free pass. Value before price, and only what the pass
+  // pages say each tier includes: no pass includes the CXO Innovation Night, so
+  // it is not offered here.
+  const late = latePricing()
+  const upgrade = kind !== 'free' ? '' : `
+      <div style="margin:26px 0 0;padding:22px;background:#FFFCF4;border:1px solid #EADFC2;border-radius:12px;">
+        <p style="margin:0 0 4px;font-size:11px;letter-spacing:1.6px;font-weight:bold;color:#A67C00;">WHEN YOU ARE READY</p>
+        <p style="margin:0 0 8px;font-size:17px;font-weight:bold;color:#1E2140;">Make it the full conference</p>
+        <p style="margin:0 0 12px;font-size:13px;line-height:1.65;color:#555;">Your Free Visitor Pass opens the exhibition floor. A <strong>Delegate Pass</strong> puts you in the conference itself:</p>
+        <table style="width:100%;border-collapse:collapse;">
+          ${tick('Guaranteed entry on both days, with no wait for a slot')}
+          ${tick('Every conference session and panel, 20 and 21 Nov')}
+          ${tick('Lunch included')}
+          ${tick('The full networking app: message anyone attending and book 1:1 meetings before you arrive')}
+          ${tick('The gold Delegate edition of your badge')}
+        </table>
+        <p style="margin:12px 0 14px;font-size:13px;line-height:1.6;color:#1E2140;"><strong>${rsPrice('Delegate Pass')} + GST</strong>${late ? '' : ` until ${PRICE_DEADLINE_TEXT}, then ${rsPrice('Delegate Pass', true)} from ${PRICE_LATE_FROM_TEXT}`}.</p>
+        ${btn(go('pay', '&pass=delegate'), 'See the Delegate Pass &rarr;', '#0f7b47')}
+        <p style="margin:16px 0 0;font-size:12.5px;line-height:1.65;color:#555;"><strong>Premium Delegate</strong> (${rsPrice('Premium Delegate Pass')} + GST) adds one hands-on workshop: <em>Data Science to Agentic AI: A CXO&rsquo;s Guide</em> with Dr. Vinay Kulkarni, or <em>From Prototype to Production</em> with Dr. Ashish Tendulkar. Seats are limited. <a href="${go('pay', '&pass=premium')}" style="color:#0B7A75;font-weight:bold;">Premium</a></p>
+        <p style="margin:8px 0 0;font-size:12.5px;line-height:1.65;color:#555;"><strong>VIP</strong> (${rsPrice('VIP Pass')} + GST) adds the VIP lounge, priority seating and a speaker meet &amp; greet. <a href="${go('pay', '&pass=vip')}" style="color:#A67C00;font-weight:bold;">VIP</a></p>
+        <p style="margin:12px 0 0;font-size:11.5px;color:#999;">Each button signs you in and opens the secure payment page. Your registration stays the same.</p>
+      </div>`
+
+  const preheader = kind === 'free'
+    ? 'Add your photo, make your I&rsquo;m attending badge and tell your network. 20&ndash;21 Nov, WTC Mumbai.'
+    : kind === 'unpaid'
+      ? `Your account is ready. One payment and your ${esc(badge)} is yours.`
+      : `Your ${esc(passName)} and your gold badge are ready. 20&ndash;21 Nov, WTC Mumbai.`
+
+  const html = `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;padding:0;background:#f4f4f5;font-family:Arial,sans-serif;">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">${preheader}</div>
   <div style="max-width:600px;margin:0 auto;padding:20px;">
     <div style="border-radius:16px;overflow:hidden;">
-      ${emailBrandHeader('Conference &amp; Exhibition 2026', '20&ndash;21 Nov 2026 &bull; World Trade Center, Mumbai')}
+      ${emailBrandHeader(kind === 'unpaid' ? 'Your account is ready' : `Your ${esc(passName)} is ready`, '20&ndash;21 Nov 2026 &bull; World Trade Center, Mumbai')}
     </div>
-    <!-- Main Content -->
-    <div style="background:white;border-radius:16px;padding:30px;margin-top:16px;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
-      <h2 style="margin:0 0 16px;color:#1a1a2e;font-size:22px;">Dear ${attendee.name},</h2>
-      <p style="color:#555;line-height:1.6;margin:0 0 16px;">
-        Your account for the <strong>Bharat AI Innovation 2026</strong> has been created. You are now registered as an official <strong>Delegate</strong> for the event. On 20-21 Nov 2026, we gather to recognise innovators and their innovations that are creating meaningful impact in our lives, our society, our nation, and the business ecosystem.
-      </p>
-      <div style="background:#f8f9fa;border-left:4px solid #1a1a2e;border-radius:0 8px 8px 0;padding:16px 20px;margin:0 0 20px;">
-        <p style="color:#1a1a2e;font-weight:bold;margin:0 0 6px;font-size:15px;">Event Details</p>
-        <p style="color:#555;line-height:1.6;margin:0;font-size:14px;">
-          <strong>Date:</strong> 20-21 Nov 2026<br>
-          <strong>Venue:</strong> World Trade Center, Mumbai
-        </p>
-      </div>
-      <!-- Delegate Pass Section -->
-      <div style="background:linear-gradient(135deg,#f0f4ff,#e8eeff);border:1px solid #c7d2fe;border-radius:12px;padding:20px;margin:20px 0;text-align:center;">
-        <h3 style="margin:0 0 10px;color:#1a1a2e;font-size:18px;">🎟️ Your Delegate Pass</h3>
-        <p style="color:#555;line-height:1.6;margin:0 0 16px;font-size:14px;">
-          You can download your Delegate Pass from the networking app.<br>Please keep it handy for smooth entry at the venue.
-        </p>
-        <a href="${passUrl}" style="display:inline-block;padding:12px 28px;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;text-decoration:none;border-radius:10px;font-weight:bold;font-size:14px;">
-          Download Delegate Pass &rarr;
-        </a>
-      </div>
-      <!-- Arrival Time Section -->
-      <div style="background:#f8f9fa;border-radius:12px;padding:20px;margin:20px 0;">
-        <h3 style="margin:0 0 10px;color:#1a1a2e;font-size:16px;">⏰ Please Update Your Arrival Time</h3>
-        <p style="color:#555;line-height:1.6;margin:0;font-size:14px;">
-          To help us plan event logistics, kindly update your <strong>expected arrival time</strong> in the app.
-        </p>
-      </div>
-      <!-- RSVP Section -->
-      <div style="background:linear-gradient(135deg,#fef9e7,#fdf2d6);border:1px solid #f0d48a;border-radius:12px;padding:24px;margin:20px 0;text-align:center;">
-        <h3 style="margin:0 0 6px;color:#1a1a2e;font-size:18px;">📋 Confirm Your Attendance</h3>
-        <p style="color:#555;line-height:1.6;margin:0 0 18px;font-size:14px;">
-          Will you be attending the event on <strong>20-21 Nov 2026</strong>?
-        </p>
-        <table cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto;">
-          <tr>
-            <td style="padding:0 6px;">
-              <a href="${origin}/api/rsvp?email=${encodeURIComponent(attendee.email)}&status=confirmed&event=${attendee.event_id}&sig=${await rsvpSig(c, attendee.email, 'confirmed', attendee.event_id)}" style="display:inline-block;padding:12px 24px;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;text-decoration:none;border-radius:10px;font-weight:bold;font-size:13px;">✅ Yes, I'll attend</a>
-            </td>
-            <td style="padding:0 6px;">
-              <a href="${origin}/api/rsvp?email=${encodeURIComponent(attendee.email)}&status=maybe&event=${attendee.event_id}&sig=${await rsvpSig(c, attendee.email, 'maybe', attendee.event_id)}" style="display:inline-block;padding:12px 24px;background:linear-gradient(135deg,#f59e0b,#d97706);color:white;text-decoration:none;border-radius:10px;font-weight:bold;font-size:13px;">🤔 Maybe</a>
-            </td>
-            <td style="padding:0 6px;">
-              <a href="${origin}/api/rsvp?email=${encodeURIComponent(attendee.email)}&status=declined&event=${attendee.event_id}&sig=${await rsvpSig(c, attendee.email, 'declined', attendee.event_id)}" style="display:inline-block;padding:12px 24px;background:linear-gradient(135deg,#ef4444,#dc2626);color:white;text-decoration:none;border-radius:10px;font-weight:bold;font-size:13px;">❌ Can't make it</a>
-            </td>
-          </tr>
-        </table>
-      </div>
-      <!-- CTA Button -->
-      <div style="text-align:center;margin:24px 0;">
-        <a href="${appUrl}?email=${encodeURIComponent(attendee.email)}${markTag}" style="display:inline-block;padding:14px 32px;background:linear-gradient(135deg,#6366f1,#4f46e5);color:white;text-decoration:none;border-radius:10px;font-weight:bold;font-size:15px;">
-          Open Networking App &rarr;
-        </a>
-      </div>
-      <!-- Login Details -->
-      <div style="border-top:1px solid #eee;padding-top:16px;margin-top:20px;">
-        <p style="color:#888;font-size:13px;margin:0 0 8px;"><strong>Your Login Details:</strong></p>
-        <p style="color:#555;font-size:14px;margin:0;">
-          Email: <strong>${attendee.email}</strong><br>
-          Name: <strong>${attendee.name}</strong>
-        </p>
-      </div>
-      <!-- Closing -->
+    <div style="background:white;border-radius:16px;padding:28px;margin-top:16px;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+      <p style="margin:0 0 6px;font-size:15px;color:#333;">Hi <strong>${esc(first || 'there')}</strong>,</p>
+      <p style="margin:0;font-size:14px;line-height:1.7;color:#555;">${intro}</p>
+      ${badgeBlock}
+      ${passBlock}
+      ${coming}
+      ${upgrade}
       <div style="margin-top:24px;padding-top:16px;border-top:1px solid #eee;">
-        <p style="color:#555;line-height:1.6;margin:0 0 16px;">We look forward to welcoming you to the event.</p>
-        <p style="color:#555;line-height:1.6;margin:0;">
-          Regards,<br>
-          <strong>Team Bharat AI Innovation</strong>
-        </p>
+        <p style="margin:0 0 14px;font-size:12.5px;line-height:1.6;color:#888;">The buttons in this email sign you in as <strong>${esc(email)}</strong>. If one has expired, open the app and sign in with this address: we send you a one-time code, no password needed. <a href="${base}${tail}" style="color:#4f46e5;">Open the app</a></p>
+        <p style="margin:0;font-size:14px;line-height:1.6;color:#555;">See you in Mumbai,<br><strong>Team Bharat AI Innovation</strong></p>
       </div>
     </div>
-    <!-- Partner Logos Footer -->
     <div style="text-align:center;margin-top:20px;padding:16px 0;">
       <table cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto;">
         <tr>
@@ -13350,6 +13456,37 @@ app.post('/api/admin/attendees/:id/notify', async (c) => {
 </body>
 </html>`
 
+  const hi = first ? first + ', y' : 'Y'
+  const subject = kind === 'free' ? `${hi}our Free Visitor Pass is ready`
+    : kind === 'unpaid' ? `${hi}our account is ready - your ${badge} is one payment away`
+    : `${hi}our ${passName} is ready`
+
+  // For the mailto fallback, when no mail service is configured.
+  const lines = [
+    `Dear ${first || 'there'},`, '',
+    kind === 'free' ? 'Your account for Bharat AI Innovation 2026 is ready. You hold a Free Visitor Pass for 20-21 Nov at the World Trade Center, Mumbai.'
+      : kind === 'unpaid' ? `Your account for Bharat AI Innovation 2026 is ready. You chose the ${badge}; its payment is not complete, so for now your account holds a Free Visitor Pass.`
+      : `Your account for Bharat AI Innovation 2026 is ready. You are confirmed as a ${passName} holder, with guaranteed entry on both days.`,
+    '',
+    `Make your "I'm attending" badge and post it: ${go('social-card')}`,
+  ]
+  if (gaps.length) lines.push(`Add your photo and details: ${go('complete-profile')}`)
+  if (kind === 'unpaid') lines.push(`Finish paying for your ${badge}: ${go('pay', '&pass=' + (PASS_KEY[badge] || 'delegate'))}`)
+  else lines.push(`Download your pass: ${go('download-pass')}`)
+  if (kind === 'free') lines.push('', FREE_ENTRY_TEXT, '', `Make it the full conference with a Delegate Pass: ${go('pay', '&pass=delegate')}`)
+  lines.push('', 'See you in Mumbai,', 'Team Bharat AI Innovation')
+
+  return { subject, html, text: lines.join('\n') }
+}
+
+app.post('/api/admin/attendees/:id/notify', async (c) => {
+  const id = c.req.param('id')
+  const attendee = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(id).first() as any
+  if (!attendee) return c.json({ error: 'Attendee not found' }, 404)
+  if (!attendee.email) return c.json({ error: 'Attendee has no email' }, 400)
+
+  const mail = await notifyEmail(c, attendee)
+
   // Try Elastic Email API v4 (stored in D1 settings)
   const apiKeyRow = { value: await elasticKey(c) } as any
   const senderRow = await c.env.DB.prepare("SELECT value FROM app_settings WHERE key = 'sender_email'").first() as any
@@ -13365,11 +13502,11 @@ app.post('/api/admin/attendees/:id/notify', async (c) => {
         Recipients: { To: [attendee.email] },
         Content: {
           Body: [
-            { ContentType: "HTML", Content: emailHtml.replace(/<\/body>/i, UNSUB_FOOTER(unsub) + '</body>'), Charset: "utf-8" }
+            { ContentType: "HTML", Content: mail.html.replace(/<\/body>/i, UNSUB_FOOTER(unsub) + '</body>'), Charset: "utf-8" }
           ],
           From: `${fromName} <${fromEmail}>`,
           Headers: { 'List-Unsubscribe': `<${unsub}>` },
-          Subject: 'Your Delegate Pass for Bharat AI Innovation 2026'
+          Subject: mail.subject
         },
         Options: {
           TrackClicks: false,
@@ -13400,12 +13537,46 @@ app.post('/api/admin/attendees/:id/notify', async (c) => {
 
   // Fallback: return mailto data for client-side email
   await c.env.DB.prepare('UPDATE attendees SET notified_at = datetime("now") WHERE id = ?').bind(id).run()
+  return c.json({ success: true, method: 'mailto', email: attendee.email, subject: mail.subject, body: mail.text })
+})
+
+// What Notify All would send, before it sends: the exact mail one real recipient
+// of the chosen kind gets (free, paid, or paid but not paid yet), and how many of
+// each kind the run reaches. ?id= previews one attendee instead. Sends nothing,
+// mints no sign-in token, writes no mark.
+app.get('/api/admin/notify-preview', async (c) => {
+  const audience = c.req.query('audience') === 'non-responders' ? 'non-responders' : 'un-notified'
+  const want = String(c.req.query('kind') || '')
+  const counts: Record<string, number> = { free: 0, paid: 0, unpaid: 0, total: 0 }
+  let sample: any = null
+  const oneId = parseInt(String(c.req.query('id') || ''), 10)
+  if (Number.isFinite(oneId)) {
+    sample = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(oneId).first()
+    if (!sample) return c.json({ error: 'Attendee not found' }, 404)
+  } else {
+    // The run's own audience and its own address check (POST /api/admin/campaigns),
+    // so these are the numbers the run will show.
+    const rows = (await campaignAudienceRows(c, 'notify', audience)).filter((r: any) => validEmailSyntax(r.email))
+    const ps = (await paymentStatusEnabled(c)) ? 'payment_status' : 'NULL AS payment_status'
+    const { results } = await c.env.DB.prepare(`SELECT id, badge_type, ${ps} FROM attendees WHERE event_id = 1`).all()
+    const byId = new Map(((results as any[]) || []).map((r: any) => [Number(r.id), r]))
+    const first: Record<string, any> = {}
+    for (const r of rows) {
+      const k = notifyKind(byId.get(Number(r.id)) || {})
+      counts[k]++; counts.total++
+      if (!first[k]) first[k] = r
+    }
+    // Unasked, the free pass first: it is most of any run.
+    const pick = want ? first[want] : (first.free || first.paid || first.unpaid)
+    if (pick) sample = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(pick.id).first()
+  }
+  if (!sample) return c.json({ audience, counts, kind: want, sample: null })
+  const mail = await notifyEmail(c, sample, { preview: true })
   return c.json({
-    success: true,
-    method: 'mailto',
-    email: attendee.email,
-    subject: 'Your Delegate Pass for Bharat AI Innovation 2026',
-    body: `Dear ${attendee.name},\n\nYour account for the Bharat AI Innovation Conference & Exhibition 2026 has been created. You are now registered as an official Delegate for India's largest AI conference.\n\nEvent Details:\nDate: 20-21 Nov 2026\nVenue: World Trade Center, Mumbai, Cuffe Parade\n\n🎟️ Your Delegate Pass\nDownload your Delegate Pass: ${passUrl}\nPlease keep it handy for smooth entry at the venue.\n\n⏰ Please update your expected arrival time to help us plan event logistics.\n\nOpen the networking app: ${appUrl}?email=${encodeURIComponent(attendee.email)}\n\nYour Login Details:\nEmail: ${attendee.email}\nName: ${attendee.name}\n\nWe look forward to welcoming you in Mumbai!\n\nRegards,\nTeam Bharat AI Innovation`,
+    audience, counts, kind: notifyKind(sample),
+    sample: { id: sample.id, name: sample.name, email: sample.email, badge_type: sample.badge_type || 'Visitor Pass' },
+    subject: mail.subject,
+    html: mail.html.replace(/<\/body>/i, UNSUB_FOOTER(await unsubscribeUrl(c, sample.email)) + '</body>'),
   })
 })
 
@@ -18362,7 +18533,7 @@ function mainPageHTML(): string {
   <script src="/js/pass-render.js?v=20261026"></script>
   <!-- The "I'm attending" card delegates post. App only: the badge desk has no
        reason to issue one, and it carries none of the pass's verification data. -->
-  <script src="/js/social-card.js?v=20261027"></script>
+  <script src="/js/social-card.js?v=20261029"></script>
   <script src="/js/photo-fingerprint.js?v=2"></script>
   <link rel="stylesheet" href="/css/fonts-app.css?v=1">
   <style>
@@ -20616,6 +20787,8 @@ function mainPageHTML(): string {
             <div id="sc-loading" class="text-xs text-gray-400 py-16"><i class="fas fa-spinner fa-spin mr-2"></i>Drawing your card…</div>
           </div>
           <p id="sc-phone-hint" class="hidden text-xs text-gray-400 mb-3"><i class="fas fa-circle-info mr-1"></i>This browser cannot share pictures directly. Tap <strong>Save picture</strong>, then press and hold the picture to keep it, and post it from your gallery.</p>
+          <p id="sc-gold-hint" class="hidden text-xs text-gray-400 mb-3"><i class="fas fa-crown mr-1.5 text-amber-500"></i>Delegate, Premium and VIP passes get the gold edition of this card, with the pass named on a ribbon.
+            <button type="button" onclick="closeSocialCard(); openUpgradeFor(&quot;Delegate Pass&quot;, &quot;card&quot;);" class="underline font-semibold text-amber-600 hover:text-amber-500">Get the gold edition</button></p>
 
           <label id="sc-logo-row" class="hidden items-center gap-2 mb-3 cursor-pointer select-none">
             <input type="checkbox" id="sc-logo-toggle" checked onchange="renderSocialCardPreview()" class="rounded">
@@ -26239,7 +26412,19 @@ function mainPageScript(): string {
       if (dl) dl.textContent = isTouchPhone() ? 'Save picture' : 'Download';
       document.getElementById('sc-share').classList.add('hidden');
       document.getElementById('social-card-modal').classList.remove('hidden');
+      refreshGoldHint();
       setSocialCardSize(socialCard.size);
+    }
+
+    // A paid pass gets the gold edition of the conference card (social-card.js
+    // tierFor), so a free one is told so here, beside the card, in one line. Not
+    // on a campus panel card, which has no gold edition.
+    function refreshGoldHint() {
+      var el = document.getElementById('sc-gold-hint');
+      if (!el) return;
+      var show = isVisitorPass() && (socialCard.mode || 'conference') === 'conference';
+      el.classList.toggle('hidden', !show);
+      if (show) trackUpgradePrompt('card', 'Delegate Pass');
     }
 
     function closeSocialCard() {
@@ -26261,6 +26446,7 @@ function mainPageScript(): string {
       if (mode === 'conference' && socialCard.conferenceAllowed === false) mode = 'panel';
       socialCard.mode = mode;
       updateSocialCardModeTabs();
+      refreshGoldHint();
       if (currentUser) document.getElementById('sc-caption').value = socialCardCaption(currentUser);
       renderSocialCardPreview();
     }
@@ -28281,7 +28467,7 @@ function adminPageHTML(): string {
   <script src="/js/photo-fingerprint.js?v=2"></script>
   <!-- Same renderer the delegate's own app uses, so a card the desk sends a speaker
        is the card that speaker would have made themselves. -->
-  <script src="/js/social-card.js?v=20261027"></script>
+  <script src="/js/social-card.js?v=20261029"></script>
   <link rel="stylesheet" href="/css/fonts-app.css?v=1">
   <style>
     * { font-family: 'Manrope', sans-serif; }
@@ -29752,7 +29938,8 @@ function adminPageScript(): string {
       try { d = await api.get('/api/admin/payments/funnel'); } catch (e) { el.innerHTML = ''; return; }
       if (!d || !Array.isArray(d.prompts)) { el.innerHTML = ''; return; }
       var NAME = { welcome: 'Welcome card, first sign-in', networking: 'Tried to start a conversation', directory: 'Locked directory card',
-        agenda: 'A Delegate session on the agenda', workshop: 'A workshop seat', vip: 'Speaker meet &amp; greet (VIP)', passcard: 'Move up, from the pass card', form: 'Opened the paid form' };
+        agenda: 'A Delegate session on the agenda', workshop: 'A workshop seat', vip: 'Speaker meet &amp; greet (VIP)', passcard: 'Move up, from the pass card', form: 'Opened the paid form',
+        card: 'Gold edition, on the share card' };
       var STATUS = { created: 'started, no answer yet', paid: 'paid', failed: 'failed', aborted: 'cancelled', awaited: 'bank undecided', mismatch: 'amount mismatch' };
       var prompts = d.prompts.map(function (p) {
         return '<div class="flex items-center gap-3 py-2 border-b border-white/5 text-[12px]"><div class="flex-1 text-gray-200">' + (NAME[p.reason] || deskEsc(p.reason)) + '</div>' +
@@ -30831,7 +31018,7 @@ function adminPageScript(): string {
                   <td class="flex gap-1">
                     <button onclick="openEditAttendeeById(\${a.id})" class="px-2 py-1 rounded text-xs bg-primary-500/20 text-primary-300 hover:bg-primary-500/30" title="Full Edit"><i class="fas fa-edit"></i></button>
                     <button onclick='adminDownloadPass(\${JSON.stringify({id:a.id,name:a.name,email:a.email,company:a.company||"",job_title:a.job_title||"",badge_type:a.badge_type||"Delegate",avatar_url:a.avatar_url||"",role:a.role||"",website_url:a.website_url||""}).replace(/&/g,"&amp;").replace(/'/g,"&#39;")})' class="px-2 py-1 rounded text-xs bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30" title="Download Pass"><i class="fas fa-id-badge"></i></button>
-                    <button onclick='adminDownloadSocialCard(\${JSON.stringify({id:a.id,name:a.name,email:a.email,company:a.company||"",job_title:a.job_title||"",badge_type:a.badge_type||"Delegate",avatar_url:a.avatar_url||"",role:a.role||"",website_url:a.website_url||""}).replace(/&/g,"&amp;").replace(/'/g,"&#39;")})' class="px-2 py-1 rounded text-xs bg-violet-500/20 text-violet-300 hover:bg-violet-500/30" title="Download their &quot;I&#39;m attending&quot; social card"><i class="fas fa-share-alt"></i></button>
+                    <button onclick='adminDownloadSocialCard(\${JSON.stringify({id:a.id,name:a.name,email:a.email,company:a.company||"",job_title:a.job_title||"",badge_type:a.badge_type||"Visitor Pass",payment_status:a.payment_status||"",avatar_url:a.avatar_url||"",role:a.role||"",website_url:a.website_url||""}).replace(/&/g,"&amp;").replace(/'/g,"&#39;")})' class="px-2 py-1 rounded text-xs bg-violet-500/20 text-violet-300 hover:bg-violet-500/30" title="Download their &quot;I&#39;m attending&quot; social card"><i class="fas fa-share-alt"></i></button>
                     <button onclick="notifyAttendeeById(\${a.id})" class="px-2 py-1 rounded text-xs bg-amber-500/20 text-amber-300 hover:bg-amber-500/30" title="Send notification email"><i class="fas fa-envelope"></i></button>
                     \${a.checked_in_at ? '<button onclick="resetCheckin(' + Number(a.id) + ')" class="px-2 py-1 rounded text-xs bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30" title="Checked in ' + escH(a.checked_in_at) + (a.checked_in_by ? ' by ' + escH(a.checked_in_by) : '') + '. Click to reset the check-in so they can be admitted again."><i class="fas fa-door-open"></i></button>' : ''}
                     <button onclick="deleteAttendee(\${a.id})" class="px-2 py-1 rounded text-xs bg-red-500/20 text-red-400 hover:bg-red-500/30" title="Delete"><i class="fas fa-trash"></i></button>
@@ -31032,7 +31219,8 @@ function adminPageScript(): string {
             '<span class="text-[11px] text-gray-500">' + done + ' of ' + c.total + ' \u00b7 ' + (c.sent || 0) + ' sent, ' +
               (c.failed || 0) + ' failed \u00b7 by ' + escH(c.created_by || 'unknown') + ' \u00b7 ' + fmtIst(c.created_at) + '</span>' +
             '<span class="flex gap-1.5">' +
-              (c.status !== 'done' ? '<button onclick="resumeCampaign(' + c.id + ')" class="px-2.5 py-1 rounded-lg text-[10px] font-semibold bg-primary-700 text-white on-dark hover:bg-primary-800">Resume</button>' : '') +
+              (c.status === 'running' ? '<button onclick="pauseCampaignFromList(' + c.id + ')" class="px-2.5 py-1 rounded-lg text-[10px] font-semibold bg-amber-700 text-white on-dark hover:bg-amber-800">Pause</button>' : '') +
+              (c.status !== 'done' && c.status !== 'running' ? '<button onclick="resumeCampaign(' + c.id + ')" class="px-2.5 py-1 rounded-lg text-[10px] font-semibold bg-primary-700 text-white on-dark hover:bg-primary-800">Resume</button>' : '') +
               (c.failed ? '<button onclick="showCampaignFailures(' + c.id + ')" class="px-2.5 py-1 rounded-lg text-[10px] font-medium border border-white/10 text-gray-400 hover:bg-black/5">' + c.failed + ' failed</button>' : '') +
               (c.failed ? '<button onclick="retryCampaignFailures(' + c.id + ')" class="px-2.5 py-1 rounded-lg text-[10px] font-semibold bg-amber-700 text-white on-dark hover:bg-amber-800">Retry those</button>' : '') +
             '</span>' +
@@ -31049,6 +31237,20 @@ function adminPageScript(): string {
         openCampaignMonitor(camp || { title: 'Resuming', total: 0 });
         runCampaignPump(id);
       } catch (e) { toast('Could not resume: ' + (e.message || ''), 'error'); }
+    }
+
+    // A run started in another tab, or before this page was opened, goes on by the
+    // server's minute clock, and until 29 Oct 2026 nothing here could stop it: the
+    // list offered Resume only. Pause is one campaign; the clock skips it until
+    // Resume, and every other run goes on.
+    async function pauseCampaignFromList(id) {
+      try {
+        var r = await api.post('/api/admin/campaigns/' + id + '/pause', {});
+        if (r && r.error) throw new Error(r.error);
+        if (String(campaignPump.id) === String(id)) { campaignPump.stop = true; campaignPump.id = null; }
+        toast('Paused. Nothing more goes out on it until Resume.');
+      } catch (e) { toast('Could not pause: ' + (e.message || ''), 'error'); }
+      loadCampaignList();
     }
 
     async function showCampaignFailures(id) {
@@ -32416,10 +32618,11 @@ function adminPageScript(): string {
     function notifyAttendeeById(id) {
       var a = (lastAttendees || []).find(function (x) { return String(x.id) === String(id); });
       if (!a) { toast('Could not find that attendee - refresh and try again.', 'error'); return; }
-      return notifyAttendee(a.id, a.name, a.email);
+      // The exact mail first; Send is in the same window.
+      return openNotifyPreview({ id: a.id, name: a.name, email: a.email });
     }
-    async function notifyAttendee(id, name, email) {
-      if (!confirm(\`Send notification email to \${name} (\${email})?\`)) return;
+    async function notifyAttendee(id, name, email, previewed) {
+      if (!previewed && !confirm(\`Send notification email to \${name} (\${email})?\`)) return;
       try {
         const result = await api.post('/api/admin/attendees/'+id+'/notify', {});
         if (result.method === 'mailto') {
@@ -32444,9 +32647,67 @@ function adminPageScript(): string {
       }
     }
 
-    async function notifyAllAttendees() {
-      if (!confirm('Send the account-ready email to everyone who has not had it yet?')) return;
-      await startCampaign('notify', { audience: 'un-notified', title: 'Account-ready email' });
+    // Notify All shows the mail before it goes: one real person of each kind (a Free
+    // Visitor Pass, a paid or given pass, a paid pass not paid for yet) exactly as
+    // they will get it, and how many of each the run reaches. Until 29 Oct 2026 it
+    // was a confirm() and then the send, and a mail that called every free Visitor
+    // a Delegate went out before anyone had read it. Nothing leaves until Send.
+    var notifyPrev = { audience: 'un-notified' };
+    function notifyAllAttendees() { return openNotifyPreview({ audience: 'un-notified' }); }
+
+    async function openNotifyPreview(opts, kind) {
+      notifyPrev = opts || { audience: 'un-notified' };
+      var o = notifyPrev;
+      openModal('<div class="py-10 text-center text-gray-400"><i class="fas fa-spinner fa-spin"></i></div>');
+      var d;
+      try {
+        d = await api.get('/api/admin/notify-preview?' + (o.id ? 'id=' + encodeURIComponent(o.id)
+          : 'audience=' + encodeURIComponent(o.audience || 'un-notified') + (kind ? '&kind=' + encodeURIComponent(kind) : '')));
+        if (d && d.error) throw new Error(d.error);
+      } catch (e) {
+        openModal('<p class="text-sm text-red-400">Could not build the preview: ' + escH(e.message || '') + '</p>');
+        return;
+      }
+      var cnt = d.counts || {};
+      var total = o.id ? 1 : (cnt.total || 0);
+      var head;
+      if (o.id) {
+        head = '<p class="text-xs text-gray-400 mb-3">Exactly what ' + escH(d.sample.name) + ' (' + escH(d.sample.email) + ') will get.</p>';
+      } else {
+        head = '<p class="text-xs text-gray-400 mb-3">' + total + ' ' + (total === 1 ? 'person' : 'people') + ' in this run: ' +
+          (cnt.free || 0) + ' on a Free Visitor Pass, ' + (cnt.paid || 0) + ' on a paid or given pass, ' + (cnt.unpaid || 0) +
+          ' who chose a paid pass and have not paid. Each gets the version for the pass they hold.</p>' +
+          '<div class="flex gap-1.5 flex-wrap mb-3">' + [['free', 'Free Visitor Pass'], ['paid', 'Paid pass'], ['unpaid', 'Not paid yet']].map(function (k) {
+            var n = cnt[k[0]] || 0, on = d.kind === k[0];
+            return '<button onclick="openNotifyPreview(notifyPrev, &quot;' + k[0] + '&quot;)"' + (n ? '' : ' disabled') +
+              ' class="px-3 py-1.5 rounded-lg text-xs font-semibold ' + (on ? 'bg-amber-600 text-white' : 'border border-white/10 text-gray-300 hover:bg-white/5') + (n ? '' : ' opacity-40') + '">' +
+              k[1] + ' (' + n + ')</button>';
+          }).join('') + '</div>';
+      }
+      var body = d.sample
+        ? '<p class="text-xs text-gray-400 mb-1">As ' + escH(d.sample.name) + ' (' + escH(d.sample.badge_type) + ') will get it. The buttons are not live in this preview.</p>' +
+          '<p class="text-sm font-semibold text-white mb-2">Subject: ' + escH(d.subject) + '</p>' +
+          '<iframe id="notify-prev-frame" sandbox="" title="Email preview" class="w-full rounded-xl bg-white" style="height:60vh;border:1px solid rgba(0,0,0,0.1);"></iframe>'
+        : '<p class="text-sm text-gray-400 py-8 text-center">Nobody in this run holds that kind of pass.</p>';
+      openModal('<h3 class="text-lg font-bold mb-1"><i class="fas fa-envelope text-amber-400 mr-2"></i>' +
+          (o.audience === 'non-responders' ? 'Reminder to non-responders' : 'Account-ready email') + ': check it before it goes</h3>' +
+        head + body +
+        '<div class="flex gap-2 mt-4">' +
+          '<button onclick="closeModal()" class="flex-1 py-2.5 rounded-xl text-sm glass hover:bg-white/10">Cancel</button>' +
+          '<button onclick="sendNotifyFromPreview()"' + (total ? '' : ' disabled') + ' class="flex-1 py-2.5 rounded-xl text-sm bg-amber-600 hover:bg-amber-500 text-white font-semibold' + (total ? '' : ' opacity-40') + '">' +
+            (o.id ? 'Send to ' + escH(o.name || d.sample.name) : 'Send to ' + total + ' ' + (total === 1 ? 'person' : 'people')) + '</button>' +
+        '</div>' +
+        (o.id ? '' : '<p class="text-[11px] text-gray-500 mt-2">It goes one email at a time, between 9am and 9pm IST, on the server&rsquo;s clock. Pause is in the window that opens next, and under Settings, Bulk email.</p>'));
+      var f = document.getElementById('notify-prev-frame');
+      if (f) f.srcdoc = d.html;
+    }
+
+    function sendNotifyFromPreview() {
+      var o = notifyPrev || {};
+      closeModal();
+      if (o.id) return notifyAttendee(o.id, o.name, o.email, true);
+      if (o.audience === 'non-responders') return startCampaign('notify', { audience: 'non-responders', title: 'RSVP reminder to non-responders' });
+      return startCampaign('notify', { audience: 'un-notified', title: 'Account-ready email' });
     }
 
     // Profile-completion campaign. Deliberately a two-step: the first screen only
@@ -33025,10 +33286,8 @@ function adminPageScript(): string {
     }
     let _chaseRejects = 0;
 
-    async function resendNonResponders() {
-      if (!confirm('Email everyone who was notified but has still not answered the RSVP?')) return;
-      await startCampaign('notify', { audience: 'non-responders', title: 'RSVP reminder to non-responders' });
-    }
+    // The same mail as Notify All, so the same preview first.
+    function resendNonResponders() { return openNotifyPreview({ audience: 'non-responders' }); }
 
     // ============ POST-CEREMONY THANK YOU EMAIL ============
     async function sendThankYouToAll() {

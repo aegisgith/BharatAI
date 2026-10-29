@@ -77,8 +77,11 @@ const html = sent[0]?.Content?.Body?.[0]?.Content || '';
 const pix = /src="https:\/\/bharataiinnovation\.com\/api\/notify-open\?a=2&amp;s=([0-9a-f]{20})"/.exec(html);
 check('the email carries the open picture on the site root', !!pix, html.slice(-600));
 const sig = pix ? pix[1] : '';
+// Since 29 Oct 2026 every button into the app carries the tag, last, so any click counts.
+const appLinks = html.match(/href="https:\/\/bharataiinnovation\.com\/app\?[^"]*"/g) || [];
 const tags = html.match(/[?&]ne=2\.([0-9a-f]{20})"/g) || [];
-check('both app buttons carry ne=<id>.<sig>', tags.length === 2 && tags.every(t => t.includes(sig)), tags.join(' | '));
+check('every app button carries ne=<id>.<sig>', appLinks.length >= 4 && tags.length === appLinks.length && tags.every(t => t.includes(sig)), appLinks.length + ' links, ' + tags.length + ' tags');
+check('and a sign-in token, so the buttons do not end at the sign-in form', appLinks.every(h => /[?&]token=[0-9a-f]+/.test(h)), appLinks[0] || '');
 check('the picture sits before the unsubscribe footer and </body>', html.indexOf('/api/notify-open') < html.lastIndexOf('</body>'), '');
 const rsvpLinks = html.match(/href="[^"]*\/api\/rsvp\?[^"]*"/g) || [];
 check('yes / maybe / no go to /api/rsvp on the site root, not /app/api/rsvp', rsvpLinks.length === 3 && rsvpLinks.every(h => h.startsWith('href="https://bharataiinnovation.com/api/rsvp?')), rsvpLinks.join(' | '));
@@ -145,6 +148,49 @@ if (fn) {
   check('before any marked email it says opens count from the next one', before.includes('counted from the next email on') && !before.includes('Opened the email'), before);
   check('nobody emailed: nothing shown', render({ sent: 0 }) === '', '');
 }
+
+// ---- the mail names the pass the person holds (29 Oct 2026) ----
+// It told every free Visitor "Your Delegate Pass" until then.
+const subj = (i) => sent[i]?.Content?.Subject || '';
+const body = (i) => sent[i]?.Content?.Body?.[0]?.Content || '';
+check('a Visitor is told Free Visitor Pass, never Delegate', subj(0) === 'Asha, your Free Visitor Pass is ready' && body(0).includes('Free Visitor Pass') && !/official <strong>Delegate|Download Delegate Pass|Your Delegate Pass/.test(body(0)), subj(0));
+check('the free email asks for the badge before it mentions the upgrade', body(0).indexOf('action=social-card') > 0 && body(0).indexOf('action=social-card') < body(0).indexOf('Make it the full conference'), '');
+check('the free email says entry is not guaranteed', body(0).includes('Entry on a free Visitor Pass is not guaranteed'), '');
+check('nothing no pass includes is offered (CXO Innovation Night)', !/CXO Innovation Night/i.test(body(0)), '');
+person(5, 'DR. MEERA IYER', 'meera@example.com', { badge_type: 'Delegate Pass', payment_status: 'paid', company: 'Acme', job_title: 'CTO' });
+person(6, 'Kiran Pai', 'kiran@example.com', { badge_type: 'Delegate Pass', payment_status: 'pending' });
+person(7, 'Sam Rao', 'sam@example.com', { badge_type: 'Speaker', payment_status: 'waived' });
+let n0 = sent.length;
+await hit('POST', '/api/admin/attendees/5/notify', {}, ADMIN);
+check('a paid Delegate: "Meera, your Delegate Pass is ready", the gold badge, no upgrade block', subj(n0) === 'Meera, your Delegate Pass is ready' && body(n0).includes('gold Delegate badge') && !body(n0).includes('Make it the full conference'), subj(n0));
+check('and one line to move up to Premium for the difference', body(n0).includes('pass=premium') && body(n0).includes('for the difference'), '');
+n0 = sent.length;
+await hit('POST', '/api/admin/attendees/6/notify', {}, ADMIN);
+check('an unpaid Delegate holds a Free Visitor Pass until it is paid, and gets a pay button', /one payment away$/.test(subj(n0)) && body(n0).includes('Free Visitor Pass') && body(n0).includes('action=pay&pass=delegate'), subj(n0));
+n0 = sent.length;
+await hit('POST', '/api/admin/attendees/7/notify', {}, ADMIN);
+check('a Speaker: "Sam, your Speaker Pass is ready"', subj(n0) === 'Sam, your Speaker Pass is ready', subj(n0));
+
+// ---- the preview Notify All opens first ----
+person(8, 'Lata Shenoy', 'lata@example.com');
+person(9, 'Vik Mehta', 'vik@example.com', { badge_type: 'VIP Pass', payment_status: 'paid' });
+const before = { sent: sent.length, audit: q('SELECT COUNT(*) AS n FROM admin_audit')[0].n, tokens: q('SELECT COUNT(*) AS n FROM login_tokens')[0].n };
+let p = await hit('GET', '/api/admin/notify-preview', undefined, ADMIN);
+check('the preview counts the run by pass', p.status === 200 && JSON.stringify(p.json?.counts) === JSON.stringify({ free: 1, paid: 1, unpaid: 0, total: 2 }), p.status + ' ' + JSON.stringify(p.json?.counts));
+check('unasked, it shows a Free Visitor Pass', p.json?.kind === 'free' && p.json.sample?.id === 8 && p.json.subject === 'Lata, your Free Visitor Pass is ready', JSON.stringify(p.json?.sample) + ' ' + p.json?.subject);
+const ph = p.json?.html || '';
+check('the preview has no open picture, no ne= tag and no sign-in token', ph.includes('</html>') && !ph.includes('notify-open') && !/[?&]ne=/.test(ph) && !/[?&]token=/.test(ph), '');
+p = await hit('GET', '/api/admin/notify-preview?kind=paid', undefined, ADMIN);
+check('?kind=paid shows the VIP', p.json?.sample?.id === 9 && p.json.subject === 'Vik, your VIP Pass is ready', JSON.stringify(p.json?.sample));
+p = await hit('GET', '/api/admin/notify-preview?id=6', undefined, ADMIN);
+check('?id= previews that one attendee', p.json?.sample?.id === 6 && p.json.kind === 'unpaid', JSON.stringify(p.json?.sample));
+check('previewing sent nothing, marked nothing and minted no token',
+  sent.length === before.sent && q('SELECT COUNT(*) AS n FROM admin_audit')[0].n === before.audit && q('SELECT COUNT(*) AS n FROM login_tokens')[0].n === before.tokens && !q('SELECT notified_at FROM attendees WHERE id = 8')[0].notified_at,
+  JSON.stringify(before));
+r = await hit('GET', '/api/admin/notify-preview');
+check('the preview is for admins only', r.status === 401 || r.status === 403, String(r.status));
+check('/admin.js: Notify All and the RSVP chase open the preview; a running campaign has Pause in the list',
+  adminJs.includes('function notifyAllAttendees() { return openNotifyPreview(') && adminJs.includes("openNotifyPreview({ audience: 'non-responders' })") && adminJs.includes('pauseCampaignFromList(') && adminJs.includes("'/api/admin/notify-preview?'"), '');
 
 console.log(fails ? `\n${fails} check(s) failed` : '\nall notify-funnel checks passed');
 process.exit(fails ? 1 : 0);
