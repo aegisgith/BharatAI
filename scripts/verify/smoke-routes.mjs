@@ -36,8 +36,13 @@ r = await hit('/admin');
 check('/admin renders', r.status === 200 && r.text.includes('<html'), r.status);
 check('/admin loads its code from a versioned /admin.js', /<script src="\/admin\.js\?v=[0-9a-f]{8}"><\/script>/.test(r.text), 'no versioned /admin.js tag');
 {
-  const js = await hit('/admin.js?v=00000000');
+  // Kept for a year only under the version the page asks for; any other ?v= is
+  // answered and never kept (a deploy's rollout could otherwise cache the wrong code).
+  const adminV = (/\/admin\.js\?v=([0-9a-f]{8})/.exec(r.text) || [])[1];
+  const js = await hit('/admin.js?v=' + adminV);
   check('/admin.js?v= is JavaScript a browser may keep for a year', js.status === 200 && /javascript/.test(js.h['content-type'] || '') && /immutable/.test(js.h['cache-control'] || ''), js.status + ' ' + js.h['content-type'] + ' ' + js.h['cache-control']);
+  const other = await hit('/admin.js?v=00000000');
+  check('/admin.js?v=<another version> is answered but never kept', other.status === 200 && other.h['cache-control'] === 'no-store', other.status + ' ' + other.h['cache-control']);
   r.text += js.text;   // the admin page's code is its own file: a marker below is in one or the other
 }
 for (const marker of ['checkin-reset', 'not-arrived.csv', 'downloadCsvViaApi', 'PAYMENT_STATUSES', 'BADGE_TYPES', 'previewPanelEmail', 'Panel only (not opted in)']) {
@@ -74,8 +79,11 @@ if (phase === 'attendee') {
   r = await hit('/app');
   check('/app renders', r.status === 200 && r.text.includes('<html'), r.status);
   check('/app loads its code from a versioned /app.js', /<script src="\/app\.js\?v=[0-9a-f]{8}"><\/script>/.test(r.text), 'no versioned /app.js tag');
-  const appJs = await hit('/app.js?v=00000000');
+  const appV = (/\/app\.js\?v=([0-9a-f]{8})/.exec(r.text) || [])[1];
+  const appJs = await hit('/app.js?v=' + appV);
   check('/app.js?v= is JavaScript a phone may keep for a year', appJs.status === 200 && /javascript/.test(appJs.h['content-type'] || '') && /immutable/.test(appJs.h['cache-control'] || ''), appJs.status + ' ' + appJs.h['content-type'] + ' ' + appJs.h['cache-control']);
+  const appOther = await hit('/app.js?v=00000000');
+  check('/app.js?v=<another version> is answered but never kept', appOther.status === 200 && appOther.h['cache-control'] === 'no-store', appOther.status + ' ' + appOther.h['cache-control']);
   // The bare path is the service worker's offline fallback: ten minutes, never
   // immutable, or the edge keeps an old deploy's copy for a year (seen 29 Oct 2026).
   const bareJs = await hit('/app.js');

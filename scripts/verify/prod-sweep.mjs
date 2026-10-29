@@ -172,6 +172,26 @@ check('the page tick needs admin', r.status === 401, r.status);
 r = await hit('/admin');
 r.text += (await hit('/admin.js')).text;   // the admin page's code is its own file
 check('the admin page runs panel email as server jobs', r.text.includes('function startMailJob') && r.text.includes('mail-jobs/tick') && !r.text.includes('pumpPanelReports'), 'markers');
+check('the admin Overview has the Pass & badge card with Send the steps', r.text.includes('function loadHelpFunnel') && r.text.includes('/api/admin/help-mail/send'), 'markers');
+
+// The way in (29 Oct 2026): the startup check, the doors it and the app use, and
+// /app.js kept for a year only under its own version. Nothing is written: every
+// request below is refused before it reaches a table.
+r = await hit('/app');
+const appV = (/\/app\.js\?v=([0-9a-f]{8})/.exec(r.text) || [])[1];
+check('/app carries the startup check before its code, and the sign-in note', r.text.includes('window.__bhaiBoot') && r.text.indexOf('window.__bhaiBoot') < r.text.indexOf('/app.js?v=') && r.text.includes('id="signin-note"'), 'markers');
+r = await hit('/app.js?v=' + appV);
+check('/app.js under its own version: kept for a year, and starts the check', /immutable/.test(r.h['cache-control'] || '') && r.text.includes('window.__bhaiBoot.start()'), r.h['cache-control']);
+r = await hit('/app.js?v=00000000');
+check('/app.js under another version: answered, never kept', r.status === 200 && r.h['cache-control'] === 'no-store', r.h['cache-control']);
+r = await hit('/api/app-boot', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ stage: 'live-check' }) });
+check('the startup report refuses an unknown stage (400)', r.status === 400, r.status + ' ' + r.text.slice(0, 80));
+r = await hit('/api/attendees/1/track-step', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'card', step: 'open' }) });
+check('a badge or pass step needs the person signed in (401)', r.status === 401, r.status + ' ' + r.text.slice(0, 80));
+for (const [m, p] of [['GET', '/api/admin/help-stats'], ['POST', '/api/admin/help-mail/send'], ['POST', '/api/admin/help-mail/auto'], ['GET', '/api/admin/help-mail/preview']]) {
+  r = await hit(p, { method: m, headers: { 'Content-Type': 'application/json' }, body: m === 'POST' ? '{}' : undefined });
+  check(`${m} ${p} needs admin (401)`, r.status === 401, r.status);
+}
 
 console.log(fails ? `\n${fails} FAILED` : '\nall production checks passed');
 process.exit(fails ? 1 : 0);

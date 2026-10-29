@@ -3352,6 +3352,286 @@ async function autoRemindToPay(c: any): Promise<any> {
   return { on: true, due: due.length, sent, failed }
 }
 
+// ==================== HELP EMAIL ====================
+// Somebody who got stuck on the way in (the app did not open, or their link no
+// longer signed in) or on the way to their badge or pass is sent the steps that
+// get them there: once per kind, from the minute clock, once the trouble is
+// HELP_QUIET_MINUTES old and nothing since says they made it. Steps as bullet
+// points, and never a word about anything having gone wrong on our side
+// (organiser, 29 Oct 2026). app_settings help_mail_auto = 'off' stops it. Admin,
+// Overview, "Pass & badge" sends it to one person by hand as well, for somebody
+// stuck before any of this was counted.
+const HELP_MAIL_AUTO_KEY = 'help_mail_auto'
+const HELP_QUIET_MINUTES = 10
+const HELP_WITHIN_HOURS = 48
+const HELP_PER_TICK = 10
+const HELP_TOPICS: string[] = ['app', 'card', 'pass']
+const HELP_TRIGGERS: Record<string, string[]> = {
+  app: ['app.boot_fail', 'app.boot_slow', 'login.link_refused'],
+  card: ['card.fail', 'card.photo_fail'],
+  pass: ['pass.fail', 'pass.photo_fail'],
+}
+const HELP_TRIGGER_SQL = Object.values(HELP_TRIGGERS).flat().map(a => `'${a}'`).join(', ')
+
+// Who is due: the latest trouble per person and kind, at least HELP_QUIET_MINUTES
+// old and inside HELP_WITHIN_HOURS, with no help email of that kind before and
+// nothing since that says they made it (the badge or pass stamp; for the app, a
+// sign-in, a start reported after a refresh, or a badge or pass begun since).
+// SQLite gives the bare `detail` of the row MAX(created_at) picked.
+async function helpMailDue(c: any, limit: number): Promise<any[]> {
+  const unsub = await unsubscribedClause(c)
+  const r = await c.env.DB.prepare(
+    `SELECT a.id, a.event_id, a.email, a.name, a.badge_type, a.payment_status, x.topic, x.failed_at, x.detail
+       FROM (SELECT entity_id, detail, MAX(created_at) AS failed_at,
+                    CASE WHEN action LIKE 'card.%' THEN 'card' WHEN action LIKE 'pass.%' THEN 'pass' ELSE 'app' END AS topic
+               FROM admin_audit
+              WHERE entity = 'attendee' AND action IN (${HELP_TRIGGER_SQL}) AND created_at > datetime('now', ?1)
+              GROUP BY entity_id, topic) x
+       JOIN attendees a ON CAST(a.id AS TEXT) = x.entity_id
+      WHERE x.failed_at <= datetime('now', ?2) AND COALESCE(a.email, '') != ''${unsub}
+        AND NOT EXISTS (SELECT 1 FROM admin_audit h WHERE h.entity = 'attendee' AND h.entity_id = x.entity_id
+                           AND h.action IN ('help.sent.' || x.topic, 'help.error.' || x.topic))
+        AND CASE x.topic
+              WHEN 'card' THEN a.social_card_downloaded_at IS NULL
+              WHEN 'pass' THEN a.pass_downloaded_at IS NULL
+              ELSE (a.last_login_at IS NULL OR a.last_login_at <= x.failed_at)
+                   AND NOT EXISTS (SELECT 1 FROM admin_audit k WHERE k.entity = 'attendee' AND k.entity_id = x.entity_id
+                                      AND k.created_at > x.failed_at AND k.action IN ('app.boot_ok', 'card.open', 'pass.open'))
+            END
+      ORDER BY x.failed_at LIMIT ?3`
+  ).bind('-' + HELP_WITHIN_HOURS + ' hours', '-' + HELP_QUIET_MINUTES + ' minutes', limit).all().catch(() => ({ results: [] })) as any
+  return r?.results || []
+}
+
+// The email. Three versions, all steps: opening the account, making the badge,
+// getting the pass. The button signs them in (a fresh four-use link, which
+// replaces the one in their earlier emails); a preview carries no link.
+async function helpMail(c: any, r: any, preview: boolean): Promise<{ subject: string; html: string }> {
+  const appUrl = (await settingValue(c, 'app_url')) || 'https://bharataiinnovation.com/app'
+  const topic = r.topic === 'card' || r.topic === 'pass' ? r.topic : 'app'
+  let wanted = ''
+  try { wanted = String(JSON.parse(r.detail || '{}')?.action || '') } catch { /* not JSON */ }
+  const action = topic === 'card' ? 'social-card' : topic === 'pass' ? 'download-pass'
+    : wanted === 'social-card' || wanted === 'download-pass' ? wanted : ''
+  const email = String(r.email || '').trim().toLowerCase()
+  let href = '#preview'
+  if (!preview) {
+    href = appUrl + '?email=' + encodeURIComponent(email) + (action ? '&action=' + action : '')
+    try {
+      if (await verifiedLoginEnabled(c)) {
+        const issued = await createLoginToken(c, r.event_id || 1, email, PROFILE_LINK_TTL_MINUTES, 4)
+        href += '&token=' + issued.token
+      }
+    } catch { /* the plain link opens the sign-in box on their address */ }
+  }
+  const first = payEsc(greetingName(r.name) || 'there')
+  const badge = String(r.badge_type || '').trim()
+  const passName = notifyKind(r) === 'paid' ? (/pass$/i.test(badge) ? badge : badge + ' Pass') : 'Free Visitor Pass'
+  const li = (t: string) => `<li style="margin:0 0 10px;">${t}</li>`
+  const openIn = li('Opened from inside Gmail, LinkedIn or WhatsApp? Tap the menu (&#8942; or the share icon) and choose <strong>Open in Chrome</strong> or <strong>Open in Safari</strong> first.')
+  const T = ({
+    app: {
+      subject: 'Your Bharat AI Innovation account: the quickest way in',
+      head: 'Your account is ready',
+      intro: `Here is the quickest way into your account for <strong>Bharat AI Innovation 2026</strong>, where your <strong>${payEsc(passName)}</strong>, your &ldquo;I&rsquo;m attending&rdquo; badge and the people coming are waiting.`,
+      button: 'Open my account',
+      lead: 'If the page is slow to open on your device:',
+      steps: [
+        li('Give it a moment on a slow connection, then refresh: <strong>Ctrl + Shift + R</strong> on a computer (<strong>Cmd + Shift + R</strong> on a Mac), or pull the page down on a phone.'),
+        openIn,
+        li('Try a private (incognito) window, or another browser: Chrome, Safari or Edge.'),
+        li('On office Wi-Fi or a VPN? Switch to mobile data for a minute, or pause your ad blocker for bharataiinnovation.com.'),
+        li(`Another way in: open <a href="${payEsc(appUrl)}" style="color:#C2410C;">bharataiinnovation.com/app</a>, tap <strong>Sign In</strong> and enter this email address. We send you a code.`),
+      ],
+    },
+    card: {
+      subject: 'Your “I’m attending” badge: quick steps',
+      head: 'Your badge is ready to make',
+      intro: 'Your &ldquo;I&rsquo;m attending&rdquo; badge is a ready-made picture with your photo, name and organisation, sized for LinkedIn, Instagram, WhatsApp and Stories, with a caption to copy.',
+      button: 'Make my badge',
+      lead: 'Quick steps:',
+      steps: [
+        li('Tap <strong>Make my badge</strong> above. It signs you in and opens your badge.'),
+        li('Add a clear photo of your face. A selfie in good light works best; any size, JPG or PNG.'),
+        li('If a photo does not go in, try another one, or tap <strong>Take a photo</strong> on your phone.'),
+        li('Tap <strong>Save picture</strong> on a phone or <strong>Download</strong> on a computer, then post it with the caption. Tag Bharat AI Innovation and add #BharatAI2026.'),
+        openIn,
+      ],
+    },
+    pass: {
+      subject: 'Your ' + passName + ': quick steps to get it',
+      head: 'Your pass is in your account',
+      intro: `Your <strong>${payEsc(passName)}</strong> for 20&ndash;21 Nov at the World Trade Center, Mumbai is in your account, with your photo and a QR code for the badge desk.`,
+      button: 'Get my pass',
+      lead: 'Quick steps:',
+      steps: [
+        li('Tap <strong>Get my pass</strong> above. It signs you in and opens your pass.'),
+        li('If asked, add a clear photo of your face. It goes on your pass, and the badge desk checks it against your photo ID.'),
+        li('Wait a few seconds for the QR code to appear, then save the pass to your phone or download it.'),
+        li('On a weak signal, try again on Wi-Fi or mobile data.'),
+        openIn,
+      ],
+    },
+  } as Record<string, { subject: string; head: string; intro: string; button: string; lead: string; steps: string[] }>)[topic]
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#f5f5f5;font-family:Arial,sans-serif;">
+    <div style="max-width:600px;margin:20px auto;background:#fff;border-radius:12px;overflow:hidden;">
+      ${emailBrandHeader(T.head, '20&ndash;21 Nov 2026 &bull; WTC Mumbai')}
+      <div style="padding:28px;">
+        <p style="margin:0 0 6px;font-size:15px;color:#333;">Hi <strong>${first}</strong>,</p>
+        <p style="margin:0 0 20px;font-size:14px;line-height:1.7;color:#555;">${T.intro}</p>
+        <div style="text-align:center;margin:0 0 8px;">
+          <a href="${payEsc(href)}" style="display:inline-block;padding:14px 34px;background:linear-gradient(135deg,#FF6B00,#FF8C38);color:#fff;text-decoration:none;border-radius:10px;font-weight:bold;font-size:15px;">${T.button} &rarr;</a>
+        </div>
+        <p style="margin:0 0 22px;font-size:12px;color:#888;text-align:center;">The button signs you in. It works for seven days.</p>
+        <p style="margin:0 0 10px;font-size:14px;font-weight:bold;color:#1E2140;">${T.lead}</p>
+        <ul style="margin:0 0 20px;padding-left:20px;font-size:13.5px;line-height:1.65;color:#444;">${T.steps.join('')}</ul>
+        <p style="margin:0;font-size:13px;line-height:1.6;color:#666;">Need a hand? Reply to this email, or write to info@bharataiinnovation.com, and we will help you.</p>
+      </div>
+    </div></body></html>`
+  return { subject: T.subject, html }
+}
+
+// One help email, claimed before it goes, the way sendPayReminder claims a
+// reminder: the claim is the help.sent.<topic> row, and only one writer's claim can
+// land, so two ticks never send two. A send that fails turns the claim into
+// help.error.<topic>, left for a person rather than tried every minute. by: who
+// pressed Send in Admin; again: send even when one went before.
+async function sendHelpMail(c: any, r: any, by?: { actor: string; kind: string }, again = false): Promise<{ sent: boolean; skipped?: string; error?: string }> {
+  const topic = HELP_TOPICS.includes(r.topic) ? r.topic : 'app'
+  const action = 'help.sent.' + topic
+  const who = by || { actor: 'scheduler', kind: 'system' }
+  const claim = await c.env.DB.prepare(
+    `INSERT INTO admin_audit (actor, actor_kind, action, entity, entity_id, detail)
+     SELECT ?1, ?2, ?3, 'attendee', ?4, ?5
+      WHERE ?6 = 1 OR NOT EXISTS (SELECT 1 FROM admin_audit WHERE entity = 'attendee' AND entity_id = ?4 AND action IN (?3, ?7))`
+  ).bind(who.actor, who.kind, action, String(r.id), JSON.stringify({ email: r.email, failed_at: r.failed_at || null }), again ? 1 : 0, 'help.error.' + topic).run()
+  if (!Number(claim?.meta?.changes)) return { sent: false, skipped: 'The steps went to this person already.' }
+  const claimId = claim?.meta?.last_row_id
+  let res: any
+  try {
+    const mail = await helpMail(c, { ...r, topic }, false)
+    res = await sendAdminEmail(c, r.email, mail.subject, mail.html)
+  } catch (e: any) { res = { ok: false, error: String(e?.message || e) } }
+  if (!res.ok) {
+    const error = String(res.error || 'not sent').slice(0, 300)
+    await c.env.DB.prepare('UPDATE admin_audit SET action = ?, detail = ? WHERE id = ?')
+      .bind('help.error.' + topic, JSON.stringify({ email: r.email, error }), claimId).run().catch(() => null)
+    return { sent: false, error }
+  }
+  return { sent: true }
+}
+
+// The minute clock's part (POST /api/cron/tick).
+async function autoSendHelpMail(c: any): Promise<any> {
+  if ((await settingValue(c, HELP_MAIL_AUTO_KEY)) === 'off') return { on: false }
+  const due = await helpMailDue(c, HELP_PER_TICK)
+  let sent = 0, failed = 0
+  for (const r of due) {
+    const out = await sendHelpMail(c, r)
+    if (out.sent) sent++
+    else if (out.error) failed++
+  }
+  return { on: true, due: due.length, sent, failed }
+}
+
+// Admin, Overview, "Pass & badge": who started the badge or the pass, what stopped
+// them, who could not open the app, and the help email's state. People, not rows.
+app.get('/api/admin/help-stats', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  const q = async (sql: string, ...args: any[]) =>
+    (((await c.env.DB.prepare(sql).bind(...args).all().catch(() => ({ results: [] }))) as any).results || [])
+  const steps = await q(
+    `SELECT action, COUNT(DISTINCT entity_id) AS people, MIN(created_at) AS first FROM admin_audit
+      WHERE entity = 'attendee' AND (action LIKE 'card.%' OR action LIKE 'pass.%' OR action LIKE 'app.boot_%'
+         OR action = 'login.link_refused' OR action LIKE 'help.sent.%' OR action LIKE 'help.error.%')
+      GROUP BY action`)
+  const made = await q(
+    `SELECT x.kind, COUNT(*) AS n FROM (SELECT entity_id, substr(action, 1, 4) AS kind, MIN(created_at) AS t FROM admin_audit
+        WHERE entity = 'attendee' AND action IN ('card.open', 'pass.open') GROUP BY entity_id, kind) x
+       JOIN attendees a ON CAST(a.id AS TEXT) = x.entity_id
+      WHERE (x.kind = 'card' AND a.social_card_downloaded_at >= x.t) OR (x.kind = 'pass' AND a.pass_downloaded_at >= x.t)
+      GROUP BY x.kind`)
+  const stuck = await q(
+    `SELECT x.kind, COUNT(*) AS n FROM (SELECT DISTINCT entity_id, substr(action, 1, 4) AS kind FROM admin_audit
+        WHERE entity = 'attendee' AND action IN ('card.fail', 'card.photo_fail', 'pass.fail', 'pass.photo_fail')) x
+       JOIN attendees a ON CAST(a.id AS TEXT) = x.entity_id
+      WHERE (x.kind = 'card' AND a.social_card_downloaded_at IS NULL) OR (x.kind = 'pass' AND a.pass_downloaded_at IS NULL)
+      GROUP BY x.kind`)
+  const reasons = await q(
+    `SELECT action, COALESCE(json_extract(detail, '$.reason'), json_extract(detail, '$.what'), '') AS why,
+            COUNT(DISTINCT COALESCE(entity_id, ip)) AS people FROM admin_audit
+      WHERE action IN ('card.fail', 'card.photo_fail', 'pass.fail', 'pass.photo_fail', 'pass.blocked', 'app.boot_fail', 'app.boot_slow', 'login.link_refused')
+        AND detail LIKE '{%'
+      GROUP BY action, why ORDER BY people DESC LIMIT 15`)
+  const browsers = await q(
+    `SELECT json_extract(detail, '$.browser') AS browser, COUNT(DISTINCT COALESCE(entity_id, ip)) AS people FROM admin_audit
+      WHERE action IN ('app.boot_fail', 'app.boot_slow') AND detail LIKE '{%' GROUP BY browser ORDER BY people DESC LIMIT 8`)
+  const visitors = await q(
+    `SELECT action, COUNT(DISTINCT ip) AS people FROM admin_audit
+      WHERE entity = 'visitor' AND action LIKE 'app.boot_%' AND created_at > datetime('now', '-7 days') GROUP BY action`)
+  const recent = await q(
+    `SELECT x.entity_id AS id, a.name, a.email, x.action, x.created_at, x.detail,
+            (SELECT MAX(h.created_at) FROM admin_audit h WHERE h.entity = 'attendee' AND h.entity_id = x.entity_id AND h.action LIKE 'help.sent.%') AS helped_at
+       FROM admin_audit x JOIN attendees a ON CAST(a.id AS TEXT) = x.entity_id
+      WHERE x.entity = 'attendee' AND x.action IN (${HELP_TRIGGER_SQL}) ORDER BY x.id DESC LIMIT 40`)
+  const firsts = steps.map((s: any) => String(s.first || '')).filter(Boolean).sort()
+  return c.json({
+    since: firsts.length ? istStamp(firsts[0]) : '',
+    steps, made, stuck, reasons, browsers, visitors,
+    recent: recent.map((r: any) => {
+      let d: any = {}
+      try { d = JSON.parse(r.detail || '{}') || {} } catch { /* not JSON */ }
+      return { id: r.id, name: r.name, email: r.email, action: r.action, at: istStamp(r.created_at), why: d.reason || d.what || '', browser: d.browser || '', helped: r.helped_at ? istStamp(r.helped_at) : '' }
+    }),
+    help: {
+      on: (await settingValue(c, HELP_MAIL_AUTO_KEY)) !== 'off', due: (await helpMailDue(c, 200)).length,
+      quiet_minutes: HELP_QUIET_MINUTES, cron_alive: (await payRemindAutoState(c)).cron_alive,
+    },
+  })
+})
+
+app.post('/api/admin/help-mail/auto', async (c) => {
+  const b = await c.req.json().catch(() => ({})) as any
+  const on = b.on !== false
+  await settingWrite(c, HELP_MAIL_AUTO_KEY, on ? 'on' : 'off')
+  await audit(c, 'help.auto', 'setting', HELP_MAIL_AUTO_KEY, { on })
+  return c.json({ ok: true, on })
+})
+
+// The exact email, for one person (their name and pass) or a made-up one. No link.
+app.get('/api/admin/help-mail/preview', async (c) => {
+  const topic = HELP_TOPICS.includes(String(c.req.query('topic'))) ? String(c.req.query('topic')) : 'app'
+  const email = String(c.req.query('email') || '').trim().toLowerCase()
+  let r: any = email
+    ? await c.env.DB.prepare('SELECT id, event_id, email, name, badge_type, payment_status, social_card_downloaded_at FROM attendees WHERE event_id = 1 AND email = ?').bind(email).first().catch(() => null)
+    : null
+  if (email && !r) return c.json({ error: 'No attendee with that email.' }, 404)
+  if (!r) r = { id: 0, event_id: 1, email: 'attendee@example.com', name: 'Asha Rao', badge_type: 'Visitor Pass', payment_status: '' }
+  const detail = topic === 'app' && !r.social_card_downloaded_at ? JSON.stringify({ action: 'social-card' }) : null
+  const mail = await helpMail(c, { ...r, topic, detail }, true)
+  return c.json({ to: r.email, subject: mail.subject, html: mail.html })
+})
+
+// By hand, to one person, whether or not one went before.
+app.post('/api/admin/help-mail/send', async (c) => {
+  const b = await c.req.json().catch(() => ({})) as any
+  const topic = HELP_TOPICS.includes(String(b.topic)) ? String(b.topic) : 'app'
+  const email = String(b.email || '').trim().toLowerCase()
+  if (!email) return c.json({ error: 'Which email?' }, 400)
+  const cols = await attendeeColumns(c)
+  const r = await c.env.DB.prepare(
+    `SELECT id, event_id, email, name, badge_type, payment_status, social_card_downloaded_at${cols.has('unsubscribed_at') ? ', unsubscribed_at' : ''} FROM attendees WHERE event_id = 1 AND email = ?`
+  ).bind(email).first().catch(() => null) as any
+  if (!r) return c.json({ error: 'No attendee with that email.' }, 404)
+  if (r.unsubscribed_at) return c.json({ error: 'This person unsubscribed from our emails, so nothing was sent.' }, 409)
+  // Sent by hand, the way-in email opens on the badge for anyone without one yet:
+  // it is what the account-ready email asked them to do, and the likeliest thing
+  // they were opening when they got stuck.
+  const detail = topic === 'app' && !r.social_card_downloaded_at ? JSON.stringify({ action: 'social-card' }) : null
+  const out = await sendHelpMail(c, { ...r, topic, detail }, adminActor(c), true)
+  return out.sent ? c.json({ sent: true }) : c.json({ sent: false, error: out.error || out.skipped }, out.error ? 502 : 200)
+})
+
 app.get('/api/admin/invoices', async (c) => invoiceListJSON(c))
 
 async function invoiceListJSON(c: any) {
@@ -6913,6 +7193,16 @@ app.post('/api/events/:id/attendees/signin', async (c) => {
 })
 
 // Login endpoint (alias for signin — used by auto-login from email links)
+// A sign-in link that no longer works (used up, expired, replaced by a newer email,
+// or from before links carried a token) is counted against its owner as
+// login.link_refused: Admin sees how many, and the help email sends a fresh one
+// (autoSendHelpMail). A mistyped code is not this, and is not counted.
+async function noteRefusedLink(c: any, eventId: any, email: any, reason: string) {
+  const who = await c.env.DB.prepare('SELECT id FROM attendees WHERE event_id = ? AND email = ?')
+    .bind(eventId, String(email || '').trim().toLowerCase()).first().catch(() => null) as any
+  if (who?.id) await auditOnceWithin(c, 'login.link_refused', Number(who.id), { reason: stepText(reason) }, 60)
+}
+
 app.post('/api/events/:id/attendees/login', async (c) => {
   const eventId = c.req.param('id')
   const { email, token, code } = await c.req.json()
@@ -6921,10 +7211,14 @@ app.post('/api/events/:id/attendees/login', async (c) => {
   // Verified path: a link token or a 6-digit code must accompany the address.
   if (await verifiedLoginEnabled(c)) {
     if (!token && !code) {
+      await noteRefusedLink(c, eventId, email, 'link without a sign-in token')
       return c.json({ error: 'verification_required', message: 'Please use the sign-in link or code we email you.' }, 403)
     }
     const redeemed = await redeemLoginToken(c, eventId, String(email).trim().toLowerCase(), token, code)
-    if (!redeemed.ok) return c.json({ error: redeemed.reason }, 401)
+    if (!redeemed.ok) {
+      if (token) await noteRefusedLink(c, eventId, email, redeemed.reason)
+      return c.json({ error: redeemed.reason }, 401)
+    }
   }
   const attendee = await c.env.DB.prepare(
     'SELECT * FROM attendees WHERE event_id = ? AND email = ?'
@@ -7069,6 +7363,108 @@ app.post('/api/attendees/:id/track-social-card', async (c) => {
   } catch {
     return c.json({ success: false, reason: 'not_migrated' })
   }
+})
+
+/* The steps on the way to a badge or a pass that the two stamps above cannot see
+ * (Admin, Overview, "Pass & badge"): who started (open), who was asked for a photo
+ * (photo_asked) and closed that box (photo_cancel), whose photo would not go in
+ * (photo_fail), what stopped the rest (fail) and what the rules held back
+ * (blocked: payment pending, not coming). One admin_audit row per step, as
+ * card.<step> / pass.<step>; the same step with the same reason within ten
+ * minutes is one row, so a person tapping twice is counted once. */
+const TRACK_STEP_KINDS = new Set(['card', 'pass'])
+const TRACK_STEPS = new Set(['open', 'photo_asked', 'photo_cancel', 'photo_fail', 'fail', 'blocked'])
+const stepText = (v: any, max = 80) => String(v ?? '').replace(/[^\w .,:;'()\/?=&-]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max)
+
+// One row per person, action and detail in any window of `minutes` (anyDetail: per
+// person and action), so a page that reports twice is counted once.
+async function auditOnceWithin(c: any, action: string, attendeeId: number, detail: any, minutes: number,
+    opts: { anyDetail?: boolean; actor?: { actor: string; kind: string } } = {}) {
+  const d = detail == null ? '' : JSON.stringify(detail).slice(0, 2000)
+  const seen = await c.env.DB.prepare(
+    `SELECT 1 FROM admin_audit WHERE entity = 'attendee' AND entity_id = ? AND action = ?
+        AND (? = 1 OR COALESCE(detail, '') = ?) AND created_at > datetime('now', ?) LIMIT 1`
+  ).bind(String(attendeeId), action, opts.anyDetail ? 1 : 0, d, '-' + minutes + ' minutes').first().catch(() => null)
+  if (!seen) await audit(c, action, 'attendee', attendeeId, d || null, opts.actor || { actor: 'attendee ' + attendeeId, kind: 'attendee' })
+}
+
+app.post('/api/attendees/:id/track-step', async (c) => {
+  const id = c.req.param('id')
+  const denied = await requireSelf(c, id); if (denied) return denied
+  // An admin passes requireSelf for anyone; what an admin does is not the person's step.
+  if (isAdminRequest(c)) return c.json({ ok: true, counted: false })
+  const b = await c.req.json().catch(() => ({})) as any
+  const kind = String(b.kind || ''), step = String(b.step || '')
+  if (!TRACK_STEP_KINDS.has(kind) || !TRACK_STEPS.has(step) || !Number.isInteger(Number(id))) return c.json({ ok: false }, 400)
+  const reason = stepText(b.reason)
+  await auditOnceWithin(c, kind + '.' + step, Number(id), reason ? { reason } : null, 10)
+  return c.json({ ok: true })
+})
+
+// "Chrome 130 on Android 14", "in-app LinkedIn, Safari 17 on iOS 17": enough to see
+// who gets stuck, without keeping a whole user agent in every row.
+function browserOf(ua: string): string {
+  const u = String(ua || '')
+  const m = (re: RegExp) => (re.exec(u) || [])[1] || ''
+  const inApp = /LinkedInApp/.test(u) ? 'LinkedIn' : /Instagram/.test(u) ? 'Instagram' : /FBAN|FBAV|FB_IAB/.test(u) ? 'Facebook'
+    : /WhatsApp/.test(u) ? 'WhatsApp' : /GSA\//.test(u) ? 'Google app' : /; wv\)/.test(u) ? 'Android WebView' : ''
+  const os = /iPhone|iPad|iPod/.test(u) ? 'iOS ' + m(/OS (\d+)_/) : /Android/.test(u) ? 'Android ' + m(/Android (\d+)/)
+    : /Windows/.test(u) ? 'Windows' : /CrOS/.test(u) ? 'ChromeOS' : /Mac OS X/.test(u) ? 'Mac' : /Linux/.test(u) ? 'Linux' : 'unknown'
+  const br = /Edg[A-Za-z]*\/\d+/.test(u) ? 'Edge ' + m(/Edg[A-Za-z]*\/(\d+)/) : /OPR\//.test(u) ? 'Opera' : /SamsungBrowser\//.test(u) ? 'Samsung Internet'
+    : /CriOS\/\d+/.test(u) ? 'Chrome ' + m(/CriOS\/(\d+)/) : /Chrome\/\d+/.test(u) ? 'Chrome ' + m(/Chrome\/(\d+)/)
+    : /FxiOS|Firefox\//.test(u) ? 'Firefox' : /Safari\//.test(u) ? 'Safari ' + m(/Version\/(\d+)/) : 'unknown'
+  return ((inApp ? 'in-app ' + inApp + ', ' : '') + br.trim() + ' on ' + os.trim()).slice(0, 80)
+}
+
+/* The startup check in /app's head (mainPageHTML) reports here: 'fail' when the
+ * page code had not started once the page was parsed (it is fetched fresh and the
+ * page opened again once, then the steps are shown), 'slow' when it was still not
+ * running after 15 s, and 'ok' when it started after either. Who it was comes from
+ * the session cookie, or from the sign-in link in the address bar, and a link only
+ * counts when its token is one this site issued for that address. Nobody known: a
+ * visitor row, at most five an hour from one address and 200 an hour in all, so
+ * the count of people stuck survives and the table cannot be filled from outside. */
+const BOOT_ACTIONS: Record<string, string> = { fail: 'app.boot_fail', slow: 'app.boot_slow', ok: 'app.boot_ok' }
+const LINK_ACTIONS = new Set(['social-card', 'download-pass', 'complete-profile', 'goals', 'pay', 'workshop', 'main-event-yes', 'main-event-no'])
+app.post('/api/app-boot', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  const b = await c.req.json().catch(() => ({})) as any
+  const action = BOOT_ACTIONS[String(b.stage || '')]
+  if (!action) return c.json({ ok: false }, 400)
+  let who: number | null = (await sessionAttendee(c).catch(() => null))?.id ?? null
+  const email = String(b.email || '').trim().toLowerCase().slice(0, 200)
+  const token = String(b.token || '')
+  if (!who && email && token.length >= 16 && token.length <= 128 && /^[0-9a-f]+$/i.test(token)) {
+    const row = await c.env.DB.prepare(
+      `SELECT a.id FROM login_tokens t JOIN attendees a ON a.event_id = t.event_id AND a.email = t.email
+        WHERE t.email = ? AND t.token_hash = ? LIMIT 1`
+    ).bind(email, await sha256Hex(token)).first().catch(() => null) as any
+    if (row?.id) who = Number(row.id)
+  }
+  const errs = (Array.isArray(b.errs) ? b.errs : []).slice(0, 4).map((e: any) => ({
+    kind: e?.kind === 'load' ? 'load' : 'error', msg: stepText(e?.msg, 160), src: stepText(e?.src, 100).replace(/ /g, ''),
+    line: Math.max(0, Math.floor(Number(e?.line) || 0)),
+  }))
+  const what = errs.length
+    ? errs.map((e: any) => e.kind === 'load' ? 'did not load ' + e.src : e.msg + (e.src ? ' (' + e.src.split('?')[0] + (e.line ? ':' + e.line : '') + ')' : '')).join('; ').slice(0, 200)
+    : b.stage === 'slow' ? 'still loading after 15 s' : b.stage === 'fail' ? 'page code did not start' : 'started'
+  const detail = {
+    what, browser: browserOf(c.req.header('User-Agent') || ''), retried: !!b.retried,
+    action: LINK_ACTIONS.has(String(b.action)) ? String(b.action) : '',
+    ms: Math.min(600000, Math.max(0, Math.round(Number(b.ms) || 0))), sw: !!b.sw, errs,
+  }
+  if (who) {
+    await auditOnceWithin(c, action, who, detail, 10, { anyDetail: true })
+    return c.json({ ok: true })
+  }
+  if (action === 'app.boot_ok') return c.json({ ok: true })
+  const ip = c.req.header('CF-Connecting-IP') || ''
+  const n = await c.env.DB.prepare(
+    `SELECT COUNT(*) AS n, SUM(CASE WHEN ip = ? THEN 1 ELSE 0 END) AS mine FROM admin_audit
+      WHERE entity = 'visitor' AND action LIKE 'app.boot_%' AND created_at > datetime('now', '-1 hour')`
+  ).bind(ip).first().catch(() => null) as any
+  if (Number(n?.mine || 0) < 5 && Number(n?.n || 0) < 200) await audit(c, action, 'visitor', null, detail, { actor: 'visitor', kind: 'visitor' })
+  return c.json({ ok: true })
 })
 
 // ==================== RSVP APIs ====================
@@ -13098,8 +13494,10 @@ app.post('/api/cron/tick', async (c) => {
   // Reminders to people who stopped paying part-way go first: they take a moment,
   // and the mail jobs below may hold this call for up to 50 s.
   const payReminders = await autoRemindToPay(c).catch((e: any) => ({ error: String(e?.message || e).slice(0, 200) }))
+  // The steps to anyone stuck on the way in, or to their badge or pass (autoSendHelpMail).
+  const helpMail = await autoSendHelpMail(c).catch((e: any) => ({ error: String(e?.message || e).slice(0, 200) }))
   const out = await tickMailJobs(c, Number(body.max_seconds) || 0, true)
-  return c.json({ ...out, campaigns: await tickCampaigns(c), pay_reminders: payReminders })
+  return c.json({ ...out, campaigns: await tickCampaigns(c), pay_reminders: payReminders, help_mail: helpMail })
 })
 
 // The admin page's view and its own ticking while it is open.
@@ -18798,9 +19196,18 @@ const PAGE_SCRIPT_HEADERS = {
 // be immutable: on 29 Oct 2026 the edge was still serving a two-day-old copy of
 // it a year ahead of expiry, so anyone offline would have run that old code.
 const PAGE_SCRIPT_HEADERS_BARE = { ...PAGE_SCRIPT_HEADERS, 'Cache-Control': 'public, max-age=600' }
-const pageScriptHeaders = (c: any) => (c.req.query('v') ? PAGE_SCRIPT_HEADERS : PAGE_SCRIPT_HEADERS_BARE)
-app.get('/app.js', (c) => c.body(pageScript('app').text, 200, pageScriptHeaders(c)))
-app.get('/admin.js', (c) => c.body(pageScript('admin').text, 200, pageScriptHeaders(c)))
+// A ?v= naming another version is answered but never kept. While a deploy rolls
+// out, the new page can ask an isolate still on the old code for the new version,
+// and that answer (old code under the new name) could be kept for a year at the
+// edge, so everyone that edge serves would run code from another deploy.
+const PAGE_SCRIPT_HEADERS_OTHER = { ...PAGE_SCRIPT_HEADERS, 'Cache-Control': 'no-store' }
+const pageScriptHeaders = (c: any, page: 'app' | 'admin') => {
+  const v = c.req.query('v')
+  if (!v) return PAGE_SCRIPT_HEADERS_BARE
+  return v === pageScript(page).version ? PAGE_SCRIPT_HEADERS : PAGE_SCRIPT_HEADERS_OTHER
+}
+app.get('/app.js', (c) => c.body(pageScript('app').text, 200, pageScriptHeaders(c, 'app')))
+app.get('/admin.js', (c) => c.body(pageScript('admin').text, 200, pageScriptHeaders(c, 'admin')))
 
 function mainPageHTML(): string {
   return `<!DOCTYPE html>
@@ -18838,6 +19245,103 @@ function mainPageHTML(): string {
   <meta name="twitter:image" content="https://bharataiinnovation.com/images/og/app.jpg">
   <meta name="twitter:image:alt" content="Your pass, schedule and meetings: the Bharat AI Innovation 2026 app">
   <link rel="stylesheet" href="${FA_CSS}">
+  <!-- Startup check. When the page code has not started by the time the page is
+       parsed, a fresh copy is fetched and the page opened again, once. If it still
+       has not started, the loading screen gives the steps that open it on this
+       device. Each outcome is reported to /api/app-boot. -->
+  <script>
+  (function () {
+    var FAILED = 'bhai_boot_failed', RETRY = 'bhai_boot_retry';
+    var t0 = Date.now(), errs = [], started = false, decided = false;
+    var q = new URLSearchParams(location.search);
+    function get(store, k) { try { return window[store].getItem(k); } catch (e) { return null; } }
+    function put(store, k, v) { try { if (v == null) window[store].removeItem(k); else window[store].setItem(k, v); } catch (e) {} }
+    function shortSrc(u) { return String(u || '').split(location.host).pop().slice(0, 120); }
+    function report(stage) {
+      var body = JSON.stringify({ stage: stage, retried: !!get('sessionStorage', RETRY), errs: errs.slice(0, 4), ms: Date.now() - t0,
+        email: q.get('email') || '', token: q.get('token') || '', action: q.get('action') || '',
+        sw: !!(navigator.serviceWorker && navigator.serviceWorker.controller) });
+      try { fetch('/api/app-boot', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body, keepalive: true }).catch(function () {}); } catch (e) {}
+    }
+    window.addEventListener('error', function (e) {
+      if (started) return;
+      var el = e && e.target;
+      if (el && el.tagName === 'SCRIPT') errs.push({ kind: 'load', src: shortSrc(el.src) });
+      else if (e && e.message) errs.push({ kind: 'error', msg: String(e.message).slice(0, 200), src: shortSrc(e.filename), line: e.lineno || 0 });
+    }, true);
+    // init() in /app.js calls this first.
+    window.__bhaiBoot = { start: function () {
+      started = true;
+      if (get('localStorage', FAILED) || get('sessionStorage', RETRY)) report('ok');
+      put('localStorage', FAILED, null);
+      put('sessionStorage', RETRY, null);
+    } };
+    function screenEl() { return document.getElementById('loading-screen'); }
+    function steps() {
+      var li = function (t) { return '<li style="margin:0 0 8px;">' + t + '</li>'; };
+      return '<div style="max-width:420px;margin:0 auto;padding:24px;text-align:left;font-family:Manrope,Arial,sans-serif;color:#1E2140;">'
+        + '<img src="/images/logo-nav.webp" alt="Bharat AI Innovation" style="height:52px;width:auto;display:block;margin:0 auto 16px;">'
+        + '<h1 style="margin:0 0 6px;font-size:20px;font-weight:800;text-align:center;">Let&rsquo;s open your account</h1>'
+        + '<p style="margin:0 0 16px;font-size:14px;line-height:1.55;color:#5B6178;text-align:center;">A few quick things that get the app open on this device:</p>'
+        + '<ul style="margin:0 0 18px;padding-left:20px;font-size:14px;line-height:1.55;">'
+        + li('Refresh the page: <strong>Ctrl + Shift + R</strong> on a computer (<strong>Cmd + Shift + R</strong> on a Mac), or pull the page down on a phone.')
+        + li('Opened from inside Gmail, LinkedIn or WhatsApp? Tap the menu and choose <strong>Open in Chrome</strong> or <strong>Open in Safari</strong>.')
+        + li('Try a private (incognito) window, or another browser: Chrome, Safari or Edge.')
+        + li('On office Wi-Fi or a VPN? Switch to mobile data for a minute, or pause your ad blocker for this site.')
+        + '</ul>'
+        + '<button type="button" id="boot-retry" style="display:block;width:100%;min-height:48px;border:0;border-radius:12px;background:linear-gradient(135deg,#FF6B00,#FF8C38);color:#fff;font-size:15px;font-weight:800;cursor:pointer;">Try again</button>'
+        + '<p style="margin:14px 0 0;font-size:12.5px;color:#5B6178;text-align:center;">Need a hand? Write to <a href="mailto:info@bharataiinnovation.com" style="color:#C2410C;">info@bharataiinnovation.com</a></p>'
+        + '</div>';
+    }
+    function showSteps() {
+      var el = screenEl();
+      if (!el) return;
+      el.style.overflowY = 'auto';
+      el.innerHTML = steps();
+      var b = document.getElementById('boot-retry');
+      if (b) b.onclick = function () { put('sessionStorage', RETRY, null); location.reload(); };
+    }
+    function notStarted() {
+      if (started || decided) return;
+      decided = true;
+      put('localStorage', FAILED, String(Date.now()));
+      var again = !!get('sessionStorage', RETRY);
+      report('fail');
+      if (again) { showSteps(); return; }
+      put('sessionStorage', RETRY, '1');
+      var el = screenEl(), p = el && el.querySelector('p');
+      if (p) p.textContent = 'Getting the latest version...';
+      // A fresh copy of the page code, past this browser's cache and the
+      // service worker's, then the page again.
+      var s = document.querySelector('script[src*="/app.js"]');
+      var src = s ? s.getAttribute('src') : '';
+      var gone = false;
+      var reopen = function () { if (!gone) { gone = true; location.reload(); } };
+      setTimeout(reopen, 8000);
+      var wipe = (window.caches && caches.keys) ? caches.keys().then(function (ks) { return Promise.all(ks.map(function (k) { return caches.delete(k); })); }) : Promise.resolve();
+      wipe.catch(function () {})
+        .then(function () { return src ? fetch(src, { cache: 'reload' }) : null; })
+        .catch(function () {})
+        .then(reopen);
+    }
+    document.addEventListener('DOMContentLoaded', function () { setTimeout(notStarted, 0); });
+    // Still parsing after 15 s: a very slow connection, or a script that never
+    // arrives. Said, and reported, but nothing is reloaded under them.
+    setTimeout(function () {
+      if (started || decided) return;
+      put('localStorage', FAILED, String(Date.now()));
+      report('slow');
+      var el = screenEl();
+      if (!el || document.getElementById('boot-slow')) return;
+      var n = document.createElement('div');
+      n.id = 'boot-slow';
+      n.style.cssText = 'position:absolute;left:0;right:0;bottom:28px;text-align:center;font-family:Manrope,Arial,sans-serif;font-size:13.5px;color:#5B6178;padding:0 16px;';
+      n.innerHTML = 'Still loading. On a slow connection this can take a little longer. <button type="button" style="margin-left:6px;border:0;background:none;color:#C2410C;font-weight:800;font-size:13.5px;text-decoration:underline;cursor:pointer;">Reload</button>';
+      n.querySelector('button').onclick = function () { location.reload(); };
+      el.appendChild(n);
+    }, 15000);
+  })();
+  </script>
   <!-- Shared with the admin panel, so a pass issued at the desk is the same
        document the holder downloaded. The pass draws its own QR with the
        encoder, so no third-party service is in the path. -->
@@ -18995,6 +19499,7 @@ function mainPageHTML(): string {
 
         <!-- Sign In Form -->
         <form id="signin-form" class="space-y-4">
+          <div id="signin-note" class="hidden text-sm leading-relaxed rounded-xl p-3" style="background:#FFF6EF;border:1px solid rgba(255,107,0,0.25);color:#1E2140;"></div>
           <div>
             <label class="text-xs text-gray-400 mb-1 block">Email Address</label>
             <input type="email" id="signin-email" autocomplete="email" inputmode="email" autocapitalize="none" spellcheck="false" placeholder="Enter your registered email" required class="w-full px-4 py-3 rounded-xl text-sm">
@@ -21846,6 +22351,8 @@ function mainPageScript(): string {
     let pendingTabAfterLogin = null; // Store tab to navigate to after login
 
     async function init() {
+      // The startup check in the page head (mainPageHTML) waits to hear this ran.
+      if (window.__bhaiBoot && window.__bhaiBoot.start) window.__bhaiBoot.start();
       // Check for ?email= param from notification email link
       const urlParams = new URLSearchParams(window.location.search);
       const emailParam = urlParams.get('email');
@@ -21867,7 +22374,19 @@ function mainPageScript(): string {
       // Always show public app first (no login required for public tabs)
       showPublicApp();
 
-      const saved = localStorage.getItem('agba_user');
+      let saved = localStorage.getItem('agba_user');
+      // A sign-in link opened in a browser already signed in as somebody else is
+      // the link's: until 29 Oct 2026 the saved account opened and the link, with
+      // whatever it was for, was dropped without a word.
+      if (saved && emailParam && urlParams.get('token')) {
+        try {
+          const was = JSON.parse(saved);
+          if (String((was && was.email) || '').trim().toLowerCase() !== String(emailParam).trim().toLowerCase()) {
+            localStorage.removeItem('agba_user');
+            saved = null;
+          }
+        } catch (e) {}
+      }
       if (saved) {
         try {
           currentUser = JSON.parse(saved);
@@ -21890,6 +22409,7 @@ function mainPageScript(): string {
         }
       } else if (emailParam) {
         // Auto-login from email link
+        let linkRefused = 0;
         try {
           const resp = await fetch(\`/api/events/\${EVENT_ID}/attendees/login\`, {
             method: 'POST',
@@ -21908,9 +22428,15 @@ function mainPageScript(): string {
             runPendingAction();
             return;
           }
+          linkRefused = resp.status;
         } catch(e) {}
         // Email param but not found — prefill sign-in
         if (emailParam) window.history.replaceState({}, '', window.location.pathname);
+        // A link that no longer signs in (used up, expired, or replaced by a newer
+        // email) used to land here signed out with nothing said, which reads as a
+        // dead link. The sign-in box opens on their address and says what to do;
+        // whatever the link was for runs once they are in (runPendingAction).
+        if (linkRefused) linkFailedSignIn(emailParam, linkRefused);
       }
 
       // Deep-links from the shared nav on other pages: /app#login opens the
@@ -22027,6 +22553,17 @@ function mainPageScript(): string {
         const emailField = document.getElementById('signin-email');
         if (emailField) { emailField.value = prefillEmail; }
       }
+    }
+
+    function linkFailedSignIn(email, status) {
+      showRegistration(email);
+      if (typeof switchAuthMode === 'function') switchAuthMode('signin');
+      const note = document.getElementById('signin-note');
+      if (!note) return;
+      note.textContent = status === 404
+        ? 'There is no account for ' + email + ' yet. Check the address, or register.'
+        : 'This sign-in link has expired. Tap Sign In and we will email you a fresh code.';
+      note.classList.remove('hidden');
     }
 
     function showApp() {
@@ -26461,6 +26998,7 @@ function mainPageScript(): string {
     async function generateEventPass(adminAttendee) {
       var user = adminAttendee || currentUser;
       if (!user) { showToast('Please sign in first', 'error'); return; }
+      if (!adminAttendee) trackStep('pass', 'open');
       var tierKey = BhaiPass.tierFor(user);
       var T = BhaiPass.TIERS[tierKey];
 
@@ -26470,6 +27008,7 @@ function mainPageScript(): string {
       // Admin downloads bypass this so the desk can still issue a pass manually.
       var awaitingPayment = String(user.payment_status || '').toLowerCase() === 'pending';
       if (awaitingPayment && ['delegate', 'premium', 'academic', 'vip'].indexOf(tierKey) >= 0 && !adminAttendee) {
+        trackStep('pass', 'blocked', 'payment pending');
         showToast('Your ' + T.label + ' will be issued once payment is confirmed.', 'error');
         return;
       }
@@ -26479,6 +27018,7 @@ function mainPageScript(): string {
         var consent = null;
         try { consent = await api.get('/api/attendees/' + user.id + '/main-event'); } catch (e) {}
         if (consent && consent.main_event === 0) {
+          trackStep('pass', 'blocked', 'not coming to the conference');
           showToast('Tell us you are coming to the conference first - the question is on My Profile.', 'error');
           switchTab('myprofile');
           return;
@@ -26505,7 +27045,7 @@ function mainPageScript(): string {
         } catch (e) { /* offline or refused: fall through to the local copy */ }
       }
       if (!adminAttendee && !hasUploadedPhoto(user.avatar_url)) {
-        var got = await askForPassPhoto(user);
+        var got = await askForPassPhoto(user, { track: 'pass' });
         if (got !== 'done') return;
       }
 
@@ -26523,14 +27063,22 @@ function mainPageScript(): string {
         tokenErr = (tk && (tk.message || tk.error)) || '';
       } catch (e) {}
       if (!passToken) {
+        if (!adminAttendee) trackStep('pass', 'fail', 'QR not prepared: ' + String(tokenErr || 'no answer').slice(0, 50));
         showToast(tokenErr || 'Could not prepare the QR code for your pass. Check your connection and try again.', 'error');
         return;
       }
 
-      var passRes = await BhaiPass.download(user, { token: passToken });
+      var passRes;
+      try { passRes = await BhaiPass.download(user, { token: passToken }); }
+      catch (e) {
+        if (!adminAttendee) trackStep('pass', 'fail', 'pass not drawn: ' + String((e && e.message) || e).slice(0, 50));
+        showToast('Your pass is not ready yet. Please try again in a moment.', 'error');
+        return;
+      }
       if (passRes && passRes.qrFailed) {
         // The renderer could not draw the code (nor fetch the fallback). A pass
         // the desk cannot scan is not issued.
+        if (!adminAttendee) trackStep('pass', 'fail', 'QR not drawn');
         showToast('The QR code on the pass could not be drawn, so it was not issued. Try again in a moment.', 'error');
         return;
       }
@@ -26538,7 +27086,9 @@ function mainPageScript(): string {
         // The renderer refused to click. Say why, and put the same uploader in
         // front of them that the gate uses, then try again if they add one.
         if (adminAttendee) { showToast('Their photo would not load, so the pass would show an initial. Not issued.', 'error'); return; }
+        trackStep('pass', 'fail', 'photo did not load');
         var againP = await askForPassPhoto(user, {
+          track: 'pass',
           title: 'We could not load your photo',
           body: 'The photo on your profile did not open, so your pass cannot be made from it. Add it again and the pass will be ready.'
         });
@@ -26564,6 +27114,8 @@ function mainPageScript(): string {
       user = user || currentUser;
       if (!user || !user.id) return Promise.resolve('cancel');
       copy = copy || {};
+      // copy.track ('card' or 'pass') counts the box being shown, closed and refused.
+      var track = copy.track || '';
       var askTitle = copy.title || 'A photo is required on your pass';
       var askBody = copy.body || 'Your pass is checked against a government photo ID at the badge desk. Adding your photo makes that check quick and stops passes being shared.';
       return new Promise(function (resolve) {
@@ -26587,7 +27139,12 @@ function mainPageScript(): string {
             '<p id="pass-photo-status" style="margin:12px 0 0;font-size:12px;color:#98a3bd;min-height:16px;"></p>' +
           '</div>';
         document.body.appendChild(wrap);
-        var close = function (r) { if (wrap.parentNode) wrap.parentNode.removeChild(wrap); resolve(r); };
+        if (track) trackStep(track, 'photo_asked');
+        var close = function (r) {
+          if (wrap.parentNode) wrap.parentNode.removeChild(wrap);
+          if (track && r === 'cancel') trackStep(track, 'photo_cancel');
+          resolve(r);
+        };
         wrap.addEventListener('click', function (e) { if (e.target === wrap) close('cancel'); });
         wrap.querySelector('#pass-photo-close').onclick = function () { close('cancel'); };
         var input = wrap.querySelector('#pass-photo-input');
@@ -26642,7 +27199,7 @@ function mainPageScript(): string {
             // "Uploading..." gives no sign the right picture was picked, and the
             // modal then vanishes before they ever see it.
             preview.src = dataUrl; preview.style.display = 'block';
-            if (dataUrl.length > 700000) { status.textContent = 'That image would not compress small enough. Please try another.'; return; }
+            if (dataUrl.length > 700000) { status.textContent = 'That image would not compress small enough. Please try another.'; if (track) trackStep(track, 'photo_fail', 'photo too large'); return; }
             var res = await api.post('/api/attendees/' + user.id + '/avatar', { image: dataUrl, fingerprint: crop.fingerprint, fingerprint_mirror: crop.fingerprintMirror });
             if (res && res.success) {
               user.avatar_url = res.avatar_url || dataUrl;
@@ -26653,11 +27210,12 @@ function mainPageScript(): string {
               close('done');
             } else {
               // The server says why - most usefully, that there is no person in it.
+              if (track) trackStep(track, 'photo_fail', (res && res.error) || 'upload refused');
               status.textContent = (res && res.error) ? res.error : 'Upload failed. Please try another image.';
               preview.style.display = 'none';
               input.value = ''; camera.value = '';
             }
-          } catch (e) { status.textContent = 'Upload failed. Please try another image.'; }
+          } catch (e) { status.textContent = 'Upload failed. Please try another image.'; if (track) trackStep(track, 'photo_fail', 'upload did not finish'); }
         };
       });
     }
@@ -26755,11 +27313,23 @@ function mainPageScript(): string {
       return 'downloaded';
     }
 
+    // What happens on the way to a badge or a pass, for Admin, Overview, "Pass &
+    // badge": started, asked for a photo, closed that box, photo refused, stopped.
+    // Done is counted already (track-pass-download, track-social-card).
+    function trackStep(kind, step, reason) {
+      if (!currentUser || !currentUser.id) return;
+      try {
+        fetch('/api/attendees/' + currentUser.id + '/track-step', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ kind: kind, step: step, reason: reason || '' }), keepalive: true }).catch(function () {});
+      } catch (e) {}
+    }
+
     var socialCard = { size: 'square', res: null, seq: 0, file: null };
 
     async function openSocialCard(preferPanel) {
       var user = currentUser;
       if (!user) { showToast('Please sign in first', 'error'); return; }
+      trackStep('card', 'open');
       /* The photo check below used to read currentUser.avatar_url straight out
        * of localStorage. That copy is whatever this browser last saw: a photo
        * removed since (by the person, from another device, or by an admin)
@@ -26781,6 +27351,7 @@ function mainPageScript(): string {
       // must not repeat the pass's reason, which is not true here.
       if (!hasUploadedPhoto(user.avatar_url)) {
         var got = await askForPassPhoto(user, {
+          track: 'card',
           title: 'Add your photo first',
           body: 'The card is built around your photo. It is what makes someone scrolling past stop and read the rest of it.'
         });
@@ -27182,7 +27753,9 @@ function mainPageScript(): string {
           socialCard.res = null;
           load.classList.add('hidden');
           closeSocialCard();
+          trackStep('card', 'fail', res.photoFailed ? 'photo did not load' : 'no photo');
           var again = await askForPassPhoto(user, {
+            track: 'card',
             title: 'We could not load your photo',
             body: 'The photo on your profile did not open, so the card cannot be made from it. Add it again and the card will be ready.'
           });
@@ -27202,6 +27775,7 @@ function mainPageScript(): string {
         load.classList.add('hidden');
       } catch (e) {
         if (mine !== socialCard.seq) return;
+        trackStep('card', 'fail', 'card not drawn: ' + String((e && e.message) || e).slice(0, 50));
         load.textContent = 'Could not draw the card. Please try again.';
       }
     }
@@ -30753,6 +31327,117 @@ function adminPageScript(): string {
         '</div>';
       console.error('[admin] ' + what + ':', err);
     }
+    // Pass & badge (GET /api/admin/help-stats): who started the badge or the pass,
+    // what stopped them, who could not open the app, and the email that sends them
+    // the steps by itself (autoSendHelpMail on the server) or from here by hand.
+    async function loadHelpFunnel() {
+      var el = document.getElementById('help-funnel');
+      if (!el) return;
+      var d;
+      try { d = await api.get('/api/admin/help-stats'); } catch (e) { el.innerHTML = ''; return; }
+      el.innerHTML = helpFunnelHTML(d || {});
+    }
+    function helpFunnelHTML(d) {
+      var by = {};
+      (d.steps || []).forEach(function (s) { by[s.action] = Number(s.people) || 0; });
+      var num = function (rows, kind) { var r = (rows || []).filter(function (x) { return x.kind === kind; })[0]; return r ? Number(r.n) || 0 : 0; };
+      var row = function (label, n, of, tip) {
+        var pct = of ? Math.round(n * 100 / of) : 0;
+        return '<div class="flex items-center gap-2 text-xs" title="' + escH(tip || '') + '">' +
+          '<span class="w-44 shrink-0 text-gray-400">' + label + '</span>' +
+          '<div class="flex-1 h-2 bg-white/5 rounded-full overflow-hidden"><div class="h-full rounded-full bg-orange-500/60" style="width:' + pct + '%"></div></div>' +
+          '<span class="w-24 text-right whitespace-nowrap font-semibold text-white">' + n + (of ? ' <span class="font-normal text-gray-500">of ' + of + '</span>' : '') + '</span></div>';
+      };
+      var h4 = function (t) { return '<h4 class="text-[10px] text-gray-500 uppercase tracking-wider mb-2">' + t + '</h4>'; };
+      var block = function (title, kind, doneLabel) {
+        var tried = by[kind + '.open'] || 0;
+        return '<div>' + h4(title) + '<div class="space-y-1.5">' +
+          row('Started', tried, 0, 'People who opened it at least once.') +
+          row('Asked for a photo', by[kind + '.photo_asked'] || 0, tried, 'They had no photo yet, so the photo box opened.') +
+          row('Closed the photo box', by[kind + '.photo_cancel'] || 0, tried, 'Closed it without adding a photo, at least once.') +
+          row('Photo did not go in', by[kind + '.photo_fail'] || 0, tried, 'A photo was refused, or the upload did not finish, at least once.') +
+          (kind === 'pass' ? row('Held back by the rules', by['pass.blocked'] || 0, tried, 'Payment pending, or not coming to the conference.') : '') +
+          row('Stopped by something else', by[kind + '.fail'] || 0, tried, 'The QR, the drawing or the photo did not load, at least once.') +
+          row(doneLabel, num(d.made, kind), tried, 'Of those who started, made it after starting.') +
+          row('Still stuck', num(d.stuck, kind), tried, 'Stopped at least once and have not made it yet.') +
+          '</div></div>';
+      };
+      var vis = {};
+      (d.visitors || []).forEach(function (v) { vis[v.action] = Number(v.people) || 0; });
+      var h = d.help || {};
+      var sent = (by['help.sent.app'] || 0) + (by['help.sent.card'] || 0) + (by['help.sent.pass'] || 0);
+      var errs = (by['help.error.app'] || 0) + (by['help.error.card'] || 0) + (by['help.error.pass'] || 0);
+      var reasons = (d.reasons || []).filter(function (r) { return r.why; }).slice(0, 8).map(function (r) {
+        return '<li class="flex justify-between gap-3"><span class="text-gray-300">' + escH(r.why) + ' <span class="text-gray-500">(' + escH(r.action) + ')</span></span><span class="font-semibold text-white">' + (Number(r.people) || 0) + '</span></li>';
+      }).join('');
+      var browsers = (d.browsers || []).map(function (b) { return escH(b.browser || 'unknown') + ' <b class="text-white">' + (Number(b.people) || 0) + '</b>'; }).join(' &middot; ');
+      var recent = (d.recent || []).map(function (r) {
+        return '<tr class="border-t border-white/5"><td class="py-1.5 pr-3 text-white">' + escH(r.name || '') + '<div class="text-[10px] text-gray-500">' + escH(r.email || '') + '</div></td>' +
+          '<td class="py-1.5 pr-3 text-gray-300">' + escH(r.action) + '<div class="text-[10px] text-gray-500">' + escH(r.why || '') + (r.browser ? ' &middot; ' + escH(r.browser) : '') + '</div></td>' +
+          '<td class="py-1.5 pr-3 text-gray-400 whitespace-nowrap">' + escH(r.at || '') + '</td>' +
+          '<td class="py-1.5 text-gray-400 whitespace-nowrap">' + (r.helped ? 'Steps sent ' + escH(r.helped) : '') + '</td></tr>';
+      }).join('');
+      return '<div class="glass rounded-xl p-5">' +
+        '<div class="flex flex-wrap items-center justify-between gap-2 mb-1"><h3 class="font-semibold text-sm"><i class="fas fa-life-ring text-orange-400 mr-2"></i>Pass &amp; badge: who tried, who got stuck</h3>' +
+        '<span class="text-[10px] text-gray-500">' + (d.since ? 'Counted since ' + escH(d.since) : 'Counting starts with the next visit') + '</span></div>' +
+        '<p class="text-[11px] text-gray-500 mb-4">People, not taps. Finished counts are the pass and badge download stamps.</p>' +
+        '<div class="grid md:grid-cols-2 gap-5 mb-5">' + block('&ldquo;I&rsquo;m attending&rdquo; badge', 'card', 'Made their badge') + block('Pass', 'pass', 'Downloaded their pass') + '</div>' +
+        '<div class="grid md:grid-cols-2 gap-5 mb-5"><div>' + h4('Getting into the app') + '<div class="space-y-1.5">' +
+          row('App did not open', by['app.boot_fail'] || 0, 0, 'Known people whose page did not start, even after the automatic refresh.') +
+          row('Slow to open (15 s+)', by['app.boot_slow'] || 0, 0, 'Still loading after 15 seconds.') +
+          row('Opened after that', by['app.boot_ok'] || 0, 0, 'Got in after the refresh or the steps on screen.') +
+          row('Link no longer signed in', by['login.link_refused'] || 0, 0, 'Used up, expired, or replaced by a newer email. They are shown the sign-in box.') +
+          row('Unknown visitors stuck (7 days)', (vis['app.boot_fail'] || 0) + (vis['app.boot_slow'] || 0), 0, 'Not signed in and no link: counted by address.') +
+          (browsers ? '<p class="text-[11px] text-gray-500 pt-1">Browsers: ' + browsers + '</p>' : '') +
+        '</div></div>' +
+        '<div>' + h4('What stopped people') + (reasons ? '<ul class="space-y-1 text-xs">' + reasons + '</ul>' : '<p class="text-xs text-gray-500">Nothing yet.</p>') + '</div></div>' +
+        '<div class="pt-4 border-t border-white/10">' +
+          '<div class="flex flex-wrap items-start justify-between gap-3 mb-3"><div><h4 class="text-sm font-semibold text-white">The steps by email</h4>' +
+          '<p class="text-[11px] text-gray-500">Goes by itself ' + (h.quiet_minutes || 10) + ' minutes after somebody is stuck, once per kind, if nothing since says they made it. ' +
+          sent + ' sent' + (errs ? ', ' + errs + ' not delivered' : '') + (h.due ? ', ' + h.due + ' due now' : '') +
+          (h.cron_alive === false ? '. The minute clock is not running, so nothing goes by itself.' : '.') + '</p></div>' +
+          '<label class="flex items-center gap-2 text-xs text-gray-300 cursor-pointer"><input type="checkbox" ' + (h.on ? 'checked' : '') + ' onchange="toggleHelpMailAuto(this.checked)"> Send by itself</label></div>' +
+          '<div class="flex flex-wrap items-center gap-2">' +
+            '<input id="help-send-email" type="email" autocomplete="off" placeholder="attendee@email.com" class="px-3 py-2 rounded-lg text-xs w-64">' +
+            '<select id="help-send-topic" class="px-3 py-2 rounded-lg text-xs"><option value="app">Opening the app</option><option value="card">Making the badge</option><option value="pass">Getting the pass</option></select>' +
+            '<button onclick="previewHelpMail()" class="px-3 py-2 rounded-lg text-xs font-medium border border-amber-500/40 text-amber-300 hover:bg-amber-500/10 transition"><i class="fas fa-eye mr-1"></i>Preview</button>' +
+            '<button onclick="sendHelpMailTo()" class="px-3 py-2 rounded-lg text-xs font-medium bg-amber-600 hover:bg-amber-500 text-white transition"><i class="fas fa-paper-plane mr-1"></i>Send the steps</button>' +
+          '</div>' +
+        '</div>' +
+        (recent ? '<details class="mt-4"><summary class="text-xs text-gray-400 cursor-pointer">Who got stuck (latest 40)</summary><div class="overflow-x-auto mt-2"><table class="w-full text-xs">' + recent + '</table></div></details>' : '') +
+        '</div>';
+    }
+    async function toggleHelpMailAuto(on) {
+      try {
+        await api.post('/api/admin/help-mail/auto', { on: !!on });
+        toast(on ? 'The steps go out by themselves again' : 'Paused: no steps go out by themselves', 'success');
+      } catch (e) { toast((e && e.message) || 'Could not change it', 'error'); }
+      loadHelpFunnel();
+    }
+    async function previewHelpMail() {
+      var email = ((document.getElementById('help-send-email') || {}).value || '').trim();
+      var topic = (document.getElementById('help-send-topic') || {}).value || 'app';
+      var w = window.open('', '_blank');
+      try {
+        var d = await api.get('/api/admin/help-mail/preview?topic=' + encodeURIComponent(topic) + '&email=' + encodeURIComponent(email));
+        if (!w) { toast('Allow pop-ups to see the preview', 'error'); return; }
+        w.document.open();
+        w.document.write('<title>' + escH(d.subject || 'Preview') + '</title><p style="font:13px Arial;margin:12px;color:#555;">To: ' + escH(d.to || '') + ' &middot; Subject: <b>' + escH(d.subject || '') + '</b></p>' + (d.html || ''));
+        w.document.close();
+      } catch (e) { if (w) w.close(); toast((e && e.message) || 'Could not build the preview', 'error'); }
+    }
+    async function sendHelpMailTo() {
+      var email = ((document.getElementById('help-send-email') || {}).value || '').trim();
+      var topic = (document.getElementById('help-send-topic') || {}).value || 'app';
+      if (!email) { toast('Enter the attendee email first', 'error'); return; }
+      if (!confirm('Send the steps (' + topic + ') to ' + email + '? The email carries a fresh sign-in link, which replaces the one in their earlier emails.')) return;
+      try {
+        var r = await api.post('/api/admin/help-mail/send', { email: email, topic: topic });
+        toast(r.sent ? 'Sent to ' + email : (r.error || 'Not sent'), r.sent ? 'success' : 'info');
+      } catch (e) { toast((e && e.message) || 'Not sent', 'error'); }
+      loadHelpFunnel();
+    }
+
     // Notification Status: what the people sent the account-ready email did next (notifyMailStats).
     function notifyFunnelHTML(m) {
       if (!m || !m.sent) return '';
@@ -31013,6 +31698,8 @@ function adminPageScript(): string {
           </div>
         </div>
 
+        <div id="help-funnel" class="mb-6"></div>
+
         <!-- RSVP Status -->
         <div class="glass rounded-xl p-5 mb-6">
           <div class="flex items-center justify-between mb-4">
@@ -31130,6 +31817,7 @@ function adminPageScript(): string {
 
       markSectionFresh();
       loadNotifyRunStrip();
+      loadHelpFunnel();
       // Render charts
       setTimeout(() => {
         loadAudience();

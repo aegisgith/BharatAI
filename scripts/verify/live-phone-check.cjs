@@ -79,6 +79,39 @@ const check = (n, ok, d) => { console.log((ok ? 'PASS ' : 'FAIL ') + n + (ok ? '
     }
     await p2.close();
   }
+
+  // The way in (29 Oct 2026), nothing written. Without its code, a fresh phone gets
+  // one refresh and then the steps (the report to /api/app-boot is answered here,
+  // never sent). A dead link for an address with no account opens the sign-in box
+  // with the note (no account, so the server records nothing). An ordinary start
+  // sends no report at all.
+  {
+    const phoneCtx = () => browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, userAgent: UA, serviceWorkers: 'block' });
+    const c3 = await phoneCtx();
+    const boots = [];
+    await c3.route(/\/api\/app-boot$/, async (r) => { boots.push(JSON.parse(r.request().postData() || '{}').stage); await r.fulfill({ json: { ok: true } }); });
+    await c3.route(/\/app\.js\?/, (r) => r.abort());
+    const p3 = await c3.newPage();
+    await p3.goto(BASE + '/app?live=' + Date.now(), { waitUntil: 'domcontentloaded', timeout: 60000 });
+    let shown = false;
+    for (let i = 0; i < 120 && !shown; i++) { await p3.waitForTimeout(250); shown = await p3.evaluate(() => !!document.getElementById('boot-retry')).catch(() => false); }
+    const panel = shown ? await p3.evaluate(() => document.getElementById('loading-screen').innerText) : '';
+    check('live /app without its code: one refresh, then the steps on screen', shown && boots.filter(s => s === 'fail').length >= 2 && /Open in Chrome/.test(panel), JSON.stringify(boots));
+    check('live steps screen never says anything went wrong', !/\b(error|problem|issue|fail\w*|sorry|bug|broken|wrong)\b/i.test(panel), panel.slice(0, 160));
+    await c3.close();
+    const c4 = await phoneCtx();
+    const reports = [];
+    c4.on('request', (r) => { if (/\/api\/app-boot/.test(r.url())) reports.push(r.url()); });
+    await c4.route(/\/api\/app-boot$/, (r) => r.fulfill({ json: { ok: true } }));
+    const p4 = await c4.newPage();
+    await p4.goto(BASE + '/app?email=nobody-live-check%40example.com&action=social-card&token=' + 'ab'.repeat(32), { waitUntil: 'load', timeout: 60000 });
+    await p4.waitForTimeout(3500);
+    const st = await p4.evaluate(() => { const n = document.getElementById('signin-note'); return { note: n ? n.textContent : '', shown: !!n && !n.classList.contains('hidden'), email: (document.getElementById('signin-email') || {}).value, loading: getComputedStyle(document.getElementById('loading-screen')).display }; });
+    check('live dead link: the sign-in box opens on the address with the note', st.shown && /expired/.test(st.note) && st.email === 'nobody-live-check@example.com' && st.loading === 'none', JSON.stringify(st));
+    check('live ordinary start sends no startup report', reports.length === 0, reports.join(','));
+    await c4.close();
+  }
+
   await browser.close();
   console.log(fails ? `\n${fails} FAILED` : '\nall live phone checks passed');
   process.exit(fails ? 1 : 0);

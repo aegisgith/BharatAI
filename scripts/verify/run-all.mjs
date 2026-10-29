@@ -26,6 +26,7 @@ const SUITES = [
   { name: 'server: one person, one registration (same email or mobile refused)', args: ['smoke-register-dupes.mjs'] },
   { name: 'server: duplicates finder and merge, on real SQLite with the production schema', args: ['smoke-merge-dupes.mjs'] },
   { name: 'server: account-ready email opened / clicked / profile marks and the Notification Status counts', args: ['smoke-notify-funnel.mjs'] },
+  { name: 'server: help email to people stuck on the way in, the badge or the pass (steps counted, startup report, dead links, the clock, by hand, /app.js caching)', args: ['smoke-help.mjs'] },
   { name: 'server: campus panel "Are you coming?"', args: ['smoke-panel-answers.mjs'] },
   { name: 'server: AI marketplace gates, pages and exhibitor invites', args: ['smoke-marketplace.mjs'] },
   { name: 'server: checkout on this site (CCAvenue), the switch, the answer, the queues', args: ['smoke-payments.mjs'] },
@@ -38,6 +39,7 @@ const SUITES = [
   // portEnv: the harness and the test read HARNESS_PORT, so a busy :8772 (another
   // session's run) moves this suite to :9772 instead of failing it.
   { name: 'browser: phone journey and admin Campus panels block', args: ['phone-test.cjs'], harness: 'phone-harness.mjs', port: 8772, portEnv: true },
+  { name: 'browser: stuck on the way in (startup check, refresh, steps, slow), a dead link, and the badge and pass steps counted', args: ['browser-help.cjs'], harness: 'phone-harness.mjs', port: 8778, portEnv: true },
   { name: 'browser: panel email as a server job (start, pace, stop, resume, done, the scheduler note)', args: ['pace-test.cjs'], harness: 'pace-harness.mjs', port: 8774 },
   { name: 'browser: buying a pass on a phone (checkout, result, retry, checkout off, invoice queues)', args: ['pay-test.cjs'], harness: 'pay-harness.mjs', port: 8776 },
 ];
@@ -73,7 +75,9 @@ if (!suites.length) { console.error(`no suite name contains "${only}"`); process
 let failed = 0;
 const summary = [];
 for (const s of suites) {
-  let harness = null, port = s.port, env = {};
+  // A harness that reads HARNESS_PORT is always told its port: two suites share
+  // phone-harness.mjs on different ports, and its own default is the phone suite's.
+  let harness = null, port = s.port, env = s.portEnv ? { HARNESS_PORT: String(s.port) } : {};
   if (s.harness) {
     if (await portAnswers(port)) {
       if (!s.portEnv || await portAnswers(port + 1000)) {
