@@ -13487,13 +13487,11 @@ async function notifyEmail(c: any, attendee: any, opts: { preview?: boolean } = 
       </div>
     </div>
     <div style="text-align:center;margin-top:20px;padding:16px 0;">
-      <table cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto;">
+      <table cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto;background:#ffffff;border-radius:12px;">
         <tr>
-          <td style="padding:0 10px;vertical-align:middle;"><img src="https://bharataiinnovation.com/wp-content/uploads/2026/02/Bharat-AI-Innovation-Expo-logo-scaled.png" alt="Bharat AI Innovation" style="height:40px;"></td>
-          <td style="padding:0 10px;vertical-align:middle;"><img src="https://bharataiinnovation.com/wp-content/uploads/2025/10/Aegis_college_new1.png" alt="Aegis School of Business" style="height:40px;"></td>
-          <td style="padding:0 10px;vertical-align:middle;"><img src="https://bharataiinnovation.com/wp-content/uploads/2023/12/Assessfy-black.png" alt="Assessfy" style="height:35px;"></td>
-          <td style="padding:0 10px;vertical-align:middle;"><img src="https://bharataiinnovation.com/wp-content/uploads/2019/06/tcoei.png" alt="TCOEI" style="height:40px;"></td>
-          <td style="padding:0 10px;vertical-align:middle;"><img src="https://bharataiinnovation.com/wp-content/uploads/2025/10/Swissnex-red-logo_76ea13ce5cec9e3d897b76c6abe4779f-400x120.png" alt="Swissnex" style="height:35px;"></td>
+          <td style="padding:12px 14px;vertical-align:middle;"><img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI Innovation" width="97" height="40" style="height:40px;width:97px;border:0;"></td>
+          <td style="padding:12px 14px;vertical-align:middle;"><img src="https://bharataiinnovation.com/images/passes/aegis.png" alt="Aegis School of Data Science and AI" width="108" height="40" style="height:40px;width:108px;border:0;"></td>
+          <td style="padding:12px 14px;vertical-align:middle;"><img src="https://bharataiinnovation.com/images/passes/assessfy.jpg" alt="Assessfy" width="102" height="35" style="height:35px;width:102px;border:0;"></td>
         </tr>
       </table>
     </div>
@@ -13796,13 +13794,11 @@ app.post('/api/admin/attendees/:id/send-thankyou', async (c) => {
     </div>
     <!-- Partner Logos Footer -->
     <div style="text-align:center;margin-top:20px;padding:16px 0;">
-      <table cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto;">
+      <table cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto;background:#ffffff;border-radius:12px;">
         <tr>
-          <td style="padding:0 10px;vertical-align:middle;"><img src="https://bharataiinnovation.com/wp-content/uploads/2026/02/Bharat-AI-Innovation-Expo-logo-scaled.png" alt="Bharat AI Innovation" style="height:40px;"></td>
-          <td style="padding:0 10px;vertical-align:middle;"><img src="https://bharataiinnovation.com/wp-content/uploads/2025/10/Aegis_college_new1.png" alt="Aegis School of Business" style="height:40px;"></td>
-          <td style="padding:0 10px;vertical-align:middle;"><img src="https://bharataiinnovation.com/wp-content/uploads/2023/12/Assessfy-black.png" alt="Assessfy" style="height:35px;"></td>
-          <td style="padding:0 10px;vertical-align:middle;"><img src="https://bharataiinnovation.com/wp-content/uploads/2019/06/tcoei.png" alt="TCOEI" style="height:40px;"></td>
-          <td style="padding:0 10px;vertical-align:middle;"><img src="https://bharataiinnovation.com/wp-content/uploads/2025/10/Swissnex-red-logo_76ea13ce5cec9e3d897b76c6abe4779f-400x120.png" alt="Swissnex" style="height:35px;"></td>
+          <td style="padding:12px 14px;vertical-align:middle;"><img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI Innovation" width="97" height="40" style="height:40px;width:97px;border:0;"></td>
+          <td style="padding:12px 14px;vertical-align:middle;"><img src="https://bharataiinnovation.com/images/passes/aegis.png" alt="Aegis School of Data Science and AI" width="108" height="40" style="height:40px;width:108px;border:0;"></td>
+          <td style="padding:12px 14px;vertical-align:middle;"><img src="https://bharataiinnovation.com/images/passes/assessfy.jpg" alt="Assessfy" width="102" height="35" style="height:35px;width:102px;border:0;"></td>
         </tr>
       </table>
     </div>
