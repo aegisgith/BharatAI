@@ -632,3 +632,18 @@ function initSpeakerBadges() {
         wrap.appendChild(badge);
     });
 }
+
+// "N days left at the standard price" wherever a page carries
+// <span data-days-left="2026-11-05"></span>. The deadline is the end of that day
+// in IST; once it has passed the span stays empty and the CSS hides it.
+(function () {
+  var els = document.querySelectorAll('[data-days-left]');
+  if (!els.length) return;
+  var now = Date.now();
+  els.forEach(function (el) {
+    var end = Date.parse(el.getAttribute('data-days-left') + 'T23:59:59+05:30');
+    if (isNaN(end) || end < now) { el.textContent = ''; return; }
+    var days = Math.ceil((end - now) / 86400000);
+    el.textContent = days <= 1 ? 'Last day at the standard price.' : days + ' days left at the standard price.';
+  });
+})();

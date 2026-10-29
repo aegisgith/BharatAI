@@ -90,12 +90,12 @@
             {
               "@type": "Question",
               "name": "Will the conference talks be recorded?",
-              "acceptedAnswer": { "@type": "Answer", "text": "Selected keynote sessions are recorded and made available to Delegate and VIP pass holders post-event via the networking app. Workshop and breakout sessions are typically in-person only." }
+              "acceptedAnswer": { "@type": "Answer", "text": "No. Bharat AI Innovation 2026 is an in-person event; conference sessions, panels and workshops are not streamed or recorded for attendees. Recordings of the Campus Series panels are at https://bharataiinnovation.com/insights." }
             },
             {
               "@type": "Question",
               "name": "Can I attend only one day of the conference?",
-              "acceptedAnswer": { "@type": "Answer", "text": "Most passes (Delegate, VIP, Academic, Visitor) cover both days. Single-day attendance is permitted with a 2-day pass — you do not need a separate ticket per day." }
+              "acceptedAnswer": { "@type": "Answer", "text": "Every paid pass (Academic, Delegate, Premium Delegate, VIP) covers both days with guaranteed entry, and you may come for one day on a two-day pass. A free Visitor Pass is admitted by time slot as available on 20 and 21 November, a half-day slot or none, confirmed by email." }
             }
           ]
         },
@@ -437,6 +437,7 @@
                 <a href="/conference" class="nav-link active">Conference</a>
                 <a href="/exhibition" class="nav-link">Exhibition</a>
                 <a href="/networking" class="nav-link">Networking</a>
+                <a href="/passes" class="nav-link">Passes</a>
                 <a href="/partner" class="nav-link">Partner</a>
                 <a href="/training-workshop" class="nav-link">Workshops</a>
                 <a href="/ai-readiness" class="nav-link">AI Readiness</a>
@@ -471,7 +472,7 @@
                 <a href="#speakers" class="conf-subnav-link">Speakers</a>
                 <a href="#schedule" class="conf-subnav-link">Schedule</a>
             </div>
-            <a href="/register" class="conf-subnav-cta">Register Free <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
+            <a href="/register#delegate" class="conf-subnav-cta">Get a Delegate Pass <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
         </div>
     </nav>
 
@@ -1634,7 +1635,7 @@
                 </div>
             </div>
             <div style="text-align:center;margin-top:2.5rem;display:flex;flex-wrap:wrap;gap:1rem;justify-content:center;align-items:center;">
-                <a href="/register" class="btn btn-primary btn-lg">Secure Your Seat <i class="fas fa-arrow-right"></i></a>
+                <a href="/register#delegate" class="btn btn-primary btn-lg">Get a Delegate Pass &mdash; &#8377;4,999 + GST until 5 Nov <i class="fas fa-arrow-right"></i></a>
                 <a href="/contact#speaking" target="_blank" class="btn btn-outline btn-lg" style="border-color:var(--saffron);color:var(--saffron);" rel="noopener noreferrer"><i class="fas fa-microphone" style="margin-right:0.5rem;"></i>Apply to Speak</a>
             </div>
         </div>
@@ -1820,7 +1821,7 @@
             </div>
             <!-- talks:end -->
             <div class="reveal" style="text-align:center;margin-top:2.5rem;">
-                <a href="exhibition.html#packages" class="btn btn-primary">Every booth includes a slot <i class="fas fa-arrow-right"></i></a>
+                <a href="/exhibition#packages" class="btn btn-primary">Every booth includes a slot <i class="fas fa-arrow-right"></i></a>
                 <a href="/contact#exhibition" class="btn btn-outline">Book a Booth</a>
             </div>
         </div>
@@ -1913,9 +1914,10 @@
         <div class="container">
             <div class="cta-content reveal">
                 <h2>Nov 20–21, 2026. <span class="accent">Be There.</span></h2>
-                <p>Policymakers, CXOs, AI researchers, and investors — two days, one building. Visitor passes are free. Delegate, VIP and Academic passes are available now.</p>
+                <p>Policymakers, CXOs, AI researchers, and investors — two days, one building. A Delegate Pass is &#8377;4,999 + GST until 5 Nov (&#8377;8,999 from 6 Nov) and has guaranteed entry on both days. A free Visitor Pass covers the exhibition floor, with entry by time slot. <span data-days-left="2026-11-05"></span></p>
                 <div class="cta-buttons">
-                    <a href="/register" class="btn btn-primary btn-xl">Register Now <i class="fas fa-arrow-right"></i></a>
+                    <a href="/register#delegate" class="btn btn-primary btn-xl">Get a Delegate Pass <i class="fas fa-arrow-right"></i></a>
+                    <a href="/passes" class="btn btn-ghost btn-xl">Compare passes</a>
                     <a href="/contact#speaking" target="_blank" rel="noopener noreferrer" class="btn btn-ghost btn-xl">Apply to Speak</a>
                 </div>
             </div>
@@ -1945,7 +1947,7 @@
                         <li><a href="/exhibition">Exhibition</a></li>
                         <li><a href="/campus-series">Campus Series</a></li>
                         <li><a href="/past-speakers">Past Speakers</a></li>
-                        <li><a href="/register">Register & Delegation</a></li>
+                        <li><a href="/passes">Passes &amp; Registration</a></li>
                         <li><a href="/startup-pitch">Startup Pitch</a></li>
                         <li><a href="/training-workshop">Workshops</a></li>
                         <li><a href="/partner">Partner</a></li>
@@ -1983,7 +1985,7 @@
         </div>
     </footer>
 
-    <script src="js/main.js?v=20261027"></script>
+    <script src="js/main.js?v=20261029"></script>
     <script>
         function switchHall(idx) {
             document.querySelectorAll('.hall-tab').forEach((t,i) => t.classList.toggle('active', i===idx));

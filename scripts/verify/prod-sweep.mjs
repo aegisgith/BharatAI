@@ -84,7 +84,15 @@ r = await hit('/app');
 r.text += (await hit('/app.js')).text;   // the app's code is its own file
 check('app page carries the new client code', ['function parseDbTime', 'function safeUrl', 'id="notif-sheet"', 'function loadThreads', 'function closeTopModal'].every(m => r.text.includes(m)), 'markers');
 r = await hit('/sw.js');
-check('service worker is bhai-v13', r.status === 200 && r.text.includes("'bhai-v13'"), r.status);
+check('service worker is bhai-v14', r.status === 200 && r.text.includes("'bhai-v14'"), r.status);
+
+// ---- the 29 Oct 2026 audit: a passes page, and the app's Visitor fixes ----
+r = await hit('/passes');
+check('/passes is served with the comparison and the VIP gala row', r.status === 200 && ['Passes for Bharat AI Innovation 2026', 'CXO Gala Networking Evening, Day 1', 'class="pcmp"'].every(m => r.text.includes(m)), r.status);
+r = await hit('/app.js');
+check('app code carries the Visitor fixes', ['function inboxEmpty', 'function downloadAgendaIcs', 'function renderVisitorChecklist', 'function inviteColleague', "reason === 'passcard'"].every(m => r.text.includes(m)), r.status);
+r = await hit('/');
+check('home hero sells the Delegate Pass first', r.status === 200 && r.text.includes('hero-passline') && r.text.indexOf('/register#delegate') < r.text.indexOf('Free Visitor Pass') && !r.text.includes('5,000+'), r.status);
 
 // ---- what a phone downloads, second pass (28 Oct 2026) ----
 r = await hit('/admin');

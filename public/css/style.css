@@ -938,6 +938,19 @@ section { position: relative; }
    - so the line ends fully visible, exactly as .hero-title and .hero-desc
    already survive that reset. Do not add a standalone `opacity: 0` here; unlike
    the keyframe's `from`, it would stick. */
+/* One line under the rally: what the free pass is and what the paid one adds,
+   so the hero answers "why pay?" before the buttons. */
+.hero-passline {
+  max-width: 640px;
+  margin: 0 auto 1.5rem;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: rgba(255,255,255,0.84);
+  text-shadow: 0 1px 10px rgba(10,13,35,0.85);
+}
+[data-days-left] { color: #FFB27A; font-weight: 700; }
+[data-days-left]:empty { display: none; }
+
 .hero-rally {
   font-family: var(--font-display);
   /* Caps at 32.8px, where this 40-character line measures ~650px and stays on
@@ -4005,18 +4018,20 @@ section { position: relative; }
     font-size: 0.975rem;
   }
 
-  /* CTAs side-by-side instead of stacked */
+  /* Stacked, full width: three in a row gave each 111px on a 390px phone and
+     the Delegate label read "ss · ₹4,999 + GS". */
   .hero-actions {
-    flex-direction: row;
+    flex-direction: column;
     flex-wrap: nowrap;
     gap: 0.625rem;
     width: 100%;
     margin-bottom: 0;
   }
   .hero-actions .btn-xl {
-    flex: 1;
-    padding: 0.85rem 0.5rem;
-    font-size: 0.875rem;
+    flex: none;
+    width: 100%;
+    padding: 0.85rem 0.75rem;
+    font-size: 0.95rem;
     justify-content: center;
     text-align: center;
     min-width: 0;
