@@ -17670,29 +17670,29 @@ ${sharedNavHTML('register')}
             <p class="rs-sent" id="rs-sent"></p>
           </div>
 
-          <p class="rs-kicker">Your next steps</p>
+          <p class="rs-kicker">What to do next</p>
           <a href="/app?action=social-card" class="rs-hero">
             <span class="rs-hero-top">
               <span class="rs-hero-ic"><i class="fas fa-camera"></i></span>
-              <span><span class="rs-pill">Start here</span><span class="rs-hero-title">Add your photo and get your &ldquo;I&rsquo;m attending&rdquo; badge</span></span>
+              <span><span class="rs-pill">Start here</span><span class="rs-hero-title">Add your photo and get your &ldquo;I&rsquo;m attending&rdquo; badge for LinkedIn</span></span>
             </span>
-            <span class="rs-hero-text">Post it on LinkedIn and WhatsApp so the people you want to meet know you are coming.</span>
+            <span class="rs-hero-text">Post it so people know you are coming. You can share it on WhatsApp too.</span>
             <span class="rs-hero-btn">Add my photo <i class="fas fa-arrow-right"></i></span>
           </a>
           <div class="rs-list">
             <a href="/app#networking" class="rs-row">
               <span class="rs-ic" style="color:#1A237E;background:#EEF0FB;"><i class="fas fa-users"></i></span>
-              <span class="rs-row-body"><strong>See who is coming</strong><span>Preview the delegate directory. Replying to anyone who writes to you is free.</span></span>
+              <span class="rs-row-body"><strong>See who is coming</strong><span>See some of the people attending. If someone messages you, replying is free.</span></span>
               <i class="fas fa-chevron-right rs-chev"></i>
             </a>
             <a href="/app#workshops" class="rs-row">
               <span class="rs-ic" style="color:#0B7A75;background:#E6F4F3;"><i class="fas fa-chalkboard-teacher"></i></span>
-              <span class="rs-row-body"><strong>Hands-on workshops</strong><span>Expert-led and seated. A seat comes with Premium Delegate and VIP.</span></span>
+              <span class="rs-row-body"><strong>Hands-on workshops</strong><span>Learn by doing, with experts. Included in the Premium Delegate and VIP passes.</span></span>
               <i class="fas fa-chevron-right rs-chev"></i>
             </a>
             <a href="/app#schedule" class="rs-row">
               <span class="rs-ic" style="color:#A66A00;background:#FFF4D6;"><i class="fas fa-calendar-alt"></i></span>
-              <span class="rs-row-body"><strong>Plan your two days</strong><span>Keynotes, panels and Innovation Talks, 20 and 21 Nov at WTC Mumbai.</span></span>
+              <span class="rs-row-body"><strong>See the programme</strong><span>Talks and panels on 20 and 21 Nov at WTC Mumbai.</span></span>
               <i class="fas fa-chevron-right rs-chev"></i>
             </a>
           </div>
@@ -17701,18 +17701,18 @@ ${sharedNavHTML('register')}
             <div class="rs-up-head">
               <span class="rs-up-ic"><i class="fas fa-shield-alt"></i></span>
               <div>
-                <p class="rs-up-title">Guarantee your entry on both days</p>
+                <p class="rs-up-title">Get confirmed entry on both days</p>
                 <p class="rs-up-sub">${FREE_ENTRY_TEXT}</p>
               </div>
             </div>
-            ${latePricing() ? '' : `<p class="rs-up-clock"><i class="fas fa-clock"></i>Standard prices until ${PRICE_DEADLINE_TEXT}</p>`}
+            ${latePricing() ? '' : `<p class="rs-up-clock"><i class="fas fa-clock"></i>These prices are valid till ${PRICE_DEADLINE_TEXT}</p>`}
             <div class="rs-tiers">
               <div class="rs-tier rs-tier-main">
                 <div class="rs-tier-top">
                   <p class="rs-tier-name">Delegate Pass</p>
                   <p class="rs-tier-price"><strong>${rsPrice('Delegate Pass')}</strong><small>+ GST</small></p>
                 </div>
-                <p class="rs-tier-perk">Every session on both days, lunch, and full networking: message anyone and book meetings.</p>
+                <p class="rs-tier-perk">All sessions on both days, lunch, and full networking. Message anyone and book meetings.</p>
                 ${latePriceTag('Delegate Pass')}
                 <a href="/register#delegate" onclick="return upgradeFromSuccess('Delegate Pass')" class="rs-btn rs-btn-main">Upgrade to Delegate <i class="fas fa-arrow-right"></i></a>
               </div>
@@ -17721,7 +17721,7 @@ ${sharedNavHTML('register')}
                   <p class="rs-tier-name" style="color:#0B7A75;">Premium Delegate</p>
                   <p class="rs-tier-price"><strong>${rsPrice('Premium Delegate Pass')}</strong><small>+ GST</small></p>
                 </div>
-                <p class="rs-tier-perk">Everything in Delegate, plus one hands-on workshop. Seats go first come, first served.</p>
+                <p class="rs-tier-perk">Everything in Delegate, plus one hands-on workshop. Workshop seats are limited.</p>
                 ${latePriceTag('Premium Delegate Pass')}
                 <a href="/register#premium" onclick="return upgradeFromSuccess('Premium Delegate Pass')" class="rs-btn rs-btn-premium">Upgrade to Premium</a>
               </div>
@@ -17730,12 +17730,12 @@ ${sharedNavHTML('register')}
                   <p class="rs-tier-name" style="color:#8A6400;">VIP Pass</p>
                   <p class="rs-tier-price"><strong>${rsPrice('VIP Pass')}</strong><small>+ GST</small></p>
                 </div>
-                <p class="rs-tier-perk">Everything in Premium, plus the CXO Gala Networking Evening on Day 1, the VIP lounge, priority seating and a speaker meet &amp; greet.</p>
+                <p class="rs-tier-perk">Everything in Premium, plus the CXO Gala Networking Evening on Day 1, VIP lounge, priority seating and a chance to meet the speakers.</p>
                 ${latePriceTag('VIP Pass')}
                 <a href="/register#vip" onclick="return upgradeFromSuccess('VIP Pass')" class="rs-btn rs-btn-vip">Upgrade to VIP</a>
               </div>
             </div>
-            <p class="rs-up-foot">Pay with the same email. We move this registration up once the payment lands, and your reference number stays the same.</p>
+            <p class="rs-up-foot">Use the same email when you pay. We upgrade your pass once the payment is received. Your reference number stays the same.</p>
           </div>
 
           <p class="rs-app"><a href="/app" id="rs-app-link">Open the networking app <i class="fas fa-arrow-right"></i></a></p>
