@@ -85,7 +85,7 @@ export function makePayDb() {
               const l = joined ? state.leads.find(x => x.email === a.email) : null;
               return { id: a.id, name: a.name, email: a.email, mobile: a.mobile, company: a.company, badge_type: a.badge_type, created_at: a.created_at || now(),
                 unsubscribed_at: a.unsubscribed_at || null, marketing_consent: a.marketing_consent ?? null,
-                ...(/AS last_order/.test(sql) ? { last_order: last ? `${last.order_id}|${last.status}|${last.created_at}` : null } : {}),
+                ...(/AS last_order/.test(sql) ? { last_order: last ? `${last.order_id}|${last.status}|${last.created_at}|${last.responded_at || ''}` : null } : {}),
                 ...(joined ? { reminded_at: l ? l.reminded_at : null, reminder_count: l ? l.reminder_count : null, reminder_error: l ? l.reminder_error : null } : {}) };
             }) };
           }
@@ -123,7 +123,9 @@ export function makePayDb() {
           if (/FROM checkout_leads l LEFT JOIN attendees a/.test(sql)) {
             return { results: state.leads.filter(l => l.page !== 'reminder').filter(l => { const a = byEmail(l.email); return !a || FREE.test(String(a.badge_type || '').trim()); }).map(l => {
               const a = byEmail(l.email);
-              return { ...l, attendee_id: a ? a.id : null, registered_badge: a ? a.badge_type : null, unsubscribed_at: a ? a.unsubscribed_at || null : null, marketing_consent: a ? a.marketing_consent ?? null : null };
+              const last = a ? state.orders.filter(o => o.attendee_id === a.id).slice(-1)[0] : null;
+              return { ...l, attendee_id: a ? a.id : null, registered_badge: a ? a.badge_type : null, unsubscribed_at: a ? a.unsubscribed_at || null : null, marketing_consent: a ? a.marketing_consent ?? null : null,
+                ...(/AS last_order/.test(sql) ? { last_order: last ? `${last.order_id}|${last.status}|${last.created_at}|${last.responded_at || ''}` : null } : {}) };
             }) };
           }
           if (/PRAGMA table_info\(staff\)/.test(sql)) return { results: ['id', 'name', 'username', 'active', 'role'].map(name => ({ name })) };
@@ -235,7 +237,7 @@ export function makePayDb() {
           }
           // The buyer's GST details (billing:<id>) and the invoice counter. Other
           // settings writes keep falling through, as they always have here.
-          if (/^INSERT INTO app_settings \(key, value, updated_at\) VALUES \(\?, \?, datetime\('now'\)\) ON CONFLICT/.test(sql) && /^billing:/.test(String(args[0]))) {
+          if (/^INSERT INTO app_settings \(key, value, updated_at\) VALUES \(\?, \?, datetime\('now'\)\) ON CONFLICT/.test(sql) && /^(billing:|pay_remind_auto$|cron_last_tick$)/.test(String(args[0]))) {
             state.settings[args[0]] = args[1];
             return { meta: { changes: 1 } };
           }
@@ -264,12 +266,27 @@ export function makePayDb() {
             }
             return { meta: { changes: 1 } };
           }
-          if (/^INSERT INTO checkout_leads \(event_id, email, name, pass_type, page, reminded_at/.test(sql)) {
-            const [email, name, pass_type, sent, inc, error] = args;
+          // The reminder's claim (sendPayReminder): it lands only while nobody holds
+          // one, or for "again" once the last is a day old; changes says who won.
+          if (/^INSERT INTO checkout_leads \(event_id, email, name, pass_type, page, reminded_at, reminder_error\)/.test(sql)) {
+            const [email, name, pass_type, again] = args;
+            state.claims = (state.claims || 0) + 1;
             const l = state.leads.find(x => x.email === email);
-            if (l) Object.assign(l, { reminded_at: sent ? now() : l.reminded_at, reminder_count: l.reminder_count + inc, reminder_error: error });
-            else state.leads.push({ id: state.leads.length + 1, event_id: 1, email, name, pass_type, page: 'reminder', created_at: now(), updated_at: now(), reminded_at: sent ? now() : null, reminder_count: inc, reminder_error: error });
+            if (!l) { state.leads.push({ id: state.leads.length + 1, event_id: 1, email, name, pass_type, page: 'reminder', created_at: now(), updated_at: now(), reminded_at: now(), reminder_count: 0, reminder_error: 'sending' }); return { meta: { changes: 1 } }; }
+            const old = !l.reminded_at || (Number(again) === 1 && Date.parse(l.reminded_at.replace(' ', 'T') + 'Z') < Date.now() - 24 * 3600000);
+            if (!old) return { meta: { changes: 0 } };
+            Object.assign(l, { reminded_at: now(), reminder_error: 'sending' });
             return { meta: { changes: 1 } };
+          }
+          if (/^UPDATE checkout_leads SET reminder_count = reminder_count \+ 1, reminder_error = NULL WHERE event_id = 1 AND email = \?$/.test(sql)) {
+            const l = state.leads.find(x => x.email === args[0]);
+            if (l) Object.assign(l, { reminder_count: l.reminder_count + 1, reminder_error: null });
+            return { meta: { changes: l ? 1 : 0 } };
+          }
+          if (/^UPDATE checkout_leads SET reminded_at = \?, reminder_error = \? WHERE event_id = 1 AND email = \?$/.test(sql)) {
+            const l = state.leads.find(x => x.email === args[2]);
+            if (l) Object.assign(l, { reminded_at: args[0], reminder_error: args[1] });
+            return { meta: { changes: l ? 1 : 0 } };
           }
           if (/INSERT INTO admin_audit/.test(sql)) { state.audits.push({ action: args[2], entity_id: args[4], detail: args[5] }); return { meta: { changes: 1 } }; }
           return { meta: { changes: 1 } };

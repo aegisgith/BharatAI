@@ -327,7 +327,7 @@ check('no secret value is in the list', !JSON.stringify(list).includes(KEY), 'se
 state.orders.find(o => o.attendee_id === 22).created_at = '2026-01-01 00:00:00';
 list = await rows();
 const N2 = list.find(x => x.kind === 'attendee' && x.id === 22) || {};
-check('an order nobody answered for an hour reads as "left the CCAvenue page"', N2.stage === 'abandoned' && /left the CCAvenue page/.test(N2.stage_label || '') && !N2.why_not, JSON.stringify(N2));
+check('an order nobody answered for ten minutes reads as "left the CCAvenue page"', N2.stage === 'abandoned' && /left the CCAvenue page/.test(N2.stage_label || '') && !N2.why_not, JSON.stringify(N2));
 r = await adminGet('/api/admin/payments-pending');
 check('and the payments queue says the same', (r.json?.results || []).find(x => x.id === 22)?.last_order?.status === 'abandoned', JSON.stringify((r.json?.results || []).find(x => x.id === 22)));
 
@@ -377,6 +377,83 @@ r = await remind({ kind: 'attendee', id: 99999 });
 check('someone not waiting to pay is sent nothing', /no longer waiting/.test(r.json?.skipped || ''), r.text);
 r = await hit('/api/admin/payments/remind', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"kind":"attendee","id":4}' }, MAIL);
 check('sending a reminder needs admin', r.status === 401, r.status);
+
+// ---- the reminder goes by itself: the minute clock (29 Oct 2026) ----
+const CRON = envOf({ ...SECRETS, ELASTIC_EMAIL_API_KEY: 'smoke-mail', CRON_SECRET: 'smoke-cron' });
+const tick = (env = CRON) => hit('/api/cron/tick', { method: 'POST', headers: { Authorization: 'Bearer smoke-cron', 'Content-Type': 'application/json' }, body: '{"max_seconds":0}' }, env);
+const ago = (min) => new Date(Date.now() - min * 60000).toISOString().slice(0, 19).replace('T', ' ');
+const addOrder = (id, status, created, answered) => state.orders.push({ id: state.orders.length + 1, order_id: 'BAI' + id + '-AUTO' + String(state.orders.length).padStart(8, '0'), attendee_id: id, pass_type: state.attendees[id].badge_type, status, created_at: created, responded_at: answered || null, amount_paise: 1 });
+const sentTo = async (run) => { const before = mail.length; const res = await run(); return { res, to: mail.slice(before).map(m => m.to).sort(), mails: mail.slice(before) }; };
+const row = (list, kind, key) => list.find(x => x.kind === kind && (kind === 'lead' ? x.email === key : x.id === key)) || {};
+person(60, { name: 'Quiet Five', email: 'q60@example.com', badge_type: 'Delegate Pass', payment_status: 'pending', created_at: ago(6) });
+person(61, { name: 'Failed Just Now', email: 'f61@example.com', badge_type: 'Delegate Pass', payment_status: 'pending', created_at: ago(9) });
+addOrder(61, 'failed', ago(3), ago(2));
+person(62, { name: 'On The Page', email: 'p62@example.com', badge_type: 'Academic Pass', payment_status: 'pending', created_at: ago(4) });
+addOrder(62, 'created', ago(3));
+person(63, { name: 'Two Days Ago', email: 'o63@example.com', badge_type: 'Delegate Pass', payment_status: 'pending', created_at: ago(2 * 24 * 60) });
+person(64, { name: 'Said No', email: 'n64@example.com', badge_type: 'Delegate Pass', payment_status: 'pending', created_at: ago(6), unsubscribed_at: ago(60) });
+person(65, { name: 'Bank Deciding', email: 'b65@example.com', badge_type: 'VIP Pass', payment_status: 'pending', created_at: ago(30) });
+addOrder(65, 'awaited', ago(25), ago(20));
+person(66, { name: 'Upgrading Now', email: 'u66@example.com', badge_type: 'Visitor Pass', payment_status: 'paid' });
+await lead({ page: 'app', email: 'u66@example.com', name: 'Upgrading Now', pass_type: 'Delegate Pass' });
+leadRow('u66@example.com').updated_at = ago(8);
+addOrder(66, 'created', ago(7));
+await lead({ page: 'register', email: 'formfive@example.com', name: 'Form Five', pass_type: 'Delegate Pass' });
+leadRow('formfive@example.com').updated_at = ago(6);
+await lead({ page: 'register', email: 'typing@example.com', name: 'Still Typing', pass_type: 'VIP Pass' }, MAIL, '203.0.113.8');
+
+r = await adminGet('/api/admin/payments/abandoned');
+list = r.json?.results || [];
+check('the list says the reminder goes by itself, and how soon', r.json?.auto?.on === true && r.json?.auto?.quiet_minutes === 5 && r.json?.auto?.page_minutes === 10, JSON.stringify(r.json?.auto));
+check('five quiet minutes after registering: due now', row(list, 'attendee', 60).auto === 'due', JSON.stringify(row(list, 'attendee', 60)));
+check('a lead quiet for five minutes: due now', row(list, 'lead', 'formfive@example.com').auto === 'due', JSON.stringify(row(list, 'lead', 'formfive@example.com')));
+check('a payment that failed two minutes ago: later, with a time', row(list, 'attendee', 61).auto === 'later' && !!row(list, 'attendee', 61).auto_on, JSON.stringify(row(list, 'attendee', 61)));
+check('on the CCAvenue page for three minutes: later, not now', row(list, 'attendee', 62).stage === 'at_checkout' && row(list, 'attendee', 62).auto === 'later', JSON.stringify(row(list, 'attendee', 62)));
+check('stopped two days ago: too old to go by itself', row(list, 'attendee', 63).auto === 'too_old', JSON.stringify(row(list, 'attendee', 63)));
+check('unsubscribed, and a bank still deciding: never by itself', row(list, 'attendee', 64).auto === null && row(list, 'attendee', 65).auto === null, JSON.stringify([row(list, 'attendee', 64).auto, row(list, 'attendee', 65).auto]));
+const U66 = row(list, 'lead', 'u66@example.com');
+check('a Visitor who pressed Proceed and is on the CCAvenue page is not reminded, though the form went quiet', U66.stage === 'at_checkout' && /right now/.test(U66.why_not || '') && U66.auto === 'later' && /then on the CCAvenue page now/.test(U66.stage_label || ''), JSON.stringify(U66));
+check('still typing: not yet', /still filling in/.test(row(list, 'lead', 'typing@example.com').why_not || '') && row(list, 'lead', 'typing@example.com').auto === 'later', JSON.stringify(row(list, 'lead', 'typing@example.com')));
+
+let t = await sentTo(() => tick());
+check('the minute clock sends exactly who is due', t.res.status === 200 && JSON.stringify(t.to) === JSON.stringify(['formfive@example.com', 'q60@example.com']) && t.res.json?.pay_reminders?.sent === 2, t.res.status + ' ' + JSON.stringify(t.to) + ' ' + JSON.stringify(t.res.json?.pay_reminders));
+check('each one is the same email the button sends', t.mails.some(m => m.to === 'formfive@example.com' && /Finish registering/.test(m.subject)) && t.mails.some(m => m.to === 'q60@example.com' && /is waiting/.test(m.subject) && /unsubscribe\?e=/.test(m.html)), JSON.stringify(t.mails.map(m => m.subject)));
+check('recorded as reminded, and audited as the scheduler', !!leadRow('q60@example.com')?.reminded_at && leadRow('q60@example.com')?.reminder_count === 1 && !leadRow('q60@example.com')?.reminder_error
+  && state.audits.some(a => a.action === 'payment.reminder' && /"auto":true/.test(a.detail || '') && /q60@/.test(a.detail || '')), JSON.stringify(leadRow('q60@example.com')));
+t = await sentTo(() => tick());
+check('the next knock sends nobody a second', t.to.length === 0, JSON.stringify(t.to));
+r = await remind({ kind: 'attendee', id: 60 });
+check('nor can the button, straight after', /reminded/.test(r.json?.skipped || '') && mail.filter(x => x.to === 'q60@example.com').length === 1, r.text);
+
+state.orders.filter(o => o.attendee_id === 61).forEach(o => { o.created_at = ago(8); o.responded_at = ago(6); });
+state.attendees[62].created_at = ago(12);
+state.orders.filter(o => o.attendee_id === 62).forEach(o => { o.created_at = ago(11); });
+t = await sentTo(() => tick());
+check('five minutes after a failure, and ten after opening CCAvenue with no answer, they go', JSON.stringify(t.to) === JSON.stringify(['f61@example.com', 'p62@example.com']) && t.mails.some(m => m.to === 'p62@example.com' && /Academic Pass is waiting/.test(m.subject)), JSON.stringify(t.to));
+
+r = await hit('/api/admin/payments/remind-auto', { method: 'POST', headers: { Authorization: 'Bearer smoke-admin', 'Content-Type': 'application/json' }, body: '{"on":false}' }, MAIL);
+check('the switch turns it off, and says so', r.status === 200 && r.json?.auto?.on === false && state.settings.pay_remind_auto === 'off', r.status + ' ' + r.text);
+leadRow('typing@example.com').updated_at = ago(6);
+t = await sentTo(() => tick());
+check('off: the clock sends nothing', t.to.length === 0 && t.res.json?.pay_reminders?.on === false, JSON.stringify(t.to));
+r = await hit('/api/admin/payments/remind-auto', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"on":true}' }, MAIL);
+check('the switch needs admin', r.status === 401, r.status);
+r = await hit('/api/admin/payments/remind-auto', { method: 'POST', headers: { Authorization: 'Bearer smoke-admin', 'Content-Type': 'application/json' }, body: '{"on":true}' }, MAIL);
+t = await sentTo(() => tick());
+check('back on: whoever came due meanwhile goes', r.json?.auto?.on === true && JSON.stringify(t.to) === JSON.stringify(['typing@example.com']), JSON.stringify(t.to));
+
+person(67, { name: 'Two Knocks', email: 'k67@example.com', badge_type: 'Delegate Pass', payment_status: 'pending', created_at: ago(6) });
+t = await sentTo(() => Promise.all([tick(), tick(), remind({ kind: 'attendee', id: 67 })]));
+check('two knocks and a button at the same moment: one email', t.to.filter(e => e === 'k67@example.com').length === 1, JSON.stringify(t.to));
+
+person(68, { name: 'Mail Down', email: 'down68@example.com', badge_type: 'Delegate Pass', payment_status: 'pending', created_at: ago(6) });
+t = await sentTo(() => tick(envOf({ ...SECRETS, CRON_SECRET: 'smoke-cron' })));
+check('a send that fails hands the claim back with the reason', t.res.json?.pay_reminders?.failed === 1 && !leadRow('down68@example.com')?.reminded_at && !!leadRow('down68@example.com')?.reminder_error, JSON.stringify(leadRow('down68@example.com')));
+t = await sentTo(() => tick());
+list = await rows();
+check('and is left for a person, not tried every minute', !t.to.includes('down68@example.com') && row(list, 'attendee', 68).auto === null && !row(list, 'attendee', 68).why_not, JSON.stringify(row(list, 'attendee', 68)));
+r = await remind({ kind: 'attendee', id: 68 });
+check('the button still sends it', r.json?.sent === true && mail.some(m => m.to === 'down68@example.com'), r.text);
 // ---- an unpaid paid pass is not a paid pass ----
 // Mail goes out after the response (waitUntil), so wait for it to arrive rather
 // than a fixed beat: under a full `npm run verify` a fixed 400 ms was too short

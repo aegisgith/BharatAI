@@ -362,6 +362,19 @@ const PHONE = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isM
     check('each says where they stopped', /closed it before Proceed to Payment/.test(text) && /left the CCAvenue page without paying/.test(text) && /started an upgrade/.test(text), text.slice(0, 400));
     const label = await page.textContent('#pay-remind-all');
     check('the bulk button counts who can be reminded', /Remind [3-9] not yet reminded/.test(label || ''), label);
+    // The harness has no scheduler, so the automatic reminder says it is not going out.
+    const autoLine = await page.textContent('#pay-remind-auto-line').catch(() => '');
+    check('the automatic reminder says honestly that no scheduler is knocking here', /Automatic reminders are on, but the scheduler \(bharatai-mail-cron\) has never knocked/.test(autoLine || ''), autoLine);
+    check('rows that stopped long ago say the button is theirs', /stopped more than a day ago, so not reminded automatically/.test(text), text.slice(0, 300));
+    await page.click('#pay-remind-auto');
+    await page.waitForFunction(() => /Automatic reminders are off/.test((document.getElementById('pay-remind-auto-line') || {}).textContent || ''), null, { timeout: 10000 }).catch(() => {});
+    check('Turn off turns it off, on the server', /Automatic reminders are off/.test(await page.textContent('#pay-remind-auto-line').catch(() => '')) && (await getState()).settings.pay_remind_auto === 'off', (await getState()).settings.pay_remind_auto);
+    await setState({ settings: { cron_last_tick: String(Date.now()) } });
+    await page.click('#pay-remind-auto');
+    await page.waitForFunction(() => /Automatic, day and night/.test((document.getElementById('pay-remind-auto-line') || {}).textContent || ''), null, { timeout: 10000 }).catch(() => {});
+    const onLine = await page.textContent('#pay-remind-auto-line').catch(() => '');
+    check('Turn on, with the scheduler knocking: it says nobody needs to press anything', /5 minutes after they stop \(10 minutes after opening the CCAvenue page/.test(onLine || '') && /Nobody needs to press anything/.test(onLine || '') && (await getState()).settings.pay_remind_auto === 'on', onLine);
+    await page.screenshot({ path: path.join(OUT, 'pay-admin-auto.png') });
     const mailBefore = (await getState()).mail.length;
     const [preview] = await Promise.all([ctx.waitForEvent('page', { timeout: 10000 }).catch(() => null), page.click('#abandoned-block button:has-text("Preview")')]);
     await sleep(800);

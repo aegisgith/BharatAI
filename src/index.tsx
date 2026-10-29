@@ -2313,6 +2313,9 @@ async function onlinePaymentsChecks(c: any): Promise<Record<string, string>> {
 const PAY_ORDER_RE = /^BAI\d{1,9}-[A-Z0-9]{8,18}$/
 const PAY_ORDERS_PER_HOUR = 10
 const PAY_LINK_MINUTES = 60
+// An order with no answer after this long is read as someone who left the
+// CCAvenue page (payStage), and their reminder can go.
+const PAY_PAGE_LEFT_MINUTES = 10
 const FREE_BADGE_RE = /^(visitor|general)( pass)?$/i
 
 // Sent to the gateway as merchant_param1 and expected back unchanged. It ties an
@@ -2884,11 +2887,13 @@ async function pendingPaymentsJSON(c: any) {
 }
 
 // What an order's state means to someone reading a list. An order nobody answered
-// for an hour is somebody who closed the CCAvenue tab: the same outcome as
-// pressing Cancel there, so the two read alike.
+// for ten minutes is somebody who closed the CCAvenue tab: the same outcome as
+// pressing Cancel there, so the two read alike. Until 29 Oct 2026 this waited an
+// hour (the life of the pay link), too late for a reminder that goes by itself.
+// A payment that does land later still settles: this is only what the list says.
 function payStage(status: string, createdAt: string): { status: string; label: string } {
   const born = Date.parse(String(createdAt || '').replace(' ', 'T') + 'Z')
-  const stale = !Number.isFinite(born) || Date.now() - born > PAY_LINK_MINUTES * 60000
+  const stale = !Number.isFinite(born) || Date.now() - born > PAY_PAGE_LEFT_MINUTES * 60000
   if (status === 'created') {
     return stale ? { status: 'abandoned', label: 'left the CCAvenue page without paying' }
       : { status: 'at_checkout', label: 'on the CCAvenue page now' }
@@ -2908,10 +2913,12 @@ function payStage(status: string, createdAt: string): { status: string; label: s
 //    says it keeps what is typed, and why.
 //  - an attendee whose paid pass is still pending: registered, then left the
 //    CCAvenue page, pressed Cancel there, or had the payment fail.
-// Admin -> Payments lists both under "Didn't finish paying", and each can be sent
-// a reminder with a one-tap link back to where they stopped, at a pace the
-// organiser picks. The reminder is campaign mail: it carries the unsubscribe
-// footer and skips anyone who unsubscribed or said no to email.
+// Admin -> Payments lists both under "Didn't finish paying", and each is sent one
+// reminder with a one-tap link back to where they stopped. Since 29 Oct 2026 it
+// goes by itself, day and night (autoRemindToPay, on the minute clock); the
+// buttons remain for anyone it does not cover. The reminder is campaign mail: it
+// carries the unsubscribe footer and skips anyone who unsubscribed or said no to
+// email.
 
 // Online checkout began on this day. A paid pass registered before it, with no
 // online attempt since, may have been paid on mUni Campus: such people are never
@@ -2920,6 +2927,17 @@ const ONLINE_CHECKOUT_FROM = '2026-10-04'
 const LEADS_PER_IP_PER_HOUR = 30
 const REMIND_AGAIN_HOURS = 24
 const RESUME_LINK_DAYS = 14
+// The organiser asked for the reminder to go "automatically, not manually, 24 by
+// 7, within 5 to 10 min" (29 Oct 2026). The minute clock sends it once a person
+// has been quiet for AUTO_REMIND_QUIET_MINUTES: no keystroke on the form, no
+// answer from CCAvenue. Leaving the CCAvenue page sends no signal at all, so that
+// reminder goes once the order is PAY_PAGE_LEFT_MINUTES old. Only people who
+// stopped within AUTO_REMIND_WITHIN_HOURS: anyone older is the organiser's to
+// send from the button, as before. app_settings pay_remind_auto = 'off' stops it.
+const AUTO_REMIND_QUIET_MINUTES = 5
+const AUTO_REMIND_WITHIN_HOURS = 24
+const AUTO_REMIND_PER_TICK = 10
+const PAY_REMIND_AUTO_KEY = 'pay_remind_auto'
 const FREE_BADGES_SQL = "lower(trim(COALESCE(a.badge_type, ''))) IN ('', 'visitor', 'visitor pass', 'general', 'general pass')"
 
 let _leadsTable = false
@@ -3010,11 +3028,33 @@ function whyNotRemind(r: any): string | null {
   if (r.stage === 'at_checkout') return 'on the CCAvenue page right now'
   if (r.stage === 'awaited') return 'the bank has not confirmed their payment yet'
   if (r.stage === 'mismatch') return 'amount mismatch: check it in CCAvenue first'
-  const seen = Date.parse(String(r.last_seen || '').replace(' ', 'T') + 'Z')
-  if (r.kind === 'lead' && Number.isFinite(seen) && Date.now() - seen < PAY_LINK_MINUTES * 60000) return 'still filling in the form (less than an hour ago)'
-  const sent = Date.parse(String(r.reminded_at || '').replace(' ', 'T') + 'Z')
+  const seen = sqlUtcMs(r.last_seen)
+  if (r.kind === 'lead' && Number.isFinite(seen) && Date.now() - seen < AUTO_REMIND_QUIET_MINUTES * 60000) return 'still filling in the form (less than ' + AUTO_REMIND_QUIET_MINUTES + ' minutes ago)'
+  const sent = sqlUtcMs(r.reminded_at)
   if (Number.isFinite(sent) && Date.now() - sent < REMIND_AGAIN_HOURS * 3600000) return 'reminded less than a day ago'
   return null
+}
+
+// SQLite's "2026-10-29 03:48:00" is UTC with no marker; Date.parse would read it
+// as local time.
+const sqlUtcMs = (v: any): number => {
+  const s = String(v || '').replace(' ', 'T')
+  return s ? Date.parse(/Z$|[+-]\d\d:?\d\d$/.test(s) ? s : s + 'Z') : NaN
+}
+// The latest of a row's stamps: the last sign of life is whichever came last.
+const lastSign = (...v: any[]): string =>
+  v.filter((x) => Number.isFinite(sqlUtcMs(x))).sort((x, y) => sqlUtcMs(x) - sqlUtcMs(y)).pop() || ''
+
+// When the minute clock sends this person their reminder (epoch ms), or null when
+// it never will: reminded already, a send that failed (a person looks at those),
+// unsubscribed, a bank still deciding, an amount to check, or registered before
+// online checkout (they may have paid on mUni Campus).
+function autoRemindAt(r: any): number | null {
+  if (r.reminded_at || r.reminder_error || r.before_online || r.suppressed) return null
+  if (r.stage === 'awaited' || r.stage === 'mismatch') return null
+  const seen = sqlUtcMs(r.last_seen)
+  if (!Number.isFinite(seen)) return null
+  return seen + (r.stage === 'at_checkout' ? PAY_PAGE_LEFT_MINUTES : AUTO_REMIND_QUIET_MINUTES) * 60000
 }
 
 async function abandonedRows(c: any): Promise<any> {
@@ -3024,9 +3064,11 @@ async function abandonedRows(c: any): Promise<any> {
   const cols = await attendeeColumns(c)
   const consent = (cols.has('unsubscribed_at') ? ', a.unsubscribed_at' : '') + (cols.has('marketing_consent') ? ', a.marketing_consent' : '')
   const marks = PAID_TIERS.map(() => '?').join(', ')
+  // The latest attempt at CCAvenue, as order|status|started|answered.
+  const lastOrderSQL = ", (SELECT o.order_id || '|' || o.status || '|' || o.created_at || '|' || COALESCE(o.responded_at, '') FROM payment_orders o WHERE o.attendee_id = a.id ORDER BY o.id DESC LIMIT 1) AS last_order"
   const people = ((await c.env.DB.prepare(
     `SELECT a.id, a.name, a.email, a.mobile, a.company, a.badge_type, a.created_at${consent}
-       ${online ? ", (SELECT o.order_id || '|' || o.status || '|' || o.created_at FROM payment_orders o WHERE o.attendee_id = a.id ORDER BY o.id DESC LIMIT 1) AS last_order" : ''}
+       ${online ? lastOrderSQL : ''}
        ${leadsOn ? ', l.reminded_at, l.reminder_count, l.reminder_error' : ''}
        FROM attendees a${leadsOn ? ' LEFT JOIN checkout_leads l ON l.event_id = a.event_id AND l.email = a.email' : ''}
       WHERE a.event_id = 1 AND a.badge_type IN (${marks})
@@ -3036,11 +3078,11 @@ async function abandonedRows(c: any): Promise<any> {
   ).bind(...PAID_TIERS).all()).results || []) as any[]
 
   const out: any[] = people.map((a: any) => {
-    const [order_id, st, at] = String(a.last_order || '').split('|')
+    const [order_id, st, at, answered] = String(a.last_order || '').split('|')
     const stage = order_id ? payStage(st, at) : { status: 'none', label: 'registered, never reached the CCAvenue page' }
     return {
       kind: 'attendee', id: a.id, name: a.name || '', email: a.email, mobile: a.mobile || '', company: a.company || '',
-      pass_type: a.badge_type, started_at: a.created_at, last_seen: at || a.created_at,
+      pass_type: a.badge_type, started_at: a.created_at, last_seen: lastSign(a.created_at, at, answered),
       stage: stage.status, stage_label: stage.label, order_id: order_id || null,
       before_online: !order_id && String(a.created_at || '') < ONLINE_CHECKOUT_FROM,
       suppressed: !!a.unsubscribed_at || String(a.marketing_consent ?? '') === '0',
@@ -3055,6 +3097,7 @@ async function abandonedRows(c: any): Promise<any> {
     const leads = ((await c.env.DB.prepare(
       `SELECT l.id, l.name, l.email, l.mobile, l.company, l.pass_type, l.page, l.created_at, l.updated_at,
               l.reminded_at, l.reminder_count, l.reminder_error, a.id AS attendee_id, a.badge_type AS registered_badge${consent}
+              ${online ? lastOrderSQL : ''}
          FROM checkout_leads l LEFT JOIN attendees a ON a.event_id = l.event_id AND a.email = l.email
         WHERE l.event_id = 1 AND l.page <> 'reminder'
           AND (a.id IS NULL OR ${FREE_BADGES_SQL})
@@ -3062,13 +3105,21 @@ async function abandonedRows(c: any): Promise<any> {
         LIMIT 300`
     ).all()).results || []) as any[]
     for (const l of leads) {
+      // A Visitor who pressed Proceed went on to CCAvenue, and what happened there
+      // decides whether they can be reminded yet: on the page now, or a bank still
+      // deciding, means not. An attempt from before their last keystroke is an
+      // older story (a minute's grace: the form's last save can land after it).
+      const [order_id, st, at, answered] = l.attendee_id ? String(l.last_order || '').split('|') : []
+      const os = order_id ? payStage(st, at) : null
+      const paying = !!os && ['at_checkout', 'awaited', 'mismatch'].includes(os.status)
+      const went = !!os && (paying || sqlUtcMs(at) >= sqlUtcMs(l.updated_at) - 60000)
+      const held = 'holds a ' + (l.registered_badge || 'Visitor Pass') + '; started an upgrade'
       out.push({
         kind: 'lead', id: l.id, name: l.name || '', email: l.email, mobile: l.mobile || '', company: l.company || '',
-        pass_type: l.pass_type, started_at: l.created_at, last_seen: l.updated_at,
-        stage: l.attendee_id ? 'upgrade_started' : 'form_only',
-        stage_label: l.attendee_id
-          ? 'holds a ' + (l.registered_badge || 'Visitor Pass') + '; started an upgrade and closed the form'
-          : 'filled in the form and closed it before Proceed to Payment',
+        pass_type: l.pass_type, started_at: l.created_at, last_seen: went ? lastSign(l.updated_at, at, answered) : l.updated_at,
+        stage: !l.attendee_id ? 'form_only' : paying ? os!.status : 'upgrade_started',
+        stage_label: !l.attendee_id ? 'filled in the form and closed it before Proceed to Payment'
+          : went ? held + ', then ' + os!.label : held + ' and closed the form',
         attendee_id: l.attendee_id || null, before_online: false,
         suppressed: !!l.unsubscribed_at || String(l.marketing_consent ?? '') === '0',
         reminded_at: l.reminded_at || null, reminder_error: l.reminder_error || null,
@@ -3076,17 +3127,53 @@ async function abandonedRows(c: any): Promise<any> {
     }
   }
 
+  const now = Date.now()
   for (const r of out) {
     r.amount = (passAmounts(r.pass_type)?.total || 0) / 100
     r.started_on = istStamp(r.started_at)
     r.reminded_on = r.reminded_at ? istStamp(r.reminded_at) : null
     r.why_not = whyNotRemind(r)
+    // What the minute clock will do: 'due' goes on its next knock, 'later' at
+    // auto_on, 'too_old' never (the button still can).
+    const at = autoRemindAt(r)
+    r.auto = at == null ? null
+      : now - sqlUtcMs(r.last_seen) > AUTO_REMIND_WITHIN_HOURS * 3600000 ? 'too_old'
+      : at <= now && !r.why_not ? 'due' : 'later'
+    r.auto_on = r.auto === 'later' ? istStamp(new Date(at as number).toISOString()) : null
   }
   out.sort((x, y) => String(y.last_seen || '').localeCompare(String(x.last_seen || '')))
   return { ready: true, leads_ready: leadsOn, online_from: ONLINE_CHECKOUT_FROM, results: out }
 }
 
-app.get('/api/admin/payments/abandoned', async (c) => c.json(await abandonedRows(c)))
+app.get('/api/admin/payments/abandoned', async (c) => c.json({ ...(await abandonedRows(c)), auto: await payRemindAutoState(c) }))
+
+// The line above the list: is the reminder going by itself, is the minute clock
+// knocking (the same three minutes as panel mail), and what it sent this week.
+async function payRemindAutoState(c: any) {
+  const last = Number(await settingValue(c, 'cron_last_tick')) || 0
+  let counts: any = null
+  try {
+    counts = await c.env.DB.prepare(
+      `SELECT SUM(json_extract(detail, '$.sent') = 1) AS sent, SUM(json_extract(detail, '$.sent') = 0) AS failed
+         FROM admin_audit WHERE action = 'payment.reminder' AND actor_kind = 'system' AND created_at > datetime('now', '-7 days')`
+    ).first()
+  } catch { /* the audit table may predate 0027 */ }
+  return {
+    on: (await settingValue(c, PAY_REMIND_AUTO_KEY)) !== 'off',
+    quiet_minutes: AUTO_REMIND_QUIET_MINUTES, page_minutes: PAY_PAGE_LEFT_MINUTES, within_hours: AUTO_REMIND_WITHIN_HOURS,
+    cron_alive: Date.now() - last < CRON_ALIVE_MS, cron_seen_seconds: last ? Math.round((Date.now() - last) / 1000) : null,
+    sent_7d: Number(counts?.sent || 0), failed_7d: Number(counts?.failed || 0),
+  }
+}
+
+// The switch beside it. On unless somebody turned it off.
+app.post('/api/admin/payments/remind-auto', async (c) => {
+  const b = await c.req.json().catch(() => ({})) as any
+  const on = b.on !== false
+  await settingWrite(c, PAY_REMIND_AUTO_KEY, on ? 'on' : 'off')
+  await audit(c, 'payment.reminder.auto', 'setting', PAY_REMIND_AUTO_KEY, { on })
+  return c.json({ ok: true, auto: await payRemindAutoState(c) })
+})
 
 // The upgrade funnel for Admin, Payments: the prompts met in the app over the last
 // fortnight (people, not rows), against the orders started and paid in the same
@@ -3150,7 +3237,7 @@ async function payReminderMail(c: any, r: any, preview: boolean): Promise<{ subj
   }
   const opening = lead
     ? `You started registering for a <strong>${pass}</strong> for Bharat AI Innovation 2026 and stopped before the payment. What you typed is saved: the button opens the form filled in, and paying takes about a minute.`
-    : r.stage === 'upgrade_started'
+    : r.kind === 'lead'
       ? `You started upgrading your registration to a <strong>${pass}</strong> and stopped before the payment. The button signs you in and opens it again, filled in.`
       : `Your <strong>${pass}</strong> for Bharat AI Innovation 2026 is registered, but the payment has not gone through, so the pass cannot be issued yet. The button signs you in and takes you straight to the secure payment page.`
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#f5f5f5;font-family:Arial,sans-serif;">
@@ -3194,21 +3281,54 @@ async function remindToPay(c: any, b: any) {
   }
   if (r.why_not) return c.json({ skipped: 'Not sent: ' + r.why_not + '.' })
   if (r.reminded_at && !b.again) return c.json({ skipped: 'Not sent: reminded already.' })
+  const out = await sendPayReminder(c, r, !!b.again, false)
+  if (out.skipped) return c.json({ skipped: out.skipped })
+  return out.sent ? c.json({ sent: true }) : c.json({ sent: false, error: out.error }, 502)
+}
 
-  const mail = await payReminderMail(c, r, false)
-  const res = await sendAdminEmail(c, r.email, mail.subject, mail.html)
-  const error = res.ok ? null : String((res as any).error || 'not sent').slice(0, 300)
-  await c.env.DB.prepare(
-    `INSERT INTO checkout_leads (event_id, email, name, pass_type, page, reminded_at, reminder_count, reminder_error)
-     VALUES (1, ?, ?, ?, 'reminder', CASE WHEN ? = 1 THEN datetime('now') END, ?, ?)
-     ON CONFLICT(event_id, email) DO UPDATE SET
-       reminded_at = COALESCE(excluded.reminded_at, checkout_leads.reminded_at),
-       reminder_count = checkout_leads.reminder_count + excluded.reminder_count,
-       reminder_error = excluded.reminder_error`
-  ).bind(r.email, r.name || '', r.pass_type || '', res.ok ? 1 : 0, res.ok ? 1 : 0, error).run()
-  await audit(c, 'payment.reminder', kind === 'lead' ? 'checkout_lead' : 'attendee', id,
-    { email: r.email, pass_type: r.pass_type, stage: r.stage, sent: res.ok, error })
-  return res.ok ? c.json({ sent: true }) : c.json({ sent: false, error }, 502)
+// One reminder, claimed before it goes. The claim is the write that marks the
+// person reminded, and only one writer's claim can land, so the minute clock, a
+// bulk run in a tab and a Remind pressed at the same moment send one email, never
+// two. A send that fails hands the claim back, with the reason.
+async function sendPayReminder(c: any, r: any, again: boolean, auto: boolean): Promise<{ sent: boolean; skipped?: string; error?: string | null }> {
+  const claim = await c.env.DB.prepare(
+    `INSERT INTO checkout_leads (event_id, email, name, pass_type, page, reminded_at, reminder_error)
+     VALUES (1, ?, ?, ?, 'reminder', datetime('now'), 'sending')
+     ON CONFLICT(event_id, email) DO UPDATE SET reminded_at = excluded.reminded_at, reminder_error = excluded.reminder_error
+      WHERE checkout_leads.reminded_at IS NULL OR (? = 1 AND checkout_leads.reminded_at < datetime('now', ?))`
+  ).bind(r.email, r.name || '', r.pass_type || '', again ? 1 : 0, '-' + REMIND_AGAIN_HOURS + ' hours').run()
+  if (!Number(claim?.meta?.changes)) return { sent: false, skipped: 'Not sent: reminded already.' }
+  let res: any
+  try {
+    const mail = await payReminderMail(c, r, false)
+    res = await sendAdminEmail(c, r.email, mail.subject, mail.html)
+  } catch (e: any) { res = { ok: false, error: String(e?.message || e) } }
+  const error = res.ok ? null : String(res.error || 'not sent').slice(0, 300)
+  await c.env.DB.prepare(res.ok
+    ? 'UPDATE checkout_leads SET reminder_count = reminder_count + 1, reminder_error = NULL WHERE event_id = 1 AND email = ?'
+    : 'UPDATE checkout_leads SET reminded_at = ?, reminder_error = ? WHERE event_id = 1 AND email = ?'
+  ).bind(...(res.ok ? [r.email] : [r.reminded_at || null, error, r.email])).run()
+  await audit(c, 'payment.reminder', r.kind === 'lead' ? 'checkout_lead' : 'attendee', r.id,
+    { email: r.email, pass_type: r.pass_type, stage: r.stage, sent: !!res.ok, error, ...(auto ? { auto: true } : {}) },
+    auto ? { actor: 'scheduler', kind: 'system' } : undefined)
+  return res.ok ? { sent: true } : { sent: false, error }
+}
+
+// The minute clock's part (POST /api/cron/tick): everyone due is sent their one
+// reminder with nobody pressing anything. It reads exactly as the list reads, so
+// what the admin page says will go is what goes. A send that fails is left for a
+// person to look at, rather than tried every minute.
+async function autoRemindToPay(c: any): Promise<any> {
+  if ((await settingValue(c, PAY_REMIND_AUTO_KEY)) === 'off') return { on: false }
+  if (!(await checkoutLeadsReady(c))) return { on: true, ready: false }
+  const due = ((await abandonedRows(c)).results || []).filter((r: any) => r.auto === 'due')
+  let sent = 0, failed = 0
+  for (const r of due.slice(0, AUTO_REMIND_PER_TICK)) {
+    const out = await sendPayReminder(c, r, false, true)
+    if (out.sent) sent++
+    else if (out.error) failed++
+  }
+  return { on: true, due: due.length, sent, failed }
 }
 
 app.get('/api/admin/invoices', async (c) => invoiceListJSON(c))
@@ -12867,8 +12987,11 @@ app.post('/api/cron/tick', async (c) => {
   const token = header.startsWith('Bearer ') ? header.slice(7) : ''
   if (!want || !token || !safeEqualA(token, want)) return c.json({ error: 'unauthorized' }, 401)
   const body = await c.req.json().catch(() => ({})) as any
+  // Reminders to people who stopped paying part-way go first: they take a moment,
+  // and the mail jobs below may hold this call for up to 50 s.
+  const payReminders = await autoRemindToPay(c).catch((e: any) => ({ error: String(e?.message || e).slice(0, 200) }))
   const out = await tickMailJobs(c, Number(body.max_seconds) || 0, true)
-  return c.json({ ...out, campaigns: await tickCampaigns(c) })
+  return c.json({ ...out, campaigns: await tickCampaigns(c), pay_reminders: payReminders })
 })
 
 // The admin page's view and its own ticking while it is open.
@@ -29329,9 +29452,10 @@ function adminPageScript(): string {
     // ============ DIDN'T FINISH PAYING ============
     // Everyone who started buying a pass and stopped: a paid form filled in and
     // closed before Proceed, or a registration that never got through CCAvenue.
-    // Each can be sent one reminder. A run goes one email at a time with a gap, as
-    // panel email does, and lives in this tab; the server refuses a second
-    // reminder within a day whatever this page asks.
+    // Each is sent one reminder, by the server on its own a few minutes after they
+    // stop (the line at the top says whether that is running). The buttons are for
+    // the rest: a run goes one email at a time with a gap and lives in this tab;
+    // the server refuses a second reminder within a day whatever this page asks.
     var _abandoned = [];
     var _abandonedMeta = null;
     var _payRemindRun = null;
@@ -29344,6 +29468,37 @@ function adminPageScript(): string {
     }
     function payRemindEligible(r, everyone) {
       return !r.why_not && !r.reminded_at && (everyone || !r.before_online);
+    }
+    function payRemindAutoLine(auto) {
+      if (!auto) return '';
+      var sw = function (on, label) {
+        return '<button id="pay-remind-auto" onclick="setPayRemindAuto(' + on + ')" class="ml-2 px-2 py-0.5 rounded-md text-[11px] glass hover:bg-white/10 text-gray-300">' + label + '</button>';
+      };
+      if (!auto.on) return '<p id="pay-remind-auto-line" class="text-[11px] text-gray-400 mb-2">Automatic reminders are off: nobody is reminded unless you press Remind.' + sw(true, 'Turn on') + '</p>';
+      var week = (auto.sent_7d || auto.failed_7d) ? ' Last 7 days: ' + auto.sent_7d + ' sent automatically' +
+        (auto.failed_7d ? ', ' + auto.failed_7d + ' could not be sent (the rows in red: press Remind on them)' : '') + '.' : '';
+      if (!auto.cron_alive) {
+        var since = auto.cron_seen_seconds == null ? 'has never knocked' : 'has not knocked for ' + Math.max(1, Math.round(auto.cron_seen_seconds / 60)) + ' min';
+        return '<p id="pay-remind-auto-line" class="text-[11px] text-amber-300 mb-2">Automatic reminders are on, but the scheduler (bharatai-mail-cron) ' + since + ', so none are going out. Handbook section 17 says how to check it.' + week + sw(false, 'Turn off') + '</p>';
+      }
+      return '<p id="pay-remind-auto-line" class="text-[11px] text-green-400 mb-2">Automatic, day and night: each person is sent their one reminder ' + auto.quiet_minutes +
+        ' minutes after they stop (' + auto.page_minutes + ' minutes after opening the CCAvenue page, if it never answers). Nobody needs to press anything.' + week + sw(false, 'Turn off') + '</p>';
+    }
+    function payRemindAutoNote(r, auto) {
+      if (!auto || !auto.on || !r.auto) return '';
+      if (r.auto === 'due') return '<div class="text-[11px] text-green-400">automatic reminder going out within a minute</div>';
+      if (r.auto === 'later') return '<div class="text-[11px] text-gray-400">automatic reminder about ' + deskEsc(r.auto_on) + (r.stage === 'at_checkout' ? ', if they have not paid by then' : '') + '</div>';
+      return '<div class="text-[11px] text-gray-500">stopped more than a day ago, so not reminded automatically: Remind sends it</div>';
+    }
+    async function setPayRemindAuto(on) {
+      var ask = on ? 'Turn automatic reminders on? Anyone who stopped in the last day and has not been reminded is sent theirs within a minute.'
+        : 'Turn automatic reminders off? Nobody will be reminded unless you press Remind.';
+      if (!confirm(ask)) return;
+      try {
+        await api.post('/api/admin/payments/remind-auto', { on: !!on });
+        toast(on ? 'Automatic reminders are on' : 'Automatic reminders are off', 'success');
+      } catch (e) { toast(e.message || 'Not changed', 'error'); }
+      loadAbandoned();
     }
     async function loadAbandoned() {
       var el = document.getElementById('abandoned-block');
@@ -29365,6 +29520,7 @@ function adminPageScript(): string {
       var gapNow = payRemindGap();
       var waiting = _abandoned.filter(function (r) { return payRemindEligible(r, everyone); }).length;
       var running = !!(_payRemindRun && !_payRemindRun.stopped && !_payRemindRun.done);
+      var auto = (_abandonedMeta && _abandonedMeta.auto) || null;
       var rows = _abandoned.map(function (r, i) {
         var state = r.reminder_error ? '<span class="text-red-400">last reminder failed: ' + deskEsc(r.reminder_error) + '</span>'
           : r.reminded_at ? '<span class="text-green-400">reminded ' + deskEsc(r.reminded_on) + '</span>' : '';
@@ -29375,6 +29531,7 @@ function adminPageScript(): string {
               (r.before_online ? ' &middot; <span class="text-amber-300">registered before online checkout, may have paid on mUni Campus</span>' : '') + '</div>' +
             (state ? '<div class="text-[11px]">' + state + '</div>' : '') +
             (r.why_not ? '<div class="text-[11px] text-gray-500">not now: ' + deskEsc(r.why_not) + '</div>' : '') +
+            payRemindAutoNote(r, auto) +
           '</div>' +
           '<span class="px-2 py-0.5 rounded-full text-[10px] bg-amber-500/15 text-amber-300">' + deskEsc(r.pass_type) + '</span>' +
           '<span class="text-[11px] text-gray-400">&#8377;' + Number(r.amount || 0).toLocaleString('en-IN') + '</span>' +
@@ -29398,7 +29555,8 @@ function adminPageScript(): string {
               ? '<button id="pay-remind-all" onclick="stopPayReminders()" class="px-3 py-1.5 rounded-lg text-[11px] bg-red-500/20 text-red-300"><i class="fas fa-stop mr-1"></i>Stop</button>'
               : '<button id="pay-remind-all" onclick="startPayReminders()"' + (waiting ? '' : ' disabled style="opacity:.4"') + ' class="px-3 py-1.5 rounded-lg text-[11px] bg-primary-500 text-white">Remind ' + waiting + ' not yet reminded</button>') +
           '</div></div>' +
-        '<p class="text-[11px] text-gray-500 mb-1">Everyone who started buying a pass and stopped: filled in the form and closed it, or registered and never got through CCAvenue. One reminder each, with a one-tap link back to where they stopped. Anyone who unsubscribed is skipped.</p>' +
+        '<p class="text-[11px] text-gray-500 mb-1">Everyone who started buying a pass and stopped: filled in the form and closed it, or registered and never got through CCAvenue. One reminder each, with a one-tap link back to where they stopped. Anyone who unsubscribed is skipped. The button is for anyone the automatic reminder does not cover, such as people who stopped more than a day ago.</p>' +
+        payRemindAutoLine(auto) +
         ((_abandonedMeta && _abandonedMeta.leads_ready === false) ? '<p class="text-[11px] text-amber-300 mb-1">Forms closed before Proceed are not being kept yet, and reminders cannot be sent: migration 0046 has not run.</p>' : '') +
         '<p id="pay-remind-progress" class="text-[11px] text-amber-300 min-h-4 mb-2">' + deskEsc((_payRemindRun && _payRemindRun.lastSay) || '') + '</p>' +
         '<div class="max-h-96 overflow-y-auto pr-1">' + rows + '</div></div>';
