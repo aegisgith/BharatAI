@@ -73,7 +73,9 @@ check('check-in reset needs admin', r.status === 401, r.status);
 r = await hit('/api/admin/events/1/attendees/not-arrived.csv');
 check('not-arrived export needs admin', r.status === 401, r.status);
 r = await hit('/admin');
-r.text += (await hit('/admin.js')).text;   // the admin page's code is its own file
+// The admin page's code is its own file; read the one the page asks for (the bare
+// /admin.js at the edge was a 30-hour-old immutable copy on 29 Oct 2026).
+r.text += (await hit('/admin.js?v=' + ((/\/admin\.js\?v=([0-9a-f]{8})/.exec(r.text) || [])[1] || ''))).text;
 check('admin page carries the new tools', r.text.includes('downloadCsvViaApi') && r.text.includes('checkin-reset') && !/export\?token=/.test(r.text), 'markers');
 // ---- attendee batch ----
 r = await hit('/api/attendees/1/threads');
@@ -170,7 +172,9 @@ check('the jobs view needs admin', r.status === 401, r.status);
 r = await hit('/api/admin/mail-jobs/tick', { method: 'POST' });
 check('the page tick needs admin', r.status === 401, r.status);
 r = await hit('/admin');
-r.text += (await hit('/admin.js')).text;   // the admin page's code is its own file
+// The admin page's code is its own file; read the one the page asks for (the bare
+// /admin.js at the edge was a 30-hour-old immutable copy on 29 Oct 2026).
+r.text += (await hit('/admin.js?v=' + ((/\/admin\.js\?v=([0-9a-f]{8})/.exec(r.text) || [])[1] || ''))).text;
 check('the admin page runs panel email as server jobs', r.text.includes('function startMailJob') && r.text.includes('mail-jobs/tick') && !r.text.includes('pumpPanelReports'), 'markers');
 check('the admin Overview has the Pass & badge card with Send the steps', r.text.includes('function loadHelpFunnel') && r.text.includes('/api/admin/help-mail/send'), 'markers');
 
