@@ -18074,7 +18074,7 @@ ${sharedNavHTML('register')}
               <span class="rs-hero-ic"><i class="fas fa-camera"></i></span>
               <span><span class="rs-pill">Start here</span><span class="rs-hero-title">Add your photo and get your &ldquo;I&rsquo;m attending&rdquo; badge for LinkedIn</span></span>
             </span>
-            <span class="rs-hero-text">Post it so people know you are coming. You can share it on WhatsApp too.</span>
+            <span class="rs-hero-text">Post it on LinkedIn and WhatsApp so the people you want to meet know you are coming.</span>
             <span class="rs-hero-btn">Add my photo <i class="fas fa-arrow-right"></i></span>
           </a>
           <div class="rs-list">
