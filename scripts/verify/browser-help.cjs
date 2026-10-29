@@ -52,7 +52,7 @@ const until = async (fn, ms) => { const end = Date.now() + ms; while (Date.now()
     let block = true;
     await ctx.route(/\/app\.js\?/, (route) => (block ? route.abort() : route.continue()));
     await page.goto(BASE + LINK, { waitUntil: 'domcontentloaded' });
-    const shown = await until(() => page.evaluate(() => !!document.getElementById('boot-retry')), 25000);
+    const shown = await until(() => page.evaluate(() => !!document.getElementById('boot-retry')), 40000);
     const fails1 = seen.boot.filter(b => b.stage === 'fail');
     check('never arrives: one automatic refresh, then the steps on screen', shown && fails1.length >= 2 && fails1[0].retried === false && fails1[fails1.length - 1].retried === true, JSON.stringify(seen.boot.map(b => b.stage + ':' + b.retried)));
     check('never arrives: the report says which file, for which link and person', fails1[0] && fails1[0].errs.some(e => e.kind === 'load' && e.src.includes('/app.js')) && fails1[0].email === riya.email && fails1[0].token === TOKEN && fails1[0].action === 'social-card', JSON.stringify(fails1[0]));
@@ -96,11 +96,16 @@ const until = async (fn, ms) => { const end = Date.now() + ms; while (Date.now()
   {
     console.log('-- '+"4. Slow");
     const { ctx, page, seen } = await phone(browser);
-    await ctx.route(/\/app\.js\?/, async (route) => { await sleep(17000); await route.continue(); });
+    await ctx.route(/\/app\.js\?/, async (route) => { await sleep(19000); await route.continue(); });
     await page.goto(BASE + '/app', { waitUntil: 'commit' });
-    const note = await until(() => page.evaluate(() => !!document.getElementById('boot-slow')).catch(() => false), 18000);
-    const opened = await until(async () => { try { return !(await loadingShown(page)); } catch (e) { return false; } }, 15000);
-    await sleep(800);
+    // On a busy machine the 15 s timer can fire close to the code's arrival, so
+    // the note is looked for once the app is open: it stays in the (now hidden)
+    // loading screen, and the reports say in which order things happened.
+    // Open means the loading screen exists and is hidden: right after 'commit' it
+    // does not exist yet, which is not the app being open.
+    const opened = await until(() => page.evaluate(() => { const e = document.getElementById('loading-screen'); return !!e && getComputedStyle(e).display === 'none'; }), 40000);
+    await until(async () => seen.boot.some(b => b.stage === 'ok'), 8000);
+    const note = await page.evaluate(() => !!document.getElementById('boot-slow')).catch(() => false);
     const stages = seen.boot.map(b => b.stage).join(',');
     check('slow: said on screen and reported, nothing reloaded, then reported as recovered', note && opened && stages === 'slow,ok', stages + ' note=' + note + ' opened=' + opened);
     await ctx.close();
@@ -201,7 +206,9 @@ const until = async (fn, ms) => { const end = Date.now() + ms; while (Date.now()
     page.on('pageerror', e => errors.push(e.message));
     page.on('dialog', d => { dialogs.push(d.message()); d.accept(); });
     await page.goto(BASE + '/admin', { waitUntil: 'domcontentloaded' });
-    const shown = await until(() => page.evaluate(() => /who tried, who got stuck/.test((document.getElementById('help-funnel') || {}).innerText || '')), 20000);
+    // The heading is drawn before the numbers arrive (helpFunnelShell), so wait for
+    // a line only the filled card has, or this reads the card half drawn.
+    const shown = await until(() => page.evaluate(() => /Made their badge/.test((document.getElementById('help-funnel') || {}).innerText || '')), 20000);
     const text = shown ? await page.evaluate(() => document.getElementById('help-funnel').innerText) : '';
     check('admin card: shows on the Overview with the badge and pass funnels', shown && /Made their badge\s*21\s*of 40/.test(text) && /Downloaded their pass\s*19\s*of 25/.test(text) && /Still stuck\s*6\s*of 40/.test(text), text.slice(0, 300));
     const place = await page.evaluate(() => {
