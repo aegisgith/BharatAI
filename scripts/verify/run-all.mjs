@@ -23,6 +23,7 @@ if (!existsSync(join(root, 'dist', '_worker.js'))) {
 const SUITES = [
   { name: 'server: admin, desk, security and attendee routes', args: ['smoke-routes.mjs', 'attendee'] },
   { name: 'server: free-pass directory teaser', args: ['smoke-directory-teaser.mjs'] },
+  { name: 'server: an unpaid paid pass is not shown as that pass (directory, connections, leads, admin counts), on real SQLite', args: ['smoke-unpaid-pass.mjs'] },
   { name: 'server: one person, one registration (same email or mobile refused)', args: ['smoke-register-dupes.mjs'] },
   { name: 'server: duplicates finder and merge, on real SQLite with the production schema', args: ['smoke-merge-dupes.mjs'] },
   { name: 'server: account-ready email opened / clicked / profile marks and the Notification Status counts', args: ['smoke-notify-funnel.mjs'] },

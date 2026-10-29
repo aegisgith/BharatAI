@@ -88,7 +88,7 @@ r = await hit('/app');
 r.text += (await hit('/app.js?v=' + ((/\/app\.js\?v=([0-9a-f]{8})/.exec(r.text) || [])[1] || ''))).text;
 check('app page carries the new client code', ['function parseDbTime', 'function safeUrl', 'id="notif-sheet"', 'function loadThreads', 'function closeTopModal'].every(m => r.text.includes(m)), 'markers');
 r = await hit('/sw.js');
-check('service worker is bhai-v17 (the pass draws its own QR; the encoder is precached)', r.status === 200 && r.text.includes("'bhai-v17'") && r.text.includes('/js/vendor/qrcode-generator.js?v=20261029'), r.status);
+check('service worker is bhai-v18 (unpaid tiers no longer cached as VIP; the QR encoder still precached)', r.status === 200 && r.text.includes("'bhai-v18'") && r.text.includes('/js/vendor/qrcode-generator.js?v=20261029'), r.status);
 
 // ---- the 29 Oct 2026 audit: a passes page, and the app's Visitor fixes ----
 r = await hit('/passes');

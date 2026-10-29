@@ -426,7 +426,17 @@ app.get('/api/events/:id/sessions/rooms', async (c) => {
 // the last sign-in. Nothing writes last_seen, so last_login_at is the only real
 // signal available; true presence would need a heartbeat from the client.
 const ONLINE_WINDOW_MINUTES = 15
-const ATTENDEE_PUBLIC_COLS = `id, event_id, name, company, job_title, bio, avatar_url, company_logo_url, networking_goals, interests, linkedin_url, twitter_url, website_url, role, badge_type, CASE WHEN last_login_at > datetime('now', '-${ONLINE_WINDOW_MINUTES} minutes') THEN 1 ELSE 0 END AS is_online, last_seen, industry, city, country`
+// A paid tier chosen and not paid for (left the CCAvenue page, or refunded) is a
+// Visitor Pass until the money lands (unpaidPaidPass), so that is the pass other
+// attendees are shown. Until 29 Oct 2026 the directory, connections and exhibitor
+// leads showed everyone who abandoned a VIP checkout as a VIP. The tiers are
+// PAID_TIERS, spelled out because that const is declared further down. t is a
+// table alias with its dot ('a1.'), or empty.
+const unpaidTierSql = (t: string = ''): string =>
+  `(${t}badge_type IN ('Delegate Pass', 'Premium Delegate Pass', 'VIP Pass', 'Academic Pass') AND LOWER(TRIM(COALESCE(${t}payment_status, ''))) IN ('pending', 'refunded'))`
+const publicBadgeSql = (t: string = ''): string => `(CASE WHEN ${unpaidTierSql(t)} THEN 'Visitor Pass' ELSE ${t}badge_type END)`
+const PUBLIC_BADGE_COL = `${publicBadgeSql()} AS badge_type`
+const ATTENDEE_PUBLIC_COLS = `id, event_id, name, company, job_title, bio, avatar_url, company_logo_url, networking_goals, interests, linkedin_url, twitter_url, website_url, role, ${PUBLIC_BADGE_COL}, CASE WHEN last_login_at > datetime('now', '-${ONLINE_WINDOW_MINUTES} minutes') THEN 1 ELSE 0 END AS is_online, last_seen, industry, city, country`
 
 // What the ADMIN grid actually renders, plus what its row actions need: the CSV
 // export built in the browser, the pass download, notify, the segment filters and
@@ -817,6 +827,14 @@ async function paymentStatusEnabled(c: any): Promise<boolean> {
     _paymentStatusCol = (results || []).some((r: any) => r.name === 'payment_status')
   } catch { _paymentStatusCol = false }
   return _paymentStatusCol
+}
+
+// The pass an admin count files a row under. A paid tier not paid for is counted
+// apart ("VIP Pass · not paid"), never as a sale; attPassLabel() in the admin
+// page says the same, so the grid, its filter and these counts agree.
+async function passLabelSql(c: any): Promise<string> {
+  if (!(await paymentStatusEnabled(c))) return 'badge_type'
+  return `(CASE WHEN ${unpaidTierSql()} THEN badge_type || ' · not paid' ELSE badge_type END)`
 }
 
 // Columns the admin panel may write on an attendee. Shared by the full edit (PUT),
@@ -4164,7 +4182,7 @@ app.get('/api/admin/checkin-stats', async (c) => {
   const totals = await c.env.DB.prepare(
     'SELECT COUNT(*) AS total, SUM(CASE WHEN checked_in_at IS NOT NULL THEN 1 ELSE 0 END) AS checked_in FROM attendees WHERE 1 = 1' + mc).first() as any
   const byTier = await c.env.DB.prepare(
-    `SELECT COALESCE(badge_type, 'Visitor Pass') AS badge_type, COUNT(*) AS total,
+    `SELECT COALESCE(${await passLabelSql(c)}, 'Visitor Pass') AS badge_type, COUNT(*) AS total,
             SUM(CASE WHEN checked_in_at IS NOT NULL THEN 1 ELSE 0 END) AS checked_in
      FROM attendees WHERE 1 = 1${mc} GROUP BY 1 ORDER BY 2 DESC`).all() as any
   const recent = await c.env.DB.prepare(
@@ -4647,7 +4665,9 @@ function staffScanHTML(me: any): string {
      resEl.innerHTML=j.results.map(function(a){
        var esc=function(v){ return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); };
        var sub=[a.job_title,a.company].filter(Boolean).map(esc).join(', ');
-       var state=a.checked_in_at? '<em>Already in &middot; '+esc(a.checked_in_ist)+'</em>' : esc(a.badge_type||'');
+       // A paid tier not paid for is not that pass; the verify screen says PAYMENT PENDING.
+       var unpaid=['Delegate Pass','Premium Delegate Pass','VIP Pass','Academic Pass'].indexOf(String(a.badge_type||''))>=0 && ['pending','refunded'].indexOf(String(a.payment_status||'').toLowerCase())>=0;
+       var state=a.checked_in_at? '<em>Already in &middot; '+esc(a.checked_in_ist)+'</em>' : esc(a.badge_type||'')+(unpaid?' &middot; <b style="color:#b3261e">not paid</b>':'');
        return '<a class="hit" href="/verify/'+encodeURIComponent(a.token)+'"><b>'+esc(a.name)+'</b>'+
               '<span>'+(sub?sub+' &middot; ':'')+esc(a.ref)+'</span><span>'+state+'</span></a>';
      }).join('');
@@ -6159,7 +6179,7 @@ app.get('/api/events/:id/attendees', async (c) => {
     // Exhibitor, Jury) live in `role`, pass tiers (Delegate Pass, VIP Pass,
     // Visitor Pass) live in `badge_type`. Matching only `role` meant every pass
     // option searched a column that never holds a pass name.
-    where += ' AND (role LIKE ? OR badge_type LIKE ?)'
+    where += ` AND (role LIKE ? OR ${publicBadgeSql()} LIKE ?)`
     params.push(`%${role}%`, `%${role}%`)
   }
   if (interest) {
@@ -7568,7 +7588,7 @@ app.get('/api/attendees/:id/connections', async (c) => {
       CASE WHEN c.from_attendee_id = ? THEN a2.id ELSE a1.id END as other_id,
       CASE WHEN (CASE WHEN c.from_attendee_id = ? THEN a2.last_login_at ELSE a1.last_login_at END) > datetime('now', '-${ONLINE_WINDOW_MINUTES} minutes') THEN 1 ELSE 0 END as other_online,
       CASE WHEN c.from_attendee_id = ? THEN a2.avatar_url ELSE a1.avatar_url END as other_avatar,
-      CASE WHEN c.from_attendee_id = ? THEN a2.badge_type ELSE a1.badge_type END as other_badge
+      CASE WHEN c.from_attendee_id = ? THEN ${publicBadgeSql('a2.')} ELSE ${publicBadgeSql('a1.')} END as other_badge
     FROM connections c
     JOIN attendees a1 ON c.from_attendee_id = a1.id
     JOIN attendees a2 ON c.to_attendee_id = a2.id
@@ -11099,7 +11119,9 @@ app.get('/api/attendees/:id/dashboard', async (c) => {
   const batched = await c.env.DB.batch([
     // Was SELECT * — returned email, mobile and every other column, bypassing the
     // ATTENDEE_PUBLIC_COLS allowlist that protects the directory.
-    c.env.DB.prepare(`SELECT ${isAdminRequest(c) ? '*' : ATTENDEE_PUBLIC_COLS + ', email, mobile, badge_type, rsvp_status, pass_downloaded_at, social_card_downloaded_at'} FROM attendees WHERE id = ?`).bind(id),
+    // The person's own row carries the pass they chose, not the one others see, so
+    // an unpaid VIP is still offered Pay now for the VIP Pass.
+    c.env.DB.prepare(`SELECT ${isAdminRequest(c) ? '*' : ATTENDEE_PUBLIC_COLS.replace(PUBLIC_BADGE_COL, 'badge_type') + ', email, mobile, rsvp_status, pass_downloaded_at, social_card_downloaded_at'} FROM attendees WHERE id = ?`).bind(id),
     c.env.DB.prepare(statsSql).bind(...new Array(11).fill(id)),
     // Recent connections with names. other_online used to read the raw is_online
     // column, which is never cleared - every contact showed a green dot forever.
@@ -12007,7 +12029,7 @@ app.get('/api/attendees/:id/exhibitor/leads', async (c) => {
   if (!exhibitor) return c.json({ exhibitor: null, leads: [], summary: { total: 0, interested: 0 } })
   const { results: leads } = await c.env.DB.prepare(`
     SELECT bv.id, bv.interested, bv.notes, bv.visited_at,
-           a.name, a.email, a.company, a.job_title, a.avatar_url, a.linkedin_url, a.badge_type
+           a.name, a.email, a.company, a.job_title, a.avatar_url, a.linkedin_url, ${publicBadgeSql('a.')} AS badge_type
     FROM booth_visits bv JOIN attendees a ON bv.attendee_id = a.id
     WHERE bv.exhibitor_id = ? ORDER BY bv.visited_at DESC
   `).bind(exhibitor.id).all()
@@ -16173,7 +16195,7 @@ app.get('/api/admin/events/:id/analytics', async (c) => {
   const mc = await mainEventClause(c)
   
   const attendeesByRole = await c.env.DB.prepare('SELECT role, COUNT(*) as count FROM attendees WHERE event_id=?' + mc + ' GROUP BY role').bind(eventId).all()
-  const attendeesByBadge = await c.env.DB.prepare('SELECT badge_type, COUNT(*) as count FROM attendees WHERE event_id=?' + mc + ' GROUP BY badge_type').bind(eventId).all()
+  const attendeesByBadge = await c.env.DB.prepare('SELECT ' + await passLabelSql(c) + ' AS badge_type, COUNT(*) as count FROM attendees WHERE event_id=?' + mc + ' GROUP BY 1').bind(eventId).all()
   const sessionsByType = await c.env.DB.prepare('SELECT session_type, COUNT(*) as count FROM sessions WHERE event_id=? GROUP BY session_type').bind(eventId).all()
   const sessionsByTrack = await c.env.DB.prepare('SELECT track, COUNT(*) as count FROM sessions WHERE event_id=? AND track IS NOT NULL GROUP BY track').bind(eventId).all()
   const connectionsByStatus = await c.env.DB.prepare('SELECT status, COUNT(*) as count FROM connections WHERE event_id=? GROUP BY status').bind(eventId).all()
@@ -16233,14 +16255,14 @@ app.get('/api/admin/events/:id/growth', async (c) => {
     ? `SUM(CASE WHEN social_card_downloaded_at IS NOT NULL THEN 1 ELSE 0 END)`
     : `0`
   const funnel = await c.env.DB.prepare(
-    `SELECT COALESCE(NULLIF(badge_type,''),'Unspecified') AS badge_type,
+    `SELECT COALESCE(NULLIF(${await passLabelSql(c)},''),'Unspecified') AS badge_type,
             COUNT(*) AS registered,
             SUM(CASE WHEN notified_at IS NOT NULL THEN 1 ELSE 0 END) AS notified,
             SUM(CASE WHEN last_login_at IS NOT NULL THEN 1 ELSE 0 END) AS signed_in,
             SUM(CASE WHEN pass_downloaded_at IS NOT NULL THEN 1 ELSE 0 END) AS pass_taken,
             ${cardTaken} AS card_taken,
             SUM(CASE WHEN checked_in_at IS NOT NULL THEN 1 ELSE 0 END) AS checked_in
-       FROM attendees WHERE event_id = ?${mc} GROUP BY badge_type ORDER BY registered DESC`
+       FROM attendees WHERE event_id = ?${mc} GROUP BY 1 ORDER BY registered DESC`
   ).bind(eventId).all()
   const profile = await c.env.DB.prepare(
     `SELECT COUNT(*) AS total,
@@ -31251,6 +31273,26 @@ function adminPageScript(): string {
       catch (e) { alert(e.message || 'Could not change the password.'); }
     }
 
+    // A paid tier chosen and not paid for (left the CCAvenue page, or refunded)
+    // is not that pass: the server treats it as a Visitor Pass until the money
+    // lands (unpaidPaidPass). The grid printed the chosen tier in its gold chip,
+    // so everyone who abandoned a VIP checkout read as a VIP (29 Oct 2026).
+    function attUnpaidTier(a) {
+      return !!a && ['Delegate Pass', 'Premium Delegate Pass', 'VIP Pass', 'Academic Pass'].indexOf(String(a.badge_type || '')) >= 0
+        && ['pending', 'refunded'].indexOf(String(a.payment_status || '').trim().toLowerCase()) >= 0;
+    }
+    // What the Badge column, its filter and the drawer call a row. The same words
+    // as passLabelSql() on the server, so Analytics counts what the grid shows.
+    function attPassLabel(a) {
+      return attUnpaidTier(a) ? a.badge_type + ' · not paid' : String(a.badge_type || '');
+    }
+    function attPassChip(a, cls) {
+      if (!attUnpaidTier(a)) return '<span class="' + cls + ' ' + getBadgeClass(a.badge_type) + '">' + escH(a.badge_type) + '</span>';
+      return '<span class="' + cls + ' bg-white/5 text-gray-400" title="Chose the ' + escH(a.badge_type) + ' and has not paid (' + escH(a.payment_status) + '). Works as a Free Visitor Pass until the payment lands: see Payments, Didn&#39;t finish paying.">' +
+        // Not paid first: the Badge column is narrow and cuts the end off.
+        '<span class="text-red-400 font-semibold">Not paid</span> <s>' + escH(a.badge_type) + '</s></span>';
+    }
+
     // ============ BADGE CLASS HELPER ============
     function getBadgeClass(badge) {
       const b = (badge || '').toLowerCase();
@@ -31922,7 +31964,7 @@ function adminPageScript(): string {
     }
     function attMatchesFilters(a) {
       var f = attFilters;
-      if (f.badge && String(a.badge_type || '') !== f.badge) return false;
+      if (f.badge && attPassLabel(a) !== f.badge) return false;
       if (f.rsvp === 'none' ? !!a.rsvp_status : (f.rsvp && String(a.rsvp_status || '') !== f.rsvp)) return false;
       if (f.payment && String(a.payment_status || '') !== f.payment) return false;
       if (f.checkin === 'in' && !a.checked_in_at) return false;
@@ -32083,7 +32125,7 @@ function adminPageScript(): string {
       var attAllVisibleSelected = attPageRows.length > 0 &&
         attPageRows.every(function (a) { return attSelected.has(String(a.id)); });
       // Values for the filter dropdowns, taken from the data rather than hardcoded.
-      var attBadges = Array.from(new Set(attendees.map(function (a) { return a.badge_type || ''; })
+      var attBadges = Array.from(new Set(attendees.map(attPassLabel)
         .filter(Boolean))).sort();
       var attSources = Array.from(new Set(attendees.map(function (a) {
         var v = String(a.registration_source || '');
@@ -32192,7 +32234,7 @@ function adminPageScript(): string {
                   <td class="text-xs text-gray-400 ie-cell" onclick="inlineEdit(this, \${a.id}, 'country', '\${esc(a.country||'')}')">\${a.country ? escH(a.country) : '<span class=&quot;text-gray-600&quot;>-</span>'}</td>
                   <td class="text-xs">\${safeUrl(a.linkedin_url) ? '<a href="'+safeUrl(a.linkedin_url)+'" target="_blank" class="text-blue-400 hover:text-blue-300"><i class="fab fa-linkedin"></i></a>' : '<span class="text-gray-600">-</span>'}</td>
                   <td class="ie-cell" onclick="inlineMultiSelect(this, \${a.id}, 'role', '\${esc(a.role||'attendee')}')"><div class="flex flex-wrap gap-0.5">\${(a.role||'attendee').split(',').map(r=>'<span class=&quot;px-1.5 py-0.5 rounded text-[9px] bg-primary-500/20 text-primary-300 whitespace-nowrap cursor-pointer&quot;>'+escH(r.trim())+'</span>').join('')}</div></td>
-                  <td class="ie-cell" onclick="inlineSelect(this, \${a.id}, 'badge_type', '\${esc(a.badge_type)}', BADGE_TYPES)"><span class="px-2 py-0.5 rounded-full text-[10px] cursor-pointer hover:ring-1 hover:ring-primary-400/50 \${getBadgeClass(a.badge_type)}">\${escH(a.badge_type)}</span></td>
+                  <td class="ie-cell" onclick="inlineSelect(this, \${a.id}, 'badge_type', '\${esc(a.badge_type)}', BADGE_TYPES)">\${attPassChip(a, 'px-2 py-0.5 rounded-full text-[10px] cursor-pointer hover:ring-1 hover:ring-primary-400/50')}</td>
                   <td class="ie-cell" onclick="inlineSelect(this, \${a.id}, 'rsvp_status', '\${a.rsvp_status||''}', ['','confirmed','maybe','declined'])"><span class="px-2 py-0.5 rounded-full text-[10px] font-medium cursor-pointer hover:ring-1 hover:ring-primary-400/50 \${a.rsvp_status === 'confirmed' ? 'bg-green-500/20 text-green-400' : a.rsvp_status === 'declined' ? 'bg-red-500/20 text-red-400' : a.rsvp_status === 'maybe' ? 'bg-amber-500/20 text-amber-400' : 'bg-gray-500/10 text-gray-500'}">\${a.rsvp_status ? (a.rsvp_status === 'confirmed' ? '✓ Yes' : a.rsvp_status === 'declined' ? '✗ No' : '? Maybe') : '—'}</span></td>
                   <td class="ie-cell" onclick="inlineSelect(this, \${a.id}, 'lunch_inclusion', '\${a.lunch_inclusion||'Yes'}', ['Yes','No'])"><span class="px-1.5 py-0.5 rounded text-[10px] font-medium cursor-pointer hover:ring-1 hover:ring-primary-400/50 \${(a.lunch_inclusion||'Yes')==='Yes' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}">\${a.lunch_inclusion||'Yes'}</span></td>
                   <td class="text-xs ie-cell" onclick="inlineSelect(this, \${a.id}, 'arrival_time', '\${a.arrival_time||''}', ['','09:00','09:30','10:00','10:30','11:00','11:30','12:00','12:30','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30'])">\${a.arrival_time ? '<span class="px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 cursor-pointer hover:ring-1 hover:ring-blue-400/50">'+ (parseInt(a.arrival_time) > 12 ? (parseInt(a.arrival_time)-12)+':'+a.arrival_time.split(':')[1]+' PM' : a.arrival_time+' AM') +'</span>' : '<span class="text-gray-600 cursor-pointer hover:text-gray-400">-</span>'}</td>
@@ -32680,7 +32722,7 @@ function adminPageScript(): string {
           '<div class="min-w-0 flex-1"><h3 class="text-lg font-bold truncate">' + escH(a.name) + '</h3>' +
             '<p class="text-xs text-gray-400 truncate">' + escH(a.email) + '</p>' +
             '<div class="flex flex-wrap gap-1.5 mt-1.5">' +
-              '<span class="px-2 py-0.5 rounded-full text-[10px] ' + getBadgeClass(a.badge_type) + '">' + escH(a.badge_type) + '</span>' +
+              attPassChip(a, 'px-2 py-0.5 rounded-full text-[10px]') +
               '<span class="px-2 py-0.5 rounded-full text-[10px] bg-white/5 text-gray-400">#' + escH(a.id) + '</span>' +
               (a.checked_in_at ? '<span class="px-2 py-0.5 rounded-full text-[10px] bg-green-500/20 text-green-300">checked in</span>' : '') +
               (a.payment_status ? '<span class="px-2 py-0.5 rounded-full text-[10px] bg-white/5 text-gray-400">' + escH(a.payment_status) + '</span>' : '') +

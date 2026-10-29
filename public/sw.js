@@ -26,7 +26,10 @@
 // v17: the pass draws its own QR with /js/vendor/qrcode-generator.js (precached
 // below, so a pass can still be made on venue WiFi) instead of fetching one from
 // api.qrserver.com; pass-render.js?v=20261029 refuses to issue a pass without a QR.
-const VERSION = 'bhai-v17';
+// v18: the directory, connections and exhibitor leads stopped showing an unpaid
+// paid tier as that pass (a VIP checkout left at CCAvenue now reads Visitor Pass),
+// so the offline copies that still say VIP go.
+const VERSION = 'bhai-v18';
 const SHELL = `shell-${VERSION}`;
 const DATA = `data-${VERSION}`;
 
