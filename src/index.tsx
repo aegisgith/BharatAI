@@ -11095,6 +11095,7 @@ app.put('/api/attendees/:id/profile', async (c) => {
   }
 
   const updated = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(id).first()
+  if (all.length) await notifyProfileMark(c, updated)
   return c.json(updated)
 })
 
@@ -11310,7 +11311,7 @@ async function photoIsFlagEvidence(c: any, url: any): Promise<boolean> {
 app.post('/api/attendees/:id/avatar', async (c) => {
   const id = c.req.param('id')
   const denied = await requireSelf(c, id); if (denied) return denied
-  const attendee = await c.env.DB.prepare('SELECT id FROM attendees WHERE id = ?').bind(id).first()
+  const attendee = await c.env.DB.prepare('SELECT id, notified_at FROM attendees WHERE id = ?').bind(id).first()
   if (!attendee) return c.json({ error: 'Attendee not found' }, 404)
 
   const _body = await c.req.json().catch(() => ({})) as any
@@ -11377,6 +11378,7 @@ app.post('/api/attendees/:id/avatar', async (c) => {
     if (prev?.avatar_url && String(prev.avatar_url).startsWith('/api/uploads/') && !(await photoIsFlagEvidence(c, prev.avatar_url))) {
       try { await c.env.UPLOADS.delete(String(prev.avatar_url).slice('/api/uploads/'.length)) } catch {}
     }
+    await notifyProfileMark(c, attendee)
     // person_checked says whether the check actually ran, so a missing AI binding
     // shows up in a response rather than as a silent fail-open.
     return c.json({ success: true, avatar_url: url, person_checked: verdict.checked })
@@ -13238,7 +13240,14 @@ app.post('/api/admin/attendees/:id/notify', async (c) => {
   const appUrlRow = await c.env.DB.prepare("SELECT value FROM app_settings WHERE key = 'app_url'").first() as any
   const appUrl = appUrlRow?.value || 'https://bharataiinnovation.com/app'
 
-  const passUrl = `${appUrl}?email=${encodeURIComponent(attendee.email)}&action=download-pass`
+  // The button tag and the open picture (mailMark, notify_marks_from). The picture
+  // and /api/rsvp are on the site root: app_url ends in /app, and the yes / maybe /
+  // no buttons built on it went to /app/api/rsvp, which does not exist.
+  const origin = appUrl.replace(/\/app\/?$/, '')
+  const markSig = await mailMarkSig(c, 'notify', attendee.id)
+  const markTag = `&ne=${Number(attendee.id)}.${markSig}`
+  const pixel = `<img src="${origin}/api/notify-open?a=${Number(attendee.id)}&amp;s=${markSig}" width="1" height="1" alt="" style="display:block;border:0;width:1px;height:1px;">`
+  const passUrl = `${appUrl}?email=${encodeURIComponent(attendee.email)}&action=download-pass${markTag}`
 
   const emailHtml = `
 <!DOCTYPE html>
@@ -13288,20 +13297,20 @@ app.post('/api/admin/attendees/:id/notify', async (c) => {
         <table cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto;">
           <tr>
             <td style="padding:0 6px;">
-              <a href="${appUrl}/api/rsvp?email=${encodeURIComponent(attendee.email)}&status=confirmed&event=${attendee.event_id}&sig=${await rsvpSig(c, attendee.email, 'confirmed', attendee.event_id)}" style="display:inline-block;padding:12px 24px;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;text-decoration:none;border-radius:10px;font-weight:bold;font-size:13px;">✅ Yes, I'll attend</a>
+              <a href="${origin}/api/rsvp?email=${encodeURIComponent(attendee.email)}&status=confirmed&event=${attendee.event_id}&sig=${await rsvpSig(c, attendee.email, 'confirmed', attendee.event_id)}" style="display:inline-block;padding:12px 24px;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;text-decoration:none;border-radius:10px;font-weight:bold;font-size:13px;">✅ Yes, I'll attend</a>
             </td>
             <td style="padding:0 6px;">
-              <a href="${appUrl}/api/rsvp?email=${encodeURIComponent(attendee.email)}&status=maybe&event=${attendee.event_id}&sig=${await rsvpSig(c, attendee.email, 'maybe', attendee.event_id)}" style="display:inline-block;padding:12px 24px;background:linear-gradient(135deg,#f59e0b,#d97706);color:white;text-decoration:none;border-radius:10px;font-weight:bold;font-size:13px;">🤔 Maybe</a>
+              <a href="${origin}/api/rsvp?email=${encodeURIComponent(attendee.email)}&status=maybe&event=${attendee.event_id}&sig=${await rsvpSig(c, attendee.email, 'maybe', attendee.event_id)}" style="display:inline-block;padding:12px 24px;background:linear-gradient(135deg,#f59e0b,#d97706);color:white;text-decoration:none;border-radius:10px;font-weight:bold;font-size:13px;">🤔 Maybe</a>
             </td>
             <td style="padding:0 6px;">
-              <a href="${appUrl}/api/rsvp?email=${encodeURIComponent(attendee.email)}&status=declined&event=${attendee.event_id}&sig=${await rsvpSig(c, attendee.email, 'declined', attendee.event_id)}" style="display:inline-block;padding:12px 24px;background:linear-gradient(135deg,#ef4444,#dc2626);color:white;text-decoration:none;border-radius:10px;font-weight:bold;font-size:13px;">❌ Can't make it</a>
+              <a href="${origin}/api/rsvp?email=${encodeURIComponent(attendee.email)}&status=declined&event=${attendee.event_id}&sig=${await rsvpSig(c, attendee.email, 'declined', attendee.event_id)}" style="display:inline-block;padding:12px 24px;background:linear-gradient(135deg,#ef4444,#dc2626);color:white;text-decoration:none;border-radius:10px;font-weight:bold;font-size:13px;">❌ Can't make it</a>
             </td>
           </tr>
         </table>
       </div>
       <!-- CTA Button -->
       <div style="text-align:center;margin:24px 0;">
-        <a href="${appUrl}?email=${encodeURIComponent(attendee.email)}" style="display:inline-block;padding:14px 32px;background:linear-gradient(135deg,#6366f1,#4f46e5);color:white;text-decoration:none;border-radius:10px;font-weight:bold;font-size:15px;">
+        <a href="${appUrl}?email=${encodeURIComponent(attendee.email)}${markTag}" style="display:inline-block;padding:14px 32px;background:linear-gradient(135deg,#6366f1,#4f46e5);color:white;text-decoration:none;border-radius:10px;font-weight:bold;font-size:15px;">
           Open Networking App &rarr;
         </a>
       </div>
@@ -13337,7 +13346,7 @@ app.post('/api/admin/attendees/:id/notify', async (c) => {
     <p style="text-align:center;color:#999;font-size:12px;margin-top:8px;">
       Bharat AI Innovation Conference & Exhibition 2026 &bull; World Trade Center, Mumbai &bull; 20-21 Nov 2026
     </p>
-  </div>
+  </div>${pixel}
 </body>
 </html>`
 
@@ -13378,6 +13387,7 @@ app.post('/api/admin/attendees/:id/notify', async (c) => {
       const result = await res.json() as any
       if (res.ok && !result.Error) {
         await c.env.DB.prepare('UPDATE attendees SET notified_at = datetime("now") WHERE id = ?').bind(id).run()
+        await c.env.DB.prepare("INSERT INTO app_settings (key, value, updated_at) VALUES ('notify_marks_from', datetime('now', '-1 minute'), datetime('now')) ON CONFLICT(key) DO NOTHING").run().catch(() => {})
         return c.json({ success: true, method: 'elastic_email', email: attendee.email, messageId: result.MessageID || result.TransactionID })
       } else {
         const errMsg = result.Error || result.error || JSON.stringify(result)
@@ -14642,8 +14652,10 @@ app.get('/api/admin/events/:id/lunch-stats', async (c) => {
   const rsvpMaybe = await c.env.DB.prepare(
     "SELECT COUNT(*) as count FROM attendees WHERE event_id = ?" + mc + " AND rsvp_status = 'maybe'"
   ).bind(eventId).first() as any
+  const notifyMail = await notifyMailStats(c, eventId, mc)
 
   return c.json({
+    notifyMail,
     totalAttendees: totalAttendees?.count || 0,
     totalLunchEligible: totalLunch?.count || 0,
     withArrivalTime: withArrival?.count || 0,
@@ -14813,27 +14825,75 @@ const upgradeSubjectVariant = (id: any): 'A' | 'B' => (Math.abs(Number(id) || 0)
 async function upgradeMarksFrom(c: any): Promise<string> {
   return (await settingValue(c, 'upgrade_marks_from')) || '9999-12-31 00:00:00'
 }
-async function upgradeMailSig(c: any, id: any): Promise<string> {
+// kind is the email: 'upgrade', or 'notify' for the account-ready email.
+async function mailMarkSig(c: any, kind: string, id: any): Promise<string> {
   const secret = attendeeSessionSecret(c) || String(c.env?.ADMIN_SECRET || '') || 'upgrade'
-  return (await hmacHexA(secret, 'upgrade-mail:' + Number(id))).slice(0, 20)
+  return (await hmacHexA(secret, kind + '-mail:' + Number(id))).slice(0, 20)
 }
-async function upgradeMailMark(c: any, action: string, id: any, sig: any) {
-  const n = Number(id)
-  if (!Number.isInteger(n) || n <= 0 || String(sig || '') !== await upgradeMailSig(c, n)) return
+async function markOnce(c: any, action: string, n: number) {
   const seen = await c.env.DB.prepare("SELECT 1 FROM admin_audit WHERE entity = 'attendee' AND entity_id = ? AND action = ? LIMIT 1")
     .bind(String(n), action).first().catch(() => null)
   if (!seen) await audit(c, action, 'attendee', n, null, { actor: 'attendee ' + n, kind: 'attendee' })
 }
+async function mailMark(c: any, action: string, id: any, sig: any) {
+  const n = Number(id)
+  if (!Number.isInteger(n) || n <= 0 || String(sig || '') !== await mailMarkSig(c, action.split('.')[0], n)) return
+  await markOnce(c, action, n)
+}
 const UPGRADE_PIXEL = Uint8Array.from(atob('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'), ch => ch.charCodeAt(0))
 app.get('/api/upgrade-open', async (c) => {
-  await upgradeMailMark(c, 'upgrade.open', c.req.query('a'), c.req.query('s'))
+  await mailMark(c, 'upgrade.open', c.req.query('a'), c.req.query('s'))
   return c.body(UPGRADE_PIXEL, 200, { 'Content-Type': 'image/gif', 'Cache-Control': 'no-store, private' })
 })
 app.post('/api/upgrade-click', async (c) => {
   const b = await c.req.json().catch(() => ({})) as any
-  await upgradeMailMark(c, 'upgrade.click', b.a, b.s)
+  await mailMark(c, 'upgrade.click', b.a, b.s)
   return c.json({ ok: true })
 })
+
+// The account-ready email carries the same picture and button tag (organiser,
+// 29 Oct 2026: "how many opened email, updates profile, click on app"), written as
+// notify.open / notify.click, and a profile or photo its owner saves after that
+// email went is written once as notify.profile. The first send that carries them
+// stamps app_settings 'notify_marks_from'; the ones before are left out of those three.
+app.get('/api/notify-open', async (c) => {
+  await mailMark(c, 'notify.open', c.req.query('a'), c.req.query('s'))
+  return c.body(UPGRADE_PIXEL, 200, { 'Content-Type': 'image/gif', 'Cache-Control': 'no-store, private' })
+})
+app.post('/api/notify-click', async (c) => {
+  const b = await c.req.json().catch(() => ({})) as any
+  await mailMark(c, 'notify.click', b.a, b.s)
+  return c.json({ ok: true })
+})
+async function notifyProfileMark(c: any, a: any) {
+  if (a?.notified_at && !isAdminRequest(c)) await markOnce(c, 'notify.profile', Number(a.id))
+}
+
+// Everyone the account-ready email went to: of those sent since the marks began,
+// how many opened it (a click counts as an open), clicked into the app and saved
+// their profile; of all of them, how many signed in, downloaded their pass and
+// said whether they are coming after their email went.
+async function notifyMailStats(c: any, eventId: any, mc: string) {
+  const from = await settingValue(c, 'notify_marks_from')
+  const mark = (action: string) => `LEFT JOIN (SELECT entity_id, 1 AS hit FROM admin_audit WHERE entity = 'attendee' AND action = '${action}' GROUP BY entity_id)`
+  const r = await c.env.DB.prepare(
+    `SELECT COUNT(*) AS sent,
+            SUM(notified_at >= ?2) AS tracked,
+            SUM(notified_at >= ?2 AND (op.hit = 1 OR ck.hit = 1)) AS opened,
+            SUM(notified_at >= ?2 AND ck.hit = 1) AS clicked,
+            SUM(notified_at >= ?2 AND pf.hit = 1) AS profile,
+            SUM(last_login_at >= notified_at) AS signed_in,
+            SUM(pass_downloaded_at >= notified_at) AS pass,
+            SUM(rsvp_at >= notified_at) AS answered
+       FROM attendees
+       ${mark('notify.open')} op ON op.entity_id = CAST(id AS TEXT)
+       ${mark('notify.click')} ck ON ck.entity_id = CAST(id AS TEXT)
+       ${mark('notify.profile')} pf ON pf.entity_id = CAST(id AS TEXT)
+      WHERE event_id = ?1 AND notified_at IS NOT NULL${mc}`).bind(eventId, from || '9999-12-31 00:00:00').first().catch(() => null) as any
+  const out: Record<string, any> = { marks_from: from ? istStamp(from) : '' }
+  for (const k of ['sent', 'tracked', 'opened', 'clicked', 'profile', 'signed_in', 'pass', 'answered']) out[k] = Number(r?.[k] || 0)
+  return out
+}
 
 // Per audience and subject: sent, and of those sent since the marks began, how
 // many opened (a click counts as an open: pictures are often blocked) and clicked;
@@ -14870,10 +14930,10 @@ async function upgradeOfferMail(c: any, a: any, offer: { pass: string; key: stri
       }
     } catch { /* the plain link still opens the app, which asks them to sign in */ }
   }
-  // The open picture and the button tag (upgradeMailMark). Not in a preview.
+  // The open picture and the button tag (mailMark). Not in a preview.
   let pixel = ''
   if (!preview && a.id) {
-    const sig = await upgradeMailSig(c, a.id)
+    const sig = await mailMarkSig(c, 'upgrade', a.id)
     href += `&ue=${Number(a.id)}.${sig}`
     pixel = `<img src="${appUrl.replace(/\/app\/?$/, '')}/api/upgrade-open?a=${Number(a.id)}&amp;s=${sig}" width="1" height="1" alt="" style="display:block;border:0;width:1px;height:1px;">`
   }
@@ -21304,6 +21364,9 @@ function mainPageScript(): string {
       // here once the page runs, whether or not its sign-in link is still good.
       const ueParam = (urlParams.get('ue') || '').split('.');
       if (ueParam[1]) fetch('/api/upgrade-click', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ a: ueParam[0], s: ueParam[1] }), keepalive: true }).catch(function () {});
+      // The account-ready email's two buttons carry ne= the same way.
+      const neParam = (urlParams.get('ne') || '').split('.');
+      if (neParam[1]) fetch('/api/notify-click', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ a: neParam[0], s: neParam[1] }), keepalive: true }).catch(function () {});
       // The QR on a campus panel's closing slide lands here with ?panel=&claim=.
       // Kept in localStorage rather than the URL: the person may still have to
       // sign in, and the sign-in link opens from their mail app in another tab.
@@ -30034,6 +30097,34 @@ function adminPageScript(): string {
         '</div>';
       console.error('[admin] ' + what + ':', err);
     }
+    // Notification Status: what the people sent the account-ready email did next (notifyMailStats).
+    function notifyFunnelHTML(m) {
+      if (!m || !m.sent) return '';
+      var row = function (label, n, of, tip) {
+        var pct = of ? Math.round(n * 100 / of) : 0;
+        return '<div class="flex items-center gap-2 text-xs" title="' + escH(tip) + '">' +
+          '<span class="w-40 shrink-0 text-gray-400">' + label + '</span>' +
+          '<div class="flex-1 h-2 bg-white/5 rounded-full overflow-hidden"><div class="h-full rounded-full bg-blue-500/60" style="width:' + pct + '%"></div></div>' +
+          '<span class="w-24 text-right whitespace-nowrap font-semibold text-white">' + n + ' <span class="font-normal text-gray-500">of ' + of + '</span></span>' +
+          '<span class="w-9 text-right text-gray-500">' + (of ? pct + '%' : '') + '</span></div>';
+      };
+      var since = 'Of the ' + m.tracked + ' emails sent since ' + m.marks_from + ', which carry the marks.';
+      var after = 'Of all ' + m.sent + ' emailed, done after their email went.';
+      var marked = m.marks_from
+        ? row('Opened the email', m.opened, m.tracked, since + ' A click counts as an open.') +
+          row('Clicked into the app', m.clicked, m.tracked, since) +
+          row('Saved profile or photo', m.profile, m.tracked, since)
+        : '<p class="text-[11px] text-gray-500">Opened, clicked and profile saves are counted from the next email on.</p>';
+      return '<div class="mt-4 pt-3 border-t border-white/10">' +
+        '<h4 class="text-[10px] text-gray-500 uppercase tracking-wider mb-2">After the email</h4>' +
+        '<div class="space-y-1.5">' + marked +
+          row('Signed in to the app', m.signed_in, m.sent, after) +
+          row('Downloaded their pass', m.pass, m.sent, after) +
+          row('Said if they are coming', m.answered, m.sent, after) +
+        '</div>' +
+        (m.marks_from && m.tracked < m.sent ? '<p class="text-[11px] text-gray-500 mt-2">Opened, clicked and saved count the ' + m.tracked + ' emails sent since ' + escH(m.marks_from) + '; the ' + (m.sent - m.tracked) + ' sent before carried no marks.</p>' : '') +
+        '</div>';
+    }
     async function loadOverview() {
       var _ovEl = document.getElementById('section-overview');
       if (!_ovEl.innerHTML.trim()) sectionLoading(_ovEl);
@@ -30201,10 +30292,12 @@ function adminPageScript(): string {
               <span>\${lunchStats.totalAttendees > 0 ? Math.round(lunchStats.notifiedCount/lunchStats.totalAttendees*100) : 0}% notified</span>
               <span>\${lunchStats.totalAttendees} total attendees</span>
             </div>
+            \${notifyFunnelHTML(lunchStats.notifyMail)}
             <div class="mt-4 pt-3 border-t border-white/10">
               <p class="text-xs text-gray-400 leading-relaxed">
                 <i class="fas fa-info-circle text-blue-400 mr-1"></i>
                 Notification emails inform attendees that their account is ready. They are asked to update their profile and expected arrival time. Lunch packs are calculated based on arrival time vs the 1-2 PM lunch window.
+                Opens are approximate: Apple Mail loads every picture (too high) and many work mailboxes block them (too low). A click is counted when the app opens from one of the email's two buttons.
               </p>
             </div>
           </div>
