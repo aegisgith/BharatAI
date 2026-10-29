@@ -84,7 +84,7 @@ r = await hit('/app');
 r.text += (await hit('/app.js')).text;   // the app's code is its own file
 check('app page carries the new client code', ['function parseDbTime', 'function safeUrl', 'id="notif-sheet"', 'function loadThreads', 'function closeTopModal'].every(m => r.text.includes(m)), 'markers');
 r = await hit('/sw.js');
-check('service worker is bhai-v12', r.status === 200 && r.text.includes("'bhai-v12'"), r.status);
+check('service worker is bhai-v13', r.status === 200 && r.text.includes("'bhai-v13'"), r.status);
 
 // ---- what a phone downloads, second pass (28 Oct 2026) ----
 r = await hit('/admin');
