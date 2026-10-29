@@ -27,10 +27,18 @@ production D1 writes (handbook §2 rule 6). A `git push` works from a Claude Cod
 
 ### 1. Set a new secret (required)
 
-AImailPilot already holds a secret for this endpoint, but it does not match: on 29 Oct 2026 its first
-run got `401 unauthorized`, and it has most likely been failing that way since May. Cloudflare never
-shows a secret's value again, so set a fresh one here and paste the same value into AImailPilot in
-step 4. Do it **before** step 2: a Pages secret takes effect on the next deployment, and step 2 is
+On 29 Oct 2026 AImailPilot's first run got `401 unauthorized`, most likely the way it has failed since
+May. Two causes, both fixed that day (secret set, export pushed in `95db7af`):
+
+- **The host.** AImailPilot's default endpoint is `https://networking.bharataiinnovation.com/...`,
+  which now answers `301` to `https://bharataiinnovation.com/...`. A fetch that follows a redirect to
+  another host drops the `Authorization` header (tested with Node 20), so this endpoint saw no
+  secret at all and would have refused even the right one. Step 4 points AImailPilot at the real
+  host.
+- **The secret.** Cloudflare never shows a secret's value again, so nobody could say whether
+  AImailPilot's copy matched. A fresh one was set and goes into AImailPilot in step 4.
+
+Set the secret **before** step 2: a Pages secret takes effect on the next deployment, and step 2 is
 that deployment.
 
 ```bash
@@ -67,18 +75,29 @@ npx wrangler pages deployment list --project-name=bharatai-networking    # newes
 PowerShell, with the secret in place of `<SECRET>`:
 
 ```powershell
-(curl.exe -s -H "Authorization: Bearer <SECRET>" "https://networking.bharataiinnovation.com/api/external/attendees-export?event_id=1&mode=state").Substring(0, 40)
+(curl.exe -s -H "Authorization: Bearer <SECRET>" "https://bharataiinnovation.com/api/external/attendees-export?event_id=1&mode=state").Substring(0, 40)
 ```
 
 Expect `{"mode":"state","attendees":[{"id":...`. If you see `{"error":"unauthorized"}`, the secret in
 the command doesn't match the one on Cloudflare. If you see a plain `[{...` list, the new deployment
-isn't live yet: wait a minute and try again.
+isn't live yet: wait a minute and try again. A `301 Moved Permanently` page means the URL has the
+`networking.` host.
 
 ### 4. Switch it on in AImailPilot
 
-1. aimailpilot.com → **Contacts** → **Actions** → **Sync Bharat AI attendees** (admins only).
-2. Paste the secret, leave **Sync automatically every 30 minutes** ticked, then click **Save**.
-3. Click **Sync now**. The first run copies everyone and takes about a minute. The dialog
+1. **Point it at the real host.** The dialog has no endpoint field and the default is the
+   `networking.` host (see step 1). Signed in to aimailpilot.com as an admin, open the browser
+   console (F12 → Console) and run:
+   ```js
+   await (await fetch('/api/admin/bharatai-sync/config', { method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ endpoint: 'https://bharataiinnovation.com/api/external/attendees-export' }) })).json()
+   ```
+   Then `await (await fetch('/api/admin/bharatai-sync/status', { credentials: 'include' })).json()`
+   should show that `endpoint`. The dialog's Save sends only the on/off switch and the secret, so it
+   leaves the endpoint alone. Once AImailPilot's `DEFAULT_ENDPOINT`
+   (`server/services/bharatai-attendee-sync.ts`) names the real host, this step is not needed.
+2. aimailpilot.com → **Contacts** → **Actions** → **Sync Bharat AI attendees** (admins only).
+3. Paste the secret, leave **Sync automatically every 30 minutes** ticked, then click **Save**.
+4. Click **Sync now**. The first run copies everyone and takes about a minute. The dialog
    then shows both lists with their counts, and they appear under **Lists → Bharat AI**.
 
 After that it runs on its own. Open the same dialog any time to see the last run, what was skipped
