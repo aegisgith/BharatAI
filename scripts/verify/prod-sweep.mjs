@@ -89,8 +89,12 @@ check('service worker is bhai-v14', r.status === 200 && r.text.includes("'bhai-v
 // ---- the 29 Oct 2026 audit: a passes page, and the app's Visitor fixes ----
 r = await hit('/passes');
 check('/passes is served with the comparison and the VIP gala row', r.status === 200 && ['Passes for Bharat AI Innovation 2026', 'CXO Gala Networking Evening, Day 1', 'class="pcmp"'].every(m => r.text.includes(m)), r.status);
-r = await hit('/app.js');
-check('app code carries the Visitor fixes', ['function inboxEmpty', 'function downloadAgendaIcs', 'function renderVisitorChecklist', 'function inviteColleague', "reason === 'passcard'"].every(m => r.text.includes(m)), r.status);
+// The hashed URL the page loads, not the bare /app.js: that one is the offline
+// fallback and the edge may hold an older copy of it.
+r = await hit('/app');
+const appTag = /<script src="(\/app\.js\?v=[0-9a-f]{8})"><\/script>/.exec(r.text);
+r = appTag ? await hit(appTag[1]) : { status: 0, text: '' };
+check('app code carries the Visitor fixes', ['function inboxEmpty', 'function downloadAgendaIcs', 'function renderVisitorChecklist', 'function inviteColleague', "reason === 'passcard'"].every(m => r.text.includes(m)), (appTag ? appTag[1] : 'no versioned /app.js tag') + ' ' + r.status);
 r = await hit('/');
 check('home hero sells the Delegate Pass first', r.status === 200 && r.text.includes('hero-passline') && r.text.indexOf('/register#delegate') < r.text.indexOf('Free Visitor Pass') && !r.text.includes('5,000+'), r.status);
 

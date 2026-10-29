@@ -18186,7 +18186,7 @@ function rppResumeLead() {
 // ==================== STANDALONE INQUIRY FORM PAGE ====================
 
 function inquiryFormPageHTML(): string {
-  return `${sharedHeadHTML('Book Your Booth', '/inquiry', "Exhibit at Bharat AI Innovation 2026. Book a booth to reach 5,000+ AI decision-makers at WTC Mumbai, 20–21 Nov 2026. Booths from ₹48,000 + GST.")}
+  return `${sharedHeadHTML('Book Your Booth', '/inquiry', "Exhibit at Bharat AI Innovation 2026. Book a booth to reach the enterprise buyers, builders and government teams at WTC Mumbai, 20–21 Nov 2026. Booths from ₹48,000 + GST.")}
 <body class="min-h-screen">
 ${sharedNavHTML('inquiry')}
 
@@ -18651,8 +18651,13 @@ const PAGE_SCRIPT_HEADERS = {
   'Content-Type': 'application/javascript; charset=utf-8',
   'Cache-Control': 'public, max-age=31536000, immutable',
 }
-app.get('/app.js', (c) => c.body(pageScript('app').text, 200, PAGE_SCRIPT_HEADERS))
-app.get('/admin.js', (c) => c.body(pageScript('admin').text, 200, PAGE_SCRIPT_HEADERS))
+// The bare path (no ?v=) is the service worker's offline fallback. It must not
+// be immutable: on 29 Oct 2026 the edge was still serving a two-day-old copy of
+// it a year ahead of expiry, so anyone offline would have run that old code.
+const PAGE_SCRIPT_HEADERS_BARE = { ...PAGE_SCRIPT_HEADERS, 'Cache-Control': 'public, max-age=600' }
+const pageScriptHeaders = (c: any) => (c.req.query('v') ? PAGE_SCRIPT_HEADERS : PAGE_SCRIPT_HEADERS_BARE)
+app.get('/app.js', (c) => c.body(pageScript('app').text, 200, pageScriptHeaders(c)))
+app.get('/admin.js', (c) => c.body(pageScript('admin').text, 200, pageScriptHeaders(c)))
 
 function mainPageHTML(): string {
   return `<!DOCTYPE html>
@@ -18661,7 +18666,7 @@ function mainPageHTML(): string {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Bharat AI Innovation 2026 — Networking App</title>
-  <meta name="description" content="Join the Bharat AI Innovation 2026 networking app — connect with 5,000+ AI leaders, book meetings, browse the marketplace, and manage your pass. 20-21 Nov 2026, WTC Mumbai.">
+  <meta name="description" content="Bharat AI Connect, the Bharat AI Innovation 2026 app: see who is coming, book meetings, browse the AI Marketplace, choose your workshop and keep your pass on your phone. 20-21 Nov 2026, WTC Mumbai.">
   <link rel="canonical" href="https://bharataiinnovation.com/app">
   <!-- PWA: installable, phone-first, offline-resilient for the live event -->
   <link rel="manifest" href="/manifest.webmanifest">
