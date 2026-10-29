@@ -5132,7 +5132,9 @@ function verifyPageHTML(o: any): string {
   // photo still loading.
   const hasPassPhoto = String(a.avatar_url || '').trim() !== ''
   const photoFlagged = !!a.photo_flagged_at
-  const unpaid = String(a.payment_status || '').toLowerCase() === 'pending'
+  // Refunded too (unpaidPaidPass): a pass downloaded before the refund still
+  // carries a good signature, and read VALID PASS here until 29 Oct 2026.
+  const unpaid = ['pending', 'refunded'].includes(String(a.payment_status || '').trim().toLowerCase())
   const panelOnly = Number(a.main_event ?? 1) === 0
   const ok = o.state === 'valid' && !unpaid && !panelOnly
   const banner = o.state !== 'valid' ? ['#b3261e', 'NOT VALID', 'This code is not a Bharat AI Innovation pass.']
@@ -16205,7 +16207,7 @@ app.get('/api/admin/events/:id/analytics', async (c) => {
   const messageCount = await c.env.DB.prepare('SELECT COUNT(*) as count FROM messages WHERE event_id=?').bind(eventId).first()
   const boothVisitCount = await c.env.DB.prepare('SELECT COUNT(*) as count FROM booth_visits WHERE event_id=?').bind(eventId).first()
   const exhibitorsByCategory = await c.env.DB.prepare('SELECT category, COUNT(*) as count FROM exhibitors WHERE event_id=? GROUP BY category').bind(eventId).all()
-  const recentRegistrations = await c.env.DB.prepare('SELECT id, name, email, company, job_title, role, badge_type, created_at FROM attendees WHERE event_id=? ORDER BY created_at DESC LIMIT 10').bind(eventId).all()
+  const recentRegistrations = await c.env.DB.prepare('SELECT id, name, email, company, job_title, role, badge_type, ' + (await paymentStatusEnabled(c) ? 'payment_status' : "'' AS payment_status") + ', created_at FROM attendees WHERE event_id=? ORDER BY created_at DESC LIMIT 10').bind(eventId).all()
 
   return c.json({
     attendeesByRole: attendeesByRole.results,
@@ -31871,7 +31873,7 @@ function adminPageScript(): string {
                   <td class="text-gray-400">\${escH(a.email)}</td>
                   <td>\${escH(a.company)||'-'}</td>
                   <td><span class="px-2 py-0.5 rounded-full text-[10px] bg-primary-500/20 text-primary-300">\${escH(a.role)}</span></td>
-                  <td><span class="px-2 py-0.5 rounded-full text-[10px] \${getBadgeClass(a.badge_type)}">\${escH(a.badge_type)}</span>\${a.main_event === 0 ? '<span class="ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-white/10 text-gray-300" title="Registered for a campus panel; has not opted in to the conference">Panel only</span>' : ''}</td>
+                  <td>\${attPassChip(a, 'px-2 py-0.5 rounded-full text-[10px]')}\${a.main_event === 0 ? '<span class="ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-white/10 text-gray-300" title="Registered for a campus panel; has not opted in to the conference">Panel only</span>' : ''}</td>
                   <td class="text-gray-500 text-xs">\${new Date(a.created_at).toLocaleString()}</td>
                 </tr>\`).join('')}
               </tbody>
@@ -32244,7 +32246,7 @@ function adminPageScript(): string {
                   <td class="text-xs"><div class="flex gap-1.5 items-center" title="Login | Pass | Card | Post-Email Login"><span class="\${a.last_login_at ? 'text-blue-400' : 'text-gray-600'}" title="\${a.last_login_at ? 'Logged in: '+a.last_login_at : 'Not logged in'}"><i class="fas fa-sign-in-alt"></i></span><span class="\${a.pass_downloaded_at ? 'text-emerald-400' : 'text-gray-600'}" title="\${a.pass_downloaded_at ? 'Pass downloaded: '+a.pass_downloaded_at : 'Pass not downloaded'}"><i class="fas fa-id-badge"></i></span><span class="\${a.social_card_downloaded_at ? 'text-amber-400' : 'text-gray-600'}" title="\${a.social_card_downloaded_at ? 'Creative shared: '+a.social_card_downloaded_at : 'Creative not shared'}"><i class="fas fa-share-alt"></i></span>\${a.photo_flagged_at ? '<button type="button" onclick="clearPhotoFlag(' + Number(a.id) + ')" class="text-red-400 hover:text-red-300" title="Photo flagged at the badge desk by ' + escH(a.photo_flagged_by || 'desk') + ' on ' + escH(a.photo_flagged_at) + ' - did not match. Click to clear a wrong flag."><i class="fas fa-exclamation-triangle"></i></button>' : ''}<span class="\${a.notified_at && a.last_login_at && a.last_login_at >= a.notified_at ? 'text-violet-400' : 'text-gray-600'}" title="\${a.notified_at && a.last_login_at && a.last_login_at >= a.notified_at ? 'Opened after email' : 'Not opened after email'}"><i class="fas fa-envelope-open"></i></span></div></td>
                   <td class="flex gap-1">
                     <button onclick="openEditAttendeeById(\${a.id})" class="px-2 py-1 rounded text-xs bg-primary-500/20 text-primary-300 hover:bg-primary-500/30" title="Full Edit"><i class="fas fa-edit"></i></button>
-                    <button onclick='adminDownloadPass(\${JSON.stringify({id:a.id,name:a.name,email:a.email,company:a.company||"",job_title:a.job_title||"",badge_type:a.badge_type||"Delegate",avatar_url:a.avatar_url||"",role:a.role||"",website_url:a.website_url||""}).replace(/&/g,"&amp;").replace(/'/g,"&#39;")})' class="px-2 py-1 rounded text-xs bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30" title="Download Pass"><i class="fas fa-id-badge"></i></button>
+                    <button onclick='adminDownloadPass(\${JSON.stringify({id:a.id,name:a.name,email:a.email,company:a.company||"",job_title:a.job_title||"",badge_type:a.badge_type||"Delegate",payment_status:a.payment_status||"",avatar_url:a.avatar_url||"",role:a.role||"",website_url:a.website_url||""}).replace(/&/g,"&amp;").replace(/'/g,"&#39;")})' class="px-2 py-1 rounded text-xs bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30" title="Download Pass"><i class="fas fa-id-badge"></i></button>
                     <button onclick='adminDownloadSocialCard(\${JSON.stringify({id:a.id,name:a.name,email:a.email,company:a.company||"",job_title:a.job_title||"",badge_type:a.badge_type||"Visitor Pass",payment_status:a.payment_status||"",avatar_url:a.avatar_url||"",role:a.role||"",website_url:a.website_url||""}).replace(/&/g,"&amp;").replace(/'/g,"&#39;")})' class="px-2 py-1 rounded text-xs bg-violet-500/20 text-violet-300 hover:bg-violet-500/30" title="Download their &quot;I&#39;m attending&quot; social card"><i class="fas fa-share-alt"></i></button>
                     <button onclick="notifyAttendeeById(\${a.id})" class="px-2 py-1 rounded text-xs bg-amber-500/20 text-amber-300 hover:bg-amber-500/30" title="Send notification email"><i class="fas fa-envelope"></i></button>
                     \${a.checked_in_at ? '<button onclick="resetCheckin(' + Number(a.id) + ')" class="px-2 py-1 rounded text-xs bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30" title="Checked in ' + escH(a.checked_in_at) + (a.checked_in_by ? ' by ' + escH(a.checked_in_by) : '') + '. Click to reset the check-in so they can be admitted again."><i class="fas fa-door-open"></i></button>' : ''}
@@ -33804,6 +33806,12 @@ function adminPageScript(): string {
     // QR still pointed at a subdomain that 301s to the homepage. A pass handed over
     // at the desk therefore looked nothing like the one the holder already had.
     async function adminDownloadPass(user) {
+      // The desk may still issue by hand, but never without being told: until
+      // 29 Oct 2026 this printed a VIP Pass for someone who had left checkout,
+      // with no word that they had not paid.
+      if (attUnpaidTier(user) && !confirm(user.name + ' has not paid for the ' + user.badge_type + ' (' + user.payment_status + ').' +
+          String.fromCharCode(10, 10) + 'A pass issued now will say ' + user.badge_type + ', and the door will show PAYMENT PENDING. To give it free, set Payment to waived first.' +
+          String.fromCharCode(10, 10) + 'Issue it anyway?')) return;
       toast('Generating pass for ' + user.name + '...', 'info');
       try {
         // Admin may mint a token for anyone, so the QR verifies at the desk exactly
@@ -34717,7 +34725,7 @@ function adminPageScript(): string {
               <td class="py-1.5 px-2 text-gray-400">\${escH(a.email)}</td>
               <td class="py-1.5 px-2 text-gray-400">\${escH(a.mobile || '-')}</td>
               <td class="py-1.5 px-2 text-gray-400">\${escH(a.company || '-')}</td>
-              <td class="py-1.5 px-2"><span class="px-1.5 py-0.5 rounded text-[10px] \${getBadgeClass(a.badge_type)}">\${escH(a.badge_type || '')}</span></td>
+              <td class="py-1.5 px-2">\${attPassChip(a, 'px-1.5 py-0.5 rounded text-[10px]')}</td>
               <td class="py-1.5 px-2">\${a.rsvp_status ? '<span class="text-green-400">'+escH(a.rsvp_status)+'</span>' : '<span class="text-gray-600">—</span>'}</td>
               <td class="py-1.5 px-2">\${ai === 0 ? '<span class="text-purple-300 font-semibold">Keep</span>' : (g.reason === 'mobile' ? '<span class="text-amber-500">same mobile</span>' : '<span class="text-amber-400">'+sim+'</span>')}</td>
               <td class="py-1.5 px-2">\${ai === 0 ? '' : '<button onclick="mergeDuplicate(' + Number(a.id) + ', ' + Number(g.primary.id) + ', this)" class="px-2 py-1 mr-1 rounded text-[10px] font-medium bg-green-500/20 text-green-600 hover:bg-green-500/30 transition" title="Fold this row into #' + Number(g.primary.id) + '"><i class="fas fa-user-check mr-1"></i>Merge into #' + Number(g.primary.id) + '</button>'}<button onclick="deleteDuplicate(\${Number(a.id)}, this)" class="px-2 py-1 rounded text-[10px] font-medium \${hasActivity ? 'bg-amber-500/20 text-amber-300 hover:bg-amber-500/30' : 'bg-red-500/20 text-red-400 hover:bg-red-500/30'} transition" title="\${hasActivity ? 'Has activity — review before deleting' : 'No activity — safe to delete'}">\${hasActivity ? '<i class="fas fa-exclamation-triangle mr-1"></i>' : ''}<i class="fas fa-trash"></i> Delete</button></td>

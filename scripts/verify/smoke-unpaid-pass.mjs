@@ -3,6 +3,7 @@
 // schema, so the CASE that hides it is tested as SQL, not pattern-matched.
 // Everyone who left the CCAvenue page on a VIP checkout had read as a VIP: in the
 // admin grid, in Analytics, at the desk, and to every attendee in the directory.
+// The door screen (/verify) also said VALID PASS for a refunded tier.
 // Run after `npm run build`:  node scripts/verify/smoke-unpaid-pass.mjs
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -114,6 +115,19 @@ check('analytics counts paid VIPs apart from unpaid ones', pie['VIP Pass'] === 1
 r = await hit('/api/admin/events/1/growth', ADMIN);
 const fun = Object.fromEntries((r.json?.funnel || []).map(x => [x.badge_type, x.registered]));
 check('the pass funnel files unpaid VIPs under "VIP Pass · not paid"', fun['VIP Pass'] === 1 && fun['VIP Pass · not paid'] === 2, r.status + ' ' + JSON.stringify(fun));
+
+r = await hit('/api/admin/events/1/analytics', ADMIN);
+const recent = Object.fromEntries((r.json?.recentRegistrations || []).map(x => [x.id, x]));
+check('Overview "Recent Registrations" carries payment_status, so the chip can say Not paid', recent[2]?.badge_type === 'VIP Pass' && recent[2]?.payment_status === 'pending', JSON.stringify(recent[2] || {}).slice(0, 160));
+
+// ---- the door: a pass downloaded before a refund must not read VALID ----
+for (const [id, who] of [[4, 'refunded Delegate'], [2, 'unpaid VIP'], [3, 'paid VIP']]) {
+  const tok = (await hit('/api/my-pass-token?id=' + id, ADMIN)).json?.token;
+  const v = await hit('/verify/' + encodeURIComponent(tok || 'none'));
+  const pending = /PAYMENT PENDING/.test(v.text);
+  check(`/verify for a ${who} ${id === 3 ? 'is a valid pass' : 'says PAYMENT PENDING'}`, !!tok && (id === 3 ? !pending && /VALID PASS/.test(v.text) : pending),
+    v.status + ' ' + v.text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 160));
+}
 
 r = await hit('/api/admin/checkin-stats', ADMIN);
 const tiers = Object.fromEntries((r.json?.byTier || []).map(x => [x.badge_type, x.total]));
