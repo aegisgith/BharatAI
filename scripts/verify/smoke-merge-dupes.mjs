@@ -75,6 +75,11 @@ db.run("INSERT INTO connections (event_id, from_attendee_id, to_attendee_id, sta
 db.run("INSERT INTO messages (event_id, sender_id, receiver_id, content) VALUES (1, 13, 2, 'hello')");
 db.run("INSERT INTO panel_registrations (attendee_id, panel_slug) VALUES (1, 'djsanghvi-21sep'), (2, 'djsanghvi-21sep'), (2, 'jnu-30sep')");
 db.run("INSERT INTO campaign_recipients (campaign_id, attendee_id, email) VALUES (1, 2, 'imaad@work.in')");
+// Checkout leads are keyed by email, so a merge has to carry them by address.
+db.run(`INSERT INTO checkout_leads (event_id, email, name, pass_type, page, reminded_at, reminder_count) VALUES
+  (1, 'ritesh@gmail.com', 'Ritesh Parekh', 'Delegate Pass', 'upgrade', '2026-10-20 10:00:00', 1),
+  (1, 'imaad@work.in', 'Imaad Jaweed', 'Delegate Pass', 'register', '2026-10-25 09:00:00', 1),
+  (1, 'imad@gmail.com', 'Imad Jaweed', 'Delegate Pass', 'reminder', '2026-10-22 09:00:00', 1)`);
 
 // ---- the finder ----
 let r = await hit('GET', '/api/admin/events/1/attendees/duplicates', undefined, ADMIN);
@@ -122,6 +127,23 @@ r = await hit('POST', '/api/admin/events/1/attendees/merge-certain', {}, ADMIN);
 check('running merge all again changes nothing', r.json?.merged === 0, r.text);
 r = await hit('POST', '/api/admin/attendees/6/merge-into/5', {}, ADMIN);
 check('an admin can still merge a group by hand', r.status === 200 && q('SELECT id FROM attendees WHERE id = 6').length === 0, r.status + ' ' + r.text);
+
+// ---- checkout leads follow the person (keyed by email, and reminded_at stops a second reminder) ----
+const leadAt = (email) => q('SELECT * FROM checkout_leads WHERE event_id = 1 AND email = ?', email)[0] || null;
+const moved = leadAt('ritesh@proton.me');
+check('a lead under the folded address moves to the kept one, reminder and all', !leadAt('ritesh@gmail.com') && moved?.reminded_at === '2026-10-20 10:00:00' && moved?.reminder_count === 1 && moved?.page === 'upgrade', JSON.stringify(q('SELECT email, reminded_at, page FROM checkout_leads')));
+const both = leadAt('imad@gmail.com');
+check('two leads become one: the later reminder, both counts, the real form over a bare reminder claim', !leadAt('imaad@work.in') && both?.reminded_at === '2026-10-25 09:00:00' && both?.reminder_count === 2 && both?.page === 'register', JSON.stringify(both));
+check('the audit entry says what happened to the lead', /"checkout_lead":"combined"/.test(merges[0]?.detail || '') && /"checkout_lead":"moved"/.test(merges[1]?.detail || ''), JSON.stringify(merges.map(m => m.detail.slice(-60))));
+
+person(30, 'Neha Shah', 'neha@a.in', '9555500001', { badge_type: 'Delegate Pass', payment_status: 'pending', created_at: '2026-10-26 10:00:00' });
+person(31, 'Neha Shah', 'neha@b.in', '9555500001', { badge_type: 'Delegate Pass', payment_status: 'pending', created_at: '2026-10-25 10:00:00' });
+db.run("INSERT INTO checkout_leads (event_id, email, name, pass_type, page, reminded_at, reminder_count) VALUES (1, 'neha@b.in', 'Neha Shah', 'Delegate Pass', 'reminder', '2026-10-27 12:00:00', 1)");
+r = await hit('POST', '/api/admin/attendees/31/merge-into/30', {}, ADMIN);
+check('two unpaid rows for one person merge', r.status === 200, r.status + ' ' + r.text);
+r = await hit('GET', '/api/admin/payments/abandoned', undefined, ADMIN);
+const neha = (r.json?.results || []).filter(x => /neha@/.test(x.email));
+check('the payment-reminder list shows the kept row as already reminded, and no stray lead for the folded address', r.status === 200 && neha.length === 1 && neha[0].id === 30 && neha[0].reminded_at === '2026-10-27 12:00:00', r.status + ' ' + JSON.stringify(neha).slice(0, 400));
 
 // ---- a rolled-back merge leaves everything as it was ----
 db.run("CREATE TRIGGER no_delete_13 BEFORE DELETE ON attendees WHEN old.id = 13 BEGIN SELECT RAISE(ABORT, 'held'); END");

@@ -15365,6 +15365,28 @@ async function mergeAttendeeInto(c: any, loseId: any, keepId: any): Promise<{ ok
     if (unique) stmts.push(c.env.DB.prepare(`DELETE FROM ${t} WHERE ${col} = ?`).bind(lose.id))
   }
   if (tables.has('connections')) stmts.push(c.env.DB.prepare('DELETE FROM connections WHERE from_attendee_id = ? AND to_attendee_id = ?').bind(keep.id, keep.id))
+  // checkout_leads is keyed by email, not id, and its reminded_at is what stops a
+  // second "finish paying" email. Left under the folded address, the lead would
+  // read as a stranger who closed the form (and be reminded), while the kept row
+  // looked never reminded. So it moves to the kept address, or, when that address
+  // has its own, the two become one: the later reminder, both counts.
+  let lead = ''
+  const loseEmail = String(lose.email || '').toLowerCase(), keepEmail = String(keep.email || '').toLowerCase()
+  if (tables.has('checkout_leads') && loseEmail && loseEmail !== keepEmail) {
+    const leadOf = (e: string) => c.env.DB.prepare('SELECT * FROM checkout_leads WHERE event_id = ? AND email = ?').bind(keep.event_id, e).first() as Promise<any>
+    const ll = await leadOf(loseEmail), kl = await leadOf(keepEmail)
+    if (ll && !kl) {
+      stmts.push(c.env.DB.prepare('UPDATE checkout_leads SET email = ? WHERE id = ?').bind(keepEmail, ll.id))
+      lead = 'moved'
+    } else if (ll && kl) {
+      const later = [ll.reminded_at, kl.reminded_at].filter(Boolean).sort().pop() || null
+      stmts.push(c.env.DB.prepare('UPDATE checkout_leads SET reminded_at = ?, reminder_count = ?, page = ?, pass_type = ? WHERE id = ?').bind(
+        later, Number(kl.reminder_count || 0) + Number(ll.reminder_count || 0),
+        kl.page === 'reminder' ? ll.page : kl.page, kl.pass_type || ll.pass_type || null, kl.id))
+      stmts.push(c.env.DB.prepare('DELETE FROM checkout_leads WHERE id = ?').bind(ll.id))
+      lead = 'combined'
+    }
+  }
   stmts.push(c.env.DB.prepare('DELETE FROM attendees WHERE id = ?').bind(lose.id))
   try {
     await c.env.DB.batch(stmts)
@@ -15373,7 +15395,7 @@ async function mergeAttendeeInto(c: any, loseId: any, keepId: any): Promise<{ ok
   }
   const snapshot: Record<string, any> = {}
   for (const k of ['id', 'name', 'email', 'mobile', 'company', 'job_title', 'badge_type', 'payment_status', 'registration_date', 'registration_source', 'last_login_at', 'pass_downloaded_at']) snapshot[k] = lose[k] ?? null
-  await audit(c, 'attendee.merge', 'attendee', keep.id, { into: { id: keep.id, email: keep.email }, merged: snapshot, filled: fill })
+  await audit(c, 'attendee.merge', 'attendee', keep.id, { into: { id: keep.id, email: keep.email }, merged: snapshot, filled: fill, ...(lead ? { checkout_lead: lead } : {}) })
   return { ok: true }
 }
 
