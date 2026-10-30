@@ -70,6 +70,7 @@ All prices exclude 18% GST. 93 booths total across 8 industry zones.
 - **Hon'ble Shri Dattatray Bharane** — Minister of Agriculture, Government of Maharashtra
 - **Shri. K.K. Singh** — Joint Secretary, Ministry of Electronics & Information Technology (MeitY), Government of India
 - **Shri Sudeep Shrivastava** — Joint Secretary, MeitY; COO, IndiaAI Mission
+- **Shri Virendra Singh (IAS)** — Secretary, Electronics, Information Technology and Artificial Intelligence Department, Government of Maharashtra
 - **Shri Prakash Kumar** — Additional Director, Ministry of Electronics & Information Technology, Government of India; IndiaAI Mission
 - **Akshay Yadava** — Director, Unique Identification Authority of India (UIDAI)
 - **Sudhir Kumar Rai** — Director, Data Science, Trellix
@@ -77,6 +78,7 @@ All prices exclude 18% GST. 93 booths total across 8 industry zones.
 - **Shri Praveen Pardeshi** — CEO, MITRA / Chief Economic Advisor to CM Maharashtra
 - **Dr. Shrikant Patil** — CEO, Maharashtra State Innovation Society (MSInS)
 - **Dr. Kunal Khemnar (IAS)** — Joint Chief Executive Officer, Maharashtra Industrial Development Corporation (MIDC)
+- **Shri Suhas Mapari (IAS)** — Joint Secretary, Chief Minister's Secretariat; Additional CEO, Vision Management Unit for Viksit Maharashtra 2047, Government of Maharashtra
 - **Dr. Ashish Tendulkar** — Lead AI, Google
 - **Shailesh Dhuri** — CEO, Decimal Point Analytics
 - **Rajesh Dhuddu, PhD** — Partner & Emerging Tech Leader, PwC
