@@ -15975,7 +15975,7 @@ async function upgradeOfferMail(c: any, a: any, offer: { pass: string; key: stri
           ? 'The <strong>Academic Pass</strong> gives you guaranteed entry on both days at the student rate, and the whole conference with it:'
           : 'A <strong>Delegate Pass</strong> gives you guaranteed entry on both days, and the part of the event where the business gets done: the conference, and the people in it. It includes:'}</p>
         <table style="width:100%;border-collapse:collapse;margin:0 0 8px;">${lines.map(item).join('')}</table>
-        <p style="margin:6px 0 20px;font-size:13.5px;line-height:1.6;color:#1E2140;padding:12px 14px;background:#F7F8FF;border:1px solid #E3E6F5;border-radius:10px;"><strong>On stage:</strong> leaders from Google, PwC, Capgemini, Microsoft and the Government of Maharashtra, with Innovation Talks from the companies building AI for India.</p>
+        <p style="margin:6px 0 20px;font-size:13.5px;line-height:1.6;color:#1E2140;padding:12px 14px;background:#F7F8FF;border:1px solid #E3E6F5;border-radius:10px;"><strong>On stage:</strong> leaders from Google, PwC, Capgemini, Accenture and the Government of Maharashtra, with Innovation Talks from the companies building AI for India.</p>
         ${priceBox}
         <div style="text-align:center;margin:16px 0 8px;">
           <a href="${href}" style="display:inline-block;padding:14px 34px;background:linear-gradient(135deg,#FF6B00,#FF8C38);color:#fff;text-decoration:none;border-radius:10px;font-weight:bold;font-size:15px;">${academic ? 'Secure my Academic Pass' : 'Secure my Delegate Pass'}</a>

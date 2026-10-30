@@ -29,7 +29,7 @@
 // v18: the directory, connections and exhibitor leads stopped showing an unpaid
 // paid tier as that pass (a VIP checkout left at CCAvenue now reads Visitor Pass),
 // so the offline copies that still say VIP go.
-const VERSION = 'bhai-v18';
+const VERSION = 'bhai-v19';
 const SHELL = `shell-${VERSION}`;
 const DATA = `data-${VERSION}`;
 
