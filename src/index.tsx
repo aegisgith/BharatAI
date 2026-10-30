@@ -840,30 +840,40 @@ async function passLabelSql(c: any): Promise<string> {
     ` ELSE badge_type END)`
 }
 
-// What each paid pass says about lunch (passComparisonHTML): Delegate, Premium
-// Delegate and VIP include it, Academic does not. Lunch was only a hand-set flag
-// that no payment touched, so on 29 Oct 2026 24 paid Delegates and 6 paid VIPs
-// were missing from the lunch count. Every other pass keeps what was set by hand.
-const LUNCH_BY_PASS: Record<string, 'Yes' | 'No'> = { 'Delegate Pass': 'Yes', 'Premium Delegate Pass': 'Yes', 'VIP Pass': 'Yes', 'Academic Pass': 'No' }
+// What each pass says about lunch (passComparisonHTML): Delegate, Premium
+// Delegate and VIP include it; Academic and the free Visitor Pass do not. Lunch
+// was only a hand-set flag that no payment touched, so on 29 Oct 2026 24 paid
+// Delegates and 6 paid VIPs were missing from the lunch count and 74 free Visitors
+// were on it (walk-ins, Add Attendee and Bulk Upload defaulted to Yes). Every
+// other pass (Speaker, Exhibitor, Organiser ...) keeps what was set by hand.
+const LUNCH_BY_PASS: Record<string, 'Yes' | 'No'> = { 'Delegate Pass': 'Yes', 'Premium Delegate Pass': 'Yes', 'VIP Pass': 'Yes', 'Academic Pass': 'No', 'Visitor Pass': 'No' }
 const LUNCH_FROM_PASS_SQL = `CASE badge_type ${Object.entries(LUNCH_BY_PASS).map(([k, v]) => `WHEN '${k}' THEN '${v}'`).join(' ')} ELSE lunch_inclusion END`
 
 // An admin setting a pass by hand. A paid tier given to someone who did not hold
 // one is complimentary ('waived'), not a sale: until 29 Oct 2026 it kept the
 // Visitor Pass's 'paid' and counted as a VIP sold. Moving between paid tiers, or
 // someone part-way through paying ('pending'), keeps the payment as it is, and so
-// does a save that sets Payment itself. Run BEFORE the write: it reads the pass
-// each row holds now. ids in chunks: D1 binds at most 100 parameters.
+// does a save that sets Payment itself, and so does anyone with money on record
+// (an amount, a paid order or an invoice: paid on mUni Campus, say, and the pass
+// raised afterwards). Run BEFORE the write: it reads the pass each row holds now.
+// ids in chunks: D1 binds at most 100 parameters.
 async function handGivenPassIds(c: any, ids: number[], written: Record<string, any>): Promise<number[]> {
   if (!PAID_TIERS.includes(String(written.badge_type ?? '')) || 'payment_status' in written) return []
   if (!ids.length || !(await paymentStatusEnabled(c))) return []
+  const cols = await attendeeColumns(c)
+  const noMoney = (cols.has('payment_amount') ? ` AND COALESCE(TRIM(payment_amount), '') IN ('', '0', '0.00')` : '') +
+    ` AND NOT EXISTS (SELECT 1 FROM payment_orders o WHERE o.attendee_id = attendees.id AND o.status = 'paid')` +
+    ` AND NOT EXISTS (SELECT 1 FROM invoices i WHERE i.attendee_id = attendees.id)`
   const out: number[] = []
   for (let i = 0; i < ids.length; i += 80) {
     const part = ids.slice(i, i + 80)
-    const { results } = await c.env.DB.prepare(
-      `SELECT id FROM attendees WHERE id IN (${part.map(() => '?').join(', ')})
+    const base = `SELECT id FROM attendees WHERE id IN (${part.map(() => '?').join(', ')})
           AND COALESCE(badge_type, '') NOT IN (${PAID_TIERS.map(() => '?').join(', ')})
           AND LOWER(TRIM(COALESCE(payment_status, ''))) <> 'pending'`
-    ).bind(...part, ...PAID_TIERS).all() as any
+    // A database without the orders or invoices tables (before 0021/0045) asks
+    // without them rather than failing the admin's save.
+    const run = (sql: string) => c.env.DB.prepare(sql).bind(...part, ...PAID_TIERS).all()
+    const { results } = await run(base + noMoney).catch(() => run(base)) as any
     for (const r of (results || [])) out.push(Number(r.id))
   }
   return out
@@ -4981,6 +4991,9 @@ app.post('/api/desk/walkin', async (c) => {
     company: String(b.company || '').trim().slice(0, 160),
     job_title: String(b.job_title || '').trim().slice(0, 160),
     badge_type: 'Visitor Pass', role: 'attendee', country: 'India',
+    // A Visitor Pass has no lunch (LUNCH_BY_PASS); left out, the column's own
+    // default put every walk-in on the lunch count.
+    lunch_inclusion: 'No',
     registration_source: 'walkin',
     registration_date: new Date().toISOString().slice(0, 19).replace('T', ' '),
     // A Visitor pass is free, so there is no payment to wait for; and they are
@@ -12392,13 +12405,11 @@ app.post('/api/admin/attendees', async (c) => {
     // exactly the row an admin just added and wants to see.
     registration_date: nowStamp,
   }
-  // A paid tier added by hand is given, not sold (handGivenPassIds), and comes with
-  // the lunch its pass includes, unless the form said otherwise.
+  // A paid tier added by hand is given, not sold (handGivenPassIds), and every pass
+  // comes with the lunch it includes (a Visitor Pass none), unless the form said so.
   const addedPass = String(badge_type || '').trim()
-  if (PAID_TIERS.includes(addedPass)) {
-    fallbacks.payment_status = 'waived'
-    fallbacks.lunch_inclusion = LUNCH_BY_PASS[addedPass] || fallbacks.lunch_inclusion
-  }
+  if (PAID_TIERS.includes(addedPass)) fallbacks.payment_status = 'waived'
+  if (LUNCH_BY_PASS[addedPass]) fallbacks.lunch_inclusion = LUNCH_BY_PASS[addedPass]
   const names: string[] = ['event_id', 'name', 'email']
   const vals: any[] = [event_id, name.trim(), normalizedEmail]
   for (const f of ADMIN_ATTENDEE_FIELDS) {
