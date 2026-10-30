@@ -126,16 +126,24 @@ h1,h2,h3,h4,.mp-hero-title,.mp-faq-title,.listing-title,.detail-hero-title,.mp-l
 
 /* ── Forms ── */
 .mp-form { display: flex; flex-direction: column; gap: 12px; }
-.mp-form input, .mp-form textarea, .mp-form select {
+/* The listing form (.mp-listing-form) was left out of these rules, so with the
+   Tailwind reset its boxes had no border and no fill: on a phone "Product URL"
+   read as a line of grey text, not a place to type. */
+.mp-form input, .mp-form textarea, .mp-form select,
+.mp-listing-form .form-field input:not([type=checkbox]):not([type=file]), .mp-listing-form .form-field textarea, .mp-listing-form .form-field select {
   padding: 10px 14px; border-radius: 10px; font-size: 13px;
   background: rgba(20,25,80,0.05); border: 1px solid var(--mp-border);
   color: var(--mp-text); width: 100%;
 }
-.mp-form input:focus, .mp-form textarea:focus, .mp-form select:focus {
+.mp-listing-form .form-field input[readonly]:not([type=checkbox]):not([type=file]) { background: transparent; border-color: transparent; padding-left: 0; }
+.mp-form input:focus, .mp-form textarea:focus, .mp-form select:focus,
+.mp-listing-form .form-field input:focus, .mp-listing-form .form-field textarea:focus, .mp-listing-form .form-field select:focus {
   outline: none; border-color: var(--mp-primary);
   box-shadow: 0 0 0 3px rgba(255,107,0,0.15);
 }
-.mp-form select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%239ca3af' d='M6 8L1 3h10z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 32px; }
+/* What the form's own check found wrong (marketplace-app.js sets aria-invalid). */
+.mp-listing-form [aria-invalid="true"] { border-color: #dc2626 !important; box-shadow: 0 0 0 3px rgba(220,38,38,0.15) !important; }
+.mp-form select, .mp-listing-form .form-field select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%239ca3af' d='M6 8L1 3h10z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 32px; }
 .mp-form select option { background: var(--mp-surface); color: var(--mp-text); }
 
 .mp-btn-primary {

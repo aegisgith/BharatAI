@@ -71,6 +71,7 @@ const updateAuthUI = () => {
     listingFormSection.classList.remove('hidden'); authSection.classList.add('hidden')
     if (companyNameField) companyNameField.value = state.user.company_name || ''
     adminSection.classList.toggle('hidden', state.user.role !== 'admin')
+    restoreDraft()
   } else {
     loginButton.classList.remove('hidden'); logoutButton.classList.add('hidden')
     if (dashboardLink) dashboardLink.classList.add('hidden')
@@ -264,7 +265,7 @@ const loadAdminListings = async () => {
 
 // Auth events
 loginButton.addEventListener('click', () => authSection.classList.toggle('hidden'))
-logoutButton.addEventListener('click', async () => { await api('/api/mp/auth/logout', { method: 'POST' }); state.user = null; updateAuthUI(); showToast('Logged out') })
+logoutButton.addEventListener('click', async () => { await api('/api/mp/auth/logout', { method: 'POST' }); clearDraft(); state.user = null; updateAuthUI(); showToast('Logged out') })
 // Every event pass includes a listing: someone signed in to the event app is signed
 // in here without a second account. The server decides whether that is safe for
 // their email; when it is not, it emails them a sign-in link instead.
@@ -472,6 +473,61 @@ if (screenshotsInput) {
   })
 }
 
+// ── Draft ──
+// The form is long and is mostly filled on phones. A reload lost it, and so did a
+// phone browser dropping the tab in the background (opening the mail app to tap a
+// sign-in link is enough). What is typed is kept in this browser, for this company
+// only, until the listing is sent or the person signs out. Images cannot be kept.
+const DRAFT_KEY = 'mpListingDraft'
+const DRAFT_DAYS = 14
+const draftNotice = document.createElement('div')
+draftNotice.hidden = true
+draftNotice.setAttribute('role', 'status')
+draftNotice.setAttribute('data-draft-notice', '')
+draftNotice.style.cssText = 'margin:0 0 16px;padding:12px 14px;border-radius:12px;border:1px solid #bfdbfe;background:#eff6ff;color:#1e3a8a;font-size:14px;line-height:1.6'
+listingForm.prepend(draftNotice)
+function draftFields() { return Array.from(listingForm.elements).filter(el => el.name && el.type !== 'file' && el.name !== 'company_name') }
+function clearDraft() { try { localStorage.removeItem(DRAFT_KEY) } catch {} }
+function saveDraft() {
+  if (!state.user) return
+  const values = {}, checks = {}
+  draftFields().forEach(el => {
+    if (el.type === 'checkbox') { if (el.checked) (checks[el.name] = checks[el.name] || []).push(el.value) }
+    else if (String(el.value || '').trim()) values[el.name] = el.value
+  })
+  if (!Object.keys(values).length && !Object.keys(checks).length) return clearDraft()
+  try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ company: state.user.id, at: Date.now(), values, checks })) } catch {}
+}
+let draftTimer = null
+listingForm.addEventListener('input', () => { clearTimeout(draftTimer); draftTimer = setTimeout(saveDraft, 300) })
+listingForm.addEventListener('change', () => { clearTimeout(draftTimer); draftTimer = setTimeout(saveDraft, 50) })
+// Once per page, when a signed-in company is known. Only empty boxes are filled, so
+// signing in again mid-form never overwrites what is on screen.
+let draftRestored = false
+function restoreDraft() {
+  if (draftRestored || !state.user) return
+  draftRestored = true
+  let d = null
+  try { d = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null') } catch { d = null }
+  if (!d || d.company !== state.user.id || !(Date.now() - d.at < DRAFT_DAYS * 86400000)) return
+  let n = 0
+  draftFields().forEach(el => {
+    if (el.type === 'checkbox') { if ((d.checks?.[el.name] || []).includes(el.value) && !el.checked) { el.checked = true; n++ } }
+    else if (typeof d.values?.[el.name] === 'string' && !String(el.value || '').trim()) { el.value = d.values[el.name]; n++ }
+  })
+  if (!n) return
+  const when = new Date(d.at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })
+  draftNotice.innerHTML = `We kept what you typed here on ${esc(when)}. Not sent yet: check it and press <strong>Submit Listing for Review</strong> at the bottom. Images need choosing again. <button type="button" data-draft-clear style="background:none;border:0;padding:0;color:#1d4ed8;text-decoration:underline;cursor:pointer;font:inherit">Clear the form</button>`
+  draftNotice.hidden = false
+}
+draftNotice.addEventListener('click', (e) => {
+  if (!e.target.closest('[data-draft-clear]')) return
+  clearDraft()
+  listingForm.reset()
+  if (companyNameField && state.user) companyNameField.value = state.user.company_name || ''
+  draftNotice.hidden = true
+})
+
 // Listing form submit
 const submitBtn = listingForm.querySelector('button[type="submit"]')
 let submitBtnHTML = submitBtn ? submitBtn.innerHTML : 'Submit'
@@ -496,6 +552,7 @@ const noticeStyle = (border, bg, color) => `margin:16px 0;padding:14px 16px;bord
 const incompleteNotice = document.createElement('div')
 incompleteNotice.hidden = true
 incompleteNotice.setAttribute('role', 'status')
+incompleteNotice.setAttribute('data-incomplete-notice', '')
 incompleteNotice.style.cssText = noticeStyle('#fed7aa', '#fff7ed', '#7c2d12')
 listingForm.querySelector('.form-actions')?.before(incompleteNotice)
 
@@ -623,6 +680,7 @@ listingForm.addEventListener('submit', async (e) => {
     busy('Submitting...')
 
     const res = await api('/api/mp/listings', { method:'POST', body:JSON.stringify(payload) })
+    clearTimeout(draftTimer); clearDraft()
     const pn = payload.product_name || 'Your listing'
     const stillMissing = Array.isArray(res.missing) ? res.missing : []
     const missingNote = stillMissing.length ? ` It is still missing ${stillMissing.length} detail${stillMissing.length === 1 ? '' : 's'} (${esc(stillMissing.join(', '))}); you can add them from your dashboard.` : ''
@@ -644,6 +702,12 @@ const init = async () => {
   const viaApp = wantsToSubmit && !state.user ? await signInFromApp() : false
   if (wantsToSubmit && state.user) showListingForm()
   else if (wantsToSubmit && viaApp !== 'link-sent') { authSection.classList.remove('hidden'); setTimeout(() => authSection.scrollIntoView({ behavior:'smooth' }), 150) }
+  // "Sign in" from the dashboard (and its "sign-in has run out" note) lands here with
+  // ?signin=1: open the box, the sign-in-link field first, since exhibitors have no password.
+  if (new URLSearchParams(window.location.search).get('signin') === '1' && !state.user) {
+    authSection.classList.remove('hidden'); setTimeout(() => authSection.scrollIntoView({ behavior:'smooth' }), 150)
+    const el = linkForm && linkForm.querySelector('input[name="email"]'); if (el) setTimeout(() => el.focus({ preventScroll: true }), 400)
+  }
   // A sign-in link past its seven days lands here; the form below sends a fresh one.
   if (new URLSearchParams(window.location.search).get('signin') === 'expired' && !state.user) {
     authSection.classList.remove('hidden'); setTimeout(() => authSection.scrollIntoView({ behavior:'smooth' }), 150)

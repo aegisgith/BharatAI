@@ -18,7 +18,8 @@ let fails = 0;
 const check = (label, ok, detail = '') => { console.log((ok ? 'PASS  ' : 'FAIL  ') + label + (ok ? '' : '   ' + detail)); if (!ok) fails++; };
 const getState = async () => (await fetch(BASE + '/api/__state')).json();
 const setState = (body) => fetch(BASE + '/api/__state', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-const PHONE = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true,
+// India time, as the exhibitors have it: the dashboard's dates are checked against it.
+const PHONE = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, timezoneId: 'Asia/Kolkata', locale: 'en-IN',
   userAgent: 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36' };
 // A 1x1 PNG: enough for the form (it keeps small images as they are) and the server (which reads the bytes).
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
@@ -63,6 +64,12 @@ const png = (name) => ({ name, mimeType: 'image/png', buffer: PNG });
     check('the company name is filled in from the account', (await page.inputValue('#company-name')) === 'Daten Intelligenz', await page.inputValue('#company-name'));
     check('the form has no browser-side validation (novalidate)', await page.locator('#listing-form').evaluate(f => f.noValidate), 'the browser would refuse a plain domain silently');
     check('the page fits a phone', await fits(page));
+    // Every box to type in looks like one: the form had no input styles at all, so
+    // its boxes had no border on a phone and read as plain text.
+    const boxes = await page.evaluate(() => Array.from(document.querySelectorAll('#listing-form .form-field input:not([type=checkbox]):not([type=file]):not([readonly]), #listing-form .form-field textarea, #listing-form .form-field select'))
+      .map(el => { const cs = getComputedStyle(el); return { name: el.name, w: parseFloat(cs.borderTopWidth), c: cs.borderTopColor } })
+      .filter(b => !(b.w >= 1) || /rgba\(0, 0, 0, 0\)|transparent/.test(b.c)).map(b => b.name));
+    check('every box in the listing form has a visible border', boxes.length === 0, 'no border: ' + boxes.join(', '));
     await ctx.close();
   }
 
@@ -110,7 +117,7 @@ const png = (name) => ({ name, mimeType: 'image/png', buffer: PNG });
     await fillBasics(page, 'AIGyan Lite');
     await submit(page);
     await page.waitForTimeout(400);
-    const notice = await text(page, '#listing-form [role="status"]');
+    const notice = await text(page, '#listing-form [data-incomplete-notice]');
     check('the first press shows "Not submitted yet" with what is missing', /Not submitted yet/.test(notice) && /Company logo/.test(notice) && /Sales contact email/.test(notice), notice.slice(0, 120));
     check('the button now reads "Submit anyway"', /Submit anyway/.test(await text(page, '#listing-form button[type="submit"]')));
     check('nothing was sent on the first press', (await getState()).listings.length === 1);
@@ -209,12 +216,17 @@ const png = (name) => ({ name, mimeType: 'image/png', buffer: PNG });
 
   // ---- 8. the dashboard: the listing is there, and an edit with a plain domain saves ----
   {
+    // Sent at 1:30 AM on 30 Oct in India, which the database writes as 29 Oct, 20:00 UTC.
+    const tutorId = (await getState()).listings.find(l => l.product_name === 'AIGyan Tutor').id;
+    await setState({ setListing: { id: tutorId, created_at: '2026-10-29 20:00:00' } });
     const { ctx, page } = await phone();
     await page.goto(BASE + '/marketplace/dashboard');
     await page.waitForSelector('#dash-listings-table table', { timeout: 10000 }).catch(() => {});
     const table = await text(page, '#dash-listings-table');
     check('the dashboard lists the listing as pending', /AIGyan Tutor/.test(table) && /Pending/.test(table), table.slice(0, 120));
-    const tutorId = (await getState()).listings.find(l => l.product_name === 'AIGyan Tutor').id;
+    const row = await text(page, `#dash-listings-table tr:has([data-edit-id="${tutorId}"])`);
+    check('a listing sent at 1:30 AM in India shows that day (the database time is UTC)', /30 Oct 2026/.test(row) && !/Invalid/.test(row), row.replace(/\s+/g, ' ').slice(0, 160));
+    check('the dashboard parses a database time as UTC', await page.evaluate(() => parseDbTime('2026-10-29 20:00:00').toISOString() === '2026-10-29T20:00:00.000Z' && parseDbTime('') === null));
     await page.click('[data-goto="listings"]');            // the overview's "View Listings"
     await page.waitForSelector('#section-listings:not(.hidden)');
     await page.click(`#dash-listings-table .dash-actions [data-edit-id="${tutorId}"]`);
@@ -260,6 +272,60 @@ const png = (name) => ({ name, mimeType: 'image/png', buffer: PNG });
     st = await getState();
     check('the inquiry reaches the exhibitor by email', st.inquiries.length === 1 && st.mail.some(m => m.to === 'shishir@example.com' && /New inquiry about AIGyan Tutor from Meera Nair/.test(m.subject)), st.mail.map(m => m.subject).join(' | '));
     check('the listing page fits a phone', await fits(page));
+    await ctx.close();
+  }
+
+  // ---- 10. what is typed survives a reload (a phone dropping the tab), and only for that company ----
+  {
+    const { ctx, page } = await phone();
+    await page.goto(BASE + '/marketplace?submit=true');
+    await page.waitForSelector('#listing-form-section:not(.hidden)');
+    check('a fresh browser shows no kept-draft note', !(await visible(page, '#listing-form [data-draft-notice]')));
+    await fillBasics(page, 'AIGyan Labs', 'Lab notes written by AI, checked by teachers.');
+    await openSection(page, 'Categories');
+    await page.check('#listing-form input[name="target_industry"][value="Education"]');
+    await openSection(page, 'Media');
+    await page.fill('#listing-form [name="website_url"]', 'aigyanlabs.in');
+    await page.waitForTimeout(600);
+    await page.reload();
+    await page.waitForSelector('#listing-form-section:not(.hidden)');
+    await page.waitForTimeout(400);
+    const kept = await page.evaluate(() => ({ name: document.querySelector('#listing-form [name="product_name"]').value, desc: document.querySelector('#listing-form [name="description"]').value,
+      web: document.querySelector('#listing-form [name="website_url"]').value, edu: document.querySelector('#listing-form input[name="target_industry"][value="Education"]').checked,
+      company: document.querySelector('#company-name').value }));
+    check('after a reload, the typed boxes and the ticked industry come back', kept.name === 'AIGyan Labs' && /teachers/.test(kept.desc) && kept.web === 'aigyanlabs.in' && kept.edu && kept.company === 'Daten Intelligenz', JSON.stringify(kept));
+    const note = await text(page, '#listing-form [data-draft-notice]');
+    check('a note says it was kept, is not sent yet, and images need choosing again', /kept what you typed/.test(note) && /Not sent yet/.test(note) && /Images need choosing again/.test(note), note);
+    await page.click('#listing-form [data-draft-clear]');
+    await page.waitForTimeout(200);
+    const cleared = await page.evaluate(() => ({ name: document.querySelector('#listing-form [name="product_name"]').value, company: document.querySelector('#company-name').value, stored: localStorage.getItem('mpListingDraft') }));
+    check('"Clear the form" empties it, keeps the company name and forgets the draft', cleared.name === '' && cleared.company === 'Daten Intelligenz' && cleared.stored === null, JSON.stringify(cleared));
+    await fillBasics(page, 'AIGyan Labs');
+    await page.waitForTimeout(500);
+    await submit(page); await page.waitForTimeout(300); await submit(page);
+    await page.waitForSelector('.listing-success-panel', { timeout: 15000 }).catch(() => {});
+    check('sending the listing forgets the draft', /Listing Submitted/.test(await text(page, '.listing-success-panel')) && (await page.evaluate(() => localStorage.getItem('mpListingDraft'))) === null);
+    // Another company's draft in the same browser is never shown.
+    await page.evaluate(() => localStorage.setItem('mpListingDraft', JSON.stringify({ company: 8, at: Date.now(), values: { product_name: 'Someone Else' }, checks: {} })));
+    await page.goto(BASE + '/marketplace?submit=true');
+    await page.waitForSelector('#listing-form-section:not(.hidden)');
+    await page.waitForTimeout(400);
+    check("another company's draft is not filled in", (await page.inputValue('#listing-form [name="product_name"]')) === '' && !(await visible(page, '#listing-form [data-draft-notice]')));
+    await ctx.close();
+  }
+
+  // ---- 11. signed out, the dashboard's Sign in opens the sign-in box ----
+  {
+    const { ctx, page } = await phone(false);
+    await page.goto(BASE + '/marketplace/dashboard');
+    await page.waitForSelector('.dash-login-required a', { timeout: 10000 }).catch(() => {});
+    const blurb = await text(page, '.dash-login-required');
+    check('signed out, the dashboard tells exhibitors to use a sign-in link', /Email me a sign-in link/.test(blurb), blurb);
+    await page.click('.dash-login-required a');
+    await page.waitForSelector('#auth-section:not(.hidden)', { timeout: 10000 }).catch(() => {});
+    await page.waitForTimeout(600);
+    check('Sign in lands with the sign-in box open', page.url().includes('/marketplace?signin=1') && await visible(page, '#auth-section'), page.url());
+    check('the cursor is in the "Email me a sign-in link" box', await page.evaluate(() => document.activeElement && document.activeElement.closest('#link-form') !== null && document.activeElement.name === 'email'));
     await ctx.close();
   }
 

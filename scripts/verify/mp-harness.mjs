@@ -136,7 +136,13 @@ http.createServer(async (req, res) => {
   const raw = Buffer.concat(chunks);
   try {
     if (p === '/api/__state') {
-      if (req.method === 'POST') { const b = JSON.parse(raw.toString() || '{}'); if (b.reset) s = fresh(); Object.assign(s.settings, b.settings || {}); }
+      if (req.method === 'POST') {
+        const b = JSON.parse(raw.toString() || '{}');
+        if (b.reset) s = fresh();
+        Object.assign(s.settings, b.settings || {});
+        // e.g. { setListing: { id: 3, created_at: '2026-10-29 20:00:00' } }: a listing sent late at night, UTC.
+        if (b.setListing) { const l = s.listings.find(x => x.id === b.setListing.id); if (l) Object.assign(l, b.setListing); }
+      }
       await Promise.all([...pending]);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ listings: s.listings, uploads: s.uploads.map(u => ({ id: u.id, company_id: u.company_id, content_type: u.content_type, size: u.size })), inquiries: s.inquiries, audits: s.audits, mail: s.mail, companies: s.companies }));

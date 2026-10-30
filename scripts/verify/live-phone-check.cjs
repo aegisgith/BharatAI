@@ -112,6 +112,78 @@ const check = (n, ok, d) => { console.log((ok ? 'PASS ' : 'FAIL ') + n + (ok ? '
     await c4.close();
   }
 
+  // The AI Marketplace listing form (30 Oct 2026), nothing written. The page runs as
+  // a signed-in company because the session check is answered here; the listing POST
+  // is answered here, and any other write under /api/mp/ is refused here, so nothing
+  // reaches production. An exhibitor had written that "Submit for review" did nothing.
+  {
+    const mpCtx = () => browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, userAgent: UA, serviceWorkers: 'block', timezoneId: 'Asia/Kolkata' });
+    const c5 = await mpCtx();
+    const errs = [], sent = [], leaked = [];
+    let answer = { status: 200, json: { success: true, id: 1, missing: [] } };
+    await c5.route(/\/api\/mp\//, (r) => { if (r.request().method() === 'GET') return r.continue(); leaked.push(r.request().method() + ' ' + r.request().url()); return r.abort(); });
+    await c5.route(/\/api\/mp\/listings$/, (r) => { if (r.request().method() !== 'POST') return r.fallback(); sent.push(JSON.parse(r.request().postData() || '{}')); return r.fulfill({ status: answer.status, json: answer.json }); });
+    await c5.route(/\/api\/mp\/auth\/me$/, (r) => r.fulfill({ json: { user: { id: 999999, company_name: 'Live Check Pvt Ltd', email: 'live.check@example.com', role: 'company' }, event_admin: false } }));
+    const p5 = await c5.newPage();
+    p5.on('pageerror', e => errs.push(e.message));
+    const open = async (title) => { const d = p5.locator('#listing-form details', { has: p5.locator('summary', { hasText: title }) }).first(); if (!(await d.evaluate(e => e.open))) await d.locator('summary').click(); };
+    const isOpen = (title) => p5.locator('#listing-form details', { has: p5.locator('summary', { hasText: title }) }).first().evaluate(e => e.open);
+    const press = () => p5.click('#listing-form button[type="submit"]');
+    const shown = (sel) => p5.locator(sel).first().innerText().catch(() => '');
+    const load = async () => { await p5.goto(BASE + '/marketplace?submit=true&live=' + Date.now(), { waitUntil: 'domcontentloaded', timeout: 60000 }); await p5.waitForSelector('#listing-form-section:not(.hidden)', { timeout: 20000 }).catch(() => {}); await p5.waitForTimeout(500); };
+    await load();
+    const form = await p5.evaluate(() => { const f = document.getElementById('listing-form'), w = f && f.querySelector('[name="website_url"]'), cs = w && getComputedStyle(w);
+      return { novalidate: !!(f && f.noValidate), type: w && w.type, border: cs ? parseFloat(cs.borderTopWidth) : 0 }; });
+    // The page script's top-level names, read the way the console would (no eval in the page).
+    form.fns = [];
+    for (const n of ['validateListing', 'showFormError', 'signedOutMidForm', 'restoreDraft']) if ((await p5.evaluate('typeof ' + n).catch(() => 'missing')) !== 'function') form.fns.push(n);
+    check('live marketplace form: no silent browser check, a plain box for links, the new code served', form.novalidate && form.type === 'text' && form.fns.length === 0, JSON.stringify(form));
+    check('live marketplace form: its boxes have a visible border on a phone', form.border >= 1, 'border ' + form.border);
+    // An empty product name inside a collapsed section: named on screen, the section opened.
+    await p5.locator('#listing-form summary', { hasText: 'Basic Information' }).click();
+    await press(); await p5.waitForTimeout(600);
+    const e1 = await shown('#listing-form [data-form-error]');
+    check('live marketplace form: an empty name in a closed section is named and the section opened', /product name/i.test(e1) && await isOpen('Basic Information') && sent.length === 0, e1);
+    // A website typed without https://, the missing-details step, then Submit anyway.
+    await p5.fill('#listing-form [name="product_name"]', 'Live Check Product (never saved)');
+    await p5.fill('#listing-form [name="description"]', 'A check run by the organisers. This request is answered in the browser and never sent.');
+    await open('Media');
+    await p5.fill('#listing-form [name="website_url"]', 'www.example.com');
+    await press(); await p5.waitForTimeout(500);
+    check('live marketplace form: the first press says "Not submitted yet" and sends nothing', /Not submitted yet/.test(await shown('#listing-form [data-incomplete-notice]')) && sent.length === 0, String(sent.length));
+    await press();
+    await p5.waitForSelector('.listing-success-panel', { timeout: 15000 }).catch(() => {});
+    check('live marketplace form: Submit anyway sends www.example.com as https://www.example.com', sent.length === 1 && sent[0].website_url === 'https://www.example.com' && /Listing Submitted/.test(await shown('.listing-success-panel')), JSON.stringify(sent.map(s => s.website_url)));
+    check('live marketplace form: a sent listing forgets its draft', (await p5.evaluate(() => localStorage.getItem('mpListingDraft'))) === null);
+    // What is typed survives a reload; a sign-in that ran out is explained and keeps it.
+    await load();
+    await p5.fill('#listing-form [name="product_name"]', 'Live Draft Check');
+    await p5.fill('#listing-form [name="description"]', 'Kept in this browser only.');
+    await p5.waitForTimeout(700);
+    await load();
+    const kept = await p5.evaluate(() => document.querySelector('#listing-form [name="product_name"]').value);
+    check('live marketplace form: what is typed comes back after a reload, with the note', kept === 'Live Draft Check' && /kept what you typed/.test(await shown('#listing-form [data-draft-notice]')), kept);
+    answer = { status: 401, json: { error: 'Login required' } };
+    await press(); await p5.waitForTimeout(400); await press();
+    await p5.waitForSelector('#listing-form [data-form-error]:not([hidden])', { timeout: 10000 }).catch(() => {});
+    const e2 = await shown('#listing-form [data-form-error]');
+    check('live marketplace form: a sign-in that ran out is explained and the form is kept', /sign-in has run out/.test(e2) && (await p5.inputValue('#listing-form [name="product_name"]')) === 'Live Draft Check', e2);
+    check('live marketplace form fits the phone, with no JavaScript errors', await p5.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1) && errs.length === 0, errs.slice(0, 2).join(' | '));
+    check('live marketplace check wrote nothing (every other write refused in the browser)', leaked.length === 0, leaked.join(', '));
+    await c5.close();
+    // Signed out, the dashboard's Sign in opens the sign-in box. Only GETs leave the browser.
+    const c6 = await mpCtx();
+    const leaked6 = [];
+    await c6.route(/\/api\/mp\//, (r) => { if (r.request().method() === 'GET') return r.continue(); leaked6.push(r.request().url()); return r.abort(); });
+    const p6 = await c6.newPage();
+    await p6.goto(BASE + '/marketplace/dashboard?live=' + Date.now(), { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await p6.waitForSelector('.dash-login-required a', { timeout: 20000 }).catch(() => {});
+    await p6.click('.dash-login-required a').catch(() => {});
+    await p6.waitForSelector('#auth-section:not(.hidden)', { timeout: 20000 }).catch(() => {});
+    check('live marketplace dashboard, signed out: Sign in opens the sign-in box', p6.url().includes('/marketplace?signin=1') && await p6.locator('#auth-section').isVisible() && leaked6.length === 0, p6.url());
+    await c6.close();
+  }
+
   await browser.close();
   console.log(fails ? `\n${fails} FAILED` : '\nall live phone checks passed');
   process.exit(fails ? 1 : 0);

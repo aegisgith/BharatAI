@@ -55,7 +55,7 @@ function mpSharedHead(title: string, opts: { path?: string; noindex?: boolean } 
        last-but-one, Tailwind last. -->
   <link rel="stylesheet" href="/css/fa-subset.css?v=2">
   <link rel="stylesheet" href="/css/fonts-app.css?v=1">
-  <link href="/static/marketplace.css?v=4" rel="stylesheet">
+  <link href="/static/marketplace.css?v=5" rel="stylesheet">
   <link rel="stylesheet" href="/css/tailwind.css?v=${__TW_CSS_HASH__}">
 </head>`
 }
@@ -415,7 +415,7 @@ export function marketplacePageHTML(): string {
     </div>
   </footer>
 
-  <script src="/static/marketplace-app.js?v=8"></script>
+  <script src="/static/marketplace-app.js?v=9"></script>
 </body>
 </html>`
 }
@@ -717,7 +717,7 @@ export function marketplaceDashboardPageHTML(): string {
     </div>
   </div>
 
-  <script src="/static/marketplace-dashboard.js?v=5"></script>
+  <script src="/static/marketplace-dashboard.js?v=6"></script>
 </body>
 </html>`
 }

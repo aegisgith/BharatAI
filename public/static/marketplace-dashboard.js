@@ -30,8 +30,12 @@ const api = async (path, opts = {}) => {
   return d
 }
 const toSlug = (t) => (t||'').toLowerCase().trim().replace(/&/g,'and').replace(/[^a-z0-9\s-]/g,'').replace(/\s+/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'').slice(0,80)
-const fmtDate = (d) => { if (!d) return '—'; return new Date(d).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'}) }
-const fmtDateTime = (d) => { if (!d) return '—'; return new Date(d).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}) }
+// The database writes "YYYY-MM-DD HH:MM:SS" in UTC. Read as it stood, the browser
+// took it for local time (a listing sent at 1 AM in India showed the day before),
+// and older iPhone Safari could not read it at all ("Invalid Date").
+const parseDbTime = (d) => { const s = String(d || '').trim(); const t = new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(s) ? s.replace(' ', 'T') : s.replace(' ', 'T') + 'Z'); return isNaN(t) ? null : t }
+const fmtDate = (d) => { const t = parseDbTime(d); return t ? t.toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'}) : '—' }
+const fmtDateTime = (d) => { const t = parseDbTime(d); return t ? t.toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—' }
 const statusBadge = (s) => {
   const m = { approved:{cls:'dash-badge--green',icon:'fa-circle-check',label:'Approved'}, pending:{cls:'dash-badge--yellow',icon:'fa-clock',label:'Pending'}, rejected:{cls:'dash-badge--red',icon:'fa-circle-xmark',label:'Rejected'} }
   const x = m[s] || {cls:'',icon:'fa-question',label:s}
@@ -58,7 +62,7 @@ const initDashboard = async () => {
   try {
     const d = await api('/api/mp/auth/me')
     if (!d.user) {
-      main.innerHTML = `<section class="dash-section"><div class="dash-login-required"><i class="fas fa-lock"></i><h2>Login Required</h2><p>Please log in to access your dashboard.</p><a href="/marketplace" class="dash-btn-primary">Go to Login</a></div></section>`
+      main.innerHTML = `<section class="dash-section"><div class="dash-login-required"><i class="fas fa-lock"></i><h2>Sign in to see your dashboard</h2><p>Exhibitors: use <strong>Email me a sign-in link</strong> with the email from your booth booking. No password needed.</p><a href="/marketplace?signin=1" class="dash-btn-primary">Sign in</a></div></section>`
       return
     }
     if (d.user.role === 'admin') { window.location.href = '/marketplace/admin'; return }
@@ -88,7 +92,7 @@ const loadListings = async () => {
   try {
     const d = await api('/api/mp/dashboard/listings'); const ls = d.listings || []
     dashListings = ls; renderTodo()
-    if (!ls.length) { c.innerHTML = `<div class="dash-empty"><i class="fas fa-box-open"></i><p>No listings yet</p><p class="text-xs text-slate-500">Submit from <a href="/marketplace" class="text-emerald-400">marketplace</a>.</p></div>`; return }
+    if (!ls.length) { c.innerHTML = `<div class="dash-empty"><i class="fas fa-box-open"></i><p>No listings yet</p><p class="text-xs text-slate-500"><a href="/marketplace?submit=true" class="text-emerald-400">List your AI product</a>: it takes about five minutes.</p></div>`; return }
     c.innerHTML = `<table class="dash-table"><thead><tr><th>Product</th><th>Status</th><th>Views</th><th>Inquiries</th><th>Rating</th><th>Submitted</th><th>Actions</th></tr></thead><tbody>${ls.map(l => `<tr><td><div class="dash-product-cell">${l.product_image_url ? `<img src="${esc(l.product_image_url)}" class="dash-product-thumb">` : `<div class="dash-product-thumb-placeholder"><i class="fas fa-box"></i></div>`}<div><p class="font-medium text-sm">${esc(l.product_name)}</p><p class="text-xs text-slate-500 truncate" style="max-width:200px">${esc((l.description || '').slice(0,60))}...</p></div></div></td><td>${statusBadge(l.status)}${(l.missing || []).length ? `<button type="button" class="dash-badge dash-badge--yellow mt-1" style="display:inline-flex;cursor:pointer;border:0" data-edit-id="${esc(l.id)}" title="Missing: ${esc(l.missing.join(', '))}"><i class="fa-solid fa-exclamation-circle"></i> ${l.missing.length} to add</button>` : ''}</td><td class="text-sm">${(l.view_count||0).toLocaleString()}</td><td class="text-sm">${l.inquiry_count||0}</td><td class="text-sm">${l.avg_rating ? l.avg_rating + ' <i class="fas fa-star text-amber-400" style="font-size:0.65rem"></i>' : '—'}</td><td class="text-xs text-slate-400">${fmtDate(l.created_at)}</td><td><div class="dash-actions"><button class="dash-action-btn" data-edit-id="${esc(l.id)}"><i class="fas fa-pen-to-square"></i></button>${l.status==='approved' ? `<a href="/marketplace/listing/${encodeURIComponent(l.company_slug || dashCompanySlug)}/${encodeURIComponent(l.product_slug || toSlug(l.product_name))}" class="dash-action-btn" target="_blank" rel="noopener"><i class="fas fa-arrow-up-right-from-square"></i></a>` : ''}</div></td></tr>`).join('')}</tbody></table>`
     c.querySelectorAll('[data-edit-id]').forEach(b => b.addEventListener('click', () => openEditModal(b.getAttribute('data-edit-id'))))
     renderCompleteness(ls)
@@ -367,7 +371,8 @@ editForm.addEventListener('submit', async (e) => {
     await Promise.all([loadStats(), loadListings()])
   } catch (err) {
     showToast(err.message, true)
-    if (err.status === 401) showEditError('<strong>Not saved: your sign-in has run out.</strong> <a href="/marketplace" style="color:inherit;font-weight:600">Sign in again</a> (exhibitors: use <em>Email me a sign-in link</em>), then come back and save once more.')
+    // A new tab, so this one keeps the edit: signing in there sets the cookie this tab sends.
+    if (err.status === 401) showEditError('<strong>Not saved: your sign-in has run out.</strong> <a href="/marketplace?signin=1" target="_blank" rel="noopener" style="color:inherit;font-weight:600">Sign in again</a> (it opens in a new tab; exhibitors: use <em>Email me a sign-in link</em>), then come back to this tab and press Save once more. Your changes are kept.')
     else showEditError(`<strong>Not saved.</strong> ${esc(err.message)} Fix this and press Save again.`)
   }
   finally { if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = saveHTML } }
