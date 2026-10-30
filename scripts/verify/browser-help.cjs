@@ -111,6 +111,24 @@ const until = async (fn, ms) => { const end = Date.now() + ms; while (Date.now()
     await ctx.close();
   }
 
+  // ---- 4b. An email scanner ----
+  {
+    console.log('-- '+"4b. An email scanner");
+    const { ctx, page, seen } = await phone(browser);
+    // A scanner runs the page with its timers skipped ahead: the 15 s timer fires
+    // in the first moments of the clock.
+    await ctx.addInitScript(() => {
+      const orig = window.setTimeout; let done = false;
+      window.setTimeout = function (fn, ms) { const a = [].slice.call(arguments); if (!done && ms === 15000) { done = true; a[1] = 50; } return orig.apply(window, a); };
+    });
+    await page.goto(BASE + '/app', { waitUntil: 'load' });
+    await sleep(3000);
+    const stages = seen.boot.map(b => b.stage + ':' + (b.ms < 14000)).join(',');
+    const note = await page.evaluate(() => !!document.getElementById('boot-slow')).catch(() => false);
+    check('scanner: a 15 s timer that fires at once is reported as a scan, under 14 s, with no note on screen and no recovery report', stages === 'scan:true' && !note && !(await loadingShown(page)), stages + ' note=' + note);
+    await ctx.close();
+  }
+
   // ---- 5. A sign-in link that no longer works ----
   {
     console.log('-- '+"5. A sign-in link that no longer works");
@@ -195,6 +213,7 @@ const until = async (fn, ms) => { const end = Date.now() + ms; while (Date.now()
       visitors: [{ action: 'app.boot_fail', people: 1 }],
       recent: [{ id: '3329', name: 'Rajib <img src=x onerror="window.__xssHelp=1">', email: 'rajib@technocracy.sg', action: 'app.boot_fail', at: '29 Oct 2026, 9:02 pm', why: 'did not load /app.js?v=1de3727a', browser: 'Chrome 130 on Windows', helped: '' }],
       help: { on: true, due: 1, quiet_minutes: 10, cron_alive: true },
+      scanners: { people: 3, visits: 7, last: '30 Oct 2026, 8:10 am' },
     };
     await ctx.route(/\/api\/admin\/help-stats$/, (r) => r.fulfill({ json: STATS }));
     await ctx.route(/\/api\/admin\/help-mail\/preview/, (r) => { calls.preview.push(r.request().url()); return r.fulfill({ json: { to: 'rajib@technocracy.sg', subject: 'Your Bharat AI Innovation account: the quickest way in', html: '<p id="pv">Hi <strong>Rajib</strong>,</p><ul><li>Refresh the page</li></ul>' } }); });
@@ -211,6 +230,7 @@ const until = async (fn, ms) => { const end = Date.now() + ms; while (Date.now()
     const shown = await until(() => page.evaluate(() => /Made their badge/.test((document.getElementById('help-funnel') || {}).innerText || '')), 20000);
     const text = shown ? await page.evaluate(() => document.getElementById('help-funnel').innerText) : '';
     check('admin card: shows on the Overview with the badge and pass funnels', shown && /Made their badge\s*21\s*of 40/.test(text) && /Downloaded their pass\s*19\s*of 25/.test(text) && /Still stuck\s*6\s*of 40/.test(text), text.slice(0, 300));
+    check('admin card: says how many email scanners were left out', /Email scanners \(left out\)\s*3\b/.test(text), (text.match(/Email scanners[^\n]*\n?[^\n]*/) || [''])[0]);
     const place = await page.evaluate(() => {
       const card = document.getElementById('help-funnel').getBoundingClientRect().top + window.scrollY;
       const sen = [...document.querySelectorAll('h3')].find(h => /by seniority/.test(h.textContent));

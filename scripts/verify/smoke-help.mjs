@@ -37,8 +37,11 @@ const SESSION = 'smoke-session';
 const env = new Proxy({ ADMIN_SECRET: 'smoke-admin', SESSION_SECRET: SESSION, CRON_SECRET: 'smoke-cron', ELASTIC_EMAIL_API_KEY: 'smoke-key', DB: D1 }, { get: (t, k) => (k in t ? t[k] : undefined) });
 const ctx = { waitUntil() {}, passThroughOnException() {} };
 const ANDROID = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36';
-const hit = async (method, path, body, headers = {}) => {
-  const res = await worker.fetch(new Request('https://bharataiinnovation.com' + path, { method, redirect: 'manual', headers: { 'Content-Type': 'application/json', 'User-Agent': ANDROID, ...headers }, body: body === undefined ? undefined : JSON.stringify(body) }), env, ctx);
+// cf: what Cloudflare puts on a request (asn, asOrganization) - a scanner's network.
+const hit = async (method, path, body, headers = {}, cf) => {
+  const req = new Request('https://bharataiinnovation.com' + path, { method, redirect: 'manual', headers: { 'Content-Type': 'application/json', 'User-Agent': ANDROID, ...headers }, body: body === undefined ? undefined : JSON.stringify(body) });
+  if (cf) Object.defineProperty(req, 'cf', { value: cf });
+  const res = await worker.fetch(req, env, ctx);
   const text = await res.text(); let json = null; try { json = JSON.parse(text); } catch {}
   return { status: res.status, text, json, cache: res.headers.get('Cache-Control') || '' };
 };
@@ -91,6 +94,8 @@ person(11, 'Old Link', 'oldlink@example.com');
 person(12, 'Rajib Test', 'rajib-test@example.com', { badge_type: 'VIP Pass', payment_status: 'waived' });
 person(13, 'Later One', 'later@example.com');
 person(14, 'Tapper', 'tapper@example.com');
+person(16, 'Scanned Link', 'scanned@example.com');
+person(17, 'Old Scan', 'oldscan@example.com');
 
 trouble(1, 'app.boot_fail', '-20 minutes', JSON.stringify({ what: 'did not load /app.js?v=1', action: 'social-card' }));
 trouble(2, 'card.photo_fail', '-20 minutes', JSON.stringify({ reason: 'There is no face in this photo' }));
@@ -103,6 +108,12 @@ db.run("UPDATE attendees SET last_login_at = datetime('now', '-5 minutes') WHERE
 trouble(8, 'app.boot_fail', '-20 minutes', JSON.stringify({ what: 'page code did not start' }));
 trouble(8, 'app.boot_ok', '-15 minutes', JSON.stringify({ what: 'started' }));
 trouble(9, 'card.fail', '-20 minutes', JSON.stringify({ reason: 'card not drawn' }));
+// 17: what an email scanner left before scan rows existed - a "slow" report two
+// seconds in, its start, and the badge it opened, all in the same minute.
+trouble(17, 'app.boot_slow', '-20 minutes', JSON.stringify({ what: 'still loading after 15 s', ms: 2300, browser: 'Chrome 155 on Windows' }));
+trouble(17, 'app.boot_ok', '-20 minutes', JSON.stringify({ what: 'started', ms: 3000 }));
+trouble(17, 'card.open', '-20 minutes');
+trouble(17, 'card.photo_asked', '-20 minutes');
 
 // ---- the steps the app reports ----
 let r = await hit('POST', '/api/attendees/14/track-step', { kind: 'card', step: 'open' });
@@ -125,9 +136,11 @@ r = await hit('POST', '/api/attendees/14/track-step', { kind: 'pass', step: 'ope
 check('track-step: an admin is not counted as the person', r.status === 200 && r.json?.counted === false && rows('pass.open', 14).length === 0, r.status + ' ' + r.text);
 
 // ---- the startup report ----
+const sha = (s) => crypto.createHash('sha256').update(s).digest('hex');
+const AZURE = { asn: 8075, asOrganization: 'Microsoft Corporation' };
 const TOKEN = crypto.randomBytes(32).toString('hex');
 db.run("INSERT INTO login_tokens (event_id, email, token_hash, code_hash, expires_at, max_uses) VALUES (1, 'token@example.com', ?, 'x', datetime('now', '+1 day'), 4)",
-  [crypto.createHash('sha256').update(TOKEN).digest('hex')]);
+  [sha(TOKEN)]);
 r = await hit('POST', '/api/app-boot', { stage: 'dance' });
 check('app-boot: an unknown stage is refused', r.status === 400, r.status + ' ' + r.text);
 r = await hit('POST', '/api/app-boot', { stage: 'fail', email: 'Token@Example.com', token: TOKEN, action: 'social-card', retried: true, ms: 4100,
@@ -139,7 +152,7 @@ check('app-boot: the detail says what happened, in which browser, for which link
 check('app-boot: the sign-in token is never stored', !bf[0]?.detail?.includes(TOKEN) && !q('SELECT detail FROM admin_audit').some(x => String(x.detail || '').includes(TOKEN)), bf[0]?.detail);
 await hit('POST', '/api/app-boot', { stage: 'fail', email: 'token@example.com', token: TOKEN });
 check('app-boot: a second report within ten minutes is the same row', rows('app.boot_fail', 10).length === 1, 'rows=' + rows('app.boot_fail', 10).length);
-r = await hit('POST', '/api/app-boot', { stage: 'slow' }, as(4));
+r = await hit('POST', '/api/app-boot', { stage: 'slow', ms: 16000 }, as(4));
 check('app-boot: the session cookie names the person', rows('app.boot_slow', 4).length === 1, r.status + ' ' + r.text);
 const before = rows('app.boot_fail').length;
 for (let i = 0; i < 7; i++) await hit('POST', '/api/app-boot', { stage: 'fail', email: 'token@example.com', token: 'ab'.repeat(32) }, { 'CF-Connecting-IP': '203.0.113.9' });
@@ -147,6 +160,20 @@ const vis = q("SELECT COUNT(*) AS n FROM admin_audit WHERE entity = 'visitor' AN
 check('app-boot: a token nobody issued is a visitor, five an hour from one address', vis === 5 && rows('app.boot_fail').length === before + 5, 'visitor rows=' + vis);
 await hit('POST', '/api/app-boot', { stage: 'ok' }, { 'CF-Connecting-IP': '203.0.113.10' });
 check('app-boot: an unknown visitor who got in leaves no row', q("SELECT COUNT(*) AS n FROM admin_audit WHERE entity = 'visitor' AND action = 'app.boot_ok'")[0].n === 0, '');
+
+// ---- an email scanner running the page ----
+r = await hit('POST', '/api/app-boot', { stage: 'slow', ms: 2300 }, as(16));
+const sc = rows('app.boot_scan', 16);
+check('app-boot: a 15-second timer that fired after two seconds is a scanner, not a slow start', r.status === 200 && sc.length === 1 && rows('app.boot_slow', 16).length === 0 && JSON.parse(sc[0].detail).what === 'opened by an email scanner', r.status + ' ' + JSON.stringify(sc.map(x => x.detail)));
+r = await hit('POST', '/api/app-boot', { stage: 'scan', ms: 40 }, as(16));
+await hit('POST', '/api/app-boot', { stage: 'fail', ms: 16000 }, as(16), AZURE);
+check('app-boot: the page saying so, or a scanner network, is the same one row', r.status === 200 && rows('app.boot_scan', 16).length === 1 && rows('app.boot_fail', 16).length === 0, 'scan=' + rows('app.boot_scan', 16).length + ' fail=' + rows('app.boot_fail', 16).length);
+r = await hit('POST', '/api/app-boot', { stage: 'ok', ms: 3000 }, as(16), AZURE);
+check('app-boot: a scanner that got in leaves no row', r.status === 200 && rows('app.boot_ok', 16).length === 0, r.status + ' ' + r.text);
+r = await hit('POST', '/api/app-boot', { stage: 'slow', ms: 2900, email: 'token@example.com', token: 'cd'.repeat(32) }, { 'CF-Connecting-IP': '203.0.113.11' });
+check('app-boot: an unknown scanner is a visitor scan row, not a visitor stuck', q("SELECT action FROM admin_audit WHERE entity = 'visitor' AND ip = '203.0.113.11'").map(x => x.action).join() === 'app.boot_scan', '');
+r = await hit('POST', '/api/attendees/16/track-step', { kind: 'card', step: 'open' }, as(16), AZURE);
+check("track-step: what a scanner did with the page is not the person's step", r.status === 200 && r.json?.counted === false && rows('card.open', 16).length === 0, r.status + ' ' + r.text);
 
 // ---- a sign-in link that no longer works ----
 r = await hit('POST', '/api/events/1/attendees/login', { email: 'oldlink@example.com', token: 'f'.repeat(64) });
@@ -158,6 +185,26 @@ r = await hit('POST', '/api/events/1/attendees/login', { email: 'oldlink@example
 check('login: a mistyped code is not counted', r.status === 401 && rows('login.link_refused', 11).length === 2, r.status + ' rows=' + rows('login.link_refused', 11).length);
 await hit('POST', '/api/events/1/attendees/login', { email: 'nobody@example.com', token: 'f'.repeat(64) });
 check('login: an address with no account leaves no row', q("SELECT COUNT(*) AS n FROM admin_audit WHERE action = 'login.link_refused'")[0].n === 2, '');
+r = await hit('POST', '/api/events/1/attendees/login', { email: 'oldlink@example.com', token: 'f'.repeat(64) }, {}, AZURE);
+check('login: a scanner re-opening a dead link is not a person shut out', r.status === 401 && rows('login.link_refused', 11).length === 2, r.status + ' rows=' + rows('login.link_refused', 11).length);
+
+// ---- a link opened by a scanner spends nothing ----
+const LINK = crypto.randomBytes(32).toString('hex');
+db.run("INSERT INTO login_tokens (event_id, email, token_hash, code_hash, expires_at, max_uses, created_at) VALUES (1, 'scanned@example.com', ?, 'x', datetime('now', '+1 day'), 6, datetime('now', '-5 minutes'))", [sha(LINK)]);
+const latest = () => q("SELECT uses, used_at FROM login_tokens WHERE email = 'scanned@example.com' ORDER BY id DESC LIMIT 1")[0];
+const lastLogin = () => q('SELECT last_login_at FROM attendees WHERE id = 16')[0].last_login_at;
+r = await hit('POST', '/api/events/1/attendees/login', { email: 'scanned@example.com', token: LINK }, {}, AZURE);
+check('login: a scanner opening the link is signed in and spends no use', r.status === 200 && r.json?.id === 16 && latest().uses === 0 && !latest().used_at, r.status + ' ' + JSON.stringify(latest()));
+check("login: a scanner's sign-in is not the person's last sign-in", lastLogin() == null, String(lastLogin()));
+r = await hit('POST', '/api/events/1/attendees/login', { email: 'scanned@example.com', token: LINK });
+check('login: the person opening the same link spends one, and is signed in', r.status === 200 && latest().uses === 1 && lastLogin() != null, JSON.stringify(latest()) + ' ' + lastLogin());
+const FRESH = crypto.randomBytes(32).toString('hex');
+db.run("INSERT INTO login_tokens (event_id, email, token_hash, code_hash, expires_at, max_uses) VALUES (1, 'scanned@example.com', ?, 'x', datetime('now', '+1 day'), 6)", [sha(FRESH)]);
+r = await hit('POST', '/api/events/1/attendees/login', { email: 'scanned@example.com', token: FRESH });
+check('login: a link opened within two minutes of being issued spends nothing (scanners open on arrival)', r.status === 200 && latest().uses === 0 && !latest().used_at, JSON.stringify(latest()));
+db.run("INSERT INTO login_tokens (event_id, email, token_hash, code_hash, expires_at, max_uses) VALUES (1, 'scanned@example.com', 'y', ?, datetime('now', '+1 day'), 1)", [sha('424242')]);
+r = await hit('POST', '/api/events/1/attendees/login', { email: 'scanned@example.com', code: '424242' }, {}, AZURE);
+check('login: a one-use code is spent on first use, fresh or not, whatever the network', r.status === 200 && !!latest().used_at, r.status + ' ' + JSON.stringify(latest()));
 
 // ---- the minute clock ----
 const tokensBefore = q('SELECT COUNT(*) AS n FROM login_tokens')[0].n;
@@ -226,6 +273,9 @@ check('help-stats: people per step', r.status === 200 && by['card.open'] === 1 &
 check('help-stats: still stuck leaves out the one who made it', (st.stuck || []).find(x => x.kind === 'card')?.n === 4, JSON.stringify(st.stuck));
 check('help-stats: the reasons and the browsers', (st.reasons || []).some(x => x.why === 'There is no face in this photo') && (st.browsers || []).some(x => x.browser === 'Chrome 128 on Android 14'), JSON.stringify({ reasons: st.reasons, browsers: st.browsers }).slice(0, 300));
 check('help-stats: unknown visitors, the people list and the switch', (st.visitors || []).some(x => x.action === 'app.boot_fail' && x.people === 1) && (st.recent || []).some(x => x.email === 'asha@example.com' && x.helped) && st.help?.on === true && !!st.since, JSON.stringify(st.help));
+check('help-stats: what scanners did is left out of every count, and counted apart', by['app.boot_scan'] === undefined && by['app.boot_slow'] === 1 && by['app.boot_ok'] === 1 && by['card.open'] === 1 && st.scanners?.people === 3 && st.scanners?.visits === 3 && !!st.scanners?.last
+  && !(st.recent || []).some(x => x.email === 'oldscan@example.com') && !(st.visitors || []).some(x => x.action === 'app.boot_scan') && !(st.reasons || []).some(x => x.why === 'opened by an email scanner'),
+  JSON.stringify({ slow: by['app.boot_slow'], ok: by['app.boot_ok'], open: by['card.open'], scan: by['app.boot_scan'], scanners: st.scanners, visitors: st.visitors }));
 
 // ---- the page ----
 r = await hit('GET', '/app');

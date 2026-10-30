@@ -185,14 +185,14 @@ r = await hit('/admin');
 // /admin.js at the edge was a 30-hour-old immutable copy on 29 Oct 2026).
 r.text += (await hit('/admin.js?v=' + ((/\/admin\.js\?v=([0-9a-f]{8})/.exec(r.text) || [])[1] || ''))).text;
 check('the admin page runs panel email as server jobs', r.text.includes('function startMailJob') && r.text.includes('mail-jobs/tick') && !r.text.includes('pumpPanelReports'), 'markers');
-check('the admin Overview has the Pass & badge card with Send the steps', r.text.includes('function loadHelpFunnel') && r.text.includes('/api/admin/help-mail/send'), 'markers');
+check('the admin Overview has the Pass & badge card with Send the steps, and the scanners line', r.text.includes('function loadHelpFunnel') && r.text.includes('/api/admin/help-mail/send') && r.text.includes('Email scanners (left out)'), 'markers');
 
 // The way in (29 Oct 2026): the startup check, the doors it and the app use, and
 // /app.js kept for a year only under its own version. Nothing is written: every
 // request below is refused before it reaches a table.
 r = await hit('/app');
 const appV = (/\/app\.js\?v=([0-9a-f]{8})/.exec(r.text) || [])[1];
-check('/app carries the startup check before its code, and the sign-in note', r.text.includes('window.__bhaiBoot') && r.text.indexOf('window.__bhaiBoot') < r.text.indexOf('/app.js?v=') && r.text.includes('id="signin-note"'), 'markers');
+check('/app carries the startup check before its code, the scanner tell, and the sign-in note', r.text.includes('window.__bhaiBoot') && r.text.indexOf('window.__bhaiBoot') < r.text.indexOf('/app.js?v=') && r.text.includes("report('scan')") && r.text.includes('id="signin-note"'), 'markers');
 r = await hit('/app.js?v=' + appV);
 check('/app.js under its own version: kept for a year, and starts the check', /immutable/.test(r.h['cache-control'] || '') && r.text.includes('window.__bhaiBoot.start()'), r.h['cache-control']);
 r = await hit('/app.js?v=00000000');

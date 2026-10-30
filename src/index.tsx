@@ -2554,6 +2554,8 @@ app.post('/api/payments/ccavenue/start', async (c) => {
 const UPGRADE_PROMPT_REASONS = new Set(['welcome', 'networking', 'directory', 'agenda', 'workshop', 'vip', 'passcard', 'form', 'card'])
 const _upgradePromptLast = new Map<string, number>()
 app.post('/api/upgrade-prompt', async (c) => {
+  // A prompt an email scanner met is not one a person saw (isScannerRequest).
+  if (isScannerRequest(c)) return c.json({ ok: true })
   const me = await verifyAttendeeSession(c)
   const body = await c.req.json().catch(() => ({})) as any
   const reason = String(body.reason || '')
@@ -3457,6 +3459,18 @@ const HELP_TRIGGERS: Record<string, string[]> = {
 }
 const HELP_TRIGGER_SQL = Object.values(HELP_TRIGGERS).flat().map(a => `'${a}'`).join(', ')
 
+// A startup row an email scanner left, not the person: reported as one
+// (app.boot_scan), or a "slow" report whose 15-second timer fired inside 14 s of
+// the clock - the scanner skipped its timers ahead (29 Oct 2026: 22 of the 22
+// "slow" people were this, from Microsoft, Amazon and Google addresses). What the
+// same run wrote around it - its start, the badge and pass it opened - goes with
+// it: nothing a person's rows say within two minutes of their scan row counts.
+const SCAN_ROW_SQL = (t: string) =>
+  `(${t}.action = 'app.boot_scan' OR (${t}.action = 'app.boot_slow' AND ${t}.detail LIKE '{%' AND CAST(COALESCE(json_extract(${t}.detail, '$.ms'), 0) AS INTEGER) < 14000))`
+const NOT_SCAN_SQL = (t: string) =>
+  `NOT ${SCAN_ROW_SQL(t)} AND NOT EXISTS (SELECT 1 FROM admin_audit s WHERE s.entity = ${t}.entity AND s.entity_id = ${t}.entity_id
+      AND s.created_at BETWEEN datetime(${t}.created_at, '-2 minutes') AND datetime(${t}.created_at, '+2 minutes') AND ${SCAN_ROW_SQL('s')})`
+
 // Who is due: the latest trouble per person and kind, at least HELP_QUIET_MINUTES
 // old and inside HELP_WITHIN_HOURS, with no help email of that kind before and
 // nothing since that says they made it (the badge or pass stamp; for the app, a
@@ -3468,8 +3482,8 @@ async function helpMailDue(c: any, limit: number): Promise<any[]> {
     `SELECT a.id, a.event_id, a.email, a.name, a.badge_type, a.payment_status, x.topic, x.failed_at, x.detail
        FROM (SELECT entity_id, detail, MAX(created_at) AS failed_at,
                     CASE WHEN action LIKE 'card.%' THEN 'card' WHEN action LIKE 'pass.%' THEN 'pass' ELSE 'app' END AS topic
-               FROM admin_audit
-              WHERE entity = 'attendee' AND action IN (${HELP_TRIGGER_SQL}) AND created_at > datetime('now', ?1)
+               FROM admin_audit t
+              WHERE t.entity = 'attendee' AND t.action IN (${HELP_TRIGGER_SQL}) AND t.created_at > datetime('now', ?1) AND ${NOT_SCAN_SQL('t')}
               GROUP BY entity_id, topic) x
        JOIN attendees a ON CAST(a.id AS TEXT) = x.entity_id
       WHERE x.failed_at <= datetime('now', ?2) AND COALESCE(a.email, '') != ''${unsub}
@@ -3480,7 +3494,7 @@ async function helpMailDue(c: any, limit: number): Promise<any[]> {
               WHEN 'pass' THEN a.pass_downloaded_at IS NULL
               ELSE (a.last_login_at IS NULL OR a.last_login_at <= x.failed_at)
                    AND NOT EXISTS (SELECT 1 FROM admin_audit k WHERE k.entity = 'attendee' AND k.entity_id = x.entity_id
-                                      AND k.created_at > x.failed_at AND k.action IN ('app.boot_ok', 'card.open', 'pass.open'))
+                                      AND k.created_at > x.failed_at AND k.action IN ('app.boot_ok', 'card.open', 'pass.open') AND ${NOT_SCAN_SQL('k')})
             END
       ORDER BY x.failed_at LIMIT ?3`
   ).bind('-' + HELP_WITHIN_HOURS + ' hours', '-' + HELP_QUIET_MINUTES + ' minutes', limit).all().catch(() => ({ results: [] })) as any
@@ -3624,14 +3638,16 @@ app.get('/api/admin/help-stats', async (c) => {
   c.header('Cache-Control', 'no-store')
   const q = async (sql: string, ...args: any[]) =>
     (((await c.env.DB.prepare(sql).bind(...args).all().catch(() => ({ results: [] }))) as any).results || [])
+  // Every count below leaves out what email scanners did (NOT_SCAN_SQL); they are
+  // counted once, apart, as `scanners`.
   const steps = await q(
-    `SELECT action, COUNT(DISTINCT entity_id) AS people, MIN(created_at) AS first FROM admin_audit
+    `SELECT action, COUNT(DISTINCT entity_id) AS people, MIN(created_at) AS first FROM admin_audit x
       WHERE entity = 'attendee' AND (action LIKE 'card.%' OR action LIKE 'pass.%' OR action LIKE 'app.boot_%'
-         OR action = 'login.link_refused' OR action LIKE 'help.sent.%' OR action LIKE 'help.error.%')
+         OR action = 'login.link_refused' OR action LIKE 'help.sent.%' OR action LIKE 'help.error.%') AND ${NOT_SCAN_SQL('x')}
       GROUP BY action`)
   const made = await q(
-    `SELECT x.kind, COUNT(*) AS n FROM (SELECT entity_id, substr(action, 1, 4) AS kind, MIN(created_at) AS t FROM admin_audit
-        WHERE entity = 'attendee' AND action IN ('card.open', 'pass.open') GROUP BY entity_id, kind) x
+    `SELECT x.kind, COUNT(*) AS n FROM (SELECT entity_id, substr(action, 1, 4) AS kind, MIN(created_at) AS t FROM admin_audit r
+        WHERE entity = 'attendee' AND action IN ('card.open', 'pass.open') AND ${NOT_SCAN_SQL('r')} GROUP BY entity_id, kind) x
        JOIN attendees a ON CAST(a.id AS TEXT) = x.entity_id
       WHERE (x.kind = 'card' AND a.social_card_downloaded_at >= x.t) OR (x.kind = 'pass' AND a.pass_downloaded_at >= x.t)
       GROUP BY x.kind`)
@@ -3643,25 +3659,29 @@ app.get('/api/admin/help-stats', async (c) => {
       GROUP BY x.kind`)
   const reasons = await q(
     `SELECT action, COALESCE(json_extract(detail, '$.reason'), json_extract(detail, '$.what'), '') AS why,
-            COUNT(DISTINCT COALESCE(entity_id, ip)) AS people FROM admin_audit
+            COUNT(DISTINCT COALESCE(entity_id, ip)) AS people FROM admin_audit x
       WHERE action IN ('card.fail', 'card.photo_fail', 'pass.fail', 'pass.photo_fail', 'pass.blocked', 'app.boot_fail', 'app.boot_slow', 'login.link_refused')
-        AND detail LIKE '{%'
+        AND detail LIKE '{%' AND ${NOT_SCAN_SQL('x')}
       GROUP BY action, why ORDER BY people DESC LIMIT 15`)
   const browsers = await q(
-    `SELECT json_extract(detail, '$.browser') AS browser, COUNT(DISTINCT COALESCE(entity_id, ip)) AS people FROM admin_audit
-      WHERE action IN ('app.boot_fail', 'app.boot_slow') AND detail LIKE '{%' GROUP BY browser ORDER BY people DESC LIMIT 8`)
+    `SELECT json_extract(detail, '$.browser') AS browser, COUNT(DISTINCT COALESCE(entity_id, ip)) AS people FROM admin_audit x
+      WHERE action IN ('app.boot_fail', 'app.boot_slow') AND detail LIKE '{%' AND ${NOT_SCAN_SQL('x')} GROUP BY browser ORDER BY people DESC LIMIT 8`)
   const visitors = await q(
-    `SELECT action, COUNT(DISTINCT ip) AS people FROM admin_audit
-      WHERE entity = 'visitor' AND action LIKE 'app.boot_%' AND created_at > datetime('now', '-7 days') GROUP BY action`)
+    `SELECT action, COUNT(DISTINCT ip) AS people FROM admin_audit x
+      WHERE entity = 'visitor' AND action LIKE 'app.boot_%' AND created_at > datetime('now', '-7 days') AND NOT ${SCAN_ROW_SQL('x')} GROUP BY action`)
+  const scanners = (await q(
+    `SELECT COUNT(DISTINCT COALESCE(entity_id, ip)) AS people, COUNT(*) AS visits, MAX(created_at) AS last FROM admin_audit x
+      WHERE action LIKE 'app.boot_%' AND ${SCAN_ROW_SQL('x')}`))[0] || { people: 0, visits: 0, last: null }
   const recent = await q(
     `SELECT x.entity_id AS id, a.name, a.email, x.action, x.created_at, x.detail,
             (SELECT MAX(h.created_at) FROM admin_audit h WHERE h.entity = 'attendee' AND h.entity_id = x.entity_id AND h.action LIKE 'help.sent.%') AS helped_at
        FROM admin_audit x JOIN attendees a ON CAST(a.id AS TEXT) = x.entity_id
-      WHERE x.entity = 'attendee' AND x.action IN (${HELP_TRIGGER_SQL}) ORDER BY x.id DESC LIMIT 40`)
+      WHERE x.entity = 'attendee' AND x.action IN (${HELP_TRIGGER_SQL}) AND ${NOT_SCAN_SQL('x')} ORDER BY x.id DESC LIMIT 40`)
   const firsts = steps.map((s: any) => String(s.first || '')).filter(Boolean).sort()
   return c.json({
     since: firsts.length ? istStamp(firsts[0]) : '',
     steps, made, stuck, reasons, browsers, visitors,
+    scanners: { people: Number(scanners.people) || 0, visits: Number(scanners.visits) || 0, last: scanners.last ? istStamp(scanners.last) : '' },
     recent: recent.map((r: any) => {
       let d: any = {}
       try { d = JSON.parse(r.detail || '{}') || {} } catch { /* not JSON */ }
@@ -5933,7 +5953,7 @@ async function redeemLoginToken(c: any, eventId: any, email: string, token?: str
   let row: any = null
   try {
     row = await c.env.DB.prepare(
-      `SELECT id, token_hash, code_hash, attempts, max_uses, uses FROM login_tokens ${WHERE_LIVE}`
+      `SELECT id, token_hash, code_hash, attempts, max_uses, uses, (created_at > datetime('now', '-2 minutes')) AS fresh FROM login_tokens ${WHERE_LIVE}`
     ).bind(eventId, email).first()
   } catch (_) {
     row = await c.env.DB.prepare(
@@ -5954,6 +5974,13 @@ async function redeemLoginToken(c: any, eventId: any, email: string, token?: str
   /* Spend one use rather than the whole token. A row with no budget recorded
    * reads as 1 and is retired on first use, exactly as before. */
   const budget = Math.max(1, Number(row.max_uses) || 1)
+  /* Not the person's open, so not their use: a link (never a one-use code) opened
+   * from an email scanner's network (isScannerRequest), or a multi-use link opened
+   * within two minutes of being issued. Corporate email security opens every
+   * button in an email the moment it lands, and until 30 Oct 2026 that ate three
+   * or four of the six uses before the person ever tapped. Signed in all the
+   * same; nothing spent. */
+  if (token && budget > 1 && (Number(row.fresh) === 1 || isScannerRequest(c))) return { ok: true }
   const spent = (Number(row.uses) || 0) + 1
   const retire = async () => {
     await c.env.DB.prepare("UPDATE login_tokens SET used_at = datetime('now') WHERE id = ?").bind(row.id).run()
@@ -7298,6 +7325,8 @@ app.post('/api/events/:id/attendees/signin', async (c) => {
 // login.link_refused: Admin sees how many, and the help email sends a fresh one
 // (autoSendHelpMail). A mistyped code is not this, and is not counted.
 async function noteRefusedLink(c: any, eventId: any, email: any, reason: string) {
+  // An email scanner re-opening an older email's link is not a person shut out.
+  if (isScannerRequest(c)) return
   const who = await c.env.DB.prepare('SELECT id FROM attendees WHERE event_id = ? AND email = ?')
     .bind(eventId, String(email || '').trim().toLowerCase()).first().catch(() => null) as any
   if (who?.id) await auditOnceWithin(c, 'login.link_refused', Number(who.id), { reason: stepText(reason) }, 60)
@@ -7324,7 +7353,10 @@ app.post('/api/events/:id/attendees/login', async (c) => {
     'SELECT * FROM attendees WHERE event_id = ? AND email = ?'
   ).bind(eventId, email.trim().toLowerCase()).first()
   if (!attendee) return c.json({ error: 'No account found with this email.' }, 404)
-  await c.env.DB.prepare('UPDATE attendees SET is_online = 1, last_login_at = datetime("now") WHERE id = ?').bind((attendee as any).id).run()
+  // An email scanner's sign-in is not the person's last sign-in, and does not put them online.
+  if (!isScannerRequest(c)) {
+    await c.env.DB.prepare('UPDATE attendees SET is_online = 1, last_login_at = datetime("now") WHERE id = ?').bind((attendee as any).id).run()
+  }
   await issueAttendeeSession(c, (attendee as any).id)
   return c.json(attendee)
 })
@@ -7493,6 +7525,8 @@ app.post('/api/attendees/:id/track-step', async (c) => {
   const denied = await requireSelf(c, id); if (denied) return denied
   // An admin passes requireSelf for anyone; what an admin does is not the person's step.
   if (isAdminRequest(c)) return c.json({ ok: true, counted: false })
+  // Nor is what an email scanner did with the page (isScannerRequest).
+  if (isScannerRequest(c)) return c.json({ ok: true, counted: false })
   const b = await c.req.json().catch(() => ({})) as any
   const kind = String(b.kind || ''), step = String(b.step || '')
   if (!TRACK_STEP_KINDS.has(kind) || !TRACK_STEPS.has(step) || !Number.isInteger(Number(id))) return c.json({ ok: false }, 400)
@@ -7500,6 +7534,23 @@ app.post('/api/attendees/:id/track-step', async (c) => {
   await auditOnceWithin(c, kind + '.' + step, Number(id), reason ? { reason } : null, 10)
   return c.json({ ok: true })
 })
+
+// Corporate email security opens every link in an email the moment it lands -
+// Microsoft Defender Safe Links from Azure, Proofpoint and Mimecast from AWS,
+// Gmail's link check from Google - and runs the page with its timers skipped
+// ahead, before the person has seen the email. Nobody reads their mail from one
+// of those networks, so a request from them is the scanner's, not the person's:
+// it is signed in and answered as usual, but it spends no link use and counts for
+// nothing (sign-in time, steps, startup reports, email clicks). Cloudflare puts
+// the network's number on every request (request.cf.asn); the test harness sets
+// the same field. A Microsoft employee browsing from the office pays this
+// price too: signed in, uncounted.
+const SCANNER_ASNS = new Set([8075, 8068, 8069, 16509, 14618, 15169, 396982, 22843])
+function isScannerRequest(c: any): boolean {
+  const cf = c?.req?.raw?.cf || {}
+  if (SCANNER_ASNS.has(Number(cf.asn))) return true
+  return /microsoft|amazon|proofpoint|mimecast|barracuda/i.test(String(cf.asOrganization || ''))
+}
 
 // "Chrome 130 on Android 14", "in-app LinkedIn, Safari 17 on iOS 17": enough to see
 // who gets stuck, without keeping a whole user agent in every row.
@@ -7519,18 +7570,28 @@ function browserOf(ua: string): string {
 /* The startup check in /app's head (mainPageHTML) reports here: 'fail' when the
  * page code had not started once the page was parsed (it is fetched fresh and the
  * page opened again once, then the steps are shown), 'slow' when it was still not
- * running after 15 s, and 'ok' when it started after either. Who it was comes from
- * the session cookie, or from the sign-in link in the address bar, and a link only
- * counts when its token is one this site issued for that address. Nobody known: a
- * visitor row, at most five an hour from one address and 200 an hour in all, so
- * the count of people stuck survives and the table cannot be filled from outside. */
-const BOOT_ACTIONS: Record<string, string> = { fail: 'app.boot_fail', slow: 'app.boot_slow', ok: 'app.boot_ok' }
+ * running after 15 s, 'ok' when it started after either, and 'scan' when its
+ * 15-second timer fired inside 14 s of the clock (an email scanner skipping timers
+ * ahead; see isScannerRequest). Who it was comes from the session cookie, or from
+ * the sign-in link in the address bar, and a link only counts when its token is
+ * one this site issued for that address. Nobody known: a visitor row, at most
+ * five an hour from one address and 200 an hour in all, so the count of people
+ * stuck survives and the table cannot be filled from outside. */
+const BOOT_ACTIONS: Record<string, string> = { fail: 'app.boot_fail', slow: 'app.boot_slow', ok: 'app.boot_ok', scan: 'app.boot_scan' }
 const LINK_ACTIONS = new Set(['social-card', 'download-pass', 'complete-profile', 'goals', 'pay', 'workshop', 'main-event-yes', 'main-event-no'])
 app.post('/api/app-boot', async (c) => {
   c.header('Cache-Control', 'no-store')
   const b = await c.req.json().catch(() => ({})) as any
-  const action = BOOT_ACTIONS[String(b.stage || '')]
-  if (!action) return c.json({ ok: false }, 400)
+  const stage = String(b.stage || '')
+  if (!BOOT_ACTIONS[stage]) return c.json({ ok: false }, 400)
+  const ms = Math.min(600000, Math.max(0, Math.round(Number(b.ms) || 0)))
+  // Not the person but an email scanner: the page says so ('scan'), a "slow"
+  // report under 14 s says the same, and so does the network it came from. Its
+  // start leaves no row; anything else it reports is one app.boot_scan row, so
+  // the card can say how many there were and nothing else counts them.
+  const scan = stage === 'scan' || (stage === 'slow' && ms < 14000) || isScannerRequest(c)
+  if (scan && stage === 'ok') return c.json({ ok: true })
+  const action = scan ? BOOT_ACTIONS.scan : BOOT_ACTIONS[stage]
   let who: number | null = (await sessionAttendee(c).catch(() => null))?.id ?? null
   const email = String(b.email || '').trim().toLowerCase().slice(0, 200)
   const token = String(b.token || '')
@@ -7545,13 +7606,13 @@ app.post('/api/app-boot', async (c) => {
     kind: e?.kind === 'load' ? 'load' : 'error', msg: stepText(e?.msg, 160), src: stepText(e?.src, 100).replace(/ /g, ''),
     line: Math.max(0, Math.floor(Number(e?.line) || 0)),
   }))
-  const what = errs.length
+  const what = scan ? 'opened by an email scanner' : errs.length
     ? errs.map((e: any) => e.kind === 'load' ? 'did not load ' + e.src : e.msg + (e.src ? ' (' + e.src.split('?')[0] + (e.line ? ':' + e.line : '') + ')' : '')).join('; ').slice(0, 200)
-    : b.stage === 'slow' ? 'still loading after 15 s' : b.stage === 'fail' ? 'page code did not start' : 'started'
+    : stage === 'slow' ? 'still loading after 15 s' : stage === 'fail' ? 'page code did not start' : 'started'
   const detail = {
     what, browser: browserOf(c.req.header('User-Agent') || ''), retried: !!b.retried,
     action: LINK_ACTIONS.has(String(b.action)) ? String(b.action) : '',
-    ms: Math.min(600000, Math.max(0, Math.round(Number(b.ms) || 0))), sw: !!b.sw, errs,
+    ms, sw: !!b.sw, errs,
   }
   if (who) {
     await auditOnceWithin(c, action, who, detail, 10, { anyDetail: true })
@@ -15655,6 +15716,10 @@ async function markOnce(c: any, action: string, n: number) {
 async function mailMark(c: any, action: string, id: any, sig: any) {
   const n = Number(id)
   if (!Number.isInteger(n) || n <= 0 || String(sig || '') !== await mailMarkSig(c, action.split('.')[0], n)) return
+  // The picture loads through Gmail's image proxy for a real open, so an open
+  // counts from anywhere; a click is sent by the page, and a page run by an
+  // email scanner is not the person's click (isScannerRequest).
+  if (!action.endsWith('.open') && isScannerRequest(c)) return
   await markOnce(c, action, n)
 }
 const UPGRADE_PIXEL = Uint8Array.from(atob('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'), ch => ch.charCodeAt(0))
@@ -19452,6 +19517,9 @@ function mainPageHTML(): string {
     // arrives. Said, and reported, but nothing is reloaded under them.
     setTimeout(function () {
       if (started || decided) return;
+      // Fifteen seconds of timer inside fourteen of clock: an email scanner
+      // running the page with its timers skipped ahead, not a slow connection.
+      if (Date.now() - t0 < 14000) { report('scan'); return; }
       put('localStorage', FAILED, String(Date.now()));
       report('slow');
       var el = screenEl();
@@ -31565,6 +31633,7 @@ function adminPageScript(): string {
           row('Opened after that', by['app.boot_ok'] || 0, 0, 'Got in after the refresh or the steps on screen.') +
           row('Link no longer signed in', by['login.link_refused'] || 0, 0, 'Used up, expired, or replaced by a newer email. They are shown the sign-in box.') +
           row('Unknown visitors stuck (7 days)', (vis['app.boot_fail'] || 0) + (vis['app.boot_slow'] || 0), 0, 'Not signed in and no link: counted by address.') +
+          row('Email scanners (left out)', Number((d.scanners || {}).people) || 0, 0, 'Corporate email security opened the links from a datacentre before the person did' + ((d.scanners || {}).last ? ', last ' + (d.scanners || {}).last : '') + '. Nothing on this card counts those visits, and they spend no link uses.') +
           (browsers ? '<p class="text-[11px] text-gray-500 pt-1">Browsers: ' + browsers + '</p>' : '') +
         '</div></div>' +
         '<div>' + h4('What stopped people') + (reasons ? '<ul class="space-y-1 text-xs">' + reasons + '</ul>' : '<p class="text-xs text-gray-500">Nothing yet.</p>') + '</div></div>' +
