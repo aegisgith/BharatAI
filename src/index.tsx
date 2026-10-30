@@ -29767,8 +29767,10 @@ function adminPageHTML(): string {
   <!-- Served from here since 30 Oct 2026, pinned: the CDN copy was unpinned (a
        major Chart.js release would have broken the dashboard overnight) and both
        vanish on a network that blocks cdn.jsdelivr.net. -->
-  <script src="/js/vendor/chart.umd.js?v=4.6.1"></script>
-  <script src="/js/vendor/xlsx.full.min.js?v=0.18.5"></script>
+  <!-- ?v=…b since 30 Oct 2026: the first URLs were fetched by verify runs before
+       the files existed, and the edge kept the home page under them for a week. -->
+  <script src="/js/vendor/chart.umd.js?v=4.6.1b"></script>
+  <script src="/js/vendor/xlsx.full.min.js?v=0.18.5b"></script>
   <!-- Shared with the app, so a pass issued at the desk is the same document the
        holder downloaded. The pass draws its own QR with the encoder. -->
   <script src="/js/vendor/qrcode-generator.js?v=20261029"></script>
