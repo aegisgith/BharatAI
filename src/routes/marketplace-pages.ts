@@ -55,7 +55,7 @@ function mpSharedHead(title: string, opts: { path?: string; noindex?: boolean } 
        last-but-one, Tailwind last. -->
   <link rel="stylesheet" href="/css/fa-subset.css?v=2">
   <link rel="stylesheet" href="/css/fonts-app.css?v=1">
-  <link href="/static/marketplace.css?v=3" rel="stylesheet">
+  <link href="/static/marketplace.css?v=4" rel="stylesheet">
   <link rel="stylesheet" href="/css/tailwind.css?v=${__TW_CSS_HASH__}">
 </head>`
 }
@@ -205,7 +205,11 @@ export function marketplacePageHTML(): string {
         <h3><i class="fas fa-plus-circle mr-2"></i>Submit Your AI Product</h3>
         <p>Fill out the details below to list your product on the Bharat AI Marketplace.</p>
       </div>
-      <form id="listing-form" class="mp-listing-form">
+      <!-- novalidate: the browser's own check refused a web address typed without
+           https:// (and any empty required box inside a collapsed section) without
+           showing anything, so the button looked dead. marketplace-app.js checks the
+           same rules the server does, opens the section and names the field. -->
+      <form id="listing-form" class="mp-listing-form" novalidate>
         <!-- Basic Info -->
         <details class="form-section" open>
           <summary><i class="fas fa-info-circle mr-2"></i>Basic Information</summary>
@@ -249,9 +253,9 @@ export function marketplacePageHTML(): string {
               <label>AI Category</label>
               <div class="checkbox-grid">${categoryCheckboxes}</div>
             </div>
-            <div id="ai-category-custom" class="form-field full-width hidden">
-              <label>Custom AI Category</label>
-              <input name="ai_category_custom" autocomplete="off" placeholder="Describe your custom category">
+            <div id="ai-category-custom" class="form-field full-width">
+              <label>Another AI category (if none above fits)</label>
+              <input name="ai_category_custom" autocomplete="off" placeholder="e.g. Drone analytics">
             </div>
             <div class="form-field full-width">
               <label>Tags (comma-separated)</label>
@@ -326,19 +330,19 @@ export function marketplacePageHTML(): string {
             </div>
             <div class="form-field">
               <label>Website URL</label>
-              <input name="website_url" autocomplete="url" inputmode="url" autocapitalize="none" spellcheck="false" type="url" placeholder="https://example.com">
+              <input name="website_url" autocomplete="url" inputmode="url" autocapitalize="none" spellcheck="false" type="text" placeholder="example.com or https://example.com">
             </div>
             <div class="form-field">
               <label>Product URL</label>
-              <input name="product_url" autocomplete="off" inputmode="url" autocapitalize="none" spellcheck="false" type="url" placeholder="https://example.com/product">
+              <input name="product_url" autocomplete="off" inputmode="url" autocapitalize="none" spellcheck="false" type="text" placeholder="example.com/product">
             </div>
             <div class="form-field">
               <label>Demo URL</label>
-              <input name="demo_url" autocomplete="off" inputmode="url" autocapitalize="none" spellcheck="false" type="url" placeholder="https://example.com/demo">
+              <input name="demo_url" autocomplete="off" inputmode="url" autocapitalize="none" spellcheck="false" type="text" placeholder="example.com/demo">
             </div>
             <div class="form-field">
               <label>Video URL</label>
-              <input name="video_url" autocomplete="off" inputmode="url" autocapitalize="none" spellcheck="false" type="url" placeholder="YouTube or Vimeo link">
+              <input name="video_url" autocomplete="off" inputmode="url" autocapitalize="none" spellcheck="false" type="text" placeholder="YouTube or Vimeo link">
             </div>
           </div>
         </details>
@@ -411,7 +415,7 @@ export function marketplacePageHTML(): string {
     </div>
   </footer>
 
-  <script src="/static/marketplace-app.js?v=7"></script>
+  <script src="/static/marketplace-app.js?v=8"></script>
 </body>
 </html>`
 }
@@ -713,7 +717,7 @@ export function marketplaceDashboardPageHTML(): string {
     </div>
   </div>
 
-  <script src="/static/marketplace-dashboard.js?v=4"></script>
+  <script src="/static/marketplace-dashboard.js?v=5"></script>
 </body>
 </html>`
 }

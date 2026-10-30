@@ -615,6 +615,9 @@ a.listing-card:hover .listing-view i { transform: translateX(3px); }
 .dash-main {
   flex: 1; margin-left: 240px; min-height: 100vh;
   display: flex; flex-direction: column;
+  /* A flex item grows to its widest table unless told not to; this is what made
+     the dashboard page wider than a phone. */
+  min-width: 0;
 }
 .dash-topbar {
   padding: 12px 24px; border-bottom: 1px solid var(--mp-border);
@@ -661,6 +664,10 @@ a.listing-card:hover .listing-view i { transform: translateX(3px); }
 }
 .dash-card h3 { font-size: 14px; font-weight: 700; margin: 0 0 12px; }
 
+/* A table wider than a phone scrolls inside its own box. The page itself used to
+   grow to the table's width, so the whole dashboard scrolled sideways and the Edit
+   button sat off-screen. */
+#dash-listings-table, #dash-inquiries, #dash-recent-inquiries, #dash-reviews, #admin-all-listings, #admin-pending-listings, #admin-inquiries, #admin-exhibitors { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
 .dash-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .dash-table thead th { text-align: left; padding: 10px; font-size: 11px; font-weight: 600; color: var(--mp-muted); text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid var(--mp-border); }
 .dash-table tbody td { padding: 10px; border-bottom: 1px solid rgba(20,25,80,0.05); vertical-align: middle; }
@@ -771,6 +778,7 @@ a.listing-card:hover .listing-view i { transform: translateX(3px); }
   .dash-sidebar { transform: translateX(-100%); transition: transform 0.3s ease; }
   .dash-sidebar.dash-sidebar-open { transform: translateX(0); }
   .dash-main { margin-left: 0; }
+  .dash-topbar { flex-wrap: wrap; padding: 10px 16px; }
   .dash-sidebar-toggle { display: block; }
   .mp-hero-title { font-size: 28px; }
   .listing-grid { grid-template-columns: 1fr; }

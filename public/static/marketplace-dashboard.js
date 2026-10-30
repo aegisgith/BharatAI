@@ -12,14 +12,21 @@ const main = document.getElementById('dash-main')
 let dashCompanySlug = ''
 
 const showToast = (msg, isError = false) => {
+  if (!toast) return
   toast.textContent = msg; toast.classList.remove('hidden')
   toast.classList.toggle('border-rose-500', isError); toast.classList.toggle('border-slate-700', !isError)
-  setTimeout(() => toast.classList.add('hidden'), 3500)
+  // An earlier toast's timer used to hide the next one early.
+  clearTimeout(showToast.t); showToast.t = setTimeout(() => toast.classList.add('hidden'), isError ? 6000 : 3500)
 }
+// Errors carry the HTTP status (401 = the sign-in ran out) and a request that never
+// reached the server says so.
+const failure = (message, status) => { const e = new Error(message); e.status = status; return e }
 const api = async (path, opts = {}) => {
-  const r = await fetch(path, { headers:{'Content-Type':'application/json'}, credentials:'same-origin', ...opts })
+  let r
+  try { r = await fetch(path, { headers:{'Content-Type':'application/json'}, credentials:'same-origin', ...opts }) }
+  catch { throw failure('Could not reach the server. Check your connection and try again.', 0) }
   const d = await r.json().catch(() => ({}))
-  if (!r.ok) throw new Error(d.error || 'Request failed')
+  if (!r.ok) throw failure(d.error || `Request failed (HTTP ${r.status})`, r.status)
   return d
 }
 const toSlug = (t) => (t||'').toLowerCase().trim().replace(/&/g,'and').replace(/[^a-z0-9\s-]/g,'').replace(/\s+/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'').slice(0,80)
@@ -139,10 +146,22 @@ const prepareImage = async (file, kind) => {
 }
 const uploadImage = async (file, kind) => {
   const fd = new FormData(); fd.append('file', await prepareImage(file, kind))
-  const r = await fetch('/api/mp/uploads', { method: 'POST', body: fd, credentials: 'same-origin' })
+  let r
+  try { r = await fetch('/api/mp/uploads', { method: 'POST', body: fd, credentials: 'same-origin' }) }
+  catch { throw failure(`${file.name}: the upload did not reach the server. Check your connection and try again.`, 0) }
   const d = await r.json().catch(() => ({}))
-  if (!r.ok) throw new Error(`${file.name}: ${d.error || 'upload failed. Please try again.'}`)
+  if (r.status === 401) throw failure('Login required', 401)
+  if (!r.ok) throw failure(`${file.name}: ${d.error || 'upload failed. Please try again.'}`, r.status)
   return d.url
+}
+// The same link rule as the listing form and the server: "example.com" is fine.
+const isWebUrl = (v) => { try { const u = new URL(v); return u.protocol === 'https:' || u.protocol === 'http:' } catch { return false } }
+const cleanLink = (raw) => {
+  const s = String(raw || '').trim()
+  if (!s) return ''
+  if (isWebUrl(s)) return s
+  if (/^[\w-]+(\.[\w-]+)+([/?#]\S*)?$/.test(s) && isWebUrl('https://' + s)) return 'https://' + s
+  return null
 }
 const safeImageUrl = (u) => /^\/api\/mp\/uploads\/\d+$/.test(String(u || '')) ? u : ''
 
@@ -272,7 +291,20 @@ document.getElementById('dash-profile-form').addEventListener('submit', async (e
 const editModal = document.getElementById('edit-listing-modal')
 const editForm = document.getElementById('edit-listing-form')
 
+// What stopped a save, kept at the top of the form until the next try; a toast
+// alone is gone in seconds, and on a phone it sits behind the keyboard.
+const editError = document.createElement('div')
+editError.hidden = true
+editError.setAttribute('role', 'alert')
+editError.setAttribute('data-edit-error', '')
+editError.style.cssText = 'margin-bottom:12px;padding:10px 12px;border-radius:10px;border:1px solid #fecaca;background:#fef2f2;color:#991b1b;font-size:13px;line-height:1.6'
+editForm.prepend(editError)
+const showEditError = (html) => { editError.innerHTML = html; editError.hidden = false; editError.scrollIntoView({ behavior: 'smooth', block: 'nearest' }) }
+const clearEditError = () => { editError.hidden = true; editError.innerHTML = '' }
+const EDIT_LINKS = [['edit-website-url', 'Website URL'], ['edit-product-url', 'Product URL'], ['edit-demo-url', 'Demo URL'], ['edit-video-url', 'Video URL']]
+
 const openEditModal = async (id) => {
+  clearEditError()
   try {
     const d = await api(`/api/mp/dashboard/listings/${id}`); const l = d.listing
     document.getElementById('edit-listing-id').value = l.id
@@ -310,7 +342,16 @@ editModal.addEventListener('click', (e) => { if (e.target === editModal) editMod
 
 editForm.addEventListener('submit', async (e) => {
   e.preventDefault()
+  clearEditError()
   const id = document.getElementById('edit-listing-id').value
+  // Links are checked here first, the way the listing form does, so the box is
+  // named and what is sent is what is on screen.
+  for (const [elId, label] of EDIT_LINKS) {
+    const el = document.getElementById(elId); if (!el) continue
+    const cleaned = cleanLink(el.value)
+    if (cleaned === null) { showEditError(`<strong>Not saved.</strong> ${esc(label)}: please enter a web address, such as example.com or https://example.com.`); el.focus(); return }
+    el.value = cleaned
+  }
   const fields = {}
   editForm.querySelectorAll('[name]').forEach(el => { if (el.name && el.name !== 'id' && el.value !== undefined) fields[el.name] = el.value })
   const saveBtn = editForm.querySelector('button[type="submit"]'); const saveHTML = saveBtn ? saveBtn.innerHTML : ''
@@ -324,7 +365,11 @@ editForm.addEventListener('submit', async (e) => {
     editModal.classList.add('hidden')
     showToast(r.changed ? 'Saved. The listing is in review and goes live once approved.' : 'No changes to save')
     await Promise.all([loadStats(), loadListings()])
-  } catch (err) { showToast(err.message, true) }
+  } catch (err) {
+    showToast(err.message, true)
+    if (err.status === 401) showEditError('<strong>Not saved: your sign-in has run out.</strong> <a href="/marketplace" style="color:inherit;font-weight:600">Sign in again</a> (exhibitors: use <em>Email me a sign-in link</em>), then come back and save once more.')
+    else showEditError(`<strong>Not saved.</strong> ${esc(err.message)} Fix this and press Save again.`)
+  }
   finally { if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = saveHTML } }
 })
 

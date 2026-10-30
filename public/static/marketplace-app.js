@@ -19,6 +19,7 @@ const state = { user: null, listings: [] }
 const toast = document.getElementById('toast')
 
 const showToast = (msg, isError = false) => {
+  if (!toast) return
   toast.textContent = msg; toast.classList.remove('hidden')
   toast.classList.toggle('border-rose-500', isError); toast.classList.toggle('border-slate-700', !isError)
   clearTimeout(showToast.t); showToast.t = setTimeout(() => toast.classList.add('hidden'), isError ? 6000 : 3500)
@@ -29,10 +30,17 @@ const listingUrl = (l) => { const cs = l.company_slug || toSlug(l.company_name),
 const toTagList = (v) => (v||'').split(',').map(i => i.trim()).filter(Boolean)
 const formatFileSize = (b) => { if (b < 1024) return b + ' B'; if (b < 1048576) return (b/1024).toFixed(1) + ' KB'; return (b/1048576).toFixed(1) + ' MB' }
 
+// Errors carry the HTTP status so the form can tell a sign-in that ran out (401)
+// from a duplicate (409); a request that never reached the server says so instead
+// of the browser's "Failed to fetch".
+const failure = (message, status) => { const e = new Error(message); e.status = status; return e }
+const OFFLINE = 'Could not reach the server. Check your connection and try again.'
 const api = async (path, opts = {}) => {
-  const r = await fetch(path, { headers: {'Content-Type':'application/json'}, credentials:'same-origin', ...opts })
+  let r
+  try { r = await fetch(path, { headers: {'Content-Type':'application/json'}, credentials:'same-origin', ...opts }) }
+  catch { throw failure(OFFLINE, 0) }
   const d = await r.json().catch(() => ({}))
-  if (!r.ok) throw new Error(d.error || 'Request failed')
+  if (!r.ok) throw failure(d.error || `Request failed (HTTP ${r.status})`, r.status)
   return d
 }
 
@@ -390,9 +398,12 @@ const uploadImage = async (file, kind) => {
   if (uploadedUrls.has(file)) return uploadedUrls.get(file)
   const prepared = await prepareImage(file, kind)
   const fd = new FormData(); fd.append('file', prepared)
-  const r = await fetch('/api/mp/uploads', { method:'POST', body:fd, credentials:'same-origin' })
+  let r
+  try { r = await fetch('/api/mp/uploads', { method:'POST', body:fd, credentials:'same-origin' }) }
+  catch { throw failure(`${file.name}: the upload did not reach the server. Check your connection and try again.`, 0) }
   const d = await r.json().catch(() => ({}))
-  if (!r.ok) throw new Error(`${file.name}: ${d.error || 'upload failed. Please try again.'}`)
+  if (r.status === 401) throw failure('Login required', 401)
+  if (!r.ok) throw failure(`${file.name}: ${d.error || 'upload failed. Please try again.'}`, r.status)
   uploadedUrls.set(file, d.url)
   return d.url
 }
@@ -481,43 +492,135 @@ const RECOMMENDED = [
   ['Sales contact email', () => !!field('sales_contact_email')?.value.trim(), 'sales_contact_email'],
 ]
 let incompleteAcknowledged = false
+const noticeStyle = (border, bg, color) => `margin:16px 0;padding:14px 16px;border-radius:12px;border:1px solid ${border};background:${bg};color:${color};font-size:14px;line-height:1.6`
 const incompleteNotice = document.createElement('div')
 incompleteNotice.hidden = true
 incompleteNotice.setAttribute('role', 'status')
-incompleteNotice.style.cssText = 'margin:16px 0;padding:14px 16px;border-radius:12px;border:1px solid #fed7aa;background:#fff7ed;color:#7c2d12;font-size:14px;line-height:1.6'
+incompleteNotice.style.cssText = noticeStyle('#fed7aa', '#fff7ed', '#7c2d12')
 listingForm.querySelector('.form-actions')?.before(incompleteNotice)
-incompleteNotice.addEventListener('click', (e) => {
-  const b = e.target.closest('[data-goto-field]'); if (!b) return
-  const el = listingForm.querySelector(`[name="${b.getAttribute('data-goto-field')}"]`); if (!el) return
+
+// Opens the section a field sits in and takes the person to it. A field inside a
+// collapsed <details> cannot be focused or seen otherwise.
+const revealField = (name, invalid = false) => {
+  const el = listingForm.querySelector(`[name="${name}"]`); if (!el) return
   const section = el.closest('details'); if (section) section.open = true
+  if (invalid) el.setAttribute('aria-invalid', 'true')
   ;(el.closest('.form-field') || el).scrollIntoView({ behavior: 'smooth', block: 'center' })
   if (el.type !== 'file' && el.type !== 'checkbox' && el.focus) setTimeout(() => el.focus({ preventScroll: true }), 300)
+}
+incompleteNotice.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-goto-field]'); if (!b) return
+  revealField(b.getAttribute('data-goto-field'))
 })
 const showIncomplete = (missing) => {
-  incompleteNotice.innerHTML = `<p style="margin:0 0 6px;font-weight:600">Your listing is missing ${missing.length} detail${missing.length === 1 ? '' : 's'} buyers look for:</p>
+  incompleteNotice.innerHTML = `<p style="margin:0 0 6px;font-weight:600">Not submitted yet: your listing is missing ${missing.length} detail${missing.length === 1 ? '' : 's'} buyers look for.</p>
     <ul style="margin:0 0 8px;padding-left:18px">${missing.map(([label, , name]) => `<li><button type="button" data-goto-field="${esc(name)}" style="background:none;border:0;padding:0;color:#c2410c;text-decoration:underline;cursor:pointer;font:inherit">${esc(label)}</button></li>`).join('')}</ul>
-    <p style="margin:0">Listings with a logo, a product image and clear pricing get more views and inquiries. Add them now, or submit anyway and finish later from your dashboard.</p>`
+    <p style="margin:0">Listings with a logo, a product image and clear pricing get more views and inquiries. Add them now, or press <strong>Submit anyway</strong> below and finish later from your dashboard.</p>`
   incompleteNotice.hidden = false
   if (submitBtn) { submitBtnHTML = '<i class="fas fa-paper-plane mr-2"></i>Submit anyway'; submitBtn.innerHTML = submitBtnHTML }
   incompleteNotice.scrollIntoView({ behavior: 'smooth', block: 'center' })
 }
 
+// What stopped a submission, kept on screen above the button until the next try.
+// A toast alone disappears in six seconds, often behind a phone's keyboard.
+const formError = document.createElement('div')
+formError.hidden = true
+formError.setAttribute('role', 'alert')
+formError.setAttribute('data-form-error', '')
+formError.style.cssText = noticeStyle('#fecaca', '#fef2f2', '#991b1b')
+listingForm.querySelector('.form-actions')?.before(formError)
+const clearFormError = () => {
+  formError.hidden = true; formError.innerHTML = ''
+  listingForm.querySelectorAll('[aria-invalid]').forEach(el => el.removeAttribute('aria-invalid'))
+}
+const showFormError = (html, fieldName) => {
+  formError.innerHTML = html
+  formError.hidden = false
+  if (fieldName) revealField(fieldName, true)
+  else formError.scrollIntoView({ behavior: 'smooth', block: 'center' })
+}
+
+// The browser's own checks are off (novalidate on the form): they refused a web
+// address typed without https:// and showed nothing when the box sat in a collapsed
+// section, so the button looked dead. These are the server's rules, applied here
+// first so the person is shown the box and what to change.
+const LINK_FIELDS = [['website_url', 'Website URL'], ['product_url', 'Product URL'], ['demo_url', 'Demo URL'], ['video_url', 'Video URL']]
+const EMAIL_RE = /^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/
+const isWebUrl = (v) => { try { const u = new URL(v); return u.protocol === 'https:' || u.protocol === 'http:' } catch { return false } }
+// As typed when it is a web address; "example.com" becomes https://example.com; anything else is refused (null).
+const cleanLink = (raw) => {
+  const s = String(raw || '').trim()
+  if (!s) return ''
+  if (isWebUrl(s)) return s
+  if (/^[\w-]+(\.[\w-]+)+([/?#]\S*)?$/.test(s) && isWebUrl('https://' + s)) return 'https://' + s
+  return null
+}
+const labelOf = (el) => (el.closest('.form-field')?.querySelector('label')?.textContent || el.name || 'This field').replace('*', '').trim()
+// The first problem as [message, field name], or null. Links are written back
+// normalised, so what is sent is what is on screen.
+const validateListing = () => {
+  const val = (n) => String(field(n)?.value || '').trim()
+  if (!val('product_name')) return ['Please enter the product name.', 'product_name']
+  if (val('product_name').length > 150) return ['The product name is too long (150 characters at most).', 'product_name']
+  if (!val('description')) return ['Please describe the product in a few lines.', 'description']
+  for (const [name, label] of LINK_FIELDS) {
+    const el = field(name); if (!el) continue
+    const cleaned = cleanLink(el.value)
+    if (cleaned === null) return [`${label}: please enter a web address, such as example.com or https://example.com.`, name]
+    el.value = cleaned
+  }
+  const sales = val('sales_contact_email')
+  if (sales && !EMAIL_RE.test(sales)) return ['Sales email: please enter an email address, such as sales@example.com.', 'sales_contact_email']
+  for (const el of listingForm.querySelectorAll('textarea, input[type="text"], input[type="email"], input:not([type])')) {
+    if (el.name && String(el.value || '').length > 5000) return [`${labelOf(el)} is too long (5,000 characters at most).`, el.name]
+  }
+  return null
+}
+
+// A session lasts seven days and can run out while the form is open. Nothing typed
+// is thrown away: signing in again (in this tab, or by a link opened in another)
+// puts the cookie back, and the same button then sends the same form.
+const signedOutMidForm = () => {
+  state.user = null
+  wantsToSubmit = true
+  loginButton.classList.remove('hidden'); logoutButton.classList.add('hidden')
+  authSection.classList.remove('hidden')
+  showFormError('<strong>Not submitted: your sign-in has run out.</strong> Sign in again in the box above (exhibitors: use <em>Email me a sign-in link</em>), then come back to this page and press the button once more. Everything you typed is kept.')
+  showToast('Not submitted: your sign-in has run out. Sign in again, then press the button once more. Everything you typed is kept.', true)
+  authSection.scrollIntoView({ behavior: 'smooth' })
+}
+
 listingForm.addEventListener('submit', async (e) => {
   e.preventDefault()
+  clearFormError()
+  const problem = validateListing()
+  if (problem) { showFormError(esc(problem[0]), problem[1]); showToast(problem[0], true); return }
   const missing = RECOMMENDED.filter(([, has]) => !has())
-  if (missing.length && !incompleteAcknowledged) { incompleteAcknowledged = true; showIncomplete(missing); return }
-  if (submitBtn) { submitBtn.disabled = true; submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Submitting...' }
+  if (missing.length && !incompleteAcknowledged) {
+    incompleteAcknowledged = true; showIncomplete(missing)
+    showToast(`Not sent yet: ${missing.length} detail${missing.length === 1 ? '' : 's'} buyers look for ${missing.length === 1 ? 'is' : 'are'} missing. Add ${missing.length === 1 ? 'it' : 'them'}, or press "Submit anyway".`, true)
+    return
+  }
+  if (!missing.length) incompleteNotice.hidden = true
+  const busy = (label) => { if (submitBtn) { submitBtn.disabled = true; submitBtn.innerHTML = `<i class="fas fa-spinner fa-spin mr-2"></i>${label}` } }
+  busy('Submitting...')
   const fd = new FormData(listingForm)
   const payload = Object.fromEntries(fd.entries())
   payload.target_industry = Array.from(document.querySelectorAll('input[name="target_industry"]:checked')).map(i => i.value).join(', ')
   payload.ai_category = Array.from(document.querySelectorAll('input[name="ai_category"]:checked')).map(i => i.value).join(', ')
+  // A category typed in by hand joins the list: nothing displays ai_category_custom on its own.
+  const custom = String(payload.ai_category_custom || '').trim()
+  if (custom) payload.ai_category = [payload.ai_category, custom].filter(Boolean).join(', ')
   if (payload.tags) payload.tags = payload.tags.split(',').map(v => v.trim()).filter(Boolean).join(', ')
   delete payload.logo_file; delete payload.product_image_file; delete payload.screenshot_files; delete payload.company_name
 
   try {
+    const images = (logoInput?.files?.[0] ? 1 : 0) + (productImgInput?.files?.[0] ? 1 : 0) + selectedScreenshots.length
+    if (images) busy(`Uploading ${images === 1 ? 'image' : images + ' images'}...`)
     if (logoInput?.files?.[0]) payload.logo_url = await uploadImage(logoInput.files[0], 'logo')
     if (productImgInput?.files?.[0]) payload.product_image_url = await uploadImage(productImgInput.files[0], 'photo')
     if (selectedScreenshots.length) payload.screenshot_urls = (await Promise.all(selectedScreenshots.map(f => uploadImage(f, 'photo')))).join(', ')
+    busy('Submitting...')
 
     const res = await api('/api/mp/listings', { method:'POST', body:JSON.stringify(payload) })
     const pn = payload.product_name || 'Your listing'
@@ -525,7 +628,13 @@ listingForm.addEventListener('submit', async (e) => {
     const missingNote = stillMissing.length ? ` It is still missing ${stillMissing.length} detail${stillMissing.length === 1 ? '' : 's'} (${esc(stillMissing.join(', '))}); you can add them from your dashboard.` : ''
     listingFormSection.innerHTML = `<div class="listing-success-panel"><div class="listing-success-icon"><i class="fas fa-check-circle"></i></div><h3 class="listing-success-title">Listing Submitted!</h3><p class="listing-success-sub"><strong>${esc(pn)}</strong> is now pending review. We will email you when it is live.${missingNote}</p><div class="listing-success-actions"><a href="/marketplace/dashboard" class="listing-success-btn listing-success-btn--primary"><i class="fas fa-chart-pie mr-2"></i>Dashboard</a><a href="/marketplace?submit=true" class="listing-success-btn listing-success-btn--secondary"><i class="fas fa-plus mr-2"></i>Submit Another</a><a href="/marketplace" class="listing-success-btn listing-success-btn--secondary"><i class="fas fa-store mr-2"></i>Marketplace</a></div></div>`
     listingFormSection.scrollIntoView({ behavior:'smooth' })
-  } catch (err) { showToast(err.message, true); if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = submitBtnHTML } }
+  } catch (err) {
+    showToast(err.message, true)
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = submitBtnHTML }
+    if (err.status === 401) { signedOutMidForm(); return }
+    if (err.status === 409) { showFormError(`<strong>Not submitted.</strong> ${esc(err.message)} <a href="/marketplace/dashboard" style="color:inherit;font-weight:600">Open your dashboard</a>.`); return }
+    showFormError(`<strong>Not submitted.</strong> ${esc(err.message)}${err.status === 0 ? '' : ' Everything you typed is kept: fix this and press the button again.'}`)
+  }
 })
 
 // Init

@@ -43,6 +43,7 @@ const SUITES = [
   { name: 'browser: stuck on the way in (startup check, refresh, steps, slow), a dead link, and the badge and pass steps counted', args: ['browser-help.cjs'], harness: 'phone-harness.mjs', port: 8778, portEnv: true },
   { name: 'browser: panel email as a server job (start, pace, stop, resume, done, the scheduler note)', args: ['pace-test.cjs'], harness: 'pace-harness.mjs', port: 8774 },
   { name: 'browser: buying a pass on a phone (checkout, result, retry, checkout off, invoice queues)', args: ['pay-test.cjs'], harness: 'pay-harness.mjs', port: 8776 },
+  { name: 'browser: an exhibitor lists a product on the AI Marketplace (sign-in link, the form, plain domains, images, every way the button looked dead, dashboard edit, approval, public page, inquiry)', args: ['mp-test.cjs'], harness: 'mp-harness.mjs', port: 8779, portEnv: true },
 ];
 
 const run = (args, opts = {}) => new Promise((resolve) => {
