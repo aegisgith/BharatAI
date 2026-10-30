@@ -6639,6 +6639,41 @@ const mobileTakenReply = (email: string) => {
   return { error: message, message, code: 'mobile_registered' }
 }
 
+// A mistyped address is a person who never hears from us again: on 30 Oct 2026
+// twelve rows read marico.con, gmail.co, nccltd.iin or "@gmail" with nothing
+// after it, and every email to them had bounced in silence. Only mistakes we are
+// sure of are corrected - a host nobody owns, or an ending that is no domain at
+// all - so a real .co or .cm address passes. The answer carries the corrected
+// address when there is one, and the reason either way.
+const EMAIL_HOST_FIXES: Record<string, string> = {
+  'gmail': 'gmail.com', 'gmail.co': 'gmail.com', 'gmail.con': 'gmail.com', 'gmail.cm': 'gmail.com', 'gmail.om': 'gmail.com',
+  'gmai.com': 'gmail.com', 'gmial.com': 'gmail.com', 'gamil.com': 'gmail.com', 'gnail.com': 'gmail.com', 'gmil.com': 'gmail.com', 'gmaill.com': 'gmail.com', 'gmail.co.in': 'gmail.com',
+  'yahoo': 'yahoo.com', 'yahoo.co': 'yahoo.com', 'yahoo.con': 'yahoo.com', 'yaho.com': 'yahoo.com', 'yahooo.com': 'yahoo.com',
+  'hotmail': 'hotmail.com', 'hotmail.co': 'hotmail.com', 'hotmail.con': 'hotmail.com', 'hotmal.com': 'hotmail.com', 'hotmai.com': 'hotmail.com', 'hotmial.com': 'hotmail.com',
+  'outlook': 'outlook.com', 'outlook.co': 'outlook.com', 'outlook.con': 'outlook.com', 'outlok.com': 'outlook.com',
+  'rediffmail': 'rediffmail.com', 'rediffmail.co': 'rediffmail.com', 'icloud.co': 'icloud.com', 'icloud.con': 'icloud.com', 'live.con': 'live.com', 'protonmail.co': 'protonmail.com',
+}
+const EMAIL_TLD_FIXES: Record<string, string> = {
+  con: 'com', cmo: 'com', ocm: 'com', comm: 'com', comn: 'com', comw: 'com', coma: 'com', como: 'com', c0m: 'com', vom: 'com', xom: 'com', iin: 'in',
+}
+const EMAIL_ENDING_FIXES: Record<string, string> = { 'co.i': 'co.in', 'ac.i': 'ac.in', 'edu.i': 'edu.in', 'org.i': 'org.in' }
+function emailTypo(email: string): { fixed?: string; reason: string } | null {
+  const e = String(email || '').trim().toLowerCase()
+  const at = e.lastIndexOf('@')
+  if (at < 1 || at !== e.indexOf('@') || at === e.length - 1 || /[\s,;<>()]/.test(e)) return { reason: 'That does not look like an email address. Please check it.' }
+  const user = e.slice(0, at), host = e.slice(at + 1)
+  const suggest = (h: string) => ({ fixed: user + '@' + h, reason: 'Did you mean ' + user + '@' + h + '? Please check the email address.' })
+  if (EMAIL_HOST_FIXES[host]) return suggest(EMAIL_HOST_FIXES[host])
+  const labels = host.split('.')
+  const incomplete = { reason: 'The part after @ looks incomplete (' + host + '). Please check the email address.' }
+  if (labels.length < 2 || labels.some(l => !l)) return incomplete
+  const ending = labels.slice(-2).join('.'), tld = labels[labels.length - 1]
+  if (EMAIL_ENDING_FIXES[ending]) return suggest(labels.slice(0, -2).concat(EMAIL_ENDING_FIXES[ending]).join('.'))
+  if (EMAIL_TLD_FIXES[tld]) return suggest(labels.slice(0, -1).concat(EMAIL_TLD_FIXES[tld]).join('.'))
+  if (tld.length < 2 || !/^[a-z]+$/.test(tld)) return incomplete
+  return null
+}
+
 app.post('/api/events/:id/attendees/register', async (c) => {
   const eventId = c.req.param('id')
   const body = await c.req.json()
@@ -6661,6 +6696,14 @@ app.post('/api/events/:id/attendees/register', async (c) => {
   const known = await c.env.DB.prepare('SELECT id FROM attendees WHERE event_id = ? AND email = ?')
     .bind(eventId, normalizedEmail).first()
   if (!known) {
+    // A mistyped address first (emailTypo): the person would never hear from us again.
+    const typo = emailTypo(normalizedEmail)
+    if (typo) {
+      await audit(c, 'register.email_typo', 'registration', null,
+        { email: normalizedEmail, fixed: typo.fixed || '', source: sanitizeRegistrationSource(registration_source) || 'networking_app' },
+        { actor: 'public registration', kind: 'public' })
+      return c.json({ error: typo.reason, message: typo.reason, code: 'email_typo', suggestion: typo.fixed || '' }, 400)
+    }
     const missing = missingRegistrationFields(body)
     if (missing.length) {
       return c.json({ error: 'Please add your ' + humanList(missing) + '.', missing }, 400)
@@ -15205,6 +15248,34 @@ async function findDuplicateGroups(c: any, eventId: any) {
     return matches / maxLen
   }
 
+  // The same person at the same organisation on two numbers - a work and a
+  // personal email, each with its own phone (Neetu Jaju at Power Spirit twice; 63
+  // such groups on 30 Oct 2026). The mobile pass cannot see them and they drowned
+  // among similar names, so they are their own tier: listed before those, never
+  // merged in bulk. The organisation is read past Pvt Ltd, dots and spacing.
+  const orgKey = (v: unknown) => String(v || '').toLowerCase()
+    .replace(/\b(pvt|private|ltd|limited|llp|inc|corp|corporation|co|company|the)\b\.?/g, ' ')
+    .replace(/[^a-z0-9]+/g, '')
+  const byOrg = new Map<string, any[]>()
+  for (const a of attendees) {
+    if (used.has(a.id)) continue
+    const k = orgKey(a.company)
+    if (k.length < 3) continue
+    if (!byOrg.has(k)) byOrg.set(k, [])
+    byOrg.get(k)!.push(a)
+  }
+  for (const list of byOrg.values()) {
+    if (list.length < 2) continue
+    for (let i = 0; i < list.length; i++) {
+      if (used.has(list[i].id)) continue
+      const dupes = list.slice(i + 1).filter(b => !used.has(b.id) && samePerson(list[i].name, b.name))
+      if (!dupes.length) continue
+      const all = [list[i], ...dupes].sort((x, y) => keeperScore(y) - keeperScore(x) || Number(x.id) - Number(y.id))
+      all.forEach(r => used.add(r.id))
+      groups.push({ reason: 'name_company', certain: false, review: 'Same name and organisation, different mobiles: almost surely one person', primary: all[0], duplicates: all.slice(1).map(d => ({ ...d, similarity: 100 })), count: all.length })
+    }
+  }
+
   // Similar names on different numbers: a hint, never merged in bulk.
   for (let i = 0; i < attendees.length; i++) {
     if (used.has(attendees[i].id)) continue
@@ -15226,14 +15297,16 @@ async function findDuplicateGroups(c: any, eventId: any) {
     }
   }
 
-  // Same mobile first, the mergeable ones on top; then similar names.
-  const rank = (g: any) => (g.reason === 'mobile' ? 0 : 2) + (g.certain ? 0 : 1)
+  // Same mobile first, the mergeable ones on top; then the same name at the same
+  // organisation; then similar names.
+  const rank = (g: any) => (g.reason === 'mobile' ? 0 : g.reason === 'name_company' ? 2 : 3) + (g.certain ? 0 : 1)
   groups.sort((a: any, b: any) => rank(a) - rank(b) || b.count - a.count)
 
   const mobileGroups = groups.filter(g => g.reason === 'mobile').length
+  const nameCompanyGroups = groups.filter(g => g.reason === 'name_company').length
   return {
     groups, totalGroups: groups.length, totalDuplicates: groups.reduce((s: number, g: any) => s + g.duplicates.length, 0),
-    mobileGroups, certainGroups: groups.filter(g => g.certain).length, nameGroups: groups.length - mobileGroups,
+    mobileGroups, certainGroups: groups.filter(g => g.certain).length, nameCompanyGroups, nameGroups: groups.length - mobileGroups - nameCompanyGroups,
   }
 }
 
@@ -29691,8 +29764,11 @@ function adminPageHTML(): string {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Admin Dashboard - Bharat AI Innovation 2026</title>
   <link rel="stylesheet" href="${FA_CSS}">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <!-- Served from here since 30 Oct 2026, pinned: the CDN copy was unpinned (a
+       major Chart.js release would have broken the dashboard overnight) and both
+       vanish on a network that blocks cdn.jsdelivr.net. -->
+  <script src="/js/vendor/chart.umd.js?v=4.6.1"></script>
+  <script src="/js/vendor/xlsx.full.min.js?v=0.18.5"></script>
   <!-- Shared with the app, so a pass issued at the desk is the same document the
        holder downloaded. The pass draws its own QR with the encoder. -->
   <script src="/js/vendor/qrcode-generator.js?v=20261029"></script>
@@ -34859,9 +34935,9 @@ function adminPageScript(): string {
         let html = \`
           <div class="flex items-center justify-between mb-4">
             <h3 class="text-lg font-bold"><i class="fas fa-user-friends text-purple-400 mr-2"></i>Suspected Duplicates</h3>
-            <span class="text-xs text-gray-400">\${data.mobileGroups || 0} same mobile · \${data.nameGroups || 0} similar names</span>
+            <span class="text-xs text-gray-400">\${data.mobileGroups || 0} same mobile · \${data.nameCompanyGroups || 0} same name + organisation · \${data.nameGroups || 0} similar names</span>
           </div>
-          <p class="text-xs text-gray-500 mb-3">One mobile on two rows is one person registered twice. <strong>Merge</strong> keeps the row marked Keep (the one with the payment, the downloaded pass or the most activity), moves the other row's orders, invoices, connections, messages and panel sign-ups onto it, fills its empty profile fields, and deletes the other row. Every merge is in the audit log. Groups marked <em>Check</em> may be two different people sharing a phone: merge only if they are one person.</p>
+          <p class="text-xs text-gray-500 mb-3">One mobile on two rows is one person registered twice. <strong>Merge</strong> keeps the row marked Keep (the one with the payment, the downloaded pass or the most activity), moves the other row's orders, invoices, connections, messages and panel sign-ups onto it, fills its empty profile fields, and deletes the other row. Every merge is in the audit log. Groups marked <em>Check</em> may be two different people sharing a phone: merge only if they are one person. The same name at the same organisation on two numbers is almost always one person with a work and a personal email: look at the two rows, then Merge.</p>
           \${(data.certainGroups || 0) > 0 ? '<button id="merge-certain-btn" onclick="mergeCertainDuplicates(' + data.certainGroups + ')" class="w-full mb-4 py-2.5 rounded-xl text-sm font-semibold bg-green-600 hover:bg-green-500 text-white transition"><i class="fas fa-user-check mr-1.5"></i>Merge all ' + data.certainGroups + ' certain duplicates (same mobile, same name)</button>' : ''}
           <div class="space-y-4 max-h-[60vh] overflow-y-auto scroll-hide pr-1">
         \`;
@@ -34870,7 +34946,7 @@ function adminPageScript(): string {
           const all = [g.primary, ...g.duplicates];
           const chip = g.certain
             ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-green-500/20 text-green-600">Same mobile · same person</span>'
-            : '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold ' + (g.reason === 'mobile' ? 'bg-amber-500/20 text-amber-600' : 'bg-gray-500/20 text-gray-500') + '">Check: ' + escH(g.review || '') + '</span>';
+            : '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold ' + (g.reason === 'mobile' || g.reason === 'name_company' ? 'bg-amber-500/20 text-amber-600' : 'bg-gray-500/20 text-gray-500') + '">Check: ' + escH(g.review || '') + '</span>';
           html += \`<div class="glass rounded-xl p-4 border border-purple-500/20">
             <div class="flex items-center gap-2 mb-3 flex-wrap">
               <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/20 text-purple-300">Group \${gi+1}</span>
@@ -34902,7 +34978,7 @@ function adminPageScript(): string {
               <td class="py-1.5 px-2 text-gray-400">\${escH(a.company || '-')}</td>
               <td class="py-1.5 px-2">\${attPassChip(a, 'px-1.5 py-0.5 rounded text-[10px]')}</td>
               <td class="py-1.5 px-2">\${a.rsvp_status ? '<span class="text-green-400">'+escH(a.rsvp_status)+'</span>' : '<span class="text-gray-600">—</span>'}</td>
-              <td class="py-1.5 px-2">\${ai === 0 ? '<span class="text-purple-300 font-semibold">Keep</span>' : (g.reason === 'mobile' ? '<span class="text-amber-500">same mobile</span>' : '<span class="text-amber-400">'+sim+'</span>')}</td>
+              <td class="py-1.5 px-2">\${ai === 0 ? '<span class="text-purple-300 font-semibold">Keep</span>' : (g.reason === 'mobile' ? '<span class="text-amber-500">same mobile</span>' : g.reason === 'name_company' ? '<span class="text-amber-500">same name + organisation</span>' : '<span class="text-amber-400">'+sim+'</span>')}</td>
               <td class="py-1.5 px-2">\${ai === 0 ? '' : '<button onclick="mergeDuplicate(' + Number(a.id) + ', ' + Number(g.primary.id) + ', this)" class="px-2 py-1 mr-1 rounded text-[10px] font-medium bg-green-500/20 text-green-600 hover:bg-green-500/30 transition" title="Fold this row into #' + Number(g.primary.id) + '"><i class="fas fa-user-check mr-1"></i>Merge into #' + Number(g.primary.id) + '</button>'}<button onclick="deleteDuplicate(\${Number(a.id)}, this)" class="px-2 py-1 rounded text-[10px] font-medium \${hasActivity ? 'bg-amber-500/20 text-amber-300 hover:bg-amber-500/30' : 'bg-red-500/20 text-red-400 hover:bg-red-500/30'} transition" title="\${hasActivity ? 'Has activity — review before deleting' : 'No activity — safe to delete'}">\${hasActivity ? '<i class="fas fa-exclamation-triangle mr-1"></i>' : ''}<i class="fas fa-trash"></i> Delete</button></td>
             </tr>\`;
           });

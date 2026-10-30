@@ -186,6 +186,11 @@ r = await hit('/admin');
 r.text += (await hit('/admin.js?v=' + ((/\/admin\.js\?v=([0-9a-f]{8})/.exec(r.text) || [])[1] || ''))).text;
 check('the admin page runs panel email as server jobs', r.text.includes('function startMailJob') && r.text.includes('mail-jobs/tick') && !r.text.includes('pumpPanelReports'), 'markers');
 check('the admin Overview has the Pass & badge card with Send the steps, and the scanners line', r.text.includes('function loadHelpFunnel') && r.text.includes('/api/admin/help-mail/send') && r.text.includes('Email scanners (left out)'), 'markers');
+check('the admin page takes Chart.js and SheetJS from here, pinned, not from a CDN (30 Oct 2026)', r.text.includes('/js/vendor/chart.umd.js?v=4.6.1') && r.text.includes('/js/vendor/xlsx.full.min.js?v=0.18.5') && !r.text.includes('cdn.jsdelivr.net'), 'markers');
+r = await hit('/js/vendor/chart.umd.js?v=4.6.1');
+check('Chart.js 4.6.1 answers from here', r.status === 200 && r.text.includes('Chart.js v4.6.1'), r.status);
+r = await hit('/js/vendor/xlsx.full.min.js?v=0.18.5');
+check('SheetJS answers from here', r.status === 200 && r.text.includes('SheetJS'), r.status);
 
 // The way in (29 Oct 2026): the startup check, the doors it and the app use, and
 // /app.js kept for a year only under its own version. Nothing is written: every

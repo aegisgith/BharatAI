@@ -160,5 +160,23 @@ check('bulk upload: held numbers and repeats within the sheet are skipped and na
 r = await hit('POST', '/api/desk/walkin', { name: 'Walk In', email: 'walk@in.in', mobile: '9000000013', company: 'X' }, ADMIN);
 check('desk walk-in: a held mobile hands back that person\'s pass instead of a second row', r.status === 409 && r.json?.id === 13 && !!r.json?.token && q("SELECT id FROM attendees WHERE email = 'walk@in.in'").length === 0, r.status + ' ' + r.text);
 
+// ---- the same name at the same organisation on two numbers (30 Oct 2026) ----
+person(50, 'Neetu Jaju', 'info@powerspirit.in', '9700000001', { company: 'Power spirit it solution', pass_downloaded_at: '2026-10-29 22:11:32' });
+person(51, 'Neetu Jaju', 'neetu@gmail.com', '9700000002', { company: 'Power Spirit IT Solution Pvt. Ltd.', badge_type: 'VIP Pass', payment_status: 'pending' });
+person(52, 'Vasanth Pai', 'vasanth@techm.com', '9700000003', { company: 'Tech Mahindra' });
+person(53, 'Vasanth B Pai', 'vbpai@gmail.com', '9700000004', { company: 'TechMahindra' });
+person(54, 'Rahul Sharma', 'rahul.s@tcs.com', '9700000005', { company: 'TCS' });
+person(55, 'Rahul Sharma', 'rahul.sharma@infosys.com', '9700000006', { company: 'Infosys' });
+r = await hit('GET', '/api/admin/events/1/attendees/duplicates', undefined, ADMIN);
+const g2 = r.json || {};
+const groupOf2 = (id) => (g2.groups || []).find(x => [x.primary.id, ...x.duplicates.map(d => d.id)].includes(id));
+check('the same name and organisation on two mobiles is its own tier, counted apart, never certain', groupOf2(50)?.reason === 'name_company' && groupOf2(50)?.certain === false && /Same name and organisation/.test(groupOf2(50)?.review || '') && g2.nameCompanyGroups === 2, JSON.stringify({ n: g2.nameCompanyGroups, g: groupOf2(50) }).slice(0, 300));
+check('the organisation is read past Pvt Ltd, dots and spacing; the row with the pass is kept', groupOf2(50)?.primary.id === 50 && groupOf2(50)?.duplicates[0]?.id === 51 && groupOf2(52)?.reason === 'name_company' && groupOf2(53)?.primary.id === 52, JSON.stringify([groupOf2(50)?.primary.id, groupOf2(52)?.reason, groupOf2(53)?.primary.id]));
+check('the same name at two different organisations stays a similar-names hint', groupOf2(54)?.reason === 'name' && groupOf2(54)?.certain === false, JSON.stringify(groupOf2(54)));
+const order = (g2.groups || []).map(x => x.reason);
+check('groups are listed mobile first, then same name + organisation, then similar names', order.indexOf('name_company') > order.lastIndexOf('mobile') && order.lastIndexOf('name_company') < order.indexOf('name'), order.join(','));
+r = await hit('POST', '/api/admin/events/1/attendees/merge-certain', {}, ADMIN);
+check('merge all leaves the name + organisation groups for a person', r.json?.merged === 0 && q('SELECT count(*) n FROM attendees WHERE id IN (50, 51, 52, 53)')[0].n === 4, r.text);
+
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');
 process.exit(fails ? 1 : 0);

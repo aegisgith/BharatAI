@@ -77,11 +77,44 @@ check('a returning app re-posting its own email (no mobile) is not refused as a 
 r = await reg({ name: 'Ravi Kumar', email: 'ravi@kumar.in', mobile: '9820015152' });
 check('a different mobile registers normally', r.status === 201 && rows.length === 2, r.status + ' ' + r.text);
 
+// ---- a mistyped address is refused, with the correction when we are sure (30 Oct 2026) ----
+const typo = async (email, want) => {
+  const before = rows.length;
+  const t = await reg({ name: 'Typo Person', email, mobile: '9822200' + String(before + email.length).padStart(3, '0') });
+  const ok = t.status === 400 && t.json?.code === 'email_typo' && rows.length === before && (want === null ? !t.json?.suggestion : t.json?.suggestion === want)
+    && /please check (it|the email address)/i.test(t.json?.error || '') && t.json?.message === t.json?.error && (want === null || t.json.error.includes('Did you mean ' + want + '?'));
+  check('a mistyped address is refused: ' + email + (want ? ' -> ' + want : ' (no guess offered)'), ok, t.status + ' ' + t.text);
+};
+await typo('mitali.agarwal@marico.con', 'mitali.agarwal@marico.com');
+await typo('supriya1891@gmail', 'supriya1891@gmail.com');
+await typo('prajjwal@gmail.co', 'prajjwal@gmail.com');
+await typo('gufran@nccltd.iin', 'gufran@nccltd.in');
+await typo('deepam@gmail.comw', 'deepam@gmail.com');
+await typo('shreyas@gmai.com', 'shreyas@gmail.com');
+await typo('someone@iitb.ac.i', 'someone@iitb.ac.in');
+await typo('Aryan@Gmail.CON', 'aryan@gmail.com');
+await typo('tanvi.daware@vodafoneidea', null);
+await typo('praful@wiriyatechnology.', null);
+await typo('riddhi@gma', null);
+await typo('two@at@x.com', null);
+await typo('space in@x.com', null);
+await typo('nobody@', null);
+check('the refusal is in the audit log as register.email_typo, with the correction', audits.some(a => a.includes('register.email_typo') && a.some(v => /mitali\.agarwal@marico\.com/.test(String(v)))), JSON.stringify(audits.filter(a => a.includes('register.email_typo')).slice(0, 1)));
+for (const email of ['founder@startup.co', 'prof@iitb.ac.in', 'ceo@firma.cm', 'x@gmail.com', 'y@yahoo.co.in', 'z@rediff.com', 'w@sub.domain.museum']) {
+  const before = rows.length;
+  r = await reg({ name: 'Real Person', email, mobile: '9833300' + String(before).padStart(3, '0') });
+  check('a real address registers: ' + email, r.status === 201 && rows.length === before + 1, r.status + ' ' + r.text);
+}
+rows.push({ id: rows.length + 1, event_id: 1, name: 'Old Typo', email: 'old@gmail.co', mobile: '9844400001' });
+r = await reg({ name: 'Old Typo', email: 'old@gmail.co' });
+check('an address already on the list is not refused as a typo (the returning app re-posts it)', r.json?.code !== 'email_typo', r.status + ' ' + r.text);
+
+const n0 = rows.length;
 r = await post('/api/external/register', { first_name: 'Asha', last_name: 'R', email: 'asha.alt@rao.in', phone: '98200 15151', organization: 'Rao Labs', job_title: 'Founder', industry: 'Software & SaaS', city: 'Pune' });
-check('the external route refuses the same mobile too', r.status === 409 && r.json?.code === 'mobile_registered' && rows.length === 2, r.status + ' ' + r.text);
+check('the external route refuses the same mobile too', r.status === 409 && r.json?.code === 'mobile_registered' && rows.length === n0, r.status + ' ' + r.text);
 
 r = await post('/api/external/register', { first_name: 'Meera', last_name: 'S', email: 'meera@s.in', phone: '9811122233', organization: 'S Co', job_title: 'CTO', industry: 'Software & SaaS', city: 'Delhi' });
-check('the external route still registers a new mobile', r.status === 201 && rows.length === 3, r.status + ' ' + r.text);
+check('the external route still registers a new mobile', r.status === 201 && rows.length === n0 + 1, r.status + ' ' + r.text);
 
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');
 process.exit(fails ? 1 : 0);
