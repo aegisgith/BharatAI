@@ -23,7 +23,10 @@
 // Indigloo Software on 28 Oct: not participating. Aegis School of Data Science & AI and Assessfy were added on 4 Oct
 // at the organiser's request, with no exhibitor or booth row yet. Aria Telecom,
 // JoyVibe, OliAI and P99Soft came from the organiser's 23 Oct folder; none had an
-// exhibitors row on 24 Oct.
+// exhibitors row on 24 Oct. Cloud Crane, Lenixvision, Trust3 AI and Wissen
+// Technology came from the 30 Oct export, which has no "Our Logo" or "Digital Media
+// Partner" folder and no Qapitol AI file: those sources are the 12 Oct export's.
+// scripts/sql/exhibitor-changes-2026-10-30.sql gives Aegis and Assessfy app rows.
 //
 // The names are printed under every logo: half of these are symbol-only marks.
 // `optical` enlarges a lockup whose small lettering would otherwise be lost.
@@ -46,6 +49,8 @@ const EXHIBITORS = [
   { name: 'Asmadiya Technologies', file: 'Asmadiya technologies.jpg', db: [12, 'Asmadiya'] },
   { name: 'Assessfy', file: 'Our Logo/Assessfy.png', optical: 1.15 },
   { name: 'CGI', file: 'CGI logo.jpg', db: [5, 'CGI'] },
+  // The file says "CloudCarne"; the artwork says CLOUD CRANE.
+  { name: 'Cloud Crane', file: 'CloudCarne logo.jpg', dark: true }, // white and yellow on black
   { name: 'Cosmica Telematics', file: 'COSMICA TELEMATICS PRIVATE LIMITED.jpg', db: [8, 'COSMICA TELEMATICS PRIVATE LIMITED'] },
   { name: 'Daten Technology Solutions', file: 'Daten Technology Solutions logo.jpg', db: [16, 'Daten Intelligenz Software, AIGyan Technologies'] },
   { name: 'Dysosphere', file: 'Dysosphere Pvt Ltd Logo.png' },
@@ -53,7 +58,7 @@ const EXHIBITORS = [
   { name: 'Eurys Infosystems', file: 'EURYS infosystemS private limited.jpg', db: [15, 'EURYS infosystemS private limited'] },
   { name: 'Evoke Technologies', file: 'Evoke Technologies logo.jpg', db: [27, 'Evoke Technologies'] },
   { name: 'Gupshup.ai', file: 'gupshup ai logo.jpg' },
-  { name: 'Harrier Information Systems', file: 'Harrier information system pvt ltd logo.jpg', db: [25, 'Harrier Information Systems Pvt. Ltd.'], optical: 1.1 },
+  { name: 'Harrier Information Systems', file: 'Harrier Information Systems Pvt. Ltd. logo.jpg', db: [25, 'Harrier Information Systems Pvt. Ltd.'], optical: 1.1 },
   { name: 'Image Infosystems', file: 'Image Infosystem.jpg', db: [4, 'Image Infosystem'], optical: 1.3 },
   { name: 'Info Science Labs', file: 'Info Science Labs logo.jpg' },
   { name: 'Intangles', file: 'Intangles Logo.jpg', db: [3, 'Intangles'] },
@@ -62,15 +67,16 @@ const EXHIBITORS = [
   { name: 'JoyVibe', file: 'joyvibe_logo.jpg', optical: 1.15 },
   { name: 'Kadeep.ai', file: 'Kadeep Ai logo.jpg', db: [26, 'kadeep.ai'] },
   { name: 'Kirusa', file: 'Kirusa Inc.jpg', db: [20, 'Kirusa Inc'] },
+  { name: 'Lenixvision', file: 'Lenixvision Smart Eyewear Logo.png', optical: 1.2 },
   { name: 'LightMetrics', file: 'LightMetrics logo.jpg' },
   // The ministry's own logo (organiser, 4 Oct), replacing an old Azadi Ka Amrit Mahotsav graphic.
   { name: 'Ministry of Tribal Affairs', file: 'Minsitry of Tribal Affairs  Logo.png', db: [24, 'Ministry of Tribal Affairs'], optical: 1.3 },
   { name: 'NoBroker', file: 'NoBroker Technologies Solutions Private Limited.jpg', db: [10, 'NoBroker Technologies Solutions Private Limited'] },
-  { name: 'OliAI', file: 'OliAI  Logo_.jpg', optical: 1.15 },
+  { name: 'OliAI', file: 'Oli AI  Logo_.jpg', optical: 1.15 },
   { name: 'Oranje AI', file: 'ORANJE AI PRIVATE LIMITED logo.png', db: [14, 'ORANJE AI PRIVATE LIMITED'] },
   // Renamed Origins AI with a new logo on 28 Oct; the database row is renamed by
   // scripts/sql/exhibitor-changes-2026-10-28.sql (organiser runs it).
-  { name: 'Origins AI', file: 'Origins AI logo.jpg', db: [19, 'Origins AI'] },
+  { name: 'Origins AI', file: 'Origins AI Logo_.png', db: [19, 'Origins AI'] },
   { name: 'P99Soft', file: 'P99SOFT Logo.jpg', dark: true }, // white mark on dark teal
   { name: 'Paisani Technology Services', file: 'Paisani Technology Services_.jpg', db: [13, 'Paisani Technology Services'] },
   { name: 'Phoebetal Technologies', file: 'Phoebetal Technologies Pvt Ltd.jpg', db: [30, 'Phoebetal Technologies Pvt Ltd'] },
@@ -80,8 +86,10 @@ const EXHIBITORS = [
   { name: 'Saranyu Technologies', file: 'Saranyu Technologies.jpg', db: [11, 'Saranyu Technologies'] },
   { name: 'Seem Fintech & Sustainability', file: 'Seem Fintech & Sustainability Pvt Ltd.jpg', db: [7, 'Seem Fintech & Sustainability Pvt Ltd'] },
   { name: 'Teenage Works', file: 'Teenage Works Logo.jpg' },
+  { name: 'Trust3 AI', file: 'Trust3 AI Logo.png' },
   { name: 'ValuEnable', file: 'Valuenable pvt ltd.jpg' },
-  { name: 'Vassar Labs', file: 'vassar_labs_logo.jpg' },
+  { name: 'Vassar Labs', file: 'Vassar Lab logo.jpg' },
+  { name: 'Wissen Technology', file: 'Wissen Technology Logo.jpg', dark: true }, // white mark on navy
   { name: 'Wyn Labs', file: 'Wyn Labs.jpg', db: [17, 'Wyn Labs'] },
   { name: 'Xtant Tech', file: 'Xtant Tech.png', dark: true }, // white wordmark on a big black square
   { name: 'Zanopy AI', file: 'Zanopy AI.jpg', db: [21, 'Zanopy AI'] },
@@ -309,7 +317,7 @@ ${SHUFFLE}
 const llms = `${START}
 ## Exhibitors
 
-Companies and organisations exhibiting at Bharat AI Innovation 2026 (list updated 24 October 2026; see https://bharataiinnovation.com/exhibition#exhibitors):
+Companies and organisations exhibiting at Bharat AI Innovation 2026 (list updated 30 October 2026; see https://bharataiinnovation.com/exhibition#exhibitors):
 
 ${all.map((e) => `- ${e.name}`).join('\n')}
 
