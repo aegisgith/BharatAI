@@ -30,6 +30,8 @@ check('exhibitor lookup needs a session (401)', r.status === 401, r.status + ' '
 
 r = await hit('/api/rsvp?email=nobody%40example.com&status=declined&event=1');
 check('unsigned RSVP link: 302 to confirmation, no oracle', r.status === 302 && String(r.h.location || '').includes('/rsvp-confirmed'), r.status + ' ' + r.h.location);
+r = await hit('/rsvp-confirmed?status=confirmed&name=%3Cb%3EXSS%3C%2Fb%3E&app=%22%3E%3Ci%3EAPP%3C%2Fi%3E');
+check('the RSVP page prints nothing from the address bar (30 Oct 2026)', r.status === 200 && !r.text.includes('<b>XSS') && !r.text.includes('<i>APP'), r.status);
 r = await hit('/api/rsvp?email=nobody%40example.com&status=bogus');
 check('malformed RSVP 400', r.status === 400, r.status);
 

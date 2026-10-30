@@ -7573,7 +7573,8 @@ app.post('/api/attendees/:id/track-step', async (c) => {
   const b = await c.req.json().catch(() => ({})) as any
   const kind = String(b.kind || ''), step = String(b.step || '')
   if (!TRACK_STEP_KINDS.has(kind) || !TRACK_STEPS.has(step) || !Number.isInteger(Number(id))) return c.json({ ok: false }, 400)
-  const reason = stepText(b.reason)
+  // 160: the refusal messages run past 80, and Admin showed "a photo of yo".
+  const reason = stepText(b.reason, 160)
   await auditOnceWithin(c, kind + '.' + step, Number(id), reason ? { reason } : null, 10)
   return c.json({ ok: true })
 })
@@ -7714,44 +7715,43 @@ app.get('/api/rsvp', async (c) => {
   }
 
   // Redirect to pretty RSVP confirmation page
-  const appUrl = (await settingValue(c, 'app_url')) || 'https://bharataiinnovation.com/app'
   // Name and email deliberately omitted from the redirect: echoing them back
   // turned this into an oracle that confirmed whether an address was registered
   // and revealed the person behind it, to anyone who guessed the address.
-  return c.redirect(`/rsvp-confirmed?status=${status}&app=${encodeURIComponent(appUrl)}`)
+  return c.redirect(`/rsvp-confirmed?status=${status}`)
 })
 
-// RSVP confirmation landing page
-app.get('/rsvp-confirmed', (c) => {
-  const status = c.req.query('status') || 'confirmed'
-  const name = c.req.query('name') || 'there'
-  const email = c.req.query('email') || ''
-  const appUrl = c.req.query('app') || 'https://bharataiinnovation.com/app'
+// RSVP confirmation landing page. Nothing from the address bar reaches the page
+// but the answer, picked from three. Until 30 Oct 2026 it printed ?name= and ?app=
+// as they came, so anyone could send a link on this domain that ran their script.
+app.get('/rsvp-confirmed', async (c) => {
+  const asked = String(c.req.query('status') || '')
+  const status = ['confirmed', 'declined', 'maybe'].includes(asked) ? asked : 'confirmed'
+  const appUrl = (await settingValue(c, 'app_url')) || 'https://bharataiinnovation.com/app'
 
   const statusConfig: any = {
     confirmed: { emoji: '🎉', title: "You're Confirmed!", subtitle: "We look forward to seeing you at the event.", color: '#22c55e', bg: 'from-green-500/20 to-emerald-500/20', border: 'border-green-500/30' },
     declined: { emoji: '😔', title: "Sorry to hear that", subtitle: "We hope to see you at future events.", color: '#ef4444', bg: 'from-red-500/20 to-rose-500/20', border: 'border-red-500/30' },
     maybe: { emoji: '🤔', title: "Noted as Maybe", subtitle: "Let us know when you've decided! You can change anytime.", color: '#f59e0b', bg: 'from-amber-500/20 to-orange-500/20', border: 'border-amber-500/30' },
   }
-  const cfg = statusConfig[status] || statusConfig.confirmed
+  const cfg = statusConfig[status]
 
-  return c.html(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>RSVP - Bharat AI Innovation 2026</title><link rel="stylesheet" href="${FA_CSS}"><link rel="stylesheet" href="/css/fonts-app.css?v=1"><style>${brandThemeCSS()}</style><link rel="stylesheet" href="${TW_CSS}"></head>
+  return c.html(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Your answer - Bharat AI Innovation 2026</title><link rel="stylesheet" href="${FA_CSS}"><link rel="stylesheet" href="/css/fonts-app.css?v=1"><style>${brandThemeCSS()}</style><link rel="stylesheet" href="${TW_CSS}"></head>
 <body class="min-h-screen bg-gradient-to-br from-[#F8F9FF] via-[#EEF0FF] to-[#F8F9FF] flex items-center justify-center p-4 font-sans">
   <div class="max-w-md w-full text-center">
     <img src="/images/logo-nav.webp" alt="BHAI" class="h-16 mx-auto mb-8 opacity-80">
     <div class="bg-white/5 backdrop-blur-xl border ${cfg.border} rounded-3xl p-8 shadow-2xl">
       <div class="text-6xl mb-4">${cfg.emoji}</div>
       <h1 class="text-2xl font-bold text-white mb-2">${cfg.title}</h1>
-      <p class="text-gray-400 mb-1">Hi <strong class="text-white">${name}</strong>,</p>
       <p class="text-gray-400 mb-6 text-sm">${cfg.subtitle}</p>
       <div class="bg-white/5 rounded-xl p-4 mb-6 text-left">
         <div class="text-xs text-gray-500 uppercase tracking-wider mb-2">Event Details</div>
         <p class="text-white font-semibold text-sm">Bharat AI Innovation Conference & Exhibition 2026</p>
         <p class="text-gray-400 text-xs mt-1"><i class="fas fa-calendar-alt mr-1"></i>20-21 Nov 2026 &bull; <i class="fas fa-map-marker-alt ml-1 mr-1"></i>World Trade Center, Mumbai</p>
       </div>
-      ${status === 'confirmed' ? `<div class="space-y-2 mb-4"><a href="${appUrl}?email=${encodeURIComponent(email)}&action=download-pass" class="block w-full py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-primary-600 to-primary-500 hover:from-primary-500 hover:to-primary-400 transition text-sm"><i class="fas fa-id-badge mr-2"></i>Download Delegate Pass</a></div>` : ''}
-      <a href="${appUrl}?email=${encodeURIComponent(email)}" class="block w-full py-3 rounded-xl font-bold text-white transition text-sm text-center hover:opacity-90 no-underline" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);box-shadow:0 4px 20px rgba(245,98,10,0.28);"><i class="fas fa-rocket mr-2"></i>Open Networking App</a>
-      <p class="text-xs text-gray-500 mt-4">You can change your RSVP anytime from the app.</p>
+      ${status === 'confirmed' ? `<div class="space-y-2 mb-4"><a href="${appUrl}?action=download-pass" class="block w-full py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-primary-600 to-primary-500 hover:from-primary-500 hover:to-primary-400 transition text-sm"><i class="fas fa-id-badge mr-2"></i>Get my pass</a></div>` : ''}
+      <a href="${appUrl}" class="block w-full py-3 rounded-xl font-bold text-white transition text-sm text-center hover:opacity-90 no-underline" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);box-shadow:0 4px 20px rgba(245,98,10,0.28);"><i class="fas fa-rocket mr-2"></i>Open Networking App</a>
+      <p class="text-xs text-gray-500 mt-4">You can change your answer any time in the app.</p>
     </div>
     <p class="text-xs text-gray-600 mt-6">Bharat AI Innovation 2026 &bull; World Trade Center, Mumbai &bull; 20-21 Nov 2026</p>
   </div>
