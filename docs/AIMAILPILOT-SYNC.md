@@ -143,13 +143,14 @@ AImailPilot (`server/services/bharatai-attendee-sync.ts` in that repo) depends o
   the first copy only reaches AImailPilot through `?mode=state`, which carries all three fields for
   every row on every run.
 
-### What AImailPilot still has to do (not done on 29 Oct 2026)
-`server/services/bharatai-attendee-sync.ts` tags each contact `badge:<badge_type>` and merges tags
-without ever removing one. Until it changes, the tags stay wrong in both directions:
-1. Tag from `pass_held` (for example `pass-held:vip pass`) and keep `badge_type` only in the audit copy.
-2. On each `?mode=state` run, for every contact whose `pass_held` (or `payment_status`) differs from
-   the stored copy, replace that one tag, so a payment, a refund or a pass given by hand moves the
-   contact. Remove the old `badge:` tags once, the first time this runs.
-The BharatAI side already sends everything this needs; nothing else here changes.
+### The AImailPilot side (built 30 Oct 2026, waiting for its deploy)
+AImailPilot tagged each contact `badge:<badge_type>` and only ever added tags, so an abandoned VIP
+checkout stayed `badge:vip pass` for good. The change is built and tested in the aimailpilot repo
+(`server/lib/bharatai-attendee-map.ts`, `server/services/bharatai-attendee-sync.ts`): the `badge:`
+tag now comes from `pass_held` and replaces the old one (every other tag is kept), every state run
+re-checks all members so a later payment moves the tag, and `DEFAULT_ENDPOINT` names
+`https://bharataiinnovation.com`. It is **not deployed and not committed**: the steps, the
+rollback and the commit are in `HANDOFF-bharatai-pass-held.md` at the root of that repo. The tag
+keeps its `badge:` name, so a segment on `badge:vip pass` keeps working and means paid VIPs.
 - Removing a field or renaming one stops the sync from honouring opt-outs. If the shape has to
   change, change the AImailPilot side in the same release.
