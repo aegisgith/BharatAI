@@ -14134,7 +14134,7 @@ async function notifyEmail(c: any, attendee: any, opts: { preview?: boolean } = 
         </table>
         <p style="margin:12px 0 14px;font-size:13px;line-height:1.6;color:#1E2140;"><strong>${rsPrice('Delegate Pass')} + GST</strong>${late ? '' : ` until ${PRICE_DEADLINE_TEXT}, then ${rsPrice('Delegate Pass', true)} from ${PRICE_LATE_FROM_TEXT}`}.</p>
         ${btn(go('pay', '&pass=delegate'), 'See the Delegate Pass &rarr;', '#0f7b47')}
-        <p style="margin:16px 0 0;font-size:12.5px;line-height:1.65;color:#555;"><strong>Premium Delegate</strong> (${rsPrice('Premium Delegate Pass')} + GST) adds one hands-on workshop: <em>Data Science to Agentic AI: A CXO&rsquo;s Guide</em> with Dr. Vinay Kulkarni, or <em>From Prototype to Production</em> with Dr. Ashish Tendulkar. Seats are limited. <a href="${go('pay', '&pass=premium')}" style="color:#0B7A75;font-weight:bold;">Premium</a></p>
+        <p style="margin:16px 0 0;font-size:12.5px;line-height:1.65;color:#555;"><strong>Premium Delegate</strong> (${rsPrice('Premium Delegate Pass')} + GST) adds one hands-on workshop: <em>Data Science to Agentic AI: A CXO&rsquo;s Guide</em> with Dr. Vinay Kulkarni, <em>From Prototype to Production</em> with Dr. Ashish Tendulkar, or <em>Automatic Speech Recognition</em> with Dr. Parijat Shukla. Seats are limited. <a href="${go('pay', '&pass=premium')}" style="color:#0B7A75;font-weight:bold;">Premium</a></p>
         <p style="margin:8px 0 0;font-size:12.5px;line-height:1.65;color:#555;"><strong>VIP</strong> (${rsPrice('VIP Pass')} + GST) adds the CXO Gala Networking Evening on Day 1, the VIP lounge, priority seating and a speaker meet &amp; greet. <a href="${go('pay', '&pass=vip')}" style="color:#A67C00;font-weight:bold;">VIP</a></p>
         <p style="margin:12px 0 0;font-size:11.5px;color:#999;">Each button signs you in and opens the secure payment page. Your registration stays the same.</p>
       </div>`
@@ -24401,7 +24401,7 @@ function mainPageScript(): string {
                     body: 'Others looking for partners, matched on what you both actually do.' },
       learning:   { icon: 'fa-graduation-cap', tab: 'workshops', cta: 'See the workshops',
                     title: 'Get into the workshops',
-                    body: 'Hands-on sessions with working AI practitioners, led by Dr. Ashish Tendulkar. Small groups, real datasets, a certificate you keep.' }
+                    body: 'Hands-on sessions with working AI practitioners, led by Dr. Ashish Tendulkar, Dr. Vinay Kulkarni and Dr. Parijat Shukla. Small groups, real datasets, a certificate you keep.' }
     };
 
     const goalShort = (k) => (GOALS.find(g => g.key === k) || {}).short || k;
