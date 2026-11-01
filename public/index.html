@@ -535,8 +535,8 @@
     <link rel="stylesheet" href="css/style.css?v=20261029d">
 
     <!-- Hero backdrop: first frame of the rotation, fetched early so the hero does
-         not open on the bare gradient. The other six load lazily. -->
-    <link rel="preload" as="image" href="img/hero-bg-1.jpg" fetchpriority="high">
+         not open on the bare gradient. The other six load after the page. -->
+    <link rel="preload" as="image" type="image/webp" href="img/hero-1.webp" fetchpriority="high">
 
     <!-- Favicon -->
     <link rel="icon" type="image/png" sizes="64x64" href="/images/favicon-64.png">
@@ -546,18 +546,331 @@
             .seo-cards-grid { grid-template-columns: 1fr !important; }
             .seo-stats-grid { grid-template-columns: repeat(2, 1fr) !important; }
         }
-        /* B2B positioning + three-way participate grid */
-        .b2b-link { color: var(--saffron); font-weight: 700; white-space: nowrap; }
-        .participate-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.75rem; align-items: stretch; }
-        .participate-grid > div { padding: 2.25rem !important; }
-        @media (max-width: 1100px) {
-            .participate-grid { grid-template-columns: 1fr 1fr; }
-            .participate-grid > div:last-child { grid-column: 1 / -1; }
+        /* ===== Home page, Nov 2026: phone-first, one offer, less text =====
+           Ad traffic lands here on phones. Each section says one thing in a line or
+           two; the detail sits behind "More" (details.more) or "See all" (a grid
+           with data-show="phone,wide": the JS at the end of the page hides the rest
+           and shows the button). Small orange text uses --ink-orange (5.4:1 on
+           white); the brand saffron is only 2.9:1, too faint for body sizes. */
+        :root { --ink-orange: #B54800; --hero-ink: rgba(10,12,28,1); }
+        .b2b-link { color: var(--ink-orange); font-weight: 700; white-space: nowrap; }
+        .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+
+        /* --- Hero: the photograph is the backdrop, sharp; the dark sits only
+           where the type does (the bottom on a phone, the left on a wide screen). */
+        .hero { min-height: 100vh; min-height: 100svh; align-items: flex-end; }
+        .hero-bg-photo { object-position: center 40%; }
+        /* Only the first frame shows until the other six have arrived (the script
+           at the end of the page loads them after the page itself, then adds
+           .is-rolling). The !important beats the reduced-motion rule in style.css,
+           which re-asserts the crossfade with !important. */
+        .hero-bg:not(.is-rolling) .hero-bg-photo { animation-name: none !important; }
+        .hero-bg:not(.is-rolling) .hero-bg-photo:first-of-type { opacity: 1; }
+        .hero-bg-scrim {
+            background: linear-gradient(180deg,
+                rgba(10,12,28,0.55) 0%, rgba(10,12,28,0.10) 18%, rgba(10,12,28,0.14) 32%,
+                rgba(10,12,28,0.78) 54%, rgba(10,12,28,0.94) 72%, rgba(10,12,28,0.97) 100%);
         }
+        .hero-content { max-width: 560px; padding: 2rem 1rem 1.5rem !important; }
+        .hero-dateline { color: rgba(255,255,255,0.78); margin-bottom: 1rem; }
+        .hero .hero-title { margin-bottom: 0.75rem; }
+        .hero .hero-desc { color: rgba(255,255,255,0.86); margin: 0 0 1.25rem; max-width: 34ch; text-shadow: 0 1px 8px rgba(10,12,28,0.8); }
+        .hero-offer {
+            width: 100%;
+            margin: 0;
+            padding: 1rem 1rem 0.85rem;
+            border-radius: 18px;
+            background: rgba(13,15,30,0.84);
+            border: 1px solid rgba(255,255,255,0.16);
+            text-align: left;
+            animation: fadeSlideUp 0.9s var(--ease-out) 0.3s both;
+        }
+        .hero-offer-head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; }
+        .hero-offer-name { font-family: var(--font-display); font-weight: 700; font-size: 1rem; color: #fff; }
+        .hero-offer-price { font-family: var(--font-display); font-weight: 800; font-size: 1.55rem; color: #fff; letter-spacing: -0.02em; }
+        .hero-offer-price small { font-size: 0.78rem; font-weight: 600; color: rgba(255,255,255,0.72); letter-spacing: 0; }
+        .hero-offer-perks { list-style: none; margin: 0.6rem 0 0.9rem; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem 0.75rem; }
+        .hero-offer-perks li { display: flex; align-items: center; gap: 0.45rem; font-size: 0.86rem; font-weight: 600; color: rgba(255,255,255,0.92); }
+        .hero-offer-perks li::before, .pc-yes::before {
+            content: ""; flex: none; width: 18px; height: 18px; border-radius: 50%;
+            background: #FF7A1A url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 8.3l2.6 2.6L12 5.4' fill='none' stroke='%23fff' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/14px no-repeat;
+        }
+        .hero-offer .btn { width: 100%; justify-content: center; min-height: 52px; }
+        .hero-offer-note { margin: 0.6rem 0 0; font-size: 0.8rem; color: rgba(255,255,255,0.74); text-align: center; }
+        .hero-alt { margin: 0.9rem 0 0; font-size: 0.86rem; color: rgba(255,255,255,0.74); text-align: center; animation: fadeSlideUp 0.9s var(--ease-out) 0.45s both; }
+        .hero-alt a { color: #fff; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: rgba(255,255,255,0.4); }
+        .hero-alt a:hover { text-decoration-color: #fff; }
+        .hero-alt .sep { margin: 0 0.4rem; color: rgba(255,255,255,0.4); }
+        .dl-short { display: none; }
         @media (max-width: 768px) {
-            .participate-grid { grid-template-columns: 1fr; }
-            .participate-grid > div:last-child { grid-column: auto; }
+            /* A phone shows the photograph as a clear band across the top, where
+               a portrait crop of the whole hero would only have kept a sliver of
+               ceiling lights above the type. The band ends in solid dark, so
+               the type below sits on a plain ground. */
+            .hero { background: #0A0C1C; }
+            .hero-bg-photo { height: 46%; }
+            .hero-bg-scrim {
+                background: linear-gradient(180deg,
+                    rgba(10,12,28,0.62) 0%, rgba(10,12,28,0.06) 13%, rgba(10,12,28,0) 25%,
+                    rgba(10,12,28,0.62) 37%, rgba(10,12,28,0.97) 46%, #0A0C1C 100%);
+            }
+            .dl-long { display: none; }
+            .hero-dateline span.dl-short { display: inline; background: none; border: 0; padding: 0; }
+            .hero .hero-title { font-size: clamp(2.4rem, 11vw, 3.1rem) !important; line-height: 0.95 !important; }
+            .hero .hero-title-hi { font-size: 1.2rem; margin-top: 0.4em; }
+            .hero .hero-desc { font-size: 0.98rem !important; line-height: 1.5; margin-left: auto; margin-right: auto; }
         }
+        @media (min-width: 900px) {
+            .hero { align-items: center; }
+            .hero-bg-photo { object-position: center 45%; }
+            .hero-bg-scrim {
+                background:
+                    linear-gradient(90deg, rgba(10,12,28,0.90) 0%, rgba(10,12,28,0.80) 32%, rgba(10,12,28,0.34) 60%, rgba(10,12,28,0.10) 100%),
+                    linear-gradient(180deg, rgba(10,12,28,0.5) 0%, rgba(10,12,28,0) 22%, rgba(10,12,28,0) 78%, rgba(10,12,28,0.55) 100%);
+            }
+            .hero-content { max-width: var(--max-w); padding: 4rem 2rem 4.5rem !important; align-items: flex-start; text-align: left; }
+            .hero-content > * { max-width: 560px; }
+            .hero-dateline { justify-content: flex-start; }
+            .hero .hero-title { font-size: clamp(4.25rem, 6.4vw, 6rem); }
+            .hero .hero-title-hi { font-size: clamp(1.6rem, 2.6vw, 2.35rem); }
+            .hero .hero-desc { font-size: 1.2rem; max-width: 38ch; }
+            .hero-offer { padding: 1.25rem 1.35rem 1.1rem; }
+            .hero-offer-perks { grid-template-columns: repeat(2, max-content); gap: 0.5rem 2.25rem; }
+            .hero-offer .btn { width: auto; }
+            .hero-offer-foot { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+            .hero-offer-note { margin: 0; text-align: left; }
+            .hero-alt { text-align: left; }
+        }
+
+        /* --- Show more: <details class="more"> and the "See all" grids --- */
+        details.more { margin-top: 0.5rem; }
+        details.more > summary {
+            list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 0.4rem;
+            font-size: 0.82rem; font-weight: 700; color: var(--ink-orange); padding: 0.35rem 0; min-height: 32px;
+        }
+        details.more > summary::-webkit-details-marker { display: none; }
+        details.more > summary::after {
+            content: ""; width: 0.42rem; height: 0.42rem; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor;
+            transform: translateY(-2px) rotate(45deg); transition: transform 0.25s var(--ease-out);
+        }
+        details.more[open] > summary::after { transform: translateY(1px) rotate(-135deg); }
+        details.more .less, details.more[open] .more-l { display: none; }
+        details.more[open] .less { display: inline; }
+        details.more > p, details.more > ul { margin: 0.35rem 0 0; font-size: 0.9rem; line-height: 1.6; color: var(--dark-grey); }
+        details.more:focus-within > summary, details.more > summary:focus-visible { outline: none; }
+        details.more > summary:focus-visible { box-shadow: 0 0 0 3px rgba(255,107,0,0.35); border-radius: 6px; }
+        details.more-dark > summary { color: #FFB27A; }
+        details.more-dark > p { color: rgba(255,255,255,0.68); }
+        .is-collapsed > .more-item { display: none !important; }
+        .show-all {
+            display: flex; align-items: center; gap: 0.55rem; margin: 1.75rem auto 0; padding: 0.75rem 1.4rem;
+            min-height: 46px; border-radius: 999px; border: 1.5px solid var(--charcoal); background: #fff;
+            color: var(--charcoal); font-family: var(--font-body); font-size: 0.92rem; font-weight: 700; cursor: pointer;
+            transition: background 0.2s, color 0.2s;
+        }
+        .show-all[hidden] { display: none; }
+        .show-all:hover { background: var(--charcoal); color: #fff; }
+        .show-all .chev { width: 0.45rem; height: 0.45rem; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: translateY(-2px) rotate(45deg); transition: transform 0.25s var(--ease-out); }
+        .show-all[aria-expanded="true"] .chev { transform: translateY(1px) rotate(-135deg); }
+
+        /* --- Speakers: keynote photographs, then a dense grid of faces --- */
+        .keynotes {
+            list-style: none; margin: 0 -1rem 2.25rem; padding: 0 1rem 0.5rem;
+            display: grid; grid-auto-flow: column; grid-auto-columns: 64%; gap: 0.75rem;
+            overflow-x: auto; scroll-snap-type: x mandatory; scroll-padding-inline: 1rem; scrollbar-width: none;
+        }
+        .keynotes::-webkit-scrollbar { display: none; }
+        .keynote { position: relative; aspect-ratio: 3 / 4; border-radius: 18px; overflow: hidden; background: var(--charcoal); scroll-snap-align: start; }
+        .keynote img { position: absolute; inset: 0; width: 100%; height: 100% !important; max-width: none; object-fit: cover; object-position: var(--pos, 50% 20%); }
+        .keynote div { position: absolute; left: 0; right: 0; bottom: 0; padding: 3rem 0.9rem 0.9rem; color: #fff;
+            background: linear-gradient(to top, rgba(10,12,28,0.96) 0%, rgba(10,12,28,0.78) 45%, rgba(10,12,28,0) 100%); }
+        .kn-tag { display: block; font-size: 0.68rem; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase; color: #FFB27A; margin-bottom: 0.3rem; }
+        .keynote b { display: block; font-family: var(--font-display); font-size: 1rem; line-height: 1.2; }
+        .kn-role { display: block; font-size: 0.76rem; line-height: 1.35; color: rgba(255,255,255,0.82); margin-top: 0.25rem; }
+        @media (min-width: 900px) {
+            .keynotes { grid-auto-flow: row; grid-template-columns: repeat(5, 1fr); overflow: visible; margin: 0 0 3rem; padding: 0; }
+        }
+        #confirmed-speakers .speakers-grid, #campus-series .speakers-grid {
+            grid-template-columns: repeat(3, 1fr); gap: 1.25rem 0.6rem; padding: 0;
+        }
+        @media (min-width: 768px) {
+            #confirmed-speakers .speakers-grid, #campus-series .speakers-grid { grid-template-columns: repeat(6, 1fr); gap: 2rem 1.25rem; }
+        }
+        #confirmed-speakers .speaker-card, #campus-series .speaker-card { padding: 0 !important; background: none; border: 0; box-shadow: none; gap: 0.3rem; overflow: visible; }
+        #confirmed-speakers .speaker-card:hover, #campus-series .speaker-card:hover { transform: none; box-shadow: none; }
+        #confirmed-speakers .speaker-photo, #campus-series .speaker-photo { width: 84px !important; height: 84px !important; }
+        #confirmed-speakers .spk-photo-badge-wrap { width: 84px; }
+        #confirmed-speakers .spk-corner-badge { width: 30px; height: 30px; padding: 3px; }
+        #confirmed-speakers .speaker-card h4, #campus-series .speaker-card h4 { font-size: 0.84rem; line-height: 1.25; margin: 0.25rem 0 0; }
+        #confirmed-speakers .speaker-card p, #campus-series .speaker-card p {
+            font-size: 0.72rem !important; line-height: 1.3; margin: 0 !important;
+            display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+        }
+        #confirmed-speakers .speaker-card p:first-of-type, #campus-series .speaker-card p:first-of-type { color: var(--ink-orange) !important; }
+        @media (min-width: 768px) {
+            #confirmed-speakers .speaker-photo, #campus-series .speaker-photo { width: 112px !important; height: 112px !important; }
+            #confirmed-speakers .spk-photo-badge-wrap { width: 112px; }
+            #confirmed-speakers .spk-corner-badge { width: 38px; height: 38px; padding: 4px; }
+            #confirmed-speakers .speaker-card h4, #campus-series .speaker-card h4 { font-size: 0.95rem; }
+            #confirmed-speakers .speaker-card p, #campus-series .speaker-card p { font-size: 0.78rem !important; }
+        }
+
+        /* --- Value: six photographs, one line each --- */
+        .vtiles { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+        .vtile { position: relative; aspect-ratio: 4 / 5; border-radius: 18px; overflow: hidden; background: var(--charcoal); }
+        .vtile:first-child, .vtile:last-child { grid-column: 1 / -1; aspect-ratio: 16 / 9; }
+        .vtile img { position: absolute; inset: 0; width: 100%; height: 100% !important; object-fit: cover; transition: transform 0.7s var(--ease-out); }
+        .vtile:hover img { transform: scale(1.04); }
+        .vtile div { position: absolute; left: 0; right: 0; bottom: 0; padding: 3rem 0.95rem 0.95rem; color: #fff;
+            background: linear-gradient(to top, rgba(10,12,28,0.95) 0%, rgba(10,12,28,0.7) 50%, rgba(10,12,28,0) 100%); }
+        .vtile b { display: block; font-family: var(--font-display); font-size: 1.05rem; line-height: 1.2; }
+        .vtile span { display: block; font-size: 0.82rem; line-height: 1.4; color: rgba(255,255,255,0.86); margin-top: 0.3rem; }
+        @media (min-width: 900px) {
+            .vtiles { grid-template-columns: repeat(3, 1fr); gap: 1.25rem; }
+            .vtile, .vtile:first-child, .vtile:last-child { grid-column: auto; aspect-ratio: 4 / 3; }
+            .vtile b { font-size: 1.25rem; }
+            .vtile span { font-size: 0.92rem; }
+        }
+
+        /* --- Networking: three steps beside a picture of the app --- */
+        .home-net { background: var(--deep); color: #fff; overflow: hidden; }
+        .home-net .section-title { color: #fff; text-align: left; margin-bottom: 0.75rem; text-wrap: balance; font-size: clamp(1.6rem, 2.9vw, 2.5rem); line-height: 1.15; }
+        .net-layout { display: grid; gap: 2.5rem; align-items: center; }
+        .net-sub { color: rgba(255,255,255,0.74); font-size: 1rem; line-height: 1.6; margin: 0 0 1.75rem; max-width: 46ch; }
+        .net-steps { list-style: none; counter-reset: step; margin: 0 0 1.75rem; padding: 0; display: grid; gap: 1.1rem; }
+        .net-steps li { counter-increment: step; display: grid; grid-template-columns: 2.25rem 1fr; column-gap: 0.85rem; }
+        .net-steps li::before {
+            content: counter(step); grid-row: span 2; width: 2.25rem; height: 2.25rem; border-radius: 50%;
+            display: grid; place-items: center; font-family: var(--font-display); font-weight: 800; color: #0D0F1E; background: #FF8A3D;
+        }
+        .net-steps b { font-family: var(--font-display); font-size: 1.05rem; color: #fff; }
+        .net-steps span { font-size: 0.9rem; color: rgba(255,255,255,0.72); line-height: 1.5; }
+        .net-link { color: #FFB27A; font-weight: 700; font-size: 0.92rem; }
+        .net-link:hover { color: #fff; }
+        .net-phone { justify-self: center; width: min(300px, 82vw); padding: 10px; border-radius: 34px; background: #1b1e33; border: 1px solid rgba(255,255,255,0.12); box-shadow: 0 30px 60px rgba(0,0,0,0.45); }
+        .np-screen { border-radius: 26px; background: #F6F7FB; padding: 1rem 0.85rem 1.1rem; color: var(--charcoal); }
+        .np-top { display: flex; align-items: center; justify-content: space-between; font-family: var(--font-display); font-weight: 800; font-size: 0.85rem; color: var(--charcoal); margin-bottom: 0.9rem; }
+        .np-top i { width: 8px; height: 8px; border-radius: 50%; background: #1FA015; }
+        .np-h { font-size: 0.72rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--mid-grey); margin-bottom: 0.5rem; }
+        .np-row { display: flex; align-items: center; gap: 0.6rem; background: #fff; border: 1px solid #E8EAF3; border-radius: 14px; padding: 0.6rem; margin-bottom: 0.5rem; }
+        .np-av { flex: none; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-size: 0.75rem; font-weight: 800; background: var(--c); }
+        .np-who { flex: 1; min-width: 0; line-height: 1.2; }
+        .np-who b { display: block; font-size: 0.82rem; }
+        .np-who small { font-size: 0.72rem; color: var(--mid-grey); }
+        .np-pill { font-size: 0.72rem; font-weight: 800; padding: 0.35rem 0.7rem; border-radius: 999px; background: #FF6B00; color: #fff; }
+        .np-pill.is-done { background: #E6F4EA; color: #0f7b47; }
+        .np-slot { margin-top: 0.75rem; border-radius: 14px; padding: 0.75rem; background: #0D0F1E; color: #fff; font-size: 0.8rem; line-height: 1.35; }
+        .np-slot b { display: block; color: #8EE6A6; font-size: 0.72rem; letter-spacing: 0.05em; text-transform: uppercase; }
+        @media (min-width: 900px) {
+            .net-layout { grid-template-columns: 1.15fr 0.85fr; gap: 4rem; }
+            .net-phone { width: 320px; transform: rotate(2deg); }
+        }
+
+        /* --- Free or Delegate: the decision, in one table --- */
+        .pc { max-width: 760px; margin: 0 auto; border-radius: 22px; overflow: hidden; background: #fff; border: 1px solid var(--light); box-shadow: 0 18px 40px rgba(20,24,60,0.08); }
+        .pc table { display: table !important; width: 100%; border-collapse: collapse; table-layout: fixed; overflow: visible; }
+        .pc col.pc-c1 { width: 46%; }
+        .pc th, .pc td { padding: 0.8rem 0.7rem; border-top: 1px solid #EEF0F7; text-align: center; vertical-align: middle; font-size: 0.88rem; }
+        .pc thead th { border-top: 0; padding-top: 1.1rem; font-family: var(--font-display); font-size: 0.95rem; color: var(--charcoal); }
+        .pc thead th span { display: block; font-family: var(--font-body); font-size: 0.78rem; font-weight: 600; color: var(--mid-grey); margin-top: 0.2rem; }
+        .pc thead th.pc-del { background: var(--deep); color: #fff; }
+        .pc thead th.pc-del span { color: #FFB27A; }
+        .pc td.pc-del { background: #FFF6EF; }
+        .pc tbody th { text-align: left; font-weight: 600; color: var(--charcoal); line-height: 1.35; }
+        .pc-yes { display: inline-grid; }
+        .pc-yes::before { width: 22px; height: 22px; background-size: 16px; background-color: #0f7b47; }
+        .pc td.pc-del .pc-yes::before { background-color: #FF6B00; }
+        .pc-no { color: #A3A9C4; font-weight: 700; }
+        .pc small { display: block; font-size: 0.74rem; line-height: 1.3; color: var(--mid-grey); }
+        .pc strong { color: var(--ink-orange); font-size: 0.86rem; }
+        .pc-foot { padding: 1.25rem 1rem 1.4rem; text-align: center; border-top: 1px solid #EEF0F7; background: #FFFBF7; }
+        .pc-foot .btn { width: 100%; max-width: 420px; justify-content: center; }
+        .pc-foot p { margin: 0.7rem 0 0; font-size: 0.84rem; color: var(--dark-grey); }
+        .pc-foot a:not(.btn) { color: var(--ink-orange); font-weight: 700; }
+        .pc-foot [data-days-left] { color: var(--ink-orange); }
+        .pc th, .pc td { overflow-wrap: normal; word-break: normal; }
+        @media (max-width: 480px) {
+            .pc th, .pc td { padding: 0.7rem 0.4rem; font-size: 0.82rem; }
+            .pc tbody th { padding-left: 0.85rem; }
+            .pc thead th { font-size: 0.86rem; }
+            .pc strong { font-size: 0.78rem; }
+            .pc small { font-size: 0.68rem; }
+        }
+        .pc-tracks { max-width: 760px; margin: 1rem auto 0; text-align: center; }
+        .pc-tracks .tracks-tag-grid { margin-top: 0.75rem; }
+
+        /* --- Built for business: short rows, detail on demand --- */
+        .b2b-aud { display: grid; gap: 0.75rem; margin: 0 0 2.75rem; }
+        .b2b-aud > div { padding: 1.1rem 1.15rem 0.8rem; border-radius: 18px; background: var(--off-white); border: 1px solid var(--light); }
+        .b2b-aud h3 { display: flex; align-items: center; gap: 0.65rem; font-size: 1.05rem !important; margin: 0 0 0.35rem; color: var(--charcoal); }
+        .b2b-aud h3 i { flex: none; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: rgba(255,107,0,0.12); color: var(--ink-orange); font-size: 0.95rem; }
+        .b2b-aud p.lead, .b2b-mech p.lead { margin: 0; font-size: 0.92rem; line-height: 1.5; color: var(--dark-grey); }
+        .b2b-mech-title { text-align: center; font-family: var(--font-display); font-size: clamp(1.25rem, 2.4vw, 1.6rem) !important; color: var(--charcoal); margin: 0 0 1rem; }
+        .b2b-mech { display: grid; }
+        .b2b-mech > div { padding: 1rem 0 0.6rem; border-top: 1px solid var(--light); }
+        .b2b-mech h4 { font-family: var(--font-display); font-size: 1rem; margin: 0 0 0.25rem; color: var(--charcoal); }
+        .b2b-ctas { display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; margin-top: 2rem; }
+        @media (min-width: 900px) {
+            .b2b-aud { grid-template-columns: repeat(3, 1fr); gap: 1.25rem; }
+            .b2b-mech { grid-template-columns: repeat(3, 1fr); column-gap: 2rem; }
+        }
+
+        /* --- Gallery: a few photographs, the rest on request --- */
+        #past-gallery .gallery-card img { height: 150px; }
+        #past-gallery .gallery-card:nth-child(1) { grid-column: 1 / -1; grid-row: auto; }
+        #past-gallery .gallery-card:nth-child(1) img { min-height: 0; height: 220px; }
+        /* style.css stacks every .gallery-grid to one column on a phone, with !important */
+        @media (max-width: 768px) { #past-gallery .gallery-grid { grid-template-columns: 1fr 1fr !important; gap: 0.6rem; } }
+        @media (min-width: 769px) {
+            #past-gallery .gallery-card img { height: 200px; }
+            #past-gallery .gallery-card:nth-child(1) { grid-column: span 2; grid-row: span 2; }
+            #past-gallery .gallery-card:nth-child(1) img { height: 100%; min-height: 412px; }
+        }
+        .gallery-foot { display: flex; gap: 0.75rem; justify-content: center; align-items: center; flex-wrap: wrap; margin-top: 1.75rem; }
+        .gallery-foot .show-all { margin: 0; }
+
+        /* --- Campus Series and venue, shortened --- */
+        .campus-layout { display: grid; gap: 1.75rem; align-items: center; }
+        .campus-lead { font-size: 1rem; color: var(--dark-grey); line-height: 1.6; margin: 0 0 1.25rem; max-width: 46ch; }
+        .campus-next { display: flex; flex-direction: column; gap: 0.5rem; font-size: 0.9rem; font-weight: 600; color: var(--dark-grey); margin-bottom: 1.25rem; }
+        .campus-next i { color: var(--ink-orange); margin-right: 0.45rem; }
+        .campus-when { color: var(--mid-grey); font-weight: 500; }
+        .campus-btns { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+        .campus-photo { display: block; border-radius: 20px; overflow: hidden; border: 1px solid var(--light); }
+        .campus-photo img { width: 100%; height: auto; display: block; }
+        .campus-panel { margin-top: 1.5rem; text-align: center; }
+        .campus-panel .speakers-grid { margin-top: 1.25rem; text-align: left; }
+        @media (min-width: 900px) { .campus-layout { grid-template-columns: 1fr 1fr; gap: 3.5rem; } }
+        #venue .venue-images img:nth-child(2) { display: none; }
+        @media (min-width: 900px) { #venue .venue-images img:nth-child(2) { display: block; } }
+        #venue .venue-btns { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 1.25rem; }
+
+        /* --- Shorter sections on a phone --- */
+        @media (max-width: 768px) {
+            .section-pad-sm { padding: 3.25rem 0; }
+            .section-header { margin-bottom: 1.75rem; }
+            .section-subtitle { font-size: 0.98rem; }
+            .pm-vision-section, .cm-vision-section { padding: 2.75rem 0 !important; }
+            #campus-series, #venue, .past-gallery, .registration-cta { padding: 3.25rem 0 !important; }
+        }
+
+        /* --- The offer follows the reader once the hero has gone --- */
+        .sticky-cta {
+            position: fixed; z-index: 900; left: 50%; bottom: max(12px, env(safe-area-inset-bottom));
+            width: min(560px, calc(100% - 20px)); display: flex; align-items: center; gap: 0.75rem;
+            padding: 0.55rem 0.55rem 0.55rem 1rem; border-radius: 18px; background: #0D0F1E; color: #fff;
+            border: 1px solid rgba(255,255,255,0.14); box-shadow: 0 14px 34px rgba(5,7,20,0.4);
+            transform: translate(-50%, 160%); visibility: hidden;
+            transition: transform 0.45s var(--ease-out), visibility 0s linear 0.45s;
+        }
+        .sticky-cta.is-on { transform: translate(-50%, 0); visibility: visible; transition: transform 0.45s var(--ease-out), visibility 0s; }
+        .sticky-cta-text { flex: 1; min-width: 0; line-height: 1.25; }
+        .sticky-cta-text b { display: block; font-family: var(--font-display); font-size: 0.98rem; }
+        .sticky-cta-text span { font-size: 0.76rem; color: rgba(255,255,255,0.72); }
+        .sticky-cta .btn { flex: none; width: auto !important; padding: 0.7rem 1.15rem; min-height: 46px; font-size: 0.92rem; }
+        @media (prefers-reduced-motion: reduce) { .sticky-cta, .sticky-cta.is-on { transition: none; } }
+        @media (min-width: 769px) { .registration-cta .cta-buttons .btn-xl { padding: 1rem 1.75rem; } }
+        @media print { .sticky-cta { display: none; } }
     </style>
 </head>
 <body>
@@ -596,28 +909,24 @@
 
     <!-- ===== HERO ===== -->
     <section class="hero" id="main-content">
-        <!-- Animated Background -->
+        <!-- Seven Data Science Congress photographs, sharp, crossfading once all
+             have arrived (the script at the end of the page). -->
         <div class="hero-bg">
-            <img class="hero-bg-photo" width="1024" height="683" loading="eager" fetchpriority="high" decoding="async" src="img/hero-bg-1.jpg" alt="">
-            <img class="hero-bg-photo" width="1024" height="683" loading="lazy" decoding="async" src="img/hero-bg-2.jpg" alt="">
-            <img class="hero-bg-photo" width="1024" height="683" loading="lazy" decoding="async" src="img/hero-bg-3.jpg" alt="">
-            <img class="hero-bg-photo" width="1024" height="683" loading="lazy" decoding="async" src="img/hero-bg-4.jpg" alt="">
-            <img class="hero-bg-photo" width="1024" height="683" loading="lazy" decoding="async" src="img/hero-bg-5.jpg" alt="">
-            <img class="hero-bg-photo" width="1024" height="683" loading="lazy" decoding="async" src="img/hero-bg-6.jpg" alt="">
-            <img class="hero-bg-photo" width="1024" height="683" loading="lazy" decoding="async" src="img/hero-bg-7.jpg" alt="">
+            <img class="hero-bg-photo" width="1600" height="1066" loading="eager" fetchpriority="high" decoding="async" src="img/hero-1.webp" alt="">
+            <img class="hero-bg-photo" width="1600" height="1066" decoding="async" data-src="img/hero-2.webp" alt="">
+            <img class="hero-bg-photo" width="1600" height="1066" decoding="async" data-src="img/hero-3.webp" alt="">
+            <img class="hero-bg-photo" width="1600" height="1066" decoding="async" data-src="img/hero-4.webp" alt="">
+            <img class="hero-bg-photo" width="1600" height="1066" decoding="async" data-src="img/hero-5.webp" alt="">
+            <img class="hero-bg-photo" width="1600" height="1066" decoding="async" data-src="img/hero-6.webp" alt="">
+            <img class="hero-bg-photo" width="1600" height="1066" decoding="async" data-src="img/hero-7.webp" alt="">
             <div class="hero-bg-scrim"></div>
-            <div class="hero-bg-grid"></div>
-            <div class="hero-bg-orb hero-bg-orb-1"></div>
-            <canvas id="heroGlobe" aria-hidden="true"></canvas>
         </div>
 
         <div class="hero-content">
             <div class="hero-dateline">
-                <span>Nov 20–21, 2026</span>
+                <span>20–21 Nov 2026</span>
                 <span class="hero-dateline-sep">·</span>
-                <span>World Trade Center Mumbai</span>
-                <span class="hero-dateline-sep">·</span>
-                <span>India</span>
+                <span><span class="dl-long">World Trade Center</span><span class="dl-short">WTC</span> Mumbai</span>
             </div>
 
             <h1 class="hero-title">
@@ -626,27 +935,26 @@
                     <span class="hero-title-hi" lang="hi"><span class="hi-saffron">भारत</span> <span class="hi-white">एआई</span> <span class="hi-green">इनोवेशन</span></span>
             </h1>
 
-            <p class="hero-desc">
-                India’s B2B platform for AI. The organisations already running AI in production,
-                the companies providing it, and the policymakers shaping it. Two days at WTC Mumbai.
-            </p>
+            <p class="hero-desc">India’s B2B conference and exhibition for AI.</p>
 
-            <p class="hero-rally">Show what you can do for Bharat with AI.</p>
-
-            <p class="hero-passline">A free Visitor Pass covers the exhibition floor; entry is not guaranteed (by slot availability on 20 and 21 Nov, confirmed by email). A Delegate Pass adds every session, lunch, the networking app and guaranteed entry on both days. <span data-days-left="2026-11-05"></span></p>
-
-            <div class="hero-actions">
-                <a href="/register#delegate" class="btn btn-primary btn-xl">
-                    Delegate Pass &middot; &#8377;4,999 + GST until 5 Nov <i class="fas fa-arrow-right"></i>
-                </a>
-                <a href="/register" class="btn btn-ghost btn-xl">
-                    Free Visitor Pass
-                </a>
-                <a href="#participate" class="btn btn-ghost btn-xl">
-                    Exhibit &amp; Sponsor
-                </a>
+            <div class="hero-offer hero-passline">
+                <div class="hero-offer-head">
+                    <span class="hero-offer-name">Delegate Pass</span>
+                    <span class="hero-offer-price">&#8377;4,999 <small>+ GST</small></span>
+                </div>
+                <ul class="hero-offer-perks">
+                    <li>Every session</li>
+                    <li>Lunch</li>
+                    <li>Book 1:1 meetings</li>
+                    <li>Guaranteed entry</li>
+                </ul>
+                <div class="hero-offer-foot">
+                    <a href="/register#delegate" class="btn btn-primary btn-xl">Get my Delegate Pass <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
+                    <p class="hero-offer-note">&#8377;8,999 from 6 Nov. <span data-days-left="2026-11-05"></span></p>
+                </div>
             </div>
 
+            <p class="hero-alt"><a href="/register">Free Visitor Pass</a> (exhibition only, entry by time slot)<span class="sep">·</span><a href="/exhibition">Exhibit or sponsor</a></p>
         </div>
     </section>
 
@@ -662,205 +970,38 @@
         </div>
     </div>
 
-    <!-- ===== B2B POSITIONING (who does business here, and how) ===== -->
-    <section class="section-pad-sm" style="background:white;" id="b2b-platform">
-        <div class="container">
-            <div class="section-header reveal">
-                <span class="section-eyebrow"><i class="fas fa-handshake"></i> Who you will be doing business with</span>
-                <h2 class="section-title">Built for business, <span class="accent">not footfall</span></h2>
-                <p class="section-subtitle">Everything here is built to end in an outcome rather than a business card &mdash; meetings matched before you arrive, a stage and a floor to prove the work on, and private rooms to close in.</p>
-            </div>
-
-            <div class="benefits-grid">
-                <div class="feature-card reveal reveal-delay-1">
-                    <div class="feature-card-icon"><i class="fas fa-building"></i></div>
-                    <h3>Buyers &mdash; Enterprise &amp; Government</h3>
-                    <p>CIOs, CDOs, CTOs and procurement heads from banking, insurance, pharma, manufacturing and state departments. Evaluate live solutions across 8 industry zones, shortlist vendors through AI matchmaking, and take the conversation into a private boardroom.</p>
-                </div>
-                <div class="feature-card reveal reveal-delay-2">
-                    <div class="feature-card-icon"><i class="fas fa-rocket"></i></div>
-                    <h3>Builders &mdash; Startups &amp; Solution Providers</h3>
-                    <p>AI product companies, service firms and funded startups. Exhibit to visitors who registered to evaluate AI, take the Innovation Stage with your booth, pitch to investors, and have buyer meetings booked before you arrive.</p>
-                </div>
-                <div class="feature-card reveal reveal-delay-3">
-                    <div class="feature-card-icon"><i class="fas fa-university"></i></div>
-                    <h3>Policy &mdash; State &amp; Union Government</h3>
-                    <p>MeitY, Maharashtra&rsquo;s MITRA and MSInS, ministers and secretaries on stage. Hear the IndiaAI Mission, state AI procurement and public&ndash;private models from the people writing them &mdash; and meet them on the floor.</p>
-                </div>
-            </div>
-
-            <div class="section-header reveal" style="margin-top:4.5rem;margin-bottom:2.5rem;">
-                <h3 class="section-title" style="font-size:clamp(1.5rem,3vw,2.1rem);">How business gets done here</h3>
-                <p class="section-subtitle">Six mechanisms, each built to turn a two-day event into pipeline.</p>
-            </div>
-            <div class="benefits-grid">
-                <div class="benefit-card reveal reveal-delay-1">
-                    <h3>CXO AI Leadership Panels</h3>
-                    <p>Sponsor-curated panels where CXOs, founders and policymakers debate a theme you set &mdash; with your own clients and prospects invited into the room. <a href="/partner#leadership-panel" class="b2b-link">Sponsor a panel &rarr;</a></p>
-                </div>
-                <div class="benefit-card reveal reveal-delay-2">
-                    <h3>Innovation Showcase &amp; Stage</h3>
-                    <p>Eight minutes on the main stage in front of buyers and investors, bundled with your booth in select packages &mdash; the demo and the follow-up meeting in one place. <a href="/exhibition#value" class="b2b-link">See booth packages &rarr;</a></p>
-                </div>
-                <div class="benefit-card reveal reveal-delay-3">
-                    <h3>Private Boardrooms</h3>
-                    <p>Four boardrooms inside WTC Mumbai, bookable by the hour and steps from the floor &mdash; for closed-door demos, negotiations and investor conversations. <a href="/networking#boardrooms" class="b2b-link">Book a room &rarr;</a></p>
-                </div>
-                <div class="benefit-card reveal reveal-delay-1">
-                    <h3>Bharat AI Connect</h3>
-                    <p>Every pass can browse the attendee directory. Delegate, VIP and Academic passes unlock networking &mdash; AI matchmaking, connection requests and 1:1 meeting booking &mdash; so you arrive with a schedule, not a hope. <a href="#networking" class="b2b-link">How it works &rarr;</a></p>
-                </div>
-                <div class="benefit-card reveal reveal-delay-2">
-                    <h3>Bharat AI CXO Innovation Night</h3>
-                    <p>The CXO Gala Networking Evening on Day 1: a cocktail evening for senior leaders and ministers &mdash; the room where day-two meetings get set up, and an evening a sponsor can host. VIP Pass holders are invited. <a href="/conference#schedule" class="b2b-link">See the programme &rarr;</a></p>
-                </div>
-                <div class="benefit-card reveal reveal-delay-3">
-                    <h3>Startup Pitch</h3>
-                    <p>AI startups pitch to VCs, angels and corporate venture arms in front of the enterprise audience that could become their first customers. <a href="/startup-pitch" class="b2b-link">Apply to pitch &rarr;</a></p>
-                </div>
-            </div>
-
-            <div class="reveal" style="display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;margin-top:2.75rem;">
-                <a href="/register" class="btn btn-primary btn-lg">Register to Attend <i class="fas fa-arrow-right"></i></a>
-                <a href="#participate" class="btn btn-outline btn-lg">Exhibit or Sponsor</a>
-            </div>
-        </div>
-    </section>
-
-    <!-- ===== PM MODI VISION QUOTE ===== -->
-    <section class="pm-vision-section section-pad-sm" id="pm-vision">
-        <div class="pm-vision-bg-pattern"></div>
-        <div class="container">
-            <div class="pm-vision-card reveal">
-                <div class="pm-vision-media">
-                    <div class="pm-vision-img-frame">
-                        <img width="1024" height="653" loading="lazy" decoding="async" src="images/pm-modi.jpg" alt="Shri Narendra Modi, Hon'ble Prime Minister of India, speaking on Artificial Intelligence">
-                    </div>
-                </div>
-                <div class="pm-vision-content">
-                    <div class="pm-vision-quote-mark"><i class="fas fa-quote-left"></i></div>
-                    <blockquote class="pm-vision-quote">
-                        Artificial Intelligence represents a transformation of the same magnitude as historic turning points in human civilization.
-                    </blockquote>
-                    <div class="pm-vision-attribution">
-                        <div class="pm-vision-name">Narendra Modi</div>
-                        <div class="pm-vision-title">Hon'ble Prime Minister of India</div>
-                    </div>
-                    <div class="pm-vision-divider"></div>
-                    <p class="pm-vision-inspired">
-                        This conference is built on PM Modi's conviction that AI must strengthen innovation, empower citizens, and drive inclusive growth across every sector of the Indian economy.
-                    </p>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- ===== CM FADNAVIS STATE LEADERSHIP ===== -->
-    <section class="cm-vision-section section-pad-sm" id="cm-vision">
-        <div class="cm-vision-bg-pattern"></div>
-        <div class="container">
-            <div class="section-header reveal" style="margin-bottom:2rem;">
-                <h2 class="section-title" style="color:#fff;">Maharashtra's <span class="accent">AI Leadership</span></h2>
-            </div>
-            <div class="cm-vision-card reveal">
-                <div class="cm-vision-media">
-                    <div class="cm-vision-img-frame">
-                        <img width="1024" height="576" loading="lazy" decoding="async" src="images/devendra-fadnavis.jpg" alt="Shri Devendra Fadnavis, Hon'ble Chief Minister of Maharashtra">
-                    </div>
-                </div>
-                <div class="cm-vision-content">
-                    <div class="cm-vision-highlight-box">
-                        <i class="fas fa-database"></i>
-                        <p>"Within three years, Maharashtra will be a world leader in the data center space, powered increasingly by green energy."</p>
-                    </div>
-                    <div class="cm-vision-quote-mark"><i class="fas fa-quote-left"></i></div>
-                    <blockquote class="cm-vision-quote">
-                        AI in farming must not remain confined to demonstrations or pilots. It must reach millions.
-                    </blockquote>
-                    <div class="cm-vision-attribution">
-                        <div class="cm-vision-name">Devendra Fadnavis</div>
-                        <div class="cm-vision-title">Hon'ble Chief Minister</div>
-                        <div class="cm-vision-subtitle">Government of Maharashtra</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- ===== INAUGURAL DIGNITARIES ===== -->
-    <section class="dignitary-highlight section-pad-sm">
-        <div class="container">
-            <div class="section-header reveal" style="margin-bottom:3rem;">
-                <h2 class="section-title">Inauguration &amp; <span class="accent">Keynote Addresses</span></h2>
-            </div>
-            <div class="dignitary-card reveal" style="margin-bottom:2.5rem;">
-                <div class="dignitary-media">
-                    <img width="1024" height="576" loading="lazy" decoding="async" src="images/chirag-paswan.jpg" alt="Hon’ble Shri Chirag Paswan, Union Minister of Food Processing Industries">
-                </div>
-                <div class="dignitary-content">
-                    <span class="section-eyebrow"><i class="fas fa-microphone"></i> Inaugural Address</span>
-                    <h3 class="section-title">Hon’ble Shri Chirag Paswan</h3>
-                    <p class="dignitary-role">Union Minister of Food Processing Industries, Government of India</p>
-                    <p class="dignitary-text">Hon’ble Shri Chirag Paswan, Union Minister of Food Processing Industries, Government of India, will inaugurate the Bharat AI Innovation Conference and Exhibition and deliver the keynote address at the event.</p>
-                </div>
-            </div>
-            <div class="dignitary-card reveal" style="margin-bottom:2.5rem;">
-                <div class="dignitary-media">
-                    <img width="535" height="449" loading="lazy" decoding="async" src="images/chandrakant-patil.jpg" alt="Hon’ble Shri Chandrakant Dada Patil, Minister of Higher and Technical Education, Government of Maharashtra">
-                </div>
-                <div class="dignitary-content">
-                    <span class="section-eyebrow"><i class="fas fa-microphone"></i> Keynote Address</span>
-                    <h3 class="section-title">Hon’ble Shri Chandrakant Dada Patil</h3>
-                    <p class="dignitary-role">Minister of Higher &amp; Technical Education, Government of Maharashtra</p>
-                    <p class="dignitary-text">Hon’ble Shri Chandrakant Dada Patil, Minister of Higher and Technical Education, Government of Maharashtra, will grace the Bharat AI Innovation Conference and Exhibition and deliver a keynote address on the role of AI in transforming higher education and technical learning in Maharashtra.</p>
-                </div>
-            </div>
-            <div class="dignitary-card reveal">
-                <div class="dignitary-media">
-                    <img width="1200" height="675" loading="lazy" decoding="async" src="images/dattatray-bharane.avif" alt="Hon’ble Shri Dattatray Bharane, Minister of Agriculture, Government of Maharashtra">
-                </div>
-                <div class="dignitary-content">
-                    <span class="section-eyebrow"><i class="fas fa-microphone"></i> Keynote Address</span>
-                    <h3 class="section-title">Hon’ble Shri Dattatray Bharane</h3>
-                    <p class="dignitary-role">Minister of Agriculture, Government of Maharashtra</p>
-                    <p class="dignitary-text">Hon’ble Shri Dattatray Bharane will grace the Bharat AI Innovation Conference and Exhibition and deliver the keynote address, highlighting the role of AI in agriculture and showcasing Maharashtra's achievements.</p>
-                </div>
-            </div>
-            <div class="dignitary-card reveal" style="margin-top:2.5rem;">
-                <div class="dignitary-media">
-                    <img width="1013" height="675" loading="lazy" decoding="async" src="images/aditi-tatkare.jpg" onerror="this.onerror=null;this.src='https://ui-avatars.com/api/?name=Aditi+Tatkare&size=480&background=FF6B00&color=fff&bold=true'" alt="Hon’ble Smt. Aditi Tatkare, Minister of Women and Child Development, Government of Maharashtra">
-                </div>
-                <div class="dignitary-content">
-                    <span class="section-eyebrow"><i class="fas fa-microphone"></i> Keynote Address</span>
-                    <h3 class="section-title">Hon’ble Smt. Aditi Tatkare</h3>
-                    <p class="dignitary-role">Minister of Women and Child Development, Government of Maharashtra</p>
-                    <p class="dignitary-text">Hon’ble Smt. Aditi Tatkare, Minister of Women and Child Development, Government of Maharashtra, will grace the Bharat AI Innovation Conference and Exhibition and deliver a keynote address on the role of AI in women’s empowerment, child welfare, and inclusive digital growth across Maharashtra.</p>
-                </div>
-            </div>
-            <div class="dignitary-card reveal" style="margin-top:2.5rem;">
-                <div class="dignitary-media">
-                    <img width="760" height="428" loading="lazy" decoding="async" src="images/sanjay-rathod.jpg" onerror="this.onerror=null;this.src='https://ui-avatars.com/api/?name=Sanjay+Rathod&size=480&background=FF6B00&color=fff&bold=true'" alt="Hon’ble Shri Sanjay Rathod, Minister of Soil and Water Conservation, Government of Maharashtra">
-                </div>
-                <div class="dignitary-content">
-                    <span class="section-eyebrow"><i class="fas fa-microphone"></i> Keynote Address</span>
-                    <h3 class="section-title">Hon’ble Shri Sanjay Rathod</h3>
-                    <p class="dignitary-role">Minister of Soil and Water Conservation, Government of Maharashtra</p>
-                    <p class="dignitary-text">Hon’ble Shri Sanjay Rathod, Minister of Soil and Water Conservation, Government of Maharashtra, will grace the Bharat AI Innovation Conference and Exhibition and deliver a keynote address on the role of AI in soil and water conservation, sustainable agriculture, and environmental resilience.</p>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- ===== CONFIRMED SPEAKERS ===== -->
+    <!-- ===== THE PEOPLE ON THE STAGE: keynotes, then every confirmed speaker ===== -->
     <section class="section-pad-sm" style="background:var(--off-white);" id="confirmed-speakers">
         <div class="container">
             <div class="section-header reveal">
-                <h2 class="section-title">The People on <span class="accent">the Stage</span></h2>
-                <p class="section-subtitle">Ministers, CXOs, researchers, and founders — the people defining India's AI direction in 2026</p>
+                <h2 class="section-title">The people on <span class="accent">the stage</span></h2>
+                <p class="section-subtitle">Ministers, CXOs, researchers and founders. A Delegate Pass gets you into every session.</p>
             </div>
-            <!-- Speakers Grid -->
+            <ul class="keynotes" aria-label="Inauguration and keynote addresses">
+                <li class="keynote">
+                    <img width="1024" height="576" loading="lazy" decoding="async" src="images/chirag-paswan.jpg" alt="Hon’ble Shri Chirag Paswan, Union Minister of Food Processing Industries" style="--pos:42% 18%;">
+                    <div><span class="kn-tag">Inaugural address</span><b>Hon’ble Shri Chirag Paswan</b><span class="kn-role">Union Minister of Food Processing Industries</span></div>
+                </li>
+                <li class="keynote">
+                    <img width="535" height="449" loading="lazy" decoding="async" src="images/chandrakant-patil.jpg" alt="Hon’ble Shri Chandrakant Dada Patil, Minister of Higher and Technical Education, Government of Maharashtra" style="--pos:50% 22%;">
+                    <div><span class="kn-tag">Keynote · higher education</span><b>Hon’ble Shri Chandrakant Dada Patil</b><span class="kn-role">Minister of Higher &amp; Technical Education, Maharashtra</span></div>
+                </li>
+                <li class="keynote">
+                    <img width="1200" height="675" loading="lazy" decoding="async" src="images/dattatray-bharane.avif" alt="Hon’ble Shri Dattatray Bharane, Minister of Agriculture, Government of Maharashtra" style="--pos:50% 22%;">
+                    <div><span class="kn-tag">Keynote · agriculture</span><b>Hon’ble Shri Dattatray Bharane</b><span class="kn-role">Minister of Agriculture, Maharashtra</span></div>
+                </li>
+                <li class="keynote">
+                    <img width="1013" height="675" loading="lazy" decoding="async" src="images/aditi-tatkare.jpg" alt="Hon’ble Smt. Aditi Tatkare, Minister of Women and Child Development, Government of Maharashtra" style="--pos:46% 18%;">
+                    <div><span class="kn-tag">Keynote · women and children</span><b>Hon’ble Smt. Aditi Tatkare</b><span class="kn-role">Minister of Women &amp; Child Development, Maharashtra</span></div>
+                </li>
+                <li class="keynote">
+                    <img width="760" height="428" loading="lazy" decoding="async" src="images/sanjay-rathod.jpg" alt="Hon’ble Shri Sanjay Rathod, Minister of Soil and Water Conservation, Government of Maharashtra" style="--pos:37% 25%;">
+                    <div><span class="kn-tag">Keynote · soil and water</span><b>Hon’ble Shri Sanjay Rathod</b><span class="kn-role">Minister of Soil &amp; Water Conservation, Maharashtra</span></div>
+                </li>
+            </ul>
+            <!-- Speakers Grid: the first 9 (phone) or 12 show; "See all" opens the rest -->
             <div class="speakers-grid-wrapper" role="region" aria-label="Confirmed Speakers">
-                <div class="speakers-grid">
+                <div class="speakers-grid" id="spkGrid" data-show="9,12">
 
                     <!-- K.K. Singh -->
                     <div class="speaker-card reveal reveal-delay-1" style="text-align:center;align-items:center;">
@@ -1285,6 +1426,179 @@
 
                 </div>
             </div>
+            <button type="button" class="show-all" data-show-all="spkGrid" data-more="See all {n} speakers" data-less="Show fewer speakers" aria-expanded="false" hidden><span class="show-label">See all speakers</span><span class="chev" aria-hidden="true"></span></button>
+        </div>
+    </section>
+
+    <!-- ===== VALUE (was "Why attend") ===== -->
+    <section class="section-pad-sm" style="background:white;" id="value">
+        <div class="container">
+            <div class="section-header reveal">
+                <h2 class="section-title">Value you drive from <span class="accent">Bharat AI Innovation</span></h2>
+            </div>
+            <ul class="vtiles">
+                <li class="vtile reveal">
+                    <img width="720" height="540" loading="lazy" decoding="async" src="img/t/7PN2Sjyw.webp" alt="Attendees in the registration lobby at Data Science Congress">
+                    <div><b>Network at scale</b><span>Buyers, investors and policymakers under one roof.</span></div>
+                </li>
+                <li class="vtile reveal">
+                    <img width="720" height="480" loading="lazy" decoding="async" src="img/t/GiqsZVsx.webp" alt="Visitors at an exhibition booth at Data Science Congress">
+                    <div><b>See AI running in production</b><span>Live demos across 8 industry zones.</span></div>
+                </li>
+                <li class="vtile reveal">
+                    <img width="720" height="480" loading="lazy" decoding="async" src="img/t/u8AQyE20.webp" alt="A minister delivering a keynote at Data Science Congress">
+                    <div><b>Government policy insights</b><span>India’s AI policy, from the people who shape it.</span></div>
+                </li>
+                <li class="vtile reveal">
+                    <img width="720" height="480" loading="lazy" decoding="async" src="img/t/Mw680XyB.webp" alt="A panellist speaking during a leadership discussion">
+                    <div><b>Investment opportunities</b><span>Meet VCs, angels and corporate venture arms.</span></div>
+                </li>
+                <li class="vtile reveal">
+                    <img width="720" height="480" loading="lazy" decoding="async" src="img/t/qaOYFZfB.webp" alt="Panel discussion on women in data science">
+                    <div><b>Learn across 10+ tracks</b><span>GenAI to governance, healthcare to agritech.</span></div>
+                </li>
+                <li class="vtile reveal">
+                    <img width="720" height="480" loading="lazy" decoding="async" src="img/t/sx04jhlV.webp" alt="An industry leader presenting on stage">
+                    <div><b>Showcase your innovation</b><span>Take the Innovation Stage or a booth.</span></div>
+                </li>
+            </ul>
+        </div>
+    </section>
+
+    <!-- ===== NETWORKING (Delegate/VIP value) ===== -->
+    <section class="section-pad-sm home-net" id="networking">
+        <div class="container">
+            <div class="net-layout">
+                <div class="reveal">
+                    <h2 class="section-title">Book meetings before you arrive, <span class="accent">so you meet the right people, not just the crowd</span></h2>
+                    <p class="net-sub">Bharat AI Connect, the event’s networking app, comes with every Delegate, VIP and Academic pass.</p>
+                    <ol class="net-steps">
+                        <li><b>Get matched</b><span>AI ranks the people worth your time: buyers, investors, partners.</span></li>
+                        <li><b>Book a meeting</b><span>Agree a time and a place before 20 Nov.</span></li>
+                        <li><b>Arrive with a plan</b><span>Your two days are set before you reach WTC.</span></li>
+                    </ol>
+                    <a href="/app" class="net-link">Already registered? Open Bharat AI Connect <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
+                </div>
+                <div class="net-phone reveal reveal-delay-2" aria-hidden="true">
+                    <div class="np-screen">
+                        <div class="np-top">Bharat AI Connect <i></i></div>
+                        <div class="np-h">Your top matches</div>
+                        <div class="np-row"><span class="np-av" style="--c:#2B8CFF;">AK</span><span class="np-who"><b>Chief Information Officer</b><small>Private bank</small></span><span class="np-pill">Book</span></div>
+                        <div class="np-row"><span class="np-av" style="--c:#00996C;">RS</span><span class="np-who"><b>Founder</b><small>GenAI startup</small></span><span class="np-pill">Book</span></div>
+                        <div class="np-row"><span class="np-av" style="--c:#7C5CFF;">MP</span><span class="np-who"><b>Director, IT</b><small>State department</small></span><span class="np-pill is-done">Booked</span></div>
+                        <div class="np-slot"><b>Meeting confirmed</b>Fri 20 Nov · 11:30</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== FREE OR DELEGATE: the decision in one table (the full five-pass table is /passes) ===== -->
+    <section class="section-pad-sm" style="background:var(--off-white);" id="compare">
+        <div class="container">
+            <div class="section-header reveal">
+                <h2 class="section-title">Free pass or <span class="accent">Delegate Pass?</span></h2>
+            </div>
+            <div class="pc reveal">
+                <table>
+                    <colgroup><col class="pc-c1"><col><col></colgroup>
+                    <thead><tr><th scope="col"><span class="sr-only">What you get</span></th><th scope="col">Free Visitor<span>&#8377;0</span></th><th scope="col" class="pc-del">Delegate<span>&#8377;4,999 + GST</span></th></tr></thead>
+                    <tbody>
+                        <tr><th scope="row">Exhibition floor and live demos</th><td><span class="pc-yes" role="img" aria-label="Included"></span></td><td class="pc-del"><span class="pc-yes" role="img" aria-label="Included"></span></td></tr>
+                        <tr><th scope="row">Entry on 20 and 21 Nov</th><td><small>By time slot, confirmed by email</small></td><td class="pc-del"><strong>Guaranteed</strong></td></tr>
+                        <tr><th scope="row">Conference sessions, both days</th><td><span class="pc-no" role="img" aria-label="Not included">&mdash;</span></td><td class="pc-del"><span class="pc-yes" role="img" aria-label="Included"></span></td></tr>
+                        <tr><th scope="row">Lunch</th><td><span class="pc-no" role="img" aria-label="Not included">&mdash;</span></td><td class="pc-del"><span class="pc-yes" role="img" aria-label="Included"></span></td></tr>
+                        <tr><th scope="row">Book 1:1 meetings in the app</th><td><span class="pc-no" role="img" aria-label="Not included">&mdash;</span></td><td class="pc-del"><span class="pc-yes" role="img" aria-label="Included"></span></td></tr>
+                        <tr><th scope="row">Conference kit and certificate</th><td><span class="pc-no" role="img" aria-label="Not included">&mdash;</span></td><td class="pc-del"><span class="pc-yes" role="img" aria-label="Included"></span></td></tr>
+                    </tbody>
+                </table>
+                <div class="pc-foot">
+                    <a href="/register#delegate" class="btn btn-primary btn-lg">Get my Delegate Pass <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
+                    <p>&#8377;8,999 from 6 Nov. <span data-days-left="2026-11-05"></span></p>
+                    <p><a href="/passes">Compare all five passes</a> &middot; <a href="/register">Get the free Visitor Pass</a></p>
+                </div>
+            </div>
+            <details class="more pc-tracks">
+                <summary><span class="more-l">See the conference tracks</span><span class="less">Hide the tracks</span></summary>
+                <div class="tracks-tag-grid">
+                <span class="track-tag">Generative AI &amp; LLMs</span>
+                <span class="track-tag">AI for Governance</span>
+                <span class="track-tag">Healthcare AI</span>
+                <span class="track-tag">Manufacturing AI</span>
+                <span class="track-tag">Agricultural AI</span>
+                <span class="track-tag">FinTech AI</span>
+                <span class="track-tag">AI Education</span>
+                <span class="track-tag">AI Ethics &amp; Policy</span>
+                <span class="track-tag">MLOps &amp; Infrastructure</span>
+                <span class="track-tag">AI Startups &amp; Funding</span>
+                <span class="track-tag">Agentic AI</span>
+                <span class="track-tag">IndiaAI Mission</span>
+                </div>
+            </details>
+        </div>
+    </section>
+
+    <!-- ===== B2B POSITIONING (who does business here, and how) ===== -->
+    <section class="section-pad-sm" style="background:white;" id="b2b-platform">
+        <div class="container">
+            <div class="section-header reveal">
+                <h2 class="section-title">Built for business, <span class="accent">not footfall</span></h2>
+                <p class="section-subtitle">Meetings matched before you arrive, a stage to prove your work on, and private rooms to close in.</p>
+            </div>
+            <div class="b2b-aud">
+                <div class="reveal">
+                    <h3><i class="fas fa-building" aria-hidden="true"></i>Buyers: enterprise &amp; government</h3>
+                    <p class="lead">CIOs, CDOs and procurement heads from enterprise and state departments.</p>
+                    <details class="more"><summary><span class="more-l">More</span><span class="less">Less</span></summary><p>CIOs, CDOs, CTOs and procurement heads from banking, insurance, pharma, manufacturing and state departments. Evaluate live solutions across 8 industry zones, shortlist vendors through AI matchmaking, and take the conversation into a private boardroom.</p></details>
+                </div>
+                <div class="reveal">
+                    <h3><i class="fas fa-rocket" aria-hidden="true"></i>Builders: startups &amp; providers</h3>
+                    <p class="lead">AI product companies, service firms and funded startups.</p>
+                    <details class="more"><summary><span class="more-l">More</span><span class="less">Less</span></summary><p>Exhibit to visitors who registered to evaluate AI, take the Innovation Stage with your booth, pitch to investors, and have buyer meetings booked before you arrive.</p></details>
+                </div>
+                <div class="reveal">
+                    <h3><i class="fas fa-university" aria-hidden="true"></i>Policy: state &amp; union government</h3>
+                    <p class="lead">MeitY, Maharashtra’s MITRA and MSInS, ministers and secretaries on stage.</p>
+                    <details class="more"><summary><span class="more-l">More</span><span class="less">Less</span></summary><p>Hear the IndiaAI Mission, state AI procurement and public&ndash;private models from the people writing them, and meet them on the floor.</p></details>
+                </div>
+            </div>
+            <h3 class="b2b-mech-title reveal">How business gets done here</h3>
+            <div class="b2b-mech">
+                <div class="reveal">
+                    <h4>CXO AI Leadership Panels</h4>
+                    <p class="lead">Sponsor-curated panels, with your clients in the room. <a href="/partner#leadership-panel" class="b2b-link">Sponsor a panel &rarr;</a></p>
+                    <details class="more"><summary><span class="more-l">More</span><span class="less">Less</span></summary><p>CXOs, founders and policymakers debate a theme you set, with your own clients and prospects invited into the room.</p></details>
+                </div>
+                <div class="reveal">
+                    <h4>Innovation Showcase &amp; Stage</h4>
+                    <p class="lead">Eight minutes on the main stage, bundled with your booth. <a href="/exhibition#value" class="b2b-link">See booth packages &rarr;</a></p>
+                    <details class="more"><summary><span class="more-l">More</span><span class="less">Less</span></summary><p>In front of buyers and investors, bundled with your booth in select packages: the demo and the follow-up meeting in one place.</p></details>
+                </div>
+                <div class="reveal">
+                    <h4>Private Boardrooms</h4>
+                    <p class="lead">Four rooms inside WTC Mumbai, bookable by the hour. <a href="/networking#boardrooms" class="b2b-link">Book a room &rarr;</a></p>
+                    <details class="more"><summary><span class="more-l">More</span><span class="less">Less</span></summary><p>Steps from the floor, for closed-door demos, negotiations and investor conversations.</p></details>
+                </div>
+                <div class="reveal">
+                    <h4>Bharat AI Connect</h4>
+                    <p class="lead">AI matchmaking and 1:1 meetings, booked ahead. <a href="#networking" class="b2b-link">How it works &rarr;</a></p>
+                    <details class="more"><summary><span class="more-l">More</span><span class="less">Less</span></summary><p>Every pass can browse the attendee directory. Delegate, VIP and Academic passes unlock networking: AI matchmaking, connection requests and 1:1 meeting booking.</p></details>
+                </div>
+                <div class="reveal">
+                    <h4>Bharat AI CXO Innovation Night</h4>
+                    <p class="lead">The Day 1 gala evening. VIP Pass holders are invited. <a href="/conference#schedule" class="b2b-link">See the programme &rarr;</a></p>
+                    <details class="more"><summary><span class="more-l">More</span><span class="less">Less</span></summary><p>The CXO Gala Networking Evening on Day 1: a cocktail evening for senior leaders and ministers, the room where day-two meetings get set up, and an evening a sponsor can host.</p></details>
+                </div>
+                <div class="reveal">
+                    <h4>Startup Pitch</h4>
+                    <p class="lead">Pitch to VCs, angels and corporate venture arms. <a href="/startup-pitch" class="b2b-link">Apply to pitch &rarr;</a></p>
+                    <details class="more"><summary><span class="more-l">More</span><span class="less">Less</span></summary><p>AI startups pitch in front of the enterprise audience that could become their first customers.</p></details>
+                </div>
+            </div>
+            <div class="b2b-ctas reveal">
+                <a href="/exhibition" class="btn btn-primary">Book a booth <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
+                <a href="/partner" class="btn btn-outline">Sponsor</a>
+            </div>
         </div>
     </section>
 
@@ -1486,303 +1800,181 @@
     </script>
     <!-- exhibitors:end -->
 
-    <!-- ===== PAST SPEAKERS ===== -->
-    <section class="past-speakers" id="past-speakers">
+    <!-- ===== PM MODI VISION QUOTE ===== -->
+    <section class="pm-vision-section section-pad-sm" id="pm-vision">
+        <div class="pm-vision-bg-pattern"></div>
         <div class="container">
-            <div class="section-header reveal">
-                <h2 class="section-title">Past Speakers — <span class="accent">Data Science Congress</span></h2>
-                <p class="section-subtitle">Leaders who have shaped India's data science and AI conversation over the years</p>
-                <a href="/past-speakers" class="btn btn-outline" style="margin-top:1.5rem;">View All Past Speakers <i class="fas fa-arrow-right"></i></a>
-            </div>
-
-            <div class="speaker-category reveal">
-                <h3>Government & Public Leadership</h3>
-                <div class="speakers-carousel-wrapper">
-                    <div class="speakers-carousel" data-carousel="pastSpeakers-1">
-                    <div class="speaker-card">
-                        <img width="680" height="397" loading="lazy" decoding="async" src="images/speaker-sanjay-dhotre.jpg" alt="Hon’ble Shri Sanjay Dhotre" class="speaker-photo">
-                        <h4>Hon’ble Minister Shri Sanjay Dhotre</h4>
-                        <p>then Union Minister of State for Human Resource Development, Communications, Electronics &amp; Information Technology, Government of India</p>
-                    </div>
-                    <div class="speaker-card">
-                        <img width="970" height="862" loading="lazy" decoding="async" src="images/speaker-vijay-goel.jpg" alt="Hon’ble Shri Vijay Goel" class="speaker-photo">
-                        <h4>Hon’ble Minister Shri Vijay Goel</h4>
-                        <p>then Minister of State for Statistics and Programme Implementation, Government of India</p>
-                    </div>
-                    <div class="speaker-card">
-                        <img width="1024" height="788" loading="lazy" decoding="async" src="images/speaker-ys-chowdary.jpg" alt="Hon’ble Shri Y. S. Chowdary" class="speaker-photo">
-                        <h4>Hon’ble Minister Shri Y. S. Chowdary</h4>
-                        <p>then Minister of State for Science &amp; Technology, Government of India</p>
-                    </div>
-                    <div class="speaker-card">
-                        <img width="621" height="414" loading="lazy" decoding="async" src="images/speaker-bn-srikrishna.jpg" alt="Retired Justice B. N. Srikrishna" class="speaker-photo">
-                        <h4>Retired Justice B. N. Srikrishna</h4>
-                        <p>Chief Architect of India’s First Data Protection Bill</p>
+            <div class="pm-vision-card reveal">
+                <div class="pm-vision-media">
+                    <div class="pm-vision-img-frame">
+                        <img width="1024" height="653" loading="lazy" decoding="async" src="images/pm-modi.jpg" alt="Shri Narendra Modi, Hon'ble Prime Minister of India, speaking on Artificial Intelligence">
                     </div>
                 </div>
-                <div class="carousel-controls">
-                    <button class="carousel-btn carousel-prev" data-carousel-target="pastSpeakers-1" aria-label="Previous government speaker">
-                        <i class="fas fa-chevron-left" aria-hidden="true"></i>
-                    </button>
-                    <button class="carousel-btn carousel-next" data-carousel-target="pastSpeakers-1" aria-label="Next government speaker">
-                        <i class="fas fa-chevron-right" aria-hidden="true"></i>
-                    </button>
-                </div>
-            </div>
-
-            <div class="speaker-category reveal">
-                <h3>Global Innovators & Industry Leaders</h3>
-                <div class="speakers-carousel-wrapper">
-                    <div class="speakers-carousel" data-carousel="pastSpeakers-all">
-                        <div class="speaker-card"><h4>Dr. Vint Cerf</h4><p>Father of the Internet &amp; Co-Creator of TCP/IP</p></div>
-                        <div class="speaker-card"><h4>Dr. Juergen Schmidhuber</h4><p>Father of Modern Artificial Intelligence</p></div>
-                        <div class="speaker-card"><h4>Dr. Usama Fayyad</h4><p>World's First Chief Data Officer</p></div>
-                        <div class="speaker-card"><h4>Dr. Ruchir Puri</h4><p>Chief Scientist, IBM Research &amp; Chief Architect, IBM Watson</p></div>
-                        <div class="speaker-card"><h4>Rajat Monga</h4><p>Co-creator of Google TensorFlow</p></div>
-                        <div class="speaker-card"><h4>Prof. Toby Walsh</h4><p>AI Researcher and Founder, Campaign Against Killer Robots</p></div>
-                        <div class="speaker-card"><h4>Dr. Azalia Mirhoseini</h4><p>AI Researcher known for teaching AI to design AI chips</p></div>
-                        <div class="speaker-card"><h4>Dr. Dina Zielinski</h4><p>Researcher on storing digital data in DNA</p></div>
-                        <div class="speaker-card"><h4>Dr. Manish Gupta</h4><p>Director, Google Research India</p></div>
-                        <div class="speaker-card"><h4>Sella Nevo</h4><p>Lead, Google Flood Forecasting Initiative</p></div>
-                        <div class="speaker-card"><h4>Dr. Gabor Melli</h4><p>Senior Director, Machine Learning &amp; AI, Sony PlayStation</p></div>
-                        <div class="speaker-card"><h4>Dr. Rushi Bhatt</h4><p>Director Engineering (AI), LinkedIn</p></div>
-                        <div class="speaker-card"><h4>Dr. Amit Kumar Pandey</h4><p>President, CSO &amp; CTO, Hanson Robotics (Creators of Sophia Robot)</p></div>
-                        <div class="speaker-card"><h4>Jim Keravala</h4><p>CEO, OffWorld AI</p></div>
-                        <div class="speaker-card"><h4>Rama Akkiraju</h4><p>AI Technology Executive</p></div>
-                        <div class="speaker-card"><h4>Siddharth Bhatia</h4><p>Founder, Detect Fake Users in Real Time</p></div>
-                        <div class="speaker-card"><h4>Sayan Sen</h4><p>Head Data Labs, HDFC Life</p></div>
-                        <div class="speaker-card"><h4>Mathew Joseph</h4><p>AI Leader in Banking Transformation</p></div>
-                        <div class="speaker-card"><h4>David Mitchell</h4><p>AI Entrepreneur – Attention Tracking Technology</p></div>
-                        <div class="speaker-card"><h4>Swarna Bhushan K</h4><p>Machine Learning Expert on Fraud Detection</p></div>
-                        <div class="speaker-card"><h4>Paul-Adrien Menez</h4><p>AI Researcher on Food Waste Reduction</p></div>
-                        <div class="speaker-card"><h4>Nikola Sucevic</h4><p>Telecom Analytics Specialist</p></div>
-                        <div class="speaker-card"><h4>Tapan Barman</h4><p>AI Developer for Indian Language Voice Assistant</p></div>
-                        <div class="speaker-card"><h4>Suyog Joshi</h4><p>AI Innovator in Autonomous Manufacturing</p></div>
-                        <div class="speaker-card"><h4>Sandeep Sriram</h4><p>AI Manufacturing Systems Expert</p></div>
-                        <div class="speaker-card"><h4>Lindon Gao</h4><p>AI Retail Technology Innovator</p></div>
-                        <div class="speaker-card"><h4>Pieter Fabry</h4><p>AI Researcher in Sustainable Aquaculture</p></div>
-                        <div class="speaker-card"><h4>Rishi Hemang</h4><p>Aquaculture Analytics Specialist</p></div>
-                        <div class="speaker-card"><h4>Dr. Rohini Srivathsa</h4><p>National Technology Officer (CTO), Microsoft India</p></div>
-                        <div class="speaker-card"><h4>Dr. Geetha Manjunath</h4><p>Founder, CEO &amp; CTO, Niramai</p></div>
-                        <div class="speaker-card"><h4>Dr. Tetiana Kodliuk</h4><p>Chief Science Officer, Dathena</p></div>
-                        <div class="speaker-card"><h4>Prof. Anil D. Sahasrabudhe</h4><p>Chairman, NAAC</p></div>
-                        <div class="speaker-card"><h4>Dr. Abhijit Gangopadhyay</h4><p>Dean, Aegis School of Data Science</p></div>
-                        <div class="speaker-card"><h4>Dr. Vinay Kulkarni</h4><p>Director, Aegis School of Data Science</p></div>
+                <div class="pm-vision-content">
+                    <div class="pm-vision-quote-mark"><i class="fas fa-quote-left"></i></div>
+                    <blockquote class="pm-vision-quote">
+                        Artificial Intelligence represents a transformation of the same magnitude as historic turning points in human civilization.
+                    </blockquote>
+                    <div class="pm-vision-attribution">
+                        <div class="pm-vision-name">Narendra Modi</div>
+                        <div class="pm-vision-title">Hon'ble Prime Minister of India</div>
                     </div>
-                </div>
-                <div class="carousel-controls">
-                    <button class="carousel-btn carousel-prev" data-carousel-target="pastSpeakers-all" aria-label="Previous global speaker"><i class="fas fa-chevron-left" aria-hidden="true"></i></button>
-                    <button class="carousel-btn carousel-next" data-carousel-target="pastSpeakers-all" aria-label="Next global speaker"><i class="fas fa-chevron-right" aria-hidden="true"></i></button>
-                </div>
-            </div>
-
-            <div class="reveal" style="text-align:center;margin-top:3rem;">
-                <a href="/past-speakers" class="btn btn-primary btn-lg">See the Full Past Speaker Gallery <i class="fas fa-arrow-right"></i></a>
-                <p style="margin-top:0.85rem;font-size:0.9rem;color:var(--mid-grey);">91 speakers with photographs, across government, research, founders and industry</p>
-            </div>
-        </div>
-    </section>
-
-    <!-- ===== ABOUT EVENT ===== -->
-    <section class="about-event" id="about-event">
-        <div class="container">
-            <div class="section-header reveal">
-                <h2 class="section-title">India's <span class="accent">AI Moment</span></h2>
-            </div>
-            <div class="about-grid">
-                <div class="about-text-col reveal">
-                    <p class="about-text">
-                        Bharat AI Innovation 2026 is a two-day conference and exhibition at World Trade Center Mumbai
-                        organized by Aegis Knowledge Trust. Enterprise buyers, builders and policymakers, leading speakers from government and industry,
-                        An exhibition floor across 8 industry zones. Ministerially opened. Visitor passes are free.
+                    <div class="pm-vision-divider"></div>
+                    <p class="pm-vision-inspired">
+                        This conference is built on PM Modi's conviction that AI must strengthen innovation, empower citizens, and drive inclusive growth across every sector of the Indian economy.
                     </p>
-                    <p class="about-text">
-                        Set against India's ₹20,000 crore R&amp;D commitment and AWS's $8.3 billion 
-                        Maharashtra investment, this conference is your gateway 
-                        to India's AI transformation across industry, academia, and governance.
-                    </p>
-                    <dl class="about-cred-list reveal">
-                        <div class="about-cred-row">
-                            <dt>₹20,000 Cr</dt>
-                            <dd>IndiaAI Mission R&amp;D allocation — Government of India</dd>
-                        </div>
-                        <div class="about-cred-row">
-                            <dt>$8.3 Bn</dt>
-                            <dd>AWS infrastructure investment committed to Maharashtra</dd>
-                        </div>
-                        <div class="about-cred-row">
-                            <dt>2047</dt>
-                            <dd>Viksit Bharat — the developed-nation target year anchoring India's national AI strategy</dd>
-                        </div>
-                    </dl>
-                    <div style="margin-top: 2rem;">
-                        <a href="/about" class="btn btn-outline">Learn More About Us <i class="fas fa-arrow-right"></i></a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== CM FADNAVIS STATE LEADERSHIP ===== -->
+    <section class="cm-vision-section section-pad-sm" id="cm-vision">
+        <div class="cm-vision-bg-pattern"></div>
+        <div class="container">
+            <div class="section-header reveal" style="margin-bottom:2rem;">
+                <h2 class="section-title" style="color:#fff;">Maharashtra's <span class="accent">AI Leadership</span></h2>
+            </div>
+            <div class="cm-vision-card reveal">
+                <div class="cm-vision-media">
+                    <div class="cm-vision-img-frame">
+                        <img width="1024" height="576" loading="lazy" decoding="async" src="images/devendra-fadnavis.jpg" alt="Shri Devendra Fadnavis, Hon'ble Chief Minister of Maharashtra">
                     </div>
                 </div>
-                <div class="about-visual reveal reveal-delay-2">
-                    <div class="about-visual-card">
-                        <div class="about-stats-grid">
-                            <div class="about-stat-item">
-                                <div class="about-stat-num">132</div>
-                                <div class="about-stat-lbl">Exhibition Booths</div>
-                            </div>
-                            <div class="about-stat-item">
-                                <div class="about-stat-num">10+</div>
-                                <div class="about-stat-lbl">Conference Tracks</div>
-                            </div>
-                            <div class="about-stat-item">
-                                <div class="about-stat-num">8</div>
-                                <div class="about-stat-lbl">Industry Zones</div>
-                            </div>
-                        </div>
+                <div class="cm-vision-content">
+                    <div class="cm-vision-highlight-box">
+                        <i class="fas fa-database"></i>
+                        <p>"Within three years, Maharashtra will be a world leader in the data center space, powered increasingly by green energy."</p>
+                    </div>
+                    <div class="cm-vision-quote-mark"><i class="fas fa-quote-left"></i></div>
+                    <blockquote class="cm-vision-quote">
+                        AI in farming must not remain confined to demonstrations or pilots. It must reach millions.
+                    </blockquote>
+                    <div class="cm-vision-attribution">
+                        <div class="cm-vision-name">Devendra Fadnavis</div>
+                        <div class="cm-vision-title">Hon'ble Chief Minister</div>
+                        <div class="cm-vision-subtitle">Government of Maharashtra</div>
                     </div>
                 </div>
             </div>
         </div>
     </section>
 
-    <!-- ===== CALL FOR SPEAKERS & EXHIBITORS ===== -->
-    <section id="participate" style="padding:7rem 0;background:var(--off-white);">
+    <!-- ===== PAST GALLERY ===== -->
+    <section class="past-gallery" id="past-gallery">
         <div class="container">
             <div class="section-header reveal">
-                <h2 class="section-title">Speak. Exhibit. <span class="accent">Sponsor.</span></h2>
-                <p class="section-subtitle">Three ways to put your organisation in front of India&rsquo;s AI buyers</p>
+                <h2 class="section-title">From the <span class="accent">stage</span></h2>
+                <p class="section-subtitle">Moments from Data Science Congress, the predecessor to Bharat AI Innovation.</p>
             </div>
-
-            <div class="participate-grid">
-
-                <!-- Call for Speakers Card -->
-                <div class="reveal reveal-delay-1" style="background:linear-gradient(135deg,#0D0F1A 0%,#131629 100%);border-radius:24px;padding:3rem;position:relative;overflow:hidden;border:1px solid rgba(255,107,0,0.2);">
-                    <div style="position:absolute;top:-40px;right:-40px;width:200px;height:200px;border-radius:50%;background:radial-gradient(circle,rgba(255,107,0,0.12) 0%,transparent 70%);pointer-events:none;"></div>
-                    <div style="position:absolute;bottom:-30px;left:-30px;width:150px;height:150px;border-radius:50%;background:radial-gradient(circle,rgba(255,107,0,0.08) 0%,transparent 70%);pointer-events:none;"></div>
-                    <div style="position:relative;z-index:1;">
-                        <div style="width:64px;height:64px;background:linear-gradient(135deg,#FF6B00,#FF3D00);border-radius:16px;display:flex;align-items:center;justify-content:center;margin-bottom:1.5rem;box-shadow:0 8px 24px rgba(255,107,0,0.35);">
-                            <i class="fas fa-microphone" style="color:white;font-size:1.6rem;"></i>
-                        </div>
-                        <div style="display:inline-block;background:rgba(255,107,0,0.15);border:1px solid rgba(255,107,0,0.3);border-radius:100px;padding:0.3rem 0.9rem;font-size:0.75rem;font-weight:700;color:#FF9A40;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:1rem;">Now Open</div>
-                        <h3 style="color:white;font-family:var(--font-display);font-size:1.75rem;font-weight:800;margin-bottom:0.75rem;line-height:1.2;">Call for Speakers</h3>
-                        <p style="color:rgba(255,255,255,0.6);font-size:0.95rem;line-height:1.7;margin-bottom:1.75rem;">Share your AI expertise, research, or deployment experience with India's top decision-makers. We're looking for speakers across every AI domain — from governance and ethics to foundational research and production deployments.</p>
-                        <ul style="list-style:none;padding:0;margin:0 0 2rem;display:flex;flex-direction:column;gap:0.65rem;">
-                            <li style="display:flex;align-items:center;gap:0.65rem;color:rgba(255,255,255,0.75);font-size:0.88rem;"><i class="fas fa-check-circle" style="color:#FF6B00;flex-shrink:0;"></i> Keynote &amp; plenary sessions</li>
-                            <li style="display:flex;align-items:center;gap:0.65rem;color:rgba(255,255,255,0.75);font-size:0.88rem;"><i class="fas fa-check-circle" style="color:#FF6B00;flex-shrink:0;"></i> Panel discussions &amp; fireside chats</li>
-                            <li style="display:flex;align-items:center;gap:0.65rem;color:rgba(255,255,255,0.75);font-size:0.88rem;"><i class="fas fa-check-circle" style="color:#FF6B00;flex-shrink:0;"></i> Technical workshops &amp; tutorials</li>
-                            <li style="display:flex;align-items:center;gap:0.65rem;color:rgba(255,255,255,0.75);font-size:0.88rem;"><i class="fas fa-check-circle" style="color:#FF6B00;flex-shrink:0;"></i> Innovation Stage (8-min spotlight)</li>
-                        </ul>
-                        <a href="/contact" class="btn btn-primary" style="width:100%;justify-content:center;">Submit Speaker Proposal <i class="fas fa-arrow-right"></i></a>
-                    </div>
-                </div>
-
-                <!-- Call for Exhibitors Card -->
-                <div class="reveal reveal-delay-2" style="background:linear-gradient(135deg,#0a1628 0%,#0d1f3c 100%);border-radius:24px;padding:3rem;position:relative;overflow:hidden;border:1px solid rgba(43,140,255,0.2);">
-                    <div style="position:absolute;top:-40px;right:-40px;width:200px;height:200px;border-radius:50%;background:radial-gradient(circle,rgba(43,140,255,0.1) 0%,transparent 70%);pointer-events:none;"></div>
-                    <div style="position:absolute;bottom:-30px;left:-30px;width:150px;height:150px;border-radius:50%;background:radial-gradient(circle,rgba(43,140,255,0.07) 0%,transparent 70%);pointer-events:none;"></div>
-                    <div style="position:relative;z-index:1;">
-                        <div style="width:64px;height:64px;background:linear-gradient(135deg,#2B8CFF,#0066DD);border-radius:16px;display:flex;align-items:center;justify-content:center;margin-bottom:1.5rem;box-shadow:0 8px 24px rgba(43,140,255,0.35);">
-                            <i class="fas fa-store" style="color:white;font-size:1.6rem;"></i>
-                        </div>
-                        <div style="display:inline-block;background:rgba(43,140,255,0.15);border:1px solid rgba(43,140,255,0.3);border-radius:100px;padding:0.3rem 0.9rem;font-size:0.75rem;font-weight:700;color:#5BA8FF;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:1rem;">Booths Available</div>
-                        <h3 style="color:white;font-family:var(--font-display);font-size:1.75rem;font-weight:800;margin-bottom:0.75rem;line-height:1.2;">Book Your Booth</h3>
-                        <p style="color:rgba(255,255,255,0.6);font-size:0.95rem;line-height:1.7;margin-bottom:1.75rem;">Showcase your AI products and solutions to a highly targeted audience of enterprise leaders, investors and policymakers. Choose from 8 industry zones with packages for every stage and budget.</p>
-                        <ul style="list-style:none;padding:0;margin:0 0 2rem;display:flex;flex-direction:column;gap:0.65rem;">
-                            <li style="display:flex;align-items:center;gap:0.65rem;color:rgba(255,255,255,0.75);font-size:0.88rem;"><i class="fas fa-check-circle" style="color:#2B8CFF;flex-shrink:0;"></i> 8 specialised industry zones</li>
-                            <li style="display:flex;align-items:center;gap:0.65rem;color:rgba(255,255,255,0.75);font-size:0.88rem;"><i class="fas fa-check-circle" style="color:#2B8CFF;flex-shrink:0;"></i> Shell, island &amp; custom pavilions</li>
-                            <li style="display:flex;align-items:center;gap:0.65rem;color:rgba(255,255,255,0.75);font-size:0.88rem;"><i class="fas fa-check-circle" style="color:#2B8CFF;flex-shrink:0;"></i> Live AI demonstration zones</li>
-                            <li style="display:flex;align-items:center;gap:0.65rem;color:rgba(255,255,255,0.75);font-size:0.88rem;"><i class="fas fa-check-circle" style="color:#2B8CFF;flex-shrink:0;"></i> Innovation Stage speaking slot</li>
-                            <li style="display:flex;align-items:center;gap:0.65rem;color:rgba(255,255,255,0.75);font-size:0.88rem;"><i class="fas fa-check-circle" style="color:#2B8CFF;flex-shrink:0;"></i> Startup pavilion &amp; global pavilion</li>
-                        </ul>
-                        <a href="/exhibition" class="btn btn-primary" style="width:100%;justify-content:center;background:linear-gradient(135deg,#2B8CFF,#0066DD);box-shadow:0 4px 20px rgba(43,140,255,0.4);">Explore Booth Packages <i class="fas fa-arrow-right"></i></a>
-                    </div>
-                </div>
-
-                <!-- Sponsor & Brand Card -->
-                <div class="reveal reveal-delay-3" style="background:linear-gradient(135deg,#14102a 0%,#1f1740 100%);border-radius:24px;padding:3rem;position:relative;overflow:hidden;border:1px solid rgba(255,213,79,0.22);">
-                    <div style="position:absolute;top:-40px;right:-40px;width:200px;height:200px;border-radius:50%;background:radial-gradient(circle,rgba(255,213,79,0.12) 0%,transparent 70%);pointer-events:none;"></div>
-                    <div style="position:absolute;bottom:-30px;left:-30px;width:150px;height:150px;border-radius:50%;background:radial-gradient(circle,rgba(255,213,79,0.08) 0%,transparent 70%);pointer-events:none;"></div>
-                    <div style="position:relative;z-index:1;">
-                        <div style="width:64px;height:64px;background:linear-gradient(135deg,#FFD54F,#F59E0B);border-radius:16px;display:flex;align-items:center;justify-content:center;margin-bottom:1.5rem;box-shadow:0 8px 24px rgba(245,158,11,0.35);">
-                            <i class="fas fa-crown" style="color:#1f1740;font-size:1.6rem;"></i>
-                        </div>
-                        <div style="display:inline-block;background:rgba(255,213,79,0.15);border:1px solid rgba(255,213,79,0.3);border-radius:100px;padding:0.3rem 0.9rem;font-size:0.75rem;font-weight:700;color:#FFD54F;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:1rem;">Slots Limited</div>
-                        <h3 style="color:white;font-family:var(--font-display);font-size:1.75rem;font-weight:800;margin-bottom:0.75rem;line-height:1.2;">Sponsor &amp; Brand</h3>
-                        <p style="color:rgba(255,255,255,0.6);font-size:0.95rem;line-height:1.7;margin-bottom:1.75rem;">Own a stage, a panel, an evening or the lanyard on every attendee. Sponsorship puts your brand in front of the people who approve enterprise AI budgets &mdash; and lets you invite your own clients into the room.</p>
-                        <ul style="list-style:none;padding:0;margin:0 0 2rem;display:flex;flex-direction:column;gap:0.65rem;">
-                            <li style="display:flex;align-items:center;gap:0.65rem;color:rgba(255,255,255,0.75);font-size:0.88rem;"><i class="fas fa-check-circle" style="color:#FFD54F;flex-shrink:0;"></i> Title Partner &mdash; &#8377;1.2 Cr, exclusive</li>
-                            <li style="display:flex;align-items:center;gap:0.65rem;color:rgba(255,255,255,0.75);font-size:0.88rem;"><i class="fas fa-check-circle" style="color:#FFD54F;flex-shrink:0;"></i> Powered Partner &mdash; &#8377;50 L, exclusive</li>
-                            <li style="display:flex;align-items:center;gap:0.65rem;color:rgba(255,255,255,0.75);font-size:0.88rem;"><i class="fas fa-check-circle" style="color:#FFD54F;flex-shrink:0;"></i> Knowledge Partner &mdash; &#8377;30 L, exclusive</li>
-                            <li style="display:flex;align-items:center;gap:0.65rem;color:rgba(255,255,255,0.75);font-size:0.88rem;"><i class="fas fa-check-circle" style="color:#FFD54F;flex-shrink:0;"></i> Associate Partner &mdash; &#8377;25 L, sector-exclusive</li>
-                            <li style="display:flex;align-items:center;gap:0.65rem;color:rgba(255,255,255,0.75);font-size:0.88rem;"><i class="fas fa-check-circle" style="color:#FFD54F;flex-shrink:0;"></i> AI Leadership Panel &mdash; &#8377;10 L, your theme</li>
-                            <li style="display:flex;align-items:center;gap:0.65rem;color:rgba(255,255,255,0.75);font-size:0.88rem;"><i class="fas fa-check-circle" style="color:#FFD54F;flex-shrink:0;"></i> CXO Innovation Night, Leaders Round Table, Lanyard &amp; Bag, activations</li>
-                        </ul>
-                        <a href="/partner" class="btn btn-primary" style="width:100%;justify-content:center;background:linear-gradient(135deg,#FFD54F,#F59E0B);color:#1f1740;box-shadow:0 4px 20px rgba(245,158,11,0.4);">See Sponsorship Options <i class="fas fa-arrow-right"></i></a>
-                    </div>
-                </div>
-
+            <div class="gallery-grid" id="galleryGrid" data-show="5,9">
+                <figure class="gallery-card reveal">
+                    <img width="1024" height="683" src="img/oIGfmq8T.jpg" alt="Opening keynote stage with event branding" loading="lazy">
+                    <figcaption>Opening Keynote Stage</figcaption>
+                </figure>
+                <figure class="gallery-card reveal reveal-delay-1">
+                    <img width="720" height="480" decoding="async" src="img/t/XYFamTjB.webp" alt="AI researcher delivering a keynote session" loading="lazy">
+                    <figcaption>AI Research Keynote</figcaption>
+                </figure>
+                <figure class="gallery-card reveal reveal-delay-2">
+                    <img width="720" height="480" decoding="async" src="img/t/sx04jhlV.webp" alt="Industry leader presenting on stage" loading="lazy">
+                    <figcaption>Leadership Address</figcaption>
+                </figure>
+                <figure class="gallery-card reveal reveal-delay-3">
+                    <img width="720" height="480" decoding="async" src="img/t/3swgeyOb.webp" alt="Expert speaker leading a technical talk" loading="lazy">
+                    <figcaption>Technical Deep Dive</figcaption>
+                </figure>
+                <figure class="gallery-card reveal reveal-delay-1">
+                    <img width="720" height="480" decoding="async" src="img/t/G2kIKD4Y.webp" alt="Main stage spotlight with data visuals" loading="lazy">
+                    <figcaption>Main Stage Spotlight</figcaption>
+                </figure>
+                <figure class="gallery-card reveal reveal-delay-2">
+                    <img width="720" height="480" decoding="async" src="img/t/IseXJc9a.webp" alt="Panel discussion on data science in e-commerce and retail" loading="lazy">
+                    <figcaption>Panel Discussion</figcaption>
+                </figure>
+                <figure class="gallery-card reveal reveal-delay-3">
+                    <img width="720" height="480" decoding="async" src="img/t/FSwgFC1Q.webp" alt="Speaker presenting on stage with data visuals" loading="lazy">
+                    <figcaption>Data Insights Talk</figcaption>
+                </figure>
+                <figure class="gallery-card reveal reveal-delay-4">
+                    <img width="720" height="540" decoding="async" src="img/t/7PN2Sjyw.webp" alt="Conference registration lobby and networking area" loading="lazy">
+                    <figcaption>Registration &amp; Networking</figcaption>
+                </figure>
+                <figure class="gallery-card reveal reveal-delay-1">
+                    <img width="720" height="480" decoding="async" src="img/t/ziOcVT9u.webp" alt="Conference session with live audience engagement" loading="lazy">
+                    <figcaption>Interactive Session</figcaption>
+                </figure>
+                <figure class="gallery-card reveal reveal-delay-2">
+                    <img width="720" height="480" decoding="async" src="img/t/M0pjzJb1.webp" alt="Data scientist presenting on stage" loading="lazy">
+                    <figcaption>Data Science Talk</figcaption>
+                </figure>
+                <figure class="gallery-card reveal reveal-delay-3">
+                    <img width="720" height="480" decoding="async" src="img/t/WkdpnU9p.webp" alt="Speaker presenting at Aegis Data Science conference" loading="lazy">
+                    <figcaption>Industry Speaker</figcaption>
+                </figure>
+                <figure class="gallery-card reveal reveal-delay-4">
+                    <img width="720" height="480" decoding="async" src="img/t/fhk60Z58.webp" alt="NVIDIA Managing Director presenting on stage" loading="lazy">
+                    <figcaption>Technology Leadership</figcaption>
+                </figure>
+                <figure class="gallery-card reveal reveal-delay-1">
+                    <img width="720" height="480" decoding="async" src="img/t/u8AQyE20.webp" alt="Government minister delivering keynote address" loading="lazy">
+                    <figcaption>Government Keynote</figcaption>
+                </figure>
+                <figure class="gallery-card reveal reveal-delay-2">
+                    <img width="720" height="480" decoding="async" src="img/t/GiqsZVsx.webp" alt="NVIDIA exhibition booth at Data Science Congress" loading="lazy">
+                    <figcaption>Innovation Showcase</figcaption>
+                </figure>
+                <figure class="gallery-card reveal reveal-delay-3">
+                    <img width="720" height="480" decoding="async" src="img/t/5rwd54S2.webp" alt="Speaker sharing insights from the podium" loading="lazy">
+                    <figcaption>Expert Address</figcaption>
+                </figure>
+                <figure class="gallery-card reveal reveal-delay-4">
+                    <img width="720" height="480" decoding="async" src="img/t/qaOYFZfB.webp" alt="Panel discussion on women in data science" loading="lazy">
+                    <figcaption>Women in Data Science</figcaption>
+                </figure>
+                <figure class="gallery-card reveal reveal-delay-1">
+                    <img width="720" height="480" decoding="async" src="img/t/Mw680XyB.webp" alt="Panelist speaking during a leadership discussion" loading="lazy">
+                    <figcaption>Leadership Panel</figcaption>
+                </figure>
+                <figure class="gallery-card reveal reveal-delay-2">
+                    <img width="720" height="480" decoding="async" src="img/t/CrqPzMWZ.webp" alt="Audience members attending a breakout session" loading="lazy">
+                    <figcaption>Audience Engagement</figcaption>
+                </figure>
+                <figure class="gallery-card reveal reveal-delay-3">
+                    <img width="720" height="480" decoding="async" src="img/t/lQr1QV9W.webp" alt="Speaker presenting technical session with data visuals" loading="lazy">
+                    <figcaption>Technical Session</figcaption>
+                </figure>
             </div>
-
-            <!-- Bottom teaser strip -->
-            <div class="reveal" style="margin-top:2.5rem;background:linear-gradient(135deg,rgba(255,107,0,0.06),rgba(43,140,255,0.06));border:1px solid rgba(255,107,0,0.12);border-radius:16px;padding:1.75rem 2.5rem;display:flex;align-items:center;justify-content:space-between;gap:1.5rem;flex-wrap:wrap;">
-                <div style="display:flex;align-items:center;gap:1.25rem;flex-wrap:wrap;">
-                    <div style="display:flex;align-items:center;gap:0.6rem;font-size:0.9rem;font-weight:600;color:var(--charcoal);"><i class="fas fa-clock" style="color:var(--saffron);"></i> Early submissions get priority review</div>
-                    <div style="width:1px;height:20px;background:var(--light);"></div>
-                    <div style="display:flex;align-items:center;gap:0.6rem;font-size:0.9rem;font-weight:600;color:var(--charcoal);"><i class="fas fa-calendar-alt" style="color:var(--saffron);"></i> Event: Nov 20–21, 2026 · WTC Mumbai</div>
-                </div>
-                <a href="/contact" class="btn btn-outline btn-sm" style="white-space:nowrap;">Get in Touch <i class="fas fa-arrow-right"></i></a>
+            <div class="gallery-foot">
+                <button type="button" class="show-all" data-show-all="galleryGrid" data-more="See all {n} photos" data-less="Show fewer photos" aria-expanded="false" hidden><span class="show-label">See all photos</span><span class="chev" aria-hidden="true"></span></button>
+                <a href="/past-speakers" class="btn btn-outline">Meet the 91 past speakers <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
             </div>
         </div>
     </section>
 
-    <!-- ===== CAMPUS SERIES (pre-event panels) ===== -->
-    <section id="campus-series" style="padding:6rem 0;background:white;">
+    <!-- ===== CAMPUS SERIES (pre-event panels; the panellists open on request) ===== -->
+    <section id="campus-series" class="section-pad-sm" style="background:white;">
         <div class="container">
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:3.5rem;align-items:center;">
-
+            <div class="campus-layout">
                 <div class="reveal">
-                    <div style="display:inline-flex;align-items:center;gap:0.5rem;background:rgba(255,107,0,0.1);border:1px solid rgba(255,107,0,0.25);border-radius:100px;padding:0.4rem 1rem;font-size:0.75rem;font-weight:700;color:var(--saffron-dark);text-transform:uppercase;letter-spacing:0.09em;margin-bottom:1.25rem;">
-                        <i class="fas fa-graduation-cap"></i> Campus Series
+                    <h2 class="section-title" style="text-align:left;margin-bottom:0.75rem;">Pre-event panels, <span class="accent">on campus</span></h2>
+                    <p class="campus-lead">Free panels on AI and jobs at universities, ahead of November.</p>
+                    <div class="campus-next">
+                        <span data-end="2026-09-21T12:30:00+05:30"><i class="fas fa-university"></i> DJ Sanghvi College of Engineering, Mumbai <span class="campus-when">· 21 Sept</span></span>
+                        <span data-end="2026-09-30T16:30:00+05:30"><i class="fas fa-university"></i> Jawaharlal Nehru University, New Delhi <span class="campus-when">· 30 Sept</span></span>
                     </div>
-                    <h2 class="section-title" style="text-align:left;margin-bottom:1rem;">Pre-Event Panels, <span class="accent">On Campus</span></h2>
-                    <p style="font-size:1.05rem;color:var(--dark-grey);line-height:1.75;margin-bottom:1.75rem;max-width:56ch;">
-                        Ahead of November, we are taking the conversation to universities and engineering
-                        institutions across India — free, open panel discussions on what AI is actually
-                        doing to their fields.
-                    </p>
-
-                    <div style="background:var(--off-white);border-radius:16px;padding:1.5rem 1.75rem;margin-bottom:1.75rem;border-left:3px solid var(--saffron);">
-                        <div style="font-size:0.75rem;font-weight:800;color:var(--saffron);text-transform:uppercase;letter-spacing:0.09em;margin-bottom:0.6rem;">Upcoming Panels</div>
-                        <div style="font-family:var(--font-display);font-size:1.25rem;font-weight:800;color:var(--charcoal);margin-bottom:0.9rem;line-height:1.3;">AI and Employability</div>
-                        <div style="display:flex;flex-direction:column;gap:0.6rem;font-size:0.88rem;font-weight:600;color:var(--dark-grey);">
-                            <span data-end="2026-09-21T12:30:00+05:30"><i class="fas fa-university" style="color:var(--saffron);margin-right:0.5rem;"></i> DJ Sanghvi College of Engineering, Mumbai <span style="color:var(--mid-grey);font-weight:500;">· 21 Sept</span></span>
-                            <span data-end="2026-09-30T16:30:00+05:30"><i class="fas fa-university" style="color:var(--saffron);margin-right:0.5rem;"></i> Jawaharlal Nehru University, New Delhi <span style="color:var(--mid-grey);font-weight:500;">· 30 Sept</span></span>
-                        </div>
-                    </div>
-
-                    <div style="display:flex;gap:0.85rem;flex-wrap:wrap;">
-                        <a href="/campus-series" class="btn btn-primary">See the Campus Series <i class="fas fa-arrow-right"></i></a>
-                        <a href="/insights" class="btn btn-outline"><i class="fas fa-file-lines"></i> Insights Reports &amp; Recordings</a>
-                        <a href="/campus-series#host" class="btn btn-outline">Host One at Your Campus</a>
+                    <div class="campus-btns">
+                        <a href="/campus-series" class="btn btn-primary">See the Campus Series <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
+                        <a href="/insights" class="btn btn-outline">Reports &amp; recordings</a>
                     </div>
                 </div>
-
-                <a href="/campus-jnu" class="reveal reveal-delay-1" style="display:block;border-radius:20px;overflow:hidden;box-shadow:var(--shadow-lg,0 20px 50px rgba(0,0,0,0.12));border:1px solid var(--light);">
-                    <img width="590" height="350" loading="lazy" decoding="async"
-                         src="images/campus-jnu-30sep.jpg"
-                         alt="AI and Employability pre-event panel discussion at Jawaharlal Nehru University, 30 September 2026"
-                         style="width:100%;height:auto;display:block;">
+                <a href="/campus-jnu" class="campus-photo reveal reveal-delay-1">
+                    <img width="590" height="350" loading="lazy" decoding="async" src="images/campus-jnu-30sep.jpg" alt="AI and Employability pre-event panel discussion at Jawaharlal Nehru University, 30 September 2026">
                 </a>
-
             </div>
-        </div>
-    </section>
-
-    <!-- ===== PRE-EVENT SPEAKERS (Campus Series panels, not the November stage) ===== -->
-    <section class="section-pad-sm" id="pre-event-speakers" style="background:var(--off-white);">
-        <div class="container">
-            <div class="section-header reveal">
-                <span class="section-eyebrow"><i class="fas fa-graduation-cap"></i> Campus Series</span>
-                <h2 class="section-title">Pre-Event <span class="accent">Speakers</span></h2>
-                <p class="section-subtitle">Ahead of 20&ndash;21 November we take the conversation to campuses. These are the panellists of the Campus Series sessions, not the conference stage &mdash; a sponsor can put their name on a panel before the main event begins.</p>
-            </div>
-            <div class="speakers-grid">
+            <details class="more campus-panel" id="pre-event-speakers">
+                <summary><span class="more-l">Meet the 9 panellists</span><span class="less">Hide the panellists</span></summary>
+                <div class="speakers-grid">
                     <div class="speaker-card reveal" style="text-align:center;align-items:center;">
                         <img width="320" height="320" loading="lazy" decoding="async" src="images/speaker-ashish-tendulkar-panel.webp" alt="Dr. Ashish Tendulkar, AI Practice Manager, Google" class="speaker-photo" style="aspect-ratio:1;border-radius:50%;width:132px;height:132px;margin:0 auto;object-fit:cover;">
                         <h4>Dr. Ashish Tendulkar</h4>
@@ -1845,11 +2037,8 @@
                         <p class="spk-org" style="font-size:0.76rem;">Education Times</p>
                         <span class="speaker-topic topic-policy" style="margin-top:0.5rem;display:inline-block;">JNU &middot; 30 Sep</span>
                     </div>
-            </div>
-            <div class="reveal" style="text-align:center;margin-top:2.5rem;">
-                <a href="/campus-series" class="btn btn-primary">See the Campus Series <i class="fas fa-arrow-right"></i></a>
-                <a href="/partner#options" class="btn btn-outline">Sponsor a Campus Panel</a>
-            </div>
+                </div>
+            </details>
         </div>
     </section>
 
@@ -1858,335 +2047,28 @@
         <div class="container">
             <div class="section-header reveal">
                 <h2 class="section-title">World Trade Center <span class="accent">Mumbai</span></h2>
-                <p class="section-subtitle">Mumbai's iconic business landmark at Cuffe Parade</p>
+                <p class="section-subtitle">Cuffe Parade, on Mumbai’s waterfront, minutes from South Mumbai’s hotels.</p>
             </div>
             <div class="venue-grid">
                 <div class="reveal">
                     <p class="venue-address"><i class="fas fa-map-marker-alt" style="color:var(--saffron);margin-right:0.5rem;"></i>World Trade Center Mumbai, Cuffe Parade, Mumbai, Maharashtra</p>
-                    <p class="venue-description">
-                        Located on Mumbai's stunning waterfront, the World Trade Center offers world-class conference halls, 
-                        premium networking spaces, and seamless connectivity to South Mumbai's luxury hotels and transit hubs.
-                    </p>
-                    <ul class="venue-highlights">
+                    <details class="more">
+                        <summary><span class="more-l">About the venue</span><span class="less">Less</span></summary>
+                        <ul class="venue-highlights">
                         <li>Premium auditorium and breakout rooms for attendees</li>
                         <li>Minutes from luxury hotels and business districts</li>
                         <li>Easy access from airport, metro, and rail links</li>
                         <li>Waterfront views and spacious networking lounges</li>
-                    </ul>
-                    <div style="margin-top:2rem;">
-                        <a href="https://maps.google.com/?q=World+Trade+Centre+Mumbai+Cuffe+Parade" target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-sm">Get Directions <i class="fas fa-arrow-right"></i></a>
+                        </ul>
+                    </details>
+                    <div class="venue-btns">
+                        <a href="https://maps.google.com/?q=World+Trade+Centre+Mumbai+Cuffe+Parade" target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-sm">Get Directions <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
+                        <a href="/accommodation" class="btn btn-outline btn-sm">Hotels nearby</a>
                     </div>
                 </div>
                 <div class="venue-images reveal reveal-delay-2">
                     <img width="975" height="425" src="img/YFp02g6j.jpg" alt="World Trade Center Mumbai main facade" loading="lazy">
                     <img width="640" height="640" src="img/4RMCtwTB.jpg" alt="World Trade Center Mumbai skyline at sunset" loading="lazy">
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- ===== WHY ATTEND ===== -->
-    <section class="why-attend">
-        <div class="container">
-            <div class="section-header reveal">
-                <h2 class="section-title">Why Attend <span class="accent">Bharat AI</span></h2>
-            </div>
-            <div class="benefits-grid">
-                <div class="benefit-card reveal reveal-delay-1">
-
-                    <h3>Network at Scale</h3>
-                    <p>Meet AI professionals, policymakers, investors and researchers — all under one roof at Bharat AI Innovation</p>
-                </div>
-                <div class="benefit-card reveal reveal-delay-2">
-
-                    <h3>See AI Running in Production</h3>
-                    <p>Walk a floor of live demonstrations — GenAI products, healthcare diagnostics, fintech fraud detection, and manufacturing automation built by companies already deploying in India</p>
-                </div>
-                <div class="benefit-card reveal reveal-delay-3">
-
-                    <h3>Government Policy Insights</h3>
-                    <p>Get first-hand information on India's AI policies, regulations, and ₹20,000 crore R&amp;D initiatives</p>
-                </div>
-                <div class="benefit-card reveal reveal-delay-1">
-
-                    <h3>Investment Opportunities</h3>
-                    <p>Explore funding opportunities, partnerships, and AWS's $8.3 billion investment in Maharashtra</p>
-                </div>
-                <div class="benefit-card reveal reveal-delay-2">
-
-                    <h3>Learn Across 10+ Tracks</h3>
-                    <p>Deep-dive into specialised conference tracks spanning AI research, ethics, governance, industry and startups</p>
-                </div>
-                <div class="benefit-card reveal reveal-delay-3">
-
-                    <h3>Showcase Your Innovation</h3>
-                    <p>Step onto the Innovation Stage, exhibit your solutions, and get your brand in front of India's AI decision-makers</p>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- ===== TARGET AUDIENCE ===== -->
-    <section style="padding:5.5rem 0;background:white;">
-        <div class="container">
-            <div class="audience-layout reveal">
-                <div class="audience-lead">
-                    <h2 class="section-title" style="text-align:left;margin-bottom:1rem;">Who attends <span class="accent">Bharat AI</span></h2>
-                    <p style="color:var(--dark-grey);font-size:1rem;line-height:1.7;max-width:360px;">Buyers, builders and policymakers &mdash; from IAS officers chairing AI committees to the founders selling into them. The full decision chain, in one building.</p>
-                    <div style="margin-top:2rem;">
-                        <a href="/register" class="btn btn-primary">Register Now <i class="fas fa-arrow-right"></i></a>
-                    </div>
-                </div>
-                <div class="audience-rows reveal reveal-delay-1">
-                    <div class="aud-row"><span class="aud-title">C-Suite &amp; Innovation Leaders</span><span class="aud-desc">CEOs, CTOs, CIOs, CDOs and procurement heads approving enterprise AI spend</span></div>
-                    <div class="aud-row"><span class="aud-title">Government &amp; Policy</span><span class="aud-desc">Ministries, state departments, regulators and public-sector CIOs &mdash; buyers as well as rule-makers</span></div>
-                    <div class="aud-row"><span class="aud-title">Startups &amp; Investors</span><span class="aud-desc">AI founders selling into enterprise, and the VCs and corporate venture arms backing them</span></div>
-                    <div class="aud-row"><span class="aud-title">Technology Professionals</span><span class="aud-desc">Data scientists, ML engineers, product managers, developers</span></div>
-                    <div class="aud-row"><span class="aud-title">AI Researchers &amp; Academics</span><span class="aud-desc">Faculty, PhD scholars, and R&amp;D teams across Indian institutions</span></div>
-                    <div class="aud-row"><span class="aud-title">Students &amp; Educators</span><span class="aud-desc">Engineering and management graduates entering the AI workforce</span></div>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- ===== NETWORKING (Delegate/VIP value) ===== -->
-    <section style="padding:5.5rem 0;background:white;" id="networking">
-        <div class="container">
-            <div class="section-header reveal">
-                <span class="section-eyebrow"><i class="fas fa-user-group"></i> Bharat AI Connect &middot; networking with Delegate, VIP &amp; Academic</span>
-                <h2 class="section-title">Meet the right people, <span class="accent">not just the crowd</span></h2>
-                <p class="section-subtitle">A full hall is only useful if you find your ten. <strong>Bharat AI Connect</strong> is the event&rsquo;s networking platform: it matches you to the people worth your two days — and lets you lock in the meeting before you arrive.</p>
-            </div>
-            <div class="benefits-grid">
-                <div class="feature-card reveal reveal-delay-1">
-                    <div class="feature-card-icon"><i class="fas fa-wand-magic-sparkles"></i></div>
-                    <h3>AI Matchmaking</h3>
-                    <p>Get ranked introductions based on your interests and role — founders matched to investors, exhibitors to buyers, researchers to collaborators.</p>
-                </div>
-                <div class="feature-card reveal reveal-delay-2">
-                    <div class="feature-card-icon"><i class="fas fa-calendar-check"></i></div>
-                    <h3>Book 1:1 Meetings</h3>
-                    <p>Request a slot, agree a time and place, and walk in with a schedule instead of hoping to bump into the right person.</p>
-                </div>
-                <div class="feature-card reveal reveal-delay-3">
-                    <div class="feature-card-icon"><i class="fas fa-address-book"></i></div>
-                    <h3>Attendee Directory</h3>
-                    <p>Search every attendee by name, company or role and see who&rsquo;s online. Any pass can browse; Delegate, VIP and Academic passes can message and connect.</p>
-                </div>
-            </div>
-            <div class="reveal reveal-delay-2" style="text-align:center;margin-top:2.75rem;">
-                <a href="/register#delegate" class="btn btn-primary btn-lg">Get a Delegate Pass &mdash; &#8377;4,999 + GST until 5 Nov <i class="fas fa-arrow-right"></i></a>
-                <p style="margin-top:0.85rem;font-size:0.8rem;color:var(--dark-grey);">Speakers from Google, PwC, Capgemini, Accenture and UIDAI &middot; 48 exhibitors on the floor plan &middot; 23 Innovation Talks &middot; &#8377;8,999 from 6 Nov. <span data-days-left="2026-11-05"></span></p>
-                <p style="margin-top:1rem;font-size:0.85rem;color:var(--dark-grey);">
-                    A free Visitor Pass lets you view attendees; its entry is not guaranteed and depends on slot availability on 20 and 21 Nov (a half-day slot, or none). Paid passes have guaranteed entry on both days; networking needs a Delegate, VIP or Academic pass.
-                    <a href="/app" style="color:var(--saffron);font-weight:600;">Already registered? Open Bharat AI Connect &rarr;</a>
-                </p>
-            </div>
-        </div>
-    </section>
-
-    <!-- ===== KEY THEMES ===== -->
-    <section style="padding:5.5rem 0;background:var(--off-white);">
-        <div class="container">
-            <div class="section-header reveal">
-                <h2 class="section-title"><span class="accent">10+</span> Conference Tracks</h2>
-                <p class="section-subtitle">Generative AI to governance, healthcare to agritech — the full depth of AI's impact on India</p>
-            </div>
-            <div class="tracks-tag-grid reveal">
-                <span class="track-tag">Generative AI &amp; LLMs</span>
-                <span class="track-tag">AI for Governance</span>
-                <span class="track-tag">Healthcare AI</span>
-                <span class="track-tag">Manufacturing AI</span>
-                <span class="track-tag">Agricultural AI</span>
-                <span class="track-tag">FinTech AI</span>
-                <span class="track-tag">AI Education</span>
-                <span class="track-tag">AI Ethics &amp; Policy</span>
-                <span class="track-tag">MLOps &amp; Infrastructure</span>
-                <span class="track-tag">AI Startups &amp; Funding</span>
-                <span class="track-tag">Agentic AI</span>
-                <span class="track-tag">IndiaAI Mission</span>
-            </div>
-            <div style="text-align:center;margin-top:2.5rem;">
-                <a href="/conference" class="btn btn-outline">View Full Programme <i class="fas fa-arrow-right"></i></a>
-            </div>
-        </div>
-    </section>
-
-    <!-- ===== PAST GALLERY ===== -->
-    <section class="past-gallery" id="past-gallery">
-        <div class="container">
-            <div class="section-header reveal">
-                <h2 class="section-title">From the <span class="accent">Stage</span></h2>
-                <p class="section-subtitle">Moments from Data Science Congress — the predecessor to Bharat AI Innovation</p>
-            </div>
-            <div class="gallery-grid">
-                <figure class="gallery-card reveal">
-                    <img width="1024" height="683" src="img/oIGfmq8T.jpg" alt="Opening keynote stage with event branding" loading="lazy">
-                    <figcaption>Opening Keynote Stage</figcaption>
-                </figure>
-                <figure class="gallery-card reveal reveal-delay-1">
-                    <img width="1024" height="683" src="img/XYFamTjB.jpg" alt="AI researcher delivering a keynote session" loading="lazy">
-                    <figcaption>AI Research Keynote</figcaption>
-                </figure>
-                <figure class="gallery-card reveal reveal-delay-2">
-                    <img width="1024" height="683" src="img/sx04jhlV.jpg" alt="Industry leader presenting on stage" loading="lazy">
-                    <figcaption>Leadership Address</figcaption>
-                </figure>
-                <figure class="gallery-card reveal reveal-delay-3">
-                    <img width="1024" height="683" src="img/3swgeyOb.jpg" alt="Expert speaker leading a technical talk" loading="lazy">
-                    <figcaption>Technical Deep Dive</figcaption>
-                </figure>
-                <figure class="gallery-card reveal reveal-delay-1">
-                    <img width="1024" height="683" src="img/G2kIKD4Y.jpg" alt="Main stage spotlight with data visuals" loading="lazy">
-                    <figcaption>Main Stage Spotlight</figcaption>
-                </figure>
-                <figure class="gallery-card reveal reveal-delay-2">
-                    <img width="1024" height="683" src="img/IseXJc9a.jpg" alt="Panel discussion on data science in e-commerce and retail" loading="lazy">
-                    <figcaption>Panel Discussion</figcaption>
-                </figure>
-                <figure class="gallery-card reveal reveal-delay-3">
-                    <img width="1024" height="683" src="img/FSwgFC1Q.jpg" alt="Speaker presenting on stage with data visuals" loading="lazy">
-                    <figcaption>Data Insights Talk</figcaption>
-                </figure>
-                <figure class="gallery-card reveal reveal-delay-4">
-                    <img width="1024" height="768" src="img/7PN2Sjyw.jpg" alt="Conference registration lobby and networking area" loading="lazy">
-                    <figcaption>Registration &amp; Networking</figcaption>
-                </figure>
-                <figure class="gallery-card reveal reveal-delay-1">
-                    <img width="1024" height="683" src="img/ziOcVT9u.jpg" alt="Conference session with live audience engagement" loading="lazy">
-                    <figcaption>Interactive Session</figcaption>
-                </figure>
-                <figure class="gallery-card reveal reveal-delay-2">
-                    <img width="1024" height="683" src="img/M0pjzJb1.jpg" alt="Data scientist presenting on stage" loading="lazy">
-                    <figcaption>Data Science Talk</figcaption>
-                </figure>
-                <figure class="gallery-card reveal reveal-delay-3">
-                    <img width="1024" height="683" src="img/WkdpnU9p.jpg" alt="Speaker presenting at Aegis Data Science conference" loading="lazy">
-                    <figcaption>Industry Speaker</figcaption>
-                </figure>
-                <figure class="gallery-card reveal reveal-delay-4">
-                    <img width="1024" height="683" src="img/fhk60Z58.jpg" alt="NVIDIA Managing Director presenting on stage" loading="lazy">
-                    <figcaption>Technology Leadership</figcaption>
-                </figure>
-                <figure class="gallery-card reveal reveal-delay-1">
-                    <img width="1024" height="683" src="img/u8AQyE20.jpg" alt="Government minister delivering keynote address" loading="lazy">
-                    <figcaption>Government Keynote</figcaption>
-                </figure>
-                <figure class="gallery-card reveal reveal-delay-2">
-                    <img width="1024" height="683" src="img/GiqsZVsx.jpg" alt="NVIDIA exhibition booth at Data Science Congress" loading="lazy">
-                    <figcaption>Innovation Showcase</figcaption>
-                </figure>
-                <figure class="gallery-card reveal reveal-delay-3">
-                    <img width="1024" height="683" src="img/5rwd54S2.jpg" alt="Speaker sharing insights from the podium" loading="lazy">
-                    <figcaption>Expert Address</figcaption>
-                </figure>
-                <figure class="gallery-card reveal reveal-delay-4">
-                    <img width="1024" height="683" src="img/qaOYFZfB.jpg" alt="Panel discussion on women in data science" loading="lazy">
-                    <figcaption>Women in Data Science</figcaption>
-                </figure>
-                <figure class="gallery-card reveal reveal-delay-1">
-                    <img width="1024" height="683" src="img/Mw680XyB.jpg" alt="Panelist speaking during a leadership discussion" loading="lazy">
-                    <figcaption>Leadership Panel</figcaption>
-                </figure>
-                <figure class="gallery-card reveal reveal-delay-2">
-                    <img width="1024" height="683" src="img/CrqPzMWZ.jpg" alt="Audience members attending a breakout session" loading="lazy">
-                    <figcaption>Audience Engagement</figcaption>
-                </figure>
-                <figure class="gallery-card reveal reveal-delay-3">
-                    <img width="1024" height="683" src="img/lQr1QV9W.jpg" alt="Speaker presenting technical session with data visuals" loading="lazy">
-                    <figcaption>Technical Session</figcaption>
-                </figure>
-            </div>
-        </div>
-    </section>
-
-    <!-- ===== CTA ===== -->
-    <section class="registration-cta" id="registration">
-        <div class="registration-cta-orb cta-orb-1"></div>
-        <div class="registration-cta-orb cta-orb-2"></div>
-        <div class="container">
-            <div class="cta-content reveal">
-                <h2>Nov 20–21, 2026. <span class="accent">Be There.</span></h2>
-                <p>Policymakers, CXOs, investors, and researchers — all in one building, two days. Delegate Pass &#8377;4,999 + GST until 5 Nov, with guaranteed entry on both days. A free Visitor Pass covers the exhibition floor; entry is not guaranteed (by slot availability on 20 and 21 Nov, confirmed by email). <span data-days-left="2026-11-05"></span></p>
-                <div class="cta-buttons">
-                    <a href="/register#delegate" class="btn btn-primary btn-xl">
-                        Get a Delegate Pass <i class="fas fa-arrow-right"></i>
-                    </a>
-                    <a href="/register" class="btn btn-ghost btn-xl">
-                        Free Visitor Pass
-                    </a>
-                    <a href="/exhibition" class="btn btn-ghost btn-xl">
-                        Book Exhibit Space
-                    </a>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- ===== SEO CONTENT SECTION ===== -->
-    <section style="position:relative;background:linear-gradient(135deg, #0D0F1A 0%, #1A1F3C 50%, #0D0F1A 100%);padding:5rem 0;overflow:hidden;">
-        <div style="position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.025) 1px,transparent 1px);background-size:60px 60px;"></div>
-        <div style="position:absolute;top:-20%;left:-10%;width:500px;height:500px;border-radius:50%;background:radial-gradient(circle,rgba(255,107,0,0.06) 0%,transparent 70%);"></div>
-        <div style="position:absolute;bottom:-20%;right:-10%;width:400px;height:400px;border-radius:50%;background:radial-gradient(circle,rgba(43,140,255,0.05) 0%,transparent 70%);"></div>
-        <div class="container" style="position:relative;z-index:1;">
-            <div style="max-width:1100px;margin:0 auto;">
-                <div class="seo-editorial-grid reveal" style="display:grid;grid-template-columns:1.1fr 0.9fr;gap:5rem;align-items:start;">
-                    <div>
-                        <h2 style="font-family:var(--font-display);font-size:clamp(1.4rem,2.2vw,1.85rem);font-weight:900;color:white;margin:0 0 1.5rem;line-height:1.2;">Bharat AI Innovation Conference &amp; Exhibition 2026</h2>
-                        <p style="color:rgba(255,255,255,0.6);font-size:0.9rem;line-height:1.85;margin:0 0 1.25rem;">Bharat AI Innovation 2026 is a leading <strong style="color:rgba(255,255,255,0.85);">artificial intelligence conference and exhibition</strong> in India, bringing together top researchers, founders, CXOs, and policymakers. Scheduled for <strong style="color:#FF8C40;">November 20–21, 2026</strong> at the <strong style="color:rgba(255,255,255,0.85);">World Trade Center Mumbai</strong>, the event spans  across 8 dedicated industry zones.</p>
-                        <p style="color:rgba(255,255,255,0.6);font-size:0.9rem;line-height:1.85;margin:0 0 1.25rem;">The conference features <strong style="color:rgba(255,255,255,0.85);">10+ specialized tracks</strong> covering <strong style="color:#FF8C40;">Generative AI (GenAI)</strong>, <strong style="color:#FF8C40;">Large Language Models (LLMs)</strong>, AI for Healthcare, FinTech AI, Manufacturing AI, and AgriTech. Researchers, startups, enterprise leaders, and government policymakers come together to connect, collaborate, and build India's AI future.</p>
-                        <p style="color:rgba(255,255,255,0.6);font-size:0.9rem;line-height:1.85;margin:0;">Startups pitch on the Innovation Stage before investors and enterprise decision-makers. Hands-on <strong style="color:rgba(255,255,255,0.85);">training workshops</strong> cover <strong style="color:#FF8C40;">GenAI development</strong>, <strong style="color:#FF8C40;">LLM fine-tuning</strong>, AI chatbot creation, recommender systems, and advanced machine learning. Visitor passes are free; Delegate, Academic and VIP passes are available now.</p>
-                    </div>
-                    <div>
-                        <h3 style="font-family:var(--font-display);font-size:0.75rem;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.3);margin:0 0 1.5rem;">Event at a Glance</h3>
-                        <div style="display:flex;flex-direction:column;gap:1.25rem;margin-bottom:2.5rem;">
-                            <div style="display:flex;gap:1rem;">
-                                <span style="width:2px;background:var(--saffron);border-radius:2px;flex-shrink:0;align-self:stretch;min-height:1rem;"></span>
-                                <div>
-                                    <span style="font-size:0.75rem;font-weight:700;color:rgba(255,255,255,0.4);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.06em;">Date</span>
-                                    <span style="color:rgba(255,255,255,0.85);font-size:0.88rem;">November 20–21, 2026</span>
-                                </div>
-                            </div>
-                            <div style="display:flex;gap:1rem;">
-                                <span style="width:2px;background:var(--saffron);border-radius:2px;flex-shrink:0;align-self:stretch;min-height:1rem;"></span>
-                                <div>
-                                    <span style="font-size:0.75rem;font-weight:700;color:rgba(255,255,255,0.4);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.06em;">Venue</span>
-                                    <span style="color:rgba(255,255,255,0.85);font-size:0.88rem;">World Trade Center Mumbai, Cuffe Parade</span>
-                                </div>
-                            </div>
-                            <div style="display:flex;gap:1rem;">
-                                <span style="width:2px;background:var(--saffron);border-radius:2px;flex-shrink:0;align-self:stretch;min-height:1rem;"></span>
-                                <div>
-                                    <span style="font-size:0.75rem;font-weight:700;color:rgba(255,255,255,0.4);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.06em;">Exhibition Floor</span>
-                                    <span style="color:rgba(255,255,255,0.85);font-size:0.88rem;">8 Industry Zones · 93 Booths</span>
-                                </div>
-                            </div>
-                            <div style="display:flex;gap:1rem;">
-                                <span style="width:2px;background:var(--saffron);border-radius:2px;flex-shrink:0;align-self:stretch;min-height:1rem;"></span>
-                                <div>
-                                    <span style="font-size:0.75rem;font-weight:700;color:rgba(255,255,255,0.4);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.06em;">Speakers</span>
-                                    <span style="color:rgba(255,255,255,0.85);font-size:0.88rem;">Leaders from Google, PwC, Capgemini, Accenture, Govt of Maharashtra</span>
-                                </div>
-                            </div>
-                            <div style="display:flex;gap:1rem;">
-                                <span style="width:2px;background:var(--saffron);border-radius:2px;flex-shrink:0;align-self:stretch;min-height:1rem;"></span>
-                                <div>
-                                    <span style="font-size:0.75rem;font-weight:700;color:rgba(255,255,255,0.4);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.06em;">Passes</span>
-                                    <span style="color:rgba(255,255,255,0.85);font-size:0.88rem;">Visitor (Free, entry not guaranteed) · Academic (₹999) · Delegate (₹4,999) · Premium Delegate (₹9,999) · VIP (₹19,999) · paid passes + GST, guaranteed entry · prices rise on 6 Nov</span>
-                                </div>
-                            </div>
-                            <div style="display:flex;gap:1rem;">
-                                <span style="width:2px;background:var(--saffron);border-radius:2px;flex-shrink:0;align-self:stretch;min-height:1rem;"></span>
-                                <div>
-                                    <span style="font-size:0.75rem;font-weight:700;color:rgba(255,255,255,0.4);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.06em;">Organised by</span>
-                                    <span style="color:rgba(255,255,255,0.85);font-size:0.88rem;">Aegis Knowledge Trust · info@bharataiinnovation.com</span>
-                                </div>
-                            </div>
-                        </div>
-                        <a href="/register" style="display:inline-flex;align-items:center;gap:0.5rem;background:rgba(255,107,0,0.1);border:1px solid rgba(255,107,0,0.25);border-radius:8px;padding:0.75rem 1.5rem;color:#FF8C40;font-size:0.88rem;font-weight:700;text-decoration:none;">
-                            Register for the event <i class="fas fa-arrow-right" aria-hidden="true"></i>
-                        </a>
-                    </div>
                 </div>
             </div>
         </div>
@@ -2257,6 +2139,101 @@
                         </summary>
                         <p style="margin-top:1rem;color:rgba(255,255,255,0.55);line-height:1.8;padding-left:2rem;font-size:0.9rem;">The event takes place at World Trade Center Mumbai, Cuffe Parade, Mumbai, Maharashtra. The venue is centrally located with excellent connectivity, close to luxury hotels, and offers world-class conference facilities with stunning waterfront views.</p>
                     </details>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== SEO CONTENT SECTION ===== -->
+    <section style="position:relative;background:linear-gradient(135deg, #0D0F1A 0%, #1A1F3C 50%, #0D0F1A 100%);padding:5rem 0;overflow:hidden;">
+        <div style="position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.025) 1px,transparent 1px);background-size:60px 60px;"></div>
+        <div style="position:absolute;top:-20%;left:-10%;width:500px;height:500px;border-radius:50%;background:radial-gradient(circle,rgba(255,107,0,0.06) 0%,transparent 70%);"></div>
+        <div style="position:absolute;bottom:-20%;right:-10%;width:400px;height:400px;border-radius:50%;background:radial-gradient(circle,rgba(43,140,255,0.05) 0%,transparent 70%);"></div>
+        <div class="container" style="position:relative;z-index:1;">
+            <div style="max-width:1100px;margin:0 auto;">
+                <div class="seo-editorial-grid reveal" style="display:grid;grid-template-columns:1.1fr 0.9fr;gap:5rem;align-items:center;">
+                    <div>
+                        <h2 style="font-family:var(--font-display);font-size:clamp(1.4rem,2.2vw,1.85rem);font-weight:900;color:white;margin:0 0 1.5rem;line-height:1.2;">Bharat AI Innovation Conference &amp; Exhibition 2026</h2>
+                        <details class="more more-dark">
+                            <summary><span class="more-l">Read about the event</span><span class="less">Show less</span></summary>
+                            <p style="color:rgba(255,255,255,0.6);font-size:0.9rem;line-height:1.85;margin:0 0 1.25rem;">Bharat AI Innovation 2026 is a leading <strong style="color:rgba(255,255,255,0.85);">artificial intelligence conference and exhibition</strong> in India, bringing together top researchers, founders, CXOs, and policymakers. Scheduled for <strong style="color:#FF8C40;">November 20–21, 2026</strong> at the <strong style="color:rgba(255,255,255,0.85);">World Trade Center Mumbai</strong>, the event spans  across 8 dedicated industry zones.</p>
+                        <p style="color:rgba(255,255,255,0.6);font-size:0.9rem;line-height:1.85;margin:0 0 1.25rem;">The conference features <strong style="color:rgba(255,255,255,0.85);">10+ specialized tracks</strong> covering <strong style="color:#FF8C40;">Generative AI (GenAI)</strong>, <strong style="color:#FF8C40;">Large Language Models (LLMs)</strong>, AI for Healthcare, FinTech AI, Manufacturing AI, and AgriTech. Researchers, startups, enterprise leaders, and government policymakers come together to connect, collaborate, and build India's AI future.</p>
+                        <p style="color:rgba(255,255,255,0.6);font-size:0.9rem;line-height:1.85;margin:0;">Startups pitch on the Innovation Stage before investors and enterprise decision-makers. Hands-on <strong style="color:rgba(255,255,255,0.85);">training workshops</strong> cover <strong style="color:#FF8C40;">GenAI development</strong>, <strong style="color:#FF8C40;">LLM fine-tuning</strong>, AI chatbot creation, recommender systems, and advanced machine learning. Visitor passes are free; Delegate, Academic and VIP passes are available now.</p>
+                        </details>
+                    </div>
+                    <div>
+                        <h3 style="font-family:var(--font-display);font-size:0.75rem;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.3);margin:0 0 1.5rem;">Event at a Glance</h3>
+                        <div style="display:flex;flex-direction:column;gap:1.25rem;margin-bottom:2.5rem;">
+                            <div style="display:flex;gap:1rem;">
+                                <span style="width:2px;background:var(--saffron);border-radius:2px;flex-shrink:0;align-self:stretch;min-height:1rem;"></span>
+                                <div>
+                                    <span style="font-size:0.75rem;font-weight:700;color:rgba(255,255,255,0.4);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.06em;">Date</span>
+                                    <span style="color:rgba(255,255,255,0.85);font-size:0.88rem;">November 20–21, 2026</span>
+                                </div>
+                            </div>
+                            <div style="display:flex;gap:1rem;">
+                                <span style="width:2px;background:var(--saffron);border-radius:2px;flex-shrink:0;align-self:stretch;min-height:1rem;"></span>
+                                <div>
+                                    <span style="font-size:0.75rem;font-weight:700;color:rgba(255,255,255,0.4);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.06em;">Venue</span>
+                                    <span style="color:rgba(255,255,255,0.85);font-size:0.88rem;">World Trade Center Mumbai, Cuffe Parade</span>
+                                </div>
+                            </div>
+                            <div style="display:flex;gap:1rem;">
+                                <span style="width:2px;background:var(--saffron);border-radius:2px;flex-shrink:0;align-self:stretch;min-height:1rem;"></span>
+                                <div>
+                                    <span style="font-size:0.75rem;font-weight:700;color:rgba(255,255,255,0.4);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.06em;">Exhibition Floor</span>
+                                    <span style="color:rgba(255,255,255,0.85);font-size:0.88rem;">8 Industry Zones · 93 Booths</span>
+                                </div>
+                            </div>
+                            <div style="display:flex;gap:1rem;">
+                                <span style="width:2px;background:var(--saffron);border-radius:2px;flex-shrink:0;align-self:stretch;min-height:1rem;"></span>
+                                <div>
+                                    <span style="font-size:0.75rem;font-weight:700;color:rgba(255,255,255,0.4);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.06em;">Speakers</span>
+                                    <span style="color:rgba(255,255,255,0.85);font-size:0.88rem;">Leaders from Google, PwC, Capgemini, Accenture, Govt of Maharashtra</span>
+                                </div>
+                            </div>
+                            <div style="display:flex;gap:1rem;">
+                                <span style="width:2px;background:var(--saffron);border-radius:2px;flex-shrink:0;align-self:stretch;min-height:1rem;"></span>
+                                <div>
+                                    <span style="font-size:0.75rem;font-weight:700;color:rgba(255,255,255,0.4);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.06em;">Passes</span>
+                                    <span style="color:rgba(255,255,255,0.85);font-size:0.88rem;">Visitor (Free, entry not guaranteed) · Academic (₹999) · Delegate (₹4,999) · Premium Delegate (₹9,999) · VIP (₹19,999) · paid passes + GST, guaranteed entry · prices rise on 6 Nov</span>
+                                </div>
+                            </div>
+                            <div style="display:flex;gap:1rem;">
+                                <span style="width:2px;background:var(--saffron);border-radius:2px;flex-shrink:0;align-self:stretch;min-height:1rem;"></span>
+                                <div>
+                                    <span style="font-size:0.75rem;font-weight:700;color:rgba(255,255,255,0.4);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.06em;">Organised by</span>
+                                    <span style="color:rgba(255,255,255,0.85);font-size:0.88rem;">Aegis Knowledge Trust · info@bharataiinnovation.com</span>
+                                </div>
+                            </div>
+                        </div>
+                        <a href="/register" style="display:inline-flex;align-items:center;gap:0.5rem;background:rgba(255,107,0,0.1);border:1px solid rgba(255,107,0,0.25);border-radius:8px;padding:0.75rem 1.5rem;color:#FF8C40;font-size:0.88rem;font-weight:700;text-decoration:none;">
+                            Register for the event <i class="fas fa-arrow-right" aria-hidden="true"></i>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== CTA ===== -->
+    <section class="registration-cta" id="registration">
+        <div class="registration-cta-orb cta-orb-1"></div>
+        <div class="registration-cta-orb cta-orb-2"></div>
+        <div class="container">
+            <div class="cta-content reveal">
+                <h2>Show what you can do <span class="accent">for Bharat with AI.</span></h2>
+                <p>20–21 Nov 2026, World Trade Center Mumbai. Delegate Pass &#8377;4,999 + GST until 5 Nov, with guaranteed entry on both days. <span data-days-left="2026-11-05"></span></p>
+                <div class="cta-buttons">
+                    <a href="/register#delegate" class="btn btn-primary btn-xl">
+                        Get my Delegate Pass <i class="fas fa-arrow-right" aria-hidden="true"></i>
+                    </a>
+                    <a href="/register" class="btn btn-ghost btn-xl">
+                        Free Visitor Pass
+                    </a>
+                    <a href="/exhibition" class="btn btn-ghost btn-xl">
+                        Book a booth
+                    </a>
                 </div>
             </div>
         </div>
@@ -2346,121 +2323,91 @@
     })();
     </script>
     <script defer src="js/main.js?v=20261029"></script>
-    <script defer src="js/carousel.js?v=20261027"></script>
     <!-- images loaded directly from img/ folder -->
 
-    <!-- Neural globe background. Drawn only while the hero is on screen, the
-         lines in a dozen batched strokes, 30 frames a second on a phone, and a
-         single still frame for anyone whose device has animations turned off.
-         The first version stroked each of its ~900 lines on its own 60 times a
-         second for as long as the page was open, and kept a mid-range phone's
-         processor about 95% busy; measured 27 Oct 2026. -->
+    <!-- The offer that follows the reader once the hero has scrolled away -->
+    <aside class="sticky-cta" id="stickyCta" aria-label="Delegate Pass">
+        <div class="sticky-cta-text"><b>Delegate Pass &#8377;4,999</b><span>+ GST &middot; &#8377;8,999 from 6 Nov</span></div>
+        <a href="/register#delegate" class="btn btn-primary" tabindex="-1">Get my pass</a>
+    </aside>
+
     <script>
-    (function(){
-      'use strict';
-      var cv=document.getElementById('heroGlobe');
-      if(!cv)return;
-      var ctx=cv.getContext('2d');
-      var N=150,SPD=0.00020,THR=0.52,STEPS=12;
-      var PHI=Math.PI*(3-Math.sqrt(5));
-      var pts=[];
-      for(var i=0;i<N;i++){
-        var yv=1-(i/(N-1))*2,rv=Math.sqrt(1-yv*yv),tv=PHI*i;
-        pts.push({x:Math.cos(tv)*rv,y:yv,z:Math.sin(tv)*rv});
-      }
-      function resize(){
-        // Measure the hero section, not .hero-bg (which is position:absolute)
-        var hero=cv.parentElement.parentElement;
-        cv.width=hero.clientWidth||window.innerWidth;
-        cv.height=hero.clientHeight||window.innerHeight;
-      }
-      var ang=0,prev=0,last=0,running=false;
-      function draw(){
-        var W=cv.width,H=cv.height;
-        var mob=W<600;
-        var centX=W*.5,centY=H*(mob?.38:.5);
-        var R=Math.min(W,H)*(mob?.36:.40);
-        ctx.clearRect(0,0,W,H);
-        var ca=Math.cos(ang),sa=Math.sin(ang);
-        var q=pts.map(function(p){
-          var rx=p.x*ca-p.z*sa,rz=p.x*sa+p.z*ca,ry=p.y;
-          var d=(rz+1.18)/2.36;
-          return{sx:centX+rx*R,sy:centY+ry*R,d:d,rx:rx,ry:ry,rz:rz};
+    // Hero frames: frame 1 is in the HTML; the other six load once the page has,
+    // and the crossfade starts only when all of them can be shown (.is-rolling).
+    // A frame that fails takes frame 1's picture, so the loop never shows a gap.
+    (function () {
+      var bg = document.querySelector('.hero-bg');
+      if (!bg) return;
+      var c = navigator.connection;
+      if (c && (c.saveData || /(^|-)2g$/.test(c.effectiveType || ''))) return;
+      var firstSrc = bg.querySelector('.hero-bg-photo').getAttribute('src');
+      function go() {
+        var waits = Array.prototype.map.call(bg.querySelectorAll('img[data-src]'), function (img) {
+          img.src = img.getAttribute('data-src');
+          img.removeAttribute('data-src');
+          return (img.decode ? img.decode() : Promise.resolve()).catch(function () { img.src = firstSrc; });
         });
-        // Saffron connecting lines, gathered by brightness into STEPS batches
-        // and stroked once per batch.
-        var buckets=[];
-        for(var s=0;s<STEPS;s++)buckets.push([]);
-        for(var i=0;i<N;i++){
-          for(var j=i+1;j<N;j++){
-            var dx=q[i].rx-q[j].rx,dy=q[i].ry-q[j].ry,dz=q[i].rz-q[j].rz;
-            var d2=dx*dx+dy*dy+dz*dz;
-            if(d2>=THR*THR)continue;
-            var a=(1-Math.sqrt(d2)/THR)*Math.min(q[i].d,q[j].d)*.55;
-            if(a<.02)continue;
-            buckets[Math.min(STEPS-1,Math.floor(a/.55*STEPS))].push(i,j);
-          }
-        }
-        ctx.lineWidth=.8;
-        for(var b=0;b<STEPS;b++){
-          var seg=buckets[b];
-          if(!seg.length)continue;
-          ctx.beginPath();
-          for(var m=0;m<seg.length;m+=2){
-            ctx.moveTo(q[seg[m]].sx,q[seg[m]].sy);
-            ctx.lineTo(q[seg[m+1]].sx,q[seg[m+1]].sy);
-          }
-          ctx.strokeStyle='rgba(255,120,40,'+((b+.5)/STEPS*.55).toFixed(3)+')';
-          ctx.stroke();
-        }
-        // White dots (visible against dark blue gradient), gathered by
-        // brightness the same way: ten fills instead of one per dot.
-        var dots=[];
-        for(var s=0;s<10;s++)dots.push([]);
-        for(var k=0;k<N;k++){
-          dots[Math.min(9,Math.floor(Math.max(.08,q[k].d*.92)*10))].push(k);
-        }
-        for(var b=0;b<10;b++){
-          var set=dots[b];
-          if(!set.length)continue;
-          ctx.beginPath();
-          for(var m=0;m<set.length;m++){
-            var pt=q[set[m]],r=Math.max(1,pt.d*3.5);
-            ctx.moveTo(pt.sx+r,pt.sy);
-            ctx.arc(pt.sx,pt.sy,r,0,6.283);
-          }
-          ctx.fillStyle='rgba(255,255,255,'+((b+.5)/10).toFixed(3)+')';
-          ctx.fill();
-        }
+        Promise.all(waits).then(function () { bg.classList.add('is-rolling'); });
       }
-      function frame(ts){
-        if(!running)return;
-        var dt=Math.min(ts-prev,100);prev=ts;
-        ang+=SPD*dt;
-        // A phone draws 30 frames a second: on a slow drift the eye cannot tell
-        // it from 60, for half the work.
-        if(cv.width<600&&ts-last<30){requestAnimationFrame(frame);return;}
-        last=ts;
-        draw();
-        requestAnimationFrame(frame);
-      }
-      function start(){
-        if(running)return;
-        running=true;
-        requestAnimationFrame(function(t){prev=t;last=0;requestAnimationFrame(frame);});
-      }
-      function stop(){running=false;}
-      window.addEventListener('resize',function(){resize();if(!running)draw();},{passive:true});
-      resize();
-      // Animations turned off on the device: one still globe, drawn once.
-      if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches){draw();return;}
-      // Only while the hero is on screen; scrolled past, the drawing stops and
-      // the processor is the page's again.
-      if('IntersectionObserver' in window){
-        new IntersectionObserver(function(es){
-          for(var e=0;e<es.length;e++){if(es[e].isIntersecting)start();else stop();}
-        }).observe(cv);
-      }else start();
+      if (document.readyState === 'complete') setTimeout(go, 200);
+      else window.addEventListener('load', function () { setTimeout(go, 200); });
+    })();
+
+    // "See all": a grid with data-show="<phone>,<wide>" shows that many children
+    // and hides the rest until its button (data-show-all="<grid id>") is pressed.
+    // Without this script every item is simply shown.
+    (function () {
+      var wide = window.matchMedia('(min-width: 768px)').matches;
+      document.querySelectorAll('[data-show]').forEach(function (box) {
+        var btn = document.querySelector('[data-show-all="' + box.id + '"]');
+        var n = box.getAttribute('data-show').split(',');
+        var limit = parseInt(wide ? (n[1] || n[0]) : n[0], 10);
+        var items = Array.prototype.slice.call(box.children);
+        if (!btn || items.length <= limit) return;
+        items.forEach(function (el, i) { if (i >= limit) el.classList.add('more-item'); });
+        box.classList.add('is-collapsed');
+        var label = btn.querySelector('.show-label');
+        var more = btn.getAttribute('data-more').replace('{n}', items.length);
+        label.textContent = more;
+        btn.hidden = false;
+        btn.addEventListener('click', function () {
+          var open = box.classList.toggle('is-collapsed') === false;
+          btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+          label.textContent = open ? btn.getAttribute('data-less') : more;
+          if (open) {
+            var next = items[limit];
+            if (next) { next.setAttribute('tabindex', '-1'); next.focus({ preventScroll: true }); }
+          } else {
+            var top = box.getBoundingClientRect().top + window.pageYOffset - 100;
+            if (window.pageYOffset > top) window.scrollTo(0, top);
+          }
+        });
+      });
+    })();
+
+    // The offer bar: on once the hero's offer has scrolled away, off again while
+    // the comparison table, the closing call or the footer is
+    // on screen, so it never sits on top of the thing it points to.
+    (function () {
+      var bar = document.getElementById('stickyCta');
+      if (!bar || !('IntersectionObserver' in window)) return;
+      var link = bar.querySelector('a');
+      var watch = ['.hero-offer', '#compare .pc', '#registration', '.footer'];
+      var seen = {}, pastHero = false;
+      var io = new IntersectionObserver(function (es) {
+        es.forEach(function (e) {
+          seen[e.target.getAttribute('data-sticky-key')] = e.isIntersecting;
+          if (e.target.classList.contains('hero-offer') && !e.isIntersecting) pastHero = e.boundingClientRect.top < 0;
+        });
+        var on = pastHero && !Object.keys(seen).some(function (k) { return seen[k]; });
+        bar.classList.toggle('is-on', on);
+        link.tabIndex = on ? 0 : -1;
+        bar.setAttribute('aria-hidden', on ? 'false' : 'true');
+      });
+      watch.forEach(function (sel, i) {
+        var el = document.querySelector(sel);
+        if (el) { el.setAttribute('data-sticky-key', 'k' + i); io.observe(el); }
+      });
     })();
     </script>
 
