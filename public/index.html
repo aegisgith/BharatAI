@@ -920,6 +920,7 @@
             <img class="hero-bg-photo" width="1600" height="1066" decoding="async" data-src="img/hero-6.webp" alt="">
             <img class="hero-bg-photo" width="1600" height="1066" decoding="async" data-src="img/hero-7.webp" alt="">
             <div class="hero-bg-scrim"></div>
+            <canvas id="heroGlobe" aria-hidden="true"></canvas>
         </div>
 
         <div class="hero-content">
@@ -969,6 +970,66 @@
             </div>
         </div>
     </div>
+
+    <!-- ===== PM MODI VISION QUOTE ===== -->
+    <section class="pm-vision-section section-pad-sm" id="pm-vision">
+        <div class="pm-vision-bg-pattern"></div>
+        <div class="container">
+            <div class="pm-vision-card reveal">
+                <div class="pm-vision-media">
+                    <div class="pm-vision-img-frame">
+                        <img width="1024" height="653" loading="lazy" decoding="async" src="images/pm-modi.jpg" alt="Shri Narendra Modi, Hon'ble Prime Minister of India, speaking on Artificial Intelligence">
+                    </div>
+                </div>
+                <div class="pm-vision-content">
+                    <div class="pm-vision-quote-mark"><i class="fas fa-quote-left"></i></div>
+                    <blockquote class="pm-vision-quote">
+                        Artificial Intelligence represents a transformation of the same magnitude as historic turning points in human civilization.
+                    </blockquote>
+                    <div class="pm-vision-attribution">
+                        <div class="pm-vision-name">Narendra Modi</div>
+                        <div class="pm-vision-title">Hon'ble Prime Minister of India</div>
+                    </div>
+                    <div class="pm-vision-divider"></div>
+                    <p class="pm-vision-inspired">
+                        This conference is built on PM Modi's conviction that AI must strengthen innovation, empower citizens, and drive inclusive growth across every sector of the Indian economy.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== CM FADNAVIS STATE LEADERSHIP ===== -->
+    <section class="cm-vision-section section-pad-sm" id="cm-vision">
+        <div class="cm-vision-bg-pattern"></div>
+        <div class="container">
+            <div class="section-header reveal" style="margin-bottom:2rem;">
+                <h2 class="section-title" style="color:#fff;">Maharashtra's <span class="accent">AI Leadership</span></h2>
+            </div>
+            <div class="cm-vision-card reveal">
+                <div class="cm-vision-media">
+                    <div class="cm-vision-img-frame">
+                        <img width="1024" height="576" loading="lazy" decoding="async" src="images/devendra-fadnavis.jpg" alt="Shri Devendra Fadnavis, Hon'ble Chief Minister of Maharashtra">
+                    </div>
+                </div>
+                <div class="cm-vision-content">
+                    <div class="cm-vision-highlight-box">
+                        <i class="fas fa-database"></i>
+                        <p>"Within three years, Maharashtra will be a world leader in the data center space, powered increasingly by green energy."</p>
+                    </div>
+                    <div class="cm-vision-quote-mark"><i class="fas fa-quote-left"></i></div>
+                    <blockquote class="cm-vision-quote">
+                        AI in farming must not remain confined to demonstrations or pilots. It must reach millions.
+                    </blockquote>
+                    <div class="cm-vision-attribution">
+                        <div class="cm-vision-name">Devendra Fadnavis</div>
+                        <div class="cm-vision-title">Hon'ble Chief Minister</div>
+                        <div class="cm-vision-subtitle">Government of Maharashtra</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
 
     <!-- ===== THE PEOPLE ON THE STAGE: keynotes, then every confirmed speaker ===== -->
     <section class="section-pad-sm" style="background:var(--off-white);" id="confirmed-speakers">
@@ -1426,7 +1487,7 @@
 
                 </div>
             </div>
-            <button type="button" class="show-all" data-show-all="spkGrid" data-more="See all {n} speakers" data-less="Show fewer speakers" aria-expanded="false" hidden><span class="show-label">See all speakers</span><span class="chev" aria-hidden="true"></span></button>
+            <button type="button" class="show-all" data-show-all="spkGrid" data-more="See all speakers" data-less="Show fewer speakers" aria-expanded="false" hidden><span class="show-label">See all speakers</span><span class="chev" aria-hidden="true"></span></button>
         </div>
     </section>
 
@@ -1800,66 +1861,6 @@
     </script>
     <!-- exhibitors:end -->
 
-    <!-- ===== PM MODI VISION QUOTE ===== -->
-    <section class="pm-vision-section section-pad-sm" id="pm-vision">
-        <div class="pm-vision-bg-pattern"></div>
-        <div class="container">
-            <div class="pm-vision-card reveal">
-                <div class="pm-vision-media">
-                    <div class="pm-vision-img-frame">
-                        <img width="1024" height="653" loading="lazy" decoding="async" src="images/pm-modi.jpg" alt="Shri Narendra Modi, Hon'ble Prime Minister of India, speaking on Artificial Intelligence">
-                    </div>
-                </div>
-                <div class="pm-vision-content">
-                    <div class="pm-vision-quote-mark"><i class="fas fa-quote-left"></i></div>
-                    <blockquote class="pm-vision-quote">
-                        Artificial Intelligence represents a transformation of the same magnitude as historic turning points in human civilization.
-                    </blockquote>
-                    <div class="pm-vision-attribution">
-                        <div class="pm-vision-name">Narendra Modi</div>
-                        <div class="pm-vision-title">Hon'ble Prime Minister of India</div>
-                    </div>
-                    <div class="pm-vision-divider"></div>
-                    <p class="pm-vision-inspired">
-                        This conference is built on PM Modi's conviction that AI must strengthen innovation, empower citizens, and drive inclusive growth across every sector of the Indian economy.
-                    </p>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- ===== CM FADNAVIS STATE LEADERSHIP ===== -->
-    <section class="cm-vision-section section-pad-sm" id="cm-vision">
-        <div class="cm-vision-bg-pattern"></div>
-        <div class="container">
-            <div class="section-header reveal" style="margin-bottom:2rem;">
-                <h2 class="section-title" style="color:#fff;">Maharashtra's <span class="accent">AI Leadership</span></h2>
-            </div>
-            <div class="cm-vision-card reveal">
-                <div class="cm-vision-media">
-                    <div class="cm-vision-img-frame">
-                        <img width="1024" height="576" loading="lazy" decoding="async" src="images/devendra-fadnavis.jpg" alt="Shri Devendra Fadnavis, Hon'ble Chief Minister of Maharashtra">
-                    </div>
-                </div>
-                <div class="cm-vision-content">
-                    <div class="cm-vision-highlight-box">
-                        <i class="fas fa-database"></i>
-                        <p>"Within three years, Maharashtra will be a world leader in the data center space, powered increasingly by green energy."</p>
-                    </div>
-                    <div class="cm-vision-quote-mark"><i class="fas fa-quote-left"></i></div>
-                    <blockquote class="cm-vision-quote">
-                        AI in farming must not remain confined to demonstrations or pilots. It must reach millions.
-                    </blockquote>
-                    <div class="cm-vision-attribution">
-                        <div class="cm-vision-name">Devendra Fadnavis</div>
-                        <div class="cm-vision-title">Hon'ble Chief Minister</div>
-                        <div class="cm-vision-subtitle">Government of Maharashtra</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </section>
-
     <!-- ===== PAST GALLERY ===== -->
     <section class="past-gallery" id="past-gallery">
         <div class="container">
@@ -1947,7 +1948,7 @@
             </div>
             <div class="gallery-foot">
                 <button type="button" class="show-all" data-show-all="galleryGrid" data-more="See all {n} photos" data-less="Show fewer photos" aria-expanded="false" hidden><span class="show-label">See all photos</span><span class="chev" aria-hidden="true"></span></button>
-                <a href="/past-speakers" class="btn btn-outline">Meet the 91 past speakers <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
+                <a href="/past-speakers" class="btn btn-outline">Meet the past speakers <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
             </div>
         </div>
     </section>
@@ -1973,7 +1974,7 @@
                 </a>
             </div>
             <details class="more campus-panel" id="pre-event-speakers">
-                <summary><span class="more-l">Meet the 9 panellists</span><span class="less">Hide the panellists</span></summary>
+                <summary><span class="more-l">Meet the panellists</span><span class="less">Hide the panellists</span></summary>
                 <div class="speakers-grid">
                     <div class="speaker-card reveal" style="text-align:center;align-items:center;">
                         <img width="320" height="320" loading="lazy" decoding="async" src="images/speaker-ashish-tendulkar-panel.webp" alt="Dr. Ashish Tendulkar, AI Practice Manager, Google" class="speaker-photo" style="aspect-ratio:1;border-radius:50%;width:132px;height:132px;margin:0 auto;object-fit:cover;">
@@ -2411,6 +2412,123 @@
     })();
     </script>
 
+    <!-- Neural globe background. Drawn only while the hero is on screen, the
+         lines in a dozen batched strokes, 30 frames a second on a phone, and a
+         single still frame for anyone whose device has animations turned off.
+         The first version stroked each of its ~900 lines on its own 60 times a
+         second for as long as the page was open, and kept a mid-range phone's
+         processor about 95% busy; measured 27 Oct 2026. -->
+    <script>
+    (function(){
+      'use strict';
+      var cv=document.getElementById('heroGlobe');
+      if(!cv)return;
+      var ctx=cv.getContext('2d');
+      var N=150,SPD=0.00020,THR=0.52,STEPS=12;
+      var PHI=Math.PI*(3-Math.sqrt(5));
+      var pts=[];
+      for(var i=0;i<N;i++){
+        var yv=1-(i/(N-1))*2,rv=Math.sqrt(1-yv*yv),tv=PHI*i;
+        pts.push({x:Math.cos(tv)*rv,y:yv,z:Math.sin(tv)*rv});
+      }
+      function resize(){
+        // Measure the hero section, not .hero-bg (which is position:absolute)
+        var hero=cv.parentElement.parentElement;
+        cv.width=hero.clientWidth||window.innerWidth;
+        cv.height=hero.clientHeight||window.innerHeight;
+      }
+      var ang=0,prev=0,last=0,running=false;
+      function draw(){
+        var W=cv.width,H=cv.height;
+        // Clear of the type (1 Nov 2026): below 900px the type sits low and the
+        // globe turns in the photograph's band at the top; wider, the type is on
+        // the left and the globe turns beside it, on the right.
+        var mob=W<900;
+        var centX=W*(mob?.5:.72),centY=H*(mob?.25:.5);
+        var R=mob?Math.min(W,H*.46)*.32:Math.min(W,H)*.36;
+        ctx.clearRect(0,0,W,H);
+        var ca=Math.cos(ang),sa=Math.sin(ang);
+        var q=pts.map(function(p){
+          var rx=p.x*ca-p.z*sa,rz=p.x*sa+p.z*ca,ry=p.y;
+          var d=(rz+1.18)/2.36;
+          return{sx:centX+rx*R,sy:centY+ry*R,d:d,rx:rx,ry:ry,rz:rz};
+        });
+        // Saffron connecting lines, gathered by brightness into STEPS batches
+        // and stroked once per batch.
+        var buckets=[];
+        for(var s=0;s<STEPS;s++)buckets.push([]);
+        for(var i=0;i<N;i++){
+          for(var j=i+1;j<N;j++){
+            var dx=q[i].rx-q[j].rx,dy=q[i].ry-q[j].ry,dz=q[i].rz-q[j].rz;
+            var d2=dx*dx+dy*dy+dz*dz;
+            if(d2>=THR*THR)continue;
+            var a=(1-Math.sqrt(d2)/THR)*Math.min(q[i].d,q[j].d)*.55;
+            if(a<.02)continue;
+            buckets[Math.min(STEPS-1,Math.floor(a/.55*STEPS))].push(i,j);
+          }
+        }
+        ctx.lineWidth=.8;
+        for(var b=0;b<STEPS;b++){
+          var seg=buckets[b];
+          if(!seg.length)continue;
+          ctx.beginPath();
+          for(var m=0;m<seg.length;m+=2){
+            ctx.moveTo(q[seg[m]].sx,q[seg[m]].sy);
+            ctx.lineTo(q[seg[m+1]].sx,q[seg[m+1]].sy);
+          }
+          ctx.strokeStyle='rgba(255,120,40,'+((b+.5)/STEPS*.55).toFixed(3)+')';
+          ctx.stroke();
+        }
+        // White dots (visible against dark blue gradient), gathered by
+        // brightness the same way: ten fills instead of one per dot.
+        var dots=[];
+        for(var s=0;s<10;s++)dots.push([]);
+        for(var k=0;k<N;k++){
+          dots[Math.min(9,Math.floor(Math.max(.08,q[k].d*.92)*10))].push(k);
+        }
+        for(var b=0;b<10;b++){
+          var set=dots[b];
+          if(!set.length)continue;
+          ctx.beginPath();
+          for(var m=0;m<set.length;m++){
+            var pt=q[set[m]],r=Math.max(1,pt.d*3.5);
+            ctx.moveTo(pt.sx+r,pt.sy);
+            ctx.arc(pt.sx,pt.sy,r,0,6.283);
+          }
+          ctx.fillStyle='rgba(255,255,255,'+((b+.5)/10).toFixed(3)+')';
+          ctx.fill();
+        }
+      }
+      function frame(ts){
+        if(!running)return;
+        var dt=Math.min(ts-prev,100);prev=ts;
+        ang+=SPD*dt;
+        // A phone draws 30 frames a second: on a slow drift the eye cannot tell
+        // it from 60, for half the work.
+        if(cv.width<600&&ts-last<30){requestAnimationFrame(frame);return;}
+        last=ts;
+        draw();
+        requestAnimationFrame(frame);
+      }
+      function start(){
+        if(running)return;
+        running=true;
+        requestAnimationFrame(function(t){prev=t;last=0;requestAnimationFrame(frame);});
+      }
+      function stop(){running=false;}
+      window.addEventListener('resize',function(){resize();if(!running)draw();},{passive:true});
+      resize();
+      // Animations turned off on the device: one still globe, drawn once.
+      if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches){draw();return;}
+      // Only while the hero is on screen; scrolled past, the drawing stops and
+      // the processor is the page's again.
+      if('IntersectionObserver' in window){
+        new IntersectionObserver(function(es){
+          for(var e=0;e<es.length;e++){if(es[e].isIntersecting)start();else stop();}
+        }).observe(cv);
+      }else start();
+    })();
+    </script>
 </body>
 </html>
 
