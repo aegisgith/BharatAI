@@ -1802,7 +1802,7 @@ async function notifyNewMessage(c: any, row: any, content: string): Promise<void
 }
 
 // ---- 4. Meeting requested -> the person being asked ----------------------------
-async function notifyMeetingRequested(c: any, meetingId: any): Promise<void> {
+async function notifyMeetingRequested(c: any, meetingId: any, proposed: boolean = false): Promise<void> {
   try {
     const row = await c.env.DB.prepare(
       `SELECT m.title, m.meeting_time, m.duration_minutes, m.location, m.notes,
@@ -1819,9 +1819,11 @@ async function notifyMeetingRequested(c: any, meetingId: any): Promise<void> {
     const when = formatMeetingTime(row.meeting_time)
     const at = [row.from_job_title, row.from_company].filter(Boolean).map(escEmail).join(', ')
     const html = networkingEmailHTML({
-      title: 'A meeting request',
+      title: proposed ? 'A new time for your meeting' : 'A meeting request',
       greeting: netFirstName(row.to_name),
-      lead: `<strong>${escEmail(row.from_name)}</strong>${at ? ' &mdash; ' + at : ''} has asked to meet you at the conference. Accept or decline in the app, so you both arrive knowing where you stand.`,
+      lead: proposed
+        ? `<strong>${escEmail(row.from_name)}</strong>${at ? ' &mdash; ' + at : ''} cannot make the time you asked for and has proposed another. Accept or decline it in the app.`
+        : `<strong>${escEmail(row.from_name)}</strong>${at ? ' &mdash; ' + at : ''} has asked to meet you at the conference. Accept or decline in the app, so you both arrive knowing where you stand.`,
       detail: netDetailBox([
         ['What', escEmail(row.title || 'Meeting')],
         ['When', escEmail(when)],
@@ -1832,7 +1834,7 @@ async function notifyMeetingRequested(c: any, meetingId: any): Promise<void> {
       cta: 'Accept or decline',
       ctaUrl: await networkingAppUrl(c, '#inbox'),
     })
-    await notifyNetworking(c, row.to_email, `Meeting request from ${netPlain(row.from_name, 60)} - ${when}`, html)
+    await notifyNetworking(c, row.to_email, (proposed ? 'New time proposed by ' : 'Meeting request from ') + `${netPlain(row.from_name, 60)} - ${when}`, html)
   } catch { /* the meeting row is already saved */ }
 }
 
@@ -8037,6 +8039,26 @@ async function verifyConnectionActionToken(c: any, token: unknown): Promise<numb
   return safeEqualA(sig, expected) ? parseInt(id, 10) : null
 }
 
+// The organiser's rules for requests (2 Nov 2026): thirty connection requests and
+// thirty meeting requests a day per person (plenty for real networking, a stop on
+// mailing the whole directory), and none to someone who is only on a campus panel
+// (not at the conference) or who unsubscribed, since every request emails them.
+const DAILY_REQUEST_LIMIT = 30
+async function requestTargetProblem(c: any, toId: any, eventId: any): Promise<{ status: number; message: string } | null> {
+  const cols = await attendeeColumns(c)
+  const row = await c.env.DB.prepare(
+    `SELECT id${cols.has('main_event') ? ', main_event' : ''}${cols.has('unsubscribed_at') ? ', unsubscribed_at' : ''} FROM attendees WHERE id = ? AND event_id = ?`
+  ).bind(toId, eventId).first() as any
+  if (!row) return { status: 404, message: 'That person is not registered for this event.' }
+  if (cols.has('main_event') && Number(row.main_event) === 0) {
+    return { status: 403, message: 'They are registered for a campus panel, not the conference, so they cannot take requests here.' }
+  }
+  if (row.unsubscribed_at) return { status: 403, message: 'This person is not taking requests.' }
+  return null
+}
+// 20 or 21 November 2026, from 9:00 to 17:59 at the venue (the form sends "2026-11-20T11:00").
+const meetingSlotOk = (s: any): boolean => /^2026-11-(20|21)T(09|1[0-7]):[0-5]\d(:[0-5]\d)?$/.test(String(s || ''))
+
 app.post('/api/connections', async (c) => {
   const body = await c.req.json()
   const { event_id, from_attendee_id, to_attendee_id, message } = body
@@ -8077,6 +8099,18 @@ app.post('/api/connections', async (c) => {
 
   const reasonProblem = connectionReasonProblem(message)
   if (reasonProblem) return c.json({ error: 'reason_required', message: reasonProblem }, 400)
+
+  const target = await requestTargetProblem(c, to_attendee_id, event_id)
+  if (target) return c.json({ error: target.message, message: target.message }, target.status)
+  if (!isAdminRequest(c)) {
+    const sent = await c.env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM connections WHERE from_attendee_id = ? AND created_at > datetime('now', '-1 day')`
+    ).bind(from_attendee_id).first() as any
+    if (Number(sent?.n) >= DAILY_REQUEST_LIMIT) {
+      const msg = 'You have sent ' + DAILY_REQUEST_LIMIT + ' connection requests in the last 24 hours. You can send more tomorrow.'
+      return c.json({ error: 'daily_limit', message: msg }, 429)
+    }
+  }
 
   const note = String(message).replace(/\s+/g, ' ').trim()
 
@@ -8225,7 +8259,14 @@ app.post('/api/messages', async (c) => {
       `SELECT 1 AS ok FROM connections WHERE status = 'accepted'
          AND ((from_attendee_id = ? AND to_attendee_id = ?) OR (from_attendee_id = ? AND to_attendee_id = ?)) LIMIT 1`
     ).bind(sender_id, receiver_id, receiver_id, sender_id).first()
-    if (!replying && !connected) {
+    // Asked for a meeting by them is a conversation they started (organiser,
+    // 2 Nov 2026): "can we do 11:30?" used to be refused to a Visitor. Either
+    // direction: a Visitor cannot ask for a meeting, so one that names them as
+    // the asker is one they turned round with "propose another time".
+    const askedToMeet = (replying || connected) ? null : await c.env.DB.prepare(
+      'SELECT 1 AS ok FROM meetings WHERE (requester_id = ? AND requestee_id = ?) OR (requester_id = ? AND requestee_id = ?) LIMIT 1'
+    ).bind(receiver_id, sender_id, sender_id, receiver_id).first()
+    if (!replying && !connected && !askedToMeet) {
       return c.json({ error: senderUnpaid
         ? unpaidSentence(senderRow.badge_type, 'messaging people') + ' You can always reply to anyone who messages you.'
         : 'Messaging is part of the Delegate and VIP passes. You can always reply to anyone who messages you.', code: 'networking_locked' }, 403)
@@ -8383,6 +8424,15 @@ app.post('/api/room-bookings', async (c) => {
   const b = await c.req.json() as any
   const denied = await requireSelf(c, b.attendee_id); if (denied) return denied
   if (!(await roomBookingEnabled(c))) return c.json({ error: 'Room booking is not available yet.' }, 503)
+  // Boardrooms are not part of the free Visitor Pass (organiser, 2 Nov 2026), nor
+  // of a paid pass that has not been paid for.
+  if (!isAdminRequest(c)) {
+    const who = await c.env.DB.prepare('SELECT badge_type FROM attendees WHERE id = ?').bind(b.attendee_id).first() as any
+    const unpaid = who ? await unpaidPaidPass(c, b.attendee_id, who.badge_type) : false
+    if (!who || !canInitiateNetworking(who.badge_type) || unpaid) {
+      return c.json({ error: unpaid ? unpaidSentence(who.badge_type, 'holding a boardroom') : 'Boardrooms are part of the paid passes, not the free Visitor Pass.', code: 'networking_locked' }, 403)
+    }
+  }
 
   const slotDate = String(b.slot_date || '')
   if (!ROOM_DAYS.includes(slotDate)) {
@@ -8517,8 +8567,17 @@ app.post('/api/meetings', async (c) => {
   // Someone real, in this event, and not yourself; the text clipped and the
   // duration a whole number of minutes (2 Nov 2026: all four were stored as sent).
   if (String(requestee_id) === String(requester_id)) return c.json({ error: 'You cannot ask yourself for a meeting.' }, 400)
-  const requestee = await c.env.DB.prepare('SELECT id FROM attendees WHERE id = ? AND event_id = ?').bind(requestee_id, event_id).first()
-  if (!requestee) return c.json({ error: 'That person is not registered for this event.' }, 404)
+  const target = await requestTargetProblem(c, requestee_id, event_id)
+  if (target) return c.json({ error: target.message }, target.status)
+  if (!meetingSlotOk(meeting_time)) return c.json({ error: 'Pick a time on 20 or 21 November, between 9 AM and 6 PM.' }, 400)
+  if (!isAdminRequest(c)) {
+    const asked = await c.env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM meetings WHERE requester_id = ? AND created_at > datetime('now', '-1 day')`
+    ).bind(requester_id).first() as any
+    if (Number(asked?.n) >= DAILY_REQUEST_LIMIT) {
+      return c.json({ error: 'You have asked for ' + DAILY_REQUEST_LIMIT + ' meetings in the last 24 hours. You can ask for more tomorrow.' }, 429)
+    }
+  }
   const clip = (v: any, n: number) => String(v ?? '').slice(0, n)
   const minutes = Math.min(240, Math.max(5, parseInt(String(duration_minutes || 15), 10) || 15))
   const result = await c.env.DB.prepare(
@@ -8569,6 +8628,33 @@ app.put('/api/meetings/:id', async (c) => {
   return c.json({ success: true })
 })
 
+// Propose another time (organiser, 2 Nov 2026). The person asked picks a new slot
+// instead of declining; the meeting turns round, so the one who asked first now
+// accepts or declines the new time, and may propose again. Free on every pass,
+// Visitor included: it answers a request, it does not start one.
+app.post('/api/meetings/:id/propose', async (c) => {
+  const id = c.req.param('id')
+  const body = await c.req.json().catch(() => ({})) as any
+  const when = String(body.meeting_time || '').slice(0, 40)
+  const row = await c.env.DB.prepare('SELECT requester_id, requestee_id, status, notes FROM meetings WHERE id = ?').bind(id).first() as any
+  if (!row) return c.json({ error: 'Meeting not found' }, 404)
+  if (!isAdminRequest(c) && attendeeSessionSecret(c)) {
+    const me = await verifyAttendeeSession(c)
+    if (!me) return c.json({ error: 'Please sign in again to continue.' }, 401)
+    if (me !== row.requester_id && me !== row.requestee_id) return c.json({ error: 'You can only change your own meetings.' }, 403)
+    if (me !== row.requestee_id) return c.json({ error: 'Only the person you asked can propose another time.' }, 403)
+  }
+  if (row.status !== 'pending' && row.status !== 'accepted') return c.json({ error: 'This meeting can no longer be moved.' }, 409)
+  if (!meetingSlotOk(when)) return c.json({ error: 'Pick a time on 20 or 21 November, between 9 AM and 6 PM.' }, 400)
+  const proposer = await c.env.DB.prepare('SELECT name FROM attendees WHERE id = ?').bind(row.requestee_id).first() as any
+  const note = ((row.notes ? String(row.notes) + ' | ' : '') + 'New time proposed by ' + String(proposer?.name || 'them')).slice(0, 1000)
+  const upd = await c.env.DB.prepare(
+    `UPDATE meetings SET requester_id = ?, requestee_id = ?, meeting_time = ?, status = 'pending', notes = ? WHERE id = ? AND requestee_id = ?`
+  ).bind(row.requestee_id, row.requester_id, when, note, id, row.requestee_id).run()
+  if (upd?.meta?.changes === 1) await scheduleNotification(c, notifyMeetingRequested(c, id, true))
+  return c.json({ success: true })
+})
+
 // ==================== EXHIBITOR APIs ====================
 //
 // THE DIRECTORY IS NOT PUBLIC BY DEFAULT. These three routes are unauthenticated
@@ -8605,13 +8691,17 @@ const exhibitorDirectoryHidden = (c: any) => {
   return c.json([])
 }
 
+const EXHIBITOR_PUBLIC_COLS = 'id, event_id, company_name, description, logo_url, banner_url, booth_number, booth_size, category, website_url, products, social_links, visitor_count, created_at'
+
 app.get('/api/events/:id/exhibitors', async (c) => {
   if (!(await exhibitorDirectoryVisible(c))) return exhibitorDirectoryHidden(c)
   const eventId = c.req.param('id')
   const category = c.req.query('category')
   const search = c.req.query('search')
 
-  let query = 'SELECT * FROM exhibitors WHERE event_id = ?'
+  // No contact email, phone or owner for the public (organiser, 2 Nov 2026); the
+  // admin panel reads this same route and keeps them.
+  let query = 'SELECT ' + (isAdminRequest(c) ? '*' : EXHIBITOR_PUBLIC_COLS) + ' FROM exhibitors WHERE event_id = ?'
   const params: any[] = [eventId]
 
   if (category) {
@@ -8636,7 +8726,7 @@ app.get('/api/exhibitors/:id', async (c) => {
   // way around the gate the list route applies.
   if (!(await exhibitorDirectoryVisible(c))) return c.json({ error: 'Exhibitor not found' }, 404)
   const id = c.req.param('id')
-  const exhibitor = await c.env.DB.prepare('SELECT * FROM exhibitors WHERE id = ?').bind(id).first()
+  const exhibitor = await c.env.DB.prepare('SELECT ' + (isAdminRequest(c) ? '*' : EXHIBITOR_PUBLIC_COLS) + ' FROM exhibitors WHERE id = ?').bind(id).first()
   if (!exhibitor) return c.json({ error: 'Exhibitor not found' }, 404)
   return c.json(exhibitor)
 })
@@ -12423,7 +12513,9 @@ app.put('/api/attendees/:id/exhibitor', async (c) => {
   // all of it was stored as sent and drawn on the Exhibition tab).
   const clip = (v: any, n: number) => String(v ?? '').slice(0, n)
   const company_name = clip(body.company_name, 120), description = clip(body.description, 2000)
-  const booth_number = clip(body.booth_number, 20), category = clip(body.category, 80)
+  // The booth number is the organisers' to give (organiser, 2 Nov 2026): an edit
+  // keeps the one on file, a new listing starts without one.
+  const category = clip(body.category, 80)
   const booth_size = ['standard', 'premium', 'platinum'].includes(body.booth_size) ? body.booth_size : 'standard'
   const website_url = clip(body.website_url, 300), contact_email = clip(body.contact_email, 200)
   const contact_phone = clip(body.contact_phone, 30), products = clip(body.products, 500)
@@ -12442,12 +12534,12 @@ app.put('/api/attendees/:id/exhibitor', async (c) => {
 
   if (existing) {
     await c.env.DB.prepare(
-      'UPDATE exhibitors SET company_name=?, description=?, booth_number=?, booth_size=?, category=?, website_url=?, contact_email=?, contact_phone=?, products=? WHERE attendee_id=?'
-    ).bind(company_name, description || '', booth_number || '', booth_size || 'standard', category || '', website_url || '', contact_email || '', contact_phone || '', products || '', attendeeId).run()
+      'UPDATE exhibitors SET company_name=?, description=?, booth_size=?, category=?, website_url=?, contact_email=?, contact_phone=?, products=? WHERE attendee_id=?'
+    ).bind(company_name, description || '', booth_size || 'standard', category || '', website_url || '', contact_email || '', contact_phone || '', products || '', attendeeId).run()
   } else {
     await c.env.DB.prepare(
       'INSERT INTO exhibitors (event_id, company_name, description, booth_number, booth_size, category, website_url, contact_email, contact_phone, products, attendee_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)'
-    ).bind(attendee.event_id, company_name, description || '', booth_number || '', booth_size || 'standard', category || '', website_url || '', contact_email || '', contact_phone || '', products || '', attendeeId).run()
+    ).bind(attendee.event_id, company_name, description || '', '', booth_size || 'standard', category || '', website_url || '', contact_email || '', contact_phone || '', products || '', attendeeId).run()
   }
 
   const updated = await c.env.DB.prepare('SELECT * FROM exhibitors WHERE attendee_id = ?').bind(attendeeId).first()
@@ -19833,7 +19925,7 @@ function mainPageHTML(): string {
        document the holder downloaded. The pass draws its own QR with the
        encoder, so no third-party service is in the path. -->
   <script src="/js/vendor/qrcode-generator.js?v=20261029"></script>
-  <script src="/js/pass-render.js?v=20261102b"></script>
+  <script src="/js/pass-render.js?v=20261102c"></script>
   <!-- The "I'm attending" card delegates post. App only: the badge desk has no
        reason to issue one, and it carries none of the pass's verification data. -->
   <script src="/js/social-card.js?v=20261102"></script>
@@ -19903,6 +19995,19 @@ function mainPageHTML(): string {
     a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid #FF6B00; outline-offset: 2px; border-radius: 8px; }
     /* Mobile nav buttons: ≥48px touch target (was ~34px) */
     @media (max-width: 767px) { #main-nav .nav-btn { min-width: 52px; min-height: 46px; justify-content: center; } }
+    /* Thumb-sized taps on a phone (2 Nov 2026): these were 24-36px tall. */
+    @media (max-width: 767px) {
+      #inbox-connections button, #inbox-meetings button, #my-all-meetings-list button,
+      #my-connections-list button, #my-all-connections-list button,
+      button[onclick^="acceptConnection("], button[onclick^="declineConnection("],
+      button[onclick^="answerPanelComing("], button[onclick="openNetworkingGuide()"],
+      #event-plan-card button, #rsvp-status-display button, .profile-subtab,
+      #remove-avatar-btn, #remove-orglogo-btn, #edit-profile-modal button[onclick="closeEditProfile()"] {
+        min-height: 44px; min-width: 44px;
+      }
+      label[for="edit-avatar-input"], label[for="edit-orglogo-input"] { width: 40px; height: 40px; }
+      #pass-photo-close { min-width: 44px; min-height: 44px; display: flex; align-items: center; justify-content: center; top: 4px !important; right: 4px !important; }
+    }
     @media (prefers-reduced-motion: reduce) { .shimmer, .animate-pulse-slow, .badge-pulse { animation: none !important; } }
     .shimmer { background: linear-gradient(90deg, rgba(255,255,255,0.03) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.03) 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; }
     @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
@@ -20218,6 +20323,13 @@ function mainPageHTML(): string {
     <div id="account-menu" class="hidden fixed inset-0 z-50" onclick="if(event.target===this)closeAccountMenu()">
       <div class="absolute inset-0 md:hidden" style="background:rgba(23,27,58,0.45);" onclick="closeAccountMenu()"></div>
       <div id="account-menu-panel" role="dialog" aria-label="Your account" tabindex="-1" class="absolute left-0 right-0 bottom-0 rounded-t-2xl md:left-auto md:bottom-auto md:w-80 md:rounded-2xl overflow-y-auto" style="max-height:85vh;outline:none;background:#fff;border:1px solid #E4E7F4;box-shadow:0 16px 44px rgba(26,35,126,0.18);padding-bottom:env(safe-area-inset-bottom);"></div>
+    </div>
+
+    <!-- A general-purpose dialog: the exhibitor's booth form and "propose another
+         time" draw into #modal-box. Until 2 Nov 2026 only the admin page had one,
+         so the app's Edit Booth / Create Booth Listing button threw and did nothing. -->
+    <div id="modal-container" role="dialog" aria-modal="true" class="fixed inset-0 z-40 modal-overlay hidden flex items-center justify-center p-4" onclick="if(event.target===this)this.classList.add('hidden')">
+      <div id="modal-box" class="glass rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-y-auto"></div>
     </div>
 
     <!-- Main Navigation -->
@@ -22166,7 +22278,7 @@ function mainPageHTML(): string {
             <!-- Photo Upload -->
             <div class="flex items-center gap-4">
               <div class="relative">
-                <img id="edit-avatar-preview" src="" alt="Avatar" class="w-16 h-16 rounded-full object-cover border-2 border-white/10">
+                <img id="edit-avatar-preview" src="" alt="Avatar" onclick="document.getElementById('edit-avatar-input').click()" class="w-16 h-16 rounded-full object-cover border-2 border-white/10 cursor-pointer">
                 <label for="edit-avatar-input" class="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-primary-600 hover:bg-primary-500 flex items-center justify-center cursor-pointer transition">
                   <i class="fas fa-camera text-white text-xs"></i>
                 </label>
@@ -25811,6 +25923,8 @@ function mainPageScript(): string {
 
     async function openRoomOnly() {
       if (!currentUser) { showToast('Please sign in first', 'error'); return; }
+      // Boardrooms are not part of the free Visitor Pass (organiser, 2 Nov 2026).
+      if (isVisitorPass()) { showUpgradeModal('networking'); return; }
       roomOnlyMode = true;
       document.getElementById('meeting-requestee-id').value = '';
       document.getElementById('meeting-modal').classList.remove('hidden');
@@ -27169,7 +27283,7 @@ function mainPageScript(): string {
           const otherCompany = isRequester ? m.requestee_company : m.requester_company;
           return \`
             <div class="glass rounded-xl p-4 card-hover">
-              <div class="flex items-start gap-3">
+              <div class="flex items-start gap-3 flex-wrap sm:flex-nowrap">
                 <div class="w-10 h-10 rounded-xl bg-primary-500/20 flex items-center justify-center shrink-0">
                   <i class="fas fa-calendar-check text-primary-400"></i>
                 </div>
@@ -27186,9 +27300,11 @@ function mainPageScript(): string {
                   </div>
                 </div>
                 \${!isRequester && m.status === 'pending' ? \`
-                  <div class="flex gap-1 shrink-0">
-                    <button onclick="updateMeeting(\${m.id}, 'accepted')" class="px-2 py-1 rounded text-xs bg-green-500/20 text-green-400 hover:bg-green-500/30"><i class="fas fa-check"></i></button>
-                    <button onclick="updateMeeting(\${m.id}, 'declined')" class="px-2 py-1 rounded text-xs bg-red-500/20 text-red-400 hover:bg-red-500/30"><i class="fas fa-times"></i></button>
+                  <div class="flex gap-1 flex-wrap w-full sm:w-auto sm:shrink-0 justify-start sm:justify-end">
+                    <button onclick="updateMeeting(\${m.id}, 'accepted')" title="Accept" aria-label="Accept" class="px-2 py-1 rounded text-xs bg-green-500/20 text-green-400 hover:bg-green-500/30"><i class="fas fa-check"></i></button>
+                    <button onclick="updateMeeting(\${m.id}, 'declined')" title="Decline" aria-label="Decline" class="px-2 py-1 rounded text-xs bg-red-500/20 text-red-400 hover:bg-red-500/30"><i class="fas fa-times"></i></button>
+                    <button onclick="openProposeTime(\${m.id})" class="px-2 py-1 rounded text-xs bg-primary-500/20 text-primary-300 hover:bg-primary-500/30"><i class="fas fa-clock mr-1"></i>Another time</button>
+                    <button data-act="chat" data-id="\${m.requester_id}" data-name="\${esc(otherName || '')}" data-company="\${esc(otherCompany || '')}" class="px-2 py-1 rounded text-xs bg-white/5 text-gray-300 hover:bg-white/10"><i class="fas fa-comment mr-1"></i>Message</button>
                   </div>
                 \` : ''}
               </div>
@@ -29172,7 +29288,7 @@ function mainPageScript(): string {
 
         return \`
           <div class="glass rounded-xl p-4 card-hover \${isPending ? 'border-l-2 border-yellow-500/50' : m.status === 'accepted' ? 'border-l-2 border-green-500/50' : ''}">
-            <div class="flex items-start gap-3">
+            <div class="flex items-start gap-3 flex-wrap sm:flex-nowrap">
               <div class="w-10 h-10 rounded-xl \${m.status === 'accepted' ? 'bg-green-500/20' : m.status === 'pending' ? 'bg-yellow-500/20' : 'bg-red-500/20'} flex items-center justify-center shrink-0">
                 <i class="fas \${m.status === 'accepted' ? 'fa-calendar-check text-green-400' : m.status === 'pending' ? 'fa-clock text-yellow-400' : 'fa-calendar-times text-red-400'}"></i>
               </div>
@@ -29190,9 +29306,11 @@ function mainPageScript(): string {
                 \${m.notes ? \`<p class="text-[10px] text-gray-500 mt-1"><i class="fas fa-sticky-note mr-1"></i>\${esc(m.notes)}</p>\` : ''}
               </div>
               \${isIncoming ? \`
-                <div class="flex flex-col gap-1.5 shrink-0">
+                <div class="flex flex-row sm:flex-col flex-wrap gap-1.5 w-full sm:w-auto sm:shrink-0">
                   <button onclick="respondMeeting(\${m.id}, 'accepted')" class="px-3 py-1.5 rounded-lg text-xs bg-green-500/20 text-green-400 hover:bg-green-500/30 transition"><i class="fas fa-check mr-1"></i>Accept</button>
                   <button onclick="respondMeeting(\${m.id}, 'declined')" class="px-2 py-1.5 rounded-lg text-xs bg-red-500/20 text-red-400 hover:bg-red-500/30 transition"><i class="fas fa-times mr-1"></i>Decline</button>
+                  <button onclick="openProposeTime(\${m.id})" class="px-2 py-1.5 rounded-lg text-xs bg-primary-500/20 text-primary-300 hover:bg-primary-500/30 transition"><i class="fas fa-clock mr-1"></i>Another time</button>
+                  <button data-act="chat" data-id="\${m.requester_id}" data-name="\${esc(otherN || '')}" data-company="\${esc(otherC || '')}" class="px-2 py-1.5 rounded-lg text-xs bg-white/5 text-gray-300 hover:bg-white/10 transition"><i class="fas fa-comment mr-1"></i>Message</button>
                 </div>
               \` : ''}
             </div>
@@ -29209,6 +29327,39 @@ function mainPageScript(): string {
       document.querySelector(\`[data-mfilter="\${filter}"]\`).classList.add('tab-active');
       document.querySelector(\`[data-mfilter="\${filter}"]\`).classList.remove('text-gray-400');
       renderAllMeetings(myAllMeetings, filter);
+    }
+
+    // Propose another time (organiser, 2 Nov 2026): the person asked picks a new
+    // slot instead of declining; the meeting turns round, so the one who asked
+    // first accepts or declines it. Free on every pass: it answers a request.
+    function openProposeTime(meetingId) {
+      const mc = document.getElementById('modal-container');
+      const mb = document.getElementById('modal-box');
+      if (!mc || !mb) return;
+      mb.innerHTML = '<form id="propose-form" class="p-6 space-y-4">'
+        + '<h3 class="text-lg font-bold"><i class="fas fa-clock text-primary-400 mr-2"></i>Propose another time</h3>'
+        + '<p class="text-sm text-gray-400">Pick a time on 20 or 21 November, between 9 AM and 6 PM. They can accept or decline it.</p>'
+        + '<input type="datetime-local" id="propose-time" required min="2026-11-20T09:00" max="2026-11-21T17:45" step="900" value="2026-11-20T11:00" class="w-full px-4 py-3 rounded-xl text-sm">'
+        + '<p id="propose-error" class="hidden text-sm text-red-400"></p>'
+        + '<div class="flex gap-2"><button type="submit" class="flex-1 rounded-xl text-sm font-semibold bg-primary-600 hover:bg-primary-500 text-white" style="min-height:44px;">Send the new time</button>'
+        + '<button type="button" onclick="document.getElementById(&quot;modal-container&quot;).classList.add(&quot;hidden&quot;)" class="px-4 rounded-xl text-sm font-medium glass hover:bg-white/10" style="min-height:44px;">Cancel</button></div>'
+        + '</form>';
+      mc.classList.remove('hidden');
+      document.getElementById('propose-form').onsubmit = async (e) => {
+        e.preventDefault();
+        const btn = e.target.querySelector('button[type=submit]');
+        const err = document.getElementById('propose-error');
+        btn.disabled = true;
+        try {
+          const r = await api.post('/api/meetings/' + meetingId + '/propose', { meeting_time: document.getElementById('propose-time').value });
+          const why = apiFailed(r);
+          if (why) { err.textContent = why; err.classList.remove('hidden'); return; }
+          mc.classList.add('hidden');
+          showToast('New time sent. They can accept or decline it.', 'success');
+          if (currentTab === 'inbox') loadMeetings(); else loadMyProfile();
+        } catch (x) { err.textContent = 'That did not send. Please try again.'; err.classList.remove('hidden'); }
+        finally { btn.disabled = false; }
+      };
     }
 
     async function respondMeeting(meetingId, status) {
@@ -29879,7 +30030,7 @@ function mainPageScript(): string {
             </div>
             <div><label class="text-xs text-gray-400 mb-1 block">Description</label><textarea id="mb-desc" autocomplete="off" rows="3" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="Describe your company and what you're exhibiting...">\${esc(b.description || '')}</textarea></div>
             <div class="grid grid-cols-3 gap-3">
-              <div><label class="text-xs text-gray-400 mb-1 block">Booth #</label><input id="mb-booth" autocomplete="off" value="\${esc(b.booth_number || '')}" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="e.g. A-101"></div>
+              <div><label class="text-xs text-gray-400 mb-1 block">Booth # <span class="text-gray-500">(given by the organisers)</span></label><input id="mb-booth" autocomplete="off" readonly value="\${esc(b.booth_number || '')}" class="w-full px-3 py-2 rounded-lg text-sm opacity-70" placeholder="Not given yet"></div>
               <div><label class="text-xs text-gray-400 mb-1 block">Booth Size</label>
                 <select id="mb-size" class="w-full px-3 py-2 rounded-lg text-sm">
                   \${['standard','premium','platinum'].map(s=>'<option '+(b.booth_size===s?'selected':'')+'>'+s+'</option>').join('')}
@@ -29909,7 +30060,7 @@ function mainPageScript(): string {
           await api.put(\`/api/attendees/\${currentUser.id}/exhibitor\`, {
             company_name: document.getElementById('mb-name').value,
             description: document.getElementById('mb-desc').value,
-            booth_number: document.getElementById('mb-booth').value,
+
             booth_size: document.getElementById('mb-size').value,
             category: document.getElementById('mb-cat').value,
             website_url: document.getElementById('mb-web').value,
@@ -30275,7 +30426,7 @@ function adminPageHTML(): string {
   <!-- Shared with the app, so a pass issued at the desk is the same document the
        holder downloaded. The pass draws its own QR with the encoder. -->
   <script src="/js/vendor/qrcode-generator.js?v=20261029"></script>
-  <script src="/js/pass-render.js?v=20261102b"></script>
+  <script src="/js/pass-render.js?v=20261102c"></script>
   <!-- The same photo fingerprint /app sends, for photos the team uploads. -->
   <script src="/js/photo-fingerprint.js?v=2"></script>
   <!-- Same renderer the delegate's own app uses, so a card the desk sends a speaker
@@ -32150,7 +32301,7 @@ function adminPageScript(): string {
       catch (e) { el.innerHTML = helpFunnelShell('<p class="text-xs text-red-400 mb-4">Could not show these numbers: ' + escH((e && e.message) || '') + '</p>'); }
     }
     function helpFunnelShell(inner) {
-      return '<div class="glass rounded-xl p-5"><h3 class="font-semibold text-sm mb-3"><i class="fas fa-life-ring text-orange-400 mr-2"></i>Pass &amp; badge: who tried, who got stuck</h3>' +
+      return '<div class="glass rounded-xl p-5"><h3 class="font-semibold text-sm mb-3"><i class="fas fa-headset text-orange-400 mr-2"></i>Pass &amp; badge: who tried, who got stuck</h3>' +
         inner + '<div class="pt-4 border-t border-white/10"><h4 class="text-sm font-semibold text-white mb-2">Send the steps by email</h4>' + helpSendRowHTML() + '</div></div>';
     }
     function helpSendRowHTML() {
@@ -32202,7 +32353,7 @@ function adminPageScript(): string {
           '<td class="py-1.5 text-gray-400 whitespace-nowrap">' + (r.helped ? 'Steps sent ' + escH(r.helped) : '') + '</td></tr>';
       }).join('');
       return '<div class="glass rounded-xl p-5">' +
-        '<div class="flex flex-wrap items-center justify-between gap-2 mb-1"><h3 class="font-semibold text-sm"><i class="fas fa-life-ring text-orange-400 mr-2"></i>Pass &amp; badge: who tried, who got stuck</h3>' +
+        '<div class="flex flex-wrap items-center justify-between gap-2 mb-1"><h3 class="font-semibold text-sm"><i class="fas fa-headset text-orange-400 mr-2"></i>Pass &amp; badge: who tried, who got stuck</h3>' +
         '<span class="text-[10px] text-gray-500">' + (d.since ? 'Counted since ' + escH(d.since) : 'Counting starts with the next visit') + '</span></div>' +
         '<p class="text-[11px] text-gray-500 mb-4">People, not taps. Finished counts are the pass and badge download stamps.</p>' +
         '<div class="grid md:grid-cols-2 gap-5 mb-5">' + block('&ldquo;I&rsquo;m attending&rdquo; badge', 'card', 'Made their badge') + block('Pass', 'pass', 'Downloaded their pass') + '</div>' +

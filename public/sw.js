@@ -35,7 +35,9 @@
 // Investor, Startup and Support Staff passes as themselves, not VISITOR PASS.
 // v22: the edge cached the OLD pass-render.js under ?v=20261102 (fetched while the
 // deploy was still spreading), so the renderer moved to ?v=20261102b.
-const VERSION = 'bhai-v22';
+// v23: pass-render.js?v=20261102c fits a long designation or organisation on the
+// pass (smaller type, then an ellipsis) instead of running off both edges.
+const VERSION = 'bhai-v23';
 const SHELL = `shell-${VERSION}`;
 const DATA = `data-${VERSION}`;
 
@@ -64,7 +66,7 @@ const PRECACHE = [
   '/images/logo-nav.webp',             // every page's header
   '/images/icon-192.png',
   '/manifest.webmanifest',
-  '/js/pass-render.js?v=20261102b',
+  '/js/pass-render.js?v=20261102c',
   '/js/vendor/qrcode-generator.js?v=20261029',   // the pass draws its QR with it
   '/css/style.css?v=20261102',        // marketing shell: /, /conference, /exhibition, ...
   '/js/main.js?v=20261029',

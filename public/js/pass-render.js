@@ -317,10 +317,21 @@
     while (ctx.measureText(name).width > W - px(60) && name.length > 4) { name = name.slice(0, -2); }
     centre(name === String(user.name || '') ? name : name + '…', y + px(26), T.gold ? '#f3d97a' : '#ffffff');
     y += px(38);
-    if (user.job_title) { f('400', 14, INTER); centre(String(user.job_title), y + px(12), T.gold ? '#c8b98a' : '#c3ccdd'); y += px(20); }
+    // A long designation or organisation ran off both edges (fillText does not
+    // wrap; 2 Nov 2026). Smaller type first, down to 11px, then cut with an
+    // ellipsis, as the name above is.
+    function fitLine(txt) {
+      var s = String(txt), max = W - px(60), size = 14;
+      f('400', size, INTER);
+      while (ctx.measureText(s).width > max && size > 11) { size -= 1; f('400', size, INTER); }
+      if (ctx.measureText(s).width <= max) return s;
+      while (s.length > 4 && ctx.measureText(s + '…').width > max) s = s.slice(0, -1);
+      return s.trim() + '…';
+    }
+    if (user.job_title) { var jt = fitLine(user.job_title); centre(jt, y + px(12), T.gold ? '#c8b98a' : '#c3ccdd'); y += px(20); }
     // Not uppercased: the design prints the organisation as written, and forcing caps
     // mangles the ones that carry their own casing (IIT, mUni, NETSCOUT).
-    if (user.company) { f('400', 14, INTER); centre(String(user.company), y + px(12), T.gold ? '#9a8a5a' : '#8892b0'); y += px(20); }
+    if (user.company) { var co = fitLine(user.company); centre(co, y + px(12), T.gold ? '#9a8a5a' : '#8892b0'); y += px(20); }
 
     y += px(24); divider(y, T.gold); y += px(24);
 

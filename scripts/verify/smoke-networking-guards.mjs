@@ -145,7 +145,7 @@ check('and the code is then spent (one use)', r.status === 401 || r.status === 4
 person(5, 'Exa Exhibitor', { badge_type: 'Exhibitor' });
 r = await hit('PUT', '/api/attendees/5/exhibitor', { company_name: 'C'.repeat(300), description: 'D'.repeat(5000), booth_size: '<script>', booth_number: 'B'.repeat(50), category: 'AI' }, as(5));
 const ex = q('SELECT * FROM exhibitors WHERE attendee_id = 5')[0] || {};
-check('a booth is saved with clipped text and a known size', r.status === 200 && ex.company_name.length === 120 && ex.description.length === 2000 && ex.booth_size === 'standard' && ex.booth_number.length === 20, r.status + ' ' + JSON.stringify({ c: (ex.company_name || '').length, s: ex.booth_size }));
+check('a booth is saved with clipped text, a known size, and no booth number of its own choosing', r.status === 200 && ex.company_name.length === 120 && ex.description.length === 2000 && ex.booth_size === 'standard' && ex.booth_number === '', r.status + ' ' + JSON.stringify({ c: (ex.company_name || '').length, s: ex.booth_size }));
 r = await hit('PUT', '/api/attendees/5/exhibitor', { company_name: '   ' }, as(5));
 check('a booth with no company name is refused', r.status === 400, r.status + ' ' + r.text);
 
@@ -163,6 +163,84 @@ r = await hit('PUT', '/api/admin/attendees/7', { email: '  Rahul.S@Infosys.COM '
 check('an email typed in Admin is saved trimmed and lowercased, so it can sign in', r.status === 200 && q('SELECT email FROM attendees WHERE id = 7')[0].email === 'rahul.s@infosys.com', r.status + ' ' + JSON.stringify(q('SELECT email FROM attendees WHERE id = 7')));
 r = await hit('GET', '/api/attendees/1/dashboard', undefined, as(1));
 check('the dashboard carries created_at (the Me page "Since" card read Invalid Date)', r.status === 200 && !!r.json?.profile?.created_at, r.status + ' ' + JSON.stringify(r.json?.profile || {}).slice(0, 160));
+
+// ---- the organiser's decisions (2 Nov 2026) ----
+// Booth number: the organisers' to give, kept on an edit.
+db.run("UPDATE exhibitors SET booth_number = 'B-12' WHERE attendee_id = 5");
+r = await hit('PUT', '/api/attendees/5/exhibitor', { company_name: 'Exa Co', booth_number: 'Z-99' }, as(5));
+check('an exhibitor cannot change the booth number the organisers gave', r.status === 200 && q('SELECT booth_number FROM exhibitors WHERE attendee_id = 5')[0].booth_number === 'B-12', r.status + ' ' + JSON.stringify(q('SELECT booth_number FROM exhibitors WHERE attendee_id = 5')));
+
+// The public exhibitor list: no contact email, phone or owner.
+db.run("UPDATE exhibitors SET contact_email = 'sales@exa.example', contact_phone = '9800011111' WHERE attendee_id = 5");
+db.run("INSERT OR REPLACE INTO app_settings (key, value) VALUES ('exhibitor_directory_public', '1')");
+r = await hit('GET', '/api/events/1/exhibitors');
+check('the public exhibitor list carries no contact email, phone or owner', r.status === 200 && Array.isArray(r.json) && r.json.length === 1 && !('contact_email' in r.json[0]) && !('contact_phone' in r.json[0]) && !('attendee_id' in r.json[0]) && !r.text.includes('sales@exa.example'), r.status + ' ' + r.text.slice(0, 200));
+check('and still names the company and booth', r.json?.[0]?.company_name === 'Exa Co' && r.json?.[0]?.booth_number === 'B-12', JSON.stringify(r.json?.[0]));
+const exId = r.json?.[0]?.id;
+r = await hit('GET', '/api/exhibitors/' + exId);
+check('one exhibitor, publicly: no contact either', r.status === 200 && !('contact_email' in (r.json || {})) && !r.text.includes('9800011111'), r.status + ' ' + r.text.slice(0, 160));
+r = await hit('GET', '/api/events/1/exhibitors', undefined, { Authorization: 'Bearer smoke-admin' });
+check('the admin panel still sees the contact details', r.status === 200 && r.json?.[0]?.contact_email === 'sales@exa.example', r.status + ' ' + r.text.slice(0, 160));
+
+// No requests to a campus-panel-only or an unsubscribed attendee.
+person(8, 'Panel Only', { main_event: 0 });
+person(9, 'Unsubscribed', { unsubscribed_at: '2026-10-01 10:00:00' });
+person(10, 'Busy Sender');
+person(11, 'Open Receiver');
+const ask = (from, to) => hit('POST', '/api/connections', { event_id: 1, from_attendee_id: from, to_attendee_id: to, message: 'I would like twenty minutes on computer vision for retail shelf audits.' }, as(from));
+r = await ask(10, 8);
+check('no connection request to someone only on a campus panel', r.status === 403 && /campus panel/.test(r.json?.message || ''), r.status + ' ' + r.text);
+r = await ask(10, 9);
+check('no connection request to someone who unsubscribed', r.status === 403 && /not taking requests/.test(r.json?.message || ''), r.status + ' ' + r.text);
+r = await meet({ requester_id: 10, requestee_id: 8 }, 10);
+check('no meeting request to someone only on a campus panel', r.status === 403, r.status + ' ' + r.text);
+r = await meet({ requester_id: 10, requestee_id: 9 }, 10);
+check('no meeting request to someone who unsubscribed', r.status === 403, r.status + ' ' + r.text);
+
+// A meeting time on the two days, 9 to 6.
+r = await meet({ requester_id: 10, requestee_id: 11, meeting_time: '2026-11-22T11:00' }, 10);
+check('a meeting on another day is refused', r.status === 400 && /20 or 21 November/.test(r.json?.error || ''), r.status + ' ' + r.text);
+r = await meet({ requester_id: 10, requestee_id: 11, meeting_time: '2026-11-20T20:00' }, 10);
+check('a meeting at 8 PM is refused', r.status === 400, r.status + ' ' + r.text);
+
+// Thirty a day, each kind.
+for (let i = 0; i < 30; i++) db.run("INSERT INTO connections (event_id, from_attendee_id, to_attendee_id, message, created_at) VALUES (1, 10, ?, 'x', datetime('now', '-1 hour'))", [2000 + i]);
+r = await ask(10, 11);
+check('the 31st connection request in 24 hours is refused, in words', r.status === 429 && /30 connection requests in the last 24 hours/.test(r.json?.message || ''), r.status + ' ' + r.text);
+db.run("UPDATE connections SET created_at = datetime('now', '-2 days') WHERE from_attendee_id = 10");
+r = await ask(10, 11);
+check('the next day, requests go again', r.status === 201, r.status + ' ' + r.text);
+for (let i = 0; i < 30; i++) db.run("INSERT INTO meetings (event_id, requester_id, requestee_id, title, meeting_time, created_at) VALUES (1, 10, ?, 'x', '2026-11-20T10:00', datetime('now', '-1 hour'))", [3000 + i]);
+r = await meet({ requester_id: 10, requestee_id: 11 }, 10);
+check('the 31st meeting request in 24 hours is refused, in words', r.status === 429 && /30 meetings in the last 24 hours/.test(r.json?.error || ''), r.status + ' ' + r.text);
+
+// Propose another time.
+db.run("DELETE FROM meetings WHERE requester_id = 10");
+r = await meet({ requester_id: 1, requestee_id: 3 });
+const pm = r.json?.id;
+r = await hit('POST', '/api/meetings/' + pm + '/propose', { meeting_time: '2026-11-21T10:30' }, as(1));
+check('the one who asked cannot "propose another time" to themselves', r.status === 403, r.status + ' ' + r.text);
+r = await hit('POST', '/api/meetings/' + pm + '/propose', { meeting_time: '2026-11-25T10:30' }, as(3));
+check('a proposed time off the two days is refused', r.status === 400, r.status + ' ' + r.text);
+r = await hit('POST', '/api/meetings/' + pm + '/propose', { meeting_time: '2026-11-21T10:30' }, as(3));
+const turned = q('SELECT * FROM meetings WHERE id = ?', pm)[0] || {};
+check('a Visitor asked for a meeting can propose another time; the meeting turns round', r.status === 200 && Number(turned.requester_id) === 3 && Number(turned.requestee_id) === 1 && turned.meeting_time === '2026-11-21T10:30' && turned.status === 'pending' && /New time proposed by Vee Visitor/.test(turned.notes), r.status + ' ' + JSON.stringify(turned));
+r = await hit('PUT', '/api/meetings/' + pm, { status: 'accepted' }, as(1));
+check('and the one who asked first accepts the new time', r.status === 200 && q('SELECT status FROM meetings WHERE id = ?', pm)[0].status === 'accepted', r.status + ' ' + r.text);
+
+// A Visitor may answer a meeting request in chat; still not open a conversation.
+r = await hit('POST', '/api/messages', { event_id: 1, sender_id: 3, receiver_id: 1, content: 'Can we do 11:30 instead?' }, as(3));
+check('a Visitor asked for a meeting can reply in chat', r.status === 200 || r.status === 201, r.status + ' ' + r.text);
+r = await hit('POST', '/api/messages', { event_id: 1, sender_id: 3, receiver_id: 11, content: 'Hello' }, as(3));
+check('a Visitor still cannot open a conversation with someone who did not ask', r.status === 403, r.status + ' ' + r.text);
+
+// Boardrooms: not for a free Visitor.
+db.run("INSERT INTO meeting_rooms (id, event_id, slug, label, wtc_name, capacity, price_inr) VALUES (1, 1, 'r1', 'Room 1', 'Board Room 1', 10, 5000)");
+const hold = (who) => hit('POST', '/api/room-bookings', { event_id: 1, attendee_id: who, room_id: 1, slot_date: '2026-11-20', slot_starts: ['10:00'], title: 'Demo' }, as(who));
+r = await hold(3);
+check('a free Visitor cannot hold a boardroom', r.status === 403 && /not the free Visitor Pass/.test(r.json?.error || ''), r.status + ' ' + r.text);
+r = await hold(1);
+check('a Delegate gets past the pass check', r.status !== 403, r.status + ' ' + r.text);
 
 console.log(fails ? `\n${fails} FAILED` : '\nall networking guard checks passed');
 process.exit(fails ? 1 : 0);
