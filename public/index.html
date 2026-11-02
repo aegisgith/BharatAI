@@ -574,7 +574,7 @@
         .hero-content { max-width: 560px; padding: 2rem 1rem 1.5rem !important; }
         .hero-dateline { color: rgba(255,255,255,0.78); margin-bottom: 1rem; }
         .hero .hero-title { margin-bottom: 0.75rem; }
-        .hero .hero-desc { color: rgba(255,255,255,0.86); margin: 0 auto 1.25rem; max-width: 620px; text-shadow: 0 1px 8px rgba(10,12,28,0.8); }
+        .hero .hero-desc { color: rgba(255,255,255,0.93); margin: 0 auto 1.25rem; max-width: 620px; text-shadow: 0 1px 10px rgba(10,12,28,0.85); }
         /* The Devanagari line is sized off the English one (an em of the h1), at
            the ratio that makes it exactly as wide as "Innovation" in these two
            fonts, so the two lines sit flush at every screen size. */
@@ -628,14 +628,17 @@
         }
         @media (min-width: 900px) {
             /* Centred, as the hero always was (the organiser asked for it back).
-               The dark is a band through the middle, where the type and the offer
-               sit, lighter towards the edges so the stage still reads. */
+               One even smoke over the whole photograph, light rather than dark
+               (the organiser, 2 Nov 2026: "slight opaque, not aggressive"), so the
+               picture still reads and the type stands out on it; a little denser
+               at the very top and bottom for the nav and the fold. White type on
+               the brightest frame stays above 6:1. */
             .hero { align-items: center; }
             .hero-bg-photo { object-position: center 45%; }
             .hero-bg-scrim {
-                background:
-                    radial-gradient(ellipse 34% 50% at 50% 56%, rgba(10,12,28,0.55) 0%, rgba(10,12,28,0.32) 62%, rgba(10,12,28,0) 100%),
-                    linear-gradient(180deg, rgba(10,12,28,0.58) 0%, rgba(10,12,28,0.46) 18%, rgba(10,12,28,0.52) 50%, rgba(10,12,28,0.62) 100%);
+                background: linear-gradient(180deg,
+                    rgba(16,18,28,0.62) 0%, rgba(16,18,28,0.55) 14%,
+                    rgba(16,18,28,0.55) 86%, rgba(16,18,28,0.62) 100%);
             }
             .hero-content { max-width: var(--max-w); padding: 3.5rem 2rem 4rem !important; }
             .hero .hero-title { font-size: clamp(4.25rem, 6.4vw, 6rem); }
