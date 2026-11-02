@@ -38,7 +38,7 @@
     wordsHi: ['भारत', 'एआई', 'इनोवेशन'],
     year: '2026',
     sub: 'Conference & Exhibition 2026',
-    tagline: "India's Largest AI Conference & Exhibition",
+    tagline: "India's B2B AI Conference & Exhibition",
     when: '20–21 Nov 2026',
     where: 'WTC Mumbai',
     site: 'bharataiinnovation.com'

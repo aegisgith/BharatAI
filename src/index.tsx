@@ -6238,26 +6238,27 @@ app.get('/api/events/:id/attendee-filters', async (c) => {
 })
 
 /* The public glimpse of the directory, on /networking (organiser, 2 Nov 2026: show
- * visitors to the website who is in the networking app, senior titles first and
- * people with photos first, and ask them to register when they click one).
+ * visitors to the website who is in the networking app and how it works, top
+ * titles first, and ask them to register when they tap someone).
  *
- * The privacy policy says registration data is shared only with service providers,
- * and with sponsors only after an opt-in in the app. Nobody agreed to be shown on
- * the public website, so a card here is the app's locked card and nothing more: a
- * cleaned job title, the industry, the city and what they are here to do. No name,
- * photo, company, link or id, so a card cannot be looked up, opened or scraped into
- * a list, and no count. A photo is not even sent blurred: image resizing is off on
- * this zone (/cdn-cgi/image answered 404 on 2 Nov), so a blur would be CSS over the
- * real file.
- *
- * Who: conference registrants with a senior title, not students, ministers, the
- * team, or anyone who unsubscribed or said no to marketing, ranked exactly as the
- * free teaser ranks them (TEASER_QUALITY_SQL: a photo first, then title and
- * company, a paid pass above an equal Visitor) and rotated daily the same way, so
- * the people behind today's cards are the people a new free registrant then sees
- * by name in the app. Fewer than GLIMPSE_MIN good cards answers an empty list and
- * the page hides the section. */
+ * Two kinds of card, because two kinds of consent:
+ *  - people: name, photo, job title and company of people who downloaded their
+ *    "I'm attending" social card (social_card_downloaded_at). That card carries
+ *    exactly these four things and exists to be posted publicly, so they have
+ *    told the world they are coming (organiser's rule, the same day: "they have
+ *    no issues with the world knowing they are coming"). Only a photo stored
+ *    here (/api/uploads/), never one the badge desk flagged.
+ *  - locked: everyone else with a senior title, as the app's locked card: job
+ *    title, industry, city and goals, no name, photo or company. The privacy
+ *    policy shares registration data only with service providers and, after an
+ *    opt-in, sponsors; nobody else agreed to be on the public site.
+ * Never an id or a count. Both lists are ordered as the free teaser orders them (TEASER_QUALITY_SQL: photo, senior
+ * title, company, a paid pass above an equal Visitor) and rotate daily the same
+ * way. Left out: panel-only registrants, the unsubscribed, anyone who said no to
+ * marketing, the team, and any id in app_settings 'glimpse_hide' (comma list),
+ * which is how somebody who asks to come off the page is taken off it. */
 const GLIMPSE_SHOWN = 12
+const GLIMPSE_LOCKED = 6
 const GLIMPSE_MIN = 4
 // In the order a card shows them: the goals a seller or a founder wants to meet first.
 const GLIMPSE_GOALS: Record<string, string> = {
@@ -6265,6 +6266,15 @@ const GLIMPSE_GOALS: Record<string, string> = {
   selling: 'Selling', raising: 'Raising investment', networking: 'B2B networking', learning: 'Learning AI',
 }
 const GLIMPSE_ACRONYMS = /\b(ceo|cto|cio|coo|cfo|cmo|cxo|cdo|ciso|chro|cpo|md|vp|avp|svp|evp|gm|ai|ml|it|hr|bfsi|r&d)\b/gi
+const GLIMPSE_JUNK = /https?:|www\.|\S@\S|\d{5,}|minister|hon.?ble/i
+
+// Typed all in capitals or all in lower case: written the usual way.
+function glimpseCase(t: string): string {
+  if (t === t.toLowerCase() || (t === t.toUpperCase() && t.length > 5)) {
+    t = t.toLowerCase().replace(/(^|[\s\-\/(.&])([a-z])/g, (_, p, ch) => p + ch.toUpperCase())
+  }
+  return t.replace(GLIMPSE_ACRONYMS, a => a.toUpperCase())
+}
 
 // A job title fit for a public card. Whatever names the company is cut off ("CTO at
 // Acme", "Head of AI, Acme Ltd", "CEO | Acme"), and a title still carrying a link, a
@@ -6286,11 +6296,20 @@ function glimpseTitle(title: any, company: any): string {
     prev = t
     t = t.replace(/[\s,;:&\-–—\/(]+$/, '').replace(/\s+(?:of|at|and|for|in|the|with)$/i, '')
   }
-  if (t.length < 3 || !/[a-z]/i.test(t) || /https?:|www\.|\d{5,}|minister|hon.?ble/i.test(t)) return ''
-  if (t === t.toLowerCase() || (t === t.toUpperCase() && t.length > 5)) t = t.toLowerCase().replace(/(^|[\s\-\/(])([a-z])/g, (_, p, ch) => p + ch.toUpperCase())
-  t = t.replace(GLIMPSE_ACRONYMS, a => a.toUpperCase())
+  if (t.length < 3 || !/[a-z]/i.test(t) || GLIMPSE_JUNK.test(t)) return ''
+  t = glimpseCase(t)
   if (t.length > 56) t = t.slice(0, 56).replace(/\s+\S*$/, '') + '…'
   return t
+}
+
+// A name or a company as it is on the person's social card, tidied; nothing if it
+// carries a link, an address or a number, or is a placeholder ("NA", "Self").
+function glimpseLabel(v: any, max: number): string {
+  const s = String(v || '').replace(/\s+/g, ' ').trim()
+  if (s.length < 2 || !/[a-z]/i.test(s) || GLIMPSE_JUNK.test(s)) return ''
+  if (/^(n\.?\s?a\.?|none|nil|self|self[\s-]employed|freelancer?|student|not applicable|-+|\.+)$/i.test(s)) return ''
+  const t = glimpseCase(s)
+  return t.length > max ? t.slice(0, max).replace(/\s+\S*$/, '') + '…' : t
 }
 
 // A city as typed by hand ("navi mumbai", "Pune "), or nothing if it is not one.
@@ -6303,36 +6322,69 @@ function glimpseCity(city: any): string {
 // Public: no sign-in. Not in the service worker's cacheable list, so nothing keeps it.
 app.get('/api/events/:id/glimpse', async (c) => {
   const eventId = c.req.param('id')
+  const cols = await attendeeColumns(c)
+  const hidden = new Set((await settingValue(c, 'glimpse_hide')).split(',').map(s => parseInt(s, 10)).filter(n => n > 0))
+  const base = ` FROM attendees WHERE event_id = ?${await mainEventClause(c)}${await suppressionClause(c)}
+      AND LOWER(COALESCE(role, '')) NOT LIKE '%organi%' AND LOWER(COALESCE(role, '')) NOT LIKE '%staff%'
+      AND LOWER(COALESCE(role, '')) NOT LIKE '%admin%'`
+  const order = ` ORDER BY ${TEASER_QUALITY_SQL} DESC, ((id * 7919 + ?) % 1009) ASC, id ASC`
+  const goalsOf = (r: any) => {
+    const goals = String(r.networking_goals || '').toLowerCase().split(',').map(g => g.trim())
+    return Object.keys(GLIMPSE_GOALS).filter(g => goals.includes(g)).slice(0, 2).map(g => GLIMPSE_GOALS[g])
+  }
+  // 'Other' says nothing on a card, so it is left off like a blank one.
+  const industryOf = (r: any) => INDUSTRIES.includes(String(r.industry || '')) && r.industry !== 'Other' ? String(r.industry) : ''
+
+  const people: any[] = []
+  const named = new Set<number>()
+  if (cols.has('social_card_downloaded_at')) {
+    let rows: any[] = []
+    try {
+      rows = ((await c.env.DB.prepare(
+        `SELECT id, name, job_title, company, avatar_url, industry, city, networking_goals${base}
+          AND social_card_downloaded_at IS NOT NULL AND avatar_url LIKE '/api/uploads/%'
+          ${cols.has('photo_flagged_at') ? 'AND photo_flagged_at IS NULL' : ''}${order} LIMIT ${GLIMPSE_SHOWN * 2}`
+      ).bind(eventId, istDay()).all()).results || []) as any[]
+    } catch (_) { rows = [] }
+    for (const r of rows) {
+      if (hidden.has(Number(r.id))) continue
+      const name = glimpseLabel(r.name, 48)
+      if (!name) continue
+      named.add(Number(r.id))
+      people.push({ name, title: glimpseTitle(r.job_title, r.company), company: glimpseLabel(r.company, 48),
+        photo: String(r.avatar_url), industry: industryOf(r), city: glimpseCity(r.city), goals: goalsOf(r) })
+      if (people.length >= GLIMPSE_SHOWN) break
+    }
+  }
+
+  const locked: any[] = []
   let rows: any[] = []
   try {
     rows = ((await c.env.DB.prepare(
-      `SELECT job_title, company, industry, city, networking_goals FROM attendees
-        WHERE event_id = ?${await mainEventClause(c)}${await suppressionClause(c)}
-          AND ${SENIOR_RANK_SQL} = 1 AND ${STUDENT_RANK_SQL} = 0
-          AND LOWER(COALESCE(role, '')) NOT LIKE '%organi%' AND LOWER(COALESCE(role, '')) NOT LIKE '%staff%'
-          AND LOWER(COALESCE(role, '')) NOT LIKE '%admin%'
-        ORDER BY ${TEASER_QUALITY_SQL} DESC, ((id * 7919 + ?) % 1009) ASC, id ASC
-        LIMIT ${GLIMPSE_SHOWN * 2}`
+      `SELECT id, job_title, company, industry, city, networking_goals${base}
+        AND ${SENIOR_RANK_SQL} = 1 AND ${STUDENT_RANK_SQL} = 0${order} LIMIT ${(GLIMPSE_SHOWN + GLIMPSE_LOCKED) * 2}`
     ).bind(eventId, istDay()).all()).results || []) as any[]
   } catch (_) { rows = [] }
   const seen = new Set<string>()
-  const people: any[] = []
+  // With nobody named, the locked cards carry the page, so there are more of them.
+  const lockedMax = people.length ? GLIMPSE_LOCKED : GLIMPSE_SHOWN
   for (const r of rows) {
+    if (named.has(Number(r.id)) || hidden.has(Number(r.id))) continue
     const title = glimpseTitle(r.job_title, r.company)
     if (!title) continue
-    // 'Other' says nothing on a card, so it is left off like a blank one.
-    const industry = INDUSTRIES.includes(String(r.industry || '')) && r.industry !== 'Other' ? String(r.industry) : ''
+    const industry = industryOf(r)
     const city = glimpseCity(r.city)
     // Two cards reading the same are one card twice.
     const key = (title + '|' + industry + '|' + city).toLowerCase()
     if (seen.has(key)) continue
     seen.add(key)
-    const goals = String(r.networking_goals || '').toLowerCase().split(',').map(g => g.trim())
-    people.push({ title, industry, city, goals: Object.keys(GLIMPSE_GOALS).filter(g => goals.includes(g)).slice(0, 2).map(g => GLIMPSE_GOALS[g]) })
-    if (people.length >= GLIMPSE_SHOWN) break
+    locked.push({ title, industry, city, goals: goalsOf(r) })
+    if (locked.length >= lockedMax) break
   }
+
   c.header('Cache-Control', 'public, max-age=600')
-  return c.json({ people: people.length >= GLIMPSE_MIN ? people : [] })
+  if (people.length + locked.length < GLIMPSE_MIN) return c.json({ people: [], locked: [] })
+  return c.json({ people, locked })
 })
 
 app.get('/api/events/:id/attendees', async (c) => {
@@ -17672,7 +17724,7 @@ function sharedFooterHTML(): string {
             <p class="text-[10px] text-gray-400">Conference &amp; Exhibition 2026</p>
           </div>
         </div>
-        <p class="text-xs text-gray-400">India's Largest AI Conference & Exhibition bringing together innovators, researchers, startups, and industry leaders.</p>
+        <p class="text-xs text-gray-400">India's B2B AI conference and exhibition, bringing together innovators, researchers, startups and industry leaders.</p>
       </div>
       <div>
         <h4 class="font-semibold text-sm mb-3">Event Details</h4>
@@ -19733,7 +19785,7 @@ function mainPageHTML(): string {
   <script src="/js/pass-render.js?v=20261029"></script>
   <!-- The "I'm attending" card delegates post. App only: the badge desk has no
        reason to issue one, and it carries none of the pass's verification data. -->
-  <script src="/js/social-card.js?v=20261029"></script>
+  <script src="/js/social-card.js?v=20261102"></script>
   <script src="/js/photo-fingerprint.js?v=2"></script>
   <link rel="stylesheet" href="/css/fonts-app.css?v=1">
   <style>
@@ -27382,7 +27434,7 @@ function mainPageScript(): string {
       ctx.fillText('for participating in', W/2, 600);
       ctx.fillStyle = '#ffffff'; ctx.font = '700 40px Inter, Arial'; ctx.fillText('Bharat AI Innovation 2026', W/2, 660);
       ctx.fillStyle = '#9698ac'; ctx.font = '400 22px Inter, Arial';
-      ctx.fillText("India's Largest AI Conference & Exhibition", W/2, 705);
+      ctx.fillText("India's B2B AI Conference & Exhibition", W/2, 705);
       ctx.fillText('20–21 November 2026 · World Trade Center, Mumbai', W/2, 745);
       // Signature line
       ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.fillRect(W/2-150, 900, 300, 2);
@@ -29920,7 +29972,7 @@ function adminPageHTML(): string {
   <script src="/js/photo-fingerprint.js?v=2"></script>
   <!-- Same renderer the delegate's own app uses, so a card the desk sends a speaker
        is the card that speaker would have made themselves. -->
-  <script src="/js/social-card.js?v=20261029"></script>
+  <script src="/js/social-card.js?v=20261102"></script>
   <link rel="stylesheet" href="/css/fonts-app.css?v=1">
   <style>
     * { font-family: 'Manrope', sans-serif; }

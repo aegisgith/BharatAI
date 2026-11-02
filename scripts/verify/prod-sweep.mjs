@@ -216,14 +216,20 @@ for (const [m, p] of [['GET', '/api/admin/help-stats'], ['POST', '/api/admin/hel
   check(`${m} ${p} needs admin (401)`, r.status === 401, r.status);
 }
 
-// The public glimpse on /networking (2 Nov 2026): job titles only, never a name,
-// company, photo or id, and no more than twelve.
+// "How it works" on /networking (2 Nov 2026): named cards only for people who
+// shared their "I'm attending" card (name, photo stored here, title, company),
+// locked cards (title, industry, city, goals) for the rest, never an id or email.
 r = await hit('/api/events/1/glimpse');
-const glimpse = (() => { try { return JSON.parse(r.text).people; } catch { return null; } })();
-check('the /networking glimpse: at most 12 cards of title, industry, city and goals only', r.status === 200 && Array.isArray(glimpse) && glimpse.length <= 12 &&
-  glimpse.every(p => Object.keys(p).sort().join(',') === 'city,goals,industry,title') && !/avatar|uploads|"name"|"company"|"id"|@/.test(r.text), r.status + ' ' + r.text.slice(0, 160));
+const glimpse = (() => { try { return JSON.parse(r.text); } catch { return null; } })();
+const gPeople = glimpse && Array.isArray(glimpse.people) ? glimpse.people : null;
+const gLocked = glimpse && Array.isArray(glimpse.locked) ? glimpse.locked : null;
+check('the /networking glimpse: at most 12 named and 12 locked, each with only its own fields, no id or email', r.status === 200 && gPeople && gLocked &&
+  gPeople.length <= 12 && gLocked.length <= 12 &&
+  gPeople.every(p => Object.keys(p).sort().join(',') === 'city,company,goals,industry,name,photo,title' && p.photo.startsWith('/api/uploads/')) &&
+  gLocked.every(p => Object.keys(p).sort().join(',') === 'city,goals,industry,title') && !/"id"|"email"|\S@\S/.test(r.text), r.status + ' ' + r.text.slice(0, 160));
 r = await hit('/networking');
-check('/networking asks for the glimpse and carries the new headline', r.text.includes("fetch('/api/events/1/glimpse'") && r.text.includes('Business meetings before you arrive at Bharat AI Innovation'), 'markers');
+check('/networking carries the headline and plays the app: glimpse, Schedule Meeting, Tell your network', r.text.includes("fetch('/api/events/1/glimpse'") && r.text.includes('Business meetings before you arrive at Bharat AI Innovation') &&
+  r.text.includes('Schedule Meeting') && r.text.includes('Tell your network'), 'markers');
 
 console.log(fails ? `\n${fails} FAILED` : '\nall production checks passed');
 process.exit(fails ? 1 : 0);

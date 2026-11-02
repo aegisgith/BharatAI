@@ -84,7 +84,7 @@ const PRECACHE_OPTIONAL = [
   '/css/fonts-app.css?v=1',         // /app, /admin and the other worker pages
   '/fonts/manrope-latin-300-800.woff2',           // the body font everywhere
   '/fonts/bricolage-grotesque-latin-400-800.woff2', // the app's headings
-  '/js/social-card.js?v=20261029',
+  '/js/social-card.js?v=20261102',
   '/images/favicon-64.png',
   '/webfonts/fa-solid-900.woff2',
   '/webfonts/fa-brands-400.woff2',

@@ -1,8 +1,9 @@
-// Built-worker checks for the public glimpse of the directory on /networking
+// Built-worker checks for the public "how it works" section on /networking
 // (2 Nov 2026), run against real SQLite (sql.js) loaded with the production schema,
 // so the ranking and the exclusions are tested as SQL, not pattern-matched.
-// A card may carry a cleaned job title, the industry, the city and goals, and
-// nothing that names, pictures or locates a person: no name, company, photo, id.
+// A named card (name, photo, title, company) only for someone who downloaded their
+// "I'm attending" social card; everyone else is a locked card (title, industry,
+// city, goals) and nothing that names, pictures or locates them. Never an id.
 // Run after `npm run build`:  node scripts/verify/smoke-glimpse.mjs
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -41,96 +42,92 @@ const check = (n, ok, d) => { console.log((ok ? 'PASS ' : 'FAIL ') + n + (ok ? '
 // ---- seed ----
 for (const id of [1, 2, 3]) db.run('INSERT INTO events (id, title, start_date, end_date) VALUES (?, ?, ?, ?)', [id, 'Event ' + id, '2026-11-20', '2026-11-21']);
 let nextId = 1;
+const ids = {};
 const person = (event_id, name, extra = {}) => {
   const id = nextId++;
+  ids[name] = id;
   const row = { id, event_id, name, email: 'p' + id + '@example.com', mobile: '98200' + String(id).padStart(5, '0'), company: 'Company' + id,
     job_title: 'Director', industry: 'Software & SaaS', city: 'Pune', avatar_url: '/api/uploads/avatars/' + id + '-1.jpg',
     badge_type: 'Visitor Pass', payment_status: 'paid', main_event: 1, role: 'attendee', ...extra };
   const cols = Object.keys(row);
   db.run(`INSERT INTO attendees (${cols.join(',')}) VALUES (${cols.map(() => '?').join(',')})`, clean(cols.map(k => row[k])));
 };
+const SHARED = '2026-10-30 10:00:00';
 
-// Event 1: one of each case.
-person(1, 'Asha Rao', { job_title: 'Chief Technology Officer', company: 'Acme Bank', industry: 'Banking & Financial Services', city: 'navi mumbai', networking_goals: 'hiring,buying,learning', badge_type: 'Delegate Pass' });
-person(1, 'Vikram Nokia', { job_title: 'CTO at Nokia Networks', company: 'Nokia', industry: 'Telecom', city: 'Bengaluru' });
-person(1, 'Meera Bosch', { job_title: 'Head of AI, Bosch India', company: 'Bosch Limited', industry: 'Manufacturing', city: 'Chennai' });
-person(1, 'Ravi Acme', { job_title: 'founder & ceo | acme ai', company: 'Acme AI Labs', industry: 'Software & SaaS', city: 'Hyderabad' });
-person(1, 'Neha Hdfc', { job_title: 'Director - Data Science, HDFC Bank', company: 'HDFC Bank', industry: 'Banking & Financial Services', city: 'Mumbai 400001' });
-person(1, 'Karan Infy', { job_title: 'VP Engineering @ Infosys', company: 'Infosys', industry: 'Weird Industry', city: 'Mysuru' });
-person(1, 'Anil Caps', { job_title: 'MANAGING DIRECTOR', company: 'Caps Pvt Ltd', industry: 'Insurance', city: 'Delhi' });
-person(1, 'Other Industry', { job_title: 'Asia Pacific Community Director', company: 'Otherco', industry: 'Other', city: 'Gurgaon' });
-person(1, 'Long Title', { job_title: 'Senior Vice President and Global Head of Artificial Intelligence Research and Strategy', company: 'Longco', industry: 'IT Services & Consulting', city: 'Noida' });
-person(1, 'No Photo', { job_title: 'Head of Sales', avatar_url: null, company: 'Nophoto', industry: 'Retail & E-commerce', city: 'Surat' });
-// Left out:
+// Event 1. Shared their social card (named):
+person(1, 'Ratan Kesh', { job_title: 'Executive Director & COO at Bandhan Bank', company: 'Bandhan Bank', industry: 'Banking & Financial Services', city: 'kolkata', networking_goals: 'buying,partner', badge_type: 'Delegate Pass', social_card_downloaded_at: SHARED });
+person(1, 'meera iyer', { job_title: 'Head of AI', company: 'BOSCH INDIA', industry: 'Manufacturing', city: 'Bengaluru', social_card_downloaded_at: SHARED });
+person(1, 'Junior Analyst', { job_title: 'Data Analyst', company: 'Smallco', social_card_downloaded_at: SHARED });
+person(1, 'Self Person', { job_title: 'Founder', company: 'Self', social_card_downloaded_at: SHARED });
+person(1, 'Inline Photo', { job_title: 'Chief Data Officer', avatar_url: 'data:image/png;base64,AAAA', social_card_downloaded_at: SHARED });
+person(1, 'Flagged Photo', { job_title: 'Chief Risk Officer', photo_flagged_at: '2026-10-29 10:00:00', social_card_downloaded_at: SHARED });
+person(1, 'Asked Off', { job_title: 'Chief Executive Officer', company: 'Hiddenco', social_card_downloaded_at: SHARED });
+person(1, 'Panel Sharer', { job_title: 'Chief Strategy Officer', main_event: 0, social_card_downloaded_at: SHARED });
+person(1, 'Unsub Sharer', { job_title: 'Chief Growth Officer', unsubscribed_at: '2026-10-01 10:00:00', social_card_downloaded_at: SHARED });
+// Did not share their card (locked at most):
+person(1, 'Vikram Secret', { job_title: 'CTO at Nokia Networks', company: 'Nokia', industry: 'Telecom', city: 'Bengaluru', networking_goals: 'hiring' });
+person(1, 'Neha Secret', { job_title: 'Director - Data Science, HDFC Bank', company: 'HDFC Bank', industry: 'Banking & Financial Services', city: 'Mumbai 400001' });
+person(1, 'Karan Secret', { job_title: 'VP Engineering @ Infosys', company: 'Infosys', industry: 'Other', city: 'Mysuru' });
 person(1, 'Sam Student', { job_title: 'Student' });
-person(1, 'Founder Student', { job_title: 'Founder, student at IIT' });
-person(1, 'Panel Only', { job_title: 'Chief Data Officer', main_event: 0 });
-person(1, 'Unsub Bed', { job_title: 'Chief Risk Officer', unsubscribed_at: '2026-10-01 10:00:00' });
-person(1, 'No Marketing', { job_title: 'Chief Marketing Officer', marketing_consent: 0 });
 person(1, 'Team Member', { job_title: 'Director of Operations', role: 'organiser' });
-person(1, 'Desk Staff', { job_title: 'Head of Desk', role: 'staff' });
 person(1, 'Hon Minister', { job_title: 'Chief Minister of a State' });
-person(1, 'Link Person', { job_title: 'CEO www.linkco.com' });
 person(1, 'Phone Person', { job_title: 'Director 9820012345' });
-person(1, 'Twin One', { job_title: 'Founder', company: 'TwinA', industry: 'Telecom', city: 'Goa' });
-person(1, 'Twin Two', { job_title: 'founder', company: 'TwinB', industry: 'Telecom', city: 'goa' });
 person(1, 'Junior Dev', { job_title: 'Software Engineer' });
-// Event 2: too few senior people to show a section.
+db.run("INSERT INTO app_settings (key, value) VALUES ('glimpse_hide', ?)", [' ' + ids['Asked Off'] + ', 999 ']);
+// Event 2: too few for a section.
 person(2, 'Lone One', { job_title: 'Founder' });
 person(2, 'Lone Two', { job_title: 'Director', city: 'Agra' });
-// Event 3: more than enough, three without a photo.
-for (let i = 0; i < 18; i++) person(3, 'Big ' + i, { job_title: 'Director ' + String.fromCharCode(65 + i), city: 'City' + 'abcdefghijklmnopqr'[i] });
-for (let i = 0; i < 3; i++) person(3, 'Faceless ' + i, { job_title: 'Head Faceless ' + i, avatar_url: '' });
+// Event 3: plenty, three of the sharers without a senior title.
+for (let i = 0; i < 15; i++) person(3, 'Big Sharer ' + i, { job_title: 'Director ' + String.fromCharCode(65 + i), social_card_downloaded_at: SHARED });
+for (let i = 0; i < 3; i++) person(3, 'Plain Sharer ' + i, { job_title: 'Associate ' + i, social_card_downloaded_at: SHARED });
+for (let i = 0; i < 10; i++) person(3, 'Big Quiet ' + i, { job_title: 'Head ' + String.fromCharCode(65 + i), city: 'City' + 'abcdefghij'[i] });
 
 // ---- event 1 ----
 let r = await hit('/api/events/1/glimpse');
-const people = r.json?.people || [];
-const byTitle = Object.fromEntries(people.map(p => [p.title, p]));
-check('answers 200 with no sign-in', r.status === 200 && Array.isArray(r.json?.people), r.status + ' ' + r.text.slice(0, 160));
-check('a card carries only title, industry, city and goals', people.length > 0 && people.every(p => Object.keys(p).sort().join(',') === 'city,goals,industry,title'), JSON.stringify(people[0]));
-const leaks = ['Asha', 'Rao', 'Nokia', 'Bosch', 'Acme', 'HDFC', 'Infosys', 'Caps', 'Longco', 'Nophoto', '@example.com', '/api/uploads', 'avatar', 'Company', 'Twin'];
-check('no name, company, email or photo anywhere in the answer', !leaks.some(w => r.text.includes(w)), leaks.filter(w => r.text.includes(w)).join(', '));
-check('no id and no count in the answer or its headers', !/"id"|total|count/i.test(r.text) && !Object.keys(r.h).some(k => /count|total/i.test(k)), r.text.slice(0, 120) + ' ' + Object.keys(r.h).join(','));
+const people = r.json?.people || [], locked = r.json?.locked || [];
+const named = Object.fromEntries(people.map(p => [p.name, p]));
+check('answers 200 with no sign-in', r.status === 200 && Array.isArray(r.json?.people) && Array.isArray(r.json?.locked), r.status + ' ' + r.text.slice(0, 160));
+check('a named card carries name, photo, title, company, industry, city and goals only', people.length > 0 && people.every(p => Object.keys(p).sort().join(',') === 'city,company,goals,industry,name,photo,title'), JSON.stringify(people[0]));
+check('a locked card carries title, industry, city and goals only', locked.length > 0 && locked.every(p => Object.keys(p).sort().join(',') === 'city,goals,industry,title'), JSON.stringify(locked[0]));
+check('no id and no count in the answer or its headers', !/"id"|total|count/i.test(r.text) && !Object.keys(r.h).some(k => /count|total/i.test(k)), r.text.slice(0, 120));
 check('kept by a browser for ten minutes', /public/.test(r.h['cache-control'] || '') && /max-age=600/.test(r.h['cache-control'] || ''), r.h['cache-control']);
-check('a plain senior title is shown as typed', !!byTitle['Chief Technology Officer'], Object.keys(byTitle).join(' | '));
-check('"CTO at Nokia Networks" loses the company', !!byTitle['CTO'], Object.keys(byTitle).join(' | '));
-check('"Head of AI, Bosch India" loses the company', !!byTitle['Head of AI'], Object.keys(byTitle).join(' | '));
-check('"founder & ceo | acme ai" loses the company and reads Founder & CEO', !!byTitle['Founder & CEO'], Object.keys(byTitle).join(' | '));
-check('"Director - Data Science, HDFC Bank" loses the bank', !!byTitle['Director - Data Science'], Object.keys(byTitle).join(' | '));
-check('"VP Engineering @ Infosys" loses the company', !!byTitle['VP Engineering'], Object.keys(byTitle).join(' | '));
-check('a title in capitals is written normally', !!byTitle['Managing Director'], Object.keys(byTitle).join(' | '));
-const long = people.find(p => p.title.startsWith('Senior Vice President'));
-check('a long title is cut at a word with an ellipsis', !!long && long.title.length <= 57 && long.title.endsWith('…'), long && long.title);
-check('a hand-typed city is tidied ("navi mumbai")', byTitle['Chief Technology Officer']?.city === 'Navi Mumbai', byTitle['Chief Technology Officer']?.city);
-check('a city with a PIN code is left out', byTitle['Director - Data Science']?.city === '', JSON.stringify(byTitle['Director - Data Science']));
-check('an industry outside the list is left out', byTitle['VP Engineering']?.industry === '', JSON.stringify(byTitle['VP Engineering']));
-check('"Other" is left off like a blank industry', byTitle['Asia Pacific Community Director']?.industry === '', JSON.stringify(byTitle['Asia Pacific Community Director']));
-check('goals read in plain words, two at most, buyers first', JSON.stringify(byTitle['Chief Technology Officer']?.goals) === '["Buying","Hiring"]', JSON.stringify(byTitle['Chief Technology Officer']?.goals));
-const shown = people.map(p => p.title.toLowerCase()).join(' | ');
-check('students are left out', !/student/.test(shown), shown);
-check('panel-only, unsubscribed and no-marketing people are left out', !/chief data officer|chief risk officer|chief marketing officer/.test(shown), shown);
-check('the team and desk staff are left out', !/director of operations|head of desk/.test(shown), shown);
-check('a minister, a link and a phone number are never shown', !/minister|www|linkco|98200/.test(shown), shown);
-check('juniors are left out (senior titles only)', !/software engineer/.test(shown), shown);
-check('two cards that read the same are shown once', people.filter(p => p.title === 'Founder').length === 1, people.filter(p => p.title === 'Founder').length);
-check('people with a photo come before people without', people.findIndex(p => p.title === 'Head of Sales') === people.length - 1, shown);
-check('a paid Delegate with a photo leads', people[0]?.title === 'Chief Technology Officer', people[0]?.title);
+check('people who shared their card are named, top titles first', people[0]?.name === 'Ratan Kesh' && !!named['Meera Iyer'], people.map(p => p.name).join(' | '));
+check('a sharer without a senior title is still shown, after the seniors', people.findIndex(p => p.name === 'Junior Analyst') > people.findIndex(p => p.name === 'Meera Iyer'), people.map(p => p.name).join(' | '));
+check('the title loses the company, the company stands on its own', named['Ratan Kesh']?.title === 'Executive Director & COO' && named['Ratan Kesh']?.company === 'Bandhan Bank', JSON.stringify(named['Ratan Kesh']));
+check('a name or company typed in one case is written normally', !!named['Meera Iyer'] && named['Meera Iyer'].company === 'Bosch India', JSON.stringify(named['Meera Iyer']));
+check('"Self" is not shown as a company', named['Self Person']?.company === '', JSON.stringify(named['Self Person']));
+check('a named photo is one stored here', people.every(p => p.photo.startsWith('/api/uploads/')), people.map(p => p.photo).join(' '));
+const shownNames = people.map(p => p.name).join(' | ');
+check('an inline photo, a flagged photo and an id in glimpse_hide are never named', !/Inline Photo|Flagged Photo|Asked Off/.test(shownNames), shownNames);
+check('a sharer asked off is not a locked card either', !locked.some(p => /chief executive officer/i.test(p.title)) && !r.text.includes('Hiddenco'), JSON.stringify(locked));
+check('panel-only and unsubscribed sharers are left out', !/Panel Sharer|Unsub Sharer/.test(shownNames) && !locked.some(p => /strategy|growth/i.test(p.title)), shownNames);
+const secrets = ['Vikram', 'Neha', 'Karan', 'Nokia', 'HDFC', 'Infosys', '@example.com', 'Secret'];
+check('nobody who did not share their card is named, pictured or given a company', !secrets.some(w => r.text.includes(w)), secrets.filter(w => r.text.includes(w)).join(', '));
+const lockedTitles = locked.map(p => p.title).join(' | ');
+check('locked cards are senior titles with the company cut off', /(^| \| )CTO( \| |$)/.test(lockedTitles) && lockedTitles.includes('Director - Data Science') && lockedTitles.includes('VP Engineering'), lockedTitles);
+check('a named person is not also a locked card', !locked.some(p => /executive director|head of ai/i.test(p.title)), lockedTitles);
+check('students, juniors, the team, a minister and a phone number are not locked cards', !/student|software engineer|operations|minister|98200/i.test(lockedTitles), lockedTitles);
+check('a city with a PIN code and an "Other" industry are left blank', locked.find(p => p.title === 'Director - Data Science')?.city === '' && locked.find(p => p.title === 'VP Engineering')?.industry === '', JSON.stringify(locked));
+check('goals read in plain words, buyers first', JSON.stringify(named['Ratan Kesh']?.goals) === '["Buying","Finding partners"]', JSON.stringify(named['Ratan Kesh']?.goals));
 
 // ---- event 2: too few ----
 r = await hit('/api/events/2/glimpse');
-check('fewer than four good cards answers an empty list (the page hides the section)', r.status === 200 && Array.isArray(r.json?.people) && r.json.people.length === 0, r.text);
+check('fewer than four cards in all answers empty lists (the page hides the section)', r.status === 200 && r.json?.people?.length === 0 && r.json?.locked?.length === 0, r.text);
 
 // ---- event 3: plenty ----
 r = await hit('/api/events/3/glimpse');
-const big = r.json?.people || [];
-check('never more than twelve cards', big.length === 12, big.length);
-check('nobody without a photo while people with one are left over', !big.some(p => /faceless/i.test(p.title)), big.map(p => p.title).join(' | '));
+const bigP = r.json?.people || [], bigL = r.json?.locked || [];
+check('never more than twelve named and six locked', bigP.length === 12 && bigL.length === 6, bigP.length + ' / ' + bigL.length);
+check('seniors who shared come before sharers without a senior title', !bigP.some(p => /Plain Sharer/.test(p.name)), bigP.map(p => p.name).join(' | '));
+check('the locked cards are people who did not share', bigL.every(p => /^Head /.test(p.title)), bigL.map(p => p.title).join(' | '));
 
 // ---- the page ----
 const page = readFileSync(new URL('../../public/networking.html', import.meta.url), 'utf8');
 check('the page asks this route for its cards', page.includes("fetch('/api/events/1/glimpse'"), 'fetch missing');
-check('the page writes card text as text, never as HTML', /el\('span', 'nw-lc-title', p\.title\)/.test(page) && !/innerHTML\s*=\s*[^;]*p\.(title|city|industry)/.test(page), 'innerHTML with card text');
-check('the cards sit in the app\'s own Networking Hub screen, as its locked cards', page.includes('Networking Hub') && page.includes("'nw-lc-bar'") && page.includes('See who this is') && page.includes('class="nw-tab on"'), 'phone screen markers');
+check('the page writes names and titles as text, never as HTML', /el\('span', 'nw-pc-name', p\.name\)/.test(page) && /el\('span', 'nw-lc-title', p\.title\)/.test(page) && !/innerHTML\s*=\s*[^;]*p\.(name|title|company|city|industry)/.test(page), 'innerHTML with card text');
+check('the phone plays the app\'s own screens: list, Requested, Schedule Meeting, chat, Tell your network', ['Networking Hub', 'Requested', 'Schedule Meeting', 'Send Meeting Request', 'Type a message', 'Tell your network', 'Share to LinkedIn or WhatsApp'].every(s => page.includes(s)), 'phone screen markers');
+check('the card in the share step is drawn by the app\'s renderer', page.includes("'/js/social-card.js?v=") && page.includes('BhaiSocialCard.render('), 'renderer');
+check('five steps, online and at the venue', (page.match(/data-step="[1-5]"/g) || []).length >= 5 && page.includes('At WTC Mumbai') && page.includes('Share your card on LinkedIn'), 'steps');
 check('the headline reads as the organiser wrote it', /Business meetings before you arrive at Bharat AI Innovation, <span class="nw-accent">not chance encounters<\/span>/.test(page), 'headline');
 
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');
