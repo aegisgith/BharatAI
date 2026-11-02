@@ -16,6 +16,65 @@ const toast = document.getElementById('detail-toast')
 const showToast = (msg, isError = false) => { toast.textContent = msg; toast.classList.remove('hidden'); toast.classList.toggle('border-rose-500', isError); toast.classList.toggle('border-slate-700', !isError); clearTimeout(showToast.t); showToast.t = setTimeout(() => toast.classList.add('hidden'), isError ? 6000 : 3500) }
 const toTagList = (v) => (v||'').split(',').map(i => i.trim()).filter(Boolean)
 const getInitials = (n = '') => n.split(' ').filter(Boolean).slice(0,2).map(p => p[0]).join('').toUpperCase()
+
+// Logos come as square icons, long wordmarks, or a small mark on a big empty
+// canvas. Trim the empty border so the mark fills its tile, and let a wide logo
+// widen the tile instead of shrinking to a sliver. A logo on its own coloured
+// square is kept whole. Same trim as the browse cards (marketplace-app.js).
+const trimLogo = (img) => {
+  const w = img.naturalWidth, h = img.naturalHeight
+  const s = Math.min(1, 320 / Math.max(w, h))
+  const cw = Math.max(1, Math.round(w * s)), ch = Math.max(1, Math.round(h * s))
+  const c = document.createElement('canvas'); c.width = cw; c.height = ch
+  const ctx = c.getContext('2d', { willReadFrequently: true })
+  ctx.drawImage(img, 0, 0, cw, ch)
+  const px = ctx.getImageData(0, 0, cw, ch).data
+  const at = (x, y) => (y * cw + x) * 4
+  const clear = (i) => px[i + 3] < 24
+  const white = (i) => px[i] > 238 && px[i + 1] > 238 && px[i + 2] > 238
+  const corners = [at(0, 0), at(cw - 1, 0), at(0, ch - 1), at(cw - 1, ch - 1)]
+  const empty = corners.every(clear) ? clear : corners.every(i => clear(i) || white(i)) ? (i) => clear(i) || white(i) : null
+  if (!empty) return { w, h, tile: true }
+  let x0 = cw, y0 = ch, x1 = -1, y1 = -1, ink = 0, light = 0
+  for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) {
+    const i = at(x, y)
+    if (empty(i)) continue
+    ink++; if (px[i] > 200 && px[i + 1] > 200 && px[i + 2] > 200) light++
+    if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y
+  }
+  if (x1 < 0) return { w, h }
+  // A white logo on a clear background (the version made for dark pages) vanishes
+  // on a white tile: it gets a dark one.
+  const dark = empty === clear && light / ink > 0.5
+  const sx = Math.max(0, (x0 - 1) / s), sy = Math.max(0, (y0 - 1) / s)
+  const sw = Math.min(w - sx, (x1 - x0 + 3) / s), sh = Math.min(h - sy, (y1 - y0 + 3) / s)
+  if (sw * sh > 0.9 * w * h) return { w, h, dark }
+  const k = Math.min(1, 640 / Math.max(sw, sh))
+  const out = document.createElement('canvas'); out.width = Math.max(1, Math.round(sw * k)); out.height = Math.max(1, Math.round(sh * k))
+  out.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, out.width, out.height)
+  return { w: sw, h: sh, dark, src: out.toDataURL('image/png') }
+}
+const watchHeroLogo = (img, initials) => {
+  const box = img.parentElement
+  img.addEventListener('error', () => {
+    box.classList.add('pd-logo--initials')
+    box.innerHTML = `<span aria-hidden="true">${esc(initials)}</span>`
+  }, { once: true })
+  const fit = () => {
+    let r = null
+    try { r = trimLogo(img) } catch {} // a logo on another site cannot be read: shown as it is
+    if (r && r.tile) return
+    if (r && r.src) img.src = r.src
+    if (r && r.dark) box.classList.add('pd-logo--dark')
+    const w = (r && r.w) || img.naturalWidth, h = (r && r.h) || img.naturalHeight
+    const wide = w / h > 1.6
+    box.classList.add(wide ? 'pd-logo--wide' : 'pd-logo--fitted')
+    // On a phone a wide logo takes its own line, so the title keeps the width.
+    if (wide && box.parentElement) box.parentElement.classList.add('pd-hero-main--wide-logo')
+  }
+  if (img.complete && img.naturalWidth) fit()
+  else img.addEventListener('load', fit, { once: true })
+}
 const api = async (path, opts = {}) => { const r = await fetch(path, { headers:{'Content-Type':'application/json'}, credentials:'same-origin', ...opts }); const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error||'Request failed'); return d }
 const text = (v) => String(v == null ? '' : v).trim()
 const sameText = (a, b) => text(a).toLowerCase() === text(b).toLowerCase()
@@ -140,6 +199,8 @@ const renderDetail = (listing) => {
         </div>
       </div>
     </div>`
+  const heroLogo = heroEl.querySelector('.pd-logo img')
+  if (heroLogo) watchHeroLogo(heroLogo, getInitials(name))
 
   // ── Main column
   const sections = []

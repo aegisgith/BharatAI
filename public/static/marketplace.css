@@ -227,20 +227,36 @@ h1,h2,h3,h4,.mp-hero-title,.mp-faq-title,.listing-title,.detail-hero-title,.mp-l
 }
 a.listing-card:hover { border-color: rgba(255,107,0,0.35); box-shadow: 0 12px 32px rgba(26,35,126,0.09); transform: translateY(-2px); }
 a.listing-card:focus-visible { outline: 3px solid rgba(255,107,0,0.5); outline-offset: 2px; }
-.listing-product-img { aspect-ratio: 16 / 9; background: var(--mp-surface-2); overflow: hidden; }
-.listing-product-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .listing-body { display: flex; flex-direction: column; gap: 14px; padding: 20px; flex: 1; min-width: 0; }
-.listing-head { display: flex; align-items: center; gap: 14px; min-width: 0; }
+/* Logo row above the name, the same height on every card. marketplace-app.js trims
+   each logo's empty border and sets --logo-h by its shape (wide = shorter). */
+.listing-head { display: flex; flex-direction: column; align-items: flex-start; gap: 14px; min-width: 0; }
+.listing-brand { height: 48px; max-width: 100%; display: flex; align-items: center; }
+.listing-logo-img {
+  display: block; width: auto; height: var(--logo-h, 40px); max-width: 168px; object-fit: contain;
+  opacity: 0; transition: opacity 0.2s;
+}
+.listing-logo-img.is-ready { opacity: 1; }
+.listing-logo-img.is-tile { border-radius: 12px; }
+/* A white logo made for dark pages: give it the dark page. */
+.listing-logo-img.is-dark {
+  box-sizing: content-box; height: min(var(--logo-h, 32px), 32px); max-width: 144px;
+  padding: 8px 12px; border-radius: 12px; background: var(--mp-text);
+}
 .listing-logo {
-  width: 52px; height: 52px; border-radius: 14px; flex-shrink: 0; overflow: hidden;
+  width: 48px; height: 48px; border-radius: 12px; flex-shrink: 0; overflow: hidden;
   display: flex; align-items: center; justify-content: center;
   background: #fff; border: 1px solid var(--mp-border);
   font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 17px; color: var(--mp-primary-ink);
 }
-.listing-logo img { width: 100%; height: 100%; object-fit: contain; }
 .listing-logo--initials { background: var(--mp-primary-tint); border-color: rgba(255,107,0,0.18); }
-.listing-names { min-width: 0; }
-.listing-title { font-size: 18px; line-height: 1.25; font-weight: 700; margin: 0; overflow-wrap: anywhere; }
+.listing-names { min-width: 0; max-width: 100%; }
+.listing-title {
+  font-size: 18px; line-height: 1.25; font-weight: 700; margin: 0; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+/* Three lines held even when the text is shorter, so tags line up across a row. */
+.listing-grid .listing-desc { min-height: calc(1.6em * 3); }
 .listing-company { font-size: 13px; color: var(--mp-muted); margin: 3px 0 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .listing-desc {
   font-size: 14px; line-height: 1.6; color: var(--mp-body); margin: 0;
@@ -271,7 +287,12 @@ a.listing-card:hover .listing-view i { transform: translateX(3px); }
 }
 
 /* List view: one row per product, name | description | price. */
-.listing-list .listing-product-img, .listing-list .listing-chips { display: none; }
+.listing-list .listing-chips { display: none; }
+.listing-list .listing-head { flex-direction: row; align-items: center; }
+.listing-list .listing-brand { width: 88px; height: 44px; flex-shrink: 0; justify-content: center; }
+.listing-list .listing-logo-img { height: auto; max-width: 88px; max-height: 44px; }
+.listing-list .listing-logo-img.is-dark { max-width: 56px; max-height: 28px; padding: 8px; }
+.listing-list .listing-logo { width: 44px; height: 44px; }
 .listing-list .listing-body { display: grid; grid-template-columns: minmax(220px, 300px) minmax(0, 1fr) auto; align-items: center; gap: 12px 28px; padding: 16px 20px; }
 .listing-list .listing-desc { -webkit-line-clamp: 2; }
 .listing-list .listing-foot { margin: 0; padding: 0; border: 0; flex-direction: column; align-items: flex-end; gap: 4px; }
@@ -291,7 +312,7 @@ a.listing-card:hover .listing-view i { transform: translateX(3px); }
 .sk-line--short { width: 45%; margin-top: 8px; }
 .sk-line--mid { width: 75%; }
 .listing-card--skeleton .listing-logo { border: 0; }
-.listing-card--skeleton .listing-names { flex: 1; }
+.listing-card--skeleton .listing-names { flex: 1; align-self: stretch; }
 .listing-card--skeleton .sk-lines { display: flex; flex-direction: column; gap: 8px; }
 
 /* ── Listing Form ── */
@@ -392,6 +413,11 @@ a.listing-card:hover .listing-view i { transform: translateX(3px); }
 }
 .pd-logo img { width: 100%; height: 100%; object-fit: contain; }
 .pd-logo--initials { background: var(--mp-primary-tint); border-color: rgba(255,107,0,0.18); box-shadow: none; }
+/* Set by marketplace-listing.js once the logo's empty border is trimmed. */
+.pd-logo--fitted { padding: 14px; }
+.pd-logo--wide { width: auto; min-width: 96px; padding: 0 20px; }
+.pd-logo--wide img { width: auto; height: auto; max-width: 176px; max-height: 52px; }
+.pd-logo--dark { background: var(--mp-text); border-color: var(--mp-text); }
 .pd-title-block { flex: 1; min-width: 0; }
 .pd-title { font-size: 42px; line-height: 1.05; font-weight: 800; letter-spacing: -0.025em; margin: 0; text-wrap: balance; overflow-wrap: anywhere; }
 .pd-byline { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 18px; margin: 10px 0 0; font-size: 15px; color: var(--mp-muted); }
@@ -579,6 +605,11 @@ a.listing-card:hover .listing-view i { transform: translateX(3px); }
   .pd-crumbs { margin-bottom: 20px; }
   .pd-hero-main { gap: 16px; }
   .pd-logo { width: 64px; height: 64px; border-radius: 16px; font-size: 22px; }
+  .pd-logo--fitted { padding: 9px; }
+  .pd-logo--wide { width: auto; min-width: 64px; padding: 0 12px; }
+  .pd-logo--wide img { max-width: 144px; max-height: 36px; }
+  .pd-hero-main--wide-logo { flex-direction: column; align-items: stretch; }
+  .pd-hero-main--wide-logo .pd-logo { align-self: flex-start; }
   .pd-title { font-size: 30px; }
   .pd-byline { font-size: 14px; }
   .pd-actions { flex-direction: column; }

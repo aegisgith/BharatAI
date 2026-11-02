@@ -169,24 +169,98 @@ if (statusEl) statusEl.addEventListener('click', (e) => {
 FILTERS.forEach(f => f.select && f.select.addEventListener('change', () => { filters[f.name] = f.select.value; renderListings() }))
 if (searchInput) searchInput.addEventListener('input', () => { filters.q = searchInput.value; renderListings() })
 
+// ── Logos ──
+// Exhibitors upload logos in every shape: square app icons, long wordmarks, and
+// files that are mostly empty canvas (one is a small icon in the left fifth of a
+// wide transparent PNG). In a fixed square tile a wordmark shrank to a sliver and a
+// padded logo to a dot. So: trim the empty border, then give the logo a height that
+// falls as it gets wider, so an icon and a wordmark carry about the same weight in
+// the card's logo row. A logo on its own coloured square (an app icon) is kept
+// whole with rounded corners. A logo that fails to load becomes the initials.
+// The product page does the same in marketplace-listing.js.
+const LOGO_H = 48, LOGO_MAX_W = 168
+const logoHeight = (w, h) => {
+  const ratio = Math.min(10, Math.max(0.6, w / h))
+  return Math.min(LOGO_H, Math.round(LOGO_H * Math.pow(ratio, -0.35)), Math.floor(LOGO_MAX_W / ratio))
+}
+// Returns { w, h } of what should show, plus src when the file was trimmed and
+// tile when the logo carries its own background. Throws for a logo on another site
+// (the canvas cannot be read); the caller then shows it as it is.
+const trimLogo = (img) => {
+  const w = img.naturalWidth, h = img.naturalHeight
+  const s = Math.min(1, 320 / Math.max(w, h))
+  const cw = Math.max(1, Math.round(w * s)), ch = Math.max(1, Math.round(h * s))
+  const c = document.createElement('canvas'); c.width = cw; c.height = ch
+  const ctx = c.getContext('2d', { willReadFrequently: true })
+  ctx.drawImage(img, 0, 0, cw, ch)
+  const px = ctx.getImageData(0, 0, cw, ch).data
+  const at = (x, y) => (y * cw + x) * 4
+  const clear = (i) => px[i + 3] < 24
+  const white = (i) => px[i] > 238 && px[i + 1] > 238 && px[i + 2] > 238
+  const corners = [at(0, 0), at(cw - 1, 0), at(0, ch - 1), at(cw - 1, ch - 1)]
+  const empty = corners.every(clear) ? clear : corners.every(i => clear(i) || white(i)) ? (i) => clear(i) || white(i) : null
+  if (!empty) return { w, h, tile: true }
+  let x0 = cw, y0 = ch, x1 = -1, y1 = -1, ink = 0, light = 0
+  for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) {
+    const i = at(x, y)
+    if (empty(i)) continue
+    ink++; if (px[i] > 200 && px[i + 1] > 200 && px[i + 2] > 200) light++
+    if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y
+  }
+  if (x1 < 0) return { w, h }
+  // A white logo on a clear background (the version made for dark pages) vanishes
+  // on a white card: it gets a dark tile.
+  const dark = empty === clear && light / ink > 0.5
+  const sx = Math.max(0, (x0 - 1) / s), sy = Math.max(0, (y0 - 1) / s)
+  const sw = Math.min(w - sx, (x1 - x0 + 3) / s), sh = Math.min(h - sy, (y1 - y0 + 3) / s)
+  if (sw * sh > 0.9 * w * h) return { w, h, dark }
+  const k = Math.min(1, 640 / Math.max(sw, sh))
+  const out = document.createElement('canvas'); out.width = Math.max(1, Math.round(sw * k)); out.height = Math.max(1, Math.round(sh * k))
+  out.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, out.width, out.height)
+  return { w: sw, h: sh, dark, src: out.toDataURL('image/png') }
+}
+const fitLogo = (img) => {
+  let r = null
+  try { r = trimLogo(img) } catch {}
+  const w = (r && r.w) || img.naturalWidth || 1, h = (r && r.h) || img.naturalHeight || 1
+  if (r && r.tile) img.classList.add('is-tile')
+  if (r && r.dark) img.classList.add('is-dark')
+  if (r && r.src) img.src = r.src
+  // A logo on its own background is a solid block: it takes the full row height.
+  const height = r && r.tile ? Math.min(LOGO_H, Math.floor(LOGO_MAX_W / (w / h))) : logoHeight(w, h)
+  img.style.setProperty('--logo-h', height + 'px')
+  img.classList.add('is-ready')
+}
+const watchLogo = (img) => {
+  img.addEventListener('error', () => {
+    const tile = document.createElement('span'); tile.className = 'listing-logo listing-logo--initials'; tile.textContent = img.dataset.initials || ''
+    img.replaceWith(tile)
+  }, { once: true })
+  if (img.complete && img.naturalWidth) fitLogo(img)
+  else img.addEventListener('load', () => fitLogo(img), { once: true })
+}
+
 // ── Cards ──
 // The whole card is the link. Empty fields are left out rather than shown as "—",
 // and the company line is dropped when it only repeats the product name.
+// Every card has the same shape: logo row, name, company, three lines of text,
+// tags, price. The product image is not shown here: most listings have none, and
+// a row of cards with and without a cover photo looked broken. It shows on the
+// product page instead.
 const createListingCard = (listing) => {
   const card = document.createElement('a')
   card.className = 'listing-card'
   card.href = listingUrl(listing)
   const name = String(listing.product_name || '').trim() || 'Untitled product'
   const company = String(listing.company_name || '').trim()
-  const logo = safeUrl(listing.logo_url), image = safeUrl(listing.product_image_url)
+  const logo = safeUrl(listing.logo_url), initials = getInitials(name)
   const booth = listing.exhibitor_booth || listing.booth_number
   const chipsFrom = [toTagList(listing.ai_category), toTagList(listing.tags), toTagList(listing.target_industry)].find(list => list.length) || []
   const chips = chipsFrom.slice(0, 3).map(c => `<span class="chip">${esc(c)}</span>`).join('') + (chipsFrom.length > 3 ? `<span class="chip chip--more">+${chipsFrom.length - 3}</span>` : '')
 
-  card.innerHTML = `${image ? `<div class="listing-product-img"><img src="${esc(image)}" alt="" loading="lazy"></div>` : ''}
-    <div class="listing-body">
+  card.innerHTML = `<div class="listing-body">
       <div class="listing-head">
-        <div class="listing-logo${logo ? '' : ' listing-logo--initials'}">${logo ? `<img src="${esc(logo)}" alt="" loading="lazy">` : esc(getInitials(name))}</div>
+        <div class="listing-brand">${logo ? `<img class="listing-logo-img" src="${esc(logo)}" alt="" loading="lazy" data-initials="${esc(initials)}">` : `<span class="listing-logo listing-logo--initials">${esc(initials)}</span>`}</div>
         <div class="listing-names">
           <h3 class="listing-title">${esc(name)}</h3>
           ${company && keyOf(company) !== keyOf(name) ? `<p class="listing-company">${esc(company)}</p>` : ''}
@@ -199,6 +273,8 @@ const createListingCard = (listing) => {
         <span class="listing-view">View details <i class="fas fa-arrow-right" aria-hidden="true"></i></span>
       </div>
     </div>`
+  const logoImg = card.querySelector('.listing-logo-img')
+  if (logoImg) watchLogo(logoImg)
   return card
 }
 
