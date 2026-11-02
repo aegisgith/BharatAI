@@ -613,6 +613,7 @@
                the type below sits on a plain ground. */
             .hero { background: #0A0C1C; min-height: 0; padding-top: calc(var(--nav-h) + 180px); }
             .hero-content { padding-top: 0 !important; }
+            #heroGlobe { height: calc(var(--nav-h) + 250px); }
             .hero-bg-photo { height: calc(var(--nav-h) + 250px); }
             .hero-bg-scrim {
                 background: linear-gradient(180deg,
@@ -938,8 +939,9 @@
             </h1>
 
             <p class="hero-desc">
-                India’s B2B platform for AI. The organisations already running AI in production,
-                the companies providing it, and the policymakers shaping it. Two days at WTC Mumbai.
+                India’s B2B platform for AI. The government ministries and departments, enterprises and startups
+                already running AI in production, the AI companies providing it, and the policymakers shaping it
+                for empowering Bharat. Two days at WTC Mumbai.
             </p>
 
             <div class="hero-offer hero-passline">
@@ -2414,12 +2416,19 @@
     })();
     </script>
 
-    <!-- Neural globe background. Drawn only while the hero is on screen, the
-         lines in a dozen batched strokes, 30 frames a second on a phone, and a
-         single still frame for anyone whose device has animations turned off.
-         The first version stroked each of its ~900 lines on its own 60 times a
-         second for as long as the page was open, and kept a mid-range phone's
-         processor about 95% busy; measured 27 Oct 2026. -->
+    <!-- Neural globe background. A still globe is drawn at once; it starts to
+         turn only after the page has loaded, and only while the hero is on
+         screen: 20 frames a second on a phone, 30 wider, and for anyone whose
+         device has animations turned off, a third of the speed at 15 frames a
+         second (the organiser wants it turning for everyone, 2 Nov 2026).
+         What keeps it light (2 Nov 2026): the joined pairs are found once, since
+         turning a globe does not change which dots sit close together; on a
+         phone the canvas covers only the photograph's band; and the frame rate
+         is a third lower. (Stamping one pre-drawn dot 150 times was tried: where
+         the browser draws the canvas without the graphics chip it was ten times
+         slower, so the dots stay batched circles.) The first version stroked each of its ~900
+         lines on its own 60 times a second for as long as the page was open
+         (27 Oct 2026). -->
     <script>
     (function(){
       'use strict';
@@ -2428,86 +2437,85 @@
       var ctx=cv.getContext('2d');
       var N=150,SPD=0.00020,THR=0.52,STEPS=12;
       var PHI=Math.PI*(3-Math.sqrt(5));
-      var pts=[];
+      var px=new Float32Array(N),py=new Float32Array(N),pz=new Float32Array(N);
       for(var i=0;i<N;i++){
         var yv=1-(i/(N-1))*2,rv=Math.sqrt(1-yv*yv),tv=PHI*i;
-        pts.push({x:Math.cos(tv)*rv,y:yv,z:Math.sin(tv)*rv});
+        px[i]=Math.cos(tv)*rv;py[i]=yv;pz[i]=Math.sin(tv)*rv;
       }
+      // Every pair close enough to be joined, and its line's strength before
+      // depth is applied. Found once: turning the globe keeps every distance.
+      var pa=[],pb=[],pw=[];
+      for(var i=0;i<N;i++)for(var j=i+1;j<N;j++){
+        var dx=px[i]-px[j],dy=py[i]-py[j],dz=pz[i]-pz[j],d2=dx*dx+dy*dy+dz*dz;
+        if(d2<THR*THR){pa.push(i);pb.push(j);pw.push(1-Math.sqrt(d2)/THR);}
+      }
+      var P=pa.length,bk=new Uint8Array(P);
+      var sx=new Float32Array(N),sy=new Float32Array(N),dd=new Float32Array(N),db=new Uint8Array(N);
       function resize(){
-        // Measure the hero section, not .hero-bg (which is position:absolute)
-        var hero=cv.parentElement.parentElement;
-        cv.width=hero.clientWidth||window.innerWidth;
-        cv.height=hero.clientHeight||window.innerHeight;
+        // The canvas's own box: CSS makes it the whole hero on a wide screen and
+        // the photograph's band on a phone.
+        cv.width=cv.clientWidth||window.innerWidth;
+        cv.height=cv.clientHeight||window.innerHeight;
       }
-      var ang=0,prev=0,last=0,running=false;
+      var ang=0;
       function draw(){
         var W=cv.width,H=cv.height;
         // Below 900px the globe turns in the photograph's band at the top, clear
-        // of the type below it (1 Nov 2026); wider, the type is centred and the
-        // globe turns behind it, as it always has.
+        // of the type below it; wider, the type is centred and the globe turns
+        // behind it, as it always has.
         var mob=W<900;
-        var centX=W*.5,centY=mob?Math.min(H*.25,165):H*.5;
+        var centX=W*.5,centY=mob?Math.min(H*.5,165):H*.5;
         var R=mob?Math.min(W*.27,120):Math.min(W,H)*.40;
         ctx.clearRect(0,0,W,H);
         var ca=Math.cos(ang),sa=Math.sin(ang);
-        var q=pts.map(function(p){
-          var rx=p.x*ca-p.z*sa,rz=p.x*sa+p.z*ca,ry=p.y;
-          var d=(rz+1.18)/2.36;
-          return{sx:centX+rx*R,sy:centY+ry*R,d:d,rx:rx,ry:ry,rz:rz};
-        });
-        // Saffron connecting lines, gathered by brightness into STEPS batches
-        // and stroked once per batch.
-        var buckets=[];
-        for(var s=0;s<STEPS;s++)buckets.push([]);
-        for(var i=0;i<N;i++){
-          for(var j=i+1;j<N;j++){
-            var dx=q[i].rx-q[j].rx,dy=q[i].ry-q[j].ry,dz=q[i].rz-q[j].rz;
-            var d2=dx*dx+dy*dy+dz*dz;
-            if(d2>=THR*THR)continue;
-            var a=(1-Math.sqrt(d2)/THR)*Math.min(q[i].d,q[j].d)*.55;
-            if(a<.02)continue;
-            buckets[Math.min(STEPS-1,Math.floor(a/.55*STEPS))].push(i,j);
-          }
+        for(var k=0;k<N;k++){
+          var rx=px[k]*ca-pz[k]*sa,rz=px[k]*sa+pz[k]*ca;
+          sx[k]=centX+rx*R;sy[k]=centY+py[k]*R;dd[k]=(rz+1.18)/2.36;
+          db[k]=Math.min(9,Math.floor(Math.max(.08,dd[k]*.92)*10));
+        }
+        // Saffron lines, sorted by brightness into STEPS batches, one stroke each.
+        for(var p=0;p<P;p++){
+          var a=pw[p]*Math.min(dd[pa[p]],dd[pb[p]])*.55;
+          bk[p]=a<.02?255:Math.min(STEPS-1,Math.floor(a/.55*STEPS));
         }
         ctx.lineWidth=.8;
         for(var b=0;b<STEPS;b++){
-          var seg=buckets[b];
-          if(!seg.length)continue;
+          var any=false;
           ctx.beginPath();
-          for(var m=0;m<seg.length;m+=2){
-            ctx.moveTo(q[seg[m]].sx,q[seg[m]].sy);
-            ctx.lineTo(q[seg[m+1]].sx,q[seg[m+1]].sy);
+          for(var p=0;p<P;p++){
+            if(bk[p]!==b)continue;
+            ctx.moveTo(sx[pa[p]],sy[pa[p]]);ctx.lineTo(sx[pb[p]],sy[pb[p]]);any=true;
           }
+          if(!any)continue;
           ctx.strokeStyle='rgba(255,120,40,'+((b+.5)/STEPS*.55).toFixed(3)+')';
           ctx.stroke();
         }
-        // White dots (visible against dark blue gradient), gathered by
-        // brightness the same way: ten fills instead of one per dot.
-        var dots=[];
-        for(var s=0;s<10;s++)dots.push([]);
-        for(var k=0;k<N;k++){
-          dots[Math.min(9,Math.floor(Math.max(.08,q[k].d*.92)*10))].push(k);
-        }
+        // White dots, sorted by brightness the same way: ten fills.
         for(var b=0;b<10;b++){
-          var set=dots[b];
-          if(!set.length)continue;
+          var some=false;
           ctx.beginPath();
-          for(var m=0;m<set.length;m++){
-            var pt=q[set[m]],r=Math.max(1,pt.d*3.5);
-            ctx.moveTo(pt.sx+r,pt.sy);
-            ctx.arc(pt.sx,pt.sy,r,0,6.283);
+          for(var k=0;k<N;k++){
+            if(db[k]!==b)continue;
+            var r=Math.max(1,dd[k]*3.5);
+            ctx.moveTo(sx[k]+r,sy[k]);ctx.arc(sx[k],sy[k],r,0,6.283);some=true;
           }
+          if(!some)continue;
           ctx.fillStyle='rgba(255,255,255,'+((b+.5)/10).toFixed(3)+')';
           ctx.fill();
         }
       }
+      var still=!!(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+      var SPEED=still?SPD/3:SPD;
+      var prev=0,last=0,running=false;
       function frame(ts){
         if(!running)return;
         var dt=Math.min(ts-prev,100);prev=ts;
-        ang+=SPD*dt;
-        // A phone draws 30 frames a second: on a slow drift the eye cannot tell
-        // it from 60, for half the work.
-        if(cv.width<600&&ts-last<30){requestAnimationFrame(frame);return;}
+        ang+=SPEED*dt;
+        // Milliseconds between drawings: 20 a second on a phone, 30 wider, 15
+        // with animations off. On a drift this slow (a dot moves about a pixel
+        // between drawings) the eye cannot tell these from 60.
+        var gap=still?66:(cv.width<600?50:33);
+        if(ts-last<gap){requestAnimationFrame(frame);return;}
         last=ts;
         draw();
         requestAnimationFrame(frame);
@@ -2520,15 +2528,21 @@
       function stop(){running=false;}
       window.addEventListener('resize',function(){resize();if(!running)draw();},{passive:true});
       resize();
-      // Animations turned off on the device: one still globe, drawn once.
-      if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches){draw();return;}
-      // Only while the hero is on screen; scrolled past, the drawing stops and
-      // the processor is the page's again.
-      if('IntersectionObserver' in window){
-        new IntersectionObserver(function(es){
-          for(var e=0;e<es.length;e++){if(es[e].isIntersecting)start();else stop();}
-        }).observe(cv);
-      }else start();
+      draw();
+      // Data Saver on: the still globe only.
+      var c=navigator.connection;
+      if(c&&c.saveData)return;
+      function begin(){
+        // Only while the hero is on screen; scrolled past, the drawing stops and
+        // the processor is the page's again.
+        if('IntersectionObserver' in window){
+          new IntersectionObserver(function(es){
+            for(var e=0;e<es.length;e++){if(es[e].isIntersecting)start();else stop();}
+          }).observe(cv);
+        }else start();
+      }
+      if(document.readyState==='complete')begin();
+      else window.addEventListener('load',begin);
     })();
     </script>
 </body>
