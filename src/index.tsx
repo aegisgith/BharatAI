@@ -20265,7 +20265,7 @@ function mainPageHTML(): string {
         <form id="meeting-form" class="space-y-4">
           <input type="hidden" id="meeting-requestee-id">
           <div><input type="text" id="meeting-title" autocomplete="off" placeholder="Meeting Title *" required class="w-full px-4 py-3 rounded-xl text-sm"></div>
-          <div><input type="datetime-local" id="meeting-time" autocomplete="off" required min="2026-11-20T09:00" max="2026-11-21T18:30" class="w-full px-4 py-3 rounded-xl text-sm"><p class="text-[11px] text-gray-500 mt-1">At WTC Mumbai, 20 or 21 Nov, between 9:00 am and 6:30 pm.</p></div>
+          <div><input type="datetime-local" id="meeting-time" autocomplete="off" required min="2026-11-20T09:00" max="2026-11-21T17:59" class="w-full px-4 py-3 rounded-xl text-sm"><p class="text-[11px] text-gray-500 mt-1">At WTC Mumbai, 20 or 21 Nov, between 9:00 am and 6:00 pm.</p></div>
           <div class="grid grid-cols-2 gap-3">
             <select id="meeting-duration" class="px-4 py-3 rounded-xl text-sm">
               <option value="15">15 minutes</option>
