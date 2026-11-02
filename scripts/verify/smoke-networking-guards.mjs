@@ -149,5 +149,20 @@ check('a booth is saved with clipped text and a known size', r.status === 200 &&
 r = await hit('PUT', '/api/attendees/5/exhibitor', { company_name: '   ' }, as(5));
 check('a booth with no company name is refused', r.status === 400, r.status + ' ' + r.text);
 
+// ---- profile rules (2 Nov 2026) ----
+person(6, 'Free Visitor', { badge_type: 'Visitor Pass', lunch_inclusion: 'No' });
+person(7, 'Lunch Delegate', { lunch_inclusion: 'Yes' });
+r = await hit('PUT', '/api/attendees/6/profile', { lunch_inclusion: 'Yes' }, as(6));
+check('a free Visitor cannot give themselves lunch', r.status === 200 && q('SELECT lunch_inclusion FROM attendees WHERE id = 6')[0].lunch_inclusion === 'No', r.status + ' ' + JSON.stringify(q('SELECT lunch_inclusion FROM attendees WHERE id = 6')));
+r = await hit('PUT', '/api/attendees/7/profile', { lunch_inclusion: 'No' }, as(7));
+check('a Delegate may still say no to lunch', r.status === 200 && q('SELECT lunch_inclusion FROM attendees WHERE id = 7')[0].lunch_inclusion === 'No', r.status + ' ' + r.text.slice(0, 120));
+r = await hit('PUT', '/api/attendees/7/profile', { networking_goals: 'hiring' }, as(7));
+const p7 = q('SELECT name, company, mobile, networking_goals FROM attendees WHERE id = 7')[0];
+check('saving the goals alone changes nothing else', r.status === 200 && p7.networking_goals === 'hiring' && p7.name === 'Lunch Delegate' && p7.company === 'Co 7' && p7.mobile === '9830000007', r.status + ' ' + JSON.stringify(p7));
+r = await hit('PUT', '/api/admin/attendees/7', { email: '  Rahul.S@Infosys.COM ' }, { Authorization: 'Bearer smoke-admin' });
+check('an email typed in Admin is saved trimmed and lowercased, so it can sign in', r.status === 200 && q('SELECT email FROM attendees WHERE id = 7')[0].email === 'rahul.s@infosys.com', r.status + ' ' + JSON.stringify(q('SELECT email FROM attendees WHERE id = 7')));
+r = await hit('GET', '/api/attendees/1/dashboard', undefined, as(1));
+check('the dashboard carries created_at (the Me page "Since" card read Invalid Date)', r.status === 200 && !!r.json?.profile?.created_at, r.status + ' ' + JSON.stringify(r.json?.profile || {}).slice(0, 160));
+
 console.log(fails ? `\n${fails} FAILED` : '\nall networking guard checks passed');
 process.exit(fails ? 1 : 0);

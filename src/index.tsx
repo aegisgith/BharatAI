@@ -932,6 +932,9 @@ async function attendeeColumns(c: any): Promise<Set<string>> {
 // off the list is stored as empty rather than as a value no chart will ever count.
 function sanitizeAttendeeField(field: string, value: any): any {
   const v = value ?? ''
+  // Every sign-in compares the trimmed, lowercased address, so one saved as typed
+  // ("Rahul.S@Infosys.com ") could never sign in (2 Nov 2026).
+  if (field === 'email') return String(v).trim().toLowerCase()
   if (field === 'industry') return INDUSTRIES.includes(String(v)) ? String(v) : ''
   // Until now only createInvoice ever wrote payment_status, so a refund, a waived
   // fee or a payment confirmed off-system had no way into the record.
@@ -11489,7 +11492,7 @@ app.get('/api/attendees/:id/dashboard', async (c) => {
     // ATTENDEE_PUBLIC_COLS allowlist that protects the directory.
     // The person's own row carries the pass they chose, not the one others see, so
     // an unpaid VIP is still offered Pay now for the VIP Pass.
-    c.env.DB.prepare(`SELECT ${isAdminRequest(c) ? '*' : ATTENDEE_PUBLIC_COLS.replace(PUBLIC_BADGE_COL, 'badge_type') + ', email, mobile, rsvp_status, pass_downloaded_at, social_card_downloaded_at'} FROM attendees WHERE id = ?`).bind(id),
+    c.env.DB.prepare(`SELECT ${isAdminRequest(c) ? '*' : ATTENDEE_PUBLIC_COLS.replace(PUBLIC_BADGE_COL, 'badge_type') + ', email, mobile, rsvp_status, pass_downloaded_at, social_card_downloaded_at, created_at'} FROM attendees WHERE id = ?`).bind(id),
     c.env.DB.prepare(statsSql).bind(...new Array(11).fill(id)),
     // Recent connections with names. other_online used to read the raw is_online
     // column, which is never cleared - every contact showed a green dot forever.
@@ -11938,6 +11941,13 @@ app.put('/api/attendees/:id/profile', async (c) => {
   if (body.mobile !== undefined) {
     const holder = await mobileChangeHolder(c, id, body.mobile)
     if (holder) return c.json({ error: 'That mobile number is already registered to another attendee (' + maskEmail(holder.email) + '). Please use your own number.', code: 'mobile_registered' }, 409)
+  }
+  // A pass without lunch (LUNCH_BY_PASS 'No': Visitor, Academic) cannot give itself
+  // one: until 2 Nov 2026 a free Visitor could pick Yes here and be counted for a
+  // lunch pack. A pass that includes lunch may still say No.
+  if (body.lunch_inclusion !== undefined && !isAdminRequest(c)) {
+    const own = await c.env.DB.prepare('SELECT badge_type FROM attendees WHERE id = ?').bind(id).first() as any
+    if (LUNCH_BY_PASS[String(own?.badge_type || '').trim()] === 'No') body.lunch_inclusion = 'No'
   }
 
   // Patch, not replace. The arrival prompt used to send {...currentUser, arrival_time}
@@ -20390,7 +20400,7 @@ function mainPageHTML(): string {
                  invitation to do the thing they already did, so the whole row is
                  gated: see applySignedInChrome(). -->
             <div class="flex items-center justify-center gap-3 flex-wrap signed-out-only">
-              <button onclick="showRegistration()" class="flex items-center gap-2 px-6 py-3 rounded-full text-sm font-bold text-white transition hover:opacity-90" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);box-shadow:0 6px 20px rgba(245,98,10,0.35);">Register Free <i class="fas fa-arrow-right text-xs"></i></button>
+              <button onclick="showRegistration(); switchAuthMode(&quot;register&quot;)" class="flex items-center gap-2 px-6 py-3 rounded-full text-sm font-bold text-white transition hover:opacity-90" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);box-shadow:0 6px 20px rgba(245,98,10,0.35);">Register Free <i class="fas fa-arrow-right text-xs"></i></button>
               <a href="https://bharataiinnovation.com" target="_blank" class="flex items-center gap-2 px-6 py-3 rounded-full text-sm font-semibold text-gray-200 transition hover:bg-white/10 no-underline" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);">Learn More</a>
             </div>
 
@@ -22152,7 +22162,7 @@ function mainPageHTML(): string {
             <h2 class="text-xl font-bold"><i class="fas fa-user-edit text-primary-400 mr-2"></i>Edit Profile</h2>
             <button onclick="closeEditProfile()" class="text-gray-400 hover:text-white"><i class="fas fa-times text-lg"></i></button>
           </div>
-          <form id="edit-profile-form" class="space-y-4">
+          <form id="edit-profile-form" class="space-y-4" novalidate>
             <!-- Photo Upload -->
             <div class="flex items-center gap-4">
               <div class="relative">
@@ -23001,35 +23011,42 @@ function mainPageScript(): string {
         } catch (e) {}
       }
       if (saved) {
-        let refusedEmail = '';
-        try {
-          currentUser = JSON.parse(saved);
-          // Re-register to mark online
-          const user = await api.post(\`/api/events/\${EVENT_ID}/attendees/register\`, {
-            name: currentUser.name,
-            email: currentUser.email,
-            company: currentUser.company,
-            job_title: currentUser.job_title,
-          });
-          // A refusal (the sign-in ran out, or the account was merged into
-          // another) is an error, not a person. Until 2 Nov 2026 it was kept as
-          // the signed-in user: a nameless "?" avatar, an empty Me page, and the
-          // same again on every reload, since the kept "user" had no name to send.
-          if (!user || !user.id) {
-            refusedEmail = (currentUser && currentUser.id && currentUser.email) || '';
-            throw new Error(apiFailed(user) || 'not signed in');
+        let was = null;
+        try { was = JSON.parse(saved); } catch (e) {}
+        // A saved "user" without an id is an error the old app kept as a person
+        // (a nameless "?" avatar and an empty Me page, on every reload).
+        if (!was || !was.id || !was.email) { localStorage.removeItem('agba_user'); was = null; }
+        if (was) {
+          currentUser = was;
+          // Re-register to mark online. Three answers, told apart (2 Nov 2026):
+          // the person (carry on), a refusal (the sign-in ran out, or the account
+          // was merged away: sign out and ask again), and no answer or a server
+          // error (venue Wi-Fi, a 502), which used to sign the person out without
+          // a word. That last one keeps them signed in; the next open asks again.
+          let resp = null, user = null;
+          try {
+            resp = await fetch(\`/api/events/\${EVENT_ID}/attendees/register\`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: was.name, email: was.email, company: was.company, job_title: was.job_title })
+            });
+            user = await resp.json().catch(() => null);
+          } catch (e) { resp = null; }
+          if (resp && resp.ok && user && user.id) {
+            currentUser = user;
+            localStorage.setItem('agba_user', JSON.stringify(currentUser));
+            if (emailParam) window.history.replaceState({}, '', window.location.pathname);
+          } else if (resp && resp.status >= 400 && resp.status < 500) {
+            currentUser = null;
+            localStorage.removeItem('agba_user');
+            // Home was drawn for the saved person while the answer was on its way.
+            loadDashboard();
+            // An emailed sign-in link, when this visit carries one, is tried below.
+            if (!emailParam) sessionEndedSignIn(was.email);
           }
-          currentUser = user;
-          localStorage.setItem('agba_user', JSON.stringify(currentUser));
-          if (emailParam) window.history.replaceState({}, '', window.location.pathname);
-          upgradeToLoggedIn();
-          runPendingAction();
-        } catch(e) {
-          // Saved session invalid, continue as public user
-          currentUser = null;
-          localStorage.removeItem('agba_user');
-          // An emailed sign-in link, when this visit carries one, is tried below.
-          if (refusedEmail && !emailParam) sessionEndedSignIn(refusedEmail);
+          if (currentUser) {
+            try { upgradeToLoggedIn(); runPendingAction(); } catch (e) { console.error('Restoring the sign-in:', e); }
+          }
         }
       }
       if (!currentUser && emailParam) {
@@ -23202,6 +23219,22 @@ function mainPageScript(): string {
       note.classList.remove('hidden');
     }
 
+    // The sign-in box has two steps: ask for a code, then type it. Back to the
+    // first after a sign-in, a changed address, a code that ran out, or the box
+    // opened again. Until 2 Nov 2026 the second step never ended, so the main
+    // button could not ask for a new code, and after a sign-in it stayed
+    // "Signing in..." and disabled for the next time the box opened.
+    function resetSigninStep() {
+      window._signinCodeSent = false;
+      const form = document.getElementById('signin-form');
+      const btn = form && form.querySelector('button[type=submit]');
+      if (btn) { btn.innerHTML = '<i class="fas fa-sign-in-alt mr-2"></i>Sign In'; btn.disabled = false; }
+      const codeField = document.getElementById('signin-code-field');
+      if (codeField) codeField.classList.add('hidden');
+      const code = document.getElementById('signin-code');
+      if (code) code.value = '';
+    }
+
     function showApp() {
       document.getElementById('loading-screen').classList.add('hidden');
       document.getElementById('registration-modal').classList.add('hidden');
@@ -23252,7 +23285,10 @@ function mainPageScript(): string {
         const data = await resp.json();
 
         if (data.error) {
-          showToast(data.error, 'error');
+          // The sentence, not the machine word ("verification_required" was shown).
+          // An address already registered is a sign-in, so the box opens on it.
+          showToast(data.message || data.error, 'error');
+          if (data.error === 'verification_required') { showRegistration(email); switchAuthMode('signin'); }
           btn.innerHTML = '<i class="fas fa-check-circle mr-2"></i>Register — It\\'s Free!';
           btn.disabled = false;
           return;
@@ -23411,6 +23447,7 @@ function mainPageScript(): string {
 
     function switchAuthMode(mode) {
       authMode = mode;
+      if (mode === 'signin' && typeof resetSigninStep === 'function') resetSigninStep();
       const signinTab = document.getElementById('auth-tab-signin');
       const registerTab = document.getElementById('auth-tab-register');
       const signinForm = document.getElementById('signin-form');
@@ -23436,12 +23473,16 @@ function mainPageScript(): string {
       document.getElementById('register-error').classList.add('hidden');
     }
 
+    // A different address starts again from asking for a code.
+    document.getElementById('signin-email').addEventListener('input', function () { if (window._signinCodeSent) resetSigninStep(); });
+
     // Sign In handler
     document.getElementById('signin-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const btn = e.target.querySelector('button[type=submit]');
       const errorEl = document.getElementById('signin-error');
       errorEl.classList.add('hidden');
+      errorEl.style.removeProperty('color');
       btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Signing in...';
       btn.disabled = true;
 
@@ -23463,6 +23504,7 @@ function mainPageScript(): string {
             localStorage.setItem('agba_user', JSON.stringify(currentUser));
             showToast(\`Welcome back, \${currentUser.name}!\`, 'success');
             document.getElementById('registration-modal').classList.add('hidden');
+            resetSigninStep();
             upgradeToLoggedIn();
             runPendingAction();
             return;
@@ -23488,7 +23530,11 @@ function mainPageScript(): string {
           window._signinCodeSent = true;
           const codeField = document.getElementById('signin-code-field');
           if (codeField) codeField.classList.remove('hidden');
-          errorEl.textContent = 'Check your inbox — we sent a sign-in link and a 6-digit code. Enter the code below.';
+          // The server answers the same for an address it does not know (so the
+          // box cannot be used to test addresses); the words do not promise more.
+          errorEl.textContent = 'If this address is registered, we have emailed it a sign-in link and a 6-digit code. Enter the code below.';
+          // Green, not the error red: the theme sets that red with !important.
+          errorEl.style.setProperty('color', '#15803d', 'important');
           errorEl.classList.remove('hidden');
           btn.innerHTML = '<i class="fas fa-check mr-2"></i>Verify code';
           btn.disabled = false;
@@ -23519,10 +23565,13 @@ function mainPageScript(): string {
         const data = await resp.json();
 
         if (!resp.ok) {
-          errorEl.textContent = data.error || 'Sign in failed. Please check your email.';
+          // A code that ran out, or too many tries, needs a new one, which only
+          // the first step sends: back to it, so Sign In asks again.
+          const dead = /expired|too many|request a new/i.test(String(data.error || ''));
+          errorEl.textContent = (data.error || 'Sign in failed. Please check your email.') + (dead ? ' Tap Sign In for a new code.' : '');
           errorEl.classList.remove('hidden');
-          btn.innerHTML = '<i class="fas fa-sign-in-alt mr-2"></i>Sign In';
-          btn.disabled = false;
+          if (dead) resetSigninStep();
+          else { btn.innerHTML = '<i class="fas fa-check mr-2"></i>Verify code'; btn.disabled = false; }
           return;
         }
 
@@ -23530,13 +23579,14 @@ function mainPageScript(): string {
         localStorage.setItem('agba_user', JSON.stringify(currentUser));
         showToast(\`Welcome back, \${currentUser.name}!\`, 'success');
         document.getElementById('registration-modal').classList.add('hidden');
+        resetSigninStep();
         upgradeToLoggedIn();
         // Check for pending action after manual sign-in
         runPendingAction();
       } catch(err) {
         errorEl.textContent = 'Network error. Please try again.';
         errorEl.classList.remove('hidden');
-        btn.innerHTML = '<i class="fas fa-sign-in-alt mr-2"></i>Sign In';
+        btn.innerHTML = window._signinCodeSent ? '<i class="fas fa-check mr-2"></i>Verify code' : '<i class="fas fa-sign-in-alt mr-2"></i>Sign In';
         btn.disabled = false;
       }
     });
@@ -25202,21 +25252,14 @@ function mainPageScript(): string {
       const u = currentUser;
       if (!u) return;
       try {
-        // The endpoint writes name, company and the rest unconditionally, so the
-        // current values have to travel with the goals: sending goals alone would
-        // blank the profile it is meant to sharpen.
-        const updated = await api.put('/api/attendees/' + u.id + '/profile', {
-          name: u.name, company: u.company || '', job_title: u.job_title || '',
-          bio: u.bio || '', interests: u.interests || '',
-          linkedin_url: u.linkedin_url || '', twitter_url: u.twitter_url || '',
-          website_url: u.website_url || '', mobile: u.mobile || '',
-          lunch_inclusion: u.lunch_inclusion || 'Yes', arrival_time: u.arrival_time || '',
-          networking_goals: u.networking_goals || ''
-        });
-        if (updated && updated.id) {
-          currentUser = updated;
-          try { localStorage.setItem('agba_user', JSON.stringify(currentUser)); } catch (e) {}
-        }
+        // The goals alone (2 Nov 2026): the endpoint patches only what it is sent,
+        // and sending this phone's copy of everything else undid edits made
+        // elsewhere (an admin's fix, another device).
+        const updated = await api.put('/api/attendees/' + u.id + '/profile', { networking_goals: u.networking_goals || '' });
+        const why = apiFailed(updated);
+        if (why || !updated || !updated.id) { showToast(why || 'Could not save that. Try again.', 'error'); return; }
+        currentUser = updated;
+        try { localStorage.setItem('agba_user', JSON.stringify(currentUser)); } catch (e) {}
         renderGoalCard();
         renderDashMatchRail();
         showToast('Saved - your recommendations just changed', 'success');
@@ -25568,6 +25611,11 @@ function mainPageScript(): string {
       const input = document.getElementById('chat-input');
       const content = input.value.trim();
       if (!content || !currentUser || !chatPartnerId) return;
+      // One send at a time: on slow venue Wi-Fi a second tap or Enter sent the
+      // same message twice, since the box keeps the text until it is in.
+      const form = e.target;
+      if (form.dataset.sending === '1') return;
+      form.dataset.sending = '1';
 
       try {
         const r = await api.post('/api/messages', {
@@ -25583,6 +25631,7 @@ function mainPageScript(): string {
         input.value = '';
         await loadMessages(true);
       } catch(e) { console.error('Send message error:', e); showToast('Message not sent. Check your connection and try again.', 'error'); }
+      finally { delete form.dataset.sending; }
     });
 
     // ==================== MEETINGS ====================
@@ -25816,7 +25865,7 @@ function mainPageScript(): string {
         // No counterparty in room-only mode, so there is no meeting to request -
         // the held hours are the whole transaction.
         if (!roomOnlyMode) {
-          await api.post('/api/meetings', {
+          const mr = await api.post('/api/meetings', {
             event_id: EVENT_ID,
             requester_id: currentUser.id,
             requestee_id: parseInt(document.getElementById('meeting-requestee-id').value),
@@ -25826,6 +25875,14 @@ function mainPageScript(): string {
             location: selectedRoom ? roomLocationLabel() : document.getElementById('meeting-location').value,
             notes: document.getElementById('meeting-notes').value,
           });
+          // Until 2 Nov 2026 a refusal (a Visitor, a sign-in that ran out) still
+          // said "Meeting request sent!".
+          const whyNot = apiFailed(mr);
+          if (whyNot) {
+            const kept = !!(selectedRoom && selectedRoomSlots.length);
+            showToast(whyNot + (kept ? ' The room hours you picked are still held for you: cancel them under Me, Meetings if you do not need them.' : ''), 'error');
+            return;
+          }
         }
         const held = !!(selectedRoom && selectedRoomSlots.length);
         const wasRoomOnly = roomOnlyMode;
@@ -27021,10 +27078,18 @@ function mainPageScript(): string {
       } catch(e) { el.innerHTML = '<p class="text-sm text-gray-500 text-center py-6">Could not load your messages.</p>'; }
     }
 
+    // An error in place of a list read "No connections yet" and hid pending
+    // requests (2 Nov 2026). Says what happened instead.
+    function inboxLoadFailed(id, r) {
+      const el = document.getElementById(id);
+      if (el) el.innerHTML = '<div class="glass rounded-xl p-6 text-center text-sm text-gray-500">' + esc(apiFailed(r) || 'This list did not load. Check your connection and try again.') + '</div>';
+    }
+
     async function loadConnections() {
       if (!currentUser) return;
       try {
         const connections = await api.get(\`/api/attendees/\${currentUser.id}/connections\`);
+        if (!Array.isArray(connections)) { inboxLoadFailed('inbox-connections', connections); return; }
         document.getElementById('inbox-connections').innerHTML = connections.length ? connections.map(conn => \`
           <div class="glass rounded-xl p-4 card-hover">
             <div class="flex items-center gap-3">
@@ -27056,7 +27121,9 @@ function mainPageScript(): string {
 
     async function updateConnection(id, status) {
       try {
-        await api.put(\`/api/connections/\${id}\`, { status });
+        const r = await api.put(\`/api/connections/\${id}\`, { status });
+        const why = apiFailed(r);
+        if (why) { showToast(why, 'error'); return; }
         loadConnections();
         if (status !== 'accepted') { showToast('Request declined. They are not told.', 'success'); return; }
         showToast('Connected! They can message you now.', 'success');
@@ -27095,6 +27162,7 @@ function mainPageScript(): string {
       if (!currentUser) return;
       try {
         const meetings = await api.get(\`/api/attendees/\${currentUser.id}/meetings\`);
+        if (!Array.isArray(meetings)) { inboxLoadFailed('inbox-meetings', meetings); return; }
         document.getElementById('inbox-meetings').innerHTML = meetings.length ? meetings.map(m => {
           const isRequester = m.requester_id == currentUser.id;
           const otherName = isRequester ? m.requestee_name : m.requester_name;
@@ -27510,7 +27578,7 @@ function mainPageScript(): string {
         currentUser.rsvp_at = new Date().toISOString();
         localStorage.setItem('agba_user', JSON.stringify(currentUser));
         updateRsvpCard();
-        const msgs = { confirmed: "You're confirmed! See you at WTC Mumbai 🎉", declined: "We'll miss you! You can change your mind anytime.", maybe: "Noted as maybe. Let us know when you decide!" };
+        const msgs = { confirmed: isVisitorPass() ? "Thanks, we have noted that you are coming. Your entry slot comes by email." : "You're confirmed! See you at WTC Mumbai 🎉", declined: "We'll miss you! You can change your mind anytime.", maybe: "Noted as maybe. Let us know when you decide!" };
         showToast(msgs[status] || 'Saved, thank you.', status === 'confirmed' ? 'success' : 'info');
       } catch(e) { showToast('Could not save that. Try again.', 'error'); }
     }
@@ -27525,7 +27593,7 @@ function mainPageScript(): string {
         return;
       }
       const cfg = {
-        confirmed: { icon: 'fa-check-circle', text: "You've confirmed your attendance!", color: 'green', bg: 'bg-green-500/10 border-green-500/20' },
+        confirmed: { icon: 'fa-check-circle', text: isVisitorPass() ? "You said you are coming. Your entry slot comes by email." : "You've confirmed your attendance!", color: 'green', bg: 'bg-green-500/10 border-green-500/20' },
         declined: { icon: 'fa-times-circle', text: "You've indicated you can't attend.", color: 'red', bg: 'bg-red-500/10 border-red-500/20' },
         maybe: { icon: 'fa-question-circle', text: "You're marked as Maybe.", color: 'amber', bg: 'bg-amber-500/10 border-amber-500/20' },
       }[s] || { icon: 'fa-question-circle', text: 'Unknown', color: 'gray', bg: '' };
@@ -27642,10 +27710,14 @@ function mainPageScript(): string {
       // lands, so the pass must not print before then. Without this the
       // ticket someone self-declared is indistinguishable from one they paid for.
       // Admin downloads bypass this so the desk can still issue a pass manually.
-      var awaitingPayment = String(user.payment_status || '').toLowerCase() === 'pending';
-      if (awaitingPayment && ['delegate', 'premium', 'academic', 'vip'].indexOf(tierKey) >= 0 && !adminAttendee) {
+      // The server's own rule (unpaidPaidPass): one of the four paid passes, pending
+      // or refunded. The old test also caught VIP Guest and complimentary
+      // Delegates, and named the pass "V I P" (2 Nov 2026).
+      var awaitingPayment = ['Delegate Pass', 'Premium Delegate Pass', 'VIP Pass', 'Academic Pass'].indexOf(String(user.badge_type || '')) >= 0
+        && ['pending', 'refunded'].indexOf(String(user.payment_status || '').toLowerCase()) >= 0;
+      if (awaitingPayment && !adminAttendee) {
         trackStep('pass', 'blocked', 'payment pending');
-        showToast('Your ' + T.label + ' will be issued once payment is confirmed.', 'error');
+        showToast('Your ' + user.badge_type + ' will be issued once payment is confirmed.', 'error');
         return;
       }
       // A panel-only registrant has no conference pass until they say they are
@@ -28879,7 +28951,7 @@ function mainPageScript(): string {
             </div>
             <div class="flex gap-1.5">
               <button data-act="chat" data-id="\${c.other_id}" data-name="\${esc(c.other_name || '')}" data-company="\${esc(c.other_company || '')}" class="px-3 py-1.5 rounded-lg text-xs bg-primary-500/20 text-primary-300 hover:bg-primary-500/30 transition" title="Chat"><i class="fas fa-comment"></i></button>
-              <button data-act="meet" data-id="\${c.other_id}" data-name="\${esc(c.other_name || '')}" class="px-3 py-1.5 rounded-lg text-xs bg-green-500/20 text-green-300 hover:bg-green-500/30 transition" title="Schedule"><i class="fas fa-calendar-plus"></i></button>
+              <button data-act="meet" data-gate="1" data-id="\${c.other_id}" data-name="\${esc(c.other_name || '')}" class="px-3 py-1.5 rounded-lg text-xs bg-green-500/20 text-green-300 hover:bg-green-500/30 transition" title="Schedule"><i class="fas fa-calendar-plus"></i></button>
             </div>
           </div>
         </div>
@@ -28978,7 +29050,7 @@ function mainPageScript(): string {
               </div>
               <div class="flex gap-1.5">
                 <button data-act="chat" data-id="\${c.other_id}" data-name="\${esc(c.other_name || '')}" data-company="\${esc(c.other_company || '')}" class="px-3 py-1.5 rounded-lg text-xs bg-primary-500/20 text-primary-300 hover:bg-primary-500/30 transition" title="Chat"><i class="fas fa-comment"></i></button>
-                <button data-act="meet" data-id="\${c.other_id}" data-name="\${esc(c.other_name || '')}" class="px-3 py-1.5 rounded-lg text-xs bg-green-500/20 text-green-300 hover:bg-green-500/30 transition" title="Schedule"><i class="fas fa-calendar-plus"></i></button>
+                <button data-act="meet" data-gate="1" data-id="\${c.other_id}" data-name="\${esc(c.other_name || '')}" class="px-3 py-1.5 rounded-lg text-xs bg-green-500/20 text-green-300 hover:bg-green-500/30 transition" title="Schedule"><i class="fas fa-calendar-plus"></i></button>
               </div>
             </div>
           </div>
@@ -29003,7 +29075,9 @@ function mainPageScript(): string {
 
     async function acceptConnection(connId) {
       try {
-        await api.put(\`/api/connections/\${connId}\`, { status: 'accepted' });
+        const r = await api.put(\`/api/connections/\${connId}\`, { status: 'accepted' });
+        const why = apiFailed(r);
+        if (why) { showToast(why, 'error'); return; }
         showToast('Connection accepted!', 'success');
         loadMyProfile();
       } catch(e) { showToast('Failed to accept', 'error'); }
@@ -29011,7 +29085,9 @@ function mainPageScript(): string {
 
     async function declineConnection(connId) {
       try {
-        await api.put(\`/api/connections/\${connId}\`, { status: 'declined' });
+        const r = await api.put(\`/api/connections/\${connId}\`, { status: 'declined' });
+        const why = apiFailed(r);
+        if (why) { showToast(why, 'error'); return; }
         showToast('Connection declined', 'info');
         loadMyProfile();
       } catch(e) { showToast('Failed to decline', 'error'); }
@@ -29137,7 +29213,9 @@ function mainPageScript(): string {
 
     async function respondMeeting(meetingId, status) {
       try {
-        await api.put(\`/api/meetings/\${meetingId}\`, { status });
+        const r = await api.put(\`/api/meetings/\${meetingId}\`, { status });
+        const why = apiFailed(r);
+        if (why) { showToast(why, 'error'); return; }
         showToast(\`Meeting \${status}!\`, 'success');
         loadMyProfile();
       } catch(e) { showToast('Failed to update meeting', 'error'); }
@@ -29674,7 +29752,9 @@ function mainPageScript(): string {
     async function removeProfilePhoto() {
       if (!confirm('Remove your profile photo?')) return;
       try {
-        await fetch('/api/attendees/' + currentUser.id + '/avatar', { method: 'DELETE' }).then(r => r.json());
+        const r = await fetch('/api/attendees/' + currentUser.id + '/avatar', { method: 'DELETE' }).then(r => r.json());
+        // A refusal (the sign-in ran out) used to say "Photo removed" all the same.
+        if (!r || !r.success) { toast(apiFailed(r) || 'The photo was not removed. Please try again.', true); return; }
         currentUser.avatar_url = null;
         localStorage.setItem('agba_user', JSON.stringify(currentUser));
         document.getElementById('edit-avatar-preview').src = getAvatarUrl(currentUser.email, currentUser.name, 128);
@@ -29744,7 +29824,8 @@ function mainPageScript(): string {
     async function removeCompanyLogo() {
       if (!confirm("Remove your organisation's logo?")) return;
       try {
-        await fetch('/api/attendees/' + currentUser.id + '/company-logo', { method: 'DELETE' }).then(r => r.json());
+        const r = await fetch('/api/attendees/' + currentUser.id + '/company-logo', { method: 'DELETE' }).then(r => r.json());
+        if (!r || !r.success) { toast(apiFailed(r) || 'The logo was not removed. Please try again.', true); return; }
         currentUser.company_logo_url = null;
         localStorage.setItem('agba_user', JSON.stringify(currentUser));
         paintCompanyLogoControl();
@@ -29865,6 +29946,14 @@ function mainPageScript(): string {
       btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Saving...';
       btn.disabled = true;
 
+      // linkedin.com/in/x or www.site.com typed without https:// used to stop the
+      // save with a browser bubble far down the dialog (type="url"); the form is
+      // novalidate now and the scheme is added here.
+      const withScheme = (v) => {
+        v = String(v || '').trim();
+        const low = v.toLowerCase();
+        return !v || low.indexOf('http://') === 0 || low.indexOf('https://') === 0 ? v : 'https://' + v;
+      };
       try {
         const updated = await api.put(\`/api/attendees/\${currentUser.id}/profile\`, {
           name: document.getElementById('edit-name').value,
@@ -29875,12 +29964,12 @@ function mainPageScript(): string {
           bio: document.getElementById('edit-bio').value,
           interests: document.getElementById('edit-interests').value,
           networking_goals: document.getElementById('edit-goals').dataset.selected || '',
-          linkedin_url: document.getElementById('edit-linkedin').value,
+          linkedin_url: withScheme(document.getElementById('edit-linkedin').value),
           mobile: document.getElementById('edit-mobile').value,
           lunch_inclusion: document.getElementById('edit-lunch').value,
           arrival_time: document.getElementById('edit-arrival').value,
-          twitter_url: document.getElementById('edit-twitter').value,
-          website_url: document.getElementById('edit-website').value,
+          twitter_url: withScheme(document.getElementById('edit-twitter').value),
+          website_url: withScheme(document.getElementById('edit-website').value),
         });
         // A refusal (a mobile already on another attendee) must not become the
         // signed-in user.
