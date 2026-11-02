@@ -29,7 +29,9 @@
 // v18: the directory, connections and exhibitor leads stopped showing an unpaid
 // paid tier as that pass (a VIP checkout left at CCAvenue now reads Visitor Pass),
 // so the offline copies that still say VIP go.
-const VERSION = 'bhai-v19';
+// v20: the marketing nav changed (About to the footer, AI Marketplace added, the
+// toggle menu below 1280px), so style.css?v=20261102 replaces 20261029d here.
+const VERSION = 'bhai-v20';
 const SHELL = `shell-${VERSION}`;
 const DATA = `data-${VERSION}`;
 
@@ -60,7 +62,7 @@ const PRECACHE = [
   '/manifest.webmanifest',
   '/js/pass-render.js?v=20261029',
   '/js/vendor/qrcode-generator.js?v=20261029',   // the pass draws its QR with it
-  '/css/style.css?v=20261029d',        // marketing shell: /, /conference, /exhibition, ...
+  '/css/style.css?v=20261102',        // marketing shell: /, /conference, /exhibition, ...
   '/js/main.js?v=20261029',
   '/js/carousel.js?v=20261027',
 ];

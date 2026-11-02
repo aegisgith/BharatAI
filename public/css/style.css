@@ -3859,14 +3859,14 @@ section { position: relative; }
 
 /* Desktop nav sizing. The menu is flex/nowrap, so anything that does not fit
    pushes the Register CTA off-screen rather than wrapping.
-   Current set is 10 links + CTA (Startup Pitch moved out of the nav; AI Readiness
-   and AGBA added). At default spacing that measures ~1190px against a 1280px
-   container — it fits on the widest screens but overflows between 1081px and
-   ~1190px. Tightened spacing measures ~1019px and is safe across the whole desktop
-   range, so it is applied to every desktop width rather than a band.
-   If you add another nav item, re-check this: the previous 9-item version was
-   already tight, and each extra link costs roughly 100px. */
-@media (min-width: 1081px) {
+   Since 2 Nov 2026 the set is 12 links + CTA (About moved to the footer, AI
+   Marketplace added). With the tightened spacing below it measures ~1185px plus
+   the logo, and /exhibition's longer "Book a Booth" CTA needs a 1276px window,
+   so the one-row menu starts at 1280px and anything narrower gets the toggle
+   menu (it was 1080px with 10 links, and overflowed 1081-1250px with 12).
+   If you add another nav item, re-check this: each extra link costs roughly
+   100px. */
+@media (min-width: 1280px) {
   .nav-link { padding: 0.5rem 0.55rem; font-size: 0.83rem; }
   .nav-cta { padding: 0.55rem 1rem; font-size: 0.8rem; margin-left: 0.25rem; }
   .nav-menu { gap: 0.1rem; }
@@ -3875,7 +3875,7 @@ section { position: relative; }
 /* =====================================================
    MOBILE NAVIGATION
    ===================================================== */
-@media (max-width: 1080px) {
+@media (max-width: 1279px) {
   .nav-menu {
     position: fixed;
     top: var(--nav-h);

@@ -90,7 +90,7 @@ r = await hit('/app');
 r.text += (await hit('/app.js?v=' + ((/\/app\.js\?v=([0-9a-f]{8})/.exec(r.text) || [])[1] || ''))).text;
 check('app page carries the new client code', ['function parseDbTime', 'function safeUrl', 'id="notif-sheet"', 'function loadThreads', 'function closeTopModal'].every(m => r.text.includes(m)), 'markers');
 r = await hit('/sw.js');
-check('service worker is bhai-v19 (offline copies drop a speaker who left, 30 Oct 2026; the QR encoder still precached)', r.status === 200 && r.text.includes("'bhai-v19'") && r.text.includes('/js/vendor/qrcode-generator.js?v=20261029'), r.status);
+check('service worker is bhai-v20 (the new site menu\'s style.css?v=20261102, 2 Nov 2026; the QR encoder still precached)', r.status === 200 && r.text.includes("'bhai-v20'") && r.text.includes("'/css/style.css?v=20261102'") && r.text.includes('/js/vendor/qrcode-generator.js?v=20261029'), r.status);
 
 // ---- the 29 Oct 2026 audit: a passes page, and the app's Visitor fixes ----
 r = await hit('/passes');
