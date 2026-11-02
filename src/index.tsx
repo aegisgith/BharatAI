@@ -6237,6 +6237,103 @@ app.get('/api/events/:id/attendee-filters', async (c) => {
   })
 })
 
+/* The public glimpse of the directory, on /networking (organiser, 2 Nov 2026: show
+ * visitors to the website who is in the networking app, senior titles first and
+ * people with photos first, and ask them to register when they click one).
+ *
+ * The privacy policy says registration data is shared only with service providers,
+ * and with sponsors only after an opt-in in the app. Nobody agreed to be shown on
+ * the public website, so a card here is the app's locked card and nothing more: a
+ * cleaned job title, the industry, the city and what they are here to do. No name,
+ * photo, company, link or id, so a card cannot be looked up, opened or scraped into
+ * a list, and no count. A photo is not even sent blurred: image resizing is off on
+ * this zone (/cdn-cgi/image answered 404 on 2 Nov), so a blur would be CSS over the
+ * real file.
+ *
+ * Who: conference registrants with a senior title, not students, ministers, the
+ * team, or anyone who unsubscribed or said no to marketing, ranked exactly as the
+ * free teaser ranks them (TEASER_QUALITY_SQL: a photo first, then title and
+ * company, a paid pass above an equal Visitor) and rotated daily the same way, so
+ * the people behind today's cards are the people a new free registrant then sees
+ * by name in the app. Fewer than GLIMPSE_MIN good cards answers an empty list and
+ * the page hides the section. */
+const GLIMPSE_SHOWN = 12
+const GLIMPSE_MIN = 4
+// In the order a card shows them: the goals a seller or a founder wants to meet first.
+const GLIMPSE_GOALS: Record<string, string> = {
+  buying: 'Buying', investing: 'Investing', partner: 'Finding partners', hiring: 'Hiring',
+  selling: 'Selling', raising: 'Raising investment', networking: 'B2B networking', learning: 'Learning AI',
+}
+const GLIMPSE_ACRONYMS = /\b(ceo|cto|cio|coo|cfo|cmo|cxo|cdo|ciso|chro|cpo|md|vp|avp|svp|evp|gm|ai|ml|it|hr|bfsi|r&d)\b/gi
+
+// A job title fit for a public card. Whatever names the company is cut off ("CTO at
+// Acme", "Head of AI, Acme Ltd", "CEO | Acme"), and a title still carrying a link, a
+// long number or a minister is dropped rather than shown.
+function glimpseTitle(title: any, company: any): string {
+  let t = String(title || '').replace(/\s+/g, ' ').trim()
+  t = t.split(/\s+at\s+|\s*@\s*|\s*\|\s*/i)[0]
+  const co = String(company || '').replace(/\s+/g, ' ').trim().toLowerCase()
+  if (co.length >= 3) {
+    let cut = t.toLowerCase().indexOf(co)
+    if (cut < 0) {
+      const word = co.replace(/[^a-z0-9 ]+/g, ' ').split(' ').find(w => w.length >= 4 && !SPEAKER_ORG_STOPWORDS.has(w))
+      const m = word ? new RegExp('\\b' + word + '\\b', 'i').exec(t) : null
+      if (m) cut = m.index
+    }
+    if (cut >= 0) t = t.slice(0, cut)
+  }
+  for (let prev = ''; prev !== t;) {
+    prev = t
+    t = t.replace(/[\s,;:&\-–—\/(]+$/, '').replace(/\s+(?:of|at|and|for|in|the|with)$/i, '')
+  }
+  if (t.length < 3 || !/[a-z]/i.test(t) || /https?:|www\.|\d{5,}|minister|hon.?ble/i.test(t)) return ''
+  if (t === t.toLowerCase() || (t === t.toUpperCase() && t.length > 5)) t = t.toLowerCase().replace(/(^|[\s\-\/(])([a-z])/g, (_, p, ch) => p + ch.toUpperCase())
+  t = t.replace(GLIMPSE_ACRONYMS, a => a.toUpperCase())
+  if (t.length > 56) t = t.slice(0, 56).replace(/\s+\S*$/, '') + '…'
+  return t
+}
+
+// A city as typed by hand ("navi mumbai", "Pune "), or nothing if it is not one.
+function glimpseCity(city: any): string {
+  const s = String(city || '').replace(/\s+/g, ' ').trim()
+  if (!/^[A-Za-z][A-Za-z .'\-]{1,23}$/.test(s)) return ''
+  return s.toLowerCase().replace(/(^|[\s\-])([a-z])/g, (_, p, ch) => p + ch.toUpperCase())
+}
+
+// Public: no sign-in. Not in the service worker's cacheable list, so nothing keeps it.
+app.get('/api/events/:id/glimpse', async (c) => {
+  const eventId = c.req.param('id')
+  let rows: any[] = []
+  try {
+    rows = ((await c.env.DB.prepare(
+      `SELECT job_title, company, industry, city, networking_goals FROM attendees
+        WHERE event_id = ?${await mainEventClause(c)}${await suppressionClause(c)}
+          AND ${SENIOR_RANK_SQL} = 1 AND ${STUDENT_RANK_SQL} = 0
+          AND LOWER(COALESCE(role, '')) NOT LIKE '%organi%' AND LOWER(COALESCE(role, '')) NOT LIKE '%staff%'
+          AND LOWER(COALESCE(role, '')) NOT LIKE '%admin%'
+        ORDER BY ${TEASER_QUALITY_SQL} DESC, ((id * 7919 + ?) % 1009) ASC, id ASC
+        LIMIT ${GLIMPSE_SHOWN * 2}`
+    ).bind(eventId, istDay()).all()).results || []) as any[]
+  } catch (_) { rows = [] }
+  const seen = new Set<string>()
+  const people: any[] = []
+  for (const r of rows) {
+    const title = glimpseTitle(r.job_title, r.company)
+    if (!title) continue
+    const industry = INDUSTRIES.includes(String(r.industry || '')) ? String(r.industry) : ''
+    const city = glimpseCity(r.city)
+    // Two cards reading the same are one card twice.
+    const key = (title + '|' + industry + '|' + city).toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    const goals = String(r.networking_goals || '').toLowerCase().split(',').map(g => g.trim())
+    people.push({ title, industry, city, goals: Object.keys(GLIMPSE_GOALS).filter(g => goals.includes(g)).slice(0, 2).map(g => GLIMPSE_GOALS[g]) })
+    if (people.length >= GLIMPSE_SHOWN) break
+  }
+  c.header('Cache-Control', 'public, max-age=600')
+  return c.json({ people: people.length >= GLIMPSE_MIN ? people : [] })
+})
+
 app.get('/api/events/:id/attendees', async (c) => {
   // Bulk. This is the one that was worth walking.
   const shutOut = await requireSignedIn(c); if (shutOut) return shutOut

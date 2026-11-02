@@ -216,5 +216,14 @@ for (const [m, p] of [['GET', '/api/admin/help-stats'], ['POST', '/api/admin/hel
   check(`${m} ${p} needs admin (401)`, r.status === 401, r.status);
 }
 
+// The public glimpse on /networking (2 Nov 2026): job titles only, never a name,
+// company, photo or id, and no more than twelve.
+r = await hit('/api/events/1/glimpse');
+const glimpse = (() => { try { return JSON.parse(r.text).people; } catch { return null; } })();
+check('the /networking glimpse: at most 12 cards of title, industry, city and goals only', r.status === 200 && Array.isArray(glimpse) && glimpse.length <= 12 &&
+  glimpse.every(p => Object.keys(p).sort().join(',') === 'city,goals,industry,title') && !/avatar|uploads|"name"|"company"|"id"|@/.test(r.text), r.status + ' ' + r.text.slice(0, 160));
+r = await hit('/networking');
+check('/networking asks for the glimpse and carries the new headline', r.text.includes("fetch('/api/events/1/glimpse'") && r.text.includes('Business meetings before you arrive at Bharat AI Innovation'), 'markers');
+
 console.log(fails ? `\n${fails} FAILED` : '\nall production checks passed');
 process.exit(fails ? 1 : 0);
