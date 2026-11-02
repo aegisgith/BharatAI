@@ -103,7 +103,7 @@
         .nw-copy-bottom a:not(.btn) { color: var(--saffron-dark); font-weight: 700; }
         .nw-phone { position: relative; width: min(340px, 86vw); height: 660px; margin: 0 auto; padding: 11px; border-radius: 52px; background: #0D0F1E; box-shadow: inset 0 0 0 2px #2D3150, 0 34px 70px rgba(13,15,30,0.28), 0 10px 24px rgba(13,15,30,0.16); }
         @media (max-width: 480px) { .nw-phone { height: 580px; } }
-        .nw-screen { position: relative; height: 100%; border-radius: 42px; overflow: hidden; background: #F6F7FC; display: flex; flex-direction: column; }
+        .nw-screen { position: relative; height: 100%; border-radius: 42px; overflow: hidden; isolation: isolate; transform: translateZ(0); background: #F6F7FC; display: flex; flex-direction: column; }
         .nw-status { flex: none; position: relative; height: 42px; display: flex; align-items: center; justify-content: space-between; padding: 0 22px 0 28px; font-size: 0.78rem; font-weight: 700; color: #0D0F1E; }
         .nw-island { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); width: 96px; height: 26px; border-radius: 20px; background: #0D0F1E; }
         .nw-sicons { display: flex; align-items: center; gap: 5px; font-size: 0.66rem; }
@@ -136,7 +136,9 @@
         .nw-skel { cursor: default; pointer-events: none; }
         .nw-skel .nw-lc-title, .nw-skel .nw-lc-meta { display: block; height: 9px; border-radius: 5px; background: #EEF0F7; }
         .nw-skel .nw-lc-btn { background: #EEF0F7; color: transparent; }
-        .nw-tabbar { flex: none; display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; padding: 6px 6px 16px; background: #fff; border-top: 1px solid #ECEEF6; box-shadow: 0 -4px 12px rgba(13,15,30,0.05); }
+        /* Its own rounded corners as well as the screen's clip: phone Chrome drew
+           square white corners past the frame when only the screen clipped. */
+        .nw-tabbar { flex: none; display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; padding: 6px 10px 18px; border-radius: 0 0 42px 42px; background: #fff; border-top: 1px solid #ECEEF6; box-shadow: 0 -4px 12px rgba(13,15,30,0.05); }
         .nw-tab { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 0 5px; border-radius: 10px; font-size: 0.48rem; line-height: 1.1; text-align: center; color: #4A5280; }
         .nw-tab i { font-size: 0.82rem; }
         .nw-tab.on { background: linear-gradient(135deg, #FF6B00, #FF8C38); color: #fff; }
@@ -514,7 +516,8 @@
                 b.appendChild(g);
             }
             var s = el('span', 'nw-lc-btn');
-            s.appendChild(icon('fa-unlock'));
+            // fa-lock, not fa-unlock: the icon font Cloudflare held on 2 Nov had no unlock.
+            s.appendChild(icon('fa-lock'));
             s.appendChild(document.createTextNode('See who this is'));
             b.appendChild(s);
             b.setAttribute('aria-label', [p.title, p.industry, p.city].filter(Boolean).join(', ') + '. See who this is');
