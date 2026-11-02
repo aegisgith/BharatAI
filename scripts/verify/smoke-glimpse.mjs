@@ -58,6 +58,7 @@ person(1, 'Ravi Acme', { job_title: 'founder & ceo | acme ai', company: 'Acme AI
 person(1, 'Neha Hdfc', { job_title: 'Director - Data Science, HDFC Bank', company: 'HDFC Bank', industry: 'Banking & Financial Services', city: 'Mumbai 400001' });
 person(1, 'Karan Infy', { job_title: 'VP Engineering @ Infosys', company: 'Infosys', industry: 'Weird Industry', city: 'Mysuru' });
 person(1, 'Anil Caps', { job_title: 'MANAGING DIRECTOR', company: 'Caps Pvt Ltd', industry: 'Insurance', city: 'Delhi' });
+person(1, 'Other Industry', { job_title: 'Asia Pacific Community Director', company: 'Otherco', industry: 'Other', city: 'Gurgaon' });
 person(1, 'Long Title', { job_title: 'Senior Vice President and Global Head of Artificial Intelligence Research and Strategy', company: 'Longco', industry: 'IT Services & Consulting', city: 'Noida' });
 person(1, 'No Photo', { job_title: 'Head of Sales', avatar_url: null, company: 'Nophoto', industry: 'Retail & E-commerce', city: 'Surat' });
 // Left out:
@@ -103,6 +104,7 @@ check('a long title is cut at a word with an ellipsis', !!long && long.title.len
 check('a hand-typed city is tidied ("navi mumbai")', byTitle['Chief Technology Officer']?.city === 'Navi Mumbai', byTitle['Chief Technology Officer']?.city);
 check('a city with a PIN code is left out', byTitle['Director - Data Science']?.city === '', JSON.stringify(byTitle['Director - Data Science']));
 check('an industry outside the list is left out', byTitle['VP Engineering']?.industry === '', JSON.stringify(byTitle['VP Engineering']));
+check('"Other" is left off like a blank industry', byTitle['Asia Pacific Community Director']?.industry === '', JSON.stringify(byTitle['Asia Pacific Community Director']));
 check('goals read in plain words, two at most, buyers first', JSON.stringify(byTitle['Chief Technology Officer']?.goals) === '["Buying","Hiring"]', JSON.stringify(byTitle['Chief Technology Officer']?.goals));
 const shown = people.map(p => p.title.toLowerCase()).join(' | ');
 check('students are left out', !/student/.test(shown), shown);
@@ -127,7 +129,8 @@ check('nobody without a photo while people with one are left over', !big.some(p 
 // ---- the page ----
 const page = readFileSync(new URL('../../public/networking.html', import.meta.url), 'utf8');
 check('the page asks this route for its cards', page.includes("fetch('/api/events/1/glimpse'"), 'fetch missing');
-check('the page writes card text as text, never as HTML', /el\('span', 'nw-role', p\.title\)/.test(page) && !/innerHTML\s*=\s*[^;]*p\.(title|city|industry)/.test(page), 'innerHTML with card text');
+check('the page writes card text as text, never as HTML', /el\('span', 'nw-lc-title', p\.title\)/.test(page) && !/innerHTML\s*=\s*[^;]*p\.(title|city|industry)/.test(page), 'innerHTML with card text');
+check('the cards sit in the app\'s own Networking Hub screen, as its locked cards', page.includes('Networking Hub') && page.includes("'nw-lc-bar'") && page.includes('See who this is') && page.includes('class="nw-tab on"'), 'phone screen markers');
 check('the headline reads as the organiser wrote it', /Business meetings before you arrive at Bharat AI Innovation, <span class="nw-accent">not chance encounters<\/span>/.test(page), 'headline');
 
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');

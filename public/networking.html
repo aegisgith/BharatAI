@@ -78,46 +78,73 @@
         /* The priced Delegate button did not wrap, so on a 390px phone it made the
            page 472px wide and pushed the menu button off the screen. */
         @media (max-width: 480px) { .btn.btn-lg { white-space: normal; max-width: 100%; text-align: center; justify-content: center; } }
-        .nw-glimpse .section-header { margin-bottom: 0; }
-        .nw-glimpse { padding: 4rem 0 4.5rem; background: var(--off-white); }
+        /* The live glimpse: the app's own Networking Hub screen in a phone, its
+           locked cards filled from GET /api/events/1/glimpse. Sizes and colours
+           follow the app (mainPageHTML: directory, locked card, bottom tabs). */
+        .nw-glimpse { padding: 4.5rem 0 5rem; background: radial-gradient(900px 480px at 82% 30%, rgba(255,107,0,0.09), transparent 65%), var(--off-white); overflow: hidden; }
         .nw-glimpse[hidden], .nw-glimpse [hidden] { display: none !important; }
-        .nw-live { display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.78rem; font-weight: 700; color: #0F7A3A; background: rgba(22,163,74,0.1); border-radius: 999px; padding: 0.3rem 0.8rem; margin-bottom: 0.9rem; }
+        .nw-wrap { display: grid; gap: 2rem; align-items: center; }
+        .nw-copy-top, .nw-copy-bottom { text-align: center; }
+        @media (min-width: 900px) {
+            .nw-wrap { grid-template-columns: minmax(0, 1fr) 360px; grid-template-areas: "top phone" "bottom phone"; column-gap: 4.5rem; row-gap: 1.75rem; }
+            .nw-copy-top { grid-area: top; align-self: end; text-align: left; }
+            .nw-copy-bottom { grid-area: bottom; align-self: start; text-align: left; }
+            .nw-phone-wrap { grid-area: phone; }
+        }
+        .nw-live { display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.78rem; font-weight: 700; color: #0F7A3A; background: rgba(22,163,74,0.1); border-radius: 999px; padding: 0.3rem 0.8rem; margin-bottom: 1rem; }
         .nw-live-dot { width: 8px; height: 8px; border-radius: 50%; background: #16A34A; box-shadow: 0 0 0 3px rgba(22,163,74,0.2); }
-        .nw-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; margin-top: 2rem; }
-        @media (min-width: 700px) { .nw-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; } }
-        @media (min-width: 1024px) { .nw-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
-        @media (max-width: 699px) { .nw-grid:not(.nw-all) .nw-card:nth-child(n+7) { display: none; } }
-        .nw-card { appearance: none; -webkit-appearance: none; font: inherit; color: inherit; text-align: left; cursor: pointer; display: flex; flex-direction: column; align-items: flex-start; gap: 0.35rem; min-width: 0; background: #fff; border: 1px solid #E3E6F5; border-radius: 16px; padding: 1rem 0.9rem 0.9rem; box-shadow: 0 1px 2px rgba(13,15,30,0.04); transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease; }
-        .nw-card:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(26,35,126,0.1); border-color: rgba(255,107,0,0.4); }
-        .nw-card:focus-visible { outline: 3px solid var(--saffron); outline-offset: 2px; }
-        .nw-ava { display: block; position: relative; width: 52px; height: 52px; border-radius: 50%; flex: none; margin-bottom: 0.35rem; background: linear-gradient(135deg, #1A237E, #2979FF); }
-        .nw-ava svg { width: 100%; height: 100%; display: block; border-radius: 50%; }
-        .nw-tone-1 { background: linear-gradient(135deg, #E05A00, #FF9A3C); }
-        .nw-tone-2 { background: linear-gradient(135deg, #00695C, #26A69A); }
-        .nw-tone-3 { background: linear-gradient(135deg, #4527A0, #6C63FF); }
-        .nw-tone-4 { background: linear-gradient(135deg, #AD1457, #FF6B6B); }
-        .nw-tone-5 { background: linear-gradient(135deg, #283593, #00838F); }
-        .nw-lock { position: absolute; right: -3px; bottom: -3px; width: 22px; height: 22px; border-radius: 50%; background: #fff; color: var(--saffron-dark); font-size: 0.62rem; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 4px rgba(13,15,30,0.2); }
-        .nw-role { font-weight: 700; font-size: 0.95rem; line-height: 1.3; color: var(--charcoal); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
-        .nw-meta { font-size: 0.78rem; line-height: 1.35; color: var(--mid-grey); overflow-wrap: anywhere; }
-        .nw-city i { color: var(--saffron); margin-right: 0.15rem; }
-        .nw-goals { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem; margin-top: 0.15rem; }
-        .nw-here { font-size: 0.7rem; color: var(--mid-grey); }
-        .nw-chip { font-size: 0.7rem; font-weight: 700; line-height: 1.2; padding: 0.2rem 0.5rem; border-radius: 999px; background: rgba(0,137,123,0.1); color: #00695C; }
-        .nw-see { margin-top: auto; padding-top: 0.5rem; font-size: 0.8rem; font-weight: 700; color: var(--saffron-dark); }
-        .nw-see i { font-size: 0.7rem; margin-right: 0.2rem; }
-        .nw-skel { cursor: default; pointer-events: none; min-height: 190px; }
-        .nw-skel span { display: block; border-radius: 6px; background: #E9ECF7; }
-        .nw-skel .nw-ava { background: #E9ECF7; }
-        .nw-more { display: block; margin: 1rem auto 0; background: none; border: 1px solid #D5DAF0; border-radius: 999px; padding: 0.6rem 1.3rem; font: inherit; font-weight: 700; font-size: 0.9rem; color: var(--indigo); cursor: pointer; }
-        @media (min-width: 700px) { .nw-more { display: none; } }
-        .nw-after { text-align: center; margin-top: 2.25rem; }
-        .nw-after p { margin: 0.8rem auto 0; max-width: 560px; font-size: 0.9rem; line-height: 1.6; color: var(--dark-grey); }
-        .nw-after a:not(.btn) { color: var(--saffron-dark); font-weight: 700; }
+        .nw-copy-top .section-title { margin: 0 0 1rem; }
+        .nw-copy-top p { margin: 0; font-size: 1.05rem; line-height: 1.65; color: var(--dark-grey); max-width: 520px; }
+        @media (max-width: 899px) { .nw-copy-top p { margin: 0 auto; } }
+        .nw-points { list-style: none; margin: 0 0 1.75rem; padding: 0; display: inline-flex; flex-direction: column; gap: 0.8rem; text-align: left; }
+        .nw-points li { display: flex; align-items: flex-start; gap: 0.75rem; font-size: 0.98rem; line-height: 1.45; color: var(--charcoal); font-weight: 600; }
+        .nw-points i { flex: none; width: 34px; height: 34px; border-radius: 10px; background: rgba(255,107,0,0.12); color: var(--saffron-dark); display: flex; align-items: center; justify-content: center; font-size: 0.9rem; }
+        .nw-copy-bottom p { margin: 0.8rem 0 0; font-size: 0.9rem; line-height: 1.6; color: var(--dark-grey); }
+        .nw-copy-bottom a:not(.btn) { color: var(--saffron-dark); font-weight: 700; }
+        .nw-phone { position: relative; width: min(340px, 86vw); height: 660px; margin: 0 auto; padding: 11px; border-radius: 52px; background: #0D0F1E; box-shadow: inset 0 0 0 2px #2D3150, 0 34px 70px rgba(13,15,30,0.28), 0 10px 24px rgba(13,15,30,0.16); }
+        @media (max-width: 480px) { .nw-phone { height: 580px; } }
+        .nw-screen { position: relative; height: 100%; border-radius: 42px; overflow: hidden; background: #F6F7FC; display: flex; flex-direction: column; }
+        .nw-status { flex: none; position: relative; height: 42px; display: flex; align-items: center; justify-content: space-between; padding: 0 22px 0 28px; font-size: 0.78rem; font-weight: 700; color: #0D0F1E; }
+        .nw-island { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); width: 96px; height: 26px; border-radius: 20px; background: #0D0F1E; }
+        .nw-sicons { display: flex; align-items: center; gap: 5px; font-size: 0.66rem; }
+        .nw-batt { position: relative; width: 21px; height: 10px; border: 1.5px solid #0D0F1E; border-radius: 3px; }
+        .nw-batt::after { content: ""; position: absolute; top: 1.5px; bottom: 1.5px; left: 1.5px; right: 5px; border-radius: 1px; background: #0D0F1E; }
+        .nw-scroll { flex: 1; overflow-y: auto; padding: 4px 14px 18px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+        .nw-scroll::-webkit-scrollbar { display: none; }
+        .nw-app-head { display: flex; align-items: center; gap: 0.45rem; margin-top: 4px; font-family: var(--font-display); font-size: 1.28rem; font-weight: 800; color: #1E2140; }
+        .nw-app-head i { color: var(--saffron); font-size: 1.05rem; }
+        .nw-app-sub { margin: 0.2rem 0 0.75rem; font-size: 0.7rem; line-height: 1.4; color: var(--mid-grey); }
+        .nw-search { display: flex; align-items: center; gap: 0.5rem; padding: 0.6rem 0.75rem; border: 1px solid #DDE1F0; border-radius: 12px; background: #fff; font-size: 0.72rem; color: #9AA0BC; }
+        .nw-search i { color: #4A5280; }
+        .nw-filter { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.55rem; }
+        .nw-flabel { flex: none; width: 48px; font-size: 0.62rem; color: var(--mid-grey); }
+        .nw-chips { display: flex; gap: 0.35rem; min-width: 0; overflow: hidden; white-space: nowrap; -webkit-mask-image: linear-gradient(90deg, #000 80%, transparent); mask-image: linear-gradient(90deg, #000 80%, transparent); }
+        .nw-chips span { flex: none; padding: 0.24rem 0.62rem; border: 1px solid #DDE1F0; border-radius: 999px; background: #fff; font-size: 0.64rem; color: #1E2140; }
+        .nw-list { display: flex; flex-direction: column; gap: 0.65rem; margin-top: 0.9rem; }
+        .nw-lc { appearance: none; -webkit-appearance: none; display: block; width: 100%; font: inherit; color: inherit; text-align: left; cursor: pointer; background: #fff; border: 1px solid #E3E6F5; border-radius: 16px; padding: 0.85rem 0.85rem 0.8rem; box-shadow: 0 1px 2px rgba(13,15,30,0.04); transition: border-color 0.15s ease, box-shadow 0.15s ease; }
+        .nw-lc:hover { border-color: rgba(255,107,0,0.45); box-shadow: 0 8px 18px rgba(26,35,126,0.1); }
+        .nw-lc:focus-visible { outline: 3px solid var(--saffron); outline-offset: 2px; }
+        .nw-lc-top { display: flex; align-items: center; gap: 0.75rem; }
+        .nw-lc-ava { flex: none; width: 46px; height: 46px; border-radius: 50%; background: #ECEBFA; color: #4A5280; display: flex; align-items: center; justify-content: center; font-size: 0.95rem; }
+        .nw-lc-txt { display: flex; flex-direction: column; gap: 0.12rem; min-width: 0; }
+        .nw-lc-bar { display: block; width: 92px; height: 9px; margin-bottom: 0.25rem; border-radius: 5px; background: #E6E8F2; }
+        .nw-lc-title { font-size: 0.82rem; font-weight: 700; line-height: 1.3; color: #1E2140; overflow-wrap: anywhere; }
+        .nw-lc-meta { font-size: 0.68rem; line-height: 1.35; color: var(--mid-grey); overflow-wrap: anywhere; }
+        .nw-lc-goals { display: flex; flex-wrap: wrap; gap: 0.25rem; margin-top: 0.55rem; }
+        .nw-lc-goals span { padding: 0.16rem 0.48rem; border-radius: 999px; background: rgba(0,137,123,0.1); color: #00695C; font-size: 0.6rem; font-weight: 700; }
+        .nw-lc-btn { display: flex; align-items: center; justify-content: center; gap: 0.4rem; margin-top: 0.65rem; padding: 0.52rem; border-radius: 10px; background: linear-gradient(90deg, #FF6B00, #FF9A3C); color: #fff; font-size: 0.74rem; font-weight: 700; }
+        .nw-skel { cursor: default; pointer-events: none; }
+        .nw-skel .nw-lc-title, .nw-skel .nw-lc-meta { display: block; height: 9px; border-radius: 5px; background: #EEF0F7; }
+        .nw-skel .nw-lc-btn { background: #EEF0F7; color: transparent; }
+        .nw-tabbar { flex: none; display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; padding: 6px 6px 16px; background: #fff; border-top: 1px solid #ECEEF6; box-shadow: 0 -4px 12px rgba(13,15,30,0.05); }
+        .nw-tab { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 0 5px; border-radius: 10px; font-size: 0.48rem; line-height: 1.1; text-align: center; color: #4A5280; }
+        .nw-tab i { font-size: 0.82rem; }
+        .nw-tab.on { background: linear-gradient(135deg, #FF6B00, #FF8C38); color: #fff; }
+        .nw-caption { margin: 1rem 0 0; text-align: center; font-size: 0.8rem; color: var(--mid-grey); }
         .nw-dialog { margin: auto; border: 0; border-radius: 20px; padding: 1.75rem 1.5rem 1.4rem; width: min(420px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow-y: auto; box-shadow: 0 24px 60px rgba(13,15,30,0.35); color: var(--charcoal); text-align: center; }
         .nw-dialog::backdrop { background: rgba(13,15,30,0.6); }
         .nw-d-close { position: absolute; top: 0.6rem; right: 0.6rem; width: 40px; height: 40px; border: 0; border-radius: 50%; background: #F1F3FB; color: var(--dark-grey); font-size: 1.05rem; cursor: pointer; }
-        .nw-dialog .nw-ava { margin: 0 auto 0.75rem; width: 64px; height: 64px; }
+        .nw-d-ava { margin: 0 auto 0.75rem; width: 64px; height: 64px; font-size: 1.3rem; }
         .nw-dialog h3 { font-family: var(--font-display); font-size: 1.3rem; margin: 0 0 0.6rem; }
         .nw-d-who { margin: 0 0 0.25rem; font-weight: 700; font-size: 1rem; line-height: 1.35; }
         .nw-d-where { margin: 0 0 0.9rem; font-size: 0.85rem; color: var(--mid-grey); }
@@ -174,29 +201,56 @@
          photos and companies stay inside the app (privacy policy). The section hides
          itself if the list cannot be loaded. -->
     <section class="nw-glimpse" id="who-is-coming">
-        <div class="container">
-            <div class="section-header">
+        <div class="container nw-wrap">
+            <div class="nw-copy-top">
                 <span class="nw-live"><span class="nw-live-dot"></span> Live from the Bharat AI Connect app</span>
-                <h2 class="section-title">Some of the people <span class="accent">you can meet</span></h2>
-                <p class="section-subtitle">Real people registered for 20&ndash;21 Nov. Their names and companies are shown only inside the app. Tap a card to see who it is.</p>
+                <h2 class="section-title">Real people. <span class="accent">Real app.</span></h2>
+                <p>This is Bharat AI Connect, the event&rsquo;s networking app, with people registered for 20&ndash;21 Nov. Names and companies open after you register. Tap anyone to see who it is.</p>
             </div>
-            <div class="nw-grid" id="nw-grid" aria-busy="true">
-                <div class="nw-card nw-skel" aria-hidden="true"><span class="nw-ava"></span><span style="width:85%;height:14px;"></span><span style="width:60%;height:10px;"></span><span style="width:45%;height:10px;"></span></div>
-                <div class="nw-card nw-skel" aria-hidden="true"><span class="nw-ava"></span><span style="width:75%;height:14px;"></span><span style="width:55%;height:10px;"></span><span style="width:40%;height:10px;"></span></div>
-                <div class="nw-card nw-skel" aria-hidden="true"><span class="nw-ava"></span><span style="width:80%;height:14px;"></span><span style="width:65%;height:10px;"></span><span style="width:50%;height:10px;"></span></div>
-                <div class="nw-card nw-skel" aria-hidden="true"><span class="nw-ava"></span><span style="width:70%;height:14px;"></span><span style="width:60%;height:10px;"></span><span style="width:45%;height:10px;"></span></div>
+            <div class="nw-phone-wrap">
+                <div class="nw-phone">
+                    <div class="nw-screen">
+                        <div class="nw-status" aria-hidden="true"><span>9:41</span><span class="nw-island"></span><span class="nw-sicons"><i class="fas fa-signal"></i><i class="fas fa-wifi"></i><span class="nw-batt"></span></span></div>
+                        <div class="nw-scroll" id="nw-scroll">
+                            <div class="nw-app-head"><i class="fas fa-users" aria-hidden="true"></i> Networking Hub</div>
+                            <p class="nw-app-sub">Connect with fellow attendees, speakers, and exhibitors</p>
+                            <div class="nw-search" aria-hidden="true"><i class="fas fa-magnifying-glass"></i><span>Search by name, company, or title&hellip;</span></div>
+                            <div class="nw-filter" aria-hidden="true"><span class="nw-flabel">Industry</span><div class="nw-chips" id="nw-industries"><span>Banking &amp; Financial Services</span><span>Software &amp; SaaS</span></div></div>
+                            <div class="nw-filter" aria-hidden="true"><span class="nw-flabel">Here to</span><div class="nw-chips"><span>Selling</span><span>Buying</span><span>B2B networking</span><span>Raising investment</span></div></div>
+                            <div class="nw-list" id="nw-grid" aria-busy="true">
+                                <div class="nw-lc nw-skel" aria-hidden="true"><span class="nw-lc-top"><span class="nw-lc-ava"><i class="fas fa-lock"></i></span><span class="nw-lc-txt"><span class="nw-lc-bar"></span><span class="nw-lc-title" style="width:130px;"></span><span class="nw-lc-meta" style="width:90px;"></span></span></span><span class="nw-lc-btn">&nbsp;</span></div>
+                                <div class="nw-lc nw-skel" aria-hidden="true"><span class="nw-lc-top"><span class="nw-lc-ava"><i class="fas fa-lock"></i></span><span class="nw-lc-txt"><span class="nw-lc-bar"></span><span class="nw-lc-title" style="width:110px;"></span><span class="nw-lc-meta" style="width:80px;"></span></span></span><span class="nw-lc-btn">&nbsp;</span></div>
+                                <div class="nw-lc nw-skel" aria-hidden="true"><span class="nw-lc-top"><span class="nw-lc-ava"><i class="fas fa-lock"></i></span><span class="nw-lc-txt"><span class="nw-lc-bar"></span><span class="nw-lc-title" style="width:140px;"></span><span class="nw-lc-meta" style="width:100px;"></span></span></span><span class="nw-lc-btn">&nbsp;</span></div>
+                            </div>
+                        </div>
+                        <div class="nw-tabbar" aria-hidden="true">
+                            <span class="nw-tab"><i class="fas fa-th-large"></i>Dashboard</span>
+                            <span class="nw-tab"><i class="fas fa-calendar-alt"></i>Schedule</span>
+                            <span class="nw-tab on"><i class="fas fa-users"></i>Network</span>
+                            <span class="nw-tab"><i class="fas fa-laptop-code"></i>Workshops</span>
+                            <span class="nw-tab"><i class="fas fa-robot"></i>AI Market</span>
+                            <span class="nw-tab"><i class="fas fa-envelope"></i>Inbox</span>
+                            <span class="nw-tab"><i class="fas fa-bell"></i>Alerts</span>
+                        </div>
+                    </div>
+                </div>
+                <p class="nw-caption">The live list from the app. It changes every day.</p>
             </div>
-            <button type="button" class="nw-more" id="nw-more" hidden>Show more people</button>
-            <div class="nw-after">
-                <a href="/register#delegate" class="btn btn-primary btn-lg">Get a Delegate Pass to meet them <i class="fas fa-arrow-right"></i></a>
-                <p>Message anyone in the app and book your meetings before you arrive. Or <a href="/register">register free</a> to see some of their names.</p>
+            <div class="nw-copy-bottom">
+                <ul class="nw-points">
+                    <li><i class="fas fa-magnifying-glass" aria-hidden="true"></i><span>Search by name, company or job title</span></li>
+                    <li><i class="fas fa-filter" aria-hidden="true"></i><span>Filter by industry, city and why they are coming</span></li>
+                    <li><i class="fas fa-calendar-check" aria-hidden="true"></i><span>Message them and book a meeting before you arrive</span></li>
+                </ul>
+                <div><a href="/register#delegate" class="btn btn-primary btn-lg">Get a Delegate Pass to meet them <i class="fas fa-arrow-right"></i></a></div>
+                <p>Or <a href="/register">register free</a> to see some of their names.</p>
             </div>
         </div>
     </section>
 
     <dialog class="nw-dialog" id="nw-dialog" aria-labelledby="nw-d-title">
         <form method="dialog"><button class="nw-d-close" aria-label="Close"><i class="fas fa-xmark" aria-hidden="true"></i></button></form>
-        <span class="nw-ava" id="nw-d-ava" aria-hidden="true"></span>
+        <span class="nw-lc-ava nw-d-ava" aria-hidden="true"><i class="fas fa-lock"></i></span>
         <h3 id="nw-d-title">Want to meet this person?</h3>
         <p class="nw-d-who" id="nw-d-who"></p>
         <p class="nw-d-where" id="nw-d-where"></p>
@@ -409,31 +463,29 @@
 
     <script src="js/main.js?v=20261029"></script>
     <script>
-    // The live glimpse (#who-is-coming): fills the cards from the app, and a tap on
-    // one opens the "Want to meet this person?" box. Text is set with textContent,
-    // never as HTML: job titles and cities are typed by registrants.
+    // The live glimpse (#who-is-coming): fills the app screen's locked cards from
+    // the app, scrolls them slowly until the visitor touches the screen, and a tap
+    // on a card opens the "Want to meet this person?" box. Text is set with
+    // textContent, never as HTML: job titles and cities are typed by registrants.
     (function () {
         var section = document.getElementById('who-is-coming');
-        var grid = document.getElementById('nw-grid');
-        var more = document.getElementById('nw-more');
+        var list = document.getElementById('nw-grid');
+        var screen = document.getElementById('nw-scroll');
         var dialog = document.getElementById('nw-dialog');
-        if (!section || !grid || !window.fetch) { if (section) section.hidden = true; return; }
-        var FACE = '<svg viewBox="0 0 52 52" aria-hidden="true"><circle cx="26" cy="20" r="9" fill="rgba(255,255,255,0.6)"/><path d="M8 52c1.5-12 9-18 18-18s16.5 6 18 18z" fill="rgba(255,255,255,0.6)"/></svg>';
-        var LOCK = '<span class="nw-lock"><i class="fas fa-lock" aria-hidden="true"></i></span>';
+        if (!section || !list || !window.fetch) { if (section) section.hidden = true; return; }
         function el(tag, cls, text) {
             var n = document.createElement(tag);
             if (cls) n.className = cls;
             if (text != null) n.textContent = text;
             return n;
         }
-        function avatar(node, i) {
-            node.className = 'nw-ava nw-tone-' + (i % 6);
-            node.innerHTML = FACE + LOCK;
-            return node;
+        function icon(name) {
+            var i = el('i', 'fas ' + name);
+            i.setAttribute('aria-hidden', 'true');
+            return i;
         }
-        function openWho(p, i) {
+        function openWho(p) {
             if (!dialog || typeof dialog.showModal !== 'function') { window.location.href = '/register#delegate'; return; }
-            avatar(document.getElementById('nw-d-ava'), i);
             document.getElementById('nw-d-who').textContent = p.title;
             var where = [p.industry, p.city].filter(Boolean).join(' · ');
             var w = document.getElementById('nw-d-where');
@@ -441,51 +493,83 @@
             w.hidden = !where;
             dialog.showModal();
         }
-        function card(p, i) {
-            var b = el('button', 'nw-card');
+        // The app's locked card: a lock for a face, a grey bar for the name.
+        function card(p) {
+            var b = el('button', 'nw-lc');
             b.type = 'button';
-            b.appendChild(avatar(el('span'), i));
-            b.appendChild(el('span', 'nw-role', p.title));
-            if (p.industry) b.appendChild(el('span', 'nw-meta', p.industry));
-            if (p.city) {
-                var c = el('span', 'nw-meta nw-city');
-                c.innerHTML = '<i class="fas fa-location-dot" aria-hidden="true"></i>';
-                c.appendChild(document.createTextNode(p.city));
-                b.appendChild(c);
-            }
+            var top = el('span', 'nw-lc-top');
+            var ava = el('span', 'nw-lc-ava');
+            ava.appendChild(icon('fa-lock'));
+            top.appendChild(ava);
+            var txt = el('span', 'nw-lc-txt');
+            txt.appendChild(el('span', 'nw-lc-bar'));
+            txt.appendChild(el('span', 'nw-lc-title', p.title));
+            var meta = [p.industry, p.city].filter(Boolean).join(' · ');
+            if (meta) txt.appendChild(el('span', 'nw-lc-meta', meta));
+            top.appendChild(txt);
+            b.appendChild(top);
             if (p.goals && p.goals.length) {
-                var g = el('span', 'nw-goals');
-                g.appendChild(el('span', 'nw-here', 'Here for'));
-                p.goals.forEach(function (x) { g.appendChild(el('span', 'nw-chip', x)); });
+                var g = el('span', 'nw-lc-goals');
+                p.goals.forEach(function (x) { g.appendChild(el('span', '', 'Here to: ' + x)); });
                 b.appendChild(g);
             }
-            var s = el('span', 'nw-see');
-            s.innerHTML = '<i class="fas fa-lock" aria-hidden="true"></i>';
+            var s = el('span', 'nw-lc-btn');
+            s.appendChild(icon('fa-unlock'));
             s.appendChild(document.createTextNode('See who this is'));
             b.appendChild(s);
             b.setAttribute('aria-label', [p.title, p.industry, p.city].filter(Boolean).join(', ') + '. See who this is');
-            b.addEventListener('click', function () { openWho(p, i); });
+            b.addEventListener('click', function () { openWho(p); });
             return b;
+        }
+        // Down slowly, a pause, back to the top, again; never while the pointer is
+        // on the screen, never once the visitor has touched it, never off screen,
+        // and not at all for anyone who asked their device for less motion.
+        function drift(box) {
+            if (!box || !window.requestAnimationFrame) return;
+            if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+            var stopped = false, onScreen = true, pos = 0, dir = 1, wait = 120;
+            ['wheel', 'touchstart', 'pointerdown', 'keydown'].forEach(function (ev) {
+                box.addEventListener(ev, function () { stopped = true; }, { passive: true });
+            });
+            if ('IntersectionObserver' in window) {
+                new IntersectionObserver(function (es) { onScreen = es[0].isIntersecting; }).observe(box);
+            }
+            function step() {
+                if (stopped) return;
+                if (onScreen && !box.matches(':hover')) {
+                    var max = box.scrollHeight - box.clientHeight;
+                    if (wait > 0) wait--;
+                    else if (max > 0) {
+                        pos += dir > 0 ? 0.5 : -4;
+                        if (pos >= max) { pos = max; dir = -1; wait = 150; }
+                        else if (pos <= 0) { pos = 0; dir = 1; wait = 150; }
+                        box.scrollTop = pos;
+                    }
+                }
+                window.requestAnimationFrame(step);
+            }
+            window.requestAnimationFrame(step);
         }
         if (dialog) {
             // A tap on the dark area around the box closes it, like the close button.
             dialog.addEventListener('click', function (e) { if (e.target === dialog) dialog.close(); });
-        }
-        if (more) {
-            more.addEventListener('click', function () {
-                grid.classList.add('nw-all');
-                more.hidden = true;
-            });
         }
         fetch('/api/events/1/glimpse', { credentials: 'omit' })
             .then(function (r) { return r.ok ? r.json() : null; })
             .then(function (d) {
                 var people = (d && Array.isArray(d.people)) ? d.people : [];
                 if (people.length < 4) { section.hidden = true; return; }
-                grid.innerHTML = '';
-                grid.removeAttribute('aria-busy');
-                people.forEach(function (p, i) { grid.appendChild(card(p, i)); });
-                if (more) more.hidden = people.length <= 6;
+                list.innerHTML = '';
+                list.removeAttribute('aria-busy');
+                people.forEach(function (p) { list.appendChild(card(p)); });
+                // The Industry chips are the industries on today's list.
+                var seen = [], chips = document.getElementById('nw-industries');
+                people.forEach(function (p) { if (p.industry && p.industry !== 'Other' && seen.indexOf(p.industry) < 0) seen.push(p.industry); });
+                if (chips && seen.length) {
+                    chips.innerHTML = '';
+                    seen.slice(0, 4).forEach(function (x) { chips.appendChild(el('span', '', x)); });
+                }
+                drift(screen);
             })
             .catch(function () { section.hidden = true; });
     })();

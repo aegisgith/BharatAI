@@ -6320,7 +6320,8 @@ app.get('/api/events/:id/glimpse', async (c) => {
   for (const r of rows) {
     const title = glimpseTitle(r.job_title, r.company)
     if (!title) continue
-    const industry = INDUSTRIES.includes(String(r.industry || '')) ? String(r.industry) : ''
+    // 'Other' says nothing on a card, so it is left off like a blank one.
+    const industry = INDUSTRIES.includes(String(r.industry || '')) && r.industry !== 'Other' ? String(r.industry) : ''
     const city = glimpseCity(r.city)
     // Two cards reading the same are one card twice.
     const key = (title + '|' + industry + '|' + city).toLowerCase()
