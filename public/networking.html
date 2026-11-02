@@ -220,6 +220,22 @@
         .nw-now span { color: var(--mid-grey); font-weight: 500; }
         .nw-d-ava { margin: 0 auto 0.75rem; width: 72px; height: 72px; font-size: 1.3rem; overflow: hidden; }
         .nw-d-ava img { width: 100%; height: 100%; object-fit: cover; }
+        /* Real "I'm attending" cards, drawn by the app's renderer under the steps. */
+        .nw-cards-band { margin-top: 3.5rem; padding-top: 3rem; border-top: 1px solid #E3E6F5; }
+        .nw-cards-head { text-align: center; max-width: 660px; margin: 0 auto 1.75rem; }
+        .nw-cards-head h3 { margin: 0.7rem 0 0.5rem; font-family: var(--font-display); font-size: clamp(1.5rem, 3vw, 2rem); font-weight: 800; line-height: 1.2; color: var(--charcoal); }
+        .nw-cards-head p { margin: 0; font-size: 0.98rem; line-height: 1.6; color: var(--dark-grey); }
+        .nw-cards-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.25rem; max-width: 1000px; margin: 0 auto; }
+        .nw-cardslot { aspect-ratio: 1 / 1; border-radius: 14px; overflow: hidden; background: #E9ECF7; box-shadow: 0 14px 34px rgba(13,15,30,0.16); }
+        .nw-cardslot img { display: block; width: 100%; height: 100%; }
+        @media (max-width: 699px) {
+            .nw-cards-row { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; gap: 0.9rem; margin: 0 -16px; padding: 0 16px 0.75rem; scrollbar-width: none; }
+            .nw-cards-row::-webkit-scrollbar { display: none; }
+            .nw-cardslot { flex: 0 0 80%; scroll-snap-align: center; }
+        }
+        .nw-cards-note { margin: 1.25rem auto 0; max-width: 660px; text-align: center; font-size: 0.9rem; line-height: 1.6; color: var(--dark-grey); }
+        .nw-cards-note i { color: #C9A227; margin-right: 0.3rem; }
+        .nw-cards-note a { color: var(--saffron-dark); font-weight: 700; }
         /* On a phone the phone comes first, then the steps that explain it. */
         @media (max-width: 899px) { .nw-copy-top { order: 1; } .nw-phone-wrap { order: 2; } .nw-steps { order: 3; } .nw-copy-bottom { order: 4; } }
         .nw-dialog { margin: auto; border: 0; border-radius: 20px; padding: 1.75rem 1.5rem 1.4rem; width: min(420px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow-y: auto; box-shadow: 0 24px 60px rgba(13,15,30,0.35); color: var(--charcoal); text-align: center; }
@@ -359,6 +375,15 @@
                 <div><a href="/register#delegate" class="btn btn-primary btn-lg">Get a Delegate Pass to meet them <i class="fas fa-arrow-right"></i></a></div>
                 <p>Connecting, messaging and booking meetings need a Delegate, VIP or Academic pass. Or <a href="/register">register free</a> to see some of the people.</p>
             </div>
+        </div>
+        <div class="container nw-cards-band" id="nw-cards" hidden>
+            <div class="nw-cards-head">
+                <span class="nw-where online">Share on LinkedIn</span>
+                <h3>Your &ldquo;I&rsquo;m attending&rdquo; card, ready to post</h3>
+                <p>The app makes it from your photo, name and job title, square for LinkedIn and tall for WhatsApp Status. These are cards that people coming to Bharat AI Innovation have made.</p>
+            </div>
+            <div class="nw-cards-row" id="nw-cards-row"></div>
+            <p class="nw-cards-note"><i class="fas fa-star" aria-hidden="true"></i>Delegate, Premium and VIP passes get the gold edition of the card, with the pass named on a ribbon. <a href="/register">Register and make yours &rarr;</a></p>
         </div>
     </section>
 
@@ -710,29 +735,80 @@
             document.getElementById('nw-bub').textContent = 'Hi' + (p.name ? ' ' + firstName(p.name) : '') +
                 ', I am coming to Bharat AI Innovation and would value 30 minutes with you. Does 20 Nov at 11:30 work?';
         }
-        // The "I'm attending" card, drawn by the app's own renderer, once.
+        // "I'm attending" cards, drawn by the app's own renderer: the script is
+        // loaded once, and each person's card is drawn once and used by both the
+        // phone's last step and the band of cards under the steps.
+        var rendererReady = null, cards = {};
+        function renderer() {
+            if (!rendererReady) rendererReady = new Promise(function (ok, no) {
+                if (window.BhaiSocialCard) return ok(window.BhaiSocialCard);
+                var s = document.createElement('script');
+                s.src = '/js/social-card.js?v=20261102';
+                s.onload = function () { if (window.BhaiSocialCard) ok(window.BhaiSocialCard); else no(new Error('renderer')); };
+                s.onerror = function () { no(new Error('renderer')); };
+                document.head.appendChild(s);
+            });
+            return rendererReady;
+        }
+        function cardFor(p) {
+            if (!p || !p.name || !p.photo) return Promise.reject(new Error('no photo'));
+            if (!cards[p.photo]) {
+                cards[p.photo] = renderer().then(function (R) {
+                    return R.render({ name: p.name, job_title: p.title, company: p.company, avatar_url: p.photo }, { size: 'square', companyLogo: '' });
+                }).then(function (res) {
+                    // A card whose photo did not load is a letter in a circle: not shown.
+                    if (!res || res.photoFailed || !res.hasPhoto) throw new Error('photo');
+                    return res.dataUrl;
+                });
+            }
+            return cards[p.photo];
+        }
         var cardDrawn = false;
         function drawCard() {
-            if (cardDrawn || !featured || !featured.name || !featured.photo) return;
+            if (cardDrawn || !featured) return;
             cardDrawn = true;
             var wait = document.getElementById('nw-card-wait');
             var img = document.getElementById('nw-card-img');
-            var user = { name: featured.name, job_title: featured.title, company: featured.company, avatar_url: featured.photo };
-            function go() {
-                window.BhaiSocialCard.render(user, { size: 'square', companyLogo: '' }).then(function (res) {
-                    if (!res || res.photoFailed) throw new Error('photo');
-                    img.src = res.dataUrl;
-                    img.alt = 'The I’m attending card ' + featured.name + ' made in the app';
-                    img.hidden = false;
-                    wait.hidden = true;
-                }).catch(function () { wait.textContent = 'Your card is made in the app, from your photo.'; });
+            cardFor(featured).then(function (url) {
+                img.src = url;
+                img.alt = 'The I’m attending card ' + featured.name + ' made in the app';
+                img.hidden = false;
+                wait.hidden = true;
+            }).catch(function () { wait.textContent = 'Your card is made in the app, from your photo.'; });
+        }
+        // The band under the steps: up to three real cards, drawn one after another
+        // once the band is near the screen. It stays hidden if none can be drawn.
+        function fillCards(people) {
+            var band = document.getElementById('nw-cards');
+            var row = document.getElementById('nw-cards-row');
+            var who = people.filter(function (p) { return p.name && p.photo; }).slice(0, 3);
+            if (!band || !row || !who.length) return;
+            band.hidden = false;
+            var slots = who.map(function () { var s = el('div', 'nw-cardslot'); row.appendChild(s); return s; });
+            var started = false;
+            function start() {
+                if (started) return;
+                started = true;
+                var chain = Promise.resolve(), shown = 0;
+                who.forEach(function (p, i) {
+                    chain = chain.then(function () { return cardFor(p); }).then(function (url) {
+                        var img = el('img');
+                        img.src = url;
+                        img.alt = 'The I’m attending card ' + p.name + ' made in the app';
+                        img.width = 1080;
+                        img.height = 1080;
+                        slots[i].appendChild(img);
+                        shown++;
+                    }, function () { slots[i].parentNode.removeChild(slots[i]); });
+                });
+                chain.then(function () { if (!shown) band.hidden = true; });
             }
-            if (window.BhaiSocialCard) return go();
-            var s = document.createElement('script');
-            s.src = '/js/social-card.js?v=20261102';
-            s.onload = go;
-            s.onerror = function () { wait.textContent = 'Your card is made in the app, from your photo.'; };
-            document.head.appendChild(s);
+            if ('IntersectionObserver' in window) {
+                var io = new IntersectionObserver(function (es) {
+                    if (es[0].isIntersecting) { io.disconnect(); start(); }
+                }, { rootMargin: '300px' });
+                io.observe(band);
+            } else start();
         }
         // Playing the steps: on its own while the section is on screen, never
         // for anyone who asked their device for less motion; a tap on a step
@@ -795,6 +871,7 @@
                 }
                 featured = people[0] || locked[0];
                 fillDemo(featured);
+                fillCards(people);
                 // The Industry chips are the industries on today's list.
                 var seen = [], chips = document.getElementById('nw-industries');
                 people.concat(locked).forEach(function (p) { if (p.industry && seen.indexOf(p.industry) < 0) seen.push(p.industry); });

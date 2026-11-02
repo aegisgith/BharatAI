@@ -126,7 +126,8 @@ const page = readFileSync(new URL('../../public/networking.html', import.meta.ur
 check('the page asks this route for its cards', page.includes("fetch('/api/events/1/glimpse'"), 'fetch missing');
 check('the page writes names and titles as text, never as HTML', /el\('span', 'nw-pc-name', p\.name\)/.test(page) && /el\('span', 'nw-lc-title', p\.title\)/.test(page) && !/innerHTML\s*=\s*[^;]*p\.(name|title|company|city|industry)/.test(page), 'innerHTML with card text');
 check('the phone plays the app\'s own screens: list, Requested, Schedule Meeting, chat, Tell your network', ['Networking Hub', 'Requested', 'Schedule Meeting', 'Send Meeting Request', 'Type a message', 'Tell your network', 'Share to LinkedIn or WhatsApp'].every(s => page.includes(s)), 'phone screen markers');
-check('the card in the share step is drawn by the app\'s renderer', page.includes("'/js/social-card.js?v=") && page.includes('BhaiSocialCard.render('), 'renderer');
+check('the card in the share step is drawn by the app\'s renderer', page.includes("'/js/social-card.js?v=") && page.includes('window.BhaiSocialCard') && /R\.render\(\{ name: p\.name/.test(page), 'renderer');
+check('a band of real "I\'m attending" cards, drawn once each and shared with the phone', page.includes('id="nw-cards"') && page.includes('fillCards(people)') && /function cardFor\(p\)/.test(page) && page.includes('gold edition'), 'cards band');
 check('five steps, online and at the venue', (page.match(/data-step="[1-5]"/g) || []).length >= 5 && page.includes('At WTC Mumbai') && page.includes('Share your card on LinkedIn'), 'steps');
 check('the headline reads as the organiser wrote it', /Business meetings before you arrive at Bharat AI Innovation, <span class="nw-accent">not chance encounters<\/span>/.test(page), 'headline');
 
