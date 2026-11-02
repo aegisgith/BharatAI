@@ -574,7 +574,11 @@
         .hero-content { max-width: 560px; padding: 2rem 1rem 1.5rem !important; }
         .hero-dateline { color: rgba(255,255,255,0.78); margin-bottom: 1rem; }
         .hero .hero-title { margin-bottom: 0.75rem; }
-        .hero .hero-desc { color: rgba(255,255,255,0.86); margin: 0 0 1.25rem; max-width: 34ch; text-shadow: 0 1px 8px rgba(10,12,28,0.8); }
+        .hero .hero-desc { color: rgba(255,255,255,0.86); margin: 0 auto 1.25rem; max-width: 620px; text-shadow: 0 1px 8px rgba(10,12,28,0.8); }
+        /* The Devanagari line is sized off the English one (an em of the h1), at
+           the ratio that makes it exactly as wide as "Innovation" in these two
+           fonts, so the two lines sit flush at every screen size. */
+        .hero .hero-title-hi { font-size: 0.713em; margin-top: 0.12em; line-height: 1.3; }
         .hero-offer {
             width: 100%;
             margin: 0;
@@ -607,39 +611,36 @@
                a portrait crop of the whole hero would only have kept a sliver of
                ceiling lights above the type. The band ends in solid dark, so
                the type below sits on a plain ground. */
-            .hero { background: #0A0C1C; }
-            .hero-bg-photo { height: 46%; }
+            .hero { background: #0A0C1C; min-height: 0; padding-top: calc(var(--nav-h) + 180px); }
+            .hero-content { padding-top: 0 !important; }
+            .hero-bg-photo { height: calc(var(--nav-h) + 250px); }
             .hero-bg-scrim {
                 background: linear-gradient(180deg,
-                    rgba(10,12,28,0.62) 0%, rgba(10,12,28,0.06) 13%, rgba(10,12,28,0) 25%,
-                    rgba(10,12,28,0.62) 37%, rgba(10,12,28,0.97) 46%, #0A0C1C 100%);
+                    rgba(10,12,28,0.62) 0, rgba(10,12,28,0.06) 70px, rgba(10,12,28,0) 140px,
+                    rgba(10,12,28,0.6) calc(var(--nav-h) + 175px), rgba(10,12,28,0.97) calc(var(--nav-h) + 240px),
+                    #0A0C1C calc(var(--nav-h) + 250px), #0A0C1C 100%);
             }
             .dl-long { display: none; }
             .hero-dateline span.dl-short { display: inline; background: none; border: 0; padding: 0; }
             .hero .hero-title { font-size: clamp(2.4rem, 11vw, 3.1rem) !important; line-height: 0.95 !important; }
-            .hero .hero-title-hi { font-size: 1.2rem; margin-top: 0.4em; }
             .hero .hero-desc { font-size: 0.98rem !important; line-height: 1.5; margin-left: auto; margin-right: auto; }
         }
         @media (min-width: 900px) {
+            /* Centred, as the hero always was (the organiser asked for it back).
+               The dark is a band through the middle, where the type and the offer
+               sit, lighter towards the edges so the stage still reads. */
             .hero { align-items: center; }
             .hero-bg-photo { object-position: center 45%; }
             .hero-bg-scrim {
                 background:
-                    linear-gradient(90deg, rgba(10,12,28,0.90) 0%, rgba(10,12,28,0.80) 32%, rgba(10,12,28,0.34) 60%, rgba(10,12,28,0.10) 100%),
-                    linear-gradient(180deg, rgba(10,12,28,0.5) 0%, rgba(10,12,28,0) 22%, rgba(10,12,28,0) 78%, rgba(10,12,28,0.55) 100%);
+                    radial-gradient(ellipse 34% 50% at 50% 56%, rgba(10,12,28,0.55) 0%, rgba(10,12,28,0.32) 62%, rgba(10,12,28,0) 100%),
+                    linear-gradient(180deg, rgba(10,12,28,0.58) 0%, rgba(10,12,28,0.46) 18%, rgba(10,12,28,0.52) 50%, rgba(10,12,28,0.62) 100%);
             }
-            .hero-content { max-width: var(--max-w); padding: 4rem 2rem 4.5rem !important; align-items: flex-start; text-align: left; }
-            .hero-content > * { max-width: 560px; }
-            .hero-dateline { justify-content: flex-start; }
+            .hero-content { max-width: var(--max-w); padding: 3.5rem 2rem 4rem !important; }
             .hero .hero-title { font-size: clamp(4.25rem, 6.4vw, 6rem); }
-            .hero .hero-title-hi { font-size: clamp(1.6rem, 2.6vw, 2.35rem); }
-            .hero .hero-desc { font-size: 1.2rem; max-width: 38ch; }
-            .hero-offer { padding: 1.25rem 1.35rem 1.1rem; }
-            .hero-offer-perks { grid-template-columns: repeat(2, max-content); gap: 0.5rem 2.25rem; }
-            .hero-offer .btn { width: auto; }
-            .hero-offer-foot { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
-            .hero-offer-note { margin: 0; text-align: left; }
-            .hero-alt { text-align: left; }
+            .hero .hero-desc { font-size: 1.15rem; line-height: 1.7; }
+            .hero-offer { max-width: 560px; padding: 1.25rem 1.35rem 1.1rem; }
+            .hero-offer-perks { grid-template-columns: repeat(2, max-content); justify-content: center; gap: 0.5rem 2.25rem; }
         }
 
         /* --- Show more: <details class="more"> and the "See all" grids --- */
@@ -936,7 +937,10 @@
                     <span class="hero-title-hi" lang="hi"><span class="hi-saffron">भारत</span> <span class="hi-white">एआई</span> <span class="hi-green">इनोवेशन</span></span>
             </h1>
 
-            <p class="hero-desc">India’s B2B conference and exhibition for AI.</p>
+            <p class="hero-desc">
+                India’s B2B platform for AI. The organisations already running AI in production,
+                the companies providing it, and the policymakers shaping it. Two days at WTC Mumbai.
+            </p>
 
             <div class="hero-offer hero-passline">
                 <div class="hero-offer-head">
@@ -2386,21 +2390,19 @@
       });
     })();
 
-    // The offer bar: on once the hero's offer has scrolled away, off again while
-    // the comparison table, the closing call or the footer is
-    // on screen, so it never sits on top of the thing it points to.
+    // The offer bar: on whenever no Delegate button is on screen. Off while the
+    // hero's button, the comparison table, the closing call or the footer shows,
+    // so it never sits on top of the thing it points to. On a short phone the
+    // hero's button starts below the fold, so the bar is there from the start.
     (function () {
       var bar = document.getElementById('stickyCta');
       if (!bar || !('IntersectionObserver' in window)) return;
       var link = bar.querySelector('a');
-      var watch = ['.hero-offer', '#compare .pc', '#registration', '.footer'];
-      var seen = {}, pastHero = false;
+      var watch = ['.hero-offer .btn', '#compare .pc', '#registration', '.footer'];
+      var seen = {};
       var io = new IntersectionObserver(function (es) {
-        es.forEach(function (e) {
-          seen[e.target.getAttribute('data-sticky-key')] = e.isIntersecting;
-          if (e.target.classList.contains('hero-offer') && !e.isIntersecting) pastHero = e.boundingClientRect.top < 0;
-        });
-        var on = pastHero && !Object.keys(seen).some(function (k) { return seen[k]; });
+        es.forEach(function (e) { seen[e.target.getAttribute('data-sticky-key')] = e.isIntersecting; });
+        var on = !Object.keys(seen).some(function (k) { return seen[k]; });
         bar.classList.toggle('is-on', on);
         link.tabIndex = on ? 0 : -1;
         bar.setAttribute('aria-hidden', on ? 'false' : 'true');
@@ -2440,12 +2442,12 @@
       var ang=0,prev=0,last=0,running=false;
       function draw(){
         var W=cv.width,H=cv.height;
-        // Clear of the type (1 Nov 2026): below 900px the type sits low and the
-        // globe turns in the photograph's band at the top; wider, the type is on
-        // the left and the globe turns beside it, on the right.
+        // Below 900px the globe turns in the photograph's band at the top, clear
+        // of the type below it (1 Nov 2026); wider, the type is centred and the
+        // globe turns behind it, as it always has.
         var mob=W<900;
-        var centX=W*(mob?.5:.72),centY=H*(mob?.25:.5);
-        var R=mob?Math.min(W,H*.46)*.32:Math.min(W,H)*.36;
+        var centX=W*.5,centY=mob?Math.min(H*.25,165):H*.5;
+        var R=mob?Math.min(W*.27,120):Math.min(W,H)*.40;
         ctx.clearRect(0,0,W,H);
         var ca=Math.cos(ang),sa=Math.sin(ang);
         var q=pts.map(function(p){
