@@ -22,7 +22,17 @@
     delegate: { label: 'DELEGATE PASS', hi: 'प्रतिनिधि पास',      c1: '#00996C', c2: '#007352', edge: 'rgba(0,153,108,0.50)',   inner: 'rgba(0,153,108,0.28)',  top: '#052419' },
     premium:  { label: 'PREMIUM DELEGATE', hi: 'प्रीमियम प्रतिनिधि पास', c1: '#0B7A75', c2: '#075c58', edge: 'rgba(11,122,117,0.55)', inner: 'rgba(11,122,117,0.30)', top: '#04211f' },
     academic: { label: 'ACADEMIC PASS', hi: 'शैक्षणिक पास',       c1: '#7C5CFF', c2: '#5b3fd6', edge: 'rgba(124,92,255,0.50)',  inner: 'rgba(124,92,255,0.28)', top: '#170f33' },
-    vip:      { label: 'V I P',         hi: 'विशिष्ट अतिथि पास',  c1: '#E9C356', c2: '#c79a2a', edge: '#D4A21A',               inner: 'rgba(233,195,86,0.60)', top: '#3a2c0a', gold: true }
+    vip:      { label: 'V I P',         hi: 'विशिष्ट अतिथि पास',  c1: '#E9C356', c2: '#c79a2a', edge: '#D4A21A',               inner: 'rgba(233,195,86,0.60)', top: '#3a2c0a', gold: true },
+    // Until 2 Nov 2026 every badge below fell through to 'visitor', so a person
+    // moved to Exhibitor, Organiser, Jury and the rest in the admin panel still
+    // downloaded a pass that said VISITOR PASS.
+    exhibitor: { label: 'EXHIBITOR PASS', hi: 'प्रदर्शक पास',     c1: '#E4599C', c2: '#c23f80', edge: 'rgba(228,89,156,0.50)',  inner: 'rgba(228,89,156,0.28)', top: '#2e0a1d' },
+    organiser: { label: 'ORGANISER',     hi: 'आयोजक',            c1: '#5C6BC0', c2: '#3949AB', edge: 'rgba(92,107,192,0.55)',  inner: 'rgba(92,107,192,0.30)', top: '#10163a' },
+    jury:     { label: 'JURY',          hi: 'निर्णायक मंडल',      c1: '#D64545', c2: '#a83232', edge: 'rgba(214,69,69,0.50)',   inner: 'rgba(214,69,69,0.28)',  top: '#2e0c0c' },
+    media:    { label: 'MEDIA PASS',    hi: 'मीडिया पास',         c1: '#00A3C4', c2: '#007f99', edge: 'rgba(0,163,196,0.50)',   inner: 'rgba(0,163,196,0.28)',  top: '#04232b' },
+    investor: { label: 'INVESTOR PASS', hi: 'निवेशक पास',         c1: '#C8803E', c2: '#9c5f27', edge: 'rgba(200,128,62,0.50)',  inner: 'rgba(200,128,62,0.28)', top: '#2b1a0a' },
+    startup:  { label: 'STARTUP PASS',  hi: 'स्टार्टअप पास',       c1: '#7CB342', c2: '#5a8a2c', edge: 'rgba(124,179,66,0.50)',  inner: 'rgba(124,179,66,0.28)', top: '#142408' },
+    staff:    { label: 'SUPPORT STAFF', hi: 'सहायक दल',           c1: '#78909C', c2: '#546E7A', edge: 'rgba(120,144,156,0.50)', inner: 'rgba(120,144,156,0.28)', top: '#141c21' }
   };
 
   // The pass must state the tier the holder actually has. An earlier version
@@ -37,6 +47,14 @@
     if (b.indexOf('delegate') >= 0) return 'delegate';
     if (b.indexOf('academic') >= 0) return 'academic';
     if (b.indexOf('speaker') >= 0 || r.indexOf('speaker') >= 0) return 'speaker';
+    // Badge or role, the rule the social card uses, so the two agree.
+    if (b.indexOf('exhibitor') >= 0 || r.indexOf('exhibitor') >= 0) return 'exhibitor';
+    if (b.indexOf('organi') >= 0) return 'organiser';
+    if (b.indexOf('jury') >= 0) return 'jury';
+    if (b.indexOf('media') >= 0 || b.indexOf('press') >= 0) return 'media';
+    if (b.indexOf('investor') >= 0) return 'investor';
+    if (b.indexOf('startup') >= 0) return 'startup';
+    if (b.indexOf('staff') >= 0) return 'staff';
     return 'visitor';
   }
 

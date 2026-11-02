@@ -31,7 +31,9 @@
 // so the offline copies that still say VIP go.
 // v20: the marketing nav changed (About to the footer, AI Marketplace added, the
 // toggle menu below 1280px), so style.css?v=20261102 replaces 20261029d here.
-const VERSION = 'bhai-v20';
+// v21: pass-render.js?v=20261102 prints Exhibitor, Organiser, Jury, Media,
+// Investor, Startup and Support Staff passes as themselves, not VISITOR PASS.
+const VERSION = 'bhai-v21';
 const SHELL = `shell-${VERSION}`;
 const DATA = `data-${VERSION}`;
 
@@ -60,7 +62,7 @@ const PRECACHE = [
   '/images/logo-nav.webp',             // every page's header
   '/images/icon-192.png',
   '/manifest.webmanifest',
-  '/js/pass-render.js?v=20261029',
+  '/js/pass-render.js?v=20261102',
   '/js/vendor/qrcode-generator.js?v=20261029',   // the pass draws its QR with it
   '/css/style.css?v=20261102',        // marketing shell: /, /conference, /exhibition, ...
   '/js/main.js?v=20261029',

@@ -174,15 +174,15 @@ check('pass-render.js draws the QR with the bundled encoder, qrserver only as fa
 check('pass-render.js reports qrFailed and download() refuses on it', /qrFailed: qrFailed/.test(passJs) && /res\.photoFailed \|\| res\.qrFailed/.test(passJs), 'flags');
 for (const [page, name] of [['/app', 'app'], ['/admin', 'admin']]) {
   r = await hit(page);
-  const vendor = r.text.indexOf('/js/vendor/qrcode-generator.js?v='), render = r.text.indexOf('/js/pass-render.js?v=20261029');
-  check(`${name} page loads the encoder before pass-render.js?v=20261029`, r.status === 200 && vendor > 0 && render > vendor, r.status + ' vendor@' + vendor + ' render@' + render);
+  const vendor = r.text.indexOf('/js/vendor/qrcode-generator.js?v='), render = r.text.indexOf('/js/pass-render.js?v=20261102');
+  check(`${name} page loads the encoder before pass-render.js?v=20261102`, r.status === 200 && vendor > 0 && render > vendor, r.status + ' vendor@' + vendor + ' render@' + render);
 }
 r = await hit('/app.js');
 check('the app refuses to draw a pass without a token, and says why', /if \(!passToken\) \{/.test(r.text) && /Could not prepare the QR code for your pass/.test(r.text) && /passRes\.qrFailed/.test(r.text), 'generateEventPass');
 r = await hit('/admin.js');
 check('the admin refuses to draw a pass without a token or a QR', /Could not get a pass token for/.test(r.text) && /res\.qrFailed/.test(r.text), 'adminDownloadPass');
 const sw = readFileSync(new URL('public/sw.js', ROOT), 'utf8');
-check('the service worker precaches the encoder and the new renderer (venue WiFi) under a new VERSION', /'\/js\/vendor\/qrcode-generator\.js\?v=20261029'/.test(sw) && /'\/js\/pass-render\.js\?v=20261029'/.test(sw) && !/bhai-v16'/.test(sw), 'sw precache');
+check('the service worker precaches the encoder and the new renderer (venue WiFi) under a new VERSION', /'\/js\/vendor\/qrcode-generator\.js\?v=20261029'/.test(sw) && /'\/js\/pass-render\.js\?v=20261102'/.test(sw) && !/bhai-v16'/.test(sw), 'sw precache');
 
 // ---- a QR from the encoder, read by the decoder, yields the token ----
 const qrcode = loadUmd('public/js/vendor/qrcode-generator.js');

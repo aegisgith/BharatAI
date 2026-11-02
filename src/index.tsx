@@ -19782,7 +19782,7 @@ function mainPageHTML(): string {
        document the holder downloaded. The pass draws its own QR with the
        encoder, so no third-party service is in the path. -->
   <script src="/js/vendor/qrcode-generator.js?v=20261029"></script>
-  <script src="/js/pass-render.js?v=20261029"></script>
+  <script src="/js/pass-render.js?v=20261102"></script>
   <!-- The "I'm attending" card delegates post. App only: the badge desk has no
        reason to issue one, and it carries none of the pass's verification data. -->
   <script src="/js/social-card.js?v=20261102"></script>
@@ -19863,7 +19863,7 @@ function mainPageHTML(): string {
     .engagement-ring .bg-ring { stroke: rgba(255,255,255,0.06); }
     .engagement-ring .fg-ring { stroke: url(#engGrad); transition: stroke-dashoffset 1s ease; }
     .timeline-line { position: absolute; left: 19px; top: 40px; bottom: 0; width: 2px; background: rgba(255,255,255,0.06); }
-    .profile-cover { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 40%, #0f3460 70%, #1a1a2e 100%); position: relative; overflow: hidden; }
+    .profile-cover { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 40%, #0f3460 70%, #1a1a2e 100%); position: relative; }
     .profile-cover::before { content: ''; position: absolute; inset: 0; background: radial-gradient(circle at 30% 50%, rgba(76,110,245,0.15) 0%, transparent 60%), radial-gradient(circle at 70% 30%, rgba(255,152,0,0.1) 0%, transparent 50%); }
     .quick-action-btn { transition: all 0.2s ease; }
     .quick-action-btn:hover { transform: translateY(-2px); }
@@ -20161,6 +20161,14 @@ function mainPageHTML(): string {
       </div>
     </div>
 
+    <!-- Account menu. The avatar (computer) and Me (phone) open it: a dropdown
+         under the avatar on a computer, a sheet from the bottom on a phone.
+         renderAccountMenu() fills the panel each time it opens. -->
+    <div id="account-menu" class="hidden fixed inset-0 z-50" onclick="if(event.target===this)closeAccountMenu()">
+      <div class="absolute inset-0 md:hidden" style="background:rgba(23,27,58,0.45);" onclick="closeAccountMenu()"></div>
+      <div id="account-menu-panel" role="dialog" aria-label="Your account" tabindex="-1" class="absolute left-0 right-0 bottom-0 rounded-t-2xl md:left-auto md:bottom-auto md:w-80 md:rounded-2xl overflow-y-auto" style="max-height:85vh;outline:none;background:#fff;border:1px solid #E4E7F4;box-shadow:0 16px 44px rgba(26,35,126,0.18);padding-bottom:env(safe-area-inset-bottom);"></div>
+    </div>
+
     <!-- Main Navigation -->
     <nav id="main-nav" class="hidden fixed bottom-0 left-0 right-0 z-30 md:top-0 md:bottom-auto" style="background:rgba(255,255,255,0.9);backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);box-shadow:0 1px 0 rgba(26,35,126,0.08),0 -1px 0 rgba(26,35,126,0.06),0 6px 24px rgba(26,35,126,0.05);padding-bottom:env(safe-area-inset-bottom);">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -20195,8 +20203,10 @@ function mainPageHTML(): string {
           <button class="js-signin-btn nav-btn flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl text-[10px] font-semibold text-orange-400 hover:text-orange-300 transition-all" id="nav-signin-btn" onclick="showRegistration()">
             <i class="fas fa-sign-in-alt text-base"></i><span>Sign In</span>
           </button>
-          <button class="hidden nav-btn flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl text-[10px] font-medium text-gray-400 hover:text-white transition-all" data-tab="myprofile" onclick="switchTab('myprofile')" id="nav-mobile-me">
-            <i class="fas fa-id-badge text-base"></i><span>Me</span>
+          <!-- Me opens the account menu (a sheet on a phone), as in most apps:
+               Edit profile and Change photo are one tap away from anywhere. -->
+          <button class="hidden nav-btn flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl text-[10px] font-medium text-gray-400 hover:text-white transition-all" data-tab="myprofile" onclick="toggleAccountMenu(event)" id="nav-mobile-me" aria-haspopup="dialog" aria-expanded="false" aria-controls="account-menu-panel">
+            <img id="nav-mobile-avatar" alt="" class="hidden w-5 h-5 rounded-full object-cover"><i id="nav-mobile-me-icon" class="fas fa-id-badge text-base"></i><span>Me</span>
           </button>
         </div>
 
@@ -20241,9 +20251,10 @@ function mainPageHTML(): string {
               </div>
             </div>
             <!-- Avatar + Log Out (visible when logged in) -->
-            <button class="js-avatar-btn hidden nav-btn items-center gap-2 px-2 py-1 rounded-full text-sm font-medium text-gray-300 hover:text-white transition-all border border-white/10" data-tab="myprofile" onclick="switchTab('myprofile')" id="nav-avatar-btn">
+            <button class="js-avatar-btn hidden nav-btn items-center gap-2 px-2 py-1 rounded-full text-sm font-medium text-gray-300 hover:text-white transition-all border border-white/10" data-tab="myprofile" onclick="toggleAccountMenu(event)" id="nav-avatar-btn" aria-haspopup="dialog" aria-expanded="false" aria-controls="account-menu-panel" title="Your account">
               <img id="nav-avatar-img" src="data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2236%22%20height%3D%2236%22%20viewBox%3D%220%200%20100%20100%22%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22%23FF6B00%22%2F%3E%3Ctext%20x%3D%2250%22%20y%3D%2250%22%20dy%3D%22.36em%22%20text-anchor%3D%22middle%22%20fill%3D%22%23fff%22%20font-family%3D%22Manrope%2CArial%2Csans-serif%22%20font-weight%3D%22700%22%20font-size%3D%2246%22%3EU%3C%2Ftext%3E%3C%2Fsvg%3E" alt="Profile" class="w-8 h-8 rounded-full object-cover border-2 border-orange-500/50">
               <span id="nav-avatar-name" class="max-w-[100px] truncate text-xs">Me</span>
+              <i class="fas fa-chevron-down text-[9px] opacity-60"></i>
             </button>
             <button class="js-avatar-btn hidden nav-btn items-center gap-1.5 px-3 py-2 rounded-full text-xs font-medium text-gray-400 hover:text-white transition-all border border-white/10" onclick="logoutUser()" id="nav-logout-btn" title="Log out">
               <i class="fas fa-sign-out-alt"></i><span class="hidden lg:inline">Log Out</span>
@@ -22667,11 +22678,115 @@ function mainPageScript(): string {
       const img = document.getElementById('nav-avatar-img');
       const nameEl = document.getElementById('nav-avatar-name');
       if (img) img.src = getAvatarUrl(currentUser.email, currentUser.name, 72, currentUser.avatar_url);
+      // The phone's Me button shows the person too, so it reads as "my account".
+      const mob = document.getElementById('nav-mobile-avatar');
+      if (mob) { mob.src = getAvatarUrl(currentUser.email, currentUser.name, 48, currentUser.avatar_url); mob.classList.remove('hidden'); }
+      const mobIcon = document.getElementById('nav-mobile-me-icon');
+      if (mobIcon) mobIcon.classList.add('hidden');
       if (nameEl) {
         const firstName = currentUser.name ? currentUser.name.split(' ')[0] : 'Me';
         nameEl.textContent = firstName;
       }
     }
+
+    // ==================== ACCOUNT MENU ====================
+    // The avatar (computer) and Me (phone) open this, as in most apps: who is
+    // signed in, then edit profile, change photo, pass, badge, log out. Built
+    // from currentUser on every open, so it never shows old details.
+    function accountPassLabel() {
+      if (!currentUser) return '';
+      const b = String(currentUser.badge_type || '');
+      if (passAwaitingPayment()) return b + ': payment not complete';
+      if (!b || b.toLowerCase().indexOf('visitor') >= 0) return 'Free Visitor Pass';
+      return displayBadge(b);
+    }
+
+    function renderAccountMenu() {
+      const panel = document.getElementById('account-menu-panel');
+      if (!panel || !currentUser) return;
+      const u = currentUser;
+      const role = [u.job_title, u.company].filter(Boolean).join(', ');
+      const gaps = profileGaps(u);
+      const missing = gaps.length < 2 ? (gaps[0] || '') : gaps.slice(0, -1).join(', ') + ' and ' + gaps[gaps.length - 1];
+      const item = (icon, label, hint, action) =>
+        '<button type="button" onclick="' + action + '" class="w-full flex items-center gap-3 px-4 py-2 text-left md:hover:bg-orange-50 focus-visible:bg-orange-50 focus:outline-none transition" style="min-height:48px;">'
+        + '<i class="fas ' + icon + ' w-5 text-center text-gray-500"></i>'
+        + '<span class="flex-1 min-w-0"><span class="block text-sm font-medium">' + label + '</span>'
+        + (hint ? '<span class="block text-[11px] text-gray-500 truncate">' + hint + '</span>' : '')
+        + '</span></button>';
+      panel.innerHTML =
+        '<div class="flex items-center gap-3 p-4" style="border-bottom:1px solid #E4E7F4;">'
+        +   '<button type="button" onclick="changeMyPhoto()" class="relative shrink-0 rounded-full" title="Change your photo" aria-label="Change your photo">'
+        +     '<img src="' + getAvatarUrl(u.email, u.name, 112, u.avatar_url) + '" alt="" class="w-14 h-14 rounded-full object-cover">'
+        +     '<span class="absolute -bottom-0.5 -right-0.5 w-6 h-6 rounded-full bg-primary-600 flex items-center justify-center" style="border:2px solid #fff;"><i class="fas fa-camera text-white text-[10px]"></i></span>'
+        +   '</button>'
+        +   '<div class="min-w-0 flex-1">'
+        +     '<p class="font-bold text-base truncate">' + esc(u.name || '') + '</p>'
+        +     (role ? '<p class="text-xs text-gray-500 truncate">' + esc(role) + '</p>' : '')
+        +     '<p class="text-[11px] text-gray-500 truncate">' + esc(u.email || '') + '</p>'
+        +     '<span class="inline-block mt-1 px-2 py-0.5 rounded-full text-[10px] font-semibold" style="background:#FFF3E8;color:#B45309;">' + esc(accountPassLabel()) + '</span>'
+        +   '</div>'
+        +   '<button type="button" onclick="closeAccountMenu()" class="md:hidden self-start text-gray-400" aria-label="Close" style="min-width:40px;min-height:40px;"><i class="fas fa-times text-lg"></i></button>'
+        + '</div>'
+        + (gaps.length ? '<div class="px-4 pt-3"><button type="button" onclick="' + (missing === 'photo' ? 'changeMyPhoto()' : 'closeAccountMenu(); openEditProfile();') + '" class="w-full px-3 py-2 rounded-xl text-left text-xs" style="min-height:44px;background:#FFF7ED;border:1px solid #FED7AA;color:#9A3412;">Your profile is missing your ' + esc(missing) + '. <span class="font-semibold underline">Add it now</span></button></div>' : '')
+        + '<div class="py-2">'
+        +   item('fa-user-edit', 'Edit my profile', 'Name, organisation, LinkedIn, what you are here for', 'closeAccountMenu(); openEditProfile();')
+        +   item('fa-camera', 'Change my photo', '', 'changeMyPhoto()')
+        +   item('fa-id-badge', 'My pass', 'Keep it on your phone', 'closeAccountMenu(); generateDelegatePass();')
+        +   item('fa-share-alt', 'Share my badge', 'Post it on LinkedIn or WhatsApp', 'closeAccountMenu(); openSocialCard();')
+        +   item('fa-chart-pie', 'My connections and meetings', '', 'closeAccountMenu(); switchTab(&quot;myprofile&quot;);')
+        + '</div>'
+        + '<div class="py-2" style="border-top:1px solid #E4E7F4;">'
+        +   item('fa-sign-out-alt', 'Log out', '', 'logoutUser()')
+        + '</div>';
+    }
+
+    function toggleAccountMenu(e) {
+      if (e) e.stopPropagation();
+      const menu = document.getElementById('account-menu');
+      const panel = document.getElementById('account-menu-panel');
+      if (!menu || !panel) return;
+      if (!menu.classList.contains('hidden')) { closeAccountMenu(); return; }
+      if (!currentUser) { showRegistration(); return; }
+      renderAccountMenu();
+      // Under the avatar on a computer; a sheet from the bottom on a phone.
+      const btn = document.getElementById('nav-avatar-btn');
+      const wide = !!(window.matchMedia && window.matchMedia('(min-width: 768px)').matches);
+      const r = wide && btn && btn.offsetParent ? btn.getBoundingClientRect() : null;
+      panel.style.top = wide ? (r ? Math.round(r.bottom + 8) : 64) + 'px' : '';
+      panel.style.right = wide ? (r ? Math.max(8, Math.round(window.innerWidth - r.right)) : 16) + 'px' : '';
+      const nd = document.getElementById('notif-dropdown');
+      if (nd) nd.classList.add('hidden');
+      menu.classList.remove('hidden');
+      ['nav-avatar-btn', 'nav-mobile-me'].forEach(id => { const b = document.getElementById(id); if (b) b.setAttribute('aria-expanded', 'true'); });
+      try { panel.focus({ preventScroll: true }); } catch (err) {}
+    }
+
+    function closeAccountMenu() {
+      const menu = document.getElementById('account-menu');
+      if (menu) menu.classList.add('hidden');
+      ['nav-avatar-btn', 'nav-mobile-me'].forEach(id => { const b = document.getElementById(id); if (b) b.setAttribute('aria-expanded', 'false'); });
+    }
+
+    // Straight to the photo picker, with Edit Profile open behind it to show the
+    // new photo (and Remove photo) once it is uploaded.
+    function changeMyPhoto() {
+      closeAccountMenu();
+      if (!currentUser) return;
+      openEditProfile();
+      const input = document.getElementById('edit-avatar-input');
+      if (input) input.click();
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      const menu = document.getElementById('account-menu');
+      if (!menu || menu.classList.contains('hidden')) return;
+      closeAccountMenu();
+      e.stopImmediatePropagation();
+      e.preventDefault();
+    });
+    window.addEventListener('popstate', () => closeAccountMenu());
 
     // ==================== COMPANY LOGO HELPER ====================
     function getCompanyLogoUrl(company, websiteUrl, linkedinUrl, email) {
@@ -22845,6 +22960,7 @@ function mainPageScript(): string {
         } catch (e) {}
       }
       if (saved) {
+        let refusedEmail = '';
         try {
           currentUser = JSON.parse(saved);
           // Re-register to mark online
@@ -22854,6 +22970,14 @@ function mainPageScript(): string {
             company: currentUser.company,
             job_title: currentUser.job_title,
           });
+          // A refusal (the sign-in ran out, or the account was merged into
+          // another) is an error, not a person. Until 2 Nov 2026 it was kept as
+          // the signed-in user: a nameless "?" avatar, an empty Me page, and the
+          // same again on every reload, since the kept "user" had no name to send.
+          if (!user || !user.id) {
+            refusedEmail = (currentUser && currentUser.id && currentUser.email) || '';
+            throw new Error(apiFailed(user) || 'not signed in');
+          }
           currentUser = user;
           localStorage.setItem('agba_user', JSON.stringify(currentUser));
           if (emailParam) window.history.replaceState({}, '', window.location.pathname);
@@ -22863,8 +22987,11 @@ function mainPageScript(): string {
           // Saved session invalid, continue as public user
           currentUser = null;
           localStorage.removeItem('agba_user');
+          // An emailed sign-in link, when this visit carries one, is tried below.
+          if (refusedEmail && !emailParam) sessionEndedSignIn(refusedEmail);
         }
-      } else if (emailParam) {
+      }
+      if (!currentUser && emailParam) {
         // Auto-login from email link
         let linkRefused = 0;
         try {
@@ -23020,6 +23147,17 @@ function mainPageScript(): string {
       note.textContent = status === 404
         ? 'There is no account for ' + email + ' yet. Check the address, or register.'
         : 'This sign-in link has expired. Tap Sign In and we will email you a fresh code.';
+      note.classList.remove('hidden');
+    }
+
+    // The saved sign-in was refused when the app opened. Said plainly, with the
+    // address already in the box, instead of a silent sign-out.
+    function sessionEndedSignIn(email) {
+      showRegistration(email);
+      if (typeof switchAuthMode === 'function') switchAuthMode('signin');
+      const note = document.getElementById('signin-note');
+      if (!note) return;
+      note.textContent = 'Please sign in again. Tap Sign In and we will email you a code.';
       note.classList.remove('hidden');
     }
 
@@ -28407,8 +28545,16 @@ function mainPageScript(): string {
 
     async function loadMyProfile() {
       if (!currentUser) return;
+      const head = document.getElementById('my-profile-header');
+      // A placeholder while it loads. This box used to stay empty, and stayed
+      // empty for good when the load failed, which read as a broken page.
+      if (head && (!head.innerHTML.trim() || head.dataset.failed)) {
+        head.innerHTML = '<div class="glass rounded-2xl p-6 mb-6 flex items-center gap-4"><div class="shimmer w-24 h-24 rounded-2xl shrink-0"></div><div class="flex-1 space-y-3"><div class="shimmer h-5 rounded w-1/3"></div><div class="shimmer h-3.5 rounded w-1/2"></div></div></div>';
+      }
+      let shown = false;
       try {
         const data = await api.get(\`/api/attendees/\${currentUser.id}/dashboard\`);
+        if (!data || !data.profile) { myProfileFailed(apiFailed(data)); return; }
         myDashboardData = data;
         const p = data.profile;
         const s = data.stats;
@@ -28419,22 +28565,24 @@ function mainPageScript(): string {
           api.get(\`/api/attendees/\${currentUser.id}/meetings\`),
           api.get(\`/api/attendees/\${currentUser.id}/room-bookings\`),
         ]);
-        myAllConnections = connData || [];
-        myAllMeetings = meetData || [];
+        // An error envelope instead of a list must not stop the page drawing.
+        myAllConnections = Array.isArray(connData) ? connData : [];
+        myAllMeetings = Array.isArray(meetData) ? meetData : [];
         // An error envelope rather than a list means rooms are not live yet; the
         // Meetings subtab must still render, so it becomes "no rooms held".
         myRoomBookings = Array.isArray(roomData) ? roomData : [];
 
         // ---- Profile Header with Cover ----
+        if (head) delete head.dataset.failed;
         document.getElementById('my-profile-header').innerHTML = \`
           <div class="glass rounded-2xl overflow-hidden mb-6 glow">
             <div class="profile-cover h-32 md:h-40 relative">
               <div class="absolute inset-0 flex items-end p-6">
                 <div class="flex items-end gap-4 w-full">
-                  <div class="relative -mb-12 md:-mb-14 z-10 shrink-0">
-                    <img src="\${getAvatarUrl(p.email, p.name, 224, p.avatar_url)}" alt="\${esc(p.name)}" class="w-24 h-24 md:w-28 md:h-28 rounded-2xl object-cover shadow-2xl border-4 border-dark-900">
-                    <span class="\${p.is_online ? 'online-dot' : 'offline-dot'} absolute -bottom-1 -right-1 border-3 border-dark-900 w-5 h-5"></span>
-                  </div>
+                  <button type="button" onclick="changeMyPhoto()" class="relative -mb-12 md:-mb-14 z-10 shrink-0 rounded-2xl" title="Change your photo" aria-label="Change your photo">
+                    <img id="my-profile-photo" src="\${getAvatarUrl(p.email, p.name, 224, p.avatar_url)}" alt="\${esc(p.name)}" class="w-24 h-24 md:w-28 md:h-28 rounded-2xl object-cover shadow-2xl border-4 border-dark-900">
+                    <span class="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-primary-600 flex items-center justify-center shadow-lg" style="border:3px solid #fff;"><i class="fas fa-camera text-white text-xs"></i></span>
+                  </button>
                 </div>
               </div>
             </div>
@@ -28459,10 +28607,10 @@ function mainPageScript(): string {
                   </div>
                 </div>
                 <div class="flex gap-2 shrink-0 flex-wrap">
+                  <button onclick="openEditProfile()" class="px-4 py-2.5 rounded-xl text-sm font-medium bg-primary-600 hover:bg-primary-500 text-white transition quick-action-btn"><i class="fas fa-user-edit mr-2"></i>Edit Profile</button>
                   <button onclick="generateDelegatePass()" class="px-4 py-2.5 rounded-xl text-sm font-medium bg-primary-600 hover:bg-primary-500 text-white transition quick-action-btn"><i class="fas fa-id-badge mr-2"></i>Download Pass</button>
                   <button onclick="openSocialCard()" class="px-4 py-2.5 rounded-xl text-sm font-medium glass hover:bg-white/10 text-gray-200 transition quick-action-btn"><i class="fas fa-share-alt mr-2"></i>Share Card</button>
                   <button id="cert-btn" onclick="generateCertificate()" class="px-4 py-2.5 rounded-xl text-sm font-medium glass hover:bg-white/10 text-gray-200 transition quick-action-btn"><i class="fas fa-award mr-2"></i>Certificate</button>
-                  <button onclick="openEditProfile()" class="px-4 py-2.5 rounded-xl text-sm font-medium bg-primary-600 hover:bg-primary-500 text-white transition quick-action-btn"><i class="fas fa-user-edit mr-2"></i>Edit Profile</button>
                   <button onclick="logoutUser()" class="px-4 py-2.5 rounded-xl text-sm font-medium glass hover:bg-white/10 text-gray-400 transition quick-action-btn"><i class="fas fa-sign-out-alt mr-2"></i>Sign Out</button>
                 </div>
               </div>
@@ -28470,6 +28618,7 @@ function mainPageScript(): string {
           </div>
         \`;
 
+        shown = true;
         // Asked on render as well as on click: a button that looks available
         // and then refuses is worse than one that says so up front.
         refreshCertificateButton();
@@ -28636,9 +28785,26 @@ function mainPageScript(): string {
         renderAllMeetings(myAllMeetings);
 
         // ---- Build Activity Timeline ----
-        buildActivityTimeline(data, connData, meetData);
+        buildActivityTimeline(data, myAllConnections, myAllMeetings);
 
-      } catch(e) { console.error('Profile dashboard error:', e); }
+      } catch(e) { console.error('Profile dashboard error:', e); if (!shown) myProfileFailed(''); }
+    }
+
+    // Said on the page instead of leaving the header blank. A sign-in that has
+    // run out gets the sign-in box with the address already filled in.
+    function myProfileFailed(msg) {
+      const head = document.getElementById('my-profile-header');
+      if (!head) return;
+      const signIn = /sign in again/i.test(msg || '');
+      head.dataset.failed = '1';
+      const btn = 'px-5 rounded-xl text-sm font-semibold bg-primary-600 hover:bg-primary-500 text-white transition';
+      head.innerHTML = '<div class="glass rounded-2xl p-6 mb-6 text-center">'
+        + '<p class="font-semibold mb-1">' + (signIn ? 'Please sign in again to see your profile.' : 'Your profile did not load.') + '</p>'
+        + '<p class="text-sm text-gray-500 mb-4">' + (signIn ? 'We will email you a code.' : 'Check your internet connection and try again.') + '</p>'
+        + (signIn
+          ? '<button type="button" onclick="sessionEndedSignIn(currentUser ? currentUser.email : &quot;&quot;)" class="' + btn + '" style="min-height:44px;">Sign in again</button>'
+          : '<button type="button" onclick="loadMyProfile()" class="' + btn + '" style="min-height:44px;">Try again</button>')
+        + '</div>';
     }
 
     function getEngagementTip(s, p) {
@@ -29275,6 +29441,9 @@ function mainPageScript(): string {
         }
       } catch (e) {}
 
+      // The awaits above can outlast the sign-in: a saved session the server
+      // refuses on load is cleared while they are still running.
+      if (!currentUser) { card.classList.add('hidden'); return; }
       const visitor = typeof isVisitorPass === 'function' ? isVisitorPass(currentUser.badge_type) : false;
       if (visitor) { await renderVisitorChecklist(card); return; }
       const findable = profileGaps(currentUser).length === 0;
@@ -29446,6 +29615,8 @@ function mainPageScript(): string {
           document.getElementById('edit-avatar-preview').src = currentUser.avatar_url;
           updateNavAvatar();
           updateProfileCompletionCard();
+          const mp = document.getElementById('my-profile-photo');
+          if (mp) mp.src = currentUser.avatar_url;
           toast('Photo uploaded!');
         } else {
           // This used to do nothing at all on a refused upload.
@@ -29467,6 +29638,11 @@ function mainPageScript(): string {
         localStorage.setItem('agba_user', JSON.stringify(currentUser));
         document.getElementById('edit-avatar-preview').src = getAvatarUrl(currentUser.email, currentUser.name, 128);
         document.getElementById('remove-avatar-btn').classList.add('hidden');
+        // The bar and the Me page kept the old photo until a reload.
+        updateNavAvatar();
+        updateProfileCompletionCard();
+        const mp = document.getElementById('my-profile-photo');
+        if (mp) mp.src = getAvatarUrl(currentUser.email, currentUser.name, 224);
         toast('Photo removed');
       } catch(e) {
         toast('Failed to remove photo', true);
@@ -29671,6 +29847,8 @@ function mainPageScript(): string {
         if (refused || !updated || !updated.id) { showToast(refused || 'Failed to update profile', 'error'); return; }
         currentUser = updated;
         localStorage.setItem('agba_user', JSON.stringify(currentUser));
+        // A new name or photo shows in the bar straight away, not after a reload.
+        updateNavAvatar();
         // Goals change who should be on the rail, so redraw it rather than
         // leaving yesterday's recommendations on screen.
         if (typeof renderGoalCard === 'function') renderGoalCard();
@@ -29967,7 +30145,7 @@ function adminPageHTML(): string {
   <!-- Shared with the app, so a pass issued at the desk is the same document the
        holder downloaded. The pass draws its own QR with the encoder. -->
   <script src="/js/vendor/qrcode-generator.js?v=20261029"></script>
-  <script src="/js/pass-render.js?v=20261029"></script>
+  <script src="/js/pass-render.js?v=20261102"></script>
   <!-- The same photo fingerprint /app sends, for photos the team uploads. -->
   <script src="/js/photo-fingerprint.js?v=2"></script>
   <!-- Same renderer the delegate's own app uses, so a card the desk sends a speaker
