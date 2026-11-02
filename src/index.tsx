@@ -4680,11 +4680,29 @@ function staffScanHTML(me: any): string {
    // merely contains the word cannot send the desk anywhere else. (No backslash
    // in this literal: it is served from a template string.)
    var VERIFY=new RegExp('/verify/([A-Za-z0-9._%-]+)');
+   // No signal at the desk (organiser, 2 Nov 2026). A phone that knows it is
+   // offline says the pass was NOT checked, in red, instead of opening a check
+   // that cannot happen. A phone that thinks it is online but gets no answer is
+   // caught by the service worker (sw.js deskOffline), registered here so a desk
+   // phone that never opened /app has it too.
+   if('serviceWorker' in navigator){ navigator.serviceWorker.register('/sw.js').catch(function(){}); }
+   function notChecked(){
+     var d=document.createElement('div');
+     d.id='desk-offline';
+     d.setAttribute('role','alert');
+     d.style.cssText='position:fixed;inset:0;z-index:99;background:#B91C1C;color:#fff;display:flex;flex-direction:column;justify-content:center;padding:28px;text-align:center;font-family:Arial,sans-serif';
+     d.innerHTML='<h1 style="font-size:34px;margin:0 0 14px">No internet</h1>'
+       +'<p style="font-size:22px;margin:0 0 12px"><strong>This pass was NOT checked.</strong></p>'
+       +'<p style="font-size:22px;margin:0 0 12px">Move to better signal and scan again.</p>'
+       +'<a href="/staff/scan" style="display:block;max-width:420px;width:100%;margin:10px auto 0;padding:16px;border-radius:12px;background:#fff;color:#B91C1C;font-size:19px;font-weight:bold;text-decoration:none;box-sizing:border-box">Scan again</a>';
+     document.body.appendChild(d);
+   }
    function found(raw){
      var m=VERIFY.exec(String(raw||''));
      if(!m) return false;
      stopped=true;
      try{ stream.getTracks().forEach(function(t){ t.stop(); }); }catch(err){}
+     if(navigator.onLine===false){ notChecked(); return true; }
      location.href='/verify/'+m[1];
      return true;
    }

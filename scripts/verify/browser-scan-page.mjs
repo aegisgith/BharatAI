@@ -26,9 +26,12 @@ let fails = 0;
 const check = (n, ok, d) => { console.log((ok ? 'PASS ' : 'FAIL ') + n + (ok ? '' : '  <- ' + d)); if (!ok) fails++; };
 
 const browser = await chromium.launch({ channel: 'msedge', headless: true });
-const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+// serviceWorkers 'block': the scan page registers /sw.js (2 Nov 2026), and the script
+// request is not seen by page.route, so it would install the PRODUCTION worker and
+// send later pages to the live site.
+const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, serviceWorkers: 'block' });
 
-async function scenario(name, { payload, native, expectPath, expectNoNav }) {
+async function scenario(name, { payload, native, expectPath, expectNoNav, offline }) {
   const page = await ctx.newPage();
   const errors = []; page.on('pageerror', e => errors.push(e.message));
   let verifyHit = null;
@@ -44,7 +47,9 @@ async function scenario(name, { payload, native, expectPath, expectNoNav }) {
   });
   // The camera: a canvas with the code drawn on it, repainted so the stream keeps
   // delivering frames. The native reader is removed, broken, empty or faked.
-  await page.addInitScript(({ qrSrc, payload, native }) => {
+  await page.addInitScript(({ qrSrc, payload, native, offline }) => {
+    // A phone that knows it has no signal (2 Nov 2026).
+    if (offline) Object.defineProperty(navigator, 'onLine', { get: () => false });
     eval(qrSrc);
     const q = qrcode(0, 'M'); q.addData(payload); q.make();
     const n = q.getModuleCount(), cell = 7, margin = 4, size = (n + 2 * margin) * cell;
@@ -64,13 +69,16 @@ async function scenario(name, { payload, native, expectPath, expectNoNav }) {
     else if (native === 'throws') { window.BarcodeDetector = class { static getSupportedFormats() { return Promise.resolve(['qr_code']); } async detect() { throw new Error('Barcode detection service unavailable'); } }; }
     else if (native === 'noformat') { window.BarcodeDetector = class { static getSupportedFormats() { return Promise.resolve([]); } async detect() { return []; } }; }
     else if (native === 'works') { window.BarcodeDetector = class { static getSupportedFormats() { return Promise.resolve(['qr_code']); } async detect() { return [{ rawValue: payload, format: 'qr_code' }]; } }; }
-  }, { qrSrc, payload, native });
+  }, { qrSrc, payload, native, offline });
   await page.goto('https://bharataiinnovation.com/staff/scan', { waitUntil: 'domcontentloaded' });
   let navigated = false;
   try { await page.waitForURL(/\/verify\//, { timeout: 8000 }); navigated = true; } catch (e) { /* no navigation */ }
   const where = page.url();
   const msg = navigated ? '' : await page.evaluate(() => (document.getElementById('e') || {}).textContent || '');
-  if (expectNoNav) check(name, !navigated && verifyHit === null && !errors.length, `navigated=${navigated} hit=${verifyHit} errors=${errors.join('|')}`);
+  if (offline) {
+    const red = await page.evaluate(() => { const d = document.getElementById('desk-offline'); return d ? d.innerText : ''; });
+    check(name, !navigated && verifyHit === null && /This pass was NOT checked/.test(red) && /Scan again/.test(red) && !errors.length, `navigated=${navigated} hit=${verifyHit} red="${red.slice(0, 80)}" errors=${errors.join('|')}`);
+  } else if (expectNoNav) check(name, !navigated && verifyHit === null && !errors.length, `navigated=${navigated} hit=${verifyHit} errors=${errors.join('|')}`);
   else check(name, navigated && verifyHit === expectPath && /^https:\/\/bharataiinnovation\.com\//.test(where) && !errors.length, `navigated=${navigated} hit=${verifyHit} url=${where} msg="${msg}" errors=${errors.join('|')}`);
   await page.close();
 }
@@ -82,6 +90,7 @@ await scenario('BarcodeDetector works (Android Chrome): opens /verify/<token>', 
 await scenario('a hostile QR with /verify/ on another host goes to /verify/ on THIS origin', { payload: 'https://evil.example/verify/9.deadbeefdeadbeefdeadbeef?x=1', native: 'absent', expectPath: '/verify/9.deadbeefdeadbeefdeadbeef' });
 await scenario('a QR that is not a pass (plain text) never navigates', { payload: 'hello world, not a pass', native: 'absent', expectNoNav: true });
 await scenario('a QR to the app (the old pre-token pass) never navigates', { payload: 'https://bharataiinnovation.com/app', native: 'absent', expectNoNav: true });
+await scenario('a phone with no signal says the pass was NOT checked, in red, and opens nothing', { payload: PASS_QR, native: 'absent', offline: true });
 
 await browser.close();
 console.log(fails ? `\n${fails} FAILED` : '\nall scanner page checks passed');

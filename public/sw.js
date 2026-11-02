@@ -138,6 +138,26 @@ self.addEventListener('notificationclick', (event) => {
   );
 });
 
+// The badge desk with no signal. A pass check that did not reach the server is
+// NOT a check: one red screen, said plainly, with the way out. It tries the same
+// pass again by itself the moment the phone is back online.
+function deskOffline(isPassCheck) {
+  const title = isPassCheck ? 'This pass was NOT checked.' : 'The badge desk needs internet.';
+  const html = '<!doctype html><html lang="en"><head><meta charset="utf-8">'
+    + '<meta name="viewport" content="width=device-width,initial-scale=1"><title>No internet</title>'
+    + '<style>html,body{margin:0;height:100%;background:#B91C1C;color:#fff;font-family:Arial,sans-serif}'
+    + 'main{min-height:100%;display:flex;flex-direction:column;justify-content:center;padding:28px;box-sizing:border-box;text-align:center}'
+    + 'h1{font-size:34px;margin:0 0 14px}p{font-size:22px;line-height:1.4;margin:0 0 12px}'
+    + 'a,button{display:block;width:100%;max-width:420px;margin:10px auto 0;padding:16px;border-radius:12px;font-size:19px;font-weight:bold;border:0;text-decoration:none;box-sizing:border-box}'
+    + 'a{background:#fff;color:#B91C1C}button{background:rgba(255,255,255,0.18);color:#fff}</style></head>'
+    + '<body><main><h1>No internet</h1><p><strong>' + title + '</strong></p>'
+    + '<p>Move to better signal and scan again.</p>'
+    + (isPassCheck ? '<button onclick="location.reload()">Check this pass again</button>' : '')
+    + '<a href="/staff/scan">Scan again</a></main>'
+    + '<script>addEventListener("online",function(){location.reload()})</script></body></html>';
+  return new Response(html, { status: 503, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } });
+}
+
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   if (request.method !== 'GET') return;
@@ -169,7 +189,14 @@ self.addEventListener('fetch', (event) => {
   }
 
   // Navigations: network-first so users get fresh app code, cache fallback.
+  // Not for the badge desk (organiser, 2 Nov 2026): a pass check that could not
+  // reach the server showed the attendee app, which reads as neither valid nor
+  // invalid, so a person could be waved in unchecked. It now says so, in red.
   if (request.mode === 'navigate') {
+    if (url.pathname.startsWith('/verify/') || url.pathname.startsWith('/staff')) {
+      event.respondWith(fetch(request).catch(() => deskOffline(url.pathname.startsWith('/verify/'))));
+      return;
+    }
     event.respondWith(
       fetch(request).catch(() => caches.match('/app'))
     );
