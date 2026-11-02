@@ -19782,7 +19782,7 @@ function mainPageHTML(): string {
        document the holder downloaded. The pass draws its own QR with the
        encoder, so no third-party service is in the path. -->
   <script src="/js/vendor/qrcode-generator.js?v=20261029"></script>
-  <script src="/js/pass-render.js?v=20261102"></script>
+  <script src="/js/pass-render.js?v=20261102b"></script>
   <!-- The "I'm attending" card delegates post. App only: the badge desk has no
        reason to issue one, and it carries none of the pass's verification data. -->
   <script src="/js/social-card.js?v=20261102"></script>
@@ -30145,7 +30145,7 @@ function adminPageHTML(): string {
   <!-- Shared with the app, so a pass issued at the desk is the same document the
        holder downloaded. The pass draws its own QR with the encoder. -->
   <script src="/js/vendor/qrcode-generator.js?v=20261029"></script>
-  <script src="/js/pass-render.js?v=20261102"></script>
+  <script src="/js/pass-render.js?v=20261102b"></script>
   <!-- The same photo fingerprint /app sends, for photos the team uploads. -->
   <script src="/js/photo-fingerprint.js?v=2"></script>
   <!-- Same renderer the delegate's own app uses, so a card the desk sends a speaker
