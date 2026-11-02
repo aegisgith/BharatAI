@@ -170,6 +170,10 @@ db.run("UPDATE exhibitors SET booth_number = 'B-12' WHERE attendee_id = 5");
 r = await hit('PUT', '/api/attendees/5/exhibitor', { company_name: 'Exa Co', booth_number: 'Z-99' }, as(5));
 check('an exhibitor cannot change the booth number the organisers gave', r.status === 200 && q('SELECT booth_number FROM exhibitors WHERE attendee_id = 5')[0].booth_number === 'B-12', r.status + ' ' + JSON.stringify(q('SELECT booth_number FROM exhibitors WHERE attendee_id = 5')));
 
+db.run("UPDATE exhibitors SET booth_size = 'platinum' WHERE attendee_id = 5");
+r = await hit('PUT', '/api/attendees/5/exhibitor', { company_name: 'Exa Co', booth_size: 'standard' }, as(5));
+check('an exhibitor cannot change the booth size the organisers set', r.status === 200 && q('SELECT booth_size FROM exhibitors WHERE attendee_id = 5')[0].booth_size === 'platinum', r.status + ' ' + JSON.stringify(q('SELECT booth_size FROM exhibitors WHERE attendee_id = 5')));
+
 // The public exhibitor list: no contact email, phone or owner.
 db.run("UPDATE exhibitors SET contact_email = 'sales@exa.example', contact_phone = '9800011111' WHERE attendee_id = 5");
 db.run("INSERT OR REPLACE INTO app_settings (key, value) VALUES ('exhibitor_directory_public', '1')");

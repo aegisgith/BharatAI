@@ -12509,14 +12509,16 @@ app.put('/api/attendees/:id/exhibitor', async (c) => {
   const attendeeId = c.req.param('id')
   const denied = await requireSelf(c, attendeeId); if (denied) return denied
   const body = await c.req.json()
-  // Clipped, and booth_size one of the three the floor plan knows (2 Nov 2026:
-  // all of it was stored as sent and drawn on the Exhibition tab).
+  // Clipped (2 Nov 2026: all of it was stored as sent and drawn on the
+  // Exhibition tab).
   const clip = (v: any, n: number) => String(v ?? '').slice(0, n)
   const company_name = clip(body.company_name, 120), description = clip(body.description, 2000)
   // The booth number is the organisers' to give (organiser, 2 Nov 2026): an edit
   // keeps the one on file, a new listing starts without one.
   const category = clip(body.category, 80)
-  const booth_size = ['standard', 'premium', 'platinum'].includes(body.booth_size) ? body.booth_size : 'standard'
+  // Booth size is the organisers' too (organiser, 2 Nov 2026): it is what was sold,
+  // and it sets how the card looks on the Exhibition tab. An edit keeps the size on
+  // file; a new listing starts as standard.
   const website_url = clip(body.website_url, 300), contact_email = clip(body.contact_email, 200)
   const contact_phone = clip(body.contact_phone, 30), products = clip(body.products, 500)
   if (!company_name.trim()) return c.json({ error: 'Please add your company name.' }, 400)
@@ -12534,12 +12536,12 @@ app.put('/api/attendees/:id/exhibitor', async (c) => {
 
   if (existing) {
     await c.env.DB.prepare(
-      'UPDATE exhibitors SET company_name=?, description=?, booth_size=?, category=?, website_url=?, contact_email=?, contact_phone=?, products=? WHERE attendee_id=?'
-    ).bind(company_name, description || '', booth_size || 'standard', category || '', website_url || '', contact_email || '', contact_phone || '', products || '', attendeeId).run()
+      'UPDATE exhibitors SET company_name=?, description=?, category=?, website_url=?, contact_email=?, contact_phone=?, products=? WHERE attendee_id=?'
+    ).bind(company_name, description || '', category || '', website_url || '', contact_email || '', contact_phone || '', products || '', attendeeId).run()
   } else {
     await c.env.DB.prepare(
       'INSERT INTO exhibitors (event_id, company_name, description, booth_number, booth_size, category, website_url, contact_email, contact_phone, products, attendee_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)'
-    ).bind(attendee.event_id, company_name, description || '', '', booth_size || 'standard', category || '', website_url || '', contact_email || '', contact_phone || '', products || '', attendeeId).run()
+    ).bind(attendee.event_id, company_name, description || '', '', 'standard', category || '', website_url || '', contact_email || '', contact_phone || '', products || '', attendeeId).run()
   }
 
   const updated = await c.env.DB.prepare('SELECT * FROM exhibitors WHERE attendee_id = ?').bind(attendeeId).first()
@@ -30031,10 +30033,8 @@ function mainPageScript(): string {
             <div><label class="text-xs text-gray-400 mb-1 block">Description</label><textarea id="mb-desc" autocomplete="off" rows="3" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="Describe your company and what you're exhibiting...">\${esc(b.description || '')}</textarea></div>
             <div class="grid grid-cols-3 gap-3">
               <div><label class="text-xs text-gray-400 mb-1 block">Booth # <span class="text-gray-500">(given by the organisers)</span></label><input id="mb-booth" autocomplete="off" readonly value="\${esc(b.booth_number || '')}" class="w-full px-3 py-2 rounded-lg text-sm opacity-70" placeholder="Not given yet"></div>
-              <div><label class="text-xs text-gray-400 mb-1 block">Booth Size</label>
-                <select id="mb-size" class="w-full px-3 py-2 rounded-lg text-sm">
-                  \${['standard','premium','platinum'].map(s=>'<option '+(b.booth_size===s?'selected':'')+'>'+s+'</option>').join('')}
-                </select>
+              <div><label class="text-xs text-gray-400 mb-1 block">Booth Size <span class="text-gray-500">(set by the organisers)</span></label>
+                <input id="mb-size" autocomplete="off" readonly value="\${esc(b.booth_size || 'standard')}" class="w-full px-3 py-2 rounded-lg text-sm opacity-70">
               </div>
               <div><label class="text-xs text-gray-400 mb-1 block">Website</label><input id="mb-web" autocomplete="url" inputmode="url" autocapitalize="none" spellcheck="false" value="\${esc(b.website_url || '')}" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="https://..."></div>
             </div>
@@ -30061,7 +30061,7 @@ function mainPageScript(): string {
             company_name: document.getElementById('mb-name').value,
             description: document.getElementById('mb-desc').value,
 
-            booth_size: document.getElementById('mb-size').value,
+
             category: document.getElementById('mb-cat').value,
             website_url: document.getElementById('mb-web').value,
             contact_email: document.getElementById('mb-email').value,
