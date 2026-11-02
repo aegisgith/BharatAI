@@ -26,9 +26,31 @@ const THREADS = [{ id: 9, name: 'Ravi <img src=x onerror="window.__xss3=1">', co
   last_content: 'hi <img src=x onerror="window.__xss4=1">', last_at: '2026-09-17 10:00:00', unread: 2 }];
 const MSGS = [{ id: 1, sender_id: 9, receiver_id: 5, content: '<img src=x onerror="window.__xss5=1">hello there', created_at: '2026-09-17 10:00:00', is_read: 0 }];
 
+// Meetings, connections and booths carry payloads too (2 Nov 2026): their titles,
+// names, statuses, locations, notes and booth text were drawn unescaped on the
+// Inbox, the Me page, the activity timeline and the Exhibition tab.
+const X = (n) => '<img src=x onerror="window.__xss' + n + '=1">';
+const MEETINGS = [
+  { id: 31, event_id: 1, requester_id: 9, requestee_id: 5, requester_name: 'Ravi ' + X(20), requester_company: 'Beta ' + X(21), requestee_name: 'Asha Rao', requestee_company: 'Acme AI',
+    title: 'Intro ' + X(22), status: 'pending', meeting_time: '2026-11-20 11:00', duration_minutes: '15' + X(23), location: 'Hall ' + X(24), notes: 'Note ' + X(25), created_at: '2026-11-01 10:00:00' },
+  { id: 32, event_id: 1, requester_id: 5, requestee_id: 10, requester_name: 'Asha Rao', requester_company: 'Acme AI', requestee_name: "Kiran O'Brien", requestee_company: 'Gamma',
+    title: 'Catch up', status: X(26), meeting_time: '2026-11-21 12:00', duration_minutes: 30, location: '', notes: '', created_at: '2026-11-01 11:00:00' },
+];
+const CONNS = [
+  { id: 41, from_attendee_id: 9, to_attendee_id: 5, status: 'pending', other_id: 9, other_name: 'Ravi ' + X(27), other_company: 'Beta ' + X(28), other_job_title: 'VP', message: 'Hello', created_at: '2026-11-01 09:00:00' },
+  { id: 42, from_attendee_id: 5, to_attendee_id: 10, status: X(29), other_id: 10, other_name: "Kiran O'Brien", other_company: 'Gamma', created_at: '2026-11-01 08:00:00' },
+];
+const BOOTHS = [{ exhibitor_id: 1, company_name: 'Booth ' + X(30), booth_number: X(31), category: X(32), visited_at: '2026-11-01 12:00:00' }];
+const EXHIBITORS = [{ id: 1, event_id: 1, company_name: 'Exhib Co', booth_number: X(33), booth_size: X(34), description: X(35), category: 'AI',
+  products: 'Vision,' + X(37), website_url: 'javascript:window.__xss38=1', visitor_count: 3 }];
+
 const api = (method, path, url) => {
   const p = path;
   if (method === 'POST' && p === '/api/events/1/attendees/register') return USER;
+  if (p === '/api/attendees/5/meetings') return MEETINGS;
+  if (p === '/api/attendees/5/connections') return CONNS;
+  if (p === '/api/events/1/exhibitors') return EXHIBITORS;
+  if (p === '/api/events/1/exhibitors/categories') return ['AI', "AI'); window.__xss36=1; ('"];
   if (p === '/api/events/1') return { id: 1, name: 'Bharat AI Innovation 2026', start_date: '2026-11-20', end_date: '2026-11-21', venue: 'WTC Mumbai' };
   if (p === '/api/events/1/stats') return { attendees: null, sessions: 1 };
   if (p === '/api/events/1/sessions') return [{ id: 1, title: 'Keynote', start_time: '2099-11-20 10:00', end_time: '2099-11-20 11:00', hall: 'Homi J. Bhabha Hall', session_type: 'keynote' }];
@@ -39,7 +61,7 @@ const api = (method, path, url) => {
   if (p === '/api/attendees/5') return USER;
   if (p === '/api/attendees/9') return PEOPLE[0];
   if (p === '/api/attendees/10') return PEOPLE[1];
-  if (p === '/api/attendees/5/dashboard') return { profile: USER, stats: { connectionsAccepted: 0, connectionsPending: 0, meetings: 0, messages: 0 }, connections: [], meetings: [], visitedBooths: [] };
+  if (p === '/api/attendees/5/dashboard') return { profile: USER, stats: { connectionsAccepted: 0, connectionsPending: 0, meetings: 0, messages: 0 }, connections: [], meetings: [], recentConnections: [], upcomingMeetings: MEETINGS, visitedBooths: BOOTHS };
   if (p === '/api/attendees/5/unread') return { count: 2 };
   if (p === '/api/attendees/5/threads') return THREADS;
   if (p === '/api/messages/5/9') return MSGS;

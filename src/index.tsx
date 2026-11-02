@@ -5980,7 +5980,10 @@ async function redeemLoginToken(c: any, eventId: any, email: string, token?: str
    * button in an email the moment it lands, and until 30 Oct 2026 that ate three
    * or four of the six uses before the person ever tapped. Signed in all the
    * same; nothing spent. */
-  if (token && budget > 1 && (Number(row.fresh) === 1 || isScannerRequest(c))) return { ok: true }
+  // Until 2 Nov 2026 the scanner case also needed budget > 1, so the one-use
+  // sign-in email (send-magic-link) was spent by Defender or Proofpoint opening
+  // its link, and the 6-digit code in the same email died with it.
+  if (token && (isScannerRequest(c) || (budget > 1 && Number(row.fresh) === 1))) return { ok: true }
   const spent = (Number(row.uses) || 0) + 1
   const retire = async () => {
     await c.env.DB.prepare("UPDATE login_tokens SET used_at = datetime('now') WHERE id = ?").bind(row.id).run()
@@ -7916,7 +7919,6 @@ app.get('/api/attendees/:id/connections', async (c) => {
   const { results } = await c.env.DB.prepare(`
     SELECT c.*, 
       CASE WHEN c.from_attendee_id = ? THEN a2.name ELSE a1.name END as other_name,
-      CASE WHEN c.from_attendee_id = ? THEN a2.email ELSE a1.email END as other_email,
       CASE WHEN c.from_attendee_id = ? THEN a2.company ELSE a1.company END as other_company,
       CASE WHEN c.from_attendee_id = ? THEN a2.job_title ELSE a1.job_title END as other_job_title,
       CASE WHEN c.from_attendee_id = ? THEN a2.id ELSE a1.id END as other_id,
@@ -7928,7 +7930,10 @@ app.get('/api/attendees/:id/connections', async (c) => {
     JOIN attendees a2 ON c.to_attendee_id = a2.id
     WHERE c.from_attendee_id = ? OR c.to_attendee_id = ?
     ORDER BY c.created_at DESC
-  `).bind(attendeeId, attendeeId, attendeeId, attendeeId, attendeeId, attendeeId, attendeeId, attendeeId, attendeeId, attendeeId).all()
+  `).bind(attendeeId, attendeeId, attendeeId, attendeeId, attendeeId, attendeeId, attendeeId, attendeeId, attendeeId).all()
+  // No other_email (2 Nov 2026): it went out for pending and declined requests
+  // too, so sending requests collected addresses. The app only used it to colour
+  // an avatar.
   return c.json(results)
 })
 
@@ -8123,6 +8128,12 @@ app.post('/api/connections/respond', async (c) => {
 app.put('/api/connections/:id', async (c) => {
   const id = c.req.param('id')
   const { status } = await c.req.json()
+  // An answer, and only from the person asked. Until 2 Nov 2026 any string from
+  // either side was stored (and drawn into the other person's page), and a
+  // sender could accept their own request.
+  if (status !== 'accepted' && status !== 'declined') {
+    return c.json({ error: 'A request can only be accepted or declined.' }, 400)
+  }
   // The param is the connection id, not an attendee id, so requireSelf(c, id) would
   // be meaningless here — load the row and authorise against its participants.
   if (!isAdminRequest(c) && attendeeSessionSecret(c)) {
@@ -8132,6 +8143,9 @@ app.put('/api/connections/:id', async (c) => {
     if (!row) return c.json({ error: 'Connection not found' }, 404)
     if (me !== row.from_attendee_id && me !== row.to_attendee_id) {
       return c.json({ error: 'You can only change your own connections.' }, 403)
+    }
+    if (me !== row.to_attendee_id) {
+      return c.json({ error: 'Only the person you asked can answer this request.' }, 403)
     }
   }
   // Gate on a real transition: the client calls this straight from a button, and a
@@ -8172,10 +8186,15 @@ app.get('/api/messages/:userId/:otherUserId', async (c) => {
     ORDER BY m.created_at ASC
   `).bind(userId, otherUserId, otherUserId, userId).all()
 
-  // Mark as read
-  await c.env.DB.prepare(
-    'UPDATE messages SET is_read = 1 WHERE sender_id = ? AND receiver_id = ?'
-  ).bind(otherUserId, userId).run()
+  // Mark as read, only when the reader is the receiver: until 2 Nov 2026 a sender
+  // could open /api/messages/<receiver>/<sender> and clear the receiver's unread
+  // badge (and with it the reminder email).
+  const reader = isAdminRequest(c) ? null : await verifyAttendeeSession(c)
+  if (!attendeeSessionSecret(c) || (reader !== null && String(reader) === String(userId))) {
+    await c.env.DB.prepare(
+      'UPDATE messages SET is_read = 1 WHERE sender_id = ? AND receiver_id = ?'
+    ).bind(otherUserId, userId).run()
+  }
 
   return c.json(results)
 })
@@ -8492,9 +8511,16 @@ app.post('/api/meetings', async (c) => {
     return c.json({ error: requesterUnpaid ? unpaidSentence(requester.badge_type, 'asking for a meeting') : 'Meeting requests are part of the Delegate and VIP passes.', code: 'networking_locked' }, 403)
   }
 
+  // Someone real, in this event, and not yourself; the text clipped and the
+  // duration a whole number of minutes (2 Nov 2026: all four were stored as sent).
+  if (String(requestee_id) === String(requester_id)) return c.json({ error: 'You cannot ask yourself for a meeting.' }, 400)
+  const requestee = await c.env.DB.prepare('SELECT id FROM attendees WHERE id = ? AND event_id = ?').bind(requestee_id, event_id).first()
+  if (!requestee) return c.json({ error: 'That person is not registered for this event.' }, 404)
+  const clip = (v: any, n: number) => String(v ?? '').slice(0, n)
+  const minutes = Math.min(240, Math.max(5, parseInt(String(duration_minutes || 15), 10) || 15))
   const result = await c.env.DB.prepare(
     'INSERT INTO meetings (event_id, requester_id, requestee_id, title, meeting_time, duration_minutes, location, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-  ).bind(event_id, requester_id, requestee_id, title, meeting_time, duration_minutes || 15, location || '', notes || '').run()
+  ).bind(event_id, requester_id, requestee_id, clip(title, 120), clip(meeting_time, 40), minutes, clip(location, 120), clip(notes, 1000)).run()
 
   // A meeting request nobody is told about is a slot that will not be honoured. The
   // row is committed above, so the mail runs behind the response and its failure is
@@ -8508,6 +8534,11 @@ app.post('/api/meetings', async (c) => {
 app.put('/api/meetings/:id', async (c) => {
   const id = c.req.param('id')
   const { status } = await c.req.json()
+  // Same rule as connections (2 Nov 2026): a known status, and only the person
+  // asked may accept or decline; either side may cancel.
+  if (status !== 'accepted' && status !== 'declined' && status !== 'cancelled') {
+    return c.json({ error: 'A meeting can only be accepted, declined or cancelled.' }, 400)
+  }
   // Same shape as connections: the param identifies the meeting, not the caller.
   if (!isAdminRequest(c) && attendeeSessionSecret(c)) {
     const me = await verifyAttendeeSession(c)
@@ -8516,6 +8547,9 @@ app.put('/api/meetings/:id', async (c) => {
     if (!row) return c.json({ error: 'Meeting not found' }, 404)
     if (me !== row.requester_id && me !== row.requestee_id) {
       return c.json({ error: 'You can only change your own meetings.' }, 403)
+    }
+    if (status !== 'cancelled' && me !== row.requestee_id) {
+      return c.json({ error: 'Only the person you asked can accept or decline this meeting.' }, 403)
     }
   }
   // Same transition gate as connections: Accept is a button, and buttons get
@@ -11463,7 +11497,6 @@ app.get('/api/attendees/:id/dashboard', async (c) => {
     c.env.DB.prepare(`
       SELECT c.*,
         CASE WHEN c.from_attendee_id = ? THEN a2.name ELSE a1.name END as other_name,
-        CASE WHEN c.from_attendee_id = ? THEN a2.email ELSE a1.email END as other_email,
         CASE WHEN c.from_attendee_id = ? THEN a2.company ELSE a1.company END as other_company,
         CASE WHEN c.from_attendee_id = ? THEN a2.id ELSE a1.id END as other_id,
         CASE WHEN (CASE WHEN c.from_attendee_id = ? THEN a2.last_login_at ELSE a1.last_login_at END) > datetime('now', '-${ONLINE_WINDOW_MINUTES} minutes') THEN 1 ELSE 0 END as other_online
@@ -11472,7 +11505,7 @@ app.get('/api/attendees/:id/dashboard', async (c) => {
       JOIN attendees a2 ON c.to_attendee_id = a2.id
       WHERE (c.from_attendee_id = ? OR c.to_attendee_id = ?) AND c.status = 'accepted'
       ORDER BY c.created_at DESC LIMIT 6
-    `).bind(id, id, id, id, id, id, id),
+    `).bind(id, id, id, id, id, id),
     c.env.DB.prepare(`
       SELECT m.*,
         a1.name as requester_name, a1.company as requester_company,
@@ -12376,7 +12409,15 @@ app.put('/api/attendees/:id/exhibitor', async (c) => {
   const attendeeId = c.req.param('id')
   const denied = await requireSelf(c, attendeeId); if (denied) return denied
   const body = await c.req.json()
-  const { company_name, description, booth_number, booth_size, category, website_url, contact_email, contact_phone, products } = body
+  // Clipped, and booth_size one of the three the floor plan knows (2 Nov 2026:
+  // all of it was stored as sent and drawn on the Exhibition tab).
+  const clip = (v: any, n: number) => String(v ?? '').slice(0, n)
+  const company_name = clip(body.company_name, 120), description = clip(body.description, 2000)
+  const booth_number = clip(body.booth_number, 20), category = clip(body.category, 80)
+  const booth_size = ['standard', 'premium', 'platinum'].includes(body.booth_size) ? body.booth_size : 'standard'
+  const website_url = clip(body.website_url, 300), contact_email = clip(body.contact_email, 200)
+  const contact_phone = clip(body.contact_phone, 30), products = clip(body.products, 500)
+  if (!company_name.trim()) return c.json({ error: 'Please add your company name.' }, 400)
 
   // Check if attendee has exhibitor-related badge
   const attendee = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(attendeeId).first() as any
@@ -25815,7 +25856,7 @@ function mainPageScript(): string {
         document.getElementById('exhibitor-categories').innerHTML = \`
           <button onclick="selectedExhibitorCategory=''; loadExhibitors()" class="px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all \${!selectedExhibitorCategory ? 'tab-active' : 'glass text-gray-400 hover:text-white'}">All Categories</button>
           \${categories.map(c => \`
-            <button onclick="selectedExhibitorCategory='\${c}'; loadExhibitors()" class="px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all \${selectedExhibitorCategory === c ? 'tab-active' : 'glass text-gray-400 hover:text-white'}">\${c}</button>
+            <button data-cat="\${esc(c)}" onclick="selectedExhibitorCategory=this.dataset.cat; loadExhibitors()" class="px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all \${selectedExhibitorCategory === c ? 'tab-active' : 'glass text-gray-400 hover:text-white'}">\${esc(c)}</button>
           \`).join('')}
         \`;
 
@@ -25830,28 +25871,28 @@ function mainPageScript(): string {
                 <div>
                   <h3 class="font-bold">\${esc(ex.company_name)}</h3>
                   <div class="flex items-center gap-2 text-xs text-gray-500">
-                    \${ex.booth_number ? '<span><i class="fas fa-map-pin mr-1"></i>Booth ' + ex.booth_number + '</span>' : ''}
-                    <span class="px-1.5 py-0.5 rounded text-[10px] font-medium \${ex.booth_size === 'platinum' ? 'bg-accent-500/20 text-accent-300' : ex.booth_size === 'premium' ? 'bg-primary-500/20 text-primary-300' : 'bg-white/5 text-gray-400'}">\${ex.booth_size}</span>
+                    \${ex.booth_number ? '<span><i class="fas fa-map-pin mr-1"></i>Booth ' + esc(ex.booth_number) + '</span>' : ''}
+                    <span class="px-1.5 py-0.5 rounded text-[10px] font-medium \${ex.booth_size === 'platinum' ? 'bg-accent-500/20 text-accent-300' : ex.booth_size === 'premium' ? 'bg-primary-500/20 text-primary-300' : 'bg-white/5 text-gray-400'}">\${esc(ex.booth_size)}</span>
                   </div>
                 </div>
               </div>
               <div class="text-right">
-                <div class="text-lg font-bold text-primary-400">\${ex.visitor_count}</div>
+                <div class="text-lg font-bold text-primary-400">\${esc(ex.visitor_count || 0)}</div>
                 <div class="text-[10px] text-gray-500">visitors</div>
               </div>
             </div>
-            <p class="text-sm text-gray-400 mb-3">\${ex.description}</p>
+            <p class="text-sm text-gray-400 mb-3">\${esc(ex.description || '')}</p>
             <div class="mb-3">
-              <span class="px-2 py-0.5 rounded-full text-xs bg-white/5 text-gray-400">\${ex.category}</span>
+              <span class="px-2 py-0.5 rounded-full text-xs bg-white/5 text-gray-400">\${esc(ex.category || '')}</span>
             </div>
             \${ex.products ? \`
               <div class="flex flex-wrap gap-1 mb-3">
-                \${ex.products.split(',').map(p => \`<span class="px-2 py-0.5 rounded-full text-[10px] bg-primary-500/10 text-primary-300">\${p.trim()}</span>\`).join('')}
+                \${ex.products.split(',').map(p => \`<span class="px-2 py-0.5 rounded-full text-[10px] bg-primary-500/10 text-primary-300">\${esc(p.trim())}</span>\`).join('')}
               </div>
             \` : ''}
             <div class="flex gap-2">
               <button onclick="visitBooth(\${ex.id})" class="flex-1 py-2 rounded-lg text-xs font-medium bg-primary-600/20 text-primary-300 hover:bg-primary-600/30 transition"><i class="fas fa-door-open mr-1"></i>Visit Booth</button>
-              \${ex.website_url ? \`<a href="\${ex.website_url}" target="_blank" class="py-2 px-3 rounded-lg text-xs font-medium glass hover:bg-white/10 transition"><i class="fas fa-external-link-alt"></i></a>\` : ''}
+              \${safeUrl(ex.website_url) ? \`<a href="\${safeUrl(ex.website_url)}" target="_blank" rel="noopener" class="py-2 px-3 rounded-lg text-xs font-medium glass hover:bg-white/10 transition"><i class="fas fa-external-link-alt"></i></a>\` : ''}
             </div>
           </div>
         \`}).join('') || ((selectedExhibitorCategory || search)
@@ -27000,7 +27041,7 @@ function mainPageScript(): string {
                 \${conn.message ? \`<p class="text-xs text-gray-300 mt-1.5 leading-relaxed border-l-2 border-primary-500/40 pl-2">"\${esc(conn.message)}"</p>\` : ''}
               </div>
               <div class="flex items-center gap-2 shrink-0">
-                <span class="px-2 py-0.5 rounded-full text-xs font-medium \${conn.status === 'accepted' ? 'bg-green-500/20 text-green-400' : conn.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400' : 'bg-red-500/20 text-red-400'}">\${conn.status}</span>
+                <span class="px-2 py-0.5 rounded-full text-xs font-medium \${conn.status === 'accepted' ? 'bg-green-500/20 text-green-400' : conn.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400' : 'bg-red-500/20 text-red-400'}">\${esc(conn.status)}</span>
                 \${conn.status === 'pending' && conn.to_attendee_id == currentUser.id ? \`
                   <button onclick="updateConnection(\${conn.id}, 'accepted')" class="px-2 py-1 rounded text-xs bg-green-500/20 text-green-400 hover:bg-green-500/30"><i class="fas fa-check"></i></button>
                   <button onclick="updateConnection(\${conn.id}, 'declined')" class="px-2 py-1 rounded text-xs bg-red-500/20 text-red-400 hover:bg-red-500/30"><i class="fas fa-times"></i></button>
@@ -27066,14 +27107,14 @@ function mainPageScript(): string {
                 </div>
                 <div class="flex-1 min-w-0">
                   <div class="flex items-center gap-2 mb-1">
-                    <h3 class="font-semibold text-sm">\${m.title || 'Meeting'}</h3>
-                    <span class="px-2 py-0.5 rounded-full text-xs font-medium \${m.status === 'accepted' ? 'bg-green-500/20 text-green-400' : m.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400' : m.status === 'cancelled' ? 'bg-red-500/20 text-red-400' : 'bg-gray-500/20 text-gray-400'}">\${m.status}</span>
+                    <h3 class="font-semibold text-sm">\${esc(m.title || 'Meeting')}</h3>
+                    <span class="px-2 py-0.5 rounded-full text-xs font-medium \${m.status === 'accepted' ? 'bg-green-500/20 text-green-400' : m.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400' : m.status === 'cancelled' ? 'bg-red-500/20 text-red-400' : 'bg-gray-500/20 text-gray-400'}">\${esc(m.status)}</span>
                   </div>
-                  <p class="text-xs text-gray-400">with <span class="text-white">\${otherName}</span> · \${otherCompany}</p>
+                  <p class="text-xs text-gray-400">with <span class="text-white">\${esc(otherName)}</span> · \${esc(otherCompany || '')}</p>
                   <div class="flex items-center gap-3 mt-2 text-xs text-gray-500">
                     <span><i class="fas fa-clock mr-1"></i>\${new Date(m.meeting_time).toLocaleString()}</span>
-                    <span><i class="fas fa-hourglass-half mr-1"></i>\${m.duration_minutes} min</span>
-                    \${m.location ? \`<span><i class="fas fa-map-pin mr-1"></i>\${m.location}</span>\` : ''}
+                    <span><i class="fas fa-hourglass-half mr-1"></i>\${esc(m.duration_minutes)} min</span>
+                    \${m.location ? \`<span><i class="fas fa-map-pin mr-1"></i>\${esc(m.location)}</span>\` : ''}
                   </div>
                 </div>
                 \${!isRequester && m.status === 'pending' ? \`
@@ -28672,7 +28713,7 @@ function mainPageScript(): string {
                       </div>
                       <div>
                         <h3 class="font-bold text-base">My Exhibition Booth</h3>
-                        <p class="text-xs text-gray-400">\${booth.company_name} \${booth.booth_number ? '&bull; Booth '+booth.booth_number : ''}</p>
+                        <p class="text-xs text-gray-400">\${esc(booth.company_name)} \${booth.booth_number ? '&bull; Booth '+esc(booth.booth_number) : ''}</p>
                       </div>
                     </div>
                     <button onclick="openEditMyBooth()" class="px-4 py-2 rounded-xl text-xs font-medium bg-accent-600 hover:bg-accent-500 text-white transition"><i class="fas fa-edit mr-1"></i>Edit Booth</button>
@@ -28680,25 +28721,25 @@ function mainPageScript(): string {
                   <div class="p-6">
                     <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                       <div class="text-center">
-                        <div class="text-2xl font-black text-accent-400">\${booth.visitor_count || 0}</div>
+                        <div class="text-2xl font-black text-accent-400">\${esc(booth.visitor_count || 0)}</div>
                         <div class="text-[10px] text-gray-500 uppercase tracking-wider">Visitors</div>
                       </div>
                       <div class="text-center">
-                        <div class="text-sm font-semibold text-white">\${booth.booth_size || 'standard'}</div>
+                        <div class="text-sm font-semibold text-white">\${esc(booth.booth_size || 'standard')}</div>
                         <div class="text-[10px] text-gray-500 uppercase tracking-wider">Booth Size</div>
                       </div>
                       <div class="text-center">
-                        <div class="text-sm font-semibold text-white">\${booth.category || 'General'}</div>
+                        <div class="text-sm font-semibold text-white">\${esc(booth.category || 'General')}</div>
                         <div class="text-[10px] text-gray-500 uppercase tracking-wider">Category</div>
                       </div>
                       <div class="text-center">
-                        <div class="text-sm font-semibold text-white">\${booth.booth_number || '-'}</div>
+                        <div class="text-sm font-semibold text-white">\${esc(booth.booth_number || '-')}</div>
                         <div class="text-[10px] text-gray-500 uppercase tracking-wider">Booth #</div>
                       </div>
                     </div>
-                    \${booth.description ? '<p class="text-sm text-gray-400 mb-3">'+booth.description+'</p>' : ''}
-                    \${booth.products ? '<div class="flex flex-wrap gap-1.5">' + booth.products.split(',').map(p => '<span class="px-2.5 py-1 rounded-full text-xs bg-accent-500/15 text-accent-300 border border-accent-500/20 font-medium">'+p.trim()+'</span>').join('') + '</div>' : ''}
-                    \${booth.website_url ? '<div class="mt-3"><a href="'+booth.website_url+'" target="_blank" class="text-xs text-primary-400 hover:text-primary-300"><i class="fas fa-globe mr-1"></i>'+booth.website_url+'</a></div>' : ''}
+                    \${booth.description ? '<p class="text-sm text-gray-400 mb-3">'+esc(booth.description)+'</p>' : ''}
+                    \${booth.products ? '<div class="flex flex-wrap gap-1.5">' + booth.products.split(',').map(p => '<span class="px-2.5 py-1 rounded-full text-xs bg-accent-500/15 text-accent-300 border border-accent-500/20 font-medium">'+esc(p.trim())+'</span>').join('') + '</div>' : ''}
+                    \${safeUrl(booth.website_url) ? '<div class="mt-3"><a href="'+safeUrl(booth.website_url)+'" target="_blank" rel="noopener" class="text-xs text-primary-400 hover:text-primary-300"><i class="fas fa-globe mr-1"></i>'+esc(booth.website_url)+'</a></div>' : ''}
                   </div>
                 </div>
               \`;
@@ -28858,11 +28899,11 @@ function mainPageScript(): string {
               </div>
               <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-2">
-                  <h4 class="font-semibold text-sm truncate">\${m.title || 'Meeting'}</h4>
-                  <span class="px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0 \${m.status === 'accepted' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}">\${m.status}</span>
+                  <h4 class="font-semibold text-sm truncate">\${esc(m.title || 'Meeting')}</h4>
+                  <span class="px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0 \${m.status === 'accepted' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}">\${esc(m.status)}</span>
                 </div>
                 <p class="text-xs text-gray-400">with \${esc(otherN)}\${otherC ? ' &middot; ' + esc(otherC) : ''}</p>
-                <p class="text-xs text-gray-500 mt-1"><i class="fas fa-clock mr-1"></i>\${new Date(m.meeting_time).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})} &middot; \${m.duration_minutes}min\${m.location ? ' &middot; <i class="fas fa-map-pin ml-1 mr-1"></i>' + m.location : ''}</p>
+                <p class="text-xs text-gray-500 mt-1"><i class="fas fa-clock mr-1"></i>\${new Date(m.meeting_time).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})} &middot; \${esc(m.duration_minutes)}min\${m.location ? ' &middot; <i class="fas fa-map-pin ml-1 mr-1"></i>' + esc(m.location) : ''}</p>
               </div>
             </div>
           </div>
@@ -28879,7 +28920,7 @@ function mainPageScript(): string {
             </div>
             <div class="flex-1 min-w-0">
               <h4 class="font-semibold text-sm truncate">\${esc(bv.company_name)}</h4>
-              <p class="text-xs text-gray-500">Booth \${bv.booth_number}\${bv.category ? ' &middot; ' + bv.category : ''}</p>
+              <p class="text-xs text-gray-500">Booth \${esc(bv.booth_number)}\${bv.category ? ' &middot; ' + esc(bv.category) : ''}</p>
             </div>
             <span class="text-[10px] text-gray-500 shrink-0">\${parseDbTime(bv.visited_at).toLocaleDateString([], {month:'short',day:'numeric'})}</span>
           </div>
@@ -29061,16 +29102,16 @@ function mainPageScript(): string {
               </div>
               <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-2 flex-wrap">
-                  <h4 class="font-semibold text-sm">\${m.title || 'Meeting'}</h4>
-                  <span class="px-1.5 py-0.5 rounded text-[10px] font-medium \${m.status === 'accepted' ? 'bg-green-500/20 text-green-400' : m.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400' : 'bg-red-500/20 text-red-400'}">\${m.status}</span>
+                  <h4 class="font-semibold text-sm">\${esc(m.title || 'Meeting')}</h4>
+                  <span class="px-1.5 py-0.5 rounded text-[10px] font-medium \${m.status === 'accepted' ? 'bg-green-500/20 text-green-400' : m.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400' : 'bg-red-500/20 text-red-400'}">\${esc(m.status)}</span>
                 </div>
-                <p class="text-xs text-gray-400 mt-0.5">with <span class="text-white">\${otherN}</span>\${otherC ? ' &middot; ' + otherC : ''}</p>
+                <p class="text-xs text-gray-400 mt-0.5">with <span class="text-white">\${esc(otherN)}</span>\${otherC ? ' &middot; ' + esc(otherC) : ''}</p>
                 <p class="text-xs text-gray-500 mt-1">
                   <i class="fas fa-clock mr-1"></i>\${new Date(m.meeting_time).toLocaleString([], {weekday:'short',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}
-                  &middot; \${m.duration_minutes}min
-                  \${m.location ? '&middot; <i class="fas fa-map-pin ml-1 mr-1"></i>' + m.location : ''}
+                  &middot; \${esc(m.duration_minutes)}min
+                  \${m.location ? '&middot; <i class="fas fa-map-pin ml-1 mr-1"></i>' + esc(m.location) : ''}
                 </p>
-                \${m.notes ? \`<p class="text-[10px] text-gray-500 mt-1"><i class="fas fa-sticky-note mr-1"></i>\${m.notes}</p>\` : ''}
+                \${m.notes ? \`<p class="text-[10px] text-gray-500 mt-1"><i class="fas fa-sticky-note mr-1"></i>\${esc(m.notes)}</p>\` : ''}
               </div>
               \${isIncoming ? \`
                 <div class="flex flex-col gap-1.5 shrink-0">
@@ -29161,8 +29202,8 @@ function mainPageScript(): string {
             <div class="flex-1 glass rounded-xl p-4">
               <div class="flex items-start justify-between gap-2">
                 <div>
-                  <h4 class="text-sm font-semibold">\${item.title}</h4>
-                  \${item.subtitle ? \`<p class="text-xs text-gray-500">\${item.subtitle}</p>\` : ''}
+                  <h4 class="text-sm font-semibold">\${esc(item.title)}</h4>
+                  \${item.subtitle ? \`<p class="text-xs text-gray-500">\${esc(item.subtitle)}</p>\` : ''}
                 </div>
                 <span class="text-[10px] text-gray-600 shrink-0 whitespace-nowrap">\${timeAgo(item.time)}</span>
               </div>
@@ -29752,24 +29793,24 @@ function mainPageScript(): string {
           </div>
           <div class="flex-1 overflow-y-auto p-6 space-y-3 scroll-hide">
             <div class="grid grid-cols-2 gap-3">
-              <div><label class="text-xs text-gray-400 mb-1 block">Company Name *</label><input id="mb-name" autocomplete="organization" value="\${b.company_name || currentUser.company || ''}" required class="w-full px-3 py-2 rounded-lg text-sm"></div>
-              <div><label class="text-xs text-gray-400 mb-1 block">Category</label><input id="mb-cat" autocomplete="off" value="\${b.category || ''}" placeholder="e.g. AI & ML, Fintech" class="w-full px-3 py-2 rounded-lg text-sm"></div>
+              <div><label class="text-xs text-gray-400 mb-1 block">Company Name *</label><input id="mb-name" autocomplete="organization" value="\${esc(b.company_name || currentUser.company || '')}" required class="w-full px-3 py-2 rounded-lg text-sm"></div>
+              <div><label class="text-xs text-gray-400 mb-1 block">Category</label><input id="mb-cat" autocomplete="off" value="\${esc(b.category || '')}" placeholder="e.g. AI & ML, Fintech" class="w-full px-3 py-2 rounded-lg text-sm"></div>
             </div>
-            <div><label class="text-xs text-gray-400 mb-1 block">Description</label><textarea id="mb-desc" autocomplete="off" rows="3" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="Describe your company and what you're exhibiting...">\${b.description || ''}</textarea></div>
+            <div><label class="text-xs text-gray-400 mb-1 block">Description</label><textarea id="mb-desc" autocomplete="off" rows="3" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="Describe your company and what you're exhibiting...">\${esc(b.description || '')}</textarea></div>
             <div class="grid grid-cols-3 gap-3">
-              <div><label class="text-xs text-gray-400 mb-1 block">Booth #</label><input id="mb-booth" autocomplete="off" value="\${b.booth_number || ''}" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="e.g. A-101"></div>
+              <div><label class="text-xs text-gray-400 mb-1 block">Booth #</label><input id="mb-booth" autocomplete="off" value="\${esc(b.booth_number || '')}" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="e.g. A-101"></div>
               <div><label class="text-xs text-gray-400 mb-1 block">Booth Size</label>
                 <select id="mb-size" class="w-full px-3 py-2 rounded-lg text-sm">
                   \${['standard','premium','platinum'].map(s=>'<option '+(b.booth_size===s?'selected':'')+'>'+s+'</option>').join('')}
                 </select>
               </div>
-              <div><label class="text-xs text-gray-400 mb-1 block">Website</label><input id="mb-web" autocomplete="url" inputmode="url" autocapitalize="none" spellcheck="false" value="\${b.website_url || ''}" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="https://..."></div>
+              <div><label class="text-xs text-gray-400 mb-1 block">Website</label><input id="mb-web" autocomplete="url" inputmode="url" autocapitalize="none" spellcheck="false" value="\${esc(b.website_url || '')}" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="https://..."></div>
             </div>
             <div class="grid grid-cols-2 gap-3">
-              <div><label class="text-xs text-gray-400 mb-1 block">Contact Email</label><input id="mb-email" autocomplete="email" inputmode="email" autocapitalize="none" spellcheck="false" value="\${b.contact_email || currentUser.email || ''}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
-              <div><label class="text-xs text-gray-400 mb-1 block">Contact Phone</label><input id="mb-phone" autocomplete="tel" inputmode="tel" value="\${b.contact_phone || currentUser.mobile || ''}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
+              <div><label class="text-xs text-gray-400 mb-1 block">Contact Email</label><input id="mb-email" autocomplete="email" inputmode="email" autocapitalize="none" spellcheck="false" value="\${esc(b.contact_email || currentUser.email || '')}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
+              <div><label class="text-xs text-gray-400 mb-1 block">Contact Phone</label><input id="mb-phone" autocomplete="tel" inputmode="tel" value="\${esc(b.contact_phone || currentUser.mobile || '')}" class="w-full px-3 py-2 rounded-lg text-sm"></div>
             </div>
-            <div><label class="text-xs text-gray-400 mb-1 block">Products / Services (comma-separated)</label><input id="mb-products" autocomplete="off" value="\${b.products || ''}" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="e.g. AI Platform, Data Analytics, Cloud Services"></div>
+            <div><label class="text-xs text-gray-400 mb-1 block">Products / Services (comma-separated)</label><input id="mb-products" autocomplete="off" value="\${esc(b.products || '')}" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="e.g. AI Platform, Data Analytics, Cloud Services"></div>
           </div>
           <div class="p-6 pt-3 border-t border-white/10 shrink-0 flex gap-2">
             <button type="submit" class="flex-1 py-2.5 rounded-xl text-sm font-medium bg-accent-600 hover:bg-accent-500 text-white"><i class="fas fa-save mr-1"></i>\${b.id ? 'Save Changes' : 'Create Booth'}</button>

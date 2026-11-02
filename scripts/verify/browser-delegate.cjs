@@ -103,6 +103,24 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   const home = await page.evaluate(() => document.body.innerText);
   check('no "Invalid Date" anywhere on Home', !home.includes('Invalid Date'), 'found Invalid Date');
 
+  // --- meetings, connections, timeline and booths: drawn as text (2 Nov 2026) ---
+  await page.evaluate(() => switchTab('inbox'));
+  await sleep(1500);
+  const meetText = await page.evaluate(() => document.getElementById('inbox-meetings').innerText + ' ' + document.getElementById('inbox-connections').innerText);
+  check('Inbox shows a hostile meeting title and name as text', meetText.includes('Intro <img src=x onerror="window.__xss22=1">') && meetText.includes('Ravi <img'), meetText.slice(0, 200));
+  await page.evaluate(() => switchTab('myprofile'));
+  await sleep(2000);
+  for (const sub of ['meetings', 'activity', 'connections', 'overview']) { await page.evaluate((s) => switchProfileSubtab(s), sub); await sleep(400); }
+  const meText = await page.evaluate(() => document.getElementById('my-activity-timeline').innerText + ' ' + document.getElementById('my-all-meetings-list').innerText);
+  check('Me page timeline and meetings show hostile text as text', meText.includes('Meeting scheduled with Ravi <img') && meText.includes('Note <img'), meText.slice(0, 200));
+  await page.evaluate(() => switchTab('exhibition'));
+  await sleep(1500);
+  const exText = await page.evaluate(() => document.getElementById('exhibitor-grid').innerText);
+  check('Exhibition shows hostile booth text as text', exText.includes('<img src=x onerror="window.__xss35=1">'), exText.slice(0, 200));
+  check('a javascript: booth website gets no link', await page.evaluate(() => !document.querySelector('#exhibitor-grid a[href^="javascript"]')), 'javascript: link present');
+  await page.evaluate(() => { const b = document.querySelector('#exhibitor-categories button[data-cat]:last-child'); if (b) b.click(); });
+  await sleep(800);
+
   // --- no script ever executed from payloads ---
   const flags = await page.evaluate(() => Object.keys(window).filter(k => /^__xss/.test(k)));
   check('no injected script executed', flags.length === 0, flags.join(','));
