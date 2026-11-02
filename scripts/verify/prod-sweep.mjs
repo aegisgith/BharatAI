@@ -89,8 +89,13 @@ r = await hit('/app');
 // /app.js the edge may hold an older copy of.
 r.text += (await hit('/app.js?v=' + ((/\/app\.js\?v=([0-9a-f]{8})/.exec(r.text) || [])[1] || ''))).text;
 check('app page carries the new client code', ['function parseDbTime', 'function safeUrl', 'id="notif-sheet"', 'function loadThreads', 'function closeTopModal'].every(m => r.text.includes(m)), 'markers');
+// Any VERSION from bhai-v20 on (several sessions bump it), precaching the very
+// style.css the home page asks for (a mismatch serves returning visitors the
+// old site CSS), and the QR encoder still precached.
 r = await hit('/sw.js');
-check('service worker is bhai-v20 (the new site menu\'s style.css?v=20261102, 2 Nov 2026; the QR encoder still precached)', r.status === 200 && r.text.includes("'bhai-v20'") && r.text.includes("'/css/style.css?v=20261102'") && r.text.includes('/js/vendor/qrcode-generator.js?v=20261029'), r.status);
+const swVersion = /const VERSION = 'bhai-v(\d+)'/.exec(r.text);
+const homeCss = /css\/style\.css\?v=([0-9a-z]+)/.exec((await hit('/')).text);
+check('service worker is bhai-v20 or later and precaches the home page\'s style.css and the QR encoder', r.status === 200 && !!swVersion && +swVersion[1] >= 20 && !!homeCss && r.text.includes("'/css/style.css?v=" + homeCss[1] + "'") && r.text.includes('/js/vendor/qrcode-generator.js?v=20261029'), r.status + ' ' + (swVersion ? 'bhai-v' + swVersion[1] : 'no VERSION') + ', home asks for style.css?v=' + (homeCss ? homeCss[1] : '?'));
 
 // ---- the 29 Oct 2026 audit: a passes page, and the app's Visitor fixes ----
 r = await hit('/passes');
