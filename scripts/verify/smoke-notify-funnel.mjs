@@ -156,7 +156,7 @@ const body = (i) => sent[i]?.Content?.Body?.[0]?.Content || '';
 check('a Visitor is told Free Visitor Pass, never Delegate', subj(0) === 'Asha, your Free Visitor Pass is ready' && body(0).includes('Free Visitor Pass') && !/official <strong>Delegate|Download Delegate Pass|Your Delegate Pass/.test(body(0)), subj(0));
 check('the free email asks for the badge before it mentions the upgrade', body(0).indexOf('action=social-card') > 0 && body(0).indexOf('action=social-card') < body(0).indexOf('Make it the full conference'), '');
 check('the free email says entry is not guaranteed', body(0).includes('Entry on a free Visitor Pass is not guaranteed'), '');
-check('nothing no pass includes is offered (CXO Innovation Night)', !/CXO Innovation Night/i.test(body(0)), '');
+check('nothing no pass includes is offered (the CXO Innovation Evening, once Night)', !/CXO Innovation (Night|Evening)/i.test(body(0)), '');
 person(5, 'DR. MEERA IYER', 'meera@example.com', { badge_type: 'Delegate Pass', payment_status: 'paid', company: 'Acme', job_title: 'CTO' });
 person(6, 'Kiran Pai', 'kiran@example.com', { badge_type: 'Delegate Pass', payment_status: 'pending' });
 person(7, 'Sam Rao', 'sam@example.com', { badge_type: 'Speaker', payment_status: 'waived' });

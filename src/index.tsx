@@ -1105,14 +1105,14 @@ async function sendRegistrationEmail(c: any, attendee: any, opts: { receipt?: st
   const upsell = isVisitor ? `
         <div style="margin-top:26px;padding-top:22px;border-top:1px solid #eee;">
           <p style="margin:0 0 4px;font-size:15px;font-weight:bold;color:#1E2140;text-align:center;">Coming for the conference too?</p>
-          <p style="margin:0 0 14px;font-size:13px;line-height:1.6;color:#666;text-align:center;">Your Visitor Pass covers the exhibition floor and select keynotes, but entry is not guaranteed: it depends on slot availability on 20 and 21 Nov, so you may be offered a half-day slot, or none; we confirm by email before the event. A Delegate pass has <strong>guaranteed entry on both days</strong> and adds every conference session and lunch &mdash; and the networking app, which is where most of the value of two days actually is. Premium Delegate and VIP add a hands-on workshop.</p>
+          <p style="margin:0 0 14px;font-size:13px;line-height:1.6;color:#666;text-align:center;">Your Visitor Pass covers the exhibition floor and select keynotes, but entry is not guaranteed: it depends on slot availability on 20 and 21 Nov, so you may be offered a half-day slot, or none; we confirm by email before the event. A Delegate pass has <strong>guaranteed entry on both days</strong> and adds every conference session and the networking lunch &mdash; and the networking app, which is where most of the value of two days actually is. Premium Delegate and VIP add a hands-on workshop.</p>
           ${roomLine}
           <p style="margin:0 0 12px;font-size:13px;line-height:1.6;color:#666;text-align:center;">Here is what the app does, and why starting before you arrive matters &mdash; the people worth meeting fill their diaries early.</p>
           <table style="width:100%;border-collapse:collapse;">${netRows}</table>
           <table style="width:100%;border-collapse:collapse;margin-top:18px;">
-            ${tier('#0f7b47', 'Delegate Pass', rsPrice('Delegate Pass') + ' + GST', ['All conference sessions, both days', 'Lunch pass', 'Full access to Bharat AI Connect, as above'], upgradeHref('delegate'))}
+            ${tier('#0f7b47', 'Delegate Pass', rsPrice('Delegate Pass') + ' + GST', ['All conference sessions, both days', 'Networking lunch', 'Full access to Bharat AI Connect, as above'], upgradeHref('delegate'))}
             ${tier('#0B7A75', 'Premium Delegate Pass', rsPrice('Premium Delegate Pass') + ' + GST', ['Everything in Delegate', 'One hands-on workshop: seats are limited and go first come, first served'], upgradeHref('premium'))}
-            ${tier('#A67C00', 'VIP Pass', rsPrice('VIP Pass') + ' + GST', ['Everything in Premium Delegate, workshop included', 'CXO Gala Networking Evening, Day 1', 'VIP lounge and priority seating', 'Speaker meet &amp; greet'], upgradeHref('vip'))}
+            ${tier('#A67C00', 'VIP Pass', rsPrice('VIP Pass') + ' + GST', ['Everything in Premium Delegate, workshop included', 'Bharat AI Leaders’ Evening, Day 1', 'VIP lounge and priority seating', 'Speaker meet &amp; greet'], upgradeHref('vip'))}
           </table>
           <p style="margin:12px 0 0;font-size:12.5px;line-height:1.6;color:#555;text-align:center;">${priceDeadlineNote()} ${GROUP_RATE_TEXT}</p>
           ${boardrooms}
@@ -3343,9 +3343,9 @@ async function payReminderMail(c: any, r: any, preview: boolean): Promise<{ subj
   const pass = payEsc(r.pass_type || 'pass')
   const amount = rupees(Math.round(Number(r.amount || 0) * 100))
   const WHAT: Record<string, string> = {
-    'Delegate Pass': 'every conference session across both days, lunch, and the networking app to meet people before you arrive',
+    'Delegate Pass': 'every conference session across both days, the networking lunch, and the networking app to meet people before you arrive',
     'Premium Delegate Pass': 'everything in the Delegate Pass, plus one hands-on workshop (seats are limited and go first come, first served)',
-    'VIP Pass': 'everything in the Premium Delegate Pass, workshop included, plus the CXO Gala Networking Evening on Day 1, the VIP lounge, priority seating and the speaker meet and greet',
+    'VIP Pass': 'everything in the Premium Delegate Pass, workshop included, plus the Bharat AI Leaders’ Evening on Day 1, the VIP lounge, priority seating and the speaker meet and greet',
   }
   const opening = lead
     ? `You started registering for a <strong>${pass}</strong> for Bharat AI Innovation 2026 and stopped before the payment. What you typed is saved: the button opens the form filled in, and paying takes about a minute.`
@@ -14400,7 +14400,7 @@ async function notifyEmail(c: any, attendee: any, opts: { preview?: boolean } = 
     // A confirmed Delegate or Premium Delegate may move up for the difference
     // (upgradeStep). Said once, in a line, under the pass they already have.
     const next = badge === 'Delegate Pass' ? { pass: 'Premium Delegate Pass', adds: 'a hands-on workshop seat' }
-      : badge === 'Premium Delegate Pass' ? { pass: 'VIP Pass', adds: 'the CXO Gala Networking Evening on Day 1, the VIP lounge, priority seating and a speaker meet &amp; greet' } : null
+      : badge === 'Premium Delegate Pass' ? { pass: 'VIP Pass', adds: 'the Bharat AI Leaders’ Evening on Day 1, the VIP lounge, priority seating and a speaker meet &amp; greet' } : null
     const diff = next && settledPaidTier(attendee) ? upgradeStep(badge, next.pass) : 0
     passBlock = `
       <div style="margin:22px 0 0;padding:20px;border:1px solid #EADFC2;background:#FFFCF4;border-radius:12px;">
@@ -14441,14 +14441,14 @@ async function notifyEmail(c: any, attendee: any, opts: { preview?: boolean } = 
         <table style="width:100%;border-collapse:collapse;">
           ${tick('Guaranteed entry on both days, with no wait for a slot')}
           ${tick('Every conference session and panel, 20 and 21 Nov')}
-          ${tick('Lunch included')}
+          ${tick('Networking lunch included')}
           ${tick('The full networking app: message anyone attending and book 1:1 meetings before you arrive')}
           ${tick('The gold Delegate edition of your badge')}
         </table>
         <p style="margin:12px 0 14px;font-size:13px;line-height:1.6;color:#1E2140;"><strong>${rsPrice('Delegate Pass')} + GST</strong>${late ? '' : ` until ${PRICE_DEADLINE_TEXT}, then ${rsPrice('Delegate Pass', true)} from ${PRICE_LATE_FROM_TEXT}`}.</p>
         ${btn(go('pay', '&pass=delegate'), 'See the Delegate Pass &rarr;', '#0f7b47')}
         <p style="margin:16px 0 0;font-size:12.5px;line-height:1.65;color:#555;"><strong>Premium Delegate</strong> (${rsPrice('Premium Delegate Pass')} + GST) adds one hands-on workshop: <em>Data Science to Agentic AI: A CXO&rsquo;s Guide</em> with Dr. Vinay Kulkarni, <em>From Prototype to Production</em> with Dr. Ashish Tendulkar, or <em>Automatic Speech Recognition</em> with Dr. Parijat Shukla. Seats are limited. <a href="${go('pay', '&pass=premium')}" style="color:#0B7A75;font-weight:bold;">Premium</a></p>
-        <p style="margin:8px 0 0;font-size:12.5px;line-height:1.65;color:#555;"><strong>VIP</strong> (${rsPrice('VIP Pass')} + GST) adds the CXO Gala Networking Evening on Day 1, the VIP lounge, priority seating and a speaker meet &amp; greet. <a href="${go('pay', '&pass=vip')}" style="color:#A67C00;font-weight:bold;">VIP</a></p>
+        <p style="margin:8px 0 0;font-size:12.5px;line-height:1.65;color:#555;"><strong>VIP</strong> (${rsPrice('VIP Pass')} + GST) adds the Bharat AI Leaders’ Evening on Day 1, the VIP lounge, priority seating and a speaker meet &amp; greet. <a href="${go('pay', '&pass=vip')}" style="color:#A67C00;font-weight:bold;">VIP</a></p>
         <p style="margin:12px 0 0;font-size:11.5px;color:#999;">Each button signs you in and opens the secure payment page. Your registration stays the same.</p>
       </div>`
 
@@ -16249,7 +16249,7 @@ async function upgradeOfferMail(c: any, a: any, offer: { pass: string; key: stri
     'Guaranteed entry on both days, 20&ndash;21 November 2026, World Trade Center, Mumbai',
     'Access to the entire conference: every keynote, panel discussion and Innovation Talk across both days',
     'The Bharat AI Connect networking app: search everyone attending, start conversations and book 1:1 meetings before you arrive',
-    'Lunch at the venue, the conference kit and a certificate of participation',
+    'Networking lunch at the venue, the conference kit and a certificate of participation',
     'The exhibition floor and product demos',
   ]
   const premiumHref = preview ? '#preview' : href.replace('pass=delegate', 'pass=premium')
@@ -18359,13 +18359,13 @@ function passComparisonHTML(): string {
       ['Full directory, start conversations, book meetings', [0, 1, 1, 1, 1]],
       ['Student networking zone', [0, 1, 0, 0, 0]],
     ] },
-    { title: 'Lunch and workshops', rows: [
+    { title: 'Networking lunch and workshops', rows: [
       ['Conference kit', [0, 0, 1, 1, 1]],
-      ['Lunch pass', [0, 0, 1, 1, 1]],
+      ['Networking lunch', [0, 0, 1, 1, 1]],
       ['One hands-on workshop <small>seats first come, first served</small>', [0, 0, 0, 1, 1]],
     ] },
     { title: 'VIP', rows: [
-      ['CXO Gala Networking Evening, Day 1', [0, 0, 0, 0, 1]],
+      ['Bharat AI Leaders’ Evening, Day 1', [0, 0, 0, 0, 1]],
       ['VIP lounge and priority seating', [0, 0, 0, 0, 1]],
       ['Speaker meet &amp; greet', [0, 0, 0, 0, 1]],
     ] },
@@ -18433,7 +18433,7 @@ function passesPageHTML(): string {
         <a href="/register${hash}" class="mt-4 block text-center px-4 rounded-xl text-xs font-semibold text-white transition" style="min-height:44px;line-height:44px;background:${color};">Get the ${name}</a>
       </div>`
   const faq: [string, string][] = [
-    ['Which pass should I buy?', 'Coming for the conference: the <strong>Delegate Pass</strong>. Want a hands-on workshop seat as well: <strong>Premium Delegate</strong>. Want the CXO Gala Networking Evening, the lounge and the speaker meet &amp; greet: <strong>VIP</strong>. A student or faculty member with ID: <strong>Academic</strong>. Only the exhibition floor: the free <strong>Visitor Pass</strong>, where entry is not guaranteed: it depends on slot availability on 20 and 21 Nov, a half-day slot or none, confirmed by email.'],
+    ['Which pass should I buy?', 'Coming for the conference: the <strong>Delegate Pass</strong>. Want a hands-on workshop seat as well: <strong>Premium Delegate</strong>. Want the Bharat AI Leaders’ Evening, the lounge and the speaker meet &amp; greet: <strong>VIP</strong>. A student or faculty member with ID: <strong>Academic</strong>. Only the exhibition floor: the free <strong>Visitor Pass</strong>, where entry is not guaranteed: it depends on slot availability on 20 and 21 Nov, a half-day slot or none, confirmed by email.'],
     ['Is entry guaranteed?', 'On every paid pass, yes, on both days. ' + FREE_ENTRY_TEXT],
     ['What does the price include?', 'Prices are + 18% GST. ' + priceDeadlineNote() + ' An order keeps the price it was made at.'],
     ['Can I get a GST invoice in my company&rsquo;s name?', 'Yes. The paid form has a section for the registered company name, GSTIN and billing address. A receipt is emailed the moment the payment goes through, and the GST invoice follows from the accounts team.'],
@@ -18457,9 +18457,9 @@ ${sharedNavHTML('passes')}
   </div>
 
   <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-10">
-    ${tier('Delegate Pass', 'Delegate Pass', '#delegate', '#0f7b47', 'Most popular', ['Guaranteed entry on both days', 'Every conference session, both days', 'Lunch pass and conference kit', 'Full directory, conversations and meetings', 'Certificate of participation'])}
+    ${tier('Delegate Pass', 'Delegate Pass', '#delegate', '#0f7b47', 'Most popular', ['Guaranteed entry on both days', 'Every conference session, both days', 'Networking lunch and conference kit', 'Full directory, conversations and meetings', 'Certificate of participation'])}
     ${tier('Premium Delegate Pass', 'Premium Delegate Pass', '#premium', '#0B7A75', 'Includes a workshop', ['Everything in Delegate', 'One hands-on workshop, seat chosen in the app', 'Seats first come, first served'])}
-    ${tier('VIP Pass', 'VIP Pass', '#vip', '#A67C00', 'All access', ['Everything in Premium Delegate', 'CXO Gala Networking Evening, Day 1', 'VIP lounge and priority seating', 'Speaker meet &amp; greet'])}
+    ${tier('VIP Pass', 'VIP Pass', '#vip', '#A67C00', 'All access', ['Everything in Premium Delegate', 'Bharat AI Leaders’ Evening, Day 1', 'VIP lounge and priority seating', 'Speaker meet &amp; greet'])}
     ${tier('Academic Pass', 'Academic Pass', '#academic', '#7C5CFF', 'Students and faculty', ['Guaranteed entry on both days', 'Every conference session', 'Student networking zone', 'Bring your student or faculty ID', 'No lunch, no workshop'])}
   </div>
 
@@ -18501,7 +18501,7 @@ ${sharedNavHTML('register')}
       <i class="fas fa-ticket-alt"></i>STANDARD PRICES UNTIL 5 NOV
     </div>
     <h1 class="text-3xl md:text-4xl font-bold mb-3">Passes and registration for Bharat AI Innovation 2026</h1>
-    <p class="text-gray-400 max-w-2xl mx-auto">World Trade Center, Mumbai, 20–21 Nov 2026. A Delegate Pass has guaranteed entry on both days, every session, lunch and the networking app. A free Visitor Pass covers the exhibition floor, and its entry is not guaranteed: it depends on slot availability on 20 and 21 Nov, a half-day slot or none, confirmed by email.</p>
+    <p class="text-gray-400 max-w-2xl mx-auto">World Trade Center, Mumbai, 20–21 Nov 2026. A Delegate Pass has guaranteed entry on both days, every session, the networking lunch and the networking app. A free Visitor Pass covers the exhibition floor, and its entry is not guaranteed: it depends on slot availability on 20 and 21 Nov, a half-day slot or none, confirmed by email.</p>
   </div>
 
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 max-w-5xl mx-auto">
@@ -18706,7 +18706,7 @@ ${sharedNavHTML('register')}
                   <p class="rs-tier-name">Delegate Pass</p>
                   <p class="rs-tier-price"><strong>${rsPrice('Delegate Pass')}</strong><small>+ GST</small></p>
                 </div>
-                <p class="rs-tier-perk">All sessions on both days, lunch, and full networking. Message anyone and book meetings.</p>
+                <p class="rs-tier-perk">All sessions on both days, the networking lunch, and full networking. Message anyone and book meetings.</p>
                 ${latePriceTag('Delegate Pass')}
                 <a href="/register#delegate" onclick="return upgradeFromSuccess('Delegate Pass')" class="rs-btn rs-btn-main">Upgrade to Delegate <i class="fas fa-arrow-right"></i></a>
               </div>
@@ -18724,7 +18724,7 @@ ${sharedNavHTML('register')}
                   <p class="rs-tier-name" style="color:#8A6400;">VIP Pass</p>
                   <p class="rs-tier-price"><strong>${rsPrice('VIP Pass')}</strong><small>+ GST</small></p>
                 </div>
-                <p class="rs-tier-perk">Everything in Premium, plus the CXO Gala Networking Evening on Day 1, VIP lounge, priority seating and a chance to meet the speakers.</p>
+                <p class="rs-tier-perk">Everything in Premium, plus the Bharat AI Leaders’ Evening on Day 1, VIP lounge, priority seating and a chance to meet the speakers.</p>
                 ${latePriceTag('VIP Pass')}
                 <a href="/register#vip" onclick="return upgradeFromSuccess('VIP Pass')" class="rs-btn rs-btn-vip">Upgrade to VIP</a>
               </div>
@@ -18763,7 +18763,7 @@ ${sharedNavHTML('register')}
           <div class="flex items-center justify-between p-3 rounded-xl bg-white/5">
             <div>
               <span class="text-sm font-semibold">🎟️ Delegate Pass</span>
-              <p class="text-[10px] text-gray-400">Full 2-day conference + lunch + networking</p>
+              <p class="text-[10px] text-gray-400">Full 2-day conference + networking lunch + networking app</p>
             </div>
             <span class="text-right"><span class="text-sm font-bold text-primary-300">${rsPrice('Delegate Pass')} + GST</span>${latePriceTag('Delegate Pass')}</span>
           </div>
@@ -18777,7 +18777,7 @@ ${sharedNavHTML('register')}
           <div class="flex items-center justify-between p-3 rounded-xl bg-white/5">
             <div>
               <span class="text-sm font-semibold">⭐ VIP Pass</span>
-              <p class="text-[10px] text-gray-400">Premium + CXO Gala Networking Evening + VIP lounge + speaker meet &amp; greet</p>
+              <p class="text-[10px] text-gray-400">Premium + Bharat AI Leaders’ Evening + VIP lounge + speaker meet &amp; greet</p>
             </div>
             <span class="text-right"><span class="text-sm font-bold text-amber-300">${rsPrice('VIP Pass')} + GST</span>${latePriceTag('VIP Pass')}</span>
           </div>
@@ -19198,7 +19198,7 @@ function rppResumeLead() {
             <i class="fas fa-id-badge" style="color:#7C3AED;font-size:20px;display:block;margin-bottom:4px;"></i>
             <div style="color:#1E2140;font-weight:600;font-size:12px;">Delegate</div>
             <div style="color:#7C3AED;font-weight:700;font-size:14px;">${rsPrice('Delegate Pass')} + GST</div>
-            <div style="color:#5E6585;font-size:10px;">2 days + lunch</div>
+            <div style="color:#5E6585;font-size:10px;">2 days + networking lunch</div>
           </div>
         </label>
         <label style="cursor:pointer;">
@@ -19216,7 +19216,7 @@ function rppResumeLead() {
             <i class="fas fa-crown" style="color:#B45309;font-size:20px;display:block;margin-bottom:4px;"></i>
             <div style="color:#1E2140;font-weight:600;font-size:12px;">VIP</div>
             <div style="color:#B45309;font-weight:700;font-size:14px;">${rsPrice('VIP Pass')} + GST</div>
-            <div style="color:#5E6585;font-size:10px;">Workshop + gala evening + lounge</div>
+            <div style="color:#5E6585;font-size:10px;">Workshop + Leaders’ Evening + lounge</div>
           </div>
         </label>
         <label style="cursor:pointer;">
@@ -20216,7 +20216,7 @@ function mainPageHTML(): string {
         </div>
         <h2 class="text-2xl font-bold mb-2" id="upgrade-modal-title">Networking is a Paid Feature</h2>
         <p class="text-gray-400 text-sm mb-6 leading-relaxed" id="upgrade-modal-copy">
-          Browsing and accepting are free on your <span class="text-white font-semibold">Visitor Pass</span>. Starting a conversation, every session, lunch and guaranteed entry come with a paid pass.
+          Browsing and accepting are free on your <span class="text-white font-semibold">Visitor Pass</span>. Starting a conversation, every session, the networking lunch and guaranteed entry come with a paid pass.
         </p>
         <!-- Pass options; hidden when a paid pass is offered the one step up -->
         <div class="grid grid-cols-2 gap-3 mb-6" id="upgrade-modal-cards">
@@ -20237,7 +20237,7 @@ function mainPageHTML(): string {
             <div class="text-xs text-gray-400 mt-0.5">${rsPrice('VIP Pass')} + GST / person</div>
             <ul class="text-[11px] text-gray-400 mt-2 space-y-0.5 text-left">
               <li><i class="fas fa-check text-amber-400 mr-1"></i>Everything in Premium</li>
-              <li><i class="fas fa-check text-amber-400 mr-1"></i>CXO Gala Evening, Day 1</li>
+              <li><i class="fas fa-check text-amber-400 mr-1"></i>Bharat AI Leaders’ Evening, Day 1</li>
               <li><i class="fas fa-check text-amber-400 mr-1"></i>Lounge + speaker meet & greet</li>
             </ul>
           </div>
@@ -20749,7 +20749,7 @@ function mainPageHTML(): string {
                 </div>
                 <div class="flex-1">
                   <h3 class="font-bold text-base mb-0.5">Upgrade your pass</h3>
-                  <p class="text-xs text-gray-400">Delegate ${rsPrice('Delegate Pass')}, Premium Delegate ${rsPrice('Premium Delegate Pass')} or VIP ${rsPrice('VIP Pass')} (+ GST) &mdash; sessions, lunch and networking; a workshop with Premium and VIP. ${latePricing() ? '' : 'Standard prices until ' + PRICE_DEADLINE_TEXT + '.'}</p>
+                  <p class="text-xs text-gray-400">Delegate ${rsPrice('Delegate Pass')}, Premium Delegate ${rsPrice('Premium Delegate Pass')} or VIP ${rsPrice('VIP Pass')} (+ GST) &mdash; sessions, the networking lunch and networking; a workshop with Premium and VIP. ${latePricing() ? '' : 'Standard prices until ' + PRICE_DEADLINE_TEXT + '.'}</p>
                 </div>
                 <i class="fas fa-chevron-right text-amber-400 text-lg"></i>
               </div>
@@ -20791,7 +20791,7 @@ function mainPageHTML(): string {
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Exhibition floor pass</li>
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Conference materials & kit</li>
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Networking & startup zone</li>
-                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Lunch pass</li>
+                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Networking lunch</li>
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>AI Marketplace listing</li>
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Certificate of participation</li>
                   <li><i class="fas fa-wifi text-primary-400 mr-1.5 text-[10px]"></i><span class="text-primary-300 font-semibold">Access to networking app</span></li>
@@ -20806,7 +20806,7 @@ function mainPageHTML(): string {
                 <h3 class="font-bold text-base" style="color:#0B7A75;">Premium Delegate Pass</h3>
                 <div class="text-xl font-black text-white mt-1">${rsPrice('Premium Delegate Pass')}<span class="text-xs font-normal text-gray-400"> + GST / person</span></div>
                 <ul class="mt-3 space-y-1.5 text-xs text-gray-300">
-                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Everything in Delegate, lunch included</li>
+                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Everything in Delegate, networking lunch included</li>
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i><span class="font-semibold">1 hands-on AI workshop</span></li>
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Workshop certificate</li>
                   <li><i class="fas fa-wifi text-primary-400 mr-1.5 text-[10px]"></i><span class="text-primary-300 font-semibold">Access to networking app</span></li>
@@ -20823,7 +20823,7 @@ function mainPageHTML(): string {
                   <li><i class="fas fa-id-badge text-amber-400 mr-1.5 text-[10px]"></i><span class="text-amber-300 font-semibold">VIP Badge</span></li>
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Everything in Premium Delegate</li>
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>1 hands-on AI workshop</li>
-                  <li><i class="fas fa-check text-amber-400 mr-1.5 text-[10px]"></i>CXO Gala Networking Evening, Day 1</li>
+                  <li><i class="fas fa-check text-amber-400 mr-1.5 text-[10px]"></i>Bharat AI Leaders’ Evening, Day 1</li>
                   <li><i class="fas fa-check text-amber-400 mr-1.5 text-[10px]"></i>VIP lounge access</li>
                   <li><i class="fas fa-check text-amber-400 mr-1.5 text-[10px]"></i>Speaker meet & greet</li>
                   <li><i class="fas fa-check text-amber-400 mr-1.5 text-[10px]"></i>Priority front-row seating</li>
@@ -20859,7 +20859,7 @@ function mainPageHTML(): string {
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Full conference access</li>
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Exhibition floor pass</li>
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Networking & startup zone</li>
-                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Lunch & refreshments</li>
+                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Networking lunch & refreshments</li>
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Conference materials & kit</li>
                   <li><i class="fas fa-check text-rose-400 mr-1.5 text-[10px]"></i>Press/media area access</li>
                   <li><i class="fas fa-check text-rose-400 mr-1.5 text-[10px]"></i>Interview & recording rights</li>
@@ -22477,7 +22477,7 @@ function mainPageHTML(): string {
               <i class="fas fa-id-badge text-violet-400 text-lg mb-1 block"></i>
               <div class="text-white font-semibold text-xs">Delegate</div>
               <div class="text-violet-300 font-bold text-sm">${rsPrice('Delegate Pass')} + GST</div>
-              <div class="text-gray-500 text-[10px]">2 days + lunch</div>
+              <div class="text-gray-500 text-[10px]">2 days + networking lunch</div>
             </div>
           </label>
           <label class="pass-option cursor-pointer">
@@ -22495,7 +22495,7 @@ function mainPageHTML(): string {
               <i class="fas fa-crown text-yellow-400 text-lg mb-1 block"></i>
               <div class="text-white font-semibold text-xs">VIP</div>
               <div class="text-yellow-300 font-bold text-sm">${rsPrice('VIP Pass')} + GST</div>
-              <div class="text-gray-500 text-[10px]">Workshop + gala evening + lounge</div>
+              <div class="text-gray-500 text-[10px]">Workshop + Leaders’ Evening + lounge</div>
             </div>
           </label>
           <label class="pass-option cursor-pointer">
@@ -24112,7 +24112,7 @@ function mainPageScript(): string {
       var steps = from ? ['Premium Delegate Pass', 'VIP Pass'].map(function (p) { var u = upgradePrice(from, p); return u ? { pass: p, up: u } : null; }).filter(Boolean) : [];
       if (!steps.length) { el.classList.add('hidden'); return; }
       el.innerHTML = '<i class="fas fa-arrow-up mr-1.5 text-amber-400"></i>Move up for the difference: ' + steps.map(function (s) {
-        var what = s.pass === 'VIP Pass' ? 'VIP, with the CXO Gala Evening, the lounge and the speaker meet &amp; greet' : 'Premium Delegate, with one workshop';
+        var what = s.pass === 'VIP Pass' ? 'VIP, with the Bharat AI Leaders’ Evening, the lounge and the speaker meet &amp; greet' : 'Premium Delegate, with one workshop';
         return '<button type="button" onclick="openUpgradeFor(&quot;' + s.pass + '&quot;, &quot;passcard&quot;)" class="font-semibold underline" style="color:#FBBF24;">' + what + ', &#8377;' + inr(s.up.base) + ' + GST</button>';
       }).join(' &middot; ');
       el.classList.remove('hidden');
@@ -24688,7 +24688,7 @@ function mainPageScript(): string {
         _upgradeTarget = to;
         if (reason === 'vip') {
           title.textContent = who ? 'Meet ' + who + ' in person' : 'Move up to VIP';
-          copy.innerHTML = 'The CXO Gala Networking Evening on Day 1, the speaker meet &amp; greet, the VIP lounge and priority seating come with the <span class="text-amber-300 font-semibold">VIP Pass</span>' +
+          copy.innerHTML = 'The Bharat AI Leaders’ Evening on Day 1, the speaker meet &amp; greet, the VIP lounge and priority seating come with the <span class="text-amber-300 font-semibold">VIP Pass</span>' +
             (from === 'Premium Delegate Pass' ? '' : ', with one hands-on workshop') + '. Move up from your ' + esc(from) + ' for the difference' + step + '.';
         } else {
           title.textContent = who ? 'Take a seat in ' + who : 'Add a workshop to your pass';
@@ -24714,13 +24714,13 @@ function mainPageScript(): string {
         if (reason === 'welcome') {
           title.textContent = 'Want the full two days?';
           copy.innerHTML = 'Your <span class="text-white font-semibold">Visitor Pass</span> covers the exhibition floor and select keynotes, but entry is not guaranteed: it depends on slot availability on 20 and 21 Nov, a half-day slot or none.<br>' +
-            'A <span class="text-primary-300 font-semibold">Delegate</span> or <span class="text-amber-300 font-semibold">VIP Pass</span> has guaranteed entry on both days and adds every conference session, lunch and the networking hub. Premium Delegate and VIP add a hands-on workshop.' + priceDeadlineLine('Delegate Pass');
+            'A <span class="text-primary-300 font-semibold">Delegate</span> or <span class="text-amber-300 font-semibold">VIP Pass</span> has guaranteed entry on both days and adds every conference session, the networking lunch and the networking hub. Premium Delegate and VIP add a hands-on workshop.' + priceDeadlineLine('Delegate Pass');
         }
         if (reason === 'agenda') {
           title.textContent = 'Be in the room for this one';
           copy.innerHTML = (who ? '<span class="text-white font-semibold">' + esc(who) + '</span> is a conference session. ' : '') +
             'Your Visitor Pass covers the exhibition floor and select keynotes, but entry is not guaranteed: it depends on slot availability on 20 and 21 Nov, a half-day slot or none. A <span class="text-primary-300 font-semibold">Delegate Pass</span>' + (delegatePrice ? ' (' + delegatePrice + ')' : '') +
-            ' has guaranteed entry on both days and adds every session, lunch and the networking app.' + priceDeadlineLine('Delegate Pass');
+            ' has guaranteed entry on both days and adds every session, the networking lunch and the networking app.' + priceDeadlineLine('Delegate Pass');
           _upgradeTarget = 'Delegate Pass';
         }
         if (reason === 'workshop') {
@@ -24731,14 +24731,14 @@ function mainPageScript(): string {
         }
         if (reason === 'vip') {
           title.textContent = who ? 'Meet ' + who + ' in person' : 'The VIP Pass';
-          copy.innerHTML = 'The CXO Gala Networking Evening on Day 1, the speaker meet &amp; greet, the VIP lounge and priority seating come with the <span class="text-amber-300 font-semibold">VIP Pass</span>' + (vipPrice ? ' (' + vipPrice + ')' : '') +
-            ', with every session, lunch, the networking app and one hands-on workshop.' + priceDeadlineLine('VIP Pass');
+          copy.innerHTML = 'The Bharat AI Leaders’ Evening on Day 1, the speaker meet &amp; greet, the VIP lounge and priority seating come with the <span class="text-amber-300 font-semibold">VIP Pass</span>' + (vipPrice ? ' (' + vipPrice + ')' : '') +
+            ', with every session, the networking lunch, the networking app and one hands-on workshop.' + priceDeadlineLine('VIP Pass');
           _upgradeTarget = 'VIP Pass';
         }
         if (reason === 'passcard') {
           title.textContent = 'Guarantee your entry on both days';
           copy.innerHTML = 'Your <span class="text-white font-semibold">Visitor Pass</span> does not guarantee entry: it depends on slot availability on 20 and 21 Nov, a half-day slot or none, confirmed by email. A <span class="text-primary-300 font-semibold">Delegate Pass</span>' + (delegatePrice ? ' (' + delegatePrice + ')' : '') +
-            ' has guaranteed entry on both days and adds every session, lunch and the networking app.' + priceDeadlineLine('Delegate Pass');
+            ' has guaranteed entry on both days and adds every session, the networking lunch and the networking app.' + priceDeadlineLine('Delegate Pass');
           _upgradeTarget = 'Delegate Pass';
         }
       }
@@ -29786,7 +29786,7 @@ function mainPageScript(): string {
         { done: _agendaSet().size > 0, icon: 'fa-star', title: 'Star the sessions you want',
           body: 'Build your two days and download them to your calendar.', cta: 'See the schedule', act: "switchTab('schedule')" },
         { done: false, icon: 'fa-arrow-up', title: 'Guarantee your entry on both days',
-          body: 'Entry on a free pass is not guaranteed: it depends on slot availability on 20 and 21 Nov, a half-day slot or none, confirmed by email. A Delegate Pass has guaranteed entry, every session, lunch and the networking app.', cta: 'See the Delegate Pass', act: "showUpgradeModal('passcard')" }
+          body: 'Entry on a free pass is not guaranteed: it depends on slot availability on 20 and 21 Nov, a half-day slot or none, confirmed by email. A Delegate Pass has guaranteed entry, every session, the networking lunch and the networking app.', cta: 'See the Delegate Pass', act: "showUpgradeModal('passcard')" }
       ];
       renderPlanSteps(steps);
       card.classList.remove('hidden');

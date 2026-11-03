@@ -99,7 +99,7 @@ check('service worker is bhai-v20 or later and precaches the home page\'s style.
 
 // ---- the 29 Oct 2026 audit: a passes page, and the app's Visitor fixes ----
 r = await hit('/passes');
-check('/passes is served with the comparison and the VIP gala row', r.status === 200 && ['Passes for Bharat AI Innovation 2026', 'CXO Gala Networking Evening, Day 1', 'class="pcmp"'].every(m => r.text.includes(m)), r.status);
+check('/passes is served with the comparison and the VIP gala row', r.status === 200 && ['Passes for Bharat AI Innovation 2026', 'Bharat AI Leaders’ Evening, Day 1', 'class="pcmp"'].every(m => r.text.includes(m)), r.status);
 // The hashed URL the page loads, not the bare /app.js: that one is the offline
 // fallback and the edge may hold an older copy of it.
 r = await hit('/app');

@@ -128,6 +128,9 @@ check('the page writes names and titles as text, never as HTML', /el\('span', 'n
 check('the phone plays the app\'s own screens: list, Requested, Schedule Meeting, chat, Tell your network', ['Networking Hub', 'Requested', 'Schedule Meeting', 'Send Meeting Request', 'Type a message', 'Tell your network', 'Share to LinkedIn or WhatsApp'].every(s => page.includes(s)), 'phone screen markers');
 check('the card in the share step is drawn by the app\'s renderer', page.includes("'/js/social-card.js?v=") && page.includes('window.BhaiSocialCard') && /R\.render\(\{ name: p\.name/.test(page), 'renderer');
 check('a band of real "I\'m attending" cards, drawn once each and shared with the phone', page.includes('id="nw-cards"') && page.includes('fillCards(people)') && /function cardFor\(p\)/.test(page) && page.includes('gold edition'), 'cards band');
+check('in person: lunch with the passes that include it, the VIP lounge and the CXO evening as VIP only, the schedule\'s time, no price', page.includes('id="cxo-night"') &&
+  page.includes('Networking lunch comes with the Delegate, Premium Delegate and VIP passes') && page.includes('No other pass includes it') && page.includes('href="/register#vip"') && !/VIP lunch/i.test(page) &&
+  page.includes('6:30 pm to 8:30 pm') && !/id="cxo-night"[\s\S]*?&#8377;[\s\S]*?BHARAT AI CONNECT, THE NETWORKING APP/.test(page), 'cxo night block');
 check('five steps, online and at the venue', (page.match(/data-step="[1-5]"/g) || []).length >= 5 && page.includes('At WTC Mumbai') && page.includes('Share your card on LinkedIn'), 'steps');
 check('the headline reads as the organiser wrote it', /Business meetings before you arrive at Bharat AI Innovation, <span class="nw-accent">not chance encounters<\/span>/.test(page), 'headline');
 

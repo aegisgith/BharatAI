@@ -236,6 +236,31 @@
         .nw-cards-note { margin: 1.25rem auto 0; max-width: 660px; text-align: center; font-size: 0.9rem; line-height: 1.6; color: var(--dark-grey); }
         .nw-cards-note i { color: #C9A227; margin-right: 0.3rem; }
         .nw-cards-note a { color: var(--saffron-dark); font-weight: 700; }
+        /* The evening after Day 1: Bharat AI Leaders’ Evening, VIP Pass only. */
+        .nw-night { position: relative; padding: 4.75rem 0; overflow: hidden; color: #fff; background: radial-gradient(700px 380px at 82% 25%, rgba(255,179,0,0.16), transparent 62%), linear-gradient(135deg, #0D0F1E 0%, #1A1D3A 55%, #0D0F1E 100%); }
+        .nw-night-in { display: grid; gap: 2.75rem; align-items: center; }
+        @media (min-width: 900px) { .nw-night-in { grid-template-columns: minmax(0, 1fr) 360px; gap: 4.5rem; } }
+        .nw-night-chip { display: inline-flex; align-items: center; gap: 0.45rem; padding: 0.35rem 0.85rem; border-radius: 999px; background: rgba(255,179,0,0.14); border: 1px solid rgba(255,179,0,0.4); color: #FFD54F; font-size: 0.74rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
+        .nw-night h2 { margin: 1rem 0; font-family: var(--font-display); font-size: clamp(1.9rem, 4vw, 2.8rem); font-weight: 800; line-height: 1.15; color: #fff; }
+        .nw-night h2 span { display: block; background: linear-gradient(90deg, #FFD54F, #FFB300 60%, #FF8C38); -webkit-background-clip: text; background-clip: text; color: transparent; }
+        .nw-night-copy > p { margin: 0 0 1.5rem; max-width: 560px; font-size: 1.05rem; line-height: 1.65; color: rgba(255,255,255,0.8); }
+        .nw-night-facts { list-style: none; margin: 0 0 1.85rem; padding: 0; display: flex; flex-direction: column; gap: 0.95rem; }
+        .nw-night-facts li { display: flex; align-items: flex-start; gap: 0.85rem; }
+        .nw-night-facts i { flex: none; width: 38px; height: 38px; border-radius: 11px; background: rgba(255,179,0,0.12); color: #FFD54F; display: flex; align-items: center; justify-content: center; font-size: 0.95rem; }
+        .nw-night-facts b { display: block; font-size: 1rem; color: #fff; }
+        .nw-night-facts small { font-size: 0.88rem; line-height: 1.45; color: rgba(255,255,255,0.66); }
+        .nw-pass-tag { display: inline-block; margin-left: 0.4rem; padding: 0.08rem 0.5rem; border-radius: 999px; background: rgba(255,255,255,0.12); color: rgba(255,255,255,0.85); font-size: 0.66rem; font-weight: 700; letter-spacing: 0.02em; vertical-align: 2px; }
+        .nw-pass-tag.gold { background: rgba(255,179,0,0.18); color: #FFD54F; }
+        .nw-night-note { margin: 0.95rem 0 0; max-width: 560px; font-size: 0.88rem; line-height: 1.6; color: rgba(255,255,255,0.64); }
+        .nw-night-note a { color: #FFD54F; font-weight: 700; }
+        .nw-invite { max-width: 340px; margin: 0 auto; aspect-ratio: 4 / 5; padding: 2rem 1.6rem; border-radius: 22px; border: 1px solid rgba(255,213,79,0.45); background: linear-gradient(160deg, #222650, #0D0F1E); box-shadow: 0 30px 70px rgba(0,0,0,0.45), inset 0 0 0 7px rgba(255,213,79,0.06); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.85rem; text-align: center; transform: rotate(-2deg); }
+        .nw-invite img { height: 46px; width: auto; padding: 6px; border-radius: 10px; background: rgba(255,255,255,0.95); }
+        .nw-inv-k { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.32em; text-transform: uppercase; color: #FFD54F; }
+        .nw-inv-t { font-family: var(--font-display); font-size: 1.7rem; font-weight: 800; line-height: 1.15; color: #fff; }
+        .nw-inv-rule { width: 60%; height: 1px; background: linear-gradient(90deg, transparent, rgba(255,213,79,0.75), transparent); }
+        .nw-inv-d { font-size: 0.95rem; line-height: 1.5; color: rgba(255,255,255,0.8); }
+        .nw-inv-a { font-size: 0.76rem; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(255,255,255,0.62); }
+        @media (max-width: 899px) { .nw-invite { max-width: 290px; transform: none; } }
         /* On a phone the phone comes first, then the steps that explain it. */
         @media (max-width: 899px) { .nw-copy-top { order: 1; } .nw-phone-wrap { order: 2; } .nw-steps { order: 3; } .nw-copy-bottom { order: 4; } }
         .nw-dialog { margin: auto; border: 0; border-radius: 20px; padding: 1.75rem 1.5rem 1.4rem; width: min(420px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow-y: auto; box-shadow: 0 24px 60px rgba(13,15,30,0.35); color: var(--charcoal); text-align: center; }
@@ -400,6 +425,40 @@
         <p class="nw-d-note">Free Visitor Pass: you see some of the people only. You cannot send requests or book meetings, and entry depends on free slots on 20 and 21 Nov.</p>
         <a href="/app" class="nw-d-app">Already registered? Open the app &rarr;</a>
     </dialog>
+
+    <!-- ===== IN PERSON: lunch and tea, the VIP lounge, the Leaders’ Evening =====
+         Only what the schedule and the passes already say: networking lunch and tea
+         breaks on both days (lunch with Delegate, Premium Delegate and VIP:
+         LUNCH_BY_PASS); the VIP lounge (VIP); the Leaders’ Evening on Day 1,
+         Fri 20 Nov, 6:30 to 8:30 pm, a networking cocktail evening for CXOs and
+         senior industry leaders, VIP only (organiser, 29 Oct 2026). No lunch of
+         its own for VIP (nothing says there is one), no venue for the evening (a sponsor
+         may move it), no guest names, no price (prices change on 6 Nov). -->
+    <section class="nw-night" id="cxo-night">
+        <div class="container nw-night-in">
+            <div class="nw-night-copy">
+                <span class="nw-night-chip"><i class="fas fa-crown" aria-hidden="true"></i> In person at WTC Mumbai</span>
+                <h2>Networking lunch, tea, the VIP lounge <span>and the Leaders’ Evening</span></h2>
+                <p>The app gets you the meetings. These are the places you have them, through both days and into the evening of 20 Nov.</p>
+                <ul class="nw-night-facts">
+                    <li><i class="fas fa-utensils" aria-hidden="true"></i><span><b>Networking lunch and tea breaks <span class="nw-pass-tag">Delegate &middot; Premium &middot; VIP</span></b><small>On both days, with the exhibition floor open. Networking lunch comes with the Delegate, Premium Delegate and VIP passes.</small></span></li>
+                    <li><i class="fas fa-gem" aria-hidden="true"></i><span><b>The VIP lounge <span class="nw-pass-tag gold">VIP</span></b><small>A quieter place to sit down with the people you meet.</small></span></li>
+                    <li><i class="fas fa-cocktail" aria-hidden="true"></i><span><b>Bharat AI Leaders’ Evening <span class="nw-pass-tag gold">VIP</span></b><small>Friday 20 Nov, 6:30 pm to 8:30 pm. A networking cocktail evening for CXOs and senior industry leaders, the room where Day 2&rsquo;s meetings get set up. No other pass includes it.</small></span></li>
+                </ul>
+                <a href="/register#vip" class="btn btn-primary btn-lg">Get a VIP Pass <i class="fas fa-arrow-right"></i></a>
+                <p class="nw-night-note">The VIP Pass also has everything in the Premium Delegate Pass, the VIP lounge, priority seating and a speaker meet &amp; greet. <a href="/passes">Compare the passes &rarr;</a></p>
+            </div>
+            <div class="nw-invite" aria-hidden="true">
+                <img src="/images/logo-nav.webp" width="120" height="50" alt="" loading="lazy" decoding="async">
+                <span class="nw-inv-k">Invitation</span>
+                <span class="nw-inv-t">Bharat AI Leaders’ Evening</span>
+                <span class="nw-inv-rule"></span>
+                <span class="nw-inv-d">Friday 20 November 2026<br>6:30 pm to 8:30 pm</span>
+                <span class="nw-inv-rule"></span>
+                <span class="nw-inv-a">For VIP Pass holders</span>
+            </div>
+        </div>
+    </section>
 
     <!-- ===== BHARAT AI CONNECT, THE NETWORKING APP ===== -->
     <section style="padding:5rem 0;background:white;" id="connect">
