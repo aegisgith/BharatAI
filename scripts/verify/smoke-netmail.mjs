@@ -78,7 +78,7 @@ const person = (id, name, extra = {}, notified = OLD) => {
 };
 const SHARED = { social_card_downloaded_at: '2026-10-30 10:00:00' };
 const photo = (id) => ({ avatar_url: '/api/uploads/avatars/' + id + '-1.jpg' });
-person(1, 'Ratan Kesh', { ...SHARED, ...photo(1), badge_type: 'Delegate Pass', job_title: 'Executive Director & COO at Bandhan Bank', company: 'Bandhan Bank' });
+person(1, 'Ratan Kesh', { ...SHARED, ...photo(1), badge_type: 'Delegate Pass', job_title: 'Executive Director & COO at Bandhan Bank', company: 'Bandhan Bank', industry: 'Banking & Financial Services', city: 'Kolkata' });
 person(2, 'Meera Iyer', { ...SHARED, ...photo(2), job_title: 'Head of AI', company: 'Bosch India' });
 person(3, 'Asked Off', { ...SHARED, ...photo(3), job_title: 'Chief Executive Officer', company: 'Hiddenco' });
 person(4, 'Neha Quiet', { ...photo(4), job_title: 'Director', company: 'Quietco' });
@@ -100,10 +100,12 @@ check('an even registration number gets the organiser\'s first subject', p.json?
 check('the preview names both subjects, in the reader\'s name', p.json?.subjects?.A === 'Meera, book meetings before you arrive with Bharat AI Connect' &&
   p.json.subjects.B === 'Meera, find out who you would like to meet at Bharat AI Innovation', JSON.stringify(p.json?.subjects));
 const free = p.json?.html || '';
-check('the phone shows people who shared their card, by their initials, never their photo', free.includes('Networking Hub') && free.includes('Ratan Kesh') && free.includes('Third Sharer') &&
-  free.includes('>RK</div>') && free.includes('>TS</div>') && !free.includes('/api/uploads/'), '');
-check('never the reader, nobody in glimpse_hide, nobody who did not share their card', !/Meera Iyer<\/p>|Asked Off|Hiddenco|Neha Quiet|Quietco/.test(free), '');
-check('a title loses its company; the company stands beside it', free.includes('Executive Director &amp; COO &middot; Bandhan Bank'), '');
+check('the phone shows what people who shared their card do: title, then sector and city', free.includes('Networking Hub') &&
+  free.includes('>Executive Director &amp; COO</p>') && free.includes('>Founder</p>') && free.includes('Banking &amp; Financial Services &middot; Kolkata'), '');
+check('and never who they are: a stand-in picture and a grey bar, no name, no company, no photo of theirs',
+  free.includes('/images/email/person-hidden-1.png') && free.includes('/images/email/person-hidden-2.png') &&
+  !/Ratan|Kesh|Third Sharer|Bandhan|Startco|\/api\/uploads\//.test(free), '');
+check('never the reader, nobody in glimpse_hide, nobody who did not share their card', !/Head of AI|Chief Executive Officer|Hiddenco|Quietco/.test(free), '');
 check('the five steps, as on /networking', ['Find the right people', 'Connect in one tap', 'Book a meeting', 'Message before you arrive', 'Share your card on LinkedIn'].every(t => free.includes(t)), '');
 check('free: what it cannot start is marked Delegate Pass, and nothing is offered for sale (they find it in the app)',
   (free.match(/>Delegate Pass<\/span>/g) || []).length === 3 && !free.includes('Want to be the one who asks') && !free.includes('Get a Delegate Pass') &&
@@ -115,7 +117,7 @@ p = await hit('GET', '/api/admin/netmail-preview?kind=paid', undefined, ADMIN);
 const paid = p.json?.html || '';
 check('paid, an odd number: the second subject, "includes all of it", nothing to buy, no step marked', p.json?.sample?.id === 1 && p.json.subject === 'Ratan, find out who you would like to meet at Bharat AI Innovation'
   && paid.includes('Your <strong>Delegate Pass</strong> includes all of it') && !paid.includes('Want to be the one who asks') && !/>(Delegate Pass|Once paid)<\/span>/.test(paid), p.json?.subject);
-check('a paid reader is not on their own phone, the others are', !paid.includes('Ratan Kesh</p>') && paid.includes('Meera Iyer') && paid.includes('Third Sharer'), '');
+check('a paid reader is not on their own phone, the others are', !paid.includes('Executive Director &amp; COO') && paid.includes('>Head of AI</p>') && paid.includes('>Founder</p>') && !paid.includes('Meera Iyer'), '');
 check('a paid pass not downloaded yet is given the way to it', paid.includes('Your pass is not downloaded yet') && paid.includes('action=download-pass'), '');
 p = await hit('GET', '/api/admin/netmail-preview?kind=unpaid', undefined, ADMIN);
 const unpaid = p.json?.html || '';

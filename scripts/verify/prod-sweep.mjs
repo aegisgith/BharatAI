@@ -244,6 +244,12 @@ r = await hit('/api/admin/netmail-status');
 check('the networking email numbers need admin', r.status === 401, r.status);
 r = await hit('/api/netmail-open?a=1&s=0');
 check('the networking email open picture answers a gif, never cached', r.status === 200 && /image\/gif/.test(r.h['content-type'] || '') && /no-store/.test(r.h['cache-control'] || ''), r.status + ' ' + r.h['content-type']);
+// Its phone draws these where a person's photo would go: one missing is a broken
+// picture in every email.
+for (const n of [1, 2, 3]) {
+  r = await hit('/images/email/person-hidden-' + n + '.png');
+  check('the networking email stand-in picture ' + n + ' is served', r.status === 200 && /image\/png/.test(r.h['content-type'] || ''), r.status + ' ' + r.h['content-type']);
+}
 
 console.log(fails ? `\n${fails} FAILED` : '\nall production checks passed');
 process.exit(fails ? 1 : 0);

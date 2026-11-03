@@ -14683,8 +14683,10 @@ app.get('/api/admin/notify-preview', async (c) => {
 // who downloaded their "I'm attending" card, with a photo stored here, never an id
 // in glimpse_hide, never the reader. They are picked as each email is built, so
 // someone taken off the page is off the email from the next send. They are drawn
-// with their initials, never their photo: a face in a mass email may offend
-// (organiser, 3 Nov 2026).
+// by what they do, never who they are (organiser, 3 Nov 2026: a face or a name in a
+// mass email may offend): a blurred stand-in picture, nobody's photo, and a grey bar
+// where the name goes, with the title, sector and city clear. Neither the name nor
+// the company is anywhere in the email, so nobody can be recognised from it.
 //
 // Two ways out. A campaign of kind 'networking' (BULK EMAIL CAMPAIGNS): the shared
 // send gap, the 9am-9pm IST window, Pause and Resume, the minute clock. And by
@@ -14725,29 +14727,31 @@ async function networkingEmail(c: any, a: any, opts: { preview?: boolean } = {})
 
   // The phone: the app's Networking Hub as /networking draws it, in table markup
   // every mail app keeps. With fewer than two people to show it is left out.
-  const people = await glimpseNamed(c, a.event_id || 1, 3, await glimpseHidden(c), Number(a.id))
+  const people = (await glimpseNamed(c, a.event_id || 1, 6, await glimpseHidden(c), Number(a.id))).filter(p => p.title).slice(0, 3)
   const chip = (t: string) =>
     `<span style="display:inline-block;margin:0 3px 4px 0;padding:3px 8px;background:#fff;border:1px solid #E3E6F5;border-radius:999px;font-size:10.5px;color:#3A3F5C;">${t}</span>`
   const pbtn = (t: string, bg: string, fg: string, line: string) =>
     `<span style="display:inline-block;margin:0 4px 0 0;padding:6px 10px;background:${bg};border:1px solid ${line};border-radius:8px;font-size:11px;font-weight:bold;color:${fg};">${t}</span>`
-  // Initials in a coloured circle where the app shows the photo.
-  const initials = (name: any) => String(name || '').trim().split(/\s+/)
-    .filter(w => /^\p{L}/u.test(w) && !/^(dr|prof|mr|mrs|ms|miss|shri|smt|er|ca|adv)\.?$/i.test(w))
-    .slice(0, 2).map(w => w.charAt(0).toUpperCase()).join('')
-  const TONES = ['#FF6B00', '#0B7A75', '#3D4BC7']
-  const card = (p: any, i: number) => `
+  // The stand-ins are scripts/gen-hidden-person.mjs; the bars are fixed widths, not
+  // the length of anyone's name.
+  const NAME_BARS = [96, 118, 84]
+  const card = (p: any, i: number) => {
+    const where = [p.industry, p.city].filter(Boolean).map(esc).join(' &middot; ')
+    return `
             <tr><td style="padding:0 10px 8px;">
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate;background:#fff;border:1px solid #ECEEF6;border-radius:14px;">
                 <tr>
-                  <td width="52" valign="top" style="padding:12px 0 8px 12px;"><div style="width:40px;height:40px;border-radius:20px;background:${TONES[i % TONES.length]};color:#fff;font-size:14px;font-weight:bold;line-height:40px;text-align:center;">${esc(initials(p.name))}</div></td>
+                  <td width="52" valign="top" style="padding:12px 0 8px 12px;"><img src="https://bharataiinnovation.com/images/email/person-hidden-${(i % 3) + 1}.png" width="40" height="40" alt="" style="display:block;width:40px;height:40px;border:0;"></td>
                   <td valign="top" style="padding:12px 12px 8px 0;">
-                    <p style="margin:0;font-size:13.5px;font-weight:bold;color:#1E2140;line-height:1.3;">${esc(p.name)}</p>
-                    <p style="margin:2px 0 0;font-size:11.5px;color:#6B7090;line-height:1.4;">${[p.title, p.company].filter(Boolean).map(esc).join(' &middot; ')}</p>
+                    <div style="width:${NAME_BARS[i % 3]}px;height:9px;margin:3px 0 7px;background:#DCDFEA;border-radius:5px;font-size:0;line-height:0;">&nbsp;</div>
+                    <p style="margin:0;font-size:13.5px;font-weight:bold;color:#1E2140;line-height:1.35;">${esc(p.title)}</p>
+                    ${where ? `<p style="margin:2px 0 0;font-size:11.5px;color:#6B7090;line-height:1.4;">${where}</p>` : ''}
                   </td>
                 </tr>
                 <tr><td colspan="2" style="padding:0 12px 12px;">${pbtn('Profile', '#fff', '#1E2140', '#D5D9EA')}${pbtn('+ Connect', '#FFF1E6', '#E35D00', '#FFD9BF')}${pbtn('Meet', '#E8F6EF', '#0f7b47', '#C6EAD6')}</td></tr>
               </table>
             </td></tr>`
+  }
   const nav = (t: string, on = false) =>
     `<td align="center" style="padding:8px 2px;font-size:10px;font-weight:bold;color:${on ? '#fff' : '#8A8FA8'};${on ? 'background:#FF6B00;border-radius:10px;' : ''}">${t}</td>`
   const phone = people.length < 2 ? '' : `
