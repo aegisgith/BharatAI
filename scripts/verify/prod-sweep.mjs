@@ -236,5 +236,14 @@ r = await hit('/networking');
 check('/networking carries the headline and plays the app: glimpse, Schedule Meeting, Tell your network', r.text.includes("fetch('/api/events/1/glimpse'") && r.text.includes('Business meetings before you arrive at Bharat AI Innovation') &&
   r.text.includes('Schedule Meeting') && r.text.includes('Tell your network'), 'markers');
 
+// The networking app email (3 Nov 2026): its preview and numbers are the admin's;
+// its open picture answers anyone with a gif and counts only a signed one.
+r = await hit('/api/admin/netmail-preview');
+check('the networking email preview needs admin', r.status === 401, r.status);
+r = await hit('/api/admin/netmail-status');
+check('the networking email numbers need admin', r.status === 401, r.status);
+r = await hit('/api/netmail-open?a=1&s=0');
+check('the networking email open picture answers a gif, never cached', r.status === 200 && /image\/gif/.test(r.h['content-type'] || '') && /no-store/.test(r.h['cache-control'] || ''), r.status + ' ' + r.h['content-type']);
+
 console.log(fails ? `\n${fails} FAILED` : '\nall production checks passed');
 process.exit(fails ? 1 : 0);

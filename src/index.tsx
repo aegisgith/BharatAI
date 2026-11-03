@@ -6345,43 +6345,63 @@ function glimpseCity(city: any): string {
   return s.toLowerCase().replace(/(^|[\s\-])([a-z])/g, (_, p, ch) => p + ch.toUpperCase())
 }
 
+// Who may be on a glimpse at all: conference registrants who did not say no to
+// email, never the team. Bound to (event id, istDay()) with glimpseOrder().
+async function glimpseBase(c: any): Promise<string> {
+  return ` FROM attendees WHERE event_id = ?${await mainEventClause(c)}${await suppressionClause(c)}
+      AND LOWER(COALESCE(role, '')) NOT LIKE '%organi%' AND LOWER(COALESCE(role, '')) NOT LIKE '%staff%'
+      AND LOWER(COALESCE(role, '')) NOT LIKE '%admin%'`
+}
+const glimpseOrder = () => ` ORDER BY ${TEASER_QUALITY_SQL} DESC, ((id * 7919 + ?) % 1009) ASC, id ASC`
+async function glimpseHidden(c: any): Promise<Set<number>> {
+  return new Set((await settingValue(c, 'glimpse_hide')).split(',').map(s => parseInt(s, 10)).filter(n => n > 0))
+}
+function glimpseGoals(r: any): string[] {
+  const goals = String(r.networking_goals || '').toLowerCase().split(',').map(g => g.trim())
+  return Object.keys(GLIMPSE_GOALS).filter(g => goals.includes(g)).slice(0, 2).map(g => GLIMPSE_GOALS[g])
+}
+// 'Other' says nothing on a card, so it is left off like a blank one.
+function glimpseIndustry(r: any): string {
+  return INDUSTRIES.includes(String(r.industry || '')) && r.industry !== 'Other' ? String(r.industry) : ''
+}
+
+// The named cards, best first. Shared by /networking and the networking email
+// (networkingEmail), so both follow one rule about who may be named. Each carries
+// its id, which /networking never sends; skip leaves out one person (the reader).
+async function glimpseNamed(c: any, eventId: any, max: number, hidden: Set<number>, skip: number = 0): Promise<any[]> {
+  const cols = await attendeeColumns(c)
+  if (!cols.has('social_card_downloaded_at')) return []
+  let rows: any[] = []
+  try {
+    rows = ((await c.env.DB.prepare(
+      `SELECT id, name, job_title, company, avatar_url, industry, city, networking_goals${await glimpseBase(c)}
+        AND social_card_downloaded_at IS NOT NULL AND avatar_url LIKE '/api/uploads/%'
+        ${cols.has('photo_flagged_at') ? 'AND photo_flagged_at IS NULL' : ''}${glimpseOrder()} LIMIT ${Math.max(max * 2, 8)}`
+    ).bind(eventId, istDay()).all()).results || []) as any[]
+  } catch (_) { rows = [] }
+  const out: any[] = []
+  for (const r of rows) {
+    if (hidden.has(Number(r.id)) || Number(r.id) === skip) continue
+    const name = glimpseLabel(r.name, 48)
+    if (!name) continue
+    out.push({ id: Number(r.id), name, title: glimpseTitle(r.job_title, r.company), company: glimpseLabel(r.company, 48),
+      photo: String(r.avatar_url), industry: glimpseIndustry(r), city: glimpseCity(r.city), goals: glimpseGoals(r) })
+    if (out.length >= max) break
+  }
+  return out
+}
+
 // Public: no sign-in. Not in the service worker's cacheable list, so nothing keeps it.
 app.get('/api/events/:id/glimpse', async (c) => {
   const eventId = c.req.param('id')
-  const cols = await attendeeColumns(c)
-  const hidden = new Set((await settingValue(c, 'glimpse_hide')).split(',').map(s => parseInt(s, 10)).filter(n => n > 0))
-  const base = ` FROM attendees WHERE event_id = ?${await mainEventClause(c)}${await suppressionClause(c)}
-      AND LOWER(COALESCE(role, '')) NOT LIKE '%organi%' AND LOWER(COALESCE(role, '')) NOT LIKE '%staff%'
-      AND LOWER(COALESCE(role, '')) NOT LIKE '%admin%'`
-  const order = ` ORDER BY ${TEASER_QUALITY_SQL} DESC, ((id * 7919 + ?) % 1009) ASC, id ASC`
-  const goalsOf = (r: any) => {
-    const goals = String(r.networking_goals || '').toLowerCase().split(',').map(g => g.trim())
-    return Object.keys(GLIMPSE_GOALS).filter(g => goals.includes(g)).slice(0, 2).map(g => GLIMPSE_GOALS[g])
-  }
-  // 'Other' says nothing on a card, so it is left off like a blank one.
-  const industryOf = (r: any) => INDUSTRIES.includes(String(r.industry || '')) && r.industry !== 'Other' ? String(r.industry) : ''
+  const hidden = await glimpseHidden(c)
+  const base = await glimpseBase(c)
+  const order = glimpseOrder()
+  const goalsOf = glimpseGoals, industryOf = glimpseIndustry
 
-  const people: any[] = []
-  const named = new Set<number>()
-  if (cols.has('social_card_downloaded_at')) {
-    let rows: any[] = []
-    try {
-      rows = ((await c.env.DB.prepare(
-        `SELECT id, name, job_title, company, avatar_url, industry, city, networking_goals${base}
-          AND social_card_downloaded_at IS NOT NULL AND avatar_url LIKE '/api/uploads/%'
-          ${cols.has('photo_flagged_at') ? 'AND photo_flagged_at IS NULL' : ''}${order} LIMIT ${GLIMPSE_SHOWN * 2}`
-      ).bind(eventId, istDay()).all()).results || []) as any[]
-    } catch (_) { rows = [] }
-    for (const r of rows) {
-      if (hidden.has(Number(r.id))) continue
-      const name = glimpseLabel(r.name, 48)
-      if (!name) continue
-      named.add(Number(r.id))
-      people.push({ name, title: glimpseTitle(r.job_title, r.company), company: glimpseLabel(r.company, 48),
-        photo: String(r.avatar_url), industry: industryOf(r), city: glimpseCity(r.city), goals: goalsOf(r) })
-      if (people.length >= GLIMPSE_SHOWN) break
-    }
-  }
+  const namedRows = await glimpseNamed(c, eventId, GLIMPSE_SHOWN, hidden)
+  const named = new Set<number>(namedRows.map(p => p.id))
+  const people = namedRows.map(({ id, ...p }) => p)
 
   const locked: any[] = []
   let rows: any[] = []
@@ -14642,6 +14662,326 @@ app.get('/api/admin/notify-preview', async (c) => {
   })
 })
 
+// ==================== NETWORKING EMAIL ====================
+//
+// "Book meetings before you arrive with Bharat AI Connect" (organiser, 3 Nov 2026):
+// one email to every conference registrant about the networking app, showing the
+// app as a phone with three real people on it, then the five steps of /networking.
+// Two subjects, the same for every pass; the body follows the pass held (notifyKind). A paid
+// pass is told to start; a Free Visitor Pass that it can look and that accepting
+// and replying are free, and that asking first is the Delegate Pass (the app's own
+// locked cards and prompts sell it too); a paid tier not paid yet, to finish paying.
+//
+// The people on the phone are the /networking ones (glimpseNamed): only someone
+// who downloaded their "I'm attending" card, with a photo stored here, never an id
+// in glimpse_hide, never the reader. They are picked as each email is built, so
+// someone taken off the page is off the email from the next send.
+//
+// A campaign of kind 'networking' (BULK EMAIL CAMPAIGNS): the shared send gap, the
+// 9am-9pm IST window, Pause and Resume, the minute clock. NETMAIL_NOT_YET_SQL
+// leaves out anyone already on a networking run, so nobody gets it twice. Opens
+// and clicks are networking.open / networking.click (mailMark), counted from
+// app_settings 'networking_marks_from'.
+const NETMAIL_NOT_YET_SQL = ` AND id NOT IN (SELECT cr.attendee_id FROM campaign_recipients cr JOIN campaigns cp ON cp.id = cr.campaign_id
+    WHERE cp.kind = 'networking' AND cr.attendee_id IS NOT NULL AND cr.status IN ('pending', 'sending', 'sent'))`
+
+async function networkingEmail(c: any, a: any, opts: { preview?: boolean } = {}): Promise<{ subject: string; html: string }> {
+  const appUrl = (await settingGet(c, 'app_url')) || 'https://bharataiinnovation.com/app'
+  const origin = appUrl.replace(/\/app\/?$/, '')
+  const esc = (v: any) => String(v ?? '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch] as string))
+  const email = String(a.email || '')
+  const first = greetingName(a.name)
+  const kind = notifyKind(a)
+  const badge = String(a.badge_type || '').trim()
+  const passName = kind === 'paid' ? (/pass$/i.test(badge) ? badge : badge + ' Pass') : 'Free Visitor Pass'
+
+  // One sign-in token for every button, the open picture and the button tag, as in
+  // the account-ready email. None of them in a preview: a token minted there would
+  // cancel the link the person already holds.
+  let token = '', tag = '', pixel = ''
+  if (!opts.preview) {
+    const sig = await mailMarkSig(c, 'networking', a.id)
+    tag = `&nw=${Number(a.id)}.${sig}`
+    pixel = `<img src="${origin}/api/netmail-open?a=${Number(a.id)}&amp;s=${sig}" width="1" height="1" alt="" style="display:block;border:0;width:1px;height:1px;">`
+    try {
+      if (await verifiedLoginEnabled(c)) token = (await createLoginToken(c, a.event_id || 1, email.trim().toLowerCase(), PROFILE_LINK_TTL_MINUTES, 6)).token
+    } catch (_) { /* the mail still goes; its buttons then end at the sign-in form */ }
+  }
+  const base = `${appUrl}?email=${encodeURIComponent(email)}`
+  const go = (action: string, extra = '') => `${base}&action=${action}${extra}${token ? '&token=' + token : ''}${tag}`
+  const btn = (href: string, label: string, bg: string) =>
+    `<a href="${href}" style="display:inline-block;padding:14px 28px;background:${bg};color:#fff;text-decoration:none;border-radius:10px;font-weight:bold;font-size:15px;">${label}</a>`
+
+  // The phone: the app's Networking Hub as /networking draws it, in table markup
+  // every mail app keeps. With fewer than two people to show it is left out.
+  const people = await glimpseNamed(c, a.event_id || 1, 3, await glimpseHidden(c), Number(a.id))
+  const chip = (t: string) =>
+    `<span style="display:inline-block;margin:0 3px 4px 0;padding:3px 8px;background:#fff;border:1px solid #E3E6F5;border-radius:999px;font-size:10.5px;color:#3A3F5C;">${t}</span>`
+  const pbtn = (t: string, bg: string, fg: string, line: string) =>
+    `<span style="display:inline-block;margin:0 4px 0 0;padding:6px 10px;background:${bg};border:1px solid ${line};border-radius:8px;font-size:11px;font-weight:bold;color:${fg};">${t}</span>`
+  const card = (p: any) => `
+            <tr><td style="padding:0 10px 8px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate;background:#fff;border:1px solid #ECEEF6;border-radius:14px;">
+                <tr>
+                  <td width="52" valign="top" style="padding:12px 0 8px 12px;"><img src="${esc(origin + p.photo)}" width="40" height="40" alt="" style="display:block;width:40px;height:40px;border-radius:20px;border:0;"></td>
+                  <td valign="top" style="padding:12px 12px 8px 0;">
+                    <p style="margin:0;font-size:13.5px;font-weight:bold;color:#1E2140;line-height:1.3;">${esc(p.name)}</p>
+                    <p style="margin:2px 0 0;font-size:11.5px;color:#6B7090;line-height:1.4;">${[p.title, p.company].filter(Boolean).map(esc).join(' &middot; ')}</p>
+                  </td>
+                </tr>
+                <tr><td colspan="2" style="padding:0 12px 12px;">${pbtn('Profile', '#fff', '#1E2140', '#D5D9EA')}${pbtn('+ Connect', '#FFF1E6', '#E35D00', '#FFD9BF')}${pbtn('Meet', '#E8F6EF', '#0f7b47', '#C6EAD6')}</td></tr>
+              </table>
+            </td></tr>`
+  const nav = (t: string, on = false) =>
+    `<td align="center" style="padding:8px 2px;font-size:10px;font-weight:bold;color:${on ? '#fff' : '#8A8FA8'};${on ? 'background:#FF6B00;border-radius:10px;' : ''}">${t}</td>`
+  const phone = people.length < 2 ? '' : `
+      <a href="${go('network')}" style="display:block;margin:22px 0 0;color:inherit;text-decoration:none;">
+      <table role="presentation" align="center" width="280" cellpadding="0" cellspacing="0" style="width:280px;max-width:100%;margin:0 auto;border-collapse:separate;background:#1E2140;border-radius:34px;">
+        <tr><td style="padding:10px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate;background:#F4F5FA;border-radius:26px;">
+            <tr><td style="padding:10px 14px 4px;">
+              <div style="width:64px;height:5px;margin:0 auto 12px;background:#D5D9EA;border-radius:3px;"></div>
+              <p style="margin:0;font-size:15px;font-weight:bold;color:#1E2140;">Networking Hub</p>
+              <p style="margin:2px 0 10px;font-size:11px;color:#7A7F9A;">Bharat AI Connect</p>
+              <div style="margin:0 0 8px;padding:8px 10px;background:#fff;border:1px solid #E3E6F5;border-radius:10px;font-size:11.5px;color:#9AA0B8;">Search name, company or title</div>
+              <p style="margin:0 0 6px;font-size:10.5px;color:#7A7F9A;">Here to ${chip('Selling')}${chip('Buying')}${chip('B2B networking')}</p>
+            </td></tr>
+            ${people.map(card).join('')}
+            <tr><td style="padding:2px 8px 10px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate;background:#fff;border-radius:14px;"><tr>
+                ${nav('Schedule')}${nav('Network', true)}${nav('Inbox')}${nav('Alerts')}
+              </tr></table>
+            </td></tr>
+          </table>
+        </td></tr>
+      </table></a>
+      <p style="margin:10px 0 0;font-size:12px;color:#888;text-align:center;">Some of the people coming, as the app shows them today.</p>`
+
+  // The five steps, worded as on /networking. What a free pass cannot start is
+  // marked, so nobody is promised a booking the app will then refuse.
+  const tagChip = (t: string, bg: string, fg: string) =>
+    `<span style="display:inline-block;margin:2px 0 0 6px;padding:2px 8px;background:${bg};border-radius:999px;font-size:11px;font-weight:bold;color:${fg};vertical-align:middle;">${t}</span>`
+  const online = tagChip('Online', '#EEF0FF', '#3D4BC7')
+  const atWtc = tagChip('At WTC Mumbai', '#FFF1E6', '#C2410C')
+  const needs = kind === 'paid' ? '' : tagChip(kind === 'free' ? 'Delegate Pass' : 'Once paid', '#FFF6DB', '#8A6A00')
+  const step = (n: number, title: string, chips: string, body: string) =>
+    `<tr><td width="38" valign="top" style="padding:0 0 16px;"><div style="width:28px;height:28px;border-radius:50%;background:${n === 1 ? '#FF6B00' : '#EEF0F8'};color:${n === 1 ? '#fff' : '#3A3F5C'};font-weight:bold;font-size:13px;line-height:28px;text-align:center;">${n}</div></td>` +
+    `<td valign="top" style="padding:3px 0 16px;"><p style="margin:0 0 4px;font-size:15px;font-weight:bold;color:#1E2140;">${title}${chips}</p><p style="margin:0;font-size:13.5px;line-height:1.6;color:#555;">${body}</p></td></tr>`
+  const steps = `
+      <p style="margin:26px 0 12px;font-size:17px;font-weight:bold;color:#1E2140;">How it works</p>
+      <table role="presentation" style="width:100%;border-collapse:collapse;">
+        ${step(1, 'Find the right people', online, 'Search by name, company or title. Filter by industry, city and why they are coming.')}
+        ${step(2, 'Connect in one tap', online + needs, 'They get your request in the app and by email, and accept it from there.')}
+        ${step(3, 'Book a meeting', atWtc + needs, 'Pick a time on 20 or 21 Nov. Walk in with meetings fixed, not hoping to bump into people.')}
+        ${step(4, 'Message before you arrive', online + needs, 'Agree what you will talk about, so the meeting starts where it matters.')}
+        ${step(5, 'Share your card on LinkedIn', online, `Post your &ldquo;I&rsquo;m attending&rdquo; card. Your network sees you are coming, and the right people ask to meet you. <a href="${go('social-card')}" style="color:#E35D00;font-weight:bold;">Make my card</a>`)}
+      </table>`
+
+  const cta = `
+      <div style="text-align:center;margin:6px 0 0;">${btn(go('network'), 'Find people to meet &rarr;', 'linear-gradient(135deg,#FF6B00,#FF8C38)')}</div>
+      <p style="margin:14px 0 0;font-size:13px;line-height:1.6;color:#555;text-align:center;">Say why you are coming (buying, selling, partners, hiring) and the right people find you. <a href="${go('goals')}" style="color:#0B7A75;font-weight:bold;">Add it to my profile</a></p>`
+
+  // Last: for a free pass, the step up, value before price; for a paid tier not
+  // paid yet, the payment. A paid pass has nothing to buy here.
+  const late = latePricing()
+  const passBlock = kind === 'free' ? `
+      <div style="margin:26px 0 0;padding:22px;background:#FFFCF4;border:1px solid #EADFC2;border-radius:12px;">
+        <p style="margin:0 0 14px;font-size:13.5px;line-height:1.65;color:#555;">On your <strong>Free Visitor Pass</strong> you can see a selection of the people coming, and when someone asks to connect or to meet you, accepting and replying are free.</p>
+        <p style="margin:0 0 6px;font-size:17px;font-weight:bold;color:#1E2140;">Want to be the one who asks?</p>
+        <p style="margin:0 0 12px;font-size:13.5px;line-height:1.65;color:#555;">A <strong>Delegate Pass</strong> lets you connect, message and book meetings before you arrive, with guaranteed entry on both days, every conference session and the networking lunch.</p>
+        <p style="margin:0 0 14px;font-size:13.5px;line-height:1.6;color:#1E2140;"><strong>${rsPrice('Delegate Pass')} + GST</strong>${late ? '' : ` until ${PRICE_DEADLINE_TEXT}, then ${rsPrice('Delegate Pass', true)} from ${PRICE_LATE_FROM_TEXT}`}.</p>
+        ${btn(go('pay', '&pass=delegate'), 'Get a Delegate Pass to meet them &rarr;', '#0f7b47')}
+        <p style="margin:12px 0 0;font-size:11.5px;line-height:1.6;color:#999;">The button signs you in and opens the secure payment page. Your registration stays the same.</p>
+      </div>`
+    : kind === 'unpaid' ? `
+      <div style="margin:26px 0 0;padding:20px;border:1px solid #CFEBDC;background:#F2FBF6;border-radius:12px;">
+        <p style="margin:0 0 6px;font-size:16px;font-weight:bold;color:#1E2140;">Your ${esc(badge)} is one payment away</p>
+        <p style="margin:0 0 14px;font-size:13.5px;line-height:1.65;color:#555;">Its payment is not complete, so for now your account works as a Free Visitor Pass. Pay ${rsPrice(badge)} + GST and you can start sending requests and booking meetings straight away.</p>
+        ${btn(go('pay', '&pass=' + (PASS_KEY[badge] || 'delegate')), 'Finish paying &rarr;', '#0f7b47')}
+      </div>` : ''
+
+  const intro = 'The people worth meeting at Bharat AI Innovation fill their diaries early. <strong>Bharat AI Connect</strong>, the event&rsquo;s networking app, lets you see who is coming, choose who you want to meet, and walk in with meetings fixed.' +
+    (kind === 'paid' ? ` Your <strong>${esc(passName)}</strong> includes all of it.` : '')
+  const preheader = 'See who is coming to Bharat AI Innovation and choose who you want to meet. 20&ndash;21 Nov, WTC Mumbai.'
+
+  const html = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f4f4f5;font-family:Arial,sans-serif;">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">${preheader}</div>
+  <div style="max-width:600px;margin:0 auto;padding:16px;">
+    <div style="border-radius:16px;overflow:hidden;">
+      ${emailBrandHeader('Book meetings before you arrive', '20&ndash;21 Nov 2026 &bull; World Trade Center, Mumbai')}
+    </div>
+    <div style="background:white;border-radius:16px;padding:24px 22px;margin-top:16px;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+      <p style="margin:0 0 10px;font-size:15px;color:#333;">Hi <strong>${esc(first || 'there')}</strong>,</p>
+      <p style="margin:0;font-size:14.5px;line-height:1.7;color:#444;">${intro}</p>
+      ${phone}
+      ${steps}
+      ${cta}
+      ${passBlock}
+      <div style="margin-top:24px;padding-top:16px;border-top:1px solid #eee;">
+        <p style="margin:0 0 14px;font-size:12.5px;line-height:1.6;color:#888;">The buttons in this email sign you in as <strong>${esc(email)}</strong>. If one has expired, open the app and sign in with this address: we send you a one-time code, no password needed.</p>
+        <p style="margin:0;font-size:14px;line-height:1.6;color:#555;">See you in Mumbai,<br><strong>Team Bharat AI Innovation</strong></p>
+      </div>
+    </div>
+    <div style="text-align:center;margin-top:20px;padding:16px 0;">
+      <table cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto;background:#ffffff;border-radius:12px;">
+        <tr>
+          <td style="padding:10px 6px 10px 12px;vertical-align:middle;"><img src="https://bharataiinnovation.com/images/agba-logo.png" alt="Aegis Graham Bell Awards" width="100" height="40" style="height:40px;width:100px;border:0;"></td>
+          <td style="padding:10px 6px;vertical-align:middle;"><img src="https://bharataiinnovation.com/images/passes/aegis.png" alt="Aegis School of Data Science and AI" width="108" height="40" style="height:40px;width:108px;border:0;"></td>
+          <td style="padding:10px 12px 10px 6px;vertical-align:middle;"><img src="https://bharataiinnovation.com/images/passes/assessfy.jpg" alt="Assessfy" width="102" height="35" style="height:35px;width:102px;border:0;"></td>
+        </tr>
+      </table>
+    </div>
+    <p style="text-align:center;color:#999;font-size:12px;margin-top:8px;">
+      Bharat AI Innovation Conference & Exhibition 2026 &bull; World Trade Center, Mumbai &bull; 20-21 Nov 2026
+    </p>
+  </div>${pixel}
+</body>
+</html>`
+
+  return { subject: netMailSubject(a, upgradeSubjectVariant(a.id)), html }
+}
+
+// The organiser's two subjects (3 Nov 2026), the same for every pass: a free pass is
+// sold the rest of the way by the app's own prompts. Split by registration number
+// as the upgrade email's are (upgradeSubjectVariant: even A, odd B), so a retry
+// keeps a person's subject and the card can say which one works.
+function netMailSubject(a: any, variant: 'A' | 'B'): string {
+  const first = greetingName(a?.name)
+  return variant === 'B'
+    ? (first ? first + ', find' : 'Find') + ' out who you would like to meet at Bharat AI Innovation'
+    : (first ? first + ', book' : 'Book') + ' meetings before you arrive with Bharat AI Connect'
+}
+
+// One networking email to ONE attendee, for the campaign pump: the shape of
+// send-upgrade (409 outside the window, 429 inside the gap, skipped when it no
+// longer fits the person).
+app.post('/api/admin/attendees/:id/send-networking', async (c) => {
+  const a = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(c.req.param('id')).first() as any
+  if (!a) return c.json({ error: 'Attendee not found' }, 404)
+  if (!a.email || !validEmailSyntax(a.email)) return c.json({ skipped: true, reason: 'No usable email address' })
+  if (a.unsubscribed_at || String(a.marketing_consent ?? '') === '0') return c.json({ skipped: true, reason: 'Unsubscribed, or said no to email' })
+  if (Number(a.main_event ?? 1) === 0) return c.json({ skipped: true, reason: 'Campus panel only: has not said yes to the conference' })
+  const win = sendWindowState()
+  if (!win.open && c.req.query('force') !== '1') {
+    return c.json({ paused: true, reason: `Outside the ${win.window} sending window (it is ${win.ist_time}).`, window: win }, 409)
+  }
+  const slot = await claimSendSlot(c, await sendGapSeconds(c))
+  if (!slot.ok) return c.json({ throttled: true, wait_seconds: slot.wait }, 429)
+  const mail = await networkingEmail(c, a)
+  const res = await sendAdminEmail(c, a.email, mail.subject, mail.html)
+  if (!res.ok) return c.json({ error: (res as any).error || 'Not sent' }, 502)
+  await c.env.DB.prepare("INSERT INTO app_settings (key, value, updated_at) VALUES ('networking_marks_from', datetime('now', '-1 minute'), datetime('now')) ON CONFLICT(key) DO NOTHING").run().catch(() => {})
+  return c.json({ success: true, sent_to: a.email })
+})
+
+app.get('/api/netmail-open', async (c) => {
+  await mailMark(c, 'networking.open', c.req.query('a'), c.req.query('s'))
+  return c.body(UPGRADE_PIXEL, 200, { 'Content-Type': 'image/gif', 'Cache-Control': 'no-store, private' })
+})
+app.post('/api/netmail-click', async (c) => {
+  const b = await c.req.json().catch(() => ({})) as any
+  await mailMark(c, 'networking.click', b.a, b.s)
+  return c.json({ ok: true })
+})
+
+// What came of it: of those sent it since the marks began, how many opened (a click
+// counts as an open) and clicked; of everyone sent it, how many then asked someone
+// to connect or meet, and how many bought a pass online.
+async function netMailStats(c: any) {
+  const mark = (action: string) => `LEFT JOIN (SELECT entity_id, 1 AS hit FROM admin_audit WHERE entity = 'attendee' AND action = '${action}' GROUP BY entity_id)`
+  const paid = (await paymentOrdersReady(c))
+    ? `SUM(EXISTS (SELECT 1 FROM payment_orders o WHERE o.attendee_id = cr.attendee_id AND o.status = 'paid' AND o.paid_at >= cr.sent_at))`
+    : '0'
+  const r = await c.env.DB.prepare(
+    `SELECT (cr.attendee_id % 2) AS odd, COUNT(*) AS sent,
+            SUM(cr.sent_at >= ?1) AS tracked,
+            SUM(cr.sent_at >= ?1 AND (op.hit = 1 OR ck.hit = 1)) AS opened,
+            SUM(cr.sent_at >= ?1 AND ck.hit = 1) AS clicked,
+            SUM(EXISTS (SELECT 1 FROM connections x WHERE x.from_attendee_id = cr.attendee_id AND x.created_at >= cr.sent_at)
+             OR EXISTS (SELECT 1 FROM meetings m WHERE m.requester_id = cr.attendee_id AND m.created_at >= cr.sent_at)) AS asked,
+            ${paid} AS paid
+       FROM campaign_recipients cr JOIN campaigns cp ON cp.id = cr.campaign_id
+       ${mark('networking.open')} op ON op.entity_id = CAST(cr.attendee_id AS TEXT)
+       ${mark('networking.click')} ck ON ck.entity_id = CAST(cr.attendee_id AS TEXT)
+      WHERE cp.kind = 'networking' AND cr.status = 'sent' AND cr.attendee_id IS NOT NULL
+      GROUP BY (cr.attendee_id % 2)`
+  ).bind((await settingValue(c, 'networking_marks_from')) || '9999-12-31 00:00:00').all().catch(() => ({ results: [] })) as any
+  // Both subjects together, and each on its own (A even ids, B odd).
+  const keys = ['sent', 'tracked', 'opened', 'clicked', 'asked', 'paid']
+  const out: Record<string, any> = { by_subject: {} }
+  for (const k of keys) out[k] = 0
+  for (const x of (r?.results || []) as any[]) {
+    const one: Record<string, number> = {}
+    for (const k of keys) { one[k] = Number(x[k] || 0); out[k] += one[k] }
+    out.by_subject[Number(x.odd) ? 'B' : 'A'] = one
+  }
+  return out
+}
+
+async function openNetMailRun(c: any): Promise<any> {
+  return await c.env.DB.prepare(
+    "SELECT * FROM campaigns WHERE kind = 'networking' AND status IN ('running', 'paused') ORDER BY id DESC LIMIT 1"
+  ).first().catch(() => null)
+}
+
+// For the Notification Status card: the open run, who has not had it yet, and what came of it.
+app.get('/api/admin/netmail-status', async (c) => {
+  try {
+    const open = await openNetMailRun(c)
+    const left = (await campaignAudienceRows(c, 'networking', 'all')).filter((r: any) => validEmailSyntax(r.email)).length
+    return c.json({ open_run: open ? campaignProgress(open) : null, left, stats: await netMailStats(c),
+      gap_seconds: await sendGapSeconds(c), window: sendWindowState().window })
+  } catch (e: any) {
+    if (/no such table/i.test(String(e?.message || ''))) return c.json({ unavailable: true })
+    throw e
+  }
+})
+
+// The email before it goes, as notify-preview does for the account-ready one: how
+// many of each pass kind the run reaches and one real recipient's mail. ?campaign=
+// shows a run already made. Sends nothing, mints no token, writes no mark.
+app.get('/api/admin/netmail-preview', async (c) => {
+  const want = String(c.req.query('kind') || '')
+  const campId = parseInt(String(c.req.query('campaign') || ''), 10)
+  const openRun = Number.isFinite(campId) ? null : await openNetMailRun(c)
+  let rows: any[]
+  if (Number.isFinite(campId)) {
+    const listed = async (more: string) => ((await c.env.DB.prepare(
+      `SELECT attendee_id AS id, email FROM campaign_recipients WHERE campaign_id = ?${more} ORDER BY id`
+    ).bind(campId).all()).results as any[]) || []
+    rows = await listed(" AND status IN ('pending', 'sending')")
+    if (!rows.length) rows = await listed('')
+  } else {
+    rows = (await campaignAudienceRows(c, 'networking', 'all')).filter((r: any) => validEmailSyntax(r.email))
+  }
+  const ps = (await paymentStatusEnabled(c)) ? 'payment_status' : 'NULL AS payment_status'
+  const { results } = await c.env.DB.prepare(`SELECT id, badge_type, ${ps} FROM attendees WHERE event_id = 1`).all()
+  const byId = new Map(((results as any[]) || []).map((r: any) => [Number(r.id), r]))
+  const counts: Record<string, number> = { free: 0, paid: 0, unpaid: 0, total: 0 }
+  const first: Record<string, any> = {}
+  for (const r of rows) {
+    const k = notifyKind(byId.get(Number(r.id)) || {})
+    counts[k]++; counts.total++
+    if (!first[k]) first[k] = r
+  }
+  const pick = want ? first[want] : (first.free || first.paid || first.unpaid)
+  const sample = pick ? await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(pick.id).first() as any : null
+  const out = { counts, open_run: openRun ? { id: openRun.id, status: openRun.status, title: openRun.title } : null,
+    gap_seconds: await sendGapSeconds(c), window: sendWindowState().window }
+  if (!sample) return c.json({ ...out, kind: want, sample: null })
+  const mail = await networkingEmail(c, sample, { preview: true })
+  return c.json({
+    ...out, kind: notifyKind(sample),
+    sample: { id: sample.id, name: sample.name, email: sample.email, badge_type: sample.badge_type || 'Visitor Pass' },
+    subject: mail.subject,
+    subjects: { A: netMailSubject(sample, 'A'), B: netMailSubject(sample, 'B') },
+    html: mail.html.replace(/<\/body>/i, UNSUB_FOOTER(await unsubscribeUrl(c, sample.email)) + '</body>'),
+  })
+})
+
 // Admin: Bulk notify all un-notified attendees
 app.post('/api/admin/attendees/notify-all', async (c) => {
   const { event_id } = await c.req.json()
@@ -16408,6 +16748,7 @@ async function campaignSendOne(c: any, kind: string, refId: any, r: any, auth = 
     : kind === 'announcement' ? `/api/admin/announcements/${refId}/email/${r.attendee_id}`
     : kind === 'profile_reminder' ? `/api/admin/attendees/${r.attendee_id}/send-profile-reminder`
     : kind === 'upgrade' ? `/api/admin/attendees/${r.attendee_id}/send-upgrade`
+    : kind === 'networking' ? `/api/admin/attendees/${r.attendee_id}/send-networking`
     : `/api/admin/attendees/${r.attendee_id}/notify`
   try {
     const url = new URL(c.req.url)
@@ -16468,6 +16809,21 @@ async function campaignAudienceRows(c: any, kind: string, audience: string, incl
     ).bind(eventId).all()
     return (results as any[]) || []
   }
+  if (kind === 'networking') {
+    // Every conference registrant not on a networking run yet. Paid passes and
+    // senior titles first: theirs are the requests the others receive. Last, anyone
+    // whose account-ready email is still to come or went in the last two days: a
+    // new sign-in link replaces the one before it (createLoginToken), so this one
+    // waits while theirs is in use.
+    const { results } = await c.env.DB.prepare(
+      `SELECT id, name, email FROM attendees
+        WHERE event_id = ? AND email IS NOT NULL AND TRIM(email) != ''${mc}${sc}${NETMAIL_NOT_YET_SQL}
+        ORDER BY (CASE WHEN notified_at IS NULL OR notified_at > datetime('now', '-2 days') THEN 1 ELSE 0 END),
+          (CASE WHEN COALESCE(TRIM(badge_type), '') IN ('', 'Visitor Pass', 'Visitor', 'General Pass', 'General') THEN 1 ELSE 0 END),
+          ${SENIOR_RANK_SQL} DESC, id`
+    ).bind(eventId).all()
+    return (results as any[]) || []
+  }
   if (kind === 'profile_reminder') {
     // Same predicate the one-at-a-time chase uses, so the campaign cannot pick
     // somebody it would then skip. 'photo' narrows it to the missing photos,
@@ -16492,7 +16848,7 @@ async function campaignAudienceRows(c: any, kind: string, audience: string, incl
 // Start a campaign. Returns it with its recipient count; nothing is sent yet.
 app.post('/api/admin/campaigns', async (c) => {
   const body = await c.req.json().catch(() => ({})) as any
-  const kind = ['notify', 'thankyou', 'announcement', 'profile_reminder', 'upgrade'].includes(body.kind) ? body.kind : ''
+  const kind = ['notify', 'thankyou', 'announcement', 'profile_reminder', 'upgrade', 'networking'].includes(body.kind) ? body.kind : ''
   if (!kind) return c.json({ error: 'Unknown campaign type.' }, 400)
   const audience = String(body.audience || 'all')
   let refId = body.ref_id ? parseInt(String(body.ref_id), 10) : null
@@ -16534,6 +16890,7 @@ app.post('/api/admin/campaigns', async (c) => {
   const who = adminActor(c)
   const title = String(body.title || (kind === 'upgrade' ? (audience === 'students' ? 'Upgrade offer: Academic Pass to students' : 'Upgrade offer: Delegate Pass to senior Visitors')
     : kind === 'notify' ? 'Account-ready email'
+    : kind === 'networking' ? 'Networking app email'
     : kind === 'thankyou' ? 'Post-event thank you'
     : kind === 'profile_reminder' ? 'Complete your profile' : 'Announcement')).slice(0, 160)
   const ins = await c.env.DB.prepare(
@@ -23065,6 +23422,11 @@ function mainPageScript(): string {
         if (currentUser) { pendingAction = null; setTimeout(function () { openWorkshopChoice(); }, 900); }
         return;
       }
+      // "Find people to meet" in the networking email: the Network tab, once signed in.
+      if (act === 'network') {
+        if (currentUser) { pendingAction = null; setTimeout(function () { switchTab('networking'); }, 900); }
+        return;
+      }
       if (act === 'download-pass') { setTimeout(() => generateDelegatePass(), 1500); return; }
       // The card had exactly one way in: offered once after a pass download and
       // then remembered forever. That is the right moment for an unprompted
@@ -23120,6 +23482,9 @@ function mainPageScript(): string {
       // The account-ready email's two buttons carry ne= the same way.
       const neParam = (urlParams.get('ne') || '').split('.');
       if (neParam[1]) fetch('/api/notify-click', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ a: neParam[0], s: neParam[1] }), keepalive: true }).catch(function () {});
+      // And the networking email's buttons carry nw=.
+      const nwParam = (urlParams.get('nw') || '').split('.');
+      if (nwParam[1]) fetch('/api/netmail-click', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ a: nwParam[0], s: nwParam[1] }), keepalive: true }).catch(function () {});
       // The QR on a campus panel's closing slide lands here with ?panel=&claim=.
       // Kept in localStorage rather than the URL: the person may still have to
       // sign in, and the sign-in link opens from their mail app in another tab.
@@ -32630,6 +32995,7 @@ function adminPageScript(): string {
               <span>\${lunchStats.totalAttendees} total attendees</span>
             </div>
             \${notifyFunnelHTML(lunchStats.notifyMail)}
+            <div id="netmail-strip"></div>
             <div class="mt-4 pt-3 border-t border-white/10">
               <p class="text-xs text-gray-400 leading-relaxed">
                 <i class="fas fa-info-circle text-blue-400 mr-1"></i>
@@ -32807,6 +33173,7 @@ function adminPageScript(): string {
 
       markSectionFresh();
       loadNotifyRunStrip();
+      loadNetMailStrip();
       loadHelpFunnel();
       // Render charts
       setTimeout(() => {
@@ -33343,6 +33710,7 @@ function adminPageScript(): string {
     // campaign a closed tab interrupted is here, resumable, rather than lost.
     async function loadCampaignList() {
       loadNotifyRunStrip();
+      loadNetMailStrip();
       var el = document.getElementById('campaign-list');
       if (!el) return;
       var data;
@@ -33373,9 +33741,9 @@ function adminPageScript(): string {
             '<span class="text-[11px] text-gray-500">' + done + ' of ' + c.total + ' \u00b7 ' + (c.sent || 0) + ' sent, ' +
               (c.failed || 0) + ' failed \u00b7 by ' + escH(c.created_by || 'unknown') + ' \u00b7 ' + fmtIst(c.created_at) + '</span>' +
             '<span class="flex gap-1.5">' +
-              (c.kind === 'notify' || (c.kind === 'upgrade' && c.audience) ? '<button onclick="previewCampaignFromList(' + c.id + ')" class="px-2.5 py-1 rounded-lg text-[10px] font-medium border border-white/10 text-gray-300 hover:bg-black/5"><i class="fas fa-eye mr-1"></i>Preview</button>' : '') +
+              (c.kind === 'notify' || c.kind === 'networking' || (c.kind === 'upgrade' && c.audience) ? '<button onclick="previewCampaignFromList(' + c.id + ')" class="px-2.5 py-1 rounded-lg text-[10px] font-medium border border-white/10 text-gray-300 hover:bg-black/5"><i class="fas fa-eye mr-1"></i>Preview</button>' : '') +
               (c.status === 'running' ? '<button onclick="pauseCampaignFromList(' + c.id + ')" class="px-2.5 py-1 rounded-lg text-[10px] font-semibold bg-amber-700 text-white on-dark hover:bg-amber-800">Pause</button>' : '') +
-              (c.status !== 'done' && c.status !== 'running' ? '<button onclick="' + (c.kind === 'notify' ? 'previewCampaignFromList' : 'resumeCampaign') + '(' + c.id + ')" class="px-2.5 py-1 rounded-lg text-[10px] font-semibold bg-primary-700 text-white on-dark hover:bg-primary-800">Resume</button>' : '') +
+              (c.status !== 'done' && c.status !== 'running' ? '<button onclick="' + (c.kind === 'notify' || c.kind === 'networking' ? 'previewCampaignFromList' : 'resumeCampaign') + '(' + c.id + ')" class="px-2.5 py-1 rounded-lg text-[10px] font-semibold bg-primary-700 text-white on-dark hover:bg-primary-800">Resume</button>' : '') +
               (c.failed ? '<button onclick="showCampaignFailures(' + c.id + ')" class="px-2.5 py-1 rounded-lg text-[10px] font-medium border border-white/10 text-gray-400 hover:bg-black/5">' + c.failed + ' failed</button>' : '') +
               (c.failed ? '<button onclick="retryCampaignFailures(' + c.id + ')" class="px-2.5 py-1 rounded-lg text-[10px] font-semibold bg-amber-700 text-white on-dark hover:bg-amber-800">Retry those</button>' : '') +
             '</span>' +
@@ -33416,6 +33784,7 @@ function adminPageScript(): string {
       var c = campaignRows[id];
       if (!c) return;
       if (c.kind === 'upgrade') return previewUpgradeCampaign(c.audience);
+      if (c.kind === 'networking') return openNetMailPreview({ campaign: c.id, status: c.status, title: c.title });
       return openNotifyPreview({ campaign: c.id, status: c.status, title: c.title });
     }
 
@@ -34932,6 +35301,133 @@ function adminPageScript(): string {
         await startCampaign('notify', { audience: 'un-notified', title: 'Account-ready email' });
       }
       loadNotifyRunStrip();
+    }
+
+    // The networking email (organiser, 3 Nov 2026: "Book meetings before you arrive
+    // with Bharat AI Connect"), on the Notification Status card under the
+    // account-ready one: its run, Preview and send, and what came of it.
+    async function loadNetMailStrip() {
+      var el = document.getElementById('netmail-strip');
+      if (!el) return;
+      var d;
+      try { d = await api.get('/api/admin/netmail-status'); } catch (e) { return; }
+      if (!d || d.unavailable) { el.innerHTML = ''; return; }
+      var c = d.open_run, m = d.stats || {};
+      if (c) campaignRows[c.id] = c;
+      var running = !!c && c.status === 'running';
+      var state = c
+        ? '<span class="font-semibold ' + (running ? 'text-amber-300' : 'text-gray-300') + '">' + (running ? 'Sending now' : 'Paused') + '</span>' +
+          ' <span class="text-gray-400">&middot; ' + ((c.sent || 0) + (c.failed || 0)) + ' of ' + c.total + ' sent' + (c.failed ? ', ' + c.failed + ' failed' : '') + '</span>'
+        : '<span class="text-gray-400">' + (m.sent ? m.sent + ' sent' : 'Not sent yet') + (d.left ? ' &middot; ' + d.left + ' still to get it' : '') + '</span>';
+      var button = function (label, icon, onclick, solid) {
+        return '<button onclick="' + onclick + '" class="px-3 py-1.5 rounded-lg text-xs ' +
+          (solid ? 'font-semibold bg-primary-700 text-white on-dark hover:bg-primary-800' : 'font-medium border border-white/10 text-gray-300 hover:bg-white/5') +
+          '"><i class="fas ' + icon + ' mr-1"></i>' + label + '</button>';
+      };
+      var buttons = c
+        ? button('Preview', 'fa-eye', 'previewCampaignFromList(' + c.id + ')') +
+          (running ? button('Pause', 'fa-pause', 'pauseCampaignFromList(' + c.id + ')', true) : button('Resume', 'fa-play', 'previewCampaignFromList(' + c.id + ')', true))
+        : (d.left ? button('Preview &amp; send', 'fa-eye', 'openNetMailPreview()', true) : '');
+      el.innerHTML = '<div class="mt-4 pt-3 border-t border-white/10">' +
+        '<div class="flex items-center justify-between gap-3 flex-wrap mb-2">' +
+          '<div><h4 class="text-xs font-semibold text-gray-200"><i class="fas fa-users text-primary-400 mr-1.5"></i>Networking app email</h4>' +
+          '<p class="text-[11px] mt-0.5">' + state + '</p></div>' +
+          '<div class="flex gap-1.5">' + buttons + '</div></div>' +
+        netMailFunnelHTML(m) + '</div>';
+    }
+
+    function netMailFunnelHTML(m) {
+      if (!m || !m.sent) return '';
+      var row = function (label, n, of, tip) {
+        var pct = of ? Math.round(n * 100 / of) : 0;
+        return '<div class="flex items-center gap-2 text-xs" title="' + escH(tip) + '">' +
+          '<span class="w-40 shrink-0 text-gray-400">' + label + '</span>' +
+          '<div class="flex-1 h-2 bg-white/5 rounded-full overflow-hidden"><div class="h-full rounded-full bg-primary-500/60" style="width:' + pct + '%"></div></div>' +
+          '<span class="w-24 text-right whitespace-nowrap font-semibold text-white">' + n + ' <span class="font-normal text-gray-500">of ' + of + '</span></span>' +
+          '<span class="w-9 text-right text-gray-500">' + (of ? pct + '%' : '') + '</span></div>';
+      };
+      return '<div class="space-y-1.5">' +
+        row('Opened the email', m.opened, m.tracked, 'A click counts as an open. Opens are approximate.') +
+        row('Clicked into the app', m.clicked, m.tracked, "Counted when the app opens from one of the email's buttons.") +
+        row('Asked to connect or meet', m.asked, m.sent, 'Sent a connection or meeting request after their email went.') +
+        row('Bought a pass', m.paid, m.sent, 'Paid for a pass online after their email went.') +
+        '</div>' +
+        ['A', 'B'].map(function (v) {
+          var s = (m.by_subject || {})[v];
+          if (!s || !s.sent) return '';
+          return '<p class="text-[11px] text-gray-500 mt-1.5">' + (v === 'A' ? '&ldquo;Book meetings before you arrive&rdquo;' : '&ldquo;Find out who you would like to meet&rdquo;') + ': ' +
+            s.sent + ' sent, ' + s.opened + ' opened, ' + s.clicked + ' clicked</p>';
+        }).join('');
+    }
+
+    // opts: {} for a new run, or { campaign, status, title } for a run already made.
+    // A new run asked for while one is open becomes that run.
+    var netPrev = {};
+    async function openNetMailPreview(opts, kind) {
+      netPrev = opts || {};
+      var o = netPrev;
+      openModal('<div class="py-10 text-center text-gray-400"><i class="fas fa-spinner fa-spin"></i></div>');
+      var d;
+      try {
+        d = await api.get('/api/admin/netmail-preview?' + (o.campaign ? 'campaign=' + encodeURIComponent(o.campaign) : 'audience=all') +
+          (kind ? '&kind=' + encodeURIComponent(kind) : ''));
+        if (d && d.error) throw new Error(d.error);
+      } catch (e) {
+        openModal('<p class="text-sm text-red-400">Could not build the preview: ' + escH(e.message || '') + '</p>');
+        return;
+      }
+      if (d.open_run && !o.campaign) {
+        return openNetMailPreview({ campaign: d.open_run.id, status: d.open_run.status, title: d.open_run.title, wasNew: true }, kind);
+      }
+      var cnt = d.counts || {}, total = cnt.total || 0;
+      var gap = d.gap_seconds || 90;
+      var days = Math.max(1, Math.ceil(total * gap / 43200));
+      var head = (o.wasNew ? '<p class="text-xs text-amber-300 mb-2"><i class="fas fa-circle-info mr-1"></i>This email is already on a run that is ' + escH(o.status) +
+          '. ' + (o.status === 'paused' ? 'Resume sends it to the people still waiting.' : 'Pause stops it.') + '</p>' : '') +
+        '<p class="text-xs text-gray-400 mb-3">' + (o.campaign
+          ? (o.status === 'done' ? total + ' were on this run' : total + ' still to send on this run')
+          : total + ' ' + (total === 1 ? 'person' : 'people') + ' in this run') + ': ' +
+        (cnt.free || 0) + ' on a Free Visitor Pass, ' + (cnt.paid || 0) + ' on a paid or given pass, ' + (cnt.unpaid || 0) +
+        ' who chose a paid pass and have not paid. The email follows the pass they hold.</p>' +
+        '<div class="flex gap-1.5 flex-wrap mb-3">' + [['free', 'Free Visitor Pass'], ['paid', 'Paid pass'], ['unpaid', 'Not paid yet']].map(function (k) {
+          var n = cnt[k[0]] || 0, on = d.kind === k[0];
+          return '<button onclick="openNetMailPreview(netPrev, &quot;' + k[0] + '&quot;)"' + (n ? '' : ' disabled') +
+            ' class="px-3 py-1.5 rounded-lg text-xs font-semibold ' + (on ? 'bg-amber-600 text-white' : 'border border-white/10 text-gray-300 hover:bg-white/5') + (n ? '' : ' opacity-40') + '">' +
+            k[1] + ' (' + n + ')</button>';
+        }).join('') + '</div>';
+      var body = d.sample
+        ? '<p class="text-xs text-gray-400 mb-1">As ' + escH(d.sample.name) + ' (' + escH(d.sample.badge_type) + ') will get it. The buttons are not live in this preview.</p>' +
+          '<p class="text-sm font-semibold text-white mb-1">Subject: ' + escH(d.subject) + '</p>' +
+          (d.subjects ? '<p class="text-xs text-gray-400 mb-2">Two subjects, half the list each by registration number: &ldquo;' + escH(d.subjects.A) +
+            '&rdquo; and &ldquo;' + escH(d.subjects.B) + '&rdquo;. The card shows which one is opened more.</p>' : '') +
+          '<iframe id="netmail-prev-frame" sandbox="" title="Email preview" class="w-full rounded-xl bg-white" style="height:60vh;border:1px solid rgba(0,0,0,0.1);"></iframe>'
+        : '<p class="text-sm text-gray-400 py-8 text-center">Nobody in this run holds that kind of pass.</p>';
+      var act = o.campaign ? (o.status === 'running' ? 'Pause this run' : o.status === 'done' ? '' : 'Resume: send to ' + total)
+        : 'Send to ' + total + ' ' + (total === 1 ? 'person' : 'people');
+      openModal('<h3 class="text-lg font-bold mb-1"><i class="fas fa-users text-primary-400 mr-2"></i>' +
+        (o.campaign ? escH(o.title || 'Networking app email') + ': what it sends' : 'Networking app email: check it before it goes') + '</h3>' +
+        head + body +
+        '<div class="flex gap-2 mt-4">' +
+          '<button onclick="closeModal()" class="flex-1 py-2.5 rounded-xl text-sm glass hover:bg-white/10">' + (act ? 'Cancel' : 'Close') + '</button>' +
+          (act ? '<button onclick="sendNetMailFromPreview()"' + (total ? '' : ' disabled') + ' class="flex-1 py-2.5 rounded-xl text-sm bg-amber-600 hover:bg-amber-500 text-white font-semibold' + (total ? '' : ' opacity-40') + '">' + act + '</button>' : '') +
+        '</div>' +
+        (!act || o.status === 'running' ? '' : '<p class="text-[11px] text-gray-500 mt-2">It goes one email at a time, ' + escH(d.window || '9am to 9pm IST') +
+          ', on the server&rsquo;s clock: one every ' + gap + ' seconds, so about ' + days + ' day' + (days === 1 ? '' : 's') + ' for all of them, sharing the gap with any other run. ' +
+          'Paid passes and senior titles go first. Anyone whose account-ready email is still to go, or went in the last two days, goes last, so its sign-in link keeps working while they use it.</p>'));
+      var f = document.getElementById('netmail-prev-frame');
+      if (f) f.srcdoc = d.html;
+    }
+
+    async function sendNetMailFromPreview() {
+      var o = netPrev || {};
+      closeModal();
+      if (o.campaign) {
+        if (o.status === 'running') await pauseCampaignFromList(o.campaign);
+        else await resumeCampaign(o.campaign);
+      } else {
+        await startCampaign('networking', { audience: 'all', title: 'Networking app email' });
+      }
+      loadNetMailStrip();
     }
 
     // Profile-completion campaign. Deliberately a two-step: the first screen only
