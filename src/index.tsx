@@ -6965,6 +6965,11 @@ app.post('/api/events/:id/attendees/register', async (c) => {
         await c.env.DB.prepare('UPDATE attendees SET main_event = 0 WHERE id = ?').bind((attendee as any).id).run()
       } catch { /* 0041 not applied yet */ }
     }
+    // What tells the minute clock to send the networking email 10 minutes on, or 10
+    // minutes after the payment for a paid pass (autoSendNetMail). Not for a campus
+    // panel: that is not a conference registration.
+    if (!panel) await audit(c, 'register.self', 'attendee', (attendee as any).id,
+      { source: (attendee as any).registration_source || '', badge_type: passType }, { actor: 'public registration', kind: 'public' })
     // A paid pass chosen here is not a registration until it is paid for, so nobody
     // is told "you are registered" before that: the welcome goes out with the
     // payment receipt when the money lands (sendPaymentEmails). Someone who never
@@ -14053,8 +14058,10 @@ app.post('/api/cron/tick', async (c) => {
   const payReminders = await autoRemindToPay(c).catch((e: any) => ({ error: String(e?.message || e).slice(0, 200) }))
   // The steps to anyone stuck on the way in, or to their badge or pass (autoSendHelpMail).
   const helpMail = await autoSendHelpMail(c).catch((e: any) => ({ error: String(e?.message || e).slice(0, 200) }))
+  // The networking app email, 10 minutes after someone registers (autoSendNetMail).
+  const netMail = await autoSendNetMail(c).catch((e: any) => ({ error: String(e?.message || e).slice(0, 200) }))
   const out = await tickMailJobs(c, Number(body.max_seconds) || 0, true)
-  return c.json({ ...out, campaigns: await tickCampaigns(c), pay_reminders: payReminders, help_mail: helpMail })
+  return c.json({ ...out, campaigns: await tickCampaigns(c), pay_reminders: payReminders, help_mail: helpMail, networking_mail: netMail })
 })
 
 // The admin page's view and its own ticking while it is open.
@@ -14668,22 +14675,26 @@ app.get('/api/admin/notify-preview', async (c) => {
 // one email to every conference registrant about the networking app, showing the
 // app as a phone with three real people on it, then the five steps of /networking.
 // Two subjects, the same for every pass; the body follows the pass held (notifyKind). A paid
-// pass is told to start; a Free Visitor Pass that it can look and that accepting
-// and replying are free, and that asking first is the Delegate Pass (the app's own
-// locked cards and prompts sell it too); a paid tier not paid yet, to finish paying.
+// pass is told to start; a Free Visitor Pass is shown the steps, with what needs a
+// Delegate Pass marked, and offered nothing: "let them discover themselves" in the
+// app (organiser, 3 Nov 2026); a paid tier not paid yet, to finish paying.
 //
 // The people on the phone are the /networking ones (glimpseNamed): only someone
 // who downloaded their "I'm attending" card, with a photo stored here, never an id
 // in glimpse_hide, never the reader. They are picked as each email is built, so
-// someone taken off the page is off the email from the next send.
+// someone taken off the page is off the email from the next send. They are drawn
+// with their initials, never their photo: a face in a mass email may offend
+// (organiser, 3 Nov 2026).
 //
-// A campaign of kind 'networking' (BULK EMAIL CAMPAIGNS): the shared send gap, the
-// 9am-9pm IST window, Pause and Resume, the minute clock. NETMAIL_NOT_YET_SQL
-// leaves out anyone already on a networking run, so nobody gets it twice. Opens
-// and clicks are networking.open / networking.click (mailMark), counted from
-// app_settings 'networking_marks_from'.
+// Two ways out. A campaign of kind 'networking' (BULK EMAIL CAMPAIGNS): the shared
+// send gap, the 9am-9pm IST window, Pause and Resume, the minute clock. And by
+// itself, 10 minutes after someone registers (autoSendNetMail, below).
+// NETMAIL_NOT_YET_SQL leaves out anyone already on a networking run or sent it by
+// itself, so nobody gets it twice. Opens and clicks are networking.open /
+// networking.click (mailMark), counted from app_settings 'networking_marks_from'.
 const NETMAIL_NOT_YET_SQL = ` AND id NOT IN (SELECT cr.attendee_id FROM campaign_recipients cr JOIN campaigns cp ON cp.id = cr.campaign_id
-    WHERE cp.kind = 'networking' AND cr.attendee_id IS NOT NULL AND cr.status IN ('pending', 'sending', 'sent'))`
+    WHERE cp.kind = 'networking' AND cr.attendee_id IS NOT NULL AND cr.status IN ('pending', 'sending', 'sent'))
+  AND CAST(id AS TEXT) NOT IN (SELECT entity_id FROM admin_audit WHERE entity = 'attendee' AND action = 'networking.auto')`
 
 async function networkingEmail(c: any, a: any, opts: { preview?: boolean } = {}): Promise<{ subject: string; html: string }> {
   const appUrl = (await settingGet(c, 'app_url')) || 'https://bharataiinnovation.com/app'
@@ -14719,11 +14730,16 @@ async function networkingEmail(c: any, a: any, opts: { preview?: boolean } = {})
     `<span style="display:inline-block;margin:0 3px 4px 0;padding:3px 8px;background:#fff;border:1px solid #E3E6F5;border-radius:999px;font-size:10.5px;color:#3A3F5C;">${t}</span>`
   const pbtn = (t: string, bg: string, fg: string, line: string) =>
     `<span style="display:inline-block;margin:0 4px 0 0;padding:6px 10px;background:${bg};border:1px solid ${line};border-radius:8px;font-size:11px;font-weight:bold;color:${fg};">${t}</span>`
-  const card = (p: any) => `
+  // Initials in a coloured circle where the app shows the photo.
+  const initials = (name: any) => String(name || '').trim().split(/\s+/)
+    .filter(w => /^\p{L}/u.test(w) && !/^(dr|prof|mr|mrs|ms|miss|shri|smt|er|ca|adv)\.?$/i.test(w))
+    .slice(0, 2).map(w => w.charAt(0).toUpperCase()).join('')
+  const TONES = ['#FF6B00', '#0B7A75', '#3D4BC7']
+  const card = (p: any, i: number) => `
             <tr><td style="padding:0 10px 8px;">
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate;background:#fff;border:1px solid #ECEEF6;border-radius:14px;">
                 <tr>
-                  <td width="52" valign="top" style="padding:12px 0 8px 12px;"><img src="${esc(origin + p.photo)}" width="40" height="40" alt="" style="display:block;width:40px;height:40px;border-radius:20px;border:0;"></td>
+                  <td width="52" valign="top" style="padding:12px 0 8px 12px;"><div style="width:40px;height:40px;border-radius:20px;background:${TONES[i % TONES.length]};color:#fff;font-size:14px;font-weight:bold;line-height:40px;text-align:center;">${esc(initials(p.name))}</div></td>
                   <td valign="top" style="padding:12px 12px 8px 0;">
                     <p style="margin:0;font-size:13.5px;font-weight:bold;color:#1E2140;line-height:1.3;">${esc(p.name)}</p>
                     <p style="margin:2px 0 0;font-size:11.5px;color:#6B7090;line-height:1.4;">${[p.title, p.company].filter(Boolean).map(esc).join(' &middot; ')}</p>
@@ -14755,7 +14771,7 @@ async function networkingEmail(c: any, a: any, opts: { preview?: boolean } = {})
           </table>
         </td></tr>
       </table></a>
-      <p style="margin:10px 0 0;font-size:12px;color:#888;text-align:center;">Some of the people coming, as the app shows them today.</p>`
+      <p style="margin:10px 0 0;font-size:12px;color:#888;text-align:center;">Some of the people coming.</p>`
 
   // The five steps, worded as on /networking. What a free pass cannot start is
   // marked, so nobody is promised a booking the app will then refuse.
@@ -14781,19 +14797,15 @@ async function networkingEmail(c: any, a: any, opts: { preview?: boolean } = {})
       <div style="text-align:center;margin:6px 0 0;">${btn(go('network'), 'Find people to meet &rarr;', 'linear-gradient(135deg,#FF6B00,#FF8C38)')}</div>
       <p style="margin:14px 0 0;font-size:13px;line-height:1.6;color:#555;text-align:center;">Say why you are coming (buying, selling, partners, hiring) and the right people find you. <a href="${go('goals')}" style="color:#0B7A75;font-weight:bold;">Add it to my profile</a></p>`
 
-  // Last: for a free pass, the step up, value before price; for a paid tier not
-  // paid yet, the payment. A paid pass has nothing to buy here.
-  const late = latePricing()
-  const passBlock = kind === 'free' ? `
-      <div style="margin:26px 0 0;padding:22px;background:#FFFCF4;border:1px solid #EADFC2;border-radius:12px;">
-        <p style="margin:0 0 14px;font-size:13.5px;line-height:1.65;color:#555;">On your <strong>Free Visitor Pass</strong> you can see a selection of the people coming, and when someone asks to connect or to meet you, accepting and replying are free.</p>
-        <p style="margin:0 0 6px;font-size:17px;font-weight:bold;color:#1E2140;">Want to be the one who asks?</p>
-        <p style="margin:0 0 12px;font-size:13.5px;line-height:1.65;color:#555;">A <strong>Delegate Pass</strong> lets you connect, message and book meetings before you arrive, with guaranteed entry on both days, every conference session and the networking lunch.</p>
-        <p style="margin:0 0 14px;font-size:13.5px;line-height:1.6;color:#1E2140;"><strong>${rsPrice('Delegate Pass')} + GST</strong>${late ? '' : ` until ${PRICE_DEADLINE_TEXT}, then ${rsPrice('Delegate Pass', true)} from ${PRICE_LATE_FROM_TEXT}`}.</p>
-        ${btn(go('pay', '&pass=delegate'), 'Get a Delegate Pass to meet them &rarr;', '#0f7b47')}
-        <p style="margin:12px 0 0;font-size:11.5px;line-height:1.6;color:#999;">The button signs you in and opens the secure payment page. Your registration stays the same.</p>
-      </div>`
-    : kind === 'unpaid' ? `
+  // A paid pass not downloaded yet: this email's sign-in link replaces the one in
+  // the payment email (createLoginToken), so the way to the pass comes with it.
+  const passLine = kind === 'paid' && !a.pass_downloaded_at ? `
+      <p style="margin:16px 0 0;font-size:13px;line-height:1.6;color:#555;text-align:center;">Your pass is not downloaded yet. <a href="${go('download-pass')}" style="color:#E35D00;font-weight:bold;">Add my photo &amp; download my pass</a></p>` : ''
+
+  // Last, for a paid tier not paid yet: the payment. A free pass is offered nothing
+  // here (the steps mark what needs a Delegate Pass; the app's own locked cards and
+  // prompts do the rest), and a paid pass has nothing to buy.
+  const passBlock = kind === 'unpaid' ? `
       <div style="margin:26px 0 0;padding:20px;border:1px solid #CFEBDC;background:#F2FBF6;border-radius:12px;">
         <p style="margin:0 0 6px;font-size:16px;font-weight:bold;color:#1E2140;">Your ${esc(badge)} is one payment away</p>
         <p style="margin:0 0 14px;font-size:13.5px;line-height:1.65;color:#555;">Its payment is not complete, so for now your account works as a Free Visitor Pass. Pay ${rsPrice(badge)} + GST and you can start sending requests and booking meetings straight away.</p>
@@ -14819,6 +14831,7 @@ async function networkingEmail(c: any, a: any, opts: { preview?: boolean } = {})
       ${phone}
       ${steps}
       ${cta}
+      ${passLine}
       ${passBlock}
       <div style="margin-top:24px;padding-top:16px;border-top:1px solid #eee;">
         <p style="margin:0 0 14px;font-size:12.5px;line-height:1.6;color:#888;">The buttons in this email sign you in as <strong>${esc(email)}</strong>. If one has expired, open the app and sign in with this address: we send you a one-time code, no password needed.</p>
@@ -14864,6 +14877,7 @@ app.post('/api/admin/attendees/:id/send-networking', async (c) => {
   if (!a.email || !validEmailSyntax(a.email)) return c.json({ skipped: true, reason: 'No usable email address' })
   if (a.unsubscribed_at || String(a.marketing_consent ?? '') === '0') return c.json({ skipped: true, reason: 'Unsubscribed, or said no to email' })
   if (Number(a.main_event ?? 1) === 0) return c.json({ skipped: true, reason: 'Campus panel only: has not said yes to the conference' })
+  if (await netMailSentByItself(c, a.id)) return c.json({ skipped: true, reason: 'Sent it by itself after they registered' })
   const win = sendWindowState()
   if (!win.open && c.req.query('force') !== '1') {
     return c.json({ paused: true, reason: `Outside the ${win.window} sending window (it is ${win.ist_time}).`, window: win }, 409)
@@ -14873,7 +14887,7 @@ app.post('/api/admin/attendees/:id/send-networking', async (c) => {
   const mail = await networkingEmail(c, a)
   const res = await sendAdminEmail(c, a.email, mail.subject, mail.html)
   if (!res.ok) return c.json({ error: (res as any).error || 'Not sent' }, 502)
-  await c.env.DB.prepare("INSERT INTO app_settings (key, value, updated_at) VALUES ('networking_marks_from', datetime('now', '-1 minute'), datetime('now')) ON CONFLICT(key) DO NOTHING").run().catch(() => {})
+  await netMailMarksFrom(c)
   return c.json({ success: true, sent_to: a.email })
 })
 
@@ -14887,27 +14901,29 @@ app.post('/api/netmail-click', async (c) => {
   return c.json({ ok: true })
 })
 
-// What came of it: of those sent it since the marks began, how many opened (a click
-// counts as an open) and clicked; of everyone sent it, how many then asked someone
-// to connect or meet, and how many bought a pass online.
+// What came of it: of those sent it (by a run or by itself) since the marks began,
+// how many opened (a click counts as an open) and clicked; of everyone sent it, how
+// many then asked someone to connect or meet, and how many bought a pass online.
 async function netMailStats(c: any) {
   const mark = (action: string) => `LEFT JOIN (SELECT entity_id, 1 AS hit FROM admin_audit WHERE entity = 'attendee' AND action = '${action}' GROUP BY entity_id)`
   const paid = (await paymentOrdersReady(c))
-    ? `SUM(EXISTS (SELECT 1 FROM payment_orders o WHERE o.attendee_id = cr.attendee_id AND o.status = 'paid' AND o.paid_at >= cr.sent_at))`
+    ? `SUM(EXISTS (SELECT 1 FROM payment_orders o WHERE o.attendee_id = s.attendee_id AND o.status = 'paid' AND o.paid_at >= s.sent_at))`
     : '0'
   const r = await c.env.DB.prepare(
-    `SELECT (cr.attendee_id % 2) AS odd, COUNT(*) AS sent,
-            SUM(cr.sent_at >= ?1) AS tracked,
-            SUM(cr.sent_at >= ?1 AND (op.hit = 1 OR ck.hit = 1)) AS opened,
-            SUM(cr.sent_at >= ?1 AND ck.hit = 1) AS clicked,
-            SUM(EXISTS (SELECT 1 FROM connections x WHERE x.from_attendee_id = cr.attendee_id AND x.created_at >= cr.sent_at)
-             OR EXISTS (SELECT 1 FROM meetings m WHERE m.requester_id = cr.attendee_id AND m.created_at >= cr.sent_at)) AS asked,
+    `SELECT (s.attendee_id % 2) AS odd, COUNT(*) AS sent,
+            SUM(s.sent_at >= ?1) AS tracked,
+            SUM(s.sent_at >= ?1 AND (op.hit = 1 OR ck.hit = 1)) AS opened,
+            SUM(s.sent_at >= ?1 AND ck.hit = 1) AS clicked,
+            SUM(EXISTS (SELECT 1 FROM connections x WHERE x.from_attendee_id = s.attendee_id AND x.created_at >= s.sent_at)
+             OR EXISTS (SELECT 1 FROM meetings m WHERE m.requester_id = s.attendee_id AND m.created_at >= s.sent_at)) AS asked,
             ${paid} AS paid
-       FROM campaign_recipients cr JOIN campaigns cp ON cp.id = cr.campaign_id
-       ${mark('networking.open')} op ON op.entity_id = CAST(cr.attendee_id AS TEXT)
-       ${mark('networking.click')} ck ON ck.entity_id = CAST(cr.attendee_id AS TEXT)
-      WHERE cp.kind = 'networking' AND cr.status = 'sent' AND cr.attendee_id IS NOT NULL
-      GROUP BY (cr.attendee_id % 2)`
+       FROM (SELECT cr.attendee_id, cr.sent_at FROM campaign_recipients cr JOIN campaigns cp ON cp.id = cr.campaign_id
+              WHERE cp.kind = 'networking' AND cr.status = 'sent' AND cr.attendee_id IS NOT NULL
+             UNION ALL
+             SELECT CAST(entity_id AS INTEGER), created_at FROM admin_audit WHERE entity = 'attendee' AND action = 'networking.auto') s
+       ${mark('networking.open')} op ON op.entity_id = CAST(s.attendee_id AS TEXT)
+       ${mark('networking.click')} ck ON ck.entity_id = CAST(s.attendee_id AS TEXT)
+      GROUP BY (s.attendee_id % 2)`
   ).bind((await settingValue(c, 'networking_marks_from')) || '9999-12-31 00:00:00').all().catch(() => ({ results: [] })) as any
   // Both subjects together, and each on its own (A even ids, B odd).
   const keys = ['sent', 'tracked', 'opened', 'clicked', 'asked', 'paid']
@@ -14932,7 +14948,7 @@ app.get('/api/admin/netmail-status', async (c) => {
   try {
     const open = await openNetMailRun(c)
     const left = (await campaignAudienceRows(c, 'networking', 'all')).filter((r: any) => validEmailSyntax(r.email)).length
-    return c.json({ open_run: open ? campaignProgress(open) : null, left, stats: await netMailStats(c),
+    return c.json({ open_run: open ? campaignProgress(open) : null, left, stats: await netMailStats(c), auto: await netMailAutoState(c),
       gap_seconds: await sendGapSeconds(c), window: sendWindowState().window })
   } catch (e: any) {
     if (/no such table/i.test(String(e?.message || ''))) return c.json({ unavailable: true })
@@ -14980,6 +14996,118 @@ app.get('/api/admin/netmail-preview', async (c) => {
     subjects: { A: netMailSubject(sample, 'A'), B: netMailSubject(sample, 'B') },
     html: mail.html.replace(/<\/body>/i, UNSUB_FOOTER(await unsubscribeUrl(c, sample.email)) + '</body>'),
   })
+})
+
+// ---- By itself, 10 minutes after registering (organiser, 3 Nov 2026) ----
+// The minute clock (POST /api/cron/tick) sends this email to everyone who registered
+// themselves (register.self, written by the registration route: never someone the
+// team added or imported, a walk-in at the desk, or a campus panel's registrant)
+// NETMAIL_AUTO_AFTER_MINUTES after they registered, or after they paid for a paid
+// pass; a paid pass not paid for yet is the pay reminder's. Around the clock, as the
+// pay reminder goes, and only within NETMAIL_AUTO_WITHIN_HOURS, so a clock that
+// stopped does not send a day of them late in a burst: anyone older is a run's.
+// Once per person: the claim (networking.auto) is written before the send, a run
+// skips anyone who has one (send-networking, NETMAIL_NOT_YET_SQL), and this skips
+// anyone a run has sent it to. Its sign-in link replaces the one in the welcome or
+// payment email, as every newer email's does: a button there then shows the
+// sign-in box. app_settings netmail_auto = 'off' stops it.
+const NETMAIL_AUTO_KEY = 'netmail_auto'
+const NETMAIL_AUTO_AFTER_MINUTES = 10
+const NETMAIL_AUTO_WITHIN_HOURS = 24
+const NETMAIL_AUTO_PER_TICK = 10
+
+// Opens and clicks are counted from the first one sent, either way.
+async function netMailMarksFrom(c: any) {
+  await c.env.DB.prepare("INSERT INTO app_settings (key, value, updated_at) VALUES ('networking_marks_from', datetime('now', '-1 minute'), datetime('now')) ON CONFLICT(key) DO NOTHING").run().catch(() => {})
+}
+
+async function netMailSentByItself(c: any, id: any): Promise<boolean> {
+  const r = await c.env.DB.prepare(
+    "SELECT 1 AS x FROM admin_audit WHERE entity = 'attendee' AND entity_id = ? AND action = 'networking.auto' LIMIT 1"
+  ).bind(String(id)).first().catch(() => null)
+  return !!r
+}
+
+// Who is due, oldest first. due_at is when they registered, or when their payment
+// landed if that was later. A payment more than three days after registering is
+// left to a run.
+async function netMailAutoDue(c: any, limit: number): Promise<any[]> {
+  const paidAt = (await paymentOrdersReady(c))
+    ? "(SELECT MIN(o.paid_at) FROM payment_orders o WHERE o.attendee_id = a.id AND o.status = 'paid')" : 'NULL'
+  const unpaid = (await paymentStatusEnabled(c))
+    ? ` AND NOT (a.badge_type IN (${PAID_TIERS.map(t => `'${t}'`).join(', ')}) AND lower(trim(COALESCE(a.payment_status, ''))) IN ('pending', 'refunded'))` : ''
+  const r = await c.env.DB.prepare(
+    `SELECT * FROM (
+       SELECT a.*, MAX(x.created_at, COALESCE(${paidAt}, x.created_at)) AS due_at
+         FROM admin_audit x JOIN attendees a ON CAST(a.id AS TEXT) = x.entity_id
+        WHERE x.entity = 'attendee' AND x.action = 'register.self' AND x.created_at > datetime('now', '-3 days')
+          AND COALESCE(TRIM(a.email), '') != ''${await mainEventClause(c, 'a.')}${await suppressionClause(c, 'a.')}${unpaid}
+          AND NOT EXISTS (SELECT 1 FROM admin_audit h WHERE h.entity = 'attendee' AND h.entity_id = x.entity_id AND h.action IN ('networking.auto', 'networking.auto_error'))
+          AND NOT EXISTS (SELECT 1 FROM campaign_recipients cr JOIN campaigns cp ON cp.id = cr.campaign_id
+                           WHERE cp.kind = 'networking' AND cr.attendee_id = a.id AND cr.status IN ('sending', 'sent')))
+      WHERE due_at <= datetime('now', ?1) AND due_at > datetime('now', ?2)
+      ORDER BY due_at LIMIT ?3`
+  ).bind('-' + NETMAIL_AUTO_AFTER_MINUTES + ' minutes', '-' + NETMAIL_AUTO_WITHIN_HOURS + ' hours', limit).all().catch(() => ({ results: [] })) as any
+  return ((r?.results || []) as any[]).filter((a: any) => validEmailSyntax(a.email))
+}
+
+// One, claimed before it goes (as sendHelpMail is), so two clocks at once send it
+// once. A send that fails is left as networking.auto_error, for a run to pick up.
+async function sendNetMailAuto(c: any, a: any): Promise<{ sent: boolean; skipped?: string; error?: string }> {
+  const claim = await c.env.DB.prepare(
+    `INSERT INTO admin_audit (actor, actor_kind, action, entity, entity_id, detail)
+     SELECT 'scheduler', 'system', 'networking.auto', 'attendee', ?1, ?2
+      WHERE NOT EXISTS (SELECT 1 FROM admin_audit WHERE entity = 'attendee' AND entity_id = ?1 AND action IN ('networking.auto', 'networking.auto_error'))`
+  ).bind(String(a.id), JSON.stringify({ email: a.email, subject: upgradeSubjectVariant(a.id) })).run()
+  if (!Number(claim?.meta?.changes)) return { sent: false, skipped: 'Sent it already.' }
+  const claimId = claim?.meta?.last_row_id
+  let res: any
+  try {
+    const mail = await networkingEmail(c, a)
+    res = await sendAdminEmail(c, a.email, mail.subject, mail.html)
+  } catch (e: any) { res = { ok: false, error: String(e?.message || e) } }
+  if (!res.ok) {
+    const error = String(res.error || 'not sent').slice(0, 300)
+    await c.env.DB.prepare('UPDATE admin_audit SET action = ?, detail = ? WHERE id = ?')
+      .bind('networking.auto_error', JSON.stringify({ email: a.email, error }), claimId).run().catch(() => null)
+    return { sent: false, error }
+  }
+  await netMailMarksFrom(c)
+  return { sent: true }
+}
+
+// The minute clock's part.
+async function autoSendNetMail(c: any): Promise<any> {
+  if ((await settingValue(c, NETMAIL_AUTO_KEY)) === 'off') return { on: false }
+  const due = await netMailAutoDue(c, NETMAIL_AUTO_PER_TICK)
+  let sent = 0, failed = 0
+  for (const a of due) {
+    const out = await sendNetMailAuto(c, a)
+    if (out.sent) sent++
+    else if (out.error) failed++
+  }
+  return { on: true, due: due.length, sent, failed }
+}
+
+// For the Notification Status card: on or off, how many went this way, and whether
+// the minute clock is knocking.
+async function netMailAutoState(c: any) {
+  const n = await c.env.DB.prepare(
+    `SELECT SUM(action = 'networking.auto') AS sent, SUM(action = 'networking.auto_error') AS failed
+       FROM admin_audit WHERE entity = 'attendee' AND action IN ('networking.auto', 'networking.auto_error')`
+  ).first().catch(() => null) as any
+  const tick = Number(await settingValue(c, 'cron_last_tick')) || 0
+  return { on: (await settingValue(c, NETMAIL_AUTO_KEY)) !== 'off', after_minutes: NETMAIL_AUTO_AFTER_MINUTES,
+    sent: Number(n?.sent || 0), failed: Number(n?.failed || 0), cron_alive: Date.now() - tick < CRON_ALIVE_MS }
+}
+
+// The switch on the card. On unless somebody turned it off.
+app.post('/api/admin/netmail-auto', async (c) => {
+  const b = await c.req.json().catch(() => ({})) as any
+  const on = b.on !== false
+  await settingWrite(c, NETMAIL_AUTO_KEY, on ? 'on' : 'off')
+  await audit(c, 'networking.auto_switch', 'setting', NETMAIL_AUTO_KEY, { on })
+  return c.json({ ok: true, on })
 })
 
 // Admin: Bulk notify all un-notified attendees
@@ -35328,12 +35456,29 @@ function adminPageScript(): string {
         ? button('Preview', 'fa-eye', 'previewCampaignFromList(' + c.id + ')') +
           (running ? button('Pause', 'fa-pause', 'pauseCampaignFromList(' + c.id + ')', true) : button('Resume', 'fa-play', 'previewCampaignFromList(' + c.id + ')', true))
         : (d.left ? button('Preview &amp; send', 'fa-eye', 'openNetMailPreview()', true) : '');
+      // And the one that goes by itself after registering (autoSendNetMail).
+      var au = d.auto || {};
+      var auto = d.auto ? '<p class="text-[11px] text-gray-400 mb-2"><i class="fas fa-clock mr-1"></i>' +
+        (au.on ? 'Also goes by itself ' + (au.after_minutes || 10) + ' minutes after someone registers (for a paid pass, after they pay)' +
+            (au.sent ? ': ' + au.sent + ' sent this way' + (au.failed ? ', ' + au.failed + ' failed' : '') : '') + '. ' +
+            (au.cron_alive ? '' : '<span class="text-amber-300">The server clock has not ticked for a few minutes, so nothing goes until it does.</span> ')
+          : 'Not going by itself after registering. ') +
+        '<button onclick="setNetMailAuto(' + (au.on ? 'false' : 'true') + ')" class="underline ' + (au.on ? 'text-gray-500' : 'text-primary-300') + '">' + (au.on ? 'Turn off' : 'Turn on') + '</button></p>' : '';
       el.innerHTML = '<div class="mt-4 pt-3 border-t border-white/10">' +
         '<div class="flex items-center justify-between gap-3 flex-wrap mb-2">' +
           '<div><h4 class="text-xs font-semibold text-gray-200"><i class="fas fa-users text-primary-400 mr-1.5"></i>Networking app email</h4>' +
           '<p class="text-[11px] mt-0.5">' + state + '</p></div>' +
           '<div class="flex gap-1.5">' + buttons + '</div></div>' +
-        netMailFunnelHTML(m) + '</div>';
+        auto + netMailFunnelHTML(m) + '</div>';
+    }
+
+    async function setNetMailAuto(on) {
+      try {
+        var r = await api.post('/api/admin/netmail-auto', { on: on });
+        if (r && r.error) throw new Error(r.error);
+        toast(on ? 'On: it goes by itself 10 minutes after someone registers.' : 'Off: it no longer goes by itself. Preview and send still works.');
+      } catch (e) { toast('Could not change it: ' + (e.message || ''), 'error'); }
+      loadNetMailStrip();
     }
 
     function netMailFunnelHTML(m) {

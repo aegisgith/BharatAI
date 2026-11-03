@@ -3,7 +3,8 @@
 // by the pass held, the phone of real people (only those /networking may name,
 // never the reader), the preview that sends and marks nothing, the campaign's
 // audience and order, the pump, the skips, the open and click marks, the counts,
-// and the app's ?action=network. Elastic Email is stubbed; nothing is sent.
+// the send by itself 10 minutes after registering (or paying), and the app's
+// ?action=network. Elastic Email is stubbed; nothing is sent.
 // Run after `npm run build`:  node scripts/verify/smoke-netmail.mjs
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -99,13 +100,14 @@ check('an even registration number gets the organiser\'s first subject', p.json?
 check('the preview names both subjects, in the reader\'s name', p.json?.subjects?.A === 'Meera, book meetings before you arrive with Bharat AI Connect' &&
   p.json.subjects.B === 'Meera, find out who you would like to meet at Bharat AI Innovation', JSON.stringify(p.json?.subjects));
 const free = p.json?.html || '';
-check('the phone shows people who shared their card, with their photo from this site', free.includes('Networking Hub') && free.includes('Ratan Kesh') && free.includes('Third Sharer') && free.includes('src="https://bharataiinnovation.com/api/uploads/avatars/1-1.jpg"'), '');
+check('the phone shows people who shared their card, by their initials, never their photo', free.includes('Networking Hub') && free.includes('Ratan Kesh') && free.includes('Third Sharer') &&
+  free.includes('>RK</div>') && free.includes('>TS</div>') && !free.includes('/api/uploads/'), '');
 check('never the reader, nobody in glimpse_hide, nobody who did not share their card', !/Meera Iyer<\/p>|Asked Off|Hiddenco|Neha Quiet|Quietco/.test(free), '');
 check('a title loses its company; the company stands beside it', free.includes('Executive Director &amp; COO &middot; Bandhan Bank'), '');
 check('the five steps, as on /networking', ['Find the right people', 'Connect in one tap', 'Book a meeting', 'Message before you arrive', 'Share your card on LinkedIn'].every(t => free.includes(t)), '');
-check('free: what it cannot start is marked Delegate Pass, accepting is free, and the step up is priced with the deadline',
-  (free.match(/>Delegate Pass<\/span>/g) || []).length === 3 && free.includes('accepting and replying are free') && free.includes('Get a Delegate Pass to meet them') && free.includes('until 5 Nov 2026') &&
-  free.includes('every conference session and the networking lunch'), '');
+check('free: what it cannot start is marked Delegate Pass, and nothing is offered for sale (they find it in the app)',
+  (free.match(/>Delegate Pass<\/span>/g) || []).length === 3 && !free.includes('Want to be the one who asks') && !free.includes('Get a Delegate Pass') &&
+  !free.includes('action=pay') && !free.includes('5 Nov 2026') && !free.includes('download-pass'), '');
 check('the main button opens the Network tab; the card and goals links are there', free.includes('action=network') && free.includes('action=social-card') && free.includes('action=goals'), '');
 check('the preview has no open picture, no nw= tag and no sign-in token', free.includes('</html>') && !free.includes('netmail-open') && !/[?&]nw=/.test(free) && !/[?&]token=/.test(free), '');
 check('and carries the unsubscribe footer the email will', /unsubscribe/i.test(free), '');
@@ -114,6 +116,7 @@ const paid = p.json?.html || '';
 check('paid, an odd number: the second subject, "includes all of it", nothing to buy, no step marked', p.json?.sample?.id === 1 && p.json.subject === 'Ratan, find out who you would like to meet at Bharat AI Innovation'
   && paid.includes('Your <strong>Delegate Pass</strong> includes all of it') && !paid.includes('Want to be the one who asks') && !/>(Delegate Pass|Once paid)<\/span>/.test(paid), p.json?.subject);
 check('a paid reader is not on their own phone, the others are', !paid.includes('Ratan Kesh</p>') && paid.includes('Meera Iyer') && paid.includes('Third Sharer'), '');
+check('a paid pass not downloaded yet is given the way to it', paid.includes('Your pass is not downloaded yet') && paid.includes('action=download-pass'), '');
 p = await hit('GET', '/api/admin/netmail-preview?kind=unpaid', undefined, ADMIN);
 const unpaid = p.json?.html || '';
 check('unpaid: steps marked "Once paid" and a Finish paying button on its pass', p.json?.sample?.id === 6 && (unpaid.match(/>Once paid<\/span>/g) || []).length === 3 && unpaid.includes('Finish paying') && unpaid.includes('action=pay&pass=delegate') && !unpaid.includes('Get a Delegate Pass to meet them'), '');
@@ -180,6 +183,65 @@ r = await hit('GET', '/api/events/1/glimpse');
 const names = (r.json?.people || []).map(x => x.name);
 check('/networking still names the sharers, without ids, and keeps glimpse_hide and the unsubscribe (Meera, above)', names.join(',') === 'Ratan Kesh,Third Sharer' && !/"id"/.test(r.text), names.join(' | '));
 
+// ---- by itself, 10 minutes after registering ----
+// The run is paused and the clock's other jobs are off, so a tick sends this email alone.
+await hit('POST', `/api/admin/campaigns/${runId}/pause`, {}, ADMIN);
+db.run("INSERT INTO app_settings (key, value) VALUES ('pay_remind_auto', 'off'), ('help_mail_auto', 'off')");
+const settle = () => new Promise(res => setTimeout(res, 60));
+const tick = async () => { const t = await hit('POST', '/api/cron/tick', {}, ADMIN); await settle(); return t; };
+let mob = 0;
+const reg = async (name, extra = {}) => {
+  const t = await hit('POST', '/api/events/1/attendees/register', { name, email: name.toLowerCase().replace(/[^a-z]+/g, '.') + '@gmail.com',
+    mobile: '97000' + String(++mob).padStart(5, '0'), company: 'Selfco', job_title: 'Director', city: 'Mumbai', industry: 'Insurance', badge_type: 'Visitor Pass', ...extra });
+  return t.json?.id;
+};
+const to = (i) => JSON.stringify(sent[i]?.Recipients || '');
+const farah = await reg('Farah Self');
+const pavan = await reg('Pavan Paid', { badge_type: 'Delegate Pass' });
+const olga = await reg('Olga Late');
+const omar = await reg('Omar Off');
+const pia = await reg('Pia Panel', { registration_source: 'campus:jnu-30sep' });
+r = await hit('POST', '/api/admin/attendees', { event_id: 1, name: 'Adil Added', email: 'adil.added@gmail.com', badge_type: 'Visitor Pass', mobile: '9700099999', company: 'X', job_title: 'Y' }, ADMIN);
+const adil = r.json?.id;
+await settle();
+check('registering yourself is marked register.self; a campus panel and someone the team adds are not',
+  farah && pavan && olga && omar && pia && adil && marks('register.self') === [farah, pavan, olga, omar].map(String).sort().join(','), marks('register.self') + ' ' + [farah, pavan, olga, omar, pia, adil]);
+let base = sent.length;
+r = await tick();
+check('the clock right after registering sends nothing: ten minutes have not passed', r.status === 200 && r.json?.networking_mail?.due === 0 && sent.length === base, r.status + ' ' + JSON.stringify(r.json?.networking_mail));
+const ago = (id, mins) => db.run(`UPDATE admin_audit SET created_at = datetime('now', '-${mins} minutes') WHERE action = 'register.self' AND entity_id = ?`, [String(id)]);
+ago(farah, 11); ago(pavan, 11); ago(olga, 25 * 60);
+r = await tick();
+const farahSubject = farah % 2 ? 'Farah, find out who you would like to meet at Bharat AI Innovation' : 'Farah, book meetings before you arrive with Bharat AI Connect';
+check('ten minutes on, the free registrant is sent it, and only they', sent.length === base + 1 && to(base).includes('farah.self@gmail.com') && subj(base) === farahSubject, sent.length - base + ' ' + to(base) + ' ' + subj(base));
+check('the free version: steps marked, nothing for sale, signed-in buttons with the nw= tag',
+  (body(base).match(/>Delegate Pass<\/span>/g) || []).length === 3 && !body(base).includes('Get a Delegate Pass') && /action=network[^"]*token=[0-9a-f]+/.test(body(base)) && body(base).includes('nw=' + farah + '.'), '');
+check('the send is claimed as networking.auto', marks('networking.auto') === String(farah), marks('networking.auto'));
+r = await tick();
+check('once only: the next tick sends nothing more', sent.length === base + 1, String(sent.length - base));
+check('a paid pass not paid for is left to the pay reminder', !JSON.stringify(sent.slice(base)).includes('pavan.paid'), '');
+check('a registration more than a day old is left to a run', !JSON.stringify(sent.slice(base)).includes('olga.late'), '');
+db.run("INSERT INTO payment_orders (order_id, attendee_id, pass_type, base_paise, gst_paise, amount_paise, status, paid_at) VALUES ('BAI-smoke', ?, 'Delegate Pass', 499900, 89982, 589882, 'paid', datetime('now', '-2 minutes'))", [pavan]);
+db.run("UPDATE attendees SET payment_status = 'paid' WHERE id = ?", [pavan]);
+await tick();
+check('paid two minutes ago: not yet', sent.length === base + 1, String(sent.length - base));
+db.run("UPDATE payment_orders SET paid_at = datetime('now', '-11 minutes') WHERE order_id = 'BAI-smoke'");
+await tick();
+check('ten minutes after the payment, the paid version goes, with the way to the pass',
+  sent.length === base + 2 && to(base + 1).includes('pavan.paid') && body(base + 1).includes('Your <strong>Delegate Pass</strong> includes all of it') && body(base + 1).includes('action=download-pass'), subj(base + 1));
+r = await hit('POST', '/api/admin/netmail-auto', { on: false }, ADMIN);
+ago(omar, 11);
+await tick();
+check('switched off, nothing goes by itself', r.json?.on === false && sent.length === base + 2, String(sent.length - base));
+await hit('POST', '/api/admin/netmail-auto', { on: true }, ADMIN);
+await tick();
+check('switched back on, it goes', sent.length === base + 3 && to(base + 2).includes('omar.off'), to(base + 2));
+r = await hit('POST', `/api/admin/attendees/${farah}/send-networking?force=1`, {}, ADMIN);
+check('a run skips anyone sent it by itself', r.json?.skipped === true && /by itself/.test(r.json.reason || '') && sent.length === base + 3, r.text.slice(0, 160));
+r = await hit('GET', '/api/admin/netmail-status', undefined, ADMIN);
+check('status: on, 3 sent by itself and counted with the run\'s 3; still to get it, only Olga and the one the team added',
+  r.json?.auto?.on === true && r.json.auto.sent === 3 && r.json.auto.cron_alive === true && r.json.stats?.sent === 6 && r.json.left === 2, JSON.stringify(r.json?.auto) + ' sent ' + r.json?.stats?.sent + ' left ' + r.json?.left);
+
 // ---- the pages ----
 const appJs = (await hit('GET', '/app.js')).text;
 check("/app.js: ?action=network opens the Network tab once signed in", appJs.includes("act === 'network'") && appJs.includes("switchTab('networking')"), '');
@@ -187,6 +249,7 @@ check('/app.js: the nw= tag goes to /api/netmail-click', appJs.includes("urlPara
 const adminJs = (await hit('GET', '/admin.js', undefined, ADMIN)).text;
 check('/admin.js: the strip on Notification Status, Preview & send, the run from the list',
   adminJs.includes('id="netmail-strip"') && adminJs.includes('function loadNetMailStrip') && adminJs.includes("startCampaign('networking'") && adminJs.includes("c.kind === 'networking') return openNetMailPreview("), '');
+check('/admin.js: the switch for the one that goes by itself', adminJs.includes('function setNetMailAuto') && adminJs.includes('/api/admin/netmail-auto'), '');
 
 console.log(fails ? `\n${fails} check(s) failed` : '\nall networking-email checks passed');
 process.exit(fails ? 1 : 0);
