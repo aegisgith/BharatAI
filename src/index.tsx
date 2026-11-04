@@ -21356,9 +21356,11 @@ function mainPageHTML(): string {
                 <p class="text-xs text-gray-400 mb-3" id="pcc-pass-note">Keep it on your phone — the badge desk scans it to check you in.</p>
                 <p class="hidden text-xs text-gray-300 mb-3" id="pcc-workshop"></p>
                 <p class="hidden text-xs text-gray-300 mb-3" id="pcc-upgrade"></p>
-                <button type="button" id="pcc-guarantee-btn" onclick="showUpgradeModal(&quot;passcard&quot;)" class="hidden px-4 mr-2 mb-2 rounded-xl text-xs font-semibold text-white transition" style="min-height:44px;background:linear-gradient(135deg,#FF6B00,#FF8C38);"><i class="fas fa-arrow-up mr-1.5"></i>Guarantee both days</button>
+                <!-- The download comes first; a pass still waiting for payment
+                     shows Pay now before it, and a free pass its guarantee after it. -->
                 <button type="button" id="pcc-pay-btn" onclick="payPendingPass()" class="hidden px-4 mr-2 mb-2 rounded-xl text-xs font-semibold text-white transition" style="min-height:44px;background:linear-gradient(135deg,#FF6B00,#FF8C38);"><i class="fas fa-credit-card mr-1.5"></i>Pay now</button>
-                <button type="button" onclick="generateDelegatePass()" class="px-4 rounded-xl text-xs font-semibold bg-primary-600 hover:bg-primary-500 text-white transition" style="min-height:44px;"><i class="fas fa-download mr-1.5"></i>Download my pass</button>
+                <button type="button" id="pcc-download-btn" onclick="generateDelegatePass()" class="px-4 mr-2 mb-2 rounded-xl text-xs font-semibold bg-primary-600 hover:bg-primary-500 text-white transition" style="min-height:44px;"><i class="fas fa-download mr-1.5"></i>Download my pass</button>
+                <button type="button" id="pcc-guarantee-btn" onclick="showUpgradeModal(&quot;passcard&quot;)" class="hidden px-4 mb-2 rounded-xl text-xs font-semibold text-white transition" style="min-height:44px;background:linear-gradient(135deg,#FF6B00,#FF8C38);"><i class="fas fa-arrow-up mr-1.5"></i>Guarantee both days</button>
               </div>
             </div>
             <div class="glass rounded-2xl p-5 border border-emerald-500/25 flex items-start gap-4">
@@ -21368,8 +21370,8 @@ function mainPageHTML(): string {
               <div class="flex-1 min-w-0">
                 <h3 class="font-bold text-sm mb-0.5">Tell your network you're coming</h3>
                 <p class="text-xs text-gray-400 mb-3">A card with your photo, sized for LinkedIn, WhatsApp and Instagram — with a caption you can copy. Bringing a colleague? Five passes go for the price of four.</p>
-                <button type="button" onclick="inviteColleague()" class="px-4 mr-2 mb-2 rounded-xl text-xs font-semibold glass hover:bg-white/10 transition" style="min-height:44px;"><i class="fas fa-user-plus mr-1.5"></i>Invite a colleague</button>
-                <button type="button" onclick="openSocialCard()" class="px-4 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition" style="min-height:44px;"><i class="fas fa-share-alt mr-1.5"></i>Download my LinkedIn / WhatsApp creative</button>
+                <button type="button" id="pcc-card-btn" onclick="openSocialCard()" class="px-4 mr-2 mb-2 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition" style="min-height:44px;"><i class="fas fa-share-alt mr-1.5"></i>Download my LinkedIn / WhatsApp creative</button>
+                <button type="button" onclick="inviteColleague()" class="px-4 mb-2 rounded-xl text-xs font-semibold glass hover:bg-white/10 transition" style="min-height:44px;"><i class="fas fa-user-plus mr-1.5"></i>Invite a colleague</button>
               </div>
             </div>
           </div>
@@ -30388,15 +30390,19 @@ function mainPageScript(): string {
      * and the one card that takes money sat near the bottom. This puts them in
      * the order that matters and is the single place that order is decided.
      *
-     *   1. who you are          - the welcome panel, name and pass
-     *   2. what you collect     - your pass, your shareable creative
+     *   1. what you collect     - your pass, your shareable creative. First since
+     *                             4 Nov 2026 (organiser: people "keep on searching
+     *                             where the heck it is"): under the welcome and
+     *                             the goal card it sat below the first screen of
+     *                             a phone.
+     *   2. who you are          - the welcome panel, name and pass
      *   3. what you could buy   - the upgrade card, for Visitor Pass holders
      *   4. who to meet          - the matches
      *   5. what is still missing- the profile ask, only while something is
      *   6. how to get business  - the plan
      *   7. everything else      - RSVP and the rest, unchanged */
     function orderDashboard() {
-      const ids = ['role-home', 'goal-card', 'pass-card-cta', 'home-quick-actions', 'dash-match-rail',
+      const ids = ['pass-card-cta', 'role-home', 'goal-card', 'home-quick-actions', 'dash-match-rail',
                    'profile-complete-card', 'event-plan-card', 'rsvp-card-container'];
       const first = document.getElementById(ids[0]);
       if (!first || !first.parentNode) return;

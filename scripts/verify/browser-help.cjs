@@ -278,6 +278,90 @@ const until = async (fn, ms) => { const end = Date.now() + ms; while (Date.now()
     await ctx2.close();
   }
 
+  // ---- 9. After signing in, the pass and the badge are the first thing on the screen ----
+  // Organiser, 4 Nov 2026: "so that they download it easily, need not keep on
+  // searching where the heck it is". Until then orderDashboard() put the welcome
+  // panel and the goal card above them, which on a phone pushed both below the
+  // first screen.
+  {
+    console.log('-- '+"9. After signing in, the pass and the badge are the first thing on the screen");
+    const setState = (set) => fetch(BASE + '/api/__state', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(set ? { set } : { reset: true }) });
+    const layout = (page) => page.evaluate(() => {
+      const ids = ['pass-card-cta', 'role-home', 'goal-card', 'home-quick-actions', 'dash-match-rail', 'profile-complete-card', 'event-plan-card', 'rsvp-card-container'];
+      // In page order, not list order: the first dashboard block a person actually sees.
+      const parent = document.getElementById('pass-card-cta').parentNode;
+      const shownBlocks = Array.from(parent.children).filter(el => ids.includes(el.id) && !el.classList.contains('hidden'));
+      const $ = (id) => document.getElementById(id);
+      const box = (el) => { const r = el.getBoundingClientRect(); return { top: r.top + window.scrollY, bottom: r.bottom + window.scrollY, h: r.height }; };
+      const vis = (el) => !!el && !el.classList.contains('hidden') && el.getBoundingClientRect().height > 0;
+      const before = (a, b) => !!a && !!b && !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+      const dl = $('pcc-download-btn'), card = $('pcc-card-btn'), pay = $('pcc-pay-btn'), g = $('pcc-guarantee-btn'), inv = card && card.nextElementSibling;
+      return {
+        first: shownBlocks[0] ? shownBlocks[0].id : '', cta: vis($('pass-card-cta')), ctaTop: $('pass-card-cta') ? box($('pass-card-cta')).top : -1,
+        dl: vis(dl), dlBottom: dl ? box(dl).bottom : -1, card: vis(card), cardBottom: card ? box(card).bottom : -1,
+        pay: vis(pay), g: vis(g), dlBeforeG: before(dl, g), payBeforeDl: before(pay, dl), cardBeforeInvite: before(card, inv),
+        heading: (($('pcc-pass-name') || {}).textContent || '') + (($('pcc-pass-state') || {}).textContent || ''),
+        scrollY: window.scrollY, viewport: window.innerHeight,
+      };
+    });
+    const signIn = async (user) => {
+      const { ctx, page, seen } = await phone(browser);
+      await ctx.route(/\/api\/events\/1\/attendees\/login$/, (route) => route.fulfill({ json: user }));
+      await page.goto(BASE + '/app?email=' + encodeURIComponent(user.email) + '&token=' + TOKEN, { waitUntil: 'load' });
+      await until(() => page.evaluate(() => { const e = document.getElementById('pass-card-cta'); return !!e && !e.classList.contains('hidden'); }), 15000);
+      await sleep(800);
+      return { ctx, page, seen };
+    };
+
+    // a) a free Visitor Pass, signed in through the emailed link
+    {
+      const { ctx, page, seen } = await signIn(riya);
+      const L = await layout(page);
+      check('signed in (free pass): the pass-and-badge card is the first block of the dashboard', L.first === 'pass-card-cta' && L.cta, JSON.stringify(L));
+      check('signed in (phone 390x844): both download buttons are on the first screen, nothing to scroll', L.dl && L.card && L.dlBottom > 0 && L.dlBottom <= L.viewport && L.cardBottom <= L.viewport && L.scrollY === 0, JSON.stringify({ dlBottom: L.dlBottom, cardBottom: L.cardBottom, viewport: L.viewport, ctaTop: L.ctaTop }));
+      check('free pass: Download my pass comes before Guarantee both days, and there is no Pay now', L.dlBeforeG && L.g && !L.pay && L.cardBeforeInvite && /free pass/.test(L.heading), JSON.stringify({ dlBeforeG: L.dlBeforeG, g: L.g, pay: L.pay, heading: L.heading }));
+      await page.screenshot({ path: require('path').join(require('os').tmpdir(), 'dashboard-top-visitor.png') }).catch(() => {});
+      // the ordering function itself: moved to the bottom by hand, it goes back on top
+      const restored = await page.evaluate(() => { const el = document.getElementById('pass-card-cta'); el.parentNode.appendChild(el); orderDashboard(); const ids = ['pass-card-cta', 'role-home', 'goal-card', 'home-quick-actions', 'dash-match-rail', 'profile-complete-card', 'event-plan-card', 'rsvp-card-container']; const shown = ids.map(id => document.getElementById(id)).filter(e => e && !e.classList.contains('hidden')); const order = Array.from(el.parentNode.children).map(e => e.id); return { first: shown[0] && shown[0].id, ctaIdx: order.indexOf('pass-card-cta'), welcomeIdx: order.indexOf('role-home') }; });
+      check('orderDashboard(): the card goes back above the welcome panel after being moved', restored.first === 'pass-card-cta' && restored.ctaIdx >= 0 && restored.ctaIdx < restored.welcomeIdx, JSON.stringify(restored));
+      // the buttons do what they say
+      await page.click('#pcc-download-btn');
+      const passOpened = await until(() => seen.steps.some(s => s.kind === 'pass' && s.step === 'open'), 6000);
+      check('tapping Download my pass starts the pass (counted as pass.open)', passOpened, JSON.stringify(seen.steps));
+      // A visitor without a photo is asked for one: that box opens a moment after
+      // the step is counted and sits over the badge button, so close it first.
+      await until(() => page.evaluate(() => !!document.getElementById('pass-photo-close')), 5000);
+      if (await page.$('#pass-photo-close')) {
+        await page.click('#pass-photo-close');
+        await until(() => page.evaluate(() => !document.getElementById('pass-photo-close')), 5000);
+      }
+      await sleep(400);
+      await page.click('#pcc-card-btn');
+      const cardOpened = await until(() => seen.steps.some(s => s.kind === 'card' && s.step === 'open'), 6000);
+      check('tapping the badge button starts the badge (counted as card.open)', cardOpened, JSON.stringify(seen.steps));
+      await ctx.close();
+    }
+    // b) a Delegate Pass still waiting for payment: Pay now first, the download beside it
+    {
+      const pending = { ...riya, badge_type: 'Delegate Pass', payment_status: 'pending' };
+      await setState({ user: pending });
+      const { ctx, page } = await signIn(pending);
+      const L = await layout(page);
+      check('pass waiting for payment: still the first block, Pay now before Download my pass, no guarantee button', L.first === 'pass-card-cta' && L.pay && L.payBeforeDl && !L.g && /waiting for payment/.test(L.heading), JSON.stringify({ first: L.first, pay: L.pay, payBeforeDl: L.payBeforeDl, g: L.g, heading: L.heading }));
+      await ctx.close();
+    }
+    // c) a paid Delegate Pass: just the download
+    {
+      const paid = { ...riya, badge_type: 'Delegate Pass', payment_status: 'paid' };
+      await setState({ user: paid });
+      const { ctx, page } = await signIn(paid);
+      const L = await layout(page);
+      check('paid pass: first block, "Delegate Pass is ready", Download my pass alone with the badge beside it on the first screen', L.first === 'pass-card-cta' && L.dl && !L.pay && !L.g && /Delegate Pass is ready/.test(L.heading) && L.cardBottom <= L.viewport, JSON.stringify({ first: L.first, dl: L.dl, pay: L.pay, g: L.g, heading: L.heading, cardBottom: L.cardBottom, viewport: L.viewport }));
+      await ctx.close();
+    }
+    await setState(null);
+  }
+
   await browser.close();
   console.log(fails ? `\n${fails} FAILED` : '\nall passed');
   process.exit(fails ? 1 : 0);
