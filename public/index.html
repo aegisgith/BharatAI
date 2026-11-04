@@ -607,20 +607,27 @@
         .hero-alt .sep { margin: 0 0.4rem; color: rgba(255,255,255,0.4); }
         .dl-short { display: none; }
         @media (max-width: 768px) {
-            /* A phone shows the photograph as a clear band across the top, where
-               a portrait crop of the whole hero would only have kept a sliver of
-               ceiling lights above the type. The band ends in solid dark, so
-               the type below sits on a plain ground. */
-            .hero { background: #0A0C1C; min-height: 0; padding-top: calc(var(--nav-h) + 180px); }
+            /* A phone shows the photograph as a band across the top, where a
+               portrait crop of the whole hero would only have kept a sliver of
+               ceiling lights. The dateline, title and Hindi line sit ON the
+               photograph (the organiser, 4 Nov 2026), which darkens towards its
+               foot behind them and ends in solid dark, so the description and the
+               Delegate box below sit on a plain ground; lifting the title onto the
+               photograph also brings the Delegate button 110px higher. */
+            .hero { background: #0A0C1C; min-height: 0; padding-top: calc(var(--nav-h) + 70px); }
             .hero-content { padding-top: 0 !important; }
-            #heroGlobe { height: calc(var(--nav-h) + 250px); }
-            .hero-bg-photo { height: calc(var(--nav-h) + 250px); }
+            #heroGlobe { height: calc(var(--nav-h) + 300px); opacity: 0.6; }
+            .hero-bg-photo { height: calc(var(--nav-h) + 300px); }
             .hero-bg-scrim {
                 background: linear-gradient(180deg,
-                    rgba(10,12,28,0.62) 0, rgba(10,12,28,0.06) 70px, rgba(10,12,28,0) 140px,
-                    rgba(10,12,28,0.6) calc(var(--nav-h) + 175px), rgba(10,12,28,0.97) calc(var(--nav-h) + 240px),
-                    #0A0C1C calc(var(--nav-h) + 250px), #0A0C1C 100%);
+                    rgba(10,12,28,0.6) 0, rgba(10,12,28,0.12) 64px, rgba(10,12,28,0.22) calc(var(--nav-h) + 50px),
+                    rgba(10,12,28,0.5) calc(var(--nav-h) + 130px), rgba(10,12,28,0.72) calc(var(--nav-h) + 220px),
+                    rgba(10,12,28,0.95) calc(var(--nav-h) + 280px), #0A0C1C calc(var(--nav-h) + 300px), #0A0C1C 100%);
             }
+            /* "Bharat AI" is gradient text with a transparent fill, which a
+               text-shadow would show through, so that line takes a drop-shadow. */
+            .hero .hero-title .line-gradient, .hero .hero-title-hi, .hero-dateline { text-shadow: 0 2px 14px rgba(10,12,28,0.75); }
+            .hero .hero-title .line-saffron { filter: drop-shadow(0 2px 8px rgba(10,12,28,0.6)); }
             .dl-long { display: none; }
             .hero-dateline span.dl-short { display: inline; background: none; border: 0; padding: 0; }
             .hero .hero-title { font-size: clamp(2.4rem, 11vw, 3.1rem) !important; line-height: 0.95 !important; }
@@ -2471,8 +2478,8 @@
         // of the type below it; wider, the type is centred and the globe turns
         // behind it, as it always has.
         var mob=W<900;
-        var centX=W*.5,centY=mob?Math.min(H*.5,165):H*.5;
-        var R=mob?Math.min(W*.27,120):Math.min(W,H)*.40;
+        var centX=W*.5,centY=mob?Math.min(H*.5,190):H*.5;
+        var R=mob?Math.min(W*.3,125):Math.min(W,H)*.40;
         ctx.clearRect(0,0,W,H);
         var ca=Math.cos(ang),sa=Math.sin(ang);
         for(var k=0;k<N;k++){
