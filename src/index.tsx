@@ -5916,11 +5916,17 @@ const LOGIN_MAX_ATTEMPTS = 5
 // Returns null when the address has asked too often; the caller still replies
 // neutrally so this cannot be used to probe which addresses exist.
 async function loginTokenRateLimited(c: any, eventId: any, email: string): Promise<boolean> {
-  const row = await c.env.DB.prepare(
-    `SELECT COUNT(*) AS n FROM login_tokens
-      WHERE event_id = ? AND email = ? AND created_at > datetime('now', '-${LOGIN_RATE_WINDOW_MIN} minutes')`
-  ).bind(eventId, email).first() as any
-  return (row?.n || 0) >= LOGIN_RATE_MAX
+  // Codes the person asked for, not the links the emails mint: since 4 Nov 2026
+  // three emails go out inside ten minutes of registering, and with their rows
+  // counted a person who then asked for a code at the sign-in box got the
+  // neutral answer and nothing arrived. Pre-0037 rows have no max_uses column;
+  // there every row counts, as before.
+  const count = async (sql: string) => Number(((await c.env.DB.prepare(sql).bind(eventId, email).first()) as any)?.n || 0)
+  const since = `created_at > datetime('now', '-${LOGIN_RATE_WINDOW_MIN} minutes')`
+  let n = 0
+  try { n = await count(`SELECT COUNT(*) AS n FROM login_tokens WHERE event_id = ? AND email = ? AND COALESCE(max_uses, 1) = 1 AND ${since}`) }
+  catch (_) { n = await count(`SELECT COUNT(*) AS n FROM login_tokens WHERE event_id = ? AND email = ? AND ${since}`) }
+  return n >= LOGIN_RATE_MAX
 }
 
 // ttlMinutes is a parameter because a campaign email is not a sign-in link. Fifteen
@@ -5929,10 +5935,9 @@ async function loginTokenRateLimited(c: any, eventId: any, email: string): Promi
 // or on Monday. Callers that do not pass one keep the short default.
 /* maxUses exists because a campaign email offers more than one thing to do and
  * builds every link from the same token. One is right for a sign-in code; a
- * mail with three buttons needs three doors, and minting three rows would not
- * work - the supersede below is deliberate, and each new token would retire the
- * one before it. Whoever can read the inbox can already click the first link
- * and the expiry is unchanged, so this only stops the second click failing. */
+ * mail with three buttons needs three doors. Whoever can read the inbox can
+ * already click the first link and the expiry is unchanged, so this only stops
+ * the second click failing. */
 async function createLoginToken(c: any, eventId: any, email: string, ttlMinutes: number = LOGIN_TOKEN_MINUTES, maxUses: number = 1) {
   // Nothing else prunes this table and every sign-in adds a row. Clearing spent and
   // expired rows here keeps it from growing without bound, with no cron needed.
@@ -5942,12 +5947,28 @@ async function createLoginToken(c: any, eventId: any, email: string, ttlMinutes:
 
   const token = randomHex(32)
   const code = randomCode()
-  // Supersede anything outstanding for this address so an old code cannot be reused.
-  await c.env.DB.prepare(
-    "UPDATE login_tokens SET used_at = datetime('now') WHERE event_id = ? AND email = ? AND used_at IS NULL"
-  ).bind(eventId, email).run()
   const ttl = `+${Math.max(1, Math.round(ttlMinutes))} minutes`
   const budget = Math.max(1, Math.round(maxUses))
+  // A new sign-in code supersedes the codes outstanding for this address, so an
+  // old code cannot be reused: six digits are guessable, one live code at a time.
+  // An email link supersedes nothing. Until 4 Nov 2026 every new row retired all
+  // the rest, and every email mints a link (account-ready, networking, payment,
+  // the reminders, the help steps), so each email killed the links in the one
+  // before it: with the account-ready and networking emails going out five
+  // minutes apart, the first email's link lived five minutes. Each link is its
+  // own door for its full seven days; whoever can read the inbox can already
+  // click the newest one.
+  if (budget === 1) {
+    try {
+      await c.env.DB.prepare(
+        "UPDATE login_tokens SET used_at = datetime('now') WHERE event_id = ? AND email = ? AND used_at IS NULL AND COALESCE(max_uses, 1) = 1"
+      ).bind(eventId, email).run()
+    } catch (_) {
+      await c.env.DB.prepare(
+        "UPDATE login_tokens SET used_at = datetime('now') WHERE event_id = ? AND email = ? AND used_at IS NULL"
+      ).bind(eventId, email).run()
+    }
+  }
   // max_uses arrived in 0037. Naming a column SQLite does not have fails the
   // whole statement at parse time, so a database one migration behind takes the
   // second path and issues an ordinary single-use token - which signs people in
@@ -5969,18 +5990,27 @@ async function createLoginToken(c: any, eventId: any, email: string, ttlMinutes:
 // Redeems a token or code. Returns the email on success, or a reason string.
 async function redeemLoginToken(c: any, eventId: any, email: string, token?: string, code?: string):
     Promise<{ ok: true } | { ok: false; reason: string }> {
-  const WHERE_LIVE = `WHERE event_id = ? AND email = ? AND used_at IS NULL AND expires_at > datetime('now')
-     ORDER BY id DESC LIMIT 1`
+  const LIVE = `event_id = ? AND email = ? AND used_at IS NULL AND expires_at > datetime('now')`
+  const COLS = `id, token_hash, code_hash, attempts, max_uses, uses, (created_at > datetime('now', '-2 minutes')) AS fresh`
+  // A link is found by its own hash among the live rows for the address: every
+  // email carries its own link (createLoginToken), so the newest row is not the
+  // one in the email being opened. Until 4 Nov 2026 only the newest row was read,
+  // so an older email's link was "not correct" - and counted as a wrong attempt
+  // against the newest link, five of which retired that one too. A code is still
+  // the newest code row only: six digits are guessable, so one live code, guarded
+  // by the attempts counter; a multi-use link's row carries a code nobody was shown.
   // Same fallback as the insert: pre-0037 databases have neither column, and a
   // SELECT that names one would fail outright rather than degrade.
   let row: any = null
   try {
-    row = await c.env.DB.prepare(
-      `SELECT id, token_hash, code_hash, attempts, max_uses, uses, (created_at > datetime('now', '-2 minutes')) AS fresh FROM login_tokens ${WHERE_LIVE}`
-    ).bind(eventId, email).first()
+    row = token
+      ? await c.env.DB.prepare(`SELECT ${COLS} FROM login_tokens WHERE ${LIVE} AND token_hash = ? ORDER BY id DESC LIMIT 1`)
+          .bind(eventId, email, await sha256Hex(token)).first()
+      : await c.env.DB.prepare(`SELECT ${COLS} FROM login_tokens WHERE ${LIVE} AND COALESCE(max_uses, 1) = 1 ORDER BY id DESC LIMIT 1`)
+          .bind(eventId, email).first()
   } catch (_) {
     row = await c.env.DB.prepare(
-      `SELECT id, token_hash, code_hash, attempts FROM login_tokens ${WHERE_LIVE}`
+      `SELECT id, token_hash, code_hash, attempts FROM login_tokens WHERE ${LIVE} ORDER BY id DESC LIMIT 1`
     ).bind(eventId, email).first()
   }
   if (!row) return { ok: false, reason: 'That link or code has expired. Please request a new one.' }

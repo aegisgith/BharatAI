@@ -33,6 +33,8 @@ const SUITES = [
   { name: 'server: account-ready email by itself 5 minutes after registering (or paying), once, the skips, the switch, before the networking email', args: ['smoke-notify-auto.mjs'] },
   { name: 'server: networking app email (one subject, body by pass, the phone of people /networking may name, preview, run order, skips, marks, counts), on real SQLite', args: ['smoke-netmail.mjs'] },
   { name: 'server: help email to people stuck on the way in, the badge or the pass (steps counted, startup report, dead links, the clock, by hand, /app.js caching)', args: ['smoke-help.mjs'] },
+  { name: 'server: sign-in token rules (expiry, uses, two live links, a stale one, codes and attempts, a new code retires codes only, a new email link retires nothing)', args: ['unit-login-tokens.mjs'] },
+  { name: "server: every email's sign-in link keeps working end to end (welcome, account-ready at 5 min, networking at 10, the help steps, the code), on real SQLite", args: ['system-email-links.mjs'] },
   { name: 'server: campus panel "Are you coming?"', args: ['smoke-panel-answers.mjs'] },
   { name: 'server: AI marketplace gates, pages and exhibitor invites', args: ['smoke-marketplace.mjs'] },
   { name: 'server: checkout on this site (CCAvenue), the switch, the answer, the queues', args: ['smoke-payments.mjs'] },
@@ -46,6 +48,7 @@ const SUITES = [
   // session's run) moves this suite to :9772 instead of failing it.
   { name: 'browser: phone journey and admin Campus panels block', args: ['phone-test.cjs'], harness: 'phone-harness.mjs', port: 8772, portEnv: true },
   { name: 'browser: stuck on the way in (startup check, refresh, steps, slow), a dead link, and the badge and pass steps counted', args: ['browser-help.cjs'], harness: 'phone-harness.mjs', port: 8778, portEnv: true },
+  { name: "browser: a phone opens each email's sign-in button, oldest first after newer emails went out, on the real worker and real SQLite; a dead link opens the sign-in box", args: ['browser-login-links.cjs'], harness: 'login-harness.mjs', port: 8780, portEnv: true },
   { name: 'browser: panel email as a server job (start, pace, stop, resume, done, the scheduler note)', args: ['pace-test.cjs'], harness: 'pace-harness.mjs', port: 8774 },
   { name: 'browser: buying a pass on a phone (checkout, result, retry, checkout off, invoice queues)', args: ['pay-test.cjs'], harness: 'pay-harness.mjs', port: 8776 },
   { name: 'browser: the admin Overview board (who holds which pass, money from passes, waiting on you, days to go) on the real worker and real SQLite, desktop and phone', args: ['browser-board.cjs'], harness: 'board-harness.mjs', port: 8782, portEnv: true },

@@ -206,6 +206,37 @@ db.run("INSERT INTO login_tokens (event_id, email, token_hash, code_hash, expire
 r = await hit('POST', '/api/events/1/attendees/login', { email: 'scanned@example.com', code: '424242' }, {}, AZURE);
 check('login: a one-use code is spent on first use, fresh or not, whatever the network', r.status === 200 && !!latest().used_at, r.status + ' ' + JSON.stringify(latest()));
 
+// ---- every email's link is its own door (4 Nov 2026) ----
+// Two emails each carry a link: the older one still signs in after the newer
+// email went out, a stale link is no wrong attempt against the newer one, a
+// typed code is checked against the code row and never a newer link's, and a
+// new code retires the code before it and nothing else. The rows are older
+// than the code rate window so the two sign-in codes below are not refused.
+const OLDER = crypto.randomBytes(32).toString('hex'), NEWER = crypto.randomBytes(32).toString('hex'), LATER = crypto.randomBytes(32).toString('hex');
+const door = (hash, codeHash, uses, ago, ttl) =>
+  db.run("INSERT INTO login_tokens (event_id, email, token_hash, code_hash, expires_at, max_uses, created_at) VALUES (1, 'oldlink@example.com', ?, ?, datetime('now', ?), ?, datetime('now', ?))", [hash, codeHash, ttl, uses, ago]);
+door(sha(OLDER), 'x', 6, '-30 minutes', '+6 days');
+door(sha(NEWER), 'x', 6, '-25 minutes', '+7 days');
+const tok = (t) => q("SELECT attempts, uses, used_at FROM login_tokens WHERE email = 'oldlink@example.com' AND token_hash = ?", sha(t))[0];
+r = await hit('POST', '/api/events/1/attendees/login', { email: 'oldlink@example.com', token: OLDER });
+check("login: the older email's link still signs in after a newer email went out", r.status === 200 && r.json?.id === 11 && tok(OLDER).uses === 1 && !tok(OLDER).used_at && tok(NEWER).uses === 0, r.status + ' ' + JSON.stringify(tok(OLDER)));
+r = await hit('POST', '/api/events/1/attendees/login', { email: 'oldlink@example.com', token: 'e'.repeat(64) });
+check('login: a stale link is refused as expired, not as a wrong attempt against the newer link', r.status === 401 && /expired/.test(r.text) && tok(NEWER).attempts === 0 && tok(OLDER).attempts === 0, r.status + ' ' + r.text.slice(0, 120));
+r = await hit('POST', '/api/events/1/attendees/login', { email: 'oldlink@example.com', token: NEWER });
+check("login: the newer email's link signs in too", r.status === 200 && tok(NEWER).uses === 1 && tok(OLDER).uses === 1, r.status + ' ' + JSON.stringify(tok(NEWER)));
+door('c1', sha('654321'), 1, '-20 minutes', '+15 minutes');
+door(sha(LATER), 'x', 6, '-16 minutes', '+7 days');
+const codes = () => q("SELECT id, used_at FROM login_tokens WHERE email = 'oldlink@example.com' AND max_uses = 1 ORDER BY id");
+const links = () => q("SELECT used_at FROM login_tokens WHERE email = 'oldlink@example.com' AND max_uses > 1");
+r = await hit('POST', '/api/events/1/attendees/login', { email: 'oldlink@example.com', code: '654321' });
+check("login: a typed code is checked against the code row, not a newer email link's", r.status === 200 && !!codes()[0].used_at, r.status + ' ' + r.text.slice(0, 120));
+r = await hit('POST', '/api/events/1/attendees/send-magic-link', { email: 'oldlink@example.com' });
+check('sign-in code: a new code leaves every emailed link alive', r.status === 200 && codes().length === 2 && !codes()[1].used_at && links().length === 3 && links().every(x => !x.used_at), r.status + ' codes=' + JSON.stringify(codes()) + ' links=' + JSON.stringify(links()));
+r = await hit('POST', '/api/events/1/attendees/send-magic-link', { email: 'oldlink@example.com' });
+check('sign-in code: a new code retires the code before it, and only that', r.status === 200 && codes().length === 3 && !!codes()[1].used_at && !codes()[2].used_at && links().every(x => !x.used_at), r.status + ' codes=' + JSON.stringify(codes()));
+// The two sign-in emails are not the minute clock's.
+sent.length = 0;
+
 // ---- the minute clock ----
 const tokensBefore = q('SELECT COUNT(*) AS n FROM login_tokens')[0].n;
 r = await hit('POST', '/api/cron/tick', { max_seconds: 0 }, CRON);
