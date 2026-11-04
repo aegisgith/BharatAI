@@ -5835,7 +5835,7 @@ async function boothRevenueTarget(c: any): Promise<number> {
 
 // The two event days and the bookable hours inside them. Derived from the real
 // schedule, not guessed: sessions (migration 0012, re-dated by 0013) run
-// 08:30-17:10 on 20 Nov plus an 18:30-20:30 CXO cocktail, and 08:30-17:15 on
+// 08:30-17:10 on 20 Nov plus the 18:30-20:00 Leaders’ Evening, and 08:30-17:15 on
 // 21 Nov. 09:00-18:00 therefore sits inside both days and clears the closing
 // ceremony. Kept in code, not in a table, so trimming the window is a deploy
 // rather than another --remote execute.
