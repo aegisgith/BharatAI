@@ -25,6 +25,7 @@ const SUITES = [
   { name: 'server: free-pass directory teaser', args: ['smoke-directory-teaser.mjs'] },
   { name: 'server: the public glimpse on /networking (titles only, no name, photo or company), on real SQLite', args: ['smoke-glimpse.mjs'] },
   { name: 'server: an unpaid paid pass is not shown as that pass (directory, connections, leads, admin counts), on real SQLite', args: ['smoke-unpaid-pass.mjs'] },
+  { name: 'server: the Overview board (who holds which pass, money from passes, what is waiting on a person), on real SQLite', args: ['smoke-board.mjs'] },
   { name: 'server: networking write rules (who may answer a request or meeting, known statuses, meeting checks, no emails in connection lists, read marks, scanner and the one-use sign-in email, booth text), on real SQLite', args: ['smoke-networking-guards.mjs'] },
   { name: 'server: one person, one registration (same email or mobile refused)', args: ['smoke-register-dupes.mjs'] },
   { name: 'server: duplicates finder and merge, on real SQLite with the production schema', args: ['smoke-merge-dupes.mjs'] },
@@ -47,6 +48,7 @@ const SUITES = [
   { name: 'browser: stuck on the way in (startup check, refresh, steps, slow), a dead link, and the badge and pass steps counted', args: ['browser-help.cjs'], harness: 'phone-harness.mjs', port: 8778, portEnv: true },
   { name: 'browser: panel email as a server job (start, pace, stop, resume, done, the scheduler note)', args: ['pace-test.cjs'], harness: 'pace-harness.mjs', port: 8774 },
   { name: 'browser: buying a pass on a phone (checkout, result, retry, checkout off, invoice queues)', args: ['pay-test.cjs'], harness: 'pay-harness.mjs', port: 8776 },
+  { name: 'browser: the admin Overview board (who holds which pass, money from passes, waiting on you, days to go) on the real worker and real SQLite, desktop and phone', args: ['browser-board.cjs'], harness: 'board-harness.mjs', port: 8782, portEnv: true },
   { name: 'browser: an exhibitor lists a product on the AI Marketplace (sign-in link, the form, plain domains, images, every way the button looked dead, dashboard edit, approval, public page, inquiry)', args: ['mp-test.cjs'], harness: 'mp-harness.mjs', port: 8779, portEnv: true },
 ];
 

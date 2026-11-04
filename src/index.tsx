@@ -17488,6 +17488,127 @@ app.post('/api/admin/events/:id/broadcast', async (c) => {
   return c.json({ id: result.meta.last_row_id, success: true, recipients, count: recipients.length }, 201)
 })
 
+// The Overview's board (4 Nov 2026): who holds which pass, what the passes have
+// brought in, how fast registration is moving, and what is waiting on a person.
+// The organiser asked the Overview "how many are free, academic, delegate,
+// premium, VIP, speaker, media, and how much money from paid passes" and it
+// could not say. Every part is its own query with its own catch, so a table one
+// migration behind blanks one line and never the board.
+//
+// Money is paise from payment_orders (exact, the gateway's answer) for anything
+// paid on this site, and the hand-typed payment_amount (rupees) for a pass
+// confirmed by hand, mUni Campus or a bank transfer; the two are kept apart on
+// the card because only the first is a figure nobody typed. A tier chosen and
+// not paid is not money: it is shown as what it would be worth at today's price.
+app.get('/api/admin/events/:id/board', async (c) => {
+  const eventId = c.req.param('id')
+  const mc = await mainEventClause(c)
+  const hasPay = await paymentStatusEnabled(c)
+  const online = await paymentOrdersReady(c)
+  const tiers = PAID_TIERS.map(t => `'${t}'`).join(', ')
+  const unpaid = hasPay ? unpaidTierSql() : '0'
+  const waived = hasPay ? `(badge_type IN (${tiers}) AND LOWER(TRIM(COALESCE(payment_status, ''))) = 'waived')` : '0'
+  // The IST day, as the pass prices count it: a registration at 1 am IST is today's.
+  const istDay = (col: string) => `substr(datetime(${col}, '+330 minutes'), 1, 10)`
+  const today = istDay(`'now'`)
+  const when = `COALESCE(registration_date, created_at)`
+  const rows = async (sql: string, ...binds: any[]): Promise<any[]> => {
+    try { return ((await c.env.DB.prepare(sql).bind(...binds).all()).results || []) as any[] } catch { return [] }
+  }
+  const count = async (sql: string, ...binds: any[]): Promise<number> => {
+    try { return Number(((await c.env.DB.prepare(sql).bind(...binds).first()) as any)?.n || 0) } catch { return 0 }
+  }
+
+  const passes = await rows(
+    `SELECT COALESCE(NULLIF(badge_type, ''), 'Unspecified') AS pass, COUNT(*) AS total,
+            SUM(CASE WHEN ${unpaid} THEN 1 ELSE 0 END) AS not_paid,
+            SUM(CASE WHEN ${waived} THEN 1 ELSE 0 END) AS complimentary,
+            SUM(CASE WHEN checked_in_at IS NOT NULL THEN 1 ELSE 0 END) AS checked_in,
+            SUM(CASE WHEN ${istDay(when)} = ${today} THEN 1 ELSE 0 END) AS today,
+            SUM(CASE WHEN ${when} >= datetime('now', '-7 days') THEN 1 ELSE 0 END) AS week
+       FROM attendees WHERE event_id = ?${mc} GROUP BY 1 ORDER BY total DESC`, eventId)
+
+  // Paid on this site: the gateway's own figures, by pass, with today and the week.
+  const sold = online ? await rows(
+    `SELECT pass_type AS pass, COUNT(*) AS n, SUM(base_paise) AS base, SUM(gst_paise) AS gst, SUM(amount_paise) AS total,
+            SUM(CASE WHEN ${istDay('paid_at')} = ${today} THEN 1 ELSE 0 END) AS today_n,
+            SUM(CASE WHEN ${istDay('paid_at')} = ${today} THEN amount_paise ELSE 0 END) AS today_paise,
+            SUM(CASE WHEN paid_at >= datetime('now', '-7 days') THEN 1 ELSE 0 END) AS week_n,
+            SUM(CASE WHEN paid_at >= datetime('now', '-7 days') THEN amount_paise ELSE 0 END) AS week_paise
+       FROM payment_orders WHERE event_id = ? AND status = 'paid' GROUP BY 1`, eventId) : []
+  // Tried online and never got through: people, not attempts, and nobody who paid later.
+  const triedNotPaid = online ? await count(
+    `SELECT COUNT(DISTINCT o.attendee_id) AS n FROM payment_orders o
+      WHERE o.event_id = ? AND o.status <> 'paid'
+        AND NOT EXISTS (SELECT 1 FROM payment_orders p WHERE p.attendee_id = o.attendee_id AND p.status = 'paid')`, eventId) : 0
+  // Confirmed by hand: a paid tier marked paid with no paid order behind it. The
+  // amount is whatever was typed in rupees; a blank or a non-number is "no amount".
+  const noOrder = online ? ` AND NOT EXISTS (SELECT 1 FROM payment_orders o WHERE o.attendee_id = a.id AND o.status = 'paid')` : ''
+  const byHand = hasPay ? await rows(
+    `SELECT badge_type AS pass, COUNT(*) AS n,
+            SUM(CASE WHEN CAST(COALESCE(payment_amount, '0') AS REAL) > 0 THEN CAST(payment_amount AS REAL) ELSE 0 END) AS recorded_inr,
+            SUM(CASE WHEN CAST(COALESCE(payment_amount, '0') AS REAL) > 0 THEN 0 ELSE 1 END) AS no_amount
+       FROM attendees a WHERE a.event_id = ?${mc} AND a.badge_type IN (${tiers})
+        AND LOWER(TRIM(COALESCE(a.payment_status, ''))) = 'paid'${noOrder}
+      GROUP BY 1`, eventId) : []
+  const invoices = (await rows(
+    `SELECT COUNT(*) AS n, SUM(total_paise) AS total, SUM(taxable_paise) AS taxable FROM invoices WHERE invoice_no NOT LIKE '${RECEIPT_PREFIX}/%'`))[0] || {}
+  const invoiceDue = online ? await count(
+    `SELECT COUNT(*) AS n FROM payment_orders o WHERE o.event_id = ? AND o.status = 'paid'
+        AND NOT EXISTS (SELECT 1 FROM invoices i WHERE i.order_ref = o.order_id AND i.invoice_no NOT LIKE '${RECEIPT_PREFIX}/%')`, eventId) : 0
+  // What the unpaid choices would be worth if every one of them paid at today's price.
+  let notPaidPeople = 0, notPaidValue = 0
+  for (const p of passes) {
+    const n = Number(p.not_paid || 0)
+    if (!n) continue
+    notPaidPeople += n
+    notPaidValue += n * (passAmounts(String(p.pass))?.total || 0)
+  }
+
+  const inquiries = await rows(
+    `SELECT COALESCE(NULLIF(inquiry_type, ''), 'general') AS type, COUNT(*) AS n FROM inquiries
+      WHERE event_id = ? AND status = 'new' GROUP BY 1 ORDER BY n DESC`, eventId)
+  const todo = {
+    not_paid: notPaidPeople,
+    invoice_due: invoiceDue,
+    inquiries_new: inquiries.reduce((s: number, r: any) => s + Number(r.n || 0), 0),
+    inquiries,
+    booths_submitted: await count(`SELECT COUNT(*) AS n FROM booth_requests WHERE event_id = ? AND status = 'submitted'`, eventId),
+    listings_pending: await count(`SELECT COUNT(*) AS n FROM mp_listings WHERE status = 'pending'`),
+    rooms_held: await count(`SELECT COUNT(*) AS n FROM room_bookings WHERE event_id = ? AND kind = 'booking' AND status = 'held'`, eventId),
+    workshop_unchosen: hasPay ? await count(
+      `SELECT COUNT(*) AS n FROM attendees a WHERE a.event_id = ?${mc}
+          AND a.badge_type IN ('Premium Delegate Pass', 'VIP Pass')
+          AND LOWER(TRIM(COALESCE(a.payment_status, ''))) IN ('paid', 'waived')
+          AND NOT EXISTS (SELECT 1 FROM workshop_seats s WHERE s.attendee_id = a.id)`, eventId) : 0,
+    photos_flagged: await count(`SELECT COUNT(*) AS n FROM attendees WHERE event_id = ?${mc} AND photo_flagged_at IS NOT NULL`, eventId),
+  }
+
+  return c.json({
+    as_of: istStamp(new Date().toISOString()),
+    late_price: latePricing(),
+    passes: passes.map((p: any) => ({
+      pass: String(p.pass), total: Number(p.total || 0), not_paid: Number(p.not_paid || 0), complimentary: Number(p.complimentary || 0),
+      checked_in: Number(p.checked_in || 0), today: Number(p.today || 0), week: Number(p.week || 0),
+      // Today's list price before GST, as the site prints it; 0 for a free or hand-given pass.
+      price: passAmounts(String(p.pass))?.base || 0,
+    })),
+    money: {
+      online: online,
+      sold: sold.map((s: any) => ({
+        pass: String(s.pass), n: Number(s.n || 0), base: Number(s.base || 0), gst: Number(s.gst || 0), total: Number(s.total || 0),
+        today_n: Number(s.today_n || 0), today_paise: Number(s.today_paise || 0), week_n: Number(s.week_n || 0), week_paise: Number(s.week_paise || 0),
+      })),
+      by_hand: byHand.map((h: any) => ({ pass: String(h.pass), n: Number(h.n || 0), recorded_paise: Math.round(Number(h.recorded_inr || 0) * 100), no_amount: Number(h.no_amount || 0) })),
+      tried_not_paid: triedNotPaid,
+      not_paid_people: notPaidPeople,
+      not_paid_value: notPaidValue,
+      invoices: { n: Number(invoices.n || 0), total: Number(invoices.total || 0), taxable: Number(invoices.taxable || 0) },
+    },
+    todo,
+  })
+})
+
 // Send one announcement to one attendee. The panel walks the recipient list it
 // got back from the broadcast, so a long send reports progress and one bad
 // address cannot stop the rest.
@@ -33113,12 +33234,152 @@ function adminPageScript(): string {
             <div class="flex items-center justify-between">
               <div>
                 <h3 class="text-xl font-bold">\${escH(event.title)}</h3>
-                <p class="text-sm text-gray-400 mt-1">\${escH(event.venue)} &middot; \${escH(event.start_date)} to \${escH(event.end_date)}</p>
+                <p class="text-sm text-gray-400 mt-1">\${escH(event.venue)} &middot; \${escH(event.start_date)} to \${escH(event.end_date)}\${daysToGoLabel(event) ? ' &middot; <span class="text-primary-300 font-semibold">' + daysToGoLabel(event) + '</span>' : ''}</p>
               </div>
               <div class="flex items-center gap-2">
                 <span class="px-3 py-1 rounded-full text-xs font-semibold \${event.status==='live'?'bg-green-500/20 text-green-400 border border-green-500/30':'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'}">\${event.status.toUpperCase()}</span>
                 <button onclick="openEditEvent()" class="px-3 py-1.5 rounded-lg text-xs font-medium glass hover:bg-white/10 transition"><i class="fas fa-edit mr-1"></i>Edit</button>
               </div>
+    // ============ OVERVIEW BOARD ============
+    // Passes, money, pace and what is waiting on a person (4 Nov 2026): the
+    // organiser asked the Overview how many hold each pass and how much the paid
+    // ones have brought in, and it could not say. Its own request after the
+    // Overview is drawn, so a failure blanks this board and nothing else.
+    // Days until the event, counted in IST like the rest of the panel. Null when
+    // the event has no usable start date.
+    function daysUntilEvent(ev) {
+      var s = ev && ev.start_date ? String(ev.start_date).slice(0, 10) : '';
+      if (s.length !== 10 || isNaN(Date.parse(s + 'T00:00:00Z'))) return null;
+      var now = new Date(Date.now() + 330 * 60000);
+      var today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+      return Math.round((Date.parse(s + 'T00:00:00Z') - today) / 86400000);
+    }
+    function daysToGoLabel(ev) {
+      var d = daysUntilEvent(ev);
+      if (d === null) return '';
+      if (d > 1) return d + ' days to go';
+      if (d === 1) return 'Tomorrow';
+      if (d === 0) return 'Today is day 1';
+      var e = ev && ev.end_date ? String(ev.end_date).slice(0, 10) : '';
+      var s = String(ev.start_date).slice(0, 10);
+      var length = e.length === 10 && !isNaN(Date.parse(e + 'T00:00:00Z')) ? Math.round((Date.parse(e + 'T00:00:00Z') - Date.parse(s + 'T00:00:00Z')) / 86400000) : 0;
+      if (-d <= length) return 'Today is day ' + (1 - d);
+      return 'The event has ended';
+    }
+    // Whole rupees from paise, grouped the Indian way: 1,23,456.
+    function rupeesFromPaise(p) {
+      return '&#8377;' + Math.round(Number(p || 0) / 100).toLocaleString('en-IN');
+    }
+    function boardHTML(b, ev) {
+      var ORDER = ['Visitor Pass', 'Academic Pass', 'Delegate Pass', 'Premium Delegate Pass', 'VIP Pass'];
+      var PAID = ORDER.slice(1);
+      var byPass = {};
+      b.passes.forEach(function (p) { byPass[p.pass] = p; });
+      // The five passes on sale always show, even at zero, in the order they are
+      // sold; every other pass (Speaker, Media, Exhibitor ...) follows by size.
+      var list = ORDER.map(function (name) { return byPass[name] || { pass: name, total: 0, not_paid: 0, complimentary: 0, checked_in: 0, today: 0, week: 0, price: 0 }; })
+        .concat(b.passes.filter(function (p) { return ORDER.indexOf(p.pass) < 0; }));
+      var sum = { total: 0, hold: 0, complimentary: 0, not_paid: 0, checked_in: 0, today: 0, week: 0 };
+      var cell = function (n, cls) { return '<td class="text-right py-1.5 ' + (cls || '') + '">' + (n ? n.toLocaleString('en-IN') : '<span class="text-gray-600">0</span>') + '</td>'; };
+      var passRows = list.map(function (p) {
+        var hold = p.total - p.not_paid - p.complimentary;
+        sum.total += p.total; sum.hold += hold; sum.complimentary += p.complimentary; sum.not_paid += p.not_paid; sum.checked_in += p.checked_in; sum.today += p.today; sum.week += p.week;
+        var label = p.pass === 'Visitor Pass' ? 'Free Visitor Pass' : p.pass;
+        var price = PAID.indexOf(p.pass) >= 0 && p.price ? ' <span class="text-gray-500 font-normal">' + rupeesFromPaise(p.price) + ' + GST</span>' : '';
+        return '<tr class="border-t border-white/5"><td class="py-1.5 font-medium">' + escH(label) + price + '</td>' +
+          cell(hold, 'font-semibold') + cell(p.complimentary) + cell(p.not_paid, p.not_paid ? 'text-amber-300' : '') + cell(p.checked_in) +
+          cell(p.today, 'text-green-300') + cell(p.week) + '</tr>';
+      }).join('');
+      var days = daysUntilEvent(ev);
+      var perDay = Math.round(sum.week / 7 * 10) / 10;
+      var pace = '<span class="text-green-300 font-semibold">+' + sum.today + '</span> today &middot; <span class="font-semibold text-white">+' + sum.week + '</span> in the last 7 days, about ' + perDay + ' a day';
+      if (days !== null && days > 0 && sum.week) pace += ' &middot; at this pace about <span class="font-semibold text-white">' + (sum.total + Math.round(perDay * days)).toLocaleString('en-IN') + '</span> by the first day';
+      var passCard = '<div class="glass rounded-xl p-5 mb-6 overflow-x-auto">' +
+        '<div class="flex flex-wrap items-baseline justify-between gap-2 mb-1">' +
+          '<h3 class="font-semibold text-sm"><i class="fas fa-id-badge text-primary-400 mr-2"></i>Who holds which pass</h3>' +
+          '<span class="text-[10px] text-gray-500">Conference registrations, as of ' + escH(b.as_of || '') + '</span></div>' +
+        '<p class="text-xs text-gray-400 mb-3">' + pace + '</p>' +
+        '<table class="w-full text-xs" style="min-width:640px"><thead><tr class="text-gray-500 uppercase text-[10px]">' +
+          '<th class="text-left py-2">Pass</th><th class="text-right py-2" title="A pass that is valid: free, paid for, or given">Hold it</th>' +
+          '<th class="text-right py-2" title="A paid pass set by hand and not paid for: counted apart from sales">Given free</th>' +
+          '<th class="text-right py-2" title="Chose this pass and has not paid. Works as a Free Visitor Pass until the payment lands.">Not paid</th>' +
+          '<th class="text-right py-2">Checked in</th><th class="text-right py-2">Today</th><th class="text-right py-2">7 days</th></tr></thead>' +
+        '<tbody>' + passRows +
+          '<tr class="border-t border-white/10 font-semibold"><td class="py-2">Everyone</td>' + cell(sum.hold) + cell(sum.complimentary) + cell(sum.not_paid, sum.not_paid ? 'text-amber-300' : '') + cell(sum.checked_in) + cell(sum.today, 'text-green-300') + cell(sum.week) + '</tr>' +
+        '</tbody></table>' +
+        '<p class="text-[11px] text-gray-500 mt-2">Hold it + Given free + Not paid = ' + sum.total.toLocaleString('en-IN') + ' registered. Someone who chose a paid pass and has not paid works as a Free Visitor Pass until the payment lands, and is counted on the row they chose, under Not paid, not on the Visitor row.</p>' +
+      '</div>';
+
+      var m = b.money || {};
+      var t = b.todo || {};
+      var onlineTotal = 0, onlineGst = 0, onlineN = 0, todayN = 0, todayP = 0, weekN = 0, weekP = 0;
+      (m.sold || []).forEach(function (s) { onlineTotal += s.total; onlineGst += s.gst; onlineN += s.n; todayN += s.today_n; todayP += s.today_paise; weekN += s.week_n; weekP += s.week_paise; });
+      var handN = 0, handP = 0, handNoAmt = 0;
+      (m.by_hand || []).forEach(function (h) { handN += h.n; handP += h.recorded_paise; handNoAmt += h.no_amount; });
+      var soldBy = {}; (m.sold || []).forEach(function (s) { soldBy[s.pass] = s; });
+      var handBy = {}; (m.by_hand || []).forEach(function (h) { handBy[h.pass] = h; });
+      var dash = '<span class="text-gray-600">-</span>';
+      var moneyRows = PAID.map(function (name) {
+        var s = soldBy[name] || { n: 0, total: 0 }, h = handBy[name] || { n: 0, recorded_paise: 0 };
+        if (!s.n && !h.n) return '';
+        return '<tr class="border-t border-white/5"><td class="py-1.5">' + escH(name) + '</td>' +
+          cell(s.n) + '<td class="text-right py-1.5">' + (s.total ? rupeesFromPaise(s.total) : dash) + '</td>' +
+          cell(h.n) + '<td class="text-right py-1.5">' + (h.recorded_paise ? rupeesFromPaise(h.recorded_paise) : dash) + '</td></tr>';
+      }).join('');
+      var big = function (label, value, cls) {
+        return '<div class="p-3 rounded-xl bg-white/5 border border-white/10"><div class="text-lg font-black leading-tight ' + (cls || 'text-white') + '">' + value + '</div>' +
+          '<div class="text-[10px] text-gray-400 uppercase tracking-wider mt-1">' + label + '</div></div>';
+      };
+      var moneyCard = '<div class="glass rounded-xl p-5">' +
+        '<div class="flex items-center justify-between mb-3"><h3 class="font-semibold text-sm"><i class="fas fa-indian-rupee-sign text-green-400 mr-2"></i>Money from passes</h3>' +
+          '<a href="#" onclick="switchSection(&quot;payments&quot;);return false" class="text-[11px] text-primary-300 hover:underline">Payments &rarr;</a></div>' +
+        '<div class="grid grid-cols-2 gap-3 mb-3">' +
+          big('Received so far, with GST', rupeesFromPaise(onlineTotal + handP), 'text-green-400') +
+          big('Paid on this site &middot; ' + onlineN + ' pass' + (onlineN === 1 ? '' : 'es'), rupeesFromPaise(onlineTotal) + '<div class="text-[11px] font-normal text-gray-400">of which GST ' + rupeesFromPaise(onlineGst) + '</div>') +
+          big('Last 7 days &middot; ' + weekN + ' paid', rupeesFromPaise(weekP) + (todayN ? '<div class="text-[11px] font-normal text-green-300">+' + rupeesFromPaise(todayP) + ' today</div>' : '')) +
+          big('Chose a pass, not paid &middot; ' + (m.not_paid_people || 0), rupeesFromPaise(m.not_paid_value || 0) + '<div class="text-[11px] font-normal text-gray-400">if they all pay today&rsquo;s price</div>', m.not_paid_people ? 'text-amber-300' : 'text-white') +
+        '</div>' +
+        (moneyRows ? '<table class="w-full text-xs"><thead><tr class="text-gray-500 uppercase text-[10px]"><th class="text-left py-1">Pass</th><th class="text-right py-1">Sold here</th><th class="text-right py-1">&#8377; with GST</th><th class="text-right py-1">By hand</th><th class="text-right py-1">&#8377; recorded</th></tr></thead><tbody>' + moneyRows + '</tbody></table>' : '') +
+        '<div class="mt-3 pt-3 border-t border-white/10 space-y-1.5 text-[11px] text-gray-400">' +
+          '<div>' + (m.invoices && m.invoices.n ? m.invoices.n + ' GST invoice' + (m.invoices.n === 1 ? '' : 's') + ' raised, ' + rupeesFromPaise(m.invoices.total) + ' in all' : 'No GST invoice raised yet') +
+            (t.invoice_due ? ' &middot; <span class="text-amber-300">' + t.invoice_due + ' paid online still need' + (t.invoice_due === 1 ? 's' : '') + ' one</span>' : '') + '.</div>' +
+          (m.tried_not_paid ? '<div>' + m.tried_not_paid + ' tried to pay online and did not get through; the pay reminder reaches them.</div>' : '') +
+          (handN ? '<div>By hand: ' + handN + ' confirmed from mUni Campus or a bank transfer' + (handNoAmt ? ', <span class="text-amber-300">' + handNoAmt + ' with no amount on record</span>' : '') + '. &#8377; recorded is what was typed in; Paid on this site is the gateway&rsquo;s own figure.</div>' : '') +
+          (m.online ? '' : '<div class="text-amber-300">Online checkout is off, so nothing can be paid on this site right now.</div>') +
+        '</div></div>';
+
+      var item = function (n, label, go, href) {
+        var on = n > 0;
+        var open = href ? '<a href="' + href + '" class="flex items-center gap-3 py-2 border-b border-white/5 no-underline hover:bg-white/5 rounded-lg px-1">'
+          : '<a href="#" onclick="switchSection(&quot;' + go + '&quot;);return false" class="flex items-center gap-3 py-2 border-b border-white/5 no-underline hover:bg-white/5 rounded-lg px-1">';
+        return open + '<span class="w-10 text-right font-bold ' + (on ? 'text-amber-300' : 'text-gray-600') + '">' + n.toLocaleString('en-IN') + '</span>' +
+          '<span class="flex-1 text-xs ' + (on ? 'text-gray-200' : 'text-gray-500') + '">' + label + '</span><i class="fas fa-chevron-right text-[10px] text-gray-600"></i></a>';
+      };
+      var inq = (t.inquiries || []).slice(0, 3).map(function (r) { return r.n + ' ' + escH(r.type); }).join(', ');
+      var waiting = (t.not_paid || 0) + (t.invoice_due || 0) + (t.inquiries_new || 0) + (t.booths_submitted || 0) + (t.listings_pending || 0) + (t.rooms_held || 0) + (t.workshop_unchosen || 0) + (t.photos_flagged || 0);
+      var todoCard = '<div class="glass rounded-xl p-5">' +
+        '<div class="flex items-center justify-between mb-2"><h3 class="font-semibold text-sm"><i class="fas fa-list-check text-amber-400 mr-2"></i>Waiting on you</h3>' +
+          '<span class="text-[10px] text-gray-500">' + (waiting ? waiting.toLocaleString('en-IN') + ' in all' : 'Nothing is waiting') + '</span></div>' +
+        item(t.not_paid || 0, 'chose a paid pass and have not paid: remind them to pay', 'payments') +
+        item(t.invoice_due || 0, 'paid online, GST invoice still to raise', 'payments') +
+        item(t.inquiries_new || 0, 'new enquiries to answer' + (inq ? ' <span class="text-gray-500">(' + inq + ')</span>' : ''), 'inquiries') +
+        item(t.booths_submitted || 0, 'booth requests to review', 'booth-requests') +
+        item(t.listings_pending || 0, 'AI Marketplace listings to approve', '', '/marketplace/admin') +
+        item(t.rooms_held || 0, 'boardroom bookings on hold, to confirm or refuse', 'rooms') +
+        item(t.workshop_unchosen || 0, 'Premium or VIP holders who have not chosen a workshop seat', 'workshops') +
+        item(t.photos_flagged || 0, 'photos the desk flagged as not matching the person', 'attendees') +
+      '</div>';
+
+      return passCard + '<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">' + moneyCard + todoCard + '</div>';
+    }
+    async function loadBoard(ev) {
+      var el = document.getElementById('ov-board');
+      if (!el) return;
+      var b;
+      try { b = await api.get('/api/admin/events/' + EID + '/board'); } catch (e) { el.innerHTML = ''; return; }
+      if (!b || bodyError(b) || !Array.isArray(b.passes)) { el.innerHTML = ''; return; }
+      el.innerHTML = boardHTML(b, ev);
+    }
             </div>
           </div>
         </div>
@@ -33180,6 +33441,8 @@ function adminPageScript(): string {
             <div class="flex items-baseline justify-between mb-3">
               <h3 class="font-semibold text-sm"><i class="fas fa-graduation-cap text-primary-400 mr-2"></i>Registration source</h3>
               <span class="text-[10px] text-gray-500" id="source-summary"></span>
+        <!-- Who holds which pass, money from passes, what is waiting on a person (loadBoard). -->
+        <div id="ov-board" class="mb-6"></div>
             </div>
             <div id="top-sources" class="text-sm"></div>
             <div id="campus-panels" class="mt-4 space-y-3"></div>
@@ -33475,6 +33738,7 @@ function adminPageScript(): string {
     // to read it from the beginning; oldest-first buried today's arrivals on page 11.
     let attSortCol = 'registration_date';
     let attSortDir = 'desc'; // 'asc' or 'desc'
+      loadBoard(event);
     let lastAttendees = null;
     let lastDupData = null;
     // The list endpoint caps how many rows it will send. attTotal is what the
