@@ -188,7 +188,7 @@ check('/networking still names the sharers, without ids, and keeps glimpse_hide 
 // ---- by itself, 10 minutes after registering ----
 // The run is paused and the clock's other jobs are off, so a tick sends this email alone.
 await hit('POST', `/api/admin/campaigns/${runId}/pause`, {}, ADMIN);
-db.run("INSERT INTO app_settings (key, value) VALUES ('pay_remind_auto', 'off'), ('help_mail_auto', 'off')");
+db.run("INSERT INTO app_settings (key, value) VALUES ('pay_remind_auto', 'off'), ('help_mail_auto', 'off'), ('notify_auto', 'off')");
 const settle = () => new Promise(res => setTimeout(res, 60));
 const tick = async () => { const t = await hit('POST', '/api/cron/tick', {}, ADMIN); await settle(); return t; };
 let mob = 0;

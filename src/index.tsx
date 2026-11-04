@@ -14058,10 +14058,13 @@ app.post('/api/cron/tick', async (c) => {
   const payReminders = await autoRemindToPay(c).catch((e: any) => ({ error: String(e?.message || e).slice(0, 200) }))
   // The steps to anyone stuck on the way in, or to their badge or pass (autoSendHelpMail).
   const helpMail = await autoSendHelpMail(c).catch((e: any) => ({ error: String(e?.message || e).slice(0, 200) }))
+  // The account-ready email, 5 minutes after someone registers (autoSendNotifyMail),
+  // before the networking one, so a late clock still sends them in that order.
+  const notifyMail = await autoSendNotifyMail(c).catch((e: any) => ({ error: String(e?.message || e).slice(0, 200) }))
   // The networking app email, 10 minutes after someone registers (autoSendNetMail).
   const netMail = await autoSendNetMail(c).catch((e: any) => ({ error: String(e?.message || e).slice(0, 200) }))
   const out = await tickMailJobs(c, Number(body.max_seconds) || 0, true)
-  return c.json({ ...out, campaigns: await tickCampaigns(c), pay_reminders: payReminders, help_mail: helpMail, networking_mail: netMail })
+  return c.json({ ...out, campaigns: await tickCampaigns(c), pay_reminders: payReminders, help_mail: helpMail, notify_mail: notifyMail, networking_mail: netMail })
 })
 
 // The admin page's view and its own ticking while it is open.
@@ -14590,7 +14593,7 @@ app.post('/api/admin/attendees/:id/notify', async (c) => {
       const result = await res.json() as any
       if (res.ok && !result.Error) {
         await c.env.DB.prepare('UPDATE attendees SET notified_at = datetime("now") WHERE id = ?').bind(id).run()
-        await c.env.DB.prepare("INSERT INTO app_settings (key, value, updated_at) VALUES ('notify_marks_from', datetime('now', '-1 minute'), datetime('now')) ON CONFLICT(key) DO NOTHING").run().catch(() => {})
+        await notifyMarksFrom(c)
         return c.json({ success: true, method: 'elastic_email', email: attendee.email, messageId: result.MessageID || result.TransactionID })
       } else {
         const errMsg = result.Error || result.error || JSON.stringify(result)
@@ -14604,6 +14607,115 @@ app.post('/api/admin/attendees/:id/notify', async (c) => {
   // Fallback: return mailto data for client-side email
   await c.env.DB.prepare('UPDATE attendees SET notified_at = datetime("now") WHERE id = ?').bind(id).run()
   return c.json({ success: true, method: 'mailto', email: attendee.email, subject: mail.subject, body: mail.text })
+})
+
+// Opens, clicks and profile saves are counted from the first marked one sent, by
+// hand, by a run or by itself.
+async function notifyMarksFrom(c: any) {
+  await c.env.DB.prepare("INSERT INTO app_settings (key, value, updated_at) VALUES ('notify_marks_from', datetime('now', '-1 minute'), datetime('now')) ON CONFLICT(key) DO NOTHING").run().catch(() => {})
+}
+
+// ---- By itself, 5 minutes after registering (organiser, 4 Nov 2026) ----
+// The minute clock (POST /api/cron/tick) sends the account-ready email to everyone
+// who registered themselves (register.self: never someone the team added or
+// imported, a walk-in at the desk, or a campus panel's registrant)
+// NOTIFY_AUTO_AFTER_MINUTES after they registered, or after they paid for a paid
+// pass; a paid pass not paid for yet is the pay reminder's. Around the clock, and
+// only within NOTIFY_AUTO_WITHIN_HOURS, so a clock that stopped does not send a
+// day of them late in a burst: anyone older is Notify All's. Once per person: the
+// claim (notify.auto) is written before the send, and anyone already sent it
+// (notified_at) or held by an account-ready run is left alone. The networking
+// email follows 5 minutes later (autoSendNetMail) and its sign-in link replaces
+// this one's: the organiser chose to keep both times (4 Nov 2026), so a button
+// here may then open the sign-in box. app_settings notify_auto = 'off' stops it.
+const NOTIFY_AUTO_KEY = 'notify_auto'
+const NOTIFY_AUTO_AFTER_MINUTES = 5
+const NOTIFY_AUTO_WITHIN_HOURS = 24
+const NOTIFY_AUTO_PER_TICK = 10
+
+// Who is due, oldest first. due_at is when they registered, or when their payment
+// landed if that was later. A payment more than three days after registering is
+// left to Notify All.
+async function notifyAutoDue(c: any, limit: number): Promise<any[]> {
+  const paidAt = (await paymentOrdersReady(c))
+    ? "(SELECT MIN(o.paid_at) FROM payment_orders o WHERE o.attendee_id = a.id AND o.status = 'paid')" : 'NULL'
+  const unpaid = (await paymentStatusEnabled(c))
+    ? ` AND NOT (a.badge_type IN (${PAID_TIERS.map(t => `'${t}'`).join(', ')}) AND lower(trim(COALESCE(a.payment_status, ''))) IN ('pending', 'refunded'))` : ''
+  const r = await c.env.DB.prepare(
+    `SELECT * FROM (
+       SELECT a.*, MAX(x.created_at, COALESCE(${paidAt}, x.created_at)) AS due_at
+         FROM admin_audit x JOIN attendees a ON CAST(a.id AS TEXT) = x.entity_id
+        WHERE x.entity = 'attendee' AND x.action = 'register.self' AND x.created_at > datetime('now', '-3 days')
+          AND a.notified_at IS NULL
+          AND COALESCE(TRIM(a.email), '') != ''${await mainEventClause(c, 'a.')}${await suppressionClause(c, 'a.')}${unpaid}
+          AND NOT EXISTS (SELECT 1 FROM admin_audit h WHERE h.entity = 'attendee' AND h.entity_id = x.entity_id AND h.action IN ('notify.auto', 'notify.auto_error'))
+          AND NOT EXISTS (SELECT 1 FROM campaign_recipients cr JOIN campaigns cp ON cp.id = cr.campaign_id
+                           WHERE cp.kind = 'notify' AND cr.attendee_id = a.id AND cr.status IN ('pending', 'sending', 'sent')))
+      WHERE due_at <= datetime('now', ?1) AND due_at > datetime('now', ?2)
+      ORDER BY due_at LIMIT ?3`
+  ).bind('-' + NOTIFY_AUTO_AFTER_MINUTES + ' minutes', '-' + NOTIFY_AUTO_WITHIN_HOURS + ' hours', limit).all().catch(() => ({ results: [] })) as any
+  return ((r?.results || []) as any[]).filter((a: any) => validEmailSyntax(a.email))
+}
+
+// One, claimed before it goes (as sendNetMailAuto is), so two clocks at once send
+// it once. A send that fails is left as notify.auto_error and notified_at stays
+// empty, so Notify All picks them up.
+async function sendNotifyAuto(c: any, a: any): Promise<{ sent: boolean; skipped?: string; error?: string }> {
+  const claim = await c.env.DB.prepare(
+    `INSERT INTO admin_audit (actor, actor_kind, action, entity, entity_id, detail)
+     SELECT 'scheduler', 'system', 'notify.auto', 'attendee', ?1, ?2
+      WHERE NOT EXISTS (SELECT 1 FROM admin_audit WHERE entity = 'attendee' AND entity_id = ?1 AND action IN ('notify.auto', 'notify.auto_error'))`
+  ).bind(String(a.id), JSON.stringify({ email: a.email, kind: notifyKind(a) })).run()
+  if (!Number(claim?.meta?.changes)) return { sent: false, skipped: 'Sent it already.' }
+  const claimId = claim?.meta?.last_row_id
+  let res: any
+  try {
+    const mail = await notifyEmail(c, a)
+    res = await sendAdminEmail(c, a.email, mail.subject, mail.html)
+  } catch (e: any) { res = { ok: false, error: String(e?.message || e) } }
+  if (!res.ok) {
+    const error = String(res.error || 'not sent').slice(0, 300)
+    await c.env.DB.prepare('UPDATE admin_audit SET action = ?, detail = ? WHERE id = ?')
+      .bind('notify.auto_error', JSON.stringify({ email: a.email, error }), claimId).run().catch(() => null)
+    return { sent: false, error }
+  }
+  await c.env.DB.prepare("UPDATE attendees SET notified_at = datetime('now') WHERE id = ?").bind(a.id).run()
+  await notifyMarksFrom(c)
+  return { sent: true }
+}
+
+// The minute clock's part.
+async function autoSendNotifyMail(c: any): Promise<any> {
+  if ((await settingValue(c, NOTIFY_AUTO_KEY)) === 'off') return { on: false }
+  const due = await notifyAutoDue(c, NOTIFY_AUTO_PER_TICK)
+  let sent = 0, failed = 0
+  for (const a of due) {
+    const out = await sendNotifyAuto(c, a)
+    if (out.sent) sent++
+    else if (out.error) failed++
+  }
+  return { on: true, due: due.length, sent, failed }
+}
+
+// For the Notification Status card: on or off, how many went this way, and whether
+// the minute clock is knocking.
+async function notifyAutoState(c: any) {
+  const n = await c.env.DB.prepare(
+    `SELECT SUM(action = 'notify.auto') AS sent, SUM(action = 'notify.auto_error') AS failed
+       FROM admin_audit WHERE entity = 'attendee' AND action IN ('notify.auto', 'notify.auto_error')`
+  ).first().catch(() => null) as any
+  const tick = Number(await settingValue(c, 'cron_last_tick')) || 0
+  return { on: (await settingValue(c, NOTIFY_AUTO_KEY)) !== 'off', after_minutes: NOTIFY_AUTO_AFTER_MINUTES,
+    sent: Number(n?.sent || 0), failed: Number(n?.failed || 0), cron_alive: Date.now() - tick < CRON_ALIVE_MS }
+}
+
+// The switch on the card. On unless somebody turned it off.
+app.post('/api/admin/notify-auto', async (c) => {
+  const b = await c.req.json().catch(() => ({})) as any
+  const on = b.on !== false
+  await settingWrite(c, NOTIFY_AUTO_KEY, on ? 'on' : 'off')
+  await audit(c, 'notify.auto_switch', 'setting', NOTIFY_AUTO_KEY, { on })
+  return c.json({ ok: true, on })
 })
 
 // The account-ready run for this audience that is still running or paused, if
@@ -16414,6 +16526,7 @@ app.get('/api/admin/events/:id/lunch-stats', async (c) => {
 
   return c.json({
     notifyMail,
+    notifyAuto: await notifyAutoState(c),
     totalAttendees: totalAttendees?.count || 0,
     totalLunchEligible: totalLunch?.count || 0,
     withArrivalTime: withArrival?.count || 0,
@@ -32952,6 +33065,24 @@ function adminPageScript(): string {
         (m.marks_from && m.tracked < m.sent ? '<p class="text-[11px] text-gray-500 mt-2">Opened, clicked and saved count the ' + m.tracked + ' emails sent since ' + escH(m.marks_from) + '; the ' + (m.sent - m.tracked) + ' sent before carried no marks.</p>' : '') +
         '</div>';
     }
+    // And the one that goes by itself after registering (autoSendNotifyMail).
+    function notifyAutoHTML(au) {
+      if (!au) return '';
+      return '<p class="text-[11px] text-gray-400 mt-3"><i class="fas fa-clock mr-1"></i>' +
+        (au.on ? 'Goes by itself ' + (au.after_minutes || 5) + ' minutes after someone registers (for a paid pass, after they pay)' +
+            (au.sent ? ': ' + au.sent + ' sent this way' + (au.failed ? ', ' + au.failed + ' failed' : '') : '') + '. ' +
+            (au.cron_alive ? '' : '<span class="text-amber-300">The server clock has not ticked for a few minutes, so nothing goes until it does.</span> ')
+          : 'Not going by itself after registering. ') +
+        '<button onclick="setNotifyAuto(' + (au.on ? 'false' : 'true') + ')" class="underline ' + (au.on ? 'text-gray-500' : 'text-primary-300') + '">' + (au.on ? 'Turn off' : 'Turn on') + '</button></p>';
+    }
+    async function setNotifyAuto(on) {
+      try {
+        var r = await api.post('/api/admin/notify-auto', { on: on });
+        if (r && r.error) throw new Error(r.error);
+        toast(on ? 'On: it goes by itself 5 minutes after someone registers.' : 'Off: it no longer goes by itself. Notify All still works.');
+      } catch (e) { toast('Could not change it: ' + (e.message || ''), 'error'); }
+      loadOverview();
+    }
     async function loadOverview() {
       var _ovEl = document.getElementById('section-overview');
       if (!_ovEl.innerHTML.trim()) sectionLoading(_ovEl);
@@ -33126,6 +33257,7 @@ function adminPageScript(): string {
               <span>\${lunchStats.totalAttendees > 0 ? Math.round(lunchStats.notifiedCount/lunchStats.totalAttendees*100) : 0}% notified</span>
               <span>\${lunchStats.totalAttendees} total attendees</span>
             </div>
+            \${notifyAutoHTML(lunchStats.notifyAuto)}
             \${notifyFunnelHTML(lunchStats.notifyMail)}
             <div id="netmail-strip"></div>
             <div class="mt-4 pt-3 border-t border-white/10">
