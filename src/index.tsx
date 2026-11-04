@@ -17488,36 +17488,6 @@ app.get('/api/admin/events/:id/growth', async (c) => {
   })
 })
 
-// Admin: Bulk operations
-app.post('/api/admin/events/:id/broadcast', async (c) => {
-  const eventId = c.req.param('id')
-  const { title, content, announcement_type, author_name, email_it, audience, include_panel_only } = await c.req.json()
-  const result = await c.env.DB.prepare(
-    'INSERT INTO announcements (event_id, title, content, announcement_type, author_name, pinned) VALUES (?,?,?,?,?,1)'
-  ).bind(eventId, title, content, announcement_type || 'urgent', author_name || 'Event Admin').run()
-  await audit(c, 'announcement.broadcast', 'announcement', result.meta.last_row_id, { title, email_it: !!email_it, audience, include_panel_only: include_panel_only === true })
-  // Posting a pinned notice only reaches people already in the app. When the
-  // operator asks for it, return the recipient list so the panel can send too.
-  let recipients: any[] = []
-  if (email_it) {
-    const who = audience === 'checked_in'
-      ? 'AND checked_in_at IS NOT NULL'
-      : audience === 'confirmed' ? "AND rsvp_status = 'confirmed'" : ''
-    // Panel-only registrants (main_event = 0) are left out unless asked for, as
-    // in campaignAudienceRows.
-    const mc = include_panel_only === true ? '' : await mainEventClause(c)
-    // Urgent is a service message (a hall change, a closure) to people holding a
-    // pass and goes to everyone; anything else is a campaign and honours
-    // unsubscribes and marketing consent.
-    const sc = (announcement_type || 'urgent') === 'urgent' ? '' : await suppressionClause(c)
-    const r = await c.env.DB.prepare(
-      `SELECT id, name, email FROM attendees WHERE event_id = ? AND email IS NOT NULL AND email != '' ${who}${mc}${sc} ORDER BY id`
-    ).bind(eventId).all()
-    recipients = (r.results as any[]) || []
-  }
-  return c.json({ id: result.meta.last_row_id, success: true, recipients, count: recipients.length }, 201)
-})
-
 // The Overview's board (4 Nov 2026): who holds which pass, what the passes have
 // brought in, how fast registration is moving, and what is waiting on a person.
 // The organiser asked the Overview "how many are free, academic, delegate,
@@ -17637,6 +17607,36 @@ app.get('/api/admin/events/:id/board', async (c) => {
     },
     todo,
   })
+})
+
+// Admin: Bulk operations
+app.post('/api/admin/events/:id/broadcast', async (c) => {
+  const eventId = c.req.param('id')
+  const { title, content, announcement_type, author_name, email_it, audience, include_panel_only } = await c.req.json()
+  const result = await c.env.DB.prepare(
+    'INSERT INTO announcements (event_id, title, content, announcement_type, author_name, pinned) VALUES (?,?,?,?,?,1)'
+  ).bind(eventId, title, content, announcement_type || 'urgent', author_name || 'Event Admin').run()
+  await audit(c, 'announcement.broadcast', 'announcement', result.meta.last_row_id, { title, email_it: !!email_it, audience, include_panel_only: include_panel_only === true })
+  // Posting a pinned notice only reaches people already in the app. When the
+  // operator asks for it, return the recipient list so the panel can send too.
+  let recipients: any[] = []
+  if (email_it) {
+    const who = audience === 'checked_in'
+      ? 'AND checked_in_at IS NOT NULL'
+      : audience === 'confirmed' ? "AND rsvp_status = 'confirmed'" : ''
+    // Panel-only registrants (main_event = 0) are left out unless asked for, as
+    // in campaignAudienceRows.
+    const mc = include_panel_only === true ? '' : await mainEventClause(c)
+    // Urgent is a service message (a hall change, a closure) to people holding a
+    // pass and goes to everyone; anything else is a campaign and honours
+    // unsubscribes and marketing consent.
+    const sc = (announcement_type || 'urgent') === 'urgent' ? '' : await suppressionClause(c)
+    const r = await c.env.DB.prepare(
+      `SELECT id, name, email FROM attendees WHERE event_id = ? AND email IS NOT NULL AND email != '' ${who}${mc}${sc} ORDER BY id`
+    ).bind(eventId).all()
+    recipients = (r.results as any[]) || []
+  }
+  return c.json({ id: result.meta.last_row_id, success: true, recipients, count: recipients.length }, 201)
 })
 
 // Send one announcement to one attendee. The panel walks the recipient list it
@@ -33240,42 +33240,6 @@ function adminPageScript(): string {
       } catch (e) { toast('Could not change it: ' + (e.message || ''), 'error'); }
       loadOverview();
     }
-    async function loadOverview() {
-      var _ovEl = document.getElementById('section-overview');
-      if (!_ovEl.innerHTML.trim()) sectionLoading(_ovEl);
-      var stats, event, analytics, lunchStats;
-      try {
-        var _r = await Promise.all([
-          api.get('/api/events/'+EID+'/stats'),
-          api.get('/api/events/'+EID),
-          api.get('/api/admin/events/'+EID+'/analytics'),
-          api.get('/api/admin/events/'+EID+'/lunch-stats'),
-        ]);
-        stats = _r[0]; event = _r[1]; analytics = _r[2]; lunchStats = _r[3];
-      } catch (err) {
-        if (err && err.message === 'unauthorized') return;
-        sectionError(_ovEl, 'the overview', err, 'loadOverview()');
-        return;
-      }
-      var _bad = bodyError(stats) || bodyError(event) || bodyError(analytics) || bodyError(lunchStats);
-      if (_bad) { sectionError(_ovEl, 'the overview', { message: _bad }, 'loadOverview()'); return; }
-      if (!analytics || !Array.isArray(analytics.recentRegistrations)) {
-        sectionError(_ovEl, 'the overview', { message: 'Analytics came back in an unexpected shape.' }, 'loadOverview()');
-        return;
-      }
-
-      document.getElementById('section-overview').innerHTML = \`
-        <div class="mb-6">
-          <div class="glass rounded-2xl p-5 glow">
-            <div class="flex items-center justify-between">
-              <div>
-                <h3 class="text-xl font-bold">\${escH(event.title)}</h3>
-                <p class="text-sm text-gray-400 mt-1">\${escH(event.venue)} &middot; \${escH(event.start_date)} to \${escH(event.end_date)}\${daysToGoLabel(event) ? ' &middot; <span class="text-primary-300 font-semibold">' + daysToGoLabel(event) + '</span>' : ''}</p>
-              </div>
-              <div class="flex items-center gap-2">
-                <span class="px-3 py-1 rounded-full text-xs font-semibold \${event.status==='live'?'bg-green-500/20 text-green-400 border border-green-500/30':'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'}">\${event.status.toUpperCase()}</span>
-                <button onclick="openEditEvent()" class="px-3 py-1.5 rounded-lg text-xs font-medium glass hover:bg-white/10 transition"><i class="fas fa-edit mr-1"></i>Edit</button>
-              </div>
     // ============ OVERVIEW BOARD ============
     // Passes, money, pace and what is waiting on a person (4 Nov 2026): the
     // organiser asked the Overview how many hold each pass and how much the paid
@@ -33416,6 +33380,42 @@ function adminPageScript(): string {
       if (!b || bodyError(b) || !Array.isArray(b.passes)) { el.innerHTML = ''; return; }
       el.innerHTML = boardHTML(b, ev);
     }
+    async function loadOverview() {
+      var _ovEl = document.getElementById('section-overview');
+      if (!_ovEl.innerHTML.trim()) sectionLoading(_ovEl);
+      var stats, event, analytics, lunchStats;
+      try {
+        var _r = await Promise.all([
+          api.get('/api/events/'+EID+'/stats'),
+          api.get('/api/events/'+EID),
+          api.get('/api/admin/events/'+EID+'/analytics'),
+          api.get('/api/admin/events/'+EID+'/lunch-stats'),
+        ]);
+        stats = _r[0]; event = _r[1]; analytics = _r[2]; lunchStats = _r[3];
+      } catch (err) {
+        if (err && err.message === 'unauthorized') return;
+        sectionError(_ovEl, 'the overview', err, 'loadOverview()');
+        return;
+      }
+      var _bad = bodyError(stats) || bodyError(event) || bodyError(analytics) || bodyError(lunchStats);
+      if (_bad) { sectionError(_ovEl, 'the overview', { message: _bad }, 'loadOverview()'); return; }
+      if (!analytics || !Array.isArray(analytics.recentRegistrations)) {
+        sectionError(_ovEl, 'the overview', { message: 'Analytics came back in an unexpected shape.' }, 'loadOverview()');
+        return;
+      }
+
+      document.getElementById('section-overview').innerHTML = \`
+        <div class="mb-6">
+          <div class="glass rounded-2xl p-5 glow">
+            <div class="flex items-center justify-between">
+              <div>
+                <h3 class="text-xl font-bold">\${escH(event.title)}</h3>
+                <p class="text-sm text-gray-400 mt-1">\${escH(event.venue)} &middot; \${escH(event.start_date)} to \${escH(event.end_date)}\${daysToGoLabel(event) ? ' &middot; <span class="text-primary-300 font-semibold">' + daysToGoLabel(event) + '</span>' : ''}</p>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="px-3 py-1 rounded-full text-xs font-semibold \${event.status==='live'?'bg-green-500/20 text-green-400 border border-green-500/30':'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'}">\${event.status.toUpperCase()}</span>
+                <button onclick="openEditEvent()" class="px-3 py-1.5 rounded-lg text-xs font-medium glass hover:bg-white/10 transition"><i class="fas fa-edit mr-1"></i>Edit</button>
+              </div>
             </div>
           </div>
         </div>
@@ -33441,6 +33441,8 @@ function adminPageScript(): string {
 
         <!-- Pass & badge: who tried, who got stuck (loadHelpFunnel), under the tiles so it is seen. -->
         <div id="help-funnel" class="mb-6"></div>
+        <!-- Who holds which pass, money from passes, what is waiting on a person (loadBoard). -->
+        <div id="ov-board" class="mb-6"></div>
 
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
           <div class="glass rounded-xl p-5">
@@ -33477,8 +33479,6 @@ function adminPageScript(): string {
             <div class="flex items-baseline justify-between mb-3">
               <h3 class="font-semibold text-sm"><i class="fas fa-graduation-cap text-primary-400 mr-2"></i>Registration source</h3>
               <span class="text-[10px] text-gray-500" id="source-summary"></span>
-        <!-- Who holds which pass, money from passes, what is waiting on a person (loadBoard). -->
-        <div id="ov-board" class="mb-6"></div>
             </div>
             <div id="top-sources" class="text-sm"></div>
             <div id="campus-panels" class="mt-4 space-y-3"></div>
@@ -33738,6 +33738,7 @@ function adminPageScript(): string {
       loadNotifyRunStrip();
       loadNetMailStrip();
       loadHelpFunnel();
+      loadBoard(event);
       // Render charts
       setTimeout(() => {
         loadAudience();
@@ -33774,7 +33775,6 @@ function adminPageScript(): string {
     // to read it from the beginning; oldest-first buried today's arrivals on page 11.
     let attSortCol = 'registration_date';
     let attSortDir = 'desc'; // 'asc' or 'desc'
-      loadBoard(event);
     let lastAttendees = null;
     let lastDupData = null;
     // The list endpoint caps how many rows it will send. attTotal is what the
