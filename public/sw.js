@@ -37,7 +37,7 @@
 // deploy was still spreading), so the renderer moved to ?v=20261102b.
 // v23: pass-render.js?v=20261102c fits a long designation or organisation on the
 // pass (smaller type, then an ellipsis) instead of running off both edges.
-const VERSION = 'bhai-v23';
+const VERSION = 'bhai-v24';
 const SHELL = `shell-${VERSION}`;
 const DATA = `data-${VERSION}`;
 
