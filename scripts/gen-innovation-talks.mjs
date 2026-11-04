@@ -13,6 +13,11 @@
 //    folder somewhere else, save the PDF's embedded image beside the others under
 //    the name the JSON gives (pypdf: PdfReader(pdf).pages[0].images[0].data), and
 //    run against that copy.
+//    The 4 Nov 2026 export renamed every older photo (same files, new names), so
+//    the JSON keeps the 23 Oct export's names; the presenters added that day are in
+//    its "4 Nov Presentor" folder. Run against a copy of the 23 Oct folder with the
+//    4 Nov files added, kept in a short path such as c:\tmp: the longest names pass
+//    Windows' 260-character limit from the scratchpad, and sharp cannot open them.
 // 2. The block between <!-- talks:start --> and <!-- talks:end --> in
 //    public/exhibition.html (the speaker wall under "Innovation Stage") and in
 //    public/llms.txt (so AI assistants can name the speakers and topics).
@@ -96,6 +101,26 @@ for (const t of talks) {
   t.hasPhoto = existsSync(join(OUT, `${t.slug}.webp`))
 }
 
+// Each card carries the company's logo from the exhibitor wall (made by
+// scripts/gen-exhibitor-logos.mjs): every talk is an exhibitor's, and the JSON names
+// the company as the wall does. The organiser's "Presenter Logo" folder (4 Nov 2026)
+// pairs each presenter with that same logo. Sized as the wall sizes them, a wide
+// wordmark lower than a square mark, so they read at the same weight. A company
+// with no logo on the wall gets its name only.
+const slugOf = (name) => name.toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+for (const t of talks) {
+  const file = `images/exhibitors/${slugOf(t.company)}.webp`
+  if (!existsSync(join('public', file))) continue
+  const m = await sharp(join('public', file)).metadata()
+  const r = m.width / m.height
+  let h = Math.min(34, Math.max(18, 30 * Math.pow(r, -0.4)))
+  if (h * r > 120) h = 120 / r
+  t.logo = { file, w: m.width, h: m.height, dh: Math.round(h) }
+}
+const logo = (t, margin) => t.logo
+  ? `<img width="${t.logo.w}" height="${t.logo.h}" loading="lazy" decoding="async" src="${t.logo.file}" alt="" class="talk-logo" style="display:block;height:${t.logo.dh}px;width:auto;max-width:120px;margin:${margin};position:relative;z-index:1;">\n    `
+  : ''
+
 // ---- exhibition.html: a speaker wall ----
 const cards = talks.map((t) => {
   const alt = `${t.name}, ${t.title ? t.title + ', ' : ''}${t.company}`
@@ -109,7 +134,7 @@ const cards = talks.map((t) => {
     ${photo}
     <h4>${esc(t.name)}</h4>
     ${t.title ? `<p style="font-size:0.8rem;color:var(--saffron);font-weight:600;margin:0;">${esc(t.title)}</p>` : ''}
-    <p class="spk-org" style="font-size:0.78rem;">${esc(t.company)}</p>
+    ${logo(t, '0 auto')}<p class="spk-org" style="font-size:0.78rem;">${esc(t.company)}</p>
     ${topic}
 </div>`
 })
@@ -128,7 +153,7 @@ const confCards = talks.map((t) => {
     ${avatar}
     <h4>${esc(t.name)}</h4>
     ${t.title ? `<div class="speaker-role">${esc(t.title)}</div>` : ''}
-    <div class="speaker-org">${esc(t.company)}</div>
+    ${logo(t, '0.6rem auto 0.3rem')}<div class="speaker-org">${esc(t.company)}</div>
     ${topic}
 </div>`
 })

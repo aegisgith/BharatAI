@@ -27,6 +27,11 @@
 // Technology came from the 30 Oct export, which has no "Our Logo" or "Digital Media
 // Partner" folder and no Qapitol AI file: those sources are the 12 Oct export's.
 // scripts/sql/exhibitor-changes-2026-10-30.sql gives Aegis and Assessfy app rows.
+// FTA Global, Nu10 Technologies and Rightangle Technologies came from the 4 Nov
+// export's "4 Nov New logo" folder (it is flat otherwise, like the 30 Oct one, and
+// some of its names start with a space), with no exhibitors row known. Asmadiya's
+// full wordmark came the same day from the organiser's "Presenter Logo" export
+// ("4 Nov Presenter" folder); the booth folder's file is the symbol alone.
 //
 // The names are printed under every logo: half of these are symbol-only marks.
 // `optical` enlarges a lockup whose small lettering would otherwise be lost.
@@ -46,7 +51,7 @@ const EXHIBITORS = [
   { name: 'AlgoAnalytics', file: 'Algo Analytics.jpg', db: [6, 'Algo Analytics'] },
   { name: 'Aria Telecom', file: 'Aria Telecom Solutions Pvt. Ltd.jpg', dark: true }, // white wordmark on navy
   { name: 'Ary-Soft', file: 'ary-soft logo.jpg', db: [31, 'ary-soft'] },
-  { name: 'Asmadiya Technologies', file: 'Asmadiya technologies.jpg', db: [12, 'Asmadiya'] },
+  { name: 'Asmadiya Technologies', file: '4 Nov Presenter/Asmadiya- Ashish Kumar Mishra & Shuvam Giri.png', db: [12, 'Asmadiya'], optical: 1.2 },
   { name: 'Assessfy', file: 'Our Logo/Assessfy.png', optical: 1.15 },
   { name: 'CGI', file: 'CGI logo.jpg', db: [5, 'CGI'] },
   // The file says "CloudCarne"; the artwork says CLOUD CRANE.
@@ -57,6 +62,7 @@ const EXHIBITORS = [
   { name: 'Envista Cyber Defence', file: 'Envista cyber defence logo.jpg', db: [28, 'Envista Cyber Defence'] },
   { name: 'Eurys Infosystems', file: 'EURYS infosystemS private limited.jpg', db: [15, 'EURYS infosystemS private limited'] },
   { name: 'Evoke Technologies', file: 'Evoke Technologies logo.jpg', db: [27, 'Evoke Technologies'] },
+  { name: 'FTA Global', file: '4 Nov New logo/FTA GLOBAL.jpg' },
   { name: 'Gupshup.ai', file: 'gupshup ai logo.jpg' },
   { name: 'Harrier Information Systems', file: 'Harrier Information Systems Pvt. Ltd. logo.jpg', db: [25, 'Harrier Information Systems Pvt. Ltd.'], optical: 1.1 },
   { name: 'Image Infosystems', file: 'Image Infosystem.jpg', db: [4, 'Image Infosystem'], optical: 1.3 },
@@ -72,17 +78,19 @@ const EXHIBITORS = [
   // The ministry's own logo (organiser, 4 Oct), replacing an old Azadi Ka Amrit Mahotsav graphic.
   { name: 'Ministry of Tribal Affairs', file: 'Minsitry of Tribal Affairs  Logo.png', db: [24, 'Ministry of Tribal Affairs'], optical: 1.3 },
   { name: 'NoBroker', file: 'NoBroker Technologies Solutions Private Limited.jpg', db: [10, 'NoBroker Technologies Solutions Private Limited'] },
+  { name: 'Nu10 Technologies', file: '4 Nov New logo/Nu10 Technologies India Private Limited_.webp' },
   { name: 'OliAI', file: 'Oli AI  Logo_.jpg', optical: 1.15 },
   { name: 'Oranje AI', file: 'ORANJE AI PRIVATE LIMITED logo.png', db: [14, 'ORANJE AI PRIVATE LIMITED'] },
   // Renamed Origins AI with a new logo on 28 Oct; the database row is renamed by
   // scripts/sql/exhibitor-changes-2026-10-28.sql (organiser runs it).
   { name: 'Origins AI', file: 'Origins AI Logo_.png', db: [19, 'Origins AI'] },
   { name: 'P99Soft', file: 'P99SOFT Logo.jpg', dark: true }, // white mark on dark teal
-  { name: 'Paisani Technology Services', file: 'Paisani Technology Services_.jpg', db: [13, 'Paisani Technology Services'] },
+  { name: 'Paisani Technology Services', file: 'Paisani Technology Services_.jpg', db: [13, 'Paisani Technology Services'], optical: 1.2 }, // thin script
   { name: 'Phoebetal Technologies', file: 'Phoebetal Technologies Pvt Ltd.jpg', db: [30, 'Phoebetal Technologies Pvt Ltd'] },
   { name: 'Pramaana Labs', file: 'pramaana labs logo.jpg' },
   { name: 'Qapitol AI', file: 'Qapitol AI logo.jpg', db: [2, 'Qapitol AI'] },
   { name: 'RedFerns Tech', file: 'RedFerns Tech Private Limited.jpg', db: [29, 'RedFerns Tech Private Limited'] },
+  { name: 'Rightangle Technologies', file: '4 Nov New logo/Rightangle Technologies Pvt. Ltd_' }, // no extension; it is a JPEG
   { name: 'Saranyu Technologies', file: 'Saranyu Technologies.jpg', db: [11, 'Saranyu Technologies'] },
   { name: 'Seem Fintech & Sustainability', file: 'Seem Fintech & Sustainability Pvt Ltd.jpg', db: [7, 'Seem Fintech & Sustainability Pvt Ltd'] },
   { name: 'Teenage Works', file: 'Teenage Works Logo.jpg' },

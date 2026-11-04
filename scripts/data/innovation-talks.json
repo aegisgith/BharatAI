@@ -139,7 +139,7 @@
     "title": "Vice President – Sales & Head of Public Sector Sales (India)",
     "company": "Gupshup.ai",
     "topic": "",
-    "photo": null,
+    "photo": "4 Nov Presentor/Shashi Bhushan- Gupshup.ai,Vice President – Sales & Head of Public Sector Sales (India).jpg",
     "slug": "shashi-bhushan"
   },
   {
@@ -241,5 +241,163 @@
     "topic": "",
     "photo": "Ferosh Sethumadhavan - Evoke Technologies.jpg",
     "slug": "ferosh-sethumadhavan"
+  },
+  {
+    "name": "Akhil Gupta",
+    "title": "Founder",
+    "company": "NoBroker",
+    "topic": "",
+    "photo": "Akhil Gupta- NoBroker ,Founder.webp",
+    "slug": "akhil-gupta"
+  },
+  {
+    "name": "Deepak Ramteke",
+    "title": "CEO & Founder",
+    "company": "Kadeep.ai",
+    "topic": "",
+    "photo": "Deepak Ramteke - kadeep.ai, CEO & Founder.png",
+    "slug": "deepak-ramteke"
+  },
+  {
+    "name": "Taher Pepermintwala",
+    "title": "Partner",
+    "company": "Envista Cyber Defence",
+    "topic": "",
+    "photo": "Taher Pepermintwala - Envista Cyber Defence, Partner.jpg",
+    "slug": "taher-pepermintwala"
+  },
+  {
+    "name": "Aditi Saini",
+    "title": "Marketing Strategist",
+    "company": "Aria Telecom",
+    "topic": "",
+    "photo": "4 Nov Presentor/Aditi Saini-Aria Telecom Solutions Pvt. Ltd, Marketing Strategist.jpg",
+    "slug": "aditi-saini",
+    "crop": {
+      "left": 0.345,
+      "top": 0.22,
+      "size": 0.3
+    }
+  },
+  {
+    "name": "Selva",
+    "title": "Co-Founder & CEO",
+    "company": "OliAI",
+    "topic": "",
+    "photo": "4 Nov Presentor/Selva - Oli AI, Co-Founder & CEO.jpg",
+    "slug": "selva"
+  },
+  {
+    "name": "Aravind",
+    "title": "Co-Founder & CTO",
+    "company": "OliAI",
+    "topic": "",
+    "photo": "4 Nov Presentor/Aravind-Oli AI, Co-Founder & CTO.jpg",
+    "slug": "aravind"
+  },
+  {
+    "name": "Ashish Kumar Mishra",
+    "title": "CEO & MD",
+    "company": "Asmadiya Technologies",
+    "topic": "",
+    "photo": "4 Nov Presentor/Ashish Mishra-Asmadiya , CEO & MD.png",
+    "slug": "ashish-kumar-mishra",
+    "crop": {
+      "left": 0.075,
+      "top": 0.067,
+      "size": 0.85
+    }
+  },
+  {
+    "name": "Shuvam Giri",
+    "title": "CTO",
+    "company": "Asmadiya Technologies",
+    "topic": "",
+    "photo": "4 Nov Presentor/Shuvam Giri- Asmadiya, CTO.png",
+    "slug": "shuvam-giri"
+  },
+  {
+    "name": "Azharuddin Khan",
+    "title": "Associate Manager, Tech and Strategy Office",
+    "company": "Jade Global",
+    "topic": "",
+    "photo": "4 Nov Presentor/Azharuddin Khan - Jade Global, Associate Manager Tech and Strategy Office.png",
+    "slug": "azharuddin-khan"
+  },
+  {
+    "name": "Saumya Phor",
+    "title": "CEO",
+    "company": "Cloud Crane",
+    "topic": "",
+    "photo": "4 Nov Presentor/Saumya Phor- CloudCarne, CEO.jpg",
+    "slug": "saumya-phor",
+    "crop": {
+      "left": 0.1,
+      "top": 0.06,
+      "size": 0.75
+    }
+  },
+  {
+    "name": "Chirag Phor",
+    "title": "CTO",
+    "company": "Cloud Crane",
+    "topic": "",
+    "photo": "4 Nov Presentor/Chirag Phor - CloudCarne, CTO.jpg",
+    "slug": "chirag-phor",
+    "crop": {
+      "left": 0.22,
+      "top": 0.1,
+      "size": 0.5
+    }
+  },
+  {
+    "name": "Dipak Zope",
+    "title": "Chief Executive Officer",
+    "company": "Paisani Technology Services",
+    "topic": "",
+    "photo": "4 Nov Presentor/Dipak Zope - Paisani Technology Services OPC Pvt. Ltd, Chief Executive Officer.png",
+    "slug": "dipak-zope",
+    "crop": {
+      "left": 0.105,
+      "top": 0,
+      "size": 0.85
+    }
+  },
+  {
+    "name": "Manoj Agarwal",
+    "title": "Director",
+    "company": "Rightangle Technologies",
+    "topic": "",
+    "photo": "4 Nov Presentor/Manoj Agarwal - Rightangle Technologies Pvt. Ltd., Director.jpg",
+    "slug": "manoj-agarwal"
+  },
+  {
+    "name": "Mohit Kataria",
+    "title": "Chief Business Officer & Co-Founder",
+    "company": "Nu10 Technologies",
+    "topic": "",
+    "photo": "4 Nov Presentor/Mohit Kataria-  Nu10 Technologies India Private Limited , Chief Business Officer & Co-Founder.jpg",
+    "slug": "mohit-kataria"
+  },
+  {
+    "name": "Senthil Kumar Hariram",
+    "title": "Founder & Managing Director",
+    "company": "FTA Global",
+    "topic": "",
+    "photo": "4 Nov Presentor/Senthil Kumar Hariram-  FTA Global, Founder & Managing Director.png",
+    "slug": "senthil-kumar-hariram",
+    "crop": {
+      "left": 0.1,
+      "top": 0,
+      "size": 0.8
+    }
+  },
+  {
+    "name": "Shishir Sharan",
+    "title": "CEO",
+    "company": "Daten Technology Solutions",
+    "topic": "",
+    "photo": "4 Nov Presentor/Shishir Sharan- Daten Intelligenz, CEO_.jpg",
+    "slug": "shishir-sharan"
   }
 ]

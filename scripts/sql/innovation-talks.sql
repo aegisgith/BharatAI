@@ -100,8 +100,11 @@ UPDATE innovation_talks SET speaker_photo_url = '/images/talks/ganesh-nagarajan.
 WHERE event_id = 1 AND speaker_name = 'Ganesh Nagarajan' AND company = 'Ministry of Tribal Affairs' AND COALESCE(speaker_photo_url, '') = '';
 
 INSERT INTO innovation_talks (event_id, slot_no, session_type, time_slot, speaker_name, company, topic, status, speaker_title, speaker_photo_url, notes)
-SELECT 1, 14, 'Morning', 'To be announced', 'Shashi Bhushan', 'Gupshup.ai', '', 'confirmed', 'Vice President – Sales & Head of Public Sector Sales (India)', '', 'Imported from the Innovation Talk sheet, 12 Oct 2026'
+SELECT 1, 14, 'Morning', 'To be announced', 'Shashi Bhushan', 'Gupshup.ai', '', 'confirmed', 'Vice President – Sales & Head of Public Sector Sales (India)', '/images/talks/shashi-bhushan.webp', 'Imported from the Innovation Talk sheet, 12 Oct 2026'
 WHERE NOT EXISTS (SELECT 1 FROM innovation_talks WHERE event_id = 1 AND speaker_name = 'Shashi Bhushan' AND company = 'Gupshup.ai');
+
+UPDATE innovation_talks SET speaker_photo_url = '/images/talks/shashi-bhushan.webp'
+WHERE event_id = 1 AND speaker_name = 'Shashi Bhushan' AND company = 'Gupshup.ai' AND COALESCE(speaker_photo_url, '') = '';
 
 INSERT INTO innovation_talks (event_id, slot_no, session_type, time_slot, speaker_name, company, topic, status, speaker_title, speaker_photo_url, notes)
 SELECT 1, 15, 'Morning', 'To be announced', 'Divyanshi Saxena', 'Eurys Infosystems', 'Pioneering the Shift from E-Governance to AI-Governance using conversational AI', 'confirmed', 'Sr. Manager – Sales', '/images/talks/divyanshi-saxena.webp', 'Imported from the Innovation Talk sheet, 12 Oct 2026'
@@ -172,3 +175,115 @@ WHERE NOT EXISTS (SELECT 1 FROM innovation_talks WHERE event_id = 1 AND speaker_
 
 UPDATE innovation_talks SET speaker_photo_url = '/images/talks/ferosh-sethumadhavan.webp'
 WHERE event_id = 1 AND speaker_name = 'Ferosh Sethumadhavan' AND company = 'Evoke Technologies' AND COALESCE(speaker_photo_url, '') = '';
+
+INSERT INTO innovation_talks (event_id, slot_no, session_type, time_slot, speaker_name, company, topic, status, speaker_title, speaker_photo_url, notes)
+SELECT 1, 25, 'Morning', 'To be announced', 'Akhil Gupta', 'NoBroker', '', 'confirmed', 'Founder', '/images/talks/akhil-gupta.webp', 'Imported from the Innovation Talk sheet, 12 Oct 2026'
+WHERE NOT EXISTS (SELECT 1 FROM innovation_talks WHERE event_id = 1 AND speaker_name = 'Akhil Gupta' AND company = 'NoBroker');
+
+UPDATE innovation_talks SET speaker_photo_url = '/images/talks/akhil-gupta.webp'
+WHERE event_id = 1 AND speaker_name = 'Akhil Gupta' AND company = 'NoBroker' AND COALESCE(speaker_photo_url, '') = '';
+
+INSERT INTO innovation_talks (event_id, slot_no, session_type, time_slot, speaker_name, company, topic, status, speaker_title, speaker_photo_url, notes)
+SELECT 1, 26, 'Morning', 'To be announced', 'Deepak Ramteke', 'Kadeep.ai', '', 'confirmed', 'CEO & Founder', '/images/talks/deepak-ramteke.webp', 'Imported from the Innovation Talk sheet, 12 Oct 2026'
+WHERE NOT EXISTS (SELECT 1 FROM innovation_talks WHERE event_id = 1 AND speaker_name = 'Deepak Ramteke' AND company = 'Kadeep.ai');
+
+UPDATE innovation_talks SET speaker_photo_url = '/images/talks/deepak-ramteke.webp'
+WHERE event_id = 1 AND speaker_name = 'Deepak Ramteke' AND company = 'Kadeep.ai' AND COALESCE(speaker_photo_url, '') = '';
+
+INSERT INTO innovation_talks (event_id, slot_no, session_type, time_slot, speaker_name, company, topic, status, speaker_title, speaker_photo_url, notes)
+SELECT 1, 27, 'Morning', 'To be announced', 'Taher Pepermintwala', 'Envista Cyber Defence', '', 'confirmed', 'Partner', '/images/talks/taher-pepermintwala.webp', 'Imported from the Innovation Talk sheet, 12 Oct 2026'
+WHERE NOT EXISTS (SELECT 1 FROM innovation_talks WHERE event_id = 1 AND speaker_name = 'Taher Pepermintwala' AND company = 'Envista Cyber Defence');
+
+UPDATE innovation_talks SET speaker_photo_url = '/images/talks/taher-pepermintwala.webp'
+WHERE event_id = 1 AND speaker_name = 'Taher Pepermintwala' AND company = 'Envista Cyber Defence' AND COALESCE(speaker_photo_url, '') = '';
+
+INSERT INTO innovation_talks (event_id, slot_no, session_type, time_slot, speaker_name, company, topic, status, speaker_title, speaker_photo_url, notes)
+SELECT 1, 28, 'Morning', 'To be announced', 'Aditi Saini', 'Aria Telecom', '', 'confirmed', 'Marketing Strategist', '/images/talks/aditi-saini.webp', 'Imported from the Innovation Talk sheet, 12 Oct 2026'
+WHERE NOT EXISTS (SELECT 1 FROM innovation_talks WHERE event_id = 1 AND speaker_name = 'Aditi Saini' AND company = 'Aria Telecom');
+
+UPDATE innovation_talks SET speaker_photo_url = '/images/talks/aditi-saini.webp'
+WHERE event_id = 1 AND speaker_name = 'Aditi Saini' AND company = 'Aria Telecom' AND COALESCE(speaker_photo_url, '') = '';
+
+INSERT INTO innovation_talks (event_id, slot_no, session_type, time_slot, speaker_name, company, topic, status, speaker_title, speaker_photo_url, notes)
+SELECT 1, 29, 'Morning', 'To be announced', 'Selva', 'OliAI', '', 'confirmed', 'Co-Founder & CEO', '/images/talks/selva.webp', 'Imported from the Innovation Talk sheet, 12 Oct 2026'
+WHERE NOT EXISTS (SELECT 1 FROM innovation_talks WHERE event_id = 1 AND speaker_name = 'Selva' AND company = 'OliAI');
+
+UPDATE innovation_talks SET speaker_photo_url = '/images/talks/selva.webp'
+WHERE event_id = 1 AND speaker_name = 'Selva' AND company = 'OliAI' AND COALESCE(speaker_photo_url, '') = '';
+
+INSERT INTO innovation_talks (event_id, slot_no, session_type, time_slot, speaker_name, company, topic, status, speaker_title, speaker_photo_url, notes)
+SELECT 1, 30, 'Morning', 'To be announced', 'Aravind', 'OliAI', '', 'confirmed', 'Co-Founder & CTO', '/images/talks/aravind.webp', 'Imported from the Innovation Talk sheet, 12 Oct 2026'
+WHERE NOT EXISTS (SELECT 1 FROM innovation_talks WHERE event_id = 1 AND speaker_name = 'Aravind' AND company = 'OliAI');
+
+UPDATE innovation_talks SET speaker_photo_url = '/images/talks/aravind.webp'
+WHERE event_id = 1 AND speaker_name = 'Aravind' AND company = 'OliAI' AND COALESCE(speaker_photo_url, '') = '';
+
+INSERT INTO innovation_talks (event_id, slot_no, session_type, time_slot, speaker_name, company, topic, status, speaker_title, speaker_photo_url, notes)
+SELECT 1, 31, 'Morning', 'To be announced', 'Ashish Kumar Mishra', 'Asmadiya Technologies', '', 'confirmed', 'CEO & MD', '/images/talks/ashish-kumar-mishra.webp', 'Imported from the Innovation Talk sheet, 12 Oct 2026'
+WHERE NOT EXISTS (SELECT 1 FROM innovation_talks WHERE event_id = 1 AND speaker_name = 'Ashish Kumar Mishra' AND company = 'Asmadiya Technologies');
+
+UPDATE innovation_talks SET speaker_photo_url = '/images/talks/ashish-kumar-mishra.webp'
+WHERE event_id = 1 AND speaker_name = 'Ashish Kumar Mishra' AND company = 'Asmadiya Technologies' AND COALESCE(speaker_photo_url, '') = '';
+
+INSERT INTO innovation_talks (event_id, slot_no, session_type, time_slot, speaker_name, company, topic, status, speaker_title, speaker_photo_url, notes)
+SELECT 1, 32, 'Morning', 'To be announced', 'Shuvam Giri', 'Asmadiya Technologies', '', 'confirmed', 'CTO', '/images/talks/shuvam-giri.webp', 'Imported from the Innovation Talk sheet, 12 Oct 2026'
+WHERE NOT EXISTS (SELECT 1 FROM innovation_talks WHERE event_id = 1 AND speaker_name = 'Shuvam Giri' AND company = 'Asmadiya Technologies');
+
+UPDATE innovation_talks SET speaker_photo_url = '/images/talks/shuvam-giri.webp'
+WHERE event_id = 1 AND speaker_name = 'Shuvam Giri' AND company = 'Asmadiya Technologies' AND COALESCE(speaker_photo_url, '') = '';
+
+INSERT INTO innovation_talks (event_id, slot_no, session_type, time_slot, speaker_name, company, topic, status, speaker_title, speaker_photo_url, notes)
+SELECT 1, 33, 'Morning', 'To be announced', 'Azharuddin Khan', 'Jade Global', '', 'confirmed', 'Associate Manager, Tech and Strategy Office', '/images/talks/azharuddin-khan.webp', 'Imported from the Innovation Talk sheet, 12 Oct 2026'
+WHERE NOT EXISTS (SELECT 1 FROM innovation_talks WHERE event_id = 1 AND speaker_name = 'Azharuddin Khan' AND company = 'Jade Global');
+
+UPDATE innovation_talks SET speaker_photo_url = '/images/talks/azharuddin-khan.webp'
+WHERE event_id = 1 AND speaker_name = 'Azharuddin Khan' AND company = 'Jade Global' AND COALESCE(speaker_photo_url, '') = '';
+
+INSERT INTO innovation_talks (event_id, slot_no, session_type, time_slot, speaker_name, company, topic, status, speaker_title, speaker_photo_url, notes)
+SELECT 1, 34, 'Morning', 'To be announced', 'Saumya Phor', 'Cloud Crane', '', 'confirmed', 'CEO', '/images/talks/saumya-phor.webp', 'Imported from the Innovation Talk sheet, 12 Oct 2026'
+WHERE NOT EXISTS (SELECT 1 FROM innovation_talks WHERE event_id = 1 AND speaker_name = 'Saumya Phor' AND company = 'Cloud Crane');
+
+UPDATE innovation_talks SET speaker_photo_url = '/images/talks/saumya-phor.webp'
+WHERE event_id = 1 AND speaker_name = 'Saumya Phor' AND company = 'Cloud Crane' AND COALESCE(speaker_photo_url, '') = '';
+
+INSERT INTO innovation_talks (event_id, slot_no, session_type, time_slot, speaker_name, company, topic, status, speaker_title, speaker_photo_url, notes)
+SELECT 1, 35, 'Morning', 'To be announced', 'Chirag Phor', 'Cloud Crane', '', 'confirmed', 'CTO', '/images/talks/chirag-phor.webp', 'Imported from the Innovation Talk sheet, 12 Oct 2026'
+WHERE NOT EXISTS (SELECT 1 FROM innovation_talks WHERE event_id = 1 AND speaker_name = 'Chirag Phor' AND company = 'Cloud Crane');
+
+UPDATE innovation_talks SET speaker_photo_url = '/images/talks/chirag-phor.webp'
+WHERE event_id = 1 AND speaker_name = 'Chirag Phor' AND company = 'Cloud Crane' AND COALESCE(speaker_photo_url, '') = '';
+
+INSERT INTO innovation_talks (event_id, slot_no, session_type, time_slot, speaker_name, company, topic, status, speaker_title, speaker_photo_url, notes)
+SELECT 1, 36, 'Morning', 'To be announced', 'Dipak Zope', 'Paisani Technology Services', '', 'confirmed', 'Chief Executive Officer', '/images/talks/dipak-zope.webp', 'Imported from the Innovation Talk sheet, 12 Oct 2026'
+WHERE NOT EXISTS (SELECT 1 FROM innovation_talks WHERE event_id = 1 AND speaker_name = 'Dipak Zope' AND company = 'Paisani Technology Services');
+
+UPDATE innovation_talks SET speaker_photo_url = '/images/talks/dipak-zope.webp'
+WHERE event_id = 1 AND speaker_name = 'Dipak Zope' AND company = 'Paisani Technology Services' AND COALESCE(speaker_photo_url, '') = '';
+
+INSERT INTO innovation_talks (event_id, slot_no, session_type, time_slot, speaker_name, company, topic, status, speaker_title, speaker_photo_url, notes)
+SELECT 1, 37, 'Morning', 'To be announced', 'Manoj Agarwal', 'Rightangle Technologies', '', 'confirmed', 'Director', '/images/talks/manoj-agarwal.webp', 'Imported from the Innovation Talk sheet, 12 Oct 2026'
+WHERE NOT EXISTS (SELECT 1 FROM innovation_talks WHERE event_id = 1 AND speaker_name = 'Manoj Agarwal' AND company = 'Rightangle Technologies');
+
+UPDATE innovation_talks SET speaker_photo_url = '/images/talks/manoj-agarwal.webp'
+WHERE event_id = 1 AND speaker_name = 'Manoj Agarwal' AND company = 'Rightangle Technologies' AND COALESCE(speaker_photo_url, '') = '';
+
+INSERT INTO innovation_talks (event_id, slot_no, session_type, time_slot, speaker_name, company, topic, status, speaker_title, speaker_photo_url, notes)
+SELECT 1, 38, 'Morning', 'To be announced', 'Mohit Kataria', 'Nu10 Technologies', '', 'confirmed', 'Chief Business Officer & Co-Founder', '/images/talks/mohit-kataria.webp', 'Imported from the Innovation Talk sheet, 12 Oct 2026'
+WHERE NOT EXISTS (SELECT 1 FROM innovation_talks WHERE event_id = 1 AND speaker_name = 'Mohit Kataria' AND company = 'Nu10 Technologies');
+
+UPDATE innovation_talks SET speaker_photo_url = '/images/talks/mohit-kataria.webp'
+WHERE event_id = 1 AND speaker_name = 'Mohit Kataria' AND company = 'Nu10 Technologies' AND COALESCE(speaker_photo_url, '') = '';
+
+INSERT INTO innovation_talks (event_id, slot_no, session_type, time_slot, speaker_name, company, topic, status, speaker_title, speaker_photo_url, notes)
+SELECT 1, 39, 'Morning', 'To be announced', 'Senthil Kumar Hariram', 'FTA Global', '', 'confirmed', 'Founder & Managing Director', '/images/talks/senthil-kumar-hariram.webp', 'Imported from the Innovation Talk sheet, 12 Oct 2026'
+WHERE NOT EXISTS (SELECT 1 FROM innovation_talks WHERE event_id = 1 AND speaker_name = 'Senthil Kumar Hariram' AND company = 'FTA Global');
+
+UPDATE innovation_talks SET speaker_photo_url = '/images/talks/senthil-kumar-hariram.webp'
+WHERE event_id = 1 AND speaker_name = 'Senthil Kumar Hariram' AND company = 'FTA Global' AND COALESCE(speaker_photo_url, '') = '';
+
+INSERT INTO innovation_talks (event_id, slot_no, session_type, time_slot, speaker_name, company, topic, status, speaker_title, speaker_photo_url, notes)
+SELECT 1, 40, 'Morning', 'To be announced', 'Shishir Sharan', 'Daten Technology Solutions', '', 'confirmed', 'CEO', '/images/talks/shishir-sharan.webp', 'Imported from the Innovation Talk sheet, 12 Oct 2026'
+WHERE NOT EXISTS (SELECT 1 FROM innovation_talks WHERE event_id = 1 AND speaker_name = 'Shishir Sharan' AND company = 'Daten Technology Solutions');
+
+UPDATE innovation_talks SET speaker_photo_url = '/images/talks/shishir-sharan.webp'
+WHERE event_id = 1 AND speaker_name = 'Shishir Sharan' AND company = 'Daten Technology Solutions' AND COALESCE(speaker_photo_url, '') = '';
