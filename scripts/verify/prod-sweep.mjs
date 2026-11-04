@@ -107,7 +107,11 @@ const appTag = /<script src="(\/app\.js\?v=[0-9a-f]{8})"><\/script>/.exec(r.text
 r = appTag ? await hit(appTag[1]) : { status: 0, text: '' };
 check('app code carries the Visitor fixes', ['function inboxEmpty', 'function downloadAgendaIcs', 'function renderVisitorChecklist', 'function inviteColleague', "reason === 'passcard'"].every(m => r.text.includes(m)), (appTag ? appTag[1] : 'no versioned /app.js tag') + ' ' + r.status);
 r = await hit('/');
-check('home hero sells the Delegate Pass first', r.status === 200 && r.text.includes('hero-passline') && r.text.indexOf('/register#delegate') < r.text.indexOf('Free Visitor Pass') && !r.text.includes('5,000+'), r.status);
+// The home buttons carry ?source=home-... (4 Nov 2026) so admin can tell which one
+// brought a registration; the offer bar shows no price.
+const delegateAt = r.text.search(/\/register(\?source=[a-z0-9-]+)?#delegate/);
+check('home hero sells the Delegate Pass first', r.status === 200 && r.text.includes('hero-passline') && delegateAt >= 0 && delegateAt < r.text.indexOf('Free Visitor Pass') && !r.text.includes('5,000+'), r.status);
+check('home buttons are tagged and the offer bar has no price', ['source=home-hero#delegate', 'source=home-table#delegate', 'source=home-bar#delegate', 'source=home-cta#delegate'].every(m => r.text.includes(m)) && !/sticky-cta-text"><b>[^<]*&#8377;/.test(r.text), 'tags or bar price');
 
 // ---- what a phone downloads, second pass (28 Oct 2026) ----
 r = await hit('/admin');

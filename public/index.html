@@ -959,12 +959,12 @@
                     <li>Guaranteed entry</li>
                 </ul>
                 <div class="hero-offer-foot">
-                    <a href="/register#delegate" class="btn btn-primary btn-xl">Get my Delegate Pass <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
+                    <a href="/register?source=home-hero#delegate" class="btn btn-primary btn-xl">Get my Delegate Pass <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
                     <p class="hero-offer-note">&#8377;8,999 from 6 Nov. <span data-days-left="2026-11-05"></span></p>
                 </div>
             </div>
 
-            <p class="hero-alt"><a href="/register">Free Visitor Pass</a> (exhibition only, entry by time slot)<span class="sep">·</span><a href="/exhibition">Exhibit or sponsor</a></p>
+            <p class="hero-alt"><a href="/register?source=home-hero-free">Free Visitor Pass</a> (exhibition only, entry by time slot)<span class="sep">·</span><a href="/exhibition">Exhibit or sponsor</a></p>
         </div>
     </section>
 
@@ -1583,9 +1583,9 @@
                     </tbody>
                 </table>
                 <div class="pc-foot">
-                    <a href="/register#delegate" class="btn btn-primary btn-lg">Get my Delegate Pass <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
+                    <a href="/register?source=home-table#delegate" class="btn btn-primary btn-lg">Get my Delegate Pass <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
                     <p>&#8377;8,999 from 6 Nov. <span data-days-left="2026-11-05"></span></p>
-                    <p><a href="/passes">Compare all five passes</a> &middot; <a href="/register">Get the free Visitor Pass</a></p>
+                    <p><a href="/passes">Compare all five passes</a> &middot; <a href="/register?source=home-table-free">Get the free Visitor Pass</a></p>
                 </div>
             </div>
             <details class="more pc-tracks">
@@ -2235,10 +2235,10 @@
                 <h2>Show what you can do <span class="accent">for Bharat with AI.</span></h2>
                 <p>20–21 Nov 2026, World Trade Center Mumbai. Delegate Pass &#8377;4,999 + GST until 5 Nov, with guaranteed entry on both days. <span data-days-left="2026-11-05"></span></p>
                 <div class="cta-buttons">
-                    <a href="/register#delegate" class="btn btn-primary btn-xl">
+                    <a href="/register?source=home-cta#delegate" class="btn btn-primary btn-xl">
                         Get my Delegate Pass <i class="fas fa-arrow-right" aria-hidden="true"></i>
                     </a>
-                    <a href="/register" class="btn btn-ghost btn-xl">
+                    <a href="/register?source=home-cta-free" class="btn btn-ghost btn-xl">
                         Free Visitor Pass
                     </a>
                     <a href="/exhibition" class="btn btn-ghost btn-xl">
@@ -2337,8 +2337,8 @@
 
     <!-- The offer that follows the reader once the hero has scrolled away -->
     <aside class="sticky-cta" id="stickyCta" aria-label="Delegate Pass">
-        <div class="sticky-cta-text"><b>Delegate Pass &#8377;4,999</b><span>+ GST &middot; &#8377;8,999 from 6 Nov</span></div>
-        <a href="/register#delegate" class="btn btn-primary" tabindex="-1">Get my pass</a>
+        <div class="sticky-cta-text"><b>Delegate Pass</b><span>Every session &middot; Lunch &middot; 1:1 meetings</span></div>
+        <a href="/register?source=home-bar#delegate" class="btn btn-primary" tabindex="-1">Get my pass</a>
     </aside>
 
     <script>
@@ -2395,19 +2395,23 @@
       });
     })();
 
-    // The offer bar: on whenever no Delegate button is on screen. Off while the
-    // hero's button, the comparison table, the closing call or the footer shows,
-    // so it never sits on top of the thing it points to. On a short phone the
-    // hero's button starts below the fold, so the bar is there from the start.
+    // The offer bar: in once the hero's Delegate box has scrolled above the
+    // screen, out again while the comparison table, the closing call or the
+    // footer is showing, so it never covers the hero or the thing it points to.
+    // (4 Nov 2026: showing it whenever the hero's button was off screen put it
+    // over the hero on a desktop where that button sits just below the fold.)
     (function () {
       var bar = document.getElementById('stickyCta');
       if (!bar || !('IntersectionObserver' in window)) return;
       var link = bar.querySelector('a');
-      var watch = ['.hero-offer .btn', '#compare .pc', '#registration', '.footer'];
-      var seen = {};
+      var watch = ['.hero-offer', '#compare .pc', '#registration', '.footer'];
+      var seen = {}, pastHero = false;
       var io = new IntersectionObserver(function (es) {
-        es.forEach(function (e) { seen[e.target.getAttribute('data-sticky-key')] = e.isIntersecting; });
-        var on = !Object.keys(seen).some(function (k) { return seen[k]; });
+        es.forEach(function (e) {
+          seen[e.target.getAttribute('data-sticky-key')] = e.isIntersecting;
+          if (e.target.classList.contains('hero-offer')) pastHero = !e.isIntersecting && e.boundingClientRect.top < 0;
+        });
+        var on = pastHero && !Object.keys(seen).some(function (k) { return seen[k]; });
         bar.classList.toggle('is-on', on);
         link.tabIndex = on ? 0 : -1;
         bar.setAttribute('aria-hidden', on ? 'false' : 'true');
