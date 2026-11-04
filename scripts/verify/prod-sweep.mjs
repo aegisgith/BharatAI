@@ -111,7 +111,10 @@ r = await hit('/');
 // brought a registration; the offer bar shows no price.
 const delegateAt = r.text.search(/\/register(\?source=[a-z0-9-]+)?#delegate/);
 check('home hero sells the Delegate Pass first', r.status === 200 && r.text.includes('hero-passline') && delegateAt >= 0 && delegateAt < r.text.indexOf('Free Visitor Pass') && !r.text.includes('5,000+'), r.status);
-check('home buttons are tagged and the offer bar has no price', ['source=home-hero#delegate', 'source=home-table#delegate', 'source=home-bar#delegate', 'source=home-cta#delegate'].every(m => r.text.includes(m)) && !/sticky-cta-text"><b>[^<]*&#8377;/.test(r.text), 'tags or bar price');
+// No pass price anywhere on the home page (the organiser, 4 Nov 2026): prices
+// live on /passes, which switches by itself on 6 Nov. Booth prices may stay.
+const passPrices = ['4,999', '8,999', '9,999', '14,999', '19,999', '24,999', '3,999', 'INR 999', '&#8377;999', '₹999'].filter(p => r.text.includes(p));
+check('home buttons are tagged and no pass price is on the page', ['source=home-hero#delegate', 'source=home-table#delegate', 'source=home-bar#delegate', 'source=home-cta#delegate'].every(m => r.text.includes(m)) && passPrices.length === 0, 'tags, or prices: ' + passPrices.join(' '));
 
 // ---- what a phone downloads, second pass (28 Oct 2026) ----
 r = await hit('/admin');

@@ -381,7 +381,7 @@
           "name": "What are the ticket prices and pass types?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Six pass types: Visitor Pass (FREE, exhibition + select keynotes; entry is not guaranteed: it depends on slot availability on 20 and 21 November, a half-day slot or none, confirmed by email), Academic Pass (INR 999 + GST, conference + student zone, for students and faculty with valid ID), Delegate Pass (INR 4,999 + GST, full conference + exhibition + networking lunch, no workshop), Premium Delegate Pass (INR 9,999 + GST, everything in Delegate plus one hands-on workshop), VIP Pass (INR 19,999 + GST, everything in Premium Delegate plus VIP lounge, priority seating and speaker meet-and-greet), and Media Pass (By Invite for journalists). Every paid pass has guaranteed entry on both days. These are the standard prices until 5 November 2026; from 6 November the Academic Pass is INR 3,999, Delegate INR 8,999, Premium Delegate INR 14,999 and VIP INR 24,999 + GST. Workshop seats are limited and go first come, first served. Compare every pass at https://bharataiinnovation.com/register#compare. Teams of five or more get five passes for the price of four (Delegate or Premium Delegate), on request."
+            "text": "Six pass types: Visitor Pass (FREE, exhibition + select keynotes; entry is not guaranteed: it depends on slot availability on 20 and 21 November, a half-day slot or none, confirmed by email), Academic Pass (conference + student zone, for students and faculty with valid ID), Delegate Pass (full conference + exhibition + networking lunch, no workshop), Premium Delegate Pass (everything in Delegate plus one hands-on workshop), VIP Pass (everything in Premium Delegate plus VIP lounge, priority seating and speaker meet-and-greet), and Media Pass (By Invite for journalists). Every paid pass has guaranteed entry on both days. Workshop seats are limited and go first come, first served. Current prices for every pass: https://bharataiinnovation.com/passes. Teams of five or more get five passes for the price of four (Delegate or Premium Delegate), on request."
           }
         },
         {
@@ -429,7 +429,7 @@
           "name": "Are training workshops available?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Yes — hands-on workshops led by industry practitioners cover Generative AI, Agentic AI, VibeCoding, AI product development, recommender systems, AI chatbot development, LLM fine-tuning, and AI for specific verticals. One workshop is included with the Premium Delegate Pass (INR 9,999 + GST) and the VIP Pass (INR 19,999 + GST); seats are limited and go first come, first served."
+            "text": "Yes — hands-on workshops led by industry practitioners cover Generative AI, Agentic AI, VibeCoding, AI product development, recommender systems, AI chatbot development, LLM fine-tuning, and AI for specific verticals. One workshop is included with the Premium Delegate Pass and the VIP Pass; seats are limited and go first come, first served."
           }
         },
         {
@@ -652,6 +652,7 @@
             .hero .hero-desc { font-size: 1.15rem; line-height: 1.7; }
             .hero-offer { max-width: 560px; padding: 1.25rem 1.35rem 1.1rem; }
             .hero-offer-perks { grid-template-columns: repeat(2, max-content); justify-content: center; gap: 0.5rem 2.25rem; }
+            .hero-offer-head { justify-content: center; }
         }
 
         /* --- Show more: <details class="more"> and the "See all" grids --- */
@@ -799,7 +800,6 @@
         .pc-foot .btn { width: 100%; max-width: 420px; justify-content: center; }
         .pc-foot p { margin: 0.7rem 0 0; font-size: 0.84rem; color: var(--dark-grey); }
         .pc-foot a:not(.btn) { color: var(--ink-orange); font-weight: 700; }
-        .pc-foot [data-days-left] { color: var(--ink-orange); }
         .pc th, .pc td { overflow-wrap: normal; word-break: normal; }
         @media (max-width: 480px) {
             .pc th, .pc td { padding: 0.7rem 0.4rem; font-size: 0.82rem; }
@@ -957,7 +957,6 @@
             <div class="hero-offer hero-passline">
                 <div class="hero-offer-head">
                     <span class="hero-offer-name">Delegate Pass</span>
-                    <span class="hero-offer-price">&#8377;4,999 <small>+ GST</small></span>
                 </div>
                 <ul class="hero-offer-perks">
                     <li>Every session</li>
@@ -967,7 +966,6 @@
                 </ul>
                 <div class="hero-offer-foot">
                     <a href="/register?source=home-hero#delegate" class="btn btn-primary btn-xl">Get my Delegate Pass <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
-                    <p class="hero-offer-note">&#8377;8,999 from 6 Nov. <span data-days-left="2026-11-05"></span></p>
                 </div>
             </div>
 
@@ -1579,7 +1577,7 @@
             <div class="pc reveal">
                 <table>
                     <colgroup><col class="pc-c1"><col><col></colgroup>
-                    <thead><tr><th scope="col"><span class="sr-only">What you get</span></th><th scope="col">Free Visitor<span>&#8377;0</span></th><th scope="col" class="pc-del">Delegate<span>&#8377;4,999 + GST</span></th></tr></thead>
+                    <thead><tr><th scope="col"><span class="sr-only">What you get</span></th><th scope="col">Free Visitor<span>Free</span></th><th scope="col" class="pc-del">Delegate<span>Full access</span></th></tr></thead>
                     <tbody>
                         <tr><th scope="row">Exhibition floor and live demos</th><td><span class="pc-yes" role="img" aria-label="Included"></span></td><td class="pc-del"><span class="pc-yes" role="img" aria-label="Included"></span></td></tr>
                         <tr><th scope="row">Entry on 20 and 21 Nov</th><td><small>By time slot, confirmed by email</small></td><td class="pc-del"><strong>Guaranteed</strong></td></tr>
@@ -1591,8 +1589,7 @@
                 </table>
                 <div class="pc-foot">
                     <a href="/register?source=home-table#delegate" class="btn btn-primary btn-lg">Get my Delegate Pass <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
-                    <p>&#8377;8,999 from 6 Nov. <span data-days-left="2026-11-05"></span></p>
-                    <p><a href="/passes">Compare all five passes</a> &middot; <a href="/register?source=home-table-free">Get the free Visitor Pass</a></p>
+                    <p><a href="/passes">Compare all five passes and prices</a> &middot; <a href="/register?source=home-table-free">Get the free Visitor Pass</a></p>
                 </div>
             </div>
             <details class="more pc-tracks">
@@ -2126,7 +2123,7 @@
                         <summary style="font-size:1.05rem;font-weight:700;color:white;cursor:pointer;list-style:none;display:flex;align-items:center;gap:0.75rem;">
                             <span style="color:#FF7A00;font-size:1.2rem;flex-shrink:0;">▸</span> What are the ticket prices for the conference?
                         </summary>
-                        <p style="margin-top:1rem;color:rgba(255,255,255,0.55);line-height:1.8;padding-left:2rem;font-size:0.9rem;">We offer six pass types: Visitor Pass (Free) for exhibition and keynote access, where entry is not guaranteed: it depends on slot availability on 20 and 21 November, so you may be offered a half-day slot, or none, confirmed by email before the event; Academic Pass (INR 999 + GST) for students and researchers, Delegate Pass (INR 4,999 + GST) for the full conference, exhibition, materials and networking lunch, Premium Delegate Pass (INR 9,999 + GST) for everything in Delegate plus one hands-on workshop, VIP Pass (INR 19,999 + GST) for everything in Premium Delegate plus the Bharat AI Leaders’ Evening on Day 1, VIP lounge, priority seating and speaker meet &amp; greet, and Media Pass (By Invite) for accredited journalists and media partners. Every paid pass has guaranteed entry on both days. These are the standard prices until 5 November 2026; from 6 November the Academic Pass is INR 3,999, Delegate INR 8,999, Premium Delegate INR 14,999 and VIP INR 24,999 + GST. Workshop seats are limited and go first come, first served. Teams of five or more get five passes for the price of four (Delegate or Premium Delegate), on request. <a href="/register#compare" style="color:#FF7A00;">Compare every pass</a>.</p>
+                        <p style="margin-top:1rem;color:rgba(255,255,255,0.55);line-height:1.8;padding-left:2rem;font-size:0.9rem;">We offer six pass types: Visitor Pass (Free) for exhibition and keynote access, where entry is not guaranteed: it depends on slot availability on 20 and 21 November, so you may be offered a half-day slot, or none, confirmed by email before the event; Academic Pass for students and researchers, Delegate Pass for the full conference, exhibition, materials and networking lunch, Premium Delegate Pass for everything in Delegate plus one hands-on workshop, VIP Pass for everything in Premium Delegate plus the Bharat AI Leaders’ Evening on Day 1, VIP lounge, priority seating and speaker meet &amp; greet, and Media Pass (By Invite) for accredited journalists and media partners. Every paid pass has guaranteed entry on both days. Workshop seats are limited and go first come, first served. Teams of five or more get five passes for the price of four (Delegate or Premium Delegate), on request. Current prices for every pass are on the <a href="/passes" style="color:#FF7A00;">Passes page</a>.</p>
                     </details>
                     
                     <details style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:1.5rem;transition:all 0.3s;" onmouseover="this.style.borderColor='rgba(255,107,0,0.2)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.08)'">
@@ -2213,7 +2210,7 @@
                                 <span style="width:2px;background:var(--saffron);border-radius:2px;flex-shrink:0;align-self:stretch;min-height:1rem;"></span>
                                 <div>
                                     <span style="font-size:0.75rem;font-weight:700;color:rgba(255,255,255,0.4);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.06em;">Passes</span>
-                                    <span style="color:rgba(255,255,255,0.85);font-size:0.88rem;">Visitor (Free, entry not guaranteed) · Academic (₹999) · Delegate (₹4,999) · Premium Delegate (₹9,999) · VIP (₹19,999) · paid passes + GST, guaranteed entry · prices rise on 6 Nov</span>
+                                    <span style="color:rgba(255,255,255,0.85);font-size:0.88rem;">Visitor (free, entry by time slot) · Academic · Delegate · Premium Delegate · VIP · paid passes have guaranteed entry · <a href="/passes" style="color:#FF8C40;">current prices on the Passes page</a></span>
                                 </div>
                             </div>
                             <div style="display:flex;gap:1rem;">
@@ -2240,7 +2237,7 @@
         <div class="container">
             <div class="cta-content reveal">
                 <h2>Show what you can do <span class="accent">for Bharat with AI.</span></h2>
-                <p>20–21 Nov 2026, World Trade Center Mumbai. Delegate Pass &#8377;4,999 + GST until 5 Nov, with guaranteed entry on both days. <span data-days-left="2026-11-05"></span></p>
+                <p>20–21 Nov 2026, World Trade Center Mumbai. A Delegate Pass gets you every session, the networking lunch and guaranteed entry on both days.</p>
                 <div class="cta-buttons">
                     <a href="/register?source=home-cta#delegate" class="btn btn-primary btn-xl">
                         Get my Delegate Pass <i class="fas fa-arrow-right" aria-hidden="true"></i>
