@@ -315,6 +315,14 @@
             border-color: rgba(255,107,0,0.2);
         }
         .speaker-card:hover::after { opacity: 0.04; }
+        /* The ministers: two rows of three at every size */
+        .speakers-grid.ministers-grid { grid-template-columns: repeat(3, 1fr); max-width: 900px; margin-left: auto; margin-right: auto; }
+        @media (max-width: 600px) {
+            .speakers-grid.ministers-grid { gap: 0.5rem; }
+            .speakers-grid.ministers-grid .speaker-card { padding: 0.9rem 0.35rem; }
+            .ministers-grid .speaker-card h4 { font-size: 0.78rem; }
+            .ministers-grid .speaker-role, .ministers-grid .speaker-org { font-size: 0.66rem; }
+        }
         .speaker-avatar {
             width: 80px; height: 80px;
             border-radius: 50%;
@@ -1280,7 +1288,7 @@
                 <p class="section-subtitle">Policymakers shaping the IndiaAI Mission. Researchers deploying AI at Google. CXOs leading transformation at Capgemini, Kotak, and Bandhan Bank. One stage, two days.</p>
             </div>
             <h3 class="reveal" style="font-family:var(--font-display);font-size:1.25rem;font-weight:700;color:var(--charcoal);text-align:center;margin:0 0 1.25rem;">Inauguration &amp; Keynote Addresses</h3>
-            <div class="speakers-grid" style="margin-bottom:3rem;">
+            <div class="speakers-grid ministers-grid" style="margin-bottom:3rem;">
                 <div class="speaker-card reveal reveal-delay-1">
                     <div class="speaker-avatar"><img width="1024" height="576" loading="lazy" decoding="async" src="images/chirag-paswan.jpg" alt="Hon’ble Shri Chirag Paswan, Union Minister of Food Processing Industries"></div>
                     <h4>Hon’ble Shri Chirag Paswan</h4>
@@ -1315,6 +1323,13 @@
                     <div class="speaker-role">Minister, Soil &amp; Water Conservation</div>
                     <div class="speaker-org">Government of Maharashtra</div>
                     <span class="speaker-topic topic-policy">Keynote Address</span>
+                </div>
+                <div class="speaker-card reveal reveal-delay-1">
+                    <div class="speaker-avatar"><img width="447" height="447" loading="lazy" decoding="async" src="images/speaker-ashish-jaiswal-sq.webp" alt="Hon’ble Shri Ashish Nandkishore Jaiswal, Minister of State for Finance, Planning, Agriculture, Assistance and Rehabilitation, Government of Maharashtra"></div>
+                    <h4>Hon’ble Shri Ashish Nandkishore Jaiswal</h4>
+                    <div class="speaker-role">Minister of State, Finance, Planning, Agriculture, Assistance &amp; Rehabilitation</div>
+                    <div class="speaker-org">Government of Maharashtra</div>
+                    <span class="speaker-topic topic-policy">Minister of State</span>
                 </div>
             </div>
             <h3 class="reveal" style="font-family:var(--font-display);font-size:1.25rem;font-weight:700;color:var(--charcoal);text-align:center;margin:0 0 1.25rem;">Speakers</h3>
@@ -1381,6 +1396,13 @@
                     <div class="speaker-role">Chief Advisor to the Chief Minister</div>
                     <div class="speaker-org">Investments, Infrastructure, Technology &amp; Strategy, Government of Maharashtra</div>
                     <span class="speaker-topic topic-policy">Investments &amp; Infrastructure</span>
+                </div>
+                <div class="speaker-card reveal reveal-delay-2">
+                    <div class="speaker-avatar"><img width="400" height="400" loading="lazy" decoding="async" src="images/speaker-k-mahesh-sq.webp" alt="Dr. K. Mahesh"></div>
+                    <h4>Dr. K. Mahesh</h4>
+                    <div class="speaker-role">Secretary</div>
+                    <div class="speaker-org">Art, Culture &amp; Language Department, Government of NCT of Delhi</div>
+                    <span class="speaker-topic topic-policy">Art, Culture &amp; Language</span>
                 </div>
                 <div class="speaker-card reveal reveal-delay-1">
                     <div class="speaker-avatar"><img width="400" height="400" loading="lazy" decoding="async" src="images/speaker-prakash-kumar-sq.webp" alt="Shri Prakash Kumar"></div>
