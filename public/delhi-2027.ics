@@ -1,0 +1,17 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Bharat AI Innovation//Delhi 2027//EN
+CALSCALE:GREGORIAN
+METHOD:PUBLISH
+BEGIN:VEVENT
+UID:delhi-2027@bharataiinnovation.com
+DTSTAMP:20261105T000000Z
+DTSTART;VALUE=DATE:20270729
+DTEND;VALUE=DATE:20270731
+SUMMARY:Bharat AI Innovation Delhi 2027
+LOCATION:Bharat Mandapam\, Pragati Maidan\, New Delhi
+DESCRIPTION:India’s B2B AI conference and exhibition. Details: https://bharataiinnovation.com/delhi
+URL:https://bharataiinnovation.com/delhi
+TRANSP:TRANSPARENT
+END:VEVENT
+END:VCALENDAR

@@ -18,7 +18,7 @@
 // download). WhatsApp drops images much above 300 KB, so every card is checked.
 
 import { createRequire } from 'node:module'
-import { mkdirSync, statSync } from 'node:fs'
+import { mkdirSync, readFileSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import sharp from 'sharp'
@@ -217,6 +217,18 @@ export const CARDS = {
     sub: 'The terms for registering for and attending Bharat AI Innovation Conference & Exhibition 2026.',
     chips: ['Bharat AI Innovation 2026'],
   },
+  // A different edition, so it carries its own date and place.
+  delhi: {
+    path: '/delhi',
+    when: '29–30 Jul 2027',
+    where: 'Bharat Mandapam',
+    label: 'New · Delhi Edition',
+    headline: 'Bharat AI Innovation Delhi',
+    accent: 'Delhi',
+    sub: '',
+    chips: ['Conference', 'Exhibition', 'Business meetings'],
+    photo: 'public/images/delhi/mandapam-dusk-1600.webp',
+  },
 }
 
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -234,6 +246,14 @@ async function logoDataURI() {
   const cropped = await sharp(src).extract({ left: 0, top: 0, width: 900, height: 262 }).png().toBuffer()
   const buf = await sharp(cropped).trim({ background: '#ffffff', threshold: 20 }).png().toBuffer()
   return 'data:image/png;base64,' + buf.toString('base64')
+}
+
+// card.photo: a wide picture along the foot of the card, its top fading into the
+// card's own sky (the words sit above it, the chips on its darkened foot).
+function photoHTML(card) {
+  if (!card.photo) return ''
+  const b64 = readFileSync(card.photo).toString('base64')
+  return `<img class="photo" src="data:image/webp;base64,${b64}" alt=""><div class="fade"></div><div class="scrim"></div>`
 }
 
 function cardHTML(card, logo) {
@@ -276,12 +296,18 @@ h1{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;letter-spacing:-
   background:linear-gradient(135deg,#FF6B00,#FF8C38);box-shadow:0 8px 28px rgba(255,107,0,.35);white-space:nowrap}
 .flag{position:absolute;left:0;right:0;bottom:0;height:8px;display:flex}
 .flag i{flex:1}.flag i:nth-child(1){background:#FF9933}.flag i:nth-child(2){background:#FFFFFF}.flag i:nth-child(3){background:#138808}
+${card.photo ? `.bg{background:linear-gradient(180deg,#0A0C1C 0,#1C1D50 150px,#3A3A7A 260px)}.grid{display:none}
+.photo{position:absolute;left:0;right:0;bottom:0;width:1200px;height:auto}
+.fade{position:absolute;left:0;right:0;top:268px;height:110px;background:linear-gradient(180deg,#3A3A7A,rgba(58,58,122,0))}
+.scrim{position:absolute;left:0;right:0;bottom:0;height:150px;background:linear-gradient(180deg,rgba(10,12,28,0),rgba(10,12,28,.86) 72%)}
+.main{margin-top:26px}.sub{display:none}
+.chip{background:rgba(13,15,30,.62)}` : ''}
 </style></head><body>
-<div class="bg"></div><div class="grid"></div>
+<div class="bg"></div><div class="grid"></div>${photoHTML(card)}
 <div class="wrap">
   <div class="top">
     <div class="logo"><img src="${logo}" alt=""></div>
-    <div class="when">${esc(WHEN)} · ${esc(WHERE)}</div>
+    <div class="when">${esc(card.when || WHEN)} · ${esc(card.where || WHERE)}</div>
   </div>
   <div class="main">
     <div class="label">${esc(card.label)}</div>

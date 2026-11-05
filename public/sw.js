@@ -37,7 +37,8 @@
 // deploy was still spreading), so the renderer moved to ?v=20261102b.
 // v23: pass-render.js?v=20261102c fits a long designation or organisation on the
 // pass (smaller type, then an ellipsis) instead of running off both edges.
-const VERSION = 'bhai-v25';
+// 5 Nov 2026 (bhai-v26): style.css?v=20261105, the 13-link menu with Delhi 2027.
+const VERSION = 'bhai-v26';
 const SHELL = `shell-${VERSION}`;
 const DATA = `data-${VERSION}`;
 
@@ -68,7 +69,7 @@ const PRECACHE = [
   '/manifest.webmanifest',
   '/js/pass-render.js?v=20261102c',
   '/js/vendor/qrcode-generator.js?v=20261029',   // the pass draws its QR with it
-  '/css/style.css?v=20261102',        // marketing shell: /, /conference, /exhibition, ...
+  '/css/style.css?v=20261105',        // marketing shell: /, /conference, /exhibition, ...
   '/js/main.js?v=20261029',
   '/js/carousel.js?v=20261027',
 ];

@@ -50,6 +50,9 @@ const SUITES = [
   { name: 'server: workshop seats (who may choose, the seat limit, switching cut-off, admin, door scan)', args: ['smoke-workshops.mjs'] },
   { name: 'server: pass QR and badge desk (signed token, verify screen states, check-in, lookup, reissue, scanner, encoder round trip)', args: ['smoke-pass-desk.mjs'] },
   { name: 'browser: badge desk scanner (fake camera, iPhone without BarcodeDetector, native reader failing, hostile QR)', args: ['browser-scan-page.mjs'] },
+  { name: 'unit: the Delhi 2027 page (form rules, calendar file, facts, the tab on every page, one stylesheet version), each alone', args: ['unit-delhi.mjs'] },
+  { name: 'system: Delhi 2027 from an advert to Admin Enquiries (the page\'s own script, real worker, real SQLite, team email, the build)', args: ['smoke-delhi.mjs'] },
+  { name: 'browser: Delhi 2027 on a phone and a laptop, the form on the real worker, the menu on every page, the home page\'s heading font', args: ['browser-delhi.cjs'], harness: 'delhi-harness.mjs', port: 8786, portEnv: true },
   { name: 'browser: delegate app (chat, connect, meet, inbox, back, XSS)', args: ['browser-delegate.cjs'], harness: 'app-harness.mjs', port: 8770 },
   // portEnv: the harness and the test read HARNESS_PORT, so a busy :8772 (another
   // session's run) moves this suite to :9772 instead of failing it.

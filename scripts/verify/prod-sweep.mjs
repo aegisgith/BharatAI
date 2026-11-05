@@ -18,12 +18,21 @@ r = await hit('/app');
 check('/app 200 with security headers', r.status === 200 && r.h['x-content-type-options'] === 'nosniff' && r.h['x-frame-options'] === 'SAMEORIGIN', r.status + ' ' + JSON.stringify([r.h['x-content-type-options'], r.h['x-frame-options']]));
 r = await hit('/admin');
 check('/admin 200', r.status === 200, r.status);
-for (const p of ['/', '/campus-djsanghvi', '/campus-series', '/marketplace', '/partner', '/about']) {
+for (const p of ['/', '/delhi', '/campus-djsanghvi', '/campus-series', '/marketplace', '/partner', '/about']) {
   r = await hit(p);
   check(`${p} 200`, r.status === 200, r.status);
 }
 r = await hit('/');
 check('static site carries _headers', r.h['x-content-type-options'] === 'nosniff', JSON.stringify(r.h['x-content-type-options']));
+
+r = await hit('/delhi');
+check('/delhi names the venue and the dates, and offers no price', r.text.includes('Bharat Mandapam') && r.text.includes('29–30 July 2027') && !r.text.includes('₹'), r.status);
+r = await hit('/delhi-2027.ics');
+check('the Delhi calendar file is a calendar file', r.status === 200 && r.text.includes('DTSTART;VALUE=DATE:20270729') && !String(r.h['content-type'] || '').includes('html'), r.status + ' ' + r.h['content-type']);
+r = await hit('/');
+check('the home menu has the Delhi 2027 tab', r.text.includes('href="/delhi" class="nav-link"'), 'no tab');
+r = await hit('/images/delhi/mandapam-dusk-phone.webp');
+check('the Delhi photograph is a picture', r.status === 200 && String(r.h['content-type'] || '').includes('image'), r.status + ' ' + r.h['content-type']);
 
 r = await hit('/api/attendees/5/exhibitor');
 check('exhibitor lookup needs a session (401)', r.status === 401, r.status + ' ' + r.text.slice(0, 80));

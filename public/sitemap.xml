@@ -98,6 +98,16 @@
         </image:image>
     </url>
 
+    <!-- Delhi edition, 29-30 July 2027 -->
+    <url>
+        <loc>https://bharataiinnovation.com/delhi</loc>
+        <lastmod>2026-11-05</lastmod>
+        <image:image>
+            <image:loc>https://bharataiinnovation.com/images/og/delhi.jpg</image:loc>
+            <image:title>Bharat AI Innovation Delhi 2027, Bharat Mandapam, New Delhi</image:title>
+        </image:image>
+    </url>
+
     <!-- Campus Series -->
     <url>
         <loc>https://bharataiinnovation.com/campus-series</loc>

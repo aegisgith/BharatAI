@@ -257,6 +257,9 @@ section { position: relative; }
     rgba(13,15,30,0.78) 0%,
     rgba(13,15,30,0.46) 58%,
     rgba(13,15,30,0.00) 100%);
+  /* Without this the fade repeats into the clear 1px border below and draws a
+     dark line across the photograph. */
+  background-repeat: no-repeat;
   border-bottom-color: transparent;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
@@ -3864,12 +3867,16 @@ section { position: relative; }
    the logo, and /exhibition's longer "Book a Booth" CTA needs a 1276px window,
    so the one-row menu starts at 1280px and anything narrower gets the toggle
    menu (it was 1080px with 10 links, and overflowed 1081-1250px with 12).
+   Since Nov 2026 it is 13 links (Delhi 2027 after Campus Series). The bar is
+   capped at --max-w, so a wider window gives it no more room: 13 links at the
+   old spacing overflowed by up to 53px at every width. The padding, gap and
+   text below were tightened to fit, with room to spare on every page.
    If you add another nav item, re-check this: each extra link costs roughly
-   100px. */
+   90px, and there is no spacing left to give. */
 @media (min-width: 1280px) {
-  .nav-link { padding: 0.5rem 0.55rem; font-size: 0.83rem; }
-  .nav-cta { padding: 0.55rem 1rem; font-size: 0.8rem; margin-left: 0.25rem; }
-  .nav-menu { gap: 0.1rem; }
+  .nav-link { padding: 0.5rem 0.36rem; font-size: 0.8rem; }
+  .nav-cta { padding: 0.55rem 0.95rem; font-size: 0.8rem; margin-left: 0.25rem; }
+  .nav-menu { gap: 0; }
 }
 
 /* =====================================================
