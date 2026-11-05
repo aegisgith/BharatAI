@@ -118,10 +118,11 @@ for (const t of talks) {
   const r = m.width / m.height
   let h = Math.min(34, Math.max(18, 30 * Math.pow(r, -0.4)))
   if (h * r > 120) h = 120 / r
+  if (t.government) h = Math.min(44, 170 / r)
   t.logo = { file, w: m.width, h: m.height, dh: Math.round(h) }
 }
 const logo = (t, margin) => t.logo
-  ? `<img width="${t.logo.w}" height="${t.logo.h}" loading="lazy" decoding="async" src="${t.logo.file}" alt="" class="talk-logo" style="display:block;height:${t.logo.dh}px;width:auto;max-width:120px;margin:${margin};position:relative;z-index:1;">\n    `
+  ? `<img width="${t.logo.w}" height="${t.logo.h}" loading="lazy" decoding="async" src="${t.logo.file}" alt="" class="talk-logo" style="display:block;height:${t.logo.dh}px;width:auto;max-width:${t.government ? 170 : 120}px;margin:${margin};position:relative;z-index:1;">\n    `
   : ''
 
 // ---- exhibition.html: a speaker wall ----
@@ -144,7 +145,9 @@ const cards = talks.map((t) => {
 fill('public/exhibition.html', `<div class="speakers-grid">\n${cards.join('\n')}\n</div>\n`)
 
 // ---- conference.html: the same speakers in that page's card style ----
-const confCards = talks.map((t) => {
+// A talk with "government" in the JSON stands in a row of its own at the top, in that
+// order; the JSON's own order stays, because it numbers the rows the SQL inserts.
+const confCard = (t) => {
   const alt = `${t.name}, ${t.title ? t.title + ', ' : ''}${t.company}`
   const avatar = t.hasPhoto
     ? `<div class="speaker-avatar"><img width="320" height="320" loading="lazy" decoding="async" src="images/talks/${t.slug}.webp" alt="${esc(alt)}"></div>`
@@ -159,8 +162,15 @@ const confCards = talks.map((t) => {
     ${logo(t, '0.6rem auto 0.3rem')}<div class="speaker-org">${esc(t.company)}</div>
     ${topic}
 </div>`
-})
-fill('public/conference.html', `<div class="speakers-grid">\n${confCards.join('\n')}\n</div>\n`)
+}
+const govTalks = talks.filter((t) => t.government).sort((a, b) => a.government - b.government)
+const groupHead = (words) => `<h3 class="reveal" style="margin:0 0 1.25rem;text-align:center;font-family:var(--font-display);font-weight:800;font-size:1.35rem;color:var(--charcoal);">${words}</h3>`
+fill('public/conference.html', [
+  groupHead('Government'),
+  `<div class="speakers-grid gov-talks" style="margin-bottom:3rem;">\n${govTalks.map(confCard).join('\n')}\n</div>`,
+  groupHead('Exhibitors'),
+  `<div class="speakers-grid">\n${talks.filter((t) => !t.government).map(confCard).join('\n')}\n</div>\n`,
+].join('\n'))
 
 // ---- llms.txt ----
 const lines = talks.map((t) => `- **${t.name}** (${t.title ? t.title + ', ' : ''}${t.company})${t.topic ? ' — ' + t.topic : ''}`)

@@ -125,6 +125,16 @@ check('the government speakers fill three rows of four on a laptop', count('gv-o
 check('the talks are the organiser\'s five', (html.match(/<article class="gv-talk/g) || []).length === 5);
 for (const w of ['Prashant Mehra', 'Srinivas Kancharla Program Specialist', 'Office of the Principal Scientific Adviser to the Government of India', 'MANTHAN–UTTHAN', 'GeoAI Forest Encroachment Monitoring & Ganesh Kavach App']) check(`the talks name: ${w}`, has(w));
 for (const l of ['logo-psa.webp', 'logo-midc.webp', 'logo-delhi-govt.webp', 'logo-maharashtra-forest.webp', 'exhibitors/ministry-of-tribal-affairs.webp', 'logo-meity.webp']) check(`shows the department's logo: ${l}`, html.includes('src="images/' + l + '"'));
+{
+  const conf = read('public/conference.html');
+  const block = conf.slice(conf.indexOf('<!-- talks:start'), conf.indexOf('<!-- talks:end'));
+  const gov = block.slice(block.indexOf('>Government</h3>'), block.indexOf('>Exhibitors</h3>'));
+  const named = [...gov.matchAll(/<h4>([^<]+)<\/h4>/g)].map((m) => m[1]);
+  check('/conference shows the six government talks first, in the organiser\'s order', named.join('|') === 'Ganesh Nagarajan|Dr. K. Mahesh|Shri Vivek Khandekar (IFS)|Dr. Kunal Khemnar (IAS)|Prashant Mehra|Srinivas Kancharla', named.join('|'));
+  check('/conference shows each with its department\'s logo', ['exhibitors/ministry-of-tribal-affairs.webp', 'logo-delhi-govt.webp', 'logo-maharashtra-forest.webp', 'logo-midc.webp', 'logo-psa.webp'].every((l) => gov.includes('src="images/' + l + '"')));
+  const all = [...block.matchAll(/<h4>([^<]+)<\/h4>/g)].map((m) => m[1]);
+  check('and nobody twice in that section', new Set(all).size === all.length, all.length);
+}
 check('Ganesh Nagarajan and Adi Vaani are in the talks list', has('Ganesh Nagarajan') && has('Adi Vaani') && /Ganesh Nagarajan.*Adi Vaani/.test(llms));
 const hidden = read('scripts/data/hidden-speakers.md');
 for (const gone of ['Rajiv Kumar', 'Nilesh Shah']) check(`${gone} (off the site) is not named here`, !has(gone) && (gone !== 'Nilesh Shah' || hidden.includes(gone)));

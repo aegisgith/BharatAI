@@ -7,9 +7,9 @@
     "photo": "Vineet Upadhayay _AI Head_ P99SOFT.PNG",
     "slug": "vineet-upadhayay",
     "crop": {
-      "left": 0.0,
+      "left": 0,
       "top": 0.22,
-      "size": 1.0
+      "size": 1
     }
   },
   {
@@ -29,7 +29,7 @@
     "slug": "amritesh-kumar",
     "crop": {
       "left": 0.2,
-      "top": 0.0,
+      "top": 0,
       "size": 0.65
     }
   },
@@ -95,9 +95,9 @@
     "slug": "sushil-sani",
     "crop": {
       "pad": 0.2,
-      "left": 0.0,
-      "top": 0.0,
-      "size": 1.0
+      "left": 0,
+      "top": 0,
+      "size": 1
     }
   },
   {
@@ -132,7 +132,8 @@
     "company": "Ministry of Tribal Affairs",
     "topic": "Adi Vaani: Taking India's Tribal Languages from the Margins to the Mainstream with AI",
     "photo": "Ganesh Nagarajan IFS, Deputy Secretary Ministry of Tribal Affairs.png",
-    "slug": "ganesh-nagarajan"
+    "slug": "ganesh-nagarajan",
+    "government": 1
   },
   {
     "name": "Shashi Bhushan",
@@ -407,7 +408,8 @@
     "topic": "GeoAI Forest Encroachment Monitoring & Ganesh Kavach App",
     "photo": "",
     "slug": "vivek-khandekar",
-    "logoFile": "images/logo-maharashtra-forest.webp"
+    "logoFile": "images/logo-maharashtra-forest.webp",
+    "government": 3
   },
   {
     "name": "Srinivas Kancharla",
@@ -416,6 +418,37 @@
     "topic": "The AI components of MANTHAN–UTTHAN: the platform's capabilities, innovations and potential impact",
     "photo": "",
     "slug": "srinivas-kancharla",
-    "logoFile": "images/logo-psa.webp"
+    "logoFile": "images/logo-psa.webp",
+    "government": 6
+  },
+  {
+    "name": "Dr. K. Mahesh",
+    "title": "Secretary, Art, Culture & Language",
+    "company": "Delhi Government",
+    "topic": "",
+    "photo": "",
+    "slug": "k-mahesh",
+    "logoFile": "images/logo-delhi-govt.webp",
+    "government": 2
+  },
+  {
+    "name": "Dr. Kunal Khemnar (IAS)",
+    "title": "Joint Chief Executive Officer",
+    "company": "Maharashtra Industrial Development Corporation (MIDC)",
+    "topic": "",
+    "photo": "",
+    "slug": "kunal-khemnar",
+    "logoFile": "images/logo-midc.webp",
+    "government": 4
+  },
+  {
+    "name": "Prashant Mehra",
+    "title": "",
+    "company": "Office of the Principal Scientific Adviser to the Government of India",
+    "topic": "The AI components of MANTHAN–UTTHAN: the platform's capabilities, innovations and potential impact",
+    "photo": "",
+    "slug": "prashant-mehra",
+    "logoFile": "images/logo-psa.webp",
+    "government": 5
   }
 ]
