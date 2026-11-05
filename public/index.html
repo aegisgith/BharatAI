@@ -728,16 +728,19 @@
             .keynote b { font-size: 0.72rem; }
             .kn-role { font-size: 0.62rem; }
         }
+        /* minmax(0, 1fr), and photographs no wider than their column: with plain 1fr six
+           112px photographs and their gaps need 772px, more than a tablet has (768 to 835px
+           wide), and the sixth column ran off the right edge of the page. */
         #confirmed-speakers .speakers-grid, #campus-series .speakers-grid {
-            grid-template-columns: repeat(3, 1fr); gap: 1.25rem 0.6rem; padding: 0;
+            grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.25rem 0.6rem; padding: 0;
         }
         @media (min-width: 768px) {
-            #confirmed-speakers .speakers-grid, #campus-series .speakers-grid { grid-template-columns: repeat(6, 1fr); gap: 2rem 1.25rem; }
+            #confirmed-speakers .speakers-grid, #campus-series .speakers-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 2rem 1.25rem; }
         }
         #confirmed-speakers .speaker-card, #campus-series .speaker-card { padding: 0 !important; background: none; border: 0; box-shadow: none; gap: 0.3rem; overflow: visible; }
         #confirmed-speakers .speaker-card:hover, #campus-series .speaker-card:hover { transform: none; box-shadow: none; }
-        #confirmed-speakers .speaker-photo, #campus-series .speaker-photo { width: 84px !important; height: 84px !important; }
-        #confirmed-speakers .spk-photo-badge-wrap { width: 84px; }
+        #confirmed-speakers .speaker-photo, #campus-series .speaker-photo { width: min(84px, 100%) !important; height: auto !important; }
+        #confirmed-speakers .spk-photo-badge-wrap { width: min(84px, 100%); }
         #confirmed-speakers .spk-corner-badge { width: 30px; height: 30px; padding: 3px; }
         #confirmed-speakers .speaker-card h4, #campus-series .speaker-card h4 { font-size: 0.84rem; line-height: 1.25; margin: 0.25rem 0 0; }
         #confirmed-speakers .speaker-card p, #campus-series .speaker-card p {
@@ -746,8 +749,8 @@
         }
         #confirmed-speakers .speaker-card p:first-of-type, #campus-series .speaker-card p:first-of-type { color: var(--ink-orange) !important; }
         @media (min-width: 768px) {
-            #confirmed-speakers .speaker-photo, #campus-series .speaker-photo { width: 112px !important; height: 112px !important; }
-            #confirmed-speakers .spk-photo-badge-wrap { width: 112px; }
+            #confirmed-speakers .speaker-photo, #campus-series .speaker-photo { width: min(112px, 100%) !important; height: auto !important; }
+            #confirmed-speakers .spk-photo-badge-wrap { width: min(112px, 100%); }
             #confirmed-speakers .spk-corner-badge { width: 38px; height: 38px; padding: 4px; }
             #confirmed-speakers .speaker-card h4, #campus-series .speaker-card h4 { font-size: 0.95rem; }
             #confirmed-speakers .speaker-card p, #campus-series .speaker-card p { font-size: 0.78rem !important; }
