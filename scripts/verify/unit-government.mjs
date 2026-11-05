@@ -116,7 +116,7 @@ check('no search-engine event or price of its own', !graph.some((g) => g['@type'
 // ---- the people it names are still on the site, as what the page says they are ----
 const home = read('public/index.html');
 const llms = read('public/llms.txt');
-for (const [name, words] of [['Chirag Paswan', 'Union Minister of Food Processing Industries'], ['Chandrakant Dada Patil', 'Minister of Higher and Technical Education'], ['Dattatray Bharane', 'Minister of Agriculture'], ['K.K. Singh', 'Joint Secretary, MeitY'], ['Virendra Singh', 'Secretary'], ['Akshay Yadava', 'Director, Unique Identification Authority'], ['Prakash Kumar', 'Additional Director'], ['K. Mahesh', 'Secretary, Art, Culture'], ['Sudeep Shrivastava', 'Joint Secretary, MeitY; COO, IndiaAI Mission']]) {
+for (const [name, words] of [['Chirag Paswan', 'Union Minister of Food Processing Industries'], ['Chandrakant Dada Patil', 'Minister of Higher and Technical Education'], ['Dattatray Bharane', 'Minister of Agriculture'], ['K.K. Singh', 'Joint Secretary, MeitY'], ['Virendra Singh', 'Secretary'], ['Akshay Yadava', 'Director, Unique Identification Authority'], ['Prakash Kumar', 'Additional Director'], ['K. Mahesh', 'Secretary, Art, Culture'], ['Vivek Khandekar', 'Principal Chief Conservator of Forests'], ['Sudeep Shrivastava', 'Joint Secretary, MeitY; COO, IndiaAI Mission']]) {
   check(`${name} is on the page and still on the home page`, has(name) && new RegExp(`alt="[^"]*${name.replace(/\./g, '\\.')}[^"]*${words.replace(/[.,;]/g, '.')}`).test(home), name);
 }
 check('Ganesh Nagarajan and Adi Vaani are in the talks list', has('Ganesh Nagarajan') && has('Adi Vaani') && /Ganesh Nagarajan.*Adi Vaani/.test(llms));

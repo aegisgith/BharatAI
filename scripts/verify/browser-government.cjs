@@ -68,7 +68,7 @@ const fill = async (page, v) => { for (const [id, val] of Object.entries(v)) awa
     await page.waitForFunction(() => [...document.images].every((i) => i.complete), null, { timeout: 20000 }).catch(() => {});
     check('sections show with animations off', await page.evaluate(() => ['.gv-rows', '.gv-stars', '.gv-tiles', '.gv-acc', '.gv-nom-intro'].every((s) => getComputedStyle(document.querySelector(s)).opacity === '1')));
     check('every picture loads', await page.evaluate(() => [...document.images].every((i) => i.naturalWidth > 0)), await page.evaluate(() => [...document.images].filter((i) => !i.naturalWidth).map((i) => i.src).join(', ')));
-    check('the eight faces swipe on one row, and the page itself does not', await page.evaluate(() => { const f = document.querySelector('.gv-faces'); return f.scrollWidth > f.clientWidth && new Set([...f.children].map((c) => Math.round(c.getBoundingClientRect().top))).size === 1 && document.documentElement.scrollWidth <= innerWidth; }));
+    check('the faces swipe on one row, and the page itself does not', await page.evaluate(() => { const f = document.querySelector('.gv-faces'); return f.scrollWidth > f.clientWidth && new Set([...f.children].map((c) => Math.round(c.getBoundingClientRect().top))).size === 1 && document.documentElement.scrollWidth <= innerWidth; }));
     check('every icon draws (an icon missing from the font is blank)', await page.evaluate(() => [...document.querySelectorAll('.gv-more i, .gv-acc .ic')].every((i) => getComputedStyle(i, '::before').content !== 'none')));
     check('tap targets on the form are big enough', await page.evaluate(() => [...document.querySelectorAll('.gv-field input, .gv-field textarea, .gv-submit, .gv-fmt span')].every((e) => e.getBoundingClientRect().height >= 44)));
 
@@ -170,7 +170,7 @@ const fill = async (page, v) => { for (const [id, val] of Object.entries(v)) awa
       });
       check('laptop: the words stand beside the photograph', r.side);
       check('laptop: the big words never run into their lines', r.clear);
-      check('laptop: all eight faces stand on one row', r.faces === 1, r.faces);
+      check('laptop: all the faces stand on one row', r.faces === 1, r.faces);
       await c.close();
     }
   } finally {
