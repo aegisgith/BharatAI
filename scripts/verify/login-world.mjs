@@ -19,7 +19,7 @@ export const sha = (s) => crypto.createHash('sha256').update(s).digest('hex');
 export const hex = () => crypto.randomBytes(32).toString('hex');
 export const settle = (ms = 60) => new Promise(r => setTimeout(r, ms));
 
-export async function makeWorld({ appUrl = 'https://bharataiinnovation.com/app' } = {}) {
+export async function makeWorld({ appUrl = 'https://bharataiinnovation.com/app', extraEnv = {} } = {}) {
   const worker = (await import(new URL('../../dist/_worker.js?' + Date.now(), import.meta.url).href)).default;
   const SQL = await initSqlJs();
   const db = new SQL.Database();
@@ -40,7 +40,7 @@ export async function makeWorld({ appUrl = 'https://bharataiinnovation.com/app' 
     async batch(list) { for (const s of list) await s.run(); return list.map(() => ({ results: [], meta: {} })); },
     async exec(sql) { db.exec(sql); return { count: 1 }; },
   };
-  const env = new Proxy({ ADMIN_SECRET, SESSION_SECRET, CRON_SECRET, ELASTIC_EMAIL_API_KEY: 'smoke-key', DB: D1 }, { get: (t, k) => (k in t ? t[k] : undefined) });
+  const env = new Proxy({ ADMIN_SECRET, SESSION_SECRET, CRON_SECRET, ELASTIC_EMAIL_API_KEY: 'smoke-key', DB: D1, ...extraEnv }, { get: (t, k) => (k in t ? t[k] : undefined) });
   const ctx = { waitUntil() {}, passThroughOnException() {} };
 
   // Elastic Email answers yes; every message is kept for the test to read.

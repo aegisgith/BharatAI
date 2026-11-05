@@ -453,9 +453,20 @@ const PHONE = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isM
     await page.fill('#rf-title', 'CTO');
     await page.fill('#rf-city', 'Mumbai');
     await page.selectOption('#rf-industry', 'Software & SaaS');
+    // Typed the way the box's own hint shows it. Until 5 Nov 2026 the browser
+    // stopped the form here with "Please enter a URL." (requestSubmit validates).
+    await page.fill('#rf-linkedin', 'linkedin.com/in/ravi-upsell');
+    const above = await page.evaluate(() => {
+      const form = document.getElementById('reg-form');
+      let text = '';
+      for (const el of document.querySelectorAll('h1, h1 ~ p, #reg-intro')) text += ' ' + (el.offsetParent ? el.innerText : '');
+      return { text: text.replace(/\s+/g, ' '), firstBox: Math.round(document.getElementById('rf-name').getBoundingClientRect().top + window.scrollY), form: !!form };
+    });
+    check('the free form is not opened with a warning: entry by slot is said once, plainly, and the first box is on the first screen', !/not guaranteed|or none/i.test(above.text) && /entry by time slot on 20 and 21 Nov, as available, confirmed by email/.test(above.text) && above.firstBox < 844, JSON.stringify(above));
     await page.evaluate(() => { const f = document.getElementById('reg-form'); f.requestSubmit ? f.requestSubmit() : f.submit(); });
     await page.waitForFunction(() => { const s = document.getElementById('reg-success'); return s && !s.classList.contains('hidden'); }, null, { timeout: 15000 }).catch(() => {});
     check('a free registration reaches the success screen', await page.isVisible('#reg-success'));
+    check('with a LinkedIn address typed the way the hint shows it, saved as a working link', ((Object.values((await getState()).attendees).find(x => x.email === 'ravi.upsell@example.com') || {}).linkedin_url) === 'https://linkedin.com/in/ravi-upsell', JSON.stringify(Object.values((await getState()).attendees).find(x => x.email === 'ravi.upsell@example.com') || {}));
     await page.click('#reg-success a:has-text("Upgrade to Delegate")');
     await sleep(800);
     const f = await page.evaluate(() => ({ open: !document.getElementById('reg-paid-pass-modal').classList.contains('hidden'), pass: document.getElementById('rpp-pass-type').value, name: document.getElementById('rpp-name').value, email: document.getElementById('rpp-email').value, phone: document.getElementById('rpp-phone').value, company: document.getElementById('rpp-company').value, title: document.getElementById('rpp-designation').value, city: document.getElementById('rpp-city').value, industry: document.getElementById('rpp-industry').value }));
@@ -469,6 +480,81 @@ const PHONE = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isM
     const st = await getState();
     const a = Object.values(st.attendees).find(x => x.email === 'ravi.upsell@example.com') || {};
     check('one press later the free Visitor is a paid Delegate, on the same registration', /Payment received/.test(await page.textContent('body')) && a.badge_type === 'Delegate Pass' && a.payment_status === 'paid' && Object.values(st.attendees).filter(x => x.email === 'ravi.upsell@example.com').length === 1, JSON.stringify(a));
+    await ctx.close();
+  }
+
+  // ---- 7b. Already registered, buying from /register in a browser not signed in ----
+  // The people every email reaches. Until 5 Nov 2026 Proceed to Payment answered
+  // them with a red message that left after four seconds, and nothing else.
+  await setState({ people: [{ id: 70, name: 'Tara Returning', email: 'tara@example.com', badge_type: 'Visitor Pass', payment_status: 'paid', main_event: 1, mobile: '9820070707', company: 'Tara Co', job_title: 'CEO', city: 'Mumbai', industry: 'Software & SaaS' }] });
+  {
+    const { ctx, page } = await phone();
+    await page.goto(BASE + '/register#delegate', { waitUntil: 'domcontentloaded' });
+    await sleep(800);
+    await fillRegisterForm(page, 'tara@example.com');
+    await page.evaluate(() => document.getElementById('rpp-submit-btn').scrollIntoView({ block: 'center' }));
+    await page.click('#rpp-submit-btn');
+    await page.waitForFunction(() => { const n = document.getElementById('rpp-notice'); return n && n.style.display !== 'none'; }, null, { timeout: 10000 }).catch(() => {});
+    await sleep(5000);   // the old message had gone by now
+    const n = await page.evaluate(() => {
+      const b = document.getElementById('rpp-notice'), a = document.getElementById('rpp-notice-link'), r = b.getBoundingClientRect();
+      return { shown: b.style.display !== 'none' && r.height > 0, inView: r.top >= 0 && r.bottom <= window.innerHeight, text: b.textContent, href: a ? a.getAttribute('href') : '',
+        linkH: a ? Math.round(a.getBoundingClientRect().height) : 0, ready: !document.getElementById('rpp-submit-btn').disabled, url: location.pathname };
+    });
+    check('an address that already holds a pass gets a notice that stays on screen, under the button', n.shown && n.inView && n.ready && n.url === '/register' && /tara@example\.com is already registered with us/.test(n.text) && /payment for your Delegate Pass opens next/.test(n.text), JSON.stringify(n));
+    check('with a button into the app for the code, big enough for a thumb', n.href === '/app?signin=tara%40example.com&action=pay&pass=delegate' && n.linkH >= 44, JSON.stringify(n));
+    check('the notice fits a phone', await fits(page));
+    await page.screenshot({ path: path.join(OUT, 'pay-already-registered.png') });
+    await page.click('#rpp-submit-btn');
+    await sleep(1200);
+    let st = await getState();
+    const asks = st.signin.filter(x => x.email === 'tara@example.com');
+    check('a sign-in email that carries on to payment for that pass is asked for, once however often she presses', asks.length === 1 && asks[0].next_action === 'pay' && asks[0].pass === 'delegate', JSON.stringify(st.signin));
+    check('she is not registered twice and no order is made', Object.values(st.attendees).filter(x => x.email === 'tara@example.com').length === 1 && !st.orders.some(o => o.attendee_id === 70), JSON.stringify(st.orders.filter(o => o.attendee_id === 70)));
+    await page.fill('#rpp-city', 'Thane');
+    check('typing again clears the notice', await page.evaluate(() => document.getElementById('rpp-notice').style.display === 'none'));
+    await page.click('#rpp-submit-btn');
+    await page.waitForFunction(() => { const b = document.getElementById('rpp-notice'); return b && b.style.display !== 'none'; }, null, { timeout: 10000 }).catch(() => {});
+    await page.click('#rpp-notice-link');
+    await page.waitForFunction(() => { const m = document.getElementById('registration-modal'); return m && !m.classList.contains('hidden'); }, null, { timeout: 25000 }).catch(() => {});
+    const box = await page.evaluate(() => ({
+      email: document.getElementById('signin-email').value, code: !document.getElementById('signin-code-field').classList.contains('hidden'),
+      note: document.getElementById('signin-note').textContent, noteShown: !document.getElementById('signin-note').classList.contains('hidden'),
+      btn: document.querySelector('#signin-form button[type=submit]').textContent.trim(), url: location.pathname + location.search }));
+    check('the button opens the app on the sign-in box, her address filled in, ready for the code', box.email === 'tara@example.com' && box.code && box.noteShown && /already registered/.test(box.note) && /Payment for your pass opens next/.test(box.note) && box.btn === 'Verify code', JSON.stringify(box));
+    check('and the address is taken out of the address bar', box.url === '/app', box.url);
+    check('the sign-in box fits a phone', await fits(page));
+    await page.fill('#signin-code', '123456');
+    await page.click('#signin-form button[type=submit]');
+    await page.waitForFunction(() => { const m = document.getElementById('paid-pass-modal'); return m && !m.classList.contains('hidden'); }, null, { timeout: 25000 }).catch(() => {});
+    const f = await page.evaluate(() => ({ open: !document.getElementById('paid-pass-modal').classList.contains('hidden'), pass: document.getElementById('pp-pass-type').value, name: document.getElementById('pp-name').value, email: document.getElementById('pp-email').value, city: document.getElementById('pp-city').value }));
+    check('after the code, the paid form opens on Delegate, filled in from her registration', f.open && f.pass === 'Delegate Pass' && f.name === 'Tara Returning' && f.email === 'tara@example.com' && f.city === 'Mumbai', JSON.stringify(f));
+    st = await getState();
+    check('no second sign-in email was asked for on the way', st.signin.filter(x => x.email === 'tara@example.com').length === 1, JSON.stringify(st.signin));
+    gw.hold = false; gw.reply = 'Success';
+    await page.evaluate(() => document.getElementById('pp-submit-btn').scrollIntoView({ block: 'center' }));
+    await page.click('#pp-submit-btn');
+    await page.waitForURL(/\/pay\/result\?o=/, { timeout: 30000, waitUntil: 'domcontentloaded' }).catch(() => {});
+    st = await getState();
+    check('she pays, and her free pass is a paid Delegate Pass on the same registration', /Payment received/.test(await page.textContent('body')) && st.attendees[70].badge_type === 'Delegate Pass' && st.attendees[70].payment_status === 'paid' && Object.values(st.attendees).filter(x => x.email === 'tara@example.com').length === 1, page.url() + ' ' + JSON.stringify(st.attendees[70]));
+    await ctx.close();
+  }
+  // The same wall for a mobile that is already on the list under another email.
+  {
+    const { ctx, page } = await phone();
+    await ctx.route('**/api/events/1/attendees/register', route => route.fulfill({ status: 409, contentType: 'application/json',
+      body: JSON.stringify({ error: 'This mobile number is already registered with ta•••@example.com. Please sign in with that email instead, or use your own mobile number.', message: 'This mobile number is already registered with ta•••@example.com. Please sign in with that email instead, or use your own mobile number.', code: 'mobile_registered' }) }));
+    await page.goto(BASE + '/register#vip', { waitUntil: 'domcontentloaded' });
+    await sleep(800);
+    await fillRegisterForm(page, 'tara.other@example.com');
+    await page.evaluate(() => document.getElementById('rpp-submit-btn').scrollIntoView({ block: 'center' }));
+    await page.click('#rpp-submit-btn');
+    await page.waitForFunction(() => { const b = document.getElementById('rpp-notice'); return b && b.style.display !== 'none'; }, null, { timeout: 10000 }).catch(() => {});
+    await sleep(5000);
+    const n = await page.evaluate(() => { const b = document.getElementById('rpp-notice'), a = document.getElementById('rpp-notice-link'); return { shown: b.style.display !== 'none', text: b.textContent, href: a ? a.getAttribute('href') : '' }; });
+    const asked = (await getState()).signin.filter(x => x.email === 'tara.other@example.com').length;
+    check('a mobile already on the list gets the same lasting notice, with the way in', n.shown && /mobile number is already registered with ta•••@example\.com/.test(n.text) && /Sign in and pay for my VIP Pass/.test(n.text) && n.href === '/app?action=pay&pass=vip#login', JSON.stringify(n));
+    check('and no sign-in email goes to the address just typed (it is not the registered one)', asked === 0, String(asked));
     await ctx.close();
   }
 

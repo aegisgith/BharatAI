@@ -25,6 +25,7 @@ const fresh = () => {
   db.state.nextId = 100;
   db.state.staff[3] = { id: 3, name: 'Finance Person', username: 'fin', active: 1, role: 'finance' };
   db.state.mail = [];
+  db.state.signin = [];           // every sign-in email asked for, as the page sent it
   db.state.loginTokens = false;   // the harness has no real sign-in route, so links carry no token
 };
 fresh();
@@ -60,7 +61,15 @@ const api = (method, p, body, req) => {
       if (body.ageLeads) for (const l of db.state.leads) l.updated_at = '2026-01-01 00:00:00';
       if (body.ageOrders) for (const o of db.state.orders) if (o.status === 'created') o.created_at = '2026-01-01 00:00:00';
     }
-    return { orders: db.state.orders, attendees: db.state.attendees, inquiries: db.state.inquiries, settings: db.state.settings, audits: db.state.audits, leads: db.state.leads, mail: db.state.mail, campaigns: db.state.campaigns, recipients: db.state.recipients };
+    return { orders: db.state.orders, attendees: db.state.attendees, inquiries: db.state.inquiries, settings: db.state.settings, audits: db.state.audits, leads: db.state.leads, mail: db.state.mail, campaigns: db.state.campaigns, recipients: db.state.recipients, signin: db.state.signin };
+  }
+  // The sign-in email the /register paid form asks for when the address already
+  // holds a pass: kept as asked. The code in that email is always 123456 here.
+  if (method === 'POST' && p === '/api/events/1/attendees/send-magic-link') { s.signin.push(body); return { success: true, message: 'ok' }; }
+  if (method === 'POST' && p === '/api/events/1/attendees/login' && body.code) {
+    const a = Object.values(s.attendees).find(x => x.email === String(body.email || '').trim().toLowerCase());
+    if (!a || body.code !== '123456') return { __status: 401, body: { error: 'That code is not correct.' } };
+    return { __headers: { 'Set-Cookie': sessionCookie(SESSION, a.id) + '; Path=/; HttpOnly; SameSite=Lax' }, body: a };
   }
   if (method === 'POST' && p === '/api/events/1/attendees/register') {
     const email = String(body.email || '').trim().toLowerCase();
@@ -71,7 +80,7 @@ const api = (method, p, body, req) => {
     }
     if (!a) {
       const badge = body.badge_type || 'Visitor Pass';
-      a = db.person(s.nextId++, { name: body.name, email, company: body.company || '', job_title: body.job_title || '', mobile: body.mobile || '', city: body.city || '',
+      a = db.person(s.nextId++, { name: body.name, email, company: body.company || '', job_title: body.job_title || '', mobile: body.mobile || '', city: body.city || '', linkedin_url: body.linkedin_url || '',
         badge_type: badge, payment_status: PAID.includes(badge) ? 'pending' : 'paid', main_event: 1 });
       status = 201;
     }

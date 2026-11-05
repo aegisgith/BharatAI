@@ -28,6 +28,8 @@ const SUITES = [
   { name: 'server: the Overview board (who holds which pass, money from passes, what is waiting on a person), on real SQLite', args: ['smoke-board.mjs'] },
   { name: 'server: networking write rules (who may answer a request or meeting, known statuses, meeting checks, no emails in connection lists, read marks, scanner and the one-use sign-in email, booth text), on real SQLite', args: ['smoke-networking-guards.mjs'] },
   { name: 'server: one person, one registration (same email or mobile refused)', args: ['smoke-register-dupes.mjs'] },
+  { name: 'unit: already registered and buying again (the pass rule, the LinkedIn box, the notice, the code step), each function alone', args: ['unit-already-registered.mjs'] },
+  { name: 'server: already registered and buying again (the refusal counted, the sign-in email that carries on to payment), on real SQLite', args: ['smoke-already-registered.mjs'] },
   { name: 'server: duplicates finder and merge, on real SQLite with the production schema', args: ['smoke-merge-dupes.mjs'] },
   { name: 'server: account-ready email opened / clicked / profile marks and the Notification Status counts', args: ['smoke-notify-funnel.mjs'] },
   { name: 'server: account-ready email by itself 5 minutes after registering (or paying), once, the skips, the switch, before the networking email', args: ['smoke-notify-auto.mjs'] },
@@ -52,6 +54,7 @@ const SUITES = [
   { name: 'browser: the admin Overview board (who holds which pass, money from passes, waiting on you, days to go) on the real worker and real SQLite, desktop and phone', args: ['browser-board.cjs'], harness: 'board-harness.mjs', port: 8782, portEnv: true },
   { name: 'browser: panel email as a server job (start, pace, stop, resume, done, the scheduler note)', args: ['pace-test.cjs'], harness: 'pace-harness.mjs', port: 8774 },
   { name: 'browser: buying a pass on a phone (checkout, result, retry, checkout off, invoice queues)', args: ['pay-test.cjs'], harness: 'pay-harness.mjs', port: 8776 },
+  { name: 'system: already registered, buying from an ad on another phone (real worker, real SQLite, the real emails, link, code, send again, known mobile, shared phone, unpaid pass, all the way to paid)', args: ['browser-already-registered.cjs'], harness: 'login-harness.mjs', port: 8784, portEnv: true },
   { name: 'browser: an exhibitor lists a product on the AI Marketplace (sign-in link, the form, plain domains, images, every way the button looked dead, dashboard edit, approval, public page, inquiry)', args: ['mp-test.cjs'], harness: 'mp-harness.mjs', port: 8779, portEnv: true },
 ];
 

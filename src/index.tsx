@@ -5,6 +5,7 @@ import { Hono } from 'hono'
 import SITE_PHOTO_FINGERPRINTS from './data/site-photo-fingerprints.json'
 import { cors } from 'hono/cors'
 import mp, { configureMarketplace } from './routes/marketplace'
+import { signinPayIntent } from './lib/signin-pay'
 import { ccavEncrypt, ccavDecrypt, ccavRequestBody, ccavParseResponse } from './lib/ccavenue'
 import { invoicePdf } from './lib/invoice-pdf'
 import { marketplacePageHTML, marketplaceListingPageHTML, marketplaceDashboardPageHTML, marketplaceAdminPageHTML, marketplaceFaqPageHTML } from './routes/marketplace-pages'
@@ -7037,6 +7038,14 @@ app.post('/api/events/:id/attendees/register', async (c) => {
         const me = await verifyAttendeeSession(c)
         const isOwner = me !== null && String(me) === String((existing as any).id)
         if (!isOwner && await verifiedLoginEnabled(c)) {
+          // Counted when it comes from a form (a form sends the mobile; the app's own
+          // refresh on load does not). Until 5 Nov 2026 nothing said how many people
+          // who already hold a pass tried to register or buy again and were refused.
+          if (String(mobile || '').trim()) {
+            await audit(c, 'register.already_registered', 'attendee', (existing as any).id,
+              { source: sourceValue || 'networking_app', wanted: passType, holds: (existing as any).badge_type || '' },
+              { actor: 'public registration', kind: 'public' })
+          }
           return c.json({ error: 'verification_required', message: 'That email is already registered. Please sign in with the link or code we email you.' }, 403)
         }
         await c.env.DB.prepare('UPDATE attendees SET is_online = 1, last_login_at = datetime("now") WHERE id = ?').bind((existing as any).id).run()
@@ -7638,7 +7647,7 @@ app.post('/api/events/:id/attendees/login', async (c) => {
 // ==================== MAGIC LINK LOGIN ====================
 app.post('/api/events/:id/attendees/send-magic-link', async (c) => {
   const eventId = c.req.param('id')
-  const { email } = await c.req.json()
+  const { email, next_action, pass } = await c.req.json()
   if (!email) return c.json({ error: 'Email is required' }, 400)
   const normalizedEmail = email.trim().toLowerCase()
 
@@ -7662,7 +7671,14 @@ app.post('/api/events/:id/attendees/send-magic-link', async (c) => {
   // construct the "magic link" for any address without receiving the mail. It now
   // carries a single-use token that expires in 15 minutes.
   let loginCode = ''
-  let magicLink = `${appUrl}?email=${encodeURIComponent(normalizedEmail)}&action=magic-login`
+  // Asked for by the /register paid form when the address already holds a pass
+  // (5 Nov 2026: that form used to end at a four-second message and nothing else).
+  // The link then signs the person in and opens payment for the pass they chose
+  // (runPendingAction, resumePayment). Only these four words pass; anything else
+  // is the plain sign-in email, word for word as before.
+  const { key: payKey, name: payName } = signinPayIntent(next_action, pass)
+  const linkAction = payKey ? `action=pay&pass=${payKey}` : 'action=magic-login'
+  let magicLink = `${appUrl}?email=${encodeURIComponent(normalizedEmail)}&${linkAction}`
   if (await verifiedLoginEnabled(c)) {
     // Same neutral reply as an unknown address — refusing loudly would confirm the
     // address exists, and would also tell an abuser their flooding is working.
@@ -7671,7 +7687,7 @@ app.post('/api/events/:id/attendees/send-magic-link', async (c) => {
     }
     const issued = await createLoginToken(c, eventId, normalizedEmail)
     loginCode = issued.code
-    magicLink = `${appUrl}?email=${encodeURIComponent(normalizedEmail)}&action=magic-login&token=${issued.token}`
+    magicLink = `${appUrl}?email=${encodeURIComponent(normalizedEmail)}&${linkAction}&token=${issued.token}`
   }
 
   // Build email HTML
@@ -7679,14 +7695,16 @@ app.post('/api/events/:id/attendees/send-magic-link', async (c) => {
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
 <body style="margin:0;padding:0;background:#f5f5f5;font-family:Arial,sans-serif;">
   <div style="max-width:600px;margin:20px auto;background:white;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
-    ${emailBrandHeader('Sign In to Bharat AI Innovation 2026', 'Conference &amp; Exhibition 2026 &bull; 20&ndash;21 Nov 2026 &bull; WTC Mumbai')}
+    ${emailBrandHeader(payName ? 'Sign in to pay for your ' + payName : 'Sign In to Bharat AI Innovation 2026', 'Conference &amp; Exhibition 2026 &bull; 20&ndash;21 Nov 2026 &bull; WTC Mumbai')}
     <div style="padding:32px;">
       <p style="color:#333;line-height:1.6;margin:0 0 16px;">Hi <strong>${attendee.name}</strong>,</p>
-      <p style="color:#555;line-height:1.6;margin:0 0 24px;">Click the button below to sign in to the Bharat AI Innovation 2026. This link will log you in automatically — no password needed.</p>
+      <p style="color:#555;line-height:1.6;margin:0 0 24px;">${payName
+        ? `You are already registered with us, so there is nothing to fill in again. The button below signs you in and opens payment for your <strong>${payName}</strong>. No password needed.`
+        : 'Click the button below to sign in to the Bharat AI Innovation 2026. This link will log you in automatically — no password needed.'}</p>
       <div style="text-align:center;margin:24px 0;">
         ${loginCode ? `<p style="color:#444;font-size:14px;margin:0 0 18px;">Or enter this code in the app:<br><span style="display:inline-block;margin-top:8px;font-family:monospace;font-size:28px;letter-spacing:6px;font-weight:bold;color:#1E2140;">${loginCode}</span><br><span style="font-size:12px;color:#888;">Expires in 15 minutes. Never share it &mdash; we will not ask you for it.</span></p>` : ''}
         <a href="${magicLink}" style="display:inline-block;padding:14px 32px;background:linear-gradient(135deg,#6366f1,#4f46e5);color:white;text-decoration:none;border-radius:10px;font-weight:bold;font-size:15px;">
-          🔑 Sign In Now
+          ${payName ? 'Sign in and pay' : '🔑 Sign In Now'}
         </a>
       </div>
       <p style="color:#999;font-size:12px;text-align:center;margin:16px 0 0;">If you didn't request this, you can safely ignore this email.</p>
@@ -7715,7 +7733,7 @@ app.post('/api/events/:id/attendees/send-magic-link', async (c) => {
       Content: {
         Body: [{ ContentType: "HTML", Content: emailHtml, Charset: "utf-8" }],
         From: `${fromName} <${fromEmail}>`,
-        Subject: 'Sign In to Bharat AI Innovation 2026'
+        Subject: payName ? 'Sign in to pay for your ' + payName : 'Sign In to Bharat AI Innovation 2026'
       },
       Options: { TrackClicks: false, TrackOpens: false }
     }
@@ -19243,7 +19261,7 @@ ${sharedFooterHTML()}
 }
 
 function registerPageHTML(): string {
-  return `${sharedHeadHTML('Passes & Registration', '/register', "Passes for Bharat AI Innovation 2026, India's B2B AI conference and exhibition: Delegate ₹4,999 + GST until 5 Nov with guaranteed entry, Premium Delegate, VIP, Academic, or a free Visitor Pass where entry is not guaranteed (by slot as available). 20–21 Nov 2026, WTC Mumbai.")}
+  return `${sharedHeadHTML('Passes & Registration', '/register', "Passes for Bharat AI Innovation 2026, India's B2B AI conference and exhibition: " + (latePricing() ? 'Delegate' : 'Delegate ₹4,999 + GST until 5 Nov') + " with guaranteed entry, Premium Delegate, VIP, Academic, or a free Visitor Pass where entry is not guaranteed (by slot as available). 20–21 Nov 2026, WTC Mumbai.")}
 <body class="min-h-screen">
 ${sharedNavHTML('register')}
 
@@ -19251,10 +19269,10 @@ ${sharedNavHTML('register')}
   <!-- Hero -->
   <div class="text-center mb-8">
     <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold bg-primary-500/20 text-primary-300 border border-primary-500/30 mb-4">
-      <i class="fas fa-ticket-alt"></i>STANDARD PRICES UNTIL 5 NOV
+      <i class="fas fa-ticket-alt"></i>${latePricing() ? '20–21 NOV 2026 · WTC MUMBAI' : 'STANDARD PRICES UNTIL 5 NOV'}
     </div>
     <h1 class="text-3xl md:text-4xl font-bold mb-3">Passes and registration for Bharat AI Innovation 2026</h1>
-    <p class="text-gray-400 max-w-2xl mx-auto">World Trade Center, Mumbai, 20–21 Nov 2026. A Delegate Pass has guaranteed entry on both days, every session, the networking lunch and the networking app. A free Visitor Pass covers the exhibition floor, and its entry is not guaranteed: it depends on slot availability on 20 and 21 Nov, a half-day slot or none, confirmed by email.</p>
+    <p class="text-gray-400 max-w-2xl mx-auto">World Trade Center, Mumbai, 20–21 Nov 2026.<span class="hidden sm:inline"> Take a free Visitor Pass for the exhibition floor, or a Delegate Pass for every session, the networking lunch, the networking app and guaranteed entry on both days.</span></p>
   </div>
 
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 max-w-5xl mx-auto">
@@ -19272,7 +19290,7 @@ ${sharedNavHTML('register')}
           </div>
         </div>
         <div class="text-center p-3 rounded-xl bg-primary-500/10 border border-primary-500/20 mb-5">
-          <span class="text-primary-400 text-xs font-semibold"><i class="fas fa-check-circle mr-1"></i>Exhibition floor &amp; product demos, free &middot; entry not guaranteed: by slot availability on 20 and 21 Nov, confirmed by email</span>
+          <span class="text-primary-400 text-xs font-semibold"><i class="fas fa-check-circle mr-1"></i>Exhibition floor &amp; product demos, free &middot; entry by time slot on 20 and 21 Nov, as available, confirmed by email</span>
         </div>
         </div>
 
@@ -19336,7 +19354,7 @@ ${sharedNavHTML('register')}
           <div class="grid grid-cols-2 gap-4">
             <div>
               <label class="text-xs text-gray-400 mb-1 block">LinkedIn</label>
-              <input type="url" id="rf-linkedin" autocomplete="url" inputmode="url" autocapitalize="none" spellcheck="false" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="linkedin.com/in/...">
+              <input type="text" id="rf-linkedin" autocomplete="url" inputmode="url" autocapitalize="none" spellcheck="false" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="linkedin.com/in/...">
             </div>
             <div>
               <label class="text-xs text-gray-400 mb-1 block">Interests</label>
@@ -19605,6 +19623,15 @@ function registrationSource() {
 }
 captureRegistrationSource();
 
+// linkedin.com/in/name typed the way the box's hint shows it used to stop the free
+// form with a browser bubble ("Please enter a URL."): the box is plain text now
+// and the scheme is added here.
+function withHttps(v) {
+  v = String(v || '').trim();
+  var low = v.toLowerCase();
+  return !v || low.indexOf('http://') === 0 || low.indexOf('https://') === 0 ? v : 'https://' + v;
+}
+
 async function submitRegistration(e) {
   e.preventDefault();
   const btn = document.getElementById('rf-submit');
@@ -19623,7 +19650,7 @@ async function submitRegistration(e) {
         job_title: document.getElementById('rf-title').value.trim(),
         city: document.getElementById('rf-city').value.trim(),
         industry: document.getElementById('rf-industry').value,
-        linkedin_url: document.getElementById('rf-linkedin').value.trim(),
+        linkedin_url: withHttps(document.getElementById('rf-linkedin').value),
         interests: document.getElementById('rf-interests').value.trim(),
         bio: '',
         badge_type: 'Visitor Pass',
@@ -19822,10 +19849,18 @@ async function submitRegisterPaidPassForm(e) {
     const resp = await fetch('/api/events/1/attendees/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, email, mobile: phone, company, job_title: desig, city, industry, bio: '', interests: '', linkedin_url: '', badge_type: passType })
+      body: JSON.stringify({ name, email, mobile: phone, company, job_title: desig, city, industry, bio: '', interests: '', linkedin_url: '', badge_type: passType, registration_source: registrationSource() || 'website' })
     });
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok || data.error) {
+      // An email or a mobile that already holds a pass is somebody who only has to
+      // sign in to pay, not an error to flash for four seconds.
+      if (data.error === 'verification_required' || data.code === 'mobile_registered') {
+        rppAlreadyRegistered(data, email, passType);
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-arrow-right mr-2"></i>Proceed to Payment';
+        return;
+      }
       // verification_required is a machine string; the endpoint sends the human one
       // in .message. Never show the raw code to someone about to pay.
       throw new Error(data.message || (data.error && data.error !== 'verification_required' ? data.error : '') || 'We could not save your details, so checkout was not opened. Please try again.');
@@ -19842,6 +19877,43 @@ async function submitRegisterPaidPassForm(e) {
   btn.innerHTML = '<i class="fas fa-arrow-right mr-2"></i>Proceed to Payment';
   if (started.url) { window.location.href = started.url; return; }
   showToast(started.error, 'error');
+}
+
+// Proceed to Payment by someone whose email or mobile already holds a pass. The
+// notice stays under the button. For a known email a sign-in email goes out that
+// opens payment for the pass chosen, and the button opens the app on the code step.
+var _rppSigninSentTo = '';
+function rppAlreadyRegistered(data, email, passType) {
+  var box = document.getElementById('rpp-notice');
+  if (!box) { showToast(data.message || 'That email is already registered. Please sign in.', 'error'); return; }
+  var KEY = { 'Delegate Pass': 'delegate', 'Premium Delegate Pass': 'premium', 'VIP Pass': 'vip', 'Academic Pass': 'academic' };
+  var tier = KEY[passType] || 'delegate';
+  var text = document.createElement('p');
+  text.style.cssText = 'margin:0 0 10px;';
+  var link = document.createElement('a');
+  link.id = 'rpp-notice-link';
+  link.style.cssText = 'display:block;text-align:center;padding:12px;border-radius:10px;background:#1E2140;color:#fff;font-weight:700;font-size:14px;text-decoration:none;';
+  if (data.code === 'mobile_registered') {
+    text.textContent = data.message || 'This mobile number is already registered. Please sign in with the email it is registered with.';
+    link.href = '/app?action=pay&pass=' + tier + '#login';
+    link.textContent = 'Sign in and pay for my ' + passType;
+  } else {
+    text.textContent = email + ' is already registered with us, so there is nothing to fill in again. We have emailed you a sign-in link: open it and payment for your ' + passType + ' opens next.';
+    link.href = '/app?signin=' + encodeURIComponent(email) + '&action=pay&pass=' + tier;
+    link.textContent = 'Or enter the code from that email';
+    if (_rppSigninSentTo !== email + '|' + tier) {
+      _rppSigninSentTo = email + '|' + tier;
+      try {
+        fetch('/api/events/1/attendees/send-magic-link', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: email, next_action: 'pay', pass: tier }) }).catch(function () {});
+      } catch (e) {}
+    }
+  }
+  box.textContent = '';
+  box.appendChild(text);
+  box.appendChild(link);
+  box.style.display = 'block';
+  try { box.scrollIntoView({ block: 'center' }); } catch (e) {}
 }
 
 // The GST invoice section: the details (all empty means an invoice in their own
@@ -19895,7 +19967,7 @@ function rppSaveLead(now) {
 document.addEventListener('DOMContentLoaded', function () {
   var m = document.getElementById('reg-paid-pass-modal');
   if (m) {
-    m.addEventListener('input', function () { rppSaveLead(); });
+    m.addEventListener('input', function () { rppSaveLead(); var n = document.getElementById('rpp-notice'); if (n) n.style.display = 'none'; });
     m.addEventListener('change', function () { rppSaveLead(); });
   }
   window.addEventListener('pagehide', function () { rppSaveLead(true); });
@@ -20057,6 +20129,7 @@ function rppResumeLead() {
         <button type="submit" id="rpp-submit-btn" style="width:100%;padding:13px;border-radius:10px;border:none;background:linear-gradient(135deg,#FF6B00,#FF8C38);color:white;font-weight:700;font-size:14px;cursor:pointer;margin-top:4px;">
           <i class="fas fa-arrow-right" style="margin-right:8px;"></i>Proceed to Payment
         </button>
+        <div id="rpp-notice" role="alert" style="display:none;margin-top:10px;padding:12px;border-radius:10px;border:1px solid rgba(255,107,0,0.35);background:#FFF6EF;color:#1E2140;font-size:13px;line-height:1.55;"></div>
         <p style="text-align:center;font-size:10.5px;color:#5E6585;margin:6px 0 0;line-height:1.5;">UPI, cards and net banking on CCAvenue. Can&rsquo;t come after all? Transfer the pass to a colleague free, or take a 100% credit note, until 13 Nov (<a href="/refund" target="_blank" rel="noopener" style="color:#B84800;">refund policy</a>).</p>
         <!-- Say where checkout happens and what comes back, before the buyer leaves. -->
         <div style="background:#FFF6EF;border:1px solid rgba(255,107,0,0.25);border-radius:10px;padding:10px 12px;">
@@ -20934,7 +21007,7 @@ function mainPageHTML(): string {
             <option>Aerospace & Defence</option>
             <option>Other</option>
           </select></div>
-          <div><input type="url" id="reg-linkedin" autocomplete="url" inputmode="url" autocapitalize="none" spellcheck="false" placeholder="LinkedIn URL" class="w-full px-4 py-3 rounded-xl text-sm"></div>
+          <div><input type="text" id="reg-linkedin" autocomplete="url" inputmode="url" autocapitalize="none" spellcheck="false" placeholder="LinkedIn URL" class="w-full px-4 py-3 rounded-xl text-sm"></div>
           <div><textarea id="reg-bio" autocomplete="off" placeholder="Short bio (optional)" rows="2" class="w-full px-4 py-3 rounded-xl text-sm"></textarea></div>
           <div><input type="text" id="reg-interests" autocomplete="off" placeholder="Interests (comma-separated)" class="w-full px-4 py-3 rounded-xl text-sm"></div>
           <button type="submit" class="w-full py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-primary-600 to-primary-500 hover:from-primary-500 hover:to-primary-400 transition-all">
@@ -23871,6 +23944,9 @@ function mainPageScript(): string {
       // Check for ?email= param from notification email link
       const urlParams = new URLSearchParams(window.location.search);
       const emailParam = urlParams.get('email');
+      // ?signin=<address>: the /register paid form found the address already holds
+      // a pass, sent it a sign-in email and brought the person here for the code.
+      const signinParam = urlParams.get('signin');
       pendingAction = urlParams.get('action'); // Store action before URL cleanup
       pendingPayPass = urlParams.get('pass');
       // The upgrade email's button carries ue=<id>.<signature>: one click, counted
@@ -23900,6 +23976,17 @@ function mainPageScript(): string {
         try {
           const was = JSON.parse(saved);
           if (String((was && was.email) || '').trim().toLowerCase() !== String(emailParam).trim().toLowerCase()) {
+            localStorage.removeItem('agba_user');
+            saved = null;
+          }
+        } catch (e) {}
+      }
+      // The same for ?signin=: paying must land on the address that was typed, not
+      // on whoever this browser was signed in as.
+      if (saved && signinParam) {
+        try {
+          const was = JSON.parse(saved);
+          if (String((was && was.email) || '').trim().toLowerCase() !== String(signinParam).trim().toLowerCase()) {
             localStorage.removeItem('agba_user');
             saved = null;
           }
@@ -23974,6 +24061,10 @@ function mainPageScript(): string {
         // dead link. The sign-in box opens on their address and says what to do;
         // whatever the link was for runs once they are in (runPendingAction).
         if (linkRefused) linkFailedSignIn(emailParam, linkRefused);
+      }
+      if (signinParam) {
+        window.history.replaceState({}, '', window.location.pathname);
+        if (!currentUser) codeSentSignIn(signinParam);
       }
 
       // Deep-links from the shared nav on other pages: /app#login opens the
@@ -24101,6 +24192,36 @@ function mainPageScript(): string {
         ? 'There is no account for ' + email + ' yet. Check the address, or register.'
         : 'This sign-in link has expired. Tap Sign In and we will email you a fresh code.';
       note.classList.remove('hidden');
+    }
+
+    // The /register paid form sent this address a sign-in email a moment ago and
+    // brought the person here: the box opens ready for the code, and what they came
+    // for (payment) runs once they are in (runPendingAction).
+    function codeSentSignIn(email) {
+      showRegistration(email);
+      if (typeof switchAuthMode === 'function') switchAuthMode('signin');
+      window._signinCodeSent = true;
+      const codeField = document.getElementById('signin-code-field');
+      if (codeField) codeField.classList.remove('hidden');
+      const form = document.getElementById('signin-form');
+      const btn = form && form.querySelector('button[type=submit]');
+      if (btn) btn.innerHTML = '<i class="fas fa-check mr-2"></i>Verify code';
+      const note = document.getElementById('signin-note');
+      if (!note) return;
+      note.textContent = 'You are already registered. We emailed a sign-in link and a 6-digit code to ' + email + '. Tap the link in that email, or enter the code here. Payment for your pass opens next.';
+      note.classList.remove('hidden');
+      // Nobody is left on a code that is not coming.
+      const again = document.createElement('button');
+      again.type = 'button';
+      again.id = 'signin-send-again';
+      again.textContent = 'Did not get it? Send it again';
+      again.style.cssText = 'display:block;min-height:44px;margin-top:4px;font-weight:700;color:#C2410C;text-decoration:underline;background:none;border:0;padding:0;cursor:pointer;';
+      again.onclick = function () {
+        note.classList.add('hidden');
+        resetSigninStep();
+        if (form && form.requestSubmit) form.requestSubmit();
+      };
+      note.appendChild(again);
     }
 
     // The saved sign-in was refused when the app opened. Said plainly, with the
@@ -24412,7 +24533,7 @@ function mainPageScript(): string {
           const ask = await fetch(\`/api/events/\${EVENT_ID}/attendees/send-magic-link\`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email })
+            body: JSON.stringify(pendingAction === 'pay' ? { email, next_action: 'pay', pass: pendingPayPass } : { email })
           });
           const askData = await ask.json().catch(() => ({}));
           if (!ask.ok) {
@@ -24553,7 +24674,7 @@ function mainPageScript(): string {
           mobile: document.getElementById('reg-mobile').value,
           city: document.getElementById('reg-city').value,
           industry: document.getElementById('reg-industry').value,
-          linkedin_url: document.getElementById('reg-linkedin').value,
+          linkedin_url: (function (v) { v = String(v || '').trim(); var low = v.toLowerCase(); return !v || low.indexOf('http://') === 0 || low.indexOf('https://') === 0 ? v : 'https://' + v; })(document.getElementById('reg-linkedin').value),
         });
 
         if (user.error) {

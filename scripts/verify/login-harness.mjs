@@ -11,11 +11,14 @@ import { readFile } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeWorld } from './login-world.mjs';
+import { SECRETS } from './pay-db.mjs';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 // run-all.mjs hands over another port when :8780 is taken (another session's run).
 const PORT = Number(process.env.HARNESS_PORT || 8780), BASE = 'http://localhost:' + PORT;
-const W = await makeWorld({ appUrl: BASE + '/app' });
+// CCAvenue's test credentials, so checkout opens (the gateway itself is played by
+// browser-already-registered.cjs).
+const W = await makeWorld({ appUrl: BASE + '/app', extraEnv: SECRETS });
 const { worker, env, ctx, db, q, sent } = W;
 
 const TYPES = {
