@@ -63,7 +63,7 @@ const settled = async (p) => { await p.evaluate(() => document.fonts.ready); awa
     check('sections show with animations off', await page.evaluate(() => ['.dl-collage', '.dl-tiles', '.dl-rows'].every((s) => getComputedStyle(document.querySelector(s)).opacity === '1')));
     check('every picture loads', await page.evaluate(() => [...document.images].every((i) => i.naturalWidth > 0)), await page.evaluate(() => [...document.images].filter((i) => !i.naturalWidth).map((i) => i.src).join(', ')));
     check('all ten programme boxes show a picture', await page.evaluate(() => { const t = [...document.querySelectorAll('.dl-tile')]; return t.length === 10 && t.every((x) => { const i = x.querySelector('img'); return i && i.naturalWidth > 0 && i.getBoundingClientRect().height > 80; }); }));
-    check('the form is a small strip on a phone (under 480px tall)', await page.evaluate(() => document.getElementById('updates').getBoundingClientRect().height) < 480, await page.evaluate(() => document.getElementById('updates').getBoundingClientRect().height));
+    check('the form is a small strip on a phone (under 580px tall)', await page.evaluate(() => document.getElementById('updates').getBoundingClientRect().height) < 580, await page.evaluate(() => document.getElementById('updates').getBoundingClientRect().height));
     check('tap targets on the form are big enough', await page.evaluate(() => [...document.querySelectorAll('.dl-field input, .dl-submit, .dl-way > span')].every((e) => e.getBoundingClientRect().height >= 44)));
 
     // The form, for real
@@ -93,6 +93,35 @@ const settled = async (p) => { await p.evaluate(() => document.fonts.ready); awa
     check('it really landed in the database', saved.length === 1 && saved[0].inquiry_type === 'exhibition' && saved[0].subject === 'Delhi 2027 · Exhibit' && saved[0].email === 'priya@example.com', JSON.stringify(saved));
     const mail = await (await ctx.request.get(BASE + '/__mail')).json();
     check('and the team was emailed once', mail.length === 1 && mail[0].Content.ReplyTo.includes('priya@example.com'), mail.length);
+
+    // The free pass, as a person on a phone does it: the hero's button, the form, done.
+    await page.goto(BASE + '/delhi', { waitUntil: 'load' });
+    await settled(page);
+    await page.click('.dl-hero-actions .btn-primary');
+    await page.waitForTimeout(900);
+    check('Register free scrolls to the form, on the pass', await page.locator('#dl-form').isVisible() && await page.evaluate(() => document.querySelector('input[name="interest"]:checked').value) === 'attend' && (await page.textContent('#dl-form-title')).includes('free pass'));
+    await page.locator('label.dl-way', { hasText: 'Exhibit' }).click();
+    check('choosing Exhibit puts away designation and city and says Send', !(await page.locator('#dl-job').isVisible()) && !(await page.locator('#dl-city').isVisible()) && (await page.textContent('#dl-submit')).includes('Send'));
+    await page.locator('label.dl-way', { hasText: 'Attend' }).click();
+    check('back to Attend they return', await page.locator('#dl-job').isVisible() && await page.locator('#dl-city').isVisible() && (await page.textContent('#dl-submit')).includes('Register free'));
+    await page.fill('#dl-name', 'Asha Rao');
+    await page.fill('#dl-email', 'asha.rao@example.com');
+    await page.click('#dl-submit');
+    check('no mobile: asks for it, on screen', (await page.textContent('#dl-error')).includes('mobile') && await page.locator('#dl-error').isVisible());
+    await page.fill('#dl-phone', '98200 77777');
+    await page.fill('#dl-org', 'Example Ltd');
+    await page.fill('#dl-job', 'CIO');
+    await page.fill('#dl-city', 'New Delhi');
+    await page.click('#dl-submit');
+    await page.waitForSelector('#dl-done:not([hidden])');
+    check('it says waitlisted and names the email', (await page.textContent('#dl-done-title')) === 'You are waitlisted' && (await page.textContent('#dl-done-text')).includes('asha.rao@example.com'));
+    check('Save the date is there on the thank-you', await page.locator('#dl-save-date-2').isVisible());
+    const held = await (await ctx.request.get(BASE + '/__inquiries')).json();
+    check('the pass really landed, apart from the enquiry', held.length === 2 && held[1].inquiry_type === 'delhi_pass' && held[1].status === 'waitlisted' && held[1].email === 'asha.rao@example.com', JSON.stringify(held[1]));
+    const mailed = await (await ctx.request.get(BASE + '/__mail')).json();
+    check('and they were emailed, once', mailed.length === 2 && mailed[1].Recipients.To[0] === 'asha.rao@example.com', mailed.length);
+    await page.goto(BASE + '/delhi', { waitUntil: 'load' });
+    await settled(page);
 
     // Questions
     const qs = page.locator('.dl-faq details');
@@ -142,7 +171,7 @@ const settled = async (p) => { await p.evaluate(() => document.fonts.ready); awa
       const clear = await p.evaluate(() => [...document.querySelectorAll('.dl-rows li')].every((li) => { const r = document.createRange(); r.selectNodeContents(li.querySelector('b')); return r.getBoundingClientRect().right <= li.querySelector('span').getBoundingClientRect().left; }));
       check('laptop: the big words never run into their descriptions', clear);
       const strip = await p.evaluate(() => { const u = document.getElementById('updates').getBoundingClientRect(); const f = [...document.querySelectorAll('.dl-field input:not(#dl-website)')].map((i) => Math.round(i.getBoundingClientRect().top)); return { h: u.height, rows: new Set(f).size }; });
-      check('laptop: the form is one slim strip (under 260px, the boxes on one row)', strip.h < 260 && strip.rows === 1, JSON.stringify(strip));
+      check('laptop: the form stays slim (under 330px, the boxes on two rows)', strip.h < 330 && strip.rows === 2, JSON.stringify(strip));
       await c.close();
     }
 

@@ -13,7 +13,7 @@ const inlineScript = () => {
   return blocks[0][1];
 };
 
-const IDS = ['dl-form', 'dl-error', 'dl-submit', 'dl-phone-hint', 'dl-name', 'dl-email', 'dl-phone', 'dl-org', 'dl-website', 'dl-done', 'dl-done-text', 'dl-save-date', 'dl-save-date-2'];
+const IDS = ['dl-form', 'dl-error', 'dl-submit', 'dl-phone-hint', 'dl-name', 'dl-email', 'dl-phone', 'dl-org', 'dl-job', 'dl-city', 'dl-job-box', 'dl-city-box', 'dl-org-hint', 'dl-form-title', 'dl-form-text', 'dl-done-title', 'dl-website', 'dl-done', 'dl-done-text', 'dl-save-date', 'dl-save-date-2'];
 
 export function openPage({ search = '', userAgent = 'Mozilla/5.0 (iPhone)', fetch, links = [] } = {}) {
   const focused = { id: null };
@@ -71,11 +71,11 @@ export function openPage({ search = '', userAgent = 'Mozilla/5.0 (iPhone)', fetc
     els, sent, links: linkEls, focused,
     interest: () => chosen,
     choose(v) { chosen = v; form.listeners.change({ target: { name: 'interest' } }); },
-    async submit({ name = '', email = '', phone = '', org = '', website = '' } = {}) {
-      els['dl-name'].value = name; els['dl-email'].value = email; els['dl-phone'].value = phone; els['dl-org'].value = org; els['dl-website'].value = website;
+    async submit({ name = '', email = '', phone = '', org = '', job = '', city = '', website = '' } = {}) {
+      els['dl-name'].value = name; els['dl-email'].value = email; els['dl-phone'].value = phone; els['dl-org'].value = org; els['dl-job'].value = job; els['dl-city'].value = city; els['dl-website'].value = website;
       form.listeners.submit({ preventDefault() {} });
       await settle();
-      return { error: els['dl-error'].hidden ? '' : els['dl-error'].textContent, done: !els['dl-done'].hidden, body: sent[sent.length - 1]?.body };
+      return { error: els['dl-error'].hidden ? '' : els['dl-error'].textContent, done: !els['dl-done'].hidden, body: sent[sent.length - 1]?.body, url: sent[sent.length - 1]?.url };
     },
   };
 }

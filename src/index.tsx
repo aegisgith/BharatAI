@@ -17606,6 +17606,12 @@ app.get('/api/admin/events/:id/board', async (c) => {
     invoice_due: invoiceDue,
     inquiries_new: inquiries.reduce((s: number, r: any) => s + Number(r.n || 0), 0),
     inquiries,
+    // Not something to act on, so it is not in the "waiting" total. Mumbai's lists never read this.
+    delhi_passes: (await rows(
+      `SELECT COUNT(*) AS total,
+              SUM(CASE WHEN ${istDay('created_at')} = ${today} THEN 1 ELSE 0 END) AS today,
+              SUM(CASE WHEN created_at >= datetime('now', '-7 days') THEN 1 ELSE 0 END) AS week
+         FROM inquiries WHERE inquiry_type = 'delhi_pass'`))[0] || {},
     booths_submitted: await count(`SELECT COUNT(*) AS n FROM booth_requests WHERE event_id = ? AND status = 'submitted'`, eventId),
     listings_pending: await count(`SELECT COUNT(*) AS n FROM mp_listings WHERE status = 'pending'`),
     rooms_held: await count(`SELECT COUNT(*) AS n FROM room_bookings WHERE event_id = ? AND kind = 'booking' AND status = 'held'`, eventId),
@@ -17800,6 +17806,148 @@ app.post('/api/inquiries', async (c) => {
   return c.json({ success: true, id: result.meta.last_row_id, message: 'Inquiry submitted successfully. We will get back to you soon!' }, 201)
 })
 
+// ==================== DELHI 2027: THE FREE VISITOR PASS ====================
+//
+// The organiser opened registration for Delhi on 6 Nov 2026, with the free pass first.
+// Delhi is a separate event, but the app, the pass, the desk, the minute clock's emails
+// and Admin all assume event 1, so a Delhi person on the attendees table would get
+// Mumbai's emails and sign in to Mumbai's app. Until Delhi is a real second event these
+// live in inquiries, type delhi_pass, status waitlisted: no migration, nothing on the
+// Mumbai side can see them, and the list imports cleanly when the event exists. The
+// organiser's word to the person is "you are waitlisted": no pass is promised yet.
+// The team is not emailed per pass (Overview counts them). No id goes back to the page:
+// a sequential number would say how many have registered.
+const DELHI_PASS_TYPE = 'delhi_pass'
+const DELHI_PASS_PER_IP_HOUR = 60
+
+async function sendDelhiPassEmail(c: any, p: { name: string; email: string; company: string; job_title: string }) {
+  const g = async (k: string) => ((await c.env.DB.prepare('SELECT value FROM app_settings WHERE key = ?').bind(k).first()) as any)?.value
+  const apiKey = await elasticKey(c)
+  if (!apiKey) return
+  const fromEmail = senderEmailOrDefault(await g('sender_email'))
+  const fromName = (await g('sender_name')) || 'Bharat AI Innovation'
+  const esc = (v: any) => String(v ?? '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch] as string))
+  const first = String(p.name).split(/\s+/)[0]
+  const line = (k: string, v: string) => `<tr><td style="padding:7px 12px 7px 0;color:#666;font-size:13px;vertical-align:top;white-space:nowrap;">${k}</td><td style="padding:7px 0;font-size:13.5px;color:#1E2140;"><strong>${esc(v)}</strong></td></tr>`
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#f5f5f5;font-family:Arial,sans-serif;">
+    <div style="max-width:600px;margin:20px auto;background:#fff;border-radius:12px;overflow:hidden;">
+      ${emailBrandHeader('You are waitlisted for Delhi', '29&ndash;30 July 2027 &middot; Bharat Mandapam, New Delhi')}
+      <div style="padding:26px 24px;">
+        <p style="margin:0 0 8px;font-size:16px;font-weight:bold;color:#1E2140;">Hello ${esc(first)},</p>
+        <p style="margin:0 0 18px;font-size:14px;line-height:1.6;color:#444;">You are waitlisted for a free Visitor Pass to Bharat AI Innovation Delhi 2027.</p>
+        <table style="width:100%;border-collapse:collapse;margin:0 0 18px;">
+          ${line('Status', 'Waitlisted')}
+          ${line('Pass', 'Free Visitor Pass (exhibition only, entry by time slot)')}
+          ${line('Name', p.name)}
+          ${line('Organisation', p.company)}
+          ${line('Designation', p.job_title)}
+          ${line('Dates', 'Thursday 29 and Friday 30 July 2027')}
+          ${line('Venue', 'Bharat Mandapam, Pragati Maidan, New Delhi')}
+        </table>
+        <p style="margin:0 0 4px;font-size:14px;font-weight:bold;color:#1E2140;">What happens next</p>
+        <p style="margin:0 0 20px;font-size:14px;line-height:1.6;color:#444;">There is nothing more to do now. We will email you when your pass is confirmed.</p>
+        <div style="text-align:center;margin:0 0 22px;">
+          <a href="https://bharataiinnovation.com/delhi-2027.ics" style="display:inline-block;padding:12px 26px;background:#FF6B00;color:#fff;text-decoration:none;border-radius:9px;font-weight:bold;font-size:14px;">Save the date</a>
+        </div>
+        <p style="margin:0 0 6px;font-size:12.5px;line-height:1.6;color:#777;">This waitlist is for Delhi only. Bharat AI Innovation 2026 in Mumbai (20&ndash;21 November 2026) is a separate event.</p>
+        <p style="margin:0;font-size:12.5px;line-height:1.6;color:#777;">Questions? Write to <a href="mailto:info@bharataiinnovation.com" style="color:#555;">info@bharataiinnovation.com</a>. <a href="https://bharataiinnovation.com/delhi" style="color:#555;">See what is on in Delhi</a>.</p>
+      </div>
+    </div></body></html>`
+  try {
+    const res = await fetch('https://api.elasticemail.com/v4/emails/transactional', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-ElasticEmail-ApiKey': apiKey },
+      body: JSON.stringify({
+        Recipients: { To: [p.email] },
+        Content: {
+          Body: [{ ContentType: 'HTML', Charset: 'utf-8', Content: html }],
+          From: `${fromName} <${fromEmail}>`,
+          Subject: 'You are waitlisted: Bharat AI Innovation Delhi, 29-30 July 2027',
+        },
+        Options: { TrackClicks: false, TrackOpens: false },
+      }),
+    })
+    if (!res.ok) await audit(c, 'delhi.mail_failed', 'registration', null, { email: p.email, status: res.status }, { actor: 'public registration', kind: 'public' })
+  } catch (e: any) {
+    // The pass is saved either way. Written down so a failed confirmation can be found.
+    await audit(c, 'delhi.mail_failed', 'registration', null, { email: p.email, error: String(e?.message || e).slice(0, 200) }, { actor: 'public registration', kind: 'public' })
+  }
+}
+
+app.post('/api/delhi/register', async (c) => {
+  const b = await c.req.json().catch(() => ({})) as any
+  const text = (v: unknown, max: number) => String(v ?? '').trim().slice(0, max)
+  const name = text(b.name, 120)
+  const email = text(b.email, 160).toLowerCase()
+  const mobile = text(b.mobile, 20)
+  const company = text(b.company, 160)
+  const job_title = text(b.job_title, 120)
+  const city = text(b.city, 80)
+
+  // The page checks these too; this is the check that holds. Industry is left out on
+  // purpose: the organiser wants this form small.
+  const missing: string[] = []
+  if (!name) missing.push('name')
+  if (!email) missing.push('email')
+  if (!mobile) missing.push('mobile number')
+  if (!company) missing.push('organisation')
+  if (!job_title) missing.push('designation')
+  if (!city) missing.push('city')
+  if (missing.length) return c.json({ error: 'Please add your ' + humanList(missing) + '.', missing }, 400)
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return c.json({ error: 'Please check your email. It should look like name@example.com.' }, 400)
+  if (mobile.replace(/\D/g, '').length < 10) return c.json({ error: 'Please check your mobile number. It needs at least 10 digits.' }, 400)
+  const typo = emailTypo(email)
+  if (typo) return c.json({ error: typo.reason, message: typo.reason, code: 'email_typo', suggestion: typo.fixed || '' }, 400)
+
+  // A confirmation email goes to whatever address is typed, so one connection cannot
+  // send them without limit. High enough for a college or an office on one connection.
+  const ip = String(c.req.header('CF-Connecting-IP') || '').slice(0, 64)
+  if (ip) {
+    const recent = await c.env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM admin_audit WHERE action = 'delhi.register' AND ip = ? AND created_at > datetime('now', '-1 hour')"
+    ).bind(ip).first().catch(() => null) as any
+    if (Number(recent?.n || 0) >= DELHI_PASS_PER_IP_HOUR) {
+      return c.json({ error: 'Too many registrations from this connection. Please try again in an hour, or write to info@bharataiinnovation.com.' }, 429)
+    }
+  }
+
+  // Asked again with the same email: said so, and no second email or row.
+  const known = await c.env.DB.prepare('SELECT id FROM inquiries WHERE inquiry_type = ? AND email = ?').bind(DELHI_PASS_TYPE, email).first()
+  if (known) return c.json({ success: true, already: true })
+
+  // One mobile, one person, as for Mumbai.
+  const key = mobileKey(mobile)
+  const { results: held } = await c.env.DB.prepare("SELECT email, phone FROM inquiries WHERE inquiry_type = ? AND phone != ''").bind(DELHI_PASS_TYPE).all() as any
+  const holder = (held || []).find((r: any) => mobileKey(r.phone) === key)
+  if (holder) {
+    return c.json({ error: 'This mobile number is already registered for Delhi with ' + maskEmail(holder.email) + '. Please use your own mobile number.', code: 'mobile_registered' }, 409)
+  }
+
+  const from = (b.metadata && typeof b.metadata === 'object') ? b.metadata : {}
+  const meta: Record<string, string> = { edition: 'delhi-2027', pass: 'Free Visitor Pass', designation: job_title, city, page: '/delhi' }
+  for (const k of ['utm_source', 'utm_medium', 'utm_campaign', 'source']) { if (from[k]) meta[k] = text(from[k], 120) }
+
+  // One statement, so a double tap or two tabs cannot make two passes.
+  const result = await c.env.DB.prepare(
+    `INSERT INTO inquiries (event_id, inquiry_type, name, email, phone, organization, subject, message, metadata, status)
+     SELECT 1, ?, ?, ?, ?, ?, ?, ?, ?, 'waitlisted'
+      WHERE NOT EXISTS (SELECT 1 FROM inquiries WHERE inquiry_type = ? AND email = ?)`
+  ).bind(
+    DELHI_PASS_TYPE, name, email, mobile, company, 'Delhi 2027 · Free Visitor Pass',
+    job_title + ', ' + city, JSON.stringify(meta), DELHI_PASS_TYPE, email
+  ).run()
+  if (Number(result.meta?.changes ?? 1) === 0) return c.json({ success: true, already: true })
+
+  await audit(c, 'delhi.register', 'inquiry', result.meta?.last_row_id, { source: meta.source || meta.utm_source || '' }, { actor: 'public registration', kind: 'public' })
+
+  const send = sendDelhiPassEmail(c, { name, email, company, job_title })
+  let scheduled = false
+  try { c.executionCtx.waitUntil(send); scheduled = true } catch { /* no ctx */ }
+  if (!scheduled) await send
+
+  return c.json({ success: true }, 201)
+})
+
 // Admin: Get all inquiries with optional filters
 app.get('/api/admin/inquiries', async (c) => {
   const type = c.req.query('type')
@@ -17811,6 +17959,10 @@ app.get('/api/admin/inquiries', async (c) => {
   if (type) {
     query += ' AND inquiry_type = ?'
     params.push(type)
+  } else {
+    // Delhi free passes have a pill of their own: a long list of them must never bury
+    // the enquiries somebody has to answer.
+    query += " AND inquiry_type <> 'delhi_pass'"
   }
   if (status) {
     query += ' AND status = ?'
@@ -33615,7 +33767,12 @@ function adminPageScript(): string {
         item(t.photos_flagged || 0, 'photos the desk flagged as not matching the person', 'attendees') +
       '</div>';
 
-      return passCard + '<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">' + moneyCard + todoCard + '</div>';
+      var dp = t.delhi_passes || {};
+      var delhiCard = '<a href="#" onclick="openEnquiriesOfType(&quot;delhi_pass&quot;);return false" class="glass rounded-xl p-4 mt-6 flex items-center gap-3 no-underline hover:bg-white/5">' +
+        '<i class="fas fa-ticket text-amber-400"></i>' +
+        '<span class="flex-1 text-sm text-gray-200"><b>' + Number(dp.total || 0).toLocaleString('en-IN') + '</b> people waitlisted for a free Delhi 2027 pass <span class="text-xs text-gray-500">(' + Number(dp.today || 0).toLocaleString('en-IN') + ' today, ' + Number(dp.week || 0).toLocaleString('en-IN') + ' in 7 days)</span></span>' +
+        '<i class="fas fa-chevron-right text-[10px] text-gray-600"></i></a>';
+      return passCard + '<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">' + moneyCard + todoCard + '</div>' + delhiCard;
     }
     async function loadBoard(ev) {
       var el = document.getElementById('ov-board');
@@ -41906,7 +42063,7 @@ function adminPageScript(): string {
           '<td class="py-2 px-2 whitespace-nowrap">' + ageBadge(inq.created_at) + adminListSub(adminListShortDate(inq.created_at), 'mt-1') + '</td>' +
           '<td class="py-2 px-2 whitespace-nowrap">' + (inq.assigned_to ? escH(inq.assigned_to) : '<span class="text-gray-500">&mdash;</span>') + '</td>' +
           '<td class="py-2 px-2"><select onchange="updateInquiryStatus(' + id + ', this.value)" aria-label="Status of inquiry ' + id + '" class="px-2 py-1 rounded-lg text-[10px] font-semibold ' + (statusColors[status] || statusColors.new) + '">' +
-            opt('new', 'New') + opt('in_progress', 'In Progress') + opt('responded', 'Responded') + opt('closed', 'Closed') + '</select></td>' +
+            opt('new', 'New') + opt('in_progress', 'In Progress') + opt('responded', 'Responded') + (status === 'waitlisted' ? opt('waitlisted', 'Waitlisted') : '') + opt('closed', 'Closed') + '</select></td>' +
           '<td class="py-2 px-2"><div class="flex gap-1 justify-end">' +
             adminListActBtn('openInquiryReply(' + id + ')', 'bg-primary-500/20 text-primary-400 hover:bg-primary-500/30', 'fa-reply', 'Reply by email') +
             adminListActBtn('assignInquiry(' + id + ')', 'glass hover:bg-white/10', 'fa-user-plus', 'Assign an owner') +
@@ -41951,13 +42108,14 @@ function adminPageScript(): string {
           speaking: { icon: 'fa-microphone-alt', color: 'purple', label: 'Speaking' },
           government: { icon: 'fa-building-columns', color: 'green', label: 'Government' },
           workshop_partner: { icon: 'fa-graduation-cap', color: 'teal', label: 'Workshop Partner' },
+          delhi_pass: { icon: 'fa-ticket', color: 'orange', label: 'Delhi Free Pass' },
           media: { icon: 'fa-newspaper', color: 'rose', label: 'Media' },
           group_registration: { icon: 'fa-users', color: 'green', label: 'Group Reg' },
           pass_upgrade: { icon: 'fa-arrow-up-right-from-square', color: 'amber', label: 'Pass Upgrade' },
           other: { icon: 'fa-ellipsis-h', color: 'gray', label: 'Other' }
         };
 
-        const statusColors = { new: 'bg-blue-500/20 text-blue-300', in_progress: 'bg-amber-500/20 text-amber-300', responded: 'bg-green-500/20 text-green-300', closed: 'bg-gray-500/20 text-gray-400' };
+        const statusColors = { new: 'bg-blue-500/20 text-blue-300', in_progress: 'bg-amber-500/20 text-amber-300', responded: 'bg-green-500/20 text-green-300', waitlisted: 'bg-amber-500/20 text-amber-300', closed: 'bg-gray-500/20 text-gray-400' };
 
         // Type filter pills
         const typeFilterHtml = '<button onclick="inquiryFilterType=\\'\\';loadAdminInquiries()" class="px-3 py-1.5 rounded-lg text-xs font-medium transition ' + (!inquiryFilterType ? 'bg-primary-500/20 text-primary-300 border border-primary-500/30' : 'glass hover:bg-white/10 text-gray-400') + '">All (' + totalAll + ')</button>' +
@@ -41973,6 +42131,7 @@ function adminPageScript(): string {
           '<option value="new"' + (inquiryFilterStatus === 'new' ? ' selected' : '') + '>New</option>' +
           '<option value="in_progress"' + (inquiryFilterStatus === 'in_progress' ? ' selected' : '') + '>In Progress</option>' +
           '<option value="responded"' + (inquiryFilterStatus === 'responded' ? ' selected' : '') + '>Responded</option>' +
+          '<option value="waitlisted"' + (inquiryFilterStatus === 'waitlisted' ? ' selected' : '') + '>Waitlisted</option>' +
           '<option value="closed"' + (inquiryFilterStatus === 'closed' ? ' selected' : '') + '>Closed</option></select>';
 
         const rows = (inquiries || []).map(inq => {
@@ -42003,6 +42162,7 @@ function adminPageScript(): string {
                   '<option value="new"' + (inq.status === 'new' ? ' selected' : '') + '>New</option>' +
                   '<option value="in_progress"' + (inq.status === 'in_progress' ? ' selected' : '') + '>In Progress</option>' +
                   '<option value="responded"' + (inq.status === 'responded' ? ' selected' : '') + '>Responded</option>' +
+                  (inq.status === 'waitlisted' ? '<option value="waitlisted" selected>Waitlisted</option>' : '') +
                   '<option value="closed"' + (inq.status === 'closed' ? ' selected' : '') + '>Closed</option>' +
                 '</select>' +
                 '<button onclick="openInquiryReply(' + inq.id + ')" class="px-2 py-1 rounded-lg text-[10px] bg-primary-500/20 text-primary-200 hover:bg-primary-500/30 transition" title="Reply by email"><i class="fas fa-reply mr-1"></i>Reply</button>' +

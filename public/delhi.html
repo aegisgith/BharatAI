@@ -12,7 +12,7 @@
     <meta property="og:locale" content="en_IN">
     <meta property="og:url" content="https://bharataiinnovation.com/delhi">
     <meta property="og:title" content="Bharat AI Innovation Delhi 2027 · 29–30 July, Bharat Mandapam">
-    <meta property="og:description" content="India's B2B AI conference and exhibition comes to Bharat Mandapam, New Delhi on 29–30 July 2027. Be the first to know when passes and booths open.">
+    <meta property="og:description" content="India's B2B AI conference and exhibition comes to Bharat Mandapam, New Delhi on 29–30 July 2027. Register free to join the Visitor Pass waitlist.">
     <meta property="og:image" content="https://bharataiinnovation.com/images/og/delhi.jpg">
     <meta property="og:image:secure_url" content="https://bharataiinnovation.com/images/og/delhi.jpg">
     <meta property="og:image:type" content="image/jpeg">
@@ -84,7 +84,7 @@
             {
               "@type": "Question",
               "name": "Can I get a pass for the Delhi edition now?",
-              "acceptedAnswer": { "@type": "Answer", "text": "Not yet. Leave your details on bharataiinnovation.com/delhi and we will email you as soon as passes open." }
+              "acceptedAnswer": { "@type": "Answer", "text": "Registration for the free Visitor Pass is open now (exhibition only, entry by time slot): register on bharataiinnovation.com/delhi to join the waitlist. Paid passes and booths open later, and we will email you when they do." }
             },
             {
               "@type": "Question",
@@ -94,7 +94,7 @@
             {
               "@type": "Question",
               "name": "Is the Delhi edition the same event as Mumbai in November?",
-              "acceptedAnswer": { "@type": "Answer", "text": "No, they are two separate events. Bharat AI Innovation 2026 is on 20–21 November 2026 at World Trade Center Mumbai. The Delhi edition is on 29–30 July 2027 at Bharat Mandapam." }
+              "acceptedAnswer": { "@type": "Answer", "text": "No, they are two separate events. Bharat AI Innovation 2026 is on 20–21 November 2026 at World Trade Center Mumbai. The Delhi edition is on 29–30 July 2027 at Bharat Mandapam. A pass for one does not cover the other." }
             }
           ]
         }
@@ -236,7 +236,7 @@
         .dl-rows span { margin-top: 0; }
     }
 
-    /* --- Be the first to know: a strip, not a page of its own --- */
+    /* --- Register free: a strip, not a page of its own --- */
     .dl-updates-sec { background: var(--off-white); }
     .dl-updates-sec.dl-sec { padding: 2.25rem 0; }
     .dl-updates { position: relative; background: #fff; border: 1px solid #E3E6F6; border-radius: 18px; padding: 1.1rem; box-shadow: 0 10px 28px rgba(13,15,30,0.06); scroll-margin-top: calc(var(--nav-h) + 16px); }
@@ -270,9 +270,9 @@
         .dl-form-top { display: flex; align-items: center; justify-content: space-between; gap: 2rem; }
         .dl-updates-head h2 { font-size: 1.5rem; }
         .dl-ways { margin: 0; flex: none; width: 420px; }
-        .dl-fields { grid-template-columns: 1fr 1.2fr 1fr 1fr auto; margin-top: 0.85rem; gap: 0.7rem; }
-        .dl-field.wide, .dl-submit { grid-column: auto; }
-        .dl-submit { width: auto; min-height: 44px; }
+        .dl-fields { grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 0.85rem; gap: 0.7rem; }
+        .dl-field.wide { grid-column: auto; }
+        .dl-submit { grid-column: 3 / -1; min-height: 44px; }
     }
     .dl-done { text-align: center; padding: 0.5rem; }
     .dl-done-icon { width: 44px; height: 44px; border-radius: 50%; background: rgba(19,136,8,0.1); color: #138808; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; margin: 0 auto 0.5rem; }
@@ -437,7 +437,7 @@
                 <a href="/ai-readiness" class="nav-link">AI Readiness</a>
                 <a href="https://bellaward.com" target="_blank" rel="noopener noreferrer" class="nav-link">AGBA</a>
                 <a href="/contact" class="nav-link">Contact</a>
-                <a href="#updates" class="nav-cta">Tell me first <i class="fas fa-arrow-right"></i></a>
+                <a href="#updates" class="nav-cta" data-interest="attend">Register free <i class="fas fa-arrow-right"></i></a>
             </div>
             <div class="nav-toggle" id="nav-toggle">
                 <span class="bar"></span><span class="bar"></span><span class="bar"></span>
@@ -462,7 +462,7 @@
             <span class="hero-title-hi" lang="hi"><span class="hi-saffron">भारत</span> <span class="hi-white">एआई</span> <span class="hi-green">इनोवेशन</span> <span class="dl-hi-place">· नई दिल्ली</span></span>
             <p class="dl-hero-desc">India’s B2B platform for AI comes to the capital. Two days at Bharat Mandapam with the government departments, enterprises and startups using AI, and the companies building it.</p>
             <div class="dl-hero-actions">
-                <a href="#updates" class="btn btn-primary btn-lg">Tell me first <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
+                <a href="#updates" class="btn btn-primary btn-lg" data-interest="attend">Register free <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
                 <a href="/delhi-2027.ics" id="dl-save-date" class="btn btn-ghost btn-lg" download="bharat-ai-innovation-delhi-2027.ics"><i class="fas fa-calendar-plus" aria-hidden="true"></i> Save the date</a>
             </div>
             <p class="dl-hero-alt">Want a booth, a sponsorship or a speaking slot? <a href="#updates" data-interest="exhibit">Tell us here</a></p>
@@ -568,7 +568,7 @@
         </div>
     </section>
 
-    <!-- ===== GET UPDATES ===== -->
+    <!-- ===== REGISTER FREE ===== -->
     <section class="dl-updates-sec dl-sec">
         <div class="container">
             <div class="dl-updates reveal" id="updates">
@@ -576,8 +576,8 @@
                 <form id="dl-form" novalidate>
                     <div class="dl-form-top">
                         <div class="dl-updates-head">
-                            <h2>Be the <span class="accent">first to know</span></h2>
-                            <p>We will email you when passes and booths open.</p>
+                            <h2 id="dl-form-title">Get your <span class="accent">free pass</span></h2>
+                            <p id="dl-form-text">Exhibition only, entry by time slot. Register to join the waitlist.</p>
                         </div>
                         <fieldset class="dl-ways">
                             <legend>I want to</legend>
@@ -599,18 +599,26 @@
                             <input id="dl-email" name="email" type="email" inputmode="email" autocomplete="email" maxlength="160">
                         </div>
                         <div class="dl-field">
-                            <label for="dl-phone">Mobile <span class="opt" id="dl-phone-hint">(optional)</span></label>
+                            <label for="dl-phone">Mobile <span class="opt" id="dl-phone-hint"></span></label>
                             <input id="dl-phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" maxlength="20">
                         </div>
                         <div class="dl-field">
-                            <label for="dl-org">Organisation <span class="opt">(optional)</span></label>
+                            <label for="dl-org">Organisation <span class="opt" id="dl-org-hint"></span></label>
                             <input id="dl-org" name="organization" type="text" autocomplete="organization" maxlength="160">
+                        </div>
+                        <div class="dl-field" id="dl-job-box">
+                            <label for="dl-job">Designation</label>
+                            <input id="dl-job" name="job_title" type="text" autocomplete="organization-title" maxlength="120">
+                        </div>
+                        <div class="dl-field" id="dl-city-box">
+                            <label for="dl-city">City</label>
+                            <input id="dl-city" name="city" type="text" autocomplete="address-level2" maxlength="80">
                         </div>
                         <div class="dl-hp" aria-hidden="true">
                             <label for="dl-website">Leave this empty</label>
                             <input id="dl-website" name="website" type="text" tabindex="-1" autocomplete="off">
                         </div>
-                        <button type="submit" class="btn btn-primary dl-submit" id="dl-submit">Tell me first <i class="fas fa-arrow-right" aria-hidden="true"></i></button>
+                        <button type="submit" class="btn btn-primary dl-submit" id="dl-submit">Register free <i class="fas fa-arrow-right" aria-hidden="true"></i></button>
                     </div>
                     <p class="dl-error" id="dl-error" role="alert" hidden></p>
                     <p class="dl-note">We only email you about Delhi. <a href="/privacy">Privacy policy</a></p>
@@ -618,8 +626,8 @@
 
                 <div class="dl-done" id="dl-done" hidden>
                     <div class="dl-done-icon"><i class="fas fa-check" aria-hidden="true"></i></div>
-                    <h3>You are on the list</h3>
-                    <p id="dl-done-text">We will email you when passes and booths for Delhi open.</p>
+                    <h3 id="dl-done-title">You are waitlisted</h3>
+                    <p id="dl-done-text"></p>
                     <a href="/delhi-2027.ics" class="btn btn-outline btn-sm" id="dl-save-date-2" download="bharat-ai-innovation-delhi-2027.ics"><i class="fas fa-calendar-plus" aria-hidden="true"></i> Save the date</a>
                 </div>
             </div>
@@ -639,7 +647,7 @@
                 </details>
                 <details>
                     <summary>Can I get a pass for Delhi now? <i class="fas fa-chevron-down" aria-hidden="true"></i></summary>
-                    <p>Not yet. <a href="#updates">Leave your details</a> and we will email you as soon as passes open.</p>
+                    <p>Registration for the free Visitor Pass is open now (exhibition only, entry by time slot). <a href="#updates" data-interest="attend">Register here</a> to join the waitlist. Paid passes and booths open later, and we will email you when they do.</p>
                 </details>
                 <details>
                     <summary>How do I book a booth, sponsor or speak? <i class="fas fa-chevron-down" aria-hidden="true"></i></summary>
@@ -647,7 +655,7 @@
                 </details>
                 <details>
                     <summary>Is this the same as the Mumbai event? <i class="fas fa-chevron-down" aria-hidden="true"></i></summary>
-                    <p>No, they are two separate events. Bharat AI Innovation 2026 is on 20–21 November 2026 at World Trade Center Mumbai. The Delhi edition is on 29–30 July 2027 at Bharat Mandapam.</p>
+                    <p>No, they are two separate events. Bharat AI Innovation 2026 is on 20–21 November 2026 at World Trade Center Mumbai. The Delhi edition is on 29–30 July 2027 at Bharat Mandapam. A pass for one does not cover the other.</p>
                 </details>
             </div>
         </div>
@@ -660,7 +668,7 @@
             <p>Bharat AI Innovation 2026 is on 20–21 November at World Trade Center Mumbai. Passes are open now.</p>
             <div class="dl-mumbai-actions">
                 <a href="/register?source=delhi-page#delegate" class="btn btn-primary btn-lg">Get my Delegate Pass <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
-                <a href="/register?source=delhi-page-free" class="btn btn-ghost btn-lg">Free Visitor Pass</a>
+                <a href="/register?source=delhi-page-free" class="btn btn-ghost btn-lg">Free Visitor Pass for Mumbai</a>
             </div>
         </div>
     </section>
@@ -726,22 +734,24 @@
         </div>
     </footer>
 
-    <aside class="sticky-cta" id="stickyCta" aria-label="Delhi 2027 updates" aria-hidden="true">
+    <aside class="sticky-cta" id="stickyCta" aria-label="Register for Delhi 2027" aria-hidden="true">
         <div class="sticky-cta-text"><b>29–30 July 2027</b><span>Bharat Mandapam, New Delhi</span></div>
-        <a href="#updates" class="btn btn-primary" tabindex="-1">Tell me first</a>
+        <a href="#updates" class="btn btn-primary" tabindex="-1" data-interest="attend">Register free</a>
     </aside>
 
     <script>
-    // "Tell me first": saved as an enquiry (Admin, Enquiries), subject "Delhi 2027 · ...",
-    // and the team is emailed as for any contact enquiry.
+    // The form. Attend is a real registration: a free Visitor Pass for Delhi, kept apart
+    // from Mumbai's attendees (POST /api/delhi/register). Exhibit, Sponsor and Speak stay
+    // enquiries (Admin, Enquiries), subject "Delhi 2027 · ...", and the team is emailed.
     (function () {
-      var TYPES = { attend: 'general', exhibit: 'exhibition', sponsor: 'sponsorship', speak: 'speaking' };
-      var LABELS = { attend: 'Attend', exhibit: 'Exhibit', sponsor: 'Sponsor', speak: 'Speak' };
+      var TYPES = { exhibit: 'exhibition', sponsor: 'sponsorship', speak: 'speaking' };
+      var LABELS = { exhibit: 'Exhibit', sponsor: 'Sponsor', speak: 'Speak' };
       var form = document.getElementById('dl-form');
       if (!form) return;
       var err = document.getElementById('dl-error');
       var btn = document.getElementById('dl-submit');
       var phoneHint = document.getElementById('dl-phone-hint');
+      var orgHint = document.getElementById('dl-org-hint');
       var params = new URLSearchParams(location.search);
 
       function interest() {
@@ -750,18 +760,32 @@
       }
       function setInterest(v) {
         var r = form.querySelector('input[name="interest"][value="' + v + '"]');
-        if (r) { r.checked = true; syncPhone(); }
+        if (r) { r.checked = true; syncForm(); }
       }
-      // A booth or a sponsorship is a phone call, so the mobile is asked for there.
-      function phoneNeeded() { var i = interest(); return i === 'exhibit' || i === 'sponsor'; }
-      function syncPhone() { phoneHint.textContent = phoneNeeded() ? '(we will call you)' : '(optional)'; }
+      function isPass() { return interest() === 'attend'; }
+      // A pass and a booth or a sponsorship all need the mobile; a speaking idea does not.
+      function phoneNeeded() { return interest() !== 'speak'; }
+      function label() {
+        return isPass() ? 'Register free <i class="fas fa-arrow-right" aria-hidden="true"></i>' : 'Send <i class="fas fa-arrow-right" aria-hidden="true"></i>';
+      }
+      function syncForm() {
+        var pass = isPass();
+        var i = interest();
+        phoneHint.textContent = pass ? '' : (i === 'speak' ? '(optional)' : '(we will call you)');
+        orgHint.textContent = pass ? '' : '(optional)';
+        document.getElementById('dl-job-box').hidden = !pass;
+        document.getElementById('dl-city-box').hidden = !pass;
+        document.getElementById('dl-form-title').innerHTML = pass ? 'Get your <span class="accent">free pass</span>' : 'Talk to <span class="accent">our team</span>';
+        document.getElementById('dl-form-text').textContent = pass ? 'Exhibition only, entry by time slot. Register to join the waitlist.' : 'Leave your details and our team will get in touch with you.';
+        btn.innerHTML = label();
+      }
 
-      form.addEventListener('change', function (e) { if (e.target.name === 'interest') syncPhone(); });
+      form.addEventListener('change', function (e) { if (e.target.name === 'interest') syncForm(); });
       Array.prototype.forEach.call(document.querySelectorAll('a[data-interest]'), function (a) {
         a.addEventListener('click', function () { setInterest(a.getAttribute('data-interest')); });
       });
       if (TYPES[params.get('interest')]) setInterest(params.get('interest'));
-      syncPhone();
+      syncForm();
 
       function fail(msg, field) {
         err.textContent = msg;
@@ -777,51 +801,75 @@
         var email = document.getElementById('dl-email');
         var phone = document.getElementById('dl-phone');
         var org = document.getElementById('dl-org');
+        var job = document.getElementById('dl-job');
+        var city = document.getElementById('dl-city');
         var i = interest();
+        var pass = isPass();
 
         if (!name.value.trim()) return fail('Please write your name.', name);
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value.trim())) return fail('Please check your email. It should look like name@example.com.', email);
         var digits = phone.value.replace(/[^0-9]/g, '');
-        if (phoneNeeded() && digits.length < 10) return fail('Please add your mobile number so our team can call you.', phone);
+        if (pass && !digits) return fail('Please add your mobile number.', phone);
+        if (phoneNeeded() && !pass && digits.length < 10) return fail('Please add your mobile number so our team can call you.', phone);
         if (phone.value.trim() && digits.length < 10) return fail('Please check your mobile number. It needs at least 10 digits.', phone);
+        if (pass && !org.value.trim()) return fail('Please add your organisation.', org);
+        if (pass && !job.value.trim()) return fail('Please add your designation.', job);
+        if (pass && !city.value.trim()) return fail('Please add your city.', city);
 
         // Bots fill every box; people never see this one.
         if (document.getElementById('dl-website').value) return done(name.value.trim(), email.value.trim());
 
         btn.disabled = true;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...';
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ' + (pass ? 'Registering...' : 'Sending...');
         var meta = { edition: 'delhi-2027', interest: i, page: '/delhi' };
         ['utm_source', 'utm_medium', 'utm_campaign', 'source'].forEach(function (k) { if (params.get(k)) meta[k] = params.get(k); });
 
-        fetch('/api/inquiries', {
+        fetch(pass ? '/api/delhi/register' : '/api/inquiries', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+          body: JSON.stringify(pass ? {
+            name: name.value.trim(),
+            email: email.value.trim(),
+            mobile: phone.value.trim(),
+            company: org.value.trim(),
+            job_title: job.value.trim(),
+            city: city.value.trim(),
+            metadata: meta
+          } : {
             inquiry_type: TYPES[i],
             name: name.value.trim(),
             email: email.value.trim(),
             phone: phone.value.trim(),
             organization: org.value.trim(),
             subject: 'Delhi 2027 · ' + LABELS[i],
-            message: 'Wants to hear first about Bharat AI Innovation Delhi (29–30 July 2027, Bharat Mandapam, New Delhi). Interested in: ' + LABELS[i] + '.',
+            message: 'Interested in Bharat AI Innovation Delhi (29–30 July 2027, Bharat Mandapam, New Delhi): ' + LABELS[i] + '.',
             metadata: meta
           })
         }).then(function (r) {
           return r.json().catch(function () { return {}; }).then(function (d) {
             if (!r.ok) throw new Error(d.error || 'Something went wrong. Please try again.');
-            done(name.value.trim(), email.value.trim());
+            done(name.value.trim(), email.value.trim(), d.already);
           });
         }).catch(function (x) {
           btn.disabled = false;
-          btn.innerHTML = 'Tell me first <i class="fas fa-arrow-right" aria-hidden="true"></i>';
+          btn.innerHTML = label();
           fail(x && x.message && x.message !== 'Failed to fetch' ? x.message : 'Could not send. Please check your internet and try again.');
         });
       });
 
-      function done(name, email) {
-        form.hidden = true;
+      function done(name, email, already) {
         var first = name.split(/\s+/)[0];
-        document.getElementById('dl-done-text').textContent = 'Thank you, ' + first + '. We will email ' + email + ' when passes and booths for Delhi open.';
+        var title = 'We have your details';
+        var text = 'Thank you, ' + first + '. Our team will get in touch with you at ' + email + '.';
+        if (isPass()) {
+          title = already ? 'You are already waitlisted' : 'You are waitlisted';
+          text = already
+            ? first + ', ' + email + ' is already waitlisted for a free Visitor Pass for Delhi. There is no need to register again.'
+            : 'Thank you, ' + first + '. You are waitlisted for a free Visitor Pass for Delhi, and an email is on its way to ' + email + '. We will email you when your pass is confirmed.';
+        }
+        form.hidden = true;
+        document.getElementById('dl-done-title').textContent = title;
+        document.getElementById('dl-done-text').textContent = text;
         document.getElementById('dl-done').hidden = false;
       }
     })();

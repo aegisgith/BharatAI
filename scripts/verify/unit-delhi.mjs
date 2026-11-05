@@ -7,7 +7,7 @@ import { openPage, read } from './delhi-world.mjs';
 
 let fails = 0;
 const check = (n, ok, d = '') => { console.log((ok ? 'PASS ' : 'FAIL ') + n + (ok ? '' : '  <- ' + d)); if (!ok) fails++; };
-const GOOD = { name: 'Priya Sharma', email: 'priya@example.com', phone: '98765 43210', org: 'Example Ltd' };
+const GOOD = { name: 'Priya Sharma', email: 'priya@example.com', phone: '98765 43210', org: 'Example Ltd', job: 'CTO', city: 'New Delhi' };
 
 // ---- what the form refuses, with the words the person sees ----
 const refusals = [
@@ -19,6 +19,10 @@ const refusals = [
   ['Sponsor with no mobile', 'sponsor', { ...GOOD, phone: '' }, 'mobile number', 'dl-phone'],
   ['Exhibit with a short mobile', 'exhibit', { ...GOOD, phone: '12345' }, 'mobile number', 'dl-phone'],
   ['Attend with a short mobile typed', 'attend', { ...GOOD, phone: '12345' }, 'at least 10 digits', 'dl-phone'],
+  ['free pass with no mobile', 'attend', { ...GOOD, phone: '' }, 'mobile number', 'dl-phone'],
+  ['free pass with no organisation', 'attend', { ...GOOD, org: ' ' }, 'organisation', 'dl-org'],
+  ['free pass with no designation', 'attend', { ...GOOD, job: '' }, 'designation', 'dl-job'],
+  ['free pass with no city', 'attend', { ...GOOD, city: '' }, 'city', 'dl-city'],
   ['Speak with a short mobile typed', 'speak', { ...GOOD, phone: '123' }, 'at least 10 digits', 'dl-phone'],
 ];
 for (const [what, interest, input, words, box] of refusals) {
@@ -29,18 +33,30 @@ for (const [what, interest, input, words, box] of refusals) {
 }
 
 // ---- what it accepts, and how each choice is filed ----
-const filed = { attend: ['general', 'Attend'], exhibit: ['exhibition', 'Exhibit'], sponsor: ['sponsorship', 'Sponsor'], speak: ['speaking', 'Speak'] };
+const filed = { exhibit: ['exhibition', 'Exhibit'], sponsor: ['sponsorship', 'Sponsor'], speak: ['speaking', 'Speak'] };
 for (const [interest, [type, label]] of Object.entries(filed)) {
   const p = openPage();
   p.choose(interest);
   const r = await p.submit(GOOD);
-  check(`${label}: filed as ${type}, subject "Delhi 2027 · ${label}"`, r.done && r.body?.inquiry_type === type && r.body.subject === 'Delhi 2027 · ' + label && r.body.metadata.interest === interest && r.body.metadata.edition === 'delhi-2027' && r.body.message.includes('Bharat Mandapam'), JSON.stringify(r.body));
+  check(`${label}: filed as ${type}, subject "Delhi 2027 · ${label}"`, r.done && r.url === '/api/inquiries' && r.body?.inquiry_type === type && r.body.subject === 'Delhi 2027 · ' + label && r.body.metadata.interest === interest && r.body.metadata.edition === 'delhi-2027' && r.body.message.includes('Bharat Mandapam'), JSON.stringify(r.body));
 }
 {
   const p = openPage();
+  p.choose('speak');
   const r = await p.submit({ name: 'Priya Sharma', email: ' priya@example.com ', phone: '', org: '' });
-  check('Attend with no mobile or organisation is fine, spaces trimmed', r.done && r.body.email === 'priya@example.com' && r.body.phone === '', JSON.stringify(r));
-  check('the thank-you uses the first name and the email given', p.els['dl-done-text'].textContent.includes('Priya.') && p.els['dl-done-text'].textContent.includes('priya@example.com') && p.els['dl-form'].hidden === true, p.els['dl-done-text'].textContent);
+  check('Speak with no mobile or organisation is fine, spaces trimmed', r.done && r.body.email === 'priya@example.com' && r.body.phone === '', JSON.stringify(r));
+  check('the thank-you for a Speak enquiry promises a call back, not a pass', p.els['dl-done-title'].textContent === 'We have your details' && p.els['dl-done-text'].textContent.includes('Priya.') && p.els['dl-done-text'].textContent.includes('priya@example.com') && !/pass/i.test(p.els['dl-done-text'].textContent) && p.els['dl-form'].hidden === true, p.els['dl-done-text'].textContent);
+}
+{
+  const p = openPage();
+  const r = await p.submit({ ...GOOD, name: '  Priya Sharma ', email: ' priya@example.com ', phone: ' 98765 43210 ', city: ' New Delhi ' });
+  check('Attend is a registration: the free pass route, every box sent, spaces trimmed', r.done && r.url === '/api/delhi/register' && r.body.name === 'Priya Sharma' && r.body.email === 'priya@example.com' && r.body.mobile === '98765 43210' && r.body.company === 'Example Ltd' && r.body.job_title === 'CTO' && r.body.city === 'New Delhi', JSON.stringify(r));
+  check('the thank-you says waitlisted, names the pass and the email, and promises no pass yet', p.els['dl-done-title'].textContent === 'You are waitlisted' && p.els['dl-done-text'].textContent.includes('Priya.') && p.els['dl-done-text'].textContent.includes('You are waitlisted for a free Visitor Pass') && p.els['dl-done-text'].textContent.includes('priya@example.com') && p.els['dl-done-text'].textContent.includes('when your pass is confirmed') && !p.els['dl-done-text'].textContent.includes('is confirmed,'), p.els['dl-done-text'].textContent);
+}
+{
+  const p = openPage({ fetch: async () => ({ ok: true, json: async () => ({ success: true, already: true }) }) });
+  const r = await p.submit(GOOD);
+  check('already on the list: told so kindly, not an error', r.done && !r.error && p.els['dl-done-title'].textContent === 'You are already waitlisted', JSON.stringify(r));
 }
 {
   const p = openPage();
@@ -51,11 +67,15 @@ for (const [interest, [type, label]] of Object.entries(filed)) {
 // ---- the mobile's hint, the choice carried in by a link ----
 {
   const p = openPage();
-  check('mobile is "(optional)" for Attend', p.els['dl-phone-hint'].textContent === '(optional)', p.els['dl-phone-hint'].textContent);
+  check('a free pass asks for the mobile, with no "(optional)" beside it', p.els['dl-phone-hint'].textContent === '' && p.els['dl-org-hint'].textContent === '', p.els['dl-phone-hint'].textContent);
+  check('the page opens on the free pass, with designation and city showing', p.els['dl-form-title'].innerHTML.includes('free pass') && p.els['dl-submit'].innerHTML.includes('Register free') && p.els['dl-job-box'].hidden === false && p.els['dl-city-box'].hidden === false);
   p.choose('sponsor');
   check('mobile says the team will call for Sponsor', p.els['dl-phone-hint'].textContent.includes('call you'), p.els['dl-phone-hint'].textContent);
+  check('Sponsor is a talk with the team: no pass words, designation and city put away', !p.els['dl-form-title'].innerHTML.includes('free pass') && p.els['dl-submit'].innerHTML.includes('Send') && p.els['dl-job-box'].hidden === true && p.els['dl-city-box'].hidden === true && p.els['dl-org-hint'].textContent === '(optional)');
   p.choose('speak');
-  check('and is optional again for Speak', p.els['dl-phone-hint'].textContent === '(optional)', p.els['dl-phone-hint'].textContent);
+  check('and is optional for Speak', p.els['dl-phone-hint'].textContent === '(optional)', p.els['dl-phone-hint'].textContent);
+  p.choose('attend');
+  check('and back to the pass, the boxes return', p.els['dl-submit'].innerHTML.includes('Register free') && p.els['dl-job-box'].hidden === false);
 }
 check('?interest=exhibit opens on Exhibit', openPage({ search: '?interest=exhibit' }).interest() === 'exhibit');
 check('an unknown ?interest= is ignored', openPage({ search: '?interest=<b>x' }).interest() === 'attend');
@@ -74,7 +94,7 @@ check('an unknown ?interest= is ignored', openPage({ search: '?interest=<b>x' })
 {
   const p = openPage({ fetch: async () => ({ ok: false, json: async () => ({ error: 'Name and email are required' }) }) });
   const r = await p.submit(GOOD);
-  check('a server refusal is shown in its words, the form stays, the button comes back', r.error === 'Name and email are required' && !r.done && p.els['dl-submit'].disabled === false && p.els['dl-submit'].innerHTML.includes('Tell me first'), JSON.stringify(r));
+  check('a server refusal is shown in its words, the form stays, the button comes back', r.error === 'Name and email are required' && !r.done && p.els['dl-submit'].disabled === false && p.els['dl-submit'].innerHTML.includes('Register free'), JSON.stringify(r));
 }
 {
   const p = openPage({ fetch: async () => { throw new TypeError('Failed to fetch'); } });
@@ -115,6 +135,11 @@ const graph = JSON.parse(html.match(/<script type="application\/ld\+json">([\s\S
 const ev = graph.find((g) => g['@type'] === 'Event');
 check('search-engine event data: dates and venue', ev.startDate === '2027-07-29' && ev.endDate === '2027-07-30' && ev.location.name === 'Bharat Mandapam' && ev.location.address.addressLocality === 'New Delhi');
 check('search-engine event data offers nothing for sale yet', !('offers' in ev));
+check('"Tell me first" and "first to know" are gone from the page', !/tell me first|first to know/i.test(html));
+check('every Register free button goes to the form and chooses the pass', [...html.matchAll(/<a [^>]*>Register free/g)].length === 3 && [...html.matchAll(/<a ([^>]*)>Register free/g)].every((m) => m[1].includes('href="#updates"') && m[1].includes('data-interest="attend"')));
+check('the page gives Mumbai\'s rule for the pass, says waitlist, and that the two events are separate', body.includes('Exhibition only, entry by time slot') && body.includes('exhibition only, entry by time slot') && body.includes('join the waitlist') && body.includes('A pass for one does not cover the other'));
+check('the form asks for all six: name, email, mobile, organisation, designation, city', ['dl-name', 'dl-email', 'dl-phone', 'dl-org', 'dl-job', 'dl-city'].every((id) => html.includes('id="' + id + '"')));
+check('search data no longer says passes are closed', !JSON.stringify(graph).includes('Not yet.') && JSON.stringify(graph).includes('free Visitor Pass'));
 const faq = graph.find((g) => g['@type'] === 'FAQPage').mainEntity;
 const visibleQs = (html.match(/<summary>/g) || []).length;
 check('one answer in the search data for each question on the page', faq.length === visibleQs, faq.length + ' / ' + visibleQs);
@@ -131,6 +156,7 @@ check('no two boxes share a picture', new Set(tiles.map((t) => t.match(/src="([^
 check('the programme comes straight after the hero', html.indexOf('id="programme"') > html.indexOf('class="dl-hero"') && html.indexOf('id="programme"') < html.indexOf('id="venue"'));
 check('the form comes after the programme, the venue and who it is for', html.indexOf('id="updates"') > html.indexOf('id="who"'));
 check('the rest of the Mumbai format is named', ['CXO AI Leadership Panels', 'Startup Pitch', 'Bharat AI Leaders’ Evening', 'Private boardrooms', 'AI Marketplace', 'Bharat AI Connect app'].every((x) => body.includes(x)));
+check('llms.txt says the free pass is open', /\[Delhi 2027\].*free Visitor Pass.*open on the page/.test(read('public/llms.txt')) && !read('public/llms.txt').includes('leave your details on the page to hear first'));
 check('llms.txt names the programme', /\[Delhi 2027\].*hackathons.*cross-border dialogue/.test(read('public/llms.txt')));
 
 // ---- nothing it names is missing ----
