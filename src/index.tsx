@@ -17764,7 +17764,7 @@ app.post('/api/inquiries', async (c) => {
   if (!name || !email) return c.json({ error: 'Name and email are required' }, 400)
   if (!inquiry_type) return c.json({ error: 'Inquiry type is required' }, 400)
 
-  const validTypes = ['general', 'exhibition', 'booth_inquiry', 'sponsorship', 'speaking', 'government', 'media', 'group_registration', 'pass_upgrade', 'meeting_room', 'other']
+  const validTypes = ['general', 'exhibition', 'booth_inquiry', 'sponsorship', 'speaking', 'government', 'workshop_partner', 'media', 'group_registration', 'pass_upgrade', 'meeting_room', 'other']
   if (!validTypes.includes(inquiry_type)) return c.json({ error: 'Invalid inquiry type' }, 400)
 
   const result = await c.env.DB.prepare(
@@ -33580,21 +33580,24 @@ function adminPageScript(): string {
           (m.online ? '' : '<div class="text-amber-300">Online checkout is off, so nothing can be paid on this site right now.</div>') +
         '</div></div>';
 
-      var item = function (n, label, go, href) {
+      var item = function (n, label, go, href, click) {
         var on = n > 0;
         var open = href ? '<a href="' + href + '" class="flex items-center gap-3 py-2 border-b border-white/5 no-underline hover:bg-white/5 rounded-lg px-1">'
-          : '<a href="#" onclick="switchSection(&quot;' + go + '&quot;);return false" class="flex items-center gap-3 py-2 border-b border-white/5 no-underline hover:bg-white/5 rounded-lg px-1">';
+          : '<a href="#" onclick="' + (click || 'switchSection(&quot;' + go + '&quot;)') + ';return false" class="flex items-center gap-3 py-2 border-b border-white/5 no-underline hover:bg-white/5 rounded-lg px-1">';
         return open + '<span class="w-10 text-right font-bold ' + (on ? 'text-amber-300' : 'text-gray-600') + '">' + n.toLocaleString('en-IN') + '</span>' +
           '<span class="flex-1 text-xs ' + (on ? 'text-gray-200' : 'text-gray-500') + '">' + label + '</span><i class="fas fa-chevron-right text-[10px] text-gray-600"></i></a>';
       };
-      var inq = (t.inquiries || []).slice(0, 3).map(function (r) { return r.n + ' ' + escH(r.type); }).join(', ');
+      // Workshop partner ideas have a line of their own, so a long speaking list never hides them.
+      var wpNew = (t.inquiries || []).reduce(function (s, r) { return s + (r.type === 'workshop_partner' ? Number(r.n || 0) : 0); }, 0);
+      var inq = (t.inquiries || []).filter(function (r) { return r.type !== 'workshop_partner'; }).slice(0, 3).map(function (r) { return r.n + ' ' + escH(String(r.type).replace(/_/g, ' ')); }).join(', ');
       var waiting = (t.not_paid || 0) + (t.invoice_due || 0) + (t.inquiries_new || 0) + (t.booths_submitted || 0) + (t.listings_pending || 0) + (t.rooms_held || 0) + (t.workshop_unchosen || 0) + (t.photos_flagged || 0);
       var todoCard = '<div class="glass rounded-xl p-5">' +
         '<div class="flex items-center justify-between mb-2"><h3 class="font-semibold text-sm"><i class="fas fa-list-check text-amber-400 mr-2"></i>Waiting on you</h3>' +
           '<span class="text-[10px] text-gray-500">' + (waiting ? waiting.toLocaleString('en-IN') + ' in all' : 'Nothing is waiting') + '</span></div>' +
         item(t.not_paid || 0, 'chose a paid pass and have not paid: remind them to pay', 'payments') +
         item(t.invoice_due || 0, 'paid online, GST invoice still to raise', 'payments') +
-        item(t.inquiries_new || 0, 'new enquiries to answer' + (inq ? ' <span class="text-gray-500">(' + inq + ')</span>' : ''), 'inquiries') +
+        item((t.inquiries_new || 0) - wpNew, 'new enquiries to answer' + (inq ? ' <span class="text-gray-500">(' + inq + ')</span>' : ''), 'inquiries') +
+        item(wpNew, 'workshop partner ideas to read', '', '', 'openEnquiriesOfType(&quot;workshop_partner&quot;)') +
         item(t.booths_submitted || 0, 'booth requests to review', 'booth-requests') +
         item(t.listings_pending || 0, 'AI Marketplace listings to approve', '', '/marketplace/admin') +
         item(t.rooms_held || 0, 'boardroom bookings on hold, to confirm or refuse', 'rooms') +
@@ -41784,6 +41787,11 @@ function adminPageScript(): string {
           '<tbody>' + body + '</tbody>' +
         '</table></div>';
     }
+    // From the Overview board: Enquiries, showing one type only.
+    function openEnquiriesOfType(type) {
+      inquiryFilterType = type;
+      switchSection('inquiries');
+    }
     async function loadAdminInquiries() {
       try {
         let url = '/api/admin/inquiries?';
@@ -41805,6 +41813,7 @@ function adminPageScript(): string {
           sponsorship: { icon: 'fa-handshake', color: 'orange', label: 'Sponsorship' },
           speaking: { icon: 'fa-microphone-alt', color: 'purple', label: 'Speaking' },
           government: { icon: 'fa-building-columns', color: 'green', label: 'Government' },
+          workshop_partner: { icon: 'fa-graduation-cap', color: 'teal', label: 'Workshop Partner' },
           media: { icon: 'fa-newspaper', color: 'rose', label: 'Media' },
           group_registration: { icon: 'fa-users', color: 'green', label: 'Group Reg' },
           pass_upgrade: { icon: 'fa-arrow-up-right-from-square', color: 'amber', label: 'Pass Upgrade' },

@@ -73,7 +73,7 @@ for (let i = 0; i < 38; i++) person('Exhibitor ' + i, { badge_type: 'Exhibitor',
 for (let i = 0; i < 12; i++) person('Organiser ' + i, { badge_type: 'Organiser', role: 'organiser' });
 for (let i = 0; i < 300; i++) person('Panel only ' + i, { main_event: 0 });
 db.run("INSERT INTO invoices (invoice_no, attendee_id, buyer_name, buyer_email, item_desc, order_ref, taxable_paise, total_paise) VALUES ('AKT/26-27/1', 2601, 'Delegate 0', 'p2601@example.com', 'Delegate Pass', 'BAI2601-paid0', 899900, 1061882), ('AKT/26-27/2', 2602, 'Delegate 1', 'p2602@example.com', 'Delegate Pass', 'BAI2602-paid1', 899900, 1061882)");
-db.run("INSERT INTO inquiries (event_id, inquiry_type, name, email, status) VALUES (1, 'speaking', 'S', 's@example.com', 'new'), (1, 'sponsorship', 'P', 'p@example.com', 'new'), (1, 'general', 'G', 'g@example.com', 'new'), (1, 'speaking', 'Old', 'o@example.com', 'responded')");
+db.run("INSERT INTO inquiries (event_id, inquiry_type, name, email, status) VALUES (1, 'speaking', 'S', 's@example.com', 'new'), (1, 'sponsorship', 'P', 'p@example.com', 'new'), (1, 'general', 'G', 'g@example.com', 'new'), (1, 'workshop_partner', 'W', 'w@example.com', 'new'), (1, 'speaking', 'Old', 'o@example.com', 'responded')");
 db.run("INSERT INTO booth_types (id, slug, name, size_label, width_m, depth_m, area_sqm, area_sqft, price_inr) VALUES (1, 'pod', 'Pod', '2x2', 2, 2, 4, 43, 48000)");
 db.run("INSERT INTO booth_requests (event_id, booth_type_id, company_name, contact_name, email, status) VALUES (1, 1, 'Booth Co', 'B', 'b@example.com', 'submitted'), (1, 1, 'Two Co', 'T', 't@example.com', 'submitted')");
 db.run("INSERT INTO mp_listings (company_id, company_name, product_name, description, status) VALUES (1, 'Mp Co', 'Thing', 'd', 'pending')");

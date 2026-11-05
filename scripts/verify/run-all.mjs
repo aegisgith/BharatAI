@@ -56,6 +56,9 @@ const SUITES = [
   { name: 'unit: the Government page (the nomination form's rules, its words, the people it names, the Govt tab on every page), each alone', args: ['unit-government.mjs'] },
   { name: 'system: a Ministry's nomination from a letter's link to Admin Enquiries (the page's own script, real worker, real SQLite, team email, the build)', args: ['smoke-government.mjs'] },
   { name: 'browser: the Government page on a phone and a laptop, the nomination on the real worker, the Govt tab', args: ['browser-government.cjs'], harness: 'delhi-harness.mjs', port: 8788, portEnv: true },
+  { name: 'unit: the call for workshop partners (every rule of the form, what it sends, its words, Admin label and Overview line), each alone', args: ['unit-workshop-partner.mjs'] },
+  { name: 'system: a workshop idea from a shared link to Admin Enquiries and the Overview board (the page\'s own script, real worker, real SQLite, team email)', args: ['smoke-workshop-partner.mjs'] },
+  { name: 'browser: the call for workshop partners on a phone and a laptop, the form on the real worker', args: ['browser-workshop-partner.cjs'], harness: 'delhi-harness.mjs', port: 8790, portEnv: true },
   { name: 'browser: delegate app (chat, connect, meet, inbox, back, XSS)', args: ['browser-delegate.cjs'], harness: 'app-harness.mjs', port: 8770 },
   // portEnv: the harness and the test read HARNESS_PORT, so a busy :8772 (another
   // session's run) moves this suite to :9772 instead of failing it.

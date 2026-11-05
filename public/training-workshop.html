@@ -532,6 +532,63 @@
             box-shadow: var(--shadow-sm);
         }
 
+        /* Call for workshop partners (5 Nov 2026): individuals and AI companies. */
+        .wp-herolink { display: inline-flex; align-items: center; gap: 0.5rem; margin-top: 1.1rem; font-weight: 700; color: #fff; text-decoration: underline; text-underline-offset: 4px; min-height: 44px; }
+        .wp-grid { display: grid; gap: 1.75rem; scroll-margin-top: calc(var(--nav-h) + 16px); }
+        .wp-left .section-title { text-align: left; margin-bottom: 0.75rem; }
+        .wp-lead { color: var(--dark-grey); font-size: 1.05rem; line-height: 1.65; margin: 0; text-wrap: pretty; }
+        .wp-who { list-style: none; margin: 1.25rem 0 0; padding: 0; }
+        .wp-who li { padding: 0.8rem 0; border-top: 1px solid #E3E6F6; color: var(--dark-grey); line-height: 1.5; font-size: 0.95rem; }
+        .wp-who li:last-child { border-bottom: 1px solid #E3E6F6; }
+        .wp-who b { display: block; font-family: var(--font-display); font-weight: 800; font-size: 1.1rem; color: var(--charcoal); }
+        .wp-steps { list-style: none; margin: 1.25rem 0 0; padding: 0; display: grid; gap: 0.7rem; }
+        .wp-steps li { display: flex; gap: 0.65rem; align-items: flex-start; font-weight: 600; color: var(--charcoal); font-size: 0.98rem; line-height: 1.45; }
+        .wp-steps li::before {
+            content: ""; flex: none; width: 20px; height: 20px; margin-top: 1px; border-radius: 50%;
+            background: #FF7A1A url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 8.3l2.6 2.6L12 5.4' fill='none' stroke='%23fff' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/15px no-repeat;
+        }
+        .wp-mail { margin: 1.25rem 0 0; color: var(--dark-grey); font-size: 0.95rem; line-height: 1.55; }
+        .wp-mail a { color: var(--saffron); font-weight: 700; }
+        .wp-card { background: #fff; border: 1px solid #E3E6F6; border-radius: 22px; padding: 1.4rem 1.15rem; box-shadow: 0 18px 44px rgba(13,15,30,0.08); }
+        .wp-group { margin: 0 0 0.75rem; font-family: var(--font-display); font-weight: 800; font-size: 1.08rem; color: var(--charcoal); }
+        .wp-group:not(:first-child) { margin-top: 1.5rem; }
+        .wp-field { margin-bottom: 0.9rem; }
+        .wp-field label { display: block; font-size: 0.88rem; font-weight: 700; color: var(--charcoal); margin-bottom: 0.3rem; }
+        .wp-field label small { font-weight: 500; color: var(--mid-grey); font-size: 0.82rem; }
+        .wp-field input, .wp-field textarea, .wp-field select { display: block; width: 100%; min-height: 48px; padding: 0.7rem 0.95rem; border: 1.5px solid #D5D9EE; border-radius: 12px; font: inherit; font-size: 1rem; color: var(--charcoal); background: #fff; }
+        .wp-field textarea { min-height: 96px; resize: vertical; line-height: 1.5; }
+        .wp-field input:focus, .wp-field textarea:focus, .wp-field select:focus { outline: none; border-color: var(--saffron); box-shadow: 0 0 0 3px rgba(255,107,0,0.15); }
+        .wp-field [aria-invalid="true"] { border-color: #D93025; }
+        .wp-two { display: grid; grid-template-columns: 1fr 1fr; gap: 0 0.75rem; }
+        .wp-name { display: grid; grid-template-columns: 1fr; gap: 0; }
+        .wp-choice { border: 0; padding: 0; margin: 0 0 1rem; min-width: 0; }
+        .wp-choice legend { padding: 0; font-size: 0.88rem; font-weight: 700; color: var(--charcoal); margin-bottom: 0.4rem; }
+        .wp-choice-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+        .wp-opt { position: relative; cursor: pointer; }
+        .wp-opt input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+        .wp-opt span { display: flex; align-items: center; height: 100%; min-height: 54px; padding: 0.5rem 0.75rem; border: 1.5px solid #D5D9EE; border-radius: 12px; background: var(--off-white); font-size: 0.92rem; font-weight: 700; line-height: 1.25; color: var(--charcoal); transition: border-color var(--t-fast), background var(--t-fast); }
+        .wp-opt input:checked + span { border-color: var(--saffron); background: rgba(255,107,0,0.07); box-shadow: 0 0 0 3px rgba(255,107,0,0.12); }
+        .wp-opt input:focus-visible + span { outline: 2px solid var(--electric); outline-offset: 2px; }
+        .wp-choice[aria-invalid="true"] .wp-opt span { border-color: #D93025; }
+        .wp-hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+        .wp-submit { width: 100%; justify-content: center; margin-top: 0.3rem; min-height: 52px; }
+        .wp-error { margin: 0.5rem 0 0; padding: 0.6rem 0.8rem; background: #FDECEA; color: #A0281D; border-radius: 10px; font-size: 0.9rem; font-weight: 600; line-height: 1.45; }
+        .wp-note { font-size: 0.82rem; color: var(--mid-grey); margin: 0.85rem 0 0; line-height: 1.5; }
+        .wp-note a { color: var(--dark-grey); text-decoration: underline; }
+        .wp-done { text-align: center; padding: 1rem 0.5rem; }
+        .wp-done-icon { width: 64px; height: 64px; border-radius: 50%; background: rgba(19,136,8,0.1); color: #138808; display: flex; align-items: center; justify-content: center; font-size: 1.8rem; margin: 0 auto 1rem; }
+        .wp-done h3 { font-family: var(--font-display); font-size: 1.4rem; font-weight: 800; color: var(--charcoal); margin-bottom: 0.5rem; }
+        .wp-done p { color: var(--dark-grey); line-height: 1.7; margin: 0 auto; max-width: 42ch; }
+        @media (min-width: 600px) {
+            .wp-card { padding: 2rem; }
+            .wp-name { grid-template-columns: 7rem 1fr 1fr; gap: 0 0.75rem; }
+            .wp-contact { display: grid; grid-template-columns: 1fr 1fr; gap: 0 0.75rem; }
+        }
+        @media (min-width: 960px) {
+            .wp-grid { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); gap: 3.5rem; align-items: start; }
+            .wp-left { position: sticky; top: calc(var(--nav-h) + 2rem); }
+        }
+
         /* Pricing Card */
         .pricing-highlight {
             background: linear-gradient(135deg, var(--saffron), var(--electric));
@@ -605,6 +662,7 @@
             <span class="page-header-eyebrow"><i class="fas fa-graduation-cap"></i> Hands-On Learning</span>
             <h1>Training<br>Workshops</h1>
             <p>Master cutting-edge AI technologies through expert-led, hands-on workshops</p>
+            <a href="#workshop-partners" class="wp-herolink">Want to lead a workshop? Call for workshop partners <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
         </div>
     </section>
 
@@ -1111,6 +1169,135 @@
         </div>
     </section>
 
+    <!-- CALL FOR WORKSHOP PARTNERS: saved as an enquiry of type workshop_partner (Admin, Enquiries; Overview, Waiting on you) -->
+    <section class="section-pad" style="background:white;">
+        <div class="container">
+            <div class="wp-grid" id="workshop-partners">
+                <div class="wp-left reveal">
+                    <h2 class="section-title">Call for Workshop <span class="accent">Partners</span></h2>
+                    <p class="wp-lead">Have a workshop you would like to lead? We invite individuals and AI companies to propose one for Bharat AI Innovation 2026, at World Trade Center Mumbai, 20&ndash;21 November 2026.</p>
+                    <ul class="wp-who">
+                        <li><b>Individuals</b>Practitioners, researchers, founders and trainers with a session to lead.</li>
+                        <li><b>AI companies</b>Teams who can teach people to build with AI, using what they know best.</li>
+                    </ul>
+                    <ul class="wp-steps">
+                        <li>Tell us your workshop idea and what it needs</li>
+                        <li>Our team reads it and writes back to you</li>
+                        <li>If it fits the programme, we agree the slot with you</li>
+                    </ul>
+                    <p class="wp-mail">Prefer email? Write to <a href="mailto:info@bharataiinnovation.com?subject=Workshop%20partner">info@bharataiinnovation.com</a> or call <a href="tel:+918976580367">+91 89765 80367</a>.</p>
+                </div>
+
+                <div class="wp-card reveal">
+                    <form id="wp-form" novalidate>
+                        <h3 class="wp-group">Your workshop</h3>
+                        <div class="wp-field">
+                            <label for="wp-topic">Workshop idea or topic</label>
+                            <input id="wp-topic" name="topic" type="text" autocomplete="off" maxlength="160">
+                        </div>
+                        <div class="wp-field">
+                            <label for="wp-brief">Brief</label>
+                            <textarea id="wp-brief" name="brief" maxlength="2000" placeholder="What it covers and what people will take away."></textarea>
+                        </div>
+                        <fieldset class="wp-choice" id="wp-format-set">
+                            <legend>Hands-on or pure theory?</legend>
+                            <div class="wp-choice-grid">
+                                <label class="wp-opt"><input type="radio" name="format" id="wp-format-hands" value="Hands-on"><span>Hands-on</span></label>
+                                <label class="wp-opt"><input type="radio" name="format" value="Pure theory"><span>Pure theory</span></label>
+                            </div>
+                        </fieldset>
+                        <div class="wp-two">
+                            <div class="wp-field">
+                                <label for="wp-min">Shortest time <small>(minutes)</small></label>
+                                <input id="wp-min" name="duration_min" type="text" inputmode="numeric" autocomplete="off" maxlength="3" placeholder="60">
+                            </div>
+                            <div class="wp-field">
+                                <label for="wp-max">Longest time <small>(minutes)</small></label>
+                                <input id="wp-max" name="duration_max" type="text" inputmode="numeric" autocomplete="off" maxlength="3" placeholder="90">
+                            </div>
+                        </div>
+                        <div class="wp-field">
+                            <label for="wp-audience">Target audience</label>
+                            <input id="wp-audience" name="target_audience" type="text" autocomplete="off" maxlength="200" placeholder="For example: enterprise teams">
+                        </div>
+                        <div class="wp-field">
+                            <label for="wp-attend">Who should attend?</label>
+                            <textarea id="wp-attend" name="who_should_attend" maxlength="800" placeholder="The roles and experience that suit it. For example: software developers with some Python."></textarea>
+                        </div>
+                        <div class="wp-field">
+                            <label for="wp-prereq">Prerequisites <small>(leave empty if none)</small></label>
+                            <textarea id="wp-prereq" name="prerequisites" maxlength="800" placeholder="What people should already know or bring."></textarea>
+                        </div>
+                        <div class="wp-field">
+                            <label for="wp-setup">Setup requirements <small>(leave empty if none)</small></label>
+                            <textarea id="wp-setup" name="setup_requirements" maxlength="800" placeholder="For example: projector, internet, laptops, GPU access, room layout."></textarea>
+                        </div>
+
+                        <h3 class="wp-group">About you</h3>
+                        <fieldset class="wp-choice" id="wp-as-set">
+                            <legend>You are applying as</legend>
+                            <div class="wp-choice-grid">
+                                <label class="wp-opt"><input type="radio" name="applying_as" id="wp-as-person" value="Individual"><span>An individual</span></label>
+                                <label class="wp-opt"><input type="radio" name="applying_as" value="AI company"><span>An AI company</span></label>
+                            </div>
+                        </fieldset>
+                        <div class="wp-field">
+                            <label for="wp-company">Company name <small>(individuals can leave this empty)</small></label>
+                            <input id="wp-company" name="organization" type="text" autocomplete="organization" maxlength="160">
+                        </div>
+                        <div class="wp-name">
+                            <div class="wp-field">
+                                <label for="wp-salutation">Salutation</label>
+                                <select id="wp-salutation" name="salutation" autocomplete="honorific-prefix">
+                                    <option value="">Choose</option>
+                                    <option>Mr.</option>
+                                    <option>Ms.</option>
+                                    <option>Mrs.</option>
+                                    <option>Dr.</option>
+                                    <option>Prof.</option>
+                                    <option>Shri</option>
+                                    <option>Smt.</option>
+                                </select>
+                            </div>
+                            <div class="wp-field">
+                                <label for="wp-first">First name</label>
+                                <input id="wp-first" name="first_name" type="text" autocomplete="given-name" maxlength="80">
+                            </div>
+                            <div class="wp-field">
+                                <label for="wp-last">Last name</label>
+                                <input id="wp-last" name="last_name" type="text" autocomplete="family-name" maxlength="80">
+                            </div>
+                        </div>
+                        <div class="wp-contact">
+                            <div class="wp-field">
+                                <label for="wp-email">Email</label>
+                                <input id="wp-email" name="email" type="email" inputmode="email" autocomplete="email" maxlength="160">
+                            </div>
+                            <div class="wp-field">
+                                <label for="wp-mobile">Mobile</label>
+                                <input id="wp-mobile" name="mobile" type="tel" inputmode="tel" autocomplete="tel" maxlength="20">
+                            </div>
+                        </div>
+                        <div class="wp-hp" aria-hidden="true">
+                            <label for="wp-website">Leave this empty</label>
+                            <input id="wp-website" name="website" type="text" tabindex="-1" autocomplete="off">
+                        </div>
+
+                        <button type="submit" class="btn btn-primary btn-lg wp-submit" id="wp-submit">Send my workshop idea <i class="fas fa-arrow-right" aria-hidden="true"></i></button>
+                        <p class="wp-error" id="wp-error" role="alert" hidden></p>
+                        <p class="wp-note">We use these details only to reply about your workshop. <a href="/privacy">Privacy policy</a></p>
+                    </form>
+
+                    <div class="wp-done" id="wp-done" hidden>
+                        <div class="wp-done-icon"><i class="fas fa-check" aria-hidden="true"></i></div>
+                        <h3>Workshop idea received</h3>
+                        <p id="wp-done-text">Our team will write to you.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
     <!-- CTA -->
     <section class="cta-section">
         <div class="container">
@@ -1186,6 +1373,126 @@
         </div>
     </footer>
 
+    <script>
+    // The call for workshop partners: saved as an enquiry of type "workshop_partner"
+    // (Admin, Enquiries; Overview, Waiting on you), subject "Workshop · <topic>", and the
+    // team is emailed as for any contact enquiry.
+    (function () {
+      var form = document.getElementById('wp-form');
+      if (!form) return;
+      var err = document.getElementById('wp-error');
+      var btn = document.getElementById('wp-submit');
+      var errHome = err.parentNode;
+      var params = new URLSearchParams(location.search);
+      var byId = function (id) { return document.getElementById(id); };
+      var val = function (id) { return byId(id).value.trim(); };
+      var picked = function (name) {
+        var c = form.querySelector('input[name="' + name + '"]:checked');
+        return c ? c.value : '';
+      };
+      var minutes = function (v) { return /^[0-9]+$/.test(v) && Number(v) > 0; };
+
+      // The form is long, so the message stands under the box it is about.
+      function clearMarks() {
+        Array.prototype.forEach.call(form.querySelectorAll('[aria-invalid]'), function (el) { el.removeAttribute('aria-invalid'); });
+      }
+      function fail(msg, field) {
+        err.textContent = msg;
+        err.hidden = false;
+        if (field) {
+          field.parentNode.appendChild(err);
+          field.setAttribute('aria-invalid', 'true');
+          field.focus();
+        } else {
+          errHome.insertBefore(err, btn.nextSibling);
+        }
+      }
+      // A choice of two: the message goes under the pair, the first one takes the focus.
+      function failChoice(msg, setId, firstId) {
+        err.textContent = msg;
+        err.hidden = false;
+        var set = byId(setId);
+        set.appendChild(err);
+        set.setAttribute('aria-invalid', 'true');
+        byId(firstId).focus();
+      }
+
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        err.hidden = true;
+        clearMarks();
+        if (!val('wp-topic')) return fail('Please write your workshop idea or topic.', byId('wp-topic'));
+        if (!val('wp-brief')) return fail('Please write a short brief.', byId('wp-brief'));
+        var format = picked('format');
+        if (!format) return failChoice('Please choose hands-on or pure theory.', 'wp-format-set', 'wp-format-hands');
+        var min = val('wp-min'), max = val('wp-max');
+        if (!minutes(min)) return fail('Please write the shortest time in minutes, as a number.', byId('wp-min'));
+        if (!minutes(max)) return fail('Please write the longest time in minutes, as a number.', byId('wp-max'));
+        if (Number(max) < Number(min)) return fail('The longest time cannot be less than the shortest time.', byId('wp-max'));
+        if (!val('wp-audience')) return fail('Please write the target audience.', byId('wp-audience'));
+        if (!val('wp-attend')) return fail('Please write who should attend.', byId('wp-attend'));
+        var as = picked('applying_as');
+        if (!as) return failChoice('Please choose: an individual or an AI company.', 'wp-as-set', 'wp-as-person');
+        if (as === 'AI company' && !val('wp-company')) return fail('Please write your company name.', byId('wp-company'));
+        if (!val('wp-salutation')) return fail('Please choose a salutation.', byId('wp-salutation'));
+        if (!val('wp-first')) return fail('Please write your first name.', byId('wp-first'));
+        if (!val('wp-last')) return fail('Please write your last name.', byId('wp-last'));
+        var email = val('wp-email');
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return fail('Please check your email address. It should look like name@example.com.', byId('wp-email'));
+        if (val('wp-mobile').replace(/[^0-9]/g, '').length < 10) return fail('Please check your mobile number. It needs at least 10 digits.', byId('wp-mobile'));
+
+        var name = val('wp-salutation') + ' ' + val('wp-first') + ' ' + val('wp-last');
+
+        // Bots fill every box; people never see this one.
+        if (byId('wp-website').value) return done(name, email);
+
+        var topic = val('wp-topic');
+        var duration = (min === max ? min : min + ' to ' + max) + ' minutes';
+        var meta = { applying_as: as, topic: topic, format: format, duration: duration, salutation: val('wp-salutation'), first_name: val('wp-first'), last_name: val('wp-last'), page: '/training-workshop' };
+        ['utm_source', 'utm_medium', 'utm_campaign', 'source'].forEach(function (k) { if (params.get(k)) meta[k] = params.get(k); });
+
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...';
+        fetch('/api/inquiries', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            inquiry_type: 'workshop_partner',
+            name: name,
+            email: email,
+            phone: val('wp-mobile'),
+            organization: val('wp-company'),
+            subject: 'Workshop · ' + topic,
+            message: 'Workshop idea or topic: ' + topic +
+              '\n\nBrief: ' + val('wp-brief') +
+              '\n\nHands-on or pure theory: ' + format +
+              '\n\nTime needed: ' + duration +
+              '\n\nTarget audience: ' + val('wp-audience') +
+              '\n\nWho should attend: ' + val('wp-attend') +
+              '\n\nPrerequisites: ' + (val('wp-prereq') || 'None') +
+              '\n\nSetup requirements: ' + (val('wp-setup') || 'None') +
+              '\n\nApplying as: ' + as,
+            metadata: meta
+          })
+        }).then(function (r) {
+          return r.json().catch(function () { return {}; }).then(function (d) {
+            if (!r.ok) throw new Error(d.error || 'Something went wrong. Please try again.');
+            done(name, email);
+          });
+        }).catch(function (x) {
+          btn.disabled = false;
+          btn.innerHTML = 'Send my workshop idea <i class="fas fa-arrow-right" aria-hidden="true"></i>';
+          fail(x && x.message && x.message !== 'Failed to fetch' ? x.message : 'Could not send. Please check your internet and try again.');
+        });
+      });
+
+      function done(name, email) {
+        form.hidden = true;
+        byId('wp-done-text').textContent = 'Thank you, ' + name + '. Our team will write to you at ' + email + '.';
+        byId('wp-done').hidden = false;
+      }
+    })();
+    </script>
     <script src="js/main.js?v=20261029"></script>
 </body>
 </html>

@@ -29,8 +29,8 @@ const rs = (paise) => '₹' + Math.round(paise / 100).toLocaleString('en-IN');
   check('api: paid on this site = 27 Delegates and 7 VIPs at the gateway amounts', sold['Delegate Pass']?.n === 27 && sold['Delegate Pass']?.total === 27 * 1061882 && sold['VIP Pass']?.n === 7 && sold['VIP Pass']?.total === 7 * 2359882, JSON.stringify(api.money?.sold));
   const hand = Object.fromEntries((api.money?.by_hand || []).map(h => [h.pass, h]));
   check('api: by hand = 11 Academic, 8 amounts typed in, 3 without', hand['Academic Pass']?.n === 11 && hand['Academic Pass']?.recorded_paise === Math.round(8 * 471882) && hand['Academic Pass']?.no_amount === 3, JSON.stringify(api.money?.by_hand));
-  check('api: waiting = 24 not paid, 32 invoices due, 3 enquiries, 2 booths, 1 listing, 1 room, 8 without a seat, 0 photos',
-    api.todo?.not_paid === 24 && api.todo?.invoice_due === 32 && api.todo?.inquiries_new === 3 && api.todo?.booths_submitted === 2 && api.todo?.listings_pending === 1 && api.todo?.rooms_held === 1 && api.todo?.workshop_unchosen === 8 && api.todo?.photos_flagged === 0,
+  check('api: waiting = 24 not paid, 32 invoices due, 4 enquiries (one a workshop idea), 2 booths, 1 listing, 1 room, 8 without a seat, 0 photos',
+    api.todo?.not_paid === 24 && api.todo?.invoice_due === 32 && api.todo?.inquiries_new === 4 && api.todo?.booths_submitted === 2 && api.todo?.listings_pending === 1 && api.todo?.rooms_held === 1 && api.todo?.workshop_unchosen === 8 && api.todo?.photos_flagged === 0,
     JSON.stringify(api.todo));
   const onlineTotal = (api.money?.sold || []).reduce((s, x) => s + x.total, 0);
   const onlineGst = (api.money?.sold || []).reduce((s, x) => s + x.gst, 0);
@@ -71,12 +71,18 @@ const rs = (paise) => '₹' + Math.round(paise / 100).toLocaleString('en-IN');
     check('invoices: 2 raised, 32 paid online still need one; 12 tried online and did not get through; 3 by hand with no amount', /2 GST invoices raised/.test(text) && /32 paid online still need one/.test(text) && /12 tried to pay online/.test(text) && /3 with no amount on record/.test(text), text.slice(text.indexOf('GST invoice') - 20, text.indexOf('GST invoice') + 300));
 
     // ---- waiting on you, and that each line goes somewhere ----
-    check('waiting on you: the eight lines with their counts and 71 in all', /71 in all/.test(text) && /24\s+chose a paid pass/.test(text) && /32\s+paid online, GST invoice/.test(text) && /3\s+new enquiries to answer \(1 sponsorship, 1 speaking, 1 general\)/.test(text) && /2\s+booth requests/.test(text) && /1\s+AI Marketplace listings/.test(text) && /1\s+boardroom bookings/.test(text) && /8\s+Premium or VIP holders/.test(text) && /0\s+photos the desk flagged/.test(text), text.slice(text.indexOf('Waiting on you')));
+    check('waiting on you: the nine lines with their counts and 72 in all', /72 in all/.test(text) && /24\s+chose a paid pass/.test(text) && /32\s+paid online, GST invoice/.test(text) && /3\s+new enquiries to answer \(1 sponsorship, 1 speaking, 1 general\)/.test(text) && /1\s+workshop partner ideas to read/.test(text) && /2\s+booth requests/.test(text) && /1\s+AI Marketplace listings/.test(text) && /1\s+boardroom bookings/.test(text) && /8\s+Premium or VIP holders/.test(text) && /0\s+photos the desk flagged/.test(text), text.slice(text.indexOf('Waiting on you')));
     const mpHref = await page.evaluate(() => { const a = [...document.querySelectorAll('#ov-board a')].find(x => /Marketplace listings/.test(x.innerText)); return a ? a.getAttribute('href') : ''; });
     check('the Marketplace line opens /marketplace/admin', mpHref === '/marketplace/admin', mpHref);
     await page.evaluate(() => { const a = [...document.querySelectorAll('#ov-board a')].find(x => /booth requests/.test(x.innerText)); a.click(); });
     const went = await until(() => page.evaluate(() => !document.getElementById('section-booth-requests').classList.contains('hidden') && document.getElementById('section-overview').classList.contains('hidden')), 5000);
     check('the booth requests line opens the Booth Requests section', went, 'section did not switch');
+    await page.evaluate(() => switchSection('overview'));
+    await until(() => page.evaluate(() => /Waiting on you/.test((document.getElementById('ov-board') || {}).innerText || '')), 20000);
+    await page.evaluate(() => { const a = [...document.querySelectorAll('#ov-board a')].find(x => /workshop partner ideas/.test(x.innerText)); a.click(); });
+    const wpList = await until(() => page.evaluate(() => { const s = document.getElementById('section-inquiries'); return !s.classList.contains('hidden') && /Workshop Partner/.test(s.innerText) && inquiryFilterType === 'workshop_partner' && lastInquiries.length === 1 && lastInquiries[0].inquiry_type === 'workshop_partner'; }), 8000);
+    check('the workshop partner line opens Enquiries showing only those, under their own label', wpList, 'filter did not apply');
+    await page.evaluate(() => { inquiryFilterType = ''; });
     await page.evaluate(() => switchSection('overview'));
     await until(() => page.evaluate(() => /Waiting on you/.test((document.getElementById('ov-board') || {}).innerText || '')), 20000);
 
@@ -123,7 +129,8 @@ const rs = (paise) => '₹' + Math.round(paise / 100).toLocaleString('en-IN');
     });
     check('on a 390px phone the board fits the screen', phone.board <= phone.inner, JSON.stringify(phone));
     if (phone.page > phone.inner) console.log('note: the Overview page is ' + phone.page + 'px wide on a ' + phone.inner + 'px phone; past the edge: ' + JSON.stringify(phone.wide));
-    const fits = await page.evaluate(() => { const card = document.querySelector('#ov-board .overflow-x-auto'); return card && card.scrollWidth > card.clientWidth; });
+    // Waits, because the Overview's live refresh can empty the board at this very moment.
+    const fits = await until(() => page.evaluate(() => { const card = document.querySelector('#ov-board .overflow-x-auto'); return !!card && card.scrollWidth > card.clientWidth; }), 8000);
     check('the pass table scrolls inside its own card on a phone', fits === true, String(fits));
   } finally {
     await browser.close();
