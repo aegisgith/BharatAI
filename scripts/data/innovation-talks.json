@@ -408,5 +408,14 @@
     "photo": "",
     "slug": "vivek-khandekar",
     "logoFile": "images/logo-maharashtra-forest.webp"
+  },
+  {
+    "name": "Srinivas Kancharla",
+    "title": "Program Specialist",
+    "company": "Office of the Principal Scientific Adviser to the Government of India",
+    "topic": "The AI components of MANTHAN–UTTHAN: the platform's capabilities, innovations and potential impact",
+    "photo": "",
+    "slug": "srinivas-kancharla",
+    "logoFile": "images/logo-psa.webp"
   }
 ]

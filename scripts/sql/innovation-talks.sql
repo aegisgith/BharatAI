@@ -294,3 +294,10 @@ WHERE NOT EXISTS (SELECT 1 FROM innovation_talks WHERE event_id = 1 AND speaker_
 
 UPDATE innovation_talks SET speaker_photo_url = '/images/talks/vivek-khandekar.webp'
 WHERE event_id = 1 AND speaker_name = 'Shri Vivek Khandekar (IFS)' AND company = 'Maharashtra Forest Department' AND COALESCE(speaker_photo_url, '') = '';
+
+INSERT INTO innovation_talks (event_id, slot_no, session_type, time_slot, speaker_name, company, topic, status, speaker_title, speaker_photo_url, notes)
+SELECT 1, 42, 'Morning', 'To be announced', 'Srinivas Kancharla', 'Office of the Principal Scientific Adviser to the Government of India', 'The AI components of MANTHAN–UTTHAN: the platform''s capabilities, innovations and potential impact', 'confirmed', 'Program Specialist', '/images/talks/srinivas-kancharla.webp', 'Imported from the Innovation Talk sheet, 12 Oct 2026'
+WHERE NOT EXISTS (SELECT 1 FROM innovation_talks WHERE event_id = 1 AND speaker_name = 'Srinivas Kancharla' AND company = 'Office of the Principal Scientific Adviser to the Government of India');
+
+UPDATE innovation_talks SET speaker_photo_url = '/images/talks/srinivas-kancharla.webp'
+WHERE event_id = 1 AND speaker_name = 'Srinivas Kancharla' AND company = 'Office of the Principal Scientific Adviser to the Government of India' AND COALESCE(speaker_photo_url, '') = '';

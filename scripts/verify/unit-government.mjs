@@ -123,7 +123,7 @@ const count = (cls) => (html.split('<ul class="' + cls)[1] || '').split('</ul>')
 check('six Ministers, so two rows of three', count('gv-mins') === 6, count('gv-mins'));
 check('the government speakers fill three rows of four on a laptop', count('gv-offs') >= 9 && count('gv-offs') <= 16, count('gv-offs'));
 check('the talks are the organiser\'s five', (html.match(/<article class="gv-talk/g) || []).length === 5);
-for (const w of ['Prashant Mehra', 'Srinivas Kancharla', 'Office of the Principal Scientific Adviser to the Government of India', 'MANTHAN–UTTHAN', 'GeoAI Forest Encroachment Monitoring & Ganesh Kavach App']) check(`the talks name: ${w}`, has(w));
+for (const w of ['Prashant Mehra', 'Srinivas Kancharla Program Specialist', 'Office of the Principal Scientific Adviser to the Government of India', 'MANTHAN–UTTHAN', 'GeoAI Forest Encroachment Monitoring & Ganesh Kavach App']) check(`the talks name: ${w}`, has(w));
 for (const l of ['logo-psa.webp', 'logo-midc.webp', 'logo-delhi-govt.webp', 'logo-maharashtra-forest.webp', 'exhibitors/ministry-of-tribal-affairs.webp', 'logo-meity.webp']) check(`shows the department's logo: ${l}`, html.includes('src="images/' + l + '"'));
 check('Ganesh Nagarajan and Adi Vaani are in the talks list', has('Ganesh Nagarajan') && has('Adi Vaani') && /Ganesh Nagarajan.*Adi Vaani/.test(llms));
 const hidden = read('scripts/data/hidden-speakers.md');
