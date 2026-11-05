@@ -287,3 +287,10 @@ WHERE NOT EXISTS (SELECT 1 FROM innovation_talks WHERE event_id = 1 AND speaker_
 
 UPDATE innovation_talks SET speaker_photo_url = '/images/talks/shishir-sharan.webp'
 WHERE event_id = 1 AND speaker_name = 'Shishir Sharan' AND company = 'Daten Technology Solutions' AND COALESCE(speaker_photo_url, '') = '';
+
+INSERT INTO innovation_talks (event_id, slot_no, session_type, time_slot, speaker_name, company, topic, status, speaker_title, speaker_photo_url, notes)
+SELECT 1, 41, 'Morning', 'To be announced', 'Shri Vivek Khandekar (IFS)', 'Maharashtra Forest Department', 'GeoAI Forest Encroachment Monitoring & Ganesh Kavach App', 'confirmed', 'Principal Chief Conservator of Forests (Social Forestry)', '/images/talks/vivek-khandekar.webp', 'Imported from the Innovation Talk sheet, 12 Oct 2026'
+WHERE NOT EXISTS (SELECT 1 FROM innovation_talks WHERE event_id = 1 AND speaker_name = 'Shri Vivek Khandekar (IFS)' AND company = 'Maharashtra Forest Department');
+
+UPDATE innovation_talks SET speaker_photo_url = '/images/talks/vivek-khandekar.webp'
+WHERE event_id = 1 AND speaker_name = 'Shri Vivek Khandekar (IFS)' AND company = 'Maharashtra Forest Department' AND COALESCE(speaker_photo_url, '') = '';

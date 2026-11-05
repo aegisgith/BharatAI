@@ -399,5 +399,14 @@
     "topic": "",
     "photo": "4 Nov Presentor/Shishir Sharan- Daten Intelligenz, CEO_.jpg",
     "slug": "shishir-sharan"
+  },
+  {
+    "name": "Shri Vivek Khandekar (IFS)",
+    "title": "Principal Chief Conservator of Forests (Social Forestry)",
+    "company": "Maharashtra Forest Department",
+    "topic": "GeoAI Forest Encroachment Monitoring & Ganesh Kavach App",
+    "photo": "",
+    "slug": "vivek-khandekar",
+    "logoFile": "images/logo-maharashtra-forest.webp"
   }
 ]

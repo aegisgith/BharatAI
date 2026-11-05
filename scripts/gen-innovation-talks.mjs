@@ -18,6 +18,8 @@
 //    its "4 Nov Presentor" folder. Run against a copy of the 23 Oct folder with the
 //    4 Nov files added, kept in a short path such as c:\tmp: the longest names pass
 //    Windows' 260-character limit from the scratchpad, and sharp cannot open them.
+//    A speaker whose JSON "photo" is empty (Shri Vivek Khandekar's came by chat, 5 Nov
+//    2026) keeps the file already in public/images/talks: nothing rebakes it.
 // 2. The block between <!-- talks:start --> and <!-- talks:end --> in
 //    public/exhibition.html (the speaker wall under "Innovation Stage") and in
 //    public/llms.txt (so AI assistants can name the speakers and topics).
@@ -106,10 +108,11 @@ for (const t of talks) {
 // the company as the wall does. The organiser's "Presenter Logo" folder (4 Nov 2026)
 // pairs each presenter with that same logo. Sized as the wall sizes them, a wide
 // wordmark lower than a square mark, so they read at the same weight. A company
-// with no logo on the wall gets its name only.
+// with no logo on the wall gets its name only. A speaker who is not an exhibitor (a
+// government department showing its work) names their logo in the JSON's "logoFile".
 const slugOf = (name) => name.toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 for (const t of talks) {
-  const file = `images/exhibitors/${slugOf(t.company)}.webp`
+  const file = t.logoFile || `images/exhibitors/${slugOf(t.company)}.webp`
   if (!existsSync(join('public', file))) continue
   const m = await sharp(join('public', file)).metadata()
   const r = m.width / m.height
@@ -164,7 +167,7 @@ const lines = talks.map((t) => `- **${t.name}** (${t.title ? t.title + ', ' : ''
 fill('public/llms.txt', [
   '## Innovation Talk & Showcase speakers',
   '',
-  `${talks.length} exhibitor stage talks at Bharat AI Innovation 2026, 20–21 November, WTC Mumbai (hall and times to be announced):`,
+  `${talks.length} stage talks by exhibitors and government departments at Bharat AI Innovation 2026, 20–21 November, WTC Mumbai (hall and times to be announced):`,
   ...lines,
   '',
 ].join('\n') + '\n')
