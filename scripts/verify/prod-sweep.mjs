@@ -18,7 +18,7 @@ r = await hit('/app');
 check('/app 200 with security headers', r.status === 200 && r.h['x-content-type-options'] === 'nosniff' && r.h['x-frame-options'] === 'SAMEORIGIN', r.status + ' ' + JSON.stringify([r.h['x-content-type-options'], r.h['x-frame-options']]));
 r = await hit('/admin');
 check('/admin 200', r.status === 200, r.status);
-for (const p of ['/', '/delhi', '/campus-djsanghvi', '/campus-series', '/marketplace', '/partner', '/about']) {
+for (const p of ['/', '/delhi', '/government', '/campus-djsanghvi', '/campus-series', '/marketplace', '/partner', '/about']) {
   r = await hit(p);
   check(`${p} 200`, r.status === 200, r.status);
 }
@@ -31,6 +31,12 @@ r = await hit('/delhi-2027.ics');
 check('the Delhi calendar file is a calendar file', r.status === 200 && r.text.includes('DTSTART;VALUE=DATE:20270729') && !String(r.h['content-type'] || '').includes('html'), r.status + ' ' + r.h['content-type']);
 r = await hit('/');
 check('the home menu has the Delhi 2027 tab', r.text.includes('href="/delhi" class="nav-link"'), 'no tab');
+r = await hit('/government');
+check('/government names the dates and the form, and offers no price', r.text.includes('20–21 November 2026') && r.text.includes('id="gv-form"') && !r.text.includes('₹'), r.status);
+r = await hit('/');
+check('the home menu has the Govt tab', r.text.includes('href="/government" class="nav-link"'), 'no tab');
+r = await hit('/images/government/governance-panel-820.webp');
+check('the Government photograph is a picture', r.status === 200 && String(r.h['content-type'] || '').includes('image'), r.status + ' ' + r.h['content-type']);
 r = await hit('/images/delhi/mandapam-dusk-phone.webp');
 check('the Delhi photograph is a picture', r.status === 200 && String(r.h['content-type'] || '').includes('image'), r.status + ' ' + r.h['content-type']);
 

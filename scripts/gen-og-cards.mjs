@@ -217,6 +217,14 @@ export const CARDS = {
     sub: 'The terms for registering for and attending Bharat AI Innovation Conference & Exhibition 2026.',
     chips: ['Bharat AI Innovation 2026'],
   },
+  government: {
+    path: '/government',
+    label: 'For Ministries and Departments',
+    headline: 'AI for 1.4 billion Indians',
+    accent: '1.4 billion',
+    sub: 'Bring your AI initiative to the national stage.',
+    chips: ['Talks', 'Roundtables', 'Pavilions'],
+  },
   // A different edition, so it carries its own date and place.
   delhi: {
     path: '/delhi',

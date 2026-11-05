@@ -98,6 +98,16 @@
         </image:image>
     </url>
 
+    <!-- Government AI initiatives -->
+    <url>
+        <loc>https://bharataiinnovation.com/government</loc>
+        <lastmod>2026-11-05</lastmod>
+        <image:image>
+            <image:loc>https://bharataiinnovation.com/images/og/government.jpg</image:loc>
+            <image:title>Government AI initiatives at Bharat AI Innovation</image:title>
+        </image:image>
+    </url>
+
     <!-- Delhi edition, 29-30 July 2027 -->
     <url>
         <loc>https://bharataiinnovation.com/delhi</loc>

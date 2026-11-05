@@ -17764,7 +17764,7 @@ app.post('/api/inquiries', async (c) => {
   if (!name || !email) return c.json({ error: 'Name and email are required' }, 400)
   if (!inquiry_type) return c.json({ error: 'Inquiry type is required' }, 400)
 
-  const validTypes = ['general', 'exhibition', 'booth_inquiry', 'sponsorship', 'speaking', 'media', 'group_registration', 'pass_upgrade', 'meeting_room', 'other']
+  const validTypes = ['general', 'exhibition', 'booth_inquiry', 'sponsorship', 'speaking', 'government', 'media', 'group_registration', 'pass_upgrade', 'meeting_room', 'other']
   if (!validTypes.includes(inquiry_type)) return c.json({ error: 'Invalid inquiry type' }, 400)
 
   const result = await c.env.DB.prepare(
@@ -41804,6 +41804,7 @@ function adminPageScript(): string {
           booth_inquiry: { icon: 'fa-store-alt', color: 'amber', label: 'Booth Inquiry' },
           sponsorship: { icon: 'fa-handshake', color: 'orange', label: 'Sponsorship' },
           speaking: { icon: 'fa-microphone-alt', color: 'purple', label: 'Speaking' },
+          government: { icon: 'fa-building-columns', color: 'green', label: 'Government' },
           media: { icon: 'fa-newspaper', color: 'rose', label: 'Media' },
           group_registration: { icon: 'fa-users', color: 'green', label: 'Group Reg' },
           pass_upgrade: { icon: 'fa-arrow-up-right-from-square', color: 'amber', label: 'Pass Upgrade' },

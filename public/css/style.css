@@ -3871,10 +3871,13 @@ section { position: relative; }
    capped at --max-w, so a wider window gives it no more room: 13 links at the
    old spacing overflowed by up to 53px at every width. The padding, gap and
    text below were tightened to fit, with room to spare on every page.
-   If you add another nav item, re-check this: each extra link costs roughly
-   90px, and there is no spacing left to give. */
+   Since 5 Nov 2026 it is 14 (Govt after Partner): a short word, about 40px, won
+   back from the bar's side padding and the links' padding. If you add another
+   nav item, re-check this: there is no spacing left to give, so a 15th link
+   means removing one or a later toggle breakpoint. */
 @media (min-width: 1280px) {
-  .nav-link { padding: 0.5rem 0.36rem; font-size: 0.8rem; }
+  .nav-container { padding-left: 1.5rem; padding-right: 1.5rem; }
+  .nav-link { padding: 0.5rem 0.31rem; font-size: 0.8rem; }
   .nav-cta { padding: 0.55rem 0.95rem; font-size: 0.8rem; margin-left: 0.25rem; }
   .nav-menu { gap: 0; }
 }
