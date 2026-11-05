@@ -253,11 +253,9 @@
         .gv-stacked .gv-tile b { font-size: 1.9rem; }
         .gv-stacked .gv-tile p { font-size: 1.05rem; max-width: 56ch; }
     }
-    /* Displacement hover: on a mouse, the photograph ripples and settles. The filter is
-       on only while it moves, so it costs nothing at rest and nothing on a phone. */
+    /* On a mouse, the photograph eases in a little. */
     .gv-tile img { transition: transform 0.7s var(--ease-out); }
     @media (hover: hover) and (pointer: fine) { .gv-tile:hover img { transform: scale(1.05); } }
-    .gv-svg-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
 
     .gv-photo-note { margin: 1rem 0 0; text-align: center; font-size: 0.8rem; color: rgba(255,255,255,0.62); }
     .gv-ways-cta { margin-top: 1.5rem; text-align: center; }
@@ -558,8 +556,6 @@
         </div>
     </section>
 
-    <svg class="gv-svg-defs" aria-hidden="true" focusable="false"><filter id="gv-ripple" x="-5%" y="-5%" width="110%" height="110%" color-interpolation-filters="sRGB"><feTurbulence type="fractalNoise" baseFrequency="0.009 0.016" numOctaves="2" seed="7"/><feDisplacementMap id="gv-ripple-map" in="SourceGraphic" scale="0" xChannelSelector="R" yChannelSelector="G"/></filter></svg>
-
     <!-- ===== HOW TO TAKE PART ===== -->
     <section class="gv-ways gv-sec" id="ways">
         <div class="container">
@@ -569,11 +565,11 @@
             </div>
             <ul class="gv-tiles">
                 <li class="gv-tile">
-                    <img width="1600" height="1066" loading="lazy" decoding="async" src="images/gallery/OMY_4001.webp" alt="A speaker presenting on stage beside a large screen" style="object-position:72% center">
+                    <img width="1600" height="1066" loading="lazy" decoding="async" src="images/gallery/MNP_8547.webp" alt="A speaker explaining an idea on stage, gesturing with both hands" style="object-position:50% 22%">
                     <div><span class="gv-tag">10 minutes on stage</span><b>Innovation Talk &amp; Showcase</b><p>Present and demonstrate your AI initiatives, flagship projects and achievements.</p></div>
                 </li>
                 <li class="gv-tile">
-                    <img width="1600" height="1066" loading="lazy" decoding="async" src="images/gallery/577B0776.webp" alt="A keynote speaker on a large lit stage between two tall screens">
+                    <img width="1024" height="683" loading="lazy" decoding="async" src="images/gallery/sx04jhlV.webp" alt="A speaker in a dark suit addressing the hall from a dark stage" style="object-position:50% 15%">
                     <div><span class="gv-tag">Complimentary for Secretary-level officers</span><b>Keynote &amp; Panel Discussion</b><p>Share your vision, experience and lessons on AI adoption.</p></div>
                 </li>
                 <li class="gv-tile">
@@ -960,33 +956,6 @@
       window.addEventListener('scroll', ask, { passive: true });
       window.addEventListener('resize', ask);
       paint();
-    })();
-
-    // Displacement hover: on a mouse only. Safari draws this filter badly on HTML, so it
-    // keeps the plain zoom.
-    (function () {
-      if (!window.matchMedia || !window.matchMedia('(hover: hover) and (pointer: fine)').matches) return;
-      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-      if (/^((?!chrome|android).)*safari/i.test(navigator.userAgent)) return;
-      var map = document.getElementById('gv-ripple-map');
-      if (!map) return;
-      var running = null;
-      Array.prototype.forEach.call(document.querySelectorAll('.gv-tile'), function (tile) {
-        var img = tile.querySelector('img');
-        tile.addEventListener('pointerenter', function () {
-          if (running) { running.img.style.filter = ''; window.cancelAnimationFrame(running.frame); }
-          var state = running = { img: img, frame: 0 };
-          var start = window.performance.now();
-          img.style.filter = 'url(#gv-ripple)';
-          (function step(now) {
-            var t = Math.min(1, (now - start) / 850);
-            map.setAttribute('scale', String(Math.round(58 * Math.pow(1 - t, 3))));
-            if (t < 1) { state.frame = window.requestAnimationFrame(step); return; }
-            img.style.filter = '';
-            if (running === state) running = null;
-          })(start);
-        });
-      });
     })();
 
     // The bar: in once the hero's buttons have scrolled above the screen, out again

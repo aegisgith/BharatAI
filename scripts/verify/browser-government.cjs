@@ -150,8 +150,7 @@ const fill = async (page, v) => { for (const [id, val] of Object.entries(v)) awa
       });
       check('cards: the first sticks under the menu while the next slides over, and eases back', at.op === 'sticky' && Math.abs(at.first - at.sticky) < 3 && at.p > 0 && at.p <= 1, JSON.stringify(at));
       check('cards: no sideways scroll, no page errors', at.over <= 0 && errs.length === 0, at.over + ' ' + errs.join(';'));
-      check('cards: no ripple on a phone (no hover), nothing heavy left on', await p.evaluate(() => [...document.querySelectorAll('.gv-tile img')].every((i) => !i.style.filter)));
-      const clear = await p.evaluate(async () => {
+            const clear = await p.evaluate(async () => {
         const last = [...document.querySelectorAll('.gv-tile')].pop();
         last.scrollIntoView({ block: 'center' });
         await new Promise((r) => setTimeout(r, 400));
@@ -168,9 +167,6 @@ const fill = async (page, v) => { for (const [id, val] of Object.entries(v)) awa
       await settled(p);
       const r = await p.evaluate(() => ({ stacked: document.querySelectorAll('.gv-stacked').length, pos: getComputedStyle(document.querySelector('.gv-tile')).position, anim: getComputedStyle(document.querySelector('.gv-show')).animationName }));
       check('cards: animations off gets the plain cards', r.stacked === 0 && r.pos !== 'sticky', JSON.stringify(r));
-      await p.locator('.gv-tile').first().scrollIntoViewIfNeeded();
-      await p.locator('.gv-tile').first().hover();
-      check('hover: animations off gets no ripple', await p.evaluate(() => !document.querySelector('.gv-tile img').style.filter));
       await c.close();
     }
     {
@@ -183,12 +179,8 @@ const fill = async (page, v) => { for (const [id, val] of Object.entries(v)) awa
       await p.locator('.gv-tile').first().scrollIntoViewIfNeeded();
       await p.waitForTimeout(300);
       await p.locator('.gv-tile').first().hover();
-      await p.waitForTimeout(120);
-      const during = await p.evaluate(() => ({ f: document.querySelector('.gv-tile img').style.filter, s: Number(document.getElementById('gv-ripple-map').getAttribute('scale')) }));
-      check('hover: on a mouse the photograph ripples', during.f.includes('gv-ripple') && during.s > 0, JSON.stringify(during));
-      await p.waitForTimeout(1100);
-      const after = await p.evaluate(() => ({ f: document.querySelector('.gv-tile img').style.filter, s: Number(document.getElementById('gv-ripple-map').getAttribute('scale')) }));
-      check('hover: and settles, with the filter taken off again', !after.f && after.s === 0, JSON.stringify(after));
+      await p.waitForTimeout(900);
+      check('hover: on a mouse the photograph eases in, undistorted', await p.evaluate(() => { const i = document.querySelector('.gv-tile img'); return getComputedStyle(i).transform !== 'none' && getComputedStyle(i).filter === 'none' && !document.getElementById('gv-ripple'); }));
       const show = await p.evaluate(() => ({ supports: CSS.supports('animation-timeline', 'view()'), name: getComputedStyle(document.querySelector('.gv-show')).animationName, green: getComputedStyle(document.querySelector('.gv-show.green')).animationName }));
       check('exhibition cards: come together with the scroll where the browser can', !show.supports || (show.name === 'gvFromLeft' && show.green === 'gvFromRight'), JSON.stringify(show));
       await p.locator('.gv-shows').scrollIntoViewIfNeeded();

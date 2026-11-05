@@ -154,6 +154,7 @@ for (const f of ['governance-panel-820', 'governance-panel-1400']) {
   check(`${f} is light enough for a phone (${Math.round(kb)} KB)`, kb < 150, kb);
 }
 check('the share card is under WhatsApp\'s 300 KB', statSync(new URL('../../public/images/og/government.jpg', import.meta.url)).size < 300 * 1024);
+check('no photograph here shows another event\'s sponsors or a named past speaker', !/OMY_4001|577B0776|7C2A2823/.test(html));
 check('past photographs are named as past', (body.match(/Data Science Congress, the predecessor to Bharat AI Innovation/g) || []).length === 2);
 
 // ---- the tab on every page ----
