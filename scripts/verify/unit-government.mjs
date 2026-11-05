@@ -90,7 +90,7 @@ check('the 1.4 billion line, in English and Hindi', has('1.4 billion') && body.i
 for (const theme of ['Better governance', 'Public policy', 'Citizens’ daily lives', 'Fighting corruption', 'Safety and security', 'Health', 'Women and child safety']) check(`names what the organiser asked for: ${theme}`, has(theme));
 for (const f of ['Innovation Talk & Showcase', 'Keynote & Panel Discussion', 'Closed-Door Roundtable', 'Live Demonstration', 'Launch of a New Initiative', 'Government Pavilion', 'Government-Incubated Startups']) check(`offers: ${f}`, has(f));
 check('the talk is 10 minutes', has('10 minutes on stage'));
-check('the pavilion is for Ministries and Departments', has('For Ministries and Departments') && has('A dedicated exhibition space during both days'));
+check('the pavilion is for Ministries and Departments', has('For Ministries and Departments') && has('A dedicated space in the exhibition area during both days') && read('public/exhibition.html').includes('A dedicated space in the exhibition area for Ministries'));
 check('the startups come from incubation centres under Ministries', has('For incubation centres under Ministries') && has('incubation centres'));
 const formats = [...html.matchAll(/name="format" value="([^"]+)"/g)].map((m) => m[1].replace(/&amp;/g, '&'));
 check('the form offers both exhibition choices', formats.includes('Government Pavilion') && formats.includes('Incubated Startups Showcase'), formats.join(', '));
