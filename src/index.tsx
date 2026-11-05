@@ -19216,14 +19216,14 @@ function passesPageHTML(): string {
     ['We are a team of five or more', GROUP_RATE_TEXT + ' <a href="/contact#group_registration" class="text-primary-400 underline">Ask for a group rate</a>.'],
     ['I already hold a paid pass. Can I move up?', 'Yes. A confirmed Delegate, Premium Delegate or Academic pass moves up to any dearer pass, and you pay only the difference between the two prices. <a href="/app?action=pay&amp;pass=premium" class="text-primary-400 underline">Open the app</a>, sign in, and tap <strong>Upgrade my pass</strong> on your pass card. It shows the difference before you pay.'],
   ]
-  return `${sharedHeadHTML('Passes', '/passes', "Every pass for Bharat AI Innovation 2026 compared: free Visitor Pass (entry not guaranteed, by slot as available), Academic, Delegate, Premium Delegate and VIP, all + GST. Standard prices until 5 Nov 2026. 20–21 Nov, World Trade Center Mumbai.")}
+  return `${sharedHeadHTML('Passes', '/passes', "Every pass for Bharat AI Innovation 2026 compared: free Visitor Pass (entry not guaranteed, by slot as available), Academic, Delegate, Premium Delegate and VIP, all + GST. " + (latePricing() ? '' : 'Standard prices until ' + PRICE_DEADLINE_TEXT + '. ') + "20–21 Nov, World Trade Center Mumbai.")}
 <body class="min-h-screen">
 ${sharedNavHTML('passes')}
 
 <main class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
   <div class="text-center mb-8">
     <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold bg-primary-500/20 text-primary-300 border border-primary-500/30 mb-4">
-      <i class="fas fa-ticket-alt"></i>STANDARD PRICES UNTIL 5 NOV 2026
+      <i class="fas fa-ticket-alt"></i>${latePricing() ? '20&ndash;21 NOV 2026 &middot; WTC MUMBAI' : 'STANDARD PRICES UNTIL ' + PRICE_DEADLINE_TEXT.toUpperCase()}
     </div>
     <h1 class="text-3xl md:text-4xl font-bold mb-3">Passes for Bharat AI Innovation 2026</h1>
     <p class="text-gray-400 max-w-2xl mx-auto">20&ndash;21 Nov 2026, World Trade Center Mumbai. Every paid pass has guaranteed entry on both days and includes the networking app. ${priceDeadlineNote()}</p>

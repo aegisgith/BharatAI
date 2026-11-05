@@ -11,6 +11,11 @@ import { readFile } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { SECRETS, makePayDb, sessionCookie } from './pay-db.mjs';
+import { standardPriceClock } from './price-clock.mjs';
+// pay-test.cjs states the standard prices, which ended on 5 Nov 2026: from 6 Nov
+// the worker in this harness runs as that day (price-clock.mjs). The browser
+// keeps real time; the section on moving up reads its figures from the config.
+standardPriceClock();
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const worker = (await import(pathToFileURL(join(ROOT, 'dist', '_worker.js')).href + '?' + Date.now())).default;

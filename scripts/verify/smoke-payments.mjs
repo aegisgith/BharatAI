@@ -12,6 +12,11 @@ import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { KEY, SECRETS, kitEncrypt, kitDecrypt, sessionCookie, staffCookie, orderSig, gatewayAnswer, makePayDb } from './pay-db.mjs';
+import { standardPriceClock } from './price-clock.mjs';
+// This suite states the standard prices (5,898.82 for a Delegate Pass and so on),
+// which ended on 5 Nov 2026: from 6 Nov it runs as that day (price-clock.mjs).
+// The late prices are checked under "dated prices" below, which pins the clock.
+standardPriceClock();
 const worker = (await import(new URL('../../dist/_worker.js?' + Date.now(), import.meta.url).href)).default;
 
 const SESSION = 'smoke-session';
@@ -501,9 +506,17 @@ check('the config says when the standard price ends and what follows it', r.json
   const realNow = Date.now;
   Date.now = () => Date.parse('2026-11-05T18:29:00Z');   // 23:59 IST on 5 Nov: still the standard price
   r = await hit('/api/payments/config');
+  const stdCfg = r;
+  r = await hit('/passes');
+  check('on 5 Nov /passes says the standard prices run until 5 Nov 2026, and shows them', r.status === 200 && r.text.includes('STANDARD PRICES UNTIL 5 NOV 2026') && r.text.includes('Standard prices until 5 Nov 2026. 20') && r.text.includes('&#8377;4,999'), r.status + ' ' + (r.text.match(/STANDARD PRICES[^<]*/i) || [''])[0]);
+  r = stdCfg;
   check('at 23:59 IST on 5 Nov the standard price still holds', r.json?.late === false && r.json?.passes?.['Delegate Pass']?.base === 4999, r.text);
   Date.now = () => Date.parse('2026-11-05T18:31:00Z');   // 00:01 IST on 6 Nov
   r = await hit('/api/payments/config');
+  const lateCfg = r;
+  r = await hit('/passes');
+  check('from 6 Nov /passes shows the late prices and no longer says the standard prices run until 5 Nov', r.status === 200 && r.text.includes('&#8377;8,999') && !r.text.includes('&#8377;4,999') && !/STANDARD PRICES UNTIL/i.test(r.text) && /the standard prices ended on 5 Nov 2026/.test(r.text), r.status + ' ' + (r.text.match(/STANDARD PRICES[^<]*/i) || [''])[0]);
+  r = lateCfg;
   check('from 00:00 IST on 6 Nov the late price applies to every pass', r.json?.late === true && r.json?.passes?.['Delegate Pass']?.total === 10618.82 && r.json?.passes?.['Premium Delegate Pass']?.total === 17698.82 && r.json?.passes?.['VIP Pass']?.total === 29498.82 && r.json?.passes?.['Academic Pass']?.total === 4718.82, r.text);
   person(190, { main_event: 1 });
   r = await start(190, 'Delegate Pass');
