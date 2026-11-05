@@ -146,6 +146,72 @@ const settled = async (p) => { await p.evaluate(() => document.fonts.ready); awa
       await c.close();
     }
 
+    // ======== the motion: with animations on, and with them off ========
+    for (const [label, opts] of [
+      ['phone', { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, reducedMotion: 'no-preference' }],
+      ['laptop', { viewport: { width: 1366, height: 768 }, reducedMotion: 'no-preference' }],
+    ]) {
+      const c = await browser.newContext(opts);
+      const p = await c.newPage();
+      const errs = [];
+      p.on('pageerror', (e) => errs.push(e.message));
+      await p.goto(BASE + '/delhi', { waitUntil: 'load' });
+      await p.waitForTimeout(1500);
+      check(`motion ${label}: the title has finished rising and reads in full`, await p.evaluate(() => {
+        const t = document.querySelector('.dl-title').textContent.replace(/\s+/g, ' ').trim();
+        const still = [...document.querySelectorAll('.dl-l > span')].every((s) => { const a = s.getBoundingClientRect(), b = s.parentNode.getBoundingClientRect(); return a.top >= b.top - 1 && a.bottom <= b.bottom + 1; });
+        return t === 'Bharat AI Innovation Delhi 2027' && still;
+      }));
+      check(`motion ${label}: the rays are decoration only`, await p.evaluate(() => { const r = document.querySelector('.dl-rays'); return r.getAttribute('aria-hidden') === 'true' && getComputedStyle(r).pointerEvents === 'none' && !r.textContent; }));
+      check(`motion ${label}: the hero buttons can be pressed, nothing lies over them`, await p.evaluate(() => { const b = document.querySelector('.dl-hero-actions .btn').getBoundingClientRect(); const e = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2); return !!e && !!e.closest('.dl-hero-actions'); }));
+      check(`motion ${label}: the sentence keeps every word, split into 25`, await p.evaluate(() => { const l = document.querySelector('.dl-who-lead'); return l.classList.contains('dl-lit') && l.querySelectorAll('span').length === 25 && l.textContent === 'India’s ministries and public sector companies are based in Delhi. This edition is for the people who buy AI, build it and write its rules.'; }));
+      // Stop each thing in the middle of the screen: by then it must be fully there.
+      const middle = (sel) => p.evaluate((s) => { const e = document.querySelector(s); const r = e.getBoundingClientRect(); window.scrollTo({ top: r.top + scrollY - (innerHeight - r.height) / 2, behavior: 'instant' }); }, sel);
+      await middle('.dl-tiles .dl-tile:nth-child(2)');
+      await p.waitForTimeout(500);
+      check(`motion ${label}: a tile mid-screen is fully visible`, await p.evaluate(() => getComputedStyle(document.querySelector('.dl-tiles .dl-tile:nth-child(2)')).opacity === '1'));
+      await middle('.dl-feature .dl-tile');
+      await p.waitForTimeout(500);
+      check(`motion ${label}: a large tile mid-screen has fully opened`, await p.evaluate(() => { const s = getComputedStyle(document.querySelector('.dl-feature .dl-tile')); return s.opacity === '1' && /inset\(0(%|px)? /.test(s.clipPath); }), await p.evaluate(() => getComputedStyle(document.querySelector('.dl-feature .dl-tile')).clipPath));
+      await middle('.dl-who-lead');
+      await p.waitForTimeout(500);
+      check(`motion ${label}: the sentence mid-screen is fully lit`, await p.evaluate(() => [...document.querySelectorAll('.dl-who-lead span')].every((w) => getComputedStyle(w).opacity === '1')));
+      await middle('#updates');
+      await p.waitForTimeout(500);
+      check(`motion ${label}: the light runs round the form only while it shows, and adds no height`, await p.evaluate(() => { const b = document.querySelector('.dl-beam'); return b.classList.contains('is-on') && getComputedStyle(b).position === 'absolute' && getComputedStyle(b).pointerEvents === 'none'; }));
+      // The light takes 8 seconds to go round. Watch a whole lap: it must never widen the page.
+      let widest = 0;
+      for (let i = 0; i < 18; i++) {
+        widest = Math.max(widest, await p.evaluate(() => document.documentElement.scrollWidth - innerWidth));
+        await p.waitForTimeout(450);
+      }
+      check(`motion ${label}: a whole lap of the light never widens the page`, widest <= 0, widest);
+      await p.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
+      await p.waitForTimeout(500);
+      check(`motion ${label}: and stops when the form is off the screen`, await p.evaluate(() => !document.querySelector('.dl-beam').classList.contains('is-on')));
+      check(`motion ${label}: no sideways scroll, no errors`, await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth) && errs.length === 0, errs.join(' | '));
+      await c.close();
+    }
+    {
+      const c = await browser.newContext({ viewport: { width: 1366, height: 768 }, reducedMotion: 'no-preference' });
+      const p = await c.newPage();
+      await p.goto(BASE + '/delhi', { waitUntil: 'load' });
+      await p.locator('.dl-rows li:nth-child(1)').scrollIntoViewIfNeeded();
+      await p.hover('.dl-rows li:nth-child(1)');
+      await p.waitForTimeout(900);
+      check('motion laptop: a row\'s picture wipes in under the pointer, behind its words', await p.evaluate(() => { const li = document.querySelector('.dl-rows li'); const i = li.querySelector('img'); const s = getComputedStyle(i); return i.naturalWidth > 0 && /inset\(0(%|px)? /.test(s.clipPath) && s.zIndex === '-1' && i.alt === ''; }));
+      await c.close();
+    }
+    {
+      const c = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, reducedMotion: 'reduce' });
+      const p = await c.newPage();
+      await p.goto(BASE + '/delhi', { waitUntil: 'load' });
+      await settled(p);
+      check('animations off: the sentence is left whole, the row pictures and the light are not shown', await p.evaluate(() => !document.querySelector('.dl-who-lead.dl-lit') && document.querySelectorAll('.dl-who-lead span').length === 0 && [...document.querySelectorAll('.dl-rows li > img')].every((i) => getComputedStyle(i).display === 'none') && getComputedStyle(document.querySelector('.dl-beam')).display === 'none'));
+      check('animations off: the tiles do not wait on the scroll', await p.evaluate(() => getComputedStyle(document.querySelector('.dl-tiles .dl-tile')).animationTimeline === 'auto'));
+      await c.close();
+    }
+
     // ======== the menu on one row, on every page with one ========
     const root = path.join(__dirname, '..', '..', 'public');
     const pages = fs.readdirSync(root).filter((f) => f.endsWith('.html') && fs.readFileSync(path.join(root, f), 'utf8').includes('class="nav-menu"')).map((f) => (f === 'index.html' ? '/' : '/' + f.replace(/\.html$/, '')));

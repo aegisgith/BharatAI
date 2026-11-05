@@ -133,7 +133,6 @@
     .dl-title {
         font-family: var(--font-display); font-weight: 800; letter-spacing: -0.03em; line-height: 1.0; color: #fff;
         font-size: clamp(2.5rem, 11.4vw, 3.2rem); margin: 0; text-wrap: balance;
-        animation: fadeSlideUp 0.9s var(--ease-out) 0.1s both;
     }
     .dl-title .grad { background: var(--grad-sunset); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent; }
     .dl-title .ed { display: block; color: var(--saffron-light); }
@@ -193,8 +192,8 @@
     .dl-tiles { grid-template-columns: 1fr 1fr; }
     .dl-tile { position: relative; overflow: hidden; border-radius: 16px; background: var(--charcoal); aspect-ratio: 1 / 1.08; }
     .dl-feature .dl-tile { aspect-ratio: 16 / 10; }
-    .dl-tile img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transition: transform 0.7s var(--ease-out); }
-    .dl-tile:hover img { transform: scale(1.04); }
+    .dl-tile img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transition: scale 0.7s var(--ease-out); }
+    @media (hover: hover) and (pointer: fine) { .dl-tile:hover img { scale: 1.04; } }
     .dl-tile > div { position: absolute; left: 0; right: 0; bottom: 0; padding: 2.75rem 0.8rem 0.8rem; color: #fff; background: linear-gradient(180deg, rgba(10,12,28,0), rgba(10,12,28,0.92) 58%); }
     .dl-tile b { display: block; font-family: var(--font-display); font-size: 1rem; line-height: 1.15; letter-spacing: -0.01em; }
     .dl-tile i.by { display: block; font-style: normal; font-weight: 700; font-size: 0.82rem; line-height: 1.3; color: #FFB27A; margin-top: 0.2rem; }
@@ -228,6 +227,8 @@
     .dl-rows li { padding: 1.15rem 0; border-top: 1px solid rgba(255,255,255,0.14); }
     .dl-rows li:last-child { border-bottom: 1px solid rgba(255,255,255,0.14); }
     .dl-rows b { display: block; font-family: var(--font-display); font-size: clamp(1.5rem, 3.1vw, 2.2rem); line-height: 1.1; letter-spacing: -0.02em; color: #FFB27A; }
+    .dl-rows li { position: relative; isolation: isolate; }
+    .dl-rows li > img { display: none; }
     .dl-rows span { display: block; margin-top: 0.35rem; color: rgba(255,255,255,0.84); line-height: 1.5; font-size: 0.98rem; }
     @media (min-width: 900px) {
         .dl-who .container { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); gap: 4rem; align-items: center; }
@@ -238,7 +239,7 @@
     /* --- Be the first to know: a strip, not a page of its own --- */
     .dl-updates-sec { background: var(--off-white); }
     .dl-updates-sec.dl-sec { padding: 2.25rem 0; }
-    .dl-updates { background: #fff; border: 1px solid #E3E6F6; border-radius: 18px; padding: 1.1rem; box-shadow: 0 10px 28px rgba(13,15,30,0.06); scroll-margin-top: calc(var(--nav-h) + 16px); }
+    .dl-updates { position: relative; background: #fff; border: 1px solid #E3E6F6; border-radius: 18px; padding: 1.1rem; box-shadow: 0 10px 28px rgba(13,15,30,0.06); scroll-margin-top: calc(var(--nav-h) + 16px); }
     .dl-updates-head h2 { font-family: var(--font-display); font-size: 1.3rem; font-weight: 800; letter-spacing: -0.02em; line-height: 1.15; color: var(--charcoal); margin: 0 0 0.2rem; }
     .dl-updates-head h2 .accent { color: var(--saffron); }
     .dl-updates-head p { color: var(--dark-grey); font-size: 0.9rem; line-height: 1.45; margin: 0; }
@@ -301,6 +302,99 @@
     .dl-sec { padding: 3.25rem 0; }
     @media (min-width: 769px) { .dl-sec { padding: 5.5rem 0; } }
 
+    /* --- Motion. Rebuilt by hand in CSS, after effects in Vengeance UI (MIT licence,
+       (c) 2025-2026 Ashutoshx7, github.com/Ashutoshx7/VengeanceUI); nothing is installed.
+       The page is complete without any of it: everything below only runs for people
+       with animations on, and scroll-led parts only where the browser supports them. --- */
+    .dl-rays { --ray-a: 0.2; --ray-b: 0.16; position: absolute; left: 0; right: 0; top: 0; height: calc(34px + 15vw); z-index: 1; overflow: hidden; pointer-events: none; -webkit-mask-image: linear-gradient(to top, transparent, #000 34%); mask-image: linear-gradient(to top, transparent, #000 34%); }
+    .dl-rays::before, .dl-rays::after {
+        content: ""; position: absolute; left: 50%; bottom: 0; width: 130vw; aspect-ratio: 1; margin-left: -65vw; margin-bottom: -65vw;
+        background: repeating-conic-gradient(rgba(255,190,140,0) 0deg, rgba(255,190,140,var(--ray-a)) 3deg, rgba(255,190,140,0) 7deg, rgba(255,190,140,0) 15deg);
+    }
+    .dl-rays::after { background: repeating-conic-gradient(from 5deg, rgba(190,175,255,0) 0deg, rgba(190,175,255,var(--ray-b)) 4deg, rgba(190,175,255,0) 9deg, rgba(190,175,255,0) 22deg); }
+    @media (min-width: 769px) {
+        .dl-rays { --ray-a: 0.1; --ray-b: 0.08; top: 0; bottom: 21vw; height: auto; -webkit-mask-image: linear-gradient(to top, transparent, #000 30%, #000 64%, transparent); mask-image: linear-gradient(to top, transparent, #000 30%, #000 64%, transparent); }
+        .dl-rays::before, .dl-rays::after { width: 170vw; margin-left: -85vw; margin-bottom: -85vw; }
+    }
+    .dl-l { display: inline-block; overflow: hidden; overflow: clip; padding: 0 0.05em 0.1em; margin: 0 -0.05em -0.1em; vertical-align: top; }
+    .dl-l > span { display: inline-block; }
+    .dl-beam { display: none; }
+
+    @keyframes dlRaySway { from { transform: rotate(-7deg); } to { transform: rotate(7deg); } }
+    @keyframes dlLineUp { from { transform: translateY(112%); } to { transform: translateY(0); } }
+    @keyframes dlTileUp { from { opacity: 0; transform: translateY(68px) scale(0.97); } to { opacity: 1; transform: none; } }
+    @keyframes dlOpen { from { opacity: 0.3; clip-path: inset(14% 7% 14% 7% round 30px); } to { opacity: 1; clip-path: inset(0 0 0 0 round 16px); } }
+    @keyframes dlSettle { from { transform: scale(1.14); } to { transform: scale(1); } }
+    @keyframes dlGate { from { transform: translateY(46px); } to { transform: translateY(-24px); } }
+    @keyframes dlDay { from { transform: translateY(-14px); } to { transform: translateY(16px); } }
+    @keyframes dlWord { from { opacity: 0.35; } to { opacity: 1; } }
+    @keyframes dlWipe { from { clip-path: inset(0 100% 0 0 round 12px); } to { clip-path: inset(0 0 0 0 round 12px); } }
+    @keyframes dlBeam { to { offset-distance: 100%; } }
+
+    @media (prefers-reduced-motion: no-preference) {
+        /* Rays: the dusk sky above the hall stays alive */
+        .dl-rays::before { animation: dlRaySway 19s ease-in-out infinite alternate; }
+        .dl-rays::after { animation: dlRaySway 27s ease-in-out infinite alternate-reverse; }
+
+        /* Stagger text: each line of the title rises from behind its own edge */
+        .dl-l > span { animation: dlLineUp 0.95s var(--ease-out) 0.15s both; }
+        .dl-l:nth-of-type(2) > span { animation-delay: 0.27s; }
+        .dl-l.ed > span { animation-delay: 0.39s; }
+
+        /* Image reveal list: on a mouse, a row's picture wipes in behind its words */
+        .dl-rows li > img {
+            display: block; position: absolute; top: 0; left: -0.75rem; z-index: -1; width: calc(100% + 1.5rem); max-width: none; height: 100%;
+            object-fit: cover; opacity: 0.24; clip-path: inset(0 100% 0 0 round 12px); transition: clip-path 0.7s var(--ease-out);
+        }
+        @media (hover: hover) and (pointer: fine) { .dl-rows li:hover > img { clip-path: inset(0 0 0 0 round 12px); } }
+        @media (hover: none) { .dl-rows li > img { display: none; } }
+
+        @supports (animation-timeline: view()) {
+            /* Staggered grid: the tiles come up as you scroll, the columns out of step */
+            .dl-tiles .dl-tile { --dl-from: 0%; --dl-to: 30%; animation: dlTileUp linear both; animation-timeline: view(); animation-range: entry var(--dl-from) cover var(--dl-to); }
+            .dl-tiles .dl-tile:nth-child(even) { --dl-from: 16%; --dl-to: 40%; }
+            /* The two large tiles open from a smaller frame */
+            .dl-feature .dl-tile { animation: dlOpen linear both; animation-timeline: view(); animation-range: entry 0% cover 34%; }
+            /* Each photograph settles into its box */
+            .dl-tile img { animation: dlSettle linear both; animation-timeline: view(); animation-range: entry 0% cover 58%; }
+
+            /* The two venue photographs drift at different speeds */
+            .dl-collage .gate { animation: dlGate linear both; animation-timeline: view(); }
+            .dl-collage .day { animation: dlDay linear both; animation-timeline: view(); }
+
+            /* The sentence lights up word by word as it is read (the script splits it) */
+            .dl-who-lead.dl-lit { view-timeline: --dl-lead block; }
+            .dl-who-lead.dl-lit span { animation: dlWord linear both; animation-timeline: --dl-lead; animation-range: cover calc(var(--dl-s) * 1%) cover calc(var(--dl-e) * 1%); }
+
+            /* No mouse: the row's picture wipes in as the row reaches the middle of the screen */
+            @media (hover: none) {
+                .dl-rows li > img { display: block; transition: none; animation: dlWipe linear both; animation-timeline: view(); animation-range: cover 22% cover 50%; }
+            }
+        }
+        @media (min-width: 900px) {
+            @supports (animation-timeline: view()) {
+                .dl-tiles .dl-tile:nth-child(n) { --dl-from: 18%; --dl-to: 42%; }
+                .dl-tiles .dl-tile:nth-child(4n+2), .dl-tiles .dl-tile:nth-child(4n+3) { --dl-from: 0%; --dl-to: 26%; }
+            }
+        }
+
+        /* Border beam: a small light travels round the form, which stays the size it is */
+        @supports (offset-path: rect(0 auto auto 0)) {
+            .dl-beam {
+                display: block; position: absolute; inset: -1px; border-radius: inherit; padding: 2px; overflow: hidden; pointer-events: none;
+                -webkit-mask: linear-gradient(#fff, #fff) content-box, linear-gradient(#fff, #fff); mask: linear-gradient(#fff, #fff) content-box, linear-gradient(#fff, #fff);
+                -webkit-mask-composite: xor; mask-composite: exclude;
+            }
+            .dl-beam::after {
+                content: ""; position: absolute; width: 170px; aspect-ratio: 1;
+                background: linear-gradient(to left, #FF6B00, #7A5CFF, transparent);
+                offset-anchor: 90% 50%; offset-path: rect(0 auto auto 0 round 170px);
+                animation: dlBeam 8s linear infinite paused;
+            }
+            .dl-beam.is-on::after { animation-play-state: running; }
+        }
+    }
+
     /* --- The next step follows the reader, as on the home page --- */
     .sticky-cta {
         position: fixed; z-index: 900; left: 50%; bottom: max(12px, env(safe-area-inset-bottom));
@@ -357,13 +451,14 @@
             <source media="(max-width: 768px)" srcset="images/delhi/mandapam-dusk-phone.webp" width="1170" height="650">
             <img src="images/delhi/mandapam-dusk-1600.webp" srcset="images/delhi/mandapam-dusk-1600.webp 1600w, images/delhi/mandapam-dusk-2400.webp 2400w" sizes="100vw" width="2400" height="723" fetchpriority="high" decoding="async" alt="Bharat Mandapam, New Delhi, at dusk: the great round hall lit orange above its fountains and stepped gardens">
         </picture>
+        <span class="dl-rays" aria-hidden="true"></span>
         <div class="dl-hero-copy">
             <div class="hero-dateline">
                 <span>29–30 July 2027</span>
                 <span class="hero-dateline-sep">·</span>
                 <span>Bharat Mandapam<span class="dl-wide">, New Delhi</span></span>
             </div>
-            <h1 class="dl-title"><span class="grad">Bharat AI</span> <br>Innovation <span class="ed">Delhi 2027</span></h1>
+            <h1 class="dl-title"><span class="dl-l"><span class="grad">Bharat AI</span></span> <br><span class="dl-l"><span>Innovation</span></span> <span class="ed dl-l"><span>Delhi 2027</span></span></h1>
             <span class="hero-title-hi" lang="hi"><span class="hi-saffron">भारत</span> <span class="hi-white">एआई</span> <span class="hi-green">इनोवेशन</span> <span class="dl-hi-place">· नई दिल्ली</span></span>
             <p class="dl-hero-desc">India’s B2B platform for AI comes to the capital. Two days at Bharat Mandapam with the government departments, enterprises and startups using AI, and the companies building it.</p>
             <div class="dl-hero-actions">
@@ -466,9 +561,9 @@
                 <p class="dl-who-lead">India’s ministries and public sector companies are based in Delhi. This edition is for the people who buy AI, build it and write its rules.</p>
             </div>
             <ul class="dl-rows reveal reveal-delay-1">
-                <li><b>Buyers</b><span>CIOs, CTOs and procurement heads from enterprises, public sector companies and government departments.</span></li>
-                <li><b>Builders</b><span>AI product companies, service firms and funded startups.</span></li>
-                <li><b>Policymakers</b><span>The people shaping India’s AI rules, at the centre and in the states.</span></li>
+                <li><img loading="lazy" decoding="async" alt="" src="images/gallery/577B0622.webp" style="object-position:30% 40%"><b>Buyers</b><span>CIOs, CTOs and procurement heads from enterprises, public sector companies and government departments.</span></li>
+                <li><img loading="lazy" decoding="async" alt="" src="images/gallery/7C2A2566.webp"><b>Builders</b><span>AI product companies, service firms and funded startups.</span></li>
+                <li><img loading="lazy" decoding="async" alt="" src="images/delhi/mandapam-day.webp" style="object-position:center 42%"><b>Policymakers</b><span>The people shaping India’s AI rules, at the centre and in the states.</span></li>
             </ul>
         </div>
     </section>
@@ -477,6 +572,7 @@
     <section class="dl-updates-sec dl-sec">
         <div class="container">
             <div class="dl-updates reveal" id="updates">
+                <span class="dl-beam" aria-hidden="true"></span>
                 <form id="dl-form" novalidate>
                     <div class="dl-form-top">
                         <div class="dl-updates-head">
@@ -743,6 +839,36 @@
         if (!a) return;
         a.href = g; a.removeAttribute('download'); a.target = '_blank'; a.rel = 'noopener';
       });
+    })();
+
+    // Motion that needs a script. Without it the page is simply still.
+    (function () {
+      if (!window.matchMedia || !window.matchMedia('(prefers-reduced-motion: no-preference)').matches) return;
+      // The sentence, word by word. Only where the browser can drive it from the scroll.
+      var lead = document.querySelector('.dl-who-lead');
+      if (lead && window.CSS && CSS.supports && CSS.supports('animation-timeline', 'view()')) {
+        var parts = lead.textContent.split(/(\s+)/);
+        var count = parts.filter(function (p) { return /\S/.test(p); }).length;
+        var seen = 0;
+        lead.textContent = '';
+        parts.forEach(function (p) {
+          if (!/\S/.test(p)) { lead.appendChild(document.createTextNode(p)); return; }
+          var w = document.createElement('span');
+          w.textContent = p;
+          w.style.setProperty('--dl-s', (8 + 28 * seen / count).toFixed(1));
+          w.style.setProperty('--dl-e', (8 + 28 * (seen + 3) / count).toFixed(1));
+          lead.appendChild(w);
+          seen++;
+        });
+        lead.classList.add('dl-lit');
+      }
+      // The light round the form runs only while the form is on the screen.
+      var beam = document.querySelector('.dl-beam');
+      if (beam && 'IntersectionObserver' in window) {
+        new IntersectionObserver(function (es) {
+          beam.classList.toggle('is-on', es[es.length - 1].isIntersecting);
+        }).observe(beam.parentNode);
+      }
     })();
 
     // The bar: in once the hero's buttons have scrolled above the screen, out again
