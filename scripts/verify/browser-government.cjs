@@ -57,15 +57,15 @@ const fill = async (page, v) => { for (const [id, val] of Object.entries(v)) awa
     check('the bar\'s button goes to the form, and it steps aside there', await page.locator('#stickyCta.is-on').count() === 0 && await page.locator('#gv-form').isVisible());
 
     // Everything appears, every picture loads, no face cut off by the phone's row
-    for (const sel of ['.gv-rows', '.gv-mins', '.gv-offs', '.gv-talks', '.gv-tiles', '.gv-more', '.gv-shows', '.gv-acc', '.gv-chips', '.gv-faq']) {
+    for (const sel of ['.gv-rows', '.gv-mins', '.gv-offs', '.gv-talks', '.gv-tiles', '.gv-more', '.gv-shows', '.gv-secs', '.gv-chips', '.gv-faq']) {
       await page.locator(sel).scrollIntoViewIfNeeded();
       await page.waitForTimeout(300);
     }
     await page.waitForFunction(() => [...document.images].every((i) => i.complete), null, { timeout: 20000 }).catch(() => {});
-    check('sections show with animations off', await page.evaluate(() => ['.gv-rows', '.gv-mins', '.gv-offs', '.gv-talks', '.gv-tiles', '.gv-acc', '.gv-nom-intro'].every((s) => getComputedStyle(document.querySelector(s)).opacity === '1')));
+    check('sections show with animations off', await page.evaluate(() => ['.gv-rows', '.gv-mins', '.gv-offs', '.gv-talks', '.gv-tiles', '.gv-secs', '.gv-nom-intro'].every((s) => getComputedStyle(document.querySelector(s)).opacity === '1')));
     check('every picture loads', await page.evaluate(() => [...document.images].every((i) => i.naturalWidth > 0)), await page.evaluate(() => [...document.images].filter((i) => !i.naturalWidth).map((i) => i.src).join(', ')));
     check('phone: the Ministers stand in two rows', await page.evaluate(() => new Set([...document.querySelectorAll('.gv-mins li')].map((c) => Math.round(c.getBoundingClientRect().top))).size === 2));
-    check('every icon draws (an icon missing from the font is blank)', await page.evaluate(() => [...document.querySelectorAll('.gv-more i, .gv-acc .ic')].every((i) => getComputedStyle(i, '::before').content !== 'none')));
+    check('every icon draws (an icon missing from the font is blank)', await page.evaluate(() => [...document.querySelectorAll('.gv-more i, .gv-secs i')].every((i) => getComputedStyle(i, '::before').content !== 'none')));
     check('tap targets on the form are big enough', await page.evaluate(() => [...document.querySelectorAll('.gv-field input, .gv-field textarea, .gv-submit, .gv-fmt span')].every((e) => e.getBoundingClientRect().height >= 44)));
 
     // Sectors and questions open
@@ -74,7 +74,7 @@ const fill = async (page, v) => { for (const [id, val] of Object.entries(v)) awa
       for (let i = 0; i < await d.count(); i++) await d.nth(i).locator('summary').click();
       return page.evaluate(([s, c]) => { const x = [...document.querySelectorAll(s + ' details')]; return x.length === c && x.every((e) => e.open); }, [sel, n]);
     };
-    check('all seven sectors open', await opened('.gv-acc', 7));
+    check('all seven sectors can be read without a tap', await page.evaluate(() => { const x = [...document.querySelectorAll('.gv-secs li p')]; return x.length === 7 && x.every((p) => p.getBoundingClientRect().height > 20); }));
     check('all six questions open', await opened('.gv-faq', 6));
 
     // The exhibition links tick their box and land on the form
@@ -124,7 +124,7 @@ const fill = async (page, v) => { for (const [id, val] of Object.entries(v)) awa
       await p.goto(BASE + '/government', { waitUntil: 'load' });
       await settled(p);
       const r = await p.evaluate(() => {
-        const bad = [...document.querySelectorAll('h1,h2,h3,p,a.btn,button,.gv-rows li,.gv-tile,.gv-more li,.gv-show,.gv-mins li,.gv-offs li,.gv-talk')].filter((e) => { const x = e.getBoundingClientRect(); return x.width && (x.right > innerWidth + 1 || x.left < -1); }).map((e) => e.textContent.trim().slice(0, 30));
+        const bad = [...document.querySelectorAll('h1,h2,h3,p,a.btn,button,.gv-rows li,.gv-tile,.gv-more li,.gv-show,.gv-mins li,.gv-offs li,.gv-talk,.gv-secs li')].filter((e) => { const x = e.getBoundingClientRect(); return x.width && (x.right > innerWidth + 1 || x.left < -1); }).map((e) => e.textContent.trim().slice(0, 30));
         return { over: document.documentElement.scrollWidth - innerWidth, bad, btn: document.querySelector('.gv-actions .btn').getBoundingClientRect().bottom, vh: innerHeight };
       });
       check(`${w}px: nothing runs off the screen`, r.over <= 0 && r.bad.length === 0, JSON.stringify(r));
