@@ -1,0 +1,154 @@
+/* Motion on /conference only. To remove it, delete the two lines in conference.html that
+   name conference-motion: the page goes back to how it looked and nothing else changes.
+
+   Rebuilt in plain CSS and JS from four free components of Vengeance UI: Aurora Hero,
+   Stagger Text, Spotlight Navbar and Border Beam. The site has no React, so the library
+   itself is not installed. https://github.com/Ashutoshx7/VengeanceUI
+
+   MIT License
+
+   Copyright (c) 2025-2026 Ashutoshx7
+
+   Permission is hereby granted, free of charge, to any person obtaining a copy
+   of this software and associated documentation files (the "Software"), to deal
+   in the Software without restriction, including without limitation the rights
+   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+   copies of the Software, and to permit persons to whom the Software is
+   furnished to do so, subject to the following conditions:
+
+   The above copyright notice and this permission notice shall be included in all
+   copies or substantial portions of the Software.
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+   SOFTWARE. */
+
+/* Aurora Hero: slow bands of light in the tricolour behind the title, fading out before
+   the words. The bands move by transform, so a phone does not repaint them each frame. */
+.cf-aurora {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  -webkit-mask-image: radial-gradient(ellipse at 100% 0%, #000 22%, transparent 70%);
+  mask-image: radial-gradient(ellipse at 100% 0%, #000 22%, transparent 70%);
+}
+.cf-aurora i {
+  position: absolute;
+  top: -15%;
+  bottom: -15%;
+  left: 0;
+  width: calc(100% + 540px);
+  opacity: 0.7;
+  filter: blur(34px);
+  background: repeating-linear-gradient(100deg,
+    transparent 0,
+    rgba(255, 107, 0, 0.95) 90px,
+    transparent 180px,
+    rgba(120, 165, 255, 0.55) 260px,
+    transparent 340px,
+    rgba(0, 190, 120, 0.7) 430px,
+    transparent 520px);
+}
+
+/* Stagger Text: each word rises out of its own mask. The padding keeps the tails of g, p
+   and y from being cut off. */
+.cf-w {
+  display: inline-block;
+  overflow: hidden;
+  vertical-align: top;
+  padding-bottom: 0.14em;
+  margin-bottom: -0.14em;
+}
+.cf-w > span { display: inline-block; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .cf-aurora i {
+    will-change: transform;
+    animation: cf-drift 42s linear infinite;
+  }
+  .page-header.cf-off .cf-aurora i { animation-play-state: paused; }
+
+  /* The title is split in the HTML, so it animates from the first paint with no script. */
+  .page-header h1 .cf-w > span {
+    animation: cf-rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: calc(var(--i) * 60ms + 100ms);
+  }
+
+  /* Section headings are split by the script, which only runs with animations on. */
+  .cf-split .cf-w > span {
+    transform: translateY(115%);
+    transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+    transition-delay: calc(var(--i) * 50ms);
+  }
+  .cf-split.cf-in .cf-w > span { transform: none; }
+}
+
+/* 520px along the bands' angle of 100deg is 528px across the screen: one exact repeat. */
+@keyframes cf-drift { to { transform: translateX(-528px); } }
+@keyframes cf-rise { from { transform: translateY(115%); } to { transform: none; } }
+
+/* Spotlight Navbar: the sticky sub-menu's underline glides to the section you are in, and a
+   soft light follows a mouse. Added by the script, so animations off keeps the plain line. */
+.conf-subnav-links.cf-spot { position: relative; }
+@media (max-width: 480px) { .conf-subnav-links.cf-spot .conf-subnav-link { padding: 0 0.95rem; } }
+.conf-subnav-links.cf-spot .conf-subnav-link.active { border-bottom-color: transparent; }
+.cf-light {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: var(--cf-w, 0);
+  height: 2px;
+  transform: translateX(var(--cf-x, 0));
+  background: linear-gradient(90deg, transparent, var(--saffron) 18%, var(--saffron) 82%, transparent);
+  box-shadow: 0 -2px 10px rgba(255, 107, 0, 0.45);
+  transition: transform 0.5s cubic-bezier(0.34, 1.4, 0.64, 1), width 0.3s ease;
+  pointer-events: none;
+}
+.conf-subnav-links.cf-spot::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: var(--cf-glow, 0);
+  background: radial-gradient(110px circle at var(--cf-mouse, 0) 100%, rgba(255, 107, 0, 0.13), transparent 70%);
+  transition: opacity 0.25s ease;
+  pointer-events: none;
+}
+
+/* Border Beam: a point of light travels round the main button at the foot of the page.
+   Only where the browser can draw it; everywhere else the button is the plain button. */
+@supports (offset-path: rect(0 auto auto 0)) and (mask-composite: intersect) {
+  .cf-beam {
+    position: absolute;
+    inset: 0;
+    border: 2px solid transparent;
+    border-radius: inherit;
+    pointer-events: none;
+    -webkit-mask: linear-gradient(transparent, transparent), linear-gradient(#fff, #fff);
+    mask: linear-gradient(transparent, transparent), linear-gradient(#fff, #fff);
+    -webkit-mask-clip: padding-box, border-box;
+    mask-clip: padding-box, border-box;
+    mask-composite: intersect;
+  }
+  .cf-beam::after {
+    content: '';
+    position: absolute;
+    width: 80px;
+    aspect-ratio: 1;
+    background: linear-gradient(to left, #fff, #ffe082, transparent);
+    offset-anchor: 90% 50%;
+    offset-path: rect(0 auto auto 0 round 80px);
+    animation: cf-beam 5s linear infinite;
+  }
+  .registration-cta.cf-off .cf-beam::after { animation-play-state: paused; }
+}
+@keyframes cf-beam { to { offset-distance: 100%; } }
+
+@media print {
+  .cf-aurora, .cf-light, .cf-beam { display: none; }
+  .cf-w > span { transform: none !important; }
+}

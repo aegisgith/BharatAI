@@ -114,6 +114,7 @@
     <link rel="stylesheet" href="/css/fonts.css?v=1">
     <link rel="stylesheet" href="/css/fa-subset.css?v=2">
     <link rel="stylesheet" href="css/style.css?v=20261105b">
+    <link rel="stylesheet" href="css/conference-motion.css?v=20261106">
 
     <!-- Favicon -->
     <link rel="icon" type="image/png" sizes="64x64" href="/images/favicon-64.png">
@@ -468,9 +469,10 @@
     <!-- PAGE HEADER -->
     <section class="page-header" id="main-content">
         <div class="page-header-orb"></div>
+        <div class="cf-aurora" aria-hidden="true"><i></i></div>
         <div class="page-header-content container">
             <span class="page-header-eyebrow"><i class="fas fa-microphone-alt"></i> The Conference</span>
-            <h1>Bharat AI Innovation<br>Conference 2026</h1>
+            <h1><span class="cf-w"><span style="--i:0">Bharat</span></span> <span class="cf-w"><span style="--i:1">AI</span></span> <span class="cf-w"><span style="--i:2">Innovation</span></span><br><span class="cf-w"><span style="--i:3">Conference</span></span> <span class="cf-w"><span style="--i:4">2026</span></span></h1>
             <p>Leading Speakers &nbsp;·&nbsp; 10+ Tracks &nbsp;·&nbsp; 5 Halls &nbsp;·&nbsp; Leaders’ Evening</p>
         </div>
     </section>
@@ -481,8 +483,8 @@
             <div class="conf-subnav-links">
                 <a href="#overview" class="conf-subnav-link">Overview</a>
                 <a href="#tracks" class="conf-subnav-link">Tracks</a>
-                <a href="#speakers" class="conf-subnav-link">Speakers</a>
                 <a href="#schedule" class="conf-subnav-link">Schedule</a>
+                <a href="#speakers" class="conf-subnav-link">Speakers</a>
             </div>
             <a href="/register#delegate" class="conf-subnav-cta">Get a Delegate Pass <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
         </div>
@@ -2227,6 +2229,7 @@
     </footer>
 
     <script src="js/main.js?v=20261029"></script>
+    <script src="js/conference-motion.js?v=20261106" defer></script>
     <script>
         function switchHall(idx) {
             document.querySelectorAll('.hall-tab').forEach((t,i) => t.classList.toggle('active', i===idx));
