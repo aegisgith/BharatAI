@@ -40,6 +40,11 @@ const SUITES = [
   { name: 'server: campus panel "Are you coming?"', args: ['smoke-panel-answers.mjs'] },
   { name: 'server: AI marketplace gates, pages and exhibitor invites', args: ['smoke-marketplace.mjs'] },
   { name: 'server: checkout on this site (CCAvenue), the switch, the answer, the queues', args: ['smoke-payments.mjs'] },
+  // A paid pass moving up for the difference, at four levels (5 Nov 2026). The
+  // fourth, a phone in a real browser, is section 3b of pay-test.cjs below.
+  { name: "unit: pass upgrade (the app's own ladder and difference, the server's rule for every holder and every pass on both sides of the dated price change, and the two agreeing), on real SQLite", args: ['unit-upgrade-steps.mjs'] },
+  { name: 'integration: pass upgrade (the order for the difference, hand-off, the answer, the pass and what was paid in all, receipt, emails, the same answer twice, cancel, wrong amount, forged answer, a badge set by hand, midnight, prompts counted, the pages), on real SQLite', args: ['integration-upgrade.mjs'] },
+  { name: 'system: one person from a free registration to Delegate, Premium Delegate and VIP across the price change (the gates, the workshop seat, the account email link, three receipts, the payments queue, "What sells", the Overview board), on real SQLite', args: ['system-upgrade-journey.mjs'] },
   { name: 'server: Campus Series insights reports (gated PDF, /insights form, reports email, admin pump)', args: ['smoke-reports.mjs'] },
   { name: 'server: panel email as server jobs (scheduler door, claim, stop, resume, done, failures)', args: ['smoke-mail-jobs.mjs'] },
   { name: 'server: workshop seats (who may choose, the seat limit, switching cut-off, admin, door scan)', args: ['smoke-workshops.mjs'] },
@@ -53,7 +58,7 @@ const SUITES = [
   { name: "browser: a phone opens each email's sign-in button, oldest first after newer emails went out, on the real worker and real SQLite; a dead link opens the sign-in box", args: ['browser-login-links.cjs'], harness: 'login-harness.mjs', port: 8780, portEnv: true },
   { name: 'browser: the admin Overview board (who holds which pass, money from passes, waiting on you, days to go) on the real worker and real SQLite, desktop and phone', args: ['browser-board.cjs'], harness: 'board-harness.mjs', port: 8782, portEnv: true },
   { name: 'browser: panel email as a server job (start, pace, stop, resume, done, the scheduler note)', args: ['pace-test.cjs'], harness: 'pace-harness.mjs', port: 8774 },
-  { name: 'browser: buying a pass on a phone (checkout, result, retry, checkout off, invoice queues)', args: ['pay-test.cjs'], harness: 'pay-harness.mjs', port: 8776 },
+  { name: 'browser: buying a pass on a phone (checkout, result, retry, checkout off, invoice queues), and end to end a paid pass moving up for the difference (pass card, the sheet, the sum, the gateway, an email link)', args: ['pay-test.cjs'], harness: 'pay-harness.mjs', port: 8776 },
   { name: 'system: already registered, buying from an ad on another phone (real worker, real SQLite, the real emails, link, code, send again, known mobile, shared phone, unpaid pass, all the way to paid)', args: ['browser-already-registered.cjs'], harness: 'login-harness.mjs', port: 8784, portEnv: true },
   { name: 'browser: an exhibitor lists a product on the AI Marketplace (sign-in link, the form, plain domains, images, every way the button looked dead, dashboard edit, approval, public page, inquiry)', args: ['mp-test.cjs'], harness: 'mp-harness.mjs', port: 8779, portEnv: true },
 ];

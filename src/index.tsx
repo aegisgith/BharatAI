@@ -2484,7 +2484,9 @@ function payRefusal(a: any, passType = ''): string | null {
   if (PAID_TIERS.includes(badge)) {
     if (status === 'pending' || status === 'refunded') return null
     if (status === 'paid' && upgradeStep(badge, passType) > 0) return null
-    const up = PAID_TIERS.filter(p => upgradeStep(badge, p) > 0)
+    // The step up is promised only to a pass that was paid for: a complimentary
+    // one ('waived') is refused every pass here, so it is not told it may move up.
+    const up = status === 'paid' ? PAID_TIERS.filter(p => upgradeStep(badge, p) > 0) : []
     return 'Your ' + badge + ' is already confirmed, so there is nothing to pay' + (up.length
       ? '. You can move up to ' + up.join(' or ') + ' for the difference from your pass card in the app.'
       : '. To change it, write to info@bharataiinnovation.com.')
@@ -2557,7 +2559,7 @@ app.post('/api/payments/ccavenue/start', async (c) => {
 // in the audit log. No table, admin-only to read, and nothing is answered about
 // it. The app sends each reason and target once per sitting; this end keeps one a
 // minute per person, reason and target besides, so a loop cannot fill the log.
-const UPGRADE_PROMPT_REASONS = new Set(['welcome', 'networking', 'directory', 'agenda', 'workshop', 'vip', 'passcard', 'form', 'card'])
+const UPGRADE_PROMPT_REASONS = new Set(['welcome', 'networking', 'directory', 'agenda', 'workshop', 'vip', 'passcard', 'form', 'card', 'link'])
 const _upgradePromptLast = new Map<string, number>()
 app.post('/api/upgrade-prompt', async (c) => {
   // A prompt an email scanner met is not one a person saw (isScannerRequest).
@@ -19212,7 +19214,7 @@ function passesPageHTML(): string {
     ['What if I can&rsquo;t come after all?', 'Transfer the pass to a colleague free of charge, or take a credit note for 100% of the amount paid, until 13 Nov 2026. Cash refunds follow the <a href="/refund" class="text-primary-400 underline">refund policy</a>.'],
     ['How do workshop seats work?', 'One hands-on workshop comes with the Premium Delegate and VIP passes. Seats are limited and go first come, first served: after you pay, you choose your seat in the app.'],
     ['We are a team of five or more', GROUP_RATE_TEXT + ' <a href="/contact#group_registration" class="text-primary-400 underline">Ask for a group rate</a>.'],
-    ['I already hold a paid pass. Can I move up?', 'Yes. A confirmed Delegate, Premium Delegate or Academic pass moves up to any dearer pass for the difference between the two list prices, from the pass card in the app.'],
+    ['I already hold a paid pass. Can I move up?', 'Yes. A confirmed Delegate, Premium Delegate or Academic pass moves up to any dearer pass, and you pay only the difference between the two prices. <a href="/app?action=pay&amp;pass=premium" class="text-primary-400 underline">Open the app</a>, sign in, and tap <strong>Upgrade my pass</strong> on your pass card. It shows the difference before you pay.'],
   ]
   return `${sharedHeadHTML('Passes', '/passes', "Every pass for Bharat AI Innovation 2026 compared: free Visitor Pass (entry not guaranteed, by slot as available), Academic, Delegate, Premium Delegate and VIP, all + GST. Standard prices until 5 Nov 2026. 20–21 Nov, World Trade Center Mumbai.")}
 <body class="min-h-screen">
@@ -19233,6 +19235,8 @@ ${sharedNavHTML('passes')}
     ${tier('VIP Pass', 'VIP Pass', '#vip', '#A67C00', 'All access', ['Everything in Premium Delegate', 'Bharat AI Leaders’ Evening, Day 1', 'VIP lounge and priority seating', 'Speaker meet &amp; greet'])}
     ${tier('Academic Pass', 'Academic Pass', '#academic', '#7C5CFF', 'Students and faculty', ['Guaranteed entry on both days', 'Every conference session', 'Student networking zone', 'Bring your student or faculty ID', 'No lunch, no workshop'])}
   </div>
+
+  <p class="text-center text-sm text-gray-300 mb-4" id="passes-move-up">Already paid for a pass? <a href="/app?action=pay&amp;pass=premium" class="text-primary-400 underline font-semibold">Move up and pay only the difference</a>.</p>
 
   <p class="text-center text-xs text-gray-400 mb-8">Speakers from Google, PwC, Capgemini, Accenture and UIDAI &middot; 48 exhibitors on the floor plan &middot; 12 tracks &middot; 23 Innovation Talks &middot; two hands-on workshops</p>
 
@@ -21035,9 +21039,9 @@ function mainPageHTML(): string {
 
     <!-- Visitor Upgrade Modal -->
     <div id="visitor-upgrade-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4" style="background:rgba(23,27,58,0.55);backdrop-filter:blur(8px);">
-      <div class="glass rounded-2xl p-8 w-full max-w-md relative text-center shadow-2xl border border-white/10">
-        <!-- Lock icon -->
-        <div class="w-20 h-20 rounded-full bg-amber-500/15 border border-amber-500/30 flex items-center justify-center mx-auto mb-5">
+      <div class="glass rounded-2xl p-6 sm:p-8 w-full max-w-md relative text-center shadow-2xl border border-white/10" style="max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflow-y:auto;">
+        <!-- Lock icon; hidden when a paid pass is shown its steps up -->
+        <div class="w-20 h-20 rounded-full bg-amber-500/15 border border-amber-500/30 flex items-center justify-center mx-auto mb-5" id="upgrade-modal-icon">
           <i class="fas fa-lock text-amber-400 text-3xl"></i>
         </div>
         <h2 class="text-2xl font-bold mb-2" id="upgrade-modal-title">Networking is a Paid Feature</h2>
@@ -21069,6 +21073,8 @@ function mainPageHTML(): string {
           </div>
         </div>
         <p class="text-[11px] text-gray-400 -mt-4 mb-5" id="upgrade-modal-premium">Want a workshop seat? <span class="font-semibold" style="color:#0B7A75;">Premium Delegate</span> is Delegate plus one hands-on workshop, ${rsPrice('Premium Delegate Pass')} + GST.</p>
+        <!-- A confirmed paid pass: every pass above it, priced as the difference (renderUpgradeSteps) -->
+        <div class="hidden text-left mb-5" id="upgrade-modal-steps"></div>
         <button type="button" id="upgrade-modal-go" onclick="upgradeModalGo()"
            class="block w-full py-3.5 rounded-xl font-bold text-white text-sm transition-all mb-3"
            style="background:linear-gradient(135deg,#FF6B00,#FF8C38);">
@@ -21434,6 +21440,7 @@ function mainPageHTML(): string {
                 <button type="button" id="pcc-pay-btn" onclick="payPendingPass()" class="hidden px-4 mr-2 mb-2 rounded-xl text-xs font-semibold text-white transition" style="min-height:44px;background:linear-gradient(135deg,#FF6B00,#FF8C38);"><i class="fas fa-credit-card mr-1.5"></i>Pay now</button>
                 <button type="button" id="pcc-download-btn" onclick="generateDelegatePass()" class="px-4 mr-2 mb-2 rounded-xl text-xs font-semibold bg-primary-600 hover:bg-primary-500 text-white transition" style="min-height:44px;"><i class="fas fa-download mr-1.5"></i>Download my pass</button>
                 <button type="button" id="pcc-guarantee-btn" onclick="showUpgradeModal(&quot;passcard&quot;)" class="hidden px-4 mb-2 rounded-xl text-xs font-semibold text-white transition" style="min-height:44px;background:linear-gradient(135deg,#FF6B00,#FF8C38);"><i class="fas fa-arrow-up mr-1.5"></i>Guarantee both days</button>
+                <button type="button" id="pcc-upgrade-btn" onclick="showUpgradeModal(&quot;passcard&quot;)" class="hidden px-4 mb-2 rounded-xl text-xs font-semibold text-white transition" style="min-height:44px;background:linear-gradient(135deg,#FF6B00,#FF8C38);"><i class="fas fa-arrow-up mr-1.5"></i>Upgrade my pass</button>
               </div>
             </div>
             <div class="glass rounded-2xl p-5 border border-emerald-500/25 flex items-start gap-4">
@@ -24986,19 +24993,21 @@ function mainPageScript(): string {
       renderPassUpgradeLine();
     }
 
-    // A confirmed Delegate, Premium Delegate or Academic sees the step up on the
-    // pass card itself, priced as the difference from the server's prices. Drawn
-    // again when the prices arrive, in case the card painted first.
+    // A confirmed Delegate, Premium Delegate or Academic sees the way up on the
+    // pass card itself: a line with each difference, from the server's prices, and
+    // a button that opens the steps (showUpgradeModal). Drawn again when the
+    // prices arrive, in case the card painted first.
     function renderPassUpgradeLine() {
       var el = document.getElementById('pcc-upgrade');
+      var btn = document.getElementById('pcc-upgrade-btn');
+      var steps = upgradeStepsFor(paidUpgradeFrom());
+      if (btn) btn.classList.toggle('hidden', !steps.length);
       if (!el) return;
-      var from = paidUpgradeFrom();
-      var steps = from ? ['Premium Delegate Pass', 'VIP Pass'].map(function (p) { var u = upgradePrice(from, p); return u ? { pass: p, up: u } : null; }).filter(Boolean) : [];
-      if (!steps.length) { el.classList.add('hidden'); return; }
-      el.innerHTML = '<i class="fas fa-arrow-up mr-1.5 text-amber-400"></i>Move up for the difference: ' + steps.map(function (s) {
-        var what = s.pass === 'VIP Pass' ? 'VIP, with the Bharat AI Leaders’ Evening, the lounge and the speaker meet &amp; greet' : 'Premium Delegate, with one workshop';
-        return '<button type="button" onclick="openUpgradeFor(&quot;' + s.pass + '&quot;, &quot;passcard&quot;)" class="font-semibold underline" style="color:#FBBF24;">' + what + ', &#8377;' + inr(s.up.base) + ' + GST</button>';
-      }).join(' &middot; ');
+      var priced = steps.filter(function (s) { return s.up; });
+      if (!priced.length) { el.classList.add('hidden'); return; }
+      el.innerHTML = '<i class="fas fa-arrow-up mr-1.5 text-amber-400"></i>Move up and pay only the difference: ' + priced.map(function (s) {
+        return esc(s.pass.replace(' Pass', '')) + ', &#8377;' + inr(s.up.base) + ' + GST';
+      }).join(' &middot; ') + '.';
       el.classList.remove('hidden');
     }
 
@@ -25535,24 +25544,99 @@ function mainPageScript(): string {
       return from === 'Premium Delegate Pass' ? 'VIP Pass' : 'Premium Delegate Pass';
     }
 
+    // The passes in price order. A confirmed paid pass may move to any above it
+    // and pays the difference between the two list prices (the server charges
+    // exactly that). Before the prices load every pass above is listed without a
+    // figure; once they have, only the steps that cost something.
+    var UPGRADE_LADDER = ['Academic Pass', 'Delegate Pass', 'Premium Delegate Pass', 'VIP Pass'];
+    function upgradeStepsFor(from) {
+      var at = UPGRADE_LADDER.indexOf(from);
+      if (!from || at < 0) return [];
+      return UPGRADE_LADDER.slice(at + 1).map(function (p) { return { pass: p, up: upgradePrice(from, p) }; })
+        .filter(function (s) { return !_ppPrices || s.up; });
+    }
+    // What the pass adds to the one already held, in a line.
+    function upgradeAdds(from, to) {
+      var vip = 'the Bharat AI Leaders’ Evening on Day 1, the VIP lounge, priority seating and the speaker meet &amp; greet';
+      if (to === 'Delegate Pass') return 'Adds the networking lunch and the conference kit';
+      if (to === 'Premium Delegate Pass') return from === 'Academic Pass' ? 'Adds the networking lunch, the conference kit and one hands-on workshop' : 'Adds one hands-on workshop';
+      if (from === 'Premium Delegate Pass') return 'Adds ' + vip;
+      return (from === 'Academic Pass' ? 'Adds the networking lunch, one hands-on workshop, ' : 'Adds one hands-on workshop, ') + vip;
+    }
+    // The steps a confirmed paid pass is offered, inside the upgrade modal: one
+    // row per pass above theirs with what it adds and the difference, the sum
+    // for the one chosen (its price, less theirs, GST, what they pay), and the
+    // amount on the button. Drawn again when the prices arrive or a row is tapped.
+    function renderUpgradeSteps() {
+      var m = document.getElementById('visitor-upgrade-modal');
+      var box = document.getElementById('upgrade-modal-steps');
+      var go = document.getElementById('upgrade-modal-go');
+      var from = paidUpgradeFrom();
+      if (!m || !box || !from || m.classList.contains('hidden') || box.classList.contains('hidden')) return;
+      var steps = upgradeStepsFor(from);
+      if (!steps.some(function (s) { return s.pass === _upgradeTarget; })) _upgradeTarget = steps.length ? steps[0].pass : '';
+      var sel = steps.filter(function (s) { return s.pass === _upgradeTarget; })[0];
+      var html = steps.map(function (s) {
+        var on = s.pass === _upgradeTarget;
+        return '<button type="button" data-pass="' + esc(s.pass) + '" aria-pressed="' + (on ? 'true' : 'false') + '" onclick="pickUpgradeStep(this.getAttribute(&quot;data-pass&quot;))"' +
+          ' class="w-full text-left rounded-xl px-4 py-3 mb-2 flex items-start gap-3" style="min-height:56px;border:2px solid ' + (on ? '#FF6B00' : '#E4E7F4') + ';background:' + (on ? '#FFF6EE' : '#fff') + ';">' +
+          '<span class="flex-1 min-w-0"><span class="block font-bold text-sm" style="color:#1E2140;">' + esc(s.pass) + '</span>' +
+          '<span class="block text-xs mt-0.5" style="color:#5E6585;">' + upgradeAdds(from, s.pass) + '</span></span>' +
+          (s.up ? '<span class="shrink-0 text-right"><span class="block font-bold text-sm whitespace-nowrap" style="color:#1E2140;">+ &#8377;' + inr(s.up.base) + '</span><span class="block text-[11px]" style="color:#5E6585;">+ GST</span></span>' : '') +
+          '</button>';
+      }).join('');
+      if (sel && sel.up && _ppPrices && _ppPrices[sel.pass] && _ppPrices[from]) {
+        var row = function (k, v, strong) {
+          return '<div class="flex justify-between gap-3 ' + (strong ? 'font-bold text-sm' : 'text-xs') + '" style="padding:3px 0;color:' + (strong ? '#1E2140' : '#5E6585') + ';"><span>' + k + '</span><span class="whitespace-nowrap">' + v + '</span></div>';
+        };
+        html += '<div class="rounded-xl px-4 py-3 mt-3" id="upgrade-modal-sum" style="background:#F7F8FC;border:1px solid #E4E7F4;">' +
+          row(esc(sel.pass) + ', today’s price', '&#8377;' + inr(_ppPrices[sel.pass].base)) +
+          row('Less your ' + esc(from) + ', today’s price', '&minus; &#8377;' + inr(_ppPrices[from].base)) +
+          row('Difference', '&#8377;' + inr(sel.up.base)) +
+          row('GST ' + _ppGst + '%', '&#8377;' + inr(Math.round((sel.up.total - sel.up.base) * 100) / 100)) +
+          '<div style="border-top:1px solid #E4E7F4;margin:6px 0 4px;"></div>' +
+          row('You pay now', '&#8377;' + inr(sel.up.total), true) + '</div>';
+      }
+      html += '<p class="text-[11px] mt-3" style="color:#5E6585;">You pay on CCAvenue’s secure page. Your pass changes the moment the payment goes through, and the receipt is emailed to you.</p>';
+      box.innerHTML = html;
+      if (go) {
+        go.disabled = !sel || _upgradePaying;
+        go.innerHTML = _upgradePaying ? '<i class="fas fa-spinner fa-spin mr-2"></i>Opening secure payment...'
+          : '<i class="fas fa-credit-card mr-2"></i>' + (sel && sel.up ? 'Pay &#8377;' + inr(sel.up.total) + ' and move up' : 'Move up' + (sel ? ' to ' + esc(sel.pass.replace(' Pass', '')) : ''));
+      }
+    }
+    function pickUpgradeStep(pass) {
+      if (_upgradePaying) return;
+      _upgradeTarget = String(pass || '');
+      renderUpgradeSteps();
+    }
+
     // The same two cards sell in two different moments: hitting the networking
     // lock, and the minute a Visitor Pass is registered. The copy has to change —
     // "Networking is a Paid Feature" reads as a punishment to someone who just
     // signed up and has not been refused anything yet. Since 28 Oct 2026 the
     // agenda, the workshops and the speakers prompt too, each naming the thing
     // wanted, and every prompt shown is counted (trackUpgradePrompt).
-    function showUpgradeModal(reason, personName) {
+    function showUpgradeModal(reason, personName, wantPass) {
       const m = document.getElementById('visitor-upgrade-modal');
       if (!m) return;
       const title = document.getElementById('upgrade-modal-title');
       const copy = document.getElementById('upgrade-modal-copy');
       const go = document.getElementById('upgrade-modal-go');
       const cards = document.getElementById('upgrade-modal-cards');
+      const premiumLine = document.getElementById('upgrade-modal-premium');
+      const stepsBox = document.getElementById('upgrade-modal-steps');
+      const lockIcon = document.getElementById('upgrade-modal-icon');
       const who = String(personName || '').trim();
       const from = paidUpgradeFrom();
       _upgradeTarget = '';
+      // The two cards and the Premium line sell a whole pass at its full price; a
+      // confirmed paid pass is shown its own steps, priced as the difference.
       if (cards) cards.classList.toggle('hidden', !!from);
-      if (go) go.innerHTML = '<i class="fas fa-arrow-up-right-from-square mr-2"></i>Upgrade My Pass &mdash; Get Full Access';
+      if (premiumLine) premiumLine.classList.toggle('hidden', !!from);
+      if (stepsBox) stepsBox.classList.toggle('hidden', !from);
+      if (lockIcon) lockIcon.classList.toggle('hidden', !!from);
+      if (go) { go.disabled = false; go.innerHTML = '<i class="fas fa-arrow-up-right-from-square mr-2"></i>Upgrade My Pass &mdash; Get Full Access'; }
       if (passAwaitingPayment()) {
         // They chose a paid pass and have not paid: the answer is to finish, not
         // to choose again.
@@ -25565,21 +25649,24 @@ function mainPageScript(): string {
         return;
       }
       if (from && title && copy) {
-        // A paid pass moving up: one step, priced as the difference.
-        var to = upgradeTargetFor(reason, from);
-        var up = upgradePrice(from, to);
-        var step = up ? ', &#8377;' + inr(up.base) + ' + GST' : '';
-        _upgradeTarget = to;
-        if (reason === 'vip') {
-          title.textContent = who ? 'Meet ' + who + ' in person' : 'Move up to VIP';
-          copy.innerHTML = 'The Bharat AI Leaders’ Evening on Day 1, the speaker meet &amp; greet, the VIP lounge and priority seating come with the <span class="text-amber-300 font-semibold">VIP Pass</span>' +
-            (from === 'Premium Delegate Pass' ? '' : ', with one hands-on workshop') + '. Move up from your ' + esc(from) + ' for the difference' + step + '.';
-        } else {
-          title.textContent = who ? 'Take a seat in ' + who : 'Add a workshop to your pass';
-          copy.innerHTML = 'One hands-on workshop comes with the <span class="text-primary-300 font-semibold">' + esc(to.replace(' Pass', '')) + ' Pass</span>. Move up from your ' + esc(from) +
-            ' for the difference' + step + ', and choose your seat the moment the payment goes through.';
-        }
-        if (go) go.innerHTML = '<i class="fas fa-credit-card mr-2"></i>Move up to ' + esc(to.replace(' Pass', '')) + (up ? ' &mdash; &#8377;' + inr(up.total) + ' incl. GST' : '');
+        // A paid pass moving up: every pass above it, each priced as the
+        // difference, with the one this prompt was about already chosen. They
+        // see the sum and are asked; nobody is sent to the gateway unasked.
+        var asked = String(wantPass || '');
+        var seat = reason === 'workshop' || reason === 'agenda';
+        _upgradeTarget = upgradeStepsFor(from).some(function (s) { return s.pass === asked; }) ? asked
+          : (reason === 'vip' || seat) ? upgradeTargetFor(reason, from) : '';
+        title.textContent = reason === 'vip' ? (who ? 'Meet ' + who + ' in person' : 'Move up to VIP')
+          : seat ? (who ? 'Take a seat in ' + who : 'Add a workshop to your pass')
+          : 'Upgrade your ' + from;
+        copy.innerHTML = 'Your <span class="text-white font-semibold">' + esc(from) + '</span> is paid for. To move up you pay only the difference in price' +
+          (seat ? ', and you choose your workshop seat the moment the payment goes through.' : '.');
+        m.classList.remove('hidden');
+        m.classList.add('flex');
+        renderUpgradeSteps();
+        if (Date.now() - _ppPricesAt > 60000) loadPassPrices();
+        trackUpgradePrompt(reason, who || asked);
+        return;
       } else if (title && copy) {
         var delegatePrice = passPriceText('Delegate Pass');
         var premiumPrice = passPriceText('Premium Delegate Pass');
@@ -25635,27 +25722,37 @@ function mainPageScript(): string {
     // chosen, pay the step up, or choose a pass (on the tier the prompt was about).
     function upgradeModalGo() {
       var m = document.getElementById('visitor-upgrade-modal');
+      // A paid pass moving up stays on the sheet, with the button busy, until the
+      // checkout page opens: closing it first left a phone with nothing happening.
+      if (paidUpgradeFrom() && _upgradeTarget) { startUpgradePayment(_upgradeTarget); return; }
       if (m) { m.classList.add('hidden'); m.classList.remove('flex'); }
       if (passAwaitingPayment()) { payPendingPass(); return; }
-      if (paidUpgradeFrom() && _upgradeTarget) { startUpgradePayment(_upgradeTarget); return; }
       if (_upgradeTarget) { resumePayment(_upgradeTarget === 'VIP Pass' ? 'vip' : _upgradeTarget === 'Premium Delegate Pass' ? 'premium' : 'delegate'); return; }
       openPaidPassForm();
     }
 
     // A confirmed pass moving up: the server prices the difference and the checkout
     // page names it before the gateway. GST details given last time are kept.
+    var _upgradePaying = false;
     async function startUpgradePayment(pass) {
+      if (_upgradePaying) return;
+      _upgradePaying = true;
+      renderUpgradeSteps();
       var started = await startOnlinePayment(pass);
+      // The button comes back by itself: at once after an error, and a few seconds
+      // after leaving for checkout, for someone who presses Back.
+      setTimeout(function () { _upgradePaying = false; renderUpgradeSteps(); }, started.url ? 4000 : 0);
       if (started.url) { window.location.href = started.url; return; }
       showToast(started.error || 'Online payment is not available just now. Please try again later.', 'error');
     }
     // From a locked place to the right checkout: an unpaid paid pass finishes
-    // paying, a confirmed one pays the step, a Visitor gets the paid form on that
-    // pass, filled in from their profile.
+    // paying, a confirmed one is shown the difference and asked (the sheet counts
+    // the prompt itself), a Visitor gets the paid form on that pass, filled in
+    // from their profile.
     function openUpgradeFor(pass, reason) {
+      if (paidUpgradeFrom()) { showUpgradeModal(reason || 'passcard', '', pass); return; }
       if (reason) trackUpgradePrompt(reason, pass);
       if (passAwaitingPayment()) { payPendingPass(); return; }
-      if (paidUpgradeFrom()) { startUpgradePayment(pass); return; }
       resumePayment(pass === 'VIP Pass' ? 'vip' : pass === 'Premium Delegate Pass' ? 'premium' : pass === 'Academic Pass' ? 'academic' : 'delegate');
     }
     // Which prompts people meet, once per sitting per reason and target, as the
@@ -31090,6 +31187,9 @@ function mainPageScript(): string {
 
     // ==================== PAID PASS MODAL ====================
     function openPaidPassForm() {
+      // A confirmed paid pass has nothing to fill in again, and this form prints
+      // the full price of a pass: it is shown its steps up, priced as the difference.
+      if (upgradeStepsFor(paidUpgradeFrom()).length) { showUpgradeModal('form'); return; }
       trackUpgradePrompt('form', (document.getElementById('pp-pass-type') || {}).value || '');
       document.getElementById('paid-pass-modal').classList.remove('hidden');
       document.getElementById('paid-pass-modal').classList.add('flex');
@@ -31246,17 +31346,26 @@ function mainPageScript(): string {
         (priceDeadlineLine((document.getElementById('pp-pass-type') || {}).value) ? '<br>' + priceDeadlineLine((document.getElementById('pp-pass-type') || {}).value) : '');
       el.style.display = '';
     }
-    document.addEventListener('DOMContentLoaded', function () {
-      fetch('/api/payments/config').then(function (r) { return r.json(); }).then(function (j) {
+    // The prices, from the server that charges them. Read when the page loads and
+    // again when the upgrade steps open, so a figure on the screen is never an
+    // old one (the prices change at midnight on a dated day).
+    var _ppPricesAt = 0;
+    function loadPassPrices() {
+      return fetch('/api/payments/config').then(function (r) { return r.json(); }).then(function (j) {
         _ppPrices = (j && j.passes) || null;
         if (j && j.gst_rate) _ppGst = j.gst_rate;
         _ppLate = !!(j && j.late);
         _ppDeadlineText = String((j && j.deadline_text) || '');
         _ppLateFrom = String((j && j.late_from_text) || '');
         _ppLatePasses = (j && j.late_passes) || null;
+        _ppPricesAt = Date.now();
         ppShowTotal();
         renderPassUpgradeLine();
+        renderUpgradeSteps();
       }).catch(function () {});
+    }
+    document.addEventListener('DOMContentLoaded', function () {
+      loadPassPrices();
       var m = document.getElementById('paid-pass-modal');
       // Capture, not bubble: a pass chosen in code fires a change that does not bubble.
       if (m) m.addEventListener('change', function () { setTimeout(ppShowTotal, 0); }, true);
@@ -31273,9 +31382,11 @@ function mainPageScript(): string {
       var PASS = { delegate: 'Delegate Pass', premium: 'Premium Delegate Pass', vip: 'VIP Pass', academic: 'Academic Pass' };
       var want = PASS[String(passKey || '').toLowerCase()] || 'Delegate Pass';
       if (paidTier) {
-        // A confirmed pass moving up pays the difference; the same or a cheaper
-        // pass is nothing to pay for.
-        if (paidUpgradeFrom() && upgradePrice(badge, want)) { startUpgradePayment(want); return; }
+        // A confirmed pass moving up is shown its steps, on the pass the link
+        // named, with the difference to pay. It does not wait for the prices: the
+        // sheet fills them in when they arrive. A pass with nothing above it is
+        // told it is confirmed.
+        if (upgradeStepsFor(paidUpgradeFrom()).length) { showUpgradeModal('link', '', want); return; }
         showToast('Your ' + badge + ' is already confirmed.', 'success'); return;
       }
       openPaidPassForm();
@@ -32809,7 +32920,7 @@ function adminPageScript(): string {
       if (!d || !Array.isArray(d.prompts)) { el.innerHTML = ''; return; }
       var NAME = { welcome: 'Welcome card, first sign-in', networking: 'Tried to start a conversation', directory: 'Locked directory card',
         agenda: 'A Delegate session on the agenda', workshop: 'A workshop seat', vip: 'Speaker meet &amp; greet (VIP)', passcard: 'The pass card (guarantee entry, or move up)', form: 'Opened the paid form',
-        card: 'Gold edition, on the share card' };
+        card: 'Gold edition, on the share card', link: 'A paid pass opened a pay or move-up link' };
       var STATUS = { created: 'started, no answer yet', paid: 'paid', failed: 'failed', aborted: 'cancelled', awaited: 'bank undecided', mismatch: 'amount mismatch' };
       var prompts = d.prompts.map(function (p) {
         return '<div class="flex items-center gap-3 py-2 border-b border-white/5 text-[12px]"><div class="flex-1 text-gray-200">' + (NAME[p.reason] || deskEsc(p.reason)) + '</div>' +

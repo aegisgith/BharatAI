@@ -219,6 +219,103 @@ const PHONE = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isM
     await ctx.close();
   }
 
+  // ---- 3b. A confirmed pass moves up: shown the difference, then asked (5 Nov 2026) ----
+  // Until now the pass card's line sent a tap straight to the gateway, one pass
+  // at a time, and "Get a Paid Pass" opened the full-price form for someone who
+  // had already paid. The figures are read from the server's own config, so this
+  // section holds on either side of a dated price change.
+  await setState({ people: [
+    { id: 9, name: 'Dev Mehta', email: 'dev@example.com', badge_type: 'Delegate Pass', payment_status: 'paid', payment_amount: '5898.82', main_event: 1 },
+    { id: 10, name: 'Asha Iyer', email: 'asha@example.com', badge_type: 'Delegate Pass', payment_status: 'paid', payment_amount: '5898.82', main_event: 1 },
+    { id: 11, name: 'Tara Student', email: 'tara@college.example', badge_type: 'Academic Pass', payment_status: 'paid', payment_amount: '1178.82', main_event: 1 },
+    { id: 12, name: 'Vik Rao', email: 'vik@example.com', badge_type: 'VIP Pass', payment_status: 'paid', payment_amount: '23598.82', main_event: 1 },
+  ] });
+  {
+    const cfg = await (await fetch(BASE + '/api/payments/config')).json();
+    const base = (p) => Number(cfg.passes[p].base);
+    const rs = (n) => Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+    const withGst = (n) => Math.round(n * (100 + cfg.gst_rate)) / 100;
+    const dPrem = base('Premium Delegate Pass') - base('Delegate Pass'), dVip = base('VIP Pass') - base('Delegate Pass');
+    const cardReady = () => { const b = document.getElementById('pcc-upgrade-btn'); return !!b && !b.classList.contains('hidden') && b.offsetParent !== null && /GST/.test((document.getElementById('pcc-upgrade') || {}).textContent || ''); };
+    const stepRows = (page) => page.$$eval('#upgrade-modal-steps button[data-pass]', els => els.map(e => ({ pass: e.getAttribute('data-pass'), on: e.getAttribute('aria-pressed'), text: e.textContent, h: e.getBoundingClientRect().height })));
+    const st0 = await getState();
+
+    // From the pass card.
+    {
+      const { ctx, page } = await phone({ person: st0.attendees[9] });
+      gw.hold = false; gw.reply = 'Success'; gw.seen.length = 0;
+      await page.goto(BASE + '/app', { waitUntil: 'domcontentloaded' });
+      await page.waitForFunction(cardReady, null, { timeout: 25000 }).catch(() => {});
+      check('a paid Delegate sees "Upgrade my pass" on the pass card', await page.isVisible('#pcc-upgrade-btn') && /Upgrade my pass/.test(await page.textContent('#pcc-upgrade-btn') || ''));
+      const line = await page.textContent('#pcc-upgrade') || '';
+      check('with the difference for each pass above theirs', line.includes('Premium Delegate, ₹' + rs(dPrem) + ' + GST') && line.includes('VIP, ₹' + rs(dVip) + ' + GST'), line);
+      check('and neither "Pay now" nor "Guarantee both days"', await page.evaluate(() => ['pcc-pay-btn', 'pcc-guarantee-btn'].every(id => document.getElementById(id).classList.contains('hidden'))));
+      await page.evaluate(() => document.getElementById('pcc-upgrade-btn').scrollIntoView({ block: 'center' }));
+      await page.click('#pcc-upgrade-btn');
+      await page.waitForSelector('#upgrade-modal-sum', { timeout: 10000 }).catch(() => {});
+      let rows = await stepRows(page);
+      check('the sheet lists Premium Delegate and VIP, each a full-size tap target', rows.map(r => r.pass).join() === 'Premium Delegate Pass,VIP Pass' && rows.every(r => r.h >= 44), JSON.stringify(rows));
+      check('each row says what it adds and the difference', rows.length === 2 && /one hands-on workshop/.test(rows[0].text) && rows[0].text.includes('+ ₹' + rs(dPrem)) && /Leaders/.test(rows[1].text) && rows[1].text.includes('+ ₹' + rs(dVip)), JSON.stringify(rows.map(r => r.text)));
+      check('the next pass up is chosen to begin with', rows.length === 2 && rows[0].on === 'true' && rows[1].on === 'false', JSON.stringify(rows.map(r => r.on)));
+      let sum = await page.textContent('#upgrade-modal-sum').catch(() => '') || '';
+      check('the sum is spelled out: the new pass, less theirs, the difference, GST, what they pay',
+        sum.includes('Premium Delegate Pass, today’s price₹' + rs(base('Premium Delegate Pass'))) && sum.includes('Less your Delegate Pass, today’s price− ₹' + rs(base('Delegate Pass'))) &&
+        sum.includes('Difference₹' + rs(dPrem)) && sum.includes('GST ' + cfg.gst_rate + '%₹' + rs(withGst(dPrem) - dPrem)) && sum.includes('You pay now₹' + rs(withGst(dPrem))), sum);
+      check('and the button carries the amount', (await page.textContent('#upgrade-modal-go') || '').includes('Pay ₹' + rs(withGst(dPrem)) + ' and move up'), await page.textContent('#upgrade-modal-go'));
+      check('the full-price cards and the Premium line are not shown to someone who has paid', await page.evaluate(() => ['upgrade-modal-cards', 'upgrade-modal-premium', 'upgrade-modal-icon'].every(id => document.getElementById(id).classList.contains('hidden'))));
+      await page.click('#upgrade-modal-steps button[data-pass="VIP Pass"]');
+      sum = await page.textContent('#upgrade-modal-sum').catch(() => '') || '';
+      check('choosing VIP changes the sum and the button', sum.includes('Difference₹' + rs(dVip)) && sum.includes('You pay now₹' + rs(withGst(dVip))) && (await page.textContent('#upgrade-modal-go') || '').includes('Pay ₹' + rs(withGst(dVip)) + ' and move up'), sum);
+      check('the sheet fits a phone and stays inside the screen', await fits(page) && await page.evaluate(() => { const r = document.querySelector('#visitor-upgrade-modal > div').getBoundingClientRect(); return r.top >= 0 && r.bottom <= window.innerHeight + 1; }));
+      await page.screenshot({ path: path.join(OUT, 'pay-app-move-up.png') });
+      check('looking and choosing starts no order and sends nobody to the gateway', gw.seen.length === 0 && (await getState()).orders.filter(o => o.attendee_id === 9).length === 0);
+
+      await page.click('#upgrade-modal-go');
+      await page.waitForURL(/\/pay\/result\?o=/, { timeout: 30000, waitUntil: 'domcontentloaded' });
+      check('the gateway is asked for exactly the amount on the button', ((gw.seen[0] || {}).sent || {}).amount === withGst(dVip).toFixed(2), JSON.stringify((gw.seen[0] || {}).sent || {}).slice(0, 120));
+      const st = await getState();
+      const mine = st.orders.filter(o => o.attendee_id === 9);
+      check('one order, for the difference, naming the pass it moved up from', mine.length === 1 && mine[0].status === 'paid' && mine[0].pass_type === 'VIP Pass' && mine[0].previous_badge === 'Delegate Pass' && mine[0].base_paise === dVip * 100, JSON.stringify(mine));
+      check('the pass is now a VIP Pass, and what was paid in all adds up', st.attendees[9].badge_type === 'VIP Pass' && st.attendees[9].payment_status === 'paid' && st.attendees[9].payment_amount === (5898.82 + withGst(dVip)).toFixed(2), JSON.stringify(st.attendees[9]));
+      await ctx.close();
+    }
+
+    // From a "Move up" link in an email, and from "Get a Paid Pass".
+    {
+      const { ctx, page } = await phone({ person: st0.attendees[10] });
+      gw.seen.length = 0;
+      await page.goto(BASE + '/app?email=' + encodeURIComponent('asha@example.com') + '&action=pay&pass=vip', { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('#upgrade-modal-sum', { timeout: 25000 }).catch(() => {});
+      const on = (await stepRows(page)).filter(r => r.on === 'true').map(r => r.pass).join();
+      await sleep(600);
+      check('a "Move up" link from an email opens the sheet on the pass it named, and waits to be asked', on === 'VIP Pass' && gw.seen.length === 0 && /\/app/.test(page.url()), on + ' ' + page.url());
+      await page.evaluate(() => { const m = document.getElementById('visitor-upgrade-modal'); m.classList.add('hidden'); m.classList.remove('flex'); openPaidPassForm(); });
+      check('"Get a Paid Pass" opens the same sheet for someone who has paid, not the full-price form', await page.evaluate(() => !document.getElementById('visitor-upgrade-modal').classList.contains('hidden') && document.getElementById('paid-pass-modal').classList.contains('hidden')));
+      await ctx.close();
+    }
+
+    // A student sees every pass above the Academic Pass; a VIP has nowhere to go.
+    {
+      const { ctx, page } = await phone({ person: st0.attendees[11] });
+      await page.goto(BASE + '/app', { waitUntil: 'domcontentloaded' });
+      await page.waitForFunction(cardReady, null, { timeout: 25000 }).catch(() => {});
+      await page.evaluate(() => showUpgradeModal('passcard'));
+      await page.waitForSelector('#upgrade-modal-sum', { timeout: 10000 }).catch(() => {});
+      const rows = await stepRows(page);
+      const dDel = base('Delegate Pass') - base('Academic Pass');
+      check('a paid Academic Pass may move up to Delegate, Premium Delegate or VIP, each for its own difference', rows.map(r => r.pass).join() === 'Delegate Pass,Premium Delegate Pass,VIP Pass' && rows[0].on === 'true' && rows[0].text.includes('+ ₹' + rs(dDel)) && (await page.textContent('#upgrade-modal-go') || '').includes('Pay ₹' + rs(withGst(dDel))), JSON.stringify(rows.map(r => r.text)));
+      check('three steps still fit a phone', await fits(page) && await page.evaluate(() => { const r = document.querySelector('#visitor-upgrade-modal > div').getBoundingClientRect(); return r.top >= 0 && r.bottom <= window.innerHeight + 1; }));
+      await ctx.close();
+    }
+    {
+      const { ctx, page } = await phone({ person: st0.attendees[12] });
+      await page.goto(BASE + '/app', { waitUntil: 'domcontentloaded' });
+      await page.waitForFunction(() => typeof _ppPrices !== 'undefined' && !!_ppPrices && typeof currentUser !== 'undefined' && !!currentUser && !document.getElementById('pass-card-cta').classList.contains('hidden'), null, { timeout: 25000 }).catch(() => {});
+      check('a paid VIP is offered nothing to move up to', await page.evaluate(() => document.getElementById('pcc-upgrade-btn').classList.contains('hidden') && document.getElementById('pcc-upgrade').classList.contains('hidden')));
+      await ctx.close();
+    }
+  }
+
   // ---- 4. Switched off: the buyer is told so, and is sent nowhere else ----
   await setState({ settings: { payment_gateway: 'off' } });
   {
