@@ -858,8 +858,18 @@ const LUNCH_FROM_PASS_SQL = `CASE badge_type ${Object.entries(LUNCH_BY_PASS).map
 // (an amount, a paid order or an invoice: paid on mUni Campus, say, and the pass
 // raised afterwards). Run BEFORE the write: it reads the pass each row holds now.
 // ids in chunks: D1 binds at most 100 parameters.
+//
+// A 'paid' with no money behind it is not an answer (5 Nov 2026). Full Edit always
+// posts its Payment box, and on a Visitor Pass that box reads 'paid' by column
+// default, so every Full Edit stepped around this rule: seven people moved from
+// Visitor to Delegate there between 26 and 31 Oct looked like Delegates who had paid.
+// The admin page now asks (askPassAnswer); this holds whatever page is asking.
+const amountWritten = (fields: Record<string, any>): boolean =>
+  parseFloat(String(fields.payment_amount ?? '').replace(/[^0-9.]/g, '')) > 0
 async function handGivenPassIds(c: any, ids: number[], written: Record<string, any>): Promise<number[]> {
-  if (!PAID_TIERS.includes(String(written.badge_type ?? '')) || 'payment_status' in written) return []
+  if (!PAID_TIERS.includes(String(written.badge_type ?? ''))) return []
+  const said = 'payment_status' in written ? String(written.payment_status) : ''
+  if ((said && said !== 'paid') || amountWritten(written)) return []
   if (!ids.length || !(await paymentStatusEnabled(c))) return []
   const cols = await attendeeColumns(c)
   const noMoney = (cols.has('payment_amount') ? ` AND COALESCE(TRIM(payment_amount), '') IN ('', '0', '0.00')` : '') +
@@ -870,7 +880,7 @@ async function handGivenPassIds(c: any, ids: number[], written: Record<string, a
     const part = ids.slice(i, i + 80)
     const base = `SELECT id FROM attendees WHERE id IN (${part.map(() => '?').join(', ')})
           AND COALESCE(badge_type, '') NOT IN (${PAID_TIERS.map(() => '?').join(', ')})
-          AND LOWER(TRIM(COALESCE(payment_status, ''))) <> 'pending'`
+          ${said ? '' : `AND LOWER(TRIM(COALESCE(payment_status, ''))) <> 'pending'`}`
     // A database without the orders or invoices tables (before 0021/0045) asks
     // without them rather than failing the admin's save.
     const run = (sql: string) => c.env.DB.prepare(sql).bind(...part, ...PAID_TIERS).all()
@@ -12902,11 +12912,14 @@ app.post('/api/admin/attendees', async (c) => {
   const addedPass = String(badge_type || '').trim()
   if (PAID_TIERS.includes(addedPass)) fallbacks.payment_status = 'waived'
   if (LUNCH_BY_PASS[addedPass]) fallbacks.lunch_inclusion = LUNCH_BY_PASS[addedPass]
+  // A new row has no money on record, so 'paid' needs an amount (handGivenPassIds).
+  const paidNoMoney = PAID_TIERS.includes(addedPass) && !amountWritten(body)
+    && String(body.payment_status ?? '').trim().toLowerCase() === 'paid'
   const names: string[] = ['event_id', 'name', 'email']
   const vals: any[] = [event_id, name.trim(), normalizedEmail]
   for (const f of ADMIN_ATTENDEE_FIELDS) {
     if (f === 'name' || f === 'email' || !cols.has(f)) continue
-    const v = body[f]
+    const v = f === 'payment_status' && paidNoMoney ? undefined : body[f]
     names.push(f)
     vals.push(v === undefined || v === null || v === '' ? (fallbacks[f] ?? '') : sanitizeAttendeeField(f, v))
   }
@@ -34670,6 +34683,83 @@ function adminPageScript(): string {
         loadAdminAttendees();
       } catch (e) { toast('Could not reset the check-in: ' + (e.message || ''), 'error'); }
     }
+    // ============ A PASS SET BY HAND: HOW ARE THEY GETTING IT? ============
+    // Moving someone onto a paid pass they did not hold is the one change that says
+    // something about money, so the admin is asked (5 Nov 2026). The same three
+    // answers on Full Edit, the inline cell, Set pass on a selection and Add Attendee.
+    // Moving between paid passes is not asked: what they paid stays as it is.
+    var HAND_SET_TIERS = ['Academic Pass', 'Delegate Pass', 'Premium Delegate Pass', 'VIP Pass'];
+    function passMoveNeedsAnswer(from, to) {
+      return HAND_SET_TIERS.indexOf(String(to || '')) >= 0 && HAND_SET_TIERS.indexOf(String(from || '')) < 0;
+    }
+    // "5,898.82" or "Rs 5898.82" as 5898.82; '' when it is not an amount above nothing.
+    function passAnswerAmount(typed) {
+      var n = Number(String(typed == null ? '' : typed).replace(/[^0-9.]/g, ''));
+      return n > 0 && isFinite(n) ? n.toFixed(2) : '';
+    }
+    // The fields an answer writes; null when it is not a whole answer yet.
+    function passAnswerFields(how, amount) {
+      if (how === 'waived' || how === 'pending') return { payment_status: how };
+      if (how !== 'paid') return null;
+      var a = passAnswerAmount(amount);
+      return a ? { payment_status: 'paid', payment_amount: a } : null;
+    }
+    // Resolves with the fields to write, or null if the admin cancels. Nothing is
+    // chosen for them: a default here is how the wrong answer got saved before.
+    function askPassAnswer(opts) {
+      opts = opts || {};
+      return new Promise(function (resolve) {
+        var old = document.getElementById('pass-answer');
+        if (old) old.remove();
+        var many = Number(opts.count) > 1;
+        var who = many ? 'these ' + Number(opts.count) + ' people' : (opts.name ? String(opts.name) : 'this person');
+        var had = passAnswerAmount(opts.amount);
+        var row = function (how, title, note) {
+          return '<label for="pa-' + how + '" style="display:flex;gap:10px;align-items:flex-start;padding:12px;margin-bottom:8px;min-height:44px;border:1px solid #d9dcec;border-radius:12px;cursor:pointer;">'
+            + '<input type="radio" name="pa-how" id="pa-' + how + '" value="' + how + '" style="margin-top:3px;accent-color:#FF6B00;width:16px;height:16px;flex:none;">'
+            + '<span><strong style="display:block;font-size:14px;color:#1a1d3a;">' + title + '</strong>'
+            + '<span style="display:block;font-size:12px;line-height:1.45;color:#5b6078;">' + note + '</span></span></label>';
+        };
+        var w = document.createElement('div');
+        w.id = 'pass-answer';
+        w.setAttribute('role', 'dialog');
+        w.setAttribute('aria-modal', 'true');
+        w.setAttribute('aria-labelledby', 'pa-title');
+        w.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(10,12,27,0.55);display:flex;align-items:center;justify-content:center;padding:16px;';
+        w.innerHTML = '<div style="width:100%;max-width:440px;max-height:calc(100dvh - 32px);overflow-y:auto;background:#fff;color:#1a1d3a;border-radius:16px;padding:20px;box-sizing:border-box;">'
+          + '<h3 id="pa-title" style="margin:0 0 4px;font-size:17px;font-weight:700;color:#1a1d3a;">How is ' + escH(who) + ' getting the ' + escH(opts.pass || 'pass') + '?</h3>'
+          + '<p style="margin:0 0 14px;font-size:12px;color:#5b6078;">This decides what they can do in the app and how the money is counted.</p>'
+          + row('waived', 'Complimentary', 'Given free. They can use the pass now, it is counted apart from sales, and they are not offered upgrades.')
+          + row('paid', 'Paid another way', 'Bank transfer, mUni Campus or cash. They can use the pass now, and an upgrade costs only the difference.')
+          + '<div id="pa-amount-box" style="display:none;margin:-2px 0 10px;">'
+          + '<label for="pa-amount" style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#1a1d3a;">' + (many ? 'Amount received from each person' : 'Amount received') + ', including GST (&#8377;)</label>'
+          + '<input id="pa-amount" autocomplete="off" inputmode="decimal" value="' + escH(had) + '" style="width:100%;box-sizing:border-box;min-height:44px;padding:8px 12px;border:1px solid #bfc4dc;border-radius:10px;font-size:15px;color:#1a1d3a;background:#fff;"></div>'
+          + row('pending', 'Not paid yet', 'They see Pay now in the app, at the full price, and get no pass until they pay.')
+          + '<p id="pa-msg" role="alert" style="display:none;margin:0 0 10px;font-size:13px;font-weight:600;color:#b42318;"></p>'
+          + '<div style="display:flex;gap:8px;margin-top:6px;">'
+          + '<button type="button" id="pa-cancel" style="flex:1;min-height:44px;border:1px solid #bfc4dc;border-radius:12px;background:#fff;color:#1a1d3a;font-size:14px;font-weight:600;cursor:pointer;">Cancel</button>'
+          + '<button type="button" id="pa-save" style="flex:1;min-height:44px;border:0;border-radius:12px;background:#FF6B00;color:#fff;font-size:14px;font-weight:700;cursor:pointer;">Save</button>'
+          + '</div></div>';
+        document.body.appendChild(w);
+        var chosen = function () { var r = w.querySelector('input[name="pa-how"]:checked'); return r ? r.value : ''; };
+        var showAmount = function () { document.getElementById('pa-amount-box').style.display = chosen() === 'paid' ? 'block' : 'none'; };
+        var say = function (text) { var m = document.getElementById('pa-msg'); m.textContent = text; m.style.display = 'block'; };
+        var finish = function (fields) { document.removeEventListener('keydown', onKey, true); w.remove(); resolve(fields); };
+        var onKey = function (e) { if (e.key === 'Escape') { e.stopPropagation(); finish(null); } };
+        document.addEventListener('keydown', onKey, true);
+        w.querySelectorAll('input[name="pa-how"]').forEach(function (r) { r.addEventListener('change', function () { showAmount(); if (chosen() === 'paid') document.getElementById('pa-amount').focus(); }); });
+        document.getElementById('pa-cancel').addEventListener('click', function () { finish(null); });
+        document.getElementById('pa-save').addEventListener('click', function () {
+          var how = chosen();
+          if (!how) { say('Choose one of the three.'); return; }
+          var fields = passAnswerFields(how, document.getElementById('pa-amount').value);
+          if (!fields) { say('Enter the amount received. If no money came in, choose Complimentary or Not paid yet.'); document.getElementById('pa-amount').focus(); return; }
+          finish(fields);
+        });
+        if (had) { document.getElementById('pa-paid').checked = true; showAmount(); }
+        document.getElementById('pa-waived').focus();
+      });
+    }
     function bulkSetField(field) {
       var ids = attSelectedIds();
       if (!ids.length) { toast('Nothing selected.', 'error'); return; }
@@ -34691,11 +34781,35 @@ function adminPageScript(): string {
       var el = document.getElementById('bulk-val');
       if (!el) return;
       var changes = {}; changes[field] = el.value;
+      // The answer goes only on those moving onto a paid pass. Someone who already
+      // holds one keeps what they paid; a row not loaded here is left to the server.
+      var movers = [];
+      if (field === 'badge_type') {
+        var held = {};
+        (lastAttendees || []).forEach(function (a) { held[String(a.id)] = a.badge_type; });
+        movers = ids.filter(function (id) { return (String(id) in held) && passMoveNeedsAnswer(held[String(id)], changes.badge_type); });
+      }
+      var answer = null;
+      if (movers.length) {
+        answer = await askPassAnswer({ count: movers.length, pass: changes.badge_type });
+        if (!answer) return;
+      }
       closeModal();
       try {
-        var r = await api.post('/api/admin/attendees/bulk-update', { ids: ids, changes: changes });
-        if (r && r.error) throw new Error(r.error);
-        toast('Updated ' + (r.updated || ids.length) + ' attendee(s).');
+        var rest = ids.filter(function (id) { return movers.indexOf(id) < 0; });
+        var updated = 0;
+        var r;
+        if (rest.length) {
+          r = await api.post('/api/admin/attendees/bulk-update', { ids: rest, changes: changes });
+          if (r && r.error) throw new Error(r.error);
+          updated += r.updated || rest.length;
+        }
+        if (movers.length) {
+          r = await api.post('/api/admin/attendees/bulk-update', { ids: movers, changes: Object.assign({}, changes, answer) });
+          if (r && r.error) throw new Error(r.error);
+          updated += r.updated || movers.length;
+        }
+        toast('Updated ' + updated + ' attendee(s).');
         attSelected = new Set();
         lastAttendees = null;
         loadAdminAttendees();
@@ -35255,12 +35369,12 @@ function adminPageScript(): string {
       }
     }
 
-    async function inlineSave(id, field, value) {
+    async function inlineSave(id, field, value, extra) {
       try {
         const res = await fetch('/api/admin/attendees/' + id, {
           method: 'PATCH',
           headers: authHeaders({ 'Content-Type': 'application/json' }),
-          body: JSON.stringify({ [field]: value })
+          body: JSON.stringify(Object.assign({ [field]: value }, extra || {}))
         });
         if (res.status === 401) { handleAuthFailure(); return false; }
         const data = await res.json();
@@ -35336,12 +35450,23 @@ function adminPageScript(): string {
       cell.appendChild(select);
       select.focus();
 
+      // The box losing focus also saves: it must not ask a second time while the
+      // question is on screen.
+      let saving = false;
       async function save() {
+        if (saving) return;
         const newVal = select.value;
         if (newVal === currentVal) { cell.innerHTML = original; activeInlineEdit = null; return; }
+        saving = true;
+        let extra = null;
+        if (field === 'badge_type' && passMoveNeedsAnswer(currentVal, newVal)) {
+          const row = (lastAttendees || []).find(x => String(x.id) === String(id)) || {};
+          extra = await askPassAnswer({ name: row.name, pass: newVal, amount: row.payment_amount });
+          if (!extra) { cell.innerHTML = original; activeInlineEdit = null; return; }
+        }
         select.disabled = true;
         select.style.opacity = '0.5';
-        const ok = await inlineSave(id, field, newVal);
+        const ok = await inlineSave(id, field, newVal, extra);
         activeInlineEdit = null;
         if (ok) {
           toast('Saved', 'success');
@@ -35698,6 +35823,12 @@ function adminPageScript(): string {
       document.getElementById('modal-container').classList.remove('hidden');
       document.getElementById('add-att-form').onsubmit = async e => {
         e.preventDefault();
+        const newPass = document.getElementById('na-badge').value;
+        let answer = {};
+        if (passMoveNeedsAnswer('', newPass)) {
+          answer = await askPassAnswer({ name: document.getElementById('na-name').value, pass: newPass });
+          if (!answer) return;
+        }
         const btn = document.getElementById('na-submit-btn');
         btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Adding...';
         btn.disabled = true;
@@ -35718,6 +35849,7 @@ function adminPageScript(): string {
             website_url: document.getElementById('na-website').value,
             bio: document.getElementById('na-bio').value,
             interests: document.getElementById('na-interests').value,
+            ...answer,
           });
           closeModal(); toast('Attendee added successfully!', 'success'); loadAdminAttendees();
         } catch(err) {
@@ -35831,6 +35963,13 @@ function adminPageScript(): string {
       document.getElementById('ea-industry').value = a.industry || '';
       document.getElementById('edit-att-form').onsubmit = async e => {
         e.preventDefault();
+        // The Payment box reads paid on any free pass, so paid here says nothing. Set
+        // to anything else, the admin has already answered.
+        let answer = {};
+        if (passMoveNeedsAnswer(a.badge_type, document.getElementById('ea-badge').value) && document.getElementById('ea-payment-status').value === 'paid') {
+          answer = await askPassAnswer({ name: a.name, pass: document.getElementById('ea-badge').value, amount: a.payment_amount });
+          if (!answer) return;
+        }
         try {
         await api.put('/api/admin/attendees/'+a.id, {
           city: document.getElementById('ea-city').value,
@@ -35851,6 +35990,7 @@ function adminPageScript(): string {
           interests: document.getElementById('ea-interests').value,
           twitter_url: document.getElementById('ea-twitter').value,
           website_url: document.getElementById('ea-website').value,
+          ...answer,
         });
         } catch (err) { toast(err.message || 'Could not save', 'error'); return; }
         closeModal(); toast('Attendee updated!', 'success'); loadAdminAttendees();

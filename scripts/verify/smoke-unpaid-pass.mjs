@@ -162,7 +162,8 @@ check('someone part-way through paying stays pending when the tier is changed, a
 r = await send('POST', '/api/admin/attendees/bulk-update', { ids: [24, 25], changes: { badge_type: 'VIP Pass' } });
 check('Set pass on a selection: the Visitor is given (waived), the paid Delegate keeps paid, both get lunch',
   r.status === 200 && is(at(24), 'VIP Pass', 'waived', 'Yes') && is(at(25), 'VIP Pass', 'paid', 'Yes'), JSON.stringify([at(24), at(25)]));
-r = await send('PUT', '/api/admin/attendees/26', { badge_type: 'VIP Pass', payment_status: 'paid', lunch_inclusion: 'No' });
+// Since 5 Nov 2026 'paid' needs money behind it: integration-pass-answer.mjs has the case without.
+r = await send('PUT', '/api/admin/attendees/26', { badge_type: 'VIP Pass', payment_status: 'paid', payment_amount: '23598.82', lunch_inclusion: 'No' });
 check('a save that sets Payment and Lunch itself is taken as it is', r.status === 200 && is(at(26), 'VIP Pass', 'paid', 'No'), JSON.stringify(at(26)));
 r = await send('POST', '/api/admin/attendees', { event_id: 1, name: 'Added Vip', email: 'added-vip@example.com', badge_type: 'VIP Pass' });
 const addAcad = await send('POST', '/api/admin/attendees', { event_id: 1, name: 'Added Academic', email: 'added-acad@example.com', badge_type: 'Academic Pass' });
