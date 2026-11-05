@@ -170,31 +170,53 @@
         .gv-rows span { margin-top: 0; font-size: 1rem; }
     }
 
-    /* --- Already on the stage --- */
+    /* --- Already on the stage: Ministers in two rows, officers below, then the talks.
+       Department logos sit on white because several are dark on clear. --- */
     .gv-stage { background: var(--off-white); }
-    .gv-stars { display: grid; gap: 0.85rem; }
-    .gv-star { display: flex; gap: 1rem; align-items: flex-start; background: #fff; border: 1px solid #E3E6F6; border-radius: 18px; padding: 1.15rem; }
-    .gv-star img { flex: none; width: 84px; height: 84px; border-radius: 50%; object-fit: cover; }
-    .gv-star h3 { font-family: var(--font-display); font-weight: 800; font-size: 1.15rem; line-height: 1.2; color: var(--charcoal); margin: 0; }
-    .gv-star .role { margin: 0.2rem 0 0; font-size: 0.86rem; line-height: 1.4; font-weight: 700; color: var(--ink-orange); }
-    .gv-star .talk { margin: 0.55rem 0 0; font-size: 0.95rem; line-height: 1.5; color: var(--charcoal); }
-    .gv-also-title { margin: 2.25rem 0 1rem; font-family: var(--font-display); font-weight: 800; font-size: 1.2rem; color: var(--charcoal); text-align: center; }
-    .gv-faces { list-style: none; margin: 0 -1rem; padding: 0 1rem 0.5rem; display: flex; gap: 0.85rem; overflow-x: auto; scroll-snap-type: x proximity; scrollbar-width: none; }
-    .gv-faces::-webkit-scrollbar { display: none; }
-    .gv-faces li { flex: none; width: 140px; text-align: center; scroll-snap-align: start; }
-    .gv-faces img { display: block; width: 84px; height: 84px; margin: 0 auto 0.5rem; border-radius: 50%; object-fit: cover; background: #E3E6F6; }
-    .gv-faces b { display: block; font-size: 0.88rem; line-height: 1.25; color: var(--charcoal); }
-    .gv-faces span { display: block; margin-top: 0.15rem; font-size: 0.77rem; line-height: 1.35; color: var(--dark-grey); }
+    .gv-sub { margin: 2.25rem 0 1.1rem; font-family: var(--font-display); font-weight: 800; font-size: 1.3rem; color: var(--charcoal); text-align: center; }
+    .gv-sub:first-of-type { margin-top: 0; }
+    .gv-mins { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.25rem 0.6rem; }
+    .gv-mins li { text-align: center; }
+    .gv-mins img { display: block; width: min(100%, 92px); height: auto; aspect-ratio: 1; margin: 0 auto 0.5rem; border-radius: 50%; object-fit: cover; background: #E3E6F6; box-shadow: 0 0 0 3px #fff, 0 0 0 5px #FF9933; }
+    .gv-mins b { display: block; font-size: 0.82rem; line-height: 1.25; color: var(--charcoal); }
+    .gv-mins span { display: block; margin-top: 0.2rem; font-size: 0.72rem; line-height: 1.32; color: var(--dark-grey); }
+    .gv-offs { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 0.7rem; }
+    .gv-offs li { flex: 0 0 calc(50% - 0.35rem); min-width: 0; display: flex; flex-direction: column; align-items: center; text-align: center; padding: 1rem 0.65rem; background: #fff; border: 1px solid #E3E6F6; border-radius: 16px; }
+    .gv-pic { flex: none; width: 76px; height: 76px; border-radius: 50%; object-fit: cover; background: #E3E6F6; }
+    .gv-offs .gv-pic { margin-bottom: 0.55rem; }
+    .gv-offs b { display: block; font-size: 0.88rem; line-height: 1.25; color: var(--charcoal); }
+    .gv-offs span { display: block; margin-top: 0.2rem; font-size: 0.76rem; line-height: 1.35; color: var(--dark-grey); }
+    .gv-logo { display: block; width: auto; height: 42px; max-width: 170px; object-fit: contain; }
+    .gv-offs .gv-logo { margin-top: auto; padding-top: 0.6rem; box-sizing: content-box; }
+    .gv-talks { display: grid; gap: 0.85rem; }
+    .gv-talk { display: flex; gap: 1rem; align-items: flex-start; background: #fff; border: 1px solid #E3E6F6; border-left: 5px solid #FF9933; border-radius: 16px; padding: 1.1rem; }
+    .gv-talk h4 { margin: 0; font-family: var(--font-display); font-weight: 800; font-size: 1.1rem; line-height: 1.2; color: var(--charcoal); }
+    .gv-talk .role { margin: 0.2rem 0 0; font-size: 0.86rem; line-height: 1.4; font-weight: 700; color: var(--ink-orange); }
+    .gv-talk .talk { margin: 0.5rem 0 0; font-size: 0.93rem; line-height: 1.5; color: var(--charcoal); }
+    .gv-talk > div { min-width: 0; }
+    .gv-talk .gv-logo { margin-top: 0.7rem; height: 48px; max-width: min(240px, 100%); }
+    .gv-pair { flex: none; display: flex; flex-direction: column; gap: 0.45rem; }
+    .gv-initials { display: flex; align-items: center; justify-content: center; width: 76px; height: 76px; border-radius: 50%; background: #1C1D50; color: #fff; font-family: var(--font-display); font-weight: 800; font-size: 1.35rem; }
     .gv-see-all { text-align: center; margin: 1.5rem 0 0; }
     .gv-see-all a { color: var(--ink-orange); font-weight: 800; }
     @media (min-width: 900px) {
-        .gv-stars { grid-template-columns: 1fr 1fr; gap: 1.25rem; }
-        .gv-star { padding: 1.5rem; gap: 1.25rem; }
-        .gv-star img { width: 112px; height: 112px; }
-        .gv-star h3 { font-size: 1.3rem; }
-        .gv-faces { display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 0.8rem; margin: 0; padding: 0; overflow: visible; }
-        .gv-faces li { width: auto; }
-        .gv-faces img { width: 92px; height: 92px; }
+        .gv-sub { font-size: 1.5rem; margin: 3rem 0 1.5rem; }
+        .gv-mins { gap: 2rem 1.5rem; max-width: 980px; margin: 0 auto; }
+        .gv-mins img { width: 136px; margin-bottom: 0.8rem; }
+        .gv-mins b { font-size: 1.05rem; }
+        .gv-mins span { font-size: 0.88rem; }
+        .gv-offs { gap: 1rem; }
+        .gv-offs li { flex-basis: calc(25% - 0.75rem); padding: 1.25rem 0.9rem; }
+        .gv-offs .gv-pic { width: 96px; height: 96px; }
+        .gv-offs b { font-size: 0.98rem; }
+        .gv-offs span { font-size: 0.82rem; }
+        .gv-talks { grid-template-columns: 1fr 1fr; gap: 1rem; }
+        .gv-talk { padding: 1.35rem; gap: 1.25rem; }
+        .gv-talk .gv-pic { width: 104px; height: 104px; }
+        .gv-talk h4 { font-size: 1.22rem; }
+        .gv-talk-two { grid-column: 1 / -1; }
+        .gv-pair { flex-direction: row; }
+        .gv-initials { width: 104px; height: 104px; font-size: 1.7rem; }
     }
 
     /* --- How to take part --- */
@@ -421,40 +443,80 @@
     <section class="gv-stage gv-sec" id="stage">
         <div class="container">
             <div class="section-header reveal">
-                <h2 class="section-title">Government AI initiatives <span class="accent">at the conference</span></h2>
-                <p class="section-subtitle">Senior government officers presenting their initiatives include:</p>
-            </div>
-            <div class="gv-stars">
-                <article class="gv-star reveal">
-                    <img width="400" height="400" loading="lazy" decoding="async" src="images/speaker-sudeep-shrivastava-sq.webp" alt="Shri Sudeep Shrivastava">
-                    <div>
-                        <h3>Shri Sudeep Shrivastava</h3>
-                        <p class="role">Joint Secretary, Ministry of Electronics &amp; Information Technology (MeitY) and COO, IndiaAI Mission</p>
-                        <p class="talk">Presenting the Government of India’s AI initiatives under the IndiaAI Mission.</p>
-                    </div>
-                </article>
-                <article class="gv-star reveal reveal-delay-1">
-                    <img width="320" height="320" loading="lazy" decoding="async" src="images/talks/ganesh-nagarajan.webp" alt="Shri Ganesh Nagarajan">
-                    <div>
-                        <h3>Shri Ganesh Nagarajan</h3>
-                        <p class="role">Deputy Secretary, Ministry of Tribal Affairs</p>
-                        <p class="talk">Presenting “Adi Vaani: Taking India’s Tribal Languages from the Margins to the Mainstream with AI.”</p>
-                    </div>
-                </article>
+                <h2 class="section-title">Government <span class="accent">on the stage</span></h2>
             </div>
 
-            <h3 class="gv-also-title reveal">Also speaking</h3>
-            <ul class="gv-faces reveal">
-                <li><img width="84" height="84" loading="lazy" decoding="async" src="images/chirag-paswan.jpg" alt="" style="object-position:42% 18%"><b>Hon’ble Shri Chirag Paswan</b><span>Union Minister of Food Processing Industries</span></li>
-                <li><img width="84" height="84" loading="lazy" decoding="async" src="images/chandrakant-patil.jpg" alt="" style="object-position:50% 22%"><b>Hon’ble Shri Chandrakant Dada Patil</b><span>Minister of Higher and Technical Education, Maharashtra</span></li>
-                <li><img width="84" height="84" loading="lazy" decoding="async" src="images/dattatray-bharane.avif" alt="" style="object-position:28% 22%"><b>Hon’ble Shri Dattatray Bharane</b><span>Minister of Agriculture, Maharashtra</span></li>
-                <li><img width="84" height="84" loading="lazy" decoding="async" src="images/speaker-kk-singh-v2.jpg" alt=""><b>Shri K.K. Singh</b><span>Joint Secretary, MeitY</span></li>
-                <li><img width="84" height="84" loading="lazy" decoding="async" src="images/speaker-virendra-singh-sq.webp" alt=""><b>Shri Virendra Singh (IAS)</b><span>Secretary, Electronics, IT and AI Department, Maharashtra</span></li>
-                <li><img width="84" height="84" loading="lazy" decoding="async" src="images/speaker-akshay-yadava-sq.webp" alt=""><b>Akshay Yadava</b><span>Director, UIDAI</span></li>
-                <li><img width="84" height="84" loading="lazy" decoding="async" src="images/speaker-prakash-kumar-sq.webp" alt=""><b>Shri Prakash Kumar</b><span>Additional Director, MeitY</span></li>
-                <li><img width="84" height="84" loading="lazy" decoding="async" src="images/speaker-k-mahesh-sq.webp" alt=""><b>Dr. K. Mahesh</b><span>Secretary, Art, Culture &amp; Language, Delhi</span></li>
-                <li><img width="84" height="84" loading="lazy" decoding="async" src="images/speaker-vivek-khandekar-sq.webp" alt=""><b>Shri Vivek Khandekar (IFS)</b><span>Principal Chief Conservator of Forests (Social Forestry), Maharashtra</span></li>
+            <h3 class="gv-sub reveal">Ministers</h3>
+            <ul class="gv-mins reveal">
+                <li><img width="150" height="150" loading="lazy" decoding="async" src="images/chirag-paswan.jpg" alt="" style="object-position:42% 18%"><b>Hon’ble Shri Chirag Paswan</b><span>Union Minister of Food Processing Industries</span></li>
+                <li><img width="150" height="150" loading="lazy" decoding="async" src="images/chandrakant-patil.jpg" alt="" style="object-position:50% 22%"><b>Hon’ble Shri Chandrakant Dada Patil</b><span>Minister of Higher and Technical Education, Maharashtra</span></li>
+                <li><img width="150" height="150" loading="lazy" decoding="async" src="images/dattatray-bharane.avif" alt="" style="object-position:28% 22%"><b>Hon’ble Shri Dattatray Bharane</b><span>Minister of Agriculture, Maharashtra</span></li>
+                <li><img width="150" height="150" loading="lazy" decoding="async" src="images/aditi-tatkare.jpg" alt="" style="object-position:46% 18%"><b>Hon’ble Smt. Aditi Tatkare</b><span>Minister of Women and Child Development, Maharashtra</span></li>
+                <li><img width="150" height="150" loading="lazy" decoding="async" src="images/sanjay-rathod.jpg" alt="" style="object-position:37% 25%"><b>Hon’ble Shri Sanjay Rathod</b><span>Minister of Soil and Water Conservation, Maharashtra</span></li>
+                <li><img width="150" height="150" loading="lazy" decoding="async" src="images/speaker-ashish-jaiswal-sq.webp" alt=""><b>Hon’ble Shri Ashish Nandkishore Jaiswal</b><span>Minister of State for Finance, Planning and Agriculture, Maharashtra</span></li>
             </ul>
+
+            <h3 class="gv-sub reveal">Government speakers</h3>
+            <ul class="gv-offs reveal">
+                <li><img class="gv-pic" width="96" height="96" loading="lazy" decoding="async" src="images/speaker-sudeep-shrivastava-sq.webp" alt=""><b>Shri Sudeep Shrivastava</b><span>Joint Secretary, MeitY and COO, IndiaAI Mission</span><img class="gv-logo" width="292" height="96" loading="lazy" decoding="async" src="images/logo-meity.webp" alt="MeitY"></li>
+                <li><img class="gv-pic" width="96" height="96" loading="lazy" decoding="async" src="images/speaker-kk-singh-v2.jpg" alt=""><b>Shri K.K. Singh</b><span>Joint Secretary, MeitY</span><img class="gv-logo" width="292" height="96" loading="lazy" decoding="async" src="images/logo-meity.webp" alt="MeitY"></li>
+                <li><img class="gv-pic" width="96" height="96" loading="lazy" decoding="async" src="images/speaker-prakash-kumar-sq.webp" alt=""><b>Shri Prakash Kumar</b><span>Additional Director, MeitY</span><img class="gv-logo" width="292" height="96" loading="lazy" decoding="async" src="images/logo-meity.webp" alt="MeitY"></li>
+                <li><img class="gv-pic" width="96" height="96" loading="lazy" decoding="async" src="images/speaker-akshay-yadava-sq.webp" alt=""><b>Akshay Yadava</b><span>Director, UIDAI</span></li>
+                <li><img class="gv-pic" width="96" height="96" loading="lazy" decoding="async" src="images/speaker-rajkumar-upadhyay.webp" alt=""><b>Dr. Rajkumar Upadhyay</b><span>CEO &amp; Chairman, CDOT Board</span><img class="gv-logo" width="96" height="96" loading="lazy" decoding="async" src="images/logo-cdot.webp" alt="C-DOT"></li>
+                <li><img class="gv-pic" width="96" height="96" loading="lazy" decoding="async" src="images/speaker-virendra-singh-sq.webp" alt=""><b>Shri Virendra Singh (IAS)</b><span>Secretary, Electronics, IT and AI Department, Government of Maharashtra</span><img class="gv-logo" width="96" height="96" loading="lazy" decoding="async" src="images/logo-maharashtra.webp" alt="Government of Maharashtra"></li>
+                <li><img class="gv-pic" width="96" height="96" loading="lazy" decoding="async" src="images/speaker-suhas-mapari-sq.webp" alt=""><b>Shri Suhas Mapari (IAS)</b><span>Joint Secretary, Chief Minister’s Secretariat, Government of Maharashtra</span><img class="gv-logo" width="96" height="96" loading="lazy" decoding="async" src="images/logo-maharashtra.webp" alt="Government of Maharashtra"></li>
+                <li><img class="gv-pic" width="96" height="96" loading="lazy" decoding="async" src="images/speaker-kaustubh-dhavse-sq.webp" alt=""><b>Shri Kaustubh Dhavse</b><span>Chief Advisor to the Chief Minister, Government of Maharashtra</span><img class="gv-logo" width="96" height="96" loading="lazy" decoding="async" src="images/logo-maharashtra.webp" alt="Government of Maharashtra"></li>
+                <li><img class="gv-pic" width="96" height="96" loading="lazy" decoding="async" src="images/speaker-praveen-pardeshi.webp" alt=""><b>Shri Praveen Pardeshi</b><span>CEO, MITRA</span><img class="gv-logo" width="96" height="96" loading="lazy" decoding="async" src="images/logo-mitra.webp" alt="MITRA"></li>
+                <li><img class="gv-pic" width="96" height="96" loading="lazy" decoding="async" src="images/speaker-shrikant-patil.webp" alt=""><b>Dr. Shrikant Patil</b><span>CEO, Maharashtra State Innovation Society</span><img class="gv-logo" width="340" height="96" loading="lazy" decoding="async" src="images/logo-msins.webp" alt="MSInS"></li>
+                <li><img class="gv-pic" width="96" height="96" loading="lazy" decoding="async" src="images/speaker-parag-dabhade.jpg" alt=""><b>Parag Dabhade</b><span>CTO, AI &amp; Agritech Innovation Center, Government of Maharashtra</span><img class="gv-logo" width="96" height="96" loading="lazy" decoding="async" src="images/logo-maharashtra.webp" alt="Government of Maharashtra"></li>
+            </ul>
+
+            <h3 class="gv-sub reveal">Innovation Talk &amp; Showcase by</h3>
+            <div class="gv-talks">
+                <article class="gv-talk reveal">
+                    <img class="gv-pic" width="320" height="320" loading="lazy" decoding="async" src="images/talks/ganesh-nagarajan.webp" alt="Shri Ganesh Nagarajan">
+                    <div>
+                        <h4>Shri Ganesh Nagarajan</h4>
+                        <p class="role">Deputy Secretary, Ministry of Tribal Affairs, Government of India</p>
+                        <p class="talk">Presenting “Adi Vaani: Taking India’s Tribal Languages from the Margins to the Mainstream with AI.”</p>
+                        <img class="gv-logo" width="336" height="150" loading="lazy" decoding="async" src="images/exhibitors/ministry-of-tribal-affairs.webp" alt="Ministry of Tribal Affairs">
+                    </div>
+                </article>
+                <article class="gv-talk reveal reveal-delay-1">
+                    <img class="gv-pic" width="400" height="400" loading="lazy" decoding="async" src="images/speaker-vivek-khandekar-sq.webp" alt="Shri Vivek Khandekar (IFS)">
+                    <div>
+                        <h4>Shri Vivek Khandekar (IFS)</h4>
+                        <p class="role">Principal Chief Conservator of Forests (Social Forestry), Government of Maharashtra</p>
+                        <p class="talk">Presenting “GeoAI Forest Encroachment Monitoring &amp; Ganesh Kavach App.”</p>
+                        <img class="gv-logo" width="180" height="180" loading="lazy" decoding="async" src="images/logo-maharashtra-forest.webp" alt="Maharashtra Forest Department">
+                    </div>
+                </article>
+                <article class="gv-talk reveal">
+                    <img class="gv-pic" width="400" height="400" loading="lazy" decoding="async" src="images/speaker-k-mahesh-sq.webp" alt="Dr. K. Mahesh">
+                    <div>
+                        <h4>Dr. K. Mahesh</h4>
+                        <p class="role">Secretary, Art, Culture &amp; Language, Delhi Government</p>
+                        <img class="gv-logo" width="122" height="192" loading="lazy" decoding="async" src="images/logo-delhi-govt.webp" alt="Government of NCT of Delhi">
+                    </div>
+                </article>
+                <article class="gv-talk reveal reveal-delay-1">
+                    <img class="gv-pic" width="400" height="400" loading="lazy" decoding="async" src="images/speaker-kunal-khemnar-sq.webp" alt="Dr. Kunal Khemnar (IAS)">
+                    <div>
+                        <h4>Dr. Kunal Khemnar (IAS)</h4>
+                        <p class="role">Joint Chief Executive Officer, Maharashtra Industrial Development Corporation (MIDC)</p>
+                        <img class="gv-logo" width="127" height="96" loading="lazy" decoding="async" src="images/logo-midc.webp" alt="MIDC">
+                    </div>
+                </article>
+                <article class="gv-talk gv-talk-two reveal">
+                    <div class="gv-pair" aria-hidden="true"><span class="gv-initials">PM</span><span class="gv-initials">SK</span></div>
+                    <div>
+                        <h4>Mr. Prashant Mehra and Mr. Srinivas Kancharla</h4>
+                        <p class="role">Office of the Principal Scientific Adviser to the Government of India</p>
+                        <p class="talk">Presenting the AI components of MANTHAN–UTTHAN, highlighting the platform’s capabilities, innovations and potential impact.</p>
+                        <img class="gv-logo" width="516" height="96" loading="lazy" decoding="async" src="images/logo-psa.webp" alt="Office of the Principal Scientific Adviser to the Government of India">
+                    </div>
+                </article>
+            </div>
             <p class="gv-see-all"><a href="/conference#speakers">See all speakers <i class="fas fa-arrow-right" aria-hidden="true"></i></a></p>
         </div>
     </section>
