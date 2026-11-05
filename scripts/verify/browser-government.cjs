@@ -132,6 +132,73 @@ const fill = async (page, v) => { for (const [id, val] of Object.entries(v)) awa
       await c.close();
     }
 
+    // ======== the scroll-driven cards and the displacement hover ========
+    {
+      const c = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+      const p = await c.newPage();
+      const errs = [];
+      p.on('pageerror', (e) => errs.push(e.message));
+      await p.goto(BASE + '/government', { waitUntil: 'load' });
+      await settled(p);
+      check('cards: phone with animations on gets the stacking cards', await p.locator('.gv-tiles.gv-stacked').count() === 1);
+      const at = await p.evaluate(async () => {
+        const t = [...document.querySelectorAll('.gv-tile')];
+        const y = t[1].getBoundingClientRect().top + scrollY - innerHeight * 0.4;
+        window.scrollTo(0, y);
+        await new Promise((r) => setTimeout(r, 500));
+        return { first: t[0].getBoundingClientRect().top, sticky: parseFloat(getComputedStyle(t[0]).top), p: parseFloat(t[0].style.getPropertyValue('--p')), over: document.documentElement.scrollWidth - innerWidth, op: getComputedStyle(t[0]).position };
+      });
+      check('cards: the first sticks under the menu while the next slides over, and eases back', at.op === 'sticky' && Math.abs(at.first - at.sticky) < 3 && at.p > 0 && at.p <= 1, JSON.stringify(at));
+      check('cards: no sideways scroll, no page errors', at.over <= 0 && errs.length === 0, at.over + ' ' + errs.join(';'));
+      check('cards: no ripple on a phone (no hover), nothing heavy left on', await p.evaluate(() => [...document.querySelectorAll('.gv-tile img')].every((i) => !i.style.filter)));
+      const clear = await p.evaluate(async () => {
+        const last = [...document.querySelectorAll('.gv-tile')].pop();
+        last.scrollIntoView({ block: 'center' });
+        await new Promise((r) => setTimeout(r, 400));
+        const a = last.querySelector('b').getBoundingClientRect();
+        return { readable: a.top >= 0 && a.bottom <= innerHeight, more: document.querySelector('.gv-more').getBoundingClientRect().top - last.getBoundingClientRect().bottom };
+      });
+      check('cards: the last card can be read, and what follows does not run under it', clear.readable && clear.more >= -1, JSON.stringify(clear));
+      await c.close();
+    }
+    {
+      const c = await browser.newContext({ viewport: { width: 1306, height: 760 }, reducedMotion: 'reduce' });
+      const p = await c.newPage();
+      await p.goto(BASE + '/government', { waitUntil: 'load' });
+      await settled(p);
+      const r = await p.evaluate(() => ({ stacked: document.querySelectorAll('.gv-stacked').length, pos: getComputedStyle(document.querySelector('.gv-tile')).position, anim: getComputedStyle(document.querySelector('.gv-show')).animationName }));
+      check('cards: animations off gets the plain cards', r.stacked === 0 && r.pos !== 'sticky', JSON.stringify(r));
+      await p.locator('.gv-tile').first().scrollIntoViewIfNeeded();
+      await p.locator('.gv-tile').first().hover();
+      check('hover: animations off gets no ripple', await p.evaluate(() => !document.querySelector('.gv-tile img').style.filter));
+      await c.close();
+    }
+    {
+      const c = await browser.newContext({ viewport: { width: 1306, height: 760 } });
+      const p = await c.newPage();
+      const errs = [];
+      p.on('pageerror', (e) => errs.push(e.message));
+      await p.goto(BASE + '/government', { waitUntil: 'load' });
+      await settled(p);
+      await p.locator('.gv-tile').first().scrollIntoViewIfNeeded();
+      await p.waitForTimeout(300);
+      await p.locator('.gv-tile').first().hover();
+      await p.waitForTimeout(120);
+      const during = await p.evaluate(() => ({ f: document.querySelector('.gv-tile img').style.filter, s: Number(document.getElementById('gv-ripple-map').getAttribute('scale')) }));
+      check('hover: on a mouse the photograph ripples', during.f.includes('gv-ripple') && during.s > 0, JSON.stringify(during));
+      await p.waitForTimeout(1100);
+      const after = await p.evaluate(() => ({ f: document.querySelector('.gv-tile img').style.filter, s: Number(document.getElementById('gv-ripple-map').getAttribute('scale')) }));
+      check('hover: and settles, with the filter taken off again', !after.f && after.s === 0, JSON.stringify(after));
+      const show = await p.evaluate(() => ({ supports: CSS.supports('animation-timeline', 'view()'), name: getComputedStyle(document.querySelector('.gv-show')).animationName, green: getComputedStyle(document.querySelector('.gv-show.green')).animationName }));
+      check('exhibition cards: come together with the scroll where the browser can', !show.supports || (show.name === 'gvFromLeft' && show.green === 'gvFromRight'), JSON.stringify(show));
+      await p.locator('.gv-shows').scrollIntoViewIfNeeded();
+      await p.evaluate(() => { const r = document.querySelector('.gv-shows').getBoundingClientRect(); window.scrollTo(0, scrollY + r.top - 140); });
+      await p.waitForTimeout(400);
+      check('exhibition cards: fully there once in view', await p.evaluate(() => [...document.querySelectorAll('.gv-show')].every((e) => parseFloat(getComputedStyle(e).opacity) > 0.95)));
+      check('no page errors with the effects on', errs.length === 0, errs.join(';'));
+      await c.close();
+    }
+
     // ======== /exhibition's band ========
     for (const [w, h, m] of [[390, 844, true], [1306, 760, false]]) {
       const c = await browser.newContext({ viewport: { width: w, height: h }, isMobile: m, hasTouch: m, reducedMotion: 'reduce' });
