@@ -34,7 +34,7 @@ check('the home menu has the Delhi 2027 tab', r.text.includes('href="/delhi" cla
 r = await hit('/training-workshop');
 check('/training-workshop has the call for workshop partners and its form', r.status === 200 && r.text.includes('id="wp-form"') && r.text.includes('Call for Workshop'), r.status);
 r = await hit('/partner');
-check('/partner lists the Cocktail Evening, Networking Lunch and AI Partner cards', ['Bharat AI Cocktail Evening Partner', 'Networking Lunch Partner', '<h3>AI Partner</h3>'].every((w) => r.text.includes(w)), r.status);
+check('/partner lists the Leaders’ Evening, Networking Lunch and AI Partner cards, and no Cocktail Evening card', ['Bharat AI Leaders’ Evening Partner', 'Networking Lunch Partner', '<h3>AI Partner</h3>'].every((w) => r.text.includes(w)) && !r.text.includes('Cocktail Evening Partner'), r.status);
 r = await hit('/government');
 check('/government names the dates and the form, and offers no price', r.text.includes('20–21 November 2026') && r.text.includes('id="gv-form"') && !r.text.includes('₹'), r.status);
 r = await hit('/');

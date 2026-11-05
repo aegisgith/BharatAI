@@ -17,7 +17,6 @@ const refusals = [
   ['shortest time zero', { min: '0' }, 'shortest time', 'wp-min', 'wp-min'],
   ['no longest time', { max: '' }, 'longest time', 'wp-max', 'wp-max'],
   ['longest shorter than shortest', { min: '120', max: '90' }, 'cannot be less', 'wp-max', 'wp-max'],
-  ['no target audience', { audience: '' }, 'target audience', 'wp-audience', 'wp-audience'],
   ['no who should attend', { attend: '' }, 'who should attend', 'wp-attend', 'wp-attend'],
   ['not said individual or company', { as: '' }, 'an individual or an AI company', 'wp-as-person', 'wp-as-set'],
   ['a company with no name', { company: ' ' }, 'company name', 'wp-company', 'wp-company'],
@@ -73,7 +72,6 @@ for (const [what, change, words, focus, under] of refusals) {
     ['the brief', 'Brief: Build a working voice bot'],
     ['hands-on or theory', 'Hands-on or pure theory: Hands-on'],
     ['the time, shortest to longest', 'Time needed: 60 to 90 minutes'],
-    ['the target audience', 'Target audience: Enterprise teams and startups'],
     ['who should attend', 'Who should attend: Software developers'],
     ['the prerequisites', 'Prerequisites: Basic Python'],
     ['the setup requirements', 'Setup requirements: Projector, internet, GPU access'],
@@ -97,7 +95,7 @@ for (const [what, change, words, focus, under] of refusals) {
 {
   const p = openPage({ fetch: async () => ({ ok: false, json: async () => ({ error: 'Invalid inquiry type' }) }) });
   const r = await p.submit(GOOD);
-  check('a server refusal is shown in its words, the form stays, the button comes back', r.error === 'Invalid inquiry type' && !r.done && p.els['wp-submit'].disabled === false && p.els['wp-submit'].innerHTML.includes('Send my workshop idea') && p.moved()?.under === 'the button', JSON.stringify(r));
+  check('a server refusal is shown in its words, the form stays, the button comes back', r.error === 'Invalid inquiry type' && !r.done && p.els['wp-submit'].disabled === false && p.els['wp-submit'].innerHTML.includes('Submit my proposal') && p.moved()?.under === 'the button', JSON.stringify(r));
 }
 {
   const p = openPage({ fetch: async () => { throw new Error('Failed to fetch'); } });
@@ -108,8 +106,10 @@ for (const [what, change, words, focus, under] of refusals) {
 // ---- the page and the other files ----
 const page = read('public/training-workshop.html');
 check('the page calls for individuals and AI companies', page.includes('Call for Workshop') && page.includes('individuals and AI companies'));
+check('the steps say the organisers decide and let them know', page.includes('Submit your workshop proposal') && page.includes('We decide and let you know'));
+check('one audience box only: who should attend, no target audience', !/target audience/i.test(page) && !page.includes('wp-audience'));
 check('the top of the page links to the call', page.includes('href="#workshop-partners"') && page.includes('id="workshop-partners"'));
-for (const box of Object.values({ a: 'wp-topic', b: 'wp-brief', c: 'wp-company', d: 'wp-salutation', e: 'wp-first', f: 'wp-last', g: 'wp-email', h: 'wp-mobile', i: 'wp-audience', j: 'wp-attend', k: 'wp-prereq', l: 'wp-min', m: 'wp-max', n: 'wp-setup' })) {
+for (const box of Object.values({ a: 'wp-topic', b: 'wp-brief', c: 'wp-company', d: 'wp-salutation', e: 'wp-first', f: 'wp-last', g: 'wp-email', h: 'wp-mobile', j: 'wp-attend', k: 'wp-prereq', l: 'wp-min', m: 'wp-max', n: 'wp-setup' })) {
   check(`${box} has its label`, page.includes(`<label for="${box}">`));
 }
 for (const value of ['Hands-on', 'Pure theory', 'Individual', 'AI company']) check(`the choice "${value}" is on the form`, page.includes(`value="${value}"`));

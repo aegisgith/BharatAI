@@ -1175,15 +1175,15 @@
             <div class="wp-grid" id="workshop-partners">
                 <div class="wp-left reveal">
                     <h2 class="section-title">Call for Workshop <span class="accent">Partners</span></h2>
-                    <p class="wp-lead">Have a workshop you would like to lead? We invite individuals and AI companies to propose one for Bharat AI Innovation 2026, at World Trade Center Mumbai, 20&ndash;21 November 2026.</p>
+                    <p class="wp-lead">Have a workshop you would like to lead? We invite individuals and AI companies to submit a proposal for Bharat AI Innovation 2026, at World Trade Center Mumbai, 20&ndash;21 November 2026.</p>
                     <ul class="wp-who">
                         <li><b>Individuals</b>Practitioners, researchers, founders and trainers with a session to lead.</li>
                         <li><b>AI companies</b>Teams who can teach people to build with AI, using what they know best.</li>
                     </ul>
                     <ul class="wp-steps">
-                        <li>Tell us your workshop idea and what it needs</li>
-                        <li>Our team reads it and writes back to you</li>
-                        <li>If it fits the programme, we agree the slot with you</li>
+                        <li>Submit your workshop proposal</li>
+                        <li>Our team reviews it</li>
+                        <li>We decide and let you know</li>
                     </ul>
                     <p class="wp-mail">Prefer email? Write to <a href="mailto:info@bharataiinnovation.com?subject=Workshop%20partner">info@bharataiinnovation.com</a> or call <a href="tel:+918976580367">+91 89765 80367</a>.</p>
                 </div>
@@ -1215,10 +1215,6 @@
                                 <label for="wp-max">Longest time <small>(minutes)</small></label>
                                 <input id="wp-max" name="duration_max" type="text" inputmode="numeric" autocomplete="off" maxlength="3" placeholder="90">
                             </div>
-                        </div>
-                        <div class="wp-field">
-                            <label for="wp-audience">Target audience</label>
-                            <input id="wp-audience" name="target_audience" type="text" autocomplete="off" maxlength="200" placeholder="For example: enterprise teams">
                         </div>
                         <div class="wp-field">
                             <label for="wp-attend">Who should attend?</label>
@@ -1283,15 +1279,15 @@
                             <input id="wp-website" name="website" type="text" tabindex="-1" autocomplete="off">
                         </div>
 
-                        <button type="submit" class="btn btn-primary btn-lg wp-submit" id="wp-submit">Send my workshop idea <i class="fas fa-arrow-right" aria-hidden="true"></i></button>
+                        <button type="submit" class="btn btn-primary btn-lg wp-submit" id="wp-submit">Submit my proposal <i class="fas fa-arrow-right" aria-hidden="true"></i></button>
                         <p class="wp-error" id="wp-error" role="alert" hidden></p>
                         <p class="wp-note">We use these details only to reply about your workshop. <a href="/privacy">Privacy policy</a></p>
                     </form>
 
                     <div class="wp-done" id="wp-done" hidden>
                         <div class="wp-done-icon"><i class="fas fa-check" aria-hidden="true"></i></div>
-                        <h3>Workshop idea received</h3>
-                        <p id="wp-done-text">Our team will write to you.</p>
+                        <h3>Proposal received</h3>
+                        <p id="wp-done-text">We will review your proposal and let you know.</p>
                     </div>
                 </div>
             </div>
@@ -1429,7 +1425,6 @@
         if (!minutes(min)) return fail('Please write the shortest time in minutes, as a number.', byId('wp-min'));
         if (!minutes(max)) return fail('Please write the longest time in minutes, as a number.', byId('wp-max'));
         if (Number(max) < Number(min)) return fail('The longest time cannot be less than the shortest time.', byId('wp-max'));
-        if (!val('wp-audience')) return fail('Please write the target audience.', byId('wp-audience'));
         if (!val('wp-attend')) return fail('Please write who should attend.', byId('wp-attend'));
         var as = picked('applying_as');
         if (!as) return failChoice('Please choose: an individual or an AI company.', 'wp-as-set', 'wp-as-person');
@@ -1467,7 +1462,6 @@
               '\n\nBrief: ' + val('wp-brief') +
               '\n\nHands-on or pure theory: ' + format +
               '\n\nTime needed: ' + duration +
-              '\n\nTarget audience: ' + val('wp-audience') +
               '\n\nWho should attend: ' + val('wp-attend') +
               '\n\nPrerequisites: ' + (val('wp-prereq') || 'None') +
               '\n\nSetup requirements: ' + (val('wp-setup') || 'None') +
@@ -1481,14 +1475,14 @@
           });
         }).catch(function (x) {
           btn.disabled = false;
-          btn.innerHTML = 'Send my workshop idea <i class="fas fa-arrow-right" aria-hidden="true"></i>';
+          btn.innerHTML = 'Submit my proposal <i class="fas fa-arrow-right" aria-hidden="true"></i>';
           fail(x && x.message && x.message !== 'Failed to fetch' ? x.message : 'Could not send. Please check your internet and try again.');
         });
       });
 
       function done(name, email) {
         form.hidden = true;
-        byId('wp-done-text').textContent = 'Thank you, ' + name + '. Our team will write to you at ' + email + '.';
+        byId('wp-done-text').textContent = 'Thank you, ' + name + '. We will review your proposal and let you know at ' + email + '.';
         byId('wp-done').hidden = false;
       }
     })();

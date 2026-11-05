@@ -59,10 +59,10 @@ const count = () => rows('SELECT COUNT(*) AS n FROM inquiries')[0].n;
   const row = lastRow();
   check('the real route takes what the page sends, one row', r.done && !r.error && count() === before + 1, JSON.stringify(r));
   check('saved as workshop_partner on the conference\'s list, email lowercased', row.inquiry_type === 'workshop_partner' && row.event_id === 1 && row.email === 'asha@vaanilabs.example' && row.status === 'new', JSON.stringify(row));
-  check('the row has every box the form asked for', row.name === 'Dr. Asha Rao' && row.organization === 'Vaani Labs' && row.phone === GOOD.mobile && row.subject === 'Workshop · ' + GOOD.topic && [GOOD.brief, GOOD.audience, GOOD.attend, GOOD.prereq, GOOD.setup, 'Hands-on', '60 to 90 minutes'].every((w) => row.message.includes(w)), JSON.stringify(row));
+  check('the row has every box the form asked for', row.name === 'Dr. Asha Rao' && row.organization === 'Vaani Labs' && row.phone === GOOD.mobile && row.subject === 'Workshop · ' + GOOD.topic && [GOOD.brief, GOOD.attend, GOOD.prereq, GOOD.setup, 'Hands-on', '60 to 90 minutes'].every((w) => row.message.includes(w)), JSON.stringify(row));
   check('one email to the team, a reply reaches the person', mail.length === 1 && mail[0].Content.ReplyTo.includes('Asha@VaaniLabs.example') && mail[0].Content.Subject.includes('workshop partner enquiry'), JSON.stringify(mail[0]?.Content?.Subject));
   const b = mail[0].Content.Body[0].Content;
-  check('the team email has everything needed to answer', ['Dr. Asha Rao', 'Vaani Labs', GOOD.mobile, GOOD.topic, GOOD.brief, GOOD.audience, GOOD.setup].every((w) => b.includes(w)), b.slice(0, 200));
+  check('the team email has everything needed to answer', ['Dr. Asha Rao', 'Vaani Labs', GOOD.mobile, GOOD.topic, GOOD.brief, GOOD.attend, GOOD.setup].every((w) => b.includes(w)), b.slice(0, 200));
 }
 {
   mailDown = true;

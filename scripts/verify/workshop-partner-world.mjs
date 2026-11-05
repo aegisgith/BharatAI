@@ -14,7 +14,7 @@ const inlineScript = () => {
   return blocks[0][1];
 };
 
-const BOXES = { topic: 'wp-topic', brief: 'wp-brief', min: 'wp-min', max: 'wp-max', audience: 'wp-audience', attend: 'wp-attend', prereq: 'wp-prereq', setup: 'wp-setup', company: 'wp-company', salutation: 'wp-salutation', first: 'wp-first', last: 'wp-last', email: 'wp-email', mobile: 'wp-mobile', website: 'wp-website' };
+const BOXES = { topic: 'wp-topic', brief: 'wp-brief', min: 'wp-min', max: 'wp-max', attend: 'wp-attend', prereq: 'wp-prereq', setup: 'wp-setup', company: 'wp-company', salutation: 'wp-salutation', first: 'wp-first', last: 'wp-last', email: 'wp-email', mobile: 'wp-mobile', website: 'wp-website' };
 const IDS = [...Object.values(BOXES), 'wp-form', 'wp-error', 'wp-submit', 'wp-done', 'wp-done-text', 'wp-format-set', 'wp-format-hands', 'wp-as-set', 'wp-as-person'];
 
 export const GOOD = {
@@ -23,7 +23,6 @@ export const GOOD = {
   format: 'Hands-on',
   min: '60',
   max: '90',
-  audience: 'Enterprise teams and startups',
   attend: 'Software developers with some Python',
   prereq: 'Basic Python',
   setup: 'Projector, internet, GPU access',
