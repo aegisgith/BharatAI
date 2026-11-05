@@ -14540,7 +14540,7 @@ async function notifyEmail(c: any, attendee: any, opts: { preview?: boolean } = 
         </table>
         <p style="margin:12px 0 14px;font-size:13px;line-height:1.6;color:#1E2140;"><strong>${rsPrice('Delegate Pass')} + GST</strong>${late ? '' : ` until ${PRICE_DEADLINE_TEXT}, then ${rsPrice('Delegate Pass', true)} from ${PRICE_LATE_FROM_TEXT}`}.</p>
         ${btn(go('pay', '&pass=delegate'), 'See the Delegate Pass &rarr;', '#0f7b47')}
-        <p style="margin:16px 0 0;font-size:12.5px;line-height:1.65;color:#555;"><strong>Premium Delegate</strong> (${rsPrice('Premium Delegate Pass')} + GST) adds one hands-on workshop: <em>Data Science to Agentic AI: A CXO&rsquo;s Guide</em> with Dr. Vinay Kulkarni, <em>From Prototype to Production</em> with Dr. Ashish Tendulkar, or <em>Automatic Speech Recognition</em> with Dr. Parijat Shukla. Seats are limited. <a href="${go('pay', '&pass=premium')}" style="color:#0B7A75;font-weight:bold;">Premium</a></p>
+        <p style="margin:16px 0 0;font-size:12.5px;line-height:1.65;color:#555;"><strong>Premium Delegate</strong> (${rsPrice('Premium Delegate Pass')} + GST) adds one hands-on workshop: <em>Data Science to Agentic AI: A CXO&rsquo;s Guide</em> with Dr. Vinay Kulkarni, <em>From Prototype to Production</em> with Dr. Ashish Tendulkar, <em>Automatic Speech Recognition</em> with Dr. Parijat Shukla, or <em>LLM Fine-Tuning, Hands-On</em> with Virendra Pal. Seats are limited. <a href="${go('pay', '&pass=premium')}" style="color:#0B7A75;font-weight:bold;">Premium</a></p>
         <p style="margin:8px 0 0;font-size:12.5px;line-height:1.65;color:#555;"><strong>VIP</strong> (${rsPrice('VIP Pass')} + GST) adds the Bharat AI Leaders’ Evening on Day 1, the VIP lounge, priority seating and a speaker meet &amp; greet. <a href="${go('pay', '&pass=vip')}" style="color:#A67C00;font-weight:bold;">VIP</a></p>
         <p style="margin:12px 0 0;font-size:11.5px;color:#999;">Each button signs you in and opens the secure payment page. Your registration stays the same.</p>
       </div>`
@@ -22594,6 +22594,19 @@ function mainPageHTML(): string {
               <p class="text-xs text-gray-400 mb-3">The kinds of speech problems ASR solves, today&rsquo;s popular models, choosing the right model and hardware for your task, and a hands-on session.</p>
               <span class="text-xs font-semibold text-rose-300">What it covers <i class="fas fa-arrow-right ml-1"></i></span>
             </a>
+            <a href="/training-workshop#llm-fine-tuning" class="glass rounded-2xl p-6 border border-amber-500/20 hover:border-amber-400/40 transition-all block">
+              <div class="flex items-center gap-3 mb-3">
+                <img src="/images/speaker-virendra-pal.webp" alt="Virendra Pal" width="56" height="56" loading="lazy" class="w-14 h-14 rounded-full object-cover border-2 border-amber-400 shrink-0">
+                <div>
+                  <div class="font-bold text-sm text-white">Virendra Pal</div>
+                  <div class="text-[11px] text-gray-400">AI and FinTech Expert</div>
+                </div>
+              </div>
+              <span class="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-300 mb-2">Hands-on &middot; 2 hours</span>
+              <h4 class="font-bold text-base text-white mb-2">LLM Fine-Tuning, Hands-On</h4>
+              <p class="text-xs text-gray-400 mb-3">Fine-tune a small open LLM yourself in Google Colab and compare it before and after. Bring a laptop; basic Python is enough.</p>
+              <span class="text-xs font-semibold text-amber-300">What it covers <i class="fas fa-arrow-right ml-1"></i></span>
+            </a>
             <a href="/training-workshop#cxo-roundtable" class="glass rounded-2xl p-6 border border-violet-500/20 hover:border-violet-400/40 transition-all block md:col-span-2 lg:col-span-3">
               <span class="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-violet-500/10 text-violet-300 mb-2">CXO Roundtable &middot; Closed-door &middot; 60 minutes</span>
               <h4 class="font-bold text-base text-white mb-2">Building the Enterprise AI Workforce: Talent, Delivery and the Rise of Forward-Deployed Engineering</h4>
@@ -22760,30 +22773,6 @@ function mainPageHTML(): string {
               <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold bg-white/5 text-gray-400 border border-white/10"><i class="fas fa-hourglass-half"></i>Coming soon</span>
             </div>
 
-            <!-- LLM Model Fine-Tuning -->
-            <div class="glass rounded-2xl p-6 border border-rose-500/20 hover:border-rose-400/40 transition-all group relative overflow-hidden">
-              <div class="absolute top-3 right-3 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-gradient-to-r from-rose-500 to-pink-500 text-white">Advanced</div>
-              <div class="flex items-center gap-3 mb-4">
-                <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-rose-500/20 to-pink-500/20 flex items-center justify-center shrink-0">
-                  <i class="fas fa-sliders-h text-xl text-rose-400"></i>
-                </div>
-                <div>
-                  <h3 class="font-bold text-base text-white group-hover:text-rose-300 transition">LLM Fine-Tuning</h3>
-                  <p class="text-[11px] text-gray-500">Customize large language models for specific use cases</p>
-                </div>
-              </div>
-              <div class="mb-4">
-                <div class="text-xs font-semibold text-gray-400 mb-2">Topics Covered</div>
-                <div class="flex flex-wrap gap-1.5">
-                  <span class="px-2 py-0.5 rounded-full text-[10px] bg-rose-500/10 text-rose-300 border border-rose-500/20">Transfer Learning</span>
-                  <span class="px-2 py-0.5 rounded-full text-[10px] bg-rose-500/10 text-rose-300 border border-rose-500/20">PEFT / LoRA / QLoRA</span>
-                  <span class="px-2 py-0.5 rounded-full text-[10px] bg-rose-500/10 text-rose-300 border border-rose-500/20">Evaluation</span>
-                  <span class="px-2 py-0.5 rounded-full text-[10px] bg-rose-500/10 text-rose-300 border border-rose-500/20">Deployment</span>
-                </div>
-              </div>
-              <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold bg-white/5 text-gray-400 border border-white/10"><i class="fas fa-hourglass-half"></i>Coming soon</span>
-            </div>
-
             <!-- Computer Vision & Image AI -->
             <div class="glass rounded-2xl p-6 border border-sky-500/20 hover:border-sky-400/40 transition-all group relative overflow-hidden">
               <div class="absolute top-3 right-3 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-gradient-to-r from-sky-500 to-blue-500 text-white">Practical</div>
@@ -22887,6 +22876,14 @@ function mainPageHTML(): string {
                 <div class="text-[11px] font-bold tracking-widest uppercase text-primary-400">Workshop Facilitator</div>
                 <div class="text-lg font-bold">Dr. Parijat Shukla</div>
                 <div class="text-sm text-gray-400">PhD, Iowa State University</div>
+              </div>
+            </div>
+            <div class="mt-4 flex flex-col sm:flex-row items-center justify-center gap-4 text-center sm:text-left">
+              <img src="/images/speaker-virendra-pal.webp" alt="Virendra Pal" width="96" height="96" loading="lazy" class="w-24 h-24 rounded-full object-cover border-2 border-primary-400 shrink-0">
+              <div>
+                <div class="text-[11px] font-bold tracking-widest uppercase text-primary-400">Workshop Facilitator</div>
+                <div class="text-lg font-bold">Virendra Pal</div>
+                <div class="text-sm text-gray-400">AI and FinTech Expert</div>
               </div>
             </div>
             <p class="text-xs text-gray-500 text-center mt-4">More facilitators announced closer to the event.</p>
@@ -25906,7 +25903,7 @@ function mainPageScript(): string {
                     body: 'Others looking for partners, matched on what you both actually do.' },
       learning:   { icon: 'fa-graduation-cap', tab: 'workshops', cta: 'See the workshops',
                     title: 'Get into the workshops',
-                    body: 'Hands-on sessions with working AI practitioners, led by Dr. Ashish Tendulkar, Dr. Vinay Kulkarni and Dr. Parijat Shukla. Small groups, real datasets, a certificate you keep.' }
+                    body: 'Hands-on sessions with working AI practitioners, led by Dr. Ashish Tendulkar, Dr. Vinay Kulkarni, Dr. Parijat Shukla and Virendra Pal. Small groups, real datasets, a certificate you keep.' }
     };
 
     const goalShort = (k) => (GOALS.find(g => g.key === k) || {}).short || k;
