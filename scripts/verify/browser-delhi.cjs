@@ -62,6 +62,8 @@ const settled = async (p) => { await p.evaluate(() => document.fonts.ready); awa
     await page.waitForFunction(() => [...document.images].every((i) => i.complete), null, { timeout: 20000 }).catch(() => {});
     check('sections show with animations off', await page.evaluate(() => ['.dl-collage', '.dl-tiles', '.dl-rows'].every((s) => getComputedStyle(document.querySelector(s)).opacity === '1')));
     check('every picture loads', await page.evaluate(() => [...document.images].every((i) => i.naturalWidth > 0)), await page.evaluate(() => [...document.images].filter((i) => !i.naturalWidth).map((i) => i.src).join(', ')));
+    check('all ten programme boxes show a picture', await page.evaluate(() => { const t = [...document.querySelectorAll('.dl-tile')]; return t.length === 10 && t.every((x) => { const i = x.querySelector('img'); return i && i.naturalWidth > 0 && i.getBoundingClientRect().height > 80; }); }));
+    check('the form is a small strip on a phone (under 480px tall)', await page.evaluate(() => document.getElementById('updates').getBoundingClientRect().height) < 480, await page.evaluate(() => document.getElementById('updates').getBoundingClientRect().height));
     check('tap targets on the form are big enough', await page.evaluate(() => [...document.querySelectorAll('.dl-field input, .dl-submit, .dl-way > span')].every((e) => e.getBoundingClientRect().height >= 44)));
 
     // The form, for real
@@ -109,7 +111,7 @@ const settled = async (p) => { await p.evaluate(() => document.fonts.ready); awa
     await ctx.close();
 
     // ======== sizes ========
-    for (const [w, h, photo] of [[360, 740, 'phone'], [820, 1180, '1600|2400'], [1280, 720, '1600|2400'], [1440, 900, '1600|2400'], [1920, 1080, '2400|1600']]) {
+    for (const [w, h, photo] of [[360, 740, 'phone'], [820, 1180, '1600|2400'], [1000, 700, '1600|2400'], [1280, 720, '1600|2400'], [1440, 900, '1600|2400'], [1920, 1080, '2400|1600']]) {
       const c = await browser.newContext({ viewport: { width: w, height: h } });
       const p = await c.newPage();
       await p.goto(BASE + '/delhi', { waitUntil: 'load' });
@@ -121,6 +123,8 @@ const settled = async (p) => { await p.evaluate(() => document.fonts.ready); awa
         return { over: document.documentElement.scrollWidth - innerWidth, bad, src: document.querySelector('.dl-photo img').currentSrc, btn: document.querySelector('.dl-hero-actions .btn').getBoundingClientRect().bottom, words: roof, imgTop: img.top, imgH: img.height, vh: innerHeight };
       });
       check(`${w}px: nothing runs off the screen`, r.over <= 0 && r.bad.length === 0, JSON.stringify(r.bad));
+      const cut = await p.evaluate(() => [...document.querySelectorAll('.dl-field label, .dl-way > span, .dl-tile > div')].filter((e) => e.scrollWidth > e.clientWidth + 1 || (e.matches('.dl-tile > div') && e.getBoundingClientRect().height > e.parentElement.getBoundingClientRect().height)).map((e) => e.textContent.trim().slice(0, 24)));
+      check(`${w}px: no form label or programme words cut off`, cut.length === 0, cut.join(', '));
       check(`${w}px: the right photograph (${photo})`, new RegExp(photo).test(r.src), r.src);
       check(`${w}px: the first button is on the first screen`, r.btn <= r.vh, r.btn);
       // On a wide screen the words stop above the roof, which is 22% down the picture.
@@ -137,6 +141,8 @@ const settled = async (p) => { await p.evaluate(() => document.fonts.ready); awa
       check('laptop: the hero fits the first screen and shows the building', await p.evaluate(() => { const i = document.querySelector('.dl-photo img').getBoundingClientRect(); return i.top + i.height * 0.5 < innerHeight; }));
       const clear = await p.evaluate(() => [...document.querySelectorAll('.dl-rows li')].every((li) => { const r = document.createRange(); r.selectNodeContents(li.querySelector('b')); return r.getBoundingClientRect().right <= li.querySelector('span').getBoundingClientRect().left; }));
       check('laptop: the big words never run into their descriptions', clear);
+      const strip = await p.evaluate(() => { const u = document.getElementById('updates').getBoundingClientRect(); const f = [...document.querySelectorAll('.dl-field input:not(#dl-website)')].map((i) => Math.round(i.getBoundingClientRect().top)); return { h: u.height, rows: new Set(f).size }; });
+      check('laptop: the form is one slim strip (under 260px, the boxes on one row)', strip.h < 260 && strip.rows === 1, JSON.stringify(strip));
       await c.close();
     }
 

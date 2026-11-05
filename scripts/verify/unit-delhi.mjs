@@ -119,6 +119,20 @@ const faq = graph.find((g) => g['@type'] === 'FAQPage').mainEntity;
 const visibleQs = (html.match(/<summary>/g) || []).length;
 check('one answer in the search data for each question on the page', faq.length === visibleQs, faq.length + ' / ' + visibleQs);
 
+// ---- the programme the organiser listed, every box with a picture ----
+const tiles = [...html.matchAll(/<li class="dl-tile[^"]*">([\s\S]*?)<\/li>/g)].map((m) => m[1]);
+const titled = tiles.map((t) => (t.match(/<b>(.*?)<\/b>/) || [])[1]);
+for (const item of ['Keynotes', 'Panel discussions', 'AI workshops', 'Hackathons', 'Closed-door roundtables', 'Exhibition', 'Cross-border dialogue', 'B2B networking']) {
+  check(`the programme lists ${item}`, titled.includes(item), titled.join(', '));
+}
+check('Innovation Talks & Showcase twice: by startups and corporates, by government', titled.filter((t) => t === 'Innovation Talks &amp; Showcase').length === 2 && html.includes('By startups and corporates') && html.includes('By government departments, ministries and state governments'));
+check('all ten boxes, and every one has a picture with words for screen readers', tiles.length === 10 && tiles.every((t) => /<img [^>]*src="[^"]+"/.test(t) && /alt="[^"]{10,}"/.test(t)), tiles.length);
+check('no two boxes share a picture', new Set(tiles.map((t) => t.match(/src="([^"]+)"/)[1])).size === 10);
+check('the programme comes straight after the hero', html.indexOf('id="programme"') > html.indexOf('class="dl-hero"') && html.indexOf('id="programme"') < html.indexOf('id="venue"'));
+check('the form comes after the programme, the venue and who it is for', html.indexOf('id="updates"') > html.indexOf('id="who"'));
+check('the rest of the Mumbai format is named', ['CXO AI Leadership Panels', 'Startup Pitch', 'Bharat AI Leaders’ Evening', 'Private boardrooms', 'AI Marketplace', 'Bharat AI Connect app'].every((x) => body.includes(x)));
+check('llms.txt names the programme', /\[Delhi 2027\].*hackathons.*cross-border dialogue/.test(read('public/llms.txt')));
+
 // ---- nothing it names is missing ----
 const local = [...html.matchAll(/(?:src|href)="((?:\/|images\/|css\/|js\/)[^"#?]*)/g)].map((m) => m[1]).filter((u) => /\.[a-z0-9]+$/.test(u));
 const missing = [...new Set(local)].filter((u) => !existsSync(new URL('../../public/' + u.replace(/^\//, ''), import.meta.url)));

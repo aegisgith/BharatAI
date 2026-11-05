@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Bharat AI Innovation Delhi 2027 · 29–30 July, Bharat Mandapam, New Delhi</title>
-    <meta name="description" content="Bharat AI Innovation, India's B2B AI conference and exhibition, comes to Bharat Mandapam, New Delhi on 29–30 July 2027. Conference, exhibition and business meetings. Leave your details to hear first when passes and booths open.">
+    <meta name="description" content="Bharat AI Innovation comes to Bharat Mandapam, New Delhi on 29–30 July 2027: keynotes, panel discussions, Innovation Talks and Showcase by startups, corporates and government, AI workshops, hackathons, closed-door roundtables, an exhibition, cross-border dialogue and B2B networking. Leave your details to hear first when passes and booths open.">
     <link rel="canonical" href="https://bharataiinnovation.com/delhi">
     <!-- Link previews (WhatsApp, LinkedIn, X, Slack). Card: scripts/gen-og-cards.mjs -->
     <meta property="og:type" content="website">
@@ -35,7 +35,7 @@
           "@type": "Event",
           "@id": "https://bharataiinnovation.com/delhi#event",
           "name": "Bharat AI Innovation Delhi 2027",
-          "description": "The Delhi edition of Bharat AI Innovation, India's B2B AI conference and exhibition: two days of talks and panels, an exhibition floor and business meetings at Bharat Mandapam, New Delhi.",
+          "description": "The Delhi edition of Bharat AI Innovation, India's B2B AI conference and exhibition: two days of keynotes, panel discussions, Innovation Talks and Showcase by startups, corporates and government, AI workshops, hackathons, closed-door roundtables, an exhibition, cross-border dialogue and B2B networking at Bharat Mandapam, New Delhi.",
           "startDate": "2027-07-29",
           "endDate": "2027-07-30",
           "eventStatus": "https://schema.org/EventScheduled",
@@ -55,7 +55,7 @@
             }
           },
           "organizer": { "@id": "https://bharataiinnovation.com/#organization" },
-          "keywords": "AI conference Delhi, AI exhibition New Delhi, AI event Bharat Mandapam, B2B AI event India, Bharat AI Innovation Delhi, AI event July 2027"
+          "keywords": "AI conference Delhi, AI exhibition New Delhi, AI event Bharat Mandapam, AI hackathon Delhi, AI workshops Delhi, B2B AI event India, Bharat AI Innovation Delhi, AI event July 2027"
         },
         {
           "@type": "Organization",
@@ -185,23 +185,37 @@
         .dl-venue-grid { grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr); gap: 4rem; align-items: center; }
     }
 
-    /* --- What you get: photographs with the words on them, as on the home page --- */
+    /* --- The programme: photographs with the words on them, as on the home page --- */
     .dl-what { background: var(--off-white); }
-    .dl-tiles { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.75rem; grid-template-columns: 1fr; }
-    .dl-tile { position: relative; overflow: hidden; border-radius: 18px; background: var(--charcoal); aspect-ratio: 16 / 10; }
+    .dl-what .section-header { margin-bottom: 1.75rem; }
+    .dl-feature, .dl-tiles { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.75rem; }
+    .dl-feature { margin-bottom: 0.75rem; }
+    .dl-tiles { grid-template-columns: 1fr 1fr; }
+    .dl-tile { position: relative; overflow: hidden; border-radius: 16px; background: var(--charcoal); aspect-ratio: 1 / 1.08; }
+    .dl-feature .dl-tile { aspect-ratio: 16 / 10; }
     .dl-tile img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transition: transform 0.7s var(--ease-out); }
     .dl-tile:hover img { transform: scale(1.04); }
-    .dl-tile div { position: absolute; left: 0; right: 0; bottom: 0; padding: 3.5rem 1rem 1rem; color: #fff; background: linear-gradient(180deg, rgba(10,12,28,0), rgba(10,12,28,0.9) 62%); }
-    .dl-tile b { display: block; font-family: var(--font-display); font-size: 1.15rem; line-height: 1.15; }
-    .dl-tile span { display: block; font-size: 0.84rem; line-height: 1.42; color: rgba(255,255,255,0.88); margin-top: 0.3rem; }
-    .dl-photo-note { text-align: center; font-size: 0.84rem; color: var(--mid-grey); margin: 1rem 0 0; }
+    .dl-tile > div { position: absolute; left: 0; right: 0; bottom: 0; padding: 2.75rem 0.8rem 0.8rem; color: #fff; background: linear-gradient(180deg, rgba(10,12,28,0), rgba(10,12,28,0.92) 58%); }
+    .dl-tile b { display: block; font-family: var(--font-display); font-size: 1rem; line-height: 1.15; letter-spacing: -0.01em; }
+    .dl-tile i.by { display: block; font-style: normal; font-weight: 700; font-size: 0.82rem; line-height: 1.3; color: #FFB27A; margin-top: 0.2rem; }
+    .dl-tile span { display: block; font-size: 0.8rem; line-height: 1.35; color: rgba(255,255,255,0.88); margin-top: 0.25rem; }
+    .dl-feature .dl-tile b { font-size: 1.2rem; }
+    .dl-also { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 0.5rem; margin: 1.5rem 0 0; padding: 0; list-style: none; }
+    .dl-also li { font-size: 0.86rem; font-weight: 700; color: var(--charcoal); background: #fff; border: 1px solid #E3E6F6; border-radius: 999px; padding: 0.45rem 0.85rem; }
+    .dl-also li.lead { background: none; border: 0; padding: 0.45rem 0.2rem; color: var(--dark-grey); font-weight: 600; flex-basis: 100%; text-align: center; }
+    .dl-photo-note { text-align: center; font-size: 0.82rem; color: var(--mid-grey); margin: 0.9rem 0 0; }
     @media (min-width: 900px) {
-        .dl-tiles { grid-template-columns: 1.55fr 1fr; grid-template-rows: 1fr 1fr; gap: 1.25rem; height: clamp(520px, 44vw, 640px); }
-        .dl-tile, .dl-tile:first-child { aspect-ratio: auto; }
-        .dl-tile:first-child { grid-column: auto; grid-row: 1 / 3; }
-        .dl-tile b { font-size: 1.45rem; }
-        .dl-tile span { font-size: 0.98rem; max-width: 42ch; }
-        .dl-tile div { padding: 4.5rem 1.5rem 1.35rem; }
+        .dl-feature { grid-template-columns: 1fr 1fr; gap: 1.1rem; margin-bottom: 1.1rem; }
+        .dl-feature .dl-tile { aspect-ratio: 16 / 9; }
+        .dl-feature .dl-tile b { font-size: 1.5rem; }
+        .dl-feature .dl-tile i.by { font-size: 1rem; }
+        .dl-feature .dl-tile span { font-size: 0.95rem; max-width: 46ch; }
+        .dl-feature .dl-tile > div { padding: 4rem 1.35rem 1.15rem; }
+        .dl-tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1.1rem; }
+        .dl-tile { aspect-ratio: 4 / 3.3; }
+        .dl-tile b { font-size: 1.12rem; }
+        .dl-tile span { font-size: 0.86rem; }
+        .dl-tile > div { padding: 3rem 1rem 0.9rem; }
     }
 
     /* --- Who it is for --- */
@@ -221,41 +235,48 @@
         .dl-rows span { margin-top: 0; }
     }
 
-    /* --- Be the first to know --- */
+    /* --- Be the first to know: a strip, not a page of its own --- */
     .dl-updates-sec { background: var(--off-white); }
-    .dl-updates { display: grid; gap: 2rem; scroll-margin-top: calc(var(--nav-h) + 16px); }
-    .dl-updates .section-title { text-align: left; margin-bottom: 0.75rem; text-wrap: balance; }
-    .dl-updates-lead { color: var(--dark-grey); font-size: 1.05rem; line-height: 1.65; margin: 0; max-width: 44ch; text-wrap: pretty; }
-    .dl-card { background: #fff; border: 1px solid #E3E6F6; border-radius: 22px; padding: 1.4rem 1.15rem; box-shadow: 0 18px 44px rgba(13,15,30,0.08); }
-    .dl-ways { border: 0; padding: 0; margin: 0 0 1.15rem; }
-    .dl-ways legend { font-weight: 800; color: var(--charcoal); font-size: 0.95rem; margin-bottom: 0.65rem; padding: 0; }
-    .dl-ways-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.55rem; }
+    .dl-updates-sec.dl-sec { padding: 2.25rem 0; }
+    .dl-updates { background: #fff; border: 1px solid #E3E6F6; border-radius: 18px; padding: 1.1rem; box-shadow: 0 10px 28px rgba(13,15,30,0.06); scroll-margin-top: calc(var(--nav-h) + 16px); }
+    .dl-updates-head h2 { font-family: var(--font-display); font-size: 1.3rem; font-weight: 800; letter-spacing: -0.02em; line-height: 1.15; color: var(--charcoal); margin: 0 0 0.2rem; }
+    .dl-updates-head h2 .accent { color: var(--saffron); }
+    .dl-updates-head p { color: var(--dark-grey); font-size: 0.9rem; line-height: 1.45; margin: 0; }
+    .dl-ways { border: 0; padding: 0; margin: 0.85rem 0 0.75rem; min-width: 0; }
+    .dl-ways legend { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
+    .dl-ways-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.35rem; }
     .dl-way { position: relative; cursor: pointer; }
     .dl-way input { position: absolute; opacity: 0; width: 1px; height: 1px; }
-    .dl-way > span { display: flex; flex-direction: column; gap: 0.1rem; height: 100%; min-height: 68px; padding: 0.7rem 0.85rem; border: 1.5px solid #D5D9EE; border-radius: 14px; background: var(--off-white); transition: border-color var(--t-fast), background var(--t-fast); }
-    .dl-way b { font-size: 0.98rem; color: var(--charcoal); }
-    .dl-way small { font-size: 0.8rem; color: var(--dark-grey); line-height: 1.35; }
-    .dl-way input:checked + span { border-color: var(--saffron); background: rgba(255,107,0,0.07); box-shadow: 0 0 0 3px rgba(255,107,0,0.12); }
+    .dl-way > span { display: flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 0.35rem; border: 1.5px solid #D5D9EE; border-radius: 12px; background: var(--off-white); font-size: 0.88rem; font-weight: 700; color: var(--charcoal); transition: border-color var(--t-fast), background var(--t-fast); }
+    .dl-way input:checked + span { border-color: var(--saffron); background: rgba(255,107,0,0.09); color: var(--ink-orange); }
     .dl-way input:focus-visible + span { outline: 2px solid var(--electric); outline-offset: 2px; }
-    .dl-field { margin-bottom: 0.9rem; }
-    .dl-field label { display: block; font-size: 0.88rem; font-weight: 700; color: var(--charcoal); margin-bottom: 0.3rem; }
+    .dl-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; align-items: end; }
+    .dl-field { min-width: 0; }
+    .dl-field.wide, .dl-submit { grid-column: 1 / -1; }
+    .dl-field label { display: block; font-size: 0.8rem; font-weight: 700; color: var(--charcoal); margin-bottom: 0.2rem; }
     .dl-field label .opt { font-weight: 600; color: var(--mid-grey); }
-    .dl-field input { width: 100%; min-height: 48px; padding: 0.7rem 0.95rem; border: 1.5px solid #D5D9EE; border-radius: 12px; font: inherit; font-size: 1rem; color: var(--charcoal); background: #fff; }
+    .dl-field input { width: 100%; min-height: 44px; padding: 0.5rem 0.75rem; border: 1.5px solid #D5D9EE; border-radius: 10px; font: inherit; font-size: 1rem; color: var(--charcoal); background: #fff; }
     .dl-field input:focus { outline: none; border-color: var(--saffron); box-shadow: 0 0 0 3px rgba(255,107,0,0.15); }
     .dl-field input[aria-invalid="true"] { border-color: #D93025; }
     .dl-hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
-    .dl-submit { width: 100%; justify-content: center; margin-top: 0.3rem; min-height: 52px; }
-    .dl-error { margin: 0.85rem 0 0; padding: 0.7rem 0.9rem; background: #FDECEA; color: #A0281D; border-radius: 10px; font-size: 0.9rem; font-weight: 600; line-height: 1.5; }
-    .dl-note { font-size: 0.82rem; color: var(--mid-grey); margin: 0.85rem 0 0; line-height: 1.5; }
+    .dl-submit { width: 100%; justify-content: center; min-height: 46px; padding: 0.55rem 1.25rem; font-size: 0.95rem; white-space: nowrap; }
+    .dl-error { margin: 0.65rem 0 0; padding: 0.55rem 0.8rem; background: #FDECEA; color: #A0281D; border-radius: 10px; font-size: 0.86rem; font-weight: 600; line-height: 1.45; }
+    .dl-note { font-size: 0.76rem; color: var(--mid-grey); margin: 0.55rem 0 0; line-height: 1.4; }
     .dl-note a { color: var(--dark-grey); text-decoration: underline; }
-    .dl-done { text-align: center; padding: 1rem 0.5rem; }
-    .dl-done-icon { width: 64px; height: 64px; border-radius: 50%; background: rgba(19,136,8,0.1); color: #138808; display: flex; align-items: center; justify-content: center; font-size: 1.8rem; margin: 0 auto 1rem; }
-    .dl-done h3 { font-family: var(--font-display); font-size: 1.4rem; font-weight: 800; color: var(--charcoal); margin-bottom: 0.5rem; }
-    .dl-done p { color: var(--dark-grey); line-height: 1.7; margin: 0 auto 1.25rem; max-width: 40ch; }
     @media (min-width: 900px) {
-        .dl-updates { grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr); gap: 4rem; align-items: center; }
-        .dl-card { padding: 2rem; }
+        .dl-updates-sec.dl-sec { padding: 2.75rem 0; }
+        .dl-updates { padding: 1.4rem 1.6rem; }
+        .dl-form-top { display: flex; align-items: center; justify-content: space-between; gap: 2rem; }
+        .dl-updates-head h2 { font-size: 1.5rem; }
+        .dl-ways { margin: 0; flex: none; width: 420px; }
+        .dl-fields { grid-template-columns: 1fr 1.2fr 1fr 1fr auto; margin-top: 0.85rem; gap: 0.7rem; }
+        .dl-field.wide, .dl-submit { grid-column: auto; }
+        .dl-submit { width: auto; min-height: 44px; }
     }
+    .dl-done { text-align: center; padding: 0.5rem; }
+    .dl-done-icon { width: 44px; height: 44px; border-radius: 50%; background: rgba(19,136,8,0.1); color: #138808; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; margin: 0 auto 0.5rem; }
+    .dl-done h3 { font-family: var(--font-display); font-size: 1.2rem; font-weight: 800; color: var(--charcoal); margin-bottom: 0.25rem; }
+    .dl-done p { color: var(--dark-grey); line-height: 1.5; margin: 0 auto 0.75rem; max-width: 52ch; font-size: 0.95rem; }
 
     /* --- Questions --- */
     .dl-qs { background: #fff; }
@@ -352,6 +373,70 @@
         </div>
     </section>
 
+    <!-- ===== THE PROGRAMME ===== -->
+    <section class="dl-what dl-sec" id="programme">
+        <div class="container">
+            <div class="section-header reveal">
+                <h2 class="section-title">What is on in <span class="accent">New Delhi</span></h2>
+                <p class="section-subtitle">The full Bharat AI Innovation format, for two days at Bharat Mandapam.</p>
+            </div>
+            <ul class="dl-feature">
+                <li class="dl-tile reveal">
+                    <img width="1600" height="1066" loading="lazy" decoding="async" src="images/gallery/7C2A2991.webp" alt="A company leader presenting on a large stage" style="object-position:right center">
+                    <div><b>Innovation Talks &amp; Showcase</b><i class="by">By startups and corporates</i><span>Short talks on stage and a live look at what they have built.</span></div>
+                </li>
+                <li class="dl-tile reveal reveal-delay-1">
+                    <img width="1600" height="1066" loading="lazy" decoding="async" src="images/gallery/7C2A2946.webp" alt="A panel on using data for better governance and society, on a large stage" style="object-position:center 22%">
+                    <div><b>Innovation Talks &amp; Showcase</b><i class="by">By government departments, ministries and state governments</i><span>How government teams are using AI, shown on stage.</span></div>
+                </li>
+            </ul>
+            <ul class="dl-tiles">
+                <li class="dl-tile reveal">
+                    <img width="1600" height="1066" loading="lazy" decoding="async" src="images/gallery/577B0776.webp" alt="A keynote speaker on a large lit stage between two tall screens">
+                    <div><b>Keynotes</b><span>Where AI in India is going.</span></div>
+                </li>
+                <li class="dl-tile reveal">
+                    <img width="1600" height="1066" loading="lazy" decoding="async" src="images/gallery/MNP_3564.webp" alt="Five women in conversation on a panel" style="object-position:center 20%">
+                    <div><b>Panel discussions</b><span>What worked, and what did not.</span></div>
+                </li>
+                <li class="dl-tile reveal">
+                    <img width="1600" height="1066" loading="lazy" decoding="async" src="images/gallery/7C2A2447.webp" alt="A speaker leading a technical session in a seated room">
+                    <div><b>AI workshops</b><span>Hands-on, led by practitioners.</span></div>
+                </li>
+                <li class="dl-tile reveal">
+                    <img width="1600" height="1066" loading="lazy" decoding="async" src="images/gallery/7C2A2566.webp" alt="A room of people working at their laptops">
+                    <div><b>Hackathons</b><span>Teams build working AI, fast.</span></div>
+                </li>
+                <li class="dl-tile reveal">
+                    <img width="900" height="502" loading="lazy" decoding="async" src="images/venue-boardroom-1.webp" alt="An empty boardroom with a large round table and leather chairs">
+                    <div><b>Closed-door roundtables</b><span>Small rooms for senior leaders.</span></div>
+                </li>
+                <li class="dl-tile reveal">
+                    <img width="1600" height="1067" loading="lazy" decoding="async" src="images/gallery/DSC_5278.webp" alt="Visitors talking to a company’s team at its exhibition booth" style="object-position:40% center">
+                    <div><b>Exhibition</b><span>AI products, live, for buyers.</span></div>
+                </li>
+                <li class="dl-tile reveal">
+                    <img width="1600" height="1066" loading="lazy" decoding="async" src="images/gallery/OMY_4001.webp" alt="An international speaker on stage, with partner logos behind him" style="object-position:68% center">
+                    <div><b>Cross-border dialogue</b><span>India and the world on AI.</span></div>
+                </li>
+                <li class="dl-tile reveal">
+                    <img width="1600" height="1200" loading="lazy" decoding="async" src="images/gallery/577B0622.webp" alt="Delegates meeting and talking in a bright glass atrium" style="object-position:30% center">
+                    <div><b>B2B networking</b><span>Book meetings before you arrive.</span></div>
+                </li>
+            </ul>
+            <ul class="dl-also">
+                <li class="lead">Also, as in Mumbai:</li>
+                <li>CXO AI Leadership Panels</li>
+                <li>Startup Pitch</li>
+                <li>Bharat AI Leaders’ Evening</li>
+                <li>Private boardrooms</li>
+                <li>AI Marketplace</li>
+                <li>Bharat AI Connect app</li>
+            </ul>
+            <p class="dl-photo-note">Photos from Data Science Congress, the predecessor to Bharat AI Innovation, and a World Trade Center Mumbai boardroom.</p>
+        </div>
+    </section>
+
     <!-- ===== THE VENUE ===== -->
     <section class="dl-venue dl-sec" id="venue">
         <div class="container dl-venue-grid">
@@ -369,30 +454,6 @@
                 <img class="day" width="1000" height="667" loading="lazy" decoding="async" src="images/delhi/mandapam-day.webp" alt="Bharat Mandapam by day, with the bronze Nataraja, flags and water gardens in front of the round hall">
                 <img class="gate" width="860" height="555" loading="lazy" decoding="async" src="images/delhi/mandapam-gate.webp" alt="The Bharat Mandapam entry gate at night, with streaks of traffic light on the road in front">
             </div>
-        </div>
-    </section>
-
-    <!-- ===== WHAT YOU GET ===== -->
-    <section class="dl-what dl-sec" id="what">
-        <div class="container">
-            <div class="section-header reveal">
-                <h2 class="section-title">What you get <span class="accent">in Delhi</span></h2>
-            </div>
-            <ul class="dl-tiles">
-                <li class="dl-tile reveal">
-                    <img width="1600" height="1066" loading="lazy" decoding="async" src="images/gallery/577B0776.webp" alt="A keynote speaker on a large lit stage between two tall screens">
-                    <div><b>Conference</b><span>Talks and panels by people using AI at work. What worked, and what did not.</span></div>
-                </li>
-                <li class="dl-tile reveal reveal-delay-1">
-                    <img width="1600" height="1067" loading="lazy" decoding="async" src="images/gallery/DSC_5278.webp" alt="Visitors talking to a company’s team at its exhibition booth" style="object-position:40% center">
-                    <div><b>Exhibition</b><span>AI companies show their products to buyers from government and enterprise.</span></div>
-                </li>
-                <li class="dl-tile reveal reveal-delay-2">
-                    <img width="1600" height="1200" loading="lazy" decoding="async" src="images/gallery/577B0622.webp" alt="Delegates meeting and talking in a bright glass atrium" style="object-position:30% center">
-                    <div><b>Business meetings</b><span>Find the right people in the app and book meetings before you arrive.</span></div>
-                </li>
-            </ul>
-            <p class="dl-photo-note">Photos from Data Science Congress, the predecessor to Bharat AI Innovation.</p>
         </div>
     </section>
 
@@ -414,29 +475,29 @@
     <!-- ===== GET UPDATES ===== -->
     <section class="dl-updates-sec dl-sec">
         <div class="container">
-            <div class="dl-updates" id="updates">
-                <div class="reveal">
-                    <h2 class="section-title">Be the <span class="accent">first to know</span></h2>
-                    <p class="dl-updates-lead">Passes, booths and speakers for Delhi are not out yet. Leave your details and we will email you as soon as they are.</p>
-                </div>
-
-                <div class="dl-card reveal reveal-delay-1">
-                    <form id="dl-form" novalidate>
+            <div class="dl-updates reveal" id="updates">
+                <form id="dl-form" novalidate>
+                    <div class="dl-form-top">
+                        <div class="dl-updates-head">
+                            <h2>Be the <span class="accent">first to know</span></h2>
+                            <p>We will email you when passes and booths open.</p>
+                        </div>
                         <fieldset class="dl-ways">
                             <legend>I want to</legend>
                             <div class="dl-ways-grid">
-                                <label class="dl-way"><input type="radio" name="interest" value="attend" checked><span><b>Attend</b><small>Get a pass when they open</small></span></label>
-                                <label class="dl-way"><input type="radio" name="interest" value="exhibit"><span><b>Exhibit</b><small>Book a booth</small></span></label>
-                                <label class="dl-way"><input type="radio" name="interest" value="sponsor"><span><b>Sponsor</b><small>Put your brand before AI buyers</small></span></label>
-                                <label class="dl-way"><input type="radio" name="interest" value="speak"><span><b>Speak</b><small>Share what you built</small></span></label>
+                                <label class="dl-way"><input type="radio" name="interest" value="attend" checked><span>Attend</span></label>
+                                <label class="dl-way"><input type="radio" name="interest" value="exhibit"><span>Exhibit</span></label>
+                                <label class="dl-way"><input type="radio" name="interest" value="sponsor"><span>Sponsor</span></label>
+                                <label class="dl-way"><input type="radio" name="interest" value="speak"><span>Speak</span></label>
                             </div>
                         </fieldset>
-
-                        <div class="dl-field">
+                    </div>
+                    <div class="dl-fields">
+                        <div class="dl-field wide">
                             <label for="dl-name">Your name</label>
                             <input id="dl-name" name="name" type="text" autocomplete="name" maxlength="120">
                         </div>
-                        <div class="dl-field">
+                        <div class="dl-field wide">
                             <label for="dl-email">Email</label>
                             <input id="dl-email" name="email" type="email" inputmode="email" autocomplete="email" maxlength="160">
                         </div>
@@ -452,18 +513,17 @@
                             <label for="dl-website">Leave this empty</label>
                             <input id="dl-website" name="website" type="text" tabindex="-1" autocomplete="off">
                         </div>
-
-                        <button type="submit" class="btn btn-primary btn-lg dl-submit" id="dl-submit">Tell me first <i class="fas fa-arrow-right" aria-hidden="true"></i></button>
-                        <p class="dl-error" id="dl-error" role="alert" hidden></p>
-                        <p class="dl-note">We will only email you about Bharat AI Innovation Delhi. <a href="/privacy">Privacy policy</a></p>
-                    </form>
-
-                    <div class="dl-done" id="dl-done" hidden>
-                        <div class="dl-done-icon"><i class="fas fa-check" aria-hidden="true"></i></div>
-                        <h3>You are on the list</h3>
-                        <p id="dl-done-text">We will email you when passes and booths for Delhi open.</p>
-                        <a href="/delhi-2027.ics" class="btn btn-outline" id="dl-save-date-2" download="bharat-ai-innovation-delhi-2027.ics"><i class="fas fa-calendar-plus" aria-hidden="true"></i> Save the date</a>
+                        <button type="submit" class="btn btn-primary dl-submit" id="dl-submit">Tell me first <i class="fas fa-arrow-right" aria-hidden="true"></i></button>
                     </div>
+                    <p class="dl-error" id="dl-error" role="alert" hidden></p>
+                    <p class="dl-note">We only email you about Delhi. <a href="/privacy">Privacy policy</a></p>
+                </form>
+
+                <div class="dl-done" id="dl-done" hidden>
+                    <div class="dl-done-icon"><i class="fas fa-check" aria-hidden="true"></i></div>
+                    <h3>You are on the list</h3>
+                    <p id="dl-done-text">We will email you when passes and booths for Delhi open.</p>
+                    <a href="/delhi-2027.ics" class="btn btn-outline btn-sm" id="dl-save-date-2" download="bharat-ai-innovation-delhi-2027.ics"><i class="fas fa-calendar-plus" aria-hidden="true"></i> Save the date</a>
                 </div>
             </div>
         </div>
@@ -597,7 +657,7 @@
       }
       // A booth or a sponsorship is a phone call, so the mobile is asked for there.
       function phoneNeeded() { var i = interest(); return i === 'exhibit' || i === 'sponsor'; }
-      function syncPhone() { phoneHint.textContent = phoneNeeded() ? '(our team will call you)' : '(optional)'; }
+      function syncPhone() { phoneHint.textContent = phoneNeeded() ? '(we will call you)' : '(optional)'; }
 
       form.addEventListener('change', function (e) { if (e.target.name === 'interest') syncPhone(); });
       Array.prototype.forEach.call(document.querySelectorAll('a[data-interest]'), function (a) {
