@@ -20687,7 +20687,7 @@ ${sharedNavHTML('inquiry')}
             <span class="text-sm font-bold text-green-300">&#x1F680; Startup Pod</span>
             <p class="text-[10px] text-gray-400 mt-0.5">1.5 x 1.5 m (2.25 sqm)</p>
           </div>
-          <span class="text-sm font-bold text-green-400"><s style="font-weight:400;opacity:.7;">&#x20B9;35,000</s> &#x20B9;48,000</span>
+          <span class="text-sm font-bold text-green-400"><s style="font-weight:400;opacity:.7;">&#x20B9;38,000</s> &#x20B9;48,000</span>
         </div>
       </div>
 
@@ -24908,7 +24908,7 @@ function mainPageScript(): string {
 
     // The organiser, 6 Nov 2026: the Startup Pod's old price struck through beside the new one.
     // The catalogue holds one price, so the old one is stated here.
-    function boothWas(bt) { return bt && bt.slug === 'startup-pod' ? '<s style="font-weight:400;font-size:.65em;opacity:.7;">₹35,000</s> ' : ''; }
+    function boothWas(bt) { return bt && bt.slug === 'startup-pod' ? '<s style="font-weight:400;font-size:.65em;opacity:.7;">₹38,000</s> ' : ''; }
 
     function closeInquiryForm() {
       document.getElementById('inquiry-modal').classList.add('hidden');

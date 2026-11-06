@@ -47,12 +47,12 @@ check('llms.txt: says what they were, in the past', llms.includes('Until 5 Novem
 // The Startup Pod, struck through on the pages that choose a booth (6 Nov 2026). The figure
 // search engines and link previews read stays plain.
 const exhibition = read('exhibition.html');
-check('/exhibition: the Startup Pod struck through on its card and in the table', (exhibition.match(/₹35,000<\/s> ₹48,000/g) || []).length === 2);
+check('/exhibition: the Startup Pod struck through on its card and in the table', (exhibition.match(/₹38,000<\/s> ₹48,000/g) || []).length === 2);
 check('/exhibition: what search engines read is the plain price', exhibition.includes('"name": "Startup Pod", "price": "48000"'));
-check('/exhibition: the floor plan script is a new version, so nobody keeps the old file', exhibition.includes('js/floor-plan.js?v=2026-11-06'));
-check('floor plan: the panel strikes the old price for a pod only', read('js/floor-plan.js').includes("it.type==='pod'") && read('js/floor-plan.js').includes('inr(35000)'));
-check('/partner and the home page show it struck through too', /&#8377;35,000<\/s> &#8377;48,000/.test(read('partner.html')) && /<s>₹35,000<\/s> ₹48,000/.test(read('index.html')));
-check('/delhi, a different event, is not touched', !read('delhi.html').includes('35,000'));
+check('/exhibition: the floor plan script is a new version, so nobody keeps the old file', exhibition.includes('js/floor-plan.js?v=2026-11-06b'));
+check('floor plan: the panel strikes the old price for a pod only', read('js/floor-plan.js').includes("it.type==='pod'") && read('js/floor-plan.js').includes('inr(38000)'));
+check('/partner and the home page show it struck through too', /&#8377;38,000<\/s> &#8377;48,000/.test(read('partner.html')) && /<s>₹38,000<\/s> ₹48,000/.test(read('index.html')));
+check('/delhi, a different event, is not touched', !read('delhi.html').includes('38,000'));
 
 console.log(fails ? `\n${fails} FAILED` : '\nall unit checks passed');
 process.exit(fails ? 1 : 0);
