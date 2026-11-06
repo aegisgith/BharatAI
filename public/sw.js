@@ -39,7 +39,8 @@
 // pass (smaller type, then an ellipsis) instead of running off both edges.
 // 5 Nov 2026 (bhai-v26): style.css?v=20261105, the 13-link menu with Delhi 2027.
 // 5 Nov 2026 (bhai-v27): style.css?v=20261105b, the 14-link menu with Govt.
-const VERSION = 'bhai-v27';
+// 6 Nov 2026 (bhai-v28): Dr. Vivek Bhoite off the speakers, so the offline list drops him.
+const VERSION = 'bhai-v28';
 const SHELL = `shell-${VERSION}`;
 const DATA = `data-${VERSION}`;
 
