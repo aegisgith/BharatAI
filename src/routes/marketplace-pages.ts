@@ -18,7 +18,7 @@ declare const __TW_CSS_HASH__: string
 // slugs come from the URL and are never echoed into the head (see inlineJsString).
 // The seller dashboard and marketplace admin are private screens: noindex.
 const MP_OG_IMAGE = 'https://bharataiinnovation.com/images/og/marketplace.jpg'
-function mpSharedHead(title: string, opts: { path?: string; noindex?: boolean } = {}): string {
+function mpSharedHead(title: string, opts: { path?: string; noindex?: boolean; extraHead?: string } = {}): string {
   const url = `https://bharataiinnovation.com${opts.path || '/marketplace'}`
   return `<!DOCTYPE html>
 <html lang="en">
@@ -56,7 +56,7 @@ function mpSharedHead(title: string, opts: { path?: string; noindex?: boolean } 
   <link rel="stylesheet" href="/css/fa-subset.css?v=2">
   <link rel="stylesheet" href="/css/fonts-app.css?v=1">
   <link href="/static/marketplace.css?v=6" rel="stylesheet">
-  <link rel="stylesheet" href="/css/tailwind.css?v=${__TW_CSS_HASH__}">
+  <link rel="stylesheet" href="/css/tailwind.css?v=${__TW_CSS_HASH__}">${opts.extraHead ? '\n  ' + opts.extraHead : ''}
 </head>`
 }
 
@@ -106,8 +106,12 @@ export function marketplacePageHTML(): string {
     `<label class="checkbox-label"><input type="checkbox" name="ai_category" value="${cat}"> ${cat}</label>`
   ).join('\n')
 
-  return `${mpSharedHead('AI Marketplace')}
-<body class="mp-body">
+  // The browse page's design is css/marketplace-browse.css. Its motion is the second pair of
+  // lines (marketplace-motion.css here, marketplace-motion.js at the foot): delete those two and
+  // every word stays, the page simply stops moving.
+  return `${mpSharedHead('AI Marketplace', { extraHead: `<link rel="stylesheet" href="/css/marketplace-browse.css?v=20261106">
+  <link rel="stylesheet" href="/css/marketplace-motion.css?v=20261106">` })}
+<body class="mp-body mk-page">
   <!-- Toast -->
   <div id="toast" class="mp-toast hidden"></div>
 
@@ -117,30 +121,35 @@ export function marketplacePageHTML(): string {
       <a href="/marketplace" class="mp-logo-link">
         <img src="/images/logo-nav.webp" alt="Bharat AI Innovation" loading="eager" class="mp-brand-logo">
       </a>
-      <nav class="mp-nav">
+      <nav class="mp-nav" aria-label="Main">
         <a href="/app" class="mp-nav-link"><i class="fas fa-home mr-1"></i>Home</a>
         <a href="/app#schedule" class="mp-nav-link">Schedule</a>
         <a href="/marketplace" class="mp-nav-link" aria-current="page">AI Market</a>
         <a href="/inquiry" class="mp-nav-link">Book Booth</a>
         <a href="/marketplace/faq" class="mp-nav-link">FAQ</a>
         <a id="dashboard-link" href="/marketplace/dashboard" class="mp-nav-link hidden"><i class="fas fa-chart-pie mr-1"></i>Dashboard</a>
+      </nav>
+      <div class="mk-auth">
         <button id="login-button" class="mp-nav-btn"><i class="fas fa-sign-in-alt mr-1"></i>Exhibitor Login</button>
         <button id="logout-button" class="mp-nav-btn hidden"><i class="fas fa-sign-out-alt mr-1"></i>Logout</button>
-      </nav>
+      </div>
     </div>
   </header>
 
-  <!-- Hero -->
-  <section class="mp-hero">
+  <!-- Hero. The title is split here, not by a script, so it moves from the first paint. -->
+  <section class="mp-hero mk-hero">
+    <div class="mk-aurora" aria-hidden="true"><i></i></div>
     <div class="mp-hero-inner">
-      <div class="mp-hero-copy">
-        <h1 class="mp-hero-title">India's Premier AI Solutions Marketplace</h1>
+      <h1 class="mp-hero-title"><span class="mk-w"><span style="--i:0">India's</span></span> <span class="mk-w"><span style="--i:1">Premier</span></span> <span class="mk-w"><span style="--i:2">AI</span></span> <span class="mk-w"><span style="--i:3">Solutions</span></span> <span class="mk-w"><span style="--i:4" class="mk-title-accent">Marketplace</span></span></h1>
+      <div class="mk-hero-row">
         <p class="mp-hero-sub">Find AI products by industry or use case, see who each one is built for, and contact the team behind it directly. Part of Bharat AI Innovation 2026.</p>
-      </div>
-      <div class="mp-hero-actions">
-        <button id="open-listing-button" class="mp-hero-btn mp-hero-btn--primary" type="button"><i class="fas fa-plus" aria-hidden="true"></i> List your AI product</button>
+        <div class="mp-hero-actions">
+          <button id="open-listing-button" class="mp-hero-btn mp-hero-btn--primary" type="button"><i class="fas fa-plus" aria-hidden="true"></i> List your AI product</button>
+        </div>
       </div>
     </div>
+    <!-- Filled from the approved listings by marketplace-app.js. -->
+    <div id="mk-logos" class="mk-logos" role="group" aria-label="Some of the AI products listed here"></div>
   </section>
 
   <!-- Auth Section -->
@@ -172,15 +181,20 @@ export function marketplacePageHTML(): string {
     </div>
   </section>
 
-  <!-- Search + filters. Options are filled from the approved listings. -->
+  <!-- Search, filters and products. The search bar stays on screen until the products end. -->
+  <div class="mk-browse">
   <section class="mk-toolbar" aria-label="Search and filter AI products">
     <div class="mk-toolbar-row">
       <label class="mk-search">
         <i class="fas fa-search" aria-hidden="true"></i>
         <span class="mp-sr">Search AI products</span>
-        <input id="mk-search" type="search" autocomplete="off" spellcheck="false" enterkeyhint="search" placeholder="Search products, companies or use cases">
+        <input id="mk-search" type="search" autocomplete="off" spellcheck="false" enterkeyhint="search" placeholder="Search AI products">
       </label>
-      <div class="mk-selects">
+      <button type="button" id="mk-filter-toggle" class="mk-filter-toggle" aria-expanded="false" aria-controls="mk-selects">
+        <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M3 6h9M16 6h1M3 14h1M8 14h9"/><circle cx="14" cy="6" r="2"/><circle cx="6" cy="14" r="2"/></svg>
+        <span>Filters</span><span id="mk-filter-count" class="mk-filter-count" hidden></span>
+      </button>
+      <div id="mk-selects" class="mk-selects">
         <select id="filter-industry" class="mk-select" aria-label="Filter by industry"><option value="">Industry</option></select>
         <select id="filter-category" class="mk-select" aria-label="Filter by AI category"><option value="">Category</option></select>
         <select id="filter-tag" class="mk-select" aria-label="Filter by tag"><option value="">Tag</option></select>
@@ -190,13 +204,16 @@ export function marketplacePageHTML(): string {
         <button type="button" data-view="list" class="view-btn" aria-label="List view" aria-pressed="false"><i class="fas fa-list" aria-hidden="true"></i></button>
       </div>
     </div>
-    <div id="mk-status" class="mk-status" aria-live="polite"></div>
   </section>
 
   <!-- Listings -->
   <main class="mp-main">
+    <!-- One row of shortcuts, built only from what approved listings use. -->
+    <div id="mk-needs" class="mk-needs" role="group" aria-label="Popular filters"></div>
+    <div id="mk-status" class="mk-status" aria-live="polite"></div>
     <div id="listings-container" class="listing-grid" aria-busy="true"><div class="listing-card listing-card--skeleton" aria-hidden="true"><div class="listing-body"><div class="listing-head"><div class="listing-logo sk"></div><div class="listing-names"><div class="sk sk-line sk-line--title"></div><div class="sk sk-line sk-line--short"></div></div></div><div class="sk-lines"><div class="sk sk-line"></div><div class="sk sk-line"></div><div class="sk sk-line sk-line--mid"></div></div></div></div><div class="listing-card listing-card--skeleton" aria-hidden="true"><div class="listing-body"><div class="listing-head"><div class="listing-logo sk"></div><div class="listing-names"><div class="sk sk-line sk-line--title"></div><div class="sk sk-line sk-line--short"></div></div></div><div class="sk-lines"><div class="sk sk-line"></div><div class="sk sk-line"></div><div class="sk sk-line sk-line--mid"></div></div></div></div><div class="listing-card listing-card--skeleton" aria-hidden="true"><div class="listing-body"><div class="listing-head"><div class="listing-logo sk"></div><div class="listing-names"><div class="sk sk-line sk-line--title"></div><div class="sk sk-line sk-line--short"></div></div></div><div class="sk-lines"><div class="sk sk-line"></div><div class="sk sk-line"></div><div class="sk sk-line sk-line--mid"></div></div></div></div><div class="listing-card listing-card--skeleton" aria-hidden="true"><div class="listing-body"><div class="listing-head"><div class="listing-logo sk"></div><div class="listing-names"><div class="sk sk-line sk-line--title"></div><div class="sk sk-line sk-line--short"></div></div></div><div class="sk-lines"><div class="sk sk-line"></div><div class="sk sk-line"></div><div class="sk sk-line sk-line--mid"></div></div></div></div><div class="listing-card listing-card--skeleton" aria-hidden="true"><div class="listing-body"><div class="listing-head"><div class="listing-logo sk"></div><div class="listing-names"><div class="sk sk-line sk-line--title"></div><div class="sk sk-line sk-line--short"></div></div></div><div class="sk-lines"><div class="sk sk-line"></div><div class="sk sk-line"></div><div class="sk sk-line sk-line--mid"></div></div></div></div><div class="listing-card listing-card--skeleton" aria-hidden="true"><div class="listing-body"><div class="listing-head"><div class="listing-logo sk"></div><div class="listing-names"><div class="sk sk-line sk-line--title"></div><div class="sk sk-line sk-line--short"></div></div></div><div class="sk-lines"><div class="sk sk-line"></div><div class="sk sk-line"></div><div class="sk sk-line sk-line--mid"></div></div></div></div></div>
   </main>
+  </div>
 
   <!-- Submit Listing Form -->
   <section id="listing-form-section" class="mp-form-section hidden">
@@ -395,6 +412,111 @@ export function marketplacePageHTML(): string {
     </div>
   </section>
 
+  <!-- For buyers: a real sequence, so it is numbered. -->
+  <section class="mk-how" aria-labelledby="mk-how-title">
+    <div class="mk-wrap">
+      <h2 id="mk-how-title" class="mk-h2">From a search to a conversation</h2>
+      <ol class="mk-steps">
+        <li class="mk-step">
+          <span class="mk-step-n" aria-hidden="true">1</span>
+          <h3>Find it</h3>
+          <p>Search by product, company or use case, or filter by industry, AI category and tag.</p>
+        </li>
+        <li class="mk-step">
+          <span class="mk-step-n" aria-hidden="true">2</span>
+          <h3>See if it fits</h3>
+          <p>Every product has its own page: what it does, who it is built for, its pricing and the company behind it.</p>
+        </li>
+        <li class="mk-step">
+          <span class="mk-step-n" aria-hidden="true">3</span>
+          <h3>Talk to the team</h3>
+          <p>Send an enquiry from the product page and it goes to the company. Where a booth number shows, you can also meet them at WTC Mumbai on 20 and 21 November.</p>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- For companies: every statement here comes from the marketplace FAQ. -->
+  <section class="mk-sell" aria-labelledby="mk-sell-title">
+    <div class="mk-wrap mk-sell-grid">
+      <div class="mk-sell-intro">
+        <h2 id="mk-sell-title" class="mk-h2 mk-sell-title">Put your AI product in front of buyers</h2>
+        <p>Create a free account, add your product, and our team takes it from there.</p>
+        <div class="mk-sell-actions">
+          <button type="button" class="mp-hero-btn mp-hero-btn--primary mk-sell-btn" data-open-listing>List your AI product</button>
+          <a class="mk-link mk-link--light" href="/inquiry">Book a booth</a>
+        </div>
+      </div>
+      <ul class="mk-stack">
+        <li class="mk-card">
+          <div class="mk-card-text">
+            <h3>Free for exhibitors</h3>
+            <p>Listing is free for all exhibitors of Bharat AI Innovation 2026. Non-exhibitor companies may also list for free during the event period.</p>
+          </div>
+          <div class="mk-mock" aria-hidden="true">
+            <div class="mk-mock-row"><span class="mk-mock-logo"></span><div><b>Your AI product</b><small>Your company</small></div></div>
+            <span class="mk-mock-line"></span><span class="mk-mock-line mk-mock-line--short"></span>
+          </div>
+        </li>
+        <li class="mk-card">
+          <div class="mk-card-text">
+            <h3>Your booth on your listing</h3>
+            <p>Register with the email from your booth booking and your booth number is added automatically, so buyers can find you at the venue.</p>
+          </div>
+          <div class="mk-mock" aria-hidden="true">
+            <div class="mk-mock-row mk-mock-row--ends"><b>Your AI product</b><span class="listing-booth-badge"><i class="fas fa-location-dot"></i> Booth 12</span></div>
+            <span class="mk-mock-line"></span>
+          </div>
+        </li>
+        <li class="mk-card">
+          <div class="mk-card-text">
+            <h3>Our team checks every listing</h3>
+            <p>Every listing is reviewed before it appears on the public marketplace, and we email you when it is approved.</p>
+          </div>
+          <div class="mk-mock mk-mock-track" aria-hidden="true">
+            <span class="is-done">Submitted</span><span class="is-done">Reviewed</span><span class="is-live">Live</span>
+          </div>
+        </li>
+        <li class="mk-card">
+          <div class="mk-card-text">
+            <h3>Enquiries come straight to you</h3>
+            <p>They are emailed to your account address and appear in your dashboard, next to your listing's views.</p>
+          </div>
+          <div class="mk-mock" aria-hidden="true">
+            <div class="mk-mock-row"><span class="mk-mock-dot"></span><div><b>New enquiry</b><small>About Your AI product</small></div></div>
+          </div>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="mk-faq" aria-labelledby="mk-faq-title">
+    <div class="mk-wrap mk-faq-grid">
+      <div>
+        <h2 id="mk-faq-title" class="mk-h2">Common questions</h2>
+        <a class="mk-link" href="/marketplace/faq">Read all the questions</a>
+      </div>
+      <div class="mk-faq-list">
+        <details class="mk-row">
+          <summary>Who can list products?</summary>
+          <p>Any company can create a free marketplace account and list its AI products. If you are exhibiting at Bharat AI Innovation 2026, register with the same email address you used for your booth booking and your booth number is added to your listing automatically.</p>
+        </details>
+        <details class="mk-row">
+          <summary>How does the approval process work?</summary>
+          <p>Every submitted listing is reviewed by our team before it appears on the public marketplace, and we email you when it is approved. Editing a listing sends it back for review. You can track each listing's status from your dashboard.</p>
+        </details>
+        <details class="mk-row">
+          <summary>How can buyers find my product?</summary>
+          <p>Buyers can filter by industry, AI category, and tags. Each listing has a detailed page and a contact form. Inquiries are emailed to your account address and also appear in your dashboard.</p>
+        </details>
+        <details class="mk-row">
+          <summary>Is there a cost to list?</summary>
+          <p>Listing on the Bharat AI Marketplace is free for all exhibitors of Bharat AI Innovation 2026. Non-exhibitor companies may also list for free during the event period.</p>
+        </details>
+      </div>
+    </div>
+  </section>
+
   <!-- Footer -->
   <footer class="mp-footer">
     <div class="mp-footer-inner">
@@ -412,10 +534,12 @@ export function marketplacePageHTML(): string {
         <a href="https://bharataiinnovation.com" target="_blank">Main Site</a>
       </div>
       <p class="mp-footer-copy">&copy; 2026 Bharat AI Innovation. All rights reserved.</p>
+      <p class="mp-footer-copy">Motion effects from Skiper UI and Vengeance UI.</p>
     </div>
   </footer>
 
-  <script src="/static/marketplace-app.js?v=10"></script>
+  <script src="/static/marketplace-app.js?v=11"></script>
+  <script src="/js/marketplace-motion.js?v=20261106" defer></script>
 </body>
 </html>`
 }

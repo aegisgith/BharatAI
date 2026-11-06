@@ -1,0 +1,206 @@
+/* Motion on /marketplace only. To remove it, delete the two lines in src/routes/marketplace-pages.ts
+   that name marketplace-motion: every word stays, the page simply stops moving.
+
+   Rebuilt in plain CSS and JS, because the site has no React, so neither library is installed.
+
+   From Skiper UI, free version (https://skiper-ui.com), which asks for a credit: the page's
+   footer carries it. Skiper 16 sticky stacked cards, Skiper 31 letters that gather on scroll,
+   Skiper 40 link underline.
+
+   From Vengeance UI (https://github.com/Ashutoshx7/VengeanceUI): Aurora Hero, Stagger Text,
+   Morphing Disclosure, Spotlight Navbar, Glow Border Card and Border Beam.
+
+   MIT License
+
+   Copyright (c) 2025-2026 Ashutoshx7
+
+   Permission is hereby granted, free of charge, to any person obtaining a copy
+   of this software and associated documentation files (the "Software"), to deal
+   in the Software without restriction, including without limitation the rights
+   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+   copies of the Software, and to permit persons to whom the Software is
+   furnished to do so, subject to the following conditions:
+
+   The above copyright notice and this permission notice shall be included in all
+   copies or substantial portions of the Software.
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+   SOFTWARE. */
+
+/* Aurora Hero: slow bands of light in the hero's top corner. They move by transform, so a phone
+   does not repaint them each frame. */
+.mk-aurora {
+  position: absolute; inset: 0; overflow: hidden; pointer-events: none;
+  -webkit-mask-image: radial-gradient(ellipse 62% 78% at 100% 0%, #000 8%, transparent 100%);
+  mask-image: radial-gradient(ellipse 62% 78% at 100% 0%, #000 8%, transparent 100%);
+}
+.mk-aurora i {
+  position: absolute; top: -15%; bottom: -15%; left: 0; width: calc(100% + 540px); opacity: 0.6; filter: blur(34px);
+  background: repeating-linear-gradient(100deg,
+    transparent 0,
+    rgba(255, 107, 0, 0.95) 90px,
+    transparent 180px,
+    rgba(120, 165, 255, 0.55) 260px,
+    transparent 340px,
+    rgba(0, 190, 120, 0.7) 430px,
+    transparent 520px);
+}
+
+/* Stagger Text: each word rises out of its own mask. The padding keeps the tails of p and y whole. */
+.mk-w { display: inline-block; overflow: hidden; vertical-align: top; padding-bottom: 0.14em; margin-bottom: -0.14em; }
+.mk-w > span { display: inline-block; }
+
+/* Skiper 40: the line under a link redraws from the left on a mouse. Touch keeps the plain line. */
+@media (hover: hover) {
+  .mk-link {
+    text-decoration: none; min-height: 0; padding-bottom: 3px;
+    background: linear-gradient(currentColor, currentColor) 0 100% / 100% 1.5px no-repeat;
+    transition: background-size 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .mk-link:hover { background-size: 0 1.5px; background-position: 100% 100%; }
+}
+
+/* Morphing Disclosure: an open question lifts out of the list, rounds off and tints. */
+.mk-row { transition: background-color 0.25s ease, border-radius 0.25s ease; }
+.mk-row summary, .mk-row p { transition: padding 0.25s cubic-bezier(0.22, 1, 0.36, 1); }
+.mk-row summary::after { transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1); }
+.mk-row[open] { background: var(--mp-primary-tint); border-radius: 16px; border-color: transparent; }
+.mk-row[open] + .mk-row { border-top-color: transparent; }
+.mk-row[open] summary, .mk-row[open] p { padding-left: 16px; padding-right: 16px; }
+@supports (interpolate-size: allow-keywords) {
+  @media (prefers-reduced-motion: no-preference) {
+    .mk-row { interpolate-size: allow-keywords; }
+    .mk-row::details-content {
+      height: 0; overflow: clip;
+      transition: height 0.35s cubic-bezier(0.22, 1, 0.36, 1), content-visibility 0.35s allow-discrete;
+    }
+    .mk-row[open]::details-content { height: auto; }
+  }
+}
+
+/* Spotlight Navbar: a soft light and a glowing line glide to the header link under a mouse, and
+   rest on the current page. Placed by the script. */
+.mp-nav.mk-spot { position: relative; }
+.mk-light {
+  position: absolute; left: 0; bottom: 0; width: var(--mk-w, 0); height: 2px; transform: translateX(var(--mk-x, 0));
+  background: linear-gradient(90deg, transparent, #FF6B00 18%, #FF6B00 82%, transparent);
+  box-shadow: 0 -2px 10px rgba(255, 107, 0, 0.45);
+  transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1), width 0.3s ease;
+  pointer-events: none;
+}
+
+/* Glow Border Card: on a mouse, a coloured edge lights on the cards nearest the pointer. */
+@media (hover: hover) {
+  .mk-page a.listing-card::before {
+    content: ''; position: absolute; inset: 0; z-index: 1; border-radius: inherit; padding: 1.5px; pointer-events: none;
+    background: radial-gradient(260px circle at var(--mx, 50%) var(--my, 0), #FF6B00, rgba(255, 107, 0, 0.35) 45%, transparent 72%);
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#fff 0 0) content-box exclude, linear-gradient(#fff 0 0);
+    opacity: 0; transition: opacity 0.3s ease;
+  }
+  .mk-glow:hover a.listing-card::before { opacity: 1; }
+}
+
+/* Filtering: only the cards move, not the whole page. */
+@media (prefers-reduced-motion: no-preference) {
+  :root { view-transition-name: none; }
+  .mk-page .mk-toolbar { view-transition-name: mk-bar; }
+  ::view-transition-group(*) { animation-duration: 0.38s; animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1); }
+  ::view-transition-old(*), ::view-transition-new(*) { animation-duration: 0.22s; }
+}
+
+/* Everything that really moves, for people who have animations on. */
+@media (prefers-reduced-motion: no-preference) {
+  .mk-aurora i { will-change: transform; animation: mk-drift 42s linear infinite; }
+  .mk-hero.mk-off .mk-aurora i, .mk-hero.mk-off .mk-logo-track, .mk-hero.mk-off ~ .mk-browse .mk-beam::after { animation-play-state: paused; }
+
+  /* The title is split in the HTML, so it animates from the first paint with no script. */
+  .mp-hero-title .mk-w > span {
+    animation: mk-rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: calc(var(--i) * 70ms + 100ms);
+  }
+
+  /* The logos drift past; a mouse or the keyboard holds them still. */
+  .mk-logo-track { will-change: transform; animation: mk-slide 70s linear infinite; }
+  .mk-logos:hover .mk-logo-track, .mk-logos:focus-within .mk-logo-track { animation-play-state: paused; }
+
+  /* The first cards settle in, one after another. Removed by the script once they have, so
+     filtering never replays it. Only the first rows: the rest are below the fold. */
+  .mk-enter .listing-card:not(.listing-card--skeleton) { animation: mk-card-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) both; animation-delay: calc(var(--n, 0) * 45ms); }
+
+  /* Section headings are split by the script, which only runs with animations on. */
+  .mk-split .mk-w > span { transform: translateY(115%); transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1); transition-delay: calc(var(--i) * 50ms); }
+  .mk-split.mk-in .mk-w > span { transform: none; }
+
+  /* Skiper 16: each company card sticks and the next slides over it, while the one beneath
+     shrinks. Only on a screen tall enough to hold a whole card with room to spare. */
+  @media (min-height: 700px) {
+    .mk-stack { padding-bottom: 12px; }
+    .mk-card { position: sticky; top: calc(14px + var(--mk-n, 0) * 10px); transform-origin: 50% 0; box-shadow: 0 -8px 26px rgba(8, 11, 48, 0.2); }
+    .mk-card:nth-child(2) { --mk-n: 1; }
+    .mk-card:nth-child(3) { --mk-n: 2; }
+    .mk-card:nth-child(4) { --mk-n: 3; }
+  }
+  @media (min-height: 700px) and (min-width: 901px) {
+    .mk-card { top: calc(96px + var(--mk-n, 0) * 12px); }
+  }
+}
+@keyframes mk-drift { to { transform: translateX(-528px); } }
+@keyframes mk-rise { from { transform: translateY(115%); } to { transform: none; } }
+@keyframes mk-slide { to { transform: translateX(-33.3333%); } }
+@keyframes mk-card-in { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+
+/* With animations off the logos hold still: one copy, and the row scrolls by hand. */
+@media (prefers-reduced-motion: reduce) {
+  .mk-logos { overflow-x: auto; scrollbar-width: none; }
+  .mk-logo--copy { display: none; }
+}
+
+/* Skiper 31: the letters of the companies' heading gather as it comes up the screen. The script
+   keeps --p at 1 long before the heading is where you read it. Words stay whole so lines wrap well. */
+.mk-word { display: inline-block; white-space: nowrap; }
+.mk-ch {
+  display: inline-block;
+  --mk-left: calc(1 - var(--p, 1));
+  transform: translate3d(calc(var(--d) * var(--mk-left) * var(--mk-spread, 22px)), calc(var(--a) * var(--mk-left) * -7px), 0) rotate(calc(var(--d) * var(--mk-left) * 7deg));
+  opacity: calc(0.15 + var(--p, 1) * 0.85);
+}
+@media (max-width: 600px) { .mk-ch { --mk-spread: 11px; } }
+
+/* Border Beam: a point of light travels round the search bar while the hero is in view, and round
+   the companies' main button. Only where the browser can draw it. */
+@supports (offset-path: rect(0 auto auto 0)) and (mask-composite: intersect) {
+  .mk-beam {
+    /* overflow, because a mask hides the moving square but does not stop it widening the page:
+       near a screen edge it made the whole page scroll sideways. The ring is therefore padding,
+       not a border, so the clip keeps it. */
+    position: absolute; inset: -1px; padding: 2px; overflow: hidden; border-radius: inherit; pointer-events: none; z-index: 1;
+    -webkit-mask: linear-gradient(transparent, transparent), linear-gradient(#fff, #fff);
+    mask: linear-gradient(transparent, transparent), linear-gradient(#fff, #fff);
+    -webkit-mask-clip: content-box, padding-box;
+    mask-clip: content-box, padding-box;
+    mask-composite: intersect;
+  }
+  .mk-beam::after {
+    content: ''; position: absolute; width: 90px; aspect-ratio: 1;
+    background: linear-gradient(to left, #FF6B00, #FFD08A, transparent);
+    offset-anchor: 90% 50%;
+    offset-path: rect(0 auto auto 0 round 18px);
+    animation: mk-beam 6s linear infinite;
+  }
+  .mk-sell-btn .mk-beam::after { background: linear-gradient(to left, #fff, #ffe082, transparent); offset-path: rect(0 auto auto 0 round 14px); animation-duration: 4.5s; }
+  .mk-sell.mk-off .mk-beam::after, .mk-beam.is-done::after { animation-play-state: paused; opacity: 0; }
+}
+@keyframes mk-beam { to { offset-distance: 100%; } }
+
+@media print {
+  .mk-light, .mk-beam { display: none; }
+  .mk-w > span, .mk-ch { transform: none !important; opacity: 1 !important; }
+  .mk-card { position: static !important; transform: none !important; }
+}

@@ -1,0 +1,294 @@
+/* The design of /marketplace (the browse page only: body.mk-page). Phones first: a buyer searches
+   with one thumb, so the search bar stays on screen and a card shows only what decides a tap.
+   The product page, FAQ, dashboard and admin keep marketplace.css as it is. */
+
+.mk-page { --mk-stick: 8px; --mk-ink: #141A5E; }
+.mk-page h1, .mk-page h2, .mk-page h3 { text-wrap: balance; }
+/* marketplace.css sets its body font on every element, so a heading split into words would lose
+   the heading font without this. */
+.mk-page h1 span, .mk-page h2 span { font-family: inherit; }
+.mk-page p { text-wrap: pretty; }
+.mk-page #auth-section, .mk-page #listing-form-section { scroll-margin-top: 16px; }
+@media (min-width: 901px) {
+  .mk-page { --mk-stick: 80px; }
+  .mk-page #auth-section, .mk-page #listing-form-section { scroll-margin-top: 150px; }
+}
+.mk-wrap { max-width: 1280px; margin: 0 auto; padding-left: 16px; padding-right: 16px; }
+@media (min-width: 641px) { .mk-wrap { padding-left: 20px; padding-right: 20px; } }
+.mk-h2 { font-size: clamp(2rem, 7.4vw, 3.5rem); line-height: 1.02; font-weight: 800; letter-spacing: -0.018em; margin: 0; color: var(--mp-text); }
+
+/* Text links: the line under one is the only decoration. */
+.mk-link {
+  display: inline-flex; align-items: center; min-height: 44px; font-size: 15px; font-weight: 700;
+  color: var(--mp-primary-ink); text-decoration: underline; text-underline-offset: 4px; text-decoration-thickness: 1.5px;
+}
+.mk-link--light { color: #fff; }
+.mk-link:focus-visible { outline: 3px solid rgba(255, 107, 0, 0.5); outline-offset: 2px; border-radius: 4px; }
+
+/* ── Header ── On a phone the login is always in reach and the links scroll under it.
+   The header scrolls away on a phone, so the search bar gets the top of the screen. */
+.mk-auth { flex-shrink: 0; }
+.mk-page .mp-nav-link { min-height: 40px; }
+.mk-page .mp-nav-link[aria-current="page"] { color: var(--mp-primary-ink); }
+.mk-page .mp-nav-link:hover { color: var(--mp-primary-ink); }
+.mk-page .mp-nav-btn { min-height: 40px; }
+.mk-page .mp-nav-btn:hover { color: var(--mp-primary-ink); }
+.mk-page .mp-nav-link:focus-visible, .mk-page .mp-nav-btn:focus-visible { outline: 3px solid rgba(255, 107, 0, 0.5); outline-offset: 1px; }
+@media (max-width: 900px) {
+  .mk-page .mp-header { position: static; }
+  .mk-page .mp-header-inner { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; padding: 10px 16px 4px; }
+  .mk-page .mk-auth { grid-column: 2; grid-row: 1; }
+  .mk-page .mp-nav {
+    grid-column: 1 / -1; grid-row: 2; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;
+    margin: 0 -16px; padding: 0 16px; min-width: 0;
+    -webkit-mask-image: linear-gradient(90deg, #000 88%, transparent); mask-image: linear-gradient(90deg, #000 88%, transparent);
+  }
+  .mk-page .mp-nav::-webkit-scrollbar { display: none; }
+  .mk-page .mp-nav-link { font-size: 14px; padding: 8px 10px; flex-shrink: 0; }
+  .mk-page .mp-nav-link:first-child { padding-left: 0; }
+  .mk-page .mp-nav-btn { font-size: 13px; padding: 8px 12px; }
+}
+@media (min-width: 901px) {
+  .mk-page .mp-header-inner { gap: 8px; }
+  .mk-page .mp-nav { margin-left: auto; }
+}
+
+/* ── Hero ── */
+.mk-hero {
+  position: relative; overflow: hidden; background: #fff; border-bottom: 0;
+  padding: clamp(26px, 5vw, 64px) 0 clamp(52px, 6vw, 64px);
+}
+.mk-hero .mp-hero-inner { display: block; position: relative; padding: 0 16px; }
+@media (min-width: 641px) { .mk-hero .mp-hero-inner { padding: 0 20px; } }
+.mk-hero .mp-hero-title {
+  font-size: clamp(2.7rem, 11.2vw, 5.25rem); line-height: 0.98; font-weight: 800; letter-spacing: -0.022em;
+  margin: 0; max-width: 15em; color: var(--mp-text);
+}
+.mk-title-accent { color: #D95600; }
+.mk-hero-row { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 18px 48px; margin-top: clamp(16px, 2.4vw, 26px); }
+.mk-hero .mp-hero-sub { flex: 1 1 340px; max-width: 62ch; font-size: clamp(1rem, 1.4vw, 1.1875rem); line-height: 1.55; color: var(--mp-body); }
+.mk-hero .mp-hero-actions .mp-hero-btn { width: auto; }
+.mk-hero .mp-hero-btn { height: 50px; border-radius: 14px; }
+.mk-page .mp-hero-btn--primary { background: #D95600; }
+.mk-page .mp-hero-btn--primary:hover { background: #BF4B00; }
+
+/* The logos are real, so they are the hero's picture. Height is held so nothing jumps when the
+   listings arrive. With animations off the row simply scrolls by hand (see marketplace-motion.css). */
+.mk-logos {
+  position: relative; margin-top: clamp(22px, 3.6vw, 40px); min-height: 68px; overflow: hidden;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 5%, #000 95%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 5%, #000 95%, transparent);
+}
+.mk-logos[hidden] { display: none; }
+.mk-logo-track { display: flex; width: max-content; padding: 2px 0; }
+.mk-logo {
+  flex-shrink: 0; display: flex; align-items: center; justify-content: center; height: 64px; min-width: 96px; padding: 0 18px; margin-right: 12px;
+  background: #fff; border: 1px solid var(--mp-border); border-radius: 14px; transition: border-color 0.2s;
+}
+.mk-logo:hover { border-color: rgba(217, 86, 0, 0.5); }
+.mk-logo:focus-visible { outline: 3px solid rgba(255, 107, 0, 0.5); outline-offset: -3px; }
+.mk-logo .listing-logo-img { height: calc(var(--logo-h, 36px) * 0.78); max-width: 132px; }
+.mk-logo .listing-logo-img.is-dark { height: 22px; max-width: 110px; padding: 6px 10px; border-radius: 9px; }
+.mk-logo .listing-logo-img.is-tile { border-radius: 9px; }
+.mk-logo .listing-logo { width: 36px; height: 36px; font-size: 13px; border-radius: 9px; }
+
+/* ── The search bar ── Floats over the seam under the hero, then stays until the products end. */
+.mk-browse { position: relative; }
+/* The sign-in box opens above the bar: the bar then stops overlapping what is above it. */
+.mp-auth-section:not(.hidden) + .mk-browse .mk-toolbar { margin-top: 0; }
+.mk-page .mk-toolbar { position: sticky; top: var(--mk-stick); z-index: 40; margin: -32px auto 0; padding: 0 16px; }
+@media (min-width: 641px) { .mk-page .mk-toolbar { padding: 0 20px; } }
+.mk-page .mk-toolbar.is-stuck::before {
+  content: ''; position: absolute; z-index: -1; left: 0; right: 0; top: calc(var(--mk-stick) * -1); bottom: -8px; background: var(--mp-bg);
+}
+.mk-page .mk-toolbar-row {
+  position: relative; flex-wrap: nowrap; gap: 6px; padding: 6px; background: #fff; border: 1px solid var(--mp-border-strong);
+  border-radius: 18px; box-shadow: 0 12px 34px rgba(26, 35, 126, 0.12);
+}
+.mk-page .mk-search { flex: 1 1 280px; }
+.mk-page .mk-search input { height: 50px; border: 0; border-radius: 13px; background: transparent; font-size: 16px; }
+.mk-page .mk-search input:hover { background: var(--mp-surface-2); }
+.mk-page .mk-search input:focus { box-shadow: inset 0 0 0 2px var(--mp-primary); background: #fff; }
+.mk-page .mk-search input::-webkit-search-cancel-button { -webkit-appearance: none; }
+.mk-page .mk-selects { flex-wrap: nowrap; gap: 6px; }
+.mk-page .mk-select { height: 50px; max-width: 190px; border: 0; border-radius: 13px; background-color: var(--mp-surface-2); }
+.mk-page .mk-select:hover { background-color: #E8EBF5; }
+.mk-page .mk-select:focus { box-shadow: inset 0 0 0 2px var(--mp-primary); }
+.mk-page .mk-select.is-set { background-color: var(--mp-primary-tint); box-shadow: inset 0 0 0 1px rgba(255, 107, 0, 0.5); }
+.mk-page .mk-view-toggle { border: 0; background: var(--mp-surface-2); border-radius: 13px; padding: 6px; }
+.mk-page .view-btn.view-active { background: #fff; box-shadow: 0 1px 3px rgba(26, 35, 126, 0.16); }
+.mk-filter-toggle { display: none; }
+
+@media (max-width: 900px) {
+  .mk-page .mk-toolbar-row { flex-wrap: wrap; }
+  .mk-page .mk-search { flex: 1 1 0; min-width: 0; }
+  .mk-filter-toggle {
+    display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 50px; padding: 0 14px; flex-shrink: 0;
+    border: 0; border-radius: 13px; background: var(--mp-surface-2); color: var(--mp-text); font-size: 14px; font-weight: 700; cursor: pointer;
+  }
+  .mk-filter-toggle[aria-expanded="true"] { background: var(--mk-ink); color: #fff; }
+  .mk-filter-toggle:focus-visible { outline: 3px solid rgba(255, 107, 0, 0.5); outline-offset: 1px; }
+  .mk-filter-count {
+    display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 5px;
+    border-radius: 999px; background: #D95600; color: #fff; font-size: 12px; font-weight: 800;
+  }
+  .mk-filter-count[hidden] { display: none; }
+  .mk-page .mk-selects { display: none; flex: 1 1 100%; flex-direction: column; }
+  .mk-page .mk-selects.is-open { display: flex; }
+  .mk-page .mk-select { width: 100%; max-width: none; padding: 0 38px 0 14px; background-position: right 14px center; }
+  .mk-page .mk-view-toggle { display: none; }
+}
+
+/* ── Shortcuts ── */
+.mk-page .mp-main { padding-top: 18px; }
+.mk-needs { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 2px 16px 4px; }
+.mk-needs::-webkit-scrollbar { display: none; }
+.mk-needs:empty { display: none; }
+@media (min-width: 901px) { .mk-needs { flex-wrap: wrap; overflow: visible; margin: 0; padding: 2px 0 4px; } }
+.mk-need {
+  flex-shrink: 0; height: 40px; padding: 0 15px; border-radius: 999px; border: 1px solid var(--mp-border-strong); background: #fff;
+  color: var(--mp-text); font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap;
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+}
+.mk-need:hover { border-color: var(--mk-ink); }
+.mk-need[aria-pressed="true"] { background: var(--mk-ink); border-color: var(--mk-ink); color: #fff; }
+.mk-need:focus-visible { outline: 3px solid rgba(255, 107, 0, 0.5); outline-offset: 1px; }
+.mk-need--booth::before {
+  content: ''; display: inline-block; width: 8px; height: 8px; margin-right: 8px; border-radius: 50%; background: #D95600; vertical-align: 1px;
+}
+.mk-page .mk-status:not(:empty) { margin-top: 12px; }
+.mk-page .listing-grid, .mk-page .listing-list { margin-top: 16px; }
+.mk-page .mp-empty-state .mp-hero-btn--secondary { border-color: var(--mp-border-strong); }
+.mk-page .mp-empty-state p { font-size: 15px; }
+.mk-page .mp-empty-state h4 { font-size: 20px; }
+
+/* ── Cards ── Logo, name, company, what it does, price. On a phone two lines of text and one row
+   of tags, so a thumb passes four products where it used to pass two. */
+.mk-page .listing-card { border-radius: 20px; }
+.mk-page .listing-title { font-size: 19px; line-height: 1.2; letter-spacing: -0.015em; }
+.mk-page .listing-desc { color: var(--mp-body); }
+.mk-page .listing-foot { font-size: 14px; }
+.mk-page .listing-booth-badge { background: var(--mp-primary-tint); color: var(--mp-primary-ink); }
+.mk-page a.listing-card:hover { transform: none; box-shadow: 0 14px 34px rgba(26, 35, 126, 0.1); border-color: var(--mp-border-strong); }
+.mk-page a.listing-card:hover .listing-title { color: var(--mp-primary-ink); }
+.mk-page .listing-title { transition: color 0.15s; }
+@media (max-width: 640px) {
+  .mk-page .mp-main { padding: 18px 16px 40px; }
+  .mk-page .listing-grid { gap: 12px; }
+  .mk-page .listing-body { padding: 16px; gap: 10px; }
+  .mk-page .listing-head { gap: 10px; }
+  .mk-page .listing-brand { height: 40px; }
+  .mk-page .listing-logo-img { height: calc(var(--logo-h, 40px) * 0.84); }
+  .mk-page .listing-logo-img.is-dark { height: 24px; }
+  .mk-page .listing-logo { width: 40px; height: 40px; font-size: 15px; }
+  .mk-page .listing-grid .listing-desc { -webkit-line-clamp: 2; min-height: 0; }
+  .mk-page .listing-chips { flex-wrap: nowrap; overflow: hidden; -webkit-mask-image: linear-gradient(90deg, #000 86%, transparent); mask-image: linear-gradient(90deg, #000 86%, transparent); }
+  .mk-page .chip { flex-shrink: 0; }
+  .mk-page .chip--more { display: none; }
+  .mk-page .listing-foot { padding-top: 10px; }
+}
+
+/* ── The sign-in box and the listing form ── The same fields, easier to read. */
+.mk-page .mp-auth-card h3 { font-size: 20px; font-weight: 800; }
+.mk-page .mp-auth-card { border-radius: 20px; }
+.mk-page .mp-form input { font-size: 15px; padding: 12px 14px; background: #fff; border-color: var(--mp-border-strong); }
+.mk-page .mp-btn-primary, .mk-page .mp-btn-secondary { font-size: 15px; font-weight: 700; padding: 12px 20px; border-radius: 12px; }
+.mk-page .mp-btn-primary { background: #D95600; }
+.mk-page .mp-btn-primary:hover { background: #BF4B00; }
+.mk-page .mp-form-header h3 { font-size: clamp(1.5rem, 5vw, 2rem); font-weight: 800; letter-spacing: -0.02em; }
+.mk-page .mp-form-header p { font-size: 15px; }
+.mk-page .form-section summary { font-size: 15px; font-weight: 700; padding: 14px 16px; }
+.mk-page .form-field label { font-size: 13px; color: var(--mp-body); }
+.mk-page .checkbox-label { font-size: 13px; color: var(--mp-body); padding: 6px 10px; }
+.mk-page .mp-listing-form .form-field input:not([type=checkbox]):not([type=file]):not([readonly]), .mk-page .mp-listing-form .form-field textarea, .mk-page .mp-listing-form .form-field select { font-size: 15px; background-color: #fff; border-color: var(--mp-border-strong); }
+@media (max-width: 640px) { .mk-page .mp-form-container { padding: 20px 16px; } .mk-page .form-grid { padding: 14px 4px; } }
+
+/* ── How it works ── */
+.mk-how { padding: clamp(48px, 8vw, 96px) 0; background: #fff; border-top: 1px solid var(--mp-border); }
+.mk-steps { list-style: none; margin: clamp(26px, 4vw, 48px) 0 0; padding: 0; display: grid; gap: 28px; counter-reset: none; }
+.mk-step { position: relative; padding-left: 62px; }
+.mk-step-n {
+  position: absolute; left: 0; top: -6px; font-family: 'Bricolage Grotesque', sans-serif; font-size: 44px; line-height: 1; font-weight: 800;
+  letter-spacing: -0.03em; color: #D95600;
+}
+.mk-step h3 { font-size: 21px; line-height: 1.2; font-weight: 800; margin: 0 0 6px; color: var(--mp-text); letter-spacing: -0.015em; }
+.mk-step p { font-size: 16px; line-height: 1.55; margin: 0; color: var(--mp-body); max-width: 44ch; }
+@media (min-width: 901px) {
+  .mk-steps { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 40px; }
+  .mk-step { padding: 22px 0 0; border-top: 2px solid var(--mp-text); }
+  .mk-step-n { position: static; display: block; font-size: 64px; margin-bottom: 20px; }
+  .mk-step h3 { font-size: 24px; }
+}
+
+/* ── For companies ── The one dark section, so a company scrolling past knows this part is for it. */
+/* clip, not hidden: the heading's letters start spread wide, and hidden would stop the cards sticking. */
+.mk-sell { background: var(--mk-ink); color: #fff; padding: clamp(52px, 8vw, 104px) 0; overflow-x: clip; }
+.mk-sell-grid { display: grid; gap: 32px; }
+.mk-sell .mk-h2 { color: #fff; }
+.mk-sell-intro > p { font-size: clamp(1rem, 1.5vw, 1.1875rem); line-height: 1.55; color: #D5D9F5; margin: 16px 0 0; max-width: 44ch; }
+.mk-sell-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 22px; margin-top: 24px; }
+.mk-page .mk-sell-btn { position: relative; height: 52px; }
+.mk-stack { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+.mk-card {
+  display: grid; gap: 18px; padding: 22px 20px; background: #fff; color: var(--mp-text); border-radius: 22px;
+}
+.mk-card h3 { font-size: 23px; line-height: 1.15; font-weight: 800; margin: 0 0 8px; letter-spacing: -0.02em; }
+.mk-card p { font-size: 15.5px; line-height: 1.55; margin: 0; color: var(--mp-body); }
+@media (min-width: 901px) {
+  .mk-sell-grid { grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 64px; align-items: start; }
+  .mk-sell-intro { position: sticky; top: 110px; }
+  .mk-card { padding: 30px; }
+  .mk-card h3 { font-size: 28px; }
+}
+
+/* Small drawings of the product itself, made of type and shapes. "Your AI product" and "Booth 12"
+   are plainly samples. */
+.mk-mock { padding: 14px; border-radius: 14px; background: var(--mp-surface-2); display: grid; gap: 10px; }
+.mk-mock-row { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.mk-mock-row--ends { justify-content: space-between; }
+.mk-mock b { display: block; font-size: 15px; font-weight: 800; font-family: 'Bricolage Grotesque', sans-serif; }
+.mk-mock small { display: block; font-size: 13px; color: var(--mp-muted); }
+.mk-mock-logo { flex-shrink: 0; width: 40px; height: 40px; border-radius: 11px; background: var(--mk-ink); }
+.mk-mock-line { display: block; height: 9px; border-radius: 5px; background: #D9DDEE; }
+.mk-mock-line--short { width: 62%; }
+.mk-mock-dot { flex-shrink: 0; width: 12px; height: 12px; border-radius: 50%; background: #D95600; margin: 0 4px; }
+.mk-mock-track { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--mp-body); }
+.mk-mock-track span { flex: 1 1 0; display: flex; align-items: center; justify-content: center; min-height: 36px; border-radius: 9px; background: #fff; text-align: center; }
+.mk-mock-track .is-live { background: #0B7A5B; color: #fff; }
+
+/* ── Questions ── */
+.mk-faq { padding: clamp(48px, 8vw, 96px) 0; background: #fff; }
+.mk-faq-grid { display: grid; gap: 16px 64px; }
+.mk-faq-grid .mk-link { margin-top: 14px; }
+@media (min-width: 901px) { .mk-faq-grid { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); } }
+.mk-row { border-top: 1px solid var(--mp-border-strong); }
+.mk-row:last-child { border-bottom: 1px solid var(--mp-border-strong); }
+.mk-row summary {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 60px; padding: 14px 0; cursor: pointer; list-style: none;
+  font-family: 'Bricolage Grotesque', sans-serif; font-size: 18px; line-height: 1.25; font-weight: 700; color: var(--mp-text);
+}
+.mk-row summary::-webkit-details-marker { display: none; }
+.mk-row summary::after {
+  content: ''; flex-shrink: 0; width: 12px; height: 12px; margin-right: 4px; transform: rotate(45deg) translate(-2px, -2px);
+  border-right: 2px solid currentColor; border-bottom: 2px solid currentColor;
+}
+.mk-row[open] summary::after { transform: rotate(225deg) translate(-2px, -2px); }
+.mk-row summary:focus-visible { outline: 3px solid rgba(255, 107, 0, 0.5); outline-offset: 2px; border-radius: 6px; }
+.mk-row p { margin: 0; padding: 0 0 18px; font-size: 16px; line-height: 1.6; color: var(--mp-body); max-width: 64ch; }
+
+/* ── Footer ── */
+.mk-page .mp-footer { margin-top: 0; background: var(--mp-bg); }
+.mk-page .mp-footer-inner { padding: 32px 16px; }
+.mk-page .mp-footer-brand h3 { font-size: 16px; }
+.mk-page .mp-footer-brand p { font-size: 13px; margin: 0; }
+.mk-page .mp-footer-links { flex-wrap: wrap; gap: 0 18px; margin-bottom: 12px; }
+.mk-page .mp-footer-links a { display: inline-flex; align-items: center; min-height: 44px; font-size: 14px; color: var(--mp-body); text-decoration: underline; text-underline-offset: 3px; }
+.mk-page .mp-footer-copy { font-size: 13px; margin: 2px 0 0; }
+
+/* The skeleton takes the same shape the card will. */
+@media (max-width: 640px) { .mk-page .listing-card--skeleton .sk-line--mid { display: none; } }
+
+@media print {
+  .mk-page .mk-toolbar { position: static; }
+  .mk-logos, .mk-aurora { display: none; }
+}

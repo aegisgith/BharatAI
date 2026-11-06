@@ -107,7 +107,7 @@ const FILTERS = [
   { name: 'category', field: 'ai_category', all: 'Category', select: document.getElementById('filter-category') },
   { name: 'tag', field: 'tags', all: 'Tag', select: document.getElementById('filter-tag') },
 ]
-const filters = { q: '', industry: '', category: '', tag: '' }
+const filters = { q: '', industry: '', category: '', tag: '', booth: false }
 const filterLabels = {}
 const searchInput = document.getElementById('mk-search')
 const statusEl = document.getElementById('mk-status')
@@ -131,9 +131,12 @@ const buildFilters = (listings) => {
 
 const searchText = (l) => [l.product_name, l.company_name, l.description, l.ai_category, l.tags, l.target_industry, l.target_customer, l.use_cases].map(v => String(v || '')).join(' ').toLowerCase()
 
+const hasBooth = (l) => !!(l.exhibitor_booth || l.booth_number)
+
 const applyFilters = (listings) => {
   const words = filters.q.toLowerCase().split(/\s+/).filter(Boolean)
   return listings.filter(l => {
+    if (filters.booth && !hasBooth(l)) return false
     if (FILTERS.some(f => filters[f.name] && !toTagList(l[f.field]).map(keyOf).includes(filters[f.name]))) return false
     if (!words.length) return true
     const text = searchText(l)
@@ -141,12 +144,13 @@ const applyFilters = (listings) => {
   })
 }
 
-const isFiltering = () => !!(filters.q.trim() || FILTERS.some(f => filters[f.name]))
+const isFiltering = () => !!(filters.q.trim() || filters.booth || FILTERS.some(f => filters[f.name]))
 
 const clearFilters = () => {
   filters.q = ''; if (searchInput) searchInput.value = ''
+  filters.booth = false
   FILTERS.forEach(f => { filters[f.name] = '' })
-  renderListings()
+  rerender()
 }
 
 const renderStatus = (shown, total) => {
@@ -154,6 +158,7 @@ const renderStatus = (shown, total) => {
   if (!isFiltering()) { statusEl.innerHTML = ''; return }
   const chips = FILTERS.filter(f => filters[f.name]).map(f =>
     `<button type="button" class="mk-active-chip" data-clear="${f.name}" aria-label="Remove filter ${esc(filterLabels[f.name]?.[filters[f.name]] || filters[f.name])}"><span>${esc(filterLabels[f.name]?.[filters[f.name]] || filters[f.name])}</span><i class="fas fa-xmark" aria-hidden="true"></i></button>`)
+  if (filters.booth) chips.unshift(`<button type="button" class="mk-active-chip" data-clear="booth" aria-label="Remove filter ${BOOTH_LABEL}"><span>${BOOTH_LABEL}</span><i class="fas fa-xmark" aria-hidden="true"></i></button>`)
   if (filters.q.trim()) chips.unshift(`<button type="button" class="mk-active-chip" data-clear="q" aria-label="Clear search"><span>&ldquo;${esc(filters.q.trim())}&rdquo;</span><i class="fas fa-xmark" aria-hidden="true"></i></button>`)
   statusEl.innerHTML = `<span class="mk-count">${shown} of ${total} product${total === 1 ? '' : 's'}</span>${chips.join('')}<button type="button" class="mk-clear" data-clear="all">Clear all</button>`
 }
@@ -163,11 +168,85 @@ if (statusEl) statusEl.addEventListener('click', (e) => {
   const which = btn.getAttribute('data-clear')
   if (which === 'all') return clearFilters()
   if (which === 'q') { filters.q = ''; if (searchInput) searchInput.value = '' }
+  else if (which === 'booth') filters.booth = false
   else filters[which] = ''
-  renderListings()
+  rerender()
 })
-FILTERS.forEach(f => f.select && f.select.addEventListener('change', () => { filters[f.name] = f.select.value; renderListings() }))
-if (searchInput) searchInput.addEventListener('input', () => { filters.q = searchInput.value; renderListings() })
+
+// On a phone the three selects sit behind one Filters button, so the bar that stays on
+// screen is a single row. Choosing a value closes them, so the products show.
+const filterToggle = document.getElementById('mk-filter-toggle')
+const filterCount = document.getElementById('mk-filter-count')
+const selectsBox = document.getElementById('mk-selects')
+const openFilters = (open) => {
+  if (!filterToggle || !selectsBox) return
+  selectsBox.classList.toggle('is-open', open)
+  filterToggle.setAttribute('aria-expanded', String(open))
+}
+if (filterToggle) filterToggle.addEventListener('click', () => openFilters(filterToggle.getAttribute('aria-expanded') !== 'true'))
+FILTERS.forEach(f => f.select && f.select.addEventListener('change', () => { filters[f.name] = f.select.value; openFilters(false); rerender() }))
+if (searchInput) searchInput.addEventListener('input', () => { filters.q = searchInput.value; renderListings(); keepResultsInView() })
+
+// A filter chosen far down the page shortens it: go back to the top of the results.
+const toolbarEl = document.querySelector('.mk-toolbar')
+// Once the bar is pinned it gets a solid strip behind it, so nothing shows round its edges.
+if (toolbarEl && window.IntersectionObserver) {
+  const mark = document.createElement('div')
+  mark.setAttribute('aria-hidden', 'true')
+  mark.style.height = '1px'
+  toolbarEl.before(mark)
+  const pinnedAt = () => parseFloat(getComputedStyle(toolbarEl).top) || 0
+  new IntersectionObserver(([e]) => toolbarEl.classList.toggle('is-stuck', !e.isIntersecting && e.boundingClientRect.top < pinnedAt() + 40),
+    { rootMargin: '-120px 0px 0px 0px' }).observe(mark)
+}
+const keepResultsInView = () => {
+  if (!toolbarEl) return
+  const bar = toolbarEl.getBoundingClientRect()
+  const top = (document.getElementById('mk-needs') || listingsContainer).getBoundingClientRect().top
+  if (top < bar.bottom) window.scrollBy(0, top - bar.bottom - 8)
+}
+
+// Cards glide to their new places where the browser can do it. Typing skips this: it
+// would run on every letter.
+const calm = !window.matchMedia || !matchMedia('(prefers-reduced-motion: no-preference)').matches
+const rerender = () => {
+  const go = () => { renderListings(); keepResultsInView() }
+  if (document.startViewTransition && !calm && !document.hidden) document.startViewTransition(go)
+  else go()
+}
+
+// ── Shortcuts ──
+// One row, not a wall: the needs buyers come with, shown only when at least two approved
+// listings use that category, plus the products they can meet at the event.
+const BOOTH_LABEL = 'Meet them at the event'
+const NEEDS = ['AI Agents', 'Speech / Voice AI', 'Sales Automation', 'Recruitment Automation', 'Customer Support Automation', 'AI Chatbots', 'Content Generation', 'Workflow Automation', 'Fraud Detection', 'Cybersecurity AI', 'Computer Vision']
+const needsEl = document.getElementById('mk-needs')
+const buildNeeds = (listings) => {
+  if (!needsEl) return
+  const count = (name) => listings.filter(l => toTagList(l.ai_category).map(keyOf).includes(keyOf(name))).length
+  const needs = NEEDS.filter(n => count(n) >= 2).slice(0, 6)
+  needsEl.innerHTML = (listings.some(hasBooth) ? `<button type="button" class="mk-need mk-need--booth" data-booth aria-pressed="false">${BOOTH_LABEL}</button>` : '')
+    + needs.map(n => `<button type="button" class="mk-need" data-need="${esc(keyOf(n))}" aria-pressed="false">${esc(n)}</button>`).join('')
+}
+const syncNeeds = () => {
+  if (needsEl) needsEl.querySelectorAll('.mk-need').forEach(b => {
+    const on = b.hasAttribute('data-booth') ? filters.booth : filters.category === b.getAttribute('data-need')
+    b.setAttribute('aria-pressed', String(!!on))
+  })
+  const n = FILTERS.filter(f => filters[f.name]).length
+  if (filterCount) { filterCount.textContent = n || ''; filterCount.hidden = !n }
+}
+if (needsEl) needsEl.addEventListener('click', (e) => {
+  const b = e.target.closest('.mk-need'); if (!b) return
+  if (b.hasAttribute('data-booth')) filters.booth = !filters.booth
+  else {
+    const key = b.getAttribute('data-need')
+    filters.category = filters.category === key ? '' : key
+    const sel = FILTERS.find(f => f.name === 'category').select
+    if (sel) sel.value = filters.category
+  }
+  rerender()
+})
 
 // ── Logos ──
 // Exhibitors upload logos in every shape: square app icons, long wordmarks, and
@@ -240,6 +319,24 @@ const watchLogo = (img) => {
   else img.addEventListener('load', () => fitLogo(img), { once: true })
 }
 
+// ── The logos in the hero ──
+// Real logos of approved products, each a link to its product. A government body's listing
+// stays in the results but not up here, where a logo in a moving row can read as backing.
+// Three copies so the loop has no gap on a wide screen: only the first is read aloud.
+const buildLogoStrip = (listings) => {
+  const box = document.getElementById('mk-logos')
+  if (!box) return
+  const marks = listings.filter(l => safeUrl(l.logo_url) && !/ministry|government|govt/i.test(String(l.company_name || '')))
+  box.hidden = marks.length < 6
+  if (box.hidden) return
+  const one = (l, copy) => {
+    const name = String(l.product_name || '').trim()
+    return `<a class="mk-logo${copy ? ' mk-logo--copy' : ''}" href="${esc(listingUrl(l))}"${copy ? ' aria-hidden="true" tabindex="-1"' : ''}><img class="listing-logo-img" src="${esc(safeUrl(l.logo_url))}" alt="${copy ? '' : esc(name)}" data-initials="${esc(getInitials(name))}"></a>`
+  }
+  box.innerHTML = `<div class="mk-logo-track">${[0, 1, 2].map(copy => marks.map(l => one(l, copy)).join('')).join('')}</div>`
+  box.querySelectorAll('img').forEach(watchLogo)
+}
+
 // ── Cards ──
 // The whole card is the link. Empty fields are left out rather than shown as "—",
 // and the company line is dropped when it only repeats the product name.
@@ -247,10 +344,17 @@ const watchLogo = (img) => {
 // tags, price. The product image is not shown here: most listings have none, and
 // a row of cards with and without a cover photo looked broken. It shows on the
 // product page instead.
+// A card is made once per listing and reused, so filtering does not reload and re-trim logos.
+const madeCards = new WeakMap()
+const cardFor = (listing) => {
+  if (!madeCards.has(listing)) madeCards.set(listing, createListingCard(listing))
+  return madeCards.get(listing)
+}
 const createListingCard = (listing) => {
   const card = document.createElement('a')
   card.className = 'listing-card'
   card.href = listingUrl(listing)
+  if (/^\d+$/.test(String(listing.id))) card.style.viewTransitionName = 'mk-card-' + listing.id
   const name = String(listing.product_name || '').trim() || 'Untitled product'
   const company = String(listing.company_name || '').trim()
   const logo = safeUrl(listing.logo_url), initials = getInitials(name)
@@ -280,19 +384,28 @@ const createListingCard = (listing) => {
 
 const renderListings = () => {
   listingsContainer.removeAttribute('aria-busy')
+  // A failed request is not an empty marketplace: on a poor signal it said "No listings
+  // published yet" and invited people to be the first.
+  if (state.loadFailed) {
+    buildNeeds([]); syncNeeds(); buildLogoStrip([])
+    listingsContainer.innerHTML = '<div class="mp-empty-state" data-load-failed><i class="fa-solid fa-store"></i><h4>The products did not load</h4><p>Check your connection and try again.</p><button type="button" class="mp-hero-btn mp-hero-btn--secondary" id="mk-retry">Try again</button></div>'
+    document.getElementById('mk-retry').addEventListener('click', loadListings)
+    return
+  }
   // The marketplace is empty until listings are approved. It used to fall back to
   // five invented companies behind a small "Showing sample listings." note -
   // fabricated products, pricing and sales contacts a visitor could click straight
   // into, indistinguishable from the real thing. Say the truth instead.
   if (!state.listings.length) {
-    buildFilters([]); renderStatus(0, 0)
+    buildFilters([]); renderStatus(0, 0); buildNeeds([]); syncNeeds(); buildLogoStrip([])
     listingsContainer.innerHTML = '<div class="mp-empty-state"><i class="fa-solid fa-store"></i><h4>No listings published yet</h4><p>Approved AI products appear here as exhibitors submit them. Be one of the first: submitting is free and takes a few minutes.</p><button type="button" class="mp-hero-btn mp-hero-btn--primary" id="mp-empty-submit">Submit your product</button></div>'
     const b = document.getElementById('mp-empty-submit')
     // Reuse the real button so the login-required guard is not duplicated here.
     if (b) b.addEventListener('click', () => openListingButton.click())
     return
   }
-  if (filtersBuiltFor !== state.listings) buildFilters(state.listings)
+  if (filtersBuiltFor !== state.listings) { buildFilters(state.listings); buildNeeds(state.listings); buildLogoStrip(state.listings) }
+  syncNeeds()
   FILTERS.forEach(f => f.select && f.select.classList.toggle('is-set', !!filters[f.name]))
   const filtered = applyFilters(state.listings)
   renderStatus(filtered.length, state.listings.length)
@@ -303,14 +416,15 @@ const renderListings = () => {
     return
   }
   const frag = document.createDocumentFragment()
-  filtered.forEach(l => frag.appendChild(createListingCard(l)))
+  filtered.forEach((l, i) => { const c = cardFor(l); c.style.setProperty('--n', Math.min(i, 8)); frag.appendChild(c) })
   listingsContainer.appendChild(frag)
 }
 
 const loadListings = async () => {
   try {
     const d = await api('/api/mp/listings'); state.listings = d.listings || []
-  } catch { state.listings = [] }
+    state.loadFailed = false
+  } catch { state.listings = []; state.loadFailed = true }
   renderListings()
 }
 
@@ -340,7 +454,11 @@ const loadAdminListings = async () => {
 }
 
 // Auth events
-loginButton.addEventListener('click', () => authSection.classList.toggle('hidden'))
+// From far down the page the box opens out of sight, so go to it.
+loginButton.addEventListener('click', () => {
+  const opened = authSection.classList.toggle('hidden') === false
+  if (opened) authSection.scrollIntoView({ behavior: calm ? 'auto' : 'smooth', block: 'start' })
+})
 logoutButton.addEventListener('click', async () => { await api('/api/mp/auth/logout', { method: 'POST' }); clearDraft(); state.user = null; updateAuthUI(); showToast('Logged out') })
 // Every event pass includes a listing: someone signed in to the event app is signed
 // in here without a second account. The server decides whether that is safe for
@@ -366,7 +484,12 @@ openListingButton.addEventListener('click', async () => {
   }
   showListingForm()
 })
-viewButtons.forEach(b => b.addEventListener('click', () => { setListingView(b.getAttribute('data-view') || 'grid'); renderListings() }))
+viewButtons.forEach(b => b.addEventListener('click', () => {
+  const go = () => { setListingView(b.getAttribute('data-view') || 'grid'); renderListings() }
+  if (document.startViewTransition && !calm && !document.hidden) document.startViewTransition(go); else go()
+}))
+// The buttons lower down do what the hero's button does, sign-in check included.
+document.querySelectorAll('[data-open-listing]').forEach(b => b.addEventListener('click', () => openListingButton.click()))
 
 const registerForm = document.getElementById('register-form')
 const loginForm = document.getElementById('login-form')

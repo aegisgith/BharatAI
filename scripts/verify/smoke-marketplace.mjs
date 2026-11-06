@@ -91,7 +91,7 @@ check('a non-numeric listing id is not found', r.status === 404, r.status);
 // ---- pages ----
 r = await hit('/marketplace');
 check('/marketplace renders', r.status === 200 && r.text.includes('<html'), r.status);
-for (const marker of ['marketplace-app.js?v=', 'open-listing-button', 'listings-container', 'id="link-form"']) {
+for (const marker of ['marketplace-app.js?v=', 'open-listing-button', 'listings-container', 'id="link-form"', 'marketplace-browse.css?v=', 'id="mk-search"', 'id="filter-industry"', 'id="mk-filter-toggle"', 'data-open-listing', 'Motion effects from Skiper UI and Vengeance UI.']) {
   check('/marketplace carries ' + marker, r.text.includes(marker), 'missing');
 }
 r = await hit('/marketplace/admin');
