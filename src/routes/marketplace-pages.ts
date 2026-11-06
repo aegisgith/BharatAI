@@ -60,6 +60,27 @@ function mpSharedHead(title: string, opts: { path?: string; noindex?: boolean; e
 </head>`
 }
 
+// The footer of the browse and product pages. "Event App" is /app: / is the main website.
+const mkFooter = () => `<footer class="mp-footer">
+    <div class="mp-footer-inner">
+      <div class="mp-footer-brand">
+        <img src="/images/logo-nav.webp" alt="BHAI" class="mp-footer-logo">
+        <div>
+          <h3>Bharat AI Marketplace</h3>
+          <p>Part of Bharat AI Innovation 2026</p>
+        </div>
+      </div>
+      <div class="mp-footer-links">
+        <a href="/">Main Site</a>
+        <a href="/app">Event App</a>
+        <a href="/marketplace/faq">FAQ</a>
+        <a href="/marketplace/dashboard">Dashboard</a>
+      </div>
+      <p class="mp-footer-copy">&copy; 2026 Bharat AI Innovation. All rights reserved.</p>
+      <p class="mp-footer-copy">Motion effects from Skiper UI and Vengeance UI.</p>
+    </div>
+  </footer>`
+
 // ══════════════════════════════════════════
 // MARKETPLACE MAIN PAGE
 // ══════════════════════════════════════════
@@ -109,8 +130,8 @@ export function marketplacePageHTML(): string {
   // The browse page's design is css/marketplace-browse.css. Its motion is the second pair of
   // lines (marketplace-motion.css here, marketplace-motion.js at the foot): delete those two and
   // every word stays, the page simply stops moving.
-  return `${mpSharedHead('AI Marketplace', { extraHead: `<link rel="stylesheet" href="/css/marketplace-browse.css?v=20261106">
-  <link rel="stylesheet" href="/css/marketplace-motion.css?v=20261106">` })}
+  return `${mpSharedHead('AI Marketplace', { extraHead: `<link rel="stylesheet" href="/css/marketplace-browse.css?v=20261106b">
+  <link rel="stylesheet" href="/css/marketplace-motion.css?v=20261106b">` })}
 <body class="mp-body mk-page">
   <!-- Toast -->
   <div id="toast" class="mp-toast hidden"></div>
@@ -122,7 +143,7 @@ export function marketplacePageHTML(): string {
         <img src="/images/logo-nav.webp" alt="Bharat AI Innovation" loading="eager" class="mp-brand-logo">
       </a>
       <nav class="mp-nav" aria-label="Main">
-        <a href="/app" class="mp-nav-link"><i class="fas fa-home mr-1"></i>Home</a>
+        <a href="/" class="mp-nav-link"><i class="fas fa-home mr-1"></i>Home</a>
         <a href="/app#schedule" class="mp-nav-link">Schedule</a>
         <a href="/marketplace" class="mp-nav-link" aria-current="page">AI Market</a>
         <a href="/inquiry" class="mp-nav-link">Book Booth</a>
@@ -430,7 +451,7 @@ export function marketplacePageHTML(): string {
         <li class="mk-step">
           <span class="mk-step-n" aria-hidden="true">3</span>
           <h3>Talk to the team</h3>
-          <p>Send an enquiry from the product page and it goes to the company. Where a booth number shows, you can also meet them at WTC Mumbai on 20 and 21 November.</p>
+          <p>Send an inquiry from the product page and it goes to the company. Where a booth number shows, you can also meet them at WTC Mumbai on 20 and 21 November.</p>
         </li>
       </ol>
     </div>
@@ -479,11 +500,11 @@ export function marketplacePageHTML(): string {
         </li>
         <li class="mk-card">
           <div class="mk-card-text">
-            <h3>Enquiries come straight to you</h3>
+            <h3>Inquiries come straight to you</h3>
             <p>They are emailed to your account address and appear in your dashboard, next to your listing's views.</p>
           </div>
           <div class="mk-mock" aria-hidden="true">
-            <div class="mk-mock-row"><span class="mk-mock-dot"></span><div><b>New enquiry</b><small>About Your AI product</small></div></div>
+            <div class="mk-mock-row"><span class="mk-mock-dot"></span><div><b>New inquiry</b><small>About Your AI product</small></div></div>
           </div>
         </li>
       </ul>
@@ -518,28 +539,10 @@ export function marketplacePageHTML(): string {
   </section>
 
   <!-- Footer -->
-  <footer class="mp-footer">
-    <div class="mp-footer-inner">
-      <div class="mp-footer-brand">
-        <img src="/images/logo-nav.webp" alt="BHAI" class="mp-footer-logo">
-        <div>
-          <h3>Bharat AI Marketplace</h3>
-          <p>Part of Bharat AI Innovation 2026</p>
-        </div>
-      </div>
-      <div class="mp-footer-links">
-        <a href="/">Event App</a>
-        <a href="/marketplace/faq">FAQ</a>
-        <a href="/marketplace/dashboard">Dashboard</a>
-        <a href="https://bharataiinnovation.com" target="_blank">Main Site</a>
-      </div>
-      <p class="mp-footer-copy">&copy; 2026 Bharat AI Innovation. All rights reserved.</p>
-      <p class="mp-footer-copy">Motion effects from Skiper UI and Vengeance UI.</p>
-    </div>
-  </footer>
+  ${mkFooter()}
 
   <script src="/static/marketplace-app.js?v=11"></script>
-  <script src="/js/marketplace-motion.js?v=20261106" defer></script>
+  <script src="/js/marketplace-motion.js?v=20261106b" defer></script>
 </body>
 </html>`
 }
@@ -554,8 +557,12 @@ export function marketplacePageHTML(): string {
 const inlineJsString = (v: string) => JSON.stringify(String(v)).replace(/</g, '\\u003c')
 
 export function marketplaceListingPageHTML(companySlug?: string, productSlug?: string, legacyId?: string): string {
-  return `${mpSharedHead('AI Product Listing')}
-<body class="mp-body">
+  // Design: marketplace-browse.css + marketplace-product.css. Motion: the marketplace-motion lines,
+  // here and at the foot. Delete those two and every word stays.
+  return `${mpSharedHead('AI Product Listing', { extraHead: `<link rel="stylesheet" href="/css/marketplace-browse.css?v=20261106b">
+  <link rel="stylesheet" href="/css/marketplace-product.css?v=20261106">
+  <link rel="stylesheet" href="/css/marketplace-motion.css?v=20261106b">` })}
+<body class="mp-body mk-page pd-page">
   <div id="detail-toast" class="mp-toast hidden" role="status" aria-live="polite"></div>
 
   <header class="mp-header">
@@ -564,15 +571,17 @@ export function marketplaceListingPageHTML(companySlug?: string, productSlug?: s
         <img src="/images/logo-nav.webp" alt="Bharat AI Innovation" loading="eager" class="mp-brand-logo">
       </a>
       <nav class="mp-nav" aria-label="Marketplace">
+        <a href="/" class="mp-nav-link"><i class="fas fa-home mr-1"></i>Home</a>
         <a href="/marketplace" class="mp-nav-link">All AI products</a>
         <a href="/marketplace/faq" class="mp-nav-link">FAQ</a>
-        <a href="/marketplace?submit=true" class="mp-nav-btn mp-hide-sm">List your product</a>
       </nav>
+      <div class="mk-auth"><a href="/marketplace?submit=true" class="mp-nav-btn">List your product</a></div>
     </div>
   </header>
 
   <!-- Filled by marketplace-listing.js; the placeholders hold the layout until then. -->
   <section class="pd-hero" data-detail-hero>
+    <div class="mk-aurora" aria-hidden="true"><i></i></div>
     <div class="pd-hero-inner" aria-busy="true">
       <nav class="pd-crumbs" aria-label="Breadcrumb"><a href="/marketplace">AI Marketplace</a></nav>
       <div class="pd-hero-main">
@@ -629,11 +638,21 @@ export function marketplaceListingPageHTML(companySlug?: string, productSlug?: s
     </section>
   </main>
 
-  <footer class="mp-footer">
-    <div class="mp-footer-inner">
-      <p class="mp-footer-copy">&copy; 2026 Bharat AI Innovation. All rights reserved.</p>
+  <!-- Filled by marketplace-listing.js from the approved listings; stays hidden if there is no match. -->
+  <section class="pd-related" id="pd-related" aria-labelledby="pd-related-title" hidden>
+    <div class="mk-wrap">
+      <div class="pd-related-head">
+        <h2 id="pd-related-title" class="mk-h2">More AI products like this</h2>
+        <a class="mk-link" href="/marketplace">See all AI products</a>
+      </div>
+      <div id="pd-related-grid" class="listing-grid"></div>
     </div>
-  </footer>
+  </section>
+
+  ${mkFooter()}
+
+  <!-- On a phone: keeps the inquiry in reach once the hero's buttons have scrolled away. -->
+  <div class="pd-bar" id="pd-bar" role="group" aria-label="Contact this company" hidden></div>
 
   <script>
     ${companySlug && productSlug
@@ -642,7 +661,8 @@ export function marketplaceListingPageHTML(companySlug?: string, productSlug?: s
         ? `window.__LISTING_LEGACY_ID = ${inlineJsString(legacyId)};`
         : ''}
   </script>
-  <script src="/static/marketplace-listing.js?v=4"></script>
+  <script src="/static/marketplace-listing.js?v=5"></script>
+  <script src="/js/marketplace-motion.js?v=20261106b" defer></script>
 </body>
 </html>`
 }
@@ -674,7 +694,7 @@ export function marketplaceDashboardPageHTML(): string {
     </nav>
     <div class="dash-sidebar-footer">
       <a href="/marketplace" class="dash-sidebar-link"><i class="fas fa-store mr-1"></i> Marketplace</a>
-      <a href="/" class="dash-sidebar-link"><i class="fas fa-home mr-1"></i> Event App</a>
+      <a href="/app" class="dash-sidebar-link"><i class="fas fa-home mr-1"></i> Event App</a>
       <button id="dash-logout" class="dash-sidebar-link text-rose-400"><i class="fas fa-sign-out-alt mr-1"></i> Logout</button>
     </div>
   </aside>

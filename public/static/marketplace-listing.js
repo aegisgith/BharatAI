@@ -100,6 +100,17 @@ const getVideoEmbedUrl = (url) => {
 const BULLET = /^(?:[-*•▪◦·]|\d{1,2}[.)])\s+/
 const STEP = /^(.{2,48}?)\s[—–-]\s(.+)$/
 const LEAD = /^([A-Z][A-Za-z ()/&]{1,24}):\s+(.+)$/
+// A use case per line, which is how the form asks for them, reads as a list.
+const asList = (value) => {
+  const lines = String(value || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean)
+  return lines.length >= 2 ? lines.map(l => '- ' + l.replace(BULLET, '')).join('\n') : value
+}
+// Web addresses typed into a field become links. Everything else stays plain, escaped text.
+const linkified = (value) => String(value == null ? '' : value).split(/(https?:\/\/[^\s,;)]+)/).map((part, i) => {
+  if (i % 2 === 0) return esc(part)
+  const u = safeUrl(part)
+  return u ? `<a class="pd-link" href="${esc(u)}" target="_blank" rel="noopener noreferrer">${esc(hostOf(u) + new URL(u).pathname.replace(/\/$/, ''))}</a>` : esc(part)
+}).join('')
 const proseHTML = (value) => {
   const lines = String(value || '').split(/\r?\n/).map(l => l.trim())
   const out = []
@@ -177,15 +188,22 @@ const renderDetail = (listing) => {
   const siteForByline = website || productUrl
 
   // ── Hero
-  const priceBadge = priceDetails && priceDetails.length <= 32
+  // Asking here comes first: the inquiry reaches the exhibitor, while the website takes the
+  // buyer off the page.
+  const askButton = `<a class="pd-btn pd-btn--primary" href="#inquire"><i class="fas fa-envelope" aria-hidden="true"></i> Send inquiry</a>`
+  const siteButton = ctaUrl ? `<a class="pd-btn pd-btn--ghost" href="${esc(ctaUrl)}" target="_blank" rel="noopener noreferrer">${ctaLabel} <i class="fas fa-arrow-up-right-from-square" aria-hidden="true"></i></a>` : ''
+  // Some exhibitors typed the same word in both boxes: "Freemium · Freemium" says it once.
+  const priceBadge = priceDetails && priceDetails.length <= 60 && !sameText(priceDetails, priceType)
     ? `${priceType ? `${esc(priceType)} · ` : ''}${esc(priceDetails)}`
     : esc(priceType || 'Pricing on request')
-  heroEl.innerHTML = `<div class="pd-hero-inner">
+  // Each word of the title rises on its own (marketplace-motion.css). The words stay real text.
+  const titleWords = name.split(/\s+/).map((w, i) => `<span class="mk-w"><span style="--i:${Math.min(i, 8)}">${esc(w)}</span></span>`).join(' ')
+  heroEl.innerHTML = `<div class="mk-aurora" aria-hidden="true"><i></i></div><div class="pd-hero-inner">
       <nav class="pd-crumbs" aria-label="Breadcrumb"><a href="/marketplace">AI Marketplace</a><i class="fas fa-chevron-right" aria-hidden="true"></i><span aria-current="page">${esc(name)}</span></nav>
       <div class="pd-hero-main">
         <div class="pd-logo${logo ? '' : ' pd-logo--initials'}">${logo ? `<img src="${esc(logo)}" alt="${esc(company || name)} logo">` : `<span aria-hidden="true">${esc(getInitials(name))}</span>`}</div>
         <div class="pd-title-block">
-          <h1 class="pd-title">${esc(name)}</h1>
+          <h1 class="pd-title${name.length > 34 ? ' pd-title--long' : ''}">${titleWords}</h1>
           <p class="pd-byline">${company && !sameText(company, name) ? `<span>by <strong>${esc(company)}</strong></span>` : ''}${siteForByline ? `<a href="${esc(siteForByline)}" target="_blank" rel="noopener noreferrer"><i class="fas fa-globe" aria-hidden="true"></i>${esc(hostOf(siteForByline))}</a>` : ''}</p>
           <div class="pd-badges">
             <span class="pd-badge pd-badge--price">${priceBadge}</span>
@@ -194,8 +212,8 @@ const renderDetail = (listing) => {
           </div>
         </div>
         <div class="pd-actions">
-          ${ctaUrl ? `<a class="pd-btn pd-btn--primary" href="${esc(ctaUrl)}" target="_blank" rel="noopener noreferrer">${ctaLabel} <i class="fas fa-arrow-up-right-from-square" aria-hidden="true"></i></a>` : ''}
-          <a class="pd-btn ${ctaUrl ? 'pd-btn--ghost' : 'pd-btn--primary'}" href="#inquire"><i class="fas fa-envelope" aria-hidden="true"></i> Send inquiry</a>
+          ${askButton}
+          ${siteButton}
         </div>
       </div>
     </div>`
@@ -205,14 +223,16 @@ const renderDetail = (listing) => {
   // ── Main column
   const sections = []
   const section = (id, title, body) => { if (body) sections.push(`<section class="pd-section" id="${id}" aria-labelledby="${id}-title"><h2 id="${id}-title">${esc(title)}</h2>${body}</section>`) }
-  section('about', `About ${name}`,
+  // Folded: the long reference parts. Closed on a phone, open on a laptop.
+  const folded = (id, title, body, always) => { if (body) sections.push(`<details class="pd-section pd-fold" id="${id}"${always ? '' : ' data-fold'}><summary><h2 id="${id}-title">${esc(title)}</h2></summary><div class="pd-fold-body">${body}</div></details>`) }
+  section('about', name.length > 34 ? 'About this product' : `About ${name}`,
     (image ? `<figure class="pd-product-image"><img src="${esc(image)}" alt="${esc(name)}"></figure>` : '') +
-    (proseHTML(listing.description) || `<p class="pd-note">${esc(company || 'This company')} has not added a description yet.</p>`))
+    (listing.description && text(listing.description) ? `<div class="pd-clamp">${proseHTML(listing.description)}</div><button type="button" class="pd-more-text" aria-expanded="false">Read more</button>` : `<p class="pd-note">${esc(company || 'This company')} has not added a description yet.</p>`))
   section('audience', 'Who it’s for',
     proseHTML(listing.target_customer) +
     (text(listing.current_customers) ? `<h3 class="pd-subhead">Current customers</h3>${proseHTML(listing.current_customers)}` : ''))
   section('difference', 'What makes it different', proseHTML(listing.innovation))
-  section('use-cases', 'Use cases', proseHTML(listing.use_cases))
+  section('use-cases', 'Use cases', proseHTML(asList(listing.use_cases)))
   section('screenshots', 'Screenshots', screenshots.length
     ? `<div class="pd-media-grid">${screenshots.map((u, n) => `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer"><img src="${esc(u)}" alt="${esc(name)} screenshot ${n + 1}" loading="lazy"></a>`).join('')}</div>` : '')
   section('video', 'Demo video', videoEmbed
@@ -220,19 +240,30 @@ const renderDetail = (listing) => {
     : videoUrl ? `<p class="pd-note">${externalLink(videoUrl, 'Watch the demo video')}</p>` : '')
   section('case-studies', 'Case studies', proseHTML(listing.case_studies))
   const specs = spec('Platforms', listing.supported_platforms) + spec('Tech stack', listing.tech_stack) + spec('Integration', listing.integration_requirements) + spec('Security', listing.security_protocols) + spec('Certifications', certs.join(', '))
-  section('technical', 'Technical details', specs ? `<dl class="pd-specs">${specs}</dl>` : '')
+  folded('technical', 'Technical details', specs ? `<dl class="pd-specs">${specs}</dl>` : '')
   const support = spec('Support', listing.support_offering) + spec('Onboarding', listing.onboarding_process) + spec('SLA', listing.sla_details)
-  section('support', 'Service and support', support ? `<dl class="pd-specs">${support}</dl>` : '')
-  section('reviews', 'Reviews', '<div data-reviews><p class="pd-note">Loading reviews…</p></div>')
+  folded('support', 'Service and support', support ? `<dl class="pd-specs">${support}</dl>` : '')
+  folded('reviews', 'Reviews', '<div data-reviews><p class="pd-note">Loading reviews…</p></div>', true)
   mainEl.innerHTML = sections.join('')
+  if (window.matchMedia && matchMedia('(min-width: 1001px)').matches) mainEl.querySelectorAll('details[data-fold]').forEach(d => { d.open = true })
+  // Read more appears only when the description really is cut off.
+  const clamp = mainEl.querySelector('.pd-clamp'), more = mainEl.querySelector('.pd-more-text')
+  if (clamp && more) {
+    if (clamp.scrollHeight > clamp.clientHeight + 8) more.classList.add('is-needed')
+    more.addEventListener('click', () => {
+      const open = clamp.classList.toggle('is-open')
+      more.textContent = open ? 'Show less' : 'Read more'
+      more.setAttribute('aria-expanded', String(open))
+    })
+  }
 
   // ── Sidebar
   const price = priceDetails || priceType || 'Pricing on request'
   const pricePanel = `<section class="pd-panel" aria-labelledby="pd-pricing-title">
       <h2 class="pd-panel-title" id="pd-pricing-title">Pricing</h2>
-      <p class="pd-price${price.length > 22 ? ' pd-price--long' : ''}">${esc(price)}</p>
+      <p class="pd-price${price.length > 22 ? ' pd-price--long' : ''}">${linkified(price)}</p>
       ${priceDetails && priceType ? `<p class="pd-price-type">${esc(priceType)}</p>` : ''}
-      ${text(listing.access_info) ? `<div class="pd-access"><h3 class="pd-panel-title">How to get access</h3><p>${esc(listing.access_info)}</p></div>` : ''}
+      ${text(listing.access_info) ? `<div class="pd-access"><h3 class="pd-panel-title">How to get access</h3><p>${linkified(listing.access_info)}</p></div>` : ''}
     </section>`
 
   const companyFacts = [
@@ -261,7 +292,8 @@ const renderDetail = (listing) => {
 
   const chipsHTML = chipGroup('Industries', inds) + chipGroup('AI categories', cats) + chipGroup('Tags', tags)
   const chipsPanel = chipsHTML ? `<section class="pd-panel" aria-label="Industries and categories">${chipsHTML}</section>` : ''
-  asideEl.innerHTML = pricePanel + companyPanel + chipsPanel
+  const ctaPanel = `<section class="pd-panel pd-cta" aria-label="Contact this company"><h2>Interested in ${esc(name)}?</h2>${askButton}${siteButton}</section>`
+  asideEl.innerHTML = pricePanel + companyPanel + chipsPanel + ctaPanel
   asideEl.querySelectorAll('.pd-more').forEach(btn => btn.addEventListener('click', () => {
     const box = btn.closest('.pd-chips'); const open = box.classList.toggle('is-open')
     btn.setAttribute('aria-expanded', String(open))
@@ -288,6 +320,87 @@ const renderDetail = (listing) => {
   })
 
   loadReviews(listing)
+  loadRelated(listing)
+  watchBar(askButton, ctaUrl ? siteButton.replace(/ ?<i [^>]*><\/i>/, '') : '')
+}
+
+// ── The bar on a phone ──
+// Up once the hero's buttons have scrolled away, down again when the form is on the screen.
+const watchBar = (ask, site) => {
+  const bar = document.getElementById('pd-bar'), actions = heroEl.querySelector('.pd-actions')
+  if (!bar || !actions || !window.IntersectionObserver) return
+  bar.innerHTML = ask + site
+  bar.hidden = false
+  let heroSeen = true, formSeen = false
+  const panel = asideEl.querySelector('.pd-cta')
+  const sync = () => {
+    bar.classList.toggle('is-up', !heroSeen && !formSeen)
+    if (panel) panel.classList.toggle('is-at-form', formSeen)
+  }
+  new IntersectionObserver(([e]) => { heroSeen = e.isIntersecting; sync() }).observe(actions)
+  new IntersectionObserver(([e]) => { formSeen = e.isIntersecting; sync() }).observe(inquiryEl)
+}
+
+// ── More like this ──
+// Scored by the categories two products share. A product that ticked twenty categories would
+// otherwise come first on every page, so a share counts for less the more it ticked.
+const keyOf = (v) => text(v).toLowerCase()
+const relatedLogoHeight = (w, h) => { const ratio = Math.min(10, Math.max(0.6, w / h)); return Math.min(48, Math.round(48 * Math.pow(ratio, -0.35)), Math.floor(168 / ratio)) }
+const fitRelatedLogo = (img) => {
+  const place = () => {
+    let r = null
+    try { r = trimLogo(img) } catch {}
+    const w = (r && r.w) || img.naturalWidth || 1, h = (r && r.h) || img.naturalHeight || 1
+    if (r && r.tile) img.classList.add('is-tile')
+    if (r && r.dark) img.classList.add('is-dark')
+    if (r && r.src) img.src = r.src
+    img.style.setProperty('--logo-h', (r && r.tile ? Math.min(48, Math.floor(168 / (w / h))) : relatedLogoHeight(w, h)) + 'px')
+    img.classList.add('is-ready')
+  }
+  img.addEventListener('error', () => {
+    const tile = document.createElement('span'); tile.className = 'listing-logo listing-logo--initials'; tile.textContent = img.dataset.initials || ''
+    img.replaceWith(tile)
+  }, { once: true })
+  if (img.complete && img.naturalWidth) place(); else img.addEventListener('load', place, { once: true })
+}
+const relatedCard = (l) => {
+  const name = text(l.product_name) || 'Untitled product', company = text(l.company_name), logo = safeUrl(l.logo_url), initials = getInitials(name)
+  const booth = text(l.exhibitor_booth || l.booth_number)
+  const href = l.company_slug && l.product_slug ? `/marketplace/listing/${encodeURIComponent(l.company_slug)}/${encodeURIComponent(l.product_slug)}` : `/marketplace/listing/${encodeURIComponent(l.id)}`
+  return `<a class="listing-card" href="${esc(href)}"><div class="listing-body">
+      <div class="listing-head">
+        <div class="listing-brand">${logo ? `<img class="listing-logo-img" src="${esc(logo)}" alt="" loading="lazy" data-initials="${esc(initials)}">` : `<span class="listing-logo listing-logo--initials">${esc(initials)}</span>`}</div>
+        <div class="listing-names"><h3 class="listing-title">${esc(name)}</h3>${company && !sameText(company, name) ? `<p class="listing-company">${esc(company)}</p>` : ''}</div>
+      </div>
+      ${l.description ? `<p class="listing-desc">${esc(l.description)}</p>` : ''}
+      <div class="listing-foot">
+        <span class="listing-price"><span>${esc(l.pricing_type || 'Pricing on request')}</span>${booth ? `<span class="listing-booth-badge"><i class="fas fa-location-dot" aria-hidden="true"></i> Booth ${esc(booth)}</span>` : ''}</span>
+        <span class="listing-view">View details <i class="fas fa-arrow-right" aria-hidden="true"></i></span>
+      </div>
+    </div></a>`
+}
+const loadRelated = async (listing) => {
+  const box = document.getElementById('pd-related'), grid = document.getElementById('pd-related-grid')
+  if (!box || !grid) return
+  try {
+    const d = await api('/api/mp/listings')
+    const mine = new Set(toTagList(listing.ai_category).map(keyOf))
+    const picks = (d.listings || [])
+      .filter(l => String(l.id) !== String(listing.id))
+      .map(l => {
+        const theirs = toTagList(l.ai_category).map(keyOf)
+        const shared = theirs.filter(c => mine.has(c)).length
+        return { l, score: shared / Math.sqrt(Math.max(1, theirs.length)) }
+      })
+      .filter(x => x.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 3)
+    if (!picks.length) return
+    grid.innerHTML = picks.map(x => relatedCard(x.l)).join('')
+    grid.querySelectorAll('.listing-card').forEach((c, i) => c.style.setProperty('--n', i))
+    grid.querySelectorAll('img').forEach(fitRelatedLogo)
+    box.hidden = false
+  } catch {} // A page without this row is still the whole page.
 }
 
 // ── Reviews: loaded with the page rather than behind a "Load reviews" button.
@@ -327,6 +440,8 @@ const loadReviews = async (listing) => {
       <div><button type="submit" class="pd-btn pd-btn--ghost">Post review as ${esc(user.company_name)}</button></div>
     </form>`
   box.innerHTML = html
+  const fold = box.closest('details'), title = fold && fold.querySelector('summary h2')
+  if (fold && reviews && reviews.length) { fold.open = true; if (title) title.textContent = `Reviews (${reviews.length})` }
 
   const form = box.querySelector('[data-review-form]')
   if (form) form.addEventListener('submit', async (e) => {
@@ -361,7 +476,9 @@ const loadListing = async () => {
     if (!data || !data.listing) throw new Error('Listing not found')
     renderDetail(data.listing)
   } catch (err) {
-    showNotFound(err.message === 'Listing not found' ? 'It may not be approved yet, or it may have been removed.' : err.message)
+    const gone = /not found/i.test(err.message)
+    const offline = err instanceof TypeError
+    showNotFound(gone ? 'It may not be approved yet, or it may have been removed.' : offline ? 'The page did not load. Check your connection and try again.' : err.message)
   }
 }
 

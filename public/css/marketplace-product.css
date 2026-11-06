@@ -1,0 +1,145 @@
+/* The design of a marketplace product page (body.pd-page), on top of marketplace.css and
+   marketplace-browse.css. Phones first: what it is, how to ask about it, then the detail, with
+   the long technical parts folded and a bar that keeps "Send inquiry" in reach. */
+
+.pd-page { background: #fff; }
+.pd-page .mp-footer { background: var(--mp-bg); }
+.pd-page .pd-btn--primary { background: #D95600; }
+.pd-page .pd-btn--primary:hover { background: #BF4B00; }
+@media (prefers-reduced-motion: no-preference) { html:has(.pd-page) { scroll-behavior: smooth; } }
+
+/* ── Hero ── */
+.pd-page .pd-hero { position: relative; overflow: hidden; background: #fff; }
+.pd-page .pd-hero-inner { position: relative; max-width: 1280px; padding: 14px 16px 30px; }
+@media (min-width: 641px) { .pd-page .pd-hero-inner { padding: 22px 20px 48px; } }
+.pd-page .pd-crumbs { margin-bottom: clamp(18px, 3vw, 34px); }
+.pd-page .pd-crumbs a { display: inline-flex; align-items: center; min-height: 32px; }
+.pd-page .pd-hero-main { flex-direction: column; align-items: stretch; gap: 18px; }
+.pd-page .pd-logo { align-self: flex-start; }
+.pd-page .pd-title { font-size: clamp(2.5rem, 9.6vw, 4.25rem); line-height: 1; letter-spacing: -0.022em; max-width: 18em; }
+/* A long product name gets a smaller title, not six lines of a big one. */
+.pd-page .pd-title--long { font-size: clamp(1.75rem, 6.4vw, 2.75rem); line-height: 1.08; letter-spacing: -0.015em; }
+.pd-page .pd-byline { font-size: 16px; margin-top: 12px; }
+.pd-page .pd-byline a { min-height: 32px; }
+.pd-page .pd-badge { height: auto; min-height: 32px; padding: 6px 13px; white-space: normal; line-height: 1.3; }
+.pd-page .pd-badge--booth { background: var(--mp-primary-tint); color: var(--mp-primary-ink); }
+.pd-page .pd-badge--price { background: var(--mp-surface-2); color: var(--mp-text); }
+.pd-page .pd-actions { flex-direction: row; flex-wrap: wrap; width: 100%; min-width: 0; }
+.pd-page .pd-actions .pd-btn { flex: 1 1 150px; height: 52px; border-radius: 14px; }
+@media (min-width: 1001px) {
+  .pd-page .pd-hero-main { flex-direction: row; flex-wrap: wrap; align-items: flex-end; column-gap: 28px; }
+  .pd-page .pd-title-block { flex: 1 1 0; }
+  .pd-page .pd-logo { align-self: center; }
+  .pd-page .pd-actions { flex-direction: column; flex-wrap: nowrap; width: auto; min-width: 220px; }
+  .pd-page .pd-actions .pd-btn { flex: 0 0 auto; }
+}
+
+/* ── The page's two columns ── Words on white, not one big card. */
+.pd-page .pd-layout { max-width: 1280px; padding: 0 0 56px; gap: 0; }
+.pd-page .pd-main { background: transparent; border: 0; border-radius: 0; }
+.pd-page .pd-section { padding: 28px 16px; scroll-margin-top: 16px; }
+.pd-page .pd-section > h2, .pd-page .pd-fold > summary h2 { font-size: clamp(1.5rem, 5.4vw, 2rem); line-height: 1.12; font-weight: 800; letter-spacing: -0.015em; margin: 0 0 14px; }
+.pd-page .pd-prose { font-size: 16px; line-height: 1.65; }
+.pd-page .pd-prose ul { list-style: none; padding: 0; display: grid; gap: 10px; }
+.pd-page .pd-prose ul li { position: relative; margin: 0; padding-left: 24px; }
+.pd-page .pd-prose ul li::before { content: ''; position: absolute; left: 2px; top: 0.62em; width: 8px; height: 8px; border-radius: 50%; background: #D95600; }
+.pd-page .pd-specs dd { line-height: 1.55; }
+.pd-page .pd-specs, .pd-page .pd-form-grid { grid-template-columns: minmax(0, 1fr); }
+
+/* A tall image holds still at a sensible height, whatever shape the exhibitor uploaded. */
+/* White, because most uploads are on white: a tinted frame showed a white block inside it. */
+.pd-page .pd-product-image { background: #fff; border: 1px solid var(--mp-border); border-radius: 18px; }
+.pd-page .pd-product-image img { max-height: min(62vh, 420px); object-fit: contain; }
+
+/* On a phone a long description stops at about eight lines, with Read more. */
+.pd-more-text { display: none; }
+@media (max-width: 640px) {
+  .pd-clamp:not(.is-open) {
+    max-height: 13.2em; overflow: hidden;
+    -webkit-mask-image: linear-gradient(#000 72%, transparent); mask-image: linear-gradient(#000 72%, transparent);
+  }
+  .pd-more-text.is-needed {
+    display: inline-flex; align-items: center; min-height: 44px; margin-top: 2px; padding: 0; background: none; border: 0; cursor: pointer;
+    font-size: 15px; font-weight: 700; color: var(--mp-primary-ink); text-decoration: underline; text-underline-offset: 4px;
+  }
+  /* Screenshots go sideways, one at a time. */
+  .pd-page .pd-media-grid { display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; margin: 0 -16px; padding: 0 16px; }
+  .pd-page .pd-media-grid::-webkit-scrollbar { display: none; }
+  .pd-page .pd-media-grid a { flex: 0 0 86%; scroll-snap-align: center; }
+}
+
+/* Folded sections: closed on a phone, open on a laptop (the script decides). */
+.pd-fold { border-top: 1px solid var(--mp-border-strong); }
+.pd-page .pd-fold.pd-section { padding-top: 0; padding-bottom: 0; }
+.pd-fold > summary { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 68px; padding: 16px 0; cursor: pointer; list-style: none; }
+.pd-fold > summary::-webkit-details-marker { display: none; }
+.pd-page .pd-fold > summary h2 { margin: 0; font-size: clamp(1.25rem, 4.6vw, 1.5rem); }
+.pd-fold > summary::after {
+  content: ''; flex-shrink: 0; width: 12px; height: 12px; margin-right: 4px; transform: rotate(45deg) translate(-2px, -2px);
+  border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.pd-fold[open] > summary::after { transform: rotate(225deg) translate(-2px, -2px); }
+.pd-fold > summary:focus-visible { outline: 3px solid rgba(255, 107, 0, 0.5); outline-offset: 2px; border-radius: 6px; }
+.pd-fold-body { padding-bottom: 24px; }
+.pd-page .pd-fold-body .pd-review-form { margin-top: 12px; padding-top: 12px; }
+
+/* ── The facts ── */
+.pd-page .pd-aside { padding: 8px 16px 0; gap: 12px; }
+.pd-page .pd-panel { background: var(--mp-bg); border: 0; border-radius: 20px; }
+.pd-page .pd-access p { overflow-wrap: anywhere; }
+.pd-page .pd-price--long { font-size: 19px; }
+/* Only on a laptop: the panel that travels with the reader. The phone has the bar instead. */
+.pd-cta { display: none; }
+
+/* ── Ask a question ── The one dark part: it is where this page leads. */
+.pd-page .pd-inquiry {
+  margin: 24px 16px 0; padding: 26px 20px; border: 0; border-radius: 24px; background: var(--mk-ink); color: #fff; scroll-margin-top: 16px;
+}
+.pd-page .pd-inquiry h2 { font-size: clamp(1.625rem, 5.8vw, 2.25rem); line-height: 1.08; font-weight: 800; letter-spacing: -0.018em; color: #fff; overflow-wrap: anywhere; }
+.pd-page .pd-inquiry-sub { color: #D5D9F5; font-size: 16px; }
+.pd-page .pd-inquiry .pd-field label { color: #fff; }
+.pd-page .pd-inquiry .pd-field label .pd-optional { color: #C5CAEE; }
+.pd-page .pd-field input, .pd-page .pd-field textarea { font-size: 16px; border-color: transparent; }
+.pd-page .pd-field input:focus, .pd-page .pd-field textarea:focus { border-color: #FF8C38; box-shadow: 0 0 0 3px rgba(255, 140, 56, 0.45); }
+.pd-page .pd-form-foot .pd-btn { width: 100%; height: 52px; }
+
+@media (min-width: 1001px) {
+  .pd-page .pd-layout { padding: 16px 20px 72px; grid-template-columns: minmax(0, 1fr) 360px; grid-template-areas: "main aside" "inquiry aside"; gap: 0 56px; }
+  .pd-page .pd-section { padding: 30px 0; scroll-margin-top: 90px; }
+  .pd-page .pd-specs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pd-page .pd-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pd-page .pd-form-foot .pd-btn { width: auto; }
+  /* The column runs the full height, so the last panel can stay with the reader. */
+  .pd-page .pd-aside { align-self: stretch; padding: 30px 0 0; }
+  .pd-cta { display: grid; gap: 10px; position: sticky; top: 88px; transition: opacity 0.2s ease, visibility 0.2s; }
+  /* Beside the form itself its button would only say the same thing twice. */
+  .pd-cta.is-at-form { opacity: 0; visibility: hidden; }
+  .pd-cta h2 { font-size: 22px; line-height: 1.15; font-weight: 800; letter-spacing: -0.015em; margin: 0 0 4px; overflow-wrap: anywhere; }
+  .pd-page .pd-inquiry { margin: 24px 0 0; padding: 40px; scroll-margin-top: 90px; }
+}
+
+/* ── More like this ── */
+.pd-related { padding: clamp(36px, 6vw, 72px) 0; background: var(--mp-bg); border-top: 1px solid var(--mp-border); }
+.pd-related[hidden] { display: none; }
+.pd-related-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 8px 24px; margin-bottom: 20px; }
+.pd-page .pd-related .mk-h2 { font-size: clamp(1.625rem, 6vw, 2.5rem); }
+.pd-page .pd-related .listing-grid { margin-top: 0; }
+@media (min-width: 900px) { .pd-page .pd-related .listing-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+
+/* ── The bar on a phone ── Comes up once the hero's buttons are gone, and leaves at the form. */
+.pd-bar { display: none; }
+@media (max-width: 1000px) {
+  .pd-bar {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 45; display: flex; gap: 8px; padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+    background: rgba(255, 255, 255, 0.96); border-top: 1px solid var(--mp-border-strong); box-shadow: 0 -8px 24px rgba(26, 35, 126, 0.1);
+    transform: translateY(110%); visibility: hidden; transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear 0.28s;
+  }
+  .pd-bar.is-up { transform: none; visibility: visible; transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), visibility 0s; }
+  .pd-bar .pd-btn { flex: 1 1 auto; height: 50px; min-width: 0; border-radius: 13px; }
+  .pd-bar .pd-btn--ghost { flex: 0 1 auto; }
+  /* Room at the foot of the page, so the bar never sits over the last line. */
+  .pd-page { padding-bottom: 72px; }
+}
+@media (prefers-reduced-motion: reduce) { .pd-bar, .pd-bar.is-up { transition: none; } }
+
+@media print { .pd-bar, .pd-cta, .pd-related { display: none !important; } .pd-clamp { max-height: none !important; -webkit-mask-image: none !important; mask-image: none !important; } }

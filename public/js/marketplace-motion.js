@@ -12,7 +12,7 @@
   var each = function (sel, fn) { Array.prototype.slice.call(document.querySelectorAll(sel)).forEach(fn); };
 
   // The first cards settle in once they arrive, and never again: filtering re-adds them.
-  var grid = document.getElementById('listings-container');
+  var grid = document.getElementById('listings-container') || document.getElementById('pd-related-grid');
   if (grid) {
     grid.classList.add('mk-enter');
     new MutationObserver(function (m, self) {
@@ -185,5 +185,5 @@
   var away = new IntersectionObserver(function (entries) {
     entries.forEach(function (e) { e.target.classList.toggle('mk-off', !e.isIntersecting); });
   });
-  each('.mk-hero, .mk-sell', function (box) { away.observe(box); });
+  each('.mk-hero, .pd-hero, .mk-sell', function (box) { away.observe(box); });
 })();

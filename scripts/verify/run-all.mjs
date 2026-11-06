@@ -83,6 +83,7 @@ const SUITES = [
   { name: 'browser: buying a pass on a phone (checkout, result, retry, checkout off, invoice queues), and end to end a paid pass moving up for the difference (pass card, the sheet, the sum, the gateway, an email link)', args: ['pay-test.cjs'], harness: 'pay-harness.mjs', port: 8776 },
   { name: 'system: already registered, buying from an ad on another phone (real worker, real SQLite, the real emails, link, code, send again, known mobile, shared phone, unpaid pass, all the way to paid)', args: ['browser-already-registered.cjs'], harness: 'login-harness.mjs', port: 8784, portEnv: true },
   { name: 'browser: the redesigned AI Marketplace on a phone and a laptop: search, every filter, the bar that stays, sign-in buttons, a failed load, animations off, without its motion files', args: ['browser-marketplace-browse.cjs'], harness: 'mk-browse-harness.mjs', port: 8812, portEnv: true },
+  { name: 'browser: the redesigned product page on a phone and a laptop: the inquiry on top and in the bar, folded sections, more like this, hostile text, not found, animations off', args: ['browser-marketplace-product.cjs'], harness: 'mk-browse-harness.mjs', port: 8814, portEnv: true },
   { name: 'browser: an exhibitor lists a product on the AI Marketplace (sign-in link, the form, plain domains, images, every way the button looked dead, dashboard edit, approval, public page, inquiry)', args: ['mp-test.cjs'], harness: 'mp-harness.mjs', port: 8779, portEnv: true },
 ];
 

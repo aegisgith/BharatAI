@@ -74,12 +74,12 @@
 .mk-row[open] summary, .mk-row[open] p { padding-left: 16px; padding-right: 16px; }
 @supports (interpolate-size: allow-keywords) {
   @media (prefers-reduced-motion: no-preference) {
-    .mk-row { interpolate-size: allow-keywords; }
-    .mk-row::details-content {
+    .mk-row, .pd-fold { interpolate-size: allow-keywords; }
+    .mk-row::details-content, .pd-fold::details-content {
       height: 0; overflow: clip;
       transition: height 0.35s cubic-bezier(0.22, 1, 0.36, 1), content-visibility 0.35s allow-discrete;
     }
-    .mk-row[open]::details-content { height: auto; }
+    .mk-row[open]::details-content, .pd-fold[open]::details-content { height: auto; }
   }
 }
 
@@ -118,10 +118,10 @@
 /* Everything that really moves, for people who have animations on. */
 @media (prefers-reduced-motion: no-preference) {
   .mk-aurora i { will-change: transform; animation: mk-drift 42s linear infinite; }
-  .mk-hero.mk-off .mk-aurora i, .mk-hero.mk-off .mk-logo-track, .mk-hero.mk-off ~ .mk-browse .mk-beam::after { animation-play-state: paused; }
+  .mk-hero.mk-off .mk-aurora i, .pd-hero.mk-off .mk-aurora i, .mk-hero.mk-off .mk-logo-track, .mk-hero.mk-off ~ .mk-browse .mk-beam::after { animation-play-state: paused; }
 
   /* The title is split in the HTML, so it animates from the first paint with no script. */
-  .mp-hero-title .mk-w > span {
+  .mp-hero-title .mk-w > span, .pd-title .mk-w > span {
     animation: mk-rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
     animation-delay: calc(var(--i) * 70ms + 100ms);
   }

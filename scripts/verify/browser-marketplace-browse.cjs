@@ -200,6 +200,10 @@ const toEl = async (p, sel, gap = 0) => { await p.evaluate(([s, g]) => window.sc
   check('phone: no sideways scroll at the foot', await fits(p));
   check('phone: no script errors', p.errs.length === 0, p.errs.join(' | '));
 
+  const homeHref = await p.locator('.mp-nav-link', { hasText: 'Home' }).getAttribute('href');
+  check('phone: Home goes to the main website', homeHref === '/', homeHref);
+  check('phone: Event App goes to the app', (await p.locator('.mp-footer-links a', { hasText: 'Event App' }).getAttribute('href')) === '/app');
+
   // The buttons for companies, signed out
   await toEl(p, '.mk-sell', 40);
   await p.locator('.mk-sell-btn').tap();
