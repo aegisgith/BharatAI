@@ -19133,7 +19133,7 @@ function sharedNavHTML(activePage: string): string {
            twice. -->
       <div class="hidden md:flex items-center gap-0.5 flex-1 justify-center flex-wrap">
         ${pill('/app', 'Home', 'home')}
-        ${pill('/app#schedule', 'Schedule', 'schedule')}
+        ${pill('/app#schedule', 'Conference Schedule', 'schedule')}
         ${pill('/passes', 'Passes', 'passes')}
         ${pill('/register', 'Register', 'register')}
         ${pill('/inquiry', 'Book Booth', 'inquiry')}
@@ -21253,7 +21253,7 @@ function mainPageHTML(): string {
   <link rel="canonical" href="https://bharataiinnovation.com/app">
   <!-- PWA: installable, phone-first, offline-resilient for the live event -->
   <link rel="manifest" href="/manifest.webmanifest">
-  <meta name="theme-color" content="#F8F9FF">
+  <meta name="theme-color" content="#0D0F1E">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Bharat AI">
@@ -21506,6 +21506,10 @@ function mainPageHTML(): string {
        after the inline one, so utilities have always won ties against the page
        CSS above. Moving the link earlier would flip that cascade. -->
   <link rel="stylesheet" href="${TW_CSS}">
+  <!-- The website’s design on the app. After Tailwind, so it wins ties. -->
+  <link rel="stylesheet" href="/css/app-design.css?v=20261106">
+  <link rel="stylesheet" href="/css/app-motion.css?v=20261106" media="print" onload="this.media=&quot;all&quot;">
+  <script src="/js/app-motion.js?v=20261106" defer></script>
 </head>
 <body class="min-h-screen">
   <!-- App Container -->
@@ -21796,12 +21800,12 @@ function mainPageHTML(): string {
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <!-- Mobile nav: icon bar at bottom. Scrolls horizontally if items exceed
              the width instead of crushing; min touch target ~48px. -->
-        <div class="flex md:hidden items-center justify-around py-1.5 overflow-x-auto no-scrollbar">
+        <div class="ap-nav-phone flex md:hidden items-center justify-around py-1.5 overflow-x-auto no-scrollbar">
           <button class="nav-btn tab-active flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl text-[10px] font-medium transition-all" data-tab="dashboard" onclick="switchTab('dashboard')">
             <i class="fas fa-th-large text-base"></i><span class="js-home-label">Home</span>
           </button>
           <button class="nav-btn flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl text-[10px] font-medium text-gray-400 hover:text-white transition-all" data-tab="schedule" onclick="switchTab('schedule')">
-            <i class="fas fa-calendar-alt text-base"></i><span>Schedule</span>
+            <i class="fas fa-calendar-alt text-base"></i><span>Conference Schedule</span>
           </button>
           <button class="nav-btn auth-gated hidden flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl text-[10px] font-medium text-gray-400 hover:text-white transition-all" data-tab="networking" onclick="switchTab('networking')">
             <i class="fas fa-users text-base"></i><span>Network</span>
@@ -21812,47 +21816,32 @@ function mainPageHTML(): string {
           <a href="/marketplace" class="nav-btn flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl text-[10px] font-medium text-orange-400/80 hover:text-orange-300 transition-all no-underline">
             <i class="fas fa-robot text-base"></i><span>AI Market</span>
           </a>
-          <button class="nav-btn auth-gated hidden flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl text-[10px] font-medium text-gray-400 hover:text-white transition-all relative" data-tab="inbox" onclick="switchTab('inbox')">
-            <i class="fas fa-envelope text-base"></i><span>Inbox</span>
-            <span id="unread-badge-mobile" onclick="event.stopPropagation();openInboxMessages()" class="hidden absolute -top-1 right-0 w-4 h-4 bg-red-500 text-white text-[9px] rounded-full flex items-center justify-center badge-pulse">0</span>
-          </button>
-          <!-- The bell lived only in the desktop bar, so on a phone the
-               announcement centre and the alerts opt-in did not exist. -->
-          <button class="js-avatar-btn hidden nav-btn flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl text-[10px] font-medium text-gray-400 hover:text-white transition-all relative" onclick="toggleMobileNotifs()" id="nav-notif-btn-mobile" title="Notifications">
-            <i class="fas fa-bell text-base"></i><span>Alerts</span>
-            <span id="notif-badge-mobile" class="hidden absolute -top-1 right-0 min-w-4 h-4 px-1 bg-primary-500 text-white text-[9px] rounded-full flex items-center justify-center">0</span>
-          </button>
           <button class="js-signin-btn nav-btn flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl text-[10px] font-semibold text-orange-400 hover:text-orange-300 transition-all" id="nav-signin-btn" onclick="showRegistration()">
             <i class="fas fa-sign-in-alt text-base"></i><span>Sign In</span>
           </button>
-          <!-- Me opens the account menu (a sheet on a phone), as in most apps:
-               Edit profile and Change photo are one tap away from anywhere. -->
-          <button class="hidden nav-btn flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl text-[10px] font-medium text-gray-400 hover:text-white transition-all" data-tab="myprofile" onclick="toggleAccountMenu(event)" id="nav-mobile-me" aria-haspopup="dialog" aria-expanded="false" aria-controls="account-menu-panel">
-            <img id="nav-mobile-avatar" alt="" class="hidden w-5 h-5 rounded-full object-cover"><i id="nav-mobile-me-icon" class="fas fa-id-badge text-base"></i><span>Me</span>
-          </button>
-        </div>
+          </div>
 
         <!-- Desktop nav: logo + links + CTA -->
-        <div class="hidden md:flex items-center h-14 gap-6">
+        <div class="ap-nav-desk hidden md:flex items-center h-14 gap-6">
           <!-- Logo -->
           <a href="/app" class="flex items-center hover:opacity-90 transition shrink-0">
             <img src="/images/logo-nav.webp" alt="Bharat AI Innovation Logo" loading="eager" style="height:44px;width:auto;border-radius:12px;padding:6px;background:rgba(255,255,255,0.95);box-shadow:0 2px 8px rgba(0,0,0,0.08);">
           </a>
 
           <!-- Center nav pills -->
-          <div class="flex items-center gap-0.5 flex-1 justify-center">
+          <div class="ap-nav-links flex items-center gap-0.5 flex-1 justify-center">
             <button class="nav-btn tab-active px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all" data-tab="dashboard" onclick="switchTab('dashboard')"><span class="js-home-label">Home</span></button>
-            <button class="nav-btn px-3.5 py-1.5 rounded-full text-xs font-medium text-gray-300 hover:text-white hover:bg-white/8 transition-all" data-tab="schedule" onclick="switchTab('schedule')">Schedule</button>
+            <button class="nav-btn ap-nav-long px-3.5 py-1.5 rounded-full text-xs font-medium text-gray-300 hover:text-white hover:bg-white/8 transition-all" data-tab="schedule" onclick="switchTab('schedule')">Conference Schedule</button>
             <button class="nav-btn auth-gated hidden px-3.5 py-1.5 rounded-full text-xs font-medium text-gray-300 hover:text-white hover:bg-white/8 transition-all" data-tab="networking" onclick="switchTab('networking')">Network</button>
             <button class="nav-btn px-3.5 py-1.5 rounded-full text-xs font-medium text-gray-300 hover:text-white hover:bg-white/8 transition-all" data-tab="workshops" onclick="switchTab('workshops')">Workshops</button>
             <a href="/marketplace" class="px-3.5 py-1.5 rounded-full text-xs font-medium text-gray-300 hover:text-white hover:bg-white/8 transition-all no-underline">AI Market</a>
-            <a href="/inquiry" class="px-3.5 py-1.5 rounded-full text-xs font-medium text-gray-300 hover:text-white hover:bg-white/8 transition-all no-underline">Book Booth</a>
-            <a href="/contact" class="px-3.5 py-1.5 rounded-full text-xs font-medium text-gray-300 hover:text-white hover:bg-white/8 transition-all no-underline">Contact</a>
-            <a href="https://bharataiinnovation.com" target="_blank" class="px-3.5 py-1.5 rounded-full text-xs font-medium text-gray-300 hover:text-white hover:bg-white/8 transition-all no-underline">Main Site</a>
+            <a href="/inquiry" class="ap-nav-more px-3.5 py-1.5 rounded-full text-xs font-medium text-gray-300 hover:text-white hover:bg-white/8 transition-all no-underline">Book Booth</a>
+            <a href="/contact" class="ap-nav-more px-3.5 py-1.5 rounded-full text-xs font-medium text-gray-300 hover:text-white hover:bg-white/8 transition-all no-underline">Contact</a>
+            <a href="https://bharataiinnovation.com" target="_blank" class="ap-nav-extra px-3.5 py-1.5 rounded-full text-xs font-medium text-gray-300 hover:text-white hover:bg-white/8 transition-all no-underline">Main Site</a>
           </div>
 
           <!-- Right: inbox + sign-in/avatar -->
-          <div class="flex items-center gap-2 shrink-0">
+          <div class="ap-nav-right flex items-center gap-2 shrink-0">
             <button class="nav-btn nav-gated hidden items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium text-gray-300 hover:text-white hover:bg-white/8 transition-all relative" data-tab="inbox" onclick="switchTab('inbox')">
               <i class="fas fa-envelope"></i><span>Inbox</span>
               <span id="unread-badge" onclick="event.stopPropagation();openInboxMessages()" class="hidden absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[9px] rounded-full flex items-center justify-center badge-pulse">0</span>
@@ -21888,103 +21877,66 @@ function mainPageHTML(): string {
 
     <!-- Content Area -->
     <main id="content" class="hidden pb-24 md:pt-16 md:pb-8">
+      <!-- A phone’s top bar, the website’s. Inbox, Alerts and Me sit here so the five tabs at the bottom all fit on the screen. -->
+      <header id="app-topbar" class="md:hidden sticky top-0 z-30 flex items-center justify-between gap-2" style="height:56px;padding:0 8px 0 12px;background:#fff;">
+        <a href="/app" class="flex items-center shrink-0" aria-label="Bharat AI Innovation app">
+          <img src="/images/logo-nav.webp" alt="Bharat AI Innovation Logo" loading="eager" style="height:40px;width:auto;border-radius:10px;padding:5px;background:#fff;">
+        </a>
+        <div class="flex items-center gap-1 min-w-0">
+          <a href="https://bharataiinnovation.com" target="_blank" rel="noopener" class="ap-top-link text-gray-300 no-underline">Main Site</a>
+          <button type="button" class="js-signin-btn ap-top-cta text-white" onclick="showRegistration()" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);">Log In / Register</button>
+          <button class="nav-btn auth-gated hidden flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl text-[10px] font-medium text-gray-400 hover:text-white transition-all relative" data-tab="inbox" onclick="switchTab('inbox')" aria-label="Inbox">
+            <i class="fas fa-envelope text-base"></i><span class="sr-only">Inbox</span>
+            <span id="unread-badge-mobile" onclick="event.stopPropagation();openInboxMessages()" class="hidden absolute -top-1 right-0 w-4 h-4 bg-red-500 text-white text-[9px] rounded-full flex items-center justify-center badge-pulse">0</span>
+          </button>
+          <button class="js-avatar-btn hidden nav-btn flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl text-[10px] font-medium text-gray-400 hover:text-white transition-all relative" onclick="toggleMobileNotifs()" id="nav-notif-btn-mobile" title="Notifications" aria-label="Notifications">
+            <i class="fas fa-bell text-base"></i><span class="sr-only">Alerts</span>
+            <span id="notif-badge-mobile" class="hidden absolute -top-1 right-0 min-w-4 h-4 px-1 bg-primary-500 text-white text-[9px] rounded-full flex items-center justify-center">0</span>
+          </button>
+          <button class="hidden nav-btn flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl text-[10px] font-medium text-gray-400 hover:text-white transition-all" data-tab="myprofile" onclick="toggleAccountMenu(event)" id="nav-mobile-me" aria-haspopup="dialog" aria-expanded="false" aria-controls="account-menu-panel" aria-label="Your account">
+            <img id="nav-mobile-avatar" alt="" class="hidden w-5 h-5 rounded-full object-cover"><i id="nav-mobile-me-icon" class="fas fa-id-badge text-base"></i><span class="sr-only">Me</span>
+          </button>
+        </div>
+      </header>
       <!-- Dashboard Tab -->
       <div id="tab-dashboard" class="tab-content">
         <!-- Hero -->
         <div class="hero-gradient relative overflow-hidden" id="hero-band" style="min-height:360px;">
-          <!-- Background layer: deep navy with subtle purple shift (matches reference) -->
-          <div class="absolute inset-0" style="background:radial-gradient(ellipse 80% 60% at 70% 30%, rgba(60,40,120,0.22) 0%, transparent 70%),radial-gradient(ellipse 60% 80% at 20% 80%, rgba(30,25,80,0.18) 0%, transparent 60%);"></div>
-          <!-- Ambient glows -->
-          <div class="absolute inset-0 pointer-events-none">
-            <div class="absolute -top-10 right-1/3 w-[500px] h-[500px] rounded-full filter blur-[140px]" style="background:rgba(245,98,10,0.09);"></div>
-            <div class="absolute top-10 right-0 w-64 h-64 rounded-full filter blur-[100px]" style="background:rgba(228,89,156,0.07);"></div>
-            <div class="absolute bottom-0 left-1/4 w-80 h-80 rounded-full filter blur-[120px]" style="background:rgba(59,80,200,0.07);"></div>
-            <!-- SVG wireframe globe / neural net — exact reference style -->
-            <svg class="absolute inset-0 w-full h-full" style="opacity:0.09;" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 400" preserveAspectRatio="xMidYMid slice">
-              <defs>
-                <radialGradient id="glb" cx="72%" cy="45%" r="32%">
-                  <stop offset="0%" stop-color="#e8b090" stop-opacity="1"/>
-                  <stop offset="100%" stop-color="#5080e8" stop-opacity="0.6"/>
-                </radialGradient>
-                <radialGradient id="glb2" cx="72%" cy="45%" r="32%">
-                  <stop offset="0%" stop-color="#f5620a" stop-opacity="0.5"/>
-                  <stop offset="100%" stop-color="#3b64c8" stop-opacity="0.2"/>
-                </radialGradient>
-              </defs>
-              <!-- Globe circles (latitude-like ellipses centered right) -->
-              <ellipse cx="860" cy="180" rx="260" ry="260" fill="none" stroke="url(#glb)" stroke-width="0.7"/>
-              <ellipse cx="860" cy="180" rx="210" ry="260" fill="none" stroke="url(#glb)" stroke-width="0.5"/>
-              <ellipse cx="860" cy="180" rx="120" ry="260" fill="none" stroke="url(#glb)" stroke-width="0.5"/>
-              <ellipse cx="860" cy="180" rx="40" ry="260" fill="none" stroke="url(#glb)" stroke-width="0.4"/>
-              <!-- Longitude arcs -->
-              <ellipse cx="860" cy="180" rx="260" ry="80" fill="none" stroke="url(#glb)" stroke-width="0.5"/>
-              <ellipse cx="860" cy="180" rx="260" ry="160" fill="none" stroke="url(#glb)" stroke-width="0.5"/>
-              <ellipse cx="860" cy="180" rx="260" ry="230" fill="none" stroke="url(#glb)" stroke-width="0.4"/>
-              <!-- Network connection lines (left side — neural lattice) -->
-              <line x1="50" y1="60" x2="180" y2="140" stroke="url(#glb2)" stroke-width="0.7"/>
-              <line x1="180" y1="140" x2="320" y2="90" stroke="url(#glb2)" stroke-width="0.7"/>
-              <line x1="320" y1="90" x2="480" y2="170" stroke="url(#glb2)" stroke-width="0.6"/>
-              <line x1="480" y1="170" x2="600" y2="110" stroke="url(#glb2)" stroke-width="0.6"/>
-              <line x1="180" y1="140" x2="300" y2="240" stroke="url(#glb2)" stroke-width="0.6"/>
-              <line x1="300" y1="240" x2="460" y2="300" stroke="url(#glb2)" stroke-width="0.6"/>
-              <line x1="460" y1="300" x2="580" y2="250" stroke="url(#glb2)" stroke-width="0.5"/>
-              <line x1="320" y1="90" x2="300" y2="240" stroke="url(#glb2)" stroke-width="0.5"/>
-              <line x1="100" y1="280" x2="300" y2="240" stroke="url(#glb2)" stroke-width="0.5"/>
-              <line x1="50" y1="60" x2="100" y2="280" stroke="url(#glb2)" stroke-width="0.4"/>
-              <line x1="480" y1="170" x2="460" y2="300" stroke="url(#glb2)" stroke-width="0.5"/>
-              <!-- Nodes -->
-              <circle cx="50" cy="60" r="2.5" fill="#f5620a" opacity="0.8"/>
-              <circle cx="180" cy="140" r="3" fill="#f5620a" opacity="0.9"/>
-              <circle cx="320" cy="90" r="2.5" fill="#e8406c" opacity="0.8"/>
-              <circle cx="480" cy="170" r="3" fill="#f5620a" opacity="0.9"/>
-              <circle cx="600" cy="110" r="2" fill="#e8406c" opacity="0.7"/>
-              <circle cx="300" cy="240" r="2.5" fill="#3b64c8" opacity="0.8"/>
-              <circle cx="460" cy="300" r="2" fill="#3b64c8" opacity="0.7"/>
-              <circle cx="100" cy="280" r="2" fill="#3b64c8" opacity="0.7"/>
-              <circle cx="580" cy="250" r="2" fill="#f5620a" opacity="0.7"/>
-            </svg>
-          </div>
+          <div class="ap-hero-grid" aria-hidden="true"></div>
+          <div class="ap-aurora" aria-hidden="true"><i></i></div>
 
-          <!-- Hero content: centered -->
-          <div class="relative max-w-4xl mx-auto px-4 pt-10 pb-10 md:pt-16 md:pb-12 text-center" id="hero-inner">
-            <!-- Date + location pill -->
-            <div class="flex items-center justify-center gap-2 mb-5">
-              <span class="px-3 py-1 rounded-full text-[11px] font-semibold tracking-widest uppercase" style="background:rgba(245,98,10,0.12);color:#f5a070;border:1px solid rgba(245,98,10,0.25);">NOV 20–21, 2026</span>
-              <span class="text-gray-500 text-[11px] tracking-widest uppercase">World Trade Center Mumbai &nbsp;·&nbsp; India</span>
-            </div>
-
-            <!-- Title. Gated: a signed-in delegate does not need a billboard for
-                 the event they have a pass to, and at this size it pushed their
-                 pass, card and matches off the first screen entirely. -->
-            <h1 class="font-black leading-none tracking-tight mb-4 signed-out-only" style="font-size:clamp(2.8rem,8vw,5.5rem);">
-              <span style="background:linear-gradient(120deg,#FF6B00 0%,#FF8C38 55%,#FFB300 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">Bharat AI</span><br>
-              <span class="text-white">Innovation</span>
-            </h1>
-
-            <!-- Subtitle -->
-            <!-- The same text as events.description (Admin, Edit Event), which loadDashboard()
-                 writes here once the event has loaded. Keep the two alike: when they differed
-                 the subtitle grew by three lines on a phone and the page jumped. -->
-            <p class="text-sm md:text-base max-w-xl mx-auto mb-8 signed-out-only" id="event-desc" style="color:#9ea8c8;">India&rsquo;s B2B platform for AI: the organisations running AI in production, the companies providing it and the policymakers shaping it. Two days at WTC Mumbai with 40+ speakers, 48 exhibitors, 12 tracks and 23 Innovation Talks.</p>
-
-            <!-- CTA buttons. "Register Free" to somebody who is signed in is an
-                 invitation to do the thing they already did, so the whole row is
-                 gated: see applySignedInChrome(). -->
-            <div class="flex items-center justify-center gap-3 flex-wrap signed-out-only">
-              <button onclick="showRegistration(); switchAuthMode(&quot;register&quot;)" class="flex items-center gap-2 px-6 py-3 rounded-full text-sm font-bold text-white transition hover:opacity-90" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);box-shadow:0 6px 20px rgba(245,98,10,0.35);">Register Free <i class="fas fa-arrow-right text-xs"></i></button>
-              <a href="https://bharataiinnovation.com" target="_blank" class="flex items-center gap-2 px-6 py-3 rounded-full text-sm font-semibold text-gray-200 transition hover:bg-white/10 no-underline" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);">Learn More</a>
-            </div>
-
-            <!-- The compact wordmark a signed-in delegate gets in place of the
-                 billboard. Same tricolour, and the same Devanagari line, as the
-                 pass and the shareable card, so all three agree. -->
-            <div class="hidden signed-in-only mt-3" id="hero-wordmark">
-              <div class="font-black tracking-tight" style="font-size:clamp(1.5rem,3.2vw,2.25rem);line-height:1.1;">
-                <span style="color:#FF7A00;">Bharat</span> <span style="color:#ffffff;">AI</span> <span style="color:#00996C;">Innovation</span>
-              </div>
-              <div class="mt-1" style="font-family:'Mukta','Nirmala UI','Noto Sans Devanagari',sans-serif;font-weight:600;font-size:clamp(0.95rem,2vw,1.25rem);">
+          <div class="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-10 md:pt-16 md:pb-16" id="hero-inner">
+            <div class="min-w-0">
+              <p class="ap-when text-gray-300">20&ndash;21 November 2026, World Trade Center Mumbai</p>
+              <!-- The billboard is for someone signed out. A signed-in person gets the short wordmark, so their pass stays on the first screen. -->
+              <h1 class="ap-h1 font-black signed-out-only" style="font-size:clamp(2.75rem,6.2vw,5.25rem);line-height:1.04;">
+                <span class="ap-w"><span class="ap-grad" style="--i:0;">Bharat</span></span> <span class="ap-w"><span class="ap-grad" style="--i:1;">AI</span></span><br>
+                <span class="ap-w"><span class="text-white" style="--i:2;">Innovation</span></span>
+              </h1>
+              <div class="ap-deva signed-out-only">
                 <span style="color:#FF7A00;">&#2349;&#2366;&#2352;&#2340;</span> <span style="color:#e8edf5;">&#2319;&#2310;&#2312;</span> <span style="color:#00b57f;">&#2311;&#2344;&#2379;&#2357;&#2375;&#2358;&#2344;</span>
               </div>
+              <!-- The same text as events.description (Admin, Edit Event), which loadDashboard() writes here once the event has loaded. Keep the two alike, or the page jumps. -->
+              <p class="text-gray-300 signed-out-only" id="event-desc">India&rsquo;s B2B platform for AI: the organisations running AI in production, the companies providing it and the policymakers shaping it. Two days at WTC Mumbai with 40+ speakers, 48 exhibitors, 12 tracks and 23 Innovation Talks.</p>
+              <!-- Gated: see applySignedInChrome(). -->
+              <div class="ap-hero-cta flex items-center gap-3 flex-wrap signed-out-only">
+                <button onclick="showRegistration(); switchAuthMode(&quot;register&quot;)" class="ap-btn ap-btn-primary flex items-center gap-2 px-6 py-3 rounded-full text-sm font-bold text-white transition hover:opacity-90" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);box-shadow:0 6px 20px rgba(245,98,10,0.35);">Register Free <i class="fas fa-arrow-right text-xs"></i></button>
+                <a href="https://bharataiinnovation.com" target="_blank" class="ap-btn ap-btn-ghost flex items-center gap-2 px-6 py-3 rounded-full text-sm font-semibold text-gray-300 transition no-underline" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.35);">Learn More</a>
+              </div>
+              <!-- Same tricolour, and the same Devanagari line, as the pass and the shareable card, so all three agree. -->
+              <div class="hidden signed-in-only" id="hero-wordmark">
+                <div class="ap-wordmark font-black tracking-tight">
+                  <span class="ap-w"><span style="color:#FF7A00;--i:0;">Bharat</span></span> <span class="ap-w"><span style="color:#ffffff;--i:1;">AI</span></span> <span class="ap-w"><span style="color:#00b57f;--i:2;">Innovation</span></span>
+                </div>
+                <div class="ap-deva">
+                  <span style="color:#FF7A00;">&#2349;&#2366;&#2352;&#2340;</span> <span style="color:#e8edf5;">&#2319;&#2310;&#2312;</span> <span style="color:#00b57f;">&#2311;&#2344;&#2379;&#2357;&#2375;&#2358;&#2344;</span>
+                </div>
+              </div>
+            </div>
+            <!-- Larger screens only: the picture is set in app-design.css, so a phone never downloads it. -->
+            <div class="ap-hero-photo">
+              <div class="ap-hero-img" role="img" aria-label="The stage at an earlier Data Science Congress"></div>
+              <p>The stage at an earlier Data Science Congress</p>
             </div>
 
             <!-- Hidden fields for JS -->
@@ -22033,11 +21985,11 @@ function mainPageHTML(): string {
              Rendered by renderPassAndCardCta(). -->
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6 hidden" id="pass-card-cta">
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div class="glass rounded-2xl p-5 border border-primary-500/25 flex items-start gap-4">
+            <div class="glass on-dark ap-card ap-pass rounded-2xl p-5 border border-primary-500/25 flex items-start gap-4" style="background:linear-gradient(135deg,#0D0F1E 0%,#1A237E 62%,#0D1B4B 100%)!important;">
               <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-primary-500/20 to-orange-500/20 flex items-center justify-center shrink-0">
                 <i class="fas fa-id-badge text-xl text-primary-400"></i>
               </div>
-              <div class="flex-1 min-w-0">
+              <div class="ap-card-body flex-1 min-w-0">
                 <h3 class="font-bold text-sm mb-0.5"><span id="pcc-pass-name">Your pass</span><span id="pcc-pass-state"> is ready</span></h3>
                 <p class="text-xs text-gray-400 mb-3" id="pcc-pass-note">Keep it on your phone — the badge desk scans it to check you in.</p>
                 <p class="hidden text-xs text-gray-300 mb-3" id="pcc-workshop"></p>
@@ -22050,11 +22002,11 @@ function mainPageHTML(): string {
                 <button type="button" id="pcc-upgrade-btn" onclick="showUpgradeModal(&quot;passcard&quot;)" class="hidden px-4 mb-2 rounded-xl text-xs font-semibold text-white transition" style="min-height:44px;background:linear-gradient(135deg,#FF6B00,#FF8C38);"><i class="fas fa-arrow-up mr-1.5"></i>Upgrade my pass</button>
               </div>
             </div>
-            <div class="glass rounded-2xl p-5 border border-emerald-500/25 flex items-start gap-4">
+            <div class="glass ap-card rounded-2xl p-5 border border-emerald-500/25 flex items-start gap-4">
               <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500/20 to-teal-500/20 flex items-center justify-center shrink-0">
                 <i class="fas fa-bullhorn text-xl text-emerald-400"></i>
               </div>
-              <div class="flex-1 min-w-0">
+              <div class="ap-card-body flex-1 min-w-0">
                 <h3 class="font-bold text-sm mb-0.5">Tell your network you're coming</h3>
                 <p class="text-xs text-gray-400 mb-3">A card with your photo, sized for LinkedIn, WhatsApp and Instagram — with a caption you can copy. Bringing a colleague? Five passes go for the price of four.</p>
                 <button type="button" id="pcc-card-btn" onclick="openSocialCard()" class="px-4 mr-2 mb-2 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition" style="min-height:44px;"><i class="fas fa-share-alt mr-1.5"></i>Download my LinkedIn / WhatsApp creative</button>
@@ -22538,7 +22490,7 @@ function mainPageHTML(): string {
           </div>
           <!-- Upcoming Sessions -->
           <div>
-            <h2 class="text-xl font-bold mb-4"><i class="fas fa-calendar-day text-primary-400 mr-2"></i>Event Schedule</h2>
+            <h2 class="text-xl font-bold mb-4"><i class="fas fa-calendar-day text-primary-400 mr-2"></i>Conference Schedule</h2>
             <div id="upcoming-sessions" class="space-y-3"></div>
           </div>
         </div>
@@ -22583,9 +22535,15 @@ function mainPageHTML(): string {
 
       <!-- Venue map -->
       <div id="tab-venue" class="tab-content hidden">
+        <div class="hero-gradient ap-band relative overflow-hidden">
+          <div class="ap-hero-grid" aria-hidden="true"></div>
+          <div class="ap-aurora" aria-hidden="true"><i></i></div>
+          <div class="relative ap-band-in max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <h2 class="ap-title text-3xl font-black"><span class="ap-w"><span style="--i:0;">Venue &amp;</span></span> <span class="ap-w"><span class="ap-hl" style="--i:1;">Halls</span></span></h2>
+            <p class="ap-sub text-gray-300 text-sm">World Trade Center, Cuffe Parade, Mumbai 400005</p>
+          </div>
+        </div>
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <h2 class="text-2xl font-bold mb-1"><i class="fas fa-map-location-dot text-blue-400 mr-2"></i>Venue &amp; Halls</h2>
-          <p class="text-gray-400 text-sm mb-5">World Trade Center, Cuffe Parade, Mumbai 400005</p>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             <div class="glass rounded-2xl p-5">
               <h3 class="font-semibold mb-3"><i class="fas fa-building text-primary-400 mr-1.5"></i>The four halls</h3>
@@ -22606,18 +22564,23 @@ function mainPageHTML(): string {
 
       <!-- Schedule Tab -->
       <div id="tab-schedule" class="tab-content hidden">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div class="flex items-start justify-between gap-3 flex-wrap mb-1">
-            <h2 class="text-2xl font-bold"><i class="fas fa-calendar-alt text-primary-400 mr-2"></i>Event Schedule</h2>
-            <button id="my-agenda-toggle" onclick="toggleMyAgendaView()" class="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-gray-300 glass hover:text-white transition">
+        <div class="hero-gradient ap-band relative overflow-hidden">
+          <div class="ap-hero-grid" aria-hidden="true"></div>
+          <div class="ap-aurora" aria-hidden="true"><i></i></div>
+          <div class="relative ap-band-in max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <h2 class="ap-title text-3xl font-black"><span class="ap-w"><span style="--i:0;">Conference</span></span> <span class="ap-w"><span class="ap-hl" style="--i:1;">Schedule</span></span></h2>
+            <p class="ap-sub text-gray-300 text-sm">20-21 Nov 2026 &middot; World Trade Center, Mumbai &middot; tap &#9734; to build your personal agenda</p>
+            <div class="ap-band-actions flex flex-wrap gap-2">
+              <button id="my-agenda-toggle" onclick="toggleMyAgendaView()" class="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-gray-300 glass hover:text-white transition">
               <i class="fas fa-star text-amber-400"></i>My Agenda<span id="agenda-count" class="hidden px-1.5 py-0.5 rounded-full text-[10px] bg-amber-500/20 text-amber-300">0</span>
             </button>
-            <button type="button" onclick="downloadAgendaIcs()" class="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-gray-300 glass hover:text-white transition" title="Your starred sessions as a calendar file">
+              <button type="button" onclick="downloadAgendaIcs()" class="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-gray-300 glass hover:text-white transition" title="Your starred sessions as a calendar file">
               <i class="fas fa-calendar-alt text-primary-400"></i>Add to calendar
             </button>
+            </div>
           </div>
-          <p class="text-gray-400 text-sm mb-5">20-21 Nov 2026 · World Trade Center, Mumbai · <span class="text-gray-500">tap ☆ to build your personal agenda</span></p>
-
+        </div>
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <!-- Day Selector -->
           <div class="flex gap-2 mb-4 overflow-x-auto scroll-hide pb-1" id="sched-day-selector"></div>
 
@@ -22634,10 +22597,15 @@ function mainPageHTML(): string {
 
       <!-- Networking Tab -->
       <div id="tab-networking" class="tab-content hidden">
+        <div class="hero-gradient ap-band relative overflow-hidden">
+          <div class="ap-hero-grid" aria-hidden="true"></div>
+          <div class="ap-aurora" aria-hidden="true"><i></i></div>
+          <div class="relative ap-band-in max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <h2 class="ap-title text-3xl font-black"><span class="ap-w"><span style="--i:0;">Networking</span></span> <span class="ap-w"><span class="ap-hl" style="--i:1;">Hub</span></span></h2>
+            <p class="ap-sub text-gray-300 text-sm">Connect with fellow attendees, speakers, and exhibitors</p>
+          </div>
+        </div>
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <h2 class="text-2xl font-bold mb-2"><i class="fas fa-users text-primary-400 mr-2"></i>Networking Hub</h2>
-          <p class="text-gray-400 text-sm mb-6">Connect with fellow attendees, speakers, and exhibitors</p>
-
           <!-- Search & Filter — always visible -->
           <div class="flex flex-col md:flex-row gap-3 mb-6">
             <div class="flex-1 relative">
@@ -22715,10 +22683,15 @@ function mainPageHTML(): string {
 
       <!-- Exhibition Tab -->
       <div id="tab-exhibition" class="tab-content hidden">
+        <div class="hero-gradient ap-band relative overflow-hidden">
+          <div class="ap-hero-grid" aria-hidden="true"></div>
+          <div class="ap-aurora" aria-hidden="true"><i></i></div>
+          <div class="relative ap-band-in max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <h2 class="ap-title text-3xl font-black"><span class="ap-w"><span style="--i:0;">Exhibition</span></span> <span class="ap-w"><span class="ap-hl" style="--i:1;">Hall</span></span></h2>
+            <p class="ap-sub text-gray-300 text-sm">Explore booths, book your exhibition space, and connect with exhibitors</p>
+          </div>
+        </div>
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <h2 class="text-2xl font-bold mb-2"><i class="fas fa-store text-primary-400 mr-2"></i>Exhibition Hall</h2>
-          <p class="text-gray-400 text-sm mb-4">Explore booths, book your exhibition space, and connect with exhibitors</p>
-
           <!-- Exhibition Sub-tabs -->
           <div class="flex gap-2 mb-6 overflow-x-auto scroll-hide pb-2">
             <button onclick="switchExhibitionSubtab('exhibitors')" class="exh-subtab px-4 py-2.5 rounded-xl text-sm font-medium tab-active whitespace-nowrap" data-exh-tab="exhibitors">
@@ -23052,7 +23025,7 @@ function mainPageHTML(): string {
             </div>
           </div>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
-            <button onclick="switchTab('schedule')" class="glass rounded-xl p-4 text-left card-hover"><i class="fas fa-calendar-alt text-xl text-blue-400 mb-2 block"></i><div class="font-semibold text-sm">Full schedule</div><div class="text-xs text-gray-500 mt-0.5">Sessions, keynotes & timings</div></button>
+            <button onclick="switchTab('schedule')" class="glass rounded-xl p-4 text-left card-hover"><i class="fas fa-calendar-alt text-xl text-blue-400 mb-2 block"></i><div class="font-semibold text-sm">Conference Schedule</div><div class="text-xs text-gray-500 mt-0.5">Sessions, keynotes & timings</div></button>
             <button onclick="switchTab('networking')" class="glass rounded-xl p-4 text-left card-hover"><i class="fas fa-users text-xl text-blue-400 mb-2 block"></i><div class="font-semibold text-sm">Speaker directory</div><div class="text-xs text-gray-500 mt-0.5">Find & message speakers for interviews</div></button>
             <a href="https://bharataiinnovation.com" target="_blank" class="glass rounded-xl p-4 text-left card-hover no-underline block"><i class="fas fa-download text-xl text-blue-400 mb-2 block"></i><div class="font-semibold text-sm text-white">Press kit</div><div class="text-xs text-gray-500 mt-0.5">Logos, fact sheet & photos (main site)</div></a>
             <button onclick="switchTab('exhibition')" class="glass rounded-xl p-4 text-left card-hover"><i class="fas fa-store text-xl text-blue-400 mb-2 block"></i><div class="font-semibold text-sm">Exhibitors</div><div class="text-xs text-gray-500 mt-0.5">Companies & products to cover</div></button>
@@ -23108,17 +23081,16 @@ function mainPageHTML(): string {
 
       <!-- Workshops Tab -->
       <div id="tab-workshops" class="tab-content hidden">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <!-- Hero -->
-          <div class="text-center mb-8">
-            <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-teal-500/20 to-cyan-500/20 border border-teal-500/30 mb-4">
-              <i class="fas fa-laptop-code text-teal-400"></i>
-              <span class="text-sm font-semibold text-teal-300">Hands-On Training</span>
-            </div>
-            <h2 class="text-2xl md:text-3xl font-black mb-2">AI Training <span class="gradient-text">Workshops</span></h2>
-            <p class="text-gray-400 text-sm md:text-base max-w-2xl mx-auto">Intensive hands-on workshops led by industry experts. Code alongside practitioners, work on real projects, and earn completion certificates.</p>
+        <div class="hero-gradient ap-band relative overflow-hidden">
+          <div class="ap-hero-grid" aria-hidden="true"></div>
+          <div class="ap-aurora" aria-hidden="true"><i></i></div>
+          <div class="relative ap-band-in max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <span class="ap-eyebrow text-gray-300"><i class="fas fa-laptop-code"></i>Hands-On Training</span>
+            <h2 class="ap-title text-3xl font-black"><span class="ap-w"><span style="--i:0;">AI</span></span> <span class="ap-w"><span style="--i:1;">Training</span></span> <span class="ap-w"><span class="ap-hl" style="--i:2;">Workshops</span></span></h2>
+            <p class="ap-sub text-gray-300 text-sm">Intensive hands-on workshops led by industry experts. Code alongside practitioners, work on real projects, and earn completion certificates.</p>
           </div>
-
+        </div>
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <!-- Workshop Highlights -->
           <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
             <div class="glass rounded-xl p-4 text-center border border-teal-500/10">
@@ -23501,9 +23473,15 @@ function mainPageHTML(): string {
 
       <!-- Inbox Tab -->
       <div id="tab-inbox" class="tab-content hidden">
+        <div class="hero-gradient ap-band relative overflow-hidden">
+          <div class="ap-hero-grid" aria-hidden="true"></div>
+          <div class="ap-aurora" aria-hidden="true"><i></i></div>
+          <div class="relative ap-band-in max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <h2 class="ap-title text-3xl font-black"><span class="ap-w"><span class="ap-hl" style="--i:0;">Inbox</span></span></h2>
+            <p class="ap-sub text-gray-300 text-sm">Your connections, messages, and meetings</p>
+          </div>
+        </div>
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <h2 class="text-2xl font-bold mb-2"><i class="fas fa-envelope text-primary-400 mr-2"></i>Inbox</h2>
-          <p class="text-gray-400 text-sm mb-6">Your connections, messages, and meetings</p>
           <!-- Sub-tabs -->
           <div class="flex gap-2 mb-6">
             <button class="inbox-tab px-4 py-2 rounded-xl text-sm font-medium tab-active" data-inbox="connections" onclick="switchInboxTab('connections')">
@@ -23875,6 +23853,26 @@ function mainPageHTML(): string {
           </form>
         </div>
       </div>
+      <footer class="ap-foot on-dark" style="background:#0D0F1E;">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div class="ap-foot-top">
+            <div>
+              <a href="/" class="ap-foot-logo" aria-label="Bharat AI Innovation website"><img src="/images/logo-nav.webp" alt="Bharat AI Innovation" loading="lazy" style="height:36px;width:auto;"></a>
+              <p>20&ndash;21 November 2026, World Trade Center Mumbai</p>
+            </div>
+            <nav class="ap-foot-links" aria-label="The website">
+              <a href="/">Home</a><a href="/conference">Conference</a><a href="/exhibition">Exhibition</a><a href="/networking">Networking</a><a href="/passes">Passes</a><a href="/training-workshop">Workshops</a><a href="/marketplace">AI Marketplace</a><a href="/inquiry">Book Booth</a><a href="/contact">Contact</a>
+            </nav>
+          </div>
+          <div class="ap-foot-bottom">
+            <div>
+              <p>&copy; 2026 Bharat AI Innovation. All rights reserved. | Organized by Aegis Knowledge Trust</p>
+              <p class="ap-credit">Motion effects from <a href="https://skiper-ui.com" target="_blank" rel="noopener noreferrer">Skiper UI</a> and <a href="https://github.com/Ashutoshx7/VengeanceUI" target="_blank" rel="noopener noreferrer">Vengeance UI</a>.</p>
+            </div>
+            <div class="ap-foot-legal"><a href="/privacy">Privacy Policy</a><a href="/terms">Terms of Service</a><a href="/refund">Refund &amp; Cancellation</a></div>
+          </div>
+        </div>
+      </footer>
     </main>
   </div>
 
@@ -24167,6 +24165,10 @@ function mainPageScript(): string {
         ' class="w-full py-2.5 rounded-xl text-sm font-medium text-center" style="background:rgba(245,158,11,0.12);color:#FBBF24;"><i class="fas fa-crown mr-1"></i>Meet ' + esc(name) + ' at the speaker meet &amp; greet (VIP)</button>';
     }
     let currentUser = null;
+    // A saved sign-in whose answer from the server is still on its way. The signed-in layout is
+    // drawn for it from the first paint, or a returning person watches the signed-out page, with
+    // its Register Free and Choose Your Pass, come and go (6 Nov 2026).
+    let expectingSavedUser = false;
     let currentTab = 'dashboard';
     let searchTimeout = null;
 
@@ -24576,9 +24578,6 @@ function mainPageScript(): string {
       // Applied by runPendingAction once there is a signed-in user.
       stashPanelClaim(urlParams);
 
-      // Always show public app first (no login required for public tabs)
-      showPublicApp();
-
       let saved = localStorage.getItem('agba_user');
       // A sign-in link opened in a browser already signed in as somebody else is
       // the link's: until 29 Oct 2026 the saved account opened and the link, with
@@ -24603,14 +24602,21 @@ function mainPageScript(): string {
           }
         } catch (e) {}
       }
+      let was = null;
       if (saved) {
-        let was = null;
         try { was = JSON.parse(saved); } catch (e) {}
         // A saved "user" without an id is an error the old app kept as a person
         // (a nameless "?" avatar and an empty Me page, on every reload).
         if (!was || !was.id || !was.email) { localStorage.removeItem('agba_user'); was = null; }
+      }
+      // Always show the app first (no login required for public tabs), laid out for whoever this
+      // looks like. The person is drawn from what this device saved, and the answer below confirms.
+      expectingSavedUser = !!was;
+      showPublicApp();
+      if (saved) {
         if (was) {
           currentUser = was;
+          try { updateNavAvatar(); renderPassAndCardCta(true); } catch (e) {}
           // Re-register to mark online. Three answers, told apart (2 Nov 2026):
           // the person (carry on), a refusal (the sign-in ran out, or the account
           // was merged away: sign out and ask again), and no answer or a server
@@ -24625,6 +24631,7 @@ function mainPageScript(): string {
             });
             user = await resp.json().catch(() => null);
           } catch (e) { resp = null; }
+          expectingSavedUser = false;
           if (resp && resp.ok && user && user.id) {
             currentUser = user;
             localStorage.setItem('agba_user', JSON.stringify(currentUser));
@@ -24633,6 +24640,8 @@ function mainPageScript(): string {
             currentUser = null;
             localStorage.removeItem('agba_user');
             // Home was drawn for the saved person while the answer was on its way.
+            updateNavForAuth();
+            renderPassAndCardCta();
             loadDashboard();
             // An emailed sign-in link, when this visit carries one, is tried below.
             if (!emailParam) sessionEndedSignIn(was.email);
@@ -24747,24 +24756,25 @@ function mainPageScript(): string {
      * The tab is called Home to a visitor and Dashboard to a delegate, because that
      * is what it is in each case. */
     function applySignedInChrome() {
+      const signedIn = !!currentUser || expectingSavedUser;
       const marketing = document.querySelectorAll('.signed-out-only');
-      marketing.forEach(el => el.classList.toggle('hidden', !!currentUser));
+      marketing.forEach(el => el.classList.toggle('hidden', signedIn));
       // Hiding the headline leaves the band it sat in. Without this a signed-in
       // delegate gets a slab of empty gradient where the billboard used to be,
       // which is worse than the billboard: at least that said something.
       const heroInner = document.getElementById('hero-inner');
       if (heroInner) {
-        heroInner.style.paddingTop = currentUser ? '1.25rem' : '';
-        heroInner.style.paddingBottom = currentUser ? '1rem' : '';
+        heroInner.style.paddingTop = signedIn ? '1.25rem' : '';
+        heroInner.style.paddingBottom = signedIn ? '1rem' : '';
       }
       // The band carries a hard min-height:360px for the headline it no longer
       // shows. Padding alone could not shrink it, so the floor comes off too.
       const heroBand = document.getElementById('hero-band');
-      if (heroBand) heroBand.style.minHeight = currentUser ? '0px' : '360px';
+      if (heroBand) { heroBand.style.minHeight = signedIn ? '0px' : '360px'; heroBand.classList.toggle('ap-in', signedIn); }
       document.querySelectorAll('.js-home-label').forEach(el => {
-        el.textContent = currentUser ? 'Dashboard' : 'Home';
+        el.textContent = signedIn ? 'Dashboard' : 'Home';
       });
-      document.querySelectorAll('.signed-in-only').forEach(el => el.classList.toggle('hidden', !currentUser));
+      document.querySelectorAll('.signed-in-only').forEach(el => el.classList.toggle('hidden', !signedIn));
     }
 
     function updateNavForAuth() {
@@ -24773,7 +24783,7 @@ function mainPageScript(): string {
       const loggedInBtns = document.querySelectorAll('.js-avatar-btn'); // avatar + Log Out
       const authGated = document.querySelectorAll('.auth-gated');       // Network, Inbox
       const mobileMe = document.getElementById('nav-mobile-me');
-      if (currentUser) {
+      if (currentUser || expectingSavedUser) {
         signInBtns.forEach(b => b.classList.add('hidden'));
         loggedInBtns.forEach(b => { b.classList.remove('hidden'); b.classList.add('flex'); });
         authGated.forEach(b => { b.classList.remove('hidden'); b.classList.add('flex'); });
@@ -25343,8 +25353,8 @@ function mainPageScript(): string {
         b.classList.remove('tab-active');
         b.classList.add('text-gray-400');
       });
-      const tabBtn = document.querySelector(\`[data-tab="\${tab}"]\`);
-      if (tabBtn) { tabBtn.classList.add('tab-active'); tabBtn.classList.remove('text-gray-400'); }
+      // Every button for this tab: the phone’s bar and the laptop’s are separate buttons.
+      document.querySelectorAll(\`.nav-btn[data-tab="\${tab}"]\`).forEach(b => { b.classList.add('tab-active'); b.classList.remove('text-gray-400'); });
       document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
       const tabEl = document.getElementById(\`tab-\${tab}\`);
       if (tabEl) tabEl.classList.remove('hidden');
@@ -25512,7 +25522,7 @@ function mainPageScript(): string {
               \${s.room ? \`<span class="ml-2"><i class="fas fa-map-pin mr-1"></i>\${s.room}</span>\` : ''}
             </div>
           </div>
-        \`).join('') : sessions.length ? \`<div class="glass rounded-xl p-8 text-center"><i class="fas fa-calendar-check text-2xl text-gray-600 mb-3"></i><p class="text-sm text-gray-400">No more sessions today</p><a href="#" onclick="switchTab('schedule');return false;" class="text-xs text-primary-400 hover:underline mt-1 inline-block">View full schedule</a></div>\` : \`<div class="glass rounded-xl p-8 text-center"><i class="fas fa-calendar-alt text-2xl text-gray-600 mb-3"></i><p class="text-sm text-gray-400">Schedule coming soon</p><a href="#" onclick="switchTab('schedule');return false;" class="text-xs text-primary-400 hover:underline mt-1 inline-block">View full schedule</a></div>\`;
+        \`).join('') : sessions.length ? \`<div class="glass rounded-xl p-8 text-center"><i class="fas fa-calendar-check text-2xl text-gray-600 mb-3"></i><p class="text-sm text-gray-400">No more sessions today</p><a href="#" onclick="switchTab('schedule');return false;" class="text-xs text-primary-400 hover:underline mt-1 inline-block">View the conference schedule</a></div>\` : \`<div class="glass rounded-xl p-8 text-center"><i class="fas fa-calendar-alt text-2xl text-gray-600 mb-3"></i><p class="text-sm text-gray-400">Conference schedule coming soon</p><a href="#" onclick="switchTab('schedule');return false;" class="text-xs text-primary-400 hover:underline mt-1 inline-block">View the conference schedule</a></div>\`;
       } catch(e) { console.error('Dashboard error:', e); }
 
       // Conditionally show/hide sections based on auth state
@@ -25568,7 +25578,7 @@ function mainPageScript(): string {
      * The pass panel tells the truth about paid tiers. A Delegate, Academic or VIP
      * pass will not issue until payment lands, and saying "ready" to someone whose
      * payment is still pending sends them to a button that refuses them. */
-    function renderPassAndCardCta() {
+    function renderPassAndCardCta(early) {
       const el = document.getElementById('pass-card-cta');
       if (!el) return;
       if (!currentUser) { el.classList.add('hidden'); return; }
@@ -25597,7 +25607,7 @@ function mainPageScript(): string {
         : visitor ? 'Entry on a free Visitor Pass is not guaranteed: it depends on slot availability on 20 and 21 Nov, a half-day slot or none, confirmed by email. Every paid pass has guaranteed entry on both days.'
         : 'Keep it on your phone — the badge desk scans it to check you in.';
       el.classList.remove('hidden');
-      if (!pending) loadWorkshopSeat();
+      if (!pending && !early) loadWorkshopSeat();
       renderPassUpgradeLine();
     }
 
@@ -25640,13 +25650,13 @@ function mainPageScript(): string {
           actions: [A('Deal flow','fa-rocket',"openInvestorDealflow()"), A('Browse founders','fa-users',"switchTab('networking')"), A('My meetings','fa-calendar',"switchTab('inbox')")] };
       } else if (badge.includes('media') || badge.includes('press')) {
         p = { label: 'Media', icon: 'fa-newspaper', tint: '#3b82f6', blurb: 'Press schedule, speaker access, press kit, and interview requests.',
-          actions: [A('Press area','fa-newspaper',"openMediaCenter()"), A('Speaker directory','fa-users',"switchTab('networking')"), A('Schedule','fa-calendar-alt',"switchTab('schedule')")] };
+          actions: [A('Press area','fa-newspaper',"openMediaCenter()"), A('Speaker directory','fa-users',"switchTab('networking')"), A('Conference Schedule','fa-calendar-alt',"switchTab('schedule')")] };
       } else if (badge.includes('sponsor') || badge.includes('partner')) {
         p = { label: 'Sponsor', icon: 'fa-handshake-angle', tint: '#eab308', blurb: 'Your brand presence, booth leads, and audience reach at the event.',
           actions: [A('Lead console','fa-user-group',"openExhibitorConsole()"), A('Brand on AI Market','fa-robot',"location.href='/marketplace?submit=true'"), A('Meet attendees','fa-users',"switchTab('networking')")] };
       } else if (badge.includes('organiser') || badge.includes('organizer') || role.includes('organizer') || badge.includes('support staff')) {
         p = { label: 'Organizer', icon: 'fa-clipboard-list', tint: '#FF6B00', blurb: 'Run the show — the admin console has attendees, sessions, and announcements.',
-          actions: [A('Admin console','fa-gauge-high',"location.href='/admin'"), A('Live schedule','fa-calendar-alt',"switchTab('schedule')"), A('Announcements','fa-bullhorn',"location.href='/admin'")] };
+          actions: [A('Admin console','fa-gauge-high',"location.href='/admin'"), A('Conference Schedule','fa-calendar-alt',"switchTab('schedule')"), A('Announcements','fa-bullhorn',"location.href='/admin'")] };
       } else if (badge.includes('jury')) {
         p = { label: 'Jury', icon: 'fa-gavel', tint: '#a78bfa', blurb: 'Your judging schedule and assigned startups.',
           actions: [A('Jury schedule','fa-calendar-check',"switchTab('agba-jury')"), A('Startups','fa-rocket',"switchTab('startup-pitch')"), A('My profile','fa-user',"switchTab('myprofile')")] };
@@ -25655,10 +25665,10 @@ function mainPageScript(): string {
           actions: [A('Workshops','fa-laptop-code',"switchTab('workshops')"), A('Startup zone','fa-rocket',"switchTab('startup-pitch')"), A('Network','fa-users',"switchTab('networking')")] };
       } else if (badge.includes('academic')) {
         p = { label: 'Academic', icon: 'fa-graduation-cap', tint: '#14b8a6', blurb: 'Workshops, the startup zone, and networking with researchers.',
-          actions: [A('Workshops','fa-laptop-code',"switchTab('workshops')"), A('Network','fa-users',"switchTab('networking')"), A('Schedule','fa-calendar-alt',"switchTab('schedule')")] };
+          actions: [A('Workshops','fa-laptop-code',"switchTab('workshops')"), A('Network','fa-users',"switchTab('networking')"), A('Conference Schedule','fa-calendar-alt',"switchTab('schedule')")] };
       } else {
         p = { label: displayBadge(currentUser.badge_type || 'Delegate'), icon: 'fa-id-badge', tint: '#FF6B00', blurb: 'Plan your agenda, connect with attendees, and manage your pass.',
-          actions: [A('My schedule','fa-calendar-alt',"switchTab('schedule')"), A('Network','fa-users',"switchTab('networking')"), A('My pass','fa-id-badge',"generateDelegatePass()")] };
+          actions: [A('Conference Schedule','fa-calendar-alt',"switchTab('schedule')"), A('Network','fa-users',"switchTab('networking')"), A('My pass','fa-id-badge',"generateDelegatePass()")] };
       }
 
       el.innerHTML = \`
@@ -25666,7 +25676,7 @@ function mainPageScript(): string {
           <div class="flex items-center gap-4 mb-4">
             <div class="w-12 h-12 rounded-xl flex items-center justify-center shrink-0" style="background:\${p.tint}22;"><i class="fas \${p.icon} text-xl" style="color:\${p.tint}"></i></div>
             <div class="min-w-0">
-              <div class="flex items-center gap-2 flex-wrap"><h2 class="text-lg font-bold">Welcome back, \${first}</h2><span class="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide" style="background:\${p.tint}22;color:\${p.tint}">\${p.label}</span></div>
+              <div class="flex items-center gap-2 flex-wrap"><h2 class="text-lg font-bold">Welcome back, \${first}</h2><span class="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide" style="background:\${p.tint}22;color:\${p.tint};color:color-mix(in srgb,\${p.tint} 68%,#000)">\${p.label}</span></div>
               <p class="text-sm text-gray-400">\${p.blurb}</p>
             </div>
           </div>
@@ -25913,7 +25923,7 @@ function mainPageScript(): string {
           <button onclick="selectedHall='\${h.key}'; selectedTrack=''; loadSchedule()"
             class="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold whitespace-nowrap transition-all \${selectedHall === h.key ? 'bg-primary-500/30 text-primary-300 border border-primary-500/40' : 'glass text-gray-400 hover:text-white'}">
             <span class="text-base leading-none">\${h.icon}</span>
-            <span class="hidden sm:inline">\${h.key}</span>
+            <span class="hidden sm:inline">\${h.key || h.short}</span>
             <span class="sm:hidden">\${h.short}</span>
           </button>\`).join('');
 
@@ -30482,7 +30492,7 @@ function mainPageScript(): string {
               <div class="w-10 h-10 rounded-full bg-green-500/20 flex items-center justify-center mx-auto mb-2 group-hover:bg-green-500/30 transition">
                 <i class="fas fa-calendar-plus text-green-400"></i>
               </div>
-              <div class="text-xs font-medium">View Schedule</div>
+              <div class="text-xs font-medium">Conference Schedule</div>
             </button>
             <button onclick="switchTab('exhibition')" class="glass rounded-xl p-4 text-center card-hover quick-action-btn group">
               <div class="w-10 h-10 rounded-full bg-accent-500/20 flex items-center justify-center mx-auto mb-2 group-hover:bg-accent-500/30 transition">
@@ -31384,7 +31394,7 @@ function mainPageScript(): string {
         { done: !!p.social_card_downloaded_at, icon: 'fa-share-alt', title: 'Share your badge',
           body: 'A card with your photo for LinkedIn and WhatsApp, with a caption you can copy.', cta: 'Share my badge', act: 'openSocialCard()' },
         { done: _agendaSet().size > 0, icon: 'fa-star', title: 'Star the sessions you want',
-          body: 'Build your two days and download them to your calendar.', cta: 'See the schedule', act: "switchTab('schedule')" },
+          body: 'Build your two days and download them to your calendar.', cta: 'See the conference schedule', act: "switchTab('schedule')" },
         { done: false, icon: 'fa-arrow-up', title: 'Guarantee your entry on both days',
           body: 'Entry on a free pass is not guaranteed: it depends on slot availability on 20 and 21 Nov, a half-day slot or none, confirmed by email. A Delegate Pass has guaranteed entry, every session, the networking lunch and the networking app.', cta: 'See the Delegate Pass', act: "showUpgradeModal('passcard')" }
       ];

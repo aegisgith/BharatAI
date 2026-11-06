@@ -40,7 +40,8 @@
 // 5 Nov 2026 (bhai-v26): style.css?v=20261105, the 13-link menu with Delhi 2027.
 // 5 Nov 2026 (bhai-v27): style.css?v=20261105b, the 14-link menu with Govt.
 // 6 Nov 2026 (bhai-v28): Dr. Vivek Bhoite off the speakers, so the offline list drops him.
-const VERSION = 'bhai-v28';
+// 6 Nov 2026 (bhai-v29): the app's new design and motion files join the offline list.
+const VERSION = 'bhai-v29';
 const SHELL = `shell-${VERSION}`;
 const DATA = `data-${VERSION}`;
 
@@ -93,6 +94,9 @@ const PRECACHE_OPTIONAL = [
   '/css/fa-subset.css?v=2',
   '/css/fonts.css?v=1',             // the marketing site
   '/css/fonts-app.css?v=1',         // /app, /admin and the other worker pages
+  '/css/app-design.css?v=20261106', // /app: the website's design
+  '/css/app-motion.css?v=20261106', // /app: its motion
+  '/js/app-motion.js?v=20261106',   // /app: its motion
   '/fonts/manrope-latin-300-800.woff2',           // the body font everywhere
   '/fonts/bricolage-grotesque-latin-400-800.woff2', // the app's headings
   '/js/social-card.js?v=20261102',

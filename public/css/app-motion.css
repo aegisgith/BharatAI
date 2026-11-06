@@ -1,0 +1,169 @@
+/* Motion on /app only. To remove it, delete the two lines in mainPageHTML() that name app-motion:
+   every word stays, the app simply stops moving.
+
+   Rebuilt in plain CSS and JS, because the app has no React, so neither library is installed.
+
+   From Skiper UI, free version (https://skiper-ui.com), which asks for a credit: the app's footer
+   carries it. Skiper 40 link underline.
+
+   From Vengeance UI (https://github.com/Ashutoshx7/VengeanceUI): Aurora Hero, Stagger Text,
+   Spotlight Navbar and Glow Border Card.
+
+   MIT License
+
+   Copyright (c) 2025-2026 Ashutoshx7
+
+   Permission is hereby granted, free of charge, to any person obtaining a copy
+   of this software and associated documentation files (the "Software"), to deal
+   in the Software without restriction, including without limitation the rights
+   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+   copies of the Software, and to permit persons to whom the Software is
+   furnished to do so, subject to the following conditions:
+
+   The above copyright notice and this permission notice shall be included in all
+   copies or substantial portions of the Software.
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+   SOFTWARE. */
+
+/* Aurora Hero: slow bands of light behind the hero. They move by transform, so the phone's
+   graphics chip does the work and nothing is repainted each frame. */
+.ap-aurora {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  -webkit-mask-image: radial-gradient(ellipse at 100% 0%, #000 25%, transparent 75%);
+  mask-image: radial-gradient(ellipse at 100% 0%, #000 25%, transparent 75%);
+}
+.ap-aurora i {
+  position: absolute;
+  top: -15%;
+  bottom: -15%;
+  left: 0;
+  width: calc(100% + 540px);
+  opacity: 0.55;
+  background: repeating-linear-gradient(100deg,
+    transparent 0,
+    rgba(255, 107, 0, 0.95) 90px,
+    transparent 180px,
+    rgba(120, 165, 255, 0.55) 260px,
+    transparent 340px,
+    rgba(0, 190, 120, 0.7) 430px,
+    transparent 520px);
+}
+/* The blur is the one costly part, so only a larger screen gets it. */
+@media (min-width: 768px) {
+  .ap-aurora i { opacity: 0.7; filter: blur(34px); }
+}
+
+/* Glow Border Card: a coloured edge round the pass. A square of colour turns behind the card and
+   the card clips it, so it can never widen the page, and turning it repaints nothing. */
+.ap-pass { overflow: hidden; isolation: isolate; }
+.ap-pass::before {
+  content: '';
+  position: absolute;
+  z-index: 0;
+  top: 50%;
+  left: 50%;
+  width: 150%;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  background: conic-gradient(#FF6B00, #FFD54F, #00897B, #2979FF, #FF8C38, #FF6B00);
+}
+.ap-pass::after {
+  content: '';
+  position: absolute;
+  z-index: 1;
+  inset: 2px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, #0D0F1E 0%, #1A237E 62%, #0D1B4B 100%);
+}
+
+/* Skiper 40: the line under a link redraws from the left on a mouse. Touch screens keep the
+   plain link. */
+@media (hover: hover) {
+  .ap-foot-links a, .ap-foot-legal a {
+    background: linear-gradient(currentColor, currentColor) 0.5rem calc(100% - 10px) / 0 1.5px no-repeat;
+    transition: background-size 0.3s cubic-bezier(0.4, 0, 0.2, 1), color 0.2s ease;
+  }
+  .ap-foot-links a:hover, .ap-foot-legal a:hover { background-size: calc(100% - 1rem) 1.5px; }
+}
+
+/* Spotlight Navbar: the mark under the menu glides to the tab you are on, and a soft light follows
+   a mouse. Set up by the script; without it each link keeps its own mark. */
+.ap-nav-links.ap-spot { position: relative; }
+.ap-nav-links.ap-spot > .tab-active::after { opacity: 0; }
+.ap-light {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 16px;
+  height: 2px;
+  border-radius: 9999px;
+  background: #FF6B00;
+  box-shadow: 0 0 10px rgba(255, 107, 0, 0.7);
+  transform: translateX(var(--ap-x, 0));
+  transition: transform 0.45s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.2s ease;
+  pointer-events: none;
+}
+.ap-nav-links.ap-spot::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: var(--ap-glow, 0);
+  background: radial-gradient(110px circle at var(--ap-mouse, 0) 100%, rgba(255, 140, 56, 0.2), transparent 70%);
+  transition: opacity 0.25s ease;
+  pointer-events: none;
+}
+
+/* Everything that really moves, for people who have animations on. */
+@media (prefers-reduced-motion: no-preference) {
+  .ap-aurora i { will-change: transform; animation: ap-drift 42s linear infinite; }
+  .ap-aurora.ap-off i { animation-play-state: paused; }
+
+  .ap-pass::before { animation: ap-turn 7s linear infinite; }
+  .ap-pass.ap-off::before { animation-play-state: paused; }
+
+  /* Stagger Text: each word rises out of its own mask. The padding keeps the tails of g, p and y
+     from being cut off. It starts when the tab is shown, with no script. */
+  .ap-w {
+    display: inline-block;
+    overflow: hidden;
+    vertical-align: top;
+    padding-bottom: 0.14em;
+    margin-bottom: -0.14em;
+  }
+  .ap-w > span {
+    display: inline-block;
+    animation: ap-rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: calc(var(--i, 0) * 70ms + 60ms);
+  }
+
+  /* Dashboard cards settle in as they come up the screen, on a mouse only: a phone keeps every card
+     in one layer while it scrolls. Where a browser cannot do this they are simply there. */
+  @supports (animation-timeline: view()) {
+    @media (hover: hover) {
+      #tab-dashboard > .max-w-7xl {
+        animation: ap-settle linear backwards;
+        animation-timeline: view();
+        animation-range: entry 0% entry 30%;
+      }
+    }
+  }
+}
+@keyframes ap-drift { to { transform: translateX(-528px); } }
+@keyframes ap-turn { to { transform: translate(-50%, -50%) rotate(360deg); } }
+@keyframes ap-rise { from { transform: translateY(115%); } to { transform: none; } }
+@keyframes ap-settle { from { opacity: 0.35; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+
+@media print {
+  .ap-light { display: none; }
+  .ap-pass::before, .ap-pass::after { display: none; }
+  .ap-w > span { transform: none !important; }
+}

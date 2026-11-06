@@ -1,0 +1,480 @@
+/* The website's design on the attendee app, /app. Loaded after tailwind.css on purpose: the app's
+   utilities have always won ties, so this sheet has to come later still to win them.
+
+   The tokens, the dark bar, the hero, the heading sizes and the pill buttons are the ones in
+   public/css/style.css and on /training-workshop and /delhi, so the app and the website read as one
+   thing. brandThemeCSS() still does the app's dark-to-light mapping; this sheet sits on top of it,
+   and without this sheet the app is still readable, as it was. */
+
+:root {
+  --ap-hero: linear-gradient(135deg, #0D0F1E 0%, #1A237E 50%, #0D1B4B 100%);
+  --ap-deep: #0D0F1E;
+  --ap-nav-h: 66px;
+  --ap-gold: #FFD54F;
+  --ap-orange-on-dark: #FF8C38;
+  --ap-soft-white: rgba(255, 255, 255, 0.82);
+}
+
+/* A link or a scroll to a card must not end up under the bar. */
+html { scroll-padding-top: 68px; }
+
+/* ---- type ----
+   brandThemeCSS sets Manrope on every span, so a heading with a coloured word inside it lost the
+   heading font on that word. */
+#app h1 span:not(.fas):not(.far):not(.fab),
+#app h2 span:not(.fas):not(.far):not(.fab),
+#app h3 span:not(.fas):not(.far):not(.fab),
+#app h4 span:not(.fas):not(.far):not(.fab) { font-family: inherit; }
+#content h1, #content h2 { font-weight: 800; letter-spacing: -0.025em; }
+#content h3 { font-weight: 700; letter-spacing: -0.015em; }
+#content p.text-xs { font-size: 13.5px; line-height: 1.55; }
+#content p.text-sm { font-size: 15px; line-height: 1.55; }
+
+/* ---- the bar: the website's dark one, on both sizes of screen ---- */
+#main-nav {
+  background: rgba(13, 15, 30, 0.97) !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  box-shadow: 0 -1px 0 rgba(255, 255, 255, 0.08), 0 -8px 24px rgba(13, 15, 30, 0.18) !important;
+}
+
+/* On a phone: five tabs along the bottom, all on the screen, each as wide as the next. */
+@media (max-width: 767px) {
+  #main-nav > .max-w-7xl { padding-left: 0.25rem; padding-right: 0.25rem; }
+  #main-nav .ap-nav-phone {
+    justify-content: stretch;
+    align-items: flex-start;
+    padding: 0.2rem 0 0.15rem;
+    overflow: visible;
+  }
+  #main-nav .ap-nav-phone .nav-btn {
+    position: relative;
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 52px;
+    justify-content: flex-start;
+    padding: 0.45rem 0.1rem 0.25rem;
+    border-radius: 12px;
+    font-size: 10.5px;
+    font-weight: 600;
+    line-height: 1.15;
+    text-align: center;
+    color: rgba(255, 255, 255, 0.72) !important;
+    background: transparent !important;
+  }
+  #main-nav .ap-nav-phone .nav-btn i { color: rgba(255, 255, 255, 0.72); }
+  #main-nav .ap-nav-phone .nav-btn.tab-active,
+  #main-nav .ap-nav-phone .nav-btn.tab-active * { color: #fff !important; }
+  #main-nav .ap-nav-phone .nav-btn.tab-active { background: rgba(255, 255, 255, 0.1) !important; }
+  #main-nav .ap-nav-phone .nav-btn.tab-active i { color: var(--ap-orange-on-dark) !important; }
+  #main-nav .ap-nav-phone .nav-btn.tab-active::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 50%;
+    width: 22px;
+    height: 2px;
+    margin-left: -11px;
+    border-radius: 2px;
+    background: #FF6B00;
+  }
+  #main-nav .ap-nav-phone .js-signin-btn,
+  #main-nav .ap-nav-phone .js-signin-btn i { color: #FFAD6E !important; }
+}
+
+/* The dark bar at the top of a phone, as on the website. */
+#app-topbar {
+  background: var(--ap-deep) !important;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+#app-topbar .nav-btn {
+  position: relative;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 9999px;
+  color: rgba(255, 255, 255, 0.86) !important;
+  background: transparent !important;
+}
+#app-topbar .nav-btn i { color: rgba(255, 255, 255, 0.86) !important; }
+#app-topbar .nav-btn.tab-active { background: rgba(255, 255, 255, 0.14) !important; }
+#app-topbar .nav-btn.tab-active i { color: #fff !important; }
+#app-topbar #nav-mobile-avatar { width: 30px; height: 30px; }
+#app-topbar #unread-badge-mobile, #app-topbar #notif-badge-mobile { top: 2px; right: 2px; }
+.ap-top-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 0.5rem;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: rgba(255, 255, 255, 0.86) !important;
+}
+.ap-top-cta {
+  min-height: 40px;
+  padding: 0 0.9rem;
+  border-radius: 9999px;
+  font-size: 12.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  box-shadow: 0 6px 18px rgba(255, 107, 0, 0.35);
+}
+@media (max-width: 359px) { .ap-top-link { display: none; } }
+
+/* On a laptop: the website's bar height, links and active mark. */
+@media (min-width: 768px) {
+  html { scroll-padding-top: 80px; }
+  #main-nav { box-shadow: 0 1px 0 rgba(255, 255, 255, 0.08), 0 8px 30px rgba(13, 15, 30, 0.22) !important; }
+  #main-nav .ap-nav-desk { height: var(--ap-nav-h); gap: 1rem; }
+  /* The old 64px under a 56px bar left a white stripe above the hero. */
+  #content { padding-top: var(--ap-nav-h); }
+}
+#content { padding-bottom: 0; }
+#main-nav .ap-nav-links { gap: 0.125rem; min-width: 0; }
+#main-nav .ap-nav-links > a, #main-nav .ap-nav-links > button {
+  position: relative;
+  padding: 0.5rem 0.55rem;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: rgba(255, 255, 255, 0.76) !important;
+  background: transparent !important;
+}
+#main-nav .ap-nav-links > a:hover, #main-nav .ap-nav-links > button:hover { color: #fff !important; background: rgba(255, 255, 255, 0.08) !important; }
+#main-nav .ap-nav-links > .tab-active,
+#main-nav .ap-nav-links > .tab-active * { color: #fff !important; }
+#main-nav .ap-nav-links > .tab-active { background: rgba(255, 255, 255, 0.12) !important; }
+#main-nav .ap-nav-links > .tab-active::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 50%;
+  width: 16px;
+  height: 2px;
+  transform: translateX(-50%);
+  border-radius: 9999px;
+  background: #FF6B00;
+}
+
+/* Only the bar's own buttons: the notifications panel inside this group stays dark on white. */
+#main-nav .ap-nav-right > button:not(.js-signin-btn),
+#main-nav .ap-nav-right > .js-avatar-btn > button {
+  color: rgba(255, 255, 255, 0.82) !important;
+  border-color: rgba(255, 255, 255, 0.18) !important;
+  background: transparent !important;
+}
+#main-nav .ap-nav-right > button:not(.js-signin-btn):hover,
+#main-nav .ap-nav-right > .js-avatar-btn > button:hover,
+#main-nav .ap-nav-right > button.tab-active:not(.js-signin-btn) {
+  color: #fff !important;
+  background: rgba(255, 255, 255, 0.12) !important;
+}
+#main-nav .ap-nav-right > button.tab-active * { color: #fff !important; }
+
+/* A smaller laptop or tablet: the links the footer also carries step aside before anything wraps. */
+@media (max-width: 1279px) {
+  #main-nav .ap-nav-extra { display: none; }
+  #nav-avatar-name { display: none; }
+}
+@media (max-width: 1099px) {
+  #main-nav .ap-nav-more { display: none; }
+  #main-nav .ap-nav-right > .nav-gated span:not([id]) { display: none; }
+  #main-nav .ap-nav-links > a, #main-nav .ap-nav-links > button { padding: 0.45rem 0.5rem; }
+}
+@media (max-width: 899px) {
+  #main-nav .ap-nav-desk { gap: 0.5rem; }
+  #main-nav .ap-nav-long { max-width: 84px; white-space: normal !important; line-height: 1.15; text-align: center; }
+}
+
+/* ---- the hero and the tab headings: the website's indigo, its squares, its big type ---- */
+#hero-band, .ap-band { background: var(--ap-hero) !important; color: #fff; }
+.ap-hero-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(41, 121, 255, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(41, 121, 255, 0.07) 1px, transparent 1px);
+  background-size: 50px 50px;
+}
+#hero-inner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2rem;
+  align-items: center;
+  text-align: left;
+}
+#hero-band .ap-when {
+  margin: 0 0 0.7rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--ap-gold) !important;
+}
+.ap-h1 {
+  margin: 0 0 0.45rem;
+  font-size: clamp(2.75rem, 6.2vw, 5.25rem);
+  font-weight: 800;
+  line-height: 1.04;
+  letter-spacing: -0.03em;
+  color: #fff;
+}
+.ap-grad {
+  background: linear-gradient(120deg, #FF6B00 0%, #FF8C38 55%, #FFB300 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.ap-deva {
+  margin-bottom: 1rem;
+  font-family: 'Mukta', 'Nirmala UI', 'Noto Sans Devanagari', sans-serif;
+  font-weight: 700;
+  font-size: clamp(1.15rem, 2.4vw, 1.6rem);
+  line-height: 1.25;
+}
+#event-desc { max-width: 38rem; margin: 0 0 1.5rem; font-size: 1rem; line-height: 1.6; color: var(--ap-soft-white) !important; }
+.ap-hero-cta { gap: 0.75rem; }
+.ap-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 52px;
+  padding: 0 1.9rem;
+  border-radius: 9999px;
+  font-size: 1rem;
+  font-weight: 700;
+  text-decoration: none;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+}
+.ap-btn-primary { color: #fff; box-shadow: 0 8px 32px rgba(200, 79, 0, 0.45) !important; }
+.ap-btn-primary:hover { transform: translateY(-2px); }
+#hero-band .ap-btn-ghost { border: 2px solid rgba(255, 255, 255, 0.35) !important; color: #fff !important; }
+#hero-band .ap-btn-ghost:hover { background: rgba(255, 255, 255, 0.12); border-color: rgba(255, 255, 255, 0.6); transform: translateY(-2px); }
+.ap-hero-photo { display: none; margin: 0; }
+.ap-hero-photo p { margin: 0.6rem 0 0; font-size: 0.8rem; color: rgba(255, 255, 255, 0.78) !important; }
+
+/* Signed in: the same band, kept short so the pass stays on the first screen. */
+#hero-band.ap-in #hero-inner { padding-top: 1.35rem !important; padding-bottom: 1.5rem !important; }
+.ap-wordmark {
+  font-weight: 800;
+  font-size: clamp(1.75rem, 7.9vw, 3.25rem);
+  line-height: 1.08;
+  letter-spacing: -0.025em;
+}
+.ap-wordmark, .ap-wordmark span { font-family: 'Bricolage Grotesque', sans-serif; }
+#hero-wordmark { margin-top: 0; }
+#hero-wordmark .ap-deva { margin: 0.2rem 0 0; }
+
+@media (min-width: 768px) {
+  #hero-band .ap-when { font-size: 1rem; }
+  #event-desc { font-size: 1.125rem; }
+  .ap-wordmark { font-size: clamp(2.25rem, 4.4vw, 3.25rem); }
+  #hero-band.ap-in #hero-inner { padding-top: 2rem !important; padding-bottom: 2.25rem !important; }
+}
+/* The picture is set here and not in the page, so a phone never downloads it. */
+@media (min-width: 1024px) {
+  #hero-inner { grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr); gap: 3.5rem; }
+  .ap-hero-photo { display: block; }
+  .ap-hero-img {
+    aspect-ratio: 3 / 2;
+    border-radius: 24px;
+    background: #141a4d url('/images/gallery/7C2A3159.webp') center / cover no-repeat;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.35);
+  }
+  #hero-band.ap-in .ap-hero-img { aspect-ratio: auto; height: 170px; }
+}
+
+/* Each tab opens the way each page of the website opens. */
+.ap-band-in { padding-top: 1.75rem; padding-bottom: 1.75rem; }
+.ap-title {
+  margin: 0;
+  font-size: clamp(2rem, 5.2vw, 3.5rem);
+  font-weight: 800;
+  line-height: 1.06;
+  letter-spacing: -0.03em;
+  color: #fff;
+}
+.ap-hl { color: var(--ap-orange-on-dark); }
+.ap-band .ap-sub {
+  max-width: 44rem;
+  margin: 0.6rem 0 0;
+  font-size: 0.975rem !important;
+  line-height: 1.55;
+  color: var(--ap-soft-white) !important;
+}
+.ap-band .ap-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.85rem;
+  padding: 0.35rem 1rem;
+  border: 1px solid rgba(255, 107, 0, 0.3);
+  border-radius: 9999px;
+  background: rgba(255, 107, 0, 0.15);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ap-orange-on-dark) !important;
+}
+.ap-band .ap-eyebrow i { color: var(--ap-orange-on-dark) !important; }
+.ap-band-actions { margin-top: 1rem; }
+.ap-band-actions button { min-height: 44px; color: #fff !important; }
+.ap-band-actions button:hover { background: rgba(255, 255, 255, 0.16) !important; }
+.ap-band-actions i { color: var(--ap-gold) !important; }
+.hero-gradient .text-amber-300, .hero-gradient .text-amber-400 { color: var(--ap-gold) !important; }
+@media (min-width: 768px) {
+  .ap-band-in { padding-top: 3rem; padding-bottom: 2.75rem; }
+  .ap-band .ap-sub { font-size: 1.125rem !important; }
+  .ap-band-actions { margin-top: 1.35rem; }
+}
+
+/* ---- cards ---- */
+#content .rounded-2xl { border-radius: 22px; }
+#content .glass { box-shadow: 0 8px 30px rgba(26, 35, 126, 0.07) !important; }
+
+/* A button that reads as a button is a pill, as on the website. A row or a tile keeps its corners. */
+#app button.rounded-xl[class*="px-"]:not(.text-left):not(.flex-col),
+#app a.rounded-xl[class*="px-"]:not(.text-left):not(.flex-col),
+#app button.rounded-lg[class*="px-"]:not(.text-left):not(.flex-col),
+#app a.rounded-lg[class*="px-"]:not(.text-left):not(.flex-col) { border-radius: 9999px; }
+
+/* The two things a person came for. The pass is dark like a real pass; the card beside it is white. */
+.ap-pass { position: relative; border: 0 !important; box-shadow: 0 20px 50px rgba(26, 35, 126, 0.28) !important; }
+.ap-pass > *, .ap-pass .ap-card-body > * { position: relative; z-index: 2; }
+.ap-card h3 { font-size: 1.2rem; font-weight: 800; line-height: 1.22; }
+.ap-card p.text-xs { font-size: 14px; }
+.ap-card button { min-height: 48px; padding-left: 1.25rem; padding-right: 1.25rem; border-radius: 9999px; font-size: 14px; font-weight: 700; }
+#app #pcc-download-btn { background: #fff !important; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25); }
+#pcc-download-btn, #pcc-download-btn * { color: #1A237E !important; }
+#app #pcc-download-btn:hover { background: #EEF0FF !important; }
+#pcc-pay-btn, #pcc-guarantee-btn, #pcc-upgrade-btn { box-shadow: 0 8px 28px rgba(255, 107, 0, 0.4); }
+.on-dark .text-gray-500, .on-dark .text-gray-600 { color: rgba(255, 255, 255, 0.72) !important; }
+.on-dark .text-amber-300, .on-dark .text-amber-400 { color: var(--ap-gold) !important; }
+.on-dark a { color: inherit; }
+.ap-pass [class*="from-primary-500/"] .text-primary-400 { color: #FF9D55 !important; }
+
+/* On a phone the words get the whole width: only the heading sits beside the picture. */
+@media (max-width: 640px) {
+  .ap-card { display: grid; grid-template-columns: 44px minmax(0, 1fr); column-gap: 0.85rem; align-items: center; }
+  .ap-card > div:first-child { width: 44px; height: 44px; border-radius: 12px; }
+  .ap-card > div:first-child i { font-size: 1.1rem; }
+  .ap-card-body { display: contents; }
+  .ap-card-body > h3 { grid-column: 2; margin: 0; }
+  .ap-card-body > p, .ap-card-body > button { grid-column: 1 / -1; margin-top: 0.8rem; margin-bottom: 0; }
+  .ap-card-body > button { width: 100%; margin-right: 0; }
+}
+
+/* The theme keeps white words on a saffron fill and turns every other .text-white dark, which made
+   green, red and amber buttons dark on colour. */
+#app .text-white[class~="bg-emerald-500"], #app .text-white[class~="bg-emerald-600"],
+#app .text-white[class~="bg-green-500"], #app .text-white[class~="bg-green-600"],
+#app .text-white[class~="bg-red-500"], #app .text-white[class~="bg-red-600"],
+#app .text-white[class~="bg-teal-500"], #app .text-white[class~="bg-teal-600"],
+#app .text-white[class~="bg-blue-500"], #app .text-white[class~="bg-blue-600"],
+#app .text-white[class~="bg-indigo-500"], #app .text-white[class~="bg-indigo-600"],
+#app .text-white[class~="bg-violet-500"], #app .text-white[class~="bg-violet-600"],
+#app .text-white[class~="bg-purple-500"], #app .text-white[class~="bg-purple-600"],
+#app .text-white[class~="from-green-600"], #app .text-white[class~="from-emerald-600"],
+#app .text-white[class~="from-amber-600"], #app .text-white[class~="from-teal-600"],
+#app .text-white[class~="from-red-600"], #app .text-white[class~="from-blue-600"],
+#app .text-white[class~="from-violet-600"], #app .text-white[class~="from-purple-600"],
+#pcc-card-btn, #pcc-card-btn * { color: #fff !important; }
+
+/* Words small enough to need it are a step darker on white than the theme's, so they read. The dark
+   bands keep the theme's bright versions. */
+#content .text-primary-300:not(.hero-gradient *):not(.on-dark *),
+#content .text-primary-400:not(.hero-gradient *):not(.on-dark *),
+#content .text-orange-300:not(.hero-gradient *):not(.on-dark *),
+#content .text-orange-400:not(.hero-gradient *):not(.on-dark *) { color: #B54800 !important; }
+#content .text-emerald-300:not(.hero-gradient *):not(.on-dark *),
+#content .text-emerald-400:not(.hero-gradient *):not(.on-dark *),
+#content .text-green-300:not(.hero-gradient *):not(.on-dark *),
+#content .text-green-400:not(.hero-gradient *):not(.on-dark *) { color: #047857 !important; }
+#content .text-teal-300:not(.hero-gradient *):not(.on-dark *),
+#content .text-teal-400:not(.hero-gradient *):not(.on-dark *),
+#content .text-cyan-300:not(.hero-gradient *):not(.on-dark *),
+#content .text-cyan-400:not(.hero-gradient *):not(.on-dark *) { color: #0F766E !important; }
+
+/* The main button: #C84F00, the colour /passes, /partner and /marketplace settled on on 6 Nov 2026,
+   because white on the lighter saffron is under the 4.5:1 that text this size needs. The app's buttons
+   carry the old gradient inline or in utilities, so it is overridden here in one place. */
+#app button[style*="linear-gradient(135deg,#FF6B00"], #app a[style*="linear-gradient(135deg,#FF6B00"],
+#app button[style*="var(--grad-saffron)"], #app a[style*="var(--grad-saffron)"],
+#app button[class~="bg-primary-500"], #app button[class~="bg-primary-600"],
+#app a[class~="bg-primary-500"], #app a[class~="bg-primary-600"],
+#app button[class~="from-primary-500"], #app button[class~="from-primary-600"],
+#app a[class~="from-primary-500"], #app a[class~="from-primary-600"],
+#content .tab-active:not(.nav-btn) { background: #C84F00 !important; }
+#app button[style*="linear-gradient(135deg,#FF6B00"]:hover, #app a[style*="linear-gradient(135deg,#FF6B00"]:hover,
+#app button[style*="var(--grad-saffron)"]:hover, #app a[style*="var(--grad-saffron)"]:hover,
+#app button[class~="bg-primary-500"]:hover, #app button[class~="bg-primary-600"]:hover,
+#app a[class~="bg-primary-500"]:hover, #app a[class~="bg-primary-600"]:hover,
+#app button[class~="from-primary-500"]:hover, #app button[class~="from-primary-600"]:hover,
+#app a[class~="from-primary-500"]:hover, #app a[class~="from-primary-600"]:hover { background: #B04500 !important; }
+#pcc-card-btn { background: #00796B !important; }
+#pcc-card-btn:hover { background: #00695C !important; }
+#rsvp-buttons button[class*="from-green-600"] { background: #047857 !important; }
+#rsvp-buttons button[class*="from-amber-600"] { background: #B45309 !important; }
+
+/* The directory's note to a free pass was squeezed into a thin column on a phone. */
+@media (max-width: 640px) {
+  #visitor-network-banner > .flex { flex-wrap: wrap; }
+  #visitor-network-banner > .flex > .flex-1 { flex-basis: calc(100% - 56px); }
+  #visitor-network-banner p.text-xs { font-size: 14px; }
+  #vnb-go { width: 100%; min-height: 48px; font-size: 14px; }
+}
+
+/* ---- the footer: the website's, shortened ---- */
+.tab-content { min-height: 58vh; }
+.ap-foot { position: relative; background: var(--ap-deep); color: #fff; padding: 2.5rem 0 calc(84px + env(safe-area-inset-bottom)); }
+.ap-foot::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 107, 0, 0.5), transparent);
+}
+.ap-foot-top { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 1.5rem; }
+.ap-foot-logo { display: inline-block; padding: 6px; border-radius: 12px; background: #fff; line-height: 0; }
+.ap-foot-logo img { height: 36px; width: auto; }
+.ap-foot p { margin: 0.65rem 0 0; font-size: 0.85rem; line-height: 1.5; color: rgba(255, 255, 255, 0.78) !important; }
+.ap-foot-links { display: flex; flex-wrap: wrap; gap: 0.15rem 0.35rem; margin-left: -0.5rem; }
+.ap-foot a { color: rgba(255, 255, 255, 0.86); }
+.ap-foot-links a, .ap-foot-legal a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+.ap-foot-links a:hover, .ap-foot-legal a:hover { color: var(--ap-orange-on-dark); }
+.ap-foot-bottom {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1.5rem;
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+.ap-credit a { text-decoration: underline; text-underline-offset: 2px; }
+.ap-foot-legal { display: flex; flex-wrap: wrap; gap: 0 0.35rem; margin-left: -0.5rem; }
+.ap-foot-legal a { font-weight: 500; font-size: 0.82rem; }
+@media (min-width: 768px) {
+  .ap-foot { padding-bottom: 1.5rem; }
+  .ap-foot-links { margin-left: 0; justify-content: flex-end; max-width: 46rem; }
+  .ap-foot-legal { margin-left: 0; }
+}
+
+@media print {
+  .ap-foot, #app-topbar, .ap-hero-grid, .ap-aurora { display: none !important; }
+}
