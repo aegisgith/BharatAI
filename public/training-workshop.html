@@ -77,6 +77,7 @@
     </script>
 
     <link rel="preload" href="/fonts/manrope-latin-300-800.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/fonts/bricolage-grotesque-latin-400-800.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="/css/fonts.css?v=1">
     <link rel="stylesheet" href="/css/fa-subset.css?v=2">
     <link rel="stylesheet" href="css/style.css?v=20261105b">
@@ -84,456 +85,194 @@
     <!-- Favicon -->
     <link rel="icon" type="image/png" sizes="64x64" href="/images/favicon-64.png">
     <style>
-        /* ── Training Workshop Page Extra Styles ── */
-        
-        /* Workshop Grid */
-        .workshop-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 2rem;
-            margin-top: 2rem;
+        /* ===== /training-workshop, redesigned 6 Nov 2026 =====
+           Phones first. Who teaches, then what each workshop gives you, then how to get a seat.
+           The long detail of each session stays on the page, one tap away. Motion is apart, in
+           css/workshop-motion.css and js/workshop-motion.js: delete those two lines and this
+           page still reads in full. The older page: docs/page-backups/training-workshop-before-redesign-2026-11-06.html */
+        @font-face {
+            font-family: 'Bricolage Grotesque'; font-style: normal; font-weight: 400 800; font-stretch: 100%; font-display: swap;
+            src: url(/fonts/bricolage-grotesque-latin-400-800.woff2) format('woff2');
+            unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
         }
-        .workshop-card {
-            background: white;
-            border: 2px solid var(--light);
-            border-radius: var(--r-2xl);
-            padding: 2.5rem;
-            transition: var(--t-med);
-            position: relative;
-            overflow: hidden;
+        :root { --tw-ink-orange: #B54800; --tw-line: #E3E6F6; }
+        /* style.css forces h1 and h2 small on phones with !important; this page wants them larger. */
+        .tw-head .section-title, .wp-left .section-title, .cta-section .cta-content h2 { font-size: clamp(2rem, 5vw, 3.25rem) !important; line-height: 1.08 !important; letter-spacing: -0.02em; text-wrap: balance; }
+        /* main.js works out the current workshop from offsetTop, which only reads true when the section is not the positioned parent. */
+        #sessions, .tw-static { position: static; }
+        .tw-head { max-width: 46rem; margin-bottom: clamp(1.75rem, 4vw, 3rem); }
+        .tw-head .section-title { text-align: left; margin-bottom: 0.75rem; }
+        .tw-head p { margin: 0; color: var(--dark-grey); font-size: clamp(1rem, 1.6vw, 1.15rem); line-height: 1.65; text-wrap: pretty; }
+
+        /* The hero: the title, the one thing to do, and a real workshop room. */
+        .tw-hero { text-align: left; padding: clamp(2rem, 6vw, 5rem) 0 clamp(2.25rem, 6vw, 5.5rem); }
+        .tw-hero-grid { display: grid; gap: 1.5rem; align-items: center; }
+        .tw-hero .page-header-eyebrow { margin-bottom: 0.9rem; }
+        .tw-hero h1 { font-size: clamp(3.1rem, 7.2vw, 5.75rem) !important; line-height: 0.98 !important; letter-spacing: -0.03em; margin-bottom: 1rem; }
+        .tw-hero .tw-hero-lead { margin: 0; max-width: 34rem; color: rgba(255,255,255,0.85); font-size: clamp(1.05rem, 1.7vw, 1.3rem); line-height: 1.5; text-wrap: pretty; }
+        .tw-hero .tw-hero-when { margin: 0.75rem 0 0; max-width: none; color: var(--gold-light); font-weight: 700; font-size: 0.95rem; }
+        .tw-hero-actions { margin-top: 1.25rem; }
+        .tw-hero-actions .btn { width: 100%; justify-content: center; }
+        .wp-herolink { display: inline-flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem; font-weight: 700; font-size: 0.95rem; color: #fff; text-decoration: underline; text-underline-offset: 4px; min-height: 44px; }
+        .tw-hero-photo { margin: 0; }
+        .tw-hero-photo img { display: block; width: 100%; height: auto; aspect-ratio: 3 / 2; object-fit: cover; border-radius: var(--r-xl); box-shadow: 0 24px 60px rgba(0,0,0,0.4); }
+        .tw-hero-photo figcaption { margin-top: 0.55rem; font-size: 0.8rem; color: rgba(255,255,255,0.7); }
+        @media (min-width: 600px) { .tw-hero-actions .btn { width: auto; } }
+        @media (min-width: 960px) {
+            .tw-hero-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: 3.5rem; }
         }
-        .workshop-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 6px;
-            background: var(--grad-saffron);
+
+        /* Who teaches: every leader's face, each a way into their workshop. */
+        .tw-tiles { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem 0.85rem; }
+        .tw-tile { display: block; color: inherit; text-decoration: none; border-radius: var(--r-lg); }
+        .tw-tile:focus-visible { outline: 3px solid var(--electric); outline-offset: 3px; }
+        .tw-tile-photo { display: block; overflow: hidden; border-radius: 50%; background: var(--light); }
+        .tw-tile-photo img { display: block; width: 100%; height: auto; aspect-ratio: 1; object-fit: cover; transform: scale(var(--tw-zoom, 1)); }
+        .tw-tile strong { display: block; margin-top: 0.7rem; font-family: var(--font-display); font-size: 1.08rem; font-weight: 800; line-height: 1.2; color: var(--charcoal); }
+        .tw-tile-role { display: block; margin-top: 0.2rem; font-size: 0.82rem; line-height: 1.35; color: var(--dark-grey); }
+        .tw-tile-what { display: block; margin-top: 0.5rem; font-size: 0.92rem; font-weight: 700; line-height: 1.3; color: var(--tw-ink-orange); }
+        .tw-tile-how { display: block; margin-top: 0.2rem; font-size: 0.8rem; font-weight: 600; color: var(--dark-grey); }
+        @media (min-width: 820px) {
+            .tw-tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1.5rem; }
+            /* The source photos are 320px: past this size they go soft. */
+            .tw-tile-photo { max-width: 200px; }
         }
-        .workshop-card:hover {
-            border-color: rgba(255,107,0,0.3);
-            box-shadow: var(--shadow-lg);
-            transform: translateY(-6px);
+
+        /* How it runs: one idea to a card. Each is big enough to read on a phone. */
+        .format-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 1rem; }
+        .format-row { margin: 0; padding: clamp(1.5rem, 4vw, 3rem); border-radius: var(--r-2xl); display: grid; align-content: space-between; gap: 1.25rem; background: var(--charcoal); color: #fff; overflow: hidden; }
+        .format-list dt { font-family: var(--font-display); font-size: clamp(2.25rem, 7vw, 4.25rem); font-weight: 800; line-height: 1; letter-spacing: -0.03em; color: inherit; }
+        .format-list dd { margin: 0; max-width: 42rem; font-size: clamp(1.05rem, 1.8vw, 1.3rem); line-height: 1.5; color: inherit; text-wrap: pretty; }
+        .format-row--indigo { background: var(--indigo); }
+        .format-row--light { background: #fff; color: var(--charcoal); border: 1px solid var(--tw-line); }
+        .format-row--saffron { background: var(--saffron); color: #17182E; }
+        .format-row--saffron s { opacity: 1 !important; }
+        .format-row--deep { background: var(--deep); }
+        .format-row img { display: block; width: 100%; height: auto; aspect-ratio: 3 / 2; object-fit: cover; border-radius: var(--r-lg); }
+        @media (min-width: 820px) {
+            .format-row { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); align-items: end; }
+            .format-row--photo { align-items: center; }
+            .format-row--photo .tw-card-words { display: grid; gap: 1.25rem; }
         }
-        .workshop-badge {
-            display: inline-block;
-            background: rgba(255,107,0,0.1);
-            color: var(--saffron);
-            font-size: 0.75rem;
-            font-weight: 700;
-            padding: 0.35rem 0.85rem;
-            border-radius: var(--r-full);
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-            margin-bottom: 1rem;
+
+        /* The sticky menu of workshops */
+        @media (max-width: 900px) { .tw-subnav { top: 0; } }
+        @media (min-width: 901px) { .tw-subnav .conf-subnav-link { padding: 0 0.85rem; } }
+        .tw-session-anchor, .session-feature { scroll-margin-top: calc(var(--nav-h) + 3.75rem); }
+        #workshop-partners, #passes, #more-workshops { scroll-margin-top: calc(var(--nav-h) + 3.75rem); }
+
+        /* A workshop. On a phone: face, title, why it matters, then rows to open. */
+        .session-feature { display: grid; gap: 1.25rem; background: #fff; border: 1px solid var(--tw-line); border-radius: var(--r-2xl); padding: 1.25rem; }
+        .session-feature + .session-feature { margin-top: 1.25rem; }
+        .session-lead { display: flex; align-items: center; gap: 0.9rem; }
+        .session-lead img { width: 84px; height: 84px; flex: none; border-radius: var(--r-full); object-fit: cover; }
+        .session-lead strong { display: block; font-family: var(--font-display); font-size: 1.15rem; font-weight: 800; line-height: 1.2; color: var(--charcoal); }
+        .session-lead span { display: block; margin-top: 0.15rem; font-size: 0.85rem; line-height: 1.4; color: var(--dark-grey); }
+        .session-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; }
+        .workshop-badge { display: inline-block; background: rgba(255,107,0,0.12); color: var(--tw-ink-orange); font-size: 0.82rem; font-weight: 800; padding: 0.3rem 0.8rem; border-radius: var(--r-full); }
+        .session-format { font-size: 0.9rem; font-weight: 600; color: var(--dark-grey); }
+        .session-body h3 { font-family: var(--font-display); font-size: clamp(1.4rem, 2.6vw, 2rem); font-weight: 800; line-height: 1.18; letter-spacing: -0.015em; color: var(--charcoal); margin: 0.75rem 0 0.85rem; text-wrap: balance; }
+        .session-body > p { color: var(--dark-grey); line-height: 1.65; margin: 0 0 0.85rem; max-width: 68ch; text-wrap: pretty; }
+        .session-takeaway { background: rgba(255,107,0,0.08); border-radius: var(--r-lg); padding: 1rem 1.1rem; color: var(--charcoal); line-height: 1.55; margin: 1rem 0; }
+        .session-body > .btn { width: 100%; justify-content: center; }
+        .session-covers { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.75rem; }
+        .session-covers li { color: var(--dark-grey); line-height: 1.55; padding-left: 1.25rem; position: relative; }
+        .session-covers li::before { content: ""; position: absolute; left: 0; top: 0.6em; width: 0.45rem; height: 0.45rem; border-radius: 50%; background: var(--saffron); }
+        .session-covers strong { color: var(--charcoal); }
+        .session-agenda { list-style: none; counter-reset: agenda; padding: 0; margin: 0; display: grid; gap: 0.85rem; }
+        .session-agenda li { counter-increment: agenda; position: relative; padding-left: 2.4rem; color: var(--dark-grey); line-height: 1.55; }
+        .session-agenda li::before { content: counter(agenda); position: absolute; left: 0; top: 0; width: 1.7rem; height: 1.7rem; border-radius: 50%; background: rgba(255,107,0,0.12); color: var(--tw-ink-orange); font-weight: 800; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; }
+        .session-agenda strong { display: block; color: var(--charcoal); }
+        .session-mins { display: inline-block; margin-left: 0.35rem; font-size: 0.75rem; font-weight: 700; color: var(--tw-ink-orange); background: rgba(255,107,0,0.12); border-radius: var(--r-full); padding: 0.05rem 0.5rem; vertical-align: middle; }
+        @media (min-width: 760px) {
+            .session-feature { grid-template-columns: 200px minmax(0, 1fr); gap: 2.5rem; padding: 2.25rem; }
+            .session-feature + .session-feature { margin-top: 1.75rem; }
+            .session-lead { display: block; position: sticky; top: calc(var(--nav-h) + 4.5rem); align-self: start; text-align: center; }
+            .session-lead img { width: 180px; height: 180px; margin-bottom: 0.85rem; }
+            .session-body > .btn { width: auto; }
         }
-        .workshop-card h3 {
-            font-family: var(--font-display);
-            font-size: 1.6rem;
-            font-weight: 800;
-            color: var(--charcoal);
-            margin-bottom: 1rem;
-        }
-        .workshop-card p {
-            font-size: 0.95rem;
-            color: var(--dark-grey);
-            line-height: 1.7;
-            margin-bottom: 1.5rem;
-        }
-        /* The named lead on a workshop card (Agentic AI Development, 28 Oct 2026). */
-        .workshop-lead {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            margin: 0 0 1.25rem;
-        }
-        .workshop-lead img {
-            width: 44px;
-            height: 44px;
-            border-radius: var(--r-full);
-            object-fit: cover;
-            border: 2px solid var(--saffron);
-            flex-shrink: 0;
-        }
+
+        /* Rows that open. The open row lifts out of the list and rounds off. */
+        .tw-rows { margin: 1rem 0; border-bottom: 1px solid var(--tw-line); }
+        .tw-row { border-top: 1px solid var(--tw-line); }
+        .tw-row summary { display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-height: 54px; padding: 0.6rem 0.25rem; font-family: var(--font-display); font-size: 1.05rem; font-weight: 800; line-height: 1.25; color: var(--charcoal); cursor: pointer; list-style: none; -webkit-tap-highlight-color: transparent; }
+        .tw-row summary::-webkit-details-marker { display: none; }
+        .tw-row summary:focus-visible { outline: 3px solid var(--electric); outline-offset: 2px; border-radius: var(--r-sm); }
+        .tw-row summary::after { content: ""; flex: none; width: 28px; height: 28px; border-radius: 50%; background: rgba(255,107,0,0.12) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 3.5v9M3.5 8h9' fill='none' stroke='%23B54800' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E") center/14px no-repeat; }
+        .tw-row[open] summary::after { transform: rotate(45deg); }
+        .tw-row-body { padding: 0.25rem 0.25rem 1.25rem; }
+        .tw-row-body > p { color: var(--dark-grey); line-height: 1.6; margin: 0 0 0.85rem; max-width: 68ch; }
+        .tw-row-body > :last-child { margin-bottom: 0; }
+
+        /* The closed-door roundtable sits apart from the workshops you can book. */
+        .session-feature--solo { grid-template-columns: minmax(0, 1fr); background: var(--deep); border-color: var(--deep); color: #fff; }
+        .session-feature--solo .session-body h3 { color: #fff; max-width: 34ch; }
+        .session-feature--solo .workshop-badge { background: var(--gold-light); color: var(--deep); }
+        .session-facts { list-style: none; padding: 0; margin: 0 0 1.25rem; display: flex; flex-wrap: wrap; gap: 0.4rem 1.25rem; color: rgba(255,255,255,0.85); font-size: 0.95rem; font-weight: 600; }
+        .session-facts i { color: var(--gold-light); margin-right: 0.35rem; }
+        .session-people { display: grid; gap: 0.75rem; }
+        .session-person { display: flex; gap: 0.85rem; align-items: flex-start; background: rgba(255,255,255,0.08); border-radius: var(--r-lg); padding: 0.9rem; }
+        .session-person img { width: 72px; height: 72px; border-radius: var(--r-full); object-fit: cover; flex-shrink: 0; }
+        .facilitator-label { display: block; font-size: 0.82rem; font-weight: 700; color: var(--gold-light); }
+        .session-person strong { display: block; font-family: var(--font-display); font-weight: 800; color: #fff; margin: 0.1rem 0; }
+        .session-person span:not(.facilitator-label) { display: block; font-size: 0.85rem; color: rgba(255,255,255,0.8); line-height: 1.45; }
+        .session-feature--solo .tw-rows, .session-feature--solo .tw-row { border-color: rgba(255,255,255,0.18); }
+        .session-feature--solo .tw-row summary { color: #fff; }
+        .session-feature--solo .tw-row summary::after { background-color: rgba(255,255,255,0.14); background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 3.5v9M3.5 8h9' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E"); }
+        .session-feature--solo .session-agenda li { color: rgba(255,255,255,0.8); }
+        .session-feature--solo .session-agenda strong { color: #fff; }
+        .session-feature--solo .session-agenda li::before { background: rgba(255,255,255,0.14); color: #fff; }
+        .session-feature--solo .session-mins { background: rgba(255,255,255,0.14); color: #fff; }
+        .session-feature--solo .session-takeaway { background: rgba(255,255,255,0.08); color: #fff; }
+        @media (min-width: 960px) { .session-people { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+
+        /* More workshops: a short list, not six big cards for things that cannot be booked yet. */
+        .tw-soon { display: grid; gap: 0 2.5rem; border-bottom: 1px solid var(--tw-line); }
+        .tw-soon .tw-row summary { align-items: flex-start; padding: 0.9rem 0.25rem; }
+        .tw-soon-name { display: block; }
+        .tw-soon-meta { display: block; margin-top: 0.25rem; font-family: var(--font-body); font-size: 0.85rem; font-weight: 600; color: var(--dark-grey); }
+        .workshop-lead { display: flex; align-items: center; gap: 0.75rem; margin: 0 0 1rem; }
+        .workshop-lead img { width: 44px; height: 44px; border-radius: var(--r-full); object-fit: cover; flex-shrink: 0; }
         .workshop-lead span { display: block; font-size: 0.8rem; color: var(--dark-grey); line-height: 1.35; }
         .workshop-lead strong { display: block; font-size: 0.95rem; color: var(--charcoal); }
-        .workshop-meta {
-            display: flex;
-            gap: 1.5rem;
-            margin-bottom: 1.5rem;
-            flex-wrap: wrap;
-        }
-        .meta-item {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            font-size: 0.9rem;
-            color: var(--dark-grey);
-        }
-        .meta-item i {
-            color: var(--saffron);
-        }
-        .workshop-topics {
-            background: var(--off-white);
-            border-radius: var(--r-lg);
-            padding: 1.25rem;
-            margin-bottom: 1.5rem;
-        }
-        .workshop-topics h4 {
-            font-size: 0.85rem;
-            font-weight: 700;
-            color: var(--charcoal);
-            text-transform: uppercase;
-            letter-spacing: 0.06em;
-            margin-bottom: 0.75rem;
-        }
-        .workshop-topics ul {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-        }
-        .workshop-topics li {
-            padding: 0.5rem 0;
-            font-size: 0.9rem;
-            color: var(--dark-grey);
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-        .workshop-topics li::before {
-            content: '✓';
-            color: var(--emerald);
-            font-weight: 700;
-        }
+        .tw-topics-head { display: block; margin-bottom: 0.5rem; font-size: 0.9rem; font-weight: 800; color: var(--charcoal); }
+        @media (min-width: 820px) { .tw-soon { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
-        /* Format list — editorial replace for emoji card grid */
-        .format-list { display: flex; flex-direction: column; list-style: none; padding: 0; margin: 0; }
-        .format-row { display: grid; grid-template-columns: 7rem 1fr; gap: 0 1.5rem; align-items: baseline; padding: 0.9rem 0; border-bottom: 1px solid var(--light); }
-        .format-row:first-child { border-top: 1px solid var(--light); }
-        .format-list dt { font-family: var(--font-display); font-size: 0.9rem; font-weight: 800; color: var(--charcoal); }
-        .format-list dd { margin: 0; font-size: 0.875rem; color: var(--dark-grey); line-height: 1.55; }
+        /* What you will need */
+        .prerequisites-box { background: var(--grad-hero); border-radius: var(--r-2xl); padding: clamp(1.5rem, 4vw, 3.25rem); color: #fff; }
+        .prerequisites-box .tw-head .section-title { color: #fff; }
+        .prerequisites-box .tw-head p { color: rgba(255,255,255,0.85); }
+        .prerequisites-list { display: grid; gap: 0 2.5rem; }
+        .prereq-item { display: flex; align-items: center; gap: 0.9rem; padding: 0.85rem 0; border-top: 1px solid rgba(255,255,255,0.16); }
+        .prereq-item i { width: 1.5rem; flex: none; text-align: center; color: var(--gold-light); font-size: 1.15rem; }
+        .prereq-item span { font-size: 1rem; font-weight: 600; line-height: 1.4; }
+        @media (min-width: 760px) { .prerequisites-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
-        /* Features Grid */
-        .features-grid {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 1.5rem;
-            margin-top: 2rem;
-        }
-        .feature-card {
-            background: white;
-            border: 1px solid var(--light);
-            border-radius: var(--r-xl);
-            padding: 2rem 1.5rem;
-            text-align: center;
-            transition: var(--t-med);
-        }
-        .feature-card:hover {
-            border-color: rgba(255,107,0,0.25);
-            box-shadow: var(--shadow-md);
-            transform: translateY(-5px);
-        }
-        .feature-icon {
-            font-size: 2.5rem;
-            margin-bottom: 1rem;
-        }
-        .feature-card h4 {
-            font-size: 1rem;
-            font-weight: 700;
-            color: var(--charcoal);
-            margin-bottom: 0.5rem;
-        }
-        .feature-card p {
-            font-size: 0.85rem;
-            color: var(--dark-grey);
-            margin: 0;
-            line-height: 1.5;
-        }
+        /* Getting a seat: the two passes that include a workshop */
+        .tw-passes { display: grid; gap: 1rem; }
+        .tw-pass { position: relative; display: flex; flex-direction: column; gap: 0.5rem; background: #fff; border: 1px solid var(--tw-line); border-radius: var(--r-xl); padding: 1.5rem; }
+        .tw-pass h3 { font-family: var(--font-display); font-size: 1.45rem; font-weight: 800; color: var(--charcoal); margin: 0; }
+        .tw-pass-includes { margin: 0; color: var(--dark-grey); font-size: 0.98rem; line-height: 1.5; }
+        .tw-price { margin: 0.25rem 0 0.75rem; font-family: var(--font-display); font-size: clamp(2rem, 5vw, 2.6rem); font-weight: 800; line-height: 1.1; letter-spacing: -0.02em; color: var(--charcoal); }
+        .tw-price s { font-size: 0.5em; letter-spacing: 0; color: var(--dark-grey); }
+        .tw-price small { font-family: var(--font-body); font-size: 0.9rem; font-weight: 700; letter-spacing: 0; color: var(--dark-grey); }
+        .tw-pass .btn { margin-top: auto; justify-content: center; }
+        .tw-pass-notes { margin-top: 1.5rem; display: grid; gap: 0.75rem; max-width: 46rem; }
+        .tw-pass-notes p { margin: 0; color: var(--dark-grey); line-height: 1.6; text-wrap: pretty; }
+        .tw-pass-notes s { opacity: 0.8; }
+        .tw-pass-links { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 1.25rem; }
+        @media (min-width: 720px) { .tw-passes { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.5rem; } }
 
-        /* Who Should Attend */
-        .audience-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 1.5rem;
-            margin-top: 2rem;
-        }
-        .audience-card {
-            background: white;
-            border: 1px solid var(--light);
-            border-radius: var(--r-xl);
-            padding: 2rem;
-            text-align: center;
-            transition: var(--t-med);
-        }
-        .audience-card:hover {
-            border-color: rgba(255,107,0,0.25);
-            box-shadow: var(--shadow-md);
-            transform: translateY(-5px);
-        }
-        .audience-icon {
-            width: 64px;
-            height: 64px;
-            background: var(--grad-saffron);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.8rem;
-            margin: 0 auto 1rem;
-            box-shadow: var(--shadow-saffron);
-        }
-        .audience-card h4 {
-            font-size: 1.1rem;
-            font-weight: 700;
-            color: var(--charcoal);
-            margin-bottom: 0.5rem;
-        }
-        .audience-card p {
-            font-size: 0.9rem;
-            color: var(--dark-grey);
-            margin: 0;
-            line-height: 1.6;
-        }
-
-        /* Prerequisites Section */
-        .prerequisites-box {
-            background: var(--grad-hero);
-            border-radius: var(--r-2xl);
-            padding: 3rem;
-            position: relative;
-            overflow: hidden;
-        }
-        .prerequisites-box::before {
-            content: '';
-            position: absolute;
-            inset: 0;
-            background-image: linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px),
-                              linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px);
-            background-size: 30px 30px;
-        }
-        .prerequisites-content {
-            position: relative;
-            z-index: 1;
-        }
-        .prerequisites-list {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 1.25rem;
-            margin-top: 2rem;
-        }
-        .prereq-item {
-            background: rgba(255,255,255,0.1);
-            border: 1px solid rgba(255,255,255,0.2);
-            border-radius: var(--r-lg);
-            padding: 1.5rem;
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            backdrop-filter: blur(10px);
-        }
-        .prereq-item i {
-            color: var(--gold-light);
-            font-size: 1.5rem;
-            flex-shrink: 0;
-        }
-        .prereq-item span {
-            color: white;
-            font-size: 0.95rem;
-            font-weight: 500;
-        }
-
-        /* Instructor Highlight */
-        .instructor-section {
-            background: var(--off-white);
-            border-radius: var(--r-2xl);
-            padding: 3rem;
-            margin-top: 3rem;
-            text-align: center;
-        }
-        .instructor-section h3 {
-            font-family: var(--font-display);
-            font-size: 2rem;
-            font-weight: 800;
-            color: var(--charcoal);
-            margin-bottom: 1rem;
-        }
-        .instructor-section p {
-            font-size: 1.05rem;
-            color: var(--dark-grey);
-            line-height: 1.7;
-            max-width: 700px;
-            margin: 0 auto 2rem;
-        }
-        /* The named facilitator. The section sold the workshops on "FAANG
-           engineers" and "PhD researchers" with nobody's name against them;
-           a delegate books against a person, not a category. */
-        .facilitator {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 1.25rem;
-            flex-wrap: wrap;
-            background: white;
-            border: 1px solid var(--light);
-            border-radius: var(--r-2xl);
-            box-shadow: var(--shadow-sm);
-            padding: 1.5rem 2rem;
-            max-width: 520px;
-            margin: 0 auto 2rem;
-            text-align: left;
-        }
-        .facilitator img {
-            width: 96px;
-            height: 96px;
-            border-radius: var(--r-full);
-            object-fit: cover;
-            border: 3px solid var(--saffron);
-            flex-shrink: 0;
-        }
-        .facilitator-who {
-            display: flex;
-            flex-direction: column;
-            gap: 0.2rem;
-            flex: 0 1 300px;
-        }
-        .facilitator-label {
-            font-size: 0.72rem;
-            font-weight: 700;
-            letter-spacing: 0.09em;
-            text-transform: uppercase;
-            color: var(--saffron);
-        }
-        .facilitator-who strong {
-            font-family: var(--font-display);
-            font-size: 1.35rem;
-            font-weight: 800;
-            color: var(--charcoal);
-        }
-        .facilitator-role {
-            font-size: 0.95rem;
-            color: var(--dark-grey);
-        }
-        @media (max-width: 520px) {
-            .facilitator { text-align: center; padding: 1.5rem; }
-            .facilitator-who { align-items: center; }
-        }
-        /* A named session, ahead of the generic workshop list: who leads it,
-           what it covers, and what a leader leaves with. */
-        .session-feature {
-            display: grid;
-            grid-template-columns: 260px 1fr;
-            gap: 2.5rem;
-            background: white;
-            border: 1px solid var(--light);
-            border-radius: var(--r-2xl);
-            box-shadow: var(--shadow-sm);
-            padding: 2.5rem;
-        }
-        .session-lead { text-align: center; }
-        .session-lead img {
-            width: 180px;
-            height: 180px;
-            border-radius: var(--r-full);
-            object-fit: cover;
-            border: 4px solid var(--saffron);
-            margin-bottom: 1rem;
-        }
-        .session-lead strong {
-            display: block;
-            font-family: var(--font-display);
-            font-size: 1.3rem;
-            font-weight: 800;
-            color: var(--charcoal);
-        }
-        .session-lead span {
-            display: block;
-            font-size: 0.92rem;
-            color: var(--dark-grey);
-            line-height: 1.5;
-            margin-top: 0.35rem;
-        }
-        .session-body h3 {
-            font-family: var(--font-display);
-            font-size: 1.75rem;
-            font-weight: 800;
-            color: var(--charcoal);
-            line-height: 1.25;
-            margin: 0.5rem 0 1rem;
-        }
-        .session-body > p {
-            color: var(--dark-grey);
-            line-height: 1.7;
-            margin-bottom: 1rem;
-        }
-        .session-body h4 {
-            font-size: 0.78rem;
-            font-weight: 700;
-            letter-spacing: 0.09em;
-            text-transform: uppercase;
-            color: var(--saffron);
-            margin: 1.5rem 0 0.75rem;
-        }
-        .session-covers { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.75rem; }
-        .session-covers li { color: var(--dark-grey); line-height: 1.6; padding-left: 1.5rem; position: relative; }
-        .session-covers li::before { content: ""; position: absolute; left: 0; top: 0.6em; width: 0.5rem; height: 0.5rem; border-radius: 50%; background: var(--saffron); }
-        .session-covers strong { color: var(--charcoal); }
-        .session-takeaway {
-            background: var(--off-white);
-            border-left: 4px solid var(--saffron);
-            border-radius: 0 var(--r-xl, 12px) var(--r-xl, 12px) 0;
-            padding: 1rem 1.25rem;
-            color: var(--charcoal);
-            line-height: 1.6;
-            margin: 1.5rem 0;
-        }
-        .session-feature + .session-feature { margin-top: 2rem; }
-        .session-feature--solo { grid-template-columns: 1fr; }
-        .session-facts { list-style: none; padding: 0; margin: 0 0 1.5rem; display: flex; flex-wrap: wrap; gap: 0.5rem 1.5rem; color: var(--dark-grey); font-size: 0.95rem; font-weight: 600; }
-        .session-facts i { color: var(--saffron); margin-right: 0.35rem; }
-        .session-people { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
-        .session-person { display: flex; gap: 0.85rem; align-items: flex-start; background: var(--off-white); border-radius: var(--r-xl, 12px); padding: 1rem; }
-        .session-person img { width: 72px; height: 72px; border-radius: var(--r-full); object-fit: cover; border: 3px solid var(--saffron); flex-shrink: 0; }
-        .session-person strong { display: block; font-family: var(--font-display); font-weight: 800; color: var(--charcoal); margin: 0.15rem 0; }
-        .session-person span:not(.facilitator-label) { display: block; font-size: 0.85rem; color: var(--dark-grey); line-height: 1.45; }
-        .session-mins { display: inline-block; margin-left: 0.4rem; font-size: 0.75rem; font-weight: 700; color: var(--saffron); background: rgba(255,107,0,0.1); border-radius: var(--r-full); padding: 0.05rem 0.5rem; vertical-align: middle; }
-        @media (max-width: 960px) { .session-people { grid-template-columns: 1fr; } }
-        .session-format { font-size: 0.9rem; font-weight: 600; color: var(--dark-grey); margin-left: 0.5rem; }
-        .session-agenda { list-style: none; counter-reset: agenda; padding: 0; margin: 0; display: grid; gap: 0.85rem; }
-        .session-agenda li { counter-increment: agenda; position: relative; padding-left: 2.5rem; color: var(--dark-grey); line-height: 1.6; }
-        .session-agenda li::before {
-            content: counter(agenda);
-            position: absolute; left: 0; top: 0;
-            width: 1.75rem; height: 1.75rem; border-radius: 50%;
-            background: rgba(255,107,0,0.1); color: var(--saffron);
-            font-weight: 800; font-size: 0.85rem;
-            display: flex; align-items: center; justify-content: center;
-        }
-        .session-agenda strong { display: block; color: var(--charcoal); }
-        @media (max-width: 760px) {
-            .session-feature { grid-template-columns: 1fr; gap: 1.5rem; padding: 1.5rem; }
-            .session-lead img { width: 140px; height: 140px; }
-            .session-body h3 { font-size: 1.4rem; }
-        }
-        .instructor-badges {
-            display: flex;
-            gap: 1rem;
-            justify-content: center;
-            flex-wrap: wrap;
-        }
-        .instructor-badge {
-            background: white;
-            border: 1px solid var(--light);
-            border-radius: var(--r-full);
-            padding: 0.75rem 1.5rem;
-            font-size: 0.9rem;
-            font-weight: 600;
-            color: var(--charcoal);
-            box-shadow: var(--shadow-sm);
-        }
+        /* The last word */
+        .cta-section { position: relative; overflow: hidden; background: var(--grad-hero); padding: clamp(3.5rem, 9vw, 7rem) 0; text-align: center; }
+        .cta-section .cta-content h2 { color: #fff; }
+        .cta-section .cta-content p { color: rgba(255,255,255,0.85); }
+        .cta-section .accent { color: var(--saffron-light); }
+        .cta-section .cta-buttons .btn { justify-content: center; }
+        .tw-credit { margin: 0.75rem 0 0; font-size: 0.78rem; color: rgba(255,255,255,0.65); }
+        .tw-credit a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
 
         /* Call for workshop partners (5 Nov 2026): individuals and AI companies. */
-        .wp-herolink { display: inline-flex; align-items: center; gap: 0.5rem; margin-top: 1.1rem; font-weight: 700; color: #fff; text-decoration: underline; text-underline-offset: 4px; min-height: 44px; }
         .wp-grid { display: grid; gap: 1.75rem; scroll-margin-top: calc(var(--nav-h) + 16px); }
         .wp-left .section-title { text-align: left; margin-bottom: 0.75rem; }
         .wp-lead { color: var(--dark-grey); font-size: 1.05rem; line-height: 1.65; margin: 0; text-wrap: pretty; }
@@ -588,40 +327,8 @@
             .wp-grid { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); gap: 3.5rem; align-items: start; }
             .wp-left { position: sticky; top: calc(var(--nav-h) + 2rem); }
         }
-
-        /* Pricing Card */
-        .pricing-highlight {
-            background: linear-gradient(135deg, var(--saffron), var(--electric));
-            border-radius: var(--r-2xl);
-            padding: 3rem;
-            text-align: center;
-            color: white;
-            margin-top: 3rem;
-        }
-        .pricing-highlight h3 {
-            font-family: var(--font-display);
-            font-size: 2.5rem;
-            font-weight: 900;
-            margin-bottom: 0.5rem;
-        }
-        .pricing-highlight p {
-            font-size: 1.1rem;
-            opacity: 0.9;
-            margin-bottom: 2rem;
-        }
-
-        @media (max-width: 1024px) {
-            .workshop-grid { grid-template-columns: 1fr; }
-            .features-grid { grid-template-columns: repeat(2, 1fr); }
-            .audience-grid { grid-template-columns: repeat(2, 1fr); }
-            .prerequisites-list { grid-template-columns: 1fr; }
-        }
-
-        @media (max-width: 768px) {
-            .features-grid { grid-template-columns: 1fr; }
-            .audience-grid { grid-template-columns: 1fr; }
-        }
     </style>
+    <link rel="stylesheet" href="css/workshop-motion.css?v=20261106">
 </head>
 <body>
     <a href="#main-content" class="skip-link">Skip to main content</a>
@@ -656,37 +363,88 @@
     </nav>
 
     <!-- PAGE HEADER -->
-    <section class="page-header" id="main-content">
+    <section class="page-header tw-hero" id="main-content">
+        <div class="tw-aurora" aria-hidden="true"><i></i></div>
         <div class="page-header-orb"></div>
-        <div class="page-header-content container">
-            <span class="page-header-eyebrow"><i class="fas fa-graduation-cap"></i> Hands-On Learning</span>
-            <h1>Training<br>Workshops</h1>
-            <p>Master cutting-edge AI technologies through expert-led, hands-on workshops</p>
-            <a href="#workshop-partners" class="wp-herolink">Want to lead a workshop? Call for workshop partners <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
+        <div class="page-header-content container tw-hero-grid">
+            <div>
+                <span class="page-header-eyebrow"><i class="fas fa-graduation-cap"></i> Hands-On Learning</span>
+                <h1><span class="tw-w"><span style="--i:0">Training</span></span><br><span class="tw-w"><span style="--i:1">Workshops</span></span></h1>
+                <p class="tw-hero-lead">Build real AI applications with guidance from industry practitioners.</p>
+                <p class="tw-hero-when">20&ndash;21 November 2026, World Trade Center Mumbai</p>
+                <div class="tw-hero-actions"><a href="/register#premium" class="btn btn-primary btn-lg">Get Premium Delegate <i class="fas fa-arrow-right" aria-hidden="true"></i></a></div>
+                <a href="#workshop-partners" class="wp-herolink">Want to lead a workshop? Call for workshop partners <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
+            </div>
+            <figure class="tw-hero-photo">
+                <img src="/images/gallery/7C2A2566.webp" alt="A room of people at tables with their laptops open, following a presenter at the screen" width="1600" height="1066" fetchpriority="high" decoding="async">
+                <figcaption>A session at an earlier Data Science Congress</figcaption>
+            </figure>
         </div>
     </section>
 
-    <!-- INTRO -->
-    <section class="section-pad" style="background:white;">
+    <!-- WHO TEACHES -->
+    <section class="section-pad" style="background:white;" id="experts">
         <div class="container">
-            <div class="section-header reveal">
-                <h2 class="section-title">Expert-Led AI <span class="accent">Workshops</span></h2>
-                <p class="section-subtitle">Go beyond theory — build real AI applications with guidance from industry practitioners</p>
+            <div class="tw-head">
+                <h2 class="section-title">Learn from Industry <span class="accent">Experts</span></h2>
+                <p>Our workshops are led by experienced AI practitioners and researchers who are building real-world AI systems at leading tech companies, startups, and research institutions. Get insights beyond textbooks and online courses.</p>
             </div>
-            <dl class="format-list reveal">
-                <div class="format-row">
+            <ul class="tw-tiles">
+                <li><a class="tw-tile" href="#cxo-guide">
+                    <span class="tw-tile-photo"><img src="/images/speaker-vinay-kulkarni-sq.webp" alt="" width="400" height="400" loading="lazy" decoding="async"></span>
+                    <strong>Dr. Vinay Kulkarni</strong>
+                    <span class="tw-tile-role">Adjunct Faculty, IIT Bombay</span>
+                    <span class="tw-tile-what">Data Science to Agentic AI: A CXO&rsquo;s Guide</span>
+                    <span class="tw-tile-how">For CXOs</span>
+                </a></li>
+                <li><a class="tw-tile" href="#fde-workshop">
+                    <span class="tw-tile-photo" style="--tw-zoom:1.1"><img src="/images/speaker-ashish-tendulkar-panel.webp" alt="" width="320" height="320" loading="lazy" decoding="async"></span>
+                    <strong>Dr. Ashish Tendulkar</strong>
+                    <span class="tw-tile-role">Lead AI, Google</span>
+                    <span class="tw-tile-what">From Prototype to Production</span>
+                    <span class="tw-tile-how">Live coding, 90 minutes</span>
+                </a></li>
+                <li><a class="tw-tile" href="#asr-workshop">
+                    <span class="tw-tile-photo"><img src="/images/speaker-parijat-shukla-sq.webp" alt="" width="400" height="400" loading="lazy" decoding="async"></span>
+                    <strong>Dr. Parijat Shukla</strong>
+                    <span class="tw-tile-role">PhD, Iowa State University</span>
+                    <span class="tw-tile-what">Automatic Speech Recognition</span>
+                    <span class="tw-tile-how">Hands-on, 90 minutes</span>
+                </a></li>
+                <li><a class="tw-tile" href="#llm-fine-tuning">
+                    <span class="tw-tile-photo" style="--tw-zoom:1.1"><img src="/images/speaker-virendra-pal.webp" alt="" width="320" height="320" loading="lazy" decoding="async"></span>
+                    <strong>Virendra Pal</strong>
+                    <span class="tw-tile-role">AI and FinTech Expert</span>
+                    <span class="tw-tile-what">LLM Fine-Tuning, Hands-On</span>
+                    <span class="tw-tile-how">Hands-on, 2 hours</span>
+                </a></li>
+            </ul>
+        </div>
+    </section>
+
+    <!-- HOW IT RUNS -->
+    <section class="section-pad" style="background:var(--off-white);" id="how-it-runs">
+        <div class="container">
+            <div class="tw-head">
+                <h2 class="section-title">Go Beyond <span class="accent">Theory</span></h2>
+            </div>
+            <dl class="format-list">
+                <div class="format-row format-row--indigo">
                     <dt>Hands-on</dt>
-                    <dd>Code alongside experts using real datasets, live APIs, and production-grade tools — not toy examples</dd>
+                    <dd>Code alongside experts using real datasets, live APIs, and production-grade tools, not toy examples</dd>
                 </div>
-                <div class="format-row">
+                <div class="format-row format-row--light">
                     <dt>Practitioners</dt>
-                    <dd>Instructors who build AI at scale — not academics teaching from textbooks</dd>
+                    <dd>Instructors who build AI at scale, not academics teaching from textbooks</dd>
                 </div>
-                <div class="format-row">
-                    <dt>Real projects</dt>
-                    <dd>Work on actual use cases and deployable solutions you can add to your professional portfolio</dd>
+                <div class="format-row format-row--deep format-row--photo">
+                    <div class="tw-card-words">
+                        <dt>Real projects</dt>
+                        <dd>Work on actual use cases and deployable solutions you can add to your professional portfolio</dd>
+                    </div>
+                    <img src="/images/gallery/CrqPzMWZ.jpg" alt="Attendees listening closely at their tables during a session" width="1024" height="683" loading="lazy" decoding="async">
                 </div>
-                <div class="format-row">
+                <div class="format-row format-row--saffron">
                     <dt>Seats</dt>
                     <dd>One workshop comes with the Premium Delegate Pass (<s style="font-weight:400;opacity:.7;">&#8377;9,999</s> &#8377;14,999 + GST) and the VIP Pass (<s style="font-weight:400;opacity:.7;">&#8377;19,999</s> &#8377;24,999 + GST). Prices went up on 6 Nov and may go up again. Seats are limited and go first come, first served: you choose yours in the app as soon as you have paid</dd>
                 </div>
@@ -698,142 +456,210 @@
         </div>
     </section>
 
-    <!-- FEATURED SESSIONS -->
-    <section class="section-pad" style="background:var(--off-white);" id="sessions">
-        <div class="container">
-            <div class="section-header reveal">
-                <h2 class="section-title">Featured <span class="accent">Sessions</span></h2>
-                <p class="section-subtitle">For the leaders deciding where AI goes, and the engineers who build it</p>
+    <!-- THE STICKY MENU OF WORKSHOPS: main.js marks the section you are in; keep the links in the page's order -->
+    <nav class="conf-subnav tw-subnav" id="confSubnav" aria-label="Workshops on this page">
+        <div class="container conf-subnav-inner">
+            <div class="conf-subnav-links">
+                <a href="#cxo-guide" class="conf-subnav-link">CXO Guide</a>
+                <a href="#fde-workshop" class="conf-subnav-link">Prototype to Production</a>
+                <a href="#asr-workshop" class="conf-subnav-link">Speech Recognition</a>
+                <a href="#llm-fine-tuning" class="conf-subnav-link">LLM Fine-Tuning</a>
+                <a href="#cxo-roundtable" class="conf-subnav-link">CXO Roundtable</a>
+                <a href="#passes" class="conf-subnav-link">Passes</a>
+                <a href="#workshop-partners" class="conf-subnav-link">Lead a Workshop</a>
             </div>
-            <article class="session-feature reveal" id="cxo-guide">
+            <a href="/register#premium" class="conf-subnav-cta">Get Premium Delegate <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
+        </div>
+    </nav>
+
+    <!-- FEATURED SESSIONS -->
+    <section class="section-pad" style="background:var(--off-white);padding-top:clamp(2.5rem,5vw,4rem);" id="sessions">
+        <div class="container">
+            <div class="tw-head">
+                <h2 class="section-title">Featured <span class="accent">Sessions</span></h2>
+                <p>For the leaders deciding where AI goes, and the engineers who build it</p>
+            </div>
+            <article class="session-feature" id="cxo-guide">
                 <div class="session-lead">
                     <img src="/images/speaker-vinay-kulkarni-sq.webp" alt="Dr. Vinay Kulkarni" width="180" height="180" loading="lazy" decoding="async">
-                    <strong>Dr. Vinay Kulkarni</strong>
-                    <span>Adjunct Faculty, IIT Bombay</span>
-                    <span>Director, Aegis School of Data Science &amp; AI</span>
+                    <div>
+                        <strong>Dr. Vinay Kulkarni</strong>
+                        <span>Adjunct Faculty, IIT Bombay</span>
+                        <span>Director, Aegis School of Data Science &amp; AI</span>
+                    </div>
                 </div>
                 <div class="session-body">
-                    <span class="workshop-badge" style="position:static;display:inline-block;">For CXOs</span>
+                    <div class="session-tags"><span class="workshop-badge">For CXOs</span></div>
                     <h3>Data Science to Agentic AI: A CXO&rsquo;s Guide to Strategic Decision-Making</h3>
                     <p>As organizations move from Data Science and Machine Learning to Generative AI and Agentic AI, CXOs face a critical challenge: identifying the right business problems, selecting high-value AI use cases, evaluating pilot outcomes, and scaling successful solutions into production.</p>
                     <p>This session gives business and technology leaders a practical framework for navigating the AI landscape, making informed technology and investment decisions, and turning AI opportunities into measurable business outcomes.</p>
-                    <h4>What the session covers</h4>
-                    <ul class="session-covers">
-                        <li><strong>Identifying the right business problems:</strong> where AI can address meaningful business challenges and create measurable value.</li>
-                        <li><strong>Selecting and prioritizing AI use cases:</strong> when to use Data Science, Machine Learning, Generative AI or Agentic AI, based on business needs, feasibility and risk.</li>
-                        <li><strong>Designing and evaluating AI pilots:</strong> defining success metrics, establishing baselines, and evaluating technical performance and business impact.</li>
-                        <li><strong>Moving from pilot to production:</strong> assessing readiness for enterprise deployment, including integration, security, governance, scalability and operational reliability.</li>
-                        <li><strong>Scaling AI for business impact:</strong> a roadmap to prioritize investments, scale successful solutions, and realize sustained business value.</li>
-                    </ul>
                     <div class="session-takeaway"><strong>Key takeaway:</strong> a practical decision-making framework for CXOs to move from AI opportunities and pilot projects to reliable, scalable, production-ready enterprise solutions.</div>
+                    <div class="tw-rows">
+                        <details class="tw-row">
+                            <summary>What the session covers</summary>
+                            <div class="tw-row-body">
+                                <ul class="session-covers">
+                                    <li><strong>Identifying the right business problems:</strong> where AI can address meaningful business challenges and create measurable value.</li>
+                                    <li><strong>Selecting and prioritizing AI use cases:</strong> when to use Data Science, Machine Learning, Generative AI or Agentic AI, based on business needs, feasibility and risk.</li>
+                                    <li><strong>Designing and evaluating AI pilots:</strong> defining success metrics, establishing baselines, and evaluating technical performance and business impact.</li>
+                                    <li><strong>Moving from pilot to production:</strong> assessing readiness for enterprise deployment, including integration, security, governance, scalability and operational reliability.</li>
+                                    <li><strong>Scaling AI for business impact:</strong> a roadmap to prioritize investments, scale successful solutions, and realize sustained business value.</li>
+                                </ul>
+                            </div>
+                        </details>
+                    </div>
                     <a href="/register#premium" class="btn btn-primary">Register Now <i class="fas fa-arrow-right"></i></a>
                 </div>
             </article>
-            <article class="session-feature reveal" id="fde-workshop">
+            <article class="session-feature" id="fde-workshop">
                 <div class="session-lead">
                     <img src="/images/speaker-ashish-tendulkar-panel.webp" alt="Dr. Ashish Tendulkar" width="180" height="180" loading="lazy" decoding="async">
-                    <strong>Dr. Ashish Tendulkar</strong>
-                    <span>Google AI</span>
+                    <div>
+                        <strong>Dr. Ashish Tendulkar</strong>
+                        <span>Google AI</span>
+                    </div>
                 </div>
                 <div class="session-body">
-                    <span class="workshop-badge" style="position:static;display:inline-block;">Live coding</span><span class="session-format">90 minutes</span>
+                    <div class="session-tags"><span class="workshop-badge">Live coding</span><span class="session-format">90 minutes</span></div>
                     <h3>From Prototype to Production: Building Enterprise AI with Forward-Deployed Engineers</h3>
                     <p>How do you turn a real business problem into an AI solution that can work in an enterprise? This 90-minute session introduces the Forward-Deployed Engineer (FDE) role and shows how business needs, AI engineering and enterprise integration come together. Through live coding, participants see an AI-powered workflow built, tested against realistic cases, and examined through the lens of production readiness.</p>
-                    <h4>What you will take away</h4>
-                    <ul class="session-covers">
-                        <li>What a Forward-Deployed Engineer does, and how the role differs from traditional software and AI engineering.</li>
-                        <li>How an engineer translates a business problem into a scoped AI solution and architecture.</li>
-                        <li>A live-coded enterprise AI workflow that connects an LLM with data, tools and business logic.</li>
-                        <li>Why testing, failure handling, security, reliability and evaluation matter beyond a working prototype.</li>
-                    </ul>
-                    <h4>The 90 minutes</h4>
-                    <ol class="session-agenda">
-                        <li><strong>The rise of the FDE</strong>What a Forward-Deployed Engineer is, why the role is emerging, and why enterprises need engineers who can connect business problems to working technology.</li>
-                        <li><strong>The FDE mindset</strong>How FDEs discover the real problem, clarify requirements, define constraints, and identify what success should look like.</li>
-                        <li><strong>Designing the solution</strong>A concise walkthrough of the architecture: model, enterprise data, tools or APIs, workflow, and guardrails.</li>
-                        <li><strong>Live coding: build an enterprise AI workflow</strong>A focused business workflow agent, such as a procurement assistant that checks policy and supporting information through a mock enterprise API, then recommends a next step.</li>
-                        <li><strong>Test, find failures, improve</strong>Realistic test cases, including missing information or a policy exception. Examine the output, identify failure modes, and demonstrate an improvement.</li>
-                        <li><strong>From prototype to production</strong>What real deployment needs: access control, privacy, reliability, observability, evaluation, human approval, and integration.</li>
-                        <li><strong>Key takeaways</strong>The FDE mindset and the capabilities required to build useful enterprise AI.</li>
-                    </ol>
                     <div class="session-takeaway"><strong>Who should attend:</strong> fresh engineering graduates, software developers, AI/ML engineers, data scientists, technology leaders, and enterprise decision-makers, including CIOs, CTOs and Chief Data Officers.</div>
+                    <div class="tw-rows">
+                        <details class="tw-row">
+                            <summary>What you will take away</summary>
+                            <div class="tw-row-body">
+                                <ul class="session-covers">
+                                    <li>What a Forward-Deployed Engineer does, and how the role differs from traditional software and AI engineering.</li>
+                                    <li>How an engineer translates a business problem into a scoped AI solution and architecture.</li>
+                                    <li>A live-coded enterprise AI workflow that connects an LLM with data, tools and business logic.</li>
+                                    <li>Why testing, failure handling, security, reliability and evaluation matter beyond a working prototype.</li>
+                                </ul>
+                            </div>
+                        </details>
+                        <details class="tw-row">
+                            <summary>The 90 minutes</summary>
+                            <div class="tw-row-body">
+                                <ol class="session-agenda">
+                                    <li><strong>The rise of the FDE</strong>What a Forward-Deployed Engineer is, why the role is emerging, and why enterprises need engineers who can connect business problems to working technology.</li>
+                                    <li><strong>The FDE mindset</strong>How FDEs discover the real problem, clarify requirements, define constraints, and identify what success should look like.</li>
+                                    <li><strong>Designing the solution</strong>A concise walkthrough of the architecture: model, enterprise data, tools or APIs, workflow, and guardrails.</li>
+                                    <li><strong>Live coding: build an enterprise AI workflow</strong>A focused business workflow agent, such as a procurement assistant that checks policy and supporting information through a mock enterprise API, then recommends a next step.</li>
+                                    <li><strong>Test, find failures, improve</strong>Realistic test cases, including missing information or a policy exception. Examine the output, identify failure modes, and demonstrate an improvement.</li>
+                                    <li><strong>From prototype to production</strong>What real deployment needs: access control, privacy, reliability, observability, evaluation, human approval, and integration.</li>
+                                    <li><strong>Key takeaways</strong>The FDE mindset and the capabilities required to build useful enterprise AI.</li>
+                                </ol>
+                            </div>
+                        </details>
+                    </div>
                     <a href="/register#premium" class="btn btn-primary">Register Now <i class="fas fa-arrow-right"></i></a>
                 </div>
             </article>
-            <article class="session-feature reveal" id="asr-workshop">
+            <article class="session-feature" id="asr-workshop">
                 <div class="session-lead">
                     <img src="/images/speaker-parijat-shukla-sq.webp" alt="Dr. Parijat Shukla" width="180" height="180" loading="lazy" decoding="async">
-                    <strong>Dr. Parijat Shukla</strong>
-                    <span>PhD, Iowa State University</span>
+                    <div>
+                        <strong>Dr. Parijat Shukla</strong>
+                        <span>PhD, Iowa State University</span>
+                    </div>
                 </div>
                 <div class="session-body">
-                    <span class="workshop-badge" style="position:static;display:inline-block;">Hands-on</span><span class="session-format">90 minutes</span>
+                    <div class="session-tags"><span class="workshop-badge">Hands-on</span><span class="session-format">90 minutes</span></div>
                     <h3>Automatic Speech Recognition (Speech-to-Text)</h3>
                     <p>A 90-minute workshop on Automatic Speech Recognition (ASR), also called Speech-to-Text (STT): the kinds of speech problems it solves, the popular models available today, and how to choose the right model and the right hardware for your task. It ends with a hands-on session.</p>
-                    <h4>What the 90 minutes cover</h4>
-                    <ol class="session-agenda">
-                        <li><strong>Introduction to Automatic Speech Recognition (ASR), or Speech-to-Text (STT)</strong></li>
-                        <li><strong>The various types of ASR and STT problems</strong></li>
-                        <li><strong>A short discussion of the popular models available</strong></li>
-                        <li><strong>From problem to solution</strong>Identifying the problem and developing a solution: selecting the right model or models for your task, selecting the right hardware for the model, optimization and trade-offs.</li>
-                        <li><strong>A hands-on session</strong></li>
-                    </ol>
                     <div class="session-takeaway"><strong>Who should attend:</strong> AI/ML enthusiasts, technical entrepreneurs, and others building products with speech.</div>
+                    <div class="tw-rows">
+                        <details class="tw-row">
+                            <summary>What the 90 minutes cover</summary>
+                            <div class="tw-row-body">
+                                <ol class="session-agenda">
+                                    <li><strong>Introduction to Automatic Speech Recognition (ASR), or Speech-to-Text (STT)</strong></li>
+                                    <li><strong>The various types of ASR and STT problems</strong></li>
+                                    <li><strong>A short discussion of the popular models available</strong></li>
+                                    <li><strong>From problem to solution</strong>Identifying the problem and developing a solution: selecting the right model or models for your task, selecting the right hardware for the model, optimization and trade-offs.</li>
+                                    <li><strong>A hands-on session</strong></li>
+                                </ol>
+                            </div>
+                        </details>
+                    </div>
                     <a href="/register#premium" class="btn btn-primary">Register Now <i class="fas fa-arrow-right"></i></a>
                 </div>
             </article>
-            <article class="session-feature reveal" id="llm-fine-tuning">
+            <article class="session-feature" id="llm-fine-tuning">
                 <div class="session-lead">
                     <img src="/images/speaker-virendra-pal.webp" alt="Virendra Pal" width="180" height="180" loading="lazy" decoding="async">
-                    <strong>Virendra Pal</strong>
-                    <span>AI and FinTech Expert</span>
+                    <div>
+                        <strong>Virendra Pal</strong>
+                        <span>AI and FinTech Expert</span>
+                    </div>
                 </div>
                 <div class="session-body">
-                    <span class="workshop-badge" style="position:static;display:inline-block;">Hands-on</span><span class="session-format">2 hours &middot; Intermediate</span>
+                    <div class="session-tags"><span class="workshop-badge">Hands-on</span><span class="session-format">2 hours &middot; Intermediate</span></div>
                     <h3>LLM Fine-Tuning, Hands-On: From Base Model to Your Own Model in 2 Hours</h3>
                     <p>In two hours, every participant fine-tunes a small open LLM on their own laptop and compares its output before and after. Most teams reach for fine-tuning too early or avoid it for too long. This session gives a clear rule for when it is the right tool, then takes you through one complete run, from dataset to a working custom model, with a focus on what holds up in production.</p>
-                    <h4>What you will take away</h4>
-                    <ul class="session-covers">
-                        <li>A decision framework: prompt engineering vs RAG vs fine-tuning, with cost and effort for each.</li>
-                        <li>A working understanding of LoRA and QLoRA, and why a small adapter is enough for most business tasks.</li>
-                        <li>A model you fine-tuned yourself, with a before/after comparison.</li>
-                        <li>A reusable notebook and dataset template you can apply to your own data the next day.</li>
-                        <li>A checklist for evaluation, deployment and cost before taking a fine-tuned model to production.</li>
-                    </ul>
-                    <h4>The 2 hours</h4>
-                    <ol class="session-agenda">
-                        <li><strong>When to fine-tune <span class="session-mins">15 min</span></strong>Prompting vs RAG vs fine-tuning, a decision rule, and 2-3 real cases.</li>
-                        <li><strong>How it works <span class="session-mins">15 min</span></strong>Full fine-tuning vs LoRA/QLoRA, quantization, and what actually gets trained.</li>
-                        <li><strong>Preparing data <span class="session-mins">15 min</span></strong>Instruction and chat formats, how many examples are enough, and common data mistakes, with a live dataset walkthrough.</li>
-                        <li><strong>Hands-on: fine-tune a model <span class="session-mins">45 min</span></strong>In a guided notebook: load a small open model, test it, attach LoRA, train, and test again.</li>
-                        <li><strong>Evaluation <span class="session-mins">15 min</span></strong>Before/after on a held-out set, reading the loss curve, and spotting overfitting.</li>
-                        <li><strong>Taking it to production <span class="session-mins">15 min</span></strong>Merging and serving adapters, cost, when to retrain, and your questions.</li>
-                    </ol>
-                    <h4>How the hands-on runs</h4>
-                    <p>You work on a real business task: teaching a small model to turn free-text customer messages into a fixed structured output (intent, urgency, next action).</p>
-                    <ul class="session-covers">
-                        <li><strong>Browser only.</strong> Everything runs in Google Colab on its free GPU. Nothing is installed on your laptop.</li>
-                        <li><strong>Ready notebook.</strong> You get a complete, tested notebook, run it step by step and change a few marked settings. No typing code from scratch.</li>
-                        <li><strong>Short training run.</strong> A small model and compact dataset keep training under 10 minutes. Evaluation is taught while it runs.</li>
-                        <li><strong>Nobody is left behind.</strong> A pre-trained version of the same model is kept ready, so if your run fails or disconnects you continue with the group.</li>
-                    </ul>
-                    <h4>What you need</h4>
-                    <ul class="session-covers">
-                        <li><strong>Skills:</strong> basic Python, enough to read code and run a notebook cell, and some experience using an LLM through prompts. No machine learning maths and no prior fine-tuning experience needed.</li>
-                        <li><strong>On the day:</strong> any laptop with 8 GB RAM, Chrome or Edge, and its charger. Tablets and phones will not work.</li>
-                        <li><strong>Before the day:</strong> a Google account signed in and able to open colab.research.google.com, and a free Hugging Face account with a read access token created and saved.</li>
-                        <li><strong>Check your network:</strong> Colab and Hugging Face must open on your laptop. Office laptops often block them through VPN or firewall, so a personal laptop is safer.</li>
-                    </ul>
-                    <p style="margin-top:1rem;"><strong>10-minute readiness check:</strong> a short test notebook comes with the pre-event email. Open it, switch the runtime to GPU and run one cell. If it prints the GPU name, you are ready. If you cannot complete it, come 15 minutes early for help. No software installation, paid subscription or cloud credits are required.</p>
                     <div class="session-takeaway"><strong>Who should attend:</strong> ML engineers, data scientists, software developers and technical leads who use LLMs and want to customize them. Technology leaders evaluating fine-tuning proposals benefit from the first and last segments.</div>
-                    <h4>About the facilitator</h4>
-                    <p>Virendra Pal is an AI and FinTech expert with 16+ years of experience building production AI in Indian BFSI. He has built AI functions end to end, covering credit decisioning, voice AI and agentic systems in production, with earlier roles at SMECorner and Protium. He is conducting this workshop in his personal capacity. He was a panellist at the Bharat AI Innovation Campus Series at DJ Sanghvi College of Engineering in September 2026.</p>
+                    <div class="tw-rows">
+                        <details class="tw-row">
+                            <summary>What you will take away</summary>
+                            <div class="tw-row-body">
+                                <ul class="session-covers">
+                                    <li>A decision framework: prompt engineering vs RAG vs fine-tuning, with cost and effort for each.</li>
+                                    <li>A working understanding of LoRA and QLoRA, and why a small adapter is enough for most business tasks.</li>
+                                    <li>A model you fine-tuned yourself, with a before/after comparison.</li>
+                                    <li>A reusable notebook and dataset template you can apply to your own data the next day.</li>
+                                    <li>A checklist for evaluation, deployment and cost before taking a fine-tuned model to production.</li>
+                                </ul>
+                            </div>
+                        </details>
+                        <details class="tw-row">
+                            <summary>The 2 hours</summary>
+                            <div class="tw-row-body">
+                                <ol class="session-agenda">
+                                    <li><strong>When to fine-tune <span class="session-mins">15 min</span></strong>Prompting vs RAG vs fine-tuning, a decision rule, and 2-3 real cases.</li>
+                                    <li><strong>How it works <span class="session-mins">15 min</span></strong>Full fine-tuning vs LoRA/QLoRA, quantization, and what actually gets trained.</li>
+                                    <li><strong>Preparing data <span class="session-mins">15 min</span></strong>Instruction and chat formats, how many examples are enough, and common data mistakes, with a live dataset walkthrough.</li>
+                                    <li><strong>Hands-on: fine-tune a model <span class="session-mins">45 min</span></strong>In a guided notebook: load a small open model, test it, attach LoRA, train, and test again.</li>
+                                    <li><strong>Evaluation <span class="session-mins">15 min</span></strong>Before/after on a held-out set, reading the loss curve, and spotting overfitting.</li>
+                                    <li><strong>Taking it to production <span class="session-mins">15 min</span></strong>Merging and serving adapters, cost, when to retrain, and your questions.</li>
+                                </ol>
+                            </div>
+                        </details>
+                        <details class="tw-row">
+                            <summary>How the hands-on runs</summary>
+                            <div class="tw-row-body">
+                                <p>You work on a real business task: teaching a small model to turn free-text customer messages into a fixed structured output (intent, urgency, next action).</p>
+                                <ul class="session-covers">
+                                    <li><strong>Browser only.</strong> Everything runs in Google Colab on its free GPU. Nothing is installed on your laptop.</li>
+                                    <li><strong>Ready notebook.</strong> You get a complete, tested notebook, run it step by step and change a few marked settings. No typing code from scratch.</li>
+                                    <li><strong>Short training run.</strong> A small model and compact dataset keep training under 10 minutes. Evaluation is taught while it runs.</li>
+                                    <li><strong>Nobody is left behind.</strong> A pre-trained version of the same model is kept ready, so if your run fails or disconnects you continue with the group.</li>
+                                </ul>
+                            </div>
+                        </details>
+                        <details class="tw-row">
+                            <summary>What you need</summary>
+                            <div class="tw-row-body">
+                                <ul class="session-covers">
+                                    <li><strong>Skills:</strong> basic Python, enough to read code and run a notebook cell, and some experience using an LLM through prompts. No machine learning maths and no prior fine-tuning experience needed.</li>
+                                    <li><strong>On the day:</strong> any laptop with 8 GB RAM, Chrome or Edge, and its charger. Tablets and phones will not work.</li>
+                                    <li><strong>Before the day:</strong> a Google account signed in and able to open colab.research.google.com, and a free Hugging Face account with a read access token created and saved.</li>
+                                    <li><strong>Check your network:</strong> Colab and Hugging Face must open on your laptop. Office laptops often block them through VPN or firewall, so a personal laptop is safer.</li>
+                                </ul>
+                                <p style="margin-top:1rem;"><strong>10-minute readiness check:</strong> a short test notebook comes with the pre-event email. Open it, switch the runtime to GPU and run one cell. If it prints the GPU name, you are ready. If you cannot complete it, come 15 minutes early for help. No software installation, paid subscription or cloud credits are required.</p>
+                            </div>
+                        </details>
+                        <details class="tw-row">
+                            <summary>About the facilitator</summary>
+                            <div class="tw-row-body">
+                                <p>Virendra Pal is an AI and FinTech expert with 16+ years of experience building production AI in Indian BFSI. He has built AI functions end to end, covering credit decisioning, voice AI and agentic systems in production, with earlier roles at SMECorner and Protium. He is conducting this workshop in his personal capacity. He was a panellist at the Bharat AI Innovation Campus Series at DJ Sanghvi College of Engineering in September 2026.</p>
+                            </div>
+                        </details>
+                    </div>
                     <a href="/register#premium" class="btn btn-primary">Register Now <i class="fas fa-arrow-right"></i></a>
                 </div>
             </article>
-            <article class="session-feature session-feature--solo reveal" id="cxo-roundtable">
+            <article class="session-feature session-feature--solo" id="cxo-roundtable">
                 <div class="session-body">
-                    <span class="workshop-badge" style="position:static;display:inline-block;">CXO Roundtable</span>
+                    <div class="session-tags"><span class="workshop-badge">CXO Roundtable</span></div>
                     <h3>Building the Enterprise AI Workforce: Talent, Delivery and the Rise of Forward-Deployed Engineering</h3>
                     <ul class="session-facts">
                         <li><i class="fas fa-calendar-alt" aria-hidden="true"></i> 20&ndash;21 November 2026</li>
@@ -855,16 +681,22 @@
                             <div><span class="facilitator-label">Speaker</span><strong>Dr. Ashish Tendulkar</strong><span>Lead, Google AI</span></div>
                         </div>
                     </div>
-                    <h4>Roundtable agenda</h4>
-                    <ol class="session-agenda">
-                        <li><strong>The Enterprise AI Execution Challenge <span class="session-mins">5 min</span></strong>Why organizations struggle to translate AI investments into production-ready solutions and measurable business outcomes.</li>
-                        <li><strong>Building the Enterprise AI Workforce <span class="session-mins">10 min</span></strong>Emerging skills, capability gaps, and preparing engineering and data teams for Generative AI and Agentic AI.</li>
-                        <li><strong>The Rise of Forward-Deployed Engineering <span class="session-mins">15 min</span></strong>How FDEs bridge business problems, AI engineering and enterprise implementation, and how the approach differs from traditional software engineering, AI engineering and consulting.</li>
-                        <li><strong>From AI Pilots to Production <span class="session-mins">15 min</span></strong>Evaluating pilots, establishing success metrics, addressing integration and governance challenges, and developing scalable AI delivery models.</li>
-                        <li><strong>Industry&ndash;Academia Collaboration <span class="session-mins">10 min</span></strong>Industry-ready talent, corporate training, reskilling, and practical learning pathways for enterprise AI.</li>
-                        <li><strong>Key Takeaways and Next Steps <span class="session-mins">5 min</span></strong>Priority workforce capabilities, enterprise challenges, and opportunities for collaboration.</li>
-                    </ol>
                     <div class="session-takeaway"><strong>Intended audience:</strong> L&amp;D Heads, Delivery Heads, Chief AI Officers, Chief Data Officers, CIOs, CTOs, and enterprise technology and workforce transformation leaders.</div>
+                    <div class="tw-rows">
+                        <details class="tw-row">
+                            <summary>Roundtable agenda</summary>
+                            <div class="tw-row-body">
+                                <ol class="session-agenda">
+                                    <li><strong>The Enterprise AI Execution Challenge <span class="session-mins">5 min</span></strong>Why organizations struggle to translate AI investments into production-ready solutions and measurable business outcomes.</li>
+                                    <li><strong>Building the Enterprise AI Workforce <span class="session-mins">10 min</span></strong>Emerging skills, capability gaps, and preparing engineering and data teams for Generative AI and Agentic AI.</li>
+                                    <li><strong>The Rise of Forward-Deployed Engineering <span class="session-mins">15 min</span></strong>How FDEs bridge business problems, AI engineering and enterprise implementation, and how the approach differs from traditional software engineering, AI engineering and consulting.</li>
+                                    <li><strong>From AI Pilots to Production <span class="session-mins">15 min</span></strong>Evaluating pilots, establishing success metrics, addressing integration and governance challenges, and developing scalable AI delivery models.</li>
+                                    <li><strong>Industry&ndash;Academia Collaboration <span class="session-mins">10 min</span></strong>Industry-ready talent, corporate training, reskilling, and practical learning pathways for enterprise AI.</li>
+                                    <li><strong>Key Takeaways and Next Steps <span class="session-mins">5 min</span></strong>Priority workforce capabilities, enterprise challenges, and opportunities for collaboration.</li>
+                                </ol>
+                            </div>
+                        </details>
+                    </div>
                     <a href="/contact" class="btn btn-primary">Ask about a seat <i class="fas fa-arrow-right"></i></a>
                 </div>
             </article>
@@ -872,217 +704,120 @@
     </section>
 
     <!-- WORKSHOPS -->
-    <section class="section-pad" style="background:var(--off-white);padding-top:0;">
+    <section class="section-pad" style="background:white;" id="more-workshops">
         <div class="container">
-            <div class="section-header reveal">
+            <div class="tw-head">
                 <h2 class="section-title">More Workshops, <span class="accent">Coming Soon</span></h2>
-                <p class="section-subtitle">These are not open for seats yet. The workshop that comes with a Premium Delegate or VIP Pass is one of the featured workshops above.</p>
+                <p>These are not open for seats yet. The workshop that comes with a Premium Delegate or VIP Pass is one of the featured workshops above.</p>
             </div>
-            <div class="workshop-grid reveal">
-                <!-- Workshop 1 -->
-                <div class="workshop-card">
-                    <span class="workshop-badge">Popular</span>
-                    <h3>Generative AI & LLMs</h3>
-                    <p>Master the fundamentals and advanced techniques of working with Large Language Models and Generative AI applications.</p>
-                    <div class="workshop-meta">
-                        <div class="meta-item">
-                            <i class="fas fa-clock"></i>
-                            <span>4 Hours</span>
-                        </div>
-                        <div class="meta-item">
-                            <i class="fas fa-signal"></i>
-                            <span>Intermediate</span>
-                        </div>
-                    </div>
-                    <div class="workshop-topics">
-                        <h4>Topics Covered</h4>
-                        <ul>
-                            <li>LLM Architecture & Fundamentals</li>
+            <div class="tw-soon">
+                <details class="tw-row">
+                    <summary><span><span class="tw-soon-name">Generative AI &amp; LLMs</span><span class="tw-soon-meta">4 Hours &middot; Intermediate &middot; Coming soon</span></span></summary>
+                    <div class="tw-row-body">
+                        <p>Master the fundamentals and advanced techniques of working with Large Language Models and Generative AI applications.</p>
+                        <span class="tw-topics-head">Topics Covered</span>
+                        <ul class="session-covers">
+                            <li>LLM Architecture &amp; Fundamentals</li>
                             <li>Prompt Engineering Best Practices</li>
                             <li>RAG (Retrieval Augmented Generation)</li>
                             <li>Fine-tuning Pre-trained Models</li>
                         </ul>
                     </div>
-                    <span class="btn btn-block" style="cursor:default;background:#F1F2F7;color:#5E6585;border:1px solid #E0E3EE;box-shadow:none;" aria-disabled="true"><i class="fas fa-hourglass-half"></i> Coming soon</span>
-                </div>
-
-                <!-- Workshop 2 -->
-                <div class="workshop-card">
-                    <span class="workshop-badge">New</span>
-                    <h3>Agentic AI Development</h3>
-                    <p>Build autonomous AI agents that can reason, plan, and take actions to accomplish complex tasks.</p>
-                    <div class="workshop-lead">
-                        <img src="/images/speaker-ashish-tendulkar-panel.webp" alt="Dr. Ashish Tendulkar" width="44" height="44" loading="lazy" decoding="async">
-                        <div><span>Led by</span><strong>Dr. Ashish Tendulkar</strong><span>Lead, Google AI</span></div>
-                    </div>
-                    <div class="workshop-meta">
-                        <div class="meta-item">
-                            <i class="fas fa-clock"></i>
-                            <span>90 minutes</span>
+                </details>
+                <details class="tw-row">
+                    <summary><span><span class="tw-soon-name">Agentic AI Development</span><span class="tw-soon-meta">90 minutes &middot; Advanced &middot; Coming soon</span></span></summary>
+                    <div class="tw-row-body">
+                        <p>Build autonomous AI agents that can reason, plan, and take actions to accomplish complex tasks.</p>
+                        <div class="workshop-lead">
+                            <img src="/images/speaker-ashish-tendulkar-panel.webp" alt="Dr. Ashish Tendulkar" width="44" height="44" loading="lazy" decoding="async">
+                            <div><span>Led by</span><strong>Dr. Ashish Tendulkar</strong><span>Lead, Google AI</span></div>
                         </div>
-                        <div class="meta-item">
-                            <i class="fas fa-signal"></i>
-                            <span>Advanced</span>
-                        </div>
-                    </div>
-                    <div class="workshop-topics">
-                        <h4>Topics Covered</h4>
-                        <ul>
-                            <li>Agent Architecture & Frameworks</li>
-                            <li>Tool Integration & Function Calling</li>
+                        <span class="tw-topics-head">Topics Covered</span>
+                        <ul class="session-covers">
+                            <li>Agent Architecture &amp; Frameworks</li>
+                            <li>Tool Integration &amp; Function Calling</li>
                             <li>Multi-Agent Systems</li>
-                            <li>Deployment & Orchestration</li>
+                            <li>Deployment &amp; Orchestration</li>
                         </ul>
                     </div>
-                    <span class="btn btn-block" style="cursor:default;background:#F1F2F7;color:#5E6585;border:1px solid #E0E3EE;box-shadow:none;" aria-disabled="true"><i class="fas fa-hourglass-half"></i> Coming soon</span>
-                </div>
-
-                <!-- Workshop 3 -->
-                <div class="workshop-card">
-                    <span class="workshop-badge">Trending</span>
-                    <h3>VibeCoding & AI-Assisted Development</h3>
-                    <p>Leverage AI coding assistants and learn the art of prompt-driven development for rapid prototyping.</p>
-                    <div class="workshop-meta">
-                        <div class="meta-item">
-                            <i class="fas fa-clock"></i>
-                            <span>3 Hours</span>
-                        </div>
-                        <div class="meta-item">
-                            <i class="fas fa-signal"></i>
-                            <span>Beginner</span>
-                        </div>
-                    </div>
-                    <div class="workshop-topics">
-                        <h4>Topics Covered</h4>
-                        <ul>
-                            <li>GitHub Copilot & Cursor AI</li>
+                </details>
+                <details class="tw-row">
+                    <summary><span><span class="tw-soon-name">VibeCoding &amp; AI-Assisted Development</span><span class="tw-soon-meta">3 Hours &middot; Beginner &middot; Coming soon</span></span></summary>
+                    <div class="tw-row-body">
+                        <p>Leverage AI coding assistants and learn the art of prompt-driven development for rapid prototyping.</p>
+                        <span class="tw-topics-head">Topics Covered</span>
+                        <ul class="session-covers">
+                            <li>GitHub Copilot &amp; Cursor AI</li>
                             <li>Prompt Engineering for Code</li>
                             <li>Rapid Prototyping Techniques</li>
                             <li>Code Review with AI</li>
                         </ul>
                     </div>
-                    <span class="btn btn-block" style="cursor:default;background:#F1F2F7;color:#5E6585;border:1px solid #E0E3EE;box-shadow:none;" aria-disabled="true"><i class="fas fa-hourglass-half"></i> Coming soon</span>
-                </div>
-
-                <!-- Workshop 4 -->
-                <div class="workshop-card">
-                    <span class="workshop-badge">Essential</span>
-                    <h3>AI Product Development</h3>
-                    <p>End-to-end journey from ideation to deployment of AI-powered products and services.</p>
-                    <div class="workshop-meta">
-                        <div class="meta-item">
-                            <i class="fas fa-clock"></i>
-                            <span>5 Hours</span>
-                        </div>
-                        <div class="meta-item">
-                            <i class="fas fa-signal"></i>
-                            <span>Intermediate</span>
-                        </div>
-                    </div>
-                    <div class="workshop-topics">
-                        <h4>Topics Covered</h4>
-                        <ul>
-                            <li>AI Product Strategy & Planning</li>
-                            <li>MVP Development & Testing</li>
-                            <li>Model Selection & Integration</li>
-                            <li>Deployment & Monitoring</li>
+                </details>
+                <details class="tw-row">
+                    <summary><span><span class="tw-soon-name">AI Product Development</span><span class="tw-soon-meta">5 Hours &middot; Intermediate &middot; Coming soon</span></span></summary>
+                    <div class="tw-row-body">
+                        <p>End-to-end journey from ideation to deployment of AI-powered products and services.</p>
+                        <span class="tw-topics-head">Topics Covered</span>
+                        <ul class="session-covers">
+                            <li>AI Product Strategy &amp; Planning</li>
+                            <li>MVP Development &amp; Testing</li>
+                            <li>Model Selection &amp; Integration</li>
+                            <li>Deployment &amp; Monitoring</li>
                         </ul>
                     </div>
-                    <span class="btn btn-block" style="cursor:default;background:#F1F2F7;color:#5E6585;border:1px solid #E0E3EE;box-shadow:none;" aria-disabled="true"><i class="fas fa-hourglass-half"></i> Coming soon</span>
-                </div>
-
-                <!-- Workshop 5 -->
-                <div class="workshop-card">
-                    <span class="workshop-badge">Popular</span>
-                    <h3>Recommender System Development</h3>
-                    <p>Build intelligent recommendation engines using collaborative filtering, content-based, and hybrid approaches.</p>
-                    <div class="workshop-meta">
-                        <div class="meta-item">
-                            <i class="fas fa-clock"></i>
-                            <span>4 Hours</span>
-                        </div>
-                        <div class="meta-item">
-                            <i class="fas fa-signal"></i>
-                            <span>Intermediate</span>
-                        </div>
-                    </div>
-                    <div class="workshop-topics">
-                        <h4>Topics Covered</h4>
-                        <ul>
+                </details>
+                <details class="tw-row">
+                    <summary><span><span class="tw-soon-name">Recommender System Development</span><span class="tw-soon-meta">4 Hours &middot; Intermediate &middot; Coming soon</span></span></summary>
+                    <div class="tw-row-body">
+                        <p>Build intelligent recommendation engines using collaborative filtering, content-based, and hybrid approaches.</p>
+                        <span class="tw-topics-head">Topics Covered</span>
+                        <ul class="session-covers">
                             <li>Collaborative Filtering Algorithms</li>
                             <li>Content-Based Recommendations</li>
                             <li>Matrix Factorization Techniques</li>
                             <li>Real-time Recommendation Systems</li>
                         </ul>
                     </div>
-                    <span class="btn btn-block" style="cursor:default;background:#F1F2F7;color:#5E6585;border:1px solid #E0E3EE;box-shadow:none;" aria-disabled="true"><i class="fas fa-hourglass-half"></i> Coming soon</span>
-                </div>
-
-                <!-- Workshop 6 -->
-                <div class="workshop-card">
-                    <span class="workshop-badge">Hands-On</span>
-                    <h3>AI Chatbot Development</h3>
-                    <p>Create intelligent conversational AI systems using modern NLP frameworks and deployment strategies.</p>
-                    <div class="workshop-meta">
-                        <div class="meta-item">
-                            <i class="fas fa-clock"></i>
-                            <span>4 Hours</span>
-                        </div>
-                        <div class="meta-item">
-                            <i class="fas fa-signal"></i>
-                            <span>Intermediate</span>
-                        </div>
-                    </div>
-                    <div class="workshop-topics">
-                        <h4>Topics Covered</h4>
-                        <ul>
+                </details>
+                <details class="tw-row">
+                    <summary><span><span class="tw-soon-name">AI Chatbot Development</span><span class="tw-soon-meta">4 Hours &middot; Intermediate &middot; Coming soon</span></span></summary>
+                    <div class="tw-row-body">
+                        <p>Create intelligent conversational AI systems using modern NLP frameworks and deployment strategies.</p>
+                        <span class="tw-topics-head">Topics Covered</span>
+                        <ul class="session-covers">
                             <li>Conversational AI Architecture</li>
-                            <li>Intent Recognition & Entity Extraction</li>
+                            <li>Intent Recognition &amp; Entity Extraction</li>
                             <li>Context Management</li>
                             <li>Integration with Messaging Platforms</li>
                         </ul>
                     </div>
-                    <span class="btn btn-block" style="cursor:default;background:#F1F2F7;color:#5E6585;border:1px solid #E0E3EE;box-shadow:none;" aria-disabled="true"><i class="fas fa-hourglass-half"></i> Coming soon</span>
-                </div>
-
-                <!-- Workshop 8 -->
-                <div class="workshop-card">
-                    <span class="workshop-badge">Practical</span>
-                    <h3>Computer Vision & Image AI</h3>
-                    <p>Build image recognition, object detection, and visual AI applications using state-of-the-art models.</p>
-                    <div class="workshop-meta">
-                        <div class="meta-item">
-                            <i class="fas fa-clock"></i>
-                            <span>4 Hours</span>
-                        </div>
-                        <div class="meta-item">
-                            <i class="fas fa-signal"></i>
-                            <span>Intermediate</span>
-                        </div>
-                    </div>
-                    <div class="workshop-topics">
-                        <h4>Topics Covered</h4>
-                        <ul>
-                            <li>CNN Architectures & Transfer Learning</li>
+                </details>
+                <details class="tw-row">
+                    <summary><span><span class="tw-soon-name">Computer Vision &amp; Image AI</span><span class="tw-soon-meta">4 Hours &middot; Intermediate &middot; Coming soon</span></span></summary>
+                    <div class="tw-row-body">
+                        <p>Build image recognition, object detection, and visual AI applications using state-of-the-art models.</p>
+                        <span class="tw-topics-head">Topics Covered</span>
+                        <ul class="session-covers">
+                            <li>CNN Architectures &amp; Transfer Learning</li>
                             <li>Object Detection (YOLO, R-CNN)</li>
                             <li>Image Segmentation Techniques</li>
                             <li>Deployment on Edge Devices</li>
                         </ul>
                     </div>
-                    <span class="btn btn-block" style="cursor:default;background:#F1F2F7;color:#5E6585;border:1px solid #E0E3EE;box-shadow:none;" aria-disabled="true"><i class="fas fa-hourglass-half"></i> Coming soon</span>
-                </div>
+                </details>
             </div>
         </div>
     </section>
 
     <!-- WHO SHOULD ATTEND -->
-    <section class="section-pad" style="background:white;">
+    <section class="section-pad" style="background:var(--off-white);">
         <div class="container">
-            <div class="section-header reveal">
+            <div class="tw-head">
                 <h2 class="section-title">Who Should <span class="accent">Attend?</span></h2>
-                <p class="section-subtitle">Perfect for professionals looking to upskill in AI technologies</p>
+                <p>Perfect for professionals looking to upskill in AI technologies</p>
             </div>
-            <div class="tracks-tag-grid reveal">
+            <div class="tracks-tag-grid tw-audience" style="justify-content:flex-start;">
                 <span class="track-tag">Software Developers</span>
                 <span class="track-tag">Data Scientists</span>
                 <span class="track-tag">ML Engineers</span>
@@ -1096,111 +831,59 @@
     </section>
 
     <!-- PREREQUISITES -->
-    <section class="section-pad" style="background:var(--off-white);">
+    <section class="section-pad" style="background:var(--off-white);padding-top:0;">
         <div class="container">
-            <div class="prerequisites-box reveal">
-                <div class="prerequisites-content">
-                    <div class="section-header" style="margin-bottom:2rem;">
-                        <h2 class="section-title" style="color:white;">What You'll <span class="accent">Need</span></h2>
-                        <p class="section-subtitle" style="color:rgba(255,255,255,0.8);">Basic requirements to get the most out of workshops</p>
-                    </div>
-                    <div class="prerequisites-list">
-                        <div class="prereq-item">
-                            <i class="fas fa-laptop"></i>
-                            <span>Laptop with minimum 8GB RAM</span>
-                        </div>
-                        <div class="prereq-item">
-                            <i class="fas fa-code"></i>
-                            <span>Basic Python programming knowledge</span>
-                        </div>
-                        <div class="prereq-item">
-                            <i class="fas fa-wifi"></i>
-                            <span>Stable internet connection</span>
-                        </div>
-                        <div class="prereq-item">
-                            <i class="fas fa-user-circle"></i>
-                            <span>GitHub/Google Cloud account</span>
-                        </div>
-                        <div class="prereq-item">
-                            <i class="fas fa-download"></i>
-                            <span>Pre-installed software (list provided)</span>
-                        </div>
-                        <div class="prereq-item">
-                            <i class="fas fa-brain"></i>
-                            <span>Enthusiasm to learn and experiment!</span>
-                        </div>
-                    </div>
+            <div class="prerequisites-box">
+                <div class="tw-head">
+                    <h2 class="section-title">What You'll <span class="accent">Need</span></h2>
+                    <p>Basic requirements to get the most out of workshops</p>
                 </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- INSTRUCTOR HIGHLIGHT -->
-    <section class="section-pad" style="background:white;">
-        <div class="container">
-            <div class="instructor-section reveal">
-                <h3>Learn from Industry Experts</h3>
-                <p>Our workshops are led by experienced AI practitioners and researchers who are building real-world AI systems at leading tech companies, startups, and research institutions. Get insights beyond textbooks and online courses.</p>
-                <div class="facilitator">
-                    <img src="/images/speaker-ashish-tendulkar-final.jpg" alt="Dr. Ashish Tendulkar" width="96" height="96" loading="lazy">
-                    <div class="facilitator-who">
-                        <span class="facilitator-label">Workshop Facilitator</span>
-                        <strong>Dr. Ashish Tendulkar</strong>
-                        <span class="facilitator-role">Lead AI, Google</span>
-                    </div>
-                </div>
-                <div class="facilitator">
-                    <img src="/images/speaker-vinay-kulkarni-sq.webp" alt="Dr. Vinay Kulkarni" width="96" height="96" loading="lazy">
-                    <div class="facilitator-who">
-                        <span class="facilitator-label">Workshop Facilitator</span>
-                        <strong>Dr. Vinay Kulkarni</strong>
-                        <span class="facilitator-role">Adjunct Faculty, IIT Bombay &middot; Director, Aegis School of Data Science &amp; AI</span>
-                    </div>
-                </div>
-                <div class="facilitator">
-                    <img src="/images/speaker-parijat-shukla-sq.webp" alt="Dr. Parijat Shukla" width="96" height="96" loading="lazy">
-                    <div class="facilitator-who">
-                        <span class="facilitator-label">Workshop Facilitator</span>
-                        <strong>Dr. Parijat Shukla</strong>
-                        <span class="facilitator-role">PhD, Iowa State University</span>
-                    </div>
-                </div>
-                <div class="facilitator">
-                    <img src="/images/speaker-virendra-pal.webp" alt="Virendra Pal" width="96" height="96" loading="lazy">
-                    <div class="facilitator-who">
-                        <span class="facilitator-label">Workshop Facilitator</span>
-                        <strong>Virendra Pal</strong>
-                        <span class="facilitator-role">AI and FinTech Expert</span>
-                    </div>
-                </div>
-                <div class="instructor-badges">
-                    <span class="instructor-badge">🏢 FAANG Engineers</span>
-                    <span class="instructor-badge">🎓 PhD Researchers</span>
-                    <span class="instructor-badge">🚀 Startup Founders</span>
-                    <span class="instructor-badge">📚 Published Authors</span>
-                    <span class="instructor-badge">💼 Industry Veterans</span>
+                <div class="prerequisites-list">
+                    <div class="prereq-item"><i class="fas fa-laptop" aria-hidden="true"></i><span>Laptop with minimum 8GB RAM</span></div>
+                    <div class="prereq-item"><i class="fas fa-code" aria-hidden="true"></i><span>Basic Python programming knowledge</span></div>
+                    <div class="prereq-item"><i class="fas fa-wifi" aria-hidden="true"></i><span>Stable internet connection</span></div>
+                    <div class="prereq-item"><i class="fas fa-user-circle" aria-hidden="true"></i><span>GitHub/Google Cloud account</span></div>
+                    <div class="prereq-item"><i class="fas fa-download" aria-hidden="true"></i><span>Pre-installed software (list provided)</span></div>
+                    <div class="prereq-item"><i class="fas fa-brain" aria-hidden="true"></i><span>Enthusiasm to learn and experiment!</span></div>
                 </div>
             </div>
         </div>
     </section>
 
     <!-- PRICING -->
-    <section class="section-pad" style="background:var(--off-white);">
+    <section class="section-pad" style="background:white;" id="passes">
         <div class="container">
-            <div class="pricing-highlight reveal">
-                <h3>Workshop Registration</h3>
-                <p>A workshop seat comes with two passes: the <strong>Premium Delegate Pass</strong> (<s style="font-weight:400;opacity:.7;">&#8377;9,999</s> &#8377;14,999 + GST) and the <strong>VIP Pass</strong> (<s style="font-weight:400;opacity:.7;">&#8377;19,999</s> &#8377;24,999 + GST), one workshop each. Prices went up on 6 Nov and may go up again. Seats are limited and go first come, first served: after you pay, you choose your seat in the app, in a few seconds. The Delegate Pass (<s style="font-weight:400;opacity:.7;">&#8377;4,999</s> &#8377;8,999 + GST) covers the conference and the networking lunch, without a workshop.</p>
-                <div style="display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;">
-                    <a href="/register#premium" class="btn btn-primary btn-lg" style="background:white;color:var(--saffron);">Get Premium Delegate <i class="fas fa-arrow-right"></i></a>
-                    <a href="/register#compare" class="btn btn-ghost btn-lg" style="border-color:white;color:white;">Compare passes</a>
-                    <a href="/contact" class="btn btn-ghost btn-lg" style="border-color:white;color:white;">Group Booking</a>
+            <div class="tw-head">
+                <h2 class="section-title">Workshop <span class="accent">Registration</span></h2>
+                <p>A workshop seat comes with two passes, one workshop each.</p>
+            </div>
+            <div class="tw-passes">
+                <div class="tw-pass tw-pass--lead">
+                    <h3>Premium Delegate Pass</h3>
+                    <p class="tw-pass-includes">One workshop</p>
+                    <p class="tw-price"><s style="font-weight:400;opacity:.7;">&#8377;9,999</s> &#8377;14,999 <small>+ GST</small></p>
+                    <a href="/register#premium" class="btn btn-primary btn-lg">Get Premium Delegate <i class="fas fa-arrow-right"></i></a>
                 </div>
+                <div class="tw-pass">
+                    <h3>VIP Pass</h3>
+                    <p class="tw-pass-includes">One workshop</p>
+                    <p class="tw-price"><s style="font-weight:400;opacity:.7;">&#8377;19,999</s> &#8377;24,999 <small>+ GST</small></p>
+                    <a href="/register#vip" class="btn btn-outline btn-lg">Get VIP Pass <i class="fas fa-arrow-right"></i></a>
+                </div>
+            </div>
+            <div class="tw-pass-notes">
+                <p>Prices went up on 6 Nov and may go up again. Seats are limited and go first come, first served: after you pay, you choose your seat in the app, in a few seconds.</p>
+                <p>The Delegate Pass (<s style="font-weight:400;opacity:.7;">&#8377;4,999</s> &#8377;8,999 + GST) covers the conference and the networking lunch, without a workshop.</p>
+            </div>
+            <div class="tw-pass-links">
+                <a href="/register#compare" class="btn btn-outline">Compare passes</a>
+                <a href="/contact" class="btn btn-outline">Group Booking</a>
             </div>
         </div>
     </section>
 
     <!-- CALL FOR WORKSHOP PARTNERS: saved as an enquiry of type workshop_partner (Admin, Enquiries; Overview, Waiting on you) -->
-    <section class="section-pad" style="background:white;">
+    <section class="section-pad tw-static" style="background:white;">
         <div class="container">
             <div class="wp-grid" id="workshop-partners">
                 <div class="wp-left reveal">
@@ -1327,7 +1010,7 @@
     <!-- CTA -->
     <section class="cta-section">
         <div class="container">
-            <div class="cta-content reveal">
+            <div class="cta-content">
                 <h2>Ready to Master <span class="accent">AI Technologies?</span></h2>
                 <p>Join our hands-on workshops and build real AI applications with expert guidance.</p>
                 <div class="cta-buttons">
@@ -1387,7 +1070,10 @@
                 </div>
             </div>
             <div class="footer-bottom">
-                <p>&copy; 2026 Bharat AI Innovation. All rights reserved. | Organized by Aegis Knowledge Trust</p>
+                <div>
+                    <p>&copy; 2026 Bharat AI Innovation. All rights reserved. | Organized by Aegis Knowledge Trust</p>
+                    <p class="tw-credit">Motion effects from <a href="https://skiper-ui.com" target="_blank" rel="noopener noreferrer">Skiper UI</a> and <a href="https://github.com/Ashutoshx7/VengeanceUI" target="_blank" rel="noopener noreferrer">Vengeance UI</a>.</p>
+                </div>
                 <div class="footer-bottom-links">
                     <a href="/privacy">Privacy Policy</a>
                     <a href="/terms">Terms of Service</a>
@@ -1518,5 +1204,6 @@
     })();
     </script>
     <script src="js/main.js?v=20261029"></script>
+    <script src="js/workshop-motion.js?v=20261106" defer></script>
 </body>
 </html>
