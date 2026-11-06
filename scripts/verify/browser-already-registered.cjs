@@ -105,6 +105,7 @@ const seed = async (name, email, mobile, over = {}) => {
     await page.fill('#rf-title', 'Founder');
     await page.fill('#rf-city', 'Pune');
     await page.selectOption('#rf-industry', 'Software & SaaS');
+    await page.click('#rf-more summary');
     await page.fill('#rf-linkedin', 'linkedin.com/in/asha-rao');
     await page.click('#rf-submit');
     await page.waitForFunction(() => { const s = document.getElementById('reg-success'); return s && !s.classList.contains('hidden'); }, null, { timeout: 15000 }).catch(() => {});

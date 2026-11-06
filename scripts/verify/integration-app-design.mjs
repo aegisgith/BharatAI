@@ -89,10 +89,15 @@ for (const l of [...new Set(links)]) {
 check('the footer credits both libraries', foot.includes('skiper-ui.com') && foot.includes('VengeanceUI'), 'credit');
 check('the footer names the organiser as the website does', foot.includes('Organized by Aegis Knowledge Trust') && readFileSync(join(ROOT, 'public/training-workshop.html'), 'utf8').includes('Organized by Aegis Knowledge Trust'), 'wording');
 
-// The menu on the worker's other pages.
+// The menu on the worker's other pages: /contact keeps the app's bar; /passes, /register and /inquiry
+// carry the site's own menu since 6 Nov 2026 (unit-booking-pages.mjs).
+{
+  const r = await get('/contact');
+  check('/contact says Conference Schedule in its menu, and still links to the tab', r.status === 200 && r.text.includes('Conference Schedule') && r.text.includes('/app#schedule'), String(r.status));
+}
 for (const p of ['/register', '/inquiry']) {
   const r = await get(p);
-  check(p + ' says Conference Schedule in its menu, and still links to the tab', r.status === 200 && r.text.includes('Conference Schedule') && r.text.includes('/app#schedule'), String(r.status));
+  check(p + ' carries the menu of the website', r.status === 200 && r.text.includes('<nav class="ps-nav"') && r.text.includes('<a href="/conference"'), String(r.status));
 }
 
 // Files the page and the service worker name are on disk, and the service worker's list is well formed.

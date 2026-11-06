@@ -552,6 +552,7 @@ const PHONE = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isM
     await page.selectOption('#rf-industry', 'Software & SaaS');
     // Typed the way the box's own hint shows it. Until 5 Nov 2026 the browser
     // stopped the form here with "Please enter a URL." (requestSubmit validates).
+    await page.click('#rf-more summary');
     await page.fill('#rf-linkedin', 'linkedin.com/in/ravi-upsell');
     const above = await page.evaluate(() => {
       const form = document.getElementById('reg-form');

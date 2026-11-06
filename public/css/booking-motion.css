@@ -1,0 +1,124 @@
+/* Motion on /register and /inquiry only, on top of passes-motion.css (the aurora, the rising words,
+   the menu's line, the opening questions, the gathering letters and the light on the last button).
+   To remove all of it, empty BOOKING_MOTION and BOOKING_SCRIPTS in src/index.tsx: every word and
+   every form stay, the page simply stops moving.
+
+   Rebuilt by hand in plain CSS and JS, because the site has no React. Nothing is installed and no
+   component is copied.
+
+   From Skiper UI, free version (https://skiper-ui.com), which asks for a credit: the page's footer
+   carries it. Skiper 31 letters that gather on scroll, Skiper 40 link underline.
+
+   From Vengeance UI (https://github.com/Ashutoshx7/VengeanceUI): Aurora Hero, Stagger Text, Morphing
+   Disclosure, Spotlight Navbar, Glow Border Card and Border Beam.
+
+   After Uiverse.io (https://uiverse.io, MIT, copyright 2023 Uiverse.io): the sliding glider on a
+   choice (Pradeepsaranbishnoi), the shine on a button (PozDevill), the arrow that slides on a row
+   (JaydipPrajapati1910).
+
+   MIT License
+
+   Copyright (c) 2025-2026 Ashutoshx7
+
+   Permission is hereby granted, free of charge, to any person obtaining a copy
+   of this software and associated documentation files (the "Software"), to deal
+   in the Software without restriction, including without limitation the rights
+   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+   copies of the Software, and to permit persons to whom the Software is
+   furnished to do so, subject to the following conditions:
+
+   The above copyright notice and this permission notice shall be included in all
+   copies or substantial portions of the Software.
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+   SOFTWARE. */
+
+/* Glow Border Card: a coloured edge turns slowly round the Delegate Pass. It sits outside the row,
+   so the dark panel keeps it from widening anything. */
+.rg-tier--lead { isolation: isolate; box-shadow: none; }
+.rg-tier--lead::before, .rg-tier--lead::after { content: ''; position: absolute; pointer-events: none; }
+.rg-tier--lead::before { inset: -2px; z-index: -2; border-radius: 17px; background: conic-gradient(from var(--ps-angle), #FF6B00, #FFD54F, #00C389, #6EA8FF, #FF8C38, #FF6B00); }
+.rg-tier--lead::after { inset: 0; z-index: -1; border-radius: 15px; background: #fff; }
+
+@media (prefers-reduced-motion: no-preference) {
+  /* The sliding glider. */
+  .rg-glider { transition: transform 0.32s cubic-bezier(0.34, 1.3, 0.64, 1); }
+  .rg-switch label { transition: color 0.2s ease; }
+  .rg-switch label span { transition: color 0.2s ease; }
+
+  .rg-tier--lead::before { animation: ps-turn 6s linear infinite; }
+  .rg-tier--lead.rg-off::before { animation-play-state: paused; }
+
+  /* The shine on a button. It runs by itself only once the form is ready to send, so it says one
+     thing: this can be pressed now. On a mouse it also runs on hover. */
+  .rg-cta { overflow: hidden; }
+  .rg-cta::after {
+    content: ''; position: absolute; top: 0; bottom: 0; left: 0; width: 42%; pointer-events: none;
+    background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.38), transparent);
+    transform: translateX(-130%) skewX(-14deg);
+  }
+  form:valid .rg-cta:not(:disabled)::after { animation: rg-shine 3.4s ease-in-out infinite; }
+  @media (hover: hover) { .rg-cta:hover::after { animation: rg-shine 1s ease-out; } }
+  .ps-buy { transition: background-color 0.15s, transform 0.12s; }
+  .ps-buy:active { transform: scale(0.985); }
+
+  /* The boxes answer to being used. */
+  .rg-page .rg-field input, .rg-page .rg-field select, .rg-page .rg-field textarea { transition: border-color 0.15s, box-shadow 0.2s; }
+
+  /* The arrow on a row slides, on a mouse or under a finger. */
+  .rg-tier-go i { transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1); }
+  .rg-tier:active { transform: scale(0.99); }
+  .rg-tier:active .rg-tier-go i { transform: translateX(4px); }
+  @media (hover: hover) {
+    .rg-tier:hover .rg-tier-go i { transform: translateX(4px); }
+    .rg-tier:hover, .bk-pkg:hover { transform: translateY(-2px); }
+    .rg-tier, .bk-pkg { transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.15s, box-shadow 0.2s; }
+  }
+  .bk-pkg:active { transform: scale(0.99); }
+
+  /* Stagger: the sizes settle one after another, and the passes when they first appear. */
+  .bk-list li, .rg-tiers li { animation: rg-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both; animation-delay: calc(var(--i, 0) * 55ms); }
+  .bk-foot { transform-origin: 50% 100%; animation: rg-grow 0.6s cubic-bezier(0.22, 1, 0.36, 1) both; animation-delay: calc(var(--i, 0) * 70ms + 120ms); transition: background-color 0.2s; }
+  .bk-plan i { transition: background-color 0.2s; }
+  .bk-pkg.is-on .bk-tick { animation: rg-pop 0.34s cubic-bezier(0.34, 1.56, 0.64, 1); }
+  .bk-sum:not(.hidden) { animation: rg-in 0.32s cubic-bezier(0.22, 1, 0.36, 1); }
+  .bk-done:not(.hidden) { animation: rg-in 0.4s cubic-bezier(0.22, 1, 0.36, 1); }
+
+  /* The paid form comes up from the foot of a phone, and fades in on a laptop. */
+  .rg-modal.flex { animation: rg-fade 0.2s ease-out; }
+  .rg-modal.flex .rg-sheet { animation: rg-up 0.34s cubic-bezier(0.22, 1, 0.36, 1); }
+
+  /* Morphing Disclosure, on the folded parts of the forms. */
+  @supports (interpolate-size: allow-keywords) {
+    .rg-more { interpolate-size: allow-keywords; }
+    .rg-more::details-content { height: 0; overflow: clip; transition: height 0.32s cubic-bezier(0.22, 1, 0.36, 1), content-visibility 0.32s allow-discrete; }
+    .rg-more[open]::details-content { height: auto; }
+  }
+  .rg-more summary::after { transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1); }
+}
+@keyframes rg-shine { 0% { transform: translateX(-130%) skewX(-14deg); } 42%, 100% { transform: translateX(330%) skewX(-14deg); } }
+@keyframes rg-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes rg-grow { from { transform: scaleY(0); } to { transform: none; } }
+@keyframes rg-pop { from { transform: scale(0); } to { transform: none; } }
+@keyframes rg-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes rg-up { from { transform: translateY(36px); opacity: 0.4; } to { transform: none; opacity: 1; } }
+
+/* A soft light follows a mouse across the sizes and the passes. Touch screens never get it. */
+@media (hover: hover) {
+  .bk-pkg { isolation: isolate; }
+  .bk-pkg::before {
+    content: ''; position: absolute; inset: 0; z-index: -1; border-radius: 15px; opacity: 0; pointer-events: none;
+    background: radial-gradient(180px circle at var(--mx, 50%) var(--my, 50%), rgba(255, 107, 0, 0.1), transparent 70%);
+    transition: opacity 0.2s ease;
+  }
+  .bk-pkg:hover::before { opacity: 1; }
+}
+
+@media print {
+  .rg-tier--lead::before, .rg-tier--lead::after, .rg-cta::after { display: none; }
+}

@@ -19701,6 +19701,36 @@ function passComparisonHTML(): string {
     <p style="margin:6px 2px 0;font-size:12px;line-height:1.6;color:#5E6585;">Paid passes are + 18% GST. Workshop seats are limited and go first come, first served: after you pay, you choose your seat in the app, one per pass. The Academic Pass needs a valid student or faculty ID at the badge desk. Media passes are by invitation.</p>`
 }
 
+// The site's own menu, in the site's order (a change to it in public/*.html belongs here too), for the
+// worker pages that are part of the website: /passes, /register, /inquiry. `current` is the menu item
+// the page belongs under. The app's bar sent Home to /app and, on a phone, offered no menu at all.
+function siteHeaderHTML(current: string): string {
+  const menu: [string, string][] = [
+    ['/', 'Home'], ['/conference', 'Conference'], ['/exhibition', 'Exhibition'], ['/networking', 'Networking'], ['/passes', 'Passes'],
+    ['/partner', 'Partner'], ['/government', 'Govt'], ['/training-workshop', 'Workshops'], ['/marketplace', 'AI Marketplace'],
+    ['/campus-series', 'Campus Series'], ['/delhi', 'Delhi 2027'], ['/ai-readiness', 'AI Readiness'], ['https://bellaward.com', 'AGBA'], ['/contact', 'Contact'],
+  ]
+  return `<header class="ps-head">
+  <div class="ps-head-in">
+    <a href="/" class="ps-logo"><img src="/images/logo-nav.webp" alt="Bharat AI Innovation" loading="eager"></a>
+    <nav class="ps-nav" aria-label="Main">
+      ${menu.map(([href, label]) => `<a href="${href}"${href === current ? ' aria-current="page"' : ''}${href.startsWith('http') ? ' target="_blank" rel="noopener noreferrer"' : ''}>${label}</a>`).join('')}
+    </nav>
+    <a href="/app#login" class="ps-login"><i class="fas fa-sign-in-alt" aria-hidden="true"></i> Log In</a>
+  </div>
+</header>
+<script>(function () { var n = document.querySelector('.ps-nav'), a = n && n.querySelector('[aria-current]'); if (a && n.scrollWidth > n.clientWidth) n.scrollLeft = a.offsetLeft - n.offsetLeft - 60; })();</script>`
+}
+
+// What /register and /inquiry add to the head and the foot of a page. The design and the movement are
+// shared with /passes (passes-design.css, passes-motion.css and .js) and added to in booking-*. To stop
+// the movement, empty BOOKING_MOTION and BOOKING_SCRIPTS: every word and every form stay. Older pages:
+// docs/page-backups/register-before-redesign-2026-11-06.html and inquiry-before-redesign-2026-11-06.html
+const BOOKING_DESIGN = '<link rel="stylesheet" href="/css/passes-design.css?v=20261106"><link rel="stylesheet" href="/css/booking-design.css?v=20261106">'
+const BOOKING_MOTION = '<link rel="stylesheet" href="/css/passes-motion.css?v=20261106"><link rel="stylesheet" href="/css/booking-motion.css?v=20261106">'
+const BOOKING_SCRIPTS = '<script src="/js/passes-motion.js?v=20261106" defer></script><script src="/js/booking-motion.js?v=20261106" defer></script>'
+const BOOKING_CREDIT = '<p class="ps-credit">Motion effects from <a href="https://skiper-ui.com" target="_blank" rel="noopener noreferrer">Skiper UI</a> and <a href="https://github.com/Ashutoshx7/VengeanceUI" target="_blank" rel="noopener noreferrer">Vengeance UI</a>, and small details after <a href="https://uiverse.io" target="_blank" rel="noopener noreferrer">Uiverse</a>.</p>'
+
 function passesPageHTML(): string {
   // Each pass looks like the badge it buys. The buttons carry a source tag, as the home page's do,
   // so Admin can see which part of this page sold the pass.
@@ -19727,13 +19757,6 @@ function passesPageHTML(): string {
     ['Student or faculty', 'Academic', '#academic'],
     ['Just the exhibition floor', 'Visitor', '#visitor'],
   ]
-  // The site's own menu, in the site's order (a change to it in public/*.html belongs here too).
-  // The app's bar sent Home to /app and, on a phone, offered no menu at all.
-  const menu: [string, string][] = [
-    ['/', 'Home'], ['/conference', 'Conference'], ['/exhibition', 'Exhibition'], ['/networking', 'Networking'], ['/passes', 'Passes'],
-    ['/partner', 'Partner'], ['/government', 'Govt'], ['/training-workshop', 'Workshops'], ['/marketplace', 'AI Marketplace'],
-    ['/campus-series', 'Campus Series'], ['/delhi', 'Delhi 2027'], ['/ai-readiness', 'AI Readiness'], ['https://bellaward.com', 'AGBA'], ['/contact', 'Contact'],
-  ]
   const faq: [string, string][] = [
     ['Which pass should I buy?', 'Coming for the conference: the <strong>Delegate Pass</strong>. Want a hands-on workshop seat as well: <strong>Premium Delegate</strong>. Want the Bharat AI Leaders’ Evening, the lounge and the speaker meet &amp; greet: <strong>VIP</strong>. A student or faculty member with ID: <strong>Academic</strong>. Only the exhibition floor: the free <strong>Visitor Pass</strong>, where entry is not guaranteed: it depends on slot availability on 20 and 21 Nov, a half-day slot or none, confirmed by email.'],
     ['Is entry guaranteed?', 'On every paid pass, yes, on both days. ' + FREE_ENTRY_TEXT],
@@ -19750,16 +19773,7 @@ function passesPageHTML(): string {
   const extraHead = '<link rel="stylesheet" href="/css/passes-design.css?v=20261106"><link rel="stylesheet" href="/css/passes-motion.css?v=20261106"></head>'
   return `${sharedHeadHTML('Passes', '/passes', "Every pass for Bharat AI Innovation 2026 compared: free Visitor Pass (entry not guaranteed, by slot as available), Academic, Delegate, Premium Delegate and VIP, all + GST. " + (latePricing() ? '' : 'Standard prices until ' + PRICE_DEADLINE_TEXT + '. ') + "20–21 Nov, World Trade Center Mumbai.").replace('</head>', extraHead)}
 <body class="min-h-screen ps-page">
-<header class="ps-head">
-  <div class="ps-head-in">
-    <a href="/" class="ps-logo"><img src="/images/logo-nav.webp" alt="Bharat AI Innovation" loading="eager"></a>
-    <nav class="ps-nav" aria-label="Main">
-      ${menu.map(([href, label]) => `<a href="${href}"${href === '/passes' ? ' aria-current="page"' : ''}${href.startsWith('http') ? ' target="_blank" rel="noopener noreferrer"' : ''}>${label}</a>`).join('')}
-    </nav>
-    <a href="/app#login" class="ps-login"><i class="fas fa-sign-in-alt" aria-hidden="true"></i> Log In</a>
-  </div>
-</header>
-<script>(function () { var n = document.querySelector('.ps-nav'), a = n && n.querySelector('[aria-current]'); if (a && n.scrollWidth > n.clientWidth) n.scrollLeft = a.offsetLeft - n.offsetLeft - 60; })();</script>
+${siteHeaderHTML('/passes')}
 
 <main>
   <section class="ps-hero">
@@ -19872,112 +19886,127 @@ ${sharedFooterHTML()}
 }
 
 function registerPageHTML(): string {
-  return `${sharedHeadHTML('Passes & Registration', '/register', "Passes for Bharat AI Innovation 2026, India's B2B AI conference and exhibition: " + (latePricing() ? 'Delegate' : 'Delegate ₹4,999 + GST until 5 Nov') + " with guaranteed entry, Premium Delegate, VIP, Academic, or a free Visitor Pass where entry is not guaranteed (by slot as available). 20–21 Nov 2026, WTC Mumbai.")}
-<body class="min-h-screen">
-${sharedNavHTML('register')}
+  // A paid pass beside the free form. Pressing one opens the paid form on that pass, carrying over
+  // whatever has been typed into the free form. The colours are the badges' on /passes.
+  const tier = (hash: string, pass: string, short: string, what: string, tag: string, color: string, lead = false) => `
+          <li><a class="rg-tier${lead ? ' rg-tier--lead' : ''}" style="--c:${color};" href="#${hash}" onclick="return upgradeFromSuccess('${pass}')">
+            <span class="rg-tier-top"><b class="rg-tier-name">${short}</b><span class="rg-tier-tag">${tag}</span></span>
+            <span class="rg-tier-what">${what}</span>
+            <span class="rg-tier-foot"><span class="rg-tier-price">${priceNow(pass)} <small>+ GST</small>${latePriceTag(pass)}</span><span class="rg-tier-go">Get this pass <i class="fas fa-arrow-right" aria-hidden="true"></i></span></span>
+          </a></li>`
+  return `${sharedHeadHTML('Passes & Registration', '/register', "Passes for Bharat AI Innovation 2026, India's B2B AI conference and exhibition: " + (latePricing() ? 'Delegate' : 'Delegate ₹4,999 + GST until 5 Nov') + " with guaranteed entry, Premium Delegate, VIP, Academic, or a free Visitor Pass where entry is not guaranteed (by slot as available). 20–21 Nov 2026, WTC Mumbai.").replace('</head>', BOOKING_DESIGN + BOOKING_MOTION + '</head>')}
+<body class="min-h-screen ps-page rg-page">
+${siteHeaderHTML('/passes')}
 
-<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-  <!-- Hero -->
-  <div class="text-center mb-8">
-    <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold bg-primary-500/20 text-primary-300 border border-primary-500/30 mb-4">
-      <i class="fas fa-ticket-alt"></i>${latePricing() ? 'PRICES WENT UP ON 6 NOV' : 'STANDARD PRICES UNTIL 5 NOV'}
+<main>
+  <section class="ps-hero rg-hero">
+    <div class="ps-aurora" aria-hidden="true"><i></i></div>
+    <div class="ps-wrap ps-hero-in">
+      <div>
+        <p class="ps-tag"><i class="fas fa-ticket-alt" aria-hidden="true"></i>${latePricing() ? 'PRICES WENT UP ON 6 NOV' : 'STANDARD PRICES UNTIL 5 NOV'}</p>
+        <h1 class="ps-title" aria-label="Register for Bharat AI Innovation 2026"><span class="ps-w ps-w--big"><span style="--i:0">Register</span></span> <span class="ps-w"><span style="--i:1">for</span></span> <span class="ps-w"><span style="--i:2">Bharat</span></span> <span class="ps-w"><span style="--i:3">AI</span></span> <span class="ps-w"><span style="--i:4">Innovation</span></span> <span class="ps-w"><span style="--i:5">2026</span></span></h1>
+      </div>
+      <p class="ps-sub">World Trade Center, Mumbai, 20&ndash;21 Nov 2026.<span class="hidden sm:inline"> Take a free Visitor Pass for the exhibition floor, or a Delegate Pass for every session, the networking lunch, the networking app and guaranteed entry on both days.</span></p>
     </div>
-    <h1 class="text-3xl md:text-4xl font-bold mb-3">Passes and registration for Bharat AI Innovation 2026</h1>
-    <p class="text-gray-400 max-w-2xl mx-auto">World Trade Center, Mumbai, 20–21 Nov 2026.<span class="hidden sm:inline"> Take a free Visitor Pass for the exhibition floor, or a Delegate Pass for every session, the networking lunch, the networking app and guaranteed entry on both days.</span></p>
-  </div>
+  </section>
 
-  <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 max-w-5xl mx-auto">
-    <!-- Registration Form -->
-    <div>
-      <div class="glass rounded-2xl p-6 md:p-8 border border-primary-500/20">
-        <div id="reg-intro">
-        <div class="flex items-center gap-3 mb-2">
-          <div class="w-10 h-10 rounded-xl bg-primary-500/20 flex items-center justify-center shrink-0">
-            <i class="fas fa-id-badge text-lg text-primary-400"></i>
-          </div>
-          <div>
-            <h2 class="font-bold text-lg text-primary-300">Get Your Free Visitor Pass</h2>
-            <p class="text-xs text-gray-400">Register in 30 seconds</p>
-          </div>
-        </div>
-        <div class="text-center p-3 rounded-xl bg-primary-500/10 border border-primary-500/20 mb-5">
-          <span class="text-primary-400 text-xs font-semibold"><i class="fas fa-check-circle mr-1"></i>Exhibition floor &amp; product demos, free &middot; entry by time slot on 20 and 21 Nov, as available, confirmed by email</span>
-        </div>
-        </div>
+  <section class="rg-book" id="rg-book" aria-label="Choose your pass and register">
+    <div class="ps-wrap">
+      <div class="rg-switch" id="rg-switch" role="radiogroup" aria-label="Which pass do you want?">
+        <input class="rg-sr" type="radio" name="rg-view" id="rg-view-free" autocomplete="off" checked>
+        <label for="rg-view-free"><b>Free Visitor Pass</b><span>Entry by time slot</span></label>
+        <input class="rg-sr" type="radio" name="rg-view" id="rg-view-paid" autocomplete="off">
+        <label for="rg-view-paid"><b>Paid pass</b><span>Guaranteed entry</span></label>
+        <i class="rg-glider" aria-hidden="true"></i>
+      </div>
 
-        <form id="reg-form" onsubmit="submitRegistration(event)" class="space-y-4">
-          <div>
-            <label class="text-xs text-gray-400 mb-1 block">Full Name *</label>
-            <input type="text" id="rf-name" autocomplete="name" autocapitalize="words" required class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Your full name">
-          </div>
-          <div>
-            <label class="text-xs text-gray-400 mb-1 block">Email Address *</label>
-            <input type="email" id="rf-email" autocomplete="email" inputmode="email" autocapitalize="none" spellcheck="false" required class="w-full px-4 py-3 rounded-xl text-sm" placeholder="your@email.com">
-          </div>
-          <div class="grid grid-cols-2 gap-4">
-            <div>
-              <label class="text-xs text-gray-400 mb-1 block">Mobile Number *</label>
-              <input type="tel" id="rf-phone" autocomplete="tel" required class="w-full px-4 py-3 rounded-xl text-sm" placeholder="+91 XXXXX XXXXX">
+      <div class="rg-grid">
+        <div class="rg-free">
+          <div class="rg-card">
+            <div id="reg-intro">
+              <div class="rg-badge">
+                <i class="ps-slot" aria-hidden="true"></i>
+                <h2>Get Your Free Visitor Pass</h2>
+                <span class="rg-who" id="rg-who">Register in 30 seconds</span>
+              </div>
+              <p class="rg-note"><i class="fas fa-check-circle" aria-hidden="true"></i>Exhibition floor &amp; product demos, free &middot; entry by time slot on 20 and 21 Nov, as available, confirmed by email</p>
             </div>
-            <div>
-              <label class="text-xs text-gray-400 mb-1 block">Organization *</label>
-              <input type="text" id="rf-company" autocomplete="organization" required class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Company / Institute">
-            </div>
-          </div>
-          <div class="grid grid-cols-2 gap-4">
-            <div>
-              <label class="text-xs text-gray-400 mb-1 block">Designation / Job Title *</label>
-              <input type="text" id="rf-title" autocomplete="organization-title" required class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Your designation">
-            </div>
-            <div>
-              <label class="text-xs text-gray-400 mb-1 block">City *</label>
-              <input type="text" id="rf-city" autocomplete="address-level2" required class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Your city">
-            </div>
-          </div>
-          <div>
-            <label class="text-xs text-gray-400 mb-1 block">Industry *</label>
-            <select id="rf-industry" required class="w-full px-4 py-3 rounded-xl text-sm">
-              <option value="">Select industry</option>
-              <option>Banking & Financial Services</option>
-              <option>Insurance</option>
-              <option>IT Services & Consulting</option>
-              <option>Software & SaaS</option>
-              <option>Telecom</option>
-              <option>Manufacturing</option>
-              <option>Automotive</option>
-              <option>Pharma & Life Sciences</option>
-              <option>Healthcare & Hospitals</option>
-              <option>Retail & E-commerce</option>
-              <option>Logistics & Supply Chain</option>
-              <option>Energy & Utilities</option>
-              <option>Media & Entertainment</option>
-              <option>Education & Academia</option>
-              <option>Government & Public Sector</option>
-              <option>Consulting & Professional Services</option>
-              <option>Startup / Early stage</option>
-              <option>Venture Capital & Investment</option>
-              <option>Agriculture & Agritech</option>
-              <option>Real Estate & Construction</option>
-              <option>Aerospace & Defence</option>
-              <option>Other</option>
-            </select>
-          </div>
-          <div class="grid grid-cols-2 gap-4">
-            <div>
-              <label class="text-xs text-gray-400 mb-1 block">LinkedIn</label>
-              <input type="text" id="rf-linkedin" autocomplete="url" inputmode="url" autocapitalize="none" spellcheck="false" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="linkedin.com/in/...">
-            </div>
-            <div>
-              <label class="text-xs text-gray-400 mb-1 block">Interests</label>
-              <input type="text" id="rf-interests" autocomplete="off" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="AI, ML, Computer Vision...">
-            </div>
-          </div>
-          <button type="submit" id="rf-submit" class="w-full py-3.5 rounded-xl font-semibold text-white bg-gradient-to-r from-primary-600 to-primary-500 hover:from-primary-500 hover:to-primary-400 transition-all text-sm shadow-lg shadow-primary-500/25">
-            <i class="fas fa-check-circle mr-2"></i>Register — It's Free!
-          </button>
-          <div id="rf-notice" class="hidden rounded-xl px-4 py-3 text-sm text-red-700 bg-red-50 border border-red-200"></div>
-          <p class="text-center text-[10px] text-gray-500">By registering, you agree to receive event updates via email</p>
-        </form>
+
+            <div class="rg-card-body">
+              <form id="reg-form" onsubmit="submitRegistration(event)" class="rg-form">
+                <div class="rg-field">
+                  <label for="rf-name">Full name</label>
+                  <input type="text" id="rf-name" autocomplete="name" autocapitalize="words" required placeholder="Your full name">
+                </div>
+                <div class="rg-field">
+                  <label for="rf-email">Email address</label>
+                  <input type="email" id="rf-email" autocomplete="email" inputmode="email" autocapitalize="none" spellcheck="false" required placeholder="your@email.com">
+                </div>
+                <div class="rg-two">
+                  <div class="rg-field">
+                    <label for="rf-phone">Mobile number</label>
+                    <input type="tel" id="rf-phone" autocomplete="tel" required placeholder="+91 XXXXX XXXXX">
+                  </div>
+                  <div class="rg-field">
+                    <label for="rf-company">Organization</label>
+                    <input type="text" id="rf-company" autocomplete="organization" required placeholder="Company / Institute">
+                  </div>
+                </div>
+                <div class="rg-two">
+                  <div class="rg-field">
+                    <label for="rf-title">Designation / Job title</label>
+                    <input type="text" id="rf-title" autocomplete="organization-title" required placeholder="Your designation">
+                  </div>
+                  <div class="rg-field">
+                    <label for="rf-city">City</label>
+                    <input type="text" id="rf-city" autocomplete="address-level2" required placeholder="Your city">
+                  </div>
+                </div>
+                <div class="rg-field">
+                  <label for="rf-industry">Industry</label>
+                  <select id="rf-industry" required>
+                    <option value="">Select industry</option>
+                    <option>Banking & Financial Services</option>
+                    <option>Insurance</option>
+                    <option>IT Services & Consulting</option>
+                    <option>Software & SaaS</option>
+                    <option>Telecom</option>
+                    <option>Manufacturing</option>
+                    <option>Automotive</option>
+                    <option>Pharma & Life Sciences</option>
+                    <option>Healthcare & Hospitals</option>
+                    <option>Retail & E-commerce</option>
+                    <option>Logistics & Supply Chain</option>
+                    <option>Energy & Utilities</option>
+                    <option>Media & Entertainment</option>
+                    <option>Education & Academia</option>
+                    <option>Government & Public Sector</option>
+                    <option>Consulting & Professional Services</option>
+                    <option>Startup / Early stage</option>
+                    <option>Venture Capital & Investment</option>
+                    <option>Agriculture & Agritech</option>
+                    <option>Real Estate & Construction</option>
+                    <option>Aerospace & Defence</option>
+                    <option>Other</option>
+                  </select>
+                </div>
+                <details class="rg-more" id="rf-more">
+                  <summary><span>Add LinkedIn and interests <small>(optional)</small></span></summary>
+                  <div class="rg-more-in rg-two">
+                    <div class="rg-field">
+                      <label for="rf-linkedin">LinkedIn</label>
+                      <input type="text" id="rf-linkedin" autocomplete="url" inputmode="url" autocapitalize="none" spellcheck="false" placeholder="linkedin.com/in/...">
+                    </div>
+                    <div class="rg-field">
+                      <label for="rf-interests">Interests</label>
+                      <input type="text" id="rf-interests" autocomplete="off" placeholder="AI, ML, Computer Vision...">
+                    </div>
+                  </div>
+                </details>
+                <button type="submit" id="rf-submit" class="ps-buy rg-cta">Register free <i class="fas fa-arrow-right" aria-hidden="true"></i></button>
+                <div id="rf-notice" class="hidden rounded-xl px-4 py-3 text-sm text-red-700 bg-red-50 border border-red-200"></div>
+                <p class="rg-fine">By registering, you agree to receive event updates via email</p>
+              </form>
 
         <!-- After a free registration: one clear next step (photo, then the shareable
              badge), three places worth going in the app, and the paid passes last,
@@ -20117,92 +20146,87 @@ ${sharedNavHTML('register')}
           <p class="rs-app"><a href="/app" id="rs-app-link">Open the networking app <i class="fas fa-arrow-right"></i></a></p>
         </div>
 
-        <!-- Already registered? -->
-        <div id="reg-signin-note" class="mt-4 pt-4 border-t border-white/10 text-center">
-          <p class="text-xs text-gray-500">Already registered? <a href="/app" class="text-primary-400 hover:underline font-semibold">Sign in on the networking app</a></p>
+              <!-- Already registered? -->
+              <div id="reg-signin-note" class="rg-signin">
+                <p>Already registered? <a href="/app" class="ps-link">Sign in on the networking app</a></p>
+              </div>
+            </div>
+          </div>
+
+          <!-- What the free pass gives -->
+          <div class="rg-visitor">
+            <h3>Visitor Pass: free</h3>
+            <ul class="rg-ticks">
+              <li><i class="fas fa-check" aria-hidden="true"></i>Exhibition floor access</li>
+              <li><i class="fas fa-check" aria-hidden="true"></i>Product &amp; startup demos</li>
+              <li><i class="fas fa-check" aria-hidden="true"></i>Exhibition day activities</li>
+            </ul>
+          </div>
+          <p class="rg-swap">Want guaranteed entry? <label for="rg-view-paid">See the paid passes</label></p>
+        </div>
+
+        <!-- The paid passes -->
+        <div class="rg-paid">
+          <section class="rg-offer" aria-labelledby="rg-offer-title">
+            <h2 id="rg-offer-title">Want Full Conference Access?</h2>
+            <p>Every paid pass has guaranteed entry on both days and adds the full conference and the networking app. A workshop comes only with Premium Delegate and VIP: one each, seats first come, first served.</p>
+            <p class="rg-clock"><i class="fas fa-clock" aria-hidden="true"></i><span>${latePricing() ? PRICE_ROSE_TEXT : `Prices rise on ${PRICE_LATE_FROM_TEXT}. Book by ${PRICE_DEADLINE_TEXT} to pay the standard price.`}</span></p>
+            <ul class="rg-tiers">
+              ${tier('delegate', 'Delegate Pass', 'Delegate Pass', 'Full 2-day conference + networking lunch + networking app', 'Most popular', '#0F7B47', true)}
+              ${tier('premium', 'Premium Delegate Pass', 'Premium Delegate', 'Delegate + one workshop (first come, first served)', 'Includes a workshop', '#0B7A75')}
+              ${tier('vip', 'VIP Pass', 'VIP Pass', 'Premium + Bharat AI Leaders’ Evening + VIP lounge + speaker meet &amp; greet', 'All access', '#8A6500')}
+              ${tier('academic', 'Academic Pass', 'Academic Pass', 'Conference + student zone, with a student or faculty ID', 'Students and faculty', '#6A4BE8')}
+            </ul>
+            <a href="#compare" class="rg-compare">Compare every pass, side by side</a>
+          </section>
+
+          <!-- Group Discount -->
+          <section class="rg-group" id="delegation-section" aria-labelledby="rg-group-title">
+            <h3 id="rg-group-title">Group Registration</h3>
+            <p>Bringing a team of five or more? Five passes for the price of four, on Delegate and Premium Delegate passes, on request.</p>
+            <div class="rg-group-go">
+              <a href="/contact#group_registration" class="rg-ghost">Ask for a group rate</a>
+              <a href="#compare" class="ps-link">Compare passes</a>
+            </div>
+          </section>
+          <p class="rg-swap">Just the exhibition floor? <label for="rg-view-free">Get the free Visitor Pass</label></p>
         </div>
       </div>
     </div>
+  </section>
 
-    <!-- Pass Info Sidebar -->
-    <div class="space-y-4">
-      <!-- Visitor Pass Details -->
-      <div class="glass rounded-2xl p-6 border border-primary-500/20">
-        <h3 class="font-bold text-lg text-primary-300 mb-3"><i class="fas fa-ticket-alt mr-2"></i>Visitor Pass — FREE</h3>
-        <ul class="space-y-2 text-sm text-gray-300">
-          <li><i class="fas fa-check text-primary-400 mr-2"></i>Exhibition floor access</li>
-          <li><i class="fas fa-check text-primary-400 mr-2"></i>Product & startup demos</li>
-          <li><i class="fas fa-check text-primary-400 mr-2"></i>Exhibition day activities</li>
-        </ul>
-      </div>
-
-      <!-- Upgrade Options -->
-      <div class="glass rounded-2xl p-6 border border-amber-500/20">
-        <h3 class="font-bold text-base text-amber-300 mb-3"><i class="fas fa-arrow-up mr-2"></i>Want Full Conference Access?</h3>
-        <p class="text-xs text-gray-400 mb-4">Every paid pass has guaranteed entry on both days and adds the full conference and the networking app. A workshop comes only with Premium Delegate and VIP: one each, seats first come, first served.</p>
-        <p class="text-xs font-semibold mb-4" style="color:#B45309;"><i class="fas fa-clock mr-1"></i>${latePricing() ? PRICE_ROSE_TEXT : `Prices rise on ${PRICE_LATE_FROM_TEXT}. Book by ${PRICE_DEADLINE_TEXT} to pay the standard price.`}</p>
-        <div class="space-y-3">
-          <div class="flex items-center justify-between p-3 rounded-xl bg-white/5">
-            <div>
-              <span class="text-sm font-semibold">🎟️ Delegate Pass</span>
-              <p class="text-[10px] text-gray-400">Full 2-day conference + networking lunch + networking app</p>
-            </div>
-            <span class="text-right"><span class="text-sm font-bold text-primary-300">${priceNow('Delegate Pass')} + GST</span>${latePriceTag('Delegate Pass')}</span>
-          </div>
-          <div class="flex items-center justify-between p-3 rounded-xl bg-white/5">
-            <div>
-              <span class="text-sm font-semibold">🛠️ Premium Delegate</span>
-              <p class="text-[10px] text-gray-400">Delegate + one workshop (first come, first served)</p>
-            </div>
-            <span class="text-right"><span class="text-sm font-bold" style="color:#0B7A75;">${priceNow('Premium Delegate Pass')} + GST</span>${latePriceTag('Premium Delegate Pass')}</span>
-          </div>
-          <div class="flex items-center justify-between p-3 rounded-xl bg-white/5">
-            <div>
-              <span class="text-sm font-semibold">⭐ VIP Pass</span>
-              <p class="text-[10px] text-gray-400">Premium + Bharat AI Leaders’ Evening + VIP lounge + speaker meet &amp; greet</p>
-            </div>
-            <span class="text-right"><span class="text-sm font-bold text-amber-300">${priceNow('VIP Pass')} + GST</span>${latePriceTag('VIP Pass')}</span>
-          </div>
-          <div class="flex items-center justify-between p-3 rounded-xl bg-white/5">
-            <div>
-              <span class="text-sm font-semibold">🎓 Academic Pass</span>
-              <p class="text-[10px] text-gray-400">Conference + student zone, with a student or faculty ID</p>
-            </div>
-            <span class="text-right"><span class="text-sm font-bold text-violet-300">${priceNow('Academic Pass')} + GST</span>${latePriceTag('Academic Pass')}</span>
-          </div>
-        </div>
-        <button onclick="openRegisterPaidPassModal()" class="mt-4 block w-full text-center py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 transition-all text-sm cursor-pointer">
-          <i class="fas fa-external-link-alt mr-2"></i>Get Paid Pass
-        </button>
-        <a href="#compare" class="mt-3 block text-center text-xs font-semibold text-primary-400 hover:underline">Compare every pass, side by side</a>
-      </div>
-
-      <!-- Group Discount -->
-      <div class="glass rounded-2xl p-6 border border-orange-500/20" id="delegation-section" style="scroll-margin-top:90px;">
-        <h3 class="font-bold text-base text-orange-300 mb-2"><i class="fas fa-users mr-2"></i>Group Registration</h3>
-        <p class="text-xs text-gray-400 mb-3">Bringing a team of five or more? Five passes for the price of four, on Delegate and Premium Delegate passes, on request.</p>
-        <div class="flex gap-2">
-          <a href="/contact#group_registration" class="px-4 py-2 rounded-lg text-xs font-semibold bg-orange-500/20 text-orange-300 hover:bg-orange-500/30 transition border border-orange-500/30">Ask for a group rate</a>
-          <a href="#compare" class="px-4 py-2 rounded-lg text-xs font-semibold glass text-gray-300 hover:bg-white/10 transition">Compare passes</a>
+  <div class="ps-flow">
+    <!-- Compare passes: what each pass includes, before anyone pays -->
+    <section class="ps-compare" id="compare">
+      <div class="ps-wrap">
+        <h2 class="ps-h2">Compare passes</h2>
+        <p class="ps-lead">Every paid pass has guaranteed entry on both days and adds the full conference and the networking app. Entry on a free Visitor Pass is not guaranteed: it depends on slot availability on 20 and 21 Nov, a half-day slot or none. Workshops come only with Premium Delegate and VIP.</p>
+        ${passComparisonHTML()}
+        <div class="rg-compare-go">
+          <button type="button" class="ps-buy" onclick="openRegisterPaidPassModal(document.getElementById('rpp-pass-type').value || 'Delegate Pass')">Get a paid pass</button>
+          <a href="/passes#faq" class="ps-link">Questions before you pay?</a>
         </div>
       </div>
+    </section>
+
+    <div class="ps-bar" role="group" aria-label="Get the Delegate Pass">
+      <p class="ps-bar-what" style="margin:0;">Delegate Pass<b>${rsPrice('Delegate Pass')} + GST</b></p>
+      <a class="ps-buy" href="#delegate" onclick="return upgradeFromSuccess('Delegate Pass')">Get the pass</a>
     </div>
   </div>
 
-  <!-- Compare passes: what each pass includes, before anyone pays -->
-  <section id="compare" class="mt-10" style="scroll-margin-top:72px;max-width:1024px;margin-left:auto;margin-right:auto;">
-    <div class="text-center mb-5">
-      <h2 class="text-2xl font-bold mb-2">Compare passes</h2>
-      <p class="text-gray-400 text-sm">Every paid pass has guaranteed entry on both days and adds the full conference and the networking app. Entry on a free Visitor Pass is not guaranteed: it depends on slot availability on 20 and 21 Nov, a half-day slot or none. Workshops come only with Premium Delegate and VIP.</p>
-    </div>
-    ${passComparisonHTML()}
-    <div style="text-align:center;margin-top:18px;">
-      <button type="button" onclick="openRegisterPaidPassModal()" style="padding:12px 28px;border:none;border-radius:12px;font-weight:700;font-size:14px;color:#fff;cursor:pointer;background:linear-gradient(135deg,#FF6B00,#FF8C38);box-shadow:0 4px 20px rgba(245,98,10,0.28);">Get a paid pass</button>
+  <section class="ps-end" aria-labelledby="ps-end-title">
+    <div class="ps-wrap">
+      <h2 class="ps-end-title" id="ps-end-title">See you at WTC Mumbai</h2>
+      <a class="ps-buy" href="#delegate" onclick="return upgradeFromSuccess('Delegate Pass')">Get a Delegate Pass, ${priceNow('Delegate Pass')} + GST</a>
+      <p>Only the exhibition floor? <a href="#rg-book" class="ps-link" onclick="var v = document.getElementById('rg-view-free'); if (v) v.checked = true;">Free Visitor Pass</a>: entry not guaranteed, by slot availability on 20 and 21 Nov, confirmed by email. Already registered? <a href="/app" class="ps-link">Open the app</a>.</p>
     </div>
   </section>
 </main>
 
 ${sharedFooterHTML()}
+${BOOKING_CREDIT}
+${BOOKING_SCRIPTS}
 
 <script>
 ${sharedToastJS()}
@@ -20288,7 +20312,7 @@ async function submitRegistration(e) {
         : '');
       notice.classList.remove('hidden');
       showToast(known ? 'This email is already registered' : knownMobile ? 'This mobile number is already registered' : msg, 'error');
-      btn.innerHTML = '<i class="fas fa-check-circle mr-2"></i>Register — It\\'s Free!';
+      btn.innerHTML = 'Register free <i class="fas fa-arrow-right" aria-hidden="true"></i>';
       btn.disabled = false;
       return;
     }
@@ -20314,7 +20338,7 @@ async function submitRegistration(e) {
     showToast('Registration successful!', 'success');
   } catch(err) {
     showToast('Network error. Please try again.', 'error');
-    btn.innerHTML = '<i class="fas fa-check-circle mr-2"></i>Register — It\\'s Free!';
+    btn.innerHTML = 'Register free <i class="fas fa-arrow-right" aria-hidden="true"></i>';
     btn.disabled = false;
   }
 }
@@ -20331,14 +20355,14 @@ function rppApplyPassFields(passType) {
   const desigRow = document.getElementById('rpp-row-designation');
   if (!label || !company || !desigFld || !desigRow) return;
 
-  label.textContent   = academic ? 'College Name *' : 'Organization *';
+  label.textContent   = academic ? 'College name' : 'Organization';
   // A hidden required field blocks submit with a validation bubble nobody can see,
   // so the requirement is lifted at the same moment the field disappears.
   document.getElementById('rpp-designation').required = !academic;
   company.placeholder = academic ? 'Your college / university' : 'Company / Institute';
   desigFld.style.display = academic ? 'none' : '';
   // With Designation gone the row would leave a hole, so City takes the full width.
-  desigRow.style.gridTemplateColumns = academic ? '1fr' : '1fr 1fr';
+  desigRow.classList.toggle('rg-one', academic);
   if (academic) document.getElementById('rpp-designation').value = '';
 }
 
@@ -20362,7 +20386,11 @@ function openRegisterPaidPassModal(preselect) {
 function rppOpenFromHash() {
   const PASS_BY_HASH = { delegate: 'Delegate Pass', premium: 'Premium Delegate Pass', vip: 'VIP Pass', academic: 'Academic Pass' };
   const want = PASS_BY_HASH[(window.location.hash || '').replace('#', '').toLowerCase()];
-  if (want) openRegisterPaidPassModal(want);
+  if (!want) return;
+  // Someone who came for a paid pass and closes the form is left among the paid passes on a phone.
+  const paidView = document.getElementById('rg-view-paid');
+  if (paidView) paidView.checked = true;
+  openRegisterPaidPassModal(want);
 }
 document.addEventListener('DOMContentLoaded', rppOpenFromHash);
 window.addEventListener('hashchange', rppOpenFromHash);
@@ -20605,93 +20633,87 @@ function rppResumeLead() {
     .catch(function () {});
 }
 
-// Backdrop click handler set after DOM is ready
+// The paid form closes on Escape and on a press outside it. What was typed stays in the form.
+document.addEventListener('DOMContentLoaded', function () {
+  var m = document.getElementById('reg-paid-pass-modal');
+  if (!m) return;
+  m.addEventListener('click', function (e) { if (e.target === m) closeRegisterPaidPassModal(); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !m.classList.contains('hidden')) closeRegisterPaidPassModal(); });
+});
+
+// The free form is the badge it gets you: the name goes on it as it is typed.
+document.addEventListener('DOMContentLoaded', function () {
+  var box = document.getElementById('rf-name'), who = document.getElementById('rg-who');
+  if (!box || !who) return;
+  var empty = who.textContent;
+  var show = function () { who.textContent = box.value.trim() || empty; };
+  box.addEventListener('input', show);
+  show();
+});
+
+// Swapping free and paid on a phone from far down the page: back up to the top of what was chosen.
+document.querySelectorAll('input[name="rg-view"]').forEach(function (r) {
+  r.addEventListener('change', function () {
+    var top = document.getElementById('rg-switch');
+    if (top && top.getBoundingClientRect().top < 0) top.scrollIntoView({ block: 'start' });
+  });
+});
 </script>
 
 <!-- ===== PAID PASS MODAL (Register Page) ===== -->
-<div id="reg-paid-pass-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4" style="background:rgba(23,27,58,0.55);backdrop-filter:blur(6px);">
-  <div style="background:#fff;border:1px solid #E4E7F4;border-radius:18px;width:100%;max-width:520px;overflow:hidden;box-shadow:0 24px 64px rgba(26,35,126,0.22);">
-    <div style="background:linear-gradient(135deg,#FF6B00,#FF8C38);padding:20px 24px;display:flex;align-items:center;justify-content:space-between;">
-      <div style="display:flex;align-items:center;gap:12px;">
-        <div style="width:40px;height:40px;border-radius:10px;background:rgba(255,255,255,0.22);display:flex;align-items:center;justify-content:center;">
-          <i class="fas fa-star" style="color:#fff;font-size:18px;"></i>
-        </div>
-        <div>
-          <div style="font-weight:700;color:#fff;font-size:16px;">Get Your Paid Pass</div>
-          <div style="font-size:12px;color:rgba(255,255,255,0.9);">Fill details &amp; proceed to secure payment</div>
-        </div>
+<div id="reg-paid-pass-modal" class="fixed inset-0 z-50 hidden rg-modal" role="dialog" aria-modal="true" aria-labelledby="rpp-title">
+  <div class="rg-sheet">
+    <div class="rg-sheet-head">
+      <div>
+        <div class="rg-sheet-title" id="rpp-title">Get Your Paid Pass</div>
+        <div class="rg-sheet-sub">Fill details &amp; proceed to secure payment</div>
       </div>
-      <button onclick="closeRegisterPaidPassModal()" style="background:none;border:none;color:rgba(255,255,255,0.9);cursor:pointer;font-size:20px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:8px;" onmouseover="this.style.background='rgba(255,255,255,0.2)'" onmouseout="this.style.background='none'">
-        <i class="fas fa-times"></i>
-      </button>
+      <button type="button" class="rg-sheet-x" onclick="closeRegisterPaidPassModal()" aria-label="Close"><i class="fas fa-times" aria-hidden="true"></i></button>
     </div>
-    <div style="padding:24px;max-height:calc(90vh - 80px);overflow-y:auto;">
+    <div class="rg-sheet-body">
       <!-- Pass Type Selector -->
-      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:12px;">
-        <label style="cursor:pointer;">
-          <input type="radio" name="rpp-pass" value="Delegate Pass" style="display:none;" onchange="document.getElementById('rpp-pass-type').value=this.value;document.querySelectorAll('[data-rpp-card]').forEach(el=>{el.style.boxShadow='none';el.style.borderColor='rgba(255,107,0,0.2)'});this.nextElementSibling.style.boxShadow='0 0 0 2px #FF6B00';this.nextElementSibling.style.borderColor='#FF6B00';rppApplyPassFields(this.value)">
-          <div data-rpp-card style="padding:12px;border-radius:12px;text-align:center;background:rgba(139,92,246,0.08);border:1px solid rgba(255,107,0,0.2);transition:all 0.2s;">
-            <i class="fas fa-id-badge" style="color:#7C3AED;font-size:20px;display:block;margin-bottom:4px;"></i>
-            <div style="color:#1E2140;font-weight:600;font-size:12px;">Delegate</div>
-            <div style="color:#7C3AED;font-weight:700;font-size:14px;">${priceNow('Delegate Pass')} + GST</div>
-            <div style="color:#5E6585;font-size:10px;">2 days + networking lunch</div>
+      <div class="rg-choose" role="radiogroup" aria-label="Choose your pass">
+        ${[
+          ['Delegate Pass', 'Delegate', '2 days + networking lunch', '#0F7B47'],
+          ['Premium Delegate Pass', 'Premium Delegate', 'Delegate + 1 workshop', '#0B7A75'],
+          ['VIP Pass', 'VIP', 'Workshop + Leaders’ Evening + lounge', '#8A6500'],
+          ['Academic Pass', 'Academic', 'Students', '#6A4BE8'],
+        ].map(([pass, short, what, color]) => `<label class="rg-choice" style="--c:${color};">
+          <input class="rg-sr" type="radio" name="rpp-pass" value="${pass}" onchange="document.getElementById('rpp-pass-type').value=this.value;rppApplyPassFields(this.value)">
+          <div data-rpp-card>
+            <span class="rg-choice-name">${short}</span>
+            <span class="rg-choice-price">${priceNow(pass)} <small>+ GST</small></span>
+            <span class="rg-choice-what">${what}</span>
           </div>
-        </label>
-        <label style="cursor:pointer;">
-          <input type="radio" name="rpp-pass" value="Premium Delegate Pass" style="display:none;" onchange="document.getElementById('rpp-pass-type').value=this.value;document.querySelectorAll('[data-rpp-card]').forEach(el=>{el.style.boxShadow='none';el.style.borderColor='rgba(11,122,117,0.2)'});this.nextElementSibling.style.boxShadow='0 0 0 2px #FF6B00';this.nextElementSibling.style.borderColor='#FF6B00';rppApplyPassFields(this.value)">
-          <div data-rpp-card style="padding:12px;border-radius:12px;text-align:center;background:rgba(11,122,117,0.06);border:1px solid rgba(11,122,117,0.2);transition:all 0.2s;">
-            <i class="fas fa-star" style="color:#0B7A75;font-size:20px;display:block;margin-bottom:4px;"></i>
-            <div style="color:#1E2140;font-weight:600;font-size:12px;">Premium Delegate</div>
-            <div style="color:#0B7A75;font-weight:700;font-size:14px;">${priceNow('Premium Delegate Pass')} + GST</div>
-            <div style="color:#5E6585;font-size:10px;">Delegate + 1 workshop</div>
-          </div>
-        </label>
-        <label style="cursor:pointer;">
-          <input type="radio" name="rpp-pass" value="VIP Pass" style="display:none;" onchange="document.getElementById('rpp-pass-type').value=this.value;document.querySelectorAll('[data-rpp-card]').forEach(el=>{el.style.boxShadow='none';el.style.borderColor='rgba(251,191,36,0.2)'});this.nextElementSibling.style.boxShadow='0 0 0 2px #FF6B00';this.nextElementSibling.style.borderColor='#FF6B00';rppApplyPassFields(this.value)">
-          <div data-rpp-card style="padding:12px;border-radius:12px;text-align:center;background:rgba(251,191,36,0.06);border:1px solid rgba(251,191,36,0.2);transition:all 0.2s;">
-            <i class="fas fa-crown" style="color:#B45309;font-size:20px;display:block;margin-bottom:4px;"></i>
-            <div style="color:#1E2140;font-weight:600;font-size:12px;">VIP</div>
-            <div style="color:#B45309;font-weight:700;font-size:14px;">${priceNow('VIP Pass')} + GST</div>
-            <div style="color:#5E6585;font-size:10px;">Workshop + Leaders’ Evening + lounge</div>
-          </div>
-        </label>
-        <label style="cursor:pointer;">
-          <input type="radio" name="rpp-pass" value="Academic Pass" style="display:none;" onchange="document.getElementById('rpp-pass-type').value=this.value;document.querySelectorAll('[data-rpp-card]').forEach(el=>{el.style.boxShadow='none';el.style.borderColor='rgba(192,132,252,0.2)'});this.nextElementSibling.style.boxShadow='0 0 0 2px #FF6B00';this.nextElementSibling.style.borderColor='#FF6B00';rppApplyPassFields(this.value)">
-          <div data-rpp-card style="padding:12px;border-radius:12px;text-align:center;background:rgba(192,132,252,0.06);border:1px solid rgba(192,132,252,0.2);transition:all 0.2s;">
-            <i class="fas fa-graduation-cap" style="color:#9333EA;font-size:20px;display:block;margin-bottom:4px;"></i>
-            <div style="color:#1E2140;font-weight:600;font-size:12px;">Academic</div>
-            <div style="color:#9333EA;font-weight:700;font-size:14px;">${priceNow('Academic Pass')} + GST</div>
-            <div style="color:#5E6585;font-size:10px;">Students</div>
-          </div>
-        </label>
+        </label>`).join('')}
       </div>
-      <p style="margin:0 0 18px;font-size:12px;line-height:1.5;color:#5E6585;text-align:center;">A workshop comes only with Premium Delegate and VIP, one each, seats first come, first served. <a href="#compare" onclick="closeRegisterPaidPassModal()" style="color:#E05A00;font-weight:600;">Compare passes</a></p>
+      <p class="rg-choose-note">A workshop comes only with Premium Delegate and VIP, one each, seats first come, first served. <a href="#compare" onclick="closeRegisterPaidPassModal()" class="ps-link">Compare passes</a></p>
       <input type="hidden" id="rpp-pass-type" value="">
 
-      <form id="reg-paid-pass-form" onsubmit="submitRegisterPaidPassForm(event)" style="display:flex;flex-direction:column;gap:12px;">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-          <div>
-            <label style="font-size:11px;color:#5E6585;display:block;margin-bottom:4px;">Full Name <span style="color:#DC2626;">*</span></label>
-            <input type="text" id="rpp-name" autocomplete="name" autocapitalize="words" required placeholder="Your full name" style="width:100%;padding:10px 14px;border-radius:10px;background:#fff;border:1px solid #D7DBEC;color:#1E2140;font-size:13px;outline:none;box-sizing:border-box;">
+      <form id="reg-paid-pass-form" onsubmit="submitRegisterPaidPassForm(event)" class="rg-form">
+        <div class="rg-two">
+          <div class="rg-field">
+            <label for="rpp-name">Full name</label>
+            <input type="text" id="rpp-name" autocomplete="name" autocapitalize="words" required placeholder="Your full name">
           </div>
-          <div>
-            <label style="font-size:11px;color:#5E6585;display:block;margin-bottom:4px;">Email <span style="color:#DC2626;">*</span></label>
-            <input type="email" id="rpp-email" autocomplete="email" inputmode="email" autocapitalize="none" spellcheck="false" required placeholder="you@email.com" style="width:100%;padding:10px 14px;border-radius:10px;background:#fff;border:1px solid #D7DBEC;color:#1E2140;font-size:13px;outline:none;box-sizing:border-box;">
-          </div>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-          <div>
-            <label style="font-size:11px;color:#5E6585;display:block;margin-bottom:4px;">Mobile *</label>
-            <input type="tel" id="rpp-phone" autocomplete="tel" required placeholder="+91 XXXXX XXXXX" style="width:100%;padding:10px 14px;border-radius:10px;background:#fff;border:1px solid #D7DBEC;color:#1E2140;font-size:13px;outline:none;box-sizing:border-box;">
-          </div>
-          <div>
-            <label id="rpp-company-label" style="font-size:11px;color:#5E6585;display:block;margin-bottom:4px;">Organization *</label>
-            <input type="text" id="rpp-company" autocomplete="organization" required placeholder="Company / Institute" style="width:100%;padding:10px 14px;border-radius:10px;background:#fff;border:1px solid #D7DBEC;color:#1E2140;font-size:13px;outline:none;box-sizing:border-box;">
+          <div class="rg-field">
+            <label for="rpp-email">Email</label>
+            <input type="email" id="rpp-email" autocomplete="email" inputmode="email" autocapitalize="none" spellcheck="false" required placeholder="you@email.com">
           </div>
         </div>
-        <div>
-          <label style="font-size:11px;color:#5E6585;display:block;margin-bottom:4px;">Industry *</label>
-          <select id="rpp-industry" required style="width:100%;padding:10px 14px;border-radius:10px;background:#fff;border:1px solid #D7DBEC;color:#1E2140;font-size:13px;outline:none;box-sizing:border-box;">
+        <div class="rg-two">
+          <div class="rg-field">
+            <label for="rpp-phone">Mobile</label>
+            <input type="tel" id="rpp-phone" autocomplete="tel" required placeholder="+91 XXXXX XXXXX">
+          </div>
+          <div class="rg-field">
+            <label id="rpp-company-label" for="rpp-company">Organization</label>
+            <input type="text" id="rpp-company" autocomplete="organization" required placeholder="Company / Institute">
+          </div>
+        </div>
+        <div class="rg-field">
+          <label for="rpp-industry">Industry</label>
+          <select id="rpp-industry" required>
             <option value="">Select industry</option>
             <option>Banking & Financial Services</option>
             <option>Insurance</option>
@@ -20717,37 +20739,48 @@ function rppResumeLead() {
             <option>Other</option>
           </select>
         </div>
-        <div id="rpp-row-designation" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-          <div id="rpp-designation-field">
-            <label style="font-size:11px;color:#5E6585;display:block;margin-bottom:4px;">Designation *</label>
-            <input type="text" id="rpp-designation" autocomplete="organization-title" required placeholder="Your designation" style="width:100%;padding:10px 14px;border-radius:10px;background:#fff;border:1px solid #D7DBEC;color:#1E2140;font-size:13px;outline:none;box-sizing:border-box;">
+        <div id="rpp-row-designation" class="rg-two">
+          <div class="rg-field" id="rpp-designation-field">
+            <label for="rpp-designation">Designation</label>
+            <input type="text" id="rpp-designation" autocomplete="organization-title" required placeholder="Your designation">
           </div>
-          <div>
-            <label style="font-size:11px;color:#5E6585;display:block;margin-bottom:4px;">City *</label>
-            <input type="text" id="rpp-city" autocomplete="address-level2" required placeholder="Your city" style="width:100%;padding:10px 14px;border-radius:10px;background:#fff;border:1px solid #D7DBEC;color:#1E2140;font-size:13px;outline:none;box-sizing:border-box;">
+          <div class="rg-field">
+            <label for="rpp-city">City</label>
+            <input type="text" id="rpp-city" autocomplete="address-level2" required placeholder="Your city">
           </div>
         </div>
-        <details id="rpp-gst" style="border:1px solid #E3E6F5;border-radius:10px;padding:10px 12px;background:#F7F8FF;">
-          <summary style="cursor:pointer;font-size:12px;font-weight:700;color:#1E2140;">Need the GST invoice in your company&rsquo;s name? <span style="font-weight:400;color:#5E6585;">(optional)</span></summary>
-          <div style="display:grid;gap:10px;margin-top:10px;">
-            <input type="text" id="rpp-gst-name" autocomplete="organization" placeholder="Registered company name" style="width:100%;padding:10px 14px;border-radius:10px;background:#fff;border:1px solid #D7DBEC;color:#1E2140;font-size:13px;outline:none;box-sizing:border-box;">
-            <input type="text" id="rpp-gstin" maxlength="15" autocapitalize="characters" spellcheck="false" placeholder="GSTIN, 15 characters (empty if not registered)" style="width:100%;padding:10px 14px;border-radius:10px;background:#fff;border:1px solid #D7DBEC;color:#1E2140;font-size:13px;outline:none;box-sizing:border-box;text-transform:uppercase;">
-            <textarea id="rpp-gst-address" rows="2" autocomplete="street-address" placeholder="Billing address registered with the GSTIN" style="width:100%;padding:10px 14px;border-radius:10px;background:#fff;border:1px solid #D7DBEC;color:#1E2140;font-size:13px;outline:none;box-sizing:border-box;resize:vertical;"></textarea>
-            <p style="font-size:10.5px;color:#5E6585;margin:0;line-height:1.5;">A receipt is emailed the moment the payment goes through; the GST invoice follows from the accounts team. Leave this empty for an invoice in your own name.</p>
+        <details id="rpp-gst" class="rg-more">
+          <summary><span>Need the GST invoice in your company&rsquo;s name? <small>(optional)</small></span></summary>
+          <div class="rg-more-in">
+            <div class="rg-field">
+              <label for="rpp-gst-name">Registered company name</label>
+              <input type="text" id="rpp-gst-name" autocomplete="organization" placeholder="Registered company name">
+            </div>
+            <div class="rg-field">
+              <label for="rpp-gstin">GSTIN</label>
+              <input type="text" id="rpp-gstin" maxlength="15" autocapitalize="characters" spellcheck="false" placeholder="GSTIN, 15 characters (empty if not registered)" style="text-transform:uppercase;">
+            </div>
+            <div class="rg-field">
+              <label for="rpp-gst-address">Billing address</label>
+              <textarea id="rpp-gst-address" rows="2" autocomplete="street-address" placeholder="Billing address registered with the GSTIN"></textarea>
+            </div>
+            <p class="rg-fine" style="text-align:left;">A receipt is emailed the moment the payment goes through; the GST invoice follows from the accounts team. Leave this empty for an invoice in your own name.</p>
           </div>
         </details>
-        <p id="rpp-total" style="display:none;margin:4px 0 0;text-align:center;font-size:13px;color:#1E2140;"></p>
-        <button type="submit" id="rpp-submit-btn" style="width:100%;padding:13px;border-radius:10px;border:none;background:linear-gradient(135deg,#FF6B00,#FF8C38);color:white;font-weight:700;font-size:14px;cursor:pointer;margin-top:4px;">
-          <i class="fas fa-arrow-right" style="margin-right:8px;"></i>Proceed to Payment
-        </button>
-        <div id="rpp-notice" role="alert" style="display:none;margin-top:10px;padding:12px;border-radius:10px;border:1px solid rgba(255,107,0,0.35);background:#FFF6EF;color:#1E2140;font-size:13px;line-height:1.55;"></div>
-        <p style="text-align:center;font-size:10.5px;color:#5E6585;margin:6px 0 0;line-height:1.5;">UPI, cards and net banking on CCAvenue. Can&rsquo;t come after all? Transfer the pass to a colleague free, or take a 100% credit note, until 13 Nov (<a href="/refund" target="_blank" rel="noopener" style="color:#B84800;">refund policy</a>).</p>
-        <!-- Say where checkout happens and what comes back, before the buyer leaves. -->
-        <div style="background:#FFF6EF;border:1px solid rgba(255,107,0,0.25);border-radius:10px;padding:10px 12px;">
-          <p style="font-size:11px;color:#1E2140;margin:0 0 4px;font-weight:700;">What happens next</p>
-          <p id="rpp-next-copy" style="font-size:11px;color:#5E6585;margin:0;line-height:1.5;">Checkout opens on <strong>CCAvenue</strong>, our secure payment gateway. Your pass is confirmed the moment the payment goes through, and you are brought straight back here.</p>
+        <div id="rpp-notice" role="alert" style="display:none;"></div>
+        <div class="rg-pay">
+          <p id="rpp-total" style="display:none;"></p>
+          <button type="submit" id="rpp-submit-btn" class="ps-buy rg-cta">
+            <i class="fas fa-arrow-right" style="margin-right:8px;"></i>Proceed to Payment
+          </button>
         </div>
-        <p style="text-align:center;font-size:10px;color:#5E6585;margin:0;">We keep what you type here as you go, so you can finish later if checkout is interrupted. Your pass is emailed the moment the payment goes through.</p>
+        <p class="rg-trust">UPI, cards and net banking on CCAvenue. Can&rsquo;t come after all? Transfer the pass to a colleague free, or take a 100% credit note, until 13 Nov (<a href="/refund" target="_blank" rel="noopener">refund policy</a>).</p>
+        <!-- Say where checkout happens and what comes back, before the buyer leaves. -->
+        <div class="rg-next">
+          <p>What happens next</p>
+          <p id="rpp-next-copy">Checkout opens on <strong>CCAvenue</strong>, our secure payment gateway. Your pass is confirmed the moment the payment goes through, and you are brought straight back here.</p>
+        </div>
+        <p class="rg-trust">We keep what you type here as you go, so you can finish later if checkout is interrupted. Your pass is emailed the moment the payment goes through.</p>
       </form>
     </div>
   </div>
@@ -20760,326 +20793,314 @@ function rppResumeLead() {
 // ==================== STANDALONE INQUIRY FORM PAGE ====================
 
 function inquiryFormPageHTML(): string {
-  return `${sharedHeadHTML('Book Your Booth', '/inquiry', "Exhibit at Bharat AI Innovation 2026. Book a booth to reach the enterprise buyers, builders and government teams at WTC Mumbai, 20–21 Nov 2026. Booths from ₹48,000 + GST.")}
-<body class="min-h-screen">
-${sharedNavHTML('inquiry')}
+  // One row per package, and everything on the page reads it: the drawings, the cards, the list in the
+  // form and BOOTH_PRICES. `key` is stored with the enquiry, so it keeps its old spelling. The sizes,
+  // passes and talk lengths are /exhibition's, which also prints the prices (see the list of copies in
+  // the handbook); w and d are the metres the drawings use.
+  const booths = [
+    { key: 'Startup Pod - 1.5x1.5m - Rs.48,000', name: 'Startup Pod', size: '1.5 x 1.5 m', sqm: '2.25 sqm', w: 1.5, d: 1.5, price: 48000, was: 38000, passes: '1 exhibitor pass', talk: 8 },
+    { key: 'Explorer Booth - 2x2m - Rs.1,29,000', name: 'Explorer Booth', size: '2 x 2 m', sqm: '4 sqm', w: 2, d: 2, price: 129000, passes: '1 exhibitor pass', talk: 10 },
+    { key: 'Innovator Booth - 3x2m - Rs.1,95,000', name: 'Innovator Booth', size: '3 x 2 m', sqm: '6 sqm', w: 3, d: 2, price: 195000, passes: '2 exhibitor passes', talk: 12 },
+    { key: 'Accelerator Booth - 3x3m - Rs.2,91,000', name: 'Accelerator Booth', size: '3 x 3 m', sqm: '9 sqm', w: 3, d: 3, price: 291000, passes: '5 exhibitor passes', talk: 20, popular: true },
+    { key: 'Enterprise Booth - 4x2m - Rs.2,58,000', name: 'Enterprise Booth', size: '4 x 2 m', sqm: '8 sqm', w: 4, d: 2, price: 258000, passes: '3 exhibitor passes', talk: 15 },
+    { key: 'Flagship Pavilion - 6x2m - Rs.3,87,000', name: 'Flagship Pavilion', size: '6 x 2 m', sqm: '12 sqm', w: 6, d: 2, price: 387000, passes: '8 exhibitor passes', talk: 30 },
+    { key: 'Mega Pavilion - 7x7.7m - Rs.17,40,000', name: 'Mega Pavilion', size: '7 x 7.7 m', sqm: '53.90 sqm', w: 7, d: 7.7, price: 1740000, passes: '15 exhibitor passes', talk: 40 },
+  ] as { key: string; name: string; size: string; sqm: string; w: number; d: number; price: number; was?: number; passes: string; talk: number; popular?: boolean }[]
+  const rupees = (n: number) => '&#x20B9;' + n.toLocaleString('en-IN')
+  const clientBooths: Record<string, { name: string; price: number; size: string; sqm: string; w: number; d: number; passes: string; talk: number }> = {}
+  booths.forEach(b => { clientBooths[b.key] = { name: `${b.name} (${b.size})`, price: b.price, size: b.size, sqm: b.sqm, w: b.w, d: b.d, passes: b.passes, talk: b.talk } })
+  return `${sharedHeadHTML('Book Your Booth', '/inquiry', "Exhibit at Bharat AI Innovation 2026. Book a booth to reach the enterprise buyers, builders and government teams at WTC Mumbai, 20–21 Nov 2026. Booths from ₹48,000 + GST.").replace('</head>', BOOKING_DESIGN + BOOKING_MOTION + '</head>')}
+<body class="min-h-screen ps-page rg-page bk-page">
+${siteHeaderHTML('/exhibition')}
 
-<main class="max-w-6xl mx-auto px-4 py-8">
-  <!-- Hero -->
-  <div class="text-center mb-8">
-    <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 mb-4">
-      <i class="fas fa-store"></i> EXHIBITION BOOKING OPEN
+<main>
+  <section class="ps-hero bk-hero">
+    <div class="ps-aurora" aria-hidden="true"><i></i></div>
+    <div class="ps-wrap ps-hero-in">
+      <div>
+        <p class="ps-tag"><i class="fas fa-store" aria-hidden="true"></i>EXHIBITION BOOKING OPEN</p>
+        <h1 class="ps-title" aria-label="Book your exhibition booth"><span class="ps-w ps-w--big"><span style="--i:0">Book</span></span> <span class="ps-w"><span style="--i:1">your</span></span> <span class="ps-w"><span style="--i:2">exhibition</span></span> <span class="ps-w"><span style="--i:3">booth</span></span></h1>
+        <p class="ps-sub">Showcase your AI products &amp; solutions on the exhibition floor, to the enterprise buyers, builders and government teams at World Trade Center, Mumbai, 20&ndash;21 Nov 2026. <strong>Booths from ${rupees(48000)} + GST.</strong></p>
+      </div>
+      <figure class="bk-scale">
+        <div class="bk-floor" aria-hidden="true">
+          ${booths.map((b, i) => `<i class="bk-foot" data-booth="${b.key}" title="${b.name}" style="--w:${b.w};--d:${b.d};--i:${i};"></i>`).join('')}
+        </div>
+        <figcaption>Every size, drawn to scale. Each square is one metre.</figcaption>
+      </figure>
     </div>
-    <h1 class="text-3xl md:text-4xl font-bold mb-3">Book Your Exhibition Booth</h1>
-    <p class="text-gray-400 max-w-2xl mx-auto">Showcase your AI products & solutions on the exhibition floor — World Trade Center, Mumbai | 20-21 Nov 2026</p>
-  </div>
+  </section>
 
-  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
-
-    <!-- Booth Packages Panel (Left Column) -->
-    <div class="lg:col-span-1 space-y-3">
-      <h3 class="font-bold text-base text-amber-300 mb-2"><i class="fas fa-th-large mr-2"></i>Booth Packages</h3>
-
-      <div class="booth-pkg glass rounded-xl p-4 border border-green-500/20 cursor-pointer hover:border-green-400/40 transition" onclick="selectBooth(this, 'Startup Pod - 1.5x1.5m - Rs.48,000')">
-        <div class="flex items-center justify-between">
-          <div>
-            <span class="text-sm font-bold text-green-300">&#x1F680; Startup Pod</span>
-            <p class="text-[10px] text-gray-400 mt-0.5">1.5 x 1.5 m (2.25 sqm)</p>
-          </div>
-          <span class="text-sm font-bold text-green-400"><s style="font-weight:400;opacity:.7;">&#x20B9;38,000</s> &#x20B9;48,000</span>
-        </div>
-      </div>
-
-      <div class="booth-pkg glass rounded-xl p-4 border border-blue-500/20 cursor-pointer hover:border-blue-400/40 transition" onclick="selectBooth(this, 'Explorer Booth - 2x2m - Rs.1,29,000')">
-        <div class="flex items-center justify-between">
-          <div>
-            <span class="text-sm font-bold text-blue-300">&#x1F50D; Explorer Booth</span>
-            <p class="text-[10px] text-gray-400 mt-0.5">2 x 2 m (4 sqm)</p>
-          </div>
-          <span class="text-sm font-bold text-blue-400">&#x20B9;1,29,000</span>
-        </div>
-      </div>
-
-      <div class="booth-pkg glass rounded-xl p-4 border border-primary-500/20 cursor-pointer hover:border-primary-400/40 transition" onclick="selectBooth(this, 'Innovator Booth - 3x2m - Rs.1,95,000')">
-        <div class="flex items-center justify-between">
-          <div>
-            <span class="text-sm font-bold text-primary-300">&#x1F4A1; Innovator Booth</span>
-            <p class="text-[10px] text-gray-400 mt-0.5">3 x 2 m (6 sqm)</p>
-          </div>
-          <span class="text-sm font-bold text-primary-400">&#x20B9;1,95,000</span>
-        </div>
-      </div>
-
-      <div class="booth-pkg glass rounded-xl p-4 border border-violet-500/20 cursor-pointer hover:border-violet-400/40 transition" onclick="selectBooth(this, 'Accelerator Booth - 3x3m - Rs.2,91,000')">
-        <div class="flex items-center justify-between">
-          <div>
-            <span class="text-sm font-bold text-violet-300">&#x26A1; Accelerator Booth</span>
-            <p class="text-[10px] text-gray-400 mt-0.5">3 x 3 m (9 sqm)</p>
-          </div>
-          <span class="text-sm font-bold text-violet-400">&#x20B9;2,91,000</span>
-        </div>
-      </div>
-
-      <div class="booth-pkg glass rounded-xl p-4 border border-orange-500/20 cursor-pointer hover:border-orange-400/40 transition" onclick="selectBooth(this, 'Enterprise Booth - 4x2m - Rs.2,58,000')">
-        <div class="flex items-center justify-between">
-          <div>
-            <span class="text-sm font-bold text-orange-300">&#x1F3E2; Enterprise Booth</span>
-            <p class="text-[10px] text-gray-400 mt-0.5">4 x 2 m (8 sqm)</p>
-          </div>
-          <span class="text-sm font-bold text-orange-400">&#x20B9;2,58,000</span>
-        </div>
-      </div>
-
-      <div class="booth-pkg glass rounded-xl p-4 border border-amber-500/20 cursor-pointer hover:border-amber-400/40 transition" onclick="selectBooth(this, 'Flagship Pavilion - 6x2m - Rs.3,87,000')">
-        <div class="flex items-center justify-between">
-          <div>
-            <span class="text-sm font-bold text-amber-300">&#x1F3DB; Flagship Pavilion</span>
-            <p class="text-[10px] text-gray-400 mt-0.5">6 x 2 m (12 sqm)</p>
-          </div>
-          <span class="text-sm font-bold text-amber-400">&#x20B9;3,87,000</span>
-        </div>
-      </div>
-
-      <div class="booth-pkg glass rounded-xl p-4 border border-rose-500/20 cursor-pointer hover:border-rose-400/40 transition" onclick="selectBooth(this, 'Mega Pavilion - 7x7.7m - Rs.17,40,000')">
-        <div class="flex items-center justify-between">
-          <div>
-            <span class="text-sm font-bold text-rose-300">&#x1F451; Mega Pavilion</span>
-            <p class="text-[10px] text-gray-400 mt-0.5">7 x 7.7 m (53.90 sqm)</p>
-          </div>
-          <span class="text-sm font-bold text-rose-400">&#x20B9;17,40,000</span>
-        </div>
-      </div>
-
-      <!-- Quick Info -->
-      <div class="glass rounded-xl p-4 mt-4 border border-white/5">
-        <h4 class="text-xs font-bold text-gray-300 mb-2"><i class="fas fa-info-circle text-primary-400 mr-1.5"></i>All Booths Include</h4>
-        <ul class="text-[10px] text-gray-400 space-y-1">
-          <li><i class="fas fa-check text-green-400 mr-1.5"></i>Basic booth structure & branding</li>
-          <li><i class="fas fa-check text-green-400 mr-1.5"></i>Electricity & Wi-Fi access</li>
-          <li><i class="fas fa-check text-green-400 mr-1.5"></i>2 exhibitor badges per booth</li>
-          <li><i class="fas fa-check text-green-400 mr-1.5"></i>Listing in event directory & app</li>
-          <li><i class="fas fa-check text-green-400 mr-1.5"></i>AI Marketplace product listing</li>
+  <section class="bk-book">
+    <div class="ps-wrap bk-grid">
+      <div>
+        <h2 class="ps-h2 bk-h2" id="packages">Booth Packages</h2>
+        <p class="bk-lead">Pick a size and it goes into the form. All prices + GST.</p>
+        <ul class="bk-list">
+          ${booths.map(b => `<li><button type="button" class="booth-pkg bk-pkg" data-booth="${b.key}" aria-pressed="false" onclick="selectBooth(this, '${b.key}')">
+            <span class="bk-plan" aria-hidden="true"><i style="--w:${b.w};--d:${b.d};"></i></span>
+            <span class="bk-pkg-main">
+              <span class="bk-pkg-name">${b.name}${b.popular ? '<span class="bk-pkg-pop">Popular</span>' : ''}</span>
+              <span class="bk-pkg-size">${b.size} (${b.sqm})</span>
+              <span class="bk-pkg-gets">${b.passes} &middot; ${b.talk}-min talk</span>
+              <span class="bk-pkg-price">${b.was ? `<s style="font-weight:400;opacity:.7;">${rupees(b.was)}</s> ` : ''}${rupees(b.price)} <small>+ GST</small></span>
+            </span>
+            <span class="bk-tick" aria-hidden="true"></span>
+          </button></li>`).join('')}
         </ul>
+        <p class="bk-unsure">Not sure yet? <button type="button" onclick="chooseUndecided()">Ask us which size fits</button> or <a href="/exhibition#floorplan" class="ps-link">see the floor plan</a>.</p>
       </div>
-    </div>
 
-    <!-- Inquiry Form (Right 2 Columns) -->
-    <div class="lg:col-span-2">
-      <div class="glass rounded-2xl p-6 md:p-8 border border-amber-500/20" id="inquiry-form-card">
-        <div class="flex items-center gap-3 mb-6">
-          <div class="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center shrink-0">
-            <i class="fas fa-store text-lg text-amber-400"></i>
-          </div>
-          <div>
-            <h2 class="font-bold text-lg text-amber-300">Booth Inquiry Form</h2>
-            <p class="text-xs text-gray-400">Select a booth package or fill in details below</p>
-          </div>
+      <div class="bk-right">
+      <!-- Inquiry Form -->
+      <div class="rg-card" id="inquiry-form-card">
+        <div class="bk-head">
+          <h2>Booth Enquiry Form</h2>
+          <p>Select a booth package or fill in details below</p>
         </div>
-
-        <form id="inquiry-form" onsubmit="submitBoothInquiry(event)" class="space-y-4">
-
-          <!-- Booth Selection -->
-          <div>
-            <label class="text-xs text-gray-400 mb-1 block">Booth Type *</label>
-            <select id="iq-booth-type" required class="w-full px-4 py-3 rounded-xl text-sm">
-              <option value="">Select booth type</option>
-              <option value="Startup Pod - 1.5x1.5m - Rs.48,000">Startup Pod &#x2014; 1.5 x 1.5 m &#x2014; &#x20B9;48,000</option>
-              <option value="Explorer Booth - 2x2m - Rs.1,29,000">Explorer Booth &#x2014; 2 x 2 m &#x2014; &#x20B9;1,29,000</option>
-              <option value="Innovator Booth - 3x2m - Rs.1,95,000">Innovator Booth &#x2014; 3 x 2 m &#x2014; &#x20B9;1,95,000</option>
-              <option value="Accelerator Booth - 3x3m - Rs.2,91,000">Accelerator Booth &#x2014; 3 x 3 m &#x2014; &#x20B9;2,91,000</option>
-              <option value="Enterprise Booth - 4x2m - Rs.2,58,000">Enterprise Booth &#x2014; 4 x 2 m &#x2014; &#x20B9;2,58,000</option>
-              <option value="Flagship Pavilion - 6x2m - Rs.3,87,000">Flagship Pavilion &#x2014; 6 x 2 m &#x2014; &#x20B9;3,87,000</option>
-              <option value="Mega Pavilion - 7x7.7m - Rs.17,40,000">Mega Pavilion &#x2014; 7 x 7.7 m &#x2014; &#x20B9;17,40,000</option>
-              <option value="Undecided">Not sure yet / Need consultation</option>
-            </select>
-          </div>
-
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-
-            </div>
-            <div>
-              <label class="text-xs text-gray-400 mb-1 block">Preferred Zone</label>
-              <select id="iq-zone" class="w-full px-4 py-3 rounded-xl text-sm">
-                <option value="">Any zone</option>
-                <option value="Main Hall">Main Hall</option>
-                <option value="Innovation Hub">Innovation Hub</option>
-                <option value="Startup Alley">Startup Alley</option>
-                <option value="Enterprise Zone">Enterprise Zone</option>
-              </select>
-            </div>
-          </div>
-
-          <hr class="border-white/10">
-
-          <!-- Contact Info -->
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label class="text-xs text-gray-400 mb-1 block">Contact Person *</label>
-              <input type="text" id="iq-name" autocomplete="name" autocapitalize="words" required class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Your full name">
-            </div>
-            <div>
-              <label class="text-xs text-gray-400 mb-1 block">Email Address *</label>
-              <input type="email" id="iq-email" autocomplete="email" inputmode="email" autocapitalize="none" spellcheck="false" required class="w-full px-4 py-3 rounded-xl text-sm" placeholder="your@email.com">
-            </div>
-          </div>
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label class="text-xs text-gray-400 mb-1 block">Phone Number *</label>
-              <input type="tel" id="iq-phone" autocomplete="tel" required class="w-full px-4 py-3 rounded-xl text-sm" placeholder="+91 XXXXX XXXXX">
-            </div>
-            <div>
-              <label class="text-xs text-gray-400 mb-1 block">Company / Organization *</label>
-              <input type="text" id="iq-company" autocomplete="organization" required class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Company name">
-            </div>
-          </div>
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label class="text-xs text-gray-400 mb-1 block">Designation</label>
-              <input type="text" id="iq-designation" autocomplete="organization-title" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Your role / title">
-            </div>
-            <div>
-              <label class="text-xs text-gray-400 mb-1 block">Website</label>
-              <input type="url" id="iq-website" autocomplete="url" inputmode="url" autocapitalize="none" spellcheck="false" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="https://yourcompany.com">
-            </div>
-          </div>
-          <div>
-            <label class="text-xs text-gray-400 mb-1 block">Industry / Domain</label>
-            <select id="iq-industry" class="w-full px-4 py-3 rounded-xl text-sm">
-              <option value="">Select industry</option>
-              <option value="AI/ML">Artificial Intelligence / Machine Learning</option>
-              <option value="IT/Software">IT / Software</option>
-              <option value="Healthcare">Healthcare / MedTech</option>
-              <option value="FinTech">FinTech / Banking</option>
-              <option value="EdTech">EdTech / Education</option>
-              <option value="Manufacturing">Manufacturing / Industry 4.0</option>
-              <option value="Agriculture">AgriTech / Agriculture</option>
-              <option value="Defense">Defense / Aerospace</option>
-              <option value="Retail">Retail / E-commerce</option>
-              <option value="Government">Government / Public Sector</option>
-              <option value="Telecom">Telecom / IoT</option>
-              <option value="Automotive">Automotive / EV</option>
-              <option value="Energy">Energy / CleanTech</option>
-              <option value="Logistics">Logistics / Supply Chain</option>
-              <option value="Other">Other</option>
-            </select>
-          </div>
-
-          <div>
-            <label class="text-xs text-gray-400 mb-1 block">Products / Solutions to Showcase</label>
-            <textarea id="iq-products" autocomplete="off" rows="2" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Brief description of what you plan to exhibit..."></textarea>
-          </div>
-          <div>
-            <label class="text-xs text-gray-400 mb-1 block">Special Requirements / Questions</label>
-            <textarea id="iq-message" autocomplete="off" rows="3" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Any specific requirements, questions, or preferences..."></textarea>
-          </div>
-
-          <!-- Price Summary -->
-          <div id="iq-price-summary" class="hidden p-4 rounded-xl bg-amber-500/10 border border-amber-500/20">
-            <div class="flex items-center justify-between">
-              <div>
-                <span class="text-xs text-gray-400">Selected Booth</span>
-                <p class="text-sm font-bold text-amber-300" id="iq-summary-type"></p>
+        <div class="rg-card-body">
+          <form id="inquiry-form" onsubmit="submitBoothInquiry(event)" class="rg-form">
+            <div class="rg-two bk-first">
+              <div class="rg-field">
+                <label for="iq-booth-type">Booth type</label>
+                <select id="iq-booth-type" required>
+                  <option value="">Select booth type</option>
+                  ${booths.map(b => `<option value="${b.key}">${b.name} &#x2014; ${b.size} &#x2014; ${rupees(b.price)}</option>`).join('\n                  ')}
+                  <option value="Undecided">Not sure yet / Need consultation</option>
+                </select>
               </div>
-              <div class="text-right">
-                <span class="text-xs text-gray-400">Estimated Total</span>
-                <p class="text-lg font-bold text-amber-400" id="iq-summary-price"></p>
+              <div class="rg-field">
+                <label for="iq-zone">Preferred zone <small>(optional)</small></label>
+                <select id="iq-zone">
+                  <option value="">Any zone</option>
+                  <option value="Generative AI">Generative AI</option>
+                  <option value="Healthcare AI">Healthcare AI</option>
+                  <option value="FinTech AI">FinTech AI</option>
+                  <option value="AgriTech AI">AgriTech AI</option>
+                  <option value="Manufacturing AI">Manufacturing AI</option>
+                  <option value="Cloud & Infra">Cloud &amp; Infra</option>
+                  <option value="Startup Pavilion">Startup Pavilion</option>
+                  <option value="Global Pavilion">Global Pavilion</option>
+                </select>
               </div>
             </div>
-            <p class="text-[10px] text-gray-500 mt-1">* Final pricing confirmed after review. GST extra as applicable.</p>
-          </div>
 
-          <button type="submit" id="iq-submit" class="w-full py-3.5 rounded-xl font-semibold text-white bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 transition-all text-sm shadow-lg shadow-amber-500/20">
-            <i class="fas fa-paper-plane mr-2"></i>Submit Booth Inquiry
-          </button>
-          <p class="text-center text-[10px] text-gray-500">Our team will respond within 24 hours with booth availability and next steps.</p>
-        </form>
+            <!-- Price Summary -->
+            <div id="iq-price-summary" class="hidden bk-sum">
+              <span class="bk-plan" aria-hidden="true"><i id="iq-summary-plan"></i></span>
+              <div class="bk-sum-what">
+                <span>Selected Booth</span>
+                <p id="iq-summary-type"></p>
+                <small id="iq-summary-more"></small>
+              </div>
+              <div class="bk-sum-cost">
+                <span>Estimated Total</span>
+                <p id="iq-summary-price"></p>
+              </div>
+              <p class="bk-sum-fine">* Final pricing confirmed after review. GST extra as applicable.</p>
+            </div>
 
-        <!-- Success State -->
-        <div id="iq-success" class="hidden text-center py-8">
-          <div class="w-20 h-20 rounded-full bg-green-500/20 flex items-center justify-center mx-auto mb-4">
-            <i class="fas fa-check text-3xl text-green-400"></i>
-          </div>
-          <h3 class="font-bold text-xl text-green-300">Booth Inquiry Submitted!</h3>
-          <p class="text-sm text-gray-400 mt-2 max-w-md mx-auto">Thank you for your interest in exhibiting at Bharat AI Innovation 2026. Our exhibition team will review your request and contact you within 24 hours.</p>
-          <p class="text-xs text-gray-500 mt-2">Reference: <span id="iq-ref" class="text-primary-400 font-mono"></span></p>
-          <div class="flex gap-3 justify-center mt-6 flex-wrap">
-            <button onclick="resetInquiryForm()" class="px-6 py-2.5 rounded-xl text-sm font-semibold glass hover:bg-white/10 transition"><i class="fas fa-plus mr-2"></i>Submit Another</button>
-            <a href="/app" class="px-6 py-2.5 rounded-xl text-sm font-semibold bg-primary-500/20 text-primary-300 hover:bg-primary-500/30 transition"><i class="fas fa-rocket mr-2"></i>Explore Event</a>
-            <a href="/marketplace" class="px-6 py-2.5 rounded-xl text-sm font-semibold bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition"><i class="fas fa-store mr-2"></i>AI Marketplace</a>
+            <hr class="bk-rule">
+
+            <div class="rg-two">
+              <div class="rg-field">
+                <label for="iq-name">Contact person</label>
+                <input type="text" id="iq-name" autocomplete="name" autocapitalize="words" required placeholder="Your full name">
+              </div>
+              <div class="rg-field">
+                <label for="iq-email">Email address</label>
+                <input type="email" id="iq-email" autocomplete="email" inputmode="email" autocapitalize="none" spellcheck="false" required placeholder="your@email.com">
+              </div>
+            </div>
+            <div class="rg-two">
+              <div class="rg-field">
+                <label for="iq-phone">Phone number</label>
+                <input type="tel" id="iq-phone" autocomplete="tel" required placeholder="+91 XXXXX XXXXX">
+              </div>
+              <div class="rg-field">
+                <label for="iq-company">Company / Organization</label>
+                <input type="text" id="iq-company" autocomplete="organization" required placeholder="Company name">
+              </div>
+            </div>
+            <div class="rg-field">
+              <label for="iq-products">Products / solutions to showcase <small>(optional)</small></label>
+              <textarea id="iq-products" autocomplete="off" rows="2" placeholder="Brief description of what you plan to exhibit..."></textarea>
+            </div>
+            <details class="rg-more">
+              <summary><span>Add your role, website and questions <small>(optional)</small></span></summary>
+              <div class="rg-more-in">
+                <div class="rg-two">
+                  <div class="rg-field">
+                    <label for="iq-designation">Designation</label>
+                    <input type="text" id="iq-designation" autocomplete="organization-title" placeholder="Your role / title">
+                  </div>
+                  <div class="rg-field">
+                    <label for="iq-website">Website</label>
+                    <input type="text" id="iq-website" autocomplete="url" inputmode="url" autocapitalize="none" spellcheck="false" placeholder="yourcompany.com">
+                  </div>
+                </div>
+                <div class="rg-field">
+                  <label for="iq-industry">Industry / domain</label>
+                  <select id="iq-industry">
+                    <option value="">Select industry</option>
+                    <option value="AI/ML">Artificial Intelligence / Machine Learning</option>
+                    <option value="IT/Software">IT / Software</option>
+                    <option value="Healthcare">Healthcare / MedTech</option>
+                    <option value="FinTech">FinTech / Banking</option>
+                    <option value="EdTech">EdTech / Education</option>
+                    <option value="Manufacturing">Manufacturing / Industry 4.0</option>
+                    <option value="Agriculture">AgriTech / Agriculture</option>
+                    <option value="Defense">Defense / Aerospace</option>
+                    <option value="Retail">Retail / E-commerce</option>
+                    <option value="Government">Government / Public Sector</option>
+                    <option value="Telecom">Telecom / IoT</option>
+                    <option value="Automotive">Automotive / EV</option>
+                    <option value="Energy">Energy / CleanTech</option>
+                    <option value="Logistics">Logistics / Supply Chain</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+                <div class="rg-field">
+                  <label for="iq-message">Special requirements / questions</label>
+                  <textarea id="iq-message" autocomplete="off" rows="3" placeholder="Any specific requirements, questions, or preferences..."></textarea>
+                </div>
+              </div>
+            </details>
+
+            <div id="iq-notice" class="hidden" role="alert"></div>
+            <button type="submit" id="iq-submit" class="ps-buy rg-cta"><i class="fas fa-paper-plane mr-2" aria-hidden="true"></i>Send Booth Enquiry</button>
+            <p class="rg-fine">Our team will respond within 24 hours with booth availability and next steps.</p>
+          </form>
+
+          <!-- Success State -->
+          <div id="iq-success" class="hidden bk-done">
+            <div class="bk-done-tick"><i class="fas fa-check" aria-hidden="true"></i></div>
+            <h3>Booth Enquiry Sent!</h3>
+            <p>Thank you for your interest in exhibiting at Bharat AI Innovation 2026. Our exhibition team will review your request and contact you within 24 hours.</p>
+            <p>Reference: <span id="iq-ref" class="bk-done-ref"></span></p>
+            <div class="bk-done-go">
+              <button type="button" onclick="resetInquiryForm()" class="rg-ghost"><i class="fas fa-plus mr-2" aria-hidden="true"></i>Submit Another</button>
+              <a href="/app" class="rg-ghost"><i class="fas fa-rocket mr-2" aria-hidden="true"></i>Explore Event</a>
+              <a href="/marketplace" class="rg-ghost"><i class="fas fa-store mr-2" aria-hidden="true"></i>AI Marketplace</a>
+            </div>
           </div>
         </div>
       </div>
 
-      <!-- Why Exhibit Section -->
-      <div class="glass rounded-2xl p-6 mt-6 border border-white/5">
-        <h3 class="font-bold text-base text-white mb-4"><i class="fas fa-chart-line text-primary-400 mr-2"></i>Why Exhibit at BHAI 2026?</h3>
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <div class="text-center">
-            <div class="text-2xl font-bold text-primary-400">10,000+</div>
-            <div class="text-[10px] text-gray-400 mt-1">Expected Visitors</div>
-          </div>
-          <div class="text-center">
-            <div class="text-2xl font-bold text-amber-400">200+</div>
-            <div class="text-[10px] text-gray-400 mt-1">Exhibitors</div>
-          </div>
-          <div class="text-center">
-            <div class="text-2xl font-bold text-green-400">50+</div>
-            <div class="text-[10px] text-gray-400 mt-1">Countries</div>
-          </div>
-          <div class="text-center">
-            <div class="text-2xl font-bold text-purple-400">2 Days</div>
-            <div class="text-[10px] text-gray-400 mt-1">Full Access</div>
-          </div>
+        <div class="bk-incl">
+          <h3>All Booths Include</h3>
+          <ul class="rg-ticks">
+            <li><i class="fas fa-check" aria-hidden="true"></i>Basic booth structure &amp; branding</li>
+            <li><i class="fas fa-check" aria-hidden="true"></i>Electricity</li>
+            <li><i class="fas fa-check" aria-hidden="true"></i>An Innovation Talk &amp; Showcase on the main stage</li>
+            <li><i class="fas fa-check" aria-hidden="true"></i>Exhibitor passes that include everything on a Delegate Pass</li>
+            <li><i class="fas fa-check" aria-hidden="true"></i>Listing in event directory &amp; app</li>
+            <li><i class="fas fa-check" aria-hidden="true"></i>AI Marketplace product listing</li>
+          </ul>
         </div>
       </div>
     </div>
+  </section>
 
-  </div>
+  <section class="bk-why" aria-labelledby="bk-why-title">
+    <div class="ps-wrap">
+      <h2 class="ps-h2" id="bk-why-title">Why exhibit at Bharat AI Innovation 2026?</h2>
+      <ul class="bk-why-list">
+        <li>
+          <img src="/img/t/GiqsZVsx.webp" width="720" height="480" loading="lazy" decoding="async" alt="Visitors at an exhibition booth at Data Science Congress">
+          <h3>Buyers on the floor</h3>
+          <p>CIOs from banking, insurance and healthcare, and funded startup founders, over two days. Your booth is the meeting room.</p>
+        </li>
+        <li>
+          <img src="/img/t/ziOcVT9u.webp" width="720" height="480" loading="lazy" decoding="async" alt="A speaker on stage at Data Science Congress">
+          <h3>Your talk on the main stage</h3>
+          <p>Every booth includes an Innovation Talk &amp; Showcase, 8 to 40 minutes by size, to show what you have built to the buyers, investors and policymakers in the room.</p>
+        </li>
+        <li>
+          <img src="/img/t/7PN2Sjyw.webp" width="720" height="540" loading="lazy" decoding="async" alt="Attendees in the registration lobby at Data Science Congress">
+          <h3>Bring your clients</h3>
+          <p>Invite your existing and prospective clients to the floor. Meeting them here, with the whole industry around you, does what a sales meeting cannot.</p>
+        </li>
+      </ul>
+      <p class="ps-lead">Moments from Data Science Congress, the predecessor to Bharat AI Innovation.</p>
+    </div>
+  </section>
 
   <!-- Quick Contact Bar -->
-  <div class="max-w-6xl mx-auto mt-6">
-    <div class="glass rounded-xl p-4 flex flex-wrap items-center justify-center gap-4 text-xs text-gray-400">
-      <span><i class="fas fa-envelope text-amber-400 mr-1.5"></i>exhibition@bharataiinnovation.com</span>
-      <span><i class="fas fa-globe text-amber-400 mr-1.5"></i><a href="https://bharataiinnovation.com" target="_blank" class="hover:text-white transition">bharataiinnovation.com</a></span>
-      <span><i class="fas fa-map-marker-alt text-amber-400 mr-1.5"></i>WTC Mumbai, Cuffe Parade</span>
-      <span><i class="fas fa-calendar text-amber-400 mr-1.5"></i>20-21 Nov 2026</span>
+  <section class="bk-contact" aria-label="Contact the exhibition team">
+    <div class="ps-wrap">
+      <ul>
+        <li><i class="fas fa-envelope" aria-hidden="true"></i><a href="mailto:exhibition@bharataiinnovation.com">exhibition@bharataiinnovation.com</a></li>
+        <li><i class="fas fa-map-marker-alt" aria-hidden="true"></i>WTC Mumbai, Cuffe Parade</li>
+        <li><i class="fas fa-calendar" aria-hidden="true"></i>20-21 Nov 2026</li>
+      </ul>
     </div>
-  </div>
+  </section>
+
+  <section class="ps-end" aria-labelledby="ps-end-title">
+    <div class="ps-wrap">
+      <h2 class="ps-end-title" id="ps-end-title">Not sure which size?</h2>
+      <a class="ps-buy" href="#inquiry-form-card" onclick="chooseUndecided(); return false;">Ask us which size fits</a>
+      <p>Tell us what you plan to show and we will suggest a booth. Or <a href="/exhibition#packages" class="ps-link">read what each package includes</a> and <a href="/exhibition#floorplan" class="ps-link">see the floor plan</a>.</p>
+    </div>
+  </section>
 </main>
 
 ${sharedFooterHTML()}
+${BOOKING_CREDIT}
+${BOOKING_SCRIPTS}
 
 <script>
 ${sharedToastJS()}
 
-var BOOTH_PRICES = {
-  'Startup Pod - 1.5x1.5m - Rs.48,000': { name: 'Startup Pod (1.5 x 1.5 m)', price: 48000 },
-  'Explorer Booth - 2x2m - Rs.1,29,000': { name: 'Explorer Booth (2 x 2 m)', price: 129000 },
-  'Innovator Booth - 3x2m - Rs.1,95,000': { name: 'Innovator Booth (3 x 2 m)', price: 195000 },
-  'Accelerator Booth - 3x3m - Rs.2,91,000': { name: 'Accelerator Booth (3 x 3 m)', price: 291000 },
-  'Enterprise Booth - 4x2m - Rs.2,58,000': { name: 'Enterprise Booth (4 x 2 m)', price: 258000 },
-  'Flagship Pavilion - 6x2m - Rs.3,87,000': { name: 'Flagship Pavilion (6 x 2 m)', price: 387000 },
-  'Mega Pavilion - 7x7.7m - Rs.17,40,000': { name: 'Mega Pavilion (7 x 7.7 m)', price: 1740000 }
-};
+var BOOTH_PRICES = ${JSON.stringify(clientBooths)};
+
+// Everything that shows the chosen size follows the list in the form.
+function markBooth(val) {
+  document.querySelectorAll('.booth-pkg').forEach(function (p) {
+    var on = p.getAttribute('data-booth') === val;
+    p.classList.toggle('is-on', on);
+    p.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+  document.querySelectorAll('.bk-foot').forEach(function (f) {
+    f.classList.toggle('is-on', f.getAttribute('data-booth') === val);
+  });
+}
+
+// On a phone the form is below the sizes, so the page goes to it. On a laptop it is already beside them.
+function showBoothForm() {
+  var card = document.getElementById('inquiry-form-card');
+  var top = card.getBoundingClientRect().top;
+  if (top >= 0 && top < window.innerHeight * 0.4) return;
+  var still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  card.scrollIntoView({ behavior: still ? 'auto' : 'smooth', block: 'start' });
+}
 
 function selectBooth(el, val) {
   document.getElementById('iq-booth-type').value = val;
   updatePriceSummary();
-  document.getElementById('inquiry-form-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
-  document.querySelectorAll('.booth-pkg').forEach(function(p) { p.style.outline = 'none'; });
-  el.style.outline = '2px solid #fbbf24';
-  el.style.outlineOffset = '2px';
+  showBoothForm();
+}
+
+function chooseUndecided() {
+  document.getElementById('iq-booth-type').value = 'Undecided';
+  updatePriceSummary();
+  showBoothForm();
 }
 
 function updatePriceSummary() {
   var sel = document.getElementById('iq-booth-type').value;
   var summary = document.getElementById('iq-price-summary');
   var info = BOOTH_PRICES[sel];
+  markBooth(sel);
 
   if (info) {
+    var plan = document.getElementById('iq-summary-plan');
+    plan.style.setProperty('--w', info.w);
+    plan.style.setProperty('--d', info.d);
     document.getElementById('iq-summary-type').textContent = info.name;
-    document.getElementById('iq-summary-price').textContent = '\\u20B9' + info.price.toLocaleString('en-IN');
+    document.getElementById('iq-summary-more').textContent = info.sqm + ' \\u00B7 ' + info.passes + ' \\u00B7 ' + info.talk + '-minute talk on stage';
+    document.getElementById('iq-summary-price').textContent = '\\u20B9' + info.price.toLocaleString('en-IN') + ' + GST';
     summary.classList.remove('hidden');
   } else {
     summary.classList.add('hidden');
@@ -21088,11 +21109,32 @@ function updatePriceSummary() {
 
 document.getElementById('iq-booth-type').addEventListener('change', updatePriceSummary);
 
+// A website typed as www.example.com, the way people type it, is saved as a working link. Its box sits
+// in the folded part of the form, so the browser must not be left to refuse it: a box it cannot show
+// would have stopped the form with nothing on the screen.
+function iqLink(v) {
+  v = String(v || '').trim();
+  var low = v.toLowerCase();
+  return !v || low.indexOf('http://') === 0 || low.indexOf('https://') === 0 ? v : 'https://' + v;
+}
+
+// A toast is gone in four seconds, so a refusal also stays above the button until the next press.
+function iqRefused(msg) {
+  var n = document.getElementById('iq-notice');
+  n.textContent = msg;
+  n.classList.remove('hidden');
+  showToast(msg, 'error');
+  var btn = document.getElementById('iq-submit');
+  btn.innerHTML = '<i class="fas fa-paper-plane mr-2" aria-hidden="true"></i>Send Booth Enquiry';
+  btn.disabled = false;
+}
+
 async function submitBoothInquiry(e) {
   e.preventDefault();
   var btn = document.getElementById('iq-submit');
-  btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Submitting...';
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2" aria-hidden="true"></i>Sending...';
   btn.disabled = true;
+  document.getElementById('iq-notice').classList.add('hidden');
 
   var boothType = document.getElementById('iq-booth-type').value;
   var zone = document.getElementById('iq-zone').value;
@@ -21104,7 +21146,7 @@ async function submitBoothInquiry(e) {
     preferred_zone: zone,
     estimated_total: info ? info.price : null,
     designation: document.getElementById('iq-designation').value.trim(),
-    website: document.getElementById('iq-website').value.trim(),
+    website: iqLink(document.getElementById('iq-website').value),
     industry: document.getElementById('iq-industry').value,
     products_to_showcase: document.getElementById('iq-products').value.trim()
   };
@@ -21124,22 +21166,20 @@ async function submitBoothInquiry(e) {
         metadata: metadata
       })
     });
-    var data = await resp.json();
+    var data = await resp.json().catch(function () { return {}; });
     if (!resp.ok) {
-      showToast(data.error || 'Failed to submit', 'error');
-      btn.innerHTML = '<i class="fas fa-paper-plane mr-2"></i>Submit Booth Inquiry';
-      btn.disabled = false;
+      iqRefused(data.error || 'We could not send that. Please try again.');
       return;
     }
 
     document.getElementById('inquiry-form').classList.add('hidden');
     document.getElementById('iq-success').classList.remove('hidden');
     document.getElementById('iq-ref').textContent = 'BHAI-INQ-' + String(data.id).padStart(5, '0');
-    showToast('Booth inquiry submitted successfully!', 'success');
+    showToast('Booth enquiry sent', 'success');
+    var still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    document.getElementById('inquiry-form-card').scrollIntoView({ behavior: still ? 'auto' : 'smooth', block: 'start' });
   } catch(err) {
-    showToast('Network error. Please try again.', 'error');
-    btn.innerHTML = '<i class="fas fa-paper-plane mr-2"></i>Submit Booth Inquiry';
-    btn.disabled = false;
+    iqRefused('Network error. Please try again.');
   }
 }
 
@@ -21147,10 +21187,10 @@ function resetInquiryForm() {
   document.getElementById('inquiry-form').reset();
   document.getElementById('inquiry-form').classList.remove('hidden');
   document.getElementById('iq-success').classList.add('hidden');
-  document.getElementById('iq-price-summary').classList.add('hidden');
-  document.getElementById('iq-submit').innerHTML = '<i class="fas fa-paper-plane mr-2"></i>Submit Booth Inquiry';
+  document.getElementById('iq-notice').classList.add('hidden');
+  updatePriceSummary();
+  document.getElementById('iq-submit').innerHTML = '<i class="fas fa-paper-plane mr-2" aria-hidden="true"></i>Send Booth Enquiry';
   document.getElementById('iq-submit').disabled = false;
-  document.querySelectorAll('.booth-pkg').forEach(function(p) { p.style.outline = 'none'; });
 }
 
 // Check URL params for pre-selected booth type
