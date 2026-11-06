@@ -26,7 +26,7 @@ r = await hit('/');
 check('static site carries _headers', r.h['x-content-type-options'] === 'nosniff', JSON.stringify(r.h['x-content-type-options']));
 
 r = await hit('/delhi');
-check('/delhi names the venue and the dates, and offers no price', r.text.includes('Bharat Mandapam') && r.text.includes('29–30 July 2027') && !r.text.includes('₹'), r.status);
+check('/delhi names the venue, the dates and the Delegate Pass price', r.text.includes('Bharat Mandapam') && r.text.includes('29–30 July 2027') && r.text.includes('₹4,999'), r.status);
 r = await hit('/delhi-2027.ics');
 check('the Delhi calendar file is a calendar file', r.status === 200 && r.text.includes('DTSTART;VALUE=DATE:20270729') && !String(r.h['content-type'] || '').includes('html'), r.status + ' ' + r.h['content-type']);
 r = await hit('/');

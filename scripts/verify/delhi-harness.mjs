@@ -9,6 +9,7 @@ import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { extname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { SECRETS, kitEncrypt, gatewayAnswer } from './pay-db.mjs';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const PORT = Number(process.env.HARNESS_PORT || 8786);
@@ -26,6 +27,7 @@ const D1 = {
   prepare(sql) {
     let args = [];
     const s = {
+      sql,
       bind(...a) { args = clean(a); return s; },
       async first() { return rows(sql, args)[0] || null; },
       async all() { return { results: rows(sql, args) }; },
@@ -33,9 +35,12 @@ const D1 = {
     };
     return s;
   },
-  async batch(list) { return Promise.all(list.map(s => s.all())); },
+  // Real results for a SELECT, a real last_row_id for a write (issueInvoice reads it).
+  async batch(list) { const out = []; for (const s of list) out.push(/^\s*select/i.test(s.sql) ? await s.all() : await s.run()); return out; },
 };
-const env = new Proxy({ ADMIN_SECRET: 'h-admin', SESSION_SECRET: 'h', ELASTIC_EMAIL_API_KEY: 'test-key', DB: D1 }, { get: (t, k) => (k in t ? t[k] : undefined) });
+// Checkout is on, with the kit's made-up keys: browser-delhi-pay.cjs plays the gateway through /__answer.
+for (const [k, v] of [['inv_legal_name', 'Aegis Knowledge Trust'], ['inv_gstin', '27AAATA1234B1Z5'], ['inv_state', 'Maharashtra'], ['inv_state_code', '27']]) db.run('INSERT INTO app_settings (key, value) VALUES (?, ?)', [k, v]);
+const env = new Proxy({ ADMIN_SECRET: 'h-admin', SESSION_SECRET: 'h', ELASTIC_EMAIL_API_KEY: 'test-key', DB: D1, ...SECRETS },  { get: (t, k) => (k in t ? t[k] : undefined) });
 const pending = [];
 const ctx = { waitUntil(p) { pending.push(p); }, passThroughOnException() {} };
 
@@ -52,6 +57,9 @@ const isFile = (f) => { try { return statSync(f).isFile(); } catch { return fals
 http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost:' + PORT);
   if (url.pathname === '/__inquiries') { res.writeHead(200, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify(rows('SELECT * FROM inquiries ORDER BY id'))); }
+  if (url.pathname === '/__rows') { res.writeHead(200, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify({ attendees: rows('SELECT * FROM attendees ORDER BY id'), orders: rows('SELECT * FROM payment_orders ORDER BY id'), invoices: rows('SELECT * FROM invoices ORDER BY id') })); }
+  // The gateway's answer for the latest order, encrypted the way CCAvenue's kits do it.
+  if (url.pathname === '/__answer') { const o = rows('SELECT * FROM payment_orders ORDER BY id DESC LIMIT 1')[0]; res.writeHead(200, { 'Content-Type': 'text/plain' }); return res.end(kitEncrypt(gatewayAnswer('h', o, { order_status: url.searchParams.get('status') || 'Success' }))); }
   if (url.pathname === '/__mail') { await Promise.allSettled(pending); res.writeHead(200, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify(mail)); }
   const p = decodeURIComponent(url.pathname);
   const base = join(ROOT, 'public', p);

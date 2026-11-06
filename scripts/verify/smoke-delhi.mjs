@@ -227,10 +227,10 @@ const postPass = (o, headers = {}) => api('/api/delhi/register', { method: 'POST
 
 // ---- the build: Pages serves the page, the worker never sees it ----
 const routes = JSON.parse(readFileSync(new URL('../../dist/_routes.json', import.meta.url), 'utf8'));
-for (const p of ['/delhi', '/delhi.html', '/delhi-2027.ics', '/images/*']) check(`${p} is served by Cloudflare Pages, not the worker`, routes.exclude.includes(p), JSON.stringify(routes.exclude.slice(0, 5)));
+for (const p of ['/delhi', '/delhi.html', '/delhi-register', '/delhi-register.html', '/delhi-2027.ics', '/images/*']) check(`${p} is served by Cloudflare Pages, not the worker`, routes.exclude.includes(p), JSON.stringify(routes.exclude.slice(0, 5)));
 check('still inside Cloudflare\'s 100-rule limit', routes.exclude.length + routes.include.length <= 100, routes.exclude.length);
 check('/api/* still reaches the worker, so the form can post', !routes.exclude.some((x) => x.startsWith('/api')) && routes.include.includes('/*'));
-for (const f of ['delhi.html', 'delhi-2027.ics', 'images/delhi/mandapam-dusk-phone.webp', 'images/delhi/mandapam-dusk-1600.webp', 'images/delhi/mandapam-dusk-2400.webp', 'images/delhi/mandapam-day.webp', 'images/delhi/mandapam-gate.webp', 'images/og/delhi.jpg']) {
+for (const f of ['delhi.html', 'delhi-register.html', 'delhi-2027.ics', 'images/delhi/mandapam-dusk-phone.webp', 'images/delhi/mandapam-dusk-1600.webp', 'images/delhi/mandapam-dusk-2400.webp', 'images/delhi/mandapam-day.webp', 'images/delhi/mandapam-gate.webp', 'images/og/delhi.jpg']) {
   check(`the build carries ${f}`, existsSync(new URL('../../dist/' + f, import.meta.url)));
 }
 

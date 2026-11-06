@@ -52,7 +52,7 @@ const settled = async (p) => { await p.evaluate(() => document.fonts.ready); awa
     check('and its button can be reached by keyboard', await page.getAttribute('#stickyCta a', 'tabindex') === '0');
     await page.click('#stickyCta a');
     await page.waitForTimeout(900);
-    check('the bar\'s button goes to the form, and it steps aside there', await page.locator('#stickyCta.is-on').count() === 0 && await page.locator('#dl-form').isVisible());
+    check('the bar\'s button goes to the passes, and it steps aside there', await page.locator('#stickyCta.is-on').count() === 0 && await page.locator('#passes').isVisible());
 
     // Everything appears, every picture loads
     for (const sel of ['.dl-collage', '.dl-tiles', '.dl-rows', '.dl-faq']) {
@@ -70,7 +70,10 @@ const settled = async (p) => { await p.evaluate(() => document.fonts.ready); awa
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.click('.dl-hero-alt a');
     await page.waitForTimeout(900);
-    check('"Tell us here" chooses Exhibit', await page.evaluate(() => document.querySelector('input[name="interest"]:checked').value) === 'exhibit');
+    check('"Book a booth" goes to the booths', await page.evaluate(() => { const r = document.getElementById('booths').getBoundingClientRect(); return r.top < innerHeight && r.bottom > 0; }));
+    await page.locator('.dl-sale-row', { hasText: 'Explorer Booth' }).locator('a').click();
+    await page.waitForTimeout(900);
+    check('Book this booth chooses Exhibit and says which', await page.evaluate(() => document.querySelector('input[name="interest"]:checked').value) === 'exhibit' && (await page.textContent('#dl-chosen')).includes('Explorer Booth') && await page.locator('#dl-chosen').isVisible());
     await page.click('#dl-submit');
     check('empty: asks for the name, on screen', (await page.textContent('#dl-error')).includes('name') && await page.locator('#dl-error').isVisible());
     await page.fill('#dl-name', 'Priya Sharma');
@@ -83,14 +86,11 @@ const settled = async (p) => { await p.evaluate(() => document.fonts.ready); awa
     await page.fill('#dl-phone', '98765 43210');
     await page.fill('#dl-org', 'Example Ltd');
     // Tapping the label of another choice works, then back
-    await page.locator('label.dl-way', { hasText: 'Speak' }).click();
-    check('tapping a choice selects it', await page.evaluate(() => document.querySelector('input[name="interest"]:checked').value) === 'speak');
-    await page.locator('label.dl-way', { hasText: 'Exhibit' }).click();
     await page.click('#dl-submit');
     await page.waitForSelector('#dl-done:not([hidden])');
     check('the thank-you names their email', (await page.textContent('#dl-done-text')).includes('priya@example.com'));
     const saved = await (await ctx.request.get(BASE + '/__inquiries')).json();
-    check('it really landed in the database', saved.length === 1 && saved[0].inquiry_type === 'exhibition' && saved[0].subject === 'Delhi 2027 · Exhibit' && saved[0].email === 'priya@example.com', JSON.stringify(saved));
+    check('it really landed in the database', saved.length === 1 && saved[0].inquiry_type === 'exhibition' && saved[0].subject === 'Delhi 2027 · Exhibit · Explorer Booth, ₹1,29,000 + GST' && saved[0].email === 'priya@example.com', JSON.stringify(saved));
     const mail = await (await ctx.request.get(BASE + '/__mail')).json();
     check('and the team was emailed once', mail.length === 1 && mail[0].Content.ReplyTo.includes('priya@example.com'), mail.length);
 
@@ -99,7 +99,11 @@ const settled = async (p) => { await p.evaluate(() => document.fonts.ready); awa
     await settled(page);
     await page.click('.dl-hero-actions .btn-primary');
     await page.waitForTimeout(900);
-    check('Register free scrolls to the form, on the pass', await page.locator('#dl-form').isVisible() && await page.evaluate(() => document.querySelector('input[name="interest"]:checked').value) === 'attend' && (await page.textContent('#dl-form-title')).includes('free pass'));
+    check('Get your pass goes to the passes', await page.evaluate(() => { const r = document.getElementById('passes').getBoundingClientRect(); return r.top < innerHeight && r.bottom > 0; }));
+    check('four paid passes and the free one are on the page, each with its price', await page.evaluate(() => document.querySelectorAll('.dl-pass').length === 4 && ['₹999', '₹4,999', '₹9,999', '₹19,999'].every((p) => document.getElementById('passes').textContent.includes(p))) && (await page.textContent('.dl-free-row')).includes('free'));
+    await page.click('.dl-free-row a');
+    await page.waitForTimeout(900);
+    check('the free pass link scrolls to the form, on the pass', await page.locator('#dl-form').isVisible() && await page.evaluate(() => document.querySelector('input[name="interest"]:checked').value) === 'attend' && (await page.textContent('#dl-form-title')).includes('free pass'));
     await page.locator('label.dl-way', { hasText: 'Exhibit' }).click();
     check('choosing Exhibit puts away designation and city and says Send', !(await page.locator('#dl-job').isVisible()) && !(await page.locator('#dl-city').isVisible()) && (await page.textContent('#dl-submit')).includes('Send'));
     await page.locator('label.dl-way', { hasText: 'Attend' }).click();
@@ -126,7 +130,7 @@ const settled = async (p) => { await p.evaluate(() => document.fonts.ready); awa
     // Questions
     const qs = page.locator('.dl-faq details');
     for (let i = 0; i < await qs.count(); i++) await qs.nth(i).locator('summary').click();
-    check('all four questions open', await page.evaluate(() => { const d = [...document.querySelectorAll('.dl-faq details')]; return d.length === 4 && d.every((x) => x.open); }));
+    check('all five questions open', await page.evaluate(() => { const d = [...document.querySelectorAll('.dl-faq details')]; return d.length === 5 && d.every((x) => x.open); }));
 
     // The links out and the calendar file
     const ics = await ctx.request.get(BASE + '/delhi-2027.ics');

@@ -48,7 +48,7 @@ const DB = {
       async all() {
         if (/^PRAGMA table_info\(staff\)$/.test(flat)) return { results: ['id', 'name', 'username', 'password_hash', 'active', 'role', 'email', 'failed_attempts', 'last_failed_at'].map(name => ({ name })) };
         if (/^PRAGMA table_info\(attendees\)$/.test(flat)) return { results: Object.keys(state.attendees[7]).map(name => ({ name })) };
-        if (/FROM attendees WHERE id = \? OR lower\(name\) LIKE/.test(flat)) {
+        if (/FROM attendees WHERE event_id = 1 AND \(id = \? OR lower\(name\) LIKE/.test(flat)) {
           const id = Number(args[0]), like = String(args[1]).replace(/%/g, '').toLowerCase();
           return { results: Object.values(state.attendees).filter(a => a.id === id || (like && a.name.toLowerCase().includes(like))) };
         }

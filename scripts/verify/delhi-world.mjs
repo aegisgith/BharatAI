@@ -13,7 +13,7 @@ const inlineScript = () => {
   return blocks[0][1];
 };
 
-const IDS = ['dl-form', 'dl-error', 'dl-submit', 'dl-phone-hint', 'dl-name', 'dl-email', 'dl-phone', 'dl-org', 'dl-job', 'dl-city', 'dl-job-box', 'dl-city-box', 'dl-org-hint', 'dl-form-title', 'dl-form-text', 'dl-done-title', 'dl-website', 'dl-done', 'dl-done-text', 'dl-save-date', 'dl-save-date-2'];
+const IDS = ['dl-form', 'dl-error', 'dl-submit', 'dl-phone-hint', 'dl-name', 'dl-email', 'dl-phone', 'dl-org', 'dl-job', 'dl-city', 'dl-job-box', 'dl-city-box', 'dl-org-hint', 'dl-form-title', 'dl-form-text', 'dl-done-title', 'dl-website', 'dl-done', 'dl-done-text', 'dl-save-date', 'dl-save-date-2', 'dl-chosen'];
 
 export function openPage({ search = '', userAgent = 'Mozilla/5.0 (iPhone)', fetch, links = [] } = {}) {
   const focused = { id: null };
@@ -42,7 +42,7 @@ export function openPage({ search = '', userAgent = 'Mozilla/5.0 (iPhone)', fetc
   };
   form.querySelectorAll = (sel) => (sel === '[aria-invalid]' ? Object.values(els).filter((e) => 'aria-invalid' in e.attrs) : []);
 
-  const linkEls = links.map((v) => { const a = el('link'); a.setAttribute('data-interest', v); return a; });
+  const linkEls = links.map((v) => { const a = el('link'); const [interest, item] = String(v).split('|'); a.setAttribute('data-interest', interest); if (item) a.setAttribute('data-item', item); return a; });
   const sent = [];
   const sandbox = {
     document: {

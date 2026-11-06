@@ -40,7 +40,7 @@ let fails = 0;
 const check = (n, ok, d) => { console.log((ok ? 'PASS ' : 'FAIL ') + n + (ok ? '' : '  <- ' + d)); if (!ok) fails++; };
 
 // ---- seed ----
-for (const id of [1, 2, 3]) db.run('INSERT INTO events (id, title, start_date, end_date) VALUES (?, ?, ?, ?)', [id, 'Event ' + id, '2026-11-20', '2026-11-21']);
+for (const id of [1, 3, 4]) db.run('INSERT INTO events (id, title, start_date, end_date) VALUES (?, ?, ?, ?)', [id, 'Event ' + id, '2026-11-20', '2026-11-21']);
 let nextId = 1;
 const ids = {};
 const person = (event_id, name, extra = {}) => {
@@ -74,9 +74,9 @@ person(1, 'Hon Minister', { job_title: 'Chief Minister of a State' });
 person(1, 'Phone Person', { job_title: 'Director 9820012345' });
 person(1, 'Junior Dev', { job_title: 'Software Engineer' });
 db.run("INSERT INTO app_settings (key, value) VALUES ('glimpse_hide', ?)", [' ' + ids['Asked Off'] + ', 999 ']);
-// Event 2: too few for a section.
-person(2, 'Lone One', { job_title: 'Founder' });
-person(2, 'Lone Two', { job_title: 'Director', city: 'Agra' });
+// Event 4: too few for a section. (Event 2 is Delhi 2027, which every public route refuses.)
+person(4, 'Lone One', { job_title: 'Founder' });
+person(4, 'Lone Two', { job_title: 'Director', city: 'Agra' });
 // Event 3: plenty, three of the sharers without a senior title.
 for (let i = 0; i < 15; i++) person(3, 'Big Sharer ' + i, { job_title: 'Director ' + String.fromCharCode(65 + i), social_card_downloaded_at: SHARED });
 for (let i = 0; i < 3; i++) person(3, 'Plain Sharer ' + i, { job_title: 'Associate ' + i, social_card_downloaded_at: SHARED });
@@ -111,7 +111,7 @@ check('a city with a PIN code and an "Other" industry are left blank', locked.fi
 check('goals read in plain words, buyers first', JSON.stringify(named['Ratan Kesh']?.goals) === '["Buying","Finding partners"]', JSON.stringify(named['Ratan Kesh']?.goals));
 
 // ---- event 2: too few ----
-r = await hit('/api/events/2/glimpse');
+r = await hit('/api/events/4/glimpse');
 check('fewer than four cards in all answers empty lists (the page hides the section)', r.status === 200 && r.json?.people?.length === 0 && r.json?.locked?.length === 0, r.text);
 
 // ---- event 3: plenty ----

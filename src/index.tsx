@@ -357,6 +357,11 @@ app.get('/marketplace/listing/:id', (c) => {
 
 // ==================== EVENT APIs ====================
 
+// Event 2 is Delhi 2027, which sells passes and has nothing else yet: its buyers must not
+// be listed by the directory or the app's other public routes, which all take an event id.
+// Written as a literal: this line runs before DELHI_EVENT_ID is declared.
+app.use('/api/events/2/*', (c) => c.json({ error: 'Not found' }, 404))
+
 app.get('/api/events/:id', async (c) => {
   const id = c.req.param('id')
   const event = await c.env.DB.prepare('SELECT * FROM events WHERE id = ?').bind(id).first()
@@ -2275,7 +2280,7 @@ async function autoReceiptForOrder(c: any, order: any, a: any, trackingId: strin
       buyer_phone: a.mobile || '',
       // An upgrade order carries the difference, so its invoice says what the
       // difference was for.
-      item_desc: (upgradeFrom ? 'Upgrade from ' + upgradeFrom + ' to ' + order.pass_type : order.pass_type) + ' - Bharat AI Innovation Conference & Exhibition 2026',
+      item_desc: (upgradeFrom ? 'Upgrade from ' + upgradeFrom + ' to ' + order.pass_type : order.pass_type) + ' - ' + (isDelhiOrder(order) ? DELHI_EVENT_NAME : 'Bharat AI Innovation Conference & Exhibition 2026'),
       order_ref: order.order_id,
       payment_ref: trackingId ? 'CCAvenue ' + trackingId : '',
       paid_at: new Date().toISOString().slice(0, 19).replace('T', ' '),
@@ -2614,10 +2619,10 @@ const payRows = (rows: [string, string][]) =>
     `<tr><td valign="top" style="padding:0 16px 8px 0;font-size:12px;color:#888;white-space:nowrap;">${k}</td>` +
     `<td valign="top" style="padding:0 0 8px;font-size:14px;color:#1E2140;font-weight:bold;word-break:break-word;">${v}</td></tr>`).join('') + `</table>`
 
-function payPage(title: string, body: string): string {
-  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${title} - Bharat AI Innovation 2026</title></head>
+function payPage(title: string, body: string, delhi = false): string {
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${title} - ${delhi ? DELHI_EVENT_NAME : 'Bharat AI Innovation 2026'}</title></head>
 <body style="margin:0;padding:24px 12px;background:#f5f5f5;font-family:Arial,sans-serif;"><div style="max-width:520px;margin:0 auto;background:#fff;border-radius:14px;overflow:hidden;">
-${emailBrandHeader('', '20&ndash;21 Nov 2026 &bull; WTC Mumbai')}
+${emailBrandHeader('', delhi ? DELHI_WHEN : '20&ndash;21 Nov 2026 &bull; WTC Mumbai')}
 <div style="padding:26px 24px 30px;">${body}</div></div></body></html>`
 }
 
@@ -2644,12 +2649,13 @@ app.get('/pay/ccavenue/:token', async (c) => {
       payP('Nothing has been charged. Please start again from the app.') + payButton('/app', 'Open the app')), 404)
   }
   if (order.status === 'paid') return c.redirect('/pay/result?o=' + encodeURIComponent(token), 303)
+  const delhi = isDelhiOrder(order)
   const born = Date.parse(String(order.created_at).replace(' ', 'T') + 'Z')
   const fresh = Number.isFinite(born) && Date.now() - born < PAY_LINK_MINUTES * 60000
   if (order.status !== 'created' || !fresh) {
     return c.html(payPage('Start again', payH1('This checkout has closed.') +
-      payP('A payment link is good for one attempt, for an hour. Nothing further has been charged. Please start a new payment from the app.') +
-      payButton('/app', 'Open the app')), 410)
+      payP('A payment link is good for one attempt, for an hour. Nothing further has been charged. Please start a new payment from ' + (delhi ? 'the Delhi page.' : 'the app.')) +
+      (delhi ? payButton('/delhi-register', 'Start again') : payButton('/app', 'Open the app')), delhi), 410)
   }
 
   const a = (await c.env.DB.prepare('SELECT name, email, mobile, city FROM attendees WHERE id = ?').bind(order.attendee_id).first() as any) || {}
@@ -2671,16 +2677,18 @@ app.get('/pay/ccavenue/:token', async (c) => {
     billing_country: 'India',
     merchant_param1: await payOrderSig(c, order.order_id, order.amount_paise),
     merchant_param2: order.pass_type,
+    // So a Delhi order can be told apart in CCAvenue's own reports.
+    ...(delhi ? { merchant_param3: 'Delhi 2027' } : {}),
   }), cfg.workingKey)
 
   return c.html(payPage('Opening secure checkout',
     payH1('Taking you to the secure payment page') +
-    payP(`${PAID_TIERS.includes(String(order.previous_badge || '')) && Number(order.base_paise) < (passAmounts(order.pass_type)?.base || 0) ? 'Upgrade to ' : ''}${payEsc(order.pass_type)} &middot; &#8377;${rupees(Number(order.amount_paise))} including GST`) +
+    payP(`${PAID_TIERS.includes(String(order.previous_badge || '')) && Number(order.base_paise) < ((delhi ? delhiPassAmounts(order.pass_type) : passAmounts(order.pass_type))?.base || 0) ? 'Upgrade to ' : ''}${payEsc(order.pass_type)}${delhi ? ' for Delhi 2027' : ''} &middot; &#8377;${rupees(Number(order.amount_paise))} including GST`) +
     `<form id="f" method="post" action="${cfg.endpoint}"><input type="hidden" name="encRequest" value="${encRequest}"><input type="hidden" name="access_code" value="${payEsc(cfg.accessCode)}">` +
     `<button type="submit" style="padding:13px 24px;background:#FF6B00;color:#fff;border:0;border-radius:9px;font-size:15px;font-weight:bold;cursor:pointer;">Continue to secure payment</button>` +
-    `</form><p style="margin:14px 0 0;"><a href="/app" style="font-size:13px;color:#555;">Back to the app</a></p>` +
+    `</form><p style="margin:14px 0 0;"><a href="${delhi ? '/delhi' : '/app'}" style="font-size:13px;color:#555;">Back to the ${delhi ? 'Delhi page' : 'app'}</a></p>` +
     `<p style="font-size:12px;line-height:1.6;color:#888;margin:16px 0 0;">Payments are handled by CCAvenue. Card and bank details are entered on their page and never reach this site.</p>` +
-    `<script>(function(){var k="pay-sent-${order.order_id}",again=false;try{again=!!sessionStorage.getItem(k);sessionStorage.setItem(k,"1");}catch(e){}if(!again)document.getElementById("f").submit();})();</script>`))
+    `<script>(function(){var k="pay-sent-${order.order_id}",again=false;try{again=!!sessionStorage.getItem(k);sessionStorage.setItem(k,"1");}catch(e){}if(!again)document.getElementById("f").submit();})();</script>`, delhi))
 })
 
 // Step three: the gateway sends the buyer back here with its answer, for a
@@ -2823,6 +2831,7 @@ async function settlePaidOrder(c: any, order: any, trackingId: string, paymentMo
 // Never throws: the pass is already unlocked by the time this runs.
 async function sendPaymentEmails(c: any, a: any, order: any, trackingId: string, paymentMode: string, unlocked: boolean,
     receipt: { invoice_no: string; url: string } | null = null, upgradeFrom = '') {
+  if (isDelhiOrder(order)) return sendDelhiPaymentEmails(c, a, order, trackingId, paymentMode, unlocked, receipt, upgradeFrom)
   try {
     const amount = rupees(Number(order.amount_paise))
     const appUrl = (await settingValue(c, 'app_url')) || 'https://bharataiinnovation.com/app'
@@ -2899,6 +2908,7 @@ app.get('/pay/result', async (c) => {
       payP('If you paid and money left your account, nothing is lost: write to info@bharataiinnovation.com with your name and the time of the payment, and we will match it by hand.') +
       payButton('/app', 'Open the app')))
   }
+  if (isDelhiOrder(order)) return delhiPayResult(c, order)
   const no = payEsc(order.order_id)
   const retry = `<button id="again" type="button" style="padding:13px 24px;background:#FF6B00;color:#fff;border:0;border-radius:9px;font-size:15px;font-weight:bold;cursor:pointer;">Try again</button>` +
     `<a href="/app" style="margin-left:14px;font-size:13px;color:#555;">Back to the app</a>` +
@@ -2982,7 +2992,7 @@ async function pendingPaymentsJSON(c: any) {
     `SELECT a.id, a.name, a.email, a.company, a.mobile, a.badge_type, a.created_at,
             (SELECT COUNT(*) FROM invoices i WHERE i.attendee_id = a.id) AS invoices${lastOrder}
        FROM attendees a
-      WHERE a.badge_type IN (${marks})
+      WHERE a.event_id = 1 AND a.badge_type IN (${marks})
         AND lower(COALESCE(a.payment_status, 'pending')) = 'pending'
       ORDER BY a.created_at DESC
       LIMIT 300`
@@ -2995,7 +3005,7 @@ async function pendingPaymentsJSON(c: any) {
   let paidOnline: any[] = []
   if (online) {
     const rows = await c.env.DB.prepare(
-      `SELECT o.order_id, o.tracking_id, o.amount_paise, o.pass_type, o.paid_at, o.payment_mode,
+      `SELECT o.order_id, o.event_id, o.tracking_id, o.amount_paise, o.pass_type, o.paid_at, o.payment_mode,
               a.id, a.name, a.email, a.company, a.mobile
          FROM payment_orders o JOIN attendees a ON a.id = o.attendee_id
         WHERE o.status = 'paid'
@@ -3005,6 +3015,7 @@ async function pendingPaymentsJSON(c: any) {
     ).all() as any
     paidOnline = (rows.results || []).map((o: any) => ({
       ...o, badge_type: o.pass_type, amount: Number(o.amount_paise) / 100, paid_on: istStamp(o.paid_at),
+      ...(isDelhiOrder(o) ? { pass_type: 'Delhi 2027: ' + o.pass_type, item_desc: o.pass_type + ' - ' + DELHI_EVENT_NAME } : {}),
     }))
   }
 
@@ -3328,7 +3339,7 @@ async function upgradeFunnelJSON(c: any) {
       GROUP BY 1 ORDER BY people DESC`).bind(since).all().catch(() => ({ results: [] }))
   const orders = (await paymentOrdersReady(c)) ? await c.env.DB.prepare(
     `SELECT status, pass_type, previous_badge, base_paise, COUNT(*) AS n, COUNT(DISTINCT attendee_id) AS people, SUM(amount_paise) AS paise
-       FROM payment_orders WHERE created_at > datetime('now', ?)
+       FROM payment_orders WHERE event_id = 1 AND created_at > datetime('now', ?)
       GROUP BY 1, 2, 3, 4 ORDER BY 1, 2`).bind(since).all().catch(() => ({ results: [] })) : { results: [] }
   // The upgrade email's two subjects (upgradeSubjectVariant: even id A, odd id B),
   // all time: sent, opened, clicked, and started and paid after their email went.
@@ -4022,6 +4033,8 @@ async function sendInvoiceEmail(c: any, v: any, token: string, set: Record<strin
   const paidFor = String(v.item_desc || 'Pass').split(' - ')[0].trim() || 'Pass'
   const receipt = isReceipt(v)
   const doc = receipt ? 'receipt' : 'invoice'
+  // The description is the one thing an invoice row says about which event it is for.
+  const delhiInvoice = String(v.item_desc || '').includes('Delhi 2027')
 
   // The PDF is what a buyer's finance team files; the link stays for anyone who
   // lost the attachment. A PDF that cannot be drawn must not stop the email.
@@ -4037,7 +4050,7 @@ async function sendInvoiceEmail(c: any, v: any, token: string, set: Record<strin
 
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#f5f5f5;font-family:Arial,sans-serif;">
     <div style="max-width:600px;margin:20px auto;background:#fff;border-radius:12px;overflow:hidden;">
-      ${emailBrandHeader(receipt ? 'Your payment receipt' : 'Your invoice and confirmation', '20&ndash;21 Nov 2026 &bull; WTC Mumbai')}
+      ${emailBrandHeader(receipt ? 'Your payment receipt' : 'Your invoice and confirmation', delhiInvoice ? DELHI_WHEN : '20&ndash;21 Nov 2026 &bull; WTC Mumbai')}
       <div style="padding:30px;">
         <p style="margin:0 0 6px;font-size:15px;color:#333;">Dear <strong>${esc(v.buyer_name)}</strong>,</p>
         <p style="margin:0 0 12px;font-size:14px;line-height:1.7;color:#333;">We acknowledge the receipt of <strong>INR ${rupees(v.total_paise)}</strong> against ${esc(paidFor)} fees.${pdf ? (receipt ? ' Please find the receipt attached for your records.' : ' Please find the tax invoice attached for your accounting purpose.') : ''}</p>
@@ -4072,8 +4085,8 @@ async function sendInvoiceEmail(c: any, v: any, token: string, set: Record<strin
           From: `${fromName} <${fromEmail}>`,
           ReplyTo: fromEmail,
           Subject: receipt
-            ? 'Receipt ' + v.invoice_no + ' for your payment - Bharat AI Innovation 2026'
-            : 'Invoice ' + v.invoice_no + ' and registration confirmation - Bharat AI Innovation 2026',
+            ? 'Receipt ' + v.invoice_no + ' for your payment - ' + (delhiInvoice ? DELHI_EVENT_NAME : 'Bharat AI Innovation 2026')
+            : 'Invoice ' + v.invoice_no + ' and registration confirmation - ' + (delhiInvoice ? DELHI_EVENT_NAME : 'Bharat AI Innovation 2026'),
           ...(pdf ? { Attachments: [{ BinaryContent: pdf, Name: invoicePdfName(v), ContentType: 'application/pdf' }] } : {}),
         },
         Options: { TrackClicks: false, TrackOpens: false },
@@ -4299,13 +4312,13 @@ app.get('/api/admin/checkin-stats', async (c) => {
   }
   const mc = await mainEventClause(c)
   const totals = await c.env.DB.prepare(
-    'SELECT COUNT(*) AS total, SUM(CASE WHEN checked_in_at IS NOT NULL THEN 1 ELSE 0 END) AS checked_in FROM attendees WHERE 1 = 1' + mc).first() as any
+    'SELECT COUNT(*) AS total, SUM(CASE WHEN checked_in_at IS NOT NULL THEN 1 ELSE 0 END) AS checked_in FROM attendees WHERE event_id = 1' + mc).first() as any
   const byTier = await c.env.DB.prepare(
     `SELECT COALESCE(${await passLabelSql(c)}, 'Visitor Pass') AS badge_type, COUNT(*) AS total,
             SUM(CASE WHEN checked_in_at IS NOT NULL THEN 1 ELSE 0 END) AS checked_in
-     FROM attendees WHERE 1 = 1${mc} GROUP BY 1 ORDER BY 2 DESC`).all() as any
+     FROM attendees WHERE event_id = 1${mc} GROUP BY 1 ORDER BY 2 DESC`).all() as any
   const recent = await c.env.DB.prepare(
-    'SELECT name, badge_type, checked_in_at, checked_in_by FROM attendees WHERE checked_in_at IS NOT NULL' + mc + ' ORDER BY checked_in_at DESC LIMIT 15').all() as any
+    'SELECT name, badge_type, checked_in_at, checked_in_by FROM attendees WHERE event_id = 1 AND checked_in_at IS NOT NULL' + mc + ' ORDER BY checked_in_at DESC LIMIT 15').all() as any
   // Arrivals per quarter hour today, on the Mumbai clock, so the desk lead can see
   // the queue building rather than infer it from a total. checked_in_at is UTC;
   // IST is a fixed +05:30, so the shift is exact.
@@ -4314,14 +4327,14 @@ app.get('/api/admin/checkin-stats', async (c) => {
   const buckets = await c.env.DB.prepare(
     `SELECT strftime('%H', ${IST}) || ':' || printf('%02d', (CAST(strftime('%M', ${IST}) AS INTEGER) / 15) * 15) AS bucket,
             COUNT(*) AS n
-       FROM attendees WHERE checked_in_at IS NOT NULL${mc} AND ${today}
+       FROM attendees WHERE event_id = 1 AND checked_in_at IS NOT NULL${mc} AND ${today}
       GROUP BY 1 ORDER BY 1`).all() as any
   // Who admitted how many: which desk is carrying the queue, and which one has
   // stopped scanning.
   const byDesk = await c.env.DB.prepare(
     `SELECT COALESCE(NULLIF(TRIM(checked_in_by), ''), 'unknown') AS desk, COUNT(*) AS n,
             SUM(CASE WHEN ${today} THEN 1 ELSE 0 END) AS today
-       FROM attendees WHERE checked_in_at IS NOT NULL${mc}
+       FROM attendees WHERE event_id = 1 AND checked_in_at IS NOT NULL${mc}
       GROUP BY 1 ORDER BY 2 DESC`).all() as any
   return c.json({
     ready: true,
@@ -4387,11 +4400,11 @@ app.get('/api/staff/lookup', async (c) => {
   const { results } = await c.env.DB.prepare(
     `SELECT id, name, company, job_title, badge_type, payment_status, checked_in_at, checked_in_by
        FROM attendees
-      WHERE id = ?
+      WHERE event_id = 1 AND (id = ?
          OR lower(name) LIKE ? ESCAPE '\\'
          OR lower(email) LIKE ? ESCAPE '\\'
          OR lower(COALESCE(company, '')) LIKE ? ESCAPE '\\'
-         OR REPLACE(COALESCE(mobile, ''), ' ', '') LIKE ? ESCAPE '\\'
+         OR REPLACE(COALESCE(mobile, ''), ' ', '') LIKE ? ESCAPE '\\')
       ORDER BY CASE WHEN id = ? THEN 0 ELSE 1 END, name
       LIMIT 10`
   ).bind(idMatch, like, like, like, like, idMatch).all() as any
@@ -4574,7 +4587,7 @@ function financeHTML(me: any): string {
        field('f-pos', 'Place of supply', '', 'taken from the GSTIN if left blank') +
      '</div>' +
      '<div style="margin-top:12px;">' + field('f-address', 'Billing address', '', 'as it should print on the invoice') + '</div>' +
-     '<div style="margin-top:12px;">' + field('f-item', 'Description', a ? (a.badge_type + ' @ Bharat AI Innovation 2026') : 'Delegate Pass @ Bharat AI Innovation 2026') + '</div>' +
+     '<div style="margin-top:12px;">' + field('f-item', 'Description', a ? (a.item_desc || (a.badge_type + ' @ Bharat AI Innovation 2026')) : 'Delegate Pass @ Bharat AI Innovation 2026') + '</div>' +
      '<input type="hidden" id="f-att" value="' + (a ? a.id : '') + '">' +
      '<p class="err" id="f-msg"></p>' +
      '<div style="display:flex;gap:10px;margin-top:6px;">' +
@@ -17638,6 +17651,12 @@ app.get('/api/admin/events/:id/board', async (c) => {
               SUM(CASE WHEN ${istDay('created_at')} = ${today} THEN 1 ELSE 0 END) AS today,
               SUM(CASE WHEN created_at >= datetime('now', '-7 days') THEN 1 ELSE 0 END) AS week
          FROM inquiries WHERE inquiry_type = 'delhi_pass'`))[0] || {},
+    // Delhi's money is not in the board's money above, which is Mumbai's.
+    delhi_sales: {
+      paid: hasPay ? await count(`SELECT COUNT(*) AS n FROM attendees WHERE event_id = ? AND LOWER(TRIM(COALESCE(payment_status, ''))) = 'paid'`, DELHI_EVENT_ID) : 0,
+      unpaid: hasPay ? await count(`SELECT COUNT(*) AS n FROM attendees WHERE event_id = ? AND LOWER(TRIM(COALESCE(payment_status, ''))) IN ('pending', 'refunded')`, DELHI_EVENT_ID) : 0,
+      paise: online ? await count(`SELECT COALESCE(SUM(amount_paise), 0) AS n FROM payment_orders WHERE event_id = ? AND status = 'paid'`, DELHI_EVENT_ID) : 0,
+    },
     booths_submitted: await count(`SELECT COUNT(*) AS n FROM booth_requests WHERE event_id = ? AND status = 'submitted'`, eventId),
     listings_pending: await count(`SELECT COUNT(*) AS n FROM mp_listings WHERE status = 'pending'`),
     rooms_held: await count(`SELECT COUNT(*) AS n FROM room_bookings WHERE event_id = ? AND kind = 'booking' AND status = 'held'`, eventId),
@@ -17832,6 +17851,304 @@ app.post('/api/inquiries', async (c) => {
   return c.json({ success: true, id: result.meta.last_row_id, message: 'Inquiry submitted successfully. We will get back to you soon!' }, 201)
 })
 
+// ==================== DELHI 2027: PAID PASSES ====================
+//
+// The organiser, 6 Nov 2026: Delhi's paid passes go on sale, at Mumbai's earlier prices,
+// by the same form and the same checkout. A buyer is an attendee of event 2, with the
+// same order row, the same gateway answer (ccavenueAnswer, settlePaidOrder), the same
+// receipt and the same GST invoice from the accounts team.
+//
+// What keeps them apart from Mumbai. Mumbai's lists, counts, campaigns and minute-clock
+// emails read event 1, and those that did not (the payments queue's unpaid list, the
+// desk's totals and search, "What sells") were given that filter. No register.self row
+// is written, so the account-ready and networking emails never start. No session is
+// issued: the attendee app is Mumbai's, and a cookie here would sign someone holding a
+// Mumbai pass into the wrong record. The guard near /api/events/:id refuses event 2 on
+// every public route. The organiser's answer: email now, pass and app closer to the event.
+//
+// The free Visitor Pass stays a waitlist in inquiries (below), by the organiser's word.
+const DELHI_EVENT_ID = 2
+const DELHI_EVENT_NAME = 'Bharat AI Innovation Delhi 2027'
+const DELHI_WHEN = '29&ndash;30 July 2027 &bull; Bharat Mandapam, New Delhi'
+// Whole rupees before GST. Mumbai's dated prices do not apply: its late prices began two
+// weeks before its own event. The printed copies are /delhi and /delhi-register.
+const DELHI_PASS_PRICES_INR: Record<string, number> = { 'Delegate Pass': 4999, 'Premium Delegate Pass': 9999, 'VIP Pass': 19999, 'Academic Pass': 999 }
+const DELHI_PAY_PER_IP_HOUR = 60
+
+function isDelhiOrder(o: any): boolean { return Number(o?.event_id) === DELHI_EVENT_ID }
+
+function delhiPassAmounts(passType: string): { base: number; gst: number; total: number } | null {
+  const price = DELHI_PASS_PRICES_INR[passType]
+  if (!price) return null
+  const base = price * 100
+  const gst = Math.round(base * PASS_GST_RATE / 100)
+  return { base, gst, total: base + gst }
+}
+
+// The list price, or the difference for a confirmed pass moving up, as in Mumbai.
+function delhiOrderAmounts(a: any, passType: string): { base: number; gst: number; total: number } | null {
+  const from = DELHI_PASS_PRICES_INR[settledPaidTier(a)] || 0
+  const to = DELHI_PASS_PRICES_INR[passType] || 0
+  if (!from || to <= from) return delhiPassAmounts(passType)
+  const base = (to - from) * 100
+  const gst = Math.round(base * PASS_GST_RATE / 100)
+  return { base, gst, total: base + gst }
+}
+
+// Mumbai's rule in Delhi's words: its own refusal sends people to a pass card in the app.
+function delhiPayRefusal(a: any, passType: string): string | null {
+  const badge = String(a.badge_type || '').trim()
+  const status = String(a.payment_status || '').trim().toLowerCase()
+  if (!badge || FREE_BADGE_RE.test(badge)) return null
+  if (PAID_TIERS.includes(badge)) {
+    if (status === 'pending' || status === 'refunded') return null
+    const from = DELHI_PASS_PRICES_INR[badge] || 0
+    if (status === 'paid' && (DELHI_PASS_PRICES_INR[passType] || 0) > from) return null
+    return 'Your ' + badge + ' for Delhi is already confirmed, so there is nothing to pay. To change it, write to info@bharataiinnovation.com.'
+  }
+  return 'Your Delhi pass (' + badge + ') is arranged by the organisers and cannot be changed here. Write to info@bharataiinnovation.com and we will sort it out.'
+}
+
+// Ten orders per person per hour and a link good for an hour, as in Mumbai.
+async function startDelhiOrder(c: any, a: any, passType: string): Promise<{ order_id: string; amount: number; pay_url: string } | { error: string; status: number }> {
+  const refused = delhiPayRefusal(a, passType)
+  if (refused) return { error: refused, status: 409 }
+  const amounts = delhiOrderAmounts(a, passType) as { base: number; gst: number; total: number }
+  const recent = await c.env.DB.prepare(
+    "SELECT COUNT(*) AS n FROM payment_orders WHERE attendee_id = ? AND created_at > datetime('now', '-1 hour')"
+  ).bind(a.id).first() as any
+  if (Number(recent?.n || 0) >= PAY_ORDERS_PER_HOUR) {
+    return { error: 'That is a lot of payment attempts in one hour. Please wait a little, or write to info@bharataiinnovation.com.', status: 429 }
+  }
+  const rand = Array.from(crypto.getRandomValues(new Uint8Array(4))).map(b => (b % 36).toString(36)).join('')
+  const orderId = ('BAI' + a.id + '-' + Date.now().toString(36) + rand).toUpperCase()
+  await c.env.DB.prepare(
+    'INSERT INTO payment_orders (order_id, attendee_id, event_id, pass_type, previous_badge, base_paise, gst_paise, amount_paise) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  ).bind(orderId, a.id, DELHI_EVENT_ID, passType, a.badge_type || '', amounts.base, amounts.gst, amounts.total).run()
+  await audit(c, 'delhi.pay', 'attendee', a.id, { order_id: orderId, pass_type: passType, amount_paise: amounts.total }, { actor: 'public registration', kind: 'public' })
+  return { order_id: orderId, amount: amounts.total / 100, pay_url: '/pay/ccavenue/' + await payLinkToken(c, orderId) }
+}
+
+// Step one for Delhi: the details and the order together, then checkout in this same tab.
+app.post('/api/delhi/pay', async (c) => {
+  if (!(await onlinePaymentsOn(c))) return c.json({ error: 'Online payment is not available just now. Nothing was charged. Please try again in a little while, or write to info@bharataiinnovation.com.', code: 'not_configured' }, 503)
+  const b = await c.req.json().catch(() => ({})) as any
+  const text = (v: unknown, max: number) => String(v ?? '').trim().slice(0, max)
+  const passType = String(b.pass_type || '')
+  if (!delhiPassAmounts(passType)) return c.json({ error: 'Choose a Delegate, Premium Delegate, VIP or Academic pass.' }, 400)
+  const academic = passType === 'Academic Pass'
+  const name = text(b.name, 120)
+  const email = text(b.email, 160).toLowerCase()
+  const mobile = text(b.mobile, 20)
+  const company = text(b.company, 160)
+  const job_title = text(b.job_title, 120)
+  const city = text(b.city, 80)
+  const industry = INDUSTRIES.includes(String(b.industry || '')) ? String(b.industry) : ''
+
+  const missing: string[] = []
+  if (!name) missing.push('name')
+  if (!email) missing.push('email')
+  if (!mobile) missing.push('mobile number')
+  if (!company) missing.push(academic ? 'college name' : 'organisation')
+  if (!academic && !job_title) missing.push('designation')
+  if (!city) missing.push('city')
+  if (!industry) missing.push('industry')
+  if (missing.length) return c.json({ error: 'Please add your ' + humanList(missing) + '.', missing }, 400)
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return c.json({ error: 'Please check your email. It should look like name@example.com.' }, 400)
+  if (mobile.replace(/\D/g, '').length < 10) return c.json({ error: 'Please check your mobile number. It needs at least 10 digits.' }, 400)
+  const typo = emailTypo(email)
+  if (typo) return c.json({ error: typo.reason, message: typo.reason, code: 'email_typo', suggestion: typo.fixed || '' }, 400)
+  // A GSTIN that is not one is refused before anyone leaves for the gateway, as in Mumbai.
+  const billing = b.billing === undefined ? undefined : cleanBilling(b.billing)
+  if (billing && 'error' in billing) return c.json({ error: billing.error }, 400)
+
+  const ip = String(c.req.header('CF-Connecting-IP') || '').slice(0, 64)
+  if (ip) {
+    const recent = await c.env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM admin_audit WHERE action = 'delhi.pay' AND ip = ? AND created_at > datetime('now', '-1 hour')"
+    ).bind(ip).first().catch(() => null) as any
+    if (Number(recent?.n || 0) >= DELHI_PAY_PER_IP_HOUR) {
+      return c.json({ error: 'Too many attempts from this connection. Please try again in an hour, or write to info@bharataiinnovation.com.' }, 429)
+    }
+  }
+
+  const pick = () => c.env.DB.prepare('SELECT * FROM attendees WHERE event_id = ? AND email = ?').bind(DELHI_EVENT_ID, email).first() as Promise<any>
+  let a = await pick()
+  if (a) {
+    // There is no sign-in on this form, so the mobile they registered with is what lets
+    // them go on. It never says which mobile, or whose.
+    if (mobileKey(a.mobile) !== mobileKey(mobile)) {
+      return c.json({ error: email + ' is already registered for Delhi with another mobile number. Please use that number, or write to info@bharataiinnovation.com.', code: 'email_registered' }, 409)
+    }
+    const refused = delhiPayRefusal(a, passType)
+    if (refused) return c.json({ error: refused, code: 'already_confirmed' }, 409)
+    // Chose another pass before paying: the list should show what they are buying now.
+    if (String(a.payment_status || '').toLowerCase() !== 'paid') {
+      await c.env.DB.prepare('UPDATE attendees SET badge_type = ? WHERE id = ?').bind(passType, a.id).run()
+      a = { ...a, badge_type: passType }
+    }
+  } else {
+    // One mobile, one person, within Delhi. A Mumbai pass holder's own number is fine here.
+    const holder = await mobileHolder(c, DELHI_EVENT_ID, mobile)
+    if (holder) return c.json({ error: 'This mobile number is already registered for Delhi with ' + maskEmail(holder.email) + '. Please use your own mobile number.', code: 'mobile_registered' }, 409)
+    // attendees.event_id must name an event. Nothing lists events: this row only says
+    // what event 2 is, so the first buyer brings it into being and no step is left to run.
+    await c.env.DB.prepare(
+      "INSERT OR IGNORE INTO events (id, title, event_type, venue, start_date, end_date) VALUES (?, ?, 'conference', 'Bharat Mandapam, New Delhi', '2027-07-29', '2027-07-30')"
+    ).bind(DELHI_EVENT_ID, DELHI_EVENT_NAME).run()
+    try {
+      const made = await c.env.DB.prepare(
+        `INSERT INTO attendees (event_id, name, email, company, job_title, mobile, city, industry, lunch_inclusion, badge_type, payment_status, registration_source, registration_date)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'No', ?, 'pending', ?, datetime('now'))`
+      ).bind(DELHI_EVENT_ID, name, email, company, academic ? '' : job_title, mobile, city, industry, passType, sanitizeRegistrationSource(b.registration_source) || 'delhi-page').run()
+      a = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(made.meta.last_row_id).first()
+    } catch (e: any) {
+      // Two tabs at once: the other one made the row, so go on with it.
+      if (!String(e?.message || '').includes('UNIQUE')) {
+        console.error('delhi register failed', email, e?.message)
+        await audit(c, 'delhi.pay_failed', 'attendee', null, { email, error: String(e?.message || e).slice(0, 300) }, { actor: 'public registration', kind: 'public' })
+        return c.json({ error: 'We could not save your details, so checkout was not opened. Nothing was charged. Please try again.' }, 500)
+      }
+      a = await pick()
+    }
+  }
+  if (billing) await saveBilling(c, a.id, billing.billing)
+  const r = await startDelhiOrder(c, a, passType)
+  if ('error' in r) return c.json({ error: r.error }, r.status as any)
+  return c.json(r, 201)
+})
+
+// Try again, from the result page: the signed link stands in for the session Delhi lacks.
+app.post('/api/delhi/pay-again', async (c) => {
+  if (!(await onlinePaymentsOn(c))) return c.json({ error: 'Online payment is not available just now. Nothing was charged. Please try again in a little while.' }, 503)
+  const b = await c.req.json().catch(() => ({})) as any
+  const order = await orderFromLinkToken(c, String(b.o || ''))
+  if (!order || !isDelhiOrder(order)) return c.json({ error: 'That link is not valid. Please start again from the Delhi page.' }, 400)
+  const a = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(order.attendee_id).first() as any
+  if (!a) return c.json({ error: 'That link is not valid. Please start again from the Delhi page.' }, 400)
+  const r = await startDelhiOrder(c, a, String(order.pass_type))
+  if ('error' in r) return c.json({ error: r.error }, r.status as any)
+  return c.json(r, 201)
+})
+
+// The email Mumbai's welcome is, without what Delhi does not have yet: no sign-in link,
+// no photo, no pass, no workshop seat. Never throws: the pass is already confirmed.
+async function sendDelhiPaymentEmails(c: any, a: any, order: any, trackingId: string, paymentMode: string, unlocked: boolean,
+    receipt: { invoice_no: string; url: string } | null = null, upgradeFrom = '') {
+  try {
+    const amount = rupees(Number(order.amount_paise))
+    const rows = payRows([
+      ['Pass', payEsc(order.pass_type) + (upgradeFrom ? ` <span style="font-weight:normal;color:#666;">(moved up from ${payEsc(upgradeFrom)})</span>` : '')],
+      ['Event', 'Bharat AI Innovation Delhi 2027'],
+      ['Dates', 'Thursday 29 and Friday 30 July 2027'],
+      ['Venue', 'Bharat Mandapam, Pragati Maidan, New Delhi'],
+      ['Amount paid', `&#8377;${amount} <span style="font-weight:normal;color:#666;">(includes ${PASS_GST_RATE}% GST)</span>`],
+      ['Order number', payEsc(order.order_id)],
+      ['CCAvenue reference', payEsc(trackingId)],
+      ['Paid on', payEsc(istStamp(new Date().toISOString()))],
+    ])
+    const gstText = receipt
+      ? `<strong>Payment receipt:</strong> receipt <strong>${payEsc(receipt.invoice_no)}</strong> is in a separate email, and here: <a href="${payEsc(receipt.url)}" style="color:#FF6B00;font-weight:bold;">view and download the receipt</a>. Your GST invoice follows separately from our accounts team. If it should be made out to your organisation and you did not give its details when paying, send its registered name, GSTIN and billing address to info@bharataiinnovation.com, quoting order ${payEsc(order.order_id)}.`
+      : `<strong>GST invoice:</strong> we will email your tax invoice separately. If it should be made out to your organisation, send its registered name, GSTIN and billing address to info@bharataiinnovation.com, quoting order ${payEsc(order.order_id)}.`
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#f5f5f5;font-family:Arial,sans-serif;">
+    <div style="max-width:600px;margin:20px auto;background:#fff;border-radius:12px;overflow:hidden;">
+      ${emailBrandHeader('Payment received', DELHI_WHEN)}
+      <div style="padding:30px;">
+        <p style="margin:0 0 6px;font-size:15px;color:#333;">Hi <strong>${payEsc(a.name)}</strong>,</p>
+        <p style="margin:0 0 20px;font-size:14px;line-height:1.7;color:#555;">${upgradeFrom
+          ? `Thank you. Your payment has arrived and your ${payEsc(upgradeFrom)} for Bharat AI Innovation Delhi 2027 is now a <strong>${payEsc(order.pass_type)}</strong>.`
+          : `Thank you. Your payment has arrived and your <strong>${payEsc(order.pass_type)}</strong> for Bharat AI Innovation Delhi 2027 is confirmed.`}</p>
+        ${rows}
+        <p style="margin:0 0 4px;font-size:14px;font-weight:bold;color:#1E2140;">What happens next</p>
+        <p style="margin:0 0 18px;font-size:14px;line-height:1.65;color:#555;">There is nothing more to do now. Closer to the event we will email you your entry pass and open the app for Delhi.</p>
+        <div style="text-align:center;margin:0 0 20px;">
+          <a href="https://bharataiinnovation.com/delhi-2027.ics" style="display:inline-block;padding:12px 26px;background:#FF6B00;color:#fff;text-decoration:none;border-radius:9px;font-weight:bold;font-size:14px;">Save the date</a>
+        </div>
+        <div style="margin-top:20px;padding:14px;background:#F7F8FF;border:1px solid #E3E6F5;border-radius:10px;">
+          <p style="margin:0;font-size:12.5px;line-height:1.6;color:#1E2140;">${gstText}</p>
+        </div>
+        <p style="margin:18px 0 0;font-size:12.5px;line-height:1.6;color:#777;">This pass is for Delhi only. Bharat AI Innovation 2026 in Mumbai (20&ndash;21 November 2026) is a separate event. Questions? Write to <a href="mailto:info@bharataiinnovation.com" style="color:#555;">info@bharataiinnovation.com</a>.</p>
+      </div>
+    </div></body></html>`
+    await sendAdminEmail(c, a.email, 'Payment received: your ' + order.pass_type + ' for Bharat AI Innovation Delhi 2027', html, { unsubscribe: false })
+
+    const team = (await settingValue(c, 'inquiry_notify_email')) || 'info@bharataiinnovation.com'
+    const teamHtml = `<div style="font-family:Arial,sans-serif;max-width:560px;">
+      <p style="font-size:14px;line-height:1.6;color:#333;margin:0 0 14px;"><strong>${payEsc(a.name)}</strong> (${payEsc(a.email)}${a.company ? ', ' + payEsc(a.company) : ''}) has paid online for <strong>Delhi 2027</strong> through CCAvenue.</p>
+      ${rows}
+      <p style="font-size:13px;line-height:1.6;color:#555;margin:0;">${!unlocked
+        ? 'Their pass was <strong>not</strong> changed, because it had been set to ' + payEsc(a.badge_type) + ' by hand. Decide what this payment was for, then raise the invoice from Admin, Payments.'
+        : receipt
+          ? 'The pass is confirmed and payment receipt <strong>' + payEsc(receipt.invoice_no) + '</strong> was emailed to the buyer automatically: <a href="' + payEsc(receipt.url) + '">open it</a>. The GST tax invoice is still to raise: Admin, Payments, &ldquo;Paid online&rdquo; (or the finance page).'
+          : 'The pass is confirmed. The payment receipt could <strong>not</strong> be sent automatically. The GST tax invoice is still to raise: Admin, Payments, &ldquo;Paid online&rdquo; (or the finance page).'}</p></div>`
+    await sendAdminEmail(c, team, `Paid online, Delhi 2027: ${a.name}, ${order.pass_type}${upgradeFrom ? ' (moved up from ' + upgradeFrom + ')' : ''}, Rs ${amount}`, teamHtml, { unsubscribe: false })
+  } catch (e: any) {
+    console.error('delhi payment emails failed', order?.order_id, e?.message)
+  }
+}
+
+// /pay/result for a Delhi order. Mumbai's sends people to the app and to its own Try again.
+async function delhiPayResult(c: any, order: any) {
+  const no = payEsc(order.order_id)
+  const page = (title: string, body: string) => c.html(payPage(title, body, true))
+  const home = payButton('/delhi', 'Back to the Delhi page')
+  const token = await payLinkToken(c, order.order_id)
+  const retry = `<button id="again" type="button" style="padding:13px 24px;background:#FF6B00;color:#fff;border:0;border-radius:9px;font-size:15px;font-weight:bold;cursor:pointer;">Try again</button>` +
+    `<a href="/delhi" style="margin-left:14px;font-size:13px;color:#555;">Back to the Delhi page</a>` +
+    `<p id="again-msg" style="font-size:13px;color:#B3261E;margin:12px 0 0;min-height:16px;"></p>` +
+    `<script>document.getElementById("again").onclick=function(){var b=this,m=document.getElementById("again-msg");b.disabled=true;m.textContent="";` +
+    `fetch("/api/delhi/pay-again",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({o:${JSON.stringify(token)}})})` +
+    `.then(function(r){return r.json().catch(function(){return {};}).then(function(j){return {ok:r.ok,j:j};});})` +
+    `.then(function(x){if(x.ok&&x.j.pay_url){location.href=x.j.pay_url;return;}b.disabled=false;m.textContent=x.j.error||"We could not start a new payment. Please try again from the Delhi page.";})` +
+    `.catch(function(){b.disabled=false;m.textContent="Network error. Nothing was charged. Please try again.";});};</script>`
+
+  if (order.status === 'paid') {
+    return page('Payment received', payH1('Payment received. Thank you.') +
+      payP(`Your <strong>${payEsc(order.pass_type)}</strong> for Bharat AI Innovation Delhi 2027 is confirmed.`) +
+      payRows([
+        ['Amount paid', `&#8377;${rupees(Number(order.amount_paise))} <span style="font-weight:normal;color:#666;">(includes GST)</span>`],
+        ['Order number', no],
+        ['CCAvenue reference', payEsc(order.tracking_id)],
+      ]) +
+      payP('A confirmation and your receipt are on their way to your email, and your GST invoice follows separately. There is nothing more to do now: closer to the event we will email you your entry pass and open the app for Delhi.') +
+      payButton('/delhi-2027.ics', 'Save the date'))
+  }
+  if (order.status === 'aborted') {
+    return page('Payment cancelled', payH1('You cancelled the payment.') +
+      payP(`Nothing was charged and your ${payEsc(order.pass_type)} for Delhi is still waiting. You can pay whenever you are ready.`) + retry)
+  }
+  if (order.status === 'awaited') {
+    return page('Waiting for your bank', payH1('Your bank has not confirmed yet.') +
+      payP('Please do not pay a second time. If the money has left your account, your pass is confirmed as soon as the bank reports it.') +
+      payP(`If nothing has changed in a day, write to info@bharataiinnovation.com quoting order <strong>${no}</strong>.`) + home)
+  }
+  if (order.status === 'mismatch') {
+    return page('We are checking this payment', payH1('We need to check this payment.') +
+      payP('The amount the payment gateway reported is not the price of the pass, so the pass has not been issued automatically. Our team has been told and will write to you.') +
+      payP(`Your order number is <strong>${no}</strong>.`) + home)
+  }
+  if (order.status === 'created') {
+    return page('No answer yet', payH1('We have not heard back about this payment.') +
+      payP('If you completed it, give it a minute and refresh this page. If you did not, nothing was charged.') +
+      payP(`Your order number is <strong>${no}</strong>.`) + retry)
+  }
+  const why = String(order.status_message || '').trim()
+  return page('Payment not completed', payH1('The payment did not go through.') +
+    payP('No pass has been issued for it. If money left your account, your bank returns it on its own; if it has not come back within a week, write to info@bharataiinnovation.com quoting order <strong>' + no + '</strong>.') +
+    (why && why.toLowerCase() !== 'null' ? payP('The payment gateway said: ' + payEsc(why)) : '') + retry)
+}
+
+// Admin: who holds or has started a Delhi pass. Overview links here.
+app.get('/api/admin/delhi/passes', async (c) => {
+  const { results } = await c.env.DB.prepare(
+    `SELECT a.id, a.name, a.email, a.mobile, a.company, a.job_title, a.city, a.industry, a.badge_type, a.payment_status, a.registration_source, a.registration_date,
+            (SELECT o.status FROM payment_orders o WHERE o.attendee_id = a.id ORDER BY o.id DESC LIMIT 1) AS last_order,
+            (SELECT COALESCE(SUM(o.amount_paise), 0) FROM payment_orders o WHERE o.attendee_id = a.id AND o.status = 'paid') AS paid_paise
+       FROM attendees a WHERE a.event_id = ? ORDER BY a.id DESC`
+  ).bind(DELHI_EVENT_ID).all() as any
+  return c.json({ results: results || [] })
+})
+
 // ==================== DELHI 2027: THE FREE VISITOR PASS ====================
 //
 // The organiser opened registration for Delhi on 6 Nov 2026, with the free pass first.
@@ -17841,7 +18158,7 @@ app.post('/api/inquiries', async (c) => {
 // live in inquiries, type delhi_pass, status waitlisted: no migration, nothing on the
 // Mumbai side can see them, and the list imports cleanly when the event exists. The
 // organiser's word to the person is "you are waitlisted": no pass is promised yet.
-// The team is not emailed per pass (Overview counts them). No id goes back to the page:
+// Paid passes are attendees of event 2 (above). The team is not emailed per free pass (Overview counts them). No id goes back to the page:
 // a sequential number would say how many have registered.
 const DELHI_PASS_TYPE = 'delhi_pass'
 const DELHI_PASS_PER_IP_HOUR = 60
@@ -32833,7 +33150,7 @@ function adminPageScript(): string {
             f('iv-paid', paid ? 'Paid on (UTC, leave as it is)' : 'Paid on', paid ? paid.paid_at : '', 'YYYY-MM-DD HH:MM') +
           '</div>' +
           '<div class="mt-3">' + f('iv-address', 'Billing address', '', 'optional, for their finance team') + '</div>' +
-          '<div class="mt-3">' + f('iv-item', 'Description', a ? (a.badge_type + ' - Bharat AI Innovation Conference & Exhibition 2026') : 'Delegate Pass - Bharat AI Innovation Conference & Exhibition 2026') + '</div>' +
+          '<div class="mt-3">' + f('iv-item', 'Description', a ? (a.item_desc || (a.badge_type + ' - Bharat AI Innovation Conference & Exhibition 2026')) : 'Delegate Pass - Bharat AI Innovation Conference & Exhibition 2026') + '</div>' +
           '<input type="hidden" id="iv-attendee" value="' + (a ? a.id : '') + '">' +
           '<p id="iv-msg" class="text-[11px] text-amber-300 mt-3 min-h-4"></p>' +
           '<div class="flex gap-2 mt-2">' +
@@ -33811,7 +34128,51 @@ function adminPageScript(): string {
         '<i class="fas fa-ticket text-amber-400"></i>' +
         '<span class="flex-1 text-sm text-gray-200"><b>' + Number(dp.total || 0).toLocaleString('en-IN') + '</b> people waitlisted for a free Delhi 2027 pass <span class="text-xs text-gray-500">(' + Number(dp.today || 0).toLocaleString('en-IN') + ' today, ' + Number(dp.week || 0).toLocaleString('en-IN') + ' in 7 days)</span></span>' +
         '<i class="fas fa-chevron-right text-[10px] text-gray-600"></i></a>';
-      return passCard + '<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">' + moneyCard + todoCard + '</div>' + delhiCard;
+      var ds = t.delhi_sales || {};
+      var delhiSales = '<a href="#" onclick="openDelhiPasses();return false" class="glass rounded-xl p-4 mt-3 flex items-center gap-3 no-underline hover:bg-white/5">' +
+        '<i class="fas fa-ticket text-green-400"></i>' +
+        '<span class="flex-1 text-sm text-gray-200"><b>' + Number(ds.paid || 0).toLocaleString('en-IN') + '</b> Delhi 2027 passes paid for, &#8377;' + (Number(ds.paise || 0) / 100).toLocaleString('en-IN') + ' received <span class="text-xs text-gray-500">(' + Number(ds.unpaid || 0).toLocaleString('en-IN') + ' started and not paid)</span></span>' +
+        '<i class="fas fa-chevron-right text-[10px] text-gray-600"></i></a>';
+      return passCard + '<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">' + moneyCard + todoCard + '</div>' + delhiCard + delhiSales;
+    }
+    // Who holds or has started a Delhi 2027 pass. They are not on the Attendees list,
+    // which is Mumbai's.
+    async function openDelhiPasses() {
+      var d;
+      try { d = await api.get('/api/admin/delhi/passes'); } catch (e) { d = null; }
+      if (!d || !Array.isArray(d.results)) { alert('Could not load the Delhi list. Please try again.'); return; }
+      window._delhiPasses = d.results;
+      var rows = d.results.map(function (a) {
+        var paid = String(a.payment_status || '').toLowerCase() === 'paid';
+        return '<tr class="border-b border-white/5">' +
+          '<td class="py-2 pr-3"><div class="text-gray-200">' + deskEsc(a.name) + '</div><div class="text-[11px] text-gray-500">' + deskEsc(a.email) + ' &middot; ' + deskEsc(a.mobile) + '</div></td>' +
+          '<td class="py-2 pr-3 text-gray-400">' + deskEsc(a.company) + (a.job_title ? '<div class="text-[11px] text-gray-500">' + deskEsc(a.job_title) + '</div>' : '') + '</td>' +
+          '<td class="py-2 pr-3 text-gray-300">' + deskEsc(a.badge_type) + '</td>' +
+          '<td class="py-2 text-right ' + (paid ? 'text-green-300' : 'text-amber-300') + '">' + (paid ? '&#8377;' + (Number(a.paid_paise || 0) / 100).toLocaleString('en-IN') : 'not paid') + '</td>' +
+        '</tr>';
+      }).join('');
+      var wrap = document.createElement('div');
+      wrap.id = 'dp-modal';
+      wrap.className = 'fixed inset-0 z-50 flex items-center justify-center p-4';
+      wrap.style.background = 'rgba(4,6,20,0.8)';
+      wrap.innerHTML = '<div class="glass rounded-2xl p-6 w-full max-w-3xl max-h-[90vh] overflow-y-auto border border-white/10">' +
+        '<div class="flex items-center justify-between gap-3 mb-4"><h3 class="font-bold text-lg">Delhi 2027 passes</h3><div class="flex gap-2">' +
+          '<button onclick="downloadDelhiPasses()" class="px-3 py-1.5 rounded-lg text-xs glass hover:bg-white/10">Download CSV</button>' +
+          '<button onclick="document.getElementById(&quot;dp-modal&quot;).remove()" class="px-3 py-1.5 rounded-lg text-xs glass hover:bg-white/10">Close</button>' +
+        '</div></div>' +
+        (rows ? '<table class="w-full text-sm">' + rows + '</table>' : '<p class="text-gray-500 text-sm py-4">Nobody has bought a Delhi pass yet.</p>') +
+        '<p class="text-[11px] text-gray-500 mt-4">Their GST invoices are raised from Payments, under Paid online, where a Delhi order is marked. The free waitlist is under Enquiries, Delhi Free Pass.</p>' +
+      '</div>';
+      document.body.appendChild(wrap);
+    }
+    function downloadDelhiPasses() {
+      var cols = ['name', 'email', 'mobile', 'company', 'job_title', 'city', 'industry', 'badge_type', 'payment_status', 'paid_paise', 'registration_source', 'registration_date'];
+      var cell = function (v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; };
+      var csv = [cols.join(',')].concat((window._delhiPasses || []).map(function (a) { return cols.map(function (k) { return cell(a[k]); }).join(','); })).join(String.fromCharCode(10));
+      var link = document.createElement('a');
+      link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+      link.download = 'delhi-2027-passes.csv';
+      document.body.appendChild(link); link.click(); link.remove();
     }
     async function loadBoard(ev) {
       var el = document.getElementById('ov-board');

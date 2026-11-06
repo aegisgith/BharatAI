@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Bharat AI Innovation Delhi 2027 · 29–30 July, Bharat Mandapam, New Delhi</title>
-    <meta name="description" content="Bharat AI Innovation comes to Bharat Mandapam, New Delhi on 29–30 July 2027: keynotes, panel discussions, Innovation Talks and Showcase by startups, corporates and government, AI workshops, hackathons, closed-door roundtables, an exhibition, cross-border dialogue and B2B networking. Leave your details to hear first when passes and booths open.">
+    <meta name="description" content="Bharat AI Innovation comes to Bharat Mandapam, New Delhi on 29–30 July 2027: keynotes, panel discussions, Innovation Talks and Showcase by startups, corporates and government, AI workshops, hackathons, closed-door roundtables, an exhibition, cross-border dialogue and B2B networking. Passes, booths and partnerships are open now.">
     <link rel="canonical" href="https://bharataiinnovation.com/delhi">
     <!-- Link previews (WhatsApp, LinkedIn, X, Slack). Card: scripts/gen-og-cards.mjs -->
     <meta property="og:type" content="website">
@@ -12,7 +12,7 @@
     <meta property="og:locale" content="en_IN">
     <meta property="og:url" content="https://bharataiinnovation.com/delhi">
     <meta property="og:title" content="Bharat AI Innovation Delhi 2027 · 29–30 July, Bharat Mandapam">
-    <meta property="og:description" content="India's B2B AI conference and exhibition comes to Bharat Mandapam, New Delhi on 29–30 July 2027. Register free to join the Visitor Pass waitlist.">
+    <meta property="og:description" content="India's B2B AI conference and exhibition comes to Bharat Mandapam, New Delhi on 29–30 July 2027. Passes, booths and partnerships are open now.">
     <meta property="og:image" content="https://bharataiinnovation.com/images/og/delhi.jpg">
     <meta property="og:image:secure_url" content="https://bharataiinnovation.com/images/og/delhi.jpg">
     <meta property="og:image:type" content="image/jpeg">
@@ -55,6 +55,14 @@
             }
           },
           "organizer": { "@id": "https://bharataiinnovation.com/#organization" },
+          "offers": {
+            "@type": "AggregateOffer",
+            "priceCurrency": "INR",
+            "lowPrice": "999",
+            "highPrice": "19999",
+            "availability": "https://schema.org/InStock",
+            "url": "https://bharataiinnovation.com/delhi-register"
+          },
           "keywords": "AI conference Delhi, AI exhibition New Delhi, AI event Bharat Mandapam, AI hackathon Delhi, AI workshops Delhi, B2B AI event India, Bharat AI Innovation Delhi, AI event July 2027"
         },
         {
@@ -84,12 +92,17 @@
             {
               "@type": "Question",
               "name": "Can I get a pass for the Delhi edition now?",
-              "acceptedAnswer": { "@type": "Answer", "text": "Registration for the free Visitor Pass is open now (exhibition only, entry by time slot): register on bharataiinnovation.com/delhi to join the waitlist. Paid passes and booths open later, and we will email you when they do." }
+              "acceptedAnswer": { "@type": "Answer", "text": "Yes. Delegate, Premium Delegate, VIP and Academic passes are on sale now at bharataiinnovation.com/delhi-register. The free Visitor Pass is exhibition only, with entry by time slot: register on bharataiinnovation.com/delhi to join the waitlist." }
             },
             {
               "@type": "Question",
               "name": "How do I book a booth, sponsor or speak in Delhi?",
-              "acceptedAnswer": { "@type": "Answer", "text": "Choose Exhibit, Sponsor or Speak in the form on bharataiinnovation.com/delhi, or write to info@bharataiinnovation.com. Our team will get in touch with you." }
+              "acceptedAnswer": { "@type": "Answer", "text": "Choose a booth or a partnership on bharataiinnovation.com/delhi and leave your details, or write to info@bharataiinnovation.com. Our team will call you to confirm it and send the invoice. We will publish the floor plan later. To speak, choose Speak in the form." }
+            },
+            {
+              "@type": "Question",
+              "name": "What happens after I pay for a Delhi pass?",
+              "acceptedAnswer": { "@type": "Answer", "text": "Your receipt comes by email straight away, and your GST invoice follows from the accounts team. Closer to the event we will email you your entry pass and open the app for Delhi." }
             },
             {
               "@type": "Question",
@@ -215,6 +228,47 @@
         .dl-tile b { font-size: 1.12rem; }
         .dl-tile span { font-size: 0.86rem; }
         .dl-tile > div { padding: 3rem 1rem 0.9rem; }
+    }
+
+    /* --- Passes, booths, partnerships: one plain price list, phone first --- */
+    .dl-passes { background: #fff; }
+    .dl-booths { background: var(--off-white); }
+    .dl-partners { background: #fff; }
+    .dl-pass-grid { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.85rem; }
+    .dl-pass { display: flex; flex-direction: column; padding: 1.15rem; background: #fff; border: 1.5px solid #E3E6F6; border-radius: 16px; }
+    .dl-pass.is-lead { border-color: var(--saffron); box-shadow: 0 10px 28px rgba(255,107,0,0.12); }
+    .dl-pass h3 { font-family: var(--font-display); font-size: 1.15rem; font-weight: 800; letter-spacing: -0.01em; color: var(--charcoal); margin: 0; }
+    .dl-price { font-family: var(--font-display); font-size: 1.7rem; font-weight: 800; color: var(--charcoal); margin: 0.25rem 0 0.2rem; line-height: 1.15; }
+    .dl-price span { font-family: var(--font-body, inherit); font-size: 0.8rem; font-weight: 600; color: var(--dark-grey); }
+    .dl-pass-for { font-size: 0.92rem; color: var(--dark-grey); line-height: 1.45; margin: 0 0 0.7rem; }
+    .dl-pass ul { list-style: none; margin: 0 0 1rem; padding: 0; display: grid; gap: 0.4rem; flex: 1; align-content: start; }
+    .dl-pass ul li { position: relative; padding-left: 1.2rem; font-size: 0.9rem; line-height: 1.4; color: var(--charcoal); }
+    .dl-pass ul li::before { content: ""; position: absolute; left: 0; top: 0.5em; width: 0.5rem; height: 0.28rem; border-left: 2px solid #138808; border-bottom: 2px solid #138808; transform: rotate(-45deg); }
+    .dl-pass .btn { justify-content: center; min-height: 46px; width: 100%; }
+    .dl-free-row { margin: 1rem 0 0; padding: 0.85rem 1rem; background: var(--off-white); border-radius: 12px; font-size: 0.95rem; line-height: 1.5; color: var(--charcoal); text-align: center; }
+    .dl-free-row a { color: var(--ink-orange); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; white-space: nowrap; }
+    .dl-small { margin: 0.9rem auto 0; max-width: 70ch; font-size: 0.86rem; line-height: 1.55; color: var(--dark-grey); text-align: center; text-wrap: pretty; }
+    .dl-small a { color: var(--ink-orange); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; white-space: nowrap; }
+    .dl-sale-photo { overflow: hidden; border-radius: 16px; margin-bottom: 1rem; aspect-ratio: 16 / 7; background: var(--charcoal); }
+    .dl-sale-photo img { display: block; width: 100%; height: 100%; object-fit: cover; }
+    .dl-sale-head { font-family: var(--font-display); font-size: 1.15rem; font-weight: 800; color: var(--charcoal); margin: 1.5rem 0 0.6rem; }
+    .dl-sale-head:first-of-type { margin-top: 0; }
+    .dl-sale { list-style: none; margin: 0; padding: 0; background: #fff; border: 1px solid #E3E6F6; border-radius: 16px; overflow: hidden; }
+    .dl-sale-row { display: grid; grid-template-columns: 1fr auto; gap: 0.25rem 0.75rem; align-items: center; padding: 0.85rem 1rem; border-top: 1px solid #EEF0F7; }
+    .dl-sale-row:first-child { border-top: 0; }
+    .dl-sale-row > div { grid-column: 1 / -1; min-width: 0; }
+    .dl-sale-row b { display: block; font-size: 1rem; font-weight: 800; color: var(--charcoal); line-height: 1.3; }
+    .dl-sale-row span { display: block; font-size: 0.86rem; line-height: 1.4; color: var(--dark-grey); margin-top: 0.1rem; }
+    .dl-sale-row p { margin: 0; font-family: var(--font-display); font-size: 1.05rem; font-weight: 800; color: var(--charcoal); white-space: nowrap; }
+    .dl-sale-row small { font-family: var(--font-body, inherit); font-size: 0.74rem; font-weight: 600; color: var(--dark-grey); }
+    .dl-sale-row .btn { min-height: 44px; justify-content: center; white-space: nowrap; }
+    .dl-chosen { grid-column: 1 / -1; margin: 0; padding: 0.5rem 0.75rem; background: rgba(255,107,0,0.09); border-radius: 10px; font-size: 0.88rem; font-weight: 700; color: var(--ink-orange); line-height: 1.4; }
+    @media (min-width: 900px) {
+        .dl-pass-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; }
+        .dl-sale-photo { aspect-ratio: 16 / 4; }
+        .dl-sale-row { grid-template-columns: minmax(0, 1fr) 9rem 10.5rem; gap: 1rem; padding: 0.8rem 1.25rem; }
+        .dl-sale-row > div { grid-column: auto; }
+        .dl-sale-row p { text-align: right; }
     }
 
     /* --- Who it is for --- */
@@ -437,7 +491,7 @@
                 <a href="/ai-readiness" class="nav-link">AI Readiness</a>
                 <a href="https://bellaward.com" target="_blank" rel="noopener noreferrer" class="nav-link">AGBA</a>
                 <a href="/contact" class="nav-link">Contact</a>
-                <a href="#updates" class="nav-cta" data-interest="attend">Register free <i class="fas fa-arrow-right"></i></a>
+                <a href="#passes" class="nav-cta">Get your pass <i class="fas fa-arrow-right"></i></a>
             </div>
             <div class="nav-toggle" id="nav-toggle">
                 <span class="bar"></span><span class="bar"></span><span class="bar"></span>
@@ -462,10 +516,10 @@
             <span class="hero-title-hi" lang="hi"><span class="hi-saffron">भारत</span> <span class="hi-white">एआई</span> <span class="hi-green">इनोवेशन</span> <span class="dl-hi-place">· नई दिल्ली</span></span>
             <p class="dl-hero-desc">India’s B2B platform for AI comes to the capital. Two days at Bharat Mandapam with the government departments, enterprises and startups using AI, and the companies building it.</p>
             <div class="dl-hero-actions">
-                <a href="#updates" class="btn btn-primary btn-lg" data-interest="attend">Register free <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
+                <a href="#passes" class="btn btn-primary btn-lg">Get your pass <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
                 <a href="/delhi-2027.ics" id="dl-save-date" class="btn btn-ghost btn-lg" download="bharat-ai-innovation-delhi-2027.ics"><i class="fas fa-calendar-plus" aria-hidden="true"></i> Save the date</a>
             </div>
-            <p class="dl-hero-alt">Want a booth, a sponsorship or a speaking slot? <a href="#updates" data-interest="exhibit">Tell us here</a></p>
+            <p class="dl-hero-alt"><a href="#booths">Book a booth</a> or <a href="#partner">become a partner</a></p>
         </div>
     </section>
 
@@ -530,6 +584,125 @@
                 <li>Bharat AI Connect app</li>
             </ul>
             <p class="dl-photo-note">Photos from Data Science Congress, the predecessor to Bharat AI Innovation, and a World Trade Center Mumbai boardroom.</p>
+        </div>
+    </section>
+
+    <!-- ===== PASSES: Mumbai's passes, at Mumbai's earlier prices. The price charged is
+         DELHI_PASS_PRICES_INR on the server; these are printed copies of it. ===== -->
+    <section class="dl-passes dl-sec" id="passes">
+        <div class="container">
+            <div class="section-header reveal">
+                <h2 class="section-title">Passes for <span class="accent">New Delhi</span></h2>
+                <p class="section-subtitle">The same passes as Mumbai. Pay online now, and your receipt comes by email.</p>
+            </div>
+            <ul class="dl-pass-grid">
+                <li class="dl-pass reveal">
+                    <h3>Academic Pass</h3>
+                    <p class="dl-price">₹999 <span>+ 18% GST</span></p>
+                    <p class="dl-pass-for">For students and faculty with a valid ID.</p>
+                    <ul>
+                        <li>Guaranteed entry on both days</li>
+                        <li>Conference sessions and exhibition</li>
+                        <li>Student networking zone</li>
+                        <li>Certificate of participation</li>
+                    </ul>
+                    <a href="/delhi-register#academic" class="btn btn-outline">Get this pass</a>
+                </li>
+                <li class="dl-pass is-lead reveal reveal-delay-1">
+                    <h3>Delegate Pass</h3>
+                    <p class="dl-price">₹4,999 <span>+ 18% GST</span></p>
+                    <p class="dl-pass-for">For coming to the conference.</p>
+                    <ul>
+                        <li>Guaranteed entry on both days</li>
+                        <li>Conference sessions and exhibition</li>
+                        <li>Networking lunch and conference kit</li>
+                        <li>Full directory, conversations and meetings</li>
+                        <li>Certificate of participation</li>
+                    </ul>
+                    <a href="/delhi-register#delegate" class="btn btn-primary">Get this pass</a>
+                </li>
+                <li class="dl-pass reveal">
+                    <h3>Premium Delegate Pass</h3>
+                    <p class="dl-price">₹9,999 <span>+ 18% GST</span></p>
+                    <p class="dl-pass-for">A Delegate Pass with a workshop seat.</p>
+                    <ul>
+                        <li>Everything in the Delegate Pass</li>
+                        <li>One hands-on workshop, seats first come, first served</li>
+                    </ul>
+                    <a href="/delhi-register#premium" class="btn btn-outline">Get this pass</a>
+                </li>
+                <li class="dl-pass reveal reveal-delay-1">
+                    <h3>VIP Pass</h3>
+                    <p class="dl-price">₹19,999 <span>+ 18% GST</span></p>
+                    <p class="dl-pass-for">The full event, with the leaders’ evening.</p>
+                    <ul>
+                        <li>Everything in the Premium Delegate Pass</li>
+                        <li>Bharat AI Leaders’ Evening, Day 1</li>
+                        <li>VIP lounge and priority seating</li>
+                        <li>Speaker meet &amp; greet</li>
+                    </ul>
+                    <a href="/delhi-register#vip" class="btn btn-outline">Get this pass</a>
+                </li>
+            </ul>
+            <p class="dl-free-row reveal"><b>Visitor Pass, free.</b> Exhibition only, entry by time slot. <a href="#updates" data-interest="attend">Register to join the waitlist</a></p>
+            <p class="dl-small">Teams of five or more: five passes for the price of four (Delegate or Premium Delegate), on request. A pass is for Delhi only. Your entry pass and the app for Delhi come by email closer to the event.</p>
+        </div>
+    </section>
+
+    <!-- ===== BOOTHS: Mumbai's sizes and prices (public/exhibition.html). Booked as in
+         Mumbai: an enquiry, then the team calls and invoices. The floor plan comes later. ===== -->
+    <section class="dl-booths dl-sec" id="booths">
+        <div class="container">
+            <div class="section-header reveal">
+                <h2 class="section-title">Book a booth in <span class="accent">New Delhi</span></h2>
+                <p class="section-subtitle">The same sizes and prices as Mumbai. We will publish the floor plan later.</p>
+            </div>
+            <div class="dl-sale-photo reveal">
+                <img width="1600" height="1067" loading="lazy" decoding="async" src="images/gallery/DSC_5278.webp" alt="Visitors talking to a company’s team at its exhibition booth" style="object-position:40% 40%">
+            </div>            <p class="dl-photo-note">A booth at Data Science Congress, the predecessor to Bharat AI Innovation.</p>
+
+            <ul class="dl-sale">
+                <li class="dl-sale-row reveal"><div><b>Startup Pod</b><span>1.5 × 1.5 m (24 sqft) · 1 exhibitor pass · 8 min Innovation Talk</span></div><p>₹48,000 <small>+ GST</small></p><a href="#updates" class="btn btn-outline btn-sm" data-interest="exhibit" data-item="Startup Pod, ₹48,000 + GST">Book this booth</a></li>
+                <li class="dl-sale-row reveal"><div><b>Explorer Booth</b><span>2 × 2 m (43 sqft) · 1 exhibitor pass · 10 min Innovation Talk</span></div><p>₹1,29,000 <small>+ GST</small></p><a href="#updates" class="btn btn-outline btn-sm" data-interest="exhibit" data-item="Explorer Booth, ₹1,29,000 + GST">Book this booth</a></li>
+                <li class="dl-sale-row reveal"><div><b>Innovator Booth</b><span>3 × 2 m (65 sqft) · 2 exhibitor passes · 12 min Innovation Talk</span></div><p>₹1,95,000 <small>+ GST</small></p><a href="#updates" class="btn btn-outline btn-sm" data-interest="exhibit" data-item="Innovator Booth, ₹1,95,000 + GST">Book this booth</a></li>
+                <li class="dl-sale-row reveal"><div><b>Enterprise Booth</b><span>4 × 2 m (86 sqft) · 3 exhibitor passes · 15 min Innovation Talk</span></div><p>₹2,58,000 <small>+ GST</small></p><a href="#updates" class="btn btn-outline btn-sm" data-interest="exhibit" data-item="Enterprise Booth, ₹2,58,000 + GST">Book this booth</a></li>
+                <li class="dl-sale-row reveal"><div><b>Accelerator Booth</b><span>3 × 3 m (97 sqft) · 5 exhibitor passes · 20 min Innovation Talk</span></div><p>₹2,91,000 <small>+ GST</small></p><a href="#updates" class="btn btn-outline btn-sm" data-interest="exhibit" data-item="Accelerator Booth, ₹2,91,000 + GST">Book this booth</a></li>
+                <li class="dl-sale-row reveal"><div><b>Flagship Pavilion</b><span>6 × 2 m (129 sqft) · 8 exhibitor passes · 30 min Innovation Talk</span></div><p>₹3,87,000 <small>+ GST</small></p><a href="#updates" class="btn btn-outline btn-sm" data-interest="exhibit" data-item="Flagship Pavilion, ₹3,87,000 + GST">Book this booth</a></li>
+                <li class="dl-sale-row reveal"><div><b>Mega Pavilion</b><span>7 × 7.7 m (580 sqft) · 15 exhibitor passes · 40 min Innovation Talk</span></div><p>₹17,40,000 <small>+ GST</small></p><a href="#updates" class="btn btn-outline btn-sm" data-interest="exhibit" data-item="Mega Pavilion, ₹17,40,000 + GST">Book this booth</a></li>
+            </ul>
+            <p class="dl-small">Choose a booth and leave your details. Our team will call you to confirm it and send the invoice. <a href="/exhibition">See what each booth includes</a></p>
+        </div>
+    </section>
+
+    <!-- ===== PARTNERS: Mumbai's titles and prices (public/partner.html). ===== -->
+    <section class="dl-partners dl-sec" id="partner">
+        <div class="container">
+            <div class="section-header reveal">
+                <h2 class="section-title">Partner with us in <span class="accent">New Delhi</span></h2>
+                <p class="section-subtitle">The same partnerships and sponsorships as Mumbai, at the same prices.</p>
+            </div>
+            <h3 class="dl-sale-head">Partnership tiers</h3>
+            <ul class="dl-sale">
+                <li class="dl-sale-row reveal"><div><b>Title Partner</b><span>1 slot, exclusive. “[Your Company] Presents Bharat AI Innovation Delhi 2027”</span></div><p>₹1.2 Cr</p><a href="#updates" class="btn btn-outline btn-sm" data-interest="sponsor" data-item="Title Partner, ₹1.2 Cr">Enquire</a></li>
+                <li class="dl-sale-row reveal"><div><b>Powered Partner</b><span>1 slot, exclusive. Technology and infrastructure branding</span></div><p>₹50 Lakhs</p><a href="#updates" class="btn btn-outline btn-sm" data-interest="sponsor" data-item="Powered Partner, ₹50 Lakhs">Enquire</a></li>
+                <li class="dl-sale-row reveal"><div><b>Knowledge Partner</b><span>1 slot, exclusive. Co-shape the conference themes and tracks</span></div><p>₹30 Lakhs</p><a href="#updates" class="btn btn-outline btn-sm" data-interest="sponsor" data-item="Knowledge Partner, ₹30 Lakhs">Enquire</a></li>
+                <li class="dl-sale-row reveal"><div><b>Associate Partner</b><span>4 slots. Category exclusivity in FinTech, HealthTech, AgriTech or MfgTech</span></div><p>₹25 Lakhs</p><a href="#updates" class="btn btn-outline btn-sm" data-interest="sponsor" data-item="Associate Partner, ₹25 Lakhs">Enquire</a></li>
+                <li class="dl-sale-row reveal"><div><b>Innovation Partner</b><span>For those championing new technologies and startups</span></div><p>Custom</p><a href="#updates" class="btn btn-outline btn-sm" data-interest="sponsor" data-item="Innovation Partner, Custom">Enquire</a></li>
+            </ul>
+            <h3 class="dl-sale-head">Branding and activation</h3>
+            <ul class="dl-sale">
+                <li class="dl-sale-row reveal"><div><b>AI Leadership Panel</b><span>A panel you curate, with your own leader moderating</span></div><p>₹10 Lakhs <small>+ GST</small></p><a href="#updates" class="btn btn-outline btn-sm" data-interest="sponsor" data-item="AI Leadership Panel, ₹10 Lakhs + GST">Enquire</a></li>
+                <li class="dl-sale-row reveal"><div><b>Leaders Round Table</b><span>Co-branded round table on AI policy</span></div><p>₹10 Lakhs <small>+ GST</small></p><a href="#updates" class="btn btn-outline btn-sm" data-interest="sponsor" data-item="Leaders Round Table, ₹10 Lakhs + GST">Enquire</a></li>
+                <li class="dl-sale-row reveal"><div><b>Bharat AI Leaders’ Evening Partner</b><span>Host the whole evening</span></div><p>₹15 Lakhs <small>+ GST</small></p><a href="#updates" class="btn btn-outline btn-sm" data-interest="sponsor" data-item="Bharat AI Leaders’ Evening Partner, ₹15 Lakhs + GST">Enquire</a></li>
+                <li class="dl-sale-row reveal"><div><b>Lanyard</b><span>The only brand on every attendee’s lanyard</span></div><p>₹10 Lakhs <small>+ GST</small></p><a href="#updates" class="btn btn-outline btn-sm" data-interest="sponsor" data-item="Lanyard, ₹10 Lakhs + GST">Enquire</a></li>
+                <li class="dl-sale-row reveal"><div><b>Conference Bag</b><span>The only brand on the bag delegates take home</span></div><p>₹3 Lakhs <small>+ GST</small></p><a href="#updates" class="btn btn-outline btn-sm" data-interest="sponsor" data-item="Conference Bag, ₹3 Lakhs + GST">Enquire</a></li>
+                <li class="dl-sale-row reveal"><div><b>Networking Lunch Partner</b><span>The networking lunch, presented by you, on both days</span></div><p>On request</p><a href="#updates" class="btn btn-outline btn-sm" data-interest="sponsor" data-item="Networking Lunch Partner, on request">Enquire</a></li>
+                <li class="dl-sale-row reveal"><div><b>AI Partner</b><span>For AI companies: the named AI Partner of the event</span></div><p>On request</p><a href="#updates" class="btn btn-outline btn-sm" data-interest="sponsor" data-item="AI Partner, on request">Enquire</a></li>
+                <li class="dl-sale-row reveal"><div><b>Trophy Partner</b><span>Your brand on the trophies and the awards moment</span></div><p>On request</p><a href="#updates" class="btn btn-outline btn-sm" data-interest="sponsor" data-item="Trophy Partner, on request">Enquire</a></li>
+                <li class="dl-sale-row reveal"><div><b>Innovators’ Round Table</b><span>Invite-only, on a theme you set</span></div><p>On request</p><a href="#updates" class="btn btn-outline btn-sm" data-interest="sponsor" data-item="Innovators’ Round Table, on request">Enquire</a></li>
+                <li class="dl-sale-row reveal"><div><b>Custom Activation</b><span>A launch, an MoU signing or a campaign of your own</span></div><p>On request</p><a href="#updates" class="btn btn-outline btn-sm" data-interest="sponsor" data-item="Custom Activation, on request">Enquire</a></li>
+            </ul>
+            <p class="dl-small">Choose one and leave your details, and our team will call you. <a href="/partner">See what each one includes</a></p>
         </div>
     </section>
 
@@ -614,6 +787,7 @@
                             <label for="dl-city">City</label>
                             <input id="dl-city" name="city" type="text" autocomplete="address-level2" maxlength="80">
                         </div>
+                        <p class="dl-chosen" id="dl-chosen" hidden></p>
                         <div class="dl-hp" aria-hidden="true">
                             <label for="dl-website">Leave this empty</label>
                             <input id="dl-website" name="website" type="text" tabindex="-1" autocomplete="off">
@@ -647,11 +821,15 @@
                 </details>
                 <details>
                     <summary>Can I get a pass for Delhi now? <i class="fas fa-chevron-down" aria-hidden="true"></i></summary>
-                    <p>Registration for the free Visitor Pass is open now (exhibition only, entry by time slot). <a href="#updates" data-interest="attend">Register here</a> to join the waitlist. Paid passes and booths open later, and we will email you when they do.</p>
+                    <p>Yes. Delegate, Premium Delegate, VIP and Academic passes are <a href="/delhi-register">on sale now</a>. The free Visitor Pass is exhibition only, with entry by time slot: <a href="#updates" data-interest="attend">register here</a> to join the waitlist.</p>
                 </details>
                 <details>
                     <summary>How do I book a booth, sponsor or speak? <i class="fas fa-chevron-down" aria-hidden="true"></i></summary>
-                    <p>Choose Exhibit, Sponsor or Speak in the <a href="#updates" data-interest="exhibit">form above</a>, or write to <a href="mailto:info@bharataiinnovation.com">info@bharataiinnovation.com</a>. Our team will get in touch with you.</p>
+                    <p>Choose a <a href="#booths">booth</a> or a <a href="#partner">partnership</a> and leave your details, or write to <a href="mailto:info@bharataiinnovation.com">info@bharataiinnovation.com</a>. Our team will call you to confirm it and send the invoice. We will publish the floor plan later. To speak, choose Speak in the <a href="#updates" data-interest="speak">form</a>.</p>
+                </details>
+                <details>
+                    <summary>What happens after I pay for a pass? <i class="fas fa-chevron-down" aria-hidden="true"></i></summary>
+                    <p>Your receipt comes by email straight away, and your GST invoice follows from the accounts team. Closer to the event we will email you your entry pass and open the app for Delhi.</p>
                 </details>
                 <details>
                     <summary>Is this the same as the Mumbai event? <i class="fas fa-chevron-down" aria-hidden="true"></i></summary>
@@ -736,7 +914,7 @@
 
     <aside class="sticky-cta" id="stickyCta" aria-label="Register for Delhi 2027" aria-hidden="true">
         <div class="sticky-cta-text"><b>29–30 July 2027</b><span>Bharat Mandapam, New Delhi</span></div>
-        <a href="#updates" class="btn btn-primary" tabindex="-1" data-interest="attend">Register free</a>
+        <a href="#passes" class="btn btn-primary" tabindex="-1">Get your pass</a>
     </aside>
 
     <script>
@@ -753,6 +931,14 @@
       var phoneHint = document.getElementById('dl-phone-hint');
       var orgHint = document.getElementById('dl-org-hint');
       var params = new URLSearchParams(location.search);
+      // The booth or partnership chosen further up the page, carried into the enquiry.
+      var chosenEl = document.getElementById('dl-chosen');
+      var chosen = '';
+      function setChosen(v) {
+        chosen = v || '';
+        chosenEl.textContent = chosen ? 'You chose: ' + chosen : '';
+        chosenEl.hidden = !chosen;
+      }
 
       function interest() {
         var r = form.querySelector('input[name="interest"]:checked');
@@ -780,9 +966,9 @@
         btn.innerHTML = label();
       }
 
-      form.addEventListener('change', function (e) { if (e.target.name === 'interest') syncForm(); });
+      form.addEventListener('change', function (e) { if (e.target.name === 'interest') { setChosen(''); syncForm(); } });
       Array.prototype.forEach.call(document.querySelectorAll('a[data-interest]'), function (a) {
-        a.addEventListener('click', function () { setInterest(a.getAttribute('data-interest')); });
+        a.addEventListener('click', function () { setInterest(a.getAttribute('data-interest')); setChosen(a.getAttribute('data-item')); });
       });
       if (TYPES[params.get('interest')]) setInterest(params.get('interest'));
       syncForm();
@@ -841,8 +1027,8 @@
             email: email.value.trim(),
             phone: phone.value.trim(),
             organization: org.value.trim(),
-            subject: 'Delhi 2027 · ' + LABELS[i],
-            message: 'Interested in Bharat AI Innovation Delhi (29–30 July 2027, Bharat Mandapam, New Delhi): ' + LABELS[i] + '.',
+            subject: 'Delhi 2027 · ' + LABELS[i] + (chosen ? ' · ' + chosen : ''),
+            message: 'Interested in Bharat AI Innovation Delhi (29–30 July 2027, Bharat Mandapam, New Delhi): ' + (chosen || LABELS[i]) + '.',
             metadata: meta
           })
         }).then(function (r) {
@@ -860,7 +1046,7 @@
       function done(name, email, already) {
         var first = name.split(/\s+/)[0];
         var title = 'We have your details';
-        var text = 'Thank you, ' + first + '. Our team will get in touch with you at ' + email + '.';
+        var text = 'Thank you, ' + first + '. ' + (chosen ? 'We have your request for: ' + chosen + '. Our team will call you to confirm it. ' : 'Our team will get in touch with you. ') + 'We will write to you at ' + email + '.';
         if (isPass()) {
           title = already ? 'You are already waitlisted' : 'You are waitlisted';
           text = already
@@ -936,7 +1122,7 @@
         link.tabIndex = on ? 0 : -1;
         bar.setAttribute('aria-hidden', on ? 'false' : 'true');
       });
-      ['.dl-hero-actions', '#updates', '#mumbai', '.footer'].forEach(function (sel, i) {
+      ['.dl-hero-actions', '#passes', '#updates', '#mumbai', '.footer'].forEach(function (sel, i) {
         var el = document.querySelector(sel);
         if (el) { el.setAttribute('data-sticky-key', 'k' + i); io.observe(el); }
       });
