@@ -20370,7 +20370,7 @@ ${sharedNavHTML('inquiry')}
             <span class="text-sm font-bold text-green-300">&#x1F680; Startup Pod</span>
             <p class="text-[10px] text-gray-400 mt-0.5">1.5 x 1.5 m (2.25 sqm)</p>
           </div>
-          <span class="text-sm font-bold text-green-400">&#x20B9;48,000</span>
+          <span class="text-sm font-bold text-green-400"><s style="font-weight:400;opacity:.7;">&#x20B9;35,000</s> &#x20B9;48,000</span>
         </div>
       </div>
 
@@ -24589,6 +24589,10 @@ function mainPageScript(): string {
       } catch (e) {}
     }
 
+    // The organiser, 6 Nov 2026: the Startup Pod's old price struck through beside the new one.
+    // The catalogue holds one price, so the old one is stated here.
+    function boothWas(bt) { return bt && bt.slug === 'startup-pod' ? '<s style="font-weight:400;font-size:.65em;opacity:.7;">₹35,000</s> ' : ''; }
+
     function closeInquiryForm() {
       document.getElementById('inquiry-modal').classList.add('hidden');
       // Reset form
@@ -27413,7 +27417,7 @@ function mainPageScript(): string {
                     <!-- Price -->
                     <div class="glass rounded-xl p-3 mb-4">
                       <div class="flex items-baseline gap-2">
-                        <span class="text-2xl font-black" style="color:\${bt.color};">₹\${Number(bt.price_inr).toLocaleString('en-IN')}</span>
+                        <span class="text-2xl font-black" style="color:\${bt.color};">\${boothWas(bt)}₹\${Number(bt.price_inr).toLocaleString('en-IN')}</span>
                         <span class="text-xs text-gray-500">+ GST</span>
                       </div>
                     </div>
@@ -27472,7 +27476,7 @@ function mainPageScript(): string {
                       </td>
                       <td class="text-center py-3 px-2 text-gray-300">\${bt.size_label}</td>
                       <td class="text-center py-3 px-2 text-gray-300">\${bt.area_sqm} sqm</td>
-                      <td class="text-right py-3 px-2 font-bold" style="color:\${bt.color};">₹\${Number(bt.price_inr).toLocaleString('en-IN')}</td>
+                      <td class="text-right py-3 px-2 font-bold" style="color:\${bt.color};">\${boothWas(bt)}₹\${Number(bt.price_inr).toLocaleString('en-IN')}</td>
                       <td class="text-center py-3 px-2">
                         <button onclick="openBoothRequestForm(\${bt.id})" class="px-3 py-1.5 rounded-lg text-[10px] font-semibold text-white transition hover:opacity-90" style="background:\${bt.color};">
                           Request
@@ -27523,7 +27527,7 @@ function mainPageScript(): string {
           <p class="text-sm text-gray-300 mb-4 leading-relaxed">\${bt.description}</p>
           <div class="glass rounded-xl p-4 mb-4">
             <div class="flex items-baseline gap-2 mb-2">
-              <span class="text-3xl font-black" style="color:\${bt.color};">₹\${Number(bt.price_inr).toLocaleString('en-IN')}</span>
+              <span class="text-3xl font-black" style="color:\${bt.color};">\${boothWas(bt)}₹\${Number(bt.price_inr).toLocaleString('en-IN')}</span>
               <span class="text-sm text-gray-500">+ 18% GST</span>
             </div>
             <div class="text-xs text-gray-500">GST: ₹\${Math.round(bt.price_inr * 0.18).toLocaleString('en-IN')} | Total: ₹\${Math.round(bt.price_inr * 1.18).toLocaleString('en-IN')}</div>

@@ -193,7 +193,7 @@
       qs('#fpSpDim').textContent=it.dim.replace('m x ','m × ');
       qs('#fpSpArea').textContent=it.sqm+' m²';
       qs('#fpSpType').textContent=TYPE_META[it.type].name.replace(' Booth','').replace(' Pavilion','');
-      qs('#fpSpPrice').textContent=inr(it.price);
+      qs('#fpSpPrice').innerHTML=(it.type==='pod'?'<s style="font-size:.7em;font-weight:600;opacity:.6;">'+inr(35000)+'</s> ':'')+inr(it.price);
       qs('#fpPnBlurb').textContent=it.blurb;
       qs('#fpFBooth').value=`${it.code} — ${TYPE_META[it.type].name} (${it.dim.replace('m x ','m × ')})`;
       const note=qs('#fpPnBookedNote'), noteTxt=qs('#fpPnBookedText');
