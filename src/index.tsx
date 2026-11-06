@@ -34610,7 +34610,7 @@ function adminPageScript(): string {
     function setAttFilter(k, v) { attFilters[k] = v; attPage = 1; loadAdminAttendees(null, true); }
     function clearAttFilters() {
       attFilters = { badge: '', rsvp: '', payment: '', checkin: '', source: '', profile: '', main: 'yes' };
-      attQuery = ''; attPage = 1; loadAdminAttendees(null, true);
+      attPage = 1; loadAdminAttendees(null, true);
     }
     function attActiveFilterCount() {
       // 'main: yes' is the resting state, not a filter somebody applied.
@@ -34667,11 +34667,185 @@ function adminPageScript(): string {
     }
     function attSelectedIds() { return Array.from(attSelected); }
     function attFiltered(list) {
-      var out = list.filter(attMatchesFilters);
-      if (!attQuery) return out;
-      const q = attQuery.toLowerCase();
-      return out.filter(a => [a.name, a.email, a.company, a.job_title, a.mobile, a.city, a.badge_type]
-        .map(v => String(v || '').toLowerCase()).join(' ').includes(q));
+      return attSearchApply(list.filter(attMatchesFilters), attQuery, attSearchRanked);
+    }
+
+    // ---- Searching the attendee list ----
+    // Every word typed has to appear somewhere in the person's record, in any order,
+    // so "patel apex" finds Raj Patel at Apex 36. Spaces and dots inside a name or a
+    // company do not count ("apex36" finds "Apex 36"), and a mobile can be typed the
+    // way people write it (+91 98450 49812, 098450-49812).
+    var attSearchRanked = true;   // best matches first, until a column header is clicked
+    var attHLWords = [];
+    function attSearchSquash(v) { return String(v || '').toLowerCase().replace(/[ ._-]+/g, ''); }
+    function attSearchDigits(v) { return String(v || '').replace(/[^0-9]/g, ''); }
+    function attSearchParse(q) {
+      var text = String(q || '').toLowerCase().trim().replace(/\\s+/g, ' ');
+      if (!text) return null;
+      var phone = '';
+      if (/^[0-9+() -]+$/.test(text)) {
+        phone = attSearchDigits(text.replace(/^[+]?91[ -]+|^[+]91/, ''));
+        if (phone.length === 12 && phone.indexOf('91') === 0) phone = phone.slice(2);
+        else if (phone.length === 11 && phone.charAt(0) === '0') phone = phone.slice(1);
+        if (phone.length < 5) phone = '';
+      }
+      return { text: text, words: text.split(' '), phone: phone };
+    }
+    function attSearchHit(a, s) {
+      if (s.phone && attSearchDigits(a.mobile).indexOf(s.phone) >= 0) return true;
+      var hay = [a.name, a.email, a.mobile, a.company, a.job_title, a.city, a.country, a.industry, a.badge_type, attPassLabel(a), '#' + a.id].join(' ').toLowerCase()
+        + ' ' + attSearchSquash(a.name) + ' ' + attSearchSquash(a.company);
+      return s.words.every(function (w) { return hay.indexOf(w) >= 0; });
+    }
+    // Lower is better: exact, then the name starts with it, then each word starts a
+    // word of the name, then each word is inside the name, then anywhere else.
+    function attSearchRank(a, s) {
+      var name = String(a.name || '').toLowerCase().trim();
+      if (name === s.text || String(a.email || '').toLowerCase() === s.text || String(a.id) === s.text || '#' + a.id === s.text) return 0;
+      if (name.indexOf(s.text) === 0) return 1;
+      var parts = name.split(' ');
+      if (s.words.every(function (w) { return parts.some(function (p) { return p.indexOf(w) === 0; }); })) return 2;
+      if (s.words.every(function (w) { return name.indexOf(w) >= 0; })) return 3;
+      return 4;
+    }
+    function attSearchApply(list, q, ranked) {
+      var s = attSearchParse(q);
+      if (!s) return list;
+      var out = list.filter(function (a) { return attSearchHit(a, s); });
+      if (!ranked) return out;
+      return out.map(function (a) { return { a: a, r: attSearchRank(a, s) }; })
+        .sort(function (x, y) { return x.r - y.r; })
+        .map(function (x) { return x.a; });
+    }
+    function attSearchDistance(a, b, limit) {
+      if (Math.abs(a.length - b.length) > limit) return limit + 1;
+      var prev = [];
+      for (var j = 0; j <= b.length; j++) prev[j] = j;
+      for (var i = 1; i <= a.length; i++) {
+        var cur = [i], best = i;
+        for (var k = 1; k <= b.length; k++) {
+          cur[k] = Math.min(prev[k] + 1, cur[k - 1] + 1, prev[k - 1] + (a.charAt(i - 1) === b.charAt(k - 1) ? 0 : 1));
+          if (cur[k] < best) best = cur[k];
+        }
+        if (best > limit) return limit + 1;
+        prev = cur;
+      }
+      return prev[b.length];
+    }
+    // Names spelt nearly the same, for when nothing matched: Sooraj for Suraj.
+    function attSearchSuggest(list, s) {
+      var words = s.words.filter(function (w) { return w.length >= 3; });
+      if (!words.length) return [];
+      var scored = [];
+      list.forEach(function (a) {
+        var parts = String(a.name || '').toLowerCase().trim().split(' ');
+        var total = 0;
+        for (var i = 0; i < words.length; i++) {
+          var limit = words[i].length <= 4 ? 1 : 2, best = limit + 1;
+          for (var p = 0; p < parts.length; p++) best = Math.min(best, attSearchDistance(words[i], parts[p], limit));
+          if (best > limit) return;
+          total += best;
+        }
+        scored.push({ name: String(a.name).trim(), total: total });
+      });
+      scored.sort(function (x, y) { return x.total - y.total; });
+      var seen = {}, out = [];
+      scored.forEach(function (x) { if (out.length < 5 && !seen[x.name.toLowerCase()]) { seen[x.name.toLowerCase()] = 1; out.push(x.name); } });
+      return out;
+    }
+    // A value for a table cell, with the words searched for marked. Built by position
+    // so that it escapes what it shows and can never cut through an entity.
+    function attHL(v) {
+      var s = String(v == null ? '' : v);
+      if (!attHLWords.length || !s) return escH(s);
+      var low = s.toLowerCase(), on = [];
+      attHLWords.forEach(function (w) {
+        for (var i = low.indexOf(w); i >= 0; i = low.indexOf(w, i + w.length)) {
+          for (var j = i; j < i + w.length; j++) on[j] = true;
+        }
+      });
+      var html = '', at = 0;
+      while (at < s.length) {
+        var end = at;
+        while (end < s.length && !!on[end] === !!on[at]) end++;
+        var piece = escH(s.slice(at, end));
+        html += on[at] ? '<mark style="background:#FFE3B3;color:inherit;border-radius:3px">' + piece + '</mark>' : piece;
+        at = end;
+      }
+      return html;
+    }
+    // Shown only when the search leaves someone out, so a blank table is never the answer.
+    function attSearchHelpHTML(q, found, hidden, names) {
+      if (found && !hidden) return '';
+      var link = 'class="font-semibold text-primary-400 hover:underline"';
+      var out = '';
+      if (!found) out += '<div class="text-sm font-semibold text-gray-200 mb-1">No one found' + (hidden ? ' in this list' : '') + ' for &ldquo;' + escH(String(q).trim()) + '&rdquo;</div>';
+      if (hidden) {
+        var who = hidden + (found ? ' more' : '') + (hidden === 1 ? ' person matches' : ' people match');
+        out += '<div class="text-xs text-gray-400">' + who + (attActiveFilterCount() ? ', hidden by your filters. ' : ' among campus panel registrants, who are not conference registrants. ')
+          + '<button type="button" onclick="attSearchShowHidden()" ' + link + '>Show ' + (hidden === 1 ? 'them' : 'them all') + '</button></div>';
+      }
+      if (names.length) {
+        out += '<div class="text-xs text-gray-400 mt-1">Did you mean: ' + names.map(function (n) {
+          return '<button type="button" data-q="' + escH(n) + '" onclick="attSearchUse(this.dataset.q)" ' + link + '>' + escH(n) + '</button>';
+        }).join(', ') + '?</div>';
+      }
+      if (!found && !hidden) {
+        out += '<div class="text-xs text-gray-400 mt-1">Try part of the name, email, mobile or company. '
+          + '<button type="button" onclick="attSearchClear()" ' + link + '>Clear the search</button> or <button type="button" onclick="openAddAttendee()" ' + link + '>add a new attendee</button>.</div>';
+      }
+      return '<div id="att-search-help" role="status" class="glass rounded-xl p-3 mb-3">' + out + '</div>';
+    }
+    function attSearchUse(v) {
+      searchAttendees(v);
+      attSearchRender();
+      var box = document.getElementById('admin-att-search');
+      if (box) { box.value = v; box.focus(); }
+    }
+    function attSearchClear() { attSearchUse(''); }
+    function attSearchShowHidden() {
+      attFilters = { badge: '', rsvp: '', payment: '', checkin: '', source: '', profile: '', main: '' };
+      attSearchUse(attQuery);
+    }
+    function attSearchKey(e) {
+      if (e.isComposing) return;
+      if (e.key === 'Escape') {
+        if (e.target.value) { e.preventDefault(); attSearchClear(); } else e.target.blur();
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (attSearchTimer) attSearchRender();
+        var ids = window.__attMatchingIds || [];
+        if (attQuery.trim() && ids.length === 1) openAttendeeDrawer(Number(ids[0]));
+      }
+    }
+    // "/" jumps to the search box from anywhere on the Attendees page.
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey || currentSection !== 'attendees') return;
+      var t = e.target, tag = t && t.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (t && t.isContentEditable)) return;
+      if (document.querySelector('.modal-overlay:not(.hidden)')) return;
+      var box = document.getElementById('admin-att-search');
+      if (box) { e.preventDefault(); box.focus(); box.select(); }
+    });
+    // Redraws the Attendees page. While someone is typing in the search box, the box
+    // itself stays where it is and everything around it is replaced: taking it out of
+    // the page, even for an instant, loses the cursor after every letter.
+    function attPutSection(html) {
+      var sec = document.getElementById('section-attendees');
+      var live = document.getElementById('admin-att-search');
+      if (!live || document.activeElement !== live || !sec.contains(live)) { sec.innerHTML = html; return; }
+      var tmp = document.createElement('div');
+      tmp.innerHTML = html;
+      var next = tmp.querySelector('#admin-att-search');
+      if (!next) { sec.innerHTML = html; return; }
+      if (live.value !== attQuery) live.value = attQuery;
+      for (var a = live, b = next; a !== sec; a = a.parentNode, b = b.parentNode) {
+        var ap = a.parentNode, bp = b.parentNode;
+        while (a.previousSibling) ap.removeChild(a.previousSibling);
+        while (a.nextSibling) ap.removeChild(a.nextSibling);
+        while (bp.firstChild !== b) ap.insertBefore(bp.firstChild, a);
+        while (b.nextSibling) ap.appendChild(b.nextSibling);
+      }
     }
     // The cap is what stops the response growing back past what the browser can
     // parse, so opting out of it is a deliberate act: it takes a click, and the
@@ -34679,7 +34853,22 @@ function adminPageScript(): string {
     function attLoadAll() { attWantAll = true; lastAttendees = null; loadAdminAttendees(); }
     function gotoAttPage(n) { attPage = n; loadAdminAttendees(null, true); }
     function setAttPageSize(v) { attPageSize = v === 'all' ? Infinity : parseInt(v, 10); attPage = 1; loadAdminAttendees(null, true); }
-    function searchAttendees(v) { attQuery = v; attPage = 1; loadAdminAttendees(null, true); }
+    // Matching is quick, but laying out a page of the table takes long enough that
+    // doing it for each letter makes the typing stick. So the letters appear at once
+    // and the list redraws when the typing pauses.
+    var attSearchTimer = 0;
+    function searchAttendees(v) {
+      attQuery = v; attPage = 1; attSearchRanked = true;
+      clearTimeout(attSearchTimer);
+      attSearchTimer = setTimeout(attSearchRender, 150);
+    }
+    function attSearchRender() {
+      clearTimeout(attSearchTimer);
+      attSearchTimer = 0;
+      var rows = document.querySelector('#section-attendees .overflow-y-auto');
+      if (rows) rows.scrollTop = 0;
+      loadAdminAttendees(null, true);
+    }
 
     /* The whole list, in pieces that each fit through the 950 KB cap. One request
      * used to be the whole story, and the cap dropped the alphabetical tail - 136
@@ -34790,20 +34979,27 @@ function adminPageScript(): string {
         return v.indexOf('campus:') === 0 ? 'campus' : v;
       }).filter(Boolean))).sort();
 
-      document.getElementById('section-attendees').innerHTML = \`
+      const attSearch = attSearchParse(attQuery);
+      const attSearching = !!attSearch;
+      attHLWords = attSearching ? attSearch.words.filter(function (w) { return w.length >= 2; }) : [];
+      const attHiddenHits = attSearching ? attSearchApply(attendees, attQuery, false).length - attMatches.length : 0;
+      const attSuggest = attSearching && !attMatches.length && !attHiddenHits ? attSearchSuggest(attendees, attSearch) : [];
+
+      const attHtml = \`
         <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
           <div class="flex gap-2 items-center flex-wrap">
             <div class="relative">
               <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-xs"></i>
-              <input type="text" id="admin-att-search" autocomplete="off" placeholder="Search attendees..." class="pl-9 pr-4 py-2 rounded-lg text-xs w-64 max-w-full" value="\${esc(attQuery)}" oninput="searchAttendees(this.value)">
+              <input type="text" id="admin-att-search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" aria-label="Search attendees" placeholder="Search name, email, mobile, company, city&hellip;" title="Words can be in any order. Esc clears." class="pl-9 pr-9 py-2 rounded-lg text-xs w-80 max-w-full" value="\${escH(attQuery)}" oninput="searchAttendees(this.value)" onkeydown="attSearchKey(event)">
+              \${attQuery ? '<button type="button" id="att-search-clear" onclick="attSearchClear()" class="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full text-gray-500 hover:text-gray-200" title="Clear the search (Esc)" aria-label="Clear the search"><i class="fas fa-xmark text-xs"></i></button>' : '<kbd class="hidden md:block absolute right-2 top-1/2 -translate-y-1/2 px-1.5 rounded border border-white/10 text-[10px] text-gray-500 pointer-events-none" title="Press / to search">/</kbd>'}
             </div>
-            <span class="text-xs text-gray-400">\${attTotal || attendees.length} total</span>
+            <span class="text-xs text-gray-400" id="att-search-count">\${attSearching ? '<strong class="text-gray-200">' + attMatches.length + '</strong> found of ' + (attTotal || attendees.length) + (attMatches.length === 1 ? ' &middot; press Enter to open' : '') : (attTotal || attendees.length) + ' total'}</span>
             \${attTruncated ? '<span class="text-xs text-amber-300 ml-1" title="One response can only carry so much. This page is working from the first ' + attendees.length + ' rows; Export CSV always covers everyone."><i class="fas fa-scissors mr-1"></i>showing ' + attendees.length + '</span>' + (attTruncatedBy === 'rows'
               ? '<button onclick="attLoadAll()" class="text-[10px] px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-200 hover:bg-amber-500/30 ml-1">Load all ' + attTotal + '</button>'
               : '<button onclick="exportAttendeesCsv(event)" class="text-[10px] px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-200 hover:bg-amber-500/30 ml-1" title="A single response cannot carry all ' + attTotal + ' rows. The CSV can.">Export all ' + attTotal + '</button>') : ''}
             \${(dupData.mobileGroups||0) > 0 ? '<button onclick="findDuplicates()" class="text-xs text-red-500 ml-1 hover:underline"><i class="fas fa-exclamation-triangle mr-0.5"></i>' + dupData.mobileGroups + ' same-mobile duplicates' + ((dupData.certainGroups||0) > 0 ? ' (' + dupData.certainGroups + ' ready to merge)' : '') + '</button>' : ''}
             \${(dupData.nameGroups||0) > 0 ? '<span class="text-xs text-gray-400 ml-1">' + dupData.nameGroups + ' similar names</span>' : ''}
-            \${attSortCol ? '<span class="text-xs text-indigo-400 ml-2"><i class="fas fa-sort-amount-'+(attSortDir==='asc'?'up':'down')+' mr-0.5"></i>Sorted by '+attSortCol.replace('_',' ')+'</span><button onclick="resetAttSort()" class="text-[10px] text-gray-500 hover:text-white ml-1" title="Reset sort"><i class="fas fa-times-circle"></i></button>' : ''}
+            \${attSearching && attSearchRanked ? '<span class="text-xs text-indigo-400 ml-2"><i class="fas fa-sort-amount-down mr-0.5"></i>Best matches first</span>' : attSortCol ? '<span class="text-xs text-indigo-400 ml-2"><i class="fas fa-sort-amount-'+(attSortDir==='asc'?'up':'down')+' mr-0.5"></i>Sorted by '+attSortCol.replace('_',' ')+'</span><button onclick="resetAttSort()" class="text-[10px] text-gray-500 hover:text-white ml-1" title="Reset sort"><i class="fas fa-times-circle"></i></button>' : ''}
           </div>
           <div class="flex gap-2 flex-wrap">
             <button onclick="notifyAllAttendees()" class="px-4 py-2 rounded-xl text-xs font-medium bg-amber-600 hover:bg-amber-500 text-white transition"><i class="fas fa-envelope mr-1.5"></i>Notify All</button>
@@ -34858,6 +35054,8 @@ function adminPageScript(): string {
           <span class="ml-auto text-xs text-gray-400"><strong class="text-gray-200">\${attMatches.length}</strong> match\${attMatches.length === 1 ? '' : 'es'}</span>
         </div>
 
+        \${attSearching ? attSearchHelpHTML(attQuery, attMatches.length, attHiddenHits, attSuggest) : ''}
+
         <!-- Acting on a segment. Hidden until something is selected. -->
         <div id="att-bulk-bar" class="glass rounded-xl p-3 mb-3 flex flex-wrap items-center gap-2 border border-primary-500/30" \${attSelected.size ? '' : 'hidden'}>
           <span class="text-xs font-semibold text-primary-300"><i class="fas fa-check-double mr-1.5"></i><span id="att-bulk-count">\${attSelected.size} selected</span></span>
@@ -34883,12 +35081,12 @@ function adminPageScript(): string {
                   <td class="att-check-col"><input type="checkbox" \${attSelected.has(String(a.id)) ? 'checked' : ''} onchange="attToggleRow(\${a.id}, this.checked)" style="accent-color:#FF6B00;width:14px;height:14px;cursor:pointer"></td>
                   <td class="text-gray-500">#\${a.id}\${dup ? '<span class="dup-badge" style="background:'+dup.color+'22;color:'+dup.color+'">⚠ G'+dup.group+'</span>' : ''}</td>
                   <td><img src="\${getAvatarUrl(a.email, a.name, 64, a.avatar_url)}" alt="" class="w-8 h-8 rounded-full object-cover"></td>
-                  <td class="font-medium"><button onclick="openAttendeeDrawer(\${a.id})" class="text-left hover:text-primary-400 transition truncate w-full" title="Open this person's full record">\${escH(a.name)}</button></td>
-                  <td class="text-gray-400 text-xs ie-cell" onclick="inlineEdit(this, \${a.id}, 'email', '\${esc(a.email)}')">\${escH(a.email)}</td>
-                  <td class="text-xs text-gray-400 ie-cell" onclick="inlineEdit(this, \${a.id}, 'mobile', '\${esc(a.mobile||'')}')">\${a.mobile ? escH(a.mobile) : '<span class=&quot;text-gray-600&quot;>-</span>'}</td>
-                  <td class="ie-cell" onclick="inlineEdit(this, \${a.id}, 'company', '\${esc(a.company||'')}')">\${a.company ? escH(a.company) : '<span class=&quot;text-gray-600&quot;>-</span>'}</td>
-                  <td class="text-xs text-gray-400 ie-cell" onclick="inlineEdit(this, \${a.id}, 'job_title', '\${esc(a.job_title||'')}')">\${a.job_title ? escH(a.job_title) : '<span class=&quot;text-gray-600&quot;>-</span>'}</td>
-                  <td class="text-xs text-gray-400 ie-cell" onclick="inlineEdit(this, \${a.id}, 'city', '\${esc(a.city||'')}')">\${a.city ? escH(a.city) : '<span class=&quot;text-gray-600&quot;>-</span>'}</td>
+                  <td class="font-medium"><button onclick="openAttendeeDrawer(\${a.id})" class="text-left hover:text-primary-400 transition truncate w-full" title="Open this person's full record">\${attHL(a.name)}</button></td>
+                  <td class="text-gray-400 text-xs ie-cell" onclick="inlineEdit(this, \${a.id}, 'email', '\${esc(a.email)}')">\${attHL(a.email)}</td>
+                  <td class="text-xs text-gray-400 ie-cell" onclick="inlineEdit(this, \${a.id}, 'mobile', '\${esc(a.mobile||'')}')">\${a.mobile ? attHL(a.mobile) : '<span class=&quot;text-gray-600&quot;>-</span>'}</td>
+                  <td class="ie-cell" onclick="inlineEdit(this, \${a.id}, 'company', '\${esc(a.company||'')}')">\${a.company ? attHL(a.company) : '<span class=&quot;text-gray-600&quot;>-</span>'}</td>
+                  <td class="text-xs text-gray-400 ie-cell" onclick="inlineEdit(this, \${a.id}, 'job_title', '\${esc(a.job_title||'')}')">\${a.job_title ? attHL(a.job_title) : '<span class=&quot;text-gray-600&quot;>-</span>'}</td>
+                  <td class="text-xs text-gray-400 ie-cell" onclick="inlineEdit(this, \${a.id}, 'city', '\${esc(a.city||'')}')">\${a.city ? attHL(a.city) : '<span class=&quot;text-gray-600&quot;>-</span>'}</td>
                   <td class="text-xs text-gray-400 ie-cell" onclick="inlineEdit(this, \${a.id}, 'country', '\${esc(a.country||'')}')">\${a.country ? escH(a.country) : '<span class=&quot;text-gray-600&quot;>-</span>'}</td>
                   <td class="text-xs">\${safeUrl(a.linkedin_url) ? '<a href="'+safeUrl(a.linkedin_url)+'" target="_blank" class="text-blue-400 hover:text-blue-300"><i class="fab fa-linkedin"></i></a>' : '<span class="text-gray-600">-</span>'}</td>
                   <td class="ie-cell" onclick="inlineMultiSelect(this, \${a.id}, 'role', '\${esc(a.role||'attendee')}')"><div class="flex flex-wrap gap-0.5">\${(a.role||'attendee').split(',').map(r=>'<span class=&quot;px-1.5 py-0.5 rounded text-[9px] bg-primary-500/20 text-primary-300 whitespace-nowrap cursor-pointer&quot;>'+escH(r.trim())+'</span>').join('')}</div></td>
@@ -34916,8 +35114,8 @@ function adminPageScript(): string {
           <div class="flex items-center justify-between gap-3 flex-wrap px-4 py-3 border-t border-white/10 text-xs text-gray-400">
             <div>
               Showing <strong class="text-gray-200">\${attMatches.length ? (attStart + 1) : 0}&ndash;\${Math.min(attEnd, attMatches.length)}</strong>
-              of <strong class="text-gray-200">\${attMatches.length}</strong>\${attQuery ? ' matching' : ''}
-              \${attQuery ? '<span class="text-gray-500"> (of ' + attendees.length + ' total)</span>' : ''}
+              of <strong class="text-gray-200">\${attMatches.length}</strong>\${attSearching ? ' matching' : ''}
+              \${attSearching ? '<span class="text-gray-500"> (of ' + attendees.length + ' total)</span>' : ''}
             </div>
             <div class="flex items-center gap-2">
               <label class="text-gray-500">Rows</label>
@@ -34934,6 +35132,7 @@ function adminPageScript(): string {
           </div>
         </div>
       \`;
+      attPutSection(attHtml);
       // Restore scroll position and column widths after reload
       requestAnimationFrame(() => {
         restoreColumnWidths();
@@ -36299,6 +36498,7 @@ function adminPageScript(): string {
     }
 
     function sortAttendees(col) {
+      attSearchRanked = false;   // a click on a header beats "best matches first"
       if (attSortCol === col) {
         attSortDir = attSortDir === 'asc' ? 'desc' : 'asc';
       } else {
@@ -36309,6 +36509,7 @@ function adminPageScript(): string {
     }
 
     function resetAttSort() {
+      attSearchRanked = true;
       attSortCol = 'registration_date';
       attSortDir = 'desc';
       attPage = 1;
