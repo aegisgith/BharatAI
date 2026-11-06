@@ -203,6 +203,7 @@ check('every row\'s button names the same thing and price', [...html.matchAll(/<
   p.choose('speak');
   check('choosing something else in the form lets go of the booth', p.els['dl-chosen'].hidden === true && p.els['dl-chosen'].textContent === '');
 }
+check('the effects name where they came from, and no library is loaded', html.includes('Uiverse.io (MIT, (c) 2023 Uiverse.io)') && html.includes('React Bits (MIT + Commons Clause, (c) 2026 David Haz)') && ![...html.matchAll(/<script[^>]* src="([^"]+)"/g)].some((m) => !m[1].startsWith('js/main.js')));
 check('the page says the floor plan comes later', body.includes('We will publish the floor plan later'));
 check('the refund policy now names Delhi and its date', read('public/refund.html').includes('29 July 2027'));
 const icons = [...new Set([...html.matchAll(/\bfa[sb]? (fa-[a-z0-9-]+)/g)].map((m) => m[1]))];

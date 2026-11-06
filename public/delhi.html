@@ -266,7 +266,7 @@
     @media (min-width: 900px) {
         .dl-pass-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; }
         .dl-sale-photo { aspect-ratio: 16 / 4; }
-        .dl-sale-row { grid-template-columns: minmax(0, 1fr) 9rem 10.5rem; gap: 1rem; padding: 0.8rem 1.25rem; }
+        .dl-sale-row { grid-template-columns: minmax(0, 1fr) 9rem 11.5rem; gap: 1rem; padding: 0.8rem 1.25rem; }
         .dl-sale-row > div { grid-column: auto; }
         .dl-sale-row p { text-align: right; }
     }
@@ -449,6 +449,90 @@
         }
     }
 
+    /* --- More effects rebuilt by hand; nothing is installed and no component is copied.
+       After Uiverse.io (MIT, (c) 2023 Uiverse.io): the sliding glider on the form's choices
+       (Pradeepsaranbishnoi), the shine on a button (PozDevill), the arrow that slides on
+       the sale rows (JaydipPrajapati1910).
+       After React Bits (MIT + Commons Clause, (c) 2026 David Haz): Spotlight Card on the
+       passes, Star Border on the Delegate Pass, Shiny Text on "Delhi 2027", Aurora behind
+       the partners. --- */
+
+    /* Partners: the night sky of the hero again, so the long price list has a place of its own. */
+    .dl-partners { position: relative; overflow: hidden; isolation: isolate; background: #0B0D20; color: #fff; }
+    .dl-partners > .container { position: relative; z-index: 1; }
+    .dl-partners .section-title, .dl-partners .dl-sale-head { color: #fff; }
+    .dl-partners .section-subtitle { color: rgba(255,255,255,0.82); }
+    .dl-partners .dl-sale { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.15); }
+    .dl-partners .dl-sale-row { border-top-color: rgba(255,255,255,0.11); }
+    .dl-partners .dl-sale-row b, .dl-partners .dl-sale-row p { color: #fff; }
+    .dl-partners .dl-sale-row span, .dl-partners .dl-sale-row small { color: rgba(255,255,255,0.78); }
+    .dl-partners .btn-outline { color: #fff; border-color: rgba(255,255,255,0.55); }
+    .dl-partners .btn-outline:hover { background: #fff; color: var(--charcoal); border-color: #fff; box-shadow: none; }
+    .dl-partners .dl-small { color: rgba(255,255,255,0.78); }
+    .dl-partners .dl-small a { color: #FFB27A; }
+    .dl-aurora { position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
+    .dl-aurora::before, .dl-aurora::after { content: ""; position: absolute; width: 120vw; max-width: 1500px; aspect-ratio: 1; border-radius: 50%; }
+    .dl-aurora::before { left: -45%; top: -22rem; background: radial-gradient(circle, rgba(255,107,0,0.3), rgba(255,107,0,0) 66%); }
+    .dl-aurora::after { right: -45%; top: -8rem; background: radial-gradient(circle, rgba(122,92,255,0.34), rgba(122,92,255,0) 66%); }
+    @keyframes dlAuroraA { to { transform: translate(16%, 10%) scale(1.14); } }
+    @keyframes dlAuroraB { to { transform: translate(-14%, 14%) scale(0.92); } }
+
+    /* Passes: the light of the pointer. Sits behind the words; the card is whole without it. */
+    .dl-pass { position: relative; }
+    .dl-pass > :not(.dl-beam) { position: relative; z-index: 1; }
+    .dl-pass::before, .dl-pass::after { content: ""; position: absolute; border-radius: inherit; opacity: 0; pointer-events: none; transition: opacity 0.3s var(--ease-out); }
+    .dl-pass::before { inset: 0; background: radial-gradient(240px circle at var(--dl-x, 50%) var(--dl-y, 0%), rgba(255,107,0,0.11), rgba(255,107,0,0) 72%); }
+    .dl-pass::after {
+        inset: -1.5px; padding: 1.5px; background: radial-gradient(220px circle at var(--dl-x, 50%) var(--dl-y, 0%), rgba(255,107,0,0.95), rgba(122,92,255,0.45) 45%, rgba(255,107,0,0) 72%);
+        -webkit-mask: linear-gradient(#fff, #fff) content-box, linear-gradient(#fff, #fff); mask: linear-gradient(#fff, #fff) content-box, linear-gradient(#fff, #fff);
+        -webkit-mask-composite: xor; mask-composite: exclude;
+    }
+    .dl-pass-grid.is-lit .dl-pass::before, .dl-pass-grid.is-lit .dl-pass::after { opacity: 1; }
+
+    /* The form's choices: one pill slides between them. Without :has() the chosen box is simply outlined. */
+    .dl-glider { display: none; }
+    @supports selector(:has(*)) {
+        .dl-ways-grid { position: relative; gap: 0; padding: 0.25rem; background: var(--off-white); border: 1.5px solid #D5D9EE; border-radius: 14px; }
+        .dl-way { z-index: 1; }
+        .dl-way > span, .dl-way input:checked + span { border-color: transparent; background: none; }
+        .dl-glider {
+            display: block; position: absolute; left: 0.25rem; top: 0.25rem; bottom: 0.25rem; width: calc((100% - 0.5rem) / 4); border-radius: 11px;
+            background: #fff; border: 1.5px solid var(--saffron); box-shadow: 0 3px 10px rgba(255,107,0,0.18); transition: transform 0.28s var(--ease-out); pointer-events: none;
+        }
+        .dl-ways-grid:has(.dl-way:nth-of-type(2) input:checked) .dl-glider { transform: translateX(100%); }
+        .dl-ways-grid:has(.dl-way:nth-of-type(3) input:checked) .dl-glider { transform: translateX(200%); }
+        .dl-ways-grid:has(.dl-way:nth-of-type(4) input:checked) .dl-glider { transform: translateX(300%); }
+    }
+
+    /* The sale rows' buttons say where they go, and the arrow moves on a mouse. */
+    .dl-sale-row .btn::after { content: "\2192"; display: inline-block; font-weight: 700; transition: transform 0.25s var(--ease-out); }
+
+    @media (prefers-reduced-motion: no-preference) {
+        .dl-aurora::before { animation: dlAuroraA 24s ease-in-out infinite alternate; }
+        .dl-aurora::after { animation: dlAuroraB 31s ease-in-out infinite alternate; }
+
+        /* A shine crosses the two buttons that sell: on a mouse when it arrives, on a phone now and then. */
+        .dl-shine { overflow: hidden; }
+        .dl-shine::after { content: ""; position: absolute; top: -30%; bottom: -30%; left: -45%; width: 32%; background: rgba(255,255,255,0.5); filter: blur(9px); transform: skewX(-20deg); pointer-events: none; }
+        @media (hover: hover) and (pointer: fine) {
+            .dl-shine::after { transition: left 0.65s var(--ease-out); }
+            .dl-shine:hover::after { left: 125%; }
+            .dl-sale-row .btn:hover::after { transform: translateX(4px); }
+        }
+        @media (hover: none) { .dl-shine::after { animation: dlShine 5.5s ease-in-out 1.5s infinite; } }
+
+        /* A sheen crosses "Delhi 2027" after it has risen, then rests. */
+        @supports ((-webkit-background-clip: text) or (background-clip: text)) {
+            .dl-title .dl-l.ed > span {
+                background: linear-gradient(110deg, var(--saffron-light) 42%, #fff 50%, var(--saffron-light) 58%) 100% 0 / 260% 100% no-repeat;
+                -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent;
+                animation: dlLineUp 0.95s var(--ease-out) 0.39s both, dlShiny 7s ease-in-out 1.6s infinite;
+            }
+        }
+    }
+    @keyframes dlShine { 0% { left: -45%; } 22%, 100% { left: 125%; } }
+    @keyframes dlShiny { 0% { background-position: 100% 0; } 26%, 100% { background-position: 0 0; } }
+
     /* --- The next step follows the reader, as on the home page --- */
     .sticky-cta {
         position: fixed; z-index: 900; left: 50%; bottom: max(12px, env(safe-area-inset-bottom));
@@ -516,7 +600,7 @@
             <span class="hero-title-hi" lang="hi"><span class="hi-saffron">भारत</span> <span class="hi-white">एआई</span> <span class="hi-green">इनोवेशन</span> <span class="dl-hi-place">· नई दिल्ली</span></span>
             <p class="dl-hero-desc">India’s B2B platform for AI comes to the capital. Two days at Bharat Mandapam with the government departments, enterprises and startups using AI, and the companies building it.</p>
             <div class="dl-hero-actions">
-                <a href="#passes" class="btn btn-primary btn-lg">Get your pass <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
+                <a href="#passes" class="btn btn-primary btn-lg dl-shine">Get your pass <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
                 <a href="/delhi-2027.ics" id="dl-save-date" class="btn btn-ghost btn-lg" download="bharat-ai-innovation-delhi-2027.ics"><i class="fas fa-calendar-plus" aria-hidden="true"></i> Save the date</a>
             </div>
             <p class="dl-hero-alt"><a href="#booths">Book a booth</a> or <a href="#partner">become a partner</a></p>
@@ -609,6 +693,7 @@
                     <a href="/delhi-register#academic" class="btn btn-outline">Get this pass</a>
                 </li>
                 <li class="dl-pass is-lead reveal reveal-delay-1">
+                    <span class="dl-beam" aria-hidden="true"></span>
                     <h3>Delegate Pass</h3>
                     <p class="dl-price">₹4,999 <span>+ 18% GST</span></p>
                     <p class="dl-pass-for">For coming to the conference.</p>
@@ -619,7 +704,7 @@
                         <li>Full directory, conversations and meetings</li>
                         <li>Certificate of participation</li>
                     </ul>
-                    <a href="/delhi-register#delegate" class="btn btn-primary">Get this pass</a>
+                    <a href="/delhi-register#delegate" class="btn btn-primary dl-shine">Get this pass</a>
                 </li>
                 <li class="dl-pass reveal">
                     <h3>Premium Delegate Pass</h3>
@@ -676,6 +761,7 @@
 
     <!-- ===== PARTNERS: Mumbai's titles and prices (public/partner.html). ===== -->
     <section class="dl-partners dl-sec" id="partner">
+        <span class="dl-aurora" aria-hidden="true"></span>
         <div class="container">
             <div class="section-header reveal">
                 <h2 class="section-title">Partner with us in <span class="accent">New Delhi</span></h2>
@@ -759,6 +845,7 @@
                                 <label class="dl-way"><input type="radio" name="interest" value="exhibit"><span>Exhibit</span></label>
                                 <label class="dl-way"><input type="radio" name="interest" value="sponsor"><span>Sponsor</span></label>
                                 <label class="dl-way"><input type="radio" name="interest" value="speak"><span>Speak</span></label>
+                                <span class="dl-glider" aria-hidden="true"></span>
                             </div>
                         </fieldset>
                     </div>
@@ -1096,12 +1183,33 @@
         });
         lead.classList.add('dl-lit');
       }
-      // The light round the form runs only while the form is on the screen.
-      var beam = document.querySelector('.dl-beam');
-      if (beam && 'IntersectionObserver' in window) {
-        new IntersectionObserver(function (es) {
-          beam.classList.toggle('is-on', es[es.length - 1].isIntersecting);
-        }).observe(beam.parentNode);
+      // The light round the form and round the Delegate Pass runs only while it is on the screen.
+      if ('IntersectionObserver' in window) {
+        Array.prototype.forEach.call(document.querySelectorAll('.dl-beam'), function (beam) {
+          new IntersectionObserver(function (es) {
+            beam.classList.toggle('is-on', es[es.length - 1].isIntersecting);
+          }).observe(beam.parentNode);
+        });
+      }
+      // The pointer's light on the passes, which also reaches the cards beside it. Only on a mouse.
+      var grid = document.querySelector('.dl-pass-grid');
+      if (grid && window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
+        var cards = grid.querySelectorAll('.dl-pass');
+        var waiting = false, px = 0, py = 0;
+        var paint = function () {
+          waiting = false;
+          Array.prototype.forEach.call(cards, function (c) {
+            var r = c.getBoundingClientRect();
+            c.style.setProperty('--dl-x', (px - r.left) + 'px');
+            c.style.setProperty('--dl-y', (py - r.top) + 'px');
+          });
+        };
+        grid.addEventListener('pointermove', function (e) {
+          px = e.clientX; py = e.clientY;
+          grid.classList.add('is-lit');
+          if (!waiting) { waiting = true; requestAnimationFrame(paint); }
+        });
+        grid.addEventListener('pointerleave', function () { grid.classList.remove('is-lit'); });
       }
     })();
 

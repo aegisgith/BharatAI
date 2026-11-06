@@ -211,7 +211,7 @@ const settled = async (p) => { await p.evaluate(() => document.fonts.ready); awa
       check(`motion ${label}: the sentence mid-screen is fully lit`, await p.evaluate(() => [...document.querySelectorAll('.dl-who-lead span')].every((w) => getComputedStyle(w).opacity === '1')));
       await middle('#updates');
       await p.waitForTimeout(500);
-      check(`motion ${label}: the light runs round the form only while it shows, and adds no height`, await p.evaluate(() => { const b = document.querySelector('.dl-beam'); return b.classList.contains('is-on') && getComputedStyle(b).position === 'absolute' && getComputedStyle(b).pointerEvents === 'none'; }));
+      check(`motion ${label}: the light runs round the form only while it shows, and adds no height`, await p.evaluate(() => { const b = document.querySelector('#updates .dl-beam'); return b.classList.contains('is-on') && getComputedStyle(b).position === 'absolute' && getComputedStyle(b).pointerEvents === 'none'; }));
       // The light takes 8 seconds to go round. Watch a whole lap: it must never widen the page.
       let widest = 0;
       for (let i = 0; i < 18; i++) {
@@ -221,7 +221,7 @@ const settled = async (p) => { await p.evaluate(() => document.fonts.ready); awa
       check(`motion ${label}: a whole lap of the light never widens the page`, widest <= 0, widest);
       await p.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
       await p.waitForTimeout(500);
-      check(`motion ${label}: and stops when the form is off the screen`, await p.evaluate(() => !document.querySelector('.dl-beam').classList.contains('is-on')));
+      check(`motion ${label}: and stops when the form is off the screen`, await p.evaluate(() => !document.querySelector('#updates .dl-beam').classList.contains('is-on')));
       check(`motion ${label}: no sideways scroll, no errors`, await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth) && errs.length === 0, errs.join(' | '));
       await c.close();
     }
@@ -240,8 +240,84 @@ const settled = async (p) => { await p.evaluate(() => document.fonts.ready); awa
       const p = await c.newPage();
       await p.goto(BASE + '/delhi', { waitUntil: 'load' });
       await settled(p);
-      check('animations off: the sentence is left whole, the row pictures and the light are not shown', await p.evaluate(() => !document.querySelector('.dl-who-lead.dl-lit') && document.querySelectorAll('.dl-who-lead span').length === 0 && [...document.querySelectorAll('.dl-rows li > img')].every((i) => getComputedStyle(i).display === 'none') && getComputedStyle(document.querySelector('.dl-beam')).display === 'none'));
+      check('animations off: the sentence is left whole, the row pictures and the light are not shown', await p.evaluate(() => !document.querySelector('.dl-who-lead.dl-lit') && document.querySelectorAll('.dl-who-lead span').length === 0 && [...document.querySelectorAll('.dl-rows li > img')].every((i) => getComputedStyle(i).display === 'none') && getComputedStyle(document.querySelector('#updates .dl-beam')).display === 'none'));
       check('animations off: the tiles do not wait on the scroll', await p.evaluate(() => getComputedStyle(document.querySelector('.dl-tiles .dl-tile')).animationTimeline === 'auto'));
+      await c.close();
+    }
+
+    // ======== the effects after Uiverse and React Bits ========
+    {
+      const c = await browser.newContext({ viewport: { width: 1366, height: 768 }, reducedMotion: 'no-preference' });
+      const p = await c.newPage();
+      const errs = [];
+      p.on('pageerror', (e) => errs.push(e.message));
+      await p.goto(BASE + '/delhi', { waitUntil: 'load' });
+      await p.waitForTimeout(600);
+      check('effects: no library or React is loaded', await p.evaluate(() => !window.React && ![...document.scripts].some((s) => /react|uiverse|framer|gsap/i.test(s.src))));
+      // The glider stops on the choice, whichever is chosen.
+      await p.locator('#updates').scrollIntoViewIfNeeded();
+      for (const name of ['Exhibit', 'Sponsor', 'Speak', 'Attend']) {
+        await p.locator('label.dl-way', { hasText: name }).click();
+        await p.waitForTimeout(450);
+        const g = await p.evaluate((n) => { const a = document.querySelector('.dl-glider').getBoundingClientRect(); const b = [...document.querySelectorAll('.dl-way > span')].find((s) => s.textContent === n).getBoundingClientRect(); return Math.abs(a.left - b.left) + Math.abs(a.right - b.right); }, name);
+        check('effects: the glider lands on ' + name, g < 4, g);
+      }
+      check('effects: the glider is decoration only', await p.evaluate(() => { const g = document.querySelector('.dl-glider'); return g.getAttribute('aria-hidden') === 'true' && getComputedStyle(g).pointerEvents === 'none'; }));
+      await p.focus('input[name="interest"][value="attend"]');
+      await p.keyboard.press('ArrowRight');
+      check('effects: the choices still work from the keyboard', await p.evaluate(() => document.querySelector('input[name="interest"]:checked').value) === 'exhibit');
+      // The pointer's light on the passes.
+      await p.locator('.dl-pass.is-lead').scrollIntoViewIfNeeded();
+      await p.waitForTimeout(900);
+      const box = await p.locator('.dl-pass.is-lead').boundingBox();
+      await p.mouse.move(box.x + 40, box.y + 60);
+      await p.waitForTimeout(450);
+      const lit = await p.evaluate(() => { const cs = [...document.querySelectorAll('.dl-pass')]; const l = document.querySelector('.dl-pass.is-lead'); return { on: document.querySelector('.dl-pass-grid').classList.contains('is-lit'), x: l.style.getPropertyValue('--dl-x'), glow: getComputedStyle(l, '::before').opacity, others: cs.filter((n) => n.style.getPropertyValue('--dl-x')).length, top: document.elementFromPoint(l.getBoundingClientRect().left + 40, l.getBoundingClientRect().top + 60).closest('.dl-pass') === l }; });
+      check('effects: the light follows the pointer and reaches every card', lit.on && lit.x === '40px' && Number(lit.glow) > 0.9 && lit.others === 4, JSON.stringify(lit));
+      const btn = await p.locator('.dl-pass.is-lead .btn').boundingBox();
+      check('effects: the light lies under the button, which can still be pressed', await p.evaluate(([x, y]) => !!document.elementFromPoint(x, y).closest('a.btn'), [btn.x + btn.width / 2, btn.y + btn.height / 2]));
+      await p.mouse.move(2, 2);
+      await p.waitForTimeout(450);
+      check('effects: and goes out when the pointer leaves', await p.evaluate(() => !document.querySelector('.dl-pass-grid').classList.contains('is-lit')));
+      check('effects: the star runs round the Delegate Pass while it shows', await p.evaluate(() => { const b = document.querySelector('.dl-pass.is-lead .dl-beam'); return b.classList.contains('is-on') && getComputedStyle(b).pointerEvents === 'none'; }));
+      // The aurora, watched for a while: it must not widen the page, and the words stay readable.
+      await p.locator('#partner').scrollIntoViewIfNeeded();
+      let wide = 0;
+      for (let i = 0; i < 10; i++) { wide = Math.max(wide, await p.evaluate(() => document.documentElement.scrollWidth - innerWidth)); await p.waitForTimeout(400); }
+      check('effects: the aurora never widens the page', wide <= 0, wide);
+      check('effects: the partner rows stay light on dark', await p.evaluate(() => { const row = document.querySelector('#partner .dl-sale-row'); return getComputedStyle(row.querySelector('b')).color === 'rgb(255, 255, 255)' && getComputedStyle(row.querySelector('.btn')).color === 'rgb(255, 255, 255)' && getComputedStyle(document.querySelector('#partner .section-title')).color === 'rgb(255, 255, 255)'; }));
+      const shiny = await p.evaluate(() => { const s = getComputedStyle(document.querySelector('.dl-title .ed > span')); return { fill: s.webkitTextFillColor, names: s.animationName, text: document.querySelector('.dl-title').textContent.replace(/\s+/g, ' ').trim() }; });
+      check('effects: "Delhi 2027" carries its sheen after rising, and the title reads in full', /dlShiny/.test(shiny.names) && /dlLineUp/.test(shiny.names) && shiny.text === 'Bharat AI Innovation Delhi 2027', JSON.stringify(shiny));
+      check('effects: no errors', errs.length === 0, errs.join(' | '));
+      await p.screenshot({ path: require('path').join(require('os').tmpdir(), 'delhi-effects-laptop.jpg'), type: 'jpeg', quality: 50 });
+      await c.close();
+    }
+    {
+      const c = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, reducedMotion: 'no-preference' });
+      const p = await c.newPage();
+      await p.goto(BASE + '/delhi', { waitUntil: 'load' });
+      await p.waitForTimeout(600);
+      check('effects, phone: no pointer light without a mouse, and the shine runs by itself', await p.evaluate(() => !document.querySelector('.dl-pass-grid').classList.contains('is-lit') && getComputedStyle(document.querySelector('.dl-hero-actions .dl-shine'), '::after').animationName === 'dlShine'));
+      await p.locator('#updates').scrollIntoViewIfNeeded();
+      await p.locator('label.dl-way', { hasText: 'Sponsor' }).tap();
+      await p.waitForTimeout(450);
+      check('effects, phone: the glider lands on the tapped choice', await p.evaluate(() => { const a = document.querySelector('.dl-glider').getBoundingClientRect(); const b = document.querySelector('input[value="sponsor"] + span').getBoundingClientRect(); return Math.abs(a.left - b.left) + Math.abs(a.right - b.right) < 4; }));
+      let wide = 0;
+      await p.locator('#partner').scrollIntoViewIfNeeded();
+      for (let i = 0; i < 8; i++) { wide = Math.max(wide, await p.evaluate(() => document.documentElement.scrollWidth - innerWidth)); await p.waitForTimeout(350); }
+      check('effects, phone: nothing widens the page', wide <= 0, wide);
+      await c.close();
+    }
+    {
+      const c = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, reducedMotion: 'reduce' });
+      const p = await c.newPage();
+      await p.goto(BASE + '/delhi', { waitUntil: 'load' });
+      await p.waitForTimeout(600);
+      const off = await p.evaluate(() => ({ aurora: getComputedStyle(document.querySelector('.dl-aurora'), '::before').animationName, shine: getComputedStyle(document.querySelector('.dl-hero-actions .dl-shine'), '::after').content, ed: getComputedStyle(document.querySelector('.dl-title .ed > span')).webkitTextFillColor, beam: getComputedStyle(document.querySelector('.dl-pass .dl-beam')).display, row: getComputedStyle(document.querySelector('#partner .dl-sale-row b')).color }));
+      check('animations off: no aurora movement, no shine, no star, "Delhi 2027" in plain colour, the dark section still reads', off.aurora === 'none' && off.shine === 'none' && !/rgba\(0, 0, 0, 0\)|transparent/.test(off.ed) && off.beam === 'none' && off.row === 'rgb(255, 255, 255)', JSON.stringify(off));
+      await p.locator('label.dl-way', { hasText: 'Speak' }).tap();
+      await p.waitForTimeout(150);
+      check('animations off: the glider still shows the choice', await p.evaluate(() => { const a = document.querySelector('.dl-glider').getBoundingClientRect(); const b = document.querySelector('input[value="speak"] + span').getBoundingClientRect(); return Math.abs(a.left - b.left) + Math.abs(a.right - b.right) < 4; }), await p.evaluate(() => { const a = document.querySelector('.dl-glider').getBoundingClientRect(); const b = document.querySelector('input[value="speak"] + span').getBoundingClientRect(); return [a.left, a.right, b.left, b.right, getComputedStyle(document.querySelector('.dl-glider')).transform, document.querySelector('input[name="interest"]:checked').value].join(' '); }));
       await c.close();
     }
 
