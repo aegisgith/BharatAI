@@ -135,6 +135,13 @@ const widest = (p, ms) => p.evaluate((t) => new Promise((done) => { let most = 0
   check('phone: the exhibitor logos are on the page', (await p.locator('#exhibitors .exh-chip').count()) > 10);
   check('phone: no bar over the hero', !(await barUp(p)));
 
+  // White on a button at this size needs 4.5:1. #D95600 was 3.98:1.
+  const ratio = (rgb) => { const [r, g, b] = rgb.match(/[\d.]+/g).map(Number).map((v) => v / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)); return 1.05 / (0.2126 * r + 0.7152 * g + 0.0722 * b + 0.05); };
+  for (const sel of ['.pr-hero-actions .btn-primary', '.tier-card .btn-primary', '.pr-submit', '.pr-bar-ask']) {
+    const r = ratio(await p.locator(sel).first().evaluate((e) => getComputedStyle(e).backgroundColor));
+    check('phone: white on ' + sel + ' is readable, 4.5:1 or better', r >= 4.5, r.toFixed(2));
+  }
+
   // Cards
   check('phone: only the top tier starts open', (await p.locator('.tier-card details').evaluateAll((d) => d.map((x) => x.open).join(','))) === 'true,false,false,false,false');
   check('phone: each tier shows its price while closed', (await p.locator('.tier-card .tier-price').evaluateAll((e) => e.every((x) => x.getBoundingClientRect().height > 0))));

@@ -98,6 +98,12 @@ const toEl = async (p, sel, gap = 0) => { await p.evaluate(([s, g]) => window.sc
   const slide2 = await p.evaluate(() => new DOMMatrix(getComputedStyle(document.querySelector('.mk-logo-track')).transform).m41);
   check('phone: the logo row moves', slide1 !== slide2, slide1 + ' ' + slide2);
 
+
+  // White on a button at this size needs 4.5:1. #D95600 was 3.98:1.
+  const ratio = (rgb) => { const [r, g, b] = rgb.match(/[\d.]+/g).map(Number).map((v) => v / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)); return 1.05 / (0.2126 * r + 0.7152 * g + 0.0722 * b + 0.05); };
+  const browseBtn = ratio(await p.locator('#open-listing-button').evaluate((e) => getComputedStyle(e).backgroundColor));
+  check('phone: white on the main button is readable, 4.5:1 or better', browseBtn >= 4.5, browseBtn.toFixed(2));
+
   // Search
   await p.fill('#mk-search', 'Booth Product');
   await p.waitForTimeout(250);

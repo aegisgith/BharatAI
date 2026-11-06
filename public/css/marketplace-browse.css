@@ -64,13 +64,13 @@
   font-size: clamp(2.7rem, 11.2vw, 5.25rem); line-height: 0.98; font-weight: 800; letter-spacing: -0.022em;
   margin: 0; max-width: 15em; color: var(--mp-text);
 }
-.mk-title-accent { color: #D95600; }
+.mk-title-accent { color: #C84F00; }
 .mk-hero-row { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 18px 48px; margin-top: clamp(16px, 2.4vw, 26px); }
 .mk-hero .mp-hero-sub { flex: 1 1 340px; max-width: 62ch; font-size: clamp(1rem, 1.4vw, 1.1875rem); line-height: 1.55; color: var(--mp-body); }
 .mk-hero .mp-hero-actions .mp-hero-btn { width: auto; }
 .mk-hero .mp-hero-btn { height: 50px; border-radius: 14px; }
-.mk-page .mp-hero-btn--primary { background: #D95600; }
-.mk-page .mp-hero-btn--primary:hover { background: #BF4B00; }
+.mk-page .mp-hero-btn--primary { background: #C84F00; }
+.mk-page .mp-hero-btn--primary:hover { background: #B04500; }
 
 /* The logos are real, so they are the hero's picture. Height is held so nothing jumps when the
    listings arrive. With animations off the row simply scrolls by hand (see marketplace-motion.css). */
@@ -130,7 +130,7 @@
   .mk-filter-toggle:focus-visible { outline: 3px solid rgba(255, 107, 0, 0.5); outline-offset: 1px; }
   .mk-filter-count {
     display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 5px;
-    border-radius: 999px; background: #D95600; color: #fff; font-size: 12px; font-weight: 800;
+    border-radius: 999px; background: #C84F00; color: #fff; font-size: 12px; font-weight: 800;
   }
   .mk-filter-count[hidden] { display: none; }
   .mk-page .mk-selects { display: none; flex: 1 1 100%; flex-direction: column; }
@@ -154,7 +154,7 @@
 .mk-need[aria-pressed="true"] { background: var(--mk-ink); border-color: var(--mk-ink); color: #fff; }
 .mk-need:focus-visible { outline: 3px solid rgba(255, 107, 0, 0.5); outline-offset: 1px; }
 .mk-need--booth::before {
-  content: ''; display: inline-block; width: 8px; height: 8px; margin-right: 8px; border-radius: 50%; background: #D95600; vertical-align: 1px;
+  content: ''; display: inline-block; width: 8px; height: 8px; margin-right: 8px; border-radius: 50%; background: #C84F00; vertical-align: 1px;
 }
 .mk-page .mk-status:not(:empty) { margin-top: 12px; }
 .mk-page .listing-grid, .mk-page .listing-list { margin-top: 16px; }
@@ -193,8 +193,8 @@
 .mk-page .mp-auth-card { border-radius: 20px; }
 .mk-page .mp-form input { font-size: 15px; padding: 12px 14px; background: #fff; border-color: var(--mp-border-strong); }
 .mk-page .mp-btn-primary, .mk-page .mp-btn-secondary { font-size: 15px; font-weight: 700; padding: 12px 20px; border-radius: 12px; }
-.mk-page .mp-btn-primary { background: #D95600; }
-.mk-page .mp-btn-primary:hover { background: #BF4B00; }
+.mk-page .mp-btn-primary { background: #C84F00; }
+.mk-page .mp-btn-primary:hover { background: #B04500; }
 .mk-page .mp-form-header h3 { font-size: clamp(1.5rem, 5vw, 2rem); font-weight: 800; letter-spacing: -0.02em; }
 .mk-page .mp-form-header p { font-size: 15px; }
 .mk-page .form-section summary { font-size: 15px; font-weight: 700; padding: 14px 16px; }
@@ -209,7 +209,7 @@
 .mk-step { position: relative; padding-left: 62px; }
 .mk-step-n {
   position: absolute; left: 0; top: -6px; font-family: 'Bricolage Grotesque', sans-serif; font-size: 44px; line-height: 1; font-weight: 800;
-  letter-spacing: -0.03em; color: #D95600;
+  letter-spacing: -0.03em; color: #C84F00;
 }
 .mk-step h3 { font-size: 21px; line-height: 1.2; font-weight: 800; margin: 0 0 6px; color: var(--mp-text); letter-spacing: -0.015em; }
 .mk-step p { font-size: 16px; line-height: 1.55; margin: 0; color: var(--mp-body); max-width: 44ch; }
@@ -251,7 +251,7 @@
 .mk-mock-logo { flex-shrink: 0; width: 40px; height: 40px; border-radius: 11px; background: var(--mk-ink); }
 .mk-mock-line { display: block; height: 9px; border-radius: 5px; background: #D9DDEE; }
 .mk-mock-line--short { width: 62%; }
-.mk-mock-dot { flex-shrink: 0; width: 12px; height: 12px; border-radius: 50%; background: #D95600; margin: 0 4px; }
+.mk-mock-dot { flex-shrink: 0; width: 12px; height: 12px; border-radius: 50%; background: #C84F00; margin: 0 4px; }
 .mk-mock-track { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--mp-body); }
 .mk-mock-track span { flex: 1 1 0; display: flex; align-items: center; justify-content: center; min-height: 36px; border-radius: 9px; background: #fff; text-align: center; }
 .mk-mock-track .is-live { background: #0B7A5B; color: #fff; }

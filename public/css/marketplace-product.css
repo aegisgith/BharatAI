@@ -4,8 +4,8 @@
 
 .pd-page { background: #fff; }
 .pd-page .mp-footer { background: var(--mp-bg); }
-.pd-page .pd-btn--primary { background: #D95600; }
-.pd-page .pd-btn--primary:hover { background: #BF4B00; }
+.pd-page .pd-btn--primary { background: #C84F00; }
+.pd-page .pd-btn--primary:hover { background: #B04500; }
 @media (prefers-reduced-motion: no-preference) { html:has(.pd-page) { scroll-behavior: smooth; } }
 
 /* ── Hero ── */
@@ -42,7 +42,7 @@
 .pd-page .pd-prose { font-size: 16px; line-height: 1.65; }
 .pd-page .pd-prose ul { list-style: none; padding: 0; display: grid; gap: 10px; }
 .pd-page .pd-prose ul li { position: relative; margin: 0; padding-left: 24px; }
-.pd-page .pd-prose ul li::before { content: ''; position: absolute; left: 2px; top: 0.62em; width: 8px; height: 8px; border-radius: 50%; background: #D95600; }
+.pd-page .pd-prose ul li::before { content: ''; position: absolute; left: 2px; top: 0.62em; width: 8px; height: 8px; border-radius: 50%; background: #C84F00; }
 .pd-page .pd-specs dd { line-height: 1.55; }
 .pd-page .pd-specs, .pd-page .pd-form-grid { grid-template-columns: minmax(0, 1fr); }
 

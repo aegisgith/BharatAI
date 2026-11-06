@@ -130,7 +130,7 @@ export function marketplacePageHTML(): string {
   // The browse page's design is css/marketplace-browse.css. Its motion is the second pair of
   // lines (marketplace-motion.css here, marketplace-motion.js at the foot): delete those two and
   // every word stays, the page simply stops moving.
-  return `${mpSharedHead('AI Marketplace', { extraHead: `<link rel="stylesheet" href="/css/marketplace-browse.css?v=20261106b">
+  return `${mpSharedHead('AI Marketplace', { extraHead: `<link rel="stylesheet" href="/css/marketplace-browse.css?v=20261106c">
   <link rel="stylesheet" href="/css/marketplace-motion.css?v=20261106b">` })}
 <body class="mp-body mk-page">
   <!-- Toast -->
@@ -559,8 +559,8 @@ const inlineJsString = (v: string) => JSON.stringify(String(v)).replace(/</g, '\
 export function marketplaceListingPageHTML(companySlug?: string, productSlug?: string, legacyId?: string): string {
   // Design: marketplace-browse.css + marketplace-product.css. Motion: the marketplace-motion lines,
   // here and at the foot. Delete those two and every word stays.
-  return `${mpSharedHead('AI Product Listing', { extraHead: `<link rel="stylesheet" href="/css/marketplace-browse.css?v=20261106b">
-  <link rel="stylesheet" href="/css/marketplace-product.css?v=20261106">
+  return `${mpSharedHead('AI Product Listing', { extraHead: `<link rel="stylesheet" href="/css/marketplace-browse.css?v=20261106c">
+  <link rel="stylesheet" href="/css/marketplace-product.css?v=20261106b">
   <link rel="stylesheet" href="/css/marketplace-motion.css?v=20261106b">` })}
 <body class="mp-body mk-page pd-page">
   <div id="detail-toast" class="mp-toast hidden" role="status" aria-live="polite"></div>

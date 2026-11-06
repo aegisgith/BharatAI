@@ -4,12 +4,12 @@
    Motion is apart, in css/partner-motion.css and js/partner-motion.js.
    The older page: docs/page-backups/partner-before-redesign-2026-11-06.html */
 
-:root { --pr-ink: #141A5E; --pr-orange: #D95600; --pr-orange-ink: #B54800; --pr-line: #E3E6F6; }
+:root { --pr-ink: #141A5E; --pr-orange: #C84F00; --pr-orange-ink: #B54800; --pr-line: #E3E6F6; }
 
 /* style.css draws section accents in plain saffron, too pale for large text on white. */
 .pr-page .section-title .accent { color: var(--pr-orange); background: none; -webkit-text-fill-color: currentColor; }
 .pr-page .btn-primary { background: var(--pr-orange); box-shadow: none; }
-.pr-page .btn-primary:hover { background: #BF4B00; }
+.pr-page .btn-primary:hover { background: #B04500; }
 
 /* style.css forces every h3 small on phones with !important: these are the names of things to buy. */
 .tier-card h3, .option-card h3, .path-card h3, .pr-why-card h3, .pr-eco-item h3, .pr-panel-sub { font-size: var(--pr-h3) !important; line-height: 1.15 !important; }
@@ -20,7 +20,7 @@
 .pr-eco-item h3 { --pr-h3: 1.4rem; }
 .pr-panel-sub { --pr-h3: clamp(1.2rem, 2.4vw, 1.35rem); }
 .pr-page .conf-subnav-cta { background: var(--pr-orange); }
-.pr-page .conf-subnav-cta:hover { background: #BF4B00; }
+.pr-page .conf-subnav-cta:hover { background: #B04500; }
 
 .pr-sec { padding: clamp(3rem, 7vw, 6rem) 0; background: #fff; }
 .pr-sec--tint { background: var(--off-white); }

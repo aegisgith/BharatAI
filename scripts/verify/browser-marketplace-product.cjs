@@ -36,6 +36,11 @@ const barUp = (p) => p.locator('#pd-bar').evaluate((b) => b.classList.contains('
   const heroBtns = await p.locator('.pd-actions .pd-btn').allInnerTexts();
   check('phone: Send inquiry comes first', /Send inquiry/.test(heroBtns[0]) && /Visit website/.test(heroBtns[1]), heroBtns.join('|'));
   check('phone: Send inquiry is the coloured one', await p.locator('.pd-actions .pd-btn').first().evaluate((e) => e.classList.contains('pd-btn--primary')));
+
+  // White on a button at this size needs 4.5:1. #D95600 was 3.98:1.
+  const ratio = (rgb) => { const [r, g, b] = rgb.match(/[\d.]+/g).map(Number).map((v) => v / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)); return 1.05 / (0.2126 * r + 0.7152 * g + 0.0722 * b + 0.05); };
+  const productBtn = ratio(await p.locator('.pd-actions .pd-btn--primary').evaluate((e) => getComputedStyle(e).backgroundColor));
+  check('phone: white on the main button is readable, 4.5:1 or better', productBtn >= 4.5, productBtn.toFixed(2));
   check('phone: the website still opens in a new tab', (await p.locator('.pd-actions .pd-btn').nth(1).getAttribute('target')) === '_blank');
   check('phone: both buttons are on the first screen', (await box(p, '.pd-actions')).bottom < 844);
   check('phone: price and booth show at the top', /From INR 99 a month/.test(await p.locator('.pd-badges').innerText()) && /Booth B7/.test(await p.locator('.pd-badges').innerText()));
