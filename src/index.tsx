@@ -19702,17 +19702,38 @@ function passComparisonHTML(): string {
 }
 
 function passesPageHTML(): string {
-  const tier = (name: string, key: string, hash: string, color: string, tag: string, lines: string[]) => `
-      <div class="glass rounded-2xl p-5 border flex flex-col" style="border-color:${color}40;">
-        ${tag ? `<div class="text-[10px] font-bold uppercase tracking-wider mb-1" style="color:${color};">${tag}</div>` : ''}
-        <h2 class="font-bold text-base text-white">${name}</h2>
-        <div class="text-xl font-black text-white mt-1">${priceNow(key)}<span class="text-xs font-normal text-gray-400"> + GST</span></div>
-        ${latePriceTag(key)}
-        <ul class="mt-3 space-y-1.5 text-xs text-gray-300 flex-1">
-          ${lines.map(l => `<li><i class="fas fa-check mr-1.5 text-[10px]" style="color:${color};"></i>${l}</li>`).join('')}
-        </ul>
-        <a href="/register${hash}" class="mt-4 block text-center px-4 rounded-xl text-xs font-semibold text-white transition" style="min-height:44px;line-height:44px;background:${color};color:#fff !important;">Get the ${name}</a>
-      </div>`
+  // Each pass looks like the badge it buys. The buttons carry a source tag, as the home page's do,
+  // so Admin can see which part of this page sold the pass.
+  const pass = (id: string, name: string, color: string, tag: string, lines: string[], wide = false) => `
+      <article class="ps-pass${id === 'delegate' ? ' ps-pass--lead' : ''}${wide ? ' ps-pass--wide' : ''}" id="${id}" style="--c:${color};">
+        <div class="ps-band"><i class="ps-slot" aria-hidden="true"></i><span>${tag}</span></div>
+        <div class="ps-body">
+          <div>
+            <h2>${name}</h2>
+            <p class="ps-price">${priceNow(name)}<small> + GST</small></p>
+            ${latePriceTag(name)}
+          </div>
+          <ul class="ps-list">
+            ${lines.map(l => `<li><i class="fas fa-check" aria-hidden="true"></i>${l}</li>`).join('')}
+          </ul>
+          <a class="ps-buy" href="/register?source=passes-card#${id}">Get the ${name}</a>
+        </div>
+      </article>`
+  // What someone wants, and the pass that gives it. Plain links: :target lights the pass.
+  const picks: [string, string, string][] = [
+    ['Every session', 'Delegate', '#delegate'],
+    ['A workshop too', 'Premium Delegate', '#premium'],
+    ['The Leaders’ Evening', 'VIP', '#vip'],
+    ['Student or faculty', 'Academic', '#academic'],
+    ['Just the exhibition floor', 'Visitor', '#visitor'],
+  ]
+  // The site's own menu, in the site's order (a change to it in public/*.html belongs here too).
+  // The app's bar sent Home to /app and, on a phone, offered no menu at all.
+  const menu: [string, string][] = [
+    ['/', 'Home'], ['/conference', 'Conference'], ['/exhibition', 'Exhibition'], ['/networking', 'Networking'], ['/passes', 'Passes'],
+    ['/partner', 'Partner'], ['/government', 'Govt'], ['/training-workshop', 'Workshops'], ['/marketplace', 'AI Marketplace'],
+    ['/campus-series', 'Campus Series'], ['/delhi', 'Delhi 2027'], ['/ai-readiness', 'AI Readiness'], ['https://bellaward.com', 'AGBA'], ['/contact', 'Contact'],
+  ]
   const faq: [string, string][] = [
     ['Which pass should I buy?', 'Coming for the conference: the <strong>Delegate Pass</strong>. Want a hands-on workshop seat as well: <strong>Premium Delegate</strong>. Want the Bharat AI Leaders’ Evening, the lounge and the speaker meet &amp; greet: <strong>VIP</strong>. A student or faculty member with ID: <strong>Academic</strong>. Only the exhibition floor: the free <strong>Visitor Pass</strong>, where entry is not guaranteed: it depends on slot availability on 20 and 21 Nov, a half-day slot or none, confirmed by email.'],
     ['Is entry guaranteed?', 'On every paid pass, yes, on both days. ' + FREE_ENTRY_TEXT],
@@ -19724,50 +19745,128 @@ function passesPageHTML(): string {
     ['We are a team of five or more', GROUP_RATE_TEXT + ' <a href="/contact#group_registration" class="text-primary-400 underline">Ask for a group rate</a>.'],
     ['I already hold a paid pass. Can I move up?', 'Yes. A confirmed Delegate, Premium Delegate or Academic pass moves up to any dearer pass, and you pay only the difference between the two prices. <a href="/app?action=pay&amp;pass=premium" class="text-primary-400 underline">Open the app</a>, sign in, and tap <strong>Upgrade my pass</strong> on your pass card. It shows the difference before you pay.'],
   ]
-  return `${sharedHeadHTML('Passes', '/passes', "Every pass for Bharat AI Innovation 2026 compared: free Visitor Pass (entry not guaranteed, by slot as available), Academic, Delegate, Premium Delegate and VIP, all + GST. " + (latePricing() ? '' : 'Standard prices until ' + PRICE_DEADLINE_TEXT + '. ') + "20–21 Nov, World Trade Center Mumbai.")}
-<body class="min-h-screen">
-${sharedNavHTML('passes')}
-
-<main class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-  <div class="text-center mb-8">
-    <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold bg-primary-500/20 text-primary-300 border border-primary-500/30 mb-4">
-      <i class="fas fa-ticket-alt"></i>${latePricing() ? 'PRICES WENT UP ON 6 NOV' : 'STANDARD PRICES UNTIL ' + PRICE_DEADLINE_TEXT.toUpperCase()}
-    </div>
-    <h1 class="text-3xl md:text-4xl font-bold mb-3">Passes for Bharat AI Innovation 2026</h1>
-    <p class="text-gray-400 max-w-2xl mx-auto">20&ndash;21 Nov 2026, World Trade Center Mumbai. Every paid pass has guaranteed entry on both days and includes the networking app. ${priceDeadlineNote()}</p>
+  // Design: css/passes-design.css. Motion: delete the two lines naming passes-motion (here and at
+  // the foot) and every word stays. The older page: docs/page-backups/passes-before-redesign-2026-11-06.html
+  const extraHead = '<link rel="stylesheet" href="/css/passes-design.css?v=20261106"><link rel="stylesheet" href="/css/passes-motion.css?v=20261106"></head>'
+  return `${sharedHeadHTML('Passes', '/passes', "Every pass for Bharat AI Innovation 2026 compared: free Visitor Pass (entry not guaranteed, by slot as available), Academic, Delegate, Premium Delegate and VIP, all + GST. " + (latePricing() ? '' : 'Standard prices until ' + PRICE_DEADLINE_TEXT + '. ') + "20–21 Nov, World Trade Center Mumbai.").replace('</head>', extraHead)}
+<body class="min-h-screen ps-page">
+<header class="ps-head">
+  <div class="ps-head-in">
+    <a href="/" class="ps-logo"><img src="/images/logo-nav.webp" alt="Bharat AI Innovation" loading="eager"></a>
+    <nav class="ps-nav" aria-label="Main">
+      ${menu.map(([href, label]) => `<a href="${href}"${href === '/passes' ? ' aria-current="page"' : ''}${href.startsWith('http') ? ' target="_blank" rel="noopener noreferrer"' : ''}>${label}</a>`).join('')}
+    </nav>
+    <a href="/app#login" class="ps-login"><i class="fas fa-sign-in-alt" aria-hidden="true"></i> Log In</a>
   </div>
+</header>
+<script>(function () { var n = document.querySelector('.ps-nav'), a = n && n.querySelector('[aria-current]'); if (a && n.scrollWidth > n.clientWidth) n.scrollLeft = a.offsetLeft - n.offsetLeft - 60; })();</script>
 
-  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-10">
-    ${tier('Delegate Pass', 'Delegate Pass', '#delegate', '#0f7b47', 'Most popular', ['Guaranteed entry on both days', 'Every conference session, both days', 'Networking lunch and conference kit', 'Full directory, conversations and meetings', 'Certificate of participation'])}
-    ${tier('Premium Delegate Pass', 'Premium Delegate Pass', '#premium', '#0B7A75', 'Includes a workshop', ['Everything in Delegate', 'One hands-on workshop, seat chosen in the app', 'Seats first come, first served'])}
-    ${tier('VIP Pass', 'VIP Pass', '#vip', '#A67C00', 'All access', ['Everything in Premium Delegate', 'Bharat AI Leaders’ Evening, Day 1', 'VIP lounge and priority seating', 'Speaker meet &amp; greet'])}
-    ${tier('Academic Pass', 'Academic Pass', '#academic', '#7C5CFF', 'Students and faculty', ['Guaranteed entry on both days', 'Every conference session', 'Student networking zone', 'Bring your student or faculty ID', 'No lunch, no workshop'])}
-  </div>
-
-  <p class="text-center text-sm text-gray-300 mb-4" id="passes-move-up">Already paid for a pass? <a href="/app?action=pay&amp;pass=premium" class="text-primary-400 underline font-semibold">Move up and pay only the difference</a>.</p>
-
-  <p class="text-center text-xs text-gray-400 mb-8">Speakers from Google, PwC, Capgemini, Accenture and UIDAI &middot; 48 exhibitors on the floor plan &middot; 12 tracks &middot; 23 Innovation Talks &middot; two hands-on workshops</p>
-
-  <section id="compare" style="scroll-margin-top:72px;">
-    <h2 class="text-2xl font-bold mb-2 text-center">Compare every pass</h2>
-    <p class="text-gray-400 text-sm text-center mb-5">${FREE_ENTRY_TEXT}</p>
-    ${passComparisonHTML()}
-  </section>
-
-  <section class="mt-12 max-w-3xl mx-auto" id="faq">
-    <h2 class="text-2xl font-bold mb-4 text-center">Before you pay</h2>
-    <div class="space-y-2">
-      ${faq.map(([q, a]) => `<details class="glass rounded-xl p-4"><summary class="font-semibold text-sm cursor-pointer">${q}</summary><p class="text-xs text-gray-300 mt-2 leading-relaxed">${a}</p></details>`).join('')}
+<main>
+  <section class="ps-hero">
+    <div class="ps-aurora" aria-hidden="true"><i></i></div>
+    <div class="ps-wrap ps-hero-in">
+      <div>
+        <p class="ps-tag"><i class="fas fa-ticket-alt" aria-hidden="true"></i>${latePricing() ? 'PRICES WENT UP ON 6 NOV' : 'STANDARD PRICES UNTIL ' + PRICE_DEADLINE_TEXT.toUpperCase()}</p>
+        <h1 class="ps-title" aria-label="Passes for Bharat AI Innovation 2026"><span class="ps-w ps-w--big"><span style="--i:0">Passes</span></span> <span class="ps-w"><span style="--i:1">for</span></span> <span class="ps-w"><span style="--i:2">Bharat</span></span> <span class="ps-w"><span style="--i:3">AI</span></span> <span class="ps-w"><span style="--i:4">Innovation</span></span> <span class="ps-w"><span style="--i:5">2026</span></span></h1>
+        <p class="ps-sub">20&ndash;21 Nov 2026, World Trade Center Mumbai. Every paid pass has guaranteed entry on both days and includes the networking app. ${priceDeadlineNote()}</p>
+      </div>
+      <nav class="ps-pick" aria-label="Find your pass">
+        <p class="ps-pick-q">What do you want from the two days?</p>
+        <ul class="ps-pick-list">
+          ${picks.map(([want, name, hash]) => `<li><a href="${hash}"><span>${want}</span><b>${name}</b></a></li>`).join('')}
+        </ul>
+      </nav>
     </div>
   </section>
 
-  <div class="text-center mt-10">
-    <a href="/register#delegate" class="inline-block px-8 rounded-xl font-bold text-sm text-white" style="min-height:48px;line-height:48px;background:linear-gradient(135deg,#FF6B00,#FF8C38);">Get a Delegate Pass &mdash; ${priceNow('Delegate Pass')} + GST</a>
-    <p class="text-xs text-gray-500 mt-3">Only the exhibition floor? <a href="/register" class="text-primary-400 underline">Free Visitor Pass</a>: entry not guaranteed, by slot availability on 20 and 21 Nov, confirmed by email. Already registered? <a href="/app" class="text-primary-400 underline">Open the app</a>.</p>
+  <section class="ps-passes" aria-label="The passes">
+    <div class="ps-wrap">
+      <div class="ps-grid">
+        ${pass('delegate', 'Delegate Pass', '#0F7B47', 'Most popular', ['Guaranteed entry on both days', 'Every conference session, both days', 'Networking lunch and conference kit', 'Full directory, conversations and meetings', 'Certificate of participation'])}
+        ${pass('premium', 'Premium Delegate Pass', '#0B7A75', 'Includes a workshop', ['Everything in Delegate', 'One hands-on workshop, seat chosen in the app', 'Seats first come, first served'])}
+        ${pass('vip', 'VIP Pass', '#8A6500', 'All access', ['Everything in Premium Delegate', 'Bharat AI Leaders’ Evening, Day 1', 'VIP lounge and priority seating', 'Speaker meet &amp; greet'])}
+      </div>
+      ${pass('academic', 'Academic Pass', '#6A4BE8', 'Students and faculty', ['Guaranteed entry on both days', 'Every conference session', 'Student networking zone', 'Bring your student or faculty ID', 'No lunch, no workshop'], true)}
+      <section class="ps-visitor" id="visitor" aria-labelledby="ps-visitor-title">
+        <div>
+          <h2 id="ps-visitor-title">Free Visitor Pass</h2>
+          <p>The exhibition floor and product demos. Entry is not guaranteed: it depends on slot availability on 20 and 21 Nov, a half-day slot or none, confirmed by email.</p>
+        </div>
+        <a class="ps-ghost" href="/register?source=passes-visitor">Get the free Visitor Pass</a>
+      </section>
+      <p class="ps-moveup" id="passes-move-up">Already paid for a pass? <a href="/app?action=pay&amp;pass=premium" class="ps-link">Move up and pay only the difference</a>.</p>
+    </div>
+  </section>
+
+  <div class="ps-flow">
+    <section class="ps-compare" id="compare">
+      <div class="ps-wrap">
+        <h2 class="ps-h2">Compare every pass</h2>
+        <p class="ps-lead">${FREE_ENTRY_TEXT}</p>
+        ${passComparisonHTML()}
+        <div class="ps-go">
+          <p class="ps-go-q">Pick your pass</p>
+          <ul class="ps-go-list">
+            <li><a href="/register?source=passes-compare-visitor">Visitor, free</a></li>
+            <li><a href="/register?source=passes-compare#academic">Academic</a></li>
+            <li class="is-lead"><a href="/register?source=passes-compare#delegate">Delegate</a></li>
+            <li><a href="/register?source=passes-compare#premium">Premium Delegate</a></li>
+            <li><a href="/register?source=passes-compare#vip">VIP</a></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="ps-team" aria-labelledby="ps-team-title">
+      <div class="ps-wrap ps-team-in">
+        <div>
+          <h2 id="ps-team-title">Coming as a team?</h2>
+          <p>${GROUP_RATE_TEXT}</p>
+        </div>
+        <a class="ps-buy" href="/contact#group_registration">Ask for a group rate</a>
+      </div>
+    </section>
+
+    <section class="ps-days" aria-labelledby="ps-days-title">
+      <div class="ps-wrap">
+        <h2 class="ps-h2" id="ps-days-title">What your pass opens</h2>
+        <ul class="ps-moments">
+          <li><a href="/conference"><img src="/img/t/ziOcVT9u.webp" width="720" height="480" loading="lazy" decoding="async" alt="A conference session with a live audience at Data Science Congress"><span>Conference sessions</span></a></li>
+          <li><a href="/exhibition"><img src="/img/t/GiqsZVsx.webp" width="720" height="480" loading="lazy" decoding="async" alt="Visitors at an exhibition booth at Data Science Congress"><span>The exhibition floor</span></a></li>
+          <li><a href="/training-workshop"><img src="/images/gallery/7C2A2566.webp" width="1600" height="1066" loading="lazy" decoding="async" alt="A workshop room at Data Science Congress"><span>Hands-on workshops</span></a></li>
+        </ul>
+        <p class="ps-lead">Moments from Data Science Congress, the predecessor to Bharat AI Innovation.</p>
+        <p class="ps-speakers">Speakers from Google, PwC, Capgemini, Accenture and UIDAI, exhibitors on the floor, Innovation Talks on stage and hands-on workshops.</p>
+      </div>
+    </section>
+
+    <section class="ps-faq" id="faq" aria-labelledby="ps-faq-title">
+      <div class="ps-wrap ps-faq-in">
+        <h2 class="ps-h2" id="ps-faq-title">Before you pay</h2>
+        <div>
+          ${faq.map(([q, a]) => `<details class="ps-row"><summary>${q}</summary><p>${a}</p></details>`).join('')}
+        </div>
+      </div>
+    </section>
+
+    <div class="ps-bar" role="group" aria-label="Get the Delegate Pass">
+      <p class="ps-bar-what" style="margin:0;">Delegate Pass<b>${rsPrice('Delegate Pass')} + GST</b></p>
+      <a class="ps-buy" href="/register?source=passes-bar#delegate">Get the pass</a>
+    </div>
   </div>
+
+  <section class="ps-end" aria-labelledby="ps-end-title">
+    <div class="ps-wrap">
+      <h2 class="ps-end-title" id="ps-end-title">See you at WTC Mumbai</h2>
+      <a class="ps-buy" href="/register?source=passes-foot#delegate">Get a Delegate Pass, ${priceNow('Delegate Pass')} + GST</a>
+      <p>Only the exhibition floor? <a href="/register?source=passes-foot-visitor" class="ps-link">Free Visitor Pass</a>: entry not guaranteed, by slot availability on 20 and 21 Nov, confirmed by email. Already registered? <a href="/app" class="ps-link">Open the app</a>.</p>
+    </div>
+  </section>
 </main>
 
 ${sharedFooterHTML()}
+<p class="ps-credit">Motion effects from Skiper UI and Vengeance UI.</p>
+<script src="/js/passes-motion.js?v=20261106" defer></script>
 </body>
 </html>`
 }

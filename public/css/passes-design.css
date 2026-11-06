@@ -1,0 +1,222 @@
+/* The design of /passes (body.ps-page). One job: a visitor picks the right pass and reaches the
+   paid form. Phones first. Each pass looks like the badge it buys, lanyard slot and all, because
+   that is the thing they will wear. The movement is in passes-motion.css and passes-motion.js,
+   and nothing here depends on it. */
+
+.ps-page {
+  --ps-ink: #1E2140;
+  --ps-body: #3F4566;
+  --ps-muted: #5E6585;
+  --ps-line: #E4E7F4;
+  --ps-line-strong: #D6DAEA;
+  --ps-bg: #F8F9FF;
+  /* #D95600 is only 3.98:1 with white. This is the nearest saffron that clears 4.5:1. */
+  --ps-cta: #C84F00;
+  --ps-cta-hover: #AD4400;
+  --ps-ink-link: #B04500;
+  --ps-dark: #141A5E;
+  --ps-stick: 0px;
+  background: #fff;
+  color: var(--ps-ink);
+}
+@media (min-width: 1280px) { .ps-page { --ps-stick: 68px; } }
+@media (prefers-reduced-motion: no-preference) { html:has(.ps-page) { scroll-behavior: smooth; } }
+.ps-page p { text-wrap: pretty; }
+.ps-page h1, .ps-page h2, .ps-page h3 { text-wrap: balance; }
+/* The brand theme sets its body font on every span, so a heading split into words would lose the
+   heading font without this. */
+.ps-page h1 span, .ps-page h2 span { font-family: inherit; }
+.ps-wrap { max-width: 1280px; margin: 0 auto; padding-left: 16px; padding-right: 16px; }
+@media (min-width: 641px) { .ps-wrap { padding-left: 20px; padding-right: 20px; } }
+.ps-h2 { margin: 0; font-size: clamp(2rem, 7.4vw, 3.25rem); line-height: 1.04; font-weight: 800; letter-spacing: -0.02em; color: var(--ps-ink); }
+.ps-lead { margin: 10px 0 0; max-width: 70ch; font-size: 16px; line-height: 1.6; color: var(--ps-body); }
+.ps-link { color: var(--ps-ink-link); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1.5px; }
+.ps-page a:focus-visible, .ps-page summary:focus-visible { outline: 3px solid rgba(255, 107, 0, 0.5); outline-offset: 2px; border-radius: 6px; }
+
+/* ── Header ── The site's own menu, because people arrive from the site. On a phone the links
+   scroll under the logo and the header scrolls away, so the pass names can stick to the top. */
+.ps-head { background: #fff; border-bottom: 1px solid var(--ps-line); position: relative; z-index: 30; }
+.ps-head-in { max-width: 1280px; margin: 0 auto; padding: 10px 16px 4px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; align-items: center; }
+.ps-logo { display: inline-flex; }
+.ps-logo img { display: block; height: 42px; width: auto; border-radius: 12px; padding: 5px; background: #fff; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08); }
+.ps-login { grid-column: 2; grid-row: 1; display: inline-flex; align-items: center; gap: 7px; min-height: 42px; padding: 0 16px; border-radius: 12px; border: 1px solid var(--ps-line-strong); background: #fff; font-size: 14px; font-weight: 700; color: var(--ps-ink); white-space: nowrap; }
+.ps-login:hover { color: var(--ps-ink-link); }
+.ps-nav {
+  grid-column: 1 / -1; grid-row: 2; display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 0 16px; min-width: 0;
+  -webkit-mask-image: linear-gradient(90deg, #000 88%, transparent); mask-image: linear-gradient(90deg, #000 88%, transparent);
+}
+.ps-nav::-webkit-scrollbar { display: none; }
+.ps-nav a { flex-shrink: 0; display: inline-flex; align-items: center; min-height: 42px; padding: 0 10px; font-size: 14px; font-weight: 600; color: var(--ps-muted); white-space: nowrap; }
+.ps-nav a:first-child { padding-left: 0; }
+.ps-nav a:hover { color: var(--ps-ink-link); }
+.ps-nav a[aria-current="page"] { color: var(--ps-ink-link); font-weight: 800; }
+/* One row only where all fourteen links fit, as on the rest of the site. */
+@media (min-width: 1280px) {
+  .ps-head { position: sticky; top: 0; background: rgba(255, 255, 255, 0.94); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); }
+  .ps-head-in { display: flex; padding: 12px 20px; gap: 8px; }
+  .ps-logo { flex-shrink: 0; }
+  .ps-nav { position: relative; flex: 1 1 auto; justify-content: flex-end; margin: 0; padding: 0; overflow: visible; -webkit-mask-image: none; mask-image: none; }
+  .ps-nav a, .ps-nav a:first-child { padding: 0 5px; font-size: 13px; min-height: 44px; }
+  .ps-login { flex-shrink: 0; margin-left: 8px; }
+}
+
+/* ── Hero ── */
+.ps-hero { position: relative; overflow: hidden; background: #fff; padding: clamp(18px, 4vw, 52px) 0 clamp(22px, 4vw, 48px); }
+.ps-hero-in { position: relative; display: grid; gap: 20px 56px; }
+@media (min-width: 1001px) { .ps-hero-in { grid-template-columns: minmax(0, 1fr) 400px; align-items: end; } }
+.ps-tag { display: inline-flex; align-items: center; gap: 8px; min-height: 30px; padding: 4px 12px; border-radius: 999px; background: #FFF1E6; color: var(--ps-ink-link); font-size: 12px; font-weight: 800; letter-spacing: 0.02em; }
+.ps-title { margin: 12px 0 0; font-size: clamp(1.625rem, 6.2vw, 2.75rem); line-height: 1.08; font-weight: 800; letter-spacing: -0.015em; color: var(--ps-ink); }
+.ps-w { display: inline-block; }
+.ps-w--big { display: block; font-size: clamp(4.25rem, 21vw, 7rem); line-height: 0.92; letter-spacing: -0.03em; color: #D95600; }
+.ps-sub { margin: 12px 0 0; max-width: 60ch; font-size: clamp(1rem, 1.4vw, 1.125rem); line-height: 1.55; color: var(--ps-body); }
+
+/* The picker: what someone wants, and the pass that gives it. Plain links; :target lights the pass. */
+.ps-pick { margin: 0; }
+.ps-pick-q { margin: 0 0 8px; font-size: 14px; font-weight: 700; color: var(--ps-ink); }
+.ps-pick-list { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; margin: 0; padding: 0; }
+.ps-pick-list a { display: inline-flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 42px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--ps-line-strong); background: #fff; font-size: 14px; font-weight: 600; color: var(--ps-ink); transition: border-color 0.15s, background-color 0.15s; }
+.ps-pick-list a:hover { border-color: var(--ps-dark); background: var(--ps-bg); }
+.ps-pick-list b { display: none; font-weight: 800; color: var(--ps-ink-link); white-space: nowrap; }
+@media (min-width: 1001px) {
+  .ps-pick { padding: 18px; border: 1px solid var(--ps-line); border-radius: 20px; background: rgba(255, 255, 255, 0.86); }
+  .ps-pick-q { font-size: 15px; margin-bottom: 10px; }
+  .ps-pick-list { display: grid; gap: 0; }
+  .ps-pick-list a { display: flex; min-height: 44px; padding: 0 4px; border: 0; border-top: 1px solid var(--ps-line); border-radius: 0; background: transparent; }
+  .ps-pick-list a:hover { background: transparent; color: var(--ps-ink-link); }
+  .ps-pick-list li:first-child a { border-top: 0; }
+  .ps-pick-list b { display: inline; }
+}
+
+/* ── The passes ── */
+.ps-passes { background: var(--ps-bg); border-top: 1px solid var(--ps-line); padding: 22px 0 clamp(28px, 5vw, 56px); }
+.ps-grid { display: grid; gap: 14px; }
+@media (min-width: 900px) { .ps-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; align-items: stretch; } }
+.ps-pass {
+  position: relative; display: flex; flex-direction: column; min-width: 0; background: #fff; border: 1px solid var(--ps-line); border-radius: 22px; scroll-margin-top: calc(var(--ps-stick) + 12px);
+  box-shadow: 0 2px 10px rgba(26, 35, 126, 0.05); transition: box-shadow 0.2s ease;
+}
+.ps-pass:target { box-shadow: 0 0 0 3px var(--c), 0 14px 34px rgba(26, 35, 126, 0.14); }
+/* The top of a conference badge: a slot for the lanyard, the pass's colour, one line of what it is. */
+.ps-band { display: flex; flex-direction: column; align-items: center; gap: 7px; padding: 10px 14px 9px; border-radius: 21px 21px 0 0; background: var(--c); color: #fff; font-size: 13px; font-weight: 800; line-height: 1.2; text-align: center; }
+.ps-slot { display: block; width: 46px; height: 8px; border-radius: 999px; background: #fff; box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3); }
+.ps-body { display: flex; flex-direction: column; flex: 1 1 auto; padding: 16px 18px 18px; min-width: 0; }
+.ps-pass h2 { margin: 0; font-size: 23px; line-height: 1.12; font-weight: 800; letter-spacing: -0.015em; color: var(--ps-ink); }
+.ps-price { margin: 6px 0 0; font-family: 'Bricolage Grotesque', sans-serif; font-size: 32px; line-height: 1.1; font-weight: 800; color: var(--ps-ink); letter-spacing: -0.02em; }
+.ps-price s { font-family: 'Manrope', sans-serif; font-size: 18px; letter-spacing: 0; color: var(--ps-muted); }
+.ps-price small { font-family: 'Manrope', sans-serif; font-size: 14px; font-weight: 600; letter-spacing: 0; color: var(--ps-muted); }
+.ps-list { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 8px; flex: 1 1 auto; align-content: start; }
+.ps-list li { position: relative; padding-left: 24px; font-size: 15px; line-height: 1.4; color: var(--ps-body); }
+.ps-list i { position: absolute; left: 2px; top: 4px; font-size: 13px; color: var(--c); }
+.ps-buy {
+  display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 52px; margin-top: 16px; padding: 8px 18px; border-radius: 14px; background: var(--ps-cta);
+  color: #fff; font-size: 16px; font-weight: 800; text-align: center; transition: background-color 0.15s;
+}
+.ps-buy:hover { background: var(--ps-cta-hover); color: #fff; }
+.ps-buy s { font-weight: 500; }
+
+/* Academic: the same badge, wider, because it is for a different person. */
+.ps-pass--wide { margin-top: 14px; }
+@media (min-width: 900px) {
+  .ps-pass--wide { margin-top: 18px; flex-direction: row; }
+  .ps-pass--wide .ps-band { flex: 0 0 150px; justify-content: center; border-radius: 21px 0 0 21px; padding: 14px; }
+  .ps-pass--wide .ps-body { display: grid; flex: 1 1 auto; grid-template-columns: minmax(200px, 260px) minmax(0, 1fr) 220px; gap: 8px 24px; align-items: center; padding: 18px 22px; }
+  .ps-pass--wide .ps-list { margin: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ps-pass--wide .ps-buy { margin: 0; }
+}
+
+/* The free pass and moving up: quiet, and honest about entry. */
+.ps-visitor { display: grid; gap: 12px; margin-top: 14px; padding: 16px 18px; border: 1px dashed var(--ps-line-strong); border-radius: 18px; scroll-margin-top: calc(var(--ps-stick) + 12px); }
+.ps-visitor:target { border-style: solid; box-shadow: 0 0 0 3px #1F6FD6; }
+.ps-visitor h2 { margin: 0; font-size: 20px; line-height: 1.2; font-weight: 800; letter-spacing: -0.01em; }
+.ps-visitor p { margin: 4px 0 0; font-size: 15px; line-height: 1.5; color: var(--ps-body); max-width: 72ch; }
+.ps-ghost { display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 0 18px; border-radius: 14px; border: 1px solid var(--ps-line-strong); background: #fff; font-size: 15px; font-weight: 700; color: var(--ps-ink); text-align: center; }
+.ps-ghost:hover { border-color: var(--ps-dark); }
+@media (min-width: 900px) { .ps-visitor { grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 24px; margin-top: 18px; padding: 18px 22px; } }
+.ps-moveup { margin: 16px 0 0; font-size: 15px; line-height: 1.5; color: var(--ps-body); text-align: center; }
+
+/* ── Compare ── The chart is shared with /register and the app, so it is restyled from here. */
+.ps-compare { padding: clamp(32px, 6vw, 72px) 0 clamp(24px, 4vw, 40px); background: #fff; scroll-margin-top: var(--ps-stick); }
+.ps-page .pcmp { margin-top: 18px; border-color: var(--ps-line-strong); border-radius: 18px; }
+.ps-page .pcmp thead th { top: var(--ps-stick); color: var(--ps-ink) !important; font-size: 12px; padding: 10px 2px; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; }
+.ps-page .pcmp thead th:first-child { border-radius: 17px 0 0 0; }
+.ps-page .pcmp thead th:last-child { border-radius: 0 17px 0 0; }
+.ps-page .pcmp thead th span { font-family: 'Manrope', sans-serif; font-size: 12px; font-weight: 800; }
+/* The old price on its own line: five columns on a phone have no room for two figures side by side. */
+.ps-page .pcmp thead th s { display: block; font-weight: 500 !important; color: var(--ps-muted); }
+.ps-page .pcmp thead th:nth-child(4), .ps-page .pcmp-row td:nth-of-type(3) { background: #FFF4EA; }
+.ps-page .pcmp-label th, .ps-page .pcmp-row th { font-size: 15px; line-height: 1.35; }
+.ps-page .pcmp small { font-size: 13px; line-height: 1.4; color: var(--ps-muted); }
+.ps-page .pcmp-label small { display: block; margin: 2px 0 0; }
+.ps-page .pcmp-yes { font-size: 17px; }
+.ps-page .pcmp-group th { font-size: 12px; color: var(--ps-muted); }
+.ps-page .ps-compare p[style] { font-size: 14px !important; color: var(--ps-muted) !important; }
+@media (min-width: 641px) { .ps-page .pcmp thead th { font-size: 14px; padding: 12px 6px; } .ps-page .pcmp thead th span { font-size: 13px; } }
+.ps-go { margin-top: 18px; }
+.ps-go-q { margin: 0 0 8px; font-size: 15px; font-weight: 800; color: var(--ps-ink); }
+.ps-go-list { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; margin: 0; padding: 0; }
+.ps-go-list a { display: flex; align-items: center; justify-content: center; min-height: 44px; padding: 6px 14px; border-radius: 12px; border: 1px solid var(--ps-line-strong); background: #fff; font-size: 14px; font-weight: 700; color: var(--ps-ink); text-align: center; }
+.ps-go-list a:hover { border-color: var(--ps-dark); }
+.ps-go-list .is-lead a { background: var(--ps-cta); border-color: var(--ps-cta); color: #fff; }
+.ps-go-list .is-lead a:hover { background: var(--ps-cta-hover); }
+@media (min-width: 720px) { .ps-go-list { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); } }
+
+/* ── Teams ── */
+.ps-team { background: var(--ps-dark); color: #fff; padding: clamp(28px, 5vw, 56px) 0; }
+.ps-team-in { display: grid; gap: 14px 40px; align-items: center; }
+.ps-team h2 { margin: 0; font-size: clamp(1.75rem, 6vw, 2.75rem); line-height: 1.06; font-weight: 800; letter-spacing: -0.018em; color: #fff; }
+.ps-team p { margin: 8px 0 0; font-size: 16px; line-height: 1.55; color: #D5D9F5; max-width: 60ch; }
+.ps-team .ps-buy { margin-top: 0; }
+@media (min-width: 900px) { .ps-team-in { grid-template-columns: minmax(0, 1fr) 280px; } }
+
+/* ── What the two days look like ── */
+.ps-days { padding: clamp(32px, 6vw, 72px) 0; background: #fff; }
+.ps-moments { display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; margin: 18px -16px 0; padding: 0 16px 2px; list-style: none; }
+.ps-moments::-webkit-scrollbar { display: none; }
+.ps-moments li { flex: 0 0 80%; scroll-snap-align: center; min-width: 0; }
+.ps-moments a { display: block; color: var(--ps-ink); }
+.ps-moments img { display: block; width: 100%; height: auto; aspect-ratio: 3 / 2; object-fit: cover; border-radius: 16px; background: var(--ps-bg); }
+.ps-moments span { display: block; margin-top: 8px; font-size: 16px; font-weight: 800; }
+.ps-moments a:hover span { color: var(--ps-ink-link); }
+@media (min-width: 720px) { .ps-moments { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; overflow: visible; margin: 22px 0 0; padding: 0; } }
+.ps-days .ps-lead { margin-top: 18px; }
+.ps-speakers { margin: 12px 0 0; font-size: 16px; line-height: 1.5; color: var(--ps-body); max-width: 70ch; }
+
+/* ── Before you pay ── */
+.ps-faq { padding: clamp(32px, 6vw, 72px) 0; background: var(--ps-bg); border-top: 1px solid var(--ps-line); scroll-margin-top: var(--ps-stick); }
+.ps-faq-in { display: grid; gap: 16px 56px; }
+@media (min-width: 900px) { .ps-faq-in { grid-template-columns: minmax(0, 4fr) minmax(0, 8fr); } }
+.ps-row { border-top: 1px solid var(--ps-line-strong); }
+.ps-row:last-child { border-bottom: 1px solid var(--ps-line-strong); }
+.ps-row summary { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 58px; padding: 12px 0; cursor: pointer; list-style: none; font-family: 'Bricolage Grotesque', sans-serif; font-size: 18px; line-height: 1.25; font-weight: 700; color: var(--ps-ink); }
+.ps-row summary::-webkit-details-marker { display: none; }
+.ps-row summary::after { content: ''; flex-shrink: 0; width: 12px; height: 12px; margin-right: 4px; transform: rotate(45deg) translate(-2px, -2px); border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; }
+.ps-row[open] summary::after { transform: rotate(225deg) translate(-2px, -2px); }
+.ps-row p { margin: 0; padding: 0 0 18px; font-size: 16px; line-height: 1.6; color: var(--ps-body); max-width: 68ch; }
+.ps-row p strong { color: var(--ps-ink); font-weight: 800; }
+.ps-page .ps-row a { color: var(--ps-ink-link) !important; font-weight: 700; }
+
+/* ── The bar on a phone ── It sticks to the foot of the screen only inside .ps-flow, so it comes up
+   after the passes and leaves before the last button, with no script. */
+.ps-bar { display: none; }
+@media (max-width: 899px) {
+  .ps-bar {
+    position: sticky; bottom: 0; z-index: 25; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); background: rgba(255, 255, 255, 0.97); border-top: 1px solid var(--ps-line-strong); box-shadow: 0 -8px 24px rgba(26, 35, 126, 0.1);
+  }
+  .ps-bar-what { min-width: 0; font-size: 13px; line-height: 1.25; color: var(--ps-muted); }
+  .ps-bar-what b { display: block; font-family: 'Bricolage Grotesque', sans-serif; font-size: 17px; font-weight: 800; color: var(--ps-ink); white-space: nowrap; }
+  .ps-bar .ps-buy { flex-shrink: 0; margin: 0; min-height: 48px; padding: 0 18px; font-size: 15px; white-space: nowrap; }
+}
+
+/* ── The last word ── */
+.ps-end { padding: clamp(40px, 7vw, 88px) 0; background: #fff; text-align: center; overflow-x: clip; }
+.ps-end-title { margin: 0; font-size: clamp(2.25rem, 9vw, 4.25rem); line-height: 1.02; font-weight: 800; letter-spacing: -0.022em; color: var(--ps-ink); }
+/* A block, not flex: flex would make the words and the struck price three separate columns. */
+.ps-end .ps-buy { position: relative; display: inline-block; margin-top: 20px; padding: 15px 24px; max-width: 100%; line-height: 1.35; text-wrap: balance; }
+.ps-end p { margin: 14px auto 0; max-width: 62ch; font-size: 15px; line-height: 1.55; color: var(--ps-body); }
+.ps-credit { margin: 0; padding: 12px 16px 20px; text-align: center; font-size: 13px; color: var(--ps-muted); }
+
+@media print {
+  .ps-bar, .ps-head, .mk-aurora, .ps-aurora { display: none !important; }
+  .ps-pass { break-inside: avoid; }
+}
