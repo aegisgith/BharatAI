@@ -28,7 +28,11 @@ const PEOPLE = [
   for (let i = 0; i < 60 && !up; i++) { try { up = (await fetch(BASE + '/api/events/1')).ok; } catch {} if (!up) await sleep(1000); }
   if (!up) { console.log('FAIL the harness never came up'); process.exit(1); }
 
-  const browser = await pw.chromium.launch({ channel: 'msedge', headless: true });
+  // Edge by default. BROWSER=firefox or BROWSER=webkit (Safari's engine) runs the
+  // same checks there, when Playwright's own copy of that browser is installed:
+  // the operators use Safari and Firefox.
+  const other = process.env.BROWSER;
+  const browser = other ? await pw[other].launch({ headless: true }) : await pw.chromium.launch({ channel: 'msedge', headless: true });
   try {
     const ctx = await browser.newContext({ viewport: { width: 1366, height: 900 } });
     await ctx.addInitScript(() => { sessionStorage.setItem('tc_admin_token', 'h-admin'); localStorage.setItem('tc_admin', '1'); localStorage.setItem('tc_admin_operator', 'Harness'); });
@@ -45,6 +49,14 @@ const PEOPLE = [
       lastAttendees = lastAttendees.filter(a => a.id < 90000).concat(people.map(p => ({ id: p[0], name: p[1], email: p[2], mobile: p[3], company: p[4], main_event: p[5] === 0 ? 0 : 1, job_title: 'Engineer', city: 'Mumbai', country: 'India', badge_type: 'Visitor Pass', payment_status: 'paid', created_at: '2026-11-01 10:00:00' })));
       loadAdminAttendees(null, true);
     }, PEOPLE);
+    // The duplicates answer takes many seconds on this harness and would redraw the
+    // list in the middle of a check. An empty one keeps the first part repeatable;
+    // a held-back one and then the server's real one are let through further down.
+    const DUPES = '**/attendees/duplicates';
+    const noDupes = (r) => r.fulfill({ json: { groups: [], mobileGroups: 0, certainGroups: 0, nameGroups: 0 } });
+    await page.route(DUPES, noDupes);
+    const rowCount = () => page.evaluate(() => document.querySelectorAll('.att-row').length);
+    const allRowsIn = (n) => until(async () => (await rowCount()) === n, 15000);
     check('the Attendees list loads', await open(), 'no rows');
     await addPeople();
 
@@ -190,7 +202,38 @@ const PEOPLE = [
     const called = await until(() => page.evaluate(() => /Delegate 0/.test(document.body.innerText.replace(document.getElementById('section-attendees').innerText, ''))), 8000);
     check('Enter opens that one person, even straight after typing', called, 'drawer did not open');
 
-    check('the page opens again', await open(), 'no rows');
+    // ---- opening: the list does not wait for the duplicates answer ----
+    await page.unroute(DUPES);
+    let letDupesThrough; const dupGate = new Promise(r => { letDupesThrough = r; });
+    let listAsked = 0, listAskedBeforeDupes = -1, dupesAsked = 0;
+    page.on('request', r => { if (/attendees\?limit/.test(r.url())) listAsked++; });
+    await page.route(DUPES, async (r) => {
+      dupesAsked++;
+      if (listAskedBeforeDupes < 0) listAskedBeforeDupes = listAsked;
+      await dupGate;
+      const ids = await page.evaluate(() => (window.__attVisibleIds || []).slice(0, 2).map(Number));
+      await r.fulfill({ json: { groups: [{ reason: 'mobile', certain: true, primary: { id: ids[0] }, duplicates: [{ id: ids[1] }], count: 2 }], mobileGroups: 1, certainGroups: 1, nameGroups: 0 } });
+    });
+    listAsked = 0;
+    check('the page opens again, with the duplicates answer still on its way', await open(), 'no rows');
+    await until(() => dupesAsked > 0, 5000);
+    check('duplicates are asked for once the whole list is in, not alongside it', dupesAsked === 1 && listAsked >= 5 && listAskedBeforeDupes === listAsked, JSON.stringify({ dupesAsked, listAsked, listAskedBeforeDupes }));
+    const early = await page.evaluate(() => document.getElementById('section-attendees').innerText);
+    check('everyone is on the screen without it', /\d+ total/.test(early) && !/same-mobile duplicates/.test(early) && (await rowCount()) > 0, early.slice(0, 120));
+    await box.click();
+    await page.keyboard.type('vis');
+    await settled();
+    letDupesThrough();
+    const drawnIn = await until(() => page.evaluate(() => /1 same-mobile duplicates \(1 ready to merge\)/.test(document.getElementById('section-attendees').innerText)), 10000);
+    check('when the answer comes, its count is drawn in and the two people are marked', drawnIn && await page.evaluate(() => document.querySelectorAll('.att-row.dup-row').length === 2), await page.evaluate(() => document.getElementById('section-attendees').innerText.slice(0, 160)));
+    check('and the search box kept its letters and the cursor through that', (await box.inputValue()) === 'vis' && await page.evaluate(() => document.activeElement.id === 'admin-att-search'), await box.inputValue());
+    await page.evaluate(() => { window.__draws = 0; const real = attPutSection; attPutSection = function (h) { window.__draws++; return real(h); }; attLoadDuplicates(); });
+    await until(() => dupesAsked === 2, 5000);
+    await sleep(400);
+    check('the same answer a second time redraws nothing', await page.evaluate(() => window.__draws) === 0, 'redrawn');
+    await page.unroute(DUPES);
+    await page.route(DUPES, noDupes);
+    await page.evaluate(() => { attSearchClear(); });
     await box.click();
     await page.keyboard.type('visitor');
     await box.press('Enter');
@@ -244,6 +287,42 @@ const PEOPLE = [
     check('Clear unticks everyone and the bar goes', await until(async () => !(await bar.isVisible()) && (await page.locator('.att-row input[type="checkbox"]:checked').count()) === 0, 5000), 'bar still there');
     await page.evaluate(() => window.scrollTo(0, 0));
 
+    // ---- the table draws a screenful at once, then the rest in steps ----
+    await search('');
+    await page.evaluate(() => { document.activeElement.blur(); document.querySelector('#section-attendees .overflow-y-auto').scrollTop = 0; });
+    await allRowsIn(100);
+    const first = await page.evaluate(() => { loadAdminAttendees(null, true); return { now: document.querySelectorAll('.att-row').length, screen: attRowsFirst(0), page: window.__attVisibleIds.length }; });
+    check('a redraw puts a screenful of rows on the page at once, not the whole hundred', first.page === 100 && first.now === first.screen && first.now < 40, JSON.stringify(first));
+    const inOrder = () => page.evaluate(() => [...document.querySelectorAll('.att-row')].map(r => r.id.replace('att-row-', '')).join(',') === window.__attVisibleIds.join(','));
+    check('the rest follow: all hundred, each person once, in order', (await allRowsIn(100)) && await inOrder(), String(await rowCount()));
+    await page.evaluate(async () => { loadAdminAttendees(null, true); await new Promise(r => setTimeout(r, 45)); loadAdminAttendees(null, true); });
+    await allRowsIn(100);
+    await sleep(300);
+    check('a second redraw while the first is still filling leaves one clean table', (await rowCount()) === 100 && await inOrder(), String(await rowCount()));
+    await page.evaluate(() => attToggleAllVisible(true));
+    await allRowsIn(100);
+    check('ticking the whole page ticks the rows that arrive later too', (await page.locator('.att-row input[type="checkbox"]:checked').count()) === 100, String(await page.locator('.att-row input[type="checkbox"]:checked').count()));
+    await page.evaluate(() => attClearSelection());
+    await page.evaluate(() => { localStorage.setItem('att_hidden_cols', '[6]'); loadAdminAttendees(null, true); });
+    await allRowsIn(100);
+    await sleep(100);
+    check('a hidden column is hidden on the rows that arrive later too', await page.evaluate(() => [...document.querySelectorAll('.att-row')].every(r => r.children[6].classList.contains('att-col-hidden'))), 'some rows show it');
+    await page.evaluate(() => { localStorage.removeItem('att_hidden_cols'); loadAdminAttendees(null, true); });
+    await allRowsIn(100);
+    const kept = await page.evaluate(async () => {
+      document.querySelector('#section-attendees .overflow-y-auto').scrollTop = 1200;
+      loadAdminAttendees(null, true);
+      const now = document.querySelectorAll('.att-row').length;
+      await new Promise(r => requestAnimationFrame(() => setTimeout(r, 60)));
+      return { top: document.querySelector('#section-attendees .overflow-y-auto').scrollTop, now };
+    });
+    check('a redraw while scrolled down comes back at the same place', Math.abs(kept.top - 1200) <= 2 && kept.now > first.now, JSON.stringify(kept));
+    await allRowsIn(100);
+    const far = await page.evaluate(() => { const id = window.__attVisibleIds[70]; document.querySelector('#section-attendees .overflow-y-auto').scrollTop = 0; loadAdminAttendees(id, true); return !!document.getElementById('att-row-' + id); });
+    check('asked to show a row far down the page, that row is there at once', far, 'row not drawn');
+    await allRowsIn(100);
+    await page.evaluate(() => { document.querySelector('#section-attendees .overflow-y-auto').scrollTop = 0; });
+
     // ---- unit checks of the helpers, inside the page ----
     const u = await page.evaluate(() => ({
       blank: attSearchParse('   '), plain: attSearchParse('  Raj\tPatel ').words, short: attSearchParse('98').phone,
@@ -251,12 +330,25 @@ const PEOPLE = [
       d1: attSearchDistance('suraj', 'sooraj', 2), d2: attSearchDistance('abc', 'abd', 1), far: attSearchDistance('kumar', 'zhang', 2),
       none: attSearchApply([{ id: 1, name: 'A' }], '', true).length, nullSafe: attSearchApply([{ id: 1, name: null, email: null, mobile: null }], 'x', true).length,
       htmlOff: (attHLWords = [], attHL('<x>')), noValue: (attHLWords = ['a'], attHL(null)),
+      date: fmtRegDate('2026-11-01 10:00:00'), dateOld: new Date('2026-11-01T10:00:00Z').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' }),
+      dateNone: fmtRegDate(''), dateBad: fmtRegDate('soon'),
+      sumNone: attDupSummary(null), sumEmpty: attDupSummary({ groups: [] }),
+      sumOne: attDupSummary({ mobileGroups: 1, certainGroups: 1, nameGroups: 0, groups: [{ primary: { id: 5 }, duplicates: [{ id: 9 }] }] }),
+      rowsShort: attRowsFirst(0) >= 12, rowsScrolled: attRowsFirst(4000) >= 100,
     }));
+    check('the date reads as it always did, and a blank or bad one is a dash', u.date === u.dateOld && /\d/.test(u.date) && />-</.test(u.dateNone) && />-</.test(u.dateBad), JSON.stringify([u.date, u.dateOld]));
+    check('duplicates: no answer and an empty answer are the same news, a group is different news', u.sumNone === u.sumEmpty && u.sumOne === '1/1/0:5,9', JSON.stringify([u.sumNone, u.sumOne]));
+    check('rows drawn at once: at least twelve, and enough to reach wherever the list was scrolled', u.rowsShort && u.rowsScrolled, JSON.stringify(u));
     check('parse: blank is no search, tabs split words, too few digits is not a mobile', u.blank === null && u.plain.join('|') === 'raj|patel' && u.short === '' && u.name === '', JSON.stringify(u));
     check('parse: +91 and a leading 0 come off a mobile', u.plus === '9845049812' && u.zero === '9845049812', JSON.stringify(u));
     check('distance: Suraj to Sooraj is 2, one letter is 1, far apart gives up', u.d1 === 2 && u.d2 === 1 && u.far === 3, JSON.stringify(u));
     check('blank search returns everyone, empty fields do not throw', u.none === 1 && u.nullSafe === 0, JSON.stringify(u));
     check('marking still escapes with nothing to mark, and takes an empty value', u.htmlOff === '&lt;x&gt;' && u.noValue === '', JSON.stringify(u));
+    // ---- the server's own duplicates answer, slow as it is on this harness ----
+    await page.unroute(DUPES);
+    await page.evaluate(() => attLoadDuplicates());
+    const real = await until(() => page.evaluate(() => /similar names|duplicates/.test(document.querySelector('#section-attendees .flex').innerText)), 120000);
+    check('the real duplicates answer is drawn in when the server sends it', real, await page.evaluate(() => document.querySelector('#section-attendees .flex').innerText.slice(0, 160)));
     check('no script error anywhere above', errors.length === 0, JSON.stringify(errors));
 
     // ---- a phone ----

@@ -34678,6 +34678,7 @@ function adminPageScript(): string {
     let attSortDir = 'desc'; // 'asc' or 'desc'
     let lastAttendees = null;
     let lastDupData = null;
+    let attDupLoad = 0;   // which duplicates request is the latest; an older answer is dropped
     // The list endpoint caps how many rows it will send. attTotal is what the
     // server says exists, attTruncated whether the cap bit, and attWantAll is set
     // only when the operator clicks through the notice asking for the whole lot.
@@ -34690,11 +34691,15 @@ function adminPageScript(): string {
     // is not a column on attendees — the table has created_at. Formatted here rather
     // than shown raw, and no longer inline-editable: created_at records when the row
     // was written and is not something to type over.
+    // One formatter, made once: toLocaleDateString builds a new one on every call,
+    // which cost 60 to 80 ms for each page of the table.
+    var attDateFmt = null;
     function fmtRegDate(v) {
       if (!v) return '<span class="text-gray-600">-</span>';
       const d = new Date(String(v).replace(' ', 'T') + (String(v).includes('Z') ? '' : 'Z'));
       if (isNaN(d)) return '<span class="text-gray-600">-</span>';
-      return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' });
+      if (!attDateFmt) attDateFmt = new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short', year: '2-digit' });
+      return attDateFmt.format(d);
     }
 
     // Paging. 1000+ rows were rendered into the DOM in one go, which is what makes
@@ -34773,10 +34778,6 @@ function adminPageScript(): string {
       if (moved) window.scrollBy(0, moved);
     }
     function attSelectedIds() { return Array.from(attSelected); }
-    function attFiltered(list) {
-      return attSearchApply(list.filter(attMatchesFilters), attQuery, attSearchRanked);
-    }
-
     // ---- Searching the attendee list ----
     // Every word typed has to appear somewhere in the person's record, in any order,
     // so "patel apex" finds Raj Patel at Apex 36. Spaces and dots inside a name or a
@@ -34954,6 +34955,30 @@ function adminPageScript(): string {
         while (b.nextSibling) ap.appendChild(b.nextSibling);
       }
     }
+    // A page of the table is about 5,900 elements, and laying them out is what made
+    // every search, filter and tick wait: half a second in Edge, one to three in
+    // Firefox and Safari. So the rows that fit the screen are drawn at once and the
+    // rest follow here, a few at a time, with the page free in between. A newer
+    // redraw stops an older one.
+    var attRowsJob = 0;
+    // No row is shorter than 44px, so dividing by 40 never comes up short.
+    function attRowsFirst(scrolled) { return Math.max(12, Math.ceil(((scrolled || 0) + window.innerHeight * 0.7) / 40) + 2); }
+    function attRowsRest(rows, rowHtml, from) {
+      var job = ++attRowsJob;
+      var body = document.getElementById('att-rows');
+      if (!body || from >= rows.length) return;
+      (function more() {
+        setTimeout(function () {
+          if (job !== attRowsJob || !body.isConnected) return;
+          var to = Math.min(rows.length, from + 10), html = '';
+          for (var i = from; i < to; i++) html += rowHtml(rows[i], i);
+          body.insertAdjacentHTML('beforeend', html);
+          from = to;
+          restoreHiddenCols();
+          if (from < rows.length) more();
+        }, 30);
+      })();
+    }
     // The cap is what stops the response growing back past what the browser can
     // parse, so opting out of it is a deliberate act: it takes a click, and the
     // notice next to it points at Export CSV as the route that never truncates.
@@ -35005,6 +35030,28 @@ function adminPageScript(): string {
       return { data: all, total: Math.max(total, all.length), truncated: short, truncatedBy: short ? 'bytes' : '' };
     }
 
+    // The duplicates answer compares every name with every other name and can take
+    // many seconds, so the list does not wait for it. It is asked for once the list
+    // has arrived, not alongside it: while the server works on that sum it can keep
+    // the list's own requests waiting. The duplicate marks and counts are drawn in
+    // when the answer comes, if it says something new, and never over a cell that
+    // someone is editing. An older answer is dropped.
+    function attDupSummary(d) {
+      d = d || {};
+      return [d.mobileGroups || 0, d.certainGroups || 0, d.nameGroups || 0].join('/') + ':' + (d.groups || []).map(function (g) {
+        return [g.primary.id].concat(g.duplicates.map(function (x) { return x.id; })).join(',');
+      }).join('|');
+    }
+    function attLoadDuplicates() {
+      var mine = ++attDupLoad;
+      api.get('/api/admin/events/' + EID + '/attendees/duplicates').then(function (d) {
+        if (mine !== attDupLoad || !d || !Array.isArray(d.groups)) return;
+        var news = attDupSummary(d) !== attDupSummary(lastDupData);
+        lastDupData = d;
+        if (news && lastAttendees && currentSection === 'attendees' && !activeInlineEdit) loadAdminAttendees(null, true);
+      }).catch(function () {});
+    }
+
     async function loadAdminAttendees(scrollToId, keepData) {
       // Preserve scroll position before reload
       const scrollContainer = document.querySelector('#section-attendees .overflow-y-auto');
@@ -35016,15 +35063,13 @@ function adminPageScript(): string {
         if (keepData && lastAttendees) {
           attendees = lastAttendees; dupData = lastDupData || { groups: [] };
         } else {
-          var _r = await Promise.all([
-            fetchAdminAttendeesAll(),
-            api.get('/api/admin/events/'+EID+'/attendees/duplicates').catch(()=>({groups:[]}))
-          ]);
-          attendees = _r[0].data;
-          attTotal = _r[0].total;
-          attTruncated = _r[0].truncated;
-          attTruncatedBy = _r[0].truncatedBy;
-          dupData = _r[1];
+          var _r = await fetchAdminAttendeesAll();
+          attendees = _r.data;
+          attTotal = _r.total;
+          attTruncated = _r.truncated;
+          attTruncatedBy = _r.truncatedBy;
+          dupData = lastDupData || { groups: [] };
+          attLoadDuplicates();
         }
       } catch (err) {
         if (err && err.message === 'unauthorized') return;
@@ -35058,8 +35103,10 @@ function adminPageScript(): string {
           return a.id - b.id;
         });
       }
-      // Filter first so paging reflects the search, then clamp the page.
-      const attMatches = attFiltered(attendees);
+      // Everyone the search finds, then those of them the filters show, so paging
+      // reflects both. One pass over the list, not one for each count.
+      const attHits = attSearchApply(attendees, attQuery, attSearchRanked);
+      const attMatches = attHits.filter(attMatchesFilters);
       const attTotalPages = Math.max(1, Math.ceil(attMatches.length / attPageSize));
       if (attPage > attTotalPages) attPage = attTotalPages;
       const attStart = attPageSize === Infinity ? 0 : (attPage - 1) * attPageSize;
@@ -35089,8 +35136,14 @@ function adminPageScript(): string {
       const attSearch = attSearchParse(attQuery);
       const attSearching = !!attSearch;
       attHLWords = attSearching ? attSearch.words.filter(function (w) { return w.length >= 2; }) : [];
-      const attHiddenHits = attSearching ? attSearchApply(attendees, attQuery, false).length - attMatches.length : 0;
+      const attHiddenHits = attSearching ? attHits.length - attMatches.length : 0;
       const attSuggest = attSearching && !attMatches.length && !attHiddenHits ? attSearchSuggest(attendees, attSearch) : [];
+      // The rows drawn at once: enough to fill the screen at the place the list was
+      // scrolled to, or down to the row it was asked to show. attRowsRest() draws
+      // the others.
+      const attShowAt = scrollToId ? attPageRows.findIndex(a => String(a.id) === String(scrollToId)) : -1;
+      const attRowsNow = Math.min(attPageRows.length, attRowsFirst(prevScrollTop) + Math.max(0, attShowAt));
+      let attRowHtml;
 
       const attHtml = \`
         <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
@@ -35183,8 +35236,8 @@ function adminPageScript(): string {
               <thead><tr class="text-gray-400 text-xs uppercase">
                 <th style="width:34px" class="att-check-col"><input type="checkbox" \${attAllVisibleSelected ? 'checked' : ''} onchange="attToggleAllVisible(this.checked)" title="Select the rows on this page" style="accent-color:#FF6B00;width:14px;height:14px;cursor:pointer"></th><th style="width:50px" class="sortable" onclick="sortAttendees('id')">ID\${sortIcon('id')}</th><th style="width:40px"></th><th style="width:130px" class="sortable" onclick="sortAttendees('name')">Name\${sortIcon('name')}<span class="col-resizer" data-col="2"></span></th><th style="width:180px" class="sortable" onclick="sortAttendees('email')">Email\${sortIcon('email')}<span class="col-resizer" data-col="3"></span></th><th style="width:100px" class="sortable" onclick="sortAttendees('mobile')">Mobile\${sortIcon('mobile')}<span class="col-resizer" data-col="4"></span></th><th style="width:130px" class="sortable" onclick="sortAttendees('company')">Company\${sortIcon('company')}<span class="col-resizer" data-col="5"></span></th><th style="width:110px" class="sortable" onclick="sortAttendees('job_title')">Title\${sortIcon('job_title')}<span class="col-resizer" data-col="6"></span></th><th style="width:80px" class="sortable" onclick="sortAttendees('city')">City\${sortIcon('city')}<span class="col-resizer" data-col="7"></span></th><th style="width:70px" class="sortable" onclick="sortAttendees('country')">Country\${sortIcon('country')}<span class="col-resizer" data-col="8"></span></th><th style="width:40px">In</th><th style="width:110px" class="sortable" onclick="sortAttendees('role')">Role\${sortIcon('role')}<span class="col-resizer" data-col="10"></span></th><th style="width:90px" class="sortable" onclick="sortAttendees('badge_type')">Badge\${sortIcon('badge_type')}<span class="col-resizer" data-col="11"></span></th><th style="width:60px" class="sortable" onclick="sortAttendees('rsvp_status')">RSVP\${sortIcon('rsvp_status')}</th><th style="width:45px" class="sortable" onclick="sortAttendees('lunch_inclusion')">Lunch\${sortIcon('lunch_inclusion')}</th><th style="width:60px" class="sortable" onclick="sortAttendees('arrival_time')">Arrival\${sortIcon('arrival_time')}</th><th style="width:80px" class="sortable" onclick="sortAttendees('registration_date')">Reg Date\${sortIcon('registration_date')}</th><th style="width:70px" class="sortable" onclick="sortAttendees('payment_amount')">Payment\${sortIcon('payment_amount')}</th><th style="width:45px">Notif</th><th style="width:80px">Engage</th><th style="width:140px">Actions</th>
               </tr></thead>
-              <tbody>
-                \${attPageRows.map((a,idx)=>{ const dup = dupMap[a.id]; const prevDup = idx > 0 ? dupMap[attPageRows[idx-1].id] : null; const groupChanged = (dup && prevDup && dup.group !== prevDup.group) || (prevDup && !dup); const separator = groupChanged ? '<tr class="dup-sep"><td colspan="21" style="height:2px;padding:0;background:rgba(255,255,255,0.06);"></td></tr>' : ''; return separator + \`<tr class="att-row \${dup ? 'dup-row' : ''}" id="att-row-\${a.id}" data-search="\${escH((a.name+a.email+a.company+a.job_title+(a.mobile||'')).toLowerCase())}" \${dup ? 'style="border-left: 3px solid '+dup.color+';" title="⚠ Suspected Duplicate (Group '+dup.group+', '+dup.count+' entries)"' : ''}>
+              <tbody id="att-rows">
+                \${attPageRows.slice(0, attRowsNow).map(attRowHtml = (a,idx)=>{ const dup = dupMap[a.id]; const prevDup = idx > 0 ? dupMap[attPageRows[idx-1].id] : null; const groupChanged = (dup && prevDup && dup.group !== prevDup.group) || (prevDup && !dup); const separator = groupChanged ? '<tr class="dup-sep"><td colspan="21" style="height:2px;padding:0;background:rgba(255,255,255,0.06);"></td></tr>' : ''; return separator + \`<tr class="att-row \${dup ? 'dup-row' : ''}" id="att-row-\${a.id}" data-search="\${escH((a.name+a.email+a.company+a.job_title+(a.mobile||'')).toLowerCase())}" \${dup ? 'style="border-left: 3px solid '+dup.color+';" title="⚠ Suspected Duplicate (Group '+dup.group+', '+dup.count+' entries)"' : ''}>
                   <td class="att-check-col"><input type="checkbox" \${attSelected.has(String(a.id)) ? 'checked' : ''} onchange="attToggleRow(\${a.id}, this.checked)" style="accent-color:#FF6B00;width:14px;height:14px;cursor:pointer"></td>
                   <td class="text-gray-500">#\${a.id}\${dup ? '<span class="dup-badge" style="background:'+dup.color+'22;color:'+dup.color+'">⚠ G'+dup.group+'</span>' : ''}</td>
                   <td><img src="\${getAvatarUrl(a.email, a.name, 64, a.avatar_url)}" alt="" class="w-8 h-8 rounded-full object-cover"></td>
@@ -35240,6 +35293,7 @@ function adminPageScript(): string {
         </div>
       \`;
       attPutSection(attHtml);
+      attRowsRest(attPageRows, attRowHtml, attRowsNow);
       // Restore scroll position and column widths after reload
       requestAnimationFrame(() => {
         restoreColumnWidths();
