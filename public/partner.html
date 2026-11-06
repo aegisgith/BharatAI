@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Partnership Opportunities — Bharat AI Innovation 2026</title>
-    <meta name="description" content="Become a strategic partner or sponsor of Bharat AI Innovation 2026 — India's B2B AI conference. Title, Powered, Associate and Innovation Partner tiers available. WTC Mumbai, Nov 20–21 2026.">
+    <meta name="description" content="Become a strategic partner or sponsor of Bharat AI Innovation 2026 — India's B2B AI conference. Title, Powered, Knowledge, Associate and Innovation Partner tiers available. WTC Mumbai, Nov 20–21 2026.">
     <link rel="canonical" href="https://bharataiinnovation.com/partner">
     <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
     <!-- Link previews (WhatsApp, LinkedIn, X, Slack). Card: scripts/gen-og-cards.mjs -->
@@ -36,7 +36,7 @@
           "@id": "https://bharataiinnovation.com/partner#webpage",
           "url": "https://bharataiinnovation.com/partner",
           "name": "Partnership & Sponsorship — Bharat AI Innovation 2026",
-          "description": "Strategic partnership and sponsorship opportunities at Bharat AI Innovation 2026 — Title, Platinum, Gold, Silver and Innovation Partner tiers.",
+          "description": "Strategic partnership and sponsorship opportunities at Bharat AI Innovation 2026 — Title, Powered, Knowledge, Associate and Innovation Partner tiers.",
           "inLanguage": "en-IN",
           "isPartOf": { "@type": "WebSite", "name": "Bharat AI Innovation", "url": "https://bharataiinnovation.com/" },
           "about": { "@id": "https://bharataiinnovation.com/#organization" }
@@ -65,770 +65,23 @@
     <link rel="stylesheet" href="/css/fonts.css?v=1">
     <link rel="stylesheet" href="/css/fa-subset.css?v=2">
     <link rel="stylesheet" href="css/style.css?v=20261105b">
+    <link rel="stylesheet" href="css/partner-design.css?v=20261106">
+    <!-- Motion only: delete this line and the partner-motion script at the foot, and every word stays. -->
+    <link rel="stylesheet" href="css/partner-motion.css?v=20261106">
 
     <!-- Favicon -->
     <link rel="icon" type="image/png" sizes="64x64" href="/images/favicon-64.png">
     <style>
-        /* ── Partnership Page Extra Styles ── */
-        
-        /* Partnership Tiers Grid */
-        .partnership-tiers {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 2rem;
-            margin-top: 2rem;
-        }
-        .tier-card {
-            background: white;
-            border: 2px solid var(--light);
-            border-radius: var(--r-2xl);
-            padding: 2.5rem;
-            transition: var(--t-med);
-            position: relative;
-            overflow: hidden;
-        }
-        .tier-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 6px;
-            background: var(--grad-saffron);
-        }
-        .tier-card.exclusive { grid-column: 1 / -1; }
-        .tier-card.exclusive {
-            border-color: var(--saffron);
-            background: linear-gradient(135deg, rgba(255,107,0,0.05) 0%, rgba(255,107,0,0.02) 100%);
-        }
-        .tier-card:hover {
-            border-color: rgba(255,107,0,0.4);
-            box-shadow: var(--shadow-xl);
-            transform: translateY(-6px);
-        }
-        .tier-badge {
-            display: inline-block;
-            background: var(--grad-saffron);
-            color: white;
-            font-size: 0.7rem;
-            font-weight: 800;
-            padding: 0.4rem 1rem;
-            border-radius: var(--r-full);
-            text-transform: uppercase;
-            letter-spacing: 0.1em;
-            margin-bottom: 1rem;
-        }
-        .tier-card h3 {
-            font-family: var(--font-display);
-            font-size: 1.8rem;
-            font-weight: 800;
-            color: var(--charcoal);
-            margin-bottom: 0.5rem;
-        }
-        .tier-subtitle {
-            font-size: 0.95rem;
-            color: var(--dark-grey);
-            margin-bottom: 1.5rem;
-            line-height: 1.6;
-        }
-        .tier-price {
-            font-family: var(--font-display);
-            font-size: 2.5rem;
-            font-weight: 900;
-            color: var(--saffron);
-            margin-bottom: 1.5rem;
-        }
-        .tier-features {
-            list-style: none;
-            padding: 0;
-            margin: 0 0 2rem 0;
-        }
-        .tier-features li {
-            padding: 0.75rem 0;
-            border-bottom: 1px solid var(--light);
-            display: flex;
-            align-items: flex-start;
-            gap: 0.75rem;
-            font-size: 0.9rem;
-            color: var(--dark-grey);
-        }
-        .tier-features li:last-child {
-            border-bottom: none;
-        }
-        .tier-features li i {
-            color: var(--emerald);
-            font-size: 1rem;
-            margin-top: 0.15rem;
-            flex-shrink: 0;
-        }
-
-        /* Beyond Sponsorship Grid */
-        .beyond-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 2rem;
-            margin-top: 2rem;
-        }
-        .beyond-card {
-            background: white;
-            border: 1px solid var(--light);
-            border-radius: var(--r-xl);
-            padding: 2rem;
-            transition: var(--t-med);
-            position: relative;
-        }
-        .beyond-card:hover {
-            border-color: rgba(255,107,0,0.3);
-            box-shadow: var(--shadow-md);
-            transform: translateY(-5px);
-        }
-        .beyond-number {
-            position: absolute;
-            top: -20px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 50px;
-            height: 50px;
-            background: var(--grad-saffron);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-family: var(--font-display);
-            font-size: 1.3rem;
-            font-weight: 900;
-            color: white;
-            box-shadow: var(--shadow-saffron);
-        }
-        .beyond-icon {
-            font-size: 2rem;
-            margin: 1.5rem 0 1rem;
-            text-align: center;
-        }
-        .beyond-card h4 {
-            font-size: 1.2rem;
-            font-weight: 700;
-            color: var(--charcoal);
-            margin-bottom: 0.75rem;
-            text-align: center;
-        }
-        .beyond-card p {
-            font-size: 0.9rem;
-            color: var(--dark-grey);
-            line-height: 1.6;
-            margin-bottom: 1rem;
-            text-align: center;
-        }
-        .beyond-tags {
-            display: flex;
-            gap: 0.5rem;
-            flex-wrap: wrap;
-            justify-content: center;
-        }
-        .beyond-tag {
-            background: rgba(255,107,0,0.1);
-            color: var(--saffron);
-            font-size: 0.75rem;
-            font-weight: 700;
-            padding: 0.35rem 0.75rem;
-            border-radius: var(--r-full);
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-        }
-
-        /* Investment Overview */
-        .investment-overview {
-            background: linear-gradient(135deg, #1a237e 0%, #283593 100%);
-            border-radius: var(--r-2xl);
-            padding: 3rem;
-            color: white;
-            position: relative;
-            overflow: hidden;
-        }
-        .investment-overview::before {
-            content: '';
-            position: absolute;
-            inset: 0;
-            background-image: linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px),
-                              linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px);
-            background-size: 30px 30px;
-        }
-        .investment-content {
-            position: relative;
-            z-index: 1;
-        }
-        .investment-grid {
-            display: grid;
-            grid-template-columns: 2fr 1fr;
-            gap: 3rem;
-            margin-top: 2rem;
-        }
-        .premium-partnerships {
-            display: grid;
-            gap: 1.5rem;
-        }
-        .premium-item {
-            background: rgba(255,255,255,0.1);
-            border: 1px solid rgba(255,255,255,0.2);
-            border-radius: var(--r-xl);
-            padding: 2rem;
-            backdrop-filter: blur(10px);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            transition: var(--t-med);
-        }
-        .premium-item:hover {
-            background: rgba(255,255,255,0.15);
-            transform: translateX(6px);
-        }
-        .premium-info h4 {
-            font-size: 1.4rem;
-            font-weight: 800;
-            color: white;
-            margin-bottom: 0.5rem;
-        }
-        .premium-info p {
-            font-size: 0.9rem;
-            color: rgba(255,255,255,0.8);
-            margin: 0;
-        }
-        .premium-price {
-            font-family: var(--font-display);
-            font-size: 2rem;
-            font-weight: 900;
-            color: var(--gold-light);
-            white-space: nowrap;
-        }
-        .specialized-opps {
-            display: grid;
-            gap: 1.5rem;
-        }
-        .specialized-item {
-            background: rgba(255,255,255,0.1);
-            border: 1px solid rgba(255,255,255,0.2);
-            border-radius: var(--r-lg);
-            padding: 1.5rem;
-            backdrop-filter: blur(10px);
-        }
-        .specialized-item h5 {
-            font-size: 1rem;
-            font-weight: 700;
-            color: white;
-            margin-bottom: 0.5rem;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-        .specialized-item h5 i {
-            color: var(--gold-light);
-        }
-        .specialized-item .price {
-            font-family: var(--font-display);
-            font-size: 1.2rem;
-            font-weight: 800;
-            color: var(--gold-light);
-        }
-        .specialized-item p {
-            font-size: 0.85rem;
-            color: rgba(255,255,255,0.7);
-            margin: 0.5rem 0 0 0;
-        }
-
-        /* Benefits Showcase */
-        .benefits-showcase {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 2rem;
-            margin-top: 2rem;
-        }
-        .benefit-showcase-card {
-            background: white;
-            border: 1px solid var(--light);
-            border-radius: var(--r-xl);
-            padding: 2.5rem;
-            text-align: center;
-            transition: var(--t-med);
-        }
-        .benefit-showcase-card:hover {
-            border-color: rgba(255,107,0,0.3);
-            box-shadow: var(--shadow-lg);
-            transform: scale(1.03);
-        }
-        .benefit-showcase-icon {
-            width: 80px;
-            height: 80px;
-            background: var(--grad-saffron);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 2.5rem;
-            margin: 0 auto 1.5rem;
-            box-shadow: var(--shadow-saffron);
-        }
-        .benefit-showcase-card h3 {
-            font-family: var(--font-display);
-            font-size: 1.5rem;
-            font-weight: 800;
-            color: var(--charcoal);
-            margin-bottom: 1rem;
-        }
-        .benefit-showcase-card p {
-            font-size: 0.95rem;
-            color: var(--dark-grey);
-            line-height: 1.7;
-            margin: 0;
-        }
-
-        /* CTA Box */
-        .partner-cta-box {
-            background: var(--grad-hero);
-            border-radius: var(--r-2xl);
-            padding: 3rem;
-            text-align: center;
-            margin-top: 3rem;
-        }
-        .partner-cta-box h3 {
-            font-family: var(--font-display);
-            font-size: 2.2rem;
-            font-weight: 800;
-            color: white;
-            margin-bottom: 1rem;
-        }
-        .partner-cta-box p {
-            font-size: 1.1rem;
-            color: rgba(255,255,255,0.85);
-            margin-bottom: 2rem;
-            max-width: 600px;
-            margin-left: auto;
-            margin-right: auto;
-        }
-
-        /* Best-for line under each tier subtitle */
-        .tier-fit {
-            font-size: 0.85rem;
-            color: var(--charcoal);
-            background: rgba(255,107,0,0.06);
-            border-left: 3px solid var(--saffron);
-            padding: 0.6rem 0.9rem;
-            border-radius: 0 8px 8px 0;
-            margin: -0.5rem 0 1.5rem;
-            line-height: 1.5;
-        }
-
-        /* Two ways in */
-        .paths-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 2rem; margin-top: 2rem; }
-        .path-card {
-            background: white;
-            border: 2px solid var(--light);
-            border-radius: var(--r-2xl);
-            padding: 2.5rem;
-            position: relative;
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-        }
-        .path-card::before { content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 6px; }
-        .path-card.corporate::before { background: var(--grad-saffron); }
-        .path-card.startup::before { background: var(--grad-electric); }
-        .path-kicker {
-            display: inline-flex; align-items: center; gap: 0.5rem;
-            font-size: 0.75rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.09em;
-            margin-bottom: 1rem;
-        }
-        .path-card.corporate .path-kicker { color: var(--saffron); }
-        .path-card.startup .path-kicker { color: var(--electric); }
-        .path-card h3 { font-family: var(--font-display); font-size: 1.6rem; font-weight: 800; color: var(--charcoal); line-height: 1.2; margin-bottom: 0.75rem; }
-        .path-card > p { font-size: 0.95rem; color: var(--dark-grey); line-height: 1.65; margin-bottom: 1.5rem; }
-        .path-card ul { list-style: none; padding: 0; margin: 0 0 2rem; display: flex; flex-direction: column; gap: 0.7rem; flex: 1; }
-        .path-card li { display: flex; gap: 0.65rem; align-items: flex-start; font-size: 0.9rem; color: var(--dark-grey); line-height: 1.5; }
-        .path-card li i { color: var(--emerald); margin-top: 0.2rem; flex-shrink: 0; }
-        .path-card li strong { color: var(--charcoal); }
-        .path-actions { display: flex; gap: 0.75rem; flex-wrap: wrap; }
-
-        /* Branding & activation options (one card per item, on the dark panel) */
-        .option-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; }
-        .option-card {
-            background: rgba(255,255,255,0.08);
-            border: 1px solid rgba(255,255,255,0.18);
-            border-radius: var(--r-xl);
-            padding: 1.75rem;
-            display: flex;
-            flex-direction: column;
-            transition: var(--t-med);
-        }
-        .option-card:hover { background: rgba(255,255,255,0.13); transform: translateY(-4px); }
-        .option-card.featured { border-color: rgba(255,213,79,0.55); background: rgba(255,213,79,0.08); }
-        .option-badge {
-            align-self: flex-start;
-            font-size: 0.68rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.09em;
-            color: var(--gold-light);
-            border: 1px solid rgba(255,213,79,0.4);
-            border-radius: var(--r-full);
-            padding: 0.3rem 0.75rem;
-            margin-bottom: 0.9rem;
-        }
-        .option-card h3 { font-family: var(--font-display); font-size: 1.3rem; font-weight: 800; color: white; margin-bottom: 0.35rem; }
-        .option-price { font-family: var(--font-display); font-size: 1.6rem; font-weight: 900; color: var(--gold-light); margin-bottom: 1rem; }
-        .option-price span { font-size: 0.75rem; font-weight: 600; color: rgba(255,255,255,0.6); }
-        .option-card ul { list-style: none; padding: 0; margin: 0 0 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
-        .option-card li { position: relative; padding-left: 1.1rem; font-size: 0.86rem; color: rgba(255,255,255,0.85); line-height: 1.5; }
-        .option-card li::before { content: ''; position: absolute; left: 0; top: 0.55em; width: 6px; height: 6px; border-radius: 50%; background: var(--gold-light); }
-        .option-fit { font-size: 0.82rem; color: rgba(255,255,255,0.7); line-height: 1.5; margin: 0 0 1.25rem; flex: 1; }
-        .option-fit strong { color: white; }
-        .option-actions { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; }
-        .option-enquire { color: var(--gold-light); font-weight: 700; font-size: 0.9rem; text-decoration: none; }
-        .option-enquire:hover { text-decoration: underline; }
-        .option-assets { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; justify-content: center; margin-top: 2rem; }
-        .option-assets-label { width: 100%; text-align: center; font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.09em; color: rgba(255,255,255,0.55); margin-bottom: 0.25rem; }
-        .option-assets > span:not(.option-assets-label) { font-size: 0.8rem; font-weight: 600; color: rgba(255,255,255,0.85); border: 1px solid rgba(255,255,255,0.2); border-radius: var(--r-full); padding: 0.35rem 0.85rem; }
-        @media (max-width: 1024px) { .option-grid { grid-template-columns: repeat(2, 1fr); } }
-        @media (max-width: 768px) {
-            .option-grid, .paths-grid { grid-template-columns: 1fr; }
-            .path-card { padding: 1.75rem; }
-        }
-
-        /* Photo Gallery */
-        .event-gallery {
-            display: grid;
-            grid-template-columns: repeat(5, 1fr);
-            gap: 0.6rem;
-            margin-top: 2rem;
-        }
-        .gallery-item {
-            border-radius: var(--r-lg);
-            overflow: hidden;
-            aspect-ratio: 4/3;
-            position: relative;
-        }
-        .gallery-item.tall { aspect-ratio: 3/4; grid-row: span 2; }
-        .gallery-item.wide { grid-column: span 2; aspect-ratio: 16/9; }
-        .gallery-item img {
-            width: 100%; height: 100%;
-            object-fit: cover;
-            transition: transform 0.4s ease;
-        }
-        .gallery-item:hover img { transform: scale(1.07); }
-
-        /* Leadership Panel Section */
-        .panel-detail {
-            background: white;
-            border-radius: var(--r-2xl);
-            overflow: hidden;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.12);
-            margin-top: 2rem;
-            border: 1px solid rgba(255,107,0,0.15);
-        }
-        .panel-detail-header {
-            background: linear-gradient(135deg, #0a0c18 0%, #141830 50%, #1a1230 100%);
-            padding: 3rem 3.5rem;
-            position: relative;
-            overflow: hidden;
-            display: grid;
-            grid-template-columns: 1fr auto;
-            align-items: center;
-            gap: 2rem;
-        }
-        .panel-detail-header::before {
-            content: '';
-            position: absolute;
-            inset: 0;
-            background-image: radial-gradient(circle at 80% 50%, rgba(255,107,0,0.15) 0%, transparent 60%);
-        }
-        .panel-detail-header::after {
-            content: '';
-            position: absolute;
-            bottom: 0; left: 0; right: 0;
-            height: 3px;
-            background: linear-gradient(90deg, #FF6B00, #FF9500, #FFD700, #FF9500, #FF6B00);
-        }
-        .panel-detail-header-inner { position: relative; z-index: 1; }
-        .panel-eyebrow {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-            background: rgba(255,107,0,0.2);
-            border: 1px solid rgba(255,107,0,0.4);
-            color: #FF9500;
-            font-size: 0.75rem;
-            font-weight: 700;
-            padding: 0.35rem 1rem;
-            border-radius: var(--r-full);
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-            margin-bottom: 1rem;
-        }
-        .panel-detail-header h2 {
-            font-family: var(--font-display);
-            font-size: 2.2rem;
-            font-weight: 900;
-            color: white;
-            margin-bottom: 0.75rem;
-            line-height: 1.2;
-        }
-        .panel-detail-header p {
-            color: rgba(255,255,255,0.7);
-            font-size: 1rem;
-            margin: 0;
-            max-width: 520px;
-            line-height: 1.7;
-        }
-        .panel-price-box {
-            position: relative;
-            z-index: 1;
-            text-align: center;
-            background: rgba(255,255,255,0.07);
-            border: 1px solid rgba(255,255,255,0.15);
-            border-radius: var(--r-2xl);
-            padding: 2rem 2.5rem;
-            backdrop-filter: blur(10px);
-            flex-shrink: 0;
-        }
-        .panel-price-box .price-label {
-            font-size: 0.75rem;
-            color: rgba(255,255,255,0.6);
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.1em;
-            margin-bottom: 0.5rem;
-        }
-        .panel-price-box .price-amount {
-            font-family: var(--font-display);
-            font-size: 2.8rem;
-            font-weight: 900;
-            color: var(--saffron);
-            line-height: 1;
-            display: block;
-        }
-        .panel-price-box .price-tax {
-            font-size: 0.8rem;
-            color: rgba(255,255,255,0.5);
-            margin-top: 0.4rem;
-        }
-
-        /* Panel gallery mosaic */
-        .panel-gallery {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            grid-template-rows: 200px 200px;
-            gap: 4px;
-            background: #111;
-        }
-        .panel-gallery-item {
-            overflow: hidden;
-            position: relative;
-        }
-        .panel-gallery-item img {
-            width: 100%; height: 100%;
-            object-fit: cover;
-            transition: transform 0.5s ease, filter 0.5s ease;
-            filter: brightness(0.92);
-        }
-        .panel-gallery-item:hover img { transform: scale(1.08); filter: brightness(1.05); }
-        .panel-gallery-item.feat {
-            grid-column: span 2;
-            grid-row: span 2;
-        }
-
-        /* Panel body */
-        .panel-detail-body { padding: 3rem 3.5rem; }
-
-        .panel-section-title {
-            font-family: var(--font-display);
-            font-size: 1.4rem;
-            font-weight: 800;
-            color: var(--charcoal);
-            margin-bottom: 1.5rem;
-            padding-bottom: 0.75rem;
-            border-bottom: 2px solid var(--light);
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-        }
-        .panel-section-title i { color: var(--saffron); }
-
-        .panel-deliverables {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 1.5rem;
-            margin-bottom: 2.5rem;
-        }
-        .panel-deliverable-block {
-            background: var(--off-white);
-            border-radius: var(--r-xl);
-            padding: 1.5rem;
-            border: 1px solid var(--light);
-            transition: var(--t-med);
-        }
-        .panel-deliverable-block:hover {
-            border-color: rgba(255,107,0,0.3);
-            box-shadow: 0 4px 20px rgba(255,107,0,0.08);
-            transform: translateY(-3px);
-        }
-        .panel-deliverable-block h4 {
-            font-size: 0.9rem;
-            font-weight: 800;
-            color: var(--charcoal);
-            margin-bottom: 1rem;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            padding-bottom: 0.75rem;
-            border-bottom: 2px solid rgba(255,107,0,0.2);
-        }
-        .panel-deliverable-block h4 i {
-            width: 30px; height: 30px;
-            background: linear-gradient(135deg, #FF6B00, #FF9500);
-            border-radius: 8px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-size: 0.8rem;
-            flex-shrink: 0;
-        }
-        .panel-deliverable-block ul {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-        }
-        .panel-deliverable-block ul li {
-            padding: 0.45rem 0;
-            border-bottom: 1px solid rgba(0,0,0,0.05);
-            font-size: 0.85rem;
-            color: var(--dark-grey);
-            display: flex;
-            align-items: flex-start;
-            gap: 0.6rem;
-            line-height: 1.4;
-        }
-        .panel-deliverable-block ul li:last-child { border-bottom: none; }
-        .panel-deliverable-block ul li::before {
-            content: '▸';
-            color: var(--saffron);
-            font-weight: 700;
-            flex-shrink: 0;
-            font-size: 0.75rem;
-            margin-top: 0.1rem;
-        }
-
-        .panel-themes {
-            background: linear-gradient(135deg, #0a0c18, #141830);
-            border-radius: var(--r-xl);
-            padding: 2rem 2.5rem;
-            margin-top: 2rem;
-            position: relative;
-            overflow: hidden;
-        }
-        .panel-themes::before {
-            content: '';
-            position: absolute;
-            inset: 0;
-            background-image: radial-gradient(circle at 90% 50%, rgba(255,107,0,0.12) 0%, transparent 50%);
-        }
-        .panel-themes-inner { position: relative; z-index: 1; }
-        .panel-themes h4 {
-            font-size: 1rem;
-            font-weight: 800;
-            color: white;
-            margin-bottom: 1rem;
-        }
-        .theme-tags {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 0.5rem;
-        }
-        .theme-tag {
-            background: rgba(255,255,255,0.08);
-            border: 1px solid rgba(255,255,255,0.15);
-            color: rgba(255,255,255,0.85);
-            font-size: 0.78rem;
-            font-weight: 600;
-            padding: 0.35rem 0.9rem;
-            border-radius: var(--r-full);
-            transition: var(--t-fast);
-        }
-        .theme-tag:hover {
-            background: rgba(255,107,0,0.25);
-            border-color: rgba(255,107,0,0.5);
-            color: white;
-        }
-
-        .panel-passes {
-            display: grid;
-            grid-template-columns: 1fr 1fr 2fr;
-            gap: 1.5rem;
-            margin-top: 2rem;
-        }
-        .pass-chip {
-            background: white;
-            border: 2px solid rgba(255,107,0,0.2);
-            border-radius: var(--r-xl);
-            padding: 1.5rem;
-            text-align: center;
-            transition: var(--t-med);
-        }
-        .pass-chip:hover {
-            border-color: var(--saffron);
-            box-shadow: 0 4px 20px rgba(255,107,0,0.15);
-            transform: translateY(-3px);
-        }
-        .pass-chip .pass-count {
-            font-family: var(--font-display);
-            font-size: 3rem;
-            font-weight: 900;
-            color: var(--saffron);
-            display: block;
-            line-height: 1;
-        }
-        .pass-chip .pass-label {
-            font-size: 0.85rem;
-            color: var(--dark-grey);
-            font-weight: 600;
-            margin-top: 0.5rem;
-            display: block;
-        }
-        .pass-chip.note {
-            background: linear-gradient(135deg, rgba(255,107,0,0.05), rgba(255,149,0,0.05));
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .pass-chip.note p {
-            font-size: 0.9rem;
-            color: var(--dark-grey);
-            line-height: 1.6;
-            margin: 0;
-        }
-
-        @media (max-width: 1024px) {
-            .partnership-tiers { grid-template-columns: 1fr; }
-            .beyond-grid { grid-template-columns: repeat(2, 1fr); }
-            .investment-grid { grid-template-columns: 1fr; }
-            .benefits-showcase { grid-template-columns: 1fr; }
-            .event-gallery { grid-template-columns: repeat(3, 1fr); }
-            .panel-deliverables { grid-template-columns: repeat(2, 1fr); }
-            .panel-gallery { grid-template-columns: repeat(3, 1fr); grid-template-rows: 180px 180px; }
-            .panel-detail-header { grid-template-columns: 1fr; padding: 2.5rem 2rem; }
-            .panel-price-box { text-align: left; padding: 1.5rem 2rem; }
-            .panel-detail-body { padding: 2rem; }
-            .panel-passes { grid-template-columns: 1fr 1fr; }
-            .pass-chip.note { grid-column: span 2; }
-        }
-
-        @media (max-width: 768px) {
-            .beyond-grid { grid-template-columns: 1fr; }
-            .event-gallery { grid-template-columns: repeat(2, 1fr); }
-            .panel-gallery { grid-template-columns: repeat(2, 1fr); grid-template-rows: auto; }
-            .panel-gallery-item.feat { grid-column: span 2; grid-row: span 1; }
-            .panel-deliverables { grid-template-columns: 1fr; }
-            .panel-passes { grid-template-columns: 1fr; }
-            .pass-chip.note { grid-column: span 1; }
+        /* The display font: fonts.css carries only Manrope and Mukta, so without this every heading
+           on the page fell back to a heavy system font. */
+        @font-face {
+            font-family: 'Bricolage Grotesque'; font-style: normal; font-weight: 400 800; font-stretch: 100%; font-display: swap;
+            src: url(/fonts/bricolage-grotesque-latin-400-800.woff2) format('woff2');
+            unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
         }
     </style>
 </head>
-<body>
+<body class="pr-page">
     <a href="#main-content" class="skip-link">Skip to main content</a>
 
     <!-- NAVBAR -->
@@ -860,72 +113,289 @@
         </div>
     </nav>
 
-    <!-- PAGE HEADER -->
-    <section class="page-header" id="main-content">
+    <!-- HERO: the title is split here, not by a script, so it moves from the first paint. -->
+    <section class="page-header pr-hero" id="main-content">
+        <div class="pr-aurora" aria-hidden="true"><i></i></div>
         <div class="page-header-orb"></div>
-        <div class="page-header-content container">
-            <h1>Sponsor<br>Bharat AI</h1>
-            <p>A true B2B business networking and business-outcome platform. Position your organisation at the forefront of India&rsquo;s AI revolution &mdash; engage decision-makers directly, shape industry narratives, and drive real business outcomes.</p>
+        <div class="page-header-content container pr-hero-grid">
+            <div>
+                <h1><span class="pr-w"><span style="--i:0">Sponsor</span></span><br><span class="pr-w"><span style="--i:1">Bharat</span></span> <span class="pr-w"><span style="--i:2">AI</span></span></h1>
+                <p class="pr-hero-lead">A true B2B business networking and business-outcome platform. Position your organisation at the forefront of India&rsquo;s AI revolution: engage decision-makers directly, shape industry narratives, and drive real business outcomes.</p>
+                <p class="pr-hero-when">20&ndash;21 November 2026, World Trade Center Mumbai</p>
+                <div class="pr-hero-actions">
+                    <a href="#tiers" class="btn btn-primary btn-lg">See what you can sponsor <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
+                    <a href="#enquire" class="pr-herolink">Talk to us</a>
+                </div>
+            </div>
+            <figure class="pr-hero-photo">
+                <picture><source type="image/webp" srcset="images/gallery/MNP_3286.webp"><img width="1600" height="1066" fetchpriority="high" decoding="async" src="images/gallery/MNP_3286.jpg" alt="A panel discussion on the main stage at Data Science Congress"></picture>
+                <figcaption>A panel at Data Science Congress, the predecessor to Bharat AI Innovation.</figcaption>
+            </figure>
         </div>
     </section>
 
-    <!-- BENEFITS SHOWCASE -->
-    <section class="section-pad" style="background:white;">
+    <!-- WHY -->
+    <section class="pr-sec">
         <div class="container">
-            <div class="section-header reveal">
+            <div class="pr-head">
                 <h2 class="section-title">Your Brand in Front of India's <span class="accent">AI Decision-Makers</span></h2>
-                <p class="section-subtitle">Ministers, CIOs, CTOs, and funded founders — the people who approve enterprise AI spending, in one room, for two days.</p>
+                <p>Ministers, CIOs, CTOs, and funded founders: the people who approve enterprise AI spending, in one room, for two days.</p>
             </div>
-            <div class="benefits-showcase reveal">
-                <div class="benefit-showcase-card">
+            <div class="pr-why">
+                <figure class="pr-why-card">
+                    <picture><source type="image/webp" srcset="images/gallery/DSC_5278.webp"><img width="1600" height="1067" loading="lazy" decoding="async" src="images/gallery/DSC_5278.jpg" alt="Visitors at an exhibition booth at Data Science Congress"></picture>
                     <h3>Direct Access to Buyers</h3>
-                    <p>India's senior AI leaders — CIOs from banking, insurance, pharma, and government — are in the room because they came to make decisions, not attend a networking event. Your sponsorship puts your brand in front of them before they finalize 2027 budgets.</p>
-                </div>
-                <div class="benefit-showcase-card">
+                    <p>India's senior AI leaders &mdash; CIOs from banking, insurance, pharma, and government &mdash; are in the room because they came to make decisions, not attend a networking event. Your sponsorship puts your brand in front of them before they finalize 2027 budgets.</p>
+                </figure>
+                <figure class="pr-why-card">
+                    <picture><source type="image/webp" srcset="images/gallery/7C2A2823.webp"><img width="1600" height="1066" loading="lazy" decoding="async" src="images/gallery/7C2A2823.jpg" alt="A minister delivering a keynote at Data Science Congress"></picture>
                     <h3>Policymakers on the Stage</h3>
                     <p>Keynotes from Union and Maharashtra ministers, with senior officials in the audience. Your brand sits in the same room as the people shaping India's AI policy and the buyers who act on it.</p>
-                </div>
+                </figure>
             </div>
         </div>
     </section>
 
-    <!-- TWO WAYS IN: corporate vs startup, each with its own priced options -->
-    <section class="section-pad" style="background:var(--off-white);" id="paths">
+    <!-- exhibitors:start (generated by scripts/gen-exhibitor-logos.mjs: edit the list there, not here) -->
+    <section class="section-pad-sm exh-strip" id="exhibitors">
         <div class="container">
             <div class="section-header reveal">
-                <span class="section-eyebrow"><i class="fas fa-sitemap"></i> Two ways in</span>
-                <h2 class="section-title">Pick the path that matches <span class="accent">your budget and your goal</span></h2>
-                <p class="section-subtitle">Every option on this page is priced and listed on its own. Start from where you are.</p>
+                <h2 class="section-title">Already on the <span class="accent">exhibition floor</span></h2>
+                <p class="section-subtitle">Global IT firms like CGI, platforms like NoBroker, AI startups and the Ministry of Tribal Affairs, showing their work to enterprise and government buyers.</p>
             </div>
-            <div class="paths-grid reveal">
+        </div>
+        <div class="exh-marquee">
+          <div class="exh-row" style="--exh-dur:84s;--exh-delay:-0s">
+            <ul class="exh-track" aria-label="Exhibitors">
+              <li class="exh-chip" data-featured><img src="/images/exhibitors/cgi.webp" width="168" height="168" style="--lh:52px" alt="" loading="lazy" decoding="async"><span>CGI</span></li>
+              <li class="exh-chip" data-featured><img src="/images/exhibitors/ministry-of-tribal-affairs.webp" width="336" height="150" style="--lh:49px" alt="" loading="lazy" decoding="async"><span>Ministry of Tribal Affairs</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/ai-products-factory.webp" width="336" height="116" style="--lh:34px" alt="" loading="lazy" decoding="async"><span>AI Products Factory</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/ary-soft.webp" width="168" height="168" style="--lh:52px" alt="" loading="lazy" decoding="async"><span>Ary-Soft</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/cosmica-telematics.webp" width="210" height="58" style="--lh:31px" alt="" loading="lazy" decoding="async"><span>Cosmica Telematics</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/eurys-infosystems.webp" width="159" height="168" style="--lh:53px" alt="" loading="lazy" decoding="async"><span>Eurys Infosystems</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/info-science-labs.webp" width="167" height="168" style="--lh:52px" alt="" loading="lazy" decoding="async"><span>Info Science Labs</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/kadeep-ai.webp" width="168" height="168" style="--lh:52px" alt="" loading="lazy" decoding="async"><span>Kadeep.ai</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/nu10-technologies.webp" width="219" height="100" style="--lh:38px" alt="" loading="lazy" decoding="async"><span>Nu10 Technologies</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/p99soft.webp" width="190" height="118" style="--lh:43px" alt="" loading="lazy" decoding="async"><span>P99Soft</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/qapitol-ai.webp" width="168" height="168" style="--lh:52px" alt="" loading="lazy" decoding="async"><span>Qapitol AI</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/seem-fintech-and-sustainability.webp" width="112" height="112" style="--lh:52px" alt="" loading="lazy" decoding="async"><span>Seem Fintech &amp; Sustainability</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/vassar-labs.webp" width="224" height="69" style="--lh:32px" alt="" loading="lazy" decoding="async"><span>Vassar Labs</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/zanopy-ai.webp" width="112" height="46" style="--lh:36px" alt="" loading="lazy" decoding="async"><span>Zanopy AI</span></li>
+            </ul>
+            <ul class="exh-track" aria-hidden="true">
+              <li class="exh-chip" data-featured><img src="/images/exhibitors/cgi.webp" width="168" height="168" style="--lh:52px" alt="" loading="lazy" decoding="async"><span>CGI</span></li>
+              <li class="exh-chip" data-featured><img src="/images/exhibitors/ministry-of-tribal-affairs.webp" width="336" height="150" style="--lh:49px" alt="" loading="lazy" decoding="async"><span>Ministry of Tribal Affairs</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/ai-products-factory.webp" width="336" height="116" style="--lh:34px" alt="" loading="lazy" decoding="async"><span>AI Products Factory</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/ary-soft.webp" width="168" height="168" style="--lh:52px" alt="" loading="lazy" decoding="async"><span>Ary-Soft</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/cosmica-telematics.webp" width="210" height="58" style="--lh:31px" alt="" loading="lazy" decoding="async"><span>Cosmica Telematics</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/eurys-infosystems.webp" width="159" height="168" style="--lh:53px" alt="" loading="lazy" decoding="async"><span>Eurys Infosystems</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/info-science-labs.webp" width="167" height="168" style="--lh:52px" alt="" loading="lazy" decoding="async"><span>Info Science Labs</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/kadeep-ai.webp" width="168" height="168" style="--lh:52px" alt="" loading="lazy" decoding="async"><span>Kadeep.ai</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/nu10-technologies.webp" width="219" height="100" style="--lh:38px" alt="" loading="lazy" decoding="async"><span>Nu10 Technologies</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/p99soft.webp" width="190" height="118" style="--lh:43px" alt="" loading="lazy" decoding="async"><span>P99Soft</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/qapitol-ai.webp" width="168" height="168" style="--lh:52px" alt="" loading="lazy" decoding="async"><span>Qapitol AI</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/seem-fintech-and-sustainability.webp" width="112" height="112" style="--lh:52px" alt="" loading="lazy" decoding="async"><span>Seem Fintech &amp; Sustainability</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/vassar-labs.webp" width="224" height="69" style="--lh:32px" alt="" loading="lazy" decoding="async"><span>Vassar Labs</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/zanopy-ai.webp" width="112" height="46" style="--lh:36px" alt="" loading="lazy" decoding="async"><span>Zanopy AI</span></li>
+            </ul>
+          </div>
+          <div class="exh-row exh-row-rev" style="--exh-dur:100s;--exh-delay:-41s">
+            <ul class="exh-track" aria-label="Exhibitors">
+              <li class="exh-chip" data-featured><img src="/images/exhibitors/evoke-technologies.webp" width="173" height="168" style="--lh:51px" alt="" loading="lazy" decoding="async"><span>Evoke Technologies</span></li>
+              <li class="exh-chip" data-featured><img src="/images/exhibitors/nobroker.webp" width="112" height="112" style="--lh:52px" alt="" loading="lazy" decoding="async"><span>NoBroker</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/ai-vie-insights.webp" width="87" height="61" style="--lh:45px" alt="" loading="lazy" decoding="async"><span>Ai Vie Insights</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/asmadiya-technologies.webp" width="336" height="108" style="--lh:40px" alt="" loading="lazy" decoding="async"><span>Asmadiya Technologies</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/daten-technology-solutions.webp" width="176" height="153" style="--lh:49px" alt="" loading="lazy" decoding="async"><span>Daten Technology Solutions</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/fta-global.webp" width="99" height="39" style="--lh:36px" alt="" loading="lazy" decoding="async"><span>FTA Global</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/intangles.webp" width="99" height="112" style="--lh:55px" alt="" loading="lazy" decoding="async"><span>Intangles</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/kirusa.webp" width="130" height="168" style="--lh:58px" alt="" loading="lazy" decoding="async"><span>Kirusa</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/oliai.webp" width="203" height="110" style="--lh:47px" alt="" loading="lazy" decoding="async"><span>OliAI</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/paisani-technology-services.webp" width="336" height="162" style="--lh:47px" alt="" loading="lazy" decoding="async"><span>Paisani Technology Services</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/redferns-tech.webp" width="153" height="168" style="--lh:54px" alt="" loading="lazy" decoding="async"><span>RedFerns Tech</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/teenage-works.webp" width="206" height="88" style="--lh:37px" alt="" loading="lazy" decoding="async"><span>Teenage Works</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/wissen-technology.webp" width="190" height="116" style="--lh:43px" alt="" loading="lazy" decoding="async"><span>Wissen Technology</span></li>
+            </ul>
+            <ul class="exh-track" aria-hidden="true">
+              <li class="exh-chip" data-featured><img src="/images/exhibitors/evoke-technologies.webp" width="173" height="168" style="--lh:51px" alt="" loading="lazy" decoding="async"><span>Evoke Technologies</span></li>
+              <li class="exh-chip" data-featured><img src="/images/exhibitors/nobroker.webp" width="112" height="112" style="--lh:52px" alt="" loading="lazy" decoding="async"><span>NoBroker</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/ai-vie-insights.webp" width="87" height="61" style="--lh:45px" alt="" loading="lazy" decoding="async"><span>Ai Vie Insights</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/asmadiya-technologies.webp" width="336" height="108" style="--lh:40px" alt="" loading="lazy" decoding="async"><span>Asmadiya Technologies</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/daten-technology-solutions.webp" width="176" height="153" style="--lh:49px" alt="" loading="lazy" decoding="async"><span>Daten Technology Solutions</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/fta-global.webp" width="99" height="39" style="--lh:36px" alt="" loading="lazy" decoding="async"><span>FTA Global</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/intangles.webp" width="99" height="112" style="--lh:55px" alt="" loading="lazy" decoding="async"><span>Intangles</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/kirusa.webp" width="130" height="168" style="--lh:58px" alt="" loading="lazy" decoding="async"><span>Kirusa</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/oliai.webp" width="203" height="110" style="--lh:47px" alt="" loading="lazy" decoding="async"><span>OliAI</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/paisani-technology-services.webp" width="336" height="162" style="--lh:47px" alt="" loading="lazy" decoding="async"><span>Paisani Technology Services</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/redferns-tech.webp" width="153" height="168" style="--lh:54px" alt="" loading="lazy" decoding="async"><span>RedFerns Tech</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/teenage-works.webp" width="206" height="88" style="--lh:37px" alt="" loading="lazy" decoding="async"><span>Teenage Works</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/wissen-technology.webp" width="190" height="116" style="--lh:43px" alt="" loading="lazy" decoding="async"><span>Wissen Technology</span></li>
+            </ul>
+          </div>
+          <div class="exh-row" style="--exh-dur:76s;--exh-delay:-23s">
+            <ul class="exh-track" aria-label="Exhibitors">
+              <li class="exh-chip" data-featured><img src="/images/exhibitors/gupshup-ai.webp" width="181" height="170" style="--lh:51px" alt="" loading="lazy" decoding="async"><span>Gupshup.ai</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/actin-technologies.webp" width="168" height="168" style="--lh:52px" alt="" loading="lazy" decoding="async"><span>Actin Technologies</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/algoanalytics.webp" width="105" height="83" style="--lh:47px" alt="" loading="lazy" decoding="async"><span>AlgoAnalytics</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/assessfy.webp" width="336" height="145" style="--lh:43px" alt="" loading="lazy" decoding="async"><span>Assessfy</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/dysosphere.webp" width="299" height="182" style="--lh:43px" alt="" loading="lazy" decoding="async"><span>Dysosphere</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/harrier-information-systems.webp" width="171" height="116" style="--lh:49px" alt="" loading="lazy" decoding="async"><span>Harrier Information Systems</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/joget.webp" width="168" height="168" style="--lh:52px" alt="" loading="lazy" decoding="async"><span>Joget</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/lenixvision.webp" width="236" height="176" style="--lh:55px" alt="" loading="lazy" decoding="async"><span>Lenixvision</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/oranje-ai.webp" width="336" height="158" style="--lh:38px" alt="" loading="lazy" decoding="async"><span>Oranje AI</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/phoebetal-technologies.webp" width="166" height="168" style="--lh:52px" alt="" loading="lazy" decoding="async"><span>Phoebetal Technologies</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/rightangle-technologies.webp" width="194" height="170" style="--lh:49px" alt="" loading="lazy" decoding="async"><span>Rightangle Technologies</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/trust3-ai.webp" width="336" height="99" style="--lh:32px" alt="" loading="lazy" decoding="async"><span>Trust3 AI</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/wyn-labs.webp" width="99" height="81" style="--lh:48px" alt="" loading="lazy" decoding="async"><span>Wyn Labs</span></li>
+            </ul>
+            <ul class="exh-track" aria-hidden="true">
+              <li class="exh-chip" data-featured><img src="/images/exhibitors/gupshup-ai.webp" width="181" height="170" style="--lh:51px" alt="" loading="lazy" decoding="async"><span>Gupshup.ai</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/actin-technologies.webp" width="168" height="168" style="--lh:52px" alt="" loading="lazy" decoding="async"><span>Actin Technologies</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/algoanalytics.webp" width="105" height="83" style="--lh:47px" alt="" loading="lazy" decoding="async"><span>AlgoAnalytics</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/assessfy.webp" width="336" height="145" style="--lh:43px" alt="" loading="lazy" decoding="async"><span>Assessfy</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/dysosphere.webp" width="299" height="182" style="--lh:43px" alt="" loading="lazy" decoding="async"><span>Dysosphere</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/harrier-information-systems.webp" width="171" height="116" style="--lh:49px" alt="" loading="lazy" decoding="async"><span>Harrier Information Systems</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/joget.webp" width="168" height="168" style="--lh:52px" alt="" loading="lazy" decoding="async"><span>Joget</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/lenixvision.webp" width="236" height="176" style="--lh:55px" alt="" loading="lazy" decoding="async"><span>Lenixvision</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/oranje-ai.webp" width="336" height="158" style="--lh:38px" alt="" loading="lazy" decoding="async"><span>Oranje AI</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/phoebetal-technologies.webp" width="166" height="168" style="--lh:52px" alt="" loading="lazy" decoding="async"><span>Phoebetal Technologies</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/rightangle-technologies.webp" width="194" height="170" style="--lh:49px" alt="" loading="lazy" decoding="async"><span>Rightangle Technologies</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/trust3-ai.webp" width="336" height="99" style="--lh:32px" alt="" loading="lazy" decoding="async"><span>Trust3 AI</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/wyn-labs.webp" width="99" height="81" style="--lh:48px" alt="" loading="lazy" decoding="async"><span>Wyn Labs</span></li>
+            </ul>
+          </div>
+          <div class="exh-row exh-row-rev" style="--exh-dur:92s;--exh-delay:-57s">
+            <ul class="exh-track" aria-label="Exhibitors">
+              <li class="exh-chip" data-featured><img src="/images/exhibitors/jade-global.webp" width="212" height="93" style="--lh:37px" alt="" loading="lazy" decoding="async"><span>Jade Global</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/aegis-school-of-data-science-and-ai.webp" width="292" height="128" style="--lh:43px" alt="" loading="lazy" decoding="async"><span>Aegis School of Data Science &amp; AI</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/aria-telecom.webp" width="215" height="111" style="--lh:40px" alt="" loading="lazy" decoding="async"><span>Aria Telecom</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/cloud-crane.webp" width="187" height="110" style="--lh:42px" alt="" loading="lazy" decoding="async"><span>Cloud Crane</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/envista-cyber-defence.webp" width="135" height="154" style="--lh:55px" alt="" loading="lazy" decoding="async"><span>Envista Cyber Defence</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/image-infosystems.webp" width="336" height="149" style="--lh:49px" alt="" loading="lazy" decoding="async"><span>Image Infosystems</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/joyvibe.webp" width="174" height="168" style="--lh:58px" alt="" loading="lazy" decoding="async"><span>JoyVibe</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/lightmetrics.webp" width="136" height="49" style="--lh:35px" alt="" loading="lazy" decoding="async"><span>LightMetrics</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/origins-ai.webp" width="336" height="174" style="--lh:40px" alt="" loading="lazy" decoding="async"><span>Origins AI</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/pramaana-labs.webp" width="149" height="168" style="--lh:55px" alt="" loading="lazy" decoding="async"><span>Pramaana Labs</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/saranyu-technologies.webp" width="168" height="168" style="--lh:52px" alt="" loading="lazy" decoding="async"><span>Saranyu Technologies</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/valuenable.webp" width="192" height="170" style="--lh:50px" alt="" loading="lazy" decoding="async"><span>ValuEnable</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/xtant-tech.webp" width="372" height="130" style="--lh:34px" alt="" loading="lazy" decoding="async"><span>Xtant Tech</span></li>
+            </ul>
+            <ul class="exh-track" aria-hidden="true">
+              <li class="exh-chip" data-featured><img src="/images/exhibitors/jade-global.webp" width="212" height="93" style="--lh:37px" alt="" loading="lazy" decoding="async"><span>Jade Global</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/aegis-school-of-data-science-and-ai.webp" width="292" height="128" style="--lh:43px" alt="" loading="lazy" decoding="async"><span>Aegis School of Data Science &amp; AI</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/aria-telecom.webp" width="215" height="111" style="--lh:40px" alt="" loading="lazy" decoding="async"><span>Aria Telecom</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/cloud-crane.webp" width="187" height="110" style="--lh:42px" alt="" loading="lazy" decoding="async"><span>Cloud Crane</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/envista-cyber-defence.webp" width="135" height="154" style="--lh:55px" alt="" loading="lazy" decoding="async"><span>Envista Cyber Defence</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/image-infosystems.webp" width="336" height="149" style="--lh:49px" alt="" loading="lazy" decoding="async"><span>Image Infosystems</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/joyvibe.webp" width="174" height="168" style="--lh:58px" alt="" loading="lazy" decoding="async"><span>JoyVibe</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/lightmetrics.webp" width="136" height="49" style="--lh:35px" alt="" loading="lazy" decoding="async"><span>LightMetrics</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/origins-ai.webp" width="336" height="174" style="--lh:40px" alt="" loading="lazy" decoding="async"><span>Origins AI</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/pramaana-labs.webp" width="149" height="168" style="--lh:55px" alt="" loading="lazy" decoding="async"><span>Pramaana Labs</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/saranyu-technologies.webp" width="168" height="168" style="--lh:52px" alt="" loading="lazy" decoding="async"><span>Saranyu Technologies</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/valuenable.webp" width="192" height="170" style="--lh:50px" alt="" loading="lazy" decoding="async"><span>ValuEnable</span></li>
+              <li class="exh-chip"><img src="/images/exhibitors/xtant-tech.webp" width="372" height="130" style="--lh:34px" alt="" loading="lazy" decoding="async"><span>Xtant Tech</span></li>
+            </ul>
+          </div>
+        </div>
+        <div class="container exh-strip-foot">
+            <p class="exh-media"><span class="exh-media-label">Digital media partner</span><span class="exh-media-name"><img src="/images/exhibitors/the-mainstream.webp" width="336" height="139" alt="" loading="lazy" decoding="async"><span>The Mainstream</span></span></p>
+            <div class="exh-strip-ctas">
+                <a href="/exhibition#exhibitors" class="btn btn-outline">Explore the exhibition</a>
+                <a href="/exhibition#packages" class="btn btn-primary">Book a booth</a>
+            </div>
+        </div>
+    </section>
+    <script>
+    (function () {
+      var wall = document.getElementById('exhibitors');
+      var all = wall ? Array.prototype.slice.call(wall.querySelectorAll('.exh-row')) : [];
+      if (!all.length) return;
+      var featured = [], rest = [];
+      all.forEach(function (row) {
+        Array.prototype.slice.call(row.querySelector('.exh-track').children).forEach(function (li) {
+          if (li.classList.contains('exh-cta-tile')) return;
+          (li.hasAttribute('data-featured') ? featured : rest).push(li);
+        });
+      });
+      var rows = all;
+      if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce) and (min-width: 700px)').matches) {
+        // Animations off on a wide screen: the CSS shows one still cloud, so deal
+        // every logo into one row and let it wrap in a single flow (separate rows
+        // would each leave a short line mid-cloud). Known names lead the cloud.
+        rows = all.slice(0, 1);
+        all.slice(1).forEach(function (row) { row.hidden = true; });
+      } else if (window.innerWidth >= 1700 && all.length > 3) {
+        // A very wide screen shows more tiles per row than a row holds, so the same
+        // logo would appear twice: deal into one row fewer (never below three).
+        rows = all.slice(0, all.length - 1);
+        all[all.length - 1].hidden = true;
+      }
+      function shuffle(a) {
+        for (var i = a.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)); var t = a[i]; a[i] = a[j]; a[j] = t; }
+        return a;
+      }
+      rows.forEach(function (row) { row.style.setProperty('--exh-delay', '-' + Math.floor(Math.random() * 70) + 's'); });
+      var dealt = [];
+      for (var r = 0; r < rows.length; r++) dealt.push([]);
+      shuffle(featured).concat(shuffle(rest)).forEach(function (li, i) { dealt[i % rows.length].push(li); });
+      // Three passes: take every logo out, deal them back, then copy each row. A
+      // copy made before the later rows have collected their logos would not match.
+      featured.concat(rest).forEach(function (li) { li.parentNode.removeChild(li); });
+      rows.forEach(function (row, r) {
+        var first = row.querySelector('.exh-track');
+        var cta = first.querySelector('.exh-cta-tile');
+        dealt[r].forEach(function (li) { first.insertBefore(li, cta); });
+      });
+      all.forEach(function (row) {
+        var tracks = row.querySelectorAll('.exh-track');
+        var first = tracks[0], copy = tracks[1];
+        if (!copy) return;
+        copy.innerHTML = '';
+        Array.prototype.slice.call(first.children).forEach(function (li) {
+          var c = li.cloneNode(true);
+          c.querySelectorAll('a').forEach(function (a) { a.setAttribute('tabindex', '-1'); });
+          copy.appendChild(c);
+        });
+      });
+    })();
+    </script>
+    <!-- exhibitors:end -->
+
+    <!-- TWO WAYS IN: corporate vs startup, each with its own options -->
+    <section class="pr-sec pr-sec--tint" id="paths">
+        <div class="container">
+            <div class="pr-head">
+                <h2 class="section-title">Pick the path that matches <span class="accent">your budget and your goal</span></h2>
+                <p>Every option on this page is listed on its own, with its price or on request. Start from where you are.</p>
+            </div>
+            <div class="paths-grid">
                 <div class="path-card corporate">
-                    <div class="path-kicker"><i class="fas fa-building"></i> Enterprise &amp; Corporate</div>
+                    <div class="path-kicker"><i class="fas fa-building" aria-hidden="true"></i> Enterprise &amp; Corporate</div>
                     <h3>Own the narrative. Fill the pipeline.</h3>
-                    <p>For companies selling AI, cloud, data or consulting into Indian enterprises and government &mdash; and for enterprises that want to be seen leading their sector&rsquo;s AI shift.</p>
+                    <p>For companies selling AI, cloud, data or consulting into Indian enterprises and government, and for enterprises that want to be seen leading their sector&rsquo;s AI shift.</p>
                     <ul>
-                        <li><i class="fas fa-check-circle"></i> <span><strong>Partnership tiers</strong> &mdash; Title, Powered, Associate: &#8377;25 L to &#8377;1.2 Cr, with exclusivity</span></li>
-                        <li><i class="fas fa-check-circle"></i> <span><strong>AI Leadership Panel</strong> &mdash; curate your own CXO panel, &#8377;10 L</span></li>
-                        <li><i class="fas fa-check-circle"></i> <span><strong>Branding &amp; activations</strong> &mdash; Leaders’ Evening, lanyards, launches, roundtables</span></li>
-                        <li><i class="fas fa-check-circle"></i> <span><strong>Your buyers in the room</strong> &mdash; complimentary VIP and delegate passes for the clients you want to close</span></li>
+                        <li><i class="fas fa-check-circle" aria-hidden="true"></i> <span><strong>Partnership tiers:</strong> Title, Powered, Knowledge, Associate: &#8377;25 L to &#8377;1.2 Cr, with exclusivity</span></li>
+                        <li><i class="fas fa-check-circle" aria-hidden="true"></i> <span><strong>AI Leadership Panel:</strong> curate your own CXO panel, &#8377;10 L</span></li>
+                        <li><i class="fas fa-check-circle" aria-hidden="true"></i> <span><strong>Branding &amp; activations:</strong> Leaders’ Evening, lanyards, launches, roundtables</span></li>
+                        <li><i class="fas fa-check-circle" aria-hidden="true"></i> <span><strong>Your buyers in the room:</strong> complimentary VIP and delegate passes for the clients you want to close</span></li>
                     </ul>
                     <div class="path-actions">
-                        <a href="#tiers" class="btn btn-primary">Partnership Tiers <i class="fas fa-arrow-right"></i></a>
+                        <a href="#tiers" class="btn btn-primary">Partnership Tiers <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
                         <a href="#options" class="btn btn-outline">Branding Options</a>
                     </div>
                 </div>
                 <div class="path-card startup">
-                    <div class="path-kicker"><i class="fas fa-rocket"></i> Startup &amp; Scale-up</div>
-                    <h3>Buyers, investors and a stage &mdash; without a &#8377;25 L budget.</h3>
+                    <div class="path-kicker"><i class="fas fa-rocket" aria-hidden="true"></i> Startup &amp; Scale-up</div>
+                    <h3>Buyers, investors and a stage, without a &#8377;25 L budget.</h3>
                     <p>For AI startups that need enterprise pilots, investor meetings and eight minutes in front of the right audience.</p>
                     <ul>
-                        <li><i class="fas fa-check-circle"></i> <span><strong>Startup Pod</strong> &mdash; from <s style="font-weight:400;opacity:.7;">&#8377;38,000</s> &#8377;48,000 + GST, in the startup pavilion</span></li>
-                        <li><i class="fas fa-check-circle"></i> <span><strong>Innovation Stage</strong> &mdash; 8-minute main-stage slot, bundled with select booth packages</span></li>
-                        <li><i class="fas fa-check-circle"></i> <span><strong>Startup Pitch</strong> &mdash; pitch to VCs, angels and corporate venture arms</span></li>
-                        <li><i class="fas fa-check-circle"></i> <span><strong>Bharat AI Connect</strong> &mdash; AI matchmaking and 1:1 meetings with enterprise buyers, with a Delegate or VIP pass</span></li>
-                        <li><i class="fas fa-check-circle"></i> <span><strong>Innovation Partner</strong> &mdash; a custom package for accelerators and ecosystem players</span></li>
+                        <li><i class="fas fa-check-circle" aria-hidden="true"></i> <span><strong>Startup Pod:</strong> from <s style="font-weight:400;opacity:.7;">&#8377;38,000</s> &#8377;48,000 + GST, in the startup pavilion</span></li>
+                        <li><i class="fas fa-check-circle" aria-hidden="true"></i> <span><strong>Innovation Stage:</strong> 8-minute main-stage slot, bundled with select booth packages</span></li>
+                        <li><i class="fas fa-check-circle" aria-hidden="true"></i> <span><strong>Startup Pitch:</strong> pitch to VCs, angels and corporate venture arms</span></li>
+                        <li><i class="fas fa-check-circle" aria-hidden="true"></i> <span><strong>Bharat AI Connect:</strong> AI matchmaking and 1:1 meetings with enterprise buyers, with a paid pass</span></li>
+                        <li><i class="fas fa-check-circle" aria-hidden="true"></i> <span><strong>Innovation Partner:</strong> a custom package for accelerators and ecosystem players</span></li>
                     </ul>
                     <div class="path-actions">
-                        <a href="/exhibition" class="btn btn-primary">Startup Booths &amp; Stage <i class="fas fa-arrow-right"></i></a>
+                        <a href="/exhibition" class="btn btn-primary">Startup Booths &amp; Stage <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
                         <a href="/startup-pitch" class="btn btn-outline">Apply to Pitch</a>
                     </div>
                 </div>
@@ -933,22 +403,35 @@
         </div>
     </section>
 
-    <!-- PARTNERSHIP TIERS -->
-    <section class="section-pad" style="background:white;" id="tiers">
-        <div class="container">
-            <div class="section-header reveal">
-                <h2 class="section-title">Partnership <span class="accent">Tiers</span></h2>
-                <p class="section-subtitle">Title, Powered and Knowledge Partner are exclusive — one brand each. Associate Partner has 4 slots across sectors.</p>
+    <nav class="conf-subnav pr-subnav" id="confSubnav" aria-label="Sections of this page">
+        <div class="container conf-subnav-inner">
+            <div class="conf-subnav-links">
+                <a href="#tiers" class="conf-subnav-link">Tiers</a>
+                <a href="#options" class="conf-subnav-link">Options</a>
+                <a href="#activations" class="conf-subnav-link">Activations</a>
+                <a href="#ecosystem" class="conf-subnav-link">Ecosystem</a>
+                <a href="#leadership-panel" class="conf-subnav-link">AI Panel</a>
+                <a href="#enquire" class="conf-subnav-link">Enquire</a>
             </div>
-            <div class="partnership-tiers reveal">
-                <!-- Title Partner -->
-                <div class="tier-card exclusive">
-                    <span class="tier-badge">1 Slot — Exclusive</span>
+            <a href="#enquire" class="conf-subnav-cta">Enquire <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
+        </div>
+    </nav>
+
+    <!-- PARTNERSHIP TIERS -->
+    <section class="pr-sec" id="tiers">
+        <div class="container">
+            <div class="pr-head">
+                <h2 class="section-title">Partnership <span class="accent">Tiers</span></h2>
+                <p>Title, Powered and Knowledge Partner are exclusive: one brand each. Associate Partner has 4 slots across sectors. All amounts exclude applicable taxes.</p>
+            </div>
+            <div class="partnership-tiers">
+                <article class="tier-card exclusive">
+                    <span class="tier-badge">1 slot, exclusive</span>
                     <h3>Title Partner</h3>
                     <p class="tier-subtitle">&ldquo;[Your Company] Presents Bharat AI Innovation 2026&rdquo; across every communication, stage and media mention</p>
                     <p class="tier-fit"><strong>Best for:</strong> A hyperscaler, large IT-services firm, bank or insurer that wants to own the event narrative.</p>
                     <div class="tier-price">₹1.2 Cr</div>
-                    <ul class="tier-features">
+                    <details class="pr-more" data-fold open><summary>What&rsquo;s included</summary><ul class="tier-features">
                         <li><i class="fas fa-check-circle"></i> Opening and closing keynotes, 20 min each</li>
                         <li><i class="fas fa-check-circle"></i> A dedicated 90-min panel plus 3 more 60-min panels on your themes</li>
                         <li><i class="fas fa-check-circle"></i> 2 Innovation Talks, 8 min each</li>
@@ -957,18 +440,16 @@
                         <li><i class="fas fa-check-circle"></i> Host of the Bharat AI Leaders’ Evening</li>
                         <li><i class="fas fa-check-circle"></i> 2 meeting rooms for both days, plus roadshow sessions for launches</li>
                         <li><i class="fas fa-check-circle"></i> 190 passes: 50 VIP, 100 Delegate, 20 Media and 20 Educator</li>
-                    </ul>
-                    <a href="/contact" class="btn btn-primary btn-block">Enquire — Title Partner <i class="fas fa-arrow-right"></i></a>
-                </div>
-
-                <!-- Powered Partner -->
-                <div class="tier-card">
-                    <span class="tier-badge">1 Slot — Exclusive</span>
+                    </ul></details>
+                    <a href="/contact#sponsorship" class="btn btn-primary btn-block" data-enquire="Title Partner">Enquire about Title Partner <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
+                </article>
+                <article class="tier-card">
+                    <span class="tier-badge">1 slot, exclusive</span>
                     <h3>Powered Partner</h3>
                     <p class="tier-subtitle">Technology & infrastructure branding throughout the venue</p>
-                    <p class="tier-fit"><strong>Best for:</strong> Cloud, infrastructure, data-platform and AI-tooling companies &mdash; the technology the event visibly runs on.</p>
+                    <p class="tier-fit"><strong>Best for:</strong> Cloud, infrastructure, data-platform and AI-tooling companies: the technology the event visibly runs on.</p>
                     <div class="tier-price">₹50 Lakhs</div>
-                    <ul class="tier-features">
+                    <details class="pr-more" data-fold><summary>What&rsquo;s included</summary><ul class="tier-features">
                         <li><i class="fas fa-check-circle"></i> &ldquo;Powered by&rdquo; branding on the main stage, panel backdrops and website</li>
                         <li><i class="fas fa-check-circle"></i> Keynote address, 15 min</li>
                         <li><i class="fas fa-check-circle"></i> A 60-min leadership panel you curate and moderate</li>
@@ -977,18 +458,16 @@
                         <li><i class="fas fa-check-circle"></i> Mega Pavilion booth, 7 &times; 7.7 m</li>
                         <li><i class="fas fa-check-circle"></i> Dedicated meeting room for both days</li>
                         <li><i class="fas fa-check-circle"></i> 20 VIP + 30 Delegate passes</li>
-                    </ul>
-                    <a href="/contact" class="btn btn-primary btn-block">Enquire — Powered Partner <i class="fas fa-arrow-right"></i></a>
-                </div>
-
-                <!-- Knowledge Partner -->
-                <div class="tier-card">
-                    <span class="tier-badge">1 Slot — Exclusive</span>
+                    </ul></details>
+                    <a href="/contact#sponsorship" class="btn btn-primary btn-block" data-enquire="Powered Partner">Enquire about Powered Partner <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
+                </article>
+                <article class="tier-card">
+                    <span class="tier-badge">1 slot, exclusive</span>
                     <h3>Knowledge Partner</h3>
                     <p class="tier-subtitle">The knowledge authority that co-shapes the conference themes and tracks</p>
                     <p class="tier-fit"><strong>Best for:</strong> Consulting, research and analyst firms that want to be seen defining the AI agenda for enterprise and government.</p>
                     <div class="tier-price">₹30 Lakhs</div>
-                    <ul class="tier-features">
+                    <details class="pr-more" data-fold><summary>What&rsquo;s included</summary><ul class="tier-features">
                         <li><i class="fas fa-check-circle"></i> Exclusive &ldquo;Knowledge Partner&rdquo; recognition across the conference</li>
                         <li><i class="fas fa-check-circle"></i> Co-shape key themes, tracks or discussion areas</li>
                         <li><i class="fas fa-check-circle"></i> Keynote address, 12 min</li>
@@ -996,18 +475,16 @@
                         <li><i class="fas fa-check-circle"></i> Innovation Talk, 8 min</li>
                         <li><i class="fas fa-check-circle"></i> Premium exhibition presence, valued at &#8377;10 Lakhs</li>
                         <li><i class="fas fa-check-circle"></i> 10 VIP + 15 Delegate passes</li>
-                    </ul>
-                    <a href="/contact" class="btn btn-primary btn-block">Enquire — Knowledge Partner <i class="fas fa-arrow-right"></i></a>
-                </div>
-
-                <!-- Associate Partner -->
-                <div class="tier-card">
-                    <span class="tier-badge" style="background:var(--grad-electric);">4 Slots — Sector-Specific</span>
+                    </ul></details>
+                    <a href="/contact#sponsorship" class="btn btn-primary btn-block" data-enquire="Knowledge Partner">Enquire about Knowledge Partner <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
+                </article>
+                <article class="tier-card">
+                    <span class="tier-badge">4 slots, one per sector</span>
                     <h3>Associate Partner</h3>
                     <p class="tier-subtitle">Category exclusivity in your sector: FinTech, HealthTech, AgriTech, or MfgTech</p>
                     <p class="tier-fit"><strong>Best for:</strong> Sector leaders who want to be the only brand of their kind in FinTech, HealthTech, AgriTech or MfgTech.</p>
                     <div class="tier-price">₹25 Lakhs</div>
-                    <ul class="tier-features">
+                    <details class="pr-more" data-fold><summary>What&rsquo;s included</summary><ul class="tier-features">
                         <li><i class="fas fa-check-circle"></i> Category exclusivity (select sector)</li>
                         <li><i class="fas fa-check-circle"></i> Keynote address, 10 min</li>
                         <li><i class="fas fa-check-circle"></i> A 60-min leadership panel hosted by your organisation</li>
@@ -1015,428 +492,349 @@
                         <li><i class="fas fa-check-circle"></i> Premium exhibition presence, valued at &#8377;7 Lakhs</li>
                         <li><i class="fas fa-check-circle"></i> Branding on stage, session backdrops, agenda and website</li>
                         <li><i class="fas fa-check-circle"></i> 10 VIP + 15 Delegate passes</li>
-                    </ul>
-                    <a href="/contact" class="btn btn-primary btn-block">Enquire — Associate Partner <i class="fas fa-arrow-right"></i></a>
-                </div>
-
-                <!-- Innovation Partner -->
-                <div class="tier-card">
+                    </ul></details>
+                    <a href="/contact#sponsorship" class="btn btn-primary btn-block" data-enquire="Associate Partner">Enquire about Associate Partner <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
+                </article>
+                <article class="tier-card">
                     <h3>Innovation Partner</h3>
                     <p class="tier-subtitle">Championing new technologies and startups</p>
                     <p class="tier-fit"><strong>Best for:</strong> Accelerators, corporate venture arms, universities and ecosystem enablers backing startups.</p>
                     <div class="tier-price">Custom</div>
-                    <ul class="tier-features">
+                    <details class="pr-more" data-fold><summary>What&rsquo;s included</summary><ul class="tier-features">
                         <li><i class="fas fa-check-circle"></i> Innovation Zone Branding</li>
                         <li><i class="fas fa-check-circle"></i> Panel Discussion Slot</li>
                         <li><i class="fas fa-check-circle"></i> Award Category Sponsor</li>
                         <li><i class="fas fa-check-circle"></i> Startup pavilion integration</li>
                         <li><i class="fas fa-check-circle"></i> Innovation showcase opportunity</li>
                         <li><i class="fas fa-check-circle"></i> Digital branding package</li>
-                    </ul>
-                    <a href="/contact" class="btn btn-outline btn-block">Enquire — Innovation Partner <i class="fas fa-arrow-right"></i></a>
-                </div>
+                    </ul></details>
+                    <a href="/contact#sponsorship" class="btn btn-outline btn-block" data-enquire="Innovation Partner">Enquire about Innovation Partner <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
+                </article>
             </div>
         </div>
     </section>
 
-    <!-- BRANDING & ACTIVATION OPTIONS: every item priced and listed on its own -->
-    <section class="section-pad" style="background:var(--off-white);" id="options">
+    <!-- BRANDING & ACTIVATION OPTIONS: every item listed on its own -->
+    <section class="pr-sec pr-options" id="options">
         <div class="container">
-            <div class="investment-overview dark-section reveal">
-                <div class="investment-content">
-                    <div class="section-header" style="margin-bottom:2.5rem;">
-                        <span class="section-eyebrow"><i class="fas fa-gem"></i> Priced individually</span>
-                        <h2 class="section-title" style="color:white;">Branding &amp; Activation <span class="accent">Options</span></h2>
-                        <p class="section-subtitle" style="color:rgba(255,255,255,0.8);">Stand-alone options you can take on their own or add to a tier. Each comes with its own deliverables, its own audience and its own price.</p>
-                    </div>
-                    <div class="option-grid">
-
-                        <div class="option-card featured">
+            <div class="pr-head">
+                <h2 class="section-title">Branding &amp; Activation <span class="accent">Options</span></h2>
+                <p>Stand-alone options you can take on their own or add to a tier. Each comes with its own deliverables, its own audience and its own price.</p>
+            </div>
+            <div class="option-grid">
+                    <article class="option-card featured">
                             <span class="option-badge">Curate your own panel</span>
                             <h3>AI Leadership Panel</h3>
                             <div class="option-price">&#8377;10 Lakhs <span>+ GST</span></div>
-                            <ul>
+                        <details class="pr-more" data-fold><summary>What you get</summary><ul>
                                 <li>Panel slot presented by you &mdash; you set the theme and agenda</li>
                                 <li>Moderation rights for your senior leader</li>
                                 <li>&ldquo;Powered by&rdquo; branding on stage, agenda and app</li>
                                 <li>5 VIP + 10 Delegate passes to seat your prospects</li>
                             </ul>
                             <p class="option-fit"><strong>Best for:</strong> firms that need to be seen leading a sector conversation, with their named accounts in the audience.</p>
-                            <div class="option-actions">
-                                <a href="#leadership-panel" class="btn btn-primary btn-sm">Full Deliverables <i class="fas fa-arrow-right"></i></a>
-                                <a href="/contact" class="option-enquire">Enquire &rarr;</a>
-                            </div>
+                        </details>
+                        <div class="option-actions">
+                            <a href="#leadership-panel" class="btn btn-primary btn-sm">Full Deliverables <i class="fas fa-arrow-right"></i></a><a href="/contact#sponsorship" class="option-enquire" data-enquire="AI Leadership Panel">Enquire about AI Leadership Panel <span aria-hidden="true">&rarr;</span></a>
                         </div>
-
-                        <div class="option-card">
+                    </article>
+                    <article class="option-card">
                             <span class="option-badge">Policy dialogue</span>
                             <h3>Leaders Round Table</h3>
                             <div class="option-price">&#8377;10 Lakhs <span>+ GST</span></div>
-                            <ul>
+                        <details class="pr-more" data-fold><summary>What you get</summary><ul>
                                 <li>Co-branded round table on AI policy with government and industry leaders</li>
                                 <li>Your leadership at the table as a thought-leadership voice</li>
                                 <li>Your brand on the round table and its listing in the agenda</li>
                             </ul>
                             <p class="option-fit"><strong>Best for:</strong> organisations whose business depends on how AI policy gets written, such as regulated sectors and public-sector suppliers.</p>
-                            <div class="option-actions"><a href="/contact" class="option-enquire">Enquire &mdash; Leaders Round Table &rarr;</a></div>
+                        </details>
+                        <div class="option-actions">
+                            <a href="/contact#sponsorship" class="option-enquire" data-enquire="Leaders Round Table">Enquire about Leaders Round Table <span aria-hidden="true">&rarr;</span></a>
                         </div>
-
-                        <div class="option-card">
+                    </article>
+                    <article class="option-card">
                             <span class="option-badge">Evening host</span>
                             <h3>Bharat AI Leaders’ Evening Partner</h3>
                             <div class="option-price">&#8377;15 Lakhs <span>+ GST</span></div>
-                            <ul>
+                        <details class="pr-more" data-fold><summary>What you get</summary><ul>
                                 <li>&ldquo;Bharat AI Leaders’ Evening hosted by [your organisation]&rdquo; across the whole evening</li>
                                 <li>Welcome toast and a panel discussion slot for your leadership</li>
                                 <li>A select room of CXOs, founders and policymakers, plus your own clients and prospects</li>
                                 <li>Held at WTC Mumbai. Move it to The Taj Mahal Palace or Trident Nariman Point for &#8377;15 Lakhs more</li>
                             </ul>
                             <p class="option-fit"><strong>Best for:</strong> brands that want unhurried time with CXOs and ministers, not a booth conversation.</p>
-                            <div class="option-actions"><a href="/contact" class="option-enquire">Enquire &mdash; Leaders’ Evening Partner &rarr;</a></div>
+                        </details>
+                        <div class="option-actions">
+                            <a href="/contact#sponsorship" class="option-enquire" data-enquire="Bharat AI Leaders’ Evening Partner">Enquire about Bharat AI Leaders’ Evening Partner <span aria-hidden="true">&rarr;</span></a>
                         </div>
-
-                        <div class="option-card">
+                    </article>
+                    <article class="option-card">
                             <span class="option-badge">Both days</span>
                             <h3>Networking Lunch Partner</h3>
                             <div class="option-price">On request</div>
-                            <ul>
+                        <details class="pr-more" data-fold><summary>What you get</summary><ul>
                                 <li>&ldquo;Networking lunch presented by [your organisation]&rdquo; on both days</li>
                                 <li>Your brand in the lunch area and on the agenda listing</li>
                                 <li>Seen by Delegate, Premium Delegate and VIP Pass holders over lunch</li>
                             </ul>
                             <p class="option-fit"><strong>Best for:</strong> brands that want to be seen in the break when delegates stop to talk.</p>
-                            <div class="option-actions"><a href="/contact" class="option-enquire">Enquire &mdash; Networking Lunch Partner &rarr;</a></div>
+                        </details>
+                        <div class="option-actions">
+                            <a href="/contact#sponsorship" class="option-enquire" data-enquire="Networking Lunch Partner">Enquire about Networking Lunch Partner <span aria-hidden="true">&rarr;</span></a>
                         </div>
-
-                        <div class="option-card">
+                    </article>
+                    <article class="option-card">
                             <span class="option-badge">For AI companies</span>
                             <h3>AI Partner</h3>
                             <div class="option-price">On request</div>
-                            <ul>
+                        <details class="pr-more" data-fold><summary>What you get</summary><ul>
                                 <li>Named &ldquo;AI Partner&rdquo; of Bharat AI Innovation 2026 on the website, agenda and app</li>
                                 <li>Your logo with the event&rsquo;s partners on stage</li>
                                 <li>The title to use in your own marketing, before and after the event</li>
                             </ul>
                             <p class="option-fit"><strong>Best for:</strong> AI companies that want their name tied to the event itself.</p>
-                            <div class="option-actions"><a href="/contact" class="option-enquire">Enquire &mdash; AI Partner &rarr;</a></div>
+                        </details>
+                        <div class="option-actions">
+                            <a href="/contact#sponsorship" class="option-enquire" data-enquire="AI Partner">Enquire about AI Partner <span aria-hidden="true">&rarr;</span></a>
                         </div>
-
-                        <div class="option-card">
+                    </article>
+                    <article class="option-card">
                             <span class="option-badge">Seen on every attendee</span>
                             <h3>Lanyard</h3>
                             <div class="option-price">&#8377;10 Lakhs <span>+ GST</span></div>
-                            <ul>
+                        <details class="pr-more" data-fold><summary>What you get</summary><ul>
                                 <li>Your logo on every attendee lanyard, both days</li>
                                 <li>Exclusive: the only brand on the lanyard</li>
                                 <li>In every photo, post and news clip from the floor</li>
                             </ul>
                             <p class="option-fit"><strong>Best for:</strong> brands that want recall across every attendee without taking a stand.</p>
-                            <div class="option-actions"><a href="/contact" class="option-enquire">Enquire &mdash; Lanyard &rarr;</a></div>
+                        </details>
+                        <div class="option-actions">
+                            <a href="/contact#sponsorship" class="option-enquire" data-enquire="Lanyard">Enquire about Lanyard <span aria-hidden="true">&rarr;</span></a>
                         </div>
-
-                        <div class="option-card">
+                    </article>
+                    <article class="option-card">
                             <span class="option-badge">Goes home with delegates</span>
                             <h3>Conference Bag</h3>
                             <div class="option-price">&#8377;3 Lakhs <span>+ GST</span></div>
-                            <ul>
+                        <details class="pr-more" data-fold><summary>What you get</summary><ul>
                                 <li>Your logo on the conference bag given to delegates</li>
                                 <li>Exclusive: the only brand on the bag</li>
                                 <li>Leaves the venue with delegates and stays in use after the show</li>
                             </ul>
                             <p class="option-fit"><strong>Best for:</strong> brands that want a take-home presence with delegates at an entry-level spend.</p>
-                            <div class="option-actions"><a href="/contact" class="option-enquire">Enquire &mdash; Conference Bag &rarr;</a></div>
+                        </details>
+                        <div class="option-actions">
+                            <a href="/contact#sponsorship" class="option-enquire" data-enquire="Conference Bag">Enquire about Conference Bag <span aria-hidden="true">&rarr;</span></a>
                         </div>
-
-                        <div class="option-card">
+                    </article>
+                    <article class="option-card">
                             <span class="option-badge">Awards moment</span>
                             <h3>Trophy Partner</h3>
                             <div class="option-price">On request</div>
-                            <ul>
+                        <details class="pr-more" data-fold><summary>What you get</summary><ul>
                                 <li>Trophies and the on-stage awards moment carry your brand</li>
                                 <li>Your leadership presents alongside ministers and winners</li>
                                 <li>Photo and video assets you can use after the event</li>
                             </ul>
                             <p class="option-fit"><strong>Best for:</strong> brands that want association with the winners, not the crowd.</p>
-                            <div class="option-actions"><a href="/contact" class="option-enquire">Enquire &mdash; Trophy Partner &rarr;</a></div>
+                        </details>
+                        <div class="option-actions">
+                            <a href="/contact#sponsorship" class="option-enquire" data-enquire="Trophy Partner">Enquire about Trophy Partner <span aria-hidden="true">&rarr;</span></a>
                         </div>
-
-                        <div class="option-card">
+                    </article>
+                    <article class="option-card">
                             <span class="option-badge">Closed door</span>
                             <h3>Innovators&rsquo; Round Table</h3>
                             <div class="option-price">On request</div>
-                            <ul>
+                        <details class="pr-more" data-fold><summary>What you get</summary><ul>
                                 <li>Invite-only roundtable of CXOs and officials on a theme you set</li>
                                 <li>Moderated by your leadership in a private WTC boardroom</li>
                                 <li>Summary content you can publish afterwards</li>
                             </ul>
-                            <p class="option-fit"><strong>Best for:</strong> account-based marketing &mdash; ten named accounts, one room, ninety minutes.</p>
-                            <div class="option-actions"><a href="/contact" class="option-enquire">Enquire &mdash; Round Table &rarr;</a></div>
+                            <p class="option-fit"><strong>Best for:</strong> account-based marketing: ten named accounts, one room, ninety minutes.</p>
+                        </details>
+                        <div class="option-actions">
+                            <a href="/contact#sponsorship" class="option-enquire" data-enquire="Innovators’ Round Table">Enquire about Innovators&rsquo; Round Table <span aria-hidden="true">&rarr;</span></a>
                         </div>
-
-                        <div class="option-card">
+                    </article>
+                    <article class="option-card">
                             <span class="option-badge">Build your own</span>
                             <h3>Custom Activation</h3>
                             <div class="option-price">On request</div>
-                            <ul>
+                        <details class="pr-more" data-fold><summary>What you get</summary><ul>
                                 <li>Product launch or MoU signing on the main stage</li>
                                 <li>TV/YouTube panel or multi-city road show</li>
                                 <li>Scoped and priced around your objective</li>
                             </ul>
                             <p class="option-fit"><strong>Best for:</strong> teams with a specific announcement or campaign to land.</p>
-                            <div class="option-actions">
-                                <a href="#activations" class="btn btn-primary btn-sm">Activation Formats <i class="fas fa-arrow-right"></i></a>
-                                <a href="/contact" class="option-enquire">Enquire &rarr;</a>
-                            </div>
+                        </details>
+                        <div class="option-actions">
+                            <a href="#activations" class="btn btn-primary btn-sm">Activation Formats <i class="fas fa-arrow-right"></i></a><a href="/contact#sponsorship" class="option-enquire" data-enquire="Custom Activation">Enquire about Custom Activation <span aria-hidden="true">&rarr;</span></a>
                         </div>
-
-                    </div>
-                    <div class="option-assets">
+                    </article>
+            </div>
+            <div class="option-assets">
                         <span class="option-assets-label">Also available on request</span>
                         <span>Registration &amp; badge</span><span>Wi-Fi &amp; charging lounge</span><span>Event app</span><span>Hall or track naming</span><span>Delegate kit insert</span><span>Session sponsor</span><span>Media wall</span>
                     </div>
-                    <p style="text-align:center;margin-top:1.75rem;font-size:0.85rem;color:rgba(255,255,255,0.6);">
-                        <i class="fas fa-info-circle"></i> All amounts exclude applicable taxes. Any option can be combined with a partnership tier.
-                    </p>
-                </div>
-            </div>
+            <p class="pr-tax"><i class="fas fa-info-circle" aria-hidden="true"></i> All amounts exclude applicable taxes. Any option can be combined with a partnership tier.</p>
         </div>
     </section>
 
     <!-- BEYOND SPONSORSHIP -->
-    <section class="section-pad" style="background:white;" id="activations">
-        <div class="container">
-            <div class="section-header reveal">
-                <h2 class="section-title">Beyond <span class="accent">Sponsorship</span></h2>
-                <p class="section-subtitle">Custom activations tailored to your marketing goals</p>
+    <section class="pr-sec" id="activations">
+        <div class="container pr-stack-grid">
+            <div class="pr-stack-intro">
+                <div class="pr-head">
+                    <h2 class="section-title">Beyond <span class="accent">Sponsorship</span></h2>
+                    <p>Custom activations tailored to your marketing goals</p>
+                </div>
+                <a href="/contact#sponsorship" class="btn btn-primary btn-lg" data-enquire="Custom Activation">Discuss a Custom Activation <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
             </div>
-            <div class="beyond-grid reveal">
-                <!-- Option 1 -->
-                <div class="beyond-card">
-                    <div class="beyond-number">01</div>
+            <div class="beyond-grid beyond-grid--stack">
+                    <div class="beyond-card">
                     <h4>New Product Launch</h4>
                     <p>Unveil your latest innovation on the Bharat AI Innovation stage. Leverage the presence of CXOs, media, and investors for maximum impact.</p>
                     <div class="beyond-tags">
                         <span class="beyond-tag">Live Reveal</span>
                         <span class="beyond-tag">Media Q&A</span>
+                        </div>
                     </div>
-                </div>
-
-                <!-- Option 2 -->
-                <div class="beyond-card">
-                    <div class="beyond-number">02</div>
+                    <div class="beyond-card">
                     <h4>Partnership Announcement</h4>
                     <p>Amplify strategic alliances on the Bharat AI Innovation platform. Announce major collaborations with validation and wide reach.</p>
                     <div class="beyond-tags">
                         <span class="beyond-tag">Press Release</span>
                         <span class="beyond-tag">MOU Signing</span>
+                        </div>
                     </div>
-                </div>
-
-                <!-- Option 3 -->
-                <div class="beyond-card">
-                    <div class="beyond-number">03</div>
+                    <div class="beyond-card">
                     <h4>Focus Group Roundtable</h4>
                     <p>Bring prospective & existing clients together with influencers for targeted discussions.</p>
                     <div class="beyond-tags">
                         <span class="beyond-tag">Closed Door</span>
-                        <span class="beyond-tag">B: Open Stage</span>
+                        <span class="beyond-tag">Open Stage</span>
+                        </div>
                     </div>
-                </div>
-
-                <!-- Option 4 -->
-                <div class="beyond-card">
-                    <div class="beyond-number">04</div>
+                    <div class="beyond-card">
                     <h4>Road Shows</h4>
                     <p>Multi-city brand activation across AI + Cloud + Fintech ecosystems.</p>
                     <div class="beyond-tags">
                         <span class="beyond-tag">Keynote + Product Demo</span>
                         <span class="beyond-tag">Fireside Chat</span>
                         <span class="beyond-tag">Masterclass</span>
+                        </div>
                     </div>
-                </div>
-
-                <!-- Option 5 -->
-                <div class="beyond-card">
-                    <div class="beyond-number">05</div>
+                    <div class="beyond-card">
                     <h4>TV & YouTube Panel</h4>
                     <p>High-impact thought leadership sessions broadcast on national TV channels and digital platforms.</p>
                     <div class="beyond-tags">
                         <span class="beyond-tag">Pre-Event</span>
                         <span class="beyond-tag">On-Stage</span>
                         <span class="beyond-tag">TV Studio</span>
+                        </div>
                     </div>
-                </div>
-
-                <!-- Option 6 -->
-                <div class="beyond-card">
-                    <div class="beyond-number">06</div>
+                    <div class="beyond-card">
                     <h4>Industry Challenge (on request)</h4>
                     <p>A challenge set by your business and run before the event, with the shortlist pitched on the Innovation Stage. Scoped and priced around your objective.</p>
                     <div class="beyond-tags">
                         <span class="beyond-tag">On request</span>
                         <span class="beyond-tag">Innovation Stage</span>
+                        </div>
                     </div>
-                </div>
-            </div>
-            <div class="reveal" style="text-align:center;margin-top:2.5rem;">
-                <a href="/contact" class="btn btn-primary btn-lg">Discuss a Custom Activation <i class="fas fa-arrow-right"></i></a>
             </div>
         </div>
     </section>
 
     <!-- ECOSYSTEM & MEDIA PARTNERS (in-kind) -->
-    <section class="section-pad" style="background:var(--off-white);" id="ecosystem">
+    <section class="pr-sec pr-sec--tint" id="ecosystem">
         <div class="container">
-            <div class="section-header reveal">
+            <div class="pr-head">
                 <h2 class="section-title">Ecosystem &amp; <span class="accent">Media Partners</span></h2>
-                <p class="section-subtitle">Non-cash and in-kind partnerships that extend the event&rsquo;s reach &mdash; for technology providers, associations, incubators and publishers.</p>
+                <p>Non-cash and in-kind partnerships that extend the event&rsquo;s reach: for technology providers, associations, incubators and publishers.</p>
             </div>
-            <div class="beyond-grid reveal">
-                <div class="beyond-card">
-                    <h4>Technology Partner</h4>
+            <div class="pr-eco">
+                <div class="pr-eco-item">
+                    <h3>Technology Partner</h3>
                     <p>Provide the connectivity, AV, app or compute the event runs on. Demo-area branding and a tech workshop slot in return.</p>
+                    <a href="/contact#sponsorship" data-enquire="Technology Partner">Enquire about Technology Partner</a>
                 </div>
-                <div class="beyond-card">
-                    <h4>Ecosystem Partner</h4>
+                <div class="pr-eco-item">
+                    <h3>Ecosystem Partner</h3>
                     <p>Industry associations, incubators, accelerators and state bodies that bring their members. Community outreach and logo placement across the site and venue.</p>
+                    <a href="/contact#sponsorship" data-enquire="Ecosystem Partner">Enquire about Ecosystem Partner</a>
                 </div>
-                <div class="beyond-card">
-                    <h4>Media Partner</h4>
+                <div class="pr-eco-item">
+                    <h3>Media Partner</h3>
                     <p>Publishers, podcasts and broadcasters. Content collaboration, interview access to speakers, and reciprocal reach across both audiences.</p>
+                    <a href="/contact#sponsorship" data-enquire="Media Partner">Enquire about Media Partner</a>
                 </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- EVENT GALLERY -->
-    <section class="section-pad" style="background:white;">
-        <div class="container">
-            <div class="section-header reveal">
-                <h2 class="section-title">From the <span class="accent">Conference Floor</span></h2>
-                <p class="section-subtitle">A glimpse into the energy, conversations, and connections at Bharat AI Innovation</p>
-            </div>
-            <div class="event-gallery reveal">
-                <div class="gallery-item wide"><picture><source type="image/webp" srcset="images/gallery/OMY_4130.webp"><img width="1600" height="1066" loading="lazy" decoding="async" src="images/gallery/OMY_4130.jpg" alt="Bharat AI Innovation Conference"></picture></div>
-                <div class="gallery-item"><picture><source type="image/webp" srcset="images/gallery/577B0776.webp"><img width="1600" height="1066" loading="lazy" decoding="async" src="images/gallery/577B0776.jpg" alt="Bharat AI Innovation Conference"></picture></div>
-                <div class="gallery-item"><picture><source type="image/webp" srcset="images/gallery/DSC_5278.webp"><img width="1600" height="1067" loading="lazy" decoding="async" src="images/gallery/DSC_5278.jpg" alt="Bharat AI Innovation Conference"></picture></div>
-                <div class="gallery-item"><picture><source type="image/webp" srcset="images/gallery/MNP_8469.webp"><img width="1600" height="1066" loading="lazy" decoding="async" src="images/gallery/MNP_8469.jpg" alt="Bharat AI Innovation Conference"></picture></div>
-                <div class="gallery-item"><picture><source type="image/webp" srcset="images/gallery/7C2A2991.webp"><img width="1600" height="1066" loading="lazy" decoding="async" src="images/gallery/7C2A2991.jpg" alt="Bharat AI Innovation Conference"></picture></div>
-                <div class="gallery-item"><picture><source type="image/webp" srcset="images/gallery/577B0622.webp"><img width="1600" height="1200" loading="lazy" decoding="async" src="images/gallery/577B0622.jpg" alt="Bharat AI Innovation Conference"></picture></div>
-                <div class="gallery-item wide"><picture><source type="image/webp" srcset="images/gallery/OMY_4001.webp"><img width="1600" height="1066" loading="lazy" decoding="async" src="images/gallery/OMY_4001.jpg" alt="Bharat AI Innovation Conference"></picture></div>
-                <div class="gallery-item"><picture><source type="image/webp" srcset="images/gallery/MNP_8547.webp"><img width="1600" height="1066" loading="lazy" decoding="async" src="images/gallery/MNP_8547.jpg" alt="Bharat AI Innovation Conference"></picture></div>
-                <div class="gallery-item"><picture><source type="image/webp" srcset="images/gallery/MNP_3505.webp"><img width="1600" height="1066" loading="lazy" decoding="async" src="images/gallery/MNP_3505.jpg" alt="Bharat AI Innovation Conference"></picture></div>
-                <div class="gallery-item"><picture><source type="image/webp" srcset="images/gallery/7C2A2566.webp"><img width="1600" height="1066" loading="lazy" decoding="async" src="images/gallery/7C2A2566.jpg" alt="Bharat AI Innovation Conference"></picture></div>
-                <div class="gallery-item"><picture><source type="image/webp" srcset="images/gallery/IMG_0406.webp"><img width="1600" height="1066" loading="lazy" decoding="async" src="images/gallery/IMG_0406.jpg" alt="Bharat AI Innovation Conference"></picture></div>
-                <div class="gallery-item wide"><picture><source type="image/webp" srcset="images/gallery/7C2A2823.webp"><img width="1600" height="1066" loading="lazy" decoding="async" src="images/gallery/7C2A2823.jpg" alt="Bharat AI Innovation Conference"></picture></div>
-                <div class="gallery-item"><picture><source type="image/webp" srcset="images/gallery/7C2A2709.webp"><img width="1600" height="1066" loading="lazy" decoding="async" src="images/gallery/7C2A2709.jpg" alt="Bharat AI Innovation Conference"></picture></div>
-                <div class="gallery-item"><picture><source type="image/webp" srcset="images/gallery/7C2A2447.webp"><img width="1600" height="1066" loading="lazy" decoding="async" src="images/gallery/7C2A2447.jpg" alt="Bharat AI Innovation Conference"></picture></div>
-                <div class="gallery-item"><picture><source type="image/webp" srcset="images/gallery/577B0642.webp"><img width="1600" height="1066" loading="lazy" decoding="async" src="images/gallery/577B0642.jpg" alt="Bharat AI Innovation Conference"></picture></div>
             </div>
         </div>
     </section>
 
     <!-- AI LEADERSHIP PANEL DETAIL -->
-    <section class="section-pad" style="background:var(--off-white);" id="leadership-panel">
+    <section class="pr-sec" id="leadership-panel">
         <div class="container">
-            <div class="section-header reveal">
-                <h2 class="section-title">AI <span class="accent">Leadership Panel</span></h2>
-                <p class="section-subtitle">Lead the conversation. Own the stage. Drive real business outcomes.</p>
+            <div class="pr-panel-top">
+                <div class="pr-head">
+                    <h2 class="section-title">AI <span class="accent">Leadership Panel</span></h2>
+                    <p>Lead the conversation. Own the stage. Drive real business outcomes. Position your organisation at the forefront of AI-led transformation. Engage directly with decision-makers, shape industry narratives, and drive real business outcomes.</p>
+                </div>
+                <div class="pr-panel-price">
+                    <div class="price-label">Investment</div>
+                    <span class="price-amount">₹10L</span>
+                    <span class="price-tax">+ applicable GST</span>
+                </div>
             </div>
-            <div class="panel-detail reveal">
+            <div class="pr-photos">
+                <figure><picture><source type="image/webp" srcset="images/gallery/7C2A2946.webp"><img width="1600" height="1066" loading="lazy" decoding="async" src="images/gallery/7C2A2946.jpg" alt="A panel on using data for better governance and society at Data Science Congress"></picture></figure>
+                <figure><picture><source type="image/webp" srcset="images/gallery/OMY_3658.webp"><img width="1600" height="1066" loading="lazy" decoding="async" src="images/gallery/OMY_3658.jpg" alt="A panel on building skills and competencies at Data Science Congress"></picture></figure>
+                <figure><picture><source type="image/webp" srcset="images/gallery/7C2A3159.webp"><img width="1600" height="1066" loading="lazy" decoding="async" src="images/gallery/7C2A3159.jpg" alt="Panellists on the main stage at Data Science Congress"></picture></figure>
+            </div>
+            <p class="pr-cap">Panels at Data Science Congress, the predecessor to Bharat AI Innovation.</p>
 
-                <!-- Header -->
-                <div class="panel-detail-header">
-                    <div class="panel-detail-header-inner">
-                        <div class="panel-eyebrow"><i class="fas fa-users"></i> Sponsorship Opportunity</div>
-                        <h2>AI Leadership Panel Discussion</h2>
-                        <p>Position your organisation at the forefront of AI-led transformation. Engage directly with decision-makers, shape industry narratives, and drive real business outcomes.</p>
-                    </div>
-                    <div class="panel-price-box">
-                        <div class="price-label">Investment</div>
-                        <span class="price-amount">₹10L</span>
-                        <div class="price-tax">+ applicable GST</div>
-                    </div>
-                </div>
-
-                <!-- Photo Mosaic -->
-                <div class="panel-gallery">
-                    <div class="panel-gallery-item feat"><picture><source type="image/webp" srcset="images/gallery/7C2A2946.webp"><img width="1600" height="1066" loading="lazy" decoding="async" src="images/gallery/7C2A2946.jpg" alt="AI Leadership Panel"></picture></div>
-                    <div class="panel-gallery-item"><picture><source type="image/webp" srcset="images/gallery/MNP_3286.webp"><img width="1600" height="1066" loading="lazy" decoding="async" src="images/gallery/MNP_3286.jpg" alt="AI Leadership Panel"></picture></div>
-                    <div class="panel-gallery-item"><picture><source type="image/webp" srcset="images/gallery/7C2A3159.webp"><img width="1600" height="1066" loading="lazy" decoding="async" src="images/gallery/7C2A3159.jpg" alt="AI Leadership Panel"></picture></div>
-                    <div class="panel-gallery-item"><picture><source type="image/webp" srcset="images/gallery/OMY_4127.webp"><img width="1600" height="1066" loading="lazy" decoding="async" src="images/gallery/OMY_4127.jpg" alt="AI Leadership Panel"></picture></div>
-                    <div class="panel-gallery-item"><picture><source type="image/webp" srcset="images/gallery/OMY_3658.webp"><img width="1600" height="1066" loading="lazy" decoding="async" src="images/gallery/OMY_3658.jpg" alt="AI Leadership Panel"></picture></div>
-                    <div class="panel-gallery-item"><picture><source type="image/webp" srcset="images/gallery/MNP_3564.webp"><img width="1600" height="1066" loading="lazy" decoding="async" src="images/gallery/MNP_3564.jpg" alt="AI Leadership Panel"></picture></div>
-                </div>
-
-                <!-- Body -->
-                <div class="panel-detail-body">
-
-                    <div class="panel-section-title"><i class="fas fa-gift"></i> Sponsor Deliverables</div>
-                    <div class="panel-deliverables">
-                        <div class="panel-deliverable-block">
-                            <h4><i class="fas fa-microphone"></i> Speaking & Thought Leadership</h4>
-                            <ul>
+            <h3 class="pr-panel-sub">Sponsor Deliverables</h3>
+            <div class="pr-rows">
+                    <details class="pr-row" open><summary>Speaking & Thought Leadership</summary><ul>
                                 <li>Dedicated Leadership Panel Slot (Presented by Sponsor)</li>
                                 <li>Opportunity to define panel theme and agenda</li>
                                 <li>Moderation rights for a senior representative from your organisation</li>
                                 <li>Participation alongside CXOs, policymakers, and industry leaders</li>
-                            </ul>
-                        </div>
-                        <div class="panel-deliverable-block">
-                            <h4><i class="fas fa-eye"></i> Brand Visibility & Positioning</h4>
-                            <ul>
+                            </ul></details>
+                    <details class="pr-row"><summary>Brand Visibility & Positioning</summary><ul>
                                 <li>"Powered by [Your Company]" branding on panel session</li>
                                 <li>Logo across event agenda, website, and collaterals</li>
                                 <li>Branding on stage backdrop and panel screens</li>
                                 <li>Mentions in pre-event and post-event promotions</li>
-                            </ul>
-                        </div>
-                        <div class="panel-deliverable-block">
-                            <h4><i class="fas fa-crown"></i> Panel Branding & Format</h4>
-                            <ul>
-                                <li>Leadership Panel Slot — alongside CXOs and policymakers</li>
-                                <li>Curated by Your Organisation — define theme and lead conversations</li>
-                                <li>Moderation Opportunity — your leadership team steers discussion</li>
-                                <li>Powered by Your Brand — stage, agenda, and all communications</li>
-                            </ul>
-                        </div>
-                        <div class="panel-deliverable-block">
-                            <h4><i class="fas fa-handshake"></i> Who You Will Engage With</h4>
-                            <ul>
-                                <li>CXOs — CTO, CIO, CMO, Chief Innovation & Product Officers</li>
+                            </ul></details>
+                    <details class="pr-row"><summary>Who You Will Engage With</summary><ul>
+                                <li>CXOs: CTO, CIO, CMO, Chief Innovation & Product Officers</li>
                                 <li>Founders and Co-founders of high-growth startups</li>
                                 <li>Senior enterprise leaders across industries</li>
                                 <li>Government officials and policymakers</li>
                                 <li>Investors, VCs, academia, media, and analysts</li>
-                            </ul>
-                        </div>
-                        <div class="panel-deliverable-block">
-                            <h4><i class="fas fa-bullseye"></i> Who You Can Invite</h4>
-                            <ul>
-                                <li>Existing clients — showcase success, unlock upsell opportunities</li>
-                                <li>Prospective clients — initiate and accelerate sales conversations</li>
-                                <li>Strategic partners — explore alliances and joint offerings</li>
-                                <li>Policymakers — align with regulatory priorities</li>
-                                <li>Media and analysts — build credibility and inbound interest</li>
-                            </ul>
-                        </div>
-                        <div class="panel-deliverable-block">
-                            <h4><i class="fas fa-chart-line"></i> Business Outcomes</h4>
-                            <ul>
+                            </ul></details>
+                    <details class="pr-row"><summary>Who You Can Invite</summary><ul>
+                                <li>Existing clients: showcase success, unlock upsell opportunities</li>
+                                <li>Prospective clients: initiate and accelerate sales conversations</li>
+                                <li>Strategic partners: explore alliances and joint offerings</li>
+                                <li>Policymakers: align with regulatory priorities</li>
+                                <li>Media and analysts: build credibility and inbound interest</li>
+                            </ul></details>
+                    <details class="pr-row"><summary>Business Outcomes</summary><ul>
                                 <li>Generate high-quality enterprise leads from a curated audience</li>
                                 <li>Accelerate deal cycles through direct decision-maker engagement</li>
                                 <li>Create pipeline opportunities across sectors</li>
                                 <li>Shape industry and policy narratives</li>
                                 <li>Post-event follow-up and content amplification</li>
-                            </ul>
-                        </div>
-                    </div>
+                            </ul></details>
+            </div>
 
-                    <!-- Themes -->
-                    <div class="panel-themes">
-                        <div class="panel-themes-inner">
-                            <h4><i class="fas fa-tags" style="color:#FF9500;margin-right:0.5rem;"></i> Key Themes Include — or design your own custom panel</h4>
-                            <div class="theme-tags">
+            <h3 class="pr-panel-sub">Key Themes Include, or design your own custom panel</h3>
+            <div class="theme-tags">
                                 <span class="theme-tag">Enterprise GenAI & Agentic AI</span>
                                 <span class="theme-tag">Banking</span>
                                 <span class="theme-tag">Insurance</span>
@@ -1452,47 +850,106 @@
                                 <span class="theme-tag">Workforce (HR, L&D & Hiring)</span>
                                 <span class="theme-tag">L&D and Education</span>
                             </div>
-                        </div>
-                    </div>
 
-                    <!-- Passes -->
-                    <div class="panel-section-title" style="margin-top:2.5rem;"><i class="fas fa-id-badge"></i> Complimentary Passes Included</div>
-                    <div class="panel-passes">
-                        <div class="pass-chip">
-                            <span class="pass-count">5</span>
-                            <span class="pass-label">VIP Passes<br><span style="font-weight:400;color:#999;">₹15,000 per pass</span></span>
-                        </div>
-                        <div class="pass-chip">
-                            <span class="pass-count">10</span>
-                            <span class="pass-label">Delegate Passes<br><span style="font-weight:400;color:#999;">₹5,000 per pass</span></span>
-                        </div>
-                        <div class="pass-chip note">
-                            <p>Invite your team, clients, and partners to attend the panel and full 2-day event. Build and accelerate pipeline through panel-led conversations and post-event follow-ups.</p>
-                        </div>
-                    </div>
-
-                    <div style="text-align:center;margin-top:3rem;">
-                        <a href="/contact" class="btn btn-primary btn-lg" style="padding:1rem 2.5rem;font-size:1.05rem;">Enquire About AI Leadership Panel <i class="fas fa-arrow-right"></i></a>
-                        <p style="margin-top:1rem;font-size:0.85rem;color:var(--dark-grey);"><i class="fas fa-envelope" style="color:var(--saffron);"></i> partner@bharataiinnovation.com &nbsp;|&nbsp; <i class="fas fa-phone" style="color:var(--saffron);"></i> +91 89765 80367</p>
-                    </div>
+            <h3 class="pr-panel-sub">Complimentary Passes Included</h3>
+            <div class="panel-passes">
+                <div class="pass-chip">
+                    <span class="pass-count">5</span>
+                    <span class="pass-label">VIP Passes<span class="pass-worth">&#8377;24,999 + GST per pass</span></span>
                 </div>
+                <div class="pass-chip">
+                    <span class="pass-count">10</span>
+                    <span class="pass-label">Delegate Passes<span class="pass-worth">&#8377;8,999 + GST per pass</span></span>
+                </div>
+                <div class="pass-chip note">
+                    <p>Invite your team, clients, and partners to attend the panel and full 2-day event. Build and accelerate pipeline through panel-led conversations and post-event follow-ups.</p>
+                </div>
+            </div>
+            <div class="pr-panel-cta">
+                <a href="/contact#sponsorship" class="btn btn-primary btn-lg" data-enquire="AI Leadership Panel">Enquire About AI Leadership Panel <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
             </div>
         </div>
     </section>
 
-    <!-- CTA BOX -->
-    <section class="section-pad" style="background:white;">
+    <!-- EVENT GALLERY -->
+    <section class="pr-sec pr-sec--tint">
         <div class="container">
-            <div class="partner-cta-box reveal">
-                <h3>Not sure which tier fits?</h3>
-                <p>Send us one message. We'll come back with a clear recommendation based on your goals — stage access, booth, branding, or a combination. Title and Powered Partner slots fill early; enterprise-tier decisions take time. Start the conversation now.</p>
-                <div style="display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;">
-                    <a href="/contact" class="btn btn-primary btn-lg">Start the Conversation <i class="fas fa-arrow-right"></i></a>
-                    <a href="tel:+918976580367" class="btn btn-ghost btn-lg" style="background:rgba(255,255,255,0.15);color:white;border-color:rgba(255,255,255,0.3);">+91 89765 80367 <i class="fas fa-phone"></i></a>
+            <div class="pr-head">
+                <h2 class="section-title">From the <span class="accent">Conference Floor</span></h2>
+                <p>Moments from Data Science Congress, the predecessor to Bharat AI Innovation.</p>
+            </div>
+            <div class="pr-photos pr-photos--wall" style="margin-bottom:0;">
+                <figure><picture><source type="image/webp" srcset="images/gallery/OMY_4130.webp"><img width="1600" height="1066" loading="lazy" decoding="async" src="images/gallery/OMY_4130.jpg" alt="A panel on the media and entertainment industry at Data Science Congress"></picture></figure>
+                <figure><picture><source type="image/webp" srcset="images/gallery/577B0642.webp"><img width="1600" height="1066" loading="lazy" decoding="async" src="images/gallery/577B0642.jpg" alt="The registration entrance at Data Science Congress"></picture></figure>
+                <figure><picture><source type="image/webp" srcset="images/gallery/7C2A2447.webp"><img width="1600" height="1066" loading="lazy" decoding="async" src="images/gallery/7C2A2447.jpg" alt="A session in a breakout room at Data Science Congress"></picture></figure>
+                <figure><picture><source type="image/webp" srcset="images/gallery/7C2A2709.webp"><img width="1600" height="1066" loading="lazy" decoding="async" src="images/gallery/7C2A2709.jpg" alt="Attendees at the registration desk at Data Science Congress"></picture></figure>
+                <figure><picture><source type="image/webp" srcset="images/gallery/IMG_0406.webp"><img width="1600" height="1066" loading="lazy" decoding="async" src="images/gallery/IMG_0406.jpg" alt="A speaker presenting on the main stage at Data Science Congress"></picture></figure>
+                <figure><picture><source type="image/webp" srcset="images/gallery/MNP_3564.webp"><img width="1600" height="1066" loading="lazy" decoding="async" src="images/gallery/MNP_3564.jpg" alt="Panellists in conversation at Data Science Congress"></picture></figure>
+                <figure><picture><source type="image/webp" srcset="images/gallery/MNP_8547.webp"><img width="1600" height="1066" loading="lazy" decoding="async" src="images/gallery/MNP_8547.jpg" alt="A speaker addressing the audience at Data Science Congress"></picture></figure>
+                <figure><picture><source type="image/webp" srcset="images/gallery/577B0776.webp"><img width="1600" height="1066" loading="lazy" decoding="async" src="images/gallery/577B0776.jpg" alt="The main stage at Data Science Congress"></picture></figure>
+            </div>
+        </div>
+    </section>
+
+    <!-- ENQUIRY: saved as a sponsorship enquiry (Admin, Enquiries) and the team is emailed. -->
+    <section class="pr-enquire" id="enquire">
+        <div class="container pr-enquire-grid">
+            <div>
+                <h2>Not sure which tier fits?</h2>
+                <p class="pr-enquire-lead">Send us one message. We'll come back with a clear recommendation based on your goals: stage access, booth, branding, or a combination. Title and Powered Partner slots fill early; enterprise-tier decisions take time. Start the conversation now.</p>
+                <div class="pr-reach">
+                    <a href="tel:+918976580367"><i class="fas fa-phone" aria-hidden="true"></i> <span>+91 89765 80367</span></a>
+                    <a href="mailto:partner@bharataiinnovation.com"><i class="fas fa-envelope" aria-hidden="true"></i> <span>partner@bharataiinnovation.com</span></a>
+                    <p>Response within 24 hours</p>
                 </div>
-                <p style="font-size:0.9rem;margin-top:1.5rem;opacity:0.8;">
-                    <i class="fas fa-envelope"></i> info@bharataiinnovation.com &nbsp;|&nbsp; Response within 24 hours
-                </p>
+            </div>
+            <div class="pr-form-card">
+                <form id="pr-form" novalidate>
+                    <div class="pr-field">
+                        <label for="pr-interest">What are you interested in?</label>
+                        <select id="pr-interest" name="interest">
+                                    <option value="Not sure yet">Not sure yet, please advise</option>
+                                    <optgroup label="Partnership tiers"><option value="Title Partner">Title Partner</option><option value="Powered Partner">Powered Partner</option><option value="Knowledge Partner">Knowledge Partner</option><option value="Associate Partner">Associate Partner</option><option value="Innovation Partner">Innovation Partner</option></optgroup>
+                                    <optgroup label="Branding and activations"><option value="AI Leadership Panel">AI Leadership Panel</option><option value="Leaders Round Table">Leaders Round Table</option><option value="Bharat AI Leaders’ Evening Partner">Bharat AI Leaders’ Evening Partner</option><option value="Networking Lunch Partner">Networking Lunch Partner</option><option value="AI Partner">AI Partner</option><option value="Lanyard">Lanyard</option><option value="Conference Bag">Conference Bag</option><option value="Trophy Partner">Trophy Partner</option><option value="Innovators’ Round Table">Innovators’ Round Table</option><option value="Custom Activation">Custom Activation</option></optgroup>
+                                    <optgroup label="Non-cash and in-kind"><option value="Technology Partner">Technology Partner</option><option value="Ecosystem Partner">Ecosystem Partner</option><option value="Media Partner">Media Partner</option></optgroup>
+                        </select>
+                    </div>
+                    <div class="pr-two">
+                        <div class="pr-field">
+                            <label for="pr-name">Your name</label>
+                            <input id="pr-name" name="name" autocomplete="name" autocapitalize="words" required>
+                        </div>
+                        <div class="pr-field">
+                            <label for="pr-company">Company</label>
+                            <input id="pr-company" name="company" autocomplete="organization" required>
+                        </div>
+                    </div>
+                    <div class="pr-two">
+                        <div class="pr-field">
+                            <label for="pr-email">Work email</label>
+                            <input id="pr-email" name="email" type="email" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" required>
+                        </div>
+                        <div class="pr-field">
+                            <label for="pr-mobile">Mobile</label>
+                            <input id="pr-mobile" name="mobile" type="tel" inputmode="tel" autocomplete="tel" required>
+                        </div>
+                    </div>
+                    <div class="pr-field">
+                        <label for="pr-message">Your goals <span class="pr-optional">(optional)</span></label>
+                        <textarea id="pr-message" name="message" rows="3" autocomplete="off"></textarea>
+                    </div>
+                    <div class="pr-hp" aria-hidden="true">
+                        <label for="pr-website">Leave this empty</label>
+                        <input id="pr-website" name="website" type="text" tabindex="-1" autocomplete="off">
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-lg pr-submit" id="pr-submit">Start the Conversation <i class="fas fa-arrow-right" aria-hidden="true"></i></button>
+                    <p class="pr-error" id="pr-error" role="alert" hidden></p>
+                </form>
+                <div class="pr-done" id="pr-done" role="status" hidden>
+                    <div class="pr-done-icon"><i class="fas fa-check-circle" aria-hidden="true"></i></div>
+                    <h3>We have your enquiry</h3>
+                    <p id="pr-done-text"></p>
+                </div>
             </div>
         </div>
     </section>
@@ -1548,6 +1005,7 @@
             </div>
             <div class="footer-bottom">
                 <p>&copy; 2026 Bharat AI Innovation. All rights reserved. | Organized by Aegis Knowledge Trust</p>
+                <p class="pr-credit">Motion effects from <a href="https://skiper-ui.com" target="_blank" rel="noopener noreferrer">Skiper UI</a> and <a href="https://github.com/Ashutoshx7/VengeanceUI" target="_blank" rel="noopener noreferrer">Vengeance UI</a>.</p>
                 <div class="footer-bottom-links">
                     <a href="/privacy">Privacy Policy</a>
                     <a href="/terms">Terms of Service</a>
@@ -1559,6 +1017,111 @@
         </div>
     </footer>
 
+    <div class="pr-bar" id="pr-bar" role="group" aria-label="Talk to the partnerships team">
+        <a class="pr-bar-ask" href="#enquire">Enquire <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
+        <a class="pr-bar-call" href="tel:+918976580367"><i class="fas fa-phone" aria-hidden="true"></i> Call</a>
+    </div>
+
+    <script>
+    // The page's own behaviour, which works with animations off. The enquiry is saved as type
+    // "sponsorship" (Admin, Enquiries), with what the company chose in its subject.
+    (function () {
+      var byId = function (id) { return document.getElementById(id); };
+      var calm = !window.matchMedia || !matchMedia('(prefers-reduced-motion: no-preference)').matches;
+
+      // Open on a laptop, one tap away on a phone.
+      if (window.matchMedia && matchMedia('(min-width: 901px)').matches) {
+        Array.prototype.forEach.call(document.querySelectorAll('details[data-fold]'), function (d) { d.open = true; d.classList.add('is-wide'); });
+      }
+
+      // Every Enquire button: carry what was chosen into the form. Without this script they
+      // still reach the sponsorship form on /contact.
+      var section = byId('enquire'), interest = byId('pr-interest');
+      document.addEventListener('click', function (e) {
+        var a = e.target.closest && e.target.closest('[data-enquire]');
+        if (!a || !interest || !section) return;
+        var want = a.getAttribute('data-enquire');
+        if (!Array.prototype.some.call(interest.options, function (o) { return o.value === want; })) return;
+        e.preventDefault();
+        interest.value = want;
+        section.scrollIntoView({ behavior: calm ? 'auto' : 'smooth', block: 'start' });
+      });
+
+      // The bar on a phone: up after the hero, down at the form.
+      var bar = byId('pr-bar'), hero = document.querySelector('.pr-hero');
+      if (bar && hero && section && window.IntersectionObserver) {
+        var heroSeen = true, formSeen = false;
+        var sync = function () { bar.classList.toggle('is-up', !heroSeen && !formSeen); };
+        new IntersectionObserver(function (en) { heroSeen = en[0].isIntersecting; sync(); }).observe(hero);
+        new IntersectionObserver(function (en) { formSeen = en[0].isIntersecting; sync(); }).observe(section);
+      }
+
+      var form = byId('pr-form');
+      if (!form) return;
+      var err = byId('pr-error'), btn = byId('pr-submit'), errHome = err.parentNode;
+      var idle = btn.innerHTML;
+      var val = function (id) { return byId(id).value.trim(); };
+      var params = new URLSearchParams(location.search);
+      function clearMarks() {
+        err.hidden = true;
+        errHome.appendChild(err);
+        Array.prototype.forEach.call(form.querySelectorAll('[aria-invalid]'), function (el) { el.removeAttribute('aria-invalid'); });
+      }
+      function fail(msg, field) {
+        err.textContent = msg;
+        err.hidden = false;
+        if (field) {
+          field.parentNode.appendChild(err);
+          field.setAttribute('aria-invalid', 'true');
+          field.focus();
+        }
+      }
+      function done(name, email) {
+        form.hidden = true;
+        byId('pr-done-text').textContent = 'Thank you, ' + name + '. We will come back to you at ' + email + ' within 24 hours.';
+        byId('pr-done').hidden = false;
+      }
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        clearMarks();
+        var name = val('pr-name'), company = val('pr-company'), email = val('pr-email'), mobile = val('pr-mobile');
+        if (!name) return fail('Please enter your name.', byId('pr-name'));
+        if (!company) return fail('Please enter your company.', byId('pr-company'));
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return fail('Please enter your work email, like name@company.com.', byId('pr-email'));
+        if (mobile.replace(/[^0-9]/g, '').length < 10) return fail('Please enter your mobile number with at least 10 digits.', byId('pr-mobile'));
+        if (byId('pr-website').value) return done(name, email);
+        var chosen = interest.value;
+        var meta = { interest: chosen, source_page: '/partner' };
+        ['utm_source', 'utm_medium', 'utm_campaign', 'source'].forEach(function (k) { if (params.get(k)) meta[k] = params.get(k); });
+        btn.disabled = true;
+        btn.textContent = 'Sending...';
+        fetch('/api/inquiries', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            inquiry_type: 'sponsorship',
+            name: name,
+            email: email,
+            phone: mobile,
+            organization: company,
+            subject: 'Sponsorship · ' + chosen,
+            message: 'Interested in: ' + chosen + (val('pr-message') ? '\n\nGoals: ' + val('pr-message') : ''),
+            metadata: meta
+          })
+        }).then(function (r) {
+          return r.json().catch(function () { return {}; }).then(function (d) {
+            if (!r.ok) throw new Error(d.error || 'Something went wrong. Please try again.');
+            done(name, email);
+          });
+        }).catch(function (x) {
+          btn.disabled = false;
+          btn.innerHTML = idle;
+          fail(x && x.message && x.message !== 'Failed to fetch' ? x.message : 'Could not send. Please check your internet and try again, or call +91 89765 80367.');
+        });
+      });
+    })();
+    </script>
     <script src="js/main.js?v=20261029"></script>
+    <script src="js/partner-motion.js?v=20261106" defer></script>
 </body>
 </html>

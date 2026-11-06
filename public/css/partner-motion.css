@@ -1,0 +1,172 @@
+/* Motion on /partner only. To remove it, delete the two lines in partner.html that name
+   partner-motion: every word stays, the page simply stops moving.
+
+   Rebuilt in plain CSS and JS, because the site has no React, so neither library is installed.
+
+   From Skiper UI, free version (https://skiper-ui.com), which asks for a credit: the page's footer
+   carries it. Skiper 16 sticky stacked cards, Skiper 31 letters that gather on scroll, Skiper 40
+   link underline.
+
+   From Vengeance UI (https://github.com/Ashutoshx7/VengeanceUI): Aurora Hero, Stagger Text, Morphing
+   Disclosure, Spotlight Navbar, Glow Border Card and Border Beam.
+
+   MIT License
+
+   Copyright (c) 2025-2026 Ashutoshx7
+
+   Permission is hereby granted, free of charge, to any person obtaining a copy
+   of this software and associated documentation files (the "Software"), to deal
+   in the Software without restriction, including without limitation the rights
+   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+   copies of the Software, and to permit persons to whom the Software is
+   furnished to do so, subject to the following conditions:
+
+   The above copyright notice and this permission notice shall be included in all
+   copies or substantial portions of the Software.
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+   SOFTWARE. */
+
+/* Aurora Hero: slow bands of light behind the hero, moved by transform so a phone does not repaint. */
+.pr-aurora {
+  position: absolute; inset: 0; overflow: hidden; pointer-events: none;
+  -webkit-mask-image: radial-gradient(ellipse at 100% 0%, #000 25%, transparent 75%);
+  mask-image: radial-gradient(ellipse at 100% 0%, #000 25%, transparent 75%);
+}
+.pr-aurora i {
+  position: absolute; top: -15%; bottom: -15%; left: 0; width: calc(100% + 540px); opacity: 0.7; filter: blur(34px);
+  background: repeating-linear-gradient(100deg,
+    transparent 0,
+    rgba(255, 107, 0, 0.95) 90px,
+    transparent 180px,
+    rgba(120, 165, 255, 0.55) 260px,
+    transparent 340px,
+    rgba(0, 190, 120, 0.7) 430px,
+    transparent 520px);
+}
+
+/* Stagger Text: each word rises out of its own mask. The padding keeps the tails of g, p and y. */
+.pr-w { display: inline-block; overflow: hidden; vertical-align: top; padding-bottom: 0.14em; margin-bottom: -0.14em; }
+.pr-w > span { display: inline-block; }
+
+/* Skiper 40: the line under a link redraws from the left on a mouse. Touch keeps the plain line. */
+@media (hover: hover) {
+  .pr-herolink, .pr-eco-item a, .option-enquire {
+    text-decoration: none;
+    background: linear-gradient(currentColor, currentColor) 0 calc(100% - 8px) / 100% 1.5px no-repeat;
+    transition: background-size 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .pr-herolink:hover, .pr-eco-item a:hover, .option-enquire:hover { background-size: 0 1.5px; background-position: 100% calc(100% - 8px); }
+}
+
+/* Morphing Disclosure: an open row lifts out of the list, rounds off and tints. */
+.pr-row { transition: background-color 0.25s ease, border-radius 0.25s ease; }
+.pr-row > summary, .pr-row ul { transition: padding 0.25s cubic-bezier(0.22, 1, 0.36, 1); }
+.pr-row > summary::after, .pr-more > summary::after { transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1); }
+.pr-row[open] { background: rgba(255, 107, 0, 0.06); border-radius: 14px; border-top-color: transparent; }
+.pr-row[open] + .pr-row { border-top-color: transparent; }
+.pr-row[open] > summary, .pr-row[open] ul { padding-left: 0.9rem; padding-right: 0.9rem; }
+@supports (interpolate-size: allow-keywords) {
+  @media (prefers-reduced-motion: no-preference) {
+    .pr-row, .pr-more { interpolate-size: allow-keywords; }
+    .pr-row::details-content, .pr-more::details-content {
+      height: 0; overflow: clip;
+      transition: height 0.35s cubic-bezier(0.22, 1, 0.36, 1), content-visibility 0.35s allow-discrete;
+    }
+    .pr-row[open]::details-content, .pr-more[open]::details-content { height: auto; }
+  }
+}
+
+/* Glow Border Card: a coloured edge turns slowly round the top tier. */
+@property --pr-angle { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+.tier-card.exclusive { border-color: transparent; isolation: isolate; }
+.tier-card.exclusive::before, .tier-card.exclusive::after { content: ''; position: absolute; inset: -2px; z-index: -2; border-radius: 24px; background: conic-gradient(from var(--pr-angle), #FF6B00, #FFD54F, #00897B, #2979FF, #FF8C38, #FF6B00); }
+.tier-card.exclusive::after { z-index: -1; inset: 0; border-radius: 22px; background: #fff; }
+
+/* Spotlight Navbar: the sticky menu's underline glides to the section you are reading. */
+.conf-subnav-links.pr-spot { position: relative; }
+.conf-subnav-links.pr-spot .conf-subnav-link.active { border-bottom-color: transparent; }
+.pr-light {
+  position: absolute; left: 0; bottom: 0; width: var(--pr-w, 0); height: 2px; transform: translateX(var(--pr-x, 0));
+  background: linear-gradient(90deg, transparent, var(--saffron) 18%, var(--saffron) 82%, transparent);
+  box-shadow: 0 -2px 10px rgba(255, 107, 0, 0.45);
+  transition: transform 0.45s cubic-bezier(0.22, 1, 0.36, 1), width 0.3s ease;
+  pointer-events: none;
+}
+
+/* Everything that really moves, for people who have animations on. */
+@media (prefers-reduced-motion: no-preference) {
+  .pr-aurora i { will-change: transform; animation: pr-drift 42s linear infinite; }
+  .pr-hero.pr-off .pr-aurora i { animation-play-state: paused; }
+
+  /* The title is split in the HTML, so it animates from the first paint with no script. */
+  .pr-hero h1 .pr-w > span { animation: pr-rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) both; animation-delay: calc(var(--i) * 70ms + 100ms); }
+
+  /* Section headings are split by the script, which only runs with animations on. */
+  .pr-split .pr-w > span { transform: translateY(115%); transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1); transition-delay: calc(var(--i) * 50ms); }
+  .pr-split.pr-in .pr-w > span { transform: none; }
+
+  /* Skiper 16: each activation sticks and the next slides over it, while the one beneath shrinks.
+     Only on a screen tall enough to hold a whole card with room to spare. */
+  @media (min-height: 700px) {
+    .beyond-grid--stack .beyond-card { position: sticky; top: calc(58px + var(--pr-n, 0) * 8px); transform-origin: 50% 0; box-shadow: 0 -8px 24px rgba(13, 15, 30, 0.1); background: #fff; }
+    .beyond-grid--stack .beyond-card:nth-child(2) { --pr-n: 1; }
+    .beyond-grid--stack .beyond-card:nth-child(3) { --pr-n: 2; }
+    .beyond-grid--stack .beyond-card:nth-child(4) { --pr-n: 3; }
+    .beyond-grid--stack .beyond-card:nth-child(5) { --pr-n: 4; }
+    .beyond-grid--stack .beyond-card:nth-child(6) { --pr-n: 5; }
+  }
+  @media (min-height: 700px) and (min-width: 901px) {
+    .beyond-grid--stack .beyond-card { top: calc(var(--nav-h) + 66px + var(--pr-n, 0) * 10px); }
+  }
+
+  .tier-card.exclusive::before { animation: pr-turn 6s linear infinite; }
+  .tier-card.exclusive.pr-off::before { animation-play-state: paused; }
+}
+@keyframes pr-drift { to { transform: translateX(-528px); } }
+@keyframes pr-rise { from { transform: translateY(115%); } to { transform: none; } }
+@keyframes pr-turn { to { --pr-angle: 360deg; } }
+
+/* Skiper 31: the letters of the last heading gather as it comes up the screen. The script keeps --p
+   at 1 long before the heading is where you read it. Words stay whole so lines wrap well. */
+.pr-word { display: inline-block; white-space: nowrap; }
+.pr-ch {
+  display: inline-block;
+  --pr-left: calc(1 - var(--p, 1));
+  transform: translate3d(calc(var(--d) * var(--pr-left) * var(--pr-spread, 22px)), calc(var(--a) * var(--pr-left) * -7px), 0) rotate(calc(var(--d) * var(--pr-left) * 7deg));
+  opacity: calc(0.15 + var(--p, 1) * 0.85);
+}
+@media (max-width: 600px) { .pr-ch { --pr-spread: 11px; } }
+
+/* Border Beam: a point of light travels round the form's button. overflow, because a mask hides the
+   moving square but does not stop it widening the page; so the ring is padding, which the clip keeps. */
+@supports (offset-path: rect(0 auto auto 0)) and (mask-composite: intersect) {
+  .pr-beam {
+    position: absolute; inset: 0; padding: 2px; overflow: hidden; border-radius: inherit; pointer-events: none;
+    -webkit-mask: linear-gradient(transparent, transparent), linear-gradient(#fff, #fff);
+    mask: linear-gradient(transparent, transparent), linear-gradient(#fff, #fff);
+    -webkit-mask-clip: content-box, padding-box;
+    mask-clip: content-box, padding-box;
+    mask-composite: intersect;
+  }
+  .pr-beam::after {
+    content: ''; position: absolute; width: 80px; aspect-ratio: 1;
+    background: linear-gradient(to left, #fff, #ffe082, transparent);
+    offset-anchor: 90% 50%;
+    offset-path: rect(0 auto auto 0 round 80px);
+    animation: pr-beam 5s linear infinite;
+  }
+  .pr-enquire.pr-off .pr-beam::after { animation-play-state: paused; }
+}
+@keyframes pr-beam { to { offset-distance: 100%; } }
+
+@media print {
+  .pr-aurora, .pr-light, .pr-beam { display: none; }
+  .pr-w > span, .pr-ch { transform: none !important; opacity: 1 !important; }
+  .beyond-card { position: static !important; transform: none !important; }
+}

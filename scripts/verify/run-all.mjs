@@ -68,6 +68,7 @@ const SUITES = [
   { name: 'browser: the redesigned workshops page on a phone and a laptop: no words lost, every effect, animations off, without its motion files', args: ['browser-workshop-redesign.cjs'], harness: 'delhi-harness.mjs', port: 8807, portEnv: true },
   { name: 'unit: the call for workshop partners (every rule of the form, what it sends, its words, Admin label and Overview line), each alone', args: ['unit-workshop-partner.mjs'] },
   { name: 'system: a workshop idea from a shared link to Admin Enquiries and the Overview board (the page\'s own script, real worker, real SQLite, team email)', args: ['smoke-workshop-partner.mjs'] },
+  { name: 'browser: the redesigned partner page on a phone and a laptop: every price and word kept, each Enquire button carried into the form, an enquiry on the real worker, the bar, animations off, without its motion files', args: ['browser-partner-redesign.cjs'], harness: 'delhi-harness.mjs', port: 8817, portEnv: true },
   { name: 'browser: the call for workshop partners on a phone and a laptop, the form on the real worker', args: ['browser-workshop-partner.cjs'], harness: 'delhi-harness.mjs', port: 8790, portEnv: true },
   { name: 'browser: delegate app (chat, connect, meet, inbox, back, XSS)', args: ['browser-delegate.cjs'], harness: 'app-harness.mjs', port: 8770 },
   // portEnv: the harness and the test read HARNESS_PORT, so a busy :8772 (another

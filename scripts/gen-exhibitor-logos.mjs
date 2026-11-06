@@ -333,6 +333,7 @@ Digital media partner: ${media.name}.
 `
 
 fill('public/index.html', home)
+fill('public/partner.html', home)
 fill('public/exhibition.html', grid)
 fill('public/llms.txt', llms)
 
