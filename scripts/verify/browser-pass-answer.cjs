@@ -35,6 +35,7 @@ const UA = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, 
   await seed(510, 'Had An Amount', { amount: '5898.82' });
   await seed(511, 'Bulk Mover Two');
   await seed(512, 'Esc & <b>Cancel</b>');
+  await seed(513, 'Old Delegate Name', { badge: 'Delegate' });
 
   const browser = await pw.chromium.launch({ channel: 'msedge', headless: true });
   try {
@@ -196,6 +197,12 @@ const UA = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, 
     // ---- Add Attendee ----
     await page.evaluate(() => openAddAttendee());
     await page.waitForSelector('#add-att-form');
+    check('Add Attendee opens on a Visitor Pass, with no lunch', await page.inputValue('#na-badge') === 'Visitor Pass' && await page.inputValue('#na-lunch') === 'No', await page.inputValue('#na-badge') + ' ' + await page.inputValue('#na-lunch'));
+    check('the old plain Delegate is no longer offered', await page.locator('#na-badge option[value="Delegate"]').count() === 0);
+    await page.selectOption('#na-badge', 'Delegate Pass');
+    check('Lunch follows the pass: a Delegate Pass has it', await page.inputValue('#na-lunch') === 'Yes');
+    await page.selectOption('#na-badge', 'Visitor Pass');
+    check('and back: a Visitor Pass has none', await page.inputValue('#na-lunch') === 'No');
     await page.fill('#na-name', 'New Guest');
     await page.fill('#na-email', 'new.guest@example.com');
     await page.selectOption('#na-badge', 'VIP Pass');
@@ -220,6 +227,18 @@ const UA = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, 
     await page.click('#na-submit-btn');
     await until(async () => (await sql("SELECT COUNT(*) n FROM attendees WHERE email = 'new.visitor@example.com'"))[0].n === 1);
     check('Add Attendee, a Visitor Pass: no question', (await sql("SELECT COUNT(*) n FROM attendees WHERE email = 'new.visitor@example.com'"))[0].n === 1 && !(await asked()));
+    a = (await sql("SELECT * FROM attendees WHERE email = 'new.visitor@example.com'"))[0] || {};
+    check('and they are a Visitor Pass with no lunch', a.badge_type === 'Visitor Pass' && a.lunch_inclusion === 'No', JSON.stringify([a.badge_type, a.lunch_inclusion]));
+    // Someone holding the old name: the inline box must open on what they hold, not save another pass.
+    await sleep(500);
+    await grid();
+    await page.locator('tr', { has: page.locator('button[onclick="openEditAttendeeById(513)"]') }).locator('td[onclick*="badge_type"]').click();
+    const held = await page.locator('td[onclick*="badge_type"] select').first().inputValue();
+    check('the inline cell of someone holding the old Delegate opens on Delegate', held === 'Delegate', held);
+    await page.keyboard.press('Escape');
+    await sleep(400);
+    a = await rowOf(513);
+    check('and leaving it changes nothing', a.badge_type === 'Delegate' && !(await asked()), a.badge_type);
     check('no script error across Admin', errors.length === 0, errors.slice(0, 2).join(' | '));
     await ctx.close();
 

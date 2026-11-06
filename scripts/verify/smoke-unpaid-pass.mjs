@@ -151,22 +151,24 @@ person(25, 'Bulk Paid Delegate', { badge_type: 'Delegate Pass', lunch_inclusion:
 person(26, 'Explicit Both', { lunch_inclusion: 'Yes' });
 person(27, 'Eats Unpaid', { badge_type: 'Delegate Pass', payment_status: 'pending', lunch_inclusion: 'Yes' });
 
-r = await send('PUT', '/api/admin/attendees/20', { badge_type: 'VIP Pass' });
-check('Edit: a Visitor raised to VIP by hand is complimentary (waived), with lunch', r.status === 200 && is(at(20), 'VIP Pass', 'waived', 'Yes'), JSON.stringify(at(20)));
-r = await send('PATCH', '/api/admin/attendees/21', { badge_type: 'Academic Pass' });
-check('inline cell: raised to Academic is complimentary, and Academic has no lunch', r.status === 200 && is(at(21), 'Academic Pass', 'waived', 'No'), JSON.stringify(at(21)));
+r = await send('PUT', '/api/admin/attendees/20', { badge_type: 'VIP Pass', payment_status: 'waived' });
+check('Edit: a Visitor raised to VIP as Complimentary is waived, with lunch', r.status === 200 && is(at(20), 'VIP Pass', 'waived', 'Yes'), JSON.stringify(at(20)));
+r = await send('PATCH', '/api/admin/attendees/21', { badge_type: 'Academic Pass', payment_status: 'waived' });
+check('inline cell: raised to Academic as Complimentary, and Academic has no lunch', r.status === 200 && is(at(21), 'Academic Pass', 'waived', 'No'), JSON.stringify(at(21)));
 r = await send('PATCH', '/api/admin/attendees/22', { payment_status: 'paid' });
 check('Set payment to paid on an unpaid Delegate adds the lunch the pass includes', r.status === 200 && is(at(22), 'Delegate Pass', 'paid', 'Yes'), JSON.stringify(at(22)));
 r = await send('PATCH', '/api/admin/attendees/23', { badge_type: 'Delegate Pass' });
 check('someone part-way through paying stays pending when the tier is changed, and gets no lunch yet', r.status === 200 && is(at(23), 'Delegate Pass', 'pending', 'No'), JSON.stringify(at(23)));
-r = await send('POST', '/api/admin/attendees/bulk-update', { ids: [24, 25], changes: { badge_type: 'VIP Pass' } });
+// The two calls the page makes: the answer goes on the mover only.
+r = await send('POST', '/api/admin/attendees/bulk-update', { ids: [24], changes: { badge_type: 'VIP Pass', payment_status: 'waived' } });
+const heldPaid = await send('POST', '/api/admin/attendees/bulk-update', { ids: [25], changes: { badge_type: 'VIP Pass' } });
 check('Set pass on a selection: the Visitor is given (waived), the paid Delegate keeps paid, both get lunch',
-  r.status === 200 && is(at(24), 'VIP Pass', 'waived', 'Yes') && is(at(25), 'VIP Pass', 'paid', 'Yes'), JSON.stringify([at(24), at(25)]));
+  r.status === 200 && heldPaid.status === 200 && is(at(24), 'VIP Pass', 'waived', 'Yes') && is(at(25), 'VIP Pass', 'paid', 'Yes'), JSON.stringify([at(24), at(25)]));
 // Since 5 Nov 2026 'paid' needs money behind it: integration-pass-answer.mjs has the case without.
 r = await send('PUT', '/api/admin/attendees/26', { badge_type: 'VIP Pass', payment_status: 'paid', payment_amount: '23598.82', lunch_inclusion: 'No' });
 check('a save that sets Payment and Lunch itself is taken as it is', r.status === 200 && is(at(26), 'VIP Pass', 'paid', 'No'), JSON.stringify(at(26)));
-r = await send('POST', '/api/admin/attendees', { event_id: 1, name: 'Added Vip', email: 'added-vip@example.com', badge_type: 'VIP Pass' });
-const addAcad = await send('POST', '/api/admin/attendees', { event_id: 1, name: 'Added Academic', email: 'added-acad@example.com', badge_type: 'Academic Pass' });
+r = await send('POST', '/api/admin/attendees', { event_id: 1, name: 'Added Vip', email: 'added-vip@example.com', badge_type: 'VIP Pass', payment_status: 'waived' });
+const addAcad = await send('POST', '/api/admin/attendees', { event_id: 1, name: 'Added Academic', email: 'added-acad@example.com', badge_type: 'Academic Pass', payment_status: 'waived' });
 const addVis = await send('POST', '/api/admin/attendees', { event_id: 1, name: 'Added Visitor', email: 'added-vis@example.com', badge_type: 'Visitor Pass' });
 check('Add Attendee: a VIP is given with lunch, an Academic given without, a Visitor stays paid with no lunch',
   r.status === 201 && addAcad.status === 201 && addVis.status === 201 && is(atEmail('added-vip@example.com'), 'VIP Pass', 'waived', 'Yes')

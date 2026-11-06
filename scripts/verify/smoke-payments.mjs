@@ -515,8 +515,9 @@ check('the config says when the standard price ends and what follows it', r.json
   r = await hit('/api/payments/config');
   const lateCfg = r;
   r = await hit('/passes');
-  check('from 6 Nov /passes shows the late prices and no longer says the standard prices run until 5 Nov', r.status === 200 && r.text.includes('&#8377;8,999') && !r.text.includes('&#8377;4,999') && !/STANDARD PRICES UNTIL/i.test(r.text) && /the standard prices ended on 5 Nov 2026/.test(r.text), r.status + ' ' + (r.text.match(/STANDARD PRICES[^<]*/i) || [''])[0]);
+  check('from 6 Nov /passes shows the late prices with the old one struck through, says they went up and may go up again', r.status === 200 && r.text.includes('&#8377;4,999</s> &#8377;8,999') && r.text.includes('&#8377;999</s> &#8377;3,999') && r.text.includes('&#8377;9,999</s> &#8377;14,999') && r.text.includes('&#8377;19,999</s> &#8377;24,999') && !/STANDARD PRICES UNTIL/i.test(r.text) && r.text.includes('PRICES WENT UP ON 6 NOV') && /Prices went up on 6 Nov and may go up again\./.test(r.text), r.status + ' ' + (r.text.match(/STANDARD PRICES[^<]*/i) || [''])[0]);
   r = lateCfg;
+  check('the config gives the app the old prices to strike through', r.json?.standard_passes?.['Delegate Pass']?.base === 4999 && r.json?.standard_passes?.['VIP Pass']?.base === 19999 && r.json?.standard_passes?.['Academic Pass']?.base === 999, r.text);
   check('from 00:00 IST on 6 Nov the late price applies to every pass', r.json?.late === true && r.json?.passes?.['Delegate Pass']?.total === 10618.82 && r.json?.passes?.['Premium Delegate Pass']?.total === 17698.82 && r.json?.passes?.['VIP Pass']?.total === 29498.82 && r.json?.passes?.['Academic Pass']?.total === 4718.82, r.text);
   person(190, { main_event: 1 });
   r = await start(190, 'Delegate Pass');
@@ -563,6 +564,14 @@ check('the panel is told how many each offer reaches: senior Visitors and studen
 mark = mail.length;
 r = await adminGet('/api/admin/campaigns/upgrade-preview?audience=senior');
 check('Preview shows the Delegate offer as the first senior Visitor gets it, and sends nothing', r.status === 200 && /Secure my Delegate Pass/.test(r.json?.html || '') && /5,898\.82/.test(r.json?.html || '') && (r.json?.html || '').includes('href="#preview"') && !(r.json?.html || '').includes('pass=premium') && r.json?.to === 'fiona@acme.example' && mail.length === mark, r.status + ' ' + (r.json?.subject || r.text.slice(0, 120)));
+{
+  // After the rise (6 Nov 2026) the emails strike the old price through, and say it may go up again.
+  const clockNow = Date.now;
+  Date.now = () => Date.parse('2026-11-05T18:31:00Z');   // 00:01 IST on 6 Nov
+  const offer = await adminGet('/api/admin/campaigns/upgrade-preview?audience=senior');
+  check('the Delegate offer email after the rise: the old price struck through beside the new one, and it may go up again', offer.status === 200 && /&#8377;4,999<\/s> &#8377;8,999/.test(offer.json?.html || '') && (offer.json?.html || '').includes('Prices went up on 6 Nov and may go up again.'), (offer.json?.html || offer.text || '').slice(0, 300));
+  Date.now = clockNow;
+}
 r = await camp({ kind: 'upgrade', audience: 'everyone' });
 check('an upgrade campaign is only ever "senior" or "students"', r.status === 400, r.status + ' ' + r.text);
 r = await camp({ kind: 'upgrade', audience: 'senior' });

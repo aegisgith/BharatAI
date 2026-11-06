@@ -67,11 +67,11 @@ const start = await board();
 // ---- The bug itself, end to end ----
 {
   const id = W.person(4);
-  await put(id, { badge_type: 'Delegate Pass', payment_status: 'paid' });
+  const saved = await put(id, { badge_type: 'Delegate Pass', payment_status: 'paid' });
   const a = W.who(id);
-  check('what Full Edit used to do (Payment box reads paid, no money): not a Delegate who paid', a.payment_status === 'waived', a.payment_status);
+  check('what Full Edit used to do (Payment box reads paid, no money): refused, still a Visitor', saved.status === 400 && a.badge_type === 'Visitor Pass', saved.status + ' ' + a.badge_type);
   const up = await W.start(id, 'VIP Pass');
-  check('so no one gets a cheap move up on money never received', up.status === 409, up.status + ' ' + up.text.slice(0, 140));
+  check('so no one gets a cheap move up on money never received: they buy at the full price', up.status === 201 && up.json?.amount === 23598.82, up.status + ' ' + up.text.slice(0, 200));
 }
 
 // ---- On the other side of the dated price change ----

@@ -177,7 +177,7 @@ for (const [pass, key] of [['Delegate Pass', 'delegate'], ['Premium Delegate Pas
     at('2026-11-06T00:01:00+05:30');
     const after = await page('/register');
     same('00:01 on 6 Nov: both are gone by themselves', words(after), { chip: false, described: false });
-    check('the header shows the date and place, and the page ₹8,999', after.includes('20–21 NOV 2026 · WTC MUMBAI') && after.includes('8,999'), 'missing');
+    check('the header says the prices went up, and the page shows ₹4,999 struck through beside ₹8,999', after.includes('PRICES WENT UP ON 6 NOV') && after.includes('&#8377;4,999</s> &#8377;8,999'), 'missing');
     check('the description still says what the passes are', /Delegate with guaranteed entry, Premium Delegate/.test(after), 'missing');
   } finally { globalThis.Date = RealDate; }
 }

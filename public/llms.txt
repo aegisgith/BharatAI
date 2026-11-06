@@ -42,12 +42,12 @@ Bharat AI Innovation is India's B2B platform for AI, not a footfall exhibition. 
 ## Pass types and pricing (INR)
 
 - **Visitor Pass** — FREE (exhibition access; entry is NOT guaranteed: it depends on slot availability on 20 and 21 November, a half-day slot or none, confirmed by email before the event)
-- **Academic Pass** — ₹999 + GST (conference + student zone; students/faculty with valid ID; no lunch or workshop)
-- **Delegate Pass** — ₹4,999 + GST (full conference + exhibition + networking lunch; no workshop)
-- **Premium Delegate Pass** — ₹9,999 + GST (everything in Delegate + one hands-on workshop)
-- **VIP Pass** — ₹19,999 + GST (everything in Premium Delegate + the Bharat AI Leaders’ Evening on Day 1, VIP lounge, priority seating, speaker meet & greet)
+- **Academic Pass** — ₹3,999 + GST (conference + student zone; students/faculty with valid ID; no lunch or workshop)
+- **Delegate Pass** — ₹8,999 + GST (full conference + exhibition + networking lunch; no workshop)
+- **Premium Delegate Pass** — ₹14,999 + GST (everything in Delegate + one hands-on workshop)
+- **VIP Pass** — ₹24,999 + GST (everything in Premium Delegate + the Bharat AI Leaders’ Evening on Day 1, VIP lounge, priority seating, speaker meet & greet)
 - **Entry:** every paid pass has guaranteed entry on both days; a free Visitor Pass has no guaranteed entry — slot availability on 20 and 21 November decides, a half-day slot or none.
-- **Dated prices:** these are the standard prices until 5 November 2026. From 6 November: Academic ₹3,999, Delegate ₹8,999, Premium Delegate ₹14,999, VIP ₹24,999 (+ GST).
+- **Dated prices:** these prices apply from 6 November 2026 and may go up again. Until 5 November they were Academic ₹999, Delegate ₹4,999, Premium Delegate ₹9,999, VIP ₹19,999 (+ GST).
 - **Teams:** five or more Delegate or Premium Delegate passes are five for the price of four, on request (https://bharataiinnovation.com/contact#group_registration).
 - **Moving up:** a confirmed Delegate, Premium Delegate or Academic pass can be upgraded online for the difference between the two list prices, from the pass card in the app.
 - Workshop seats are limited and go first come, first served. Comparison: https://bharataiinnovation.com/passes

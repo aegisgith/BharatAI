@@ -180,6 +180,14 @@ check('the preview counts the run by pass', p.status === 200 && JSON.stringify(p
 check('unasked, it shows a Free Visitor Pass', p.json?.kind === 'free' && p.json.sample?.id === 8 && p.json.subject === 'Lata, your Free Visitor Pass is ready', JSON.stringify(p.json?.sample) + ' ' + p.json?.subject);
 const ph = p.json?.html || '';
 check('the preview has no open picture, no ne= tag and no sign-in token', ph.includes('</html>') && !ph.includes('notify-open') && !/[?&]ne=/.test(ph) && !/[?&]token=/.test(ph), '');
+{
+  // After the rise (6 Nov 2026) the upgrade box strikes the old price through.
+  const clockNow = Date.now;
+  Date.now = () => Date.parse('2026-11-05T18:31:00Z');   // 00:01 IST on 6 Nov
+  const late = await hit('GET', '/api/admin/notify-preview', undefined, ADMIN);
+  Date.now = clockNow;
+  check('after the rise the free-pass email shows the old price struck through beside the new one, and that it may go up again', /&#8377;4,999<\/s> &#8377;8,999/.test(late.json?.html || '') && (late.json?.html || '').includes('Prices went up on 6 Nov and may go up again.'), (late.text || '').slice(0, 200));
+}
 p = await hit('GET', '/api/admin/notify-preview?kind=paid', undefined, ADMIN);
 check('?kind=paid shows the VIP', p.json?.sample?.id === 9 && p.json.subject === 'Vik, your VIP Pass is ready', JSON.stringify(p.json?.sample));
 p = await hit('GET', '/api/admin/notify-preview?id=6', undefined, ADMIN);
