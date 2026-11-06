@@ -34644,7 +34644,7 @@ function adminPageScript(): string {
     // whole segment rather than the hundred rows on screen.
     function attToggleRow(id, on) {
       if (on) attSelected.add(String(id)); else attSelected.delete(String(id));
-      attRefreshBulkBar();
+      attRefreshBulkBar(document.getElementById('att-row-' + id));
     }
     function attToggleAllVisible(on) {
       (window.__attVisibleIds || []).forEach(function (id) {
@@ -34657,13 +34657,21 @@ function adminPageScript(): string {
       loadAdminAttendees(null, true);
     }
     function attClearSelection() { attSelected = new Set(); loadAdminAttendees(null, true); }
-    function attRefreshBulkBar() {
+    // The bar is hidden with the class, not the hidden attribute: its flex class
+    // beats the attribute, which left Set pass and Delete on show with nobody
+    // selected. It sits above the table, so showing or hiding it moves every row;
+    // the page is scrolled by the same amount, so the row just ticked stays under
+    // the pointer and the next click lands on the row it was aimed at.
+    function attRefreshBulkBar(row) {
       var bar = document.getElementById('att-bulk-bar');
       var n = attSelected.size;
       if (!bar) return;
-      bar.hidden = n === 0;
+      var was = row ? row.getBoundingClientRect().top : 0;
+      bar.classList.toggle('hidden', n === 0);
       var lbl = document.getElementById('att-bulk-count');
-      if (lbl) lbl.textContent = n + (n === 1 ? ' selected' : ' selected');
+      if (lbl) lbl.textContent = n + ' selected';
+      var moved = row ? row.getBoundingClientRect().top - was : 0;
+      if (moved) window.scrollBy(0, moved);
     }
     function attSelectedIds() { return Array.from(attSelected); }
     function attFiltered(list) {
@@ -35057,7 +35065,7 @@ function adminPageScript(): string {
         \${attSearching ? attSearchHelpHTML(attQuery, attMatches.length, attHiddenHits, attSuggest) : ''}
 
         <!-- Acting on a segment. Hidden until something is selected. -->
-        <div id="att-bulk-bar" class="glass rounded-xl p-3 mb-3 flex flex-wrap items-center gap-2 border border-primary-500/30" \${attSelected.size ? '' : 'hidden'}>
+        <div id="att-bulk-bar" class="glass rounded-xl p-3 mb-3 flex flex-wrap items-center gap-2 border border-primary-500/30\${attSelected.size ? '' : ' hidden'}">
           <span class="text-xs font-semibold text-primary-300"><i class="fas fa-check-double mr-1.5"></i><span id="att-bulk-count">\${attSelected.size} selected</span></span>
           \${attMatches.length > attPageRows.length ? '<button onclick="attSelectAllMatching()" class="px-2.5 py-1.5 rounded-lg text-xs glass hover:bg-white/10">Select all ' + attMatches.length + ' matching</button>' : ''}
           <button onclick="attClearSelection()" class="px-2.5 py-1.5 rounded-lg text-xs glass hover:bg-white/10">Clear</button>

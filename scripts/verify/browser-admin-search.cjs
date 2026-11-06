@@ -217,6 +217,33 @@ const PEOPLE = [
     await page.locator('button', { hasText: 'Clear 1 filter' }).click();
     check('clearing the filters keeps what was typed', (await box.inputValue()) === 'visitor', await box.inputValue());
 
+    // ---- the Set pass / Delete bar shows only while someone is ticked ----
+    await search('');
+    const bar = page.locator('#att-bulk-bar');
+    check('with nobody ticked, the bar with Set pass and Delete is not on the screen', !(await bar.isVisible()), 'bar visible at 0 selected');
+    const tickBox = page.locator('.att-row input[type="checkbox"]').nth(3);
+    const rowTop = () => tickBox.evaluate(el => Math.round(el.getBoundingClientRect().top));
+    await page.evaluate(() => window.scrollTo(0, 200));
+    const before = await rowTop();
+    await tickBox.check();
+    const after = await rowTop();
+    check('ticking one person shows it, saying 1 selected', (await bar.isVisible()) && /1 selected/.test(await bar.innerText()), await bar.innerText());
+    check('and the ticked row has not moved on the screen', Math.abs(after - before) <= 1, before + ' -> ' + after);
+    await page.locator('.att-row input[type="checkbox"]').nth(4).check();
+    check('a second tick counts 2 and the bar stays', (await bar.isVisible()) && /2 selected/.test(await bar.innerText()), await bar.innerText());
+    await page.evaluate(() => loadAdminAttendees(null, true));
+    check('a redraw of the list keeps the bar and the ticks', (await bar.isVisible()) && /2 selected/.test(await bar.innerText()) && (await page.locator('.att-row input[type="checkbox"]:checked').count()) === 2, await bar.innerText());
+    await page.locator('.att-row input[type="checkbox"]').nth(4).uncheck();
+    const b2 = await rowTop();
+    await tickBox.uncheck();
+    const a2 = await rowTop();
+    check('unticking the last person hides it again, the row still in place', !(await bar.isVisible()) && Math.abs(a2 - b2) <= 1, b2 + ' -> ' + a2);
+    await page.locator('#attendee-table thead input[type="checkbox"]').check();
+    check('the box in the heading ticks the page and offers "Select all ... matching"', await until(async () => (await bar.isVisible()) && /Select all \d+ matching/.test(await bar.innerText()), 5000), 'no offer');
+    await bar.locator('button', { hasText: /^Clear$/ }).click();
+    check('Clear unticks everyone and the bar goes', await until(async () => !(await bar.isVisible()) && (await page.locator('.att-row input[type="checkbox"]:checked').count()) === 0, 5000), 'bar still there');
+    await page.evaluate(() => window.scrollTo(0, 0));
+
     // ---- unit checks of the helpers, inside the page ----
     const u = await page.evaluate(() => ({
       blank: attSearchParse('   '), plain: attSearchParse('  Raj\tPatel ').words, short: attSearchParse('98').phone,
