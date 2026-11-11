@@ -52,13 +52,19 @@ const DB = {
           const id = Number(args[0]), like = String(args[1]).replace(/%/g, '').toLowerCase();
           return { results: Object.values(state.attendees).filter(a => a.id === id || (like && a.name.toLowerCase().includes(like))) };
         }
+        // This stand-in is a database from before migration 0051: no checkins table, so
+        // the desk takes the one-check-in-per-person path. The per-day rules are in
+        // smoke-desk-days.mjs, on real SQLite.
+        if (/ FROM checkins /.test(flat)) throw new Error('no such table: checkins');
         return { results: [] };
       },
       async run() {
-        if (/^UPDATE attendees SET checked_in_at = datetime\('now'\), checked_in_by = \? WHERE id = \?$/.test(flat)) {
-          const a = state.attendees[Number(args[1])];
-          if (a) { a.checked_in_at = new Date().toISOString().slice(0, 19).replace('T', ' '); a.checked_in_by = args[0]; }
-          return { meta: { changes: a ? 1 : 0 } };
+        // recordCheckin(): the first arrival, stamped by the worker (0051, 11 Nov 2026).
+        if (/^UPDATE attendees SET checked_in_at = \?, checked_in_by = \? WHERE id = \? AND checked_in_at IS NULL$/.test(flat)) {
+          const a = state.attendees[Number(args[2])];
+          const hit = !!a && !a.checked_in_at;
+          if (hit) { a.checked_in_at = args[0]; a.checked_in_by = args[1]; }
+          return { meta: { changes: hit ? 1 : 0 } };
         }
         if (/^INSERT INTO admin_audit/.test(flat)) { state.audits.push({ action: args[2], entity_id: args[4], actor: args[0] }); return { meta: { changes: 1 } }; }
         return { meta: { changes: 1, last_row_id: 1 } };

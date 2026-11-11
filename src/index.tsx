@@ -4457,14 +4457,25 @@ app.get('/api/admin/checkin-stats', async (c) => {
             SUM(CASE WHEN ${today} THEN 1 ELSE 0 END) AS today
        FROM attendees WHERE event_id = 1 AND checked_in_at IS NOT NULL${mc}
       GROUP BY 1 ORDER BY 2 DESC`).all() as any
+  // With the per-day table (0051): arrivals by day, and today's quarter hours include
+  // people back for a second day, whom the one stamp on attendees cannot show.
+  let days: any[] = []
+  let todayBuckets: any[] | null = null
+  if (await checkinsReady(c)) {
+    days = ((await c.env.DB.prepare('SELECT day, COUNT(*) AS n FROM checkins WHERE event_id = 1 GROUP BY day ORDER BY day').all()).results || []) as any[]
+    todayBuckets = ((await c.env.DB.prepare(
+      `SELECT strftime('%H', ${IST}) || ':' || printf('%02d', (CAST(strftime('%M', ${IST}) AS INTEGER) / 15) * 15) AS bucket, COUNT(*) AS n
+         FROM checkins WHERE event_id = 1 AND day = ? GROUP BY 1 ORDER BY 1`).bind(istDate()).all()).results || []) as any[]
+  }
   return c.json({
     ready: true,
     total: totals?.total || 0,
     checkedIn: totals?.checked_in || 0,
     byTier: byTier.results || [],
     recent: recent.results || [],
-    buckets: buckets.results || [],
+    buckets: todayBuckets || buckets.results || [],
     byDesk: byDesk.results || [],
+    days,
   })
 })
 
@@ -4810,6 +4821,7 @@ function staffScanHTML(me: any): string {
     <video id="v" playsinline muted autoplay></video>
     <p class="err" id="e"></p>
     <button id="cam" onclick="start()" style="display:none;">Start the camera</button>
+    <p class="muted" id="qn" style="margin:8px 0 0;"></p>
     <div class="find">
       <label for="q">No pass to scan?</label>
       <input id="q" placeholder="Name, email, company, mobile or BHAI number" autocapitalize="words" autocomplete="off">
@@ -4859,15 +4871,123 @@ function staffScanHTML(me: any): string {
        +'<a href="/staff/scan" style="display:block;max-width:420px;width:100%;margin:10px auto 0;padding:16px;border-radius:12px;background:#fff;color:#B91C1C;font-size:19px;font-weight:bold;text-decoration:none;box-sizing:border-box">Scan again</a>';
      document.body.appendChild(d);
    }
+   // Check in on scan (11 Nov 2026). One call verifies the pass and admits the holder;
+   // the answer is shown over the camera, which keeps running, so the next person is
+   // one tap away. If that call cannot be made the page falls back: to the saved list
+   // when the phone has no internet, otherwise to the full /verify page as before.
+   var busy=false, lastTok='', lastAt=0, roster=null, queue=[], flushing=false;
+   try{ roster=JSON.parse(localStorage.getItem('desk_roster')||'null'); queue=JSON.parse(localStorage.getItem('desk_queue')||'[]')||[]; }catch(err){ roster=null; queue=[]; }
+   function tx(s){ var d=document.createElement('div'); d.textContent=String(s==null?'':s); return d.innerHTML; }
+   function stopCam(){ stopped=true; try{ stream.getTracks().forEach(function(t){ t.stop(); }); }catch(err){} }
+   function leave(m){ stopCam(); location.href='/verify/'+m[1]; }
    function found(raw){
      var m=VERIFY.exec(String(raw||''));
      if(!m) return false;
-     stopped=true;
-     try{ stream.getTracks().forEach(function(t){ t.stop(); }); }catch(err){}
-     if(navigator.onLine===false){ notChecked(); return true; }
-     location.href='/verify/'+m[1];
-     return true;
+     if(busy||(m[1]===lastTok&&Date.now()-lastAt<5000)) return false;
+     lastTok=m[1]; lastAt=Date.now(); busy=true;
+     quick(m);
+     return false;
    }
+   function note(){
+     var n=document.getElementById('qn'); if(!n) return;
+     var parts=[];
+     if(queue.length) parts.push(queue.length+' check-in'+(queue.length===1?'':'s')+' saved on this phone, waiting for the internet.');
+     if(roster&&roster.people&&roster.people.length) parts.push('Ready to work without internet ('+roster.people.length+' passes saved).');
+     n.textContent=parts.join(' ');
+   }
+   function saveQueue(){ try{ localStorage.setItem('desk_queue',JSON.stringify(queue)); }catch(err){} note(); }
+   async function loadRoster(){
+     try{
+       var r=await fetch('/api/staff/roster'); if(!r.ok) return;
+       var j=await r.json(); if(!j||!j.people) return;
+       roster=j; try{ localStorage.setItem('desk_roster',JSON.stringify(j)); }catch(err){}
+       note();
+     }catch(err){}
+   }
+   async function sha10(t){
+     var b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(t));
+     return Array.from(new Uint8Array(b)).map(function(x){ return x.toString(16).padStart(2,'0'); }).join('').slice(0,10);
+   }
+   function card(o){
+     var d=document.getElementById('card'); if(d) d.remove();
+     d=document.createElement('div'); d.id='card'; d.setAttribute('role','alert'); d.setAttribute('data-state',o.state);
+     d.style.cssText='position:fixed;inset:0;z-index:98;overflow:auto;background:'+o.bg+';color:#fff;display:flex;flex-direction:column;justify-content:center;padding:24px;text-align:center;font-family:Arial,sans-serif';
+     d.innerHTML='<p id="card-title" style="font-size:30px;font-weight:bold;margin:0 0 12px">'+tx(o.title)+'</p>'
+       +(o.photo?'<img src="'+tx(o.photo)+'" alt="" style="width:120px;height:120px;border-radius:50%;object-fit:cover;margin:0 auto 10px;border:3px solid #fff">':'')
+       +(o.name?'<p id="card-name" style="font-size:26px;font-weight:bold;margin:0 0 4px">'+tx(o.name)+'</p>':'')
+       +(o.sub?'<p style="font-size:17px;margin:0 0 8px">'+tx(o.sub)+'</p>':'')
+       +(o.pass?'<p style="font-size:18px;font-weight:bold;margin:0 0 10px">'+tx(o.pass)+'</p>':'')
+       +(o.note?'<p id="card-note" style="font-size:17px;line-height:1.4;margin:0 0 14px">'+tx(o.note)+'</p>':'')
+       +'<button id="card-next" style="background:#fff;color:#111;font-size:20px;padding:18px;margin-top:6px">Scan next pass</button>'
+       +(o.undo?'<button id="card-undo" style="background:rgba(255,255,255,.2);color:#fff;font-size:16px">Undo this check-in</button>':'')
+       +(o.token?'<a href="/verify/'+encodeURIComponent(o.token)+'" style="color:#fff;margin-top:16px;font-size:15px">Open full details</a>':'');
+     document.body.appendChild(d);
+     document.getElementById('card-next').onclick=function(){ d.remove(); busy=false; lastAt=Date.now(); };
+     var u=document.getElementById('card-undo');
+     if(u) u.onclick=async function(){
+       u.disabled=true; u.textContent='Undoing...';
+       try{
+         var r=await fetch('/api/verify/'+encodeURIComponent(o.token)+'/undo',{method:'POST'});
+         if(r.ok){ d.remove(); busy=false; lastTok=''; e.textContent='That check-in was undone.'; return; }
+       }catch(err){}
+       u.disabled=false; u.textContent='Could not undo. Open full details.';
+     };
+   }
+   var GREEN='#0f7b47', AMBER='#b26a00', RED='#b3261e', GREY='#334155';
+   function show(j, tok){
+     var sub=[j.job_title,j.company].filter(Boolean).join(', ');
+     var also=(j.earlier&&j.earlier.length)?' Also came on '+j.earlier.join(', ')+'.':'';
+     var idNote=j.photo_flagged?'The photo on this pass did not match the person. Check the NAME on a government photo ID.'
+       :j.photo?'Check the photo and name against a government photo ID.':'No photo on file. Check the NAME on a government photo ID.';
+     var ws=j.workshop?' Workshop: '+j.workshop+'.':'';
+     if(j.state==='ok') card({state:'ok',bg:GREEN,title:'CHECKED IN',name:j.name,sub:sub,pass:j.pass,photo:j.photo,note:idNote+ws+also,token:tok,undo:j.undoable});
+     else if(j.state==='already') card({state:'already',bg:AMBER,title:'ALREADY CHECKED IN TODAY',name:j.name,sub:sub,pass:j.pass,photo:j.photo,note:(j.at_ist||'')+(j.by?' by '+j.by:'')+'.'+ws,token:tok,undo:j.undoable});
+     else if(j.state==='payment_pending') card({state:'payment_pending',bg:AMBER,title:'PAYMENT PENDING',name:j.name,sub:sub,pass:j.pass,note:'This tier has not been paid for. Do not admit without checking.',token:tok});
+     else if(j.state==='panel_only') card({state:'panel_only',bg:RED,title:'NOT REGISTERED',name:j.name,note:'Registered for a campus panel only, not for the conference. Send them to the registration desk.',token:tok});
+     else card({state:'invalid',bg:RED,title:'NOT VALID',note:'This code is not a Bharat AI Innovation pass.'});
+   }
+   async function quick(m){
+     var tok=m[1], r=null, j=null;
+     if(navigator.onLine===false) return offline(m);
+     try{ r=await fetch('/api/staff/scan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:tok})}); }
+     catch(err){ return offline(m); }
+     if(r.status===401){ location.href='/staff'; return; }
+     try{ j=await r.json(); }catch(err){ j=null; }
+     if(!r.ok||!j||!j.state) return leave(m);
+     show(j, tok);
+   }
+   // No internet. The saved list says whether this is a real pass and whose; the
+   // check-in waits on this phone and is sent when the connection returns. Without the
+   // list the pass was NOT checked, said in red, as before.
+   async function offline(m){
+     var tok=m[1], id=tok.split('.')[0], p=null, i;
+     if(roster&&roster.people){ for(i=0;i<roster.people.length;i++){ if(String(roster.people[i][0])===id){ p=roster.people[i]; break; } } }
+     if(!p||!(window.crypto&&crypto.subtle)){
+       if(navigator.onLine===false){ stopCam(); notChecked(); } else leave(m);
+       return;
+     }
+     var h=''; try{ h=await sha10(tok); }catch(err){ h=''; }
+     if(h!==p[4]) return card({state:'invalid',bg:RED,title:'NOT VALID',note:'This code is not a Bharat AI Innovation pass.'});
+     if(p[3]===2) return card({state:'panel_only',bg:RED,title:'NOT REGISTERED',name:p[1],note:'Registered for a campus panel only, not for the conference. Send them to the registration desk.'});
+     if(p[3]===1) return card({state:'payment_pending',bg:AMBER,title:'PAYMENT PENDING',name:p[1],pass:p[2],note:'This tier has not been paid for. Do not admit without checking.'});
+     var dup=queue.some(function(q){ return q.token===tok; });
+     if(!dup){ queue.push({token:tok,at:Date.now()}); saveQueue(); }
+     card({state:'offline',bg:GREY,title:dup?'ALREADY SCANNED (NO INTERNET)':'VALID PASS (NO INTERNET)',name:p[1],pass:p[2],note:'Check the NAME on a government photo ID. This check-in is saved on this phone and is recorded when the internet returns.'});
+   }
+   async function flush(){
+     if(flushing||!queue.length||navigator.onLine===false) return;
+     flushing=true;
+     while(queue.length){
+       var q=queue[0], r=null;
+       try{ r=await fetch('/api/staff/scan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:q.token,at:q.at})}); }catch(err){ break; }
+       if(r.status===401||r.status>=500) break;
+       queue.shift(); saveQueue();
+     }
+     flushing=false;
+   }
+   window.addEventListener('online',function(){ flush(); loadRoster(); });
+   setInterval(flush,20000); setInterval(loadRoster,600000);
+   note(); loadRoster(); flush();
 
    // Two readers. BarcodeDetector is the browser's own (Android Chrome). Every
    // iPhone lacks it, and on some phones it exists but reads nothing, so the
@@ -5074,6 +5194,12 @@ app.get('/verify/:token', async (c) => {
       if (ws) a.workshop_title = ws.title
     }
   } catch { /* the check-in screen matters more */ }
+  // "Checked in" on this screen means today (0051): someone admitted yesterday is
+  // checked in again today, and the earlier day is said underneath.
+  const st = await checkinState(c, a)
+  a.checked_in_at = st.today ? st.today.at : null
+  a.checked_in_by = st.today ? st.today.by : null
+  a.earlier_days = st.earlier.map(dayLabel)
   const undoable = !!a.checked_in_at &&
     Date.now() - new Date(String(a.checked_in_at).replace(' ', 'T') + 'Z').getTime() < CHECKIN_UNDO_MINUTES * 60000
   const flagUndoable = !!a.photo_flagged_at && !String(a.avatar_url || '').trim() &&
@@ -5090,24 +5216,133 @@ app.get('/verify/:token', async (c) => {
   return c.html(verifyPageHTML({ state: 'valid', staff, token, attendee: a, undoable, flagUndoable }))
 })
 
+// ── One check-in per person per day (0051, 11 Nov 2026) ──
+// attendees.checked_in_at holds one moment, so on the second day everyone admitted on
+// the first read "Already checked in" and nobody could say who came on day two. The
+// checkins table has a row per person per day in India; checked_in_at stays the FIRST
+// arrival, which certificates, analytics and exports read. Before 0051 runs there is
+// one check-in for the whole event, exactly as before.
+let _checkinsReady = false
+async function checkinsReady(c: any): Promise<boolean> {
+  if (_checkinsReady) return true
+  try { await c.env.DB.prepare('SELECT id FROM checkins LIMIT 0').all(); _checkinsReady = true } catch { /* before 0051 */ }
+  return _checkinsReady
+}
+// "20 Nov" for '2026-11-20'.
+const dayLabel = (day: string): string => { const p = String(day).split('-'); return `${Number(p[2])} ${IST_MONTHS[Number(p[1]) - 1] || ''}`.trim() }
+
+// Where one person stands on a day (today, unless a desk phone recorded the scan while
+// it had no internet): the check-in of that day, and the earlier days they came.
+async function checkinState(c: any, a: { id: any; checked_in_at?: any; checked_in_by?: any }, day: string = istDate()): Promise<{ today: { at: string; by: string } | null; earlier: string[] }> {
+  if (!(await checkinsReady(c))) return { today: a.checked_in_at ? { at: String(a.checked_in_at), by: String(a.checked_in_by || '') } : null, earlier: [] }
+  const rows = ((await c.env.DB.prepare('SELECT day, checked_in_at, checked_in_by FROM checkins WHERE attendee_id = ? ORDER BY day').bind(a.id).all()).results || []) as any[]
+  // Admitted before the table existed: that one stamp stands for its own day.
+  if (a.checked_in_at && !rows.some(r => r.day === istDate(a.checked_in_at))) rows.push({ day: istDate(a.checked_in_at), checked_in_at: a.checked_in_at, checked_in_by: a.checked_in_by })
+  const now = rows.find(r => r.day === day)
+  return { today: now ? { at: String(now.checked_in_at), by: String(now.checked_in_by || '') } : null, earlier: rows.filter(r => r.day < day).map(r => String(r.day)).sort() }
+}
+
+async function recordCheckin(c: any, id: any, by: string, at?: Date): Promise<void> {
+  const stamp = (at || new Date()).toISOString().slice(0, 19).replace('T', ' ')
+  if (await checkinsReady(c)) {
+    await c.env.DB.prepare('INSERT OR IGNORE INTO checkins (event_id, attendee_id, day, checked_in_at, checked_in_by) SELECT event_id, id, ?, ?, ? FROM attendees WHERE id = ?')
+      .bind(istDate(stamp), stamp, by, id).run()
+  }
+  await c.env.DB.prepare('UPDATE attendees SET checked_in_at = ?, checked_in_by = ? WHERE id = ? AND checked_in_at IS NULL').bind(stamp, by, id).run()
+}
+
+// Takes back one day's check-in, or every day's (an admin reset). The first-arrival
+// stamp on attendees follows whatever days are left.
+async function clearCheckin(c: any, id: any, day?: string): Promise<void> {
+  if (!(await checkinsReady(c))) {
+    await c.env.DB.prepare('UPDATE attendees SET checked_in_at = NULL, checked_in_by = NULL WHERE id = ?').bind(id).run()
+    return
+  }
+  const a = await c.env.DB.prepare('SELECT checked_in_at FROM attendees WHERE id = ?').bind(id).first() as any
+  if (day) await c.env.DB.prepare('DELETE FROM checkins WHERE attendee_id = ? AND day = ?').bind(id, day).run()
+  else await c.env.DB.prepare('DELETE FROM checkins WHERE attendee_id = ?').bind(id).run()
+  // A stamp from another day (made before the table existed) is not this day's to clear.
+  if (day && a?.checked_in_at && istDate(a.checked_in_at) !== day) return
+  const first = await c.env.DB.prepare('SELECT checked_in_at, checked_in_by FROM checkins WHERE attendee_id = ? ORDER BY day LIMIT 1').bind(id).first() as any
+  await c.env.DB.prepare('UPDATE attendees SET checked_in_at = ?, checked_in_by = ? WHERE id = ?').bind(first?.checked_in_at ?? null, first?.checked_in_by ?? null, id).run()
+}
+
+// The scanner's own check: one call verifies the pass and admits the holder, so the
+// desk goes from five steps a person (scan, page load, Check in, Scan next, reload) to
+// a scan and a tap. Says what the /verify page says, as data. { token, at? }: at is the
+// moment a phone recorded the scan while it had no internet.
+app.post('/api/staff/scan', async (c) => {
+  const who = await deskActor(c)
+  if (!who) return c.json({ error: 'Badge desk sign-in required' }, 401)
+  const body = (await c.req.json().catch(() => ({}))) as any
+  const id = await verifyPassToken(c, String(body.token || ''))
+  if (id === null) return c.json({ state: 'invalid' })
+  const a = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(id).first() as any
+  if (!a) return c.json({ state: 'invalid' })
+  const photo = String(a.avatar_url || '').trim()
+  const person: any = { name: a.name, company: a.company || '', job_title: a.job_title || '', pass: a.badge_type || 'Visitor Pass', photo, photo_flagged: !!a.photo_flagged_at && !photo }
+  if (Number(a.main_event ?? 1) === 0) return c.json({ state: 'panel_only', ...person })
+  if (['pending', 'refunded'].includes(String(a.payment_status || '').trim().toLowerCase())) return c.json({ state: 'payment_pending', ...person })
+  try {
+    if (await workshopsReady(c)) {
+      const ws = await c.env.DB.prepare('SELECT w.title FROM workshop_seats s JOIN workshops w ON w.id = s.workshop_id WHERE s.event_id = 1 AND s.attendee_id = ?').bind(id).first() as any
+      if (ws) person.workshop = ws.title
+    }
+  } catch { /* the check-in matters more */ }
+  const ms = Number(body.at)
+  const at = Number.isFinite(ms) && ms > Date.now() - 36 * 3600000 && ms < Date.now() + 300000 ? new Date(ms) : undefined
+  const st = await checkinState(c, a, istDate(at ? at.toISOString() : undefined))
+  person.earlier = st.earlier.map(dayLabel)
+  if (st.today) {
+    const age = Date.now() - new Date(st.today.at.replace(' ', 'T') + 'Z').getTime()
+    return c.json({ state: 'already', at_ist: istStamp(st.today.at), by: st.today.by, undoable: age < CHECKIN_UNDO_MINUTES * 60000, ...person })
+  }
+  await recordCheckin(c, id, String(who.name || 'desk').slice(0, 40), at)
+  return c.json({ state: 'ok', undoable: !at, ...person })
+})
+
+// What a desk phone keeps so it can still recognise a pass with no internet: for every
+// registrant the name, the pass, whether to admit, and a short hash of their pass token.
+// The hash lets the phone tell a real pass from a made-up one without holding the
+// signing secret or any token, so a lost phone gives away no passes.
+app.get('/api/staff/roster', async (c) => {
+  const who = await deskActor(c)
+  if (!who) return c.json({ error: 'Badge desk sign-in required' }, 401)
+  c.header('Cache-Control', 'no-store')
+  const secret = passTokenSecret(c)
+  if (!secret) return c.json({ day: istDate(), at: Date.now(), people: [] })
+  const enc = new TextEncoder()
+  const key = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+  const hex = (buf: ArrayBuffer) => Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('')
+  const { results } = await c.env.DB.prepare('SELECT * FROM attendees WHERE event_id = 1 ORDER BY id').all() as any
+  const people: any[] = []
+  for (const a of (results || [])) {
+    const token = a.id + '.' + hex(await crypto.subtle.sign('HMAC', key, enc.encode('pass:' + a.id))).slice(0, 24)
+    const h = hex(await crypto.subtle.digest('SHA-256', enc.encode(token))).slice(0, 10)
+    const state = Number(a.main_event ?? 1) === 0 ? 2 : ['pending', 'refunded'].includes(String(a.payment_status || '').trim().toLowerCase()) ? 1 : 0
+    people.push([a.id, a.name, a.badge_type || 'Visitor Pass', state, h])
+  }
+  return c.json({ day: istDate(), at: Date.now(), people })
+})
+
 app.post('/api/verify/:token/checkin', async (c) => {
   const who = await deskActor(c)
   if (!who) return c.json({ error: 'Badge desk sign-in required' }, 401)
   const id = await verifyPassToken(c, c.req.param('token'))
   if (id === null) return c.json({ error: 'Invalid pass' }, 400)
   const body = await c.req.json().catch(() => ({})) as any
-  const a = await c.env.DB.prepare('SELECT id, name, checked_in_at FROM attendees WHERE id = ?').bind(id).first() as any
+  const a = await c.env.DB.prepare('SELECT id, name, checked_in_at, checked_in_by FROM attendees WHERE id = ?').bind(id).first() as any
   if (!a) return c.json({ error: 'Not found' }, 404)
   try {
     const m = await c.env.DB.prepare('SELECT main_event FROM attendees WHERE id = ?').bind(id).first() as any
     if (m && Number(m.main_event ?? 1) === 0) return c.json({ error: 'Registered for a campus panel only, not for the conference.' }, 400)
   } catch { /* pre-0041 */ }
   // at stays UTC for anything programmatic; at_ist is what a human should be shown.
-  if (a.checked_in_at) return c.json({ success: false, already: true, at: a.checked_in_at, at_ist: istStamp(a.checked_in_at), name: a.name })
+  const st = await checkinState(c, a)
+  if (st.today) return c.json({ success: false, already: true, at: st.today.at, at_ist: istStamp(st.today.at), name: a.name })
   // Attributable: who admitted this person, not just that someone did.
-  await c.env.DB.prepare("UPDATE attendees SET checked_in_at = datetime('now'), checked_in_by = ? WHERE id = ?")
-    .bind(String(who.name || 'desk').slice(0, 40), id).run()
-  return c.json({ success: true, name: a.name })
+  await recordCheckin(c, id, String(who.name || 'desk').slice(0, 40))
+  return c.json({ success: true, name: a.name, earlier: st.earlier.map(dayLabel) })
 })
 
 // SQLite datetime('now') stores UTC, which is right: one clock, no ambiguity. But
@@ -5144,14 +5379,16 @@ app.post('/api/verify/:token/undo', async (c) => {
   if (!who) return c.json({ error: 'Badge desk sign-in required' }, 401)
   const id = await verifyPassToken(c, c.req.param('token'))
   if (id === null) return c.json({ error: 'Invalid pass' }, 400)
-  const a = await c.env.DB.prepare('SELECT id, checked_in_at FROM attendees WHERE id = ?').bind(id).first() as any
+  const a = await c.env.DB.prepare('SELECT id, checked_in_at, checked_in_by FROM attendees WHERE id = ?').bind(id).first() as any
   if (!a) return c.json({ error: 'Not found' }, 404)
-  if (!a.checked_in_at) return c.json({ success: true, already: false })
-  const age = Date.now() - new Date(String(a.checked_in_at).replace(' ', 'T') + 'Z').getTime()
+  // Today's check-in only: yesterday's stands.
+  const st = await checkinState(c, a)
+  if (!st.today) return c.json({ success: true, already: false })
+  const age = Date.now() - new Date(st.today.at.replace(' ', 'T') + 'Z').getTime()
   if (age > CHECKIN_UNDO_MINUTES * 60000) {
     return c.json({ error: 'Too long ago to undo here. Ask the admin desk to reset it.' }, 409)
   }
-  await c.env.DB.prepare('UPDATE attendees SET checked_in_at = NULL, checked_in_by = NULL WHERE id = ?').bind(id).run()
+  await clearCheckin(c, id, istDate())
   return c.json({ success: true })
 })
 
@@ -5164,7 +5401,7 @@ app.post('/api/admin/attendees/:id/checkin-reset', async (c) => {
   const a = await c.env.DB.prepare('SELECT id, name, checked_in_at, checked_in_by FROM attendees WHERE id = ?').bind(id).first() as any
   if (!a) return c.json({ error: 'Not found' }, 404)
   if (!a.checked_in_at) return c.json({ success: true, already: true })
-  await c.env.DB.prepare('UPDATE attendees SET checked_in_at = NULL, checked_in_by = NULL WHERE id = ?').bind(id).run()
+  await clearCheckin(c, id)
   await audit(c, 'attendee.checkin-reset', 'attendee', id, { name: a.name, was_checked_in_at: a.checked_in_at, was_checked_in_by: a.checked_in_by })
   return c.json({ success: true })
 })
@@ -5458,6 +5695,7 @@ function verifyPageHTML(o: any): string {
          ${a.company ? `<p class="muted">${esc(a.company)}</p>` : ''}
          <div class="tier" style="background:${tier[0]};color:${tier[1]};">${esc(a.badge_type || 'Visitor Pass')}</div>
          ${a.workshop_title ? `<p class="muted" style="margin-top:10px;"><strong>Workshop:</strong> ${esc(a.workshop_title)}</p>` : ''}
+         ${(a.earlier_days || []).length ? `<p class="muted" style="margin-top:10px;">Also came on ${esc(a.earlier_days.join(', '))}.</p>` : ''}
          ${a.checked_in_at
             ? `<div class="warn">Already checked in ${esc(istStamp(a.checked_in_at))}${a.checked_in_by ? ' by ' + esc(a.checked_in_by) : ''}</div>
                ${o.undoable ? `<button id="undo" onclick="undo()" style="background:#243056;">Undo this check-in</button>` : ''}`
@@ -24934,6 +25172,8 @@ function mainPageScript(): string {
     // thing outstanding is a photo, the picker already open. Sending them to the app
     // and letting them find it is what the mail is trying to get past.
     function runPendingAction() {
+      // The pass, drawn and kept on this phone while there is a connection (ensureSavedPass).
+      if (currentUser) setTimeout(function () { ensureSavedPass(); }, 6000);
       // A stashed panel claim runs on every sign-in path, whatever else was asked.
       if (currentUser && pendingPanelClaim()) setTimeout(function () { applyPendingPanelClaim(); }, 800);
       const act = pendingAction || new URLSearchParams(window.location.search).get('action');
@@ -29897,9 +30137,65 @@ function mainPageScript(): string {
     // the desk carried a different design and a broken QR from the one the same
     // person had already downloaded. What stays here is the policy around it - who
     // may print, what must be true first - which is not the same in both places.
+    // ===== THE PASS, KEPT ON THIS PHONE (11 Nov 2026) =====
+    // At the venue the signal fails, and a pass needed the network three times: for its
+    // QR token, for the photo, and for the page. So the picture of the pass is kept on
+    // the phone once it has been drawn (IndexedDB: the service worker clears its own
+    // caches on every update), and shown from there when the network does not answer.
+    // It is also drawn quietly for anyone who opens the app with a photo, so most
+    // people arrive with it already saved. Signing out removes it.
+    function passStore(mode, fn) {
+      return new Promise(function (resolve) {
+        try {
+          var open = indexedDB.open('bhai-pass', 1);
+          open.onupgradeneeded = function () { open.result.createObjectStore('pass'); };
+          open.onerror = function () { resolve(null); };
+          open.onsuccess = function () {
+            try {
+              var tx = open.result.transaction('pass', mode), req = fn(tx.objectStore('pass'));
+              tx.oncomplete = function () { resolve(req ? req.result : null); };
+              tx.onerror = tx.onabort = function () { resolve(null); };
+            } catch (e) { resolve(null); }
+          };
+        } catch (e) { resolve(null); }
+      });
+    }
+    // What the saved picture was drawn from: a new pass, photo or name is drawn afresh.
+    function passKey(u) { return [u.id, u.badge_type || '', u.payment_status || '', u.avatar_url || '', u.name || '', u.company || ''].join('|'); }
+    function savePassCopy(u, res) {
+      if (!u || !u.id || !res || !res.dataUrl) return Promise.resolve(null);
+      return passStore('readwrite', function (st) { return st.put({ key: passKey(u), dataUrl: res.dataUrl, filename: res.filename || 'pass.png', at: Date.now() }, 'u' + u.id); });
+    }
+    function savedPassCopy(u) { return (u && u.id) ? passStore('readonly', function (st) { return st.get('u' + u.id); }) : Promise.resolve(null); }
+    function forgetSavedPass() { return passStore('readwrite', function (st) { return st.clear(); }); }
+    async function showSavedPass(u) {
+      var p = await savedPassCopy(u);
+      if (!p || !p.dataUrl) return false;
+      showImageToSave(p.dataUrl, { title: 'Your event pass (saved on this phone)', filename: p.filename });
+      return true;
+    }
+    var savingPass = false;
+    async function ensureSavedPass() {
+      var u = currentUser;
+      if (savingPass || !u || !u.id || navigator.onLine === false || !window.BhaiPass || !window.indexedDB) return;
+      if (!hasUploadedPhoto(u.avatar_url)) return;
+      savingPass = true;
+      try {
+        var have = await savedPassCopy(u);
+        if (have && have.key === passKey(u)) return;
+        // Refused for an unpaid tier or a panel-only registration: then there is no pass to keep.
+        var tk = await api.get('/api/my-pass-token');
+        if (!tk || !tk.token) return;
+        var res = await BhaiPass.render(u, { token: tk.token });
+        if (res && res.dataUrl && !res.photoFailed && !res.qrFailed) await savePassCopy(u, res);
+      } catch (e) {} finally { savingPass = false; }
+    }
+
     async function generateEventPass(adminAttendee) {
       var user = adminAttendee || currentUser;
       if (!user) { showToast('Please sign in first', 'error'); return; }
+      // No internet: the pass saved on this phone, if there is one.
+      if (!adminAttendee && navigator.onLine === false && await showSavedPass(user)) return;
       if (!adminAttendee) trackStep('pass', 'open');
       var tierKey = BhaiPass.tierFor(user);
       var T = BhaiPass.TIERS[tierKey];
@@ -29969,6 +30265,8 @@ function mainPageScript(): string {
         tokenErr = (tk && (tk.message || tk.error)) || '';
       } catch (e) {}
       if (!passToken) {
+        // The network did not answer (a refusal comes with its reason): the saved pass.
+        if (!adminAttendee && !tokenErr && await showSavedPass(user)) return;
         if (!adminAttendee) trackStep('pass', 'fail', 'QR not prepared: ' + String(tokenErr || 'no answer').slice(0, 50));
         showToast(tokenErr || 'Could not prepare the QR code for your pass. Check your connection and try again.', 'error');
         return;
@@ -30002,6 +30300,7 @@ function mainPageScript(): string {
         return;
       }
       if (adminAttendee || !isTouchPhone()) showToast('Pass downloaded', 'success');
+      if (!adminAttendee) savePassCopy(user, passRes);
       if (!adminAttendee && user.id) { try { await api.post('/api/attendees/' + user.id + '/track-pass-download', {}); } catch (e) {} }
       if (!adminAttendee) maybeOfferSocialCard();
     }
@@ -32231,6 +32530,7 @@ function mainPageScript(): string {
     });
 
     async function logoutUser() {
+      try { forgetSavedPass(); } catch (e) {}
       localStorage.removeItem('agba_user');
       currentUser = null;
       // The session cookie is HttpOnly, so only the server can expire it; and
@@ -34097,6 +34397,13 @@ function adminPageScript(): string {
             statCard('Turnout', pct + '%', 'fa-percent', 'amber') +
             statCard('Desk accounts', (team || []).filter(function (s) { return s.active; }).length, 'fa-id-badge', 'purple') +
           '</div>';
+        if ((stats.days || []).length) {
+          var MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+          cards += '<p class="text-sm text-gray-400 mt-3">Arrivals by day: ' + stats.days.map(function (d) {
+            var p = String(d.day).split('-');
+            return escH(Number(p[2]) + ' ' + (MON[Number(p[1]) - 1] || '')) + ' <strong class="text-white">' + Number(d.n).toLocaleString('en-IN') + '</strong>';
+          }).join(' &middot; ') + '. Checked in above counts each person once.</p>';
+        }
 
         var tiers = (stats.byTier || []).map(function (t) {
           var p = t.total ? Math.round((t.checked_in / t.total) * 100) : 0;

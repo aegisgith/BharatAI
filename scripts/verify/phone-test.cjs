@@ -171,6 +171,20 @@ const tall = (page, sel) => page.evaluate((s) => { const e = document.querySelec
     const pass = await page.evaluate(() => { const o = document.getElementById('image-to-save'); return o ? { img: !!o.querySelector('img[src^="data:image/png"]'), title: o.innerText.slice(0, 30) } : null; });
     check('5. the pass opens to share or save on a phone', !!pass && pass.img && /pass/i.test(pass.title), JSON.stringify(pass));
     await page.screenshot({ path: SHOTS + '/5-pass.png' });
+    // The pass is kept on the phone, for a venue with no signal (11 Nov 2026).
+    const saved = await page.evaluate(async () => { const p = await savedPassCopy(currentUser); return p ? { png: /^data:image\/png/.test(p.dataUrl), size: p.dataUrl.length, file: p.filename } : null; });
+    check('5. the pass is saved on the phone once drawn', !!saved && saved.png && saved.size > 20000, JSON.stringify(saved));
+    await page.evaluate(() => closeImageToSave());
+    await ctx.setOffline(true);
+    await page.evaluate(() => generateEventPass());
+    await sleep(1500);
+    const off = await page.evaluate(() => { const o = document.getElementById('image-to-save'); return o ? { img: !!o.querySelector('img[src^="data:image/png"]'), title: o.innerText.slice(0, 60) } : null; });
+    check('5. with no internet the saved pass opens, and says it is the saved one', !!off && off.img && /saved on this phone/i.test(off.title), JSON.stringify(off));
+    await ctx.setOffline(false);
+    await page.evaluate(() => { closeImageToSave(); return forgetSavedPass(); });
+    check('5. signing out removes the saved pass (forgetSavedPass)', await page.evaluate(async () => (await savedPassCopy(currentUser)) == null), '');
+    await page.evaluate(() => ensureSavedPass());
+    check('5. opening the app with a photo saves the pass by itself', await page.evaluate(async () => { for (let i = 0; i < 40; i++) { const p = await savedPassCopy(currentUser); if (p && p.dataUrl) return true; await new Promise(r => setTimeout(r, 250)); } return false; }), '');
     check('5. no JavaScript errors', errors.length === 0, errors.slice(0, 3).join(' | '));
     await ctx.close();
   }
