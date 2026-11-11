@@ -35,7 +35,7 @@ const signInLink = (id) => { const exp = Math.floor(Date.now() / 1000) + 3600; c
   const browser = await pw.chromium.launch({ channel: 'msedge', headless: true });
   try {
     // ================= the booth contact, on a phone =================
-    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36' });
+    const ctx = await browser.newContext({ acceptDownloads: true, viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36' });
     const page = await ctx.newPage();
     const errors = [];
     page.on('pageerror', e => errors.push(String(e)));
@@ -97,6 +97,10 @@ const signInLink = (id) => { const exp = Math.floor(Date.now() / 1000) + 3600; c
     check('her pass exists: Exhibition Speaker, waived, details and photo on it', asha?.badge_type === 'Exhibition Speaker' && asha.payment_status === 'waived' && asha.job_title === 'Head of Sales' && asha.mobile === '98200 55555' && asha.linkedin_url === 'https://linkedin.com/in/asha-rao' && /^data:image\//.test(asha.avatar_url || ''), asha && { ...asha, avatar_url: String(asha.avatar_url).slice(0, 30) });
     check('the contact got no pass of their own', (await dbq("SELECT COUNT(*) AS n FROM attendees WHERE email = 'spoc@explorer.test'"))[0].n === 0, '');
     await noSideScroll('Your Team with a person');
+    const [passDl] = await Promise.all([page.waitForEvent('download', { timeout: 20000 }), page.locator('[data-team-pass]').first().click()]);
+    check("the contact downloads Asha's pass, drawn by the app's own pass designer", /\.png$/i.test(passDl.suggestedFilename()) && require('fs').statSync(await passDl.path()).size > 20000, passDl.suggestedFilename());
+    const [socialDl] = await Promise.all([page.waitForEvent('download', { timeout: 20000 }), page.locator('[data-team-social]').first().click()]);
+    check("and her social card", /\.png$/i.test(socialDl.suggestedFilename()) && require('fs').statSync(await socialDl.path()).size > 20000, socialDl.suggestedFilename());
 
     // ---- the booth's one pass is used: the next person is asked to buy a Delegate Pass ----
     await page.locator('#team-add-btn').click();
@@ -130,11 +134,29 @@ const signInLink = (id) => { const exp = Math.floor(Date.now() / 1000) + 3600; c
     await openMenuItem(page, '#dash-nav-branding');
     const brand = await page.locator('#branding-card').innerText();
     check('Booth Branding: the Explorer Booth sizes, revised', /Explorer Booth \(2m × 2m\)/.test(brand) && /Fascia Name\s+1800mm \(W\) × 300mm \(H\)/.test(brand) && /Back Wall\s+1940mm \(W\) × 2440mm \(H\)/.test(brand) && /Table Logo\s+960mm \(W\) × 670mm \(H\)/.test(brand), brand);
+    check('Booth Branding: email the artwork to the Bharat AI contact, register@ in CC', /email your final artwork to Test Owner at owner@example\.test and mark register@bharataiinnovation\.com in CC/.test(brand), brand);
     await noSideScroll('Booth Branding');
 
     // ---- overview to-do ----
     await openMenuItem(page, '.dash-sidebar-item[data-section="overview"]');
+    const boothCard = await page.locator('#dash-booth').innerText();
+    check('Overview: the booth card names the event, the booth, the passes and the payment', /Bharat AI Innovation 2026/.test(boothCard) && /20–21 Nov 2026 · World Trade Center, Mumbai/.test(boothCard) && /No\. 21 · Explorer Booth \(2m × 2m\)/.test(boothCard) && /1 of 1 issued/.test(boothCard) && /Paid ₹1,00,000/.test(boothCard) && /Pending ₹52,220/.test(boothCard) && /Total ₹1,52,220 including GST · Invoice BAI\/26-27\/9/.test(boothCard), boothCard);
     check('the overview to-do lists the team step as done', /Add your team and their photos/.test(await page.locator('#dash-todo').innerText()) && /1 person added\./.test(await page.locator('#dash-todo').innerText()), await page.locator('#dash-todo').innerText());
+
+    await openMenuItem(page, '#dash-nav-connect');
+    const connect = await page.locator('#section-connect').innerText();
+    check('Bharat AI Connect: the tab says what the app is for and who has signed in', /Open Bharat AI Connect/.test(connect) && /0 of 1 signed in so far/.test(connect) && /Asha Rao\s*Not signed in yet/.test(connect) && await page.locator('a.connect-open').getAttribute('href') === '/app', connect);
+    await noSideScroll('Bharat AI Connect');
+
+    // ---- report a problem ----
+    await openMenuItem(page, '#dash-nav-report');
+    await page.locator('#report-form button[type=submit]').click();
+    check('Report a problem: sending without a topic is refused on screen', await until(async () => /choose what the problem is about/.test(await page.locator('#report-error').innerText())), '');
+    await page.locator('#report-topic').selectOption('payment');
+    await page.locator('#report-message').fill('We paid in full on 5 November, but the page shows an amount pending.');
+    await page.locator('#report-form button[type=submit]').click();
+    check('the report is sent and listed as open', await until(async () => /Payment or invoice\s*Open/.test(await page.locator('#report-list').innerText())) && (await dbq("SELECT COUNT(*) AS n FROM inquiries WHERE inquiry_type = 'exhibitor_issue'"))[0].n === 1, await page.locator('#report-list').innerText().catch(() => ''));
+    await noSideScroll('Report a problem');
 
     // ---- remove ----
     await openMenuItem(page, '#dash-nav-team');
@@ -179,11 +201,18 @@ const signInLink = (id) => { const exp = Math.floor(Date.now() / 1000) + 3600; c
     await ap.locator('[data-team-show="2"]').click();
     check('admin: Show team lists the person with no photo yet', await until(async () => /Shivendra Singh/.test(await ap.locator('[data-team-detail="2"]').innerText()) && /No photo/.test(await ap.locator('[data-team-detail="2"]').innerText())), '');
     await ap.locator('[data-team-ask="2"]').click();
-    const mails = await until(async () => (await (await fetch(BASE + '/__sent')).json()).length === 1);
-    const mail = (await (await fetch(BASE + '/__sent')).json())[0];
+    const teamMail = async () => (await (await fetch(BASE + '/__sent')).json()).find(m => m.Recipients.To[0] === 'spoc@sheet.test');
+    const mails = await until(async () => !!(await teamMail()));
+    const mail = await teamMail();
     const html = mail?.Content.Body[0].Content || '';
     check('admin: Ask sends the team email to the sheet contact', mails && mail.Recipients.To[0] === 'spoc@sheet.test' && /Dear Shweta,/.test(html) && /Deadline: 15 November 2026/.test(html) && /We have already added the person/.test(html), mail && mail.Recipients);
     check('admin: once asked, the row says asked today', await until(async () => /Asked today/.test(await ap.locator('#admin-teams').innerText())), '');
+    await ap.locator('.dash-sidebar-item[data-section="reports"]').click();
+    check('admin: Reports shows the open report, with a count on the menu', await until(async () => /Harness Explorer Pvt Ltd/.test(await ap.locator('#admin-reports').innerText()) && /Open/.test(await ap.locator('#admin-reports').innerText())) && (await ap.locator('#reports-count').innerText()) === '1', await ap.locator('#admin-reports').innerText().catch(() => ''));
+    promptAnswer = 'We have recorded your payment. Thank you.';
+    await ap.locator('[data-report-resolve]').first().click();
+    check('admin: Mark resolved with a reply', await until(async () => /Resolved/.test(await ap.locator('#admin-reports').innerText()) && /Reply: We have recorded your payment/.test(await ap.locator('#admin-reports').innerText())), '');
+    await ap.locator('.dash-sidebar-item[data-section="teams"]').click();
     const [dl] = await Promise.all([ap.waitForEvent('download', { timeout: 10000 }), ap.locator('#team-csv').click()]);
     const csv = require('fs').readFileSync(await dl.path(), 'utf8');
     check('admin: the CSV downloads with everyone', dl.suggestedFilename() === 'exhibitor-teams.csv' && /Exhibitor,Booth,First name/.test(csv) && /Shivendra/.test(csv), csv.slice(0, 200));

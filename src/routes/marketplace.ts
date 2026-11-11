@@ -41,6 +41,8 @@ type MarketplaceHooks = {
   }) => Promise<{ attendeeId: number; pass: string; given: string; avatarSet: string } | { error: string }>
   releaseTeamPass?: (c: any, x: { attendeeId: number; gave: string; exhibitorId: number }) => Promise<void>
   teamMobileHolder?: (c: any, eventId: number, mobile: string, email: string) => Promise<{ email: string } | null>
+  // signPassToken: the signed token a pass's QR carries (the desk's /verify/<token>).
+  passToken?: (c: any, attendeeId: number) => Promise<string>
 }
 let hooks: MarketplaceHooks = {}
 export const configureMarketplace = (h: MarketplaceHooks) => { hooks = { ...hooks, ...h } }
@@ -1728,9 +1730,16 @@ const BOOTH_BRANDING: Record<string, [string, string][]> = {
   enterprise: [['Left Wall', W(1940, 2440)], ['Right Wall', W(1940, 2440)], ['Back Wall', W(5910, 2440)], ...FASCIA_TABLE],
 }
 
-type TeamAllowance = { passes: number | null; source: 'set' | 'booth' | null; booths: string[]; packages: string[]; dims: string[]; types: string[]; contact_name: string }
+type TeamAllowance = { passes: number | null; source: 'set' | 'booth' | null; booths: string[]; packages: string[]; dims: string[]; types: string[]; contact_name: string; owner_name: string; owner_email: string }
 const teamSettings = (c: any, exhibitorId: number): Promise<any> =>
-  c.env.DB.prepare('SELECT passes, booth_type, booth_name, booth_dim, booths, contact_name FROM exhibitor_team_settings WHERE exhibitor_id = ?').bind(exhibitorId).first().catch(() => null)
+  c.env.DB.prepare('SELECT passes, booth_type, booth_name, booth_dim, booths, contact_name, owner_name, owner_email FROM exhibitor_team_settings WHERE exhibitor_id = ?').bind(exhibitorId).first().catch(() => null)
+// Where the artwork goes (organiser, 11 Nov 2026): the exhibitor's contact at Bharat AI
+// Innovation, with register@ in CC. Named when the sheet says who; the address when known.
+const ARTWORK_CC = 'register@bharataiinnovation.com'
+const artworkTo = (allow: TeamAllowance) => {
+  const name = String(allow.owner_name || '').trim(), email = String(allow.owner_email || '').trim()
+  return { name, email, cc: ARTWORK_CC }
+}
 const TEAM_STANDS_SQL = `SELECT ba.exhibitor_id, b.code, b.type_key, b.name, b.dim FROM booth_allocations ba JOIN booths b ON b.id = ba.booth_id
   WHERE ba.status = 'confirmed' AND ba.released_at IS NULL AND ba.exhibitor_id IS NOT NULL`
 const teamAllowance = async (c: any, exhibitorId: number): Promise<TeamAllowance> => {
@@ -1745,7 +1754,7 @@ const allowanceFrom = (set: any, stands: any[]): TeamAllowance => {
   const packages = fromSheet ? [String(set.booth_name || BOOTH_NAMES[set.booth_type] || '')].filter(Boolean) : [...new Set(stands.map(s => String(s.name || '')).filter(Boolean))]
   const dims = fromSheet ? [String(set.booth_dim || '')].filter(Boolean) : [...new Set(stands.map(s => String(s.dim || '')).filter(Boolean))]
   const types = fromSheet ? [String(set.booth_type)] : [...new Set(stands.map(s => String(s.type_key || '')).filter(Boolean))]
-  const base = { booths, packages, dims, types, contact_name: String(set?.contact_name || '') }
+  const base = { booths, packages, dims, types, contact_name: String(set?.contact_name || ''), owner_name: String(set?.owner_name || ''), owner_email: String(set?.owner_email || '') }
   if (set && set.passes !== null && set.passes !== undefined && Number.isFinite(Number(set.passes))) return { passes: Math.max(0, Number(set.passes)), source: 'set', ...base }
   if (stands.length) {
     if (stands.some(s => TEAM_PASSES[s.type_key] === undefined)) return { passes: null, source: null, ...base }
@@ -1840,6 +1849,14 @@ const teamMemberJson = (m: any) => ({
 })
 const teamUses = (members: any[]) => members.filter(m => !ownPass(m)).length
 
+// One read for the whole team: who has signed in to the event app with their own email.
+const withAppSignIn = async (c: any, out: any[], rows: any[]) => {
+  const ids = rows.map(m => Number(m.attendee_id)).filter(n => n > 0)
+  if (!ids.length) return out.map(m => ({ ...m, app_signed_in: false }))
+  const seen = new Set((((await c.env.DB.prepare(`SELECT id FROM attendees WHERE last_login_at IS NOT NULL AND id IN (${ids.map(() => '?').join(', ')})`).bind(...ids).all().catch(() => ({ results: [] }))).results || []) as any[]).map(r => Number(r.id)))
+  return out.map((m, i) => ({ ...m, app_signed_in: seen.has(Number(rows[i].attendee_id)) }))
+}
+
 const dashboardTeamJson = async (c: any, ex: { id: number; company_name: string; booth_number: string; event_id: number }) => {
   const allow = await teamAllowance(c, ex.id)
   const members = await teamRows(c, ex.id)
@@ -1852,7 +1869,8 @@ const dashboardTeamJson = async (c: any, ex: { id: number; company_name: string;
     can_add: allow.passes === null || used < allow.passes,
     deadline: await teamDeadline(c),
     branding: teamBranding(allow),
-    members: members.map(teamMemberJson),
+    // Whether each person has signed in to Bharat AI Connect yet (their own account).
+    members: await withAppSignIn(c, members.map(teamMemberJson), members),
   }
 }
 
@@ -1986,6 +2004,156 @@ mp.delete('/api/mp/dashboard/team/:id', async (c) => {
   return c.json({ success: true, ...(await dashboardTeamJson(c, ex)) })
 })
 
+// ── The company's own page: its booth, its payment, its people's passes ──
+// The contact's dashboard is the company's home for the event (organiser, 11 Nov
+// 2026): which event, the booth and its size, the passes, the stage slot, what has
+// been paid and what is pending, and each person's pass and social card.
+
+// Rupees as the booth records hold them: whole rupees (0030's money rule).
+const rupees = (n: any) => Math.max(0, Math.round(Number(n) || 0))
+
+mp.get('/api/mp/dashboard/booth', async (c) => {
+  const t = await teamDashboard(c); if (t.res) return t.res
+  const ex = t.ex!
+  const event = await c.env.DB.prepare('SELECT id, title, start_date, end_date, venue FROM events WHERE id = ?').bind(ex.event_id).first().catch(() => null) as any
+  const allow = await teamAllowance(c, ex.id)
+  const members = await teamRows(c, ex.id)
+  const stage = await stageSlotOf(c, ex.id).catch(() => null)
+  const talk = stage ? await stageTalkOf(c, ex.id).catch(() => null) : null
+  // Payment, from the confirmed stands the organisers record (the booking sheet's
+  // money is not read: its amounts and statuses are notes, not records). TDS is not
+  // recorded yet, so a payment made net of TDS still shows the TDS as pending; the
+  // page says so rather than calling it a debt.
+  let payment: any = null
+  try {
+    const rows = ((await c.env.DB.prepare(`SELECT b.code, b.name, ba.amount_inr, ba.gst_inr, ba.grand_total_inr, ba.amount_paid_inr, ba.payment_status, ba.invoice_number, ba.invoice_date, ba.paid_date
+      FROM booth_allocations ba JOIN booths b ON b.id = ba.booth_id
+      WHERE ba.exhibitor_id = ? AND ba.status = 'confirmed' AND ba.released_at IS NULL ORDER BY CAST(b.code AS INTEGER), b.code`).bind(ex.id).all()).results || []) as any[]
+    const total = rows.reduce((n, r) => n + rupees(r.grand_total_inr), 0)
+    if (rows.length && total > 0) {
+      const paid = rows.reduce((n, r) => n + rupees(r.amount_paid_inr), 0)
+      payment = {
+        total, paid, pending: Math.max(0, total - paid),
+        booths: rows.map(r => ({ booth: String(r.code), name: String(r.name || ''), amount: rupees(r.amount_inr), gst: rupees(r.gst_inr), total: rupees(r.grand_total_inr), paid: rupees(r.amount_paid_inr), invoice: r.invoice_number || '', invoice_date: r.invoice_date || null, paid_date: r.paid_date || null })),
+      }
+    }
+  } catch { payment = null }
+  return c.json({
+    company_name: ex.company_name,
+    event: event ? { id: Number(event.id), title: event.title, start_date: event.start_date, end_date: event.end_date, venue: event.venue || '' } : null,
+    booth: allow.booths.join(', ') || ex.booth_number || '', packages: allow.packages, dims: allow.dims, label: boothLabel(allow),
+    passes: allow.passes, issued: members.filter(m => TEAM_BADGES.includes(m.pass) && m.pass_given).length, people: members.length,
+    speakers: members.filter(m => Number(m.speaker)).length, photos_missing: members.filter(m => !m.photo_url).length,
+    stage: stage ? { minutes: stage.minutes, slot: talk?.starts_at ? (talk.time_slot || stageSlotLabel(talk.starts_at, Number(talk.duration_min) || stage.minutes || 0)) : null, topic: talk?.topic || '' } : null,
+    payment,
+  })
+})
+
+// One team member's pass, to download and hand over: only a pass this list gave. A
+// pass of their own (a Delegate Pass they bought) is theirs to download in the app.
+mp.get('/api/mp/dashboard/team/:id/pass', async (c) => {
+  const t = await teamDashboard(c); if (t.res) return t.res
+  const ex = t.ex!
+  const m = await c.env.DB.prepare(`SELECT ${TEAM_COLS} FROM exhibitor_team WHERE id = ? AND exhibitor_id = ?`).bind(parseInt(c.req.param('id'), 10) || 0, ex.id).first() as any
+  if (!m) return c.json({ error: 'That person is not on your team any more. Refresh the page.' }, 404)
+  if (!m.attendee_id || !TEAM_BADGES.includes(m.pass) || !m.pass_given) return c.json({ error: m.pass && !/visitor/i.test(m.pass) ? `${teamName(m)} has a ${m.pass} of their own. They download it from the event app.` : `${teamName(m)} has no pass from your booth yet.` }, 409)
+  const a = await c.env.DB.prepare('SELECT id, name, email, company, job_title, badge_type, role, avatar_url, payment_status FROM attendees WHERE id = ?').bind(m.attendee_id).first() as any
+  if (!a || !TEAM_BADGES.includes(String(a.badge_type || ''))) return c.json({ error: 'This pass has changed. Refresh the page.' }, 409)
+  const allow = await teamAllowance(c, ex.id)
+  return c.json({
+    user: { id: Number(a.id), name: a.name, company: a.company, job_title: a.job_title, badge_type: a.badge_type, role: a.role, avatar_url: a.avatar_url || '', payment_status: a.payment_status || '' },
+    token: hooks.passToken ? await hooks.passToken(c, Number(a.id)) : '',
+    // Printed on the social card only from a confirmed stand, never from free text.
+    booth: allow.booths.join(', '),
+    variant: Number(m.speaker) ? 'speaker' : 'exhibitor',
+  })
+})
+
+// ── "Report a problem" (organiser, 11 Nov 2026) ──
+// An exhibitor tells the organisers something on their page is wrong (the booth, the
+// payment, a pass...). Kept as an inquiries row of type 'exhibitor_issue', so it also
+// shows wherever the team reads enquiries, and listed on Marketplace admin → Reports.
+// The exhibitor's contact at Bharat AI Innovation is emailed; the exhibitor sees the status.
+const REPORT_TYPE = 'exhibitor_issue'
+const REPORT_TOPICS: Record<string, string> = {
+  booth: 'Booth or stand', payment: 'Payment or invoice', passes: 'Passes or team', stage: 'Stage talk',
+  branding: 'Branding sizes', listing: 'AI Marketplace listing', other: 'Something else',
+}
+const REPORTS_PER_DAY = 5
+const reportJson = (r: any) => {
+  let meta: any = {}; try { meta = JSON.parse(r.metadata || '{}') } catch { meta = {} }
+  return { id: Number(r.id), topic: REPORT_TOPICS[meta.topic] || 'Something else', topic_key: meta.topic || 'other', message: r.message || '',
+    status: r.status === 'resolved' ? 'resolved' : 'open', reply: r.admin_notes || '', created_at: r.created_at, responded_at: r.responded_at || null,
+    company: r.organization || '', reported_by: r.email || '', exhibitor_id: Number(meta.exhibitor_id) || null }
+}
+const exhibitorReports = (c: any, exhibitorId: number) =>
+  c.env.DB.prepare(`SELECT * FROM inquiries WHERE inquiry_type = ? AND CAST(json_extract(metadata, '$.exhibitor_id') AS INTEGER) = ? ORDER BY id DESC LIMIT 50`).bind(REPORT_TYPE, exhibitorId).all()
+    .then((x: any) => ((x.results || []) as any[]).map(reportJson)).catch(() => [])
+
+mp.get('/api/mp/dashboard/reports', async (c) => {
+  const company = await getCompanyFromSession(c) as any
+  if (!company) return c.json({ error: 'Login required' }, 401)
+  const ex = await teamExhibitorOf(c, company)
+  if (!ex) return c.json({ eligible: false, reports: [] })
+  return c.json({ eligible: true, topics: REPORT_TOPICS, reports: await exhibitorReports(c, ex.id) })
+})
+
+mp.post('/api/mp/dashboard/reports', async (c) => {
+  const company = await getCompanyFromSession(c) as any
+  if (!company) return c.json({ error: 'Login required' }, 401)
+  const ex = await teamExhibitorOf(c, company)
+  if (!ex) return c.json({ error: 'Reports are for exhibitors. Write to register@bharataiinnovation.com instead.' }, 403)
+  const body = ((await c.req.json().catch(() => ({}))) || {}) as any
+  const topic = REPORT_TOPICS[body.topic] ? String(body.topic) : ''
+  const message = String(body.message ?? '').trim()
+  if (!topic) return c.json({ error: 'Please choose what the problem is about.' }, 400)
+  if (message.length < 10) return c.json({ error: 'Please tell us what is wrong, in a sentence or two.' }, 400)
+  if (message.length > 2000) return c.json({ error: 'Please keep it under 2,000 characters.' }, 400)
+  const today = ((await c.env.DB.prepare(`SELECT COUNT(*) AS n FROM inquiries WHERE inquiry_type = ? AND lower(email) = lower(?) AND created_at > datetime('now', '-1 day')`).bind(REPORT_TYPE, company.email).first().catch(() => null)) as any)?.n || 0
+  if (today >= REPORTS_PER_DAY) return c.json({ error: 'You have sent several reports today. We will reply to those first; for anything urgent, reply to our email.' }, 429)
+  const meta = JSON.stringify({ exhibitor_id: ex.id, topic, account_id: company.id })
+  const ins = await c.env.DB.prepare(`INSERT INTO inquiries (event_id, inquiry_type, name, email, organization, subject, message, metadata, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'new')`)
+    .bind(ex.event_id, REPORT_TYPE, String(company.company_name || ex.company_name), String(company.email || ''), ex.company_name, `${REPORT_TOPICS[topic]}: ${ex.company_name}`, message, meta).run()
+  const id = ins.meta.last_row_id
+  // The exhibitor's contact on our side hears of it at once; without one, the team address.
+  inBackground(c, async () => {
+    const allow = await teamAllowance(c, ex.id)
+    const to = String(allow.owner_email || '').trim() || await teamAddress(c)
+    const html = emailShell(`${REPORT_TOPICS[topic]}: ${ex.company_name}`, `<p style="margin:0 0 12px;font-size:14px;line-height:1.6"><strong>${htmlEsc(ex.company_name)}</strong> reported a problem from their exhibitor dashboard.</p>
+      <table style="border-collapse:collapse">${emailRow('About', REPORT_TOPICS[topic])}${emailRow('From', company.email)}${emailRow('Booth', allow.booths.join(', ') || ex.booth_number)}</table>
+      <div style="margin-top:14px;padding:12px 14px;background:#f8f9fa;border-left:3px solid #FF9933;font-size:14px;line-height:1.6;white-space:pre-wrap">${htmlEsc(message)}</div>
+      ${emailButton(siteOrigin(c) + '/marketplace/admin#reports', 'Open Reports')}
+      <p style="margin:12px 0 0;font-size:12px;color:#888">Mark it resolved there once it is sorted; the exhibitor sees the status on their dashboard.</p>`)
+    await sendMail(c, 'exhibitor-report', to, `Exhibitor report: ${REPORT_TOPICS[topic]} (${ex.company_name})`, html)
+  })
+  return c.json({ success: true, id, reports: await exhibitorReports(c, ex.id) })
+})
+
+mp.get('/api/mp/admin/reports', async (c) => {
+  const admin = await marketplaceAdmin(c)
+  if (!admin) return c.json({ error: 'Admin required' }, 403)
+  const rows = ((await c.env.DB.prepare(`SELECT * FROM inquiries WHERE inquiry_type = ? ORDER BY CASE WHEN status = 'resolved' THEN 1 ELSE 0 END, id DESC LIMIT 500`).bind(REPORT_TYPE).all().catch(() => ({ results: [] }))).results || []) as any[]
+  const reports = rows.map(reportJson)
+  return c.json({ reports, open: reports.filter(r => r.status === 'open').length })
+})
+
+// { status: 'resolved' | 'open', reply?: what the exhibitor is shown }
+mp.patch('/api/mp/admin/reports/:id', async (c) => {
+  const admin = await marketplaceAdmin(c)
+  if (!admin) return c.json({ error: 'Admin required' }, 403)
+  const id = parseInt(c.req.param('id'), 10) || 0
+  const row = await c.env.DB.prepare('SELECT * FROM inquiries WHERE id = ? AND inquiry_type = ?').bind(id, REPORT_TYPE).first() as any
+  if (!row) return c.json({ error: 'Report not found' }, 404)
+  const body = ((await c.req.json().catch(() => ({}))) || {}) as any
+  const status = body.status === 'resolved' ? 'resolved' : body.status === 'open' ? 'new' : null
+  if (!status) return c.json({ error: 'Status must be resolved or open' }, 400)
+  const reply = body.reply === undefined ? String(row.admin_notes || '') : String(body.reply || '').trim().slice(0, 1000)
+  await c.env.DB.prepare(`UPDATE inquiries SET status = ?, admin_notes = ?, responded_at = CASE WHEN ? = 'resolved' THEN CURRENT_TIMESTAMP ELSE responded_at END, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+    .bind(status, reply, status, id).run()
+  await auditAdmin(c, admin, status === 'resolved' ? 'marketplace.report-resolved' : 'marketplace.report-reopened', id, { company: row.organization }, 'inquiry')
+  return c.json({ success: true })
+})
+
 // ── Teams, for the organisers ──
 const teamAskState = (lastAsked: any, accounts: number, unsubscribed: boolean) => {
   const d = daysSince(lastAsked)
@@ -2019,7 +2187,7 @@ mp.get('/api/mp/admin/teams', async (c) => {
   const [exAll, standRows, setRows, memberRows, accountRows, askedRows, unsubRows] = await Promise.all([
     all_('SELECT id, company_name, booth_number, contact_email FROM exhibitors ORDER BY company_name COLLATE NOCASE'),
     all_(`${TEAM_STANDS_SQL} ORDER BY CAST(b.code AS INTEGER), b.code`),
-    all_('SELECT exhibitor_id, passes, booth_type, booth_name, booth_dim, booths, contact_name FROM exhibitor_team_settings'),
+    all_('SELECT exhibitor_id, passes, booth_type, booth_name, booth_dim, booths, contact_name, owner_name, owner_email FROM exhibitor_team_settings'),
     all_(`SELECT ${TEAM_COLS} FROM exhibitor_team ORDER BY speaker DESC, id`),
     all_("SELECT email, exhibitor_id FROM mp_companies WHERE exhibitor_id IS NOT NULL AND role <> 'admin' ORDER BY id"),
     all_(`SELECT entity_id, MAX(created_at) AS at FROM admin_audit WHERE action = '${TEAM_ASKED}' AND entity = 'exhibitor' GROUP BY entity_id`),
@@ -2040,7 +2208,7 @@ mp.get('/api/mp/admin/teams', async (c) => {
     const lastAsked = askedOf.get(id) || null
     const unsub = emails.length > 0 && emails.every(m => unsubSet.has(m.trim().toLowerCase()))
     teams.push({
-      exhibitor_id: Number(e.id), company_name: e.company_name, booth: e.booth_number || allow.booths.join(', '), packages: allow.packages, contact_name: allow.contact_name,
+      exhibitor_id: Number(e.id), company_name: e.company_name, booth: e.booth_number || allow.booths.join(', '), packages: allow.packages, contact_name: allow.contact_name, owner_name: allow.owner_name,
       passes: allow.passes, passes_source: allow.source, used: teamUses(members), contacts: emails, last_asked: lastAsked,
       members: members.map(teamMemberJson),
       speakers: members.filter(m => Number(m.speaker)).length, photos_missing: members.filter(m => !m.photo_url).length,
@@ -2130,10 +2298,18 @@ const boothLabel = (allow: TeamAllowance) => allow.packages.length === 1
 // organisers rather than a screen.
 const teamBranding = (allow: TeamAllowance) => {
   const rows = allow.types.length === 1 ? BOOTH_BRANDING[allow.types[0]] : undefined
-  return rows ? { booth: boothLabel(allow) || BOOTH_NAMES[allow.types[0]] || 'booth', rows } : null
+  return rows ? { booth: boothLabel(allow) || BOOTH_NAMES[allow.types[0]] || 'booth', rows, artwork: artworkTo(allow) } : null
+}
+// "Please email your final artwork to Tushar (tushar@...), with register@ in CC."
+const artworkLine = (allow: TeamAllowance) => {
+  const a = artworkTo(allow)
+  const who = a.name && a.email ? `${htmlEsc(a.name)} at <a href="mailto:${htmlEsc(a.email)}" style="color:#B04500">${htmlEsc(a.email)}</a>`
+    : a.email ? `<a href="mailto:${htmlEsc(a.email)}" style="color:#B04500">${htmlEsc(a.email)}</a>`
+    : a.name ? `${htmlEsc(a.name)}, your contact at Bharat AI Innovation,` : 'your contact at Bharat AI Innovation'
+  return `Please email your final artwork to ${who} and mark <strong>${a.cc}</strong> in CC.`
 }
 const brandingSection = (allow: TeamAllowance, p: (t: string) => string) =>
-  teamBranding(allow) ? p('The branding sizes for your booth, as revised on 11 November 2026, are on the same page under <strong>Booth Branding</strong>. Please use those sizes for your artwork.') : ''
+  teamBranding(allow) ? p(`The branding sizes for your booth, as revised on 11 November 2026, are on the same page under <strong>Booth Branding</strong>. Please use those sizes for your artwork. ${artworkLine(allow)}`) : p(artworkLine(allow))
 const sendTeamRequest = async (c: any, ex: { id: number; company_name: string }, account: { id: number; email: string }, allow: TeamAllowance, members: any[]): Promise<boolean> => {
   const p = (html: string) => `<p style="margin:0 0 12px;font-size:14px;line-height:1.65">${html}</p>`
   const h = (text: string) => `<p style="margin:20px 0 8px;font-size:15px;font-weight:700">${text}</p>`

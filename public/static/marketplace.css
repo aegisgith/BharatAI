@@ -903,3 +903,35 @@ a.listing-card:hover .listing-view i { transform: translateX(3px); }
 .team-admin-members td { font-size: 12px; }
 .team-admin-photo { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; }
 .team-passes-input { width: 64px !important; padding: 6px 8px !important; }
+
+/* ── The company's booth at a glance (Overview, 11 Nov 2026) ── */
+.booth-card { border-color: #f3c9a4; }
+.booth-eyebrow { font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--mp-muted); margin: 0; }
+.booth-title { font-size: 18px !important; margin: 2px 0 0 !important; }
+.booth-when { font-size: 14px; color: var(--mp-body); margin: 2px 0 12px; }
+.booth-list { margin: 0; display: grid; gap: 0; }
+.booth-row { display: grid; grid-template-columns: 96px 1fr; gap: 12px; padding: 10px 0; border-top: 1px solid var(--mp-border); align-items: start; }
+.booth-row dt { font-size: 13px; color: var(--mp-muted); font-weight: 600; margin: 0; }
+.booth-row dd { margin: 0; display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; justify-content: space-between; font-size: 14px; min-width: 0; }
+.booth-row dd span { min-width: 0; overflow-wrap: anywhere; }
+.booth-row small { color: var(--mp-muted); font-size: 12px; }
+.booth-go { background: none; border: 0; color: var(--mp-primary-ink); font-weight: 600; font-size: 13px; cursor: pointer; padding: 6px 0; min-height: 32px; }
+.pay-paid { color: #047857; font-weight: 700; }
+.pay-pending { color: #92400E; font-weight: 700; }
+.booth-note { font-size: 12px; color: var(--mp-muted); margin: 8px 0 0; line-height: 1.5; }
+@media (max-width: 420px) { .booth-row { grid-template-columns: 1fr; gap: 2px; } }
+
+/* Bharat AI Connect tab */
+.connect-list { list-style: none; padding: 0; margin: 0 0 14px; display: grid; gap: 8px; font-size: 14px; }
+.connect-list i { color: var(--mp-primary-ink); width: 20px; text-align: center; margin-right: 6px; }
+a.connect-open { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; min-height: 44px; background: #C84F00; }
+.connect-people { list-style: none; padding: 0; margin: 0; display: grid; }
+.connect-people li { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 8px 0; border-top: 1px solid var(--mp-border); font-size: 14px; }
+
+/* Report a problem */
+.team-form select { padding: 10px 14px; border-radius: 10px; font-size: 16px; min-height: 44px; background: rgba(20,25,80,0.05); border: 1px solid var(--mp-border); color: var(--mp-text); width: 100%; }
+.team-form textarea { font-size: 16px !important; }
+.report-item { padding: 12px 0; border-top: 1px solid var(--mp-border); }
+.report-head { display: flex; justify-content: space-between; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 14px; }
+.report-msg { font-size: 14px; margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.report-reply { font-size: 13px; margin: 6px 0 0; padding: 8px 10px; background: var(--mp-surface-2); border-radius: 8px; }

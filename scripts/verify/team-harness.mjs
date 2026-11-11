@@ -51,9 +51,9 @@ db.run("INSERT INTO events (id, title, venue, start_date, end_date, status) VALU
 db.run("INSERT INTO app_settings (key, value) VALUES ('elastic_email_api_key', 'test-key')");
 db.run("INSERT INTO exhibitors (id, event_id, company_name, contact_email, booth_number) VALUES (1, 1, 'Harness Explorer Pvt Ltd', 'spoc@explorer.test', '21')");
 db.run("INSERT INTO booths (id, event_id, code, type_key, name, dim) VALUES (1, 1, '21', 'explorer', 'Explorer Booth', '2m x 2m')");
-db.run("INSERT INTO booth_allocations (event_id, booth_id, exhibitor_id, company_name, contact_name, status) VALUES (1, 1, 1, 'Harness Explorer Pvt Ltd', 'Richa', 'confirmed')");
+db.run("INSERT INTO booth_allocations (event_id, booth_id, exhibitor_id, company_name, contact_name, status, amount_inr, gst_inr, grand_total_inr, amount_paid_inr, invoice_number) VALUES (1, 1, 1, 'Harness Explorer Pvt Ltd', 'Richa', 'confirmed', 129000, 23220, 152220, 100000, 'BAI/26-27/9')");
 db.run("INSERT INTO mp_companies (id, company_name, email, password_hash, exhibitor_id) VALUES (1, 'Harness Explorer Pvt Ltd', 'spoc@explorer.test', '', 1)");
-db.run("INSERT INTO exhibitor_team_settings (exhibitor_id, contact_name) VALUES (1, 'Richa Roy')");
+db.run("INSERT INTO exhibitor_team_settings (exhibitor_id, contact_name, owner_name, owner_email) VALUES (1, 'Richa Roy', 'Test Owner', 'owner@example.test')");
 db.run("INSERT INTO exhibitors (id, event_id, company_name, contact_email, booth_number) VALUES (2, 1, 'Sheet Only Labs', 'spoc@sheet.test', '40')");
 db.run("INSERT INTO mp_companies (id, company_name, email, password_hash, exhibitor_id) VALUES (2, 'Sheet Only Labs', 'spoc@sheet.test', '', 2)");
 db.run("INSERT INTO exhibitor_team_settings (exhibitor_id, booth_type, booth_name, booth_dim, booths, contact_name) VALUES (2, 'pod', 'Startup Pod', '1.5m x 1.5m', 1, 'Shweta Bhanot')");

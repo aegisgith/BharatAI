@@ -62,9 +62,11 @@ const initAdmin = async () => {
       if (info) info.textContent = 'Marketplace Admin · signed in through event admin'
     }
     try { exhibitors = (await api('/api/mp/admin/exhibitors')).exhibitors || [] } catch { exhibitors = [] }
-    await Promise.all([loadStats(), loadAllListings(), loadPendingListings(), loadInquiries(), loadExhibitors(), loadStageTalks(), loadTeams()])
+    await Promise.all([loadStats(), loadAllListings(), loadPendingListings(), loadInquiries(), loadExhibitors(), loadStageTalks(), loadTeams(), loadReports()])
     // The queue is what an admin comes here for; open it when there is something in it.
     if (num(document.getElementById('stat-pending').textContent) > 0) switchSection('pending')
+    // The report email's button opens /marketplace/admin#reports.
+    if (location.hash === '#reports') switchSection('reports')
   } catch { showToast('Failed to load', true) }
 }
 
@@ -435,6 +437,42 @@ if (teamCsvBtn) teamCsvBtn.addEventListener('click', async () => {
     const a = document.createElement('a'); a.href = url; a.download = 'exhibitor-teams.csv'; document.body.appendChild(a); a.click(); a.remove()
     setTimeout(() => URL.revokeObjectURL(url), 5000)
   } catch (err) { showToast(err.message, true) }
+})
+
+// ── Reports from exhibitors ──
+let reportsAdmin = []
+const loadReports = async () => {
+  const c = document.getElementById('admin-reports'); if (!c) return
+  try {
+    const d = await api('/api/mp/admin/reports')
+    reportsAdmin = d.reports || []
+    const badge = document.getElementById('reports-count')
+    if (badge) { badge.textContent = String(num(d.open)); badge.classList.toggle('hidden', !num(d.open)) }
+    if (!reportsAdmin.length) { c.innerHTML = '<p class="text-slate-400">No reports yet.</p>'; return }
+    c.innerHTML = `<table class="dash-table"><thead><tr><th>Company</th><th>About</th><th>What is wrong</th><th>From</th><th>Sent</th><th>Status</th><th></th></tr></thead><tbody>${reportsAdmin.map(r => `<tr>
+      <td class="text-sm font-medium">${esc(r.company)}</td>
+      <td class="text-sm">${esc(r.topic)}</td>
+      <td class="text-sm" style="max-width:360px;white-space:pre-wrap">${esc(r.message)}${r.reply ? `<div class="text-xs text-slate-400" style="margin-top:4px">Reply: ${esc(r.reply)}</div>` : ''}</td>
+      <td class="text-xs">${esc(r.reported_by)}</td>
+      <td class="text-xs text-slate-400">${fmtDate(r.created_at)}</td>
+      <td>${r.status === 'resolved' ? '<span class="dash-badge dash-badge--green">Resolved</span>' : '<span class="dash-badge dash-badge--red">Open</span>'}</td>
+      <td>${r.status === 'resolved'
+        ? `<button class="mp-btn-secondary text-xs py-1 px-3" data-report-open="${num(r.id)}">Reopen</button>`
+        : `<button class="mp-btn-primary text-xs py-1 px-3" data-report-resolve="${num(r.id)}">Mark resolved</button>`}</td></tr>`).join('')}</tbody></table>`
+  } catch (err) { c.innerHTML = `<p class="text-rose-400">${esc(err.message)}</p>` }
+}
+main.addEventListener('click', async (e) => {
+  const res = e.target.closest('[data-report-resolve]'), reo = e.target.closest('[data-report-open]')
+  if (!res && !reo) return
+  const id = num((res || reo).getAttribute(res ? 'data-report-resolve' : 'data-report-open'))
+  let body = { status: 'open' }
+  if (res) {
+    const reply = prompt('Mark resolved. A short reply the exhibitor will see (optional):', '')
+    if (reply === null) return
+    body = { status: 'resolved', reply }
+  }
+  try { await api('/api/mp/admin/reports/' + id, { method: 'PATCH', body: JSON.stringify(body) }); showToast(res ? 'Marked resolved' : 'Reopened'); await loadReports() }
+  catch (err) { showToast(err.message, true) }
 })
 
 // ── Stage talks ──

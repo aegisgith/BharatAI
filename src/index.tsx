@@ -455,7 +455,7 @@ async function sessionAttendee(c: any): Promise<{ id: number; email: string; nam
 // signed in to the app list a product. Passed in because that module cannot import
 // from this file.
 configureMarketplace({ sendEmail: sendAdminEmail, isEventAdmin: isAdminRequest, audit, ensureDelegate: ensureExhibitorDelegate, attendeeOf: sessionAttendee,
-  issueTeamPass, releaseTeamPass, teamMobileHolder })
+  issueTeamPass, releaseTeamPass, teamMobileHolder, passToken: (c: any, id: number) => signPassToken(c, id) })
 app.route('/', mp)
 
 // Marketplace page routes

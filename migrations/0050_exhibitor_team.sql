@@ -55,5 +55,7 @@ CREATE TABLE IF NOT EXISTS exhibitor_team_settings (
   booth_dim     TEXT    NOT NULL DEFAULT '',   -- "2m x 2m"
   booths        INTEGER NOT NULL DEFAULT 1,    -- how many stands of that type
   contact_name  TEXT    NOT NULL DEFAULT '',   -- the booth contact (SPOC), for "Dear ..."
+  owner_name    TEXT    NOT NULL DEFAULT '',   -- who at Bharat AI Innovation looks after them (the sheet's "Kitty")
+  owner_email   TEXT    NOT NULL DEFAULT '',   -- where they send their artwork, with register@ in CC
   updated_at    TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

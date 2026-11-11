@@ -12,7 +12,7 @@ Reads the "Innovation Talk Speakers" tab of the workbook "Bharat AI Exhibition b
 
 Neither file belongs in the repository: both carry people's emails and mobiles.
 
-    python scripts/gen-team-import.py "<workbook.xlsx>" "<out folder>"
+    python scripts/gen-team-import.py "<workbook.xlsx>" "<out folder>" ["<owners.json>"]
     python scripts/gen-team-import.py --check "<out>.sql"   # runs it twice on a scratch copy
 
 The SPOC column on that tab says "it will not go on portal and get no pass": the SPOC
@@ -94,6 +94,11 @@ TYPES = {
     'flagship pavillion': ('enterprise', 'Flagship Pavilion', '6m x 2m'), 'flagship pavilion': ('enterprise', 'Flagship Pavilion', '6m x 2m'),
     'mega pavilion': ('mega', 'Mega Pavilion', '7m x 7.7m'),
 }
+# Who at Bharat AI Innovation looks after each exhibitor (the sheet's "Kitty") and where
+# exhibitors email their artwork, with register@ in CC. The names and addresses come from a
+# JSON file kept OUTSIDE the repository ({"Tushar": {"name": ..., "email": ...}}), passed as
+# the third argument; without it the email names the contact by the sheet's first name.
+OWNERS = {}
 PUBLIC_MAIL = {'gmail.com', 'yahoo.com', 'outlook.com', 'hotmail.com', 'rediffmail.com', 'tuta.com', 'icloud.com'}
 EMAIL_RE = re.compile(r'^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$')
 
@@ -150,12 +155,15 @@ def read(xlsx):
         v = [cell(c.value) for c in r[:21]]
         if not any(v):
             continue
-        sr, btype, booth, company, g, h, i, spk, m, role, desig, status, photos, t, u = (v[0], v[1], v[4], v[5], v[6], v[7], v[8], v[11], v[12], v[13], v[14], v[16], v[17], v[19], v[20])
+        sr, btype, booth, company, g, h, i, kitty, spk, m, role, desig, status, photos, t, u = (v[0], v[1], v[4], v[5], v[6], v[7], v[8], v[10], v[11], v[12], v[13], v[14], v[16], v[17], v[19], v[20])
         if company:
             cur = company
         if not cur:
             continue
-        out.append(dict(sr=sr, btype=btype, booth=booth, company=cur, spoc=g, spoc_email=h, phone=i, speaker=spk, rep=m, role=role, designation=desig, status=status, email=t, mobile=u))
+        # Two rows (Nu10, Rightangle) carry the owner one column over, under Presenter Photos.
+        if not kitty and photos in OWNERS:
+            kitty = photos
+        out.append(dict(sr=sr, owner=kitty, btype=btype, booth=booth, company=cur, spoc=g, spoc_email=h, phone=i, speaker=spk, rep=m, role=role, designation=desig, status=status, email=t, mobile=u))
     return out
 
 
@@ -178,9 +186,11 @@ def build(xlsx):
             continue
         ex_id, new_name = COMPANIES[key]
         ck = ex_id if ex_id else new_name
-        c = companies.setdefault(ck, dict(ex_id=ex_id, name=new_name, sheet_names=set(), spoc='', spoc_email='', types=set(), booths=set(), rows=[], numbers=set()))
+        c = companies.setdefault(ck, dict(ex_id=ex_id, name=new_name, sheet_names=set(), spoc='', spoc_email='', owner='', types=set(), booths=set(), rows=[], numbers=set()))
         c['sheet_names'].add(key)
         if r['sr']:
+            if not c['owner'] and r['owner'] and r['owner'].upper() != 'NA':
+                c['owner'] = nice(r['owner'])
             if not c['spoc'] and r['spoc']:
                 c['spoc'], c['spoc_email'] = nice(r['spoc']), first_email(r['spoc_email'])
             t = TYPES.get(r['btype'].lower())
@@ -281,8 +291,8 @@ def sql_for(companies):
             out.append(f"UPDATE mp_companies SET exhibitor_id = {ex} WHERE lower(trim(email)) = {sq(e)} AND ifnull(role, 'company') <> 'admin' AND {ex} IS NOT NULL;")
         t = next(iter(c['types'])) if len(c['types']) == 1 else ('', '', '')
         n = max(1, len(c['booths'])) if t[0] else 1
-        out.append(f"INSERT INTO exhibitor_team_settings (exhibitor_id, booth_type, booth_name, booth_dim, booths, contact_name) SELECT {ex}, {sq(t[0])}, {sq(t[1])}, {sq(t[2])}, {n}, {sq(c['spoc'])} WHERE {ex} IS NOT NULL "
-                   f"ON CONFLICT(exhibitor_id) DO UPDATE SET booth_type = excluded.booth_type, booth_name = excluded.booth_name, booth_dim = excluded.booth_dim, booths = excluded.booths, contact_name = excluded.contact_name, updated_at = CURRENT_TIMESTAMP;")
+        out.append(f"INSERT INTO exhibitor_team_settings (exhibitor_id, booth_type, booth_name, booth_dim, booths, contact_name, owner_name, owner_email) SELECT {ex}, {sq(t[0])}, {sq(t[1])}, {sq(t[2])}, {n}, {sq(c['spoc'])}, {sq(OWNERS.get(c['owner'], {}).get('name') or c['owner'])}, {sq(OWNERS.get(c['owner'], {}).get('email', ''))} WHERE {ex} IS NOT NULL "
+                   f"ON CONFLICT(exhibitor_id) DO UPDATE SET booth_type = excluded.booth_type, booth_name = excluded.booth_name, booth_dim = excluded.booth_dim, booths = excluded.booths, contact_name = excluded.contact_name, owner_name = excluded.owner_name, owner_email = CASE WHEN excluded.owner_email <> '' THEN excluded.owner_email ELSE exhibitor_team_settings.owner_email END, updated_at = CURRENT_TIMESTAMP;")
         for p in c['people']:
             guard = (f"NOT EXISTS (SELECT 1 FROM exhibitor_team WHERE event_id = 1 AND email = {sq(p['email'])})" if p['email'] else
                      f"NOT EXISTS (SELECT 1 FROM exhibitor_team WHERE exhibitor_id = {ex} AND email = '' AND lower(first_name) = lower({sq(p['first'])}) AND lower(last_name) = lower({sq(p['last'])}))")
@@ -338,6 +348,8 @@ def main():
     if sys.argv[1:2] == ['--check']:
         sys.exit(1 if check(sys.argv[2]) else 0)
     xlsx, out_dir = sys.argv[1], sys.argv[2]
+    if len(sys.argv) > 3:
+        OWNERS.update(json.load(open(sys.argv[3], encoding='utf-8')))
     companies, review = build(xlsx)
     stem = os.path.join(out_dir, f'exhibitor-teams-import-{date.today().isoformat()}')
     open(stem + '.sql', 'w', encoding='utf-8').write(sql_for(companies))
@@ -345,7 +357,7 @@ def main():
     for ck, c in sorted(companies.items(), key=lambda kv: str(kv[1]['name'] or kv[1]['ex_id'])):
         label = c['name'] or sorted(c['sheet_names'])[0]
         t = next(iter(c['types']))[1] if len(c['types']) == 1 else '?'
-        lines.append(f"{label} [{'new row' if not c['ex_id'] else 'id ' + str(c['ex_id'])}] {t} x{max(1, len(c['booths']))}, contact {c['spoc'] or '?'} <{c['spoc_email'] or 'no email'}>")
+        lines.append(f"{label} [{'new row' if not c['ex_id'] else 'id ' + str(c['ex_id'])}] {t} x{max(1, len(c['booths']))}, contact {c['spoc'] or '?'} <{c['spoc_email'] or 'no email'}>, our side: {OWNERS.get(c['owner'], {}).get('name') or c['owner'] or '?'} <{OWNERS.get(c['owner'], {}).get('email') or 'no email'}>")
         for p in c['people']:
             roles = ' + '.join(x for x, on in (('booth', p['booth']), ('stage', p['speaker'])) if on)
             lines.append(f"    {p['first']} {p['last']} | {p['designation'] or '(no designation)'} | {p['email'] or '(no email)'} | {roles}{' | photo from the site' if p['photo'] else ''}")

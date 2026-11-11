@@ -60,7 +60,7 @@ const admin = { Authorization: 'Bearer ' + ADMIN };
 const q = (sql, ...a) => rows(sql, clean(a));
 const one = (sql, ...a) => q(sql, ...a)[0] || null;
 let fails = 0;
-const check = (n, ok, d) => { console.log((ok ? 'PASS ' : 'FAIL ') + n + (ok ? '' : '  <- ' + (typeof d === 'string' ? d : JSON.stringify(d)).slice(0, 300))); if (!ok) fails++; };
+const check = (n, ok, d) => { console.log((ok ? 'PASS ' : 'FAIL ') + n + (ok ? '' : '  <- ' + String(typeof d === 'string' ? d : JSON.stringify(d)).slice(0, 300))); if (!ok) fails++; };
 
 // ---- seed ----
 db.run("INSERT INTO events (id, title, start_date, end_date) VALUES (1, 'Bharat AI', '2026-11-20', '2026-11-21')");
@@ -327,12 +327,73 @@ r = await hit('POST', '/api/mp/admin/teams/1/ask', {}, admin);
 const lateRow = one("SELECT pass, pass_note FROM exhibitor_team WHERE email = 'late@explorer.test'");
 check('asking settles the imported people first: past the booth passes they are told why', r.status === 200 && lateRow.pass === '' && /all in use/.test(lateRow.pass_note), lateRow);
 
+// ---- the company's own page: booth, payment, passes to download, the app ----
+db.run("UPDATE booth_allocations SET amount_inr = 291000, gst_inr = 52380, grand_total_inr = 343380, amount_paid_inr = 200000, invoice_number = 'BAI/26-27/7' WHERE exhibitor_id = 2");
+r = await hit('GET', '/api/mp/dashboard/booth', undefined, mpAs(2));
+check('the booth card: which event, the booth and its size, passes', r.status === 200 && r.json.event?.title === 'Bharat AI' && r.json.event.start_date === '2026-11-20' && r.json.booth === '12' && r.json.label === 'Accelerator Booth (3m × 3m)' && r.json.passes === 5, r.text);
+check('the booth card: paid and pending, from the booth record, with the invoice', r.json.payment?.total === 343380 && r.json.payment.paid === 200000 && r.json.payment.pending === 143380 && r.json.payment.booths[0].invoice === 'BAI/26-27/7', r.json.payment);
+r = await hit('GET', '/api/mp/dashboard/booth', undefined, mpAs(3));
+check('known only from the sheet: no payment shown (the sheet is not a record)', r.status === 200 && r.json.payment === null && r.json.label === 'Startup Pod (1.5m × 1.5m)', r.text);
+r = await hit('GET', '/api/mp/dashboard/booth');
+check('the booth card needs a sign-in', r.status === 401, r.status);
+const vRow = one("SELECT id FROM exhibitor_team WHERE email = 'visitor@accel.test'"), dRow = one("SELECT id FROM exhibitor_team WHERE email = 'delegate@accel.test'");
+r = await hit('GET', `/api/mp/dashboard/team/${vRow.id}/pass`, undefined, mpAs(2));
+check('a pass the booth gave can be downloaded: the person and a signed QR token', r.status === 200 && r.json.user.badge_type === 'Exhibitor' && r.json.user.id === 101 && /^101\.[0-9a-f]{24}$/.test(r.json.token) && r.json.variant === 'exhibitor' && r.json.booth === '12' && !('email' in r.json.user), r.text);
+r = await hit('GET', `/api/mp/dashboard/team/${dRow.id}/pass`, undefined, mpAs(2));
+check('a pass of their own is theirs to download in the app', r.status === 409 && /of their own/.test(r.json.error), r.text);
+r = await hit('GET', `/api/mp/dashboard/team/${vRow.id}/pass`, undefined, mpAs(1));
+check("another company cannot download this team's passes", r.status === 404, r.status);
+db.run("UPDATE attendees SET last_login_at = datetime('now') WHERE id = 101");
+r = await hit('GET', '/api/mp/dashboard/team', undefined, mpAs(2));
+check('Bharat AI Connect: who on the team has signed in', r.json.members.find(m => m.email === 'visitor@accel.test')?.app_signed_in === true && r.json.members.find(m => m.email === 'c@accel.test')?.app_signed_in === false, r.json.members.map(m => [m.email, m.app_signed_in]));
+db.run("UPDATE exhibitor_team_settings SET owner_name = 'Tushar' WHERE exhibitor_id = 3");
+db.run("DELETE FROM admin_audit WHERE action = 'marketplace.team-asked' AND entity_id = '3'");
+sent.length = 0;
+await hit('POST', '/api/mp/admin/teams/3/ask', {}, admin);
+check('the email: artwork to their Bharat AI contact by name, register@ in CC', /Please email your final artwork to Tushar, your contact at Bharat AI Innovation, and mark <strong>register@bharataiinnovation\.com<\/strong> in CC\./.test(sent[0]?.Content.Body[0].Content || ''), (sent[0]?.Content.Body[0].Content || '').match(/Please email your final artwork[^.]*\./)?.[0]);
+db.run("UPDATE exhibitor_team_settings SET owner_email = 'tushar@bharataiinnovation.com' WHERE exhibitor_id = 3");
+r = await hit('GET', '/api/mp/dashboard/team', undefined, mpAs(3));
+check('the Booth Branding screen knows where the artwork goes', r.json.branding?.artwork?.name === 'Tushar' && r.json.branding.artwork.email === 'tushar@bharataiinnovation.com' && r.json.branding.artwork.cc === 'register@bharataiinnovation.com', r.json.branding);
+
+// ---- Report a problem ----
+r = await hit('POST', '/api/mp/dashboard/reports', { topic: 'booth', message: 'Our booth number is wrong here.' });
+check('reporting needs a sign-in', r.status === 401, r.status);
+r = await hit('POST', '/api/mp/dashboard/reports', { topic: 'booth', message: 'Our booth number is wrong here.' }, mpAs(9));
+check('a company without a booth cannot report here', r.status === 403, r.status);
+r = await hit('POST', '/api/mp/dashboard/reports', { topic: '', message: 'Our booth number is wrong here.' }, mpAs(2));
+check('a report needs a topic', r.status === 400 && /about/.test(r.json.error), r.text);
+r = await hit('POST', '/api/mp/dashboard/reports', { topic: 'booth', message: 'wrong' }, mpAs(2));
+check('a report needs a sentence', r.status === 400, r.text);
+sent.length = 0;
+r = await hit('POST', '/api/mp/dashboard/reports', { topic: 'payment', message: 'We paid in full on 5 Nov but this shows pending <script>x</script>.' }, mpAs(2));
+await new Promise(res => setTimeout(res, 100)); // the email goes out after the reply
+check('a report is saved as an enquiry of its own type, open', r.status === 200 && r.json.reports.length === 1 && r.json.reports[0].status === 'open' && r.json.reports[0].topic === 'Payment or invoice' && one("SELECT inquiry_type, organization FROM inquiries WHERE id = ?", r.json.id)?.inquiry_type === 'exhibitor_issue', r.text);
+check('with no contact named on our side, the team address is emailed, the message escaped', sent.length === 1 && /Exhibitor report: Payment or invoice \(Accel Co\)/.test(sent[0].Content.Subject) && /&lt;script&gt;/.test(sent[0].Content.Body[0].Content) && !/<script>x/.test(sent[0].Content.Body[0].Content), sent[0]?.Content.Subject);
+sent.length = 0;
+r = await hit('POST', '/api/mp/dashboard/reports', { topic: 'branding', message: 'The fascia size looks different from the email.' }, mpAs(3));
+await new Promise(res => setTimeout(res, 100));
+check("the report goes to the exhibitor's own contact on our side", r.status === 200 && sent[0]?.Recipients.To[0] === 'tushar@bharataiinnovation.com', sent[0]?.Recipients);
+r = await hit('GET', '/api/mp/dashboard/reports', undefined, mpAs(1));
+check("one company never sees another's reports", r.status === 200 && r.json.reports.length === 0, r.text);
+r = await hit('GET', '/api/mp/admin/reports');
+check('the reports list is for admins only', r.status === 403, r.status);
+r = await hit('GET', '/api/mp/admin/reports', undefined, admin);
+check('admin: every report, open first, with the company', r.status === 200 && r.json.reports.length === 2 && r.json.open === 2 && r.json.reports.some(x => x.company === 'Accel Co'), r.text);
+const rid = r.json.reports.find(x => x.company === 'Accel Co').id;
+r = await hit('PATCH', '/api/mp/admin/reports/' + rid, { status: 'resolved', reply: 'Recorded your payment, thank you.' }, admin);
+r = await hit('GET', '/api/mp/dashboard/reports', undefined, mpAs(2));
+check('resolved with a reply: the exhibitor sees both', r.json.reports[0].status === 'resolved' && r.json.reports[0].reply === 'Recorded your payment, thank you.', r.text);
+check('resolving is in the audit log', !!one("SELECT id FROM admin_audit WHERE action = 'marketplace.report-resolved'"), '');
+for (let i = 0; i < 4; i++) await hit('POST', '/api/mp/dashboard/reports', { topic: 'other', message: 'Another thing to look at, number ' + i }, mpAs(2));
+r = await hit('POST', '/api/mp/dashboard/reports', { topic: 'other', message: 'One more thing to look at please.' }, mpAs(2));
+check('at most five reports a day from one contact', r.status === 429, r.status);
+
 // ---- the pages ----
 r = await hit('GET', '/marketplace/dashboard');
-check('the dashboard has the Team screen, the branding screen and the new script', ['data-section="team"', 'id="team-form"', 'id="team-add-btn"', 'data-section="branding"', 'marketplace-dashboard.js?v=7', 'marketplace.css?v=7'].every(m => r.text.includes(m)), '');
+check('the dashboard has the Team screen, the branding screen and the new script', ['data-section="team"', 'id="team-form"', 'id="team-add-btn"', 'data-section="branding"', 'marketplace-dashboard.js?v=8', 'marketplace.css?v=8', 'data-section="connect"', 'id="connect-team"', 'id="dash-booth"', 'data-section="report"', 'id="report-form"'].every(m => r.text.includes(m)), '');
 check('the team form asks for every detail the organiser listed', ['team-first', 'team-last', 'team-designation', 'team-company', 'team-email', 'team-mobile', 'team-linkedin', 'team-photo-file', 'team-at-booth', 'team-speaker'].every(id => r.text.includes('id="' + id + '"')), '');
 r = await hit('GET', '/marketplace/admin');
-check('the admin page has Teams & Passes', ['data-section="teams"', 'id="admin-teams"', 'id="team-ask-all"', 'id="team-csv"', 'id="team-deadline"', 'marketplace-admin.js?v=10'].every(m => r.text.includes(m)), '');
+check('the admin page has Teams & Passes', ['data-section="teams"', 'id="admin-teams"', 'id="team-ask-all"', 'id="team-csv"', 'id="team-deadline"', 'marketplace-admin.js?v=11', 'data-section="reports"', 'id="admin-reports"'].every(m => r.text.includes(m)), '');
 
 console.log(fails ? `\n${fails} FAILED` : '\nAll exhibitor team checks passed');
 process.exit(fails ? 1 : 0);

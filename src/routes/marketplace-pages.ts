@@ -55,7 +55,7 @@ function mpSharedHead(title: string, opts: { path?: string; noindex?: boolean; e
        last-but-one, Tailwind last. -->
   <link rel="stylesheet" href="/css/fa-subset.css?v=2">
   <link rel="stylesheet" href="/css/fonts-app.css?v=1">
-  <link href="/static/marketplace.css?v=7" rel="stylesheet">
+  <link href="/static/marketplace.css?v=8" rel="stylesheet">
   <link rel="stylesheet" href="/css/tailwind.css?v=${__TW_CSS_HASH__}">${opts.extraHead ? '\n  ' + opts.extraHead : ''}
 </head>`
 }
@@ -689,6 +689,8 @@ export function marketplaceDashboardPageHTML(): string {
       <button class="dash-sidebar-item" data-section="listings"><i class="fas fa-boxes"></i> My Listings</button>
       <button class="dash-sidebar-item hidden" data-section="team" id="dash-nav-team"><i class="fas fa-users"></i> Your Team</button>
       <button class="dash-sidebar-item hidden" data-section="branding" id="dash-nav-branding"><i class="fas fa-store"></i> Booth Branding</button>
+      <button class="dash-sidebar-item hidden" data-section="connect" id="dash-nav-connect"><i class="fas fa-handshake"></i> Bharat AI Connect</button>
+      <button class="dash-sidebar-item hidden" data-section="report" id="dash-nav-report"><i class="fas fa-exclamation-circle"></i> Report a problem</button>
       <button class="dash-sidebar-item hidden" data-section="stage" id="dash-nav-stage"><i class="fas fa-microphone-alt"></i> Stage Talk</button>
       <button class="dash-sidebar-item" data-section="inquiries"><i class="fas fa-envelope"></i> Inquiries</button>
       <button class="dash-sidebar-item" data-section="reviews"><i class="fas fa-star"></i> Reviews</button>
@@ -724,7 +726,9 @@ export function marketplaceDashboardPageHTML(): string {
           <p class="text-sm text-slate-400">Welcome to your AI Marketplace Dashboard</p>
         </div>
       </div>
-      <!-- Exhibitors only: the two things their booth includes, and how far they have got. -->
+      <!-- Exhibitors only: the company's booth at a glance (event, booth, passes, stage, payment). -->
+      <div id="dash-booth" class="dash-card booth-card hidden"></div>
+      <!-- Exhibitors only: the things their booth includes, and how far they have got. -->
       <div id="dash-todo" class="dash-card hidden"></div>
       <div class="dash-stats-grid">
         <div class="dash-stat-card"><div class="dash-stat-icon"><i class="fas fa-boxes"></i></div><div><p class="dash-stat-label">Total Listings</p><p class="dash-stat-value" id="stat-total">0</p></div></div>
@@ -796,6 +800,39 @@ export function marketplaceDashboardPageHTML(): string {
           <button type="button" id="team-cancel" class="mp-btn-secondary">Cancel</button>
         </div>
       </form>
+    </section>
+
+    <!-- Bharat AI Connect, the event's networking app: what the team gets there, and who has signed in -->
+    <section id="section-connect" class="dash-section hidden">
+      <div class="dash-section-header"><h2><i class="fas fa-handshake mr-2"></i>Bharat AI Connect</h2></div>
+      <div class="dash-card">
+        <h3>The event's networking app</h3>
+        <p class="text-sm" style="line-height:1.6;margin:0 0 10px">Everyone on your team has their own account in Bharat AI Connect. They sign in with their own email address. We email them a code, so there is nothing to register.</p>
+        <ul class="connect-list">
+          <li><i class="fas fa-id-badge"></i> Their pass, to show at the badge desk</li>
+          <li><i class="fas fa-comments"></i> Find attendees and message them</li>
+          <li><i class="fas fa-handshake"></i> Ask for meetings on 20 and 21 November</li>
+          <li><i class="fas fa-mobile-alt"></i> Works on any phone, no download needed</li>
+        </ul>
+        <a href="/app" target="_blank" rel="noopener" class="mp-btn-primary connect-open">Open Bharat AI Connect <i class="fas fa-external-link-alt ml-1"></i></a>
+        <p class="text-xs text-slate-500" style="margin:10px 0 0">Share this link with your team: <strong>bharataiinnovation.com/app</strong></p>
+      </div>
+      <div id="connect-team" class="dash-card"></div>
+    </section>
+
+    <!-- Report a problem: lands on Marketplace admin → Reports and with the exhibitor's contact -->
+    <section id="section-report" class="dash-section hidden">
+      <div class="dash-section-header"><h2><i class="fas fa-exclamation-circle mr-2"></i>Report a problem</h2></div>
+      <form id="report-form" class="dash-card mp-form team-form" novalidate>
+        <p class="text-sm" style="line-height:1.6;margin:0">Is something on this page wrong, such as your booth, a payment, a pass or a name? Tell us here. It goes straight to the Bharat AI Innovation team, and you see its status below.</p>
+        <div class="form-field"><label for="report-topic">What is it about? <span class="team-req">*</span></label>
+          <select id="report-topic"><option value="">Choose one</option><option value="booth">Booth or stand</option><option value="payment">Payment or invoice</option><option value="passes">Passes or team</option><option value="stage">Stage talk</option><option value="branding">Branding sizes</option><option value="listing">AI Marketplace listing</option><option value="other">Something else</option></select></div>
+        <div class="form-field"><label for="report-message">What is wrong? <span class="team-req">*</span></label>
+          <textarea id="report-message" rows="5" maxlength="2000" autocomplete="off" placeholder="For example: our booth number should be 14, not 12."></textarea></div>
+        <div id="report-error" class="team-error" role="alert" hidden></div>
+        <div class="team-form-actions"><button type="submit" class="mp-btn-primary"><i class="fas fa-paper-plane mr-1"></i> Send report</button></div>
+      </form>
+      <div id="report-list" class="dash-card"></div>
     </section>
 
     <!-- Booth branding sizes for this exhibitor's booth type (revised 11 Nov 2026) -->
@@ -914,7 +951,7 @@ export function marketplaceDashboardPageHTML(): string {
     </div>
   </div>
 
-  <script src="/static/marketplace-dashboard.js?v=7"></script>
+  <script src="/static/marketplace-dashboard.js?v=8"></script>
 </body>
 </html>`
 }
@@ -942,6 +979,7 @@ export function marketplaceAdminPageHTML(): string {
       <button class="dash-sidebar-item" data-section="inquiries"><i class="fas fa-envelope"></i> Inquiries</button>
       <button class="dash-sidebar-item" data-section="exhibitors"><i class="fas fa-store"></i> Exhibitors</button>
       <button class="dash-sidebar-item" data-section="teams"><i class="fas fa-users"></i> Teams &amp; Passes</button>
+      <button class="dash-sidebar-item" data-section="reports"><i class="fas fa-exclamation-circle"></i> Reports <span id="reports-count" class="dash-badge dash-badge--red hidden" style="margin-left:auto"></span></button>
       <button class="dash-sidebar-item" data-section="stage"><i class="fas fa-microphone-alt"></i> Stage Talks</button>
       <button class="dash-sidebar-item" data-section="bulk"><i class="fas fa-upload"></i> Bulk Upload</button>
     </nav>
@@ -1025,6 +1063,13 @@ export function marketplaceAdminPageHTML(): string {
       <div id="admin-teams" class="mt-3"></div>
     </section>
 
+    <!-- Reports from exhibitors -->
+    <section id="section-reports" class="dash-section hidden">
+      <div class="dash-section-header"><h2><i class="fas fa-exclamation-circle mr-2"></i>Reports from exhibitors</h2></div>
+      <div class="dash-card"><p class="text-sm text-slate-400">What exhibitors report as wrong from their dashboard (booth, payment, passes, stage talk, branding, listing). Their contact on our side is emailed each one. Mark a report resolved once it is sorted, with a short reply if you like: the exhibitor sees the status and the reply. Open reports come first.</p></div>
+      <div id="admin-reports" class="mt-3"></div>
+    </section>
+
     <!-- Stage talks -->
     <section id="section-stage" class="dash-section hidden">
       <div class="dash-section-header"><h2><i class="fas fa-microphone-alt mr-2"></i>Stage Talks</h2></div>
@@ -1057,7 +1102,7 @@ export function marketplaceAdminPageHTML(): string {
     </section>
   </div>
 
-  <script src="/static/marketplace-admin.js?v=10"></script>
+  <script src="/static/marketplace-admin.js?v=11"></script>
 </body>
 </html>`
 }

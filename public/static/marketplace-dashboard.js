@@ -71,7 +71,7 @@ const initDashboard = async () => {
     document.getElementById('dash-company-name').textContent = name
     const tn = document.getElementById('dash-topbar-name'); if (tn) tn.textContent = name
     const av = document.getElementById('dash-avatar'); if (av) av.textContent = name.charAt(0).toUpperCase()
-    await Promise.all([loadStats(), loadListings(), loadStage(), loadTeam(), loadInquiries(), loadReviews(), loadProfile(), loadRecentInquiries()])
+    await Promise.all([loadStats(), loadListings(), loadStage(), loadTeam(), loadBooth(), loadReports(), loadInquiries(), loadReviews(), loadProfile(), loadRecentInquiries()])
     // The "add your team" email signs in to /marketplace/dashboard#team.
     if (location.hash === '#team' && teamInfo && teamInfo.eligible) switchSection('team')
   } catch (err) { showToast('Failed to load dashboard', true) }
@@ -278,10 +278,29 @@ const loadTeam = async () => {
   const nav = document.getElementById('dash-nav-team'); if (nav) nav.classList.toggle('hidden', !on)
   if (on) renderTeam()
   renderBranding()
+  renderConnect()
   renderTodo()
 }
 
+// Who the artwork goes to: the exhibitor's contact at Bharat AI Innovation.
+const artworkWho = (a) => {
+  a = a || {}
+  if (a.name && a.email) return `${esc(a.name)} at <strong>${esc(a.email)}</strong>`
+  if (a.email) return `<strong>${esc(a.email)}</strong>`
+  return a.name ? `${esc(a.name)}, your contact at Bharat AI Innovation,` : 'your contact at Bharat AI Innovation'
+}
 // The branding sizes for this booth's type, as the organisers revised them.
+const renderConnect = () => {
+  const on = !!(teamInfo && teamInfo.eligible)
+  const nav = document.getElementById('dash-nav-connect'); if (nav) nav.classList.toggle('hidden', !on)
+  const box = document.getElementById('connect-team'); if (!box || !on) return
+  const ms = (teamInfo.members || []).filter(m => m.email)
+  const inCount = ms.filter(m => m.app_signed_in).length
+  box.innerHTML = `<h3>Your team in the app</h3>
+    ${ms.length ? `<p class="text-sm" style="margin:0 0 8px">${inCount} of ${ms.length} signed in so far.</p>
+    <ul class="connect-people">${ms.map(m => `<li><span>${esc(fullName(m))}</span><span class="${m.app_signed_in ? 'pay-paid' : 'pay-pending'}"><i class="fas ${m.app_signed_in ? 'fa-check-circle' : 'fa-circle'}"></i> ${m.app_signed_in ? 'Signed in' : 'Not signed in yet'}</span></li>`).join('')}</ul>`
+      : '<p class="text-sm" style="margin:0">Add your team first. Each person then signs in with the email you gave for them.</p>'}`
+}
 const renderBranding = () => {
   const b = teamInfo && teamInfo.eligible ? teamInfo.branding : null
   const nav = document.getElementById('dash-nav-branding'); if (nav) nav.classList.toggle('hidden', !b)
@@ -289,7 +308,7 @@ const renderBranding = () => {
   card.innerHTML = `<h3>Branding sizes for your ${esc(b.booth)}</h3>
     <p class="text-sm" style="margin:0 0 12px;line-height:1.6">Revised on 11 November 2026. Please use these sizes for your artwork.</p>
     <table class="dash-table"><tbody>${(b.rows || []).map(([k, v]) => `<tr><td class="text-sm" style="color:var(--mp-muted)">${esc(k)}</td><td class="text-sm"><strong>${esc(v)}</strong></td></tr>`).join('')}</tbody></table>
-    <p class="text-sm" style="margin:12px 0 0;line-height:1.6">Please share your final artwork with our team as per the guidelines shared earlier: high-resolution PDF, Adobe Illustrator (AI), CorelDRAW (CDR) or PNG, with your company logo and the font files used. Once artwork goes for printing, it cannot be changed.</p>`
+    <p class="text-sm" style="margin:12px 0 0;line-height:1.6">Please email your final artwork to ${artworkWho(b.artwork)} and mark <strong>${esc((b.artwork && b.artwork.cc) || 'register@bharataiinnovation.com')}</strong> in CC. Send a high-resolution PDF, Adobe Illustrator (AI), CorelDRAW (CDR) or PNG file, with your company logo and the font files used. Once artwork goes for printing, it cannot be changed.</p>`
 }
 
 const renderTeam = () => {
@@ -316,11 +335,13 @@ const renderTeam = () => {
         <div class="team-chips">${m.at_booth ? '<span class="team-chip"><i class="fas fa-store"></i> At the booth</span>' : ''}${m.speaker ? '<span class="team-chip"><i class="fas fa-microphone-alt"></i> On stage</span>' : ''}<span class="team-chip ${hasPass(m) ? 'team-chip--pass' : 'team-chip--wait'}">${esc(passText(m))}</span></div>
         ${(m.missing || []).length ? `<p class="team-missing">Still needed: ${esc(m.missing.join(', '))}</p>` : ''}
         ${!hasPass(m) && m.pass_note ? `<p class="team-missing">${esc(m.pass_note)}</p>` : ''}
-        <div class="team-card-actions"><button type="button" class="mp-btn-secondary" data-team-edit="${esc(m.id)}"><i class="fas fa-pen mr-1"></i> Edit</button><button type="button" class="mp-btn-secondary" data-team-remove="${esc(m.id)}"><i class="fas fa-trash-alt mr-1"></i> Remove</button></div>
+        <div class="team-card-actions">${hasPass(m) && !m.own_pass ? `<button type="button" class="mp-btn-secondary" data-team-pass="${esc(m.id)}"><i class="fas fa-id-badge mr-1"></i> Pass</button><button type="button" class="mp-btn-secondary" data-team-social="${esc(m.id)}"><i class="fas fa-share-alt mr-1"></i> Social card</button>` : ''}<button type="button" class="mp-btn-secondary" data-team-edit="${esc(m.id)}"><i class="fas fa-pen mr-1"></i> Edit</button><button type="button" class="mp-btn-secondary" data-team-remove="${esc(m.id)}"><i class="fas fa-trash-alt mr-1"></i> Remove</button></div>
       </div></div>`
   }).join('') : '<div class="dash-card dash-empty" style="padding:24px"><i class="fas fa-users"></i><p>Nobody added yet.</p></div>'
   list.querySelectorAll('[data-team-edit]').forEach(b => b.addEventListener('click', () => openTeamForm(ms.find(m => String(m.id) === b.getAttribute('data-team-edit')))))
   list.querySelectorAll('[data-team-remove]').forEach(b => b.addEventListener('click', () => removeMember(ms.find(m => String(m.id) === b.getAttribute('data-team-remove')))))
+  list.querySelectorAll('[data-team-pass]').forEach(b => b.addEventListener('click', () => downloadFor(ms.find(m => String(m.id) === b.getAttribute('data-team-pass')), b, 'pass')))
+  list.querySelectorAll('[data-team-social]').forEach(b => b.addEventListener('click', () => downloadFor(ms.find(m => String(m.id) === b.getAttribute('data-team-social')), b, 'social')))
   if (t.can_add) hideTeamFull()
 }
 
@@ -424,7 +445,7 @@ teamForm.addEventListener('submit', async (e) => {
     const id = tf('team-id').value
     const name = `${body.first_name} ${body.last_name}`.trim()
     teamInfo = await api(id ? `/api/mp/dashboard/team/${encodeURIComponent(id)}` : '/api/mp/dashboard/team', { method: id ? 'PUT' : 'POST', body: JSON.stringify(body) })
-    closeTeamForm(); renderTeam(); renderTodo()
+    closeTeamForm(); renderTeam(); renderTodo(); loadBooth()
     const saved = (teamInfo.members || []).find(m => m.email === body.email.toLowerCase())
     showToast(saved && hasPass(saved) ? `Saved. ${name}: ${passText(saved).toLowerCase()}.` : `Saved ${name}.`)
     if (body.speaker || (editingMember && editingMember.speaker)) loadStage()
@@ -440,11 +461,123 @@ const removeMember = async (m) => {
   if (!confirm(`Remove ${fullName(m)} from your team?${hasPass(m) && !m.own_pass ? ' Their pass from your booth is cancelled.' : ''}`)) return
   try {
     teamInfo = await api(`/api/mp/dashboard/team/${encodeURIComponent(m.id)}`, { method: 'DELETE' })
-    closeTeamForm(); renderTeam(); renderTodo()
+    closeTeamForm(); renderTeam(); renderTodo(); loadBooth()
     showToast(`${fullName(m)} removed`)
     if (m.speaker) loadStage()
   } catch (err) { showToast(err.message, true) }
 }
+
+// ── The company's booth at a glance (Overview) ──
+// Which event, the booth and its size, the passes, the stage slot, and what has been
+// paid and what is pending, from the booth record the organisers keep.
+let boothInfo = null
+const inr = (n) => '₹' + Math.round(Number(n) || 0).toLocaleString('en-IN')
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const ymd = (s) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(s || '')); return m ? { y: +m[1], mo: +m[2] - 1, d: +m[3] } : null }
+const dayRange = (a, b) => {
+  const x = ymd(a), y = ymd(b); if (!x) return ''
+  if (!y || (x.y === y.y && x.mo === y.mo && x.d === y.d)) return `${x.d} ${MONTHS[x.mo]} ${x.y}`
+  return x.y === y.y && x.mo === y.mo ? `${x.d}–${y.d} ${MONTHS[x.mo]} ${x.y}` : `${x.d} ${MONTHS[x.mo]} – ${y.d} ${MONTHS[y.mo]} ${y.y}`
+}
+const loadBooth = async () => {
+  try { boothInfo = await api('/api/mp/dashboard/booth') } catch { boothInfo = null }
+  renderBooth()
+}
+const renderBooth = () => {
+  const box = document.getElementById('dash-booth'); if (!box) return
+  const b = boothInfo
+  if (!b || !b.company_name) { box.classList.add('hidden'); box.innerHTML = ''; return }
+  const ev = b.event, pay = b.payment
+  const when = ev ? [dayRange(ev.start_date, ev.end_date), ev.venue].filter(Boolean).join(' · ') : ''
+  const go = (section, label) => `<button type="button" class="booth-go" data-goto="${section}">${label} <i class="fas fa-arrow-right"></i></button>`
+  const row = (label, value, action) => `<div class="booth-row"><dt>${label}</dt><dd><span>${value}</span>${action || ''}</dd></div>`
+  const invoices = pay ? pay.booths.filter(x => x.invoice).map(x => esc(x.invoice)).join(', ') : ''
+  box.innerHTML = `<p class="booth-eyebrow">Your booth at</p>
+    <h3 class="booth-title">${esc(ev ? ev.title : 'Bharat AI Innovation')}</h3>
+    ${when ? `<p class="booth-when">${esc(when)}</p>` : ''}
+    <dl class="booth-list">
+      ${row('Booth', esc([b.booth ? 'No. ' + b.booth : '', b.label].filter(Boolean).join(' · ') || 'The organisers will confirm it'), b.label ? go('branding', 'Branding sizes') : '')}
+      ${row('Passes', b.passes === null || b.passes === undefined ? 'The organisers will confirm how many' : `${esc(b.issued)} of ${esc(b.passes)} issued${b.photos_missing ? ` · ${esc(b.photos_missing)} photo${b.photos_missing === 1 ? '' : 's'} missing` : ''}`, go('team', 'Your Team'))}
+      ${b.stage ? row('Stage talk', esc(`${b.stage.minutes ? b.stage.minutes + ' minutes' : 'Innovation Talk & Showcase'} · ${b.stage.slot || 'time to be announced'}`), go('stage', 'Stage Talk')) : ''}
+      ${pay
+        ? row('Payment', `<b class="pay-paid">Paid ${inr(pay.paid)}</b> · <b class="${pay.pending ? 'pay-pending' : 'pay-paid'}">${pay.pending ? 'Pending ' + inr(pay.pending) : 'Nothing pending'}</b><br><small>Total ${inr(pay.total)} including GST${invoices ? ' · Invoice ' + invoices : ''}</small>`)
+        : row('Payment', 'Shown here once our accounts team records it')}
+    </dl>
+    <p class="booth-note">Something here wrong? <button type="button" class="booth-go" data-goto="report">Report a problem <i class="fas fa-arrow-right"></i></button></p>
+    ${pay && pay.pending ? '<p class="booth-note">Paid after deducting TDS? That part shows as pending until we receive your TDS certificate. Please send it in reply to our email.</p>' : ''}`
+  box.classList.remove('hidden')
+  box.querySelectorAll('[data-goto]').forEach(btn => btn.addEventListener('click', () => switchSection(btn.getAttribute('data-goto'))))
+  // For an exhibitor this page is the company's home for the event, not only the marketplace.
+  const sub = document.querySelector('.dash-welcome p'); if (sub && ev) sub.textContent = 'Your exhibitor page for ' + ev.title
+}
+
+// ── Each person's pass and social card ──
+// Drawn by the same files the event app uses, so they look the same as the pass the
+// person downloads themselves. Loaded only when first asked for.
+const loadScript = (src) => new Promise((resolve, reject) => {
+  if (document.querySelector(`script[src="${src}"]`)) { resolve(); return }
+  const el = document.createElement('script'); el.src = src
+  el.onload = () => resolve(); el.onerror = () => reject(new Error('Could not load the pass designer. Check your connection and try again.'))
+  document.head.appendChild(el)
+})
+const downloadFor = async (m, btn, kind) => {
+  if (!m) return
+  if (kind === 'social' && !m.photo_url) { showToast(`Add ${fullName(m)}'s photo first: the social card shows their face.`, true); return }
+  const html = btn.innerHTML
+  btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Preparing...'
+  try {
+    const d = await api(`/api/mp/dashboard/team/${encodeURIComponent(m.id)}/pass`)
+    if (kind === 'pass') {
+      await loadScript('/js/vendor/qrcode-generator.js?v=20261029'); await loadScript('/js/pass-render.js?v=20261102c')
+      const res = await window.BhaiPass.download(d.user, { token: d.token })
+      if (res && (res.photoFailed || res.qrFailed)) throw new Error(res.photoFailed ? `${fullName(m)}'s photo could not be loaded. Upload it again, then try.` : 'The QR code could not be drawn. Please try again.')
+      showToast(`${fullName(m)}'s pass is downloaded`)
+    } else {
+      await loadScript('/js/social-card.js?v=20261102')
+      const res = await window.BhaiSocialCard.download(d.user, { variant: d.variant, booth: d.booth })
+      if (!res || res.photoFailed || !res.hasPhoto) throw new Error(`${fullName(m)}'s photo could not be loaded. Upload it again, then try.`)
+      showToast(`${fullName(m)}'s social card is downloaded`)
+    }
+  } catch (err) { showToast(err.message, true) }
+  finally { btn.disabled = false; btn.innerHTML = html }
+}
+
+// ── Report a problem ──
+// Lands on Marketplace admin → Reports and with the exhibitor's contact on our side.
+let reportInfo = null
+const loadReports = async () => {
+  try { reportInfo = await api('/api/mp/dashboard/reports') } catch { reportInfo = null }
+  const on = !!(reportInfo && reportInfo.eligible)
+  const nav = document.getElementById('dash-nav-report'); if (nav) nav.classList.toggle('hidden', !on)
+  if (on) renderReports()
+}
+const renderReports = () => {
+  const box = document.getElementById('report-list'); if (!box) return
+  const rs = (reportInfo && reportInfo.reports) || []
+  box.innerHTML = '<h3>What you have reported</h3>' + (rs.length ? rs.map(r => `<div class="report-item">
+      <div class="report-head"><strong>${esc(r.topic)}</strong><span class="team-chip ${r.status === 'resolved' ? 'team-chip--pass' : 'team-chip--wait'}">${r.status === 'resolved' ? 'Resolved' : 'Open'}</span></div>
+      <p class="report-msg">${esc(r.message)}</p>
+      ${r.reply ? `<p class="report-reply"><strong>Our reply:</strong> ${esc(r.reply)}</p>` : ''}
+      <p class="text-xs text-slate-500" style="margin:4px 0 0">Sent ${fmtDateTime(r.created_at)}</p></div>`).join('')
+    : '<p class="text-sm" style="margin:0">Nothing reported yet.</p>')
+}
+const reportForm = document.getElementById('report-form')
+if (reportForm) reportForm.addEventListener('submit', async (e) => {
+  e.preventDefault()
+  const err = document.getElementById('report-error'); err.hidden = true
+  const topic = document.getElementById('report-topic').value, message = document.getElementById('report-message').value.trim()
+  const fail = (t, id) => { err.innerHTML = '<strong>Not sent.</strong> ' + esc(t); err.hidden = false; if (id) document.getElementById(id).focus() }
+  if (!topic) return fail('Please choose what the problem is about.', 'report-topic')
+  if (message.length < 10) return fail('Please tell us what is wrong, in a sentence or two.', 'report-message')
+  const btn = reportForm.querySelector('button[type="submit"]'), html = btn.innerHTML
+  btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Sending...'
+  try {
+    reportInfo = { ...(reportInfo || {}), eligible: true, ...(await api('/api/mp/dashboard/reports', { method: 'POST', body: JSON.stringify({ topic, message }) })) }
+    reportForm.reset(); renderReports()
+    showToast('Sent. The Bharat AI Innovation team will look into it.')
+  } catch (ex) { fail(ex.message) }
+  finally { btn.disabled = false; btn.innerHTML = html }
+})
 
 const loadRecentInquiries = async () => {
   const c = document.getElementById('dash-recent-inquiries'); if (!c) return
@@ -596,7 +729,7 @@ editForm.addEventListener('submit', async (e) => {
 })
 
 document.getElementById('dash-refresh-listings').addEventListener('click', async () => {
-  await Promise.all([loadStats(), loadListings(), loadStage(), loadTeam(), loadInquiries(), loadReviews(), loadRecentInquiries()])
+  await Promise.all([loadStats(), loadListings(), loadStage(), loadTeam(), loadBooth(), loadReports(), loadInquiries(), loadReviews(), loadRecentInquiries()])
   showToast('Refreshed')
 })
 
