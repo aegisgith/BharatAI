@@ -40,6 +40,7 @@ const SUITES = [
   { name: 'server: campus panel "Are you coming?"', args: ['smoke-panel-answers.mjs'] },
   { name: 'server: AI marketplace gates, pages and exhibitor invites', args: ['smoke-marketplace.mjs'] },
   { name: 'server: exhibitor teams (passes by booth type, the Delegate Pass past them, an exception by the organisers, the contact gets no pass unless listed, the email, the CSV), on real SQLite', args: ['smoke-exhibitor-team.mjs'] },
+  { name: 'server: booth leads by badge scan (who may scan, the lead screen, ratings and notes, the list for the whole team) and the exhibitor list in the app (real exhibitors only, no internal notes), on real SQLite', args: ['smoke-booth-leads.mjs'] },
   { name: 'server: checkout on this site (CCAvenue), the switch, the answer, the queues', args: ['smoke-payments.mjs'] },
   // A paid pass moving up for the difference, at four levels (5 Nov 2026). The
   // fourth, a phone in a real browser, is section 3b of pay-test.cjs below.

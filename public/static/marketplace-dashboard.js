@@ -71,9 +71,10 @@ const initDashboard = async () => {
     document.getElementById('dash-company-name').textContent = name
     const tn = document.getElementById('dash-topbar-name'); if (tn) tn.textContent = name
     const av = document.getElementById('dash-avatar'); if (av) av.textContent = name.charAt(0).toUpperCase()
-    await Promise.all([loadStats(), loadListings(), loadStage(), loadTeam(), loadBooth(), loadReports(), loadInquiries(), loadReviews(), loadProfile(), loadRecentInquiries()])
+    await Promise.all([loadStats(), loadListings(), loadStage(), loadTeam(), loadBooth(), loadLeads(), loadReports(), loadInquiries(), loadReviews(), loadProfile(), loadRecentInquiries()])
     // The "add your team" email signs in to /marketplace/dashboard#team.
     if (location.hash === '#team' && teamInfo && teamInfo.eligible) switchSection('team')
+    if (location.hash === '#leads' && leadsInfo && leadsInfo.exhibitor) switchSection('leads')
   } catch (err) { showToast('Failed to load dashboard', true) }
 }
 
@@ -499,6 +500,7 @@ const renderBooth = () => {
       ${row('Booth', esc([b.booth ? 'No. ' + b.booth : '', b.label].filter(Boolean).join(' · ') || 'The organisers will confirm it'), b.label ? go('branding', 'Branding sizes') : '')}
       ${row('Passes', b.passes === null || b.passes === undefined ? 'The organisers will confirm how many' : `${esc(b.issued)} of ${esc(b.passes)} issued${b.photos_missing ? ` · ${esc(b.photos_missing)} photo${b.photos_missing === 1 ? '' : 's'} missing` : ''}`, go('team', 'Your Team'))}
       ${b.stage ? row('Stage talk', esc(`${b.stage.minutes ? b.stage.minutes + ' minutes' : 'Innovation Talk & Showcase'} · ${b.stage.slot || 'time to be announced'}`), go('stage', 'Stage Talk')) : ''}
+      ${leadsInfo && leadsInfo.exhibitor ? row('Leads', esc(`${leadsInfo.summary.total} so far${leadsInfo.summary.hot ? ` · ${leadsInfo.summary.hot} hot` : ''}`), go('leads')) : ''}
       ${pay
         ? row('Payment', `<b class="pay-paid">Paid ${inr(pay.paid)}</b> · <b class="${pay.pending ? 'pay-pending' : 'pay-paid'}">${pay.pending ? 'Pending ' + inr(pay.pending) : 'Nothing pending'}</b><br><small>Total ${inr(pay.total)} including GST${invoices ? ' · Invoice ' + invoices : ''}</small>`)
         : row('Payment', 'Shown here once our accounts team records it')}
@@ -541,6 +543,62 @@ const downloadFor = async (m, btn, kind) => {
   } catch (err) { showToast(err.message, true) }
   finally { btn.disabled = false; btn.innerHTML = html }
 }
+
+// ── Leads ──
+// Badges the team scanned at the booth (rated hot, warm or cold, with a note), and
+// visitors who tapped Visit Booth in the app. The scanning itself is /exhibitor/scan.
+let leadsInfo = null
+const loadLeads = async () => {
+  try { leadsInfo = await api('/api/exhibitor/leads') } catch { leadsInfo = null }
+  const on = !!(leadsInfo && leadsInfo.exhibitor)
+  const nav = document.getElementById('dash-nav-leads'); if (nav) nav.classList.toggle('hidden', !on)
+  if (on) renderLeads()
+  renderBooth()
+}
+const leadDay = (d) => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d || ''); return m ? `${+m[3]} ${MONTHS[+m[2] - 1]}` : d }
+const renderLeads = () => {
+  const s = leadsInfo.summary || {}, ls = leadsInfo.leads || []
+  const days = (s.by_day || []).map(d => `${leadDay(d.day)}: ${d.n}`).join(' · ')
+  document.getElementById('leads-summary').innerHTML = ls.length
+    ? `<strong>${esc(s.total)}</strong> ${s.total === 1 ? 'lead' : 'leads'} · ${esc(s.scanned || 0)} scanned at your booth · ${esc(s.hot || 0)} hot · ${esc(s.warm || 0)} warm · ${esc(s.cold || 0)} cold${days ? `<br><span class="text-xs text-slate-500">By day: ${esc(days)}</span>` : ''}`
+    : (leadsInfo.can_scan ? 'No leads yet. They appear here as soon as a badge is scanned.' : 'Badge scanning is being switched on. Leads will appear here.')
+  const list = document.getElementById('leads-list')
+  list.innerHTML = ls.map(l => `<div class="team-card" style="grid-template-columns:1fr">
+      <div style="min-width:0">
+        <p class="team-name">${esc(l.name)}</p>
+        <p class="team-sub">${esc([l.job_title, l.company].filter(Boolean).join(' · '))}</p>
+        <p class="team-sub">${esc(l.email || '')}</p>
+        <div class="team-chips"><span class="team-chip">${l.source === 'scan' ? 'Badge scanned' : 'Visited in the app'}</span>${l.scanned_by ? `<span class="team-chip">by ${esc(l.scanned_by)}</span>` : ''}<span class="team-chip">${esc(fmtDateTime(l.visited_at))}</span></div>
+        ${l.note ? `<p class="team-sub" style="margin-top:8px"><strong>Our note:</strong> ${esc(l.note)}</p>` : ''}
+        ${l.notes ? `<p class="team-sub" style="margin-top:4px"><strong>Their note:</strong> ${esc(l.notes)}</p>` : ''}
+        ${l.lead_id ? `<div class="team-card-actions">${['hot', 'warm', 'cold'].map(r => `<button type="button" class="${l.rating === r ? 'mp-btn-primary' : 'mp-btn-secondary'}" aria-pressed="${l.rating === r}" data-lead-rate="${esc(l.lead_id)}" data-rating="${r}">${r.charAt(0).toUpperCase() + r.slice(1)}</button>`).join('')}<button type="button" class="mp-btn-secondary" data-lead-note="${esc(l.lead_id)}"><i class="fas fa-pen mr-1"></i> ${l.note ? 'Edit note' : 'Add note'}</button></div>` : ''}
+      </div></div>`).join('')
+  const save = async (id, body) => {
+    try { await api('/api/exhibitor/leads/' + encodeURIComponent(id), { method: 'PATCH', body: JSON.stringify(body) }); await loadLeads(); showToast('Saved') }
+    catch (err) { showToast(err.message, true) }
+  }
+  list.querySelectorAll('[data-lead-rate]').forEach(b => b.addEventListener('click', () => {
+    const cur = ls.find(l => String(l.lead_id) === b.getAttribute('data-lead-rate'))
+    save(b.getAttribute('data-lead-rate'), { rating: cur && cur.rating === b.getAttribute('data-rating') ? '' : b.getAttribute('data-rating') })
+  }))
+  list.querySelectorAll('[data-lead-note]').forEach(b => b.addEventListener('click', () => {
+    const cur = ls.find(l => String(l.lead_id) === b.getAttribute('data-lead-note'))
+    const note = prompt('Your note on this lead:', cur ? cur.note || '' : '')
+    if (note !== null) save(b.getAttribute('data-lead-note'), { note })
+  }))
+}
+const leadsCsvBtn = document.getElementById('leads-csv')
+if (leadsCsvBtn) leadsCsvBtn.addEventListener('click', () => {
+  const ls = (leadsInfo && leadsInfo.leads) || []
+  if (!ls.length) { showToast('No leads to download yet'); return }
+  // A cell that begins like a formula is quoted so a spreadsheet does not run it.
+  const cell = (v) => { let t = String(v == null ? '' : v); if (/^[=+@\t\r-]/.test(t)) t = "'" + t; return '"' + t.replace(/"/g, '""') + '"' }
+  const rows = [['Name', 'Email', 'Company', 'Designation', 'Pass', 'How', 'Rating', 'Our note', 'Their note', 'Scanned by', 'When (UTC)']]
+    .concat(ls.map(l => [l.name, l.email, l.company, l.job_title, l.badge_type, l.source === 'scan' ? 'Badge scanned' : 'Visited in the app', l.rating, l.note, l.notes, l.scanned_by, l.visited_at]))
+  const url = URL.createObjectURL(new Blob(['\uFEFF' + rows.map(r => r.map(cell).join(',')).join('\r\n')], { type: 'text/csv' }))
+  const a = document.createElement('a'); a.href = url; a.download = 'booth-leads.csv'; document.body.appendChild(a); a.click(); a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 5000)
+})
 
 // ── Report a problem ──
 // Lands on Marketplace admin → Reports and with the exhibitor's contact on our side.
@@ -729,7 +787,7 @@ editForm.addEventListener('submit', async (e) => {
 })
 
 document.getElementById('dash-refresh-listings').addEventListener('click', async () => {
-  await Promise.all([loadStats(), loadListings(), loadStage(), loadTeam(), loadBooth(), loadReports(), loadInquiries(), loadReviews(), loadRecentInquiries()])
+  await Promise.all([loadStats(), loadListings(), loadStage(), loadTeam(), loadBooth(), loadLeads(), loadReports(), loadInquiries(), loadReviews(), loadRecentInquiries()])
   showToast('Refreshed')
 })
 

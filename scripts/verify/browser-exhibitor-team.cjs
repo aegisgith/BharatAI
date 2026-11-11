@@ -26,6 +26,9 @@ const openMenuItem = async (pg, sel) => {
 const dbq = async (q) => (await fetch(BASE + '/__db?q=' + encodeURIComponent(q))).json();
 // The link the "add your team" email carries, made the way the server makes it.
 const hmac = (m) => crypto.createHmac('sha256', 'h-mp').update(m).digest('hex');
+// An event-app session and a pass QR token, made the way the server makes them (harness secret 'h').
+const appCookie = (id) => { const exp = Math.floor(Date.now() / 1000) + 3600; const b = id + '.' + exp; return b + '.' + crypto.createHmac('sha256', 'h').update(b).digest('hex'); };
+const passToken = (id) => id + '.' + crypto.createHmac('sha256', 'h').update('pass:' + id).digest('hex').slice(0, 24);
 const signInLink = (id) => { const exp = Math.floor(Date.now() / 1000) + 3600; const fp = hmac('mplink-pw:').slice(0, 16); return `/marketplace/signin?t=${id}.${exp}.${fp}.${hmac(`mplink:${id}.${exp}.${fp}`)}&go=team`; };
 
 (async () => {
@@ -89,10 +92,10 @@ const signInLink = (id) => { const exp = Math.floor(Date.now() / 1000) + 3600; c
     await page.locator('#team-photo-file').setInputFiles(PHOTO);
     check('the chosen photo shows before saving', await until(() => page.locator('#team-photo-preview').isVisible()), '');
     await page.locator('#team-form button[type=submit]').click();
-    check('saved: the form closes and the person is on the list', await until(async () => await page.locator('#team-form').isHidden() && (await page.locator('.team-card').count()) === 1, 10000), await page.locator('#team-form-error').innerText().catch(() => ''));
-    const card = await page.locator('.team-card').first().innerText();
+    check('saved: the form closes and the person is on the list', await until(async () => await page.locator('#team-form').isHidden() && (await page.locator('#team-list .team-card').count()) === 1, 10000), await page.locator('#team-form-error').innerText().catch(() => ''));
+    const card = await page.locator('#team-list .team-card').first().innerText();
     check('the card shows name, designation, both roles and the speaker pass', /Asha Rao/.test(card) && /Head of Sales/.test(card) && /At the booth/.test(card) && /On stage/.test(card) && /Speaker pass issued/.test(card), card);
-    check('the card shows the uploaded photo', await page.locator('.team-card img.team-photo').count() === 1 && /^\/api\/mp\/uploads\/\d+$/.test(await page.locator('.team-card img.team-photo').getAttribute('src')), '');
+    check('the card shows the uploaded photo', await page.locator('#team-list .team-card img.team-photo').count() === 1 && /^\/api\/mp\/uploads\/\d+$/.test(await page.locator('#team-list .team-card img.team-photo').getAttribute('src')), '');
     const asha = (await dbq("SELECT badge_type, payment_status, job_title, mobile, linkedin_url, avatar_url, role FROM attendees WHERE email = 'asha.rao@explorer.test'"))[0];
     check('her pass exists: Exhibition Speaker, waived, details and photo on it', asha?.badge_type === 'Exhibition Speaker' && asha.payment_status === 'waived' && asha.job_title === 'Head of Sales' && asha.mobile === '98200 55555' && asha.linkedin_url === 'https://linkedin.com/in/asha-rao' && /^data:image\//.test(asha.avatar_url || ''), asha && { ...asha, avatar_url: String(asha.avatar_url).slice(0, 30) });
     check('the contact got no pass of their own', (await dbq("SELECT COUNT(*) AS n FROM attendees WHERE email = 'spoc@explorer.test'"))[0].n === 0, '');
@@ -101,6 +104,44 @@ const signInLink = (id) => { const exp = Math.floor(Date.now() / 1000) + 3600; c
     check("the contact downloads Asha's pass, drawn by the app's own pass designer", /\.png$/i.test(passDl.suggestedFilename()) && require('fs').statSync(await passDl.path()).size > 20000, passDl.suggestedFilename());
     const [socialDl] = await Promise.all([page.waitForEvent('download', { timeout: 20000 }), page.locator('[data-team-social]').first().click()]);
     check("and her social card", /\.png$/i.test(socialDl.suggestedFilename()) && require('fs').statSync(await socialDl.path()).size > 20000, socialDl.suggestedFilename());
+
+    // ---- a badge scanned at the booth becomes a lead ----
+    // Asha, on the team, is signed in to the event app on her own phone.
+    const ashaId = (await dbq("SELECT id FROM attendees WHERE email = 'asha.rao@explorer.test'"))[0].id;
+    const visitorId = (await dbq("SELECT id FROM attendees WHERE email = 'someone@else.test'"))[0].id;
+    const lctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+    await lctx.addCookies([{ name: 'bai_session', value: appCookie(ashaId), url: BASE }]);
+    const lp = await lctx.newPage();
+    const lerrors = [];
+    lp.on('pageerror', e => lerrors.push(String(e)));
+    await lp.goto(BASE + '/exhibitor/scan');
+    check('team phone: the scanner page names her company and asks for the camera', await until(async () => /Harness Explorer Pvt Ltd/.test(await lp.locator('main').innerText())) && await lp.locator('#v').count() === 1, await lp.locator('main').innerText().catch(() => ''));
+    await lp.goto(BASE + '/verify/' + passToken(visitorId));
+    check('scanning a visitor opens the lead screen and saves the lead by itself', await until(async () => /Saved to your leads/.test(await lp.locator('#st').innerText())) && /Somebody Else/.test(await lp.locator('.card').innerText()) && (await dbq('SELECT COUNT(*) AS n FROM exhibitor_leads WHERE exhibitor_id = 1'))[0].n === 1, await lp.locator('main').innerText().catch(() => ''));
+    check('the lead screen shows no email or mobile', !/someone@else|9820012345/.test(await lp.content()), '');
+    await lp.locator('[data-r="hot"]').tap();
+    check('one tap rates it hot', await until(async () => /Saved as hot/.test(await lp.locator('#st').innerText()) && await lp.locator('[data-r="hot"]').getAttribute('aria-pressed') === 'true') && (await dbq('SELECT rating FROM exhibitor_leads WHERE exhibitor_id = 1'))[0].rating === 'hot', await lp.locator('#st').innerText());
+    await lp.locator('#n').fill('Wants a demo next week');
+    await lp.locator('#sv').tap();
+    check('the note is saved, the rating kept', await until(async () => /Note saved/.test(await lp.locator('#st').innerText())) && JSON.stringify((await dbq('SELECT rating, note, scanned_by FROM exhibitor_leads WHERE exhibitor_id = 1'))[0]) === JSON.stringify({ rating: 'hot', note: 'Wants a demo next week', scanned_by: 'Asha Rao' }), await lp.locator('#st').innerText());
+    const lw = await lp.evaluate(() => [document.documentElement.scrollWidth, ...[...document.querySelectorAll('.rate button, .btn')].map(b => Math.round(b.getBoundingClientRect().height))]);
+    check('the lead screen fits a phone, with buttons big enough to tap', lw[0] <= 391 && lw.slice(1).every(h => h >= 44), lw);
+    check('Scan next badge goes back to the scanner', await lp.locator('a.btn[href="/exhibitor/scan"]').count() === 1, '');
+    check('team phone: no page errors', lerrors.length === 0, lerrors.join(' | '));
+    await lctx.close();
+    // The booth contact sees it on the dashboard.
+    await page.reload();
+    await page.locator('#section-team').waitFor();
+    await openMenuItem(page, '#dash-nav-leads');
+    const leadsText = await page.locator('#section-leads').innerText();
+    check('dashboard: Leads lists the scanned visitor, rated hot, with the note and who scanned', /1 lead · 1 scanned at your booth · 1 hot/.test(leadsText) && /Somebody Else/.test(leadsText) && /Badge scanned/.test(leadsText) && /by Asha Rao/.test(leadsText) && /Our note: Wants a demo next week/.test(leadsText) && await page.locator('[data-rating="hot"]').getAttribute('aria-pressed') === 'true', leadsText);
+    await page.locator('[data-rating="warm"]').click();
+    check('dashboard: the rating can be changed', await until(async () => (await dbq('SELECT rating FROM exhibitor_leads WHERE exhibitor_id = 1'))[0].rating === 'warm' && await page.locator('[data-rating="warm"]').getAttribute('aria-pressed') === 'true'), '');
+    const [leadsDl] = await Promise.all([page.waitForEvent('download', { timeout: 10000 }), page.locator('#leads-csv').click()]);
+    const leadsCsv = require('fs').readFileSync(await leadsDl.path(), 'utf8');
+    check('dashboard: the leads download as a CSV', leadsDl.suggestedFilename() === 'booth-leads.csv' && /Somebody Else/.test(leadsCsv) && /Badge scanned/.test(leadsCsv) && /warm/.test(leadsCsv), leadsCsv.slice(0, 200));
+    await noSideScroll('Leads');
+    await openMenuItem(page, '#dash-nav-team');
 
     // ---- the booth's one pass is used: the next person is asked to buy a Delegate Pass ----
     await page.locator('#team-add-btn').click();
@@ -113,14 +154,14 @@ const signInLink = (id) => { const exp = Math.floor(Date.now() / 1000) + 3600; c
     await page.locator('#team-designation').fill('Engineer');
     await page.locator('#team-email').fill('binod@explorer.test');
     await page.locator('#team-form button[type=submit]').click();
-    check('someone without a pass of their own is still refused, and the prompt comes back', await until(async () => await page.locator('#team-full').isVisible() && await page.locator('#team-form').isHidden()) && (await page.locator('.team-card').count()) === 1, '');
+    check('someone without a pass of their own is still refused, and the prompt comes back', await until(async () => await page.locator('#team-full').isVisible() && await page.locator('#team-form').isHidden()) && (await page.locator('#team-list .team-card').count()) === 1, JSON.stringify({ err: await page.locator('#team-form-error').innerText().catch(() => ''), fullVisible: await page.locator('#team-full').isVisible(), formHidden: await page.locator('#team-form').isHidden(), cards: await page.locator('#team-list .team-card').count(), errors }));
 
     // ---- edit ----
     await page.locator('[data-team-edit]').first().click();
     check('Edit opens the form filled in, titled with the name', await until(async () => await page.locator('#team-form').isVisible() && await page.locator('#team-designation').inputValue() === 'Head of Sales' && /Edit Asha Rao/.test(await page.locator('#team-form-title').innerText())), '');
     await page.locator('#team-designation').fill('VP Sales');
     await page.locator('#team-form button[type=submit]').click();
-    check('the edit is saved', await until(async () => /VP Sales/.test(await page.locator('.team-card').first().innerText())) && (await dbq("SELECT job_title FROM attendees WHERE email = 'asha.rao@explorer.test'"))[0].job_title === 'Head of Sales', '');
+    check('the edit is saved', await until(async () => /VP Sales/.test(await page.locator('#team-list .team-card').first().innerText())) && (await dbq("SELECT job_title FROM attendees WHERE email = 'asha.rao@explorer.test'"))[0].job_title === 'Head of Sales', '');
 
     // ---- the stage talk takes its speaker from the team ----
     await openMenuItem(page, '#dash-nav-stage');
@@ -145,7 +186,7 @@ const signInLink = (id) => { const exp = Math.floor(Date.now() / 1000) + 3600; c
 
     await openMenuItem(page, '#dash-nav-connect');
     const connect = await page.locator('#section-connect').innerText();
-    check('Bharat AI Connect: the tab says what the app is for and who has signed in', /Open Bharat AI Connect/.test(connect) && /0 of 1 signed in so far/.test(connect) && /Asha Rao\s*Not signed in yet/.test(connect) && await page.locator('a.connect-open').getAttribute('href') === '/app', connect);
+    check('Bharat AI Connect: the tab says what the app is for and who has signed in', /Open Bharat AI Connect/.test(connect) && /0 of 1 signed in so far/.test(connect) && /Asha Rao\s*Not signed in yet/.test(connect) && await page.locator('#section-connect a.connect-open').getAttribute('href') === '/app', connect);
     await noSideScroll('Bharat AI Connect');
 
     // ---- report a problem ----
@@ -161,7 +202,7 @@ const signInLink = (id) => { const exp = Math.floor(Date.now() / 1000) + 3600; c
     // ---- remove ----
     await openMenuItem(page, '#dash-nav-team');
     await page.locator('[data-team-remove]').first().click();
-    check('Remove takes the person off and gives back the pass', await until(async () => (await page.locator('.team-card').count()) === 0) && (await dbq("SELECT badge_type FROM attendees WHERE email = 'asha.rao@explorer.test'"))[0].badge_type === 'Visitor Pass', '');
+    check('Remove takes the person off and gives back the pass', await until(async () => (await page.locator('#team-list .team-card').count()) === 0) && (await dbq("SELECT badge_type FROM attendees WHERE email = 'asha.rao@explorer.test'"))[0].badge_type === 'Visitor Pass', '');
     check('with nobody on stage, the stage form shows the speaker boxes again', await (async () => { await openMenuItem(page, '#dash-nav-stage'); return until(async () => await page.locator('#stage-from-team').isHidden() && await page.locator('#stage-speaker').isVisible()); })(), '');
     check('phone: no page errors', errors.length === 0, errors.join(' | '));
     await ctx.close();
@@ -173,7 +214,7 @@ const signInLink = (id) => { const exp = Math.floor(Date.now() / 1000) + 3600; c
     p2.on('pageerror', e => errors2.push(String(e)));
     await p2.goto(BASE + signInLink(2));
     await until(() => p2.locator('#section-team').isVisible());
-    const c2 = await p2.locator('.team-card').first().innerText().catch(() => '');
+    const c2 = await p2.locator('#team-list .team-card').first().innerText().catch(() => '');
     check('a person from the sheet is already listed, with what is still needed', /Shivendra Singh/.test(c2) && /Still needed: Photo, Mobile, LinkedIn/.test(c2), c2);
     check('Startup Pod from the sheet: 1 pass, branding with no side walls', /includes 1 pass/.test(await p2.locator('#team-intro').innerText()) && await (async () => { await openMenuItem(p2, '#dash-nav-branding'); return /Left Wall\s+None/.test(await p2.locator('#branding-card').innerText()); })(), '');
     check('sheet contact: no page errors', errors2.length === 0, errors2.join(' | '));
@@ -207,6 +248,11 @@ const signInLink = (id) => { const exp = Math.floor(Date.now() / 1000) + 3600; c
     const html = mail?.Content.Body[0].Content || '';
     check('admin: Ask sends the team email to the sheet contact', mails && mail.Recipients.To[0] === 'spoc@sheet.test' && /Dear Shweta,/.test(html) && /Deadline: 15 November 2026/.test(html) && /We have already added the person/.test(html), mail && mail.Recipients);
     check('admin: once asked, the row says asked today', await until(async () => /Asked today/.test(await ap.locator('#admin-teams').innerText())), '');
+    await ap.locator('.dash-sidebar-item[data-section="reports"]').click();
+    await ap.locator('.dash-sidebar-item[data-section="exhibitors"]').click();
+    check('admin: the exhibitor list in the app is OFF, and says what turning it on shows', await until(async () => /Exhibitor list in the app: OFF/.test(await ap.locator('#directory-card').innerText()) && /shows 2 exhibitors/.test(await ap.locator('#directory-card').innerText())), await ap.locator('#directory-card').innerText().catch(() => ''));
+    await ap.locator('#directory-toggle').click();
+    check('admin: Turn it on makes the list live', await until(async () => /Exhibitor list in the app: ON/.test(await ap.locator('#directory-card').innerText())) && (await (await fetch(BASE + '/api/events/1/exhibitors')).json()).length === 2, await ap.locator('#directory-card').innerText().catch(() => ''));
     await ap.locator('.dash-sidebar-item[data-section="reports"]').click();
     check('admin: Reports shows the open report, with a count on the menu', await until(async () => /Harness Explorer Pvt Ltd/.test(await ap.locator('#admin-reports').innerText()) && /Open/.test(await ap.locator('#admin-reports').innerText())) && (await ap.locator('#reports-count').innerText()) === '1', await ap.locator('#admin-reports').innerText().catch(() => ''));
     promptAnswer = 'We have recorded your payment. Thank you.';

@@ -55,7 +55,7 @@ function mpSharedHead(title: string, opts: { path?: string; noindex?: boolean; e
        last-but-one, Tailwind last. -->
   <link rel="stylesheet" href="/css/fa-subset.css?v=2">
   <link rel="stylesheet" href="/css/fonts-app.css?v=1">
-  <link href="/static/marketplace.css?v=8" rel="stylesheet">
+  <link href="/static/marketplace.css?v=9" rel="stylesheet">
   <link rel="stylesheet" href="/css/tailwind.css?v=${__TW_CSS_HASH__}">${opts.extraHead ? '\n  ' + opts.extraHead : ''}
 </head>`
 }
@@ -688,6 +688,7 @@ export function marketplaceDashboardPageHTML(): string {
       <button class="dash-sidebar-item dash-sidebar-active" data-section="overview"><i class="fas fa-chart-pie"></i> Overview</button>
       <button class="dash-sidebar-item" data-section="listings"><i class="fas fa-boxes"></i> My Listings</button>
       <button class="dash-sidebar-item hidden" data-section="team" id="dash-nav-team"><i class="fas fa-users"></i> Your Team</button>
+      <button class="dash-sidebar-item hidden" data-section="leads" id="dash-nav-leads"><i class="fas fa-qrcode"></i> Leads</button>
       <button class="dash-sidebar-item hidden" data-section="branding" id="dash-nav-branding"><i class="fas fa-store"></i> Booth Branding</button>
       <button class="dash-sidebar-item hidden" data-section="connect" id="dash-nav-connect"><i class="fas fa-handshake"></i> Bharat AI Connect</button>
       <button class="dash-sidebar-item hidden" data-section="report" id="dash-nav-report"><i class="fas fa-exclamation-circle"></i> Report a problem</button>
@@ -800,6 +801,20 @@ export function marketplaceDashboardPageHTML(): string {
           <button type="button" id="team-cancel" class="mp-btn-secondary">Cancel</button>
         </div>
       </form>
+    </section>
+
+    <!-- Leads: visitors whose badge the team scanned at the booth, and those who tapped Visit Booth in the app -->
+    <section id="section-leads" class="dash-section hidden">
+      <div class="dash-section-header"><h2><i class="fas fa-qrcode mr-2"></i>Leads</h2></div>
+      <div class="dash-card">
+        <p class="text-sm" style="line-height:1.6;margin:0 0 12px">At your booth, scan the QR on a visitor&rsquo;s pass to save them as a lead. Anyone on your team can do it: they open the event app, choose Lead Console and tap <strong>Scan a badge</strong>, or simply point their phone camera at the QR. Then mark the lead hot, warm or cold and add a note.</p>
+        <div class="team-form-actions">
+          <a href="/exhibitor/scan" class="mp-btn-primary connect-open"><i class="fas fa-qrcode mr-1"></i> Scan a badge</a>
+          <button type="button" id="leads-csv" class="mp-btn-secondary" style="min-height:44px"><i class="fas fa-download mr-1"></i> Download leads (CSV)</button>
+        </div>
+        <p id="leads-summary" class="team-pass-meter"></p>
+      </div>
+      <div id="leads-list" class="team-list"></div>
     </section>
 
     <!-- Bharat AI Connect, the event's networking app: what the team gets there, and who has signed in -->
@@ -951,7 +966,7 @@ export function marketplaceDashboardPageHTML(): string {
     </div>
   </div>
 
-  <script src="/static/marketplace-dashboard.js?v=8"></script>
+  <script src="/static/marketplace-dashboard.js?v=9"></script>
 </body>
 </html>`
 }
@@ -1033,6 +1048,7 @@ export function marketplaceAdminPageHTML(): string {
     <!-- Exhibitors -->
     <section id="section-exhibitors" class="dash-section hidden">
       <div class="dash-section-header"><h2><i class="fas fa-store mr-2"></i>Exhibitors</h2></div>
+      <div id="directory-card" class="dash-card"></div>
       <div class="dash-card">
         <p class="text-sm text-slate-400">A booth includes a free marketplace listing, and an account is made for each exhibitor from the booth record. <strong>Invite</strong> emails the full invitation with a one-click sign-in (once a week per exhibitor). <strong>Send sign-in links</strong> emails the short "your account is ready" note with the same one-click sign-in (once a day) &mdash; for anyone invited before accounts were made, or who has not got in. Anyone already listing or unsubscribed is skipped.</p>
         <div class="flex gap-3 items-center flex-wrap mt-3">
@@ -1102,7 +1118,7 @@ export function marketplaceAdminPageHTML(): string {
     </section>
   </div>
 
-  <script src="/static/marketplace-admin.js?v=11"></script>
+  <script src="/static/marketplace-admin.js?v=12"></script>
 </body>
 </html>`
 }

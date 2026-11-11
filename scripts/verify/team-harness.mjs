@@ -20,6 +20,7 @@ const SQL = await initSqlJs();
 const db = new SQL.Database();
 db.exec(readFileSync(join(ROOT, 'scripts', 'verify', 'prod-schema.sql'), 'utf8'));
 db.exec(readFileSync(join(ROOT, 'migrations', '0050_exhibitor_team.sql'), 'utf8'));
+db.exec(readFileSync(join(ROOT, 'migrations', '0051_leads_and_daily_checkins.sql'), 'utf8'));
 
 const clean = (a) => a.map(v => (v === undefined ? null : typeof v === 'boolean' ? Number(v) : v));
 const rows = (sql, args) => { const st = db.prepare(sql); st.bind(args); const out = []; while (st.step()) out.push(st.getAsObject()); st.free(); return out; };
@@ -63,7 +64,7 @@ db.run("INSERT INTO attendees (event_id, name, email, mobile, badge_type, main_e
 
 const TYPES = { '.html': 'text/html', '.css': 'text/css', '.js': 'application/javascript', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.woff2': 'font/woff2', '.woff': 'font/woff', '.webp': 'image/webp', '.ico': 'image/x-icon', '.json': 'application/json' };
 // /app too: run-all.mjs asks for it to know the harness is up.
-const viaWorker = (p) => p.startsWith('/api/') || p === '/marketplace' || p.startsWith('/marketplace/') || p === '/register' || p === '/app' || p === '/app.js';
+const viaWorker = (p) => p.startsWith('/api/') || p === '/marketplace' || p.startsWith('/marketplace/') || p === '/register' || p === '/app' || p === '/app.js' || p.startsWith('/verify/') || p.startsWith('/exhibitor/') || p === '/staff' || p.startsWith('/staff/');
 const PORT = Number(process.env.HARNESS_PORT || 8851);
 http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost:' + PORT);

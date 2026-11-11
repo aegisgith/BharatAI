@@ -4,7 +4,7 @@ import { Hono } from 'hono'
 // @ts-ignore - JSON import, bundled by Vite
 import SITE_PHOTO_FINGERPRINTS from './data/site-photo-fingerprints.json'
 import { cors } from 'hono/cors'
-import mp, { configureMarketplace } from './routes/marketplace'
+import mp, { configureMarketplace, exhibitorOfCompanySession, DIRECTORY_SHOWN_SQL, INTERNAL_NOTE_RE } from './routes/marketplace'
 import { signinPayIntent } from './lib/signin-pay'
 import { ccavEncrypt, ccavDecrypt, ccavRequestBody, ccavParseResponse } from './lib/ccavenue'
 import { invoicePdf } from './lib/invoice-pdf'
@@ -5078,6 +5078,15 @@ app.get('/verify/:token', async (c) => {
     Date.now() - new Date(String(a.checked_in_at).replace(' ', 'T') + 'Z').getTime() < CHECKIN_UNDO_MINUTES * 60000
   const flagUndoable = !!a.photo_flagged_at && !String(a.avatar_url || '').trim() &&
     Date.now() - new Date(String(a.photo_flagged_at).replace(' ', 'T') + 'Z').getTime() < CHECKIN_UNDO_MINUTES * 60000
+  // Someone on an exhibitor's team scanning a visitor's badge at the booth (0051) gets
+  // the lead screen, never the desk's. A stranger still learns nothing.
+  if (!staff) {
+    const actor = await leadActor(c).catch(() => null)
+    if (actor && await leadsReady(c)) {
+      const lead = await c.env.DB.prepare('SELECT rating, note FROM exhibitor_leads WHERE exhibitor_id = ? AND attendee_id = ?').bind(actor.exhibitor.id, id).first().catch(() => null) as any
+      return c.html(leadCaptureHTML({ company: actor.exhibitor.company_name, token, own: actor.attendeeId === Number(id), visitor: a, lead, dashboard: actor.attendeeId === null }))
+    }
+  }
   return c.html(verifyPageHTML({ state: 'valid', staff, token, attendee: a, undoable, flagUndoable }))
 })
 
@@ -8944,6 +8953,10 @@ const exhibitorDirectoryHidden = (c: any) => {
 }
 
 const EXHIBITOR_PUBLIC_COLS = 'id, event_id, company_name, description, logo_url, banner_url, booth_number, booth_size, category, website_url, products, social_links, visitor_count, created_at'
+// On imported rows the description is an internal booking note ("Imported from the
+// Confirmed Booth sheet. Owner: ..."). It was one switch away from every attendee's
+// screen (11 Nov 2026): 31 of the 40 rows carried one.
+const publicExhibitor = (e: any) => (e && INTERNAL_NOTE_RE.test(String(e.description || '')) ? { ...e, description: '' } : e)
 
 app.get('/api/events/:id/exhibitors', async (c) => {
   if (!(await exhibitorDirectoryVisible(c))) return exhibitorDirectoryHidden(c)
@@ -8961,15 +8974,24 @@ app.get('/api/events/:id/exhibitors', async (c) => {
     params.push(category)
   }
   if (search) {
-    query += ' AND (company_name LIKE ? OR description LIKE ? OR products LIKE ?)'
+    // The description is not searched: a search for a staff name would list that
+    // person's accounts through the internal notes.
+    query += ' AND (company_name LIKE ? OR products LIKE ? OR category LIKE ?)'
     const s = `%${search}%`
     params.push(s, s, s)
   }
 
-  query += ' ORDER BY booth_size DESC, company_name ASC'
-
-  const { results } = await c.env.DB.prepare(query).bind(...params).all()
-  return c.json(results)
+  const order = ' ORDER BY booth_size DESC, company_name ASC'
+  if (isAdminRequest(c)) {
+    const { results } = await c.env.DB.prepare(query + order).bind(...params).all()
+    return c.json(results)
+  }
+  // Attendees see real exhibitors only: a confirmed stand, or a row from the booking
+  // sheet. A database without those tables lists everyone, as before.
+  let rows: any[]
+  try { rows = ((await c.env.DB.prepare(query + ' AND ' + DIRECTORY_SHOWN_SQL + order).bind(...params).all()).results || []) as any[] }
+  catch { rows = ((await c.env.DB.prepare(query + order).bind(...params).all()).results || []) as any[] }
+  return c.json(rows.map(publicExhibitor))
 })
 
 app.get('/api/exhibitors/:id', async (c) => {
@@ -8980,7 +9002,7 @@ app.get('/api/exhibitors/:id', async (c) => {
   const id = c.req.param('id')
   const exhibitor = await c.env.DB.prepare('SELECT ' + (isAdminRequest(c) ? '*' : EXHIBITOR_PUBLIC_COLS) + ' FROM exhibitors WHERE id = ?').bind(id).first()
   if (!exhibitor) return c.json({ error: 'Exhibitor not found' }, 404)
-  return c.json(exhibitor)
+  return c.json(isAdminRequest(c) ? exhibitor : publicExhibitor(exhibitor))
 })
 
 app.post('/api/exhibitors/:id/visit', async (c) => {
@@ -12722,8 +12744,15 @@ app.get('/api/attendees/:id/exhibitor', async (c) => {
   // Was the only attendee-scoped route without a guard: contact email and phone
   // of any exhibitor, to anyone, by attendee id.
   const denied = await requireSelf(c, id); if (denied) return denied
-  const exhibitor = await c.env.DB.prepare('SELECT * FROM exhibitors WHERE attendee_id = ?').bind(id).first()
-  return c.json(exhibitor || null)
+  const own = await c.env.DB.prepare('SELECT * FROM exhibitors WHERE attendee_id = ?').bind(id).first() as any
+  // Someone on an exhibitor's team list (0050) sees that company's booth, so their Lead
+  // Console opens instead of "Set up your booth": public columns only, and the app does
+  // not offer them the edit form (team_member). The team list wins over a row linked by
+  // attendee_id, which is sometimes a second row for the same company.
+  const onTeam = await c.env.DB.prepare('SELECT exhibitor_id FROM exhibitor_team WHERE attendee_id = ? ORDER BY id LIMIT 1').bind(id).first().catch(() => null) as any
+  if (!onTeam || (own && Number(own.id) === Number(onTeam.exhibitor_id))) return c.json(own || null)
+  const row = await c.env.DB.prepare('SELECT ' + EXHIBITOR_PUBLIC_COLS + ' FROM exhibitors WHERE id = ?').bind(onTeam.exhibitor_id).first()
+  return c.json(row ? { ...publicExhibitor(row), team_member: true } : (own || null))
 })
 
 // Speaker green-room: the sessions this attendee is speaking at (matched by
@@ -12744,17 +12773,269 @@ app.get('/api/events/:eventId/speaker-sessions', async (c) => {
 app.get('/api/attendees/:id/exhibitor/leads', async (c) => {
   const id = c.req.param('id')
   const denied = await requireSelf(c, id); if (denied) return denied
-  const exhibitor = await c.env.DB.prepare('SELECT id, company_name, booth_number FROM exhibitors WHERE attendee_id = ?').bind(id).first() as any
-  if (!exhibitor) return c.json({ exhibitor: null, leads: [], summary: { total: 0, interested: 0 } })
-  const { results: leads } = await c.env.DB.prepare(`
-    SELECT bv.id, bv.interested, bv.notes, bv.visited_at,
-           a.name, a.email, a.company, a.job_title, a.avatar_url, a.linkedin_url, ${publicBadgeSql('a.')} AS badge_type
-    FROM booth_visits bv JOIN attendees a ON bv.attendee_id = a.id
-    WHERE bv.exhibitor_id = ? ORDER BY bv.visited_at DESC
-  `).bind(exhibitor.id).all()
-  const interested = (leads || []).filter((l: any) => l.interested).length
-  return c.json({ exhibitor, leads: leads || [], summary: { total: (leads || []).length, interested } })
+  const exhibitor = await exhibitorForAttendee(c, id)
+  if (!exhibitor) return c.json({ exhibitor: null, leads: [], summary: { total: 0, interested: 0, scanned: 0, hot: 0, warm: 0, cold: 0 }, can_scan: false })
+  return c.json({ exhibitor: { id: exhibitor.id, company_name: exhibitor.company_name, booth_number: exhibitor.booth_number }, ...(await exhibitorLeads(c, exhibitor.id)), can_scan: await leadsReady(c) })
 })
+
+// ── Booth leads by badge scan (0051, 11 Nov 2026) ──
+// What exhibitors come for. Until now a lead existed only when a visitor tapped
+// "Visit Booth" in the app, on a tab that was switched off, and only the one booth
+// contact linked on the exhibitors row could see it. Now anyone on the exhibitor's
+// team (0050), or the booth contact signed in to the exhibitor dashboard, scans the QR
+// on a visitor's pass: the phone's own camera opens /verify/<token>, which for them is
+// the lead screen (leadCaptureHTML), and /exhibitor/scan is a scanner in the page.
+// A lead carries the exhibitor's own rating (hot, warm, cold) and note.
+
+// The exhibitor an attendee acts for. The team list comes first: it is the organisers'
+// record, and the exhibitors row linked by attendee_id is sometimes a second row made
+// by Add Attendee with an Exhibitor badge.
+async function exhibitorForAttendee(c: any, attendeeId: any): Promise<{ id: number; company_name: string; booth_number: string; event_id: number } | null> {
+  const shape = (r: any) => r ? { id: Number(r.id), company_name: String(r.company_name || ''), booth_number: String(r.booth_number || ''), event_id: Number(r.event_id) || 1 } : null
+  const viaTeam = await c.env.DB.prepare('SELECT e.id, e.company_name, e.booth_number, e.event_id FROM exhibitor_team t JOIN exhibitors e ON e.id = t.exhibitor_id WHERE t.attendee_id = ? ORDER BY t.id LIMIT 1')
+    .bind(attendeeId).first().catch(() => null)
+  if (viaTeam) return shape(viaTeam)
+  return shape(await c.env.DB.prepare('SELECT id, company_name, booth_number, event_id FROM exhibitors WHERE attendee_id = ? ORDER BY id LIMIT 1').bind(attendeeId).first().catch(() => null))
+}
+
+// Who is asking, as an exhibitor: a team member in the event app, or the booth contact
+// in the exhibitor dashboard. by is what a lead records as its scanner.
+async function leadActor(c: any): Promise<{ exhibitor: { id: number; company_name: string; booth_number: string; event_id: number }; by: string; attendeeId: number | null } | null> {
+  const me = await verifyAttendeeSession(c)
+  if (me !== null) {
+    const ex = await exhibitorForAttendee(c, me)
+    if (ex) {
+      const a = await c.env.DB.prepare('SELECT name FROM attendees WHERE id = ?').bind(me).first().catch(() => null) as any
+      return { exhibitor: ex, by: String(a?.name || 'team').slice(0, 80), attendeeId: Number(me) }
+    }
+  }
+  let viaDash: Awaited<ReturnType<typeof exhibitorOfCompanySession>> = null
+  try { viaDash = await exhibitorOfCompanySession(c) } catch { viaDash = null }
+  return viaDash ? { exhibitor: viaDash, by: viaDash.by.slice(0, 80), attendeeId: null } : null
+}
+
+let _leadsReady = false
+async function leadsReady(c: any): Promise<boolean> {
+  if (_leadsReady) return true
+  try { await c.env.DB.prepare('SELECT id FROM exhibitor_leads LIMIT 0').all(); _leadsReady = true } catch { /* before 0051 */ }
+  return _leadsReady
+}
+
+const LEAD_RATINGS = ['hot', 'warm', 'cold']
+// The date in India of a UTC stamp ("2026-11-20 04:10:00" is the 20th, 9:40 am).
+const istDate = (v?: any): string => {
+  const raw = v ? String(v).replace(' ', 'T') : ''
+  const d = v ? new Date(/Z$|[+-]\d\d:?\d\d$/.test(raw) ? raw : raw + 'Z') : new Date()
+  return new Date((isNaN(d.getTime()) ? Date.now() : d.getTime()) + IST_OFFSET_MINUTES * 60000).toISOString().slice(0, 10)
+}
+
+// Every lead of one exhibitor: badges scanned at the booth, and visitors who tapped
+// "Visit Booth" in the app. One row per person; a scan wins, and keeps the visitor's
+// own note beside the exhibitor's. interested / notes / visited_at are the names the
+// app's console has always read.
+async function exhibitorLeads(c: any, exhibitorId: number) {
+  const who = `a.id AS attendee_id, a.name, a.email, a.company, a.job_title, a.avatar_url, a.linkedin_url, ${publicBadgeSql('a.')} AS badge_type`
+  let scans: any[] = []
+  if (await leadsReady(c)) {
+    scans = ((await c.env.DB.prepare(`SELECT l.id, l.rating, l.note, l.scanned_by, l.created_at, ${who} FROM exhibitor_leads l JOIN attendees a ON a.id = l.attendee_id WHERE l.exhibitor_id = ?`).bind(exhibitorId).all()).results || []) as any[]
+  }
+  const visits = ((await c.env.DB.prepare(`SELECT bv.id, bv.interested, bv.notes, bv.visited_at, ${who} FROM booth_visits bv JOIN attendees a ON a.id = bv.attendee_id WHERE bv.exhibitor_id = ?`).bind(exhibitorId).all()).results || []) as any[]
+  const visitOf = new Map(visits.map(v => [Number(v.attendee_id), v]))
+  const person = (r: any) => ({ name: r.name, email: r.email, company: r.company, job_title: r.job_title, avatar_url: r.avatar_url, linkedin_url: r.linkedin_url, badge_type: r.badge_type })
+  const leads = scans.map(l => {
+    const v = visitOf.get(Number(l.attendee_id))
+    visitOf.delete(Number(l.attendee_id))
+    return { id: 's' + l.id, lead_id: Number(l.id), source: 'scan', rating: LEAD_RATINGS.includes(l.rating) ? l.rating : '', note: l.note || '', scanned_by: l.scanned_by || '',
+      visited_at: l.created_at, interested: v ? Number(v.interested) || 0 : 0, notes: v ? (v.notes || '') : '', ...person(l) }
+  }).concat([...visitOf.values()].map(v => ({ id: 'v' + v.id, lead_id: 0, source: 'visit', rating: '', note: '', scanned_by: '',
+    visited_at: v.visited_at, interested: Number(v.interested) || 0, notes: v.notes || '', ...person(v) })))
+  leads.sort((a, b) => String(b.visited_at || '').localeCompare(String(a.visited_at || '')))
+  const days = new Map<string, number>()
+  for (const l of leads) { const d = istDate(l.visited_at); days.set(d, (days.get(d) || 0) + 1) }
+  const count = (r: string) => leads.filter(l => l.rating === r).length
+  return {
+    leads,
+    summary: { total: leads.length, scanned: scans.length, interested: leads.filter(l => l.interested).length, hot: count('hot'), warm: count('warm'), cold: count('cold'),
+      by_day: [...days.entries()].sort().map(([day, n]) => ({ day, n })) },
+  }
+}
+
+// The list for whoever is signed in as an exhibitor, in the app or the dashboard.
+app.get('/api/exhibitor/leads', async (c) => {
+  const actor = await leadActor(c)
+  if (!actor) return c.json({ error: 'Sign in as an exhibitor to see leads.' }, 401)
+  return c.json({ exhibitor: { id: actor.exhibitor.id, company_name: actor.exhibitor.company_name, booth_number: actor.exhibitor.booth_number }, ...(await exhibitorLeads(c, actor.exhibitor.id)), can_scan: await leadsReady(c) })
+})
+
+// A badge scanned at the booth, or its rating and note changed: { token, rating?, note? }.
+// Scanning the same badge again keeps what was written unless something new is sent.
+const LEAD_SCANS_PER_DAY = 3000
+app.post('/api/exhibitor/leads/scan', async (c) => {
+  if (!(await leadsReady(c))) return c.json({ error: 'Badge scanning is being switched on. Please try again shortly.' }, 503)
+  const actor = await leadActor(c)
+  if (!actor) return c.json({ error: 'Sign in first: open the event app with the email on your exhibitor pass.' }, 401)
+  const body = (await c.req.json().catch(() => ({}))) as any
+  const visitorId = await verifyPassToken(c, String(body.token || ''))
+  if (visitorId === null) return c.json({ error: 'This is not a Bharat AI Innovation pass.' }, 400)
+  if (actor.attendeeId !== null && Number(visitorId) === actor.attendeeId) return c.json({ error: 'That is your own pass. Scan the visitor\u2019s pass.' }, 400)
+  const v = await c.env.DB.prepare(`SELECT id, event_id, name, company, job_title, ${publicBadgeSql()} AS badge_type FROM attendees WHERE id = ?`).bind(visitorId).first() as any
+  if (!v || Number(v.event_id) !== Number(actor.exhibitor.event_id)) return c.json({ error: 'This pass is not for this event.' }, 400)
+  const rating = body.rating === undefined ? '' : String(body.rating || '').toLowerCase()
+  if (rating && !LEAD_RATINGS.includes(rating)) return c.json({ error: 'Choose hot, warm or cold.' }, 400)
+  const note = body.note === undefined ? '' : String(body.note || '').trim().slice(0, 1000)
+  const before = await c.env.DB.prepare('SELECT id FROM exhibitor_leads WHERE exhibitor_id = ? AND attendee_id = ?').bind(actor.exhibitor.id, visitorId).first() as any
+  if (!before) {
+    const today = ((await c.env.DB.prepare("SELECT COUNT(*) AS n FROM exhibitor_leads WHERE exhibitor_id = ? AND created_at > datetime('now', '-1 day')").bind(actor.exhibitor.id).first()) as any)?.n || 0
+    if (today >= LEAD_SCANS_PER_DAY) return c.json({ error: 'That is a great many scans for one day. Please speak to the organisers.' }, 429)
+  }
+  // A cleared note is a real edit, so "sent" is told from "absent" by the flags.
+  await c.env.DB.prepare(`INSERT INTO exhibitor_leads (event_id, exhibitor_id, attendee_id, rating, note, scanned_by) VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(exhibitor_id, attendee_id) DO UPDATE SET
+      rating = CASE WHEN ? = 1 THEN excluded.rating ELSE exhibitor_leads.rating END,
+      note = CASE WHEN ? = 1 THEN excluded.note ELSE exhibitor_leads.note END,
+      updated_at = CURRENT_TIMESTAMP`)
+    .bind(actor.exhibitor.event_id, actor.exhibitor.id, visitorId, rating, note, actor.by, body.rating === undefined ? 0 : 1, body.note === undefined ? 0 : 1).run()
+  if (!before) {
+    // The booth's visitor count moves once per person, whichever way they were recorded.
+    const visited = await c.env.DB.prepare('SELECT 1 AS hit FROM booth_visits WHERE exhibitor_id = ? AND attendee_id = ?').bind(actor.exhibitor.id, visitorId).first()
+    if (!visited) await c.env.DB.prepare('UPDATE exhibitors SET visitor_count = visitor_count + 1 WHERE id = ?').bind(actor.exhibitor.id).run()
+  }
+  const lead = await c.env.DB.prepare('SELECT id, rating, note FROM exhibitor_leads WHERE exhibitor_id = ? AND attendee_id = ?').bind(actor.exhibitor.id, visitorId).first() as any
+  return c.json({ success: true, again: !!before, lead: { id: Number(lead.id), rating: lead.rating || '', note: lead.note || '' },
+    visitor: { name: v.name, company: v.company || '', job_title: v.job_title || '', badge_type: v.badge_type || '' } })
+})
+
+// The same edit from a list, by the lead's own id.
+app.patch('/api/exhibitor/leads/:id', async (c) => {
+  if (!(await leadsReady(c))) return c.json({ error: 'Not available yet.' }, 503)
+  const actor = await leadActor(c)
+  if (!actor) return c.json({ error: 'Sign in as an exhibitor first.' }, 401)
+  const id = parseInt(c.req.param('id'), 10) || 0
+  const row = await c.env.DB.prepare('SELECT id, rating, note FROM exhibitor_leads WHERE id = ? AND exhibitor_id = ?').bind(id, actor.exhibitor.id).first() as any
+  if (!row) return c.json({ error: 'Lead not found' }, 404)
+  const body = (await c.req.json().catch(() => ({}))) as any
+  const rating = body.rating === undefined ? String(row.rating || '') : String(body.rating || '').toLowerCase()
+  if (rating && !LEAD_RATINGS.includes(rating)) return c.json({ error: 'Choose hot, warm or cold.' }, 400)
+  const note = body.note === undefined ? String(row.note || '') : String(body.note || '').trim().slice(0, 1000)
+  await c.env.DB.prepare('UPDATE exhibitor_leads SET rating = ?, note = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').bind(rating, note, id).run()
+  return c.json({ success: true, lead: { id, rating, note } })
+})
+
+// The scanner in the page, for an exhibitor's team. A code is a link to /verify/<token>
+// on this site; only the token is taken from it, so no code can send the phone elsewhere.
+app.get('/exhibitor/scan', async (c) => {
+  const actor = await leadActor(c).catch(() => null)
+  return c.html(exhibitorScanHTML({ company: actor ? actor.exhibitor.company_name : '', ready: await leadsReady(c) }))
+})
+
+const LEAD_PAGE_CSS = `*{box-sizing:border-box}body{margin:0;background:#F6F7FC;color:#1E2140;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;font-size:16px;line-height:1.5}
+main{max-width:460px;margin:0 auto;padding:20px 16px 40px}h1{font-size:20px;margin:0 0 4px}.co{font-size:14px;color:#5E6585;margin:0 0 14px}
+.card{background:#fff;border:1px solid #E1E4F2;border-radius:16px;padding:18px}.who{display:flex;gap:14px;align-items:center}
+.ph{width:64px;height:64px;border-radius:50%;object-fit:cover;background:#ECEEFB;color:#1A237E;display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:700;flex:none}
+h2{font-size:19px;margin:0;overflow-wrap:anywhere}.m{font-size:14px;color:#3F4566;margin:2px 0 0;overflow-wrap:anywhere}
+.pill{display:inline-block;margin-top:6px;padding:3px 10px;border-radius:999px;background:#ECEEFB;color:#1A237E;font-size:12px;font-weight:600}
+.st{margin:14px 0 0;padding:10px 12px;border-radius:10px;font-size:15px;font-weight:600;background:#F1F3FA;color:#3F4566}.st.ok{background:#E3F6EC;color:#066B41}.st.bad{background:#FDECEC;color:#991B1B}
+.lab{display:block;font-size:14px;font-weight:600;margin:16px 0 8px}.rate{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.rate button{min-height:52px;border-radius:12px;border:2px solid #D6DAEA;background:#fff;color:#1E2140;font-size:16px;font-weight:700;cursor:pointer}
+.rate button[aria-pressed=true]{border-color:#C84F00;background:#FFF1E6;color:#8A3600}
+textarea{width:100%;min-height:92px;padding:12px;border-radius:12px;border:1px solid #D6DAEA;font:inherit;color:inherit;background:#fff}
+.btn{display:block;width:100%;min-height:52px;margin-top:12px;padding:14px;border:0;border-radius:12px;background:#C84F00;color:#fff;font-size:17px;font-weight:700;text-align:center;text-decoration:none;cursor:pointer}
+.btn.sec{background:#fff;color:#1E2140;border:1px solid #D6DAEA}video{width:100%;border-radius:14px;background:#000;margin-top:12px;min-height:240px}
+.err{color:#991B1B;font-size:14px;min-height:20px;margin:10px 0 0}.hint{font-size:14px;color:#5E6585;margin:14px 0 0}`
+const leadPage = (title: string, body: string, script = '', head = '') => `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex"><title>${title} - Bharat AI Innovation 2026</title><style>${LEAD_PAGE_CSS}</style>${head}</head><body><main>${body}</main>${script ? `<script>${script}</script>` : ''}</body></html>`
+const leadEsc = (v: any) => String(v ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch] as string))
+
+// What a team member sees after scanning a visitor's badge. The scan is saved as the
+// page opens (a POST from the page, never the GET), so a busy booth needs no tap; the
+// rating and the note are extras. No backslash in the script: it is a template string.
+function leadCaptureHTML(o: { company: string; token: string; own: boolean; visitor: any; lead: any; dashboard: boolean }): string {
+  const v = o.visitor || {}
+  const unpaid = ['pending', 'refunded'].includes(String(v.payment_status || '').trim().toLowerCase()) && PAID_TIERS.includes(String(v.badge_type || ''))
+  const badge = unpaid ? 'Visitor Pass' : String(v.badge_type || 'Visitor Pass')
+  const photo = String(v.avatar_url || '').trim()
+  if (o.own) {
+    return leadPage('Booth lead', `<h1>That is your own pass</h1><p class="co">Scan the QR on a visitor&rsquo;s pass to save them as a lead for ${leadEsc(o.company)}.</p><a class="btn" href="/exhibitor/scan">Scan a visitor&rsquo;s badge</a>`)
+  }
+  return leadPage('Booth lead', `<h1>Booth lead</h1><p class="co">For <strong>${leadEsc(o.company)}</strong></p>
+    <div class="card">
+      <div class="who">${photo ? `<img class="ph" src="${leadEsc(photo)}" alt="">` : `<div class="ph" aria-hidden="true">${leadEsc(String(v.name || '?').charAt(0).toUpperCase())}</div>`}
+        <div style="min-width:0"><h2>${leadEsc(v.name)}</h2>${v.job_title ? `<p class="m">${leadEsc(v.job_title)}</p>` : ''}${v.company ? `<p class="m">${leadEsc(v.company)}</p>` : ''}<span class="pill">${leadEsc(badge)}</span></div></div>
+      <p class="st" id="st" role="status">Saving this lead&hellip;</p>
+      <span class="lab" id="rl">How good is this lead?</span>
+      <div class="rate" role="group" aria-labelledby="rl"><button type="button" data-r="hot" aria-pressed="false">Hot</button><button type="button" data-r="warm" aria-pressed="false">Warm</button><button type="button" data-r="cold" aria-pressed="false">Cold</button></div>
+      <label class="lab" for="n">Your note</label>
+      <textarea id="n" maxlength="1000" placeholder="What they need, and when to call back">${leadEsc(o.lead?.note || '')}</textarea>
+      <button type="button" class="btn sec" id="sv">Save note</button>
+    </div>
+    <a class="btn" href="/exhibitor/scan">Scan next badge</a>
+    <a class="btn sec" href="${o.dashboard ? '/marketplace/dashboard#leads' : '/app?action=leads'}">See all leads</a>`,
+  `var T=${JSON.stringify(String(o.token))}, rating=${JSON.stringify(LEAD_RATINGS.includes(o.lead?.rating) ? o.lead.rating : '')}, st=document.getElementById('st');
+   function say(t,c){ st.textContent=t; st.className='st'+(c?' '+c:''); }
+   function show(){ document.querySelectorAll('[data-r]').forEach(function(b){ b.setAttribute('aria-pressed', b.getAttribute('data-r')===rating?'true':'false'); }); }
+   function send(extra, done){
+     var body={token:T}; for(var k in (extra||{})) body[k]=extra[k];
+     fetch('/api/exhibitor/leads/scan',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify(body)})
+       .then(function(r){ return r.json().then(function(j){ if(!r.ok) throw new Error(j.error||'Could not save. Please try again.'); return j; }); })
+       .then(function(j){ rating=(j.lead&&j.lead.rating)||''; show(); say(done(j),'ok'); })
+       .catch(function(err){ say(navigator.onLine===false?'No internet. Not saved yet: move to better signal and tap a rating.':(err.message||'Could not save. Please try again.'),'bad'); });
+   }
+   show();
+   send(null, function(j){ return j.again?'Already in your leads. You can update the rating or the note.':'Saved to your leads.'; });
+   document.querySelectorAll('[data-r]').forEach(function(b){ b.addEventListener('click', function(){ var r=b.getAttribute('data-r'); send({rating: r===rating?'':r}, function(j){ return j.lead.rating?('Saved as '+j.lead.rating+'.'):'Rating cleared.'; }); }); });
+   document.getElementById('sv').addEventListener('click', function(){ send({note: document.getElementById('n').value}, function(){ return 'Note saved.'; }); });`)
+}
+
+function exhibitorScanHTML(o: { company: string; ready: boolean }): string {
+  if (!o.company) {
+    return leadPage('Scan a badge', `<h1>Scan a visitor&rsquo;s badge</h1><p class="co">Sign in first, so the lead is saved for your company.</p>
+      <div class="card"><p class="m" style="margin:0 0 4px"><strong>On your company&rsquo;s team?</strong> Open the event app and sign in with the email on your exhibitor pass. Then come back to this page.</p><a class="btn" href="/app">Open the event app</a>
+      <p class="m" style="margin:16px 0 4px"><strong>The booth contact?</strong> Sign in to your exhibitor dashboard.</p><a class="btn sec" href="/marketplace?signin=1">Open the exhibitor dashboard</a></div>`)
+  }
+  if (!o.ready) return leadPage('Scan a badge', `<h1>Scan a visitor&rsquo;s badge</h1><p class="co">Badge scanning is being switched on. Please try again shortly.</p>`)
+  return leadPage('Scan a badge', `<h1>Scan a visitor&rsquo;s badge</h1><p class="co">Leads are saved for <strong>${leadEsc(o.company)}</strong>. Point the camera at the QR on the visitor&rsquo;s pass.</p>
+    <video id="v" playsinline muted autoplay></video>
+    <p class="err" id="e" role="alert"></p>
+    <button type="button" class="btn" id="cam" style="display:none">Start the camera</button>
+    <p class="hint"><strong>No camera here?</strong> Your phone&rsquo;s own camera app also works: point it at the QR and tap the link it offers.</p>
+    <a class="btn sec" href="/app?action=leads">See all leads</a>`,
+  `var v=document.getElementById('v'), e=document.getElementById('e'), camBtn=document.getElementById('cam'), stopped=false, stream=null;
+   var VERIFY=new RegExp('/verify/([A-Za-z0-9._%-]+)');
+   function found(raw){
+     var m=VERIFY.exec(String(raw||'')); if(!m) return false;
+     stopped=true; try{ stream.getTracks().forEach(function(t){ t.stop(); }); }catch(err){}
+     location.href='/verify/'+m[1]; return true;
+   }
+   var det=null, useJs=!('BarcodeDetector' in window), cv=null, cx=null;
+   function readJs(){
+     if(typeof jsQR!=='function'||!v.videoWidth) return null;
+     if(!cv){ cv=document.createElement('canvas'); cx=cv.getContext('2d',{willReadFrequently:true}); }
+     var scale=Math.min(1,640/v.videoWidth), w=Math.round(v.videoWidth*scale), h=Math.round(v.videoHeight*scale);
+     if(cv.width!==w||cv.height!==h){ cv.width=w; cv.height=h; }
+     cx.drawImage(v,0,0,w,h);
+     var code=jsQR(cx.getImageData(0,0,w,h).data,w,h,{inversionAttempts:'dontInvert'});
+     return code&&code.data?code.data:null;
+   }
+   async function readNative(){ if(!det) det=new BarcodeDetector({formats:['qr_code']}); var codes=await det.detect(v); return codes&&codes.length?(codes[0].rawValue||''):null; }
+   async function loop(){
+     if(stopped) return;
+     var raw=null;
+     try{ if(!useJs){ try{ raw=await readNative(); }catch(err){ useJs=true; } } if(useJs&&raw===null) raw=readJs(); if(raw&&found(raw)) return; }catch(err){}
+     setTimeout(loop,200);
+   }
+   async function start(){
+     e.textContent=''; camBtn.style.display='none';
+     if(useJs&&typeof jsQR!=='function'){ e.textContent='This browser cannot scan in the page. Use your phone camera app on the QR instead.'; return; }
+     try{ stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}}); }
+     catch(err){ e.textContent='The camera is blocked. Allow it for this site, or use your phone camera app on the QR.'; camBtn.style.display='block'; return; }
+     v.srcObject=stream;
+     if(!useJs&&BarcodeDetector.getSupportedFormats){ try{ var fm=await BarcodeDetector.getSupportedFormats(); if(fm.indexOf('qr_code')<0) useJs=true; }catch(err){ useJs=true; } }
+     loop();
+   }
+   camBtn.addEventListener('click', start);
+   start();`,
+  `<script src="/js/vendor/jsQR.js?v=20261029"></script>`)
+}
 
 // Create or update exhibitor booth for an attendee (self-service)
 app.put('/api/attendees/:id/exhibitor', async (c) => {
@@ -23212,7 +23493,10 @@ function mainPageHTML(): string {
               <h2 class="text-2xl font-bold"><i class="fas fa-user-group text-primary-400 mr-2"></i>Lead Console</h2>
               <p class="text-gray-400 text-sm" id="ec-booth-sub">Attendees who visited your booth</p>
             </div>
-            <button onclick="exportLeadsCsv()" class="px-4 py-2 rounded-xl text-sm font-medium bg-primary-600/20 text-primary-300 hover:bg-primary-600/30 transition"><i class="fas fa-download mr-1.5"></i>Export CSV</button>
+            <div class="flex items-center gap-2 flex-wrap">
+              <a href="/exhibitor/scan" id="ec-scan" class="px-4 py-2 rounded-xl text-sm font-semibold text-white transition" style="background:#C84F00;"><i class="fas fa-qrcode mr-1.5"></i>Scan a badge</a>
+              <button onclick="exportLeadsCsv()" class="px-4 py-2 rounded-xl text-sm font-medium bg-primary-600/20 text-primary-300 hover:bg-primary-600/30 transition"><i class="fas fa-download mr-1.5"></i>Export CSV</button>
+            </div>
           </div>
           <div id="ec-summary" class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6"></div>
           <div id="ec-leads" class="space-y-3"></div>
@@ -24675,6 +24959,11 @@ function mainPageScript(): string {
       // "Find people to meet" in the networking email: the Network tab, once signed in.
       if (act === 'network') {
         if (currentUser) { pendingAction = null; setTimeout(function () { switchTab('networking'); }, 900); }
+        return;
+      }
+      // "See all leads" on the booth lead screen (/verify/<token> for an exhibitor's team).
+      if (act === 'leads') {
+        if (currentUser) { pendingAction = null; setTimeout(function () { openExhibitorConsole(); }, 900); }
         return;
       }
       if (act === 'download-pass') { setTimeout(() => generateDelegatePass(), 1500); return; }
@@ -28912,7 +29201,7 @@ function mainPageScript(): string {
         container.innerHTML =
           '<div class="mb-6">'
           + '<h2 class="text-2xl font-bold mb-2"><i class="fas fa-lightbulb text-amber-400 mr-3"></i>Innovation Talk & Showcase</h2>'
-          + '<p class="text-gray-400 text-sm">10-minute presentations showcasing cutting-edge AI & technology solutions</p>'
+          + '<p class="text-gray-400 text-sm">8-minute presentations showcasing cutting-edge AI & technology solutions</p>'
           + '<div class="flex gap-4 mt-3">'
           + '<span class="text-xs glass px-3 py-1.5 rounded-full"><i class="fas fa-microphone-alt text-primary-400 mr-1.5"></i>' + talks.length + ' presentations</span>'
           + (morning.length ? '<span class="text-xs glass px-3 py-1.5 rounded-full"><i class="fas fa-sun text-amber-400 mr-1.5"></i>' + morning.length + ' morning</span>' : '')
@@ -29447,29 +29736,30 @@ function mainPageScript(): string {
         _ecLeads = data.leads || [];
         document.getElementById('ec-booth-sub').textContent = data.exhibitor ? \`\${data.exhibitor.company_name}\${data.exhibitor.booth_number ? ' · Booth ' + data.exhibitor.booth_number : ''}\` : 'Set up your booth to start capturing leads';
         if (sum) sum.innerHTML = [
-          { n: data.summary.total, l: 'Total visitors', i: 'fa-users', c: '#FF6B00' },
-          { n: data.summary.interested, l: 'Marked interested', i: 'fa-star', c: '#22c55e' },
-          { n: data.summary.total ? Math.round(data.summary.interested / data.summary.total * 100) + '%' : '—', l: 'Interest rate', i: 'fa-chart-line', c: '#7c3aed' },
+          { n: data.summary.total, l: 'Total leads', i: 'fa-users', c: '#FF6B00' },
+          { n: data.summary.scanned || 0, l: 'Badges scanned at your booth', i: 'fa-qrcode', c: '#22c55e' },
+          { n: data.summary.hot || 0, l: 'Hot leads', i: 'fa-star', c: '#7c3aed' },
         ].map(s => \`<div class="glass rounded-xl p-4"><div class="flex items-center gap-3"><i class="fas \${s.i} text-lg" style="color:\${s.c}"></i><div><div class="text-2xl font-bold" style="font-variant-numeric:tabular-nums;">\${s.n}</div><div class="text-xs text-gray-400">\${s.l}</div></div></div></div>\`).join('');
         if (list) list.innerHTML = _ecLeads.length ? _ecLeads.map(l => \`
           <div class="glass rounded-xl p-4 flex items-center gap-4">
             <img src="\${getAvatarUrl(l.email, l.name, 88, l.avatar_url)}" class="w-11 h-11 rounded-full object-cover shrink-0">
             <div class="min-w-0 flex-1">
-              <div class="flex items-center gap-2"><span class="font-semibold text-sm truncate">\${esc(l.name)}</span>\${l.interested ? '<span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-500/20 text-green-300">Interested</span>' : ''}</div>
+              <div class="flex items-center gap-2 flex-wrap"><span class="font-semibold text-sm truncate">\${esc(l.name)}</span>\${l.rating ? \`<span class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-primary-600/20 text-primary-300">\${esc(l.rating.charAt(0).toUpperCase() + l.rating.slice(1))}</span>\` : ''}<span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-white/5 text-gray-400">\${l.source === 'scan' ? 'Scanned' : 'Visited in the app'}</span></div>
               <div class="text-xs text-gray-400 truncate">\${esc(l.job_title || '')}\${l.job_title && l.company ? ' · ' : ''}\${esc(l.company || '')}</div>
+              \${l.note ? \`<div class="text-[11px] text-gray-400 mt-1">Our note: \${esc(l.note)}</div>\` : ''}
               \${l.notes ? \`<div class="text-[11px] text-gray-500 mt-1 truncate">"\${esc(l.notes)}"</div>\` : ''}
             </div>
             <div class="flex items-center gap-2 shrink-0">
               <a href="mailto:\${esc(l.email)}" class="w-9 h-9 rounded-lg flex items-center justify-center bg-white/5 hover:bg-white/10 text-gray-300 transition" title="Email"><i class="fas fa-envelope text-xs"></i></a>
               \${safeUrl(l.linkedin_url) ? \`<a href="\${safeUrl(l.linkedin_url)}" target="_blank" rel="noopener" class="w-9 h-9 rounded-lg flex items-center justify-center bg-white/5 hover:bg-white/10 text-gray-300 transition" title="LinkedIn"><i class="fab fa-linkedin text-xs"></i></a>\` : ''}
             </div>
-          </div>\`).join('') : '<div class="glass rounded-xl p-10 text-center"><i class="fas fa-user-group text-3xl text-gray-600 mb-3 block"></i><p class="text-sm text-gray-400">No booth visitors yet</p><p class="text-xs text-gray-600 mt-1">Attendees who scan or visit your booth will show up here with their contact details.</p></div>';
+          </div>\`).join('') : '<div class="glass rounded-xl p-10 text-center"><i class="fas fa-user-group text-3xl text-gray-600 mb-3 block"></i><p class="text-sm text-gray-400">No leads yet</p><p class="text-xs text-gray-600 mt-1">Tap Scan a badge and point the camera at the QR on a visitor&rsquo;s pass. They show up here with their details.</p></div>';
       } catch(e) { if (list) list.innerHTML = '<p class="text-sm text-gray-500 text-center py-6">Could not load leads.</p>'; }
     }
     function exportLeadsCsv() {
       if (!_ecLeads.length) { showToast('No leads to export yet', 'info'); return; }
-      const rows = [['Name','Email','Company','Job Title','Interested','Notes','Visited']];
-      _ecLeads.forEach(l => rows.push([l.name, l.email, l.company || '', l.job_title || '', l.interested ? 'Yes' : 'No', (l.notes || '').replace(/"/g,'""'), l.visited_at || '']));
+      const rows = [['Name','Email','Company','Job Title','Pass','How','Rating','Our note','Their note','Scanned by','When (UTC)']];
+      _ecLeads.forEach(l => rows.push([l.name, l.email, l.company || '', l.job_title || '', l.badge_type || '', l.source === 'scan' ? 'Badge scanned' : 'Visited in the app', l.rating || '', l.note || '', l.notes || '', l.scanned_by || '', l.visited_at || '']));
       const csv = rows.map(r => r.map(c => \`"\${String(c).replace(/"/g,'""')}"\`).join(',')).join('\\n');
       const blob = new Blob([csv], { type: 'text/csv' });
       const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'booth-leads.csv'; a.click();
@@ -31462,8 +31752,8 @@ function mainPageScript(): string {
               + '</div>';
           }).join('')
         + '</div></div>'
-        + '<p class="text-[11px] text-gray-500 mt-3">Select a stand on the plan to enquire. '
-        + '<button type="button" onclick="switchTab(&quot;exhibition&quot;); showBoothPackages && showBoothPackages();" class="underline text-primary-400 hover:text-primary-300">See booth packages</button></p>';
+        + '<p class="text-[11px] text-gray-500 mt-3">Each stand shows its number. '
+        + '<button type="button" onclick="switchTab(&quot;exhibition&quot;)" class="underline text-primary-400 hover:text-primary-300">See the exhibitors</button></p>';
     }
 
     function openNetworkingGuide() { document.getElementById('networking-guide-modal').classList.remove('hidden'); }

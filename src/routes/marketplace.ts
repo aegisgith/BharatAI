@@ -2540,4 +2540,55 @@ mp.post('/api/mp/admin/listings/bulk', async (c) => {
   return c.json({ success: true, uploaded: success, failed })
 })
 
+// ══════════════════════════════════════════
+// THE EXHIBITOR LIST IN THE APP (11 Nov 2026)
+// ══════════════════════════════════════════
+// The app's Exhibition tab stays empty until app_settings.exhibitor_directory_public is
+// '1' (index.tsx, exhibitorDirectoryVisible). It had no control anywhere, so nine days
+// before the event it was still off. The switch is here, with what turning it on shows.
+
+// Which exhibitors the list shows once it is on: a confirmed stand, or a row from the
+// booking sheet (exhibitor_team_settings). A row with neither is a leftover, usually a
+// second row made by Add Attendee with an Exhibitor badge, not an exhibitor.
+export const DIRECTORY_SHOWN_SQL = `(EXISTS (SELECT 1 FROM booth_allocations ba WHERE ba.exhibitor_id = exhibitors.id AND ba.status = 'confirmed' AND ba.released_at IS NULL) OR EXISTS (SELECT 1 FROM exhibitor_team_settings ts WHERE ts.exhibitor_id = exhibitors.id))`
+// exhibitors.description on imported rows is an internal booking note ("Imported from
+// the Confirmed Booth sheet. Owner: ..."). Never shown to an attendee.
+export const INTERNAL_NOTE_RE = /^\s*imported from|owner\s*:/i
+const DIRECTORY_KEY = 'exhibitor_directory_public'
+
+mp.get('/api/mp/admin/directory', async (c) => {
+  const admin = await marketplaceAdmin(c)
+  if (!admin) return c.json({ error: 'Admin required' }, 403)
+  const on = String((await setting(c, DIRECTORY_KEY)) || '') === '1'
+  let rows: any[] = []
+  try { rows = ((await c.env.DB.prepare(`SELECT id, company_name, booth_number, ${DIRECTORY_SHOWN_SQL} AS shown FROM exhibitors WHERE event_id = 1 ORDER BY company_name COLLATE NOCASE`).all()).results || []) as any[] }
+  catch { rows = (((await c.env.DB.prepare('SELECT id, company_name, booth_number, 1 AS shown FROM exhibitors WHERE event_id = 1 ORDER BY company_name COLLATE NOCASE').all().catch(() => ({ results: [] }))).results || []) as any[]) }
+  const shown = rows.filter(r => Number(r.shown))
+  return c.json({
+    on, showing: shown.length,
+    without_booth: shown.filter(r => !String(r.booth_number || '').trim()).map(r => r.company_name),
+    not_shown: rows.filter(r => !Number(r.shown)).map(r => r.company_name),
+  })
+})
+
+mp.put('/api/mp/admin/directory', async (c) => {
+  const admin = await marketplaceAdmin(c)
+  if (!admin) return c.json({ error: 'Admin required' }, 403)
+  const on = !!((await c.req.json().catch(() => ({}))) as any)?.on
+  await c.env.DB.prepare('INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').bind(DIRECTORY_KEY, on ? '1' : '0').run()
+  await auditAdmin(c, admin, on ? 'marketplace.directory-on' : 'marketplace.directory-off', null, undefined, 'app_settings')
+  return c.json({ success: true, on })
+})
+
+// Who is signed in to the exhibitor dashboard, as the exhibitor they act for. index.tsx
+// uses it for booth lead scanning, where the person scanning is either the booth contact
+// (this session) or someone on the team signed in to the event app.
+export const exhibitorOfCompanySession = async (c: any): Promise<{ id: number; company_name: string; booth_number: string; event_id: number; by: string } | null> => {
+  const company = await getCompanyFromSession(c) as any
+  if (!company || company.role === 'admin') return null
+  let ex: Awaited<ReturnType<typeof teamExhibitorOf>> = null
+  try { ex = await teamExhibitorOf(c, company) } catch { ex = null }
+  return ex ? { ...ex, by: String(company.email || '') } : null
+}
+
 export default mp

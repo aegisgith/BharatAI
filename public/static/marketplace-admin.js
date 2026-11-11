@@ -62,7 +62,7 @@ const initAdmin = async () => {
       if (info) info.textContent = 'Marketplace Admin · signed in through event admin'
     }
     try { exhibitors = (await api('/api/mp/admin/exhibitors')).exhibitors || [] } catch { exhibitors = [] }
-    await Promise.all([loadStats(), loadAllListings(), loadPendingListings(), loadInquiries(), loadExhibitors(), loadStageTalks(), loadTeams(), loadReports()])
+    await Promise.all([loadStats(), loadAllListings(), loadPendingListings(), loadInquiries(), loadExhibitors(), loadStageTalks(), loadTeams(), loadReports(), loadDirectory()])
     // The queue is what an admin comes here for; open it when there is something in it.
     if (num(document.getElementById('stat-pending').textContent) > 0) switchSection('pending')
     // The report email's button opens /marketplace/admin#reports.
@@ -438,6 +438,28 @@ if (teamCsvBtn) teamCsvBtn.addEventListener('click', async () => {
     setTimeout(() => URL.revokeObjectURL(url), 5000)
   } catch (err) { showToast(err.message, true) }
 })
+
+// ── The exhibitor list in the app ──
+// The app's Exhibition tab shows nobody until this is on. What it will show is listed
+// first, so nothing appears to attendees that the organisers have not seen.
+const loadDirectory = async () => {
+  const c = document.getElementById('directory-card'); if (!c) return
+  try {
+    const d = await api('/api/mp/admin/directory')
+    const names = (list) => list.map(esc).join(', ')
+    c.innerHTML = `<h3><i class="fas fa-mobile-alt mr-2"></i>Exhibitor list in the app: <span class="dash-badge ${d.on ? 'dash-badge--green' : 'dash-badge--red'}" style="font-size:12px">${d.on ? 'ON' : 'OFF'}</span></h3>
+      <p class="text-sm" style="margin:0 0 8px;line-height:1.6">${d.on ? `Attendees see <strong>${num(d.showing)} exhibitors</strong> on the Exhibition tab of Bharat AI Connect, with their booth numbers.` : `Attendees see an <strong>empty</strong> Exhibition tab in Bharat AI Connect. Turning this on shows <strong>${num(d.showing)} exhibitors</strong> with their booth numbers.`} Internal booking notes are never shown.</p>
+      ${d.without_booth.length ? `<p class="text-xs" style="margin:0 0 6px;color:#92400E">No booth number yet: ${names(d.without_booth)}</p>` : ''}
+      ${d.not_shown.length ? `<p class="text-xs text-slate-500" style="margin:0 0 6px">Never shown, because they have no confirmed stand and are not on the booking sheet (usually a second row for the same company): ${names(d.not_shown)}</p>` : ''}
+      <p class="text-xs text-slate-500" style="margin:0 0 10px">A company that has dropped out still shows while its stand is confirmed in Booth sales: release the stand there. Booth numbers are the ones in Booth sales and on the sheet, so check they match the final floor plan.</p>
+      <button type="button" id="directory-toggle" class="${d.on ? 'mp-btn-secondary' : 'mp-btn-primary'} text-sm py-2 px-4">${d.on ? 'Turn it off' : 'Turn it on'}</button>`
+    document.getElementById('directory-toggle').addEventListener('click', async () => {
+      if (!confirm(d.on ? 'Hide the exhibitor list from attendees?' : `Show ${num(d.showing)} exhibitors to every attendee in the app now?`)) return
+      try { await api('/api/mp/admin/directory', { method: 'PUT', body: JSON.stringify({ on: !d.on }) }); showToast(d.on ? 'The exhibitor list is hidden' : 'The exhibitor list is live in the app'); await loadDirectory() }
+      catch (err) { showToast(err.message, true) }
+    })
+  } catch (err) { c.innerHTML = `<p class="text-rose-400">${esc(err.message)}</p>` }
+}
 
 // ── Reports from exhibitors ──
 let reportsAdmin = []
