@@ -857,3 +857,49 @@ a.listing-card:hover .listing-view i { transform: translateX(3px); }
   a.listing-card:hover { transform: none; }
   a.listing-card:hover .listing-view i, .pd-media-grid a:hover img { transform: none; }
 }
+
+/* ── Your Team (exhibitor dashboard, 11 Nov 2026) ──
+   Cards, not a table: the booth contact fills this in on a phone as often as on a
+   laptop. The [hidden] rule matters because .team-form and .team-full set display. */
+.team-list { display: grid; gap: 12px; margin-bottom: 16px; }
+.team-card { display: grid; grid-template-columns: 56px 1fr; gap: 12px; align-items: start; background: var(--mp-card); border: 1px solid var(--mp-border); border-radius: 16px; padding: 14px; }
+.team-photo { width: 56px; height: 56px; border-radius: 50%; object-fit: cover; border: 1px solid var(--mp-border); background: var(--mp-surface-2); }
+.team-photo--empty { display: flex; align-items: center; justify-content: center; font-weight: 700; color: var(--mp-muted); font-size: 18px; }
+.team-name { font-weight: 700; font-size: 15px; margin: 0; overflow-wrap: anywhere; }
+.team-sub { font-size: 13px; color: var(--mp-body); margin: 2px 0 0; overflow-wrap: anywhere; }
+.team-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.team-chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--mp-indigo-tint); color: var(--mp-indigo); }
+.team-chip--pass { background: rgba(5,150,105,0.12); color: #047857; }
+.team-chip--wait { background: rgba(180,83,9,0.12); color: #92400E; }
+.team-missing { font-size: 12px; color: #92400E; margin: 8px 0 0; }
+.team-card-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.team-card-actions button { min-height: 40px; padding: 8px 14px; font-size: 13px; }
+.team-add-card { display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
+.team-add-card .mp-btn-primary { min-height: 44px; }
+.team-full { width: 100%; padding: 14px; border-radius: 12px; border: 1px solid #fed7aa; background: #fff7ed; color: #7c2d12; font-size: 14px; line-height: 1.6; }
+.team-full[hidden], .team-form[hidden], .team-error[hidden], .team-from[hidden], .team-photo[hidden] { display: none !important; }
+.team-full a.mp-btn-primary { display: inline-block; margin-top: 10px; text-decoration: none; background: #C84F00; }
+.team-form .form-field label { font-size: 13px; color: var(--mp-text); }
+.team-form input { font-size: 16px !important; min-height: 44px; }
+.team-req { color: var(--mp-muted); font-weight: 400; }
+.team-roles { border: 0; padding: 0; margin: 0 0 4px; display: grid; gap: 8px; }
+.team-roles legend { font-size: 13px; font-weight: 600; margin-bottom: 6px; padding: 0; }
+.team-role { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--mp-border-strong); border-radius: 12px; cursor: pointer; min-height: 52px; }
+.team-role input[type="checkbox"] { width: 22px !important; height: 22px; min-height: 0; flex: none; accent-color: #C84F00; }
+.team-role span { display: flex; flex-direction: column; font-size: 14px; }
+.team-role small { color: var(--mp-muted); font-size: 12px; }
+.team-role:has(input:checked) { border-color: #C84F00; background: var(--mp-primary-tint); }
+.team-photo-row { display: flex; gap: 12px; align-items: center; }
+.team-photo-row input[type="file"] { font-size: 13px !important; min-height: 0; padding: 6px 0; background: none; border: 0; }
+.team-hint { font-size: 12px; color: var(--mp-muted); margin: 4px 0 0; }
+.team-error { padding: 10px 12px; border-radius: 10px; border: 1px solid #fecaca; background: #fef2f2; color: #991b1b; font-size: 14px; line-height: 1.6; }
+.team-form-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.team-form-actions button { min-height: 44px; }
+.team-from { padding: 12px 14px; border-radius: 12px; background: var(--mp-surface-2); font-size: 14px; line-height: 1.6; margin-bottom: 8px; }
+.team-pass-meter { font-size: 14px; margin: 8px 0 0; }
+/* Admin Teams screen */
+#admin-teams { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
+.team-admin-members { margin: 4px 0 8px; }
+.team-admin-members td { font-size: 12px; }
+.team-admin-photo { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; }
+.team-passes-input { width: 64px !important; padding: 6px 8px !important; }

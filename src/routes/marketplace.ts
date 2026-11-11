@@ -32,6 +32,15 @@ type MarketplaceHooks = {
   ensureDelegate?: (c: any, x: { exhibitorId: number; email: string; company: string }) => Promise<{ attendeeId: number; created: boolean; upgraded: boolean; trusted: boolean } | null>
   // sessionAttendee: who is signed in to the event app (its signed bai_session cookie).
   attendeeOf?: (c: any) => Promise<{ id: number; email: string; name: string; company: string } | null>
+  // Exhibitor teams (0050): the attendee row behind each person on a team, and the
+  // one-mobile-one-attendee check. In index.tsx, which owns the attendees table.
+  issueTeamPass?: (c: any, x: {
+    eventId: number; exhibitorId: number; badge: string; gave: string; create?: boolean
+    name: string; email: string; mobile: string; company: string; designation: string; linkedin: string; role: string
+    avatarUrl: string; prevAvatarUrl: string
+  }) => Promise<{ attendeeId: number; pass: string; given: string; avatarSet: string } | { error: string }>
+  releaseTeamPass?: (c: any, x: { attendeeId: number; gave: string; exhibitorId: number }) => Promise<void>
+  teamMobileHolder?: (c: any, eventId: number, mobile: string, email: string) => Promise<{ email: string } | null>
 }
 let hooks: MarketplaceHooks = {}
 export const configureMarketplace = (h: MarketplaceHooks) => { hooks = { ...hooks, ...h } }
@@ -268,9 +277,10 @@ const verifySignInToken = async (c: any, token: string): Promise<{ id: number; f
   if (!safeEqual(sig, await hmacHex(secret, `mplink:${id}.${exp}.${fp}`))) return null
   return { id: parseInt(id, 10), fp }
 }
-const signInLink = async (c: any, companyId: number | string) => {
+// go: where the link lands, from a fixed list ('team' opens the dashboard's Team screen).
+const signInLink = async (c: any, companyId: number | string, go: '' | 'team' = '') => {
   const row = await c.env.DB.prepare('SELECT password_hash FROM mp_companies WHERE id = ?').bind(companyId).first() as any
-  return `${siteOrigin(c)}/marketplace/signin?t=${await signInToken(c, companyId, String(row?.password_hash || ''))}`
+  return `${siteOrigin(c)}/marketplace/signin?t=${await signInToken(c, companyId, String(row?.password_hash || ''))}${go ? '&go=' + go : ''}`
 }
 
 // ── Helpers ──
@@ -642,6 +652,8 @@ mp.get('/marketplace/signin', async (c) => {
   // What tells the admin's Exhibitors list that someone has got in: an account made
   // from the booth record never gets a password, so that cannot say it.
   try { await hooks.audit?.(c, SIGNED_IN, 'mp_company', company.id, undefined, { actor: 'marketplace', kind: 'system' }) } catch { /* the sign-in stands either way */ }
+  // The "add your team" email lands on the Team screen.
+  if (c.req.query('go') === 'team' && company.exhibitor_id) return c.redirect('/marketplace/dashboard#team')
   // An exhibitor with a stage slot has two things to do, the listing and the talk, and
   // the dashboard's to-do list shows both. Anyone else goes straight to the listing
   // form until they have a listing.
@@ -1262,24 +1274,11 @@ const exhibitorInviteRows = async (c: any) => {
   return rows.map(r => ({ ...r, ...inviteState(r) }))
 }
 
-// Every exhibitor is also a delegate. The pass is made, or a Visitor Pass raised, as
-// the email goes out, so an email only ever mentions a pass that exists.
-const exhibitorDelegate = async (c: any, row: any) => {
-  const email = String(row.contact_email || '').trim().toLowerCase()
-  let pass: Awaited<ReturnType<NonNullable<MarketplaceHooks['ensureDelegate']>>> = null
-  try { pass = (await hooks.ensureDelegate?.(c, { exhibitorId: Number(row.id), email, company: String(row.company_name || '') })) || null }
-  catch { return null }
-  // A pass made just now can only be entered with a code mailed to the booth address,
-  // so the app session behind it may open this exhibitor's marketplace account too
-  // (POST /api/mp/auth/from-app): "List on AI Market" in the app then just works.
-  if (pass?.trusted) {
-    await c.env.DB.prepare("UPDATE mp_companies SET attendee_id = ? WHERE lower(email) = ? AND attendee_id IS NULL AND role <> 'admin'")
-      .bind(pass.attendeeId, email).run().catch(() => {})
-  }
-  return pass
-}
-const delegateHowTo = (c: any) =>
-  `open <a href="${htmlEsc(siteOrigin(c) + '/app')}" style="color:#FF6B00">bharataiinnovation.com/app</a> and sign in with this email address. We email you a code, so there is nothing to register.`
+// Until 11 Nov 2026 these emails also made the booth contact an Exhibitor pass
+// (hooks.ensureDelegate). The organiser's rule now: the contact has the dashboard
+// login, and the passes go to the people on the team list, the contact included only
+// if they add themselves. Passes made before then stay.
+const TEAM_EMAIL_LINE = 'In the same dashboard, add the people coming from your company, at the booth, on stage, or both, with their photos. Their passes are issued from that list. You get a pass too if you add yourself.'
 
 const sendExhibitorInvite = async (c: any, row: any): Promise<boolean> => {
   const booth = String(row.booth_number || '').trim()
@@ -1289,7 +1288,9 @@ const sendExhibitorInvite = async (c: any, row: any): Promise<boolean> => {
   try { accountId = await ensureExhibitorAccount(c, { id: Number(row.id), company_name: row.company_name, contact_email: row.contact_email }) } catch { accountId = null }
   const href = accountId ? await signInLink(c, accountId) : siteOrigin(c) + '/marketplace?submit=true'
   const stage = accountId ? await stageSlotOf(c, Number(row.id)) : null
-  const delegate = await exhibitorDelegate(c, row)
+  // The booth contact is not given a pass by this email (organiser, 11 Nov 2026): the
+  // passes come from the team they list, and they get one by adding themselves.
+  const team = accountId && await teamReady(c)
   const body = `<p style="margin:0 0 12px;font-size:14px;line-height:1.6">You are exhibiting at Bharat AI Innovation 2026 (20-21 November, World Trade Center, Mumbai), and your booth includes a free listing on the event's AI Marketplace, where buyers browse AI products before and during the show.</p>
     <p style="margin:0 0 12px;font-size:14px;line-height:1.6">Your listing is public on bharataiinnovation.com and in the event app attendees use to plan who to meet, and it stays online after the show.</p>
     <p style="margin:0 0 12px;font-size:14px;line-height:1.6">It takes about five minutes: the button below signs you in &mdash; no password needed &mdash; then describe your product and add a logo and an image. We review every listing and email you as soon as it is live.</p>
@@ -1297,8 +1298,8 @@ const sendExhibitorInvite = async (c: any, row: any): Promise<boolean> => {
       ? `Your account is under this email address${booth ? `, with Booth ${htmlEsc(booth)} already on it` : ''}, so visitors can find you at the venue.`
       : `Please register with this email address &mdash; your booth number${booth ? ` (Booth ${htmlEsc(booth)})` : ''} is then added to your listing automatically, so visitors can find you at the venue.`}</p>
     ${stage ? `<p style="margin:12px 0 0;font-size:14px;line-height:1.6">Your booth also includes ${stageSlotPhrase(stage.minutes)}. In the same dashboard, add your talk topic, what you will showcase, and your speaker's name, photo and a short bio. Your time on stage shows there once the programme is set.</p>` : ''}
-    ${delegate ? `<p style="margin:12px 0 0;font-size:14px;line-height:1.6">Your exhibitor pass is also a delegate pass for the event app, where you can meet and message attendees: ${delegateHowTo(c)}</p>` : ''}
-    ${emailButton(href, stage ? 'Sign in to your exhibitor dashboard' : accountId ? 'Sign in and list your product' : 'List your AI product')}
+    ${team ? `<p style="margin:12px 0 0;font-size:14px;line-height:1.6">${TEAM_EMAIL_LINE}</p>` : ''}
+    ${emailButton(href, stage || team ? 'Sign in to your exhibitor dashboard' : accountId ? 'Sign in and list your product' : 'List your AI product')}
     <p style="margin:16px 0 0;font-size:12px;color:#888">${accountId ? 'The button works for seven days. After that, choose "Email me a sign-in link" on bharataiinnovation.com/marketplace and a fresh one is sent to this address. ' : ''}If you would rather not receive marketplace emails, reply to this message and we will stop.</p>`
   return sendMail(c, 'exhibitor-invite', String(row.contact_email).trim(), 'Your booth includes a free AI Marketplace listing', emailShell('Your free AI Marketplace listing', body))
 }
@@ -1308,19 +1309,19 @@ const sendExhibitorSignInMail = async (c: any, row: any): Promise<boolean> => {
   if (!accountId) return false
   const booth = String(row.booth_number || '').trim()
   const stage = await stageSlotOf(c, Number(row.id))
-  const delegate = await exhibitorDelegate(c, row)
+  const team = await teamReady(c)
   const li = (html: string) => `<li style="margin:0 0 8px">${html}</li>`
-  // Everything the booth includes, in one list. The listing and the talk are in the
-  // dashboard the button opens; the delegate pass is in the event app.
+  // Everything the booth includes, in one list, all in the dashboard the button opens.
+  // The booth contact gets no pass from this email: passes come from the team list.
   const includes = [
     li('<strong>A free AI Marketplace listing.</strong> Describe your product; it takes about five minutes.'),
-    ...(stage ? [li(`<strong>${stage.minutes ? `A ${stage.minutes}-minute` : 'An'} Innovation Talk &amp; Showcase slot.</strong> Add your stage talk: the topic, what you will showcase, and your speaker's name, photo and a short bio.`)] : []),
-    ...(delegate ? [li(`<strong>A delegate pass for the event app</strong>, to meet and message attendees: ${delegateHowTo(c)}`)] : []),
+    ...(stage ? [li(`<strong>${stage.minutes ? `A ${stage.minutes}-minute` : 'An'} Innovation Talk &amp; Showcase slot.</strong> Add your stage talk: the topic and what you will showcase${team ? '' : `, and your speaker's name, photo and a short bio`}.`)] : []),
+    ...(team ? [li(`<strong>Passes for your team.</strong> ${TEAM_EMAIL_LINE}`)] : []),
   ]
   const body = includes.length > 1
     ? `<p style="margin:0 0 12px;font-size:14px;line-height:1.6">You do not need to create an account: your exhibitor account is ready under this email address${booth ? `, with Booth ${htmlEsc(booth)} already on it` : ''}. Your booth includes:</p>
     <ul style="margin:0;padding-left:20px;font-size:14px;line-height:1.6">${includes.join('')}</ul>
-    <p style="margin:4px 0 0;font-size:14px;line-height:1.6">The button signs you in to your exhibitor dashboard, where you list your product${stage ? ' and add your stage talk' : ''}. No password needed.</p>
+    <p style="margin:4px 0 0;font-size:14px;line-height:1.6">The button signs you in to your exhibitor dashboard, where you list your product${stage ? ', add your stage talk' : ''}${team ? ' and add your team' : ''}. No password needed.</p>
     ${emailButton(await signInLink(c, accountId), 'Sign in to your exhibitor dashboard')}`
     : `<p style="margin:0 0 12px;font-size:14px;line-height:1.6">You do not need to create an account for the Bharat AI Marketplace: one is ready under this email address${booth ? `, with Booth ${htmlEsc(booth)} already on it` : ''}.</p>
     <p style="margin:0;font-size:14px;line-height:1.6">Click the button to sign in &mdash; no password needed &mdash; and list your AI product. It takes about five minutes, and we email you as soon as the listing is live.</p>
@@ -1543,10 +1544,17 @@ const delegatePassOf = async (c: any, email: string, eventId: number) => {
   return a && !/visitor/i.test(String(a.badge_type || '')) ? { email: String(email).trim().toLowerCase(), signed_in: !!a.last_login_at } : null
 }
 
+// team_speakers: how many people the team list puts on stage. When there are any, the
+// speaker's name, designation and photo come from the team, and the form shows them.
+const teamSpeakerCount = async (c: any, exhibitorId: number): Promise<number> => {
+  if (!(await teamReady(c))) return 0
+  return Number(((await c.env.DB.prepare('SELECT COUNT(*) AS n FROM exhibitor_team WHERE exhibitor_id = ? AND speaker = 1').bind(exhibitorId).first().catch(() => null)) as any)?.n) || 0
+}
 const dashboardStageJson = async (c: any, company: any, s: NonNullable<Awaited<ReturnType<typeof dashboardStage>>>) => ({
   eligible: true, booths: s.stands.booths, packages: s.stands.packages,
   ...stageSummary((await stageTalkOf(c, s.exhibitor.id)) || {}, s.stands.minutes),
   delegate: await delegatePassOf(c, company.email, s.stands.event_id),
+  team_speakers: await teamSpeakerCount(c, s.exhibitor.id),
 })
 
 mp.get('/api/mp/dashboard/stage-talk', async (c) => {
@@ -1565,10 +1573,12 @@ mp.put('/api/mp/dashboard/stage-talk', async (c) => {
   if (!company) return c.json({ error: 'Login required' }, 401)
   const { values, error } = stageDetailsInput((await c.req.json().catch(() => ({}))) || {})
   if (error) return c.json({ error }, 400)
-  const fields = Object.keys(values)
-  if (!fields.length) return c.json({ error: 'Nothing to save' }, 400)
   const s = await dashboardStage(c, company)
   if (!s) return c.json({ error: 'Stage talks come with a confirmed exhibition stand' }, 403)
+  // With speakers on the team list, who speaks is set there, not here.
+  if (await teamSpeakerCount(c, s.exhibitor.id)) for (const f of ['speaker_name', 'speaker_title', 'speaker_photo_url']) delete values[f]
+  const fields = Object.keys(values)
+  if (!fields.length) return c.json({ error: 'Nothing to save' }, 400)
   if (!(await uploadsOwnedBy(c, company.id, [values.speaker_photo_url]))) return c.json({ error: 'The speaker photo must be uploaded through the form' }, 400)
   const talk = await ensureStageTalk(c, s.exhibitor, s.stands)
   await c.env.DB.prepare(`UPDATE innovation_talks SET ${fields.map(f => `${f} = ?`).join(', ')}, details_updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
@@ -1646,6 +1656,565 @@ mp.patch('/api/mp/admin/stage-talks/:exhibitorId', async (c) => {
   await auditAdmin(c, admin, STAGE_SCHEDULED, id, { company: exhibitor.company_name, slot }, 'exhibitor')
   const all = ((await c.env.DB.prepare(`SELECT ${STAGE_COLS} FROM innovation_talks WHERE exhibitor_id IS NOT NULL`).all()).results || []) as any[]
   return c.json({ success: true, slot, clashes: stageClashes(all).get(id) || [] })
+})
+
+// ══════════════════════════════════════════
+// EXHIBITOR TEAMS (migration 0050, 11 Nov 2026)
+// ══════════════════════════════════════════
+// The booth contact (SPOC) lists who is coming from their company: at the booth, on
+// stage for the Innovation Talk & Showcase, or both, each with designation, email,
+// mobile, LinkedIn and a photo. Passes are issued from the list, up to the number the
+// booth includes; past that the dashboard offers a Delegate Pass for each extra person
+// (organiser, 11 Nov 2026), and only the organisers make exceptions, from the admin
+// Teams screen. The SPOC has the login and gets a pass only by adding themselves.
+// Whoever is ticked "on stage" becomes the stage talk's speaker.
+
+// Exhibitor passes per package, as public/exhibition.html sells them. Keys are the
+// floor plan's legacy type_key ('accelerator' = Enterprise Booth, 'standard' =
+// Accelerator Booth). The Premium Booth is not on that page: no number until the
+// organisers set one.
+const TEAM_PASSES: Record<string, number> = { pod: 1, explorer: 1, innovator: 2, accelerator: 3, standard: 5, enterprise: 8, mega: 15 }
+const TEAM_BADGES = ['Exhibitor', 'Exhibition Speaker']
+const TEAM_COLS = 'id, event_id, exhibitor_id, first_name, last_name, designation, company, email, mobile, linkedin_url, photo_url, at_booth, speaker, attendee_id, pass, pass_given, pass_note, pass_photo_url, added_by, created_at, updated_at'
+// A speaker photo the site already has, put on an imported row: kept, never typed in.
+const TEAM_SITE_PHOTO_RE = /^\/images\/talks\/[a-z0-9-]+\.webp$/
+const TEAM_ASKED = 'marketplace.team-asked'
+const TEAM_ASK_FAILED = 'marketplace.team-ask-failed'
+const TEAM_FIELDS: Record<string, { label: string; max: number }> = {
+  first_name: { label: 'First name', max: 60 }, last_name: { label: 'Last name', max: 60 },
+  designation: { label: 'Designation', max: 120 }, company: { label: 'Company name', max: 150 },
+}
+
+const teamReady = async (c: any): Promise<boolean> => {
+  try { await c.env.DB.prepare(`SELECT ${TEAM_COLS} FROM exhibitor_team LIMIT 0`).all(); return true } catch { return false }
+}
+
+const teamName = (m: any) => `${String(m.first_name || '').trim()} ${String(m.last_name || '').trim()}`.trim()
+const teamRole = (m: any) => (m.speaker && m.at_booth ? 'Exhibitor & Speaker' : m.speaker ? 'Exhibition Speaker' : 'Exhibitor')
+const teamBadge = (m: any) => (m.speaker ? 'Exhibition Speaker' : 'Exhibitor')
+// Someone who came with a pass of their own (paid Delegate, Speaker, VIP...): on the
+// team, but not one of the booth's passes.
+const ownPass = (m: any) => !!(m.attendee_id && m.pass && !m.pass_given && !TEAM_BADGES.includes(m.pass) && !/visitor/i.test(m.pass))
+const teamMissing = (m: any): string[] => [
+  ...(m.email ? [] : ['Email']), ...(m.photo_url ? [] : ['Photo']), ...(m.designation ? [] : ['Designation']),
+  ...(m.mobile ? [] : ['Mobile']), ...(m.linkedin_url ? [] : ['LinkedIn']),
+]
+
+// The exhibitor row behind a signed-in account, with its event. Any linked exhibitor
+// may keep a team; passes wait for a confirmed stand or a number set by the organisers.
+const teamExhibitorOf = async (c: any, company: any): Promise<{ id: number; company_name: string; booth_number: string; event_id: number } | null> => {
+  const ex = await resolveExhibitor(c, company)
+  if (!ex) return null
+  const row = await c.env.DB.prepare('SELECT id, company_name, booth_number, event_id FROM exhibitors WHERE id = ?').bind(ex.id).first().catch(() => null) as any
+  return row ? { id: Number(row.id), company_name: String(row.company_name || ''), booth_number: String(row.booth_number || ''), event_id: Number(row.event_id) || 1 } : null
+}
+
+// The floor plan's display names and sizes, for exhibitors known only from the sheet.
+const BOOTH_NAMES: Record<string, string> = { pod: 'Startup Pod', explorer: 'Explorer Booth', innovator: 'Innovator Booth', accelerator: 'Enterprise Booth', standard: 'Accelerator Booth', premium: 'Premium Enterprise Booth', enterprise: 'Flagship Pavilion', mega: 'Mega Pavilion' }
+
+// Booth branding sizes per package, as the organisers revised them on 11 Nov 2026
+// (only the Fascia Name was added; the rest unchanged). Keys are type_key, so
+// 'standard' is the Accelerator Booth and 'accelerator' the Enterprise Booth. The
+// Mega Pavilion was not in that list, so its email has no branding section.
+const W = (w: number, h: number) => `${w}mm (W) × ${h}mm (H)`
+const FASCIA_TABLE: [string, string][] = [['Fascia Name', W(1800, 300)], ['Table Logo', W(960, 670)]]
+const BOOTH_BRANDING: Record<string, [string, string][]> = {
+  pod: [['Left Wall', 'None'], ['Right Wall', 'None'], ['Back Wall', W(1500, 2400)], ...FASCIA_TABLE],
+  explorer: [['Left Wall', W(1940, 2440)], ['Right Wall', W(1940, 2440)], ['Back Wall', W(1940, 2440)], ...FASCIA_TABLE],
+  innovator: [['Left Wall', W(1940, 2440)], ['Right Wall', W(1940, 2440)], ['Back Wall', W(2930, 2440)], ...FASCIA_TABLE],
+  standard: [['Left Wall', W(2900, 2440)], ['Right Wall', W(2900, 2440)], ['Back Wall', W(2900, 2440)], ...FASCIA_TABLE],
+  accelerator: [['Left Wall', W(1940, 2440)], ['Right Wall', W(1940, 2440)], ['Back Wall', W(3920, 2440)], ...FASCIA_TABLE],
+  premium: [['Left Wall', W(1940, 2440)], ['Right Wall', W(1940, 2440)], ['Back Wall', W(4910, 2440)], ...FASCIA_TABLE],
+  enterprise: [['Left Wall', W(1940, 2440)], ['Right Wall', W(1940, 2440)], ['Back Wall', W(5910, 2440)], ...FASCIA_TABLE],
+}
+
+type TeamAllowance = { passes: number | null; source: 'set' | 'booth' | null; booths: string[]; packages: string[]; dims: string[]; types: string[]; contact_name: string }
+const teamSettings = (c: any, exhibitorId: number): Promise<any> =>
+  c.env.DB.prepare('SELECT passes, booth_type, booth_name, booth_dim, booths, contact_name FROM exhibitor_team_settings WHERE exhibitor_id = ?').bind(exhibitorId).first().catch(() => null)
+const TEAM_STANDS_SQL = `SELECT ba.exhibitor_id, b.code, b.type_key, b.name, b.dim FROM booth_allocations ba JOIN booths b ON b.id = ba.booth_id
+  WHERE ba.status = 'confirmed' AND ba.released_at IS NULL AND ba.exhibitor_id IS NOT NULL`
+const teamAllowance = async (c: any, exhibitorId: number): Promise<TeamAllowance> => {
+  let stands: any[] = []
+  try { stands = ((await c.env.DB.prepare(`${TEAM_STANDS_SQL} AND ba.exhibitor_id = ? ORDER BY CAST(b.code AS INTEGER), b.code`).bind(exhibitorId).all()).results || []) as any[] } catch { stands = [] }
+  return allowanceFrom(await teamSettings(c, exhibitorId), stands)
+}
+// set: the exhibitor's exhibitor_team_settings row or null; stands: its confirmed stands.
+const allowanceFrom = (set: any, stands: any[]): TeamAllowance => {
+  const fromSheet = !stands.length && set && String(set.booth_type || '')
+  const booths = stands.map(s => String(s.code))
+  const packages = fromSheet ? [String(set.booth_name || BOOTH_NAMES[set.booth_type] || '')].filter(Boolean) : [...new Set(stands.map(s => String(s.name || '')).filter(Boolean))]
+  const dims = fromSheet ? [String(set.booth_dim || '')].filter(Boolean) : [...new Set(stands.map(s => String(s.dim || '')).filter(Boolean))]
+  const types = fromSheet ? [String(set.booth_type)] : [...new Set(stands.map(s => String(s.type_key || '')).filter(Boolean))]
+  const base = { booths, packages, dims, types, contact_name: String(set?.contact_name || '') }
+  if (set && set.passes !== null && set.passes !== undefined && Number.isFinite(Number(set.passes))) return { passes: Math.max(0, Number(set.passes)), source: 'set', ...base }
+  if (stands.length) {
+    if (stands.some(s => TEAM_PASSES[s.type_key] === undefined)) return { passes: null, source: null, ...base }
+    return { passes: stands.reduce((n, s) => n + TEAM_PASSES[s.type_key], 0), source: 'booth', ...base }
+  }
+  if (fromSheet && TEAM_PASSES[set.booth_type] !== undefined) return { passes: TEAM_PASSES[set.booth_type] * Math.max(1, Number(set.booths) || 1), source: 'booth', ...base }
+  return { passes: null, source: null, ...base }
+}
+
+const teamRows = async (c: any, exhibitorId: number): Promise<any[]> =>
+  ((await c.env.DB.prepare(`SELECT ${TEAM_COLS} FROM exhibitor_team WHERE exhibitor_id = ? ORDER BY speaker DESC, id`).bind(exhibitorId).all()).results || []) as any[]
+
+// The picture that goes on the pass. A dashboard upload is copied into the attendee
+// photo store under a name made from the member and the upload, so it is copied once
+// and a new upload makes a new name; a site speaker photo is used where it is.
+const teamPassPhoto = async (c: any, m: any): Promise<string> => {
+  const u = String(m.photo_url || '')
+  if (TEAM_SITE_PHOTO_RE.test(u)) return siteOrigin(c) + u
+  if (!UPLOAD_URL_RE.test(u)) return ''
+  const up = await c.env.DB.prepare('SELECT id, data, content_type FROM mp_uploads WHERE id = ?').bind(parseInt(u.split('/').pop() || '', 10)).first().catch(() => null) as any
+  const data = String(up?.data || '')
+  if (data.startsWith('data:')) return data
+  if (!data.startsWith('r2:') || !c.env.UPLOADS) return ''
+  const ext = IMAGE_EXT[String(up.content_type || '')] || 'jpg'
+  const key = `avatars/team-${m.id}-u${up.id}.${ext}`
+  try {
+    if (!(await c.env.UPLOADS.head(key))) {
+      const obj = await c.env.UPLOADS.get(data.slice(3))
+      if (!obj) return ''
+      await c.env.UPLOADS.put(key, await obj.arrayBuffer(), { httpMetadata: { contentType: up.content_type || 'image/jpeg', cacheControl: 'public, max-age=31536000' } })
+    }
+  } catch { return '' }
+  return '/api/uploads/' + key
+}
+
+// Gives out the booth's passes, speakers first, then in the order people were added.
+// Run after every change to a team or to its number of passes.
+const settleTeam = async (c: any, ex: { id: number; event_id: number }): Promise<void> => {
+  if (!hooks.issueTeamPass) return
+  const allow = await teamAllowance(c, ex.id)
+  let left = allow.passes
+  for (const m of await teamRows(c, ex.id)) {
+    const save = (v: { attendee_id?: number | null; pass?: string; pass_given?: string; pass_note: string; pass_photo_url?: string }) => {
+      const sets = Object.keys(v), vals = sets.map(k => (v as any)[k])
+      return c.env.DB.prepare(`UPDATE exhibitor_team SET ${sets.map(k => `${k} = ?`).join(', ')} WHERE id = ?`).bind(...vals, m.id).run()
+    }
+    if (!m.email) {
+      if (m.attendee_id && m.pass_given) await hooks.releaseTeamPass?.(c, { attendeeId: Number(m.attendee_id), gave: m.pass_given, exhibitorId: ex.id })
+      await save({ attendee_id: null, pass: '', pass_given: '', pass_note: 'Add their email address to issue a pass.' })
+      continue
+    }
+    // No number yet: nothing is issued or taken back until the organisers set one.
+    if (left === null) { await save({ pass_note: 'Waiting for the organisers to confirm the passes your booth includes.' }); continue }
+    const slot = left > 0
+    const r = await hooks.issueTeamPass(c, {
+      eventId: ex.event_id, exhibitorId: ex.id, badge: slot ? teamBadge(m) : 'Visitor Pass', gave: String(m.pass_given || ''), create: slot,
+      name: teamName(m), email: m.email, mobile: m.mobile, company: m.company, designation: m.designation, linkedin: m.linkedin_url, role: teamRole(m),
+      avatarUrl: await teamPassPhoto(c, m), prevAvatarUrl: String(m.pass_photo_url || ''),
+    }).catch((e: any) => ({ error: String(e?.message || 'failed') }))
+    if ('error' in r) { await save({ pass_note: 'The pass could not be issued just now. The organisers have been told.' }); continue }
+    const own = !!(r.pass && !TEAM_BADGES.includes(r.pass) && !/visitor/i.test(r.pass))
+    if (slot && !own) left--
+    const holds = r.pass && !/visitor/i.test(r.pass)
+    await save({
+      attendee_id: r.attendeeId || null, pass: r.pass, pass_given: r.given, pass_photo_url: r.avatarSet,
+      pass_note: holds ? '' : `No pass yet: your booth includes ${allow.passes} pass${allow.passes === 1 ? '' : 'es'}, and they are all in use.`,
+    })
+  }
+}
+
+// The stage talk's speaker is whoever the team ticks "on stage", so it is typed once.
+const syncStageSpeakers = async (c: any, exhibitorId: number): Promise<void> => {
+  if (!(await stageReady(c))) return
+  const stands = (await confirmedStands(c, exhibitorId)).get(exhibitorId)
+  if (!stands) return
+  const sp = (await teamRows(c, exhibitorId)).filter(m => Number(m.speaker))
+  if (!sp.length) return
+  const ex = await c.env.DB.prepare('SELECT id, company_name FROM exhibitors WHERE id = ?').bind(exhibitorId).first() as any
+  if (!ex) return
+  const talk = await ensureStageTalk(c, { id: exhibitorId, company_name: ex.company_name }, stands)
+  const names = sp.map(teamName).join(' and ').slice(0, 120)
+  const titles = [...new Set(sp.map(m => String(m.designation || '').trim()).filter(Boolean))].join(' / ').slice(0, 120)
+  const photo = sp.map(m => String(m.photo_url || '')).find(u => UPLOAD_URL_RE.test(u) || TEAM_SITE_PHOTO_RE.test(u)) || ''
+  await c.env.DB.prepare(`UPDATE innovation_talks SET speaker_name = ?, speaker_title = ?, speaker_photo_url = CASE WHEN ? <> '' THEN ? ELSE speaker_photo_url END, details_updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+    .bind(names, titles, photo, photo, talk.id).run()
+}
+
+const teamMemberJson = (m: any) => ({
+  id: m.id, first_name: m.first_name, last_name: m.last_name, designation: m.designation, company: m.company, email: m.email,
+  mobile: m.mobile, linkedin_url: m.linkedin_url, photo_url: m.photo_url, at_booth: !!Number(m.at_booth), speaker: !!Number(m.speaker),
+  pass: m.pass || '', pass_note: m.pass_note || '', own_pass: ownPass(m), missing: teamMissing(m), added_by: m.added_by || '', updated_at: m.updated_at,
+})
+const teamUses = (members: any[]) => members.filter(m => !ownPass(m)).length
+
+const dashboardTeamJson = async (c: any, ex: { id: number; company_name: string; booth_number: string; event_id: number }) => {
+  const allow = await teamAllowance(c, ex.id)
+  const members = await teamRows(c, ex.id)
+  const used = teamUses(members)
+  return {
+    ready: true, eligible: true, company_name: ex.company_name, booth: ex.booth_number || allow.booths.join(', '),
+    passes: allow.passes, passes_source: allow.source, packages: allow.packages, used,
+    // used counts everyone who needs one of the booth's passes; issued, who holds one.
+    issued: members.filter(m => TEAM_BADGES.includes(m.pass) && m.pass_given).length,
+    can_add: allow.passes === null || used < allow.passes,
+    deadline: await teamDeadline(c),
+    branding: teamBranding(allow),
+    members: members.map(teamMemberJson),
+  }
+}
+
+// Checks one person as the form sends them. `existing` is the row being edited.
+const teamInput = async (c: any, body: any, ex: { id: number; company_name: string; event_id: number }, existing: any | null): Promise<{ values?: Record<string, any>; error?: string; status?: number }> => {
+  const v: Record<string, any> = {}
+  for (const [f, { label, max }] of Object.entries(TEAM_FIELDS)) {
+    const s = String(body[f] ?? '').replace(/\s+/g, ' ').trim()
+    if (s.length > max) return { error: `${label} is too long (max ${max} characters).` }
+    v[f] = s
+  }
+  if (!v.first_name) return { error: 'Please enter their first name.' }
+  if (!v.designation) return { error: 'Please enter their designation, for example Sales Manager. It is printed on the pass.' }
+  if (!v.company) v.company = ex.company_name
+  const email = String(body.email ?? '').trim().toLowerCase()
+  if (!EMAIL_RE.test(email) || email.length > 200) return { error: 'Please enter their email address. Their pass is sent to it.' }
+  v.email = email
+  const mobile = String(body.mobile ?? '').trim()
+  const digits = mobile.replace(/\D/g, '')
+  if (mobile && (digits.length < 10 || digits.length > 15 || !/^[+\d][\d\s()-]*$/.test(mobile))) return { error: 'Mobile number: please enter a 10-digit number, with the country code if it is not an Indian number.' }
+  v.mobile = mobile.slice(0, 20)
+  const li = cleanLink(body.linkedin_url)
+  if (li === null) return { error: 'LinkedIn: please paste the link to their LinkedIn profile, such as linkedin.com/in/name.' }
+  if (li) { let host = ''; try { host = new URL(li).hostname.toLowerCase() } catch { host = '' } if (!/(^|\.)linkedin\.com$/.test(host)) return { error: 'LinkedIn: please paste the link to their LinkedIn profile, such as linkedin.com/in/name.' } }
+  v.linkedin_url = (li || '').slice(0, 300)
+  const photo = String(body.photo_url ?? '').trim()
+  if (photo && !UPLOAD_URL_RE.test(photo) && !(existing && photo === existing.photo_url)) return { error: 'The photo must be uploaded through the form.' }
+  v.photo_url = photo
+  v.at_booth = body.at_booth ? 1 : 0
+  v.speaker = body.speaker ? 1 : 0
+  if (!v.at_booth && !v.speaker) return { error: 'Please choose their role: at the booth, on stage, or both.' }
+  // One person, one team.
+  const clash = await c.env.DB.prepare('SELECT t.id, t.exhibitor_id, e.company_name FROM exhibitor_team t LEFT JOIN exhibitors e ON e.id = t.exhibitor_id WHERE t.event_id = ? AND t.email = ? AND t.id <> ?')
+    .bind(ex.event_id, email, existing?.id || 0).first().catch(() => null) as any
+  if (clash) return { status: 409, error: Number(clash.exhibitor_id) === ex.id ? `${email} is already on your team.` : `${email} is already on the team of ${clash.company_name || 'another exhibitor'}. Please check the address.` }
+  // One mobile, one attendee, as on every other form.
+  if (v.mobile && (!existing || v.mobile !== existing.mobile) && hooks.teamMobileHolder) {
+    const holder = await hooks.teamMobileHolder(c, ex.event_id, v.mobile, email)
+    if (holder) return { status: 409, error: `This mobile number is already registered to another person (${holder.email}). Please enter this person's own number, or leave it empty.` }
+  }
+  return { values: v }
+}
+
+// A pass that is theirs and not the booth's: any pass but a Visitor Pass or an
+// exhibitor pass, and not a paid tier still waiting for its payment.
+const holdsOwnPass = async (c: any, eventId: number, email: any): Promise<boolean> => {
+  const a = await c.env.DB.prepare('SELECT badge_type, payment_status FROM attendees WHERE event_id = ? AND lower(email) = ? ORDER BY id LIMIT 1')
+    .bind(eventId, String(email || '').trim().toLowerCase()).first().catch(() => null) as any
+  const badge = String(a?.badge_type || '')
+  return !!badge && !/visitor/i.test(badge) && !TEAM_BADGES.includes(badge) && !['pending', 'refunded'].includes(String(a?.payment_status || '').trim().toLowerCase())
+}
+
+type TeamExhibitor = { id: number; company_name: string; booth_number: string; event_id: number }
+const teamDashboard = async (c: any): Promise<{ res?: Response; company?: any; ex?: TeamExhibitor }> => {
+  const company = await getCompanyFromSession(c) as any
+  if (!company) return { res: c.json({ error: 'Login required' }, 401) }
+  if (company.role === 'admin') return { res: c.json({ ready: true, eligible: false }) }
+  if (!(await teamReady(c))) return { res: c.json({ ready: false, eligible: false }) }
+  const ex = await teamExhibitorOf(c, company)
+  if (!ex) return { res: c.json({ ready: true, eligible: false }) }
+  return { company, ex }
+}
+
+// People put on the list by the sheet import have never been through settleTeam: give
+// out their passes before showing them, so "No pass yet" never appears without a reason.
+const unsettled = (members: any[]) => members.some(m => !m.pass && !m.pass_note)
+
+mp.get('/api/mp/dashboard/team', async (c) => {
+  const t = await teamDashboard(c); if (t.res) return t.res
+  if (unsettled(await teamRows(c, t.ex!.id))) { await settleTeam(c, t.ex!); await syncStageSpeakers(c, t.ex!.id) }
+  return c.json(await dashboardTeamJson(c, t.ex!))
+})
+
+mp.post('/api/mp/dashboard/team', async (c) => {
+  const t = await teamDashboard(c); if (t.res) return t.res
+  const ex = t.ex!, company = t.company
+  const allow = await teamAllowance(c, ex.id)
+  const members = await teamRows(c, ex.id)
+  const body = ((await c.req.json().catch(() => ({}))) || {}) as any
+  // The booth's number of passes is the number of people; more is a Delegate Pass each.
+  // Someone who already holds a pass of their own (the Delegate Pass just bought, a
+  // main-stage Speaker) takes none of the booth's, so they can always be listed.
+  if (allow.passes !== null && teamUses(members) >= allow.passes && !(await holdsOwnPass(c, ex.event_id, body.email))) {
+    return c.json({ error: `Your booth includes ${allow.passes} pass${allow.passes === 1 ? '' : 'es'}, and all are in use. For anyone else, please buy a Delegate Pass.`, code: 'team_full', passes: allow.passes }, 409)
+  }
+  const { values, error, status } = await teamInput(c, body, ex, null)
+  if (error) return c.json({ error }, (status || 400) as any)
+  if (values!.photo_url && !(await uploadsOwnedBy(c, company.id, [values!.photo_url]))) return c.json({ error: 'The photo must be uploaded through the form.' }, 400)
+  const cols = Object.keys(values!)
+  try {
+    await c.env.DB.prepare(`INSERT INTO exhibitor_team (event_id, exhibitor_id, ${cols.join(', ')}, added_by) VALUES (?, ?, ${cols.map(() => '?').join(', ')}, ?)`)
+      .bind(ex.event_id, ex.id, ...cols.map(k => values![k]), String(company.email || '')).run()
+  } catch { return c.json({ error: `${values!.email} is already on a team.` }, 409) }
+  await settleTeam(c, ex)
+  await syncStageSpeakers(c, ex.id)
+  return c.json({ success: true, ...(await dashboardTeamJson(c, ex)) })
+})
+
+mp.put('/api/mp/dashboard/team/:id', async (c) => {
+  const t = await teamDashboard(c); if (t.res) return t.res
+  const ex = t.ex!, company = t.company
+  const row = await c.env.DB.prepare(`SELECT ${TEAM_COLS} FROM exhibitor_team WHERE id = ? AND exhibitor_id = ?`).bind(parseInt(c.req.param('id'), 10) || 0, ex.id).first() as any
+  if (!row) return c.json({ error: 'That person is not on your team any more. Refresh the page.' }, 404)
+  const { values, error, status } = await teamInput(c, (await c.req.json().catch(() => ({}))) || {}, ex, row)
+  if (error) return c.json({ error }, (status || 400) as any)
+  if (values!.photo_url && values!.photo_url !== row.photo_url && !(await uploadsOwnedBy(c, company.id, [values!.photo_url]))) return c.json({ error: 'The photo must be uploaded through the form.' }, 400)
+  // A new email is a different person to the pass system: the old one gives back what this list gave.
+  const moved = row.email && values!.email !== row.email
+  if (moved && row.attendee_id && row.pass_given) await hooks.releaseTeamPass?.(c, { attendeeId: Number(row.attendee_id), gave: row.pass_given, exhibitorId: ex.id })
+  const cols = Object.keys(values!)
+  await c.env.DB.prepare(`UPDATE exhibitor_team SET ${cols.map(k => `${k} = ?`).join(', ')}${moved ? ", attendee_id = NULL, pass = '', pass_given = '', pass_photo_url = ''" : ''}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+    .bind(...cols.map(k => values![k]), row.id).run()
+  await settleTeam(c, ex)
+  await syncStageSpeakers(c, ex.id)
+  return c.json({ success: true, ...(await dashboardTeamJson(c, ex)) })
+})
+
+const removeTeamMember = async (c: any, row: any, ex: { id: number; event_id: number }) => {
+  if (row.attendee_id && row.pass_given) await hooks.releaseTeamPass?.(c, { attendeeId: Number(row.attendee_id), gave: row.pass_given, exhibitorId: ex.id })
+  await c.env.DB.prepare('DELETE FROM exhibitor_team WHERE id = ?').bind(row.id).run()
+  await settleTeam(c, ex)
+}
+
+mp.delete('/api/mp/dashboard/team/:id', async (c) => {
+  const t = await teamDashboard(c); if (t.res) return t.res
+  const ex = t.ex!
+  const row = await c.env.DB.prepare(`SELECT ${TEAM_COLS} FROM exhibitor_team WHERE id = ? AND exhibitor_id = ?`).bind(parseInt(c.req.param('id'), 10) || 0, ex.id).first() as any
+  if (!row) return c.json({ error: 'That person is not on your team any more. Refresh the page.' }, 404)
+  await removeTeamMember(c, row, ex)
+  await syncStageSpeakers(c, ex.id)
+  return c.json({ success: true, ...(await dashboardTeamJson(c, ex)) })
+})
+
+// ── Teams, for the organisers ──
+const teamAskState = (lastAsked: any, accounts: number, unsubscribed: boolean) => {
+  const d = daysSince(lastAsked)
+  const reason = !accounts ? 'No contact email' : unsubscribed ? 'This address has unsubscribed' : d !== null && d < 1 ? 'Asked today' : ''
+  return { can_ask: !reason, ask_reason: reason }
+}
+
+// The contact accounts behind an exhibitor: every non-admin login linked to it, or one
+// made from the booth email when there is none yet.
+const teamAccounts = async (c: any, ex: { id: number; company_name: string; contact_email?: string }) => {
+  let rows = ((await c.env.DB.prepare("SELECT id, email FROM mp_companies WHERE exhibitor_id = ? AND role <> 'admin' ORDER BY id").bind(ex.id).all()).results || []) as any[]
+  if (!rows.length && String(ex.contact_email || '').trim()) {
+    const id = await ensureExhibitorAccount(c, { id: ex.id, company_name: ex.company_name, contact_email: String(ex.contact_email) }).catch(() => null)
+    const acc = id ? await c.env.DB.prepare('SELECT id, email FROM mp_companies WHERE id = ?').bind(id).first() as any : null
+    if (acc && Number((await c.env.DB.prepare('SELECT exhibitor_id FROM mp_companies WHERE id = ?').bind(acc.id).first() as any)?.exhibitor_id) === ex.id) rows = [acc]
+  }
+  return rows
+}
+
+const unsubscribedEmail = async (c: any, email: string) =>
+  !!(await c.env.DB.prepare('SELECT 1 AS hit FROM attendees WHERE unsubscribed_at IS NOT NULL AND lower(trim(email)) = lower(trim(?)) LIMIT 1').bind(email).first().catch(() => null))
+
+mp.get('/api/mp/admin/teams', async (c) => {
+  const admin = await marketplaceAdmin(c)
+  if (!admin) return c.json({ error: 'Admin required' }, 403)
+  if (!(await teamReady(c))) return c.json({ ready: false, teams: [] })
+  // Seven reads for the whole screen, whatever the number of exhibitors: a read per
+  // exhibitor would be several hundred. Never exhibitors.description (internal notes).
+  const all_ = async (sql: string): Promise<any[]> => ((await c.env.DB.prepare(sql).all().catch(() => ({ results: [] }))).results || []) as any[]
+  const group = (rows: any[], key = 'exhibitor_id') => { const m = new Map<number, any[]>(); for (const r of rows) { const k = Number(r[key]); m.set(k, [...(m.get(k) || []), r]) } return m }
+  const [exAll, standRows, setRows, memberRows, accountRows, askedRows, unsubRows] = await Promise.all([
+    all_('SELECT id, company_name, booth_number, contact_email FROM exhibitors ORDER BY company_name COLLATE NOCASE'),
+    all_(`${TEAM_STANDS_SQL} ORDER BY CAST(b.code AS INTEGER), b.code`),
+    all_('SELECT exhibitor_id, passes, booth_type, booth_name, booth_dim, booths, contact_name FROM exhibitor_team_settings'),
+    all_(`SELECT ${TEAM_COLS} FROM exhibitor_team ORDER BY speaker DESC, id`),
+    all_("SELECT email, exhibitor_id FROM mp_companies WHERE exhibitor_id IS NOT NULL AND role <> 'admin' ORDER BY id"),
+    all_(`SELECT entity_id, MAX(created_at) AS at FROM admin_audit WHERE action = '${TEAM_ASKED}' AND entity = 'exhibitor' GROUP BY entity_id`),
+    all_("SELECT DISTINCT lower(trim(email)) AS email FROM attendees WHERE unsubscribed_at IS NOT NULL"),
+  ])
+  const standsOf = group(standRows), membersOf = group(memberRows), accountsOf = group(accountRows)
+  const setOf = new Map(setRows.map(r => [Number(r.exhibitor_id), r]))
+  const askedOf = new Map(askedRows.map(r => [Number(r.entity_id), r.at]))
+  const unsubSet = new Set(unsubRows.map(r => String(r.email)))
+  const teams = []
+  for (const e of exAll) {
+    const id = Number(e.id)
+    if (!standsOf.has(id) && !membersOf.has(id) && !setOf.has(id) && !accountsOf.has(id)) continue
+    const allow = allowanceFrom(setOf.get(id) || null, standsOf.get(id) || [])
+    const members = membersOf.get(id) || []
+    const accounts = accountsOf.get(id) || []
+    const emails = accounts.length ? accounts.map(a => String(a.email)) : (String(e.contact_email || '').trim() ? [String(e.contact_email).trim()] : [])
+    const lastAsked = askedOf.get(id) || null
+    const unsub = emails.length > 0 && emails.every(m => unsubSet.has(m.trim().toLowerCase()))
+    teams.push({
+      exhibitor_id: Number(e.id), company_name: e.company_name, booth: e.booth_number || allow.booths.join(', '), packages: allow.packages, contact_name: allow.contact_name,
+      passes: allow.passes, passes_source: allow.source, used: teamUses(members), contacts: emails, last_asked: lastAsked,
+      members: members.map(teamMemberJson),
+      speakers: members.filter(m => Number(m.speaker)).length, photos_missing: members.filter(m => !m.photo_url).length,
+      ...teamAskState(lastAsked, emails.length, unsub),
+    })
+  }
+  const all = teams.flatMap(t => t.members)
+  return c.json({
+    ready: true, teams, deadline: await teamDeadline(c),
+    summary: {
+      companies: teams.length, with_team: teams.filter(t => t.members.length).length, asked: teams.filter(t => t.last_asked).length,
+      people: all.length, with_pass: all.filter(m => m.pass && !/visitor/i.test(m.pass)).length, photos_missing: all.filter(m => !m.photo_url).length,
+      no_number: teams.filter(t => t.passes === null).length, can_ask: teams.filter(t => t.can_ask).length,
+    },
+  })
+})
+
+const adminTeamExhibitor = async (c: any) => {
+  const ex = await c.env.DB.prepare('SELECT id, company_name, booth_number, contact_email, event_id FROM exhibitors WHERE id = ?').bind(parseInt(c.req.param('exhibitorId'), 10) || 0).first() as any
+  return ex ? { id: Number(ex.id), company_name: String(ex.company_name || ''), booth_number: String(ex.booth_number || ''), contact_email: String(ex.contact_email || ''), event_id: Number(ex.event_id) || 1 } : null
+}
+
+// The organisers' exception: { passes: n } sets the number, { passes: null } goes back
+// to the booth's own. Passes are given or taken back straight away.
+mp.put('/api/mp/admin/teams/:exhibitorId/passes', async (c) => {
+  const admin = await marketplaceAdmin(c)
+  if (!admin) return c.json({ error: 'Admin required' }, 403)
+  if (!(await teamReady(c))) return c.json({ error: 'Teams need migration 0050 on the database first' }, 503)
+  const ex = await adminTeamExhibitor(c)
+  if (!ex) return c.json({ error: 'Exhibitor not found' }, 404)
+  const body = ((await c.req.json().catch(() => ({}))) || {}) as any
+  const before = await teamAllowance(c, ex.id)
+  let n: number | null = null
+  if (body.passes !== null && body.passes !== '') {
+    n = Number(body.passes)
+    if (!Number.isInteger(n) || n < 0 || n > 100) return c.json({ error: 'The number of passes must be a whole number from 0 to 100' }, 400)
+  }
+  // The sheet's booth details on the same row stay as they are.
+  await c.env.DB.prepare('INSERT INTO exhibitor_team_settings (exhibitor_id, passes, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(exhibitor_id) DO UPDATE SET passes = excluded.passes, updated_at = CURRENT_TIMESTAMP').bind(ex.id, n).run()
+  await settleTeam(c, ex)
+  const after = await teamAllowance(c, ex.id)
+  await auditAdmin(c, admin, 'marketplace.team-passes', ex.id, { company: ex.company_name, from: before.passes, to: after.passes, source: after.source }, 'exhibitor')
+  return c.json({ success: true, passes: after.passes, passes_source: after.source })
+})
+
+mp.post('/api/mp/admin/teams/:exhibitorId/settle', async (c) => {
+  const admin = await marketplaceAdmin(c)
+  if (!admin) return c.json({ error: 'Admin required' }, 403)
+  if (!(await teamReady(c))) return c.json({ error: 'Teams need migration 0050 on the database first' }, 503)
+  const ex = await adminTeamExhibitor(c)
+  if (!ex) return c.json({ error: 'Exhibitor not found' }, 404)
+  await settleTeam(c, ex)
+  await syncStageSpeakers(c, ex.id)
+  const members = await teamRows(c, ex.id)
+  await auditAdmin(c, admin, 'marketplace.team-settled', ex.id, { company: ex.company_name, people: members.length }, 'exhibitor')
+  return c.json({ success: true, members: members.map(teamMemberJson) })
+})
+
+mp.delete('/api/mp/admin/teams/member/:id', async (c) => {
+  const admin = await marketplaceAdmin(c)
+  if (!admin) return c.json({ error: 'Admin required' }, 403)
+  if (!(await teamReady(c))) return c.json({ error: 'Teams need migration 0050 on the database first' }, 503)
+  const row = await c.env.DB.prepare(`SELECT ${TEAM_COLS} FROM exhibitor_team WHERE id = ?`).bind(parseInt(c.req.param('id'), 10) || 0).first() as any
+  if (!row) return c.json({ error: 'Not found' }, 404)
+  await removeTeamMember(c, row, { id: Number(row.exhibitor_id), event_id: Number(row.event_id) || 1 })
+  await syncStageSpeakers(c, Number(row.exhibitor_id))
+  await auditAdmin(c, admin, 'marketplace.team-member-removed', row.exhibitor_id, { name: teamName(row), email: row.email }, 'exhibitor')
+  return c.json({ success: true })
+})
+
+// "Who is coming from your company?" to the booth contact, with a one-click sign-in
+// to the Team screen. Once a day per exhibitor at most, never to an unsubscribed
+// address, one request per exhibitor (the admin page paces them).
+// Written in the organisers' own exhibitor-email format (Tushar's booth branding email,
+// 11 Nov 2026): "Dear <contact>", the booth and its size, the details as a list, a
+// deadline, the team's sign-off. The deadline is the organisers' to set (Teams screen).
+const TEAM_DEADLINE_KEY = 'team_details_deadline'
+const teamDeadline = async (c: any) => String((await setting(c, TEAM_DEADLINE_KEY)) || '').trim()
+const letterShell = (body: string) => `<!DOCTYPE html><html><head><meta charset="utf-8"></head>
+<body style="margin:0;background:#f6f7fb;padding:24px;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1e2140">
+  <div style="max-width:620px;margin:0 auto;background:#fff;border-radius:14px;padding:28px;border:1px solid #e7e9f5">${body}</div></body></html>`
+// "Explorer Booth (2m × 2m)", plain text.
+const boothLabel = (allow: TeamAllowance) => allow.packages.length === 1
+  ? `${allow.packages[0]}${allow.dims.length === 1 ? ` (${allow.dims[0].replace(/\s*x\s*/i, ' × ')})` : ''}` : ''
+// The branding sizes live on the dashboard (organiser, 11 Nov 2026). One booth type
+// only: two different stands would need two tables, which is a conversation with the
+// organisers rather than a screen.
+const teamBranding = (allow: TeamAllowance) => {
+  const rows = allow.types.length === 1 ? BOOTH_BRANDING[allow.types[0]] : undefined
+  return rows ? { booth: boothLabel(allow) || BOOTH_NAMES[allow.types[0]] || 'booth', rows } : null
+}
+const brandingSection = (allow: TeamAllowance, p: (t: string) => string) =>
+  teamBranding(allow) ? p('The branding sizes for your booth, as revised on 11 November 2026, are on the same page under <strong>Booth Branding</strong>. Please use those sizes for your artwork.') : ''
+const sendTeamRequest = async (c: any, ex: { id: number; company_name: string }, account: { id: number; email: string }, allow: TeamAllowance, members: any[]): Promise<boolean> => {
+  const p = (html: string) => `<p style="margin:0 0 12px;font-size:14px;line-height:1.65">${html}</p>`
+  const h = (text: string) => `<p style="margin:20px 0 8px;font-size:15px;font-weight:700">${text}</p>`
+  const ul = (items: string[]) => `<ul style="margin:0 0 12px;padding-left:20px;font-size:14px;line-height:1.65">${items.map(i => `<li style="margin:0 0 4px">${i}</li>`).join('')}</ul>`
+  const stage = await stageSlotOf(c, ex.id).catch(() => null)
+  const deadline = await teamDeadline(c)
+  const photos = members.filter(m => !m.photo_url).length
+  const fromSheet = members.filter(m => m.added_by === 'sheet').length
+  const first = String(allow.contact_name || '').trim().split(/\s+/)[0] || ''
+  const booth = htmlEsc(boothLabel(allow) || 'booth')
+  const body = p(`Dear ${htmlEsc(first || `${ex.company_name} team`)},`)
+    + p('Greetings from Bharat AI Innovation!')
+    + p(`Thank you for being part of Bharat AI Innovation Conference &amp; Exhibition 2026, 20&ndash;21 November 2026, World Trade Center, Mumbai. Please share the details of everyone from <strong>${htmlEsc(ex.company_name)}</strong> who will be at your ${booth}. We print the official event passes and lanyards from these details.`)
+    + h('Booth Representative and Speaker Details')
+    + p('For each person, please choose their role:')
+    + ul(['<strong>Exhibitor</strong>: present at your booth', `<strong>Speaker</strong>: presents your Innovation Talk &amp; Showcase on stage${stage?.minutes ? ` (${stage.minutes} minutes)` : ''}`, '<strong>Both</strong>: one person can be both'])
+    + p('Kindly provide the following for each person:')
+    + ul(['First name and last name', 'Designation', 'Organisation name', 'Official email address', 'Contact number', 'LinkedIn profile', 'A clear, recent photo of their face. It is printed on the pass, and the speaker&rsquo;s photo is also shown on stage.'])
+    // "We have already added" only for the people our team put in from the sheet.
+    + (members.length ? p(`${fromSheet ? `We have already added the ${fromSheet === 1 ? 'person' : `${fromSheet} people`} you shared with our team${members.length > fromSheet ? `, and your list has ${members.length} people in all` : ''}.` : `Your team list has ${members.length === 1 ? '1 person' : `${members.length} people`} so far.`} Please check the details${photos ? ` and add the ${photos === 1 ? 'photo that is' : `${photos} photos that are`} missing` : ''}.`) : '')
+    + (allow.passes ? h('Passes Included') + p(`Your ${booth} includes <strong>${allow.passes} exhibitor pass${allow.passes === 1 ? '' : 'es'}</strong>, so you can add up to ${allow.passes} ${allow.passes === 1 ? 'person' : 'people'}. For anyone more, you can buy a Delegate Pass from the same page.`) : '')
+    + p('Please note: as the contact person, you receive a pass only if you add yourself.')
+    + emailButton(await signInLink(c, account.id, 'team'), 'Add your team details')
+    + (deadline ? h(`Deadline: ${htmlEsc(deadline)}`) + p('We request you to add the details by this date, to allow time for printing the passes and lanyards.') : '')
+    + brandingSection(allow, p)
+    + p('The button signs you in directly. No password is needed. It works for 7 days. After that, open bharataiinnovation.com/marketplace, choose &ldquo;Email me a sign-in link&rdquo; and enter this email address.')
+    + p('Please feel free to reply to this email for any clarification or assistance.')
+    + p('Looking forward to your participation at Bharat AI Innovation 2026.')
+    + `<p style="margin:20px 0 0;font-size:14px;line-height:1.6">Warm regards,<br><strong>Team Bharat AI Innovation</strong><br>Conference &amp; Expo 2026</p>
+       <p style="margin:12px 0 0;font-size:11px;letter-spacing:.06em;color:#888">AI FOR A VIKSIT BHARAT &middot; INDIA&rsquo;S B2B PLATFORM FOR AI</p>`
+  return sendMail(c, 'team-request', account.email, `Booth Representative and Speaker Details: ${ex.company_name} | Bharat AI Innovation 2026`, letterShell(body))
+}
+
+// The deadline the email gives, as the organisers write it ("15 November 2026").
+mp.put('/api/mp/admin/teams/settings', async (c) => {
+  const admin = await marketplaceAdmin(c)
+  if (!admin) return c.json({ error: 'Admin required' }, 403)
+  const body = ((await c.req.json().catch(() => ({}))) || {}) as any
+  const deadline = String(body.deadline ?? '').replace(/\s+/g, ' ').trim()
+  if (deadline.length > 60) return c.json({ error: 'Keep the deadline short, for example 15 November 2026' }, 400)
+  await c.env.DB.prepare('INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').bind(TEAM_DEADLINE_KEY, deadline).run()
+  await auditAdmin(c, admin, 'marketplace.team-deadline', null, { deadline }, 'app_settings')
+  return c.json({ success: true, deadline })
+})
+
+mp.post('/api/mp/admin/teams/:exhibitorId/ask', async (c) => {
+  const admin = await marketplaceAdmin(c)
+  if (!admin) return c.json({ error: 'Admin required' }, 403)
+  if (!(await teamReady(c))) return c.json({ error: 'Teams need migration 0050 on the database first' }, 503)
+  const ex = await adminTeamExhibitor(c)
+  if (!ex) return c.json({ error: 'Exhibitor not found' }, 404)
+  const accounts = await teamAccounts(c, ex)
+  const lastAsked = ((await c.env.DB.prepare(`SELECT MAX(created_at) AS at FROM admin_audit WHERE action = '${TEAM_ASKED}' AND entity = 'exhibitor' AND entity_id = ?`).bind(String(ex.id)).first().catch(() => null)) as any)?.at || null
+  const send: any[] = []
+  for (const a of accounts) if (!(await unsubscribedEmail(c, a.email))) send.push(a)
+  const state = teamAskState(lastAsked, accounts.length, accounts.length > 0 && !send.length)
+  if (!state.can_ask) return c.json({ error: state.ask_reason }, 409)
+  // Passes for the people already listed exist before the email says they were added.
+  if (unsettled(await teamRows(c, ex.id))) { await settleTeam(c, ex); await syncStageSpeakers(c, ex.id) }
+  const allow = await teamAllowance(c, ex.id)
+  const members = await teamRows(c, ex.id)
+  const sent: string[] = []
+  for (const a of send) if (await sendTeamRequest(c, ex, a, allow, members)) sent.push(a.email)
+  await auditAdmin(c, admin, sent.length ? TEAM_ASKED : TEAM_ASK_FAILED, ex.id, { company: ex.company_name, to: send.map(a => a.email), sent: sent.length }, 'exhibitor')
+  if (!sent.length) return c.json({ error: 'The email service did not accept the message. Check the Elastic Email settings.' }, 502)
+  return c.json({ success: true, company: ex.company_name, sent: sent.length })
+})
+
+// Everyone on every team, for the badge desk, the printers and the speaker cards. A
+// cell that begins like a formula is quoted so a spreadsheet does not run it.
+mp.get('/api/mp/admin/teams.csv', async (c) => {
+  const admin = await marketplaceAdmin(c)
+  if (!admin) return c.json({ error: 'Admin required' }, 403)
+  if (!(await teamReady(c))) return c.json({ error: 'Teams need migration 0050 on the database first' }, 503)
+  const rows = ((await c.env.DB.prepare(`SELECT t.*, e.company_name AS exhibitor, e.booth_number FROM exhibitor_team t JOIN exhibitors e ON e.id = t.exhibitor_id ORDER BY e.company_name COLLATE NOCASE, t.speaker DESC, t.id`).all()).results || []) as any[]
+  const origin = siteOrigin(c)
+  const cell = (v: any) => { let s = String(v ?? ''); if (/^[=+\-@\t\r]/.test(s)) s = "'" + s; return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s }
+  const head = ['Exhibitor', 'Booth', 'First name', 'Last name', 'Designation', 'Company name', 'Email', 'Mobile', 'LinkedIn', 'At the booth', 'On stage', 'Pass', 'Photo', 'Added by', 'Updated (UTC)']
+  const lines = [head.join(',')].concat(rows.map(r => [r.exhibitor, r.booth_number, r.first_name, r.last_name, r.designation, r.company, r.email, r.mobile, r.linkedin_url,
+    Number(r.at_booth) ? 'Yes' : 'No', Number(r.speaker) ? 'Yes' : 'No', r.pass || (r.pass_note ? 'None yet' : ''), r.photo_url ? origin + r.photo_url : '', r.added_by, r.updated_at].map(cell).join(',')))
+  return new Response('﻿' + lines.join('\r\n'), { headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="exhibitor-teams.csv"', 'Cache-Control': 'no-store' } })
 })
 
 mp.patch('/api/mp/admin/listings/:id', async (c) => {

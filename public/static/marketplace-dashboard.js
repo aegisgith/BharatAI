@@ -71,7 +71,9 @@ const initDashboard = async () => {
     document.getElementById('dash-company-name').textContent = name
     const tn = document.getElementById('dash-topbar-name'); if (tn) tn.textContent = name
     const av = document.getElementById('dash-avatar'); if (av) av.textContent = name.charAt(0).toUpperCase()
-    await Promise.all([loadStats(), loadListings(), loadStage(), loadInquiries(), loadReviews(), loadProfile(), loadRecentInquiries()])
+    await Promise.all([loadStats(), loadListings(), loadStage(), loadTeam(), loadInquiries(), loadReviews(), loadProfile(), loadRecentInquiries()])
+    // The "add your team" email signs in to /marketplace/dashboard#team.
+    if (location.hash === '#team' && teamInfo && teamInfo.eligible) switchSection('team')
   } catch (err) { showToast('Failed to load dashboard', true) }
 }
 
@@ -194,16 +196,29 @@ const renderStage = () => {
   // Never overwrite a box the exhibitor is typing in.
   const set = (id, v) => { const el = document.getElementById(id); if (el && document.activeElement !== el) el.value = v || '' }
   set('stage-topic', s.topic); set('stage-showcase', s.showcase); set('stage-speaker', s.speaker_name); set('stage-speaker-title', s.speaker_title); set('stage-bio', s.speaker_bio)
-  const img = document.getElementById('stage-photo-preview'), u = safeImageUrl(s.speaker_photo_url)
+  const img = document.getElementById('stage-photo-preview'), u = safeImageUrl(s.speaker_photo_url) || safeTeamPhoto(s.speaker_photo_url)
   if (u) { img.src = u; img.classList.remove('hidden') } else { img.removeAttribute('src'); img.classList.add('hidden') }
+  // With speakers ticked on the team list, who speaks is set there: show it, hide the boxes.
+  const fromTeam = Number(s.team_speakers) > 0
+  ;['stage-photo-file', 'stage-speaker', 'stage-speaker-title'].forEach(id => { const f = document.getElementById(id); const box = f && f.closest('.form-field'); if (box) box.style.display = fromTeam ? 'none' : '' })
+  const note = document.getElementById('stage-from-team')
+  if (note) {
+    note.hidden = !fromTeam
+    note.innerHTML = fromTeam ? `<p style="margin:0"><strong>${esc(s.speaker_name || '')}</strong>${s.speaker_title ? `, ${esc(s.speaker_title)}` : ''}</p>
+      <p class="text-xs text-slate-500" style="margin:4px 0 8px">From Your Team: the people ticked "On stage". To change who speaks, or their photo, edit them there.</p>
+      <button type="button" class="mp-btn-secondary text-sm" data-goto-team>Open Your Team</button>` : ''
+    const go = note.querySelector('[data-goto-team]'); if (go) go.addEventListener('click', () => switchSection('team'))
+  }
 }
 
 // Exhibitors see what their booth includes as two steps, so nothing depends on
 // finding the right menu item.
 const renderTodo = () => {
   const box = document.getElementById('dash-todo'); if (!box) return
-  if (!stageInfo || !stageInfo.eligible || dashListings === null) { box.classList.add('hidden'); return }
-  const s = stageInfo, listed = dashListings.length > 0, live = dashListings.some(l => l.status === 'approved')
+  const stageOn = !!(stageInfo && stageInfo.eligible), teamOn = !!(teamInfo && teamInfo.eligible)
+  if ((!stageOn && !teamOn) || dashListings === null) { box.classList.add('hidden'); return }
+  const s = stageOn ? stageInfo : {}, listed = dashListings.length > 0, live = dashListings.some(l => l.status === 'approved')
+  const people = teamOn ? teamInfo.members : [], noPhoto = people.filter(m => !m.photo_url).length
   const step = (done, title, note, action) => `<div class="flex gap-3 items-center justify-between flex-wrap" style="padding:12px 0;border-top:1px solid #e5e7eb">
       <div class="flex gap-3 items-center" style="flex:1;min-width:200px"><i class="fas ${done ? 'fa-check-circle' : 'fa-circle'}" style="font-size:20px;color:${done ? '#059669' : '#cbd5e1'}"></i>
         <div><p class="font-medium text-sm">${title}</p><p class="text-xs text-slate-500">${note}</p></div></div>
@@ -212,10 +227,13 @@ const renderTodo = () => {
     + step(listed, 'List your AI product',
       live ? 'Live on the AI Marketplace.' : listed ? 'In review. We email you as soon as it is live.' : 'Free with your booth. Takes about five minutes.',
       listed ? '' : '<a href="/marketplace?submit=true" class="mp-btn-primary text-sm py-2 px-4" style="display:inline-block;text-decoration:none">List your product</a>')
-    + step(s.details_complete, `Add your stage talk${s.minutes ? ` (${esc(s.minutes)} minutes)` : ''}`,
+    + (teamOn ? step(people.length > 0 && !noPhoto, 'Add your team and their photos',
+      people.length ? `${people.length} ${people.length === 1 ? 'person' : 'people'} added${noPhoto ? `. ${noPhoto} ${noPhoto === 1 ? 'photo is' : 'photos are'} missing.` : '.'}` : 'Who is coming: at the booth, on stage, or both. Passes are issued from this list.',
+      `<button type="button" class="${people.length && !noPhoto ? 'mp-btn-secondary' : 'mp-btn-primary'} text-sm py-2 px-4" data-goto="team">${people.length ? 'Open' : 'Add your team'}</button>`) : '')
+    + (!stageOn ? '' : step(s.details_complete, `Add your stage talk${s.minutes ? ` (${esc(s.minutes)} minutes)` : ''}`,
       s.slot ? `On stage ${esc(s.slot)}.` : s.details_complete ? 'Details saved. Your time on stage will show here.' : 'Your topic, what you will showcase, and the speaker with a photo.',
-      `<button type="button" class="${s.details_complete ? 'mp-btn-secondary' : 'mp-btn-primary'} text-sm py-2 px-4" data-goto="stage">${s.details_complete ? 'Edit' : 'Add details'}</button>`)
-    // Every exhibitor is also a delegate: the pass is made when the organisers email them.
+      `<button type="button" class="${s.details_complete ? 'mp-btn-secondary' : 'mp-btn-primary'} text-sm py-2 px-4" data-goto="stage">${s.details_complete ? 'Edit' : 'Add details'}</button>`))
+    // Shown to a contact who holds a pass (theirs, or from being on the team).
     + (s.delegate ? step(s.delegate.signed_in, 'Network as a delegate',
       `Your exhibitor pass is also a delegate pass. Sign in to the event app with ${esc(s.delegate.email)}; we email you a code.`,
       '<a href="/app" class="mp-btn-secondary text-sm py-2 px-4" style="display:inline-block;text-decoration:none">Open the event app</a>') : '')
@@ -240,6 +258,193 @@ if (stageForm) stageForm.addEventListener('submit', async (e) => {
   } catch (err) { showToast(err.message, true) }
   finally { btn.disabled = false; btn.innerHTML = html }
 })
+
+// ── Your team ──
+// Who is coming from the company, at the booth, on stage, or both. Passes are issued
+// from this list, up to the number the booth includes; past that, each extra person
+// needs a Delegate Pass (organiser, 11 Nov 2026). The server applies every rule again.
+let teamInfo = null
+let editingMember = null
+const safeTeamPhoto = (u) => (/^\/api\/mp\/uploads\/\d+$/.test(String(u || '')) || /^\/images\/talks\/[a-z0-9-]+\.webp$/.test(String(u || ''))) ? u : ''
+const fullName = (m) => `${m.first_name || ''} ${m.last_name || ''}`.trim()
+const initials = (m) => ((m.first_name || '').charAt(0) + (m.last_name || '').charAt(0)).toUpperCase() || '?'
+const hasPass = (m) => !!(m.pass && !/visitor/i.test(m.pass))
+const passText = (m) => !hasPass(m) ? 'No pass yet' : m.own_pass ? `Has a ${m.pass}` : m.pass === 'Exhibition Speaker' ? 'Speaker pass issued' : 'Exhibitor pass issued'
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`
+
+const loadTeam = async () => {
+  try { teamInfo = await api('/api/mp/dashboard/team') } catch { teamInfo = null }
+  const on = !!(teamInfo && teamInfo.eligible)
+  const nav = document.getElementById('dash-nav-team'); if (nav) nav.classList.toggle('hidden', !on)
+  if (on) renderTeam()
+  renderBranding()
+  renderTodo()
+}
+
+// The branding sizes for this booth's type, as the organisers revised them.
+const renderBranding = () => {
+  const b = teamInfo && teamInfo.eligible ? teamInfo.branding : null
+  const nav = document.getElementById('dash-nav-branding'); if (nav) nav.classList.toggle('hidden', !b)
+  const card = document.getElementById('branding-card'); if (!card || !b) return
+  card.innerHTML = `<h3>Branding sizes for your ${esc(b.booth)}</h3>
+    <p class="text-sm" style="margin:0 0 12px;line-height:1.6">Revised on 11 November 2026. Please use these sizes for your artwork.</p>
+    <table class="dash-table"><tbody>${(b.rows || []).map(([k, v]) => `<tr><td class="text-sm" style="color:var(--mp-muted)">${esc(k)}</td><td class="text-sm"><strong>${esc(v)}</strong></td></tr>`).join('')}</tbody></table>
+    <p class="text-sm" style="margin:12px 0 0;line-height:1.6">Please share your final artwork with our team as per the guidelines shared earlier: high-resolution PDF, Adobe Illustrator (AI), CorelDRAW (CDR) or PNG, with your company logo and the font files used. Once artwork goes for printing, it cannot be changed.</p>`
+}
+
+const renderTeam = () => {
+  const t = teamInfo
+  const pkg = (t.packages || []).length === 1 ? `your ${esc(t.packages[0])}` : 'your booth'
+  document.getElementById('team-intro').innerHTML = `
+    <p class="text-sm" style="margin:0 0 8px;line-height:1.6">Add everyone coming from <strong>${esc(t.company_name)}</strong>: at the booth, on stage for your Innovation Talk &amp; Showcase, or both. We issue their passes from this list.</p>
+    ${t.passes === null || t.passes === undefined
+      ? '<p class="team-pass-meter">The organisers will confirm how many passes your booth includes. You can add your team now.</p>'
+      : `<p class="team-pass-meter">${pkg.charAt(0).toUpperCase() + pkg.slice(1)} includes <strong>${plural(t.passes, 'pass', 'passes')}</strong>. Issued so far: <strong>${esc(t.issued)}</strong>.</p>
+         ${t.used > t.passes ? `<p class="team-missing" style="font-size:13px">You have listed ${plural(t.used, 'person', 'people')} for ${plural(t.passes, 'pass', 'passes')}. Please remove ${t.used - t.passes === 1 ? 'one person' : `${t.used - t.passes} people`}, or buy a Delegate Pass for ${t.used - t.passes === 1 ? 'them' : 'each of them'}.</p>` : ''}`}
+    ${t.deadline ? `<p class="team-pass-meter">Please complete this by <strong>${esc(t.deadline)}</strong>, so the passes and lanyards can be printed.</p>` : ''}
+    <p class="text-xs text-slate-500" style="margin:8px 0 0;line-height:1.6">You, as the contact person, get a pass only if you add yourself. Each person sees their pass by signing in at bharataiinnovation.com/app with their own email.</p>`
+  const list = document.getElementById('team-list')
+  const ms = t.members || []
+  list.innerHTML = ms.length ? ms.map(m => {
+    const photo = safeTeamPhoto(m.photo_url)
+    return `<div class="team-card" data-member="${esc(m.id)}">
+      ${photo ? `<img class="team-photo" src="${esc(photo)}" alt="">` : `<div class="team-photo team-photo--empty" aria-hidden="true">${esc(initials(m))}</div>`}
+      <div style="min-width:0">
+        <p class="team-name">${esc(fullName(m))}</p>
+        <p class="team-sub">${esc([m.designation, m.company].filter(Boolean).join(' · '))}</p>
+        <p class="team-sub">${esc([m.email, m.mobile].filter(Boolean).join(' · '))}</p>
+        <div class="team-chips">${m.at_booth ? '<span class="team-chip"><i class="fas fa-store"></i> At the booth</span>' : ''}${m.speaker ? '<span class="team-chip"><i class="fas fa-microphone-alt"></i> On stage</span>' : ''}<span class="team-chip ${hasPass(m) ? 'team-chip--pass' : 'team-chip--wait'}">${esc(passText(m))}</span></div>
+        ${(m.missing || []).length ? `<p class="team-missing">Still needed: ${esc(m.missing.join(', '))}</p>` : ''}
+        ${!hasPass(m) && m.pass_note ? `<p class="team-missing">${esc(m.pass_note)}</p>` : ''}
+        <div class="team-card-actions"><button type="button" class="mp-btn-secondary" data-team-edit="${esc(m.id)}"><i class="fas fa-pen mr-1"></i> Edit</button><button type="button" class="mp-btn-secondary" data-team-remove="${esc(m.id)}"><i class="fas fa-trash-alt mr-1"></i> Remove</button></div>
+      </div></div>`
+  }).join('') : '<div class="dash-card dash-empty" style="padding:24px"><i class="fas fa-users"></i><p>Nobody added yet.</p></div>'
+  list.querySelectorAll('[data-team-edit]').forEach(b => b.addEventListener('click', () => openTeamForm(ms.find(m => String(m.id) === b.getAttribute('data-team-edit')))))
+  list.querySelectorAll('[data-team-remove]').forEach(b => b.addEventListener('click', () => removeMember(ms.find(m => String(m.id) === b.getAttribute('data-team-remove')))))
+  if (t.can_add) hideTeamFull()
+}
+
+// Past the booth's passes: a Delegate Pass for each extra person, at today's price.
+let delegatePrice = null
+const delegatePriceText = async () => {
+  if (delegatePrice === null) {
+    try { const cfg = await api('/api/payments/config'); const p = cfg.passes && cfg.passes['Delegate Pass']; delegatePrice = p ? `₹${Number(p.base).toLocaleString('en-IN')} + GST` : '' } catch { delegatePrice = '' }
+  }
+  return delegatePrice
+}
+const showTeamFull = async () => {
+  const box = document.getElementById('team-full'), n = teamInfo ? teamInfo.passes : 0
+  const price = await delegatePriceText()
+  box.innerHTML = `<p style="margin:0"><strong>Your booth includes ${plural(n, 'pass', 'passes')}, and all are in use.</strong></p>
+    <p style="margin:6px 0 0">To bring someone else, please buy them a Delegate Pass${price ? ` (${esc(price)})` : ''}. It covers both days of the conference, lunch and networking in the event app. Use their own name and email when you buy it.</p>
+    <a class="mp-btn-primary" href="/register?source=exhibitor_extra#delegate" target="_blank" rel="noopener">Buy a Delegate Pass</a>
+    <p style="margin:12px 0 0">Do they already have a pass of their own, such as the Delegate Pass you just bought? Then you can add them to your team list.</p>
+    <button type="button" class="mp-btn-secondary" data-team-add-own style="margin-top:8px;min-height:44px">Add someone who has a pass</button>
+    <p class="text-xs" style="margin:10px 0 0">If you think your booth should include more passes, reply to the organisers' email.</p>`
+  const own = box.querySelector('[data-team-add-own]'); if (own) own.addEventListener('click', () => openTeamForm(null))
+  box.hidden = false
+  closeTeamForm()
+  box.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+}
+const hideTeamFull = () => { const box = document.getElementById('team-full'); if (box) { box.hidden = true; box.innerHTML = '' } }
+
+const teamForm = document.getElementById('team-form')
+const teamErr = document.getElementById('team-form-error')
+const showTeamError = (html) => { teamErr.innerHTML = html; teamErr.hidden = false; teamErr.scrollIntoView({ behavior: 'smooth', block: 'nearest' }) }
+const clearTeamError = () => { teamErr.hidden = true; teamErr.innerHTML = '' }
+const tf = (id) => document.getElementById(id)
+
+const openTeamForm = (m) => {
+  editingMember = m || null
+  clearTeamError(); hideTeamFull()
+  tf('team-form-title').textContent = m ? `Edit ${fullName(m)}` : 'Add a person'
+  tf('team-id').value = m ? m.id : ''
+  tf('team-at-booth').checked = m ? !!m.at_booth : true
+  tf('team-speaker').checked = m ? !!m.speaker : false
+  tf('team-first').value = m ? m.first_name || '' : ''
+  tf('team-last').value = m ? m.last_name || '' : ''
+  tf('team-designation').value = m ? m.designation || '' : ''
+  tf('team-company').value = m ? m.company || '' : (teamInfo ? teamInfo.company_name || '' : '')
+  tf('team-email').value = m ? m.email || '' : ''
+  tf('team-mobile').value = m ? m.mobile || '' : ''
+  tf('team-linkedin').value = m ? m.linkedin_url || '' : ''
+  tf('team-photo-file').value = ''
+  const pv = tf('team-photo-preview'), u = m ? safeTeamPhoto(m.photo_url) : ''
+  if (u) { pv.src = u; pv.hidden = false } else { pv.removeAttribute('src'); pv.hidden = true }
+  teamForm.hidden = false
+  teamForm.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  setTimeout(() => { try { tf(m ? 'team-designation' : 'team-first').focus({ preventScroll: true }) } catch {} }, 300)
+}
+const closeTeamForm = () => { teamForm.hidden = true; editingMember = null; clearTeamError() }
+
+document.getElementById('team-add-btn').addEventListener('click', () => {
+  if (teamInfo && !teamInfo.can_add) { showTeamFull(); return }
+  openTeamForm(null)
+})
+document.getElementById('team-cancel').addEventListener('click', closeTeamForm)
+tf('team-photo-file').addEventListener('change', () => {
+  const input = tf('team-photo-file'), f = input.files[0]; if (!f) return
+  const problem = checkImageFile(f, 'avatar')
+  if (problem) { showTeamError(esc(problem)); input.value = ''; return }
+  const pv = tf('team-photo-preview'); pv.src = URL.createObjectURL(f); pv.hidden = false
+})
+
+// The server's rules, checked here first so the box is named and focused.
+const teamProblem = () => {
+  const val = (id) => tf(id).value.trim()
+  if (!tf('team-at-booth').checked && !tf('team-speaker').checked) return ['team-at-booth', 'Please choose their role: at the booth, on stage, or both.']
+  if (!val('team-first')) return ['team-first', 'Please enter their first name.']
+  if (!val('team-designation')) return ['team-designation', 'Please enter their designation, for example Sales Manager. It is printed on the pass.']
+  if (!val('team-company')) return ['team-company', 'Please enter their company name.']
+  if (!/^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/.test(val('team-email'))) return ['team-email', 'Please enter their email address. Their pass is sent to it.']
+  const mob = val('team-mobile'), digits = mob.replace(/\D/g, '')
+  if (mob && (digits.length < 10 || digits.length > 15 || !/^[+\d][\d\s()-]*$/.test(mob))) return ['team-mobile', 'Mobile number: please enter a 10-digit number, with the country code if it is not an Indian number.']
+  const li = cleanLink(val('team-linkedin'))
+  let host = ''; try { host = li ? new URL(li).hostname.toLowerCase() : '' } catch { host = '' }
+  if (li === null || (li && !/(^|\.)linkedin\.com$/.test(host))) return ['team-linkedin', 'LinkedIn: please paste the link to their LinkedIn profile, such as linkedin.com/in/name.']
+  return null
+}
+
+teamForm.addEventListener('submit', async (e) => {
+  e.preventDefault()
+  clearTeamError()
+  const problem = teamProblem()
+  if (problem) { showTeamError(`<strong>Not saved.</strong> ${esc(problem[1])}`); tf(problem[0]).focus(); return }
+  const btn = teamForm.querySelector('button[type="submit"]'), html = btn.innerHTML
+  btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Saving...'
+  try {
+    const body = {
+      at_booth: tf('team-at-booth').checked, speaker: tf('team-speaker').checked,
+      first_name: tf('team-first').value, last_name: tf('team-last').value, designation: tf('team-designation').value,
+      company: tf('team-company').value, email: tf('team-email').value.trim(), mobile: tf('team-mobile').value,
+      linkedin_url: cleanLink(tf('team-linkedin').value) || '', photo_url: editingMember ? editingMember.photo_url || '' : '',
+    }
+    const file = tf('team-photo-file').files[0]
+    if (file) body.photo_url = await uploadImage(file, 'avatar')
+    const id = tf('team-id').value
+    const name = `${body.first_name} ${body.last_name}`.trim()
+    teamInfo = await api(id ? `/api/mp/dashboard/team/${encodeURIComponent(id)}` : '/api/mp/dashboard/team', { method: id ? 'PUT' : 'POST', body: JSON.stringify(body) })
+    closeTeamForm(); renderTeam(); renderTodo()
+    const saved = (teamInfo.members || []).find(m => m.email === body.email.toLowerCase())
+    showToast(saved && hasPass(saved) ? `Saved. ${name}: ${passText(saved).toLowerCase()}.` : `Saved ${name}.`)
+    if (body.speaker || (editingMember && editingMember.speaker)) loadStage()
+  } catch (err) {
+    if (err.status === 401) showTeamError('<strong>Not saved: your sign-in has run out.</strong> <a href="/marketplace?signin=1" target="_blank" rel="noopener" style="color:inherit;font-weight:600">Sign in again</a> (it opens in a new tab; use <em>Email me a sign-in link</em>), then come back to this tab and press Save once more. What you typed is kept.')
+    else if (err.status === 409 && /all are in use/.test(err.message)) { await loadTeam(); showTeamFull() }
+    else showTeamError(`<strong>Not saved.</strong> ${esc(err.message)}`)
+  } finally { btn.disabled = false; btn.innerHTML = html }
+})
+
+const removeMember = async (m) => {
+  if (!m) return
+  if (!confirm(`Remove ${fullName(m)} from your team?${hasPass(m) && !m.own_pass ? ' Their pass from your booth is cancelled.' : ''}`)) return
+  try {
+    teamInfo = await api(`/api/mp/dashboard/team/${encodeURIComponent(m.id)}`, { method: 'DELETE' })
+    closeTeamForm(); renderTeam(); renderTodo()
+    showToast(`${fullName(m)} removed`)
+    if (m.speaker) loadStage()
+  } catch (err) { showToast(err.message, true) }
+}
 
 const loadRecentInquiries = async () => {
   const c = document.getElementById('dash-recent-inquiries'); if (!c) return
@@ -391,7 +596,7 @@ editForm.addEventListener('submit', async (e) => {
 })
 
 document.getElementById('dash-refresh-listings').addEventListener('click', async () => {
-  await Promise.all([loadStats(), loadListings(), loadStage(), loadInquiries(), loadReviews(), loadRecentInquiries()])
+  await Promise.all([loadStats(), loadListings(), loadStage(), loadTeam(), loadInquiries(), loadReviews(), loadRecentInquiries()])
   showToast('Refreshed')
 })
 

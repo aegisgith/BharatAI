@@ -39,6 +39,7 @@ const SUITES = [
   { name: "server: every email's sign-in link keeps working end to end (welcome, account-ready at 5 min, networking at 10, the help steps, the code), on real SQLite", args: ['system-email-links.mjs'] },
   { name: 'server: campus panel "Are you coming?"', args: ['smoke-panel-answers.mjs'] },
   { name: 'server: AI marketplace gates, pages and exhibitor invites', args: ['smoke-marketplace.mjs'] },
+  { name: 'server: exhibitor teams (passes by booth type, the Delegate Pass past them, an exception by the organisers, the contact gets no pass unless listed, the email, the CSV), on real SQLite', args: ['smoke-exhibitor-team.mjs'] },
   { name: 'server: checkout on this site (CCAvenue), the switch, the answer, the queues', args: ['smoke-payments.mjs'] },
   // A paid pass moving up for the difference, at four levels (5 Nov 2026). The
   // fourth, a phone in a real browser, is section 3b of pay-test.cjs below.
@@ -95,6 +96,7 @@ const SUITES = [
   { name: 'system: one person through the redesigned app as their pass changes (free, paid, unpaid, every kind of pass, the directory note, the schedule buttons, signing out)', args: ['system-app-design.cjs'], harness: 'phone-harness.mjs', port: 8837, portEnv: true },
   { name: 'browser: the redesigned app on a phone and a laptop: the bars, five tabs that fit, each moved button, words readable, the menu at every width, animations off, without its files', args: ['browser-app-redesign.cjs'], harness: 'phone-harness.mjs', port: 8835, portEnv: true },
   { name: 'browser: an exhibitor lists a product on the AI Marketplace (sign-in link, the form, plain domains, images, every way the button looked dead, dashboard edit, approval, public page, inquiry)', args: ['mp-test.cjs'], harness: 'mp-harness.mjs', port: 8779, portEnv: true },
+  { name: 'browser: exhibitor teams on a phone (the emailed link, the form, a photo, the pass, the Delegate Pass prompt, branding, the stage talk) and Teams & Passes on a laptop', args: ['browser-exhibitor-team.cjs'], harness: 'team-harness.mjs', port: 8851, portEnv: true },
 ];
 
 const run = (args, opts = {}) => new Promise((resolve) => {

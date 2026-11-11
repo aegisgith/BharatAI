@@ -321,6 +321,123 @@ async function ensureExhibitorDelegate(c: any, x: { exhibitorId: number; email: 
   return { attendeeId, created, upgraded, trusted: created && await verifiedLoginEnabled(c) }
 }
 
+// ── Exhibitor teams (0050, 11 Nov 2026) ──
+// The booth contact lists who is coming in the exhibitor dashboard, and the passes
+// come from that list (routes/marketplace.ts decides who gets which, up to the
+// booth's allowance). This makes or changes the one attendee row behind each person.
+// The rules: a free Visitor Pass, or a paid tier nobody paid for, is raised to the
+// exhibitor pass; a pass of their own (paid Delegate, Speaker, VIP, Organiser...) is
+// kept and costs the booth nothing; a pass this list gave and can no longer give
+// (the allowance was lowered, a speaker was added ahead of them) goes back to a free
+// Visitor Pass. Blank details are filled in, never overwritten, and the team photo
+// goes on the pass only when the person has not put one there themselves.
+// Not through POST /api/admin/attendees, for the reason ensureExhibitorDelegate gives.
+const TEAM_PASS_BADGES = ['Exhibitor', 'Exhibition Speaker']
+// The roles a team list writes; a role someone typed for themselves is left alone.
+const TEAM_ROLES = ['', 'attendee', 'exhibitor', 'exhibition speaker', 'exhibitor & speaker']
+// create: false looks the person up and takes back a pass this list gave (badge
+// 'Visitor Pass'), without registering anyone: for a person over the booth's allowance.
+type TeamPassInput = {
+  eventId: number; exhibitorId: number; badge: string; gave: string; create?: boolean
+  name: string; email: string; mobile: string; company: string; designation: string; linkedin: string; role: string
+  avatarUrl: string; prevAvatarUrl: string
+}
+async function issueTeamPass(c: any, x: TeamPassInput): Promise<{ attendeeId: number; pass: string; given: string; avatarSet: string } | { error: string }> {
+  const email = String(x.email || '').trim().toLowerCase()
+  if (!email || !x.exhibitorId) return { error: 'No email' }
+  const eventId = Number(x.eventId) || 1
+  const target = String(x.badge || '')
+  const teamBadge = TEAM_PASS_BADGES.includes(target)
+  const cols = await attendeeColumns(c)
+  const row = await c.env.DB.prepare(`SELECT * FROM attendees WHERE event_id = ? AND lower(email) = ? ORDER BY id LIMIT 1`).bind(eventId, email).first() as any
+  // One mobile, one attendee: a number someone else holds is left off rather than
+  // refusing the pass. Asked only when the number would be written (it reads every row).
+  const freeMobile = async (exceptId: any) => {
+    const m = String(x.mobile || '').trim()
+    return m && !(await mobileHolder(c, eventId, m, exceptId)) ? m : ''
+  }
+  if (row) {
+    const id = Number(row.id)
+    const cur = String(row.badge_type || '')
+    const unpaid = PAID_TIERS.includes(cur) && ['pending', 'refunded'].includes(String(row.payment_status || '').trim().toLowerCase())
+    const visitorLike = !cur || !canInitiateNetworking(cur) || unpaid
+    const ours = TEAM_PASS_BADGES.includes(cur)
+    let next: string | null = null
+    if (teamBadge && (visitorLike || ours) && cur !== target) next = target
+    if (!teamBadge && ours && cur === x.gave) next = 'Visitor Pass'
+    const after = next || cur
+    const sets: string[] = [], vals: any[] = []
+    const put = (col: string, v: any) => { if (cols.has(col)) { sets.push(col + ' = ?'); vals.push(v) } }
+    if (next) {
+      put('badge_type', next)
+      put('lunch_inclusion', TEAM_PASS_BADGES.includes(next) ? 'Yes' : 'No')
+      if (TEAM_PASS_BADGES.includes(next)) { put('payment_status', 'waived'); put('main_event', 1) }
+    }
+    // The role follows the pass: written with an exhibitor pass, taken back with it.
+    const roleNow = String(row.role || '').trim().toLowerCase()
+    if (TEAM_PASS_BADGES.includes(after) && x.role && TEAM_ROLES.includes(roleNow) && String(row.role || '') !== x.role) put('role', x.role)
+    if (next === 'Visitor Pass' && roleNow && roleNow !== 'attendee' && TEAM_ROLES.includes(roleNow)) put('role', 'attendee')
+    const blank = (col: string) => !String(row[col] ?? '').trim()
+    if (x.designation && blank('job_title')) put('job_title', x.designation)
+    if (x.company && blank('company')) put('company', x.company)
+    if (x.linkedin && blank('linkedin_url')) put('linkedin_url', x.linkedin)
+    if (x.mobile && blank('mobile')) { const m = await freeMobile(id); if (m) put('mobile', m) }
+    let avatarSet = ''
+    const curAvatar = String(row.avatar_url || '')
+    if (x.avatarUrl && (!curAvatar || (x.prevAvatarUrl && curAvatar === x.prevAvatarUrl))) {
+      if (curAvatar !== x.avatarUrl) put('avatar_url', x.avatarUrl)
+      avatarSet = x.avatarUrl
+    } else if (x.prevAvatarUrl && curAvatar === x.prevAvatarUrl) avatarSet = x.prevAvatarUrl
+    if (sets.length) await c.env.DB.prepare(`UPDATE attendees SET ${sets.join(', ')} WHERE id = ?`).bind(...vals, id).run()
+    if (next) await audit(c, 'attendee.exhibitor-team-pass', 'attendee', id, { badge_type: [cur || null, next], exhibitor_id: x.exhibitorId })
+    const holds = next || (visitorLike ? 'Visitor Pass' : cur)
+    return { attendeeId: id, pass: holds, given: TEAM_PASS_BADGES.includes(holds) && (next || cur === x.gave) ? holds : '', avatarSet }
+  }
+  if (x.create === false || !teamBadge) return { attendeeId: 0, pass: '', given: '', avatarSet: '' }
+  // A new registration, in the shape Add Attendee writes.
+  const set: Record<string, any> = {
+    company: String(x.company || '').trim(), job_title: String(x.designation || '').trim(), linkedin_url: String(x.linkedin || '').trim(), mobile: await freeMobile(null),
+    badge_type: target || 'Visitor Pass', role: x.role || 'Exhibitor', lunch_inclusion: teamBadge ? 'Yes' : 'No', country: 'India',
+    payment_status: teamBadge ? 'waived' : '', registration_date: new Date().toISOString().slice(0, 19).replace('T', ' '),
+  }
+  const name = String(x.name || '').trim() || email
+  const names: string[] = ['event_id', 'name', 'email']
+  const vals: any[] = [eventId, name, email]
+  for (const f of ADMIN_ATTENDEE_FIELDS) {
+    if (f === 'name' || f === 'email' || !cols.has(f)) continue
+    names.push(f)
+    vals.push(set[f] ?? '')
+  }
+  if (cols.has('main_event')) { names.push('main_event'); vals.push(1) }
+  if (cols.has('registration_source')) { names.push('registration_source'); vals.push('exhibitor_team') }
+  if (x.avatarUrl && cols.has('avatar_url')) { names.push('avatar_url'); vals.push(x.avatarUrl) }
+  names.push('is_online')
+  vals.push(0)
+  const r = await c.env.DB.prepare(`INSERT INTO attendees (${names.join(', ')}) VALUES (${names.map(() => '?').join(', ')})`).bind(...vals).run()
+  const attendeeId = Number(r.meta.last_row_id)
+  await audit(c, 'attendee.create', 'attendee', attendeeId, { name, email, badge_type: set.badge_type, source: 'exhibitor_team', exhibitor_id: x.exhibitorId })
+  return { attendeeId, pass: set.badge_type, given: teamBadge ? set.badge_type : '', avatarSet: x.avatarUrl || '' }
+}
+
+// Someone taken off a team, or moved to another email: an exhibitor pass this list
+// gave goes back to a free Visitor Pass. The row itself stays (never a bare delete).
+async function releaseTeamPass(c: any, x: { attendeeId: number; gave: string; exhibitorId: number }): Promise<void> {
+  if (!x.attendeeId || !TEAM_PASS_BADGES.includes(String(x.gave || ''))) return
+  const row = await c.env.DB.prepare('SELECT id, badge_type, role FROM attendees WHERE id = ?').bind(x.attendeeId).first() as any
+  if (!row || String(row.badge_type || '') !== x.gave) return
+  // The role the list wrote goes with the pass; one they typed themselves stays.
+  const role = TEAM_ROLES.includes(String(row.role || '').trim().toLowerCase()) ? 'attendee' : String(row.role || '')
+  await c.env.DB.prepare("UPDATE attendees SET badge_type = 'Visitor Pass', lunch_inclusion = 'No', role = ? WHERE id = ?").bind(role, x.attendeeId).run()
+  await audit(c, 'attendee.exhibitor-team-pass', 'attendee', x.attendeeId, { badge_type: [x.gave, 'Visitor Pass'], exhibitor_id: x.exhibitorId, removed_from_team: true })
+}
+
+// The mobile check the team form makes before it saves anyone: the same rule as every
+// other write path (one mobile, one attendee), but the same person's own row is fine.
+async function teamMobileHolder(c: any, eventId: number, mobile: string, email: string): Promise<{ email: string } | null> {
+  const h = await mobileHolder(c, eventId, mobile)
+  return h && String(h.email || '').trim().toLowerCase() !== String(email || '').trim().toLowerCase() ? { email: maskEmail(h.email) } : null
+}
+
 // Who is signed in to the event app, from the same signed cookie every attendee
 // write checks. Every pass includes an AI Marketplace listing, and the marketplace
 // uses this to open one without a second account (POST /api/mp/auth/from-app).
@@ -337,7 +454,8 @@ async function sessionAttendee(c: any): Promise<{ id: number; email: string; nam
 // reviews in admin_audit, gives each exhibitor its delegate pass, and lets anyone
 // signed in to the app list a product. Passed in because that module cannot import
 // from this file.
-configureMarketplace({ sendEmail: sendAdminEmail, isEventAdmin: isAdminRequest, audit, ensureDelegate: ensureExhibitorDelegate, attendeeOf: sessionAttendee })
+configureMarketplace({ sendEmail: sendAdminEmail, isEventAdmin: isAdminRequest, audit, ensureDelegate: ensureExhibitorDelegate, attendeeOf: sessionAttendee,
+  issueTeamPass, releaseTeamPass, teamMobileHolder })
 app.route('/', mp)
 
 // Marketplace page routes
@@ -1329,6 +1447,9 @@ function sourceLabel(source: unknown): string {
     admin: 'Added by the team',
     bulk_upload: 'Bulk upload',
     ai_readiness: 'AI readiness assessment',
+    exhibitor: 'Exhibitor booth contact',
+    exhibitor_team: 'Exhibitor team list',
+    exhibitor_extra: 'Exhibitor team, past the booth passes',
   }
   return known[raw] || raw
 }
@@ -12670,6 +12791,11 @@ app.put('/api/attendees/:id/exhibitor', async (c) => {
       'UPDATE exhibitors SET company_name=?, description=?, category=?, website_url=?, contact_email=?, contact_phone=?, products=? WHERE attendee_id=?'
     ).bind(company_name, description || '', category || '', website_url || '', contact_email || '', contact_phone || '', products || '', attendeeId).run()
   } else {
+    // Someone on an exhibitor's team list (0050) holds an exhibitor pass without being
+    // the booth contact. A new row here would be a second card for the same company on
+    // the Exhibition tab, so the company's one card stays with its contact.
+    const onTeam = await c.env.DB.prepare('SELECT 1 AS hit FROM exhibitor_team WHERE attendee_id = ? LIMIT 1').bind(attendeeId).first().catch(() => null)
+    if (onTeam) return c.json({ error: 'Your company already has a booth page. Your booth contact person updates it from the exhibitor dashboard.' }, 409)
     await c.env.DB.prepare(
       'INSERT INTO exhibitors (event_id, company_name, description, booth_number, booth_size, category, website_url, contact_email, contact_phone, products, attendee_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)'
     ).bind(attendee.event_id, company_name, description || '', '', 'standard', category || '', website_url || '', contact_email || '', contact_phone || '', products || '', attendeeId).run()

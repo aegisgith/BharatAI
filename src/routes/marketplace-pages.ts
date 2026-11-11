@@ -55,7 +55,7 @@ function mpSharedHead(title: string, opts: { path?: string; noindex?: boolean; e
        last-but-one, Tailwind last. -->
   <link rel="stylesheet" href="/css/fa-subset.css?v=2">
   <link rel="stylesheet" href="/css/fonts-app.css?v=1">
-  <link href="/static/marketplace.css?v=6" rel="stylesheet">
+  <link href="/static/marketplace.css?v=7" rel="stylesheet">
   <link rel="stylesheet" href="/css/tailwind.css?v=${__TW_CSS_HASH__}">${opts.extraHead ? '\n  ' + opts.extraHead : ''}
 </head>`
 }
@@ -687,6 +687,8 @@ export function marketplaceDashboardPageHTML(): string {
     <nav class="dash-sidebar-nav">
       <button class="dash-sidebar-item dash-sidebar-active" data-section="overview"><i class="fas fa-chart-pie"></i> Overview</button>
       <button class="dash-sidebar-item" data-section="listings"><i class="fas fa-boxes"></i> My Listings</button>
+      <button class="dash-sidebar-item hidden" data-section="team" id="dash-nav-team"><i class="fas fa-users"></i> Your Team</button>
+      <button class="dash-sidebar-item hidden" data-section="branding" id="dash-nav-branding"><i class="fas fa-store"></i> Booth Branding</button>
       <button class="dash-sidebar-item hidden" data-section="stage" id="dash-nav-stage"><i class="fas fa-microphone-alt"></i> Stage Talk</button>
       <button class="dash-sidebar-item" data-section="inquiries"><i class="fas fa-envelope"></i> Inquiries</button>
       <button class="dash-sidebar-item" data-section="reviews"><i class="fas fa-star"></i> Reviews</button>
@@ -752,6 +754,56 @@ export function marketplaceDashboardPageHTML(): string {
       <div id="dash-listings-table"></div>
     </section>
 
+    <!-- Your team (exhibitors): who is coming, at the booth or on stage; passes come from this list -->
+    <section id="section-team" class="dash-section hidden">
+      <div class="dash-section-header"><h2><i class="fas fa-users mr-2"></i>Your Team</h2></div>
+      <div id="team-intro" class="dash-card"></div>
+      <div id="team-list" class="team-list"></div>
+      <div class="dash-card team-add-card">
+        <button type="button" id="team-add-btn" class="mp-btn-primary"><i class="fas fa-user-plus mr-1"></i> Add a person</button>
+        <div id="team-full" class="team-full" hidden></div>
+      </div>
+      <form id="team-form" class="dash-card mp-form team-form" novalidate hidden>
+        <h3 id="team-form-title">Add a person</h3>
+        <input type="hidden" id="team-id">
+        <fieldset class="team-roles">
+          <legend>Their role <span class="team-req">(choose one or both)</span></legend>
+          <label class="team-role"><input type="checkbox" id="team-at-booth"> <span><strong>At the booth</strong><small>Exhibitor</small></span></label>
+          <label class="team-role"><input type="checkbox" id="team-speaker"> <span><strong>On stage</strong><small>Speaker at your Innovation Talk &amp; Showcase</small></span></label>
+        </fieldset>
+        <div class="form-grid" style="padding:0">
+          <div class="form-field"><label for="team-first">First name <span class="team-req">*</span></label><input id="team-first" maxlength="60" autocomplete="off" autocapitalize="words"></div>
+          <div class="form-field"><label for="team-last">Last name</label><input id="team-last" maxlength="60" autocomplete="off" autocapitalize="words"></div>
+          <div class="form-field"><label for="team-designation">Designation <span class="team-req">*</span></label><input id="team-designation" maxlength="120" autocomplete="off" placeholder="e.g. Sales Manager"></div>
+          <div class="form-field"><label for="team-company">Company name <span class="team-req">*</span></label><input id="team-company" maxlength="150" autocomplete="off"></div>
+          <div class="form-field"><label for="team-email">Email <span class="team-req">*</span></label><input id="team-email" type="email" maxlength="200" autocomplete="off" inputmode="email" autocapitalize="none" spellcheck="false" placeholder="Their own work email"></div>
+          <div class="form-field"><label for="team-mobile">Mobile number</label><input id="team-mobile" type="tel" maxlength="20" autocomplete="off" inputmode="tel" placeholder="e.g. 98200 12345"></div>
+          <div class="form-field full-width"><label for="team-linkedin">LinkedIn profile</label><input id="team-linkedin" maxlength="300" autocomplete="off" inputmode="url" autocapitalize="none" spellcheck="false" placeholder="linkedin.com/in/their-name"></div>
+          <div class="form-field full-width">
+            <label for="team-photo-file">Photo</label>
+            <div class="team-photo-row">
+              <img id="team-photo-preview" alt="" class="team-photo" hidden>
+              <div>
+                <input id="team-photo-file" type="file" accept="image/png,image/jpeg,image/webp">
+                <p class="team-hint">A clear photo of their face, looking at the camera. It is printed on their pass.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div id="team-form-error" class="team-error" role="alert" hidden></div>
+        <div class="team-form-actions">
+          <button type="submit" class="mp-btn-primary"><i class="fas fa-save mr-1"></i> Save</button>
+          <button type="button" id="team-cancel" class="mp-btn-secondary">Cancel</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- Booth branding sizes for this exhibitor's booth type (revised 11 Nov 2026) -->
+    <section id="section-branding" class="dash-section hidden">
+      <div class="dash-section-header"><h2><i class="fas fa-store mr-2"></i>Booth Branding</h2></div>
+      <div id="branding-card" class="dash-card"></div>
+    </section>
+
     <!-- Stage talk (exhibitors with a confirmed stand) -->
     <section id="section-stage" class="dash-section hidden">
       <div class="dash-section-header"><h2><i class="fas fa-microphone-alt mr-2"></i>Stage Talk</h2></div>
@@ -763,7 +815,8 @@ export function marketplaceDashboardPageHTML(): string {
           <div class="form-field full-width"><label for="stage-showcase">What you will showcase</label><textarea id="stage-showcase" name="showcase" rows="3" maxlength="1000" autocomplete="off" placeholder="The product, demo or prototype you will show on stage"></textarea></div>
         </div>
         <h3 style="margin-top:20px">Speaker</h3>
-        <div class="form-grid" style="padding:0">
+        <div id="stage-from-team" class="team-from" hidden></div>
+        <div class="form-grid" style="padding:0" id="stage-speaker-fields">
           <div class="form-field full-width">
             <label for="stage-photo-file">Photo</label>
             <div class="flex gap-3 items-center">
@@ -861,7 +914,7 @@ export function marketplaceDashboardPageHTML(): string {
     </div>
   </div>
 
-  <script src="/static/marketplace-dashboard.js?v=6"></script>
+  <script src="/static/marketplace-dashboard.js?v=7"></script>
 </body>
 </html>`
 }
@@ -888,6 +941,7 @@ export function marketplaceAdminPageHTML(): string {
       <button class="dash-sidebar-item" data-section="pending"><i class="fas fa-clock"></i> Pending Review</button>
       <button class="dash-sidebar-item" data-section="inquiries"><i class="fas fa-envelope"></i> Inquiries</button>
       <button class="dash-sidebar-item" data-section="exhibitors"><i class="fas fa-store"></i> Exhibitors</button>
+      <button class="dash-sidebar-item" data-section="teams"><i class="fas fa-users"></i> Teams &amp; Passes</button>
       <button class="dash-sidebar-item" data-section="stage"><i class="fas fa-microphone-alt"></i> Stage Talks</button>
       <button class="dash-sidebar-item" data-section="bulk"><i class="fas fa-upload"></i> Bulk Upload</button>
     </nav>
@@ -952,6 +1006,25 @@ export function marketplaceAdminPageHTML(): string {
       <div id="admin-exhibitors" class="mt-3"></div>
     </section>
 
+    <!-- Teams & passes -->
+    <section id="section-teams" class="dash-section hidden">
+      <div class="dash-section-header"><h2><i class="fas fa-users mr-2"></i>Teams &amp; Passes</h2></div>
+      <div class="dash-card">
+        <p class="text-sm text-slate-400">Each exhibitor's contact person adds who is coming from their dashboard: at the booth, on stage, or both, with a photo. Passes are issued from that list, up to the number the booth includes (Startup Pod 1, Explorer 1, Innovator 2, Enterprise 3, Accelerator 5, Flagship 8, Mega 15). Past that, the exhibitor is asked to buy a Delegate Pass. To make an exception, change the number with <strong>Passes</strong>. <strong>Ask</strong> emails the contact a one-click sign-in to their team screen (once a day at most).</p>
+        <div class="flex gap-3 items-center flex-wrap mt-3">
+          <button id="team-ask-all" class="mp-btn-primary text-sm py-2 px-4"><i class="fas fa-paper-plane mr-1"></i> Ask everyone not asked yet</button>
+          <button id="team-csv" class="mp-btn-secondary text-sm py-2 px-4"><i class="fas fa-download mr-1"></i> Download everyone (CSV)</button>
+          <span id="team-summary" class="text-sm text-slate-400"></span>
+        </div>
+        <form id="team-deadline-form" class="flex gap-2 items-center flex-wrap mt-3">
+          <label for="team-deadline" class="text-sm">Deadline the email gives</label>
+          <input id="team-deadline" maxlength="60" autocomplete="off" placeholder="e.g. 15 November 2026" style="padding:8px 12px;border:1px solid #d6daea;border-radius:8px;font-size:13px;min-width:200px">
+          <button type="submit" class="mp-btn-secondary text-sm py-2 px-4">Save date</button>
+        </form>
+      </div>
+      <div id="admin-teams" class="mt-3"></div>
+    </section>
+
     <!-- Stage talks -->
     <section id="section-stage" class="dash-section hidden">
       <div class="dash-section-header"><h2><i class="fas fa-microphone-alt mr-2"></i>Stage Talks</h2></div>
@@ -984,7 +1057,7 @@ export function marketplaceAdminPageHTML(): string {
     </section>
   </div>
 
-  <script src="/static/marketplace-admin.js?v=9"></script>
+  <script src="/static/marketplace-admin.js?v=10"></script>
 </body>
 </html>`
 }

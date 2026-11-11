@@ -62,7 +62,7 @@ const initAdmin = async () => {
       if (info) info.textContent = 'Marketplace Admin · signed in through event admin'
     }
     try { exhibitors = (await api('/api/mp/admin/exhibitors')).exhibitors || [] } catch { exhibitors = [] }
-    await Promise.all([loadStats(), loadAllListings(), loadPendingListings(), loadInquiries(), loadExhibitors(), loadStageTalks()])
+    await Promise.all([loadStats(), loadAllListings(), loadPendingListings(), loadInquiries(), loadExhibitors(), loadStageTalks(), loadTeams()])
     // The queue is what an admin comes here for; open it when there is something in it.
     if (num(document.getElementById('stat-pending').textContent) > 0) switchSection('pending')
   } catch { showToast('Failed to load', true) }
@@ -283,7 +283,7 @@ const INVITE_GAP_MS = 30000
 let pacedRun = null
 const runPaced = async (btn, opts) => {
   if (pacedRun) { pacedRun.stop = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Stopping after this one...'; return }
-  const rows = ((await api('/api/mp/admin/exhibitor-invites')).exhibitors || []).filter(opts.eligible)
+  const rows = (opts.list ? await opts.list() : ((await api('/api/mp/admin/exhibitor-invites')).exhibitors || [])).filter(opts.eligible)
   if (!rows.length) { showToast('Nobody is eligible right now'); return }
   if (!confirm(opts.confirm(rows.length))) return
   const html = btn.innerHTML
@@ -300,7 +300,7 @@ const runPaced = async (btn, opts) => {
     }
     showToast(`${sent} ${opts.noun}${sent === 1 ? '' : 's'} sent${failed ? `, ${failed} failed` : ''}${run.stop ? ' (stopped)' : ''}`, !!failed)
   } catch (err) { showToast(err.message, true) }
-  finally { pacedRun = null; btn.innerHTML = html; await loadExhibitors() }
+  finally { pacedRun = null; btn.innerHTML = html; await (opts.after ? opts.after() : loadExhibitors()) }
 }
 const pace = `They go out one at a time, ${INVITE_GAP_MS / 1000} seconds apart, so keep this tab open.`
 const inviteAllBtn = document.getElementById('invite-all')
@@ -313,6 +313,129 @@ if (linkAllBtn) linkAllBtn.addEventListener('click', () => runPaced(linkAllBtn, 
   eligible: e => e.can_link, noun: 'sign-in link', url: e => `/api/mp/admin/exhibitors/${num(e.id)}/signin-link`,
   confirm: n => `Email ${n} exhibitor${n === 1 ? '' : 's'} a one-click sign-in link ("your account is ready")? ${pace} Anyone already listing, sent a link today, or unsubscribed is skipped.`,
 }))
+
+// ── Teams & passes ──
+// Who each exhibitor is bringing, filled in by their contact from the dashboard, and
+// the passes issued from it. The organisers ask for the list, make exceptions to the
+// number of passes, and download everyone for the badge desk and the speaker cards.
+let teamsAdmin = []
+const TEAM_PHOTO_OK = (u) => /^\/api\/mp\/uploads\/\d+$/.test(String(u || '')) || /^\/images\/talks\/[a-z0-9-]+\.webp$/.test(String(u || ''))
+const teamPassChip = (m) => (m.pass && !/visitor/i.test(m.pass))
+  ? `<span class="dash-badge dash-badge--green">${esc(m.own_pass ? 'Own: ' + m.pass : m.pass)}</span>`
+  : `<span class="dash-badge dash-badge--yellow" title="${esc(m.pass_note || '')}">No pass</span>`
+
+const loadTeams = async () => {
+  const c = document.getElementById('admin-teams'); if (!c) return
+  try {
+    const d = await api('/api/mp/admin/teams')
+    const askAll = document.getElementById('team-ask-all')
+    if (!d.ready) {
+      c.innerHTML = '<p class="text-slate-400">Teams start working once migration 0050 has been run on the database: <code>npx wrangler d1 execute bharatai-production --remote --file=./migrations/0050_exhibitor_team.sql</code></p>'
+      if (askAll) askAll.disabled = true
+      return
+    }
+    teamsAdmin = d.teams || []
+    const dl = document.getElementById('team-deadline'); if (dl && document.activeElement !== dl) dl.value = d.deadline || ''
+    const s = d.summary || {}
+    const sum = document.getElementById('team-summary')
+    if (sum) sum.textContent = `${num(s.companies)} exhibitors · ${num(s.with_team)} with a team · ${num(s.people)} people · ${num(s.with_pass)} with a pass · ${num(s.photos_missing)} photos missing · ${num(s.asked)} asked${num(s.no_number) ? ` · ${num(s.no_number)} need a number of passes` : ''}`
+    const notAsked = teamsAdmin.filter(t => t.can_ask && !t.last_asked).length
+    if (askAll) { askAll.disabled = !notAsked; askAll.innerHTML = `<i class="fas fa-paper-plane mr-1"></i> Ask everyone not asked yet (${notAsked})` }
+    if (!teamsAdmin.length) { c.innerHTML = '<p class="text-slate-400">No exhibitors yet.</p>'; return }
+    c.innerHTML = `<table class="dash-table"><thead><tr><th>Company</th><th>Booth</th><th>Contact</th><th>Passes</th><th>Team</th><th>Asked</th><th>Actions</th></tr></thead><tbody>${teamsAdmin.map(t => {
+      const id = num(t.exhibitor_id)
+      const passes = t.passes === null || t.passes === undefined ? '<span class="dash-badge dash-badge--yellow">Not set</span>' : `${num(t.used)} of ${num(t.passes)}${t.passes_source === 'set' ? ' <span class="text-xs text-slate-400">(set by you)</span>' : ''}`
+      return `<tr>
+        <td class="text-sm font-medium">${esc(t.company_name)}<div class="text-xs text-slate-400">${esc((t.packages || []).join(', '))}</div></td>
+        <td class="text-sm">${esc(t.booth || '—')}</td>
+        <td class="text-xs">${esc((t.contacts || []).join(', ') || '—')}</td>
+        <td class="text-sm">${passes} <button class="dash-action-btn" style="display:inline-flex;vertical-align:middle" title="Change the number of passes" data-team-passes="${id}"><i class="fas fa-pen"></i></button></td>
+        <td class="text-sm">${num(t.members.length)} ${t.members.length === 1 ? 'person' : 'people'}${t.speakers ? ` · ${num(t.speakers)} on stage` : ''}${t.photos_missing ? `<div class="text-xs" style="color:#92400E">${num(t.photos_missing)} photo${t.photos_missing === 1 ? '' : 's'} missing</div>` : ''}</td>
+        <td class="text-xs text-slate-400">${t.last_asked ? fmtDate(t.last_asked) : '—'}</td>
+        <td><div class="dash-actions">${t.can_ask
+          ? `<button class="dash-action-btn" title="Email the contact: add your team" data-team-ask="${id}"><i class="fas fa-paper-plane text-blue-400"></i></button>`
+          : `<span class="text-xs text-slate-500" style="align-self:center">${esc(t.ask_reason)}</span>`}
+          <button class="dash-action-btn" title="Issue passes now" data-team-settle="${id}"><i class="fas fa-id-badge text-emerald-400"></i></button>
+          ${t.members.length ? `<button class="dash-action-btn" title="Show the team" data-team-show="${id}"><i class="fas fa-users"></i></button>` : ''}</div></td></tr>
+        <tr class="hidden" data-team-detail="${id}"><td colspan="7"><table class="dash-table team-admin-members"><thead><tr><th></th><th>Name</th><th>Designation · Company</th><th>Email · Mobile</th><th>Role</th><th>Pass</th><th></th></tr></thead><tbody>${t.members.map(m => `<tr>
+          <td>${TEAM_PHOTO_OK(m.photo_url) ? `<a href="${esc(m.photo_url)}" target="_blank" rel="noopener"><img class="team-admin-photo" src="${esc(m.photo_url)}" alt=""></a>` : '<span class="dash-badge dash-badge--yellow">No photo</span>'}</td>
+          <td>${esc(`${m.first_name} ${m.last_name}`.trim())}${safeUrl(m.linkedin_url) ? ` <a href="${esc(safeUrl(m.linkedin_url))}" target="_blank" rel="noopener" title="LinkedIn"><i class="fab fa-linkedin"></i></a>` : ''}</td>
+          <td>${esc([m.designation, m.company].filter(Boolean).join(' · '))}</td>
+          <td>${esc([m.email, m.mobile].filter(Boolean).join(' · ') || '—')}</td>
+          <td>${[m.at_booth ? 'Booth' : '', m.speaker ? 'Stage' : ''].filter(Boolean).join(' + ')}</td>
+          <td>${teamPassChip(m)}</td>
+          <td><button class="dash-action-btn" title="Remove from the team" data-team-remove="${num(m.id)}" data-name="${esc(`${m.first_name} ${m.last_name}`.trim())}"><i class="fas fa-trash-alt text-rose-400"></i></button></td></tr>`).join('')}</tbody></table></td></tr>`
+    }).join('')}</tbody></table>`
+  } catch (err) { c.innerHTML = `<p class="text-rose-400">${esc(err.message)}</p>` }
+}
+
+const teamOf = (id) => teamsAdmin.find(t => num(t.exhibitor_id) === num(id))
+main.addEventListener('click', async (e) => {
+  const show = e.target.closest('[data-team-show]')
+  if (show) { const row = document.querySelector(`[data-team-detail="${num(show.getAttribute('data-team-show'))}"]`); if (row) row.classList.toggle('hidden'); return }
+  const passes = e.target.closest('[data-team-passes]')
+  if (passes) {
+    const t = teamOf(passes.getAttribute('data-team-passes')); if (!t) return
+    const answer = prompt(`How many passes for ${t.company_name}?\n\nLeave it empty to use the booth's own number.`, t.passes_source === 'set' ? String(t.passes) : '')
+    if (answer === null) return
+    try {
+      const r = await api(`/api/mp/admin/teams/${num(t.exhibitor_id)}/passes`, { method: 'PUT', body: JSON.stringify({ passes: answer.trim() === '' ? null : Number(answer.trim()) }) })
+      showToast(`${t.company_name}: ${r.passes === null ? 'no number yet' : r.passes + ' passes'}. Passes updated.`)
+      await loadTeams()
+    } catch (err) { showToast(err.message, true) }
+    return
+  }
+  const settle = e.target.closest('[data-team-settle]')
+  if (settle) {
+    const t = teamOf(settle.getAttribute('data-team-settle')); if (!t) return
+    settle.disabled = true
+    try { await api(`/api/mp/admin/teams/${num(t.exhibitor_id)}/settle`, { method: 'POST', body: '{}' }); showToast(`${t.company_name}: passes issued`); await loadTeams() }
+    catch (err) { showToast(err.message, true); settle.disabled = false }
+    return
+  }
+  const ask = e.target.closest('[data-team-ask]')
+  if (ask) {
+    const t = teamOf(ask.getAttribute('data-team-ask')); if (!t) return
+    if (!confirm(`Email ${t.company_name} (${(t.contacts || []).join(', ')}) asking them to add their team and photos?`)) return
+    ask.disabled = true
+    try { await api(`/api/mp/admin/teams/${num(t.exhibitor_id)}/ask`, { method: 'POST', body: '{}' }); showToast(`Asked ${t.company_name}`); await loadTeams() }
+    catch (err) { showToast(err.message, true); ask.disabled = false }
+    return
+  }
+  const rm = e.target.closest('[data-team-remove]')
+  if (rm) {
+    if (!confirm(`Remove ${rm.getAttribute('data-name')} from this team? A pass the team gave them goes back to a free Visitor Pass.`)) return
+    try { await api(`/api/mp/admin/teams/member/${num(rm.getAttribute('data-team-remove'))}`, { method: 'DELETE' }); showToast('Removed'); await loadTeams() }
+    catch (err) { showToast(err.message, true) }
+  }
+})
+
+const teamAskAllBtn = document.getElementById('team-ask-all')
+if (teamAskAllBtn) teamAskAllBtn.addEventListener('click', () => runPaced(teamAskAllBtn, {
+  list: async () => (await api('/api/mp/admin/teams')).teams || [],
+  eligible: t => t.can_ask && !t.last_asked, noun: 'email', url: t => `/api/mp/admin/teams/${num(t.exhibitor_id)}/ask`, after: loadTeams,
+  confirm: n => `Email ${n} exhibitor${n === 1 ? '' : 's'} asking them to add their team and photos? ${pace} Anyone already asked, without an email, or unsubscribed is skipped.`,
+}))
+
+const teamDeadlineForm = document.getElementById('team-deadline-form')
+if (teamDeadlineForm) teamDeadlineForm.addEventListener('submit', async (e) => {
+  e.preventDefault()
+  try {
+    const r = await api('/api/mp/admin/teams/settings', { method: 'PUT', body: JSON.stringify({ deadline: document.getElementById('team-deadline').value }) })
+    showToast(r.deadline ? `The email now says: Deadline ${r.deadline}` : 'The email now gives no deadline')
+  } catch (err) { showToast(err.message, true) }
+})
+
+const teamCsvBtn = document.getElementById('team-csv')
+if (teamCsvBtn) teamCsvBtn.addEventListener('click', async () => {
+  try {
+    const r = await fetch('/api/mp/admin/teams.csv', { credentials: 'same-origin', headers: eventAdminHeaders() })
+    if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || 'Download failed') }
+    const url = URL.createObjectURL(await r.blob())
+    const a = document.createElement('a'); a.href = url; a.download = 'exhibitor-teams.csv'; document.body.appendChild(a); a.click(); a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 5000)
+  } catch (err) { showToast(err.message, true) }
+})
 
 // ── Stage talks ──
 // Each exhibitor with a confirmed stand has one Innovation Talk & Showcase slot. They
