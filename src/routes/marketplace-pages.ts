@@ -731,6 +731,8 @@ export function marketplaceDashboardPageHTML(): string {
       <div id="dash-booth" class="dash-card booth-card hidden"></div>
       <!-- Exhibitors only: the things their booth includes, and how far they have got. -->
       <div id="dash-todo" class="dash-card hidden"></div>
+      <!-- Every account: the next edition, while the organisers keep it on. -->
+      <div id="dash-delhi" class="dash-card hidden"></div>
       <div class="dash-stats-grid">
         <div class="dash-stat-card"><div class="dash-stat-icon"><i class="fas fa-boxes"></i></div><div><p class="dash-stat-label">Total Listings</p><p class="dash-stat-value" id="stat-total">0</p></div></div>
         <div class="dash-stat-card"><div class="dash-stat-icon text-emerald-400"><i class="fas fa-check-circle"></i></div><div><p class="dash-stat-label">Approved</p><p class="dash-stat-value" id="stat-approved">0</p></div></div>
@@ -966,7 +968,7 @@ export function marketplaceDashboardPageHTML(): string {
     </div>
   </div>
 
-  <script src="/static/marketplace-dashboard.js?v=9"></script>
+  <script src="/static/marketplace-dashboard.js?v=10"></script>
 </body>
 </html>`
 }
@@ -994,6 +996,7 @@ export function marketplaceAdminPageHTML(): string {
       <button class="dash-sidebar-item" data-section="inquiries"><i class="fas fa-envelope"></i> Inquiries</button>
       <button class="dash-sidebar-item" data-section="exhibitors"><i class="fas fa-store"></i> Exhibitors</button>
       <button class="dash-sidebar-item" data-section="teams"><i class="fas fa-users"></i> Teams &amp; Passes</button>
+      <button class="dash-sidebar-item" data-section="partners"><i class="fas fa-handshake"></i> Shown in the app</button>
       <button class="dash-sidebar-item" data-section="reports"><i class="fas fa-exclamation-circle"></i> Reports <span id="reports-count" class="dash-badge dash-badge--red hidden" style="margin-left:auto"></span></button>
       <button class="dash-sidebar-item" data-section="stage"><i class="fas fa-microphone-alt"></i> Stage Talks</button>
       <button class="dash-sidebar-item" data-section="bulk"><i class="fas fa-upload"></i> Bulk Upload</button>
@@ -1079,6 +1082,48 @@ export function marketplaceAdminPageHTML(): string {
       <div id="admin-teams" class="mt-3"></div>
     </section>
 
+    <!-- Partners and sponsors shown in the attendee app -->
+    <section id="section-partners" class="dash-section hidden">
+      <div class="dash-section-header"><h2><i class="fas fa-handshake mr-2"></i>Shown in the app</h2></div>
+      <div class="dash-card">
+        <h3><i class="fas fa-handshake mr-2"></i>Partners and sponsors</h3>
+        <p class="text-sm text-slate-400">Sponsors and partners listed here are shown on the Home tab of Bharat AI Connect, under &ldquo;Our partners&rdquo;, in this order. Nothing is shown until you add someone. For each one: the name, the label to print under the logo (for example Panel Host Partner), the logo, and a website if you want the logo to be a link.</p>
+        <p class="text-sm text-slate-400 mt-2">The logo is a picture already on this site. Exhibitor logos are at <code>/images/exhibitors/company-name.webp</code>, for example <code>/images/exhibitors/jade-global.webp</code>. Leave the logo empty to show the name in text. For a logo that is not on the site yet, send us the file.</p>
+        <div id="partners-rows" class="mp-form mt-3"></div>
+        <div class="flex gap-3 items-center flex-wrap mt-3">
+          <button type="button" id="partner-add" class="mp-btn-secondary text-sm py-2 px-4"><i class="fas fa-plus mr-1"></i> Add a partner</button>
+          <button type="button" id="partners-save" class="mp-btn-primary text-sm py-2 px-4"><i class="fas fa-save mr-1"></i> Save</button>
+          <span id="partners-msg" class="text-sm" role="status"></span>
+        </div>
+      </div>
+      <div class="dash-card mt-3">
+        <h3><i class="fas fa-map-marker-alt mr-2"></i>The Delhi edition</h3>
+        <p class="text-sm text-slate-400">A card about Bharat AI Innovation Delhi 2027 is shown to every signed-in person on the Home tab of Bharat AI Connect, and to every exhibitor on the first screen of their dashboard. Pressing it opens the Delhi page. Leave a box empty to use the wording shown in grey. A change can take five minutes to appear.</p>
+        <div class="mp-form mt-3">
+          <label style="display:flex;align-items:center;gap:8px;font-weight:600;cursor:pointer"><input type="checkbox" id="delhi-on" style="width:auto;margin:0"> Show the Delhi card</label>
+          <p class="text-sm font-semibold mt-3">For attendees, in the app. The button opens the Delhi page.</p>
+          <label for="delhi-title" class="text-sm">Heading</label>
+          <input id="delhi-title" maxlength="80" autocomplete="off">
+          <label for="delhi-text" class="text-sm">Line under the heading</label>
+          <input id="delhi-text" maxlength="220" autocomplete="off">
+          <label for="delhi-cta" class="text-sm">Words on the button</label>
+          <input id="delhi-cta" maxlength="40" autocomplete="off">
+          <p class="text-sm font-semibold mt-3">For exhibitors, on their dashboard. The button opens the booths on the Delhi page.</p>
+          <label for="delhi-ex-title" class="text-sm">Heading</label>
+          <input id="delhi-ex-title" maxlength="80" autocomplete="off">
+          <label for="delhi-ex-text" class="text-sm">Line under the heading</label>
+          <input id="delhi-ex-text" maxlength="220" autocomplete="off">
+          <label for="delhi-ex-cta" class="text-sm">Words on the button</label>
+          <input id="delhi-ex-cta" maxlength="40" autocomplete="off">
+        </div>
+        <div class="flex gap-3 items-center flex-wrap mt-3">
+          <button type="button" id="delhi-save" class="mp-btn-primary text-sm py-2 px-4"><i class="fas fa-save mr-1"></i> Save</button>
+          <span id="delhi-msg" class="text-sm" role="status"></span>
+        </div>
+        <p id="delhi-opened" class="text-sm text-slate-400 mt-3"></p>
+      </div>
+    </section>
+
     <!-- Reports from exhibitors -->
     <section id="section-reports" class="dash-section hidden">
       <div class="dash-section-header"><h2><i class="fas fa-exclamation-circle mr-2"></i>Reports from exhibitors</h2></div>
@@ -1118,7 +1163,7 @@ export function marketplaceAdminPageHTML(): string {
     </section>
   </div>
 
-  <script src="/static/marketplace-admin.js?v=12"></script>
+  <script src="/static/marketplace-admin.js?v=13"></script>
 </body>
 </html>`
 }

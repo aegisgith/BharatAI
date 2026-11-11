@@ -216,11 +216,95 @@ r = await hit('PUT', '/api/mp/admin/directory', { on: false }, admin);
 r = await hit('GET', '/api/events/1/exhibitors');
 check('off again: empty again', r.json.length === 0, r.text);
 
+// ---- partners and sponsors in the app ----
+r = await hit('GET', '/api/app-partners');
+check('partners: nothing is shown until the organisers add someone', r.status === 200 && Array.isArray(r.json.partners) && r.json.partners.length === 0, r.text);
+const JADE = { name: 'Jade Global', label: 'Panel Host Partner', logo: '/images/exhibitors/jade-global.webp', url: 'jadeglobal.com' };
+r = await hit('PUT', '/api/mp/admin/partners', { partners: [JADE] });
+check('partners: signed out cannot change the list', r.status === 403, r.status);
+r = await hit('PUT', '/api/mp/admin/partners', { partners: [JADE] }, mpAs(1));
+check('partners: an exhibitor cannot add itself', r.status === 403, r.status);
+const badPartner = async (name, p, want) => { const x = await hit('PUT', '/api/mp/admin/partners', { partners: [p] }, admin); check('partners refused: ' + name, x.status === 400 && want.test(x.json?.error || ''), x.status + ' ' + x.text); };
+await badPartner('no name', { ...JADE, name: ' ' }, /Row 1: please enter the name/);
+await badPartner('a logo from another site', { ...JADE, logo: 'https://evil.example/x.png' }, /logo must be a picture on this site/);
+await badPartner('a logo path that climbs out of /images', { ...JADE, logo: '/images/../api/x.png' }, /logo must be a picture on this site/);
+await badPartner('a script link as the website', { ...JADE, url: 'javascript:alert(1)' }, /website must be a web address/);
+r = await hit('GET', '/api/app-partners');
+check('partners: no refusal saved anything', r.json.partners.length === 0, r.text);
+r = await hit('PUT', '/api/mp/admin/partners', { partners: [JADE, { name: 'Dun & Bradstreet', label: 'Data Partner', logo: '', url: '' }] }, admin);
+check('partners: admin saves the list, a plain domain becomes https, in the audit log', r.status === 200 && r.json.partners.length === 2 && r.json.partners[0].url === 'https://jadeglobal.com' && !!one("SELECT id FROM admin_audit WHERE action = 'marketplace.app-partners'"), r.text);
+r = await hit('GET', '/api/app-partners');
+check('partners: the app gets them in order, name, label and logo', r.json.partners.map(p => p.name).join('|') === 'Jade Global|Dun & Bradstreet' && r.json.partners[0].label === 'Panel Host Partner' && r.json.partners[0].logo === '/images/exhibitors/jade-global.webp' && r.json.partners[1].logo === '', r.text);
+r = await hit('PUT', '/api/mp/admin/partners', { partners: [] }, admin);
+check('partners: the list can be emptied again', r.status === 200 && (await hit('GET', '/api/app-partners')).json.partners.length === 0, r.text);
+
+// ---- the Delhi edition, shown in the app and on the exhibitor dashboard ----
+const DELHI_AUDIT = "SELECT COUNT(*) AS n FROM admin_audit WHERE action = 'delhi_promo.open'";
+r = await hit('GET', '/api/app-partners');
+const dl0 = r.json.delhi;
+check('delhi: shown to everyone until the organisers say otherwise, in the words of the Delhi page', !!dl0 && /Delhi 2027/.test(dl0.title) && /29.30 July 2027 at Bharat Mandapam, New Delhi/.test(dl0.text) && /Booths and partnerships are open now/.test(dl0.ex_text) && !!dl0.cta && !!dl0.ex_cta, r.text);
+check('delhi: the links are the Delhi page and its booths, nothing else', dl0.url === '/delhi?from=app' && dl0.ex_url === '/delhi?from=exhibitor#booths', JSON.stringify(dl0));
+check('delhi: it claims no government backing and gives no headcount', !/ministry|government|meity|\d,\d{3}/i.test(JSON.stringify(dl0)), JSON.stringify(dl0));
+r = await hit('GET', '/api/mp/admin/delhi-promo');
+check('delhi: signed out cannot read the settings', r.status === 403, r.status);
+r = await hit('PUT', '/api/mp/admin/delhi-promo', { on: false });
+check('delhi: signed out cannot switch it off', r.status === 403 && !!(await hit('GET', '/api/app-partners')).json.delhi, r.status);
+r = await hit('PUT', '/api/mp/admin/delhi-promo', { on: false }, mpAs(1));
+check('delhi: an exhibitor cannot switch it off', r.status === 403 && !!(await hit('GET', '/api/app-partners')).json.delhi, r.status);
+r = await hit('PUT', '/api/mp/admin/delhi-promo', { on: false }, as(21));
+check('delhi: an attendee cannot switch it off', r.status === 403 && !!(await hit('GET', '/api/app-partners')).json.delhi, r.status);
+r = await hit('GET', '/api/mp/admin/delhi-promo', undefined, admin);
+check('delhi: admin sees it on, nothing typed, our wording to fall back on, nobody counted', r.status === 200 && r.json.on === true && Object.values(r.json.typed).join('') === '' && r.json.defaults.title === dl0.title && r.json.opened.attendees === 0 && r.json.opened.exhibitors === 0, r.text);
+r = await hit('PUT', '/api/mp/admin/delhi-promo', { on: true, title: 'x'.repeat(81) }, admin);
+check('delhi: a heading that is too long is refused in words, and nothing is saved', r.status === 400 && /heading for attendees is too long/.test(r.json.error) && (await hit('GET', '/api/app-partners')).json.delhi.title === dl0.title, r.text);
+r = await hit('PUT', '/api/mp/admin/delhi-promo', { on: true, title: '  Delhi   is next:  <b>29 July</b> ', ex_cta: 'Book a Delhi booth', url: 'https://evil.example/', ex_url: 'javascript:alert(1)' }, admin);
+check('delhi: admin rewords it, spaces tidied, in the audit log', r.status === 200 && r.json.typed.title === 'Delhi is next: <b>29 July</b>' && !!one("SELECT id FROM admin_audit WHERE action = 'marketplace.delhi-promo'"), r.text);
+r = await hit('GET', '/api/app-partners');
+check('delhi: the new words are served, an empty box keeps our wording', r.json.delhi.title === 'Delhi is next: <b>29 July</b>' && r.json.delhi.text === dl0.text && r.json.delhi.ex_cta === 'Book a Delhi booth' && r.json.delhi.ex_title === dl0.ex_title, r.text);
+check('delhi: a link sent with the words is ignored, the links stay ours', r.json.delhi.url === '/delhi?from=app' && r.json.delhi.ex_url === '/delhi?from=exhibitor#booths', JSON.stringify(r.json.delhi));
+check('delhi: the partners list is still served beside it', Array.isArray(r.json.partners), r.text);
+// who pressed it
+r = await hit('POST', '/api/app-promo/delhi-open', { from: 'app' });
+check('delhi press: signed out is answered and nothing is written', r.status === 200 && r.json.counted === false && one(DELHI_AUDIT).n === 0, r.text);
+r = await hit('POST', '/api/app-promo/delhi-open', { from: 'exhibitor' }, as(21));
+check('delhi press: an attendee cannot count as an exhibitor', r.json.counted === false && one(DELHI_AUDIT).n === 0, r.text);
+r = await hit('POST', '/api/app-promo/delhi-open', { from: 'app' }, as(21));
+await hit('POST', '/api/app-promo/delhi-open', { from: 'app' }, as(21));
+check('delhi press: an attendee is counted once however often they press', r.json.counted === true && one(DELHI_AUDIT + " AND entity = 'attendee' AND entity_id = '21'").n === 1 && one(DELHI_AUDIT).n === 1, JSON.stringify(q("SELECT entity, entity_id FROM admin_audit WHERE action = 'delhi_promo.open'")));
+await hit('POST', '/api/app-promo/delhi-open', { from: 'app' }, as(20));
+r = await hit('POST', '/api/app-promo/delhi-open', { from: 'exhibitor' }, mpAs(1));
+await hit('POST', '/api/app-promo/delhi-open', { from: 'exhibitor' }, mpAs(1));
+check('delhi press: an exhibitor account is counted once', r.json.counted === true && one(DELHI_AUDIT + " AND entity = 'mp_company' AND entity_id = '1'").n === 1, r.text);
+r = await hit('POST', '/api/app-promo/delhi-open', null, as(10));
+check('delhi press: a press with nothing in it is still counted for the person signed in', r.status === 200 && r.json.counted === true, r.text);
+r = await hit('GET', '/api/mp/admin/delhi-promo', undefined, admin);
+check('delhi: admin sees how many opened it, people and exhibitor accounts apart', r.json.opened.attendees === 3 && r.json.opened.exhibitors === 1, JSON.stringify(r.json.opened));
+// off
+r = await hit('PUT', '/api/mp/admin/delhi-promo', { on: false, title: 'Delhi is next' }, admin);
+check('delhi: admin switches it off', r.status === 200 && r.json.on === false && r.json.shown === null, r.text);
+r = await hit('GET', '/api/app-partners');
+check('delhi: switched off, nothing is served, and the partners still are', r.status === 200 && r.json.delhi === null && Array.isArray(r.json.partners), r.text);
+r = await hit('GET', '/api/mp/admin/delhi-promo', undefined, admin);
+check('delhi: the words typed are kept while it is off', r.json.on === false && r.json.typed.title === 'Delhi is next', r.text);
+r = await hit('PUT', '/api/mp/admin/delhi-promo', { on: true }, admin);
+check('delhi: switched on again with every box empty, it is our wording again', r.status === 200 && (await hit('GET', '/api/app-partners')).json.delhi.title === dl0.title, r.text);
+db.run("UPDATE app_settings SET value = 'not json {' WHERE key = 'app_delhi_promo'");
+r = await hit('GET', '/api/app-partners');
+check('delhi: a damaged setting falls back to our wording, it does not break the app', r.status === 200 && r.json.delhi.title === dl0.title, r.text);
+db.run("DELETE FROM app_settings WHERE key = 'app_delhi_promo'");
+
+r = await hit('GET', '/app');
+check('delhi: the app has the card on Home, for signed-in people, hidden until filled', /<div class="hidden signed-in-only">\s*<div class="[^"]*hidden" id="app-delhi">/.test(r.text) && /id="app-delhi-link" href="\/delhi\?from=app" target="_blank" rel="noopener"/.test(r.text), '');
+check('the app has the Our partners strip on Home, hidden until filled', /id="app-partners"/.test(r.text) && /Our partners/.test(r.text), '');
+r = await hit('GET', '/app.js');
+check('delhi: the app fills the card from the partners answer and counts a press', /showDelhiPromo\(d && d\.delhi\)/.test(r.text) && /function delhiPromoOpened\(\)/.test(r.text) && /\/api\/app-promo\/delhi-open/.test(r.text), '');
+check('the app has the workshop certificate button and loads the partners', /loadAppPartners\(\)/.test(r.text) && /id="ws-cert-btn"/.test(r.text) && /BHAI-WS-/.test(r.text), '');
+
 // ---- the pages ----
 r = await hit('GET', '/marketplace/dashboard');
-check('the dashboard has the Leads screen', ['data-section="leads"', 'id="leads-list"', 'id="leads-csv"', 'href="/exhibitor/scan"', 'marketplace-dashboard.js?v=9'].every(m => r.text.includes(m)), '');
+check('the dashboard has the Leads screen', ['data-section="leads"', 'id="leads-list"', 'id="leads-csv"', 'href="/exhibitor/scan"', 'marketplace-dashboard.js?v=10', 'id="dash-delhi"'].every(m => r.text.includes(m)), '');
 r = await hit('GET', '/marketplace/admin');
-check('the admin page has the exhibitor-list switch', ['id="directory-card"', 'marketplace-admin.js?v=12'].every(m => r.text.includes(m)), '');
+check('the admin page has the exhibitor-list switch', ['id="directory-card"', 'marketplace-admin.js?v=13', 'data-section="partners"', 'id="partners-rows"', 'id="delhi-on"', 'id="delhi-ex-cta"', 'id="delhi-save"', 'Shown in the app'].every(m => r.text.includes(m)), '');
 r = await hit('GET', '/app.js');
 check('the app: Scan a badge in the Lead Console, 8-minute talks, no dead floor-plan button', /action === 'leads'|act === 'leads'/.test(r.text) && /8-minute presentations/.test(r.text) && !/10-minute presentations/.test(r.text) && !/showBoothPackages/.test(r.text), '');
 r = await hit('GET', '/app');

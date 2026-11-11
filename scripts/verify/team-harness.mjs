@@ -62,6 +62,13 @@ db.run("INSERT INTO exhibitor_team (event_id, exhibitor_id, first_name, last_nam
 // Someone whose mobile is already registered, to see the refusal on screen.
 db.run("INSERT INTO attendees (event_id, name, email, mobile, badge_type, main_event) VALUES (1, 'Somebody Else', 'someone@else.test', '9820012345', 'Visitor Pass', 1)");
 
+// A Premium Delegate whose workshop is over and who was checked in that day: for the
+// workshop certificate. The dates are in the past so the harness needs no moved clock.
+db.run("INSERT INTO attendees (id, event_id, name, email, badge_type, payment_status, main_event, checked_in_at, checked_in_by) VALUES (900, 1, 'Wendy Workshop', 'wendy@example.test', 'Premium Delegate Pass', 'paid', 1, '2026-11-10 05:00:00', 'Desk One')");
+db.run("INSERT INTO workshops (id, event_id, slug, title, speaker, starts_at, ends_at) VALUES (1, 1, 'cxo-guide', 'The CXO Guide to AI', 'Dr. Vinay Kulkarni', '2026-11-10 10:00', '2026-11-10 13:00')");
+db.run("INSERT INTO workshop_seats (event_id, attendee_id, workshop_id) VALUES (1, 900, 1)");
+db.run("INSERT INTO checkins (event_id, attendee_id, day, checked_in_at, checked_in_by) VALUES (1, 900, '2026-11-10', '2026-11-10 05:00:00', 'Desk One')");
+
 const TYPES = { '.html': 'text/html', '.css': 'text/css', '.js': 'application/javascript', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.woff2': 'font/woff2', '.woff': 'font/woff', '.webp': 'image/webp', '.ico': 'image/x-icon', '.json': 'application/json' };
 // /app too: run-all.mjs asks for it to know the harness is up.
 const viaWorker = (p) => p.startsWith('/api/') || p === '/marketplace' || p.startsWith('/marketplace/') || p === '/register' || p === '/app' || p === '/app.js' || p.startsWith('/verify/') || p.startsWith('/exhibitor/') || p === '/staff' || p.startsWith('/staff/');

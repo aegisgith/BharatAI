@@ -62,7 +62,7 @@ const initAdmin = async () => {
       if (info) info.textContent = 'Marketplace Admin · signed in through event admin'
     }
     try { exhibitors = (await api('/api/mp/admin/exhibitors')).exhibitors || [] } catch { exhibitors = [] }
-    await Promise.all([loadStats(), loadAllListings(), loadPendingListings(), loadInquiries(), loadExhibitors(), loadStageTalks(), loadTeams(), loadReports(), loadDirectory()])
+    await Promise.all([loadStats(), loadAllListings(), loadPendingListings(), loadInquiries(), loadExhibitors(), loadStageTalks(), loadTeams(), loadReports(), loadDirectory(), loadPartnersAdmin(), loadDelhiPromoAdmin()])
     // The queue is what an admin comes here for; open it when there is something in it.
     if (num(document.getElementById('stat-pending').textContent) > 0) switchSection('pending')
     // The report email's button opens /marketplace/admin#reports.
@@ -437,6 +437,87 @@ if (teamCsvBtn) teamCsvBtn.addEventListener('click', async () => {
     const a = document.createElement('a'); a.href = url; a.download = 'exhibitor-teams.csv'; document.body.appendChild(a); a.click(); a.remove()
     setTimeout(() => URL.revokeObjectURL(url), 5000)
   } catch (err) { showToast(err.message, true) }
+})
+
+// ── Partners in the app ──
+// The sponsors and partners the app's Home tab shows under "Our partners": a short
+// list the organisers keep here. The server checks every row again on Save.
+let partnersAdmin = []
+const partnerRow = (p, i) => `<div class="partner-row" data-partner-row style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr)) 40px;gap:8px;align-items:center;padding:8px 0;border-top:1px solid #e5e7eb">
+    <input data-f="name" aria-label="Name, row ${i + 1}" maxlength="80" autocomplete="off" placeholder="Name, e.g. Jade Global" value="${esc(p.name)}">
+    <input data-f="label" aria-label="Label, row ${i + 1}" maxlength="60" autocomplete="off" placeholder="Label, e.g. Panel Host Partner" value="${esc(p.label)}">
+    <input data-f="logo" aria-label="Logo, row ${i + 1}" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="/images/exhibitors/jade-global.webp" value="${esc(p.logo)}">
+    <input data-f="url" aria-label="Website, row ${i + 1}" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Website (optional)" value="${esc(p.url)}">
+    <button type="button" class="dash-action-btn" title="Remove this partner" data-partner-remove="${i}"><i class="fas fa-trash-alt text-rose-400"></i></button>
+  </div>`
+// What is typed in the boxes now, so Add and Remove never lose an unsaved edit.
+const readPartnerRows = () => [...document.querySelectorAll('[data-partner-row]')].map(r => {
+  const o = {}; r.querySelectorAll('[data-f]').forEach(i => { o[i.getAttribute('data-f')] = i.value.trim() }); return o
+})
+const drawPartners = () => {
+  const c = document.getElementById('partners-rows'); if (!c) return
+  c.innerHTML = partnersAdmin.length ? partnersAdmin.map(partnerRow).join('') : '<p class="text-slate-400 text-sm">No partners are shown in the app yet.</p>'
+}
+const partnersMsg = (text, bad) => { const m = document.getElementById('partners-msg'); if (m) { m.textContent = text; m.style.color = bad ? '#b91c1c' : '#047857' } }
+const loadPartnersAdmin = async () => {
+  if (!document.getElementById('partners-rows')) return
+  try { partnersAdmin = (await api('/api/mp/admin/partners')).partners || [] } catch { partnersAdmin = [] }
+  drawPartners()
+}
+// ── The Delhi edition in the app ──
+// The card the app's Home tab and the exhibitor dashboard show. A box left empty means
+// the wording in grey, which is the server's own. The links are fixed on the server.
+const DELHI_BOXES = { title: 'delhi-title', text: 'delhi-text', cta: 'delhi-cta', ex_title: 'delhi-ex-title', ex_text: 'delhi-ex-text', ex_cta: 'delhi-ex-cta' }
+const delhiMsg = (text, bad) => { const m = document.getElementById('delhi-msg'); if (m) { m.textContent = text; m.style.color = bad ? '#b91c1c' : '#047857' } }
+const drawDelhiPromo = (d) => {
+  const on = document.getElementById('delhi-on'); if (!on || !d) return
+  on.checked = !!d.on
+  Object.keys(DELHI_BOXES).forEach(k => {
+    const el = document.getElementById(DELHI_BOXES[k]); if (!el) return
+    if (d.typed) el.value = d.typed[k] || ''
+    if (d.defaults) el.placeholder = d.defaults[k] || ''
+  })
+  const o = document.getElementById('delhi-opened')
+  if (o && d.opened) o.textContent = `Opened so far by ${d.opened.attendees} ${d.opened.attendees === 1 ? 'person' : 'people'} in the app and ${d.opened.exhibitors} exhibitor ${d.opened.exhibitors === 1 ? 'account' : 'accounts'}. Each one is counted once.`
+}
+const loadDelhiPromoAdmin = async () => {
+  if (!document.getElementById('delhi-on')) return
+  try { drawDelhiPromo(await api('/api/mp/admin/delhi-promo')) } catch { delhiMsg('Could not load the Delhi card. Refresh the page to try again.', true) }
+}
+const delhiSaveBtn = document.getElementById('delhi-save')
+if (delhiSaveBtn) delhiSaveBtn.addEventListener('click', async () => {
+  delhiMsg('')
+  const body = { on: document.getElementById('delhi-on').checked }
+  Object.keys(DELHI_BOXES).forEach(k => { body[k] = document.getElementById(DELHI_BOXES[k]).value })
+  delhiSaveBtn.disabled = true
+  try {
+    const r = await api('/api/mp/admin/delhi-promo', { method: 'PUT', body: JSON.stringify(body) })
+    drawDelhiPromo({ on: r.on, typed: r.typed })
+    delhiMsg(r.on ? 'Saved. The Delhi card is shown in the app and on exhibitor dashboards.' : 'Saved. The Delhi card is hidden.')
+  } catch (err) { delhiMsg('Not saved. ' + err.message, true) }
+  finally { delhiSaveBtn.disabled = false }
+})
+
+const partnerAddBtn = document.getElementById('partner-add')
+if (partnerAddBtn) partnerAddBtn.addEventListener('click', () => {
+  partnersAdmin = readPartnerRows(); partnersAdmin.push({ name: '', label: '', logo: '', url: '' }); drawPartners(); partnersMsg('')
+  const rows = document.querySelectorAll('[data-partner-row]'); const last = rows[rows.length - 1]; if (last) last.querySelector('[data-f="name"]').focus()
+})
+const partnersSaveBtn = document.getElementById('partners-save')
+if (partnersSaveBtn) partnersSaveBtn.addEventListener('click', async () => {
+  // A row left completely empty is dropped; anything half filled is the server's to name.
+  const rows = readPartnerRows().filter(p => p.name || p.label || p.logo || p.url)
+  partnersSaveBtn.disabled = true
+  try {
+    partnersAdmin = (await api('/api/mp/admin/partners', { method: 'PUT', body: JSON.stringify({ partners: rows }) })).partners || []
+    drawPartners()
+    partnersMsg(partnersAdmin.length ? `Saved. ${partnersAdmin.length} ${partnersAdmin.length === 1 ? 'partner is' : 'partners are'} now shown in the app.` : 'Saved. No partners are shown in the app.')
+  } catch (err) { partnersMsg('Not saved. ' + err.message, true) }
+  finally { partnersSaveBtn.disabled = false }
+})
+main.addEventListener('click', (e) => {
+  const rm = e.target.closest('[data-partner-remove]'); if (!rm) return
+  partnersAdmin = readPartnerRows(); partnersAdmin.splice(num(rm.getAttribute('data-partner-remove')), 1); drawPartners(); partnersMsg('Removed. Press Save to apply.')
 })
 
 // ── The exhibitor list in the app ──

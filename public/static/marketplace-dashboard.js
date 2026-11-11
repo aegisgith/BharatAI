@@ -71,7 +71,7 @@ const initDashboard = async () => {
     document.getElementById('dash-company-name').textContent = name
     const tn = document.getElementById('dash-topbar-name'); if (tn) tn.textContent = name
     const av = document.getElementById('dash-avatar'); if (av) av.textContent = name.charAt(0).toUpperCase()
-    await Promise.all([loadStats(), loadListings(), loadStage(), loadTeam(), loadBooth(), loadLeads(), loadReports(), loadInquiries(), loadReviews(), loadProfile(), loadRecentInquiries()])
+    await Promise.all([loadStats(), loadListings(), loadStage(), loadTeam(), loadBooth(), loadLeads(), loadReports(), loadInquiries(), loadReviews(), loadProfile(), loadRecentInquiries(), loadDelhi()])
     // The "add your team" email signs in to /marketplace/dashboard#team.
     if (location.hash === '#team' && teamInfo && teamInfo.eligible) switchSection('team')
     if (location.hash === '#leads' && leadsInfo && leadsInfo.exhibitor) switchSection('leads')
@@ -480,6 +480,32 @@ const dayRange = (a, b) => {
   if (!y || (x.y === y.y && x.mo === y.mo && x.d === y.d)) return `${x.d} ${MONTHS[x.mo]} ${x.y}`
   return x.y === y.y && x.mo === y.mo ? `${x.d}–${y.d} ${MONTHS[x.mo]} ${x.y}` : `${x.d} ${MONTHS[x.mo]} – ${y.d} ${MONTHS[y.mo]} ${y.y}`
 }
+// ── The Delhi edition ──
+// Every dashboard account sees it on the first screen while the organisers keep it on
+// (Marketplace admin, Shown in the app). The words come from the server; the link is
+// one of ours and is checked again here.
+const loadDelhi = async () => {
+  const box = document.getElementById('dash-delhi'); if (!box) return
+  let d = null
+  try { d = (await api('/api/app-partners')).delhi } catch { d = null }
+  if (!d || !d.ex_title) { box.classList.add('hidden'); box.innerHTML = ''; return }
+  const href = /^\/delhi([?#]|$)/.test(d.ex_url || '') ? d.ex_url : '/delhi'
+  box.innerHTML = `<div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+      <img src="/images/delhi/mandapam-dusk-phone.webp" alt="Bharat Mandapam, New Delhi" loading="lazy" width="132" height="88" style="width:132px;height:88px;object-fit:cover;border-radius:12px;flex:none">
+      <div style="flex:1 1 240px;min-width:0">
+        <p style="margin:0;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#C84F00">Delhi 2027</p>
+        <h3 style="margin:4px 0 0">${esc(d.ex_title)}</h3>
+        <p class="text-sm text-slate-400" style="margin:4px 0 0">${esc(d.ex_text)}</p>
+      </div>
+      <a class="mp-btn-primary text-sm py-2 px-4" href="${esc(href)}" target="_blank" rel="noopener" data-delhi-open>${esc(d.ex_cta)} <i class="fas fa-arrow-right ml-1"></i></a>
+    </div>`
+  box.classList.remove('hidden')
+  const a = box.querySelector('[data-delhi-open]')
+  if (a) a.addEventListener('click', () => {
+    try { fetch('/api/app-promo/delhi-open', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ from: 'exhibitor' }), keepalive: true }).catch(() => {}) } catch { /* the link still opens */ }
+  })
+}
+
 const loadBooth = async () => {
   try { boothInfo = await api('/api/mp/dashboard/booth') } catch { boothInfo = null }
   renderBooth()
@@ -787,7 +813,7 @@ editForm.addEventListener('submit', async (e) => {
 })
 
 document.getElementById('dash-refresh-listings').addEventListener('click', async () => {
-  await Promise.all([loadStats(), loadListings(), loadStage(), loadTeam(), loadBooth(), loadLeads(), loadReports(), loadInquiries(), loadReviews(), loadRecentInquiries()])
+  await Promise.all([loadStats(), loadListings(), loadStage(), loadTeam(), loadBooth(), loadLeads(), loadReports(), loadInquiries(), loadReviews(), loadRecentInquiries(), loadDelhi()])
   showToast('Refreshed')
 })
 

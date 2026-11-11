@@ -184,6 +184,21 @@ const signInLink = (id) => { const exp = Math.floor(Date.now() / 1000) + 3600; c
     check('Overview: the booth card names the event, the booth, the passes and the payment', /Bharat AI Innovation 2026/.test(boothCard) && /20–21 Nov 2026 · World Trade Center, Mumbai/.test(boothCard) && /No\. 21 · Explorer Booth \(2m × 2m\)/.test(boothCard) && /1 of 1 issued/.test(boothCard) && /Paid ₹1,00,000/.test(boothCard) && /Pending ₹52,220/.test(boothCard) && /Total ₹1,52,220 including GST · Invoice BAI\/26-27\/9/.test(boothCard), boothCard);
     check('the overview to-do lists the team step as done', /Add your team and their photos/.test(await page.locator('#dash-todo').innerText()) && /1 person added\./.test(await page.locator('#dash-todo').innerText()), await page.locator('#dash-todo').innerText());
 
+    // ---- the Delhi edition, on the dashboard's first screen ----
+    const delhiCard = page.locator('#dash-delhi');
+    check('Overview: the Delhi card is shown to the exhibitor, in the words of the Delhi page', await until(() => delhiCard.isVisible()) && /Delhi 2027/i.test(await delhiCard.innerText()) && /Exhibit in Delhi: 29–30 July 2027/.test(await delhiCard.innerText()) && /Booths and partnerships are open now/.test(await delhiCard.innerText()), await delhiCard.innerText().catch(() => ''));
+    const delhiLink = delhiCard.locator('a[data-delhi-open]');
+    check('Overview: its button goes to the booths on the Delhi page, in a new tab', await delhiLink.getAttribute('href') === '/delhi?from=exhibitor#booths' && await delhiLink.getAttribute('target') === '_blank' && /See booths for Delhi/.test(await delhiLink.innerText()), await delhiLink.getAttribute('href'));
+    await delhiCard.scrollIntoViewIfNeeded();
+    check('Overview: the Delhi picture loads', await until(() => delhiCard.locator('img').evaluate(i => i.complete && i.naturalWidth > 0)), '');
+    const dbtn = await delhiLink.boundingBox();
+    check('phone: the Delhi button is big enough to press and inside the screen', !!dbtn && dbtn.height >= 36 && dbtn.x >= 0 && dbtn.x + dbtn.width <= 390, dbtn);
+    await noSideScroll('Overview with the Delhi card');
+    const [delhiTab] = await Promise.all([ctx.waitForEvent('page', { timeout: 8000 }), delhiLink.click()]);
+    check('Overview: pressing it opens the Delhi page in its own tab and the dashboard stays', await until(() => /\/delhi\?from=exhibitor#booths$/.test(delhiTab.url())) && /\/marketplace\/dashboard/.test(page.url()), delhiTab.url());
+    await delhiTab.close();
+    check('Overview: the press is counted once for this exhibitor account', await until(async () => (await dbq("SELECT COUNT(*) AS n FROM admin_audit WHERE action = 'delhi_promo.open' AND entity = 'mp_company' AND entity_id = '1'"))[0].n === 1), '');
+
     await openMenuItem(page, '#dash-nav-connect');
     const connect = await page.locator('#section-connect').innerText();
     check('Bharat AI Connect: the tab says what the app is for and who has signed in', /Open Bharat AI Connect/.test(connect) && /0 of 1 signed in so far/.test(connect) && /Asha Rao\s*Not signed in yet/.test(connect) && await page.locator('#section-connect a.connect-open').getAttribute('href') === '/app', connect);
@@ -258,6 +273,26 @@ const signInLink = (id) => { const exp = Math.floor(Date.now() / 1000) + 3600; c
     promptAnswer = 'We have recorded your payment. Thank you.';
     await ap.locator('[data-report-resolve]').first().click();
     check('admin: Mark resolved with a reply', await until(async () => /Resolved/.test(await ap.locator('#admin-reports').innerText()) && /Reply: We have recorded your payment/.test(await ap.locator('#admin-reports').innerText())), '');
+    // ---- partners in the app ----
+    await ap.locator('.dash-sidebar-item[data-section="partners"]').click();
+    check('admin: Partners in the app starts with nobody', await until(async () => /No partners are shown in the app yet/.test(await ap.locator('#partners-rows').innerText())), await ap.locator('#partners-rows').innerText().catch(() => ''));
+    await ap.locator('#partner-add').click();
+    await ap.locator('[data-partner-row] [data-f="name"]').fill('Jade Global');
+    await ap.locator('[data-partner-row] [data-f="logo"]').fill('https://elsewhere.example/logo.png');
+    await ap.locator('#partners-save').click();
+    check('admin: a logo from another site is refused, in words, and what was typed stays', await until(async () => /Not saved\. Row 1: the logo must be a picture on this site/.test(await ap.locator('#partners-msg').innerText())) && await ap.locator('[data-partner-row] [data-f="name"]').inputValue() === 'Jade Global', await ap.locator('#partners-msg').innerText());
+    await ap.locator('[data-partner-row] [data-f="label"]').fill('Panel Host Partner');
+    await ap.locator('[data-partner-row] [data-f="logo"]').fill('/images/exhibitors/jade-global.webp');
+    await ap.locator('#partners-save').click();
+    check('admin: the partner is saved', await until(async () => /Saved\. 1 partner is now shown in the app\./.test(await ap.locator('#partners-msg').innerText())), await ap.locator('#partners-msg').innerText());
+    // ---- the Delhi edition in the app ----
+    check('admin: the Delhi card is on, with our wording shown in grey', await until(async () => await ap.locator('#delhi-on').isChecked() && (await ap.locator('#delhi-title').getAttribute('placeholder')) === 'Next: Bharat AI Innovation Delhi 2027') && await ap.locator('#delhi-title').inputValue() === '' && (await ap.locator('#delhi-ex-cta').getAttribute('placeholder')) === 'See booths for Delhi', await ap.locator('#delhi-title').getAttribute('placeholder'));
+    check('admin: it says how many have opened it', /Opened so far by 0 people in the app and 1 exhibitor account\. Each one is counted once\./.test(await ap.locator('#delhi-opened').innerText()), await ap.locator('#delhi-opened').innerText());
+    await ap.locator('#delhi-title').fill('x'.repeat(80));
+    check('admin: the heading box stops at 80 characters', (await ap.locator('#delhi-title').inputValue()).length === 80 && await ap.locator('#delhi-title').getAttribute('maxlength') === '80', '');
+    await ap.locator('#delhi-title').fill('Delhi is next: 29–30 July 2027');
+    await ap.locator('#delhi-save').click();
+    check('admin: the new heading is saved and stays in its box', await until(async () => /Saved\. The Delhi card is shown in the app and on exhibitor dashboards\./.test(await ap.locator('#delhi-msg').innerText())) && await ap.locator('#delhi-title').inputValue() === 'Delhi is next: 29–30 July 2027' && await ap.locator('#delhi-on').isChecked(), await ap.locator('#delhi-msg').innerText());
     await ap.locator('.dash-sidebar-item[data-section="teams"]').click();
     const [dl] = await Promise.all([ap.waitForEvent('download', { timeout: 10000 }), ap.locator('#team-csv').click()]);
     const csv = require('fs').readFileSync(await dl.path(), 'utf8');
@@ -266,6 +301,91 @@ const signInLink = (id) => { const exp = Math.floor(Date.now() / 1000) + 3600; c
     check('admin: the page itself does not scroll sideways (the table scrolls in its box)', aw <= 1366, aw);
     check('admin: no page errors', aerrors.length === 0, aerrors.join(' | '));
     await actx.close();
+
+    // ================= an attendee: Our partners, and the workshop certificate =================
+    // Wider than 900 both ways: on a touch laptop the app takes a smaller window for a phone and
+    // shows the picture to save instead of downloading it (isTouchPhone).
+    const wctx = await browser.newContext({ viewport: { width: 1440, height: 1000 }, acceptDownloads: true, serviceWorkers: 'block' });
+    await wctx.addCookies([{ name: 'bai_session', value: appCookie(900), url: BASE }]);
+    await wctx.addInitScript(() => { try { localStorage.setItem('agba_user', JSON.stringify({ id: 900, event_id: 1, name: 'Wendy Workshop', email: 'wendy@example.test', badge_type: 'Premium Delegate Pass', payment_status: 'paid' })); } catch (e) {} });
+    const wp = await wctx.newPage();
+    const werrors = [];
+    wp.on('pageerror', e => werrors.push(String(e)));
+    await wp.goto(BASE + '/app', { waitUntil: 'domcontentloaded' });
+    check('app: Home shows the partner the organisers added, with its label and logo', await until(async () => await wp.locator('#app-partners').isVisible() && /Panel Host Partner/.test(await wp.locator('#app-partners').innerText()), 12000) && await wp.locator('#app-partners img').getAttribute('src') === '/images/exhibitors/jade-global.webp' && await wp.locator('#app-partners img').getAttribute('alt') === 'Jade Global', await wp.locator('#app-partners').innerText().catch(() => ''));
+    await wp.locator('#app-partners').scrollIntoViewIfNeeded();
+    const logoShown = await until(() => wp.evaluate(() => { const i = document.querySelector('#app-partners img'); return !!i && i.complete && i.naturalWidth > 0; }));
+    check('app: the partner logo really loads', logoShown, logoShown);
+    await wp.waitForFunction(() => typeof currentUser !== 'undefined' && currentUser && currentUser.id === 900, null, { timeout: 15000 }).catch(() => {});
+    await wp.evaluate(() => switchTab('myprofile'));
+    check('app: someone with a workshop seat is offered the workshop certificate', await until(() => wp.locator('#ws-cert-btn').isVisible(), 12000), await wp.locator('#ws-cert-btn').count());
+    const [cdl] = await Promise.all([wp.waitForEvent('download', { timeout: 25000 }), wp.locator('#ws-cert-btn').click()]);
+    const csize = require('fs').statSync(await cdl.path()).size;
+    check('app: the workshop certificate downloads as a picture', cdl.suggestedFilename() === 'BharatAI-2026-Workshop-Certificate.png' && csize > 20000, cdl.suggestedFilename() + ' ' + csize);
+    // ---- the Delhi edition on Home ----
+    await wp.evaluate(() => switchTab('dashboard'));
+    const dcard = wp.locator('#app-delhi');
+    check('app: a signed-in person sees the Delhi card on Home, with the heading the organisers typed', await until(async () => await dcard.isVisible() && /Delhi is next: 29–30 July 2027/.test(await dcard.innerText()), 12000) && /Passes are open now/.test(await dcard.innerText()) && /See the Delhi edition/.test(await dcard.innerText()), await dcard.innerText().catch(() => ''));
+    check('app: the card goes to the Delhi page, in a new tab', await wp.locator('#app-delhi-link').getAttribute('href') === '/delhi?from=app' && await wp.locator('#app-delhi-link').getAttribute('target') === '_blank', await wp.locator('#app-delhi-link').getAttribute('href'));
+    await dcard.scrollIntoViewIfNeeded();
+    const dlook = await wp.evaluate(() => { const css = (id) => getComputedStyle(document.getElementById(id)); const i = document.getElementById('app-delhi-img'); return { title: css('app-delhi-title').color, text: css('app-delhi-text').color, cta: css('app-delhi-cta').color, ctaBg: css('app-delhi-cta').backgroundColor, src: i.getAttribute('src') }; });
+    check('app: the Delhi picture loads (the large one on a computer)', await until(() => wp.locator('#app-delhi-img').evaluate(i => i.complete && i.naturalWidth > 0)) && dlook.src === '/images/delhi/mandapam-dusk-1600.webp', dlook.src);
+    check('app: the words are white on the dark picture and the button is the app orange', dlook.title === 'rgb(255, 255, 255)' && dlook.text === 'rgb(227, 229, 242)' && dlook.cta === 'rgb(255, 255, 255)' && dlook.ctaBg === 'rgb(200, 79, 0)', dlook);
+    const [dtab] = await Promise.all([wctx.waitForEvent('page', { timeout: 8000 }), wp.locator('#app-delhi-link').click()]);
+    check('app: pressing it opens the Delhi page in its own tab and the app stays open', await until(() => /\/delhi\?from=app$/.test(dtab.url())) && /\/app/.test(wp.url()), dtab.url());
+    await dtab.close();
+    check('app: the press is counted once for this person', await until(async () => (await dbq("SELECT COUNT(*) AS n FROM admin_audit WHERE action = 'delhi_promo.open' AND entity = 'attendee' AND entity_id = '900'"))[0].n === 1), '');
+    check('app: no page errors', werrors.length === 0, werrors.join(' | '));
+    await wctx.close();
+
+    // ---- the same card on a phone ----
+    const pctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, serviceWorkers: 'block' });
+    await pctx.addCookies([{ name: 'bai_session', value: appCookie(900), url: BASE }]);
+    await pctx.addInitScript(() => { try { localStorage.setItem('agba_user', JSON.stringify({ id: 900, event_id: 1, name: 'Wendy Workshop', email: 'wendy@example.test', badge_type: 'Premium Delegate Pass', payment_status: 'paid' })); } catch (e) {} });
+    const pp = await pctx.newPage();
+    const perrors = [];
+    pp.on('pageerror', e => perrors.push(String(e)));
+    await pp.goto(BASE + '/app', { waitUntil: 'domcontentloaded' });
+    const pcard = pp.locator('#app-delhi-link');
+    check('phone: the Delhi card is on Home for a signed-in person', await until(() => pcard.isVisible(), 12000), '');
+    await pcard.scrollIntoViewIfNeeded();
+    const pbox = await pcard.boundingBox();
+    const pcta = await pp.locator('#app-delhi-cta').boundingBox();
+    const pw = await pp.evaluate(() => document.documentElement.scrollWidth);
+    check('phone: the card fits the screen and nothing scrolls sideways', !!pbox && pbox.x >= 0 && pbox.x + pbox.width <= 390 && pw <= 391, { pbox, pw });
+    check('phone: the button is inside the card and big enough to press', !!pcta && pcta.height >= 36 && pcta.x >= pbox.x && pcta.x + pcta.width <= pbox.x + pbox.width && pcta.y + pcta.height <= pbox.y + pbox.height, pcta);
+    check('phone: the small picture is used, and it loads', await pp.locator('#app-delhi-img').getAttribute('src') === '/images/delhi/mandapam-dusk-phone.webp' && await until(() => pp.locator('#app-delhi-img').evaluate(i => i.complete && i.naturalWidth > 0)), await pp.locator('#app-delhi-img').getAttribute('src'));
+    check('phone: the heading and the line can be read in full (not cut off)', await pp.evaluate(() => ['app-delhi-title', 'app-delhi-text'].every(id => { const e = document.getElementById(id); return e.scrollWidth <= e.clientWidth + 1 && e.getBoundingClientRect().height > 0; })), '');
+    check('phone: no page errors', perrors.length === 0, perrors.join(' | '));
+    await pctx.close();
+
+    // ---- someone not signed in is not shown it (they are choosing a Mumbai pass) ----
+    const octx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, serviceWorkers: 'block' });
+    const op = await octx.newPage();
+    await op.goto(BASE + '/app', { waitUntil: 'domcontentloaded' });
+    check('signed out: the partners arrive but the Delhi card stays hidden', await until(() => op.locator('#app-partners').isVisible(), 12000) && !(await op.locator('#app-delhi-link').isVisible()), '');
+    await octx.close();
+
+    // ---- the organisers switch it off ----
+    const actx2 = await browser.newContext({ viewport: { width: 1366, height: 900 } });
+    await actx2.addInitScript(() => { sessionStorage.setItem('tc_admin_token', 'h-admin'); localStorage.setItem('tc_admin', '1'); localStorage.setItem('tc_admin_operator', 'Harness'); });
+    const ap2 = await actx2.newPage();
+    await ap2.goto(BASE + '/marketplace/admin');
+    await ap2.locator('.dash-sidebar-item[data-section="partners"]').click();
+    check('admin: both presses show in the count', await until(async () => /Opened so far by 1 person in the app and 1 exhibitor account\./.test(await ap2.locator('#delhi-opened').innerText())), await ap2.locator('#delhi-opened').innerText().catch(() => ''));
+    await ap2.locator('#delhi-on').uncheck();
+    await ap2.locator('#delhi-save').click();
+    check('admin: switching it off says the card is hidden', await until(async () => /Saved\. The Delhi card is hidden\./.test(await ap2.locator('#delhi-msg').innerText())), await ap2.locator('#delhi-msg').innerText());
+    await actx2.close();
+    const hctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, serviceWorkers: 'block' });
+    await hctx.addCookies([{ name: 'bai_session', value: appCookie(900), url: BASE }, { name: 'mp_session', value: '1.' + hmac('1'), url: BASE }]);
+    await hctx.addInitScript(() => { try { localStorage.setItem('agba_user', JSON.stringify({ id: 900, event_id: 1, name: 'Wendy Workshop', email: 'wendy@example.test', badge_type: 'Premium Delegate Pass', payment_status: 'paid' })); } catch (e) {} });
+    const hp = await hctx.newPage();
+    await hp.goto(BASE + '/app', { waitUntil: 'domcontentloaded' });
+    check('switched off: the app shows the partners and no Delhi card', await until(() => hp.locator('#app-partners').isVisible(), 12000) && !(await hp.locator('#app-delhi-link').isVisible()), '');
+    await hp.goto(BASE + '/marketplace/dashboard');
+    check('switched off: the exhibitor dashboard shows the booth and no Delhi card', await until(() => hp.locator('#dash-booth').isVisible(), 12000) && !(await hp.locator('#dash-delhi').isVisible()), '');
+    await hctx.close();
 
     // ---- the email, opened in the browser as the contact would see it ----
     const mctx = await browser.newContext({ viewport: { width: 390, height: 844 } });

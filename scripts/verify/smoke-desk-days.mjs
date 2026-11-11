@@ -155,6 +155,27 @@ check('it marks who must not be admitted', P[1][3] === 0 && P[4][3] === 1 && P[5
 check("each entry's hash matches that person's real pass, and only theirs", P[1][4] === h10(1) && P[2][4] === h10(2) && P[1][4] !== P[2][4], [P[1][4], h10(1)]);
 check('it holds no pass token, email or mobile', !r.text.includes(pass(1)) && !r.text.includes(pass(1).split('.')[1]) && !/example\.test|98200/.test(r.text), '');
 
+// ---- the workshop certificate (promised on the Premium Delegate and VIP passes) ----
+// A seat, a check-in at the venue on the workshop's day, and the workshop over.
+const { sessionCookie } = await import('./pay-db.mjs');
+const cert = async (id) => (await hit('GET', '/api/attendees/' + id + '/certificate-eligibility', undefined, { Cookie: sessionCookie(SESSION, id) })).json;
+db.run("INSERT INTO workshops (id, event_id, slug, title, speaker, starts_at, ends_at) VALUES (1, 1, 'cxo-guide', 'The CXO Guide to AI', 'Dr. Vinay Kulkarni', '2026-11-21 10:00', '2026-11-21 13:00')");
+db.run('INSERT INTO workshop_seats (event_id, attendee_id, workshop_id) VALUES (1, 2, 1), (1, 5, 1)');
+let w = await cert(1);
+check('no workshop seat: no workshop certificate is offered', w.workshop === null, w);
+w = await cert(2);
+check('before the workshop ends: the certificate is named and locked, with the reason', w.workshop?.title === 'The CXO Guide to AI' && w.workshop.speaker === 'Dr. Vinay Kulkarni' && w.workshop.eligible === false && /unlocks after the workshop/.test(w.workshop.reason), w.workshop);
+at('2026-11-21', '13:30');
+w = await cert(2);
+check('after the workshop, checked in that day: the certificate is unlocked', w.workshop.eligible === true && w.workshop.reason === '', w.workshop);
+w = await cert(5);
+check('a seat but never checked in at the venue: locked, and told why', w.workshop?.eligible === false && /checked in at the venue on the day of the workshop/.test(w.workshop.reason), w.workshop);
+db.run("DELETE FROM checkins WHERE attendee_id = 2 AND day = '2026-11-21'");
+w = await cert(2);
+check('checked in on day 1 only, workshop on day 2: locked', w.workshop.eligible === false, w.workshop);
+r = await hit('GET', '/api/attendees/2/certificate-eligibility');
+check("nobody reads another person's certificate status", r.status === 401 || r.status === 403, r.status);
+
 // ---- the scanner page ----
 // A staff account, for the page itself.
 r = await hit('GET', '/staff/scan');

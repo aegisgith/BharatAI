@@ -2580,6 +2580,160 @@ mp.put('/api/mp/admin/directory', async (c) => {
   return c.json({ success: true, on })
 })
 
+// ══════════════════════════════════════════
+// PARTNERS IN THE APP (11 Nov 2026)
+// ══════════════════════════════════════════
+// /partner sells "branding on stage, agenda and app", and the app showed no sponsor
+// anywhere. The organisers keep one list here (name, the label under the logo, the
+// logo, an optional website) and the app's Home tab shows it under "Our partners".
+// Nothing is shown until they add someone: naming a sponsor is theirs to do.
+// Kept in app_settings as JSON, so it needs no migration.
+const PARTNERS_KEY = 'app_partners'
+// A picture already on this site, or one uploaded through the marketplace.
+const PARTNER_LOGO_RE = /^\/(images\/[A-Za-z0-9/_.%-]+\.(webp|png|jpe?g|svg)|api\/mp\/uploads\/\d+)$/
+const cleanPartners = (raw: any): { list: { name: string; label: string; logo: string; url: string }[]; error?: string } => {
+  if (!Array.isArray(raw)) return { list: [], error: 'Send the list of partners' }
+  if (raw.length > 40) return { list: [], error: 'At most 40 partners can be shown' }
+  const list: { name: string; label: string; logo: string; url: string }[] = []
+  for (let i = 0; i < raw.length; i++) {
+    const p = raw[i] || {}
+    const name = String(p.name ?? '').replace(/\s+/g, ' ').trim()
+    const label = String(p.label ?? '').replace(/\s+/g, ' ').trim()
+    const logo = String(p.logo ?? '').trim()
+    if (!name) return { list, error: `Row ${i + 1}: please enter the name` }
+    if (name.length > 80 || label.length > 60) return { list, error: `Row ${i + 1}: the name or the label is too long` }
+    if (logo && (!PARTNER_LOGO_RE.test(logo) || logo.includes('..'))) return { list, error: `Row ${i + 1}: the logo must be a picture on this site, for example /images/exhibitors/jade-global.webp` }
+    const url = cleanLink(p.url)
+    if (url === null) return { list, error: `Row ${i + 1}: the website must be a web address, for example example.com` }
+    list.push({ name, label, logo, url: url || '' })
+  }
+  return { list }
+}
+const readPartners = async (c: any) => {
+  try { return cleanPartners(JSON.parse((await setting(c, PARTNERS_KEY)) || '[]')).list } catch { return [] }
+}
+
+// ══════════════════════════════════════════
+// THE DELHI EDITION, SHOWN IN THE APP (12 Nov 2026)
+// ══════════════════════════════════════════
+// The organiser: "we should be able to market the Delhi edition, visible to all attendees
+// and exhibitors in their app". One card on the app's Home tab (signed-in people) and one
+// on the first screen of the exhibitor dashboard. Left alone it says only what /delhi
+// says. The organisers can switch it off or change the words (Marketplace admin, Shown in
+// the app); a box left empty means the wording below. The links are fixed here, so nothing
+// typed in that form can send people off the site. A press is counted once per person.
+const DELHI_PROMO_KEY = 'app_delhi_promo'
+const DELHI_PROMO_OPENED = 'delhi_promo.open'
+const DELHI_PROMO_DEFAULT: Record<string, string> = {
+  title: 'Next: Bharat AI Innovation Delhi 2027',
+  text: '29–30 July 2027 at Bharat Mandapam, New Delhi. Passes are open now.',
+  cta: 'See the Delhi edition',
+  ex_title: 'Exhibit in Delhi: 29–30 July 2027',
+  ex_text: 'Bharat AI Innovation comes to Bharat Mandapam, New Delhi. Booths and partnerships are open now.',
+  ex_cta: 'See booths for Delhi',
+}
+const DELHI_PROMO_FIELDS: [string, string, number][] = [
+  ['title', 'The heading for attendees', 80], ['text', 'The line for attendees', 220], ['cta', 'The button for attendees', 40],
+  ['ex_title', 'The heading for exhibitors', 80], ['ex_text', 'The line for exhibitors', 220], ['ex_cta', 'The button for exhibitors', 40],
+]
+const DELHI_PROMO_LINKS = { url: '/delhi?from=app', ex_url: '/delhi?from=exhibitor#booths' }
+// What was typed, tidied: '' for a box left empty.
+const cleanDelhiPromo = (raw: any): { typed: Record<string, string>; error?: string } => {
+  const typed: Record<string, string> = {}
+  for (const [k, label, max] of DELHI_PROMO_FIELDS) {
+    const v = String(raw?.[k] ?? '').replace(/\s+/g, ' ').trim()
+    if (v.length > max) return { typed, error: `${label} is too long. Please keep it within ${max} characters.` }
+    typed[k] = v
+  }
+  return { typed }
+}
+const readDelhiPromo = async (c: any): Promise<{ on: boolean; typed: Record<string, string> }> => {
+  let raw: any = {}
+  try { raw = JSON.parse((await setting(c, DELHI_PROMO_KEY)) || '{}') || {} } catch { raw = {} }
+  const { typed, error } = cleanDelhiPromo(raw)
+  // Shown unless the organisers have switched it off.
+  return { on: raw.on !== false, typed: error ? cleanDelhiPromo({}).typed : typed }
+}
+const delhiPromoShown = (typed: Record<string, string>) => {
+  const out: Record<string, string> = { ...DELHI_PROMO_LINKS }
+  for (const [k] of DELHI_PROMO_FIELDS) out[k] = typed[k] || DELHI_PROMO_DEFAULT[k]
+  return out
+}
+const delhiPromoOpenedBy = async (c: any) => {
+  const out = { attendees: 0, exhibitors: 0 }
+  try {
+    const { results } = await c.env.DB.prepare('SELECT entity, COUNT(DISTINCT entity_id) AS n FROM admin_audit WHERE action = ? GROUP BY entity').bind(DELHI_PROMO_OPENED).all()
+    for (const r of (results || []) as any[]) {
+      if (r.entity === 'attendee') out.attendees = Number(r.n) || 0
+      else if (r.entity === 'mp_company') out.exhibitors = Number(r.n) || 0
+    }
+  } catch { /* nothing counted yet */ }
+  return out
+}
+
+// What the organisers show inside the app: the partners, and the Delhi card (null when off).
+mp.get('/api/app-partners', async (c) => {
+  c.header('Cache-Control', 'public, max-age=300')
+  const delhi = await readDelhiPromo(c)
+  return c.json({ partners: await readPartners(c), delhi: delhi.on ? delhiPromoShown(delhi.typed) : null })
+})
+
+mp.get('/api/mp/admin/delhi-promo', async (c) => {
+  const admin = await marketplaceAdmin(c)
+  if (!admin) return c.json({ error: 'Admin required' }, 403)
+  const d = await readDelhiPromo(c)
+  return c.json({ on: d.on, typed: d.typed, defaults: DELHI_PROMO_DEFAULT, links: DELHI_PROMO_LINKS, opened: await delhiPromoOpenedBy(c) })
+})
+
+mp.put('/api/mp/admin/delhi-promo', async (c) => {
+  const admin = await marketplaceAdmin(c)
+  if (!admin) return c.json({ error: 'Admin required' }, 403)
+  const b = ((await c.req.json().catch(() => ({}))) || {}) as any
+  const { typed, error } = cleanDelhiPromo(b)
+  if (error) return c.json({ error }, 400)
+  const on = b.on !== false
+  await c.env.DB.prepare('INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').bind(DELHI_PROMO_KEY, JSON.stringify({ on, ...typed })).run()
+  await auditAdmin(c, admin, 'marketplace.delhi-promo', null, { on, reworded: Object.keys(typed).filter(k => typed[k]) }, 'app_settings')
+  return c.json({ success: true, on, typed, shown: on ? delhiPromoShown(typed) : null })
+})
+
+// A press on the card. Counted once per person, and only for someone signed in: the
+// exhibitor dashboard's session, or a person in the event app. Anyone else gets a
+// polite yes and nothing is written.
+mp.post('/api/app-promo/delhi-open', async (c) => {
+  const b = ((await c.req.json().catch(() => ({}))) || {}) as any
+  try {
+    let entity = '', id = 0, actor = ''
+    if (b.from === 'exhibitor') {
+      const company = await getCompanyFromSession(c) as any
+      if (company && company.role !== 'admin') { entity = 'mp_company'; id = Number(company.id); actor = String(company.email || ('company ' + company.id)) }
+    } else {
+      const a = hooks.attendeeOf ? await hooks.attendeeOf(c) : null
+      if (a) { entity = 'attendee'; id = a.id; actor = 'attendee ' + a.id }
+    }
+    if (!entity || !id || !hooks.audit) return c.json({ ok: true, counted: false })
+    const seen = await c.env.DB.prepare('SELECT 1 AS hit FROM admin_audit WHERE action = ? AND entity = ? AND entity_id = ? LIMIT 1').bind(DELHI_PROMO_OPENED, entity, String(id)).first()
+    if (!seen) await hooks.audit(c, DELHI_PROMO_OPENED, entity, id, null, { actor, kind: entity === 'attendee' ? 'attendee' : 'exhibitor' })
+    return c.json({ ok: true, counted: true })
+  } catch { return c.json({ ok: true, counted: false }) }
+})
+
+mp.get('/api/mp/admin/partners', async (c) => {
+  const admin = await marketplaceAdmin(c)
+  if (!admin) return c.json({ error: 'Admin required' }, 403)
+  return c.json({ partners: await readPartners(c) })
+})
+
+mp.put('/api/mp/admin/partners', async (c) => {
+  const admin = await marketplaceAdmin(c)
+  if (!admin) return c.json({ error: 'Admin required' }, 403)
+  const { list, error } = cleanPartners(((await c.req.json().catch(() => ({}))) as any)?.partners)
+  if (error) return c.json({ error }, 400)
+  await c.env.DB.prepare('INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').bind(PARTNERS_KEY, JSON.stringify(list)).run()
+  await auditAdmin(c, admin, 'marketplace.app-partners', null, { names: list.map(p => p.name) }, 'app_settings')
+  return c.json({ success: true, partners: list })
+})
+
 // Who is signed in to the exhibitor dashboard, as the exhibitor they act for. index.tsx
 // uses it for booth lead scanning, where the person scanning is either the booth contact
 // (this session) or someone on the team signed in to the event app.

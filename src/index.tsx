@@ -12203,6 +12203,31 @@ app.get('/api/attendees/:id/certificate-eligibility', async (c) => {
       : 'Certificates go to the people who turn up. Yours unlocks when you check in at the badge desk'
         + (startLabel ? ' on ' + startLabel : '') + '.'
 
+  // The workshop certificate the Premium Delegate and VIP passes promise (11 Nov 2026;
+  // nothing made one). There is no scan at the workshop door, so it goes to someone who
+  // holds a seat and was checked in at the venue on the workshop's day, once the
+  // workshop is over. A workshop with no time yet unlocks on the event's last day.
+  let workshop: any = null
+  try {
+    if (await workshopsReady(c)) {
+      const ws = await c.env.DB.prepare('SELECT w.title, w.speaker, w.starts_at, w.ends_at FROM workshop_seats s JOIN workshops w ON w.id = s.workshop_id WHERE s.attendee_id = ? ORDER BY s.id LIMIT 1').bind(id).first() as any
+      if (ws) {
+        const nowIst = new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 16).replace('T', ' ')
+        const day = String(ws.starts_at || '').slice(0, 10)
+        const over = ws.ends_at ? nowIst >= String(ws.ends_at) : day ? nowIst.slice(0, 10) > day : (!!row.end_date && todayIst >= String(row.end_date))
+        let there = attended
+        if (day && await checkinsReady(c)) {
+          there = !!(await c.env.DB.prepare('SELECT 1 AS hit FROM checkins WHERE attendee_id = ? AND day = ?').bind(id, day).first()) || (attended && istDate(row.checked_in_at) === day)
+        }
+        workshop = {
+          title: ws.title, speaker: ws.speaker || '', day: day || null, eligible: over && there,
+          reason: over && there ? '' : over ? 'The workshop certificate is for people who were checked in at the venue on the day of the workshop.'
+            : 'Your workshop certificate unlocks after the workshop, once you have been checked in at the venue that day.',
+        }
+      }
+    }
+  } catch { workshop = null }
+
   return c.json({
     eligible: attended && started,
     attended, started,
@@ -12210,6 +12235,7 @@ app.get('/api/attendees/:id/certificate-eligibility', async (c) => {
     starts: start || null,
     ends: row.end_date || null,
     reason,
+    workshop,
   })
 })
 
@@ -22849,6 +22875,22 @@ function mainPageHTML(): string {
           </div>
         </div>
 
+        <!-- The Delhi edition, for signed-in people; hidden until the server says it is on -->
+        <div class="hidden signed-in-only">
+          <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6 hidden" id="app-delhi">
+            <a id="app-delhi-link" href="/delhi?from=app" target="_blank" rel="noopener" onclick="delhiPromoOpened()" style="position:relative;display:block;overflow:hidden;border-radius:18px;background:#0E1030;text-decoration:none;">
+              <img id="app-delhi-img" alt="" loading="lazy" decoding="async" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;">
+              <span style="position:absolute;top:0;left:0;width:100%;height:100%;background:linear-gradient(90deg,rgba(11,13,40,0.95) 0%,rgba(11,13,40,0.84) 55%,rgba(11,13,40,0.5) 100%);"></span>
+              <span style="position:relative;display:block;padding:20px 20px 22px;max-width:640px;">
+                <span style="display:block;font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#FFB37A;">Delhi 2027</span>
+                <strong id="app-delhi-title" style="display:block;margin-top:6px;font-size:20px;line-height:1.25;color:#ffffff;"></strong>
+                <span id="app-delhi-text" style="display:block;margin-top:6px;font-size:14px;line-height:1.5;color:#E3E5F2;"></span>
+                <span id="app-delhi-cta" style="display:inline-block;margin-top:14px;padding:10px 16px;border-radius:12px;background:#C84F00;color:#ffffff;font-size:14px;font-weight:700;"></span>
+              </span>
+            </a>
+          </div>
+        </div>
+
         <!-- Pass Comparison & Registration CTA -->
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 signed-out-only" id="pass-comparison-section">
           <div class="glass rounded-2xl p-6 md:p-8 glow-accent">
@@ -23164,6 +23206,12 @@ function mainPageHTML(): string {
               <button onclick="closeInquiryForm()" class="mt-4 px-6 py-2 rounded-xl text-sm font-semibold glass hover:bg-white/10 transition">Close</button>
             </div>
           </div>
+        </div>
+
+        <!-- Partners and sponsors (Marketplace admin, Partners in the app); hidden until there are any -->
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 hidden" id="app-partners">
+          <p class="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">Our partners</p>
+          <div id="app-partners-list" class="flex flex-wrap gap-3"></div>
         </div>
 
         <!-- Live Feed & Quick Actions -->
@@ -25246,9 +25294,57 @@ function mainPageScript(): string {
     }
     let pendingTabAfterLogin = null; // Store tab to navigate to after login
 
+    // ===== PARTNERS AND SPONSORS ON THE HOME TAB (11 Nov 2026) =====
+    // The organisers' list (Marketplace admin, Partners in the app). White tiles, because
+    // logos are drawn for a white ground. Nothing is drawn when the list is empty.
+    async function loadAppPartners() {
+      var box = document.getElementById('app-partners'), list = document.getElementById('app-partners-list');
+      if (!box || !list) return;
+      try {
+        var d = await api.get('/api/app-partners');
+        showDelhiPromo(d && d.delhi);
+        var ps = (d && d.partners) || [];
+        if (!ps.length) { box.classList.add('hidden'); return; }
+        var tile = 'display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:84px;min-width:148px;max-width:100%;padding:10px 16px;border-radius:14px;background:#fff;border:1px solid rgba(20,25,80,0.12);text-decoration:none;text-align:center;';
+        list.innerHTML = ps.map(function (p) {
+          var inner = (p.logo
+            ? '<img src="' + esc(p.logo) + '" alt="' + esc(p.name) + '" loading="lazy" style="max-height:44px;max-width:150px;width:auto;height:auto;object-fit:contain;">'
+            : '<span style="font-weight:700;font-size:15px;color:#1E2140;">' + esc(p.name) + '</span>')
+            + (p.label ? '<span style="display:block;font-size:11px;font-weight:600;color:#4B5273;margin-top:6px;">' + esc(p.label) + '</span>' : '');
+          var u = safeUrl(p.url);
+          return u ? '<a href="' + esc(u) + '" target="_blank" rel="noopener sponsored" style="' + tile + '">' + inner + '</a>' : '<div style="' + tile + '">' + inner + '</div>';
+        }).join('');
+        box.classList.remove('hidden');
+      } catch (e) { box.classList.add('hidden'); }
+    }
+
+    // ===== THE DELHI EDITION ON THE HOME TAB (12 Nov 2026) =====
+    // One card for signed-in people. The words come with the partners list; the link
+    // must be a page of this site. The picture is asked for only when the card shows.
+    function showDelhiPromo(d) {
+      var box = document.getElementById('app-delhi');
+      if (!box) return;
+      if (!d || !d.title) { box.classList.add('hidden'); return; }
+      document.getElementById('app-delhi-title').textContent = d.title;
+      document.getElementById('app-delhi-text').textContent = d.text || '';
+      document.getElementById('app-delhi-cta').textContent = d.cta || 'See the Delhi edition';
+      var link = document.getElementById('app-delhi-link');
+      if (d.url && d.url.indexOf('/delhi') === 0) link.setAttribute('href', d.url);
+      var img = document.getElementById('app-delhi-img');
+      if (img && !img.getAttribute('src')) img.setAttribute('src', window.innerWidth > 700 ? '/images/delhi/mandapam-dusk-1600.webp' : '/images/delhi/mandapam-dusk-phone.webp');
+      box.classList.remove('hidden');
+    }
+    function delhiPromoOpened() {
+      try {
+        fetch('/api/app-promo/delhi-open', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ from: 'app' }), keepalive: true }).catch(function () {});
+      } catch (e) {}
+    }
+
     async function init() {
       // The startup check in the page head (mainPageHTML) waits to hear this ran.
       if (window.__bhaiBoot && window.__bhaiBoot.start) window.__bhaiBoot.start();
+      loadAppPartners();
       // Check for ?email= param from notification email link
       const urlParams = new URLSearchParams(window.location.search);
       const emailParam = urlParams.get('email');
@@ -30069,6 +30165,17 @@ function mainPageScript(): string {
       const btn = document.getElementById('cert-btn');
       if (!btn || !currentUser) return;
       const gate = await certificateEligibility();
+      // The workshop certificate: offered only to someone who holds a workshop seat.
+      const wsBtn = document.getElementById('ws-cert-btn');
+      if (wsBtn) {
+        const ws = gate && gate.workshop;
+        wsBtn.classList.toggle('hidden', !ws);
+        if (ws && !ws.eligible) {
+          wsBtn.classList.add('opacity-50', 'cursor-not-allowed');
+          wsBtn.setAttribute('title', ws.reason || 'Available after your workshop.');
+          const wi = wsBtn.querySelector('i'); if (wi) wi.className = 'fas fa-lock mr-2';
+        }
+      }
       if (gate && gate.eligible) return;
       btn.classList.add('opacity-50', 'cursor-not-allowed');
       btn.setAttribute('title', (gate && gate.reason) || 'Available once you have attended.');
@@ -30078,12 +30185,14 @@ function mainPageScript(): string {
 
     // Certificate of participation — landscape canvas, same brand + logo
     // loading approach as the pass. Downloads a PNG the attendee keeps.
-    async function generateCertificate() {
+    async function generateCertificate(kind) {
       const user = currentUser;
       if (!user) { showToast('Please sign in first', 'error'); return; }
       const gate = await certificateEligibility();
-      if (!gate || !gate.eligible) {
-        showToast((gate && gate.reason) || 'Certificates are issued to people who attend the event.', 'error');
+      // kind 'workshop': the certificate for the workshop the person holds a seat in.
+      const ws = kind === 'workshop' ? ((gate && gate.workshop) || {}) : null;
+      if (ws ? !ws.eligible : (!gate || !gate.eligible)) {
+        showToast((ws ? (ws.reason || 'A workshop certificate is for people who hold a workshop seat.') : (gate && gate.reason)) || 'Certificates are issued to people who attend the event.', 'error');
         refreshCertificateButton();
         return;
       }
@@ -30116,18 +30225,23 @@ function mainPageScript(): string {
       ug.addColorStop(0,'rgba(255,107,0,0)'); ug.addColorStop(0.5,'rgba(255,107,0,0.9)'); ug.addColorStop(1,'rgba(255,107,0,0)');
       ctx.fillStyle = ug; ctx.fillRect(W/2-uw/2, 528, uw, 3);
       ctx.fillStyle = '#c8c9d6'; ctx.font = '400 24px Inter, Arial';
-      ctx.fillText('for participating in', W/2, 600);
-      ctx.fillStyle = '#ffffff'; ctx.font = '700 40px Inter, Arial'; ctx.fillText('Bharat AI Innovation 2026', W/2, 660);
+      ctx.fillText(ws ? 'for taking part in the workshop' : 'for participating in', W/2, 600);
+      // A long workshop title is set smaller until it fits between the borders.
+      const headline = ws ? String(ws.title || 'Workshop') : 'Bharat AI Innovation 2026';
+      let hs = 40;
+      ctx.fillStyle = '#ffffff'; ctx.font = '700 ' + hs + 'px Inter, Arial';
+      while (hs > 24 && ctx.measureText(headline).width > W - 260) { hs -= 2; ctx.font = '700 ' + hs + 'px Inter, Arial'; }
+      ctx.fillText(headline, W/2, 660);
       ctx.fillStyle = '#9698ac'; ctx.font = '400 22px Inter, Arial';
-      ctx.fillText("India's B2B AI Conference & Exhibition", W/2, 705);
+      ctx.fillText(ws ? ((ws.speaker ? 'conducted by ' + ws.speaker + ' at ' : 'at ') + 'Bharat AI Innovation 2026') : "India's B2B AI Conference & Exhibition", W/2, 705);
       ctx.fillText('20–21 November 2026 · World Trade Center, Mumbai', W/2, 745);
       // Signature line
       ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.fillRect(W/2-150, 900, 300, 2);
       ctx.fillStyle = '#9698ac'; ctx.font = '400 18px Inter, Arial'; ctx.fillText('Organizing Committee · Aegis Knowledge Trust', W/2, 935);
       ctx.fillStyle = '#6b6a63'; ctx.font = '400 15px Inter, Arial';
-      ctx.fillText('Certificate ID: BHAI-CERT-' + String(user.id).padStart(4,'0'), W/2, 1010);
+      ctx.fillText('Certificate ID: ' + (ws ? 'BHAI-WS-' : 'BHAI-CERT-') + String(user.id).padStart(4,'0'), W/2, 1010);
       // Download
-      const how = await deliverImage(canvas.toDataURL('image/png'), 'BharatAI-2026-Certificate.png', { title: 'Your certificate' });
+      const how = await deliverImage(canvas.toDataURL('image/png'), ws ? 'BharatAI-2026-Workshop-Certificate.png' : 'BharatAI-2026-Certificate.png', { title: ws ? 'Your workshop certificate' : 'Your certificate' });
       if (how === 'downloaded') showToast('Certificate downloaded', 'success');
     }
 
@@ -31221,6 +31335,7 @@ function mainPageScript(): string {
                   <button onclick="generateDelegatePass()" class="px-4 py-2.5 rounded-xl text-sm font-medium bg-primary-600 hover:bg-primary-500 text-white transition quick-action-btn"><i class="fas fa-id-badge mr-2"></i>Download Pass</button>
                   <button onclick="openSocialCard()" class="px-4 py-2.5 rounded-xl text-sm font-medium glass hover:bg-white/10 text-gray-200 transition quick-action-btn"><i class="fas fa-share-alt mr-2"></i>Share Card</button>
                   <button id="cert-btn" onclick="generateCertificate()" class="px-4 py-2.5 rounded-xl text-sm font-medium glass hover:bg-white/10 text-gray-200 transition quick-action-btn"><i class="fas fa-award mr-2"></i>Certificate</button>
+                  <button id="ws-cert-btn" onclick="generateCertificate(&quot;workshop&quot;)" class="px-4 py-2.5 rounded-xl text-sm font-medium glass hover:bg-white/10 text-gray-200 transition quick-action-btn hidden"><i class="fas fa-award mr-2"></i>Workshop certificate</button>
                   <button onclick="logoutUser()" class="px-4 py-2.5 rounded-xl text-sm font-medium glass hover:bg-white/10 text-gray-400 transition quick-action-btn"><i class="fas fa-sign-out-alt mr-2"></i>Sign Out</button>
                 </div>
               </div>
