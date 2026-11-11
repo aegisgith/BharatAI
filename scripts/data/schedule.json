@@ -49,7 +49,6 @@
     { "hall": "bhabha", "day": 1, "start": "16:15", "end": "16:30", "type": "talk", "label": "Innovation Talk", "track": "Government & Public Sector AI", "title": "Ganesh Kavach App", "speaker": { "name": "Shri Vivek Khandekar (IFS)", "role": "Principal Chief Conservator of Forests (Social Forestry), Maharashtra Forest Department" } },
     { "hall": "bhabha", "day": 1, "start": "16:30", "end": "17:30", "type": "panel", "label": "Panel: Agentic AI", "track": "GenAI & Agentic AI", "title": "The Rise of Autonomous Enterprises: Leaders' Strategies for GenAI & Agentic AI",
       "panel": [
-        { "name": "Umar Ali Shaikh", "org": "Atos Solutions & Systems" },
         { "name": "Abhay Sharma", "org": "IBM" },
         { "name": "Akhil Gupta", "org": "NoBroker" }
       ],

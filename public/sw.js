@@ -41,7 +41,7 @@
 // 5 Nov 2026 (bhai-v27): style.css?v=20261105b, the 14-link menu with Govt.
 // 6 Nov 2026 (bhai-v28): Dr. Vivek Bhoite off the speakers, so the offline list drops him.
 // 6 Nov 2026 (bhai-v29): the app's new design and motion files join the offline list.
-const VERSION = 'bhai-v29';
+const VERSION = 'bhai-v30';
 const SHELL = `shell-${VERSION}`;
 const DATA = `data-${VERSION}`;
 
