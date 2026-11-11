@@ -208,7 +208,7 @@
   },
   {
     "name": "Dhiman Bhattacharya",
-    "title": "Business Head, Insurance AI & Distribution",
+    "title": "Business Head, Insurance AI & Distribution Enablement Products",
     "company": "ValuEnable",
     "topic": "Valuenable's AI Agent Assist",
     "photo": "Valuenable - Dhiman Bhattacharya - Business head_.jpg",
@@ -216,7 +216,7 @@
   },
   {
     "name": "Harshal Wakharkar",
-    "title": "",
+    "title": "Sales Manager",
     "company": "Intangles",
     "topic": "Beyond Tracking: Intelligent Fleet Telematics for Driving Behaviour, Fleet Health & Video Intelligence.",
     "photo": "Harshal Wakharkar(Tentative) - Intangles_.jpg",
@@ -237,9 +237,9 @@
   },
   {
     "name": "Ferosh Sethumadhavan",
-    "title": "Senior Director",
+    "title": "Senior Director – Technology Practices",
     "company": "Evoke Technologies",
-    "topic": "",
+    "topic": "From Data to AI Value in 90 Days",
     "photo": "Ferosh Sethumadhavan - Evoke Technologies.jpg",
     "slug": "ferosh-sethumadhavan"
   },
@@ -255,7 +255,7 @@
     "name": "Deepak Ramteke",
     "title": "CEO & Founder",
     "company": "Kadeep.ai",
-    "topic": "",
+    "topic": "The Shift: From Software Testing to Engineering Release Confidence",
     "photo": "Deepak Ramteke - kadeep.ai, CEO & Founder.png",
     "slug": "deepak-ramteke"
   },
@@ -263,7 +263,7 @@
     "name": "Taher Pepermintwala",
     "title": "Partner",
     "company": "Envista Cyber Defence",
-    "topic": "",
+    "topic": "AI in Cybersecurity",
     "photo": "Taher Pepermintwala - Envista Cyber Defence, Partner.jpg",
     "slug": "taher-pepermintwala"
   },
@@ -271,7 +271,7 @@
     "name": "Aditi Saini",
     "title": "Marketing Strategist",
     "company": "Aria Telecom",
-    "topic": "",
+    "topic": "Sovereign AI in Action: Building Secure, Customizable and Full-Stack AI for Indian Enterprises",
     "photo": "4 Nov Presentor/Aditi Saini-Aria Telecom Solutions Pvt. Ltd, Marketing Strategist.jpg",
     "slug": "aditi-saini",
     "crop": {
@@ -284,7 +284,7 @@
     "name": "Selva",
     "title": "Co-Founder & CEO",
     "company": "OliAI",
-    "topic": "",
+    "topic": "Building Intelligence Engine for Enterprises",
     "photo": "4 Nov Presentor/Selva - Oli AI, Co-Founder & CEO.jpg",
     "slug": "selva"
   },
@@ -292,7 +292,7 @@
     "name": "Aravind",
     "title": "Co-Founder & CTO",
     "company": "OliAI",
-    "topic": "",
+    "topic": "Building Intelligence Engine for Enterprises",
     "photo": "4 Nov Presentor/Aravind-Oli AI, Co-Founder & CTO.jpg",
     "slug": "aravind"
   },
@@ -300,7 +300,7 @@
     "name": "Ashish Kumar Mishra",
     "title": "CEO & MD",
     "company": "Asmadiya Technologies",
-    "topic": "",
+    "topic": "AI Innovation & Asmadiya products",
     "photo": "4 Nov Presentor/Ashish Mishra-Asmadiya , CEO & MD.png",
     "slug": "ashish-kumar-mishra",
     "crop": {
@@ -313,7 +313,7 @@
     "name": "Shuvam Giri",
     "title": "CTO",
     "company": "Asmadiya Technologies",
-    "topic": "",
+    "topic": "AI Innovation & Asmadiya products",
     "photo": "4 Nov Presentor/Shuvam Giri- Asmadiya, CTO.png",
     "slug": "shuvam-giri"
   },
@@ -321,7 +321,7 @@
     "name": "Azharuddin Khan",
     "title": "Associate Manager, Tech and Strategy Office",
     "company": "Jade Global",
-    "topic": "",
+    "topic": "The importance of becoming AI-native in today's landscape",
     "photo": "4 Nov Presentor/Azharuddin Khan - Jade Global, Associate Manager Tech and Strategy Office.png",
     "slug": "azharuddin-khan"
   },
@@ -329,7 +329,7 @@
     "name": "Saumya Phor",
     "title": "CEO",
     "company": "Cloud Crane",
-    "topic": "",
+    "topic": "Personal Software: The Next Step After App Marketplaces",
     "photo": "4 Nov Presentor/Saumya Phor- CloudCarne, CEO.jpg",
     "slug": "saumya-phor",
     "crop": {
@@ -342,7 +342,7 @@
     "name": "Chirag Phor",
     "title": "CTO",
     "company": "Cloud Crane",
-    "topic": "",
+    "topic": "Personal Software: The Next Step After App Marketplaces",
     "photo": "4 Nov Presentor/Chirag Phor - CloudCarne, CTO.jpg",
     "slug": "chirag-phor",
     "crop": {
@@ -355,7 +355,7 @@
     "name": "Dipak Zope",
     "title": "Chief Executive Officer",
     "company": "Paisani Technology Services",
-    "topic": "",
+    "topic": "Embedded and automotive",
     "photo": "4 Nov Presentor/Dipak Zope - Paisani Technology Services OPC Pvt. Ltd, Chief Executive Officer.png",
     "slug": "dipak-zope",
     "crop": {
@@ -368,7 +368,7 @@
     "name": "Manoj Agarwal",
     "title": "Director",
     "company": "Rightangle Technologies",
-    "topic": "",
+    "topic": "Managing the environmental impact of AI",
     "photo": "4 Nov Presentor/Manoj Agarwal - Rightangle Technologies Pvt. Ltd., Director.jpg",
     "slug": "manoj-agarwal"
   },
@@ -376,7 +376,7 @@
     "name": "Mohit Kataria",
     "title": "Chief Business Officer & Co-Founder",
     "company": "Nu10 Technologies",
-    "topic": "",
+    "topic": "Moving From AI Pilots to AI-Native Enterprise: Reimagining Business Processes, Operating Models and Enterprise Growth with Agentic AI",
     "photo": "4 Nov Presentor/Mohit Kataria-  Nu10 Technologies India Private Limited , Chief Business Officer & Co-Founder.jpg",
     "slug": "mohit-kataria"
   },
@@ -384,7 +384,7 @@
     "name": "Senthil Kumar Hariram",
     "title": "Founder & Managing Director",
     "company": "FTA Global",
-    "topic": "",
+    "topic": "Judgement wins the Moment: Big AI, Focused AI and What India should build",
     "photo": "4 Nov Presentor/Senthil Kumar Hariram-  FTA Global, Founder & Managing Director.png",
     "slug": "senthil-kumar-hariram",
     "crop": {
@@ -450,5 +450,37 @@
     "slug": "prashant-mehra",
     "logoFile": "images/logo-psa.webp",
     "government": 5
+  },
+  {
+    "name": "Meghavi Shah",
+    "title": "Head Alliance",
+    "company": "Assessfy",
+    "topic": "Improving Learning Outcomes with AI: From Assessment to Measurable Impact",
+    "photo": "",
+    "slug": "meghavi-shah"
+  },
+  {
+    "name": "Ambrish Agarwal",
+    "title": "Director",
+    "company": "Ai Vie Insights",
+    "topic": "",
+    "photo": "",
+    "slug": "ambrish-agarwal"
+  },
+  {
+    "name": "Taranjiet Kaur Oberai",
+    "title": "Founder",
+    "company": "JoyVibe",
+    "topic": "Building a Human-Led Wellbeing Ecosystem from Bharat",
+    "photo": "",
+    "slug": "taranjiet-kaur-oberai"
+  },
+  {
+    "name": "Vyom Patel",
+    "title": "Co-Founder & CTO",
+    "company": "Teenage Works",
+    "topic": "Teen V1: World's Most Affordable Voice Model",
+    "photo": "",
+    "slug": "vyom-patel"
   }
 ]
