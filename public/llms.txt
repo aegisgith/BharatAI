@@ -16,7 +16,7 @@
 
 ## What it is
 
-Bharat AI Innovation 2026 is India's B2B platform for AI, run as a two-day conference and exhibition, covering Generative AI, Large Language Models (LLMs), enterprise AI deployment, AI governance and ethics, AI startups, AI for industry verticals (BFSI, healthcare, manufacturing, retail, agriculture, government), AI talent and skills, deep learning research, and the Indian AI ecosystem. It includes 10+ conference tracks across 5 halls, a 27,238 sq.ft exhibition floor with 93 booths across 8 industry zones, a startup pitch competition, and AI/ML training workshops.
+Bharat AI Innovation 2026 is India's B2B platform for AI, run as a two-day conference and exhibition, covering Generative AI, Large Language Models (LLMs), enterprise AI deployment, AI governance and ethics, AI startups, AI for industry verticals (BFSI, healthcare, manufacturing, retail, agriculture, government), AI talent and skills, deep learning research, and the Indian AI ecosystem. It includes 10+ conference tracks across 4 halls, a 27,238 sq.ft exhibition floor with 93 booths across 8 industry zones, a startup pitch competition, and AI/ML training workshops.
 
 ## Positioning
 
@@ -241,7 +241,7 @@ Digital media partner: The Mainstream.
 
 - [Home](https://bharataiinnovation.com/): Event overview, dates, speakers, registration
 - [About](https://bharataiinnovation.com/about): About the event and Aegis Knowledge Trust
-- [Conference](https://bharataiinnovation.com/conference): 10+ tracks, schedule across 5 halls, 2 days
+- [Conference](https://bharataiinnovation.com/conference): 10+ tracks, schedule across 4 halls, 2 days
 - [Exhibition](https://bharataiinnovation.com/exhibition): 93 booths, 8 industry zones, booth packages
 - [Startup Pitch](https://bharataiinnovation.com/startup-pitch): Startup pitch competition for AI startups
 - [Training & Workshop](https://bharataiinnovation.com/training-workshop): AI/ML hands-on training workshops. Featured sessions: "Data Science to Agentic AI: A CXO's Guide to Strategic Decision-Making" by Dr. Vinay Kulkarni (Adjunct Faculty, IIT Bombay; Director, Aegis School of Data Science & AI), and "From Prototype to Production: Building Enterprise AI with Forward-Deployed Engineers", a 90-minute live-coding workshop by Dr. Ashish Tendulkar (Google AI); "Automatic Speech Recognition (Speech-to-Text)", a 90-minute hands-on workshop by Dr. Parijat Shukla (PhD, Iowa State University); "LLM Fine-Tuning, Hands-On", a 2-hour hands-on workshop in Google Colab by Virendra Pal (AI and FinTech Expert); plus a closed-door, 60-minute CXO Roundtable, "Building the Enterprise AI Workforce: Talent, Delivery and the Rise of Forward-Deployed Engineering", moderated by Bhupesh Daheria (CEO, Aegis School of Data Science & AI; Aegis Super Intelligence Lab) with Dr. Vinay Kulkarni and Dr. Ashish Tendulkar, for L&D Heads, Delivery Heads, Chief AI Officers, Chief Data Officers, CIOs and CTOs
