@@ -53,10 +53,21 @@ const link = (id, exp = now + 86400) => T.signTalkToken('h', id, exp); // the ha
   };
   await bad({ speaker_phone: '98200' }, 'speaker_phone', 'at least 10 digits');
   await bad({ speaker_bio: 'Visit https://evil.example' }, 'speaker_bio', 'plain text');
-  await bad({ topic: 'x'.repeat(161) }, 'topic', 'at most 160');
+  await bad({ topic: 'x'.repeat(201) }, 'topic', 'at most 200');
   check('a refused save changes nothing', W.rows('SELECT speaker_phone FROM innovation_talks WHERE id = 7')[0].speaker_phone === '+919820012345');
   r = await W.call('PUT', '/api/talk-self/' + tok7, { company: '' });
   check('the company cannot be blanked from a link', W.rows('SELECT company FROM innovation_talks WHERE id = 7')[0].company === 'Trust3 AI', r.json);
+
+  // ---- what the organisers typed never blocks the speaker (the page sends every box) ----
+  W.db.run("UPDATE innovation_talks SET speaker_bio = ?, speaker_phone = ?, showcase = ? WHERE id = 8", ['y'.repeat(760) + ' more at https://icmr.example', '98200 11111 / 98200 22222', 'z'.repeat(900)]);
+  const tok8 = await link(8);
+  const before8 = W.rows('SELECT * FROM innovation_talks WHERE id = 8')[0];
+  r = await W.call('PUT', '/api/talk-self/' + tok8, { topic: before8.topic, speaker_title: 'Scientist-D', company: before8.company, speaker_bio: before8.speaker_bio, speaker_phone: before8.speaker_phone, showcase: before8.showcase });
+  const after8 = W.rows('SELECT * FROM innovation_talks WHERE id = 8')[0];
+  check('a speaker changing one box saves, even with a long bio, a link and two numbers the organisers typed', r.status === 200 && after8.speaker_title === 'Scientist-D' && r.json.changed.join() === 'speaker_title', r.json);
+  check('...and those boxes are left exactly as the organisers wrote them', after8.speaker_bio === before8.speaker_bio && after8.speaker_phone === before8.speaker_phone && after8.showcase === before8.showcase);
+  r = await W.call('PUT', '/api/talk-self/' + tok8, { speaker_bio: before8.speaker_bio + ' Also see https://two.example' });
+  check('if they change that bio, it is checked like any other', r.status === 400 && r.json.field === 'speaker_bio', r.json);
 
   // ---- a photo ----
   const jpeg = 'data:image/jpeg;base64,' + Buffer.alloc(5000, 9).toString('base64');

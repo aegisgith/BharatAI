@@ -294,5 +294,24 @@ for (const n of [1, 2, 3]) {
   }
 }
 
+// A speaker's own talk page (12 Nov 2026): /app/my-talk, from the "please add your
+// details" email. Read-only: the forged link is refused before anything is read or written.
+{
+  let r = await hit('/app/my-talk?t=probe');
+  check('/app/my-talk answers, kept out of search and never cached', r.status === 200 && r.text.includes('/static/talk-self.js') && r.h['x-robots-tag'] === 'noindex' && /no-store/.test(r.h['cache-control'] || ''), r.status + ' ' + r.h['x-robots-tag'] + ' ' + r.h['cache-control']);
+  const v = (/talk-self\.js\?v=([0-9A-Za-z]+)/.exec(r.text) || [])[1] || '';
+  r = await hit('/static/talk-self.js?v=' + v);
+  check('its script is served as JavaScript at that version', r.status === 200 && /javascript/.test(r.h['content-type'] || '') && r.text.includes('/api/talk-self/'), r.status + ' ' + r.h['content-type']);
+  r = await hit('/static/talk-self.css?v=' + v);
+  check('its stylesheet is served as CSS at that version', r.status === 200 && /text\/css/.test(r.h['content-type'] || '') && r.text.includes('.ts-save'), r.status + ' ' + r.h['content-type']);
+  const forged = '/api/talk-self/7.1799999999.' + '0'.repeat(32);
+  r = await hit(forged);
+  check('a forged talk link is refused, and says what to do', r.status === 404 && r.text.includes('Open it again from the email'), r.status + ' ' + r.text.slice(0, 80));
+  r = await hit(forged, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: '{"topic":"probe"}' });
+  check('a forged talk link cannot write', r.status === 404, r.status);
+  r = await hit('/api/admin/innovation-talks/auto/preview');
+  check('the automatic email preview needs admin', r.status === 401, r.status);
+}
+
 console.log(fails ? `\n${fails} FAILED` : '\nall production checks passed');
 process.exit(fails ? 1 : 0);

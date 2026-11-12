@@ -11,13 +11,13 @@
 
   // The same words the email uses (ITALK_ASK in src/index.tsx), so the two agree.
   var ASK = [
-    { k: 'speaker_photo_url', label: 'A clear photo of you', why: 'Head and shoulders. It is shown beside your talk in the event app and on the website.' },
-    { k: 'topic', label: 'The title of your talk', why: 'It goes in the programme, on the website and in the event app.', max: 160 },
+    { k: 'speaker_photo_url', label: 'A clear photo of you', why: 'Head and shoulders. It is shown beside your talk in the event app.' },
+    { k: 'topic', label: 'The title of your talk', why: 'It goes in the programme and in the event app.', max: 200 },
     { k: 'speaker_title', label: 'Your designation', why: 'It is shown under your name in the programme.', max: 120 },
     { k: 'company', label: 'Your company name, as it should be shown', why: 'It is shown with your talk in the programme and on your pass.', max: 120 },
-    { k: 'speaker_bio', label: 'Two or three lines about you', why: 'The host reads this out to introduce you on stage.', max: 700, area: true },
-    { k: 'speaker_phone', label: 'Your mobile number', why: 'We use it only on the day, if your time or stage changes.', max: 20, tel: true },
-    { k: 'showcase', label: 'What you will show on stage', why: 'A line or two about the product or demo you will present. Optional.', max: 400, area: true, optional: true },
+    { k: 'speaker_bio', label: 'Two or three lines about you', why: 'The host reads this out to introduce you on stage.', max: 800, area: true },
+    { k: 'speaker_phone', label: 'Your mobile number', why: 'We use it only on the day, if your time or stage changes.', max: 30, tel: true },
+    { k: 'showcase', label: 'What you will show on stage', why: 'A line or two about the product or demo you will present. Optional.', max: 1000, area: true, optional: true },
   ];
 
   function esc(v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
@@ -136,10 +136,12 @@
     ASK.forEach(function (a) { var el = $('ts-' + a.k); if (el && a.k !== 'speaker_photo_url') out[a.k] = el.value; });
     return out;
   }
+  // Only the boxes they changed are checked: what the organisers typed is not theirs to fix.
+  function changed(v, k) { return String(v[k] || '').replace(/\r\n/g, '\n').trim() !== String(S.talk[k] || '').trim(); }
   function check(v) {
     var digits = String(v.speaker_phone || '').replace(/\D/g, '');
-    if (v.speaker_phone && (digits.length < 10 || digits.length > 15)) return { k: 'speaker_phone', msg: 'Type a mobile number with at least 10 digits.' };
-    if (/https?:\/\/|<\s*\w/i.test(String(v.speaker_bio || ''))) return { k: 'speaker_bio', msg: 'Please write the lines about you as plain text, with no links.' };
+    if (changed(v, 'speaker_phone') && v.speaker_phone && (digits.length < 10 || digits.length > 15)) return { k: 'speaker_phone', msg: 'Type a mobile number with at least 10 digits.' };
+    if (changed(v, 'speaker_bio') && /https?:\/\/|<\s*\w/i.test(String(v.speaker_bio || ''))) return { k: 'speaker_bio', msg: 'Please write the lines about you as plain text, with no links.' };
     return null;
   }
   function showFieldError(k, msg) {

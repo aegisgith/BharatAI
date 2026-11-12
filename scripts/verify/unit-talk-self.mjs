@@ -50,13 +50,27 @@ const refused = [
   [{ speaker_phone: '1'.repeat(16) }, 'speaker_phone', 'at least 10 digits'],
   [{ speaker_bio: 'See https://me.example' }, 'speaker_bio', 'plain text'],
   [{ speaker_bio: 'Hi <img src=x onerror=alert(1)>' }, 'speaker_bio', 'plain text'],
-  [{ topic: 'x'.repeat(161) }, 'topic', 'at most 160'],
-  [{ speaker_bio: 'x'.repeat(701) }, 'speaker_bio', 'at most 700'],
+  [{ topic: 'x'.repeat(201) }, 'topic', 'at most 200'],
+  [{ speaker_bio: 'x'.repeat(801) }, 'speaker_bio', 'at most 800'],
+  [{ showcase: 'x'.repeat(1001) }, 'showcase', 'at most 1000'],
 ];
 for (const [body, field, words] of refused) {
   c = T.cleanFields(body);
   check(`refused, ${field}: says so in plain words and names the box`, c.field === field && String(c.error).includes(words), c);
 }
+check('the limits are the Innovation Talks tab’s (topic 200, bio 800, showcase 1000, phone 30)', T.FIELDS.topic.max === 200 && T.FIELDS.speaker_bio.max === 800 && T.FIELDS.showcase.max === 1000 && T.FIELDS.speaker_phone.max === 30);
+
+// ---- only what the speaker changed (the page sends every box on Save) ----
+const stored = { topic: 'AI at Scale', speaker_bio: 'x'.repeat(750) + ' see https://site.example', speaker_phone: '98200 11111 / 98200 22222', showcase: '', company: 'Acme' };
+let ch = T.changedOnly({ topic: 'AI at Scale', speaker_bio: stored.speaker_bio, speaker_phone: stored.speaker_phone, showcase: '', company: 'Acme', speaker_title: 'CTO' }, stored);
+check('boxes left as the organisers wrote them are not checked or saved again', Object.keys(ch).join() === 'speaker_title', ch);
+check('...so a long bio with a link and two numbers in the phone box never block a save', !T.cleanFields(ch).error && T.cleanFields(ch).set.speaker_title === 'CTO');
+ch = T.changedOnly({ speaker_bio: stored.speaker_bio + ' more' }, stored);
+check('a box they did change is checked in full', T.cleanFields(ch).field === 'speaker_bio', T.cleanFields(ch));
+ch = T.changedOnly({ topic: ' AI at Scale \r\n' }, { topic: 'AI at Scale' });
+check('spaces and line endings alone are not a change', Object.keys(ch).length === 0, ch);
+ch = T.changedOnly({ speaker_title: 'CTO', speaker_name: 'X', hall: 'Y' }, {});
+check('only the page’s own boxes are compared', Object.keys(ch).join() === 'speaker_title', ch);
 check('nothing sent, nothing to save', Object.keys(T.cleanFields({}).set).length === 0 && Object.keys(T.cleanFields(null).set).length === 0);
 
 // ---- what is missing, and what the page shows ----

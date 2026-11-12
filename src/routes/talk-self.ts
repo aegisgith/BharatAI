@@ -36,14 +36,29 @@ const talk = new Hono<{ Bindings: any }>()
 // before it and the corrections after.
 export const LINK_DAYS = 30
 
-// What a speaker may write, and the longest each may be.
+// What a speaker may write, and the longest each may be: the same limits as the
+// Innovation Talks tab (topic 200, bio 800, showcase 1000, phone 30), so nothing the
+// organisers typed is ever too long for the page.
 export const FIELDS: Record<string, { label: string; max: number }> = {
-  topic: { label: 'The title of your talk', max: 160 },
+  topic: { label: 'The title of your talk', max: 200 },
   speaker_title: { label: 'Your designation', max: 120 },
-  speaker_bio: { label: 'Two or three lines about you', max: 700 },
-  speaker_phone: { label: 'Your mobile number', max: 20 },
-  showcase: { label: 'What you will show on stage', max: 400 },
+  speaker_bio: { label: 'Two or three lines about you', max: 800 },
+  speaker_phone: { label: 'Your mobile number', max: 30 },
+  showcase: { label: 'What you will show on stage', max: 1000 },
   company: { label: 'Your company name, as it should be shown', max: 120 },
+}
+
+// Only what the speaker changed. The page sends every box on Save; a box left as the
+// organisers wrote it (a longer bio, two mobile numbers in one box, a link in it) is
+// not theirs to fix and must never block their save (Hall session's review, 12 Nov).
+export function changedOnly(body: any, row: any): Record<string, any> {
+  const out: Record<string, any> = {}
+  const norm = (v: any) => String(v == null ? '' : v).replace(/\r\n/g, '\n').trim()
+  for (const k of Object.keys(FIELDS)) {
+    if (!body || !(k in body)) continue
+    if (norm(body[k]) !== norm(row?.[k])) out[k] = body[k]
+  }
+  return out
 }
 // What the programme needs from a speaker: the Innovation Talks tab's "missing" list
 // (ITALK_NEEDED in index.tsx), which the organisers' time and hall are not part of.
@@ -155,7 +170,7 @@ talk.put('/api/talk-self/:token', async (c) => {
   const f: any = await talkFor(c, c.req.param('token'))
   if (f.error) return c.json({ error: f.error, expired: f.status === 410 }, f.status)
   const body = await c.req.json().catch(() => null)
-  const { set, error, field } = cleanFields(body)
+  const { set, error, field } = cleanFields(changedOnly(body, f.t))
   if (error) return c.json({ error, field }, 400)
   if (!Object.keys(set).length) return c.json({ talk: publicView(f.t, hall), unchanged: true })
   const write = async (vals: Record<string, string>) => {
@@ -221,7 +236,7 @@ talk.get('/app/my-talk', (c) => {
 <header class="ts-top"><a href="/app" class="ts-brand"><img src="/images/logo-nav.webp" alt="Bharat AI Innovation" width="120" height="36"></a><span class="ts-event">20–21 Nov 2026 · World Trade Center, Mumbai</span></header>
 <main id="ts-root" class="ts-main" aria-live="polite"><p class="ts-loading">Opening your talk…</p></main>
 <footer class="ts-foot">Questions? Write to <a href="mailto:register@bharataiinnovation.com">register@bharataiinnovation.com</a><br><a href="/app">Open the networking app</a></footer>
-<script src="/static/talk-self.js?v=20261112"></script>
+<script src="/static/talk-self.js?v=20261112b"></script>
 </body>
 </html>`)
 })
