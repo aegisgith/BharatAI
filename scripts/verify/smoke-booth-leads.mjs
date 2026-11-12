@@ -58,7 +58,7 @@ const check = (n, ok, d) => { console.log((ok ? 'PASS ' : 'FAIL ') + n + (ok ? '
 
 // ---- seed ----
 db.run("INSERT INTO events (id, title, start_date, end_date) VALUES (1, 'Bharat AI', '2026-11-20', '2026-11-21')");
-db.run("INSERT INTO events (id, title, start_date, end_date) VALUES (2, 'Delhi', '2027-07-29', '2027-07-30')");
+db.run("INSERT INTO events (id, title, start_date, end_date) VALUES (2, 'Delhi', '2027-07-28', '2027-07-29')");
 const person = (id, name, extra = {}) => {
   const row = { id, event_id: 1, name, email: 'p' + id + '@example.test', mobile: '', company: 'Co ' + id, job_title: 'Director', badge_type: 'Visitor Pass', payment_status: '', main_event: 1, ...extra };
   const cols = Object.keys(row);
@@ -242,7 +242,7 @@ check('partners: the list can be emptied again', r.status === 200 && (await hit(
 const DELHI_AUDIT = "SELECT COUNT(*) AS n FROM admin_audit WHERE action = 'delhi_promo.open'";
 r = await hit('GET', '/api/app-partners');
 const dl0 = r.json.delhi;
-check('delhi: shown to everyone until the organisers say otherwise, in the words of the Delhi page', !!dl0 && /Delhi 2027/.test(dl0.title) && /29.30 July 2027 at Bharat Mandapam, New Delhi/.test(dl0.text) && /Booths and partnerships are open now/.test(dl0.ex_text) && !!dl0.cta && !!dl0.ex_cta, r.text);
+check('delhi: shown to everyone until the organisers say otherwise, in the words of the Delhi page', !!dl0 && /Delhi 2027/.test(dl0.title) && /28.29 July 2027 at Bharat Mandapam, New Delhi/.test(dl0.text) && /Booths and partnerships are open now/.test(dl0.ex_text) && !!dl0.cta && !!dl0.ex_cta, r.text);
 check('delhi: the links are the Delhi page and its booths, nothing else', dl0.url === '/delhi?from=app' && dl0.ex_url === '/delhi?from=exhibitor#booths', JSON.stringify(dl0));
 check('delhi: it claims no government backing and gives no headcount', !/ministry|government|meity|\d,\d{3}/i.test(JSON.stringify(dl0)), JSON.stringify(dl0));
 r = await hit('GET', '/api/mp/admin/delhi-promo');

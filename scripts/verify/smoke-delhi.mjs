@@ -67,7 +67,7 @@ for (const [interest, type] of Object.entries(filed)) {
   const row = lastRow();
   check(`${interest}: the real route takes what the page sends, one row`, r.done && !r.error && count() === before + 1, JSON.stringify(r));
   check(`${interest}: saved as ${type} on the conference's list, email lowercased`, row.inquiry_type === type && row.event_id === 1 && row.email === `asha.${interest}@example.com` && row.organization === 'Example Ltd', JSON.stringify(row));
-  check(`${interest}: the subject tells the team it is Delhi`, row.subject.startsWith('Delhi 2027 · ') && row.message.includes('29–30 July 2027') && JSON.parse(row.metadata).edition === 'delhi-2027', row.subject);
+  check(`${interest}: the subject tells the team it is Delhi`, row.subject.startsWith('Delhi 2027 · ') && row.message.includes('28–29 July 2027') && JSON.parse(row.metadata).edition === 'delhi-2027', row.subject);
   check(`${interest}: one email to the team, a reply reaches the person`, mail.length === 1 && mail[0].Content.ReplyTo.includes(`Asha.${interest}@Example.com`) && mail[0].Content.Body[0].Content.includes('Delhi 2027'), JSON.stringify(mail[0]?.Content?.Subject));
 }
 
@@ -139,7 +139,7 @@ const postPass = (o, headers = {}) => api('/api/delhi/register', { method: 'POST
   check('free pass: one email, to the person only, none to the team', mail.length === 1 && mail[0].Recipients.To.length === 1 && mail[0].Recipients.To[0] === 'asha.rao@example.com', JSON.stringify(mail.map((x) => x.Recipients)));
   const em = mail[0].Content.Body[0].Content;
   check('the email is from the official address', mail[0].Content.From.includes('register@bharataiinnovation.com'), mail[0].Content.From);
-  check('the email says Delhi, the dates, the venue and the pass', mail[0].Content.Subject.includes('Delhi') && em.includes('Thursday 29 and Friday 30 July 2027') && em.includes('Bharat Mandapam, Pragati Maidan') && em.includes('Free Visitor Pass (exhibition only, entry by time slot)') && em.includes('delhi-2027.ics'), mail[0].Content.Subject);
+  check('the email says Delhi, the dates, the venue and the pass', mail[0].Content.Subject.includes('Delhi') && em.includes('Wednesday 28 and Thursday 29 July 2027') && em.includes('Bharat Mandapam, Pragati Maidan') && em.includes('Free Visitor Pass (exhibition only, entry by time slot)') && em.includes('delhi-2027.ics'), mail[0].Content.Subject);
   check('the email says waitlisted and promises no entry pass', mail[0].Content.Subject.startsWith('You are waitlisted') && em.includes('You are waitlisted for a free Visitor Pass') && em.includes('when your pass is confirmed') && !/entry pass|You are registered/i.test(em), mail[0].Content.Subject);
   check('the email sells nothing and carries no sign-in link to the Mumbai app', !/₹|upgrade|\/app|token=/i.test(em), (em.match(/₹|upgrade|\/app|token=/i) || [])[0]);
   check('the email does not imply Mumbai is included', em.includes('This waitlist is for Delhi only'));

@@ -156,7 +156,7 @@ check('the industry list is exactly the server\'s', JSON.stringify(industries) =
 
 // ---- the page's words ----
 const body = html.slice(html.indexOf('<body>')).replace(/<script[\s\S]*?<\/script>/g, '').replace(/<[^>]+>/g, ' ');
-check('it says Delhi, the dates and the venue', body.includes('29–30 July 2027') && body.includes('Bharat Mandapam'));
+check('it says Delhi, the dates and the venue', body.includes('28–29 July 2027') && body.includes('Bharat Mandapam'));
 check('it never says Mumbai or WTC', !/Mumbai|WTC/.test(html));
 check('it points at the refund policy and terms before paying', html.includes('href="/refund"') && html.includes('href="/terms"'));
 check('it says the pass and the app come later', body.includes('closer to the event'));

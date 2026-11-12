@@ -18540,7 +18540,7 @@ app.post('/api/inquiries', async (c) => {
 // The free Visitor Pass stays a waitlist in inquiries (below), by the organiser's word.
 const DELHI_EVENT_ID = 2
 const DELHI_EVENT_NAME = 'Bharat AI Innovation Delhi 2027'
-const DELHI_WHEN = '29&ndash;30 July 2027 &bull; Bharat Mandapam, New Delhi'
+const DELHI_WHEN = '28&ndash;29 July 2027 &bull; Bharat Mandapam, New Delhi'
 // Whole rupees before GST. Mumbai's dated prices do not apply: its late prices began two
 // weeks before its own event. The printed copies are /delhi and /delhi-register.
 const DELHI_PASS_PRICES_INR: Record<string, number> = { 'Delegate Pass': 4999, 'Premium Delegate Pass': 9999, 'VIP Pass': 19999, 'Academic Pass': 999 }
@@ -18665,7 +18665,7 @@ app.post('/api/delhi/pay', async (c) => {
     // attendees.event_id must name an event. Nothing lists events: this row only says
     // what event 2 is, so the first buyer brings it into being and no step is left to run.
     await c.env.DB.prepare(
-      "INSERT OR IGNORE INTO events (id, title, event_type, venue, start_date, end_date) VALUES (?, ?, 'conference', 'Bharat Mandapam, New Delhi', '2027-07-29', '2027-07-30')"
+      "INSERT OR IGNORE INTO events (id, title, event_type, venue, start_date, end_date) VALUES (?, ?, 'conference', 'Bharat Mandapam, New Delhi', '2027-07-28', '2027-07-29')"
     ).bind(DELHI_EVENT_ID, DELHI_EVENT_NAME).run()
     try {
       const made = await c.env.DB.prepare(
@@ -18711,7 +18711,7 @@ async function sendDelhiPaymentEmails(c: any, a: any, order: any, trackingId: st
     const rows = payRows([
       ['Pass', payEsc(order.pass_type) + (upgradeFrom ? ` <span style="font-weight:normal;color:#666;">(moved up from ${payEsc(upgradeFrom)})</span>` : '')],
       ['Event', 'Bharat AI Innovation Delhi 2027'],
-      ['Dates', 'Thursday 29 and Friday 30 July 2027'],
+      ['Dates', 'Wednesday 28 and Thursday 29 July 2027'],
       ['Venue', 'Bharat Mandapam, Pragati Maidan, New Delhi'],
       ['Amount paid', `&#8377;${amount} <span style="font-weight:normal;color:#666;">(includes ${PASS_GST_RATE}% GST)</span>`],
       ['Order number', payEsc(order.order_id)],
@@ -18845,7 +18845,7 @@ async function sendDelhiPassEmail(c: any, p: { name: string; email: string; comp
   const line = (k: string, v: string) => `<tr><td style="padding:7px 12px 7px 0;color:#666;font-size:13px;vertical-align:top;white-space:nowrap;">${k}</td><td style="padding:7px 0;font-size:13.5px;color:#1E2140;"><strong>${esc(v)}</strong></td></tr>`
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#f5f5f5;font-family:Arial,sans-serif;">
     <div style="max-width:600px;margin:20px auto;background:#fff;border-radius:12px;overflow:hidden;">
-      ${emailBrandHeader('You are waitlisted for Delhi', '29&ndash;30 July 2027 &middot; Bharat Mandapam, New Delhi')}
+      ${emailBrandHeader('You are waitlisted for Delhi', '28&ndash;29 July 2027 &middot; Bharat Mandapam, New Delhi')}
       <div style="padding:26px 24px;">
         <p style="margin:0 0 8px;font-size:16px;font-weight:bold;color:#1E2140;">Hello ${esc(first)},</p>
         <p style="margin:0 0 18px;font-size:14px;line-height:1.6;color:#444;">You are waitlisted for a free Visitor Pass to Bharat AI Innovation Delhi 2027.</p>
@@ -18855,7 +18855,7 @@ async function sendDelhiPassEmail(c: any, p: { name: string; email: string; comp
           ${line('Name', p.name)}
           ${line('Organisation', p.company)}
           ${line('Designation', p.job_title)}
-          ${line('Dates', 'Thursday 29 and Friday 30 July 2027')}
+          ${line('Dates', 'Wednesday 28 and Thursday 29 July 2027')}
           ${line('Venue', 'Bharat Mandapam, Pragati Maidan, New Delhi')}
         </table>
         <p style="margin:0 0 4px;font-size:14px;font-weight:bold;color:#1E2140;">What happens next</p>
@@ -18876,7 +18876,7 @@ async function sendDelhiPassEmail(c: any, p: { name: string; email: string; comp
         Content: {
           Body: [{ ContentType: 'HTML', Charset: 'utf-8', Content: html }],
           From: `${fromName} <${fromEmail}>`,
-          Subject: 'You are waitlisted: Bharat AI Innovation Delhi, 29-30 July 2027',
+          Subject: 'You are waitlisted: Bharat AI Innovation Delhi, 28-29 July 2027',
         },
         Options: { TrackClicks: false, TrackOpens: false },
       }),

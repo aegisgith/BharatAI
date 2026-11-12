@@ -2626,9 +2626,9 @@ const DELHI_PROMO_KEY = 'app_delhi_promo'
 const DELHI_PROMO_OPENED = 'delhi_promo.open'
 const DELHI_PROMO_DEFAULT: Record<string, string> = {
   title: 'Next: Bharat AI Innovation Delhi 2027',
-  text: '29–30 July 2027 at Bharat Mandapam, New Delhi. Passes are open now.',
+  text: '28–29 July 2027 at Bharat Mandapam, New Delhi. Passes are open now.',
   cta: 'See the Delhi edition',
-  ex_title: 'Exhibit in Delhi: 29–30 July 2027',
+  ex_title: 'Exhibit in Delhi: 28–29 July 2027',
   ex_text: 'Bharat AI Innovation comes to Bharat Mandapam, New Delhi. Booths and partnerships are open now.',
   ex_cta: 'See booths for Delhi',
 }

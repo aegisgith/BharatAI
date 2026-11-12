@@ -91,7 +91,7 @@ const first = await pay(GOOD);
 const asha = person('asha.rao@example.com');
 const ashaOrder = orders(asha?.id)[0];
 check('the form starts checkout', first.status === 201 && String(first.json?.pay_url).startsWith('/pay/ccavenue/'), first.text);
-check('with the foreign key on: the first buyer brings event 2 into being', rows('SELECT title, start_date FROM events WHERE id = 2')[0]?.start_date === '2027-07-29');
+check('with the foreign key on: the first buyer brings event 2 into being', rows('SELECT title, start_date FROM events WHERE id = 2')[0]?.start_date === '2027-07-28');
 check('they are an attendee of event 2, unpaid, email lowercased', asha.event_id === 2 && asha.badge_type === 'Delegate Pass' && asha.payment_status === 'pending' && asha.company === 'Example Ltd' && asha.job_title === 'CIO' && asha.city === 'New Delhi' && asha.industry === 'Insurance' && asha.registration_source === 'delhi-page', JSON.stringify(asha));
 check('the order is event 2 at the earlier price: Rs 4,999 + GST = 5,898.82', ashaOrder.event_id === 2 && ashaOrder.base_paise === 499900 && ashaOrder.gst_paise === 89982 && ashaOrder.amount_paise === 589882 && ashaOrder.status === 'created' && first.json.amount === 5898.82, JSON.stringify(ashaOrder));
 check('no sign-in session is handed out', !first.h['set-cookie'], first.h['set-cookie']);
@@ -118,7 +118,7 @@ check('the buyer gets two emails: the receipt and the confirmation', buyerMail.l
 const rc = buyerMail.find((m) => m.Content.Subject.startsWith('Receipt'));
 const wc = buyerMail.find((m) => m.Content.Subject.startsWith('Payment received'));
 check('the receipt email is Delhi\'s: subject, dates, venue, accounts blind-copied, PDF attached', rc && rc.Content.Subject.includes('Delhi 2027') && bodyOf(rc).includes('Bharat Mandapam') && !bodyOf(rc).includes('WTC Mumbai') && (rc.Recipients.BCC || []).length === 1 && (rc.Content.Attachments || []).length === 1, rc?.Content?.Subject);
-check('the confirmation is Delhi\'s: dates, venue, pass, amount', wc && wc.Content.Subject.includes('Delhi 2027') && bodyOf(wc).includes('Thursday 29 and Friday 30 July 2027') && bodyOf(wc).includes('Bharat Mandapam, Pragati Maidan') && bodyOf(wc).includes('5,898.82') && bodyOf(wc).includes(receipt.invoice_no), wc?.Content?.Subject);
+check('the confirmation is Delhi\'s: dates, venue, pass, amount', wc && wc.Content.Subject.includes('Delhi 2027') && bodyOf(wc).includes('Wednesday 28 and Thursday 29 July 2027') && bodyOf(wc).includes('Bharat Mandapam, Pragati Maidan') && bodyOf(wc).includes('5,898.82') && bodyOf(wc).includes(receipt.invoice_no), wc?.Content?.Subject);
 check('it says the pass and app come later, carries no sign-in link and sells nothing', bodyOf(wc).includes('entry pass') && bodyOf(wc).includes('Closer to the event') && !/\/app|token=|upgrade|add your photo/i.test(bodyOf(wc)), (bodyOf(wc).match(/\/app|token=|upgrade|add your photo/i) || [])[0]);
 check('it says Mumbai is a separate event, and that is its only mention of Mumbai', bodyOf(wc).includes('This pass is for Delhi only') && !bodyOf(wc).includes('WTC'));
 check('both come from the official address', buyerMail.every((m) => m.Content.From.includes('register@bharataiinnovation.com')), buyerMail.map((m) => m.Content.From).join());

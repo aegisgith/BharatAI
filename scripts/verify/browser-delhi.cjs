@@ -36,7 +36,7 @@ const settled = async (p) => { await p.evaluate(() => document.fonts.ready); awa
     check('the first button is on the first screen', hero.btnBottom <= hero.vh, hero.btnBottom);
     check('the heading is in the brand font, loaded', hero.font.includes('Bricolage') && await page.evaluate(() => [...document.fonts].some((f) => f.family.includes('Bricolage') && f.status === 'loaded')));
     const words = await page.evaluate(() => document.body.innerText);
-    check('date and venue on the page', /29–30 July 2027/i.test(words) && /Bharat Mandapam/.test(words));
+    check('date and venue on the page', /28–29 July 2027/i.test(words) && /Bharat Mandapam/.test(words));
     check('Save the date on Android goes to Google Calendar', (await page.getAttribute('#dl-save-date', 'href')).includes('calendar.google.com'));
 
     await page.click('#nav-toggle');
@@ -134,7 +134,7 @@ const settled = async (p) => { await p.evaluate(() => document.fonts.ready); awa
 
     // The links out and the calendar file
     const ics = await ctx.request.get(BASE + '/delhi-2027.ics');
-    check('the calendar file downloads', ics.status() === 200 && (await ics.text()).includes('DTSTART;VALUE=DATE:20270729'));
+    check('the calendar file downloads', ics.status() === 200 && (await ics.text()).includes('DTSTART;VALUE=DATE:20270728'));
     const og = await ctx.request.get(BASE + '/images/og/delhi.jpg');
     check('the share card is there', og.status() === 200);
 

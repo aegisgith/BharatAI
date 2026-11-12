@@ -111,22 +111,22 @@ check('an unknown ?interest= is ignored', openPage({ search: '?interest=<b>x' })
 {
   const a = openPage({ userAgent: 'Mozilla/5.0 (Linux; Android 14)' });
   const href = a.els['dl-save-date'].href;
-  check('Android opens Google Calendar on the right days and place', href.startsWith('https://calendar.google.com/') && href.includes('dates=20270729/20270731') && decodeURIComponent(href).includes('Bharat Mandapam') && !('download' in a.els['dl-save-date'].attrs), href);
+  check('Android opens Google Calendar on the right days and place', href.startsWith('https://calendar.google.com/') && href.includes('dates=20270728/20270730') && decodeURIComponent(href).includes('Bharat Mandapam') && !('download' in a.els['dl-save-date'].attrs), href);
   check('the thank-you button does the same', a.els['dl-save-date-2'].href === href);
   check('an iPhone keeps the calendar file', openPage().els['dl-save-date'].href === '/delhi-2027.ics');
 }
 {
   const ics = read('public/delhi-2027.ics');
   check('calendar file: CRLF line ends, as the format needs', ics.split('\n').every((l, i, all) => i === all.length - 1 || l.endsWith('\r')));
-  check('calendar file: 29 and 30 July 2027 (the end date is the day after)', ics.includes('DTSTART;VALUE=DATE:20270729\r\n') && ics.includes('DTEND;VALUE=DATE:20270731\r\n'));
+  check('calendar file: 28 and 29 July 2027 (the end date is the day after)', ics.includes('DTSTART;VALUE=DATE:20270728\r\n') && ics.includes('DTEND;VALUE=DATE:20270730\r\n'));
   check('calendar file: the venue, commas escaped', ics.includes('LOCATION:Bharat Mandapam\\, Pragati Maidan\\, New Delhi\r\n'));
 }
 
 // ---- the page's facts ----
 const html = read('public/delhi.html');
 const body = html.slice(html.indexOf('<body>')).replace(/<script[\s\S]*?<\/script>/g, '').replace(/<style[\s\S]*?<\/style>/g, '').replace(/<!--[\s\S]*?-->/g, '').replace(/<[^>]+>/g, ' ');
-check('29 July 2027 really is a Thursday, 30 July a Friday', new Date('2027-07-29T12:00:00Z').getUTCDay() === 4 && new Date('2027-07-30T12:00:00Z').getUTCDay() === 5);
-check('the page says Thursday 29 and Friday 30 July 2027', body.includes('Thursday 29 and Friday 30 July 2027'));
+check('28 July 2027 really is a Wednesday, 29 July a Thursday', new Date('2027-07-28T12:00:00Z').getUTCDay() === 3 && new Date('2027-07-29T12:00:00Z').getUTCDay() === 4);
+check('the page says Wednesday 28 and Thursday 29 July 2027', body.includes('Wednesday 28 and Thursday 29 July 2027'));
 check('the venue is named, nothing is left "to be announced"', body.includes('Bharat Mandapam') && !/to be announced|\bTBA\b/i.test(html));
 // Prices are on the page now (6 Nov 2026), so they are left out before looking for a crowd figure.
 const unpriced = body.replace(/₹[\d,.]+/g, '');
@@ -135,7 +135,7 @@ for (const [what, re] of [['no "RSVP"', /RSVP/i], ['no "largest"', /largest/i], 
 }
 const graph = JSON.parse(html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)[1])['@graph'];
 const ev = graph.find((g) => g['@type'] === 'Event');
-check('search-engine event data: dates and venue', ev.startDate === '2027-07-29' && ev.endDate === '2027-07-30' && ev.location.name === 'Bharat Mandapam' && ev.location.address.addressLocality === 'New Delhi');
+check('search-engine event data: dates and venue', ev.startDate === '2027-07-28' && ev.endDate === '2027-07-29' && ev.location.name === 'Bharat Mandapam' && ev.location.address.addressLocality === 'New Delhi');
 check('search-engine event data offers the paid passes, cheapest to dearest', ev.offers.priceCurrency === 'INR' && ev.offers.lowPrice === '999' && ev.offers.highPrice === '19999' && ev.offers.url.endsWith('/delhi-register'), JSON.stringify(ev.offers));
 check('"Tell me first" and "first to know" are gone from the page', !/tell me first|first to know/i.test(html));
 check('every Get your pass button goes to the passes', [...html.matchAll(/<a ([^>]*)>Get your pass/g)].length === 3 && [...html.matchAll(/<a ([^>]*)>Get your pass/g)].every((m) => m[1].includes('href="#passes"')));
@@ -205,7 +205,7 @@ check('every row\'s button names the same thing and price', [...html.matchAll(/<
 }
 check('the effects name where they came from, and no library is loaded', html.includes('Uiverse.io (MIT, (c) 2023 Uiverse.io)') && html.includes('React Bits (MIT + Commons Clause, (c) 2026 David Haz)') && ![...html.matchAll(/<script[^>]* src="([^"]+)"/g)].some((m) => !m[1].startsWith('js/main.js')));
 check('the page says the floor plan comes later', body.includes('We will publish the floor plan later'));
-check('the refund policy now names Delhi and its date', read('public/refund.html').includes('29 July 2027'));
+check('the refund policy now names Delhi and its date', read('public/refund.html').includes('<strong>28 July 2027</strong>'));
 const icons = [...new Set([...html.matchAll(/\bfa[sb]? (fa-[a-z0-9-]+)/g)].map((m) => m[1]))];
 const subset = read('public/css/fa-subset.css');
 const blank = icons.filter((i) => !subset.includes('.' + i + ':') && i !== 'fa-spin');

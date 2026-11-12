@@ -228,7 +228,7 @@ export const CARDS = {
   // A different edition, so it carries its own date and place.
   delhi: {
     path: '/delhi',
-    when: '29–30 Jul 2027',
+    when: '28–29 Jul 2027',
     where: 'Bharat Mandapam',
     label: 'New · Delhi Edition',
     headline: 'Bharat AI Innovation Delhi',

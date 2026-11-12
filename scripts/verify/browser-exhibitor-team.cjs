@@ -186,7 +186,7 @@ const signInLink = (id) => { const exp = Math.floor(Date.now() / 1000) + 3600; c
 
     // ---- the Delhi edition, on the dashboard's first screen ----
     const delhiCard = page.locator('#dash-delhi');
-    check('Overview: the Delhi card is shown to the exhibitor, in the words of the Delhi page', await until(() => delhiCard.isVisible()) && /Delhi 2027/i.test(await delhiCard.innerText()) && /Exhibit in Delhi: 29–30 July 2027/.test(await delhiCard.innerText()) && /Booths and partnerships are open now/.test(await delhiCard.innerText()), await delhiCard.innerText().catch(() => ''));
+    check('Overview: the Delhi card is shown to the exhibitor, in the words of the Delhi page', await until(() => delhiCard.isVisible()) && /Delhi 2027/i.test(await delhiCard.innerText()) && /Exhibit in Delhi: 28–29 July 2027/.test(await delhiCard.innerText()) && /Booths and partnerships are open now/.test(await delhiCard.innerText()), await delhiCard.innerText().catch(() => ''));
     const delhiLink = delhiCard.locator('a[data-delhi-open]');
     check('Overview: its button goes to the booths on the Delhi page, in a new tab', await delhiLink.getAttribute('href') === '/delhi?from=exhibitor#booths' && await delhiLink.getAttribute('target') === '_blank' && /See booths for Delhi/.test(await delhiLink.innerText()), await delhiLink.getAttribute('href'));
     await delhiCard.scrollIntoViewIfNeeded();
@@ -290,9 +290,9 @@ const signInLink = (id) => { const exp = Math.floor(Date.now() / 1000) + 3600; c
     check('admin: it says how many have opened it', /Opened so far by 0 people in the app and 1 exhibitor account\. Each one is counted once\./.test(await ap.locator('#delhi-opened').innerText()), await ap.locator('#delhi-opened').innerText());
     await ap.locator('#delhi-title').fill('x'.repeat(80));
     check('admin: the heading box stops at 80 characters', (await ap.locator('#delhi-title').inputValue()).length === 80 && await ap.locator('#delhi-title').getAttribute('maxlength') === '80', '');
-    await ap.locator('#delhi-title').fill('Delhi is next: 29–30 July 2027');
+    await ap.locator('#delhi-title').fill('Delhi is next: 28–29 July 2027');
     await ap.locator('#delhi-save').click();
-    check('admin: the new heading is saved and stays in its box', await until(async () => /Saved\. The Delhi card is shown in the app and on exhibitor dashboards\./.test(await ap.locator('#delhi-msg').innerText())) && await ap.locator('#delhi-title').inputValue() === 'Delhi is next: 29–30 July 2027' && await ap.locator('#delhi-on').isChecked(), await ap.locator('#delhi-msg').innerText());
+    check('admin: the new heading is saved and stays in its box', await until(async () => /Saved\. The Delhi card is shown in the app and on exhibitor dashboards\./.test(await ap.locator('#delhi-msg').innerText())) && await ap.locator('#delhi-title').inputValue() === 'Delhi is next: 28–29 July 2027' && await ap.locator('#delhi-on').isChecked(), await ap.locator('#delhi-msg').innerText());
     await ap.locator('.dash-sidebar-item[data-section="teams"]').click();
     const [dl] = await Promise.all([ap.waitForEvent('download', { timeout: 10000 }), ap.locator('#team-csv').click()]);
     const csv = require('fs').readFileSync(await dl.path(), 'utf8');
@@ -325,7 +325,7 @@ const signInLink = (id) => { const exp = Math.floor(Date.now() / 1000) + 3600; c
     // ---- the Delhi edition on Home ----
     await wp.evaluate(() => switchTab('dashboard'));
     const dcard = wp.locator('#app-delhi');
-    check('app: a signed-in person sees the Delhi card on Home, with the heading the organisers typed', await until(async () => await dcard.isVisible() && /Delhi is next: 29–30 July 2027/.test(await dcard.innerText()), 12000) && /Passes are open now/.test(await dcard.innerText()) && /See the Delhi edition/.test(await dcard.innerText()), await dcard.innerText().catch(() => ''));
+    check('app: a signed-in person sees the Delhi card on Home, with the heading the organisers typed', await until(async () => await dcard.isVisible() && /Delhi is next: 28–29 July 2027/.test(await dcard.innerText()), 12000) && /Passes are open now/.test(await dcard.innerText()) && /See the Delhi edition/.test(await dcard.innerText()), await dcard.innerText().catch(() => ''));
     check('app: the card goes to the Delhi page, in a new tab', await wp.locator('#app-delhi-link').getAttribute('href') === '/delhi?from=app' && await wp.locator('#app-delhi-link').getAttribute('target') === '_blank', await wp.locator('#app-delhi-link').getAttribute('href'));
     await dcard.scrollIntoViewIfNeeded();
     const dlook = await wp.evaluate(() => { const css = (id) => getComputedStyle(document.getElementById(id)); const i = document.getElementById('app-delhi-img'); return { title: css('app-delhi-title').color, text: css('app-delhi-text').color, cta: css('app-delhi-cta').color, ctaBg: css('app-delhi-cta').backgroundColor, src: i.getAttribute('src') }; });
