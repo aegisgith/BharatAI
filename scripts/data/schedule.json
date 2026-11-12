@@ -54,6 +54,7 @@
       ],
       "moderator": { "name": "Mukesh Jain", "org": "Capgemini" } },
     { "hall": "bhabha", "day": 1, "start": "17:30", "end": "17:45", "type": "talk", "label": "Innovation Talk", "track": "Healthcare & Life Sciences AI", "title": "PrAImaan", "speaker": { "name": "Dr. Vishal Deo", "role": "Scientist-C, ICMR-NIRDH" } },
+    { "hall": "bhabha", "day": 1, "start": "18:00", "end": "18:10", "type": "keynote", "label": "Closing", "title": "Closing Note", "speaker": { "name": "Cmde Dr. Jadumani Jena (retd.)", "role": "Advisor, Bharat AI Innovation, Exhibition & Conference" } },
     { "hall": "bhabha", "day": 1, "start": "18:30", "end": "20:00", "type": "networking", "label": "Evening", "title": "Bharat AI Leaders' Evening", "note": "Networking evening for CXOs and senior leaders. By invitation." },
 
     { "hall": "bhabha", "day": 2, "start": "09:00", "end": "09:05", "type": "keynote", "label": "Welcome", "title": "Welcome Note", "speaker": { "name": "Dr. Abhijit Gangopadhyay", "role": "Dean, Aegis School of Data Science and AI" } },
@@ -75,7 +76,6 @@
     { "hall": "bhabha", "day": 2, "start": "12:00", "end": "12:30", "type": "keynote", "label": "Keynote", "track": "Government & Public Sector AI", "title": "The AI components of MANTHAN–UTTHAN", "speaker": { "name": "Shri Srinivas Kancharla", "role": "Program Specialist, Office of the Principal Scientific Adviser to the Government of India" } },
     { "hall": "bhabha", "day": 2, "start": "12:30", "end": "13:30", "type": "panel", "label": "Panel: Insurance", "track": "BFSI & FinTech AI", "title": "Reinventing Insurance for Bharat with AI: Expanding Access, Trust and Inclusion",
       "panel": [
-        { "name": "Soly Thomas", "org": "Canara HSBC Life Insurance" },
         { "name": "Sandeep Kumar", "org": "Go Digit Insurance" }
       ],
       "note": "More panellists to be announced." },
@@ -84,7 +84,8 @@
     { "hall": "bhabha", "day": 2, "start": "15:15", "end": "16:15", "type": "panel", "label": "Panel: Media", "track": "Media & Entertainment AI", "title": "Content, Creativity & AI: Redefining Media, Personalization, and Digital Experiences",
       "panel": [
         { "name": "Rajat Nigam", "org": "JioStar India" },
-        { "name": "Simon David Hunter", "org": "Asian Screen Institute Singapore" }
+        { "name": "Simon David Hunter", "org": "Asian Screen Institute Singapore" },
+        { "name": "Saurabh Kushwah", "org": "BULLET Microdrama · ZEEL" }
       ] },
     { "hall": "bhabha", "day": 2, "start": "16:15", "end": "16:30", "type": "break", "label": "Tea", "title": "Hi-Tea Break" },
     { "hall": "bhabha", "day": 2, "start": "16:30", "end": "17:30", "type": "panel", "label": "Panel: Education", "track": "Education & Skills AI", "title": "Improving Learning Outcomes with AI: From Assessment to Measurable Impact", "note": "Powered by Assessfy.",
