@@ -303,44 +303,37 @@ UPDATE innovation_talks SET speaker_photo_url = '/images/talks/srinivas-kancharl
 WHERE event_id = 1 AND speaker_name = 'Srinivas Kancharla' AND company = 'Office of the Principal Scientific Adviser to the Government of India' AND COALESCE(speaker_photo_url, '') = '';
 
 INSERT INTO innovation_talks (event_id, slot_no, session_type, time_slot, speaker_name, company, topic, status, speaker_title, speaker_photo_url, notes)
-SELECT 1, 43, 'Morning', 'To be announced', 'Dr. K. Mahesh', 'Delhi Government', '', 'confirmed', 'Secretary, Art, Culture & Language', '/images/talks/k-mahesh.webp', 'Imported from the Innovation Talk sheet, 12 Oct 2026'
-WHERE NOT EXISTS (SELECT 1 FROM innovation_talks WHERE event_id = 1 AND speaker_name = 'Dr. K. Mahesh' AND company = 'Delhi Government');
-
-UPDATE innovation_talks SET speaker_photo_url = '/images/talks/k-mahesh.webp'
-WHERE event_id = 1 AND speaker_name = 'Dr. K. Mahesh' AND company = 'Delhi Government' AND COALESCE(speaker_photo_url, '') = '';
-
-INSERT INTO innovation_talks (event_id, slot_no, session_type, time_slot, speaker_name, company, topic, status, speaker_title, speaker_photo_url, notes)
-SELECT 1, 44, 'Morning', 'To be announced', 'Dr. Kunal Khemnar (IAS)', 'Maharashtra Industrial Development Corporation (MIDC)', '', 'confirmed', 'Joint Chief Executive Officer', '/images/talks/kunal-khemnar.webp', 'Imported from the Innovation Talk sheet, 12 Oct 2026'
+SELECT 1, 43, 'Morning', 'To be announced', 'Dr. Kunal Khemnar (IAS)', 'Maharashtra Industrial Development Corporation (MIDC)', '', 'confirmed', 'Joint Chief Executive Officer', '/images/talks/kunal-khemnar.webp', 'Imported from the Innovation Talk sheet, 12 Oct 2026'
 WHERE NOT EXISTS (SELECT 1 FROM innovation_talks WHERE event_id = 1 AND speaker_name = 'Dr. Kunal Khemnar (IAS)' AND company = 'Maharashtra Industrial Development Corporation (MIDC)');
 
 UPDATE innovation_talks SET speaker_photo_url = '/images/talks/kunal-khemnar.webp'
 WHERE event_id = 1 AND speaker_name = 'Dr. Kunal Khemnar (IAS)' AND company = 'Maharashtra Industrial Development Corporation (MIDC)' AND COALESCE(speaker_photo_url, '') = '';
 
 INSERT INTO innovation_talks (event_id, slot_no, session_type, time_slot, speaker_name, company, topic, status, speaker_title, speaker_photo_url, notes)
-SELECT 1, 45, 'Morning', 'To be announced', 'Prashant Mehra', 'Office of the Principal Scientific Adviser to the Government of India', 'The AI components of MANTHAN–UTTHAN: the platform''s capabilities, innovations and potential impact', 'confirmed', '', '', 'Imported from the Innovation Talk sheet, 12 Oct 2026'
+SELECT 1, 44, 'Morning', 'To be announced', 'Prashant Mehra', 'Office of the Principal Scientific Adviser to the Government of India', 'The AI components of MANTHAN–UTTHAN: the platform''s capabilities, innovations and potential impact', 'confirmed', '', '', 'Imported from the Innovation Talk sheet, 12 Oct 2026'
 WHERE NOT EXISTS (SELECT 1 FROM innovation_talks WHERE event_id = 1 AND speaker_name = 'Prashant Mehra' AND company = 'Office of the Principal Scientific Adviser to the Government of India');
 
 INSERT INTO innovation_talks (event_id, slot_no, session_type, time_slot, speaker_name, company, topic, status, speaker_title, speaker_photo_url, notes)
-SELECT 1, 46, 'Morning', 'To be announced', 'Meghavi Shah', 'Assessfy', 'Improving Learning Outcomes with AI: From Assessment to Measurable Impact', 'confirmed', 'Head Alliance', '/images/talks/meghavi-shah.webp', 'Imported from the Innovation Talk sheet, 12 Oct 2026'
+SELECT 1, 45, 'Morning', 'To be announced', 'Meghavi Shah', 'Assessfy', 'Improving Learning Outcomes with AI: From Assessment to Measurable Impact', 'confirmed', 'Head Alliance', '/images/talks/meghavi-shah.webp', 'Imported from the Innovation Talk sheet, 12 Oct 2026'
 WHERE NOT EXISTS (SELECT 1 FROM innovation_talks WHERE event_id = 1 AND speaker_name = 'Meghavi Shah' AND company = 'Assessfy');
 
 UPDATE innovation_talks SET speaker_photo_url = '/images/talks/meghavi-shah.webp'
 WHERE event_id = 1 AND speaker_name = 'Meghavi Shah' AND company = 'Assessfy' AND COALESCE(speaker_photo_url, '') = '';
 
 INSERT INTO innovation_talks (event_id, slot_no, session_type, time_slot, speaker_name, company, topic, status, speaker_title, speaker_photo_url, notes)
-SELECT 1, 47, 'Morning', 'To be announced', 'Ambrish Agarwal', 'Ai Vie Insights', '', 'confirmed', 'Director', '/images/talks/ambrish-agarwal.webp', 'Imported from the Innovation Talk sheet, 12 Oct 2026'
+SELECT 1, 46, 'Morning', 'To be announced', 'Ambrish Agarwal', 'Ai Vie Insights', '', 'confirmed', 'Director', '/images/talks/ambrish-agarwal.webp', 'Imported from the Innovation Talk sheet, 12 Oct 2026'
 WHERE NOT EXISTS (SELECT 1 FROM innovation_talks WHERE event_id = 1 AND speaker_name = 'Ambrish Agarwal' AND company = 'Ai Vie Insights');
 
 UPDATE innovation_talks SET speaker_photo_url = '/images/talks/ambrish-agarwal.webp'
 WHERE event_id = 1 AND speaker_name = 'Ambrish Agarwal' AND company = 'Ai Vie Insights' AND COALESCE(speaker_photo_url, '') = '';
 
 INSERT INTO innovation_talks (event_id, slot_no, session_type, time_slot, speaker_name, company, topic, status, speaker_title, speaker_photo_url, notes)
-SELECT 1, 48, 'Morning', 'To be announced', 'Taranjiet Kaur Oberai', 'JoyVibe', 'Building a Human-Led Wellbeing Ecosystem from Bharat', 'confirmed', 'Founder', '/images/talks/taranjiet-kaur-oberai.webp', 'Imported from the Innovation Talk sheet, 12 Oct 2026'
+SELECT 1, 47, 'Morning', 'To be announced', 'Taranjiet Kaur Oberai', 'JoyVibe', 'Building a Human-Led Wellbeing Ecosystem from Bharat', 'confirmed', 'Founder', '/images/talks/taranjiet-kaur-oberai.webp', 'Imported from the Innovation Talk sheet, 12 Oct 2026'
 WHERE NOT EXISTS (SELECT 1 FROM innovation_talks WHERE event_id = 1 AND speaker_name = 'Taranjiet Kaur Oberai' AND company = 'JoyVibe');
 
 UPDATE innovation_talks SET speaker_photo_url = '/images/talks/taranjiet-kaur-oberai.webp'
 WHERE event_id = 1 AND speaker_name = 'Taranjiet Kaur Oberai' AND company = 'JoyVibe' AND COALESCE(speaker_photo_url, '') = '';
 
 INSERT INTO innovation_talks (event_id, slot_no, session_type, time_slot, speaker_name, company, topic, status, speaker_title, speaker_photo_url, notes)
-SELECT 1, 49, 'Morning', 'To be announced', 'Vyom Patel', 'Teenage Works', 'Teen V1: World''s Most Affordable Voice Model', 'confirmed', 'Co-Founder & CTO', '', 'Imported from the Innovation Talk sheet, 12 Oct 2026'
+SELECT 1, 48, 'Morning', 'To be announced', 'Vyom Patel', 'Teenage Works', 'Teen V1: World''s Most Affordable Voice Model', 'confirmed', 'Co-Founder & CTO', '', 'Imported from the Innovation Talk sheet, 12 Oct 2026'
 WHERE NOT EXISTS (SELECT 1 FROM innovation_talks WHERE event_id = 1 AND speaker_name = 'Vyom Patel' AND company = 'Teenage Works');

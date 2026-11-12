@@ -52,14 +52,15 @@ check("a company's own Company Secretary is not, nor a CEO", flag('Saurabh Singh
 check('an IFS officer, an IAS officer and two from the Principal Scientific Adviser\'s office are held back too',
   flag('Shri Vivek Khandekar (IFS)') === true && flag('Dr. Kunal Khemnar (IAS)') === true && flag('Srinivas Kancharla') === true && flag('Prashant Mehra') === true,
   ['Shri Vivek Khandekar (IFS)', 'Dr. Kunal Khemnar (IAS)', 'Srinivas Kancharla', 'Prashant Mehra'].map(n => [n, flag(n)]));
-const OFFICIALS = ['Divyanshi Saxena', 'Dr. K. Mahesh', 'Ganesh Nagarajan', 'Hon’ble Shri Test Mantri', 'Shivendra Singh', 'Shri Vivek Khandekar (IFS)', 'Dr. Kunal Khemnar (IAS)', 'Srinivas Kancharla', 'Prashant Mehra'];
+const OFFICIALS = ['Divyanshi Saxena', 'Ganesh Nagarajan', 'Hon’ble Shri Test Mantri', 'Shivendra Singh', 'Shri Vivek Khandekar (IFS)', 'Dr. Kunal Khemnar (IAS)', 'Srinivas Kancharla', 'Prashant Mehra'];
 
 // ---- off ----
 let r = await W.as('GET', '/api/admin/innovation-talks/auto?event_id=1');
 check('off until someone turns it on, and it says who would get one', r.status === 200 && r.json.on === false && r.json.due === 3 && r.json.every_hours === 48 && r.json.max === 3, r.json);
 check('the summary names the government officials left for a person, and does not count them', r.json.held.map(h => h.speaker).sort().join() === OFFICIALS.slice().sort().join() && !r.json.next.some(n => /Shivendra|Divyanshi|Mantri/.test(n.speaker)), r.json.held);
 check('before the event the summary does not say it has stopped', r.json.closed === false, r.json.closed);
-check('the two real government secretaries on the talk list are among them (Dr. K. Mahesh, Ganesh Nagarajan)', r.json.held.some(h => h.speaker === 'Dr. K. Mahesh' && /^Secretary/.test(h.title)) && r.json.held.some(h => h.speaker === 'Ganesh Nagarajan'));
+// Dr. K. Mahesh (Secretary, Delhi) left the talk list on 13 Nov 2026.
+check('the real government Deputy Secretary on the talk list is among them (Ganesh Nagarajan), and Dr. K. Mahesh is gone', r.json.held.some(h => h.speaker === 'Ganesh Nagarajan') && !r.json.held.some(h => h.speaker === 'Dr. K. Mahesh'));
 check('the would-be list names them, worst-waiting first, with what is missing', r.json.next.length === 3 && r.json.next.every(n => n.missing.length > 0) && !r.json.next.some(n => /Dipak|Shashank/.test(n.speaker)), r.json.next);
 r = await tick();
 check('off: the clock sends nothing, and says so', r.status === 200 && r.json.talk_requests.on === false && talkMails().length === 0, r.json.talk_requests);
