@@ -47,6 +47,17 @@ const appCookie = (id) => { const exp = Math.floor(Date.now() / 1000) + 3600; co
     check('a row shows its time and its hall under both names', /1:10 – 1:18 PM/.test(amrText) && /Aryabhata Theatre/.test(amrText) && /Expo Hall/.test(amrText), amrText);
     check('CGI shows Kalam Theatre with Centrum Hall A', /Kalam Theatre[\s\S]*Centrum Hall A/.test(await page.locator('tr', { hasText: 'Dr Rahul Ghodke' }).innerText()));
     check('a row says what is still missing', /Bio/.test(amrText) && /Mobile/.test(amrText), amrText);
+    // The day apart from the time, the day in its own colour (the team, 12 Nov 2026).
+    const amrCells = await amrRow.locator('td').allInnerTexts();
+    check('the day has its own column, coloured, apart from the time', (await amrRow.locator('td').nth(0).locator('span.rounded-lg').getAttribute('class')).includes('amber') && /Day 1/.test(amrCells[0]) && /Fri 20 Nov/.test(amrCells[0]) && /^1:10 – 1:18 PM$/.test(amrCells[1].trim()), amrCells.slice(0, 2));
+    const heads = (await sec.locator('table').first().locator('thead th').allInnerTexts()).map(x => x.trim().toUpperCase());
+    check('the headings read Day, then Time', heads[0] === 'DAY' && heads[1] === 'TIME', heads);
+    // The missing-details email by itself: the switch.
+    check('the automatic email is shown, off, with who would get one', await until(() => page.locator('#italk-auto').isVisible()) && /automatically: Off/.test(await page.locator('#italk-auto').innerText()) && /would get one/.test(await page.locator('#italk-auto').innerText()), await page.locator('#italk-auto').innerText().catch(() => ''));
+    await page.locator('#italk-auto-btn').click();
+    check('turned on (after the question): it says On, and the server has it', await until(async () => /automatically: On/.test(await page.locator('#italk-auto').innerText())) && (await dbq("SELECT value FROM app_settings WHERE key = 'italk_auto_request'"))[0].value === '1');
+    await page.locator('#italk-auto-btn').click();
+    check('turned off again', await until(async () => /automatically: Off/.test(await page.locator('#italk-auto').innerText())) && (await dbq("SELECT value FROM app_settings WHERE key = 'italk_auto_request'"))[0].value === '0');
 
     // the filters
     await page.getByRole('button', { name: /^No time yet/ }).click();
@@ -77,6 +88,7 @@ const appCookie = (id) => { const exp = Math.floor(Date.now() / 1000) + 3600; co
     check('the email box offers the booth contact, and says so', (await page.locator('#italk-ask-form [name=to]').inputValue()) === 'spoc@p99soft.test' && /booth contact for P99SOFT/.test(await page.locator('#italk-ask-form').innerText()));
     check("a booth contact's box is not ticked as the speaker's own", !(await page.locator('#italk-ask-form [name=own]').isChecked()));
     const ticked = await page.locator('#italk-ask-form input[name=ask]:checked').evaluateAll(xs => xs.map(x => x.value));
+    check('"Company name" is one of the things the email can ask for', (await page.locator('#italk-ask-form input[name=ask][value=company]').count()) === 1);
     check('only what is missing is ticked (bio; the mobile was just added)', JSON.stringify(ticked) === '["speaker_bio"]', ticked);
     await page.locator('#italk-ask-form textarea[name=note]').fill('Please send your slides by 18 Nov.');
     await page.getByRole('button', { name: 'Preview' }).click();

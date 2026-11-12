@@ -72,11 +72,11 @@ check(`gen-talk-times.mjs and the server agree on every talk slot in the agenda 
 
 // ---- 3. the admin page's own functions ----
 const F = await W.adminTalkFunctions();
-const full = { id: 1, time_slot: 'Fri 20 Nov · 11:30 – 11:38 AM', starts_at: '2026-11-20 11:30', hall: 'Aryabhata Theatre', speaker_email: 'a@b.co', topic: 'T', speaker_title: 'CEO', speaker_photo_url: '/images/talks/x.webp', speaker_bio: 'Bio', speaker_phone: '98200 12345' };
+const full = { id: 1, time_slot: 'Fri 20 Nov · 11:30 – 11:38 AM', starts_at: '2026-11-20 11:30', hall: 'Aryabhata Theatre', speaker_email: 'a@b.co', topic: 'T', speaker_title: 'CEO', company: 'Acme', speaker_photo_url: '/images/talks/x.webp', speaker_bio: 'Bio', speaker_phone: '98200 12345' };
 check('a complete talk is missing nothing', F.italkMissing(full).length === 0, F.italkMissing(full));
 check('"To be announced" is not a time', !F.italkTimed({ time_slot: 'To be announced' }) && !F.italkTimed({ time_slot: '' }) && F.italkTimed({ time_slot: '10:00 AM' }));
 const bare = { id: 2, time_slot: 'To be announced', speaker_name: 'X', company: 'Y' };
-check('a bare talk misses time, hall, email and the five speaker details, in that order', JSON.stringify(F.italkMissing(bare)) === JSON.stringify(['time', 'hall', 'email', 'topic', 'speaker_title', 'speaker_photo_url', 'speaker_bio', 'speaker_phone']), F.italkMissing(bare));
+check('a bare talk (it has a company) misses time, hall, email and the five other speaker details, in that order', JSON.stringify(F.italkMissing(bare)) === JSON.stringify(['time', 'hall', 'email', 'topic', 'speaker_title', 'speaker_photo_url', 'speaker_bio', 'speaker_phone']), F.italkMissing(bare));
 check('what the speaker is asked for never includes time, hall or email', JSON.stringify(F.italkSpeakerGaps(bare)) === JSON.stringify(['topic', 'speaker_title', 'speaker_photo_url', 'speaker_bio', 'speaker_phone']));
 check('"What they will show" is never counted missing on its own', F.italkSpeakerGaps({ ...full, showcase: '' }).length === 0);
 check('blank-looking text is missing', F.italkSpeakerGaps({ ...full, topic: '   ' })[0] === 'topic');

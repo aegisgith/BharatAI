@@ -82,11 +82,11 @@ const adminInit = () => { if (window.top !== window) return; sessionStorage.setI
     check('saving is refused with "Save anyway" offered', await until(() => page.locator('[data-cm="save-session-force"]').isVisible()));
     await page.click('[data-cm="save-session-force"]');
     check('"Save anyway" saves it, and the board marks the clash in red', await until(async () => (await page.locator('.cm-block.is-clash').count()) >= 2));
-    check('the clash is counted at the top', (await page.locator('[data-cm="stat-clash"] b').textContent()).trim() === '1');
+    check('the clash is counted at the top, as something that cannot run', (await page.locator('[data-cm="stat-attention"]').getAttribute('data-bad')) === '1' && /1 cannot run as written/.test(await page.locator('[data-cm="stat-attention"]').innerText()));
     await page.locator('.cm-block', { hasText: 'Clash test' }).click();
     await until(() => page.locator('#cm-drawer.is-open').count());
     await page.click('[data-cm="del-session"]');
-    check('deleting it clears the clash', await until(async () => (await page.locator('.cm-block.is-clash').count()) === 0 && (await page.locator('[data-cm="stat-clash"] b').textContent()).trim() === '0'));
+    check('deleting it clears the clash', await until(async () => (await page.locator('.cm-block.is-clash').count()) === 0 && (await page.locator('[data-cm="stat-attention"]').getAttribute('data-bad')) === '0'));
 
     // ---- a draft ----
     await page.locator('.cm-block', { hasText: 'Agentic AI in Lending' }).click();

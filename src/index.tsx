@@ -463,7 +463,7 @@ app.route('/', mp)
 // announcements, in routes/conference.ts; its screen is public/static/conference-admin.js.
 // Mounted here, after the /api/admin/* guard above, so every one of its routes needs
 // an admin. It also owns POST/PUT/DELETE /api/admin/sessions.
-configureConference({ sendEmail: sendAdminEmail, audit, changedFields, emailHeader: emailBrandHeader, actor: (c: any) => adminActor(c).actor })
+configureConference({ sendEmail: sendAdminEmail, audit, changedFields, emailHeader: emailBrandHeader, actor: (c: any) => adminActor(c).actor, syncTalk: italkSyncFromProgramme, issueSpeakerPass })
 app.route('/', conference)
 
 // Marketplace page routes
@@ -15034,8 +15034,10 @@ app.post('/api/cron/tick', async (c) => {
   const netMail = await autoSendNetMail(c).catch((e: any) => ({ error: String(e?.message || e).slice(0, 200) }))
   // The team's morning summary of enquiries, once a day from 9 in India, when switched on.
   const inquiryDigestRun = await autoInquiryDigest(c).catch((e: any) => ({ error: String(e?.message || e).slice(0, 200) }))
+  // Innovation Talk speakers asked for whatever is missing, one a minute, when switched on.
+  const talkRequests = await autoItalkRequests(c).catch((e: any) => ({ error: String(e?.message || e).slice(0, 200) }))
   const out = await tickMailJobs(c, Number(body.max_seconds) || 0, true)
-  return c.json({ ...out, campaigns: await tickCampaigns(c), pay_reminders: payReminders, help_mail: helpMail, notify_mail: notifyMail, networking_mail: netMail, inquiry_digest: inquiryDigestRun })
+  return c.json({ ...out, campaigns: await tickCampaigns(c), pay_reminders: payReminders, help_mail: helpMail, notify_mail: notifyMail, networking_mail: netMail, inquiry_digest: inquiryDigestRun, talk_requests: talkRequests })
 })
 
 // The admin page's view and its own ticking while it is open.
@@ -16921,6 +16923,83 @@ function italkSlotLabel(startsAt: string, minutes: number): string {
   return `${day} · ${a.pm === b.pm ? a.text : `${a.text} ${a.pm ? 'PM' : 'AM'}`} – ${b.text} ${b.pm ? 'PM' : 'AM'}`
 }
 
+// A speaker's pass (12 Nov 2026). The team asked that a speaker added in Admin ->
+// Conference "also goes in the database and speaker badges can be issued". The rules
+// are an exhibitor team pass's (issueTeamPass): a free Visitor Pass, or a paid tier
+// nobody paid for, is raised to Speaker; a pass of their own (a paid Delegate, VIP,
+// Organiser, Exhibitor...) is kept as it is; blank details are filled in, never
+// overwritten; a mobile somebody else holds is left off rather than refusing the pass.
+// Lunch is not touched: that is the organisers' to decide.
+async function issueSpeakerPass(c: any, x: { eventId: number; name: string; email: string; mobile: string; company: string; designation: string; linkedin: string; avatarUrl: string }):
+    Promise<{ attendeeId: number; pass: string; created: boolean; raised: boolean; kept: boolean } | { error: string }> {
+  const email = String(x.email || '').trim().toLowerCase()
+  if (!validEmailSyntax(email)) return { error: 'That email address does not look right.' }
+  const eventId = Number(x.eventId) || 1
+  const cols = await attendeeColumns(c)
+  const row = await c.env.DB.prepare('SELECT * FROM attendees WHERE event_id = ? AND lower(email) = ? ORDER BY id LIMIT 1').bind(eventId, email).first() as any
+  const freeMobile = async (exceptId: any) => {
+    const m = String(x.mobile || '').trim()
+    return m && !(await mobileHolder(c, eventId, m, exceptId)) ? m : ''
+  }
+  if (row) {
+    const id = Number(row.id), cur = String(row.badge_type || '')
+    const unpaid = PAID_TIERS.includes(cur) && ['pending', 'refunded'].includes(String(row.payment_status || '').trim().toLowerCase())
+    const raised = cur !== 'Speaker' && (!cur || !canInitiateNetworking(cur) || unpaid)
+    const sets: string[] = [], vals: any[] = []
+    const put = (col: string, v: any) => { if (cols.has(col)) { sets.push(col + ' = ?'); vals.push(v) } }
+    const blank = (col: string) => !String(row[col] ?? '').trim()
+    if (raised) {
+      put('badge_type', 'Speaker'); put('payment_status', 'waived'); put('main_event', 1)
+      if (blank('role') || String(row.role).trim().toLowerCase() === 'attendee') put('role', 'Speaker')
+    }
+    if (x.designation && blank('job_title')) put('job_title', x.designation)
+    if (x.company && blank('company')) put('company', x.company)
+    if (x.linkedin && blank('linkedin_url')) put('linkedin_url', x.linkedin)
+    if (x.avatarUrl && blank('avatar_url')) put('avatar_url', x.avatarUrl)
+    if (x.mobile && blank('mobile')) { const m = await freeMobile(id); if (m) put('mobile', m) }
+    if (sets.length) await c.env.DB.prepare(`UPDATE attendees SET ${sets.join(', ')} WHERE id = ?`).bind(...vals, id).run()
+    if (raised) await audit(c, 'attendee.speaker-pass', 'attendee', id, { badge_type: [cur || null, 'Speaker'] })
+    return { attendeeId: id, pass: raised ? 'Speaker' : cur, created: false, raised, kept: !raised && cur !== 'Speaker' }
+  }
+  // A new registration, in the shape Add Attendee writes.
+  const set: Record<string, any> = {
+    company: String(x.company || '').trim(), job_title: String(x.designation || '').trim(), linkedin_url: String(x.linkedin || '').trim(), mobile: await freeMobile(null),
+    badge_type: 'Speaker', role: 'Speaker', country: 'India', payment_status: 'waived', registration_date: new Date().toISOString().slice(0, 19).replace('T', ' '),
+  }
+  const name = String(x.name || '').trim() || email
+  const names: string[] = ['event_id', 'name', 'email']
+  const vals: any[] = [eventId, name, email]
+  for (const f of ADMIN_ATTENDEE_FIELDS) {
+    if (f === 'name' || f === 'email' || !cols.has(f)) continue
+    names.push(f)
+    vals.push(set[f] ?? '')
+  }
+  if (cols.has('main_event')) { names.push('main_event'); vals.push(1) }
+  if (cols.has('registration_source')) { names.push('registration_source'); vals.push('speaker') }
+  if (x.avatarUrl && cols.has('avatar_url')) { names.push('avatar_url'); vals.push(x.avatarUrl) }
+  names.push('is_online')
+  vals.push(0)
+  const r = await c.env.DB.prepare(`INSERT INTO attendees (${names.join(', ')}) VALUES (${names.map(() => '?').join(', ')})`).bind(...vals).run()
+  const attendeeId = Number(r.meta.last_row_id)
+  await audit(c, 'attendee.create', 'attendee', attendeeId, { name, email, badge_type: 'Speaker', source: 'speaker' })
+  return { attendeeId, pass: 'Speaker', created: true, raised: false, kept: false }
+}
+
+// Admin -> Conference moved (or added) a session that is one of these talks: the talks
+// list takes the programme's time and hall, in the same words a time set here gets.
+// A database short of 0052 keeps the time and leaves the hall.
+async function italkSyncFromProgramme(c: any, talkId: number, startsAt: string | null, minutes: number, hall: string): Promise<void> {
+  const set: Record<string, any> = startsAt && ITALK_STARTS_RE.test(startsAt)
+    ? { starts_at: startsAt, duration_min: minutes, time_slot: italkSlotLabel(startsAt, minutes), session_type: Number(startsAt.slice(11, 13)) < 12 ? 'Morning' : 'Afternoon' }
+    : { starts_at: null, time_slot: 'To be announced' }
+  const run = (v: Record<string, any>) => {
+    const keys = Object.keys(v)
+    return c.env.DB.prepare(`UPDATE innovation_talks SET ${keys.map(k => `${k} = ?`).join(', ')} WHERE id = ?`).bind(...keys.map(k => v[k]), talkId).run()
+  }
+  try { await run(hall ? { ...set, hall } : set) }
+  catch (e: any) { if (!/no such column/i.test(String(e?.message || ''))) throw e; await run(set) }
+}
+
 // The event's halls and the venue rooms they are (organiser, 11 Nov 2026), as in
 // scripts/data/schedule.json. The app's sessions use the same hall names.
 const ITALK_HALLS: Record<string, string> = {
@@ -17139,6 +17218,7 @@ const ITALK_ASK: Record<string, { label: string; why: string }> = {
   speaker_bio: { label: 'Two or three lines about you', why: 'The host reads this out to introduce you on stage.' },
   speaker_phone: { label: 'Your mobile number', why: 'We use it only on the day, if your time or stage changes.' },
   showcase: { label: 'What you will show on stage', why: 'A line or two about the product or demo you will present.' },
+  company: { label: 'Your company name, as it should be shown', why: 'It is shown with your talk in the programme and on your pass.' },
 }
 
 function italkRequestSubject(t: any, toSpeaker: boolean): string {
@@ -17225,6 +17305,102 @@ app.post('/api/admin/innovation-talks/:id/request-details', async (c) => {
   } catch { recorded = false /* before 0052: the email went, there is nowhere to note it */ }
   await audit(c, 'innovation_talk.request_details', 'innovation_talk', id, { to, items, speaker: t.speaker_name, company: t.company })
   return c.json({ success: true, sent_to: to, recorded })
+})
+
+// ---- the same email by itself (12 Nov 2026) ----
+// The team asked for "automated email and manual email" for missing details. With the
+// switch on the Innovation Talks tab on, the minute clock sends this email to one
+// speaker a minute: whoever still has something missing and an address to write to.
+// First when the gap is found, then every ITALK_AUTO_EVERY_HOURS, at most
+// ITALK_AUTO_MAX times in all, and only inside the sending hours. Any email, by hand
+// or by itself, restarts the wait, so nobody is asked twice in two days. A talk that
+// has everything is never written to. Off when shipped: the organisers turn it on.
+const ITALK_AUTO_KEY = 'italk_auto_request'
+const ITALK_AUTO_LOG = 'italk_auto_log'      // { "<talk id>": { n: times sent by itself, at: last time, ISO } }
+const ITALK_AUTO_EVERY_HOURS = 48
+const ITALK_AUTO_MAX = 3
+// What a talk must have: the list the admin tab calls missing (italkNeeded there).
+const ITALK_NEEDED = ['topic', 'speaker_title', 'company', 'speaker_photo_url', 'speaker_bio', 'speaker_phone']
+const italkGaps = (t: any): string[] => ITALK_NEEDED.filter(k => !String(t?.[k] ?? '').trim())
+
+async function italkAutoLog(c: any): Promise<Record<string, { n: number; at: string }>> {
+  try { const v = JSON.parse((await settingValue(c, ITALK_AUTO_LOG)) || '{}'); return v && typeof v === 'object' ? v : {} } catch { return {} }
+}
+// Who would get it now, longest-waiting first.
+async function italkAutoDue(c: any, eventId: number, nowMs: number) {
+  const q = async (sql: string) => ((await c.env.DB.prepare(sql).bind(eventId).all().catch(() => ({ results: [] }))).results || []) as any[]
+  const [talks, exhibitors, team, log] = await Promise.all([
+    q('SELECT * FROM innovation_talks WHERE event_id = ?'),
+    q('SELECT id, company_name, contact_email FROM exhibitors WHERE event_id = ?'),
+    q("SELECT exhibitor_id, first_name, last_name, email FROM exhibitor_team WHERE event_id = ? AND trim(email) <> ''"),
+    italkAutoLog(c)])
+  const out: { talk: any; contact: { email: string; source: string }; gaps: string[]; n: number; last: number }[] = []
+  for (const t of talks) {
+    if (t.status === 'cancelled') continue
+    const gaps = italkGaps(t)
+    if (!gaps.length) continue
+    const contact = italkContactFor(t, exhibitors, team)
+    if (!contact.email || !validEmailSyntax(contact.email)) continue
+    const mine = log[String(t.id)] || { n: 0, at: '' }
+    if (mine.n >= ITALK_AUTO_MAX) continue
+    // The last time anyone asked: by hand (on the talk, UTC) or by itself (the log).
+    const byHand = t.details_requested_at ? Date.parse(String(t.details_requested_at).replace(' ', 'T') + 'Z') : 0
+    const last = Math.max(Number.isFinite(byHand) ? byHand : 0, mine.at ? Date.parse(mine.at) || 0 : 0)
+    if (last && nowMs - last < ITALK_AUTO_EVERY_HOURS * 3600_000) continue
+    out.push({ talk: t, contact, gaps, n: mine.n, last })
+  }
+  return out.sort((a, b) => a.last - b.last || Number(a.talk.id) - Number(b.talk.id))
+}
+
+// One email per call (the clock calls once a minute), so it can never be a burst.
+async function autoItalkRequests(c: any): Promise<Record<string, any>> {
+  if ((await settingValue(c, ITALK_AUTO_KEY)) !== '1') return { on: false, sent: 0 }
+  const now = Date.now()
+  if (!sendWindowState(new Date(now)).open) return { on: true, sent: 0, waiting: 'outside the sending hours' }
+  const due = await italkAutoDue(c, 1, now)
+  if (!due.length) return { on: true, sent: 0, due: 0 }
+  const d = due[0], t = d.talk, id = String(t.id), to = d.contact.email.trim().toLowerCase()
+  // Marked before it is sent: a second clock in the same minute finds it done.
+  const log = await italkAutoLog(c)
+  const prev = log[id]
+  log[id] = { n: d.n + 1, at: new Date(now).toISOString() }
+  await settingWrite(c, ITALK_AUTO_LOG, JSON.stringify(log))
+  const toSpeaker = d.contact.source !== 'booth'
+  const sent = await sendAdminEmail(c, to, italkRequestSubject(t, toSpeaker), italkRequestEmailHTML(t, d.gaps, '', toSpeaker), { unsubscribe: false })
+  if (!sent.ok) {
+    // Not counted, and tried again next time.
+    const again = await italkAutoLog(c)
+    if (prev) again[id] = prev; else delete again[id]
+    await settingWrite(c, ITALK_AUTO_LOG, JSON.stringify(again))
+    return { on: true, sent: 0, error: sent.error, due: due.length }
+  }
+  try {
+    await c.env.DB.prepare(
+      `UPDATE innovation_talks SET details_requested_at = ?, details_requested_to = ?,
+         speaker_email = CASE WHEN ? = 1 AND trim(ifnull(speaker_email, '')) = '' THEN ? ELSE speaker_email END
+       WHERE id = ?`
+    ).bind(new Date(now).toISOString().slice(0, 19).replace('T', ' '), to, d.contact.source === 'team' ? 1 : 0, to, t.id).run()
+  } catch { /* before 0052: the log above holds when it went */ }
+  await audit(c, 'innovation_talk.request_details', 'innovation_talk', t.id, { to, items: d.gaps, speaker: t.speaker_name, company: t.company, automatic: true, time: d.n + 1 }, { actor: 'automatic', kind: 'system' })
+  return { on: true, sent: 1, talk_id: Number(t.id), due: due.length - 1 }
+}
+
+async function italkAutoSummary(c: any, eventId: number) {
+  const [on, due, log] = await Promise.all([settingValue(c, ITALK_AUTO_KEY), italkAutoDue(c, eventId, Date.now()), italkAutoLog(c)])
+  return {
+    on: on === '1', every_hours: ITALK_AUTO_EVERY_HOURS, max: ITALK_AUTO_MAX, due: due.length,
+    next: due.slice(0, 5).map(d => ({ id: Number(d.talk.id), speaker: d.talk.speaker_name || '', company: d.talk.company || '', missing: d.gaps })),
+    sent_by_itself: Object.values(log).reduce((n, x: any) => n + (Number(x?.n) || 0), 0),
+    window: sendWindowState(),
+  }
+}
+app.get('/api/admin/innovation-talks/auto', async (c) => c.json(await italkAutoSummary(c, Number(c.req.query('event_id')) || 1)))
+app.post('/api/admin/innovation-talks/auto', async (c) => {
+  const body = await c.req.json().catch(() => ({})) as any
+  const on = body.on === true || body.on === 1 || body.on === '1'
+  await settingWrite(c, ITALK_AUTO_KEY, on ? '1' : '0')
+  await audit(c, 'innovation_talk.auto_request', 'setting', ITALK_AUTO_KEY, { on })
+  return c.json(await italkAutoSummary(c, Number(body.event_id) || 1))
 })
 
 // ==================== DUPLICATES AND MERGING ====================
@@ -34361,7 +34537,7 @@ function adminPageHTML(): string {
        is the card that speaker would have made themselves. -->
   <script src="/js/social-card.js?v=20261102"></script>
   <link rel="stylesheet" href="/css/fonts-app.css?v=1">
-  <link rel="stylesheet" href="/static/conference-admin.css?v=20261112">
+  <link rel="stylesheet" href="/static/conference-admin.css?v=20261112b">
   <style>
     * { font-family: 'Manrope', sans-serif; }
     body { background: #F8F9FF; color: #1E2140; }
@@ -34711,8 +34887,8 @@ function adminPageHTML(): string {
     <div id="modal-box" class="glass rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col" style="scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.15) transparent;"></div>
   </div>
 
+  <script src="/static/conference-admin.js?v=20261112b"></script>
   <script src="/admin.js?v=${adminScriptVersion()}"></script>
-  <script src="/static/conference-admin.js?v=20261112"></script>
 </body>
 </html>`
 }
@@ -44676,10 +44852,12 @@ function adminPageScript(): string {
     var italkView = 'all';
     var italkHallRooms = { 'Aryabhata Theatre': 'Expo Hall', 'Homi J. Bhabha Hall': 'Peacock Hall', 'Kalam Theatre': 'Centrum Hall A', 'Raman Theatre': 'Centrum Hall B' };
     var italkDays = [['2026-11-20', 'Fri 20 Nov', 'Day 1'], ['2026-11-21', 'Sat 21 Nov', 'Day 2']];
-    var italkAskLabels = { topic: 'Topic', speaker_title: 'Designation', speaker_photo_url: 'Photo', speaker_bio: 'Short bio', speaker_phone: 'Mobile', showcase: 'What they will show' };
+    var italkAskLabels = { topic: 'Topic', speaker_title: 'Designation', company: 'Company name', speaker_photo_url: 'Photo', speaker_bio: 'Short bio', speaker_phone: 'Mobile', showcase: 'What they will show' };
+    var italkAuto = null;
     // A talk is complete with these; "What they will show" is asked only when ticked.
-    var italkNeeded = ['topic', 'speaker_title', 'speaker_photo_url', 'speaker_bio', 'speaker_phone'];
-    var italkMissLabels = { time: 'Time', hall: 'Hall', email: 'Email', topic: 'Topic', speaker_title: 'Designation', speaker_photo_url: 'Photo', speaker_bio: 'Bio', speaker_phone: 'Mobile' };
+    var italkNeeded = ['topic', 'speaker_title', 'company', 'speaker_photo_url', 'speaker_bio', 'speaker_phone'];
+    var italkMissLabels = { time: 'Time', hall: 'Hall', email: 'Email', topic: 'Topic', speaker_title: 'Designation', company: 'Company', speaker_photo_url: 'Photo', speaker_bio: 'Bio', speaker_phone: 'Mobile' };
+    var italkDayTint = ['bg-amber-500/20 text-amber-400', 'bg-indigo-500/20 text-indigo-400', 'bg-green-500/20 text-green-400'];
     var italkBulkStop = false;
 
     function italkHas(v) { return String(v == null ? '' : v).trim().length > 0; }
@@ -44707,7 +44885,7 @@ function adminPageScript(): string {
     }
     function italkPhoto(t) {
       var p = String(t.speaker_photo_url || '');
-      var ok = (p.indexOf('/images/talks/') === 0 && /^[a-z0-9-]+[.]webp$/.test(p.slice(14))) || (p.indexOf('/api/mp/uploads/') === 0 && /^[0-9]+$/.test(p.slice(16)));
+      var ok = (p.indexOf('/images/talks/') === 0 && /^[a-z0-9-]+[.]webp$/.test(p.slice(14))) || (p.indexOf('/api/mp/uploads/') === 0 && /^[0-9]+$/.test(p.slice(16))) || (p.indexOf('/api/uploads/submissions/') === 0 && /^[A-Za-z0-9._-]+[/][A-Za-z0-9._-]+$/.test(p.slice(25)));
       if (ok) return '<img src="' + escH(p) + '" alt="" loading="lazy" class="w-9 h-9 rounded-lg shrink-0" style="object-fit:cover">';
       var ini = String(t.speaker_name || '').split(' ').filter(function (w) { return w && ['dr', 'dr.', 'mr', 'mr.', 'ms', 'ms.', 'prof', 'prof.', 'shri'].indexOf(w.toLowerCase()) < 0; }).slice(0, 2).map(function (w) { return w[0].toUpperCase(); }).join('');
       return '<div class="w-9 h-9 rounded-lg shrink-0 bg-primary-500/20 text-primary-300 flex items-center justify-center text-xs font-bold">' + escH(ini) + '</div>';
@@ -44721,9 +44899,11 @@ function adminPageScript(): string {
         var both = await Promise.all([
           api.get('/api/events/' + EID + '/innovation-talks'),
           api.get('/api/admin/innovation-talks/contacts?event_id=' + EID).catch(function () { return { contacts: {} }; }),
+          api.get('/api/admin/innovation-talks/auto?event_id=' + EID).catch(function () { return null; }),
         ]);
         talks = both[0];
         italkContacts = (both[1] && both[1].contacts) || {};
+        italkAuto = both[2] && typeof both[2].on === 'boolean' ? both[2] : null;
       } catch (err) {
         if (err && err.message === 'unauthorized') return;
         sectionError(_el, 'innovation talks', err, 'loadInnovationTalks()');
@@ -44736,6 +44916,31 @@ function adminPageScript(): string {
     }
 
     function italkSetView(v) { italkView = v; italkRender(); }
+
+    // The same missing-details email, sent by itself: the switch and what it would do now.
+    function italkAutoStrip() {
+      var a = italkAuto; if (!a) return '';
+      var days = Math.round(a.every_hours / 24);
+      return '<div class="glass rounded-xl p-3 mb-4 flex items-center gap-3 flex-wrap" id="italk-auto">'
+        + '<i class="fas fa-robot text-primary-400"></i>'
+        + '<div class="flex-1 min-w-0"><div class="text-sm font-semibold">Ask for missing details automatically: <span class="' + (a.on ? 'text-green-400' : 'text-gray-400') + '">' + (a.on ? 'On' : 'Off') + '</span></div>'
+        + '<div class="text-xs text-gray-400">' + (a.on
+          ? 'Each speaker with something missing gets the email, then a reminder every ' + days + ' days, ' + a.max + ' times at most, between 9 am and 9 pm. One a minute. '
+            + (a.due ? a.due + ' will get one next' + (a.window && !a.window.open ? ', when sending opens at 9 am.' : '.') : 'Nobody is due one now.')
+          : 'When on, each speaker with something missing gets the email by itself, then a reminder every ' + days + ' days, ' + a.max + ' times at most. '
+            + (a.due ? a.due + ' speaker' + (a.due === 1 ? '' : 's') + ' would get one.' : 'Nobody would get one now.'))
+        + (a.sent_by_itself ? ' Sent by itself so far: ' + a.sent_by_itself + '.' : '') + '</div></div>'
+        + '<button onclick="italkAutoToggle()" id="italk-auto-btn" class="px-4 py-2 rounded-xl text-xs font-medium ' + (a.on ? 'glass hover:bg-white/10' : 'bg-primary-600 hover:bg-primary-500 text-white') + ' transition">' + (a.on ? 'Turn off' : 'Turn on') + '</button></div>';
+    }
+    async function italkAutoToggle() {
+      var a = italkAuto; if (!a) return;
+      if (!a.on && !confirm('Turn on automatic emails?' + String.fromCharCode(10, 10) + (a.due ? a.due + ' speaker' + (a.due === 1 ? '' : 's') + ' with missing details will be emailed' : 'Speakers with missing details will be emailed') + ', one a minute, from register@, between 9 am and 9 pm. Each gets a reminder every ' + Math.round(a.every_hours / 24) + ' days, ' + a.max + ' times at most, and none once their details are in.')) return;
+      try {
+        italkAuto = await api.post('/api/admin/innovation-talks/auto', { on: !a.on, event_id: EID });
+        toast(italkAuto.on ? 'Automatic emails are on' : 'Automatic emails are off', 'success');
+        italkRender();
+      } catch (err) { toast('Could not change it: ' + err.message, 'error'); }
+    }
 
     function italkRender() {
       var el = document.getElementById('section-innovation');
@@ -44787,6 +44992,7 @@ function adminPageScript(): string {
         + '<button onclick="italkAskAll()" class="px-4 py-2 rounded-xl text-xs font-medium glass hover:bg-white/10 transition"><i class="fas fa-envelope mr-1.5 text-primary-400"></i>Ask everyone for missing details</button>'
         + '<button onclick="addInnovationTalk()" class="px-4 py-2 rounded-xl text-xs font-medium bg-primary-600 hover:bg-primary-500 text-white transition"><i class="fas fa-plus mr-1.5"></i>Add Talk</button>'
         + '</div></div>'
+        + italkAutoStrip()
         + '<div class="flex gap-2 flex-wrap mb-4">'
         + tab('all', 'All', talks.length) + tab('details', 'Missing speaker details', needDetails.length) + tab('time', 'No time yet', noTime.length) + tab('email', 'No email', noEmail.length)
         + '</div>'
@@ -44807,6 +45013,7 @@ function adminPageScript(): string {
         + '</div>'
         + '<div class="overflow-x-auto"><table class="w-full text-sm">'
         + '<thead><tr class="text-gray-500 text-xs uppercase border-b border-white/5 text-left">'
+        + '<th class="px-3 py-2 w-28">Day</th>'
         + '<th class="px-3 py-2 w-36">Time</th>'
         + '<th class="px-3 py-2 w-36">Hall</th>'
         + '<th class="px-3 py-2">Speaker</th>'
@@ -44824,8 +45031,14 @@ function adminPageScript(): string {
       var statusColors = { confirmed: 'bg-green-500/20 text-green-400', tentative: 'bg-amber-500/20 text-amber-400', cancelled: 'bg-red-500/20 text-red-400' };
       var sc = statusColors[t.status] || statusColors.confirmed;
       var slot = String(t.time_slot || '');
+      // The day and the time each in their own column, the day in its own colour.
+      var dayKey = t.starts_at ? String(t.starts_at).slice(0, 10) : '';
+      var dayAt = italkDays.map(function (d) { return d[0]; }).indexOf(dayKey);
+      var dayName = dayAt >= 0 ? italkDays[dayAt] : null;
+      var day = !dayKey ? '<span class="text-gray-500">–</span>'
+        : '<span class="inline-block px-2 py-1 rounded-lg text-[11px] font-semibold leading-tight ' + italkDayTint[dayAt >= 0 ? dayAt % 3 : 2] + '">' + (dayName ? escH(dayName[2]) + '<br><span class="font-normal">' + escH(dayName[1]) + '</span>' : escH(dayKey)) + '</span>';
       var time = !italkTimed(t) ? '<span class="text-amber-400">Not set</span>'
-        : (inDay && slot.indexOf(' · ') > 0 ? escH(slot.split(' · ')[1]) : escH(slot));
+        : (dayKey && slot.indexOf(' · ') > 0 ? '<span class="font-semibold">' + escH(slot.split(' · ')[1]) + '</span>' : escH(slot));
       var hall = italkHas(t.hall)
         ? escH(t.hall) + (italkHallRooms[t.hall] ? '<div class="text-[10px] text-gray-500">' + escH(italkHallRooms[t.hall]) + '</div>' : '')
         : '<span class="text-amber-400">Not set</span>';
@@ -44834,6 +45047,7 @@ function adminPageScript(): string {
       var asked = t.details_requested_at ? '<div class="text-[10px] text-gray-500 mt-0.5"><i class="fas fa-paper-plane mr-1"></i>Asked ' + escH(italkWhen(t.details_requested_at)) + '</div>' : '';
       var em = italkEmailFor(t);
       return '<tr class="hover:bg-white/[0.03] transition border-b border-white/5" id="italk-row-' + t.id + '">'
+        + '<td class="px-3 py-2.5 whitespace-nowrap">' + day + '</td>'
         + '<td class="px-3 py-2.5 text-xs text-gray-300 whitespace-nowrap">' + time + '</td>'
         + '<td class="px-3 py-2.5 text-xs text-gray-300">' + hall + '</td>'
         + '<td class="px-3 py-2.5"><div class="flex items-center gap-2.5">' + italkPhoto(t)

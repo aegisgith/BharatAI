@@ -28,6 +28,12 @@ type Hooks = {
   changedFields?: (before: any, after: Record<string, any>) => Record<string, [any, any]>
   emailHeader?: (title: string, subtitle: string) => string
   actor?: (c: any) => string
+  // Writes an Innovation Talk's time and hall where the Innovation Talks tab keeps
+  // them (index.tsx owns that table's wording); startsAt null clears the time.
+  syncTalk?: (c: any, talkId: number, startsAt: string | null, minutes: number, hall: string) => Promise<void>
+  // Makes, or raises to Speaker, the attendee row behind a speaker's email (their pass).
+  issueSpeakerPass?: (c: any, x: { eventId: number; name: string; email: string; mobile: string; company: string; designation: string; linkedin: string; avatarUrl: string }) =>
+    Promise<{ attendeeId: number; pass: string; created: boolean; raised: boolean; kept: boolean } | { error: string }>
 }
 let hooks: Hooks = {}
 export function configureConference(h: Hooks) { hooks = { ...hooks, ...h } }
@@ -182,6 +188,267 @@ export function findClashes(list: { id: number; title: string; room: string; ses
   return { room, speaker }
 }
 
+// ---------- the scheduler's checks (12 Nov 2026) ----------
+// The organiser: "show if any slot is empty, or any session needs attention, conflict,
+// no info". Everything here is worked out from the lists already loaded, with no
+// database, so scripts/verify/unit-scheduler.mjs can test each rule on its own.
+
+export const MIN_FREE_MINUTES = 15   // a shorter gap is a changeover, not a free slot
+export const TIGHT_MOVE_MINUTES = 10 // less than this to get from one hall to another
+const NEEDS_SPEAKER = ['keynote', 'talk', 'panel', 'workshop']
+const PLACEHOLDER_TITLE = /^(key ?note( address)?|panel( discussion)?|talk|innovation talks?|workshop|session|fireside chat|tba|tbc|tbd|to be (announced|confirmed|decided)|untitled|new session)( ?#?\d+)?$/i
+const minsOf = (t: any) => Number(String(t).slice(11, 13)) * 60 + Number(String(t).slice(14, 16))
+const hhmmOf = (m: number) => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0')
+const dayOf = (t: any) => String(t || '').slice(0, 10)
+const isTimed = (s: any) => !!s.start_time && !!s.end_time && s.start_time < s.end_time
+const coKey = (v: any) => String(v || '').toLowerCase().replace(/&/g, ' and ').replace(/\b(pvt|private|ltd|limited|llp|inc)\b/g, ' ').replace(/[^a-z0-9]+/g, '')
+
+// A day with nothing on it yet is planned between these.
+export const BLANK_DAY = { from: 9 * 60 + 30, to: 18 * 60 }
+
+// The hours a day's programme spans: from its first start to its last end.
+export function dayWindow(sessions: any[], day: string): { from: number; to: number; empty: boolean } {
+  const today = sessions.filter(s => isTimed(s) && dayOf(s.start_time) === day)
+  if (!today.length) return { ...BLANK_DAY, empty: true }
+  return { from: Math.min(...today.map(s => minsOf(s.start_time))), to: Math.max(...today.map(s => minsOf(s.end_time))), empty: false }
+}
+
+// Free time in each hall on each day, inside that day's programme. An exhibition-type
+// session shares its hall, so it leaves the hall free. The day's hours come from
+// spanOf (every session), so leaving one session out to move it does not shrink the day.
+export function freeSlots(sessions: any[], halls: any[], days: string[], minMinutes = MIN_FREE_MINUTES, spanOf: any[] = sessions) {
+  const out: { day: string; hall: string; start: string; end: string; minutes: number; whole: boolean }[] = []
+  for (const day of days) {
+    const w = dayWindow(spanOf, day)
+    for (const h of halls) {
+      if (!h || !h.name || Number(h.is_active) === 0) continue
+      const busy = sessions.filter(s => isTimed(s) && dayOf(s.start_time) === day && s.room === h.name && s.session_type !== 'exhibition')
+        .map(s => [minsOf(s.start_time), minsOf(s.end_time)]).sort((a, b) => a[0] - b[0])
+      const whole = busy.length === 0
+      let at = w.from
+      for (const [a, b] of busy) {
+        if (a - at >= minMinutes) out.push({ day, hall: h.name, start: hhmmOf(at), end: hhmmOf(a), minutes: a - at, whole })
+        at = Math.max(at, b)
+      }
+      if (w.to - at >= minMinutes) out.push({ day, hall: h.name, start: hhmmOf(at), end: hhmmOf(w.to), minutes: w.to - at, whole })
+    }
+  }
+  return out
+}
+
+// Where a session of this length fits: a free stretch of a hall in which none of its
+// speakers is on stage elsewhere. The asked-for hall first, then the others in their
+// order; earliest first within a hall. Starts land on five minutes.
+export function suggestSlots(sessions: any[], halls: any[], q: { day: string; minutes: number; hall?: string; speakerIds?: number[]; exceptId?: number | null; limit?: number }) {
+  const minutes = Math.max(5, Math.round(Number(q.minutes) || 30))
+  const others = sessions.filter(s => isTimed(s) && Number(s.id) !== Number(q.exceptId ?? -1))
+  const mine = new Set((q.speakerIds || []).map(Number))
+  const speakerBusy = others.filter(s => dayOf(s.start_time) === q.day && (s.links || []).some((l: any) => mine.has(Number(l.speaker_id))))
+    .map(s => [minsOf(s.start_time), minsOf(s.end_time)])
+  const ordered = [...halls.filter(h => h && h.name && Number(h.is_active) !== 0)]
+    .sort((a, b) => (a.name === q.hall ? -1 : 0) - (b.name === q.hall ? -1 : 0))
+  const out: { hall: string; start: string; end: string; free_until: string }[] = []
+  for (const h of ordered) {
+    for (const f of freeSlots(others, [h], [q.day], minutes, sessions)) {
+      let at = Math.ceil(minsOf('0000-00-00 ' + f.start) / 5) * 5
+      const end = minsOf('0000-00-00 ' + f.end)
+      // Slide past whatever keeps one of its speakers busy.
+      for (let guard = 0; guard < 50 && at + minutes <= end; guard++) {
+        const hit = speakerBusy.find(([a, b]) => a < at + minutes && at < b)
+        if (!hit) break
+        at = Math.ceil(hit[1] / 5) * 5
+      }
+      if (at + minutes <= end) out.push({ hall: h.name, start: hhmmOf(at), end: hhmmOf(at + minutes), free_until: f.end })
+    }
+  }
+  return out.slice(0, q.limit || 8)
+}
+
+// Which session on the programme is which Innovation Talk. The agenda titles them
+// "Innovation Talk: <company>"; failing that, a session titled "Innovation Talk..."
+// whose speaker line names the talk's speaker. Two people of one company presenting
+// together (two rows on the talks list) share the company's one session.
+export function linkTalks(sessions: any[], talks: any[]): Map<number, number> {
+  const out = new Map<number, number>()   // talk id -> session id
+  const byName = new Set<number>()
+  const candidates = sessions.filter(s => /^innovation talk\b/i.test(String(s.title || '')))
+  const titled = (s: any) => coKey(String(s.title).replace(/^innovation talk\s*[:\-–]?\s*/i, ''))
+  for (const t of talks) {
+    const k = coKey(t.company), who = normName(t.speaker_name)
+    const byCompany = k ? candidates.find(s => titled(s) === k) : null
+    const hit = byCompany || (who.length > 3 ? candidates.find(s => !byName.has(Number(s.id)) && splitSpeakerLine(s.speaker_name).some(p => normName(p.name) === who)) : null)
+    if (hit) { out.set(Number(t.id), Number(hit.id)); if (!byCompany) byName.add(Number(hit.id)) }
+  }
+  return out
+}
+
+const talkTimed = (t: any) => /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(String(t?.starts_at || ''))
+const talkEnd = (t: any) => { const d = String(t.starts_at).slice(0, 10), m = minsOf(t.starts_at) + (Number(t.duration_min) || 0); return d + ' ' + hhmmOf(Math.min(m, 1439)) }
+
+export type Issue = { key: string; kind: string; group: 'clash' | 'session' | 'speaker' | 'talk' | 'free' | 'draft'; level: 'bad' | 'warn' | 'info'
+  what: string; day?: string; hall?: string; start?: string; end?: string; session_id?: number; other_id?: number; speaker_id?: number; talk_id?: number }
+
+// Everything on the programme that a person should look at, worst first.
+//  bad:  it cannot run as written (two sessions in one hall, one person in two places)
+//  warn: something is missing or doubtful
+//  info: worth knowing (free time, drafts, people typed by hand)
+export function findIssues(a: { sessions: any[]; speakers: any[]; halls: any[]; days: string[]; eventDays: string[]; talks?: any[]; clashes?: { room: any[]; speaker: any[] } }): Issue[] {
+  const out: Issue[] = []
+  const { sessions, speakers, halls } = a
+  const talks = a.talks || []
+  const spBy = new Map(speakers.map(s => [Number(s.id), s]))
+  const hallNames = new Set(halls.filter(h => h && h.name && !h.unlisted).map(h => h.name))
+  const at = (s: any) => ({ day: dayOf(s.start_time), hall: s.room || '', start: String(s.start_time || '').slice(11, 16), end: String(s.end_time || '').slice(11, 16), session_id: Number(s.id) })
+  const add = (i: Issue) => out.push(i)
+  const clashes = a.clashes || findClashes(sessions.map(s => ({ ...s, speakers: (s.links || []).map((l: any) => ({ id: Number(l.speaker_id), name: spBy.get(Number(l.speaker_id))?.name || '' })) })))
+
+  // ---- it cannot run as written ----
+  for (const x of clashes.room) {
+    add({ key: `hall-clash|${x.a.id}|${x.b.id}`, kind: 'hall-clash', group: 'clash', level: 'bad', ...at(x.a), other_id: Number(x.b.id),
+      what: `Two sessions at once in ${x.room}: "${x.a.title}" and "${x.b.title}"` })
+  }
+  for (const x of clashes.speaker) {
+    add({ key: `speaker-clash|${x.speaker_id}|${x.a.id}|${x.b.id}`, kind: 'speaker-clash', group: 'clash', level: 'bad', ...at(x.a), other_id: Number(x.b.id), speaker_id: Number(x.speaker_id),
+      what: `${x.speaker} is in two places at once: "${x.a.title}" (${x.a.room || 'no hall'}) and "${x.b.title}" (${x.b.room || 'no hall'})` })
+  }
+
+  // ---- one person, two halls, no time to walk ----
+  const bySpeaker = new Map<number, any[]>()
+  for (const s of sessions) if (isTimed(s)) for (const l of s.links || []) { const k = Number(l.speaker_id); if (!bySpeaker.has(k)) bySpeaker.set(k, []); bySpeaker.get(k)!.push(s) }
+  for (const [id, list] of bySpeaker) {
+    list.sort((x, y) => (x.start_time < y.start_time ? -1 : 1))
+    for (let i = 1; i < list.length; i++) {
+      const p = list[i - 1], n = list[i]
+      if (dayOf(p.start_time) !== dayOf(n.start_time) || !p.room || !n.room || p.room === n.room) continue
+      const gap = minsOf(n.start_time) - minsOf(p.end_time)
+      if (gap >= 0 && gap < TIGHT_MOVE_MINUTES) {
+        add({ key: `tight|${id}|${p.id}|${n.id}`, kind: 'tight-move', group: 'clash', level: 'warn', ...at(n), other_id: Number(p.id), speaker_id: id,
+          what: `${spBy.get(id)?.name || 'A speaker'} has ${gap === 0 ? 'no time' : 'only ' + gap + ' minutes'} to get from ${p.room} to ${n.room}` })
+      }
+    }
+  }
+
+  // ---- each session ----
+  const linked = linkTalks(sessions, talks)
+  const talkOfSession = new Map<number, any>()
+  for (const t of talks) { const sid = linked.get(Number(t.id)); if (sid) talkOfSession.set(sid, t) }
+  for (const s of sessions) {
+    const type = String(s.session_type || 'talk')
+    const where = at(s)
+    const name = `"${s.title}"`
+    if (!isTimed(s)) { add({ key: `no-time|${s.id}`, kind: 'no-time', group: 'session', level: 'warn', ...where, what: `${name} has no proper start and end time` }); continue }
+    const len = minsOf(s.end_time) - minsOf(s.start_time)
+    if (!s.room) add({ key: `no-hall|${s.id}`, kind: 'no-hall', group: 'session', level: 'warn', ...where, what: `${name} has no hall yet` })
+    else if (hallNames.size && !hallNames.has(s.room)) add({ key: `unknown-hall|${s.id}`, kind: 'unknown-hall', group: 'session', level: 'warn', ...where, what: `${name} is in "${s.room}", which is not on the halls list` })
+    if (a.eventDays.length && !a.eventDays.includes(where.day)) add({ key: `off-day|${s.id}`, kind: 'off-day', group: 'session', level: 'warn', ...where, what: `${name} is on ${where.day}, outside the event's days` })
+    const fixed = ['break', 'networking', 'exhibition', 'ceremony'].includes(type)
+    if (!fixed && len < 5) add({ key: `short|${s.id}`, kind: 'too-short', group: 'session', level: 'warn', ...where, what: `${name} is only ${len} minute${len === 1 ? '' : 's'} long` })
+    if (!['exhibition', 'networking'].includes(type) && len > 240) add({ key: `long|${s.id}`, kind: 'too-long', group: 'session', level: 'warn', ...where, what: `${name} runs ${Math.round(len / 6) / 10} hours without a break` })
+
+    const people = (s.links || []).length
+    const typed = splitSpeakerLine(s.others || '')
+    const talk = talkOfSession.get(Number(s.id))
+    const talkSpeaker = !!(talk && String(talk.speaker_name || '').trim())
+    if (NEEDS_SPEAKER.includes(type) && !people && !typed.length && !talkSpeaker) {
+      add({ key: `no-speaker|${s.id}`, kind: 'no-speaker', group: 'session', level: 'warn', ...where, what: `${name} has no speaker yet` })
+    }
+    if (type === 'panel' && (people || typed.length)) {
+      const mods = (s.links || []).filter((l: any) => l.role === 'moderator').length + typed.filter(p => p.role === 'moderator' || /moderator/i.test(p.info)).length
+      const panel = people + typed.length - mods
+      if (!mods) add({ key: `no-moderator|${s.id}`, kind: 'no-moderator', group: 'session', level: 'warn', ...where, what: `${name} has no moderator` })
+      if (panel < 2) add({ key: `thin-panel|${s.id}`, kind: 'thin-panel', group: 'session', level: 'warn', ...where, what: `${name} has ${panel === 1 ? 'only one panellist' : 'no panellists'}` })
+    }
+    if (NEEDS_SPEAKER.includes(type) && PLACEHOLDER_TITLE.test(String(s.title || '').trim()) && !talk) {
+      add({ key: `no-topic|${s.id}`, kind: 'no-topic', group: 'session', level: 'info', ...where, what: `The ${dayOf(s.start_time) ? where.start + ' ' : ''}${type} is titled only "${s.title}": no topic yet` })
+    }
+    // An Innovation Talk's speaker lives on the talks list, not here.
+    if (typed.length && !talk) add({ key: `typed|${s.id}`, kind: 'typed-people', group: 'session', level: 'info', ...where,
+      what: `${name}: ${typed.length === 1 ? typed[0].name + ' is' : typed.length + ' people are'} typed by hand, with no profile, photo or slot email` })
+    if (s.status === 'draft') add({ key: `draft|${s.id}`, kind: 'draft', group: 'draft', level: 'info', ...where, what: `${name} is a draft: attendees do not see it` })
+  }
+
+  // ---- each speaker ----
+  const slots = new Map<number, number>()
+  for (const s of sessions) for (const l of s.links || []) slots.set(Number(l.speaker_id), (slots.get(Number(l.speaker_id)) || 0) + 1)
+  for (const sp of speakers) {
+    const id = Number(sp.id), on = slots.get(id) || 0, shown = Number(sp.is_published) !== 0
+    const has = (v: any) => String(v ?? '').trim().length > 0
+    if (on && !shown) add({ key: `hidden|${id}`, kind: 'hidden-speaker', group: 'speaker', level: 'warn', speaker_id: id, what: `${sp.name} is on the programme but hidden from attendees` })
+    if (on && shown) {
+      const need = [!has(sp.photo_url) && 'photo', !has(sp.role) && 'designation', !has(sp.organisation) && 'organisation'].filter(Boolean) as string[]
+      const nice = [!has(sp.email) && 'email (the slot email cannot go)', !has(sp.bio) && 'bio'].filter(Boolean) as string[]
+      if (need.length) add({ key: `sp-missing|${id}`, kind: 'speaker-missing', group: 'speaker', level: 'warn', speaker_id: id, what: `${sp.name} has no ${need.concat(nice).join(', no ')}` })
+      else if (nice.length) add({ key: `sp-nice|${id}`, kind: 'speaker-missing', group: 'speaker', level: 'info', speaker_id: id, what: `${sp.name} has no ${nice.join(', no ')}` })
+    }
+    if (!on && shown) add({ key: `sp-noslot|${id}`, kind: 'speaker-no-session', group: 'speaker', level: 'info', speaker_id: id, what: `${sp.name} is shown to attendees but has no session yet` })
+  }
+
+  // ---- Innovation Talks: the talks list and the programme must say the same ----
+  const sesBy = new Map(sessions.map(s => [Number(s.id), s]))
+  let unplaced = 0
+  for (const t of talks) {
+    const s = sesBy.get(linked.get(Number(t.id)) ?? -1)
+    const who = `${t.speaker_name || 'A speaker'}${t.company ? ' (' + t.company + ')' : ''}`
+    if (t.status === 'cancelled') {
+      if (s) add({ key: `talk-cancelled|${t.id}`, kind: 'talk-cancelled', group: 'talk', level: 'warn', ...at(s), talk_id: Number(t.id), what: `${who} is cancelled on the Innovation Talks list but still on the programme` })
+      continue
+    }
+    if (!s && !talkTimed(t)) { unplaced++; continue }
+    if (!s) {
+      add({ key: `talk-off|${t.id}`, kind: 'talk-not-on-programme', group: 'talk', level: 'warn', talk_id: Number(t.id), day: dayOf(t.starts_at), hall: t.hall || '', start: String(t.starts_at).slice(11, 16), end: talkEnd(t).slice(11, 16),
+        what: `${who} has a time on the Innovation Talks list (${t.time_slot || t.starts_at}) but is not on the programme` })
+      continue
+    }
+    const same = talkTimed(t) && t.starts_at === s.start_time && talkEnd(t) === s.end_time && (!('hall' in t) || !t.hall || !s.room || t.hall === s.room)
+    if (!same) add({ key: `talk-differs|${t.id}`, kind: 'talk-differs', group: 'talk', level: 'warn', ...at(s), talk_id: Number(t.id),
+      what: talkTimed(t)
+        ? `${who}: the programme says ${String(s.start_time).slice(11, 16)} to ${String(s.end_time).slice(11, 16)} in ${s.room || 'no hall'}; the Innovation Talks list says ${String(t.starts_at).slice(11, 16)} to ${talkEnd(t).slice(11, 16)}${t.hall ? ' in ' + t.hall : ''}`
+        : `${who} is on the programme at ${String(s.start_time).slice(11, 16)}, but the Innovation Talks list has no time for it` })
+    if (!String(t.topic || '').trim()) add({ key: `talk-topic|${t.id}`, kind: 'talk-no-topic', group: 'talk', level: 'info', ...at(s), talk_id: Number(t.id), what: `${who} has not sent a topic` })
+  }
+  if (unplaced) add({ key: 'talks-unplaced', kind: 'talks-unplaced', group: 'talk', level: 'info', what: `${unplaced} Innovation Talk${unplaced === 1 ? ' has' : 's have'} no time yet` })
+
+  // ---- free time ----
+  const days = a.days.length ? a.days : a.eventDays
+  for (const day of days) {
+    if (dayWindow(sessions, day).empty) add({ key: `empty-day|${day}`, kind: 'empty-day', group: 'free', level: 'info', day, what: `Nothing is planned on ${day} yet` })
+  }
+  const frees = freeSlots(sessions, halls, days.filter(d => !dayWindow(sessions, d).empty))
+  const wholeSeen = new Set<string>()
+  for (const f of frees) {
+    if (f.whole) {
+      const k = f.day + '|' + f.hall
+      if (wholeSeen.has(k)) continue
+      wholeSeen.add(k)
+      add({ key: `empty-hall|${k}`, kind: 'empty-hall', group: 'free', level: 'info', day: f.day, hall: f.hall, start: f.start, end: f.end, what: `${f.hall} has nothing all day` })
+    } else {
+      add({ key: `free|${f.day}|${f.hall}|${f.start}`, kind: 'free', group: 'free', level: 'info', day: f.day, hall: f.hall, start: f.start, end: f.end,
+        what: `${f.hall} is free for ${f.minutes >= 60 ? Math.floor(f.minutes / 60) + ' h' + (f.minutes % 60 ? ' ' + (f.minutes % 60) + ' min' : '') : f.minutes + ' minutes'}` })
+    }
+  }
+
+  const rank = { bad: 0, warn: 1, info: 2 } as const
+  return out.sort((x, y) => rank[x.level] - rank[y.level] || String(x.day || '9').localeCompare(String(y.day || '9')) || String(x.start || '99').localeCompare(String(y.start || '99')))
+}
+
+// "20-21 November 2026 · World Trade Center, Mumbai", from the event's own row, so a
+// second event (Delhi, July 2027) gets its own dates and venue in every sentence.
+export function eventWords(event: any): { name: string; when: string; venue: string; line: string } {
+  const s = String(event?.start_date || '').slice(0, 10), e = String(event?.end_date || '').slice(0, 10)
+  const d = (x: string) => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(x); return m ? { y: Number(m[1]), m: Number(m[2]) - 1, d: Number(m[3]) } : null }
+  const a = d(s), b = d(e) || d(s)
+  let when = ''
+  if (a && b) {
+    when = a.y === b.y && a.m === b.m ? (a.d === b.d ? `${a.d}` : `${a.d}-${b.d}`) + ` ${MONTHS[a.m]} ${a.y}`
+      : `${a.d} ${MONTHS[a.m]}${a.y === b.y ? '' : ' ' + a.y} to ${b.d} ${MONTHS[b.m]} ${b.y}`
+  }
+  const venue = String(event?.venue || '').trim()
+  return { name: String(event?.title || 'Bharat AI Innovation').trim(), when, venue, line: [when, venue].filter(Boolean).join(' · ') }
+}
+// Mumbai's wording as the first emails and announcements carried it.
+export const MUMBAI_WORDS = { name: 'Bharat AI Innovation 2026', when: '20-21 November 2026', venue: 'World Trade Center, Mumbai', line: '20-21 November 2026 · World Trade Center, Mumbai' }
+export const wordsFor = (event: any) => (Number(event?.id) === 1 || !event ? MUMBAI_WORDS : eventWords(event))
+
 // ---------- database ----------
 
 // Whether 0054's tables exist. Once seen, for the life of the isolate; a missing table
@@ -198,7 +465,7 @@ async function hasTable(c: any, name: string): Promise<boolean> {
 // Admin's own reads and writes always look again, so the screen flips the moment 0054
 // has run; only the attendee routes below use the minute's memory.
 function forgetNotYet() { for (const k of Object.keys(notYet)) delete notYet[k] }
-async function adminReady(c: any) { forgetNotYet(); return conferenceReady(c) }
+export async function adminReady(c: any) { forgetNotYet(); return conferenceReady(c) }
 export async function conferenceReady(c: any) {
   const [halls, links, drafts, log] = await Promise.all([
     hasTable(c, 'conference_halls'), hasTable(c, 'session_speakers'), hasTable(c, 'session_admin'), hasTable(c, 'speaker_announcements')])
@@ -211,16 +478,39 @@ const audit = async (c: any, action: string, entity: string, id: any, detail: an
 const all = async (c: any, sql: string, ...args: any[]) => (((await c.env.DB.prepare(sql).bind(...args).all()) as any).results || []) as any[]
 const one = async (c: any, sql: string, ...args: any[]) => (await c.env.DB.prepare(sql).bind(...args).first()) as any
 
-async function hallsFor(c: any, eventId: number, isReady: boolean) {
+export async function hallsFor(c: any, eventId: number, isReady: boolean) {
   if (isReady) {
     return await all(c, 'SELECT id, name, short_name, venue_room, location, capacity, purpose, sort_order, is_active FROM conference_halls WHERE event_id = ? ORDER BY sort_order, id', eventId)
   }
+  // The built-in four are Mumbai's: another event starts with no halls.
+  if (eventId !== 1) return []
   return DEFAULT_HALLS.map((h, i) => ({ id: null, capacity: null, is_active: 1, ...h, sort_order: h.sort_order || i + 1 }))
+}
+
+// The event's Innovation Talks (the organisers' own rows and exhibitors' timed ones),
+// or none where the table or the event has none.
+async function talksFor(c: any, eventId: number): Promise<any[]> {
+  try { return await all(c, 'SELECT * FROM innovation_talks WHERE event_id = ? ORDER BY starts_at IS NULL, starts_at, slot_no, id', eventId) }
+  catch { return [] }
+}
+const talkBrief = (t: any) => ({ id: Number(t.id), speaker_name: t.speaker_name || '', speaker_title: t.speaker_title || '', company: t.company || '', topic: t.topic || '',
+  status: t.status || 'confirmed', starts_at: t.starts_at || null, duration_min: Number(t.duration_min) || null, time_slot: t.time_slot || '', hall: t.hall || '', photo_url: t.speaker_photo_url || '' })
+
+// Keeps the Innovation Talks list in step with a session that is one of its talks.
+async function syncLinkedTalk(c: any, eventId: number, session: { id: number; title: string; speaker_name?: any; start_time: string; end_time: string; room: string }) {
+  if (!hooks.syncTalk || !/^innovation talk\b/i.test(String(session.title || ''))) return null
+  const talks = await talksFor(c, eventId)
+  if (!talks.length) return null
+  const ids = [...linkTalks([session], talks)].filter(([, sid]) => sid === Number(session.id)).map(([tid]) => tid)
+  for (const tid of ids) {
+    try { await hooks.syncTalk(c, tid, session.start_time, minsOf(session.end_time) - minsOf(session.start_time), session.room || '') } catch { /* the programme is saved; the talks list shows the difference */ }
+  }
+  return ids.length ? ids : null
 }
 
 // Every session of the event with its speakers: the saved links where there are any,
 // otherwise the ones its typed line names.
-async function sessionsWithSpeakers(c: any, eventId: number, speakers: any[], r: { links: boolean; drafts: boolean }) {
+export async function sessionsWithSpeakers(c: any, eventId: number, speakers: any[], r: { links: boolean; drafts: boolean }) {
   // One round trip, not three: D1 is ~100 ms away from Mumbai.
   const [sessions, saved, meta] = await Promise.all([
     all(c, 'SELECT * FROM sessions WHERE event_id = ? ORDER BY start_time, id', eventId),
@@ -254,10 +544,12 @@ conf.get('/api/admin/events/:id/conference', async (c) => {
   const eventId = Number(c.req.param('id')) || 1
   forgetNotYet()
   const r = await adminReady(c)
-  const [event, speakers, halls] = await Promise.all([
+  const [event, speakers, halls, talks, events] = await Promise.all([
     one(c, 'SELECT id, title, venue, start_date, end_date FROM events WHERE id = ?', eventId),
     all(c, 'SELECT id, slug, name, role, organisation, topic, photo_url, bio, email, phone, linkedin_url, is_featured, is_published, sort_order, updated_at FROM speakers WHERE event_id = ? ORDER BY sort_order, id', eventId),
     hallsFor(c, eventId, r.halls),
+    talksFor(c, eventId),
+    all(c, 'SELECT e.id, e.title, e.venue, e.start_date, e.end_date, (SELECT COUNT(*) FROM sessions s WHERE s.event_id = e.id) AS sessions FROM events e ORDER BY e.start_date, e.id'),
   ])
   const sessions = await sessionsWithSpeakers(c, eventId, speakers, r)
   // Rooms a session names that no hall row has, so nothing scheduled goes missing.
@@ -294,19 +586,110 @@ conf.get('/api/admin/events/:id/conference', async (c) => {
     speakers: s.links.map((l: any) => ({ id: l.speaker_id, name: byId.get(l.speaker_id)?.name || '' })),
   })))
 
+  const days = eventDaysOf(event)
+  const eventDays = [...days]
+  for (const s of sessions) { const day = String(s.start_time || '').slice(0, 10); if (/^\d{4}-\d{2}-\d{2}$/.test(day) && !days.includes(day)) days.push(day) }
+  days.sort()
+
+  // The scheduler: which session is which Innovation Talk, what needs a person's
+  // eye, where each hall is free, and the talks still to be given a time.
+  const linked = linkTalks(sessions, talks)
+  const talkOf = new Map<number, any[]>()
+  for (const t of talks) { const sid = linked.get(Number(t.id)); if (sid) { if (!talkOf.has(sid)) talkOf.set(sid, []); talkOf.get(sid)!.push(talkBrief(t)) } }
+  for (const s of sessions) { const mine = talkOf.get(Number(s.id)); if (mine) s.talks = mine }
+  const issues = findIssues({ sessions, speakers: outSpeakers, halls, days, eventDays, talks, clashes })
+  const free = freeSlots(sessions, halls, days)
+  const unplaced = talks.filter((t: any) => t.status !== 'cancelled' && !linked.has(Number(t.id))).map(talkBrief)
+
+  return c.json({
+    ready: r, migration: MIGRATION_FILE, command: MIGRATION_COMMAND,
+    event, days, event_days: eventDays, halls, speakers: outSpeakers, sessions, clashes,
+    issues, free, windows: Object.fromEntries(days.map(d => [d, dayWindow(sessions, d)])),
+    talks: { total: talks.length, on_programme: linked.size, unplaced },
+    events, words: wordsFor(event),
+    session_types: SESSION_TYPES, speaker_roles: SPEAKER_ROLES,
+  })
+})
+
+// The event's own days, from its row.
+function eventDaysOf(event: any): string[] {
   const days: string[] = []
   if (event?.start_date && event?.end_date) {
     const d = new Date(String(event.start_date).slice(0, 10) + 'T00:00:00Z'), end = new Date(String(event.end_date).slice(0, 10) + 'T00:00:00Z')
     for (let i = 0; i < 10 && d <= end; i++) { days.push(d.toISOString().slice(0, 10)); d.setUTCDate(d.getUTCDate() + 1) }
   }
-  for (const s of sessions) { const day = String(s.start_time || '').slice(0, 10); if (/^\d{4}-\d{2}-\d{2}$/.test(day) && !days.includes(day)) days.push(day) }
-  days.sort()
+  return days
+}
 
-  return c.json({
-    ready: r, migration: MIGRATION_FILE, command: MIGRATION_COMMAND,
-    event, days, halls, speakers: outSpeakers, sessions, clashes,
-    session_types: SESSION_TYPES, speaker_roles: SPEAKER_ROLES,
-  })
+// Where a session of this length fits (the editor's "Find a free slot").
+conf.post('/api/admin/events/:id/conference/suggest', async (c) => {
+  const eventId = Number(c.req.param('id')) || 1
+  const b = await c.req.json().catch(() => ({})) as any
+  const day = String(b.day || '').slice(0, 10)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return c.json({ error: 'Choose the day first.' }, 400)
+  const minutes = Math.round(Number(b.minutes))
+  if (!Number.isFinite(minutes) || minutes < 5 || minutes > 600) return c.json({ error: 'Set how long the session is (5 minutes or more).' }, 400)
+  const r = await adminReady(c)
+  const speakers = await all(c, 'SELECT id, name FROM speakers WHERE event_id = ?', eventId)
+  const [sessions, halls] = await Promise.all([sessionsWithSpeakers(c, eventId, speakers, r), hallsFor(c, eventId, r.halls)])
+  const slots = suggestSlots(sessions, halls, { day, minutes, hall: String(b.hall || ''), speakerIds: Array.isArray(b.speaker_ids) ? b.speaker_ids.map(Number) : [], exceptId: b.except_id ? Number(b.except_id) : null, limit: 10 })
+  return c.json({ day, minutes, slots })
+})
+
+// ---------- a second event ----------
+
+// Delhi 2027 as the paid-pass code creates it on its first buyer (index.tsx, DELHI
+// 2027): the same id, name, venue and dates, so whichever comes first, the row is one.
+const DELHI = { id: 2, title: 'Bharat AI Innovation Delhi 2027', venue: 'Bharat Mandapam, New Delhi', start_date: '2027-07-28', end_date: '2027-07-29' }
+conf.post('/api/admin/conference/start-delhi', async (c) => {
+  await c.env.DB.prepare("INSERT OR IGNORE INTO events (id, title, event_type, venue, start_date, end_date) VALUES (?, ?, 'conference', ?, ?, ?)")
+    .bind(DELHI.id, DELHI.title, DELHI.venue, DELHI.start_date, DELHI.end_date).run()
+  const event = await one(c, 'SELECT id, title, venue, start_date, end_date FROM events WHERE id = ?', DELHI.id)
+  await audit(c, 'conference.start_event', 'event', DELHI.id, { title: event?.title })
+  return c.json({ success: true, event })
+})
+
+// Starts one event's programme from another's: the halls (their event names, capacity
+// and purpose; the venue's own room names are another building's, so they are left
+// empty) and every session as a DRAFT with no speakers, on the same day number and at
+// the same times. Refused once the event has sessions of its own.
+conf.post('/api/admin/events/:id/conference/copy-from/:src', async (c) => {
+  const eventId = Number(c.req.param('id')), srcId = Number(c.req.param('src'))
+  if (!eventId || !srcId || eventId === srcId) return c.json({ error: 'Choose a different event to copy from.' }, 400)
+  const r = await adminReady(c)
+  if (!r.halls || !r.drafts) return needsMigration(c)
+  const [event, src] = await Promise.all([
+    one(c, 'SELECT id, title, start_date, end_date FROM events WHERE id = ?', eventId),
+    one(c, 'SELECT id, title, start_date, end_date FROM events WHERE id = ?', srcId)])
+  if (!event || !src) return c.json({ error: 'That event is not there. Reload the page.' }, 404)
+  const have = Number((await one(c, 'SELECT COUNT(*) AS n FROM sessions WHERE event_id = ?', eventId))?.n || 0)
+  if (have) return c.json({ error: event.title + ' already has ' + have + ' session' + (have === 1 ? '' : 's') + '. Copying is only for an empty programme.' }, 409)
+  const toDays = eventDaysOf(event), fromDays = eventDaysOf(src)
+  if (!toDays.length) return c.json({ error: event.title + ' has no dates yet.' }, 409)
+
+  let hallsCopied = 0
+  if (!Number((await one(c, 'SELECT COUNT(*) AS n FROM conference_halls WHERE event_id = ?', eventId))?.n || 0)) {
+    const halls = await all(c, 'SELECT name, short_name, capacity, purpose, sort_order FROM conference_halls WHERE event_id = ? AND is_active = 1 ORDER BY sort_order, id', srcId)
+    for (const h of halls) {
+      await c.env.DB.prepare('INSERT OR IGNORE INTO conference_halls (event_id, name, short_name, venue_room, location, capacity, purpose, sort_order) VALUES (?, ?, ?, NULL, NULL, ?, ?, ?)')
+        .bind(eventId, h.name, h.short_name, h.capacity, h.purpose, h.sort_order).run()
+      hallsCopied++
+    }
+  }
+  const sessions = await all(c, 'SELECT title, description, session_type, track, room, start_time, end_time, capacity, speaker_avatar FROM sessions WHERE event_id = ? ORDER BY start_time, id', srcId)
+  let copied = 0, skipped = 0
+  for (const s of sessions) {
+    const i = fromDays.indexOf(dayOf(s.start_time))
+    if (i < 0 || i >= toDays.length || !isTimed(s)) { skipped++; continue }
+    const res = await c.env.DB.prepare(
+      'INSERT INTO sessions (event_id, title, description, speaker_name, speaker_title, speaker_avatar, session_type, track, room, start_time, end_time, capacity) VALUES (?,?,?,NULL,NULL,?,?,?,?,?,?,?)'
+    ).bind(eventId, s.title, s.description, s.speaker_avatar, s.session_type, s.track, s.room, toDays[i] + String(s.start_time).slice(10, 16), toDays[i] + String(s.end_time).slice(10, 16), s.capacity || 100).run()
+    await c.env.DB.prepare("INSERT INTO session_admin (session_id, status, note, updated_at) VALUES (?, 'draft', ?, CURRENT_TIMESTAMP)")
+      .bind(Number(res.meta.last_row_id), 'Copied from ' + src.title + '. Give it its own title and speakers.').run()
+    copied++
+  }
+  await audit(c, 'conference.copy_structure', 'event', eventId, { from: srcId, sessions: copied, halls: hallsCopied, skipped })
+  return c.json({ success: true, sessions: copied, halls: hallsCopied, skipped })
 })
 
 // ---------- speakers ----------
@@ -442,6 +825,24 @@ conf.post('/api/admin/speakers/:id/photo', async (c) => {
 })
 
 // ---------- halls ----------
+
+// A speaker's pass: the attendee row behind their email becomes a Speaker pass (or is
+// made). A pass of their own, a paid Delegate or a VIP, is kept. Only for the event
+// whose registration is open in this app (Mumbai, event 1): another event's passes
+// open with its own registration.
+conf.post('/api/admin/speakers/:id/pass', async (c) => {
+  const id = Number(c.req.param('id'))
+  const sp = await one(c, 'SELECT id, event_id, name, role, organisation, email, phone, linkedin_url, photo_url FROM speakers WHERE id = ?', id)
+  if (!sp) return c.json({ error: 'That speaker is not on the list any more.' }, 404)
+  if (Number(sp.event_id) !== 1) return c.json({ error: 'Passes for this event open when its registration does.' }, 409)
+  if (!String(sp.email || '').trim()) return c.json({ error: 'Add an email for ' + sp.name + ' first: the pass is kept under it.' }, 409)
+  if (!hooks.issueSpeakerPass) return c.json({ error: 'Passes are not set up on this server.' }, 503)
+  const r: any = await hooks.issueSpeakerPass(c, { eventId: 1, name: sp.name, email: sp.email, mobile: sp.phone || '', company: sp.organisation || '', designation: sp.role || '',
+    linkedin: sp.linkedin_url || '', avatarUrl: /^\/api\/uploads\//.test(String(sp.photo_url || '')) ? sp.photo_url : '' })
+  if (r.error) return c.json({ error: r.error }, 409)
+  await audit(c, 'speaker.pass', 'speaker', id, { name: sp.name, attendee_id: r.attendeeId, pass: r.pass, created: r.created, raised: r.raised, kept: r.kept })
+  return c.json({ success: true, attendee_id: r.attendeeId, pass: r.pass, created: r.created, raised: r.raised, kept: r.kept })
+})
 
 const HALL_TEXT: Record<string, number> = { name: 80, short_name: 40, venue_room: 80, location: 200, purpose: 120 }
 function hallFields(b: any): { set: Record<string, any>; error?: string } {
@@ -617,11 +1018,15 @@ async function validSession(c: any, b: any, eventId: number, sessionId: number |
 // speakers somewhere else at the same time.
 async function clashesFor(c: any, eventId: number, v: any, r: any) {
   const speakers = await all(c, 'SELECT id, name FROM speakers WHERE event_id = ?', eventId)
-  const sessions = (await sessionsWithSpeakers(c, eventId, speakers, r)).filter((s: any) => Number(s.id) !== Number(v.sessionId))
+  const everything = await sessionsWithSpeakers(c, eventId, speakers, r)
+  const sessions = everything.filter((s: any) => Number(s.id) !== Number(v.sessionId))
   const byId = new Map(speakers.map((s: any) => [Number(s.id), s]))
+  // A move changes no speakers: v.people is null and the session's own are used.
+  const self = everything.find((s: any) => Number(s.id) === Number(v.sessionId))
+  const people = v.people || (self ? self.links.map((l: any) => ({ speaker_id: l.speaker_id, name: byId.get(l.speaker_id)?.name || '' })) : [])
   const mine = {
     id: -1, title: v.row.title, room: v.row.room, session_type: v.row.session_type, start_time: v.row.start_time, end_time: v.row.end_time,
-    speakers: v.people.map((p: any) => ({ id: p.speaker_id, name: p.name })),
+    speakers: people.map((p: any) => ({ id: p.speaker_id, name: p.name })),
   }
   const res = findClashes([mine, ...sessions.map((s: any) => ({ id: s.id, title: s.title, room: s.room, session_type: s.session_type, start_time: s.start_time, end_time: s.end_time,
     speakers: s.links.map((l: any) => ({ id: l.speaker_id, name: byId.get(l.speaker_id)?.name || '' })) }))])
@@ -662,8 +1067,34 @@ conf.post('/api/admin/sessions', async (c) => {
   ).bind(eventId, v.row.title, v.row.description, line.speaker_name, line.speaker_title, v.row.speaker_avatar, v.row.session_type, v.row.track, v.row.room, v.row.start_time, v.row.end_time, v.row.capacity).run()
   const id = Number(res.meta.last_row_id)
   await writeSessionExtras(c, id, v, r)
+  const talk = await syncLinkedTalk(c, eventId, { id, title: v.row.title, speaker_name: line.speaker_name, start_time: v.row.start_time, end_time: v.row.end_time, room: v.row.room })
   await audit(c, 'session.create', 'session', id, { title: v.row.title, start_time: v.row.start_time, room: v.row.room, status: v.status, speakers: v.people.map((p: any) => p.name), clashes_accepted: clashes.length })
-  return c.json({ id, success: true, clashes }, 201)
+  return c.json({ id, success: true, clashes, talk_synced: talk }, 201)
+})
+
+// Drag and drop: a session moved to another time or hall, or made longer or shorter.
+// Only its time and hall change. The same clash rule as a full save: 409 with what it
+// clashes with until the body says force. Answers with where it was, for Undo.
+conf.post('/api/admin/sessions/:id/move', async (c) => {
+  const id = Number(c.req.param('id'))
+  const b = await c.req.json().catch(() => ({})) as any
+  const before = await one(c, 'SELECT * FROM sessions WHERE id = ?', id)
+  if (!before) return c.json({ error: 'That session is not on the programme any more. Reload the page.' }, 404)
+  const start = cleanTime(b.start_time), end = cleanTime(b.end_time)
+  if (!start || !end) return c.json({ error: 'Choose the day, the start time and the end time.' }, 400)
+  if (end <= start) return c.json({ error: 'The session must end after it starts.' }, 400)
+  if (start.slice(0, 10) !== end.slice(0, 10)) return c.json({ error: 'A session must start and end on the same day.' }, 400)
+  const room = 'room' in b ? String(b.room || '').replace(/\s+/g, ' ').trim().slice(0, 100) : String(before.room || '')
+  const eventId = Number(before.event_id) || 1
+  const r = await adminReady(c)
+  const v = { sessionId: id, people: null, row: { title: before.title, room, session_type: before.session_type, start_time: start, end_time: end } }
+  const clashes = await clashesFor(c, eventId, v, r)
+  if (clashes.length && !b.force) return c.json({ error: 'This slot clashes with the programme.', clashes }, 409)
+  await c.env.DB.prepare('UPDATE sessions SET start_time = ?, end_time = ?, room = ? WHERE id = ?').bind(start, end, room, id).run()
+  const talk = await syncLinkedTalk(c, eventId, { id, title: before.title, speaker_name: before.speaker_name, start_time: start, end_time: end, room })
+  const was = { start_time: before.start_time, end_time: before.end_time, room: before.room || '' }
+  await audit(c, 'session.move', 'session', id, { title: before.title, from: was, to: { start_time: start, end_time: end, room }, clashes_accepted: clashes.length })
+  return c.json({ success: true, clashes, before: was, talk_synced: talk })
 })
 
 conf.put('/api/admin/sessions/:id', async (c) => {
@@ -684,8 +1115,9 @@ conf.put('/api/admin/sessions/:id', async (c) => {
     session_type: v.row.session_type, track: v.row.track, room: v.row.room, start_time: v.row.start_time, end_time: v.row.end_time, capacity: v.row.capacity }
   await c.env.DB.prepare('UPDATE sessions SET ' + Object.keys(after).map(k => k + ' = ?').join(', ') + ' WHERE id = ?').bind(...Object.values(after), id).run()
   await writeSessionExtras(c, id, v, r)
+  const talk = await syncLinkedTalk(c, eventId, { id, title: after.title, speaker_name: after.speaker_name, start_time: after.start_time, end_time: after.end_time, room: after.room })
   await audit(c, 'session.update', 'session', id, { title: v.row.title, status: v.status, changes: hooks.changedFields ? hooks.changedFields(before, after) : Object.keys(after), clashes_accepted: clashes.length })
-  return c.json({ success: true, clashes })
+  return c.json({ success: true, clashes, talk_synced: talk })
 })
 
 conf.delete('/api/admin/sessions/:id', async (c) => {
@@ -737,9 +1169,9 @@ export function clock(t: string): string {
   const h = Number(m[1]), mm = m[2]
   return (h % 12 || 12) + ':' + mm + (h < 12 ? ' am' : ' pm')
 }
-const ROLE_WORD: Record<string, string> = { keynote: 'Keynote speaker', speaker: 'Speaker', panellist: 'Panellist', moderator: 'Moderator', host: 'Host', chair: 'Chair' }
+export const ROLE_WORD: Record<string, string> = { keynote: 'Keynote speaker', speaker: 'Speaker', panellist: 'Panellist', moderator: 'Moderator', host: 'Host', chair: 'Chair' }
 
-async function slotsOfSpeaker(c: any, sp: any) {
+export async function slotsOfSpeaker(c: any, sp: any) {
   const r = await adminReady(c)
   const speakers = await all(c, 'SELECT id, name FROM speakers WHERE event_id = ?', sp.event_id)
   const sessions = (await sessionsWithSpeakers(c, Number(sp.event_id), speakers, r))
@@ -749,11 +1181,11 @@ async function slotsOfSpeaker(c: any, sp: any) {
     .map((s: any) => ({ ...s, my_role: s.links.find((l: any) => l.speaker_id === Number(sp.id))?.role || 'speaker', hall: hallBy.get(s.room) || null }))
 }
 
-export function slotEmailHTML(sp: any, slots: any[], note: string, header: string): { subject: string; html: string } {
+export function slotEmailHTML(sp: any, slots: any[], note: string, header: string, words: { name: string; line: string } = MUMBAI_WORDS): { subject: string; html: string } {
   const first = slots[0]
   const subject = slots.length === 1
-    ? 'Your session at Bharat AI Innovation 2026: ' + dayLabel(first.start_time) + ', ' + clock(first.start_time) + ', ' + (first.room || 'hall to be confirmed')
-    : 'Your ' + slots.length + ' sessions at Bharat AI Innovation 2026'
+    ? 'Your session at ' + words.name + ': ' + dayLabel(first.start_time) + ', ' + clock(first.start_time) + ', ' + (first.room || 'hall to be confirmed')
+    : 'Your ' + slots.length + ' sessions at ' + words.name
   const card = (s: any) => {
     const where = hallLabel(s.room, s.hall?.venue_room)
     return `<div style="border:1px solid #e7e9f5;border-radius:12px;padding:16px 18px;margin:0 0 12px;background:#fbfcff">
@@ -771,12 +1203,12 @@ export function slotEmailHTML(sp: any, slots: any[], note: string, header: strin
     ${header}
     <div style="padding:26px 26px 8px">
       <p style="font-size:15px;line-height:1.65;margin:0 0 14px">Dear ${first_name},</p>
-      <p style="font-size:15px;line-height:1.65;margin:0 0 18px">Thank you for speaking at Bharat AI Innovation 2026. Here ${slots.length === 1 ? 'is your session' : 'are your sessions'}.</p>
+      <p style="font-size:15px;line-height:1.65;margin:0 0 18px">Thank you for speaking at ${escH(words.name)}. Here ${slots.length === 1 ? 'is your session' : 'are your sessions'}.</p>
       ${slots.map(card).join('')}
       ${note ? `<p style="font-size:15px;line-height:1.65;margin:16px 0 0;white-space:pre-wrap">${escH(note)}</p>` : ''}
       <p style="font-size:15px;line-height:1.65;margin:16px 0 0">If anything here is wrong, reply to this email and we will fix it.</p>
       <p style="margin:22px 0 24px;font-size:14px;color:#555">Team Bharat AI Innovation<br>
-        <span style="color:#888">20-21 November 2026 &middot; World Trade Center, Mumbai</span></p>
+        <span style="color:#888">${escH(words.line).replace(' · ', ' &middot; ')}</span></p>
     </div>
   </div></body></html>`
   return { subject, html }
@@ -790,8 +1222,9 @@ conf.post('/api/admin/speakers/:id/slot-email', async (c) => {
   const slots = await slotsOfSpeaker(c, sp)
   if (!slots.length) return c.json({ error: sp.name + ' is not on the programme yet. Give them a session first.' }, 409)
   const note = String(b.note == null ? '' : b.note).trim().slice(0, 1500)
-  const header = hooks.emailHeader ? hooks.emailHeader('Your session', '20-21 November 2026 · World Trade Center, Mumbai') : ''
-  const mail = slotEmailHTML(sp, slots, note, header)
+  const words = wordsFor(await one(c, 'SELECT id, title, venue, start_date, end_date FROM events WHERE id = ?', Number(sp.event_id) || 1))
+  const header = hooks.emailHeader ? hooks.emailHeader('Your session', words.line) : ''
+  const mail = slotEmailHTML(sp, slots, note, header, words)
   if (b.preview) return c.json({ to: sp.email || '', subject: mail.subject, html: mail.html, slots: slots.length })
   if (!sp.email) return c.json({ error: 'There is no email address for ' + sp.name + '. Add it on their page first.' }, 409)
   if (!hooks.sendEmail) return c.json({ error: 'Email is not set up on this server.' }, 503)
