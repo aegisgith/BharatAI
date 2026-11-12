@@ -19,3 +19,9 @@ UPDATE innovation_talks SET speaker_name = 'Aravind Raj' WHERE event_id = 1 AND 
 DELETE FROM innovation_talks WHERE event_id = 1 AND speaker_name = 'Gaurav Jha' AND company = 'Origin AI'
   AND EXISTS (SELECT 1 FROM innovation_talks k WHERE k.event_id = 1 AND k.speaker_name = 'Gaurav Jha' AND k.company = 'Origins AI');
 UPDATE innovation_talks SET company = 'Origins AI' WHERE event_id = 1 AND speaker_name = 'Gaurav Jha' AND company = 'Origin AI';
+
+-- Any talk now in the app twice with the same speaker and company (the organisers'
+-- own rows only): the oldest row stays. On 12 Nov both Gaurav Jha rows had already
+-- been renamed to "Origins AI" (ids 20 and 24), which the lines above cannot catch.
+DELETE FROM innovation_talks WHERE event_id = 1 AND exhibitor_id IS NULL
+  AND id NOT IN (SELECT MIN(id) FROM innovation_talks WHERE event_id = 1 AND exhibitor_id IS NULL GROUP BY speaker_name, company);
