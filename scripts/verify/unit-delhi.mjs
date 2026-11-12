@@ -228,7 +228,7 @@ const badMenu = withMenu.filter((f) => {
   return order.filter((h) => h === '/delhi').length !== 1 || order[at - 1] !== '/campus-series' || order[at + 1] !== '/ai-readiness';
 });
 check('every menu has Delhi 2027 once, after Campus Series, before AI Readiness', badMenu.length === 0, badMenu.join(', '));
-check('Delhi 2027 is the current tab only on its own page', read('public/delhi.html').includes('href="/delhi" class="nav-link active"') && withMenu.filter((f) => f !== 'delhi.html' && read('public/' + f).includes('href="/delhi" class="nav-link active"')).length === 0);
+check('Delhi 2027 is the current tab only on its own page', read('public/delhi.html').includes('href="/delhi" class="nav-link active"') && withMenu.filter((f) => f !== 'delhi.html' && f !== 'delhi-hi.html' && read('public/' + f).includes('href="/delhi" class="nav-link active"')).length === 0);
 const versions = new Set(withMenu.map((f) => (read('public/' + f).match(/style\.css\?v=([\w]+)/) || [])[1]));
 check('one stylesheet version on every page', versions.size === 1, [...versions].join(', '));
 const v = [...versions][0];
