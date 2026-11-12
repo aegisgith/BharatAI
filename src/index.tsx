@@ -8784,6 +8784,105 @@ async function requestTargetProblem(c: any, toId: any, eventId: any): Promise<{ 
 // 20 or 21 November 2026, from 9:00 to 17:59 at the venue (the form sends "2026-11-20T11:00").
 const meetingSlotOk = (s: any): boolean => /^2026-11-(20|21)T(09|1[0-7]):[0-5]\d(:[0-5]\d)?$/.test(String(s || ''))
 
+// Minutes after midnight of a meeting's time ("2026-11-20T11:30" -> 690), or -1.
+const meetingMinuteOf = (t: any): number => {
+  const m = String(t || '').match(/[T ](\d{2}):(\d{2})/)
+  return m ? Number(m[1]) * 60 + Number(m[2]) : -1
+}
+
+// No two meetings at once (12 Nov 2026). Only accepted meetings hold a person's time:
+// a request nobody has answered blocks nothing. Returns who of `ids` is busy, and when.
+async function meetingClash(c: any, ids: any[], when: string, minutes: number, exceptId: any = null): Promise<{ who: number; at: string } | null> {
+  const start = meetingMinuteOf(when)
+  if (start < 0) return null
+  const end = start + Math.max(5, minutes || 15)
+  const people = ids.map((v) => Number(v)).filter((v) => Number.isFinite(v))
+  if (!people.length) return null
+  const marks = people.map(() => '?').join(', ')
+  const { results } = await c.env.DB.prepare(
+    `SELECT id, requester_id, requestee_id, meeting_time, duration_minutes FROM meetings
+      WHERE status = 'accepted' AND substr(meeting_time, 1, 10) = ? AND id IS NOT ?
+        AND (requester_id IN (${marks}) OR requestee_id IN (${marks}))`
+  ).bind(String(when).slice(0, 10), exceptId === null ? null : Number(exceptId), ...people, ...people).all() as any
+  for (const m of results || []) {
+    const s = meetingMinuteOf(m.meeting_time)
+    const e = s + Math.max(5, parseInt(m.duration_minutes, 10) || 15)
+    if (s >= 0 && start < e && s < end) {
+      const who = people.find((p) => p === Number(m.requester_id) || p === Number(m.requestee_id)) as number
+      return { who, at: String(m.meeting_time).slice(11, 16) }
+    }
+  }
+  return null
+}
+const meetingClashSentence = (clash: { who: number; at: string }, me: any) => Number(me) === clash.who
+  ? 'You already have a meeting at ' + clash.at + ' that day. Pick another time.'
+  : 'They already have a meeting at that time. Pick another time.'
+
+// When the two of them are busy, for the time picker: accepted meetings only, as times,
+// never with whom.
+app.get('/api/meetings/busy', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  const me = await verifyAttendeeSession(c)
+  if (!me) return c.json({ error: 'Please sign in again to continue.' }, 401)
+  const other = parseInt(String(c.req.query('with') || ''), 10)
+  const busy = async (id: number) => {
+    const { results } = await c.env.DB.prepare(
+      "SELECT meeting_time, duration_minutes FROM meetings WHERE status = 'accepted' AND (requester_id = ? OR requestee_id = ?)"
+    ).bind(id, id).all() as any
+    return ((results || []) as any[]).map((m) => {
+      const start = meetingMinuteOf(m.meeting_time)
+      return { day: String(m.meeting_time).slice(0, 10), start, end: start + Math.max(5, parseInt(m.duration_minutes, 10) || 15) }
+    }).filter((b) => b.start >= 0)
+  }
+  return c.json({ mine: await busy(Number(me)), theirs: Number.isFinite(other) && other !== Number(me) ? await busy(other) : [] })
+})
+
+// About fifteen minutes before an accepted meeting, both people are reminded by email,
+// once (12 Nov 2026). From the minute clock. The claim is a row in app_settings, so two
+// clocks at once send it once.
+const MEETING_REMIND_WITHIN_MINUTES = 20
+async function autoMeetingReminders(c: any): Promise<any> {
+  const now = Date.now()
+  const { results } = await c.env.DB.prepare(
+    `SELECT m.id, m.title, m.meeting_time, m.duration_minutes, m.location,
+            a.name AS a_name, a.email AS a_email, a.company AS a_company,
+            b.name AS b_name, b.email AS b_email, b.company AS b_company
+       FROM meetings m JOIN attendees a ON a.id = m.requester_id JOIN attendees b ON b.id = m.requestee_id
+      WHERE m.status = 'accepted' AND substr(m.meeting_time, 1, 10) = ? LIMIT 1000`
+  ).bind(istDate()).all() as any
+  let sent = 0
+  for (const m of (results || []) as any[]) {
+    const at = Date.parse(String(m.meeting_time).replace(' ', 'T').slice(0, 16) + ':00+05:30')
+    const minutesAway = (at - now) / 60000
+    if (!(minutesAway > 0 && minutesAway <= MEETING_REMIND_WITHIN_MINUTES)) continue
+    const claim = await c.env.DB.prepare(
+      "INSERT OR IGNORE INTO app_settings (key, value, updated_at) VALUES (?, ?, datetime('now'))"
+    ).bind('meeting_reminder:' + m.id, new Date(now).toISOString()).run()
+    if (Number(claim?.meta?.changes || 0) !== 1) continue
+    const when = formatMeetingTime(m.meeting_time)
+    for (const [toName, toEmail, withName, withCompany] of [[m.a_name, m.a_email, m.b_name, m.b_company], [m.b_name, m.b_email, m.a_name, m.a_company]]) {
+      const html = networkingEmailHTML({
+        title: 'Your meeting starts soon',
+        greeting: netFirstName(toName),
+        lead: `Your meeting with <strong>${escEmail(withName)}</strong>${withCompany ? ' (' + escEmail(withCompany) + ')' : ''} starts at ${escEmail(when.replace(/^.*?, /, ''))}.`,
+        detail: netDetailBox([
+          ['What', escEmail(m.title || 'Meeting')],
+          ['When', escEmail(when)],
+          ['How long', `${Math.max(1, parseInt(m.duration_minutes, 10) || 15)} minutes`],
+          ['Where', escEmail(m.location || 'As agreed between you')],
+        ]),
+        cta: 'Open my meetings',
+        ctaUrl: await networkingAppUrl(c, '#inbox'),
+      })
+      await notifyNetworking(c, toEmail, 'Starting soon: your meeting with ' + netPlain(withName, 60) + ', ' + when.replace(/^.*?, /, ''), html)
+    }
+    await audit(c, 'meeting.reminded', 'meeting', m.id, { at: m.meeting_time }, { actor: 'automatic', kind: 'system' })
+    sent++
+    if (sent >= 40) break
+  }
+  return { sent }
+}
+
 app.post('/api/connections', async (c) => {
   const body = await c.req.json()
   const { event_id, from_attendee_id, to_attendee_id, message } = body
@@ -9305,6 +9404,8 @@ app.post('/api/meetings', async (c) => {
   }
   const clip = (v: any, n: number) => String(v ?? '').slice(0, n)
   const minutes = Math.min(240, Math.max(5, parseInt(String(duration_minutes || 15), 10) || 15))
+  const clash = await meetingClash(c, [requester_id, requestee_id], meeting_time, minutes)
+  if (clash) return c.json({ error: meetingClashSentence(clash, requester_id), code: 'meeting_clash' }, 409)
   const result = await c.env.DB.prepare(
     'INSERT INTO meetings (event_id, requester_id, requestee_id, title, meeting_time, duration_minutes, location, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
   ).bind(event_id, requester_id, requestee_id, clip(title, 120), clip(meeting_time, 40), minutes, clip(location, 120), clip(notes, 1000)).run()
@@ -9339,6 +9440,13 @@ app.put('/api/meetings/:id', async (c) => {
       return c.json({ error: 'Only the person you asked can accept or decline this meeting.' }, 403)
     }
   }
+  // Accepting a time that clashes with another accepted meeting of either of them is
+  // refused (12 Nov 2026); they can propose another time instead.
+  if (status === 'accepted') {
+    const m = await c.env.DB.prepare('SELECT requester_id, requestee_id, meeting_time, duration_minutes FROM meetings WHERE id = ?').bind(id).first() as any
+    const clash = m ? await meetingClash(c, [m.requestee_id, m.requester_id], m.meeting_time, parseInt(m.duration_minutes, 10) || 15, id) : null
+    if (clash) return c.json({ error: meetingClashSentence(clash, m.requestee_id).replace('Pick another time.', 'Propose another time instead.'), code: 'meeting_clash' }, 409)
+  }
   // Same transition gate as connections: Accept is a button, and buttons get
   // double-tapped. Only a status that actually moved mails anyone.
   const upd = await c.env.DB.prepare(
@@ -9361,7 +9469,7 @@ app.post('/api/meetings/:id/propose', async (c) => {
   const id = c.req.param('id')
   const body = await c.req.json().catch(() => ({})) as any
   const when = String(body.meeting_time || '').slice(0, 40)
-  const row = await c.env.DB.prepare('SELECT requester_id, requestee_id, status, notes FROM meetings WHERE id = ?').bind(id).first() as any
+  const row = await c.env.DB.prepare('SELECT requester_id, requestee_id, status, notes, duration_minutes FROM meetings WHERE id = ?').bind(id).first() as any
   if (!row) return c.json({ error: 'Meeting not found' }, 404)
   if (!isAdminRequest(c) && attendeeSessionSecret(c)) {
     const me = await verifyAttendeeSession(c)
@@ -9371,6 +9479,8 @@ app.post('/api/meetings/:id/propose', async (c) => {
   }
   if (row.status !== 'pending' && row.status !== 'accepted') return c.json({ error: 'This meeting can no longer be moved.' }, 409)
   if (!meetingSlotOk(when)) return c.json({ error: 'Pick a time on 20 or 21 November, between 9 AM and 6 PM.' }, 400)
+  const clash = await meetingClash(c, [row.requestee_id, row.requester_id], when, parseInt(row.duration_minutes, 10) || 15, id)
+  if (clash) return c.json({ error: meetingClashSentence(clash, row.requestee_id), code: 'meeting_clash' }, 409)
   const proposer = await c.env.DB.prepare('SELECT name FROM attendees WHERE id = ?').bind(row.requestee_id).first() as any
   const note = ((row.notes ? String(row.notes) + ' | ' : '') + 'New time proposed by ' + String(proposer?.name || 'them')).slice(0, 1000)
   const upd = await c.env.DB.prepare(
@@ -15022,6 +15132,8 @@ app.post('/api/cron/tick', async (c) => {
   const token = header.startsWith('Bearer ') ? header.slice(7) : ''
   if (!want || !token || !safeEqualA(token, want)) return c.json({ error: 'unauthorized' }, 401)
   const body = await c.req.json().catch(() => ({})) as any
+  // Meetings starting in the next quarter hour, first of all: they cannot wait.
+  const meetingReminders = await autoMeetingReminders(c).catch((e: any) => ({ error: String(e?.message || e).slice(0, 200) }))
   // Reminders to people who stopped paying part-way go first: they take a moment,
   // and the mail jobs below may hold this call for up to 50 s.
   const payReminders = await autoRemindToPay(c).catch((e: any) => ({ error: String(e?.message || e).slice(0, 200) }))
@@ -15037,7 +15149,7 @@ app.post('/api/cron/tick', async (c) => {
   // Innovation Talk speakers asked for whatever is missing, one a minute, when switched on.
   const talkRequests = await autoItalkRequests(c).catch((e: any) => ({ error: String(e?.message || e).slice(0, 200) }))
   const out = await tickMailJobs(c, Number(body.max_seconds) || 0, true)
-  return c.json({ ...out, campaigns: await tickCampaigns(c), pay_reminders: payReminders, help_mail: helpMail, notify_mail: notifyMail, networking_mail: netMail, inquiry_digest: inquiryDigestRun, talk_requests: talkRequests })
+  return c.json({ ...out, campaigns: await tickCampaigns(c), meeting_reminders: meetingReminders, pay_reminders: payReminders, help_mail: helpMail, notify_mail: notifyMail, networking_mail: netMail, inquiry_digest: inquiryDigestRun, talk_requests: talkRequests })
 })
 
 // The admin page's view and its own ticking while it is open.
@@ -23966,9 +24078,16 @@ function mainPageHTML(): string {
         <form id="meeting-form" class="space-y-4">
           <input type="hidden" id="meeting-requestee-id">
           <div><input type="text" id="meeting-title" autocomplete="off" placeholder="Meeting Title *" required class="w-full px-4 py-3 rounded-xl text-sm"></div>
-          <div><input type="datetime-local" id="meeting-time" autocomplete="off" required min="2026-11-20T09:00" max="2026-11-21T17:59" class="w-full px-4 py-3 rounded-xl text-sm"><p class="text-[11px] text-gray-500 mt-1">At WTC Mumbai, 20 or 21 Nov, between 9:00 am and 6:00 pm.</p></div>
+          <div>
+            <div class="grid grid-cols-2 gap-3">
+              <select id="meeting-day" aria-label="Day" class="px-4 py-3 rounded-xl text-sm" onchange="fillMeetingSlots()"><option value="2026-11-20">Fri 20 Nov</option><option value="2026-11-21">Sat 21 Nov</option></select>
+              <select id="meeting-slot" aria-label="Time" class="px-4 py-3 rounded-xl text-sm" onchange="syncMeetingTime()"></select>
+            </div>
+            <input type="hidden" id="meeting-time">
+            <p class="text-[11px] text-gray-500 mt-1">At WTC Mumbai. Times when either of you already has a meeting are marked busy.</p>
+          </div>
           <div class="grid grid-cols-2 gap-3">
-            <select id="meeting-duration" class="px-4 py-3 rounded-xl text-sm">
+            <select id="meeting-duration" class="px-4 py-3 rounded-xl text-sm" onchange="fillMeetingSlots()">
               <option value="15">15 minutes</option>
               <option value="30" selected>30 minutes</option>
               <option value="45">45 minutes</option>
@@ -29765,6 +29884,7 @@ function mainPageScript(): string {
       if (loc) { loc.classList.remove('hidden'); loc.removeAttribute('readonly'); }
       const time = document.getElementById('meeting-time');
       if (time) time.removeAttribute('readonly');
+      ['meeting-day', 'meeting-slot'].forEach((id) => { const el = document.getElementById(id); if (el) el.disabled = false; });
       const price = document.getElementById('meeting-room-price');
       if (price) price.textContent = '';
       if (clearSelect) { const sel = document.getElementById('meeting-room'); if (sel) sel.value = ''; }
@@ -29839,12 +29959,23 @@ function mainPageScript(): string {
       const loc = document.getElementById('meeting-location');
       if (!selectedRoom || !selectedRoomSlots.length) {
         if (time) time.removeAttribute('readonly');
+        ['meeting-day', 'meeting-slot'].forEach((id) => { const el = document.getElementById(id); if (el) el.disabled = false; });
         if (loc) { loc.classList.remove('hidden'); loc.removeAttribute('readonly'); }
         return;
       }
       if (time) {
         time.value = selectedRoomSlots[0].slice(0, 10) + 'T' + selectedRoomSlots[0].slice(11);
         time.setAttribute('readonly', 'readonly');
+        const daySel = document.getElementById('meeting-day');
+        const slotSel = document.getElementById('meeting-slot');
+        if (daySel && slotSel) {
+          daySel.value = selectedRoomSlots[0].slice(0, 10);
+          slotSel.disabled = false;
+          fillMeetingSlots();
+          slotSel.value = selectedRoomSlots[0].slice(11, 16);
+          daySel.disabled = true; slotSel.disabled = true;
+          time.value = selectedRoomSlots[0].slice(0, 10) + 'T' + selectedRoomSlots[0].slice(11);
+        }
       }
       if (dur) {
         const mins = String(60 * selectedRoomSlots.length);
@@ -29897,12 +30028,63 @@ function mainPageScript(): string {
       }
     }
 
+    // 12 Nov 2026: a meeting is a day and a 15-minute slot, not a date box, and a slot
+    // when either person already has an accepted meeting is marked busy and cannot be
+    // picked. The server refuses a clash all the same.
+    let meetingBusy = { mine: [], theirs: [] };
+    function meetingSlotTimes() {
+      const out = [];
+      for (let m = 9 * 60; m < 18 * 60; m += 15) out.push(String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'));
+      return out;
+    }
+    function meetingSlotLabel(t) {
+      const h = parseInt(t.slice(0, 2), 10);
+      return ((h + 11) % 12 + 1) + ':' + t.slice(3) + (h < 12 ? ' am' : ' pm');
+    }
+    function meetingBusyAt(day, t, minutes) {
+      const start = parseInt(t.slice(0, 2), 10) * 60 + parseInt(t.slice(3), 10);
+      const end = start + minutes;
+      const hit = (list) => (list || []).some((b) => b.day === day && start < b.end && b.start < end);
+      return hit(meetingBusy.mine) ? 'you' : hit(meetingBusy.theirs) ? 'them' : '';
+    }
+    function syncMeetingTime() {
+      const day = document.getElementById('meeting-day');
+      const slot = document.getElementById('meeting-slot');
+      const time = document.getElementById('meeting-time');
+      if (day && slot && time && slot.value) time.value = day.value + 'T' + slot.value;
+    }
+    function fillMeetingSlots() {
+      const day = document.getElementById('meeting-day');
+      const sel = document.getElementById('meeting-slot');
+      if (!day || !sel || sel.disabled) return;
+      const minutes = parseInt(document.getElementById('meeting-duration').value, 10) || 15;
+      const keep = sel.value || '11:00';
+      sel.innerHTML = meetingSlotTimes().map((t) => {
+        const who = meetingBusyAt(day.value, t, minutes);
+        return '<option value="' + t + '"' + (who ? ' disabled' : '') + '>' + meetingSlotLabel(t) + (who === 'you' ? ' (you are busy)' : who === 'them' ? ' (they are busy)' : '') + '</option>';
+      }).join('');
+      const keepOpt = Array.from(sel.options).find((o) => o.value === keep && !o.disabled);
+      const firstFree = Array.from(sel.options).find((o) => !o.disabled);
+      sel.value = keepOpt ? keep : (firstFree ? firstFree.value : '');
+      syncMeetingTime();
+    }
+    async function loadMeetingBusy(otherId) {
+      meetingBusy = { mine: [], theirs: [] };
+      fillMeetingSlots();
+      try {
+        const b = await api.get('/api/meetings/busy?with=' + encodeURIComponent(otherId || ''));
+        if (b && Array.isArray(b.mine)) meetingBusy = { mine: b.mine, theirs: b.theirs || [] };
+      } catch (e) {}
+      fillMeetingSlots();
+    }
+
     function openMeetingModal(requesteeId) {
       roomOnlyMode = false;
       document.getElementById('meeting-requestee-id').value = requesteeId;
       document.getElementById('meeting-modal').classList.remove('hidden');
       resetRoomSelection(true);
       applyMeetingModalMode();
+      loadMeetingBusy(requesteeId);
       // Lazily, and never blocking: a catalogue that fails to load leaves the modal
       // exactly as it was before rooms existed.
       loadRoomCatalog();
@@ -29966,6 +30148,8 @@ function mainPageScript(): string {
         // No counterparty in room-only mode, so there is no meeting to request -
         // the held hours are the whole transaction.
         if (!roomOnlyMode) {
+          syncMeetingTime();
+          if (!document.getElementById('meeting-time').value) { showToast('Pick a free time', 'error'); return; }
           const mr = await api.post('/api/meetings', {
             event_id: EVENT_ID,
             requester_id: currentUser.id,
@@ -31381,8 +31565,30 @@ function mainPageScript(): string {
         }
         if (maxId) localStorage.setItem('bhai_notif_seen', String(maxId));
         renderNotifCenter();
+        showUrgentBanner();
       } catch(e) {}
       if (currentUser) notifTimer = setTimeout(() => pollNotifications(false), document.hidden ? 60000 : 30000);
+    }
+    // 12 Nov 2026: an urgent notice (a hall change, a closure) stays at the top of the
+    // screen until it is closed, instead of a toast that is gone in four seconds. Only
+    // notices from the last 12 hours; closing one is remembered on this phone.
+    function showUrgentBanner() {
+      let closed = 0;
+      try { closed = parseInt(localStorage.getItem('bhai_urgent_closed') || '0', 10) || 0; } catch (e) {}
+      const now = Date.now();
+      const a = (_notifCache || []).find((x) => x.announcement_type === 'urgent' && (x.id || 0) > closed
+        && now - parseDbTime(x.created_at).getTime() < 12 * 3600000);
+      let el = document.getElementById('urgent-banner');
+      if (!a) { if (el) el.remove(); return; }
+      if (!el) {
+        el = document.createElement('div');
+        el.id = 'urgent-banner';
+        el.setAttribute('role', 'alert');
+        el.style.cssText = 'position:fixed;left:8px;right:8px;top:calc(env(safe-area-inset-top, 0px) + 8px);z-index:45;max-width:680px;margin:0 auto;display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border-radius:12px;background:#B42318;color:#fff;box-shadow:0 10px 30px rgba(0,0,0,0.3);max-height:40vh;overflow:auto;';
+        document.body.appendChild(el);
+      }
+      el.innerHTML = '<i class="fas fa-triangle-exclamation" style="margin-top:3px" aria-hidden="true"></i><div style="flex:1;min-width:0"><div style="font-weight:700;font-size:15px;line-height:1.3">' + esc(a.title) + '</div><div style="font-size:14px;line-height:1.45;margin-top:2px;white-space:pre-wrap">' + esc(a.content || '') + '</div></div><button type="button" aria-label="Close this notice" style="flex:none;min-width:44px;min-height:44px;margin:-10px -8px -10px 0;background:none;border:0;color:#fff;font-size:22px;line-height:1;cursor:pointer">&times;</button>';
+      el.querySelector('button').onclick = () => { try { localStorage.setItem('bhai_urgent_closed', String(a.id)); } catch (e) {} el.remove(); };
     }
     // Coming back to the tab polls at once instead of waiting out the slow interval.
     document.addEventListener('visibilitychange', () => {
@@ -33425,12 +33631,17 @@ function mainPageScript(): string {
       mb.innerHTML = '<form id="propose-form" class="p-6 space-y-4">'
         + '<h3 class="text-lg font-bold"><i class="fas fa-clock text-primary-400 mr-2"></i>Propose another time</h3>'
         + '<p class="text-sm text-gray-400">Pick a time on 20 or 21 November, between 9 AM and 6 PM. They can accept or decline it.</p>'
-        + '<input type="datetime-local" id="propose-time" required min="2026-11-20T09:00" max="2026-11-21T17:45" step="900" value="2026-11-20T11:00" class="w-full px-4 py-3 rounded-xl text-sm">'
+        + '<div class="grid grid-cols-2 gap-3"><select id="propose-day" aria-label="Day" class="px-4 py-3 rounded-xl text-sm"><option value="2026-11-20">Fri 20 Nov</option><option value="2026-11-21">Sat 21 Nov</option></select>'
+        + '<select id="propose-slot" aria-label="Time" class="px-4 py-3 rounded-xl text-sm">' + meetingSlotTimes().map((t) => '<option value="' + t + '"' + (t === '11:00' ? ' selected' : '') + '>' + meetingSlotLabel(t) + '</option>').join('') + '</select></div>'
+        + '<input type="hidden" id="propose-time" value="2026-11-20T11:00">'
         + '<p id="propose-error" class="hidden text-sm text-red-400"></p>'
         + '<div class="flex gap-2"><button type="submit" class="flex-1 rounded-xl text-sm font-semibold bg-primary-600 hover:bg-primary-500 text-white" style="min-height:44px;">Send the new time</button>'
         + '<button type="button" onclick="document.getElementById(&quot;modal-container&quot;).classList.add(&quot;hidden&quot;)" class="px-4 rounded-xl text-sm font-medium glass hover:bg-white/10" style="min-height:44px;">Cancel</button></div>'
         + '</form>';
       mc.classList.remove('hidden');
+      const syncPropose = () => { document.getElementById('propose-time').value = document.getElementById('propose-day').value + 'T' + document.getElementById('propose-slot').value; };
+      document.getElementById('propose-day').onchange = syncPropose;
+      document.getElementById('propose-slot').onchange = syncPropose;
       document.getElementById('propose-form').onsubmit = async (e) => {
         e.preventDefault();
         const btn = e.target.querySelector('button[type=submit]');
