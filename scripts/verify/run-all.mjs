@@ -40,6 +40,12 @@ const SUITES = [
   { name: 'server: campus panel "Are you coming?"', args: ['smoke-panel-answers.mjs'] },
   { name: 'server: AI marketplace gates, pages and exhibitor invites', args: ['smoke-marketplace.mjs'] },
   { name: 'server: exhibitor teams (passes by booth type, the Delegate Pass past them, an exception by the organisers, the contact gets no pass unless listed, the email, the CSV), on real SQLite', args: ['smoke-exhibitor-team.mjs'] },
+  // Innovation Talks: hall, time, the speaker's details, the missing-details email and
+  // Announce (12 Nov 2026), at four levels.
+  { name: 'unit: Innovation Talks, each rule alone (the time in words and every refusal, the time file agreeing with the server, what is missing, where an email comes from, the form, the clash warning, the announcement with both hall names)', args: ['unit-innovation-talks.mjs'] },
+  { name: 'integration: Innovation Talks on real SQLite (the 49 talks and the time file, public and admin lists, add and edit, contacts, the missing-details email, no password, before and after 0052)', args: ['smoke-innovation-talks.mjs'] },
+  { name: 'system: Innovation Talks, one talk from no time to complete (a time and hall, the booth contact emailed, the reply typed in, the app list, the announcement, Ask everyone once)', args: ['system-innovation-talks.mjs'] },
+  { name: 'browser: Innovation Talks on a laptop (by day, both hall names, filters, the edit form, a time given, the email previewed and sent, Announce) and the app tab on a phone', args: ['browser-innovation-talks.cjs'], harness: 'talks-harness.mjs', port: 8863, portEnv: true },
   { name: 'server: booth leads by badge scan (who may scan, the lead screen, ratings and notes, the list for the whole team) and the exhibitor list in the app (real exhibitors only, no internal notes), on real SQLite', args: ['smoke-booth-leads.mjs'] },
   { name: 'server: the badge desk over two days (one check-in per person per day, check in on scan, undo, a scan made offline, stats by day, the saved list), on real SQLite with the clock moved', args: ['smoke-desk-days.mjs'] },
   { name: 'server: checkout on this site (CCAvenue), the switch, the answer, the queues', args: ['smoke-payments.mjs'] },

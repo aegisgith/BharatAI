@@ -16705,6 +16705,91 @@ app.post('/api/admin/attendees/:id/send-profile-reminder', async (c) => {
   return c.json({ success: true, sent_to: attendee.email, missing: gaps })
 })
 
+// ---- Innovation Talks: hall, time and the speaker's details (12 Nov 2026) ----
+// The organisers asked for each talk's hall and time, the speaker's own email and
+// mobile, and a way to email a speaker for whatever is still missing (migration 0052).
+//
+// "Fri 20 Nov · 11:30 – 11:38 AM": the same words scripts/gen-talk-times.mjs and the
+// exhibitor stage talks (stageSlotLabel in src/routes/marketplace.ts) write, so a time
+// set in /admin reads the same as one from the agenda.
+const ITALK_STARTS_RE = /^(\d{4})-(\d{2})-(\d{2}) ([01]\d|2[0-3]):([0-5]\d)$/
+function italkSlotLabel(startsAt: string, minutes: number): string {
+  const m = ITALK_STARTS_RE.exec(String(startsAt || ''))
+  if (!m) return 'To be announced'
+  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])))
+  const day = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getUTCDay()] + ' ' + d.getUTCDate() + ' '
+    + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getUTCMonth()]
+  const start = Number(m[4]) * 60 + Number(m[5])
+  const clock = (x: number) => { const h = Math.floor(x / 60) % 24, mm = x % 60; return { text: `${h % 12 || 12}:${String(mm).padStart(2, '0')}`, pm: h >= 12 } }
+  const a = clock(start), b = clock(start + Math.max(0, Number(minutes) || 0))
+  return `${day} · ${a.pm === b.pm ? a.text : `${a.text} ${a.pm ? 'PM' : 'AM'}`} – ${b.text} ${b.pm ? 'PM' : 'AM'}`
+}
+
+// The event's halls and the venue rooms they are (organiser, 11 Nov 2026), as in
+// scripts/data/schedule.json. The app's sessions use the same hall names.
+const ITALK_HALLS: Record<string, string> = {
+  // Kalam and Aryabhata were swapped by the organiser on 12 Nov 2026: the Expo Hall
+  // (Innovation Talks) is Aryabhata Theatre, Centrum Hall A is Kalam Theatre.
+  'Aryabhata Theatre': 'Expo Hall, on the exhibition floor',
+  'Homi J. Bhabha Hall': 'Peacock Hall, Ground Floor, Centre One',
+  'Kalam Theatre': 'Centrum Hall A, First Floor, Centre One',
+  'Raman Theatre': 'Centrum Hall B, First Floor, Centre One',
+}
+const italkHallText = (h: any) => { const s = String(h || '').trim(); return ITALK_HALLS[s] ? `${s} (${ITALK_HALLS[s]})` : s }
+
+// Columns migration 0052 adds. A database without it saves everything else.
+const ITALK_0052_COLS = ['hall', 'speaker_email', 'speaker_phone']
+const ITALK_TEXT: Record<string, { label: string; max: number }> = {
+  speaker_name: { label: 'Speaker name', max: 160 }, company: { label: 'Company', max: 160 },
+  topic: { label: 'Topic', max: 200 }, hall: { label: 'Hall', max: 80 },
+  speaker_title: { label: 'Designation', max: 120 }, speaker_bio: { label: 'Short bio', max: 800 },
+  showcase: { label: 'What they will show', max: 1000 }, notes: { label: 'Notes', max: 2000 },
+  speaker_phone: { label: 'Mobile', max: 30 }, time_slot: { label: 'Time', max: 80 },
+  status: { label: 'Status', max: 20 }, session_type: { label: 'Session', max: 20 },
+}
+
+// What the admin form may write, checked. A start time is 'YYYY-MM-DD HH:MM' (Mumbai
+// time) with a length in minutes; the words people read are worked out here.
+function italkInput(body: any): { values: Record<string, any>; error?: string } {
+  const values: Record<string, any> = {}
+  for (const [k, { label, max }] of Object.entries(ITALK_TEXT)) {
+    if (body[k] === undefined) continue
+    const s = String(body[k] ?? '').trim()
+    if (s.length > max) return { values, error: `${label} is too long (at most ${max} characters).` }
+    values[k] = s
+  }
+  if (values.status !== undefined && !['confirmed', 'tentative', 'cancelled'].includes(values.status)) return { values, error: 'Status must be confirmed, tentative or cancelled.' }
+  if (values.session_type !== undefined && !['Morning', 'Afternoon'].includes(values.session_type)) return { values, error: 'Session must be Morning or Afternoon.' }
+  if (values.speaker_name !== undefined && !values.speaker_name) return { values, error: 'Type the speaker\'s name.' }
+  if (body.speaker_email !== undefined) {
+    const e = String(body.speaker_email ?? '').trim().toLowerCase()
+    if (e && !validEmailSyntax(e)) return { values, error: 'That email address does not look right.' }
+    values.speaker_email = e
+  }
+  if (body.slot_no !== undefined) {
+    const n = body.slot_no === null || body.slot_no === '' ? null : parseInt(String(body.slot_no), 10)
+    if (n !== null && (!Number.isFinite(n) || n < 0 || n > 9999)) return { values, error: 'Order must be a number.' }
+    values.slot_no = n
+  }
+  if (body.starts_at !== undefined) {
+    if (body.starts_at === null || body.starts_at === '') {
+      values.starts_at = null
+      values.time_slot = 'To be announced'
+    } else {
+      const s = String(body.starts_at).trim()
+      const m = ITALK_STARTS_RE.exec(s)
+      if (!m) return { values, error: 'Choose the day and the start time.' }
+      const dur = parseInt(String(body.duration_min), 10)
+      if (!Number.isFinite(dur) || dur < 1 || dur > 240) return { values, error: 'The end time must be after the start time (and within 4 hours).' }
+      values.starts_at = s
+      values.duration_min = dur
+      values.time_slot = italkSlotLabel(s, dur)
+      values.session_type = Number(m[4]) < 12 ? 'Morning' : 'Afternoon'
+    }
+  }
+  return { values }
+}
+
 app.get('/api/events/:id/innovation-talks', async (c) => {
   const eventId = c.req.param('id')
   const admin = isAdminRequest(c)
@@ -16712,58 +16797,89 @@ app.get('/api/events/:id/innovation-talks', async (c) => {
   // (migration 0044) are drafted from the marketplace dashboard and join the programme
   // only once the organisers give them a time (Marketplace admin, Stage Talks); the
   // public also waits for a topic and a speaker, so a half-filled draft never shows.
+  // The speaker's email and mobile (0052) are never in the public shape.
   const base = 'id, event_id, slot_no, session_type, time_slot, speaker_name, company, topic, status, created_at'
-  try {
-    const { results } = await c.env.DB.prepare(
-      `SELECT ${admin ? '*' : base + ', speaker_title, speaker_photo_url, showcase'} FROM innovation_talks
-       WHERE event_id = ? AND (exhibitor_id IS NULL OR (starts_at IS NOT NULL${admin ? '' : " AND trim(ifnull(topic, '')) <> '' AND trim(ifnull(speaker_name, '')) <> ''"}))
-       ORDER BY slot_no ASC, starts_at`
-    ).bind(eventId).all()
-    return c.json(results)
-  } catch (e: any) {
-    const message = String(e?.message || '')
-    // The table went missing from production for the life of this feature and the
-    // 500 took down both the admin tab and the app's Innovation Talks tab. An
-    // empty list degrades to "nothing scheduled yet", which is recoverable.
-    if (/no such table/i.test(message)) return c.json([])
-    // A database without 0044 holds only the organisers' own talks.
-    if (/no such column/i.test(message)) {
+  const pub = base + ', speaker_title, speaker_photo_url, showcase, starts_at, duration_min'
+  // Newest shape first; a database short of a migration answers "no such column" and
+  // gets the next one.
+  const shapes = admin ? ['*'] : [pub + ', hall', pub]
+  for (const cols of shapes) {
+    try {
       const { results } = await c.env.DB.prepare(
-        `SELECT ${admin ? '*' : base} FROM innovation_talks WHERE event_id = ? ORDER BY slot_no ASC`
+        `SELECT ${cols} FROM innovation_talks
+         WHERE event_id = ? AND (exhibitor_id IS NULL OR (starts_at IS NOT NULL${admin ? '' : " AND trim(ifnull(topic, '')) <> '' AND trim(ifnull(speaker_name, '')) <> ''"}))
+         ORDER BY starts_at IS NULL, starts_at, slot_no ASC`
       ).bind(eventId).all()
       return c.json(results)
+    } catch (e: any) {
+      const message = String(e?.message || '')
+      // The table went missing from production for the life of this feature and the
+      // 500 took down both the admin tab and the app's Innovation Talks tab. An
+      // empty list degrades to "nothing scheduled yet", which is recoverable.
+      if (/no such table/i.test(message)) return c.json([])
+      if (!/no such column/i.test(message)) throw e
     }
-    throw e
   }
+  // A database without 0044 holds only the organisers' own talks.
+  const { results } = await c.env.DB.prepare(
+    `SELECT ${admin ? '*' : base} FROM innovation_talks WHERE event_id = ? ORDER BY slot_no ASC`
+  ).bind(eventId).all()
+  return c.json(results)
 })
 
 // Create a new innovation talk
 app.post('/api/admin/innovation-talks', async (c) => {
-  const body = await c.req.json() as any
-  const { event_id, slot_no, session_type, time_slot, speaker_name, company, topic, status, notes } = body
-  const result = await c.env.DB.prepare(
-    'INSERT INTO innovation_talks (event_id, slot_no, session_type, time_slot, speaker_name, company, topic, status, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
-  ).bind(event_id || 1, slot_no, session_type || 'Morning', time_slot, speaker_name, company || '', topic || '', status || 'confirmed', notes || '').run()
-  return c.json({ success: true, id: result.meta.last_row_id })
+  const body = await c.req.json().catch(() => ({})) as any
+  const { values, error } = italkInput(body)
+  if (error) return c.json({ error }, 400)
+  if (!values.speaker_name) return c.json({ error: 'Type the speaker\'s name.' }, 400)
+  const row: Record<string, any> = {
+    event_id: parseInt(String(body.event_id || 1), 10) || 1,
+    session_type: 'Morning', time_slot: 'To be announced', company: '', topic: '', status: 'confirmed', notes: '',
+    ...values,
+  }
+  const insert = async (r: Record<string, any>) => {
+    const cols = Object.keys(r)
+    return c.env.DB.prepare(`INSERT INTO innovation_talks (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`).bind(...cols.map(k => r[k])).run()
+  }
+  try {
+    const result = await insert(row)
+    return c.json({ success: true, id: result.meta.last_row_id })
+  } catch (e: any) {
+    // An INSERT names a missing column differently: "table ... has no column named hall".
+    if (!/no such column|has no column named/i.test(String(e?.message || ''))) throw e
+    // Before 0052 (or 0044): keep what the table can hold and say what was left out.
+    const older: Record<string, any> = {}
+    for (const k of ['event_id', 'slot_no', 'session_type', 'time_slot', 'speaker_name', 'company', 'topic', 'status', 'notes']) if (row[k] !== undefined) older[k] = row[k]
+    const result = await insert(older)
+    return c.json({ success: true, id: result.meta.last_row_id, not_saved: Object.keys(row).filter(k => !(k in older)) })
+  }
 })
 
 // Update an innovation talk
 app.patch('/api/admin/innovation-talks/:id', async (c) => {
   const id = c.req.param('id')
-  const body = await c.req.json() as any
-  const allowedFields = ['slot_no', 'session_type', 'time_slot', 'speaker_name', 'company', 'topic', 'status', 'notes']
-  const updates: string[] = []
-  const values: any[] = []
-  for (const [key, val] of Object.entries(body)) {
-    if (allowedFields.includes(key)) {
-      updates.push(`${key} = ?`)
-      values.push(val)
-    }
+  const body = await c.req.json().catch(() => ({})) as any
+  const { values, error } = italkInput(body)
+  if (error) return c.json({ error }, 400)
+  const update = async (v: Record<string, any>) => {
+    const keys = Object.keys(v)
+    return c.env.DB.prepare(`UPDATE innovation_talks SET ${keys.map(k => `${k} = ?`).join(', ')} WHERE id = ?`).bind(...keys.map(k => v[k]), id).run()
   }
-  if (updates.length === 0) return c.json({ error: 'No valid fields' }, 400)
-  values.push(id)
-  await c.env.DB.prepare(`UPDATE innovation_talks SET ${updates.join(', ')} WHERE id = ?`).bind(...values).run()
-  return c.json({ success: true })
+  if (Object.keys(values).length === 0) return c.json({ error: 'No valid fields' }, 400)
+  try {
+    await update(values)
+    return c.json({ success: true })
+  } catch (e: any) {
+    if (!/no such column/i.test(String(e?.message || ''))) throw e
+    // Before 0052: save the rest, and say which boxes were not kept.
+    const rest = { ...values }
+    const notSaved = ITALK_0052_COLS.filter(k => k in rest)
+    for (const k of notSaved) delete rest[k]
+    if (!Object.keys(rest).length) return c.json({ error: 'Hall, email and mobile can be saved once migration 0052 has been run.' }, 409)
+    await update(rest)
+    return c.json({ success: true, not_saved: notSaved })
+  }
 })
 
 // Delete an innovation talk
@@ -16781,6 +16897,138 @@ app.post('/api/admin/innovation-talks/reorder', async (c) => {
     await c.env.DB.prepare('UPDATE innovation_talks SET slot_no = ? WHERE id = ?').bind(o.slot_no, o.id).run()
   }
   return c.json({ success: true })
+})
+
+// Where a talk's "missing details" email can go, best first: the speaker's own email
+// on the talk; the speaker on the exhibitor's team list (0050); the booth contact.
+// Most talks were loaded from the organisers' sheet with no email, so the exhibitor is
+// found by its company name. The admin sees where each address came from, and can
+// type another.
+const italkNorm = (s: any) => String(s || '').toLowerCase().replace(/&/g, ' and ')
+  .replace(/\b(pvt|private|ltd|limited|llp|inc|the)\b/g, ' ').replace(/[^a-z0-9]+/g, '')
+const italkPersonKey = (s: any) => italkNorm(String(s || '').replace(/^\s*(dr|mr|mrs|ms|prof|shri|smt)\.?\s+/i, ''))
+function italkContactFor(t: any, exhibitors: any[], team: any[]): { email: string; source: string; note: string } {
+  const own = String(t.speaker_email || '').trim()
+  if (own) return { email: own, source: 'speaker', note: "The speaker's own email" }
+  const key = italkNorm(t.company)
+  const ex = (t.exhibitor_id ? exhibitors.find(e => Number(e.id) === Number(t.exhibitor_id)) : null)
+    || (key.length >= 3 ? exhibitors.find(e => italkNorm(e.company_name) === key) : null)
+    || (key.length >= 5 ? exhibitors.find(e => { const k = italkNorm(e.company_name); return k.length >= 5 && (k.startsWith(key) || key.startsWith(k)) }) : null)
+  if (!ex) return { email: '', source: 'none', note: 'No email on file. Type one.' }
+  const members = team.filter(m => Number(m.exhibitor_id) === Number(ex.id) && String(m.email || '').trim())
+  const who = italkPersonKey(t.speaker_name)
+  const named = who ? members.find(m => { const k = italkPersonKey(`${m.first_name} ${m.last_name}`); return !!k && (k === who || k.includes(who) || who.includes(k)) }) : null
+  if (named) return { email: String(named.email).trim(), source: 'team', note: `From ${ex.company_name}'s team list` }
+  if (String(ex.contact_email || '').trim()) return { email: String(ex.contact_email).trim(), source: 'booth', note: `The booth contact for ${ex.company_name}` }
+  return { email: '', source: 'none', note: 'No email on file. Type one.' }
+}
+
+app.get('/api/admin/innovation-talks/contacts', async (c) => {
+  const eventId = c.req.query('event_id') || '1'
+  const talks = ((await c.env.DB.prepare('SELECT * FROM innovation_talks WHERE event_id = ?').bind(eventId).all().catch(() => ({ results: [] }))).results || []) as any[]
+  const exhibitors = ((await c.env.DB.prepare("SELECT id, company_name, contact_email FROM exhibitors WHERE event_id = ?").bind(eventId).all().catch(() => ({ results: [] }))).results || []) as any[]
+  // 0050 may not have run: no team list then, only booth contacts.
+  const team = ((await c.env.DB.prepare("SELECT exhibitor_id, first_name, last_name, email FROM exhibitor_team WHERE event_id = ? AND trim(email) <> ''").bind(eventId).all().catch(() => ({ results: [] }))).results || []) as any[]
+  const contacts: Record<string, any> = {}
+  for (const t of talks) contacts[t.id] = italkContactFor(t, exhibitors, team)
+  return c.json({ contacts })
+})
+
+// What the email may ask a speaker for. Time and hall are the organisers' to set, so
+// they are told, never asked.
+const ITALK_ASK: Record<string, { label: string; why: string }> = {
+  topic: { label: 'The title of your talk', why: 'It goes in the programme, on the website and in the event app.' },
+  speaker_title: { label: 'Your designation', why: 'It is shown under your name in the programme.' },
+  speaker_photo_url: { label: 'A clear photo of you (head and shoulders)', why: 'It is shown beside your talk in the event app and on the website. Please attach it to your reply.' },
+  speaker_bio: { label: 'Two or three lines about you', why: 'The host reads this out to introduce you on stage.' },
+  speaker_phone: { label: 'Your mobile number', why: 'We use it only on the day, if your time or stage changes.' },
+  showcase: { label: 'What you will show on stage', why: 'A line or two about the product or demo you will present.' },
+}
+
+function italkRequestSubject(t: any, toSpeaker: boolean): string {
+  return toSpeaker
+    ? 'Your Innovation Talk at Bharat AI Innovation 2026: a few details we need'
+    : `Innovation Talk by ${String(t.speaker_name || '').trim() || 'your speaker'}: a few details we need`
+}
+
+function italkRequestEmailHTML(t: any, items: string[], note: string, toSpeaker: boolean): string {
+  const esc = (v: any) => String(v ?? '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch] as string))
+  const name = String(t.speaker_name || '').trim()
+  const company = String(t.company || '').trim()
+  const timed = !!t.starts_at && !!String(t.time_slot || '').trim() && !/to be announced/i.test(String(t.time_slot))
+  const hall = italkHallText(t.hall)
+  const greet = toSpeaker && name ? `Dear ${esc(name)},` : 'Hello,'
+  const intro = toSpeaker
+    ? 'Thank you for presenting at the Innovation Talk &amp; Showcase at Bharat AI Innovation 2026. We are getting the programme ready, and a few details for your talk are still missing.'
+    : `We are writing about the Innovation Talk by <strong>${esc(name || 'your speaker')}</strong>${company ? ` of ${esc(company)}` : ''} at Bharat AI Innovation 2026. A few details are still missing. Please pass this on to them, or reply for them.`
+  const fact = (label: string, value: string) =>
+    `<tr><td valign="top" style="padding:4px 12px 4px 0;font-size:12.5px;color:#888;white-space:nowrap;">${label}</td><td valign="top" style="padding:4px 0;font-size:13.5px;color:#1E2140;">${value}</td></tr>`
+  const ask = (k: string) =>
+    `<tr><td width="26" valign="top" style="padding:0 0 14px;"><div style="width:8px;height:8px;border-radius:50%;background:#FF6B00;margin-top:6px;"></div></td>` +
+    `<td valign="top" style="padding:0 0 14px;"><p style="margin:0 0 2px;font-size:14px;font-weight:bold;color:#1E2140;">${esc(ITALK_ASK[k].label)}</p>` +
+    `<p style="margin:0;font-size:12.5px;line-height:1.6;color:#666;">${esc(ITALK_ASK[k].why)}</p></td></tr>`
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+  <body style="margin:0;background:#f5f5f5;font-family:Arial,Helvetica,sans-serif;">
+    <div style="max-width:600px;margin:20px auto;background:#fff;border-radius:12px;overflow:hidden;">
+      ${emailBrandHeader('A few details for your Innovation Talk', '20&ndash;21 Nov 2026 &bull; World Trade Center, Mumbai')}
+      <div style="padding:30px;">
+        <p style="margin:0 0 10px;font-size:15px;color:#333;">${greet}</p>
+        <p style="margin:0 0 18px;font-size:14px;line-height:1.7;color:#555;">${intro}</p>
+        <div style="margin:0 0 22px;padding:14px 16px;background:#F7F8FF;border:1px solid #E3E6F5;border-radius:10px;">
+          <p style="margin:0 0 6px;font-size:13px;font-weight:bold;color:#1E2140;">The talk</p>
+          <table style="border-collapse:collapse;">
+            ${fact('Speaker', esc(name) + (t.speaker_title ? `, ${esc(t.speaker_title)}` : ''))}
+            ${company ? fact('Company', esc(company)) : ''}
+            ${fact('Topic', String(t.topic || '').trim() ? esc(t.topic) : '<span style="color:#999;">Not received yet</span>')}
+            ${fact('When', timed ? esc(t.time_slot) : '<span style="color:#999;">We will send you the time soon</span>')}
+            ${fact('Where', hall ? esc(hall) : '<span style="color:#999;">We will confirm the stage soon</span>')}
+          </table>
+        </div>
+        <p style="margin:0 0 12px;font-size:14px;color:#333;">To finish the programme, please reply to this email with:</p>
+        <table style="width:100%;border-collapse:collapse;">${items.map(ask).join('')}</table>
+        ${note ? `<p style="margin:4px 0 16px;font-size:13.5px;line-height:1.7;color:#333;"><strong>Also:</strong> ${esc(note).replace(/\n/g, '<br>')}</p>` : ''}
+        <p style="margin:10px 0 0;font-size:13.5px;line-height:1.7;color:#555;">Just reply to this email. If you have already sent these, thank you, and please ignore this.</p>
+        <p style="margin:18px 0 0;font-size:13.5px;line-height:1.7;color:#333;">Warm regards,<br>Bharat AI Innovation team<br><span style="color:#888;">register@bharataiinnovation.com</span></p>
+      </div>
+      <div style="text-align:center;padding:16px;border-top:1px solid #eee;">
+        <p style="margin:0;font-size:12px;color:#999;">Bharat AI Innovation 2026 &bull; World Trade Center, Mumbai &bull; 20&ndash;21 Nov 2026</p>
+      </div>
+    </div>
+  </body></html>`
+}
+
+// Emails one talk's speaker (or the booth contact) for the details still missing.
+// { to, items: [keys of ITALK_ASK], note?, to_speaker?, save_email?, preview? }.
+// preview answers with the email instead of sending it. The send is recorded on the
+// talk (0052) so the tab can say who was asked and when.
+app.post('/api/admin/innovation-talks/:id/request-details', async (c) => {
+  const id = parseInt(c.req.param('id'), 10)
+  const body = await c.req.json().catch(() => ({})) as any
+  const t = await c.env.DB.prepare('SELECT * FROM innovation_talks WHERE id = ?').bind(id).first() as any
+  if (!t) return c.json({ error: 'That talk is not there any more. Refresh the page.' }, 404)
+  const items = Array.isArray(body.items) ? Array.from(new Set(body.items.map((x: any) => String(x)))).filter((k: string) => k in ITALK_ASK) as string[] : []
+  if (!items.length) return c.json({ error: 'Choose at least one thing to ask for.' }, 400)
+  const note = String(body.note || '').trim()
+  if (note.length > 600) return c.json({ error: 'The extra note is too long (at most 600 characters).' }, 400)
+  const to = String(body.to || '').trim().toLowerCase()
+  if (!validEmailSyntax(to)) return c.json({ error: 'Type the email address to send it to.' }, 400)
+  const toSpeaker = body.to_speaker !== false
+  const subject = italkRequestSubject(t, toSpeaker)
+  const html = italkRequestEmailHTML(t, items, note, toSpeaker)
+  if (body.preview) return c.json({ preview: true, to, subject, html })
+  // An operational email to a speaker, not a campaign: no unsubscribe footer.
+  const sent = await sendAdminEmail(c, to, subject, html, { unsubscribe: false })
+  if (!sent.ok) return c.json({ error: sent.error }, 502)
+  let recorded = true
+  try {
+    await c.env.DB.prepare(
+      `UPDATE innovation_talks SET details_requested_at = datetime('now'), details_requested_to = ?,
+         speaker_email = CASE WHEN ? = 1 AND trim(ifnull(speaker_email, '')) = '' THEN ? ELSE speaker_email END
+       WHERE id = ?`
+    ).bind(to, body.save_email ? 1 : 0, to, id).run()
+  } catch { recorded = false /* before 0052: the email went, there is nowhere to note it */ }
+  await audit(c, 'innovation_talk.request_details', 'innovation_talk', id, { to, items, speaker: t.speaker_name, company: t.company })
+  return c.json({ success: true, sent_to: to, recorded })
 })
 
 // ==================== DUPLICATES AND MERGING ====================
@@ -30185,9 +30433,18 @@ function mainPageScript(): string {
         }
         // Speakers are published before the schedule is: a talk with no time yet is listed
         // under its own heading rather than filed under a session it has not been given.
-        const unscheduled = talks.filter(t => !t.time_slot || /to be announced/i.test(String(t.time_slot)));
-        const morning = talks.filter(t => t.session_type === 'Morning' && unscheduled.indexOf(t) < 0);
-        const afternoon = talks.filter(t => t.session_type === 'Afternoon' && unscheduled.indexOf(t) < 0);
+        const talkUntimed = t => !t.time_slot || /to be announced/i.test(String(t.time_slot));
+        const unscheduled = talks.filter(talkUntimed);
+        // A talk with a time is listed under its day, in time order (12 Nov 2026).
+        const TALK_DAYS = [['2026-11-20', 'Friday 20 November', 'amber-500/30', 'orange-500/30', 'Fri 20 Nov'], ['2026-11-21', 'Saturday 21 November', 'indigo-500/30', 'violet-500/30', 'Sat 21 Nov']];
+        const talkDay = t => String(t.starts_at || '').slice(0, 10);
+        const byDay = TALK_DAYS.map(d => [d, talks.filter(t => !talkUntimed(t) && talkDay(t) === d[0]).sort((a, b) => String(a.starts_at).localeCompare(String(b.starts_at)))]).filter(x => x[1].length);
+        const otherTimed = talks.filter(t => !talkUntimed(t) && !TALK_DAYS.some(d => d[0] === talkDay(t)));
+        // Both names, always: the venue's staff know only the real room names (organiser, 12 Nov 2026).
+        const TALK_ROOMS = { 'Aryabhata Theatre': 'Expo Hall', 'Homi J. Bhabha Hall': 'Peacock Hall', 'Kalam Theatre': 'Centrum Hall A', 'Raman Theatre': 'Centrum Hall B' };
+        const talkClock = m => ((Math.floor(m / 60) % 24) % 12 || 12) + ':' + String(m % 60).padStart(2, '0') + ' ' + (Math.floor(m / 60) % 24 >= 12 ? 'PM' : 'AM');
+        const talkMin = t => { const p = String(t.starts_at || '').slice(11, 16).split(':'); return Number(p[0]) * 60 + Number(p[1]); };
+        const talkSpan = items => talkClock(talkMin(items[0])) + ' – ' + talkClock(talkMin(items[items.length - 1]) + (Number(items[items.length - 1].duration_min) || 0));
 
         function talkCard(t, idx) {
           const speaker = String(t.speaker_name || '');
@@ -30200,15 +30457,21 @@ function mainPageScript(): string {
           // badge shows the speaker's initials, like the pass photo placeholder does.
           const untimed = !t.time_slot || /to be announced/i.test(String(t.time_slot));
           const initials = speaker.split(' ').filter(w => w && ['dr', 'dr.', 'mr', 'mr.', 'ms', 'ms.', 'prof', 'prof.'].indexOf(w.toLowerCase()) < 0).slice(0, 2).map(w => w[0].toUpperCase()).join('');
-          const badge = untimed && initials ? initials : (t.slot_no == null ? initials : t.slot_no);
+          // Slot numbers mean nothing to an attendee: the badge is always the initials.
+          const badge = initials || (t.slot_no == null ? '' : t.slot_no);
+          const hall = String(t.hall || '').trim();
+          const hallText = hall ? hall + (TALK_ROOMS[hall] ? ' · ' + TALK_ROOMS[hall] : '') : '';
+          // Under a day heading the day is already said: show the time alone.
+          const timeText = untimed ? 'Time to follow' : (talkDay(t) && String(t.time_slot).indexOf(' · ') > 0 ? String(t.time_slot).split(' · ').pop() : String(t.time_slot));
           return '<div class="glass rounded-xl p-4 hover:bg-white/[0.04] transition group">'
             + '<div class="flex items-start gap-4">'
             + (hasPhoto
               ? '<img src="' + esc(photo) + '" alt="" loading="lazy" class="shrink-0 w-12 h-12 rounded-xl" style="object-fit:cover">'
               : '<div class="shrink-0 w-12 h-12 rounded-xl bg-gradient-to-br from-primary-500/20 to-violet-500/20 flex items-center justify-center text-primary-300 font-bold text-lg">' + esc(badge) + '</div>')
             + '<div class="flex-1 min-w-0">'
-            + '<div class="flex items-center gap-2 mb-1">'
-            + '<span class="text-xs px-2 py-0.5 rounded-full bg-white/5 text-gray-400"><i class="fas fa-clock mr-1"></i>' + esc(t.time_slot) + '</span>'
+            + '<div class="flex items-center gap-2 mb-1 flex-wrap">'
+            + '<span class="text-xs px-2 py-0.5 rounded-full bg-white/5 text-gray-400"><i class="fas fa-clock mr-1"></i>' + esc(timeText) + '</span>'
+            + (hallText ? '<span class="text-xs px-2 py-0.5 rounded-full bg-white/5 text-gray-400"><i class="fas fa-map-marker-alt mr-1"></i>' + esc(hallText) + '</span>' : '')
             + (t.status === 'cancelled' ? '<span class="text-xs px-2 py-0.5 rounded-full bg-red-500/20 text-red-400">Cancelled</span>' : '')
             + '</div>'
             + '<h4 class="font-semibold text-white group-hover:text-primary-300 transition ' + (t.status === 'cancelled' ? 'line-through opacity-50' : '') + '">'
@@ -30237,14 +30500,13 @@ function mainPageScript(): string {
           '<div class="mb-6">'
           + '<h2 class="text-2xl font-bold mb-2"><i class="fas fa-lightbulb text-amber-400 mr-3"></i>Innovation Talk & Showcase</h2>'
           + '<p class="text-gray-400 text-sm">8-minute presentations showcasing cutting-edge AI & technology solutions</p>'
-          + '<div class="flex gap-4 mt-3">'
+          + '<div class="flex gap-2 mt-3 flex-wrap">'
           + '<span class="text-xs glass px-3 py-1.5 rounded-full"><i class="fas fa-microphone-alt text-primary-400 mr-1.5"></i>' + talks.length + ' presentations</span>'
-          + (morning.length ? '<span class="text-xs glass px-3 py-1.5 rounded-full"><i class="fas fa-sun text-amber-400 mr-1.5"></i>' + morning.length + ' morning</span>' : '')
-          + (afternoon.length ? '<span class="text-xs glass px-3 py-1.5 rounded-full"><i class="fas fa-moon text-indigo-400 mr-1.5"></i>' + afternoon.length + ' afternoon</span>' : '')
+          + byDay.map(x => '<span class="text-xs glass px-3 py-1.5 rounded-full"><i class="fas fa-calendar-day text-amber-400 mr-1.5"></i>' + x[1].length + ' on ' + x[0][4] + '</span>').join('')
           + '</div></div>'
-          + (unscheduled.length ? sessionSection('Speakers announced', 'microphone-alt', 'primary-500/30', 'violet-500/30', unscheduled, 'Hall and times to follow') : '')
-          + (morning.length ? sessionSection('Morning Session', 'sun', 'amber-500/30', 'orange-500/30', morning, '10:00 – 11:30 AM') : '')
-          + (afternoon.length ? sessionSection('Afternoon Session', 'moon', 'indigo-500/30', 'violet-500/30', afternoon, '2:00 – 4:10 PM') : '');
+          + byDay.map(x => sessionSection(x[0][1], 'calendar-day', x[0][2], x[0][3], x[1], talkSpan(x[1]))).join('')
+          + (otherTimed.length ? sessionSection('More talks', 'clock', 'amber-500/30', 'orange-500/30', otherTimed, 'Times as listed') : '')
+          + (unscheduled.length ? sessionSection('Speakers announced', 'microphone-alt', 'primary-500/30', 'violet-500/30', unscheduled, 'Times to follow') : '');
 
       } catch(err) {
         container.innerHTML = '<div class="text-center py-12"><i class="fas fa-exclamation-triangle text-2xl text-red-400"></i><p class="text-gray-400 text-sm mt-2">Failed to load innovation talks</p></div>';
@@ -43947,154 +44209,439 @@ function adminPageScript(): string {
     }
 
     // ============ INNOVATION TALKS ============
+    // Each talk with its day, time and hall, the speaker's details, and what is still
+    // missing; a missing-details email to the speaker, and a ready announcement
+    // (organiser, 12 Nov 2026). Times are kept as a start (starts_at) and a length;
+    // the server writes the words people read.
+    var italkList = [];
+    var italkContacts = {};
+    var italkView = 'all';
+    var italkHallRooms = { 'Aryabhata Theatre': 'Expo Hall', 'Homi J. Bhabha Hall': 'Peacock Hall', 'Kalam Theatre': 'Centrum Hall A', 'Raman Theatre': 'Centrum Hall B' };
+    var italkDays = [['2026-11-20', 'Fri 20 Nov', 'Day 1'], ['2026-11-21', 'Sat 21 Nov', 'Day 2']];
+    var italkAskLabels = { topic: 'Topic', speaker_title: 'Designation', speaker_photo_url: 'Photo', speaker_bio: 'Short bio', speaker_phone: 'Mobile', showcase: 'What they will show' };
+    // A talk is complete with these; "What they will show" is asked only when ticked.
+    var italkNeeded = ['topic', 'speaker_title', 'speaker_photo_url', 'speaker_bio', 'speaker_phone'];
+    var italkMissLabels = { time: 'Time', hall: 'Hall', email: 'Email', topic: 'Topic', speaker_title: 'Designation', speaker_photo_url: 'Photo', speaker_bio: 'Bio', speaker_phone: 'Mobile' };
+    var italkBulkStop = false;
+
+    function italkHas(v) { return String(v == null ? '' : v).trim().length > 0; }
+    function italkTimed(t) { return italkHas(t.time_slot) && !/to be announced/i.test(String(t.time_slot)); }
+    function italkMins(hhmm) { var p = String(hhmm || '').split(':'); return Number(p[0]) * 60 + Number(p[1]); }
+    function italkFind(id) { return italkList.find(function (x) { return String(x.id) === String(id); }); }
+    function italkEmailFor(t) {
+      if (italkHas(t.speaker_email)) return { email: String(t.speaker_email).trim(), source: 'speaker', note: "The speaker’s own email" };
+      var c = italkContacts[t.id];
+      return c && c.email ? c : { email: '', source: 'none', note: c && c.note ? c.note : 'No email on file. Type one.' };
+    }
+    // What the speaker still owes (asked by email), apart from what the organisers set.
+    function italkSpeakerGaps(t) { return italkNeeded.filter(function (k) { return !italkHas(t[k]); }); }
+    function italkMissing(t) {
+      var m = [];
+      if (!italkTimed(t)) m.push('time');
+      if (!italkHas(t.hall)) m.push('hall');
+      if (!italkEmailFor(t).email) m.push('email');
+      return m.concat(italkSpeakerGaps(t));
+    }
+    function italkWhen(s) {
+      if (!s) return '';
+      var d = new Date(String(s).replace(' ', 'T') + (String(s).length <= 19 ? 'Z' : ''));
+      return isNaN(d) ? String(s) : d.toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+    }
+    function italkPhoto(t) {
+      var p = String(t.speaker_photo_url || '');
+      var ok = (p.indexOf('/images/talks/') === 0 && /^[a-z0-9-]+[.]webp$/.test(p.slice(14))) || (p.indexOf('/api/mp/uploads/') === 0 && /^[0-9]+$/.test(p.slice(16)));
+      if (ok) return '<img src="' + escH(p) + '" alt="" loading="lazy" class="w-9 h-9 rounded-lg shrink-0" style="object-fit:cover">';
+      var ini = String(t.speaker_name || '').split(' ').filter(function (w) { return w && ['dr', 'dr.', 'mr', 'mr.', 'ms', 'ms.', 'prof', 'prof.', 'shri'].indexOf(w.toLowerCase()) < 0; }).slice(0, 2).map(function (w) { return w[0].toUpperCase(); }).join('');
+      return '<div class="w-9 h-9 rounded-lg shrink-0 bg-primary-500/20 text-primary-300 flex items-center justify-center text-xs font-bold">' + escH(ini) + '</div>';
+    }
+
     async function loadInnovationTalks() {
       var _el = document.getElementById('section-innovation');
       if (_el && !_el.innerHTML.trim()) sectionLoading(_el);
       var talks;
-      try { talks = await api.get('/api/events/'+EID+'/innovation-talks'); }
-      catch (err) {
+      try {
+        var both = await Promise.all([
+          api.get('/api/events/' + EID + '/innovation-talks'),
+          api.get('/api/admin/innovation-talks/contacts?event_id=' + EID).catch(function () { return { contacts: {} }; }),
+        ]);
+        talks = both[0];
+        italkContacts = (both[1] && both[1].contacts) || {};
+      } catch (err) {
         if (err && err.message === 'unauthorized') return;
         sectionError(_el, 'innovation talks', err, 'loadInnovationTalks()');
         return;
       }
       var _bad = badList(talks);
       if (_bad) { sectionError(_el, 'innovation talks', { message: _bad }, 'loadInnovationTalks()'); return; }
-      const morning = talks.filter(t => t.session_type === 'Morning');
-      const afternoon = talks.filter(t => t.session_type === 'Afternoon');
+      italkList = talks;
+      italkRender();
+    }
 
-      function renderTalkRow(t) {
-        const statusColors = { confirmed: 'bg-green-500/20 text-green-400', tentative: 'bg-amber-500/20 text-amber-400', cancelled: 'bg-red-500/20 text-red-400' };
-        const sc = statusColors[t.status] || statusColors.confirmed;
-        return '<tr class="hover:bg-white/[0.03] transition" id="italk-row-'+t.id+'">'
-          + '<td class="px-3 py-2.5 text-center text-gray-500 text-xs font-mono">'+t.slot_no+'</td>'
-          + '<td class="px-3 py-2.5 text-xs text-gray-300"><span class="px-2 py-0.5 rounded bg-white/5">'+escH(t.time_slot)+'</span></td>'
-          + '<td class="px-3 py-2.5 font-medium text-sm">'+escH(t.speaker_name)+'</td>'
-          + '<td class="px-3 py-2.5 text-xs text-gray-400">'+escH(t.company)+'</td>'
-          + '<td class="px-3 py-2.5 text-xs text-gray-400">'+escH(t.topic||'')+'</td>'
-          + '<td class="px-3 py-2.5 text-center"><span class="px-2 py-0.5 rounded-full text-[10px] font-medium '+sc+'">'+t.status+'</span></td>'
-          + '<td class="px-3 py-2.5 text-center">'
-          + '<div class="flex gap-1 justify-center">'
-          + '<button onclick="editInnovationTalk('+t.id+')" class="px-2 py-1 rounded text-xs bg-primary-500/20 text-primary-300 hover:bg-primary-500/30" title="Edit"><i class="fas fa-edit"></i></button>'
-          + '<button onclick="deleteInnovationTalk('+t.id+')" class="px-2 py-1 rounded text-xs bg-red-500/20 text-red-400 hover:bg-red-500/30" title="Delete"><i class="fas fa-trash"></i></button>'
-          + '</div></td></tr>';
-      }
+    function italkSetView(v) { italkView = v; italkRender(); }
 
-      function renderSection(title, icon, color, items) {
-        return '<div class="glass rounded-xl overflow-hidden mb-6">'
-          + '<div class="px-5 py-3 border-b border-white/5 flex items-center justify-between">'
-          + '<div class="flex items-center gap-2"><i class="fas fa-'+icon+' text-'+color+'-400"></i><h3 class="font-semibold text-sm">'+title+'</h3>'
-          + '<span class="text-xs text-gray-500">('+items.length+' talks)</span></div>'
-          + '<span class="text-[10px] text-gray-500">'+(title==='Morning Session'?'10:00 – 11:30 AM':'2:00 – 4:10 PM')+'</span>'
-          + '</div>'
-          + '<div class="overflow-x-auto"><table class="w-full text-sm">'
-          + '<thead><tr class="text-gray-500 text-xs uppercase border-b border-white/5">'
-          + '<th class="px-3 py-2 w-14 text-center">Slot</th>'
-          + '<th class="px-3 py-2 w-40">Time</th>'
-          + '<th class="px-3 py-2">Speaker(s)</th>'
-          + '<th class="px-3 py-2">Company</th>'
-          + '<th class="px-3 py-2">Topic</th>'
-          + '<th class="px-3 py-2 w-24 text-center">Status</th>'
-          + '<th class="px-3 py-2 w-24 text-center">Actions</th>'
-          + '</tr></thead><tbody>'
-          + items.map(renderTalkRow).join('')
-          + '</tbody></table></div></div>';
-      }
+    function italkRender() {
+      var el = document.getElementById('section-innovation');
+      if (!el) return;
+      var talks = italkList;
+      var timed = talks.filter(italkTimed);
+      var needDetails = talks.filter(function (t) { return t.status !== 'cancelled' && italkSpeakerGaps(t).length; });
+      var noTime = talks.filter(function (t) { return !italkTimed(t); });
+      var noEmail = talks.filter(function (t) { return !italkEmailFor(t).email; });
+      var shown = italkView === 'details' ? needDetails : italkView === 'time' ? noTime : italkView === 'email' ? noEmail : talks;
+      var old = talks.length && !('hall' in talks[0]);
 
-      document.getElementById('section-innovation').innerHTML =
-        '<div class="flex items-center justify-between mb-4 flex-wrap gap-3">'
-        + '<div class="flex gap-2 items-center">'
-        + '<span class="text-xs text-gray-400">'+talks.length+' talks total</span>'
-        + '<span class="text-xs text-amber-400"><i class="fas fa-sun mr-0.5"></i>'+morning.length+' morning</span>'
-        + '<span class="text-xs text-indigo-400"><i class="fas fa-moon mr-0.5"></i>'+afternoon.length+' afternoon</span>'
+      var tab = function (key, label, n) {
+        var on = italkView === key;
+        return '<button type="button" onclick="italkSetView(&quot;' + key + '&quot;)" class="px-3 py-1.5 rounded-lg text-xs font-medium transition '
+          + (on ? 'bg-primary-600 text-white' : 'glass hover:bg-white/10 text-gray-300') + '">' + label + ' <span class="opacity-70">' + n + '</span></button>';
+      };
+
+      // One section per day in time order, then talks with a time typed by hand, then
+      // talks with no time yet.
+      var sections = [];
+      var dayKeys = italkDays.map(function (d) { return d[0]; });
+      shown.forEach(function (t) { var d = t.starts_at ? String(t.starts_at).slice(0, 10) : ''; if (d && dayKeys.indexOf(d) < 0) dayKeys.push(d); });
+      dayKeys.forEach(function (d) {
+        var items = shown.filter(function (t) { return t.starts_at && String(t.starts_at).slice(0, 10) === d; })
+          .sort(function (a, b) { return String(a.starts_at).localeCompare(String(b.starts_at)) || (a.id - b.id); });
+        if (!items.length) return;
+        var meta = italkDays.find(function (x) { return x[0] === d; });
+        var first = items[0], last = items[items.length - 1];
+        var endMin = italkMins(String(last.starts_at).slice(11, 16)) + (Number(last.duration_min) || 0);
+        var span = italkClock(italkMins(String(first.starts_at).slice(11, 16))) + ' – ' + italkClock(endMin);
+        sections.push(italkSection((meta ? meta[1] + ' · ' + meta[2] : d), 'calendar-day', span, items, true));
+      });
+      var byHand = shown.filter(function (t) { return !t.starts_at && italkTimed(t); }).sort(function (a, b) { return (a.slot_no || 0) - (b.slot_no || 0); });
+      if (byHand.length) sections.push(italkSection('Time typed by hand', 'clock', 'Open each one and choose a day and time', byHand, false));
+      var untimed = shown.filter(function (t) { return !italkTimed(t); }).sort(function (a, b) { return (a.slot_no || 0) - (b.slot_no || 0) || (a.id - b.id); });
+      if (untimed.length) sections.push(italkSection('No time yet', 'hourglass-half', 'Give each a day, a time and a hall', untimed, false));
+
+      el.innerHTML =
+        (old ? '<div class="glass rounded-xl p-3 mb-4 text-xs text-amber-300 border border-amber-500/30"><i class="fas fa-triangle-exclamation mr-1.5"></i>Hall, speaker email and mobile can be saved once migration 0052 has been run on the database.</div>' : '')
+        + '<div class="flex items-center justify-between mb-3 flex-wrap gap-3">'
+        + '<div class="flex gap-3 items-center flex-wrap text-xs">'
+        + '<span class="text-gray-400">' + talks.length + ' talks</span>'
+        + '<span class="text-green-400"><i class="fas fa-clock mr-1"></i>' + timed.length + ' with a time</span>'
+        + '<span class="text-amber-400"><i class="fas fa-hourglass-half mr-1"></i>' + noTime.length + ' still need a time</span>'
+        + '<span class="text-rose-400"><i class="fas fa-user-pen mr-1"></i>' + needDetails.length + ' missing speaker details</span>'
         + '</div>'
-        + '<div class="flex gap-2">'
+        + '<div class="flex gap-2 flex-wrap">'
+        + '<button onclick="italkAskAll()" class="px-4 py-2 rounded-xl text-xs font-medium glass hover:bg-white/10 transition"><i class="fas fa-envelope mr-1.5 text-primary-400"></i>Ask everyone for missing details</button>'
         + '<button onclick="addInnovationTalk()" class="px-4 py-2 rounded-xl text-xs font-medium bg-primary-600 hover:bg-primary-500 text-white transition"><i class="fas fa-plus mr-1.5"></i>Add Talk</button>'
         + '</div></div>'
-        + renderSection('Morning Session', 'sun', 'amber', morning)
-        + renderSection('Afternoon Session', 'moon', 'indigo', afternoon);
+        + '<div class="flex gap-2 flex-wrap mb-4">'
+        + tab('all', 'All', talks.length) + tab('details', 'Missing speaker details', needDetails.length) + tab('time', 'No time yet', noTime.length) + tab('email', 'No email', noEmail.length)
+        + '</div>'
+        + (sections.length ? sections.join('') : '<div class="glass rounded-xl p-8 text-center text-sm text-gray-400">Nothing here.</div>');
+    }
+
+    function italkClock(mins) {
+      var h = Math.floor(mins / 60) % 24, m = mins % 60;
+      return (h % 12 || 12) + ':' + String(m).padStart(2, '0') + ' ' + (h >= 12 ? 'PM' : 'AM');
+    }
+
+    function italkSection(title, icon, sub, items, inDay) {
+      return '<div class="glass rounded-xl overflow-hidden mb-6">'
+        + '<div class="px-5 py-3 border-b border-white/5 flex items-center justify-between flex-wrap gap-2">'
+        + '<div class="flex items-center gap-2"><i class="fas fa-' + icon + ' text-primary-400"></i><h3 class="font-semibold text-sm">' + escH(title) + '</h3>'
+        + '<span class="text-xs text-gray-500">(' + items.length + ' talk' + (items.length === 1 ? '' : 's') + ')</span></div>'
+        + '<span class="text-[11px] text-gray-500">' + escH(sub) + '</span>'
+        + '</div>'
+        + '<div class="overflow-x-auto"><table class="w-full text-sm">'
+        + '<thead><tr class="text-gray-500 text-xs uppercase border-b border-white/5 text-left">'
+        + '<th class="px-3 py-2 w-36">Time</th>'
+        + '<th class="px-3 py-2 w-36">Hall</th>'
+        + '<th class="px-3 py-2">Speaker</th>'
+        + '<th class="px-3 py-2">Company</th>'
+        + '<th class="px-3 py-2">Topic</th>'
+        + '<th class="px-3 py-2 w-48">Still missing</th>'
+        + '<th class="px-3 py-2 w-24 text-center">Status</th>'
+        + '<th class="px-3 py-2 w-40 text-center">Actions</th>'
+        + '</tr></thead><tbody>'
+        + items.map(function (t) { return italkRow(t, inDay); }).join('')
+        + '</tbody></table></div></div>';
+    }
+
+    function italkRow(t, inDay) {
+      var statusColors = { confirmed: 'bg-green-500/20 text-green-400', tentative: 'bg-amber-500/20 text-amber-400', cancelled: 'bg-red-500/20 text-red-400' };
+      var sc = statusColors[t.status] || statusColors.confirmed;
+      var slot = String(t.time_slot || '');
+      var time = !italkTimed(t) ? '<span class="text-amber-400">Not set</span>'
+        : (inDay && slot.indexOf(' · ') > 0 ? escH(slot.split(' · ')[1]) : escH(slot));
+      var hall = italkHas(t.hall)
+        ? escH(t.hall) + (italkHallRooms[t.hall] ? '<div class="text-[10px] text-gray-500">' + escH(italkHallRooms[t.hall]) + '</div>' : '')
+        : '<span class="text-amber-400">Not set</span>';
+      var miss = italkMissing(t).filter(function (k) { return k !== 'time' && k !== 'hall'; });
+      var chips = miss.map(function (k) { return '<span class="inline-block px-1.5 py-0.5 mr-1 mb-1 rounded text-[10px] bg-amber-500/15 text-amber-400">' + escH(italkMissLabels[k] || k) + '</span>'; }).join('');
+      var asked = t.details_requested_at ? '<div class="text-[10px] text-gray-500 mt-0.5"><i class="fas fa-paper-plane mr-1"></i>Asked ' + escH(italkWhen(t.details_requested_at)) + '</div>' : '';
+      var em = italkEmailFor(t);
+      return '<tr class="hover:bg-white/[0.03] transition border-b border-white/5" id="italk-row-' + t.id + '">'
+        + '<td class="px-3 py-2.5 text-xs text-gray-300 whitespace-nowrap">' + time + '</td>'
+        + '<td class="px-3 py-2.5 text-xs text-gray-300">' + hall + '</td>'
+        + '<td class="px-3 py-2.5"><div class="flex items-center gap-2.5">' + italkPhoto(t)
+        + '<div class="min-w-0"><div class="font-medium text-sm">' + escH(t.speaker_name) + '</div>'
+        + (italkHas(t.speaker_title) ? '<div class="text-[11px] text-gray-400">' + escH(t.speaker_title) + '</div>' : '')
+        + (em.email ? '<div class="text-[10px] text-gray-500 truncate" title="' + escH(em.email) + '">' + escH(em.email) + (em.source === 'booth' ? ' (booth contact)' : '') + '</div>' : '')
+        + '</div></div></td>'
+        + '<td class="px-3 py-2.5 text-xs text-gray-400">' + escH(t.company) + '</td>'
+        + '<td class="px-3 py-2.5 text-xs text-gray-400">' + (italkHas(t.topic) ? escH(t.topic) : '<span class="text-amber-400">Not received</span>') + '</td>'
+        + '<td class="px-3 py-2.5">' + (chips || '<span class="text-[11px] text-green-400"><i class="fas fa-check mr-1"></i>Complete</span>') + asked + '</td>'
+        + '<td class="px-3 py-2.5 text-center"><span class="px-2 py-0.5 rounded-full text-[10px] font-medium ' + sc + '">' + escH(t.status || 'confirmed') + '</span></td>'
+        + '<td class="px-3 py-2.5 text-center"><div class="flex gap-1 justify-center">'
+        + '<button onclick="editInnovationTalk(' + t.id + ')" class="px-2 py-1 rounded text-xs bg-primary-500/20 text-primary-300 hover:bg-primary-500/30" title="Edit time, hall and details" aria-label="Edit"><i class="fas fa-edit"></i></button>'
+        + '<button onclick="italkAsk(' + t.id + ')" class="px-2 py-1 rounded text-xs bg-sky-500/20 text-sky-400 hover:bg-sky-500/30" title="Email the speaker for missing details" aria-label="Ask for details"><i class="fas fa-envelope"></i></button>'
+        + '<button onclick="italkAnnounce(' + t.id + ')" class="px-2 py-1 rounded text-xs bg-green-500/20 text-green-400 hover:bg-green-500/30" title="Announce this talk in the app" aria-label="Announce"><i class="fas fa-bullhorn"></i></button>'
+        + '<button onclick="deleteInnovationTalk(' + t.id + ')" class="px-2 py-1 rounded text-xs bg-red-500/20 text-red-400 hover:bg-red-500/30" title="Delete" aria-label="Delete"><i class="fas fa-trash"></i></button>'
+        + '</div></td></tr>';
+    }
+
+    // The add and edit form: day, start and end; hall; the speaker; the talk; notes.
+    function italkFormHTML(t) {
+      t = t || {};
+      var day = t.starts_at ? String(t.starts_at).slice(0, 10) : '';
+      var start = t.starts_at ? String(t.starts_at).slice(11, 16) : '';
+      var end = t.starts_at && t.duration_min ? italkClock24(italkMins(start) + Number(t.duration_min)) : '';
+      var inp = function (name, label, value, extra) {
+        return '<div><label class="text-xs text-gray-400 mb-1 block">' + label + '</label><input name="' + name + '" autocomplete="off" value="' + escH(value == null ? '' : value) + '" class="w-full px-3 py-2 rounded-lg text-sm" ' + (extra || '') + '></div>';
+      };
+      var area = function (name, label, value, rows, ph) {
+        return '<div><label class="text-xs text-gray-400 mb-1 block">' + label + '</label><textarea name="' + name + '" rows="' + rows + '" autocomplete="off" placeholder="' + escH(ph || '') + '" class="w-full px-3 py-2 rounded-lg text-sm">' + escH(t[name] || '') + '</textarea></div>';
+      };
+      var dayOpts = '<option value="">Not set yet</option>' + italkDays.map(function (d) { return '<option value="' + d[0] + '"' + (day === d[0] ? ' selected' : '') + '>' + d[1] + ' (' + d[2] + ')</option>'; }).join('');
+      if (day && !italkDays.some(function (d) { return d[0] === day; })) dayOpts += '<option value="' + escH(day) + '" selected>' + escH(day) + '</option>';
+      var photo = italkHas(t.speaker_photo_url)
+        ? '<div class="flex items-center gap-2 text-[11px] text-gray-400">' + italkPhoto(t) + 'Photo on file. New photos are added from the website&rsquo;s speaker list.</div>'
+        : '<div class="text-[11px] text-amber-400"><i class="fas fa-image mr-1"></i>No photo yet. Ask the speaker for one with the envelope button.</div>';
+      return '<form id="italk-form" class="space-y-3">'
+        + '<div class="grid grid-cols-3 gap-3">'
+        + '<div><label class="text-xs text-gray-400 mb-1 block">Day</label><select name="day" class="w-full px-3 py-2 rounded-lg text-sm">' + dayOpts + '</select></div>'
+        + inp('start', 'Starts', start, 'type="time"')
+        + inp('end', 'Ends', end, 'type="time"')
+        + '</div>'
+        + (!t.starts_at && italkTimed(t) ? '<p class="text-[11px] text-amber-300 -mt-1">Typed by hand earlier: ' + escH(t.time_slot) + '. Choose the day and times to replace it.</p>' : '')
+        + '<div class="grid grid-cols-2 gap-3">'
+        + inp('hall', 'Hall', t.id ? (t.hall || '') : 'Aryabhata Theatre', 'list="italk-hall-list" placeholder="Aryabhata Theatre"')
+        + '<div><label class="text-xs text-gray-400 mb-1 block">Status</label><select name="status" class="w-full px-3 py-2 rounded-lg text-sm">'
+        + ['confirmed', 'tentative', 'cancelled'].map(function (s) { return '<option value="' + s + '"' + ((t.status || 'confirmed') === s ? ' selected' : '') + '>' + s.charAt(0).toUpperCase() + s.slice(1) + '</option>'; }).join('')
+        + '</select></div></div>'
+        + '<datalist id="italk-hall-list">' + Object.keys(italkHallRooms).map(function (h) { return '<option value="' + escH(h) + '">' + escH(italkHallRooms[h]) + '</option>'; }).join('') + '</datalist>'
+        + '<div class="grid grid-cols-2 gap-3">' + inp('speaker_name', 'Speaker name *', t.speaker_name, 'required') + inp('speaker_title', 'Designation', t.speaker_title) + '</div>'
+        + '<div class="grid grid-cols-2 gap-3">' + inp('company', 'Company', t.company) + inp('topic', 'Topic', t.topic) + '</div>'
+        + '<div class="grid grid-cols-2 gap-3">' + inp('speaker_email', 'Speaker email', t.speaker_email, 'type="email"') + inp('speaker_phone', 'Mobile', t.speaker_phone, 'type="tel"') + '</div>'
+        + photo
+        + area('speaker_bio', 'Short bio (the host reads it out)', t.speaker_bio, 2, 'Two or three lines')
+        + area('showcase', 'What they will show', t.showcase, 2, 'The product or demo')
+        + area('notes', 'Notes (only the team sees these)', t.notes, 2, '')
+        + '<div class="flex gap-2 pt-2"><button type="submit" class="flex-1 py-2 rounded-xl text-sm font-medium bg-primary-600 hover:bg-primary-500 text-white transition">' + (t.id ? 'Save changes' : 'Add talk') + '</button>'
+        + '<button type="button" onclick="closeModal()" class="px-6 py-2 rounded-xl text-sm glass hover:bg-white/10 text-gray-300 transition">Cancel</button></div>'
+        + '</form>';
+    }
+    function italkClock24(mins) { var h = Math.floor(mins / 60) % 24, m = mins % 60; return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0'); }
+
+    // Reads the form. Returns null (after saying why) when it cannot be saved.
+    function italkReadForm(f, t) {
+      var g = function (n) { var x = f.elements[n]; return x ? String(x.value || '').trim() : ''; };
+      var data = {};
+      ['speaker_name', 'speaker_title', 'company', 'topic', 'hall', 'status', 'speaker_email', 'speaker_phone', 'speaker_bio', 'showcase', 'notes'].forEach(function (k) {
+        var v = g(k);
+        if (!t || String(t[k] == null ? '' : t[k]).trim() !== v) data[k] = v;
+      });
+      if (!g('speaker_name')) { toast('Type the name of the speaker.', 'error'); return null; }
+      var day = g('day'), st = g('start').slice(0, 5), en = g('end').slice(0, 5);
+      if (day || st || en) {
+        if (!day || !st || !en) { toast('Choose the day, the start and the end, or leave all three empty.', 'error'); return null; }
+        var a = italkMins(st), b = italkMins(en);
+        if (b <= a) { toast('The end time must be after the start time.', 'error'); return null; }
+        var startsAt = day + ' ' + st;
+        if (!t || t.starts_at !== startsAt || Number(t.duration_min) !== b - a) { data.starts_at = startsAt; data.duration_min = b - a; }
+        // Two talks in one hall at once is easy to type and hard to see afterwards.
+        var hall = g('hall');
+        var clash = italkList.filter(function (o) {
+          if (t && o.id === t.id) return false;
+          if (!o.starts_at || String(o.starts_at).slice(0, 10) !== day || String(o.hall || '') !== hall || o.status === 'cancelled') return false;
+          var oa = italkMins(String(o.starts_at).slice(11, 16)), ob = oa + (Number(o.duration_min) || 0);
+          return oa < b && a < ob;
+        });
+        if (clash.length && !confirm('This overlaps ' + clash.map(function (o) { return o.speaker_name + ' (' + o.time_slot + ')'; }).join(', ') + ' in the same hall. Save anyway?')) return null;
+      } else if (t && t.starts_at) {
+        data.starts_at = null;
+      }
+      return data;
+    }
+
+    function italkSavedToast(r, what) {
+      var ns = r && r.not_saved && r.not_saved.length ? ' Not saved until migration 0052 runs: ' + r.not_saved.join(', ') + '.' : '';
+      toast(what + ns, ns ? 'error' : 'success');
     }
 
     function addInnovationTalk() {
-      const box = document.getElementById('modal-box');
-      box.innerHTML =
-        '<div class="p-6"><h3 class="text-lg font-bold mb-4"><i class="fas fa-plus-circle text-primary-400 mr-2"></i>Add Innovation Talk</h3>'
-        + '<form id="add-italk-form" class="space-y-3">'
-        + '<div class="grid grid-cols-2 gap-3">'
-        + '<div><label class="text-xs text-gray-400 mb-1 block">Slot No.</label><input type="number" name="slot_no" autocomplete="off" class="w-full px-3 py-2 rounded-lg text-sm" required></div>'
-        + '<div><label class="text-xs text-gray-400 mb-1 block">Session</label><select name="session_type" class="w-full px-3 py-2 rounded-lg text-sm"><option>Morning</option><option>Afternoon</option></select></div>'
-        + '</div>'
-        + '<div><label class="text-xs text-gray-400 mb-1 block">Time Slot</label><input type="text" name="time_slot" autocomplete="off" placeholder="e.g. 10:00 – 10:10 AM" class="w-full px-3 py-2 rounded-lg text-sm" required></div>'
-        + '<div><label class="text-xs text-gray-400 mb-1 block">Speaker Name(s)</label><input type="text" name="speaker_name" autocomplete="off" class="w-full px-3 py-2 rounded-lg text-sm" required></div>'
-        + '<div><label class="text-xs text-gray-400 mb-1 block">Company</label><input type="text" name="company" autocomplete="off" class="w-full px-3 py-2 rounded-lg text-sm"></div>'
-        + '<div><label class="text-xs text-gray-400 mb-1 block">Topic / Title</label><input type="text" name="topic" autocomplete="off" class="w-full px-3 py-2 rounded-lg text-sm"></div>'
-        + '<div><label class="text-xs text-gray-400 mb-1 block">Status</label><select name="status" class="w-full px-3 py-2 rounded-lg text-sm"><option value="confirmed">Confirmed</option><option value="tentative">Tentative</option><option value="cancelled">Cancelled</option></select></div>'
-        + '<div><label class="text-xs text-gray-400 mb-1 block">Notes</label><textarea name="notes" autocomplete="off" rows="2" class="w-full px-3 py-2 rounded-lg text-sm"></textarea></div>'
-        + '<div class="flex gap-2 pt-2"><button type="submit" class="flex-1 py-2 rounded-xl text-sm font-medium bg-primary-600 hover:bg-primary-500 text-white transition">Add Talk</button>'
-        + '<button type="button" onclick="closeModal()" class="px-6 py-2 rounded-xl text-sm glass hover:bg-white/10 text-gray-300 transition">Cancel</button></div>'
-        + '</form></div>';
-      openModal();
-      document.getElementById('add-italk-form').addEventListener('submit', async (e) => {
+      openModal('<h3 class="text-lg font-bold mb-4"><i class="fas fa-plus-circle text-primary-400 mr-2"></i>Add Innovation Talk</h3>' + italkFormHTML(null));
+      document.getElementById('italk-form').addEventListener('submit', async function (e) {
         e.preventDefault();
-        const fd = new FormData(e.target);
-        const data = Object.fromEntries(fd.entries());
+        var data = italkReadForm(e.target, null);
+        if (!data) return;
         data.event_id = EID;
-        data.slot_no = parseInt(data.slot_no);
         try {
-          await api.post('/api/admin/innovation-talks', data);
-          toast('Talk added successfully', 'success');
+          var r = await api.post('/api/admin/innovation-talks', data);
+          italkSavedToast(r, 'Talk added');
           closeModal();
           loadInnovationTalks();
-        } catch(err) { toast('Failed to add talk: ' + err.message, 'error'); }
+        } catch (err) { toast('Could not add the talk: ' + err.message, 'error'); }
       });
     }
 
     async function editInnovationTalk(id) {
-      const talks = await api.get('/api/events/'+EID+'/innovation-talks');
-      const t = talks.find(x => x.id === id);
-      if (!t) { toast('Talk not found', 'error'); return; }
-      const box = document.getElementById('modal-box');
-      box.innerHTML =
-        '<div class="p-6"><h3 class="text-lg font-bold mb-4"><i class="fas fa-edit text-primary-400 mr-2"></i>Edit Innovation Talk #'+t.slot_no+'</h3>'
-        + '<form id="edit-italk-form" class="space-y-3">'
-        + '<div class="grid grid-cols-2 gap-3">'
-        + '<div><label class="text-xs text-gray-400 mb-1 block">Slot No.</label><input type="number" name="slot_no" autocomplete="off" value="'+t.slot_no+'" class="w-full px-3 py-2 rounded-lg text-sm" required></div>'
-        + '<div><label class="text-xs text-gray-400 mb-1 block">Session</label><select name="session_type" class="w-full px-3 py-2 rounded-lg text-sm"><option '+(t.session_type==='Morning'?'selected':'')+'>Morning</option><option '+(t.session_type==='Afternoon'?'selected':'')+'>Afternoon</option></select></div>'
-        + '</div>'
-        + '<div><label class="text-xs text-gray-400 mb-1 block">Time Slot</label><input type="text" name="time_slot" autocomplete="off" value="'+esc(t.time_slot)+'" class="w-full px-3 py-2 rounded-lg text-sm" required></div>'
-        + '<div><label class="text-xs text-gray-400 mb-1 block">Speaker Name(s)</label><input type="text" name="speaker_name" autocomplete="off" value="'+esc(t.speaker_name)+'" class="w-full px-3 py-2 rounded-lg text-sm" required></div>'
-        + '<div><label class="text-xs text-gray-400 mb-1 block">Company</label><input type="text" name="company" autocomplete="off" value="'+esc(t.company)+'" class="w-full px-3 py-2 rounded-lg text-sm"></div>'
-        + '<div><label class="text-xs text-gray-400 mb-1 block">Topic / Title</label><input type="text" name="topic" autocomplete="off" value="'+esc(t.topic||'')+'" class="w-full px-3 py-2 rounded-lg text-sm"></div>'
-        + '<div><label class="text-xs text-gray-400 mb-1 block">Status</label><select name="status" class="w-full px-3 py-2 rounded-lg text-sm"><option value="confirmed" '+(t.status==='confirmed'?'selected':'')+'>Confirmed</option><option value="tentative" '+(t.status==='tentative'?'selected':'')+'>Tentative</option><option value="cancelled" '+(t.status==='cancelled'?'selected':'')+'>Cancelled</option></select></div>'
-        + '<div><label class="text-xs text-gray-400 mb-1 block">Notes</label><textarea name="notes" autocomplete="off" rows="2" class="w-full px-3 py-2 rounded-lg text-sm">'+esc(t.notes||'')+'</textarea></div>'
-        + '<div class="flex gap-2 pt-2"><button type="submit" class="flex-1 py-2 rounded-xl text-sm font-medium bg-primary-600 hover:bg-primary-500 text-white transition">Save Changes</button>'
-        + '<button type="button" onclick="closeModal()" class="px-6 py-2 rounded-xl text-sm glass hover:bg-white/10 text-gray-300 transition">Cancel</button></div>'
-        + '</form></div>';
-      openModal();
-      document.getElementById('edit-italk-form').addEventListener('submit', async (e) => {
+      var t = italkFind(id);
+      if (!t) { toast('That talk is not on the list any more. Refresh the page.', 'error'); return; }
+      openModal('<h3 class="text-lg font-bold mb-1"><i class="fas fa-edit text-primary-400 mr-2"></i>Edit Innovation Talk</h3>'
+        + '<p class="text-xs text-gray-400 mb-4">' + escH(t.speaker_name) + (italkHas(t.company) ? ' &middot; ' + escH(t.company) : '') + '</p>' + italkFormHTML(t));
+      document.getElementById('italk-form').addEventListener('submit', async function (e) {
         e.preventDefault();
-        const fd = new FormData(e.target);
-        const data = Object.fromEntries(fd.entries());
-        data.slot_no = parseInt(data.slot_no);
-        // The row this form was filled from can arrive without every column: a caller
-        // that is not recognised as admin gets a trimmed shape. An empty box would then
-        // overwrite what is stored, so only send back fields the row actually carried.
-        Object.keys(data).forEach(function (k) { if (t[k] === undefined) delete data[k]; });
+        var data = italkReadForm(e.target, t);
+        if (!data) return;
+        if (!Object.keys(data).length) { closeModal(); toast('Nothing changed'); return; }
         try {
-          await api.patch('/api/admin/innovation-talks/'+id, data);
-          toast('Talk updated', 'success');
+          var r = await api.patch('/api/admin/innovation-talks/' + id, data);
+          italkSavedToast(r, 'Talk saved');
           closeModal();
           loadInnovationTalks();
-        } catch(err) { toast('Failed to update: ' + err.message, 'error'); }
+        } catch (err) { toast('Could not save: ' + err.message, 'error'); }
       });
     }
 
     async function deleteInnovationTalk(id) {
-      if (!confirm('Delete this innovation talk?')) return;
+      var t = italkFind(id);
+      if (!confirm('Delete the talk by ' + (t ? t.speaker_name : 'this speaker') + '? This cannot be undone.')) return;
       try {
-        await api.del('/api/admin/innovation-talks/'+id);
+        await api.del('/api/admin/innovation-talks/' + id);
         toast('Talk deleted', 'success');
         loadInnovationTalks();
-      } catch(err) { toast('Failed to delete: ' + err.message, 'error'); }
+      } catch (err) { toast('Failed to delete: ' + err.message, 'error'); }
+    }
+
+    // ---- Email a speaker for what is missing ----
+    function italkAsk(id) {
+      var t = italkFind(id);
+      if (!t) { toast('That talk is not on the list any more. Refresh the page.', 'error'); return; }
+      var em = italkEmailFor(t);
+      var gaps = italkSpeakerGaps(t);
+      var boxes = Object.keys(italkAskLabels).map(function (k) {
+        return '<label class="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" name="ask" value="' + k + '"' + (gaps.indexOf(k) >= 0 ? ' checked' : '') + '> ' + escH(italkAskLabels[k]) + '</label>';
+      }).join('');
+      openModal('<h3 class="text-lg font-bold mb-1"><i class="fas fa-envelope text-sky-400 mr-2"></i>Ask for missing details</h3>'
+        + '<p class="text-xs text-gray-400 mb-4">' + escH(t.speaker_name) + (italkHas(t.company) ? ' &middot; ' + escH(t.company) : '') + '</p>'
+        + '<form id="italk-ask-form" class="space-y-3" onsubmit="return false">'
+        + '<div><label class="text-xs text-gray-400 mb-1 block">Send to</label><input type="email" name="to" autocomplete="off" value="' + escH(em.email) + '" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="name@company.com">'
+        + '<p class="text-[11px] text-gray-500 mt-1">' + escH(em.note) + '</p></div>'
+        + '<label class="flex items-start gap-2 text-xs text-gray-400 cursor-pointer"><input type="checkbox" name="own" class="mt-0.5"' + (em.source === 'booth' ? '' : ' checked') + '> <span>This is the speaker&rsquo;s own email. The email greets them by name, and the address is kept on the talk. Untick it for a booth contact: the email then asks them to pass it on.</span></label>'
+        + '<div><p class="text-xs text-gray-400 mb-1">Ask for</p><div class="grid grid-cols-2 gap-2">' + boxes + '</div>'
+        + '<p class="text-[11px] text-gray-500 mt-1">Time and hall are yours to set. The email tells them what is set so far.</p></div>'
+        + '<div><label class="text-xs text-gray-400 mb-1 block">Anything else to ask (optional)</label><textarea name="note" rows="2" maxlength="600" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="For example: please send your slides by 18 Nov."></textarea></div>'
+        + (t.details_requested_at ? '<p class="text-[11px] text-amber-300"><i class="fas fa-paper-plane mr-1"></i>Already asked ' + escH(italkWhen(t.details_requested_at)) + (italkHas(t.details_requested_to) ? ', at ' + escH(t.details_requested_to) : '') + '.</p>' : '')
+        + '<div id="italk-ask-preview" class="hidden"><p id="italk-ask-subject" class="text-xs text-gray-400 mb-1"></p><iframe id="italk-ask-frame" title="Email preview" sandbox="" class="w-full rounded-lg border border-white/10 bg-white" style="height:420px"></iframe></div>'
+        + '<div class="flex gap-2 pt-1">'
+        + '<button type="button" id="italk-ask-send" onclick="italkAskSend(' + t.id + ', false)" class="flex-1 py-2 rounded-xl text-sm font-medium bg-primary-600 hover:bg-primary-500 text-white transition"><i class="fas fa-paper-plane mr-1.5"></i>Send email</button>'
+        + '<button type="button" onclick="italkAskSend(' + t.id + ', true)" class="px-4 py-2 rounded-xl text-sm glass hover:bg-white/10 text-gray-300 transition">Preview</button>'
+        + '<button type="button" onclick="closeModal()" class="px-4 py-2 rounded-xl text-sm glass hover:bg-white/10 text-gray-300 transition">Cancel</button>'
+        + '</div></form>');
+    }
+
+    function italkAskBody(f, preview) {
+      var items = Array.prototype.slice.call(f.querySelectorAll('input[name=ask]:checked')).map(function (x) { return x.value; });
+      var own = !!f.elements.own.checked;
+      return { to: String(f.elements.to.value || '').trim(), items: items, note: f.elements.note.value, to_speaker: own, save_email: own, preview: !!preview };
+    }
+
+    async function italkAskSend(id, preview) {
+      var f = document.getElementById('italk-ask-form');
+      if (!f) return;
+      var body = italkAskBody(f, preview);
+      if (!body.to) { toast('Type the email address to send it to.', 'error'); return; }
+      if (!body.items.length) { toast('Tick at least one thing to ask for.', 'error'); return; }
+      var btn = document.getElementById('italk-ask-send');
+      if (!preview && btn) { btn.disabled = true; btn.style.opacity = '0.6'; }
+      try {
+        var r = await api.post('/api/admin/innovation-talks/' + id + '/request-details', body);
+        if (preview) {
+          document.getElementById('italk-ask-preview').classList.remove('hidden');
+          document.getElementById('italk-ask-subject').textContent = 'To ' + r.to + ' · ' + r.subject;
+          document.getElementById('italk-ask-frame').srcdoc = r.html;
+          return;
+        }
+        toast('Email sent to ' + r.sent_to, 'success');
+        closeModal();
+        loadInnovationTalks();
+      } catch (err) {
+        toast('Could not send: ' + err.message, 'error');
+      } finally {
+        if (btn) { btn.disabled = false; btn.style.opacity = ''; }
+      }
+    }
+
+    // ---- Ask everyone at once: one email every few seconds, never a burst ----
+    function italkAskAll() {
+      var cand = italkList.filter(function (t) { return t.status !== 'cancelled' && italkSpeakerGaps(t).length; });
+      var withEmail = cand.filter(function (t) { return italkEmailFor(t).email; });
+      var noEmail = cand.filter(function (t) { return !italkEmailFor(t).email; });
+      var row = function (t) {
+        var em = italkEmailFor(t);
+        return '<tr class="border-b border-white/5"><td class="py-1.5 pr-2 text-xs">' + escH(t.speaker_name) + '<div class="text-[10px] text-gray-500">' + escH(t.company) + '</div></td>'
+          + '<td class="py-1.5 pr-2 text-[11px] text-gray-400">' + (em.email ? escH(em.email) + (em.source === 'booth' ? ' <span class="text-gray-500">(booth contact)</span>' : '') : '<span class="text-amber-400">No email</span>') + '</td>'
+          + '<td class="py-1.5 text-[11px] text-amber-400">' + italkSpeakerGaps(t).map(function (k) { return escH(italkAskLabels[k]); }).join(', ')
+          + (t.details_requested_at ? '<div class="text-[10px] text-gray-500">Asked ' + escH(italkWhen(t.details_requested_at)) + '</div>' : '') + '</td></tr>';
+      };
+      openModal('<h3 class="text-lg font-bold mb-1"><i class="fas fa-envelope text-sky-400 mr-2"></i>Ask everyone for missing details</h3>'
+        + '<p class="text-xs text-gray-400 mb-3">' + cand.length + ' speakers are missing details. ' + withEmail.length + ' have an email on file' + (noEmail.length ? '; ' + noEmail.length + ' do not (add it on the talk first)' : '') + '. Each gets one email listing only what is missing from their talk, sent one every 4 seconds from register@.</p>'
+        + '<label class="flex items-center gap-2 text-xs text-gray-400 mb-3 cursor-pointer"><input type="checkbox" id="italk-all-again"> Also email speakers who were already asked</label>'
+        + '<div class="max-h-72 overflow-y-auto mb-3"><table class="w-full">' + withEmail.concat(noEmail).map(row).join('') + '</table></div>'
+        + '<p id="italk-all-progress" class="text-xs text-gray-300 mb-3"></p>'
+        + '<div class="flex gap-2"><button type="button" id="italk-all-go" onclick="italkAskAllRun()" class="flex-1 py-2 rounded-xl text-sm font-medium bg-primary-600 hover:bg-primary-500 text-white transition"><i class="fas fa-paper-plane mr-1.5"></i>Send</button>'
+        + '<button type="button" onclick="italkBulkStop = true; closeModal()" class="px-4 py-2 rounded-xl text-sm glass hover:bg-white/10 text-gray-300 transition">Close</button></div>');
+    }
+
+    async function italkAskAllRun() {
+      var again = !!(document.getElementById('italk-all-again') || {}).checked;
+      var list = italkList.filter(function (t) { return t.status !== 'cancelled' && italkSpeakerGaps(t).length && italkEmailFor(t).email && (again || !t.details_requested_at); });
+      var prog = document.getElementById('italk-all-progress');
+      var go = document.getElementById('italk-all-go');
+      if (!list.length) { if (prog) prog.textContent = 'Nobody to email: everyone with an email has been asked already. Tick the box above to ask them again.'; return; }
+      if (!confirm('Send ' + list.length + ' email' + (list.length === 1 ? '' : 's') + ' now, one every 4 seconds?')) return;
+      italkBulkStop = false;
+      if (go) { go.disabled = true; go.style.opacity = '0.6'; }
+      var ok = 0, failed = [];
+      for (var i = 0; i < list.length; i++) {
+        if (italkBulkStop) break;
+        var t = list[i], em = italkEmailFor(t);
+        if (prog) prog.textContent = 'Sending ' + (i + 1) + ' of ' + list.length + ': ' + t.speaker_name + '...';
+        try {
+          await api.post('/api/admin/innovation-talks/' + t.id + '/request-details', { to: em.email, items: italkSpeakerGaps(t), to_speaker: em.source !== 'booth', save_email: em.source === 'team' });
+          ok++;
+          // Marked here too, so a second click before the list reloads cannot ask again.
+          t.details_requested_at = new Date().toISOString().slice(0, 19).replace('T', ' ');
+          t.details_requested_to = em.email;
+        } catch (err) { failed.push(t.speaker_name + ': ' + err.message); }
+        if (i < list.length - 1 && !italkBulkStop) await new Promise(function (res) { setTimeout(res, 4000); });
+      }
+      if (prog) prog.textContent = ok + ' sent' + (failed.length ? ', ' + failed.length + ' not sent (' + failed.join('; ') + ')' : '') + (italkBulkStop ? '. Stopped.' : '.');
+      if (go) { go.disabled = false; go.style.opacity = ''; }
+      toast(ok + ' email' + (ok === 1 ? '' : 's') + ' sent' + (failed.length ? ', ' + failed.length + ' failed' : ''), failed.length ? 'error' : 'success');
+      await loadInnovationTalks();
+    }
+
+    // ---- Announce a talk: the Announcements form, filled in, for the team to check ----
+    function italkAnnounce(id) {
+      var t = italkFind(id);
+      if (!t) { toast('That talk is not on the list any more. Refresh the page.', 'error'); return; }
+      openCreateAnnouncement();
+      var who = [t.speaker_name, t.speaker_title, t.company].filter(italkHas).join(', ');
+      var where = italkHas(t.hall) ? t.hall + (italkHallRooms[t.hall] ? ' (' + italkHallRooms[t.hall] + ')' : '') : '';
+      var when = italkTimed(t) ? t.time_slot : 'Time to be announced';
+      var title = 'Innovation Talk: ' + (italkHas(t.topic) ? t.topic : t.speaker_name);
+      var content = who + (italkHas(t.topic) ? ' on "' + String(t.topic).trim() + '"' : '') + '. ' + when + (where ? ', ' + where : '') + '.';
+      var ti = document.getElementById('af-title'), co = document.getElementById('af-content'), ty = document.getElementById('af-type');
+      if (ti) ti.value = title.slice(0, 200);
+      if (co) co.value = content;
+      if (ty) ty.value = 'general';
     }
 
     // ============ ADMIN STARTUP PITCH ============
