@@ -84,7 +84,8 @@
       "panel": [
         { "name": "Rajat Nigam", "org": "JioStar India" },
         { "name": "Simon David Hunter", "org": "Asian Screen Institute Singapore" },
-        { "name": "Saurabh Kushwah", "org": "BULLET Microdrama · ZEEL" }
+        { "name": "Saurabh Kushwah", "org": "BULLET Microdrama · ZEEL" },
+        { "name": "Pramod Prakash", "org": "Zee Entertainment Enterprises" }
       ] },
     { "hall": "bhabha", "day": 2, "start": "16:15", "end": "16:30", "type": "break", "label": "Tea", "title": "Hi-Tea Break" },
     { "hall": "bhabha", "day": 2, "start": "16:30", "end": "17:30", "type": "panel", "label": "Panel: Education", "track": "Education & Skills AI", "title": "Improving Learning Outcomes with AI: From Assessment to Measurable Impact", "note": "Powered by Assessfy.",

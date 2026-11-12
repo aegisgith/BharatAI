@@ -62,8 +62,10 @@ check('the moderator is marked, once, and comes last', (gov.match(/class="sch-ta
 const card = (name) => cards.find((c) => c.includes('>' + name + '<') || c.includes('>' + name + ' <')) || '';
 const kk = card('Shri K.K. Singh');
 check('a government speaker: photo, designation, department, and the Ministry logo', /images\/sched\/k-k-singh\.webp/.test(kk) && /sch-role">Joint Secretary</.test(kk) && /sch-org">Ministry of Electronics &amp; IT \(MeitY\), Government of India</.test(kk) && /images\/sched\/logo-meity\.webp/.test(kk), kk.slice(0, 300));
+const vm = card('Shri Vinamra Mishra');
+check('no logo on file: the organisation is named in words, and no logo is drawn', /sch-org">Ministry of MSME, Government of India</.test(vm) && !/sch-logo/.test(vm), vm.slice(0, 300));
 const ay = card('Shri Akshay Yadava');
-check('no logo on file: the organisation is named in words, and no logo is drawn', /sch-org">Unique Identification Authority of India \(UIDAI\)</.test(ay) && !/sch-logo/.test(ay), ay.slice(0, 300));
+check('a government body with its own logo shows it (UIDAI)', /sch-org">Unique Identification Authority of India \(UIDAI\)</.test(ay) && /images\/sched\/logo-uidai\.webp/.test(ay), ay.slice(0, 300));
 const sa = card('Sarosh Amaria');
 check('no photo on file: initials, with the designation and organisation', /sch-initials" aria-hidden="true">SA</.test(sa) && /sch-role">MD</.test(sa) && /sch-org">Tata Capital</.test(sa), sa.slice(0, 300));
 const kkAll = [...hall0.matchAll(/images\/sched\/k-k-singh\.webp\?v=([0-9a-f]{8})/g)].map((m) => m[1]);
