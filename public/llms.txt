@@ -213,8 +213,8 @@ Digital media partner: The Mainstream.
 - **Deepak Ramteke** (CEO & Founder, Kadeep.ai) — The Shift: From Software Testing to Engineering Release Confidence
 - **Taher Pepermintwala** (Partner, Envista Cyber Defence) — AI in Cybersecurity
 - **Aditi Saini** (Marketing Strategist, Aria Telecom) — Sovereign AI in Action: Building Secure, Customizable and Full-Stack AI for Indian Enterprises
-- **Selva** (Co-Founder & CEO, OliAI) — Building Intelligence Engine for Enterprises
-- **Aravind** (Co-Founder & CTO, OliAI) — Building Intelligence Engine for Enterprises
+- **Selva Soorya** (Co-Founder & CEO, OliAI) — Building Intelligence Engine for Enterprises
+- **Aravind Raj** (Co-Founder & CTO, OliAI) — Building Intelligence Engine for Enterprises
 - **Ashish Kumar Mishra** (CEO & MD, Asmadiya Technologies) — AI Innovation & Asmadiya products
 - **Shuvam Giri** (CTO, Asmadiya Technologies) — AI Innovation & Asmadiya products
 - **Azharuddin Khan** (Associate Manager, Tech and Strategy Office, Jade Global) — The importance of becoming AI-native in today's landscape

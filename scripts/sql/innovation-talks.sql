@@ -205,18 +205,18 @@ UPDATE innovation_talks SET speaker_photo_url = '/images/talks/aditi-saini.webp'
 WHERE event_id = 1 AND speaker_name = 'Aditi Saini' AND company = 'Aria Telecom' AND COALESCE(speaker_photo_url, '') = '';
 
 INSERT INTO innovation_talks (event_id, slot_no, session_type, time_slot, speaker_name, company, topic, status, speaker_title, speaker_photo_url, notes)
-SELECT 1, 29, 'Morning', 'To be announced', 'Selva', 'OliAI', 'Building Intelligence Engine for Enterprises', 'confirmed', 'Co-Founder & CEO', '/images/talks/selva.webp', 'Imported from the Innovation Talk sheet, 12 Oct 2026'
-WHERE NOT EXISTS (SELECT 1 FROM innovation_talks WHERE event_id = 1 AND speaker_name = 'Selva' AND company = 'OliAI');
+SELECT 1, 29, 'Morning', 'To be announced', 'Selva Soorya', 'OliAI', 'Building Intelligence Engine for Enterprises', 'confirmed', 'Co-Founder & CEO', '/images/talks/selva.webp', 'Imported from the Innovation Talk sheet, 12 Oct 2026'
+WHERE NOT EXISTS (SELECT 1 FROM innovation_talks WHERE event_id = 1 AND speaker_name = 'Selva Soorya' AND company = 'OliAI');
 
 UPDATE innovation_talks SET speaker_photo_url = '/images/talks/selva.webp'
-WHERE event_id = 1 AND speaker_name = 'Selva' AND company = 'OliAI' AND COALESCE(speaker_photo_url, '') = '';
+WHERE event_id = 1 AND speaker_name = 'Selva Soorya' AND company = 'OliAI' AND COALESCE(speaker_photo_url, '') = '';
 
 INSERT INTO innovation_talks (event_id, slot_no, session_type, time_slot, speaker_name, company, topic, status, speaker_title, speaker_photo_url, notes)
-SELECT 1, 30, 'Morning', 'To be announced', 'Aravind', 'OliAI', 'Building Intelligence Engine for Enterprises', 'confirmed', 'Co-Founder & CTO', '/images/talks/aravind.webp', 'Imported from the Innovation Talk sheet, 12 Oct 2026'
-WHERE NOT EXISTS (SELECT 1 FROM innovation_talks WHERE event_id = 1 AND speaker_name = 'Aravind' AND company = 'OliAI');
+SELECT 1, 30, 'Morning', 'To be announced', 'Aravind Raj', 'OliAI', 'Building Intelligence Engine for Enterprises', 'confirmed', 'Co-Founder & CTO', '/images/talks/aravind.webp', 'Imported from the Innovation Talk sheet, 12 Oct 2026'
+WHERE NOT EXISTS (SELECT 1 FROM innovation_talks WHERE event_id = 1 AND speaker_name = 'Aravind Raj' AND company = 'OliAI');
 
 UPDATE innovation_talks SET speaker_photo_url = '/images/talks/aravind.webp'
-WHERE event_id = 1 AND speaker_name = 'Aravind' AND company = 'OliAI' AND COALESCE(speaker_photo_url, '') = '';
+WHERE event_id = 1 AND speaker_name = 'Aravind Raj' AND company = 'OliAI' AND COALESCE(speaker_photo_url, '') = '';
 
 INSERT INTO innovation_talks (event_id, slot_no, session_type, time_slot, speaker_name, company, topic, status, speaker_title, speaker_photo_url, notes)
 SELECT 1, 31, 'Morning', 'To be announced', 'Ashish Kumar Mishra', 'Asmadiya Technologies', 'AI Innovation & Asmadiya products', 'confirmed', 'CEO & MD', '/images/talks/ashish-kumar-mishra.webp', 'Imported from the Innovation Talk sheet, 12 Oct 2026'
