@@ -4,7 +4,7 @@ import { Hono } from 'hono'
 // @ts-ignore - JSON import, bundled by Vite
 import SITE_PHOTO_FINGERPRINTS from './data/site-photo-fingerprints.json'
 import { cors } from 'hono/cors'
-import mp, { configureMarketplace, exhibitorOfCompanySession, DIRECTORY_SHOWN_SQL, INTERNAL_NOTE_RE } from './routes/marketplace'
+import mp, { configureMarketplace, exhibitorOfCompanySession, DIRECTORY_SHOWN_SQL, INTERNAL_NOTE_RE, settleTeam, syncStageSpeakers } from './routes/marketplace'
 import conference, { configureConference, draftFilterSql, venueSelectSql, fillVenues, speakerSlots } from './routes/conference'
 import talkSelf, { configureTalkSelf, talkDetailsLink } from './routes/talk-self'
 import { signinPayIntent } from './lib/signin-pay'
@@ -13547,6 +13547,9 @@ app.get('/api/uploads/*', async (c) => {
   obj.writeHttpMetadata(h)
   h.set('etag', obj.httpEtag)
   h.set('cache-control', 'public, max-age=31536000, immutable')
+  // Files that arrived by email (INBOX SUBMISSIONS): an SVG opened on its own must not
+  // run as a page of this site.
+  if (key.startsWith('submissions/') && !/^image\/(png|jpeg|webp)$|^application\/pdf$/.test(h.get('content-type') || '')) h.set('Content-Security-Policy', "sandbox; default-src 'none'; style-src 'unsafe-inline'")
   return new Response(obj.body, { headers: h })
 })
 
@@ -19640,6 +19643,574 @@ app.delete('/api/admin/startup-investors/:id', async (c) => {
   const id = c.req.param('id')
   await c.env.DB.prepare('DELETE FROM startup_investors WHERE id = ?').bind(id).run()
   return c.json({ success: true })
+})
+
+// ==================== INBOX SUBMISSIONS ====================
+//
+// The organiser, 12 Nov 2026: read the team's emails and put what clients send on the
+// site and in the app without anyone retyping it: logos, speakers' photos, the people
+// coming to a booth. Every team mailbox lands in AImailPilot's one inbox; its sweeper
+// (aimailpilot: server/services/bharatai-submission-sync.ts) pushes each email that
+// looks like one of those here, with its files, to POST /api/external/inbox-submissions
+// (the attendee-export secret). This block files it (0055), works out who sent it and
+// what it is for (the booth contact, someone on the team, the speaker, the same company
+// email, or a name in the words), and Admin -> Submissions applies it with one click:
+// the logo on the exhibitor, the photo on the talk or on the confirmed speaker, the
+// people on the exhibitor's team with their passes. A logo or photo is undone with one
+// click too. Applying automatically, per kind, is a switch that ships OFF: a logo is
+// public, and an email is only as trustworthy as its sender. The public website is
+// built from the repo, so it follows by `node scripts/pull-submissions.mjs`, which hands
+// the applied files to the generators. The screen is public/js/admin-submissions.js
+// (one global, SubDesk).
+const SUB_MAX_FILE = 8 * 1024 * 1024
+const SUB_MAX_TOTAL = 12 * 1024 * 1024
+const SUB_MAX_FILES = 8
+const SUB_EXT: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/svg+xml': 'svg', 'application/pdf': 'pdf' }
+const SUB_EXT_MIME: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', svg: 'image/svg+xml', pdf: 'application/pdf' }
+const SUB_NOT_YET = 'The inbox submissions table is not there yet. Run: npx wrangler d1 execute bharatai-production --remote --file=./migrations/0055_inbox_submissions.sql'
+const SUB_FREE_MAIL_RE = /^(gmail|googlemail|yahoo|ymail|rocketmail|hotmail|outlook|live|msn|rediffmail|icloud|me|aol|protonmail|proton|gmx)\.[a-z.]+$/i
+// Words that say nothing about which company it is.
+const SUB_GENERIC_WORDS = new Set(['the', 'and', 'india', 'global', 'tech', 'technologies', 'technology', 'solutions', 'solution', 'systems', 'system', 'labs', 'lab', 'pvt', 'ltd', 'private', 'limited', 'llp', 'inc', 'co', 'company', 'services', 'service', 'group', 'international', 'software', 'digital', 'consulting', 'consultancy', 'enterprises', 'enterprise', 'innovations', 'innovation', 'networks', 'network', 'infotech', 'info', 'business'])
+const SUB_EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/
+const SUB_MOBILE_RE = /(?:\+?91[\s-]?)?0?([6-9]\d{4}[\s-]?\d{5})(?!\d)/
+const SUB_HONORIFIC_RE = /^(dr|mr|mrs|ms|miss|prof|shri|smt|er|ca|adv)\.?\s+/i
+
+type SubPerson = { first_name: string; last_name: string; designation: string; email: string; mobile: string; line: string }
+type SubFile = { key: string; filename: string; mime: string; size: number; w: number; h: number; use: string; hash: string }
+type SubMatch = { id: number; name: string; detail: string; how: string; sure: boolean }
+type SubWorld = { exhibitors: any[]; booths: any[]; team: any[]; talks: any[]; speakers: any[] }
+
+// Plain words out of an email: tags stripped when it came as HTML, lines kept.
+function subText(raw: any, max = 20000): string {
+  let s = String(raw == null ? '' : raw)
+  if (/<(p|div|br|td|span|a|body|html|table)\b[^>]*>/i.test(s)) {
+    s = s.replace(/<style[\s\S]*?<\/style>/gi, ' ').replace(/<script[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<\/(p|div|tr|li|h[1-6]|table)>/gi, '\n').replace(/<br\s*\/?>/gi, '\n').replace(/<\/t[dh]>/gi, '\t').replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+  }
+  s = s.replace(/\r\n?/g, '\n').split('\n').map(l => l.replace(/[ \t]+$/, '')).join('\n').replace(/\n{3,}/g, '\n\n').trim()
+  return s.length > max ? s.slice(0, max) : s
+}
+// The writer's own words: above the quoted earlier emails.
+function subOwnWords(text: string): string {
+  const out: string[] = []
+  for (const line of String(text || '').split('\n')) {
+    const t = line.trim()
+    if (/^(on .{6,160} wrote:?$|from:\s|-{2,}\s*(original|forwarded) message|_{5,}|>|sent from my )/i.test(t)) break
+    out.push(line)
+  }
+  return out.join('\n')
+}
+// ... and above the sign-off, where the signature's names and numbers begin.
+function subBeforeSignoff(text: string): string {
+  // The words alone on their line: "Thanks for your mail." opens an email, "Thanks," ends one.
+  const m = String(text || '').search(/^[ \t]*(thanks( and regards| & regards)?|thank you|many thanks|regards|warm regards|with regards|best regards|kind regards|best wishes|best|sincerely|yours sincerely|cheers|thanking you)[ \t]*[,.!]*[ \t]*$/im)
+  return m >= 0 ? text.slice(0, m) : text
+}
+function subDomain(email: any): string {
+  const d = String(email || '').toLowerCase().trim().split('@')[1] || ''
+  return !d || SUB_FREE_MAIL_RE.test(d) ? '' : d
+}
+function subSiteDomain(url: any): string {
+  const m = String(url || '').toLowerCase().match(/^(?:https?:\/\/)?(?:www\.)?([a-z0-9.-]+\.[a-z]{2,})/)
+  return m ? m[1] : ''
+}
+function subNorm(s: any): string { return String(s || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim() }
+function subCompanyKeys(name: string): string[] { return subNorm(name).split(' ').filter(w => w.length >= 3 && !SUB_GENERIC_WORDS.has(w)) }
+function subPersonKey(name: string): string { return subNorm(String(name || '').replace(/\b(dr|mr|mrs|ms|prof|shri|smt)\.?\s+/gi, ' ')) }
+// Is this company named in these words? The whole name, or enough of its own words
+// (the first of them always), so "our Acme logo" finds Acme Robotics and "global" alone
+// finds nobody.
+function subMentions(text: string, company: string): boolean {
+  const t = ' ' + subNorm(text) + ' '
+  const full = subNorm(company)
+  if (full.length >= 4 && t.includes(' ' + full + ' ')) return true
+  const keys = subCompanyKeys(company)
+  if (!keys.length || keys[0].length < 4) return false
+  const hit = keys.filter(k => t.includes(' ' + k + ' '))
+  return hit.length >= Math.max(1, Math.ceil(keys.length / 2)) && hit.includes(keys[0])
+}
+function subMentionsPerson(text: string, name: string): boolean {
+  const t = ' ' + subNorm(text) + ' '
+  const k = subPersonKey(name)
+  if (k.length < 5) return false
+  if (t.includes(' ' + k + ' ')) return true
+  const w = k.split(' ')
+  return w.length >= 2 && w[0].length >= 3 && t.includes(' ' + w[0] + ' ' + w[w.length - 1] + ' ')
+}
+
+// People listed in the email, one per line: "Priya Nair - Marketing Head - priya@x.in -
+// 98200 12345", numbered or bulleted, commas or tabs (a table pasted from a sheet). A
+// line that is only a name is a sentence more often than a person, so it needs a
+// designation, an email or a mobile beside it. The admin edits the list before it is used.
+function subPeople(text: string): SubPerson[] {
+  const body = subBeforeSignoff(subOwnWords(text))
+  const out: SubPerson[] = []
+  const seen = new Set<string>()
+  const NOT_A_NAME = /^(please|kindly|find|attached|attaching|regards|thanks|thank|dear|hi|hello|hey|team|members|list|names|name|following|below|our|the|here|sharing|we|i|this|these|your|for|with|from|to|at|on|in|as|and|also|can|could|would|will|looking|hope|greetings|good|note|ps)$/i
+  for (const raw of body.split('\n')) {
+    const bulleted = /^\s*(?:[-*•▪·]|\d{1,2}[.)]|\(\d{1,2}\))\s+/.test(raw)
+    const tabbed = raw.trim().includes('\t')
+    const line = raw.replace(/^\s*(?:[-*•▪·]|\d{1,2}[.)]|\(\d{1,2}\))\s*/, '').trim()
+    if (!line || line.length > 200) continue
+    const email = (line.match(SUB_EMAIL_RE) || [''])[0].toLowerCase()
+    const mobM = line.replace(SUB_EMAIL_RE, ' ').match(SUB_MOBILE_RE)
+    const mobile = mobM ? mobM[1].replace(/[\s-]/g, '') : ''
+    let rest = line.replace(SUB_EMAIL_RE, ' ')
+    if (mobM) rest = rest.replace(mobM[0], ' ')
+    rest = rest.replace(/\b(name|email|e-mail|mail id|mail|mobile no|mobile|mob|phone|contact no|contact|designation|title|role)\s*[:.]\s*/gi, ' ')
+    // A hyphen separates only with a space beside it, so Anne-Marie stays one name.
+    const parts = rest.split(/\s*(?:[|,;:\t]|\s[-–—]\s*|[-–—]\s|\s{2,}|\(|\))\s*/).map(p => p.trim()).filter(Boolean)
+    if (!parts.length) continue
+    const name = parts[0].replace(SUB_HONORIFIC_RE, '').trim()
+    const words = name.split(/\s+/)
+    if (words.length < 2 || words.length > 4 || !words.every(w => /^[A-Za-z][A-Za-z.'-]*$/.test(w)) || NOT_A_NAME.test(words[0])) continue
+    // With an email or a mobile beside it, a name is a person. Without, only in a
+    // numbered or bulleted list or a table, written as a name is, with a designation.
+    if (!email && !mobile) {
+      if (!(bulleted || tabbed) || parts.length < 2 || !words.every(w => /^[A-Z]/.test(w))) continue
+    }
+    const designation = parts.slice(1).join(', ').replace(/\s{2,}/g, ' ').slice(0, 80)
+    const key = email || name.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push({ first_name: words[0], last_name: words.slice(1).join(' '), designation, email, mobile, line: raw.trim().slice(0, 200) })
+    if (out.length >= 30) break
+  }
+  return out
+}
+
+// What a file is for, from its name, kind and shape: a PDF or SVG is artwork, a wide
+// image is a logo, a tall one is a person.
+function subFileUse(filename: string, mime: string, w: number, h: number): string {
+  const f = String(filename || '').toLowerCase()
+  if (mime === 'application/pdf' || mime === 'image/svg+xml') return 'logo'
+  if (/logo|brand|wordmark|lockup|emblem/.test(f)) return 'logo'
+  if (/photo|headshot|portrait|passport|profile|\bdp\b|pic|selfie|img_|img-|dsc|whatsapp image|\.heic/.test(f)) return 'photo'
+  if (w && h) { if (w >= h * 1.6) return 'logo'; if (h > w) return 'photo' }
+  return ''
+}
+function subKind(subject: string, body: string, files: { filename: string; mime: string; use?: string }[], people: SubPerson[]): string {
+  const own = subBeforeSignoff(subOwnWords(body)).slice(0, 3000).toLowerCase()
+  const head = String(subject || '').toLowerCase()
+  const names = files.map(f => String(f.filename || '').toLowerCase()).join(' ')
+  const words = head + ' ' + own
+  const logoWord = /\blogos?\b/.test(words) || /logo/.test(names)
+  const photoWord = /\b(photos?|photographs?|headshots?|pictures?|portraits?|profile pic|passport size|selfie|dp)\b/.test(words) || /photo|headshot|portrait|passport|profile/.test(names)
+  const teamWord = /\b(team|members?|delegates?|representatives?|attendees?|participants?|nominees?|staff|names?|passes?|badges?|lanyards?|colleagues?)\b/.test(words)
+  const uses = files.map(f => f.use || '')
+  if (people.length >= 2 && teamWord) return 'team'
+  if (people.length >= 3) return 'team'
+  if (logoWord && !photoWord) return 'logo'
+  if (photoWord && !logoWord) return 'photo'
+  if (logoWord && photoWord) return uses.filter(u => u === 'photo').length > uses.filter(u => u === 'logo').length ? 'photo' : 'logo'
+  if (people.length >= 1 && teamWord) return 'team'
+  if (uses.includes('logo') && !uses.includes('photo')) return 'logo'
+  if (uses.includes('photo')) return 'photo'
+  if (/\b(topic|bio|abstract|designation|synopsis|title of (the )?talk|presentation title|talk title)\b/.test(words)) return 'details'
+  return 'other'
+}
+// What the email's own words ask for, above the sign-off and the quoted emails.
+function subSays(subject: string, body: string): { logo: boolean; photo: boolean } {
+  const words = String(subject || '').toLowerCase() + ' ' + subBeforeSignoff(subOwnWords(body)).slice(0, 3000).toLowerCase()
+  return { logo: /\blogos?\b/.test(words), photo: /\b(photos?|photographs?|headshots?|pictures?|portraits?|profile pic|passport size)\b/.test(words) }
+}
+// Width and height from the file's own header (PNG, JPEG, WebP); 0 when unknown.
+function subImageSize(b: Uint8Array, mime: string): { w: number; h: number } {
+  try {
+    if (mime === 'image/png' && b.length > 24 && b[0] === 0x89 && b[1] === 0x50) {
+      const dv = new DataView(b.buffer, b.byteOffset, b.byteLength)
+      return { w: dv.getUint32(16), h: dv.getUint32(20) }
+    }
+    if (mime === 'image/jpeg' && b.length > 4 && b[0] === 0xff && b[1] === 0xd8) {
+      let i = 2
+      while (i + 9 < b.length) {
+        if (b[i] !== 0xff) { i++; continue }
+        const marker = b[i + 1]
+        if (marker === 0xff) { i++; continue }
+        if (marker === 0xd8 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) { i += 2; continue }
+        const len = (b[i + 2] << 8) | b[i + 3]
+        if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+          return { h: (b[i + 5] << 8) | b[i + 6], w: (b[i + 7] << 8) | b[i + 8] }
+        }
+        i += 2 + len
+      }
+    }
+    if (mime === 'image/webp' && b.length > 30 && String.fromCharCode(b[8], b[9], b[10], b[11]) === 'WEBP') {
+      const fourcc = String.fromCharCode(b[12], b[13], b[14], b[15])
+      if (fourcc === 'VP8X') return { w: 1 + (b[24] | (b[25] << 8) | (b[26] << 16)), h: 1 + (b[27] | (b[28] << 8) | (b[29] << 16)) }
+      if (fourcc === 'VP8L') { const bits = b[21] | (b[22] << 8) | (b[23] << 16) | (b[24] << 24); return { w: (bits & 0x3fff) + 1, h: ((bits >> 14) & 0x3fff) + 1 } }
+      if (fourcc === 'VP8 ') return { w: (b[26] | (b[27] << 8)) & 0x3fff, h: (b[28] | (b[29] << 8)) & 0x3fff }
+    }
+  } catch { /* not a picture we can read; the admin sees it anyway */ }
+  return { w: 0, h: 0 }
+}
+
+async function subWorld(c: any, eventId: number): Promise<SubWorld> {
+  // A table or column that is not there yet (0050, 0052) reads as nothing known, never as an error.
+  const q = async (sql: string, older?: string): Promise<any[]> => {
+    try { return (((await c.env.DB.prepare(sql).bind(eventId).all()) || {}).results || []) as any[] }
+    catch { if (!older) return []; try { return (((await c.env.DB.prepare(older).bind(eventId).all()) || {}).results || []) as any[] } catch { return [] } }
+  }
+  return {
+    exhibitors: await q('SELECT id, company_name, contact_email, website_url, logo_url FROM exhibitors WHERE event_id = ? ORDER BY company_name'),
+    booths: await q("SELECT exhibitor_id, company_name, email FROM booth_allocations WHERE event_id = ? AND status = 'confirmed' AND exhibitor_id IS NOT NULL"),
+    team: await q('SELECT exhibitor_id, email, first_name, last_name FROM exhibitor_team WHERE event_id = ?'),
+    talks: await q("SELECT id, speaker_name, company, speaker_email, exhibitor_id, speaker_photo_url FROM innovation_talks WHERE event_id = ? AND status <> 'cancelled' ORDER BY speaker_name",
+      "SELECT id, speaker_name, company, '' AS speaker_email, exhibitor_id, speaker_photo_url FROM innovation_talks WHERE event_id = ? AND status <> 'cancelled' ORDER BY speaker_name"),
+    speakers: await q('SELECT id, name, organisation, email, photo_url FROM speakers WHERE event_id = ? AND is_published = 1 ORDER BY sort_order, name'),
+  }
+}
+// Who an email is from and for. Sure: the sender's address is on file as the booth
+// contact, someone on the team, or the speaker. Likely: the same company email, or the
+// company or person named in the words. The admin sees the reason beside each guess.
+function subMatch(sub: { from_email: string; from_name: string; subject: string; body: string; filenames: string[] }, world: SubWorld): { exhibitors: SubMatch[]; talks: SubMatch[]; speakers: SubMatch[] } {
+  const from = String(sub.from_email || '').toLowerCase().trim()
+  const domain = subDomain(from)
+  const text = [sub.from_name, sub.subject, subBeforeSignoff(subOwnWords(sub.body)).slice(0, 4000), (sub.filenames || []).join(' ')].join(' \n ')
+  const ex: SubMatch[] = []; const tk: SubMatch[] = []; const sp: SubMatch[] = []
+  const addEx = (e: any, how: string, sure: boolean) => { if (e && !ex.some(x => x.id === e.id)) ex.push({ id: e.id, name: e.company_name, detail: '', how, sure }) }
+  const addTk = (t: any, how: string, sure: boolean) => { if (t && !tk.some(x => x.id === t.id)) tk.push({ id: t.id, name: t.speaker_name, detail: t.company || '', how, sure }) }
+  const addSp = (s: any, how: string, sure: boolean) => { if (s && !sp.some(x => x.id === s.id)) sp.push({ id: s.id, name: s.name, detail: s.organisation || '', how, sure }) }
+  const exOfTalk = (t: any) => (t.exhibitor_id ? world.exhibitors.find(x => x.id === t.exhibitor_id) : null) || world.exhibitors.find(x => subNorm(x.company_name) === subNorm(t.company))
+  if (from) {
+    for (const e of world.exhibitors) if (String(e.contact_email || '').toLowerCase() === from) addEx(e, 'the booth contact', true)
+    for (const b of world.booths) if (String(b.email || '').toLowerCase() === from) addEx(world.exhibitors.find(x => x.id === b.exhibitor_id), 'booked the booth', true)
+    for (const m of world.team) if (String(m.email || '').toLowerCase() === from) addEx(world.exhibitors.find(x => x.id === m.exhibitor_id), 'on the team as ' + [m.first_name, m.last_name].join(' ').trim(), true)
+    for (const t of world.talks) if (String(t.speaker_email || '').toLowerCase() === from) { addTk(t, 'the speaker', true); addEx(exOfTalk(t), 'speaks for them', true) }
+    for (const s of world.speakers) if (String(s.email || '').toLowerCase() === from) addSp(s, 'the speaker', true)
+  }
+  if (domain) {
+    for (const e of world.exhibitors) if (subDomain(e.contact_email) === domain || subSiteDomain(e.website_url) === domain) addEx(e, 'same company email', false)
+    for (const b of world.booths) if (subDomain(b.email) === domain) addEx(world.exhibitors.find(x => x.id === b.exhibitor_id), 'same company email', false)
+    for (const m of world.team) if (subDomain(m.email) === domain) addEx(world.exhibitors.find(x => x.id === m.exhibitor_id), 'same company email as the team', false)
+    for (const t of world.talks) if (subDomain(t.speaker_email) === domain) addTk(t, 'same company email', false)
+    for (const s of world.speakers) if (subDomain(s.email) === domain) addSp(s, 'same company email', false)
+  }
+  for (const e of world.exhibitors) if (subMentions(text, e.company_name)) addEx(e, 'named in the email', false)
+  for (const t of world.talks) if (subMentionsPerson(text, t.speaker_name)) addTk(t, 'named in the email', false)
+  for (const s of world.speakers) if (subMentionsPerson(text, s.name)) addSp(s, 'named in the email', false)
+  // The known exhibitor's own stage talk: a photo from them is usually for it.
+  for (const e of ex.filter(x => x.sure)) for (const t of world.talks) if (t.exhibitor_id === e.id || subNorm(t.company) === subNorm(e.name)) addTk(t, 'speaks for ' + e.name, false)
+  return { exhibitors: ex.slice(0, 6), talks: tk.slice(0, 6), speakers: sp.slice(0, 6) }
+}
+function subParse(row: any) {
+  const j = (s: any, d: any) => { try { const v = JSON.parse(String(s || '')); return v == null ? d : v } catch { return d } }
+  return { ...row, attachments: j(row.attachments, []), matches: j(row.matches, {}), applied: j(row.applied, []) }
+}
+async function subAutoSettings(c: any): Promise<{ logo: boolean; photo: boolean }> {
+  try {
+    const r = await c.env.DB.prepare("SELECT value FROM app_settings WHERE key = 'inbox_submissions_auto'").first() as any
+    const v = JSON.parse(String(r?.value || '{}'))
+    return { logo: !!v.logo, photo: !!v.photo }
+  } catch { return { logo: false, photo: false } }
+}
+async function subRow(c: any, id: any): Promise<any | null> {
+  const r = await c.env.DB.prepare('SELECT * FROM inbox_submissions WHERE id = ?').bind(parseInt(String(id), 10) || 0).first()
+  return r ? subParse(r) : null
+}
+async function subSaveApplied(c: any, sub: any, applied: any[], by: string) {
+  const live = applied.some(e => !e.undone)
+  await c.env.DB.prepare('UPDATE inbox_submissions SET applied = ?, status = ?, decided_by = ?, decided_at = ? WHERE id = ?')
+    .bind(JSON.stringify(applied), live ? 'applied' : 'new', by, new Date().toISOString(), sub.id).run()
+}
+// One decision carried out. A logo goes on the exhibitor as an absolute URL (the app's
+// card only trusts http links); a photo on the talk or the speaker as the uploads path
+// the app already shows; people onto the team, with their passes settled the way the
+// exhibitor's own dashboard does it.
+async function subApply(c: any, sub: any, a: any, by: string): Promise<{ ok: true; entry: any } | { error: string; status: number }> {
+  const files: SubFile[] = Array.isArray(sub.attachments) ? sub.attachments : []
+  const now = new Date().toISOString()
+  const what = String(a?.what || '')
+  const who = by === 'automatic' ? { actor: 'automatic', kind: 'system' } : undefined
+  const pick = (() => { const i = parseInt(String(a?.file), 10); return Number.isInteger(i) && files[i] ? { i, f: files[i] } : null })()
+  if (what === 'logo') {
+    if (!pick) return { error: 'Choose which file is the logo.', status: 400 }
+    if (pick.f.mime === 'application/pdf') return { error: 'The app cannot show a PDF as a logo. Save it as a PNG first; the website generator can take the PDF.', status: 400 }
+    const id = parseInt(String(a.exhibitor_id), 10)
+    const ex = id ? await c.env.DB.prepare('SELECT id, company_name, logo_url FROM exhibitors WHERE id = ?').bind(id).first() as any : null
+    if (!ex) return { error: 'Choose the exhibitor the logo belongs to.', status: 400 }
+    let origin = 'https://bharataiinnovation.com'
+    try { origin = new URL(c.req.url).origin } catch { /* the default host */ }
+    const url = origin + '/api/uploads/' + pick.f.key
+    await c.env.DB.prepare('UPDATE exhibitors SET logo_url = ? WHERE id = ?').bind(url, ex.id).run()
+    await audit(c, 'submission.apply', 'submission', sub.id, { what, exhibitor_id: ex.id, company_name: ex.company_name, file: pick.f.filename }, who)
+    return { ok: true, entry: { what, target: ex.company_name, exhibitor_id: ex.id, file: pick.i, filename: pick.f.filename, url, prev: String(ex.logo_url || ''), at: now, by } }
+  }
+  if (what === 'talk_photo' || what === 'speaker_photo') {
+    if (!pick) return { error: 'Choose which file is the photo.', status: 400 }
+    if (pick.f.mime === 'application/pdf' || pick.f.mime === 'image/svg+xml') return { error: 'A photo has to be a JPEG, PNG or WebP. Save the picture out of this file first.', status: 400 }
+    const url = '/api/uploads/' + pick.f.key
+    if (what === 'talk_photo') {
+      const id = parseInt(String(a.talk_id), 10)
+      const t = id ? await c.env.DB.prepare('SELECT id, speaker_name, company, speaker_photo_url FROM innovation_talks WHERE id = ?').bind(id).first() as any : null
+      if (!t) return { error: 'Choose whose talk the photo is for.', status: 400 }
+      await c.env.DB.prepare('UPDATE innovation_talks SET speaker_photo_url = ? WHERE id = ?').bind(url, t.id).run()
+      await audit(c, 'submission.apply', 'submission', sub.id, { what, talk_id: t.id, speaker_name: t.speaker_name, file: pick.f.filename }, who)
+      return { ok: true, entry: { what, target: `${t.speaker_name}${t.company ? ' (' + t.company + ')' : ''}`, talk_id: t.id, file: pick.i, filename: pick.f.filename, url, prev: String(t.speaker_photo_url || ''), at: now, by } }
+    }
+    const id = parseInt(String(a.speaker_id), 10)
+    const s = id ? await c.env.DB.prepare('SELECT id, name, organisation, photo_url FROM speakers WHERE id = ?').bind(id).first() as any : null
+    if (!s) return { error: 'Choose which speaker the photo is of.', status: 400 }
+    await c.env.DB.prepare('UPDATE speakers SET photo_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').bind(url, s.id).run()
+    await audit(c, 'submission.apply', 'submission', sub.id, { what, speaker_id: s.id, name: s.name, file: pick.f.filename }, who)
+    return { ok: true, entry: { what, target: `${s.name}${s.organisation ? ' (' + s.organisation + ')' : ''}`, speaker_id: s.id, file: pick.i, filename: pick.f.filename, url, prev: String(s.photo_url || ''), at: now, by } }
+  }
+  if (what === 'team') {
+    const id = parseInt(String(a.exhibitor_id), 10)
+    const ex = id ? await c.env.DB.prepare('SELECT id, company_name, event_id FROM exhibitors WHERE id = ?').bind(id).first() as any : null
+    if (!ex) return { error: 'Choose the exhibitor these people belong to.', status: 400 }
+    const people = Array.isArray(a.people) ? a.people.slice(0, 30) : []
+    const added: any[] = []; const skipped: string[] = []
+    for (const p of people) {
+      const first = String(p?.first_name || '').trim().slice(0, 60), last = String(p?.last_name || '').trim().slice(0, 60)
+      if (!first) continue
+      const email = String(p?.email || '').trim().toLowerCase().slice(0, 200)
+      if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { skipped.push(`${first} ${last}: the email does not look right`); continue }
+      const mobile = String(p?.mobile || '').replace(/[^\d+]/g, '').slice(0, 20)
+      try {
+        const r = await c.env.DB.prepare('INSERT INTO exhibitor_team (event_id, exhibitor_id, first_name, last_name, designation, company, email, mobile, at_booth, speaker, added_by) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
+          .bind(ex.event_id, ex.id, first, last, String(p?.designation || '').trim().slice(0, 120), ex.company_name, email, mobile, p?.at_booth === false ? 0 : 1, p?.speaker ? 1 : 0, 'inbox:' + by).run()
+        added.push({ id: r.meta.last_row_id, name: `${first} ${last}`.trim(), email })
+      } catch (e: any) {
+        if (/no such table/i.test(String(e?.message || ''))) return { error: 'Exhibitor teams are not set up on this server yet (migration 0050), so nobody was added.', status: 409 }
+        skipped.push(`${first} ${last} is already on a team`)
+      }
+    }
+    if (!added.length) return { error: skipped.length ? skipped.join('; ') : 'Tick at least one person.', status: 400 }
+    try { await settleTeam(c, ex); await syncStageSpeakers(c, ex.id) } catch { /* their passes are settled when the team is next opened */ }
+    await audit(c, 'submission.apply', 'submission', sub.id, { what, exhibitor_id: ex.id, company_name: ex.company_name, added: added.map(x => x.name), skipped }, who)
+    return { ok: true, entry: { what, target: ex.company_name, exhibitor_id: ex.id, people: added, skipped, at: now, by } }
+  }
+  return { error: 'That is not something this screen can do.', status: 400 }
+}
+// On arrival, when the switch for its kind is on and nothing is in doubt: the sender is
+// the booth contact or the speaker, the email's own words say what it is, and there is
+// exactly one file of that use. A wide picture with no word about a logo is a
+// signature more often than a submission, so it waits for a person.
+async function subAutoApply(c: any, sub: any, auto: { logo: boolean; photo: boolean }, says: { logo: boolean; photo: boolean }): Promise<boolean> {
+  const files: SubFile[] = sub.attachments || []
+  const m = sub.matches || {}
+  const only = (use: string) => { const idx = files.map((f, i) => (f.use === use || (files.length === 1 && f.use === '') ? i : -1)).filter(i => i >= 0); return idx.length === 1 ? idx[0] : -1 }
+  let a: any = null
+  if (auto.logo && sub.kind === 'logo' && says.logo) {
+    const e = (m.exhibitors || []).find((x: SubMatch) => x.sure); const f = only('logo')
+    if (e && f >= 0 && files[f].mime !== 'application/pdf') a = { what: 'logo', exhibitor_id: e.id, file: f }
+  } else if (auto.photo && sub.kind === 'photo' && says.photo) {
+    const f = only('photo')
+    const t = (m.talks || []).find((x: SubMatch) => x.sure && x.how === 'the speaker')
+    const s = (m.speakers || []).find((x: SubMatch) => x.sure)
+    if (f >= 0 && t) a = { what: 'talk_photo', talk_id: t.id, file: f }
+    else if (f >= 0 && s) a = { what: 'speaker_photo', speaker_id: s.id, file: f }
+  }
+  if (!a) return false
+  const r = await subApply(c, sub, a, 'automatic')
+  if (!('ok' in r)) return false
+  await subSaveApplied(c, sub, [r.entry], 'automatic')
+  return true
+}
+
+// AImailPilot's sweeper posts one email at a time, with its files as base64. Same
+// secret as the attendee export: the two sides are one trust.
+app.post('/api/external/inbox-submissions', async (c) => {
+  const expected = c.env.ATTENDEE_EXPORT_SECRET || ''
+  if (!expected) return c.json({ error: 'export endpoint not configured' }, 500)
+  if ((c.req.header('Authorization') || '') !== `Bearer ${expected}`) return c.json({ error: 'unauthorized' }, 401)
+  let b: any
+  try { b = await c.req.json() } catch { return c.json({ error: 'invalid json' }, 400) }
+  const sourceId = String(b?.source_id || '').trim().slice(0, 200)
+  if (!sourceId) return c.json({ error: 'source_id is required' }, 400)
+  const source = String(b.source || 'aimailpilot').replace(/[^a-z0-9_-]/gi, '').slice(0, 40) || 'aimailpilot'
+  const eventId = Math.max(1, parseInt(String(b.event_id || '1'), 10) || 1)
+  let existing: any
+  try { existing = await c.env.DB.prepare('SELECT id, status FROM inbox_submissions WHERE source = ? AND source_id = ?').bind(source, sourceId).first() }
+  catch (e: any) { if (/no such table/i.test(String(e?.message || ''))) return c.json({ error: SUB_NOT_YET }, 503); throw e }
+  if (existing) return c.json({ ok: true, status: 'duplicate', id: existing.id })
+  const incoming = Array.isArray(b.attachments) ? b.attachments.slice(0, SUB_MAX_FILES) : []
+  const decoded: { bytes: Uint8Array; filename: string; mime: string; hash: string }[] = []
+  let total = 0
+  for (const f of incoming) {
+    // Plain characters only, and never two dots together: the name becomes part of the key.
+    const filename = String(f?.filename || 'file').replace(/[^A-Za-z0-9._ ()-]+/g, '_').replace(/\.{2,}/g, '.').replace(/^[._ ]+/, '').trim().slice(0, 120) || 'file'
+    const ext = (filename.toLowerCase().match(/\.([a-z0-9]+)$/) || ['', ''])[1]
+    let mime = String(f?.mime || '').toLowerCase().split(';')[0].trim()
+    if (!SUB_EXT[mime]) mime = SUB_EXT_MIME[ext] || ''
+    if (!mime) continue // a document, a zip: not a kind of file this screen uses
+    const data = String(f?.data || '')
+    if (!data) continue
+    let bytes: Uint8Array
+    try { const bin = atob(data); bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i) } catch { continue }
+    if (bytes.length > SUB_MAX_FILE) return c.json({ error: `${filename} is larger than 8 MB` }, 413)
+    if (bytes.length < 200) continue
+    total += bytes.length
+    if (total > SUB_MAX_TOTAL) return c.json({ error: 'the files together are larger than 12 MB' }, 413)
+    const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))
+    const hash = Array.from(digest).map(x => x.toString(16).padStart(2, '0')).join('')
+    if (decoded.some(d => d.hash === hash)) { total -= bytes.length; continue }
+    decoded.push({ bytes, filename, mime, hash })
+  }
+  const subject = String(b.subject || '').slice(0, 300)
+  const body = subText(b.text || b.body || '')
+  const fromEmail = String(b.from_email || '').toLowerCase().trim().slice(0, 200)
+  const fromName = String(b.from_name || '').slice(0, 120)
+  const people = subPeople(body)
+  const threadId = String(b.thread_id || '').slice(0, 200)
+  // A picture this sender (or this thread) already sent is the signature, or an earlier
+  // email quoted again: it was filed the first time.
+  const seen = new Set<string>()
+  try {
+    const earlier = ((await c.env.DB.prepare("SELECT attachments FROM inbox_submissions WHERE from_email = ? OR (thread_id <> '' AND thread_id = ?) ORDER BY id DESC LIMIT 40").bind(fromEmail, threadId).all()).results || []) as any[]
+    for (const r of earlier) for (const f of subParse(r).attachments) if (f?.hash) seen.add(String(f.hash))
+  } catch { /* nothing earlier to compare with */ }
+  const fresh = decoded.filter(d => !seen.has(d.hash))
+  const metas = fresh.map(d => { const { w, h } = subImageSize(d.bytes, d.mime); return { ...d, w, h, use: subFileUse(d.filename, d.mime, w, h) } })
+  const kind = subKind(subject, body, metas, people)
+  if (!metas.length && kind !== 'team' && kind !== 'details') return c.json({ ok: true, status: 'ignored', reason: 'no files to use' })
+  if (metas.length && !c.env.UPLOADS) return c.json({ error: 'uploads not configured' }, 503)
+  const folder = 'submissions/' + new Date().toISOString().slice(0, 10).replace(/-/g, '') + '-' + (sourceId.replace(/[^A-Za-z0-9_-]+/g, '').slice(0, 40) || 'x')
+  const stored: SubFile[] = []
+  for (let i = 0; i < metas.length; i++) {
+    const m = metas[i]
+    const safe = m.filename.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/\.{2,}/g, '.').replace(/^[-.]+|-+$/g, '') || ('file.' + SUB_EXT[m.mime])
+    const key = `${folder}/${i + 1}-${safe}`
+    await c.env.UPLOADS.put(key, m.bytes, { httpMetadata: { contentType: m.mime, cacheControl: 'public, max-age=31536000' } })
+    stored.push({ key, filename: m.filename, mime: m.mime, size: m.bytes.length, w: m.w, h: m.h, use: m.use, hash: m.hash })
+  }
+  const world = await subWorld(c, eventId)
+  const matches = { ...subMatch({ from_email: fromEmail, from_name: fromName, subject, body, filenames: stored.map(f => f.filename) }, world), people }
+  const when = new Date(String(b.received_at || ''))
+  const receivedAt = isNaN(when.getTime()) ? new Date().toISOString() : when.toISOString()
+  let id: number
+  try {
+    const r = await c.env.DB.prepare('INSERT INTO inbox_submissions (event_id, source, source_id, thread_id, from_email, from_name, to_email, subject, body, link, received_at, kind, attachments, matches) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+      .bind(eventId, source, sourceId, threadId, fromEmail, fromName, String(b.to_email || '').toLowerCase().slice(0, 200), subject, body, String(b.link || '').slice(0, 500), receivedAt, kind, JSON.stringify(stored), JSON.stringify(matches)).run()
+    id = Number(r.meta.last_row_id)
+  } catch (e: any) {
+    if (/unique/i.test(String(e?.message || ''))) { const dup = await c.env.DB.prepare('SELECT id FROM inbox_submissions WHERE source = ? AND source_id = ?').bind(source, sourceId).first() as any; return c.json({ ok: true, status: 'duplicate', id: dup?.id }) }
+    throw e
+  }
+  await audit(c, 'submission.received', 'submission', id, { from: fromEmail, kind, files: stored.length, company: matches.exhibitors[0]?.name || '' }, { actor: source, kind: 'system' })
+  const done = await subAutoApply(c, { id, event_id: eventId, kind, attachments: stored, matches, applied: [] }, await subAutoSettings(c), subSays(subject, body))
+  return c.json({ ok: true, status: done ? 'applied' : 'stored', id, kind, company: matches.exhibitors[0]?.name || '' }, 201)
+})
+
+// Who the sweeper listens for: every address on file for this event (booth contacts and
+// buyers, teams, speakers) and their company domains. Mail from anyone else stays in
+// AImailPilot unless it names the event.
+app.get('/api/external/submission-senders', async (c) => {
+  const expected = c.env.ATTENDEE_EXPORT_SECRET || ''
+  if (!expected) return c.json({ error: 'export endpoint not configured' }, 500)
+  if ((c.req.header('Authorization') || '') !== `Bearer ${expected}`) return c.json({ error: 'unauthorized' }, 401)
+  const eventId = Math.max(1, parseInt(c.req.query('event_id') || '1', 10) || 1)
+  const world = await subWorld(c, eventId)
+  const emails = new Set<string>(); const domains = new Set<string>()
+  const add = (v: any) => { const e = String(v || '').toLowerCase().trim(); if (SUB_EMAIL_RE.test(e) && !/\s/.test(e)) { emails.add(e); const d = subDomain(e); if (d) domains.add(d) } }
+  for (const e of world.exhibitors) { add(e.contact_email); const d = subSiteDomain(e.website_url); if (d && !SUB_FREE_MAIL_RE.test(d)) domains.add(d) }
+  for (const b of world.booths) add(b.email)
+  for (const m of world.team) add(m.email)
+  for (const t of world.talks) add(t.speaker_email)
+  for (const s of world.speakers) add(s.email)
+  return c.json({ ok: true, emails: [...emails], domains: [...domains], keywords: ['bharat ai', 'bharatai'] })
+})
+
+// The screen's one read: the rows for a status, the counts, the switches, and the lists
+// the pickers choose from.
+app.get('/api/admin/inbox-submissions', async (c) => {
+  const status = String(c.req.query('status') || 'new')
+  const eventId = parseInt(c.req.query('event_id') || '1', 10) || 1
+  try {
+    const q = status === 'all'
+      ? c.env.DB.prepare('SELECT * FROM inbox_submissions WHERE event_id = ? ORDER BY received_at DESC LIMIT 300').bind(eventId)
+      : c.env.DB.prepare('SELECT * FROM inbox_submissions WHERE event_id = ? AND status = ? ORDER BY received_at DESC LIMIT 300').bind(eventId, status)
+    const rows = ((await q.all()).results || []) as any[]
+    const counts = ((await c.env.DB.prepare('SELECT status, COUNT(*) AS n FROM inbox_submissions WHERE event_id = ? GROUP BY status').bind(eventId).all()).results || []) as any[]
+    const world = await subWorld(c, eventId)
+    return c.json({
+      ok: true, rows: rows.map(subParse), counts: Object.fromEntries(counts.map(r => [r.status, Number(r.n)])), settings: { auto: await subAutoSettings(c) },
+      targets: {
+        exhibitors: world.exhibitors.map(e => ({ id: e.id, name: e.company_name, has: !!e.logo_url })),
+        talks: world.talks.map(t => ({ id: t.id, name: t.speaker_name, company: t.company || '', has: !!t.speaker_photo_url })),
+        speakers: world.speakers.map(s => ({ id: s.id, name: s.name, organisation: s.organisation || '', has: !!s.photo_url })),
+      },
+    })
+  } catch (e: any) {
+    if (/no such table/i.test(String(e?.message || ''))) return c.json({ error: SUB_NOT_YET, not_yet: true }, 503)
+    throw e
+  }
+})
+app.get('/api/admin/inbox-submissions/count', async (c) => {
+  try {
+    const r = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM inbox_submissions WHERE status = 'new'").first() as any
+    return c.json({ ok: true, new: Number(r?.n || 0) })
+  } catch { return c.json({ ok: true, new: 0 }) }
+})
+app.put('/api/admin/inbox-submissions/settings', async (c) => {
+  const b = await c.req.json().catch(() => ({})) as any
+  const auto = { logo: !!b?.auto?.logo, photo: !!b?.auto?.photo }
+  await c.env.DB.prepare("INSERT INTO app_settings (key, value, updated_at) VALUES ('inbox_submissions_auto', ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at").bind(JSON.stringify(auto)).run()
+  await audit(c, 'submission.settings', 'settings', 'inbox_submissions_auto', auto)
+  return c.json({ ok: true, auto })
+})
+// For scripts/pull-submissions.mjs: every file applied, flat, newest first.
+app.get('/api/admin/inbox-submissions/export', async (c) => {
+  const since = String(c.req.query('since') || '')
+  try {
+    const rows = ((await c.env.DB.prepare("SELECT id, from_email, subject, received_at, applied FROM inbox_submissions WHERE status = 'applied' ORDER BY received_at DESC LIMIT 1000").all()).results || []) as any[]
+    const out: any[] = []
+    for (const r of rows.map(subParse)) for (const e of r.applied) {
+      if (e.undone || !e.url) continue
+      if (since && String(e.at || '') < since) continue
+      out.push({ submission_id: r.id, from_email: r.from_email, subject: r.subject, received_at: r.received_at, what: e.what, target: e.target, exhibitor_id: e.exhibitor_id || null, talk_id: e.talk_id || null, speaker_id: e.speaker_id || null, url: e.url, filename: e.filename, at: e.at, by: e.by })
+    }
+    return c.json({ ok: true, files: out })
+  } catch (e: any) {
+    if (/no such table/i.test(String(e?.message || ''))) return c.json({ error: SUB_NOT_YET, not_yet: true }, 503)
+    throw e
+  }
+})
+app.post('/api/admin/inbox-submissions/:id/apply', async (c) => {
+  const sub = await subRow(c, c.req.param('id')).catch(() => null)
+  if (!sub) return c.json({ error: 'That submission is not there any more.' }, 404)
+  const b = await c.req.json().catch(() => ({})) as any
+  const by = String(c.req.header('X-Admin-Actor') || '').slice(0, 80) || 'admin'
+  const r = await subApply(c, sub, b, by)
+  if (!('ok' in r)) return c.json({ error: r.error }, r.status as any)
+  const applied = [...sub.applied, r.entry]
+  await subSaveApplied(c, sub, applied, by)
+  return c.json({ ok: true, entry: r.entry, row: await subRow(c, sub.id) })
+})
+app.post('/api/admin/inbox-submissions/:id/undo', async (c) => {
+  const sub = await subRow(c, c.req.param('id')).catch(() => null)
+  if (!sub) return c.json({ error: 'That submission is not there any more.' }, 404)
+  const b = await c.req.json().catch(() => ({})) as any
+  const i = parseInt(String(b.index), 10)
+  const e = Number.isInteger(i) ? sub.applied[i] : null
+  if (!e) return c.json({ error: 'Nothing to undo.' }, 400)
+  if (e.undone) return c.json({ error: 'That was already undone.' }, 400)
+  if (e.what === 'team') return c.json({ error: 'People added to a team are removed in Teams & Passes, so their passes are taken back properly.' }, 400)
+  const by = String(c.req.header('X-Admin-Actor') || '').slice(0, 80) || 'admin'
+  if (e.what === 'logo') await c.env.DB.prepare('UPDATE exhibitors SET logo_url = ? WHERE id = ? AND logo_url = ?').bind(e.prev || null, e.exhibitor_id, e.url).run()
+  else if (e.what === 'talk_photo') await c.env.DB.prepare('UPDATE innovation_talks SET speaker_photo_url = ? WHERE id = ? AND speaker_photo_url = ?').bind(e.prev || '', e.talk_id, e.url).run()
+  else if (e.what === 'speaker_photo') await c.env.DB.prepare('UPDATE speakers SET photo_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND photo_url = ?').bind(e.prev || null, e.speaker_id, e.url).run()
+  else return c.json({ error: 'That cannot be undone here.' }, 400)
+  const applied = sub.applied.map((x: any, k: number) => (k === i ? { ...x, undone: new Date().toISOString(), undone_by: by } : x))
+  await subSaveApplied(c, sub, applied, by)
+  await audit(c, 'submission.undo', 'submission', sub.id, { what: e.what, target: e.target })
+  return c.json({ ok: true, row: await subRow(c, sub.id) })
+})
+app.post('/api/admin/inbox-submissions/:id/dismiss', async (c) => {
+  const sub = await subRow(c, c.req.param('id')).catch(() => null)
+  if (!sub) return c.json({ error: 'That submission is not there any more.' }, 404)
+  const by = String(c.req.header('X-Admin-Actor') || '').slice(0, 80) || 'admin'
+  await c.env.DB.prepare("UPDATE inbox_submissions SET status = 'dismissed', decided_by = ?, decided_at = ? WHERE id = ?").bind(by, new Date().toISOString(), sub.id).run()
+  await audit(c, 'submission.dismiss', 'submission', sub.id, { from: sub.from_email, subject: sub.subject })
+  return c.json({ ok: true, row: await subRow(c, sub.id) })
+})
+app.post('/api/admin/inbox-submissions/:id/reopen', async (c) => {
+  const sub = await subRow(c, c.req.param('id')).catch(() => null)
+  if (!sub) return c.json({ error: 'That submission is not there any more.' }, 404)
+  await c.env.DB.prepare("UPDATE inbox_submissions SET status = ? WHERE id = ?").bind(sub.applied.some((e: any) => !e.undone) ? 'applied' : 'new', sub.id).run()
+  return c.json({ ok: true, row: await subRow(c, sub.id) })
 })
 
 // ==================== INQUIRY DESK ====================
@@ -32033,7 +32604,7 @@ function mainPageScript(): string {
           const isMultiSpeaker = speaker.includes(',') || speaker.includes('&');
           // An exhibitor talk can carry a speaker photo, always a marketplace upload on this site.
           const photo = String(t.speaker_photo_url || '');
-          const hasPhoto = (photo.indexOf('/api/mp/uploads/') === 0 && /^[0-9]+$/.test(photo.slice(16))) || (photo.indexOf('/images/talks/') === 0 && /^[a-z0-9-]+[.]webp$/.test(photo.slice(14))) || (photo.indexOf('/api/uploads/talks/') === 0 && /^[0-9]+-[0-9]+[.](jpg|png|webp)$/.test(photo.slice(19)));
+          const hasPhoto = (photo.indexOf('/api/mp/uploads/') === 0 && /^[0-9]+$/.test(photo.slice(16))) || (photo.indexOf('/images/talks/') === 0 && /^[a-z0-9-]+[.]webp$/.test(photo.slice(14))) || (photo.indexOf('/api/uploads/talks/') === 0 && /^[0-9]+-[0-9]+[.](jpg|png|webp)$/.test(photo.slice(19))) || (photo.indexOf('/api/uploads/submissions/') === 0 && /^[A-Za-z0-9._-]+[/][A-Za-z0-9._-]+$/.test(photo.slice(25)));
           const showcase = String(t.showcase || '');
           // A slot number only means something once the talk has a time; until then the
           // badge shows the speaker's initials, like the pass photo placeholder does.
@@ -35769,6 +36340,9 @@ function adminPageHTML(): string {
       <button onclick="switchSection('inquiries')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="inquiries" title="Inquiries">
         <i class="fas fa-inbox w-5 text-center shrink-0"></i><span class="sidebar-label">Inquiries</span>
       </button>
+      <button onclick="switchSection('submissions')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="submissions" title="Submissions: logos, photos and team lists sent by email">
+        <i class="fas fa-image w-5 text-center shrink-0"></i><span class="sidebar-label">Submissions <span id="sub-new-badge" class="hidden ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-amber-500/20 text-amber-300" title="Waiting for a decision"></span></span>
+      </button>
       <a href="/marketplace/admin" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all no-underline" title="AI Marketplace: review company listings">
         <i class="fas fa-robot w-5 text-center shrink-0"></i><span class="sidebar-label">AI Marketplace <span id="mp-pending-badge" class="hidden ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-amber-500/20 text-amber-300" title="Listings waiting for review"></span></span>
       </a>
@@ -35850,6 +36424,7 @@ function adminPageHTML(): string {
       <div id="section-startup-pitch" class="section-content hidden"></div>
       <!-- Inquiries Section -->
       <div id="section-inquiries" class="section-content hidden"></div>
+      <div id="section-submissions" class="section-content hidden"></div>
       <!-- Payments & Invoices Section -->
       <div id="section-payments" class="section-content hidden"></div>
       <!-- Workshop Seats Section -->
@@ -36200,6 +36775,7 @@ function adminPageScript(): string {
       loadIdentity();
       loadOverview();
       mpLoadPendingBadge();
+      subLoadBadge();
       startAutoRefresh();
       // Now that there is a dashboard to show, honour the deep link that arrived
       // before there was one - /admin#rooms opened while signed out lands on
@@ -36292,8 +36868,8 @@ function adminPageScript(): string {
       document.querySelectorAll('.section-content').forEach(s => s.classList.add('hidden'));
       document.getElementById('section-'+sec).classList.remove('hidden');
 
-      const titles = { overview:'Overview', workshops:'Workshop Seats', attendees:'Attendee Management', sessions:'Conference', exhibitors:'Exhibitor Management', 'booth-requests':'Booth Requests', 'floor-plan':'Floor Plan', sponsorship:'Sponsorship & Branding', awards:'Awards Management', announcements:'Announcement Management', innovation:'Innovation Talk & Showcase', 'startup-pitch':'Startup Pitch Management', inquiries:'Inquiry Management', payments:'Payments & Invoices', 'badge-desk':'Badge Desk', analytics:'Analytics & Reports', rooms:'Boardrooms', after:'After the Event', settings:'Settings' };
-      const subtitles = { overview:'Real-time event management dashboard', workshops:'Who sits where, who has not chosen yet, and each workshop slot and seat limit', attendees:'Manage all registered attendees', sessions:'The programme by day and hall, the speakers, the halls, and announcing who speaks when', exhibitors:'Manage exhibition booths', 'booth-requests':'Review and manage booth booking requests', 'floor-plan':'Which of the 93 stands are sold, held and still on the market', sponsorship:'Everything the show sells that is not floor space — and the combined revenue picture', awards:'Manage award categories and nominees', announcements:'Create and manage live feed announcements', innovation:'Manage innovation talk and showcase schedule', 'startup-pitch':'Manage startup pitches and investor panel', inquiries:'View and manage all incoming inquiries', payments:'Payments taken online, payments to confirm, and GST invoices', 'badge-desk':'Event-day check-in and the staff accounts that scan passes', analytics:'Deep dive into event engagement metrics', rooms:'Who has which WTC boardroom, hour by hour, across both event days', after:'The feedback survey for everyone who came, and each exhibitor’s results', settings:'Configure email, API keys and app settings' };
+      const titles = { overview:'Overview', workshops:'Workshop Seats', attendees:'Attendee Management', sessions:'Conference', exhibitors:'Exhibitor Management', 'booth-requests':'Booth Requests', 'floor-plan':'Floor Plan', sponsorship:'Sponsorship & Branding', awards:'Awards Management', announcements:'Announcement Management', innovation:'Innovation Talk & Showcase', 'startup-pitch':'Startup Pitch Management', inquiries:'Inquiry Management', submissions:'Submissions', payments:'Payments & Invoices', 'badge-desk':'Badge Desk', analytics:'Analytics & Reports', rooms:'Boardrooms', after:'After the Event', settings:'Settings' };
+      const subtitles = { overview:'Real-time event management dashboard', workshops:'Who sits where, who has not chosen yet, and each workshop slot and seat limit', attendees:'Manage all registered attendees', sessions:'The programme by day and hall, the speakers, the halls, and announcing who speaks when', exhibitors:'Manage exhibition booths', 'booth-requests':'Review and manage booth booking requests', 'floor-plan':'Which of the 93 stands are sold, held and still on the market', sponsorship:'Everything the show sells that is not floor space — and the combined revenue picture', awards:'Manage award categories and nominees', announcements:'Create and manage live feed announcements', innovation:'Manage innovation talk and showcase schedule', 'startup-pitch':'Manage startup pitches and investor panel', inquiries:'View and manage all incoming inquiries', submissions:'Logos, photos and team lists that clients sent by email', payments:'Payments taken online, payments to confirm, and GST invoices', 'badge-desk':'Event-day check-in and the staff accounts that scan passes', analytics:'Deep dive into event engagement metrics', rooms:'Who has which WTC boardroom, hour by hour, across both event days', after:'The feedback survey for everyone who came, and each exhibitor’s results', settings:'Configure email, API keys and app settings' };
       document.getElementById('page-title').textContent = titles[sec] || sec;
       document.getElementById('page-subtitle').textContent = subtitles[sec] || '';
 
@@ -36407,6 +36983,7 @@ function adminPageScript(): string {
         case 'innovation': loadInnovationTalks(); break;
         case 'startup-pitch': loadAdminStartupPitch(); break;
         case 'inquiries': loadAdminInquiries(); break;
+        case 'submissions': loadAdminSubmissions(); break;
         case 'payments': loadPayments(); break;
         case 'workshops': loadAdminWorkshops(); break;
         case 'rooms': loadAdminRooms(); break;
@@ -46777,6 +47354,53 @@ function adminPageScript(): string {
       var want = inquiryFilterType;
       inquiryFilterType = '';
       await window.InqDesk.mount(host, { api: api, toast: toast, operator: getOperator, initialType: want });
+    }
+
+    // Submissions (logos, photos and team lists that clients emailed) live in
+    // /js/admin-submissions.js (one global, SubDesk) with their own stylesheet, both
+    // loaded the first time the section opens. Bump the version on any change to either.
+    var SUB_DESK_VERSION = '20261112a';
+    var subDeskAssets = null;
+    function subDeskLoadAssets() {
+      if (window.SubDesk) return Promise.resolve();
+      if (subDeskAssets) return subDeskAssets;
+      var css = new Promise(function (resolve) {
+        if (document.querySelector('link[data-sub-desk]')) { resolve(); return; }
+        var l = document.createElement('link');
+        l.rel = 'stylesheet';
+        l.href = '/css/admin-submissions.css?v=' + SUB_DESK_VERSION;
+        l.setAttribute('data-sub-desk', '1');
+        l.onload = function () { resolve(); };
+        l.onerror = function () { resolve(); };
+        document.head.appendChild(l);
+      });
+      var js = new Promise(function (resolve, reject) {
+        var s = document.createElement('script');
+        s.src = '/js/admin-submissions.js?v=' + SUB_DESK_VERSION;
+        s.onload = function () { if (window.SubDesk) resolve(); else reject(new Error('The Submissions screen did not start.')); };
+        s.onerror = function () { s.remove(); reject(new Error('The Submissions screen could not be downloaded. Check the connection and press Try again.')); };
+        document.head.appendChild(s);
+      });
+      subDeskAssets = Promise.all([css, js]).catch(function (err) { subDeskAssets = null; throw err; });
+      return subDeskAssets;
+    }
+    async function loadAdminSubmissions() {
+      var host = document.getElementById('section-submissions');
+      if (!window.SubDesk) {
+        if (!host.firstChild) host.innerHTML = '<div class="text-center py-12 text-gray-500">Loading submissions...</div>';
+        try { await subDeskLoadAssets(); }
+        catch (err) { sectionError(host, 'submissions', { message: err.message }, 'loadAdminSubmissions()'); return; }
+      }
+      await window.SubDesk.mount(host, { api: api, toast: toast, operator: getOperator, onCount: subSetBadge });
+    }
+    function subSetBadge(n) {
+      var el = document.getElementById('sub-new-badge');
+      if (!el) return;
+      el.textContent = String(n);
+      el.classList.toggle('hidden', !(n > 0));
+    }
+    function subLoadBadge() {
+      api.get('/api/admin/inbox-submissions/count').then(function (s) { subSetBadge(Number(s && s.new) || 0); }).catch(function () {});
     }
 
     // ============ ANALYTICS ============

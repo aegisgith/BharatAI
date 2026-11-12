@@ -1794,7 +1794,7 @@ const teamPassPhoto = async (c: any, m: any): Promise<string> => {
 
 // Gives out the booth's passes, speakers first, then in the order people were added.
 // Run after every change to a team or to its number of passes.
-const settleTeam = async (c: any, ex: { id: number; event_id: number }): Promise<void> => {
+export const settleTeam = async (c: any, ex: { id: number; event_id: number }): Promise<void> => {
   if (!hooks.issueTeamPass) return
   const allow = await teamAllowance(c, ex.id)
   let left = allow.passes
@@ -1828,7 +1828,7 @@ const settleTeam = async (c: any, ex: { id: number; event_id: number }): Promise
 }
 
 // The stage talk's speaker is whoever the team ticks "on stage", so it is typed once.
-const syncStageSpeakers = async (c: any, exhibitorId: number): Promise<void> => {
+export const syncStageSpeakers = async (c: any, exhibitorId: number): Promise<void> => {
   if (!(await stageReady(c))) return
   const stands = (await confirmedStands(c, exhibitorId)).get(exhibitorId)
   if (!stands) return
