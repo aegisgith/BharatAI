@@ -1,0 +1,25 @@
+/* Admin, Live Q&A. Everything is under .aqd so nothing here reaches another admin section. */
+.aqd { --aq-ink: #1e2140; --aq-muted: #5b6178; --aq-line: #e3e6ef; --aq-soft: #f6f7fb; --aq-accent: #c84f00; color: var(--aq-ink); font-size: 14px; line-height: 1.45; }
+.aqd *, .aqd *::before, .aqd *::after { box-sizing: border-box; }
+.aqd button, .aqd select { font: inherit; }
+.aqd-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.aqd-head { background: #fff; border: 1px solid var(--aq-line); border-radius: 14px; padding: 18px; margin-bottom: 14px; }
+.aqd-head h2 { margin: 0 0 6px; font-size: 17px; font-weight: 800; display: flex; align-items: center; gap: 8px; }
+.aqd-head h2 i { color: var(--aq-accent); }
+.aqd-head p { margin: 0 0 12px; color: var(--aq-muted); max-width: 80ch; }
+.aqd-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.aqd-bar label { font-weight: 700; }
+.aqd-bar select { min-height: 38px; padding: 0 10px; border: 1px solid var(--aq-line); border-radius: 9px; background: #fff; }
+.aqd-note { color: var(--aq-muted); font-size: 13px; }
+.aqd-sub { color: var(--aq-muted); font-size: 12.5px; }
+.aqd-warn { margin: 0 0 12px; padding: 10px 12px; border-radius: 10px; background: #fffaeb; color: #93370d; font-weight: 600; }
+.aqd-wrap { overflow-x: auto; background: #fff; border: 1px solid var(--aq-line); border-radius: 12px; }
+.aqd-table { width: 100%; border-collapse: collapse; min-width: 900px; }
+.aqd-table th { text-align: left; font-size: 12px; font-weight: 700; color: var(--aq-muted); background: var(--aq-soft); padding: 8px 10px; white-space: nowrap; }
+.aqd-table td { padding: 9px 10px; border-top: 1px solid var(--aq-line); vertical-align: top; }
+.aqd-n { text-align: right; font-variant-numeric: tabular-nums; }
+.aqd-nowrap { white-space: nowrap; }
+.aqd-acts { white-space: nowrap; text-align: right; }
+.aqd-btn { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 10px; margin-left: 6px; border: 1px solid var(--aq-line); border-radius: 9px; background: #fff; color: var(--aq-ink); font-weight: 700; font-size: 13px; text-decoration: none; cursor: pointer; }
+.aqd-btn:hover { border-color: #c9cede; }
+.aqd-btn:focus-visible { outline: 3px solid rgba(200, 79, 0, 0.35); outline-offset: 2px; }

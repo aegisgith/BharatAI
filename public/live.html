@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Questions · Bharat AI Innovation</title>
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="referrer" content="no-referrer">
+    <link rel="stylesheet" href="/css/fonts.css?v=1">
+    <link rel="stylesheet" href="/css/fa-subset.css?v=2">
+    <link rel="icon" type="image/png" sizes="64x64" href="/images/favicon-64.png">
+    <style>
+    /* The moderator's screen for one session's questions (?s=<session>&k=<key>, from
+       Admin -> Live Q&A), and with &view=stage the screen for the hall: the top live
+       questions, large, no names, no buttons. Everything comes from /api/, every 5 s. */
+    :root { --ink: #1E2140; --muted: #4A5280; --line: #E3E6F6; --bg: #F8F9FF; --orange: #C84F00; --green: #067647; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--ink); font-family: 'Manrope', system-ui, sans-serif; font-size: 16px; line-height: 1.45; }
+    .lv { max-width: 760px; margin: 0 auto; padding: 16px; }
+    .lv-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
+    .lv-kicker { margin: 0; font-size: 0.8rem; font-weight: 700; color: var(--orange); }
+    .lv h1 { margin: 2px 0 0; font-family: 'Bricolage Grotesque', 'Manrope', sans-serif; font-size: clamp(1.25rem, 5vw, 1.6rem); line-height: 1.2; text-wrap: balance; }
+    .lv-when { margin: 4px 0 0; color: var(--muted); font-size: 0.9rem; }
+    .lv-stage-link { flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 12px; border: 1px solid var(--line); border-radius: 10px; background: #fff; color: var(--ink); font-weight: 700; text-decoration: none; font-size: 0.85rem; }
+    .lv-status { margin: 0 0 10px; color: var(--muted); font-size: 0.85rem; }
+    .lv-h2 { margin: 18px 0 8px; font-size: 0.95rem; font-weight: 800; }
+    .lv-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+    .lv-q { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: grid; grid-template-columns: 52px 1fr; gap: 10px; }
+    .lv-votes { display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 10px; background: #FFF2E8; color: var(--orange); font-weight: 800; font-size: 1.15rem; min-height: 52px; }
+    .lv-votes small { font-size: 0.68rem; font-weight: 700; }
+    .lv-body { margin: 0; font-size: 1.02rem; overflow-wrap: anywhere; }
+    .lv-who { margin: 4px 0 0; color: var(--muted); font-size: 0.82rem; }
+    .lv-acts { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px; }
+    .lv-btn { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 14px; border: 1px solid var(--line); border-radius: 10px; background: #fff; color: var(--ink); font: inherit; font-weight: 700; font-size: 0.9rem; cursor: pointer; }
+    .lv-btn.done { background: var(--green); border-color: var(--green); color: #fff; }
+    .lv-btn[disabled] { opacity: 0.6; }
+    .lv-empty { color: var(--muted); }
+    .lv-stop { margin-top: 30vh; text-align: center; color: var(--ink); }
+    details.lv-more { margin-top: 14px; }
+    details.lv-more summary { cursor: pointer; font-weight: 800; min-height: 44px; display: flex; align-items: center; }
+    /* The hall screen. */
+    body.stage { background: #0E1024; color: #fff; }
+    body.stage .lv { max-width: none; padding: 4vh 5vw; min-height: 100vh; display: flex; flex-direction: column; }
+    body.stage .lv-kicker { color: #FF9A3C; font-size: clamp(1rem, 1.6vw, 1.6rem); }
+    body.stage h1 { font-size: clamp(1.6rem, 3vw, 3rem); color: #fff; }
+    body.stage .lv-when, body.stage .lv-status, body.stage .lv-stage-link { display: none; }
+    body.stage .lv-list { gap: 2.2vh; margin-top: 3vh; }
+    body.stage .lv-q { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.12); grid-template-columns: clamp(70px, 7vw, 130px) 1fr; padding: 2.2vh 2vw; border-radius: 18px; }
+    body.stage .lv-votes { background: rgba(255,154,60,0.16); color: #FFB066; font-size: clamp(1.6rem, 3vw, 3rem); }
+    body.stage .lv-votes small { font-size: clamp(0.8rem, 1vw, 1.1rem); }
+    body.stage .lv-body { font-size: clamp(1.4rem, 2.8vw, 2.8rem); line-height: 1.25; }
+    body.stage .lv-empty { color: rgba(255,255,255,0.7); font-size: clamp(1.2rem, 2.2vw, 2rem); margin-top: 4vh; }
+    body.stage .lv-foot { margin-top: auto; padding-top: 3vh; color: rgba(255,255,255,0.75); font-size: clamp(1rem, 1.6vw, 1.6rem); }
+    .lv-foot { display: none; }
+    body.stage .lv-foot { display: block; }
+    @media (prefers-reduced-motion: no-preference) { .lv-q { transition: transform .2s ease-out; } }
+    </style>
+</head>
+<body>
+    <main class="lv" id="lv">
+        <div class="lv-top">
+            <div>
+                <p class="lv-kicker">Questions for the speakers</p>
+                <h1 id="lv-title">Loading...</h1>
+                <p class="lv-when" id="lv-when"></p>
+            </div>
+            <a class="lv-stage-link" id="lv-stage" href="#" target="_blank" rel="noopener" hidden><i class="fas fa-arrow-up-right-from-square" aria-hidden="true"></i> Screen for the hall</a>
+        </div>
+        <p class="lv-status" id="lv-status" aria-live="polite"></p>
+        <ol class="lv-list" id="lv-live"></ol>
+        <details class="lv-more" id="lv-answered-box" hidden><summary id="lv-answered-sum">Answered</summary><ol class="lv-list" id="lv-answered"></ol></details>
+        <details class="lv-more" id="lv-hidden-box" hidden><summary id="lv-hidden-sum">Hidden</summary><ol class="lv-list" id="lv-hidden"></ol></details>
+        <p class="lv-foot">Ask in the Bharat AI Innovation app: open the session, then Questions.</p>
+    </main>
+    <script>
+    (function () {
+        var q = new URLSearchParams(location.search);
+        var S = q.get('s') || '', K = q.get('k') || '', STAGE = q.get('view') === 'stage';
+        var busy = false, timer = null;
+        if (STAGE) document.body.classList.add('stage');
+        function el(id) { return document.getElementById(id); }
+        function stop(text) {
+            if (timer) clearInterval(timer);
+            var m = el('lv');
+            m.innerHTML = '';
+            var p = document.createElement('p');
+            p.className = 'lv-stop';
+            p.textContent = text;
+            m.appendChild(p);
+        }
+        function when(a, b) {
+            var t = function (v) { var m = String(v || '').match(/(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/); if (!m) return ''; var h = parseInt(m[4], 10); return ((h + 11) % 12 + 1) + ':' + m[5] + (h < 12 ? ' am' : ' pm'); };
+            var d = String(a || '').match(/(\d{4})-(\d{2})-(\d{2})/);
+            var months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            return (d ? parseInt(d[3], 10) + ' ' + months[parseInt(d[2], 10) - 1] + ', ' : '') + t(a) + (b ? ' to ' + t(b) : '');
+        }
+        function item(x, acts) {
+            var li = document.createElement('li');
+            li.className = 'lv-q';
+            var v = document.createElement('div');
+            v.className = 'lv-votes';
+            v.innerHTML = '<span></span><small></small>';
+            v.firstChild.textContent = String(x.votes || 0);
+            v.lastChild.textContent = x.votes === 1 ? 'vote' : 'votes';
+            var b = document.createElement('div');
+            var body = document.createElement('p');
+            body.className = 'lv-body';
+            body.textContent = x.body;
+            b.appendChild(body);
+            if (!STAGE) {
+                var who = document.createElement('p');
+                who.className = 'lv-who';
+                who.textContent = x.who ? 'Asked by ' + x.who : 'Asked without a name';
+                b.appendChild(who);
+            }
+            li.appendChild(v);
+            li.appendChild(b);
+            if (acts && !STAGE) {
+                var row = document.createElement('div');
+                row.className = 'lv-acts';
+                acts.forEach(function (a) {
+                    var btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'lv-btn' + (a.cls ? ' ' + a.cls : '');
+                    btn.textContent = a.label;
+                    btn.addEventListener('click', function () { moderate(x.id, a.status, btn); });
+                    row.appendChild(btn);
+                });
+                li.appendChild(row);
+            }
+            return li;
+        }
+        function fill(listId, items, acts) {
+            var ol = el(listId);
+            ol.innerHTML = '';
+            items.forEach(function (x) { ol.appendChild(item(x, acts)); });
+        }
+        async function load() {
+            if (busy) return;
+            var res, j;
+            try {
+                res = await fetch('/api/sessions/' + encodeURIComponent(S) + '/questions?k=' + encodeURIComponent(K), { cache: 'no-store' });
+                j = await res.json().catch(function () { return {}; });
+            } catch (e) { el('lv-status').textContent = 'No connection just now. Trying again.'; return; }
+            if (!res.ok) { stop(j.error || 'This link does not open a session. Please ask the organisers for it again.'); return; }
+            el('lv-title').textContent = (j.session && j.session.title) || '';
+            document.title = 'Questions · ' + ((j.session && j.session.title) || 'Bharat AI Innovation');
+            el('lv-when').textContent = j.session ? when(j.session.start_time, j.session.end_time) : '';
+            if (j.ready === false) { el('lv-status').textContent = 'Questions open shortly.'; return; }
+            var all = j.questions || [];
+            var live = all.filter(function (x) { return x.status === 'live'; });
+            var answered = all.filter(function (x) { return x.status === 'answered'; });
+            var hidden = all.filter(function (x) { return x.status === 'hidden'; });
+            if (STAGE) live = live.slice(0, 4);
+            fill('lv-live', live, [{ label: 'Answered', status: 'answered', cls: 'done' }, { label: 'Hide', status: 'hidden' }]);
+            if (!live.length) {
+                var p = document.createElement('li');
+                p.className = 'lv-empty';
+                p.textContent = STAGE ? 'Ask your question in the app.' : 'No questions waiting. New ones appear here by themselves.';
+                el('lv-live').appendChild(p);
+            }
+            if (!STAGE) {
+                el('lv-status').textContent = live.length + (live.length === 1 ? ' question' : ' questions') + ' waiting, most votes first. Updates every few seconds.';
+                el('lv-answered-box').hidden = !answered.length;
+                el('lv-answered-sum').textContent = 'Answered (' + answered.length + ')';
+                fill('lv-answered', answered, [{ label: 'Back to waiting', status: 'live' }]);
+                el('lv-hidden-box').hidden = !hidden.length;
+                el('lv-hidden-sum').textContent = 'Hidden (' + hidden.length + ')';
+                fill('lv-hidden', hidden, [{ label: 'Show again', status: 'live' }]);
+            }
+        }
+        async function moderate(id, status, btn) {
+            busy = true;
+            btn.disabled = true;
+            try {
+                var res = await fetch('/api/questions/' + encodeURIComponent(id) + '/moderate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ k: K, status: status }) });
+                var j = await res.json().catch(function () { return {}; });
+                if (!res.ok) el('lv-status').textContent = j.error || 'That did not save. Please try again.';
+            } catch (e) {
+                el('lv-status').textContent = 'No connection just now. Please try again.';
+            }
+            busy = false;
+            load();
+        }
+        if (!S || !K) { stop('This link is not complete. Please ask the organisers for it again.'); return; }
+        if (!STAGE) {
+            var link = el('lv-stage');
+            link.href = location.pathname + '?s=' + encodeURIComponent(S) + '&k=' + encodeURIComponent(K) + '&view=stage';
+            link.hidden = false;
+        }
+        load();
+        timer = setInterval(function () { if (!document.hidden) load(); }, 5000);
+    })();
+    </script>
+</body>
+</html>

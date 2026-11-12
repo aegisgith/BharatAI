@@ -21617,6 +21617,189 @@ app.post('/api/admin/exhibitor-results/:id/send', async (c) => {
   return c.json({ success: true, sent_at: istStamp(new Date().toISOString()) })
 })
 
+// ==================== SESSION QUESTIONS ====================
+//
+// 12 Nov 2026, from the gap review: questions from the room. Anyone signed in to the
+// app asks a question on a session and votes for other people's (one vote each, never
+// their own); the most-voted come first. In the app a question never shows who asked it.
+// The moderator's screen (/live, public/live.html) opens from a signed link per session
+// (Admin -> Live Q&A, qaLink below): it shows the asker's first name and organisation,
+// unless they ticked "don't tell the moderator my name", and marks a question answered,
+// hides it or shows it again. ?view=stage on that link is the screen for the hall: the
+// top questions, no names, no buttons. Tables session_questions and
+// session_question_votes, migration 0060. Without them the app says questions open
+// shortly and nothing else changes.
+const QA_MAX_LEN = 300
+const QA_PER_PERSON_PER_SESSION = 5
+const QA_GAP_SECONDS = 15
+const QA_STATUSES = ['live', 'answered', 'hidden']
+const qaTableMissing = (e: any) => /no such table/i.test(String(e?.message || e || ''))
+
+async function qaKey(c: any, sessionId: any): Promise<string> {
+  const secret = String(c.env?.ADMIN_SECRET || '')
+  const n = Number(sessionId)
+  if (!secret || !Number.isInteger(n) || n <= 0) return ''
+  return (await hmacHexA(secret, 'qa:' + n)).slice(0, 32)
+}
+async function qaModerator(c: any, sessionId: any, k: any): Promise<boolean> {
+  if (isAdminRequest(c)) return true
+  const want = await qaKey(c, sessionId)
+  return !!want && safeEqualA(String(k || ''), want)
+}
+// The moderator's link for one session (the same link for everyone who moderates it).
+async function qaLink(c: any, sessionId: any, stage = false): Promise<string> {
+  const base = ((await settingValue(c, 'app_url')) || 'https://bharataiinnovation.com/app').replace(/\/app\/?$/, '')
+  return `${base}/live?s=${Number(sessionId)}&k=${await qaKey(c, sessionId)}${stage ? '&view=stage' : ''}`
+}
+
+// The questions on one session: for the app (signed in) or for the moderator (?k=).
+app.get('/api/sessions/:id/questions', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  const sid = parseInt(c.req.param('id'), 10)
+  const session = Number.isFinite(sid)
+    ? await c.env.DB.prepare('SELECT id, event_id, title, room, start_time, end_time, session_type FROM sessions WHERE id = ?').bind(sid).first() as any
+    : null
+  if (!session) return c.json({ error: 'This session is not on the programme.' }, 404)
+  const k = c.req.query('k')
+  const mod = k ? await qaModerator(c, sid, k) : isAdminRequest(c)
+  if (k && !mod) return c.json({ error: 'This moderator link is not complete. Please ask the organisers for it again.' }, 401)
+  const me = mod ? null : await verifyAttendeeSession(c)
+  if (!mod && !me) return c.json({ error: 'Sign in to the event app to see and ask questions.' }, 401)
+  const info = { id: session.id, title: session.title || '', start_time: session.start_time || '', end_time: session.end_time || '', takes_questions: session.session_type !== 'break' }
+  let rows: any[] = []
+  try {
+    rows = ((await c.env.DB.prepare(
+      `SELECT q.id, q.body, q.anonymous, q.status, q.votes, q.created_at, q.attendee_id, a.name, a.company
+         FROM session_questions q LEFT JOIN attendees a ON a.id = q.attendee_id
+        WHERE q.session_id = ? AND q.status IN (${mod ? "'live', 'answered', 'hidden'" : "'live', 'answered'"})
+        ORDER BY CASE q.status WHEN 'live' THEN 0 WHEN 'answered' THEN 1 ELSE 2 END, q.votes DESC, q.id ASC LIMIT 300`
+    ).bind(sid).all()) as any).results || []
+  } catch (e: any) {
+    if (qaTableMissing(e)) return c.json({ ready: false, session: info, moderator: mod, questions: [] })
+    throw e
+  }
+  const mine = new Set<number>()
+  if (me && rows.length) {
+    const { results } = await c.env.DB.prepare(
+      'SELECT v.question_id FROM session_question_votes v JOIN session_questions q ON q.id = v.question_id WHERE v.attendee_id = ? AND q.session_id = ?'
+    ).bind(me, sid).all() as any
+    for (const v of (results || []) as any[]) mine.add(Number(v.question_id))
+  }
+  return c.json({
+    ready: true, session: info, moderator: mod,
+    questions: rows.map((q) => {
+      const out: any = { id: q.id, body: q.body, votes: Number(q.votes) || 0, status: q.status, at: q.created_at }
+      if (me) { out.own = Number(q.attendee_id) === Number(me); out.voted = mine.has(Number(q.id)) }
+      if (mod) {
+        const first = String(q.name || '').trim().split(/\s+/)[0] || ''
+        out.who = q.anonymous ? '' : [first, String(q.company || '').trim()].filter(Boolean).join(', ')
+      }
+      return out
+    }),
+  })
+})
+
+// Ask. Five questions a person a session, one every 15 seconds; the same words twice
+// (a double tap) are one question.
+app.post('/api/sessions/:id/questions', async (c) => {
+  const me = await verifyAttendeeSession(c)
+  if (!me) return c.json({ error: 'Sign in to the event app to ask a question.' }, 401)
+  const sid = parseInt(c.req.param('id'), 10)
+  const session = Number.isFinite(sid) ? await c.env.DB.prepare('SELECT id, event_id, session_type FROM sessions WHERE id = ?').bind(sid).first() as any : null
+  if (!session) return c.json({ error: 'This session is not on the programme.' }, 404)
+  if (session.session_type === 'break') return c.json({ error: 'Breaks do not take questions.' }, 400)
+  const b = await c.req.json().catch(() => ({})) as any
+  const body = String(b.body ?? '').replace(/\s+/g, ' ').trim()
+  if (body.length < 5) return c.json({ error: 'Write your question in a few words.' }, 400)
+  if (body.length > QA_MAX_LEN) return c.json({ error: 'Keep it under 300 characters, so it can be read out.' }, 400)
+  try {
+    const same = await c.env.DB.prepare("SELECT id FROM session_questions WHERE session_id = ? AND attendee_id = ? AND body = ? AND status != 'withdrawn'").bind(sid, me, body).first() as any
+    if (same) return c.json({ id: same.id, success: true })
+    const n = Number(((await c.env.DB.prepare('SELECT COUNT(*) AS n FROM session_questions WHERE session_id = ? AND attendee_id = ?').bind(sid, me).first()) as any)?.n || 0)
+    if (n >= QA_PER_PERSON_PER_SESSION) return c.json({ error: 'You have asked 5 questions on this session. Vote for other questions instead.' }, 429)
+    const recent = await c.env.DB.prepare(`SELECT id FROM session_questions WHERE attendee_id = ? AND created_at > datetime('now', '-${QA_GAP_SECONDS} seconds') LIMIT 1`).bind(me).first()
+    if (recent) return c.json({ error: 'One moment: you sent a question a few seconds ago.' }, 429)
+    const ins = await c.env.DB.prepare('INSERT INTO session_questions (event_id, session_id, attendee_id, body, anonymous) VALUES (?, ?, ?, ?, ?)')
+      .bind(session.event_id, sid, me, body, b.anonymous === true ? 1 : 0).run()
+    return c.json({ id: ins.meta.last_row_id, success: true }, 201)
+  } catch (e: any) {
+    if (qaTableMissing(e)) return c.json({ error: 'Questions open shortly. Please try again in a few minutes.' }, 503)
+    throw e
+  }
+})
+
+async function qaQuestion(c: any, id: any): Promise<any> {
+  try { return await c.env.DB.prepare('SELECT id, session_id, attendee_id, status FROM session_questions WHERE id = ?').bind(id).first() }
+  catch (e: any) { if (qaTableMissing(e)) return null; throw e }
+}
+
+// A vote, or taking it back: the same button.
+app.post('/api/questions/:id/vote', async (c) => {
+  const me = await verifyAttendeeSession(c)
+  if (!me) return c.json({ error: 'Sign in to the event app to vote.' }, 401)
+  const q = await qaQuestion(c, c.req.param('id'))
+  if (!q || q.status === 'hidden' || q.status === 'withdrawn') return c.json({ error: 'This question is no longer open.' }, 404)
+  if (Number(q.attendee_id) === Number(me)) return c.json({ error: 'That is your own question.' }, 400)
+  const had = await c.env.DB.prepare('SELECT 1 AS x FROM session_question_votes WHERE question_id = ? AND attendee_id = ?').bind(q.id, me).first()
+  if (had) await c.env.DB.prepare('DELETE FROM session_question_votes WHERE question_id = ? AND attendee_id = ?').bind(q.id, me).run()
+  else await c.env.DB.prepare('INSERT OR IGNORE INTO session_question_votes (question_id, attendee_id) VALUES (?, ?)').bind(q.id, me).run()
+  await c.env.DB.prepare('UPDATE session_questions SET votes = (SELECT COUNT(*) FROM session_question_votes WHERE question_id = ?) WHERE id = ?').bind(q.id, q.id).run()
+  const v = await c.env.DB.prepare('SELECT votes FROM session_questions WHERE id = ?').bind(q.id).first() as any
+  return c.json({ voted: !had, votes: Number(v?.votes) || 0 })
+})
+
+// The asker takes their own question back.
+app.post('/api/questions/:id/withdraw', async (c) => {
+  const me = await verifyAttendeeSession(c)
+  if (!me) return c.json({ error: 'Sign in to the event app first.' }, 401)
+  const q = await qaQuestion(c, c.req.param('id'))
+  if (!q) return c.json({ error: 'Question not found.' }, 404)
+  if (Number(q.attendee_id) !== Number(me)) return c.json({ error: 'Only the person who asked can withdraw a question.' }, 403)
+  await c.env.DB.prepare("UPDATE session_questions SET status = 'withdrawn' WHERE id = ?").bind(q.id).run()
+  return c.json({ success: true })
+})
+
+// The moderator: answered, hidden, or back to live.
+app.post('/api/questions/:id/moderate', async (c) => {
+  const b = await c.req.json().catch(() => ({})) as any
+  const q = await qaQuestion(c, c.req.param('id'))
+  if (!q || q.status === 'withdrawn') return c.json({ error: 'Question not found.' }, 404)
+  if (!(await qaModerator(c, q.session_id, b.k))) return c.json({ error: 'This moderator link is not complete. Please ask the organisers for it again.' }, 401)
+  const status = String(b.status || '')
+  if (!QA_STATUSES.includes(status)) return c.json({ error: 'Mark it answered, hide it, or show it again.' }, 400)
+  await c.env.DB.prepare('UPDATE session_questions SET status = ? WHERE id = ?').bind(status, q.id).run()
+  return c.json({ success: true, status })
+})
+
+// Admin -> Live Q&A: every session of an event with its questions and its two links.
+app.get('/api/admin/session-questions', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  const eventId = parseInt(String(c.req.query('event') || '1'), 10) || 1
+  const { results } = await c.env.DB.prepare(
+    `SELECT *${await venueSelectSql(c)} FROM sessions WHERE event_id = ? AND COALESCE(session_type, '') != 'break' ORDER BY start_time, id`
+  ).bind(eventId).all() as any
+  let ready = true
+  const counts = new Map<number, any>()
+  try {
+    const { results: cs } = await c.env.DB.prepare(
+      `SELECT session_id, SUM(CASE WHEN status = 'live' THEN 1 ELSE 0 END) AS live, SUM(CASE WHEN status = 'answered' THEN 1 ELSE 0 END) AS answered,
+              SUM(CASE WHEN status = 'hidden' THEN 1 ELSE 0 END) AS hidden, MAX(created_at) AS last_at
+         FROM session_questions WHERE event_id = ? GROUP BY session_id`
+    ).bind(eventId).all() as any
+    for (const r of (cs || []) as any[]) counts.set(Number(r.session_id), r)
+  } catch (e: any) { if (qaTableMissing(e)) ready = false; else throw e }
+  const sessions = []
+  for (const s of (results || []) as any[]) {
+    const n = counts.get(Number(s.id)) || {}
+    sessions.push({
+      id: s.id, title: s.title || '', start_time: s.start_time || '', end_time: s.end_time || '', room: s.room || '', venue_room: s.venue_room || '',
+      live: Number(n.live) || 0, answered: Number(n.answered) || 0, hidden: Number(n.hidden) || 0, last_at: n.last_at ? istStamp(n.last_at) : '',
+      moderator_url: await qaLink(c, s.id), stage_url: await qaLink(c, s.id, true),
+    })
+  }
+  return c.json({ ready, sessions })
+})
+
 // ==================== DELHI 2027: THE FREE VISITOR PASS ====================
 //
 // The organiser opened registration for Delhi on 6 Nov 2026, with the free pass first.
@@ -29699,6 +29882,7 @@ function mainPageScript(): string {
             </div>
             <h3 class="font-bold text-[15px] leading-snug mb-1 \${isBreak ? 'text-gray-400' : 'text-white'}">\${esc(s.title)}</h3>
             \${delegateSessionChip(s)}
+            \${!isBreak ? '<button type="button" onclick="event.stopPropagation();openSessionQuestions(' + Number(s.id) + ')" class="mt-1 mb-1 inline-flex items-center gap-1.5 px-3 min-h-[44px] rounded-lg text-xs font-semibold bg-primary-500/15 text-primary-300"><i class="fas fa-comments" aria-hidden="true"></i>Questions</button>' : ''}
             \${s.description && !isBreak ? \`<p class="text-xs text-gray-400 mb-2 leading-relaxed">\${esc(s.description)}</p>\` : ''}
             \${s.title.toLowerCase().includes('innovation talk') ? \`<button onclick="event.stopPropagation();switchTab('innovation')" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-amber-500/15 text-amber-400 hover:bg-amber-500/25 transition mb-2"><i class="fas fa-lightbulb"></i>Full Innovation Talk Schedule <i class="fas fa-arrow-right text-[10px]"></i></button>\` : ''}
             \${s.title.toLowerCase().includes('startup pitch') ? \`<button onclick="event.stopPropagation();switchTab('startup-pitch')" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-violet-500/15 text-violet-400 hover:bg-violet-500/25 transition mb-2"><i class="fas fa-rocket"></i>View Startup Pitch Schedule <i class="fas fa-arrow-right text-[10px]"></i></button>\` : ''}
@@ -31366,6 +31550,106 @@ function mainPageScript(): string {
         note.classList.add('hidden');
         t.placeholder = 'Meeting Title *';
       }
+    }
+
+    // 12 Nov 2026: questions from the room. "Questions" on a session opens this sheet:
+    // ask, vote for others (not your own), withdraw your own. Nobody's name is shown
+    // here; the moderator's screen (/live) has them. Refreshes every 10 seconds while open.
+    let qaOpenId = null, qaTimer = null;
+    function qaKeys(e) { if (e.key === 'Escape') qaClose(); }
+    function qaClose() {
+      if (qaTimer) { clearInterval(qaTimer); qaTimer = null; }
+      qaOpenId = null;
+      document.removeEventListener('keydown', qaKeys);
+      const el = document.getElementById('qa-modal');
+      if (el) el.remove();
+    }
+    function openSessionQuestions(id) {
+      qaClose();
+      qaOpenId = Number(id);
+      const el = document.createElement('div');
+      el.id = 'qa-modal';
+      el.setAttribute('role', 'dialog');
+      el.setAttribute('aria-modal', 'true');
+      el.setAttribute('aria-labelledby', 'qa-title');
+      el.className = 'fixed inset-0 z-40 modal-overlay flex items-end sm:items-center justify-center sm:p-4';
+      el.innerHTML = '<div class="glass rounded-t-2xl sm:rounded-2xl w-full max-w-lg flex flex-col" style="max-height:88vh">'
+        + '<div class="flex items-start justify-between gap-3 p-4 border-b border-white/10"><div class="min-w-0"><p class="text-[11px] font-semibold text-primary-400">Questions for the speakers</p><h2 id="qa-title" class="font-bold text-base leading-snug break-words"></h2></div>'
+        + '<button type="button" onclick="qaClose()" aria-label="Close" class="shrink-0 w-11 h-11 -mr-2 -mt-2 flex items-center justify-center text-gray-400"><i class="fas fa-times text-lg"></i></button></div>'
+        + '<div id="qa-list" class="flex-1 overflow-y-auto p-4 space-y-2" aria-live="polite"><p class="text-sm text-gray-400">Loading...</p></div>'
+        + '<form id="qa-form" class="p-4 border-t border-white/10" novalidate>'
+        + '<label for="qa-body" class="block text-sm font-semibold mb-1.5">Ask a question</label>'
+        + '<textarea id="qa-body" maxlength="300" rows="2" class="w-full px-3 py-2.5 rounded-xl text-sm" placeholder="Your question"></textarea>'
+        + '<div class="flex items-center justify-between gap-3 mt-2"><label class="flex items-center gap-2 text-xs text-gray-400 min-h-[44px]"><input type="checkbox" id="qa-anon" class="w-4 h-4"> Don&rsquo;t tell the moderator my name</label>'
+        + '<button type="submit" id="qa-send" class="shrink-0 px-5 min-h-[44px] rounded-xl text-sm font-semibold bg-primary-500 text-white">Send</button></div>'
+        + '<p class="text-[11px] text-gray-500 mt-1">Questions with the most votes are asked first. Other people see your question, never your name.</p></form></div>';
+      document.body.appendChild(el);
+      el.addEventListener('click', (e) => { if (e.target === el) qaClose(); });
+      document.getElementById('qa-form').addEventListener('submit', qaSend);
+      document.addEventListener('keydown', qaKeys);
+      qaLoad();
+      qaTimer = setInterval(() => { if (!document.hidden) qaLoad(); }, 10000);
+    }
+    async function qaLoad() {
+      const id = qaOpenId;
+      if (!id) return;
+      let r = null;
+      try { r = await api.get('/api/sessions/' + id + '/questions'); } catch (e) { return; }
+      if (qaOpenId !== id) return;
+      const list = document.getElementById('qa-list');
+      const title = document.getElementById('qa-title');
+      if (!list) return;
+      if (r && r.session && title) title.textContent = r.session.title || '';
+      if (!r || r.error) { list.innerHTML = '<p class="text-sm text-gray-400">' + esc((r && r.error) || 'The questions could not load. Please try again.') + '</p>'; return; }
+      if (r.ready === false) { list.innerHTML = '<p class="text-sm text-gray-400">Questions open shortly.</p>'; return; }
+      const qs = r.questions || [];
+      if (!qs.length) { list.innerHTML = '<p class="text-sm text-gray-400">No questions yet. Ask the first one.</p>'; return; }
+      list.innerHTML = qs.map((q) => {
+        const n = Number(q.votes) || 0;
+        const done = q.status === 'answered';
+        const vote = q.own
+          ? '<span class="shrink-0 w-12 min-h-[44px] rounded-lg flex flex-col items-center justify-center text-xs font-bold bg-white/5 text-gray-400" title="Votes on your question"><i class="fas fa-arrow-up"></i>' + n + '</span>'
+          : '<button type="button" onclick="qaVote(' + Number(q.id) + ')" aria-pressed="' + (q.voted ? 'true' : 'false') + '" aria-label="Vote for this question. ' + n + (n === 1 ? ' vote' : ' votes') + '" class="shrink-0 w-12 min-h-[44px] rounded-lg flex flex-col items-center justify-center text-xs font-bold ' + (q.voted ? 'bg-primary-500 text-white' : 'bg-white/5 text-gray-300') + '"><i class="fas fa-arrow-up"></i>' + n + '</button>';
+        const notes = [done ? 'Answered' : '', q.own ? 'Yours' : ''].filter(Boolean).join(' &middot; ');
+        const withdraw = q.own && !done ? ' &middot; <button type="button" class="underline min-h-[24px]" onclick="qaWithdraw(' + Number(q.id) + ')">Withdraw</button>' : '';
+        return '<div class="glass-light rounded-xl p-3 flex gap-3 items-start' + (done ? ' opacity-60' : '') + '">' + vote
+          + '<div class="min-w-0 flex-1"><p class="text-sm leading-snug break-words">' + esc(q.body) + '</p>'
+          + (notes || withdraw ? '<p class="text-[11px] text-gray-500 mt-1">' + notes + withdraw + '</p>' : '') + '</div></div>';
+      }).join('');
+    }
+    async function qaSend(e) {
+      e.preventDefault();
+      const box = document.getElementById('qa-body');
+      const btn = document.getElementById('qa-send');
+      const body = (box.value || '').trim();
+      if (body.length < 5) { showToast('Write your question in a few words', 'warning'); box.focus(); return; }
+      btn.disabled = true;
+      try {
+        const r = await api.post('/api/sessions/' + qaOpenId + '/questions', { body: body, anonymous: document.getElementById('qa-anon').checked });
+        if (!r || r.error) { showToast(esc((r && r.error) || 'Your question did not send. Please try again.'), 'error'); return; }
+        box.value = '';
+        showToast('Question sent', 'success');
+        qaLoad();
+      } catch (err) {
+        showToast('No connection just now. Your question is still here; press Send again.', 'error');
+      } finally {
+        btn.disabled = false;
+      }
+    }
+    async function qaVote(id) {
+      try {
+        const r = await api.post('/api/questions/' + Number(id) + '/vote', {});
+        if (r && r.error) showToast(esc(r.error), 'error');
+      } catch (e) {}
+      qaLoad();
+    }
+    async function qaWithdraw(id) {
+      if (!confirm('Withdraw your question? It will be taken off the list.')) return;
+      try {
+        const r = await api.post('/api/questions/' + Number(id) + '/withdraw', {});
+        if (r && r.error) showToast(esc(r.error), 'error');
+      } catch (e) {}
+      qaLoad();
     }
 
     // 12 Nov 2026: a meeting is a day and a 15-minute slot, not a date box, and a slot
@@ -36364,6 +36648,9 @@ function adminPageHTML(): string {
       <button onclick="switchSection('after')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="after" title="After the Event: feedback survey and exhibitor results">
         <i class="fas fa-flag-checkered w-5 text-center shrink-0"></i><span class="sidebar-label">After the Event</span>
       </button>
+      <button onclick="switchSection('liveqa')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="liveqa" title="Live Q&amp;A: questions from the room and the moderator links">
+        <i class="fas fa-comments w-5 text-center shrink-0"></i><span class="sidebar-label">Live Q&amp;A</span>
+      </button>
       <div class="border-t border-white/10 my-2"></div>
       <button onclick="switchSection('settings')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="settings" title="Settings">
         <i class="fas fa-cog w-5 text-center shrink-0"></i><span class="sidebar-label">Settings</span>
@@ -36436,6 +36723,7 @@ function adminPageHTML(): string {
       <!-- Boardrooms Section -->
       <div id="section-rooms" class="section-content hidden"></div>
       <div id="section-after" class="section-content hidden"></div>
+      <div id="section-liveqa" class="section-content hidden"></div>
       <!-- Settings Section -->
       <div id="section-settings" class="section-content hidden"></div>
     </div>
@@ -36868,8 +37156,8 @@ function adminPageScript(): string {
       document.querySelectorAll('.section-content').forEach(s => s.classList.add('hidden'));
       document.getElementById('section-'+sec).classList.remove('hidden');
 
-      const titles = { overview:'Overview', workshops:'Workshop Seats', attendees:'Attendee Management', sessions:'Conference', exhibitors:'Exhibitor Management', 'booth-requests':'Booth Requests', 'floor-plan':'Floor Plan', sponsorship:'Sponsorship & Branding', awards:'Awards Management', announcements:'Announcement Management', innovation:'Innovation Talk & Showcase', 'startup-pitch':'Startup Pitch Management', inquiries:'Inquiry Management', submissions:'Submissions', payments:'Payments & Invoices', 'badge-desk':'Badge Desk', analytics:'Analytics & Reports', rooms:'Boardrooms', after:'After the Event', settings:'Settings' };
-      const subtitles = { overview:'Real-time event management dashboard', workshops:'Who sits where, who has not chosen yet, and each workshop slot and seat limit', attendees:'Manage all registered attendees', sessions:'The programme by day and hall, the speakers, the halls, and announcing who speaks when', exhibitors:'Manage exhibition booths', 'booth-requests':'Review and manage booth booking requests', 'floor-plan':'Which of the 93 stands are sold, held and still on the market', sponsorship:'Everything the show sells that is not floor space — and the combined revenue picture', awards:'Manage award categories and nominees', announcements:'Create and manage live feed announcements', innovation:'Manage innovation talk and showcase schedule', 'startup-pitch':'Manage startup pitches and investor panel', inquiries:'View and manage all incoming inquiries', submissions:'Logos, photos and team lists that clients sent by email', payments:'Payments taken online, payments to confirm, and GST invoices', 'badge-desk':'Event-day check-in and the staff accounts that scan passes', analytics:'Deep dive into event engagement metrics', rooms:'Who has which WTC boardroom, hour by hour, across both event days', after:'The feedback survey for everyone who came, and each exhibitor’s results', settings:'Configure email, API keys and app settings' };
+      const titles = { overview:'Overview', workshops:'Workshop Seats', attendees:'Attendee Management', sessions:'Conference', exhibitors:'Exhibitor Management', 'booth-requests':'Booth Requests', 'floor-plan':'Floor Plan', sponsorship:'Sponsorship & Branding', awards:'Awards Management', announcements:'Announcement Management', innovation:'Innovation Talk & Showcase', 'startup-pitch':'Startup Pitch Management', inquiries:'Inquiry Management', submissions:'Submissions', payments:'Payments & Invoices', 'badge-desk':'Badge Desk', analytics:'Analytics & Reports', rooms:'Boardrooms', after:'After the Event', liveqa:'Live Q&A', settings:'Settings' };
+      const subtitles = { overview:'Real-time event management dashboard', workshops:'Who sits where, who has not chosen yet, and each workshop slot and seat limit', attendees:'Manage all registered attendees', sessions:'The programme by day and hall, the speakers, the halls, and announcing who speaks when', exhibitors:'Manage exhibition booths', 'booth-requests':'Review and manage booth booking requests', 'floor-plan':'Which of the 93 stands are sold, held and still on the market', sponsorship:'Everything the show sells that is not floor space — and the combined revenue picture', awards:'Manage award categories and nominees', announcements:'Create and manage live feed announcements', innovation:'Manage innovation talk and showcase schedule', 'startup-pitch':'Manage startup pitches and investor panel', inquiries:'View and manage all incoming inquiries', submissions:'Logos, photos and team lists that clients sent by email', payments:'Payments taken online, payments to confirm, and GST invoices', 'badge-desk':'Event-day check-in and the staff accounts that scan passes', analytics:'Deep dive into event engagement metrics', rooms:'Who has which WTC boardroom, hour by hour, across both event days', after:'The feedback survey for everyone who came, and each exhibitor’s results', liveqa:'Questions from the room in every session, and the links for moderators and the hall screen', settings:'Configure email, API keys and app settings' };
       document.getElementById('page-title').textContent = titles[sec] || sec;
       document.getElementById('page-subtitle').textContent = subtitles[sec] || '';
 
@@ -36988,6 +37276,7 @@ function adminPageScript(): string {
         case 'workshops': loadAdminWorkshops(); break;
         case 'rooms': loadAdminRooms(); break;
         case 'after': loadAdminAfter(); break;
+        case 'liveqa': loadAdminLiveQa(); break;
         case 'badge-desk': loadBadgeDesk(); break;
         case 'settings': loadSettings(); break;
       }
@@ -37029,6 +37318,43 @@ function adminPageScript(): string {
         catch (err) { sectionError(host, 'after', { message: err.message }, 'loadAdminAfter()'); return; }
       }
       await window.AfterDesk.mount(host, { api: api, toast: toast, startCampaign: startCampaign, authHeaders: authHeaders });
+    }
+    // Live Q&A: every session's questions and the moderator links, in /js/admin-qa.js
+    // (one global, QaDesk) with its own stylesheet, loaded the first time the section
+    // opens. Bump QA_DESK_VERSION on any change to either.
+    var QA_DESK_VERSION = '20261112a';
+    var qaDeskAssets = null;
+    function qaDeskLoadAssets() {
+      if (window.QaDesk) return Promise.resolve();
+      if (qaDeskAssets) return qaDeskAssets;
+      var css = new Promise(function (resolve) {
+        if (document.querySelector('link[data-qa-desk]')) { resolve(); return; }
+        var l = document.createElement('link');
+        l.rel = 'stylesheet';
+        l.href = '/css/admin-qa.css?v=' + QA_DESK_VERSION;
+        l.setAttribute('data-qa-desk', '1');
+        l.onload = function () { resolve(); };
+        l.onerror = function () { resolve(); };
+        document.head.appendChild(l);
+      });
+      var js = new Promise(function (resolve, reject) {
+        var s = document.createElement('script');
+        s.src = '/js/admin-qa.js?v=' + QA_DESK_VERSION;
+        s.onload = function () { if (window.QaDesk) resolve(); else reject(new Error('The Live Q&A screen did not start.')); };
+        s.onerror = function () { s.remove(); reject(new Error('The Live Q&A screen could not be downloaded. Check the connection and press Try again.')); };
+        document.head.appendChild(s);
+      });
+      qaDeskAssets = Promise.all([css, js]).catch(function (err) { qaDeskAssets = null; throw err; });
+      return qaDeskAssets;
+    }
+    async function loadAdminLiveQa() {
+      var host = document.getElementById('section-liveqa');
+      if (!window.QaDesk) {
+        if (!host.firstChild) host.innerHTML = '<div class="text-center py-12 text-gray-500">Loading...</div>';
+        try { await qaDeskLoadAssets(); }
+        catch (err) { sectionError(host, 'liveqa', { message: err.message }, 'loadAdminLiveQa()'); return; }
+      }
+      await window.QaDesk.mount(host, { api: api, toast: toast });
     }
 
     // ============ AUDIENCE PROFILE ============
