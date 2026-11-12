@@ -69,13 +69,20 @@ db.run("INSERT INTO workshops (id, event_id, slug, title, speaker, starts_at, en
 db.run("INSERT INTO workshop_seats (event_id, attendee_id, workshop_id) VALUES (1, 900, 1)");
 db.run("INSERT INTO checkins (event_id, attendee_id, day, checked_in_at, checked_in_by) VALUES (1, 900, '2026-11-10', '2026-11-10 05:00:00', 'Desk One')");
 
-const TYPES = { '.html': 'text/html', '.css': 'text/css', '.js': 'application/javascript', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.woff2': 'font/woff2', '.woff': 'font/woff', '.webp': 'image/webp', '.ico': 'image/x-icon', '.json': 'application/json' };
+// A badge desk account, for the scanner opening from the home screen and with no internet.
+db.run("INSERT INTO staff (id, name, username, password_hash, active, role) VALUES (1, 'Desk One', 'desk1', 'x', 1, 'desk')");
+
+const TYPES = { '.webmanifest': 'application/manifest+json', '.html': 'text/html', '.css': 'text/css', '.js': 'application/javascript', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.woff2': 'font/woff2', '.woff': 'font/woff', '.webp': 'image/webp', '.ico': 'image/x-icon', '.json': 'application/json' };
 // /app too: run-all.mjs asks for it to know the harness is up.
 const viaWorker = (p) => p.startsWith('/api/') || p === '/marketplace' || p.startsWith('/marketplace/') || p === '/register' || p === '/app' || p === '/app.js' || p.startsWith('/verify/') || p.startsWith('/exhibitor/') || p === '/staff' || p.startsWith('/staff/');
 const PORT = Number(process.env.HARNESS_PORT || 8851);
+let down = false;
 http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost:' + PORT);
   const p = url.pathname;
+  // /__down?on=1 cuts every connection, as a venue with no signal does; ?on=0 restores it.
+  if (p === '/__down') { down = url.searchParams.get('on') === '1'; res.writeHead(200, { 'Content-Type': 'text/plain' }); res.end(String(down)); return; }
+  if (down) { req.socket.destroy(); return; }
   if (p === '/__sent') { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(sent)); return; }
   if (p === '/__db') { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(rows(url.searchParams.get('q') || 'SELECT 1', []))); return; }
   if (viaWorker(p)) {

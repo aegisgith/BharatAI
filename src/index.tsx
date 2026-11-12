@@ -4235,6 +4235,39 @@ async function sendInvoiceEmail(c: any, v: any, token: string, set: Record<strin
 // "desk". Individual accounts scope the desk to scan-and-check-in, and make each
 // check-in attributable to a person.
 const STAFF_SESSION_DAYS = 3
+// A desk phone is signed in once and stays at the desk (organiser, 12 Nov 2026: "no need
+// to login again"). So a desk sign-in lasts until the end of the day after the event's
+// last day, when that is further off than the usual three days. Never more than 30 days,
+// and never for finance, whose account reaches money. Switching the account off in Admin
+// ends it at once: verifyStaffSession reads `active` on every request.
+const STAFF_DESK_MAX_DAYS = 30
+function staffSessionExpiry(nowMs: number, role: string | null, eventEnd: string | null): number {
+  const now = Math.floor(nowMs / 1000)
+  const base = now + STAFF_SESSION_DAYS * 86400
+  if (role !== 'desk') return base
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(eventEnd || ''))
+  if (!m) return base
+  // 23:59:59 India time on the day after the event ends (India is UTC+5:30).
+  const until = Math.floor(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]) + 1, 18, 29, 59) / 1000)
+  return until > base && until <= now + STAFF_DESK_MAX_DAYS * 86400 ? until : base
+}
+// The next event to end. The day is worked out here, not by the database, so it
+// follows this worker's clock.
+async function staffEventEnd(c: any): Promise<string | null> {
+  try {
+    const yesterdayIst = new Date(Date.now() + 19800000 - 86400000).toISOString().slice(0, 10)
+    const row = await c.env.DB.prepare('SELECT end_date FROM events WHERE end_date >= ? ORDER BY end_date LIMIT 1').bind(yesterdayIst).first() as any
+    return row && row.end_date ? String(row.end_date) : null
+  } catch { return null }
+}
+// null when the role cannot be read: the short sign-in, never the long one by mistake.
+async function staffRoleOf(c: any, id: number): Promise<string | null> {
+  try {
+    if (!(await staffRolesEnabled(c))) return 'desk'
+    const row = await c.env.DB.prepare('SELECT role FROM staff WHERE id = ?').bind(id).first() as any
+    return row ? String(row.role || 'desk') : null
+  } catch { return null }
+}
 
 async function pbkdf2Hash(password: string, saltB64?: string): Promise<string> {
   const enc = new TextEncoder()
@@ -4257,11 +4290,13 @@ async function pbkdf2Verify(password: string, stored: string): Promise<boolean> 
 const staffCookie = (v: string, maxAge: number) =>
   'bhai_staff=' + encodeURIComponent(v) + '; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=' + maxAge
 
-async function issueStaffSession(c: any, id: number) {
+async function issueStaffSession(c: any, id: number, role: string | null = null): Promise<number> {
   const secret = passTokenSecret(c)
-  const exp = Math.floor(Date.now() / 1000) + STAFF_SESSION_DAYS * 86400
+  const now = Date.now()
+  const exp = staffSessionExpiry(now, role, role === 'desk' ? await staffEventEnd(c) : null)
   const body = id + '.' + exp
-  c.header('Set-Cookie', staffCookie(body + '.' + await hmacHexA(secret, 'staff:' + body), STAFF_SESSION_DAYS * 86400))
+  c.header('Set-Cookie', staffCookie(body + '.' + await hmacHexA(secret, 'staff:' + body), exp - Math.floor(now / 1000)))
+  return exp
 }
 
 async function verifyStaffSession(c: any): Promise<any | null> {
@@ -4281,7 +4316,7 @@ async function verifyStaffSession(c: any): Promise<any | null> {
   const cols = (await staffRolesEnabled(c)) ? 'id, name, username, active, role' : 'id, name, username, active'
   const row = await c.env.DB.prepare('SELECT ' + cols + ' FROM staff WHERE id = ?').bind(id).first() as any
   if (!row || !row.active) return null
-  return { ...row, role: row.role || 'desk' }
+  return { ...row, role: row.role || 'desk', session_exp: parseInt(exp, 10) }
 }
 
 let _staffRoleCol: boolean | null = null
@@ -4369,7 +4404,7 @@ app.post('/api/staff/login', async (c) => {
       ? "UPDATE staff SET last_login_at = datetime('now'), failed_attempts = 0, last_failed_at = NULL WHERE id = ?"
       : "UPDATE staff SET last_login_at = datetime('now') WHERE id = ?"
   ).bind(row.id).run()
-  await issueStaffSession(c, row.id)
+  await issueStaffSession(c, row.id, await staffRoleOf(c, row.id))
   return c.json({ success: true, name: row.name })
 })
 
@@ -4614,7 +4649,16 @@ app.get('/staff/scan', async (c) => {
   if (!me) return c.redirect('/staff')
   // Finance has no business at the door; send them where their account works.
   if (me.role === 'finance') return c.redirect('/finance')
-  return c.html(staffScanHTML(me))
+  // A phone signed in under the old three-day rule, or days ahead, is carried through
+  // the event the next time it opens the scanner. Only ever up to the event's own
+  // date: an ordinary three-day sign-in is not stretched by being used.
+  let until = Number(me.session_exp) || 0
+  try {
+    const now = Date.now()
+    const want = staffSessionExpiry(now, me.role, await staffEventEnd(c))
+    if (want > Math.floor(now / 1000) + STAFF_SESSION_DAYS * 86400 + 60 && want - until > 3600) until = await issueStaffSession(c, me.id, me.role)
+  } catch { /* the sign-in they have still works */ }
+  return c.html(staffScanHTML({ ...me, session_exp: until }))
 })
 
 // The accounts team's whole workspace. Deliberately not the admin panel: this page
@@ -4770,10 +4814,32 @@ function financeHTML(me: any): string {
 // head: extra tags for <head> (the scan page loads its QR decoder there).
 function staffShell(title: string, inner: string, script: string, head: string = ''): string {
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>${title} - Bharat AI Innovation 2026</title><style>
+<title>${title} - Bharat AI Innovation 2026</title>
+<meta name="theme-color" content="#0a0e1f">
+<link rel="manifest" href="/staff.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="/images/icon-desk-192.png">
+<link rel="apple-touch-icon" href="/images/icon-desk-192.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Badge Desk">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="robots" content="noindex">
+<style>
  *{box-sizing:border-box}
  body{margin:0;background:#0a0e1f;color:#e8edf5;font-family:system-ui,-apple-system,Segoe UI,Arial,sans-serif;}
- .wrap{max-width:460px;margin:0 auto;padding:20px;}
+ .wrap{max-width:460px;margin:0 auto;padding:20px;padding-top:calc(20px + env(safe-area-inset-top));padding-bottom:calc(20px + env(safe-area-inset-bottom));}
+ .cam{position:relative;margin-top:12px;border-radius:14px;overflow:hidden;background:#000;}
+ .cam video{display:block;margin-top:0;border-radius:0;min-height:220px;}
+ .aim{position:absolute;left:50%;top:50%;width:64%;max-width:300px;aspect-ratio:1;transform:translate(-50%,-50%);border:3px solid rgba(255,255,255,.92);border-radius:20px;box-shadow:0 0 0 2000px rgba(4,8,22,.34);pointer-events:none;}
+ #torch{position:absolute;right:10px;bottom:10px;width:auto;margin:0;padding:11px 16px;border-radius:999px;background:rgba(10,14,31,.8);border:1px solid rgba(255,255,255,.4);font-size:14px;}
+ #torch[aria-pressed="true"]{background:#fff;color:#111;}
+ .pz{margin-top:12px;padding:28px 18px;border-radius:14px;background:#111731;border:1px solid rgba(255,255,255,.12);text-align:center;}
+ .pz p{margin:0;font-size:16px;line-height:1.5;}
+ .stat{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:12px 0 0;font-size:13px;color:#c7d0e4;}
+ .chip{display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border-radius:999px;font-weight:700;font-size:12px;}
+ .chip::before{content:'';width:8px;height:8px;border-radius:50%;background:currentColor;}
+ .chip.on{background:rgba(34,197,94,.16);color:#4ade80;} .chip.off{background:rgba(245,158,11,.18);color:#fbbf24;}
+ #snd{width:auto;margin:0 0 0 auto;padding:10px 14px;min-height:40px;border-radius:999px;background:transparent;border:1px solid rgba(255,255,255,.25);color:#c7d0e4;font-size:12.5px;font-weight:600;}
  h1{font-size:20px;margin:0 0 4px;} .muted{color:#98a3bd;font-size:13px;margin:0 0 18px;line-height:1.5;}
  input{width:100%;padding:14px;margin-top:10px;border-radius:11px;border:1px solid rgba(255,255,255,.15);background:#111731;color:#fff;font-size:16px;}
  button{width:100%;margin-top:12px;padding:15px;border:none;border-radius:12px;background:#FF6B00;color:#fff;font-size:16px;font-weight:700;}
@@ -4814,7 +4880,8 @@ function staffLoginHTML(next: string): string {
     <input id="u" placeholder="Username" autocapitalize="none" autocomplete="username">
     <input id="p" type="password" placeholder="Password" autocomplete="current-password">
     <button onclick="go()">Sign in</button>
-    <p class="err" id="e"></p>`,
+    <p class="err" id="e"></p>
+    <p class="muted" style="margin-top:14px;">You sign in once. This phone then stays signed in until the event is over. After signing in you can add Badge Desk to the home screen and open it like an app.</p>`,
   `var NEXT=${jsonForScript(next)};
    async function go(){
      var e=document.getElementById('e'); e.textContent='';
@@ -4827,12 +4894,24 @@ function staffLoginHTML(next: string): string {
 }
 
 function staffScanHTML(me: any): string {
+  // "22 Nov": the India date this sign-in lasts to.
+  const untilDay = Number(me.session_exp) ? new Date(Number(me.session_exp) * 1000 + 19800000).toISOString().slice(0, 10) : ''
+  const until = untilDay ? Number(untilDay.slice(8)) + ' ' + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][Number(untilDay.slice(5, 7)) - 1] : ''
   return staffShell('Scan passes', `
-    <div class="bar"><h1>Scan a pass</h1><a href="#" onclick="out()">Sign out</a></div>
-    <p class="muted">Signed in as ${String(me.name).replace(/[<>&]/g, '')}. Point the camera at the QR on the attendee's pass.</p>
-    <video id="v" playsinline muted autoplay></video>
+    <div class="bar"><h1>Scan a pass</h1><a href="#" onclick="out();return false;">Sign out</a></div>
+    <p class="muted" id="who">Signed in as ${String(me.name).replace(/[<>&]/g, '')}${until ? ' until ' + until : ''}. Point the camera at the QR on the attendee's pass.</p>
+    <div class="cam" id="camBox">
+      <video id="v" playsinline muted autoplay></video>
+      <div class="aim" aria-hidden="true"></div>
+      <button type="button" id="torch" onclick="torch()" aria-pressed="false" style="display:none;">Light</button>
+    </div>
+    <div class="pz" id="pz" style="display:none;">
+      <p><strong>Camera paused to save battery.</strong></p>
+      <button type="button" id="pz-go" onclick="resumeCam()">Tap to scan</button>
+    </div>
     <p class="err" id="e"></p>
     <button id="cam" onclick="start()" style="display:none;">Start the camera</button>
+    <p class="stat"><span id="net" class="chip on">Online</span><span id="cnt"></span><button type="button" id="snd" onclick="toggleSound()" aria-pressed="true">Sound on</button></p>
     <p class="muted" id="qn" style="margin:8px 0 0;"></p>
     <div class="find">
       <label for="q">No pass to scan?</label>
@@ -4857,9 +4936,19 @@ function staffScanHTML(me: any): string {
       <p class="err" id="r-msg"></p>
       <div id="r-res"></div>
     </details>
+    <div class="hint" id="a2hs" style="display:none;"><strong>Keep Badge Desk on this phone.</strong> <span id="a2hs-how"></span> You stay signed in${until ? ' until ' + until : ''}.
+      <button type="button" id="a2hs-btn" onclick="addHome()" style="display:none;">Add Badge Desk to the home screen</button></div>
     <div class="hint"><strong>No camera?</strong> Your phone's own camera app also works &mdash; point it at the QR and tap the link it offers. You will land on the same verification screen.</div>`,
   `var v=document.getElementById('v'), e=document.getElementById('e'), camBtn=document.getElementById('cam'), stopped=false, stream=null;
-   async function out(){ await fetch('/api/staff/logout',{method:'POST'}); location.href='/staff'; }
+   // Signing out forgets the copy of this page kept for working without internet.
+   // Check-ins still waiting to be sent stay on the phone, and the desk is told so.
+   async function out(){
+     var waiting=0; try{ waiting=(JSON.parse(localStorage.getItem('desk_queue')||'[]')||[]).length; }catch(err){}
+     if(waiting&&!confirm(waiting+' check-in'+(waiting===1?' is':'s are')+' still waiting to be sent from this phone. They are sent the next time someone signs in here. Sign out?')) return;
+     try{ if(window.caches){ var ks=await caches.keys(); for(var i=0;i<ks.length;i++){ if(ks[i].indexOf('desk-')===0) await caches.delete(ks[i]); } } }catch(err){}
+     try{ await fetch('/api/staff/logout',{method:'POST'}); }catch(err){}
+     location.href='/staff';
+   }
 
    // A code is a link to this site's verification page. Only the token is taken
    // out of it and the phone goes to /verify/ on this origin, so a code that
@@ -4871,7 +4960,13 @@ function staffScanHTML(me: any): string {
    // that cannot happen. A phone that thinks it is online but gets no answer is
    // caught by the service worker (sw.js deskOffline), registered here so a desk
    // phone that never opened /app has it too.
-   if('serviceWorker' in navigator){ navigator.serviceWorker.register('/sw.js').catch(function(){}); }
+   if('serviceWorker' in navigator){
+     navigator.serviceWorker.register('/sw.js').catch(function(){});
+     // A copy of this page is kept, so the scanner opens with no internet (sw.js desk-keep).
+     var keepDesk=function(w){ try{ if(w) w.postMessage('desk-keep'); }catch(err){} };
+     navigator.serviceWorker.ready.then(function(reg){ keepDesk(reg.active); }).catch(function(){});
+     navigator.serviceWorker.addEventListener('controllerchange',function(){ keepDesk(navigator.serviceWorker.controller); });
+   }
    function notChecked(){
      var d=document.createElement('div');
      d.id='desk-offline';
@@ -4890,11 +4985,12 @@ function staffScanHTML(me: any): string {
    var busy=false, lastTok='', lastAt=0, roster=null, queue=[], flushing=false;
    try{ roster=JSON.parse(localStorage.getItem('desk_roster')||'null'); queue=JSON.parse(localStorage.getItem('desk_queue')||'[]')||[]; }catch(err){ roster=null; queue=[]; }
    function tx(s){ var d=document.createElement('div'); d.textContent=String(s==null?'':s); return d.innerHTML; }
-   function stopCam(){ stopped=true; try{ stream.getTracks().forEach(function(t){ t.stop(); }); }catch(err){} }
+   function stopCam(){ stopped=true; try{ stream.getTracks().forEach(function(t){ t.stop(); }); }catch(err){} awake(false); }
    function leave(m){ stopCam(); location.href='/verify/'+m[1]; }
    function found(raw){
      var m=VERIFY.exec(String(raw||''));
      if(!m) return false;
+     touch();
      if(busy||(m[1]===lastTok&&Date.now()-lastAt<5000)) return false;
      lastTok=m[1]; lastAt=Date.now(); busy=true;
      quick(m);
@@ -4921,6 +5017,7 @@ function staffScanHTML(me: any): string {
      return Array.from(new Uint8Array(b)).map(function(x){ return x.toString(16).padStart(2,'0'); }).join('').slice(0,10);
    }
    function card(o){
+     feedback(o.state==='ok'||o.state==='offline');
      var d=document.getElementById('card'); if(d) d.remove();
      d=document.createElement('div'); d.id='card'; d.setAttribute('role','alert'); d.setAttribute('data-state',o.state);
      d.style.cssText='position:fixed;inset:0;z-index:98;overflow:auto;background:'+o.bg+';color:#fff;display:flex;flex-direction:column;justify-content:center;padding:24px;text-align:center;font-family:Arial,sans-serif';
@@ -4934,13 +5031,13 @@ function staffScanHTML(me: any): string {
        +(o.undo?'<button id="card-undo" style="background:rgba(255,255,255,.2);color:#fff;font-size:16px">Undo this check-in</button>':'')
        +(o.token?'<a href="/verify/'+encodeURIComponent(o.token)+'" style="color:#fff;margin-top:16px;font-size:15px">Open full details</a>':'');
      document.body.appendChild(d);
-     document.getElementById('card-next').onclick=function(){ d.remove(); busy=false; lastAt=Date.now(); };
+     document.getElementById('card-next').onclick=function(){ d.remove(); busy=false; lastAt=Date.now(); wakeCam(); };
      var u=document.getElementById('card-undo');
      if(u) u.onclick=async function(){
        u.disabled=true; u.textContent='Undoing...';
        try{
          var r=await fetch('/api/verify/'+encodeURIComponent(o.token)+'/undo',{method:'POST'});
-         if(r.ok){ d.remove(); busy=false; lastTok=''; e.textContent='That check-in was undone.'; return; }
+         if(r.ok){ d.remove(); busy=false; lastTok=''; if(o.counted) count(-1); wakeCam(); e.textContent='That check-in was undone.'; return; }
        }catch(err){}
        u.disabled=false; u.textContent='Could not undo. Open full details.';
      };
@@ -4952,7 +5049,8 @@ function staffScanHTML(me: any): string {
      var idNote=j.photo_flagged?'The photo on this pass did not match the person. Check the NAME on a government photo ID.'
        :j.photo?'Check the photo and name against a government photo ID.':'No photo on file. Check the NAME on a government photo ID.';
      var ws=j.workshop?' Workshop: '+j.workshop+'.':'';
-     if(j.state==='ok') card({state:'ok',bg:GREEN,title:'CHECKED IN',name:j.name,sub:sub,pass:j.pass,photo:j.photo,note:idNote+ws+also,token:tok,undo:j.undoable});
+     if(j.state==='ok') count(1);
+     if(j.state==='ok') card({counted:true,state:'ok',bg:GREEN,title:'CHECKED IN',name:j.name,sub:sub,pass:j.pass,photo:j.photo,note:idNote+ws+also,token:tok,undo:j.undoable});
      else if(j.state==='already') card({state:'already',bg:AMBER,title:'ALREADY CHECKED IN TODAY',name:j.name,sub:sub,pass:j.pass,photo:j.photo,note:(j.at_ist||'')+(j.by?' by '+j.by:'')+'.'+ws,token:tok,undo:j.undoable});
      else if(j.state==='payment_pending') card({state:'payment_pending',bg:AMBER,title:'PAYMENT PENDING',name:j.name,sub:sub,pass:j.pass,note:'This tier has not been paid for. Do not admit without checking.',token:tok});
      else if(j.state==='panel_only') card({state:'panel_only',bg:RED,title:'NOT REGISTERED',name:j.name,note:'Registered for a campus panel only, not for the conference. Send them to the registration desk.',token:tok});
@@ -4983,7 +5081,7 @@ function staffScanHTML(me: any): string {
      if(p[3]===2) return card({state:'panel_only',bg:RED,title:'NOT REGISTERED',name:p[1],note:'Registered for a campus panel only, not for the conference. Send them to the registration desk.'});
      if(p[3]===1) return card({state:'payment_pending',bg:AMBER,title:'PAYMENT PENDING',name:p[1],pass:p[2],note:'This tier has not been paid for. Do not admit without checking.'});
      var dup=queue.some(function(q){ return q.token===tok; });
-     if(!dup){ queue.push({token:tok,at:Date.now()}); saveQueue(); }
+     if(!dup){ queue.push({token:tok,at:Date.now()}); saveQueue(); count(1); }
      card({state:'offline',bg:GREY,title:dup?'ALREADY SCANNED (NO INTERNET)':'VALID PASS (NO INTERNET)',name:p[1],pass:p[2],note:'Check the NAME on a government photo ID. This check-in is saved on this phone and is recorded when the internet returns.'});
    }
    async function flush(){
@@ -5000,6 +5098,92 @@ function staffScanHTML(me: any): string {
    window.addEventListener('online',function(){ flush(); loadRoster(); });
    setInterval(flush,20000); setInterval(loadRoster,600000);
    note(); loadRoster(); flush();
+
+   // Battery (12 Nov 2026). A camera left running with nobody in front of it drains the
+   // phone. It stops after two minutes without a scan or a touch, and whenever the page
+   // is not on screen; one tap starts it again. While it runs the screen is kept awake,
+   // so the phone does not lock in the middle of a queue.
+   var IDLE_MS=120000, idleAt=Date.now(), paused=false, pausedBy='', run=0, wake=null, lit=false;
+   var pz=document.getElementById('pz'), camBox=document.getElementById('camBox'), torchBtn=document.getElementById('torch');
+   function touch(){ idleAt=Date.now(); }
+   function awake(on){
+     try{
+       if(on){
+         if(!wake&&navigator.wakeLock&&!document.hidden) navigator.wakeLock.request('screen').then(function(w){ wake=w; w.addEventListener('release',function(){ if(wake===w) wake=null; }); }).catch(function(){});
+       }else if(wake){ var w=wake; wake=null; w.release().catch(function(){}); }
+     }catch(err){}
+   }
+   function camOff(){
+     run++;
+     try{ if(stream) stream.getTracks().forEach(function(t){ t.stop(); }); }catch(err){}
+     stream=null; lit=false; try{ v.srcObject=null; }catch(err){}
+     if(torchBtn){ torchBtn.style.display='none'; torchBtn.setAttribute('aria-pressed','false'); torchBtn.textContent='Light'; }
+     awake(false);
+   }
+   function pauseCam(by){
+     if(paused||stopped) return;
+     paused=true; pausedBy=by||'idle'; camOff();
+     camBox.style.display='none'; pz.style.display='block'; camBtn.style.display='none'; e.textContent='';
+   }
+   function resumeCam(){
+     if(!paused||stopped) return;
+     touch(); start();
+   }
+   function wakeCam(){ touch(); if(paused) resumeCam(); }
+   // The phone's light, where the browser can switch it (Android): for a dim hall.
+   function torchReady(){
+     try{
+       var t=stream&&stream.getVideoTracks()[0], caps=t&&t.getCapabilities?t.getCapabilities():null;
+       if(torchBtn&&caps&&caps.torch) torchBtn.style.display='block';
+     }catch(err){}
+   }
+   function torch(){
+     try{
+       var t=stream&&stream.getVideoTracks()[0]; if(!t) return;
+       lit=!lit; touch();
+       torchBtn.setAttribute('aria-pressed',lit?'true':'false'); torchBtn.textContent=lit?'Light on':'Light';
+       t.applyConstraints({advanced:[{torch:lit}]}).catch(function(){ lit=false; torchBtn.setAttribute('aria-pressed','false'); torchBtn.textContent='Light'; });
+     }catch(err){}
+   }
+   // A sound and a buzz with every answer: one short note for a good pass, two long
+   // low ones for anything the desk must read. The sound can be switched off.
+   var sound=true, actx=null;
+   try{ sound=localStorage.getItem('desk_sound')!=='off'; }catch(err){}
+   function audio(){
+     var AC=window.AudioContext||window.webkitAudioContext; if(!AC) return null;
+     if(!actx) actx=new AC();
+     if(actx.state==='suspended') actx.resume();
+     return actx;
+   }
+   function feedback(good){
+     try{ if(navigator.vibrate) navigator.vibrate(good?70:[160,90,160]); }catch(err){}
+     if(!sound) return;
+     try{
+       var a=audio(); if(!a) return;
+       var o=a.createOscillator(), g=a.createGain(), t=a.currentTime, len=good?0.12:0.4;
+       o.type=good?'sine':'square'; o.frequency.value=good?880:220;
+       g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(0.25,t+0.01); g.gain.exponentialRampToValueAtTime(0.0001,t+len);
+       o.connect(g); g.connect(a.destination); o.start(t); o.stop(t+len+0.02);
+     }catch(err){}
+   }
+   function soundLabel(){ var b=document.getElementById('snd'); if(b){ b.textContent=sound?'Sound on':'Sound off'; b.setAttribute('aria-pressed',sound?'true':'false'); } }
+   function toggleSound(){ sound=!sound; try{ localStorage.setItem('desk_sound',sound?'on':'off'); }catch(err){} soundLabel(); if(sound) feedback(true); }
+   // How many people this phone has checked in today (India date), kept on the phone.
+   function count(by){
+     var c={day:new Date(Date.now()+19800000).toISOString().slice(0,10),n:0};
+     try{ var s=JSON.parse(localStorage.getItem('desk_count')||'null'); if(s&&s.day===c.day) c.n=Number(s.n)||0; }catch(err){}
+     if(by){ c.n=Math.max(0,c.n+by); try{ localStorage.setItem('desk_count',JSON.stringify(c)); }catch(err){} }
+     var el=document.getElementById('cnt'); if(el) el.textContent='Checked in on this phone today: '+c.n;
+     return c.n;
+   }
+   function net(){
+     var el=document.getElementById('net'); if(!el) return;
+     var on=navigator.onLine!==false;
+     el.textContent=on?'Online':'No internet';
+     el.className='chip '+(on?'on':'off');
+   }
+   window.addEventListener('online',net); window.addEventListener('offline',net);
+   net(); count(0); soundLabel();
 
    // Two readers. BarcodeDetector is the browser's own (Android Chrome). Every
    // iPhone lacks it, and on some phones it exists but reads nothing, so the
@@ -5022,8 +5206,8 @@ function staffScanHTML(me: any): string {
      var codes=await det.detect(v);
      return codes&&codes.length?(codes[0].rawValue||''):null;
    }
-   async function loop(){
-     if(stopped) return;
+   async function loop(g){
+     if(stopped||paused||g!==run) return;
      var raw=null;
      try{
        if(!useJs){
@@ -5033,17 +5217,22 @@ function staffScanHTML(me: any): string {
        if(useJs&&raw===null) raw=readJs();
        if(raw&&found(raw)) return;
      }catch(err){}
-     setTimeout(loop,200);
+     setTimeout(function(){ loop(g); },200);
    }
    async function start(){
      e.textContent=''; camBtn.style.display='none';
+     if(paused){ paused=false; pausedBy=''; pz.style.display='none'; camBox.style.display='block'; }
      if(useJs&&typeof jsQR!=='function'){
        e.textContent='This browser cannot scan in-page. Use your phone camera app on the QR instead, or search below.'; return;
      }
+     var g=++run;
      try{
-       stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
-       v.srcObject=stream; await v.play();
+       var got=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+       // Paused or left while the phone was still asking: let this camera go.
+       if(g!==run||stopped||paused){ got.getTracks().forEach(function(t){ t.stop(); }); return; }
+       stream=got; v.srcObject=stream; await v.play();
      }catch(err){
+       if(g!==run||paused||stopped) return;
        // iOS sometimes wants the first camera start from a tap: offer one.
        e.textContent='Camera not started. Tap Start the camera and allow it, or use your phone camera app on the QR, or search below.';
        camBtn.style.display='block'; return;
@@ -5051,9 +5240,31 @@ function staffScanHTML(me: any): string {
      if(!useJs&&BarcodeDetector.getSupportedFormats){
        try{ var fm=await BarcodeDetector.getSupportedFormats(); if(fm.indexOf('qr_code')<0) useJs=true; }catch(err){ useJs=true; }
      }
-     loop();
+     touch(); awake(true); torchReady();
+     loop(g);
    }
    start();
+   setInterval(function(){ if(!paused&&!stopped&&stream&&Date.now()-idleAt>IDLE_MS) pauseCam('idle'); },1000);
+   document.addEventListener('visibilitychange',function(){
+     if(document.hidden){ if(!paused&&!stopped&&stream) pauseCam('hidden'); }
+     else if(paused&&pausedBy==='hidden') resumeCam();
+   });
+   ['pointerdown','keydown'].forEach(function(n){ document.addEventListener(n,touch,true); });
+   // Sound needs one touch before a phone will play it: the first one anywhere does.
+   document.addEventListener('pointerdown',function(){ try{ if(sound) audio(); }catch(err){} },true);
+
+   // Badge Desk on the home screen: the browser's own install box where it offers one
+   // (Android), otherwise the two taps in words. Nothing is shown once it runs as an app.
+   var a2=document.getElementById('a2hs'), a2how=document.getElementById('a2hs-how'), a2btn=document.getElementById('a2hs-btn'), installEvt=null;
+   var asApp=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone===true;
+   if(a2&&!asApp){
+     var ios=/iPhone|iPad|iPod/.test(navigator.userAgent);
+     a2how.textContent=ios?'In Safari, tap the Share button, then Add to Home Screen. Open Badge Desk from that icon and sign in there once.':'Open the browser menu (the three dots) and tap Add to Home screen or Install app.';
+     a2.style.display='block';
+     window.addEventListener('beforeinstallprompt',function(ev){ ev.preventDefault(); installEvt=ev; a2btn.style.display='block'; });
+     window.addEventListener('appinstalled',function(){ a2.style.display='none'; });
+   }
+   function addHome(){ if(!installEvt) return; var ev=installEvt; installEvt=null; a2btn.style.display='none'; try{ ev.prompt(); }catch(err){} }
 
    // Debounced: the desk types with one thumb while holding a queue back.
    var qEl=document.getElementById('q'), resEl=document.getElementById('res'), timer=null;

@@ -181,5 +181,63 @@ check("nobody reads another person's certificate status", r.status === 401 || r.
 r = await hit('GET', '/staff/scan');
 check('the scanner page still needs a desk sign-in', r.status === 302, r.status);
 
+// ---- how long a desk sign-in lasts (12 Nov 2026): once, through the event ----
+const rawHit = async (method, path, body, headers = {}) => {
+  const res = await worker.fetch(new Request('https://bharataiinnovation.com' + path, { method, headers: { 'Content-Type': 'application/json', ...headers }, body: body === undefined ? undefined : JSON.stringify(body) }), env, ctx);
+  const sc = res.headers.get('set-cookie') || '';
+  const m = /bhai_staff=(\d+)\.(\d+)\.([0-9a-f]+)/.exec(sc);
+  return { status: res.status, text: await res.text(), sc, exp: m ? Number(m[2]) : null, maxAge: Number((/Max-Age=(\d+)/.exec(sc) || [])[1] || 0), cookie: m ? m[0] : '', location: res.headers.get('location') || '' };
+};
+const nowS = () => Math.floor(Date.now() / 1000);
+const near = (a, b) => Math.abs(a - b) <= 3;
+const staffTok = (id, exp) => 'bhai_staff=' + id + '.' + exp + '.' + crypto.createHmac('sha256', SESSION).update('staff:' + id + '.' + exp).digest('hex');
+const DAY_AFTER = Real.UTC(2026, 10, 22, 18, 29, 59) / 1000; // 22 Nov 2026, 23:59:59 in India
+const login = (username) => rawHit('POST', '/api/staff/login', { username, password: 'Desk-Pass-12345' });
+for (const [name, username, role] of [['Desk Nine', 'desk9', 'desk'], ['Fin One', 'fin1', 'finance']]) await hit('POST', '/api/admin/staff', { name, username, password: 'Desk-Pass-12345', role }, desk);
+const deskId = q("SELECT id FROM staff WHERE username = 'desk9'")[0].id, finId = q("SELECT id FROM staff WHERE username = 'fin1'")[0].id;
+
+at('2026-11-12', '09:00');
+r = await login('desk9');
+check('sign-in: a desk account signed in on 12 Nov stays signed in to the end of 22 Nov, the day after the event', r.status === 200 && r.exp === DAY_AFTER && near(r.maxAge, DAY_AFTER - nowS()) && /HttpOnly/.test(r.sc) && /Secure/.test(r.sc), r.sc);
+const longCookie = r.cookie;
+r = await rawHit('GET', '/staff/scan', undefined, { Cookie: longCookie });
+check('sign-in: the scanner opens with it, says until when, and hands out no second one', r.status === 200 && /Signed in as Desk Nine until 22 Nov\. Point the camera/.test(r.text) && /You stay signed in until 22 Nov\./.test(r.text) && !r.sc, r.sc + ' ' + (/Signed in as[^<]*/.exec(r.text) || [''])[0]);
+r = await login('fin1');
+check('sign-in: a finance account still lasts three days', r.status === 200 && near(r.exp, nowS() + 3 * 86400) && near(r.maxAge, 3 * 86400), r.sc);
+r = await rawHit('GET', '/staff/scan', undefined, { Cookie: staffTok(deskId, nowS() + 2 * 86400) });
+check('sign-in: a desk phone on an old three-day sign-in is carried through the event when it opens the scanner', r.status === 200 && r.exp === DAY_AFTER && /until 22 Nov\./.test(r.text), r.sc);
+r = await rawHit('GET', '/staff/scan', undefined, { Cookie: staffTok(finId, nowS() + 86400) });
+check('sign-in: finance is sent to its own page and is not carried', r.status === 302 && /\/finance$/.test(r.location) && !r.sc, r.status + ' ' + r.location + ' ' + r.sc);
+r = await rawHit('GET', '/staff/scan', undefined, { Cookie: 'bhai_staff=' + deskId + '.' + (DAY_AFTER + 300 * 86400) + '.' + longCookie.split('.')[2] });
+check('sign-in: a sign-in with its date changed by hand is refused', r.status === 302 && /\/staff$/.test(r.location), r.status + ' ' + r.location);
+db.run("UPDATE staff SET active = 0 WHERE username = 'desk9'");
+r = await rawHit('GET', '/staff/scan', undefined, { Cookie: longCookie });
+check('sign-in: switching the account off in Admin ends the long sign-in at once', r.status === 302 && /\/staff$/.test(r.location), r.status + ' ' + r.location);
+db.run("UPDATE staff SET active = 1 WHERE username = 'desk9'");
+
+at('2026-10-01', '09:00');
+r = await login('desk9');
+check('sign-in: more than 30 days before the event it is the usual three days', near(r.exp, nowS() + 3 * 86400), r.sc);
+r = await rawHit('GET', '/staff/scan', undefined, { Cookie: staffTok(deskId, nowS() + 86400) });
+check('sign-in: away from the event a sign-in is not stretched by being used', r.status === 200 && !r.sc && /Signed in as Desk Nine until 2 Oct\./.test(r.text), r.sc + ' ' + (/Signed in as[^<]*/.exec(r.text) || [''])[0]);
+at('2026-11-21', '20:00');
+r = await login('desk9');
+check('sign-in: on the last evening it is never shorter than three days', near(r.exp, nowS() + 3 * 86400), r.sc);
+at('2026-11-23', '09:00');
+r = await login('desk9');
+check('sign-in: after the event it is three days again', near(r.exp, nowS() + 3 * 86400), r.sc);
+r = await rawHit('GET', '/staff/scan', undefined, { Cookie: longCookie });
+check('sign-in: the event-long sign-in has run out by 23 Nov', r.status === 302 && /\/staff$/.test(r.location), r.status + ' ' + r.location);
+
+// ---- the desk as an app on the home screen ----
+r = await rawHit('GET', '/staff');
+check('the sign-in page carries the Badge Desk app and says the phone stays signed in', r.status === 200 && /<link rel="manifest" href="\/staff\.webmanifest">/.test(r.text) && /apple-mobile-web-app-title" content="Badge Desk"/.test(r.text) && /You sign in once\. This phone then stays signed in until the event is over\./.test(r.text), '');
+const man = JSON.parse(readFileSync(new URL('../../public/staff.webmanifest', import.meta.url), 'utf8'));
+check('the app opens on the scanner, full screen, under its own name', man.start_url === '/staff/scan' && man.id === '/staff/scan' && man.display === 'standalone' && man.short_name === 'Badge Desk' && man.scope === '/', JSON.stringify(man).slice(0, 200));
+const pngSize = (rel) => { const b = readFileSync(new URL('../../public' + rel, import.meta.url)); return b.slice(1, 4).toString() === 'PNG' ? b.readUInt32BE(16) + 'x' + b.readUInt32BE(20) : 'not a png'; };
+check('every icon it names is a picture of the size it says', man.icons.length === 3 && man.icons.every(i => pngSize(i.src) === i.sizes) && man.icons.some(i => i.purpose === 'maskable'), man.icons.map(i => i.src + ' ' + pngSize(i.src)).join(', '));
+const swSrc = readFileSync(new URL('../../public/sw.js', import.meta.url), 'utf8');
+check('the offline helper keeps the scanner page only, and never a pass check or the sign-in page', /url\.pathname === '\/staff\/scan'\) \{ event\.respondWith\(deskScanner\(request\)\)/.test(swSrc) && /startsWith\('\/verify\/'\) \|\| url\.pathname\.startsWith\('\/staff'\)/.test(swSrc) && /event\.data !== 'desk-keep'/.test(swSrc), '');
+
 console.log(fails ? `\n${fails} FAILED` : '\nAll two-day desk checks passed');
 process.exit(fails ? 1 : 0);

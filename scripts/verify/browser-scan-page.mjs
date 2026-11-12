@@ -117,11 +117,19 @@ async function fast(name, { reply, saved, run }) {
     }
     if (u.pathname === '/api/staff/roster') return seen.reply === 'down' ? route.abort('internetdisconnected') : route.fulfill({ status: 404, body: '' });
     if (/^\/api\/verify\/.+\/undo$/.test(u.pathname)) { seen.undo++; return route.fulfill({ contentType: 'application/json', body: '{"success":true}' }); }
+    if (u.pathname === '/api/staff/logout') { seen.logout = (seen.logout || 0) + 1; return route.fulfill({ contentType: 'application/json', body: '{"success":true}' }); }
+    if (u.pathname === '/staff') return route.fulfill({ contentType: 'text/html', body: '<title>sign-in stub</title>sign in' });
     if (u.pathname.startsWith('/verify/')) { seen.verify = u.pathname; return route.fulfill({ contentType: 'text/html', body: '<title>verify stub</title>ok' }); }
     return route.fulfill({ status: 404, body: '' });
   });
   await page.addInitScript(({ qrSrc, payload, saved }) => {
     if (saved) localStorage.setItem('desk_roster', JSON.stringify(saved));
+    // The buzz is recorded; __blank empties the camera's view (nobody at the desk).
+    // The count and sound live in localStorage, which every page of this context shares:
+    // each page starts from none, as a fresh phone would.
+    window.__buzz = []; window.__camStarts = 0; window.__blank = false;
+    if (location.pathname === '/staff/scan') { localStorage.removeItem('desk_count'); localStorage.removeItem('desk_sound'); }
+    try { Object.defineProperty(navigator, 'vibrate', { configurable: true, value: (p) => { window.__buzz.push(p); return true; } }); } catch (e) {}
     eval(qrSrc);
     const q = qrcode(0, 'M'); q.addData(payload); q.make();
     const n = q.getModuleCount(), cell = 7, margin = 4, size = (n + 2 * margin) * cell;
@@ -130,13 +138,15 @@ async function fast(name, { reply, saved, run }) {
     const paint = () => {
       g.fillStyle = '#f4f4f4'; g.fillRect(0, 0, 640, 480);
       const ox = Math.round((640 - size) / 2), oy = Math.round((480 - size) / 2);
-      g.fillStyle = '#fff'; g.fillRect(ox, oy, size, size); g.fillStyle = '#000';
-      for (let r = 0; r < n; r++) for (let k = 0; k < n; k++) if (q.isDark(r, k)) g.fillRect(ox + (k + margin) * cell, oy + (r + margin) * cell, cell, cell);
+      if (!window.__blank) {
+        g.fillStyle = '#fff'; g.fillRect(ox, oy, size, size); g.fillStyle = '#000';
+        for (let r = 0; r < n; r++) for (let k = 0; k < n; k++) if (q.isDark(r, k)) g.fillRect(ox + (k + margin) * cell, oy + (r + margin) * cell, cell, cell);
+      }
       g.fillStyle = 'rgba(0,0,0,0.01)'; g.fillRect(0, 0, 2, 2);
     };
     paint(); setInterval(paint, 100);
-    const stream = c.captureStream(10);
-    navigator.mediaDevices.getUserMedia = async () => stream;
+    // A new stream each time, as a phone gives: a camera that was stopped stays stopped.
+    navigator.mediaDevices.getUserMedia = async () => { window.__camStarts++; return c.captureStream(10); };
     delete window.BarcodeDetector;
   }, { qrSrc, payload: PASS_QR, saved: saved || null });
   await page.goto('https://bharataiinnovation.com/staff/scan', { waitUntil: 'domcontentloaded' });
@@ -199,6 +209,67 @@ await fast('no internet, with the saved list', { reply: 'down', saved: { day: '2
 await fast('no internet, a pass the saved list does not vouch for', { reply: 'down', saved: { day: '2026-11-20', people: [[12345, 'Asha Rao', 'Delegate Pass', 0, 'ffffffffff'], [777, 'Una Unpaid', 'VIP Pass', 1, 'x']] }, run: async ({ page, cardText }) => {
   const t = await cardText();
   check('no internet and a made-up signature: NOT VALID, nothing saved', /^invalid \| NOT VALID/.test(t) && (await page.evaluate(() => JSON.parse(localStorage.getItem('desk_queue') || '[]'))).length === 0, t);
+} });
+
+// ---- the scanner as an app (12 Nov 2026): the screen, battery, count, sound, home screen ----
+const camOn = (page) => page.evaluate(() => { const v = document.getElementById('v'); return !!(v.srcObject && v.srcObject.active); });
+const waitFor = async (fn, ms = 6000) => { const t = Date.now() + ms; while (Date.now() < t) { try { if (await fn()) return true; } catch {} await new Promise(r => setTimeout(r, 100)); } return false; };
+await fast('the scanner as an app', { reply: { state: 'ok', undoable: true, ...PERSON }, run: async ({ page, seen, cardText, errors }) => {
+  const head = await page.evaluate(() => { const a = (s, k) => { const e = document.querySelector(s); return e ? e.getAttribute(k) : null; }; return { manifest: a('link[rel=manifest]', 'href'), touch: a('link[rel=apple-touch-icon]', 'href'), title: a('meta[name=apple-mobile-web-app-title]', 'content'), theme: a('meta[name=theme-color]', 'content'), robots: a('meta[name=robots]', 'content') }; });
+  check('the page carries the Badge Desk app: its manifest, icon, name and colour, and stays out of search', head.manifest === '/staff.webmanifest' && head.touch === '/images/icon-desk-192.png' && head.title === 'Badge Desk' && head.theme === '#0a0e1f' && head.robots === 'noindex', JSON.stringify(head));
+  let t = await cardText();
+  check('a good pass: one short buzz, and it is counted on this phone', /^ok \|/.test(t) && JSON.stringify(await page.evaluate(() => window.__buzz)) === '[70]' && await page.locator('#cnt').innerText() === 'Checked in on this phone today: 1', t + ' buzz=' + JSON.stringify(await page.evaluate(() => window.__buzz)) + ' ' + await page.locator('#cnt').innerText());
+  // Undo it; the pass still under the camera is then read again, this time as not valid.
+  seen.reply = { state: 'invalid' };
+  await page.locator('#card-undo').tap();
+  // The old card goes and the pass still under the camera is read again: wait for the new card.
+  await waitFor(() => page.evaluate(() => { const d = document.getElementById('card'); return !!d && d.getAttribute('data-state') === 'invalid'; }));
+  t = await cardText();
+  check('undo takes it off the count; a bad pass buzzes twice, long', seen.undo === 1 && /^invalid \|/.test(t) && await page.locator('#cnt').innerText() === 'Checked in on this phone today: 0' && JSON.stringify((await page.evaluate(() => window.__buzz)).slice(-1)[0]) === '[160,90,160]', t + ' ' + await page.locator('#cnt').innerText() + ' buzz=' + JSON.stringify(await page.evaluate(() => window.__buzz)));
+  await page.evaluate(() => { window.__blank = true; });
+  await page.locator('#card-next').tap();
+  check('the screen says who is signed in and until which day', /^Signed in as Desk One until \d{1,2} (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\. Point the camera at the QR/.test(await page.locator('#who').innerText()), await page.locator('#who').innerText());
+  const look = await page.evaluate(() => { const r = (id) => { const e = document.getElementById(id); const b = e.getBoundingClientRect(); return { w: Math.round(b.width), h: Math.round(b.height), shown: getComputedStyle(e).display !== 'none' }; }; const aim = document.querySelector('.aim').getBoundingClientRect(), cam = document.getElementById('camBox').getBoundingClientRect(); return { aim: aim.width > 100 && aim.left > cam.left && aim.right < cam.right && aim.top > cam.top && aim.bottom < cam.bottom, torch: r('torch'), snd: r('snd'), net: document.getElementById('net').textContent, wide: document.documentElement.scrollWidth }; });
+  check('the camera has an aiming frame inside it, and no light button on a camera without a light', look.aim && !look.torch.shown, JSON.stringify(look));
+  check('the status line: Online, and a Sound button big enough to press; nothing wider than the phone', look.net === 'Online' && look.snd.shown && look.snd.h >= 40 && look.wide <= 391, JSON.stringify(look));
+  await page.locator('#snd').tap();
+  check('Sound off is remembered on the phone', await page.locator('#snd').innerText() === 'Sound off' && await page.evaluate(() => localStorage.getItem('desk_sound')) === 'off' && await page.locator('#snd').getAttribute('aria-pressed') === 'false', await page.locator('#snd').innerText());
+  const hint = await page.locator('#a2hs').innerText();
+  check('in a browser it says how to put Badge Desk on the home screen, and that the phone stays signed in', /Keep Badge Desk on this phone\./.test(hint) && /three dots/.test(hint) && /Add to Home screen/.test(hint) && /You stay signed in until \d{1,2} [A-Z][a-z]{2}\./.test(hint), hint);
+
+  // Battery: nobody at the desk.
+  check('the camera is running, started once', await camOn(page) && await page.evaluate(() => window.__camStarts) === 1, await page.evaluate(() => window.__camStarts));
+  await page.evaluate(() => { IDLE_MS = 500; });
+  const pausedIdle = await waitFor(() => page.locator('#pz').isVisible());
+  check('with no scan and no touch the camera stops by itself and the screen says so', pausedIdle && !(await camOn(page)) && !(await page.locator('#camBox').isVisible()) && /Camera paused to save battery\./.test(await page.locator('#pz').innerText()) && /Tap to scan/.test(await page.locator('#pz').innerText()), await page.locator('#pz').innerText().catch(() => ''));
+  await page.evaluate(() => { IDLE_MS = 120000; window.__blank = false; });
+  seen.reply = { state: 'ok', undoable: true, ...PERSON };
+  await page.locator('#pz-go').tap();
+  t = await cardText();
+  check('one tap starts it again and the next pass is checked in', /^ok \|/.test(t) && await page.evaluate(() => window.__camStarts) === 2 && await page.locator('#camBox').isVisible() && !(await page.locator('#pz').isVisible()), t + ' starts=' + await page.evaluate(() => window.__camStarts));
+  // The card left on screen with nobody there: the camera rests behind it, and wakes with the next tap.
+  await page.evaluate(() => { window.__blank = true; IDLE_MS = 500; });
+  const pausedBehind = await waitFor(() => page.evaluate(() => document.getElementById('pz').style.display === 'block'));
+  await page.evaluate(() => { IDLE_MS = 120000; });
+  await page.locator('#card-next').tap();
+  check('a result left on screen lets the camera rest, and Scan next pass wakes it', pausedBehind && await waitFor(() => camOn(page)) && await page.evaluate(() => window.__camStarts) === 3, 'paused=' + pausedBehind + ' starts=' + await page.evaluate(() => window.__camStarts));
+  // The page leaves the screen (phone locked, another app) and comes back.
+  await page.evaluate(() => { Object.defineProperty(document, 'hidden', { configurable: true, get: () => true }); document.dispatchEvent(new Event('visibilitychange')); });
+  const offHidden = await waitFor(async () => !(await camOn(page)));
+  await page.evaluate(() => { Object.defineProperty(document, 'hidden', { configurable: true, get: () => false }); document.dispatchEvent(new Event('visibilitychange')); });
+  check('off the screen the camera stops; back on screen it starts by itself, no tap', offHidden && await waitFor(() => camOn(page)) && await page.evaluate(() => window.__camStarts) === 4 && !(await page.locator('#pz').isVisible()), 'off=' + offHidden + ' starts=' + await page.evaluate(() => window.__camStarts));
+
+  // Signing out with a check-in still waiting.
+  await page.evaluate(() => localStorage.setItem('desk_queue', JSON.stringify([{ token: 'x', at: 1 }])));
+  let asked = '';
+  page.once('dialog', d => { asked = d.message(); d.dismiss(); });
+  await page.locator('.bar a').tap();
+  await new Promise(r => setTimeout(r, 400));
+  check('signing out with a check-in not yet sent asks first, and No keeps the desk signed in', /1 check-in is still waiting to be sent from this phone\./.test(asked) && !seen.logout && /\/staff\/scan$/.test(page.url()), asked + ' ' + page.url());
+  page.once('dialog', d => d.accept());
+  await page.locator('.bar a').tap();
+  check('Yes signs out, and the check-in stays on the phone to be sent later', await waitFor(() => /\/staff$/.test(page.url())) && seen.logout === 1 && await page.evaluate(() => JSON.parse(localStorage.getItem('desk_queue') || '[]').length) === 1, page.url() + ' logout=' + seen.logout);
+  check('no page errors through all of it', errors.length === 0, errors.join(' | '));
 } });
 
 await browser.close();

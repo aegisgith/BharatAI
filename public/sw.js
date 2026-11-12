@@ -44,6 +44,8 @@
 const VERSION = 'bhai-v30';
 const SHELL = `shell-${VERSION}`;
 const DATA = `data-${VERSION}`;
+// The badge desk's scanner page, kept so it opens with no internet (12 Nov 2026).
+const DESK = `desk-${VERSION}`;
 
 // The only API responses worth an offline copy: the event-wide lists that are
 // the same for everyone. /api/events/:id itself is included because the Home
@@ -165,6 +167,35 @@ function deskOffline(isPassCheck) {
   return new Response(html, { status: 503, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } });
 }
 
+// The scanner page itself (12 Nov 2026). With the list of passes saved on the phone the
+// scanner can work with no internet, but only if the page can open: a phone that had
+// reloaded it, or opened it from the home screen, got the red page instead. So the last
+// copy served to a signed-in desk is kept and used ONLY when the network does not
+// answer. The server sending the phone to the sign-in page, or refusing it, throws the
+// copy away, and so does signing out (the page deletes this cache). /verify/ and the
+// sign-in page are never served from a copy.
+function deskScanner(request) {
+  return fetch(request).then((res) => {
+    if (res.ok && !res.redirected) {
+      const copy = res.clone();
+      caches.open(DESK).then((c) => c.put('/staff/scan', copy));
+    } else if (res.type === 'opaqueredirect' || res.redirected || res.status === 401 || res.status === 403) {
+      caches.open(DESK).then((c) => c.delete('/staff/scan'));
+    }
+    return res;
+  }).catch(() => caches.open(DESK).then((c) => c.match('/staff/scan')).then((hit) => hit || deskOffline(false)));
+}
+// The scanner page asks for its copy as soon as this worker is in charge, so a desk
+// phone is ready after opening the scanner once, not twice.
+self.addEventListener('message', (event) => {
+  if (event.data !== 'desk-keep') return;
+  event.waitUntil(
+    fetch('/staff/scan', { credentials: 'same-origin' })
+      .then((res) => (res.ok && !res.redirected ? caches.open(DESK).then((c) => c.put('/staff/scan', res)) : null))
+      .catch(() => {})
+  );
+});
+
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   if (request.method !== 'GET') return;
@@ -200,6 +231,7 @@ self.addEventListener('fetch', (event) => {
   // reach the server showed the attendee app, which reads as neither valid nor
   // invalid, so a person could be waved in unchecked. It now says so, in red.
   if (request.mode === 'navigate') {
+    if (url.pathname === '/staff/scan') { event.respondWith(deskScanner(request)); return; }
     if (url.pathname.startsWith('/verify/') || url.pathname.startsWith('/staff')) {
       event.respondWith(fetch(request).catch(() => deskOffline(url.pathname.startsWith('/verify/'))));
       return;
