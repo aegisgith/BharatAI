@@ -19,7 +19,6 @@
     { "hall": "bhabha", "day": 1, "start": "11:00", "end": "11:10", "type": "keynote", "label": "Keynote", "speaker": { "name": "Shri Praveen Pardeshi", "role": "CEO, MITRA" } },
     { "hall": "bhabha", "day": 1, "start": "11:10", "end": "11:20", "type": "keynote", "label": "Keynote", "speaker": { "name": "Shri Sudeep Shrivastava", "role": "Joint Secretary, MeitY; COO, IndiaAI Mission" } },
     { "hall": "bhabha", "day": 1, "start": "11:20", "end": "11:30", "type": "keynote", "label": "Keynote", "speaker": { "name": "Shri Kaustubh Dhavse", "role": "Chief Advisor to the Chief Minister, Government of Maharashtra" } },
-    { "hall": "bhabha", "day": 1, "start": "11:30", "end": "11:40", "type": "keynote", "label": "Keynote", "speaker": { "name": "Dr. Shrikant Patil", "role": "CEO, Maharashtra State Innovation Society (MSInS)" } },
     { "hall": "bhabha", "day": 1, "start": "12:00", "end": "13:00", "type": "panel", "label": "Panel: Governance", "track": "Government & Public Sector AI", "title": "AI for Viksit Bharat: Igniting 1.4 Billion Dreams and Transforming Governance",
       "panel": [
         { "name": "Shri Prakash Kumar", "org": "IndiaAI Mission" },
