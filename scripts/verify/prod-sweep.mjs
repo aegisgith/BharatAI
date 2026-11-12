@@ -277,5 +277,22 @@ for (const n of [1, 2, 3]) {
   check('the networking email stand-in picture ' + n + ' is served', r.status === 200 && /image\/png/.test(r.h['content-type'] || ''), r.status + ' ' + r.h['content-type']);
 }
 
+// The Inquiries desk (12 Nov 2026): its screen is a file of its own, loaded at the
+// version the admin script names, and every new route is the admin's only.
+{
+  const adminTagNow = /\/admin\.js\?v=([0-9a-f]{8})/.exec((await hit('/admin')).text);
+  const adminJs = adminTagNow ? (await hit('/admin.js?v=' + adminTagNow[1])).text : '';
+  const ver = (/INQ_DESK_VERSION = '([^']+)'/.exec(adminJs) || [])[1] || '';
+  check('/admin.js names the Inquiries desk version', !!ver, 'INQ_DESK_VERSION missing from /admin.js');
+  r = await hit('/js/admin-inquiries.js?v=' + ver);
+  check('the Inquiries desk script is served at that version', r.status === 200 && /window\.InqDesk|w\.InqDesk = \{/.test(r.text), r.status + ' ' + r.text.slice(0, 80));
+  r = await hit('/css/admin-inquiries.css?v=' + ver);
+  check('the Inquiries desk stylesheet is served at that version', r.status === 200 && r.text.includes('.iqd'), r.status);
+  for (const [path, method] of [['/api/admin/inquiry-settings', 'GET'], ['/api/admin/inquiries/bulk', 'POST'], ['/api/admin/inquiries/bulk-reply', 'POST'], ['/api/admin/inquiries/digest', 'POST'], ['/api/admin/inquiries/ack-preview', 'GET']]) {
+    r = await hit(path, method === 'GET' ? {} : { method, headers: { 'content-type': 'application/json' }, body: '{}' });
+    check('Inquiries: ' + method + ' ' + path + ' needs admin', r.status === 401, r.status);
+  }
+}
+
 console.log(fails ? `\n${fails} FAILED` : '\nall production checks passed');
 process.exit(fails ? 1 : 0);

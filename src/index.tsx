@@ -1099,7 +1099,7 @@ function changedFields(before: any, after: Record<string, any>): Record<string, 
 // Sent via waitUntil so the person submitting never waits for the mail, and a mail
 // failure cannot fail their submission: the enquiry row is already committed by the
 // time this runs, so the lead is safe either way.
-async function notifyTeamOfInquiry(c: any, row: { id: any; inquiry_type: string; name: string; email: string; phone?: string; organization?: string; subject?: string; message?: string }) {
+async function notifyTeamOfInquiry(c: any, row: { id: any; inquiry_type: string; name: string; email: string; phone?: string; organization?: string; subject?: string; message?: string; owner?: string }) {
   const g = async (k: string) => ((await c.env.DB.prepare('SELECT value FROM app_settings WHERE key = ?').bind(k).first()) as any)?.value
   const apiKey = await elasticKey(c)
   if (!apiKey) return
@@ -1114,10 +1114,11 @@ async function notifyTeamOfInquiry(c: any, row: { id: any; inquiry_type: string;
       <div style="padding:24px;">
         <table style="width:100%;border-collapse:collapse;">
           ${line('Name', row.name)}${line('Email', row.email)}${line('Phone', row.phone)}
-          ${line('Organisation', row.organization)}${line('Subject', row.subject)}
+          ${line('Organisation', row.organization)}${line('Subject', row.subject)}${line('Owner', row.owner)}
         </table>
         ${row.message ? `<div style="margin-top:16px;padding:14px;background:#f8f9fa;border-left:3px solid #FF9933;border-radius:0 8px 8px 0;font-size:14px;line-height:1.6;color:#333;white-space:pre-wrap;">${esc(row.message)}</div>` : ''}
-        <p style="margin:20px 0 0;font-size:12px;color:#888;">Enquiry #${esc(row.id)} &middot; reply directly to this email to reach them.</p>
+        <p style="margin:18px 0 0;"><a href="https://bharataiinnovation.com/admin?inq=${encodeURIComponent(String(row.id))}#inquiries" style="display:inline-block;padding:10px 20px;background:#C84F00;color:#fff;text-decoration:none;border-radius:8px;font-weight:bold;font-size:13px;">Open in Admin to reply</a></p>
+        <p style="margin:14px 0 0;font-size:12px;color:#888;">Enquiry #${esc(row.id)} &middot; reply directly to this email to reach them.</p>
       </div>
     </div></body></html>`
   try {
@@ -14835,8 +14836,10 @@ app.post('/api/cron/tick', async (c) => {
   const notifyMail = await autoSendNotifyMail(c).catch((e: any) => ({ error: String(e?.message || e).slice(0, 200) }))
   // The networking app email, 10 minutes after someone registers (autoSendNetMail).
   const netMail = await autoSendNetMail(c).catch((e: any) => ({ error: String(e?.message || e).slice(0, 200) }))
+  // The team's morning summary of enquiries, once a day from 9 in India, when switched on.
+  const inquiryDigestRun = await autoInquiryDigest(c).catch((e: any) => ({ error: String(e?.message || e).slice(0, 200) }))
   const out = await tickMailJobs(c, Number(body.max_seconds) || 0, true)
-  return c.json({ ...out, campaigns: await tickCampaigns(c), pay_reminders: payReminders, help_mail: helpMail, notify_mail: notifyMail, networking_mail: netMail })
+  return c.json({ ...out, campaigns: await tickCampaigns(c), pay_reminders: payReminders, help_mail: helpMail, notify_mail: notifyMail, networking_mail: netMail, inquiry_digest: inquiryDigestRun })
 })
 
 // The admin page's view and its own ticking while it is open.
@@ -18489,6 +18492,573 @@ app.delete('/api/admin/startup-investors/:id', async (c) => {
   return c.json({ success: true })
 })
 
+// ==================== INQUIRY DESK ====================
+//
+// The organiser, 12 Nov 2026: make Admin, Inquiries a commercial system, with
+// automation, analytics and decisions made easy. By then several hundred enquiries had
+// arrived, most still New, almost none with an owner. A booth or sponsorship lead sat
+// beside "want to ask about events" with nothing to tell them apart, and nothing said
+// that the sender had already paid for a pass or booked a booth.
+//
+// What the desk adds, on the tables that exist:
+// - every row says whether the sender already holds a pass (paid or not) or a booth,
+//   how many other enquiries they sent, a score from Hot to Cold with its reasons in
+//   words, and a better type when a General one is plainly a speaking, booth or
+//   sponsorship request;
+// - Won and Lost beside New, Replied, In talks and Closed;
+// - notes are added to, never replaced, with who and when; the history of one enquiry
+//   is its admin_audit rows;
+// - saved replies with {first_name}, {organisation}, {owner} and {ref}, to one or many;
+// - owners by type, an automatic "we have your enquiry" email and a morning summary
+//   for the team, each behind its own switch in the Automation tab, all off until the
+//   organiser turns them on;
+// - deal value, follow-up day and lost reason in inquiry_pipeline (0053). Until that
+//   table exists those three are hidden and the rest works.
+// The screen itself is public/js/admin-inquiries.js (one global, InqDesk).
+const INQUIRY_TYPES = ['general', 'exhibition', 'booth_inquiry', 'sponsorship', 'speaking', 'government', 'workshop_partner', 'media', 'group_registration', 'pass_upgrade', 'meeting_room', 'other']
+const INQUIRY_STATUSES = ['new', 'responded', 'in_progress', 'won', 'lost', 'closed', 'waitlisted']
+const INQUIRY_OPEN = ['new', 'responded', 'in_progress']
+const INQUIRY_TYPE_LABEL: Record<string, string> = {
+  general: 'General', exhibition: 'Exhibition', booth_inquiry: 'Booth', sponsorship: 'Sponsorship', speaking: 'Speaking',
+  government: 'Government', workshop_partner: 'Workshop partner', media: 'Media', group_registration: 'Group registration',
+  pass_upgrade: 'Pass upgrade', meeting_room: 'Boardroom', other: 'Other', delhi_pass: 'Delhi free pass',
+}
+// How much a type is worth chasing before anything else is known. Money first: booths
+// and sponsorship are sold in lakhs, a group is many passes, a speaking request or a
+// question is answered rather than sold.
+const INQUIRY_TYPE_WEIGHT: Record<string, number> = {
+  sponsorship: 50, booth_inquiry: 48, exhibition: 42, group_registration: 34, government: 32, pass_upgrade: 30,
+  workshop_partner: 24, meeting_room: 22, media: 14, speaking: 10, general: 10, other: 6,
+}
+const INQUIRY_FREE_MAIL_RE = /@(gmail|googlemail|yahoo|ymail|rocketmail|hotmail|outlook|live|msn|rediffmail|icloud|me|aol|protonmail|proton|gmx)\.[a-z.]+$/i
+const INQUIRY_LOST_REASONS = ['Price', 'Dates or timing', 'Chose another event', 'No reply from them', 'Not a fit', 'Duplicate or spam', 'Other']
+const INQUIRY_BULK_MAX = 300
+const INQUIRY_BULK_REPLY_MAX = 100
+// One "we have your enquiry" per address a day, and a connection may set off only so
+// many: the form takes any address, so this email must not become a way to flood one.
+const INQUIRY_ACK_PER_IP_HOUR = 20
+
+type InquiryTemplate = { id: string; name: string; type: string; subject: string; body: string }
+
+// Starter replies, in the organiser's plain words. The Automation tab edits them; the
+// reply box adds "Dear <name>," above and the team's sign-off below.
+const INQUIRY_DEFAULT_TEMPLATES: InquiryTemplate[] = [
+  { id: 'booth', name: 'Booth: floor plan and next step', type: 'booth_inquiry', subject: 'Your booth at Bharat AI Innovation 2026',
+    body: 'Thank you for your interest in exhibiting at Bharat AI Innovation 2026, on 20 and 21 November at the World Trade Center, Mumbai.\n\nThe floor plan, with every stand still free, its size and its price, is here:\nhttps://bharataiinnovation.com/exhibition\n\nEvery booth comes with a talk slot on the Innovation Talks stage.\n\nTell us which stand you would like and we will hold it for {organisation} and send the booking details. With the event days away, a quick reply helps.\n\nIf a short call is easier, reply with a good time and number.' },
+  { id: 'sponsor', name: 'Sponsorship: options and a call', type: 'sponsorship', subject: 'Partnering with Bharat AI Innovation 2026',
+    body: 'Thank you for your interest in partnering with Bharat AI Innovation 2026, on 20 and 21 November at the World Trade Center, Mumbai.\n\nThe partnership options are here:\nhttps://bharataiinnovation.com/partner\n\nWe can shape a package around what {organisation} wants from the event: leads, stage time, brand presence or meetings with buyers.\n\nCould we have a 15-minute call this week? Please reply with a time that suits you and the best number to reach you.' },
+  { id: 'speaking', name: 'Speaking: thank you, we will be in touch', type: 'speaking', subject: 'Your request to speak at Bharat AI Innovation 2026',
+    body: 'Thank you for offering to speak at Bharat AI Innovation 2026, on 20 and 21 November at the World Trade Center, Mumbai.\n\nOur programme team reads every request. If your topic fits a session, we will write to you with the details.\n\nYou are welcome to attend either way. The passes are here:\nhttps://bharataiinnovation.com/passes' },
+  { id: 'speaking-booth', name: 'Speaking: a stage slot comes with a booth', type: 'speaking', subject: 'A stage slot at Bharat AI Innovation 2026',
+    body: 'Thank you for offering to speak at Bharat AI Innovation 2026, on 20 and 21 November at the World Trade Center, Mumbai.\n\nOne sure way onto the stage: every exhibitor gets a talk slot on the Innovation Talks stage, to present and demonstrate their work. The booths and their prices are here:\nhttps://bharataiinnovation.com/exhibition\n\nIf that suits {organisation}, reply and we will hold a stand for you.' },
+  { id: 'media', name: 'Media: what we need for a pass', type: 'media', subject: 'Your media pass for Bharat AI Innovation 2026',
+    body: 'Thank you for your interest in covering Bharat AI Innovation 2026, on 20 and 21 November at the World Trade Center, Mumbai.\n\nTo issue a media pass we need:\n- the publication or channel you are with\n- a link to your recent work on technology or business\n- the days you plan to attend\n\nPlease reply with these and we will confirm.' },
+  { id: 'group', name: 'Group registration: next steps', type: 'group_registration', subject: 'Passes for your group at Bharat AI Innovation 2026',
+    body: 'Thank you for asking about passes for a group.\n\nPlease reply with:\n- how many people\n- the pass you would like for them (see https://bharataiinnovation.com/passes)\n- a name and address for the invoice\n\nWe will send the details and how to register everyone in one go.' },
+  { id: 'general', name: 'General: the main links', type: 'general', subject: 'Re: your enquiry - Bharat AI Innovation 2026',
+    body: 'Thank you for writing to us. Bharat AI Innovation 2026 takes place on 20 and 21 November at the World Trade Center, Mumbai.\n\nPasses, including the free Visitor Pass: https://bharataiinnovation.com/passes\nThe conference programme: https://bharataiinnovation.com/conference\nThe exhibition: https://bharataiinnovation.com/exhibition\n\nIf this does not answer your question, just reply and we will help.' },
+  { id: 'follow-up', name: 'Follow-up: checking in', type: '', subject: 'Following up: your enquiry {ref}',
+    body: 'I am following up on your enquiry (reference {ref}).\n\nIs there anything else you need from us to decide? With the event on 20 and 21 November, a reply this week lets us hold everything for {organisation}.' },
+]
+
+function inqMeta(r: any): any {
+  if (r && r.metadata && typeof r.metadata === 'object') return r.metadata
+  try { const m = JSON.parse(String(r?.metadata || '{}')); return m && typeof m === 'object' ? m : {} } catch { return {} }
+}
+
+function inqHoursSince(v: any, now: number): number {
+  if (!v) return 0
+  const raw = String(v).replace(' ', 'T')
+  const t = new Date(/Z$|[+-]\d\d:?\d\d$/.test(raw) ? raw : raw + 'Z').getTime()
+  return isNaN(t) ? 0 : Math.max(0, (now - t) / 3600000)
+}
+
+// Whole rupees in Indian grouping: 150000 -> "1,50,000".
+function inqIndianNumber(n: number): string {
+  const s = String(Math.round(Math.abs(n)))
+  if (s.length <= 3) return s
+  return s.slice(0, -3).replace(/\B(?=(\d{2})+(?!\d))/g, ',') + ',' + s.slice(-3)
+}
+// "Rs 1.5 lakh", "Rs 2 crore", "Rs 48,000": how the team says it.
+function inqRupeesWords(n: number): string {
+  const short = (x: number) => String(Math.round(x * 10) / 10)
+  if (n >= 10000000) return 'Rs ' + short(n / 10000000) + ' crore'
+  if (n >= 100000) return 'Rs ' + short(n / 100000) + ' lakh'
+  return 'Rs ' + inqIndianNumber(n)
+}
+
+// What a deal is worth: the figure a person typed, else the price the booth form
+// quoted (whole rupees before GST), else unknown. Never a guess.
+function inqValue(r: any): { inr: number; estimated: boolean } {
+  const set = Number(r?.deal_value_inr)
+  if (r?.deal_value_inr != null && r?.deal_value_inr !== '' && Number.isFinite(set) && set > 0) return { inr: Math.round(set), estimated: false }
+  const est = Number(inqMeta(r).estimated_total)
+  if (Number.isFinite(est) && est > 0) return { inr: Math.round(est), estimated: true }
+  return { inr: 0, estimated: false }
+}
+
+// A General or Other enquiry whose words say what it really is. Only a suggestion:
+// the desk shows it and a person moves it (or all of them at once).
+function inqSuggestType(r: any): string {
+  const type = String(r?.inquiry_type || '')
+  if (type !== 'general' && type !== 'other') return ''
+  const t = (String(r?.subject || '') + ' \n ' + String(r?.message || '')).toLowerCase()
+  if (/\bsponsor/.test(t)) return 'sponsorship'
+  if (/\b(booth|stall|exhibitor|exhibiting|exhibit (our|my|at|with))\b/.test(t)) return 'booth_inquiry'
+  if (/\b(speaking (slot|opportunit)|speaker (slot|opportunit|role|application)|as a speaker|be a speaker|to speak|speak at|keynote|panel+ist|panel (talk|discussion))/.test(t)) return 'speaking'
+  if (/\b(journalist|reporter|press pass|media pass|media coverage|media partner|podcast)\b/.test(t)) return 'media'
+  if (/\b(group (registration|booking|pass)|bulk (registration|booking|passes|tickets)|\d{2,}\s+(students|delegates|people|participants|members))\b/.test(t)) return 'group_registration'
+  return ''
+}
+
+// Hot, Warm or Cold, and why, in words a person can check. Open enquiries only.
+function inqScore(r: any, now: number, today: string): { score: number; band: string; why: string[] } {
+  const status = String(r?.status || 'new')
+  if (!INQUIRY_OPEN.includes(status)) return { score: 0, band: 'done', why: [] }
+  const type = inqSuggestType(r) || String(r?.inquiry_type || 'other')
+  const why: string[] = []
+  let s = INQUIRY_TYPE_WEIGHT[type] ?? 6
+  if (s >= 30) why.push(INQUIRY_TYPE_LABEL[type] || type)
+  const email = String(r?.email || '').toLowerCase()
+  if (email.includes('@') && !INQUIRY_FREE_MAIL_RE.test(email) && String(r?.organization || '').trim()) { s += 10; why.push('company email') }
+  const v = inqValue(r)
+  const worth = (v.estimated ? 'about ' : 'worth ') + inqRupeesWords(v.inr)
+  if (v.inr >= 300000) { s += 15; why.push(worth) }
+  else if (v.inr >= 100000) { s += 10; why.push(worth) }
+  else if (v.inr > 0) { s += 4; why.push(worth) }
+  const group = parseInt(String(inqMeta(r).group_size || ''), 10)
+  if (group >= 10) { s += 8; why.push('group of ' + group) }
+  if (status === 'new') {
+    const h = inqHoursSince(r?.created_at, now)
+    if (h >= 72) { s += 18; why.push('waiting ' + Math.floor(h / 24) + ' days') }
+    else if (h >= 24) { s += 12; why.push('waiting over a day') }
+    else if (h >= 4) s += 5
+  } else {
+    s -= 8   // replied or in talks: the next move is theirs, unless a follow-up is due
+  }
+  const next = String(r?.next_action_at || '')
+  if (next && next <= today) { s += 20; why.push(next < today ? 'follow-up overdue' : 'follow-up due today') }
+  if (r?.known_paid) { s += 5; why.push('paid for a pass') }
+  if (r?.booth_code) { s += 5; why.push('has a booth') }
+  const set = String(r?.priority || '')
+  if (set === 'hot') { s = Math.max(s, 70); why.unshift('marked hot') }
+  else if (set === 'cold') { s = Math.min(s, 25); why.unshift('marked cold') }
+  else if (set === 'warm') { s = Math.min(Math.max(s, 40), 59); why.unshift('marked warm') }
+  s = Math.max(0, Math.min(100, Math.round(s)))
+  return { score: s, band: s >= 60 ? 'hot' : s >= 35 ? 'warm' : 'cold', why }
+}
+
+// {first_name} and friends, for a saved reply sent to one person or many.
+function inqMerge(text: string, r: any, owner: string): string {
+  const name = String(r?.name || '').trim()
+  return String(text || '')
+    .replace(/\{first_name\}/g, name.split(/\s+/)[0] || 'there')
+    .replace(/\{name\}/g, name || 'there')
+    .replace(/\{organi[sz]ation\}/g, String(r?.organization || '').trim() || 'your organisation')
+    .replace(/\{owner\}/g, owner || 'Team Bharat AI Innovation')
+    .replace(/\{ref\}/g, 'BHAI-INQ-' + String(r?.id ?? '').padStart(5, '0'))
+}
+
+async function inqTableReady(c: any, name: string): Promise<boolean> {
+  try { return !!(await c.env.DB.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type = 'table' AND name = ?").bind(name).first()) } catch { return false }
+}
+async function inqColumns(c: any): Promise<Set<string>> {
+  try {
+    const r = await c.env.DB.prepare('PRAGMA table_info(inquiries)').all() as any
+    return new Set(((r.results || []) as any[]).map((x) => x.name))
+  } catch { return new Set() }
+}
+
+function inqCleanRouting(v: any): Record<string, string> {
+  const out: Record<string, string> = {}
+  if (!v || typeof v !== 'object') return out
+  for (const t of INQUIRY_TYPES) {
+    const who = String(v[t] ?? '').trim().slice(0, 80)
+    if (who) out[t] = who
+  }
+  return out
+}
+function inqCleanTemplates(v: any): InquiryTemplate[] | { error: string } {
+  if (!Array.isArray(v)) return { error: 'The saved replies must be a list.' }
+  if (v.length > 40) return { error: 'Keep it to 40 saved replies or fewer.' }
+  const seen = new Set<string>()
+  const out: InquiryTemplate[] = []
+  for (const t of v) {
+    const name = String(t?.name ?? '').trim().slice(0, 80)
+    const body = String(t?.body ?? '').trim().slice(0, 5000)
+    if (!name) return { error: 'Every saved reply needs a name.' }
+    if (!body) return { error: 'The saved reply "' + name + '" is empty.' }
+    let id = String(t?.id ?? '').trim().toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'reply'
+    while (seen.has(id)) id = (id + '-2').slice(0, 44)
+    seen.add(id)
+    const type = INQUIRY_TYPES.includes(String(t?.type || '')) ? String(t.type) : ''
+    out.push({ id, name, type, subject: String(t?.subject ?? '').trim().slice(0, 200), body })
+  }
+  return out
+}
+
+async function inquirySettings(c: any) {
+  let routing: Record<string, string> = {}
+  try { routing = inqCleanRouting(JSON.parse((await settingValue(c, 'inquiry_routing')) || '{}')) } catch { routing = {} }
+  let templates: InquiryTemplate[] = INQUIRY_DEFAULT_TEMPLATES
+  try {
+    const saved = JSON.parse((await settingValue(c, 'inquiry_templates')) || 'null')
+    if (Array.isArray(saved)) { const t = inqCleanTemplates(saved); if (Array.isArray(t)) templates = t }
+  } catch { /* a damaged setting falls back to the starters */ }
+  const sla = Number(await settingValue(c, 'inquiry_sla_hours'))
+  return {
+    routing, templates,
+    autoack: (await settingValue(c, 'inquiry_autoack')) === '1',
+    digest: (await settingValue(c, 'inquiry_digest')) === '1',
+    sla_hours: Number.isFinite(sla) && sla >= 1 && sla <= 168 ? Math.round(sla) : 24,
+    team_email: (await settingValue(c, 'inquiry_notify_email')) || 'info@bharataiinnovation.com',
+    digest_last_day: (await settingValue(c, 'inquiry_digest_day')) || '',
+    lost_reasons: INQUIRY_LOST_REASONS,
+  }
+}
+
+// Every enquiry of the event, each told who its sender already is. Delhi's free-pass
+// waitlist is left out unless asked for by type: it is a list of people, not of work.
+async function loadInquiryDesk(c: any, opts: { type?: string; status?: string } = {}) {
+  const pipeline = await inqTableReady(c, 'inquiry_pipeline')
+  let sql = pipeline
+    ? 'SELECT i.*, p.priority, p.deal_value_inr, p.next_action_at, p.next_action, p.lost_reason, p.closed_at FROM inquiries i LEFT JOIN inquiry_pipeline p ON p.inquiry_id = i.id WHERE i.event_id = 1'
+    : 'SELECT i.* FROM inquiries i WHERE i.event_id = 1'
+  const params: any[] = []
+  if (opts.type) { sql += ' AND i.inquiry_type = ?'; params.push(opts.type) }
+  else sql += " AND i.inquiry_type <> 'delhi_pass'"
+  if (opts.status) { sql += ' AND i.status = ?'; params.push(opts.status) }
+  sql += ' ORDER BY i.created_at DESC, i.id DESC'
+  const { results } = await c.env.DB.prepare(sql).bind(...params).all() as any
+  const rows: any[] = results || []
+
+  // Lower-cased on both sides: attendee rows typed in admin before 2 Nov kept capitals.
+  const people = new Map<string, any>()
+  try {
+    const { results: att } = await c.env.DB.prepare(
+      `SELECT LOWER(a.email) AS e, a.id, a.badge_type, a.payment_status FROM attendees a
+        WHERE a.event_id = 1 AND LOWER(a.email) IN (SELECT LOWER(email) FROM inquiries WHERE event_id = 1)`
+    ).all() as any
+    for (const a of att || []) people.set(String(a.e), a)
+  } catch { /* a bare database */ }
+  const booths = new Map<string, any>()
+  try {
+    const { results: ba } = await c.env.DB.prepare(
+      `SELECT LOWER(ba.email) AS e, b.code, ba.status, ba.company_name FROM booth_allocations ba
+         LEFT JOIN booths b ON b.id = ba.booth_id
+        WHERE ba.event_id = 1 AND ba.status IN ('held', 'confirmed') AND COALESCE(ba.email, '') <> ''`
+    ).all() as any
+    for (const b of ba || []) if (!booths.has(String(b.e)) || b.status === 'confirmed') booths.set(String(b.e), b)
+  } catch { /* booths arrive with 0030 */ }
+  const dups = new Map<string, number>()
+  try {
+    const { results: d } = await c.env.DB.prepare(
+      "SELECT LOWER(email) AS e, COUNT(*) AS n FROM inquiries WHERE event_id = 1 AND inquiry_type <> 'delhi_pass' GROUP BY LOWER(email) HAVING COUNT(*) > 1"
+    ).all() as any
+    for (const x of d || []) dups.set(String(x.e), Number(x.n))
+  } catch { /* counted as none */ }
+
+  const now = Date.now()
+  const today = istDate()
+  for (const r of rows) {
+    const e = String(r.email || '').toLowerCase()
+    const a = people.get(e)
+    if (a) {
+      r.attendee_id = a.id
+      r.pass = a.badge_type || ''
+      r.pass_payment = a.payment_status || ''
+      r.known_paid = PAID_TIERS.includes(String(a.badge_type || '')) && String(a.payment_status || '').toLowerCase() === 'paid'
+    }
+    const b = booths.get(e)
+    if (b) { r.booth_code = b.code || ''; r.booth_status = b.status || ''; r.booth_company = b.company_name || '' }
+    r.dup_count = Math.max(0, (dups.get(e) || 1) - 1)
+    r.suggested_type = inqSuggestType(r)
+    const sc = inqScore(r, now, today)
+    r.score = sc.score; r.band = sc.band; r.why = sc.why
+    const v = inqValue(r)
+    r.value_inr = v.inr; r.value_estimated = v.estimated
+  }
+  return { rows, pipeline, today, now }
+}
+
+async function inquiryOwners(c: any, rows: any[], routing: Record<string, string>): Promise<string[]> {
+  const set = new Set<string>()
+  try {
+    const { results } = await c.env.DB.prepare("SELECT name FROM staff WHERE active = 1 AND role IN ('admin', 'finance') ORDER BY name").all() as any
+    for (const s of results || []) if (s.name) set.add(String(s.name).trim())
+  } catch { /* no staff table */ }
+  for (const r of rows) if (r.assigned_to) set.add(String(r.assigned_to).trim())
+  for (const who of Object.values(routing)) set.add(String(who).trim())
+  return [...set].filter(Boolean).sort((a, b) => a.localeCompare(b))
+}
+
+// Who acts, as a name for an owner or a note; the shared password without a name
+// typed in is nobody in particular.
+function inqActorName(c: any): string {
+  const who = adminActor(c).actor
+  return who && who !== 'unnamed operator' ? who : ''
+}
+
+function inquiryReplyHtml(inq: any, message: string): string {
+  const esc = (v: any) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  return `<!DOCTYPE html><html><body style="margin:0;background:#f6f7fb;padding:24px;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1e2140">
+  <div style="max-width:600px;margin:0 auto;background:#fff;border-radius:14px;padding:28px;border:1px solid #e7e9f5">
+    <p style="margin:0 0 14px;font-size:15px">Dear ${esc(inq.name) || 'Sir/Madam'},</p>
+    <div style="font-size:15px;line-height:1.65;white-space:pre-wrap">${esc(message)}</div>
+    <p style="margin:22px 0 0;font-size:14px;color:#555">Warm regards,<br>Team Bharat AI Innovation<br>
+      <span style="color:#888">Bharat AI Innovation Conference &amp; Exhibition 2026 &middot; 20-21 November 2026 &middot; World Trade Center, Mumbai</span></p>
+  </div></body></html>`
+}
+
+// One reply to one enquiry: the email, the note, the status, the owner, the history.
+// A reply moves New to Replied and leaves In talks, Won and the rest where they are.
+// Whoever replies first becomes the owner when there is none.
+async function sendInquiryReplyTo(c: any, inq: any, subject: string, message: string, cols: Set<string>, extra: Record<string, any> = {}):
+    Promise<{ ok: true } | { ok: false; error: string }> {
+  const me = inqActorName(c)
+  const owner = String(inq.assigned_to || '').trim() || me
+  const text = inqMerge(message, inq, owner)
+  const subj = inqMerge(subject, inq, owner) || 'Re: your enquiry - Bharat AI Innovation 2026'
+  const sent = await sendAdminEmail(c, inq.email, subj, inquiryReplyHtml(inq, text))
+  if (!sent.ok) {
+    await audit(c, 'inquiry.reply-failed', 'inquiry', inq.id, { error: sent.error, ...extra })
+    return sent
+  }
+  const note = `[replied ${istStamp(new Date().toISOString())}${me ? ' by ' + me : ''}] ${text}`
+  const merged = inq.admin_notes ? (inq.admin_notes + '\n' + note) : note
+  const status = !inq.status || inq.status === 'new' ? 'responded' : inq.status
+  const sets = ['status = ?', 'admin_notes = ?', "updated_at = datetime('now')"]
+  const vals: any[] = [status, merged]
+  if (cols.has('responded_at')) sets.push("responded_at = COALESCE(responded_at, datetime('now'))")
+  if (cols.has('assigned_to') && !String(inq.assigned_to || '').trim() && me) { sets.push('assigned_to = ?'); vals.push(me) }
+  vals.push(inq.id)
+  await c.env.DB.prepare(`UPDATE inquiries SET ${sets.join(', ')} WHERE id = ?`).bind(...vals).run()
+  await audit(c, 'inquiry.reply', 'inquiry', inq.id, { to: inq.email, subject: subj, ...extra })
+  return { ok: true }
+}
+
+// The change one enquiry or many may take: status, type, owner, and (with 0053) the
+// commercial fields. Every value is checked before anything is written.
+type InquiryChange = { inq: Record<string, any>; pipe: Record<string, any>; touchesPipe: boolean; detail: Record<string, any> }
+function inqReadChange(body: any): InquiryChange | { error: string } {
+  const inq: Record<string, any> = {}
+  const pipe: Record<string, any> = {}
+  const detail: Record<string, any> = {}
+  if (body.status !== undefined) {
+    const s = String(body.status || '')
+    if (!INQUIRY_STATUSES.includes(s)) return { error: 'Unknown status: ' + s }
+    inq.status = s; detail.status = s
+  }
+  if (body.inquiry_type !== undefined) {
+    const t = String(body.inquiry_type || '')
+    if (!INQUIRY_TYPES.includes(t)) return { error: 'Unknown type: ' + t }
+    inq.inquiry_type = t; detail.inquiry_type = t
+  }
+  if (body.assigned_to !== undefined) {
+    const who = String(body.assigned_to ?? '').trim().slice(0, 80)
+    inq.assigned_to = who || null; detail.assigned_to = who || '(nobody)'
+  }
+  if (body.priority !== undefined) {
+    const p = String(body.priority || '')
+    if (p && !['hot', 'warm', 'cold'].includes(p)) return { error: 'Priority is hot, warm, cold or empty.' }
+    pipe.priority = p || null; detail.priority = p || '(score)'
+  }
+  if (body.deal_value_inr !== undefined) {
+    const raw = body.deal_value_inr
+    if (raw === null || raw === '') pipe.deal_value_inr = null
+    else {
+      const n = Number(String(raw).replace(/[,\s]/g, ''))
+      if (!Number.isFinite(n) || n < 0 || n > 10000000000) return { error: 'The value must be a number of rupees.' }
+      pipe.deal_value_inr = Math.round(n)
+    }
+    detail.deal_value_inr = pipe.deal_value_inr
+  }
+  if (body.next_action_at !== undefined) {
+    const d = String(body.next_action_at || '').trim()
+    if (d && !/^\d{4}-\d{2}-\d{2}$/.test(d)) return { error: 'The follow-up day must look like 2026-11-15.' }
+    pipe.next_action_at = d || null; detail.next_action_at = d || '(none)'
+  }
+  if (body.next_action !== undefined) { pipe.next_action = String(body.next_action || '').trim().slice(0, 200) || null; detail.next_action = pipe.next_action ? 'set' : '(none)' }
+  if (body.lost_reason !== undefined) { pipe.lost_reason = String(body.lost_reason || '').trim().slice(0, 200) || null; detail.lost_reason = pipe.lost_reason }
+  return { inq, pipe, touchesPipe: Object.keys(pipe).length > 0, detail }
+}
+
+const INQUIRY_PIPELINE_HINT = 'Deal value, follow-up day and lost reason need the inquiry_pipeline table. Run: npx wrangler d1 execute bharatai-production --remote --file=./migrations/0053_inquiry_pipeline.sql'
+
+async function inqApplyChange(c: any, ids: number[], ch: InquiryChange, action: string): Promise<{ changed: number } | { error: string; status: number }> {
+  if (!ids.length) return { changed: 0 }
+  const pipeline = await inqTableReady(c, 'inquiry_pipeline')
+  if (ch.touchesPipe && !pipeline) return { error: INQUIRY_PIPELINE_HINT, status: 409 }
+  const cols = await inqColumns(c)
+  const marks = ids.map(() => '?').join(',')
+  // A Delhi free pass stays a Delhi free pass: moving one would drop a person off the
+  // waitlist without a word to them.
+  if (ch.inq.inquiry_type) {
+    const delhi = await c.env.DB.prepare(`SELECT COUNT(*) AS n FROM inquiries WHERE id IN (${marks}) AND inquiry_type = 'delhi_pass'`).bind(...ids).first() as any
+    if (Number(delhi?.n || 0) > 0) return { error: 'A Delhi free pass keeps its type.', status: 400 }
+  }
+  const sets: string[] = []
+  const vals: any[] = []
+  for (const [k, v] of Object.entries(ch.inq)) {
+    if (k === 'assigned_to' && !cols.has('assigned_to')) continue
+    sets.push(k + ' = ?'); vals.push(v)
+  }
+  if (ch.inq.status === 'responded' && cols.has('responded_at')) sets.push("responded_at = COALESCE(responded_at, datetime('now'))")
+  let changed = 0
+  if (sets.length) {
+    sets.push("updated_at = datetime('now')")
+    const r = await c.env.DB.prepare(`UPDATE inquiries SET ${sets.join(', ')} WHERE event_id = 1 AND id IN (${marks})`).bind(...vals, ...ids).run()
+    changed = Number(r.meta?.changes ?? ids.length)
+  }
+  if (pipeline && (ch.touchesPipe || ch.inq.status)) {
+    const p = { ...ch.pipe }
+    const closing = ['won', 'lost', 'closed'].includes(String(ch.inq.status || ''))
+    const reopening = INQUIRY_OPEN.includes(String(ch.inq.status || ''))
+    const keys = Object.keys(p)
+    const stmts = ids.map((id) => {
+      const cs = ['inquiry_id', ...keys, 'updated_at']
+      const vs: any[] = [id, ...keys.map((k) => p[k])]
+      const upd = keys.map((k) => k + ' = excluded.' + k)
+      if (closing) { cs.push('closed_at'); upd.push('closed_at = COALESCE(inquiry_pipeline.closed_at, excluded.closed_at)') }
+      if (reopening) upd.push('closed_at = NULL')
+      upd.push('updated_at = excluded.updated_at')
+      const ph = cs.map((k) => (k === 'updated_at' || k === 'closed_at') ? "datetime('now')" : '?').join(', ')
+      return c.env.DB.prepare(`INSERT INTO inquiry_pipeline (${cs.join(', ')}) VALUES (${ph}) ON CONFLICT(inquiry_id) DO UPDATE SET ${upd.join(', ')}`).bind(...vs)
+    })
+    for (let i = 0; i < stmts.length; i += 50) await c.env.DB.batch(stmts.slice(i, i + 50))
+    if (!sets.length) changed = ids.length
+  }
+  const who = adminActor(c)
+  const ip = c.req.header('CF-Connecting-IP') || null
+  const ua = (c.req.header('User-Agent') || '').slice(0, 200) || null
+  const detail = JSON.stringify({ ...ch.detail, ...(ids.length > 1 ? { bulk: ids.length } : {}) }).slice(0, 2000)
+  try {
+    const stmts = ids.map((id) => c.env.DB.prepare(
+      'INSERT INTO admin_audit (actor, actor_kind, action, entity, entity_id, detail, ip, user_agent) VALUES (?,?,?,?,?,?,?,?)'
+    ).bind(who.actor, who.kind, action, 'inquiry', String(id), detail, ip, ua))
+    for (let i = 0; i < stmts.length; i += 50) await c.env.DB.batch(stmts.slice(i, i + 50))
+  } catch { /* the history must not fail the change */ }
+  return { changed }
+}
+
+// "We have your enquiry", to the person who wrote, when the switch is on. Once per
+// address a day; a connection may set off a few an hour, no more.
+function inquiryAckHtml(row: any, owner: string): string {
+  const esc = (v: any) => String(v ?? '').replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch] as string))
+  const first = String(row.name || '').trim().split(/\s+/)[0] || 'there'
+  const ref = 'BHAI-INQ-' + String(row.id ?? '').padStart(5, '0')
+  const next: Record<string, [string, string]> = {
+    booth_inquiry: ['See the floor plan and booth prices', 'https://bharataiinnovation.com/exhibition'],
+    exhibition: ['See the floor plan and booth prices', 'https://bharataiinnovation.com/exhibition'],
+    sponsorship: ['See the partnership options', 'https://bharataiinnovation.com/partner'],
+    speaking: ['See the conference programme', 'https://bharataiinnovation.com/conference'],
+    group_registration: ['See the passes', 'https://bharataiinnovation.com/passes'],
+    general: ['See the passes', 'https://bharataiinnovation.com/passes'],
+    government: ['Bharat AI Innovation for government', 'https://bharataiinnovation.com/government'],
+    workshop_partner: ['See the workshops', 'https://bharataiinnovation.com/training-workshop'],
+  }
+  const link = next[String(row.inquiry_type)]
+  const about = (INQUIRY_TYPE_LABEL[String(row.inquiry_type)] || 'your').toLowerCase()
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#f5f5f5;font-family:Arial,sans-serif;">
+    <div style="max-width:600px;margin:20px auto;background:#fff;border-radius:12px;overflow:hidden;">
+      ${emailBrandHeader('We have your enquiry', '20&ndash;21 November 2026 &middot; World Trade Center, Mumbai')}
+      <div style="padding:26px 24px;">
+        <p style="margin:0 0 10px;font-size:15px;color:#1E2140;">Hello ${esc(first)},</p>
+        <p style="margin:0 0 14px;font-size:14px;line-height:1.65;color:#444;">Thank you for writing to us about ${esc(about === 'other' || about === 'general' ? 'Bharat AI Innovation 2026' : about)}. We have your message, and ${owner ? esc(owner) + ' from our team' : 'our team'} will reply within one working day.</p>
+        <p style="margin:0 0 18px;font-size:14px;line-height:1.65;color:#444;">Your reference is <strong>${ref}</strong>. If you write again, please quote it.</p>
+        ${link ? `<div style="text-align:center;margin:0 0 20px;"><a href="${link[1]}" style="display:inline-block;padding:12px 24px;background:#C84F00;color:#fff;text-decoration:none;border-radius:9px;font-weight:bold;font-size:14px;">${esc(link[0])}</a></div>` : ''}
+        <p style="margin:0;font-size:12.5px;line-height:1.6;color:#777;">Bharat AI Innovation Conference &amp; Exhibition 2026 &middot; 20&ndash;21 November 2026 &middot; World Trade Center, Mumbai</p>
+      </div>
+    </div></body></html>`
+}
+
+async function sendInquiryAck(c: any, row: any, owner: string): Promise<void> {
+  try {
+    if ((await settingValue(c, 'inquiry_autoack')) !== '1') return
+    const email = String(row.email || '').trim().toLowerCase()
+    if (!email) return
+    const earlier = await c.env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM inquiries WHERE event_id = 1 AND LOWER(email) = ? AND id <> ? AND created_at > datetime('now', '-1 day')"
+    ).bind(email, row.id).first() as any
+    if (Number(earlier?.n || 0) > 0) return
+    const ip = String(c.req.header('CF-Connecting-IP') || '').slice(0, 64)
+    if (ip) {
+      const recent = await c.env.DB.prepare(
+        "SELECT COUNT(*) AS n FROM admin_audit WHERE action = 'inquiry.autoack' AND ip = ? AND created_at > datetime('now', '-1 hour')"
+      ).bind(ip).first().catch(() => null) as any
+      if (Number(recent?.n || 0) >= INQUIRY_ACK_PER_IP_HOUR) return
+    }
+    const ref = 'BHAI-INQ-' + String(row.id ?? '').padStart(5, '0')
+    const sent = await sendAdminEmail(c, email, `We have your enquiry (${ref}) - Bharat AI Innovation 2026`, inquiryAckHtml(row, owner), { unsubscribe: false })
+    await audit(c, sent.ok ? 'inquiry.autoack' : 'inquiry.autoack-failed', 'inquiry', row.id, sent.ok ? { to: email } : { to: email, error: sent.error }, { actor: 'automatic', kind: 'system' })
+  } catch { /* the enquiry is saved; a failed acknowledgement must not surface */ }
+}
+
+// The morning summary for the team: what came in, what has waited too long, what is
+// due, what was won. Built from the same rows and scores the desk shows.
+async function inquiryDigest(c: any): Promise<{ subject: string; html: string; to: string; counts: Record<string, number> }> {
+  const settings = await inquirySettings(c)
+  const { rows, today, now } = await loadInquiryDesk(c)
+  const esc = (v: any) => String(v ?? '').replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch] as string))
+  const open = rows.filter((r) => INQUIRY_OPEN.includes(String(r.status)))
+  const fresh = rows.filter((r) => inqHoursSince(r.created_at, now) < 24)
+  const late = open.filter((r) => r.status === 'new' && inqHoursSince(r.created_at, now) >= settings.sla_hours).sort((a, b) => b.score - a.score)
+  const due = open.filter((r) => r.next_action_at && String(r.next_action_at) <= today)
+  const unowned = open.filter((r) => !String(r.assigned_to || '').trim())
+  const won = rows.filter((r) => r.status === 'won' && (r.closed_at ? inqHoursSince(r.closed_at, now) : inqHoursSince(r.updated_at, now)) < 24)
+  const hot = open.filter((r) => r.band === 'hot')
+  const byType: Record<string, number> = {}
+  for (const r of fresh) byType[r.inquiry_type] = (byType[r.inquiry_type] || 0) + 1
+  // ?inq= opens that enquiry; #inquiries is the section, which the admin page reads.
+  const link = (r: any) => `https://bharataiinnovation.com/admin?inq=${Number(r.id)}#inquiries`
+  const line = (r: any) => `<tr>
+      <td style="padding:7px 8px;border-bottom:1px solid #eee;font-size:12.5px;color:#888;white-space:nowrap;">#${Number(r.id)}</td>
+      <td style="padding:7px 8px;border-bottom:1px solid #eee;font-size:13px;"><a href="${link(r)}" style="color:#1E2140;font-weight:bold;text-decoration:none;">${esc(r.name)}</a>${r.organization ? ' <span style="color:#666;">&middot; ' + esc(r.organization) + '</span>' : ''}<br><span style="color:#666;font-size:12px;">${esc(INQUIRY_TYPE_LABEL[r.inquiry_type] || r.inquiry_type)} &middot; ${esc((r.why || []).join(', '))}</span></td>
+      <td style="padding:7px 8px;border-bottom:1px solid #eee;font-size:12px;color:${r.band === 'hot' ? '#B42318' : r.band === 'warm' ? '#B54708' : '#475467'};font-weight:bold;white-space:nowrap;">${r.band === 'hot' ? 'Hot' : r.band === 'warm' ? 'Warm' : 'Cold'}</td>
+      <td style="padding:7px 8px;border-bottom:1px solid #eee;font-size:12px;color:#666;white-space:nowrap;">${esc(r.assigned_to || 'nobody')}</td></tr>`
+  const block = (title: string, list: any[], more: string) => list.length ? `<h3 style="margin:22px 0 8px;font-size:15px;color:#1E2140;">${title}</h3>
+      <table style="width:100%;border-collapse:collapse;">${list.slice(0, 10).map(line).join('')}</table>
+      ${list.length > 10 ? `<p style="margin:6px 0 0;font-size:12px;color:#888;">and ${list.length - 10} more ${more}</p>` : ''}` : ''
+  const stat = (n: number, label: string, colour: string) => `<td style="padding:10px;text-align:center;border:1px solid #eee;border-radius:8px;"><div style="font-size:22px;font-weight:bold;color:${colour};">${n}</div><div style="font-size:11.5px;color:#666;">${label}</div></td>`
+  const typeLine = Object.entries(byType).sort((a, b) => b[1] - a[1]).map(([t, n]) => esc(INQUIRY_TYPE_LABEL[t] || t) + ' ' + n).join(' &middot; ')
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#f5f5f5;font-family:Arial,sans-serif;">
+    <div style="max-width:640px;margin:20px auto;background:#fff;border-radius:12px;overflow:hidden;">
+      ${emailBrandHeader('Enquiries this morning', esc(istStamp(new Date(now).toISOString())))}
+      <div style="padding:22px 24px;">
+        <table style="width:100%;border-collapse:separate;border-spacing:6px;"><tr>
+          ${stat(fresh.length, 'new since yesterday', '#1E2140')}${stat(late.length, 'waiting over ' + settings.sla_hours + ' h', late.length ? '#B42318' : '#1E2140')}
+          ${stat(hot.length, 'hot and open', '#B42318')}${stat(due.length, 'follow-ups due', '#B54708')}${stat(unowned.length, 'with no owner', '#475467')}
+        </tr></table>
+        ${typeLine ? `<p style="margin:10px 0 0;font-size:12.5px;color:#555;">In since yesterday: ${typeLine}</p>` : ''}
+        ${won.length ? `<p style="margin:12px 0 0;font-size:13.5px;color:#067647;"><strong>Won since yesterday: ${won.length}</strong>${won.reduce((s, r) => s + (r.value_inr || 0), 0) ? ', worth ' + esc(inqRupeesWords(won.reduce((s, r) => s + (r.value_inr || 0), 0))) : ''}.</p>` : ''}
+        ${block('Waiting for a first reply, most valuable first', late, 'waiting')}
+        ${block('Follow-ups due today or earlier', due.sort((a, b) => b.score - a.score), 'due')}
+        ${!late.length && !due.length ? '<p style="margin:20px 0 0;font-size:14px;color:#067647;">Nothing is waiting too long. Well done.</p>' : ''}
+        <div style="text-align:center;margin:24px 0 6px;"><a href="https://bharataiinnovation.com/admin#inquiries" style="display:inline-block;padding:12px 26px;background:#C84F00;color:#fff;text-decoration:none;border-radius:9px;font-weight:bold;font-size:14px;">Open Inquiries</a></div>
+        <p style="margin:14px 0 0;font-size:11.5px;color:#999;">Sent each morning because the summary is switched on in Admin, Inquiries, Automation.</p>
+      </div>
+    </div></body></html>`
+  const subject = `Enquiries: ${fresh.length} new, ${late.length} waiting over ${settings.sla_hours} h, ${hot.length} hot`
+  return { subject, html, to: settings.team_email, counts: { fresh: fresh.length, late: late.length, hot: hot.length, due: due.length, unowned: unowned.length, won: won.length } }
+}
+
+// From the minute clock: once a day, from 9 in the morning in India, when switched on.
+// The day is claimed in one statement, so two clocks never send it twice.
+async function autoInquiryDigest(c: any): Promise<any> {
+  if ((await settingValue(c, 'inquiry_digest')) !== '1') return { skipped: 'off' }
+  const hourIst = Math.floor(((Date.now() + IST_OFFSET_MINUTES * 60000) % 86400000) / 3600000)
+  if (hourIst < 9) return { skipped: 'before 9' }
+  const today = istDate()
+  const claim = await c.env.DB.prepare(
+    "INSERT INTO app_settings (key, value, updated_at) VALUES ('inquiry_digest_day', ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at WHERE app_settings.value <> excluded.value"
+  ).bind(today).run()
+  if (Number(claim.meta?.changes ?? 0) === 0) return { skipped: 'sent today' }
+  const d = await inquiryDigest(c)
+  const sent = await sendAdminEmail(c, d.to, d.subject, d.html, { unsubscribe: false })
+  await audit(c, sent.ok ? 'inquiry.digest' : 'inquiry.digest-failed', 'inquiry', null, sent.ok ? { to: d.to, ...d.counts } : { to: d.to, error: sent.error }, { actor: 'automatic', kind: 'system' })
+  return { sent: sent.ok, to: d.to }
+}
+
 // ==================== INQUIRY APIs ====================
 
 // Public: Submit an inquiry
@@ -18499,8 +19069,7 @@ app.post('/api/inquiries', async (c) => {
   if (!name || !email) return c.json({ error: 'Name and email are required' }, 400)
   if (!inquiry_type) return c.json({ error: 'Inquiry type is required' }, 400)
 
-  const validTypes = ['general', 'exhibition', 'booth_inquiry', 'sponsorship', 'speaking', 'government', 'workshop_partner', 'media', 'group_registration', 'pass_upgrade', 'meeting_room', 'other']
-  if (!validTypes.includes(inquiry_type)) return c.json({ error: 'Invalid inquiry type' }, 400)
+  if (!INQUIRY_TYPES.includes(inquiry_type)) return c.json({ error: 'Invalid inquiry type' }, 400)
 
   const result = await c.env.DB.prepare(
     `INSERT INTO inquiries (event_id, inquiry_type, name, email, phone, organization, subject, message, metadata)
@@ -18511,10 +19080,21 @@ app.post('/api/inquiries', async (c) => {
     JSON.stringify(metadata || {})
   ).run()
 
+  // The owner for this type, when the organisers have set one (Automation tab). A
+  // routing rule that cannot be written must never fail the enquiry.
+  let owner = ''
+  try {
+    owner = inqCleanRouting(JSON.parse((await settingValue(c, 'inquiry_routing')) || '{}'))[inquiry_type] || ''
+    if (owner) await c.env.DB.prepare('UPDATE inquiries SET assigned_to = ? WHERE id = ?').bind(owner, result.meta.last_row_id).run()
+  } catch { owner = '' }
+
   // Hono's c.executionCtx THROWS when there is no ExecutionContext rather than being
   // undefined, so optional chaining does not protect against it — reading it in any
   // context without one turned a saved enquiry into a 500 for the submitter.
-  const notify = notifyTeamOfInquiry(c, { id: result.meta.last_row_id, inquiry_type, name, email, phone, organization, subject, message })
+  // The address as typed: the team's Reply goes to exactly what the person gave.
+  // The acknowledgement lower-cases it for its own once-a-day check.
+  const saved = { id: result.meta.last_row_id, inquiry_type, name, email, phone, organization, subject, message, owner }
+  const notify = Promise.all([notifyTeamOfInquiry(c, saved), sendInquiryAck(c, saved, owner)])
   let scheduled = false
   try { c.executionCtx.waitUntil(notify); scheduled = true } catch { /* no ctx — fall through */ }
   if (!scheduled) await notify
@@ -18962,31 +19542,17 @@ app.post('/api/delhi/register', async (c) => {
   return c.json({ success: true }, 201)
 })
 
-// Admin: Get all inquiries with optional filters
+// Admin: every enquiry, each told who its sender already is, with its score, plus
+// what the desk needs to draw itself (owners, settings, whether 0053 is in).
+// Delhi free passes have a pill of their own: a long list of them must never bury the
+// enquiries somebody has to answer, so they come only when asked for by type.
 app.get('/api/admin/inquiries', async (c) => {
-  const type = c.req.query('type')
-  const status = c.req.query('status')
+  c.header('Cache-Control', 'no-store')
+  const type = c.req.query('type') || ''
+  const status = c.req.query('status') || ''
+  const desk = await loadInquiryDesk(c, { type, status })
+  const settings = await inquirySettings(c)
 
-  let query = 'SELECT * FROM inquiries WHERE event_id = 1'
-  const params: any[] = []
-
-  if (type) {
-    query += ' AND inquiry_type = ?'
-    params.push(type)
-  } else {
-    // Delhi free passes have a pill of their own: a long list of them must never bury
-    // the enquiries somebody has to answer.
-    query += " AND inquiry_type <> 'delhi_pass'"
-  }
-  if (status) {
-    query += ' AND status = ?'
-    params.push(status)
-  }
-  query += ' ORDER BY created_at DESC'
-
-  const { results } = await c.env.DB.prepare(query).bind(...params).all()
-
-  // Also get counts by type
   const { results: typeCounts } = await c.env.DB.prepare(
     'SELECT inquiry_type, COUNT(*) as count FROM inquiries WHERE event_id = 1 GROUP BY inquiry_type'
   ).all()
@@ -18994,75 +19560,207 @@ app.get('/api/admin/inquiries', async (c) => {
     'SELECT status, COUNT(*) as count FROM inquiries WHERE event_id = 1 GROUP BY status'
   ).all()
 
-  return c.json({ inquiries: results, typeCounts, statusCounts })
+  return c.json({
+    inquiries: desk.rows, typeCounts, statusCounts,
+    owners: await inquiryOwners(c, desk.rows, settings.routing),
+    pipeline_ready: desk.pipeline, pipeline_hint: desk.pipeline ? '' : INQUIRY_PIPELINE_HINT,
+    settings, today: desk.today, now: new Date(desk.now).toISOString(),
+    types: INQUIRY_TYPES, statuses: INQUIRY_STATUSES,
+  })
+})
+
+// The history of one enquiry: what the team did (admin_audit), the sender's other
+// enquiries, and who they are on the attendee list and the floor plan.
+app.get('/api/admin/inquiries/:id/activity', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  const id = Number(c.req.param('id'))
+  const inq = await c.env.DB.prepare('SELECT * FROM inquiries WHERE id = ?').bind(id).first() as any
+  if (!inq) return c.json({ error: 'Inquiry not found' }, 404)
+  let events: any[] = []
+  try {
+    const r = await c.env.DB.prepare(
+      "SELECT actor, actor_kind, action, detail, created_at FROM admin_audit WHERE entity = 'inquiry' AND entity_id = ? ORDER BY id DESC LIMIT 100"
+    ).bind(String(id)).all() as any
+    events = r.results || []
+  } catch { events = [] }
+  const { results: others } = await c.env.DB.prepare(
+    'SELECT id, inquiry_type, subject, status, created_at FROM inquiries WHERE event_id = 1 AND LOWER(email) = ? AND id <> ? ORDER BY id DESC LIMIT 20'
+  ).bind(String(inq.email || '').toLowerCase(), id).all() as any
+  let person: any = null
+  try {
+    person = await c.env.DB.prepare(
+      'SELECT id, name, badge_type, payment_status, company, job_title, registration_date, checked_in_at FROM attendees WHERE event_id = 1 AND LOWER(email) = ? LIMIT 1'
+    ).bind(String(inq.email || '').toLowerCase()).first()
+  } catch { person = null }
+  let booth: any = null
+  try {
+    booth = await c.env.DB.prepare(
+      `SELECT b.code, ba.status, ba.company_name, ba.amount_inr, ba.amount_paid_inr FROM booth_allocations ba LEFT JOIN booths b ON b.id = ba.booth_id
+        WHERE ba.event_id = 1 AND LOWER(ba.email) = ? AND ba.status IN ('held', 'confirmed') ORDER BY ba.status = 'confirmed' DESC LIMIT 1`
+    ).bind(String(inq.email || '').toLowerCase()).first()
+  } catch { booth = null }
+  return c.json({ events, others: others || [], person, booth })
+})
+
+// A note is added to the others, with who wrote it and when. The old Note button
+// replaced every earlier note, reply copies included.
+app.post('/api/admin/inquiries/:id/note', async (c) => {
+  const id = Number(c.req.param('id'))
+  const body = await c.req.json().catch(() => ({})) as any
+  const text = String(body.text || '').trim().slice(0, 2000)
+  if (!text) return c.json({ error: 'The note is empty.' }, 400)
+  const inq = await c.env.DB.prepare('SELECT id, admin_notes FROM inquiries WHERE id = ?').bind(id).first() as any
+  if (!inq) return c.json({ error: 'Inquiry not found' }, 404)
+  const me = inqActorName(c)
+  const line = `[note ${istStamp(new Date().toISOString())}${me ? ' by ' + me : ''}] ${text}`
+  const merged = inq.admin_notes ? inq.admin_notes + '\n' + line : line
+  await c.env.DB.prepare("UPDATE inquiries SET admin_notes = ?, updated_at = datetime('now') WHERE id = ?").bind(merged, id).run()
+  await audit(c, 'inquiry.note', 'inquiry', id, { text: text.slice(0, 300) })
+  return c.json({ success: true, admin_notes: merged })
+})
+
+// Many at once: status, type, owner, priority. One statement for the rows, one
+// history line each.
+app.post('/api/admin/inquiries/bulk', async (c) => {
+  const body = await c.req.json().catch(() => ({})) as any
+  const ids = [...new Set((Array.isArray(body.ids) ? body.ids : []).map((x: any) => Number(x)).filter((x: number) => Number.isInteger(x) && x > 0))] as number[]
+  if (!ids.length) return c.json({ error: 'Tick at least one enquiry.' }, 400)
+  if (ids.length > INQUIRY_BULK_MAX) return c.json({ error: 'At most ' + INQUIRY_BULK_MAX + ' at a time.' }, 400)
+  const ch = inqReadChange(body.set || {})
+  if ('error' in ch) return c.json({ error: ch.error }, 400)
+  if (!Object.keys(ch.inq).length && !ch.touchesPipe) return c.json({ error: 'Nothing to change.' }, 400)
+  const r = await inqApplyChange(c, ids, ch, 'inquiry.bulk')
+  if ('error' in r) return c.json({ error: r.error }, r.status as any)
+  return c.json({ success: true, changed: r.changed })
+})
+
+// One saved reply, each person's own name and organisation in it, to many enquiries.
+// Sent one by one; a failure is listed and the rest go on.
+app.post('/api/admin/inquiries/bulk-reply', async (c) => {
+  const body = await c.req.json().catch(() => ({})) as any
+  const ids = [...new Set((Array.isArray(body.ids) ? body.ids : []).map((x: any) => Number(x)).filter((x: number) => Number.isInteger(x) && x > 0))] as number[]
+  const message = String(body.message || '').trim()
+  const subject = String(body.subject || '').trim() || 'Re: your enquiry - Bharat AI Innovation 2026'
+  if (!ids.length) return c.json({ error: 'Tick at least one enquiry.' }, 400)
+  if (ids.length > INQUIRY_BULK_REPLY_MAX) return c.json({ error: 'At most ' + INQUIRY_BULK_REPLY_MAX + ' replies at a time.' }, 400)
+  if (!message) return c.json({ error: 'The reply is empty.' }, 400)
+  const { results } = await c.env.DB.prepare(`SELECT * FROM inquiries WHERE event_id = 1 AND id IN (${ids.map(() => '?').join(',')})`).bind(...ids).all() as any
+  const cols = await inqColumns(c)
+  let sent = 0
+  const failed: { id: number; error: string }[] = []
+  for (const inq of results || []) {
+    if (!String(inq.email || '').includes('@')) { failed.push({ id: inq.id, error: 'No email address' }); continue }
+    const r = await sendInquiryReplyTo(c, inq, subject, message, cols, { bulk: ids.length, template: String(body.template_id || '').slice(0, 40) || undefined })
+    if (r.ok) sent++
+    else failed.push({ id: inq.id, error: r.error })
+  }
+  return c.json({ success: failed.length === 0, sent, failed })
+})
+
+// The Automation tab: owners by type, saved replies, the two switches, the time
+// allowed for a first reply.
+app.get('/api/admin/inquiry-settings', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  return c.json(await inquirySettings(c))
+})
+app.put('/api/admin/inquiry-settings', async (c) => {
+  const b = await c.req.json().catch(() => ({})) as any
+  const changed: string[] = []
+  if (b.routing !== undefined) { await settingWrite(c, 'inquiry_routing', JSON.stringify(inqCleanRouting(b.routing))); changed.push('routing') }
+  if (b.templates === 'reset') { await settingWrite(c, 'inquiry_templates', 'null'); changed.push('templates reset') }
+  else if (b.templates !== undefined) {
+    const t = inqCleanTemplates(b.templates)
+    if (!Array.isArray(t)) return c.json({ error: t.error }, 400)
+    await settingWrite(c, 'inquiry_templates', JSON.stringify(t)); changed.push('templates')
+  }
+  if (b.autoack !== undefined) { await settingWrite(c, 'inquiry_autoack', b.autoack ? '1' : '0'); changed.push('autoack ' + (b.autoack ? 'on' : 'off')) }
+  if (b.digest !== undefined) { await settingWrite(c, 'inquiry_digest', b.digest ? '1' : '0'); changed.push('digest ' + (b.digest ? 'on' : 'off')) }
+  if (b.sla_hours !== undefined) {
+    const h = Number(b.sla_hours)
+    if (!Number.isFinite(h) || h < 1 || h > 168) return c.json({ error: 'The time for a first reply is 1 to 168 hours.' }, 400)
+    await settingWrite(c, 'inquiry_sla_hours', String(Math.round(h))); changed.push('sla ' + Math.round(h))
+  }
+  if (!changed.length) return c.json({ error: 'Nothing to save.' }, 400)
+  await audit(c, 'inquiry.settings', 'settings', 'inquiries', { changed })
+  return c.json({ success: true, settings: await inquirySettings(c) })
+})
+
+// Give every open enquiry without an owner the owner its type's rule names.
+app.post('/api/admin/inquiries/apply-routing', async (c) => {
+  const { routing } = await inquirySettings(c)
+  const cols = await inqColumns(c)
+  if (!cols.has('assigned_to')) return c.json({ error: 'The owner column is missing (migration 0027).' }, 409)
+  let changed = 0
+  const by: Record<string, number> = {}
+  for (const [type, who] of Object.entries(routing)) {
+    const { results } = await c.env.DB.prepare(
+      `SELECT id FROM inquiries WHERE event_id = 1 AND inquiry_type = ? AND COALESCE(TRIM(assigned_to), '') = '' AND status IN ('new', 'responded', 'in_progress')`
+    ).bind(type).all() as any
+    const ids = (results || []).map((r: any) => Number(r.id))
+    if (!ids.length) continue
+    const r = await inqApplyChange(c, ids, { inq: { assigned_to: who }, pipe: {}, touchesPipe: false, detail: { assigned_to: who, rule: type } }, 'inquiry.routing')
+    if (!('error' in r)) { changed += ids.length; by[type] = ids.length }
+  }
+  return c.json({ success: true, changed, by })
+})
+
+// The morning summary, to look at (send: false) or to send to the team now.
+app.post('/api/admin/inquiries/digest', async (c) => {
+  const body = await c.req.json().catch(() => ({})) as any
+  const d = await inquiryDigest(c)
+  if (!body.send) return c.json({ subject: d.subject, html: d.html, to: d.to, counts: d.counts })
+  const sent = await sendAdminEmail(c, d.to, d.subject, d.html, { unsubscribe: false })
+  await audit(c, sent.ok ? 'inquiry.digest' : 'inquiry.digest-failed', 'inquiry', null, sent.ok ? { to: d.to, by_hand: true, ...d.counts } : { to: d.to, error: sent.error })
+  if (!sent.ok) return c.json({ error: sent.error }, 502)
+  return c.json({ success: true, to: d.to })
+})
+
+// What the automatic "we have your enquiry" email looks like for one type.
+app.get('/api/admin/inquiries/ack-preview', async (c) => {
+  const type = INQUIRY_TYPES.includes(String(c.req.query('type'))) ? String(c.req.query('type')) : 'booth_inquiry'
+  const { routing } = await inquirySettings(c)
+  const owner = routing[type] || ''
+  const row = { id: 573, inquiry_type: type, name: 'Asha Rao', email: 'asha@example.com' }
+  return c.json({ subject: 'We have your enquiry (BHAI-INQ-00573) - Bharat AI Innovation 2026', html: inquiryAckHtml(row, owner) })
 })
 
 // Admin: Update inquiry status/notes
+// One enquiry: status, type, owner, and with 0053 priority, value, follow-up and lost
+// reason. admin_notes is still taken whole for older callers; the desk adds notes
+// through /note instead.
 app.patch('/api/admin/inquiries/:id', async (c) => {
-  const id = c.req.param('id')
-  const body = await c.req.json() as any
-  const { status, admin_notes, assigned_to } = body
-  const updates: string[] = ['updated_at = datetime("now")']
-  const values: any[] = []
-  if (status) { updates.push('status = ?'); values.push(status) }
-  if (admin_notes !== undefined) { updates.push('admin_notes = ?'); values.push(admin_notes) }
-  // assigned_to and responded_at arrive with migration 0027, so only touch them
-  // when the column is really there.
-  let inqCols = new Set<string>()
-  try {
-    const r = await c.env.DB.prepare('PRAGMA table_info(inquiries)').all() as any
-    inqCols = new Set(((r.results || []) as any[]).map((x) => x.name))
-  } catch (_) { /* leave empty; the extra fields are simply skipped */ }
-  if (assigned_to !== undefined && inqCols.has('assigned_to')) {
-    updates.push('assigned_to = ?'); values.push(String(assigned_to || '').slice(0, 80) || null)
+  const id = Number(c.req.param('id'))
+  const body = await c.req.json().catch(() => ({})) as any
+  const before = await c.env.DB.prepare('SELECT id FROM inquiries WHERE id = ?').bind(id).first()
+  if (!before) return c.json({ error: 'Inquiry not found' }, 404)
+  const ch = inqReadChange(body)
+  if ('error' in ch) return c.json({ error: ch.error }, 400)
+  if (body.admin_notes !== undefined) {
+    await c.env.DB.prepare("UPDATE inquiries SET admin_notes = ?, updated_at = datetime('now') WHERE id = ?").bind(String(body.admin_notes ?? '').slice(0, 20000), id).run()
+    ch.detail.notes = 'set'
   }
-  if (status === 'responded' && inqCols.has('responded_at')) {
-    updates.push('responded_at = COALESCE(responded_at, datetime("now"))')
+  if (!Object.keys(ch.inq).length && !ch.touchesPipe) {
+    if (body.admin_notes !== undefined) await audit(c, 'inquiry.update', 'inquiry', id, ch.detail)
+    return c.json({ success: true })
   }
-  values.push(id)
-  await c.env.DB.prepare(`UPDATE inquiries SET ${updates.join(', ')} WHERE id = ?`).bind(...values).run()
-  await audit(c, 'inquiry.update', 'inquiry', id, { status, assigned_to, notes: admin_notes ? 'set' : undefined })
+  const r = await inqApplyChange(c, [id], ch, 'inquiry.update')
+  if ('error' in r) return c.json({ error: r.error }, r.status as any)
   return c.json({ success: true })
 })
 
 // Reply to an inquiry from the panel. 274 of these had arrived and the only way
 // to answer one was to copy the address into a mail client, which is why so many
-// still read "new".
+// still read "new". Saved-reply fields ({first_name}...) are filled in here.
 app.post('/api/admin/inquiries/:id/reply', async (c) => {
-  const id = c.req.param('id')
+  const id = Number(c.req.param('id'))
   const body = await c.req.json().catch(() => ({})) as any
   const message = String(body.message || '').trim()
   const subject = String(body.subject || '').trim() || 'Re: your enquiry - Bharat AI Innovation 2026'
   if (!message) return c.json({ error: 'The reply is empty.' }, 400)
   const inq = await c.env.DB.prepare('SELECT * FROM inquiries WHERE id = ?').bind(id).first() as any
   if (!inq) return c.json({ error: 'Inquiry not found' }, 404)
-  const esc = (v: any) => String(v == null ? '' : v)
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  const html = `<!DOCTYPE html><html><body style="margin:0;background:#f6f7fb;padding:24px;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1e2140">
-  <div style="max-width:600px;margin:0 auto;background:#fff;border-radius:14px;padding:28px;border:1px solid #e7e9f5">
-    <p style="margin:0 0 14px;font-size:15px">Dear ${esc(inq.name) || 'Sir/Madam'},</p>
-    <div style="font-size:15px;line-height:1.65;white-space:pre-wrap">${esc(message)}</div>
-    <p style="margin:22px 0 0;font-size:14px;color:#555">Warm regards,<br>Team Bharat AI Innovation<br>
-      <span style="color:#888">Bharat AI Innovation Conference &amp; Exhibition 2026 &middot; 20-21 November 2026 &middot; World Trade Center, Mumbai</span></p>
-  </div></body></html>`
-  const sent = await sendAdminEmail(c, inq.email, subject, html)
-  if (!sent.ok) {
-    await audit(c, 'inquiry.reply-failed', 'inquiry', id, { error: sent.error })
-    return c.json({ error: sent.error }, 502)
-  }
-  const note = `[replied ${new Date().toISOString().slice(0, 16).replace('T', ' ')}] ${message}`
-  const merged = inq.admin_notes ? (inq.admin_notes + '\n' + note) : note
-  let hasResponded = false
-  try {
-    const r = await c.env.DB.prepare('PRAGMA table_info(inquiries)').all() as any
-    hasResponded = ((r.results || []) as any[]).some((x) => x.name === 'responded_at')
-  } catch (_) { hasResponded = false }
-  await c.env.DB.prepare(
-    hasResponded
-      ? 'UPDATE inquiries SET status = ?, admin_notes = ?, responded_at = COALESCE(responded_at, datetime("now")), updated_at = datetime("now") WHERE id = ?'
-      : 'UPDATE inquiries SET status = ?, admin_notes = ?, updated_at = datetime("now") WHERE id = ?'
-  ).bind('responded', merged, id).run()
-  await audit(c, 'inquiry.reply', 'inquiry', id, { to: inq.email, subject })
+  const sent = await sendInquiryReplyTo(c, inq, subject, message, await inqColumns(c), body.template_id ? { template: String(body.template_id).slice(0, 40) } : {})
+  if (!sent.ok) return c.json({ error: sent.error }, 502)
   return c.json({ success: true })
 })
 
@@ -19071,6 +19769,7 @@ app.delete('/api/admin/inquiries/:id', async (c) => {
   const id = c.req.param('id')
   const before = await c.env.DB.prepare('SELECT inquiry_type, name, email, subject, status FROM inquiries WHERE id = ?').bind(id).first() as any
   await c.env.DB.prepare('DELETE FROM inquiries WHERE id = ?').bind(id).run()
+  if (await inqTableReady(c, 'inquiry_pipeline')) await c.env.DB.prepare('DELETE FROM inquiry_pipeline WHERE inquiry_id = ?').bind(id).run()
   await audit(c, 'inquiry.delete', 'inquiry', id, before || {})
   return c.json({ success: true })
 })
@@ -43698,250 +44397,49 @@ function adminPageScript(): string {
     }
 
     // ============ ADMIN INQUIRIES ============
+    // The enquiry desk lives in /js/admin-inquiries.js (one global, InqDesk) with its
+    // own stylesheet, both loaded the first time Inquiries opens. The Overview
+    // board's links name a type first (openEnquiriesOfType).
     let inquiryFilterType = '';
-    let inquiryFilterStatus = '';
-
-    let lastInquiries = null;
-    // One row per inquiry, with the same controls the cards offer. Related fields
-    // share a cell so a whole row, actions included, fits a laptop screen.
-    function inqTableHtml(list, typeLabels, statusColors) {
-      var body = list.map(function (inq) {
-        var id = Number(inq.id);
-        var cfg = typeLabels[inq.inquiry_type] || typeLabels.other;
-        var status = String(inq.status || 'new');
-        var meta = {};
-        if (inq.metadata) { try { meta = JSON.parse(inq.metadata) || {}; } catch (e) { meta = {}; } }
-        var metaStr = Object.entries(meta).filter(function (kv) { return kv[1]; }).map(function (kv) {
-          return escH(String(kv[0]).replace(/_/g, ' ')) + ': ' + escH(kv[1]);
-        }).join(' &middot; ');
-        var opt = function (v, label) { return '<option value="' + v + '"' + (status === v ? ' selected' : '') + '>' + label + '</option>'; };
-        return '<tr class="border-b border-white/5 hover:bg-white/5 transition-colors align-top">' +
-          '<td class="py-2 px-2 whitespace-nowrap"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-' + cfg.color + '-500/20 text-' + cfg.color + '-300"><i class="fas ' + cfg.icon + ' mr-1"></i>' + cfg.label + '</span>' +
-            adminListSub('#' + id, 'mt-1 tabular-nums') + '</td>' +
-          '<td class="py-2 px-2 min-w-[12rem]"><div class="font-semibold">' + escH(inq.subject || inq.name) + '</div>' +
-            '<div class="text-gray-400 line-clamp-2"' + (inq.message ? ' title="' + escH(inq.message) + '">' + escH(inq.message) : '><em class="text-gray-500">No message</em>') + '</div>' +
-            (metaStr ? adminListSub(metaStr, 'line-clamp-2') : '') +
-            (inq.admin_notes ? '<div class="mt-1 text-amber-300 line-clamp-2" title="' + escH(inq.admin_notes) + '"><i class="fas fa-sticky-note mr-1"></i>' + escH(inq.admin_notes) + '</div>' : '') +
-          '</td>' +
-          '<td class="py-2 px-2 min-w-[9rem]"><div>' + escH(inq.name) + '</div>' +
-            (inq.organization ? adminListSub(escH(inq.organization)) : '') + adminListSub(escH(inq.email)) +
-            (inq.phone ? adminListSub(escH(inq.phone), 'whitespace-nowrap') : '') + '</td>' +
-          '<td class="py-2 px-2 whitespace-nowrap">' + ageBadge(inq.created_at) + adminListSub(adminListShortDate(inq.created_at), 'mt-1') + '</td>' +
-          '<td class="py-2 px-2 whitespace-nowrap">' + (inq.assigned_to ? escH(inq.assigned_to) : '<span class="text-gray-500">&mdash;</span>') + '</td>' +
-          '<td class="py-2 px-2"><select onchange="updateInquiryStatus(' + id + ', this.value)" aria-label="Status of inquiry ' + id + '" class="px-2 py-1 rounded-lg text-[10px] font-semibold ' + (statusColors[status] || statusColors.new) + '">' +
-            opt('new', 'New') + opt('in_progress', 'In Progress') + opt('responded', 'Responded') + (status === 'waitlisted' ? opt('waitlisted', 'Waitlisted') : '') + opt('closed', 'Closed') + '</select></td>' +
-          '<td class="py-2 px-2"><div class="flex gap-1 justify-end">' +
-            adminListActBtn('openInquiryReply(' + id + ')', 'bg-primary-500/20 text-primary-400 hover:bg-primary-500/30', 'fa-reply', 'Reply by email') +
-            adminListActBtn('assignInquiry(' + id + ')', 'glass hover:bg-white/10', 'fa-user-plus', 'Assign an owner') +
-            adminListActBtn('addInquiryNote(' + id + ')', 'glass hover:bg-white/10', 'fa-sticky-note', 'Add note') +
-            adminListActBtn('deleteInquiry(' + id + ')', 'glass text-red-400 hover:bg-red-500/10', 'fa-trash', 'Delete') +
-          '</div></td>' +
-        '</tr>';
-      }).join('');
-      return '<div class="glass rounded-xl overflow-x-auto">' +
-        '<table class="w-full text-xs min-w-[46rem]">' +
-          '<thead><tr class="border-b border-white/10">' +
-            adminListTh('Type') + adminListTh('Subject, message &amp; notes') + adminListTh('From') +
-            adminListTh('Waiting') + adminListTh('Owner') + adminListTh('Status') + adminListTh('Actions', 'text-right') +
-          '</tr></thead>' +
-          '<tbody>' + body + '</tbody>' +
-        '</table></div>';
-    }
-    // From the Overview board: Enquiries, showing one type only.
+    var INQ_DESK_VERSION = '20261112a';
+    var inqDeskAssets = null;
     function openEnquiriesOfType(type) {
       inquiryFilterType = type;
       switchSection('inquiries');
     }
+    function inqDeskLoadAssets() {
+      if (window.InqDesk) return Promise.resolve();
+      if (inqDeskAssets) return inqDeskAssets;
+      var css = new Promise(function (resolve) {
+        if (document.querySelector('link[data-inq-desk]')) { resolve(); return; }
+        var l = document.createElement('link');
+        l.rel = 'stylesheet';
+        l.href = '/css/admin-inquiries.css?v=' + INQ_DESK_VERSION;
+        l.setAttribute('data-inq-desk', '1');
+        l.onload = function () { resolve(); };
+        l.onerror = function () { resolve(); };
+        document.head.appendChild(l);
+      });
+      var js = new Promise(function (resolve, reject) {
+        var s = document.createElement('script');
+        s.src = '/js/admin-inquiries.js?v=' + INQ_DESK_VERSION;
+        s.onload = function () { if (window.InqDesk) resolve(); else reject(new Error('The Inquiries screen did not start.')); };
+        s.onerror = function () { s.remove(); reject(new Error('The Inquiries screen could not be downloaded. Check the connection and press Try again.')); };
+        document.head.appendChild(s);
+      });
+      inqDeskAssets = Promise.all([css, js]).catch(function (err) { inqDeskAssets = null; throw err; });
+      return inqDeskAssets;
+    }
     async function loadAdminInquiries() {
-      try {
-        let url = '/api/admin/inquiries?';
-        if (inquiryFilterType) url += 'type=' + inquiryFilterType + '&';
-        if (inquiryFilterStatus) url += 'status=' + inquiryFilterStatus + '&';
-        const data = await api.get(url);
-        var _bad = bodyError(data) || (data && Array.isArray(data.inquiries) ? null : 'Inquiries came back in an unexpected shape.');
-        if (_bad) { sectionError(document.getElementById('section-inquiries'), 'inquiries', { message: _bad }, 'loadAdminInquiries()'); return; }
-        const { inquiries, typeCounts, statusCounts } = data;
-        lastInquiries = inquiries || [];
-
-        const totalNew = (statusCounts || []).find(s => s.status === 'new');
-        const totalAll = (inquiries || []).length;
-
-        const typeLabels = {
-          general: { icon: 'fa-question-circle', color: 'primary', label: 'General' },
-          exhibition: { icon: 'fa-store', color: 'amber', label: 'Exhibition' },
-          booth_inquiry: { icon: 'fa-store-alt', color: 'amber', label: 'Booth Inquiry' },
-          sponsorship: { icon: 'fa-handshake', color: 'orange', label: 'Sponsorship' },
-          speaking: { icon: 'fa-microphone-alt', color: 'purple', label: 'Speaking' },
-          government: { icon: 'fa-building-columns', color: 'green', label: 'Government' },
-          workshop_partner: { icon: 'fa-graduation-cap', color: 'teal', label: 'Workshop Partner' },
-          delhi_pass: { icon: 'fa-ticket', color: 'orange', label: 'Delhi Free Pass' },
-          media: { icon: 'fa-newspaper', color: 'rose', label: 'Media' },
-          group_registration: { icon: 'fa-users', color: 'green', label: 'Group Reg' },
-          pass_upgrade: { icon: 'fa-arrow-up-right-from-square', color: 'amber', label: 'Pass Upgrade' },
-          other: { icon: 'fa-ellipsis-h', color: 'gray', label: 'Other' }
-        };
-
-        const statusColors = { new: 'bg-blue-500/20 text-blue-300', in_progress: 'bg-amber-500/20 text-amber-300', responded: 'bg-green-500/20 text-green-300', waitlisted: 'bg-amber-500/20 text-amber-300', closed: 'bg-gray-500/20 text-gray-400' };
-
-        // Type filter pills
-        const typeFilterHtml = '<button onclick="inquiryFilterType=\\'\\';loadAdminInquiries()" class="px-3 py-1.5 rounded-lg text-xs font-medium transition ' + (!inquiryFilterType ? 'bg-primary-500/20 text-primary-300 border border-primary-500/30' : 'glass hover:bg-white/10 text-gray-400') + '">All (' + totalAll + ')</button>' +
-          (typeCounts || []).map(tc => {
-            const cfg = typeLabels[tc.inquiry_type] || typeLabels.other;
-            const active = inquiryFilterType === tc.inquiry_type;
-            return '<button onclick="inquiryFilterType=\\'' + tc.inquiry_type + '\\';loadAdminInquiries()" class="px-3 py-1.5 rounded-lg text-xs font-medium transition ' + (active ? 'bg-' + cfg.color + '-500/20 text-' + cfg.color + '-300 border border-' + cfg.color + '-500/30' : 'glass hover:bg-white/10 text-gray-400') + '"><i class="fas ' + cfg.icon + ' mr-1"></i>' + cfg.label + ' (' + tc.count + ')</button>';
-          }).join('');
-
-        // Status filter
-        const statusFilterHtml = '<select onchange="inquiryFilterStatus=this.value;loadAdminInquiries()" class="px-3 py-1.5 rounded-lg text-xs font-medium glass">' +
-          '<option value=""' + (!inquiryFilterStatus ? ' selected' : '') + '>All Status</option>' +
-          '<option value="new"' + (inquiryFilterStatus === 'new' ? ' selected' : '') + '>New</option>' +
-          '<option value="in_progress"' + (inquiryFilterStatus === 'in_progress' ? ' selected' : '') + '>In Progress</option>' +
-          '<option value="responded"' + (inquiryFilterStatus === 'responded' ? ' selected' : '') + '>Responded</option>' +
-          '<option value="waitlisted"' + (inquiryFilterStatus === 'waitlisted' ? ' selected' : '') + '>Waitlisted</option>' +
-          '<option value="closed"' + (inquiryFilterStatus === 'closed' ? ' selected' : '') + '>Closed</option></select>';
-
-        const rows = (inquiries || []).map(inq => {
-          const cfg = typeLabels[inq.inquiry_type] || typeLabels.other;
-          const sColor = statusColors[inq.status] || statusColors.new;
-          const meta = inq.metadata ? (function() { try { return JSON.parse(inq.metadata); } catch(e) { return {}; } })() : {};
-          const metaStr = Object.entries(meta).filter(([k,v]) => v).map(([k,v]) => '<span class="text-[10px] text-gray-500">' + escH(k.replace(/_/g,' ')) + ': ' + escH(v) + '</span>').join(' · ');
-
-          return '<div class="glass rounded-xl p-4 border border-white/5 hover:border-white/10 transition">' +
-            '<div class="flex items-start justify-between gap-3">' +
-              '<div class="flex-1 min-w-0">' +
-                '<div class="flex items-center gap-2 mb-1">' +
-                  '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-' + cfg.color + '-500/20 text-' + cfg.color + '-300"><i class="fas ' + cfg.icon + ' mr-1"></i>' + cfg.label + '</span>' +
-                  '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold ' + sColor + '">' + inq.status.replace('_', ' ') + '</span>' +
-                  '<span class="text-[10px] text-gray-500">#' + inq.id + '</span>' +
-                  ageBadge(inq.created_at) +
-                  (inq.assigned_to ? '<span class="px-2 py-0.5 rounded-full text-[10px] bg-indigo-500/20 text-indigo-300"><i class="fas fa-user-check mr-1"></i>' + escH(inq.assigned_to) + '</span>' : '') +
-                '</div>' +
-                '<h4 class="font-semibold text-sm truncate">' + escH(inq.subject || inq.name) + '</h4>' +
-                '<p class="text-xs text-gray-400 mt-0.5">' + escH(inq.name) + (inq.organization ? ' · ' + escH(inq.organization) : '') + '</p>' +
-                '<p class="text-xs text-gray-500 mt-0.5"><i class="fas fa-envelope mr-1"></i>' + escH(inq.email) + (inq.phone ? ' · <i class="fas fa-phone mr-1"></i>' + escH(inq.phone) : '') + '</p>' +
-                '<p class="text-xs text-gray-300 mt-2 line-clamp-2">' + (inq.message ? escH(inq.message) : '<em class="text-gray-500">No message</em>') + '</p>' +
-                (metaStr ? '<div class="mt-1">' + metaStr + '</div>' : '') +
-                (inq.admin_notes ? '<div class="mt-2 p-2 rounded-lg bg-amber-500/5 border border-amber-500/10 text-xs text-amber-300"><i class="fas fa-sticky-note mr-1"></i>' + escH(inq.admin_notes) + '</div>' : '') +
-              '</div>' +
-              '<div class="flex flex-col gap-1 shrink-0">' +
-                '<select onchange="updateInquiryStatus(' + inq.id + ', this.value)" class="px-2 py-1 rounded-lg text-[10px] glass">' +
-                  '<option value="new"' + (inq.status === 'new' ? ' selected' : '') + '>New</option>' +
-                  '<option value="in_progress"' + (inq.status === 'in_progress' ? ' selected' : '') + '>In Progress</option>' +
-                  '<option value="responded"' + (inq.status === 'responded' ? ' selected' : '') + '>Responded</option>' +
-                  (inq.status === 'waitlisted' ? '<option value="waitlisted" selected>Waitlisted</option>' : '') +
-                  '<option value="closed"' + (inq.status === 'closed' ? ' selected' : '') + '>Closed</option>' +
-                '</select>' +
-                '<button onclick="openInquiryReply(' + inq.id + ')" class="px-2 py-1 rounded-lg text-[10px] bg-primary-500/20 text-primary-200 hover:bg-primary-500/30 transition" title="Reply by email"><i class="fas fa-reply mr-1"></i>Reply</button>' +
-                '<button onclick="assignInquiry(' + inq.id + ')" class="px-2 py-1 rounded-lg text-[10px] glass hover:bg-white/10 transition" title="Assign an owner"><i class="fas fa-user-plus"></i></button>' +
-                '<button onclick="addInquiryNote(' + inq.id + ')" class="px-2 py-1 rounded-lg text-[10px] glass hover:bg-white/10 transition" title="Add note"><i class="fas fa-sticky-note mr-1"></i>Note</button>' +
-                '<button onclick="deleteInquiry(' + inq.id + ')" class="px-2 py-1 rounded-lg text-[10px] text-red-400 glass hover:bg-red-500/10 transition" title="Delete"><i class="fas fa-trash"></i></button>' +
-              '</div>' +
-            '</div>' +
-            '<div class="text-[10px] text-gray-600 mt-2">' + new Date(inq.created_at).toLocaleString() + '</div>' +
-          '</div>';
-        }).join('');
-
-        const inqView = adminListView('inquiries');
-        document.getElementById('section-inquiries').innerHTML =
-          '<div class="space-y-4">' +
-            '<div class="flex flex-wrap gap-2 items-center">' + typeFilterHtml + '<div class="ml-auto flex items-center gap-2">' + adminListViewToggleHtml('inquiries') + statusFilterHtml + '</div></div>' +
-            (rows
-              ? '<div class="space-y-4' + (inqView === 'table' ? ' hidden' : '') + '" data-view-of="inquiries" data-view="cards">' + rows + '</div>' +
-                '<div class="' + (inqView === 'table' ? '' : 'hidden') + '" data-view-of="inquiries" data-view="table">' + inqTableHtml(inquiries || [], typeLabels, statusColors) + '</div>'
-              : '<div class="text-center py-12 text-gray-500"><i class="fas fa-inbox text-4xl mb-3"></i><p>No inquiries yet</p></div>') +
-          '</div>';
-      } catch(err) {
-        document.getElementById('section-inquiries').innerHTML = '<div class="text-center py-12 text-red-400"><i class="fas fa-exclamation-triangle text-3xl mb-3"></i><p>Failed to load inquiries: ' + err.message + '</p></div>';
+      var host = document.getElementById('section-inquiries');
+      if (!window.InqDesk) {
+        if (!host.firstChild) host.innerHTML = '<div class="text-center py-12 text-gray-500">Loading enquiries...</div>';
+        try { await inqDeskLoadAssets(); }
+        catch (err) { sectionError(host, 'inquiries', { message: err.message }, 'loadAdminInquiries()'); return; }
       }
-    }
-
-    // How long this has been sitting. 274 inquiries with 123 still marked new is
-    // not a volume problem, it is the absence of any sense of a clock.
-    function ageBadge(createdAt) {
-      if (!createdAt) return '';
-      var then = new Date(String(createdAt).replace(' ', 'T'));
-      if (isNaN(then.getTime())) return '';
-      var days = Math.floor((Date.now() - then.getTime()) / 86400000);
-      var cls = days >= 7 ? 'bg-red-500/20 text-red-300'
-              : days >= 3 ? 'bg-amber-500/20 text-amber-300'
-              : 'bg-white/5 text-gray-400';
-      var txt = days <= 0 ? 'today' : days === 1 ? '1 day' : days + ' days';
-      return '<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold ' + cls + '" title="Waiting since ' +
-        escH(createdAt) + '"><i class="fas fa-clock mr-1"></i>' + txt + '</span>';
-    }
-    // Reply by email from the list. Until now the only way to answer was to copy
-    // the address into a mail client, which is why so many stayed at "new".
-    function openInquiryReply(id) {
-      var inq = (lastInquiries || []).find(function (x) { return String(x.id) === String(id); });
-      if (!inq) { toast('Could not find that inquiry - refresh and try again.', 'error'); return; }
-      openModal(
-        '<h3 class="text-lg font-bold mb-1">Reply to ' + escH(inq.name) + '</h3>' +
-        '<p class="text-xs text-gray-400 mb-1">' + escH(inq.email) + (inq.organization ? ' \u00b7 ' + escH(inq.organization) : '') + '</p>' +
-        '<div class="glass rounded-lg p-3 my-3 text-xs text-gray-400 max-h-28 overflow-y-auto">' +
-          '<span class="text-gray-500">They asked:</span><br>' + (inq.message ? escH(inq.message) : '<em>No message</em>') + '</div>' +
-        '<label class="block text-[11px] text-gray-400 mb-1">Subject</label>' +
-        '<input id="inq-reply-subject" autocomplete="off" class="w-full px-3 py-2 rounded-lg text-sm mb-3" value="Re: your enquiry - Bharat AI Innovation 2026">' +
-        '<label class="block text-[11px] text-gray-400 mb-1">Your reply</label>' +
-        '<textarea id="inq-reply-body" autocomplete="off" rows="7" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="Type the reply that will be emailed to them..."></textarea>' +
-        '<p id="inq-reply-msg" class="text-[11px] text-amber-300 mt-2 min-h-4"></p>' +
-        '<div class="flex gap-2 mt-2">' +
-          '<button onclick="closeModal()" class="flex-1 py-2.5 rounded-xl text-sm glass hover:bg-white/10">Cancel</button>' +
-          '<button id="inq-reply-go" onclick="sendInquiryReply(' + Number(id) + ')" class="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-primary-600 hover:bg-primary-500 text-white">Send reply</button>' +
-        '</div>');
-    }
-    async function sendInquiryReply(id) {
-      var body = (document.getElementById('inq-reply-body') || {}).value || '';
-      var subject = (document.getElementById('inq-reply-subject') || {}).value || '';
-      var msg = document.getElementById('inq-reply-msg');
-      var btn = document.getElementById('inq-reply-go');
-      if (!body.trim()) { if (msg) msg.textContent = 'The reply is empty.'; return; }
-      if (btn) { btn.disabled = true; btn.textContent = 'Sending...'; }
-      try {
-        var r = await api.post('/api/admin/inquiries/' + id + '/reply', { message: body, subject: subject });
-        if (r && r.error) throw new Error(r.error);
-        closeModal();
-        toast('Reply sent and the inquiry marked responded.');
-        loadAdminInquiries();
-      } catch (e) {
-        if (msg) msg.textContent = e.message || 'Could not send the reply.';
-        if (btn) { btn.disabled = false; btn.textContent = 'Send reply'; }
-      }
-    }
-    async function assignInquiry(id) {
-      var who = prompt('Assign inquiry #' + id + ' to (name or initials):', '');
-      if (who === null) return;
-      try {
-        var r = await api.patch('/api/admin/inquiries/' + id, { assigned_to: who });
-        if (r && r.error) throw new Error(r.error);
-        toast(who ? ('Assigned to ' + who) : 'Owner cleared');
-        loadAdminInquiries();
-      } catch (e) { toast('Failed: ' + (e.message || ''), 'error'); }
-    }
-    async function updateInquiryStatus(id, status) {
-      try {
-        await api.patch('/api/admin/inquiries/' + id, { status });
-        toast('Status updated', 'success');
-        loadAdminInquiries();
-      } catch(err) { toast('Failed: ' + err.message, 'error'); }
-    }
-
-    async function addInquiryNote(id) {
-      const note = prompt('Add admin note for inquiry #' + id + ':');
-      if (note === null) return;
-      try {
-        await api.patch('/api/admin/inquiries/' + id, { admin_notes: note });
-        toast('Note saved', 'success');
-        loadAdminInquiries();
-      } catch(err) { toast('Failed: ' + err.message, 'error'); }
-    }
-
-    async function deleteInquiry(id) {
-      if (!confirm('Delete inquiry #' + id + '?')) return;
-      try {
-        await api.del('/api/admin/inquiries/' + id);
-        toast('Inquiry deleted', 'success');
-        loadAdminInquiries();
-      } catch(err) { toast('Failed: ' + err.message, 'error'); }
+      var want = inquiryFilterType;
+      inquiryFilterType = '';
+      await window.InqDesk.mount(host, { api: api, toast: toast, operator: getOperator, initialType: want });
     }
 
     // ============ ANALYTICS ============

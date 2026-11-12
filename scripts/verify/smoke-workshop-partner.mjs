@@ -106,7 +106,7 @@ const count = () => rows('SELECT COUNT(*) AS n FROM inquiries')[0].n;
   check('the Overview board counts the new ideas', board.status === 200 && onBoard && onBoard.n === rows("SELECT COUNT(*) AS n FROM inquiries WHERE inquiry_type = 'workshop_partner' AND status = 'new'")[0].n, board.text.slice(0, 300));
 
   const adminScript = await api('/admin.js');
-  check('the served admin screen shows the type by its own name', adminScript.status === 200 && adminScript.text.includes("workshop_partner: { icon: 'fa-graduation-cap', color: 'teal', label: 'Workshop Partner' }"), adminScript.status);
+  check('the served admin screen shows the type by its own name', adminScript.status === 200 && adminScript.text.includes('INQ_DESK_VERSION') && /workshop_partner:\s*\{ label: 'Workshop partner', icon: 'fa-graduation-cap'/.test(readFileSync(new URL('../../public/js/admin-inquiries.js', import.meta.url), 'utf8')), adminScript.status);
   check('and the Overview line that opens it', adminScript.text.includes('workshop partner ideas to read') && adminScript.text.includes('function openEnquiriesOfType'));
   const stranger = await api('/api/admin/inquiries?type=workshop_partner');
   check('a stranger cannot read the list', stranger.status === 401 || stranger.status === 403, stranger.status);

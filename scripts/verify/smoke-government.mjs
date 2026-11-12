@@ -106,7 +106,9 @@ const count = () => rows('SELECT COUNT(*) AS n FROM inquiries')[0].n;
   const meta = JSON.parse(shown.metadata);
   check('and can see the format, the designation and where it came from', meta.formats === 'Innovation Talk & Showcase, Exhibition Pavilion' && meta.designation === 'Deputy Secretary' && meta.utm_source === 'letter' && meta.utm_campaign === 'ministries' && meta.page === '/government', shown.metadata);
   const adminScript = await api('/admin.js');
-  check('the served admin screen shows the type by its own name', adminScript.status === 200 && adminScript.text.includes("government: { icon: 'fa-building-columns', color: 'green', label: 'Government' }"), adminScript.status);
+  // Since 12 Nov 2026 the Inquiries screen is its own file, loaded by /admin.js.
+  const desk = readFileSync(new URL('../../public/js/admin-inquiries.js', import.meta.url), 'utf8');
+  check('the served admin screen shows the type by its own name', adminScript.status === 200 && adminScript.text.includes('INQ_DESK_VERSION') && /government:\s*\{ label: 'Government', icon: 'fa-building-columns'/.test(desk), adminScript.status);
   check('the icon it uses exists', readFileSync(new URL('../../public/css/fa-subset.css', import.meta.url), 'utf8').includes('.fa-building-columns:'));
   const stranger = await api('/api/admin/inquiries?type=government');
   check('a stranger cannot read the list', stranger.status === 401 || stranger.status === 403, stranger.status);

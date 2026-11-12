@@ -178,8 +178,9 @@ check('the service worker stores that same version', read('public/sw.js').includ
 check('in the sitemap', read('public/sitemap.xml').includes('<loc>https://bharataiinnovation.com/government</loc>'));
 check('in llms.txt, not called a government event', /\[Government\]\(https:\/\/bharataiinnovation\.com\/government\).*not a government event/.test(llms));
 const src = read('src/index.tsx');
-check('the worker accepts the type', /validTypes = \[[^\]]*'government'/.test(src));
-check('Admin labels the type', src.includes("government: { icon: 'fa-building-columns', color: 'green', label: 'Government' }"));
+check('the worker accepts the type', /INQUIRY_TYPES = \[[^\]]*'government'/.test(src));
+// Since 12 Nov 2026 the Inquiries screen is its own file (public/js/admin-inquiries.js).
+check('Admin labels the type', /government:\s*\{ label: 'Government', icon: 'fa-building-columns'/.test(read('public/js/admin-inquiries.js')));
 
 console.log(fails ? `\n${fails} failed` : '\nall passed');
 process.exit(fails ? 1 : 0);

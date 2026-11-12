@@ -80,7 +80,7 @@ const rs = (paise) => '₹' + Math.round(paise / 100).toLocaleString('en-IN');
     await page.evaluate(() => switchSection('overview'));
     await until(() => page.evaluate(() => /Waiting on you/.test((document.getElementById('ov-board') || {}).innerText || '')), 20000);
     await page.evaluate(() => { const a = [...document.querySelectorAll('#ov-board a')].find(x => /workshop partner ideas/.test(x.innerText)); a.click(); });
-    const wpList = await until(() => page.evaluate(() => { const s = document.getElementById('section-inquiries'); return !s.classList.contains('hidden') && /Workshop Partner/.test(s.innerText) && inquiryFilterType === 'workshop_partner' && lastInquiries.length === 1 && lastInquiries[0].inquiry_type === 'workshop_partner'; }), 8000);
+    const wpList = await until(() => page.evaluate(() => { const s = document.getElementById('section-inquiries'); if (s.classList.contains('hidden')) return false; const sel = s.querySelector('[data-f="type"]'); const rows = [...s.querySelectorAll('.iq-row')]; return !!sel && sel.value === 'workshop_partner' && rows.length === 1 && /Workshop partner/.test(rows[0].innerText); }), 15000);
     check('the workshop partner line opens Enquiries showing only those, under their own label', wpList, 'filter did not apply');
     await page.evaluate(() => { inquiryFilterType = ''; });
     await page.evaluate(() => switchSection('overview'));

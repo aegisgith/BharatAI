@@ -115,8 +115,9 @@ for (const box of Object.values({ a: 'wp-topic', b: 'wp-brief', c: 'wp-company',
 for (const value of ['Hands-on', 'Pure theory', 'Individual', 'AI company']) check(`the choice "${value}" is on the form`, page.includes(`value="${value}"`));
 check('the page offers no fee and no promise of a slot', !/guarantee|honorarium|revenue share/i.test(page.slice(page.indexOf('id="workshop-partners"'), page.indexOf('<!-- CTA -->'))));
 const src = read('src/index.tsx');
-check('the worker accepts the type', /validTypes = \[[^\]]*'workshop_partner'/.test(src));
-check('Admin labels the type', src.includes("workshop_partner: { icon: 'fa-graduation-cap', color: 'teal', label: 'Workshop Partner' }"));
+check('the worker accepts the type', /INQUIRY_TYPES = \[[^\]]*'workshop_partner'/.test(src));
+// Since 12 Nov 2026 the Inquiries screen is its own file (public/js/admin-inquiries.js).
+check('Admin labels the type', /workshop_partner:\s*\{ label: 'Workshop partner', icon: 'fa-graduation-cap'/.test(read('public/js/admin-inquiries.js')));
 check('the icon exists in the font subset', read('public/css/fa-subset.css').includes('.fa-graduation-cap'));
 for (const c of ['bg-teal-500/20', 'text-teal-300', 'border-teal-500/30']) check(`Admin's colour ${c} is in the stylesheet`, read('public/css/tailwind.css').includes(c.replace('/', '\\/')));
 check('the Overview has a line for it, opening Enquiries on that type', src.includes('workshop partner ideas to read') && src.includes('openEnquiriesOfType(&quot;workshop_partner&quot;)'));
