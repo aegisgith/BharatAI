@@ -52,7 +52,8 @@ const send = async (p, boxes) => {
   await p.sandbox.submitBoothInquiry({ preventDefault() {} });
   await p.settle();
 };
-const GOOD = { 'iq-name': 'Meera Nair', 'iq-email': 'Meera@Example.com', 'iq-phone': '9820011111', 'iq-company': 'Nair Analytics', 'iq-designation': 'CTO', 'iq-website': 'www.nair.example', 'iq-industry': 'FinTech', 'iq-products': 'A fraud model', 'iq-message': 'Near the stage, please', 'iq-zone': 'FinTech AI' };
+const GOOD = { 'iq-name': 'Meera Nair', 'iq-email': 'Meera@Example.com', 'iq-phone': '9820011111', 'iq-company': 'Nair Analytics', 'iq-designation': 'CTO', 'iq-website': 'www.nair.example', 'iq-industry': 'Banking & Financial Services', 'iq-products': 'A fraud model', 'iq-message': 'Near the stage, please', 'iq-zone': 'FinTech AI',
+  'iq-company-type': 'Startup', 'iq-revenue': '₹1 to 10 crore', 'iq-product': 'FraudGuard', 'iq-stage': 'Live, with paying customers', 'iq-users': 'We sell it to other organisations', 'iq-market': 'India', 'iq-city': 'Mumbai', 'iq-talk': 'Catching fraud as it happens' };
 const lastInquiry = () => q('SELECT * FROM inquiries ORDER BY id DESC LIMIT 1')[0];
 {
   sent.length = 0;
@@ -64,21 +65,22 @@ const lastInquiry = () => q('SELECT * FROM inquiries ORDER BY id DESC LIMIT 1')[
   check('one row, as a booth enquiry, on Mumbai\'s list, email lowercased', row.inquiry_type === 'booth_inquiry' && row.event_id === 1 && row.email === 'meera@example.com' && row.status === 'new', JSON.stringify(row));
   check('with the person', row.name === 'Meera Nair' && row.phone === '9820011111' && row.organization === 'Nair Analytics' && row.message === 'Near the stage, please', JSON.stringify(row));
   check('the subject names the booth, in the spelling the team has always had', row.subject === 'Booth Inquiry: ' + key, row.subject);
-  check('the details as before: booth, one of them, zone, estimate, role, industry, products', meta.booth_type === key && meta.booth_quantity === 1 && meta.preferred_zone === 'FinTech AI' && meta.estimated_total === 291000 && meta.designation === 'CTO' && meta.industry === 'FinTech' && meta.products_to_showcase === 'A fraud model', row.metadata);
+  check('the application: booth, one of them, zone, estimate, and every answer', meta.application === 'Booth application, Mumbai 2026' && meta.booth_type === key && meta.booth_quantity === 1 && meta.preferred_zone === 'FinTech AI' && meta.estimated_total === 291000 && meta.designation === 'CTO' && meta.sells_to === 'Banking & Financial Services' && meta.what_it_does === 'A fraud model' && meta.product === 'FraudGuard' && meta.company_type === 'Startup' && meta.annual_revenue === '₹1 to 10 crore' && meta.how_far_along === 'Live, with paying customers' && meta.who_uses_it === 'We sell it to other organisations' && meta.market === 'India' && meta.city === 'Mumbai' && meta.stage_talk === 'Catching fraud as it happens', row.metadata);
   check('a website typed as www.nair.example is kept as a working link', meta.website === 'https://www.nair.example', meta.website);
   check('the thank-you shows, with the reference, and the form goes', !p.get('iq-success').classList.contains('hidden') && p.get('inquiry-form').classList.contains('hidden') && p.get('iq-ref').textContent === 'BHAI-INQ-' + String(row.id).padStart(5, '0'), p.get('iq-ref').textContent);
   check('the page comes back to the thank-you', p.get('inquiry-form-card').scrolled === true);
   await settle();
-  check('one email to the team, naming the booth, with a way to reply', sent.length === 1 && /booth inquiry/i.test(sent[0].Content.Subject + sent[0].Content.Body[0].Content) && sent[0].Content.Body[0].Content.includes(key) && String(sent[0].Content.ReplyTo || '').includes('Meera@Example.com'), JSON.stringify(sent[0]?.Content?.Subject));
+  check('one email to the team, naming the booth, with a way to reply', sent.filter((m) => /booth inquiry/i.test(m.Content.Subject)).length === 1 && /booth inquiry/i.test(sent[0].Content.Subject + sent[0].Content.Body[0].Content) && sent[0].Content.Body[0].Content.includes(key) && String(sent[0].Content.ReplyTo || '').includes('Meera@Example.com'), JSON.stringify(sent[0]?.Content?.Subject));
   p.sandbox.resetInquiryForm();
-  check('Submit Another: the form is back, its button says what it did, the summary has gone', p.get('inquiry-form').wasReset && !p.get('inquiry-form').classList.contains('hidden') && p.get('iq-success').classList.contains('hidden') && /Send Booth Enquiry/.test(p.get('iq-submit').innerHTML) && p.get('iq-submit').disabled === false);
+  check('and one to the applicant, saying we reply within 2 working days', sent.some((m) => (m.Recipients.To || []).includes('meera@example.com') && /booth application/i.test(m.Content.Subject) && m.Content.Body[0].Content.includes('2 working days')), JSON.stringify(sent.map((m) => m.Content.Subject)));
+  check('Submit Another: the form is back, its button says what it did, the summary has gone', p.get('inquiry-form').wasReset && !p.get('inquiry-form').classList.contains('hidden') && p.get('iq-success').classList.contains('hidden') && /Send my application/.test(p.get('iq-submit').innerHTML) && p.get('iq-submit').disabled === false);
 }
 {
   const p = openPage(inquiryHtml, 'BOOTH_PRICES');
-  await send(p, { ...GOOD, 'iq-booth-type': 'Undecided', 'iq-website': '', 'iq-zone': '', 'iq-designation': '', 'iq-industry': '', 'iq-products': '', 'iq-message': '', 'iq-email': 'unsure@example.com' });
+  await send(p, { ...GOOD, 'iq-booth-type': 'Undecided', 'iq-zone': '', 'iq-talk': '', 'iq-message': '', 'iq-email': 'unsure@example.com' });
   const row = lastInquiry();
   const meta = JSON.parse(row.metadata);
-  check('Not sure yet, and every optional box left empty: still one row, no estimate', row.email === 'unsure@example.com' && row.subject === 'Booth Inquiry: Undecided' && meta.estimated_total === null && meta.website === '' && row.message === '', row.metadata);
+  check('Not sure yet, and every optional box left empty: still one row, no estimate', row.email === 'unsure@example.com' && row.subject === 'Booth Inquiry: Undecided' && meta.estimated_total === null && meta.stage_talk === '' && row.message === '', row.metadata);
 }
 {
   const p = openPage(inquiryHtml, 'BOOTH_PRICES');
@@ -93,8 +95,8 @@ const lastInquiry = () => q('SELECT * FROM inquiries ORDER BY id DESC LIMIT 1')[
   const before = q('SELECT COUNT(*) AS n FROM inquiries')[0].n;
   const p = openPage(inquiryHtml, 'BOOTH_PRICES');
   await send(p, { ...GOOD, 'iq-booth-type': 'Undecided', 'iq-email': '' });
-  check('the server refusing: its words stay on the screen, not only in a toast', !p.get('iq-notice').classList.contains('hidden') && /required/i.test(p.get('iq-notice').textContent), p.get('iq-notice').textContent);
-  check('nothing saved, nothing lost: the form stays and the button comes back', q('SELECT COUNT(*) AS n FROM inquiries')[0].n === before && !p.get('inquiry-form').classList.contains('hidden') && /Send Booth Enquiry/.test(p.get('iq-submit').innerHTML) && p.get('iq-submit').disabled === false);
+  check('the server refusing: its words stay on the screen, not only in a toast', !p.get('iq-notice').classList.contains('hidden') && /Please add email/i.test(p.get('iq-notice').textContent), p.get('iq-notice').textContent);
+  check('nothing saved, nothing lost: the form stays and the button comes back', q('SELECT COUNT(*) AS n FROM inquiries')[0].n === before && !p.get('inquiry-form').classList.contains('hidden') && /Send my application/.test(p.get('iq-submit').innerHTML) && p.get('iq-submit').disabled === false);
   p.get('iq-email').value = 'second@example.com';
   await p.sandbox.submitBoothInquiry({ preventDefault() {} });
   await p.settle();
@@ -123,7 +125,7 @@ const lastInquiry = () => q('SELECT * FROM inquiries ORDER BY id DESC LIMIT 1')[
   const list = await toWorker('/api/admin/inquiries?type=booth_inquiry', { headers: ADMIN });
   const j = await list.json();
   const shown = (j.inquiries || []).find((i) => i.email === 'meera@example.com');
-  check('the organiser finds it in Admin, Enquiries, under Booth Inquiry, with what the form asked', list.status === 200 && shown && JSON.parse(shown.metadata).products_to_showcase === 'A fraud model' && (j.inquiries || []).every((i) => i.inquiry_type === 'booth_inquiry'), String(list.status));
+  check('the organiser finds it in Admin, Enquiries, under Booth Inquiry, with what the form asked', list.status === 200 && shown && JSON.parse(shown.metadata).what_it_does === 'A fraud model' && (j.inquiries || []).every((i) => i.inquiry_type === 'booth_inquiry'), String(list.status));
 }
 
 // ======== /register: the free form ========

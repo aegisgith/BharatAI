@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Apply for a Booth · Bharat AI Innovation Delhi 2027</title>
+    <meta name="description" content="Apply for a booth at Bharat AI Innovation Delhi 2027, Bharat Mandapam, New Delhi, 28–29 July 2027. Tell us what you will show; we reply within 2 working days.">
+    <link rel="canonical" href="https://bharataiinnovation.com/delhi-exhibit">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Bharat AI Innovation">
+    <meta property="og:locale" content="en_IN">
+    <meta property="og:url" content="https://bharataiinnovation.com/delhi-exhibit">
+    <meta property="og:title" content="Apply for a Booth · Bharat AI Innovation Delhi 2027">
+    <meta property="og:description" content="Exhibit at Bharat Mandapam, New Delhi, 28–29 July 2027. Tell us what you will show; we reply within 2 working days.">
+    <meta property="og:image" content="https://bharataiinnovation.com/images/og/delhi.jpg">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="Bharat AI Innovation Delhi 2027, 28–29 July 2027, Bharat Mandapam, New Delhi">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:image" content="https://bharataiinnovation.com/images/og/delhi.jpg">
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
+    <link rel="stylesheet" href="/css/fonts.css?v=1">
+    <link rel="stylesheet" href="/css/fa-subset.css?v=2">
+    <link rel="stylesheet" href="css/style.css?v=20261105b">
+    <link rel="icon" type="image/png" sizes="64x64" href="/images/favicon-64.png">
+    <style>
+    /* The booth application for Delhi. The server checks every answer again (POST /api/booth-application). */
+    :root { --ink-orange: #B54800; }
+    .da { background: var(--off-white); padding: calc(var(--nav-h) + 1.25rem) 0 3rem; min-height: 80vh; }
+    .da-wrap { max-width: 680px; margin: 0 auto; padding: 0 16px; }
+    .da-back { display: inline-block; font-size: 0.9rem; font-weight: 700; color: var(--ink-orange); margin-bottom: 0.6rem; min-height: 24px; }
+    .da h1 { font-family: var(--font-display); font-size: clamp(1.7rem, 6vw, 2.2rem); font-weight: 800; letter-spacing: -0.02em; line-height: 1.1; color: var(--charcoal); margin: 0 0 0.3rem; text-wrap: balance; }
+    .da-when { color: var(--dark-grey); font-size: 0.98rem; line-height: 1.45; margin: 0 0 0.6rem; }
+    .da-lead { color: var(--charcoal); font-size: 1rem; line-height: 1.6; margin: 0 0 1.1rem; max-width: 62ch; text-wrap: pretty; }
+    .da-card { background: #fff; border: 1px solid #E3E6F6; border-radius: 16px; padding: 1.1rem; box-shadow: 0 10px 28px rgba(13,15,30,0.05); }
+    .da-step { margin: 1.4rem 0 0.7rem; font-family: var(--font-display); font-size: 1.1rem; font-weight: 800; color: var(--charcoal); }
+    .da-step:first-child { margin-top: 0; }
+    .da-fields { display: grid; grid-template-columns: 1fr; gap: 0.75rem; }
+    @media (min-width: 560px) { .da-fields { grid-template-columns: 1fr 1fr; } }
+    .da-field { min-width: 0; }
+    .da-field.wide { grid-column: 1 / -1; }
+    .da-field label { display: block; font-size: 0.85rem; font-weight: 700; color: var(--charcoal); margin-bottom: 0.3rem; }
+    .da-field label small { font-weight: 500; color: var(--dark-grey); font-size: 0.8rem; }
+    .da-field input, .da-field select, .da-field textarea { width: 100%; min-height: 46px; padding: 0.5rem 0.75rem; border: 1.5px solid #D5D9EE; border-radius: 10px; font: inherit; font-size: 1rem; color: var(--charcoal); background: #fff; box-sizing: border-box; }
+    .da-field textarea { min-height: 76px; resize: vertical; line-height: 1.45; }
+    .da-field input:focus, .da-field select:focus, .da-field textarea:focus { outline: none; border-color: var(--saffron); box-shadow: 0 0 0 3px rgba(255,107,0,0.15); }
+    [aria-invalid="true"] { border-color: #D93025 !important; }
+    .da-hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+    .da-submit { width: 100%; justify-content: center; min-height: 52px; margin-top: 1.2rem; }
+    .da-error { margin: 0.7rem 0 0; padding: 0.6rem 0.8rem; background: #FDECEA; color: #A0281D; border-radius: 10px; font-size: 0.9rem; font-weight: 600; line-height: 1.45; }
+    .da-note { margin: 0.7rem 0 0; font-size: 0.8rem; line-height: 1.5; color: var(--dark-grey); text-align: center; }
+    .da-note a { color: var(--dark-grey); text-decoration: underline; }
+    .da-done { text-align: center; padding: 0.75rem 0.25rem; }
+    .da-done-icon { width: 48px; height: 48px; border-radius: 50%; background: rgba(19,136,8,0.1); color: #138808; display: flex; align-items: center; justify-content: center; font-size: 1.25rem; margin: 0 auto 0.6rem; }
+    .da-done h2 { font-family: var(--font-display); font-size: 1.35rem; font-weight: 800; color: var(--charcoal); margin: 0 0 0.4rem; }
+    .da-done p { color: var(--dark-grey); line-height: 1.55; margin: 0 auto 0.8rem; max-width: 52ch; }
+    .da-ref { font-weight: 800; color: var(--charcoal); }
+    </style>
+</head>
+<body>
+    <main class="da" id="main-content">
+        <div class="da-wrap">
+            <a href="/delhi#booths" class="da-back">← Delhi 2027</a>
+            <h1>Apply for a booth in New Delhi</h1>
+            <p class="da-when">Bharat AI Innovation Delhi 2027. 28–29 July 2027, Bharat Mandapam, New Delhi.</p>
+            <p class="da-lead">Tell us what you will show. We review every application so the floor stays relevant for the people who come to buy. We reply within 2 working days. If approved, our team confirms your place and the next step for booking your booth.</p>
+            <div class="da-card">
+                <form id="da-form" novalidate>
+                    <p class="da-step">Your booth</p>
+                    <div class="da-fields">
+                        <div class="da-field wide">
+                            <label for="da-booth">Booth</label>
+                            <select id="da-booth">
+                                <option value="Startup Pod">Startup Pod, 1.5 × 1.5 m, ₹48,000 + GST</option>
+                                <option value="Explorer Booth">Explorer Booth, 2 × 2 m, ₹1,29,000 + GST</option>
+                                <option value="Innovator Booth">Innovator Booth, 3 × 2 m, ₹1,95,000 + GST</option>
+                                <option value="Enterprise Booth">Enterprise Booth, 4 × 2 m, ₹2,58,000 + GST</option>
+                                <option value="Accelerator Booth">Accelerator Booth, 3 × 3 m, ₹2,91,000 + GST</option>
+                                <option value="Flagship Pavilion">Flagship Pavilion, 6 × 2 m, ₹3,87,000 + GST</option>
+                                <option value="Mega Pavilion">Mega Pavilion, 7 × 7.7 m, ₹17,40,000 + GST</option>
+                                <option value="Undecided">Not sure yet</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <p class="da-step">Your company</p>
+                    <div class="da-fields">
+                        <div class="da-field">
+                            <label for="da-company">Company name</label>
+                            <input id="da-company" type="text" autocomplete="organization" maxlength="160">
+                        </div>
+                        <div class="da-field">
+                            <label for="da-website">Website</label>
+                            <input id="da-website" type="text" inputmode="url" autocomplete="url" autocapitalize="none" spellcheck="false" maxlength="200" placeholder="yourcompany.com">
+                        </div>
+                        <div class="da-field">
+                            <label for="da-type">Which best describes you?</label>
+                            <select id="da-type">
+                                <option value="">Choose one</option>
+                                <option>Startup</option>
+                                <option>Small or medium business</option>
+                                <option>Large enterprise</option>
+                                <option>Government or PSU</option>
+                                <option>Academic or research</option>
+                            </select>
+                        </div>
+                        <div class="da-field">
+                            <label for="da-revenue">Annual revenue</label>
+                            <select id="da-revenue">
+                                <option value="">Choose one</option>
+                                <option>No revenue yet</option>
+                                <option>Under ₹1 crore</option>
+                                <option>₹1 to 10 crore</option>
+                                <option>₹10 to 100 crore</option>
+                                <option>₹100 to 500 crore</option>
+                                <option>Above ₹500 crore</option>
+                                <option>Not applicable (government or academic)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <p class="da-step">What you will show</p>
+                    <div class="da-fields">
+                        <div class="da-field">
+                            <label for="da-product">Product or solution name</label>
+                            <input id="da-product" type="text" autocomplete="off" maxlength="120">
+                        </div>
+                        <div class="da-field">
+                            <label for="da-stage">How far along is it?</label>
+                            <select id="da-stage">
+                                <option value="">Choose one</option>
+                                <option>Idea</option>
+                                <option>Working prototype or MVP</option>
+                                <option>Live, with paying customers</option>
+                            </select>
+                        </div>
+                        <div class="da-field wide">
+                            <label for="da-what">What does it do? <small>(one or two lines)</small></label>
+                            <textarea id="da-what" rows="2" maxlength="600" placeholder="What it does, and for whom"></textarea>
+                        </div>
+                        <div class="da-field">
+                            <label for="da-users">Who uses it?</label>
+                            <select id="da-users">
+                                <option value="">Choose one</option>
+                                <option>We sell it to other organisations</option>
+                                <option>We use it inside our own organisation</option>
+                                <option>Both</option>
+                            </select>
+                        </div>
+                        <div class="da-field">
+                            <label for="da-market">Which market?</label>
+                            <select id="da-market">
+                                <option value="">Choose one</option>
+                                <option>India</option>
+                                <option>Overseas</option>
+                                <option>India and overseas</option>
+                            </select>
+                        </div>
+                        <div class="da-field wide">
+                            <label for="da-industry">Which industry do you sell to?</label>
+                            <select id="da-industry">
+                                <option value="">Choose one</option>
+                                <option>Banking &amp; Financial Services</option>
+                                <option>Insurance</option>
+                                <option>IT Services &amp; Consulting</option>
+                                <option>Software &amp; SaaS</option>
+                                <option>Telecom</option>
+                                <option>Manufacturing</option>
+                                <option>Automotive</option>
+                                <option>Pharma &amp; Life Sciences</option>
+                                <option>Healthcare &amp; Hospitals</option>
+                                <option>Retail &amp; E-commerce</option>
+                                <option>Logistics &amp; Supply Chain</option>
+                                <option>Energy &amp; Utilities</option>
+                                <option>Media &amp; Entertainment</option>
+                                <option>Education &amp; Academia</option>
+                                <option>Government &amp; Public Sector</option>
+                                <option>Consulting &amp; Professional Services</option>
+                                <option>Startup / Early stage</option>
+                                <option>Venture Capital &amp; Investment</option>
+                                <option>Agriculture &amp; Agritech</option>
+                                <option>Real Estate &amp; Construction</option>
+                                <option>Aerospace &amp; Defence</option>
+                                <option>Other</option>
+                            </select>
+                        </div>
+                        <div class="da-field wide">
+                            <label for="da-talk">What would you talk about on the Innovation Stage? <small>(optional)</small></label>
+                            <textarea id="da-talk" rows="2" maxlength="600" placeholder="The idea or the demo you would show"></textarea>
+                        </div>
+                    </div>
+
+                    <p class="da-step">About you</p>
+                    <div class="da-fields">
+                        <div class="da-field">
+                            <label for="da-name">Your name</label>
+                            <input id="da-name" type="text" autocomplete="name" autocapitalize="words" maxlength="120">
+                        </div>
+                        <div class="da-field">
+                            <label for="da-designation">Designation</label>
+                            <input id="da-designation" type="text" autocomplete="organization-title" maxlength="120">
+                        </div>
+                        <div class="da-field">
+                            <label for="da-email">Email</label>
+                            <input id="da-email" type="email" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" maxlength="160">
+                        </div>
+                        <div class="da-field">
+                            <label for="da-phone">Mobile</label>
+                            <input id="da-phone" type="tel" inputmode="tel" autocomplete="tel" maxlength="20">
+                        </div>
+                        <div class="da-field">
+                            <label for="da-city">City</label>
+                            <input id="da-city" type="text" autocomplete="address-level2" maxlength="80">
+                        </div>
+                        <div class="da-field wide">
+                            <label for="da-message">Anything else? <small>(optional)</small></label>
+                            <textarea id="da-message" rows="2" maxlength="2000"></textarea>
+                        </div>
+                        <div class="da-hp" aria-hidden="true">
+                            <label for="da-website2">Leave this empty</label>
+                            <input id="da-website2" type="text" tabindex="-1" autocomplete="off">
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary da-submit" id="da-submit">Send my application <i class="fas fa-arrow-right" aria-hidden="true"></i></button>
+                    <p class="da-error" id="da-error" role="alert" hidden></p>
+                    <p class="da-note">This is an application, not a booking: nothing is charged. We only use these details to review it. <a href="/privacy">Privacy policy</a></p>
+                </form>
+
+                <div class="da-done" id="da-done" hidden>
+                    <div class="da-done-icon"><i class="fas fa-check" aria-hidden="true"></i></div>
+                    <h2>Application sent</h2>
+                    <p id="da-done-text"></p>
+                    <p>Your reference: <span class="da-ref" id="da-ref"></span></p>
+                    <a href="/delhi" class="btn btn-outline btn-sm">Back to the Delhi page</a>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+    // The booth application for Delhi. Checked here so nobody presses Send and only then hears
+    // a box is empty; POST /api/booth-application checks it all again.
+    (function () {
+      var form = document.getElementById('da-form');
+      if (!form) return;
+      var byId = function (id) { return document.getElementById(id); };
+      var value = function (id) { return String(byId(id).value || '').trim(); };
+      var err = byId('da-error');
+      var btn = byId('da-submit');
+      var LABEL = 'Send my application <i class="fas fa-arrow-right" aria-hidden="true"></i>';
+      var params = new URLSearchParams(location.search);
+
+      // ?booth=Explorer%20Booth (or ?booth=explorer) opens with that booth chosen.
+      var want = String(params.get('booth') || '').toLowerCase();
+      if (want) {
+        var opts = byId('da-booth').options || [];
+        for (var k = 0; k < opts.length; k++) {
+          if (String(opts[k].value).toLowerCase().indexOf(want) === 0) { byId('da-booth').value = opts[k].value; break; }
+        }
+      }
+
+      function fail(msg, id) {
+        err.textContent = msg;
+        err.hidden = false;
+        Array.prototype.forEach.call(form.querySelectorAll('[aria-invalid]'), function (el) { el.removeAttribute('aria-invalid'); });
+        if (id) { var box = byId(id); box.setAttribute('aria-invalid', 'true'); box.focus(); }
+      }
+
+      var REQUIRED = [
+        ['da-company', 'Please add your company name.'], ['da-website', 'Please add your website.'],
+        ['da-type', 'Please choose what best describes you.'], ['da-revenue', 'Please choose your annual revenue.'],
+        ['da-product', 'Please add the name of the product or solution.'], ['da-stage', 'Please choose how far along it is.'],
+        ['da-what', 'Please say in a line what it does.'], ['da-users', 'Please choose who uses it.'],
+        ['da-market', 'Please choose the market.'], ['da-industry', 'Please choose the industry you sell to.'],
+        ['da-name', 'Please write your name.'], ['da-designation', 'Please add your designation.']
+      ];
+
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        err.hidden = true;
+        for (var i = 0; i < REQUIRED.length; i++) {
+          if (!value(REQUIRED[i][0])) return fail(REQUIRED[i][1], REQUIRED[i][0]);
+        }
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value('da-email'))) return fail('Please check your email. It should look like name@example.com.', 'da-email');
+        var digits = value('da-phone').replace(/[^0-9]/g, '');
+        if (!digits) return fail('Please add your mobile number.', 'da-phone');
+        if (digits.length < 10) return fail('Please check your mobile number. It needs at least 10 digits.', 'da-phone');
+        if (!value('da-city')) return fail('Please add your city.', 'da-city');
+        // Bots fill every box; people never see this one.
+        if (value('da-website2')) return;
+
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin" aria-hidden="true"></i> Sending...';
+        fetch('/api/booth-application', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            event: 'delhi',
+            booth: value('da-booth'),
+            company: value('da-company'), website: value('da-website'), company_type: value('da-type'), revenue: value('da-revenue'),
+            product: value('da-product'), what: value('da-what'), stage: value('da-stage'), users: value('da-users'),
+            market: value('da-market'), industry: value('da-industry'), talk: value('da-talk'),
+            name: value('da-name'), designation: value('da-designation'), email: value('da-email'), mobile: value('da-phone'), city: value('da-city'),
+            message: value('da-message'),
+            source: params.get('utm_source') || params.get('source') || params.get('from') || ''
+          })
+        }).then(function (r) {
+          return r.json().catch(function () { return {}; }).then(function (d) {
+            if (!r.ok || !d.ref) throw new Error(d.error || 'We could not send that. Please try again.');
+            var first = value('da-name').split(/\s+/)[0];
+            byId('da-done-text').textContent = 'Thank you, ' + first + '. We have your application, and an email is on its way to ' + value('da-email') + '. We reply within 2 working days. If approved, our team confirms your place and the next step for booking your booth.';
+            byId('da-ref').textContent = d.ref;
+            form.hidden = true;
+            byId('da-done').hidden = false;
+          });
+        }).catch(function (x) {
+          btn.disabled = false;
+          btn.innerHTML = LABEL;
+          fail(x && x.message && x.message !== 'Failed to fetch' ? x.message : 'Could not connect. Please check your internet and try again.');
+        });
+      });
+    })();
+    </script>
+</body>
+</html>

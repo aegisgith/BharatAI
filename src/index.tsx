@@ -18989,6 +18989,14 @@ type InquiryTemplate = { id: string; name: string; type: string; subject: string
 const INQUIRY_DEFAULT_TEMPLATES: InquiryTemplate[] = [
   { id: 'booth', name: 'Booth: floor plan and next step', type: 'booth_inquiry', subject: 'Your booth at Bharat AI Innovation 2026',
     body: 'Thank you for your interest in exhibiting at Bharat AI Innovation 2026, on 20 and 21 November at the World Trade Center, Mumbai.\n\nThe floor plan, with every stand still free, its size and its price, is here:\nhttps://bharataiinnovation.com/exhibition\n\nEvery booth comes with a talk slot on the Innovation Talks stage.\n\nTell us which stand you would like and we will hold it for {organisation} and send the booking details. With the event days away, a quick reply helps.\n\nIf a short call is easier, reply with a good time and number.' },
+  // Booth applications (12 Nov 2026): the organiser reviews each one and answers within 2
+  // working days, yes with the next step, or no politely.
+  { id: 'booth-approved-mumbai', name: 'Booth application: approved (Mumbai)', type: 'booth_inquiry', subject: 'Your booth application is approved - Bharat AI Innovation 2026',
+    body: 'Thank you for applying to exhibit at Bharat AI Innovation 2026, on 20 and 21 November at the World Trade Center, Mumbai.\n\nWe are glad to confirm that {organisation} is approved to exhibit.\n\nThe next step: choose your stand on the floor plan, which shows every stand still free, its size and its price:\nhttps://bharataiinnovation.com/exhibition\n\nReply with the stand you would like and the company name and GSTIN for the invoice. We will hold the stand and send the invoice. With the event days away, a quick reply helps.\n\nYour reference is {ref}.' },
+  { id: 'booth-approved-delhi', name: 'Booth application: approved (Delhi)', type: 'booth_inquiry', subject: 'Your booth application is approved - Bharat AI Innovation Delhi 2027',
+    body: 'Thank you for applying to exhibit at Bharat AI Innovation Delhi 2027, on 28 and 29 July 2027 at Bharat Mandapam, New Delhi.\n\nWe are glad to confirm that {organisation} is approved to exhibit.\n\nThe next step: reply with the booth you would like and the company name and GSTIN for the invoice, and we will send the invoice to book it. We will publish the floor plan later and place every booth from it.\n\nYour reference is {ref}.' },
+  { id: 'booth-declined', name: 'Booth application: not this time', type: 'booth_inquiry', subject: 'Your booth application - Bharat AI Innovation',
+    body: 'Thank you for applying to exhibit at Bharat AI Innovation, and for telling us about your work.\n\nWe review every application so the exhibition stays relevant for the buyers who come, and this time we are not able to offer {organisation} a booth.\n\nYou are welcome to attend. The passes are here:\nhttps://bharataiinnovation.com/passes\n\nAs your product grows, we would be glad to hear from you again for a future edition.' },
   { id: 'sponsor', name: 'Sponsorship: options and a call', type: 'sponsorship', subject: 'Partnering with Bharat AI Innovation 2026',
     body: 'Thank you for your interest in partnering with Bharat AI Innovation 2026, on 20 and 21 November at the World Trade Center, Mumbai.\n\nThe partnership options are here:\nhttps://bharataiinnovation.com/partner\n\nWe can shape a package around what {organisation} wants from the event: leads, stage time, brand presence or meetings with buyers.\n\nCould we have a 15-minute call this week? Please reply with a time that suits you and the best number to reach you.' },
   { id: 'speaking', name: 'Speaking: thank you, we will be in touch', type: 'speaking', subject: 'Your request to speak at Bharat AI Innovation 2026',
@@ -19544,6 +19552,173 @@ app.post('/api/inquiries', async (c) => {
   if (!scheduled) await notify
 
   return c.json({ success: true, id: result.meta.last_row_id, message: 'Inquiry submitted successfully. We will get back to you soon!' }, 201)
+})
+
+// ==================== BOOTH APPLICATIONS (Mumbai and Delhi) ====================
+//
+// The organiser, 12 Nov 2026: a booth is applied for, not simply asked about. "Tell us what
+// you will show. We review every application so the floor stays relevant for the people who
+// come to buy. We reply within 2 working days. If approved, our team confirms you and the
+// next step for booking your booth." Both events: Mumbai from /inquiry, Delhi from
+// /delhi-exhibit. An application is an enquiry of type booth_inquiry on the desk (Admin,
+// Inquiries) with every answer in its details, and the team answers it with the saved
+// replies "Booth application: ...". Nothing is held, booked or charged here.
+const BOOTH_APP_EVENTS: Record<string, { label: string; name: string; when: string; page: string }> = {
+  mumbai: { label: 'Mumbai 2026', name: 'Bharat AI Innovation 2026', when: '20&ndash;21 November 2026 &middot; World Trade Center, Mumbai', page: '/inquiry' },
+  delhi: { label: 'Delhi 2027', name: 'Bharat AI Innovation Delhi 2027', when: '28&ndash;29 July 2027 &middot; Bharat Mandapam, New Delhi', page: '/delhi-exhibit' },
+}
+// The seven sizes, priced as on /exhibition. Mumbai's form sends its old key
+// ('Explorer Booth - 2x2m - Rs.1,29,000'), Delhi's the name; both start with the name.
+const BOOTH_APP_BOOTHS: Record<string, number> = {
+  'Startup Pod': 48000, 'Explorer Booth': 129000, 'Innovator Booth': 195000, 'Accelerator Booth': 291000,
+  'Enterprise Booth': 258000, 'Flagship Pavilion': 387000, 'Mega Pavilion': 1740000,
+}
+// The choices, in the words both forms print. The forms are checked against these lists.
+const BOOTH_APP_COMPANY_TYPES = ['Startup', 'Small or medium business', 'Large enterprise', 'Government or PSU', 'Academic or research']
+const BOOTH_APP_REVENUES = ['No revenue yet', 'Under ₹1 crore', '₹1 to 10 crore', '₹10 to 100 crore', '₹100 to 500 crore', 'Above ₹500 crore', 'Not applicable (government or academic)']
+const BOOTH_APP_STAGES = ['Idea', 'Working prototype or MVP', 'Live, with paying customers']
+const BOOTH_APP_USERS = ['We sell it to other organisations', 'We use it inside our own organisation', 'Both']
+const BOOTH_APP_MARKETS = ['India', 'Overseas', 'India and overseas']
+const BOOTH_APP_PER_IP_HOUR = 30
+
+function boothApplicantHtml(ev: { name: string; when: string }, a: { id: any; name: string; booth: string; company: string; product: string }): string {
+  const esc = (v: any) => String(v ?? '').replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch] as string))
+  const first = String(a.name || '').trim().split(/\s+/)[0] || 'there'
+  const ref = 'BHAI-INQ-' + String(a.id ?? '').padStart(5, '0')
+  const line = (k: string, v: string) => `<tr><td style="padding:6px 12px 6px 0;color:#666;font-size:13px;vertical-align:top;white-space:nowrap;">${k}</td><td style="padding:6px 0;font-size:13.5px;color:#1E2140;"><strong>${esc(v)}</strong></td></tr>`
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#f5f5f5;font-family:Arial,sans-serif;">
+    <div style="max-width:600px;margin:20px auto;background:#fff;border-radius:12px;overflow:hidden;">
+      ${emailBrandHeader('We have your booth application', ev.when)}
+      <div style="padding:26px 24px;">
+        <p style="margin:0 0 10px;font-size:15px;color:#1E2140;">Hello ${esc(first)},</p>
+        <p style="margin:0 0 14px;font-size:14px;line-height:1.65;color:#444;">Thank you for applying to exhibit at ${esc(ev.name)}.</p>
+        <table style="width:100%;border-collapse:collapse;margin:0 0 16px;">
+          ${line('Booth', a.booth)}${line('Company', a.company)}${line('Product', a.product)}${line('Reference', ref)}
+        </table>
+        <p style="margin:0 0 4px;font-size:14px;font-weight:bold;color:#1E2140;">What happens next</p>
+        <p style="margin:0 0 18px;font-size:14px;line-height:1.65;color:#444;">We review every application so the floor stays relevant for the people who come to buy. We reply within 2 working days. If approved, our team confirms your place and the next step for booking your booth.</p>
+        <p style="margin:0;font-size:12.5px;line-height:1.6;color:#777;">Questions? Reply to this email and quote ${ref}.</p>
+      </div>
+    </div></body></html>`
+}
+
+app.post('/api/booth-application', async (c) => {
+  const b = await c.req.json().catch(() => ({})) as any
+  const text = (v: unknown, max: number) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, max)
+  const words = (v: unknown, max: number) => String(v ?? '').trim().slice(0, max)
+  const pick = (v: unknown, list: string[]) => (list.includes(String(v ?? '')) ? String(v) : '')
+  const eventKey = String(b.event || '')
+  const ev = BOOTH_APP_EVENTS[eventKey]
+  if (!ev) return c.json({ error: 'Please choose the event: Mumbai or Delhi.' }, 400)
+
+  const booth = text(b.booth, 80)
+  const boothName = booth === 'Undecided' ? '' : (Object.keys(BOOTH_APP_BOOTHS).find((n) => booth === n || booth.startsWith(n + ' - ')) ?? null)
+  const f = {
+    zone: text(b.zone, 60),
+    company: text(b.company, 160),
+    website: text(b.website, 200),
+    company_type: pick(b.company_type, BOOTH_APP_COMPANY_TYPES),
+    revenue: pick(b.revenue, BOOTH_APP_REVENUES),
+    product: text(b.product, 120),
+    what: words(b.what, 600),
+    stage: pick(b.stage, BOOTH_APP_STAGES),
+    users: pick(b.users, BOOTH_APP_USERS),
+    market: pick(b.market, BOOTH_APP_MARKETS),
+    industry: pick(b.industry, INDUSTRIES),
+    talk: words(b.talk, 600),
+    name: text(b.name, 120),
+    designation: text(b.designation, 120),
+    email: text(b.email, 160).toLowerCase(),
+    mobile: text(b.mobile, 20),
+    city: text(b.city, 80),
+    message: words(b.message, 2000),
+  }
+  if (boothName === null) return c.json({ error: 'Please choose a booth, or "Not sure yet".' }, 400)
+  const missing: string[] = []
+  for (const [k, label] of [['company', 'company name'], ['website', 'website'], ['company_type', 'what best describes you'], ['revenue', 'annual revenue'],
+    ['product', 'product or solution name'], ['what', 'what it does'], ['stage', 'how far along it is'], ['users', 'who uses it'], ['market', 'market'],
+    ['industry', 'the industry you sell to'], ['name', 'name'], ['designation', 'designation'], ['email', 'email'], ['mobile', 'mobile number'], ['city', 'city']] as [keyof typeof f, string][]) {
+    if (!f[k]) missing.push(label)
+  }
+  if (missing.length) return c.json({ error: 'Please add ' + humanList(missing) + '.', missing }, 400)
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email)) return c.json({ error: 'Please check your email. It should look like name@example.com.' }, 400)
+  if (f.mobile.replace(/\D/g, '').length < 10) return c.json({ error: 'Please check your mobile number. It needs at least 10 digits.' }, 400)
+  const typo = emailTypo(f.email)
+  if (typo) return c.json({ error: typo.reason, message: typo.reason, code: 'email_typo', suggestion: typo.fixed || '' }, 400)
+  // A website typed the way people type it (acme.in, www.acme.in) is kept as a working link.
+  const site = /^https?:\/\//i.test(f.website) ? f.website : 'https://' + f.website
+  if (!/^https?:\/\/[^\s/$.?#]+\.[^\s]{2,}$/i.test(site)) return c.json({ error: 'Please check your website. It should look like yourcompany.com.' }, 400)
+
+  const ip = String(c.req.header('CF-Connecting-IP') || '').slice(0, 64)
+  if (ip) {
+    const recent = await c.env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM admin_audit WHERE action = 'booth.apply' AND ip = ? AND created_at > datetime('now', '-1 hour')"
+    ).bind(ip).first().catch(() => null) as any
+    if (Number(recent?.n || 0) >= BOOTH_APP_PER_IP_HOUR) return c.json({ error: 'Too many applications from this connection. Please try again in an hour, or write to info@bharataiinnovation.com.' }, 429)
+  }
+
+  const price = boothName ? BOOTH_APP_BOOTHS[boothName] : null
+  const boothWords = boothName ? boothName + ' (₹' + Number(price).toLocaleString('en-IN') + ' + GST)' : 'Not sure yet'
+  const src = (v: unknown) => text(v, 60).toLowerCase().replace(/[^a-z0-9:_.-]/g, '')
+  // Read on the desk in this order. booth_type, booth_quantity, preferred_zone and
+  // estimated_total keep the names Mumbai's enquiries always had.
+  const meta: Record<string, any> = {
+    application: 'Booth application, ' + ev.label,
+    ...(eventKey === 'delhi' ? { edition: 'delhi-2027' } : {}),
+    booth_type: booth || 'Undecided', booth_quantity: 1, preferred_zone: f.zone, estimated_total: price,
+    website: site, company_type: f.company_type, annual_revenue: f.revenue,
+    product: f.product, what_it_does: f.what, how_far_along: f.stage, who_uses_it: f.users, market: f.market, sells_to: f.industry,
+    stage_talk: f.talk, designation: f.designation, city: f.city,
+    page: ev.page, ...(src(b.source) ? { source: src(b.source) } : {}),
+  }
+  const subject = eventKey === 'delhi' ? 'Delhi 2027 · Booth application · ' + (boothName || 'Not sure yet') : 'Booth Inquiry: ' + (booth || 'Undecided')
+  const result = await c.env.DB.prepare(
+    `INSERT INTO inquiries (event_id, inquiry_type, name, email, phone, organization, subject, message, metadata)
+     VALUES (1, 'booth_inquiry', ?, ?, ?, ?, ?, ?, ?)`
+  ).bind(f.name, f.email, f.mobile, f.company, subject, f.message, JSON.stringify(meta)).run()
+  const id = result.meta.last_row_id
+  await audit(c, 'booth.apply', 'inquiry', id, { event: eventKey, booth: boothName || 'Undecided' }, { actor: 'public form', kind: 'public' })
+
+  // The owner for booth enquiries, when the organisers have set one (Automation tab).
+  let owner = ''
+  try {
+    owner = inqCleanRouting(JSON.parse((await settingValue(c, 'inquiry_routing')) || '{}'))['booth_inquiry'] || ''
+    if (owner) await c.env.DB.prepare('UPDATE inquiries SET assigned_to = ? WHERE id = ?').bind(owner, id).run()
+  } catch { owner = '' }
+
+  // The team reads every answer in its email; the desk shows them under Details.
+  const summary = [
+    'Booth application, ' + ev.label,
+    'Booth: ' + boothWords + (f.zone ? ', zone: ' + f.zone : ''),
+    'Company: ' + f.company + ' (' + site + ')',
+    'They are: ' + f.company_type + '. Annual revenue: ' + f.revenue,
+    'Product: ' + f.product,
+    'What it does: ' + f.what,
+    'How far along: ' + f.stage + '. Who uses it: ' + f.users + '. Market: ' + f.market,
+    'Sells to: ' + f.industry,
+    f.talk ? 'On the Innovation Stage: ' + f.talk : '',
+    'Applicant: ' + f.name + ', ' + f.designation + ', ' + f.city,
+    f.message ? 'Their note: ' + f.message : '',
+    '',
+    'Approve or decline it from Admin, Inquiries, with the saved replies "Booth application: ...". We have promised a reply within 2 working days.',
+  ].filter((l, i, all) => l || i === all.length - 2).join('\n')
+  const ref = 'BHAI-INQ-' + String(id).padStart(5, '0')
+  const mails = (async () => {
+    await notifyTeamOfInquiry(c, { id, inquiry_type: 'booth_inquiry', name: f.name, email: String(b.email || f.email).trim(), phone: f.mobile, organization: f.company, subject, message: summary, owner })
+    // To the person: one a day per address, so the form cannot be used to flood someone.
+    const earlier = await c.env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM admin_audit WHERE action = 'booth.apply.mailed' AND detail LIKE ? AND created_at > datetime('now', '-1 day')"
+    ).bind('%"to":' + JSON.stringify(f.email) + '%').first().catch(() => null) as any
+    if (Number(earlier?.n || 0) > 0) return
+    const sent = await sendAdminEmail(c, f.email, `We have your booth application (${ref}) - ${ev.name}`,
+      boothApplicantHtml(ev, { id, name: f.name, booth: boothWords, company: f.company, product: f.product }), { unsubscribe: false })
+    await audit(c, sent.ok ? 'booth.apply.mailed' : 'booth.apply.mail_failed', 'inquiry', id, sent.ok ? { to: f.email } : { to: f.email, error: sent.error }, { actor: 'automatic', kind: 'system' })
+  })().catch(() => { /* the application is saved; a failed email must not surface */ })
+  let scheduled = false
+  try { c.executionCtx.waitUntil(mails); scheduled = true } catch { /* no ctx */ }
+  if (!scheduled) await mails
+
+  return c.json({ success: true, id, ref }, 201)
 })
 
 // ==================== DELHI 2027: PAID PASSES ====================
@@ -22623,6 +22798,9 @@ function inquiryFormPageHTML(): string {
   const rupees = (n: number) => '&#x20B9;' + n.toLocaleString('en-IN')
   const clientBooths: Record<string, { name: string; price: number; size: string; sqm: string; w: number; d: number; passes: string; talk: number }> = {}
   booths.forEach(b => { clientBooths[b.key] = { name: `${b.name} (${b.size})`, price: b.price, size: b.size, sqm: b.sqm, w: b.w, d: b.d, passes: b.passes, talk: b.talk } })
+  // The application's choices come from the lists the server checks (BOOTH APPLICATIONS).
+  const opts = (xs: string[]) => '<option value="">Choose one</option>' + xs.map(x => '<option>' + x.replace(/&/g, '&amp;') + '</option>').join('')
+  const step = (t: string) => `<p style="margin:6px 0 0;font-size:17px;line-height:1.3;font-weight:800;color:var(--ps-ink);">${t}</p>`
   return `${sharedHeadHTML('Book Your Booth', '/inquiry', "Exhibit at Bharat AI Innovation 2026. Book a booth to reach the enterprise buyers, builders and government teams at WTC Mumbai, 20–21 Nov 2026. Booths from ₹48,000 + GST.").replace('</head>', BOOKING_DESIGN + BOOKING_MOTION + '</head>')}
 <body class="min-h-screen ps-page rg-page bk-page">
 ${siteHeaderHTML('/exhibition')}
@@ -22649,7 +22827,7 @@ ${siteHeaderHTML('/exhibition')}
     <div class="ps-wrap bk-grid">
       <div>
         <h2 class="ps-h2 bk-h2" id="packages">Booth Packages</h2>
-        <p class="bk-lead">Pick a size and it goes into the form. All prices + GST.</p>
+        <p class="bk-lead">Tell us what you will show. We review every application so the floor stays relevant for the people who come to buy. We reply within 2 working days. If approved, our team confirms your place and the next step for booking your booth. Pick a size and it goes into the form. All prices + GST.</p>
         <ul class="bk-list">
           ${booths.map(b => `<li><button type="button" class="booth-pkg bk-pkg" data-booth="${b.key}" aria-pressed="false" onclick="selectBooth(this, '${b.key}')">
             <span class="bk-plan" aria-hidden="true"><i style="--w:${b.w};--d:${b.d};"></i></span>
@@ -22669,8 +22847,8 @@ ${siteHeaderHTML('/exhibition')}
       <!-- Inquiry Form -->
       <div class="rg-card" id="inquiry-form-card">
         <div class="bk-head">
-          <h2>Booth Enquiry Form</h2>
-          <p>Select a booth package or fill in details below</p>
+          <h2>Apply for a booth</h2>
+          <p>Tell us what you will show. We review every application so the floor stays relevant for the people who come to buy. We reply within 2 working days. If approved, our team confirms your place and the next step for booking your booth.</p>
         </div>
         <div class="rg-card-body">
           <form id="inquiry-form" onsubmit="submitBoothInquiry(event)" class="rg-form">
@@ -22716,81 +22894,107 @@ ${siteHeaderHTML('/exhibition')}
 
             <hr class="bk-rule">
 
+            ${step('Your company')}
             <div class="rg-two">
               <div class="rg-field">
-                <label for="iq-name">Contact person</label>
-                <input type="text" id="iq-name" autocomplete="name" autocapitalize="words" required placeholder="Your full name">
+                <label for="iq-company">Company name</label>
+                <input type="text" id="iq-company" autocomplete="organization" required placeholder="Company name">
               </div>
               <div class="rg-field">
-                <label for="iq-email">Email address</label>
-                <input type="email" id="iq-email" autocomplete="email" inputmode="email" autocapitalize="none" spellcheck="false" required placeholder="your@email.com">
+                <label for="iq-website">Website</label>
+                <input type="text" id="iq-website" autocomplete="url" inputmode="url" autocapitalize="none" spellcheck="false" required placeholder="yourcompany.com">
               </div>
             </div>
             <div class="rg-two">
               <div class="rg-field">
-                <label for="iq-phone">Phone number</label>
-                <input type="tel" id="iq-phone" autocomplete="tel" required placeholder="+91 XXXXX XXXXX">
+                <label for="iq-company-type">Which best describes you?</label>
+                <select id="iq-company-type" required>${opts(BOOTH_APP_COMPANY_TYPES)}</select>
               </div>
               <div class="rg-field">
-                <label for="iq-company">Company / Organization</label>
-                <input type="text" id="iq-company" autocomplete="organization" required placeholder="Company name">
+                <label for="iq-revenue">Annual revenue</label>
+                <select id="iq-revenue" required>${opts(BOOTH_APP_REVENUES)}</select>
+              </div>
+            </div>
+
+            ${step('What you will show')}
+            <div class="rg-two">
+              <div class="rg-field">
+                <label for="iq-product">Product or solution name</label>
+                <input type="text" id="iq-product" autocomplete="off" required placeholder="Its name">
+              </div>
+              <div class="rg-field">
+                <label for="iq-stage">How far along is it?</label>
+                <select id="iq-stage" required>${opts(BOOTH_APP_STAGES)}</select>
               </div>
             </div>
             <div class="rg-field">
-              <label for="iq-products">Products / solutions to showcase <small>(optional)</small></label>
-              <textarea id="iq-products" autocomplete="off" rows="2" placeholder="Brief description of what you plan to exhibit..."></textarea>
+              <label for="iq-products">What does it do? <small>(one or two lines)</small></label>
+              <textarea id="iq-products" autocomplete="off" rows="2" maxlength="600" required placeholder="What it does, and for whom"></textarea>
+            </div>
+            <div class="rg-two">
+              <div class="rg-field">
+                <label for="iq-users">Who uses it?</label>
+                <select id="iq-users" required>${opts(BOOTH_APP_USERS)}</select>
+              </div>
+              <div class="rg-field">
+                <label for="iq-market">Which market?</label>
+                <select id="iq-market" required>${opts(BOOTH_APP_MARKETS)}</select>
+              </div>
+            </div>
+            <div class="rg-field">
+              <label for="iq-industry">Which industry do you sell to?</label>
+              <select id="iq-industry" required>${opts(INDUSTRIES)}</select>
+            </div>
+            <div class="rg-field">
+              <label for="iq-talk">What would you talk about on the Innovation Stage? <small>(optional)</small></label>
+              <textarea id="iq-talk" autocomplete="off" rows="2" maxlength="600" placeholder="The idea or the demo you would show"></textarea>
+            </div>
+
+            ${step('About you')}
+            <div class="rg-two">
+              <div class="rg-field">
+                <label for="iq-name">Your name</label>
+                <input type="text" id="iq-name" autocomplete="name" autocapitalize="words" required placeholder="Your full name">
+              </div>
+              <div class="rg-field">
+                <label for="iq-designation">Designation</label>
+                <input type="text" id="iq-designation" autocomplete="organization-title" required placeholder="Your role">
+              </div>
+            </div>
+            <div class="rg-two">
+              <div class="rg-field">
+                <label for="iq-email">Email</label>
+                <input type="email" id="iq-email" autocomplete="email" inputmode="email" autocapitalize="none" spellcheck="false" required placeholder="your@email.com">
+              </div>
+              <div class="rg-field">
+                <label for="iq-phone">Mobile</label>
+                <input type="tel" id="iq-phone" autocomplete="tel" required placeholder="+91 XXXXX XXXXX">
+              </div>
+            </div>
+            <div class="rg-field">
+              <label for="iq-city">City</label>
+              <input type="text" id="iq-city" autocomplete="address-level2" required placeholder="Your city">
             </div>
             <details class="rg-more">
-              <summary><span>Add your role, website and questions <small>(optional)</small></span></summary>
+              <summary><span>Anything else? <small>(optional)</small></span></summary>
               <div class="rg-more-in">
-                <div class="rg-two">
-                  <div class="rg-field">
-                    <label for="iq-designation">Designation</label>
-                    <input type="text" id="iq-designation" autocomplete="organization-title" placeholder="Your role / title">
-                  </div>
-                  <div class="rg-field">
-                    <label for="iq-website">Website</label>
-                    <input type="text" id="iq-website" autocomplete="url" inputmode="url" autocapitalize="none" spellcheck="false" placeholder="yourcompany.com">
-                  </div>
-                </div>
                 <div class="rg-field">
-                  <label for="iq-industry">Industry / domain</label>
-                  <select id="iq-industry">
-                    <option value="">Select industry</option>
-                    <option value="AI/ML">Artificial Intelligence / Machine Learning</option>
-                    <option value="IT/Software">IT / Software</option>
-                    <option value="Healthcare">Healthcare / MedTech</option>
-                    <option value="FinTech">FinTech / Banking</option>
-                    <option value="EdTech">EdTech / Education</option>
-                    <option value="Manufacturing">Manufacturing / Industry 4.0</option>
-                    <option value="Agriculture">AgriTech / Agriculture</option>
-                    <option value="Defense">Defense / Aerospace</option>
-                    <option value="Retail">Retail / E-commerce</option>
-                    <option value="Government">Government / Public Sector</option>
-                    <option value="Telecom">Telecom / IoT</option>
-                    <option value="Automotive">Automotive / EV</option>
-                    <option value="Energy">Energy / CleanTech</option>
-                    <option value="Logistics">Logistics / Supply Chain</option>
-                    <option value="Other">Other</option>
-                  </select>
-                </div>
-                <div class="rg-field">
-                  <label for="iq-message">Special requirements / questions</label>
-                  <textarea id="iq-message" autocomplete="off" rows="3" placeholder="Any specific requirements, questions, or preferences..."></textarea>
+                  <label for="iq-message">Questions or special requirements</label>
+                  <textarea id="iq-message" autocomplete="off" rows="3" placeholder="Anything you would like us to know"></textarea>
                 </div>
               </div>
             </details>
 
             <div id="iq-notice" class="hidden" role="alert"></div>
-            <button type="submit" id="iq-submit" class="ps-buy rg-cta"><i class="fas fa-paper-plane mr-2" aria-hidden="true"></i>Send Booth Enquiry</button>
-            <p class="rg-fine">Our team will respond within 24 hours with booth availability and next steps.</p>
+            <button type="submit" id="iq-submit" class="ps-buy rg-cta"><i class="fas fa-paper-plane mr-2" aria-hidden="true"></i>Send my application</button>
+            <p class="rg-fine">This is an application, not a booking: nothing is charged. We reply within 2 working days.</p>
           </form>
 
           <!-- Success State -->
           <div id="iq-success" class="hidden bk-done">
             <div class="bk-done-tick"><i class="fas fa-check" aria-hidden="true"></i></div>
-            <h3>Booth Enquiry Sent!</h3>
-            <p>Thank you for your interest in exhibiting at Bharat AI Innovation 2026. Our exhibition team will review your request and contact you within 24 hours.</p>
+            <h3>Application sent</h3>
+            <p>Thank you. We have your application for Bharat AI Innovation 2026, and an email is on its way to you. We reply within 2 working days. If approved, our team confirms your place and the next step for booking your booth.</p>
             <p>Reference: <span id="iq-ref" class="bk-done-ref"></span></p>
             <div class="bk-done-go">
               <button type="button" onclick="resetInquiryForm()" class="rg-ghost"><i class="fas fa-plus mr-2" aria-hidden="true"></i>Submit Another</button>
@@ -22939,7 +23143,7 @@ function iqRefused(msg) {
   n.classList.remove('hidden');
   showToast(msg, 'error');
   var btn = document.getElementById('iq-submit');
-  btn.innerHTML = '<i class="fas fa-paper-plane mr-2" aria-hidden="true"></i>Send Booth Enquiry';
+  btn.innerHTML = '<i class="fas fa-paper-plane mr-2" aria-hidden="true"></i>Send my application';
   btn.disabled = false;
 }
 
@@ -22950,34 +23154,24 @@ async function submitBoothInquiry(e) {
   btn.disabled = true;
   document.getElementById('iq-notice').classList.add('hidden');
 
-  var boothType = document.getElementById('iq-booth-type').value;
-  var zone = document.getElementById('iq-zone').value;
-  var info = BOOTH_PRICES[boothType];
-
-  var metadata = {
-    booth_type: boothType,
-    booth_quantity: 1,
-    preferred_zone: zone,
-    estimated_total: info ? info.price : null,
-    designation: document.getElementById('iq-designation').value.trim(),
-    website: iqLink(document.getElementById('iq-website').value),
-    industry: document.getElementById('iq-industry').value,
-    products_to_showcase: document.getElementById('iq-products').value.trim()
-  };
+  // An application (12 Nov 2026): every answer goes to POST /api/booth-application, which
+  // checks them all again and files it for the team on the enquiry desk.
+  var v = function (id) { var el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; };
+  var from = new URLSearchParams(window.location.search);
 
   try {
-    var resp = await fetch('/api/inquiries', {
+    var resp = await fetch('/api/booth-application', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        inquiry_type: 'booth_inquiry',
-        name: document.getElementById('iq-name').value.trim(),
-        email: document.getElementById('iq-email').value.trim(),
-        phone: document.getElementById('iq-phone').value.trim(),
-        organization: document.getElementById('iq-company').value.trim(),
-        subject: 'Booth Inquiry: ' + (boothType || 'General'),
-        message: document.getElementById('iq-message').value.trim(),
-        metadata: metadata
+        event: 'mumbai',
+        booth: v('iq-booth-type'), zone: v('iq-zone'),
+        company: v('iq-company'), website: iqLink(v('iq-website')), company_type: v('iq-company-type'), revenue: v('iq-revenue'),
+        product: v('iq-product'), what: v('iq-products'), stage: v('iq-stage'), users: v('iq-users'), market: v('iq-market'),
+        industry: v('iq-industry'), talk: v('iq-talk'),
+        name: v('iq-name'), designation: v('iq-designation'), email: v('iq-email'), mobile: v('iq-phone'), city: v('iq-city'),
+        message: v('iq-message'),
+        source: from.get('utm_source') || from.get('source') || ''
       })
     });
     var data = await resp.json().catch(function () { return {}; });
@@ -22989,7 +23183,7 @@ async function submitBoothInquiry(e) {
     document.getElementById('inquiry-form').classList.add('hidden');
     document.getElementById('iq-success').classList.remove('hidden');
     document.getElementById('iq-ref').textContent = 'BHAI-INQ-' + String(data.id).padStart(5, '0');
-    showToast('Booth enquiry sent', 'success');
+    showToast('Application sent', 'success');
     var still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     document.getElementById('inquiry-form-card').scrollIntoView({ behavior: still ? 'auto' : 'smooth', block: 'start' });
   } catch(err) {
@@ -23003,7 +23197,7 @@ function resetInquiryForm() {
   document.getElementById('iq-success').classList.add('hidden');
   document.getElementById('iq-notice').classList.add('hidden');
   updatePriceSummary();
-  document.getElementById('iq-submit').innerHTML = '<i class="fas fa-paper-plane mr-2" aria-hidden="true"></i>Send Booth Enquiry';
+  document.getElementById('iq-submit').innerHTML = '<i class="fas fa-paper-plane mr-2" aria-hidden="true"></i>Send my application';
   document.getElementById('iq-submit').disabled = false;
 }
 

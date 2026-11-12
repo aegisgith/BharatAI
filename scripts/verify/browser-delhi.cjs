@@ -70,10 +70,11 @@ const settled = async (p) => { await p.evaluate(() => document.fonts.ready); awa
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.click('.dl-hero-alt a');
     await page.waitForTimeout(900);
-    check('"Book a booth" goes to the booths', await page.evaluate(() => { const r = document.getElementById('booths').getBoundingClientRect(); return r.top < innerHeight && r.bottom > 0; }));
-    await page.locator('.dl-sale-row', { hasText: 'Explorer Booth' }).locator('a').click();
+    check('"Apply for a booth" goes to the booths', await page.evaluate(() => { const r = document.getElementById('booths').getBoundingClientRect(); return r.top < innerHeight && r.bottom > 0; }));
+    check('each booth goes to the application, on that booth', (await page.locator('.dl-sale-row', { hasText: 'Explorer Booth' }).locator('a').getAttribute('href')) === '/delhi-exhibit?booth=Explorer%20Booth' && (await page.locator('#booths a', { hasText: 'Apply for this booth' }).count()) === 7);
+    await page.locator('.dl-sale-row', { hasText: 'Lanyard' }).locator('a').click();
     await page.waitForTimeout(900);
-    check('Book this booth chooses Exhibit and says which', await page.evaluate(() => document.querySelector('input[name="interest"]:checked').value) === 'exhibit' && (await page.textContent('#dl-chosen')).includes('Explorer Booth') && await page.locator('#dl-chosen').isVisible());
+    check('a partnership\'s Enquire chooses Sponsor and says which', await page.evaluate(() => document.querySelector('input[name="interest"]:checked').value) === 'sponsor' && (await page.textContent('#dl-chosen')).includes('Lanyard') && await page.locator('#dl-chosen').isVisible());
     await page.click('#dl-submit');
     check('empty: asks for the name, on screen', (await page.textContent('#dl-error')).includes('name') && await page.locator('#dl-error').isVisible());
     await page.fill('#dl-name', 'Priya Sharma');
@@ -82,7 +83,7 @@ const settled = async (p) => { await p.evaluate(() => document.fonts.ready); awa
     check('bad email: says so', (await page.textContent('#dl-error')).includes('email'));
     await page.fill('#dl-email', 'priya@example.com');
     await page.click('#dl-submit');
-    check('Exhibit with no mobile: asks for it', (await page.textContent('#dl-error')).includes('mobile'));
+    check('Sponsor with no mobile: asks for it', (await page.textContent('#dl-error')).includes('mobile'));
     await page.fill('#dl-phone', '98765 43210');
     await page.fill('#dl-org', 'Example Ltd');
     // Tapping the label of another choice works, then back
@@ -90,7 +91,7 @@ const settled = async (p) => { await p.evaluate(() => document.fonts.ready); awa
     await page.waitForSelector('#dl-done:not([hidden])');
     check('the thank-you names their email', (await page.textContent('#dl-done-text')).includes('priya@example.com'));
     const saved = await (await ctx.request.get(BASE + '/__inquiries')).json();
-    check('it really landed in the database', saved.length === 1 && saved[0].inquiry_type === 'exhibition' && saved[0].subject === 'Delhi 2027 · Exhibit · Explorer Booth, ₹1,29,000 + GST' && saved[0].email === 'priya@example.com', JSON.stringify(saved));
+    check('it really landed in the database', saved.length === 1 && saved[0].inquiry_type === 'sponsorship' && saved[0].subject === 'Delhi 2027 · Sponsor · Lanyard, ₹10 Lakhs + GST' && saved[0].email === 'priya@example.com', JSON.stringify(saved));
     const mail = await (await ctx.request.get(BASE + '/__mail')).json();
     check('and the team was emailed once', mail.length === 1 && mail[0].Content.ReplyTo.includes('priya@example.com'), mail.length);
 

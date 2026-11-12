@@ -99,16 +99,56 @@ const fill = async (p, v) => {
       check('the same pass again: told it is confirmed, stays on the page, button back', (await page.textContent('#dr-error')).includes('already confirmed') && page.url().includes('/delhi-register') && !(await page.locator('#dr-submit').isDisabled()));
       await ctx.close();
     }
+    // ======== a booth application on a phone, from /delhi ========
+    {
+      const ctx = await browser.newContext({ ...PHONE, reducedMotion: 'reduce' });
+      const page = await ctx.newPage();
+      const errors = [];
+      page.on('pageerror', (e) => errors.push(e.message));
+      await page.goto(BASE + '/delhi#booths', { waitUntil: 'load' });
+      await page.locator('.dl-sale-row', { hasText: 'Innovator Booth' }).locator('a').click();
+      await page.waitForURL('**/delhi-exhibit?booth=Innovator%20Booth');
+      await page.waitForLoadState('load');
+      check('booth: the row opens the application on that booth', (await page.inputValue('#da-booth')) === 'Innovator Booth');
+      await page.click('#da-submit');
+      check('booth: empty, it asks for the company first, on screen', (await page.textContent('#da-error')).includes('company name') && await page.locator('#da-error').isVisible());
+      await page.fill('#da-company', 'Acme AI');
+      await page.fill('#da-website', 'acme.example');
+      await page.selectOption('#da-type', 'Startup');
+      await page.selectOption('#da-revenue', 'No revenue yet');
+      await page.fill('#da-product', 'Acme Vision');
+      await page.selectOption('#da-stage', 'Working prototype or MVP');
+      await page.fill('#da-what', 'Spots defects on a production line');
+      await page.selectOption('#da-users', 'We sell it to other organisations');
+      await page.selectOption('#da-market', 'India');
+      await page.selectOption('#da-industry', 'Manufacturing');
+      await page.fill('#da-name', 'Kavya Iyer');
+      await page.fill('#da-designation', 'Founder');
+      await page.fill('#da-email', 'kavya.booth@example.com');
+      await page.fill('#da-phone', '98450 12345');
+      await page.fill('#da-city', 'Bengaluru');
+      check('booth: 390px, no sideways scroll, every box big enough to tap', await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth && [...document.querySelectorAll('.da-field input:not(#da-website2), .da-field select, .da-submit')].every((e) => e.getBoundingClientRect().height >= 44)));
+      await page.click('#da-submit');
+      await page.waitForSelector('#da-done:not([hidden])', { timeout: 10000 });
+      check('booth: the thank-you, with 2 working days and a reference', (await page.textContent('#da-done-text')).includes('2 working days') && /^BHAI-INQ-\d{5}$/.test(await page.textContent('#da-ref')));
+      const saved = (await (await ctx.request.get(BASE + '/__inquiries')).json()).filter((r) => r.email === 'kavya.booth@example.com');
+      check('booth: one booth enquiry landed, for Delhi, with its answers', saved.length === 1 && saved[0].inquiry_type === 'booth_inquiry' && saved[0].subject === 'Delhi 2027 · Booth application · Innovator Booth' && JSON.parse(saved[0].metadata).how_far_along === 'Working prototype or MVP', JSON.stringify(saved[0]));
+      const mail = (await (await ctx.request.get(BASE + '/__mail')).json()).filter((m) => JSON.stringify(m).includes('kavya.booth@example.com'));
+      check('booth: the team and the applicant were each emailed once', mail.length === 2, mail.length);
+      check('booth: no page errors', errors.length === 0, errors.join('; '));
+      await ctx.close();
+    }
+
     // ======== sizes, and the new sections of /delhi ========
     for (const [w, h, m] of [[360, 740, true], [390, 844, true], [820, 1180, false], [1280, 720, false], [1920, 1080, false]]) {
       const c = await browser.newContext({ viewport: { width: w, height: h }, isMobile: m, hasTouch: m, deviceScaleFactor: m ? 2 : 1 });
       const p = await c.newPage();
-      for (const u of ['/delhi-register', '/delhi']) {
+      for (const u of ['/delhi-register', '/delhi-exhibit', '/delhi']) {
         await p.goto(BASE + u, { waitUntil: 'load' });
         await p.waitForTimeout(400);
         const r = await p.evaluate(() => ({
           over: document.documentElement.scrollWidth - innerWidth,
-          bad: [...document.querySelectorAll('h1,h2,h3,p,li,a.btn,button,label,.dl-sale-row *')].filter((e) => !e.closest('.dl-hp, .dr-hp')).filter((e) => { const x = e.getBoundingClientRect(); return x.width && (x.right > innerWidth + 1 || x.left < -1); }).map((e) => e.textContent.trim().slice(0, 30)),
+          bad: [...document.querySelectorAll('h1,h2,h3,p,li,a.btn,button,label,.dl-sale-row *')].filter((e) => !e.closest('.dl-hp, .dr-hp, .da-hp')).filter((e) => { const x = e.getBoundingClientRect(); return x.width && (x.right > innerWidth + 1 || x.left < -1); }).map((e) => e.textContent.trim().slice(0, 30)),
           short: [...document.querySelectorAll('.dl-sale-row .btn, .dl-pass .btn')].filter((e) => e.getBoundingClientRect().height < 44).length,
         }));
         check(`${w}px ${u}: nothing runs off the screen, every button big enough`, r.over <= 0 && r.bad.length === 0 && r.short === 0, JSON.stringify(r));

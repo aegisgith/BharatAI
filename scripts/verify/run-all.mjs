@@ -67,6 +67,7 @@ const SUITES = [
   { name: 'unit: the Delhi 2027 page (form rules, calendar file, facts, the tab on every page, one stylesheet version), each alone', args: ['unit-delhi.mjs'] },
   { name: 'system: Delhi 2027 from an advert to Admin Enquiries (the page\'s own script, real worker, real SQLite, team email, the build)', args: ['smoke-delhi.mjs'] },
   { name: 'unit: the Delhi 2027 passes form (its rules, its figures against the server), each alone', args: ['unit-delhi-pay.mjs'] },
+  { name: 'booth applications, Mumbai and Delhi: the Delhi page\'s rules, the route on real SQLite (every answer, both emails, refusals, limits), the saved replies', args: ['smoke-booth-apply.mjs'] },
   { name: 'system: a paid Delhi pass, from the form through CCAvenue to the receipt and Admin, kept apart from Mumbai (real worker, real SQLite)', args: ['smoke-delhi-pay.mjs'] },
   { name: 'browser: a paid Delhi pass on a phone and a laptop, the form, the gateway played, the result page', args: ['browser-delhi-pay.cjs'], harness: 'delhi-harness.mjs', port: 8801, portEnv: true },
   { name: 'browser: Delhi 2027 on a phone and a laptop, the form on the real worker, the menu on every page, the home page\'s heading font', args: ['browser-delhi.cjs'], harness: 'delhi-harness.mjs', port: 8786, portEnv: true },

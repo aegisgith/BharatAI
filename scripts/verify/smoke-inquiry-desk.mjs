@@ -124,7 +124,7 @@ const id = {
   check('list: a boardroom enquiry counts under its own type', (d.typeCounts || []).some((t) => t.inquiry_type === 'meeting_room'));
   check('list: owners are the admin accounts, the owners in use and the rules (no desk logins)', d.owners.includes('Anita Ram') && d.owners.includes('Priya') && !d.owners.includes('Desk One'), JSON.stringify(d.owners));
   check('list: before 0053 the desk is told the commercial fields need it, and how', d.pipeline_ready === false && d.pipeline_hint.includes('0053_inquiry_pipeline.sql'));
-  check('list: the settings ride along (starter replies, both switches off, 24 h)', d.settings.templates.length === 8 && d.settings.autoack === false && d.settings.digest === false && d.settings.sla_hours === 24, JSON.stringify(d.settings).slice(0, 200));
+  check('list: the settings ride along (starter replies, both switches off, 24 h)', d.settings.templates.length === 11 && d.settings.autoack === false && d.settings.digest === false && d.settings.sla_hours === 24, JSON.stringify(d.settings).slice(0, 200));
   check('list: today in India and the server clock come with it', d.today === '2026-11-12' && !!d.now);
 }
 
@@ -223,7 +223,7 @@ const id = {
   const t = await s({ templates: [{ id: 'one', name: 'One', body: 'b1', type: 'bogus' }, { id: 'one', name: 'Two', body: 'b2', type: 'media' }] });
   check('settings: two replies with one id are kept apart, and an unknown type means any type', t.status === 200 && t.json.settings.templates.length === 2 && t.json.settings.templates[0].id !== t.json.settings.templates[1].id && t.json.settings.templates[0].type === '' && t.json.settings.templates[1].type === 'media', JSON.stringify(t.json?.settings?.templates));
   const back = await s({ templates: 'reset' });
-  check('settings: the starter replies come back', back.json.settings.templates.length === 8 && back.json.settings.templates.some((x) => x.id === 'speaking-booth'));
+  check('settings: the starter replies come back', back.json.settings.templates.length === 11 && back.json.settings.templates.some((x) => x.id === 'speaking-booth'));
   check('settings: the time for a first reply is 1 to 168 hours', (await s({ sla_hours: 0 })).status === 400 && (await s({ sla_hours: 200 })).status === 400 && (await s({ sla_hours: 48 })).json.settings.sla_hours === 48);
   await s({ sla_hours: 24 });
   check('settings: nothing to save is said so', (await s({})).status === 400);

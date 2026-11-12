@@ -119,6 +119,13 @@ const fillFree = async (p, email, mobile) => {
     '🚀 Startup Pod', '🔍 Explorer Booth', '💡 Innovator Booth', '⚡ Accelerator Booth', '🏢 Enterprise Booth', '🏛 Flagship Pavilion', '👑 Mega Pavilion',
     '1.5 x 1.5 m (2.25 sqm)', '2 x 2 m (4 sqm)', '3 x 2 m (6 sqm)', '3 x 3 m (9 sqm)', '4 x 2 m (8 sqm)', '6 x 2 m (12 sqm)', '7 x 7.7 m (53.90 sqm)',
     '₹38,000', '₹48,000', '₹1,29,000', '₹1,95,000', '₹2,91,000', '₹2,58,000', '₹3,87,000', '₹17,40,000',
+    // 12 Nov 2026: the booth form became an application (the organiser's words); the industry
+    // asked is the one they sell to, from the passes' list; the reply is promised in 2 working days.
+    'Select a booth package or fill in details below', 'Select industry',
+    'Artificial Intelligence / Machine Learning', 'IT / Software', 'Healthcare / MedTech', 'FinTech / Banking', 'EdTech / Education', 'Manufacturing / Industry 4.0',
+    'AgriTech / Agriculture', 'Defense / Aerospace', 'Retail / E-commerce', 'Government / Public Sector', 'Telecom / IoT', 'Automotive / EV', 'Energy / CleanTech', 'Logistics / Supply Chain',
+    'Our team will respond within 24 hours with booth availability and next steps.',
+    'Thank you for your interest in exhibiting at Bharat AI Innovation 2026. Our exhibition team will review your request and contact you within 24 hours.',
   ]);
   const lostInq = [...new Set(chunks(oldInq))].filter((c) => !flat(nowInq).includes(c) && !meantInq.has(c));
   check('/inquiry: every sentence of the older page is still on the page, or was meant to go', lostInq.length === 0, lostInq.join(' || '));
@@ -332,18 +339,24 @@ const fillFree = async (p, email, mobile) => {
   await p.fill('#iq-phone', '9820088888');
   await p.fill('#iq-company', 'Nair Analytics');
   await p.fill('#iq-products', 'A fraud model');
-  check('phone, /inquiry: the optional boxes are folded', !(await shown(p, '#iq-website')));
-  await p.tap('#inquiry-form summary');
-  await p.waitForTimeout(450);
+  check('phone, /inquiry: only the extra note is folded', !(await shown(p, '#iq-message')) && await shown(p, '#iq-website'));
   await p.fill('#iq-website', 'www.nair.example');
   await p.fill('#iq-designation', 'CTO');
+  await p.selectOption('#iq-company-type', 'Startup');
+  await p.selectOption('#iq-revenue', '₹1 to 10 crore');
+  await p.fill('#iq-product', 'FraudGuard');
+  await p.selectOption('#iq-stage', 'Live, with paying customers');
+  await p.selectOption('#iq-users', 'We sell it to other organisations');
+  await p.selectOption('#iq-market', 'India');
+  await p.selectOption('#iq-industry', 'Banking & Financial Services');
+  await p.fill('#iq-city', 'Mumbai');
   check('phone, /inquiry: no small words, every box can be tapped', (await smallWords(p, '#inquiry-form-card')).length === 0 && (await smallTargets(p, '#inquiry-form-card')).length === 0, (await smallWords(p, '#inquiry-form-card')).join() + ' ' + (await smallTargets(p, '#inquiry-form-card')).join());
   await p.tap('#iq-submit');
   await p.waitForFunction(() => !document.getElementById('iq-success').classList.contains('hidden'), null, { timeout: 15000 }).catch(() => {});
   await p.waitForTimeout(800);
   const enq = (await sql("SELECT * FROM inquiries WHERE email = 'meera.booth@example.com'"))[0];
   const em = enq ? JSON.parse(enq.metadata) : {};
-  check('phone, /inquiry: a real enquiry saved, with the booth, zone, estimate, products and a working link', enq && enq.inquiry_type === 'booth_inquiry' && em.booth_type.startsWith('Mega') && em.preferred_zone === 'FinTech AI' && em.estimated_total === 1740000 && em.products_to_showcase === 'A fraud model' && em.website === 'https://www.nair.example' && em.designation === 'CTO', JSON.stringify(enq));
+  check('phone, /inquiry: a real enquiry saved, with the booth, zone, estimate, products and a working link', enq && enq.inquiry_type === 'booth_inquiry' && em.booth_type.startsWith('Mega') && em.preferred_zone === 'FinTech AI' && em.estimated_total === 1740000 && em.what_it_does === 'A fraud model' && em.product === 'FraudGuard' && em.website === 'https://www.nair.example' && em.designation === 'CTO', JSON.stringify(enq));
   check('phone, /inquiry: the thank-you on the screen, with the reference', await shown(p, '#iq-success') && (await p.textContent('#iq-ref')) === 'BHAI-INQ-' + String(enq.id).padStart(5, '0') && (await box(p, '#iq-success')).top < 500, JSON.stringify(await box(p, '#iq-success')));
   const mails = await (await fetch(BASE + '/__mail')).json();
   check('phone, /inquiry: the team was told', mails.some((m) => /booth/i.test(m.Content.Subject + m.Content.Body[0].Content) && m.Content.Body[0].Content.includes('Nair Analytics')));
@@ -355,19 +368,20 @@ const fillFree = async (p, email, mobile) => {
 
   // Refused
   p = await open(phone, '/inquiry');
-  await p.route('**/api/inquiries', (r) => r.fulfill({ status: 400, contentType: 'application/json', body: '{"error":"Name and email are required"}' }));
+  await p.route('**/api/booth-application', (r) => r.fulfill({ status: 400, contentType: 'application/json', body: '{"error":"Please add website. It is required."}' }));
   await p.selectOption('#iq-booth-type', 'Undecided');
-  for (const [id, v] of [['#iq-name', 'A'], ['#iq-email', 'a@example.com'], ['#iq-phone', '9820000000'], ['#iq-company', 'C']]) await p.fill(id, v);
+  for (const [id, v] of [['#iq-name', 'A'], ['#iq-email', 'a@example.com'], ['#iq-phone', '9820000000'], ['#iq-company', 'C'], ['#iq-website', 'c.example'], ['#iq-product', 'P'], ['#iq-products', 'It does a thing'], ['#iq-designation', 'CEO'], ['#iq-city', 'Pune']]) await p.fill(id, v);
+  for (const [id, v] of [['#iq-company-type', 'Startup'], ['#iq-revenue', 'No revenue yet'], ['#iq-stage', 'Idea'], ['#iq-users', 'Both'], ['#iq-market', 'India'], ['#iq-industry', 'Other']]) await p.selectOption(id, v);
   await p.tap('#iq-submit');
   await p.waitForFunction(() => !document.getElementById('iq-notice').classList.contains('hidden'), null, { timeout: 8000 }).catch(() => {});
   await p.waitForTimeout(4500);
-  check('phone, /inquiry: a refusal is still on the screen after the toast has gone, and the button is back', await shown(p, '#iq-notice') && /required/.test(await p.textContent('#iq-notice')) && await p.isEnabled('#iq-submit') && /Send Booth Enquiry/.test(await p.textContent('#iq-submit')));
+  check('phone, /inquiry: a refusal is still on the screen after the toast has gone, and the button is back', await shown(p, '#iq-notice') && /required/.test(await p.textContent('#iq-notice')) && await p.isEnabled('#iq-submit') && /Send my application/.test(await p.textContent('#iq-submit')));
   await p.close();
 
   // An empty form
   p = await open(phone, '/inquiry');
   const valid = await p.evaluate(() => { const f = document.getElementById('inquiry-form'); const bad = [...f.querySelectorAll(':invalid')].filter((e) => e.tagName !== 'FORM').map((e) => e.id); return bad; });
-  check('phone, /inquiry: an empty form cannot be sent, and every box it asks for is in the open', valid.length === 5 && await p.evaluate((ids) => ids.every((id) => document.getElementById(id).getClientRects().length > 0), valid), valid.join());
+  check('phone, /inquiry: an empty form cannot be sent, and every box it asks for is in the open', valid.length === 16 && await p.evaluate((ids) => ids.every((id) => document.getElementById(id).getClientRects().length > 0), valid), valid.join());
   await p.tap('.bk-unsure button');
   await p.waitForTimeout(800);
   check('phone, /inquiry: Ask us which size fits chooses Not sure yet and goes to the form', (await p.inputValue('#iq-booth-type')) === 'Undecided' && (await box(p, '#inquiry-form-card')).top < 120);
