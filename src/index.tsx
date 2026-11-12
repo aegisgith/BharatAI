@@ -3670,7 +3670,7 @@ function showcasePageHTML(o: { open: boolean; left: number; email: string; booke
       </form>`
   }
   const desc = `${SHOWCASE_MINUTES}-minute Innovation Showcase slots on the Innovation Stage at Bharat AI Innovation 2026, 20–21 Nov, WTC Mumbai: ₹${inr(slot)} + GST, or ₹${inr(vip)} + GST with a VIP Pass.`
-  return `${sharedHeadHTML('Innovation Showcase slots', '/showcase-slot', desc).replace('</head>', `<link rel="stylesheet" href="/css/passes-design.css?v=20261112m">
+  return `${sharedHeadHTML('Innovation Showcase slots', '/showcase-slot', desc).replace('</head>', `<link rel="stylesheet" href="/css/passes-design.css?v=20261113a">
 <meta name="robots" content="noindex, follow">
 <style>
   .sc-page{background:#F7F8FC;color:#1E2140;font-family:Manrope,Arial,sans-serif}
@@ -26042,7 +26042,7 @@ function passComparisonHTML(): string {
       .pcmp-no{color:#B7BCD3}
       .pcmp small{display:block;font-size:11px;color:#5E6585;font-weight:400}
       @media (max-width:640px){
-        .pcmp thead th{font-size:10px;padding:10px 1px;overflow-wrap:anywhere}
+        .pcmp thead th{font-size:10px;padding:10px 1px}
         .pcmp thead th span{font-size:10px}
         .pcmp thead th.pcmp-what,.pcmp-row th,.pcmp-group{display:none}
         .pcmp-group.pcmp-narrow{display:table-row}
@@ -26090,7 +26090,7 @@ function siteHeaderHTML(current: string): string {
 // docs/page-backups/register-before-redesign-2026-11-06.html and inquiry-before-redesign-2026-11-06.html
 // Five passes to choose from since the Student Pass (12 Nov 2026): on the smallest phones the one-line
 // description goes, so the paid form's button stays on the first screen.
-const BOOKING_DESIGN = '<link rel="stylesheet" href="/css/passes-design.css?v=20261112m"><link rel="stylesheet" href="/css/booking-design.css?v=20261106"><style>@media (max-width:360px){.rg-choice-what{display:none}.rg-choice > div{padding:8px 10px}}</style>'
+const BOOKING_DESIGN = '<link rel="stylesheet" href="/css/passes-design.css?v=20261113a"><link rel="stylesheet" href="/css/booking-design.css?v=20261106"><style>@media (max-width:360px){.rg-choice-what{display:none}.rg-choice > div{padding:8px 10px}}</style>'
 const BOOKING_MOTION = '<link rel="stylesheet" href="/css/passes-motion.css?v=20261106"><link rel="stylesheet" href="/css/booking-motion.css?v=20261106">'
 const BOOKING_SCRIPTS = '<script src="/js/passes-motion.js?v=20261106" defer></script><script src="/js/booking-motion.js?v=20261106" defer></script>'
 const BOOKING_CREDIT = '<p class="ps-credit">Motion effects from <a href="https://skiper-ui.com" target="_blank" rel="noopener noreferrer">Skiper UI</a> and <a href="https://github.com/Ashutoshx7/VengeanceUI" target="_blank" rel="noopener noreferrer">Vengeance UI</a>, and small details after <a href="https://uiverse.io" target="_blank" rel="noopener noreferrer">Uiverse</a>.</p>'
@@ -26138,7 +26138,7 @@ function passesPageHTML(opts: { waitlist?: boolean } = {}): string {
   ]
   // Design: css/passes-design.css. Motion: delete the two lines naming passes-motion (here and at
   // the foot) and every word stays. The older page: docs/page-backups/passes-before-redesign-2026-11-06.html
-  const extraHead = '<link rel="stylesheet" href="/css/passes-design.css?v=20261112m"><link rel="stylesheet" href="/css/passes-motion.css?v=20261106"></head>'
+  const extraHead = '<link rel="stylesheet" href="/css/passes-design.css?v=20261113a"><link rel="stylesheet" href="/css/passes-motion.css?v=20261106"></head>'
   return `${sharedHeadHTML('Passes', '/passes', "Every pass for Bharat AI Innovation 2026 compared: free Visitor Pass (entry not guaranteed, by slot as available), Student (with a workshop), Academic, Delegate, Premium Delegate and VIP, all + GST. " + (latePricing() ? '' : 'Standard prices until ' + PRICE_DEADLINE_TEXT + '. ') + "20–21 Nov, World Trade Center Mumbai.").replace('</head>', extraHead)}
 <body class="min-h-screen ps-page">
 ${siteHeaderHTML('/passes')}
