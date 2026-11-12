@@ -20,7 +20,7 @@ const check = (n, ok, d) => { console.log((ok ? 'PASS ' : 'FAIL ') + n + (ok ? '
   check('live /app on a phone has every new function', fns.length === 0, 'missing: ' + fns.join(','));
   check('live /app has no JavaScript errors on a phone', errors.length === 0, errors.slice(0, 3).join(' | '));
   check('live /app fits a 390px phone', await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'overflow');
-  const passJs = await page.evaluate(() => fetch('/js/pass-render.js?v=20261102c').then(r => r.text()));
+  const passJs = await page.evaluate(() => fetch('/js/pass-render.js?v=20261112b').then(r => r.text()));
   check('live pass renderer hands phones to the share-or-save view', /global\.deliverImage/.test(passJs), 'old pass-render.js served');
   check('live pass renderer draws its own QR (bundled encoder first, qrserver only as fallback)', /global\.qrcode\(0, 'M'\)/.test(passJs) && /qrFailed/.test(passJs), 'old pass-render.js served');
 

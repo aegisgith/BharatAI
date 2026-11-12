@@ -1163,7 +1163,7 @@ export function marketplaceAdminPageHTML(): string {
     </section>
   </div>
 
-  <script src="/static/marketplace-admin.js?v=13"></script>
+  <script src="/static/marketplace-admin.js?v=14"></script>
 </body>
 </html>`
 }

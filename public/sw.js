@@ -43,7 +43,9 @@
 // 6 Nov 2026 (bhai-v29): the app's new design and motion files join the offline list.
 // 12 Nov 2026 (bhai-v31): main.js?v=20261112, the free-pass waiting list words on / and /networking.
 // 12 Nov 2026 (bhai-v32): main.js?v=20261112b, because the edge had cached the old main.js under ?v=20261112.
-const VERSION = 'bhai-v32';
+// 12 Nov 2026 (bhai-v33): pass-render.js?v=20261112b: the Organiser pass in black and saffron, and the
+// Student and Influencer passes printed as themselves, not VISITOR PASS.
+const VERSION = 'bhai-v33';
 const SHELL = `shell-${VERSION}`;
 const DATA = `data-${VERSION}`;
 // The badge desk's scanner page, kept so it opens with no internet (12 Nov 2026).
@@ -74,7 +76,7 @@ const PRECACHE = [
   '/images/logo-nav.webp',             // every page's header
   '/images/icon-192.png',
   '/manifest.webmanifest',
-  '/js/pass-render.js?v=20261102c',
+  '/js/pass-render.js?v=20261112b',
   '/js/vendor/qrcode-generator.js?v=20261029',   // the pass draws its QR with it
   '/css/style.css?v=20261105b',        // marketing shell: /, /conference, /exhibition, ...
   '/js/main.js?v=20261112b',

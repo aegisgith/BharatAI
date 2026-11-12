@@ -17,7 +17,9 @@
 
   var S = { d: null, tab: 'programme', day: '', view: 'board', hall: '', q: '', spk: 'all', spkQ: '', spkSort: 'order', listAll: false, drawer: null, wired: false,
     // the scheduler (12 Nov 2026): which event, free time on the board, the attention list, the tray, undo
-    eid: null, showFree: true, dim: false, att: 'all', attDay: '', attHidden: false, tray: false, undo: null, drag: null, flash: null, dragged: 0 };
+    eid: null, showFree: true, dim: false, att: 'all', attDay: '', attHidden: false, tray: false, undo: null, drag: null, flash: null, dragged: 0,
+    // whose: '' everyone's, '__none' nobody's yet, or one person on the team (12 Nov 2026)
+    owner: '' };
   var PX = 2.2; // pixels per minute on the board (the zoom buttons change it)
   var ZOOMS = [1.5, 2.2, 3.2];
   var TYPE_WORD = { keynote: 'Keynote', talk: 'Talk', panel: 'Panel', workshop: 'Workshop', ceremony: 'Ceremony', exhibition: 'Exhibition', networking: 'Networking', break: 'Break' };
@@ -66,6 +68,54 @@
     return names.join(', ');
   }
   function errText(e) { return (e && e.data && e.data.error) || (e && e.message) || 'Something went wrong.'; }
+
+  // ---------- who on the team looks after it (12 Nov 2026) ----------
+  // The team is everyone holding the Organiser pass (the server sends their names). A
+  // name given before that is no longer on the team is still offered, so a save
+  // never drops it without anyone choosing to.
+  function teamNames(current) {
+    var names = ((S.d && S.d.team) || []).map(function (m) { return m.name; });
+    if (current && names.indexOf(current) < 0) names.unshift(current);
+    return names;
+  }
+  function ownerOptions(current) {
+    return '<option value="">Nobody yet</option>' + teamNames(current).map(function (n) {
+      return '<option value="' + esc(n) + '"' + (n === current ? ' selected' : '') + '>' + esc(n) + '</option>';
+    }).join('');
+  }
+  // The box on a speaker's card or a programme row. data-cm with no action keeps a
+  // click on it from opening the row it sits in.
+  function ownerBox(kind, x) {
+    return '<select class="cm-select cm-owner' + (x.owner ? '' : ' is-none') + '" data-cm="owner-box" data-cm-input="owner" data-kind="' + kind + '" data-id="' + x.id + '"' +
+      ' aria-label="' + esc('Who on the team looks after ' + (x.name || x.title || 'this')) + '" title="Who on the team looks after this">' + ownerOptions(x.owner || '') + '</select>';
+  }
+  function ownerFilter() {
+    var seen = {};
+    ((S.d && S.d.team) || []).forEach(function (m) { seen[m.name] = 1; });
+    ((S.d && S.d.sessions) || []).concat((S.d && S.d.speakers) || []).forEach(function (x) { if (x.owner) seen[x.owner] = 1; });
+    var names = Object.keys(seen).sort(function (a, b) { return a.localeCompare(b); });
+    if (!names.length) return '';
+    return '<select class="cm-select" data-cm-input="owner-filter" aria-label="Whose">' +
+      '<option value="">Everyone’s</option><option value="__none"' + (S.owner === '__none' ? ' selected' : '') + '>Nobody’s yet</option>' +
+      names.map(function (n) { return '<option value="' + esc(n) + '"' + (S.owner === n ? ' selected' : '') + '>' + esc(n) + '’s</option>'; }).join('') + '</select>';
+  }
+  function ownerMatch(x) { return !S.owner || (S.owner === '__none' ? !x.owner : x.owner === S.owner); }
+  async function setOwnerOf(kind, id, name, el) {
+    var x = kind === 'speaker' ? speakerById(id) : sessionById(id);
+    var label = x ? (x.name || x.title) : 'It';
+    if (el) el.disabled = true;
+    try {
+      var r = await api.put('/api/admin/conference/owner', { kind: kind, id: Number(id), owner: name });
+      if (x) x.owner = (r && r.owner) || '';
+      say(x && x.owner ? x.owner + ' now looks after ' + label + '.' : 'Nobody looks after ' + label + ' now.');
+      if (el) el.classList.toggle('is-none', !(x && x.owner));
+      if (S.owner) body();
+    } catch (e) {
+      say(errText(e), 'error');
+      if (el) el.value = (x && x.owner) || '';
+    }
+    if (el) el.disabled = false;
+  }
 
   // ---------- which event, and what needs attention ----------
   // The admin page is Mumbai's (EID). The scheduler can plan another event too
@@ -212,7 +262,7 @@
     var bar = '<div class="cm-bar cm-no-print"><div class="cm-pills">' + pills +
       (S.view === 'list' ? '<button type="button" class="cm-pill ' + (S.listAll ? 'is-on' : '') + '" data-cm="day-all">Both days</button>' : '') + '</div>' +
       '<span class="cm-spacer"></span>' +
-      (S.view === 'list' ? '<input class="cm-search" type="search" placeholder="Search sessions or speakers" value="' + esc(S.q) + '" data-cm-input="q" aria-label="Search sessions">' : '') +
+      (S.view === 'list' ? '<input class="cm-search" type="search" placeholder="Search sessions or speakers" value="' + esc(S.q) + '" data-cm-input="q" aria-label="Search sessions">' + ownerFilter() : '') +
       '<div class="cm-tabs"><button type="button" class="cm-tab ' + (S.view === 'board' ? 'is-on' : '') + '" data-cm="view" data-k="board"><i class="fas fa-columns mr-1"></i>Board</button>' +
       '<button type="button" class="cm-tab ' + (S.view === 'list' ? 'is-on' : '') + '" data-cm="view" data-k="list"><i class="fas fa-list mr-1"></i>List</button></div>' +
       '<details class="cm-menu" id="cm-dl"><summary class="cm-btn"><i class="fas fa-download"></i>Download<i class="fas fa-chevron-down" style="font-size:10px"></i></summary><div class="cm-menu-list">' +
@@ -331,12 +381,13 @@
   function listView() {
     var q = S.q.trim().toLowerCase();
     var list = daySessions().filter(function (s) {
+      if (!ownerMatch(s)) return false;
       if (!q) return true;
-      return [s.title, s.room, s.session_type, s.track, peopleLine(s), s.note].join(' ').toLowerCase().indexOf(q) >= 0;
+      return [s.title, s.room, s.session_type, s.track, peopleLine(s), s.note, s.owner].join(' ').toLowerCase().indexOf(q) >= 0;
     }).sort(function (a, b) { return a.start_time < b.start_time ? -1 : a.start_time > b.start_time ? 1 : String(a.room).localeCompare(String(b.room)); });
-    if (!list.length) return '<div class="cm-table-wrap"><div class="cm-empty"><i class="fas fa-magnifying-glass"></i>' + (q ? 'No session matches "' + esc(S.q) + '".' : 'No sessions on this day yet.') + '</div></div>';
+    if (!list.length) return '<div class="cm-table-wrap"><div class="cm-empty"><i class="fas fa-magnifying-glass"></i>' + (q ? 'No session matches "' + esc(S.q) + '".' : S.owner ? 'No session here is ' + (S.owner === '__none' ? 'without an owner' : esc(S.owner) + '’s') + '.' : 'No sessions on this day yet.') + '</div></div>';
     var clashes = clashIds();
-    return '<div class="cm-table-wrap"><table class="cm-table"><thead><tr><th>Day</th><th>Time</th><th>Hall</th><th>Session</th><th>Speakers</th><th>Status</th></tr></thead><tbody>' +
+    return '<div class="cm-table-wrap"><table class="cm-table"><thead><tr><th>Day</th><th>Time</th><th>Hall</th><th>Session</th><th>Speakers</th><th>Looked after by</th><th>Status</th></tr></thead><tbody>' +
       list.map(function (s) {
         var h = hallByName(s.room);
         var chips = (s.links || []).map(function (l) { var sp = speakerById(l.speaker_id); return sp ? '<span class="cm-chip">' + esc(sp.name) + (l.role && l.role !== 'speaker' ? ' · ' + esc(ROLE_WORD[l.role] || l.role) : '') + '</span>' : ''; }).join('') +
@@ -348,6 +399,7 @@
           '<td><span class="cm-dot cm-d-' + esc(s.session_type) + '"></span><b>' + esc(s.title) + '</b><br><span class="cm-muted">' + esc(TYPE_WORD[s.session_type] || s.session_type) + (s.track ? ' · ' + esc(s.track) : '') + '</span>' +
             (s.note ? '<div class="cm-help"><i class="fas fa-sticky-note"></i> ' + esc(s.note) + '</div>' : '') + '</td>' +
           '<td>' + (chips || '<span class="cm-muted">None</span>') + '</td>' +
+          '<td>' + ownerBox('session', s) + '</td>' +
           '<td>' + (s.status === 'draft' ? '<span class="cm-chip is-warn">Draft</span>' : '<span class="cm-chip is-ok">Published</span>') + (clashes[s.id] ? '<span class="cm-chip is-bad"><i class="fas fa-triangle-exclamation"></i>Clash</span>' : '') + '</td>' +
         '</tr>';
       }).join('') + '</tbody></table></div>';
@@ -399,6 +451,7 @@
       '<div class="cm-f"><label for="cm-s-icon">Icon</label><input id="cm-s-icon" class="cm-in" maxlength="4" value="' + esc(s.speaker_avatar || '') + '" placeholder="🎤"></div></div>' +
       '<label class="cm-toggle' + (r.drafts ? '' : ' cm-muted') + '" style="margin-bottom:14px"><input type="checkbox" id="cm-s-draft"' + (s.status === 'draft' ? ' checked' : '') + (r.drafts ? '' : ' disabled') + '>' +
         '<span><b>Keep as a draft</b><small>' + (r.drafts ? 'Attendees do not see it until you untick this.' : 'Drafts start working once the organiser runs migration 0054.') + '</small></span></label>' +
+      '<div class="cm-f"><label for="cm-s-owner">Looked after by <em>(someone on the organising team; never shown to attendees)</em></label><select id="cm-s-owner" class="cm-in">' + ownerOptions(s.owner || preset.owner || '') + '</select></div>' +
       '<div class="cm-f"><label for="cm-s-note">Team note <em>(never shown to attendees)</em></label><textarea id="cm-s-note" class="cm-in" maxlength="1000" placeholder="e.g. Waiting for the second panellist to confirm"' + (r.drafts ? '' : ' disabled') + '>' + esc(s.note || '') + '</textarea></div>';
     var foot = '<button type="button" class="cm-btn is-primary" data-cm="save-session" id="cm-s-save"><i class="fas fa-floppy-disk"></i>' + (s.id ? 'Save changes' : 'Add to the programme') + '</button>' +
       '<button type="button" class="cm-btn" data-cm="close">Cancel</button><span class="cm-spacer"></span>' +
@@ -436,7 +489,7 @@
   function readSession() {
     var day = val('cm-s-day'), st = val('cm-s-start'), en = val('cm-s-end');
     var draft = $('cm-s-draft');
-    return {
+    var out = {
       event_id: eid(), title: val('cm-s-title').trim(), session_type: val('cm-s-type'), room: val('cm-s-room'), speaker_title: (ED && ED.typedTitle) || '',
       start_time: day && st ? day + ' ' + st : '', end_time: day && en ? day + ' ' + en : '',
       speakers: ED.people.map(function (p) { return { speaker_id: p.speaker_id, role: p.role }; }),
@@ -444,6 +497,9 @@
       capacity: Number(val('cm-s-cap')) || 100, speaker_avatar: val('cm-s-icon').trim(),
       status: draft && draft.checked ? 'draft' : 'published', note: val('cm-s-note').trim(),
     };
+    // Only when the box is on screen: a missing box must not clear the owner.
+    if ($('cm-s-owner')) out.owner = val('cm-s-owner');
+    return out;
   }
   // The same clash rules the server applies, run as the form changes.
   function clashesNow(v) {
@@ -517,7 +573,8 @@
       if (f === 'noemail' && sp.email) return false;
       if (f === 'nophoto' && sp.photo_url) return false;
       if (f === 'featured' && !Number(sp.is_featured)) return false;
-      return !q || [sp.name, sp.role, sp.organisation, sp.topic, sp.email].join(' ').toLowerCase().indexOf(q) >= 0;
+      if (!ownerMatch(sp)) return false;
+      return !q || [sp.name, sp.role, sp.organisation, sp.topic, sp.email, sp.owner].join(' ').toLowerCase().indexOf(q) >= 0;
     });
     if (S.spkSort === 'name') list.sort(function (a, b) { return initialSort(a.name).localeCompare(initialSort(b.name)); });
     else if (S.spkSort === 'org') list.sort(function (a, b) { return String(a.organisation || '').localeCompare(String(b.organisation || '')); });
@@ -535,11 +592,11 @@
       ['hidden', 'Hidden', all.length - pub.length],
     ].map(function (c) { return '<button type="button" class="cm-pill ' + (S.spk === c[0] ? 'is-on' : '') + '" data-cm="spk-filter" data-k="' + c[0] + '">' + c[1] + '<small>' + c[2] + '</small></button>'; }).join('');
     var bar = '<div class="cm-bar cm-no-print"><input class="cm-search" type="search" placeholder="Search name, organisation, topic, email" value="' + esc(S.spkQ) + '" data-cm-input="spkq" aria-label="Search speakers">' +
-      '<select class="cm-select" data-cm-input="spksort" aria-label="Sort"><option value="order"' + (S.spkSort === 'order' ? ' selected' : '') + '>In list order</option><option value="name"' + (S.spkSort === 'name' ? ' selected' : '') + '>By name</option><option value="org"' + (S.spkSort === 'org' ? ' selected' : '') + '>By organisation</option></select>' +
+      '<select class="cm-select" data-cm-input="spksort" aria-label="Sort"><option value="order"' + (S.spkSort === 'order' ? ' selected' : '') + '>In list order</option><option value="name"' + (S.spkSort === 'name' ? ' selected' : '') + '>By name</option><option value="org"' + (S.spkSort === 'org' ? ' selected' : '') + '>By organisation</option></select>' + ownerFilter() +
       '<span class="cm-spacer"></span><button type="button" class="cm-btn" data-cm="csv-speakers"><i class="fas fa-file-csv"></i>CSV</button></div>' +
       '<div class="cm-bar cm-no-print"><div class="cm-pills">' + chips + '</div></div>';
     var list = spkFilterList();
-    if (!list.length) return bar + '<div class="cm-empty"><i class="fas fa-microphone-lines"></i>' + (S.spkQ ? 'No speaker matches "' + esc(S.spkQ) + '".' : 'Nobody here.') + '</div>';
+    if (!list.length) return bar + '<div class="cm-empty"><i class="fas fa-microphone-lines"></i>' + (S.spkQ ? 'No speaker matches "' + esc(S.spkQ) + '".' : S.owner ? 'No speaker here is ' + (S.owner === '__none' ? 'without an owner' : esc(S.owner) + '’s') + '.' : 'Nobody here.') + '</div>';
     return bar + '<div class="cm-grid">' + list.map(speakerCard).join('') + '</div>';
   }
   function speakerCard(sp) {
@@ -558,6 +615,7 @@
     return '<div class="cm-card' + (pub ? '' : ' is-hidden') + '">' +
       '<div class="cm-who" data-cm="edit-speaker" data-id="' + sp.id + '">' + ava(sp) + '<div style="min-width:0"><b>' + esc(sp.name) + '</b><span class="r">' + esc([sp.role, sp.organisation].filter(Boolean).join(', ') || 'No title yet') + '</span></div></div>' +
       '<div>' + chips + '</div>' + slots +
+      '<label class="cm-owner-row"><i class="fas fa-user-tie" aria-hidden="true"></i><span>Looked after by</span>' + ownerBox('speaker', sp) + '</label>' +
       '<div class="cm-actions">' +
         '<button type="button" class="cm-btn is-small" data-cm="edit-speaker" data-id="' + sp.id + '"><i class="fas fa-pen"></i>Edit</button>' +
         '<button type="button" class="cm-btn is-small" data-cm="announce" data-id="' + sp.id + '"' + (pub ? '' : ' disabled title="Show them to attendees first"') + '><i class="fas fa-bullhorn"></i>Announce</button>' +
@@ -589,7 +647,8 @@
       '<div class="cm-f"><label for="cm-p-li">LinkedIn</label><input id="cm-p-li" type="url" class="cm-in" maxlength="300" value="' + esc(sp.linkedin_url || '') + '" placeholder="https://www.linkedin.com/in/..." autocomplete="off"></div>' +
       '<div class="cm-row"><label class="cm-toggle"><input type="checkbox" id="cm-p-pub"' + (sp.id ? (Number(sp.is_published) === 1 ? ' checked' : '') : ' checked') + '><span><b>Shown to attendees</b><small>Untick to hide them and keep everything</small></span></label>' +
       '<label class="cm-toggle"><input type="checkbox" id="cm-p-feat"' + (Number(sp.is_featured) ? ' checked' : '') + '><span><b>Featured</b><small>First in the app’s speaker list</small></span></label></div>' +
-      '<div class="cm-f" style="margin-top:14px"><label for="cm-p-order">Place in the list <em>(1 is first)</em></label><input id="cm-p-order" type="number" min="0" class="cm-in" style="max-width:140px" value="' + esc(sp.sort_order != null ? sp.sort_order : '') + '"></div>' +
+      '<div class="cm-row" style="margin-top:14px"><div class="cm-f"><label for="cm-p-order">Place in the list <em>(1 is first)</em></label><input id="cm-p-order" type="number" min="0" class="cm-in" style="max-width:140px" value="' + esc(sp.sort_order != null ? sp.sort_order : '') + '"></div>' +
+      '<div class="cm-f"><label for="cm-p-owner">Looked after by <em>(someone on the organising team)</em></label><select id="cm-p-owner" class="cm-in">' + ownerOptions(sp.owner || preset.owner || '') + '</select></div></div>' +
       (sp.id ? '<div class="cm-f"><span class="cm-lbl">Their sessions</span>' + (ss.length ? ss.map(function (s) {
         return '<div class="cm-slot" style="margin-bottom:6px" data-cm="edit-session" data-id="' + s.id + '"><b>' + esc(dayLabel(s.start_time)) + ', ' + esc(clock(s.start_time)) + ' to ' + esc(clock(s.end_time)) + '</b> · ' + esc(s.room || 'No hall yet') + '<small>' + esc(ROLE_WORD[roleIn(s, sp.id)] || 'Speaker') + ' · ' + esc(s.title) + (s.status === 'draft' ? ' · draft' : '') + '</small></div>';
       }).join('') : '<div class="cm-help">Not on the programme yet.</div>') +
@@ -609,6 +668,7 @@
       is_published: $('cm-p-pub') && $('cm-p-pub').checked ? 1 : 0, is_featured: $('cm-p-feat') && $('cm-p-feat').checked ? 1 : 0,
     };
     if (order !== '') out.sort_order = Number(order);
+    if ($('cm-p-owner')) out.owner = val('cm-p-owner');
     return out;
   }
   async function saveSpeaker(sameName) {
@@ -863,20 +923,20 @@
     setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
   }
   function csvProgramme() {
-    var rows = [['Day', 'Starts', 'Ends', 'Hall', 'Venue room', 'Session', 'Type', 'Track', 'Speakers', 'Status', 'Team note']];
+    var rows = [['Day', 'Starts', 'Ends', 'Hall', 'Venue room', 'Session', 'Type', 'Track', 'Speakers', 'Status', 'Team note', 'Looked after by']];
     (S.d.sessions || []).slice().sort(function (a, b) { return a.start_time < b.start_time ? -1 : 1; }).forEach(function (s) {
       var h = hallByName(s.room);
       rows.push([String(s.start_time).slice(0, 10), String(s.start_time).slice(11, 16), String(s.end_time).slice(11, 16), s.room || '', h ? h.venue_room || '' : '', s.title, TYPE_WORD[s.session_type] || s.session_type, s.track || '',
-        (s.links || []).map(function (l) { var sp = speakerById(l.speaker_id); return sp ? sp.name + ' (' + (ROLE_WORD[l.role] || l.role) + ')' : ''; }).filter(Boolean).concat(s.others ? [s.others] : []).join('; '), s.status, s.note || '']);
+        (s.links || []).map(function (l) { var sp = speakerById(l.speaker_id); return sp ? sp.name + ' (' + (ROLE_WORD[l.role] || l.role) + ')' : ''; }).filter(Boolean).concat(s.others ? [s.others] : []).join('; '), s.status, s.note || '', s.owner || '']);
     });
     downloadCsv('programme-' + istNow().slice(0, 10) + '.csv', rows);
   }
   function csvSpeakers() {
-    var rows = [['Name', 'Designation', 'Organisation', 'Speaking on', 'Email', 'Mobile', 'Sessions', 'Shown to attendees', 'Announced', 'Pass']];
+    var rows = [['Name', 'Designation', 'Organisation', 'Speaking on', 'Email', 'Mobile', 'Sessions', 'Shown to attendees', 'Announced', 'Pass', 'Looked after by']];
     (S.d.speakers || []).forEach(function (sp) {
       rows.push([sp.name, sp.role || '', sp.organisation || '', sp.topic || '', sp.email || '', sp.phone || '',
         sessionsOf(sp.id).map(function (s) { return dayLabel(s.start_time) + ' ' + clock(s.start_time) + ' ' + (s.room || '') + ': ' + s.title; }).join('; '),
-        Number(sp.is_published) === 1 ? 'Yes' : 'No', sp.announced ? 'Yes, ' + dayLabel(sp.announced.last_at) : 'No', sp.pass ? sp.pass.badge_type : '']);
+        Number(sp.is_published) === 1 ? 'Yes' : 'No', sp.announced ? 'Yes, ' + dayLabel(sp.announced.last_at) : 'No', sp.pass ? sp.pass.badge_type : '', sp.owner || '']);
     });
     downloadCsv('speakers-' + istNow().slice(0, 10) + '.csv', rows);
   }
@@ -1659,6 +1719,8 @@
     document.addEventListener('change', function (ev) {
       var el = ev.target; var k = el && el.getAttribute && el.getAttribute('data-cm-input'); if (!k) return;
       if (k === 'spksort') { S.spkSort = el.value; body(); }
+      else if (k === 'owner') setOwnerOf(el.getAttribute('data-kind'), el.getAttribute('data-id'), el.value, el);
+      else if (k === 'owner-filter') { S.owner = el.value; body(); }
       else if (k === 'event') switchEvent(el.value);
       else if (k === 'show-free') { S.showFree = el.checked; body(); }
       else if (k === 'dim') { S.dim = el.checked; body(); }

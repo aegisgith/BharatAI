@@ -8,6 +8,7 @@ import mp, { configureMarketplace, exhibitorOfCompanySession, DIRECTORY_SHOWN_SQ
 import conference, { configureConference, draftFilterSql, venueSelectSql, fillVenues, speakerSlots } from './routes/conference'
 import talkSelf, { configureTalkSelf, talkDetailsLink } from './routes/talk-self'
 import { signinPayIntent } from './lib/signin-pay'
+import { organiserTeam } from './lib/team'
 import { ccavEncrypt, ccavDecrypt, ccavRequestBody, ccavParseResponse } from './lib/ccavenue'
 import { invoicePdf } from './lib/invoice-pdf'
 import { signInLink as mpSignInLink } from './routes/marketplace'
@@ -6134,6 +6135,7 @@ function verifyPageHTML(o: any): string {
   const TIER: any = {
     'VIP Pass': ['#E9C356', '#5a3f08'], 'Delegate Pass': ['#00996C', '#ffffff'],
     'Premium Delegate Pass': ['#0B7A75', '#ffffff'],
+    'Organiser': ['#111114', '#FFB066'],
     'Academic Pass': ['#7C5CFF', '#ffffff'], 'Visitor Pass': ['#2B8CFF', '#ffffff']
   }
   const tier = TIER[a.badge_type] || ['#2B8CFF', '#ffffff']
@@ -20564,6 +20566,8 @@ async function inquiryOwners(c: any, rows: any[], routing: Record<string, string
     const { results } = await c.env.DB.prepare("SELECT name FROM staff WHERE active = 1 AND role IN ('admin', 'finance') ORDER BY name").all() as any
     for (const s of results || []) if (s.name) set.add(String(s.name).trim())
   } catch { /* no staff table */ }
+  // The organising team: everyone holding the Organiser pass (organiser, 12 Nov 2026).
+  for (const m of await organiserTeam(c.env.DB)) set.add(m.name)
   for (const r of rows) if (r.assigned_to) set.add(String(r.assigned_to).trim())
   for (const who of Object.values(routing)) set.add(String(who).trim())
   return [...set].filter(Boolean).sort((a, b) => a.localeCompare(b))
@@ -25571,7 +25575,7 @@ function mainPageHTML(): string {
        document the holder downloaded. The pass draws its own QR with the
        encoder, so no third-party service is in the path. -->
   <script src="/js/vendor/qrcode-generator.js?v=20261029"></script>
-  <script src="/js/pass-render.js?v=20261102c"></script>
+  <script src="/js/pass-render.js?v=20261112b"></script>
   <!-- The "I'm attending" card delegates post. App only: the badge desk has no
        reason to issue one, and it carries none of the pass's verification data. -->
   <script src="/js/social-card.js?v=20261102"></script>
@@ -36695,14 +36699,14 @@ function adminPageHTML(): string {
   <!-- Shared with the app, so a pass issued at the desk is the same document the
        holder downloaded. The pass draws its own QR with the encoder. -->
   <script src="/js/vendor/qrcode-generator.js?v=20261029"></script>
-  <script src="/js/pass-render.js?v=20261102c"></script>
+  <script src="/js/pass-render.js?v=20261112b"></script>
   <!-- The same photo fingerprint /app sends, for photos the team uploads. -->
   <script src="/js/photo-fingerprint.js?v=2"></script>
   <!-- Same renderer the delegate's own app uses, so a card the desk sends a speaker
        is the card that speaker would have made themselves. -->
   <script src="/js/social-card.js?v=20261102"></script>
   <link rel="stylesheet" href="/css/fonts-app.css?v=1">
-  <link rel="stylesheet" href="/static/conference-admin.css?v=20261112b">
+  <link rel="stylesheet" href="/static/conference-admin.css?v=20261112c">
   <style>
     * { font-family: 'Manrope', sans-serif; }
     body { background: #F8F9FF; color: #1E2140; }
@@ -37068,7 +37072,7 @@ function adminPageHTML(): string {
     <div id="modal-box" class="glass rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col" style="scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.15) transparent;"></div>
   </div>
 
-  <script src="/static/conference-admin.js?v=20261112b"></script>
+  <script src="/static/conference-admin.js?v=20261112c"></script>
   <script src="/admin.js?v=${adminScriptVersion()}"></script>
 </body>
 </html>`

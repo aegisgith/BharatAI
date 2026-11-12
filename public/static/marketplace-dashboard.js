@@ -556,7 +556,7 @@ const downloadFor = async (m, btn, kind) => {
   try {
     const d = await api(`/api/mp/dashboard/team/${encodeURIComponent(m.id)}/pass`)
     if (kind === 'pass') {
-      await loadScript('/js/vendor/qrcode-generator.js?v=20261029'); await loadScript('/js/pass-render.js?v=20261102c')
+      await loadScript('/js/vendor/qrcode-generator.js?v=20261029'); await loadScript('/js/pass-render.js?v=20261112b')
       const res = await window.BhaiPass.download(d.user, { token: d.token })
       if (res && (res.photoFailed || res.qrFailed)) throw new Error(res.photoFailed ? `${fullName(m)}'s photo could not be loaded. Upload it again, then try.` : 'The QR code could not be drawn. Please try again.')
       showToast(`${fullName(m)}'s pass is downloaded`)

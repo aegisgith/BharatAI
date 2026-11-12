@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { organiserTeam, cleanOwnerName, teamMemberNamed } from '../lib/team'
 
 type Bindings = {
   DB: D1Database
@@ -2210,7 +2211,7 @@ mp.get('/api/mp/admin/teams', async (c) => {
     const lastAsked = askedOf.get(id) || null
     const unsub = emails.length > 0 && emails.every(m => unsubSet.has(m.trim().toLowerCase()))
     teams.push({
-      exhibitor_id: Number(e.id), company_name: e.company_name, booth: e.booth_number || allow.booths.join(', '), packages: allow.packages, contact_name: allow.contact_name, owner_name: allow.owner_name,
+      exhibitor_id: Number(e.id), company_name: e.company_name, booth: e.booth_number || allow.booths.join(', '), packages: allow.packages, contact_name: allow.contact_name, owner_name: allow.owner_name, owner_email: allow.owner_email,
       passes: allow.passes, passes_source: allow.source, used: teamUses(members), contacts: emails, last_asked: lastAsked,
       members: members.map(teamMemberJson),
       speakers: members.filter(m => Number(m.speaker)).length, photos_missing: members.filter(m => !m.photo_url).length,
@@ -2220,6 +2221,8 @@ mp.get('/api/mp/admin/teams', async (c) => {
   const all = teams.flatMap(t => t.members)
   return c.json({
     ready: true, teams, deadline: await teamDeadline(c),
+    // The organising team (Organiser pass holders), for the Owner box.
+    team: (await organiserTeam(c.env.DB)).map(m => ({ name: m.name })),
     summary: {
       companies: teams.length, with_team: teams.filter(t => t.members.length).length, asked: teams.filter(t => t.last_asked).length,
       people: all.length, with_pass: all.filter(m => m.pass && !/visitor/i.test(m.pass)).length, photos_missing: all.filter(m => !m.photo_url).length,
@@ -2254,6 +2257,46 @@ mp.put('/api/mp/admin/teams/:exhibitorId/passes', async (c) => {
   const after = await teamAllowance(c, ex.id)
   await auditAdmin(c, admin, 'marketplace.team-passes', ex.id, { company: ex.company_name, from: before.passes, to: after.passes, source: after.source }, 'exhibitor')
   return c.json({ success: true, passes: after.passes, passes_source: after.source })
+})
+
+// Who at Bharat AI Innovation looks after an exhibitor (organiser, 12 Nov 2026: the
+// team are the exhibitors' account managers). The email is where the exhibitor sends
+// their artwork, so it is the work address the booking sheet already gave that person
+// when there is one (same name, or same first and last name: the sheet has "Aswin
+// Krishna Kumar" where the team list has "Aswin Kumar"), else their own on the team.
+async function ownerEmailFor(c: any, name: string): Promise<string> {
+  const rows = ((await c.env.DB.prepare(
+    "SELECT owner_name, owner_email, COUNT(*) AS n FROM exhibitor_team_settings WHERE TRIM(owner_email) <> '' GROUP BY 1, 2 ORDER BY 3 DESC"
+  ).all().catch(() => ({ results: [] }))).results || []) as any[]
+  const words = (v: any) => cleanOwnerName(v).toLowerCase().split(' ').filter(Boolean)
+  const want = words(name)
+  const exact = rows.find(r => words(r.owner_name).join(' ') === want.join(' '))
+  if (exact) return String(exact.owner_email).trim().toLowerCase()
+  if (want.length >= 2) {
+    const ends = rows.filter(r => { const w = words(r.owner_name); return w.length >= 2 && w[0] === want[0] && w[w.length - 1] === want[want.length - 1] })
+    const emails = [...new Set(ends.map(r => String(r.owner_email).trim().toLowerCase()))]
+    if (emails.length === 1) return emails[0]
+  }
+  return teamMemberNamed(await organiserTeam(c.env.DB), name)?.email || ''
+}
+
+// { owner_name: 'Ujwala Jangam' } gives them the exhibitor; '' gives it to nobody.
+mp.put('/api/mp/admin/teams/:exhibitorId/owner', async (c) => {
+  const admin = await marketplaceAdmin(c)
+  if (!admin) return c.json({ error: 'Admin required' }, 403)
+  if (!(await teamReady(c))) return c.json({ error: 'Teams need migration 0050 on the database first' }, 503)
+  const ex = await adminTeamExhibitor(c)
+  if (!ex) return c.json({ error: 'Exhibitor not found' }, 404)
+  const body = ((await c.req.json().catch(() => ({}))) || {}) as any
+  const name = cleanOwnerName(body.owner_name)
+  const before = await teamAllowance(c, ex.id)
+  const email = name ? await ownerEmailFor(c, name) : ''
+  if (before.owner_name === name && before.owner_email === email) return c.json({ success: true, owner_name: name, owner_email: email, changed: false })
+  // The sheet's booth details and the number of passes on the same row stay as they are.
+  await c.env.DB.prepare('INSERT INTO exhibitor_team_settings (exhibitor_id, owner_name, owner_email, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP) ON CONFLICT(exhibitor_id) DO UPDATE SET owner_name = excluded.owner_name, owner_email = excluded.owner_email, updated_at = CURRENT_TIMESTAMP')
+    .bind(ex.id, name, email).run()
+  await auditAdmin(c, admin, 'marketplace.team-owner', ex.id, { company: ex.company_name, from: before.owner_name || '(nobody)', to: name || '(nobody)', email }, 'exhibitor')
+  return c.json({ success: true, owner_name: name, owner_email: email, changed: true })
 })
 
 mp.post('/api/mp/admin/teams/:exhibitorId/settle', async (c) => {

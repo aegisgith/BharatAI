@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { organiserTeam, ownersOf, setOwner, clearOwner, isOwnerKind } from '../lib/team'
 
 // ==================== CONFERENCE MANAGER (12 Nov 2026) ====================
 //
@@ -544,14 +545,17 @@ conf.get('/api/admin/events/:id/conference', async (c) => {
   const eventId = Number(c.req.param('id')) || 1
   forgetNotYet()
   const r = await adminReady(c)
-  const [event, speakers, halls, talks, events] = await Promise.all([
+  const [event, speakers, halls, talks, events, team, sessionOwners, speakerOwners] = await Promise.all([
     one(c, 'SELECT id, title, venue, start_date, end_date FROM events WHERE id = ?', eventId),
     all(c, 'SELECT id, slug, name, role, organisation, topic, photo_url, bio, email, phone, linkedin_url, is_featured, is_published, sort_order, updated_at FROM speakers WHERE event_id = ? ORDER BY sort_order, id', eventId),
     hallsFor(c, eventId, r.halls),
     talksFor(c, eventId),
     all(c, 'SELECT e.id, e.title, e.venue, e.start_date, e.end_date, (SELECT COUNT(*) FROM sessions s WHERE s.event_id = e.id) AS sessions FROM events e ORDER BY e.start_date, e.id'),
+    // The organising team (Organiser pass holders) and who looks after what.
+    organiserTeam(c.env.DB), ownersOf(c.env.DB, 'session'), ownersOf(c.env.DB, 'speaker'),
   ])
   const sessions = await sessionsWithSpeakers(c, eventId, speakers, r)
+  for (const s of sessions) s.owner = sessionOwners.get(Number(s.id))?.name || ''
   // Rooms a session names that no hall row has, so nothing scheduled goes missing.
   const named = new Set(halls.map((h: any) => h.name))
   for (const s of sessions) {
@@ -578,6 +582,7 @@ conf.get('/api/admin/events/:id/conference', async (c) => {
   const outSpeakers = speakers.map((s: any) => ({
     ...s, pass: passes.get(String(s.email || '').trim().toLowerCase()) || null,
     announced: announced.get(Number(s.id)) || null, slots: slotCount.get(Number(s.id)) || 0,
+    owner: speakerOwners.get(Number(s.id))?.name || '',
   }))
 
   const byId = new Map(speakers.map((s: any) => [Number(s.id), s]))
@@ -608,7 +613,34 @@ conf.get('/api/admin/events/:id/conference', async (c) => {
     talks: { total: talks.length, on_programme: linked.size, unplaced },
     events, words: wordsFor(event),
     session_types: SESSION_TYPES, speaker_roles: SPEAKER_ROLES,
+    team: team.map(m => ({ name: m.name })),
   })
+})
+
+// ---------- who looks after a speaker or a session ----------
+
+// The owner a save carries, when it carries one: 'owner' in the body, '' for nobody.
+// Never fails the save it rides on; the audit log records a real change.
+async function saveOwnerFrom(c: any, kind: 'session' | 'speaker', id: number, b: any, label: string) {
+  if (!b || !('owner' in b)) return
+  try {
+    const r = await setOwner(c.env.DB, kind, id, b.owner, await organiserTeam(c.env.DB))
+    if (r.changed) await audit(c, kind + '.owner', kind, id, { name: label, from: r.before?.name || '(nobody)', to: r.after?.name || '(nobody)' })
+  } catch { /* the speaker or session is saved; the owner can be set again from the list */ }
+}
+
+// One owner, from the lists' own boxes: { kind: 'speaker' | 'session', id, owner }.
+conf.put('/api/admin/conference/owner', async (c) => {
+  const b = await c.req.json().catch(() => ({})) as any
+  const id = Number(b.id)
+  if (!isOwnerKind(b.kind) || !Number.isInteger(id) || id <= 0) return c.json({ error: 'Say which speaker or session.' }, 400)
+  const row = b.kind === 'speaker'
+    ? await one(c, 'SELECT id, name AS label FROM speakers WHERE id = ?', id)
+    : await one(c, 'SELECT id, title AS label FROM sessions WHERE id = ?', id)
+  if (!row) return c.json({ error: 'That ' + b.kind + ' is not on the list any more. Reload the page.' }, 404)
+  const r = await setOwner(c.env.DB, b.kind, id, b.owner, await organiserTeam(c.env.DB))
+  if (r.changed) await audit(c, b.kind + '.owner', b.kind, id, { name: row.label, from: r.before?.name || '(nobody)', to: r.after?.name || '(nobody)' })
+  return c.json({ success: true, owner: r.after?.name || '', changed: r.changed })
 })
 
 // The event's own days, from its row.
@@ -747,6 +779,7 @@ conf.post('/api/admin/speakers', async (c) => {
     .bind(eventId, slug, ...Object.values(set)).run()
   const id = res.meta.last_row_id
   await audit(c, 'speaker.create', 'speaker', id, { name: set.name, organisation: set.organisation || '', published: set.is_published })
+  await saveOwnerFrom(c, 'speaker', Number(id), b, set.name)
   return c.json({ success: true, id, slug }, 201)
 })
 
@@ -757,6 +790,7 @@ conf.put('/api/admin/speakers/:id', async (c) => {
   if (!before) return c.json({ error: 'That speaker is not on the list any more. Reload the page.' }, 404)
   const { set, error } = speakerFields(b)
   if (error) return c.json({ error }, 400)
+  await saveOwnerFrom(c, 'speaker', id, b, before.name)
   if (!Object.keys(set).length) return c.json({ success: true, unchanged: true })
   if (set.email && set.email !== String(before.email || '').toLowerCase()) {
     const dup = await one(c, 'SELECT id, name FROM speakers WHERE event_id = ? AND LOWER(email) = ? AND id != ?', before.event_id, set.email, id)
@@ -783,6 +817,7 @@ conf.delete('/api/admin/speakers/:id', async (c) => {
   const sessionIds = await sessionIdsOfSpeaker(c, Number(before.event_id), id, was)
   if (r.links) await c.env.DB.prepare('DELETE FROM session_speakers WHERE speaker_id = ?').bind(id).run()
   await c.env.DB.prepare('DELETE FROM speakers WHERE id = ?').bind(id).run()
+  await clearOwner(c.env.DB, 'speaker', id)
   // Their name leaves each session's line; everyone else on it stays.
   for (const sid of sessionIds) await recomposeSession(c, sid, was)
   await audit(c, 'speaker.delete', 'speaker', id, { name: before.name, organisation: before.organisation || '', sessions: sessionIds })
@@ -1067,6 +1102,7 @@ conf.post('/api/admin/sessions', async (c) => {
   ).bind(eventId, v.row.title, v.row.description, line.speaker_name, line.speaker_title, v.row.speaker_avatar, v.row.session_type, v.row.track, v.row.room, v.row.start_time, v.row.end_time, v.row.capacity).run()
   const id = Number(res.meta.last_row_id)
   await writeSessionExtras(c, id, v, r)
+  await saveOwnerFrom(c, 'session', id, b, v.row.title)
   const talk = await syncLinkedTalk(c, eventId, { id, title: v.row.title, speaker_name: line.speaker_name, start_time: v.row.start_time, end_time: v.row.end_time, room: v.row.room })
   await audit(c, 'session.create', 'session', id, { title: v.row.title, start_time: v.row.start_time, room: v.row.room, status: v.status, speakers: v.people.map((p: any) => p.name), clashes_accepted: clashes.length })
   return c.json({ id, success: true, clashes, talk_synced: talk }, 201)
@@ -1115,6 +1151,7 @@ conf.put('/api/admin/sessions/:id', async (c) => {
     session_type: v.row.session_type, track: v.row.track, room: v.row.room, start_time: v.row.start_time, end_time: v.row.end_time, capacity: v.row.capacity }
   await c.env.DB.prepare('UPDATE sessions SET ' + Object.keys(after).map(k => k + ' = ?').join(', ') + ' WHERE id = ?').bind(...Object.values(after), id).run()
   await writeSessionExtras(c, id, v, r)
+  await saveOwnerFrom(c, 'session', id, b, v.row.title)
   const talk = await syncLinkedTalk(c, eventId, { id, title: after.title, speaker_name: after.speaker_name, start_time: after.start_time, end_time: after.end_time, room: after.room })
   await audit(c, 'session.update', 'session', id, { title: v.row.title, status: v.status, changes: hooks.changedFields ? hooks.changedFields(before, after) : Object.keys(after), clashes_accepted: clashes.length })
   return c.json({ success: true, clashes, talk_synced: talk })
@@ -1127,6 +1164,7 @@ conf.delete('/api/admin/sessions/:id', async (c) => {
   if (r.links) await c.env.DB.prepare('DELETE FROM session_speakers WHERE session_id = ?').bind(id).run()
   if (r.drafts) await c.env.DB.prepare('DELETE FROM session_admin WHERE session_id = ?').bind(id).run()
   await c.env.DB.prepare('DELETE FROM sessions WHERE id = ?').bind(id).run()
+  await clearOwner(c.env.DB, 'session', id)
   await audit(c, 'session.delete', 'session', id, before || {})
   return c.json({ success: true })
 })

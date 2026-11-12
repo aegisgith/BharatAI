@@ -321,6 +321,26 @@ if (linkAllBtn) linkAllBtn.addEventListener('click', () => runPaced(linkAllBtn, 
 // the passes issued from it. The organisers ask for the list, make exceptions to the
 // number of passes, and download everyone for the badge desk and the speaker cards.
 let teamsAdmin = []
+// Who on the organising team looks after each exhibitor (12 Nov 2026): the team is
+// everyone holding the Organiser pass; a name from the booking sheet that is not on
+// it is still offered, so nothing changes until someone chooses.
+let teamNames = []
+let teamOwnerFilter = ''
+const teamOwnerOptions = (current) => {
+  const names = teamNames.slice()
+  if (current && !names.includes(current)) names.unshift(current)
+  return `<option value="">Nobody yet</option>${names.map(n => `<option value="${esc(n)}"${n === current ? ' selected' : ''}>${esc(n)}</option>`).join('')}`
+}
+const teamOwnerFilterHtml = () => {
+  const names = [...new Set(teamNames.concat(teamsAdmin.map(t => t.owner_name).filter(Boolean)))].sort((a, b) => a.localeCompare(b))
+  const count = (fn) => teamsAdmin.filter(fn).length
+  return `<label class="text-sm" style="display:inline-flex;align-items:center;gap:8px;margin:0 0 10px;color:#475467">Looked after by
+    <select id="team-owner-filter" style="width:auto;padding:5px 8px;font-size:13px;border:1px solid #d6daea;border-radius:8px;background:#fff;color:inherit">
+      <option value="">Everyone (${num(teamsAdmin.length)})</option>
+      <option value="__none"${teamOwnerFilter === '__none' ? ' selected' : ''}>Nobody yet (${num(count(t => !t.owner_name))})</option>
+      ${names.map(n => `<option value="${esc(n)}"${teamOwnerFilter === n ? ' selected' : ''}>${esc(n)} (${num(count(t => t.owner_name === n))})</option>`).join('')}
+    </select></label>`
+}
 const TEAM_PHOTO_OK = (u) => /^\/api\/mp\/uploads\/\d+$/.test(String(u || '')) || /^\/images\/talks\/[a-z0-9-]+\.webp$/.test(String(u || ''))
 const teamPassChip = (m) => (m.pass && !/visitor/i.test(m.pass))
   ? `<span class="dash-badge dash-badge--green">${esc(m.own_pass ? 'Own: ' + m.pass : m.pass)}</span>`
@@ -337,6 +357,7 @@ const loadTeams = async () => {
       return
     }
     teamsAdmin = d.teams || []
+    teamNames = (d.team || []).map(m => String(m.name || '')).filter(Boolean)
     const dl = document.getElementById('team-deadline'); if (dl && document.activeElement !== dl) dl.value = d.deadline || ''
     const s = d.summary || {}
     const sum = document.getElementById('team-summary')
@@ -344,13 +365,15 @@ const loadTeams = async () => {
     const notAsked = teamsAdmin.filter(t => t.can_ask && !t.last_asked).length
     if (askAll) { askAll.disabled = !notAsked; askAll.innerHTML = `<i class="fas fa-paper-plane mr-1"></i> Ask everyone not asked yet (${notAsked})` }
     if (!teamsAdmin.length) { c.innerHTML = '<p class="text-slate-400">No exhibitors yet.</p>'; return }
-    c.innerHTML = `<table class="dash-table"><thead><tr><th>Company</th><th>Booth</th><th>Contact</th><th>Passes</th><th>Team</th><th>Asked</th><th>Actions</th></tr></thead><tbody>${teamsAdmin.map(t => {
+    const shown = teamsAdmin.filter(t => !teamOwnerFilter || (teamOwnerFilter === '__none' ? !t.owner_name : t.owner_name === teamOwnerFilter))
+    c.innerHTML = `${teamOwnerFilterHtml()}${shown.length ? '' : '<p class="text-slate-400">No exhibitor here yet.</p>'}<table class="dash-table"${shown.length ? '' : ' hidden'}><thead><tr><th>Company</th><th>Booth</th><th>Contact</th><th>Looked after by</th><th>Passes</th><th>Team</th><th>Asked</th><th>Actions</th></tr></thead><tbody>${shown.map(t => {
       const id = num(t.exhibitor_id)
       const passes = t.passes === null || t.passes === undefined ? '<span class="dash-badge dash-badge--yellow">Not set</span>' : `${num(t.used)} of ${num(t.passes)}${t.passes_source === 'set' ? ' <span class="text-xs text-slate-400">(set by you)</span>' : ''}`
       return `<tr>
         <td class="text-sm font-medium">${esc(t.company_name)}<div class="text-xs text-slate-400">${esc((t.packages || []).join(', '))}</div></td>
         <td class="text-sm">${esc(t.booth || '—')}</td>
         <td class="text-xs">${esc((t.contacts || []).join(', ') || '—')}</td>
+        <td class="text-xs"><select style="width:auto;max-width:180px;padding:5px 8px;font-size:12.5px;border:1px solid #d6daea;border-radius:8px;background:#fff;color:inherit" data-team-owner="${id}" aria-label="${esc('Who looks after ' + t.company_name)}" title="${esc(t.owner_email ? 'Artwork goes to ' + t.owner_email : 'Who on the team looks after them')}">${teamOwnerOptions(t.owner_name || '')}</select></td>
         <td class="text-sm">${passes} <button class="dash-action-btn" style="display:inline-flex;vertical-align:middle" title="Change the number of passes" data-team-passes="${id}"><i class="fas fa-pen"></i></button></td>
         <td class="text-sm">${num(t.members.length)} ${t.members.length === 1 ? 'person' : 'people'}${t.speakers ? ` · ${num(t.speakers)} on stage` : ''}${t.photos_missing ? `<div class="text-xs" style="color:#92400E">${num(t.photos_missing)} photo${t.photos_missing === 1 ? '' : 's'} missing</div>` : ''}</td>
         <td class="text-xs text-slate-400">${t.last_asked ? fmtDate(t.last_asked) : '—'}</td>
@@ -359,7 +382,7 @@ const loadTeams = async () => {
           : `<span class="text-xs text-slate-500" style="align-self:center">${esc(t.ask_reason)}</span>`}
           <button class="dash-action-btn" title="Issue passes now" data-team-settle="${id}"><i class="fas fa-id-badge text-emerald-400"></i></button>
           ${t.members.length ? `<button class="dash-action-btn" title="Show the team" data-team-show="${id}"><i class="fas fa-users"></i></button>` : ''}</div></td></tr>
-        <tr class="hidden" data-team-detail="${id}"><td colspan="7"><table class="dash-table team-admin-members"><thead><tr><th></th><th>Name</th><th>Designation · Company</th><th>Email · Mobile</th><th>Role</th><th>Pass</th><th></th></tr></thead><tbody>${t.members.map(m => `<tr>
+        <tr class="hidden" data-team-detail="${id}"><td colspan="8"><table class="dash-table team-admin-members"><thead><tr><th></th><th>Name</th><th>Designation · Company</th><th>Email · Mobile</th><th>Role</th><th>Pass</th><th></th></tr></thead><tbody>${t.members.map(m => `<tr>
           <td>${TEAM_PHOTO_OK(m.photo_url) ? `<a href="${esc(m.photo_url)}" target="_blank" rel="noopener"><img class="team-admin-photo" src="${esc(m.photo_url)}" alt=""></a>` : '<span class="dash-badge dash-badge--yellow">No photo</span>'}</td>
           <td>${esc(`${m.first_name} ${m.last_name}`.trim())}${safeUrl(m.linkedin_url) ? ` <a href="${esc(safeUrl(m.linkedin_url))}" target="_blank" rel="noopener" title="LinkedIn"><i class="fab fa-linkedin"></i></a>` : ''}</td>
           <td>${esc([m.designation, m.company].filter(Boolean).join(' · '))}</td>
@@ -372,6 +395,22 @@ const loadTeams = async () => {
 }
 
 const teamOf = (id) => teamsAdmin.find(t => num(t.exhibitor_id) === num(id))
+// The Owner box on a row, and the filter above the table.
+main.addEventListener('change', async (e) => {
+  if (e.target && e.target.id === 'team-owner-filter') { teamOwnerFilter = e.target.value; await loadTeams(); return }
+  const box = e.target.closest && e.target.closest('[data-team-owner]')
+  if (!box) return
+  const t = teamOf(box.getAttribute('data-team-owner')); if (!t) return
+  box.disabled = true
+  try {
+    const r = await api(`/api/mp/admin/teams/${num(t.exhibitor_id)}/owner`, { method: 'PUT', body: JSON.stringify({ owner_name: box.value }) })
+    t.owner_name = r.owner_name || ''; t.owner_email = r.owner_email || ''
+    showToast(r.owner_name ? `${r.owner_name} now looks after ${t.company_name}${r.owner_email ? ` (artwork to ${r.owner_email})` : ''}` : `Nobody looks after ${t.company_name} now`)
+    if (teamOwnerFilter) await loadTeams()
+    else box.title = t.owner_email ? 'Artwork goes to ' + t.owner_email : 'Who on the team looks after them'
+  } catch (err) { showToast(err.message, true); box.value = t.owner_name || '' }
+  box.disabled = false
+})
 main.addEventListener('click', async (e) => {
   const show = e.target.closest('[data-team-show]')
   if (show) { const row = document.querySelector(`[data-team-detail="${num(show.getAttribute('data-team-show'))}"]`); if (row) row.classList.toggle('hidden'); return }

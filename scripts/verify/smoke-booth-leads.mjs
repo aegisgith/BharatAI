@@ -304,7 +304,7 @@ check('the app has the workshop certificate button and loads the partners', /loa
 r = await hit('GET', '/marketplace/dashboard');
 check('the dashboard has the Leads screen', ['data-section="leads"', 'id="leads-list"', 'id="leads-csv"', 'href="/exhibitor/scan"', 'marketplace-dashboard.js?v=10', 'id="dash-delhi"'].every(m => r.text.includes(m)), '');
 r = await hit('GET', '/marketplace/admin');
-check('the admin page has the exhibitor-list switch', ['id="directory-card"', 'marketplace-admin.js?v=13', 'data-section="partners"', 'id="partners-rows"', 'id="delhi-on"', 'id="delhi-ex-cta"', 'id="delhi-save"', 'Shown in the app'].every(m => r.text.includes(m)), '');
+check('the admin page has the exhibitor-list switch', ['id="directory-card"', 'marketplace-admin.js?v=14', 'data-section="partners"', 'id="partners-rows"', 'id="delhi-on"', 'id="delhi-ex-cta"', 'id="delhi-save"', 'Shown in the app'].every(m => r.text.includes(m)), '');
 r = await hit('GET', '/app.js');
 check('the app: Scan a badge in the Lead Console, 8-minute talks, no dead floor-plan button', /action === 'leads'|act === 'leads'/.test(r.text) && /8-minute presentations/.test(r.text) && !/10-minute presentations/.test(r.text) && !/showBoothPackages/.test(r.text), '');
 r = await hit('GET', '/app');

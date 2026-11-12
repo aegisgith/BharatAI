@@ -27,9 +27,16 @@
     // moved to Exhibitor, Organiser, Jury and the rest in the admin panel still
     // downloaded a pass that said VISITOR PASS.
     exhibitor: { label: 'EXHIBITOR PASS', hi: 'प्रदर्शक पास',     c1: '#E4599C', c2: '#c23f80', edge: 'rgba(228,89,156,0.50)',  inner: 'rgba(228,89,156,0.28)', top: '#2e0a1d' },
-    organiser: { label: 'ORGANISER',     hi: 'आयोजक',            c1: '#5C6BC0', c2: '#3949AB', edge: 'rgba(92,107,192,0.55)',  inner: 'rgba(92,107,192,0.30)', top: '#10163a' },
+    // Black and saffron (organiser, 12 Nov 2026): it was indigo, which read as the
+    // blue Visitor or the violet Academic pass across a hall. No other pass is dark.
+    organiser: { label: 'ORGANISER',     hi: 'आयोजक',            c1: '#2A2A30', c2: '#0B0B0D', edge: '#FF7A00',                inner: 'rgba(255,122,0,0.38)',  top: '#1c1c20', ink: true },
     jury:     { label: 'JURY',          hi: 'निर्णायक मंडल',      c1: '#D64545', c2: '#a83232', edge: 'rgba(214,69,69,0.50)',   inner: 'rgba(214,69,69,0.28)',  top: '#2e0c0c' },
     media:    { label: 'MEDIA PASS',    hi: 'मीडिया पास',         c1: '#00A3C4', c2: '#007f99', edge: 'rgba(0,163,196,0.50)',   inner: 'rgba(0,163,196,0.28)',  top: '#04232b' },
+    // 12 Nov 2026: approved creators on /media-pass (Admin, Media & Influencer).
+    influencer: { label: 'INFLUENCER PASS', hi: 'इन्फ्लुएंसर पास', c1: '#9C27B0', c2: '#7B1FA2', edge: 'rgba(156,39,176,0.50)', inner: 'rgba(156,39,176,0.28)', top: '#24082b' },
+    // 12 Nov 2026: the paid Student Pass (Rs 999, one workshop), split from Academic.
+    // Raspberry, not teal: the workshop desk must not take it for a Premium Delegate.
+    student:  { label: 'STUDENT PASS',  hi: 'छात्र पास',          c1: '#AD1457', c2: '#880E4F', edge: 'rgba(173,20,87,0.55)',   inner: 'rgba(173,20,87,0.30)',  top: '#2a0716' },
     investor: { label: 'INVESTOR PASS', hi: 'निवेशक पास',         c1: '#C8803E', c2: '#9c5f27', edge: 'rgba(200,128,62,0.50)',  inner: 'rgba(200,128,62,0.28)', top: '#2b1a0a' },
     startup:  { label: 'STARTUP PASS',  hi: 'स्टार्टअप पास',       c1: '#7CB342', c2: '#5a8a2c', edge: 'rgba(124,179,66,0.50)',  inner: 'rgba(124,179,66,0.28)', top: '#142408' },
     staff:    { label: 'SUPPORT STAFF', hi: 'सहायक दल',           c1: '#78909C', c2: '#546E7A', edge: 'rgba(120,144,156,0.50)', inner: 'rgba(120,144,156,0.28)', top: '#141c21' }
@@ -46,11 +53,15 @@
     if (b.indexOf('premium delegate') >= 0) return 'premium';
     if (b.indexOf('delegate') >= 0) return 'delegate';
     if (b.indexOf('academic') >= 0) return 'academic';
+    // A paid Student Pass printed VISITOR PASS until this (12 Nov 2026).
+    if (b.indexOf('student') >= 0) return 'student';
     if (b.indexOf('speaker') >= 0 || r.indexOf('speaker') >= 0) return 'speaker';
     // Badge or role, the rule the social card uses, so the two agree.
     if (b.indexOf('exhibitor') >= 0 || r.indexOf('exhibitor') >= 0) return 'exhibitor';
     if (b.indexOf('organi') >= 0) return 'organiser';
     if (b.indexOf('jury') >= 0) return 'jury';
+    // Before 'media': an Influencer Pass is its own pass, not a Media Pass.
+    if (b.indexOf('influencer') >= 0) return 'influencer';
     if (b.indexOf('media') >= 0 || b.indexOf('press') >= 0) return 'media';
     if (b.indexOf('investor') >= 0) return 'investor';
     if (b.indexOf('startup') >= 0) return 'startup';
@@ -221,6 +232,7 @@
     // ---- card background ----
     var bg = ctx.createLinearGradient(0, 0, 0, canvas.height);
     if (T.gold) { bg.addColorStop(0, '#3a2c0a'); bg.addColorStop(0.4, '#1c1405'); bg.addColorStop(1, '#0b0803'); }
+    else if (T.ink) { bg.addColorStop(0, T.top); bg.addColorStop(0.55, '#0d0d10'); bg.addColorStop(1, '#060607'); }
     else { bg.addColorStop(0, T.top); bg.addColorStop(0.55, '#0a0e2a'); bg.addColorStop(1, '#080b22'); }
     ctx.fillStyle = bg; ctx.fillRect(0, 0, W, canvas.height);
 
@@ -345,11 +357,13 @@
     else { pg.addColorStop(0, T.c1); pg.addColorStop(1, T.c2); }
     ctx.fillStyle = pg; roundRect(ctx, pxx, y, pw, ph, ph / 2); ctx.fill();
     if (T.gold) { ctx.lineWidth = S; ctx.strokeStyle = '#f3d97a'; ctx.stroke(); }
+    // The black band needs its saffron edge to be seen on the dark card.
+    if (T.ink) { ctx.lineWidth = px(2); ctx.strokeStyle = T.edge; ctx.stroke(); }
     ctx.fillStyle = T.gold ? '#5a3f08' : '#ffffff'; ctx.textAlign = 'center';
     if (T.hi) {
       ctx.fillText(T.label, mid, y + px(23));
       f('500', 12, MUKTA);
-      ctx.fillStyle = T.gold ? '#5a3f08' : 'rgba(255,255,255,0.9)';
+      ctx.fillStyle = T.gold ? '#5a3f08' : T.ink ? '#FFB066' : 'rgba(255,255,255,0.9)';
       ctx.fillText(T.hi, mid, y + px(41));
     } else {
       ctx.fillText(T.label, mid, y + ph * 0.66);
