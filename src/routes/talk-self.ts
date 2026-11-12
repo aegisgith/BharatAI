@@ -236,7 +236,7 @@ talk.get('/app/my-talk', (c) => {
 <header class="ts-top"><a href="/app" class="ts-brand"><img src="/images/logo-nav.webp" alt="Bharat AI Innovation" width="120" height="36"></a><span class="ts-event">20–21 Nov 2026 · World Trade Center, Mumbai</span></header>
 <main id="ts-root" class="ts-main" aria-live="polite"><p class="ts-loading">Opening your talk…</p></main>
 <footer class="ts-foot">Questions? Write to <a href="mailto:register@bharataiinnovation.com">register@bharataiinnovation.com</a><br><a href="/app">Open the networking app</a></footer>
-<script src="/static/talk-self.js?v=20261112b"></script>
+<script src="/static/talk-self.js?v=20261112c"></script>
 </body>
 </html>`)
 })

@@ -14,7 +14,7 @@
     { k: 'speaker_photo_url', label: 'A clear photo of you', why: 'Head and shoulders. It is shown beside your talk in the event app.' },
     { k: 'topic', label: 'The title of your talk', why: 'It goes in the programme and in the event app.', max: 200 },
     { k: 'speaker_title', label: 'Your designation', why: 'It is shown under your name in the programme.', max: 120 },
-    { k: 'company', label: 'Your company name, as it should be shown', why: 'It is shown with your talk in the programme and on your pass.', max: 120 },
+    { k: 'company', label: 'Your company name, as it should be shown', why: 'It is shown with your talk in the programme and in the event app.', max: 120 },
     { k: 'speaker_bio', label: 'Two or three lines about you', why: 'The host reads this out to introduce you on stage.', max: 800, area: true },
     { k: 'speaker_phone', label: 'Your mobile number', why: 'We use it only on the day, if your time or stage changes.', max: 30, tel: true },
     { k: 'showcase', label: 'What you will show on stage', why: 'A line or two about the product or demo you will present. Optional.', max: 1000, area: true, optional: true },
