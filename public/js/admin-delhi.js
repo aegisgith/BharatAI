@@ -1,4 +1,5 @@
-/* Admin, Delhi 2027 (12 Nov 2026): partner and discount codes for Delhi passes.
+/* Admin, Delhi 2027 (12 Nov 2026): partner and discount codes for Delhi passes, and
+ * (13 Nov) the visa letter requests from /delhi-visa, which open on the Inquiries desk.
  *
  * Make a code (whose it is, the percentage off, 0 to only count sales, which passes,
  * the last day, how many paid uses), pause it, copy the partner's link (the form opens
@@ -6,7 +7,7 @@
  * The server decides every price (GET /api/delhi/code, POST /api/delhi/pay).
  *
  * The admin page loads this file the first time the section opens and calls
- * DelhiDesk.mount(element, { api, toast }). One global, DelhiDesk.
+ * DelhiDesk.mount(element, { api, toast, openInquiries }). One global, DelhiDesk.
  */
 (function (w) {
   'use strict';
@@ -16,6 +17,7 @@
   var data = null;
   var busy = false;
   var open = '';
+  var visa = null;
 
   function esc(v) {
     return String(v == null ? '' : v).replace(/[&<>"']/g, function (ch) {
@@ -67,7 +69,12 @@
     var table = codes.length
       ? '<div class="dld-wrap"><table class="dld-table"><thead><tr><th>Code</th><th class="dld-n">Off</th><th>Passes</th><th>Last day</th><th class="dld-n">Paid uses</th><th class="dld-n">Received</th><th>Status</th><th><span class="dld-sr">Actions</span></th></tr></thead><tbody>' + rows + '</tbody></table></div>'
       : (d.ready === false ? '' : '<p class="dld-note">No codes yet.</p>');
-    host.innerHTML = '<div class="dld">' + head + table + '</div>';
+    var v = visa || { total: 0, open: 0 };
+    var visaCard = '<div class="dld-card"><h2><i class="fas fa-file-signature" aria-hidden="true"></i> Visa letters</h2>'
+      + '<p class="dld-lead">Visitors from outside India ask on /delhi-visa for a letter for their visa application. Each request is on the Inquiries desk, where you reply. An e-Conference visa also needs the organiser&rsquo;s clearances from the Ministry of External Affairs and the Ministry of Home Affairs (conference.mha.gov.in).</p>'
+      + '<p class="dld-note">' + Number(v.total) + (Number(v.total) === 1 ? ' request, ' : ' requests, ') + Number(v.open) + ' open.</p>'
+      + (opts && opts.openInquiries ? '<p style="margin:10px 0 0"><button type="button" class="dld-btn" data-act="visa">Open them in Inquiries</button></p>' : '') + '</div>';
+    host.innerHTML = '<div class="dld">' + head + table + visaCard + '</div>';
     if (open) loadBuyers(open);
   }
 
@@ -88,6 +95,7 @@
   async function refresh() {
     try { data = await opts.api.get('/api/admin/delhi/codes'); }
     catch (e) { data = { codes: [] }; toast('The codes did not load: ' + (e.message || ''), 'error'); }
+    try { visa = await opts.api.get('/api/admin/delhi/visa-letters'); } catch (e) { visa = null; }
     draw();
   }
 
@@ -119,7 +127,9 @@
     if (!b || !host.contains(b) || busy) return;
     var act = b.getAttribute('data-act');
     var code = b.getAttribute('data-code');
-    if (act === 'copy') {
+    if (act === 'visa') {
+      if (opts.openInquiries) opts.openInquiries('visa_letter');
+    } else if (act === 'copy') {
       var link = b.getAttribute('data-link');
       try { await navigator.clipboard.writeText(link); toast('Copied the link for ' + code + '.'); }
       catch (err) { w.prompt('Copy the link for ' + code + ':', link); }

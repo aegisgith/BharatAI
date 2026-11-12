@@ -28,10 +28,11 @@
     meeting_room:       { label: 'Boardroom', icon: 'fa-door-open', group: 'other' },
     general:            { label: 'General', icon: 'fa-question-circle', group: 'other' },
     other:              { label: 'Other', icon: 'fa-ellipsis-h', group: 'other' },
-    delhi_pass:         { label: 'Delhi free pass', icon: 'fa-ticket', group: 'other' }
+    delhi_pass:         { label: 'Delhi free pass', icon: 'fa-ticket', group: 'other' },
+    visa_letter:        { label: 'Visa letter (Delhi)', icon: 'fa-file-signature', group: 'other' }
   };
   var TYPE_ORDER = ['sponsorship', 'booth_inquiry', 'exhibition', 'group_registration', 'government', 'pass_upgrade',
-    'workshop_partner', 'speaking', 'media', 'meeting_room', 'general', 'other'];
+    'workshop_partner', 'speaking', 'media', 'meeting_room', 'general', 'other', 'visa_letter'];
   var STATUS = {
     'new': 'New', responded: 'Replied', in_progress: 'In talks', won: 'Won', lost: 'Lost', closed: 'Closed', waitlisted: 'Waitlisted'
   };

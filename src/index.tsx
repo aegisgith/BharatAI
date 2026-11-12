@@ -21517,6 +21517,117 @@ app.get('/api/admin/delhi/passes', async (c) => {
   return c.json({ results: results || [] })
 })
 
+// ---- Delhi 2027: a letter for a visa application (13 Nov 2026) ----
+//
+// The organiser asked for help for visitors from outside India: /delhi has a "Coming from
+// outside India" section, and /delhi-visa asks for a letter. A request is an enquiry of
+// type visa_letter on the Inquiries desk; the team decides and writes the letter. Nothing
+// here promises a visa or a clearance: an e-Conference visa also needs the organiser's
+// clearances (MEA political, MHA event, conference.mha.gov.in), which only the organiser
+// can apply for. No passport number is asked for; the team asks when it writes the letter.
+const VISA_LETTER_TYPE = 'visa_letter'
+const VISA_LETTER_ROLES: Record<string, string> = { bought: 'Has bought a Delhi pass', buying: 'Going to buy a pass', exhibitor: 'Exhibiting', speaker: 'Speaking', partner: 'With a partner or sponsor', undecided: 'Not decided yet' }
+const VISA_LETTER_PER_IP_HOUR = 20
+
+function visaLetterApplicantHtml(p: { ref: string; name: string; nationality: string; country: string; company: string; role: string }): string {
+  const e = (v: any) => escEmail(v)
+  const line = (k: string, v: string) => `<tr><td style="padding:7px 12px 7px 0;color:#666;font-size:13px;vertical-align:top;white-space:nowrap;">${k}</td><td style="padding:7px 0;font-size:13.5px;color:#1E2140;font-weight:bold;">${e(v)}</td></tr>`
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#f5f5f5;font-family:Arial,sans-serif;">
+    <div style="max-width:600px;margin:20px auto;background:#fff;border-radius:12px;overflow:hidden;">
+      ${emailBrandHeader('We have your request', DELHI_WHEN)}
+      <div style="padding:26px 24px;">
+        <p style="margin:0 0 8px;font-size:16px;font-weight:bold;color:#1E2140;">Hello ${e(String(p.name).split(/\s+/)[0])},</p>
+        <p style="margin:0 0 18px;font-size:14px;line-height:1.6;color:#444;">We have your request for a letter for your visa application to Bharat AI Innovation Delhi 2027. Our team will reply by email.</p>
+        <table style="width:100%;border-collapse:collapse;margin:0 0 18px;">
+          ${line('Reference', p.ref)}
+          ${line('Name as in passport', p.name)}
+          ${line('Nationality', p.nationality)}
+          ${line('Travelling from', p.country)}
+          ${line('Organisation', p.company)}
+          ${line('Your part', p.role)}
+          ${line('Dates', 'Wednesday 28 and Thursday 29 July 2027')}
+          ${line('Venue', 'Bharat Mandapam, Pragati Maidan, New Delhi')}
+        </table>
+        <p style="margin:0 0 4px;font-size:14px;font-weight:bold;color:#1E2140;">Meanwhile</p>
+        <p style="margin:0 0 18px;font-size:14px;line-height:1.6;color:#444;">Check which visa you need on the official site, <a href="https://indianvisaonline.gov.in/" style="color:#C84F00;">indianvisaonline.gov.in</a>. The visa is the Government of India&rsquo;s decision, so please wait for it before booking travel you cannot cancel.</p>
+        <p style="margin:0;font-size:12.5px;line-height:1.6;color:#777;">Questions? Reply to this email or write to info@bharataiinnovation.com, quoting ${e(p.ref)}.</p>
+      </div>
+    </div></body></html>`
+}
+
+app.post('/api/delhi/visa-letter', async (c) => {
+  const b = await c.req.json().catch(() => ({})) as any
+  const text = (v: unknown, max: number) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, max)
+  const name = text(b.name, 120)
+  const nationality = text(b.nationality, 60)
+  const country = text(b.country, 60)
+  const company = text(b.company, 160)
+  const job_title = text(b.job_title, 120)
+  const email = text(b.email, 160).toLowerCase()
+  const mobile = text(b.mobile, 24)
+  const role = String(b.role || '')
+  const arrival = /^\d{4}-\d{2}-\d{2}$/.test(String(b.arrival || '')) ? String(b.arrival) : ''
+  const note = String(b.note ?? '').trim().slice(0, 1000)
+
+  const missing: string[] = []
+  if (!name) missing.push('name as in your passport')
+  if (!nationality) missing.push('nationality')
+  if (!country) missing.push('country you travel from')
+  if (!company) missing.push('organisation')
+  if (!job_title) missing.push('designation')
+  if (!email) missing.push('email')
+  if (!mobile) missing.push('mobile number')
+  if (missing.length) return c.json({ error: 'Please add your ' + humanList(missing) + '.', missing }, 400)
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return c.json({ error: 'Please check your email. It should look like name@example.com.' }, 400)
+  if (mobile.replace(/\D/g, '').length < 8) return c.json({ error: 'Please add your mobile number with its country code.' }, 400)
+  const typo = emailTypo(email)
+  if (typo) return c.json({ error: typo.reason, code: 'email_typo', suggestion: typo.fixed || '' }, 400)
+  if (!Object.prototype.hasOwnProperty.call(VISA_LETTER_ROLES, role)) return c.json({ error: 'Please choose your part in the event.' }, 400)
+
+  const ip = String(c.req.header('CF-Connecting-IP') || '').slice(0, 64)
+  if (ip) {
+    const recent = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM admin_audit WHERE action = 'delhi.visa' AND ip = ? AND created_at > datetime('now', '-1 hour')").bind(ip).first().catch(() => null) as any
+    if (Number(recent?.n || 0) >= VISA_LETTER_PER_IP_HOUR) return c.json({ error: 'Too many requests from this connection. Please try again in an hour, or write to info@bharataiinnovation.com.' }, 429)
+  }
+  // The same address again within a day: the same request, no second email.
+  const known = await c.env.DB.prepare("SELECT id FROM inquiries WHERE inquiry_type = ? AND email = ? AND created_at > datetime('now', '-1 day') ORDER BY id DESC LIMIT 1").bind(VISA_LETTER_TYPE, email).first() as any
+  if (known) return c.json({ success: true, already: true, ref: 'BHAI-INQ-' + String(known.id).padStart(5, '0') })
+
+  const roleWords = VISA_LETTER_ROLES[role]
+  const meta: Record<string, string> = { edition: 'delhi-2027', nationality, country, designation: job_title, role: roleWords, arrival, page: '/delhi-visa' }
+  const source = text(b.source, 120)
+  if (source) meta.source = source
+  const subject = 'Delhi 2027 · Visa letter · ' + nationality
+  const message = [
+    'Name as in passport: ' + name, 'Nationality: ' + nationality, 'Travelling from: ' + country,
+    'Organisation: ' + company + ', ' + job_title, 'Their part: ' + roleWords, arrival ? 'Arriving on: ' + arrival : '', note ? 'Note: ' + note : '',
+  ].filter(Boolean).join('\n')
+  const ins = await c.env.DB.prepare(
+    "INSERT INTO inquiries (event_id, inquiry_type, name, email, phone, organization, subject, message, metadata, status) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, 'new')"
+  ).bind(VISA_LETTER_TYPE, name, email, mobile, company, subject, message, JSON.stringify(meta)).run()
+  const id = ins.meta.last_row_id
+  const ref = 'BHAI-INQ-' + String(id).padStart(5, '0')
+  await audit(c, 'delhi.visa', 'inquiry', id, { nationality, role }, { actor: 'public form', kind: 'public' })
+
+  const work = (async () => {
+    await notifyTeamOfInquiry(c, { id, inquiry_type: VISA_LETTER_TYPE, name, email, phone: mobile, organization: company, subject, message })
+    await sendAdminEmail(c, email, 'We have your visa letter request: Bharat AI Innovation Delhi 2027 (' + ref + ')',
+      visaLetterApplicantHtml({ ref, name, nationality, country, company, role: roleWords }), { unsubscribe: false })
+  })().catch((e: any) => console.error('visa letter emails failed', id, e?.message))
+  let scheduled = false
+  try { c.executionCtx.waitUntil(work); scheduled = true } catch { /* no ctx */ }
+  if (!scheduled) await work
+  return c.json({ success: true, ref }, 201)
+})
+
+// Admin -> Delhi 2027: how many visa letter requests there are, and how many are open.
+app.get('/api/admin/delhi/visa-letters', async (c) => {
+  const r = await c.env.DB.prepare(
+    "SELECT COUNT(*) AS total, SUM(CASE WHEN status IN ('new', 'responded', 'in_progress') THEN 1 ELSE 0 END) AS open FROM inquiries WHERE inquiry_type = ?"
+  ).bind(VISA_LETTER_TYPE).first() as any
+  return c.json({ total: Number(r?.total || 0), open: Number(r?.open || 0) })
+})
+
 // ==================== AFTER THE EVENT: FEEDBACK AND EXHIBITOR RESULTS ====================
 //
 // 12 Nov 2026, from the gap review against MWC, Web Summit and GITEX: ask everyone who
@@ -37583,7 +37694,7 @@ function adminPageScript(): string {
     // Delhi 2027: partner and discount codes, in /js/admin-delhi.js (one global, DelhiDesk)
     // with its own stylesheet, loaded the first time the section opens. Bump
     // DELHI_DESK_VERSION on any change to either.
-    var DELHI_DESK_VERSION = '20261112a';
+    var DELHI_DESK_VERSION = '20261113a';
     var delhiDeskAssets = null;
     function delhiDeskLoadAssets() {
       if (window.DelhiDesk) return Promise.resolve();
@@ -37615,7 +37726,7 @@ function adminPageScript(): string {
         try { await delhiDeskLoadAssets(); }
         catch (err) { sectionError(host, 'delhi2027', { message: err.message }, 'loadAdminDelhi()'); return; }
       }
-      await window.DelhiDesk.mount(host, { api: api, toast: toast });
+      await window.DelhiDesk.mount(host, { api: api, toast: toast, openInquiries: function (type) { inquiryFilterType = type; switchSection('inquiries'); } });
     }
 
     // ============ AUDIENCE PROFILE ============
@@ -47903,7 +48014,7 @@ function adminPageScript(): string {
     // own stylesheet, both loaded the first time Inquiries opens. The Overview
     // board's links name a type first (openEnquiriesOfType).
     let inquiryFilterType = '';
-    var INQ_DESK_VERSION = '20261112a';
+    var INQ_DESK_VERSION = '20261113a';
     var inqDeskAssets = null;
     function openEnquiriesOfType(type) {
       inquiryFilterType = type;

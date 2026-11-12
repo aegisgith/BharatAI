@@ -180,6 +180,17 @@
 
     /* --- Bharat Mandapam --- */
     .dl-venue { background: #fff; }
+    .dl-abroad { background: var(--off-white); }
+    .dl-abroad .section-title { text-align: center; text-wrap: balance; }
+    .dl-abroad-lead { color: var(--dark-grey); font-size: 1.05rem; line-height: 1.6; margin: 0 auto 1.5rem; max-width: 52ch; text-align: center; }
+    .dl-abroad-list { display: grid; gap: 0.75rem; margin: 0 auto 1.5rem; max-width: 980px; }
+    @media (min-width: 760px) { .dl-abroad-list { grid-template-columns: 1fr 1fr; gap: 1rem; } }
+    .dl-abroad-list > div { background: #fff; border: 1px solid #E3E6F6; border-radius: 14px; padding: 1rem 1.1rem; }
+    .dl-abroad-list dt { display: flex; align-items: center; gap: 0.55rem; font-family: var(--font-display); font-weight: 800; font-size: 1.05rem; color: var(--charcoal); margin: 0 0 0.35rem; }
+    .dl-abroad-list dt i { color: var(--saffron); width: 1.1rem; text-align: center; }
+    .dl-abroad-list dd { margin: 0; color: var(--dark-grey); line-height: 1.6; font-size: 0.98rem; }
+    .dl-abroad-list dd a { color: var(--ink-orange); font-weight: 700; }
+    .dl-abroad-cta { text-align: center; }
     .dl-venue-grid { display: grid; gap: 1.75rem; }
     .dl-venue .section-title { text-align: left; margin-bottom: 0.75rem; text-wrap: balance; }
     .dl-venue-lead { color: var(--dark-grey); font-size: 1.05rem; line-height: 1.65; margin: 0 0 1.35rem; max-width: 46ch; text-wrap: pretty; }
@@ -811,6 +822,23 @@
                 <img class="day" width="1000" height="667" loading="lazy" decoding="async" src="images/delhi/mandapam-day.webp" alt="Bharat Mandapam by day, with the bronze Nataraja, flags and water gardens in front of the round hall">
                 <img class="gate" width="860" height="555" loading="lazy" decoding="async" src="images/delhi/mandapam-gate.webp" alt="The Bharat Mandapam entry gate at night, with streaks of traffic light on the road in front">
             </div>
+        </div>
+    </section>
+
+    <!-- ===== FROM OUTSIDE INDIA ===== -->
+    <section class="dl-abroad dl-sec" id="travel">
+        <div class="container">
+            <div class="reveal">
+                <h2 class="section-title">Coming from <span class="accent">outside India</span></h2>
+                <p class="dl-abroad-lead">What to know before you book your travel.</p>
+            </div>
+            <dl class="dl-abroad-list reveal reveal-delay-1">
+                <div><dt><i class="fas fa-file-signature" aria-hidden="true"></i>Visa</dt><dd>Check which visa you need on the official site, <a href="https://indianvisaonline.gov.in/" target="_blank" rel="noopener noreferrer">indianvisaonline.gov.in</a>. If your application asks for a letter from the organisers, <a href="/delhi-visa">ask us for one</a>. Please wait for your visa before booking travel you cannot cancel.</dd></div>
+                <div><dt><i class="fas fa-route" aria-hidden="true"></i>From the airport</dt><dd>Indira Gandhi International Airport (DEL) is about 18 km from Bharat Mandapam. Allow an hour by road at busy times.</dd></div>
+                <div><dt><i class="fas fa-train" aria-hidden="true"></i>By metro</dt><dd>The nearest station is Supreme Court, once called Pragati Maidan, on the Blue Line. The venue is a short walk away.</dd></div>
+                <div><dt><i class="fas fa-clock" aria-hidden="true"></i>Time and money</dt><dd>India Standard Time is UTC+5:30. Passes are priced in Indian rupees, plus 18% GST.</dd></div>
+            </dl>
+            <div class="dl-abroad-cta"><a href="/delhi-visa" class="btn btn-primary btn-sm">Ask for a visa letter <i class="fas fa-arrow-right" aria-hidden="true"></i></a></div>
         </div>
     </section>
 

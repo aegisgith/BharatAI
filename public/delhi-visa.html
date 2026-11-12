@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visa Letter · Bharat AI Innovation Delhi 2027</title>
+    <meta name="description" content="Coming to Bharat AI Innovation Delhi 2027 from outside India? Ask the organisers for a letter for your visa application.">
+    <link rel="canonical" href="https://bharataiinnovation.com/delhi-visa">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Bharat AI Innovation">
+    <meta property="og:locale" content="en_IN">
+    <meta property="og:url" content="https://bharataiinnovation.com/delhi-visa">
+    <meta property="og:title" content="Visa Letter · Bharat AI Innovation Delhi 2027">
+    <meta property="og:description" content="Coming from outside India? Ask the organisers for a letter for your visa application.">
+    <meta property="og:image" content="https://bharataiinnovation.com/images/og/delhi.jpg">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="Bharat AI Innovation Delhi 2027, 28–29 July 2027, Bharat Mandapam, New Delhi">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:image" content="https://bharataiinnovation.com/images/og/delhi.jpg">
+    <meta name="robots" content="index, follow">
+    <link rel="stylesheet" href="/css/fonts.css?v=1">
+    <link rel="stylesheet" href="/css/fa-subset.css?v=2">
+    <link rel="stylesheet" href="css/style.css?v=20261105b">
+    <link rel="icon" type="image/png" sizes="64x64" href="/images/favicon-64.png">
+    <style>
+    /* A letter for a visa application, Delhi 2027. The server checks every answer again (POST /api/delhi/visa-letter). */
+    :root { --ink-orange: #B54800; }
+    .dv { background: var(--off-white); padding: 1.25rem 0 3rem; min-height: 80vh; }
+    .dv-wrap { max-width: 640px; margin: 0 auto; padding: 0 16px; }
+    .dv-back { display: inline-block; font-size: 0.9rem; font-weight: 700; color: var(--ink-orange); margin-bottom: 0.6rem; min-height: 24px; }
+    .dv h1 { font-family: var(--font-display); font-size: clamp(1.7rem, 6vw, 2.2rem); font-weight: 800; letter-spacing: -0.02em; line-height: 1.1; color: var(--charcoal); margin: 0 0 0.3rem; text-wrap: balance; }
+    .dv-when { color: var(--dark-grey); font-size: 0.98rem; line-height: 1.45; margin: 0 0 0.6rem; }
+    .dv-lead { color: var(--charcoal); font-size: 1rem; line-height: 1.6; margin: 0 0 1.1rem; max-width: 62ch; text-wrap: pretty; }
+    .dv-lead a { color: var(--ink-orange); font-weight: 700; }
+    .dv-card { background: #fff; border: 1px solid #E3E6F6; border-radius: 16px; padding: 1.1rem; box-shadow: 0 10px 28px rgba(13,15,30,0.05); }
+    .dv-step { margin: 1.3rem 0 0.7rem; font-family: var(--font-display); font-size: 1.1rem; font-weight: 800; color: var(--charcoal); }
+    .dv-step:first-child { margin-top: 0; }
+    .dv-fields { display: grid; grid-template-columns: 1fr; gap: 0.75rem; }
+    @media (min-width: 560px) { .dv-fields { grid-template-columns: 1fr 1fr; } }
+    .dv-field { min-width: 0; }
+    .dv-field.wide { grid-column: 1 / -1; }
+    .dv-field label { display: block; font-size: 0.85rem; font-weight: 700; color: var(--charcoal); margin-bottom: 0.3rem; }
+    .dv-field label small { font-weight: 500; color: var(--dark-grey); font-size: 0.8rem; }
+    .dv-field input, .dv-field select, .dv-field textarea { width: 100%; min-height: 46px; padding: 0.5rem 0.75rem; border: 1.5px solid #D5D9EE; border-radius: 10px; font: inherit; font-size: 1rem; color: var(--charcoal); background: #fff; box-sizing: border-box; }
+    .dv-field textarea { min-height: 76px; resize: vertical; line-height: 1.45; }
+    .dv-field input:focus, .dv-field select:focus, .dv-field textarea:focus { outline: none; border-color: var(--saffron); box-shadow: 0 0 0 3px rgba(255,107,0,0.15); }
+    [aria-invalid="true"] { border-color: #D93025 !important; }
+    .dv-hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+    .dv-submit { width: 100%; justify-content: center; min-height: 52px; margin-top: 1.2rem; }
+    .dv-error { margin: 0.7rem 0 0; padding: 0.6rem 0.8rem; background: #FDECEA; color: #A0281D; border-radius: 10px; font-size: 0.9rem; font-weight: 600; line-height: 1.45; }
+    .dv-note { margin: 0.7rem 0 0; font-size: 0.8rem; line-height: 1.5; color: var(--dark-grey); text-align: center; }
+    .dv-note a { color: var(--dark-grey); text-decoration: underline; }
+    .dv-done { text-align: center; padding: 0.75rem 0.25rem; }
+    .dv-done-icon { width: 48px; height: 48px; border-radius: 50%; background: rgba(19,136,8,0.1); color: #138808; display: flex; align-items: center; justify-content: center; font-size: 1.25rem; margin: 0 auto 0.6rem; }
+    .dv-done h2 { font-family: var(--font-display); font-size: 1.35rem; font-weight: 800; color: var(--charcoal); margin: 0 0 0.4rem; }
+    .dv-done p { color: var(--dark-grey); line-height: 1.55; margin: 0 auto 0.8rem; max-width: 52ch; }
+    .dv-ref { font-weight: 800; color: var(--charcoal); }
+    </style>
+</head>
+<body>
+    <main class="dv" id="main-content">
+        <div class="dv-wrap">
+            <a href="/delhi#travel" class="dv-back">← Delhi 2027</a>
+            <h1>A letter for your visa</h1>
+            <p class="dv-when">Bharat AI Innovation Delhi 2027. 28–29 July 2027, Bharat Mandapam, New Delhi.</p>
+            <p class="dv-lead">Coming from outside India? First check which visa you need on the official site, <a href="https://indianvisaonline.gov.in/" target="_blank" rel="noopener noreferrer">indianvisaonline.gov.in</a>. If your application asks for a letter from the event organisers, tell us who you are and our team will reply by email.</p>
+            <div class="dv-card">
+                <form id="dv-form" novalidate>
+                    <p class="dv-step">About you</p>
+                    <div class="dv-fields">
+                        <div class="dv-field wide">
+                            <label for="dv-name">Your name, exactly as in your passport</label>
+                            <input id="dv-name" type="text" autocomplete="name" autocapitalize="words" maxlength="120">
+                        </div>
+                        <div class="dv-field">
+                            <label for="dv-nationality">Nationality</label>
+                            <input id="dv-nationality" type="text" autocomplete="off" maxlength="60">
+                        </div>
+                        <div class="dv-field">
+                            <label for="dv-country">Country you travel from</label>
+                            <input id="dv-country" type="text" autocomplete="country-name" maxlength="60">
+                        </div>
+                        <div class="dv-field">
+                            <label for="dv-org">Organisation</label>
+                            <input id="dv-org" type="text" autocomplete="organization" maxlength="160">
+                        </div>
+                        <div class="dv-field">
+                            <label for="dv-job">Designation</label>
+                            <input id="dv-job" type="text" autocomplete="organization-title" maxlength="120">
+                        </div>
+                        <div class="dv-field wide">
+                            <label for="dv-email">Email</label>
+                            <input id="dv-email" type="email" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" maxlength="160">
+                        </div>
+                        <div class="dv-field wide">
+                            <label for="dv-phone">Mobile, with country code</label>
+                            <input id="dv-phone" type="tel" inputmode="tel" autocomplete="tel" maxlength="24" placeholder="+44 7700 900123">
+                        </div>
+                    </div>
+                    <p class="dv-step">Your visit</p>
+                    <div class="dv-fields">
+                        <div class="dv-field wide">
+                            <label for="dv-pass">Your part in the event</label>
+                            <select id="dv-pass">
+                                <option value="">Choose one</option>
+                                <option value="bought">I have bought a Delhi pass</option>
+                                <option value="buying">I am going to buy a pass</option>
+                                <option value="exhibitor">I am exhibiting</option>
+                                <option value="speaker">I am speaking</option>
+                                <option value="partner">I am with a partner or sponsor</option>
+                                <option value="undecided">Not decided yet</option>
+                            </select>
+                        </div>
+                        <div class="dv-field">
+                            <label for="dv-arrival">Arriving on <small>(optional)</small></label>
+                            <input id="dv-arrival" type="date" min="2027-01-01" max="2027-08-31">
+                        </div>
+                        <div class="dv-field wide">
+                            <label for="dv-note">Anything else <small>(optional)</small></label>
+                            <textarea id="dv-note" maxlength="1000" placeholder="For example, colleagues travelling with you"></textarea>
+                        </div>
+                        <div class="dv-hp" aria-hidden="true">
+                            <label for="dv-website">Leave this empty</label>
+                            <input id="dv-website" type="text" tabindex="-1" autocomplete="off">
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary dv-submit" id="dv-submit">Send my request <i class="fas fa-arrow-right" aria-hidden="true"></i></button>
+                    <p class="dv-error" id="dv-error" role="alert" hidden></p>
+                    <p class="dv-note">We use these details only to answer your request. The visa itself is the Government of India&rsquo;s decision, so please wait for it before booking travel you cannot cancel. <a href="/privacy">Privacy policy</a></p>
+                </form>
+
+                <div class="dv-done" id="dv-done" hidden tabindex="-1">
+                    <div class="dv-done-icon"><i class="fas fa-check" aria-hidden="true"></i></div>
+                    <h2>Request sent</h2>
+                    <p id="dv-done-text"></p>
+                    <p>Your reference: <span class="dv-ref" id="dv-ref"></span></p>
+                    <a href="/delhi" class="btn btn-outline btn-sm">Back to the Delhi page</a>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+    // A letter for a visa application, Delhi 2027. Checked here so nobody presses Send and only
+    // then hears a box is empty; POST /api/delhi/visa-letter checks it all again.
+    (function () {
+      var form = document.getElementById('dv-form');
+      if (!form) return;
+      var byId = function (id) { return document.getElementById(id); };
+      var value = function (id) { return String(byId(id).value || '').trim(); };
+      var err = byId('dv-error');
+      var btn = byId('dv-submit');
+      var LABEL = 'Send my request <i class="fas fa-arrow-right" aria-hidden="true"></i>';
+      var params = new URLSearchParams(location.search);
+
+      function fail(msg, id) {
+        err.textContent = msg;
+        err.hidden = false;
+        Array.prototype.forEach.call(form.querySelectorAll('[aria-invalid]'), function (el) { el.removeAttribute('aria-invalid'); });
+        if (id) { var box = byId(id); box.setAttribute('aria-invalid', 'true'); box.focus(); }
+      }
+      var REQUIRED = [
+        ['dv-name', 'Please write your name as it is in your passport.'], ['dv-nationality', 'Please add your nationality.'],
+        ['dv-country', 'Please add the country you travel from.'], ['dv-org', 'Please add your organisation.'], ['dv-job', 'Please add your designation.']
+      ];
+
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        err.hidden = true;
+        for (var i = 0; i < REQUIRED.length; i++) {
+          if (!value(REQUIRED[i][0])) return fail(REQUIRED[i][1], REQUIRED[i][0]);
+        }
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value('dv-email'))) return fail('Please check your email. It should look like name@example.com.', 'dv-email');
+        var digits = value('dv-phone').replace(/[^0-9]/g, '');
+        if (digits.length < 8) return fail('Please add your mobile number with its country code.', 'dv-phone');
+        if (!value('dv-pass')) return fail('Please choose your part in the event.', 'dv-pass');
+        // Bots fill every box; people never see this one.
+        if (value('dv-website')) return;
+
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin" aria-hidden="true"></i> Sending...';
+        fetch('/api/delhi/visa-letter', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: value('dv-name'), nationality: value('dv-nationality'), country: value('dv-country'),
+            company: value('dv-org'), job_title: value('dv-job'), email: value('dv-email'), mobile: value('dv-phone'),
+            role: value('dv-pass'), arrival: value('dv-arrival'), note: value('dv-note'),
+            source: params.get('utm_source') || params.get('source') || ''
+          })
+        }).then(function (r) {
+          return r.json().catch(function () { return {}; }).then(function (d) {
+            if (!r.ok || !d.ref) throw new Error(d.error || 'We could not send that. Please try again.');
+            var first = value('dv-name').split(/\s+/)[0];
+            byId('dv-done-text').textContent = 'Thank you, ' + first + '. We have your request, and an email is on its way to ' + value('dv-email') + '. Our team will reply by email.';
+            byId('dv-ref').textContent = d.ref;
+            form.hidden = true;
+            byId('dv-done').hidden = false;
+            byId('dv-done').focus();
+          });
+        }).catch(function (x) {
+          btn.disabled = false;
+          btn.innerHTML = LABEL;
+          fail(x && x.message && x.message !== 'Failed to fetch' ? x.message : 'Could not connect. Please check your internet and try again.');
+        });
+      });
+    })();
+    </script>
+</body>
+</html>
