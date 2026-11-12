@@ -6,6 +6,7 @@ import SITE_PHOTO_FINGERPRINTS from './data/site-photo-fingerprints.json'
 import { cors } from 'hono/cors'
 import mp, { configureMarketplace, exhibitorOfCompanySession, DIRECTORY_SHOWN_SQL, INTERNAL_NOTE_RE } from './routes/marketplace'
 import conference, { configureConference, draftFilterSql, venueSelectSql, fillVenues, speakerSlots } from './routes/conference'
+import talkSelf, { configureTalkSelf, talkDetailsLink } from './routes/talk-self'
 import { signinPayIntent } from './lib/signin-pay'
 import { ccavEncrypt, ccavDecrypt, ccavRequestBody, ccavParseResponse } from './lib/ccavenue'
 import { invoicePdf } from './lib/invoice-pdf'
@@ -466,6 +467,12 @@ app.route('/', mp)
 // an admin. It also owns POST/PUT/DELETE /api/admin/sessions.
 configureConference({ sendEmail: sendAdminEmail, audit, changedFields, emailHeader: emailBrandHeader, actor: (c: any) => adminActor(c).actor, syncTalk: italkSyncFromProgramme, issueSpeakerPass })
 app.route('/', conference)
+// A speaker fills in their own Innovation Talk details (12 Nov 2026): the "a few details
+// we need" email links to /app/my-talk?t=<signed token>, no sign-in; routes/talk-self.ts,
+// page public/static/talk-self.js. It writes only what a speaker sends, never time or hall.
+configureTalkSelf({ secret: (c: any) => passTokenSecret(c), audit, hallText: (h: any) => italkHallText(h),
+  appUrl: async (c: any) => (await settingValue(c, 'app_url')) || 'https://bharataiinnovation.com/app' })
+app.route('/', talkSelf)
 
 // Marketplace page routes
 app.get('/marketplace', (c) => c.html(marketplacePageHTML()))
@@ -17622,13 +17629,20 @@ const ITALK_ASK: Record<string, { label: string; why: string }> = {
   company: { label: 'Your company name, as it should be shown', why: 'It is shown with your talk in the programme and on your pass.' },
 }
 
-function italkRequestSubject(t: any, toSpeaker: boolean): string {
+// With a link (12 Nov 2026, organiser: speakers "should be able to update by themselves
+// on the networking app rather than sending details to organisers"), the email asks
+// them to add the details on their own page, /app/my-talk (routes/talk-self.ts), and a
+// reply is only the fallback. Without one (no secret set), it asks for a reply as before.
+function italkRequestSubject(t: any, toSpeaker: boolean, link = ''): string {
+  if (link) return toSpeaker
+    ? 'Your Innovation Talk at Bharat AI Innovation 2026: please add your details'
+    : `Innovation Talk by ${String(t.speaker_name || '').trim() || 'your speaker'}: please add the details`
   return toSpeaker
     ? 'Your Innovation Talk at Bharat AI Innovation 2026: a few details we need'
     : `Innovation Talk by ${String(t.speaker_name || '').trim() || 'your speaker'}: a few details we need`
 }
 
-function italkRequestEmailHTML(t: any, items: string[], note: string, toSpeaker: boolean): string {
+function italkRequestEmailHTML(t: any, items: string[], note: string, toSpeaker: boolean, link = ''): string {
   const esc = (v: any) => String(v ?? '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch] as string))
   const name = String(t.speaker_name || '').trim()
   const company = String(t.company || '').trim()
@@ -17637,13 +17651,22 @@ function italkRequestEmailHTML(t: any, items: string[], note: string, toSpeaker:
   const greet = toSpeaker && name ? `Dear ${esc(name)},` : 'Hello,'
   const intro = toSpeaker
     ? 'Thank you for presenting at the Innovation Talk &amp; Showcase at Bharat AI Innovation 2026. We are getting the programme ready, and a few details for your talk are still missing.'
-    : `We are writing about the Innovation Talk by <strong>${esc(name || 'your speaker')}</strong>${company ? ` of ${esc(company)}` : ''} at Bharat AI Innovation 2026. A few details are still missing. Please pass this on to them, or reply for them.`
+    : `We are writing about the Innovation Talk by <strong>${esc(name || 'your speaker')}</strong>${company ? ` of ${esc(company)}` : ''} at Bharat AI Innovation 2026. A few details are still missing. ` +
+      (link ? 'Please pass this on to them: the button below works for whoever opens it, so they can add the details themselves. You can also fill them in for them.'
+        : 'Please pass this on to them, or reply for them.')
   const fact = (label: string, value: string) =>
     `<tr><td valign="top" style="padding:4px 12px 4px 0;font-size:12.5px;color:#888;white-space:nowrap;">${label}</td><td valign="top" style="padding:4px 0;font-size:13.5px;color:#1E2140;">${value}</td></tr>`
+  // On the page a photo is chosen there, so "attach it to your reply" goes.
+  const why = (k: string) => link ? ITALK_ASK[k].why.replace(/\s*Please attach it to your reply\.$/, '') : ITALK_ASK[k].why
   const ask = (k: string) =>
     `<tr><td width="26" valign="top" style="padding:0 0 14px;"><div style="width:8px;height:8px;border-radius:50%;background:#FF6B00;margin-top:6px;"></div></td>` +
     `<td valign="top" style="padding:0 0 14px;"><p style="margin:0 0 2px;font-size:14px;font-weight:bold;color:#1E2140;">${esc(ITALK_ASK[k].label)}</p>` +
-    `<p style="margin:0;font-size:12.5px;line-height:1.6;color:#666;">${esc(ITALK_ASK[k].why)}</p></td></tr>`
+    `<p style="margin:0;font-size:12.5px;line-height:1.6;color:#666;">${esc(why(k))}</p></td></tr>`
+  // A button that survives Outlook: a table cell with the colour, the link inside.
+  const button = link
+    ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 22px;"><tr><td style="border-radius:10px;background:#C84F00;">` +
+      `<a href="${esc(link)}" style="display:inline-block;padding:14px 26px;font-size:16px;font-weight:bold;color:#ffffff;text-decoration:none;border-radius:10px;font-family:Arial,Helvetica,sans-serif;">${toSpeaker ? 'Add my details' : 'Add the details'} &rarr;</a></td></tr></table>`
+    : ''
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
   <body style="margin:0;background:#f5f5f5;font-family:Arial,Helvetica,sans-serif;">
     <div style="max-width:600px;margin:20px auto;background:#fff;border-radius:12px;overflow:hidden;">
@@ -17661,10 +17684,14 @@ function italkRequestEmailHTML(t: any, items: string[], note: string, toSpeaker:
             ${fact('Where', hall ? esc(hall) : '<span style="color:#999;">We will confirm the stage soon</span>')}
           </table>
         </div>
-        <p style="margin:0 0 12px;font-size:14px;color:#333;">To finish the programme, please reply to this email with:</p>
+        ${link ? `<p style="margin:0 0 14px;font-size:15px;line-height:1.7;color:#333;"><strong>${toSpeaker ? 'Please add them yourself.' : 'They can add them themselves.'}</strong> It takes two minutes on a phone and goes straight into the programme. No sign-in needed.</p>
+        ${button}
+        <p style="margin:0 0 12px;font-size:14px;color:#333;">What is still missing:</p>` : `<p style="margin:0 0 12px;font-size:14px;color:#333;">To finish the programme, please reply to this email with:</p>`}
         <table style="width:100%;border-collapse:collapse;">${items.map(ask).join('')}</table>
         ${note ? `<p style="margin:4px 0 16px;font-size:13.5px;line-height:1.7;color:#333;"><strong>Also:</strong> ${esc(note).replace(/\n/g, '<br>')}</p>` : ''}
-        <p style="margin:10px 0 0;font-size:13.5px;line-height:1.7;color:#555;">Just reply to this email. If you have already sent these, thank you, and please ignore this.</p>
+        ${link
+          ? `<p style="margin:10px 0 0;font-size:13.5px;line-height:1.7;color:#555;">The same button works again if anything changes, until the event. Button not working? Just reply to this email with the details instead.</p>`
+          : `<p style="margin:10px 0 0;font-size:13.5px;line-height:1.7;color:#555;">Just reply to this email. If you have already sent these, thank you, and please ignore this.</p>`}
         <p style="margin:18px 0 0;font-size:13.5px;line-height:1.7;color:#333;">Warm regards,<br>Bharat AI Innovation team<br><span style="color:#888;">register@bharataiinnovation.com</span></p>
       </div>
       <div style="text-align:center;padding:16px;border-top:1px solid #eee;">
@@ -17690,8 +17717,10 @@ app.post('/api/admin/innovation-talks/:id/request-details', async (c) => {
   const to = String(body.to || '').trim().toLowerCase()
   if (!validEmailSyntax(to)) return c.json({ error: 'Type the email address to send it to.' }, 400)
   const toSpeaker = body.to_speaker !== false
-  const subject = italkRequestSubject(t, toSpeaker)
-  const html = italkRequestEmailHTML(t, items, note, toSpeaker)
+  // The speaker's own page for this talk (routes/talk-self.ts); '' when no secret is set.
+  const link = await talkDetailsLink(c, id)
+  const subject = italkRequestSubject(t, toSpeaker, link)
+  const html = italkRequestEmailHTML(t, items, note, toSpeaker, link)
   if (body.preview) return c.json({ preview: true, to, subject, html })
   // An operational email to a speaker, not a campaign: no unsubscribe footer.
   const sent = await sendAdminEmail(c, to, subject, html, { unsubscribe: false })
@@ -17781,7 +17810,8 @@ async function autoItalkRequests(c: any): Promise<Record<string, any>> {
   log[id] = { n: d.n + 1, at: new Date(now).toISOString() }
   await settingWrite(c, ITALK_AUTO_LOG, JSON.stringify(log))
   const toSpeaker = d.contact.source !== 'booth'
-  const sent = await sendAdminEmail(c, to, italkRequestSubject(t, toSpeaker), italkRequestEmailHTML(t, d.gaps, '', toSpeaker), { unsubscribe: false })
+  const link = await talkDetailsLink(c, Number(t.id))
+  const sent = await sendAdminEmail(c, to, italkRequestSubject(t, toSpeaker, link), italkRequestEmailHTML(t, d.gaps, '', toSpeaker, link), { unsubscribe: false })
   if (!sent.ok) {
     // Not counted, and tried again next time.
     const again = await italkAutoLog(c)
@@ -17813,6 +17843,15 @@ async function italkAutoSummary(c: any, eventId: number) {
   }
 }
 app.get('/api/admin/innovation-talks/auto', async (c) => c.json(await italkAutoSummary(c, Number(c.req.query('event_id')) || 1)))
+// The email the clock would send next, exactly, with its link. Sends nothing.
+app.get('/api/admin/innovation-talks/auto/preview', async (c) => {
+  const { due } = await italkAutoDue(c, Number(c.req.query('event_id')) || 1, Date.now())
+  if (!due.length) return c.json({ none: true })
+  const d = due[0], t = d.talk, toSpeaker = d.contact.source !== 'booth'
+  const link = await talkDetailsLink(c, Number(t.id))
+  return c.json({ to: d.contact.email, speaker: t.speaker_name || '', company: t.company || '', waiting: due.length,
+    subject: italkRequestSubject(t, toSpeaker, link), html: italkRequestEmailHTML(t, d.gaps, '', toSpeaker, link) })
+})
 app.post('/api/admin/innovation-talks/auto', async (c) => {
   const body = await c.req.json().catch(() => ({})) as any
   const on = body.on === true || body.on === 1 || body.on === '1'
@@ -45922,7 +45961,22 @@ function adminPageScript(): string {
             + (a.due ? a.due + ' speaker' + (a.due === 1 ? '' : 's') + ' would get one.' : 'Nobody would get one now.'))
         + ' Ministers and Secretaries are never emailed by itself' + (a.held && a.held.length ? ': ' + a.held.length + ' to write to yourself (' + a.held.map(function (h) { return escH(h.speaker); }).join(', ') + ').' : '.')
         + (a.sent_by_itself ? ' Sent by itself so far: ' + a.sent_by_itself + '.' : '') + '</div></div>'
+        + '<button onclick="italkAutoPreview()" class="px-4 py-2 rounded-xl text-xs font-medium glass hover:bg-white/10 transition"><i class="fas fa-eye mr-1"></i>Preview the email</button>'
         + '<button onclick="italkAutoToggle()" id="italk-auto-btn" class="px-4 py-2 rounded-xl text-xs font-medium ' + (a.on ? 'glass hover:bg-white/10' : 'bg-primary-600 hover:bg-primary-500 text-white') + ' transition">' + (a.on ? 'Turn off' : 'Turn on') + '</button></div>';
+    }
+    // What the next automatic email will say, to whom, link and all. Nothing is sent.
+    async function italkAutoPreview() {
+      var p;
+      try { p = await api.get('/api/admin/innovation-talks/auto/preview?event_id=' + EID); }
+      catch (err) { toast('Could not open the preview: ' + err.message, 'error'); return; }
+      if (!p || p.none) { toast('Nobody is due an email now, so there is nothing to preview.', 'info'); return; }
+      openModal('<h3 class="text-lg font-bold mb-1"><i class="fas fa-eye text-primary-400 mr-2"></i>The next automatic email</h3>'
+        + '<p class="text-xs text-gray-400 mb-3">To ' + escH(p.to) + ' about ' + escH(p.speaker) + (p.company ? ' of ' + escH(p.company) : '') + '. ' + (p.waiting > 1 ? (p.waiting - 1) + ' more would follow, one a minute, each with their own details. ' : '') + 'Nothing has been sent.</p>'
+        + '<p id="italk-auto-pv-subject" class="text-sm font-semibold mb-2"></p>'
+        + '<iframe id="italk-auto-pv" title="Email preview" sandbox="allow-popups allow-popups-to-escape-sandbox" style="width:100%;height:520px;border:1px solid #E4E7F2;border-radius:12px;background:#fff"></iframe>'
+        + '<div class="flex gap-2 pt-3"><button type="button" onclick="closeModal()" class="px-4 py-2.5 rounded-xl text-sm font-medium glass hover:bg-white/10">Close</button></div>');
+      document.getElementById('italk-auto-pv-subject').textContent = 'Subject: ' + p.subject;
+      document.getElementById('italk-auto-pv').srcdoc = p.html;
     }
     async function italkAutoToggle() {
       var a = italkAuto; if (!a) return;

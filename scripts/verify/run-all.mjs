@@ -132,6 +132,11 @@ const SUITES = [
   { name: 'unit: Admin Conference, each rule alone (one person however the agenda spells them, the speaker line the app splits, clashes, times in words, both hall names, the slot email and its escaping)', args: ['unit-conference.mjs'] },
   { name: 'integration: Admin Conference on real SQLite before and after 0054 (who may call it, speakers refused, added, renamed, hidden, deleted, sessions writing the line, clashes, drafts, halls, announce, slot email, photo, the real agenda)', args: ['smoke-conference.mjs'] },
   { name: 'browser: Admin Conference on a laptop and a phone (the board, a session by clicking a hall, a clash, a draft, a speaker with a photo given a slot, announce, slot email, hide, halls, list, CSV, run sheet) and the app on a phone (When and where, both hall names, nothing typed runs)', args: ['browser-conference.cjs'], harness: 'conference-harness.mjs', port: 8857, portEnv: true },
+  // A speaker fills in their own Innovation Talk details from the email's link (12 Nov 2026), at four levels.
+  { name: 'unit: a speaker\'s own talk page, each rule alone (the signed link, altered and expired, what may be saved and what never, refusals in plain words, what the page never shows)', args: ['unit-talk-self.mjs'] },
+  { name: 'integration: a speaker\'s own talk page on real SQLite (the page, the link opening its talk and no other, a save and what it never touches, refusals, the audit log, a photo, the email with the button for a speaker and a booth contact, the automatic email previewed, before 0052)', args: ['smoke-talk-self.mjs'] },
+  { name: 'system: one speaker from "please add your details" to a complete talk (the email that went, its link, everything filled in, the tab, the automatic email no longer counting her, the public list, the audit trail)', args: ['system-talk-self.mjs'] },
+  { name: 'browser: a speaker\'s own talk page on a phone and a laptop (the link from the email, Needed and In, a short mobile named, a photo, saved and back again, expired and altered links) and Admin\'s "Preview the email" for the automatic email', args: ['browser-talk-self.cjs'], harness: 'talk-self-harness.mjs', port: 8881, portEnv: true },
 ];
 
 const run = (args, opts = {}) => new Promise((resolve) => {

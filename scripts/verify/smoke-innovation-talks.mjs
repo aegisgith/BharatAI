@@ -94,7 +94,7 @@ check('email: only things a speaker can send may be asked for (time, hall, notes
 W.sent.length = 0;
 r = await W.as('POST', url, { to: 'spoc@phoebetal.test', items: ['speaker_bio', 'speaker_phone'], note: 'Please send your slides by 18 Nov.', to_speaker: false, preview: true });
 check('preview: answers with the email and sends nothing', r.status === 200 && r.json.preview && /two or three lines about you/i.test(r.json.html) && W.sent.length === 0, r.json && r.json.subject);
-check('preview: the subject names the speaker for a booth contact', r.json.subject === 'Innovation Talk by Amritesh Kumar: a few details we need', r.json.subject);
+check('preview: the subject names the speaker for a booth contact', r.json.subject === 'Innovation Talk by Amritesh Kumar: please add the details', r.json.subject);
 r = await W.as('POST', url, { to: 'SPOC@phoebetal.test', items: ['speaker_bio', 'speaker_phone'], note: 'Please send your slides by 18 Nov.', to_speaker: false, save_email: false });
 const m = W.sent[0], html = m && m.Content.Body[0].Content;
 check('send: one email, to the address typed (lower case)', r.status === 200 && W.sent.length === 1 && m.Recipients.To[0] === 'spoc@phoebetal.test', r.json);
@@ -112,7 +112,7 @@ check('send: an audit line names the address and what was asked', auditRows.some
 W.sent.length = 0;
 r = await W.as('POST', url, { to: 'amritesh@phoebetal.test', items: ['speaker_photo_url'], to_speaker: true, save_email: true });
 a2 = W.talk('id = ?', amr.id);
-check("to the speaker: \"Dear <name>\", and the address is kept on the talk", /Dear Amritesh Kumar,/.test(W.sent[0].Content.Body[0].Content) && a2.speaker_email === 'amritesh@phoebetal.test' && W.sent[0].Content.Subject === 'Your Innovation Talk at Bharat AI Innovation 2026: a few details we need');
+check("to the speaker: \"Dear <name>\", and the address is kept on the talk", /Dear Amritesh Kumar,/.test(W.sent[0].Content.Body[0].Content) && a2.speaker_email === 'amritesh@phoebetal.test' && W.sent[0].Content.Subject === 'Your Innovation Talk at Bharat AI Innovation 2026: please add your details');
 r = await W.as('POST', url, { to: 'other@phoebetal.test', items: ['topic'], save_email: true });
 check("save_email never replaces an email already on the talk", W.talk('id = ?', amr.id).speaker_email === 'amritesh@phoebetal.test');
 // A talk with nothing set: the email says the time and stage will follow.

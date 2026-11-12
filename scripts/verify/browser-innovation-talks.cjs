@@ -94,7 +94,7 @@ const appCookie = (id) => { const exp = Math.floor(Date.now() / 1000) + 3600; co
     check('"Company name" is one of the things the email can ask for', (await page.locator('#italk-ask-form input[name=ask][value=company]').count()) === 1);
     check('only what is missing is ticked (bio; the mobile was just added)', JSON.stringify(ticked) === '["speaker_bio"]', ticked);
     await page.locator('#italk-ask-form textarea[name=note]').fill('Please send your slides by 18 Nov.');
-    await page.getByRole('button', { name: 'Preview' }).click();
+    await page.getByRole('button', { name: 'Preview', exact: true }).click(); // not "Preview the email" beside the switch
     const previewed = await until(async () => /Sat 21 Nov/.test(await page.frameLocator('#italk-ask-frame').locator('body').innerText()), 6000);
     const pv = previewed ? await page.frameLocator('#italk-ask-frame').locator('body').innerText() : '';
     check('Preview shows the email: the time, both hall names, the ask and the note', previewed && /Aryabhata Theatre \(Expo Hall/.test(pv) && /Two or three lines about you/.test(pv) && /slides by 18 Nov/.test(pv), pv.slice(0, 300));
