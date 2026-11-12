@@ -270,6 +270,73 @@
         }
         .schedule-info h4 { font-size: 1rem; font-weight: 700; color: var(--charcoal); margin-bottom: 0.2rem; }
         .schedule-info p  { font-size: 0.84rem; color: var(--dark-grey); margin: 0; }
+
+        /* The people in a session: a small photo, then the name, designation and
+           department or organisation, then that organisation's logo (none on file:
+           the words alone). The markup is written by scripts/gen-schedule.mjs. */
+        .schedule-info { min-width: 0; }
+        .schedule-info h4 { text-wrap: balance; }
+        .schedule-item.has-people { align-items: start; }
+        .schedule-item.has-people .schedule-time,
+        .schedule-item.has-people .schedule-badge { margin-top: 0.1rem; }
+        .sch-people {
+            list-style: none;
+            margin: 1.1rem 0 0;
+            padding: 0;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+            gap: 1.3rem 2.5rem;
+        }
+        .sch-person { display: flex; align-items: flex-start; gap: 0.85rem; min-width: 0; }
+        .sch-photo {
+            flex: none;
+            width: 48px; height: 48px;
+            border-radius: 50%;
+            object-fit: cover;
+            background: var(--light);
+            box-shadow: 0 0 0 1px rgba(30,33,64,0.1);
+        }
+        .sch-initials {
+            display: flex; align-items: center; justify-content: center;
+            font-family: var(--font-display);
+            font-size: 0.95rem; font-weight: 700; letter-spacing: 0.02em;
+            color: var(--indigo-light);
+        }
+        .sch-who { flex: 1 1 auto; min-width: 0; padding-top: 0.1rem; }
+        .sch-name { font-size: 0.94rem; font-weight: 700; line-height: 1.3; color: var(--charcoal); }
+        .sch-role { font-size: 0.84rem; line-height: 1.4; color: var(--dark-grey); margin-top: 0.12rem; }
+        .sch-org  { font-size: 0.82rem; line-height: 1.4; color: var(--mid-grey); margin-top: 0.08rem; }
+        /* Each logo carries its own size (--lw, --lh): a wide wordmark sits lower than
+           a square seal so the two weigh the same. --sch-logo scales them for phones. */
+        .sch-logo {
+            float: right;
+            width: calc(var(--lw) * var(--sch-logo, 1) * 1px);
+            height: calc(var(--lh) * var(--sch-logo, 1) * 1px);
+            object-fit: contain;
+            margin: 0.1rem 0 0.3rem 0.9rem;
+        }
+        .sch-tag {
+            display: inline-block;
+            margin-left: 0.3rem;
+            padding: 0.08rem 0.5rem;
+            border-radius: var(--r-full);
+            background: rgba(255,107,0,0.1);
+            color: #A84300;
+            font-size: 0.7rem; font-weight: 700; letter-spacing: 0.02em;
+            vertical-align: 0.08em;
+        }
+        /* A keynote with no title of its own: the speaker is the heading, and the
+           logos of a run of keynotes line up in one column. */
+        .sch-lead { align-items: center; gap: 1rem; max-width: 620px; }
+        .sch-lead .sch-photo { width: 60px; height: 60px; }
+        .sch-lead .sch-initials { font-size: 1.1rem; }
+        .sch-lead .sch-who { padding-top: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 1rem; align-items: center; }
+        .sch-lead .sch-who > * { grid-column: 1; }
+        .sch-lead .sch-logo { float: none; grid-column: 2; grid-row: 1 / span 3; margin: 0; }
+        .sch-lead h4 { margin-bottom: 0.1rem; }
+        .sch-lead + p { margin-top: 0.7rem; }
+        .sch-people + .sch-note { margin-top: 1rem; }
+
         .schedule-badge {
             display: inline-flex;
             align-items: center;
@@ -425,7 +492,25 @@
             .tracks-grid    { grid-template-columns: repeat(2,1fr); }
             .format-grid    { grid-template-columns: 1fr; }
             .conf-stat-bar  { grid-template-columns: repeat(2,1fr); }
-            .schedule-item  { grid-template-columns: 1fr; gap: 0.5rem; }
+            /* Phone: the time and the kind of session share the top line, the session
+               has the full width under them. */
+            .schedule-item  { grid-template-columns: 1fr auto; gap: 0.6rem 0.75rem; padding: 1.1rem 1.1rem 1.2rem; }
+            .schedule-time  { grid-column: 1; grid-row: 1; align-self: center; }
+            .schedule-badge { grid-column: 2; grid-row: 1; justify-self: end; }
+            .schedule-info  { grid-column: 1 / -1; grid-row: 2; }
+            .schedule-item.has-people .schedule-time,
+            .schedule-item.has-people .schedule-badge { margin-top: 0; }
+            .schedule-info  { --sch-logo: 0.85; }
+            .sch-people     { grid-template-columns: 1fr; gap: 1.15rem; }
+            /* A keynote speaker's logo sits at the top right here too, so a long
+               department name has the full width under it. */
+            .sch-lead       { gap: 0.9rem; }
+            .sch-lead .sch-photo { width: 56px; height: 56px; }
+            .sch-lead .sch-who { display: block; }
+            .sch-lead .sch-logo { float: right; margin: 0.1rem 0 0.3rem 0.9rem; }
+            .sch-name       { font-size: 0.95rem; }
+            .sch-role       { font-size: 0.875rem; }
+            .sch-org        { font-size: 0.85rem; }
             .schedule-tabs  { flex-wrap: wrap; width: 100%; }
         }
         @media (max-width: 480px) {
@@ -632,9 +717,9 @@
                                 <div class="schedule-info"><h4>Registration</h4><p>Collect your badge at the registration desk.</p></div>
                                 <span class="schedule-badge badge-break">Registration</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">09:30 – 09:35</div>
-                                <div class="schedule-info"><h4>Welcome Note</h4><p>Mr. Bhupesh Daheria, Trustee, Aegis Knowledge Trust; CEO, Aegis School of Data Science &amp; AI.</p></div>
+                                <div class="schedule-info"><h4>Welcome Note</h4><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/bhupesh-daheria.webp?v=db4ae048" alt=""><div class="sch-who"><img class="sch-logo" width="184" height="68" loading="lazy" decoding="async" src="images/sched/logo-aegis.webp?v=1d8f778a" alt="" style="--lw:73;--lh:27"><div class="sch-name">Mr. Bhupesh Daheria</div><div class="sch-role">CEO; Trustee, Aegis Knowledge Trust</div><div class="sch-org">Aegis School of Data Science &amp; AI</div></div></li></ul></div>
                                 <span class="schedule-badge badge-keynote">Keynote</span>
                             </div>
                             <div class="schedule-item">
@@ -642,59 +727,59 @@
                                 <div class="schedule-info"><h4>Inauguration and Chief Guest Keynote</h4><p>Chief guest to be announced.</p></div>
                                 <span class="schedule-badge badge-keynote">Keynote</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-lead">
                                 <div class="schedule-time">10:00 – 10:10</div>
-                                <div class="schedule-info"><h4>Keynote: Hon’ble Shri Chandrakant Dada Patil</h4><p>Minister of Higher and Technical Education, Government of Maharashtra.</p></div>
+                                <div class="schedule-info"><div class="sch-person sch-lead"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/chandrakant-dada-patil.webp?v=7537129f" alt=""><div class="sch-who"><img class="sch-logo" width="52" height="66" loading="lazy" decoding="async" src="images/sched/logo-maharashtra.webp?v=29be969c" alt="" style="--lw:32;--lh:40"><h4>Hon’ble Shri Chandrakant Dada Patil</h4><div class="sch-role">Minister of Higher and Technical Education</div><div class="sch-org">Government of Maharashtra</div></div></div></div>
                                 <span class="schedule-badge badge-keynote">Keynote</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-lead">
                                 <div class="schedule-time">10:10 – 10:20</div>
-                                <div class="schedule-info"><h4>Keynote: Hon’ble Shri Dattatray Bharane</h4><p>Minister of Agriculture, Government of Maharashtra.</p></div>
+                                <div class="schedule-info"><div class="sch-person sch-lead"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/dattatray-bharane.webp?v=408deaf8" alt=""><div class="sch-who"><img class="sch-logo" width="52" height="66" loading="lazy" decoding="async" src="images/sched/logo-maharashtra.webp?v=29be969c" alt="" style="--lw:32;--lh:40"><h4>Hon’ble Shri Dattatray Bharane</h4><div class="sch-role">Minister of Agriculture</div><div class="sch-org">Government of Maharashtra</div></div></div></div>
                                 <span class="schedule-badge badge-keynote">Keynote</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-lead">
                                 <div class="schedule-time">10:20 – 10:30</div>
-                                <div class="schedule-info"><h4>Keynote: Hon’ble Smt. Aditi Tatkare</h4><p>Minister of Women and Child Development, Government of Maharashtra.</p></div>
+                                <div class="schedule-info"><div class="sch-person sch-lead"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/aditi-tatkare.webp?v=b7eb67ed" alt=""><div class="sch-who"><img class="sch-logo" width="52" height="66" loading="lazy" decoding="async" src="images/sched/logo-maharashtra.webp?v=29be969c" alt="" style="--lw:32;--lh:40"><h4>Hon’ble Smt. Aditi Tatkare</h4><div class="sch-role">Minister of Women and Child Development</div><div class="sch-org">Government of Maharashtra</div></div></div></div>
                                 <span class="schedule-badge badge-keynote">Keynote</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-lead">
                                 <div class="schedule-time">10:30 – 10:40</div>
-                                <div class="schedule-info"><h4>Keynote: Hon’ble Shri Sanjay Rathod</h4><p>Minister of Soil and Water Conservation, Government of Maharashtra.</p></div>
+                                <div class="schedule-info"><div class="sch-person sch-lead"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/sanjay-rathod.webp?v=61b73d21" alt=""><div class="sch-who"><img class="sch-logo" width="52" height="66" loading="lazy" decoding="async" src="images/sched/logo-maharashtra.webp?v=29be969c" alt="" style="--lw:32;--lh:40"><h4>Hon’ble Shri Sanjay Rathod</h4><div class="sch-role">Minister of Soil and Water Conservation</div><div class="sch-org">Government of Maharashtra</div></div></div></div>
                                 <span class="schedule-badge badge-keynote">Keynote</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-lead">
                                 <div class="schedule-time">10:40 – 10:50</div>
-                                <div class="schedule-info"><h4>Keynote: Shri Virendra Singh (IAS)</h4><p>Secretary, Electronics, IT and AI Department, Government of Maharashtra.</p></div>
+                                <div class="schedule-info"><div class="sch-person sch-lead"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/virendra-singh.webp?v=edbb7977" alt=""><div class="sch-who"><img class="sch-logo" width="52" height="66" loading="lazy" decoding="async" src="images/sched/logo-maharashtra.webp?v=29be969c" alt="" style="--lw:32;--lh:40"><h4>Shri Virendra Singh (IAS)</h4><div class="sch-role">Secretary</div><div class="sch-org">Electronics, IT and AI Department, Government of Maharashtra</div></div></div></div>
                                 <span class="schedule-badge badge-keynote">Keynote</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-lead">
                                 <div class="schedule-time">10:50 – 11:00</div>
-                                <div class="schedule-info"><h4>Keynote: Shri K.K. Singh</h4><p>Joint Secretary, MeitY, Government of India.</p></div>
+                                <div class="schedule-info"><div class="sch-person sch-lead"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/k-k-singh.webp?v=eb198d1c" alt=""><div class="sch-who"><img class="sch-logo" width="184" height="60" loading="lazy" decoding="async" src="images/sched/logo-meity.webp?v=de849fcb" alt="" style="--lw:78;--lh:26"><h4>Shri K.K. Singh</h4><div class="sch-role">Joint Secretary</div><div class="sch-org">Ministry of Electronics &amp; IT (MeitY), Government of India</div></div></div></div>
                                 <span class="schedule-badge badge-keynote">Keynote</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-lead">
                                 <div class="schedule-time">11:00 – 11:10</div>
-                                <div class="schedule-info"><h4>Keynote: Shri Praveen Pardeshi</h4><p>CEO, MITRA.</p></div>
+                                <div class="schedule-info"><div class="sch-person sch-lead"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/praveen-pardeshi.webp?v=59c4c43f" alt=""><div class="sch-who"><img class="sch-logo" width="83" height="72" loading="lazy" decoding="async" src="images/sched/logo-mitra.webp?v=436a5e58" alt="" style="--lw:44;--lh:38"><h4>Shri Praveen Pardeshi</h4><div class="sch-role">CEO; Chief Economic Advisor to the Chief Minister</div><div class="sch-org">MITRA, Government of Maharashtra</div></div></div></div>
                                 <span class="schedule-badge badge-keynote">Keynote</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-lead">
                                 <div class="schedule-time">11:10 – 11:20</div>
-                                <div class="schedule-info"><h4>Keynote: Shri Sudeep Shrivastava</h4><p>Joint Secretary, MeitY; COO, IndiaAI Mission.</p></div>
+                                <div class="schedule-info"><div class="sch-person sch-lead"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/sudeep-shrivastava.webp?v=2ec4d7d9" alt=""><div class="sch-who"><img class="sch-logo" width="184" height="60" loading="lazy" decoding="async" src="images/sched/logo-meity.webp?v=de849fcb" alt="" style="--lw:78;--lh:26"><h4>Shri Sudeep Shrivastava</h4><div class="sch-role">Joint Secretary; COO, IndiaAI Mission</div><div class="sch-org">Ministry of Electronics &amp; IT (MeitY), Government of India</div></div></div></div>
                                 <span class="schedule-badge badge-keynote">Keynote</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-lead">
                                 <div class="schedule-time">11:20 – 11:30</div>
-                                <div class="schedule-info"><h4>Keynote: Shri Kaustubh Dhavse</h4><p>Chief Advisor to the Chief Minister, Government of Maharashtra.</p></div>
+                                <div class="schedule-info"><div class="sch-person sch-lead"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/kaustubh-dhavse.webp?v=16c303c1" alt=""><div class="sch-who"><img class="sch-logo" width="52" height="66" loading="lazy" decoding="async" src="images/sched/logo-maharashtra.webp?v=29be969c" alt="" style="--lw:32;--lh:40"><h4>Shri Kaustubh Dhavse</h4><div class="sch-role">Chief Advisor to the Chief Minister</div><div class="sch-org">Government of Maharashtra</div></div></div></div>
                                 <span class="schedule-badge badge-keynote">Keynote</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-lead">
                                 <div class="schedule-time">11:30 – 11:40</div>
-                                <div class="schedule-info"><h4>Keynote: Dr. Shrikant Patil</h4><p>CEO, Maharashtra State Innovation Society (MSInS).</p></div>
+                                <div class="schedule-info"><div class="sch-person sch-lead"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/shrikant-patil.webp?v=c820a5a6" alt=""><div class="sch-who"><img class="sch-logo" width="184" height="52" loading="lazy" decoding="async" src="images/sched/logo-msins.webp?v=7feb8e98" alt="" style="--lw:85;--lh:24"><h4>Dr. Shrikant Patil</h4><div class="sch-role">CEO</div><div class="sch-org">Maharashtra State Innovation Society (MSInS)</div></div></div></div>
                                 <span class="schedule-badge badge-keynote">Keynote</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">12:00 – 13:00</div>
-                                <div class="schedule-info"><h4>AI for Viksit Bharat: Igniting 1.4 Billion Dreams and Transforming Governance</h4><p>Panel: Governance. With Shri Prakash Kumar (IndiaAI Mission), Shri Akshay Yadava (UIDAI), Shri Ganesh Nagarajan (Ministry of Tribal Affairs), Shri Vinamra Mishra (Ministry of MSME), Shri K.K. Singh (MeitY), Shri Sachin Itkar (MEDC), Shri Praveen Pardeshi (MITRA), Shri Sudeep Shrivastava (IndiaAI Mission), Shri Kaustubh Dhavse (Government of Maharashtra), Shri Vivek Khandekar (IFS) (Maharashtra Forest Department). Moderator: Mr. Bhupesh Daheria (Aegis Knowledge Trust).</p></div>
+                                <div class="schedule-info"><h4>AI for Viksit Bharat: Igniting 1.4 Billion Dreams and Transforming Governance</h4><p>Panel: Governance.</p><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/prakash-kumar.webp?v=6f1b4a1b" alt=""><div class="sch-who"><img class="sch-logo" width="184" height="60" loading="lazy" decoding="async" src="images/sched/logo-meity.webp?v=de849fcb" alt="" style="--lw:78;--lh:26"><div class="sch-name">Shri Prakash Kumar</div><div class="sch-role">Additional Director</div><div class="sch-org">IndiaAI Mission, MeitY, Government of India</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/akshay-yadava.webp?v=d9f95b37" alt=""><div class="sch-who"><div class="sch-name">Shri Akshay Yadava</div><div class="sch-role">Director</div><div class="sch-org">Unique Identification Authority of India (UIDAI)</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/ganesh-nagarajan.webp?v=16a5dcfa" alt=""><div class="sch-who"><img class="sch-logo" width="184" height="70" loading="lazy" decoding="async" src="images/sched/logo-ministry-of-tribal-affairs.webp?v=6b48a183" alt="" style="--lw:71;--lh:27"><div class="sch-name">Shri Ganesh Nagarajan</div><div class="sch-role">Deputy Secretary</div><div class="sch-org">Ministry of Tribal Affairs, Government of India</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/vinamra-mishra.webp?v=c473e6d0" alt=""><div class="sch-who"><div class="sch-name">Shri Vinamra Mishra</div><div class="sch-role">Joint Secretary</div><div class="sch-org">Ministry of MSME, Government of India</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/k-k-singh.webp?v=eb198d1c" alt=""><div class="sch-who"><img class="sch-logo" width="184" height="60" loading="lazy" decoding="async" src="images/sched/logo-meity.webp?v=de849fcb" alt="" style="--lw:78;--lh:26"><div class="sch-name">Shri K.K. Singh</div><div class="sch-role">Joint Secretary</div><div class="sch-org">Ministry of Electronics &amp; IT (MeitY), Government of India</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/sachin-itkar.webp?v=d019a875" alt=""><div class="sch-who"><img class="sch-logo" width="70" height="80" loading="lazy" decoding="async" src="images/sched/logo-medc.webp?v=1770e712" alt="" style="--lw:35;--lh:40"><div class="sch-name">Shri Sachin Itkar</div><div class="sch-role">Vice President</div><div class="sch-org">Maharashtra Economic Development Council (MEDC)</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/praveen-pardeshi.webp?v=59c4c43f" alt=""><div class="sch-who"><img class="sch-logo" width="83" height="72" loading="lazy" decoding="async" src="images/sched/logo-mitra.webp?v=436a5e58" alt="" style="--lw:44;--lh:38"><div class="sch-name">Shri Praveen Pardeshi</div><div class="sch-role">CEO; Chief Economic Advisor to the Chief Minister</div><div class="sch-org">MITRA, Government of Maharashtra</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/sudeep-shrivastava.webp?v=2ec4d7d9" alt=""><div class="sch-who"><img class="sch-logo" width="184" height="60" loading="lazy" decoding="async" src="images/sched/logo-meity.webp?v=de849fcb" alt="" style="--lw:78;--lh:26"><div class="sch-name">Shri Sudeep Shrivastava</div><div class="sch-role">Joint Secretary; COO, IndiaAI Mission</div><div class="sch-org">Ministry of Electronics &amp; IT (MeitY), Government of India</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/kaustubh-dhavse.webp?v=16c303c1" alt=""><div class="sch-who"><img class="sch-logo" width="52" height="66" loading="lazy" decoding="async" src="images/sched/logo-maharashtra.webp?v=29be969c" alt="" style="--lw:32;--lh:40"><div class="sch-name">Shri Kaustubh Dhavse</div><div class="sch-role">Chief Advisor to the Chief Minister</div><div class="sch-org">Government of Maharashtra</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/vivek-khandekar.webp?v=23fbcca4" alt=""><div class="sch-who"><img class="sch-logo" width="80" height="80" loading="lazy" decoding="async" src="images/sched/logo-maharashtra-forest.webp?v=8a8b8a64" alt="" style="--lw:40;--lh:40"><div class="sch-name">Shri Vivek Khandekar (IFS)</div><div class="sch-role">Principal Chief Conservator of Forests (Social Forestry)</div><div class="sch-org">Maharashtra Forest Department</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/bhupesh-daheria.webp?v=db4ae048" alt=""><div class="sch-who"><img class="sch-logo" width="184" height="68" loading="lazy" decoding="async" src="images/sched/logo-aegis.webp?v=1d8f778a" alt="" style="--lw:73;--lh:27"><div class="sch-name">Mr. Bhupesh Daheria <span class="sch-tag">Moderator</span></div><div class="sch-role">CEO; Trustee, Aegis Knowledge Trust</div><div class="sch-org">Aegis School of Data Science &amp; AI</div></div></li></ul></div>
                                 <span class="schedule-badge badge-panel">Panel</span>
                             </div>
                             <div class="schedule-item">
@@ -702,9 +787,9 @@
                                 <div class="schedule-info"><h4>Networking Lunch</h4><p>The exhibition floor stays open.</p></div>
                                 <span class="schedule-badge badge-break">Lunch</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">14:00 – 15:00</div>
-                                <div class="schedule-info"><h4>AI Democratizing and Driving Financial Inclusion</h4><p>Panel: BFSI. With Tarun Chugh (Bajaj Life Insurance), Ratan Kumar Kesh (Bandhan Bank), Sarosh Amaria (Tata Capital), Pravin Kumar (NPCI), Mayur Kapur (TransUnion). Moderator: Shailesh Dhuri (Decimal Point Analytics).</p></div>
+                                <div class="schedule-info"><h4>AI Democratizing and Driving Financial Inclusion</h4><p>Panel: BFSI.</p><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/tarun-chugh.webp?v=7609c92c" alt=""><div class="sch-who"><img class="sch-logo" width="93" height="62" loading="lazy" decoding="async" src="images/sched/logo-bajaj-life.webp?v=a6091aba" alt="" style="--lw:51;--lh:34"><div class="sch-name">Tarun Chugh</div><div class="sch-role">MD &amp; CEO</div><div class="sch-org">Bajaj Life Insurance</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/ratan-kumar-kesh.webp?v=0e2514e3" alt=""><div class="sch-who"><img class="sch-logo" width="184" height="55" loading="lazy" decoding="async" src="images/sched/logo-bandhan.webp?v=7ba62583" alt="" style="--lw:83;--lh:25"><div class="sch-name">Ratan Kumar Kesh</div><div class="sch-role">Executive Director &amp; COO</div><div class="sch-org">Bandhan Bank</div></div></li><li class="sch-person"><span class="sch-photo sch-initials" aria-hidden="true">SA</span><div class="sch-who"><div class="sch-name">Sarosh Amaria</div><div class="sch-role">MD</div><div class="sch-org">Tata Capital</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/pravin-kumar.webp?v=754ec915" alt=""><div class="sch-who"><img class="sch-logo" width="31" height="43" loading="lazy" decoding="async" src="images/sched/logo-npci-org-in.webp?v=329dffc1" alt="" style="--lw:29;--lh:40"><div class="sch-name">Pravin Kumar</div><div class="sch-role">Chief Market Information Security Officer &amp; Data Protection Officer</div><div class="sch-org">National Payments Corporation of India (NPCI)</div></div></li><li class="sch-person"><span class="sch-photo sch-initials" aria-hidden="true">MK</span><div class="sch-who"><div class="sch-name">Mayur Kapur</div><div class="sch-role">Asia Chief Strategy Officer</div><div class="sch-org">TransUnion</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/shailesh-dhuri.webp?v=5527528b" alt=""><div class="sch-who"><img class="sch-logo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/logo-decimalpointanalytics-com.webp?v=036eb67e" alt="" style="--lw:40;--lh:40"><div class="sch-name">Shailesh Dhuri <span class="sch-tag">Moderator</span></div><div class="sch-role">CEO</div><div class="sch-org">Decimal Point Analytics</div></div></li></ul></div>
                                 <span class="schedule-badge badge-panel">Panel</span>
                             </div>
                             <div class="schedule-item">
@@ -717,24 +802,24 @@
                                 <div class="schedule-info"><h4>Hi-Tea Break</h4></div>
                                 <span class="schedule-badge badge-break">Tea</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">16:15 – 16:30</div>
-                                <div class="schedule-info"><h4>Ganesh Kavach App</h4><p>Innovation Talk. Shri Vivek Khandekar (IFS), Principal Chief Conservator of Forests (Social Forestry), Maharashtra Forest Department.</p></div>
+                                <div class="schedule-info"><h4>Ganesh Kavach App</h4><p>Innovation Talk.</p><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/vivek-khandekar.webp?v=23fbcca4" alt=""><div class="sch-who"><img class="sch-logo" width="80" height="80" loading="lazy" decoding="async" src="images/sched/logo-maharashtra-forest.webp?v=8a8b8a64" alt="" style="--lw:40;--lh:40"><div class="sch-name">Shri Vivek Khandekar (IFS)</div><div class="sch-role">Principal Chief Conservator of Forests (Social Forestry)</div><div class="sch-org">Maharashtra Forest Department</div></div></li></ul></div>
                                 <span class="schedule-badge badge-workshop">Talk</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">16:30 – 17:30</div>
-                                <div class="schedule-info"><h4>The Rise of Autonomous Enterprises: Leaders' Strategies for GenAI &amp; Agentic AI</h4><p>Panel: Agentic AI. With Abhay Sharma (IBM), Akhil Gupta (NoBroker). Moderator: Mukesh Jain (Capgemini).</p></div>
+                                <div class="schedule-info"><h4>The Rise of Autonomous Enterprises: Leaders' Strategies for GenAI &amp; Agentic AI</h4><p>Panel: Agentic AI.</p><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/abhay-sharma.webp?v=a7ff92a7" alt=""><div class="sch-who"><img class="sch-logo" width="96" height="40" loading="lazy" decoding="async" src="images/sched/logo-ibm.webp?v=a8939489" alt="" style="--lw:68;--lh:28"><div class="sch-name">Abhay Sharma</div><div class="sch-role">Partner &amp; Practice Leader</div><div class="sch-org">IBM</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/akhil-gupta.webp?v=754b0bd2" alt=""><div class="sch-who"><img class="sch-logo" width="62" height="62" loading="lazy" decoding="async" src="images/sched/logo-nobroker-in.webp?v=3d717e1d" alt="" style="--lw:40;--lh:40"><div class="sch-name">Akhil Gupta</div><div class="sch-role">Founder</div><div class="sch-org">NoBroker</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/mukesh-jain.webp?v=ae3a9ca7" alt=""><div class="sch-who"><img class="sch-logo" width="64" height="58" loading="lazy" decoding="async" src="images/sched/logo-capgemini-com.webp?v=853d6815" alt="" style="--lw:42;--lh:38"><div class="sch-name">Mukesh Jain <span class="sch-tag">Moderator</span></div><div class="sch-role">Global EVP &amp; CTO</div><div class="sch-org">Capgemini</div></div></li></ul></div>
                                 <span class="schedule-badge badge-panel">Panel</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">17:30 – 17:45</div>
-                                <div class="schedule-info"><h4>PrAImaan</h4><p>Innovation Talk. Dr. Vishal Deo, Scientist-C, ICMR-NIRDH.</p></div>
+                                <div class="schedule-info"><h4>PrAImaan</h4><p>Innovation Talk.</p><ul class="sch-people"><li class="sch-person"><span class="sch-photo sch-initials" aria-hidden="true">VD</span><div class="sch-who"><div class="sch-name">Dr. Vishal Deo</div><div class="sch-role">Scientist-C</div><div class="sch-org">ICMR-NIRDH</div></div></li></ul></div>
                                 <span class="schedule-badge badge-workshop">Talk</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">18:00 – 18:10</div>
-                                <div class="schedule-info"><h4>Closing Note</h4><p>Cmde Dr. Jadumani Jena (retd.), Advisor, Bharat AI Innovation, Exhibition &amp; Conference.</p></div>
+                                <div class="schedule-info"><h4>Closing Note</h4><ul class="sch-people"><li class="sch-person"><span class="sch-photo sch-initials" aria-hidden="true">JJ</span><div class="sch-who"><div class="sch-name">Cmde Dr. Jadumani Jena (retd.)</div><div class="sch-role">Advisor</div><div class="sch-org">Bharat AI Innovation, Exhibition &amp; Conference</div></div></li></ul></div>
                                 <span class="schedule-badge badge-keynote">Keynote</span>
                             </div>
                             <div class="schedule-item">
@@ -746,9 +831,9 @@
                     </div>
                     <div class="schedule-panel">
                         <div class="schedule-list">
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">09:00 – 09:05</div>
-                                <div class="schedule-info"><h4>Welcome Note</h4><p>Dr. Abhijit Gangopadhyay, Dean, Aegis School of Data Science and AI.</p></div>
+                                <div class="schedule-info"><h4>Welcome Note</h4><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/abhijit-gangopadhyay.webp?v=4a43a798" alt=""><div class="sch-who"><img class="sch-logo" width="184" height="68" loading="lazy" decoding="async" src="images/sched/logo-aegis.webp?v=1d8f778a" alt="" style="--lw:73;--lh:27"><div class="sch-name">Dr. Abhijit Gangopadhyay</div><div class="sch-role">Dean</div><div class="sch-org">Aegis School of Data Science &amp; AI</div></div></li></ul></div>
                                 <span class="schedule-badge badge-keynote">Keynote</span>
                             </div>
                             <div class="schedule-item">
@@ -761,24 +846,24 @@
                                 <div class="schedule-info"><h4>Keynotes</h4><p>Speakers to be announced.</p></div>
                                 <span class="schedule-badge badge-keynote">Keynote</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">10:00 – 11:00</div>
-                                <div class="schedule-info"><h4>AI in Telecom: Enabling Digital India Through Intelligent Connectivity</h4><p>Panel: Telecom. With Jagbir Singh (Vodafone Idea), Manish Agrawal (Comviva), Ashutosh Agarwal (Globe Teleservices), Vishal Rally (Tata Tele Business Services).</p></div>
+                                <div class="schedule-info"><h4>AI in Telecom: Enabling Digital India Through Intelligent Connectivity</h4><p>Panel: Telecom.</p><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/jagbir-singh.webp?v=901662b1" alt=""><div class="sch-who"><img class="sch-logo" width="53" height="49" loading="lazy" decoding="async" src="images/sched/logo-myvi-in.webp?v=54d6bbbf" alt="" style="--lw:42;--lh:39"><div class="sch-name">Jagbir Singh</div><div class="sch-role">Chief Technology &amp; Information Officer</div><div class="sch-org">Vodafone Idea</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/manish-agrawal.webp?v=bd13e794" alt=""><div class="sch-who"><img class="sch-logo" width="60" height="64" loading="lazy" decoding="async" src="images/sched/logo-comviva-com.webp?v=f84806b4" alt="" style="--lw:38;--lh:40"><div class="sch-name">Manish Agrawal</div><div class="sch-role">President &amp; COO</div><div class="sch-org">Comviva</div></div></li><li class="sch-person"><span class="sch-photo sch-initials" aria-hidden="true">AA</span><div class="sch-who"><div class="sch-name">Ashutosh Agarwal</div><div class="sch-role">Group CEO</div><div class="sch-org">Globe Teleservices</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/vishal-rally.webp?v=a6aa51bb" alt=""><div class="sch-who"><div class="sch-name">Vishal Rally</div><div class="sch-role">Chief Revenue Officer</div><div class="sch-org">Tata Tele Business Services</div></div></li></ul></div>
                                 <span class="schedule-badge badge-panel">Panel</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">11:00 – 12:00</div>
-                                <div class="schedule-info"><h4>Building the Enterprise AI Workforce: Talent, Delivery and the Rise of Forward-Deployed Engineering</h4><p>Panel: Enterprise AI. With Dr. Ashish Tendulkar (Google), Sudhir Kumar Rai (Trellix). Moderator: Mr. Bhupesh Daheria (Aegis Knowledge Trust).</p></div>
+                                <div class="schedule-info"><h4>Building the Enterprise AI Workforce: Talent, Delivery and the Rise of Forward-Deployed Engineering</h4><p>Panel: Enterprise AI.</p><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/ashish-tendulkar.webp?v=c748cbb5" alt=""><div class="sch-who"><img class="sch-logo" width="60" height="59" loading="lazy" decoding="async" src="images/sched/logo-google-com.webp?v=e5a86bea" alt="" style="--lw:40;--lh:40"><div class="sch-name">Dr. Ashish Tendulkar</div><div class="sch-role">Lead AI</div><div class="sch-org">Google</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/sudhir-kumar-rai.webp?v=20dc3a7a" alt=""><div class="sch-who"><div class="sch-name">Sudhir Kumar Rai</div><div class="sch-role">Director, Data Science</div><div class="sch-org">Trellix</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/bhupesh-daheria.webp?v=db4ae048" alt=""><div class="sch-who"><img class="sch-logo" width="184" height="68" loading="lazy" decoding="async" src="images/sched/logo-aegis.webp?v=1d8f778a" alt="" style="--lw:73;--lh:27"><div class="sch-name">Mr. Bhupesh Daheria <span class="sch-tag">Moderator</span></div><div class="sch-role">CEO; Trustee, Aegis Knowledge Trust</div><div class="sch-org">Aegis School of Data Science &amp; AI</div></div></li></ul></div>
                                 <span class="schedule-badge badge-panel">Panel</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">12:00 – 12:30</div>
-                                <div class="schedule-info"><h4>The AI components of MANTHAN–UTTHAN</h4><p>Shri Srinivas Kancharla, Program Specialist, Office of the Principal Scientific Adviser to the Government of India.</p></div>
+                                <div class="schedule-info"><h4>The AI components of MANTHAN–UTTHAN</h4><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/srinivas-kancharla.webp?v=c127e659" alt=""><div class="sch-who"><img class="sch-logo" width="184" height="34" loading="lazy" decoding="async" src="images/sched/logo-psa.webp?v=9af204f9" alt="" style="--lw:92;--lh:17"><div class="sch-name">Shri Srinivas Kancharla</div><div class="sch-role">Program Specialist</div><div class="sch-org">Office of the Principal Scientific Adviser to the Government of India</div></div></li></ul></div>
                                 <span class="schedule-badge badge-keynote">Keynote</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">12:30 – 13:30</div>
-                                <div class="schedule-info"><h4>Reinventing Insurance for Bharat with AI: Expanding Access, Trust and Inclusion</h4><p>Panel: Insurance. With Sandeep Kumar (Go Digit Insurance). More panellists to be announced.</p></div>
+                                <div class="schedule-info"><h4>Reinventing Insurance for Bharat with AI: Expanding Access, Trust and Inclusion</h4><p>Panel: Insurance.</p><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/sandeep-kumar.webp?v=40adcc2c" alt=""><div class="sch-who"><img class="sch-logo" width="64" height="64" loading="lazy" decoding="async" src="images/sched/logo-godigit-com.webp?v=83ec1516" alt="" style="--lw:40;--lh:40"><div class="sch-name">Sandeep Kumar</div><div class="sch-role">CIO</div><div class="sch-org">Go Digit Insurance</div></div></li></ul><p class="sch-note">More panellists to be announced.</p></div>
                                 <span class="schedule-badge badge-panel">Panel</span>
                             </div>
                             <div class="schedule-item">
@@ -791,9 +876,9 @@
                                 <div class="schedule-info"><h4>Product Demonstration and Talk</h4><p>By Pramaan AI Labs.</p></div>
                                 <span class="schedule-badge badge-workshop">Talk</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">15:15 – 16:15</div>
-                                <div class="schedule-info"><h4>Content, Creativity &amp; AI: Redefining Media, Personalization, and Digital Experiences</h4><p>Panel: Media. With Rajat Nigam (JioStar India), Simon David Hunter (Asian Screen Institute Singapore), Saurabh Kushwah (BULLET Microdrama · ZEEL).</p></div>
+                                <div class="schedule-info"><h4>Content, Creativity &amp; AI: Redefining Media, Personalization, and Digital Experiences</h4><p>Panel: Media.</p><ul class="sch-people"><li class="sch-person"><span class="sch-photo sch-initials" aria-hidden="true">RN</span><div class="sch-who"><div class="sch-name">Rajat Nigam</div><div class="sch-role">CTO, Head of Technology &amp; Media Operations</div><div class="sch-org">JioStar India</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/simon-david-hunter.webp?v=21c46e53" alt=""><div class="sch-who"><div class="sch-name">Simon David Hunter</div><div class="sch-role">President</div><div class="sch-org">Asian Screen Institute, Singapore</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/saurabh-kushwah.webp?v=ee4e173c" alt=""><div class="sch-who"><img class="sch-logo" width="80" height="80" loading="lazy" decoding="async" src="images/sched/logo-bullet-microdrama.webp?v=0cf279a1" alt="" style="--lw:40;--lh:40"><div class="sch-name">Saurabh Kushwah</div><div class="sch-role">Co-Founder &amp; Chief Product and Technology Officer</div><div class="sch-org">BULLET Microdrama · ZEEL</div></div></li></ul></div>
                                 <span class="schedule-badge badge-panel">Panel</span>
                             </div>
                             <div class="schedule-item">
@@ -801,9 +886,9 @@
                                 <div class="schedule-info"><h4>Hi-Tea Break</h4></div>
                                 <span class="schedule-badge badge-break">Tea</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">16:30 – 17:30</div>
-                                <div class="schedule-info"><h4>Improving Learning Outcomes with AI: From Assessment to Measurable Impact</h4><p>Panel: Education. With Dr. Saurabh N. Mehta (Vidyalankar Institute of Technology), Utsav Shroff (University of Western Australia), Dr. Lakshmi Mohan (ITM Skills University), Dr. Manpreet Singh Manna (GCC School / SLIET), Tarun Anand (Universal AI University), Raju Haldankar (Chetana's Institute of Management &amp; Research), Dr. Shashank D. Dalvi (MGM Institute of Health Sciences), Madhvendra Singh (Electronics Sector Skill Council of India). Powered by Assessfy.</p></div>
+                                <div class="schedule-info"><h4>Improving Learning Outcomes with AI: From Assessment to Measurable Impact</h4><p>Panel: Education.</p><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/saurabh-n-mehta.webp?v=6abe5bb2" alt=""><div class="sch-who"><div class="sch-name">Dr. Saurabh N. Mehta</div><div class="sch-role">Chief Academic Officer &amp; Professor</div><div class="sch-org">Vidyalankar Institute of Technology</div></div></li><li class="sch-person"><span class="sch-photo sch-initials" aria-hidden="true">US</span><div class="sch-who"><div class="sch-name">Utsav Shroff</div><div class="sch-role">Director, India and South Asia Operations</div><div class="sch-org">University of Western Australia</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/lakshmi-mohan.webp?v=4a70322e" alt=""><div class="sch-who"><div class="sch-name">Dr. Lakshmi Mohan</div><div class="sch-role">Pro Vice Chancellor</div><div class="sch-org">ITM Skills University</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/manpreet-singh-manna.webp?v=3907f7d8" alt=""><div class="sch-who"><div class="sch-name">Dr. Manpreet Singh Manna</div><div class="sch-role">Founding Executive Director</div><div class="sch-org">GCC School / SLIET</div></div></li><li class="sch-person"><span class="sch-photo sch-initials" aria-hidden="true">TA</span><div class="sch-who"><div class="sch-name">Tarun Anand</div><div class="sch-role">Founder &amp; Chancellor</div><div class="sch-org">Universal AI University</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/raju-haldankar.webp?v=af4c9d96" alt=""><div class="sch-who"><div class="sch-name">Raju Haldankar</div><div class="sch-role">President</div><div class="sch-org">Chetana's Institute of Management &amp; Research</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/shashank-d-dalvi.webp?v=5042bbed" alt=""><div class="sch-who"><div class="sch-name">Dr. Shashank D. Dalvi</div><div class="sch-role">Vice Chancellor</div><div class="sch-org">MGM Institute of Health Sciences</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/madhvendra-singh.webp?v=1fdb9dc7" alt=""><div class="sch-who"><div class="sch-name">Madhvendra Singh</div><div class="sch-role">CEO</div><div class="sch-org">Electronics Sector Skills Council of India</div></div></li></ul><p class="sch-note">Powered by Assessfy.</p></div>
                                 <span class="schedule-badge badge-panel">Panel</span>
                             </div>
                         </div>
@@ -819,64 +904,64 @@
                     </div>
                     <div class="schedule-panel active">
                         <div class="schedule-list">
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">11:30 – 11:38</div>
-                                <div class="schedule-info"><h4>Innovation Talk: Paisani Technology Services</h4><p>Dipak Zope, Chief Executive Officer, Paisani Technology Services. &ldquo;Embedded and automotive&rdquo;.</p></div>
+                                <div class="schedule-info"><h4>Innovation Talk: Paisani Technology Services</h4><p>&ldquo;Embedded and automotive&rdquo;.</p><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/dipak-zope.webp?v=22a3ee90" alt=""><div class="sch-who"><img class="sch-logo" width="184" height="77" loading="lazy" decoding="async" src="images/sched/logo-paisani-technology-services.webp?v=137312db" alt="" style="--lw:67;--lh:28"><div class="sch-name">Dipak Zope</div><div class="sch-role">Chief Executive Officer</div><div class="sch-org">Paisani Technology Services</div></div></li></ul></div>
                                 <span class="schedule-badge badge-workshop">Talk</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">11:40 – 11:48</div>
-                                <div class="schedule-info"><h4>Innovation Talk: RedFerns Tech</h4><p>Shashank KP, Chief Technology Officer, RedFerns Tech. &ldquo;From Intelligence to Innovation: Building the Next Wave&rdquo;.</p></div>
+                                <div class="schedule-info"><h4>Innovation Talk: RedFerns Tech</h4><p>&ldquo;From Intelligence to Innovation: Building the Next Wave&rdquo;.</p><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/shashank-kp.webp?v=0a77247e" alt=""><div class="sch-who"><img class="sch-logo" width="72" height="80" loading="lazy" decoding="async" src="images/sched/logo-redferns-tech.webp?v=ef89186d" alt="" style="--lw:36;--lh:40"><div class="sch-name">Shashank KP</div><div class="sch-role">Chief Technology Officer</div><div class="sch-org">RedFerns Tech</div></div></li></ul></div>
                                 <span class="schedule-badge badge-workshop">Talk</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">11:50 – 11:58</div>
-                                <div class="schedule-info"><h4>Innovation Talk: Xtant Tech</h4><p>Ankit Kumar, Founder and CEO, Xtant Tech. &ldquo;xGMS, proprietary AI governance management system developed by Xtant.tech&rdquo;.</p></div>
+                                <div class="schedule-info"><h4>Innovation Talk: Xtant Tech</h4><p>&ldquo;xGMS, proprietary AI governance management system developed by Xtant.tech&rdquo;.</p><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/ankit-kumar.webp?v=f7a24f1a" alt=""><div class="sch-who"><img class="sch-logo" width="184" height="64" loading="lazy" decoding="async" src="images/sched/logo-xtant-tech.webp?v=e5aba050" alt="" style="--lw:75;--lh:26"><div class="sch-name">Ankit Kumar</div><div class="sch-role">Founder and CEO</div><div class="sch-org">Xtant Tech</div></div></li></ul></div>
                                 <span class="schedule-badge badge-workshop">Talk</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">12:00 – 12:08</div>
-                                <div class="schedule-info"><h4>Innovation Talk: Oranje AI</h4><p>Shivendra Singh, Founder, Oranje AI. &ldquo;Your Brand Now Has a Brain&rdquo;.</p></div>
+                                <div class="schedule-info"><h4>Innovation Talk: Oranje AI</h4><p>&ldquo;Your Brand Now Has a Brain&rdquo;.</p><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/shivendra-singh.webp?v=a57b5ed0" alt=""><div class="sch-who"><img class="sch-logo" width="184" height="75" loading="lazy" decoding="async" src="images/sched/logo-oranje-ai.webp?v=13d30d18" alt="" style="--lw:69;--lh:28"><div class="sch-name">Shivendra Singh</div><div class="sch-role">Founder</div><div class="sch-org">Oranje AI</div></div></li></ul></div>
                                 <span class="schedule-badge badge-workshop">Talk</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">12:10 – 12:18</div>
-                                <div class="schedule-info"><h4>Innovation Talk: Eurys Infosystems</h4><p>Divyanshi Saxena, Sr. Manager – Sales, Eurys Infosystems. &ldquo;Pioneering the Shift from E-Governance to AI-Governance using conversational AI&rdquo;.</p></div>
+                                <div class="schedule-info"><h4>Innovation Talk: Eurys Infosystems</h4><p>&ldquo;Pioneering the Shift from E-Governance to AI-Governance using conversational AI&rdquo;.</p><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/divyanshi-saxena.webp?v=38512fdc" alt=""><div class="sch-who"><img class="sch-logo" width="80" height="80" loading="lazy" decoding="async" src="images/sched/logo-eurys-infosystems.webp?v=bea3aec6" alt="" style="--lw:40;--lh:40"><div class="sch-name">Divyanshi Saxena</div><div class="sch-role">Sr. Manager – Sales</div><div class="sch-org">Eurys Infosystems</div></div></li></ul></div>
                                 <span class="schedule-badge badge-workshop">Talk</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">12:20 – 12:28</div>
-                                <div class="schedule-info"><h4>Innovation Talk: Daten Technology Solutions</h4><p>Shishir Sharan, CEO, Daten Technology Solutions.</p></div>
+                                <div class="schedule-info"><h4>Innovation Talk: Daten Technology Solutions</h4><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/shishir-sharan.webp?v=a2b84669" alt=""><div class="sch-who"><img class="sch-logo" width="94" height="80" loading="lazy" decoding="async" src="images/sched/logo-daten-technology-solutions.webp?v=c9d469a8" alt="" style="--lw:44;--lh:38"><div class="sch-name">Shishir Sharan</div><div class="sch-role">CEO</div><div class="sch-org">Daten Technology Solutions</div></div></li></ul></div>
                                 <span class="schedule-badge badge-workshop">Talk</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">12:40 – 12:48</div>
-                                <div class="schedule-info"><h4>Innovation Talk: Origins AI</h4><p>Gaurav Jha, Founder and CEO, Origins AI.</p></div>
+                                <div class="schedule-info"><h4>Innovation Talk: Origins AI</h4><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/gaurav-jha.webp?v=a474a519" alt=""><div class="sch-who"><img class="sch-logo" width="173" height="80" loading="lazy" decoding="async" src="images/sched/logo-origins-ai.webp?v=20d9e611" alt="" style="--lw:64;--lh:29"><div class="sch-name">Gaurav Jha</div><div class="sch-role">Founder and CEO</div><div class="sch-org">Origins AI</div></div></li></ul></div>
                                 <span class="schedule-badge badge-workshop">Talk</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">12:50 – 12:58</div>
-                                <div class="schedule-info"><h4>Innovation Talk: Kirusa</h4><p>Dr. Raja N. Moorthy, Chief Operating Officer, Kirusa.</p></div>
+                                <div class="schedule-info"><h4>Innovation Talk: Kirusa</h4><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/raja-n-moorthy.webp?v=c69c22a5" alt=""><div class="sch-who"><img class="sch-logo" width="59" height="80" loading="lazy" decoding="async" src="images/sched/logo-kirusa.webp?v=3d137780" alt="" style="--lw:30;--lh:40"><div class="sch-name">Dr. Raja N. Moorthy</div><div class="sch-role">Chief Operating Officer</div><div class="sch-org">Kirusa</div></div></li></ul></div>
                                 <span class="schedule-badge badge-workshop">Talk</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">13:10 – 13:18</div>
-                                <div class="schedule-info"><h4>Innovation Talk: Phoebetal Technologies</h4><p>Amritesh Kumar, Product Head, Phoebetal Technologies. &ldquo;AVISA One : From Health Signals to Connected Care - The power of Personalised AI care&rdquo;.</p></div>
+                                <div class="schedule-info"><h4>Innovation Talk: Phoebetal Technologies</h4><p>&ldquo;AVISA One : From Health Signals to Connected Care - The power of Personalised AI care&rdquo;.</p><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/amritesh-kumar.webp?v=9b9d3022" alt=""><div class="sch-who"><img class="sch-logo" width="87" height="80" loading="lazy" decoding="async" src="images/sched/logo-phoebetal-technologies.webp?v=f5d685d7" alt="" style="--lw:42;--lh:39"><div class="sch-name">Amritesh Kumar</div><div class="sch-role">Product Head</div><div class="sch-org">Phoebetal Technologies</div></div></li></ul></div>
                                 <span class="schedule-badge badge-workshop">Talk</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">14:00 – 14:08</div>
-                                <div class="schedule-info"><h4>Innovation Talk: Zanopy AI</h4><p>Saurabh Singh, CEO &amp; Co-Founder, Zanopy AI. &ldquo;Don’t Just Build with AI. Sell with It&rdquo;.</p></div>
+                                <div class="schedule-info"><h4>Innovation Talk: Zanopy AI</h4><p>&ldquo;Don’t Just Build with AI. Sell with It&rdquo;.</p><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/saurabh-singh.webp?v=18cb5b90" alt=""><div class="sch-who"><img class="sch-logo" width="100" height="34" loading="lazy" decoding="async" src="images/sched/logo-zanopy-ai.webp?v=da61763a" alt="" style="--lw:76;--lh:26"><div class="sch-name">Saurabh Singh</div><div class="sch-role">CEO &amp; Co-Founder</div><div class="sch-org">Zanopy AI</div></div></li></ul></div>
                                 <span class="schedule-badge badge-workshop">Talk</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">14:10 – 14:18</div>
-                                <div class="schedule-info"><h4>Innovation Talk: Aria Telecom</h4><p>Aditi Saini, Marketing Strategist, Aria Telecom. &ldquo;Sovereign AI in Action: Building Secure, Customizable and Full-Stack AI for Indian Enterprises&rdquo;.</p></div>
+                                <div class="schedule-info"><h4>Innovation Talk: Aria Telecom</h4><p>&ldquo;Sovereign AI in Action: Building Secure, Customizable and Full-Stack AI for Indian Enterprises&rdquo;.</p><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/aditi-saini.webp?v=b98f3e13" alt=""><div class="sch-who"><img class="sch-logo" width="155" height="80" loading="lazy" decoding="async" src="images/sched/logo-aria-telecom.webp?v=8e491d10" alt="" style="--lw:59;--lh:31"><div class="sch-name">Aditi Saini</div><div class="sch-role">Marketing Strategist</div><div class="sch-org">Aria Telecom</div></div></li></ul></div>
                                 <span class="schedule-badge badge-workshop">Talk</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">14:20 – 14:30</div>
-                                <div class="schedule-info"><h4>Innovation Talk: Gupshup.ai</h4><p>Shashi Bhushan, Vice President – Sales &amp; Head of Public Sector Sales (India), Gupshup.ai.</p></div>
+                                <div class="schedule-info"><h4>Innovation Talk: Gupshup.ai</h4><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/shashi-bhushan.webp?v=ce81a316" alt=""><div class="sch-who"><img class="sch-logo" width="86" height="80" loading="lazy" decoding="async" src="images/sched/logo-gupshup-ai.webp?v=7723c3c0" alt="" style="--lw:42;--lh:39"><div class="sch-name">Shashi Bhushan</div><div class="sch-role">Vice President – Sales &amp; Head of Public Sector Sales (India)</div><div class="sch-org">Gupshup.ai</div></div></li></ul></div>
                                 <span class="schedule-badge badge-workshop">Talk</span>
                             </div>
                             <div class="schedule-item">
@@ -884,44 +969,44 @@
                                 <div class="schedule-info"><h4>Innovation Talk: IIT Bombay</h4><p>Speaker to be announced.</p></div>
                                 <span class="schedule-badge badge-workshop">Talk</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">15:08 – 15:28</div>
-                                <div class="schedule-info"><h4>Innovation Talk: Joget</h4><p>Raveesh Dewan, President &amp; CEO, Joget. &ldquo;The Last Mile of AI: Where Models Become Business Value&rdquo;.</p></div>
+                                <div class="schedule-info"><h4>Innovation Talk: Joget</h4><p>&ldquo;The Last Mile of AI: Where Models Become Business Value&rdquo;.</p><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/raveesh-dewan.webp?v=9a4d8689" alt=""><div class="sch-who"><img class="sch-logo" width="79" height="80" loading="lazy" decoding="async" src="images/sched/logo-joget.webp?v=f9ba4047" alt="" style="--lw:40;--lh:40"><div class="sch-name">Raveesh Dewan</div><div class="sch-role">President &amp; CEO</div><div class="sch-org">Joget</div></div></li></ul></div>
                                 <span class="schedule-badge badge-workshop">Talk</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">15:30 – 15:50</div>
-                                <div class="schedule-info"><h4>Innovation Talk: Intangles</h4><p>Harshal Wakharkar, Sales Manager, Intangles. &ldquo;Beyond Tracking: Intelligent Fleet Telematics for Driving Behaviour, Fleet Health &amp; Video Intelligence&rdquo;.</p></div>
+                                <div class="schedule-info"><h4>Innovation Talk: Intangles</h4><p>&ldquo;Beyond Tracking: Intelligent Fleet Telematics for Driving Behaviour, Fleet Health &amp; Video Intelligence&rdquo;.</p><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/harshal-wakharkar.webp?v=7df937f8" alt=""><div class="sch-who"><img class="sch-logo" width="70" height="80" loading="lazy" decoding="async" src="images/sched/logo-intangles.webp?v=900711c9" alt="" style="--lw:35;--lh:40"><div class="sch-name">Harshal Wakharkar</div><div class="sch-role">Sales Manager</div><div class="sch-org">Intangles</div></div></li></ul></div>
                                 <span class="schedule-badge badge-workshop">Talk</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">15:52 – 16:12</div>
-                                <div class="schedule-info"><h4>Innovation Talk: Ministry of Tribal Affairs</h4><p>Ganesh Nagarajan, Deputy Secretary, Ministry of Tribal Affairs. &ldquo;Adi Vaani: Taking India's Tribal Languages from the Margins to the Mainstream with AI&rdquo;.</p></div>
+                                <div class="schedule-info"><h4>Innovation Talk: Ministry of Tribal Affairs</h4><p>&ldquo;Adi Vaani: Taking India's Tribal Languages from the Margins to the Mainstream with AI&rdquo;.</p><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/ganesh-nagarajan.webp?v=16a5dcfa" alt=""><div class="sch-who"><img class="sch-logo" width="184" height="70" loading="lazy" decoding="async" src="images/sched/logo-ministry-of-tribal-affairs.webp?v=6b48a183" alt="" style="--lw:71;--lh:27"><div class="sch-name">Ganesh Nagarajan</div><div class="sch-role">Deputy Secretary</div><div class="sch-org">Ministry of Tribal Affairs</div></div></li></ul></div>
                                 <span class="schedule-badge badge-workshop">Talk</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">16:14 – 16:34</div>
-                                <div class="schedule-info"><h4>Innovation Talk: LightMetrics</h4><p>Dr. Pushkar Patwardhan, Co-founder and Head of Cloud Engineering, LightMetrics. &ldquo;From Roadside Risk to Real-Time Response: Building AI That Acts in Time&rdquo;.</p></div>
+                                <div class="schedule-info"><h4>Innovation Talk: LightMetrics</h4><p>&ldquo;From Roadside Risk to Real-Time Response: Building AI That Acts in Time&rdquo;.</p><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/pushkar-patwardhan.webp?v=caf068d2" alt=""><div class="sch-who"><img class="sch-logo" width="122" height="35" loading="lazy" decoding="async" src="images/sched/logo-lightmetrics.webp?v=e0006599" alt="" style="--lw:85;--lh:24"><div class="sch-name">Dr. Pushkar Patwardhan</div><div class="sch-role">Co-founder and Head of Cloud Engineering</div><div class="sch-org">LightMetrics</div></div></li></ul></div>
                                 <span class="schedule-badge badge-workshop">Talk</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">16:36 – 16:56</div>
-                                <div class="schedule-info"><h4>Innovation Talk: Image Infosystems</h4><p>Mr. Anand Natarajan, Director &amp; Chief Technical Officer, Image Infosystems.</p></div>
+                                <div class="schedule-info"><h4>Innovation Talk: Image Infosystems</h4><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/anand-natarajan.webp?v=2d74a5f3" alt=""><div class="sch-who"><img class="sch-logo" width="184" height="70" loading="lazy" decoding="async" src="images/sched/logo-image-infosystems.webp?v=d518c674" alt="" style="--lw:71;--lh:27"><div class="sch-name">Mr. Anand Natarajan</div><div class="sch-role">Director &amp; Chief Technical Officer</div><div class="sch-org">Image Infosystems</div></div></li></ul></div>
                                 <span class="schedule-badge badge-workshop">Talk</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">17:20 – 17:30</div>
-                                <div class="schedule-info"><h4>Innovation Talk: Dysosphere</h4><p>Mayank Sen Sharma, Co-Founder, Dysosphere. &ldquo;Edge AI&rdquo;.</p></div>
+                                <div class="schedule-info"><h4>Innovation Talk: Dysosphere</h4><p>&ldquo;Edge AI&rdquo;.</p><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/mayank-sen-sharma.webp?v=2cd01094" alt=""><div class="sch-who"><img class="sch-logo" width="142" height="80" loading="lazy" decoding="async" src="images/sched/logo-dysosphere.webp?v=aaa29fa7" alt="" style="--lw:56;--lh:32"><div class="sch-name">Mayank Sen Sharma</div><div class="sch-role">Co-Founder</div><div class="sch-org">Dysosphere</div></div></li></ul></div>
                                 <span class="schedule-badge badge-workshop">Talk</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">17:44 – 17:54</div>
-                                <div class="schedule-info"><h4>Innovation Talk: AlgoAnalytics</h4><p>Dr. Anand Deshpande, CSO, AlgoAnalytics. &ldquo;AI-based Business Transformations in Manufacturing and Industrial Domains&rdquo;.</p></div>
+                                <div class="schedule-info"><h4>Innovation Talk: AlgoAnalytics</h4><p>&ldquo;AI-based Business Transformations in Manufacturing and Industrial Domains&rdquo;.</p><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/anand-deshpande.webp?v=95ca5d05" alt=""><div class="sch-who"><img class="sch-logo" width="93" height="71" loading="lazy" decoding="async" src="images/sched/logo-algoanalytics.webp?v=185b8d9e" alt="" style="--lw:47;--lh:36"><div class="sch-name">Dr. Anand Deshpande</div><div class="sch-role">CSO</div><div class="sch-org">AlgoAnalytics</div></div></li></ul></div>
                                 <span class="schedule-badge badge-workshop">Talk</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">17:56 – 18:06</div>
-                                <div class="schedule-info"><h4>Innovation Talk: Seem Fintech &amp; Sustainability</h4><p>Seema Sutradhar, Founder, Seem Fintech &amp; Sustainability. &ldquo;Digital Transformation in systemically important banks and others&rdquo;.</p></div>
+                                <div class="schedule-info"><h4>Innovation Talk: Seem Fintech &amp; Sustainability</h4><p>&ldquo;Digital Transformation in systemically important banks and others&rdquo;.</p><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/seema-sutradhar.webp?v=add7671d" alt=""><div class="sch-who"><img class="sch-logo" width="80" height="80" loading="lazy" decoding="async" src="images/sched/logo-seem-fintech-and-sustainability.webp?v=d14c0d37" alt="" style="--lw:40;--lh:40"><div class="sch-name">Seema Sutradhar</div><div class="sch-role">Founder</div><div class="sch-org">Seem Fintech &amp; Sustainability</div></div></li></ul></div>
                                 <span class="schedule-badge badge-workshop">Talk</span>
                             </div>
                         </div>
@@ -966,9 +1051,9 @@
                                 <div class="schedule-info"><h4>Networking Lunch</h4></div>
                                 <span class="schedule-badge badge-break">Lunch</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">14:00 – 15:30</div>
-                                <div class="schedule-info"><h4>From Prototype to Production: Building Enterprise AI with Forward-Deployed Engineers</h4><p>Dr. Ashish Tendulkar, Lead AI, Google.</p></div>
+                                <div class="schedule-info"><h4>From Prototype to Production: Building Enterprise AI with Forward-Deployed Engineers</h4><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/ashish-tendulkar.webp?v=c748cbb5" alt=""><div class="sch-who"><img class="sch-logo" width="60" height="59" loading="lazy" decoding="async" src="images/sched/logo-google-com.webp?v=e5a86bea" alt="" style="--lw:40;--lh:40"><div class="sch-name">Dr. Ashish Tendulkar</div><div class="sch-role">Lead AI</div><div class="sch-org">Google</div></div></li></ul></div>
                                 <span class="schedule-badge badge-workshop">Workshop</span>
                             </div>
                             <div class="schedule-item">
@@ -976,9 +1061,9 @@
                                 <div class="schedule-info"><h4>Hi-Tea Break</h4></div>
                                 <span class="schedule-badge badge-break">Tea</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">15:45 – 17:15</div>
-                                <div class="schedule-info"><h4>LLM Fine-Tuning, Hands-On</h4><p>Virendra Pal, AI &amp; FinTech Expert.</p></div>
+                                <div class="schedule-info"><h4>LLM Fine-Tuning, Hands-On</h4><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/virendra-pal.webp?v=05d5db30" alt=""><div class="sch-who"><div class="sch-name">Virendra Pal</div><div class="sch-role">AI &amp; FinTech Expert</div></div></li></ul></div>
                                 <span class="schedule-badge badge-workshop">Workshop</span>
                             </div>
                         </div>
@@ -1000,9 +1085,9 @@
                                 <div class="schedule-info"><h4>Networking Lunch</h4></div>
                                 <span class="schedule-badge badge-break">Lunch</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">14:00 – 15:30</div>
-                                <div class="schedule-info"><h4>Automatic Speech Recognition (Speech-to-Text)</h4><p>Dr. Parijat Shukla, PhD, Iowa State University.</p></div>
+                                <div class="schedule-info"><h4>Automatic Speech Recognition (Speech-to-Text)</h4><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/parijat-shukla.webp?v=278465c4" alt=""><div class="sch-who"><div class="sch-name">Dr. Parijat Shukla</div><div class="sch-role">PhD, Iowa State University</div></div></li></ul></div>
                                 <span class="schedule-badge badge-workshop">Workshop</span>
                             </div>
                             <div class="schedule-item">
@@ -1010,9 +1095,9 @@
                                 <div class="schedule-info"><h4>Hi-Tea Break</h4></div>
                                 <span class="schedule-badge badge-break">Tea</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">15:45 – 16:45</div>
-                                <div class="schedule-info"><h4>Workshop with Dr. Ashish Tendulkar</h4><p>Dr. Ashish Tendulkar, Lead AI, Google. Topic to be announced.</p></div>
+                                <div class="schedule-info"><h4>Workshop with Dr. Ashish Tendulkar</h4><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/ashish-tendulkar.webp?v=c748cbb5" alt=""><div class="sch-who"><img class="sch-logo" width="60" height="59" loading="lazy" decoding="async" src="images/sched/logo-google-com.webp?v=e5a86bea" alt="" style="--lw:40;--lh:40"><div class="sch-name">Dr. Ashish Tendulkar</div><div class="sch-role">Lead AI</div><div class="sch-org">Google</div></div></li></ul><p class="sch-note">Topic to be announced.</p></div>
                                 <span class="schedule-badge badge-workshop">Workshop</span>
                             </div>
                         </div>
@@ -1038,14 +1123,14 @@
                                 <div class="schedule-info"><h4>Inauguration and keynotes in Homi J. Bhabha Hall</h4><p>Everyone gathers in Homi J. Bhabha Hall.</p></div>
                                 <span class="schedule-badge badge-break">All halls</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">11:30 – 12:30</div>
-                                <div class="schedule-info"><h4>Democratizing Healthcare with AI: Access, Affordability &amp; Outcomes</h4><p>Panel: Healthcare. With Ramanarayana Parhi (Alkem Laboratories), Joy Chakraborty (P. D. Hinduja National Hospital &amp; Medical Research Centre), Dheeraj Sinha (Sun Pharma), Dr. Vishal Deo (ICMR-NIRDH).</p></div>
+                                <div class="schedule-info"><h4>Democratizing Healthcare with AI: Access, Affordability &amp; Outcomes</h4><p>Panel: Healthcare.</p><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/ramanarayana-parhi.webp?v=153704cf" alt=""><div class="sch-who"><img class="sch-logo" width="48" height="45" loading="lazy" decoding="async" src="images/sched/logo-alkemlabs-com.webp?v=764d6c2f" alt="" style="--lw:42;--lh:39"><div class="sch-name">Ramanarayana Parhi</div><div class="sch-role">VP &amp; CIO</div><div class="sch-org">Alkem Laboratories</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/joy-chakraborty.webp?v=6426ec0e" alt=""><div class="sch-who"><img class="sch-logo" width="64" height="64" loading="lazy" decoding="async" src="images/sched/logo-hindujahospital-com.webp?v=7ece3090" alt="" style="--lw:40;--lh:40"><div class="sch-name">Joy Chakraborty</div><div class="sch-role">Deputy CEO</div><div class="sch-org">P. D. Hinduja National Hospital &amp; Medical Research Centre</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/dheeraj-sinha.webp?v=3df28f29" alt=""><div class="sch-who"><img class="sch-logo" width="32" height="32" loading="lazy" decoding="async" src="images/sched/logo-sunpharma-com.webp?v=c6454852" alt="" style="--lw:40;--lh:40"><div class="sch-name">Dheeraj Sinha</div><div class="sch-role">EVP &amp; Global CIO</div><div class="sch-org">Sun Pharma</div></div></li><li class="sch-person"><span class="sch-photo sch-initials" aria-hidden="true">VD</span><div class="sch-who"><div class="sch-name">Dr. Vishal Deo</div><div class="sch-role">Scientist-C</div><div class="sch-org">ICMR-NIRDH</div></div></li></ul></div>
                                 <span class="schedule-badge badge-panel">Panel</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">12:30 – 12:50</div>
-                                <div class="schedule-info"><h4>From Copilots to an Organisation Brain: What We Learned Building Enterprise AI Agents</h4><p>Leadership Talk. Apsara Mokashi, Global Head of Account Operations, Thoughtworks.</p></div>
+                                <div class="schedule-info"><h4>From Copilots to an Organisation Brain: What We Learned Building Enterprise AI Agents</h4><p>Leadership Talk.</p><ul class="sch-people"><li class="sch-person"><span class="sch-photo sch-initials" aria-hidden="true">AM</span><div class="sch-who"><div class="sch-name">Apsara Mokashi</div><div class="sch-role">Global Head of Account Operations</div><div class="sch-org">Thoughtworks</div></div></li></ul></div>
                                 <span class="schedule-badge badge-workshop">Talk</span>
                             </div>
                             <div class="schedule-item">
@@ -1058,24 +1143,24 @@
                                 <div class="schedule-info"><h4>Networking Lunch</h4></div>
                                 <span class="schedule-badge badge-break">Lunch</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">14:00 – 15:00</div>
-                                <div class="schedule-info"><h4>AI-Driven Growth Engines: Transforming Sales &amp; Marketing</h4><p>Panel: Sales &amp; Marketing. With Rahul Molasi (Cipla), Abdul Hai Mattoo (Axis Max Life Insurance), Akhil Gupta (NoBroker), Rakhi Prasad (ClarityX), Arvind Shah (SAMA Insurance), Gaurav Arora (MSA Consulting Services), Rinoo Rajesh (PMI Pune-Deccan India Chapter). Moderator: Mr. Bhupesh Daheria (Aegis Knowledge Trust).</p></div>
+                                <div class="schedule-info"><h4>AI-Driven Growth Engines: Transforming Sales &amp; Marketing</h4><p>Panel: Sales &amp; Marketing.</p><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/rahul-molasi.webp?v=e14b54d2" alt=""><div class="sch-who"><img class="sch-logo" width="16" height="16" loading="lazy" decoding="async" src="images/sched/logo-cipla-com.webp?v=9434f78c" alt="" style="--lw:40;--lh:40"><div class="sch-name">Rahul Molasi</div><div class="sch-role">Associate Director, L&amp;D</div><div class="sch-org">Cipla</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/abdul-hai-mattoo.webp?v=34a39032" alt=""><div class="sch-who"><img class="sch-logo" width="32" height="32" loading="lazy" decoding="async" src="images/sched/logo-axismaxlife-com.webp?v=3100c860" alt="" style="--lw:40;--lh:40"><div class="sch-name">Abdul Hai Mattoo</div><div class="sch-role">CVP &amp; Head of Training</div><div class="sch-org">Axis Max Life Insurance</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/akhil-gupta.webp?v=754b0bd2" alt=""><div class="sch-who"><img class="sch-logo" width="62" height="62" loading="lazy" decoding="async" src="images/sched/logo-nobroker-in.webp?v=3d717e1d" alt="" style="--lw:40;--lh:40"><div class="sch-name">Akhil Gupta</div><div class="sch-role">Founder</div><div class="sch-org">NoBroker</div></div></li><li class="sch-person"><span class="sch-photo sch-initials" aria-hidden="true">RP</span><div class="sch-who"><div class="sch-name">Rakhi Prasad</div><div class="sch-role">Co-Founder</div><div class="sch-org">ClarityX</div></div></li><li class="sch-person"><span class="sch-photo sch-initials" aria-hidden="true">AS</span><div class="sch-who"><div class="sch-name">Arvind Shah</div><div class="sch-role">Chief Distribution Officer</div><div class="sch-org">SAMA Insurance</div></div></li><li class="sch-person"><span class="sch-photo sch-initials" aria-hidden="true">GA</span><div class="sch-who"><div class="sch-name">Gaurav Arora</div><div class="sch-role">Chief Headhunter &amp; CEO</div><div class="sch-org">MSA Consulting Services</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/rinoo-rajesh.webp?v=97b5c9fb" alt=""><div class="sch-who"><div class="sch-name">Rinoo Rajesh</div><div class="sch-role">President</div><div class="sch-org">PMI Pune-Deccan India Chapter</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/bhupesh-daheria.webp?v=db4ae048" alt=""><div class="sch-who"><img class="sch-logo" width="184" height="68" loading="lazy" decoding="async" src="images/sched/logo-aegis.webp?v=1d8f778a" alt="" style="--lw:73;--lh:27"><div class="sch-name">Mr. Bhupesh Daheria <span class="sch-tag">Moderator</span></div><div class="sch-role">CEO; Trustee, Aegis Knowledge Trust</div><div class="sch-org">Aegis School of Data Science &amp; AI</div></div></li></ul></div>
                                 <span class="schedule-badge badge-panel">Panel</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">15:00 – 15:20</div>
-                                <div class="schedule-info"><h4>GeoAI Forest Encroachment Monitoring</h4><p>Innovation Talk. Shri Vivek Khandekar (IFS), Principal Chief Conservator of Forests (Social Forestry), Maharashtra Forest Department.</p></div>
+                                <div class="schedule-info"><h4>GeoAI Forest Encroachment Monitoring</h4><p>Innovation Talk.</p><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/vivek-khandekar.webp?v=23fbcca4" alt=""><div class="sch-who"><img class="sch-logo" width="80" height="80" loading="lazy" decoding="async" src="images/sched/logo-maharashtra-forest.webp?v=8a8b8a64" alt="" style="--lw:40;--lh:40"><div class="sch-name">Shri Vivek Khandekar (IFS)</div><div class="sch-role">Principal Chief Conservator of Forests (Social Forestry)</div><div class="sch-org">Maharashtra Forest Department</div></div></li></ul></div>
                                 <span class="schedule-badge badge-workshop">Talk</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">15:20 – 15:40</div>
-                                <div class="schedule-info"><h4>Your Next Colleague Is an AI: Lessons from Delivering Technology Operations for Global Clients</h4><p>Innovation Talk. Dr Rahul Ghodke, Senior Vice President &amp; Business Unit Leader, CGI.</p></div>
+                                <div class="schedule-info"><h4>Your Next Colleague Is an AI: Lessons from Delivering Technology Operations for Global Clients</h4><p>Innovation Talk.</p><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/rahul-ghodke.webp?v=ac87f09b" alt=""><div class="sch-who"><img class="sch-logo" width="81" height="80" loading="lazy" decoding="async" src="images/sched/logo-cgi.webp?v=8ceff3f5" alt="" style="--lw:40;--lh:40"><div class="sch-name">Dr Rahul Ghodke</div><div class="sch-role">Senior Vice President &amp; Business Unit leader</div><div class="sch-org">CGI</div></div></li></ul></div>
                                 <span class="schedule-badge badge-workshop">Talk</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">15:40 – 16:00</div>
-                                <div class="schedule-info"><h4>Harnessing DEPA's Interoperable, Secure, and Privacy-Preserving Architecture for Advancing AI in Health</h4><p>Innovation Talk. Dr. Vishal Deo, Scientist-C, ICMR-NIRDH.</p></div>
+                                <div class="schedule-info"><h4>Harnessing DEPA's Interoperable, Secure, and Privacy-Preserving Architecture for Advancing AI in Health</h4><p>Innovation Talk.</p><ul class="sch-people"><li class="sch-person"><span class="sch-photo sch-initials" aria-hidden="true">VD</span><div class="sch-who"><div class="sch-name">Dr. Vishal Deo</div><div class="sch-role">Scientist-C</div><div class="sch-org">ICMR-NIRDH</div></div></li></ul></div>
                                 <span class="schedule-badge badge-workshop">Talk</span>
                             </div>
                             <div class="schedule-item">
@@ -1092,19 +1177,19 @@
                                 <div class="schedule-info"><h4>Welcome and keynotes in Homi J. Bhabha Hall</h4><p>Everyone gathers in Homi J. Bhabha Hall.</p></div>
                                 <span class="schedule-badge badge-break">All halls</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">10:00 – 10:20</div>
-                                <div class="schedule-info"><h4>AI for the Frontlines: Taking AI from Pilots to Population-Scale Public Infrastructure</h4><p>Leadership Talk. Shekar Sivasubramanian, CEO, Wadhwani Institute for Artificial Intelligence.</p></div>
+                                <div class="schedule-info"><h4>AI for the Frontlines: Taking AI from Pilots to Population-Scale Public Infrastructure</h4><p>Leadership Talk.</p><ul class="sch-people"><li class="sch-person"><span class="sch-photo sch-initials" aria-hidden="true">SS</span><div class="sch-who"><div class="sch-name">Shekar Sivasubramanian</div><div class="sch-role">CEO</div><div class="sch-org">Wadhwani Institute for Artificial Intelligence</div></div></li></ul></div>
                                 <span class="schedule-badge badge-workshop">Talk</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">10:40 – 11:00</div>
-                                <div class="schedule-info"><h4>Artificial Intelligence: From Molecules to Medicines</h4><p>Leadership Talk. Dr. Sameer Agarwal, Executive Vice President, Molecule AI.</p></div>
+                                <div class="schedule-info"><h4>Artificial Intelligence: From Molecules to Medicines</h4><p>Leadership Talk.</p><ul class="sch-people"><li class="sch-person"><span class="sch-photo sch-initials" aria-hidden="true">SA</span><div class="sch-who"><div class="sch-name">Dr. Sameer Agarwal</div><div class="sch-role">Executive Vice President</div><div class="sch-org">Molecule AI</div></div></li></ul></div>
                                 <span class="schedule-badge badge-workshop">Talk</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">11:00 – 12:00</div>
-                                <div class="schedule-info"><h4>Transforming Indian Agriculture with AI: Doubling Farmer Income</h4><p>Panel: Agriculture. With Shri Bhanudas Palwe (IAS) (Commissioner of Fisheries Maharashtra), Manish K. Prahlad (Verdant Impact), Dr. Omprakash Mandge (MET).</p></div>
+                                <div class="schedule-info"><h4>Transforming Indian Agriculture with AI: Doubling Farmer Income</h4><p>Panel: Agriculture.</p><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/bhanudas-palwe.webp?v=4f79c9f8" alt=""><div class="sch-who"><img class="sch-logo" width="52" height="66" loading="lazy" decoding="async" src="images/sched/logo-maharashtra.webp?v=29be969c" alt="" style="--lw:32;--lh:40"><div class="sch-name">Shri Bhanudas Palwe (IAS)</div><div class="sch-role">Commissioner of Fisheries</div><div class="sch-org">Government of Maharashtra</div></div></li><li class="sch-person"><span class="sch-photo sch-initials" aria-hidden="true">MP</span><div class="sch-who"><div class="sch-name">Manish K. Prahlad</div><div class="sch-role">Co-Founder and CEO</div><div class="sch-org">Verdant Impact</div></div></li><li class="sch-person"><span class="sch-photo sch-initials" aria-hidden="true">OM</span><div class="sch-who"><div class="sch-name">Dr. Omprakash Mandge</div><div class="sch-role">Principal</div><div class="sch-org">MET</div></div></li></ul></div>
                                 <span class="schedule-badge badge-panel">Panel</span>
                             </div>
                             <div class="schedule-item">
@@ -1134,9 +1219,9 @@
                                 <div class="schedule-info"><h4>Registration</h4><p><span class="hall-label hl-all">All halls</span>Collect your badge at the registration desk.</p></div>
                                 <span class="schedule-badge badge-break">Registration</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">09:30 – 09:35</div>
-                                <div class="schedule-info"><h4>Welcome Note</h4><p><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span>Mr. Bhupesh Daheria, Trustee, Aegis Knowledge Trust; CEO, Aegis School of Data Science &amp; AI.</p></div>
+                                <div class="schedule-info"><h4>Welcome Note</h4><p><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span></p><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/bhupesh-daheria.webp?v=db4ae048" alt=""><div class="sch-who"><img class="sch-logo" width="184" height="68" loading="lazy" decoding="async" src="images/sched/logo-aegis.webp?v=1d8f778a" alt="" style="--lw:73;--lh:27"><div class="sch-name">Mr. Bhupesh Daheria</div><div class="sch-role">CEO; Trustee, Aegis Knowledge Trust</div><div class="sch-org">Aegis School of Data Science &amp; AI</div></div></li></ul></div>
                                 <span class="schedule-badge badge-keynote">Keynote</span>
                             </div>
                             <div class="schedule-item">
@@ -1144,59 +1229,59 @@
                                 <div class="schedule-info"><h4>Inauguration and Chief Guest Keynote</h4><p><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span>Chief guest to be announced.</p></div>
                                 <span class="schedule-badge badge-keynote">Keynote</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-lead">
                                 <div class="schedule-time">10:00 – 10:10</div>
-                                <div class="schedule-info"><h4>Keynote: Hon’ble Shri Chandrakant Dada Patil</h4><p><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span>Minister of Higher and Technical Education, Government of Maharashtra.</p></div>
+                                <div class="schedule-info"><div class="sch-person sch-lead"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/chandrakant-dada-patil.webp?v=7537129f" alt=""><div class="sch-who"><img class="sch-logo" width="52" height="66" loading="lazy" decoding="async" src="images/sched/logo-maharashtra.webp?v=29be969c" alt="" style="--lw:32;--lh:40"><h4>Hon’ble Shri Chandrakant Dada Patil</h4><div class="sch-role">Minister of Higher and Technical Education</div><div class="sch-org">Government of Maharashtra</div></div></div><p class="sch-note"><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span></p></div>
                                 <span class="schedule-badge badge-keynote">Keynote</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-lead">
                                 <div class="schedule-time">10:10 – 10:20</div>
-                                <div class="schedule-info"><h4>Keynote: Hon’ble Shri Dattatray Bharane</h4><p><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span>Minister of Agriculture, Government of Maharashtra.</p></div>
+                                <div class="schedule-info"><div class="sch-person sch-lead"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/dattatray-bharane.webp?v=408deaf8" alt=""><div class="sch-who"><img class="sch-logo" width="52" height="66" loading="lazy" decoding="async" src="images/sched/logo-maharashtra.webp?v=29be969c" alt="" style="--lw:32;--lh:40"><h4>Hon’ble Shri Dattatray Bharane</h4><div class="sch-role">Minister of Agriculture</div><div class="sch-org">Government of Maharashtra</div></div></div><p class="sch-note"><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span></p></div>
                                 <span class="schedule-badge badge-keynote">Keynote</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-lead">
                                 <div class="schedule-time">10:20 – 10:30</div>
-                                <div class="schedule-info"><h4>Keynote: Hon’ble Smt. Aditi Tatkare</h4><p><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span>Minister of Women and Child Development, Government of Maharashtra.</p></div>
+                                <div class="schedule-info"><div class="sch-person sch-lead"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/aditi-tatkare.webp?v=b7eb67ed" alt=""><div class="sch-who"><img class="sch-logo" width="52" height="66" loading="lazy" decoding="async" src="images/sched/logo-maharashtra.webp?v=29be969c" alt="" style="--lw:32;--lh:40"><h4>Hon’ble Smt. Aditi Tatkare</h4><div class="sch-role">Minister of Women and Child Development</div><div class="sch-org">Government of Maharashtra</div></div></div><p class="sch-note"><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span></p></div>
                                 <span class="schedule-badge badge-keynote">Keynote</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-lead">
                                 <div class="schedule-time">10:30 – 10:40</div>
-                                <div class="schedule-info"><h4>Keynote: Hon’ble Shri Sanjay Rathod</h4><p><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span>Minister of Soil and Water Conservation, Government of Maharashtra.</p></div>
+                                <div class="schedule-info"><div class="sch-person sch-lead"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/sanjay-rathod.webp?v=61b73d21" alt=""><div class="sch-who"><img class="sch-logo" width="52" height="66" loading="lazy" decoding="async" src="images/sched/logo-maharashtra.webp?v=29be969c" alt="" style="--lw:32;--lh:40"><h4>Hon’ble Shri Sanjay Rathod</h4><div class="sch-role">Minister of Soil and Water Conservation</div><div class="sch-org">Government of Maharashtra</div></div></div><p class="sch-note"><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span></p></div>
                                 <span class="schedule-badge badge-keynote">Keynote</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-lead">
                                 <div class="schedule-time">10:40 – 10:50</div>
-                                <div class="schedule-info"><h4>Keynote: Shri Virendra Singh (IAS)</h4><p><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span>Secretary, Electronics, IT and AI Department, Government of Maharashtra.</p></div>
+                                <div class="schedule-info"><div class="sch-person sch-lead"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/virendra-singh.webp?v=edbb7977" alt=""><div class="sch-who"><img class="sch-logo" width="52" height="66" loading="lazy" decoding="async" src="images/sched/logo-maharashtra.webp?v=29be969c" alt="" style="--lw:32;--lh:40"><h4>Shri Virendra Singh (IAS)</h4><div class="sch-role">Secretary</div><div class="sch-org">Electronics, IT and AI Department, Government of Maharashtra</div></div></div><p class="sch-note"><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span></p></div>
                                 <span class="schedule-badge badge-keynote">Keynote</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-lead">
                                 <div class="schedule-time">10:50 – 11:00</div>
-                                <div class="schedule-info"><h4>Keynote: Shri K.K. Singh</h4><p><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span>Joint Secretary, MeitY, Government of India.</p></div>
+                                <div class="schedule-info"><div class="sch-person sch-lead"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/k-k-singh.webp?v=eb198d1c" alt=""><div class="sch-who"><img class="sch-logo" width="184" height="60" loading="lazy" decoding="async" src="images/sched/logo-meity.webp?v=de849fcb" alt="" style="--lw:78;--lh:26"><h4>Shri K.K. Singh</h4><div class="sch-role">Joint Secretary</div><div class="sch-org">Ministry of Electronics &amp; IT (MeitY), Government of India</div></div></div><p class="sch-note"><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span></p></div>
                                 <span class="schedule-badge badge-keynote">Keynote</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-lead">
                                 <div class="schedule-time">11:00 – 11:10</div>
-                                <div class="schedule-info"><h4>Keynote: Shri Praveen Pardeshi</h4><p><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span>CEO, MITRA.</p></div>
+                                <div class="schedule-info"><div class="sch-person sch-lead"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/praveen-pardeshi.webp?v=59c4c43f" alt=""><div class="sch-who"><img class="sch-logo" width="83" height="72" loading="lazy" decoding="async" src="images/sched/logo-mitra.webp?v=436a5e58" alt="" style="--lw:44;--lh:38"><h4>Shri Praveen Pardeshi</h4><div class="sch-role">CEO; Chief Economic Advisor to the Chief Minister</div><div class="sch-org">MITRA, Government of Maharashtra</div></div></div><p class="sch-note"><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span></p></div>
                                 <span class="schedule-badge badge-keynote">Keynote</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-lead">
                                 <div class="schedule-time">11:10 – 11:20</div>
-                                <div class="schedule-info"><h4>Keynote: Shri Sudeep Shrivastava</h4><p><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span>Joint Secretary, MeitY; COO, IndiaAI Mission.</p></div>
+                                <div class="schedule-info"><div class="sch-person sch-lead"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/sudeep-shrivastava.webp?v=2ec4d7d9" alt=""><div class="sch-who"><img class="sch-logo" width="184" height="60" loading="lazy" decoding="async" src="images/sched/logo-meity.webp?v=de849fcb" alt="" style="--lw:78;--lh:26"><h4>Shri Sudeep Shrivastava</h4><div class="sch-role">Joint Secretary; COO, IndiaAI Mission</div><div class="sch-org">Ministry of Electronics &amp; IT (MeitY), Government of India</div></div></div><p class="sch-note"><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span></p></div>
                                 <span class="schedule-badge badge-keynote">Keynote</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-lead">
                                 <div class="schedule-time">11:20 – 11:30</div>
-                                <div class="schedule-info"><h4>Keynote: Shri Kaustubh Dhavse</h4><p><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span>Chief Advisor to the Chief Minister, Government of Maharashtra.</p></div>
+                                <div class="schedule-info"><div class="sch-person sch-lead"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/kaustubh-dhavse.webp?v=16c303c1" alt=""><div class="sch-who"><img class="sch-logo" width="52" height="66" loading="lazy" decoding="async" src="images/sched/logo-maharashtra.webp?v=29be969c" alt="" style="--lw:32;--lh:40"><h4>Shri Kaustubh Dhavse</h4><div class="sch-role">Chief Advisor to the Chief Minister</div><div class="sch-org">Government of Maharashtra</div></div></div><p class="sch-note"><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span></p></div>
                                 <span class="schedule-badge badge-keynote">Keynote</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-lead">
                                 <div class="schedule-time">11:30 – 11:40</div>
-                                <div class="schedule-info"><h4>Keynote: Dr. Shrikant Patil</h4><p><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span>CEO, Maharashtra State Innovation Society (MSInS).</p></div>
+                                <div class="schedule-info"><div class="sch-person sch-lead"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/shrikant-patil.webp?v=c820a5a6" alt=""><div class="sch-who"><img class="sch-logo" width="184" height="52" loading="lazy" decoding="async" src="images/sched/logo-msins.webp?v=7feb8e98" alt="" style="--lw:85;--lh:24"><h4>Dr. Shrikant Patil</h4><div class="sch-role">CEO</div><div class="sch-org">Maharashtra State Innovation Society (MSInS)</div></div></div><p class="sch-note"><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span></p></div>
                                 <span class="schedule-badge badge-keynote">Keynote</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">11:30 – 12:30</div>
-                                <div class="schedule-info"><h4>Democratizing Healthcare with AI: Access, Affordability &amp; Outcomes</h4><p><span class="hall-label hl-aryabhata">Kalam Theatre</span>Panel: Healthcare. With Ramanarayana Parhi (Alkem Laboratories), Joy Chakraborty (P. D. Hinduja National Hospital &amp; Medical Research Centre), Dheeraj Sinha (Sun Pharma), Dr. Vishal Deo (ICMR-NIRDH).</p></div>
+                                <div class="schedule-info"><h4>Democratizing Healthcare with AI: Access, Affordability &amp; Outcomes</h4><p><span class="hall-label hl-aryabhata">Kalam Theatre</span>Panel: Healthcare.</p><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/ramanarayana-parhi.webp?v=153704cf" alt=""><div class="sch-who"><img class="sch-logo" width="48" height="45" loading="lazy" decoding="async" src="images/sched/logo-alkemlabs-com.webp?v=764d6c2f" alt="" style="--lw:42;--lh:39"><div class="sch-name">Ramanarayana Parhi</div><div class="sch-role">VP &amp; CIO</div><div class="sch-org">Alkem Laboratories</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/joy-chakraborty.webp?v=6426ec0e" alt=""><div class="sch-who"><img class="sch-logo" width="64" height="64" loading="lazy" decoding="async" src="images/sched/logo-hindujahospital-com.webp?v=7ece3090" alt="" style="--lw:40;--lh:40"><div class="sch-name">Joy Chakraborty</div><div class="sch-role">Deputy CEO</div><div class="sch-org">P. D. Hinduja National Hospital &amp; Medical Research Centre</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/dheeraj-sinha.webp?v=3df28f29" alt=""><div class="sch-who"><img class="sch-logo" width="32" height="32" loading="lazy" decoding="async" src="images/sched/logo-sunpharma-com.webp?v=c6454852" alt="" style="--lw:40;--lh:40"><div class="sch-name">Dheeraj Sinha</div><div class="sch-role">EVP &amp; Global CIO</div><div class="sch-org">Sun Pharma</div></div></li><li class="sch-person"><span class="sch-photo sch-initials" aria-hidden="true">VD</span><div class="sch-who"><div class="sch-name">Dr. Vishal Deo</div><div class="sch-role">Scientist-C</div><div class="sch-org">ICMR-NIRDH</div></div></li></ul></div>
                                 <span class="schedule-badge badge-panel">Panel</span>
                             </div>
                             <div class="schedule-item">
@@ -1209,14 +1294,14 @@
                                 <div class="schedule-info"><h4>Innovation Talks</h4><p><span class="hall-label hl-kalam">Aryabhata Theatre</span>Paisani Technology Services, RedFerns Tech, Xtant Tech, Oranje AI, Eurys Infosystems, Daten Technology Solutions, Origins AI, Kirusa, Phoebetal Technologies.</p></div>
                                 <span class="schedule-badge badge-workshop">Talk</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">12:00 – 13:00</div>
-                                <div class="schedule-info"><h4>AI for Viksit Bharat: Igniting 1.4 Billion Dreams and Transforming Governance</h4><p><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span>Panel: Governance. With Shri Prakash Kumar (IndiaAI Mission), Shri Akshay Yadava (UIDAI), Shri Ganesh Nagarajan (Ministry of Tribal Affairs), Shri Vinamra Mishra (Ministry of MSME), Shri K.K. Singh (MeitY), Shri Sachin Itkar (MEDC), Shri Praveen Pardeshi (MITRA), Shri Sudeep Shrivastava (IndiaAI Mission), Shri Kaustubh Dhavse (Government of Maharashtra), Shri Vivek Khandekar (IFS) (Maharashtra Forest Department). Moderator: Mr. Bhupesh Daheria (Aegis Knowledge Trust).</p></div>
+                                <div class="schedule-info"><h4>AI for Viksit Bharat: Igniting 1.4 Billion Dreams and Transforming Governance</h4><p><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span>Panel: Governance.</p><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/prakash-kumar.webp?v=6f1b4a1b" alt=""><div class="sch-who"><img class="sch-logo" width="184" height="60" loading="lazy" decoding="async" src="images/sched/logo-meity.webp?v=de849fcb" alt="" style="--lw:78;--lh:26"><div class="sch-name">Shri Prakash Kumar</div><div class="sch-role">Additional Director</div><div class="sch-org">IndiaAI Mission, MeitY, Government of India</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/akshay-yadava.webp?v=d9f95b37" alt=""><div class="sch-who"><div class="sch-name">Shri Akshay Yadava</div><div class="sch-role">Director</div><div class="sch-org">Unique Identification Authority of India (UIDAI)</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/ganesh-nagarajan.webp?v=16a5dcfa" alt=""><div class="sch-who"><img class="sch-logo" width="184" height="70" loading="lazy" decoding="async" src="images/sched/logo-ministry-of-tribal-affairs.webp?v=6b48a183" alt="" style="--lw:71;--lh:27"><div class="sch-name">Shri Ganesh Nagarajan</div><div class="sch-role">Deputy Secretary</div><div class="sch-org">Ministry of Tribal Affairs, Government of India</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/vinamra-mishra.webp?v=c473e6d0" alt=""><div class="sch-who"><div class="sch-name">Shri Vinamra Mishra</div><div class="sch-role">Joint Secretary</div><div class="sch-org">Ministry of MSME, Government of India</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/k-k-singh.webp?v=eb198d1c" alt=""><div class="sch-who"><img class="sch-logo" width="184" height="60" loading="lazy" decoding="async" src="images/sched/logo-meity.webp?v=de849fcb" alt="" style="--lw:78;--lh:26"><div class="sch-name">Shri K.K. Singh</div><div class="sch-role">Joint Secretary</div><div class="sch-org">Ministry of Electronics &amp; IT (MeitY), Government of India</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/sachin-itkar.webp?v=d019a875" alt=""><div class="sch-who"><img class="sch-logo" width="70" height="80" loading="lazy" decoding="async" src="images/sched/logo-medc.webp?v=1770e712" alt="" style="--lw:35;--lh:40"><div class="sch-name">Shri Sachin Itkar</div><div class="sch-role">Vice President</div><div class="sch-org">Maharashtra Economic Development Council (MEDC)</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/praveen-pardeshi.webp?v=59c4c43f" alt=""><div class="sch-who"><img class="sch-logo" width="83" height="72" loading="lazy" decoding="async" src="images/sched/logo-mitra.webp?v=436a5e58" alt="" style="--lw:44;--lh:38"><div class="sch-name">Shri Praveen Pardeshi</div><div class="sch-role">CEO; Chief Economic Advisor to the Chief Minister</div><div class="sch-org">MITRA, Government of Maharashtra</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/sudeep-shrivastava.webp?v=2ec4d7d9" alt=""><div class="sch-who"><img class="sch-logo" width="184" height="60" loading="lazy" decoding="async" src="images/sched/logo-meity.webp?v=de849fcb" alt="" style="--lw:78;--lh:26"><div class="sch-name">Shri Sudeep Shrivastava</div><div class="sch-role">Joint Secretary; COO, IndiaAI Mission</div><div class="sch-org">Ministry of Electronics &amp; IT (MeitY), Government of India</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/kaustubh-dhavse.webp?v=16c303c1" alt=""><div class="sch-who"><img class="sch-logo" width="52" height="66" loading="lazy" decoding="async" src="images/sched/logo-maharashtra.webp?v=29be969c" alt="" style="--lw:32;--lh:40"><div class="sch-name">Shri Kaustubh Dhavse</div><div class="sch-role">Chief Advisor to the Chief Minister</div><div class="sch-org">Government of Maharashtra</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/vivek-khandekar.webp?v=23fbcca4" alt=""><div class="sch-who"><img class="sch-logo" width="80" height="80" loading="lazy" decoding="async" src="images/sched/logo-maharashtra-forest.webp?v=8a8b8a64" alt="" style="--lw:40;--lh:40"><div class="sch-name">Shri Vivek Khandekar (IFS)</div><div class="sch-role">Principal Chief Conservator of Forests (Social Forestry)</div><div class="sch-org">Maharashtra Forest Department</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/bhupesh-daheria.webp?v=db4ae048" alt=""><div class="sch-who"><img class="sch-logo" width="184" height="68" loading="lazy" decoding="async" src="images/sched/logo-aegis.webp?v=1d8f778a" alt="" style="--lw:73;--lh:27"><div class="sch-name">Mr. Bhupesh Daheria <span class="sch-tag">Moderator</span></div><div class="sch-role">CEO; Trustee, Aegis Knowledge Trust</div><div class="sch-org">Aegis School of Data Science &amp; AI</div></div></li></ul></div>
                                 <span class="schedule-badge badge-panel">Panel</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">12:30 – 12:50</div>
-                                <div class="schedule-info"><h4>From Copilots to an Organisation Brain: What We Learned Building Enterprise AI Agents</h4><p><span class="hall-label hl-aryabhata">Kalam Theatre</span>Leadership Talk. Apsara Mokashi, Global Head of Account Operations, Thoughtworks.</p></div>
+                                <div class="schedule-info"><h4>From Copilots to an Organisation Brain: What We Learned Building Enterprise AI Agents</h4><p><span class="hall-label hl-aryabhata">Kalam Theatre</span>Leadership Talk.</p><ul class="sch-people"><li class="sch-person"><span class="sch-photo sch-initials" aria-hidden="true">AM</span><div class="sch-who"><div class="sch-name">Apsara Mokashi</div><div class="sch-role">Global Head of Account Operations</div><div class="sch-org">Thoughtworks</div></div></li></ul></div>
                                 <span class="schedule-badge badge-workshop">Talk</span>
                             </div>
                             <div class="schedule-item">
@@ -1229,19 +1314,19 @@
                                 <div class="schedule-info"><h4>Networking Lunch</h4><p><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span>The exhibition floor stays open.</p></div>
                                 <span class="schedule-badge badge-break">Lunch</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">14:00 – 15:00</div>
-                                <div class="schedule-info"><h4>AI Democratizing and Driving Financial Inclusion</h4><p><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span>Panel: BFSI. With Tarun Chugh (Bajaj Life Insurance), Ratan Kumar Kesh (Bandhan Bank), Sarosh Amaria (Tata Capital), Pravin Kumar (NPCI), Mayur Kapur (TransUnion). Moderator: Shailesh Dhuri (Decimal Point Analytics).</p></div>
+                                <div class="schedule-info"><h4>AI Democratizing and Driving Financial Inclusion</h4><p><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span>Panel: BFSI.</p><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/tarun-chugh.webp?v=7609c92c" alt=""><div class="sch-who"><img class="sch-logo" width="93" height="62" loading="lazy" decoding="async" src="images/sched/logo-bajaj-life.webp?v=a6091aba" alt="" style="--lw:51;--lh:34"><div class="sch-name">Tarun Chugh</div><div class="sch-role">MD &amp; CEO</div><div class="sch-org">Bajaj Life Insurance</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/ratan-kumar-kesh.webp?v=0e2514e3" alt=""><div class="sch-who"><img class="sch-logo" width="184" height="55" loading="lazy" decoding="async" src="images/sched/logo-bandhan.webp?v=7ba62583" alt="" style="--lw:83;--lh:25"><div class="sch-name">Ratan Kumar Kesh</div><div class="sch-role">Executive Director &amp; COO</div><div class="sch-org">Bandhan Bank</div></div></li><li class="sch-person"><span class="sch-photo sch-initials" aria-hidden="true">SA</span><div class="sch-who"><div class="sch-name">Sarosh Amaria</div><div class="sch-role">MD</div><div class="sch-org">Tata Capital</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/pravin-kumar.webp?v=754ec915" alt=""><div class="sch-who"><img class="sch-logo" width="31" height="43" loading="lazy" decoding="async" src="images/sched/logo-npci-org-in.webp?v=329dffc1" alt="" style="--lw:29;--lh:40"><div class="sch-name">Pravin Kumar</div><div class="sch-role">Chief Market Information Security Officer &amp; Data Protection Officer</div><div class="sch-org">National Payments Corporation of India (NPCI)</div></div></li><li class="sch-person"><span class="sch-photo sch-initials" aria-hidden="true">MK</span><div class="sch-who"><div class="sch-name">Mayur Kapur</div><div class="sch-role">Asia Chief Strategy Officer</div><div class="sch-org">TransUnion</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/shailesh-dhuri.webp?v=5527528b" alt=""><div class="sch-who"><img class="sch-logo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/logo-decimalpointanalytics-com.webp?v=036eb67e" alt="" style="--lw:40;--lh:40"><div class="sch-name">Shailesh Dhuri <span class="sch-tag">Moderator</span></div><div class="sch-role">CEO</div><div class="sch-org">Decimal Point Analytics</div></div></li></ul></div>
                                 <span class="schedule-badge badge-panel">Panel</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">14:00 – 15:00</div>
-                                <div class="schedule-info"><h4>AI-Driven Growth Engines: Transforming Sales &amp; Marketing</h4><p><span class="hall-label hl-aryabhata">Kalam Theatre</span>Panel: Sales &amp; Marketing. With Rahul Molasi (Cipla), Abdul Hai Mattoo (Axis Max Life Insurance), Akhil Gupta (NoBroker), Rakhi Prasad (ClarityX), Arvind Shah (SAMA Insurance), Gaurav Arora (MSA Consulting Services), Rinoo Rajesh (PMI Pune-Deccan India Chapter). Moderator: Mr. Bhupesh Daheria (Aegis Knowledge Trust).</p></div>
+                                <div class="schedule-info"><h4>AI-Driven Growth Engines: Transforming Sales &amp; Marketing</h4><p><span class="hall-label hl-aryabhata">Kalam Theatre</span>Panel: Sales &amp; Marketing.</p><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/rahul-molasi.webp?v=e14b54d2" alt=""><div class="sch-who"><img class="sch-logo" width="16" height="16" loading="lazy" decoding="async" src="images/sched/logo-cipla-com.webp?v=9434f78c" alt="" style="--lw:40;--lh:40"><div class="sch-name">Rahul Molasi</div><div class="sch-role">Associate Director, L&amp;D</div><div class="sch-org">Cipla</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/abdul-hai-mattoo.webp?v=34a39032" alt=""><div class="sch-who"><img class="sch-logo" width="32" height="32" loading="lazy" decoding="async" src="images/sched/logo-axismaxlife-com.webp?v=3100c860" alt="" style="--lw:40;--lh:40"><div class="sch-name">Abdul Hai Mattoo</div><div class="sch-role">CVP &amp; Head of Training</div><div class="sch-org">Axis Max Life Insurance</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/akhil-gupta.webp?v=754b0bd2" alt=""><div class="sch-who"><img class="sch-logo" width="62" height="62" loading="lazy" decoding="async" src="images/sched/logo-nobroker-in.webp?v=3d717e1d" alt="" style="--lw:40;--lh:40"><div class="sch-name">Akhil Gupta</div><div class="sch-role">Founder</div><div class="sch-org">NoBroker</div></div></li><li class="sch-person"><span class="sch-photo sch-initials" aria-hidden="true">RP</span><div class="sch-who"><div class="sch-name">Rakhi Prasad</div><div class="sch-role">Co-Founder</div><div class="sch-org">ClarityX</div></div></li><li class="sch-person"><span class="sch-photo sch-initials" aria-hidden="true">AS</span><div class="sch-who"><div class="sch-name">Arvind Shah</div><div class="sch-role">Chief Distribution Officer</div><div class="sch-org">SAMA Insurance</div></div></li><li class="sch-person"><span class="sch-photo sch-initials" aria-hidden="true">GA</span><div class="sch-who"><div class="sch-name">Gaurav Arora</div><div class="sch-role">Chief Headhunter &amp; CEO</div><div class="sch-org">MSA Consulting Services</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/rinoo-rajesh.webp?v=97b5c9fb" alt=""><div class="sch-who"><div class="sch-name">Rinoo Rajesh</div><div class="sch-role">President</div><div class="sch-org">PMI Pune-Deccan India Chapter</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/bhupesh-daheria.webp?v=db4ae048" alt=""><div class="sch-who"><img class="sch-logo" width="184" height="68" loading="lazy" decoding="async" src="images/sched/logo-aegis.webp?v=1d8f778a" alt="" style="--lw:73;--lh:27"><div class="sch-name">Mr. Bhupesh Daheria <span class="sch-tag">Moderator</span></div><div class="sch-role">CEO; Trustee, Aegis Knowledge Trust</div><div class="sch-org">Aegis School of Data Science &amp; AI</div></div></li></ul></div>
                                 <span class="schedule-badge badge-panel">Panel</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">14:00 – 15:30</div>
-                                <div class="schedule-info"><h4>From Prototype to Production: Building Enterprise AI with Forward-Deployed Engineers</h4><p><span class="hall-label hl-raman">Raman Theatre</span>Dr. Ashish Tendulkar, Lead AI, Google.</p></div>
+                                <div class="schedule-info"><h4>From Prototype to Production: Building Enterprise AI with Forward-Deployed Engineers</h4><p><span class="hall-label hl-raman">Raman Theatre</span></p><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/ashish-tendulkar.webp?v=c748cbb5" alt=""><div class="sch-who"><img class="sch-logo" width="60" height="59" loading="lazy" decoding="async" src="images/sched/logo-google-com.webp?v=e5a86bea" alt="" style="--lw:40;--lh:40"><div class="sch-name">Dr. Ashish Tendulkar</div><div class="sch-role">Lead AI</div><div class="sch-org">Google</div></div></li></ul></div>
                                 <span class="schedule-badge badge-workshop">Workshop</span>
                             </div>
                             <div class="schedule-item">
@@ -1254,24 +1339,24 @@
                                 <div class="schedule-info"><h4>Beyond Pilots: Turning Enterprise Investments into Measurable Business Value</h4><p><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span>Panel: Jade Global. Hosted by Jade Global. Panellists to be announced.</p></div>
                                 <span class="schedule-badge badge-panel">Panel</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">15:00 – 15:20</div>
-                                <div class="schedule-info"><h4>GeoAI Forest Encroachment Monitoring</h4><p><span class="hall-label hl-aryabhata">Kalam Theatre</span>Innovation Talk. Shri Vivek Khandekar (IFS), Principal Chief Conservator of Forests (Social Forestry), Maharashtra Forest Department.</p></div>
+                                <div class="schedule-info"><h4>GeoAI Forest Encroachment Monitoring</h4><p><span class="hall-label hl-aryabhata">Kalam Theatre</span>Innovation Talk.</p><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/vivek-khandekar.webp?v=23fbcca4" alt=""><div class="sch-who"><img class="sch-logo" width="80" height="80" loading="lazy" decoding="async" src="images/sched/logo-maharashtra-forest.webp?v=8a8b8a64" alt="" style="--lw:40;--lh:40"><div class="sch-name">Shri Vivek Khandekar (IFS)</div><div class="sch-role">Principal Chief Conservator of Forests (Social Forestry)</div><div class="sch-org">Maharashtra Forest Department</div></div></li></ul></div>
                                 <span class="schedule-badge badge-workshop">Talk</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">15:20 – 15:40</div>
-                                <div class="schedule-info"><h4>Your Next Colleague Is an AI: Lessons from Delivering Technology Operations for Global Clients</h4><p><span class="hall-label hl-aryabhata">Kalam Theatre</span>Innovation Talk. Dr Rahul Ghodke, Senior Vice President &amp; Business Unit Leader, CGI.</p></div>
+                                <div class="schedule-info"><h4>Your Next Colleague Is an AI: Lessons from Delivering Technology Operations for Global Clients</h4><p><span class="hall-label hl-aryabhata">Kalam Theatre</span>Innovation Talk.</p><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/rahul-ghodke.webp?v=ac87f09b" alt=""><div class="sch-who"><img class="sch-logo" width="81" height="80" loading="lazy" decoding="async" src="images/sched/logo-cgi.webp?v=8ceff3f5" alt="" style="--lw:40;--lh:40"><div class="sch-name">Dr Rahul Ghodke</div><div class="sch-role">Senior Vice President &amp; Business Unit leader</div><div class="sch-org">CGI</div></div></li></ul></div>
                                 <span class="schedule-badge badge-workshop">Talk</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">15:40 – 16:00</div>
-                                <div class="schedule-info"><h4>Harnessing DEPA's Interoperable, Secure, and Privacy-Preserving Architecture for Advancing AI in Health</h4><p><span class="hall-label hl-aryabhata">Kalam Theatre</span>Innovation Talk. Dr. Vishal Deo, Scientist-C, ICMR-NIRDH.</p></div>
+                                <div class="schedule-info"><h4>Harnessing DEPA's Interoperable, Secure, and Privacy-Preserving Architecture for Advancing AI in Health</h4><p><span class="hall-label hl-aryabhata">Kalam Theatre</span>Innovation Talk.</p><ul class="sch-people"><li class="sch-person"><span class="sch-photo sch-initials" aria-hidden="true">VD</span><div class="sch-who"><div class="sch-name">Dr. Vishal Deo</div><div class="sch-role">Scientist-C</div><div class="sch-org">ICMR-NIRDH</div></div></li></ul></div>
                                 <span class="schedule-badge badge-workshop">Talk</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">15:45 – 17:15</div>
-                                <div class="schedule-info"><h4>LLM Fine-Tuning, Hands-On</h4><p><span class="hall-label hl-raman">Raman Theatre</span>Virendra Pal, AI &amp; FinTech Expert.</p></div>
+                                <div class="schedule-info"><h4>LLM Fine-Tuning, Hands-On</h4><p><span class="hall-label hl-raman">Raman Theatre</span></p><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/virendra-pal.webp?v=05d5db30" alt=""><div class="sch-who"><div class="sch-name">Virendra Pal</div><div class="sch-role">AI &amp; FinTech Expert</div></div></li></ul></div>
                                 <span class="schedule-badge badge-workshop">Workshop</span>
                             </div>
                             <div class="schedule-item">
@@ -1279,24 +1364,24 @@
                                 <div class="schedule-info"><h4>Hi-Tea Break</h4><p><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span></p></div>
                                 <span class="schedule-badge badge-break">Tea</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">16:15 – 16:30</div>
-                                <div class="schedule-info"><h4>Ganesh Kavach App</h4><p><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span>Innovation Talk. Shri Vivek Khandekar (IFS), Principal Chief Conservator of Forests (Social Forestry), Maharashtra Forest Department.</p></div>
+                                <div class="schedule-info"><h4>Ganesh Kavach App</h4><p><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span>Innovation Talk.</p><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/vivek-khandekar.webp?v=23fbcca4" alt=""><div class="sch-who"><img class="sch-logo" width="80" height="80" loading="lazy" decoding="async" src="images/sched/logo-maharashtra-forest.webp?v=8a8b8a64" alt="" style="--lw:40;--lh:40"><div class="sch-name">Shri Vivek Khandekar (IFS)</div><div class="sch-role">Principal Chief Conservator of Forests (Social Forestry)</div><div class="sch-org">Maharashtra Forest Department</div></div></li></ul></div>
                                 <span class="schedule-badge badge-workshop">Talk</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">16:30 – 17:30</div>
-                                <div class="schedule-info"><h4>The Rise of Autonomous Enterprises: Leaders' Strategies for GenAI &amp; Agentic AI</h4><p><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span>Panel: Agentic AI. With Abhay Sharma (IBM), Akhil Gupta (NoBroker). Moderator: Mukesh Jain (Capgemini).</p></div>
+                                <div class="schedule-info"><h4>The Rise of Autonomous Enterprises: Leaders' Strategies for GenAI &amp; Agentic AI</h4><p><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span>Panel: Agentic AI.</p><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/abhay-sharma.webp?v=a7ff92a7" alt=""><div class="sch-who"><img class="sch-logo" width="96" height="40" loading="lazy" decoding="async" src="images/sched/logo-ibm.webp?v=a8939489" alt="" style="--lw:68;--lh:28"><div class="sch-name">Abhay Sharma</div><div class="sch-role">Partner &amp; Practice Leader</div><div class="sch-org">IBM</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/akhil-gupta.webp?v=754b0bd2" alt=""><div class="sch-who"><img class="sch-logo" width="62" height="62" loading="lazy" decoding="async" src="images/sched/logo-nobroker-in.webp?v=3d717e1d" alt="" style="--lw:40;--lh:40"><div class="sch-name">Akhil Gupta</div><div class="sch-role">Founder</div><div class="sch-org">NoBroker</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/mukesh-jain.webp?v=ae3a9ca7" alt=""><div class="sch-who"><img class="sch-logo" width="64" height="58" loading="lazy" decoding="async" src="images/sched/logo-capgemini-com.webp?v=853d6815" alt="" style="--lw:42;--lh:38"><div class="sch-name">Mukesh Jain <span class="sch-tag">Moderator</span></div><div class="sch-role">Global EVP &amp; CTO</div><div class="sch-org">Capgemini</div></div></li></ul></div>
                                 <span class="schedule-badge badge-panel">Panel</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">17:30 – 17:45</div>
-                                <div class="schedule-info"><h4>PrAImaan</h4><p><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span>Innovation Talk. Dr. Vishal Deo, Scientist-C, ICMR-NIRDH.</p></div>
+                                <div class="schedule-info"><h4>PrAImaan</h4><p><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span>Innovation Talk.</p><ul class="sch-people"><li class="sch-person"><span class="sch-photo sch-initials" aria-hidden="true">VD</span><div class="sch-who"><div class="sch-name">Dr. Vishal Deo</div><div class="sch-role">Scientist-C</div><div class="sch-org">ICMR-NIRDH</div></div></li></ul></div>
                                 <span class="schedule-badge badge-workshop">Talk</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">18:00 – 18:10</div>
-                                <div class="schedule-info"><h4>Closing Note</h4><p><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span>Cmde Dr. Jadumani Jena (retd.), Advisor, Bharat AI Innovation, Exhibition &amp; Conference.</p></div>
+                                <div class="schedule-info"><h4>Closing Note</h4><p><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span></p><ul class="sch-people"><li class="sch-person"><span class="sch-photo sch-initials" aria-hidden="true">JJ</span><div class="sch-who"><div class="sch-name">Cmde Dr. Jadumani Jena (retd.)</div><div class="sch-role">Advisor</div><div class="sch-org">Bharat AI Innovation, Exhibition &amp; Conference</div></div></li></ul></div>
                                 <span class="schedule-badge badge-keynote">Keynote</span>
                             </div>
                             <div class="schedule-item">
@@ -1308,9 +1393,9 @@
                     </div>
                     <div class="schedule-panel">
                         <div class="schedule-list">
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">09:00 – 09:05</div>
-                                <div class="schedule-info"><h4>Welcome Note</h4><p><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span>Dr. Abhijit Gangopadhyay, Dean, Aegis School of Data Science and AI.</p></div>
+                                <div class="schedule-info"><h4>Welcome Note</h4><p><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span></p><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/abhijit-gangopadhyay.webp?v=4a43a798" alt=""><div class="sch-who"><img class="sch-logo" width="184" height="68" loading="lazy" decoding="async" src="images/sched/logo-aegis.webp?v=1d8f778a" alt="" style="--lw:73;--lh:27"><div class="sch-name">Dr. Abhijit Gangopadhyay</div><div class="sch-role">Dean</div><div class="sch-org">Aegis School of Data Science &amp; AI</div></div></li></ul></div>
                                 <span class="schedule-badge badge-keynote">Keynote</span>
                             </div>
                             <div class="schedule-item">
@@ -1323,14 +1408,14 @@
                                 <div class="schedule-info"><h4>Keynotes</h4><p><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span>Speakers to be announced.</p></div>
                                 <span class="schedule-badge badge-keynote">Keynote</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">10:00 – 11:00</div>
-                                <div class="schedule-info"><h4>AI in Telecom: Enabling Digital India Through Intelligent Connectivity</h4><p><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span>Panel: Telecom. With Jagbir Singh (Vodafone Idea), Manish Agrawal (Comviva), Ashutosh Agarwal (Globe Teleservices), Vishal Rally (Tata Tele Business Services).</p></div>
+                                <div class="schedule-info"><h4>AI in Telecom: Enabling Digital India Through Intelligent Connectivity</h4><p><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span>Panel: Telecom.</p><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/jagbir-singh.webp?v=901662b1" alt=""><div class="sch-who"><img class="sch-logo" width="53" height="49" loading="lazy" decoding="async" src="images/sched/logo-myvi-in.webp?v=54d6bbbf" alt="" style="--lw:42;--lh:39"><div class="sch-name">Jagbir Singh</div><div class="sch-role">Chief Technology &amp; Information Officer</div><div class="sch-org">Vodafone Idea</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/manish-agrawal.webp?v=bd13e794" alt=""><div class="sch-who"><img class="sch-logo" width="60" height="64" loading="lazy" decoding="async" src="images/sched/logo-comviva-com.webp?v=f84806b4" alt="" style="--lw:38;--lh:40"><div class="sch-name">Manish Agrawal</div><div class="sch-role">President &amp; COO</div><div class="sch-org">Comviva</div></div></li><li class="sch-person"><span class="sch-photo sch-initials" aria-hidden="true">AA</span><div class="sch-who"><div class="sch-name">Ashutosh Agarwal</div><div class="sch-role">Group CEO</div><div class="sch-org">Globe Teleservices</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/vishal-rally.webp?v=a6aa51bb" alt=""><div class="sch-who"><div class="sch-name">Vishal Rally</div><div class="sch-role">Chief Revenue Officer</div><div class="sch-org">Tata Tele Business Services</div></div></li></ul></div>
                                 <span class="schedule-badge badge-panel">Panel</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">10:00 – 10:20</div>
-                                <div class="schedule-info"><h4>AI for the Frontlines: Taking AI from Pilots to Population-Scale Public Infrastructure</h4><p><span class="hall-label hl-aryabhata">Kalam Theatre</span>Leadership Talk. Shekar Sivasubramanian, CEO, Wadhwani Institute for Artificial Intelligence.</p></div>
+                                <div class="schedule-info"><h4>AI for the Frontlines: Taking AI from Pilots to Population-Scale Public Infrastructure</h4><p><span class="hall-label hl-aryabhata">Kalam Theatre</span>Leadership Talk.</p><ul class="sch-people"><li class="sch-person"><span class="sch-photo sch-initials" aria-hidden="true">SS</span><div class="sch-who"><div class="sch-name">Shekar Sivasubramanian</div><div class="sch-role">CEO</div><div class="sch-org">Wadhwani Institute for Artificial Intelligence</div></div></li></ul></div>
                                 <span class="schedule-badge badge-workshop">Talk</span>
                             </div>
                             <div class="schedule-item">
@@ -1338,29 +1423,29 @@
                                 <div class="schedule-info"><h4>Closed-Door Round Table</h4><p><span class="hall-label hl-raman">Raman Theatre</span>Hosted by Axestrack. By invitation.</p></div>
                                 <span class="schedule-badge badge-keynote">Round Table</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">10:40 – 11:00</div>
-                                <div class="schedule-info"><h4>Artificial Intelligence: From Molecules to Medicines</h4><p><span class="hall-label hl-aryabhata">Kalam Theatre</span>Leadership Talk. Dr. Sameer Agarwal, Executive Vice President, Molecule AI.</p></div>
+                                <div class="schedule-info"><h4>Artificial Intelligence: From Molecules to Medicines</h4><p><span class="hall-label hl-aryabhata">Kalam Theatre</span>Leadership Talk.</p><ul class="sch-people"><li class="sch-person"><span class="sch-photo sch-initials" aria-hidden="true">SA</span><div class="sch-who"><div class="sch-name">Dr. Sameer Agarwal</div><div class="sch-role">Executive Vice President</div><div class="sch-org">Molecule AI</div></div></li></ul></div>
                                 <span class="schedule-badge badge-workshop">Talk</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">11:00 – 12:00</div>
-                                <div class="schedule-info"><h4>Building the Enterprise AI Workforce: Talent, Delivery and the Rise of Forward-Deployed Engineering</h4><p><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span>Panel: Enterprise AI. With Dr. Ashish Tendulkar (Google), Sudhir Kumar Rai (Trellix). Moderator: Mr. Bhupesh Daheria (Aegis Knowledge Trust).</p></div>
+                                <div class="schedule-info"><h4>Building the Enterprise AI Workforce: Talent, Delivery and the Rise of Forward-Deployed Engineering</h4><p><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span>Panel: Enterprise AI.</p><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/ashish-tendulkar.webp?v=c748cbb5" alt=""><div class="sch-who"><img class="sch-logo" width="60" height="59" loading="lazy" decoding="async" src="images/sched/logo-google-com.webp?v=e5a86bea" alt="" style="--lw:40;--lh:40"><div class="sch-name">Dr. Ashish Tendulkar</div><div class="sch-role">Lead AI</div><div class="sch-org">Google</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/sudhir-kumar-rai.webp?v=20dc3a7a" alt=""><div class="sch-who"><div class="sch-name">Sudhir Kumar Rai</div><div class="sch-role">Director, Data Science</div><div class="sch-org">Trellix</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/bhupesh-daheria.webp?v=db4ae048" alt=""><div class="sch-who"><img class="sch-logo" width="184" height="68" loading="lazy" decoding="async" src="images/sched/logo-aegis.webp?v=1d8f778a" alt="" style="--lw:73;--lh:27"><div class="sch-name">Mr. Bhupesh Daheria <span class="sch-tag">Moderator</span></div><div class="sch-role">CEO; Trustee, Aegis Knowledge Trust</div><div class="sch-org">Aegis School of Data Science &amp; AI</div></div></li></ul></div>
                                 <span class="schedule-badge badge-panel">Panel</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">11:00 – 12:00</div>
-                                <div class="schedule-info"><h4>Transforming Indian Agriculture with AI: Doubling Farmer Income</h4><p><span class="hall-label hl-aryabhata">Kalam Theatre</span>Panel: Agriculture. With Shri Bhanudas Palwe (IAS) (Commissioner of Fisheries Maharashtra), Manish K. Prahlad (Verdant Impact), Dr. Omprakash Mandge (MET).</p></div>
+                                <div class="schedule-info"><h4>Transforming Indian Agriculture with AI: Doubling Farmer Income</h4><p><span class="hall-label hl-aryabhata">Kalam Theatre</span>Panel: Agriculture.</p><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/bhanudas-palwe.webp?v=4f79c9f8" alt=""><div class="sch-who"><img class="sch-logo" width="52" height="66" loading="lazy" decoding="async" src="images/sched/logo-maharashtra.webp?v=29be969c" alt="" style="--lw:32;--lh:40"><div class="sch-name">Shri Bhanudas Palwe (IAS)</div><div class="sch-role">Commissioner of Fisheries</div><div class="sch-org">Government of Maharashtra</div></div></li><li class="sch-person"><span class="sch-photo sch-initials" aria-hidden="true">MP</span><div class="sch-who"><div class="sch-name">Manish K. Prahlad</div><div class="sch-role">Co-Founder and CEO</div><div class="sch-org">Verdant Impact</div></div></li><li class="sch-person"><span class="sch-photo sch-initials" aria-hidden="true">OM</span><div class="sch-who"><div class="sch-name">Dr. Omprakash Mandge</div><div class="sch-role">Principal</div><div class="sch-org">MET</div></div></li></ul></div>
                                 <span class="schedule-badge badge-panel">Panel</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">12:00 – 12:30</div>
-                                <div class="schedule-info"><h4>The AI components of MANTHAN–UTTHAN</h4><p><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span>Shri Srinivas Kancharla, Program Specialist, Office of the Principal Scientific Adviser to the Government of India.</p></div>
+                                <div class="schedule-info"><h4>The AI components of MANTHAN–UTTHAN</h4><p><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span></p><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/srinivas-kancharla.webp?v=c127e659" alt=""><div class="sch-who"><img class="sch-logo" width="184" height="34" loading="lazy" decoding="async" src="images/sched/logo-psa.webp?v=9af204f9" alt="" style="--lw:92;--lh:17"><div class="sch-name">Shri Srinivas Kancharla</div><div class="sch-role">Program Specialist</div><div class="sch-org">Office of the Principal Scientific Adviser to the Government of India</div></div></li></ul></div>
                                 <span class="schedule-badge badge-keynote">Keynote</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">12:30 – 13:30</div>
-                                <div class="schedule-info"><h4>Reinventing Insurance for Bharat with AI: Expanding Access, Trust and Inclusion</h4><p><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span>Panel: Insurance. With Sandeep Kumar (Go Digit Insurance). More panellists to be announced.</p></div>
+                                <div class="schedule-info"><h4>Reinventing Insurance for Bharat with AI: Expanding Access, Trust and Inclusion</h4><p><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span>Panel: Insurance.</p><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/sandeep-kumar.webp?v=40adcc2c" alt=""><div class="sch-who"><img class="sch-logo" width="64" height="64" loading="lazy" decoding="async" src="images/sched/logo-godigit-com.webp?v=83ec1516" alt="" style="--lw:40;--lh:40"><div class="sch-name">Sandeep Kumar</div><div class="sch-role">CIO</div><div class="sch-org">Go Digit Insurance</div></div></li></ul><p class="sch-note">More panellists to be announced.</p></div>
                                 <span class="schedule-badge badge-panel">Panel</span>
                             </div>
                             <div class="schedule-item">
@@ -1368,9 +1453,9 @@
                                 <div class="schedule-info"><h4>Networking Lunch</h4><p><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span>The exhibition floor stays open.</p></div>
                                 <span class="schedule-badge badge-break">Lunch</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">14:00 – 15:30</div>
-                                <div class="schedule-info"><h4>Automatic Speech Recognition (Speech-to-Text)</h4><p><span class="hall-label hl-raman">Raman Theatre</span>Dr. Parijat Shukla, PhD, Iowa State University.</p></div>
+                                <div class="schedule-info"><h4>Automatic Speech Recognition (Speech-to-Text)</h4><p><span class="hall-label hl-raman">Raman Theatre</span></p><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/parijat-shukla.webp?v=278465c4" alt=""><div class="sch-who"><div class="sch-name">Dr. Parijat Shukla</div><div class="sch-role">PhD, Iowa State University</div></div></li></ul></div>
                                 <span class="schedule-badge badge-workshop">Workshop</span>
                             </div>
                             <div class="schedule-item">
@@ -1378,14 +1463,14 @@
                                 <div class="schedule-info"><h4>Product Demonstration and Talk</h4><p><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span>By Pramaan AI Labs.</p></div>
                                 <span class="schedule-badge badge-workshop">Talk</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">15:15 – 16:15</div>
-                                <div class="schedule-info"><h4>Content, Creativity &amp; AI: Redefining Media, Personalization, and Digital Experiences</h4><p><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span>Panel: Media. With Rajat Nigam (JioStar India), Simon David Hunter (Asian Screen Institute Singapore), Saurabh Kushwah (BULLET Microdrama · ZEEL).</p></div>
+                                <div class="schedule-info"><h4>Content, Creativity &amp; AI: Redefining Media, Personalization, and Digital Experiences</h4><p><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span>Panel: Media.</p><ul class="sch-people"><li class="sch-person"><span class="sch-photo sch-initials" aria-hidden="true">RN</span><div class="sch-who"><div class="sch-name">Rajat Nigam</div><div class="sch-role">CTO, Head of Technology &amp; Media Operations</div><div class="sch-org">JioStar India</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/simon-david-hunter.webp?v=21c46e53" alt=""><div class="sch-who"><div class="sch-name">Simon David Hunter</div><div class="sch-role">President</div><div class="sch-org">Asian Screen Institute, Singapore</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/saurabh-kushwah.webp?v=ee4e173c" alt=""><div class="sch-who"><img class="sch-logo" width="80" height="80" loading="lazy" decoding="async" src="images/sched/logo-bullet-microdrama.webp?v=0cf279a1" alt="" style="--lw:40;--lh:40"><div class="sch-name">Saurabh Kushwah</div><div class="sch-role">Co-Founder &amp; Chief Product and Technology Officer</div><div class="sch-org">BULLET Microdrama · ZEEL</div></div></li></ul></div>
                                 <span class="schedule-badge badge-panel">Panel</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">15:45 – 16:45</div>
-                                <div class="schedule-info"><h4>Workshop with Dr. Ashish Tendulkar</h4><p><span class="hall-label hl-raman">Raman Theatre</span>Dr. Ashish Tendulkar, Lead AI, Google. Topic to be announced.</p></div>
+                                <div class="schedule-info"><h4>Workshop with Dr. Ashish Tendulkar</h4><p><span class="hall-label hl-raman">Raman Theatre</span></p><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/ashish-tendulkar.webp?v=c748cbb5" alt=""><div class="sch-who"><img class="sch-logo" width="60" height="59" loading="lazy" decoding="async" src="images/sched/logo-google-com.webp?v=e5a86bea" alt="" style="--lw:40;--lh:40"><div class="sch-name">Dr. Ashish Tendulkar</div><div class="sch-role">Lead AI</div><div class="sch-org">Google</div></div></li></ul><p class="sch-note">Topic to be announced.</p></div>
                                 <span class="schedule-badge badge-workshop">Workshop</span>
                             </div>
                             <div class="schedule-item">
@@ -1393,9 +1478,9 @@
                                 <div class="schedule-info"><h4>Hi-Tea Break</h4><p><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span></p></div>
                                 <span class="schedule-badge badge-break">Tea</span>
                             </div>
-                            <div class="schedule-item">
+                            <div class="schedule-item has-people">
                                 <div class="schedule-time">16:30 – 17:30</div>
-                                <div class="schedule-info"><h4>Improving Learning Outcomes with AI: From Assessment to Measurable Impact</h4><p><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span>Panel: Education. With Dr. Saurabh N. Mehta (Vidyalankar Institute of Technology), Utsav Shroff (University of Western Australia), Dr. Lakshmi Mohan (ITM Skills University), Dr. Manpreet Singh Manna (GCC School / SLIET), Tarun Anand (Universal AI University), Raju Haldankar (Chetana's Institute of Management &amp; Research), Dr. Shashank D. Dalvi (MGM Institute of Health Sciences), Madhvendra Singh (Electronics Sector Skill Council of India). Powered by Assessfy.</p></div>
+                                <div class="schedule-info"><h4>Improving Learning Outcomes with AI: From Assessment to Measurable Impact</h4><p><span class="hall-label hl-bhabha">Homi J. Bhabha Hall</span>Panel: Education.</p><ul class="sch-people"><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/saurabh-n-mehta.webp?v=6abe5bb2" alt=""><div class="sch-who"><div class="sch-name">Dr. Saurabh N. Mehta</div><div class="sch-role">Chief Academic Officer &amp; Professor</div><div class="sch-org">Vidyalankar Institute of Technology</div></div></li><li class="sch-person"><span class="sch-photo sch-initials" aria-hidden="true">US</span><div class="sch-who"><div class="sch-name">Utsav Shroff</div><div class="sch-role">Director, India and South Asia Operations</div><div class="sch-org">University of Western Australia</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/lakshmi-mohan.webp?v=4a70322e" alt=""><div class="sch-who"><div class="sch-name">Dr. Lakshmi Mohan</div><div class="sch-role">Pro Vice Chancellor</div><div class="sch-org">ITM Skills University</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/manpreet-singh-manna.webp?v=3907f7d8" alt=""><div class="sch-who"><div class="sch-name">Dr. Manpreet Singh Manna</div><div class="sch-role">Founding Executive Director</div><div class="sch-org">GCC School / SLIET</div></div></li><li class="sch-person"><span class="sch-photo sch-initials" aria-hidden="true">TA</span><div class="sch-who"><div class="sch-name">Tarun Anand</div><div class="sch-role">Founder &amp; Chancellor</div><div class="sch-org">Universal AI University</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/raju-haldankar.webp?v=af4c9d96" alt=""><div class="sch-who"><div class="sch-name">Raju Haldankar</div><div class="sch-role">President</div><div class="sch-org">Chetana's Institute of Management &amp; Research</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/shashank-d-dalvi.webp?v=5042bbed" alt=""><div class="sch-who"><div class="sch-name">Dr. Shashank D. Dalvi</div><div class="sch-role">Vice Chancellor</div><div class="sch-org">MGM Institute of Health Sciences</div></div></li><li class="sch-person"><img class="sch-photo" width="48" height="48" loading="lazy" decoding="async" src="images/sched/madhvendra-singh.webp?v=1fdb9dc7" alt=""><div class="sch-who"><div class="sch-name">Madhvendra Singh</div><div class="sch-role">CEO</div><div class="sch-org">Electronics Sector Skills Council of India</div></div></li></ul><p class="sch-note">Powered by Assessfy.</p></div>
                                 <span class="schedule-badge badge-panel">Panel</span>
                             </div>
                             <div class="schedule-item">

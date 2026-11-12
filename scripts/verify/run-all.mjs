@@ -75,6 +75,8 @@ const SUITES = [
   { name: 'system: a nomination from a Ministry, from the link in a letter to Admin Enquiries (the script of the page, real worker, real SQLite, team email, the build)', args: ['smoke-government.mjs'] },
   { name: 'browser: the Government page on a phone and a laptop, the nomination on the real worker, the Govt tab', args: ['browser-government.cjs'], harness: 'delhi-harness.mjs', port: 8788, portEnv: true },
   { name: 'browser: the motion on the conference page on a phone and a laptop, with animations off, and without its files', args: ['browser-conference-motion.cjs'], harness: 'delhi-harness.mjs', port: 8799, portEnv: true },
+  { name: 'unit: the people on the conference schedule (the list of who is who, the markup, small pictures, the app\'s SQL untouched, the generator in step with the JSON)', args: ['unit-schedule-people.mjs'] },
+  { name: 'browser: the people on the conference schedule on a phone, a small phone and a laptop (photo, designation, department, logo; no hall on either day widens the page)', args: ['browser-schedule.cjs'], harness: 'delhi-harness.mjs', port: 8869, portEnv: true },
   { name: 'browser: the redesigned workshops page on a phone and a laptop: no words lost, every effect, animations off, without its motion files', args: ['browser-workshop-redesign.cjs'], harness: 'delhi-harness.mjs', port: 8807, portEnv: true },
   { name: 'unit: the call for workshop partners (every rule of the form, what it sends, its words, Admin label and Overview line), each alone', args: ['unit-workshop-partner.mjs'] },
   { name: 'system: a workshop idea from a shared link to Admin Enquiries and the Overview board (the page\'s own script, real worker, real SQLite, team email)', args: ['smoke-workshop-partner.mjs'] },

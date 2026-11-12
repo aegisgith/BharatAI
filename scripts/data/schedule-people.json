@@ -1,0 +1,81 @@
+{
+  "about": "Who is who on the /conference schedule: designation (role), department or organisation (org), photo and logo for each person named in schedule.json. Read by scripts/gen-schedule.mjs, matched by name with titles such as Shri, Dr. and (IAS) ignored. Wording is from the organiser's 'Speakers & Panelist' sheet and the agenda workbook's Panel Final tab (12 Nov 2026) and matches the speaker cards on the site. A person missing here still shows, with initials and the text schedule.json gives. No logo: the organisation is named in words. Never put an email or a mobile in this file.",
+  "people": [
+    { "name": "Hon’ble Shri Chandrakant Dada Patil", "role": "Minister of Higher and Technical Education", "org": "Government of Maharashtra", "photo": "images/chandrakant-patil.jpg", "logo": "images/logo-maharashtra.webp", "crop": { "left": 0.14, "top": 0, "size": 0.72 } },
+    { "name": "Hon’ble Shri Dattatray Bharane", "role": "Minister of Agriculture", "org": "Government of Maharashtra", "photo": "images/speaker-dattatray-bharane-sq.webp", "logo": "images/logo-maharashtra.webp" },
+    { "name": "Hon’ble Smt. Aditi Tatkare", "role": "Minister of Women and Child Development", "org": "Government of Maharashtra", "photo": "images/aditi-tatkare.jpg", "logo": "images/logo-maharashtra.webp", "crop": { "left": 0.27, "top": 0.02, "size": 0.4 } },
+    { "name": "Hon’ble Shri Sanjay Rathod", "role": "Minister of Soil and Water Conservation", "org": "Government of Maharashtra", "photo": "images/sanjay-rathod.jpg", "logo": "images/logo-maharashtra.webp", "crop": { "left": 0.12, "top": 0, "size": 0.563 } },
+    { "name": "Shri Virendra Singh (IAS)", "role": "Secretary", "org": "Electronics, IT and AI Department, Government of Maharashtra", "photo": "images/speaker-virendra-singh-sq.webp", "logo": "images/logo-maharashtra.webp" },
+    { "name": "Shri K.K. Singh", "role": "Joint Secretary", "org": "Ministry of Electronics & IT (MeitY), Government of India", "photo": "images/speaker-kk-singh-v2.jpg", "logo": "images/logo-meity.webp" },
+    { "name": "Shri Praveen Pardeshi", "role": "CEO; Chief Economic Advisor to the Chief Minister", "org": "MITRA, Government of Maharashtra", "photo": "images/speaker-praveen-pardeshi.webp", "logo": "images/logo-mitra.webp", "crop": { "left": 0.22, "top": 0, "size": 0.7 } },
+    { "name": "Shri Sudeep Shrivastava", "role": "Joint Secretary; COO, IndiaAI Mission", "org": "Ministry of Electronics & IT (MeitY), Government of India", "photo": "images/speaker-sudeep-shrivastava-sq.webp", "logo": "images/logo-meity.webp" },
+    { "name": "Shri Kaustubh Dhavse", "role": "Chief Advisor to the Chief Minister", "org": "Government of Maharashtra", "photo": "images/speaker-kaustubh-dhavse-sq.webp", "logo": "images/logo-maharashtra.webp" },
+    { "name": "Dr. Shrikant Patil", "role": "CEO", "org": "Maharashtra State Innovation Society (MSInS)", "photo": "images/speaker-shrikant-patil.webp", "logo": "images/logo-msins.webp", "crop": { "left": 0.21, "top": 0, "size": 0.42 } },
+    { "name": "Shri Prakash Kumar", "role": "Additional Director", "org": "IndiaAI Mission, MeitY, Government of India", "photo": "images/speaker-prakash-kumar-sq.webp", "logo": "images/logo-meity.webp" },
+    { "name": "Shri Akshay Yadava", "role": "Director", "org": "Unique Identification Authority of India (UIDAI)", "photo": "images/speaker-akshay-yadava-sq.webp" },
+    { "name": "Shri Ganesh Nagarajan", "role": "Deputy Secretary", "org": "Ministry of Tribal Affairs, Government of India", "photo": "images/talks/ganesh-nagarajan.webp", "logo": "images/exhibitors/ministry-of-tribal-affairs.webp" },
+    { "name": "Shri Vinamra Mishra", "role": "Joint Secretary", "org": "Ministry of MSME, Government of India", "photo": "images/speaker-vinamra-mishra-sq.webp" },
+    { "name": "Shri Sachin Itkar", "role": "Vice President", "org": "Maharashtra Economic Development Council (MEDC)", "photo": "images/speaker-sachin-itkar-sq.webp", "logo": "images/logo-medc.webp" },
+    { "name": "Shri Vivek Khandekar (IFS)", "role": "Principal Chief Conservator of Forests (Social Forestry)", "org": "Maharashtra Forest Department", "photo": "images/speaker-vivek-khandekar-sq.webp", "logo": "images/logo-maharashtra-forest.webp" },
+    { "name": "Shri Bhanudas Palwe (IAS)", "role": "Commissioner of Fisheries", "org": "Government of Maharashtra", "photo": "images/speaker-bhanudas-palwe-sq.webp", "logo": "images/logo-maharashtra.webp" },
+    { "name": "Shri Srinivas Kancharla", "role": "Program Specialist", "org": "Office of the Principal Scientific Adviser to the Government of India", "photo": "images/talks/srinivas-kancharla.webp", "logo": "images/logo-psa.webp" },
+    { "name": "Dr. Vishal Deo", "role": "Scientist-C", "org": "ICMR-NIRDH" },
+    { "name": "Cmde Dr. Jadumani Jena (retd.)", "role": "Advisor", "org": "Bharat AI Innovation, Exhibition & Conference" },
+
+    { "name": "Mr. Bhupesh Daheria", "role": "CEO; Trustee, Aegis Knowledge Trust", "org": "Aegis School of Data Science & AI", "photo": "images/speaker-bhupesh-daheria-panel.webp", "logo": "images/logo-aegis.webp" },
+    { "name": "Dr. Abhijit Gangopadhyay", "role": "Dean", "org": "Aegis School of Data Science & AI", "photo": "images/speaker-abhijit-gangopadhyay.webp", "logo": "images/logo-aegis.webp", "crop": { "left": 0.04, "top": 0.2, "size": 0.42 } },
+
+    { "name": "Tarun Chugh", "role": "MD & CEO", "org": "Bajaj Life Insurance", "photo": "images/speaker-tarun-chugh.webp", "logo": "images/logo-bajaj-life.webp" },
+    { "name": "Ratan Kumar Kesh", "role": "Executive Director & COO", "org": "Bandhan Bank", "photo": "images/speaker-ratan-kumar-kesh-bandhan.webp", "logo": "images/logo-bandhan.webp" },
+    { "name": "Sarosh Amaria", "role": "MD", "org": "Tata Capital" },
+    { "name": "Pravin Kumar", "role": "Chief Market Information Security Officer & Data Protection Officer", "org": "National Payments Corporation of India (NPCI)", "photo": "images/speaker-pravin-kumar.jpg", "logo": "images/org-logos/favicon-npci.org.in.png" },
+    { "name": "Mayur Kapur", "role": "Asia Chief Strategy Officer", "org": "TransUnion" },
+    { "name": "Shailesh Dhuri", "role": "CEO", "org": "Decimal Point Analytics", "photo": "images/speaker-shailesh-dhuri-final.webp", "logo": "images/org-logos/favicon-decimalpointanalytics.com.png" },
+
+    { "name": "Abhay Sharma", "role": "Partner & Practice Leader", "org": "IBM", "photo": "images/speaker-abhay-sharma.webp", "logo": "images/logo-ibm.webp" },
+    { "name": "Akhil Gupta", "role": "Founder", "org": "NoBroker", "photo": "images/speaker-akhil-gupta.webp", "logo": "images/org-logos/favicon-nobroker.in.png" },
+    { "name": "Mukesh Jain", "role": "Global EVP & CTO", "org": "Capgemini", "photo": "images/speaker-mukesh-jain-capgemini.webp", "logo": "images/org-logos/favicon-capgemini.com.png" },
+
+    { "name": "Jagbir Singh", "role": "Chief Technology & Information Officer", "org": "Vodafone Idea", "photo": "images/speaker-jagbir-singh.webp", "logo": "images/org-logos/favicon-myvi.in.png" },
+    { "name": "Manish Agrawal", "role": "President & COO", "org": "Comviva", "photo": "images/speaker-manish-agarwal-comviva.webp", "logo": "images/org-logos/favicon-comviva.com.png" },
+    { "name": "Ashutosh Agarwal", "role": "Group CEO", "org": "Globe Teleservices" },
+    { "name": "Vishal Rally", "role": "Chief Revenue Officer", "org": "Tata Tele Business Services", "photo": "images/speaker-vishal-rally-sq.webp" },
+
+    { "name": "Dr. Ashish Tendulkar", "role": "Lead AI", "org": "Google", "photo": "images/speaker-ashish-tendulkar-panel.webp", "logo": "images/org-logos/favicon-google.com.png" },
+    { "name": "Sudhir Kumar Rai", "role": "Director, Data Science", "org": "Trellix", "photo": "images/speaker-sudhir-kumar-rai-sq.webp" },
+    { "name": "Sandeep Kumar", "role": "CIO", "org": "Go Digit Insurance", "photo": "images/speaker-sandeep-kumar-godigit.webp", "logo": "images/org-logos/favicon-godigit.com.png" },
+
+    { "name": "Rajat Nigam", "role": "CTO, Head of Technology & Media Operations", "org": "JioStar India" },
+    { "name": "Simon David Hunter", "role": "President", "org": "Asian Screen Institute, Singapore", "photo": "images/speaker-simon-david-hunter-sq.webp" },
+    { "name": "Saurabh Kushwah", "role": "Co-Founder & Chief Product and Technology Officer", "org": "BULLET Microdrama · ZEEL", "photo": "images/speaker-saurabh-kushwah-sq.webp", "logo": "images/org-logos/bullet-microdrama.webp" },
+
+    { "name": "Dr. Saurabh N. Mehta", "role": "Chief Academic Officer & Professor", "org": "Vidyalankar Institute of Technology", "photo": "images/speaker-saurabh-mehta-sq.webp" },
+    { "name": "Utsav Shroff", "role": "Director, India and South Asia Operations", "org": "University of Western Australia" },
+    { "name": "Dr. Lakshmi Mohan", "role": "Pro Vice Chancellor", "org": "ITM Skills University", "photo": "images/speaker-lakshmi-mohan-sq.webp" },
+    { "name": "Dr. Manpreet Singh Manna", "role": "Founding Executive Director", "org": "GCC School / SLIET", "photo": "images/speaker-manpreet-singh-manna-sq.webp" },
+    { "name": "Tarun Anand", "role": "Founder & Chancellor", "org": "Universal AI University" },
+    { "name": "Raju Haldankar", "role": "President", "org": "Chetana's Institute of Management & Research", "photo": "images/speaker-raju-haldankar-sq.webp" },
+    { "name": "Dr. Shashank D. Dalvi", "role": "Vice Chancellor", "org": "MGM Institute of Health Sciences", "photo": "images/speaker-shashank-dalvi-sq.webp" },
+    { "name": "Madhvendra Singh", "role": "CEO", "org": "Electronics Sector Skills Council of India", "photo": "images/speaker-madhvendra-singh-panel.webp" },
+
+    { "name": "Ramanarayana Parhi", "role": "VP & CIO", "org": "Alkem Laboratories", "photo": "images/speaker-ramanarayana-parhi-alkem.webp", "logo": "images/org-logos/favicon-alkemlabs.com.png", "crop": { "left": 0.49, "top": 0.16, "size": 0.5 } },
+    { "name": "Joy Chakraborty", "role": "Deputy CEO", "org": "P. D. Hinduja National Hospital & Medical Research Centre", "photo": "images/speaker-joy-chakraborty.jpg", "logo": "images/org-logos/favicon-hindujahospital.com.png" },
+    { "name": "Dheeraj Sinha", "role": "EVP & Global CIO", "org": "Sun Pharma", "photo": "images/speaker-dheeraj-sinha.webp", "logo": "images/org-logos/favicon-sunpharma.com.png" },
+    { "name": "Apsara Mokashi", "role": "Global Head of Account Operations", "org": "Thoughtworks" },
+
+    { "name": "Rahul Molasi", "role": "Associate Director, L&D", "org": "Cipla", "photo": "images/speaker-rahul-molasi.jpg", "logo": "images/org-logos/favicon-cipla.com.png" },
+    { "name": "Abdul Hai Mattoo", "role": "CVP & Head of Training", "org": "Axis Max Life Insurance", "photo": "images/speaker-abdul-hai-mattoo.jpg", "logo": "images/org-logos/favicon-axismaxlife.com.png" },
+    { "name": "Rakhi Prasad", "role": "Co-Founder", "org": "ClarityX" },
+    { "name": "Arvind Shah", "role": "Chief Distribution Officer", "org": "SAMA Insurance" },
+    { "name": "Gaurav Arora", "role": "Chief Headhunter & CEO", "org": "MSA Consulting Services" },
+    { "name": "Rinoo Rajesh", "role": "President", "org": "PMI Pune-Deccan India Chapter", "photo": "images/speaker-rinoo-rajesh.webp", "crop": { "left": 0.185, "top": 0.04, "size": 0.55 } },
+
+    { "name": "Shekar Sivasubramanian", "role": "CEO", "org": "Wadhwani Institute for Artificial Intelligence" },
+    { "name": "Dr. Sameer Agarwal", "role": "Executive Vice President", "org": "Molecule AI" },
+    { "name": "Manish K. Prahlad", "role": "Co-Founder and CEO", "org": "Verdant Impact" },
+    { "name": "Dr. Omprakash Mandge", "role": "Principal", "org": "MET" },
+
+    { "name": "Virendra Pal", "role": "AI & FinTech Expert", "org": "", "photo": "images/speaker-virendra-pal.webp" },
+    { "name": "Dr. Parijat Shukla", "role": "PhD, Iowa State University", "org": "", "photo": "images/speaker-parijat-shukla-sq.webp" }
+  ]
+}
