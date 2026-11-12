@@ -114,7 +114,7 @@
     { "hall": "aryabhata", "day": 1, "start": "13:10", "end": "14:00", "type": "break", "label": "Lunch", "title": "Networking Lunch" },
     { "hall": "aryabhata", "day": 1, "start": "14:00", "end": "15:00", "type": "panel", "label": "Panel: Sales & Marketing", "track": "Sales & Marketing AI", "title": "AI-Driven Growth Engines: Transforming Sales & Marketing",
       "panel": [
-        { "name": "Rahul Molasi", "org": "Cipla" },
+        { "name": "Rahul Molasi", "org": "Sun Pharma" },
         { "name": "Abdul Hai Mattoo", "org": "Axis Max Life Insurance" },
         { "name": "Akhil Gupta", "org": "NoBroker" },
         { "name": "Rakhi Prasad", "org": "ClarityX" },
