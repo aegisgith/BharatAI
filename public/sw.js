@@ -41,7 +41,8 @@
 // 5 Nov 2026 (bhai-v27): style.css?v=20261105b, the 14-link menu with Govt.
 // 6 Nov 2026 (bhai-v28): Dr. Vivek Bhoite off the speakers, so the offline list drops him.
 // 6 Nov 2026 (bhai-v29): the app's new design and motion files join the offline list.
-const VERSION = 'bhai-v30';
+// 12 Nov 2026 (bhai-v31): main.js?v=20261112, the free-pass waiting list words on / and /networking.
+const VERSION = 'bhai-v31';
 const SHELL = `shell-${VERSION}`;
 const DATA = `data-${VERSION}`;
 // The badge desk's scanner page, kept so it opens with no internet (12 Nov 2026).
@@ -75,7 +76,7 @@ const PRECACHE = [
   '/js/pass-render.js?v=20261102c',
   '/js/vendor/qrcode-generator.js?v=20261029',   // the pass draws its QR with it
   '/css/style.css?v=20261105b',        // marketing shell: /, /conference, /exhibition, ...
-  '/js/main.js?v=20261029',
+  '/js/main.js?v=20261112',
   '/js/carousel.js?v=20261027',
 ];
 

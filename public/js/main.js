@@ -647,3 +647,15 @@ function initSpeakerBadges() {
     el.textContent = days <= 1 ? 'Last day at the standard price.' : days + ' days left at the standard price.';
   });
 })();
+
+// Free Visitor Passes full for now (the organiser's switch in Admin, Settings, 12 Nov
+// 2026): the words beside the free link change without a deploy. The server is what
+// waitlists a registration; this only says so. No answer, no change.
+(function () {
+  var els = document.querySelectorAll('[data-waitlist-swap]');
+  if (!els.length || !window.fetch) return;
+  fetch('/api/payments/config', { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) {
+    if (!j || !j.free_pass_waitlist) return;
+    els.forEach(function (el) { el.textContent = el.getAttribute('data-waitlist-swap'); });
+  }).catch(function () {});
+})();

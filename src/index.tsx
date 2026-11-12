@@ -588,6 +588,8 @@ const ATTENDEE_ADMIN_LIST_COLS = [
   'lunch_inclusion', 'arrival_time', 'payment_status', 'payment_amount',
   'registration_source', 'registration_date', 'created_at', 'notified_at',
   'last_login_at', 'pass_downloaded_at', 'checked_in_at',
+  // The free-pass waiting list (0056): the mark, the slot they were told, when.
+  'entry_status', 'entry_slot', 'entry_decided_at',
   // So the row can show who has shared a creative. Until now the only place
   // that number existed was the overview tile, and nobody could say WHO.
   'social_card_downloaded_at',
@@ -1051,6 +1053,7 @@ const ADMIN_ATTENDEE_FIELDS = [
   'rsvp_status', 'lunch_inclusion', 'arrival_time', 'linkedin_url', 'twitter_url',
   'website_url', 'bio', 'interests', 'city', 'country', 'industry',
   'registration_date', 'payment_amount', 'payment_status',
+  'entry_status', 'entry_slot',
 ]
 
 // payment_amount is written by the admin table's inline Payment cell and read back
@@ -1088,6 +1091,12 @@ function sanitizeAttendeeField(field: string, value: any): any {
     const s = String(v).trim().toLowerCase()
     return PAYMENT_STATUSES.includes(s) ? s : 'pending'
   }
+  // The free-pass waiting list (0056): one of two words, or nothing at all.
+  if (field === 'entry_status') {
+    const s = String(v).trim().toLowerCase()
+    return ENTRY_STATUSES.includes(s) ? s : null
+  }
+  if (field === 'entry_slot') return String(v).trim().slice(0, 80) || null
   return v
 }
 
@@ -1332,6 +1341,166 @@ async function sendRegistrationEmail(c: any, attendee: any, opts: { receipt?: st
     })
   } catch { /* registration already succeeded; a failed email must not surface */ }
 }
+
+// ==================== FREE VISITOR PASS: THE WAITING LIST EMAILS AND ROUTES ====================
+//
+// Two emails. The first goes by itself when someone joins the list (the organiser's
+// words, and the one way to be sure of entry); the second when an organiser confirms
+// their place, as a bulk run (campaign kind waitlist_confirm) so a closed tab does not
+// lose it. The same sign-in links as the welcome mail: the Delegate button opens the
+// paid form signed in (resumePayment), the badge button the photo picker.
+async function waitlistMailLinks(c: any, attendee: any) {
+  const appUrl = (await settingValue(c, 'app_url')) || 'https://bharataiinnovation.com/app'
+  let token = ''
+  try {
+    if (await verifiedLoginEnabled(c)) token = (await createLoginToken(c, attendee.event_id, String(attendee.email).toLowerCase(), PROFILE_LINK_TTL_MINUTES, 4)).token
+  } catch (_) { /* the mail must still go out */ }
+  const base = `${appUrl}?email=${encodeURIComponent(attendee.email)}`
+  const go = (action: string, extra = '') => token ? `${base}&action=${action}${extra}&token=${token}` : appUrl
+  return { appUrl, go, token }
+}
+const WL_ESC = (v: any) => String(v ?? '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch] as string))
+const WL_BTN = (href: string, label: string, bg: string) =>
+  `<a href="${href}" style="display:inline-block;padding:13px 28px;background:${bg};color:#fff;text-decoration:none;border-radius:10px;font-weight:bold;font-size:14px;">${label}</a>`
+const WL_LINE = (k: string, v: string) =>
+  `<tr><td style="padding:7px 12px 7px 0;color:#666;font-size:13px;vertical-align:top;white-space:nowrap;">${k}</td><td style="padding:7px 0;font-size:13.5px;color:#1E2140;font-weight:bold;">${v}</td></tr>`
+const WL_ID_NOTE = 'On the day, bring a government photo ID with the same name as your pass. We check it at the badge desk and never ask you to send one.'
+
+// "You are on the waiting list": sent by itself the moment they register.
+async function waitlistEmail(c: any, attendee: any): Promise<{ subject: string; html: string }> {
+  const { appUrl, go, token } = await waitlistMailLinks(c, attendee)
+  const first = greetingName(attendee.name) || 'there'
+  const ref = 'BHAI-2026-' + String(attendee.id).padStart(5, '0')
+  const price = priceNow('Delegate Pass')
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#f5f5f5;font-family:Arial,sans-serif;">
+    <div style="max-width:600px;margin:20px auto;background:#fff;border-radius:12px;overflow:hidden;">
+      ${emailBrandHeader('You are on the waiting list', '20&ndash;21 Nov 2026 &bull; WTC Mumbai')}
+      <div style="padding:30px;">
+        <p style="margin:0 0 6px;font-size:15px;color:#333;">Hi <strong>${WL_ESC(first)}</strong>,</p>
+        <p style="margin:0 0 18px;font-size:14px;line-height:1.7;color:#555;">${WAITLIST_TEXT}</p>
+        <table style="width:100%;border-collapse:collapse;margin:0 0 20px;">
+          ${WL_LINE('Status', 'Waiting list')}
+          ${WL_LINE('Pass', 'Free Visitor Pass')}
+          ${WL_LINE('Reference', ref)}
+          ${WL_LINE('Dates', 'Friday 20 and Saturday 21 November 2026')}
+          ${WL_LINE('Venue', 'World Trade Center, Mumbai')}
+        </table>
+        <div style="padding:20px;border:1px solid #CFEBDC;background:#F2FBF6;border-radius:12px;">
+          <p style="margin:0 0 6px;font-size:16px;font-weight:bold;color:#1E2140;">${WAITLIST_UPSELL}</p>
+          <p style="margin:0 0 14px;font-size:13px;line-height:1.65;color:#555;">Every session on both days, the networking lunch and the full networking app, with guaranteed entry. ${price} + GST.</p>
+          ${WL_BTN(go('pay', '&pass=delegate'), 'Get a Delegate Pass &rarr;', '#0f7b47')}
+          <p style="margin:12px 0 0;font-size:11.5px;line-height:1.6;color:#888;">${token ? 'The button signs you in with this email and opens the secure payment page. Your registration and reference number stay the same.' : 'Open the app, sign in with this email and choose Delegate Pass.'} Every pass compared: <a href="https://bharataiinnovation.com/passes" style="color:#555;">bharataiinnovation.com/passes</a>.</p>
+        </div>
+        <p style="margin:22px 0 6px;font-size:14px;font-weight:bold;color:#1E2140;">Meanwhile</p>
+        <p style="margin:0 0 14px;font-size:13px;line-height:1.65;color:#555;">Add your photo and make your &ldquo;I&rsquo;m attending&rdquo; badge, and see some of the people coming. Your account is ready; there is no pass to download until your place is confirmed.</p>
+        <div style="text-align:center;margin:0 0 6px;">
+          ${WL_BTN(go('social-card'), 'Add my photo', '#1E2140')}
+        </div>
+        <div style="text-align:center;margin:10px 0 0;">
+          <a href="${appUrl}" style="display:inline-block;padding:10px 22px;background:#fff;color:#1E2140;text-decoration:none;border:1px solid #D5D9EA;border-radius:10px;font-weight:bold;font-size:13px;">Open the app</a>
+        </div>
+        <p style="margin:22px 0 0;font-size:12px;line-height:1.6;color:#888;">Questions? Reply to this email. ${WL_ID_NOTE}</p>
+      </div>
+    </div></body></html>`
+  return { subject: 'You are on the waiting list: Free Visitor Pass, Bharat AI Innovation 2026', html }
+}
+async function sendWaitlistEmail(c: any, attendee: any) {
+  const apiKey = await elasticKey(c)
+  if (!apiKey || !attendee?.email) return
+  const fromEmail = senderEmailOrDefault(await settingValue(c, 'sender_email'))
+  const fromName = (await settingValue(c, 'sender_name')) || 'Bharat AI Innovation'
+  const mail = await waitlistEmail(c, attendee)
+  try {
+    const res = await fetch('https://api.elasticemail.com/v4/emails/transactional', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-ElasticEmail-ApiKey': apiKey },
+      body: JSON.stringify({
+        Recipients: { To: [attendee.email] },
+        Content: { Body: [{ ContentType: 'HTML', Charset: 'utf-8', Content: mail.html }], From: `${fromName} <${fromEmail}>`, Subject: mail.subject },
+        Options: { TrackClicks: false, TrackOpens: false },
+      }),
+    })
+    if (!res.ok) await audit(c, 'register.waitlist_mail_failed', 'attendee', attendee.id, { email: attendee.email, status: res.status }, { actor: 'public registration', kind: 'public' })
+  } catch (e: any) {
+    await audit(c, 'register.waitlist_mail_failed', 'attendee', attendee.id, { email: attendee.email, error: String(e?.message || e).slice(0, 200) }, { actor: 'public registration', kind: 'public' })
+  }
+}
+
+// "Your Free Visitor Pass is confirmed": the promise in WAITLIST_TEXT, kept.
+async function waitlistConfirmedEmail(c: any, attendee: any): Promise<{ subject: string; html: string }> {
+  const { appUrl, go } = await waitlistMailLinks(c, attendee)
+  const first = greetingName(attendee.name) || 'there'
+  const ref = 'BHAI-2026-' + String(attendee.id).padStart(5, '0')
+  const slot = String(attendee.entry_slot || '').trim()
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#f5f5f5;font-family:Arial,sans-serif;">
+    <div style="max-width:600px;margin:20px auto;background:#fff;border-radius:12px;overflow:hidden;">
+      ${emailBrandHeader('Your Free Visitor Pass is confirmed', '20&ndash;21 Nov 2026 &bull; WTC Mumbai')}
+      <div style="padding:30px;">
+        <p style="margin:0 0 6px;font-size:15px;color:#333;">Hi <strong>${WL_ESC(first)}</strong>,</p>
+        <p style="margin:0 0 18px;font-size:14px;line-height:1.7;color:#555;">Good news: a place has opened up. Your <strong>Free Visitor Pass</strong> for Bharat AI Innovation 2026 is confirmed${slot ? ' for <strong>' + WL_ESC(slot) + '</strong>' : ''}. You are off the waiting list.</p>
+        <table style="width:100%;border-collapse:collapse;margin:0 0 20px;">
+          ${WL_LINE('Status', 'Confirmed')}
+          ${WL_LINE('Pass', 'Free Visitor Pass (exhibition floor and select keynotes)')}
+          ${slot ? WL_LINE('Entry slot', WL_ESC(slot)) : ''}
+          ${WL_LINE('Reference', ref)}
+          ${WL_LINE('Venue', 'World Trade Center, Cuffe Parade, Mumbai')}
+        </table>
+        <p style="margin:0 0 6px;font-size:14px;font-weight:bold;color:#1E2140;">What to do now</p>
+        <p style="margin:0 0 14px;font-size:13px;line-height:1.65;color:#555;">1. Add your photo, if you have not. 2. Download your pass and keep it on your phone. 3. Show it at the badge desk${slot ? ' in your slot' : ''}.</p>
+        <div style="text-align:center;margin:0 0 6px;">
+          ${WL_BTN(go('download-pass'), 'Download my pass &rarr;', 'linear-gradient(135deg,#FF6B00,#FF8C38)')}
+        </div>
+        <div style="text-align:center;margin:10px 0 0;">
+          <a href="${go('social-card')}" style="display:inline-block;padding:10px 22px;background:#fff;color:#1E2140;text-decoration:none;border:1px solid #D5D9EA;border-radius:10px;font-weight:bold;font-size:13px;">Add my photo</a>
+        </div>
+        <p style="margin:22px 0 0;font-size:12px;line-height:1.6;color:#888;">${WL_ID_NOTE} Want every session and the networking lunch as well? A Delegate Pass is one tap away in the app (<a href="${appUrl}" style="color:#555;">open the app</a>).</p>
+      </div>
+    </div></body></html>`
+  return { subject: 'Your Free Visitor Pass is confirmed: Bharat AI Innovation 2026', html }
+}
+
+// One person's confirmation, for the bulk run (campaignSendOne, kind waitlist_confirm)
+// and the per-row envelope. Transactional: they asked to come, so no unsubscribe
+// footer and no sending window; a paid pass or someone not confirmed is skipped.
+app.post('/api/admin/attendees/:id/send-waitlist-confirm', async (c) => {
+  const a = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(c.req.param('id')).first() as any
+  if (!a) return c.json({ error: 'Attendee not found' }, 404)
+  if (!a.email || !validEmailSyntax(a.email)) return c.json({ skipped: true, reason: 'No usable email address' })
+  if (String(a.entry_status || '').trim().toLowerCase() !== 'confirmed') return c.json({ skipped: true, reason: 'Not confirmed from the waiting list' })
+  const mail = await waitlistConfirmedEmail(c, a)
+  const res = await sendAdminEmail(c, a.email, mail.subject, mail.html, { unsubscribe: false })
+  if (!res.ok) return c.json({ error: (res as any).error || 'Not sent' }, 502)
+  await audit(c, 'attendee.waitlist_confirmed_mail', 'attendee', a.id, { email: a.email, slot: a.entry_slot || '' })
+  return c.json({ success: true, sent_to: a.email })
+})
+
+// The organiser's decision for a selection: confirm (the email follows as a bulk
+// run started by the page), put on the list, or take the mark off.
+app.post('/api/admin/attendees/waitlist', async (c) => {
+  if (!isAdminRequest(c)) return c.json({ error: 'Admin only' }, 401)
+  if (!(await entryStatusEnabled(c))) return c.json({ error: 'Migration 0056 has not run yet, so there is no waiting list to work. Settings, Free Visitor Pass shows the command.' }, 503)
+  const body = await c.req.json().catch(() => ({})) as any
+  const ids = (Array.isArray(body.ids) ? body.ids : []).map((v: any) => parseInt(String(v), 10)).filter((n: number) => Number.isFinite(n)).slice(0, 2000)
+  if (!ids.length) return c.json({ error: 'No attendees selected.' }, 400)
+  const decision = ['confirmed', 'waitlisted', 'clear'].includes(String(body.decision)) ? String(body.decision) : ''
+  if (!decision) return c.json({ error: 'Say confirmed, waitlisted or clear.' }, 400)
+  const slot = decision === 'confirmed' ? String(body.slot || '').trim().slice(0, 80) : ''
+  const value = decision === 'clear' ? null : decision
+  const ph = (p: number[]) => p.map(() => '?').join(',')
+  const parts: number[][] = []
+  for (let i = 0; i < ids.length; i += 90) parts.push(ids.slice(i, i + 90))
+  await c.env.DB.batch(parts.map(p => c.env.DB.prepare(
+    `UPDATE attendees SET entry_status = ?, entry_slot = ?, entry_decided_at = ${value ? "datetime('now')" : 'NULL'} WHERE id IN (${ph(p)})`
+  ).bind(value, slot || null, ...p)))
+  await audit(c, 'attendees.waitlist', 'attendee', ids.join(','), { count: ids.length, decision, slot })
+  return c.json({ success: true, updated: ids.length, decision, slot })
+})
+
+// For Settings, Free Visitor Pass: is the list ready, is the switch on, who waits.
+app.get('/api/admin/waitlist', async (c) => {
+  if (!isAdminRequest(c)) return c.json({ error: 'Admin only' }, 401)
+  return c.json(await waitlistCounts(c, 1))
+})
 
 // ==================== CAMPUS SERIES — PANEL CONFIRMATION ====================
 //
@@ -2486,6 +2655,82 @@ const GROUP_RATE_TEXT = 'Teams of five or more: five passes for the price of fou
 // chart), and on the website and terms by hand.
 const FREE_ENTRY_TEXT = 'Entry on a free Visitor Pass is not guaranteed. It depends on slot availability on 20 and 21 Nov: you may be offered a half-day slot, or none. We confirm by email before the event. Every paid pass has guaranteed entry on both days.'
 
+// ==================== FREE VISITOR PASS: THE WAITING LIST (0056, 12 Nov 2026) ====================
+//
+// The organiser: free Visitor Passes are full for now. Someone registering for one
+// after the switch is thrown is still registered (an attendees row, the app, the
+// badge, the directory teaser, every upgrade prompt) but is told so in the
+// organiser's words (WAITLIST_TEXT), has no pass to download (/api/my-pass-token)
+// and is refused at the desk (scan, roster, check-in, /verify) until an organiser
+// confirms them (Admin, Attendees, the Waiting list button; the confirmation email
+// is a bulk run of kind waitlist_confirm). People who registered before the switch
+// keep their pass: entry_status NULL.
+//
+//   app_settings.free_pass_waitlist = '1'  ->  new free registrations join the list
+//   anything else / unset                  ->  registered as before (entry by slot)
+//
+// A paid pass is never on the list: entryWaitlisted() reads the mark only while the
+// person is on a free pass, so paying (or an admin-given pass) lets them in without
+// anyone having to clear the mark. The columns arrive with 0056; until it runs the
+// switch does nothing and Admin, Settings says so.
+const FREE_PASS_WAITLIST_KEY = 'free_pass_waitlist'
+const ENTRY_STATUSES = ['waitlisted', 'confirmed']
+const WAITLIST_TEXT = 'Free Visitor Passes are full for now. You are on the waiting list. If the wait list gets over, we will inform you.'
+const WAITLIST_UPSELL = 'Want to be sure of entry on both days? Get a Delegate Pass.'
+const WAITLIST_PAGE_TEXT = 'Free Visitor Passes are full for now. A new free registration joins the waiting list; if the wait list gets over, we will inform you. Every paid pass has guaranteed entry on both days.'
+const WAITLIST_DESK_TEXT = 'On the waiting list for a Free Visitor Pass: entry not confirmed. Do not admit on this pass. Send them to the registration desk for a Delegate Pass.'
+
+let _entryStatusCol: boolean | null = null
+let _entryStatusCheckedAt = 0
+async function entryStatusEnabled(c: any): Promise<boolean> {
+  // A yes is for good; a no is asked again after a minute, so the switch starts to
+  // work when the migration runs, without waiting for every isolate to be replaced.
+  if (_entryStatusCol === true) return true
+  if (_entryStatusCol === false && Date.now() - _entryStatusCheckedAt < 60000) return false
+  try {
+    const { results } = await c.env.DB.prepare('PRAGMA table_info(attendees)').all()
+    _entryStatusCol = (results || []).some((r: any) => r.name === 'entry_status')
+  } catch { _entryStatusCol = false }
+  _entryStatusCheckedAt = Date.now()
+  return _entryStatusCol
+}
+async function freePassWaitlistOn(c: any): Promise<boolean> {
+  if (!(await entryStatusEnabled(c))) return false
+  return (await settingValue(c, FREE_PASS_WAITLIST_KEY)) === '1'
+}
+// On the list, and still on a free pass. A paid tier that was paid for is in
+// regardless of the mark; an admin-given pass (Exhibitor, Speaker, a waived tier)
+// is not a free Visitor Pass.
+function entryWaitlisted(a: any): boolean {
+  if (String(a?.entry_status || '').trim().toLowerCase() !== 'waitlisted') return false
+  const badge = String(a?.badge_type || 'Visitor Pass').trim()
+  if (!badge || FREE_BADGE_RE.test(badge)) return true
+  return PAID_TIERS.includes(badge) && ['pending', 'refunded'].includes(String(a?.payment_status ?? '').trim().toLowerCase())
+}
+async function entryWaitlistedById(c: any, id: any): Promise<boolean> {
+  if (!(await entryStatusEnabled(c))) return false
+  try {
+    const r = await c.env.DB.prepare('SELECT badge_type, payment_status, entry_status FROM attendees WHERE id = ?').bind(id).first()
+    return entryWaitlisted(r)
+  } catch { return false }
+}
+// The same rule as SQL, for counts and lists.
+const WAITLISTED_SQL = (alias = '') =>
+  `${alias}entry_status = 'waitlisted' AND (LOWER(TRIM(COALESCE(${alias}badge_type, ''))) IN ('', 'visitor pass', 'visitor', 'general', 'general pass') OR LOWER(TRIM(COALESCE(${alias}payment_status, ''))) IN ('pending', 'refunded'))`
+async function waitlistCounts(c: any, eventId: any = 1) {
+  const ready = await entryStatusEnabled(c)
+  if (!ready) return { ready: false, on: false, total: 0, today: 0, confirmed: 0 }
+  const on = (await settingValue(c, FREE_PASS_WAITLIST_KEY)) === '1'
+  try {
+    const r = await c.env.DB.prepare(
+      `SELECT SUM(CASE WHEN ${WAITLISTED_SQL()} THEN 1 ELSE 0 END) AS total,
+              SUM(CASE WHEN ${WAITLISTED_SQL()} AND substr(datetime(COALESCE(registration_date, created_at), '+330 minutes'), 1, 10) = ? THEN 1 ELSE 0 END) AS today,
+              SUM(CASE WHEN entry_status = 'confirmed' THEN 1 ELSE 0 END) AS confirmed
+         FROM attendees WHERE event_id = ?`).bind(istDate(), eventId).first() as any
+    return { ready: true, on, total: Number(r?.total || 0), today: Number(r?.today || 0), confirmed: Number(r?.confirmed || 0) }
+  } catch { return { ready: true, on, total: 0, today: 0, confirmed: 0 } }
+}
+
 // Date.now(), not new Date(), so the smoke test can move the clock.
 const priceIstDay = (ms = Date.now()) => new Date(ms + 19800000).toISOString().slice(0, 10)
 function latePricing(): boolean { return priceIstDay() > PRICE_DEADLINE_IST }
@@ -2674,7 +2919,9 @@ app.get('/api/payments/config', async (c) => {
   }
   // passes is what is charged today; the deadline and late_passes let the forms say
   // what the price becomes, until the day it does.
-  return c.json({ gateway: (await onlinePaymentsOn(c)) ? 'ccavenue' : 'off', gst_rate: PASS_GST_RATE, passes,
+  // free_pass_waitlist: the organiser's switch (0056), so the static pages and the
+  // app can say "full for now" without a deploy.
+  return c.json({ gateway: (await onlinePaymentsOn(c)) ? 'ccavenue' : 'off', free_pass_waitlist: await freePassWaitlistOn(c), gst_rate: PASS_GST_RATE, passes,
     late: latePricing(), deadline: PRICE_DEADLINE_IST, deadline_text: PRICE_DEADLINE_TEXT, late_from_text: PRICE_LATE_FROM_TEXT, late_passes, standard_passes })
 })
 
@@ -5054,6 +5301,7 @@ function staffScanHTML(me: any): string {
      else if(j.state==='already') card({state:'already',bg:AMBER,title:'ALREADY CHECKED IN TODAY',name:j.name,sub:sub,pass:j.pass,photo:j.photo,note:(j.at_ist||'')+(j.by?' by '+j.by:'')+'.'+ws,token:tok,undo:j.undoable});
      else if(j.state==='payment_pending') card({state:'payment_pending',bg:AMBER,title:'PAYMENT PENDING',name:j.name,sub:sub,pass:j.pass,note:'This tier has not been paid for. Do not admit without checking.',token:tok});
      else if(j.state==='panel_only') card({state:'panel_only',bg:RED,title:'NOT REGISTERED',name:j.name,note:'Registered for a campus panel only, not for the conference. Send them to the registration desk.',token:tok});
+     else if(j.state==='waitlisted') card({state:'waitlisted',bg:RED,title:'WAITING LIST',name:j.name,sub:sub,pass:j.pass,photo:j.photo,note:'${WAITLIST_DESK_TEXT}',token:tok});
      else card({state:'invalid',bg:RED,title:'NOT VALID',note:'This code is not a Bharat AI Innovation pass.'});
    }
    async function quick(m){
@@ -5079,6 +5327,7 @@ function staffScanHTML(me: any): string {
      var h=''; try{ h=await sha10(tok); }catch(err){ h=''; }
      if(h!==p[4]) return card({state:'invalid',bg:RED,title:'NOT VALID',note:'This code is not a Bharat AI Innovation pass.'});
      if(p[3]===2) return card({state:'panel_only',bg:RED,title:'NOT REGISTERED',name:p[1],note:'Registered for a campus panel only, not for the conference. Send them to the registration desk.'});
+     if(p[3]===3) return card({state:'waitlisted',bg:RED,title:'WAITING LIST',name:p[1],pass:p[2],note:'${WAITLIST_DESK_TEXT}'});
      if(p[3]===1) return card({state:'payment_pending',bg:AMBER,title:'PAYMENT PENDING',name:p[1],pass:p[2],note:'This tier has not been paid for. Do not admit without checking.'});
      var dup=queue.some(function(q){ return q.token===tok; });
      if(!dup){ queue.push({token:tok,at:Date.now()}); saveQueue(); count(1); }
@@ -5378,6 +5627,10 @@ app.get('/api/my-pass-token', async (c) => {
       return c.json({ error: 'payment_pending', message: 'Your ' + t.badge_type + ' is issued the moment your payment goes through. Use Pay now on your pass card.' }, 402)
     }
   } catch { /* a failed read never blocks a pass */ }
+  // On the waiting list (free passes full, 0056): no pass until the organisers confirm.
+  if (await entryWaitlistedById(c, me)) {
+    return c.json({ error: 'waitlisted', message: 'You are on the waiting list for a Free Visitor Pass, so there is no pass to download yet. If the wait list gets over, we will inform you. ' + WAITLIST_UPSELL }, 403)
+  }
   return c.json({ token: await signPassToken(c, me) })
 })
 
@@ -5410,6 +5663,8 @@ app.get('/verify/:token', async (c) => {
     const m = await c.env.DB.prepare('SELECT main_event FROM attendees WHERE id = ?').bind(id).first() as any
     a.main_event = m ? Number(m.main_event ?? 1) : 1
   } catch { a.main_event = 1 }
+  // The free-pass waiting list (0056): no admission on this pass until confirmed.
+  a.entry_waitlisted = await entryWaitlistedById(c, id)
   // The workshop door scans the same pass: it says which workshop, if any.
   try {
     if (await workshopsReady(c)) {
@@ -5506,6 +5761,7 @@ app.post('/api/staff/scan', async (c) => {
   const person: any = { name: a.name, company: a.company || '', job_title: a.job_title || '', pass: a.badge_type || 'Visitor Pass', photo, photo_flagged: !!a.photo_flagged_at && !photo }
   if (Number(a.main_event ?? 1) === 0) return c.json({ state: 'panel_only', ...person })
   if (['pending', 'refunded'].includes(String(a.payment_status || '').trim().toLowerCase())) return c.json({ state: 'payment_pending', ...person })
+  if (entryWaitlisted(a)) return c.json({ state: 'waitlisted', ...person })
   try {
     if (await workshopsReady(c)) {
       const ws = await c.env.DB.prepare('SELECT w.title FROM workshop_seats s JOIN workshops w ON w.id = s.workshop_id WHERE s.event_id = 1 AND s.attendee_id = ?').bind(id).first() as any
@@ -5542,7 +5798,8 @@ app.get('/api/staff/roster', async (c) => {
   for (const a of (results || [])) {
     const token = a.id + '.' + hex(await crypto.subtle.sign('HMAC', key, enc.encode('pass:' + a.id))).slice(0, 24)
     const h = hex(await crypto.subtle.digest('SHA-256', enc.encode(token))).slice(0, 10)
-    const state = Number(a.main_event ?? 1) === 0 ? 2 : ['pending', 'refunded'].includes(String(a.payment_status || '').trim().toLowerCase()) ? 1 : 0
+    // 0 admit, 1 payment pending, 2 panel only, 3 on the free-pass waiting list.
+    const state = Number(a.main_event ?? 1) === 0 ? 2 : ['pending', 'refunded'].includes(String(a.payment_status || '').trim().toLowerCase()) ? 1 : entryWaitlisted(a) ? 3 : 0
     people.push([a.id, a.name, a.badge_type || 'Visitor Pass', state, h])
   }
   return c.json({ day: istDate(), at: Date.now(), people })
@@ -5560,6 +5817,7 @@ app.post('/api/verify/:token/checkin', async (c) => {
     const m = await c.env.DB.prepare('SELECT main_event FROM attendees WHERE id = ?').bind(id).first() as any
     if (m && Number(m.main_event ?? 1) === 0) return c.json({ error: 'Registered for a campus panel only, not for the conference.' }, 400)
   } catch { /* pre-0041 */ }
+  if (await entryWaitlistedById(c, id)) return c.json({ error: WAITLIST_DESK_TEXT }, 400)
   // at stays UTC for anything programmatic; at_ist is what a human should be shown.
   const st = await checkinState(c, a)
   if (st.today) return c.json({ success: false, already: true, at: st.today.at, at_ist: istStamp(st.today.at), name: a.name })
@@ -5879,9 +6137,11 @@ function verifyPageHTML(o: any): string {
   // carries a good signature, and read VALID PASS here until 29 Oct 2026.
   const unpaid = ['pending', 'refunded'].includes(String(a.payment_status || '').trim().toLowerCase())
   const panelOnly = Number(a.main_event ?? 1) === 0
-  const ok = o.state === 'valid' && !unpaid && !panelOnly
+  const waitlisted = !!a.entry_waitlisted
+  const ok = o.state === 'valid' && !unpaid && !panelOnly && !waitlisted
   const banner = o.state !== 'valid' ? ['#b3261e', 'NOT VALID', 'This code is not a Bharat AI Innovation pass.']
     : panelOnly ? ['#b3261e', 'NOT REGISTERED', 'Registered for a campus panel only, not for the conference. Do not admit on this pass; send them to the registration desk.']
+    : waitlisted ? ['#b3261e', 'WAITING LIST', WAITLIST_DESK_TEXT]
     : unpaid ? ['#b26a00', 'PAYMENT PENDING', 'This tier has not been paid for. Do not admit without checking.']
     // The instruction has to match the document. Three of every four passes
     // downloaded so far have no photo on them - the pass draws an initial in a
@@ -5924,7 +6184,7 @@ function verifyPageHTML(o: any): string {
                ${o.undoable ? `<button id="undo" onclick="undo()" style="background:#243056;">Undo this check-in</button>` : ''}`
             // The banner says do not admit on this pass and the server refuses the
             // check-in anyway, so no button that invites the tap.
-            : panelOnly ? `<button onclick="location.href='/staff/scan'" style="background:#243056;">Scan another pass</button>`
+            : (panelOnly || waitlisted) ? `<button onclick="location.href='/staff/scan'" style="background:#243056;">Scan another pass</button>`
             : `<button id="ci" onclick="checkIn()">Check in</button>`}
          ${hasPassPhoto ? `<button id="pf" class="secondary" data-photo="${esc(a.avatar_url)}" onclick="flagPhoto()">Photo doesn&rsquo;t match this person</button>` : ''}
          ${o.flagUndoable ? `<button id="pfu" class="secondary" onclick="undoFlag()">Undo photo flag</button>` : ''}
@@ -7597,6 +7857,11 @@ app.post('/api/events/:id/attendees/register', async (c) => {
   // confirmed by the payment gateway's answer, never by anything the client says.
   const needsPayment = PAID_TIERS.includes(passType)
   const withPaymentCol = await paymentStatusEnabled(c)
+  // Free Visitor Passes full for now (the organiser's switch, 0056): this person
+  // joins the waiting list. Not a campus-panel registrant, who is not registering
+  // for the conference. A paid tier chosen here carries the mark too: unpaid, it is
+  // a free pass; paid, the mark is ignored (entryWaitlisted).
+  const waitlist = !campusPanelFor(sourceValue) && await freePassWaitlistOn(c)
 
   try {
     const result = withPaymentCol
@@ -7610,6 +7875,10 @@ app.post('/api/events/:id/attendees/register', async (c) => {
           'INSERT INTO attendees (event_id, name, email, company, job_title, bio, interests, linkedin_url, mobile, city, industry, lunch_inclusion, badge_type, registration_source, registration_date, is_online, last_login_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime("now"), 1, datetime("now"))'
         ).bind(eventId, name.trim(), normalizedEmail, company || '', job_title || '', bio || '', interests || '', linkedin_url || '', mobile || '', city || '', industryValue, lunch_inclusion || 'No', passType, sourceValue || 'networking_app').run()
 
+    if (waitlist) {
+      try { await c.env.DB.prepare("UPDATE attendees SET entry_status = 'waitlisted' WHERE id = ?").bind(result.meta.last_row_id).run() }
+      catch { /* a failed mark leaves an ordinary free pass, never a lost registration */ }
+    }
     const attendee = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(result.meta.last_row_id).first()
     await issueAttendeeSession(c, (attendee as any).id)
 
@@ -7642,6 +7911,7 @@ app.post('/api/events/:id/attendees/register', async (c) => {
     const unpaidTier = !panel && needsPayment && withPaymentCol
     const welcome = panel ? sendPanelConfirmationEmail(c, attendee, panel)
       : unpaidTier ? Promise.resolve()
+      : waitlist && entryWaitlisted(attendee) ? sendWaitlistEmail(c, attendee)
       : sendRegistrationEmail(c, attendee)
     let scheduled = false
     try { c.executionCtx.waitUntil(welcome); scheduled = true } catch { /* no ctx */ }
@@ -15425,6 +15695,8 @@ async function notifyEmail(c: any, attendee: any, opts: { preview?: boolean } = 
   const email = String(attendee.email || '')
   const first = greetingName(attendee.name)
   const kind = notifyKind(attendee)
+  // On the free-pass waiting list (0056): the account is ready, the pass is not.
+  const waitlisted = kind === 'free' && entryWaitlisted(attendee)
   const badge = String(attendee.badge_type || '').trim()
   // "Speaker" reads as "Speaker Pass"; a Visitor's is the Free Visitor Pass.
   const passName = kind === 'paid' ? (/pass$/i.test(badge) ? badge : badge + ' Pass') : 'Free Visitor Pass'
@@ -15467,7 +15739,9 @@ async function notifyEmail(c: any, attendee: any, opts: { preview?: boolean } = 
 
   const where = '20&ndash;21 Nov at the World Trade Center, Mumbai'
   const intro = kind === 'free'
-    ? `Your account for <strong>Bharat AI Innovation 2026</strong> is ready. You hold a <strong>Free Visitor Pass</strong> for ${where}.`
+    ? (waitlisted
+      ? `Your account for <strong>Bharat AI Innovation 2026</strong> is ready. You are on the <strong>waiting list</strong> for a Free Visitor Pass for ${where}. ${WAITLIST_TEXT}`
+      : `Your account for <strong>Bharat AI Innovation 2026</strong> is ready. You hold a <strong>Free Visitor Pass</strong> for ${where}.`)
     : kind === 'unpaid'
       ? `Your account for <strong>Bharat AI Innovation 2026</strong> is ready. You chose the <strong>${esc(badge)}</strong>, and its payment is not complete, so for now your account holds a <strong>Free Visitor Pass</strong>.`
       : `Your account for <strong>Bharat AI Innovation 2026</strong> is ready. You are confirmed as ${/^[aeiou]/i.test(passName) ? 'an' : 'a'} <strong>${esc(passName)}</strong> holder for ${where}, with guaranteed entry on both days.`
@@ -15502,6 +15776,14 @@ async function notifyEmail(c: any, attendee: any, opts: { preview?: boolean } = 
         <p style="margin:0 0 14px;font-size:13px;line-height:1.65;color:#555;">Pay ${rsPrice(badge)} + GST and it is yours, with guaranteed entry on both days and your pass to download. Your registration and reference number stay the same.</p>
         ${btn(go('pay', '&pass=' + (PASS_KEY[badge] || 'delegate')), 'Finish paying &rarr;', '#0f7b47')}
         <p style="margin:12px 0 0;font-size:11.5px;line-height:1.6;color:#888;">${FREE_ENTRY_TEXT}</p>
+      </div>`
+  } else if (waitlisted) {
+    passBlock = `
+      <div style="margin:22px 0 0;padding:20px;border:1px solid #F3D9A4;background:#FFF9EC;border-radius:12px;">
+        <p style="margin:0 0 6px;font-size:16px;font-weight:bold;color:#1E2140;">Your place on the waiting list</p>
+        <p style="margin:0 0 14px;font-size:13px;line-height:1.65;color:#555;">${WAITLIST_TEXT} There is no pass to download yet.</p>
+        <p style="margin:0 0 12px;font-size:13.5px;font-weight:bold;color:#1E2140;">${WAITLIST_UPSELL}</p>
+        ${btn(go('pay', '&pass=delegate'), 'Get a Delegate Pass &rarr;', '#0f7b47')}
       </div>`
   } else if (kind === 'free') {
     passBlock = `
@@ -15611,14 +15893,16 @@ async function notifyEmail(c: any, attendee: any, opts: { preview?: boolean } = 
 </html>`
 
   const hi = first ? first + ', y' : 'Y'
-  const subject = kind === 'free' ? `${hi}our Free Visitor Pass is ready`
+  const subject = waitlisted ? `${hi}ou are on the waiting list for a Free Visitor Pass`
+    : kind === 'free' ? `${hi}our Free Visitor Pass is ready`
     : kind === 'unpaid' ? `${hi}our account is ready - your ${badge} is one payment away`
     : `${hi}our ${passName} is ready`
 
   // For the mailto fallback, when no mail service is configured.
   const lines = [
     `Dear ${first || 'there'},`, '',
-    kind === 'free' ? 'Your account for Bharat AI Innovation 2026 is ready. You hold a Free Visitor Pass for 20-21 Nov at the World Trade Center, Mumbai.'
+    waitlisted ? 'Your account for Bharat AI Innovation 2026 is ready. You are on the waiting list for a Free Visitor Pass for 20-21 Nov at the World Trade Center, Mumbai. ' + WAITLIST_TEXT
+      : kind === 'free' ? 'Your account for Bharat AI Innovation 2026 is ready. You hold a Free Visitor Pass for 20-21 Nov at the World Trade Center, Mumbai.'
       : kind === 'unpaid' ? `Your account for Bharat AI Innovation 2026 is ready. You chose the ${badge}; its payment is not complete, so for now your account holds a Free Visitor Pass.`
       : `Your account for Bharat AI Innovation 2026 is ready. You are confirmed as a ${passName} holder, with guaranteed entry on both days.`,
     '',
@@ -15626,8 +15910,9 @@ async function notifyEmail(c: any, attendee: any, opts: { preview?: boolean } = 
   ]
   if (gaps.length) lines.push(`Add your photo and details: ${go('complete-profile')}`)
   if (kind === 'unpaid') lines.push(`Finish paying for your ${badge}: ${go('pay', '&pass=' + (PASS_KEY[badge] || 'delegate'))}`)
-  else lines.push(`Download your pass: ${go('download-pass')}`)
-  if (kind === 'free') lines.push('', FREE_ENTRY_TEXT, '', `Make it the full conference with a Delegate Pass: ${go('pay', '&pass=delegate')}`)
+  else if (!waitlisted) lines.push(`Download your pass: ${go('download-pass')}`)
+  if (waitlisted) lines.push('', WAITLIST_UPSELL, `Get a Delegate Pass: ${go('pay', '&pass=delegate')}`)
+  else if (kind === 'free') lines.push('', FREE_ENTRY_TEXT, '', `Make it the full conference with a Delegate Pass: ${go('pay', '&pass=delegate')}`)
   lines.push('', 'See you in Mumbai,', 'Team Bharat AI Innovation')
 
   return { subject, html, text: lines.join('\n') }
@@ -18502,6 +18787,7 @@ async function campaignSendOne(c: any, kind: string, refId: any, r: any, auth = 
     : kind === 'profile_reminder' ? `/api/admin/attendees/${r.attendee_id}/send-profile-reminder`
     : kind === 'upgrade' ? `/api/admin/attendees/${r.attendee_id}/send-upgrade`
     : kind === 'networking' ? `/api/admin/attendees/${r.attendee_id}/send-networking`
+    : kind === 'waitlist_confirm' ? `/api/admin/attendees/${r.attendee_id}/send-waitlist-confirm`
     : `/api/admin/attendees/${r.attendee_id}/notify`
   try {
     const url = new URL(c.req.url)
@@ -18601,7 +18887,7 @@ async function campaignAudienceRows(c: any, kind: string, audience: string, incl
 // Start a campaign. Returns it with its recipient count; nothing is sent yet.
 app.post('/api/admin/campaigns', async (c) => {
   const body = await c.req.json().catch(() => ({})) as any
-  const kind = ['notify', 'thankyou', 'announcement', 'profile_reminder', 'upgrade', 'networking'].includes(body.kind) ? body.kind : ''
+  const kind = ['notify', 'thankyou', 'announcement', 'profile_reminder', 'upgrade', 'networking', 'waitlist_confirm'].includes(body.kind) ? body.kind : ''
   if (!kind) return c.json({ error: 'Unknown campaign type.' }, 400)
   const audience = String(body.audience || 'all')
   let refId = body.ref_id ? parseInt(String(body.ref_id), 10) : null
@@ -18645,7 +18931,8 @@ app.post('/api/admin/campaigns', async (c) => {
     : kind === 'notify' ? 'Account-ready email'
     : kind === 'networking' ? 'Networking app email'
     : kind === 'thankyou' ? 'Post-event thank you'
-    : kind === 'profile_reminder' ? 'Complete your profile' : 'Announcement')).slice(0, 160)
+    : kind === 'profile_reminder' ? 'Complete your profile'
+    : kind === 'waitlist_confirm' ? 'Waiting list: your Free Visitor Pass is confirmed' : 'Announcement')).slice(0, 160)
   const ins = await c.env.DB.prepare(
     'INSERT INTO campaigns (kind, title, ref_id, audience, status, total, created_by) VALUES (?,?,?,?,?,?,?)'
   ).bind(kind, title, refId, audience, 'running', rows.length, who.actor).run()
@@ -19063,6 +19350,8 @@ app.get('/api/admin/events/:id/board', async (c) => {
       unpaid: hasPay ? await count(`SELECT COUNT(*) AS n FROM attendees WHERE event_id = ? AND LOWER(TRIM(COALESCE(payment_status, ''))) IN ('pending', 'refunded')`, DELHI_EVENT_ID) : 0,
       paise: online ? await count(`SELECT COALESCE(SUM(amount_paise), 0) AS n FROM payment_orders WHERE event_id = ? AND status = 'paid'`, DELHI_EVENT_ID) : 0,
     },
+    // The free-pass waiting list (0056): who waits, who was let in, is the switch on.
+    waitlist: await waitlistCounts(c, eventId),
     booths_submitted: await count(`SELECT COUNT(*) AS n FROM booth_requests WHERE event_id = ? AND status = 'submitted'`, eventId),
     listings_pending: await count(`SELECT COUNT(*) AS n FROM mp_listings WHERE status = 'pending'`),
     rooms_held: await count(`SELECT COUNT(*) AS n FROM room_bookings WHERE event_id = ? AND kind = 'booking' AND status = 'held'`, eventId),
@@ -21142,15 +21431,15 @@ app.get('/contact', (c) => {
 
 // ==================== REGISTER PAGE (Free Visitor Pass) ====================
 
-app.get('/register', (c) => {
-  return c.html(registerPageHTML())
+app.get('/register', async (c) => {
+  return c.html(registerPageHTML({ waitlist: await freePassWaitlistOn(c) }))
 })
 
 // The passes page: one readable, linkable place with every pass, its dated
 // price, the comparison and the questions a buyer asks before paying. Served by
 // the worker so the prices come from passPriceInr() like everywhere else.
-app.get('/passes', (c) => {
-  return c.html(passesPageHTML())
+app.get('/passes', async (c) => {
+  return c.html(passesPageHTML({ waitlist: await freePassWaitlistOn(c) }))
 })
 
 // ==================== STANDALONE INQUIRY FORM (embeddable URL for main website) ====================
@@ -22011,7 +22300,9 @@ const BOOKING_MOTION = '<link rel="stylesheet" href="/css/passes-motion.css?v=20
 const BOOKING_SCRIPTS = '<script src="/js/passes-motion.js?v=20261106" defer></script><script src="/js/booking-motion.js?v=20261106" defer></script>'
 const BOOKING_CREDIT = '<p class="ps-credit">Motion effects from <a href="https://skiper-ui.com" target="_blank" rel="noopener noreferrer">Skiper UI</a> and <a href="https://github.com/Ashutoshx7/VengeanceUI" target="_blank" rel="noopener noreferrer">Vengeance UI</a>, and small details after <a href="https://uiverse.io" target="_blank" rel="noopener noreferrer">Uiverse</a>.</p>'
 
-function passesPageHTML(): string {
+function passesPageHTML(opts: { waitlist?: boolean } = {}): string {
+  // Free Visitor Passes full for now (0056): the words about the free pass change.
+  const waitlist = !!opts.waitlist
   // Each pass looks like the badge it buys. The buttons carry a source tag, as the home page's do,
   // so Admin can see which part of this page sold the pass.
   const pass = (id: string, name: string, color: string, tag: string, lines: string[], wide = false) => `
@@ -22039,7 +22330,7 @@ function passesPageHTML(): string {
   ]
   const faq: [string, string][] = [
     ['Which pass should I buy?', 'Coming for the conference: the <strong>Delegate Pass</strong>. Want a hands-on workshop seat as well: <strong>Premium Delegate</strong>. Want the Bharat AI Leaders’ Evening, the lounge and the speaker meet &amp; greet: <strong>VIP</strong>. A student or faculty member with ID: <strong>Academic</strong>. Only the exhibition floor: the free <strong>Visitor Pass</strong>, where entry is not guaranteed: it depends on slot availability on 20 and 21 Nov, a half-day slot or none, confirmed by email.'],
-    ['Is entry guaranteed?', 'On every paid pass, yes, on both days. ' + FREE_ENTRY_TEXT],
+    ['Is entry guaranteed?', 'On every paid pass, yes, on both days. ' + (waitlist ? WAITLIST_PAGE_TEXT : FREE_ENTRY_TEXT)],
     ['What does the price include?', 'Prices are + 18% GST. ' + priceDeadlineNote() + ' An order keeps the price it was made at.'],
     ['Can I get a GST invoice in my company&rsquo;s name?', 'Yes. The paid form has a section for the registered company name, GSTIN and billing address. A receipt is emailed the moment the payment goes through, and the GST invoice follows from the accounts team.'],
     ['How do I pay?', 'On this site, through CCAvenue: UPI, credit and debit cards, net banking and wallets. Your pass is confirmed the moment the payment goes through and you are brought straight back here.'],
@@ -22096,7 +22387,7 @@ ${siteHeaderHTML('/passes')}
     <section class="ps-compare" id="compare">
       <div class="ps-wrap">
         <h2 class="ps-h2">Compare every pass</h2>
-        <p class="ps-lead">${FREE_ENTRY_TEXT}</p>
+        <p class="ps-lead">${waitlist ? WAITLIST_PAGE_TEXT : FREE_ENTRY_TEXT}</p>
         ${passComparisonHTML()}
         <div class="ps-go">
           <p class="ps-go-q">Pick your pass</p>
@@ -22153,7 +22444,7 @@ ${siteHeaderHTML('/passes')}
     <div class="ps-wrap">
       <h2 class="ps-end-title" id="ps-end-title">See you at WTC Mumbai</h2>
       <a class="ps-buy" href="/register?source=passes-foot#delegate">Get a Delegate Pass, ${priceNow('Delegate Pass')} + GST</a>
-      <p>Only the exhibition floor? <a href="/register?source=passes-foot-visitor" class="ps-link">Free Visitor Pass</a>: entry not guaranteed, by slot availability on 20 and 21 Nov, confirmed by email. Already registered? <a href="/app" class="ps-link">Open the app</a>.</p>
+      <p>Only the exhibition floor? <a href="/register?source=passes-foot-visitor" class="ps-link">Free Visitor Pass</a>: ${waitlist ? 'full for now, a new registration joins the waiting list' : 'entry not guaranteed, by slot availability on 20 and 21 Nov, confirmed by email'}. Already registered? <a href="/app" class="ps-link">Open the app</a>.</p>
     </div>
   </section>
 </main>
@@ -22165,7 +22456,10 @@ ${sharedFooterHTML()}
 </html>`
 }
 
-function registerPageHTML(): string {
+function registerPageHTML(opts: { waitlist?: boolean } = {}): string {
+  // Free Visitor Passes full for now (0056): the free side of the page says so, in
+  // the organiser's words, and a registration joins the waiting list.
+  const waitlist = !!opts.waitlist
   // A paid pass beside the free form. Pressing one opens the paid form on that pass, carrying over
   // whatever has been typed into the free form. The colours are the badges' on /passes.
   const tier = (hash: string, pass: string, short: string, what: string, tag: string, color: string, lead = false) => `
@@ -22194,7 +22488,7 @@ ${siteHeaderHTML('/passes')}
     <div class="ps-wrap">
       <div class="rg-switch" id="rg-switch" role="radiogroup" aria-label="Which pass do you want?">
         <input class="rg-sr" type="radio" name="rg-view" id="rg-view-free" autocomplete="off" checked>
-        <label for="rg-view-free"><b>Free Visitor Pass</b><span>Entry by time slot</span></label>
+        <label for="rg-view-free"><b>Free Visitor Pass</b><span>${waitlist ? 'Waiting list' : 'Entry by time slot'}</span></label>
         <input class="rg-sr" type="radio" name="rg-view" id="rg-view-paid" autocomplete="off">
         <label for="rg-view-paid"><b>Paid pass</b><span>Guaranteed entry</span></label>
         <i class="rg-glider" aria-hidden="true"></i>
@@ -22206,10 +22500,12 @@ ${siteHeaderHTML('/passes')}
             <div id="reg-intro">
               <div class="rg-badge">
                 <i class="ps-slot" aria-hidden="true"></i>
-                <h2>Get Your Free Visitor Pass</h2>
-                <span class="rg-who" id="rg-who">Register in 30 seconds</span>
+                <h2>${waitlist ? 'Free Visitor Pass: waiting list' : 'Get Your Free Visitor Pass'}</h2>
+                <span class="rg-who" id="rg-who">${waitlist ? 'Join in 30 seconds' : 'Register in 30 seconds'}</span>
               </div>
-              <p class="rg-note"><i class="fas fa-check-circle" aria-hidden="true"></i>Exhibition floor &amp; product demos, free &middot; entry by time slot on 20 and 21 Nov, as available, confirmed by email</p>
+              ${waitlist
+                ? `<p class="rg-note" id="rg-wait-note"><i class="fas fa-clock" aria-hidden="true"></i>${WAITLIST_TEXT} ${WAITLIST_UPSELL} <a href="#rg-book" class="ps-link" onclick="var v = document.getElementById('rg-view-paid'); if (v) v.checked = true;">See the paid passes</a></p>`
+                : `<p class="rg-note"><i class="fas fa-check-circle" aria-hidden="true"></i>Exhibition floor &amp; product demos, free &middot; entry by time slot on 20 and 21 Nov, as available, confirmed by email</p>`}
             </div>
 
             <div class="rg-card-body">
@@ -22283,7 +22579,7 @@ ${siteHeaderHTML('/passes')}
                     </div>
                   </div>
                 </details>
-                <button type="submit" id="rf-submit" class="ps-buy rg-cta">Register free <i class="fas fa-arrow-right" aria-hidden="true"></i></button>
+                <button type="submit" id="rf-submit" class="ps-buy rg-cta">${waitlist ? 'Join the waiting list' : 'Register free'} <i class="fas fa-arrow-right" aria-hidden="true"></i></button>
                 <div id="rf-notice" class="hidden rounded-xl px-4 py-3 text-sm text-red-700 bg-red-50 border border-red-200"></div>
                 <p class="rg-fine">By registering, you agree to receive event updates via email</p>
               </form>
@@ -22351,7 +22647,7 @@ ${siteHeaderHTML('/passes')}
           <div class="rs-head">
             <div class="rs-tick"><i class="fas fa-check"></i></div>
             <h3 class="rs-title" id="rs-name"></h3>
-            <div class="rs-chips"><span class="rs-chip"><i class="fas fa-ticket-alt"></i>Free Visitor Pass</span><span class="rs-chip rs-chip-ref" id="rs-ref"></span></div>
+            <div class="rs-chips"><span class="rs-chip"><i class="fas fa-ticket-alt"></i><span id="rs-chip-pass">Free Visitor Pass</span></span><span class="rs-chip rs-chip-ref" id="rs-ref"></span></div>
             <p class="rs-sent" id="rs-sent"></p>
           </div>
 
@@ -22386,7 +22682,7 @@ ${siteHeaderHTML('/passes')}
             <div class="rs-up-head">
               <span class="rs-up-ic"><i class="fas fa-shield-alt"></i></span>
               <div>
-                <p class="rs-up-title">Get confirmed entry on both days</p>
+                <p class="rs-up-title" id="rs-up-title">Get confirmed entry on both days</p>
                 <p class="rs-up-sub">${FREE_ENTRY_TEXT}</p>
               </div>
             </div>
@@ -22499,7 +22795,7 @@ ${siteHeaderHTML('/passes')}
     <div class="ps-wrap">
       <h2 class="ps-end-title" id="ps-end-title">See you at WTC Mumbai</h2>
       <a class="ps-buy" href="#delegate" onclick="return upgradeFromSuccess('Delegate Pass')">Get a Delegate Pass, ${priceNow('Delegate Pass')} + GST</a>
-      <p>Only the exhibition floor? <a href="#rg-book" class="ps-link" onclick="var v = document.getElementById('rg-view-free'); if (v) v.checked = true;">Free Visitor Pass</a>: entry not guaranteed, by slot availability on 20 and 21 Nov, confirmed by email. Already registered? <a href="/app" class="ps-link">Open the app</a>.</p>
+      <p>Only the exhibition floor? <a href="#rg-book" class="ps-link" onclick="var v = document.getElementById('rg-view-free'); if (v) v.checked = true;">Free Visitor Pass</a>: ${waitlist ? 'full for now, a new registration joins the waiting list' : 'entry not guaranteed, by slot availability on 20 and 21 Nov, confirmed by email'}. Already registered? <a href="/app" class="ps-link">Open the app</a>.</p>
     </div>
   </section>
 </main>
@@ -22547,6 +22843,8 @@ function withHttps(v) {
   return !v || low.indexOf('http://') === 0 || low.indexOf('https://') === 0 ? v : 'https://' + v;
 }
 
+// The button's own words, put back after a refusal (they differ when free passes are full).
+var rfIdleHTML = '${waitlist ? 'Join the waiting list' : 'Register free'} <i class="fas fa-arrow-right" aria-hidden="true"></i>';
 async function submitRegistration(e) {
   e.preventDefault();
   const btn = document.getElementById('rf-submit');
@@ -22592,7 +22890,7 @@ async function submitRegistration(e) {
         : '');
       notice.classList.remove('hidden');
       showToast(known ? 'This email is already registered' : knownMobile ? 'This mobile number is already registered' : msg, 'error');
-      btn.innerHTML = 'Register free <i class="fas fa-arrow-right" aria-hidden="true"></i>';
+      btn.innerHTML = rfIdleHTML;
       btn.disabled = false;
       return;
     }
@@ -22608,6 +22906,15 @@ async function submitRegistration(e) {
     document.getElementById('rs-name').textContent = 'Welcome, ' + data.name;
     document.getElementById('rs-ref').textContent = refId;
     document.getElementById('rs-sent').textContent = 'Confirmation sent to ' + data.email;
+    // Free passes full (0056): the server put them on the waiting list, and this
+    // screen says so in the organiser's words, with the Delegate band under it.
+    if (data.entry_status === 'waitlisted') {
+      document.getElementById('rs-name').textContent = 'You are on the waiting list, ' + data.name;
+      document.getElementById('rs-chip-pass').textContent = 'Free Visitor Pass: waiting list';
+      document.getElementById('rs-sent').textContent = '${WAITLIST_TEXT} We have emailed ' + data.email + '.';
+      document.getElementById('rs-up-title').textContent = '${WAITLIST_UPSELL}';
+      success.classList.add('rs-waitlist');
+    }
     // Every link on this screen goes into the app. Registering set this browser's
     // session, so leave the note a registration made inside the app leaves and the
     // app signs them in by itself (the old /app?email= link had no token, so it
@@ -22618,7 +22925,7 @@ async function submitRegistration(e) {
     showToast('Registration successful!', 'success');
   } catch(err) {
     showToast('Network error. Please try again.', 'error');
-    btn.innerHTML = 'Register free <i class="fas fa-arrow-right" aria-hidden="true"></i>';
+    btn.innerHTML = rfIdleHTML;
     btn.disabled = false;
   }
 }
@@ -27403,7 +27710,9 @@ function mainPageScript(): string {
         successDiv.classList.remove('hidden');
         document.getElementById('qv-success-name').textContent = 'Welcome, ' + data.name + '!';
         const refId = 'BHAI-2026-' + String(data.id).padStart(5, '0');
-        document.getElementById('qv-success-msg').innerHTML = 'Your Visitor Pass is registered. Reference: <strong>' + refId + '</strong><br>${FREE_ENTRY_TEXT} You can now sign in to access networking, inbox & more.';
+        document.getElementById('qv-success-msg').innerHTML = data.entry_status === 'waitlisted'
+          ? '${WAITLIST_TEXT} Reference: <strong>' + refId + '</strong><br>${WAITLIST_UPSELL} <a href="#" onclick="showUpgradeModal(&quot;passcard&quot;); return false;" class="underline font-semibold text-primary-300">Get a Delegate Pass</a>'
+          : 'Your Visitor Pass is registered. Reference: <strong>' + refId + '</strong><br>${FREE_ENTRY_TEXT} You can now sign in to access networking, inbox & more.';
 
         // Auto-sign-in the user
         currentUser = data;
@@ -28065,12 +28374,18 @@ function mainPageScript(): string {
       // A free pass is not "ready": it is admitted by slot. Say so where the pass
       // is, with the way to guarantee both days beside it.
       const visitor = !pending && isVisitorPass();
+      // Free passes full (0056): on the waiting list there is no pass to download
+      // yet, and the card says so in the organiser's words.
+      const waitlisted = visitor && isEntryWaitlisted();
       const gBtn = document.getElementById('pcc-guarantee-btn');
       if (gBtn) gBtn.classList.toggle('hidden', !visitor);
+      const dlBtn = document.getElementById('pcc-download-btn');
+      if (dlBtn) dlBtn.classList.toggle('hidden', waitlisted);
       const stateEl = document.getElementById('pcc-pass-state');
-      if (stateEl) stateEl.textContent = pending ? ' is waiting for payment' : visitor ? ' is a free pass: entry not guaranteed' : ' is ready';
+      if (stateEl) stateEl.textContent = pending ? ' is waiting for payment' : waitlisted ? ' is on the waiting list' : visitor ? ' is a free pass: entry not guaranteed' : ' is ready';
       document.getElementById('pcc-pass-note').textContent = pending
         ? (payNow ? 'It is issued the moment your payment goes through. Pay now to finish.' : 'It will be issued as soon as your payment is confirmed.')
+        : waitlisted ? '${WAITLIST_TEXT} ${WAITLIST_UPSELL}'
         : visitor ? 'Entry on a free Visitor Pass is not guaranteed: it depends on slot availability on 20 and 21 Nov, a half-day slot or none, confirmed by email. Every paid pass has guaranteed entry on both days.'
         : 'Keep it on your phone — the badge desk scans it to check you in.';
       el.classList.remove('hidden');
@@ -28590,6 +28905,12 @@ function mainPageScript(): string {
     }
     function isVisitorPass() {
       return (currentUser?.badge_type || '').toLowerCase().includes('visitor') || passAwaitingPayment();
+    }
+
+    // Free passes full (the organiser's switch, 0056): registered and in the app,
+    // but on the waiting list until the organisers confirm. Never a paid pass.
+    function isEntryWaitlisted() {
+      return !!currentUser && String(currentUser.entry_status || '') === 'waitlisted' && isVisitorPass();
     }
 
     // Naming the person converts; an abstract lock does not. "Connect with Priya
@@ -31908,7 +32229,7 @@ function mainPageScript(): string {
         currentUser.rsvp_at = new Date().toISOString();
         localStorage.setItem('agba_user', JSON.stringify(currentUser));
         updateRsvpCard();
-        const msgs = { confirmed: isVisitorPass() ? "Thanks, we have noted that you are coming. Your entry slot comes by email." : "You're confirmed! See you at WTC Mumbai 🎉", declined: "We'll miss you! You can change your mind anytime.", maybe: "Noted as maybe. Let us know when you decide!" };
+        const msgs = { confirmed: isEntryWaitlisted() ? "Thanks. You are on the waiting list. If the wait list gets over, we will inform you." : isVisitorPass() ? "Thanks, we have noted that you are coming. Your entry slot comes by email." : "You're confirmed! See you at WTC Mumbai 🎉", declined: "We'll miss you! You can change your mind anytime.", maybe: "Noted as maybe. Let us know when you decide!" };
         showToast(msgs[status] || 'Saved, thank you.', status === 'confirmed' ? 'success' : 'info');
       } catch(e) { showToast('Could not save that. Try again.', 'error'); }
     }
@@ -31923,7 +32244,7 @@ function mainPageScript(): string {
         return;
       }
       const cfg = {
-        confirmed: { icon: 'fa-check-circle', text: isVisitorPass() ? "You said you are coming. Your entry slot comes by email." : "You've confirmed your attendance!", color: 'green', bg: 'bg-green-500/10 border-green-500/20' },
+        confirmed: { icon: 'fa-check-circle', text: isEntryWaitlisted() ? "You said you are coming. You are on the waiting list; we will inform you by email." : isVisitorPass() ? "You said you are coming. Your entry slot comes by email." : "You've confirmed your attendance!", color: 'green', bg: 'bg-green-500/10 border-green-500/20' },
         declined: { icon: 'fa-times-circle', text: "You've indicated you can't attend.", color: 'red', bg: 'bg-red-500/10 border-red-500/20' },
         maybe: { icon: 'fa-question-circle', text: "You're marked as Maybe.", color: 'amber', bg: 'bg-amber-500/10 border-amber-500/20' },
       }[s] || { icon: 'fa-question-circle', text: 'Unknown', color: 'gray', bg: '' };
@@ -36524,6 +36845,25 @@ function adminPageScript(): string {
         '<span class="text-red-400 font-semibold">Not paid</span> <s>' + escH(a.badge_type) + '</s></span>';
     }
 
+    // ============ FREE PASS WAITING LIST (ADMIN) ============
+    // The free-pass waiting list (0056), said beside the pass so a row on the list
+    // is never read as a pass that admits. The same rule as entryWaitlisted() on
+    // the server: the mark counts only while the person is on a free pass.
+    function attEntryWaitlisted(a) {
+      return !!a && String(a.entry_status || '') === 'waitlisted'
+        && (attUnpaidTier(a) || /^(visitor|general)( pass)?$/i.test(String(a.badge_type || 'Visitor Pass').trim()));
+    }
+    function attEntryChip(a) {
+      if (attEntryWaitlisted(a)) return ' <span class="px-1.5 py-0.5 rounded-full text-[10px] bg-amber-500/20 text-amber-300" title="On the waiting list for a Free Visitor Pass: no pass to download, refused at the desk, until confirmed">waiting list</span>';
+      if (a && String(a.entry_status || '') === 'confirmed') return ' <span class="px-1.5 py-0.5 rounded-full text-[10px] bg-green-500/20 text-green-300" title="Confirmed from the waiting list">let in' + (a.entry_slot ? ': ' + escH(a.entry_slot) : '') + '</span>';
+      return '';
+    }
+    // Overview, the waiting list card: the Attendees tab, filtered to the list.
+    function openWaitlist() {
+      attFilters.entry = 'waitlisted'; attFilters.main = 'yes'; attPage = 1; lastAttendees = null;
+      switchSection('attendees');
+    }
+    // ============ END FREE PASS WAITING LIST (ADMIN) ============
     // ============ BADGE CLASS HELPER ============
     function getBadgeClass(badge) {
       const b = (badge || '').toLowerCase();
@@ -36918,12 +37258,19 @@ function adminPageScript(): string {
         '<i class="fas fa-ticket text-amber-400"></i>' +
         '<span class="flex-1 text-sm text-gray-200"><b>' + Number(dp.total || 0).toLocaleString('en-IN') + '</b> people waitlisted for a free Delhi 2027 pass <span class="text-xs text-gray-500">(' + Number(dp.today || 0).toLocaleString('en-IN') + ' today, ' + Number(dp.week || 0).toLocaleString('en-IN') + ' in 7 days)</span></span>' +
         '<i class="fas fa-chevron-right text-[10px] text-gray-600"></i></a>';
+      // The free-pass waiting list (0056): who waits, who was let in, is the switch on.
+      var wl = t.waitlist || {};
+      var wlN = function (n) { return Number(n || 0).toLocaleString('en-IN'); };
+      var waitCard = !wl.ready ? '' : '<a href="#" onclick="openWaitlist();return false" class="glass rounded-xl p-4 mt-6 flex items-center gap-3 no-underline hover:bg-white/5">' +
+        '<i class="fas fa-clock text-amber-400"></i>' +
+        '<span class="flex-1 text-sm text-gray-200"><b>' + wlN(wl.total) + '</b> on the waiting list for a Free Visitor Pass <span class="text-xs text-gray-500">(' + wlN(wl.today) + ' today, ' + wlN(wl.confirmed) + ' let in so far; free passes are ' + (wl.on ? 'FULL: new free registrations join the list' : 'OPEN: the switch is off') + ')</span></span>' +
+        '<i class="fas fa-chevron-right text-[10px] text-gray-600"></i></a>';
       var ds = t.delhi_sales || {};
       var delhiSales = '<a href="#" onclick="openDelhiPasses();return false" class="glass rounded-xl p-4 mt-3 flex items-center gap-3 no-underline hover:bg-white/5">' +
         '<i class="fas fa-ticket text-green-400"></i>' +
         '<span class="flex-1 text-sm text-gray-200"><b>' + Number(ds.paid || 0).toLocaleString('en-IN') + '</b> Delhi 2027 passes paid for, &#8377;' + (Number(ds.paise || 0) / 100).toLocaleString('en-IN') + ' received <span class="text-xs text-gray-500">(' + Number(ds.unpaid || 0).toLocaleString('en-IN') + ' started and not paid)</span></span>' +
         '<i class="fas fa-chevron-right text-[10px] text-gray-600"></i></a>';
-      return passCard + '<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">' + moneyCard + todoCard + '</div>' + delhiCard + delhiSales;
+      return passCard + '<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">' + moneyCard + todoCard + '</div>' + waitCard + delhiCard + delhiSales;
     }
     // Who holds or has started a Delhi 2027 pass. They are not on the Attendees list,
     // which is Mumbai's.
@@ -37400,11 +37747,11 @@ function adminPageScript(): string {
     // The tab could only free-text search. Working a list of 1,171 means asking
     // "which Delegates have not paid" or "who has not RSVP'd", so each of these
     // is a real column filter, and they compose.
-    let attFilters = { badge: '', rsvp: '', payment: '', checkin: '', source: '', profile: '', main: 'yes' };
+    let attFilters = { badge: '', rsvp: '', payment: '', checkin: '', source: '', profile: '', entry: '', main: 'yes' };
     let attSelected = new Set();
     function setAttFilter(k, v) { attFilters[k] = v; attPage = 1; loadAdminAttendees(null, true); }
     function clearAttFilters() {
-      attFilters = { badge: '', rsvp: '', payment: '', checkin: '', source: '', profile: '', main: 'yes' };
+      attFilters = { badge: '', rsvp: '', payment: '', checkin: '', source: '', profile: '', entry: '', main: 'yes' };
       attPage = 1; loadAdminAttendees(null, true);
     }
     function attActiveFilterCount() {
@@ -37420,6 +37767,9 @@ function adminPageScript(): string {
       if (f.badge && attPassLabel(a) !== f.badge) return false;
       if (f.rsvp === 'none' ? !!a.rsvp_status : (f.rsvp && String(a.rsvp_status || '') !== f.rsvp)) return false;
       if (f.payment && String(a.payment_status || '') !== f.payment) return false;
+      // The free-pass waiting list (0056): on it, or let in from it.
+      if (f.entry === 'waitlisted' && !attEntryWaitlisted(a)) return false;
+      if (f.entry === 'confirmed' && String(a.entry_status || '') !== 'confirmed') return false;
       if (f.checkin === 'in' && !a.checked_in_at) return false;
       if (f.checkin === 'out' && a.checked_in_at) return false;
       // Campus-panel registrants who have not said yes to November (0041) are
@@ -37603,7 +37953,7 @@ function adminPageScript(): string {
     }
     function attSearchClear() { attSearchUse(''); }
     function attSearchShowHidden() {
-      attFilters = { badge: '', rsvp: '', payment: '', checkin: '', source: '', profile: '', main: '' };
+      attFilters = { badge: '', rsvp: '', payment: '', checkin: '', source: '', profile: '', entry: '', main: '' };
       attSearchUse(attQuery);
     }
     function attSearchKey(e) {
@@ -37882,6 +38232,11 @@ function adminPageScript(): string {
             <option value="">Any payment</option>
             \${[['paid','Paid'],['pending','Pending'],['free','Free']].map(function (o) { return '<option value="' + o[0] + '"' + (attFilters.payment === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('')}
           </select>
+          <select onchange="setAttFilter('entry', this.value)" class="px-2 py-1.5 rounded-lg text-xs" title="The free-pass waiting list (0056)">
+            <option value="">Any entry</option>
+            <option value="waitlisted"\${attFilters.entry === 'waitlisted' ? ' selected' : ''}>Waiting list</option>
+            <option value="confirmed"\${attFilters.entry === 'confirmed' ? ' selected' : ''}>Let in from the list</option>
+          </select>
           <select onchange="setAttFilter('checkin', this.value)" class="px-2 py-1.5 rounded-lg text-xs" title="Check-in">
             <option value="">Anyone</option>
             <option value="in"\${attFilters.checkin === 'in' ? ' selected' : ''}>Checked in</option>
@@ -37917,6 +38272,7 @@ function adminPageScript(): string {
           <button onclick="bulkSetField('lunch_inclusion')" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-amber-700 text-white on-dark hover:bg-amber-800"><i class="fas fa-utensils mr-1"></i>Set lunch</button>
           <button onclick="bulkSetField('rsvp_status')" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-emerald-700 text-white on-dark hover:bg-emerald-800"><i class="fas fa-clipboard-check mr-1"></i>Set RSVP</button>
           <button onclick="bulkSetField('payment_status')" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-teal-700 text-white on-dark hover:bg-teal-800"><i class="fas fa-money-bill mr-1"></i>Set payment</button>
+          <button onclick="bulkEntry()" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-amber-700 text-white on-dark hover:bg-amber-800" title="The free-pass waiting list: confirm a place, put on the list, or take the mark off"><i class="fas fa-clock mr-1"></i>Waiting list</button>
           <button onclick="bulkNotify()" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-blue-600 text-white on-dark hover:bg-blue-700"><i class="fas fa-envelope mr-1"></i>Notify</button>
           <button onclick="bulkExportSelected()" class="px-2.5 py-1.5 rounded-lg text-xs glass hover:bg-white/10"><i class="fas fa-download mr-1"></i>Export</button>
           <button onclick="bulkDelete()" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-red-600 text-white on-dark hover:bg-red-700"><i class="fas fa-trash mr-1"></i>Delete</button>
@@ -37941,7 +38297,7 @@ function adminPageScript(): string {
                   <td class="text-xs text-gray-400 ie-cell" onclick="inlineEdit(this, \${a.id}, 'country', '\${esc(a.country||'')}')">\${a.country ? escH(a.country) : '<span class=&quot;text-gray-600&quot;>-</span>'}</td>
                   <td class="text-xs">\${safeUrl(a.linkedin_url) ? '<a href="'+safeUrl(a.linkedin_url)+'" target="_blank" class="text-blue-400 hover:text-blue-300"><i class="fab fa-linkedin"></i></a>' : '<span class="text-gray-600">-</span>'}</td>
                   <td class="ie-cell" onclick="inlineMultiSelect(this, \${a.id}, 'role', '\${esc(a.role||'attendee')}')"><div class="flex flex-wrap gap-0.5">\${(a.role||'attendee').split(',').map(r=>'<span class=&quot;px-1.5 py-0.5 rounded text-[9px] bg-primary-500/20 text-primary-300 whitespace-nowrap cursor-pointer&quot;>'+escH(r.trim())+'</span>').join('')}</div></td>
-                  <td class="ie-cell" onclick="inlineSelect(this, \${a.id}, 'badge_type', '\${esc(a.badge_type)}', BADGE_TYPES)">\${attPassChip(a, 'px-2 py-0.5 rounded-full text-[10px] cursor-pointer hover:ring-1 hover:ring-primary-400/50')}</td>
+                  <td class="ie-cell" onclick="inlineSelect(this, \${a.id}, 'badge_type', '\${esc(a.badge_type)}', BADGE_TYPES)">\${attPassChip(a, 'px-2 py-0.5 rounded-full text-[10px] cursor-pointer hover:ring-1 hover:ring-primary-400/50')}\${attEntryChip(a)}</td>
                   <td class="ie-cell" onclick="inlineSelect(this, \${a.id}, 'rsvp_status', '\${a.rsvp_status||''}', ['','confirmed','maybe','declined'])"><span class="px-2 py-0.5 rounded-full text-[10px] font-medium cursor-pointer hover:ring-1 hover:ring-primary-400/50 \${a.rsvp_status === 'confirmed' ? 'bg-green-500/20 text-green-400' : a.rsvp_status === 'declined' ? 'bg-red-500/20 text-red-400' : a.rsvp_status === 'maybe' ? 'bg-amber-500/20 text-amber-400' : 'bg-gray-500/10 text-gray-500'}">\${a.rsvp_status ? (a.rsvp_status === 'confirmed' ? '✓ Yes' : a.rsvp_status === 'declined' ? '✗ No' : '? Maybe') : '—'}</span></td>
                   <td class="ie-cell" onclick="inlineSelect(this, \${a.id}, 'lunch_inclusion', '\${a.lunch_inclusion||'Yes'}', ['Yes','No'])"><span class="px-1.5 py-0.5 rounded text-[10px] font-medium cursor-pointer hover:ring-1 hover:ring-primary-400/50 \${(a.lunch_inclusion||'Yes')==='Yes' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}">\${a.lunch_inclusion||'Yes'}</span></td>
                   <td class="text-xs ie-cell" onclick="inlineSelect(this, \${a.id}, 'arrival_time', '\${a.arrival_time||''}', ['','09:00','09:30','10:00','10:30','11:00','11:30','12:00','12:30','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30'])">\${a.arrival_time ? '<span class="px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 cursor-pointer hover:ring-1 hover:ring-blue-400/50">'+ (parseInt(a.arrival_time) > 12 ? (parseInt(a.arrival_time)-12)+':'+a.arrival_time.split(':')[1]+' PM' : a.arrival_time+' AM') +'</span>' : '<span class="text-gray-600 cursor-pointer hover:text-gray-400">-</span>'}</td>
@@ -38420,6 +38776,44 @@ function adminPageScript(): string {
         loadAdminAttendees();
       } catch (e) { toast('Bulk update failed: ' + (e.message || ''), 'error'); }
     }
+    // The free-pass waiting list (0056): confirm a place (and tell them), put someone
+    // on the list, or take the mark off. The confirmation email goes as a bulk run
+    // (Settings, Bulk email), so a closed tab does not lose it.
+    function bulkEntry() {
+      var ids = attSelectedIds();
+      if (!ids.length) { toast('Nothing selected.', 'error'); return; }
+      openModal(
+        '<h3 class="text-lg font-bold mb-1">Waiting list: ' + ids.length + ' attendee' + (ids.length === 1 ? '' : 's') + '</h3>' +
+        '<p class="text-xs text-gray-400 mb-4">A free pass on the waiting list has no pass to download and is refused at the desk. A paid pass is never on the list.</p>' +
+        '<label class="block text-xs text-gray-400 mb-1">Decision</label>' +
+        '<select id="bulk-entry" class="w-full px-3 py-2.5 rounded-lg text-sm mb-3">' +
+          '<option value="confirmed">Confirm their place (sends the confirmation email)</option>' +
+          '<option value="waitlisted">Put on the waiting list (no email)</option>' +
+          '<option value="clear">Take the mark off: an ordinary free pass (no email)</option>' +
+        '</select>' +
+        '<label class="block text-xs text-gray-400 mb-1">Entry slot, if any (it goes in the email)</label>' +
+        '<input id="bulk-entry-slot" class="w-full px-3 py-2.5 rounded-lg text-sm mb-4" placeholder="e.g. Day 2, 2 pm to 6 pm" maxlength="80">' +
+        '<div class="flex gap-2">' +
+          '<button onclick="closeModal()" class="flex-1 py-2.5 rounded-xl text-sm glass hover:bg-white/10">Cancel</button>' +
+          '<button onclick="bulkEntryGo()" class="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-primary-600 hover:bg-primary-500 text-white">Apply</button>' +
+        '</div>');
+    }
+    async function bulkEntryGo() {
+      var ids = attSelectedIds();
+      var sel = document.getElementById('bulk-entry'), slotEl = document.getElementById('bulk-entry-slot');
+      if (!sel) return;
+      var decision = sel.value, slot = slotEl ? slotEl.value.trim() : '';
+      closeModal();
+      try {
+        var r = await api.post('/api/admin/attendees/waitlist', { ids: ids, decision: decision, slot: slot });
+        if (r && r.error) throw new Error(r.error);
+        toast('Updated ' + (r.updated || ids.length) + ' attendee(s).');
+        attSelected = new Set();
+        lastAttendees = null;
+        loadAdminAttendees();
+        if (decision === 'confirmed') await startCampaign('waitlist_confirm', { ids: ids, title: 'Waiting list: place confirmed, ' + ids.length + ' people' });
+      } catch (e) { toast('Could not update: ' + (e.message || ''), 'error'); }
+    }
     async function bulkDelete() {
       var ids = attSelectedIds();
       if (!ids.length) { toast('Nothing selected.', 'error'); return; }
@@ -38455,7 +38849,7 @@ function adminPageScript(): string {
       var cols = ['id','name','email','mobile','company','job_title','city','country','role','badge_type',
                   'rsvp_status','lunch_inclusion','arrival_time','payment_status','payment_amount',
                   'registration_source','registration_date','created_at','notified_at','last_login_at',
-                  'pass_downloaded_at','checked_in_at'];
+                  'pass_downloaded_at','checked_in_at','entry_status','entry_slot'];
       var q = function (v) {
         var t = v == null ? '' : String(v);
         return t.indexOf(',') >= 0 || t.indexOf('"') >= 0 || t.indexOf(NL) >= 0 || t.indexOf(String.fromCharCode(13)) >= 0
@@ -38538,6 +38932,7 @@ function adminPageScript(): string {
               '<span class="px-2 py-0.5 rounded-full text-[10px] bg-white/5 text-gray-400">#' + escH(a.id) + '</span>' +
               (a.checked_in_at ? '<span class="px-2 py-0.5 rounded-full text-[10px] bg-green-500/20 text-green-300">checked in</span>' : '') +
               (a.payment_status ? '<span class="px-2 py-0.5 rounded-full text-[10px] bg-white/5 text-gray-400">' + escH(a.payment_status) + '</span>' : '') +
+              attEntryChip(a) +
             '</div></div>' +
           '<button onclick="closeModal()" class="w-8 h-8 rounded-lg glass hover:bg-white/10 text-gray-400 shrink-0"><i class="fas fa-xmark"></i></button>' +
         '</div>' +
@@ -46051,6 +46446,35 @@ function adminPageScript(): string {
     }
 
     // ============ SETTINGS ============
+    // ============ FREE PASS WAITING LIST (SETTINGS) ============
+    async function loadWaitlistCard() {
+      var el = document.getElementById('waitlist-card-body');
+      if (!el) return;
+      var w;
+      try { w = await api.get('/api/admin/waitlist'); } catch (e) { el.textContent = 'Could not read the waiting list: ' + (e.message || ''); return; }
+      if (!w || w.error) { el.textContent = (w && w.error) || 'Could not read the waiting list.'; return; }
+      if (!w.ready) {
+        el.innerHTML = '<p class="text-amber-300 mb-2">Not ready: migration 0056 has not run in production, so the switch does nothing yet. Run, in your terminal:</p>' +
+          '<pre class="text-[11px] bg-black/30 rounded-lg p-3 overflow-x-auto">npx wrangler d1 execute bharatai-production --remote --file=./migrations/0056_free_pass_waitlist.sql' + NL +
+          'npx wrangler d1 execute bharatai-production --remote --command "INSERT OR IGNORE INTO d1_migrations (name) VALUES (' + SQ + '0056_free_pass_waitlist.sql' + SQ + ')"</pre>';
+        return;
+      }
+      el.innerHTML = '<label class="flex items-start gap-3 cursor-pointer">' +
+          '<input type="checkbox" id="set-free-pass-waitlist"' + (w.on ? ' checked' : '') + ' onchange="saveWaitlistSwitch(this.checked)" style="accent-color:#FF6B00;width:18px;height:18px;margin-top:2px;">' +
+          '<span><b>Free Visitor Passes are full:</b> new free registrations join the waiting list.<br><span class="text-xs text-gray-400">Off: a free registration gets a pass as before, entry by slot.</span></span>' +
+        '</label>' +
+        '<p class="text-xs text-gray-400 mt-3"><b class="text-gray-200">' + Number(w.total || 0).toLocaleString('en-IN') + '</b> on the list (' + Number(w.today || 0).toLocaleString('en-IN') + ' today), <b class="text-gray-200">' + Number(w.confirmed || 0).toLocaleString('en-IN') + '</b> let in so far. ' +
+          '<a href="#" onclick="openWaitlist();return false" class="text-primary-400 hover:underline">Open the list</a></p>';
+    }
+    async function saveWaitlistSwitch(on) {
+      try {
+        var r = await api.put('/api/admin/settings', { free_pass_waitlist: on ? '1' : '0' });
+        if (r && r.error) throw new Error(r.error);
+        toast(on ? 'Free passes are full: new free registrations join the waiting list.' : 'Free passes are open again: a free registration gets a pass as before.');
+      } catch (e) { toast('Could not save: ' + (e.message || ''), 'error'); }
+      loadWaitlistCard();
+    }
+    // ============ END FREE PASS WAITING LIST (SETTINGS) ============
     async function loadSettings() {
       var _el = document.getElementById('section-settings');
       if (_el && !_el.innerHTML.trim()) sectionLoading(_el);
@@ -46194,6 +46618,20 @@ function adminPageScript(): string {
             <div id="campaign-list" class="max-h-80 overflow-y-auto"></div>
           </div>
 
+          <!-- Free Visitor Pass: the waiting list switch (0056, 12 Nov 2026) -->
+          <div class="glass rounded-2xl p-6" id="waitlist-card">
+            <div class="flex items-center gap-3 mb-4">
+              <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center">
+                <i class="fas fa-clock text-white"></i>
+              </div>
+              <div class="flex-1">
+                <h3 class="font-bold text-lg">Free Visitor Pass</h3>
+                <p class="text-xs text-gray-400">Full for now? New free registrations join a waiting list: still registered and in the app, told &ldquo;${WAITLIST_TEXT}&rdquo;, no pass to download and refused at the desk until you confirm them (Attendees, the Waiting list filter and button). People who registered before you threw the switch keep their pass. A paid pass is never on the list.</p>
+              </div>
+            </div>
+            <div id="waitlist-card-body" class="text-sm text-gray-300">Loading&hellip;</div>
+          </div>
+
           <!-- Who changed what -->
           <div class="glass rounded-2xl p-6">
             <div class="flex items-center gap-3 mb-4">
@@ -46292,6 +46730,7 @@ function adminPageScript(): string {
       });
 
       // Attach form handler
+      loadWaitlistCard();
       document.getElementById('settings-email-form').addEventListener('submit', async (e) => {
         e.preventDefault();
         const btn = e.target.querySelector('button[type="submit"]');
