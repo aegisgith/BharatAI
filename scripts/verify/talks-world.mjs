@@ -1,6 +1,6 @@
 // A world for the Innovation Talks checks (12 Nov 2026): the WHOLE built worker on real
 // SQLite (sql.js) with the production schema, migration 0050 (exhibitor teams) and,
-// unless asked not to, migration 0052 (hall, speaker email and mobile). The 49 talks
+// unless asked not to, migration 0052 (hall, speaker email and mobile). The 48 talks
 // come from the repo's own scripts/sql/innovation-talks.sql, exactly as production got
 // them. No email leaves: the mail service is answered here and kept in `sent`.
 // Used by unit-, smoke-, and system-innovation-talks.mjs, and talks-harness.mjs.

@@ -384,8 +384,15 @@
         }
         .speaker-card:hover::after { opacity: 0.04; }
         /* The ministers: two rows of three at every size */
-        /* Government's Innovation Talks: six cards, so two rows of three, not five and one. */
-        @media (min-width: 769px) { .speakers-grid.gov-talks { grid-template-columns: repeat(3, 1fr); max-width: 980px; margin-left: auto; margin-right: auto; } }
+        /* Government's Innovation Talks: three a row, and a shorter last row centred (five cards since 13 Nov 2026). */
+        @media (min-width: 769px) {
+            .speakers-grid.gov-talks { grid-template-columns: repeat(6, 1fr); max-width: 980px; margin-left: auto; margin-right: auto; }
+            .speakers-grid.gov-talks > * { grid-column: span 2; }
+            .speakers-grid.gov-talks > :nth-child(3n+1):nth-last-child(2) { grid-column: 2 / span 2; }
+            .speakers-grid.gov-talks > :nth-child(3n+1):nth-last-child(1) { grid-column: 3 / span 2; }
+        }
+        /* Two a row on a phone: a card left on its own sits in the middle. */
+        @media (max-width: 480px) { .speakers-grid.gov-talks > :last-child:nth-child(odd) { grid-column: 1 / -1; justify-self: center; width: calc(50% - 0.625rem); } }
         .speakers-grid.ministers-grid { grid-template-columns: repeat(3, 1fr); max-width: 900px; margin-left: auto; margin-right: auto; }
         @media (max-width: 600px) {
             .speakers-grid.ministers-grid { gap: 0.5rem; }

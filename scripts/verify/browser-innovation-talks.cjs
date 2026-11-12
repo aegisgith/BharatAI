@@ -42,7 +42,7 @@ const appCookie = (id) => { const exp = Math.floor(Date.now() / 1000) + 3600; co
     const drawn = await until(async () => /Fri 20 Nov · Day 1/.test(await sec.innerText()), 20000);
     check('the tab draws the talks under their day', drawn, (await sec.innerText()).slice(0, 300));
     let text = await sec.innerText();
-    check('the counts: 49 talks, 21 with a time, 28 still need a time', /49 talks/.test(text) && /21 with a time/.test(text) && /28 still need a time/.test(text), text.slice(0, 300));
+    check('the counts: 48 talks, 21 with a time, 27 still need a time', /48 talks/.test(text) && /21 with a time/.test(text) && /27 still need a time/.test(text), text.slice(0, 300));
     check('a "No time yet" section lists the rest', /No time yet/.test(text));
     check('no old made-up session times on the page', !/10:00 – 11:30 AM|2:00 – 4:10 PM/.test(text));
     const amrRow = page.locator('tr', { hasText: 'Amritesh Kumar' });

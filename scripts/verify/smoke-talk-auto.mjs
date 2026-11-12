@@ -1,5 +1,5 @@
 // Integration: the automatic missing-details email to Innovation Talk speakers (12 Nov
-// 2026), on the whole built worker and real SQLite with the 49 real talks, with this
+// 2026), on the whole built worker and real SQLite with the 48 real talks, with this
 // process's clock moved. The rules: off until switched on; one email a minute from the
 // minute clock; only inside the sending hours (9 am to 9 pm India); only to a talk with
 // something missing and an address to write to; nobody asked twice within 48 hours,

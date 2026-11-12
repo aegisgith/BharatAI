@@ -1,5 +1,5 @@
 // Integration checks for the Innovation Talks tab (12 Nov 2026), on the real built
-// worker and real SQLite with the production schema, the 49 real talks and the real
+// worker and real SQLite with the production schema, the 48 real talks and the real
 // time SQL:
 //  - scripts/sql/innovation-talk-times.sql gives 21 talks their day, time and hall, and
 //    leaves the talks the agenda puts elsewhere without the Expo Hall;
@@ -17,7 +17,7 @@ const { check, done } = checker();
 // ================= with migration 0052 =================
 const W = await talksWorld({ times: true });
 const all = W.rows('SELECT * FROM innovation_talks WHERE event_id = 1');
-check('the 49 real talks are loaded from scripts/sql/innovation-talks.sql', all.length === 49, all.length);
+check('the 48 real talks are loaded from scripts/sql/innovation-talks.sql (Dr. K. Mahesh left on 13 Nov 2026)', all.length === 48, all.length);
 const timed = all.filter(t => t.starts_at);
 check('the time SQL gives 21 talks a day and a time', timed.length === 21, timed.length);
 check('every timed talk has words and a hall', timed.every(t => / · /.test(t.time_slot) && t.hall), timed.filter(t => !t.hall || !/ · /.test(t.time_slot)).map(t => t.speaker_name));
@@ -40,7 +40,7 @@ check('running the time SQL twice changes nothing', JSON.stringify(W.rows('SELEC
 W.db.run("UPDATE innovation_talks SET speaker_email = 'amritesh@phoebetal.test', speaker_phone = '98200 11111', notes = 'internal: call Kitty' WHERE id = ?", [amr.id]);
 let r = await W.hit('GET', '/api/events/1/innovation-talks');
 const pub = r.json;
-check('public list: 200 and all 49 talks', r.status === 200 && Array.isArray(pub) && pub.length === 49, r.status);
+check('public list: 200 and all 48 talks', r.status === 200 && Array.isArray(pub) && pub.length === 48, r.status);
 const pa = pub.find(t => t.id === amr.id);
 check('public list carries hall, start and length', pa.hall === 'Aryabhata Theatre' && pa.starts_at === '2026-11-20 13:10' && pa.duration_min === 8, pa);
 check("public list never carries the speaker's email or mobile, the notes or who was asked", pub.every(t => !('speaker_email' in t) && !('speaker_phone' in t) && !('notes' in t) && !('details_requested_to' in t)) && !/amritesh@phoebetal|98200 11111|Kitty/.test(r.text));
@@ -145,7 +145,7 @@ check('nothing was sent or changed without the password', W.talk('id = ?', amr.i
 const O = await talksWorld({ with0052: false });
 const oid = O.talk("speaker_name = 'Amritesh Kumar'").id;
 r = await O.hit('GET', '/api/events/1/innovation-talks');
-check('before 0052: the public list still works (no hall)', r.status === 200 && r.json.length === 49 && !('hall' in r.json[0]) && 'speaker_title' in r.json[0], r.status);
+check('before 0052: the public list still works (no hall)', r.status === 200 && r.json.length === 48 && !('hall' in r.json[0]) && 'speaker_title' in r.json[0], r.status);
 r = await O.as('PATCH', '/api/admin/innovation-talks/' + oid, { hall: 'Aryabhata Theatre', topic: 'Changed', starts_at: '2026-11-20 13:10', duration_min: 8 });
 check('before 0052: an edit saves the rest and says hall was not saved', r.status === 200 && JSON.stringify(r.json.not_saved) === '["hall"]' && O.talk('id = ?', oid).topic === 'Changed' && O.talk('id = ?', oid).time_slot === 'Fri 20 Nov · 1:10 – 1:18 PM', r.json);
 r = await O.as('PATCH', '/api/admin/innovation-talks/' + oid, { speaker_email: 'a@b.test' });
@@ -155,5 +155,5 @@ check('before 0052: add still works and names what was not saved', r.status === 
 r = await O.as('POST', '/api/admin/innovation-talks/' + oid + '/request-details', { to: 'x@y.test', items: ['topic'] });
 check('before 0052: the email still goes, and says it could not be recorded', r.status === 200 && r.json.recorded === false && O.sent.length === 1, r.json);
 r = await O.as('GET', '/api/admin/innovation-talks/contacts');
-check('before 0052: contacts still answer', r.status === 200 && r.json.contacts && Object.keys(r.json.contacts).length >= 49);
+check('before 0052: contacts still answer', r.status === 200 && r.json.contacts && Object.keys(r.json.contacts).length >= 48);
 done();

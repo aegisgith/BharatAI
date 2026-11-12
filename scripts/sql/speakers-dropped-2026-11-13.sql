@@ -1,5 +1,7 @@
 -- 13 Nov 2026: the organiser dropped three speakers. Take them off the app as well.
 -- Run once: npx wrangler d1 execute bharatai-production --remote --file=scripts/sql/speakers-dropped-2026-11-13.sql
+-- Run it before scripts/sql/speaker-delegate-passes.sql if that file is ever run again: it gives a
+-- pass to every published speaker. Checked 13 Nov: no pass, announcement or session names the three.
 --
 -- Speakers: hidden, the row is kept (the same as "Hide" in Admin -> Conference -> Speakers).
 -- Production ids on 13 Nov: 31 rajkumar-upadhyay, 82 k-mahesh, 85 prajakta-verma.

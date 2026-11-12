@@ -1,6 +1,6 @@
 // Harness on :8863 (HARNESS_PORT) for browser-innovation-talks.cjs: the WHOLE built
 // worker on real SQLite (talks-world.mjs: the production schema, migrations 0050 and
-// 0052, the 49 real talks and the real talk times), plus two booth contacts and one
+// 0052, the 48 real talks and the real talk times), plus two booth contacts and one
 // signed-in attendee. /admin, /app and every /api/* go through the worker; everything
 // else is served from public/. No email leaves: GET /__sent lists what was "sent",
 // GET /__db?q= reads the database. Started by run-all.mjs.

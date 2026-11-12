@@ -217,9 +217,10 @@
         .gv-talk .gv-pic { width: 104px; height: 104px; }
         .gv-talk h4 { font-size: 1.22rem; }
         .gv-talk-two { grid-column: 1 / -1; }
-        .gv-pair { flex-direction: row; }
         .gv-initials { width: 104px; height: 104px; font-size: 1.7rem; }
     }
+    /* The two-person talk card is half a row since 13 Nov 2026: its photos sit side by side only where that leaves room for the words. */
+    @media (min-width: 1200px) { .gv-pair { flex-direction: row; } }
 
     /* --- How to take part --- */
     .gv-ways { position: relative; background: var(--deep); color: #fff; }
