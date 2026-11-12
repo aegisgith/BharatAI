@@ -22,6 +22,9 @@ const appCookie = (id) => { const exp = Math.floor(Date.now() / 1000) + 3600; co
   for (let i = 0; i < 60 && !up; i++) { try { up = (await fetch(BASE + '/api/events/1/innovation-talks')).ok; } catch {} if (!up) await sleep(1000); }
   if (!up) { console.log('FAIL the harness never came up'); process.exit(1); }
   const p99 = (await dbq("SELECT id FROM innovation_talks WHERE speaker_name = 'Vineet Upadhayay'"))[0].id;
+  // As the speaker's own page saves a photo (routes/talk-self.ts): talks/<id>-<time>.<ext>.
+  const amrId = (await dbq("SELECT id FROM innovation_talks WHERE speaker_name = 'Amritesh Kumar'"))[0].id;
+  await dbq("UPDATE innovation_talks SET speaker_photo_url = '/api/uploads/talks/" + amrId + "-1731400000000.jpg' WHERE id = " + amrId);
   const browser = await pw.chromium.launch({ channel: 'msedge', headless: true });
   try {
     // ================= the organisers, on a laptop =================
@@ -54,7 +57,10 @@ const appCookie = (id) => { const exp = Math.floor(Date.now() / 1000) + 3600; co
     check('the headings read Day, then Time', heads[0] === 'DAY' && heads[1] === 'TIME', heads);
     // A Secretary (here a Deputy Secretary) is written to by a person only.
     check('a Secretary is marked "By hand only"; a company speaker is not', /By hand only/.test(await page.locator('tr', { hasText: 'Ganesh Nagarajan' }).innerText()) && !/By hand only/.test(amrText));
-    check('the automatic email says Ministers and Secretaries are left to a person', /Ministers and Secretaries are never emailed by itself/.test(await page.locator('#italk-auto').innerText()));
+    check('the automatic email says government officials are left to a person', /Government officials \(Ministers, Secretaries, IAS and IFS officers, anyone at a Ministry or Department\) are never emailed by itself/.test(await page.locator('#italk-auto').innerText()));
+    check('an IFS officer is marked "By hand only" too', /By hand only/.test(await page.locator('tr', { hasText: 'Vivek Khandekar' }).innerText()));
+    // A photo the speaker added on their own page (/app/my-talk) shows on the row.
+    check('a photo from the speaker\'s own page shows on the row', (await page.locator('tr', { hasText: 'Amritesh Kumar' }).locator('img[src^="/api/uploads/talks/"]').count()) === 1);
     // The missing-details email by itself: the switch.
     check('the automatic email is shown, off, with who would get one', await until(() => page.locator('#italk-auto').isVisible()) && /automatically: Off/.test(await page.locator('#italk-auto').innerText()) && /would get one/.test(await page.locator('#italk-auto').innerText()), await page.locator('#italk-auto').innerText().catch(() => ''));
     await page.locator('#italk-auto-btn').click();
@@ -137,6 +143,7 @@ const appCookie = (id) => { const exp = Math.floor(Date.now() / 1000) + 3600; co
     check('phone: talks with no time are under "Speakers announced", times to follow', /Speakers announced/.test(app) && /Times to follow/.test(app));
     check('phone: no old made-up session times', !/10:00 – 11:30 AM|2:00 – 4:10 PM|Morning Session|Afternoon Session/.test(app));
     check("phone: no speaker's mobile anywhere", !/98200 44444/.test(app));
+    check("phone: a photo from the speaker's own page shows on their card", (await box.locator('img[src^="/api/uploads/talks/"]').count()) === 1);
     const w = await ph.evaluate(() => document.documentElement.scrollWidth);
     check('phone: nothing wider than the screen', w <= 391, 'scrollWidth ' + w);
     check('phone: no script error', perr.length === 0, perr);

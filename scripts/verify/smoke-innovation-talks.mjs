@@ -95,7 +95,11 @@ W.sent.length = 0;
 r = await W.as('POST', url, { to: 'spoc@phoebetal.test', items: ['speaker_bio', 'speaker_phone'], note: 'Please send your slides by 18 Nov.', to_speaker: false, preview: true });
 check('preview: answers with the email and sends nothing', r.status === 200 && r.json.preview && /two or three lines about you/i.test(r.json.html) && W.sent.length === 0, r.json && r.json.subject);
 check('preview: the subject names the speaker for a booth contact', r.json.subject === 'Innovation Talk by Amritesh Kumar: please add the details', r.json.subject);
-r = await W.as('POST', url, { to: 'SPOC@phoebetal.test', items: ['speaker_bio', 'speaker_phone'], note: 'Please send your slides by 18 Nov.', to_speaker: false, save_email: false });
+// Sent once already a moment ago: without "again" (Ask everyone) it is refused, the
+// envelope on the row sends again: true.
+r = await W.as('POST', url, { to: 'spoc@phoebetal.test', items: ['speaker_bio'] });
+check('a second send within half an hour, not marked "again": refused in words, nothing sent', r.status === 409 && /ago, so not sent again/.test(r.json.error) && W.sent.length === 0, [r.status, r.json]);
+r = await W.as('POST', url, { to: 'SPOC@phoebetal.test', items: ['speaker_bio', 'speaker_phone'], note: 'Please send your slides by 18 Nov.', to_speaker: false, save_email: false, again: true });
 const m = W.sent[0], html = m && m.Content.Body[0].Content;
 check('send: one email, to the address typed (lower case)', r.status === 200 && W.sent.length === 1 && m.Recipients.To[0] === 'spoc@phoebetal.test', r.json);
 check('send: from register@bharataiinnovation.com', /register@bharataiinnovation\.com/.test(m.Content.From), m.Content.From);
@@ -110,10 +114,10 @@ check("send: a booth contact's address is not kept as the speaker's email", a2.s
 const auditRows = W.rows("SELECT * FROM admin_audit WHERE action = 'innovation_talk.request_details'");
 check('send: an audit line names the address and what was asked', auditRows.some(x => /spoc@phoebetal\.test/.test(x.detail) && /speaker_bio/.test(x.detail) && x.entity === 'innovation_talk'), auditRows);
 W.sent.length = 0;
-r = await W.as('POST', url, { to: 'amritesh@phoebetal.test', items: ['speaker_photo_url'], to_speaker: true, save_email: true });
+r = await W.as('POST', url, { to: 'amritesh@phoebetal.test', items: ['speaker_photo_url'], to_speaker: true, save_email: true, again: true });
 a2 = W.talk('id = ?', amr.id);
 check("to the speaker: \"Dear <name>\", and the address is kept on the talk", /Dear Amritesh Kumar,/.test(W.sent[0].Content.Body[0].Content) && a2.speaker_email === 'amritesh@phoebetal.test' && W.sent[0].Content.Subject === 'Your Innovation Talk at Bharat AI Innovation 2026: please add your details');
-r = await W.as('POST', url, { to: 'other@phoebetal.test', items: ['topic'], save_email: true });
+r = await W.as('POST', url, { to: 'other@phoebetal.test', items: ['topic'], save_email: true, again: true });
 check("save_email never replaces an email already on the talk", W.talk('id = ?', amr.id).speaker_email === 'amritesh@phoebetal.test');
 // A talk with nothing set: the email says the time and stage will follow.
 const vin = W.talk("speaker_name = 'Vineet Upadhayay'");
@@ -124,7 +128,7 @@ const vh = W.sent[0].Content.Body[0].Content;
 check('no time or hall yet: the email says they will follow', /We will send you the time soon/.test(vh) && /We will confirm the stage soon/.test(vh));
 check('text from the talk is escaped in the email', !vh.includes('<img src=x') && vh.includes('&lt;img src=x'));
 W.setMailDown(true);
-r = await W.as('POST', '/api/admin/innovation-talks/' + vin.id + '/request-details', { to: 'v2@p99.test', items: ['topic'] });
+r = await W.as('POST', '/api/admin/innovation-talks/' + vin.id + '/request-details', { to: 'v2@p99.test', items: ['topic'], again: true });
 check('mail service down: a clear error, and nothing recorded as asked', r.status === 502 && W.talk('id = ?', vin.id).details_requested_to === 'v@p99.test', [r.status, r.json]);
 W.setMailDown(false);
 r = await W.as('POST', '/api/admin/innovation-talks/999999/request-details', { to: 'x@y.test', items: ['topic'] });

@@ -5,6 +5,11 @@
 // something missing and an address to write to; nobody asked twice within 48 hours,
 // by hand or by itself; three times at most; a failed send is not counted; company
 // name is asked for like the rest; the switch, its summary and who may use it.
+// Added the night of 12 Nov after the go-check: every government official is held back;
+// a hand email from before the button existed does not start the wait; an exhibitor's
+// hidden draft is never written to; two clocks send one email; "Ask everyone" and the
+// clock never write twice within half an hour; a failed send waits an hour and gives up
+// after three; a part of a name must be six letters; nothing by itself once the event begins.
 // Run after `npm run build`:  node scripts/verify/smoke-talk-auto.mjs
 const Real = Date;
 let off = 0;
@@ -41,12 +46,19 @@ const flags = (await W.as('GET', '/api/admin/innovation-talks/contacts?event_id=
 const flag = (name) => flags[T(name).id].protocol;
 check('a Joint Secretary, a Secretary and a Minister are marked for a person to write to', flag('Shivendra Singh') === true && flag('Divyanshi Saxena') === true && flag('Hon’ble Shri Test Mantri') === true);
 check('a Deputy Secretary too (any rank of Secretary)', flag('Ganesh Nagarajan') === true, T('Ganesh Nagarajan').speaker_title);
-check("a company's own Company Secretary is not, nor a CEO, nor someone merely from a Ministry", flag('Saurabh Singh') === false && flag('Amritesh Kumar') === false && flag('Dipak Zope') === false);
+check("a company's own Company Secretary is not, nor a CEO", flag('Saurabh Singh') === false && flag('Amritesh Kumar') === false && flag('Dipak Zope') === false);
+// Every government official too (organiser, later on 12 Nov 2026): the four on the real
+// list that the Minister/Secretary words did not catch.
+check('an IFS officer, an IAS officer and two from the Principal Scientific Adviser\'s office are held back too',
+  flag('Shri Vivek Khandekar (IFS)') === true && flag('Dr. Kunal Khemnar (IAS)') === true && flag('Srinivas Kancharla') === true && flag('Prashant Mehra') === true,
+  ['Shri Vivek Khandekar (IFS)', 'Dr. Kunal Khemnar (IAS)', 'Srinivas Kancharla', 'Prashant Mehra'].map(n => [n, flag(n)]));
+const OFFICIALS = ['Divyanshi Saxena', 'Dr. K. Mahesh', 'Ganesh Nagarajan', 'Hon’ble Shri Test Mantri', 'Shivendra Singh', 'Shri Vivek Khandekar (IFS)', 'Dr. Kunal Khemnar (IAS)', 'Srinivas Kancharla', 'Prashant Mehra'];
 
 // ---- off ----
 let r = await W.as('GET', '/api/admin/innovation-talks/auto?event_id=1');
 check('off until someone turns it on, and it says who would get one', r.status === 200 && r.json.on === false && r.json.due === 3 && r.json.every_hours === 48 && r.json.max === 3, r.json);
-check('the summary names the Ministers and Secretaries left for a person, and does not count them', r.json.held.map(h => h.speaker).sort().join() === ['Divyanshi Saxena', 'Dr. K. Mahesh', 'Ganesh Nagarajan', 'Hon’ble Shri Test Mantri', 'Shivendra Singh'].sort().join() && !r.json.next.some(n => /Shivendra|Divyanshi|Mantri/.test(n.speaker)), r.json.held);
+check('the summary names the government officials left for a person, and does not count them', r.json.held.map(h => h.speaker).sort().join() === OFFICIALS.slice().sort().join() && !r.json.next.some(n => /Shivendra|Divyanshi|Mantri/.test(n.speaker)), r.json.held);
+check('before the event the summary does not say it has stopped', r.json.closed === false, r.json.closed);
 check('the two real government secretaries on the talk list are among them (Dr. K. Mahesh, Ganesh Nagarajan)', r.json.held.some(h => h.speaker === 'Dr. K. Mahesh' && /^Secretary/.test(h.title)) && r.json.held.some(h => h.speaker === 'Ganesh Nagarajan'));
 check('the would-be list names them, worst-waiting first, with what is missing', r.json.next.length === 3 && r.json.next.every(n => n.missing.length > 0) && !r.json.next.some(n => /Dipak|Shashank/.test(n.speaker)), r.json.next);
 r = await tick();
@@ -112,7 +124,7 @@ W.db.run(`UPDATE innovation_talks SET topic = ?, speaker_title = ?, company = ?,
 at('2026-11-23', '11:00');
 const before = talkMails().length;
 await tick(); await tick(); await tick();
-check('through every tick, over ten days, no Minister or Secretary was written to', !talkMails().some(x => /@gov\.test$/.test(x.Recipients.To[0])), talkMails().map(x => x.Recipients.To[0]));
+check('through every tick, over ten days, no government official was written to',!talkMails().some(x => /@gov\.test$/.test(x.Recipients.To[0])), talkMails().map(x => x.Recipients.To[0]));
 r = await W.as('POST', '/api/admin/innovation-talks/' + T('Shivendra Singh').id + '/request-details', { to: 'js@gov.test', items: ['topic'], preview: true });
 check('a person can still write to one by hand, with the envelope', r.status === 200 && r.json.preview === true);
 check('once a talk has everything, it is never written to again', !talkMails().slice(before).some(x => x.Recipients.To[0] === 'amritesh@phoebetal.test'));
@@ -127,8 +139,89 @@ r = await W2.hit('POST', '/api/cron/tick', {}, { Authorization: 'Bearer ' + ADMI
 check('mail service down: an error, nothing counted, nothing recorded on the talk', r.json.talk_requests.sent === 0 && !!r.json.talk_requests.error
   && !W2.rows("SELECT value FROM app_settings WHERE key = 'italk_auto_log'").some(x => /"n":1/.test(x.value)) && !W2.talk("speaker_name = 'Vineet Upadhayay'").details_requested_at, r.json.talk_requests);
 W2.setMailDown(false);
+// A second speaker with an address: a failed send must not hold them up.
+W2.db.run("UPDATE innovation_talks SET speaker_email = 'next@x.test' WHERE speaker_name = 'Amritesh Kumar'");
 r = await W2.hit('POST', '/api/cron/tick', {}, { Authorization: 'Bearer ' + ADMIN });
-check('the next minute it goes', r.json.talk_requests.sent === 1 && W2.sent.filter(x => x.Recipients.To[0] === 'fail@x.test').length === 1);
+check('the next minute the next speaker goes; the failed one is not tried again at once', r.json.talk_requests.sent === 1 && W2.sent.filter(x => x.Recipients.To[0] === 'next@x.test').length === 1 && W2.sent.filter(x => x.Recipients.To[0] === 'fail@x.test').length === 0, r.json.talk_requests);
+at('2026-11-13', '12:01');
+r = await W2.hit('POST', '/api/cron/tick', {}, { Authorization: 'Bearer ' + ADMIN });
+check('an hour later the failed one goes', r.json.talk_requests.sent === 1 && W2.sent.filter(x => x.Recipients.To[0] === 'fail@x.test').length === 1, r.json.talk_requests);
+// Three failures in a row and the clock gives up on that address.
+const W2b = await talksWorld({ times: true });
+W2b.db.run("UPDATE innovation_talks SET speaker_email = 'bounce@x.test' WHERE speaker_name = 'Vineet Upadhayay'");
+await W2b.as('POST', '/api/admin/innovation-talks/auto', { on: true });
+W2b.setMailDown(true);
+for (const hhmm of ['11:00', '12:01', '13:02']) { at('2026-11-13', hhmm); await W2b.hit('POST', '/api/cron/tick', {}, { Authorization: 'Bearer ' + ADMIN }); }
+W2b.setMailDown(false);
+at('2026-11-13', '15:00');
+r = await W2b.hit('POST', '/api/cron/tick', {}, { Authorization: 'Bearer ' + ADMIN });
+const blog = JSON.parse(W2b.rows("SELECT value FROM app_settings WHERE key = 'italk_auto_log'")[0].value);
+check('after three failed sends it stops trying that address (and none was counted as sent)', r.json.talk_requests.sent === 0 && W2b.sent.length === 0 && blog[String(W2b.talk("speaker_name = 'Vineet Upadhayay'").id)].fails === 3 && blog[String(W2b.talk("speaker_name = 'Vineet Upadhayay'").id)].n === 0, [r.json.talk_requests, blog]);
+
+// ---- 12 Nov 2026 night: what the go-check found before the switch went on ----
+at('2026-11-13', '10:00');
+const W3 = await talksWorld({ times: true });
+const tick3 = () => W3.hit('POST', '/api/cron/tick', {}, { Authorization: 'Bearer ' + ADMIN });
+const T3 = (name) => W3.talk('speaker_name = ?', name);
+const mails3 = () => W3.sent.filter(x => /Innovation Talk/.test(x.Content.Subject));
+const auto3 = async () => (await W3.as('GET', '/api/admin/innovation-talks/auto?event_id=1')).json;
+// The team emailed 42 talks by hand at 15:50 IST on 12 Nov, before the email had the button.
+W3.db.run("UPDATE innovation_talks SET speaker_email = 'before@x.test', details_requested_at = '2026-11-12 10:20:03', details_requested_to = 'before@x.test' WHERE speaker_name = 'Amritesh Kumar'");
+// Asked by hand after the button went live (19:55 IST = 14:25 UTC): that one waits 48 hours.
+W3.db.run("UPDATE innovation_talks SET speaker_email = 'after@x.test', details_requested_at = '2026-11-12 15:00:00', details_requested_to = 'after@x.test' WHERE speaker_name = 'Raveesh Dewan'");
+// An exhibitor's stage-talk draft with no time: the tab hides it; its company has a sheet talk.
+W3.db.run("INSERT INTO exhibitors (id, event_id, company_name, contact_email) VALUES (41, 1, 'Joget', 'spoc@joget.test')");
+W3.db.run("INSERT INTO innovation_talks (event_id, exhibitor_id, company, speaker_name, status, speaker_email) VALUES (1, 41, 'Joget', 'Draft Speaker', 'confirmed', 'draft@joget.test')");
+// A designation typed short.
+W3.db.run("UPDATE innovation_talks SET speaker_email = 'jtsecy@gov.test', speaker_title = 'Jt. Secy., MeitY' WHERE speaker_name = 'Ankit Kumar'");
+let s3 = await auto3();
+check('a hand email from before the button existed does not start the wait: that speaker is due now', s3.next.some(n => n.speaker === 'Amritesh Kumar'), s3.next);
+check('a hand email after the button existed does: that speaker waits 48 hours', !s3.next.some(n => n.speaker === 'Raveesh Dewan'), s3.next);
+check("an exhibitor's hidden stage-talk draft is not due (the tab does not list it)", !s3.next.some(n => n.speaker === 'Draft Speaker') && s3.due === 1, [s3.due, s3.next]);
+check('a short designation, "Jt. Secy.", is held back', s3.held.some(h => h.speaker === 'Ankit Kumar'), s3.held.map(h => h.speaker));
+await W3.as('POST', '/api/admin/innovation-talks/auto', { on: true, event_id: 1 });
+const both = await Promise.all([tick3(), tick3()]);
+check('two clocks in the same minute: one email, not two', mails3().length === 1 && mails3()[0].Recipients.To[0] === 'before@x.test', [both.map(b => b.json.talk_requests), mails3().map(x => x.Recipients.To[0])]);
+const h3 = mails3()[0]?.Content.Body[0].Content || '';
+check('the email has the button, and does not promise the website', /my-talk\?t=/.test(h3) && !/on the website/.test(h3), h3.slice(0, 200));
+check('...and thanks anyone who has already sent them', /Already sent them\? Thank you, and please ignore this email\./.test(h3));
+W3.db.run("UPDATE innovation_talks SET starts_at = '2026-11-21 15:00' WHERE speaker_name = 'Draft Speaker'");
+s3 = await auto3();
+check('once that talk is given a time it is on the tab, and is asked like any other', s3.next.some(n => n.speaker === 'Draft Speaker'), s3.next);
+W3.db.run("UPDATE innovation_talks SET starts_at = NULL WHERE speaker_name = 'Draft Speaker'");
+// "Ask everyone" and the clock never write to one talk twice within half an hour.
+const am3 = T3('Amritesh Kumar');
+let g = await W3.as('POST', '/api/admin/innovation-talks/' + am3.id + '/request-details', { to: 'before@x.test', items: ['topic'] });
+check('"Ask everyone" just after the clock wrote to them: refused in words, nothing sent', g.status === 409 && /^Asked .* ago, so not sent again\.$/.test(g.json.error) && mails3().length === 1, [g.status, g.json]);
+g = await W3.as('POST', '/api/admin/innovation-talks/' + am3.id + '/request-details', { to: 'before@x.test', items: ['topic'], again: true });
+check("the envelope on the row (again: a person's own choice) still sends", g.status === 200 && mails3().length === 2, [g.status, g.json]);
+at('2026-11-13', '10:20');
+g = await W3.as('POST', '/api/admin/innovation-talks/' + am3.id + '/request-details', { to: 'before@x.test', items: ['topic'] });
+check('twenty minutes after a hand email: refused too', g.status === 409, [g.status, g.json]);
+g = await W3.as('POST', '/api/admin/innovation-talks/' + am3.id + '/request-details', { to: 'before@x.test', items: ['topic'], preview: true });
+check('a preview is never refused', g.status === 200 && g.json.preview === true, g.status);
+at('2026-11-13', '10:31');
+g = await W3.as('POST', '/api/admin/innovation-talks/' + am3.id + '/request-details', { to: 'before@x.test', items: ['topic'] });
+check('after half an hour it sends', g.status === 200 && mails3().length === 3, [g.status, g.json]);
+// The team-list name match needs six letters for a part of a name.
+W3.db.run("INSERT INTO exhibitors (id, event_id, company_name, contact_email) VALUES (42, 1, 'OliAI', 'spoc@oli.test')");
+W3.db.run("INSERT INTO exhibitor_team (event_id, exhibitor_id, first_name, last_name, email) VALUES (1, 42, 'Raj', '', 'raj@oli.test')");
+W3.db.run("INSERT INTO exhibitor_team (event_id, exhibitor_id, first_name, last_name, email) VALUES (1, 42, 'Selva', 'Soorya', 'selva@oli.test')");
+const C3 = (await W3.as('GET', '/api/admin/innovation-talks/contacts?event_id=1')).json.contacts;
+check('a colleague called Raj is not taken for the speaker Aravind Raj (the booth contact is used)', C3[T3('Aravind Raj').id].email === 'spoc@oli.test' && C3[T3('Aravind Raj').id].source === 'booth', C3[T3('Aravind Raj').id]);
+check('a full name still finds its own address on the team list', C3[T3('Selva Soorya').id].email === 'selva@oli.test' && C3[T3('Selva Soorya').id].source === 'team', C3[T3('Selva Soorya').id]);
+// Nothing goes by itself from the event's first day.
+at('2026-11-19', '20:30');
+let r3 = await tick3();
+check('the evening before the event it still sends', r3.json.talk_requests.sent === 1, r3.json.talk_requests);
+at('2026-11-20', '09:30');
+const n3 = mails3().length;
+r3 = await tick3();
+check('from the first day of the event nothing goes by itself', r3.json.talk_requests.sent === 0 && r3.json.talk_requests.waiting === 'the event has begun' && mails3().length === n3, r3.json.talk_requests);
+s3 = await auto3();
+check('...and the tab is told so', s3.closed === true && s3.due === 0, [s3.closed, s3.due]);
+g = await W3.as('POST', '/api/admin/innovation-talks/' + am3.id + '/request-details', { to: 'before@x.test', items: ['topic'], again: true });
+check('a person can still write by hand during the event', g.status === 200, g.status);
 
 // ---- the switch, and who may use it ----
 r = await W.as('POST', '/api/admin/innovation-talks/auto', { on: false });
