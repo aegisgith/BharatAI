@@ -31,9 +31,23 @@ W.db.run(`UPDATE innovation_talks SET speaker_email = 'done@complete.test', topi
 W.db.run("INSERT INTO exhibitors (id, event_id, company_name, contact_email) VALUES (31, 1, 'Xtant Tech', 'spoc@xtant.test')");
 W.db.run("UPDATE innovation_talks SET status = 'cancelled', speaker_email = 'cancelled@x.test' WHERE speaker_name = 'Shashank KP'");
 
+// Ministers, Secretaries and Joint Secretaries (organiser, 12 Nov 2026): each of these
+// has an address and something missing, and must never be written to by itself.
+W.db.run("UPDATE innovation_talks SET speaker_email = 'js@gov.test', speaker_title = 'Joint Secretary, MeitY' WHERE speaker_name = 'Shivendra Singh'");
+W.db.run("UPDATE innovation_talks SET speaker_email = 'sec@gov.test', speaker_title = 'Secretary, Department of IT' WHERE speaker_name = 'Divyanshi Saxena'");
+W.db.run("UPDATE innovation_talks SET speaker_email = 'min@gov.test', speaker_name = 'Hon’ble Shri Test Mantri', speaker_title = 'Minister of Information Technology' WHERE speaker_name = 'Shishir Sharan'");
+W.db.run("UPDATE innovation_talks SET speaker_title = 'Company Secretary' WHERE speaker_name = 'Saurabh Singh'");
+const flags = (await W.as('GET', '/api/admin/innovation-talks/contacts?event_id=1')).json.contacts;
+const flag = (name) => flags[T(name).id].protocol;
+check('a Joint Secretary, a Secretary and a Minister are marked for a person to write to', flag('Shivendra Singh') === true && flag('Divyanshi Saxena') === true && flag('Hon’ble Shri Test Mantri') === true);
+check('a Deputy Secretary too (any rank of Secretary)', flag('Ganesh Nagarajan') === true, T('Ganesh Nagarajan').speaker_title);
+check("a company's own Company Secretary is not, nor a CEO, nor someone merely from a Ministry", flag('Saurabh Singh') === false && flag('Amritesh Kumar') === false && flag('Dipak Zope') === false);
+
 // ---- off ----
 let r = await W.as('GET', '/api/admin/innovation-talks/auto?event_id=1');
 check('off until someone turns it on, and it says who would get one', r.status === 200 && r.json.on === false && r.json.due === 3 && r.json.every_hours === 48 && r.json.max === 3, r.json);
+check('the summary names the Ministers and Secretaries left for a person, and does not count them', r.json.held.map(h => h.speaker).sort().join() === ['Divyanshi Saxena', 'Dr. K. Mahesh', 'Ganesh Nagarajan', 'Hon’ble Shri Test Mantri', 'Shivendra Singh'].sort().join() && !r.json.next.some(n => /Shivendra|Divyanshi|Mantri/.test(n.speaker)), r.json.held);
+check('the two real government secretaries on the talk list are among them (Dr. K. Mahesh, Ganesh Nagarajan)', r.json.held.some(h => h.speaker === 'Dr. K. Mahesh' && /^Secretary/.test(h.title)) && r.json.held.some(h => h.speaker === 'Ganesh Nagarajan'));
 check('the would-be list names them, worst-waiting first, with what is missing', r.json.next.length === 3 && r.json.next.every(n => n.missing.length > 0) && !r.json.next.some(n => /Dipak|Shashank/.test(n.speaker)), r.json.next);
 r = await tick();
 check('off: the clock sends nothing, and says so', r.status === 200 && r.json.talk_requests.on === false && talkMails().length === 0, r.json.talk_requests);
@@ -98,6 +112,9 @@ W.db.run(`UPDATE innovation_talks SET topic = ?, speaker_title = ?, company = ?,
 at('2026-11-23', '11:00');
 const before = talkMails().length;
 await tick(); await tick(); await tick();
+check('through every tick, over ten days, no Minister or Secretary was written to', !talkMails().some(x => /@gov\.test$/.test(x.Recipients.To[0])), talkMails().map(x => x.Recipients.To[0]));
+r = await W.as('POST', '/api/admin/innovation-talks/' + T('Shivendra Singh').id + '/request-details', { to: 'js@gov.test', items: ['topic'], preview: true });
+check('a person can still write to one by hand, with the envelope', r.status === 200 && r.json.preview === true);
 check('once a talk has everything, it is never written to again', !talkMails().slice(before).some(x => x.Recipients.To[0] === 'amritesh@phoebetal.test'));
 
 // ---- a failed send ----

@@ -986,7 +986,8 @@ async function passLabelSql(c: any): Promise<string> {
 // Delegates and 6 paid VIPs were missing from the lunch count and 74 free Visitors
 // were on it (walk-ins, Add Attendee and Bulk Upload defaulted to Yes). Every
 // other pass (Speaker, Exhibitor, Organiser ...) keeps what was set by hand.
-const LUNCH_BY_PASS: Record<string, 'Yes' | 'No'> = { 'Delegate Pass': 'Yes', 'Premium Delegate Pass': 'Yes', 'VIP Pass': 'Yes', 'Academic Pass': 'No', 'Visitor Pass': 'No' }
+// A Speaker pass includes lunch (organiser, 12 Nov 2026).
+const LUNCH_BY_PASS: Record<string, 'Yes' | 'No'> = { 'Delegate Pass': 'Yes', 'Premium Delegate Pass': 'Yes', 'VIP Pass': 'Yes', 'Academic Pass': 'No', 'Visitor Pass': 'No', 'Speaker': 'Yes' }
 const LUNCH_FROM_PASS_SQL = `CASE badge_type ${Object.entries(LUNCH_BY_PASS).map(([k, v]) => `WHEN '${k}' THEN '${v}'`).join(' ')} ELSE lunch_inclusion END`
 
 // An admin setting a pass by hand. No money paid means no paid pass (the organiser,
@@ -17326,7 +17327,8 @@ function italkSlotLabel(startsAt: string, minutes: number): string {
 // nobody paid for, is raised to Speaker; a pass of their own (a paid Delegate, VIP,
 // Organiser, Exhibitor...) is kept as it is; blank details are filled in, never
 // overwritten; a mobile somebody else holds is left off rather than refusing the pass.
-// Lunch is not touched: that is the organisers' to decide.
+// A Speaker pass includes lunch (organiser, 12 Nov 2026; LUNCH_BY_PASS): written when
+// the pass is made or raised, and put right on a Speaker pass that says otherwise.
 async function issueSpeakerPass(c: any, x: { eventId: number; name: string; email: string; mobile: string; company: string; designation: string; linkedin: string; avatarUrl: string }):
     Promise<{ attendeeId: number; pass: string; created: boolean; raised: boolean; kept: boolean } | { error: string }> {
   const email = String(x.email || '').trim().toLowerCase()
@@ -17349,6 +17351,7 @@ async function issueSpeakerPass(c: any, x: { eventId: number; name: string; emai
       put('badge_type', 'Speaker'); put('payment_status', 'waived'); put('main_event', 1)
       if (blank('role') || String(row.role).trim().toLowerCase() === 'attendee') put('role', 'Speaker')
     }
+    if ((raised || cur === 'Speaker') && String(row.lunch_inclusion || '') !== LUNCH_BY_PASS['Speaker']) put('lunch_inclusion', LUNCH_BY_PASS['Speaker'])
     if (x.designation && blank('job_title')) put('job_title', x.designation)
     if (x.company && blank('company')) put('company', x.company)
     if (x.linkedin && blank('linkedin_url')) put('linkedin_url', x.linkedin)
@@ -17361,7 +17364,7 @@ async function issueSpeakerPass(c: any, x: { eventId: number; name: string; emai
   // A new registration, in the shape Add Attendee writes.
   const set: Record<string, any> = {
     company: String(x.company || '').trim(), job_title: String(x.designation || '').trim(), linkedin_url: String(x.linkedin || '').trim(), mobile: await freeMobile(null),
-    badge_type: 'Speaker', role: 'Speaker', country: 'India', payment_status: 'waived', registration_date: new Date().toISOString().slice(0, 19).replace('T', ' '),
+    badge_type: 'Speaker', role: 'Speaker', country: 'India', payment_status: 'waived', lunch_inclusion: LUNCH_BY_PASS['Speaker'], registration_date: new Date().toISOString().slice(0, 19).replace('T', ' '),
   }
   const name = String(x.name || '').trim() || email
   const names: string[] = ['event_id', 'name', 'email']
@@ -17602,7 +17605,7 @@ app.get('/api/admin/innovation-talks/contacts', async (c) => {
   // 0050 may not have run: no team list then, only booth contacts.
   const team = ((await c.env.DB.prepare("SELECT exhibitor_id, first_name, last_name, email FROM exhibitor_team WHERE event_id = ? AND trim(email) <> ''").bind(eventId).all().catch(() => ({ results: [] }))).results || []) as any[]
   const contacts: Record<string, any> = {}
-  for (const t of talks) contacts[t.id] = italkContactFor(t, exhibitors, team)
+  for (const t of talks) contacts[t.id] = { ...italkContactFor(t, exhibitors, team), protocol: italkIsProtocol(t) }
   return c.json({ contacts })
 })
 
@@ -17724,6 +17727,18 @@ async function italkAutoLog(c: any): Promise<Record<string, { n: number; at: str
   try { const v = JSON.parse((await settingValue(c, ITALK_AUTO_LOG)) || '{}'); return v && typeof v === 'object' ? v : {} } catch { return {} }
 }
 // Who would get it now, longest-waiting first.
+// Ministers, Secretaries and Joint Secretaries are never written to by the clock, nor by
+// "Ask everyone" (organiser, 12 Nov 2026: turn the automatic email on "except ministers
+// and secretaries and joint secretaries"). A person writes to their offices; the envelope
+// on their row still sends one email by hand. A designation naming a Minister or a
+// Secretary of any rank counts (Secretary, Joint, Additional, Principal, Deputy...), and
+// a name that opens with Hon'ble. A company's own Company Secretary does not.
+const ITALK_PROTOCOL_RE = /\b(minister|ministers|secretary|secretaries)\b/i
+function italkIsProtocol(t: any): boolean {
+  const title = String(t?.speaker_title || '').replace(/\bcompany secretary\b/gi, ' ')
+  return /^\s*hon[’']?ble\b/i.test(String(t?.speaker_name || '')) || ITALK_PROTOCOL_RE.test(title)
+}
+
 async function italkAutoDue(c: any, eventId: number, nowMs: number) {
   const q = async (sql: string) => ((await c.env.DB.prepare(sql).bind(eventId).all().catch(() => ({ results: [] }))).results || []) as any[]
   const [talks, exhibitors, team, log] = await Promise.all([
@@ -17732,10 +17747,12 @@ async function italkAutoDue(c: any, eventId: number, nowMs: number) {
     q("SELECT exhibitor_id, first_name, last_name, email FROM exhibitor_team WHERE event_id = ? AND trim(email) <> ''"),
     italkAutoLog(c)])
   const out: { talk: any; contact: { email: string; source: string }; gaps: string[]; n: number; last: number }[] = []
+  const held: any[] = []
   for (const t of talks) {
     if (t.status === 'cancelled') continue
     const gaps = italkGaps(t)
     if (!gaps.length) continue
+    if (italkIsProtocol(t)) { held.push(t); continue }
     const contact = italkContactFor(t, exhibitors, team)
     if (!contact.email || !validEmailSyntax(contact.email)) continue
     const mine = log[String(t.id)] || { n: 0, at: '' }
@@ -17746,7 +17763,7 @@ async function italkAutoDue(c: any, eventId: number, nowMs: number) {
     if (last && nowMs - last < ITALK_AUTO_EVERY_HOURS * 3600_000) continue
     out.push({ talk: t, contact, gaps, n: mine.n, last })
   }
-  return out.sort((a, b) => a.last - b.last || Number(a.talk.id) - Number(b.talk.id))
+  return { due: out.sort((a, b) => a.last - b.last || Number(a.talk.id) - Number(b.talk.id)), held }
 }
 
 // One email per call (the clock calls once a minute), so it can never be a burst.
@@ -17754,7 +17771,7 @@ async function autoItalkRequests(c: any): Promise<Record<string, any>> {
   if ((await settingValue(c, ITALK_AUTO_KEY)) !== '1') return { on: false, sent: 0 }
   const now = Date.now()
   if (!sendWindowState(new Date(now)).open) return { on: true, sent: 0, waiting: 'outside the sending hours' }
-  const due = await italkAutoDue(c, 1, now)
+  const { due } = await italkAutoDue(c, 1, now)
   if (!due.length) return { on: true, sent: 0, due: 0 }
   const d = due[0], t = d.talk, id = String(t.id), to = d.contact.email.trim().toLowerCase()
   // Marked before it is sent: a second clock in the same minute finds it done.
@@ -17783,9 +17800,12 @@ async function autoItalkRequests(c: any): Promise<Record<string, any>> {
 }
 
 async function italkAutoSummary(c: any, eventId: number) {
-  const [on, due, log] = await Promise.all([settingValue(c, ITALK_AUTO_KEY), italkAutoDue(c, eventId, Date.now()), italkAutoLog(c)])
+  const [on, both, log] = await Promise.all([settingValue(c, ITALK_AUTO_KEY), italkAutoDue(c, eventId, Date.now()), italkAutoLog(c)])
+  const { due, held } = both
   return {
     on: on === '1', every_hours: ITALK_AUTO_EVERY_HOURS, max: ITALK_AUTO_MAX, due: due.length,
+    // Ministers and Secretaries with something missing: left for a person to write to.
+    held: held.map((t: any) => ({ id: Number(t.id), speaker: t.speaker_name || '', title: t.speaker_title || '' })),
     next: due.slice(0, 5).map(d => ({ id: Number(d.talk.id), speaker: d.talk.speaker_name || '', company: d.talk.company || '', missing: d.gaps })),
     sent_by_itself: Object.values(log).reduce((n, x: any) => n + (Number(x?.n) || 0), 0),
     window: sendWindowState(),
@@ -45535,12 +45555,13 @@ function adminPageScript(): string {
             + (a.due ? a.due + ' will get one next' + (a.window && !a.window.open ? ', when sending opens at 9 am.' : '.') : 'Nobody is due one now.')
           : 'When on, each speaker with something missing gets the email by itself, then a reminder every ' + days + ' days, ' + a.max + ' times at most. '
             + (a.due ? a.due + ' speaker' + (a.due === 1 ? '' : 's') + ' would get one.' : 'Nobody would get one now.'))
+        + ' Ministers and Secretaries are never emailed by itself' + (a.held && a.held.length ? ': ' + a.held.length + ' to write to yourself (' + a.held.map(function (h) { return escH(h.speaker); }).join(', ') + ').' : '.')
         + (a.sent_by_itself ? ' Sent by itself so far: ' + a.sent_by_itself + '.' : '') + '</div></div>'
         + '<button onclick="italkAutoToggle()" id="italk-auto-btn" class="px-4 py-2 rounded-xl text-xs font-medium ' + (a.on ? 'glass hover:bg-white/10' : 'bg-primary-600 hover:bg-primary-500 text-white') + ' transition">' + (a.on ? 'Turn off' : 'Turn on') + '</button></div>';
     }
     async function italkAutoToggle() {
       var a = italkAuto; if (!a) return;
-      if (!a.on && !confirm('Turn on automatic emails?' + String.fromCharCode(10, 10) + (a.due ? a.due + ' speaker' + (a.due === 1 ? '' : 's') + ' with missing details will be emailed' : 'Speakers with missing details will be emailed') + ', one a minute, from register@, between 9 am and 9 pm. Each gets a reminder every ' + Math.round(a.every_hours / 24) + ' days, ' + a.max + ' times at most, and none once their details are in.')) return;
+      if (!a.on && !confirm('Turn on automatic emails?' + String.fromCharCode(10, 10) + (a.due ? a.due + ' speaker' + (a.due === 1 ? '' : 's') + ' with missing details will be emailed' : 'Speakers with missing details will be emailed') + ', one a minute, from register@, between 9 am and 9 pm. Each gets a reminder every ' + Math.round(a.every_hours / 24) + ' days, ' + a.max + ' times at most, and none once their details are in. Ministers and Secretaries are left out.')) return;
       try {
         italkAuto = await api.post('/api/admin/innovation-talks/auto', { on: !a.on, event_id: EID });
         toast(italkAuto.on ? 'Automatic emails are on' : 'Automatic emails are off', 'success');
@@ -45651,6 +45672,7 @@ function adminPageScript(): string {
       var miss = italkMissing(t).filter(function (k) { return k !== 'time' && k !== 'hall'; });
       var chips = miss.map(function (k) { return '<span class="inline-block px-1.5 py-0.5 mr-1 mb-1 rounded text-[10px] bg-amber-500/15 text-amber-400">' + escH(italkMissLabels[k] || k) + '</span>'; }).join('');
       var asked = t.details_requested_at ? '<div class="text-[10px] text-gray-500 mt-0.5"><i class="fas fa-paper-plane mr-1"></i>Asked ' + escH(italkWhen(t.details_requested_at)) + '</div>' : '';
+      if (italkProtocol(t)) asked += '<div class="text-[10px] text-indigo-400 mt-0.5" title="A Minister or a Secretary: never emailed automatically or by Ask everyone. Use the envelope to write yourself."><i class="fas fa-id-badge mr-1"></i>By hand only</div>';
       var em = italkEmailFor(t);
       return '<tr class="hover:bg-white/[0.03] transition border-b border-white/5" id="italk-row-' + t.id + '">'
         + '<td class="px-3 py-2.5 whitespace-nowrap">' + day + '</td>'
@@ -45857,8 +45879,11 @@ function adminPageScript(): string {
     }
 
     // ---- Ask everyone at once: one email every few seconds, never a burst ----
+    // A Minister or a Secretary (the server decides: italkIsProtocol): written to by a person only.
+    function italkProtocol(t) { var c = italkContacts[t.id]; return !!(c && c.protocol); }
     function italkAskAll() {
-      var cand = italkList.filter(function (t) { return t.status !== 'cancelled' && italkSpeakerGaps(t).length; });
+      var heldBack = italkList.filter(function (t) { return t.status !== 'cancelled' && italkSpeakerGaps(t).length && italkProtocol(t); });
+      var cand = italkList.filter(function (t) { return t.status !== 'cancelled' && italkSpeakerGaps(t).length && !italkProtocol(t); });
       var withEmail = cand.filter(function (t) { return italkEmailFor(t).email; });
       var noEmail = cand.filter(function (t) { return !italkEmailFor(t).email; });
       var row = function (t) {
@@ -45869,7 +45894,7 @@ function adminPageScript(): string {
           + (t.details_requested_at ? '<div class="text-[10px] text-gray-500">Asked ' + escH(italkWhen(t.details_requested_at)) + '</div>' : '') + '</td></tr>';
       };
       openModal('<h3 class="text-lg font-bold mb-1"><i class="fas fa-envelope text-sky-400 mr-2"></i>Ask everyone for missing details</h3>'
-        + '<p class="text-xs text-gray-400 mb-3">' + cand.length + ' speakers are missing details. ' + withEmail.length + ' have an email on file' + (noEmail.length ? '; ' + noEmail.length + ' do not (add it on the talk first)' : '') + '. Each gets one email listing only what is missing from their talk, sent one every 4 seconds from register@.</p>'
+        + '<p class="text-xs text-gray-400 mb-3">' + cand.length + ' speakers are missing details. ' + withEmail.length + ' have an email on file' + (noEmail.length ? '; ' + noEmail.length + ' do not (add it on the talk first)' : '') + '. Each gets one email listing only what is missing from their talk, sent one every 4 seconds from register@.' + (heldBack.length ? ' <span class="text-indigo-400">Left out, to write to yourself: ' + heldBack.map(function (t) { return escH(t.speaker_name); }).join(', ') + ' (Ministers and Secretaries).</span>' : '') + '</p>'
         + '<label class="flex items-center gap-2 text-xs text-gray-400 mb-3 cursor-pointer"><input type="checkbox" id="italk-all-again"> Also email speakers who were already asked</label>'
         + '<div class="max-h-72 overflow-y-auto mb-3"><table class="w-full">' + withEmail.concat(noEmail).map(row).join('') + '</table></div>'
         + '<p id="italk-all-progress" class="text-xs text-gray-300 mb-3"></p>'
@@ -45879,7 +45904,7 @@ function adminPageScript(): string {
 
     async function italkAskAllRun() {
       var again = !!(document.getElementById('italk-all-again') || {}).checked;
-      var list = italkList.filter(function (t) { return t.status !== 'cancelled' && italkSpeakerGaps(t).length && italkEmailFor(t).email && (again || !t.details_requested_at); });
+      var list = italkList.filter(function (t) { return t.status !== 'cancelled' && italkSpeakerGaps(t).length && !italkProtocol(t) && italkEmailFor(t).email && (again || !t.details_requested_at); });
       var prog = document.getElementById('italk-all-progress');
       var go = document.getElementById('italk-all-go');
       if (!list.length) { if (prog) prog.textContent = 'Nobody to email: everyone with an email has been asked already. Tick the box above to ask them again.'; return; }

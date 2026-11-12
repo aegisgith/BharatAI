@@ -213,6 +213,7 @@ const world = async () => {
   r = await W.call('POST', '/api/admin/speakers/' + meera + '/pass', {});
   let a = W.rows("SELECT * FROM attendees WHERE email = 'meera@bank.test'");
   check('their Speaker pass is made: one registration, Speaker, nothing to pay, for the conference', r.status === 200 && r.json.created === true && r.json.pass === 'Speaker' && a.length === 1 && a[0].badge_type === 'Speaker' && a[0].payment_status === 'waived' && Number(a[0].main_event) === 1 && a[0].name === 'Meera Nair' && a[0].company === 'Kerala Bank' && a[0].job_title === 'Chief Data Officer' && a[0].registration_source === 'speaker', a[0]);
+  check('a Speaker pass includes lunch (organiser, 12 Nov 2026)', a[0].lunch_inclusion === 'Yes', a[0].lunch_inclusion);
   check('their mobile is on it', /98200 ?55555/.test(a[0].mobile || ''), a[0]?.mobile);
   r = await W.call('POST', '/api/admin/speakers/' + meera + '/pass', {});
   check('asked again: still one registration, nothing made or raised', r.status === 200 && r.json.created === false && r.json.raised === false && r.json.kept === false && W.rows("SELECT COUNT(*) AS n FROM attendees WHERE email = 'meera@bank.test'")[0].n === 1, r.json);
@@ -221,15 +222,17 @@ const world = async () => {
   r = await W.call('POST', '/api/admin/speakers/2/pass', {});
   check('no email: refused with what to do', r.status === 409 && /Add an email for Tarun Chugh first/.test(r.json.error), r.json);
   // someone already registered on a free pass
-  W.db.run("INSERT INTO attendees (event_id, name, email, badge_type, payment_status, job_title, company, mobile, main_event) VALUES (1, 'K K Singh', 'kk@example.test', 'Visitor Pass', '', 'Their own title', '', '', 1)");
+  W.db.run("INSERT INTO attendees (event_id, name, email, badge_type, payment_status, job_title, company, mobile, main_event, lunch_inclusion) VALUES (1, 'K K Singh', 'kk@example.test', 'Visitor Pass', '', 'Their own title', '', '', 1, 'No')");
   r = await W.call('POST', '/api/admin/speakers/1/pass', {});
   a = W.rows("SELECT * FROM attendees WHERE email = 'kk@example.test'")[0];
   check('a free Visitor Pass is raised to Speaker', r.status === 200 && r.json.raised === true && r.json.created === false && a.badge_type === 'Speaker' && a.payment_status === 'waived', a);
+  check('...and gets lunch with it', a.lunch_inclusion === 'Yes', a.lunch_inclusion);
   check('what they wrote themselves is kept; only blanks are filled', a.job_title === 'Their own title' && /Ministry of Electronics/.test(a.company) && a.name === 'K K Singh');
   // a pass of their own
   W.db.run("UPDATE speakers SET email = 'tarun@bajaj.test' WHERE id = 2");
-  W.db.run("INSERT INTO attendees (event_id, name, email, badge_type, payment_status, main_event) VALUES (1, 'Tarun Chugh', 'tarun@bajaj.test', 'Delegate Pass', 'paid', 1)");
+  W.db.run("INSERT INTO attendees (event_id, name, email, badge_type, payment_status, main_event, lunch_inclusion) VALUES (1, 'Tarun Chugh', 'tarun@bajaj.test', 'Delegate Pass', 'paid', 1, 'No')");
   r = await W.call('POST', '/api/admin/speakers/2/pass', {});
+  check("a kept pass keeps its own lunch as it was: nothing is written", W.rows("SELECT lunch_inclusion FROM attendees WHERE email = 'tarun@bajaj.test'")[0].lunch_inclusion === 'No');
   check('a paid Delegate Pass is kept, and the reply says so', r.status === 200 && r.json.kept === true && r.json.pass === 'Delegate Pass' && W.rows("SELECT badge_type, payment_status FROM attendees WHERE email = 'tarun@bajaj.test'")[0].badge_type === 'Delegate Pass', r.json);
   W.db.run("UPDATE speakers SET email = 'saurabh@inst.test', phone = '9820012345' WHERE id = 4");
   W.db.run("INSERT INTO attendees (event_id, name, email, badge_type, payment_status, main_event) VALUES (1, 'Saurabh', 'saurabh@inst.test', 'VIP Pass', 'pending', 1)");
@@ -238,8 +241,10 @@ const world = async () => {
   a = W.rows("SELECT * FROM attendees WHERE email = 'saurabh@inst.test'")[0];
   check('a VIP Pass nobody paid for is raised to Speaker', r.status === 200 && r.json.raised === true && a.badge_type === 'Speaker' && a.payment_status === 'waived', a);
   check('a mobile somebody else holds is left off, and theirs is untouched', !String(a.mobile || '').trim() && W.rows("SELECT mobile FROM attendees WHERE email = 'holder@else.test'")[0].mobile === '9820012345');
+  W.db.run("UPDATE attendees SET lunch_inclusion = 'No' WHERE email = 'shailesh@example.test'");
   r = await W.call('POST', '/api/admin/speakers/3/pass', {});
-  check('someone who already holds a Speaker pass: nothing changes', r.status === 200 && r.json.created === false && r.json.raised === false && r.json.pass === 'Speaker');
+  check('someone who already holds a Speaker pass: the pass stays as it is', r.status === 200 && r.json.created === false && r.json.raised === false && r.json.pass === 'Speaker');
+  check('...and a Speaker pass that had no lunch on it now has', W.rows("SELECT lunch_inclusion FROM attendees WHERE email = 'shailesh@example.test'")[0].lunch_inclusion === 'Yes');
   check('unknown speaker: 404', (await W.call('POST', '/api/admin/speakers/99999/pass', {})).status === 404);
   const n = W.rows('SELECT COUNT(*) AS n FROM attendees')[0].n;
   check('no password: refused, nobody registered', (await W.call('POST', '/api/admin/speakers/' + meera + '/pass', {}, { admin: false })).status === 401 && W.rows('SELECT COUNT(*) AS n FROM attendees')[0].n === n);

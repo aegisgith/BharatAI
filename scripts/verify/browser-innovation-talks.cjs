@@ -52,6 +52,9 @@ const appCookie = (id) => { const exp = Math.floor(Date.now() / 1000) + 3600; co
     check('the day has its own column, coloured, apart from the time', (await amrRow.locator('td').nth(0).locator('span.rounded-lg').getAttribute('class')).includes('amber') && /Day 1/.test(amrCells[0]) && /Fri 20 Nov/.test(amrCells[0]) && /^1:10 – 1:18 PM$/.test(amrCells[1].trim()), amrCells.slice(0, 2));
     const heads = (await sec.locator('table').first().locator('thead th').allInnerTexts()).map(x => x.trim().toUpperCase());
     check('the headings read Day, then Time', heads[0] === 'DAY' && heads[1] === 'TIME', heads);
+    // A Secretary (here a Deputy Secretary) is written to by a person only.
+    check('a Secretary is marked "By hand only"; a company speaker is not', /By hand only/.test(await page.locator('tr', { hasText: 'Ganesh Nagarajan' }).innerText()) && !/By hand only/.test(amrText));
+    check('the automatic email says Ministers and Secretaries are left to a person', /Ministers and Secretaries are never emailed by itself/.test(await page.locator('#italk-auto').innerText()));
     // The missing-details email by itself: the switch.
     check('the automatic email is shown, off, with who would get one', await until(() => page.locator('#italk-auto').isVisible()) && /automatically: Off/.test(await page.locator('#italk-auto').innerText()) && /would get one/.test(await page.locator('#italk-auto').innerText()), await page.locator('#italk-auto').innerText().catch(() => ''));
     await page.locator('#italk-auto-btn').click();
