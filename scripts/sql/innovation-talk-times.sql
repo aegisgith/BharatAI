@@ -8,47 +8,47 @@
 UPDATE innovation_talks SET hall = 'Aryabhata Theatre' WHERE event_id = 1 AND trim(ifnull(hall, '')) = '' AND company NOT IN ('CGI', 'Maharashtra Forest Department', 'NoBroker');
 
 -- Dipak Zope
-UPDATE innovation_talks SET starts_at = '2026-11-20 11:30', duration_min = 8, time_slot = 'Fri 20 Nov · 11:30 – 11:38 AM', session_type = 'Morning', hall = 'Aryabhata Theatre' WHERE event_id = 1 AND exhibitor_id IS NULL AND company = 'Paisani Technology Services';
+UPDATE innovation_talks SET starts_at = '2026-11-20 11:30', duration_min = 8, time_slot = 'Fri 20 Nov · 11:30 – 11:38 AM', session_type = 'Morning', hall = 'Aryabhata Theatre' WHERE event_id = 1 AND exhibitor_id IS NULL AND (company = 'Paisani Technology Services' OR speaker_name = 'Dipak Zope');
 -- Shashank KP
-UPDATE innovation_talks SET starts_at = '2026-11-20 11:40', duration_min = 8, time_slot = 'Fri 20 Nov · 11:40 – 11:48 AM', session_type = 'Morning', hall = 'Aryabhata Theatre' WHERE event_id = 1 AND exhibitor_id IS NULL AND company = 'RedFerns Tech';
+UPDATE innovation_talks SET starts_at = '2026-11-20 11:40', duration_min = 8, time_slot = 'Fri 20 Nov · 11:40 – 11:48 AM', session_type = 'Morning', hall = 'Aryabhata Theatre' WHERE event_id = 1 AND exhibitor_id IS NULL AND (company = 'RedFerns Tech' OR speaker_name = 'Shashank KP');
 -- Ankit Kumar
-UPDATE innovation_talks SET starts_at = '2026-11-20 11:50', duration_min = 8, time_slot = 'Fri 20 Nov · 11:50 – 11:58 AM', session_type = 'Morning', hall = 'Aryabhata Theatre' WHERE event_id = 1 AND exhibitor_id IS NULL AND company = 'Xtant Tech';
+UPDATE innovation_talks SET starts_at = '2026-11-20 11:50', duration_min = 8, time_slot = 'Fri 20 Nov · 11:50 – 11:58 AM', session_type = 'Morning', hall = 'Aryabhata Theatre' WHERE event_id = 1 AND exhibitor_id IS NULL AND (company = 'Xtant Tech' OR speaker_name = 'Ankit Kumar');
 -- Shivendra Singh
-UPDATE innovation_talks SET starts_at = '2026-11-20 12:00', duration_min = 8, time_slot = 'Fri 20 Nov · 12:00 – 12:08 PM', session_type = 'Afternoon', hall = 'Aryabhata Theatre' WHERE event_id = 1 AND exhibitor_id IS NULL AND company = 'Oranje AI';
+UPDATE innovation_talks SET starts_at = '2026-11-20 12:00', duration_min = 8, time_slot = 'Fri 20 Nov · 12:00 – 12:08 PM', session_type = 'Afternoon', hall = 'Aryabhata Theatre' WHERE event_id = 1 AND exhibitor_id IS NULL AND (company = 'Oranje AI' OR speaker_name = 'Shivendra Singh');
 -- Divyanshi Saxena
-UPDATE innovation_talks SET starts_at = '2026-11-20 12:10', duration_min = 8, time_slot = 'Fri 20 Nov · 12:10 – 12:18 PM', session_type = 'Afternoon', hall = 'Aryabhata Theatre' WHERE event_id = 1 AND exhibitor_id IS NULL AND company = 'Eurys Infosystems';
+UPDATE innovation_talks SET starts_at = '2026-11-20 12:10', duration_min = 8, time_slot = 'Fri 20 Nov · 12:10 – 12:18 PM', session_type = 'Afternoon', hall = 'Aryabhata Theatre' WHERE event_id = 1 AND exhibitor_id IS NULL AND (company = 'Eurys Infosystems' OR speaker_name = 'Divyanshi Saxena');
 -- Shishir Sharan
-UPDATE innovation_talks SET starts_at = '2026-11-20 12:20', duration_min = 8, time_slot = 'Fri 20 Nov · 12:20 – 12:28 PM', session_type = 'Afternoon', hall = 'Aryabhata Theatre' WHERE event_id = 1 AND exhibitor_id IS NULL AND company = 'Daten Technology Solutions';
+UPDATE innovation_talks SET starts_at = '2026-11-20 12:20', duration_min = 8, time_slot = 'Fri 20 Nov · 12:20 – 12:28 PM', session_type = 'Afternoon', hall = 'Aryabhata Theatre' WHERE event_id = 1 AND exhibitor_id IS NULL AND (company = 'Daten Technology Solutions' OR speaker_name = 'Shishir Sharan');
 -- Gaurav Jha
-UPDATE innovation_talks SET starts_at = '2026-11-20 12:40', duration_min = 8, time_slot = 'Fri 20 Nov · 12:40 – 12:48 PM', session_type = 'Afternoon', hall = 'Aryabhata Theatre' WHERE event_id = 1 AND exhibitor_id IS NULL AND company = 'Origins AI';
+UPDATE innovation_talks SET starts_at = '2026-11-20 12:40', duration_min = 8, time_slot = 'Fri 20 Nov · 12:40 – 12:48 PM', session_type = 'Afternoon', hall = 'Aryabhata Theatre' WHERE event_id = 1 AND exhibitor_id IS NULL AND (company = 'Origins AI' OR speaker_name = 'Gaurav Jha');
 -- Dr. Raja N. Moorthy
-UPDATE innovation_talks SET starts_at = '2026-11-20 12:50', duration_min = 8, time_slot = 'Fri 20 Nov · 12:50 – 12:58 PM', session_type = 'Afternoon', hall = 'Aryabhata Theatre' WHERE event_id = 1 AND exhibitor_id IS NULL AND company = 'Kirusa';
+UPDATE innovation_talks SET starts_at = '2026-11-20 12:50', duration_min = 8, time_slot = 'Fri 20 Nov · 12:50 – 12:58 PM', session_type = 'Afternoon', hall = 'Aryabhata Theatre' WHERE event_id = 1 AND exhibitor_id IS NULL AND (company = 'Kirusa' OR speaker_name = 'Dr. Raja N. Moorthy');
 -- Amritesh Kumar
-UPDATE innovation_talks SET starts_at = '2026-11-20 13:10', duration_min = 8, time_slot = 'Fri 20 Nov · 1:10 – 1:18 PM', session_type = 'Afternoon', hall = 'Aryabhata Theatre' WHERE event_id = 1 AND exhibitor_id IS NULL AND company = 'Phoebetal Technologies';
+UPDATE innovation_talks SET starts_at = '2026-11-20 13:10', duration_min = 8, time_slot = 'Fri 20 Nov · 1:10 – 1:18 PM', session_type = 'Afternoon', hall = 'Aryabhata Theatre' WHERE event_id = 1 AND exhibitor_id IS NULL AND (company = 'Phoebetal Technologies' OR speaker_name = 'Amritesh Kumar');
 -- Saurabh Singh
-UPDATE innovation_talks SET starts_at = '2026-11-20 14:00', duration_min = 8, time_slot = 'Fri 20 Nov · 2:00 – 2:08 PM', session_type = 'Afternoon', hall = 'Aryabhata Theatre' WHERE event_id = 1 AND exhibitor_id IS NULL AND company = 'Zanopy AI';
+UPDATE innovation_talks SET starts_at = '2026-11-20 14:00', duration_min = 8, time_slot = 'Fri 20 Nov · 2:00 – 2:08 PM', session_type = 'Afternoon', hall = 'Aryabhata Theatre' WHERE event_id = 1 AND exhibitor_id IS NULL AND (company = 'Zanopy AI' OR speaker_name = 'Saurabh Singh');
 -- Aditi Saini
-UPDATE innovation_talks SET starts_at = '2026-11-20 14:10', duration_min = 8, time_slot = 'Fri 20 Nov · 2:10 – 2:18 PM', session_type = 'Afternoon', hall = 'Aryabhata Theatre' WHERE event_id = 1 AND exhibitor_id IS NULL AND company = 'Aria Telecom';
+UPDATE innovation_talks SET starts_at = '2026-11-20 14:10', duration_min = 8, time_slot = 'Fri 20 Nov · 2:10 – 2:18 PM', session_type = 'Afternoon', hall = 'Aryabhata Theatre' WHERE event_id = 1 AND exhibitor_id IS NULL AND (company = 'Aria Telecom' OR speaker_name = 'Aditi Saini');
 -- Shashi Bhushan
-UPDATE innovation_talks SET starts_at = '2026-11-20 14:20', duration_min = 10, time_slot = 'Fri 20 Nov · 2:20 – 2:30 PM', session_type = 'Afternoon', hall = 'Aryabhata Theatre' WHERE event_id = 1 AND exhibitor_id IS NULL AND company = 'Gupshup.ai';
+UPDATE innovation_talks SET starts_at = '2026-11-20 14:20', duration_min = 10, time_slot = 'Fri 20 Nov · 2:20 – 2:30 PM', session_type = 'Afternoon', hall = 'Aryabhata Theatre' WHERE event_id = 1 AND exhibitor_id IS NULL AND (company = 'Gupshup.ai' OR speaker_name = 'Shashi Bhushan');
 -- Raveesh Dewan
-UPDATE innovation_talks SET starts_at = '2026-11-20 15:08', duration_min = 20, time_slot = 'Fri 20 Nov · 3:08 – 3:28 PM', session_type = 'Afternoon', hall = 'Aryabhata Theatre' WHERE event_id = 1 AND exhibitor_id IS NULL AND company = 'Joget';
+UPDATE innovation_talks SET starts_at = '2026-11-20 15:08', duration_min = 20, time_slot = 'Fri 20 Nov · 3:08 – 3:28 PM', session_type = 'Afternoon', hall = 'Aryabhata Theatre' WHERE event_id = 1 AND exhibitor_id IS NULL AND (company = 'Joget' OR speaker_name = 'Raveesh Dewan');
 -- Dr Rahul Ghodke
-UPDATE innovation_talks SET starts_at = '2026-11-20 15:20', duration_min = 20, time_slot = 'Fri 20 Nov · 3:20 – 3:40 PM', session_type = 'Afternoon', hall = 'Kalam Theatre' WHERE event_id = 1 AND exhibitor_id IS NULL AND company = 'CGI';
+UPDATE innovation_talks SET starts_at = '2026-11-20 15:20', duration_min = 20, time_slot = 'Fri 20 Nov · 3:20 – 3:40 PM', session_type = 'Afternoon', hall = 'Kalam Theatre' WHERE event_id = 1 AND exhibitor_id IS NULL AND (company = 'CGI' OR speaker_name = 'Dr Rahul Ghodke');
 -- Harshal Wakharkar
-UPDATE innovation_talks SET starts_at = '2026-11-20 15:30', duration_min = 20, time_slot = 'Fri 20 Nov · 3:30 – 3:50 PM', session_type = 'Afternoon', hall = 'Aryabhata Theatre' WHERE event_id = 1 AND exhibitor_id IS NULL AND company = 'Intangles';
+UPDATE innovation_talks SET starts_at = '2026-11-20 15:30', duration_min = 20, time_slot = 'Fri 20 Nov · 3:30 – 3:50 PM', session_type = 'Afternoon', hall = 'Aryabhata Theatre' WHERE event_id = 1 AND exhibitor_id IS NULL AND (company = 'Intangles' OR speaker_name = 'Harshal Wakharkar');
 -- Ganesh Nagarajan
-UPDATE innovation_talks SET starts_at = '2026-11-20 15:52', duration_min = 20, time_slot = 'Fri 20 Nov · 3:52 – 4:12 PM', session_type = 'Afternoon', hall = 'Aryabhata Theatre' WHERE event_id = 1 AND exhibitor_id IS NULL AND company = 'Ministry of Tribal Affairs';
+UPDATE innovation_talks SET starts_at = '2026-11-20 15:52', duration_min = 20, time_slot = 'Fri 20 Nov · 3:52 – 4:12 PM', session_type = 'Afternoon', hall = 'Aryabhata Theatre' WHERE event_id = 1 AND exhibitor_id IS NULL AND (company = 'Ministry of Tribal Affairs' OR speaker_name = 'Ganesh Nagarajan');
 -- Dr. Pushkar Patwardhan
-UPDATE innovation_talks SET starts_at = '2026-11-20 16:14', duration_min = 20, time_slot = 'Fri 20 Nov · 4:14 – 4:34 PM', session_type = 'Afternoon', hall = 'Aryabhata Theatre' WHERE event_id = 1 AND exhibitor_id IS NULL AND company = 'LightMetrics';
+UPDATE innovation_talks SET starts_at = '2026-11-20 16:14', duration_min = 20, time_slot = 'Fri 20 Nov · 4:14 – 4:34 PM', session_type = 'Afternoon', hall = 'Aryabhata Theatre' WHERE event_id = 1 AND exhibitor_id IS NULL AND (company = 'LightMetrics' OR speaker_name = 'Dr. Pushkar Patwardhan');
 -- Mr. Anand Natarajan
-UPDATE innovation_talks SET starts_at = '2026-11-20 16:36', duration_min = 20, time_slot = 'Fri 20 Nov · 4:36 – 4:56 PM', session_type = 'Afternoon', hall = 'Aryabhata Theatre' WHERE event_id = 1 AND exhibitor_id IS NULL AND company = 'Image Infosystems';
+UPDATE innovation_talks SET starts_at = '2026-11-20 16:36', duration_min = 20, time_slot = 'Fri 20 Nov · 4:36 – 4:56 PM', session_type = 'Afternoon', hall = 'Aryabhata Theatre' WHERE event_id = 1 AND exhibitor_id IS NULL AND (company = 'Image Infosystems' OR speaker_name = 'Mr. Anand Natarajan');
 -- Mayank Sen Sharma
-UPDATE innovation_talks SET starts_at = '2026-11-20 17:20', duration_min = 10, time_slot = 'Fri 20 Nov · 5:20 – 5:30 PM', session_type = 'Afternoon', hall = 'Aryabhata Theatre' WHERE event_id = 1 AND exhibitor_id IS NULL AND company = 'Dysosphere';
+UPDATE innovation_talks SET starts_at = '2026-11-20 17:20', duration_min = 10, time_slot = 'Fri 20 Nov · 5:20 – 5:30 PM', session_type = 'Afternoon', hall = 'Aryabhata Theatre' WHERE event_id = 1 AND exhibitor_id IS NULL AND (company = 'Dysosphere' OR speaker_name = 'Mayank Sen Sharma');
 -- Dr. Anand Deshpande
-UPDATE innovation_talks SET starts_at = '2026-11-20 17:44', duration_min = 10, time_slot = 'Fri 20 Nov · 5:44 – 5:54 PM', session_type = 'Afternoon', hall = 'Aryabhata Theatre' WHERE event_id = 1 AND exhibitor_id IS NULL AND company = 'AlgoAnalytics';
+UPDATE innovation_talks SET starts_at = '2026-11-20 17:44', duration_min = 10, time_slot = 'Fri 20 Nov · 5:44 – 5:54 PM', session_type = 'Afternoon', hall = 'Aryabhata Theatre' WHERE event_id = 1 AND exhibitor_id IS NULL AND (company = 'AlgoAnalytics' OR speaker_name = 'Dr. Anand Deshpande');
 -- Seema Sutradhar
-UPDATE innovation_talks SET starts_at = '2026-11-20 17:56', duration_min = 10, time_slot = 'Fri 20 Nov · 5:56 – 6:06 PM', session_type = 'Afternoon', hall = 'Aryabhata Theatre' WHERE event_id = 1 AND exhibitor_id IS NULL AND company = 'Seem Fintech & Sustainability';
+UPDATE innovation_talks SET starts_at = '2026-11-20 17:56', duration_min = 10, time_slot = 'Fri 20 Nov · 5:56 – 6:06 PM', session_type = 'Afternoon', hall = 'Aryabhata Theatre' WHERE event_id = 1 AND exhibitor_id IS NULL AND (company = 'Seem Fintech & Sustainability' OR speaker_name = 'Seema Sutradhar');
 
 -- What it did: how many talks now have a time.
 SELECT COUNT(*) AS talks_with_a_time FROM innovation_talks WHERE event_id = 1 AND starts_at IS NOT NULL;

@@ -27,6 +27,11 @@ const cgi = W.talk("company = 'CGI'");
 check('CGI is in Kalam Theatre at 3:20 PM, not the Expo Hall', cgi.hall === 'Kalam Theatre' && cgi.time_slot === 'Fri 20 Nov · 3:20 – 3:40 PM', [cgi.hall, cgi.time_slot]);
 check('NoBroker and the Forest Department are left without a hall (the agenda puts them in the main halls)', !W.talk("company = 'NoBroker'").hall && !W.talk("company = 'Maharashtra Forest Department'").hall);
 check('every other talk is in Aryabhata Theatre', all.filter(t => !['CGI', 'NoBroker', 'Maharashtra Forest Department'].includes(t.company)).every(t => W.talk('id = ?', t.id).hall === 'Aryabhata Theatre'));
+// Production spells one company differently from the list ("Origin AI" vs "Origins AI").
+const gaurav = W.talk("speaker_name = 'Gaurav Jha'");
+W.db.run("UPDATE innovation_talks SET company = 'Origin AI', starts_at = NULL, time_slot = 'To be announced' WHERE id = ?", [gaurav.id]);
+W.db.exec(W.read('scripts/sql/innovation-talk-times.sql'));
+check('a talk whose company is spelt differently in the app still gets its time (by the speaker)', W.talk('id = ?', gaurav.id).time_slot === 'Fri 20 Nov · 12:40 – 12:48 PM', W.talk('id = ?', gaurav.id).time_slot);
 const hallBefore = W.rows('SELECT id, hall FROM innovation_talks ORDER BY id');
 W.db.exec(W.read('scripts/sql/innovation-talk-times.sql'));
 check('running the time SQL twice changes nothing', JSON.stringify(W.rows('SELECT id, hall FROM innovation_talks ORDER BY id')) === JSON.stringify(hallBefore));

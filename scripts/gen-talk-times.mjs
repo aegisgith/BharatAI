@@ -94,7 +94,9 @@ const sql = [
   `-- or the agenda puts the talk in another hall (${[...elsewhere].sort().join(', ') || 'none'}).`,
   `UPDATE innovation_talks SET hall = '${HALL}' WHERE event_id = 1 AND trim(ifnull(hall, '')) = ''${elsewhere.size ? ` AND company NOT IN (${[...elsewhere].sort().map((c) => `'${sq(c)}'`).join(', ')})` : ''};`,
   '',
-  ...rows.flatMap((r) => [`-- ${r.speaker.replace(/[\r\n]/g, ' ')}`, `UPDATE innovation_talks SET starts_at = '${r.starts_at}', duration_min = ${r.dur}, time_slot = '${sq(r.label)}', session_type = '${r.session}', hall = '${sq(r.hall)}' WHERE event_id = 1 AND exhibitor_id IS NULL AND company = '${sq(r.company)}'${r.byName ? ` AND speaker_name = '${sq(r.speaker)}'` : ''};`]),
+  // By company or by speaker: production's rows can spell a company differently from
+  // the site (12 Nov 2026: "Origin AI" in the app, "Origins AI" in the list and agenda).
+  ...rows.flatMap((r) => [`-- ${r.speaker.replace(/[\r\n]/g, ' ')}`, `UPDATE innovation_talks SET starts_at = '${r.starts_at}', duration_min = ${r.dur}, time_slot = '${sq(r.label)}', session_type = '${r.session}', hall = '${sq(r.hall)}' WHERE event_id = 1 AND exhibitor_id IS NULL AND ${r.byName ? `company = '${sq(r.company)}' AND speaker_name = '${sq(r.speaker)}'` : `(company = '${sq(r.company)}' OR speaker_name = '${sq(r.speaker)}')`};`]),
   '',
   '-- What it did: how many talks now have a time.',
   "SELECT COUNT(*) AS talks_with_a_time FROM innovation_talks WHERE event_id = 1 AND starts_at IS NOT NULL;",
