@@ -420,6 +420,20 @@
         .speaker-card h4 { font-size: 1rem; font-weight: 700; color: var(--charcoal); margin-bottom: 0.2rem; position: relative; z-index: 1; }
         .speaker-role    { font-size: 0.8rem; color: var(--saffron); font-weight: 600; margin-bottom: 0.15rem; position: relative; z-index: 1; }
         .speaker-org     { font-size: 0.78rem; color: var(--dark-grey); position: relative; z-index: 1; }
+        /* The government's or organisation's logo under the card's words (organiser,
+           12 Nov 2026). A card with no logo on file keeps its words only. */
+        .speaker-card .speaker-logo {
+            display: block;
+            height: 30px; width: auto; max-width: 112px;
+            object-fit: contain;
+            /* the card is a column: the logo sits at its foot, so a row's logos line up */
+            margin: auto auto 0;
+            padding-top: 0.4rem;
+            box-sizing: content-box;
+            position: relative; z-index: 1;
+        }
+        .ministers-grid .speaker-card .speaker-logo { height: 40px; max-width: 120px; }
+        @media (max-width: 600px) { .ministers-grid .speaker-card .speaker-logo { height: 28px; max-width: 80px; } }
 
         /* Conference Format Cards */
         .format-grid {
@@ -1716,6 +1730,7 @@
                     <h4>Hon’ble Shri Chandrakant Dada Patil</h4>
                     <div class="speaker-role">Minister, Higher &amp; Technical Education</div>
                     <div class="speaker-org">Government of Maharashtra</div>
+                    <img class="speaker-logo" width="96" height="96" loading="lazy" decoding="async" src="images/logo-maharashtra.webp" alt="">
                     <span class="speaker-topic topic-policy">Keynote Address</span>
                 </div>
                 <div class="speaker-card reveal reveal-delay-1">
@@ -1723,6 +1738,7 @@
                     <h4>Hon’ble Shri Dattatray Bharane</h4>
                     <div class="speaker-role">Minister, Agriculture</div>
                     <div class="speaker-org">Government of Maharashtra</div>
+                    <img class="speaker-logo" width="96" height="96" loading="lazy" decoding="async" src="images/logo-maharashtra.webp" alt="">
                     <span class="speaker-topic topic-policy">Keynote Address</span>
                 </div>
                 <div class="speaker-card reveal reveal-delay-1">
@@ -1730,6 +1746,7 @@
                     <h4>Hon’ble Smt. Aditi Tatkare</h4>
                     <div class="speaker-role">Minister, Women &amp; Child Development</div>
                     <div class="speaker-org">Government of Maharashtra</div>
+                    <img class="speaker-logo" width="96" height="96" loading="lazy" decoding="async" src="images/logo-maharashtra.webp" alt="">
                     <span class="speaker-topic topic-policy">Keynote Address</span>
                 </div>
                 <div class="speaker-card reveal reveal-delay-1">
@@ -1737,6 +1754,7 @@
                     <h4>Hon’ble Shri Sanjay Rathod</h4>
                     <div class="speaker-role">Minister, Soil &amp; Water Conservation</div>
                     <div class="speaker-org">Government of Maharashtra</div>
+                    <img class="speaker-logo" width="96" height="96" loading="lazy" decoding="async" src="images/logo-maharashtra.webp" alt="">
                     <span class="speaker-topic topic-policy">Keynote Address</span>
                 </div>
                 <div class="speaker-card reveal reveal-delay-1">
@@ -1744,6 +1762,7 @@
                     <h4>Hon’ble Shri Ashish Nandkishore Jaiswal</h4>
                     <div class="speaker-role">Minister of State, Finance, Planning, Agriculture, Assistance &amp; Rehabilitation</div>
                     <div class="speaker-org">Government of Maharashtra</div>
+                    <img class="speaker-logo" width="96" height="96" loading="lazy" decoding="async" src="images/logo-maharashtra.webp" alt="">
                     <span class="speaker-topic topic-policy">Minister of State</span>
                 </div>
             </div>
@@ -1754,6 +1773,7 @@
                     <h4>Shri. K.K. Singh</h4>
                     <div class="speaker-role">Joint Secretary, MeitY</div>
                     <div class="speaker-org">Ministry of Electronics & Information Technology, Govt of India</div>
+                    <img class="speaker-logo" width="292" height="96" loading="lazy" decoding="async" src="images/logo-meity.webp" alt="">
                     <span class="speaker-topic topic-policy">National AI Policy</span>
                 </div>
                 <div class="speaker-card reveal reveal-delay-1">
@@ -1761,6 +1781,7 @@
                     <h4>Shri Sudeep Shrivastava</h4>
                     <div class="speaker-role">Joint Secretary, MeitY; COO, IndiaAI Mission</div>
                     <div class="speaker-org">Ministry of Electronics &amp; Information Technology, Government of India</div>
+                    <img class="speaker-logo" width="292" height="96" loading="lazy" decoding="async" src="images/logo-meity.webp" alt="">
                     <span class="speaker-topic topic-policy">IndiaAI Mission</span>
                 </div>
                 <div class="speaker-card reveal reveal-delay-2">
@@ -1768,6 +1789,7 @@
                     <h4>Shri Virendra Singh (IAS)</h4>
                     <div class="speaker-role">Secretary</div>
                     <div class="speaker-org">Electronics, Information Technology &amp; Artificial Intelligence Department, Government of Maharashtra</div>
+                    <img class="speaker-logo" width="96" height="96" loading="lazy" decoding="async" src="images/logo-maharashtra.webp" alt="">
                     <span class="speaker-topic topic-policy">AI in Governance</span>
                 </div>
                 <div class="speaker-card reveal reveal-delay-2">
@@ -1775,6 +1797,7 @@
                     <h4>Shri Praveen Pardeshi</h4>
                     <div class="speaker-role">CEO, MITRA | Chief Economic Advisor to CM Maharashtra</div>
                     <div class="speaker-org">Maharashtra Institution for Transformation, Govt of Maharashtra</div>
+                    <img class="speaker-logo" width="96" height="96" loading="lazy" decoding="async" src="images/logo-mitra.webp" alt="">
                     <span class="speaker-topic topic-policy">Maharashtra AI Strategy</span>
                 </div>
                 <div class="speaker-card reveal reveal-delay-1">
@@ -1782,6 +1805,7 @@
                     <h4>Dr. Abhijit Gangopadhyay</h4>
                     <div class="speaker-role">Dean</div>
                     <div class="speaker-org">Aegis School of Data Science & AI; Former Dean, IIM & TISS</div>
+                    <img class="speaker-logo" width="260" height="96" loading="lazy" decoding="async" src="images/logo-aegis.webp" alt="">
                     <span class="speaker-topic">AI Education</span>
                 </div>
                 <div class="speaker-card reveal reveal-delay-2">
@@ -1789,6 +1813,7 @@
                     <h4>Dr. Rajkumar Upadhyay</h4>
                     <div class="speaker-role">CEO &amp; Chairman</div>
                     <div class="speaker-org">CDOT Board</div>
+                    <img class="speaker-logo" width="96" height="96" loading="lazy" decoding="async" src="images/logo-cdot.webp" alt="">
                     <span class="speaker-topic">AI in Telecom</span>
                 </div>
                 <div class="speaker-card reveal reveal-delay-1">
@@ -1796,6 +1821,7 @@
                     <h4>Dr. Kunal Khemnar (IAS)</h4>
                     <div class="speaker-role">Joint Chief Executive Officer</div>
                     <div class="speaker-org">Maharashtra Industrial Development Corporation (MIDC)</div>
+                    <img class="speaker-logo" width="127" height="96" loading="lazy" decoding="async" src="images/logo-midc.webp" alt="">
                     <span class="speaker-topic topic-policy">Industrial Development</span>
                 </div>
                 <div class="speaker-card reveal reveal-delay-1">
@@ -1803,6 +1829,7 @@
                     <h4>Shri Suhas Mapari (IAS)</h4>
                     <div class="speaker-role">Joint Secretary, Chief Minister's Secretariat</div>
                     <div class="speaker-org">Additional CEO, Vision Management Unit for Viksit Maharashtra 2047, Government of Maharashtra</div>
+                    <img class="speaker-logo" width="96" height="96" loading="lazy" decoding="async" src="images/logo-maharashtra.webp" alt="">
                     <span class="speaker-topic topic-policy">Viksit Maharashtra 2047</span>
                 </div>
                 <div class="speaker-card reveal reveal-delay-2">
@@ -1810,6 +1837,7 @@
                     <h4>Shri Kaustubh Dhavse</h4>
                     <div class="speaker-role">Chief Advisor to the Chief Minister</div>
                     <div class="speaker-org">Investments, Infrastructure, Technology &amp; Strategy, Government of Maharashtra</div>
+                    <img class="speaker-logo" width="96" height="96" loading="lazy" decoding="async" src="images/logo-maharashtra.webp" alt="">
                     <span class="speaker-topic topic-policy">Investments &amp; Infrastructure</span>
                 </div>
                 <div class="speaker-card reveal reveal-delay-2">
@@ -1817,6 +1845,7 @@
                     <h4>Dr. K. Mahesh</h4>
                     <div class="speaker-role">Secretary</div>
                     <div class="speaker-org">Art, Culture &amp; Language Department, Government of NCT of Delhi</div>
+                    <img class="speaker-logo" width="122" height="192" loading="lazy" decoding="async" src="images/logo-delhi-govt.webp" alt="">
                     <span class="speaker-topic topic-policy">Art, Culture &amp; Language</span>
                 </div>
                 <div class="speaker-card reveal reveal-delay-1">
@@ -1824,6 +1853,7 @@
                     <h4>Shri Prakash Kumar</h4>
                     <div class="speaker-role">Additional Director, Ministry of Electronics &amp; Information Technology, Government of India</div>
                     <div class="speaker-org">IndiaAI Mission</div>
+                    <img class="speaker-logo" width="292" height="96" loading="lazy" decoding="async" src="images/logo-meity.webp" alt="">
                     <span class="speaker-topic topic-policy">AI Policy</span>
                 </div>
                 <div class="speaker-card reveal reveal-delay-1">
@@ -1831,6 +1861,7 @@
                     <h4>Akshay Yadava</h4>
                     <div class="speaker-role">Director</div>
                     <div class="speaker-org">Unique Identification Authority of India (UIDAI)</div>
+                    <img class="speaker-logo" width="246" height="160" loading="lazy" decoding="async" src="images/org-logos/uidai.webp" alt="">
                     <span class="speaker-topic topic-policy">Digital Identity</span>
                 </div>
                 <div class="speaker-card reveal reveal-delay-1">
@@ -1838,6 +1869,7 @@
                     <h4>Shri Vivek Khandekar (IFS)</h4>
                     <div class="speaker-role">Principal Chief Conservator of Forests (Social Forestry)</div>
                     <div class="speaker-org">Maharashtra Forest Department</div>
+                    <img class="speaker-logo" width="180" height="180" loading="lazy" decoding="async" src="images/logo-maharashtra-forest.webp" alt="">
                 </div>
                 <div class="speaker-card reveal reveal-delay-1">
                     <div class="speaker-avatar"><img width="400" height="400" loading="lazy" decoding="async" src="images/speaker-vinamra-mishra-sq.webp" alt="Shri Vinamra Mishra"></div>
@@ -1850,30 +1882,35 @@
                     <h4>Smt. Prajakta Verma (IAS)</h4>
                     <div class="speaker-role">Additional Municipal Commissioner</div>
                     <div class="speaker-org">Brihanmumbai Municipal Corporation (BMC)</div>
+                    <img class="speaker-logo" width="180" height="180" loading="lazy" decoding="async" src="images/logo-bmc.webp" alt="">
                 </div>
                 <div class="speaker-card reveal reveal-delay-1">
                     <div class="speaker-avatar"><img width="400" height="400" loading="lazy" decoding="async" src="images/speaker-sachin-itkar-sq.webp" alt="Shri Sachin Itkar"></div>
                     <h4>Shri Sachin Itkar</h4>
                     <div class="speaker-role">Vice President</div>
                     <div class="speaker-org">Maharashtra Economic Development Council (MEDC)</div>
+                    <img class="speaker-logo" width="158" height="180" loading="lazy" decoding="async" src="images/logo-medc.webp" alt="">
                 </div>
                 <div class="speaker-card reveal reveal-delay-1">
                     <div class="speaker-avatar"><img width="400" height="400" loading="lazy" decoding="async" src="images/speaker-bhanudas-palwe-sq.webp" alt="Shri Bhanudas Palwe (IAS)"></div>
                     <h4>Shri Bhanudas Palwe (IAS)</h4>
                     <div class="speaker-role">Commissioner of Fisheries</div>
                     <div class="speaker-org">Government of Maharashtra</div>
+                    <img class="speaker-logo" width="96" height="96" loading="lazy" decoding="async" src="images/logo-maharashtra.webp" alt="">
                 </div>
                 <div class="speaker-card reveal reveal-delay-1">
                     <div class="speaker-avatar"><img width="400" height="400" loading="lazy" decoding="async" src="images/speaker-bhim-singh-sq.webp" alt="Shri Bhim Singh"></div>
                     <h4>Shri Bhim Singh</h4>
                     <div class="speaker-role">Secretary and CEO</div>
                     <div class="speaker-org">State Rural Development Agency, Government of Chhattisgarh</div>
+                    <img class="speaker-logo" width="159" height="160" loading="lazy" decoding="async" src="images/org-logos/chhattisgarh.webp" alt="">
                 </div>
                 <div class="speaker-card reveal reveal-delay-1">
                     <div class="speaker-avatar"><img width="400" height="400" loading="lazy" decoding="async" src="images/speaker-tarun-chugh.webp" alt="Tarun Chugh"></div>
                     <h4>Tarun Chugh</h4>
                     <div class="speaker-role">MD &amp; CEO</div>
                     <div class="speaker-org">Bajaj Life Insurance Company</div>
+                    <img class="speaker-logo" width="151" height="96" loading="lazy" decoding="async" src="images/logo-bajaj-life.webp" alt="">
                     <span class="speaker-topic topic-finance">AI in Insurance</span>
                 </div>
                 <div class="speaker-card reveal reveal-delay-1">
@@ -1888,6 +1925,7 @@
                     <h4>Saurabh Kushwah</h4>
                     <div class="speaker-role">Co-Founder &amp; Chief Product and Technology Officer</div>
                     <div class="speaker-org">BULLET Microdrama &middot; ZEEL</div>
+                    <img class="speaker-logo" width="128" height="128" loading="lazy" decoding="async" src="images/org-logos/bullet-microdrama.webp" alt="">
                     <span class="speaker-topic topic-research">AI in Media</span>
                 </div>
                 <div class="speaker-card reveal reveal-delay-1">
@@ -1895,6 +1933,7 @@
                     <h4>Pramod Prakash</h4>
                     <div class="speaker-role">Chief Technology Officer</div>
                     <div class="speaker-org">Zee Entertainment Enterprises</div>
+                    <img class="speaker-logo" width="128" height="128" loading="lazy" decoding="async" src="images/org-logos/favicon-zee.com.png" alt="">
                     <span class="speaker-topic topic-research">AI in Media</span>
                 </div>
                 <div class="speaker-card reveal reveal-delay-2">
@@ -1902,6 +1941,7 @@
                     <h4>Ms. Surbhi Gupta</h4>
                     <div class="speaker-role">Chief Digital Officer</div>
                     <div class="speaker-org">Birla Opus Paints</div>
+                    <img class="speaker-logo" width="160" height="160" loading="lazy" decoding="async" src="images/org-logos/birla-opus.webp" alt="">
                     <span class="speaker-topic topic-research">AI for Bharat</span>
                 </div>
                 <div class="speaker-card reveal reveal-delay-1">
@@ -1909,6 +1949,7 @@
                     <h4>Yogesh Bhalla</h4>
                     <div class="speaker-role">Chief Technology Officer</div>
                     <div class="speaker-org">DSP Mutual Fund</div>
+                    <img class="speaker-logo" width="64" height="64" loading="lazy" decoding="async" src="images/org-logos/favicon-dspim.com.png" alt="">
                     <span class="speaker-topic topic-finance">AI in Asset Management</span>
                 </div>
                 <div class="speaker-card reveal reveal-delay-3">
@@ -1916,6 +1957,7 @@
                     <h4>Bhupesh Daheria</h4>
                     <div class="speaker-role">CEO, Aegis School of Data Science & AI</div>
                     <div class="speaker-org">Trustee, Aegis Knowledge Trust</div>
+                    <img class="speaker-logo" width="260" height="96" loading="lazy" decoding="async" src="images/logo-aegis.webp" alt="">
                     <span class="speaker-topic">AI Talent</span>
                 </div>
                 <div class="speaker-card reveal reveal-delay-4">
@@ -1923,6 +1965,7 @@
                     <h4>Shailesh Dhuri</h4>
                     <div class="speaker-role">Chief Executive Officer</div>
                     <div class="speaker-org">Decimal Point Analytics</div>
+                    <img class="speaker-logo" width="48" height="48" loading="lazy" decoding="async" src="images/org-logos/favicon-decimalpointanalytics.com.png" alt="">
                     <span class="speaker-topic topic-finance">AI in Finance</span>
                 </div>
                 <div class="speaker-card reveal reveal-delay-1">
@@ -1930,6 +1973,7 @@
                     <h4>Rajesh Dhuddu (PhD)</h4>
                     <div class="speaker-role">Partner & Emerging Tech Leader</div>
                     <div class="speaker-org">Leadership Team @ iDAC, PwC</div>
+                    <img class="speaker-logo" width="64" height="64" loading="lazy" decoding="async" src="images/org-logos/favicon-pwc.com.png" alt="">
                     <span class="speaker-topic topic-keynote">Responsible AI</span>
                 </div>
                 <div class="speaker-card reveal reveal-delay-2">
@@ -1937,6 +1981,7 @@
                     <h4>Dr. Ashish Tendulkar</h4>
                     <div class="speaker-role">Lead AI</div>
                     <div class="speaker-org">Google</div>
+                    <img class="speaker-logo" width="64" height="64" loading="lazy" decoding="async" src="images/org-logos/favicon-google.com.png" alt="">
                     <span class="speaker-topic topic-research">AI Research</span>
                 </div>
                 <div class="speaker-card reveal reveal-delay-3">
@@ -1944,6 +1989,7 @@
                     <h4>Mukesh Jain</h4>
                     <div class="speaker-role">Global EVP & CTO</div>
                     <div class="speaker-org">Capgemini</div>
+                    <img class="speaker-logo" width="64" height="64" loading="lazy" decoding="async" src="images/org-logos/favicon-capgemini.com.png" alt="">
                     <span class="speaker-topic">AI at Scale</span>
                 </div>
                 <div class="speaker-card reveal reveal-delay-4">
@@ -1951,12 +1997,14 @@
                     <h4>Manish Agrawal</h4>
                     <div class="speaker-role">President &amp; Chief Operating Officer</div>
                     <div class="speaker-org">Comviva</div>
+                    <img class="speaker-logo" width="64" height="64" loading="lazy" decoding="async" src="images/org-logos/favicon-comviva.com.png" alt="">
                     <span class="speaker-topic">AI in Telecom</span>
                 </div>
                 <div class="speaker-card reveal reveal-delay-1">
                     <div class="speaker-avatar"><img width="1200" height="1600" loading="lazy" decoding="async" src="images/speaker-rinoo-rajesh.webp" alt="Rinoo Rajesh"></div>
                     <h4>Rinoo Rajesh</h4>
                     <div class="speaker-role">President of PMI Pune</div>
+                    <img class="speaker-logo" width="160" height="160" loading="lazy" decoding="async" src="images/org-logos/pmi-pune.webp" alt="">
                     <span class="speaker-topic">AI Project Management</span>
                 </div>
                 <div class="speaker-card reveal reveal-delay-2">
@@ -1964,6 +2012,7 @@
                     <h4>Ramanarayana Parhi</h4>
                     <div class="speaker-role">VP & CIO</div>
                     <div class="speaker-org">Alkem Laboratories</div>
+                    <img class="speaker-logo" width="48" height="48" loading="lazy" decoding="async" src="images/org-logos/favicon-alkemlabs.com.png" alt="">
                     <span class="speaker-topic">AI in Pharma</span>
                 </div>
                 <div class="speaker-card reveal reveal-delay-3">
@@ -1971,6 +2020,7 @@
                     <h4>Ratan Kumar Kesh</h4>
                     <div class="speaker-role">Executive Director & COO</div>
                     <div class="speaker-org">Bandhan Bank</div>
+                    <img class="speaker-logo" width="319" height="96" loading="lazy" decoding="async" src="images/logo-bandhan.webp" alt="">
                     <span class="speaker-topic topic-finance">AI in Banking</span>
                 </div>
                 <div class="speaker-card reveal reveal-delay-4">
@@ -1978,6 +2028,7 @@
                     <h4>Sandeep Kumar</h4>
                     <div class="speaker-role">CIO</div>
                     <div class="speaker-org">Go Digit Insurance</div>
+                    <img class="speaker-logo" width="64" height="64" loading="lazy" decoding="async" src="images/org-logos/favicon-godigit.com.png" alt="">
                     <span class="speaker-topic topic-finance">AI in Insurance</span>
                 </div>
                 <div class="speaker-card reveal reveal-delay-2">
@@ -1985,6 +2036,7 @@
                     <h4>Parag Dabhade</h4>
                     <div class="speaker-role">Chief Technology Officer</div>
                     <div class="speaker-org">AI & Agritech Innovation Center, Govt of Maharashtra</div>
+                    <img class="speaker-logo" width="96" height="96" loading="lazy" decoding="async" src="images/logo-maharashtra.webp" alt="">
                     <span class="speaker-topic topic-policy">AgriTech AI</span>
                 </div>
                 <div class="speaker-card reveal reveal-delay-2">
@@ -1992,6 +2044,7 @@
                     <h4>Joy Chakraborty</h4>
                     <div class="speaker-role">Deputy Chief Executive Officer</div>
                     <div class="speaker-org">P. D. Hinduja National Hospital &amp; Medical Research Centre</div>
+                    <img class="speaker-logo" width="64" height="64" loading="lazy" decoding="async" src="images/org-logos/favicon-hindujahospital.com.png" alt="">
                     <span class="speaker-topic topic-research">Healthcare AI</span>
                 </div>
                 <div class="speaker-card reveal reveal-delay-2">
@@ -1999,6 +2052,7 @@
                     <h4>Rahul Molasi</h4>
                     <div class="speaker-role">DGM L&amp;OD; Head CoE, Digital, Managerial and Learning Analytics</div>
                     <div class="speaker-org">Sun Pharma</div>
+                    <img class="speaker-logo" width="32" height="32" loading="lazy" decoding="async" src="images/org-logos/favicon-sunpharma.com.png" alt="">
                     <span class="speaker-topic">AI in Pharma</span>
                 </div>
                 <div class="speaker-card reveal reveal-delay-2">
@@ -2006,6 +2060,7 @@
                     <h4>Abdul Hai Mattoo</h4>
                     <div class="speaker-role">CVP & Head of Training</div>
                     <div class="speaker-org">Axis Max Life Insurance</div>
+                    <img class="speaker-logo" width="32" height="32" loading="lazy" decoding="async" src="images/org-logos/favicon-axismaxlife.com.png" alt="">
                     <span class="speaker-topic topic-finance">AI in Insurance</span>
                 </div>
                 <div class="speaker-card reveal reveal-delay-3">
@@ -2013,6 +2068,7 @@
                     <h4>Dr. Rajul Gajjar</h4>
                     <div class="speaker-role">Former Vice Chancellor</div>
                     <div class="speaker-org">Gujarat Technological University</div>
+                    <img class="speaker-logo" width="95" height="96" loading="lazy" decoding="async" src="images/logo-gtu.webp" alt="">
                     <span class="speaker-topic">AI in Education</span>
                 </div>
                 <div class="speaker-card reveal reveal-delay-4">
@@ -2020,6 +2076,7 @@
                     <h4>Soly Thomas</h4>
                     <div class="speaker-role">Deputy CEO & Chief Digital Officer</div>
                     <div class="speaker-org">Canara HSBC Life Insurance</div>
+                    <img class="speaker-logo" width="162" height="48" loading="lazy" decoding="async" src="images/org-logos/favicon-canarahsbclife.com.png" alt="">
                     <span class="speaker-topic topic-finance">AI in Banking</span>
                 </div>
                 <div class="speaker-card reveal reveal-delay-2">
@@ -2027,6 +2084,7 @@
                     <h4>Jagbir Singh</h4>
                     <div class="speaker-role">Chief Technology &amp; Information Officer</div>
                     <div class="speaker-org">Vodafone Idea Limited</div>
+                    <img class="speaker-logo" width="64" height="64" loading="lazy" decoding="async" src="images/org-logos/favicon-myvi.in.png" alt="">
                     <span class="speaker-topic">AI in Telecom</span>
                 </div>
                 <div class="speaker-card reveal reveal-delay-2">
@@ -2041,6 +2099,7 @@
                     <h4>Akhil Gupta</h4>
                     <div class="speaker-role">Founder</div>
                     <div class="speaker-org">NoBroker.com</div>
+                    <img class="speaker-logo" width="64" height="64" loading="lazy" decoding="async" src="images/org-logos/favicon-nobroker.in.png" alt="">
                     <span class="speaker-topic">AI in PropTech</span>
                 </div>
                 <div class="speaker-card reveal reveal-delay-1">
@@ -2048,6 +2107,7 @@
                     <h4>Dheeraj Sinha</h4>
                     <div class="speaker-role">EVP &amp; Global Chief Information Officer</div>
                     <div class="speaker-org">Sun Pharma</div>
+                    <img class="speaker-logo" width="32" height="32" loading="lazy" decoding="async" src="images/org-logos/favicon-sunpharma.com.png" alt="">
                     <span class="speaker-topic">AI in Pharma</span>
                 </div>
                 <div class="speaker-card reveal reveal-delay-3">
@@ -2055,6 +2115,7 @@
                     <h4>Abhay Sharma</h4>
                     <div class="speaker-role">Partner &amp; Practice Leader</div>
                     <div class="speaker-org">IBM</div>
+                    <img class="speaker-logo" width="118" height="96" loading="lazy" decoding="async" src="images/logo-ibm.webp" alt="">
                     <span class="speaker-topic">Enterprise AI</span>
                 </div>
                 <div class="speaker-card reveal reveal-delay-1">
@@ -2062,6 +2123,7 @@
                     <h4>Pravin Kumar</h4>
                     <div class="speaker-role">Chief Market Information Security Officer &amp; Data Protection Officer</div>
                     <div class="speaker-org">National Payments Corporation of India (NPCI)</div>
+                    <img class="speaker-logo" width="48" height="48" loading="lazy" decoding="async" src="images/org-logos/favicon-npci.org.in.png" alt="">
                     <span class="speaker-topic">AI Governance</span>
                 </div>
                 <div class="speaker-card reveal reveal-delay-1">
@@ -2069,6 +2131,7 @@
                     <h4>Sudhir Kumar Rai</h4>
                     <div class="speaker-role">Director, Data Science</div>
                     <div class="speaker-org">Trellix</div>
+                    <img class="speaker-logo" width="193" height="160" loading="lazy" decoding="async" src="images/org-logos/trellix.webp" alt="">
                     <span class="speaker-topic topic-research">AI in Cybersecurity</span>
                 </div>
                 <div class="speaker-card reveal reveal-delay-2">
@@ -2076,6 +2139,7 @@
                     <h4>Dr. Lakshmi Mohan</h4>
                     <div class="speaker-role">Pro Vice Chancellor</div>
                     <div class="speaker-org">ITM Skills University</div>
+                    <img class="speaker-logo" width="45" height="46" loading="lazy" decoding="async" src="images/org-logos/itm-skills-university.webp" alt="">
                     <span class="speaker-topic">Education Panel</span>
                 </div>
                 <div class="speaker-card reveal reveal-delay-3">
@@ -2090,6 +2154,7 @@
                     <h4>Dr. Priyesh Gandhi</h4>
                     <div class="speaker-role">Provost (Vice Chancellor)</div>
                     <div class="speaker-org">Sigma University</div>
+                    <img class="speaker-logo" width="142" height="160" loading="lazy" decoding="async" src="images/org-logos/sigma-university.webp" alt="">
                     <span class="speaker-topic">Education Panel</span>
                 </div>
                 <div class="speaker-card reveal reveal-delay-2">
@@ -2097,6 +2162,7 @@
                     <h4>Dr. Shashank D Dalvi</h4>
                     <div class="speaker-role">Vice Chancellor</div>
                     <div class="speaker-org">MGM Institute of Health Sciences</div>
+                    <img class="speaker-logo" width="202" height="77" loading="lazy" decoding="async" src="images/org-logos/mgm-ihs.webp" alt="">
                     <span class="speaker-topic">Education Panel</span>
                 </div>
                 <div class="speaker-card reveal reveal-delay-3">
@@ -2104,6 +2170,7 @@
                     <h4>Raju Haldankar</h4>
                     <div class="speaker-role">President</div>
                     <div class="speaker-org">Chetana's Institute of Management &amp; Research</div>
+                    <img class="speaker-logo" width="164" height="160" loading="lazy" decoding="async" src="images/org-logos/cimr.webp" alt="">
                     <span class="speaker-topic">Education Panel</span>
                 </div>
                 <div class="speaker-card reveal reveal-delay-1">
@@ -2111,6 +2178,7 @@
                     <h4>Dr. Saurabh N. Mehta</h4>
                     <div class="speaker-role">Chief Academic Officer &amp; Professor</div>
                     <div class="speaker-org">Vidyalankar Institute of Technology, Mumbai</div>
+                    <img class="speaker-logo" width="179" height="147" loading="lazy" decoding="async" src="images/org-logos/vit.webp" alt="">
                     <span class="speaker-topic">Education Panel</span>
                 </div>
                 <div class="speaker-card reveal reveal-delay-2">
